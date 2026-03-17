@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "ari-skill-evaluator"
+version = "1.0.0"
+requires-python = ">=3.11"
+dependencies = ["mcp>=1.0"]
+
+[tool.setuptools.packages.find]
+where = ["."]

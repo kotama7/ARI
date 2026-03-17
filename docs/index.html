@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ARI — Artificial Research Intelligence</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+    :root {
+      --blue:#2563eb; --blue-light:#3b82f6; --blue-glow:rgba(37,99,235,0.3);
+      --dark:#030712; --surface:#0f172a; --surface2:#1e293b;
+      --text:#f1f5f9; --muted:#94a3b8; --border:#1e293b;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    html{scroll-behavior:smooth;}
+    body{background:var(--dark);color:var(--text);font-family:'Inter',system-ui,sans-serif;line-height:1.6;overflow-x:hidden;}
+    a{color:var(--blue-light);text-decoration:none;}
+
+    /* NAV */
+    nav{position:fixed;top:0;left:0;right:0;z-index:100;backdrop-filter:blur(16px);background:rgba(3,7,18,.8);border-bottom:1px solid rgba(255,255,255,.06);padding:16px 32px;display:flex;align-items:center;justify-content:space-between;}
+    .nav-logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:1.1rem;}
+    .nav-logo img{width:28px;}
+    .nav-links{display:flex;gap:32px;font-size:.9rem;color:var(--muted);}
+    .nav-links a:hover{color:var(--text);}
+    .nav-cta{background:var(--blue);color:#fff;padding:8px 20px;border-radius:8px;font-size:.9rem;font-weight:600;}
+    .nav-cta:hover{background:var(--blue-light);}
+
+    /* HERO */
+    .hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:120px 24px 80px;position:relative;overflow:hidden;}
+    .hero::before{content:'';position:absolute;top:-200px;left:50%;transform:translateX(-50%);width:800px;height:800px;background:radial-gradient(circle,var(--blue-glow) 0%,transparent 70%);pointer-events:none;}
+    .hero-eyebrow{font-size:.75rem;font-weight:700;letter-spacing:4px;color:var(--blue-light);margin-bottom:24px;text-transform:uppercase;}
+    .hero img.logo{width:100px;margin-bottom:32px;filter:drop-shadow(0 0 40px rgba(59,130,246,.5));}
+    .hero h1{font-size:clamp(2.8rem,7vw,5.5rem);font-weight:900;line-height:1.05;letter-spacing:-2px;max-width:900px;}
+    .hero h1 span{background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+    .hero-sub{font-size:clamp(1rem,2vw,1.25rem);color:var(--muted);max-width:560px;margin:24px auto 0;font-weight:400;}
+    .hero-cta{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-top:40px;}
+    .btn-hero{padding:14px 36px;border-radius:12px;font-size:1rem;font-weight:700;transition:.2s;}
+    .btn-hero-primary{background:var(--blue);color:#fff;box-shadow:0 0 32px var(--blue-glow);}
+    .btn-hero-primary:hover{background:var(--blue-light);box-shadow:0 0 48px var(--blue-glow);}
+    .btn-hero-secondary{border:1px solid rgba(255,255,255,.15);color:var(--text);background:rgba(255,255,255,.04);}
+    .btn-hero-secondary:hover{background:rgba(255,255,255,.08);}
+    .hero-scroll{position:absolute;bottom:32px;left:50%;transform:translateX(-50%);color:var(--muted);font-size:.8rem;display:flex;flex-direction:column;align-items:center;gap:8px;animation:float 2s ease-in-out infinite;}
+    @keyframes float{0%,100%{transform:translateX(-50%) translateY(0);}50%{transform:translateX(-50%) translateY(6px);}}
+
+    /* SECTION WRAPPER */
+    section{padding:100px 24px;}
+    .container{max-width:1100px;margin:0 auto;}
+    .section-label{font-size:.75rem;font-weight:700;letter-spacing:3px;color:var(--blue-light);text-transform:uppercase;margin-bottom:12px;}
+    .section-title{font-size:clamp(1.8rem,3.5vw,2.8rem);font-weight:800;letter-spacing:-0.5px;margin-bottom:16px;}
+    .section-sub{color:var(--muted);font-size:1.05rem;max-width:620px;}
+
+    /* PHILOSOPHY */
+    .philosophy{background:linear-gradient(180deg,var(--dark) 0%,var(--surface) 100%);}
+    .phil-quote{border-left:3px solid var(--blue);background:rgba(37,99,235,.08);padding:24px 32px;border-radius:0 12px 12px 0;margin:40px 0;font-size:1.2rem;font-style:italic;color:#cbd5e1;max-width:700px;}
+    .phil-body{color:#cbd5e1;font-size:1.05rem;max-width:700px;margin-top:20px;}
+    .phil-body p+p{margin-top:16px;}
+
+    /* HOW IT WORKS */
+    .how{background:var(--surface);}
+    .steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:0;margin-top:56px;position:relative;}
+    .steps::after{content:'';position:absolute;top:32px;left:5%;right:5%;height:1px;background:linear-gradient(90deg,transparent,var(--border),var(--blue),var(--border),transparent);z-index:0;}
+    .step{text-align:center;padding:0 16px;position:relative;z-index:1;}
+    .step-num{width:64px;height:64px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:1.6rem;margin:0 auto 20px;}
+    .step:nth-child(3) .step-num{background:rgba(37,99,235,.15);border-color:var(--blue);box-shadow:0 0 24px var(--blue-glow);}
+    .step h3{font-size:.95rem;font-weight:700;margin-bottom:6px;}
+    .step p{font-size:.82rem;color:var(--muted);}
+
+    /* UNIVERSAL */
+    .universal{background:var(--dark);}
+    .axis-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-top:48px;}
+    .axis-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 24px;transition:.2s;}
+    .axis-card:hover{border-color:rgba(59,130,246,.4);box-shadow:0 0 32px rgba(37,99,235,.1);}
+    .axis-icon{font-size:2rem;margin-bottom:14px;}
+    .axis-range{display:inline-block;font-size:.72rem;color:var(--blue-light);font-weight:700;letter-spacing:.5px;background:rgba(37,99,235,.1);padding:3px 10px;border-radius:20px;margin-top:10px;}
+    .axis-card h3{font-size:1rem;font-weight:700;margin-bottom:6px;}
+    .axis-card p{font-size:.88rem;color:var(--muted);}
+
+    /* RESULTS */
+    .results{background:linear-gradient(135deg,var(--surface) 0%,#0f1f3d 100%);border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
+    .stats-row{display:flex;gap:0;justify-content:center;flex-wrap:wrap;margin:48px 0 32px;}
+    .stat-block{padding:32px 48px;text-align:center;border-right:1px solid var(--border);}
+    .stat-block:last-child{border-right:none;}
+    .stat-num{font-size:3.5rem;font-weight:900;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+    .stat-label{color:var(--muted);font-size:.9rem;margin-top:4px;}
+    .result-note{text-align:center;color:var(--muted);font-size:.95rem;max-width:600px;margin:0 auto;}
+
+    /* FUTURE */
+    .future{background:var(--dark);}
+    .future-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:48px;}
+    .future-card{border:1px dashed rgba(255,255,255,.1);border-radius:16px;padding:24px;transition:.2s;}
+    .future-card:hover{border-color:rgba(59,130,246,.3);background:rgba(37,99,235,.04);}
+    .future-tag{font-size:.68rem;font-weight:700;letter-spacing:2px;color:var(--blue-light);text-transform:uppercase;margin-bottom:12px;}
+    .future-card h3{font-size:1rem;font-weight:700;margin-bottom:8px;}
+    .future-card p{font-size:.85rem;color:var(--muted);}
+
+    /* QUICK START */
+    .qs{background:var(--surface);}
+    .qs-grid{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:48px;align-items:start;}
+    @media(max-width:700px){.qs-grid{grid-template-columns:1fr;}.steps::after{display:none;}.stat-block{border-right:none;border-bottom:1px solid var(--border);}.nav-links{display:none;}}
+    pre{background:var(--dark);border:1px solid var(--border);border-radius:12px;padding:24px;font-family:'Cascadia Code','Fira Code',monospace;font-size:.84rem;line-height:1.7;overflow-x:auto;}
+    .comment{color:#475569;}
+    .qs-note{margin-top:20px;color:var(--muted);font-size:.9rem;}
+    .qs-note strong{color:var(--text);}
+
+    /* FOOTER */
+    footer{background:var(--surface);border-top:1px solid var(--border);padding:48px 24px;text-align:center;color:var(--muted);font-size:.9rem;}
+    footer .footer-logo{display:flex;align-items:center;gap:10px;justify-content:center;font-weight:700;color:var(--text);margin-bottom:16px;}
+    footer img{width:24px;}
+    footer p{margin-top:8px;}
+  </style>
+
+  <style>
+    
+    .lang-btn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:var(--text);padding:5px 12px;border-radius:20px;font-size:.8rem;font-weight:600;cursor:pointer;transition:.15s;}
+    .lang-btn:hover,.lang-btn.active{background:var(--blue);border-color:var(--blue);}
+    [data-lang]:not(.lang-active){display:none!important;}
+  </style>
+
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">
+    <img src="logo.png" alt="ARI"/>
+    ARI
+  </div>
+  <div class="nav-links">
+    <a href="#philosophy"><span id="t-nav-phi">Philosophy</span></a>
+    <a href="#how"><span id="t-nav-how">How It Works</span></a>
+    <a href="#universal"><span id="t-universal-label">Universal</span></a>
+    <a href="docs.html"><span id="t-nav-docs">Docs</span></a>
+    <a href="#quickstart"><span id="t-quickstart-label">Quick Start</span></a>
+  </div>
+  <a href="https://github.com/your-org/ari" class="nav-cta">GitHub →</a>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <img class="logo" src="logo.png" alt="ARI"/>
+  <p class="hero-eyebrow">Artificial Research Intelligence</p>
+  <h1><span id="t-hero-title">Research, automated end-to-end.</span></h1>
+  <p class="hero-sub"><span id="t-hero-sub">Describe your goal in plain text. ARI runs the experiments, writes the paper, and verifies the results — entirely on its own. Currently supports digital computation experiments (HPC, ML, systems).</span></p>
+  <div class="hero-cta">
+    <a href="#quickstart" class="btn-hero btn-hero-primary">Get Started</a>
+    <a href="#philosophy" class="btn-hero btn-hero-secondary">Learn More</a>
+  </div>
+  <div class="hero-scroll">
+    <span>Scroll</span>
+    <svg width="16" height="24" viewBox="0 0 16 24" fill="none"><path d="M8 4v16M2 14l6 6 6-6" stroke="#64748b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+</div>
+
+<!-- PHILOSOPHY -->
+<section class="philosophy" id="philosophy">
+  <div class="container">
+    <p class="section-label"><span id="t-phi-label">Philosophy</span></p>
+    <h2 class="section-title"><span id="t-phi-title">Research should be for everyone.</span></h2>
+    <div class="phil-quote">
+      <span id="t-phi-quote">"The gap between 'I have an idea' and 'I have a result'<br/>should be measured in hours — not months."</span>
+    </div>
+    <div class="phil-body">
+      <p><span id="t-phi-p1">Today, running experiments, reviewing prior work, writing papers, and verifying findings each require separate expertise and enormous time. ARI removes those barriers.</span></p>
+      <p><span id="t-phi-p2">Whether you are a student with a laptop and a free local AI, or a researcher with access to a supercomputer and the latest cloud models — ARI works the same way. You describe the goal. ARI does the rest.</span></p>
+      <p><span id="t-phi-p3">Computation is only the beginning. ARI is architecturally designed to grow beyond software — into robotics, sensors, and laboratory equipment. This is not yet implemented, but the plugin architecture exists precisely for this purpose.</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+
+<section style="background:var(--dark);padding:80px 24px;border-top:1px solid var(--border);">
+  <div style="max-width:900px;margin:0 auto;">
+    <p class="section-label" style="text-align:center;margin-bottom:8px;"><span id="t-inspired-label">Inspired By</span></p>
+    <h2 class="section-title" style="text-align:center;font-size:1.6rem;margin-bottom:12px;"><span id="t-inspired-title">Standing on the shoulders of giants.</span></h2>
+    <p style="text-align:center;color:var(--muted);margin-bottom:40px;max-width:600px;margin-left:auto;margin-right:auto;"><span id="t-inspired-sub">ARI was built on lessons from these pioneering works.</span></p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px;">
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px;">
+        <div style="font-size:1.4rem;margin-bottom:10px;">🧪</div>
+        <h3 style="font-size:1.05rem;font-weight:700;margin-bottom:8px;">The AI Scientist v2</h3>
+        <p style="color:var(--muted);font-size:.9rem;line-height:1.6;margin-bottom:16px;"><span id="t-ais-desc">Sakana AI's fully autonomous scientific research system — from idea generation to peer-review-ready papers. A foundational reference for ARI's end-to-end pipeline design.</span></p>
+        <a href="https://arxiv.org/abs/2504.08066" target="_blank" style="font-size:.85rem;color:var(--blue-light);">arxiv.org/abs/2504.08066 →</a>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px;">
+        <div style="font-size:1.4rem;margin-bottom:10px;">⚡</div>
+        <h3 style="font-size:1.05rem;font-weight:700;margin-bottom:8px;">HPC-AutoResearch</h3>
+        <p style="color:var(--muted);font-size:.9rem;line-height:1.6;margin-bottom:16px;"><span id="t-hpc-desc">An LLM-driven framework for automated HPC performance optimization. Demonstrated autonomous compiler flag and thread-count tuning on real supercomputer workloads — a direct predecessor to ARI's search engine.</span></p>
+        <a href="https://github.com/kotama7/HPC-AutoResearch" target="_blank" target="_blank" style="font-size:.85rem;color:var(--blue-light);">github.com/kotama7/HPC-AutoResearch →</a>
+      </div>
+
+    </div>
+  </div>
+</section>
+<section class="how" id="how">
+  <div class="container">
+    <p class="section-label"><span id="t-how-label">How It Works</span></p>
+    <h2 class="section-title"><span id="t-how-title">One file. Full pipeline.</span></h2>
+    <p class="section-sub"><span id="t-how-sub">Write a short description of what you want to optimize. ARI takes it from there — automatically, without any human intervention.</span></p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">📝</div>
+        <h3><span id="t-step1-title">Describe</span></h3>
+        <p><span id="t-step1-body">Write your research goal in plain Markdown. Even 3 lines is enough.</span></p>
+      </div>
+      <div class="step">
+        <div class="step-num">🔍</div>
+        <h3><span id="t-step2-title">Survey</span></h3>
+        <p><span id="t-step2-body">ARI searches academic databases and learns what has been tried before.</span></p>
+      </div>
+      <div class="step">
+        <div class="step-num">⚗️</div>
+        <h3><span id="t-step3-title">Experiment</span></h3>
+        <p><span id="t-step3-body">ARI generates hypotheses and runs real experiments — on your hardware.</span></p>
+      </div>
+      <div class="step">
+        <div class="step-num">📄</div>
+        <h3><span id="t-step4-title">Write</span></h3>
+        <p><span id="t-step4-body">A complete academic paper with figures and citations is generated automatically.</span></p>
+      </div>
+      <div class="step">
+        <div class="step-num">✅</div>
+        <h3><span id="t-step5-title">Verify</span></h3>
+        <p><span id="t-step5-body">A separate AI agent re-runs the experiment to confirm the paper's claims are true.</span></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- UNIVERSAL -->
+<section class="universal" id="universal">
+  <div class="container">
+    <p class="section-label"><span id="t-universal-label2">Universal</span></p>
+    <h2 class="section-title"><span id="t-universal-title">Works everywhere. For everyone.</span></h2>
+    <p class="section-sub"><span id="t-universal-sub">ARI is not built for one environment or one type of user. It scales across five dimensions.</span></p>
+    <div class="axis-grid">
+      <div class="axis-card">
+        <div class="axis-icon">💻</div>
+        <h3><span id="t-u1-title">Any Computer</span></h3>
+        <p><span id="t-u1-body">Runs on your laptop or a 1,000-core supercomputer cluster. Change one line to switch.</span></p>
+        <div class="axis-range"><span id="t-u1-range">Laptop → Supercomputer</span></div>
+      </div>
+      <div class="axis-card">
+        <div class="axis-icon">🧠</div>
+        <h3><span id="t-u2-title">Any AI Model</span></h3>
+        <p><span id="t-u2-body">Free local models (Ollama) or commercial APIs (GPT, Claude). One environment variable to swap.</span></p>
+        <div class="axis-range"><span id="t-u2-range">Free Local → Cloud API</span></div>
+      </div>
+      <div class="axis-card">
+        <div class="axis-icon">📋</div>
+        <h3><span id="t-u3-title">Any Expertise Level</span></h3>
+        <p><span id="t-u3-body">Write 3 lines as a beginner, or 200 lines with precise technical controls as an expert.</span></p>
+        <div class="axis-range"><span id="t-u3-range">Novice → Expert</span></div>
+      </div>
+      <div class="axis-card">
+        <div class="axis-icon">🌍</div>
+        <h3><span id="t-u4-title">Any Domain</span></h3>
+        <p><span id="t-u4-body">Add new capabilities as plug-in modules. No changes to the core system needed.</span></p>
+        <div class="axis-range"><span id="t-u4-range">Software → Physical World</span></div>
+      </div>
+      <div class="axis-card">
+        <div class="axis-icon">📐</div>
+        <h3><span id="t-u5-title">Any Format</span></h3>
+        <p><span id="t-u5-body">Papers can target arXiv, NeurIPS, ICML, or any custom venue template.</span></p>
+        <div class="axis-range"><span id="t-u5-range">Preprint → Top Conference</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- RESULTS -->
+
+
+<!-- FUTURE / PHYSICAL WORLD -->
+<section class="future">
+  <div class="container">
+    <p class="section-label"><span id="t-vision-label">Vision</span></p>
+    <h2 class="section-title"><span id="t-vision-title">Beyond software.</span></h2>
+    <p class="section-sub"><span id="t-vision-sub">The current version automates digital computation experiments. Physical world integration is on the roadmap — not yet implemented.</span></p>
+    <div class="future-grid">
+      <div class="future-card">
+        <div class="future-tag"><span id="t-v1-tag">✅ Available Now</span></div>
+        <h3>⚙️ <span id="t-v1-title">Computational Research</span></h3>
+        <p><span id="t-v1-body">Compiler tuning, algorithm benchmarking, ML hyperparameters, systems performance.</span></p>
+      </div>
+      <div class="future-card">
+        <div class="future-tag"><span id="t-v2-tag">🔜 Coming Soon</span></div>
+        <h3>🦾 <span id="t-v2-title">Robotics</span></h3>
+        <p><span id="t-v2-body">Robot arm trajectories, motion planning parameters, control system tuning via ROS2.</span></p>
+      </div>
+      <div class="future-card">
+        <div class="future-tag"><span id="t-v3-tag">📅 Planned</span></div>
+        <h3>🧪 <span id="t-v3-title">Laboratory Automation</span> <span style="font-size:.7rem;color:#f87171;font-weight:500;">(roadmap)</span></h3>
+        <p><span id="t-v3-body">Liquid handlers, plate readers, reaction conditions — planned, not yet implemented.</span></p>
+      </div>
+      <div class="future-card">
+        <div class="future-tag"><span id="t-v4-tag">🌟 Vision</span></div>
+        <h3>🌍 <span id="t-v4-title">Any Physical System</span> <span style="font-size:.7rem;color:#f87171;font-weight:500;">(roadmap)</span></h3>
+        <p><span id="t-v4-body">If it has a goal and a parameter space, ARI can explore it. The same system, infinite domains.</span></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- QUICK START -->
+<section class="qs" id="quickstart">
+  <div class="container">
+    <p class="section-label"><span id="t-qs-label">Quick Start</span></p>
+    <h2 class="section-title"><span id="t-qs-title">Running in minutes.</span></h2>
+    <div class="qs-grid">
+      <div>
+        <pre><span class="comment"># 1. Clone the repository</span>
+git clone https://github.com/your-org/ari
+cd ari
+
+<span class="comment"># 2. Install everything</span>
+bash setup.sh
+
+<span class="comment"># 3. Choose your AI model</span>
+<span class="comment"># Free option (runs offline):</span>
+ollama pull qwen3:8b
+
+<span class="comment"># Or use OpenAI:</span>
+export ARI_LLM_MODEL=openai/gpt-5.2
+export OPENAI_API_KEY=sk-...
+
+<span class="comment"># 4. Run your first experiment</span>
+ari run experiment.md</pre>
+      </div>
+      <div>
+        <p style="color:var(--muted);font-size:.9rem;margin-bottom:16px;">The simplest experiment file looks like this:</p>
+        <pre><span class="comment"># experiment.md — 3 lines is enough</span>
+
+## Research Goal
+Maximize performance of matrix
+multiplication on this machine.
+
+&lt;!-- metric_keyword: GFLOPS --&gt;</pre>
+        <p class="qs-note">ARI will <strong>survey related papers</strong>, <strong>run experiments</strong>, <strong>generate figures</strong>, and <strong>write a complete paper</strong> — automatically.</p>
+        <div style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap;">
+          <a href="quickstart.html" style="background:var(--blue);color:#fff;padding:12px 24px;border-radius:10px;font-weight:700;font-size:.95rem;">Full Setup Guide</a>
+          <a href="https://github.com/your-org/ari" style="border:1px solid rgba(255,255,255,.15);color:var(--text);padding:12px 24px;border-radius:10px;font-weight:700;font-size:.95rem;">View on GitHub →</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- COMMUNITY -->
+<section style="padding:80px 0;background:var(--bg);">
+  <div class="container" style="max-width:860px;text-align:center;">
+    <p class="section-label"><span id="t-comm-label">Community</span></p>
+    <h2 class="section-title"><span id="t-comm-title">Built together.</span></h2>
+    <p class="section-sub" style="margin-bottom:48px;"><span id="t-comm-sub">ARI is open source and welcomes contributions of all kinds — new skills, pipeline ideas, bug reports, and more.</span></p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px;text-align:left;">
+      <div class="axis-card" style="padding:24px;">
+        <div style="font-size:1.6rem;margin-bottom:12px;">🔌</div>
+        <h3 style="font-size:1rem;margin-bottom:8px;"><span id="t-comm-c1-title">Add a Skill</span></h3>
+        <p style="font-size:.88rem;color:var(--muted);line-height:1.6;"><span id="t-comm-c1-body">Have a domain ARI doesn't cover yet? Wrap it as an MCP skill and submit a PR. Any benchmark, any tool.</span></p>
+      </div>
+      <div class="axis-card" style="padding:24px;">
+        <div style="font-size:1.6rem;margin-bottom:12px;">🔄</div>
+        <h3 style="font-size:1rem;margin-bottom:8px;"><span id="t-comm-c2-title">Propose a Flow</span></h3>
+        <p style="font-size:.88rem;color:var(--muted);line-height:1.6;"><span id="t-comm-c2-body">Have an idea for a new research pipeline or workflow step? Open a discussion and shape ARI's direction.</span></p>
+      </div>
+      <div class="axis-card" style="padding:24px;">
+        <div style="font-size:1.6rem;margin-bottom:12px;">🐛</div>
+        <h3 style="font-size:1rem;margin-bottom:8px;"><span id="t-comm-c3-title">Report & Fix</span></h3>
+        <p style="font-size:.88rem;color:var(--muted);line-height:1.6;"><span id="t-comm-c3-body">Found a bug or a rough edge? Issues and PRs are always welcome. No contribution is too small.</span></p>
+      </div>
+    </div>
+    <div style="margin-top:40px;display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
+      <a href="https://github.com/kotama7/ARI" target="_blank" class="btn-primary" style="text-decoration:none;padding:12px 28px;">
+        <span id="t-comm-btn1">View on GitHub →</span>
+      </a>
+      <a href="https://github.com/kotama7/ARI/discussions" target="_blank" class="btn-secondary" style="text-decoration:none;padding:12px 28px;border:1px solid var(--border);border-radius:8px;color:var(--text);">
+        <span id="t-comm-btn2">Join the Discussion →</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-logo">
+    <img src="logo.png" alt="ARI"/> ARI — Artificial Research Intelligence
+  </div>
+  <p>Open source · MIT License · <a href="https://github.com/your-org/ari">GitHub</a> · <a href="PHILOSOPHY.html">Philosophy</a> · <a href="docs.html">Docs</a></p>
+  <p style="margin-top:8px;font-size:.8rem;">From laptop to supercomputer. From idea to verified paper.</p>
+</footer>
+
+
+<!-- Language Switcher -->
+<div id="langbar" style="position:fixed;bottom:20px;right:20px;z-index:2147483647;display:flex;flex-direction:row;gap:6px;background:rgba(15,23,42,0.95);border:1px solid rgba(255,255,255,0.2);padding:6px 10px;border-radius:30px;box-shadow:0 4px 20px rgba(0,0,0,0.5);">
+  <button onclick="setLang('en')" id="btn-en" style="background:rgba(37,99,235,1);border:none;color:#fff;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:700;cursor:pointer;">EN</button>
+  <button onclick="setLang('ja')" id="btn-ja" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:#f1f5f9;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:700;cursor:pointer;">日本語</button>
+  <button onclick="setLang('zh')" id="btn-zh" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:#f1f5f9;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:700;cursor:pointer;">中文</button>
+</div>
+
+
+<script>
+var LANGS = {
+  en: {
+    "hero-title": "Research, automated end-to-end.",
+    "hero-sub": "Describe your goal in plain text. ARI runs the experiments, writes the paper, and verifies the results — entirely on its own. Currently supports digital computation experiments (HPC, ML, systems).",
+    "phi-label": "Philosophy", "phi-title": "Research should be for everyone.",
+    "phi-quote": "The gap between 'I have an idea' and 'I have a result' should be measured in hours — not months.",
+    "phi-p1": "Today, running experiments, reviewing prior work, writing papers, and verifying findings each require separate expertise and enormous time. ARI removes those barriers.",
+    "phi-p2": "Whether you are a student with a laptop and a free local AI, or a researcher with access to a supercomputer and the latest cloud models — ARI works the same way. You describe the goal. ARI does the rest.",
+    "phi-p3": "Computation is only the beginning. ARI is architecturally designed to grow beyond software — into robotics, sensors, and laboratory equipment. This is not yet implemented, but the plugin architecture exists precisely for this purpose.",
+    "inspired-label": "Inspired By", "inspired-title": "Standing on the shoulders of giants.",
+    "inspired-sub": "ARI was built on lessons from these pioneering works.",
+    "ais-desc": "Sakana AI's fully autonomous scientific research system — from idea generation to peer-review-ready papers. A foundational reference for ARI's end-to-end pipeline design.",
+    "hpc-desc": "An LLM-driven framework for automated HPC performance optimization. Demonstrated autonomous compiler flag and thread-count tuning on real supercomputer workloads — a direct predecessor to ARI's search engine.",
+    "how-label": "How It Works", "how-title": "One file. Full pipeline.",
+    "how-sub": "Write a short description of what you want to optimize. ARI takes it from there — automatically, without any human intervention.",
+    "step1-title": "Describe", "step1-body": "Write your research goal in plain Markdown. Even 3 lines is enough.",
+    "step2-title": "Survey", "step2-body": "ARI searches academic databases and learns what has been tried before.",
+    "step3-title": "Experiment", "step3-body": "ARI generates hypotheses and runs real experiments — on your hardware.",
+    "step4-title": "Write", "step4-body": "A complete academic paper with figures and citations is generated automatically.",
+    "step5-title": "Verify", "step5-body": "A separate AI agent re-runs the experiment to confirm the paper's claims are true.",
+    "universal-label": "Universal", "universal-label2": "Universal",
+    "universal-title": "Works everywhere. For everyone.",
+    "universal-sub": "ARI is not built for one environment or one type of user. It scales across five dimensions.",
+    "u1-title": "Any Computer", "u1-body": "Runs on your laptop or a 1,000-core supercomputer cluster. Change one line to switch.", "u1-range": "Laptop → Supercomputer",
+    "u2-title": "Any AI Model", "u2-body": "Free local models (Ollama) or commercial APIs (GPT, Claude). One environment variable to swap.", "u2-range": "Free Local → Cloud API",
+    "u3-title": "Any Expertise Level", "u3-body": "Write 3 lines as a beginner, or 200 lines with precise technical controls as an expert.", "u3-range": "Novice → Expert",
+    "u4-title": "Any Domain", "u4-body": "Add new capabilities as plug-in modules. No changes to the core system needed.", "u4-range": "Software → Physical World",
+    "u5-title": "Any Format", "u5-body": "Papers can target arXiv, NeurIPS, ICML, or any custom venue template.", "u5-range": "Preprint → Top Conference",
+    "vision-label": "Vision", "vision-title": "Beyond software.",
+    "vision-sub": "The current version automates digital computation experiments. Physical world integration is on the roadmap — not yet implemented.",
+    "v1-tag": "✅ Available Now", "v1-title": "Computational Research", "v1-body": "Compiler tuning, algorithm benchmarking, ML hyperparameters, systems performance.",
+    "v2-tag": "🔜 Coming Soon", "v2-title": "Robotics", "v2-body": "Robot arm trajectories, motion planning parameters, control system tuning via ROS2.",
+    "v3-tag": "📅 Planned", "v3-title": "Laboratory Automation", "v3-body": "Liquid handlers, plate readers, reaction conditions — planned, not yet implemented.",
+    "v4-tag": "🌟 Vision", "v4-title": "Any Physical System", "v4-body": "If it has a goal and a parameter space, ARI can explore it. The same system, infinite domains.",
+    "qs-label": "Quick Start", "qs-title": "Running in minutes.",
+    "quickstart-label": "Quick Start",
+    "comm-label": "Community",
+    "comm-title": "Built together.",
+    "comm-sub": "ARI is open source and welcomes contributions of all kinds — new skills, pipeline ideas, bug reports, and more.",
+    "comm-c1-title": "Add a Skill",
+    "comm-c1-body": "Have a domain ARI doesn't cover yet? Wrap it as an MCP skill and submit a PR. Any benchmark, any tool.",
+    "comm-c2-title": "Propose a Flow",
+    "comm-c2-body": "Have an idea for a new research pipeline or workflow step? Open a discussion and shape ARI's direction.",
+    "comm-c3-title": "Report & Fix",
+    "comm-c3-body": "Found a bug or a rough edge? Issues and PRs are always welcome. No contribution is too small.",
+    "comm-btn1": "View on GitHub →",
+    "comm-btn2": "Join the Discussion →",
+    "nav-phi": "Philosophy",
+    "nav-how": "How It Works",
+    "nav-docs": "Docs",
+    "u1-title": "Any Computer",
+    "u1-body": "Runs on your laptop or a 1,000-core supercomputer cluster. Change one line to switch.",
+    "u1-range": "Laptop → Supercomputer",
+    "u2-title": "Any AI Model",
+    "u2-body": "Free local models (Ollama) or commercial APIs (GPT, Claude). One environment variable to swap.",
+    "u2-range": "Free Local → Cloud API",
+    "u3-title": "Any Expertise Level",
+    "u3-body": "Write 3 lines as a beginner, or 200 lines with precise technical controls as an expert.",
+    "u3-range": "Novice → Expert",
+    "u4-title": "Any Domain",
+    "u4-body": "Add new capabilities as plug-in modules. No changes to the core system needed.",
+    "u4-range": "Software → Physical World",
+    "u5-title": "Any Format",
+    "u5-body": "Papers can target arXiv, NeurIPS, ICML, or any custom venue template.",
+    "u5-range": "Preprint → Top Conference",
+    "footer-text": "Open source · MIT License"
+  },
+  ja: {
+    "hero-title": "研究を、自動化する。",
+    "hero-sub": "目標を書くだけ。ARIが実験・論文・検証を自動実行します。HPC・ML・システム分野の計算実験に対応。",
+    "phi-label": "理念", "phi-title": "研究は、誰のためにもあるべきだ。",
+    "phi-quote": "「アイデアから結果まで——その距離は、月単位ではなく、時間単位で測れるはずだ。」",
+    "phi-p1": "実験の実行、先行研究の調査、論文の執筆、結果の検証——これらはそれぞれ専門知識と膨大な時間を必要とします。ARIはその壁を取り除きます。",
+    "phi-p2": "ノートPCと無料のローカルAIを持つ学生も、スパコンと最新クラウドモデルを持つ研究者も——ARIは同じように動作します。目標を書けばよいだけです。",
+    "phi-p3": "計算はあくまで出発点です。ARIはロボティクス・センサー・実験装置へと拡張できるように設計されています。まだ実装されていませんが、プラグインアーキテクチャはそのために存在します。",
+    "inspired-label": "参考にした先行研究", "inspired-title": "巨人の肩の上に立つ。",
+    "inspired-sub": "ARIはこれらの先駆的な研究から学びを得て構築されました。",
+    "ais-desc": "Sakana AIの完全自律型研究システム。アイデア生成から査読対応の論文まで自動化。ARIのエンドツーエンドパイプライン設計の基盤となった参考研究。",
+    "hpc-desc": "LLMを活用したHPC性能最適化の自動化フレームワーク。実際のスパコン環境でコンパイラフラグとスレッド数の自律的チューニングを実証。ARIの探索エンジンの直接の先行研究。",
+    "how-label": "仕組み", "how-title": "1ファイルで、全工程が動く。",
+    "how-sub": "最適化したいことを書くだけ。ARIがあとは全て自動でやります。",
+    "step1-title": "目標を書く", "step1-body": "Markdownで研究目標を記述します。3行でも十分です。",
+    "step2-title": "文献調査", "step2-body": "ARIが学術データベースを検索し、先行研究を把握します。",
+    "step3-title": "実験", "step3-body": "仮説を生成し、あなたのハードウェアで実際に実験を実行します。",
+    "step4-title": "論文執筆", "step4-body": "図・引用を含む学術論文が自動生成されます。",
+    "step5-title": "検証", "step5-body": "別のAIエージェントが実験を再実行し、論文の主張を確認します。",
+    "universal-label": "普遍性", "universal-label2": "普遍性",
+    "universal-title": "どこでも動く。誰にでも使える。",
+    "universal-sub": "特定の環境やユーザーに限定されません。5つの軸でスケールします。",
+    "u1-title": "あらゆるコンピュータ", "u1-body": "ノートPCから1,000コアのスパコンまで対応。1行変えるだけで切り替え可能。", "u1-range": "ノートPC → スパコン",
+    "u2-title": "あらゆるAIモデル", "u2-body": "無料のローカルモデル（Ollama）も商用API（GPT、Claude）も対応。環境変数ひとつで切り替え。", "u2-range": "ローカル無料 → クラウドAPI",
+    "u3-title": "あらゆる習熟度", "u3-body": "初心者は3行から、上級者は200行の精密な設定まで。", "u3-range": "初心者 → 上級者",
+    "u4-title": "あらゆるドメイン", "u4-body": "プラグインモジュールとして新機能を追加可能。コアシステムの変更は不要。", "u4-range": "ソフトウェア → 物理世界",
+    "u5-title": "あらゆるフォーマット", "u5-body": "arXiv・NeurIPS・ICMLなど任意のベニューのテンプレートに対応。", "u5-range": "プレプリント → トップカンファレンス",
+    "vision-label": "ビジョン", "vision-title": "ソフトウェアの先へ。",
+    "vision-sub": "現バージョンは計算実験を自動化します。物理世界との統合はロードマップ上の目標であり、まだ実装されていません。",
+    "v1-tag": "✅ 現在利用可能", "v1-title": "計算研究", "v1-body": "コンパイラチューニング、アルゴリズムベンチマーク、MLハイパーパラメータ、システム性能。",
+    "v2-tag": "🔜 近日公開", "v2-title": "ロボティクス", "v2-body": "ロボットアームの軌道、モーションプランニング、ROS2による制御システムチューニング。",
+    "v3-tag": "📅 計画中", "v3-title": "実験室自動化", "v3-body": "液体ハンドラー、プレートリーダー、反応条件の最適化——計画中、未実装。",
+    "v4-tag": "🌟 ビジョン", "v4-title": "あらゆる物理システム", "v4-body": "目標とパラメータ空間があれば、ARIが探索します。同じシステム、無限のドメイン。",
+    "qs-label": "クイックスタート", "qs-title": "数分で動かせる。",
+    "quickstart-label": "クイックスタート",
+    "comm-label": "コミュニティ",
+    "comm-title": "みんなで作る。",
+    "comm-sub": "ARIはオープンソースです。スキルの追加・パイプラインの提案・バグ報告など、あらゆる形の貢献を歓迎します。",
+    "comm-c1-title": "スキルを追加する",
+    "comm-c1-body": "ARIがまだ対応していないドメインがありますか？MCPスキルとして実装してPRを送ってください。どんなベンチマークでも、どんなツールでも。",
+    "comm-c2-title": "フローを提案する",
+    "comm-c2-body": "新しい研究パイプラインやワークフローのアイデアがあれば、ディスカッションを開いてARIの方向性を一緒に作りましょう。",
+    "comm-c3-title": "バグを報告・修正する",
+    "comm-c3-body": "バグや改善点を見つけたらIssueやPRを送ってください。どんな小さな貢献も歓迎します。",
+    "comm-btn1": "GitHubで見る →",
+    "comm-btn2": "ディスカッションに参加 →",
+    "nav-phi": "理念",
+    "nav-how": "仕組み",
+    "nav-docs": "ドキュメント",
+    "u1-title": "あらゆるコンピュータ",
+    "u1-body": "ノートPCから1,000コアのスパコンまで対応。1行変えるだけで切り替え可能。",
+    "u1-range": "ノートPC → スパコン",
+    "u2-title": "あらゆるAIモデル",
+    "u2-body": "無料のローカルモデル（Ollama）も商用API（GPT、Claude）も対応。環境変数ひとつで切り替え。",
+    "u2-range": "ローカル無料 → クラウドAPI",
+    "u3-title": "あらゆる習熟度",
+    "u3-body": "初心者は3行から、上級者は200行の精密な設定まで。",
+    "u3-range": "初心者 → 上級者",
+    "u4-title": "あらゆるドメイン",
+    "u4-body": "プラグインモジュールとして新機能を追加可能。コアシステムの変更は不要。",
+    "u4-range": "ソフトウェア → 物理世界",
+    "u5-title": "あらゆるフォーマット",
+    "u5-body": "arXiv・NeurIPS・ICMLなど任意のベニューのテンプレートに対応。",
+    "u5-range": "プレプリント → トップカンファレンス",
+    "footer-text": "オープンソース · MIT ライセンス"
+  },
+  zh: {
+    "hero-title": "自动化研究。",
+    "hero-sub": "用自然语言描述目标，ARI 自动运行实验、撰写论文并验证结果。支持 HPC、ML 及系统计算实验。",
+    "phi-label": "理念", "phi-title": "研究应该为所有人服务。",
+    "phi-quote": "从「我有一个想法」到「我有了结果」，这段距离应该以小时计，而非月份。",
+    "phi-p1": "运行实验、回顾文献、撰写论文、验证发现——每一步都需要专业知识和大量时间。ARI 消除这些障碍。",
+    "phi-p2": "无论你是用笔记本电脑和免费本地 AI 的学生，还是拥有超算和最新云模型的研究者——ARI 的工作方式相同。描述目标，其余交给 ARI。",
+    "phi-p3": "计算只是开始。ARI 在架构上设计为可扩展至机器人、传感器和实验室设备。尚未实现，但插件架构正是为此而生。",
+    "inspired-label": "致敬先行者", "inspired-title": "站在巨人的肩膀上。",
+    "inspired-sub": "ARI 从这些开创性研究中汲取了宝贵经验。",
+    "ais-desc": "Sakana AI 的完全自主科研系统——从想法生成到可投稿论文全自动化。ARI 端到端流水线设计的基础参考。",
+    "hpc-desc": "基于 LLM 的 HPC 性能自动优化框架。在真实超算环境中演示了编译器标志和线程数的自主调优——ARI 搜索引擎的直接前身。",
+    "how-label": "工作原理", "how-title": "一个文件，全流程运行。",
+    "how-sub": "描述你想优化的内容，ARI 全程自动处理，无需人工干预。",
+    "step1-title": "写下目标", "step1-body": "用 Markdown 描述研究目标，三行即可。",
+    "step2-title": "文献调研", "step2-body": "ARI 搜索学术数据库，了解已有研究。",
+    "step3-title": "实验", "step3-body": "生成假设并在你的硬件上运行真实实验。",
+    "step4-title": "撰写论文", "step4-body": "自动生成包含图表和引用的完整学术论文。",
+    "step5-title": "验证", "step5-body": "独立 AI 智能体重新运行实验，确认论文主张。",
+    "universal-label": "通用性", "universal-label2": "通用性",
+    "universal-title": "随处可用。人人皆宜。",
+    "universal-sub": "不为单一环境或用户类型设计，在五个维度上扩展。",
+    "u1-title": "任意计算机", "u1-body": "从笔记本电脑到千核超算集群，改一行即可切换。", "u1-range": "笔记本 → 超算",
+    "u2-title": "任意 AI 模型", "u2-body": "免费本地模型（Ollama）或商业 API（GPT、Claude），一个环境变量切换。", "u2-range": "免费本地 → 云端 API",
+    "u3-title": "任意技术水平", "u3-body": "初学者写 3 行，专家可写 200 行精细配置。", "u3-range": "初学者 → 专家",
+    "u4-title": "任意领域", "u4-body": "以插件模块形式添加新能力，无需修改核心系统。", "u4-range": "软件 → 物理世界",
+    "u5-title": "任意格式", "u5-body": "支持 arXiv、NeurIPS、ICML 及任意自定义会议模板。", "u5-range": "预印本 → 顶级会议",
+    "vision-label": "愿景", "vision-title": "超越软件。",
+    "vision-sub": "当前版本自动化计算实验。物理世界集成在路线图中——尚未实现。",
+    "v1-tag": "✅ 现已可用", "v1-title": "计算研究", "v1-body": "编译器调优、算法基准测试、ML 超参数、系统性能。",
+    "v2-tag": "🔜 即将推出", "v2-title": "机器人学", "v2-body": "机械臂轨迹、运动规划参数、基于 ROS2 的控制系统调优。",
+    "v3-tag": "📅 规划中", "v3-title": "实验室自动化", "v3-body": "液体处理器、酶标仪、反应条件——规划中，尚未实现。",
+    "v4-tag": "🌟 愿景", "v4-title": "任意物理系统", "v4-body": "只要有目标和参数空间，ARI 就能探索。同一系统，无限领域。",
+    "qs-label": "快速开始", "qs-title": "几分钟内运行。",
+    "quickstart-label": "快速开始",
+    "comm-label": "社区",
+    "comm-title": "共同构建。",
+    "comm-sub": "ARI 是开源项目，欢迎各种形式的贡献——新技能、流水线创意、问题报告等。",
+    "comm-c1-title": "添加技能",
+    "comm-c1-body": "ARI 还未覆盖你的领域？将其封装为 MCP 技能并提交 PR。任何基准测试，任何工具。",
+    "comm-c2-title": "提出流程建议",
+    "comm-c2-body": "有新研究流水线或工作流步骤的想法？开启讨论，共同塑造 ARI 的方向。",
+    "comm-c3-title": "报告与修复",
+    "comm-c3-body": "发现 bug 或粗糙之处？Issues 和 PR 随时欢迎。任何贡献都有价值。",
+    "comm-btn1": "在 GitHub 上查看 →",
+    "comm-btn2": "加入讨论 →",
+    "nav-phi": "理念",
+    "nav-how": "工作原理",
+    "nav-docs": "文档",
+    "u1-title": "任意计算机",
+    "u1-body": "从笔记本电脑到千核超算集群，改一行即可切换。",
+    "u1-range": "笔记本 → 超算",
+    "u2-title": "任意 AI 模型",
+    "u2-body": "免费本地模型（Ollama）或商业 API（GPT、Claude），一个环境变量切换。",
+    "u2-range": "免费本地 → 云端 API",
+    "u3-title": "任意技术水平",
+    "u3-body": "初学者写 3 行，专家可写 200 行精细配置。",
+    "u3-range": "初学者 → 专家",
+    "u4-title": "任意领域",
+    "u4-body": "以插件模块形式添加新能力，无需修改核心系统。",
+    "u4-range": "软件 → 物理世界",
+    "u5-title": "任意格式",
+    "u5-body": "支持 arXiv、NeurIPS、ICML 及任意自定义会议模板。",
+    "u5-range": "预印本 → 顶级会议",
+    "footer-text": "开源 · MIT 许可证"
+  }
+};
+window.setLang = function(l) {
+  var d = LANGS[l]; if(!d) return;
+  for(var k in d) { var el = document.getElementById('t-'+k); if(el) el.textContent = d[k]; }
+  ['en','ja','zh'].forEach(function(x) {
+    var b = document.getElementById('btn-'+x);
+    if(b) b.style.background = x===l ? '#2563eb' : 'rgba(255,255,255,0.08)';
+  });
+  try { localStorage.setItem('ari-lang', l); } catch(e) {}
+};
+(function() {
+  var saved = 'en';
+  try { saved = localStorage.getItem('ari-lang') || 'en'; } catch(e) {}
+  window.setLang(saved);
+})();
+</script>
+</body>
+</html>

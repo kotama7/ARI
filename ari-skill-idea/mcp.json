@@ -1,0 +1,11 @@
+{
+  "name": "idea-generation-skill",
+  "version": "0.1.0",
+  "description": "Research idea generation, literature survey and gap analysis",
+  "tools": [
+    "survey",
+    "generate_ideas"
+  ],
+  "runtime": "python",
+  "entrypoint": "src/server.py"
+}

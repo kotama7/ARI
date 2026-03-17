@@ -1,0 +1,12 @@
+{
+  "name": "benchmark-skill",
+  "version": "0.1.0",
+  "description": "Experiment result analysis, visualization and statistical testing",
+  "tools": [
+    "analyze_results",
+    "plot",
+    "statistical_test"
+  ],
+  "runtime": "python",
+  "entrypoint": "src/server.py"
+}

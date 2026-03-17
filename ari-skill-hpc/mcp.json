@@ -1,0 +1,8 @@
+{
+  "name": "hpc-skill",
+  "version": "0.1.0",
+  "description": "HPC environment tools for SLURM/Singularity",
+  "tools": [],
+  "runtime": "python",
+  "entrypoint": "src/server.py"
+}

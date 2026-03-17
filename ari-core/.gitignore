@@ -1,0 +1,31 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.env
+*.log
+*.out
+*.csv
+*.txt
+logs/
+output*/
+results*/
+parallel*/
+serial*/
+himeno*/
+slurm-*.out
+
+# Test cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# Runtime logs & checkpoints (in logs/ dir, not repo root)
