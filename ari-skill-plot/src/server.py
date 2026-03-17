@@ -1,0 +1,514 @@
+"""ari-skill-plot — Scientific figure generation MCP server.
+
+Two tools:
+  generate_figures     : Deterministic matplotlib figures (P2)
+  generate_figures_llm : LLM writes and executes plotting code (AI Scientist v2-style)
+
+Loosely coupled: independent MCP server, no dependency on paper-skill.
+"""
+from __future__ import annotations
+
+import os
+import json
+import re
+import subprocess
+import sys
+import tempfile
+import traceback
+from pathlib import Path
+from collections import defaultdict
+
+import litellm
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("plot-skill")
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _load_nodes(nodes_json_path: str) -> list[dict]:
+    data = json.loads(Path(nodes_json_path).read_text())
+    return data if isinstance(data, list) else data.get("nodes", [])
+
+
+def _real_nodes(nodes: list[dict]) -> list[dict]:
+    return [n for n in nodes if n.get("has_real_data") and n.get("metrics")]
+
+
+LABEL_COLOR = {
+    "improve":    "#2196F3",
+    "validation": "#4CAF50",
+    "ablation":   "#FF9800",
+    "debug":      "#9C27B0",
+    "draft":      "#607D8B",
+    "root":       "#F44336",
+}
+
+
+# ---------------------------------------------------------------------------
+# Tool 1: Deterministic figures (P2-compliant, no LLM)
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+async def generate_figures(
+    nodes_json_path: str,
+    output_dir: str,
+    figures: list = None,
+) -> dict:
+    """Generate scientific figures from BFTS data using deterministic matplotlib.
+
+    P2-compliant: no LLM calls. Pure matplotlib/networkx.
+
+    Args:
+        nodes_json_path: Path to nodes_tree.json
+        output_dir:      Directory to write PDF files
+        figures:         List of figure IDs to generate (default: all)
+                         Options: "perf_bar", "tree_depth", "bfts_tree"
+
+    Returns:
+        figures (dict path), latex_snippets (dict LaTeX)
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as mpatches
+
+    if figures is None:
+        figures = ["perf_bar", "tree_depth", "bfts_tree"]
+
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        # Prefer science_data_path (BFTS-internal-free) if available
+        if science_data_path:
+            import json as _jsd
+            try:
+                _sd = _jsd.loads(Path(science_data_path).read_text())
+                nodes_raw = [
+                    {"has_real_data": True, "metrics": cfg.get("metrics", {}),
+                     "memory": [str(cfg.get("parameters", {}))]}
+                    for cfg in _sd.get("configurations", [])
+                ]
+                nodes = nodes_raw
+            except Exception:
+                nodes = _load_nodes(nodes_json_path)
+        else:
+            nodes = _load_nodes(nodes_json_path)
+    except Exception as e:
+        return {"error": f"Cannot read nodes_json: {e}"}
+
+    rnodes = sorted(_real_nodes(nodes),
+                    key=lambda n: max(n["metrics"].values(), default=0),
+                    reverse=True)
+
+    result: dict = {"figures": {}, "latex_snippets": {}}
+
+    def _save(fig, name: str) -> str:
+        path = str(out_dir / f"{name}.pdf")
+        fig.savefig(path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        return path
+
+    def _snippet(name: str, caption: str) -> str:
+        return (
+            f"\\begin{{figure}}[htbp]\n"
+            f"\\centering\n"
+            f"\\includegraphics[width=0.85\\linewidth]{{{name}.pdf}}\n"
+            f"\\caption{{{caption}}}\n"
+            f"\\label{{fig:{name}}}\n"
+            f"\\end{{figure}}"
+        )
+
+    # ── Figure 1: Performance Bar Chart ──
+    if "perf_bar" in figures and rnodes:
+        top = rnodes[:10]
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ids = [n["id"][-8:] for n in top]
+        vals = [max(n["metrics"].values()) / 1000 for n in top]
+        colors = ["#1a73e8"] * len(top)
+        bars = ax.bar(ids, vals, color=colors, edgecolor="white", linewidth=0.5)
+        ax.bar_label(bars, labels=[f"{v:.0f}" for v in vals], padding=2, fontsize=8)
+        ax.set_xlabel("Configuration ID", fontsize=11)
+        ax.set_ylabel("Performance", fontsize=11)
+        ax.set_title("Experimental Results: Top Configurations", fontsize=13, fontweight="bold")
+        ax.tick_params(axis="x", rotation=30, labelsize=9)
+        patches = []  # removed internal label legend
+        ax.legend(handles=patches, fontsize=9)
+        fig.tight_layout()
+        path = _save(fig, "perf_bar")
+        result["figures"]["perf_bar"] = path
+        result["latex_snippets"]["perf_bar"] = _snippet(
+            "perf_bar",
+            "Top configurations ranked by performance. "
+            "Each bar represents one compiler+threading configuration.",
+        )
+
+    # ── Figure 2: Performance vs Tree Depth ──
+    if "tree_depth" in figures and rnodes:
+        fig, ax = plt.subplots(figsize=(7, 5))
+        for n in rnodes:
+            d = n.get("depth", 0)
+            v = max(n["metrics"].values()) / 1000
+            c = LABEL_COLOR.get(n.get("label", "draft"), "#607D8B")
+            ax.scatter(d, v, color=c, s=80, alpha=0.85, edgecolors="white", linewidth=0.5)
+        best_by_depth: dict[int, float] = defaultdict(float)
+        for n in rnodes:
+            d = n.get("depth", 0)
+            v = max(n["metrics"].values()) / 1000
+            best_by_depth[d] = max(best_by_depth[d], v)
+        xs = sorted(best_by_depth.keys())
+        ax.plot(xs, [best_by_depth[x] for x in xs], "k--", linewidth=1.2, alpha=0.6, label="Best observed so far")
+        ax.set_xlabel("Search Step", fontsize=11)
+        ax.set_ylabel("Performance", fontsize=11)
+        ax.set_title("Performance Across Configuration Search", fontsize=13, fontweight="bold")
+        ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+        patches = []  # removed internal label legend
+        patches.append(plt.Line2D([0], [0], color="k", linestyle="--", label="Best observed so far"))
+        ax.legend(handles=patches, fontsize=9)
+        fig.tight_layout()
+        path = _save(fig, "tree_depth")
+        result["figures"]["tree_depth"] = path
+        result["latex_snippets"]["tree_depth"] = _snippet(
+            "tree_depth",
+            "Performance trend across the configuration search. "
+            "Dashed line shows the best result observed up to each point.",
+        )
+
+    # ── Figure 3: BFTS Tree Diagram ──
+    if "bfts_tree" in figures and nodes:
+        try:
+            import networkx as nx
+            fig, ax = plt.subplots(figsize=(12, 7))
+            G = nx.DiGraph()
+            attrs: dict = {}
+            for n in nodes:
+                nid = n["id"][-12:]
+                G.add_node(nid)
+                m = n.get("metrics", {})
+                attrs[nid] = {
+                    "label": n.get("label", "draft"),
+                    "depth": n.get("depth", 0),
+                    "perf": max(m.values()) / 1000 if m else 0,
+                    "real": n.get("has_real_data", False),
+                }
+                if n.get("parent_id"):
+                    G.add_edge(n["parent_id"][-12:], nid)
+            pos: dict = {}
+            by_depth: dict = defaultdict(list)
+            for nid in G.nodes():
+                by_depth[attrs.get(nid, {}).get("depth", 0)].append(nid)
+            for depth, nids in by_depth.items():
+                for i, nid in enumerate(nids):
+                    pos[nid] = ((i - len(nids) / 2.0) * 1.8, -depth * 2.0)
+            node_colors = [LABEL_COLOR.get(attrs.get(n, {}).get("label", "draft"), "#607D8B") for n in G.nodes()]
+            node_sizes  = [600 + attrs.get(n, {}).get("perf", 0) * 0.5 for n in G.nodes()]
+            nx.draw_networkx_edges(G, pos, ax=ax, arrows=True, arrowsize=15,
+                                   edge_color="#999", alpha=0.6, connectionstyle="arc3,rad=0.1")
+            nx.draw_networkx_nodes(G, pos, ax=ax, node_color=node_colors,
+                                   node_size=node_sizes, alpha=0.9)
+            labels = {n: f"{attrs.get(n,{}).get('perf',0):.0f}" if attrs.get(n, {}).get("real") else ""
+                      for n in G.nodes()}
+            nx.draw_networkx_labels(G, pos, labels=labels, ax=ax,
+                                    font_size=7, font_color="white", font_weight="bold")
+            ax.set_title("Experiment Exploration Tree (node size proportional to primary metric)",
+                         fontsize=13, fontweight="bold")
+            ax.axis("off")
+            patches = [mpatches.Patch(color=c, label=l) for l, c in LABEL_COLOR.items()]
+            ax.legend(handles=patches, loc="upper right", fontsize=9)
+            fig.tight_layout()
+            path = _save(fig, "bfts_tree")
+            result["figures"]["bfts_tree"] = path
+            result["latex_snippets"]["bfts_tree"] = _snippet(
+                "bfts_tree",
+                "Experiment exploration tree. Node size is proportional to measured primary metric. "
+                "Labels show performance for nodes with real experimental data.",
+            )
+        except ImportError:
+            result["figures"]["bfts_tree"] = "networkx not available"
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Tool 2: LLM-written plotting code (AI Scientist v2-style)
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+async def generate_figures_llm(
+    nodes_json_path: str,
+    output_dir: str,
+    experiment_summary: str = "",
+    context: str = "",
+    n_figures: int = 3,
+    science_data_path: str = "",  # preferred: science-facing data from transform-skill
+) -> dict:
+    """Generate scientific figures using LLM-written matplotlib code.
+
+    AI Scientist v2-style: LLM analyzes experimental data, writes
+    matplotlib code, executes it to produce publication-quality figures.
+
+    Args:
+        nodes_json_path:     Path to nodes_tree.json
+        output_dir:          Directory to write PDF figure files
+        experiment_summary / context: Experiment description
+        n_figures:           Number of figures to generate
+
+    Returns:
+        figures (dict name->path), latex_snippets (dict name->latex)
+    """
+    if not experiment_summary and context:
+        experiment_summary = context
+
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        nodes = _load_nodes(nodes_json_path)
+    except Exception as e:
+        return {"error": f"Cannot read nodes_json: {e}"}
+
+    # ---- Build domain-generic data summary ----
+    # When science_data_path is available, use it (no BFTS internals).
+    # Derive metric name and parameter keys dynamically from the data itself.
+    if science_data_path:
+        try:
+            sd = json.loads(Path(science_data_path).read_text())
+            metric_name = sd.get("metric_name", "metric")
+            configs = sd.get("configurations", [])
+            param_keys = list(configs[0]["parameters"].keys()) if configs else []
+            rows = [
+                {k: cfg["parameters"].get(k) for k in param_keys}
+                | {"rank": cfg["rank"], metric_name: round(list(cfg["metrics"].values())[0], 2)}
+                for cfg in configs[:12]
+            ]
+            data_summary = json.dumps({
+                "experiment": experiment_summary[:300],
+                "metric": metric_name,
+                "parameter_axes": param_keys,
+                "top_configurations": rows,
+                "summary": sd.get("summary_stats", {}),
+            }, indent=2)
+        except Exception as _e:
+            metric_name = "metric"
+            param_keys = []
+            rnodes = sorted(_real_nodes(nodes),
+                            key=lambda n: max(n["metrics"].values(), default=0),
+                            reverse=True)
+            data_summary = json.dumps({"experiment": experiment_summary[:300],
+                "configurations": [{"metric": round(max(n["metrics"].values()), 1)} for n in rnodes[:12]]}, indent=2)
+    else:
+        metric_name = "metric"
+        param_keys = []
+        rnodes = sorted(_real_nodes(nodes),
+                        key=lambda n: max(n["metrics"].values(), default=0),
+                        reverse=True)
+        data_summary = json.dumps({
+            "experiment": experiment_summary[:300],
+            "configurations": [{"metric": round(max(n["metrics"].values()), 1)} for n in rnodes[:12]],
+        }, indent=2)
+
+    # Build suggested figures dynamically from data structure
+    _axis2 = f"{metric_name} vs {param_keys[0]}" if param_keys else f"{metric_name} across configurations"
+    _axis3 = f"{metric_name} vs {param_keys[1]}" if len(param_keys) > 1 else f"distribution of {metric_name}"
+
+    system_prompt = (
+        "You are a scientific visualization expert. "
+        "Write complete, runnable Python matplotlib code to produce publication-quality figures. "
+        "Output ONLY valid Python code (no markdown fences, no explanation). "
+        "The code must: (1) use matplotlib.use('Agg'), "
+        "(2) save figures as fig_1.pdf, fig_2.pdf, ... in output_dir, "
+        "(3) at the very end print a JSON list: "
+        '[{"name":"fig_1","path":"<full_path>","caption":"<caption>"},...]'
+    )
+    user_prompt = (
+        f"Generate {n_figures} matplotlib figures from this HPC benchmark data.\n\n"
+        f"DATA:\n{data_summary}\n\n"
+        f"output_dir = {repr(str(out_dir))}\n\n"
+        "Suggested figures:\n"
+        f"RULES: Use only scientific terminology derived from the data. NO internal system terms.\n"
+        f"1. Bar chart: top-{min(n_figures*3, 10)} configurations ranked by {metric_name}\n"
+        f"2. {_axis2} (scatter or line)\n"
+        f"3. {_axis3} (boxplot or histogram)\n\n"
+    )
+
+    # Unified LLM routing: ARI_LLM_MODEL > LLM_MODEL; ARI_LLM_API_BASE > LLM_API_BASE
+    LLM_MODEL = (os.environ.get("ARI_LLM_MODEL") or os.environ.get("LLM_MODEL") or "ollama_chat/qwen3:32b")
+    _ari_base = os.environ.get("ARI_LLM_API_BASE"); LLM_API_BASE = (_ari_base if _ari_base is not None else os.environ.get("LLM_API_BASE", "http://127.0.0.1:11434")) or None
+    kwargs: dict = {
+        "model": LLM_MODEL,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": user_prompt},
+        ],
+        "temperature": 0.3,
+    }
+    if LLM_API_BASE:  # None = use provider default; truthy = custom endpoint (Ollama, vLLM, etc.)
+        kwargs["api_base"] = LLM_API_BASE
+    response = await litellm.acompletion(**kwargs)
+    raw = response.choices[0].message.content or ""
+    raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+
+    # Strip markdown fences
+    code_match = re.search(r"```python\n(.*?)```", raw, re.DOTALL)
+    if not code_match:
+        code_match = re.search(r"```\n(.*?)```", raw, re.DOTALL)
+    code = code_match.group(1) if code_match else raw
+
+    # Execute
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tf:
+            preamble = (
+                "import json\n"
+                "output_dir = " + repr(str(out_dir)) + "\n"
+                "try:\n    import seaborn as sns; sns.set_theme(style='whitegrid')\n"
+                "except ImportError:\n    pass\n"
+                # Matplotlib compat: legendHandles was renamed legend_handles in mpl 3.7+
+                "import matplotlib.legend as _mpl_leg\n"
+                "if not hasattr(_mpl_leg.Legend, 'legendHandles'):\n"
+                "    _mpl_leg.Legend.legendHandles = property(lambda self: self.legend_handles)\n"
+            )
+            # Strip any output_dir reassignment from LLM code to prevent path override
+            safe_code_lines = []
+            for line in code.split("\n"):
+                stripped = line.lstrip()
+                if stripped.startswith("output_dir") and "=" in stripped.split("#")[0]:
+                    safe_code_lines.append("# (removed by preamble) " + line)
+                else:
+                    safe_code_lines.append(line)
+            code = "\n".join(safe_code_lines)
+            tf.write(preamble)
+            tf.write(code)
+            tmp_path = tf.name
+
+        proc = subprocess.run(
+            [sys.executable, tmp_path],
+            capture_output=True, text=True, timeout=120,
+        )
+        os.unlink(tmp_path)
+
+        if proc.returncode != 0:
+            # Retry with simpler prompt that avoids advanced matplotlib features
+            stderr_snippet = proc.stderr[:400]
+            simple_user_prompt = (
+                "Generate "
+                + str(n_figures)
+                + " simple matplotlib figures from experiment data.\n\n"
+                "DATA:\n" + data_summary[:800] + "\n\noutput_dir = " + repr(str(out_dir)) + "\n\n"
+                "Write ONLY simple bar charts using basic matplotlib only. "
+                "Do NOT use seaborn, networkx, or any advanced features. "
+                "Only: import matplotlib; matplotlib.use(\'Agg\'); import matplotlib.pyplot as plt; import json. "
+                "Save figures as fig_1.pdf, fig_2.pdf, ... in output_dir. "
+                "At the very end print ONE line of JSON: "
+                "[{\"name\":\"fig_1\",\"path\":\"<full_path>\",\"caption\":\"<caption>\"},...]. "
+                "Write complete runnable Python code:"
+            )
+            kwargs2 = dict(kwargs)
+            kwargs2["messages"] = [
+                {"role": "system", "content": (
+                    "You are a Python matplotlib expert. Write only simple, runnable code. "
+                    "No seaborn. No networkx. No advanced matplotlib features. Output ONLY Python code."
+                )},
+                {"role": "user", "content": simple_user_prompt},
+            ]
+            kwargs2["temperature"] = 0.1
+            try:
+                response2 = await litellm.acompletion(**kwargs2)
+                raw2 = response2.choices[0].message.content or ""
+                raw2 = re.sub(r"<think>.*?</think>", "", raw2, flags=re.DOTALL).strip()
+                cm2 = re.search(r"```python\n(.*?)```", raw2, re.DOTALL)
+                if not cm2:
+                    cm2 = re.search(r"```\n(.*?)```", raw2, re.DOTALL)
+                code2 = cm2.group(1) if cm2 else raw2
+                safe2 = []
+                for ln2 in code2.split("\n"):
+                    s2 = ln2.lstrip()
+                    if s2.startswith("output_dir") and "=" in s2.split("#")[0]:
+                        safe2.append("# (removed by preamble) " + ln2)
+                    else:
+                        safe2.append(ln2)
+                code2 = "\n".join(safe2)
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tf2:
+                    tf2.write(preamble)
+                    tf2.write(code2)
+                    tmp_path2 = tf2.name
+                proc2 = subprocess.run(
+                    [sys.executable, tmp_path2],
+                    capture_output=True, text=True, timeout=120,
+                )
+                os.unlink(tmp_path2)
+                if proc2.returncode != 0:
+                    return {
+                        "error": "Code execution failed (both attempts). "
+                                 "First: " + stderr_snippet + "; Second: " + proc2.stderr[:300],
+                        "code": code2[:300],
+                    }
+                proc = proc2
+                code = code2
+            except Exception as _retry_exc:
+                return {
+                    "error": "Code execution failed: " + stderr_snippet + "; retry error: " + str(_retry_exc),
+                    "code": code[:300],
+                }
+
+        # Parse JSON output
+        fig_list: list = []
+        for line in proc.stdout.strip().split("\n"):
+            line = line.strip()
+            if line.startswith("["):
+                try:
+                    fig_list = json.loads(line)
+                    break
+                except Exception:
+                    pass
+
+        figures: dict = {}
+        latex_snippets: dict = {}
+        for item in fig_list:
+            name = item.get("name", "fig")
+            path = item.get("path", "")
+            caption = item.get("caption", "Experimental result figure.")
+            if Path(path).exists():
+                figures[name] = path
+                fname = Path(path).name
+                latex_snippets[name] = (
+                    f"\\begin{{figure}}[htbp]\n"
+                    f"\\centering\n"
+                    f"\\includegraphics[width=0.85\\linewidth]{{{fname}}}\n"
+                    f"\\caption{{{caption}}}\n"
+                    f"\\label{{fig:{name}}}\n"
+                    f"\\end{{figure}}"
+                )
+
+        # Fallback: scan dir
+        if not figures:
+            for pdf in sorted(out_dir.glob("fig_*.pdf")):
+                name = pdf.stem
+                figures[name] = str(pdf)
+                latex_snippets[name] = (
+                    f"\\begin{{figure}}[htbp]\n"
+                    f"\\centering\n"
+                    f"\\includegraphics[width=0.85\\linewidth]{{{pdf.name}}}\n"
+                    f"\\caption{{Experimental result figure.}}\n"
+                    f"\\label{{fig:{name}}}\n"
+                    f"\\end{{figure}}"
+                )
+
+        return {
+            "figures": figures,
+            "latex_snippets": latex_snippets,
+            "generated_code_preview": code[:200] + "...",
+        }
+
+    except Exception:
+        return {"error": traceback.format_exc()[:500]}
+
+
+def main() -> None:
+    mcp.run()
+
+
+if __name__ == "__main__":
+    main()

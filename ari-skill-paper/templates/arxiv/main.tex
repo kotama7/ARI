@@ -1,0 +1,35 @@
+\documentclass[12pt]{article}
+
+% arxiv-style packages
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{nicefrac}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{xcolor}
+
+% arXiv: no strict page limit; use \maketitle
+\title{\Title}
+\author{\Author}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\Abstract
+\end{abstract}
+
+% Sections go here
+\input{experiment_section}
+
+\bibliographystyle{unsrtnat}
+\bibliography{references}
+
+\end{document}

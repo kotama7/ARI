@@ -1,0 +1,9 @@
+{
+  "name": "ari-skill-paper-re",
+  "description": "Extracts numeric claims from papers and verifies reproducibility by comparing with experimental results (deterministic)",
+  "version": "0.1.0",
+  "tools": [
+    "extract_metric_from_output",
+    "reproduce_from_paper"
+  ]
+}

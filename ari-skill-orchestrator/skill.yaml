@@ -1,0 +1,8 @@
+name: ari-orchestrator
+version: 1.0.0
+description: ARI orchestrator MCP server
+tools:
+  - run_experiment
+  - get_status
+  - list_runs
+  - get_paper

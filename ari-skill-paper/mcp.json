@@ -1,0 +1,18 @@
+{
+  "name": "paper-writing-skill",
+  "version": "0.1.0",
+  "description": "LaTeX paper writing support for academic venues",
+  "tools": [
+    "list_venues",
+    "get_template",
+    "generate_section",
+    "compile_paper",
+    "check_format",
+    "review_section",
+    "revise_section",
+    "write_paper_iterative",
+    "review_compiled_paper"
+  ],
+  "runtime": "python",
+  "entrypoint": "src/server.py"
+}

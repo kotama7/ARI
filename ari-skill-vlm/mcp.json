@@ -1,0 +1,8 @@
+{
+  "name": "vlm-review-skill",
+  "version": "0.1.0",
+  "description": "VLM-based figure and table review for papers",
+  "tools": [],
+  "runtime": "python",
+  "entrypoint": "src/server.py"
+}

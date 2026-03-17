@@ -1,0 +1,46 @@
+pipeline:
+- description: Search arXiv for related work (query built from experiment nodes by
+    pipeline)
+  enabled: true
+  output_file: related_refs.json
+  params:
+    max_results: 12
+    topic: Himeno benchmark stencil HPC OpenMP compiler optimization
+  skill: web
+  stage: search_related_work
+  tool: search_arxiv
+- description: 'LLM-generated scientific figures (AI Scientist v2-style). LLM writes
+    matplotlib code from BFTS data, executes it to produce PDF figures.
+
+    '
+  enabled: true
+  output_file: figures_manifest.json
+  params:
+    n_figures: 3
+  skill: plot
+  stage: generate_figures_llm
+  tool: generate_figures_llm
+- description: 'AI Scientist v2-style iterative paper writing. Research (nodes_tree
+    + refs) -> Draft -> Review -> Revise loop per section. Sections: experiment, related_work,
+    method, introduction, conclusion.
+
+    '
+  enabled: true
+  input:
+    refs_json_from: related_refs.json
+  output_file: full_paper.tex
+  params:
+    max_revision_rounds: 2
+    venue: arxiv
+  skill: paper
+  stage: write_paper_iterative
+  tool: write_paper_iterative
+- description: Reproducibility check against BFTS node results (deterministic, P2)
+  enabled: true
+  input:
+    paper_text_from: full_paper.tex
+  output_file: reproducibility_report.json
+  params: {}
+  skill: paper-re
+  stage: reproducibility_check
+  tool: reproducibility_report

@@ -1,0 +1,8 @@
+{
+  "tools": [
+    "web_search",
+    "fetch_url",
+    "search_arxiv",
+    "search_semantic_scholar"
+  ]
+}

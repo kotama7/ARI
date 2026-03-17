@@ -1,0 +1,11 @@
+{
+  "name": "plot-skill",
+  "version": "0.1.0",
+  "description": "Scientific figure generation: deterministic matplotlib and LLM-written code",
+  "tools": [
+    "generate_figures",
+    "generate_figures_llm"
+  ],
+  "runtime": "python",
+  "entrypoint": "src/server.py"
+}

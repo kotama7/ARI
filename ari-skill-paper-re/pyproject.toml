@@ -1,0 +1,8 @@
+[project]
+name = "ari-skill-paper-re"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = ["mcp>=1.0"]
+
+[project.scripts]
+ari-skill-paper-re = "server:main"

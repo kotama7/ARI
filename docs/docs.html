@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ARI Documentation</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+    :root{--blue:#2563eb;--blue-light:#3b82f6;--dark:#030712;--surface:#0f172a;--surface2:#1e293b;--text:#f1f5f9;--muted:#94a3b8;--border:#1e293b;}
+    *{box-sizing:border-box;margin:0;padding:0;}html{scroll-behavior:smooth;}
+    body{background:var(--dark);color:var(--text);font-family:'Inter',system-ui,sans-serif;line-height:1.7;display:flex;min-height:100vh;}
+    a{color:var(--blue-light);text-decoration:none;}
+    /* SIDEBAR */
+    .sidebar{width:260px;min-height:100vh;background:var(--surface);border-right:1px solid var(--border);padding:24px 0;position:fixed;top:0;left:0;overflow-y:auto;}
+    .sidebar-logo{display:flex;align-items:center;gap:10px;padding:0 20px 24px;border-bottom:1px solid var(--border);font-weight:700;font-size:1rem;}
+    .sidebar-logo img{width:28px;}
+    .sidebar-logo span{color:var(--muted);font-weight:400;font-size:.85rem;margin-left:4px;}
+    .nav-group{padding:16px 20px 4px;font-size:.7rem;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;}
+    .nav-item{display:block;padding:7px 20px;font-size:.9rem;color:var(--muted);border-left:2px solid transparent;transition:.15s;}
+    .nav-item:hover,.nav-item.active{color:var(--text);border-left-color:var(--blue);background:rgba(37,99,235,.06);}
+    /* MAIN */
+    .main{margin-left:260px;flex:1;max-width:860px;padding:48px 48px 100px;}
+    h1{font-size:2.2rem;font-weight:800;letter-spacing:-0.5px;margin-bottom:8px;}
+    h2{font-size:1.5rem;font-weight:700;margin:48px 0 16px;padding-top:48px;border-top:1px solid var(--border);}
+    h2:first-of-type{border-top:none;padding-top:0;}
+    h3{font-size:1.1rem;font-weight:700;margin:28px 0 10px;color:#93c5fd;}
+    p{color:#cbd5e1;margin-bottom:14px;}
+    code{background:var(--surface2);padding:2px 7px;border-radius:4px;font-family:'Cascadia Code','Fira Code',monospace;font-size:.85em;color:#93c5fd;}
+    pre{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;overflow-x:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:.84rem;line-height:1.7;margin:16px 0;}
+    pre code{background:none;padding:0;color:#e2e8f0;}
+    .cm{color:#475569;}
+    table{width:100%;border-collapse:collapse;margin:16px 0;}
+    th,td{padding:10px 14px;border:1px solid var(--border);text-align:left;font-size:.9rem;}
+    th{background:var(--surface);font-weight:600;}
+    tr:nth-child(even) td{background:rgba(255,255,255,.02);}
+    .badge{display:inline-block;font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:20px;margin-left:6px;}
+    .badge-det{background:rgba(34,197,94,.15);color:#86efac;}
+    .badge-llm{background:rgba(251,146,60,.15);color:#fdba74;}
+    .callout{background:rgba(37,99,235,.08);border:1px solid rgba(37,99,235,.2);border-radius:10px;padding:16px 20px;margin:16px 0;font-size:.9rem;color:#bfdbfe;}
+    .callout strong{color:#93c5fd;}
+    .arch{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;font-family:monospace;font-size:.8rem;line-height:1.6;color:#94a3b8;margin:16px 0;overflow-x:auto;}
+    .step-list{counter-reset:step;list-style:none;margin:16px 0;}
+    .step-list li{counter-increment:step;display:flex;gap:14px;margin-bottom:16px;align-items:flex-start;}
+    .step-list li::before{content:counter(step);min-width:28px;height:28px;background:rgba(37,99,235,.15);color:var(--blue-light);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700;flex-shrink:0;}
+    @media(max-width:768px){.sidebar{display:none;}.main{margin-left:0;padding:24px;}}
+  </style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <img src="logo.png" alt="ARI"/>
+    ARI <span>Docs</span>
+  </div>
+  <div class="nav-group">Getting Started</div>
+  <a class="nav-item" href="#overview">Overview</a>
+  <a class="nav-item" href="#install">Installation</a>
+  <a class="nav-item" href="#first-run">First Run</a>
+  <div class="nav-group">Core Concepts</div>
+  <a class="nav-item" href="#architecture">Architecture</a>
+  <a class="nav-item" href="#experiment-files">Experiment Files</a>
+  <a class="nav-item" href="#workflow-yaml">workflow.yaml</a>
+  <div class="nav-group">Skills</div>
+  <a class="nav-item" href="#skills-overview">Skills Overview</a>
+  <a class="nav-item" href="#adding-skill">Adding a Skill</a>
+  <div class="nav-group">Configuration</div>
+  <a class="nav-item" href="#llm-config">LLM Configuration</a>
+  <a class="nav-item" href="#hpc-config">HPC / SLURM</a>
+  <div style="padding:24px 20px 0;border-top:1px solid var(--border);margin-top:16px;">
+    <a href="index.html" style="color:var(--muted);font-size:.85rem;">← Back to Home</a>
+  </div>
+</nav>
+
+<main class="main">
+
+  <h1>ARI Documentation</h1>
+  <p>Technical reference for developers and researchers.</p>
+
+  <!-- OVERVIEW -->
+  <h2 id="overview">Overview</h2>
+  <p>ARI automates the full research cycle: hypothesis generation → experiment execution → paper writing → reproducibility verification. The system is built on three layers:</p>
+  <div class="arch">
+┌────────────────────────────────────────────┐
+│            experiment.md  /  CLI           │
+└──────────────────┬─────────────────────────┘
+                   │
+┌──────────────────▼─────────────────────────┐
+│               ari-core                     │
+│  BFTS Engine → ReAct Loop → Pipeline       │
+└──────────────────┬─────────────────────────┘
+                   │  MCP protocol
+     ┌─────────────┼─────────────────┐
+     │             │                 │
+  Skills        Skills            Skills
+(deterministic) (deterministic)  (LLM-annotated)
+  hpc, web,      idea, memory,    paper, plot,
+  evaluator      transform        paper-re</div>
+
+  <div class="callout"><strong>Key principle:</strong> MCP skills are pure functions — no LLM calls inside. Three skills are annotated exceptions: <code>paper-skill</code>, <code>plot-skill</code>, <code>paper-re-skill</code>.</div>
+
+  <!-- INSTALLATION -->
+  <h2 id="install">Installation</h2>
+  <ol class="step-list">
+    <li><div><strong>Clone the repository</strong><pre><code>git clone https://github.com/your-org/ari && cd ari</code></pre></div></li>
+    <li><div><strong>Run setup</strong><pre><code>bash setup.sh</code></pre></div></li>
+    <li><div><strong>Install LaTeX</strong><pre><code><span class="cm"># With conda (no sudo needed)</span>
+conda install -c conda-forge texlive-core
+
+<span class="cm"># Or system package</span>
+sudo apt install texlive-full        <span class="cm"># Debian/Ubuntu</span>
+sudo dnf install texlive             <span class="cm"># RHEL/CentOS</span></code></pre></div></li>
+    <li><div><strong>Set LLM backend</strong> — see <a href="#llm-config">LLM Configuration</a></div></li>
+  </ol>
+
+  <!-- FIRST RUN -->
+  <h2 id="first-run">First Run</h2>
+  <pre><code><span class="cm"># Minimal experiment file</span>
+cat > experiment.md << 'EOF'
+## Research Goal
+Maximize GFLOPS of matrix multiplication on this machine.
+&lt;!-- metric_keyword: GFLOPS --&gt;
+EOF
+
+<span class="cm"># Run</span>
+ari run experiment.md
+
+<span class="cm"># With custom config</span>
+ari run experiment.md --config ari-core/config/workflow.yaml
+
+<span class="cm"># On a SLURM cluster</span>
+sbatch your_pipeline_job.sh</code></pre>
+
+  <p>Output files appear in the checkpoint directory:</p>
+  <table>
+    <tr><th>File</th><th>Description</th></tr>
+    <tr><td><code>nodes_tree.json</code></td><td>BFTS search tree (all explored configurations)</td></tr>
+    <tr><td><code>science_data.json</code></td><td>Science-facing data (no internal terms)</td></tr>
+    <tr><td><code>related_refs.json</code></td><td>arXiv references</td></tr>
+    <tr><td><code>figures_manifest.json</code></td><td>Generated figure paths and captions</td></tr>
+    <tr><td><code>full_paper.tex / .pdf</code></td><td>Generated paper</td></tr>
+    <tr><td><code>review_report.json</code></td><td>Automated review score and feedback</td></tr>
+    <tr><td><code>reproducibility_report.json</code></td><td>Reproducibility verification result</td></tr>
+  </table>
+
+  <!-- ARCHITECTURE -->
+  <h2 id="architecture">Architecture</h2>
+  <h3>BFTS — Best-First Tree Search</h3>
+  <p>ARI uses Best-First Tree Search to explore the hypothesis space. The LLM selects the most promising node to expand next, guided by real measurement data. Controlled via <code>ari-core/config/default.yaml</code>:</p>
+  <pre><code>bfts:
+  max_total_nodes: 50      <span class="cm"># maximum nodes to explore</span>
+  max_depth: 5             <span class="cm"># tree depth limit</span>
+  max_parallel_nodes: 4    <span class="cm"># concurrent experiments</span>
+  score_threshold: 0.3     <span class="cm"># minimum score to expand</span></code></pre>
+
+  <h3>ReAct Loop</h3>
+  <p>Each node runs: <strong>Reason → Act (tool call) → Observe → Reason...</strong> until a JSON result is produced. The agent automatically polls async HPC jobs without consuming step budget.</p>
+
+  <h3>Post-BFTS Pipeline</h3>
+  <p>After BFTS completes, <code>workflow.yaml</code> drives a sequential pipeline. Stages are idempotent — re-runs skip already-completed stages.</p>
+
+  <!-- EXPERIMENT FILES -->
+  <h2 id="experiment-files">Experiment Files</h2>
+  <p>Experiment files are Markdown. No code changes needed — all domain knowledge lives here.</p>
+
+  <h3>Minimal (3 lines)</h3>
+  <pre><code>## Research Goal
+Maximize GFLOPS of matrix multiplication on this machine.
+&lt;!-- metric_keyword: GFLOPS --&gt;</code></pre>
+
+  <h3>Full Reference</h3>
+  <pre><code># Experiment Title
+
+## Research Goal
+Describe the optimization objective in plain language.
+The LLM reads this to generate hypotheses.
+
+## Required Workflow
+1. Call `survey` to find related literature
+2. Call `slurm_submit` with a SLURM script
+3. Call `job_status` to wait for completion
+4. Call `run_bash` to read the output file
+5. Return JSON with measured values
+
+## Hardware Limits
+- Max CPUs: 64
+- Compiler: gcc only
+
+## SLURM Script Template
+```bash
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=32
+#SBATCH --time=00:30:00
+gcc -O2 -fopenmp -o ./bench ./bench.c
+./bench
+```
+
+## Rules
+- HARD LIMIT: never exceed 64 threads
+- Always use absolute paths in slurm_submit
+
+&lt;!-- metric_keyword: GFLOPS --&gt;
+&lt;!-- min_expected_metric: 100 --&gt;</code></pre>
+
+  <table>
+    <tr><th>Section</th><th>Required</th><th>Purpose</th></tr>
+    <tr><td><code>## Research Goal</code></td><td>✅</td><td>Drives LLM hypothesis generation</td></tr>
+    <tr><td><code>## Required Workflow</code></td><td></td><td>Sets tool execution sequence</td></tr>
+    <tr><td><code>## Hardware Limits</code></td><td></td><td>Hard constraints injected at every step</td></tr>
+    <tr><td><code>## SLURM Script Template</code></td><td></td><td>Starting point for LLM modifications</td></tr>
+    <tr><td><code>## Rules</code></td><td></td><td>Agent constraints and invariants</td></tr>
+    <tr><td><code>&lt;!-- metric_keyword --&gt;</code></td><td>✅</td><td>Metric name for extraction</td></tr>
+    <tr><td><code>&lt;!-- min_expected_metric --&gt;</code></td><td></td><td>Minimum acceptable value</td></tr>
+  </table>
+
+  <!-- WORKFLOW YAML -->
+  <h2 id="workflow-yaml">workflow.yaml</h2>
+  <p>The single configuration file for the post-BFTS pipeline. Adding or reordering stages requires only YAML changes — no code changes.</p>
+  <pre><code>version: '1'
+slurm_partition: your_partition
+author_name: "Your Name or Organization"
+
+skills:
+  - name: paper-skill
+    path: '{{ari_root}}/ari-skill-paper'
+    description: LaTeX paper writing
+
+pipeline:
+  - stage: transform_data           <span class="cm"># NEW: strips BFTS internals</span>
+    skill: transform-skill
+    tool: nodes_to_science_data
+    inputs:
+      nodes_json_path: '{{ckpt}}/nodes_tree.json'
+    outputs:
+      file: '{{ckpt}}/science_data.json'
+    skip_if_exists: '{{ckpt}}/science_data.json'
+
+  - stage: generate_figures
+    skill: plot-skill
+    tool: generate_figures_llm
+    depends_on: [transform_data]
+    inputs:
+      science_data_path: '{{stages.transform_data.outputs.file}}'
+      output_dir: '{{ckpt}}'
+    outputs:
+      file: '{{ckpt}}/figures_manifest.json'
+
+  - stage: write_paper
+    skill: paper-skill
+    tool: write_paper_iterative
+    depends_on: [generate_figures, search_related_work]
+    inputs:
+      refs_json: '{{stages.search_related_work.outputs.file}}'
+      figures_manifest_json: '{{ckpt}}/figures_manifest.json'
+      venue: arxiv
+    outputs:
+      file: '{{ckpt}}/full_paper.tex'</code></pre>
+
+  <h3>Template Variables</h3>
+  <table>
+    <tr><th>Variable</th><th>Value</th></tr>
+    <tr><td><code>{{ckpt}}</code></td><td>Checkpoint directory (absolute path)</td></tr>
+    <tr><td><code>{{ari_root}}</code></td><td>ARI project root</td></tr>
+    <tr><td><code>{{paper_context}}</code></td><td>Science-facing experiment summary</td></tr>
+    <tr><td><code>{{stages.NAME.outputs.file}}</code></td><td>Primary output of stage NAME</td></tr>
+    <tr><td><code>{{author_name}}</code></td><td>Top-level field from workflow.yaml</td></tr>
+  </table>
+
+  <!-- SKILLS -->
+  <h2 id="skills-overview">Skills Overview</h2>
+  <table>
+    <tr><th>Skill</th><th>Tools</th><th>Type</th></tr>
+    <tr><td><code>ari-skill-hpc</code></td><td><code>slurm_submit</code>, <code>job_status</code>, <code>run_bash</code></td><td><span class="badge badge-det">Deterministic</span></td></tr>
+    <tr><td><code>ari-skill-evaluator</code></td><td><code>evaluate</code>, <code>make_artifact</code></td><td><span class="badge badge-det">Deterministic</span></td></tr>
+    <tr><td><code>ari-skill-idea</code></td><td><code>survey</code>, <code>generate_ideas</code></td><td><span class="badge badge-det">Deterministic</span></td></tr>
+    <tr><td><code>ari-skill-web</code></td><td><code>web_search</code>, <code>search_arxiv</code></td><td><span class="badge badge-det">Deterministic</span></td></tr>
+    <tr><td><code>ari-skill-memory</code></td><td><code>memory_set</code>, <code>memory_get</code></td><td><span class="badge badge-det">Deterministic</span></td></tr>
+    <tr><td><code>ari-skill-transform</code></td><td><code>nodes_to_science_data</code></td><td><span class="badge badge-det">Deterministic</span></td></tr>
+    <tr><td><code>ari-skill-plot</code></td><td><code>generate_figures_llm</code></td><td><span class="badge badge-llm">LLM ✱</span></td></tr>
+    <tr><td><code>ari-skill-paper</code></td><td><code>write_paper_iterative</code>, <code>review_compiled_paper</code></td><td><span class="badge badge-llm">LLM ✱</span></td></tr>
+    <tr><td><code>ari-skill-paper-re</code></td><td><code>reproduce_from_paper</code></td><td><span class="badge badge-llm">LLM ✱</span></td></tr>
+  </table>
+  <p style="font-size:.85rem;color:var(--muted);">✱ LLM exception — explicitly annotated in source. All others are pure functions.</p>
+
+  <!-- ADDING A SKILL -->
+  <h2 id="adding-skill">Adding a Skill</h2>
+  <ol class="step-list">
+    <li><div><strong>Create the skill directory</strong><pre><code>ari-skill-yourskill/
+├── src/server.py
+├── tests/test_server.py
+└── pyproject.toml</code></pre></div></li>
+    <li><div><strong>Implement the server</strong><pre><code>from mcp.server.fastmcp import FastMCP
+mcp = FastMCP("yourskill")
+
+@mcp.tool()
+def your_tool(param: str) -> dict:
+    """Clear description for the LLM."""
+    result = pure_computation(param)   <span class="cm"># no LLM calls here</span>
+    return {"result": result}
+
+if __name__ == "__main__":
+    mcp.run()</code></pre></div></li>
+    <li><div><strong>Register in workflow.yaml</strong><pre><code>skills:
+  - name: yourskill
+    path: '{{ari_root}}/ari-skill-yourskill'</code></pre></div></li>
+    <li><div><strong>Add a pipeline stage</strong><pre><code>pipeline:
+  - stage: your_stage
+    skill: yourskill
+    tool: your_tool
+    inputs:
+      param: '{{paper_context}}'
+    outputs:
+      file: '{{ckpt}}/your_output.json'</code></pre></div></li>
+  </ol>
+
+  <!-- LLM CONFIG -->
+  <h2 id="llm-config">LLM Configuration</h2>
+  <pre><code><span class="cm"># OpenAI</span>
+export ARI_LLM_MODEL=openai/gpt-4o
+export OPENAI_API_KEY=sk-...
+
+<span class="cm"># Anthropic</span>
+export ARI_LLM_MODEL=anthropic/claude-opus-4-5
+export ANTHROPIC_API_KEY=sk-ant-...
+
+<span class="cm"># Local Ollama (free, no API key)</span>
+export ARI_LLM_MODEL=qwen3:32b
+export LLM_API_BASE=http://127.0.0.1:11434
+
+<span class="cm"># Any OpenAI-compatible API (vLLM, LM Studio, etc.)</span>
+export ARI_LLM_MODEL=your-model-name
+export LLM_API_BASE=http://your-server:8000/v1</code></pre>
+
+  <div class="callout"><strong>Note:</strong> New models not in litellm's known list require an explicit provider prefix: <code>openai/gpt-5.2</code>, not just <code>gpt-5.2</code>.</div>
+
+  <!-- HPC CONFIG -->
+  <h2 id="hpc-config">HPC / SLURM Configuration</h2>
+  <pre><code><span class="cm"># workflow.yaml</span>
+slurm_partition: your_partition
+
+<span class="cm"># default.yaml</span>
+hpc:
+  mode: slurm          <span class="cm"># or "local" for laptop</span>
+  scheduler: slurm
+  max_nodes: 4
+  max_walltime: "04:00:00"</code></pre>
+
+  <p>To run without a cluster, set <code>mode: local</code>. ARI will execute experiments as local subprocesses.</p>
+
+</main>
+</body>
+</html>

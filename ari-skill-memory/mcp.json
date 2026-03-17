@@ -1,0 +1,8 @@
+{
+  "tools": [
+    "add_memory",
+    "search_memory",
+    "get_node_memory",
+    "clear_node_memory"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "name": "coding-skill",
+  "version": "0.1.0",
+  "description": "Code writing and execution for ARI research agents",
+  "tools": [],
+  "runtime": "python",
+  "entrypoint": "src/server.py"
+}
