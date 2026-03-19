@@ -1,206 +1,133 @@
-# ==============================================================================
-# ARI Workflow Configuration  (workflow.yaml)
-# ==============================================================================
-#
-# PURPOSE
-#   Single developer-facing configuration file that defines:
-#     1. Skills  — which MCP skill packages are available (plug-and-play)
-#     2. Pipeline — ordered DAG of stages; each stage calls one skill tool
-#
-# LOOSE COUPLING DESIGN
-#   ari-core knows NOTHING about domain logic (P1).
-#   Each skill is an independent MCP server (P2: no LLM inside skills).
-#   paper-skill is the only exception (explicitly annotated).
-#   Stages communicate ONLY via declared outputs / template variables.
-#
-# ── HOW TO ADD A NEW SKILL ────────────────────────────────────────────────────
-#   1. Create ari-skill-<name>/ with src/server.py + mcp.json
-#   2. Add one entry under `skills` below
-#   3. Reference it in a new pipeline stage via `skill: <name>`
-#   That's it. ari-core needs no changes.
-#
-# ── STAGE FIELDS ──────────────────────────────────────────────────────────────
-#   stage:          unique name (used in {{stages.<name>.*}} references)
-#   skill:          skill name from the registry
-#   tool:           MCP tool function name inside that skill
-#   enabled:        true/false  — quick toggle without deleting the stage
-#   depends_on:     list of stage names that must complete first (DAG edges)
-#   inputs:         key-value tool arguments; supports {{templates}}
-#   outputs:        named output paths; reference as {{stages.<name>.outputs.<key>}}
-#                   `file` key = primary output (also {{stages.<name>.output}})
-#   skip_if_exists: if this path exists, skip stage (incremental / cached runs)
-#   load_inputs:    input keys whose path values are READ as file content before call
-#   description:    human-readable note (ignored by engine)
-#
-# ── TEMPLATE VARIABLES ────────────────────────────────────────────────────────
-#   {{ckpt}}                          checkpoint directory (absolute path)
-#   {{context}}                       experiment summary text from BFTS
-#   {{paper_context}}                 paper-writing context (technical specs only, no org names)
-#                                     Set via top-level paper_context field; falls back to {{context}}
-#   {{keywords}}                      auto-extracted search keywords
-#   {{stages.<name>.output}}          primary output path of stage <name>
-#   {{stages.<name>.outputs.<key>}}   named output <key> of stage <name>
-#
-# ── QUICK RECIPES ─────────────────────────────────────────────────────────────
-#   Disable a stage:        set `enabled: false`
-#   Change order:           reorder entries (also respects `depends_on`)
-#   Force re-run:           delete the `skip_if_exists` file and re-submit job
-#   Add a new stage:        append to `pipeline`, set `depends_on` as needed
-#   Pass file content:      add the key to `load_inputs`
-# ==============================================================================
-
-version: '1'
-
-# Partition used for BOTH experiments and reproducibility check.
-# Must match the hardware where original benchmark results were obtained.
-slurm_partition: your_partition
-
-# Developer-defined paper writing context.
-# Describe the experiment using ONLY technical specifications — no cluster names,
-# no organization names, no internal identifiers. This is what write_paper receives.
-# If omitted, falls back to {{context}} (BFTS experiment summary).
-paper_context: |
-  We optimized a stencil computation benchmark to maximize floating-point throughput (MFLOPS).
-  We systematically evaluated GCC compiler flags (-O3, -ffast-math, -march=native, etc.)
-  and OpenMP thread counts on a single 64-core AMD EPYC processor node (GCC 11, OpenMP 5.1).
-  The node has exactly 64 physical cores; maximum thread count tested was 64.
-  Best configuration: GCC -O3 -ffast-math with 64 OpenMP threads → 277,573.1 MFLOPS.
-  Second best: 264,540.79 MFLOPS. Top-5 range: 217,653 – 277,573 MFLOPS.
-  All experiments ran on a single shared-memory node; no MPI or distributed parallelism.
-# Author name for generated papers.
-# Defaults to "Artificial Research Intelligence" if not set.
-author_name: "Artificial Research Intelligence"
-
-skills:
-- name: web-skill
-  path: '{{ari_root}}/ari-skill-web'
-  description: DuckDuckGo / arXiv search (deterministic, no LLM)
-- name: plot-skill
-  path: '{{ari_root}}/ari-skill-plot'
-  description: Matplotlib/seaborn figure generation (LLM-assisted)
-- name: paper-skill
-  path: '{{ari_root}}/ari-skill-paper'
-  description: AI Scientist v2-style paper writing [LLM exception to P2]
-- name: paper-re-skill
-  path: '{{ari_root}}/ari-skill-paper-re'
-  description: Reproducibility check against experiment nodes
-- name: memory-skill
-  path: '{{ari_root}}/ari-skill-memory'
-  description: Persistent key-value memory for experiment context
-- name: evaluator-skill
-  path: '{{ari_root}}/ari-skill-evaluator'
-  description: BFTS node evaluation (runs HPC jobs, parses metrics)
-- name: idea-skill
-  path: '{{ari_root}}/ari-skill-idea'
-  description: Hypothesis / experiment idea generation
-- name: hpc-skill
-  path: '{{ari_root}}/ari-skill-hpc'
-  description: SLURM job submission and monitoring
-- name: transform-skill
-  path: '{{ari_root}}/ari-skill-transform'
-  description: Convert BFTS internal data to science-facing format (strips label/depth/node_id)
+author_name: Artificial Research Intelligence
 pipeline:
-- stage: search_related_work
-  skill: web-skill
-  tool: search_semantic_scholar
+- depends_on: []
+  description: arXiv keyword search -> related_refs.json
   enabled: true
-  depends_on: []
   inputs:
-    query: '{{keywords}}'
     limit: 10
+    query: '{{keywords}}'
+  load_inputs: []
   outputs:
     file: '{{ckpt}}/related_refs.json'
+  skill: web-skill
   skip_if_exists: '{{ckpt}}/related_refs.json'
-  load_inputs: []
-  description: arXiv keyword search -> related_refs.json
-- stage: transform_data
-  skill: transform-skill
-  tool: nodes_to_science_data
+  stage: search_related_work
+  tool: search_semantic_scholar
+- depends_on: []
+  description: Strip BFTS internals -> science_data.json (safe for plot/paper skills)
   enabled: true
-  depends_on: []
   inputs:
     nodes_json_path: '{{ckpt}}/nodes_tree.json'
+  load_inputs: []
   outputs:
     file: '{{ckpt}}/science_data.json'
+  skill: transform-skill
   skip_if_exists: '{{ckpt}}/science_data.json'
-  load_inputs: []
-  description: Strip BFTS internals -> science_data.json (safe for plot/paper skills)
-
-- stage: generate_figures
-  skill: plot-skill
-  tool: generate_figures_llm
-  enabled: true
-  depends_on: []
-  depends_on:
+  stage: transform_data
+  tool: nodes_to_science_data
+- depends_on:
   - transform_data
+  description: LLM generates matplotlib code -> PDF figures
+  enabled: true
   inputs:
-    nodes_json_path: '{{ckpt}}/nodes_tree.json'
-    science_data_path: '{{stages.transform_data.outputs.file}}'
-    output_dir: '{{ckpt}}'
     experiment_summary: '{{paper_context}}'
     n_figures: 3
+    nodes_json_path: '{{ckpt}}/nodes_tree.json'
+    output_dir: '{{ckpt}}'
+    science_data_path: '{{stages.transform_data.outputs.file}}'
+  load_inputs: []
   outputs:
     file: '{{ckpt}}/figures_manifest.json'
+  skill: plot-skill
   skip_if_exists: '{{ckpt}}/figures_manifest.json'
-  load_inputs: []
-  description: LLM generates matplotlib code -> PDF figures
-- stage: write_paper
-  skill: paper-skill
-  tool: write_paper_iterative
-  enabled: true
-  depends_on:
+  stage: generate_figures
+  tool: generate_figures_llm
+- depends_on:
   - search_related_work
   - generate_figures
+  description: AI Scientist v2-style iterative paper writing with BibTeX
+  enabled: true
   inputs:
+    author_name: '{{author_name}}'
+    experiment_summary: '{{paper_context}}'
+    figures_manifest_json: '{{ckpt}}/figures_manifest.json'
+    max_revision_rounds: 2
     nodes_json_path: '{{ckpt}}/nodes_tree.json'
     refs_json: '{{stages.search_related_work.outputs.file}}'
-    experiment_summary: '{{paper_context}}'
     venue: arxiv
-    max_revision_rounds: 2
-    author_name: '{{author_name}}'
-    figures_manifest_json: '{{ckpt}}/figures_manifest.json'
-  outputs:
-    file: '{{ckpt}}/full_paper.tex'
-    bib_file: '{{ckpt}}/refs.bib'
-  skip_if_exists: '{{ckpt}}/full_paper.tex'
   load_inputs:
   - figures_manifest_json
   - refs_json
-  description: AI Scientist v2-style iterative paper writing with BibTeX
-- stage: review_paper
-  skill: paper-skill
-  tool: review_compiled_paper
-  enabled: true
-  depends_on:
-  - write_paper
-  inputs:
-    tex_path: '{{ckpt}}/full_paper.tex'
-    pdf_path: '{{ckpt}}/full_paper.pdf'
-    figures_manifest_json: '{{ckpt}}/figures_manifest.json'
-    experiment_summary: '{{paper_context}}'
   outputs:
-    file: '{{ckpt}}/review_report.json'
-  skip_if_exists: '{{ckpt}}/review_report.json'
+    bib_file: '{{ckpt}}/refs.bib'
+    file: '{{ckpt}}/full_paper.tex'
+  skill: paper-skill
+  skip_if_exists: '{{ckpt}}/full_paper.tex'
+  stage: write_paper
+  tool: write_paper_iterative
+- depends_on:
+  - write_paper
+  description: 'AI Scientist v2-style review: PDF->text, figure captions, holistic
+    LLM evaluation'
+  enabled: true
+  inputs:
+    experiment_summary: '{{paper_context}}'
+    figures_manifest_json: '{{ckpt}}/figures_manifest.json'
+    pdf_path: '{{ckpt}}/full_paper.pdf'
+    tex_path: '{{ckpt}}/full_paper.tex'
   load_inputs:
   - figures_manifest_json
-  description: 'AI Scientist v2-style review: PDF->text, figure captions, holistic LLM evaluation'
-- stage: reproducibility_check
-  skill: paper-re-skill
-  tool: reproduce_from_paper
-  enabled: true
-  depends_on:
-  - write_paper
-  inputs:
-    paper_path: '{{ckpt}}/full_paper.tex'
-    source_file: '{{experiment_source_file}}'
-    work_dir: '{{ckpt}}'
-    slurm_partition: '{{slurm_partition}}'
-    slurm_cpus: 64
-    timeout_minutes: 15
-    tolerance_pct: 5.0
   outputs:
-    file: '{{ckpt}}/reproducibility_report.json'
-  skip_if_exists: '{{ckpt}}/reproducibility_report.json'
-  load_inputs: []
+    file: '{{ckpt}}/review_report.json'
+  skill: paper-skill
+  skip_if_exists: '{{ckpt}}/review_report.json'
+  stage: review_paper
+  tool: review_compiled_paper
+- depends_on:
+  - write_paper
   description: 'ReAct reproducibility: extract config from paper -> run HPC job ->
     verify'
+  enabled: true
+  inputs:
+    paper_path: '{{ckpt}}/full_paper.tex'
+    cpus: 64
+    timeout_minutes: 15
+    tolerance_pct: 5.0
+    work_dir: '{{ckpt}}/repro'
+    # executor: resolved from ARI_EXECUTOR env (local/slurm/pbs/lsf)
+  load_inputs: []
+  outputs:
+    file: '{{ckpt}}/reproducibility_report.json'
+  skill: paper-re-skill
+  skip_if_exists: '{{ckpt}}/reproducibility_report.json'
+  stage: reproducibility_check
+  tool: reproduce_from_paper
+skills:
+- description: DuckDuckGo / arXiv search (deterministic, no LLM)
+  name: web-skill
+  path: '{{ari_root}}/ari-skill-web'
+- description: Matplotlib/seaborn figure generation (LLM-assisted)
+  name: plot-skill
+  path: '{{ari_root}}/ari-skill-plot'
+- description: AI Scientist v2-style paper writing [LLM exception to P2]
+  name: paper-skill
+  path: '{{ari_root}}/ari-skill-paper'
+- description: Reproducibility check against experiment nodes
+  name: paper-re-skill
+  path: '{{ari_root}}/ari-skill-paper-re'
+- description: Persistent key-value memory for experiment context
+  name: memory-skill
+  path: '{{ari_root}}/ari-skill-memory'
+- description: BFTS node evaluation (runs HPC jobs, parses metrics)
+  name: evaluator-skill
+  path: '{{ari_root}}/ari-skill-evaluator'
+- description: Hypothesis / experiment idea generation
+  name: idea-skill
+  path: '{{ari_root}}/ari-skill-idea'
+- description: SLURM job submission and monitoring
+  name: hpc-skill
+  path: '{{ari_root}}/ari-skill-hpc'
+- description: Convert BFTS internal data to science-facing format (strips label/depth/node_id)
+  name: transform-skill
+  path: '{{ari_root}}/ari-skill-transform'
+version: '1'

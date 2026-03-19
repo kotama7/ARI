@@ -70,7 +70,47 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
         console.print(f"\n[bold]Processing {len(batch)} node(s) in parallel...[/bold]")
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(agent.run, n, experiment_data): n for n in batch}
+            # Create per-node work directory: experiments/<slug>/<node_id>/
+            from pathlib import Path as _Path
+            import re as _re_slug
+            _slug = _re_slug.sub(r"[^a-zA-Z0-9_-]", "_", experiment_data.get("topic", "exp"))[:40]
+            _exp_root = _Path(checkpoint_dir).parent / "experiments" / _slug
+            for _n in batch:
+                _nd = _exp_root / _n.id
+                _nd.mkdir(parents=True, exist_ok=True)
+                _n.work_dir = str(_nd)
+            # Inject work_dir into per-node experiment copy
+            # Copy provided_files (parsed from .md) into each node's work_dir
+            _provided = getattr(agent.hints, "provided_files", []) if hasattr(agent, "hints") else []
+            for _n in batch:
+                for _src, _fname in _provided:
+                    try:
+                        import shutil as _sh
+                        _dst = _Path(_n.work_dir) / _fname
+                        if _Path(_src).exists() and not _dst.exists():
+                            _sh.copy2(_src, _dst)
+                            logging.getLogger(__name__).info(
+                                "Copied %s → %s", _src, _dst
+                            )
+                    except Exception as _ce:
+                        logging.getLogger(__name__).warning(
+                            "Could not copy provided file %s: %s", _src, _ce
+                        )
+
+            # Build HPC hints from workflow (partition, cpus)
+            _partition = getattr(agent.hints, "slurm_partition", "") if hasattr(agent, "hints") else ""
+            _max_cpus  = getattr(agent.hints, "slurm_max_cpus",  0) if hasattr(agent, "hints") else 0
+
+            def _node_exp(n):
+                d = dict(experiment_data)
+                d["work_dir"] = n.work_dir
+                # Inject HPC settings so the agent knows without reading the .md again
+                if _partition:
+                    d["slurm_partition"] = _partition
+                if _max_cpus:
+                    d["slurm_max_cpus"] = _max_cpus
+                return d
+            futures = {executor.submit(agent.run, n, _node_exp(n)): n for n in batch}
             for future in as_completed(futures):
                 node_ref = futures[future]
                 try:
@@ -86,7 +126,7 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
 
                 if result.status == NodeStatus.SUCCESS and not bfts.should_prune(result):
                     try:
-                        children = bfts.expand(result)
+                        children = bfts.expand(result, experiment_goal=experiment_data.get("goal", ""))
                         all_nodes.extend(children)
                         pending.extend(children)
                         console.print(f"    Expanded -> {len(children)} child nodes")
@@ -131,8 +171,13 @@ def run(
         title="ARI",
     ))
 
+    # derive topic slug from first heading
+    import re as _re_t2
+    _tm2 = _re_t2.search(r"^#\s*(.+)", experiment_text, _re_t2.MULTILINE)
+    _tp2 = _re_t2.sub(r"[^a-zA-Z0-9_-]", "_", (_tm2.group(1)[:40] if _tm2 else "exp"))
     experiment_data = {
         "goal": experiment_text,
+        "topic": _tp2,
         "file": str(experiment),
     }
 
@@ -173,7 +218,10 @@ def resume(
     experiment_file = tree_data["experiment_file"]
     exp_path = Path(experiment_file)
     experiment_text = exp_path.read_text() if exp_path.exists() else ""
-    experiment_data = {"goal": experiment_text, "file": experiment_file}
+    import re as _re_t3
+    _tm3 = _re_t3.search(r"^#\s*(.+)", experiment_text, _re_t3.MULTILINE)
+    _tp3 = _re_t3.sub(r"[^a-zA-Z0-9_-]", "_", (_tm3.group(1)[:40] if _tm3 else Path(experiment_file).stem))
+    experiment_data = {"goal": experiment_text, "topic": _tp3, "file": experiment_file}
 
     cfg = load_config(str(config)) if config and config.exists() else auto_config()
     _setup_logging(cfg.logging, run_id)
@@ -186,8 +234,17 @@ def resume(
             eval_summary=nd.get("eval_summary") or nd.get("score_reason"),
             error_log=nd.get("error_log"), children=nd.get("children", []),
             created_at=nd.get("created_at", ""), completed_at=nd.get("completed_at", ""),
+            ancestor_ids=nd.get("ancestor_ids") or [],
         )
         node.status = NodeStatus(nd["status"])
+        # Restore label (default to DRAFT if missing from old checkpoints)
+        _lbl = nd.get("label", "draft")
+        if hasattr(node, "label"):
+            from ari.orchestrator.node import NodeLabel as _NL
+            try:
+                node.label = _NL.from_str(_lbl) if hasattr(_NL, "from_str") else _NL(_lbl)
+            except Exception:
+                pass
         node.metrics = nd.get("metrics") or {}
         node.has_real_data = nd.get("has_real_data", False)
         node_map[node.id] = node
@@ -218,10 +275,77 @@ def resume(
     _, _, _, bfts, agent, _, _ = build_runtime(cfg, experiment_text)
     total = _run_loop(cfg, bfts, agent, pending, all_nodes,
                       experiment_data, checkpoint_dir, run_id, total_processed=completed)
+    _, _, mcp_resume, _, _, _, _ = build_runtime(cfg, experiment_text)
     console.print(Panel(
         f"[bold green]Resume complete.[/bold green]  +{total - completed} nodes",
         title="Done",
     ))
+    generate_paper_section(all_nodes, experiment_data, checkpoint_dir, mcp_resume, str(config) if config else "")
+
+
+@app.command()
+def paper(
+    checkpoint_dir: Path = typer.Argument(..., help="Path to checkpoint directory"),
+    experiment: Path | None = typer.Option(None, help="Experiment .md file (auto-detected from checkpoint if omitted)"),
+    config: Path | None = typer.Option(None, help="Config YAML (auto-generated if omitted)"),
+) -> None:
+    """Run paper pipeline from existing checkpoint (skip experiment phase)."""
+    from ari.orchestrator.node import Node, NodeStatus
+
+    tree_file = checkpoint_dir / "tree.json"
+    if not tree_file.exists():
+        console.print(f"[red]Checkpoint not found: {tree_file}[/red]")
+        raise typer.Exit(1)
+
+    with open(tree_file) as f:
+        tree_data = json.load(f)
+
+    run_id = tree_data["run_id"]
+    experiment_file = str(experiment) if experiment else tree_data.get("experiment_file", "")
+    exp_path = Path(experiment_file)
+    experiment_text = exp_path.read_text() if exp_path.exists() else ""
+    import re as _re_tp
+    _tm_tp = _re_tp.search(r"^#\s*(.+)", experiment_text, _re_tp.MULTILINE)
+    _tp_tp = _re_tp.sub(r"[^a-zA-Z0-9_-]", "_", (_tm_tp.group(1)[:40] if _tm_tp else Path(experiment_file).stem))
+    experiment_data = {"goal": experiment_text, "topic": _tp_tp, "file": experiment_file}
+
+    cfg = load_config(str(config)) if config and config.exists() else auto_config()
+    _setup_logging(cfg.logging, run_id)
+
+    node_map: dict[str, Node] = {}
+    for nd in tree_data["nodes"]:
+        node = Node(
+            id=nd["id"], parent_id=nd.get("parent_id"), depth=nd["depth"],
+            retry_count=nd.get("retry_count", 0), artifacts=nd.get("artifacts", []),
+            eval_summary=nd.get("eval_summary") or nd.get("score_reason"),
+            error_log=nd.get("error_log"), children=nd.get("children", []),
+            created_at=nd.get("created_at", ""), completed_at=nd.get("completed_at", ""),
+            ancestor_ids=nd.get("ancestor_ids") or [],
+        )
+        node.status = NodeStatus(nd["status"])
+        _lbl = nd.get("label", "draft")
+        if hasattr(node, "label"):
+            from ari.orchestrator.node import NodeLabel as _NL_p
+            try:
+                node.label = _NL_p.from_str(_lbl) if hasattr(_NL_p, "from_str") else _NL_p(_lbl)
+            except Exception:
+                pass
+        node.metrics = nd.get("metrics") or {}
+        node.has_real_data = nd.get("has_real_data", False)
+        node_map[node.id] = node
+
+    all_nodes = list(node_map.values())
+    _, _, mcp_paper, _, _, _, _ = build_runtime(cfg, experiment_text)
+    console.print(Panel(
+        f"[bold green]Running paper pipeline[/bold green]\nCheckpoint: {checkpoint_dir}",
+        title="ARI Paper",
+    ))
+    # Resolve config path: use --config if given, otherwise find package workflow.yaml
+    from pathlib import Path as _PL
+    _pkg_wf = _PL(__file__).parent.parent / "config" / "workflow.yaml"
+    _cfg_str = str(config) if config else (str(_pkg_wf) if _pkg_wf.exists() else "")
+    generate_paper_section(all_nodes, experiment_data, checkpoint_dir, mcp_paper, _cfg_str)
+    console.print("[bold green]Paper pipeline complete.[/bold green]")
 
 
 @app.command()
@@ -292,6 +416,33 @@ def skills_list(
         table.add_row(tool.get("name", ""), tool.get("skill_name", ""),
                       (desc[:80] + "…") if len(desc) > 80 else desc)
     console.print(table)
+
+
+
+@app.command()
+def viz(
+    checkpoint_dir: str = typer.Argument(..., help="Path to checkpoint directory"),
+    port: int = typer.Option(8765, help="Port to serve on"),
+):
+    """Launch real-time experiment tree visualizer."""
+    import threading
+    import pathlib
+    import ari.viz.server as viz_srv
+
+    ckpt = pathlib.Path(checkpoint_dir).expanduser().resolve()
+    if not ckpt.exists():
+        console.print(f"[red]Checkpoint directory not found: {ckpt}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[green]ARI Visualizer[/green] -> http://localhost:{port}/")
+    console.print(f"Watching: {ckpt}")
+    console.print("Press Ctrl+C to stop.")
+
+    try:
+        import asyncio
+        asyncio.run(viz_srv._main(ckpt, port))
+    except KeyboardInterrupt:
+        pass
 
 
 def _save_checkpoint(checkpoint_dir, run_id, experiment_file, nodes):

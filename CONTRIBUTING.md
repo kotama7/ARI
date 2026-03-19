@@ -23,7 +23,7 @@ ARI/
 ├── ari-skill-vlm/          ← Figure/table review (VLM)
 ├── ari-skill-benchmark/    ← Result analysis + visualization
 │
-└── himeno_opt_experiment.md  ← Example experiment
+└── matrix_bench_experiment.md  ← Example experiment
 ```
 
 ## Development Setup

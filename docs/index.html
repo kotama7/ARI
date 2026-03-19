@@ -132,7 +132,7 @@
     <a href="docs.html"><span id="t-nav-docs">Docs</span></a>
     <a href="#quickstart"><span id="t-quickstart-label">Quick Start</span></a>
   </div>
-  <a href="https://github.com/your-org/ari" class="nav-cta">GitHub →</a>
+  <a href="https://github.com/kotama7/ARI" class="nav-cta">GitHub →</a>
 </nav>
 
 <!-- HERO -->
@@ -222,7 +222,7 @@
       <div class="step">
         <div class="step-num">✅</div>
         <h3><span id="t-step5-title">Verify</span></h3>
-        <p><span id="t-step5-body">A separate AI agent re-runs the experiment to confirm the paper's claims are true.</span></p>
+        <p><span id="t-step5-body">A separate AI agent independently reconstructs and re-runs the experiment from the paper text alone — no original code shared.</span></p>
       </div>
     </div>
   </div>
@@ -238,7 +238,7 @@
       <div class="axis-card">
         <div class="axis-icon">💻</div>
         <h3><span id="t-u1-title">Any Computer</span></h3>
-        <p><span id="t-u1-body">Runs on your laptop or a 1,000-core supercomputer cluster. Change one line to switch.</span></p>
+        <p><span id="t-u1-body">Runs on your laptop or a 1,000-core supercomputer cluster. Supports local, SLURM, PBS, and LSF via <code>ARI_EXECUTOR</code>.</span></p>
         <div class="axis-range"><span id="t-u1-range">Laptop → Supercomputer</span></div>
       </div>
       <div class="axis-card">
@@ -311,7 +311,7 @@
     <div class="qs-grid">
       <div>
         <pre><span class="comment"># 1. Clone the repository</span>
-git clone https://github.com/your-org/ari
+git clone https://github.com/kotama7/ARI
 cd ari
 
 <span class="comment"># 2. Install everything</span>
@@ -326,7 +326,10 @@ export ARI_LLM_MODEL=openai/gpt-5.2
 export OPENAI_API_KEY=sk-...
 
 <span class="comment"># 4. Run your first experiment</span>
-ari run experiment.md</pre>
+ari run experiment.md
+
+<span class="comment"># 5. Watch real-time progress (optional)</span>
+ari viz experiment.md  <span class="comment"># opens dashboard on :9886</span></pre>
       </div>
       <div>
         <p style="color:var(--muted);font-size:.9rem;margin-bottom:16px;">The simplest experiment file looks like this:</p>
@@ -337,11 +340,41 @@ Maximize performance of matrix
 multiplication on this machine.
 
 &lt;!-- metric_keyword: GFLOPS --&gt;</pre>
-        <p class="qs-note">ARI will <strong>survey related papers</strong>, <strong>run experiments</strong>, <strong>generate figures</strong>, and <strong>write a complete paper</strong> — automatically.</p>
+        <p class="qs-note">ARI will <strong>survey related papers</strong>, <strong>run experiments</strong>, <strong>generate figures</strong>, <strong>write a complete paper</strong>, and <strong>verify reproducibility independently</strong> — automatically.</p>
         <div style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap;">
           <a href="quickstart.html" style="background:var(--blue);color:#fff;padding:12px 24px;border-radius:10px;font-weight:700;font-size:.95rem;">Full Setup Guide</a>
-          <a href="https://github.com/your-org/ari" style="border:1px solid rgba(255,255,255,.15);color:var(--text);padding:12px 24px;border-radius:10px;font-weight:700;font-size:.95rem;">View on GitHub →</a>
+          <a href="https://github.com/kotama7/ARI" style="border:1px solid rgba(255,255,255,.15);color:var(--text);padding:12px 24px;border-radius:10px;font-weight:700;font-size:.95rem;">View on GitHub →</a>
         </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WHATS NEW v0.2.0 -->
+<section style="padding:80px 0;background:var(--surface);">
+  <div class="container" style="max-width:900px;">
+    <p class="section-label">What's New</p>
+    <h2 class="section-title">v0.2.0 Highlights</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px;margin-top:40px;">
+      <div class="axis-card">
+        <div class="axis-icon">📊</div>
+        <h3>Real-Time Viz Dashboard</h3>
+        <p style="font-size:.88rem;color:var(--muted);line-height:1.6;">Live experiment tree with WebSocket streaming. Inspect Trace, Code, Output, and Memory tabs for every node.</p>
+      </div>
+      <div class="axis-card">
+        <div class="axis-icon">🔌</div>
+        <h3>Executor Abstraction</h3>
+        <p style="font-size:.88rem;color:var(--muted);line-height:1.6;">Pluggable execution backends: <code>local</code>, <code>slurm</code>, <code>pbs</code>, <code>lsf</code>. Set <code>ARI_EXECUTOR</code> to match your environment — no code changes needed.</p>
+      </div>
+      <div class="axis-card">
+        <div class="axis-icon">🔬</div>
+        <h3>True Reproducibility Check</h3>
+        <p style="font-size:.88rem;color:var(--muted);line-height:1.6;">LLM reconstructs the experiment from the paper text alone — language, toolchain, and implementation chosen autonomously. Tests whether the paper is truly reproducible.</p>
+      </div>
+      <div class="axis-card">
+        <div class="axis-icon">🧠</div>
+        <h3>Philosophy Compliance</h3>
+        <p style="font-size:.88rem;color:var(--muted);line-height:1.6;">Zero hardcoded compilers, flags, partitions, or scheduler assumptions. Every decision delegated to the LLM — only resource constraints come from configuration.</p>
       </div>
     </div>
   </div>
@@ -387,7 +420,7 @@ multiplication on this machine.
   <div class="footer-logo">
     <img src="logo.png" alt="ARI"/> ARI — Artificial Research Intelligence
   </div>
-  <p>Open source · MIT License · <a href="https://github.com/your-org/ari">GitHub</a> · <a href="PHILOSOPHY.html">Philosophy</a> · <a href="docs.html">Docs</a></p>
+  <p>Open source · MIT License · <a href="https://github.com/kotama7/ARI">GitHub</a> · <a href="PHILOSOPHY.html">Philosophy</a> · <a href="docs.html">Docs</a></p>
   <p style="margin-top:8px;font-size:.8rem;">From laptop to supercomputer. From idea to verified paper.</p>
 </footer>
 
@@ -415,16 +448,16 @@ var LANGS = {
     "ais-desc": "Sakana AI's fully autonomous scientific research system — from idea generation to peer-review-ready papers. A foundational reference for ARI's end-to-end pipeline design.",
     "hpc-desc": "An LLM-driven framework for automated HPC performance optimization. Demonstrated autonomous compiler flag and thread-count tuning on real supercomputer workloads — a direct predecessor to ARI's search engine.",
     "how-label": "How It Works", "how-title": "One file. Full pipeline.",
-    "how-sub": "Write a short description of what you want to optimize. ARI takes it from there — automatically, without any human intervention.",
+    "how-sub": "Write a short description of your research goal. ARI takes it from there — automatically, without any human intervention.",
     "step1-title": "Describe", "step1-body": "Write your research goal in plain Markdown. Even 3 lines is enough.",
     "step2-title": "Survey", "step2-body": "ARI searches academic databases and learns what has been tried before.",
     "step3-title": "Experiment", "step3-body": "ARI generates hypotheses and runs real experiments — on your hardware.",
     "step4-title": "Write", "step4-body": "A complete academic paper with figures and citations is generated automatically.",
-    "step5-title": "Verify", "step5-body": "A separate AI agent re-runs the experiment to confirm the paper's claims are true.",
+    "step5-title": "Verify", "step5-body": "A separate AI agent independently reconstructs the experiment from the paper text alone — no original code shared.",
     "universal-label": "Universal", "universal-label2": "Universal",
     "universal-title": "Works everywhere. For everyone.",
     "universal-sub": "ARI is not built for one environment or one type of user. It scales across five dimensions.",
-    "u1-title": "Any Computer", "u1-body": "Runs on your laptop or a 1,000-core supercomputer cluster. Change one line to switch.", "u1-range": "Laptop → Supercomputer",
+    "u1-title": "Any Computer", "u1-body": "Runs on your laptop or a 1,000-core supercomputer cluster. Supports local, SLURM, PBS, and LSF via ARI_EXECUTOR.", "u1-range": "Laptop → Supercomputer",
     "u2-title": "Any AI Model", "u2-body": "Free local models (Ollama) or commercial APIs (GPT, Claude). One environment variable to swap.", "u2-range": "Free Local → Cloud API",
     "u3-title": "Any Expertise Level", "u3-body": "Write 3 lines as a beginner, or 200 lines with precise technical controls as an expert.", "u3-range": "Novice → Expert",
     "u4-title": "Any Domain", "u4-body": "Add new capabilities as plug-in modules. No changes to the core system needed.", "u4-range": "Software → Physical World",
@@ -452,7 +485,7 @@ var LANGS = {
     "nav-how": "How It Works",
     "nav-docs": "Docs",
     "u1-title": "Any Computer",
-    "u1-body": "Runs on your laptop or a 1,000-core supercomputer cluster. Change one line to switch.",
+    "u1-body": "Runs on your laptop or a 1,000-core supercomputer cluster. Supports local, SLURM, PBS, and LSF via ARI_EXECUTOR.",
     "u1-range": "Laptop → Supercomputer",
     "u2-title": "Any AI Model",
     "u2-body": "Free local models (Ollama) or commercial APIs (GPT, Claude). One environment variable to swap.",
@@ -481,8 +514,8 @@ var LANGS = {
     "ais-desc": "Sakana AIの完全自律型研究システム。アイデア生成から査読対応の論文まで自動化。ARIのエンドツーエンドパイプライン設計の基盤となった参考研究。",
     "hpc-desc": "LLMを活用したHPC性能最適化の自動化フレームワーク。実際のスパコン環境でコンパイラフラグとスレッド数の自律的チューニングを実証。ARIの探索エンジンの直接の先行研究。",
     "how-label": "仕組み", "how-title": "1ファイルで、全工程が動く。",
-    "how-sub": "最適化したいことを書くだけ。ARIがあとは全て自動でやります。",
-    "step1-title": "目標を書く", "step1-body": "Markdownで研究目標を記述します。3行でも十分です。",
+    "how-sub": "研究したいことを書くだけ。ARIがあとは全て自動でやります。",
+    "step1-title": "目標を書く", "step1-body": "Markdownで研究目標を記述します。研究テーマと条件だけで十分です。",
     "step2-title": "文献調査", "step2-body": "ARIが学術データベースを検索し、先行研究を把握します。",
     "step3-title": "実験", "step3-body": "仮説を生成し、あなたのハードウェアで実際に実験を実行します。",
     "step4-title": "論文執筆", "step4-body": "図・引用を含む学術論文が自動生成されます。",
@@ -547,8 +580,8 @@ var LANGS = {
     "ais-desc": "Sakana AI 的完全自主科研系统——从想法生成到可投稿论文全自动化。ARI 端到端流水线设计的基础参考。",
     "hpc-desc": "基于 LLM 的 HPC 性能自动优化框架。在真实超算环境中演示了编译器标志和线程数的自主调优——ARI 搜索引擎的直接前身。",
     "how-label": "工作原理", "how-title": "一个文件，全流程运行。",
-    "how-sub": "描述你想优化的内容，ARI 全程自动处理，无需人工干预。",
-    "step1-title": "写下目标", "step1-body": "用 Markdown 描述研究目标，三行即可。",
+    "how-sub": "写下你想探索的研究方向，ARI 全程自动处理，无需人工干预。",
+    "step1-title": "写下目标", "step1-body": "用 Markdown 描述研究方向，简单几行即可。",
     "step2-title": "文献调研", "step2-body": "ARI 搜索学术数据库，了解已有研究。",
     "step3-title": "实验", "step3-body": "生成假设并在你的硬件上运行真实实验。",
     "step4-title": "撰写论文", "step4-body": "自动生成包含图表和引用的完整学术论文。",

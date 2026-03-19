@@ -1,31 +1,45 @@
+# Python
 __pycache__/
 *.py[cod]
 *.pyo
+*.pyd
 .pytest_cache/
 *.egg-info/
 dist/
 build/
 .env
+*.egg
+
+# Test artifacts
+.coverage
+htmlcov/
+
+# Logs & SLURM outputs
 *.log
 *.out
-*.csv
-*.txt
+*.err
+slurm-*.out
+
+# Experiment outputs (checkpoint dirs, results)
 logs/
 output*/
 results*/
-parallel*/
-serial*/
-himeno*/
-slurm-*.out
-
-# Test cache
-.pytest_cache/
-.coverage
-htmlcov/
 
 # Editor
 .idea/
 .vscode/
 *.swp
+*.swo
+*~
 
-# Runtime logs & checkpoints (in logs/ dir, not repo root)
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets / environment
+.env
+*.env.local
+
+# Generated files
+*.pyc
+*.pyo

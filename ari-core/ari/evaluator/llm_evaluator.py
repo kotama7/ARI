@@ -110,22 +110,41 @@ class LLMEvaluator:
         artifacts: list[dict],
         summary: str,
     ) -> dict:
-        """Synchronous evaluate (for calling from AgentLoop). Creates a new event loop via asyncio.run()."""
+        """Synchronous evaluate (for calling from AgentLoop). Handles running event loops gracefully."""
         import asyncio
-        try:
-            return asyncio.run(self.evaluate(goal, artifacts, summary))
-        except RuntimeError:
-            # If an event loop is already running, execute in thread pool
-            import concurrent.futures
+        import concurrent.futures
+        import logging
+        _log = logging.getLogger(__name__)
+
+        def _run_in_thread():
+            # Each thread gets its own event loop
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             try:
+                return loop.run_until_complete(self.evaluate(goal, artifacts, summary))
+            finally:
+                loop.close()
+
+        try:
+            # Check if there's already a running loop
+            try:
+                asyncio.get_running_loop()
+                already_running = True
+            except RuntimeError:
+                already_running = False
+
+            if already_running:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                    future = pool.submit(asyncio.run, self.evaluate(goal, artifacts, summary))
-                    return future.result(timeout=120)
-            except Exception as e2:
-                import logging
-                logging.getLogger(__name__).warning("evaluate_sync failed: %s", e2)
-                return {"score": None, "reason": f"sync error: {e2}",
-                        "has_real_data": False, "has_paper_section": False, "metrics": {}}
+                    future = pool.submit(_run_in_thread)
+                    result = future.result(timeout=120)
+                    _log.info("evaluate_sync (thread): metrics=%s", result.get("metrics", {}))
+                    return result
+            else:
+                return asyncio.run(self.evaluate(goal, artifacts, summary))
+        except Exception as e:
+            _log.warning("evaluate_sync failed: %s", e)
+            return {"score": None, "reason": f"sync error: {e}",
+                    "has_real_data": False, "has_paper_section": False, "metrics": {}}
 
     async def evaluate(
         self,

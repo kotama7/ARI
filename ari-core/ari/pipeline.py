@@ -101,7 +101,7 @@ def build_best_nodes_context(all_nodes, experiment_goal: str = "") -> tuple[str,
         return "", {}
 
     results.sort(
-        key=lambda n: max(n.metrics.values()) if n.metrics else 0,
+        key=lambda n: max((v for v in n.metrics.values() if isinstance(v, (int, float))), default=0) if n.metrics else 0,
         reverse=True,
     )
 
@@ -151,7 +151,7 @@ def _extract_keywords_from_nodes(nodes_json_path: str, base_topic: str = "") -> 
                     keywords.update(w.lower() for w in re.findall(r"[A-Z]{2,}", text) if len(w) <= 8)
         except Exception:
             pass
-    extras = [k for k in keywords if len(k) > 3][:5]
+    extras = [k for k in keywords if len(k) > 3 and k.lower() not in base_topic.lower()][:5]
     base = base_topic if base_topic else "performance optimization benchmark"
     return (base + " " + " ".join(extras)).strip() if extras else base
 
@@ -160,33 +160,120 @@ def _extract_keywords_from_nodes(nodes_json_path: str, base_topic: str = "") -> 
 # Stage execution
 # ---------------------------------------------------------------------------
 
+def _call_with_retry(fn, max_retries: int = 3, delay: float = 5.0):
+    """Retry a function on transient connection errors."""
+    import time as _time
+    last_exc = None
+    for attempt in range(max_retries):
+        try:
+            return fn()
+        except Exception as e:
+            msg = str(e).lower()
+            if any(x in msg for x in ("connection error", "connection reset", "timeout", "temporary")):
+                last_exc = e
+                if attempt < max_retries - 1:
+                    _time.sleep(delay * (attempt + 1))
+                    continue
+            raise
+    raise last_exc
+
+
 def _run_stage_subprocess(tool: str, args: dict, config_path: str, skill_name: str = "") -> Any:
-    """Call an MCP tool via subprocess and return parsed result."""
-    script = f"""
-import json, sys
-from ari.mcp.client import MCPClient
-from ari.config import load_config
-cfg = load_config({repr(config_path)})
-if {repr(skill_name)}:
-    skills = [s for s in cfg.skills if s.name == {repr(skill_name)}]
-else:
-    skills = cfg.skills
-mcp = MCPClient(skills)
-mcp.list_tools()
-result_raw = mcp.call_tool({repr(tool)}, {repr(args)})
-if isinstance(result_raw, dict) and "result" in result_raw:
+    """Call an MCP tool via subprocess and return parsed result.
+
+    Uses a temp JSON file to pass args safely — avoids f-string injection
+    when args values contain braces, quotes, or large JSON payloads.
+    """
+    import tempfile as _tmpmod_sp
+    import os as _os_sp
+
+    # 1. Serialize args to a temp file (safe for any content)
+    _args_fd, _args_path = _tmpmod_sp.mkstemp(suffix=".json", prefix="ari_args_")
+    _os_sp.close(_args_fd)
+    with open(_args_path, "w", encoding="utf-8") as _f:
+        json.dump(args, _f, ensure_ascii=False)
+
+    # 2. Build the subprocess script using string concatenation (not f-string)
+    _ari_root = repr(str(Path(__file__).parent.parent))
+    _cfg = repr(config_path)
+    _skill = repr(skill_name)
+    _tool = repr(tool)
+    _apath = repr(_args_path)
+    _skill_filter = (
+        "skills = [s for s in cfg.skills if s.name == " + _skill + "]\n"
+        if skill_name else
+        "skills = cfg.skills\n"
+    )
+    script = (
+        "import json, sys\n"
+        "sys.path.insert(0, " + _ari_root + ")\n"
+        "from ari.mcp.client import MCPClient\n"
+        "from ari.config import load_config\n"
+        "from pathlib import Path as _P\n"
+        "_cfg_path = " + _cfg + "\n"
+        "if not _cfg_path:\n"
+        "    _pkg_cfg = _P(__file__).parents[1] / 'config' / 'workflow.yaml'\n"
+        "    _cfg_path = str(_pkg_cfg) if _pkg_cfg.exists() else _cfg_path\n"
+        "cfg = load_config(_cfg_path)\n"
+        + _skill_filter +
+        "mcp = MCPClient(skills)\n"
+        "mcp.list_tools()\n"
+        "with open(" + _apath + ") as _af:\n"
+        "    _call_args = json.load(_af)\n"
+        "result_raw = mcp.call_tool(" + _tool + ", _call_args)\n"
+        "if isinstance(result_raw, dict) and 'result' in result_raw:\n"
+        "    try:\n"
+        "        inner = result_raw['result']\n"
+        "        result = json.loads(inner) if isinstance(inner, str) else inner\n"
+        "    except Exception:\n"
+        "        result = result_raw\n"
+        "elif isinstance(result_raw, str):\n"
+        "    result = json.loads(result_raw)\n"
+        "else:\n"
+        "    result = result_raw\n"
+        "print(json.dumps(result, ensure_ascii=False))\n"
+    )
+
+    # 3. Build env for subprocess — include API keys and ARI settings
+    _sub_env = {**_os_sp.environ}
+    for _ekey in ("ARI_LLM_MODEL", "ARI_LLM_API_BASE", "OPENAI_API_KEY",
+                  "ANTHROPIC_API_KEY", "SLURM_LOG_DIR", "ARI_WORK_DIR", "ARI_ROOT"):
+        if _ekey in _os_sp.environ:
+            _sub_env[_ekey] = _os_sp.environ[_ekey]
+    # Ensure ARI_LLM_API_BASE="" when using OpenAI (prevents fallback to Ollama URL)
+    if "ARI_LLM_API_BASE" not in _sub_env:
+        _sub_env["ARI_LLM_API_BASE"] = ""
+    # Load ~/.env if OPENAI_API_KEY not yet set (source ~/.env doesn't export to Python)
+    if "OPENAI_API_KEY" not in _sub_env:
+        _env_file = _os_sp.path.expanduser("~/.env")
+        if _os_sp.path.exists(_env_file):
+            try:
+                for _eline in open(_env_file).read().splitlines():
+                    _eline = _eline.strip()
+                    if not _eline or _eline.startswith("#") or "=" not in _eline:
+                        continue
+                    _ek, _, _ev = _eline.partition("=")
+                    _ek = _ek.strip().removeprefix("export").strip()
+                    _ev = _ev.strip()
+                    if len(_ev) >= 2 and _ev[0] in (chr(34), chr(39)) and _ev[-1] == _ev[0]:
+                        _ev = _ev[1:-1]
+                    if _ek and _ek not in _sub_env:
+                        _sub_env[_ek] = _ev
+            except Exception:
+                pass
+
+    # 4. Run subprocess and clean up temp file
     try:
-        inner = result_raw["result"]
-        result = json.loads(inner) if isinstance(inner, str) else inner
-    except Exception:
-        result = result_raw
-elif isinstance(result_raw, str):
-    result = json.loads(result_raw)
-else:
-    result = result_raw
-print(json.dumps(result, ensure_ascii=False))
-"""
-    proc = subprocess.run([sys.executable, "-c", script], timeout=5400, capture_output=True, text=True)
+        proc = subprocess.run(
+            [sys.executable, "-c", script],
+            timeout=5400, capture_output=True, text=True, env=_sub_env,
+        )
+    finally:
+        try:
+            _os_sp.unlink(_args_path)
+        except Exception:
+            pass
+
     if proc.returncode != 0:
         raise RuntimeError(f"stderr: {proc.stderr[:2000]}\nstdout: {proc.stdout[:500]}")
     if proc.stderr.strip():
@@ -195,11 +282,6 @@ print(json.dumps(result, ensure_ascii=False))
     if not raw:
         raise RuntimeError(f"Empty stdout. stderr: {proc.stderr[:1000]}")
     return json.loads(raw)
-
-
-# ---------------------------------------------------------------------------
-# Generic pipeline execution
-# ---------------------------------------------------------------------------
 
 
 def build_scientific_data(nodes_json_path: str) -> dict:
@@ -238,9 +320,33 @@ def build_scientific_data(nodes_json_path: str) -> dict:
 
     def _best(node):
         m = node["metrics"]
-        return max(m.values()) if m else 0
+        # Numeric metric tiebreaker; primary sort is BFTS depth (deeper = LLM preferred more)
+        return max((v for v in m.values() if isinstance(v, (int, float))), default=0) if m else 0
 
-    science_nodes.sort(key=_best, reverse=True)
+    # Load primary_metric / higher_is_better from evaluation_criteria.json
+    # (set autonomously by generate_ideas; no user input required)
+    _primary = ""
+    _higher_is_better = True
+    try:
+        _ec_path = Path(nodes_json_path).parent / "evaluation_criteria.json"
+        if _ec_path.exists():
+            _ec = json.loads(_ec_path.read_text())
+            _primary = _ec.get("primary_metric", "")
+            _higher_is_better = _ec.get("higher_is_better", True)
+            log.info("Loaded evaluation criteria: primary_metric=%s higher_is_better=%s", _primary, _higher_is_better)
+    except Exception:
+        pass
+
+    def _primary_val(node: dict) -> float:
+        m = node.get("metrics", {})
+        if _primary and _primary in m and isinstance(m[_primary], (int, float)):
+            v = float(m[_primary])
+            return v if _higher_is_better else -v  # negate so sort(reverse=True) works for both
+        # Fallback: BFTS depth (deeper = more explored = LLM preferred)
+        return float(node.get("depth", 0)) * 1e-6 + _best(m)
+
+    # Sort by primary_metric (or depth as proxy for LLM preference)
+    science_nodes.sort(key=lambda n: (n.get("has_real_data", False), _primary_val(n)), reverse=True)
     metric_name = list(science_nodes[0]["metrics"].keys())[0] if science_nodes else "metric"
 
     return {
@@ -268,6 +374,31 @@ def run_pipeline(
     experiment_goal = experiment_data.get("goal", "")
     context, best_metrics = build_best_nodes_context(all_nodes, experiment_goal)
 
+    # Extract evaluation_criteria from nodes (set by generate_ideas in loop.py)
+    # Written to checkpoint as evaluation_criteria.json for downstream use
+    _eval_criteria_path = checkpoint_dir / "evaluation_criteria.json"
+    if not _eval_criteria_path.exists():
+        _ec = {"primary_metric": "", "higher_is_better": True, "metric_rationale": ""}
+        for _n in all_nodes:
+            # Each node stores its memory snapshots; look for EVALUATION_CRITERIA entries
+            for _snap in (_n.memory_snapshot if hasattr(_n, "memory_snapshot") else []):
+                if isinstance(_snap, str) and "EVALUATION_CRITERIA:" in _snap:
+                    import re as _re_ec
+                    _pm = _re_ec.search(r"primary_metric=([\w_]+)", _snap)
+                    _hib = _re_ec.search(r"higher_is_better=(\w+)", _snap)
+                    if _pm:
+                        _ec["primary_metric"] = _pm.group(1)
+                    if _hib:
+                        _ec["higher_is_better"] = _hib.group(1).lower() != "false"
+                    break
+            if _ec["primary_metric"]:
+                break
+        try:
+            _eval_criteria_path.write_text(json.dumps(_ec, indent=2))
+            log.info("Saved evaluation_criteria.json: primary_metric=%s", _ec["primary_metric"])
+        except Exception as _ece:
+            log.warning("Failed to save evaluation_criteria.json: %s", _ece)
+
     # Save nodes_tree.json (referenced by downstream stages via {{ckpt}}/nodes_tree.json)
     nodes_json_path = str(checkpoint_dir / "nodes_tree.json")
     try:
@@ -280,14 +411,23 @@ def run_pipeline(
         log.warning("Failed to save nodes_tree.json: %s", _e)
         nodes_json_path = ""
 
-    keywords = _extract_keywords_from_nodes(nodes_json_path, experiment_data.get("topic", ""))
+    # Convert topic slug (e.g. "Accurate_FP32_GEMM_v2") -> search query ("Accurate FP32 GEMM v2")
+    _raw_topic = experiment_data.get("topic", "")
+    _search_topic = re.sub(r"[_-]+", " ", _raw_topic).strip()
+    keywords = _extract_keywords_from_nodes(nodes_json_path, _search_topic)
 
     # Load paper_context from workflow.yaml (developer-defined paper description).
     # Falls back to {{context}} if not set. Keeps org names / cluster details
     # out of the paper while BFTS still sees the full experiment_goal.
     try:
         import yaml as _yaml
-        _wf_cfg = _yaml.safe_load(Path(config_path).read_text()) if config_path else {}
+        _cfg_candidates = [
+            Path(config_path) if config_path else None,
+            Path(config_path).parent / "workflow.yaml" if config_path else None,
+            Path(__file__).parent.parent / "config" / "workflow.yaml",
+        ]
+        _cfg_path = next((p for p in _cfg_candidates if p and p.exists()), None)
+        _wf_cfg = _yaml.safe_load(_cfg_path.read_text()) if _cfg_path else {}
     except Exception:
         _wf_cfg = {}
     _paper_ctx = (_wf_cfg.get("paper_context") or "").strip()
@@ -300,11 +440,14 @@ def run_pipeline(
         "ckpt":              str(checkpoint_dir),
         "context":           context,
         "paper_context":     _paper_ctx,
-        "slurm_partition":   (_wf_cfg.get("slurm_partition") or "cpu"),
+        "slurm_partition":   _wf_cfg.get("slurm_partition", ""),  # resolved at runtime via ARI_SLURM_PARTITION env
         "keywords":          keywords,
         "stages":            {},
         "ari_root":          _os.environ.get("ARI_ROOT", str(Path(__file__).parents[2])),
+        # Reproducibility check reads only the paper — no source_file injection.
+        # Providing original source would be "repeat experiment", not "reproduce from paper".
         "experiment_source_file": _os.environ.get("ARI_SOURCE_FILE", ""),
+        "author_name":       "Artificial Research Intelligence",  # default; overridden by workflow.yaml
         # Expose all top-level string/int config values for template substitution
         **{k: str(v) for k, v in _wf_cfg.items() if isinstance(v, (str, int, float)) and k not in ("paper_context",)},
     }
@@ -314,7 +457,7 @@ def run_pipeline(
     for stage_cfg in stages:
         stage_name = stage_cfg.get("stage", "unknown")
         skill_key  = stage_cfg.get("skill", "")
-        skill = skill_key + "-skill" if skill_key and not skill_key.endswith("-skill") else skill_key
+        skill = skill_key if ("skill" in skill_key) else (skill_key + "-skill" if skill_key else "")
         tool  = stage_cfg.get("tool", "")
         desc  = stage_cfg.get("description", stage_name)
 
@@ -343,8 +486,23 @@ def run_pipeline(
         # ── resolve inputs ────────────────────────────────────────────────
         # load_inputs: input keys whose resolved values (file paths) should be read as content
         load_inputs = set(stage_cfg.get("load_inputs", []))
-        raw_inputs = stage_cfg.get("inputs", {})
+        # Support both "inputs:" and "input:" YAML keys
+        raw_inputs = stage_cfg.get("inputs") or stage_cfg.get("input") or {}
+        # Resolve *_from shorthand: "refs_json_from: related_refs.json" -> key=refs_json, value=<ckpt>/related_refs.json
+        _resolved_input = {}
+        for k, v in raw_inputs.items():
+            if k.endswith("_from"):
+                base_key = k[:-5]  # strip _from
+                file_path = str(checkpoint_dir / v) if not Path(str(v)).is_absolute() else str(v)
+                _resolved_input[base_key] = file_path
+                load_inputs.add(base_key)  # auto-load file content
+            else:
+                _resolved_input[k] = v
+        raw_inputs = _resolved_input
         args = {}
+        # params are static values passed directly to the tool (with template expansion)
+        for k, v in stage_cfg.get("params", {}).items():
+            args[k] = _resolve_templates(v, tpl_vars) if isinstance(v, str) else v
         for k, v in raw_inputs.items():
             resolved = _resolve_templates(v, tpl_vars)
             # Read file content only for inputs explicitly listed in load_inputs
@@ -380,14 +538,52 @@ def run_pipeline(
                     log.warning("revised paper too short (%d vs %d bytes); using original", _rev_size, _orig_size)
                     args["paper_path"] = str(_orig)
 
-        # ── tool call ─────────────────────────────────────────────────────
-        try:
-            result = _run_stage_subprocess(tool, args, config_path, skill_name=skill)
-            stage_outputs[stage_name] = result
+        # ── tool call (with retry on transient connection errors) ─────────
+        import time as _retry_time
+        _max_retries = 5
+        _last_exc = None
+        result = None
+        for _attempt in range(_max_retries):
+            try:
+                log.info("Stage [%s]: calling tool=%s skill=%s args_keys=%s (attempt %d/%d)",
+                         stage_name, tool, skill, list(args.keys()), _attempt + 1, _max_retries)
+                result = _run_stage_subprocess(tool, args, config_path, skill_name=skill)
+                # Check if result itself contains a connection error (MCP returned error dict)
+                if isinstance(result, dict):
+                    _r_str = result.get("result", "")
+                    if isinstance(_r_str, str) and ("connection error" in _r_str.lower() or
+                                                     "internalservererror" in _r_str.lower()):
+                        raise RuntimeError(f"MCP tool returned connection error: {_r_str[:200]}")
+                _last_exc = None
+                break
+            except Exception as _retry_exc:
+                _msg = str(_retry_exc).lower()
+                if any(x in _msg for x in ("connection error", "connection reset", "timeout",
+                                            "internalservererror", "mcp tool returned connection")):
+                    _last_exc = _retry_exc
+                    if _attempt < _max_retries - 1:
+                        _wait = 30 * (_attempt + 1)  # 30, 60, 90, 120s backoff
+                        log.warning("Stage [%s] attempt %d failed (transient): %s. Retrying in %ds...",
+                                    stage_name, _attempt + 1, _retry_exc, _wait)
+                        _retry_time.sleep(_wait)
+                        continue
+                raise
+        if _last_exc:
+            raise _last_exc
+        stage_outputs[stage_name] = result
 
+        try:
             # ── save outputs ──────────────────────────────────────────────
             outputs_cfg = stage_cfg.get("outputs", {})
-            primary_file = _resolve_templates(outputs_cfg.get("file", ""), tpl_vars)
+            # Support both "output_file: foo.json" (shorthand) and "outputs: {file: foo.json}" (full)
+            _output_file_shorthand = stage_cfg.get("output_file", "")
+            if _output_file_shorthand and not outputs_cfg.get("file"):
+                _resolved_shorthand = _resolve_templates(_output_file_shorthand, tpl_vars)
+                _abs_shorthand = str(checkpoint_dir / _resolved_shorthand) if not Path(_resolved_shorthand).is_absolute() else _resolved_shorthand
+                primary_file = _abs_shorthand
+                outputs_cfg = {"file": primary_file}
+            else:
+                primary_file = _resolve_templates(outputs_cfg.get("file", ""), tpl_vars)
 
             if primary_file:
                 out_path = Path(primary_file)
@@ -421,8 +617,21 @@ def run_pipeline(
                         Path(bib_file).write_text(bib_content)
                         log.info("Stage [%s]: wrote %s", stage_name, bib_file)
                 else:
-                    out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2))
-                    log.info("Stage [%s]: wrote %s", stage_name, out_path)
+                    # For binary outputs (PDF etc.) the tool writes the file itself;
+                    # only write JSON if the output_file doesn't already exist as a real file
+                    _pdf_path = result.get("pdf_path", "") if isinstance(result, dict) else ""
+                    if _pdf_path and Path(_pdf_path).exists() and Path(_pdf_path).stat().st_size > 1024:
+                        # Tool wrote the file — just log it
+                        out_path_real = Path(_pdf_path)
+                        if str(out_path_real) != str(out_path):
+                            import shutil as _shu
+                            _shu.copy2(str(out_path_real), str(out_path))
+                        log.info("Stage [%s]: wrote %s", stage_name, out_path)
+                    elif out_path.suffix in (".pdf", ".png", ".jpg") and out_path.exists() and out_path.stat().st_size > 1024:
+                        log.info("Stage [%s]: output already at %s", stage_name, out_path)
+                    else:
+                        out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2))
+                        log.info("Stage [%s]: wrote %s", stage_name, out_path)
 
                 # Register primary + named outputs for template resolution
                 _named = {k: _resolve_templates(v, tpl_vars)
@@ -447,7 +656,8 @@ def run_pipeline(
 
         except Exception:
             import traceback as _tb
-            log.warning("Stage [%s] failed:\n%s", stage_name, _tb.format_exc())
+            _exc = _tb.format_exc()
+            log.warning("Stage [%s] failed:\n%s", stage_name, _exc)
             stage_outputs[stage_name] = {"error": "stage failed"}
             tpl_vars["stages"][stage_name] = {"output": "", "outputs": {}}
 

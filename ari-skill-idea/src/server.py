@@ -128,6 +128,9 @@ async def generate_ideas(
         "Return JSON with this exact structure:\n"
         "{\n"
         '  "gap_analysis": "2-3 sentences on what prior work has NOT explored",\n'
+        '  "primary_metric": "the single most important metric name to measure (e.g. accuracy, error, throughput)",\n'
+        '  "higher_is_better": true,\n'
+        '  "metric_rationale": "why this metric was chosen",\n'
         '  "ideas": [\n'
         "    {\n"
         '      "title": "short idea title",\n'

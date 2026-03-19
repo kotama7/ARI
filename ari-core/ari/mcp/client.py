@@ -189,6 +189,7 @@ class MCPClient:
                 # Reconnect in case the connection was dropped
                 try:
                     conn.close()
+                    self._connections.pop(skill_name, None)  # invalidate before re-init
                     conn = self._init_connection(
                         next(s for s in self.skills if s.name == skill_name)
                     )
