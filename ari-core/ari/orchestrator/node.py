@@ -79,6 +79,7 @@ class Node:
     retry_count: int = 0
     memory_snapshot: list[dict] = field(default_factory=list)
     artifacts: list[dict] = field(default_factory=list)
+    trace_log: list[str] = field(default_factory=list)  # tool call trace for viz
     error_log: str | None = None
     # Evaluation results: raw metric values (used for LLM selection)
     metrics: dict = field(default_factory=dict)
@@ -134,4 +135,6 @@ class Node:
             "eval_summary": self.eval_summary,
             "label": self.label.value,
             "error_log": self.error_log,
+            "ancestor_ids": self.ancestor_ids,
+            "trace_log": self.trace_log[-200:],  # last 200 entries (avoid huge JSON)
         }

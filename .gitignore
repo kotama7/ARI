@@ -1,103 +1,69 @@
-# ── Compiled binaries ────────────────────────────────────────────
-himeno
-himeno_opt
-himeno_large
-himeno_binary
-repro_binary
-*.exe
+# ===========================
+# ARI root-level .gitignore
+# ===========================
 
-# ── SLURM output / error logs ────────────────────────────────────
-logs/*.out
-logs/*.err
-logs/*.log
-logs/archive/
-
-# ── Experiment checkpoints (data files, not source) ──────────────
-logs/himeno_ckpt_*/
-logs/himeno_log_*/
-logs/ckpt_*/
-logs/*_ckpt_*/
-
-# ── Benchmark result text files ──────────────────────────────────
-logs/*.txt
-logs/himeno_*.txt
-output*.txt
-results*.txt
-serial_output.txt
-baseline.out
-
-# ── Singularity containers (large binary) ────────────────────────
-containers/
-*.sif
-
-# ── Compiled LaTeX artifacts ─────────────────────────────────────
-*.pdf
-*.log
-*.aux
-*.bbl
-*.blg
-*.toc
-*.synctex.gz
-*.out
-*.fls
-*.fdb_latexmk
-
-# ── LaTeX concept / spec docs (not paper source) ─────────────────
-logs/*.tex
-logs/*.toc
-logs/*.pdf
-
-# ── Python ───────────────────────────────────────────────────────
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
+*.pyd
 .pytest_cache/
 *.egg-info/
-.venv/
 dist/
 build/
+.env
 *.egg
 
-# ── Workspace / editor ───────────────────────────────────────────
-workspace/
-.DS_Store
+# ── Experiment artifacts (NEVER track) ─────────────────────────
+# SLURM job logs & error files
+logs/
+*.out
+*.err
+slurm-*.out
+
+# Checkpoint directories (generated at runtime)
+*_ckpt_*/
+checkpoints/
+output*/
+results*/
+
+# Experiment-specific source files (user-created, not part of ARI)
+experiments/
+benchmarks/
+*.c
+*.f90
+*.def
+*.sbatch
+
+# Dynamic YAML/scripts generated per-experiment
+*_paper.yaml
+*_paper.sh
+*_experiment.sh
+
+# ── Security ────────────────────────────────────────────────────
+.env
+*.env.local
+*.key
+*.pem
+*.token
+
+# ── Editor / OS ─────────────────────────────────────────────────
+.idea/
+.vscode/
 *.swp
 *.swo
+*~
+.DS_Store
+Thumbs.db
 
-# ── Old BFTS/E2E job scripts (superseded by current scripts) ─────
-logs/ari_e2e*.sh
-logs/ari_himeno.sh
-logs/ari_himeno_gh*.sh
-logs/ari_himeno_mi*.sh
-logs/ari_himeno_resume.sh
-
-# ── Compiled benchmark binary output ─────────────────────────────
-logs/himeno_large_output
-logs/himeno_binary
-logs/*.stdout
-
-# ── Old report directory ──────────────────────────────────────────
+# ── Additional experiment/runtime directories ────────────────────
+containers/
 report/
+workspace/
+*.sif
 
-# ── Himeno benchmark source (experiment-specific, not core) ──────
-himeno*.c
-himeno_ablated
-himeno_ablated/
+# Temporary work files
+audit_prompt.txt
+fix_*.py
+new_server.py
 
-# ── Experiment-specific .md files ────────────────────────────────
-himeno_opt_experiment.md
-*_experiment.md
-
-# ── SLURM scripts (site-specific) ────────────────────────────────
-logs/ari_himeno*.sh
-logs/ari_pipeline*.sh
-
-# ── Internal audit/refactor reports ──────────────────────────────
-logs/audit_report.md
-logs/refactor_report.md
-logs/*.md
-
-# Backup files
-*.bak
-*.bak_*
-*.orig

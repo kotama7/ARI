@@ -296,11 +296,18 @@ class SlurmClient:
         import os as _os
         log_dir = _os.environ.get("SLURM_LOG_DIR", "")
         # Try all known output file patterns (generic + legacy)
+        import os as _os2
+        work_dir = _os2.environ.get("ARI_WORK_DIR", "")
         candidates = []
         if log_dir:
             candidates += [
                 f"{log_dir}/slurm_job_{job_id}.out",
                 f"{log_dir}/slurm-{job_id}.out",
+            ]
+        if work_dir:
+            candidates += [
+                f"{work_dir}/slurm-{job_id}.out",
+                f"{work_dir}/slurm_job_{job_id}.out",
             ]
         candidates += [
             f"slurm_job_{job_id}.out",
@@ -320,9 +327,31 @@ class SlurmClient:
         return None
 
     async def get_stderr(self, job_id: str) -> str | None:
-        """Read stderr from the default SLURM error file."""
-        stdout, _, rc = await self._run(f"cat slurm-{job_id}.err 2>/dev/null")
-        return stdout if rc == 0 and stdout else None
+        """Read stderr from SLURM error file (searches same locations as get_stdout)."""
+        import os as _os
+        log_dir = _os.environ.get("SLURM_LOG_DIR", "")
+        candidates = []
+        if log_dir:
+            candidates += [
+                f"{log_dir}/slurm_job_{job_id}.err",
+                f"{log_dir}/slurm-{job_id}.err",
+            ]
+        candidates += [
+            f"slurm_job_{job_id}.err",
+            f"slurm-{job_id}.err",
+        ]
+        for pattern in candidates:
+            stdout, _, rc = await self._run(f"cat {pattern} 2>/dev/null")
+            if rc == 0 and stdout:
+                return stdout
+        # Generic fallback: find any .err file with job_id
+        if log_dir:
+            stdout, _, rc = await self._run(
+                f"find {log_dir} -name '*{job_id}*.err' 2>/dev/null | head -1 | xargs cat 2>/dev/null"
+            )
+            if rc == 0 and stdout:
+                return stdout
+        return None
 
     def close(self) -> None:
         """Close SSH connection if open."""

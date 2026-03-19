@@ -100,19 +100,26 @@ class BFTS:
         # Only prune failing nodes that have exhausted retries.
         if not node.has_real_data and node.retry_count >= self.config.max_retries_per_node:
             return True
-        # No real data and already retried once: this node is considered unproductive
-        if not node.has_real_data and node.retry_count >= 1:
-            return True
         return False
 
-    def expand(self, node: Node) -> list[Node]:
+    def expand(self, node: Node, experiment_goal: str = "") -> list[Node]:
         """Expand a node and generate child nodes. Each child is assigned a label."""
         parent_status = "succeeded" if node.has_real_data else "failed/no-real-data"
+        goal_line = f"Experiment goal: {experiment_goal}\n" if experiment_goal else ""
+        # Rule-based label guidance based on parent state
+        if not node.has_real_data:
+            label_hint = "Parent FAILED — prefer \"debug\" or \"draft\" to fix the issue."
+        elif node.depth == 0:
+            label_hint = "Root node succeeded — suggest \"improve\", \"ablation\", and \"validation\" directions."
+        else:
+            label_hint = "Parent succeeded — prefer \"improve\", \"ablation\", or \"validation\"; use \"draft\" only for fundamentally new approaches."
         prompt = (
             f"You are expanding a BFTS research tree node.\n\n"
+            f"{goal_line}"
             f"Parent node: id={node.id[-8:]}, depth={node.depth}, status={parent_status}\n"
             f"Parent metrics: {json.dumps(node.metrics, ensure_ascii=False)}\n"
             f"Parent summary: {node.eval_summary or 'none'}\n\n"
+            f"{label_hint}\n\n"
             f"Suggest 2-3 child research directions. For each, assign a label from:\n"
             f"  draft      - new implementation from scratch\n"
             f"  improve    - improve parent results (tune flags/params)\n"
@@ -173,5 +180,21 @@ class BFTS:
             node.children.append(child_id)
             children.append(child)
             self.total_nodes += 1
+
+        # Fallback: if LLM returned no directions, create at least one child
+        if not children:
+            import uuid as _uuid_fb
+            fallback_label = NodeLabel.DEBUG if not node.has_real_data else NodeLabel.IMPROVE
+            fb_child = Node(
+                id=f"node_{_uuid_fb.uuid4().hex[:8]}",
+                parent_id=node.id,
+                depth=node.depth + 1,
+                label=fallback_label,
+                ancestor_ids=list(node.ancestor_ids or []) + [node.id],
+            )
+            node.children.append(fb_child.id)
+            children.append(fb_child)
+            self.total_nodes += 1
+            logger.warning("expand(): LLM returned no directions, created fallback %s node", fallback_label)
 
         return children

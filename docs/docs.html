@@ -66,6 +66,8 @@
   <div class="nav-group">Configuration</div>
   <a class="nav-item" href="#llm-config">LLM Configuration</a>
   <a class="nav-item" href="#hpc-config">HPC / SLURM</a>
+  <a class="nav-item" href="#experiment-monitor">Experiment Monitor</a>
+  <a class="nav-item" href="#memory">Agent Memory</a>
   <div style="padding:24px 20px 0;border-top:1px solid var(--border);margin-top:16px;">
     <a href="index.html" style="color:var(--muted);font-size:.85rem;">← Back to Home</a>
   </div>
@@ -101,7 +103,7 @@
   <!-- INSTALLATION -->
   <h2 id="install">Installation</h2>
   <ol class="step-list">
-    <li><div><strong>Clone the repository</strong><pre><code>git clone https://github.com/your-org/ari && cd ari</code></pre></div></li>
+    <li><div><strong>Clone the repository</strong><pre><code>git clone https://github.com/kotama7/ARI && cd ari</code></pre></div></li>
     <li><div><strong>Run setup</strong><pre><code>bash setup.sh</code></pre></div></li>
     <li><div><strong>Install LaTeX</strong><pre><code><span class="cm"># With conda (no sudo needed)</span>
 conda install -c conda-forge texlive-core
@@ -346,6 +348,48 @@ hpc:
   max_walltime: "04:00:00"</code></pre>
 
   <p>To run without a cluster, set <code>mode: local</code>. ARI will execute experiments as local subprocesses.</p>
+
+  <!-- EXPERIMENT MONITOR -->
+  <h2 id="experiment-monitor">Experiment Monitor (<code>ari viz</code>)</h2>
+  <p>ARI ships a real-time experiment tree visualiser.  It shows every BFTS node, its status, metrics, and the full tool-call trace — all in a browser.</p>
+
+  <h3>Starting the monitor</h3>
+  <pre><code>ari viz --checkpoint &lt;ckpt_dir&gt; --port 9878</code></pre>
+  <p>Open <code>http://localhost:9878</code> in any browser.  The dashboard polls <code>/state</code> and reconnects over WebSocket automatically.</p>
+
+  <h3>Node detail panel</h3>
+  <p>Click any node circle to open the four-tab detail panel:</p>
+  <ul>
+    <li><strong>Overview</strong> — ID, status, type, execution time, parent, metrics, evaluation summary.</li>
+    <li><strong>Trace</strong> — Ordered list of every MCP tool call the agent made (name · step · result snippet). Fetched live from <code>/memory/&lt;node_id&gt;</code>.</li>
+    <li><strong>Code</strong> — Generated source files stored in node artifacts.</li>
+    <li><strong>Output</strong> — SLURM stdout / benchmark results stored in node artifacts.</li>
+  </ul>
+
+  <h3>Status indicators</h3>
+  <ul>
+    <li>Green circle — <code>success</code></li>
+    <li>Red circle — <code>failed</code></li>
+    <li>Blue circle — <code>running</code></li>
+    <li>Grey circle — <code>pending</code></li>
+  </ul>
+  <p>The footer shows total node count, per-status counts, and the best metric value seen so far.</p>
+
+  <h3>Architecture</h3>
+  <p>The viz server (<code>ari/viz/server.py</code>) is a pure-stdlib asyncio HTTP + WebSocket handler — no external dependencies beyond the <code>websockets</code> package already installed by ARI. The dashboard HTML (<code>ari/viz/dashboard.html</code>) uses vanilla JS and an SVG canvas with no CDN calls.</p>
+
+  <!-- MEMORY SYSTEM -->
+  <h2 id="memory">Agent Memory</h2>
+  <p>ARI maintains a persistent memory store (<code>~/.ari/memory_store.jsonl</code>) shared across all experiments. Each entry contains:</p>
+  <ul>
+    <li><code>node_id</code> — which node wrote the entry</li>
+    <li><code>ancestor_ids</code> — the full parent chain, used for scoped recall</li>
+    <li><code>text</code> — human-readable content (used for keyword search)</li>
+    <li><code>metadata</code> — tool name, step number, timestamps</li>
+  </ul>
+  <p>When a node completes successfully, ARI automatically writes a <strong>RESULT SUMMARY</strong> entry containing the node label and all metric values. Child nodes can then retrieve parent results via <code>search_memory</code> using plain metric keywords.</p>
+  <p>The <code>Trace</code> tab in the Experiment Monitor reads these entries live via <code>GET /memory/&lt;node_id&gt;</code>.</p>
+
 
 </main>
 </body>
