@@ -76,7 +76,7 @@ def nodes_to_science_data(nodes_json_path: str) -> dict:
 
     def _best_metric(node: dict) -> float:
         m = node["metrics"]
-        return max(m.values()) if m else 0.0
+        return max((v for v in m.values() if isinstance(v, (int, float))), default=0.0) if m else 0.0
 
     science_nodes.sort(key=_best_metric, reverse=True)
 

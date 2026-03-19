@@ -93,8 +93,11 @@ def generate_paper_section(
     """Run the post-BFTS pipeline according to pipeline.yaml. No hardcoding."""
     from ari.pipeline import load_pipeline, run_pipeline
 
+    # Load pipeline from workflow.yaml (preferred) or pipeline.yaml (legacy fallback)
     pipeline_yaml_candidates = [
+        Path(config_path).parent / "workflow.yaml",
         Path(config_path).parent / "pipeline.yaml",
+        Path(__file__).parent.parent / "config" / "workflow.yaml",
         Path(__file__).parent.parent / "config" / "pipeline.yaml",
     ]
     pipeline_yaml = next((p for p in pipeline_yaml_candidates if p.exists()), None)
@@ -108,8 +111,4 @@ def generate_paper_section(
         log.info("No enabled pipeline stages in %s", pipeline_yaml)
         return
 
-    log.info(
-        "Running post-BFTS pipeline: %d stage(s) from %s",
-        len(stages), pipeline_yaml,
-    )
-    run_pipeline(stages, all_nodes, experiment_data, checkpoint_dir, config_path)
+    result = run_pipeline(stages, all_nodes, experiment_data, checkpoint_dir, config_path)

@@ -1,21 +1,14 @@
 """
 ari-skill-paper-re: Reproducibility verification via ReAct.
 
-Reads ONLY the paper text to extract experiment configuration,
-submits an HPC job to actually reproduce the experiment,
-and compares measured results against paper claims.
-
-No access to nodes_tree.json or internal experiment data.
-LLM exception (P2): requires reasoning for config extraction and verdict.
+Philosophy:
+- Reads ONLY the paper text. No original source code provided.
+- LLM decides language, toolchain, implementation from scratch.
+- Framework provides executor type and resource constraints only.
+- Tests whether the paper is reproducible by an independent implementer.
 """
 
-import asyncio
-import json
-import os
-import re
-import subprocess
-import tempfile
-import time
+import asyncio, json, os, re, subprocess, time
 from pathlib import Path
 
 import litellm
@@ -23,84 +16,97 @@ from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("paper-reproducibility-skill")
 
-# ── LLM helpers ──────────────────────────────────────────────────────────────
+def _model():
+    return os.environ.get("ARI_LLM_MODEL") or os.environ.get("LLM_MODEL") or "ollama_chat/qwen3:32b"
 
-def _model() -> str:
-    return (os.environ.get("ARI_LLM_MODEL") or os.environ.get("LLM_MODEL") or "ollama_chat/qwen3:32b")
+def _api_base():
+    ari = os.environ.get("ARI_LLM_API_BASE")
+    return (ari if ari is not None else os.environ.get("LLM_API_BASE", "http://127.0.0.1:11434")) or None
 
-def _api_base() -> str | None:
-    ari = os.environ.get("ARI_LLM_API_BASE"); return (ari if ari is not None else os.environ.get("LLM_API_BASE", "http://127.0.0.1:11434")) or None
-
-async def _llm(system: str, user: str) -> str:
-    kwargs = {
-        "model": _model(),
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user",   "content": user},
-        ],
-    }
+async def _llm(system, user):
+    kwargs = {"model": _model(), "messages": [{"role":"system","content":system},{"role":"user","content":user}], "timeout": 120}
     base = _api_base()
-    if base:
-        kwargs["api_base"] = base
+    if base: kwargs["api_base"] = base
     resp = await litellm.acompletion(**kwargs)
     raw = resp.choices[0].message.content or ""
     return re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
 
 
-# ── Tool ─────────────────────────────────────────────────────────────────────
+class Executor:
+    """Execution backend abstraction. Supports: local, slurm, pbs, lsf."""
+    def __init__(self, kind, cpus, timeout_minutes, log_file, extra=None):
+        self.kind = kind
+        self.cpus = cpus
+        self.timeout_minutes = timeout_minutes
+        self.log_file = log_file
+        self.extra = extra or {}
+
+    def describe(self):
+        k = self.kind
+        if k == "local":
+            return f"local bash execution (no scheduler); {self.cpus} CPU threads available via OMP_NUM_THREADS"
+        if k == "slurm":
+            p = self.extra.get("partition", "")
+            return (f"SLURM scheduler; include #SBATCH header directives; "
+                    f"partition={p}, cpus-per-task={self.cpus}, "
+                    f"time=00:{self.timeout_minutes:02d}:00, output={self.log_file}")
+        if k == "pbs":
+            return (f"PBS/Torque scheduler; include #PBS directives; "
+                    f"nodes=1:ppn={self.cpus}, walltime=00:{self.timeout_minutes:02d}:00")
+        if k == "lsf":
+            return (f"LSF scheduler; include #BSUB directives; "
+                    f"ncpus={self.cpus}, runtime=00:{self.timeout_minutes:02d}")
+        return f"{k} scheduler (include appropriate scheduler directives)"
+
+    def submit(self, script_path):
+        k = self.kind
+        if k == "slurm":
+            r = subprocess.run(["sbatch", script_path], capture_output=True, text=True, timeout=30)
+            m = re.search(r"Submitted batch job (\d+)", r.stdout)
+            if not m: raise RuntimeError(f"sbatch failed: {r.stderr}")
+            return m.group(1)
+        if k == "pbs":
+            r = subprocess.run(["qsub", script_path], capture_output=True, text=True, timeout=30)
+            if r.returncode != 0: raise RuntimeError(f"qsub failed: {r.stderr}")
+            return r.stdout.strip()
+        if k == "lsf":
+            r = subprocess.run(f"bsub < {script_path}", shell=True, capture_output=True, text=True, timeout=30)
+            m = re.search(r"Job <(\d+)>", r.stdout)
+            if not m: raise RuntimeError(f"bsub failed: {r.stderr}")
+            return m.group(1)
+        raise RuntimeError(f"Unknown executor for submit: {k}")
+
+    def is_running(self, job_id):
+        k = self.kind
+        if k == "slurm":
+            r = subprocess.run(["squeue","-j",job_id,"-h"], capture_output=True, text=True)
+            return bool(r.stdout.strip())
+        if k == "pbs":
+            return subprocess.run(["qstat", job_id], capture_output=True).returncode == 0
+        if k == "lsf":
+            r = subprocess.run(["bjobs", job_id], capture_output=True, text=True)
+            return "DONE" not in r.stdout and "EXIT" not in r.stdout
+        return False
+
 
 @mcp.tool()
-async def extract_metric_from_output(
-    output_text: str,
-    metric_name: str,
-) -> dict:
-    """Use LLM to extract a numeric metric value from raw benchmark output text.
-
-    More robust than regex: handles varied output formats, units, and edge cases.
-
-    Args:
-        output_text: Raw stdout/stderr from the benchmark job
-        metric_name: Name of the metric to extract (e.g. "MFLOPS", "throughput")
-
-    Returns:
-        {value: float | null, unit: str, raw_match: str}
-    """
-    import os, json as _json
-
-    _model = (os.environ.get("ARI_LLM_MODEL")
-              or os.environ.get("LLM_MODEL")
-              or "ollama_chat/qwen3:32b")
-    ari_base = os.environ.get("ARI_LLM_API_BASE"); _api_base = (ari_base if ari_base is not None else os.environ.get("LLM_API_BASE", "")) or ""
-
-    prompt = (
-        f"Extract the {metric_name} value from the following benchmark output.\n"
-        f"Return ONLY valid JSON with keys: value (float or null), unit (string), raw_match (string).\n"
-        f"If multiple values appear, return the final/last one.\n"
-        f"Output:\n{output_text[-2000:]}"
-    )
+async def extract_metric_from_output(output_text: str, metric_name: str) -> dict:
+    """Use LLM to extract a numeric metric value from raw benchmark output text."""
+    prompt = (f"Extract the {metric_name} value from the output below.\n"
+              "Return ONLY valid JSON: {\"value\": float or null, \"unit\": str, \"raw_match\": str}\n"
+              f"Output:\n{output_text[-2000:]}")
     try:
-        import litellm
-        resp = await litellm.acompletion(
-            model=_model,
-            **( {"api_base": _api_base} if _api_base else {}),
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
-        )
+        resp = await litellm.acompletion(model=_model(), messages=[{"role":"user","content":prompt}],
+                                          temperature=0, timeout=60,
+                                          **( {"api_base": _api_base()} if _api_base() else {}))
         raw = resp.choices[0].message.content or ""
-        # Strip <think> tags
-        if "</think>" in raw:
-            raw = raw.split("</think>")[-1]
-        raw = raw.strip()
-        # Extract JSON
-        start = raw.find("{")
-        end = raw.rfind("}") + 1
-        if start >= 0 and end > start:
-            result = _json.loads(raw[start:end])
-            # Ensure value is float or None
-            if result.get("value") is not None:
-                result["value"] = float(result["value"])
-            return result
-    except Exception as e:
+        if "</think>" in raw: raw = raw.split("</think>")[-1]
+        s = raw.find("{"); e = raw.rfind("}") + 1
+        if s >= 0 and e > s:
+            res = json.loads(raw[s:e])
+            if res.get("value") is not None: res["value"] = float(res["value"])
+            return res
+    except Exception:
         pass
     return {"value": None, "unit": "", "raw_match": "", "error": "extraction failed"}
 
@@ -112,187 +118,150 @@ async def reproduce_from_paper(
     experiment_goal: str = "",
     work_dir: str = "",
     source_file: str = "",
-    slurm_partition: str = "cpu",
-    slurm_cpus: int = 64,
+    executor: str = "",
+    cpus: int = 64,
     timeout_minutes: int = 15,
     tolerance_pct: float = 5.0,
 ) -> dict:
-    """Reproduce an experiment described in a paper using a ReAct loop.
+    """Reproduce an experiment described in a paper.
 
-    Reads ONLY the paper text (no access to internal experiment records).
-
-    ReAct loop:
-      Reason  → Extract claimed configuration (compiler flags, threads, expected metric)
-      Act     → Submit SLURM job with that configuration
-      Observe → Parse actual results from job output
-      Reason  → Compare against paper claims; generate verdict
+    Philosophy:
+    - Paper text only — no original source code injected.
+    - LLM decides language, toolchain, implementation from scratch.
+    - Framework provides executor type + resource constraints.
+    - Executor backends: local, slurm, pbs, lsf (set via ARI_EXECUTOR env).
 
     Args:
-        paper_path:      Path to .tex/.pdf paper file
-        paper_text:      Paper content (if paper_path not given)
-        experiment_goal: What the paper claims to do (e.g. "maximize throughput")
-        work_dir:        Working directory on HPC (for compilation)
-        source_file:     Source code path on HPC to compile+run
-        slurm_partition: SLURM partition to use
-        slurm_cpus:      Number of CPUs to request
-        timeout_minutes: Max wait time for job completion
-        tolerance_pct:   Tolerance for claim matching (%)
-
-    Returns:
-        verdict, claimed_config, actual_result, matched_claims, report
+        paper_path:      Path to .tex/.pdf paper
+        paper_text:      Paper content (alternative to paper_path)
+        experiment_goal: Optional hint about what to reproduce
+        work_dir:        Working directory for generated files
+        source_file:     (Advanced) bypass LLM generation with existing source
+        executor:        "local"|"slurm"|"pbs"|"lsf" (default: ARI_EXECUTOR env)
+        cpus:            CPU thread count to request
+        timeout_minutes: Max wait time
+        tolerance_pct:   Acceptable deviation from claimed value (%)
     """
-    # ── Load paper ────────────────────────────────────────────────────────────
+    # Load paper
     if not paper_text and paper_path:
-        try:
-            paper_text = Path(paper_path).read_text()
-        except Exception as e:
-            return {"error": f"Cannot read paper: {e}", "verdict": "ERROR"}
-
+        p = Path(paper_path)
+        if p.suffix == ".pdf":
+            try:
+                r = subprocess.run(["pdftotext", str(p), "-"], capture_output=True, text=True, timeout=30)
+                paper_text = r.stdout
+            except Exception:
+                pass
+        if not paper_text:
+            try: paper_text = p.read_text()
+            except Exception as e: return {"error": f"Cannot read paper: {e}", "verdict": "ERROR"}
     if not paper_text:
         return {"error": "No paper text provided", "verdict": "ERROR"}
 
-    paper_snippet = paper_text[:6000]  # keep token budget reasonable
+    paper_snippet = paper_text[:6000]
 
-    # ── REASON: Extract experiment config from paper ───────────────────────
-    extract_prompt = (
-        "You are a reproducibility engineer. Read the paper excerpt and extract "
-        "the exact experiment configuration needed to reproduce the main result. "
-        "Return ONLY valid JSON with these keys:\n"
-        "  compiler: str (e.g. 'gcc')\n"
-        "  flags: str (e.g. '-O3 -ffast-math -march=native')\n"
-        "  threads: int (number of threads/processes)\n"
-        "  metric_name: str (e.g. 'throughput', 'accuracy', or any metric name)\n"
-        "  claimed_value: float (the main claimed result value)\n"
-        "  description: str (one sentence describing what to run)\n"
-        "No markdown fences. Pure JSON only."
+    # Resolve executor
+    exe_kind  = executor or os.environ.get("ARI_EXECUTOR", "local")
+    partition = os.environ.get("ARI_SLURM_PARTITION", "")
+    wdir = work_dir or "/tmp/ari_repro"
+    Path(wdir).mkdir(parents=True, exist_ok=True)
+    log_file    = str(Path(wdir) / "repro_output.log")
+    script_path = str(Path(wdir) / "repro_job.sh")
+    exe = Executor(exe_kind, cpus, timeout_minutes, log_file, extra={"partition": partition})
+
+    # REASON: extract claimed config from paper
+    config_raw = await _llm(
+        "Extract experiment config from the paper. Return ONLY JSON with keys: "
+        "threads (int), metric_name (str), claimed_value (float), description (str). No markdown.",
+        f"Paper:\n{paper_snippet}"
     )
-    extract_raw = await _llm(extract_prompt, f"Paper excerpt:\n{paper_snippet}")
-    m = re.search(r"\{.*\}", extract_raw, re.DOTALL)
-    if not m:
-        return {"error": "Could not extract config from paper", "raw": extract_raw, "verdict": "ERROR"}
-    try:
-        config = json.loads(m.group(0))
-    except Exception as e:
-        return {"error": f"JSON parse failed: {e}", "raw": extract_raw, "verdict": "ERROR"}
+    m = re.search(r"\{.*\}", config_raw, re.DOTALL)
+    if not m: return {"error": "Could not extract config", "raw": config_raw, "verdict": "ERROR"}
+    try: config = json.loads(m.group(0))
+    except Exception as e: return {"error": f"JSON parse: {e}", "verdict": "ERROR"}
 
-    compiler    = config.get("compiler", "gcc")
-    flags       = config.get("flags", "-O3 -ffast-math -march=native")
-    threads     = int(config.get("threads", slurm_cpus))
+    threads     = int(config.get("threads", cpus))
     metric_name = config.get("metric_name", "metric")
     claimed_val = float(config.get("claimed_value", 0))
     description = config.get("description", "")
 
-    # ── ACT: Build and submit SLURM job ──────────────────────────────────────
-    if not source_file:
-        return {
-            "verdict": "SKIPPED",
-            "reason": "source_file not provided; cannot run experiment",
-            "claimed_config": config,
-        }
+    # ACT: LLM generates complete experiment script from paper text alone
+    script_content = await _llm(
+        (
+            "You are a reproducibility engineer verifying a scientific paper claim. "
+            "Generate a self-contained executable script that reproduces the experiment FROM SCRATCH "
+            "based only on the paper description — do not assume access to any original source code.\n\n"
+            f"Execution environment: {exe.describe()}\n\n"
+            f"Use up to {threads} CPU threads. "
+            "Print the key metric value to stdout as: METRIC: <value>\n"
+            "End with: echo 'REPRO_EXIT_CODE:'$?\n"
+            "Choose appropriate language and toolchain. Return ONLY the script. No markdown."
+        ),
+        f"Paper:\n{paper_snippet}\n\nConfig:\n{json.dumps(config,indent=2)}\n\nDescription: {description}"
+    )
+    # Strip markdown fences
+    mf = re.search(r"```(?:\w+)?\n(.*?)```", script_content, re.DOTALL)
+    if mf: script_content = mf.group(1)
+    if not script_content.startswith("#!"): script_content = "#!/bin/bash\n" + script_content
+    Path(script_path).write_text(script_content)
 
-    wdir = work_dir or str(Path(source_file).parent)
-    src  = Path(source_file)
-    binary = str(Path(wdir) / "repro_binary")
-    log_file = str(Path(wdir) / "repro_output.log")
-
-    job_script = f"""#!/bin/bash
-#SBATCH --job-name=ari-repro
-#SBATCH --partition={slurm_partition}
-#SBATCH --cpus-per-task={threads}
-#SBATCH --time=00:{timeout_minutes}:00
-#SBATCH --output={log_file}
-
-export OMP_NUM_THREADS={threads}
-{compiler} {flags} -fopenmp -o {binary} {source_file} -lm 2>&1 && \\
-{binary} | tee -a {log_file}
-echo "REPRO_EXIT_CODE:$?"
-"""
-    script_path = str(Path(wdir) / "repro_job.sh")
+    # Submit / run
     try:
-        Path(script_path).write_text(job_script)
+        if exe_kind == "local":
+            with open(log_file, "w") as f:
+                subprocess.run(["bash", script_path], stdout=f, stderr=subprocess.STDOUT,
+                               timeout=timeout_minutes * 60)
+            job_id = "local"
+        else:
+            job_id = exe.submit(script_path)
     except Exception as e:
-        return {"error": f"Cannot write job script: {e}", "verdict": "ERROR"}
+        return {"error": str(e), "claimed_config": config, "verdict": "ERROR",
+                "generated_script_preview": script_content[:400]}
 
-    try:
-        result = subprocess.run(
-            ["sbatch", script_path],
-            capture_output=True, text=True, timeout=30
-        )
-        job_id_match = re.search(r"Submitted batch job (\d+)", result.stdout)
-        if not job_id_match:
-            return {"error": f"sbatch failed: {result.stderr}", "claimed_config": config, "verdict": "ERROR"}
-        job_id = job_id_match.group(1)
-    except Exception as e:
-        return {"error": f"sbatch exception: {e}", "claimed_config": config, "verdict": "ERROR"}
+    # Poll for completion
+    if job_id != "local":
+        deadline = time.time() + timeout_minutes * 60
+        while time.time() < deadline:
+            await asyncio.sleep(30)
+            if not exe.is_running(job_id):
+                break
+        else:
+            return {"error": "Timed out", "job_id": job_id, "claimed_config": config, "verdict": "TIMEOUT"}
 
-    # ── OBSERVE: Poll for job completion ─────────────────────────────────────
-    deadline = time.time() + timeout_minutes * 60
-    actual_output = ""
-    while time.time() < deadline:
-        await asyncio.sleep(30)
-        check = subprocess.run(
-            ["squeue", "-j", job_id, "-h"], capture_output=True, text=True
-        )
-        if not check.stdout.strip():
-            # Job finished
-            try:
-                actual_output = Path(log_file).read_text()
-            except Exception:
-                actual_output = ""
-            break
+    try: actual_output = Path(log_file).read_text()
+    except Exception: actual_output = ""
 
     if not actual_output:
-        return {
-            "error": "Job timed out or no output",
-            "job_id": job_id,
-            "claimed_config": config,
-            "verdict": "TIMEOUT",
-        }
+        return {"error": "No output", "job_id": job_id, "claimed_config": config, "verdict": "UNVERIFIABLE"}
 
-    # Use LLM-based metric extraction instead of regex
-    _parse_result = await extract_metric_from_output(
-        output_text=actual_output,
-        metric_name=metric_name,
-    )
-    actual_val = _parse_result.get("value")
+    # REASON: extract metric & compare
+    parse_res = await extract_metric_from_output(actual_output, metric_name)
+    actual_val = parse_res.get("value")
 
-    # ── REASON: Compare and generate verdict ──────────────────────────────────
     if actual_val is None:
-        verdict = "UNVERIFIABLE"
-        diff_pct = None
+        verdict, diff_pct = "UNVERIFIABLE", None
     else:
-        diff_pct = abs(actual_val - claimed_val) / claimed_val * 100 if claimed_val > 0 else None
-        if diff_pct is not None and diff_pct <= tolerance_pct:
-            verdict = "REPRODUCED"
-        elif diff_pct is not None and diff_pct <= 20.0:
-            verdict = "PARTIAL"
-        else:
-            verdict = "NOT_REPRODUCED"
+        diff_pct = abs(actual_val - claimed_val) / claimed_val * 100 if claimed_val != 0 else None
+        verdict = "REPRODUCED" if (diff_pct is not None and diff_pct <= tolerance_pct) else \
+                  "PARTIAL"    if (diff_pct is not None and diff_pct <= 20.0)           else \
+                  "NOT_REPRODUCED"
 
-    # LLM generates final interpretation
-    interp_prompt = (
-        "You are writing a short reproducibility verdict (2-3 sentences). "
-        "Be factual and concise. No markdown."
-    )
     diff_str = f"{diff_pct:.1f}%" if diff_pct is not None else "N/A"
-    interp_user = (
-        f"Paper claims {claimed_val:,.1f} {metric_name} using: {flags}, {threads} threads.\n"
-        f"Reproduction measured: {actual_val} {metric_name}.\n"
-        f"Verdict: {verdict} (diff: {diff_str}).\n"
-        f"Write the interpretation."
+    interp = await _llm(
+        "Write a 2-3 sentence reproducibility verdict. Be factual, concise. No markdown.",
+        f"Paper claims {claimed_val} {metric_name}. Measured: {actual_val}. Verdict: {verdict} (diff: {diff_str})."
     )
-    interpretation = await _llm(interp_prompt, interp_user)
 
     return {
         "verdict": verdict,
         "job_id": job_id,
+        "executor": exe_kind,
         "claimed_config": config,
         "claimed_value": claimed_val,
         "actual_value": actual_val,
         "diff_pct": round(diff_pct, 2) if diff_pct is not None else None,
         "metric_name": metric_name,
         "tolerance_pct": tolerance_pct,
-        "interpretation": interpretation,
+        "interpretation": interp,
         "actual_output_snippet": actual_output[-500:],
     }
 

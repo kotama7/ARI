@@ -56,6 +56,7 @@ async def generate_figures(
     nodes_json_path: str,
     output_dir: str,
     figures: list = None,
+    science_data_path: str = "",
 ) -> dict:
     """Generate scientific figures from BFTS data using deterministic matplotlib.
 
@@ -101,7 +102,7 @@ async def generate_figures(
         return {"error": f"Cannot read nodes_json: {e}"}
 
     rnodes = sorted(_real_nodes(nodes),
-                    key=lambda n: max(n["metrics"].values(), default=0),
+                    key=lambda n: max((v for v in n["metrics"].values() if isinstance(v, (int, float))), default=0),
                     reverse=True)
 
     result: dict = {"figures": {}, "latex_snippets": {}}
@@ -127,7 +128,7 @@ async def generate_figures(
         top = rnodes[:10]
         fig, ax = plt.subplots(figsize=(10, 5))
         ids = [n["id"][-8:] for n in top]
-        vals = [max(n["metrics"].values()) / 1000 for n in top]
+        vals = [max((v for v in n["metrics"].values() if isinstance(v, (int, float))), default=0) / 1000 for n in top]
         colors = ["#1a73e8"] * len(top)
         bars = ax.bar(ids, vals, color=colors, edgecolor="white", linewidth=0.5)
         ax.bar_label(bars, labels=[f"{v:.0f}" for v in vals], padding=2, fontsize=8)
@@ -151,13 +152,13 @@ async def generate_figures(
         fig, ax = plt.subplots(figsize=(7, 5))
         for n in rnodes:
             d = n.get("depth", 0)
-            v = max(n["metrics"].values()) / 1000
+            v = max((v for v in n["metrics"].values() if isinstance(v, (int, float))), default=0) / 1000
             c = LABEL_COLOR.get(n.get("label", "draft"), "#607D8B")
             ax.scatter(d, v, color=c, s=80, alpha=0.85, edgecolors="white", linewidth=0.5)
         best_by_depth: dict[int, float] = defaultdict(float)
         for n in rnodes:
             d = n.get("depth", 0)
-            v = max(n["metrics"].values()) / 1000
+            v = max((v for v in n["metrics"].values() if isinstance(v, (int, float))), default=0) / 1000
             best_by_depth[d] = max(best_by_depth[d], v)
         xs = sorted(best_by_depth.keys())
         ax.plot(xs, [best_by_depth[x] for x in xs], "k--", linewidth=1.2, alpha=0.6, label="Best observed so far")
@@ -245,6 +246,12 @@ async def generate_figures_llm(
     n_figures: int = 3,
     science_data_path: str = "",  # preferred: science-facing data from transform-skill
 ) -> dict:
+    import sys as _sys_fig
+    print(f"[DEBUG generate_figures_llm] nodes_json_path={nodes_json_path!r}", file=_sys_fig.stderr)
+    print(f"[DEBUG generate_figures_llm] science_data_path={science_data_path!r}", file=_sys_fig.stderr)
+    print(f"[DEBUG generate_figures_llm] output_dir={output_dir!r}", file=_sys_fig.stderr)
+    print(f"[DEBUG generate_figures_llm] LLM_MODEL={os.environ.get('ARI_LLM_MODEL','unset')!r}", file=_sys_fig.stderr)
+    print(f"[DEBUG generate_figures_llm] API_KEY set={bool(os.environ.get('OPENAI_API_KEY'))}", file=_sys_fig.stderr)
     """Generate scientific figures using LLM-written matplotlib code.
 
     AI Scientist v2-style: LLM analyzes experimental data, writes
@@ -295,19 +302,19 @@ async def generate_figures_llm(
             metric_name = "metric"
             param_keys = []
             rnodes = sorted(_real_nodes(nodes),
-                            key=lambda n: max(n["metrics"].values(), default=0),
+                            key=lambda n: max((v for v in n["metrics"].values() if isinstance(v, (int, float))), default=0),
                             reverse=True)
             data_summary = json.dumps({"experiment": experiment_summary[:300],
-                "configurations": [{"metric": round(max(n["metrics"].values()), 1)} for n in rnodes[:12]]}, indent=2)
+                "configurations": [{"metric": round(max((v for v in n["metrics"].values() if isinstance(v, (int, float))), default=0), 1)} for n in rnodes[:12]]}, indent=2)
     else:
         metric_name = "metric"
         param_keys = []
         rnodes = sorted(_real_nodes(nodes),
-                        key=lambda n: max(n["metrics"].values(), default=0),
+                        key=lambda n: max((v for v in n["metrics"].values() if isinstance(v, (int, float))), default=0),
                         reverse=True)
         data_summary = json.dumps({
             "experiment": experiment_summary[:300],
-            "configurations": [{"metric": round(max(n["metrics"].values()), 1)} for n in rnodes[:12]],
+            "configurations": [{"metric": round(max((v for v in n["metrics"].values() if isinstance(v, (int, float))), default=0), 1)} for n in rnodes[:12]],
         }, indent=2)
 
     # Build suggested figures dynamically from data structure
@@ -347,7 +354,22 @@ async def generate_figures_llm(
     }
     if LLM_API_BASE:  # None = use provider default; truthy = custom endpoint (Ollama, vLLM, etc.)
         kwargs["api_base"] = LLM_API_BASE
-    response = await litellm.acompletion(**kwargs)
+    # Retry on connection errors (up to 3 attempts)
+    import asyncio as _asyncio_fig
+    _last_fig_exc = None
+    response = None
+    for _fig_attempt in range(3):
+        try:
+            kwargs["timeout"] = 120  # 2 min timeout per attempt
+            response = await litellm.acompletion(**kwargs)
+            _last_fig_exc = None
+            break
+        except Exception as _fig_exc:
+            _last_fig_exc = _fig_exc
+            if _fig_attempt < 2:
+                await _asyncio_fig.sleep(10 * (_fig_attempt + 1))
+    if response is None:
+        raise _last_fig_exc
     raw = response.choices[0].message.content or ""
     raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
 
@@ -415,6 +437,7 @@ async def generate_figures_llm(
             ]
             kwargs2["temperature"] = 0.1
             try:
+                kwargs2["timeout"] = 120
                 response2 = await litellm.acompletion(**kwargs2)
                 raw2 = response2.choices[0].message.content or ""
                 raw2 = re.sub(r"<think>.*?</think>", "", raw2, flags=re.DOTALL).strip()
