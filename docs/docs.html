@@ -336,18 +336,25 @@ export LLM_API_BASE=http://your-server:8000/v1</code></pre>
   <div class="callout"><strong>Note:</strong> New models not in litellm's known list require an explicit provider prefix: <code>openai/gpt-5.2</code>, not just <code>gpt-5.2</code>.</div>
 
   <!-- HPC CONFIG -->
-  <h2 id="hpc-config">HPC / SLURM Configuration</h2>
-  <pre><code><span class="cm"># workflow.yaml</span>
-slurm_partition: your_partition
+  <h2 id="hpc-config">HPC / Execution Backend</h2>
+  <p>ARI uses a pluggable executor model. Set <code>ARI_EXECUTOR</code> to match your environment — no code changes needed.</p>
+  <pre><code><span class="cm"># Environment variables</span>
+export ARI_EXECUTOR=slurm    <span class="cm"># local | slurm | pbs | lsf</span>
+export ARI_SLURM_PARTITION=your_partition  <span class="cm"># SLURM only</span>
 
-<span class="cm"># default.yaml</span>
-hpc:
+<span class="cm"># workflow.yaml (reproducibility stage)</span>
+inputs:
+  cpus: 64
+  timeout_minutes: 15
+  tolerance_pct: 5.0</code></pre>
+
+  <p>For experiments (BFTS), configure in <code>default.yaml</code>:</p>
+  <pre><code>hpc:
   mode: slurm          <span class="cm"># or "local" for laptop</span>
   scheduler: slurm
   max_nodes: 4
   max_walltime: "04:00:00"</code></pre>
-
-  <p>To run without a cluster, set <code>mode: local</code>. ARI will execute experiments as local subprocesses.</p>
+  <p>To run without a cluster, set <code>ARI_EXECUTOR=local</code>. ARI will execute experiments as local subprocesses.</p>
 
   <!-- EXPERIMENT MONITOR -->
   <h2 id="experiment-monitor">Experiment Monitor (<code>ari viz</code>)</h2>
