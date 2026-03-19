@@ -81,7 +81,7 @@ Adding any of these requires **no changes to ari-core**. Write a `server.py` wit
 
 **Minimal (laptop + local Ollama):**
 ```bash
-git clone https://github.com/your-org/ari && cd ari
+git clone https://github.com/kotama7/ARI && cd ari
 bash setup.sh
 ollama pull qwen3:8b
 ari run experiment.md
@@ -129,6 +129,19 @@ gmx mdrun -v -deffnm simulation -ntmpi 32
 ```
 
 ---
+
+## Experiment Monitor
+
+Monitor running experiments in real time:
+
+```bash
+ari viz --checkpoint logs/<ckpt_dir> --port 9878
+```
+
+Open `http://localhost:9878` to see the live BFTS tree.  Click any node to inspect its tool-call **Trace**, generated **Code**, and raw **Output**.
+
+---
+
 
 ## Architecture
 

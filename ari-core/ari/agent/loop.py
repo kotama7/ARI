@@ -21,7 +21,7 @@ from ari.orchestrator.node import Node
 
 logger = logging.getLogger(__name__)
 
-MAX_REACT_STEPS = 32
+MAX_REACT_STEPS = 80
 MIN_TOOL_CALLS = 2
 
 # Clearly placeholder strings (used to detect LLM-fabricated values)
@@ -40,7 +40,7 @@ AVAILABLE TOOLS:
 
 RULES:
 - Your FIRST action must be a tool call. Never output a text plan.
-- If `make_metric_spec` tool is available, call it FIRST with the full experiment goal text to self-determine evaluation criteria before running experiments.
+- If `make_metric_spec` tool is available and this is a new experiment (not a continuation), call it early to self-determine evaluation criteria.
 - NEVER fabricate numeric values — only report values from actual tool outputs
 - When all experiments are done, return JSON: {{"status": "success", "metrics": {{...}}, "summary": "..."}}
 - Do NOT call gap_analysis or generate_hypothesis{extra}
@@ -48,14 +48,23 @@ RULES:
 
 
 def _extract_job_ids(messages: list[dict], job_id_key: str) -> list[str]:
-    """Generic function to extract async job IDs from tool messages (with deduplication)."""
+    """Extract async job IDs from tool messages (JSON field and sbatch stdout)."""
+    import re as _re_jid
     seen: set[str] = set()
     ids: list[str] = []
     for m in messages:
         if m.get("role") != "tool":
             continue
+        content = m.get("content", "")
+        # Direct "Submitted batch job NNN" scan (eliminates need for synthetic inject)
+        for _sbatch_m in _re_jid.finditer(r"Submitted batch job (\d+)", content):
+            jid = _sbatch_m.group(1)
+            if jid not in seen:
+                seen.add(jid)
+                ids.append(jid)
+        # JSON structured result
         try:
-            r = json.loads(m.get("content", "{}"))
+            r = json.loads(content)
             if isinstance(r, dict) and "result" in r:
                 r = json.loads(r["result"])
             if isinstance(r, dict) and job_id_key in r:
@@ -192,25 +201,8 @@ class AgentLoop:
                 candidates.append(h.job_reader_tool)
             return by_name(*candidates) or None
 
-        # make_metric_spec done → all tools unlocked (model decides autonomously)
-        if seq[0] == "make_metric_spec" and has("make_metric_spec"):
-            rest = seq[1:]  # ["survey", "slurm_submit", ...]
-            if rest and rest[0] == "survey" and has("survey"):
-                # survey done → enable slurm_submit and beyond
-                return by_name(*rest[1:]) or None
-            # after make_metric_spec, provide all remaining tools
-            return by_name(*rest) or None
-
-        # survey already done
-        if seq[0] == "survey" and has("survey"):
-            next_tools = seq[1:3]  # allow the next 2 steps after survey
-            return by_name(*next_tools) or None
-
-        # allow only the first step (make_metric_spec is always included)
-        filtered = by_name(seq[0]) or all_tools
-        evaluator_tools = [t for t in all_tools if t["function"]["name"] == "make_metric_spec"
-                           and t not in filtered]
-        return evaluator_tools + filtered
+        # All tools available — LLM decides what to call
+        return None
 
     # ------------------------------------------------------------------
     # Step guidance (derived from WorkflowHints)
@@ -309,14 +301,38 @@ class AgentLoop:
 
     def run(self, node: Node, experiment: dict) -> Node:
         node.mark_running()
+        # Inject work_dir BEFORE forking MCP servers (env snapshot taken at fork time)
+        _work_dir_early = experiment.get("work_dir", "") if isinstance(experiment, dict) else ""
+        if _work_dir_early:
+            import os as _os_early
+            _os_early.environ["ARI_WORK_DIR"] = _work_dir_early
+            _os_early.makedirs(_work_dir_early, exist_ok=True)
         tools = self._available_tools_openai()
         tool_names = [t["function"]["name"] for t in tools] if tools else []
         tool_desc = ", ".join(tool_names) if tool_names else "none"
         has_exec = any(n in ("run_bash", "run_code") for n in tool_names)
 
         label_hint = node.label.system_hint() if hasattr(node, "label") else ""
+        # work_dir: per-node experiment directory (passed via experiment dict)
+        work_dir = experiment.get("work_dir", "") if isinstance(experiment, dict) else ""
+        slurm_partition = experiment.get("slurm_partition", "") if isinstance(experiment, dict) else ""
+        slurm_max_cpus = experiment.get("slurm_max_cpus", 0) if isinstance(experiment, dict) else 0
+        hpc_hint = ""
+        if slurm_partition:
+            hpc_hint += f"\n  - SLURM partition: {slurm_partition}"
+        if slurm_max_cpus:
+            hpc_hint += f"\n  - Max CPUs available: {slurm_max_cpus}"
+        work_dir_hint = (
+            f"\n\nEXPERIMENT ENVIRONMENT:"
+            f"\n  - Work directory (REQUIRED): {work_dir} — write ALL files here, cd here first"
+            + hpc_hint
+            if work_dir else (
+                f"\n\nEXPERIMENT ENVIRONMENT:{hpc_hint}" if hpc_hint else ""
+            )
+        )
         extra = (
             (f"\n\nNODE ROLE: {label_hint}" if label_hint else "")
+            + work_dir_hint
             + (f"\n\n{self.hints.extra_system_prompt}" if self.hints.extra_system_prompt else "")
         )
         system_content = SYSTEM_PROMPT.format(tool_desc=tool_desc, extra=extra)
@@ -325,13 +341,36 @@ class AgentLoop:
         # truncate goal_text to first 1500 chars if too long
         if len(goal_text) > 1500:
             goal_text = goal_text[:1500] + "\n...[truncated]"
-        first_tool = (self.hints.tool_sequence or ["survey"])[0]
-        user_content = (
-            f"Experiment goal:\n{goal_text}\n"
-            f"Node: {node.id} depth={node.depth}\n\n"
-            f"START NOW: call {first_tool}() immediately. "
-            f"Do NOT output any text or plan — your first response must be a {first_tool}() tool call."
-        )
+        # Root node vs child node prompt
+        _is_child = node.depth > 0
+        if _is_child:
+            # Child node: provide specific task context from BFTS label
+            _label_desc = {
+                "improve":     "Improve performance or accuracy beyond what the parent achieved.",
+                "ablation":    "Ablation study: remove or vary one component from the parent approach.",
+                "validation":  "Validate the parent result under different conditions or parameters.",
+                "debug":       "The parent experiment had issues. Diagnose and fix them.",
+                "draft":       "Try a new implementation approach for the same goal.",
+            }.get(node.label, "Extend or vary the parent experiment.")
+            user_content = (
+                f"Experiment goal:\n{goal_text}\n"
+                f"Node: {node.id} depth={node.depth} task={node.label}\n\n"
+                f"Task: {_label_desc}\n"
+                "The parent node already completed the survey and established a research direction. "
+                "Prior results are provided below. "
+                "Implement and run your specific experiment, then return JSON with measurements."
+            )
+        else:
+            first_tool = (self.hints.tool_sequence or ["survey"])[0]
+            user_content = (
+                f"Experiment goal:\n{goal_text}\n"
+                f"Node: {node.id} depth={node.depth}\n\n"
+                f"START NOW: call {first_tool}() immediately. "
+                f"Do NOT output any text or plan — your first response must be a {first_tool}() tool call.\n\n"
+                "IMPORTANT: After make_metric_spec, call survey() to search related literature. "
+                "The survey results will be used to generate citations in the paper. "
+                "Without survey, the paper will have no references."
+            )
 
         # NOTE: Planner plan text injection has been removed
         # When plan text is present, LLM tends to "write a plan" and stops calling tools
@@ -342,33 +381,43 @@ class AgentLoop:
             {"role": "user", "content": user_content},
         ]
 
-        # Skip survey for nodes at depth > 0:
-        # The root node already saved its survey knowledge to memory; skip re-surveying
-        if node.depth > 0 and node.ancestor_ids:
-            try:
-                mem_result = self.mcp.call_tool("search_memory", {
-                    "query": "survey knowledge actionable insights performance optimization result",
-                    "ancestor_ids": node.ancestor_ids,  # Only memories up to parent node
-                    "limit": 5,
-                })
-                if isinstance(mem_result, str):
-                    import json as _j; mem_result = _j.loads(mem_result)
-                prior_entries = mem_result.get("results", []) if isinstance(mem_result, dict) else []
-                if prior_entries:
-                    knowledge_summary = "\n".join(
-                        e.get("text", "") for e in prior_entries if e.get("text")
-                    )
-                    messages.append({
-                        "role": "user",
-                        "content": (
-                            f"[Prior knowledge from ancestor nodes ({len(prior_entries)} entries):]\n"
-                            f"{knowledge_summary[:1000]}\n\n"
-                            "Use this knowledge. Skip the survey step if already done."
-                        ),
+        # For child nodes: inject parent memory via search_memory
+        # (ancestor_ids is now serialized correctly, so search_memory works)
+        if node.depth > 0:
+            if node.ancestor_ids:
+                try:
+                    mem_result = self.mcp.call_tool("search_memory", {
+                        "query": "survey knowledge actionable insights performance optimization result",
+                        "ancestor_ids": node.ancestor_ids,
+                        "limit": 5,
                     })
-            except Exception as _e:
-                logger.debug("search_memory failed: %s", _e)
+                    if isinstance(mem_result, str):
+                        import json as _j; mem_result = _j.loads(mem_result)
+                    prior_entries = mem_result.get("results", []) if isinstance(mem_result, dict) else []
+                    if prior_entries:
+                        knowledge_summary = "\n".join(
+                            e.get("text", "") for e in prior_entries if e.get("text")
+                        )
+                        messages.append({
+                            "role": "user",
+                            "content": (
+                                f"[Prior knowledge from ancestor nodes ({len(prior_entries)} entries):]\n"
+                                f"{knowledge_summary[:800]}\n"
+                            ),
+                        })
+                except Exception as _e:
+                    logger.debug("search_memory failed: %s", _e)
 
+        # Track current node depth for tool filtering
+        self._current_node_depth = node.depth
+
+        # Inject work_dir as env var so run_bash defaults to it
+        import os as _os
+        if work_dir:
+            _os.environ["ARI_WORK_DIR"] = work_dir
+            _os.makedirs(work_dir, exist_ok=True)
+
+        self._slurm_real_stdout = ""  # reset per-run state
         tools_called = 0
         exec_called = False          # whether run_bash / run_code has been called
         tool_outputs: list[str] = []
@@ -381,19 +430,112 @@ class AgentLoop:
                         node.id, step + 1, tools_called, exec_called, job_ids)
 
             can_finish = tools_called >= MIN_TOOL_CALLS and (exec_called or not has_exec)
-            job_done = job_output_read and bool(tool_outputs)
+            # For non-SLURM (run_bash) experiments: job_done fires when exec ran and output exists
+            if self.hints.job_submitter_tool:
+                job_done = (exec_called and bool(job_ids)) and bool(tool_outputs)
+            else:
+                job_done = exec_called and bool(tool_outputs)
             force_finish = (job_done and step >= 5) or (step >= MAX_REACT_STEPS - 3 and can_finish)
 
             active = self._active_tools(tools, messages, job_ids, exec_called, force_finish)
+            # force_finish overrides active: allow JSON output without requiring tool call
+            if force_finish:
+                active = None
 
-            window = messages[:2] + messages[-12:] if len(messages) > 14 else messages
-            llm_msgs = [
-                LLMMessage(role=m["role"], content=m.get("content") or "")
-                for m in window
-            ]
+            # Build window ensuring tool messages always follow their tool_calls
+            # Important: keep survey/generate_ideas results pinned so LLM never loses them
+            _PINNED_TOOLS = {"survey", "generate_ideas", "make_metric_spec"}
+            def _build_safe_window(msgs: list, keep_tail: int = 20) -> list:
+                """Keep system+first-user, pinned tool results, and recent tail.
+                Always preserves assistant/tool message pairs."""
+                def _validate_pairs(lst):
+                    """Drop assistant/tool messages without COMPLETE paired counterparts.
+                    ALL tool_call IDs in an assistant message must have responses (subset check)."""
+                    all_fulfilled: set = set()
+                    for m in lst:
+                        if m.get("role") == "tool" and m.get("tool_call_id"):
+                            all_fulfilled.add(m["tool_call_id"])
+                    valid_assistant_tc_ids: set = set()
+                    out = []
+                    for m in lst:
+                        if m.get("role") == "assistant" and m.get("tool_calls"):
+                            tc_ids = {tc["id"] for tc in m["tool_calls"]}
+                            if tc_ids <= all_fulfilled:  # ALL must be fulfilled
+                                valid_assistant_tc_ids |= tc_ids
+                                out.append(m)
+                            # else: partial/no match — drop entire assistant message
+                        elif m.get("role") == "tool":
+                            if m.get("tool_call_id") in valid_assistant_tc_ids:
+                                out.append(m)
+                            # else: orphaned tool message — drop
+                        else:
+                            out.append(m)
+                    return out
+
+                if len(msgs) <= keep_tail + 4:
+                    return _validate_pairs(msgs)
+                head = msgs[:2]
+                pinned = []
+                for i, m in enumerate(msgs[2:], start=2):
+                    if m.get("role") == "assistant" and m.get("tool_calls"):
+                        names = {tc.get("function", {}).get("name") for tc in m["tool_calls"]}
+                        if names & _PINNED_TOOLS:
+                            pinned.append(m)
+                            tc_ids = {tc["id"] for tc in m["tool_calls"]}
+                            for j in range(i + 1, min(i + 4, len(msgs))):
+                                nm = msgs[j]
+                                if nm.get("role") == "tool" and nm.get("tool_call_id") in tc_ids:
+                                    pinned.append(nm)
+                # Expand tail: if it starts with a tool message, include preceding assistant
+                tail = list(msgs[-keep_tail:])
+                if tail and tail[0].get("role") == "tool":
+                    tid = tail[0].get("tool_call_id")
+                    for m in reversed(msgs[:-keep_tail]):
+                        if m.get("role") == "assistant" and m.get("tool_calls"):
+                            if any(tc["id"] == tid for tc in m["tool_calls"]):
+                                tail = [m] + tail
+                                break
+                combined = head + pinned + tail
+                # Deduplicate by object identity position
+                msg_positions = {id(m): i for i, m in enumerate(msgs)}
+                seen_pos, deduped = set(), []
+                for m in combined:
+                    pos = msg_positions.get(id(m), -1)
+                    if pos not in seen_pos:
+                        seen_pos.add(pos)
+                        deduped.append(m)
+                return _validate_pairs(deduped)
+            window = _build_safe_window(messages)
+            # Validate message ordering before sending to LLM
+            _prev_was_tc = False
+            _pending_tc_ids: set = set()
+            for _wm in window:
+                _wr = _wm.get("role")
+                if _wr == "assistant" and _wm.get("tool_calls"):
+                    _pending_tc_ids = {tc["id"] for tc in _wm["tool_calls"]}
+                    _prev_was_tc = True
+                elif _wr == "tool":
+                    if not _pending_tc_ids or _wm.get("tool_call_id") not in _pending_tc_ids:
+                        logger.error(
+                            "Node %s step %d: orphan tool message tool_call_id=%r "
+                            "pending_tc_ids=%r — dropping window tail to recover",
+                            node.id, step, _wm.get("tool_call_id"), _pending_tc_ids
+                        )
+                        # Emergency: truncate window to exclude orphan tool messages
+                        _safe_idx = window.index(_wm)
+                        window = window[:max(2, _safe_idx - 1)]
+                        break
+                    _pending_tc_ids.discard(_wm.get("tool_call_id"))
+                    if not _pending_tc_ids:
+                        _prev_was_tc = False
+                else:
+                    _pending_tc_ids = set()
+                    _prev_was_tc = False
+            # Pass window as raw dicts to preserve tool_calls/tool_call_id fields
+            llm_msgs = window
             effective_tools = active if active is not None else tools
-            # force_finish phase (effective_tools=None): JSON output is allowed
-            response = self.llm.complete(llm_msgs, tools=effective_tools, require_tool=(effective_tools is not None))
+            # force_finish: active=None → effective_tools=tools but require_tool=False
+            response = self.llm.complete(llm_msgs, tools=effective_tools, require_tool=(active is not None))
 
             if response.tool_calls:
                 # Reject tool calls outside of active_tools
@@ -429,6 +571,21 @@ class AgentLoop:
                 for r in results:
                     rc = json.dumps(r["result"], ensure_ascii=False)
                     logger.info("Tool call: %s -> %s", r["name"], rc[:200])
+                    print(f"[TOOL] {r['name']}", flush=True)
+                    # Record in node trace for viz
+                    if hasattr(node, "trace_log"):
+                        _args_preview = str(tc.get("function", {}).get("arguments", ""))[:120]
+                        _res_preview = str(r.get("result", ""))[:200]
+                        node.trace_log.append(f"→ {r['name']}({_args_preview})")
+                        if _res_preview:
+                            node.trace_log.append(f"  ← {_res_preview}")
+                    # Record in node trace for viz
+                    if hasattr(node, "trace_log"):
+                        _args_preview = str(tc.get("function", {}).get("arguments", ""))[:120]
+                        _res_preview = str(r.get("result", ""))[:200]
+                        node.trace_log.append(f"→ {r['name']}({_args_preview})")
+                        if _res_preview:
+                            node.trace_log.append(f"  ← {_res_preview}")
                     try:
                         self.mcp.call_tool("add_memory", {
                             "node_id": node.id,
@@ -478,12 +635,60 @@ class AgentLoop:
                     # job_status COMPLETED + stdout present → actual measurement flag
                     if r["name"] == self.hints.job_reader_tool:
                         try:
-                            jr = json.loads(r["result"]) if isinstance(r["result"], str) else r["result"]
-                            inner = json.loads(jr.get("result","{}")) if isinstance(jr.get("result"), str) else jr.get("result",{})
-                            if inner.get("status") == "COMPLETED" and inner.get("stdout"):
-                                self._slurm_real_stdout = inner["stdout"]
+                            _raw_r = r["result"]
+                            if isinstance(_raw_r, str):
+                                _raw_r = json.loads(_raw_r)
+                            _inner_r = (_raw_r.get("result") or _raw_r) if isinstance(_raw_r, dict) else {}
+                            if isinstance(_inner_r, str):
+                                _inner_r = json.loads(_inner_r)
+                            _stdout_r = ""
+                            if isinstance(_inner_r, dict):
+                                if _inner_r.get("status") == "COMPLETED":
+                                    _stdout_r = _inner_r.get("stdout", "")   # SLURM format
+                                elif "stdout" in _inner_r:
+                                    _stdout_r = _inner_r.get("stdout", "")   # run_bash format
+                            if _stdout_r.strip():
+                                self._slurm_real_stdout = _stdout_r.strip()
                         except Exception:
                             pass
+
+                    # generate_ideas call: capture primary_metric and higher_is_better
+                    if r["name"] == "generate_ideas":
+                        try:
+                            idea_raw = r["result"]
+                            if isinstance(idea_raw, str):
+                                import re as _re_gi
+                                _m = _re_gi.search(r"\{.*\}", idea_raw, _re_gi.DOTALL)
+                                idea_data = json.loads(_m.group(0)) if _m else {}
+                            else:
+                                idea_data = idea_raw if isinstance(idea_raw, dict) else {}
+                            if isinstance(idea_data, dict) and "result" in idea_data:
+                                _inner = idea_data["result"]
+                                idea_data = json.loads(_inner) if isinstance(_inner, str) else _inner
+                            pm = idea_data.get("primary_metric", "")
+                            hib = idea_data.get("higher_is_better", True)
+                            mr = idea_data.get("metric_rationale", "")
+                            if pm:
+                                # Persist to memory so pipeline.py can read it
+                                try:
+                                    self.memory.write(
+                                        f"EVALUATION_CRITERIA: primary_metric={pm} higher_is_better={hib} rationale={mr}",
+                                        metadata={"type": "evaluation_criteria", "node_id": node.id}
+                                    )
+                                except Exception as _me:
+                                    logger.warning("Failed to save evaluation criteria to memory: %s", _me)
+                                # Also update metric_extractor for this run
+                                import re as _re_pm
+                                _pat_pm = _re_pm.compile(
+                                    rf"{_re_pm.escape(pm)}[\s:=]+(\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)",
+                                    _re_pm.IGNORECASE
+                                )
+                                self.hints.metric_extractor = (
+                                    lambda text, p=_pat_pm: [float(x) for x in p.findall(text)]
+                                )
+                                logger.info("generate_ideas set primary_metric=%s higher_is_better=%s", pm, hib)
+                        except Exception as _gie:
+                            logger.warning("generate_ideas result parse failed: %s", _gie)
 
                     # make_metric_spec call: self-determine evaluation criteria
                     if r["name"] == "make_metric_spec":
@@ -508,9 +713,9 @@ class AgentLoop:
                                 _art_pat = _re_art.compile(rf"{kw or 'metric'}[:\s=]+([\d.]+)", _re_art.IGNORECASE) if kw else None
                                 def _dyn_extractor(text: str, p=_art_pat) -> dict:
                                     if p is None:
-                                        nums = [float(x) for x in _re_art.findall(r"\b(\d+\.\d+|\d{{4,}})\b", text) if float(x) >= 1.0]
-                                        return {{"result_" + str(i): v for i, v in enumerate(nums[:20])}}
-                                    return {{f"{kw}_{{i}}": float(x) for i, x in enumerate(p.findall(text))}}
+                                        nums = [float(x) for x in _re_art.findall(r"\b(\d+\.\d+|\d{4,})\b", text) if float(x) >= 1.0]
+                                        return {"result_" + str(i): v for i, v in enumerate(nums[:20])}
+                                    return {f"{kw}_{i}": float(x) for i, x in enumerate(p.findall(text))}
                                 self.evaluator.metric_spec = MetricSpec(
                                     name=f"self-determined: {kw or 'generic'}",
                                     expected_metrics=expected,
@@ -528,12 +733,24 @@ class AgentLoop:
                     # treat as having read experiment output and set exec_called = True
                     if r["name"] == self.hints.job_status_tool:
                         try:
-                            _js = json.loads(r["result"]) if isinstance(r["result"], str) else r["result"]
+                            _raw = r["result"]
+                            # result may be dict, or JSON string, or JSON string containing another JSON string
+                            if isinstance(_raw, str):
+                                _raw = json.loads(_raw)
+                            # _raw may now be {"result": "{...}"} or the inner dict directly
+                            if isinstance(_raw, dict) and "result" in _raw and isinstance(_raw["result"], str):
+                                _js = json.loads(_raw["result"])
+                            elif isinstance(_raw, dict):
+                                _js = _raw
+                            else:
+                                _js = {}
                             if isinstance(_js, dict) and _js.get("status") == "COMPLETED" and _js.get("stdout", "").strip():
                                 exec_called = True
-                                logger.info("job_status stdout available → exec_called=True (no run_bash needed)")
-                        except Exception:
-                            pass
+                                _stdout_content = _js["stdout"].strip()
+                                tool_outputs.append(f"stdout:\n{_stdout_content[:2000]}")
+                                logger.info("job_status stdout available → exec_called=True, tool_outputs updated (%d chars)", len(_stdout_content))
+                        except Exception as _jse:
+                            logger.debug("job_status parse failed: %s", _jse)
 
                     if r["name"] in ("run_bash", "run_code"):
                         exec_called = True
@@ -555,6 +772,19 @@ class AgentLoop:
                                 sbatch_jid = sbatch_match.group(1)
                                 logger.info("Detected sbatch job %s from run_bash stdout", sbatch_jid)
                                 # add a dummy record for polling keyed by job_id_key
+                                # OpenAI requires assistant tool_calls before tool message
+                                messages.append({
+                                    "role": "assistant",
+                                    "content": None,
+                                    "tool_calls": [{
+                                        "id": f"sbatch_inject_{sbatch_jid}",
+                                        "type": "function",
+                                        "function": {
+                                            "name": "slurm_submit",
+                                            "arguments": json.dumps({"job_id": sbatch_jid}),
+                                        },
+                                    }],
+                                })
                                 messages.append({
                                     "role": "tool",
                                     "tool_call_id": f"sbatch_inject_{sbatch_jid}",
@@ -571,13 +801,21 @@ class AgentLoop:
 
                 # job_status is RUNNING/PENDING → poll directly without consuming an LLM step
                 logger.debug("Auto-poll check: last=%r poller=%r job_ids=%r has_results=%s", last, self.hints.job_poller_tool, job_ids, bool(results))
-                if last == self.hints.job_poller_tool and job_ids and results:
+                # Auto-poll fires after job_status OR slurm_submit (agent skips manual polling)
+                _should_autopoll = (
+                    (last == self.hints.job_poller_tool or last == self.hints.job_submitter_tool)
+                    and job_ids and results
+                )
+                if _should_autopoll:
                     try:
                         import time as _time
                         _res = results[-1]["result"]
                         if isinstance(_res, str):
                             _res = json.loads(_res)
                         last_status = _res.get("status", "") if isinstance(_res, dict) else ""
+                        # After slurm_submit, status is not yet known → seed with PENDING
+                        if last == self.hints.job_submitter_tool:
+                            last_status = "PENDING"
                         poll_count = 0
                         while last_status in ("RUNNING", "PENDING", "CONFIGURING") and poll_count < 60:
                             _time.sleep(30)
@@ -593,6 +831,19 @@ class AgentLoop:
                             poll_results = self._execute_tool_calls(poll_tc)
                             rc2 = json.dumps(poll_results[0]["result"], ensure_ascii=False)
                             logger.info("Auto-poll job %s: %s", job_ids[-1], rc2[:100])
+                            # OpenAI requires tool message to follow assistant message with tool_calls
+                            messages.append({
+                                "role": "assistant",
+                                "content": None,
+                                "tool_calls": [{
+                                    "id": f"autopoll_{poll_count}",
+                                    "type": "function",
+                                    "function": {
+                                        "name": self.hints.job_poller_tool,
+                                        "arguments": json.dumps({"job_id": job_ids[-1]}),
+                                    },
+                                }],
+                            })
                             messages.append({
                                 "role": "tool",
                                 "tool_call_id": f"autopoll_{poll_count}",
@@ -687,6 +938,16 @@ class AgentLoop:
                                         node.has_real_data)
                         except Exception as e:
                             logger.warning("Node %s: evaluator failed: %s", node.id, e)
+                    # Save a clean result summary for child nodes to inherit
+                    try:
+                        metrics_str = ", ".join(f"{k}={v}" for k, v in node.metrics.items()) if node.metrics else "(no metrics)"
+                        self.mcp.call_tool("add_memory", {
+                            "node_id": node.id,
+                            "text": f"RESULT SUMMARY node={node.id} label={node.label}: metrics=[{metrics_str}] summary={summary[:300]}",
+                            "metadata": {"type": "result_summary", "metrics": node.metrics},
+                        })
+                    except Exception:
+                        pass
                     node.mark_success(artifacts=artifacts, eval_summary=summary)
                     return node
 
@@ -718,6 +979,15 @@ class AgentLoop:
             if force_finish:
                 # if actual SLURM stdout is available, use it as artifacts
                 if self._slurm_real_stdout:
+                    try:
+                        _ms = ", ".join(f"{k}={v}" for k, v in node.metrics.items()) if node.metrics else "(no metrics)"
+                        self.mcp.call_tool("add_memory", {
+                            "node_id": node.id,
+                            "text": f"RESULT SUMMARY node={node.id} label={node.label}: metrics=[{_ms}] stdout={self._slurm_real_stdout[:300]}",
+                            "metadata": {"type": "result_summary", "metrics": node.metrics},
+                        })
+                    except Exception:
+                        pass
                     node.mark_success(
                         artifacts=[{"type": "result", "stdout": self._slurm_real_stdout}],
                         eval_summary=self._slurm_real_stdout[:500],
@@ -727,6 +997,15 @@ class AgentLoop:
                     return node
                 if exec_called and tool_outputs:
                     summary = "\n".join(tool_outputs[-3:])
+                    try:
+                        _ms = ", ".join(f"{k}={v}" for k, v in node.metrics.items()) if node.metrics else "(no metrics)"
+                        self.mcp.call_tool("add_memory", {
+                            "node_id": node.id,
+                            "text": f"RESULT SUMMARY node={node.id} label={node.label}: metrics=[{_ms}] summary={summary[:300]}",
+                            "metadata": {"type": "result_summary", "metrics": node.metrics},
+                        })
+                    except Exception:
+                        pass
                     node.mark_success(
                         artifacts=[{"type": "result", "stdout": summary}],
                         eval_summary=summary,
@@ -749,6 +1028,30 @@ class AgentLoop:
 
         if exec_called and tool_outputs:
             summary = "\n".join(tool_outputs[-3:])
+            # Run evaluator on forced-success path too
+            if self.evaluator is not None:
+                try:
+                    _artifacts = [{"type": "result", "stdout": summary}]
+                    eval_result = self.evaluator.evaluate_sync(
+                        goal=experiment.get("goal", "")[:500] if isinstance(experiment, dict) else str(experiment)[:500],
+                        artifacts=_artifacts,
+                        summary=summary,
+                    )
+                    node.metrics = eval_result.get("metrics", {})
+                    node.has_real_data = bool(eval_result.get("has_real_data", False))
+                    if eval_result.get("reason"):
+                        summary = eval_result["reason"]
+                except Exception as _e:
+                    logger.warning("Node %s: evaluator failed on forced path: %s", node.id, _e)
+            try:
+                _ms = ", ".join(f"{k}={v}" for k, v in node.metrics.items()) if node.metrics else "(no metrics)"
+                self.mcp.call_tool("add_memory", {
+                    "node_id": node.id,
+                    "text": f"RESULT SUMMARY node={node.id} label={node.label}: metrics=[{_ms}] summary={summary[:300]}",
+                    "metadata": {"type": "result_summary", "metrics": node.metrics},
+                })
+            except Exception:
+                pass
             node.mark_success(
                 artifacts=[{"type": "result", "stdout": summary}],
                 eval_summary=summary,

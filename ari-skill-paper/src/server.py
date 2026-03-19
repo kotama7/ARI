@@ -297,42 +297,33 @@ async def compile_paper(tex_dir: str, main_file: str = "main.tex") -> dict:
         return {"success": False, "pdf_path": "", "log": f"File not found: {main}"}
 
     try:
-        for _ in range(2):
-            result = await asyncio.to_thread(
-                subprocess.run,
-                ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", main_file],
-                cwd=str(tex_path),
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-
+        # pdflatex -> bibtex -> pdflatex -> pdflatex (standard 4-pass sequence)
+        result = await asyncio.to_thread(
+            subprocess.run,
+            ["pdflatex", "-interaction=nonstopmode", main_file],
+            cwd=str(tex_path), capture_output=True, text=True, timeout=120,
+        )
         await asyncio.to_thread(
             subprocess.run,
             ["bibtex", main_file.replace(".tex", "")],
-            cwd=str(tex_path),
-            capture_output=True,
-            text=True,
-            timeout=60,
+            cwd=str(tex_path), capture_output=True, text=True, timeout=60,
         )
-
-        result = await asyncio.to_thread(
-            subprocess.run,
-            ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", main_file],
-            cwd=str(tex_path),
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
+        for _ in range(2):
+            result = await asyncio.to_thread(
+                subprocess.run,
+                ["pdflatex", "-interaction=nonstopmode", main_file],
+                cwd=str(tex_path), capture_output=True, text=True, timeout=120,
+            )
 
         pdf_name = main_file.replace(".tex", ".pdf")
         pdf_path = tex_path / pdf_name
-        success = pdf_path.is_file() and result.returncode == 0
+        # Consider success if PDF exists with content (>1KB), even if returncode != 0 (warnings are OK)
+        pdf_ok = pdf_path.is_file() and pdf_path.stat().st_size > 1024
         log_output = result.stdout[-3000:] if len(result.stdout) > 3000 else result.stdout
 
         return {
-            "success": success,
-            "pdf_path": str(pdf_path) if success else "",
+            "success": pdf_ok,
+            "pdf_path": str(pdf_path) if pdf_ok else "",
             "log": log_output,
         }
     except subprocess.TimeoutExpired:
@@ -1290,6 +1281,13 @@ async def write_paper_iterative(
                 _pdf_dest = Path(_ckpt_dir) / "full_paper.pdf"
                 _shutil.copy2(str(_pdf_in_tmp), str(_pdf_dest))
                 log.info("Copied compiled PDF to %s", _pdf_dest)
+                # Also copy .tex and .bbl so skip_if_exists works and citations are visible
+                _tex_in_tmp = Path(_tmpdir) / "full_paper.tex"
+                _bbl_in_tmp = Path(_tmpdir) / "full_paper.bbl"
+                if _tex_in_tmp.exists():
+                    _shutil.copy2(str(_tex_in_tmp), str(Path(_ckpt_dir) / "full_paper.tex"))
+                if _bbl_in_tmp.exists():
+                    _shutil.copy2(str(_bbl_in_tmp), str(Path(_ckpt_dir) / "full_paper.bbl"))
         # ── AI Scientist v2-style evaluation: check compile quality ──────────────────
         _bbl_path = Path(_tmpdir) / "full_paper.bbl"
         _log_path = Path(_tmpdir) / "full_paper.log"
@@ -1371,7 +1369,7 @@ async def write_paper_iterative(
 
     except Exception as _ewpi:
         # Write traceback to file (bypasses stdio capture in MCP server)
-        _tb_file = "str(Path(__file__).parents[3] / "logs" / "ari_wpi_traceback.txt")"
+        _tb_file = str(Path(__file__).parents[3] / "logs" / "ari_wpi_traceback.txt")
         try:
             with open(_tb_file, "w") as _f:
                 _f.write(_tb_wpi.format_exc())

@@ -159,3 +159,23 @@ ls ~/ARI/logs/<checkpoint_dir>/
 | `plot-skill` | `generate_figures`, `generate_figures_llm` | matplotlib/seaborn 図生成 |
 | `paper-re-skill` | `reproduce_from_paper`, `extract_metric_from_output` | 再現性検証 |
 | `idea-skill` | `survey`, `generate_ideas` | アイデア生成 |
+
+## 8. 実験モニタ（Experiment Monitor）
+
+実験の進行をリアルタイムで可視化できます：
+
+```bash
+ari viz --checkpoint logs/<ckpt_dir> --port 9878
+```
+
+ブラウザで `http://localhost:9878` を開くと：
+
+- **実験ツリー** — BFTSノードが木構造で表示されます（成功🟢 / 失敗🔴 / 実行中🔵 / 待機⚪）
+- **ノード詳細** — ノードをクリックすると4タブのパネルが開きます
+  - **Overview** — ステータス・メトリクス・評価サマリ
+  - **Trace** — エージェントが実行したMCPツール呼び出しの全履歴
+  - **Code** — 生成されたソースコード
+  - **Output** — ジョブの標準出力・ベンチマーク結果
+- **ベストスコア** — 画面下部に現在の最高メトリクス値を常時表示
+
+複数実験を並行モニタする場合はポートを変えてください（例: `--port 9879`）。
