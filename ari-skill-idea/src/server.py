@@ -107,6 +107,24 @@ def _s2_search(query: str, limit: int = 8) -> list[dict]:
     except Exception:
         return []
 
+def _s2_citations(paper_id: str, limit: int = 5) -> list[dict]:
+    """Retrieve citing papers from Semantic Scholar citation graph (2-hop traversal)."""
+    headers = {}
+    if key := _s2_api_key():
+        headers["x-api-key"] = key
+    try:
+        r = requests.get(
+            f"{S2_BASE}/paper/{paper_id}/citations",
+            params={"limit": limit, "fields": S2_FIELDS},
+            headers=headers, timeout=10,
+        )
+        r.raise_for_status()
+        items = r.json().get("data", [])
+        return [item.get("citingPaper", {}) for item in items]
+    except Exception:
+        return []
+
+
 def _format_references(papers: list[dict]) -> str:
     """Format papers as VirSci-style reference text."""
     lines = []
@@ -262,6 +280,24 @@ def survey(topic: str, max_papers: int = 8) -> dict:
             "paperId": pid,
             "url": f"https://www.semanticscholar.org/paper/{pid}" if pid else "",
         })
+
+    # Enrich with citation graph: fetch citing papers for top 3 results (2-hop traversal)
+    for p in papers[:3]:
+        if p.get("paperId"):
+            cites = _s2_citations(p["paperId"], limit=3)
+            for c in cites:
+                ctitle = c.get("title") or ""
+                if ctitle and ctitle not in seen:
+                    seen.add(ctitle)
+                    cpid = c.get("paperId", "")
+                    papers.append({
+                        "title": ctitle,
+                        "abstract": (c.get("abstract") or "")[:1000],
+                        "year": c.get("year"),
+                        "citationCount": c.get("citationCount", 0),
+                        "paperId": cpid,
+                        "url": f"https://www.semanticscholar.org/paper/{cpid}" if cpid else "",
+                    })
 
     return {"papers": papers[:max_papers]}
 

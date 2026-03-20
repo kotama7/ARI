@@ -32,7 +32,8 @@ MOCK_METRIC_JSON = json.dumps({
 
 class TestSurvey:
     def test_survey_returns_papers(self):
-        with patch("server._s2_search", return_value=MOCK_S2_RAW):
+        with patch("server._s2_search", return_value=MOCK_S2_RAW), \
+             patch("server._s2_citations", return_value=[]):
             import server
             result = server.survey("FP32 GEMM", max_papers=5)
         assert "papers" in result
@@ -41,7 +42,8 @@ class TestSurvey:
 
     def test_survey_respects_max_papers(self):
         large = [{"title": f"P{i}", "abstract": "", "year": 2020, "citationCount": i, "paperId": f"id{i}"} for i in range(20)]
-        with patch("server._s2_search", return_value=large):
+        with patch("server._s2_search", return_value=large), \
+             patch("server._s2_citations", return_value=[]):
             import server
             result = server.survey("topic", max_papers=5)
         assert len(result["papers"]) <= 5
@@ -72,11 +74,21 @@ class TestSurvey:
 
     def test_survey_deduplicates_titles(self):
         dupe = MOCK_S2_RAW + [{"title": "Fast Matrix Multiply", "abstract": "dup", "year": 2023, "citationCount": 1, "paperId": "dup1"}]
-        with patch("server._s2_search", return_value=dupe):
+        with patch("server._s2_search", return_value=dupe),              patch("server._s2_citations", return_value=[]):
             import server
             result = server.survey("topic", max_papers=10)
         titles = [p["title"] for p in result["papers"]]
         assert len(titles) == len(set(titles))
+
+    def test_survey_enriches_with_citations(self):
+        """Citation graph: survey() fetches citing papers for top results (2-hop)."""
+        cite_paper = {"title": "Citation Paper", "abstract": "Cited.", "year": 2024,
+                      "citationCount": 5, "paperId": "cite001"}
+        with patch("server._s2_search", return_value=MOCK_S2_RAW),              patch("server._s2_citations", return_value=[cite_paper]):
+            import server
+            result = server.survey("topic", max_papers=10)
+        titles = [p["title"] for p in result["papers"]]
+        assert "Citation Paper" in titles, "Citation graph papers should be included"
 
 
 class TestGenerateIdeas:
