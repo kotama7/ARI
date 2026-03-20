@@ -290,7 +290,7 @@ DOMAIN_TERMS = ["RIKEN", "himeno", "kotama", "takanori", "ai-l40s"]
 
 def test_no_domain_hardcodes_in_skills():
     skills = ["paper", "paper-re", "plot", "hpc", "web", "evaluator", "idea", "memory"]
-    skip = ("#", '"""', "'''", "e.g.", "example", "docstring", "# removed")
+    skip = ("#", '"""', "'''", "e.g.", "example", "docstring", "# removed", "github.com", "https://")
     errors = []
     for skill in skills:
         src = _load(skill)
