@@ -1,6 +1,16 @@
 """
 ari-skill-idea: VirSci-inspired multi-agent idea generation
 
+Attribution:
+    Architecture inspired by VirSci (Virtual Scientists), ACL 2025.
+    Su et al., "Many Heads Are Better Than One: Improved Scientific Idea Generation
+    by A LLM-Based Multi-Agent System", https://arxiv.org/abs/2410.09403
+    Original code: https://github.com/InternScience/Virtual-Scientists (Apache 2.0)
+
+    This is an independent reimplementation. No source code from VirSci was copied.
+    The Proposer/Critic/Synthesizer/DomainExpert roles and intra-team discussion
+    loop design are adapted from the VirSci paper architecture.
+
 Replaces single-agent idea generation with structured multi-agent deliberation:
   1. Semantic Scholar RAG - live paper retrieval
   2. Agent Team Builder  - assign Proposer/Critic/Synthesizer/Domain Expert roles
