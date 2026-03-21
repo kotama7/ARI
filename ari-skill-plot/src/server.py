@@ -115,7 +115,7 @@ async def generate_figures(
 
     def _snippet(name: str, caption: str) -> str:
         return (
-            f"\\begin{{figure}}[htbp]\n"
+            f"\\begin{{figure}}[H]\n"
             f"\\centering\n"
             f"\\includegraphics[width=0.85\\linewidth]{{{name}.pdf}}\n"
             f"\\caption{{{caption}}}\n"
@@ -283,21 +283,18 @@ async def generate_figures_llm(
     if science_data_path:
         try:
             sd = json.loads(Path(science_data_path).read_text())
-            metric_name = sd.get("metric_name", "metric")
-            configs = sd.get("configurations", [])
-            param_keys = list(configs[0]["parameters"].keys()) if configs else []
-            rows = [
-                {k: cfg["parameters"].get(k) for k in param_keys}
-                | {"rank": cfg["rank"], metric_name: round(list(cfg["metrics"].values())[0], 2)}
-                for cfg in configs[:12]
-            ]
+            # Pass the full science_data including experiment_context (LLM-extracted
+            # hardware, methodology, ablation findings, validated results).
+            # The figure-generation LLM decides what to plot based on this rich context.
             data_summary = json.dumps({
                 "experiment": experiment_summary[:300],
-                "metric": metric_name,
-                "parameter_axes": param_keys,
-                "top_configurations": rows,
-                "summary": sd.get("summary_stats", {}),
+                "configurations": sd.get("configurations", [])[:20],
+                "per_key_summary": sd.get("per_key_summary", {}),
+                "experiment_context": sd.get("experiment_context", {}),
+                "summary_stats": sd.get("summary_stats", {}),
             }, indent=2)
+            metric_name = ""
+            param_keys = []
         except Exception as _e:
             metric_name = "metric"
             param_keys = []
@@ -305,16 +302,22 @@ async def generate_figures_llm(
                             key=lambda n: max((v for v in n["metrics"].values() if isinstance(v, (int, float))), default=0),
                             reverse=True)
             data_summary = json.dumps({"experiment": experiment_summary[:300],
-                "configurations": [{"metric": round(max((v for v in n["metrics"].values() if isinstance(v, (int, float))), default=0), 1)} for n in rnodes[:12]]}, indent=2)
+                "configurations": [{"metrics": {k: v for k, v in n["metrics"].items() if isinstance(v, (int, float))}} for n in rnodes[:12]]}, indent=2)
     else:
         metric_name = "metric"
         param_keys = []
         rnodes = sorted(_real_nodes(nodes),
                         key=lambda n: max((v for v in n["metrics"].values() if isinstance(v, (int, float))), default=0),
                         reverse=True)
+        # Build rich data_summary: include all metrics per node (not just max)
         data_summary = json.dumps({
             "experiment": experiment_summary[:300],
-            "configurations": [{"metric": round(max((v for v in n["metrics"].values() if isinstance(v, (int, float))), default=0), 1)} for n in rnodes[:12]],
+            "configurations": [
+                {"metrics": {k: round(v, 3) if isinstance(v, float) else v
+                             for k, v in n["metrics"].items()
+                             if isinstance(v, (int, float))}}
+                for n in rnodes[:15]
+            ],
         }, indent=2)
 
     # Build suggested figures dynamically from data structure
@@ -329,16 +332,30 @@ async def generate_figures_llm(
         "(2) save figures as fig_1.pdf, fig_2.pdf, ... in output_dir, "
         "(3) at the very end print a JSON list: "
         '[{"name":"fig_1","path":"<full_path>","caption":"<caption>"},...]'
+        " CRITICAL REQUIREMENTS:\n"
+        " - Each figure must directly support a claim in the paper.\n"
+        " - Use ACTUAL metric names and numeric values from the data — no 'a.u.' units.\n"
+        " - Captions MUST be specific and descriptive. BAD: \"experimental results\". "
+        "   GOOD: \"GFLOP/s vs RHS width N (1–512) for CSR SpMM with Nb=64 on 192 threads; "
+        "   peak 699 GFLOP/s at N=64 (memory-bandwidth limited).\". "
+        "   Include: what metric, what x-axis, what experimental conditions, key quantitative finding.\n"
+        " - NEVER produce a 'ranked configurations' bar chart unless the paper explicitly "
+        "   compares ranked designs.\n"
+        " - Prefer: (a) line/scatter of throughput vs sweep parameter, "
+        "   (b) comparison bar with real metric labels, (c) scaling plot."
     )
     user_prompt = (
         f"Generate {n_figures} matplotlib figures from this HPC benchmark data.\n\n"
-        f"DATA:\n{data_summary}\n\n"
+        f"DATA (configurations with all metrics):\n{data_summary}\n\n"
         f"output_dir = {repr(str(out_dir))}\n\n"
-        "Suggested figures:\n"
-        f"RULES: Use only scientific terminology derived from the data. NO internal system terms.\n"
-        f"1. Bar chart: top-{min(n_figures*3, 10)} configurations ranked by {metric_name}\n"
-        f"2. {_axis2} (scatter or line)\n"
-        f"3. {_axis3} (boxplot or histogram)\n\n"
+        "REQUIRED figures (read the data carefully and choose the best representation):\n"
+        f"RULES: Use real metric names (GFLOP/s, GB/s, etc.) from the data as axis labels. "
+        "No 'a.u.', no 'Performance metric'. NO internal system terms.\n"
+        f"1. Primary performance plot: throughput (GFLOP/s or GB/s) vs the main sweep parameter "
+        f"   (e.g., N, threads) — use a line or scatter plot with labeled axes and units.\n"
+        f"2. {_axis2} — scatter or line plot with specific units from the data.\n"
+        f"3. Comparison or ablation: show effect of a design choice "
+        f"   (e.g., SIMD on/off, nnz/row, thread count) on throughput.\n\n"
     )
 
     # Unified LLM routing: ARI_LLM_MODEL > LLM_MODEL; ARI_LLM_API_BASE > LLM_API_BASE
@@ -492,12 +509,18 @@ async def generate_figures_llm(
         for item in fig_list:
             name = item.get("name", "fig")
             path = item.get("path", "")
-            caption = item.get("caption", "Experimental result figure.")
+            # Resolve to absolute path so downstream skills can find the file
+            # regardless of working directory
+            _p = Path(path)
+            if not _p.is_absolute():
+                _p = (out_dir / _p.name).resolve() if _p.name else Path(path).resolve()
+            path = str(_p)
+            caption = item.get("caption", "").strip()
             if Path(path).exists():
                 figures[name] = path
                 fname = Path(path).name
                 latex_snippets[name] = (
-                    f"\\begin{{figure}}[htbp]\n"
+                    f"\\begin{{figure}}[H]\n"
                     f"\\centering\n"
                     f"\\includegraphics[width=0.85\\linewidth]{{{fname}}}\n"
                     f"\\caption{{{caption}}}\n"
@@ -509,12 +532,12 @@ async def generate_figures_llm(
         if not figures:
             for pdf in sorted(out_dir.glob("fig_*.pdf")):
                 name = pdf.stem
-                figures[name] = str(pdf)
+                figures[name] = str(pdf.resolve())
                 latex_snippets[name] = (
-                    f"\\begin{{figure}}[htbp]\n"
+                    f"\\begin{{figure}}[H]\n"
                     f"\\centering\n"
                     f"\\includegraphics[width=0.85\\linewidth]{{{pdf.name}}}\n"
-                    f"\\caption{{Experimental result figure.}}\n"
+                    f"\\caption{{{metric_name} experimental results ({name})}}\n"
                     f"\\label{{fig:{name}}}\n"
                     f"\\end{{figure}}"
                 )

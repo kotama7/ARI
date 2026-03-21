@@ -5,10 +5,12 @@
 
   **A universal research automation system. Laptop to supercomputer. Local models to cloud APIs. Novice to expert. Computation to physical world.**
 
-  [![Tests](https://img.shields.io/badge/tests-105%20passed-brightgreen)](./ari-core)
+  [![Tests](https://img.shields.io/badge/tests-60%20passed-brightgreen)](./ari-core)
+  [![Version](https://img.shields.io/badge/version-v0.3.0-orange)](https://github.com/kotama7/ARI/releases)
   [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
   [![MCP](https://img.shields.io/badge/protocol-MCP-purple)](https://modelcontextprotocol.io)
   [![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
+  [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/SbMzNtYkq)
 </div>
 
 ---
@@ -187,3 +189,4 @@ ARI autonomously discovered optimal compiler flags for a stencil benchmark:
 ## License
 
 MIT. See [LICENSE](./LICENSE).
+

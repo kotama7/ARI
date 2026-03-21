@@ -68,7 +68,7 @@ def _api_base() -> str | None:
     return (ari if ari is not None else os.environ.get("LLM_API_BASE", "http://127.0.0.1:11434")) or None
 
 def _s2_api_key() -> str:
-    return os.environ.get("SEMANTIC_SCHOLAR_API_KEY", "")
+    return os.environ.get("SEMANTIC_SCHOLAR_API_KEY", "") or os.environ.get("S2_API_KEY", "")
 
 S2_BASE = "https://api.semanticscholar.org/graph/v1"
 S2_FIELDS = "title,abstract,year,citationCount,authors"
@@ -253,8 +253,15 @@ def survey(topic: str, max_papers: int = 8) -> dict:
 
     if not raw:
         try:
-            sch = SemanticScholar()
-            results = sch.search_paper(topic, limit=max_papers)
+            import signal
+            def _timeout_handler(s, f): raise TimeoutError("semanticscholar lib timeout")
+            signal.signal(signal.SIGALRM, _timeout_handler)
+            signal.alarm(10)
+            try:
+                sch = SemanticScholar()
+                results = sch.search_paper(topic, limit=max_papers)
+            finally:
+                signal.alarm(0)
             raw = [
                 {"title": p.title, "abstract": p.abstract or "",
                  "year": getattr(p, "year", None),

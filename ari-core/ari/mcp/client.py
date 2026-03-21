@@ -74,10 +74,33 @@ class _SkillConnection:
             self._session = None
 
     def _run(self, coro: Any) -> Any:
-        """Run a coroutine in a dedicated event loop (one per connection)."""
-        if self._loop is None or self._loop.is_closed():
-            self._loop = asyncio.new_event_loop()
-        return self._loop.run_until_complete(coro)
+        """Run a coroutine safely regardless of calling thread context.
+
+        When called from a thread that already has a running event loop
+        (e.g. asyncio executor thread), create a fresh loop in the current
+        thread to avoid 'This event loop is already running' errors.
+        """
+        import threading as _threading
+
+        # Check if there's already a running loop in the current thread
+        try:
+            running = asyncio.get_running_loop()
+        except RuntimeError:
+            running = None
+
+        if running is not None:
+            # We're inside a running loop (e.g. executor thread spawned by asyncio).
+            # Create a brand-new loop for this MCP call.
+            new_loop = asyncio.new_event_loop()
+            try:
+                return new_loop.run_until_complete(coro)
+            finally:
+                new_loop.close()
+        else:
+            # Normal sync context — use per-connection loop.
+            if self._loop is None or self._loop.is_closed():
+                self._loop = asyncio.new_event_loop()
+            return self._loop.run_until_complete(coro)
 
     def ensure_connected(self) -> None:
         if self._session is None:
@@ -124,6 +147,7 @@ class MCPClient:
     def __init__(self, skills: list[SkillConfig]) -> None:
         self.skills = skills
         self._connections: dict[str, _SkillConnection] = {}
+        self._conn_lock = __import__('threading').Lock()
         self._tool_registry: dict[str, str] = {}  # tool_name -> skill.name
         self._tools_cache: list[dict] | None = None
         atexit.register(self.close_all)
@@ -132,10 +156,11 @@ class MCPClient:
         return self._connections.get(skill_name)
 
     def _init_connection(self, skill: SkillConfig) -> _SkillConnection:
-        if skill.name not in self._connections:
-            conn = _SkillConnection(skill)
-            self._connections[skill.name] = conn
-        return self._connections[skill.name]
+        with self._conn_lock:
+            if skill.name not in self._connections:
+                conn = _SkillConnection(skill)
+                self._connections[skill.name] = conn
+            return self._connections[skill.name]
 
     def list_tools(self) -> list[dict]:
         """Return a list of all skill tools (connect and cache on first call)."""
