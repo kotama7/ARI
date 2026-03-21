@@ -108,6 +108,11 @@ async def extract_metric_from_output(output_text: str, metric_name: str) -> dict
             return res
     except Exception:
         pass
+    # Regex fallback: look for "METRIC: <number>" pattern in output
+    import re as _re_met
+    _m = _re_met.search(r"METRIC[:\s]+([0-9]+\.?[0-9]*(?:e[+-]?[0-9]+)?)", output_text, _re_met.IGNORECASE)
+    if _m:
+        return {"value": float(_m.group(1)), "unit": "", "raw_match": _m.group(0)}
     return {"value": None, "unit": "", "raw_match": "", "error": "extraction failed"}
 
 
@@ -179,7 +184,7 @@ async def reproduce_from_paper(
     try: config = json.loads(m.group(0))
     except Exception as e: return {"error": f"JSON parse: {e}", "verdict": "ERROR"}
 
-    threads     = int(config.get("threads", cpus))
+    threads     = int(config.get("threads", None) or cpus or 1)
     metric_name = config.get("metric_name", "metric")
     claimed_val = float(config.get("claimed_value", 0))
     description = config.get("description", "")
@@ -201,14 +206,16 @@ async def reproduce_from_paper(
     # Strip markdown fences
     mf = re.search(r"```(?:\w+)?\n(.*?)```", script_content, re.DOTALL)
     if mf: script_content = mf.group(1)
-    if not script_content.startswith("#!"): script_content = "#!/bin/bash\n" + script_content
+    # Do not inject shebang — LLM chose the language; trust its output
     Path(script_path).write_text(script_content)
+    # Make executable so any shebang line works (bash, python, etc.)
+    Path(script_path).chmod(0o755)
 
     # Submit / run
     try:
         if exe_kind == "local":
             with open(log_file, "w") as f:
-                subprocess.run(["bash", script_path], stdout=f, stderr=subprocess.STDOUT,
+                subprocess.run([script_path], stdout=f, stderr=subprocess.STDOUT,
                                timeout=timeout_minutes * 60)
             job_id = "local"
         else:

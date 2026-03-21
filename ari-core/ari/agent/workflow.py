@@ -66,6 +66,18 @@ def from_experiment_text(experiment_text: str) -> WorkflowHints:
 
     hints = WorkflowHints()
 
+    # Always set idea generation sequence (root node generates ideas before experimenting)
+    hints.tool_sequence = ["make_metric_spec", "survey", "generate_ideas", "run_bash", "slurm_submit", "job_status"]
+    hints.post_survey_hint = (
+        "First, call generate_ideas() once to propose novel research directions based on the survey results.\n"
+        "Then implement and run the experiment for the best idea:\n"
+        "1. Use run_bash() to write the complete implementation\n"
+        "2. Use slurm_submit() if SLURM is available, or run_bash() otherwise\n"
+        "3. Use job_status() to monitor if SLURM was used\n"
+        "4. Use run_bash() to read and report results\n"
+        "IMPORTANT: Write a fully working implementation that produces actual numeric results."
+    )
+
     # SLURM workflow detection — any HPC/cluster keyword triggers SLURM workflow
     slurm_keywords = ["slurm_submit", "sbatch", "partition:", "srun", "#slurm", "slurm"]
     if any(kw in text_lower for kw in slurm_keywords):
@@ -74,7 +86,8 @@ def from_experiment_text(experiment_text: str) -> WorkflowHints:
         hints.job_reader_tool = "run_bash"
         hints.tool_sequence = ["make_metric_spec", "survey", "generate_ideas", "run_bash", "slurm_submit", "job_status"]
         hints.post_survey_hint = (
-            "Now implement and run the experiment:\n"
+            "First, call generate_ideas() once to propose novel research directions based on the survey results.\n"
+            "Then implement and run the experiment for the best idea:\n"
             "1. Use run_bash() to write the complete implementation to a file in the work directory\n"
             "2. Use slurm_submit() to run it via SLURM\n"
             "3. Use job_status() to wait for completion\n"

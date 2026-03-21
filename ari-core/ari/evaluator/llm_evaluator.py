@@ -79,12 +79,21 @@ class LLMEvaluator:
     """
 
     BASE_SYSTEM = (
-        "You are a research data extractor.\n"
-        "Extract information from the experiment artifacts and return a JSON with:\n"
+        "You are a research data extractor AND a scientific peer reviewer.\n"
+        "Analyze the experiment artifacts and return a JSON with:\n"
         "  has_real_data: bool (true only if numeric measurements appear in artifacts)\n"
-        "  metrics: dict of extracted numeric values found in artifacts (e.g. {{\"MFLOPS_serial\": 7423.4}})\n"
-        "  reason: str (one sentence describing what was found or why has_real_data is false)\n"
-        "Do NOT assign a score. Do NOT judge success. Just extract what is there.\n"
+        "  metrics: dict of extracted numeric values (e.g. {{\"GFLOP_per_s\": 754.8}})\n"
+        "  reason: str (one sentence describing what was measured)\n"
+        "  scientific_score: float 0.0-1.0\n"
+        "    Judge scientific contribution as a peer reviewer would. "
+        "You decide what matters and how much. "
+        "Score 0.0 if no real measurements exist. "
+        "Score toward 1.0 as the work becomes more scientifically rigorous and publishable. "
+        "Consider factors such as: measurement validity, comparative evaluation, "
+        "systematic analysis, reproducibility, and clarity of contribution — "
+        "but weigh these as you see fit for the given experiment.\n"
+        "  scientific_score_rationale: str (your reasoning for the score)\n"
+        "  comparison_found: bool (true if results involve comparison with existing approaches)\n"
         "Return ONLY valid JSON, no markdown fences."
     )
 
@@ -188,9 +197,20 @@ class LLMEvaluator:
             extra_metrics = self.metric_spec.extract_from_artifacts(artifacts_text)
             extracted_metrics.update(extra_metrics)
 
+            # Add scientific_score and comparison_found to metrics so BFTS
+            # can use them as expansion signals (higher score = better node)
+            sci_score = float(data.get("scientific_score", 0.0))
+            comparison_found = bool(data.get("comparison_found", False))
+            if sci_score > 0:
+                extracted_metrics["_scientific_score"] = sci_score
+            if comparison_found:
+                extracted_metrics["_comparison_found"] = 1.0
+
             return {
                 "reason": str(data.get("reason", "")),
                 "has_real_data": bool(data.get("has_real_data", False)),
+                "scientific_score": sci_score,
+                "comparison_found": comparison_found,
                 "metrics": extracted_metrics,
             }
         except Exception as e:

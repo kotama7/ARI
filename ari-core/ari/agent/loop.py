@@ -43,7 +43,8 @@ RULES:
 - If `make_metric_spec` tool is available and this is a new experiment (not a continuation), call it early to self-determine evaluation criteria.
 - NEVER fabricate numeric values — only report values from actual tool outputs
 - When all experiments are done, return JSON: {{"status": "success", "metrics": {{...}}, "summary": "..."}}
-- Do NOT call gap_analysis or generate_hypothesis{extra}
+- Do NOT call gap_analysis or generate_hypothesis
+- Ensure your experiment is reproducible: capture whatever information would be needed for an independent researcher to reproduce your results and verify your findings{extra}
 """
 
 
@@ -108,8 +109,11 @@ class AgentLoop:
     # Tool filtering (derived from WorkflowHints)
     # ------------------------------------------------------------------
 
-    def _available_tools_openai(self) -> list[dict]:
-        """Return the MCP tool list in OpenAI function-calling format."""
+    def _available_tools_openai(self, suppress: set | None = None) -> list[dict]:
+        """Return the MCP tool list in OpenAI function-calling format.
+        suppress: set of tool names to exclude (e.g. already-called once-only tools).
+        """
+        suppress = suppress or set()
         return [
             {
                 "type": "function",
@@ -120,6 +124,7 @@ class AgentLoop:
                 },
             }
             for t in self.mcp.list_tools()
+            if t.get("name", "") not in suppress
         ]
 
     def _execute_tool_calls(self, tool_calls: list[dict]) -> list[dict]:
@@ -307,7 +312,7 @@ class AgentLoop:
             import os as _os_early
             _os_early.environ["ARI_WORK_DIR"] = _work_dir_early
             _os_early.makedirs(_work_dir_early, exist_ok=True)
-        tools = self._available_tools_openai()
+        tools = self._available_tools_openai(suppress=getattr(self, "_suppress_tools", set()))
         tool_names = [t["function"]["name"] for t in tools] if tools else []
         tool_desc = ", ".join(tool_names) if tool_names else "none"
         has_exec = any(n in ("run_bash", "run_code") for n in tool_names)
@@ -386,8 +391,10 @@ class AgentLoop:
         if node.depth > 0:
             if node.ancestor_ids:
                 try:
+                    # Use node's own goal as query so retrieved memories are relevant
+                    _mem_query = (node.eval_summary or self.experiment_goal or "experiment result")[:200]
                     mem_result = self.mcp.call_tool("search_memory", {
-                        "query": "survey knowledge actionable insights performance optimization result",
+                        "query": _mem_query,
                         "ancestor_ids": node.ancestor_ids,
                         "limit": 5,
                     })
@@ -445,6 +452,11 @@ class AgentLoop:
             # Build window ensuring tool messages always follow their tool_calls
             # Important: keep survey/generate_ideas results pinned so LLM never loses them
             _PINNED_TOOLS = {"survey", "generate_ideas", "make_metric_spec"}
+            # Suppress generate_ideas after first call to prevent looping
+            if getattr(self, "_ideas_generated", False):
+                _suppress_tools = {"generate_ideas"}
+            else:
+                _suppress_tools = set()
             def _build_safe_window(msgs: list, keep_tail: int = 20) -> list:
                 """Keep system+first-user, pinned tool results, and recent tail.
                 Always preserves assistant/tool message pairs."""
@@ -567,6 +579,11 @@ class AgentLoop:
                 })
 
                 results = self._execute_tool_calls(response.tool_calls)
+                # Build args lookup by tool name for trace logging
+                _tc_args_by_name = {
+                    tc.get("function", {}).get("name", ""): tc.get("function", {}).get("arguments", "")
+                    for tc in response.tool_calls
+                }
                 executed_names: list[str] = []
                 for r in results:
                     rc = json.dumps(r["result"], ensure_ascii=False)
@@ -574,14 +591,7 @@ class AgentLoop:
                     print(f"[TOOL] {r['name']}", flush=True)
                     # Record in node trace for viz
                     if hasattr(node, "trace_log"):
-                        _args_preview = str(tc.get("function", {}).get("arguments", ""))[:120]
-                        _res_preview = str(r.get("result", ""))[:200]
-                        node.trace_log.append(f"→ {r['name']}({_args_preview})")
-                        if _res_preview:
-                            node.trace_log.append(f"  ← {_res_preview}")
-                    # Record in node trace for viz
-                    if hasattr(node, "trace_log"):
-                        _args_preview = str(tc.get("function", {}).get("arguments", ""))[:120]
+                        _args_preview = str(_tc_args_by_name.get(r["name"], ""))[:120]
                         _res_preview = str(r.get("result", ""))[:200]
                         node.trace_log.append(f"→ {r['name']}({_args_preview})")
                         if _res_preview:
@@ -653,7 +663,10 @@ class AgentLoop:
                             pass
 
                     # generate_ideas call: capture primary_metric and higher_is_better
+                    # Track that generate_ideas was called to prevent repeated calls
                     if r["name"] == "generate_ideas":
+                        self._ideas_generated = True
+                        self._suppress_tools = {"generate_ideas"}
                         try:
                             idea_raw = r["result"]
                             if isinstance(idea_raw, str):
@@ -931,7 +944,14 @@ class AgentLoop:
                             )
                             node.metrics = eval_result.get("metrics", {})
                             node.has_real_data = bool(eval_result.get("has_real_data", False))
-                            node.eval_summary = eval_result.get("reason", "")
+                            # eval_summary = measurement reason + scientific score rationale
+                            # Both are passed to child nodes via expand() so BFTS can improve
+                            _reason = eval_result.get("reason", "")
+                            _sci_note = ""
+                            _sci_score = eval_result.get("scientific_score")
+                            if _sci_score is not None:
+                                _sci_note = f" [scientific_score={_sci_score:.2f}]"
+                            node.eval_summary = (_reason + _sci_note).strip()
                             logger.info("Node %s: eval metrics=%s has_real=%s",
                                         node.id,
                                         {k: v for k, v in list(node.metrics.items())[:4]},
