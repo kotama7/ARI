@@ -102,6 +102,20 @@ class LLMClient:
         _log = _logging.getLogger('ari.llm.client')
         _log.info("LLM response: tool_calls=%s content_preview=%r",
                   bool(tool_calls), (message.content or "")[:100])
+        # ── Cost tracking ────────────────────────────────────────────────
+        if usage:
+            try:
+                from ari import cost_tracker as _ct
+                _ct.record(
+                    model=kwargs.get("model", self._model_name()),
+                    prompt_tokens=usage["prompt_tokens"],
+                    completion_tokens=usage["completion_tokens"],
+                    phase=str(getattr(self, "_phase", "")),
+                    skill=str(getattr(self, "_skill", "")),
+                    node_id=str(getattr(self, "_node_id", "")),
+                )
+            except Exception:
+                pass
         return LLMResponse(
             content=message.content or "",
             tool_calls=tool_calls,

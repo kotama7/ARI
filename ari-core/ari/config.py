@@ -47,6 +47,8 @@ class ARIConfig(BaseModel):
     bfts: BFTSConfig = BFTSConfig()
     checkpoint: CheckpointConfig = CheckpointConfig()
     logging: LoggingConfig = LoggingConfig()
+    resources: dict = {}  # Generic resource config (cpus, timeout_minutes, etc.)
+    model_config = {"extra": "allow"}  # Accept unknown top-level keys
 
 
 def _resolve_env_vars(value: str) -> str:
@@ -72,6 +74,17 @@ def load_config(path: str) -> ARIConfig:
     with open(config_path) as f:
         raw = yaml.safe_load(f) or {}
     raw = _resolve_env_recursive(raw)
+    # Resolve {{ari_root}} in skill paths (and anywhere else in config)
+    _ari_root = os.environ.get("ARI_ROOT", str(Path(__file__).resolve().parents[2]))
+    def _resolve_ari_root(data):
+        if isinstance(data, dict):
+            return {k: _resolve_ari_root(v) for k, v in data.items()}
+        if isinstance(data, list):
+            return [_resolve_ari_root(item) for item in data]
+        if isinstance(data, str):
+            return data.replace("{{ari_root}}", _ari_root)
+        return data
+    raw = _resolve_ari_root(raw)
     if "skills" not in raw:
         cfg = ARIConfig(**{k: v for k, v in raw.items() if k in ARIConfig.model_fields})
         cfg.skills = _discover_skills()

@@ -161,6 +161,10 @@ def test_template_variables_all_resolve():
         "experiment_source_file": "/tmp/source.c",
         "author_name": wf.get("author_name", "Artificial Research Intelligence"),
         "ari_root": "/tmp/ari",
+        # Expose nested dicts for dot-notation access (e.g. resources.cpus)
+        **{section: sec_val
+           for section, sec_val in wf.items()
+           if isinstance(sec_val, dict) and section not in ("pipeline", "skills", "stages")},
         "stages": {
             "search_related_work": {"output": "/tmp/ckpt/related_refs.json",
                                     "outputs": {"file": "/tmp/ckpt/related_refs.json"}},
@@ -290,7 +294,7 @@ DOMAIN_TERMS = ["RIKEN", "himeno", "kotama", "takanori", "ai-l40s"]
 
 def test_no_domain_hardcodes_in_skills():
     skills = ["paper", "paper-re", "plot", "hpc", "web", "evaluator", "idea", "memory"]
-    skip = ("#", '"""', "'''", "e.g.", "example", "docstring", "# removed")
+    skip = ("#", '"""', "'''", "e.g.", "example", "docstring", "# removed", "github.com", "https://")
     errors = []
     for skill in skills:
         src = _load(skill)

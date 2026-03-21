@@ -1,0 +1,3 @@
+[submodule "ari-skill-idea/vendor/virsci"]
+	path = ari-skill-idea/vendor/virsci
+	url = https://github.com/kotama7/Virtual-Scientists.git

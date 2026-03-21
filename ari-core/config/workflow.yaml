@@ -1,11 +1,21 @@
+llm:
+  backend: openai
+  model: gpt-5.2
+  base_url: ""
+
+resources:
+  cpus: 64           # Default CPU count for reproducibility experiments
+  timeout_minutes: 60 # Default job timeout
+
 author_name: Artificial Research Intelligence
 pipeline:
 - depends_on: []
   description: arXiv keyword search -> related_refs.json
   enabled: true
   inputs:
-    limit: 10
+    limit: 15
     query: '{{keywords}}'
+
   load_inputs: []
   outputs:
     file: '{{ckpt}}/related_refs.json'
@@ -14,10 +24,12 @@ pipeline:
   stage: search_related_work
   tool: search_semantic_scholar
 - depends_on: []
-  description: Strip BFTS internals -> science_data.json (safe for plot/paper skills)
+  description: LLM-powered experiment tree analysis -> science_data.json
   enabled: true
   inputs:
     nodes_json_path: '{{ckpt}}/nodes_tree.json'
+    llm_model: '{{llm.model}}'
+    llm_base_url: '{{llm.base_url}}'
   load_inputs: []
   outputs:
     file: '{{ckpt}}/science_data.json'
@@ -90,8 +102,8 @@ pipeline:
   enabled: true
   inputs:
     paper_path: '{{ckpt}}/full_paper.tex'
-    cpus: 64
-    timeout_minutes: 15
+    cpus: "{{resources.cpus}}"
+    timeout_minutes: "{{resources.timeout_minutes}}"
     tolerance_pct: 5.0
     work_dir: '{{ckpt}}/repro'
     # executor: resolved from ARI_EXECUTOR env (local/slurm/pbs/lsf)

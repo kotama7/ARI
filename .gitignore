@@ -67,3 +67,20 @@ audit_prompt.txt
 fix_*.py
 new_server.py
 
+
+# Reproducibility check outputs
+ari-core/repro_*/
+ari-core/work_dir/
+ari-core/out_*.csv
+ari-core/experiments/
+ari-core/checkpoints/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+.eggs/
+dist/
+build/
