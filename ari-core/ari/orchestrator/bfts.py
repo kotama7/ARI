@@ -102,6 +102,64 @@ class BFTS:
             return True
         return False
 
+
+    def select_best_to_expand(
+        self,
+        frontier: list[Node],
+        experiment_goal: str,
+        memory: "MemoryClient",
+    ) -> Node:
+        """Select the best completed node to expand next (true BFTS step).
+
+        Unlike select_next_node (which picks a node to *run*), this picks
+        which completed node is most worth *expanding* into children.
+        Nodes with higher scientific_score and stronger metrics are preferred.
+        """
+        if not frontier:
+            raise ValueError("No frontier nodes to select from")
+        if len(frontier) == 1:
+            return frontier[0]
+
+        candidate_descriptions = []
+        for i, node in enumerate(frontier):
+            metrics_str = (
+                json.dumps(node.metrics, ensure_ascii=False)
+                if node.metrics else "not_yet_measured"
+            )
+            desc = (
+                f"[{i}] id={node.id[-8:]}, depth={node.depth}, "
+                f"label={node.label.value if node.label else 'unknown'}, "
+                f"has_real_data={node.has_real_data}, "
+                f"metrics={metrics_str}, "
+                f"summary={repr((node.eval_summary or 'none')[:150])}"
+            )
+            candidate_descriptions.append(desc)
+
+        prompt = (
+            f"You are selecting which completed research node to expand next in a BFTS tree.\n\n"
+            f"Experiment goal: {experiment_goal}\n\n"
+            f"Completed nodes awaiting expansion:\n"
+            + "\n".join(candidate_descriptions)
+            + "\n\nSelect the single most promising node to expand. "
+            "Prefer nodes with high scientific_score, strong metrics, and unexplored directions. "
+            "Avoid nodes that have already been retried many times or are at excessive depth.\n"
+            "Reply with ONLY the index number (0-based)."
+        )
+
+        response = self.llm.complete([LLMMessage(role="user", content=prompt)])
+        try:
+            idx = int(response.content.strip())
+            if 0 <= idx < len(frontier):
+                return frontier[idx]
+        except (ValueError, AttributeError):
+            pass
+
+        # Fallback: pick by highest _scientific_score
+        return max(
+            frontier,
+            key=lambda n: float((n.metrics or {}).get("_scientific_score") or 0),
+        )
+
     def expand(self, node: Node, experiment_goal: str = "") -> list[Node]:
         """Expand a node and generate child nodes. Each child is assigned a label."""
         parent_status = "succeeded" if node.has_real_data else "failed/no-real-data"
@@ -113,13 +171,19 @@ class BFTS:
             label_hint = "Root node succeeded — suggest \"improve\", \"ablation\", and \"validation\" directions."
         else:
             label_hint = "Parent succeeded — prefer \"improve\", \"ablation\", or \"validation\"; use \"draft\" only for fundamentally new approaches."
+        sci_score = (node.metrics or {}).get("_scientific_score")
+        sci_note = (
+            f"Scientific quality score from peer review: {sci_score:.2f}/1.0\n"
+            if sci_score is not None else ""
+        )
         prompt = (
             f"You are expanding a BFTS research tree node.\n\n"
             f"{goal_line}"
             f"Parent node: id={node.id[-8:]}, depth={node.depth}, status={parent_status}\n"
             f"Parent metrics: {json.dumps(node.metrics, ensure_ascii=False)}\n"
-            f"Parent summary: {node.eval_summary or 'none'}\n\n"
-            f"{label_hint}\n\n"
+            f"Parent summary: {node.eval_summary or 'none'}\n"
+            f"{sci_note}"
+            f"\n{label_hint}\n\n"
             f"Suggest 2-3 child research directions. For each, assign a label from:\n"
             f"  draft      - new implementation from scratch\n"
             f"  improve    - improve parent results (tune flags/params)\n"

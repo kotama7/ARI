@@ -26,36 +26,37 @@ SECTION_PROMPTS = {
     "introduction": (
         "Write a LaTeX introduction section for an academic paper. "
         "Motivate the problem, state contributions, and outline the paper structure. "
-        "Cite 2-3 related papers using \\cite{key} where appropriate."
+        "Cite 2-3 related papers using \\cite{authorYYYYkeyword} — use ONLY keys from the provided refs_json. NEVER use \\cite{key} literally."
     ),
     "related_work": (
         "Write a LaTeX related work section for an academic paper. "
         "Categorize and discuss prior work, highlighting gaps this paper addresses. "
         "CRITICAL for citations: you will receive a list of references with EXACT cite keys. "
-        "Use ONLY those provided cite keys verbatim in \\cite{key} commands. "
+        "Use ONLY the exact cite keys from refs_json in \\cite{...} commands. NEVER invent cite keys or use \\cite{key} as a placeholder. "
         "Do NOT invent, modify, or reformat cite keys. "
         "Do NOT cite papers not in the provided list."
     ),
     "method": (
         "Write a LaTeX method/approach section for an academic paper. "
         "Describe the proposed approach with technical detail. "
-        "Cite relevant prior methods using \\cite{key} where appropriate."
+        "Cite relevant prior methods using ONLY exact keys from refs_json. NEVER use \\cite{key} as a placeholder."
     ),
     "experiment": (
         "Write a LaTeX experiments section for an academic paper. "
         "Present experimental setup, results, and analysis. "
+        "Do not omit or summarize any information provided in the context — use all of it as-is. "
         "CRITICAL for figures: the context provides available figures with filenames and captions. "
         "You MUST embed each figure at the most relevant location in the text using: "
-        "\\begin{figure}[htbp]\\centering\\includegraphics[width=0.85\\linewidth]{FILENAME}"
+        "\\begin{figure}[H]\\centering\\includegraphics[width=0.85\\linewidth]{FILENAME}"
         "\\caption{CAPTION}\\label{fig:N}\\end{figure}"
         " — do NOT place all figures at the end. Place each figure right after "  
         "the paragraph that first discusses its content. "
-        "Cite relevant papers using \\cite{key} where appropriate."
+        "Cite relevant papers using ONLY exact keys from refs_json. NEVER invent cite keys or use \\cite{key} as a placeholder."
     ),
     "conclusion": (
         "Write a LaTeX conclusion section for an academic paper. "
         "Summarize contributions, discuss limitations, and suggest future work. "
-        "Cite 1-2 papers for future work directions using \\cite{key}."
+        "Cite 1-2 papers for future work using ONLY exact keys from refs_json. NEVER use \\cite{key} as a placeholder."
     ),
     "abstract": (
         "Write a concise 150-250 word LaTeX abstract for an academic paper. "
@@ -235,9 +236,16 @@ async def generate_section(
                             _keys.append("  " + r"\cite{" + _k + "}  % " + _t)
                     if _keys:
                         _cite_hint = (
-                            "\n\nAVAILABLE CITE KEYS (use these verbatim in \\cite{{}} commands):\n"
+                            "\n\n══ CITATION RULES (STRICT) ══\n"
+                            "The following is the COMPLETE list of available cite keys.\n"
+                            "RULES:\n"
+                            "1. Use ONLY these exact keys in \\cite{{}} commands.\n"
+                            "2. NEVER invent, guess, or modify a cite key.\n"
+                            "3. NEVER write \\cite{{key}}, \\cite{{author2024}}, or any key not in this list.\n"
+                            "4. If you cannot find a matching key for a claim, omit the citation entirely.\n"
+                            "AVAILABLE KEYS:\n"
                             + "\n".join(_keys)
-                            + "\nYou MUST cite at least 3 of these papers using \\cite{{key}} where appropriate."
+                            + "\n══ END CITATION RULES ══"
                         )
             except Exception:
                 pass
@@ -749,8 +757,12 @@ def _build_latex_template(
     cite_list_str = ""
     if _bib_keys:
         cite_list_str = (
-            "% AVAILABLE CITE KEYS — use \\cite{key} for these:\n"
-            + "\n".join(f"% \\cite{{{k}}}  — {title[:80]}" for k, title in _bib_keys[:15])
+            "% ══ AVAILABLE CITE KEYS (EXHAUSTIVE LIST) ══\n"
+            "% YOU MUST USE ONLY THESE EXACT KEYS in \\cite{} commands.\n"
+            "% DO NOT invent, guess, or modify any cite key. DO NOT use \\cite{key}.\n"
+            "% If a fact has no matching key below, do NOT cite it — omit the citation entirely.\n"
+            + "\n".join(f"% \\cite{{{k}}}  — {title[:80]}" for k, title in _bib_keys[:20])
+            + "\n% ══ END OF AVAILABLE KEYS ══"
         )
 
     # Build figure environments for pre-placement
@@ -1067,18 +1079,42 @@ async def write_paper_iterative(
 
         # Build bib_content and key_list needed by _compile_in_tmpdir and return value
         bib_content, key_list = _build_bib_content(refs_json)
+        # Remove cite keys not in bib to prevent undefined citation errors
+        if bib_content:
+            full_latex = _strip_invalid_cite_keys(full_latex, bib_content)
 
                 # ─── Option C: post-assembly figure injection (if LLM didn't place inline)
-        if "\\includegraphics" not in full_latex and figures_manifest_json:
+        _has_bare_graphics = ("\\includegraphics" in full_latex and "\\begin{figure}" not in full_latex)
+        if ("\\includegraphics" not in full_latex or _has_bare_graphics) and figures_manifest_json:
             try:
-                import json as _jfig_c, os as _os_fig
+                import json as _jfig_c, os as _os_fig, re as _re_fig
                 _fmc = _jfig_c.loads(figures_manifest_json) if isinstance(figures_manifest_json, str) else figures_manifest_json
                 _figs_c = _fmc.get("figures", {}) if isinstance(_fmc, dict) else {}
-                if _figs_c:
+                _snips_c = _fmc.get("latex_snippets", {}) if isinstance(_fmc, dict) else {}
+                if _figs_c and _has_bare_graphics:
+                    # Direct replacement: wrap bare \includegraphics lines in figure environments
+                    import re as _bre
+                    def _wrap_inc(m):
+                        fname = m.group(1)
+                        key = _bre.sub(r"\.pdf$", "", fname)
+                        snip = _snips_c.get(key, "")
+                        if snip and "\\begin{figure}" in snip:
+                            return snip
+                        cap = f"Experimental result ({fname})"
+                        return (f"\\begin{{figure}}[htbp]\n\\centering\n"
+                                f"\\includegraphics[width=0.85\\linewidth]{{{fname}}}\n"
+                                f"\\caption{{{cap}}}\n\\label{{fig:{key}}}\n\\end{{figure}}")
+                    full_latex = _bre.sub(
+                        r"\\includegraphics\[[^\]]*\]\{([^}]+)\}",
+                        _wrap_inc, full_latex)
+                    log.info("Direct figure wrap: replaced bare \\includegraphics with figure environments")
+                if _figs_c and not _has_bare_graphics:
                     _fig_list = []
                     for _i, (_k, _fp) in enumerate(_figs_c.items(), 1):
                         _fn = _os_fig.path.basename(str(_fp))
-                        cap = _fmc.get("captions", {}).get(_k, f"Figure {_i}: performance results.")
+                        _snip = _snips_c.get(_k, "")
+                        _cap_m = _re_fig.search(r"\\caption\{([^}]+)\}", _snip)
+                        cap = _cap_m.group(1) if _cap_m else f"Figure {_i}: performance results."
                         _fig_list.append(f"Figure {_i}: file={_fn}, caption={cap!r}")
                     _fig_inject_prompt = (
                         "The paper below is missing all figure inclusions. "
@@ -1087,7 +1123,7 @@ async def write_paper_iterative(
                         "Each figure should appear right after the paragraph that discusses its content.\n\n"
                         "Available figures:\n" + "\n".join(_fig_list) + "\n\n"
                         "Use the LaTeX figure environment:\n"
-                        r"\begin{figure}[htbp]\centering\includegraphics[width=0.85\linewidth]{FILENAME}"
+                        r"\begin{figure}[H]\centering\includegraphics[width=0.85\linewidth]{FILENAME}"
                         "\n"
                         r"\caption{CAPTION}\label{fig:N}\end{figure}"
                         "\n\nReturn the COMPLETE revised LaTeX document in ```latex ... ``` fences."
@@ -1190,7 +1226,7 @@ async def write_paper_iterative(
         log.info("Initial compile: errors=%s bbl_ok=%s", _errs, _bbl_ok)
 
         # ── v2 reflection rounds (msg_history preserved) ──────────────────────────
-        _n_reflections = 5
+        _n_reflections = max(1, max_revision_rounds)  # from workflow.yaml max_revision_rounds
         for _ri in range(_n_reflections):
             # Build figure usage info (v2 style)
             import re as _re_fig, os as _os_fig
@@ -1245,6 +1281,8 @@ async def write_paper_iterative(
                     log.info("v2 reflection %d: LLM says done", _ri+1)
                     break
                 _new_latex = _extract_latex(_raw_r)
+                if _new_latex and bib_content:
+                    _new_latex = _strip_invalid_cite_keys(_new_latex, bib_content)
                 if _new_latex and len(_new_latex) > len(full_latex) * 0.7:
                     # v2 cleanup_map: fix common LLM LaTeX mistakes (from perform_writeup.py)
                     import re as _re_cleanup
@@ -1313,7 +1351,8 @@ async def write_paper_iterative(
         _shutil.rmtree(_tmpdir, ignore_errors=True)
 
         # Fallback: if LLM didn't embed figures, append them at end (suboptimal but safe)
-        if "\\includegraphics" not in full_latex and figures_manifest_json:
+        _has_bare_graphics = ("\\includegraphics" in full_latex and "\\begin{figure}" not in full_latex)
+        if ("\\includegraphics" not in full_latex or _has_bare_graphics) and figures_manifest_json:
             try:
                 import json as _jj3, os as _os4
                 _fm3 = _jj3.loads(figures_manifest_json) if isinstance(figures_manifest_json, str) else figures_manifest_json
@@ -1332,7 +1371,7 @@ async def write_paper_iterative(
                     for _i3, (_k3, _fp3) in enumerate(_figs3.items(), 1):
                         _fn3 = _os4.path.basename(str(_fp3))
                         _fblk += (
-                            "\n\\begin{figure}[htbp]\n"
+                            "\n\\begin{figure}[H]\n"
                             "  \\centering\n"
                             "  \\includegraphics[width=0.85\\linewidth]{" + _fn3 + "}\n"
                             "  \\caption{Figure " + str(_i3) + ": Performance results.}\n"
@@ -1463,12 +1502,19 @@ async def review_compiled_paper(
         try:
             figs_data = _json.loads(figures_manifest_json) if isinstance(figures_manifest_json, str) else figures_manifest_json
             raw = figs_data.get("figures", []) if isinstance(figs_data, dict) else []
-            figs_info = raw if isinstance(raw, list) else []
+            # figures can be a list of dicts OR a dict {name: path}
+            if isinstance(raw, list):
+                figs_info = raw
+            elif isinstance(raw, dict):
+                # Convert {name: path} dict → list of {name, path} dicts
+                figs_info = [{"name": k, "path": str(v)} for k, v in raw.items()]
+            else:
+                figs_info = []
         except Exception:
             pass
 
     # 4. Build review prompt (AI Scientist v2-style structured review)
-    snippet = review_text[:5000]
+    snippet = review_text[:12000]
     captions_str = "\n".join(f"- {c}" for c in captions[:8]) if captions else "(none extracted)"
     figs_str = "\n".join(
         f"- {f.get('path','?')}: {f.get('description','')[:100]}" for f in figs_info[:5]
@@ -1487,11 +1533,24 @@ async def review_compiled_paper(
         "  recommendations: list of strings (concrete improvements, max 5)\n"
         "No markdown, no explanation outside JSON."
     )
+    # Count \cite{} calls and .bbl entries for citation verification
+    import re as _re_rv, pathlib as _pl_rv
+    full_latex = _pl_rv.Path(tex_path).read_text(errors="ignore") if tex_path and _pl_rv.Path(tex_path).exists() else ""
+    _cite_count = len(_re_rv.findall(r"\\cite{", full_latex or snippet))
+    _bbl_path = _pl_rv.Path(pdf_path).with_suffix(".bbl") if pdf_path else None
+    _bbl_entries = 0
+    if _bbl_path and _bbl_path.exists():
+        _bbl_entries = _bbl_path.read_text(errors="ignore").count("\\bibitem")
+    _citation_note = (
+        f"LaTeX \\cite{{}} calls found: {_cite_count}; "
+        f"Bibliography entries (.bbl): {_bbl_entries}"
+    )
     review_user = (
         f"Experiment context: {experiment_summary[:500]}\n\n"
         f"Paper text (first 5000 chars):\n{snippet}\n\n"
         f"Figure captions found in LaTeX:\n{captions_str}\n\n"
-        f"Figures generated (manifest):\n{figs_str}"
+        f"Figures generated (manifest):\n{figs_str}\n\n"
+        f"Citation counts: {_citation_note}"
     )
     _kw: dict = {
         "model": _get_model(),
@@ -1520,6 +1579,32 @@ async def review_compiled_paper(
     return review
 
 
+
+def _strip_invalid_cite_keys(latex: str, bib_content: str) -> str:
+    """Remove cite keys not present in bib to prevent undefined citation warnings."""
+    import re as _rc
+    valid = set(_rc.findall(r"@\w+\{([^,\s]+)", bib_content))
+    if not valid:
+        return latex
+    def _filt(m):
+        keys = [k.strip() for k in m.group(1).split(",")]
+        good = [k for k in keys if k in valid]
+        return ("\\cite{" + ",".join(good) + "}") if good else ""
+    return _rc.sub(r"\\cite\{([^}]+)\}", _filt, latex)
+
+
+def _strip_fill_markers(latex: str) -> str:
+    """Remove FILL_*_START and FILL_*_END template markers left by LLM.
+
+    LLMs sometimes keep the marker tokens while inserting content between them.
+    This strips only the marker lines, preserving the content inside.
+    """
+    import re as _rem
+    # Remove lines that are exactly a FILL marker (with optional whitespace)
+    latex = _rem.sub(r"(?m)^[ \t]*FILL_[A-Z_]+_(START|END)[ \t]*\n?", "", latex)
+    return latex
+
+
 def _extract_latex(llm_response: str) -> str:
     """Extract LaTeX document from LLM response.
 
@@ -1533,8 +1618,10 @@ def _extract_latex(llm_response: str) -> str:
     # Find the end: \end{document}
     e = llm_response.rfind("\\end{document}")
     if e >= 0:
-        return llm_response[s:e + len("\\end{document}")]
-    return llm_response[s:]
+        result = llm_response[s:e + len("\\end{document}")]
+    else:
+        result = llm_response[s:]
+    return _strip_fill_markers(result)
 
 def main():
     mcp.run()

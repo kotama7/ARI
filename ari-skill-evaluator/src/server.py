@@ -11,11 +11,28 @@ server = Server("evaluator-skill")
 
 
 def _parse_success_metrics(text: str) -> list[str]:
-    """Extract metric names from the ## Success Metrics section (deterministic)."""
+    """Extract metric names from the experiment file (deterministic).
+    Supports:
+      - ## Success Metrics section with "- metric_name: ..."
+      - "Metrics: A, B, C" inline line
+      - "<!-- metric_keyword: FOO -->" HTML comment
+    """
+    # 1. ## Success Metrics section
     m = re.search(r"##\s*Success Metrics.*?\n(.*?)(?=\n##|\Z)", text, re.DOTALL | re.IGNORECASE)
-    if not m:
-        return []
-    return re.findall(r"-\s*(\w+)\s*:", m.group(1))
+    if m:
+        found = re.findall(r"-\s*(\w+)\s*:", m.group(1))
+        if found:
+            return found
+    # 2. "Metrics: A, B, C" inline
+    m2 = re.search(r"(?:^|\n)Metrics?:\s*([^\n]+)", text, re.IGNORECASE)
+    if m2:
+        raw = m2.group(1)
+        return [w.strip().strip("/") for w in re.split(r"[,;]", raw) if w.strip()]
+    # 3. metric_keyword comment
+    m3 = re.search(r"metric_keyword:\s*(\w+)", text)
+    if m3:
+        return [m3.group(1)]
+    return []
 
 
 def _parse_metric_keyword(text: str) -> str | None:
@@ -94,6 +111,44 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     expected_metrics = _parse_success_metrics(text)
     metric_keyword = _parse_metric_keyword(text)
     min_expected = _parse_min_expected(text)
+
+    # If the experiment file does not specify metrics, delegate to LLM
+    if not expected_metrics or not metric_keyword:
+        try:
+            import litellm as _litellm, os as _os
+            _model = _os.environ.get("ARI_MODEL", "gpt-4o-mini")
+            _resp = await _litellm.acompletion(
+                model=_model,
+                messages=[{
+                    "role": "system",
+                    "content": (
+                        "You are a research evaluation expert. "
+                        "Given an experiment description, identify: "
+                        "(1) the primary numeric metric to maximize/minimize (one short name, e.g. GFLOP_per_s), "
+                        "(2) whether higher is better, "
+                        "(3) a list of all relevant metric names the experiment should report. "
+                        "Respond ONLY with JSON: "
+                        '{{"metric_keyword":"<name>","higher_is_better":true,"expected_metrics":["<m1>","<m2>"]}}'
+                    ),
+                }, {
+                    "role": "user",
+                    "content": "Experiment description:\n" + text[:2000]
+                }],
+                temperature=0.0,
+                max_tokens=200,
+            )
+            import json as _json, re as _re
+            _raw = _resp.choices[0].message.content or ""
+            _m = _re.search(r"\{.*\}", _raw, _re.DOTALL)
+            if _m:
+                _parsed = _json.loads(_m.group(0))
+                if not metric_keyword:
+                    metric_keyword = _parsed.get("metric_keyword", "")
+                if not expected_metrics:
+                    expected_metrics = _parsed.get("expected_metrics", [])
+        except Exception as _e:
+            pass  # Fall through to empty defaults
+
     scoring_guide = _build_scoring_guide(expected_metrics, metric_keyword, min_expected)
 
     result = {

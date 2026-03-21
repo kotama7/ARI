@@ -1,40 +1,155 @@
 # ARI Architecture
 
+## What ARI Does
+
+ARI is an end-to-end autonomous research system. Given a plain-text research goal, it:
+
+1. **Surveys** prior work (academic databases)
+2. **Generates** a research hypothesis via multi-agent deliberation (VirSci)
+3. **Searches** for the best experimental configuration using Branch-and-Frontier Tree Search (BFTS)
+4. **Executes** real experiments on your hardware (laptop, SLURM, PBS, LSF)
+5. **Evaluates** each experiment as a peer reviewer (LLM assigns scientific quality score)
+6. **Analyzes** the full experiment tree: extracts hardware context, methodology, ablation findings
+7. **Generates** publication-quality figures (LLM writes matplotlib code from data)
+8. **Writes** a complete LaTeX paper with citations
+9. **Reviews** the paper with an LLM acting as a referee
+10. **Verifies** reproducibility: re-runs the experiment from the paper text alone
+
+No domain knowledge is hardcoded. The same pipeline works for HPC benchmarking, ML hyperparameter tuning, chemistry optimization, or any measurable phenomenon.
+
+---
+
 ## System Overview
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        User Interface                        │
-│                  experiment.md  /  CLI  /  MCP              │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-┌──────────────────────────▼──────────────────────────────────┐
-│                        ari-core                              │
-│                                                              │
-│  ┌─────────────┐   ┌──────────────┐   ┌──────────────────┐  │
-│  │    BFTS     │   │  ReAct Loop  │   │  Post-BFTS       │  │
-│  │  (search)   │──▶│  (per node)  │   │  Pipeline        │  │
-│  └─────────────┘   └──────┬───────┘   └──────────────────┘  │
-│                           │                                  │
-│  ┌────────────────────────▼────────────────────────────────┐ │
-│  │              MCP Client (tool dispatcher)               │ │
-│  └────────────────────────┬────────────────────────────────┘ │
-└───────────────────────────┼─────────────────────────────────┘
-                            │ MCP protocol
-        ┌───────────────────┼────────────────────────┐
-        │                   │                        │
-┌───────▼──────┐  ┌─────────▼──────┐  ┌─────────────▼──────┐
-│ari-skill-hpc │  │ari-skill-idea  │  │ari-skill-evaluator │
-│  slurm_submit│  │  survey        │  │  evaluate          │
-│  job_status  │  │  make_metric.. │  │  make_artifact..   │
-│  run_bash    │  │  generate_ideas│  │                    │
-└──────────────┘  └────────────────┘  └────────────────────┘
-        │
-┌───────▼───────────────────────────────────────────────────┐
-│                    your HPC cluster (SLURM)                       │
-│   your_cpu_partition / your_gpu_partition partitions                    │
-└───────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│                         User Interface                         │
+│                   experiment.md  /  CLI  /  API                │
+└────────────────────────────┬───────────────────────────────────┘
+                             │
+┌────────────────────────────▼───────────────────────────────────┐
+│                          ari-core                              │
+│                                                                │
+│  ┌─────────────────┐   ┌─────────────────┐                    │
+│  │  BFTS           │   │  ReAct Loop     │                    │
+│  │  (tree search)  │──▶│  (per node)     │                    │
+│  └─────────────────┘   └────────┬────────┘                    │
+│                                 │                              │
+│  ┌──────────────────────────────▼──────────────────────────┐  │
+│  │            MCP Client (async tool dispatcher)           │  │
+│  └──────────────────────────────┬──────────────────────────┘  │
+└─────────────────────────────────┼──────────────────────────────┘
+                                  │ MCP protocol (stdio/HTTP)
+     ┌────────────────────────────┼──────────────────────────────┐
+     │                            │                              │
+┌────▼──────────┐  ┌─────────────▼──────┐  ┌───────────────────▼──┐
+│ari-skill-hpc  │  │ari-skill-idea      │  │ari-skill-evaluator   │
+│ slurm_submit  │  │ survey             │  │ make_metric_spec     │
+│ job_status    │  │ generate_ideas     │  │ (scientific_score)   │
+│ run_bash      │  │ (VirSci MCP)       │  │                      │
+└───────────────┘  └────────────────────┘  └──────────────────────┘
+
+Post-BFTS Pipeline (workflow.yaml):
+┌─────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+│ari-skill-       │  │ari-skill-plot    │  │ari-skill-paper   │
+│transform        │  │ generate_figures │  │ write_paper      │
+│ nodes_to_       │  │ _llm (LLM writes │  │ review_compiled  │
+│ science_data    │  │  matplotlib)     │  │ reproduce_from   │
+│ (LLM analysis)  │  │                  │  │  _paper          │
+└─────────────────┘  └──────────────────┘  └──────────────────┘
 ```
+
+---
+
+## Full Data Flow
+
+```
+experiment.md
+  (research goal only — 3 lines minimum)
+    │
+    ▼
+[ari-skill-idea: survey]
+  arXiv / Semantic Scholar keyword search
+  Returns: related paper abstracts
+    │
+    ▼
+[ari-skill-idea: generate_ideas]  ← VirSci multi-agent deliberation
+  Multiple AI personas debate the research question
+  Output: hypothesis, primary_metric, evaluation_criteria
+    │
+    ▼
+BFTS root node created
+    │
+    ▼ (repeated for each node, up to ARI_MAX_NODES, ARI_PARALLEL concurrent)
+┌──────────────────────────────────────────────────────────────────┐
+│  ReAct Loop (ari/agent/loop.py)                                  │
+│                                                                  │
+│  1. LLM selects tool from MCP registry                           │
+│  2. Tool executes (run_bash / slurm_submit / job_status / ...)   │
+│  3. If SLURM job: auto-poll until COMPLETED (no step budget)     │
+│  4. LLM reads stdout → generates experiment code → submits       │
+│  5. LLM extracts metrics from output → returns JSON              │
+│                                                                  │
+│  Memory: result summaries saved to ancestor-chain memory         │
+│  Child nodes: search ancestor memory for prior results           │
+└──────────────────────────────────────────────────────────────────┘
+    │
+    ▼
+[LLMEvaluator] (ari/evaluator/llm_evaluator.py)
+  Input:  node artifacts (stdout, logs, scripts)
+  Output: {
+    has_real_data: bool,
+    metrics: {key: value, ...},       ← extracted numeric values
+    scientific_score: float 0.0-1.0,  ← LLM peer-review quality
+    comparison_found: bool             ← compared against existing methods?
+  }
+  _scientific_score stored in metrics → drives BFTS ranking
+    │
+    ▼
+BFTS expand() (ari/orchestrator/bfts.py)
+  - Ranks nodes by _scientific_score
+  - Passes score to child-proposal LLM
+  - LLM proposes 2-3 child directions (improve / ablation / validation)
+  - No domain hints — LLM decides what "improvement" means
+    │
+    ▼ (after ARI_MAX_NODES reached)
+nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
+    │
+    ▼
+[workflow.yaml Post-BFTS Pipeline]
+
+  Stage 1: transform_data  (ari-skill-transform)
+    BFS traversal of full tree (root → leaves)
+    LLM reads all node artifacts (stdout, logs, generated code)
+    LLM extracts: hardware specs, methodology, key findings, comparisons
+    Output: science_data.json  { configurations, experiment_context, per_key_summary }
+
+  Stage 2: search_related_work  (ari-skill-web)  [parallel with stage 1]
+    LLM-generated keywords → Semantic Scholar API
+    Output: related_refs.json
+
+  Stage 3: generate_figures  (ari-skill-plot)  [after stage 1]
+    Input: full science_data.json (including experiment_context)
+    LLM writes complete matplotlib code → executes → saves PDF figures
+    Figure types chosen autonomously from data (not prescribed)
+    Output: figures_manifest.json
+
+  Stage 4: write_paper  (ari-skill-paper)  [after stages 2, 3]
+    paper_context = experiment_context + best_nodes_metrics
+    Iterative section writing: draft → LLM review → revise (max 2 rounds)
+    BibTeX citations from Semantic Scholar results
+    Output: full_paper.tex, refs.bib
+
+  Stage 5: review_paper  (ari-skill-paper)  [after stage 4]
+    PDF → pdftotext → LLM holistic review
+    Output: review_report.json { score, verdict, citation_ok, feedback }
+
+  Stage 6: reproducibility_check  (ari-skill-paper-re)  [after stage 4]
+    Reads paper → extracts configuration → runs HPC job → compares claimed vs actual
+    Output: reproducibility_report.json { verdict, claimed, actual, tolerance_pct }
+```
+
+---
 
 ## Module Reference
 
@@ -42,115 +157,150 @@
 
 | Module | Description |
 |--------|-------------|
-| `ari/orchestrator/bfts.py` | Branch-and-Frontier Tree Search — manages node expansion, selection, and pruning |
-| `ari/agent/loop.py` | ReAct agent loop — runs LLM + tool calls per node; auto-polls async jobs |
-| `ari/agent/workflow.py` | WorkflowHints — auto-extracted domain config (tool sequence, metric extractor) |
-| `ari/pipeline.py` | Post-BFTS pipeline driver — runs generate_paper → review → reproducibility |
-| `ari/evaluator/llm_evaluator.py` | Metric extraction + has_real_data detection |
-| `ari/memory/file_client.py` | Fallback file-based memory client |
-| `ari/mcp/client.py` | Async MCP client (wraps FastMCP) |
-| `ari/llm/client.py` | LLM routing via litellm (Ollama, OpenAI, Anthropic) |
+| `ari/orchestrator/bfts.py` | Branch-and-Frontier Tree Search — node expansion, selection, pruning; ranks by `_scientific_score` |
+| `ari/orchestrator/node.py` | Node dataclass — id, parent_id, depth, label, metrics, artifacts, memory |
+| `ari/agent/loop.py` | ReAct agent loop — LLM + tool calls per node; auto-polls SLURM jobs; injects ancestor memory |
+| `ari/agent/workflow.py` | WorkflowHints — auto-extracted from experiment text (tool sequence, metric keyword, partition) |
+| `ari/pipeline.py` | Post-BFTS pipeline driver — template resolution, stage execution, output wiring |
+| `ari/evaluator/llm_evaluator.py` | Metric extraction + peer-review scoring (`scientific_score`, `comparison_found`) |
+| `ari/memory/file_client.py` | File-based memory client (ancestor-chain scoped) |
+| `ari/mcp/client.py` | Async MCP client — thread-safe, fresh event loops for parallel execution |
+| `ari/llm/client.py` | LLM routing via litellm (Ollama, OpenAI, Anthropic, any OpenAI-compatible) |
 | `ari/config.py` | Config dataclasses (BFTSConfig, LLMConfig, PipelineConfig) |
-| `ari/core.py` | Top-level runtime builder — wires all components together |
-| `ari/cli.py` | CLI entry point (`ari run`, `ari status`) |
+| `ari/core.py` | Top-level runtime builder — wires all components |
+| `ari/cli.py` | CLI: `ari run`, `ari paper`, `ari status` |
 
-### Data Flow
+### Skills (MCP servers)
 
-```
-experiment.md
-    │
-    ▼
-WorkflowHints (auto-extracted)
-    │  tool_sequence, metric_keyword, min_expected_metric
-    ▼
-BFTS root node created
-    │
-    ▼ (for each node)
-ReAct Loop:
-    Step 1:  LLM selects tool → tool executes → result added to context
-    Step 2:  If job submitted → auto-poll until COMPLETED (no step budget consumed)
-    Step 3:  LLM reads output → extracts metrics → returns JSON
-    │
-    ▼
-LLMEvaluator:
-    - has_real_data?  (real numeric values in artifacts)
-    - metrics dict    (extracted from artifacts)
-    │
-    ▼
-BFTS selects best nodes → expands children
-    │
-    ▼ (after max_total_nodes reached)
-Post-BFTS Pipeline (pipeline.yaml):
-    generate_paper → review_section → reproducibility_check
-```
+| Skill | Tools | Role |
+|-------|-------|------|
+| `ari-skill-hpc` | `run_bash`, `slurm_submit`, `job_status`, `read_output` | Code execution / HPC job management |
+| `ari-skill-memory` | `add_memory`, `search_memory`, `get_node_memory` | Ancestor-chain experiment memory |
+| `ari-skill-idea` | `survey`, `generate_ideas`, `make_metric_spec` | Literature search + hypothesis generation (VirSci) |
+| `ari-skill-evaluator` | `make_metric_spec` | Metric spec generation (domain-agnostic) |
+| `ari-skill-transform` | `nodes_to_science_data` | LLM-powered full tree analysis → science_data.json |
+| `ari-skill-web` | `search_semantic_scholar` | Academic literature search |
+| `ari-skill-plot` | `generate_figures_llm` | LLM writes matplotlib → PDF figures |
+| `ari-skill-paper` | `write_paper_iterative`, `review_compiled_paper` | LaTeX paper writing + peer review |
+| `ari-skill-paper-re` | `reproduce_from_paper` | Reproducibility verification agent |
+
+---
 
 ## BFTS Algorithm
 
+ARI implements true Best-First Tree Search with a two-pool design:
+
+- **`pending`**: nodes ready to run (already expanded from a parent)
+- **`frontier`**: completed nodes not yet expanded
+
 ```python
-# Simplified pseudocode
 def bfts(experiment, config):
     root = Node(experiment, depth=0)
-    frontier = [root]
+    pending = [root]      # nodes ready to execute
+    frontier = []         # completed nodes awaiting expansion
+    all_nodes = [root]
 
     while len(all_nodes) < config.max_total_nodes:
-        # Select up to max_parallel_nodes from frontier
-        batch = select(frontier, config.max_parallel_nodes)
 
-        # Run each node concurrently
+        # --- BFTS STEP 1: expand the best frontier node ---
+        # LLM reads metrics of all completed nodes and selects
+        # the most promising one to expand (not all at once)
+        while frontier and len(pending) < max_parallel:
+            best = llm_select_best_to_expand(frontier)  # by _scientific_score
+            frontier.remove(best)
+            children = llm_propose_directions(best)     # improve/ablation/validation
+            pending.extend(children)
+            all_nodes.extend(children)
+
+        # --- BFTS STEP 2: run a batch of pending nodes ---
+        batch = llm_select_next_nodes(pending, max_parallel)
         results = parallel_run(batch)
 
-        # Expand successful nodes
         for node in results:
-            if node.has_real_data:
-                children = llm_propose_variations(node)
-                frontier.extend(children)
+            memory.write(node.eval_summary)   # save to ancestor-chain memory
+            if node.status == SUCCESS:
+                frontier.append(node)         # will expand when selected
+            else:
+                frontier.append(node)         # failed → expand with "debug" children
 
-    # Return best node
-    return max(all_nodes, key=lambda n: n.metrics)
+    return max(all_nodes, key=lambda n: n.metrics.get("_scientific_score", 0))
 ```
+
+Key properties:
+- **Lazy expansion**: a completed node is not expanded until LLM selects it — low-scoring nodes may wait indefinitely
+- **No retry**: failed nodes produce `debug` children via `expand()`, not re-executions
+- **Strict budget**: `len(all_nodes) < max_total_nodes` prevents overshoot
+- **`generate_ideas` called once**: suppressed after root node to prevent looping
+
+### Node Labels
+
+| Label | Meaning |
+|-------|---------|
+| `draft` | New implementation from scratch |
+| `improve` | Tune parent's parameters or algorithm |
+| `debug` | Fix parent's failure |
+| `ablation` | Remove one component to measure its impact |
+| `validation` | Re-run parent with different conditions |
+
+---
 
 ## Memory Architecture
 
-Each node can access memories from its ancestor chain only:
+Each node reads only from its ancestor chain:
 
 ```
-root  ──stores──▶  memory["root"]
-  │
-  ├─ node_A  ──stores──▶  memory["node_A"]
-  │    │  can read: root, node_A
-  │    ├─ node_A1  (can read: root, node_A)
-  │    └─ node_A2  (can read: root, node_A — NOT node_A1)
-  │
-  └─ node_B  ──stores──▶  memory["node_B"]
-       │  can read: root, node_B  — NOT node_A or node_A1/A2
-       └─ node_B1
+root ──▶ memory["root"]
+  ├─ node_A ──▶ memory["node_A"]
+  │    ├─ node_A1  (reads: root + node_A)
+  │    └─ node_A2  (reads: root + node_A, NOT node_A1)
+  └─ node_B  (reads: root only, NOT node_A branch)
 ```
 
-This prevents cross-contamination between parallel search branches.
+`search_memory` query = node's own `eval_summary` text (not domain keywords).
+This ensures retrieved memories are semantically relevant to the current node's work.
 
-## Post-BFTS Pipeline
+---
 
-Configured in `config/pipeline.yaml`:
+## Design Invariants
+
+ARI's production code contains **zero domain knowledge**. All domain decisions are delegated to LLMs at runtime.
+
+| Decision | Who decides |
+|----------|-------------|
+| What metrics matter | LLM evaluator |
+| What to compare against | LLM evaluator (`comparison_found`) |
+| What experiments to run | ReAct agent (LLM) |
+| What hardware was used | Transform skill LLM (reads lscpu/etc from artifacts) |
+| What figures to draw | Plot skill LLM |
+| What to extract from tree | Transform skill LLM |
+| How to rank nodes | LLM-assigned `_scientific_score` |
+| What citation keywords to use | LLM-generated from node summaries |
+| Whether to collect env/setup info | ReAct agent LLM (guided by reproducibility principle in system prompt) |
+
+---
+
+## Extending ARI
+
+To add a new capability, create a new MCP skill:
+
+```bash
+mkdir ari-skill-myskill/src
+# Implement server.py with FastMCP tools
+# Register in workflow.yaml skills section
+```
 
 ```yaml
+# workflow.yaml
+skills:
+  - name: myskill
+    path: "{{ari_root}}/ari-skill-myskill"
+
 pipeline:
-  - stage: generate_paper
-    skill: ari-skill-paper
-    tool: generate_section
-    args:
-      venue: arxiv
-      nodes_json_path: "{checkpoint_dir}/nodes_tree.json"
-
-  - stage: review
-    skill: ari-skill-paper
-    tool: review_section
-
-  - stage: reproducibility_check
-    skill: ari-skill-paper-re
-    tool: reproducibility_report
+  - stage: my_stage
+    skill: myskill
+    tool: my_tool
+    inputs:
+      data: "{{ckpt}}/science_data.json"
 ```
 
-Output artifacts:
-- `experiment_section.tex` — LaTeX paper section
-- `review.json` — structured review feedback
-- `reproducibility_report.json` — claim verification results
+No changes to `ari-core` required.

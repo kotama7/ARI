@@ -106,6 +106,7 @@ def search_arxiv(query: str, max_results: int = 5) -> dict:
 async def search_semantic_scholar(
     query: str,
     limit: int = 8,
+    extra_queries: list | None = None,
 ) -> dict:
     """Search Semantic Scholar for academic papers and return real BibTeX entries.
 
@@ -165,6 +166,45 @@ async def search_semantic_scholar(
             "bibtex": bibtex_raw,  # keep original for refs.bib
             "cite_key": cite_key,
         })
+
+    # Run extra queries and merge (deduplicated by title)
+    if extra_queries:
+        import time as _teq
+        seen_titles = {p["title"].lower() for p in papers}
+        for eq in (extra_queries or [])[:3]:
+            _teq.sleep(1.0)
+            try:
+                _eq_url = (
+                    "https://api.semanticscholar.org/graph/v1/paper/search"
+                    f"?query={_parse.quote(eq)}&fields={fields}&limit={limit}"
+                )
+                _eq_req = _req.Request(_eq_url, headers={"x-api-key": s2_key} if s2_key else {})
+                with _req.urlopen(_eq_req, timeout=15) as _resp2:
+                    _eq_data = _json.loads(_resp2.read())
+                for _ep in _eq_data.get("data", []):
+                    _et = (_ep.get("title") or "").lower()
+                    if _et and _et not in seen_titles:
+                        seen_titles.add(_et)
+                        _ebibtex = _ep.get("citationStyles", {}).get("bibtex", "") or ""
+                        _ecite_key = ""
+                        if _ebibtex:
+                            _enl = _ebibtex.find("\n")
+                            _efirst = _ebibtex[:_enl] if _enl > 0 else _ebibtex
+                            _eclean = _clean_key(_efirst)
+                            _ebibtex = _eclean + ("\n" + _ebibtex.split("\n", 1)[1] if "\n" in _ebibtex else "")
+                            import re as _re2
+                            _em = _re2.search(r"\{([^,}]+)", _eclean)
+                            _ecite_key = _em.group(1) if _em else ""
+                        papers.append({
+                            "title": _ep.get("title", ""),
+                            "authors": [a.get("name", "") for a in _ep.get("authors", [])],
+                            "year": str(_ep.get("year", "")),
+                            "abstract": (_ep.get("abstract") or "")[:300],
+                            "bibtex": _ebibtex,
+                            "cite_key": _ecite_key,
+                        })
+            except Exception:
+                pass
 
     return {"papers": papers, "query": query, "count": len(papers)}
 

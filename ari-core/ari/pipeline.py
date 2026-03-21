@@ -100,10 +100,28 @@ def build_best_nodes_context(all_nodes, experiment_goal: str = "") -> tuple[str,
     if not results:
         return "", {}
 
-    results.sort(
-        key=lambda n: max((v for v in n.metrics.values() if isinstance(v, (int, float))), default=0) if n.metrics else 0,
-        reverse=True,
-    )
+    def _sort_key(n) -> float:
+        """Score a node by its scientific_score (set by LLM evaluator).
+
+        The evaluator LLM judges scientific contribution and stores the result
+        in metrics["_scientific_score"]. This is the authoritative ranking signal.
+        Fallback to any float metric only when no evaluator score exists.
+        """
+        # Primary: LLM-assigned scientific score (0.0-1.0, set by evaluator)
+        sci = (n.metrics or {}).get("_scientific_score")
+        if sci is not None:
+            return float(sci)
+        # Secondary: eval_summary numeric score if present
+        import re as _re_sk
+        if n.eval_summary:
+            m = _re_sk.search(r"score[: ]+([0-9.]+)", n.eval_summary, _re_sk.IGNORECASE)
+            if m:
+                return float(m.group(1))
+        # Fallback: max of any float metric (last resort, no domain filtering)
+        floats = [v for v in (n.metrics or {}).values() if isinstance(v, float) and 0 < v < 1e9]
+        return max(floats, default=0.0)
+
+    results.sort(key=_sort_key, reverse=True)
 
     # Strip execution-context lines from experiment_goal before passing to paper LLM.
     # Remove file paths, job/work directory details, and hardware cluster specifics —
@@ -134,26 +152,49 @@ def build_best_nodes_context(all_nodes, experiment_goal: str = "") -> tuple[str,
 
 
 def _extract_keywords_from_nodes(nodes_json_path: str, base_topic: str = "") -> str:
-    """Extract search keywords from BFTS nodes_tree.json. Domain-agnostic."""
-    keywords = set()
-    if base_topic:
-        keywords.update(w for w in base_topic.split() if len(w) > 3)
-    if nodes_json_path:
-        try:
-            data = json.loads(Path(nodes_json_path).read_text())
-            nodes = data if isinstance(data, list) else data.get("nodes", [])
-            for node in nodes:
-                for mem in (node.get("memory") or []):
-                    text = mem if isinstance(mem, str) else mem.get("content", "")
-                    keywords.update(re.findall(r"-O[0-9s]|-march=\S+|-f[a-z-]+", text))
-                for art in (node.get("artifacts") or []):
-                    text = art if isinstance(art, str) else (art.get("stdout") or art.get("content") or "")
-                    keywords.update(w.lower() for w in re.findall(r"[A-Z]{2,}", text) if len(w) <= 8)
-        except Exception:
-            pass
-    extras = [k for k in keywords if len(k) > 3 and k.lower() not in base_topic.lower()][:5]
-    base = base_topic if base_topic else "performance optimization benchmark"
-    return (base + " " + " ".join(extras)).strip() if extras else base
+    """Extract search keywords from BFTS nodes_tree.json.
+
+    Collects eval_summary text from successful nodes and asks LLM to extract
+    a concise academic search query (no domain-specific hardcoding).
+    Falls back to base_topic if LLM call fails.
+    """
+    base = base_topic.strip() if base_topic else "research experiment"
+    try:
+        import json as _json
+        with open(nodes_json_path) as _f:
+            _data = _json.load(_f)
+        _nodes = _data.get("nodes", [])
+        _summaries = [
+            n.get("eval_summary", "")
+            for n in _nodes
+            if n.get("status") == "success" and n.get("eval_summary")
+        ][:5]
+        if not _summaries:
+            return base
+        _combined = " ".join(_summaries)[:1200]
+        import litellm as _litellm, os as _os
+        _model = _os.environ.get("ARI_MODEL", "gpt-4o-mini")
+        _resp = _litellm.completion(
+            model=_model,
+            messages=[{
+                "role": "system",
+                "content": (
+                    "You are a research librarian. "
+                    "Given experiment summaries, produce a SHORT academic search query "
+                    "(5-10 words) suitable for Semantic Scholar that captures the core "
+                    "technical topic. Return ONLY the query string, no explanation."
+                ),
+            }, {
+                "role": "user",
+                "content": f"Experiment summaries:\n{_combined}",
+            }],
+            temperature=0.0,
+            max_tokens=30,
+        )
+        _query = (_resp.choices[0].message.content or "").strip().strip('"')
+        return _query if _query else base
+    except Exception:
+        return base
 
 
 # ---------------------------------------------------------------------------
@@ -302,19 +343,10 @@ def build_scientific_data(nodes_json_path: str) -> dict:
     for n in nodes:
         if not (n.get("has_real_data") and n.get("metrics")):
             continue
-        cfg = {}
-        for mem in (n.get("memory") or []):
-            text = mem if isinstance(mem, str) else mem.get("content", "")
-            for flag in _re_sci.findall(r"-O[0-9s]\S*|-march=\S+|-f[a-z_-]+=?\S*", text):
-                cfg.setdefault("flags", [])
-                if flag not in cfg["flags"]:
-                    cfg["flags"].append(flag)
-            for tc in _re_sci.findall(r"OMP_NUM_THREADS=?(\d+)|threads?[=: ]+(\d+)", text, _re_sci.IGNORECASE):
-                t = tc[0] or tc[1]
-                if t:
-                    cfg["threads"] = int(t)
+        # No domain-specific parameter extraction here.
+        # The transform-skill (LLM-powered) handles parameter extraction from artifacts.
         science_nodes.append({
-            "configuration": cfg or {"index": len(science_nodes) + 1},
+            "configuration": {"index": len(science_nodes) + 1},
             "metrics": n.get("metrics", {}),
         })
 
@@ -374,6 +406,13 @@ def run_pipeline(
     experiment_goal = experiment_data.get("goal", "")
     context, best_metrics = build_best_nodes_context(all_nodes, experiment_goal)
 
+    # ── Initialize cost tracker ──────────────────────────────────────────────
+    try:
+        from ari import cost_tracker as _ct
+        _ct.init(checkpoint_dir)
+    except Exception as _cte:
+        log.warning("Cost tracker init failed: %s", _cte)
+
     # Extract evaluation_criteria from nodes (set by generate_ideas in loop.py)
     # Written to checkpoint as evaluation_criteria.json for downstream use
     _eval_criteria_path = checkpoint_dir / "evaluation_criteria.json"
@@ -411,7 +450,7 @@ def run_pipeline(
         log.warning("Failed to save nodes_tree.json: %s", _e)
         nodes_json_path = ""
 
-    # Convert topic slug (e.g. "Accurate_FP32_GEMM_v2") -> search query ("Accurate FP32 GEMM v2")
+    # Convert topic slug (e.g. "My_Research_Topic_v2") -> search query ("My Research Topic v2")
     _raw_topic = experiment_data.get("topic", "")
     _search_topic = re.sub(r"[_-]+", " ", _raw_topic).strip()
     keywords = _extract_keywords_from_nodes(nodes_json_path, _search_topic)
@@ -430,9 +469,25 @@ def run_pipeline(
         _wf_cfg = _yaml.safe_load(_cfg_path.read_text()) if _cfg_path else {}
     except Exception:
         _wf_cfg = {}
-    _paper_ctx = (_wf_cfg.get("paper_context") or "").strip()
-    if not _paper_ctx:
-        _paper_ctx = context
+    _static_ctx = (_wf_cfg.get("paper_context") or "").strip()
+
+    # Load LLM-extracted experiment context from science_data.json if available.
+    # This contains hardware info, methodology, findings extracted by the transform stage.
+    _exp_ctx_str = ""
+    try:
+        import json as _json
+        _sd_path = Path(checkpoint_dir) / "science_data.json"
+        if _sd_path.exists():
+            _sd = _json.loads(_sd_path.read_text())
+            _exp_ctx = _sd.get("experiment_context", {})
+            if _exp_ctx and not _exp_ctx.get("error"):
+                _exp_ctx_str = "Experiment context (LLM-extracted from raw artifacts):\n" + _json.dumps(_exp_ctx, ensure_ascii=False, indent=2)
+    except Exception as _ece:
+        log.warning("Could not load experiment_context from science_data.json: %s", _ece)
+
+    # Merge all context: static (workflow.yaml) + LLM-extracted + dynamic results
+    parts = [p for p in [_static_ctx, _exp_ctx_str, context] if p.strip()]
+    _paper_ctx = "\n\n".join(parts) if parts else context
 
     # Template variable registry — grows as stages complete
     import os as _os
@@ -450,6 +505,10 @@ def run_pipeline(
         "author_name":       "Artificial Research Intelligence",  # default; overridden by workflow.yaml
         # Expose all top-level string/int config values for template substitution
         **{k: str(v) for k, v in _wf_cfg.items() if isinstance(v, (str, int, float)) and k not in ("paper_context",)},
+        # Expose nested dicts (e.g. resources, bfts) as nested keys for dot-notation access
+        **{section: sec_val
+           for section, sec_val in _wf_cfg.items()
+           if isinstance(sec_val, dict) and section not in ("pipeline", "skills", "stages")},
     }
 
     stage_outputs: dict[str, Any] = {}
@@ -477,7 +536,19 @@ def run_pipeline(
         skip_path_tpl = stage_cfg.get("skip_if_exists", "")
         if skip_path_tpl:
             skip_path = _resolve_templates(skip_path_tpl, tpl_vars)
-            if Path(skip_path).exists():
+            _skip_file = Path(skip_path)
+            _skip_ok = False
+            if _skip_file.exists():
+                # If the file is JSON, check it doesn't contain an "error" key at the top level
+                if _skip_file.suffix == ".json":
+                    try:
+                        _skip_data = json.loads(_skip_file.read_text())
+                        _skip_ok = isinstance(_skip_data, dict) and "error" not in _skip_data
+                    except Exception:
+                        _skip_ok = False
+                else:
+                    _skip_ok = _skip_file.stat().st_size > 0
+            if _skip_ok:
                 log.info("Stage [%s]: skipping (output exists: %s)", stage_name, skip_path)
                 tpl_vars["stages"][stage_name] = {"output": skip_path, "outputs": {"file": skip_path}}
                 stage_outputs[stage_name] = {"skipped": True, "output": skip_path}

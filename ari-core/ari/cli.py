@@ -53,7 +53,35 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
     from ari.orchestrator.node import NodeStatus
     max_workers = min(cfg.bfts.max_parallel_nodes, 4)
 
-    while pending and total_processed < cfg.bfts.max_total_nodes:
+    # frontier: completed nodes not yet expanded (true BFTS: expand on demand)
+    frontier: list = []
+
+    while (pending or frontier) and len(all_nodes) < cfg.bfts.max_total_nodes:
+        # --- BFTS STEP: expand the best frontier node if we need more work ---
+        # all_nodes tracks every node ever created (root + all children)
+        _budget = cfg.bfts.max_total_nodes - len(all_nodes)
+        while frontier and len(pending) < max_workers and _budget > 0:
+            try:
+                best = bfts.select_best_to_expand(frontier, experiment_data["goal"], agent.memory)
+            except Exception as exc:
+                logging.getLogger(__name__).warning("select_best_to_expand failed: %s", exc)
+                best = frontier[0]
+            frontier.remove(best)
+            if bfts.should_prune(best):
+                console.print(f"  [yellow]Pruned frontier node {best.id[-8:]}[/yellow]")
+                continue
+            try:
+                children = bfts.expand(best, experiment_goal=experiment_data.get("goal", ""))
+                all_nodes.extend(children)
+                pending.extend(children)
+                _budget -= len(children)
+                console.print(f"  [cyan]Expanded {best.id[-8:]} (sci={best.metrics.get('_scientific_score','?') if best.metrics else '?'}) -> {len(children)} children[/cyan]")
+            except Exception as exc:
+                logging.getLogger(__name__).warning("expand failed: %s", exc)
+
+        if not pending:
+            break
+
         batch_size = min(max_workers, len(pending), cfg.bfts.max_total_nodes - total_processed)
         batch = []
         for _ in range(batch_size):
@@ -124,22 +152,16 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                 metrics_str = f" metrics={dict(list(result.metrics.items())[:2])}" if result.metrics else ""
                 console.print(f"  [{color}]{result.id}[/{color}] -> {result.status.value} has_real={result.has_real_data}{metrics_str}")
 
-                if result.status == NodeStatus.SUCCESS and not bfts.should_prune(result):
-                    try:
-                        children = bfts.expand(result, experiment_goal=experiment_data.get("goal", ""))
-                        all_nodes.extend(children)
-                        pending.extend(children)
-                        console.print(f"    Expanded -> {len(children)} child nodes")
-                    except Exception as exc:
-                        logging.getLogger(__name__).warning("expand failed: %s", exc)
+                if result.status == NodeStatus.SUCCESS:
+                    # Add to frontier — BFTS selects best to expand at top of loop
+                    frontier.append(result)
+                    console.print(f"    Added to frontier (will expand when selected by BFTS)")
                 elif result.status == NodeStatus.FAILED:
                     console.print(f"    [red]Error:[/red] {result.error_log}")
-                    if result.retry_count < cfg.bfts.max_retries_per_node:
-                        result.retry_count += 1
-                        result.status = NodeStatus.PENDING
-                        result.error_log = None
-                        pending.append(result)
-                        console.print(f"    Requeued (retry {result.retry_count}/{cfg.bfts.max_retries_per_node})")
+                    # Failed nodes go to frontier: BFTS will expand with "debug" children
+                    # (retrying the same node is not BFTS — it would repeat the same failure)
+                    frontier.append(result)
+                    console.print(f"    Added failed node to frontier for debug expansion")
 
                 # Save checkpoint after each node completes (not just after batch)
                 # This ensures progress is preserved if SIGTERM interrupts mid-batch
@@ -188,6 +210,12 @@ def run(
 
     checkpoint_dir = Path(cfg.checkpoint.dir.replace("{run_id}", run_id))
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    # Initialize cost tracker early so BFTS phase is also tracked
+    try:
+        from ari import cost_tracker as _ct_run
+        _ct_run.init(checkpoint_dir)
+    except Exception:
+        pass
 
     total = _run_loop(cfg, bfts, agent, pending, all_nodes,
                       experiment_data, checkpoint_dir, run_id)
@@ -254,11 +282,9 @@ def resume(
     pending = [
         n for n in all_nodes
         if n.status == NodeStatus.PENDING
-        or (n.status == NodeStatus.FAILED and n.retry_count < cfg.bfts.max_retries_per_node)
+        or n.status == NodeStatus.FAILED
     ]
     for n in pending:
-        if n.status == NodeStatus.FAILED:
-            n.retry_count += 1
             n.status = NodeStatus.PENDING
             n.error_log = None
 
