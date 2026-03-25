@@ -237,6 +237,28 @@
         <p><span id="t-step6-body">A separate AI agent independently reconstructs and re-runs the experiment from the paper text alone — no original code shared.</span></p>
       </div>
     </div>
+
+    <!-- GUI Dashboard highlight -->
+    <div style="margin-top:64px;background:rgba(37,99,235,.07);border:1px solid rgba(59,130,246,.2);border-radius:20px;padding:40px;text-align:center;">
+      <div style="font-size:2rem;margin-bottom:12px;">🖥️</div>
+      <h3 style="font-size:1.4rem;font-weight:800;margin-bottom:12px;">Web Dashboard — Real-time Control</h3>
+      <p style="color:#94a3b8;max-width:680px;margin:0 auto 24px;font-size:.95rem;line-height:1.7;">
+        A 9-page SPA dashboard lets you monitor experiments live, browse the BFTS hypothesis tree,
+        review papers, configure LLM providers, and launch new experiments via a 4-step wizard —
+        all from your browser.
+      </p>
+      <div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap;font-size:.85rem;">
+        <span style="background:rgba(37,99,235,.15);color:#93c5fd;padding:6px 16px;border-radius:20px;">📡 Live Logs</span>
+        <span style="background:rgba(37,99,235,.15);color:#93c5fd;padding:6px 16px;border-radius:20px;">🌳 Tree Visualization</span>
+        <span style="background:rgba(37,99,235,.15);color:#93c5fd;padding:6px 16px;border-radius:20px;">📊 Results Viewer</span>
+        <span style="background:rgba(37,99,235,.15);color:#93c5fd;padding:6px 16px;border-radius:20px;">✨ 4-Step Wizard</span>
+        <span style="background:rgba(37,99,235,.15);color:#93c5fd;padding:6px 16px;border-radius:20px;">💬 Chat Mode</span>
+        <span style="background:rgba(37,99,235,.15);color:#93c5fd;padding:6px 16px;border-radius:20px;">⚙️ Workflow Editor</span>
+      </div>
+      <div style="margin-top:24px;font-family:monospace;background:rgba(0,0,0,.3);border-radius:10px;padding:14px 24px;display:inline-block;font-size:.9rem;color:#60a5fa;">
+        python3 -m ari.viz.server --port 9886
+      </div>
+    </div>
   </div>
 </section>
 
@@ -256,7 +278,7 @@
       <div class="axis-card">
         <div class="axis-icon">🧠</div>
         <h3><span id="t-u2-title">Any AI Model</span></h3>
-        <p><span id="t-u2-body">Free local models (Ollama) or commercial APIs (GPT, Claude). One environment variable to swap.</span></p>
+        <p><span id="t-u2-body">Free local models (Ollama) or commercial APIs (GPT-5.2, Claude, Gemini). Per-experiment model selection in the wizard — Ollama models support free-form name entry.</span></p>
         <div class="axis-range"><span id="t-u2-range">Free Local → Cloud API</span></div>
       </div>
       <div class="axis-card">
@@ -340,17 +362,27 @@ export OPENAI_API_KEY=sk-...
 <span class="comment"># 4. Run your first experiment</span>
 ari run experiment.md
 
-<span class="comment"># 5. Watch real-time progress (optional)</span>
-ari viz experiment.md  <span class="comment"># opens dashboard on :9886</span></pre>
+<span class="comment"># 5. Launch the web dashboard (optional)</span>
+python3 -m ari.viz.server --port 9886  <span class="comment"># → http://localhost:9886</span></pre>
       </div>
       <div>
         <p style="color:var(--muted);font-size:.9rem;margin-bottom:16px;">The simplest experiment file looks like this:</p>
-        <pre><span class="comment"># experiment.md — 3 lines is enough</span>
+        <pre><span class="comment"># experiment.md — free-form text is fine</span>
+<span class="comment"># Headings are optional; ARI reads any format.</span>
 
-## Research Goal
 Maximize performance of matrix
-multiplication on this machine.</pre>
-        <p class="qs-note"><span id="t-qs-note">ARI will survey related papers, run experiments, generate figures, write a complete paper, and verify reproducibility independently — automatically.</span></p>
+multiplication on this machine.
+
+<span class="comment"># Or use structured Markdown (optional):</span>
+## Research Goal
+Optimize SpMM throughput on CPU using OpenMP.
+
+## Evaluation Metric
+GFlops/s throughput
+
+## Constraints
+- No GPU, Linux x86-64</pre>
+        <p class="qs-note"><span id="t-qs-note">ARI will survey related papers, run experiments, generate figures, write a complete paper, and verify reproducibility independently — automatically. A unique LLM-generated title is assigned to each experiment project.</span></p>
         <div style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap;">
           <a href="quickstart.html" style="background:var(--blue);color:#fff;padding:12px 24px;border-radius:10px;font-weight:700;font-size:.95rem;">Full Setup Guide</a>
           <a href="https://github.com/kotama7/ARI" style="border:1px solid rgba(255,255,255,.15);color:var(--text);padding:12px 24px;border-radius:10px;font-weight:700;font-size:.95rem;">View on GitHub →</a>
