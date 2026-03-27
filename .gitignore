@@ -84,3 +84,18 @@ __pycache__/
 .eggs/
 dist/
 build/
+
+# ── Runtime / temp files (generated at runtime, never track) ────
+experiment.md
+ari-core/experiment.md
+tmp*.md
+GUI_TASK.md
+*_TASK.md
+
+# ── Backup directories ──────────────────────────────────────────
+*.bak/
+viz.bak/
+
+# ── AI session artifacts ────────────────────────────────────────
+HEARTBEAT.md
+memory/

@@ -1,553 +1,736 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>ARI Experiment Monitor</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#0f1117;--bg2:#1a1d27;--bg3:#242736;--border:#2d3148;
-  --text:#e2e8f0;--muted:#94a3b8;--accent:#6366f1;
-  --success:#22c55e;--fail:#ef4444;--running:#3b82f6;--pending:#6b7280;--abandoned:#374151;
-}
-body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js">
+// Sidebar resize
+var _sbResizing=false,_sbX0=0,_sbW0=0;
+function startSbResize(e){_sbResizing=true;_sbX0=e.clientX;_sbW0=document.getElementById('sidebar').offsetWidth;e.preventDefault();}
+document.addEventListener('mousemove',function(e){
+  if(!_sbResizing)return;
+  var w=Math.max(52,Math.min(320,_sbW0+(e.clientX-_sbX0)));
+  var s=document.getElementById('sidebar'),m=document.getElementById('main');
+  s.style.cssText+='width:'+w+'px!important;min-width:'+w+'px!important;max-width:'+w+'px!important;';
+  if(m)m.style.marginLeft=w+'px';
+  s.querySelectorAll('.nav-label,.sidebar-logo-text').forEach(function(l){l.style.display=w<100?'none':'';});
+});
+document.addEventListener('mouseup',function(){
+  if(!_sbResizing)return;_sbResizing=false;
+  try{localStorage.setItem('ari_sbw',document.getElementById('sidebar').offsetWidth);}catch(e){}
+});
+(function(){try{var w=+localStorage.getItem('ari_sbw');if(w>=52&&w<=320){var s=document.getElementById('sidebar'),m=document.getElementById('main');if(s){s.style.width=w+'px';s.style.minWidth=w+'px';s.style.maxWidth=w+'px';}if(m)m.style.marginLeft=w+'px';}}catch(e){}})();
 
-/* NAV */
-nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:16px;flex-shrink:0}
-nav .title{font-size:1.1rem;font-weight:700;color:var(--text)}
-nav .dot{width:10px;height:10px;border-radius:50%;background:var(--fail);transition:background .3s}
-nav .dot.on{background:var(--success)}
-nav .meta{font-size:.8rem;color:var(--muted);margin-left:auto}
-nav .ckpt{font-size:.75rem;color:var(--muted);max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-
-/* MAIN */
-.main{display:flex;flex:1;overflow:hidden}
-
-/* TREE PANEL */
-.tree-panel{flex:0 0 60%;border-right:1px solid var(--border);overflow:auto;position:relative}
-.tree-panel svg{display:block}
-
-/* DETAIL PANEL */
-.detail-panel{flex:1;overflow-y:auto;padding:20px;background:var(--bg)}
-.detail-panel.empty{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.9rem}
-.detail h2{font-size:1rem;margin-bottom:16px;color:var(--text)}
-.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:600}
-.badge.success{background:#14532d;color:#86efac}
-.badge.failed{background:#450a0a;color:#fca5a5}
-.badge.running{background:#1e3a5f;color:#93c5fd}
-.badge.pending{background:#1f2937;color:#9ca3af}
-.badge.abandoned{background:#111827;color:#4b5563}
-.detail-row{margin-bottom:14px}
-.detail-row .label{font-size:.75rem;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em}
-.detail-row .value{font-size:.9rem;color:var(--text)}
-.metric-val{font-size:1.4rem;font-weight:700;color:var(--success)}
-.eval-box{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:.8rem;line-height:1.6;color:var(--muted);max-height:180px;overflow-y:auto}
-.error-box{background:#1c0a0a;border:1px solid #7f1d1d;border-radius:6px;padding:10px;font-size:.75rem;font-family:monospace;color:#fca5a5;max-height:120px;overflow-y:auto}
-.tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:16px}
-.tab-btn{padding:6px 14px;font-size:.8rem;cursor:pointer;background:none;border:none;color:var(--muted);border-bottom:2px solid transparent;transition:color .15s}
-.tab-btn.active{color:var(--text);border-bottom-color:var(--accent)}
-.tab-btn:hover{color:var(--text)}
-.tab-pane{display:none}
-.tab-pane.active{display:block}
-.trace-entry{display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--border)}
-.trace-icon{font-size:.7rem;padding:2px 6px;border-radius:3px;background:var(--bg3);color:var(--muted);flex-shrink:0;margin-top:2px;font-family:monospace}
-.trace-text{font-size:.75rem;color:var(--muted);line-height:1.5;word-break:break-word;flex:1}
-.trace-text b{color:var(--text)}
-.code-block{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:12px;font-size:.72rem;font-family:monospace;color:#a5f3fc;line-height:1.5;overflow-x:auto;white-space:pre;max-height:400px;overflow-y:auto}
-.stdout-block{background:#0a1a0a;border:1px solid #1a3a1a;border-radius:6px;padding:12px;font-size:.72rem;font-family:monospace;color:#86efac;line-height:1.5;overflow-x:auto;white-space:pre;max-height:400px;overflow-y:auto}
-.parent-chain{font-size:.8rem;color:var(--muted)}
-.parent-chain span{color:var(--accent)}
-
-/* STATUS BAR */
-.statusbar{background:var(--bg2);border-top:1px solid var(--border);padding:6px 20px;display:flex;gap:24px;font-size:.8rem;color:var(--muted);flex-shrink:0}
-.statusbar b{color:var(--text)}
-
-/* SVG tree nodes */
-.node-circle{cursor:pointer;transition:opacity .2s}
-.node-circle:hover{filter:brightness(1.3)}
-.node-circle.selected{stroke:#fff;stroke-width:2}
-.node-label{font-size:9px;fill:var(--muted);text-anchor:middle;pointer-events:none}
-.node-id{font-size:8px;fill:#64748b;text-anchor:middle;pointer-events:none}
-.edge{fill:none;stroke:#2d3148;stroke-width:1.5}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
-.running-pulse{animation:pulse 1.5s ease-in-out infinite}
-@keyframes flash{0%{filter:brightness(3)}100%{filter:brightness(1)}}
-.flash{animation:flash .8s ease-out}
-</style>
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ARI Dashboard</title>
+<script>window._BUILD=1774334554;</script>
+<link rel="icon" href="/logo.png" type="image/png">
+<link rel="stylesheet" href="/static/dashboard.css">
 </head>
 <body>
 
-<nav>
-  <span class="title">⚗️ ARI Experiment Monitor</span>
-  <span class="dot" id="dot"></span>
-  <span id="connstat" style="font-size:.8rem;color:var(--muted)">Disconnected</span>
-  <span class="meta" id="lastup">—</span>
-  <span class="ckpt" id="ckptpath">—</span>
-</nav>
-
-<div class="main">
-  <div class="tree-panel" id="treePanel">
-    <svg id="treeSvg"></svg>
+<div id="sidebar">
+  <div class="sidebar-logo">
+    <div style="display:flex;align-items:center;gap:10px">
+      <img src="/logo.png" alt="ARI" style="width:40px;height:40px;object-fit:contain;border-radius:8px" onerror="this.style.display='none'">
+      <div class="sidebar-logo-text"><div style="font-size:1.25rem;font-weight:800;letter-spacing:-0.5px;color:var(--blue-light)">ARI</div><div style="font-size:.7rem;color:var(--muted)">Autonomous Research Intelligence</div></div>
+    </div>
   </div>
-  <div class="detail-panel empty" id="detailPanel">
-    <span>← Click a node to see details</span>
+  <nav id="nav">
+    <div class="nav-item" data-page="home"><span class="nav-icon">🏠</span><span class="nav-label" data-i18n="nav_home">Home</span></div>
+    <div class="nav-item" data-page="experiments"><span class="nav-icon">🗂️</span><span class="nav-label" data-i18n="experiments_title">Experiments</span></div>
+    <div class="nav-item" data-page="monitor"><span class="nav-icon">📡</span><span class="nav-label" data-i18n="nav_monitor">Monitor</span></div>
+    <div class="nav-item" data-page="tree"><span class="nav-icon">🌳</span><span class="nav-label" data-i18n="nav_tree">Tree</span></div>
+    <div class="nav-item" data-page="results"><span class="nav-icon">📊</span><span class="nav-label" data-i18n="nav_results">Results</span></div>
+    <div class="nav-item" data-page="new"><span class="nav-icon">✨</span><span class="nav-label" data-i18n="new_title">New Experiment</span></div>
+    <div class="nav-item" data-page="idea"><span class="nav-icon">💡</span><span class="nav-label" data-i18n="nav_idea">Idea</span></div>
+    <div class="nav-item" data-page="workflow"><span class="nav-icon">⚡</span><span class="nav-label" data-i18n="nav_workflow">Workflow</span></div>
+    <div class="nav-item" data-page="settings"><span class="nav-icon">⚙️</span><span class="nav-label" data-i18n="nav_settings">Settings</span></div>
+  </nav>
+  <div id="project-switcher">
+    <label>Active Project (Run)</label>
+    <select id="project-select" onchange="switchProject(this.value)">
+      <option value="">Loading…</option>
+    </select>
+    <div class="project-status" id="project-status"><span id="run-status-badge" class="badge">⬛ Stopped</span></div>
+  </div>
+
+
+  
+</div>
+
+<div id="main">
+
+<!-- HOME -->
+<div class="page" id="page-home">
+  <h1>Welcome to ARI</h1>
+  <p class="subtitle">Autonomous Research Intelligence — write a research goal, get a paper.</p>
+  <div class="grid-3" style="margin-bottom:16px">
+    <div class="stat-box"><div class="stat-val" id="home-total-runs">—</div><div class="stat-label">Total Projects</div></div>
+    <div class="stat-box"><div class="stat-val" id="home-best-score">—</div><div class="stat-label">Best Performance</div></div>
+    <div class="stat-box"><div class="stat-val" id="home-total-nodes">—</div><div class="stat-label">Total Nodes Explored</div></div>
+  </div>
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">Quick Actions</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="btn btn-primary" onclick="goto('new')">✨ New Experiment</button>
+        <button class="btn btn-outline" onclick="goto('monitor')">📡 Open Monitor</button>
+        <button class="btn btn-outline" onclick="goto('results')">📊 View Results</button>
+        <button class="btn btn-outline" onclick="goto('experiments')">🗂️ All Experiments</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Latest Experiment</div>
+      <div id="home-latest">Loading…</div>
+    </div>
   </div>
 </div>
 
-<div class="statusbar">
-  <span>Nodes: <b id="sb-total">0</b></span>
-  <span>✅ <b id="sb-ok">0</b></span>
-  <span>❌ <b id="sb-fail">0</b></span>
-  <span>🔵 <b id="sb-run">0</b></span>
-  <span>⏳ <b id="sb-pend">0</b></span>
-  <span id="sb-best" style="margin-left:auto"></span>
+<!-- EXPERIMENTS -->
+<div class="page" id="page-experiments">
+  <h1>Experiments</h1>
+  <p class="subtitle">All projects — each project is one ARI run</p>
+  <div style="display:flex;gap:10px;margin-bottom:20px;align-items:center">
+    <button class="btn btn-primary" onclick="goto('new')">✨ New Experiment</button>
+    <button class="btn btn-outline" onclick="loadExperiments()">↻ Refresh</button>
+  </div>
+  <div class="card">
+    <div id="exp-table-wrap">
+      <div class="empty-state"><div class="empty-icon">🗂️</div><p>Loading experiments…</p></div>
+    </div>
+  </div>
 </div>
 
-<script>
-// ── State ──────────────────────────────────────────────
-var state = {nodes: [], goal: ""};
-var selectedId = null;
-var prevNodeStatus = {};  // id → status for flash detection
+<!-- MONITOR -->
+<div class="page" id="page-monitor">
+  <h1 data-i18n="monitor_title">Pipeline Monitor</h1>
+  <p class="subtitle" data-i18n="monitor_subtitle">Real-time experiment progress</p>
+  <!-- Phase stepper -->
+  <div id="phase-stepper" style="display:flex;align-items:center;gap:0;margin-bottom:16px;overflow-x:auto;padding:4px 0">
+    <div class="phase-step" id="pstep-starting" data-phase="starting">
+      <div class="pstep-icon">⏳</div><div class="pstep-label">Starting</div>
+    </div>
+    <div class="pstep-arrow">→</div>
+    <div class="phase-step" id="pstep-idea" data-phase="idea">
+      <div class="pstep-icon">💡</div><div class="pstep-label">Idea</div>
+    </div>
+    <div class="pstep-arrow">→</div>
+    <div class="phase-step" id="pstep-bfts" data-phase="bfts">
+      <div class="pstep-icon">🔬</div><div class="pstep-label">BFTS</div>
+    </div>
+    <div class="pstep-arrow">→</div>
+    <div class="phase-step" id="pstep-paper" data-phase="paper">
+      <div class="pstep-icon">📄</div><div class="pstep-label">Paper</div>
+    </div>
+    <div class="pstep-arrow">→</div>
+    <div class="phase-step" id="pstep-review" data-phase="review">
+      <div class="pstep-icon">🔍</div><div class="pstep-label">Review</div>
+    </div>
+  </div>
+      <div class="card" id="gpu-monitor-card" style="margin-bottom:16px;display:none">
+      <div class="card-title">🖥️ GPU Monitor (SLURM Auto-Resubmit)</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <span id="gpu-monitor-status" style="font-size:.8rem;color:var(--muted)">—</span>
+        <button onclick="gpuMonitorStart()" style="font-size:.75rem;padding:3px 10px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer">▶ 起動</button>
+        <button onclick="gpuMonitorStop()" style="font-size:.75rem;padding:3px 10px;background:var(--border);color:var(--text);border:none;border-radius:4px;cursor:pointer">■ 停止</button>
+      </div>
+      <pre id="gpu-monitor-log" style="font-size:.72rem;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:8px;max-height:120px;overflow-y:auto;white-space:pre-wrap;word-break:break-all">—</pre>
+    </div>
+<div class="card" style="margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center"><div class="card-title">Experiment Control</div><span id="mon-model-badge" style="font-size:.75rem;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:2px 8px">model: —</span></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+      <button id="btn-resume" class="btn btn-primary" onclick="runStage('resume')" title="Resume BFTS tree exploration from checkpoint">▶ Resume Experiment</button>
+      <button class="btn btn-outline" onclick="runStage('paper')">📝 Run Paper Generation</button>
+      <button class="btn btn-outline" onclick="runStage('review')">🔍 Run Review / Verify</button>
+      <button class="btn btn-outline btn-sm" onclick="stopStage()" style="margin-left:auto">⏹ Stop</button>
+      <button id="btn-show-gpu-monitor" class="btn btn-outline btn-sm" onclick="toggleGpuMonitorCard()" style="display:none">🖥 GPU Monitor</button>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span id="stage-status" style="font-size:.82rem;color:var(--muted)"></span>
+    </div>
+    <div id="stage-output" style="margin-top:8px;font-size:.78rem;color:var(--muted);font-family:monospace;max-height:80px;overflow:auto"></div>
+  </div>
+  <div class="card" style="margin-bottom:16px" id="mon-idea-card">
+    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between">
+      <span>💡 Experiment Configuration</span>
+      <button class="btn btn-outline btn-sm" onclick="toggleIdeaDetails()">▼ Details</button>
+    </div>
+    <div id="mon-idea-summary" style="font-size:.85rem;color:var(--muted)">—</div>
+    <div id="mon-idea-details" style="display:none;margin-top:12px">
+      <pre id="mon-idea-text" class="code" style="max-height:200px;overflow:auto;font-size:.78rem"></pre>
+    </div>
+  </div>
+  <div class="grid-3" style="margin-bottom:16px">
+    <div class="stat-box"><div class="stat-val" id="mon-node-count">0</div><div class="stat-label" data-i18n="mon_nodes">Nodes Explored</div></div>
+    <div class="stat-box"><div class="stat-val" id="mon-best-metric">—</div><div class="stat-label" data-i18n="mon_best">Best Metric</div></div>
+    <div class="stat-box"><div class="stat-val" id="mon-cost">—</div><div class="stat-label">LLM Cost</div></div>
+  </div>
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">Node Tree</div>
+    <div id="tree-canvas-monitor" style="min-height:300px;position:relative;overflow:auto"></div>
+  </div>
+  <div class="card">
+    <div class="card-title" style="display:flex;align-items:center;gap:8px"><span data-i18n="live_logs">Live Logs</span> <span id="log-status" class="badge badge-muted">disconnected</span></div>
+    <div id="log-output"></div>
+    <div style="margin-top:10px;display:flex;gap:8px">
+      <button class="btn btn-outline btn-sm" onclick="startLogStream()">▶ Connect</button>
+      <button class="btn btn-outline btn-sm" onclick="clearLogs()">🗑 Clear</button>
+    </div>
+  </div>
+</div>
 
-// ── WebSocket ──────────────────────────────────────────
-var ws = null;
-var wsPort = (parseInt(window.location.port) + 1) || "8766";
-var wsUrl = "ws://localhost:" + wsPort + "/ws";
+<!-- TREE -->
+<div class="page" id="page-tree" style="padding:0">
+  <div style="display:flex;height:100%;overflow:hidden;width:100%">
+    <div style="flex:1;padding:20px 24px;overflow:auto;min-width:0">
+      <h1 data-i18n="tree_title">Experiment Tree</h1>
+      <p class="subtitle">BFTS hypothesis tree — click a node for details</p>
+      <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+        <select id="tree-filter-status" style="width:auto" onchange="renderTree()">
+          <option value="">All status</option>
+          <option value="completed">Completed</option>
+          <option value="running">Running</option>
+          <option value="failed">Failed</option>
+        </select>
+        <select id="tree-filter-depth" style="width:auto" onchange="renderTree()">
+          <option value="">All depths</option>
+          <option value="0">Depth 0</option>
+          <option value="1">Depth 1</option>
+          <option value="2">Depth 2</option>
+          <option value="3">Depth 3+</option>
+        </select>
+        <button class="btn btn-outline btn-sm" onclick="renderTree()">↻ Refresh</button> <button class="btn btn-outline btn-sm" onclick="_d3ResetLayout()">↺ Reset Layout</button>
+      </div>
+      <div id="tree-pan-wrapper" style="position:relative;height:calc(100vh - 200px);min-height:400px;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:rgba(0,0,0,.15)"><svg id="tree-d3-svg" width="100%" height="100%"></svg></div>
+    </div>
+    <div id="detail-panel">
+      <div id="detail-resize-handle"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <strong style="font-size:.9rem" data-i18n="node_detail">Node Detail</strong>
+        <button class="btn btn-outline btn-sm" onclick="closeDetail()">✕</button>
+      </div>
+      <div id="detail-content"></div>
+    </div>
+  </div>
+</div>
 
-function connect() {
-  ws = new WebSocket(wsUrl);
-  ws.onopen = function() {
-    document.getElementById("dot").className = "dot on";
-    document.getElementById("connstat").textContent = "Connected";
-  };
-  ws.onmessage = function(e) {
-    var msg = JSON.parse(e.data);
-    if (msg.type === "update") {
-      applyUpdate(msg.data, msg.timestamp);
-    }
-  };
-  ws.onclose = ws.onerror = function() {
-    document.getElementById("dot").className = "dot";
-    document.getElementById("connstat").textContent = "Reconnecting...";
-    setTimeout(connect, 3000);
-  };
-}
+<!-- RESULTS -->
+<div class="page" id="page-results">
+  <h1 data-i18n="results_title">Results Viewer</h1>
+  <p class="subtitle" data-i18n="results_subtitle">Paper quality, figures, and reproducibility</p>
+  <div id="results-cost-badge" style="display:none;margin-bottom:12px"></div>
+  <div style="display:flex;gap:10px;margin-bottom:20px;align-items:center">
+    <select id="results-ckpt-select" style="width:auto;min-width:240px" onchange="loadResults()">
+      <option value="">— Select experiment —</option>
+    </select>
+    <button class="btn btn-outline btn-sm" onclick="populateResultsDropdown()">↻</button>
+  </div>
+  <div id="results-content">
+    <div class="empty-state"><div class="empty-icon">📊</div><p>Select an experiment above</p></div>
+  </div>
+</div>
 
-function applyUpdate(data, ts) {
-  // Detect changed nodes for flash
-  var newStatus = {};
-  (data.nodes || []).forEach(function(n){ newStatus[n.id] = n.status; });
+<!-- NEW EXPERIMENT WIZARD -->
+<div class="page" id="page-new">
+  <h1>New Experiment</h1>
+  <p class="subtitle" data-i18n="new_subtitle">Set up and launch an ARI experiment</p>
+  <div class="wizard-steps">
+    <div class="step-pill active" id="step-pill-1" data-i18n="wiz_step1">1. Goal</div>
+    <div class="step-pill" id="step-pill-2" data-i18n="wiz_step2">2. Scope</div>
+    <div class="step-pill" id="step-pill-3" data-i18n="wiz_step3">3. Resources</div>
+    <div class="step-pill" id="step-pill-4" data-i18n="wiz_step4">4. Launch</div>
+  </div>
 
-  state = data;
-  document.getElementById("lastup").textContent = "Updated: " + new Date(ts).toLocaleTimeString();
-  if (data.experiment_goal) {
-    // Strip HTML comments and extract first heading or non-empty line
-    var rawGoal = data.experiment_goal || "";
-    // If it looks like a file path, use just the basename
-    if (rawGoal && !rawGoal.includes("\n") && rawGoal.includes("/")) {
-      rawGoal = rawGoal.split("/").pop().replace(/\.md$/i,"");
-    }
-    var cleaned = rawGoal.replace(/<!--[\s\S]*?-->/g, "").trim();
-    var firstLine = cleaned.split("\n").map(function(l){return l.replace(/^#+\s*/,"").trim();}).filter(Boolean)[0] || "—";
-    document.getElementById("ckptpath").textContent = firstLine.substring(0, 80);
-  }
-  renderTree(newStatus);
-  updateStatusBar();
-  if (selectedId) showDetail(selectedId);
+  <!-- Step 1 -->
+  <div class="wizard-page active" id="wiz-step-1">
+    <!-- Mode selector tabs -->
+    <div style="display:flex;gap:0;margin-bottom:16px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+      <button id="wiz-tab-chat" onclick="wizSetMode('chat')"
+        style="flex:1;padding:10px 0;background:rgba(59,130,246,.18);border:none;color:var(--blue-light);font-weight:700;font-size:.88rem;cursor:pointer;border-right:1px solid var(--border)">
+        💬 Chat Mode<br><span style="font-size:.7rem;font-weight:400;color:var(--muted)">Answer questions interactively</span>
+      </button>
+      <button id="wiz-tab-md" onclick="wizSetMode('md')"
+        style="flex:1;padding:10px 0;background:none;border:none;color:var(--muted);font-size:.88rem;cursor:pointer">
+        📝 Write MD<br><span style="font-size:.7rem;font-weight:400">Write experiment.md directly</span>
+      </button>
+    </div>
 
-  prevNodeStatus = newStatus;
-}
+    <!-- CHAT MODE -->
+    <div id="wiz-mode-chat">
+      <div class="card" style="padding:0;overflow:hidden">
+        <div id="wiz-chat-messages" style="height:320px;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px">
+          <div style="align-self:flex-start;max-width:85%">
+            <div style="background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.3);border-radius:12px 12px 12px 2px;padding:10px 14px;font-size:.84rem;line-height:1.6">
+              👋 Let's define your research goal together!<br>
+              <strong>What would you like to optimize or investigate?</strong><br>
+              <span style="color:var(--muted);font-size:.78rem">(e.g. "SpMM throughput on CPU", "training speed for a transformer", "memory compression ratio")</span>
+            </div>
+          </div>
+        </div>
+        <div style="border-top:1px solid var(--border);padding:10px;display:flex;gap:8px;align-items:flex-end">
+          <textarea id="wiz-chat-input" rows="2"
+            style="flex:1;resize:none;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:.85rem"
+            placeholder="Type your answer…"
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();wizChatSend();}"></textarea>
+          <button class="btn btn-primary" onclick="wizChatSend()" style="padding:8px 16px;white-space:nowrap">Send ↵</button>
+        </div>
+      </div>
+      <div id="wiz-chat-md-preview" style="display:none;margin-top:12px">
+        <div class="card" style="border:1.5px solid var(--green)">
+          <div class="card-title" style="color:var(--green)">✅ experiment.md generated</div>
+          <textarea id="wiz-chat-generated-md" rows="12"></textarea>
+          <div style="margin-top:8px;font-size:.78rem;color:var(--muted)">You can edit this before proceeding.</div>
+        </div>
+      </div>
+    </div>
 
-// Also try HTTP fallback on load
-fetch("/state").then(function(r){ return r.json(); }).then(function(d){
-  applyUpdate(d, new Date().toISOString());
-}).catch(function(){});
+    <!-- MD MODE -->
+    <div id="wiz-mode-md" style="display:none">
+      <div class="card">
+        <div class="card-title">📝 Write experiment.md</div>
+        <div style="font-size:.78rem;color:var(--muted);margin-bottom:8px">
+          Write your experiment configuration in Markdown. Required sections:
+          <code>## Research Goal</code>, <code>## Evaluation Metric</code>, <code>## Constraints</code>
+        </div>
+        <textarea id="wiz-goal" rows="14" style="font-family:monospace;font-size:.82rem"
+          placeholder="## Research Goal
+Optimize sparse matrix-vector multiplication (SpMM) on a multi-core CPU.
 
-connect();
+## Evaluation Metric
+Maximize throughput in GFlops/s using OpenMP parallelism.
 
-// ── Tree Layout ────────────────────────────────────────
-function buildTree(nodes) {
-  var map = {};
-  nodes.forEach(function(n){ map[n.id] = Object.assign({}, n, {_children: []}); });
-  var roots = [];
-  nodes.forEach(function(n){
-    if (n.parent_id && map[n.parent_id]) {
-      map[n.parent_id]._children.push(map[n.id]);
-    } else {
-      roots.push(map[n.id]);
-    }
-  });
-  return {map: map, roots: roots};
-}
+## Constraints
+- Platform: Linux x86-64, GCC, OpenMP
+- No GPU
+- Baseline: naive CSR implementation"></textarea>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:8px">
+          <button class="btn btn-outline" onclick="generateConfig()">⚡ Generate from summary</button>
+          <span id="wiz-gen-status" style="font-size:.8rem;color:var(--muted)"></span>
+        </div>
+      </div>
+      <div class="card" id="wiz-generated-card" style="display:none;margin-top:12px">
+        <div class="card-title">Generated experiment.md</div>
+        <textarea id="wiz-generated-md" rows="10"></textarea>
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px;border:1.5px dashed var(--border);background:rgba(255,255,255,.02)">
+      <div class="card-title" data-i18n="upload_title">Upload Files</div>
+      <div style="display:flex;gap:10px;margin-bottom:8px">
+        <label style="flex:1"><div style="font-size:.75rem;color:var(--muted);margin-bottom:4px">experiment.md</div>
+          <input type="file" id="upload-md" accept=".md,.txt,.yaml,.yml" style="width:100%" onchange="uploadExperimentFile(this, 'experiment')">
+        </label>
+        <label style="flex:1"><div style="font-size:.75rem;color:var(--muted);margin-bottom:4px">実験用ファイル（複数可）</div>
+          <input type="file" id="upload-extra" multiple style="width:100%" onchange="uploadExperimentFile(this, 'extra')">
+        </label>
+      </div>
+      <div id="upload-list" style="font-size:.78rem;max-height:100px;overflow:auto"></div>
+      <span id="upload-status" style="font-size:.8rem;color:var(--muted)"></span>
+    </div>
+    <div style="margin-top:16px;display:flex;justify-content:flex-end">
+      <button class="btn btn-primary" onclick="wizNext(2)">Next →</button>
+    </div>
+  </div>
 
-var NODE_R = 18;
-var H_GAP = 52;
-var V_GAP = 65;
+  <!-- Step 2 -->
+  <div class="wizard-page" id="wiz-step-2">
+    <div class="card">
+      <div class="card-title" data-i18n="wiz_scope_title">Experiment Scope & Parameters</div>
+      <div class="form-row">
+        <label data-i18n="wiz_depth_label">Depth / Budget</label>
+        <div class="range-wrap">
+          <input type="range" id="wiz-scope" min="1" max="4" value="2" oninput="updateScopeLabel(); syncScopeToDepth();">
+          <div class="range-labels"><span data-i18n="wiz_quick">Quick exploration</span><span data-i18n="wiz_deep">Deep investigation</span></div>
+        </div>
+      </div>
+      <div id="scope-summary" class="card" style="background:rgba(59,130,246,.07);border-color:rgba(59,130,246,.2);font-size:.875rem;line-height:1.7"></div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:16px">
+        <div class="form-row" style="flex:1;min-width:140px">
+          <label>Max Depth <span style="color:var(--muted);font-size:.78rem">(2–20)</span></label>
+          <input type="number" id="wiz-max-depth" value="5" min="2" max="20" style="width:100%" oninput="syncDepthToScope()">
+        </div>
+        <div class="form-row" style="flex:1;min-width:140px">
+          <label>Max Nodes <span style="color:var(--muted);font-size:.78rem">(5–500)</span></label>
+          <input type="number" id="wiz-max-nodes" value="30" min="5" max="500" style="width:100%" oninput="updateScopeLabel()">
+        </div>
+        <div class="form-row" style="flex:1;min-width:140px">
+          <label>Workers <span style="color:var(--muted);font-size:.78rem">(1–64)</span></label>
+          <input type="number" id="wiz-workers" value="4" min="1" max="64" style="width:100%">
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:16px;display:flex;justify-content:space-between">
+      <button class="btn btn-outline" onclick="wizNext(1)">← Back</button>
+      <button class="btn btn-primary" onclick="wizNext(3)">Next →</button>
+    </div>
+  </div>
 
-function assignPositions(roots) {
-  // Count leaves under each node to space horizontally
-  function countLeaves(n) {
-    if (n._children.length === 0) return 1;
-    return n._children.reduce(function(s,c){ return s + countLeaves(c); }, 0);
-  }
-  function assign(n, depth, left, width) {
-    n._y = 40 + depth * V_GAP;
-    n._x = left + width / 2;
-    var cLeft = left;
-    n._children.forEach(function(c){
-      var cWidth = (countLeaves(c) / Math.max(countLeaves(n), 1)) * width;
-      assign(c, depth + 1, cLeft, cWidth);
-      cLeft += cWidth;
-    });
-  }
-  var totalLeaves = roots.reduce(function(s,r){ return s + countLeaves(r); }, 0);
-  var totalWidth = Math.max(totalLeaves * (NODE_R * 2 + H_GAP), 600);
-  var x = 0;
-  roots.forEach(function(r){
-    var w = (countLeaves(r) / totalLeaves) * totalWidth;
-    assign(r, 0, x, w);
-    x += w;
-  });
-  return totalWidth;
-}
+  <!-- Step 3 -->
+  <div class="wizard-page" id="wiz-step-3">
+    <!-- Execution environment card -->
+    <div class="card">
+      <div class="card-title" data-i18n="wiz_env_title">Environment</div>
+      <div class="form-row">
+        <label data-i18n="wiz_mode_label">Execution mode</label>
+        <div class="toggle-group" style="max-width:300px">
+          <div class="toggle-btn active" id="mode-laptop" onclick="setMode('laptop')">💻 Laptop</div>
+          <div class="toggle-btn" id="mode-hpc" onclick="setMode('hpc')">🖥 HPC / Cluster</div>
+        </div>
+      </div>
+      <!-- HPC options: shown regardless of LLM backend -->
+      <div id="hpc-options" style="display:none">
+        <div class="form-row">
+          <label>Detected scheduler: <span id="detected-scheduler" class="badge badge-blue">detecting…</span></label>
+        </div>
+        <div class="form-row">
+          <label data-i18n="s_partition">Partition</label>
+          <select id="wiz-partition"><option value="">auto-detect</option></select>
+        </div>
+      </div>
+    </div>
 
-var STATUS_COLOR = {
-  success: "#22c55e", failed: "#ef4444", running: "#3b82f6",
-  pending: "#6b7280", abandoned: "#374151"
-};
-var LABEL_EMOJI = {
-  draft: "📝", improve: "⬆️", debug: "🔧", ablation: "🔬", validation: "✅"
-};
+    <!-- Unified LLM configuration card -->
+    <div class="card" style="margin-top:16px">
+      <div class="card-title">🤖 LLM Configuration</div>
+      <!-- Provider toggle -->
+      <div class="form-row">
+        <label>Provider</label>
+        <div class="toggle-group">
+          <div class="toggle-btn active" id="llm-openai" onclick="setLLM('openai')">OpenAI</div>
+          <div class="toggle-btn" id="llm-anthropic" onclick="setLLM('anthropic')">Anthropic</div>
+          <div class="toggle-btn" id="llm-ollama" onclick="setLLM('ollama')">Ollama</div>
+          <div class="toggle-btn" id="llm-custom" onclick="setLLM('custom')">Custom</div>
+        </div>
+      </div>
+      <!-- Model selection: dropdown with presets -->
+      <div class="form-row">
+        <label>Model</label>
+        <div style="display:flex;flex-direction:column;gap:6px;flex:1">
+          <select id="wiz-llm-model" style="width:100%" onchange="var hid=document.getElementById('wiz-model');if(hid)hid.value=this.value;">
+            <option value="gpt-5.2">gpt-5.2</option>
+          </select>
+          <input type="text" id="wiz-llm-model-custom" placeholder="モデル名を直接入力 (例: llama3:70b, gemma3:27b)..." style="display:none;width:100%" oninput="var hid=document.getElementById('wiz-model');if(hid)hid.value=this.value;">
+        </div>
+      </div>
+      <!-- Provider-specific fields -->
+      <div id="llm-key-row" class="form-row">
+        <label>API Key</label>
+        <div style="display:flex;gap:6px">
+          <input type="password" id="wiz-apikey" placeholder="sk-…" style="flex:1">
+          <button class="btn btn-outline btn-sm" type="button" onclick="autoReadApiKey()">🔑 Auto-read</button>
+        </div>
+        <div id="wiz-apikey-status" style="font-size:.75rem;color:var(--muted);margin-top:3px"></div>
+      </div>
+      <div id="wiz-baseurl-row" class="form-row" style="display:none">
+        <label>Base URL</label>
+        <input type="text" id="wiz-baseurl" placeholder="http://localhost:11434" value="http://localhost:11434">
+      </div>
+      <div id="wiz-ollama-gpu-row" class="form-row" style="display:none">
+        <label>GPU</label>
+        <select id="wiz-ollama-gpu">
+          <option value="">Auto</option>
+          <option value="cpu">CPU only</option>
+        </select>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:3px" id="wiz-ollama-gpu-info"></div>
+      </div>
+      <!-- Hidden inputs: synced by setLLM() and wizUpdateModelList() -->
+      <input type="hidden" id="wiz-model" value="">
+      <input type="hidden" id="wiz-llm-provider" value="">
+      <!-- Per-phase model override (Advanced) -->
+      <details style="margin-top:12px">
+        <summary style="cursor:pointer;font-size:.8rem;color:var(--muted);font-weight:600;user-select:none">⚙ Per-Phase Model Override (Advanced)</summary>
+        <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div><label style="font-size:.75rem;color:var(--muted)">💡 Idea</label>
+            <select id="adv-model-idea" class="input-sm" style="width:100%"><option value="">default</option></select></div>
+          <div><label style="font-size:.75rem;color:var(--muted)">🔬 BFTS</label>
+            <select id="adv-model-bfts" class="input-sm" style="width:100%"><option value="">default</option></select></div>
+          <div><label style="font-size:.75rem;color:var(--muted)">💻 Coding</label>
+            <select id="adv-model-coding" class="input-sm" style="width:100%"><option value="">default</option></select></div>
+          <div><label style="font-size:.75rem;color:var(--muted)">📊 Evaluation</label>
+            <select id="adv-model-eval" class="input-sm" style="width:100%"><option value="">default</option></select></div>
+          <div><label style="font-size:.75rem;color:var(--muted)">📄 Paper</label>
+            <select id="adv-model-paper" class="input-sm" style="width:100%"><option value="">default</option></select></div>
+          <div><label style="font-size:.75rem;color:var(--muted)">🔍 Review</label>
+            <select id="adv-model-review" class="input-sm" style="width:100%"><option value="">default</option></select></div>
+        </div>
+      </details>
+    </div>
 
-function renderTree(newStatus) {
-  var tree = buildTree(state.nodes || []);
-  var totalW = assignPositions(tree.roots);
-  var panel = document.getElementById("treePanel");
-  var svg = document.getElementById("treeSvg");
+    <div style="margin-top:16px;display:flex;justify-content:space-between">
+      <button class="btn btn-outline" onclick="wizNext(2)">← Back</button>
+      <button class="btn btn-primary" onclick="wizNext(4)">Next →</button>
+    </div>
+  </div>
 
-  // Compute height
-  var maxY = 40;
-  Object.values(tree.map).forEach(function(n){
-    if (n._y > maxY) maxY = n._y;
-  });
-  var svgH = maxY + 80;
-  var svgW = Math.max(totalW, 600);
-  // Auto-fit: scale tree to fit panel
-  var panelW = panel.clientWidth || 700;
-  var panelH = panel.clientHeight || 500;
-  var scaleX = panelW / svgW;
-  var scaleY = panelH / svgH;
-  var scale = Math.min(scaleX, scaleY, 1.0);  // never upscale
-  var fitW = svgW * scale;
-  var fitH = svgH * scale;
-  svg.setAttribute("width", fitW);
-  svg.setAttribute("height", fitH);
-  svg.setAttribute("viewBox", "0 0 " + svgW + " " + svgH);
-  svg.style.display = "block";
+  <!-- Step 4 -->
+  <div class="wizard-page" id="wiz-step-4">
+    <div class="card">
+      <div class="card-title">🚀 Review &amp; Launch</div>
+      <div class="form-row">
+        <label data-i18n="wiz_profile_label">Profile</label>
+        <select id="wiz-profile">
+          <option value="laptop">laptop</option>
+          <option value="hpc">hpc</option>
+          <option value="cloud">cloud</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Paper Format / Venue</label>
+        <select id="wiz-paper-format">
+          <option value="arxiv">arXiv (PDF)</option>
+          <option value="neurips">NeurIPS</option>
+          <option value="icml">ICML</option>
+          <option value="iclr">ICLR</option>
+          <option value="acl">ACL</option>
+          <option value="custom">Custom</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Language</label>
+        <select id="wiz-lang">
+          <option value="en">English</option>
+          <option value="ja">日本語</option>
+          <option value="zh">中文</option>
+        </select>
+      </div>
+      <div class="form-row" style="margin-top:8px">
+        <label>Research Goal Summary</label>
+        <div id="wiz-goal-summary" style="font-size:.82rem;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;max-height:120px;overflow-y:auto;line-height:1.5">—</div>
+      </div>
+      <textarea id="wiz-final-md" style="display:none"></textarea>
+      <input type="text" id="wiz-save-path" style="display:none" value="experiment.md">
+    </div>
+    <div style="margin-top:16px;display:flex;justify-content:space-between;align-items:center">
+      <button class="btn btn-outline" onclick="wizNext(3)">← Back</button>
+      <div style="display:flex;gap:10px;align-items:center">
+        <span id="launch-status"></span>
+        <button class="btn btn-primary" onclick="launchExperiment()">🚀 Launch Experiment</button>
+      </div>
+    </div>
+  </div>
 
-  // Clear
-  while (svg.firstChild) svg.removeChild(svg.firstChild);
+</div>
+<!-- SETTINGS -->
+<div class="page" id="page-settings">
+  <h1>Settings</h1>
+  <p class="subtitle">LLM backend, skills, and environment configuration</p>
+  <div class="card">
+    <div class="settings-section">
+      <h3>Language / 言語</h3>
+      <div class="form-row">
+        <label data-i18n="settings_lang">Dashboard Language</label>
+        <select id="s-lang" onchange="applyLanguage(this.value)">
+          <option value="en">English</option>
+          <option value="ja">日本語</option>
+          <option value="zh">中文</option>
+        </select>
+      </div>
+      <div id="lang-note" style="font-size:.75rem;color:var(--muted);margin-top:4px"></div>
+    </div>
+    <div class="settings-section">
+      <h3 data-i18n="settings_llm">LLM Backend</h3>
+      <div class="form-row">
+        <label data-i18n="s_provider">Provider</label>
+        <select id="s-provider" onchange="onProviderChange()">
+          <option value="openai">OpenAI (GPT)</option>
+          <option value="anthropic">Anthropic (Claude)</option>
+          <option value="gemini">Google Gemini</option>
+          <option value="ollama">Ollama (Local)</option>
+        </select>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row">
+          <label>デフォルトモデル <span style="font-size:.75rem;color:var(--muted)">(全実験のデフォルト。実験ごとに上書き可能)</span></label>
+          <select id="s-model-select" onchange="var cv=this.value; var ci=document.getElementById('s-model'); ci.style.display=cv==='__custom__'?'':'none'; if(cv!=='__custom__') ci.value=cv;">
+            <option value="gpt-5.2">gpt-5.2</option>
+            <option value="gpt-5.4">gpt-5.4</option>
+            <option value="gpt-5.4-mini">gpt-5.4-mini</option>
+            <option value="gpt-4o">gpt-4o</option>
+            <option value="gpt-4o-mini">gpt-4o-mini</option>
+            <option value="claude-opus-4-5">claude-opus-4-5</option>
+            <option value="claude-sonnet-4-5">claude-sonnet-4-5</option>
+            <option value="__custom__">— カスタム入力 —</option>
+          </select>
+          <input type="text" id="s-model" placeholder="モデル名を入力..." style="margin-top:4px;display:none">
+        </div>
+        <div class="form-row"><label data-i18n="s_temperature">Temperature</label><input type="number" id="s-temp" value="1.0" min="0" max="2" step="0.1"></div>
+      </div>
+      <div class="form-row" id="s-apikey-row"><label>API Key</label><input type="password" id="s-apikey" placeholder="sk-…"></div>
+      <div class="form-row" id="s-baseurl-row" style="display:none"><label>Base URL (Ollama)</label><input type="text" id="s-baseurl" placeholder="http://localhost:11434"></div>
+    </div>
+    <div class="settings-section">
+      <h3 data-i18n="settings_paper">Paper Retrieval</h3>
+      <div class="form-row"><label>Semantic Scholar API Key (optional)</label><input type="text" id="s-ss-key" placeholder="optional"></div>
+    </div>
+    <div class="settings-section">
+      <h3 data-i18n="settings_slurm">SLURM / HPC Defaults</h3>
+      <div class="form-row-2">
+        <div class="form-row"><label>Default Partition(s) <button class="btn btn-outline btn-sm" style="margin-left:8px;padding:2px 8px;font-size:.75rem" onclick="loadPartitions()">↻ Detect</button></label>
+          <select id="s-partition" multiple style="height:100px">
+            <option value="">loading… (click ↻ Detect)</option>
+          </select>
+          <div style="font-size:.75rem;color:var(--muted);margin-top:4px">Ctrl+click to select multiple</div></div>
+        <div class="form-row"><label data-i18n="s_cpus">CPUs per task</label><input type="number" id="s-cpus" value="8"></div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row"><label>Memory (GB)</label><input type="number" id="s-mem" value="32"></div>
+        <div class="form-row"><label data-i18n="s_walltime">Walltime</label><input type="text" id="s-walltime" value="04:00:00"></div>
+      </div>
+    </div>
+    <div class="settings-section">
+      <h3 data-i18n="settings_skills">Available Skills</h3>
+      <div id="skills-list"><div class="empty-state" style="padding:20px"><p>Loading…</p></div></div>
+    </div>
+    <div class="settings-section">
+      <h3 data-i18n="settings_ssh">SSH Remote Host</h3>
+      <div class="form-row-2">
+        <div class="form-row"><label>Host / IP</label><input type="text" id="s-ssh-host" placeholder="user@hostname or IP"></div>
+        <div class="form-row"><label>Port</label><input type="number" id="s-ssh-port" value="22" min="1" max="65535"></div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row"><label data-i18n="ssh_username">Username</label><input type="text" id="s-ssh-user" placeholder="username"></div>
+        <div class="form-row"><label>Remote ARI Path</label><input type="text" id="s-ssh-path" placeholder="/path/to/ARI"></div>
+      </div>
+      <div class="form-row"><label>SSH Private Key Path (on server)</label><input type="text" id="s-ssh-key" placeholder="~/.ssh/id_ed25519"></div>
+      <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+        <button class="btn btn-outline" onclick="testSSH()">🔗 Test SSH Connection</button>
+        <span id="ssh-test-status" style="font-size:.8rem"></span>
+      </div>
+    </div>
+    
+    <div style="display:flex;gap:10px;align-items:center">
+      <button class="btn btn-primary" onclick="saveSettings()">💾 Save Settings</button>
+      <button class="btn btn-outline" onclick="testLLM()">🔌 Test LLM Connection</button>
+      <span id="settings-status"></span>
+    </div>
 
-  // Draw edges
-  Object.values(tree.map).forEach(function(n){
-    n._children.forEach(function(c){
-      var path = document.createElementNS("http://www.w3.org/2000/svg","path");
-      var x1=n._x, y1=n._y, x2=c._x, y2=c._y;
-      var mx=(x1+x2)/2, my=(y1+y2)/2;
-      path.setAttribute("d", "M"+x1+","+y1+" C"+x1+","+(y1+V_GAP*0.5)+" "+x2+","+(y2-V_GAP*0.5)+" "+x2+","+y2);
-      path.setAttribute("class","edge");
-      svg.appendChild(path);
-    });
-  });
 
-  // Draw nodes
-  Object.values(tree.map).forEach(function(n){
-    var g = document.createElementNS("http://www.w3.org/2000/svg","g");
-    g.setAttribute("transform","translate("+n._x+","+n._y+")");
-    g.setAttribute("data-node-id", n.id);
-    g.setAttribute("role","button");
-    g.setAttribute("aria-label","node-"+n.id);
-    g.style.cursor = "pointer";
+<div class="section" style="margin-top:24px">
+    <h2 style="margin-bottom:12px">🗑️ Project Management</h2>
+    <p style="color:var(--muted);margin-bottom:12px;font-size:.85rem">Delete experiment checkpoints. This cannot be undone.</p>
+    <div id="settings-projects-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
+    <button class="btn btn-outline btn-sm" onclick="loadSettingsProjects()">↻ Refresh list</button>
+  </div>
 
-    var color = STATUS_COLOR[n.status] || "#6b7280";
-    var circle = document.createElementNS("http://www.w3.org/2000/svg","circle");
-    circle.setAttribute("r", NODE_R);
-    circle.setAttribute("fill", color);
-    circle.setAttribute("fill-opacity", "0.85");
-    circle.setAttribute("stroke", n.id === selectedId ? "#fff" : color);
-    circle.setAttribute("stroke-width", n.id === selectedId ? "2.5" : "0");
-    if (n.status === "running") {
-      circle.classList.add("running-pulse");
-    }
-    // Flash on status change
-    if (newStatus && newStatus[n.id] && prevNodeStatus[n.id] &&
-        newStatus[n.id] !== prevNodeStatus[n.id]) {
-      circle.classList.add("flash");
-    }
-    g.appendChild(circle);
 
-    // Status icon
-    var icon = {success:"✓", failed:"✗", running:"▶", pending:"…", abandoned:"—"}[n.status] || "?";
-    var itext = document.createElementNS("http://www.w3.org/2000/svg","text");
-    itext.setAttribute("y","5"); itext.setAttribute("text-anchor","middle");
-    itext.setAttribute("font-size","14"); itext.setAttribute("fill","#fff");
-    itext.setAttribute("pointer-events","none");
-    itext.textContent = icon;
-    g.appendChild(itext);
+  
+  </div>
 
-    // Label badge
-    if (n.label) {
-      var lt = document.createElementNS("http://www.w3.org/2000/svg","text");
-      lt.setAttribute("y", NODE_R + 14);
-      lt.setAttribute("class","node-label");
-      lt.textContent = (LABEL_EMOJI[n.label]||"") + " " + n.label;
-      g.appendChild(lt);
-    }
+</div>
 
-    // Short ID
-    var sid = n.id.replace("node_","").substring(0,8);
-    var idtext = document.createElementNS("http://www.w3.org/2000/svg","text");
-    idtext.setAttribute("y", NODE_R + 26);
-    idtext.setAttribute("class","node-id");
-    idtext.textContent = sid;
-    g.appendChild(idtext);
 
-    g.addEventListener("click", function(){ selectedId = n.id; showDetail(n.id); renderTree(null); });
-    svg.appendChild(g);
-  });
-}
+<!-- IDEA PAGE -->
+<div class="page" id="page-idea">
+  <h1>💡 Idea Generation</h1>
+  <p class="subtitle">Experiment source, hypothesis, and initial research direction</p>
+  <div id="idea-page-content" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+    <div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">📄 Experiment Configuration</div>
+        <div id="idea-exp-md" style="font-size:.75rem;color:var(--muted);margin-bottom:6px">Loading…</div>
+        <details style="margin-top:8px" open>
+          <summary style="cursor:pointer;font-size:.78rem;color:var(--accent);user-select:none">📋 詳細設定を表示</summary>
+          <pre id="idea-config-content" style="font-size:.78rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;max-height:300px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;margin-top:6px">—</pre>
+        </details>
+      </div>
+      <div class="card">
+        <div class="card-title">🎯 Research Goal</div>
+        <div id="idea-goal" style="font-size:.85rem;line-height:1.6;white-space:pre-wrap">—</div>
+      </div>
+    </div>
+    <div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">🔬 Best Hypothesis</div>
+        <div id="idea-hypothesis" style="font-size:.82rem;line-height:1.6;white-space:pre-wrap;max-height:200px;overflow:auto">—</div>
+        <div id="idea-hypotheses-list" style="margin-top:14px"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">📊 Idea Generation Strategy</div>
+        <div id="idea-strategy" style="font-size:.82rem"></div>
+      </div>
+    </div>
+  </div>
+</div>
 
-// ── Detail Panel ───────────────────────────────────────
-var _activeTab = "overview";
+<!-- WORKFLOW PAGE -->
 
-function switchTab(name) {
-  _activeTab = name;
-  document.querySelectorAll(".tab-btn").forEach(function(b){ b.classList.toggle("active", b.dataset.tab===name); });
-  document.querySelectorAll(".tab-pane").forEach(function(p){ p.classList.toggle("active", p.dataset.tab===name); });
-}
 
-function showDetail(id) {
-  var nodes = (state.nodes || []);
-  var n = null;
-  for (var i=0; i<nodes.length; i++) { if(nodes[i].id===id){n=nodes[i];break;} }
-  if (!n) return;
+<div class="page" id="page-workflow">
+  <h1>⚡ Workflow Editor</h1>
+  <p class="subtitle">Pipeline stages — MCP tools, dependencies, conditional branching</p>
+  <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;align-items:center">
+    <button onclick="saveWorkflow()" class="btn btn-primary" style="font-size:.85rem;padding:7px 16px">💾 Save</button>
+    <button onclick="loadWorkflow()" class="btn btn-outline" style="font-size:.85rem;padding:7px 16px">↻ Reload</button>
+    <button onclick="addStage()" class="btn btn-outline" style="font-size:.85rem;padding:7px 16px">＋ Add Stage</button>
+    <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:var(--muted)">
+      <input type="checkbox" id="wf-show-mcp" checked onchange="renderWorkflowList(_wfData&&_wfData.workflow.pipeline,[])"> Show MCP tools
+    </label>
+    <span id="wf-save-msg" style="color:var(--success);font-size:.85rem"></span>
+  </div>
 
-  var panel = document.getElementById("detailPanel");
-  panel.className = "detail-panel";
+  <!-- DAG: full width on top -->
+  <div style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+      <h3 style="margin:0;font-size:.9rem;color:var(--muted)">PIPELINE DAG <span style="font-size:.75rem">(click stage to select)</span></h3>
+      <div style="display:flex;gap:4px">
+        <button id="wf-tab-full"   onclick="switchWfView('full')"   class="btn btn-outline" style="font-size:.75rem;padding:3px 10px;background:rgba(255,255,255,.1)">🔄 Full Pipeline</button>
+        <button id="wf-tab-bfts"   onclick="switchWfView('bfts')"   class="btn btn-outline" style="font-size:.75rem;padding:3px 10px">🌿 BFTS Loop</button>
+        <button id="wf-tab-paper"  onclick="switchWfView('paper')"  class="btn btn-outline" style="font-size:.75rem;padding:3px 10px">📄 Paper Pipeline</button>
+      </div>
+    </div>
+    <div id="wf-dag" style="overflow:auto;background:rgba(0,0,0,.2);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:160px"></div>
+  </div>
 
-  // Execution time
-  var execTime = "—";
-  if (n.created_at) {
-    var start = new Date(n.created_at);
-    var end = n.completed_at ? new Date(n.completed_at) : new Date();
-    var diff = Math.round((end - start) / 1000);
-    var mins = Math.floor(diff/60), secs = diff%60;
-    execTime = (mins>0 ? mins+"m " : "") + secs + "s" + (n.completed_at ? "" : " (running)");
-  }
+  <!-- 2-column below: stages | right panel -->
+  <div style="display:grid;grid-template-columns:1fr 260px;gap:16px;align-items:start">
 
-  // Metrics
-  var metricsHtml = "<em style='color:var(--muted)'>None</em>";
-  if (n.metrics && Object.keys(n.metrics).length > 0) {
-    metricsHtml = Object.entries(n.metrics).map(function(kv){
-      return '<div><div class="label">'+kv[0]+'</div><div class="metric-val">'+
-        (typeof kv[1]==="number" ? kv[1].toLocaleString() : kv[1])+'</div></div>';
-    }).join("");
-  }
+    <!-- Left: Stage list (drag to reorder) -->
+    <div>
+      <h3 style="margin-bottom:10px;font-size:.9rem;color:var(--muted)">STAGES <span style="font-size:.75rem;color:var(--muted)">(drag to reorder)</span></h3>
+      <div id="wf-list" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
 
-  var parentHtml = n.parent_id
-    ? '<span class="parent-chain">depth '+n.depth+' ← <span>'+n.parent_id.substring(0,16)+'…</span></span>'
-    : '<span class="parent-chain">Root node</span>';
+    <!-- Right: MCP palette + conditional config -->
+    <div>
+      <h3 style="margin-bottom:10px;font-size:.9rem;color:var(--muted)">MCP SKILLS</h3>
+      <div id="wf-skills-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px"></div>
 
-  var retryHtml = n.retry_count > 0
-    ? '<div class="detail-row"><div class="label">Retries</div><div class="value">⚠️ '+n.retry_count+' time(s)</div></div>' : "";
+      <h3 style="margin-bottom:10px;font-size:.9rem;color:var(--muted)">CONDITIONAL</h3>
+      <div style="background:rgba(0,0,0,.2);border:1px solid var(--border);border-radius:8px;padding:10px">
+        <div style="font-size:.78rem;color:var(--muted);margin-bottom:6px">Add condition to selected stage:</div>
+        <select id="wf-cond-type" style="width:100%;margin-bottom:6px;font-size:.78rem;padding:4px;background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:6px">
+          <option value="">— type —</option>
+          <option value="skip_if_exists">skip_if_exists</option>
+          <option value="skip_if_score">skip_if_score</option>
+          <option value="run_if">run_if</option>
+        </select>
+        <input id="wf-cond-value" type="text" placeholder="e.g. {{ckpt}}/output.json" style="width:100%;font-size:.78rem;padding:4px 8px;background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:6px;box-sizing:border-box;margin-bottom:6px">
+        <button onclick="applyCondition()" class="btn btn-outline" style="font-size:.78rem;padding:4px 10px;width:100%">Apply to Selected</button>
+      </div>
+    </div>
+  </div>
+</div>
 
-  // ── TAB: Overview ──
-  var overviewHtml =
-    '<div class="detail-row"><div class="label">ID</div><div class="value" style="font-family:monospace;font-size:.8rem">'+escHtml(n.id)+'</div></div>'+
-    '<div class="detail-row"><div class="label">Status</div><span class="badge '+n.status+'">'+n.status.toUpperCase()+'</span></div>'+
-    '<div class="detail-row"><div class="label">Type</div><div class="value">'+(LABEL_EMOJI[n.label]||"")+" "+(n.label||"—")+'</div></div>'+
-    '<div class="detail-row"><div class="label">Execution Time</div><div class="value">'+execTime+'</div></div>'+
-    '<div class="detail-row"><div class="label">Parent</div><div class="value">'+parentHtml+'</div></div>'+
-    retryHtml+
-    '<div class="detail-row"><div class="label">Metrics</div><div class="value">'+metricsHtml+'</div></div>'+
-    (n.eval_summary ? '<div class="detail-row"><div class="label">Evaluation Summary</div><div class="eval-box">'+escHtml(n.eval_summary)+'</div></div>' : '')+
-    (n.error_log ? '<div class="detail-row"><div class="label">Error</div><div class="error-box">'+escHtml(n.error_log)+'</div></div>' : '');
+</div><!-- #main -->
 
-  // ── TAB: Trace (tool call log + eval_summary) ──
-  var traceLines = [];
-  if (n.eval_summary) {
-    traceLines.push("=== EVALUATION SUMMARY ===");
-    traceLines.push(n.eval_summary);
-    traceLines.push("");
-  }
-  if (n.trace_log && n.trace_log.length > 0) {
-    traceLines.push("=== TOOL CALL TRACE ===");
-    traceLines = traceLines.concat(n.trace_log);
-  }
-  var traceHtml;
-  if (traceLines.length > 0) {
-    traceHtml = '<div class="code-block" style="font-size:11px;line-height:1.6;white-space:pre-wrap;max-height:500px;overflow-y:auto">' +
-      escHtml(traceLines.join("\n")) + '</div>';
-  } else {
-    traceHtml = '<div style="color:var(--muted);font-size:.8rem;padding:8px 0">No trace available.<br><small>Trace is captured live during BFTS runs. Checkpoint nodes show only eval_summary.</small></div>';
-  }
+<div id="tooltip"></div>
+<svg id="svg-edges" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0"></svg>
 
-  // ── TAB: Code ──
-  var codeHtml = '<div style="color:var(--muted);font-size:.8rem;padding:8px 0">Loading code artifacts…</div>';
+<script src="/static/dashboard.js"></script>
+<!-- SKILL DETAIL MODAL -->
+<div id="skill-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;overflow:auto" onclick="if(event.target===this)closeSkillModal()">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:820px;margin:40px auto;padding:24px;position:relative">
+    <button onclick="closeSkillModal()" style="position:absolute;top:12px;right:12px;background:none;border:none;color:var(--muted);font-size:1.2rem;cursor:pointer">✕</button>
+    <h2 id="skill-modal-title" style="margin-bottom:4px"></h2>
+    <p id="skill-modal-desc" style="color:var(--muted);font-size:.85rem;margin-bottom:16px"></p>
+    <div id="skill-modal-tabs" style="display:flex;gap:8px;margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:8px"></div>
+    <pre id="skill-modal-content" style="background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:8px;padding:16px;font-size:.75rem;overflow:auto;max-height:60vh;white-space:pre-wrap;word-break:break-word;color:#94a3b8;line-height:1.5"></pre>
+  </div>
 
-  // ── TAB: Output ──
-  var outputHtml = '<div style="color:var(--muted);font-size:.8rem;padding:8px 0">Loading output…</div>';
 
-  // Artifacts: code + stdout
-  // Artifacts can be: {type, content/stdout} objects OR file path strings
-  if (n.artifacts && n.artifacts.length > 0) {
-    var codes = [], outputs = [];
-    n.artifacts.forEach(function(a){
-      if (typeof a === "string") {
-        // File path artifact — fetch content via /codefile endpoint
-        var loadingId = "ari-loading-" + Math.random().toString(36).slice(2);
-        codes.push('<span id="'+loadingId+'">⏳ Loading: ' + a.split("/").pop() + '</span>');
-        // Async fetch and set content
-        (function(path, lid) {
-          fetch("/codefile?path=" + encodeURIComponent(path))
-            .then(function(r){ return r.text(); })
-            .then(function(txt){
-              var el = document.getElementById(lid);
-              if (el) {
-                var pre = document.createElement("pre");
-                pre.style.whiteSpace = "pre-wrap";
-                pre.style.fontSize = "11px";
-                pre.style.fontFamily = "monospace";
-                pre.style.color = "#e2e8f0";
-                pre.style.margin = "4px 0";
-                pre.textContent = txt;
-                el.parentNode.replaceChild(pre, el);
-              }
-            }).catch(function(){ 
-              var el = document.getElementById(lid);
-              if (el) el.textContent = "❌ Could not load: " + path;
-            });
-        })(a, loadingId);
-      } else if (typeof a === "object") {
-        if (a.type === "code" || a.language) codes.push(a.content || a.stdout || JSON.stringify(a));
-        else if (a.type === "result" || a.stdout) outputs.push(a.stdout || JSON.stringify(a));
-        else codes.push(JSON.stringify(a, null, 2));
-      } else {
-        outputs.push(String(a));
-      }
-    });
-    if (codes.length > 0) codeHtml = codes.map(function(c){ return '<div class="code-block">'+c+'</div>'; }).join('<br>');  // no escHtml: may contain HTML (spans for async loading)
-    else codeHtml = '<div style="color:var(--muted);font-size:.8rem;padding:8px 0">No code artifacts.</div>';
-    if (outputs.length > 0) outputHtml = outputs.map(function(o){ return '<div class="stdout-block">'+escHtml(o)+'</div>'; }).join('<br>');
-    else outputHtml = '<div style="color:var(--muted);font-size:.8rem;padding:8px 0">No output artifacts.</div>';
-  }
+</div>
 
-  panel.innerHTML =
-    '<div class="detail">'+
-    '<h2>Node Detail</h2>'+
-    '<div class="tabs">'+
-    '<button class="tab-btn active" data-tab="overview" onclick="switchTab(this.dataset.tab)">Overview</button>'+
-    '<button class="tab-btn" data-tab="trace" onclick="switchTab(this.dataset.tab)">Trace</button>'+
-    '<button class="tab-btn" data-tab="code" onclick="switchTab(this.dataset.tab)">Code</button>'+
-    '<button class="tab-btn" data-tab="output" onclick="switchTab(this.dataset.tab)">Output</button>'+
-    '</div>'+
-    '<div class="tab-pane active" data-tab="overview">'+overviewHtml+'</div>'+
-    '<div class="tab-pane" data-tab="trace" id="tab-trace-'+id+'">'+traceHtml+'</div>'+
-    '<div class="tab-pane" data-tab="code" id="tab-code-'+id+'">'+codeHtml+'</div>'+
-    '<div class="tab-pane" data-tab="output" id="tab-output-'+id+'">'+outputHtml+'</div>'+
-    '</div>';
-
-  _activeTab = "overview";
-
-  // Async load trace from /memory/<node_id>
-  fetch("/memory/"+encodeURIComponent(id))
-    .then(function(r){ return r.json(); })
-    .then(function(d){
-      var el = document.getElementById("tab-trace-"+id);
-      if (!el) return;
-      var entries = d.entries || [];
-      if (entries.length === 0) {
-        // Don't overwrite if we already have eval_summary or trace_log content
-        if (el.textContent.trim() && !el.textContent.includes("No trace available")) return;
-        el.innerHTML = '<div style="color:var(--muted);font-size:.8rem;padding:8px 0">No memory entries found.</div>';
-        return;
-      }
-      var html = entries.map(function(e){
-        var tool = (e.metadata && e.metadata.tool) ? e.metadata.tool : "—";
-        var step = (e.metadata && e.metadata.step !== undefined) ? "step "+e.metadata.step : "";
-        // Parse tool name and result from text like "Tool survey: {...}"
-        var text = e.text || "";
-        var toolMatch = text.match(/^Tool ([\w_]+): (.*)$/s);
-        var toolName = toolMatch ? toolMatch[1] : tool;
-        var resultStr = toolMatch ? toolMatch[2] : text;
-        // Try to pretty-print JSON result
-        var prettyResult = resultStr;
-        try {
-          var parsed = JSON.parse(resultStr);
-          if (parsed && parsed.result) {
-            try { parsed = JSON.parse(parsed.result); } catch(e2){}
-          }
-          prettyResult = JSON.stringify(parsed, null, 2);
-          if (prettyResult.length > 400) prettyResult = prettyResult.substring(0,400)+"…";
-        } catch(ex) {
-          if (prettyResult.length > 300) prettyResult = prettyResult.substring(0,300)+"…";
-        }
-        return '<div class="trace-entry">'+
-          '<span class="trace-icon">'+escHtml(toolName)+'</span>'+
-          '<div class="trace-text">'+
-          (step ? '<span style="color:var(--accent);margin-right:6px">'+step+'</span>' : '')+
-          '<pre style="margin:0;white-space:pre-wrap;font-family:monospace;font-size:.7rem;color:var(--muted)">'+escHtml(prettyResult)+'</pre>'+
-          '</div></div>';
-      }).join("");
-      el.innerHTML = '<div style="font-size:.75rem;color:var(--muted);margin-bottom:8px">'+entries.length+' tool calls</div>'+html;
-    })
-    .catch(function(){ 
-      var el = document.getElementById("tab-trace-"+id);
-      if (el) el.innerHTML = '<div style="color:var(--muted);font-size:.8rem">Trace unavailable.</div>';
-    });
-}
-
-function escHtml(s) {
-  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-}
-
-// ── Status Bar ─────────────────────────────────────────
-function updateStatusBar() {
-  var nodes = state.nodes || [];
-  var counts = {success:0, failed:0, running:0, pending:0};
-  var bestVal = null, bestKey = null;
-  nodes.forEach(function(n){
-    if (counts[n.status] !== undefined) counts[n.status]++;
-    if (n.status === "success" && n.metrics) {
-      Object.entries(n.metrics).forEach(function(kv){
-        // Skip SLURM job IDs and non-scientific keys
-        var skip = /slurm|job_id|job_num|^N$|^threads$|^result_\d+$|^n_|^num_|execution_time|_ms/i.test(kv[0]);
-        // For error/diff metrics: lower = better
-        var isErrMetric = /error|diff|loss/i.test(kv[0]);
-        if (!skip && isErrMetric && typeof kv[1] === "number" && (bestVal === null || kv[1] < bestVal)) {
-          bestVal = kv[1]; bestKey = kv[0];
-        } else if (!skip && !isErrMetric && typeof kv[1] === "number" && bestVal === null) {
-          bestVal = kv[1]; bestKey = kv[0];
-        }
-        if (!skip && typeof kv[1] === "number" && (bestVal === null || kv[1] > bestVal)) {
-          bestVal = kv[1]; bestKey = kv[0];
-        }
-      });
-    }
-  });
-  document.getElementById("sb-total").textContent = nodes.length;
-  document.getElementById("sb-ok").textContent = counts.success;
-  document.getElementById("sb-fail").textContent = counts.failed;
-  document.getElementById("sb-run").textContent = counts.running;
-  document.getElementById("sb-pend").textContent = counts.pending;
-  var bestDisp = "";
-  if (bestVal !== null) {
-    var dispVal = Math.abs(bestVal) < 0.001 ? bestVal.toExponential(3) : bestVal.toLocaleString(undefined, {maximumFractionDigits:6});
-    bestDisp = "Best " + bestKey + ": " + dispVal;
-  }
-  document.getElementById("sb-best").textContent = bestDisp;
-}
-</script>
 </body>
-</html>
+</html
+
+>

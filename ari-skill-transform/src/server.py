@@ -150,10 +150,19 @@ async def nodes_to_science_data(
         "and extract information a peer reviewer needs to evaluate this work.\n\n"
         "Include only scientifically meaningful content: successful measurements, "
         "key improvements, ablation insights, and validated results. "
-        "Omit failed runs, debug artifacts, and internal system details. "
-        "Decide for yourself what fields best represent the findings. "
+        "Omit failed runs, debug artifacts, and internal system details.\n\n"
+        "Your JSON output MUST include an 'evaluation_protocol' object with:\n"
+        "  - 'domain': what research domain/task this is (inferred from outputs)\n"
+        "  - 'primary_metrics': list of the most important metrics for this domain "
+        "(e.g. task-appropriate success rate, throughput, or accuracy — infer from the experiment outputs, do not assume domain)\n"
+        "  - 'required_reporting': list of quantities that MUST be reported for "
+        "reproducibility in this domain (sample size, sparsity, precision, config params, etc.)\n"
+        "  - 'standard_baselines': list of standard baselines this domain typically compares against\n"
+        "  - 'ablation_axes': list of the most scientifically meaningful dimensions to ablate\n\n"
+        "Also include an 'experiment_context' object with all other findings. "
         "Use clear field names with units where applicable.\n\n"
-        "Return ONLY valid JSON, no markdown fences.\n\n"
+        "Return ONLY valid JSON with keys 'evaluation_protocol' and 'experiment_context'. "
+        "No markdown fences.\n\n"
         f"EXPERIMENT TREE:\n{artifacts_combined[:8000]}"
     )
 
@@ -170,7 +179,14 @@ async def nodes_to_science_data(
         import re as _re
         m = _re.search(r"\{.*\}", raw, _re.DOTALL)
         if m:
-            experiment_context = json.loads(m.group(0))
+            parsed = json.loads(m.group(0))
+            # Support both new format {evaluation_protocol, experiment_context}
+            # and legacy flat format
+            if "experiment_context" in parsed:
+                experiment_context = parsed["experiment_context"]
+                experiment_context["_evaluation_protocol"] = parsed.get("evaluation_protocol", {})
+            else:
+                experiment_context = parsed
     except Exception as e:
         experiment_context = {"error": f"LLM analysis failed: {e}"}
 

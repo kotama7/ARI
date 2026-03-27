@@ -21,6 +21,7 @@ class LLMConfig(BaseModel):
 class SkillConfig(BaseModel):
     name: str
     path: str
+    phase: str = "all"  # "bfts" | "pipeline" | "all"
 
 
 class BFTSConfig(BaseModel):
@@ -106,11 +107,17 @@ def _discover_skills(base_dir: Path | None = None) -> list[SkillConfig]:
 
 def auto_config() -> ARIConfig:
     """Default configuration when config.yaml is omitted. Can be overridden by environment variables."""
+    # Determine backend from model name
+    _model = os.environ.get("ARI_MODEL", "qwen3:8b")
+    # Backend is determined solely by ARI_BACKEND env var (set by GUI wizard or user).
+    # No model-name guessing here — that violates the Zero Domain Knowledge Principle.
+    _backend = os.environ.get("ARI_BACKEND", "ollama")
+    _base_url = os.environ.get("OLLAMA_HOST", "http://localhost:11434") if _backend == "ollama" else os.environ.get("LLM_API_BASE", None)
     return ARIConfig(
         llm=LLMConfig(
-            backend="ollama",
-            model=os.environ.get("ARI_MODEL", "qwen3:8b"),
-            base_url=os.environ.get("OLLAMA_HOST", "http://localhost:11434"),
+            backend=_backend,
+            model=_model,
+            base_url=_base_url,
         ),
         skills=_discover_skills(),
         bfts=BFTSConfig(
