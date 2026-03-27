@@ -172,10 +172,27 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
     return total_processed
 
 
+def _apply_profile(cfg, profile_name: str) -> None:
+    """Deep-merge an environment profile into the config."""
+    import yaml as _yaml
+    profiles_dir = Path(__file__).parent.parent.parent / "config" / "profiles"
+    p = profiles_dir / f"{profile_name}.yaml"
+    if not p.exists():
+        return
+    overrides = _yaml.safe_load(p.read_text()) or {}
+    # Apply bfts overrides
+    bfts_o = overrides.get("bfts", {})
+    if "max_total_nodes" in bfts_o:
+        cfg.bfts.max_total_nodes = bfts_o["max_total_nodes"]
+    if "parallel" in bfts_o:
+        cfg.bfts.parallel = bfts_o["parallel"]
+
+
 @app.command()
 def run(
     experiment: Path = typer.Argument(..., help="Path to experiment .md file (only required input)"),
     config: Path | None = typer.Option(None, help="Config YAML (auto-generated if omitted)"),
+    profile: str | None = typer.Option(None, help="Environment profile: laptop, hpc, cloud"),
 ) -> None:
     """Run an experiment. Only the .md file is required."""
     from ari.orchestrator.node import Node
@@ -185,18 +202,59 @@ def run(
         cfg = load_config(str(config))
     else:
         cfg = auto_config()
-    run_id = uuid.uuid4().hex[:12]
+
+    # Apply environment profile overrides
+    if profile:
+        _apply_profile(cfg, profile)
+    # Build human-readable run_id: yyyymmddHHMMSS_<experiment_slug>
+    import re as _re_t2
+    from datetime import datetime as _dt
+    # Build name from first meaningful line of the experiment text.
+    # No specific format required - heading, plain text, anything works.
+    # Ask LLM to generate a concise descriptive title from experiment content
+    _raw_name = experiment.stem  # fallback
+    try:
+        import os as _os_t
+        import openai as _oai_t
+        _oai_client = _oai_t.OpenAI(api_key=_os_t.environ.get("OPENAI_API_KEY"))
+        _title_resp = _oai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role":"user","content":
+                f"Generate a concise 3-5 word English title (snake_case, no special chars) for this research goal:\n{experiment_text[:500]}\nReply with ONLY the title."}],
+            max_tokens=20, temperature=0.3,
+        )
+        _raw_name = _title_resp.choices[0].message.content.strip().splitlines()[0]
+    except Exception:
+        # Fallback: skip headings, use first meaningful content line
+        _in_goal = False
+        for _line in experiment_text.splitlines():
+            _stripped = _line.strip()
+            if not _stripped:
+                continue
+            _is_heading = _stripped.startswith('#')
+            if _is_heading:
+                # Check if it's the Research Goal heading
+                _hcontent = _re_t2.sub(r'^#{1,3}\s*', '', _stripped).strip().lower()
+                if 'research goal' in _hcontent:
+                    _in_goal = True
+                else:
+                    _in_goal = False
+                continue  # skip heading lines
+            # Non-heading line
+            _raw_name = _stripped[:60]
+            break
+    _slug = _re_t2.sub(r"[^a-zA-Z0-9_-]", "_", _raw_name).strip("_")[:40]
+    _slug = _re_t2.sub(r"_+", "_", _slug)  # collapse repeated underscores
+    _ts = _dt.now().strftime("%Y%m%d%H%M%S")
+    run_id = f"{_ts}_{_slug}"
     _setup_logging(cfg.logging, run_id)
 
     console.print(Panel(
-        f"[bold green]ARI Run[/bold green]  id={run_id}\nExperiment: {experiment}\nConfig: {config}",
+        f"[bold green]ARI Run[/bold green]  id={run_id}\nExperiment: {experiment}" + (f"\nConfig: {config}" if config else ""),
         title="ARI",
     ))
 
-    # derive topic slug from first heading
-    import re as _re_t2
-    _tm2 = _re_t2.search(r"^#\s*(.+)", experiment_text, _re_t2.MULTILINE)
-    _tp2 = _re_t2.sub(r"[^a-zA-Z0-9_-]", "_", (_tm2.group(1)[:40] if _tm2 else "exp"))
+    _tp2 = _slug
     experiment_data = {
         "goal": experiment_text,
         "topic": _tp2,
@@ -205,6 +263,7 @@ def run(
 
     _, _, mcp, bfts, agent, _, _ = build_runtime(cfg, experiment_text)
     root = Node(id=f"node_{run_id}_root", parent_id=None, depth=0)
+    root.name = f"root: {_slug[:40]}"
     all_nodes = [root]
     pending = [root]
 
@@ -486,3 +545,218 @@ def _save_checkpoint(checkpoint_dir, run_id, experiment_file, nodes):
                   for n in nodes},
     }
     (checkpoint_dir / "results.json").write_text(json.dumps(results, indent=2, ensure_ascii=False))
+
+
+# ─────────────────────────────────────────
+# Extended CLI commands mirroring GUI features
+# ─────────────────────────────────────────
+
+@app.command("projects")
+def list_projects(
+    checkpoints: Path = typer.Option(Path("checkpoints"), help="Checkpoints directory"),
+) -> None:
+    """List all projects (checkpoint directories) with their status."""
+    import textwrap
+    if not checkpoints.exists():
+        console.print(f"[red]Directory not found: {checkpoints}[/red]")
+        raise typer.Exit(1)
+
+    _SKIP = {"experiments", "__pycache__", ".git"}
+    table = Table(title="ARI Projects", show_lines=False)
+    table.add_column("ID", style="cyan", no_wrap=True)
+    table.add_column("Nodes", justify="right")
+    table.add_column("Status", justify="center")
+    table.add_column("Score", justify="right")
+    table.add_column("Modified")
+
+    import datetime
+    rows = []
+    for d in sorted(checkpoints.iterdir(), key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True):
+        if not d.is_dir() or d.name in _SKIP:
+            continue
+        nt = d / "nodes_tree.json"
+        rr = d / "review_report.json"
+        nodes_count = 0
+        status = "empty"
+        score = "—"
+        if nt.exists() and nt.stat().st_size > 0:
+            try:
+                tree = json.loads(nt.read_text(encoding="utf-8", errors="replace"))
+                nodes = tree.get("nodes", [])
+                nodes_count = len(nodes)
+                statuses = {n.get("status") for n in nodes}
+                if "running" in statuses:
+                    status = "[blue]running[/blue]"
+                elif nodes:
+                    status = "[green]done[/green]"
+            except Exception:
+                status = "[red]corrupt[/red]"
+        if rr.exists():
+            try:
+                rdata = json.loads(rr.read_text(encoding="utf-8", errors="replace"))
+                s = rdata.get("scientific_score") or rdata.get("score")
+                if s is not None:
+                    score = f"{float(s):.2f}"
+            except Exception:
+                pass
+        mtime = datetime.datetime.fromtimestamp(d.stat().st_mtime).strftime("%m/%d %H:%M")
+        rows.append((d.name, str(nodes_count), status, score, mtime))
+
+    if not rows:
+        console.print("[yellow]No projects found.[/yellow]")
+        return
+    for r in rows:
+        table.add_row(*r)
+    console.print(table)
+
+
+@app.command("show")
+def show_project(
+    checkpoint: Path = typer.Argument(..., help="Checkpoint directory or ID"),
+    checkpoints_dir: Path = typer.Option(Path("checkpoints"), help="Checkpoints base dir"),
+) -> None:
+    """Show detailed info for a project: node tree + review summary."""
+    # Resolve checkpoint path
+    if not checkpoint.exists():
+        candidate = checkpoints_dir / checkpoint
+        if candidate.exists():
+            checkpoint = candidate
+        else:
+            console.print(f"[red]Not found: {checkpoint}[/red]")
+            raise typer.Exit(1)
+
+    # Node tree
+    nt = checkpoint / "nodes_tree.json"
+    if nt.exists():
+        try:
+            tree_data = json.loads(nt.read_text(encoding="utf-8", errors="replace"))
+            nodes = {n["id"]: n for n in tree_data.get("nodes", [])}
+            STATUS_STYLE = {"success": "green", "failed": "red", "pending": "yellow",
+                            "running": "blue", "abandoned": "dim"}
+            rich_tree = Tree(f"[bold cyan]{checkpoint.name}[/bold cyan]")
+
+            def _add(rich_node, node_id):
+                nd = nodes.get(node_id)
+                if nd is None:
+                    return
+                st = nd.get("status", "?")
+                color = STATUS_STYLE.get(st, "white")
+                name = nd.get("name") or nd.get("label") or nd["id"][-8:]
+                score_str = ""
+                sc = nd.get("scientific_score") or nd.get("score")
+                if sc is not None:
+                    score_str = f" score={float(sc):.2f}"
+                child_rich = rich_node.add(
+                    f"[{color}]{name}[/{color}] [dim]{nd['id'][-8:]} d={nd.get('depth',0)}{score_str}[/dim]"
+                )
+                for cid in nd.get("children", []):
+                    _add(child_rich, cid)
+
+            roots = [n for n in tree_data.get("nodes", []) if not n.get("parent_id")]
+            for r in roots:
+                _add(rich_tree, r["id"])
+            console.print(rich_tree)
+        except Exception as e:
+            console.print(f"[red]Failed to read tree: {e}[/red]")
+    else:
+        console.print("[yellow]No nodes_tree.json found.[/yellow]")
+
+    # Review summary
+    rr = checkpoint / "review_report.json"
+    if rr.exists():
+        try:
+            rdata = json.loads(rr.read_text(encoding="utf-8", errors="replace"))
+            table = Table(title="Review Report", show_header=False)
+            table.add_column("Key", style="dim")
+            table.add_column("Value")
+            for k, v in rdata.items():
+                if k not in ("full_text", "latex"):
+                    table.add_row(str(k), str(v)[:120])
+            console.print(table)
+        except Exception as e:
+            console.print(f"[red]Failed to read review: {e}[/red]")
+
+    # Artifacts
+    artifacts_dir = checkpoint / "artifacts"
+    if artifacts_dir.exists():
+        files = list(artifacts_dir.iterdir())
+        if files:
+            console.print(f"\n[bold]Artifacts[/bold] ({len(files)} files):")
+            for f in sorted(files)[:10]:
+                console.print(f"  • {f.name}")
+
+
+@app.command("delete")
+def delete_project(
+    checkpoint: str = typer.Argument(..., help="Checkpoint ID or path to delete"),
+    checkpoints_dir: Path = typer.Option(Path("checkpoints"), help="Checkpoints base dir"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+) -> None:
+    """Delete a project checkpoint directory."""
+    import shutil
+    p = Path(checkpoint)
+    if not p.exists():
+        p = checkpoints_dir / checkpoint
+    if not p.exists():
+        console.print(f"[red]Not found: {checkpoint}[/red]")
+        raise typer.Exit(1)
+    if not yes:
+        confirm = typer.confirm(f"Delete project {p.name}? This cannot be undone.")
+        if not confirm:
+            console.print("[yellow]Aborted.[/yellow]")
+            raise typer.Exit(0)
+    shutil.rmtree(p)
+    console.print(f"[green]✓ Deleted {p.name}[/green]")
+
+
+@app.command("settings")
+def settings_cmd(
+    config: Path = typer.Option(Path("config.yaml"), help="Config YAML"),
+    set_model: str | None = typer.Option(None, "--model", help="Set LLM model"),
+    set_key: str | None = typer.Option(None, "--api-key", help="Set API key"),
+    set_partition: str | None = typer.Option(None, "--partition", help="Set SLURM partition"),
+    set_cpus: int | None = typer.Option(None, "--cpus", help="Set SLURM CPUs"),
+    set_mem: int | None = typer.Option(None, "--mem", help="Set SLURM memory (GB)"),
+) -> None:
+    """View or update ARI settings (config.yaml)."""
+    import yaml as _yaml
+    if not config.exists():
+        console.print(f"[yellow]Config not found: {config}[/yellow]")
+        raise typer.Exit(1)
+    cfg_data = _yaml.safe_load(config.read_text()) or {}
+    # Apply overrides
+    changed = False
+    if set_model:
+        cfg_data.setdefault("llm", {})["model"] = set_model
+        changed = True
+    if set_key:
+        cfg_data.setdefault("llm", {})["api_key"] = set_key
+        changed = True
+    if set_partition:
+        cfg_data.setdefault("slurm", {})["partition"] = set_partition
+        changed = True
+    if set_cpus:
+        cfg_data.setdefault("slurm", {})["cpus_per_task"] = set_cpus
+        changed = True
+    if set_mem:
+        cfg_data.setdefault("slurm", {})["mem_gb"] = set_mem
+        changed = True
+    if changed:
+        config.write_text(_yaml.dump(cfg_data, allow_unicode=True))
+        console.print(f"[green]✓ Config updated: {config}[/green]")
+    # Display current settings
+    table = Table(title=f"Settings: {config}", show_header=False)
+    table.add_column("Key", style="cyan")
+    table.add_column("Value")
+    def _flat(d, prefix=""):
+        for k, v in d.items():
+            if isinstance(v, dict):
+                _flat(v, prefix=f"{prefix}{k}.")
+            else:
+                vstr = "***" if "key" in k.lower() or "password" in k.lower() else str(v)
+                table.add_row(f"{prefix}{k}", vstr)
+    _flat(cfg_data)
+    console.print(table)
+
+if __name__ == "__main__":
+    app()

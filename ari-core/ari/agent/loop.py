@@ -109,9 +109,10 @@ class AgentLoop:
     # Tool filtering (derived from WorkflowHints)
     # ------------------------------------------------------------------
 
-    def _available_tools_openai(self, suppress: set | None = None) -> list[dict]:
+    def _available_tools_openai(self, suppress: set | None = None, phase: str | None = None) -> list[dict]:
         """Return the MCP tool list in OpenAI function-calling format.
         suppress: set of tool names to exclude (e.g. already-called once-only tools).
+        phase: if set, only tools with matching phase (or phase='all') are included.
         """
         suppress = suppress or set()
         return [
@@ -123,7 +124,7 @@ class AgentLoop:
                     "parameters": t.get("inputSchema") or t.get("parameters") or {"type": "object", "properties": {}},
                 },
             }
-            for t in self.mcp.list_tools()
+            for t in self.mcp.list_tools(phase=phase)
             if t.get("name", "") not in suppress
         ]
 
@@ -312,7 +313,7 @@ class AgentLoop:
             import os as _os_early
             _os_early.environ["ARI_WORK_DIR"] = _work_dir_early
             _os_early.makedirs(_work_dir_early, exist_ok=True)
-        tools = self._available_tools_openai(suppress=getattr(self, "_suppress_tools", set()))
+        tools = self._available_tools_openai(suppress=getattr(self, "_suppress_tools", set()), phase="bfts")
         tool_names = [t["function"]["name"] for t in tools] if tools else []
         tool_desc = ", ".join(tool_names) if tool_names else "none"
         has_exec = any(n in ("run_bash", "run_code") for n in tool_names)

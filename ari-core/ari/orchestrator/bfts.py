@@ -11,6 +11,21 @@ from ari.memory.client import MemoryClient
 from ari.orchestrator.node import Node, NodeLabel, NodeStatus
 
 
+def _make_node_name(label: str, direction_text: str, depth: int) -> str:
+    """Generate a short human-readable name from label + direction text."""
+    import re as _re
+    # Take first sentence or first 50 chars of direction_text
+    first = direction_text.split(".")[0].split("\n")[0].strip()
+    # Remove leading bullet/number/symbol
+    first = _re.sub(r"^[-*#\d.\s]+", "", first).strip()
+    # Truncate
+    if len(first) > 48:
+        first = first[:45].rsplit(" ", 1)[0] + "…"
+    if not first:
+        first = label
+    return f"{label}: {first}" if first.lower() != label.lower() else label
+
+
 class BFTS:
     def __init__(self, config: BFTSConfig, llm: LLMClient) -> None:
         self.config = config
@@ -184,11 +199,16 @@ class BFTS:
             f"Parent summary: {node.eval_summary or 'none'}\n"
             f"{sci_note}"
             f"\n{label_hint}\n\n"
+            f"⚠️ ABLATION STUDY REQUIREMENT: If you suggest an ablation, you MUST:\n"
+            f"  1. Identify what component/parameter to remove or vary (be specific)\n"
+            f"  2. State the baseline: parent metrics = {json.dumps(node.metrics or {}, ensure_ascii=False)[:300]}\n"
+            f"  3. Predict what delta you expect and why it matters scientifically\n"
+            f"  An ablation without a defined baseline is scientifically invalid.\n\n"
             f"Suggest 2-3 child research directions. For each, assign a label from:\n"
             f"  draft      - new implementation from scratch\n"
             f"  improve    - improve parent results (tune flags/params)\n"
             f"  debug      - fix parent failure/error\n"
-            f"  ablation   - remove one component to measure impact\n"
+            f"  ablation   - remove ONE component and compare metric vs parent baseline; must quantify the delta\n"
             f"  validation - re-run parent with different seeds/conditions\n\n"
             f"Reply ONLY with a JSON array, each element: {{\"label\": \"...\", \"direction\": \"...\"}}\n"
             f"Example: [{{\"label\": \"improve\", \"direction\": \"Try -Ofast flag\"}}, ...]"
@@ -241,6 +261,7 @@ class BFTS:
                 # child nodes can only access memories in ancestor_ids
             )
             child.eval_summary = direction_text
+            child.name = _make_node_name(label.value if hasattr(label, "value") else str(label), direction_text, node.depth + 1)
             node.children.append(child_id)
             children.append(child)
             self.total_nodes += 1
@@ -256,6 +277,7 @@ class BFTS:
                 label=fallback_label,
                 ancestor_ids=list(node.ancestor_ids or []) + [node.id],
             )
+            fb_child.name = _make_node_name(fallback_label.value if hasattr(fallback_label, "value") else str(fallback_label), "fallback", node.depth + 1)
             node.children.append(fb_child.id)
             children.append(fb_child)
             self.total_nodes += 1

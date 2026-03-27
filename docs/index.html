@@ -214,12 +214,12 @@
       <div class="step">
         <div class="step-num">🔍</div>
         <h3><span id="t-step2-title">Survey</span></h3>
-        <p><span id="t-step2-body">ARI searches academic databases and learns what has been tried before.</span></p>
+        <p><span id="t-step2-body">ARI searches arXiv and Semantic Scholar, then VirSci multi-agent deliberation — multiple AI personas with different research backgrounds — debates the results to produce diverse, well-grounded ideas.</span></p>
       </div>
       <div class="step">
         <div class="step-num">⚗️</div>
         <h3><span id="t-step3-title">Experiment</span></h3>
-        <p><span id="t-step3-body">ARI generates hypotheses and runs real experiments on your hardware. A true Best-First Tree Search selects which completed experiment to expand next — guided by LLM peer-review scores, not heuristics.</span></p>
+        <p><span id="t-step3-body">Best-First Tree Search (BFTS) with five node types — DRAFT, IMPROVE, DEBUG, ABLATION, VALIDATION — explores the hypothesis space in parallel. The LLM selects which frontier node to expand next based on peer-review scores, not heuristics. Failed nodes generate debug children, not retries.</span></p>
       </div>
       <div class="step">
         <div class="step-num">📄</div>
@@ -248,15 +248,18 @@
         all from your browser.
       </p>
       <div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap;font-size:.85rem;">
-        <span style="background:rgba(37,99,235,.15);color:#93c5fd;padding:6px 16px;border-radius:20px;">📡 Live Logs</span>
+        <span style="background:rgba(37,99,235,.15);color:#93c5fd;padding:6px 16px;border-radius:20px;">🏠 Home Dashboard</span>
+        <span style="background:rgba(37,99,235,.15);color:#93c5fd;padding:6px 16px;border-radius:20px;">📋 Experiments</span>
+        <span style="background:rgba(37,99,235,.15);color:#93c5fd;padding:6px 16px;border-radius:20px;">📡 Live Monitor</span>
         <span style="background:rgba(37,99,235,.15);color:#93c5fd;padding:6px 16px;border-radius:20px;">🌳 Tree Visualization</span>
         <span style="background:rgba(37,99,235,.15);color:#93c5fd;padding:6px 16px;border-radius:20px;">📊 Results Viewer</span>
-        <span style="background:rgba(37,99,235,.15);color:#93c5fd;padding:6px 16px;border-radius:20px;">✨ 4-Step Wizard</span>
-        <span style="background:rgba(37,99,235,.15);color:#93c5fd;padding:6px 16px;border-radius:20px;">💬 Chat Mode</span>
-        <span style="background:rgba(37,99,235,.15);color:#93c5fd;padding:6px 16px;border-radius:20px;">⚙️ Workflow Editor</span>
+        <span style="background:rgba(37,99,235,.15);color:#93c5fd;padding:6px 16px;border-radius:20px;">✨ New Experiment Wizard</span>
+        <span style="background:rgba(37,99,235,.15);color:#93c5fd;padding:6px 16px;border-radius:20px;">💡 Idea Generation</span>
+        <span style="background:rgba(37,99,235,.15);color:#93c5fd;padding:6px 16px;border-radius:20px;">🔄 Workflow Editor</span>
+        <span style="background:rgba(37,99,235,.15);color:#93c5fd;padding:6px 16px;border-radius:20px;">⚙️ Settings</span>
       </div>
       <div style="margin-top:24px;font-family:monospace;background:rgba(0,0,0,.3);border-radius:10px;padding:14px 24px;display:inline-block;font-size:.9rem;color:#60a5fa;">
-        python3 -m ari.viz.server --port 9886
+        ari viz ./checkpoints/my_run/ --port 8765
       </div>
     </div>
   </div>
@@ -272,13 +275,13 @@
       <div class="axis-card">
         <div class="axis-icon">💻</div>
         <h3><span id="t-u1-title">Any Computer</span></h3>
-        <p><span id="t-u1-body">Runs on your laptop or a 1,000-core supercomputer cluster. Supports local, SLURM, PBS, and LSF via <code>ARI_EXECUTOR</code>.</span></p>
+        <p><span id="t-u1-body">Environment profiles (laptop / hpc / cloud) auto-detect your scheduler (SLURM, PBS, LSF, SGE, Kubernetes) and configure parallelism, memory, and container runtime automatically.</span></p>
         <div class="axis-range"><span id="t-u1-range">Laptop → Supercomputer</span></div>
       </div>
       <div class="axis-card">
         <div class="axis-icon">🧠</div>
         <h3><span id="t-u2-title">Any AI Model</span></h3>
-        <p><span id="t-u2-body">Free local models (Ollama) or commercial APIs (GPT-5.2, Claude, Gemini). Per-experiment model selection in the wizard — Ollama models support free-form name entry.</span></p>
+        <p><span id="t-u2-body">Free local models (Ollama) or commercial APIs (Claude, GPT, Gemini) via litellm. Per-experiment model selection in the dashboard wizard — Ollama models support free-form name entry.</span></p>
         <div class="axis-range"><span id="t-u2-range">Free Local → Cloud API</span></div>
       </div>
       <div class="axis-card">
@@ -346,7 +349,7 @@
       <div>
         <pre><span class="comment"># 1. Clone the repository</span>
 git clone https://github.com/kotama7/ARI
-cd ari
+cd ARI
 
 <span class="comment"># 2. Install everything</span>
 bash setup.sh
@@ -355,15 +358,20 @@ bash setup.sh
 <span class="comment"># Free option (runs offline):</span>
 ollama pull qwen3:8b
 
-<span class="comment"># Or use OpenAI:</span>
-export ARI_LLM_MODEL=openai/gpt-5.2
-export OPENAI_API_KEY=sk-...
+<span class="comment"># Or use Claude / OpenAI:</span>
+export ARI_BACKEND=claude
+export ANTHROPIC_API_KEY=sk-...
 
 <span class="comment"># 4. Run your first experiment</span>
 ari run experiment.md
 
-<span class="comment"># 5. Launch the web dashboard (optional)</span>
-python3 -m ari.viz.server --port 9886  <span class="comment"># → http://localhost:9886</span></pre>
+<span class="comment"># 5. Launch the web dashboard</span>
+ari viz ./checkpoints/my_run/  <span class="comment"># → http://localhost:8765</span>
+
+<span class="comment"># Other useful commands</span>
+ari projects          <span class="comment"># list all runs</span>
+ari resume ./ckpt/    <span class="comment"># resume interrupted run</span>
+ari settings          <span class="comment"># view/modify config</span></pre>
       </div>
       <div>
         <p style="color:var(--muted);font-size:.9rem;margin-bottom:16px;">The simplest experiment file looks like this:</p>
@@ -465,15 +473,16 @@ var LANGS = {
     "how-label": "How It Works", "how-title": "One file. Full pipeline.",
     "how-sub": "Write a short description of your research goal. ARI takes it from there — automatically, without any human intervention.",
     "step1-title": "Describe", "step1-body": "Write your research goal in plain Markdown. Even 3 lines is enough.",
-    "step2-title": "Survey", "step2-body": "ARI searches academic databases and learns what has been tried before.",
-    "step3-title": "Experiment", "step3-body": "ARI generates hypotheses and runs real experiments on your hardware. A true Best-First Tree Search selects which completed experiment to expand next — guided by LLM peer-review scores, not heuristics.",
+    "step2-title": "Survey", "step2-body": "ARI searches arXiv and Semantic Scholar, then VirSci multi-agent deliberation — multiple AI personas with different research backgrounds — debates the results to produce diverse, well-grounded ideas.",
+    "step3-title": "Experiment", "step3-body": "Best-First Tree Search (BFTS) with five node types — DRAFT, IMPROVE, DEBUG, ABLATION, VALIDATION — explores the hypothesis space in parallel. The LLM selects which frontier node to expand next based on peer-review scores, not heuristics. Failed nodes generate debug children, not retries.",
     "step4-title": "Write", "step4-body": "A complete academic paper with figures and citations is generated automatically.",
-    "step5-title": "Verify", "step5-body": "ARI traverses the full experiment tree — root, improvements, ablations, and validation runs — and uses an LLM to extract methodology, setup, and key findings directly from raw artifacts. Nothing is hardcoded.",
+    "step5-title": "Analyze", "step5-body": "ARI traverses the full experiment tree — root, improvements, ablations, and validation runs — and uses an LLM to extract methodology, setup, and key findings directly from raw artifacts. Nothing is hardcoded.",
+    "step6-title": "Verify", "step6-body": "A separate AI agent independently reconstructs and re-runs the experiment from the paper text alone — no original code shared.",
     "universal-label": "Universal", "universal-label2": "Universal",
     "universal-title": "Works everywhere. For everyone.",
     "universal-sub": "ARI is not built for one environment or one type of user. It scales across five dimensions.",
-    "u1-title": "Any Computer", "u1-body": "Runs on your laptop or a 1,000-core supercomputer cluster. Supports local, SLURM, PBS, and LSF via ARI_EXECUTOR.", "u1-range": "Laptop → Supercomputer",
-    "u2-title": "Any AI Model", "u2-body": "Free local models (Ollama) or commercial APIs (GPT, Claude). One environment variable to swap.", "u2-range": "Free Local → Cloud API",
+    "u1-title": "Any Computer", "u1-body": "Environment profiles (laptop / hpc / cloud) auto-detect your scheduler (SLURM, PBS, LSF, SGE, Kubernetes) and configure parallelism, memory, and container runtime automatically.", "u1-range": "Laptop → Supercomputer",
+    "u2-title": "Any AI Model", "u2-body": "Free local models (Ollama) or commercial APIs (Claude, GPT, Gemini) via litellm. Per-experiment model selection in the dashboard wizard.", "u2-range": "Free Local → Cloud API",
     "u3-title": "Any Expertise Level", "u3-body": "Write 3 lines as a beginner, or 200 lines with precise technical controls as an expert.", "u3-range": "Novice → Expert",
     "u4-title": "Any Domain", "u4-body": "Add new capabilities as plug-in modules. No changes to the core system needed.", "u4-range": "Software → Physical World",
     "u5-title": "Any Format", "u5-body": "Papers can target arXiv, NeurIPS, ICML, or any custom venue template.", "u5-range": "Preprint → Top Conference",
@@ -483,7 +492,7 @@ var LANGS = {
     "v2-tag": "🔜 Coming Soon", "v2-title": "Robotics", "v2-body": "Robot arm trajectories, motion planning parameters, control system tuning via ROS2.",
     "v3-tag": "📅 Planned", "v3-title": "Laboratory Automation", "v3-body": "Liquid handlers, plate readers, reaction conditions — planned, not yet implemented.",
     "v4-tag": "🌟 Vision", "v4-title": "Any Physical System", "v4-body": "If it has a goal and a parameter space, ARI can explore it. The same system, infinite domains.",
-    "qs-label": "Quick Start", "qs-title": "Running in minutes.", "qs-note": "ARI will survey related papers, run experiments, generate figures, write a complete paper, and verify reproducibility independently — automatically.", "virsci-desc": "A multi-agent scientific deliberation system. Multiple AI personas with different research backgrounds debate a hypothesis, producing richer and more diverse research ideas than single-agent generation. Integrated into ARI's idea generation stage.",
+    "qs-label": "Quick Start", "qs-title": "Running in minutes.", "qs-note": "ARI will survey related papers, run experiments, generate figures, write a complete paper, and verify reproducibility independently — automatically. A unique LLM-generated title is assigned to each experiment project.", "virsci-desc": "A multi-agent scientific deliberation system. Multiple AI personas with different research backgrounds debate a hypothesis, producing richer and more diverse research ideas than single-agent generation. Integrated into ARI's idea generation stage.",
     "quickstart-label": "Quick Start",
     "comm-label": "Community",
     "comm-title": "Built together.",
@@ -500,10 +509,10 @@ var LANGS = {
     "nav-how": "How It Works",
     "nav-docs": "Docs",
     "u1-title": "Any Computer",
-    "u1-body": "Runs on your laptop or a 1,000-core supercomputer cluster. Supports local, SLURM, PBS, and LSF via ARI_EXECUTOR.",
+    "u1-body": "Environment profiles (laptop / hpc / cloud) auto-detect your scheduler (SLURM, PBS, LSF, SGE, Kubernetes) and configure parallelism, memory, and container runtime automatically.",
     "u1-range": "Laptop → Supercomputer",
     "u2-title": "Any AI Model",
-    "u2-body": "Free local models (Ollama) or commercial APIs (GPT, Claude). One environment variable to swap.",
+    "u2-body": "Free local models (Ollama) or commercial APIs (Claude, GPT, Gemini) via litellm. Per-experiment model selection in the dashboard wizard.",
     "u2-range": "Free Local → Cloud API",
     "u3-title": "Any Expertise Level",
     "u3-body": "Write 3 lines as a beginner, or 200 lines with precise technical controls as an expert.",
@@ -531,15 +540,16 @@ var LANGS = {
     "how-label": "仕組み", "how-title": "1ファイルで、全工程が動く。",
     "how-sub": "研究したいことを書くだけ。ARIがあとは全て自動でやります。",
     "step1-title": "目標を書く", "step1-body": "Markdownで研究目標を記述します。研究テーマと条件だけで十分です。",
-    "step2-title": "文献調査", "step2-body": "ARIが学術データベースを検索し、先行研究を把握します。",
-    "step3-title": "実験", "step3-body": "仮説を生成し、あなたのハードウェアで実際に実験を実行します。真のベストファースト木探索が、LLMの査読スコアに基づいて次に展開すべき実験を自律的に選択します。",
+    "step2-title": "調査・発想", "step2-body": "arXivとSemantic Scholarを検索した後、VirSciマルチエージェント討論——異なる研究背景を持つ複数のAIペルソナ——が結果を議論し、多様で根拠のあるアイデアを生成します。",
+    "step3-title": "実験", "step3-body": "Best-First Tree Search（BFTS）が5種類のノード（DRAFT・IMPROVE・DEBUG・ABLATION・VALIDATION）で仮説空間を並列探索します。LLMが査読スコアに基づいてフロンティアノードの展開順を決定。失敗ノードはリトライではなくデバッグ子ノードを生成します。",
     "step4-title": "論文執筆", "step4-body": "図・引用を含む学術論文が自動生成されます。",
-    "step5-title": "検証", "step5-body": "実験木全体（ルート・改善・アブレーション・検証ノード）をBFS走査し、LLMが生のアーティファクトから手法・環境・知見を抽出します。ハードコードなし。",
+    "step5-title": "分析", "step5-body": "実験木全体（ルート・改善・アブレーション・検証ノード）をBFS走査し、LLMが生のアーティファクトから手法・環境・知見を抽出します。ハードコードなし。",
+    "step6-title": "検証", "step6-body": "独立したAIエージェントが、論文テキストのみから実験を再構築・再実行します。元のコードは共有されません。",
     "universal-label": "普遍性", "universal-label2": "普遍性",
     "universal-title": "どこでも動く。誰にでも使える。",
     "universal-sub": "特定の環境やユーザーに限定されません。5つの軸でスケールします。",
-    "u1-title": "あらゆるコンピュータ", "u1-body": "ノートPCから1,000コアのスパコンまで対応。1行変えるだけで切り替え可能。", "u1-range": "ノートPC → スパコン",
-    "u2-title": "あらゆるAIモデル", "u2-body": "無料のローカルモデル（Ollama）も商用API（GPT、Claude）も対応。環境変数ひとつで切り替え。", "u2-range": "ローカル無料 → クラウドAPI",
+    "u1-title": "あらゆるコンピュータ", "u1-body": "環境プロファイル（laptop / hpc / cloud）がスケジューラ（SLURM・PBS・LSF・SGE・Kubernetes）を自動検出し、並列数・メモリ・コンテナランタイムを自動設定します。", "u1-range": "ノートPC → スパコン",
+    "u2-title": "あらゆるAIモデル", "u2-body": "無料のローカルモデル（Ollama）も商用API（Claude・GPT・Gemini）もlitellm経由で対応。ダッシュボードウィザードで実験ごとにモデルを選択可能。", "u2-range": "ローカル無料 → クラウドAPI",
     "u3-title": "あらゆる習熟度", "u3-body": "初心者は3行から、上級者は200行の精密な設定まで。", "u3-range": "初心者 → 上級者",
     "u4-title": "あらゆるドメイン", "u4-body": "プラグインモジュールとして新機能を追加可能。コアシステムの変更は不要。", "u4-range": "ソフトウェア → 物理世界",
     "u5-title": "あらゆるフォーマット", "u5-body": "arXiv・NeurIPS・ICMLなど任意のベニューのテンプレートに対応。", "u5-range": "プレプリント → トップカンファレンス",
@@ -549,7 +559,7 @@ var LANGS = {
     "v2-tag": "🔜 近日公開", "v2-title": "ロボティクス", "v2-body": "ロボットアームの軌道、モーションプランニング、ROS2による制御システムチューニング。",
     "v3-tag": "📅 計画中", "v3-title": "実験室自動化", "v3-body": "液体ハンドラー、プレートリーダー、反応条件の最適化——計画中、未実装。",
     "v4-tag": "🌟 ビジョン", "v4-title": "あらゆる物理システム", "v4-body": "目標とパラメータ空間があれば、ARIが探索します。同じシステム、無限のドメイン。",
-    "qs-label": "クイックスタート", "qs-title": "数分で動かせる。", "qs-note": "ARIが関連論文の調査、実験の実行、図の生成、論文の執筆、再現性の独立検証を自動で行います。", "virsci-desc": "マルチエージェント科学討論システム。異なる研究背景を持つ複数のAIペルソナが仮説を議論し、単一エージェントよりも多様な研究アイデアを生成します。ARIのアイデア生成ステージに統合されています。",
+    "qs-label": "クイックスタート", "qs-title": "数分で動かせる。", "qs-note": "ARIが関連論文の調査、実験の実行、図の生成、論文の執筆、再現性の独立検証を自動で行います。各実験プロジェクトにはLLMが生成した固有タイトルが付与されます。", "virsci-desc": "マルチエージェント科学討論システム。異なる研究背景を持つ複数のAIペルソナが仮説を議論し、単一エージェントよりも多様な研究アイデアを生成します。ARIのアイデア生成ステージに統合されています。",
     "quickstart-label": "クイックスタート",
     "comm-label": "コミュニティ",
     "comm-title": "みんなで作る。",
@@ -566,10 +576,10 @@ var LANGS = {
     "nav-how": "仕組み",
     "nav-docs": "ドキュメント",
     "u1-title": "あらゆるコンピュータ",
-    "u1-body": "ノートPCから1,000コアのスパコンまで対応。1行変えるだけで切り替え可能。",
+    "u1-body": "環境プロファイル（laptop / hpc / cloud）がスケジューラを自動検出し、並列数・メモリ・コンテナランタイムを自動設定します。",
     "u1-range": "ノートPC → スパコン",
     "u2-title": "あらゆるAIモデル",
-    "u2-body": "無料のローカルモデル（Ollama）も商用API（GPT、Claude）も対応。環境変数ひとつで切り替え。",
+    "u2-body": "無料のローカルモデル（Ollama）も商用API（Claude・GPT・Gemini）もlitellm経由で対応。ダッシュボードウィザードで実験ごとにモデル選択可能。",
     "u2-range": "ローカル無料 → クラウドAPI",
     "u3-title": "あらゆる習熟度",
     "u3-body": "初心者は3行から、上級者は200行の精密な設定まで。",
@@ -597,15 +607,16 @@ var LANGS = {
     "how-label": "工作原理", "how-title": "一个文件，全流程运行。",
     "how-sub": "写下你想探索的研究方向，ARI 全程自动处理，无需人工干预。",
     "step1-title": "写下目标", "step1-body": "用 Markdown 描述研究方向，简单几行即可。",
-    "step2-title": "文献调研", "step2-body": "ARI 搜索学术数据库，了解已有研究。",
-    "step3-title": "实验", "step3-body": "生成假设并在你的硬件上运行真实实验。真正的最优先树搜索根据 LLM 同行评审分数，自主选择下一个最佳实验节点进行扩展。",
+    "step2-title": "调研与构想", "step2-body": "搜索 arXiv 和 Semantic Scholar 后，VirSci 多智能体讨论——多个具有不同研究背景的 AI 角色——对结果展开辩论，生成多样且有依据的研究想法。",
+    "step3-title": "实验", "step3-body": "Best-First Tree Search（BFTS）以五种节点类型（DRAFT、IMPROVE、DEBUG、ABLATION、VALIDATION）并行探索假设空间。LLM 根据同行评审分数决定展开哪个前沿节点。失败节点生成调试子节点，而非重试。",
     "step4-title": "撰写论文", "step4-body": "自动生成包含图表和引用的完整学术论文。",
-    "step5-title": "验证", "step5-body": "ARI 对完整实验树进行 BFS 遍历，LLM 从原始产出物中提取方法论、实验环境和关键发现。无任何硬编码。",
+    "step5-title": "分析", "step5-body": "ARI 对完整实验树进行 BFS 遍历，LLM 从原始产出物中提取方法论、实验环境和关键发现。无任何硬编码。",
+    "step6-title": "验证", "step6-body": "独立的 AI 代理仅根据论文文本重建并重新运行实验——不共享原始代码。",
     "universal-label": "通用性", "universal-label2": "通用性",
     "universal-title": "随处可用。人人皆宜。",
     "universal-sub": "不为单一环境或用户类型设计，在五个维度上扩展。",
-    "u1-title": "任意计算机", "u1-body": "从笔记本电脑到千核超算集群，改一行即可切换。", "u1-range": "笔记本 → 超算",
-    "u2-title": "任意 AI 模型", "u2-body": "免费本地模型（Ollama）或商业 API（GPT、Claude），一个环境变量切换。", "u2-range": "免费本地 → 云端 API",
+    "u1-title": "任意计算机", "u1-body": "环境配置文件（laptop / hpc / cloud）自动检测调度器（SLURM、PBS、LSF、SGE、Kubernetes），自动配置并行数、内存和容器运行时。", "u1-range": "笔记本 → 超算",
+    "u2-title": "任意 AI 模型", "u2-body": "免费本地模型（Ollama）或商业 API（Claude、GPT、Gemini）通过 litellm 支持。可在仪表板向导中按实验选择模型。", "u2-range": "免费本地 → 云端 API",
     "u3-title": "任意技术水平", "u3-body": "初学者写 3 行，专家可写 200 行精细配置。", "u3-range": "初学者 → 专家",
     "u4-title": "任意领域", "u4-body": "以插件模块形式添加新能力，无需修改核心系统。", "u4-range": "软件 → 物理世界",
     "u5-title": "任意格式", "u5-body": "支持 arXiv、NeurIPS、ICML 及任意自定义会议模板。", "u5-range": "预印本 → 顶级会议",
@@ -615,7 +626,7 @@ var LANGS = {
     "v2-tag": "🔜 即将推出", "v2-title": "机器人学", "v2-body": "机械臂轨迹、运动规划参数、基于 ROS2 的控制系统调优。",
     "v3-tag": "📅 规划中", "v3-title": "实验室自动化", "v3-body": "液体处理器、酶标仪、反应条件——规划中，尚未实现。",
     "v4-tag": "🌟 愿景", "v4-title": "任意物理系统", "v4-body": "只要有目标和参数空间，ARI 就能探索。同一系统，无限领域。",
-    "qs-label": "快速开始", "qs-title": "几分钟内运行。", "qs-note": "ARI 将自动完成相关论文调研、实验运行、图表生成、论文撰写和独立可重复性验证。", "virsci-desc": "多智能体科学讨论系统。具有不同研究背景的多个 AI 角色对假设展开辩论，产生比单智能体更丰富多样的研究想法。已集成到 ARI 的想法生成阶段。",
+    "qs-label": "快速开始", "qs-title": "几分钟内运行。", "qs-note": "ARI 将自动完成相关论文调研、实验运行、图表生成、论文撰写和独立可重复性验证。每个实验项目会被分配一个 LLM 生成的唯一标题。", "virsci-desc": "多智能体科学讨论系统。具有不同研究背景的多个 AI 角色对假设展开辩论，产生比单智能体更丰富多样的研究想法。已集成到 ARI 的想法生成阶段。",
     "quickstart-label": "快速开始",
     "comm-label": "社区",
     "comm-title": "共同构建。",
@@ -632,10 +643,10 @@ var LANGS = {
     "nav-how": "工作原理",
     "nav-docs": "文档",
     "u1-title": "任意计算机",
-    "u1-body": "从笔记本电脑到千核超算集群，改一行即可切换。",
+    "u1-body": "环境配置文件（laptop / hpc / cloud）自动检测调度器，自动配置并行数、内存和容器运行时。",
     "u1-range": "笔记本 → 超算",
     "u2-title": "任意 AI 模型",
-    "u2-body": "免费本地模型（Ollama）或商业 API（GPT、Claude），一个环境变量切换。",
+    "u2-body": "免费本地模型（Ollama）或商业 API（Claude、GPT、Gemini）通过 litellm 支持。可在仪表板向导中按实验选择模型。",
     "u2-range": "免费本地 → 云端 API",
     "u3-title": "任意技术水平",
     "u3-body": "初学者写 3 行，专家可写 200 行精细配置。",

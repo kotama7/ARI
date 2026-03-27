@@ -162,10 +162,13 @@ class MCPClient:
                 self._connections[skill.name] = conn
             return self._connections[skill.name]
 
-    def list_tools(self) -> list[dict]:
-        """Return a list of all skill tools (connect and cache on first call)."""
+    def list_tools(self, phase: str | None = None) -> list[dict]:
+        """Return skill tools, optionally filtered by phase ('bfts' | 'pipeline' | None=all)."""
         if self._tools_cache is not None:
-            return self._tools_cache
+            if phase is None:
+                return self._tools_cache
+            _pm = getattr(self, '_phase_map', {})
+            return [t for t in self._tools_cache if _pm.get(t['name'], 'all') in (phase, 'all')]
 
         tools: list[dict] = []
         for skill in self.skills:
@@ -180,7 +183,13 @@ class MCPClient:
                 logger.warning("Failed to load skill '%s': %s", skill.name, e)
 
         self._tools_cache = tools
-        return tools
+        self._phase_map = {t["name"]: getattr(
+            next((s for s in self.skills if s.name == self._tool_registry.get(t["name"],"")), None),
+            "phase", "all") for t in tools}
+
+        if phase is None:
+            return self._tools_cache
+        return [t for t in self._tools_cache if self._phase_map.get(t["name"], "all") in (phase, "all")]
 
     def call_tool(self, tool_name: str, args: dict) -> dict:
         """Call a tool. Reuses connection pool and retries on failure."""
