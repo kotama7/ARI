@@ -1,0 +1,7 @@
+profile: cloud
+hpc:
+  enabled: false
+  scheduler: none
+bfts:
+  max_total_nodes: 16
+  parallel: 4

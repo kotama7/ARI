@@ -31,6 +31,7 @@ results*/
 experiments/
 benchmarks/
 *.c
+*.cpp
 *.f90
 *.def
 *.sbatch
@@ -39,6 +40,9 @@ benchmarks/
 *_paper.yaml
 *_paper.sh
 *_experiment.sh
+
+# ── Setup artifacts (environment-specific) ─────────────────────
+.ari_python
 
 # ── Security ────────────────────────────────────────────────────
 .env
@@ -84,3 +88,30 @@ __pycache__/
 .eggs/
 dist/
 build/
+
+# ── Runtime / temp files (generated at runtime, never track) ────
+experiment.md
+ari-core/experiment.md
+tmp*.md
+GUI_TASK.md
+*_TASK.md
+
+# ── Backup directories ──────────────────────────────────────────
+*.bak/
+viz.bak/
+
+# ── Virtual environments ───────────────────────────────────────
+.venv/
+venv/
+
+# ── Node / Frontend ───────────────────────────────────────────
+node_modules/
+ari-core/ari/viz/frontend/node_modules/
+ari-core/ari/viz/static/dist/
+
+# ── Compiled binaries (experiment artifacts) ───────────────────
+*.out
+
+# ── AI session artifacts ────────────────────────────────────────
+HEARTBEAT.md
+memory/

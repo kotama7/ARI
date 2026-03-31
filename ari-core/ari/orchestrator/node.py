@@ -86,6 +86,7 @@ class Node:
     has_real_data: bool = False
     eval_summary: str | None = None  # LLM evaluation comment
     label: NodeLabel = NodeLabel.DRAFT  # Exploration purpose label
+    name: str = ""  # Human-readable short name (set after hypothesis is known)
     ancestor_ids: list[str] = field(default_factory=list)
     # ancestor_ids: list of node IDs from root to parent of self (self not included)
     # = [root_id, depth1_id, ..., parent_id]
@@ -134,7 +135,8 @@ class Node:
             "has_real_data": self.has_real_data,
             "eval_summary": self.eval_summary,
             "label": self.label.value,
+            "name": self.name,
             "error_log": self.error_log,
             "ancestor_ids": self.ancestor_ids,
-            "trace_log": self.trace_log[-200:],  # last 200 entries (avoid huge JSON)
+            "trace_log": self.trace_log[-500:],  # last 500 entries
         }

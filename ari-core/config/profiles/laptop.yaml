@@ -1,0 +1,7 @@
+profile: laptop
+hpc:
+  enabled: false
+  scheduler: none
+bfts:
+  max_total_nodes: 8
+  parallel: 2

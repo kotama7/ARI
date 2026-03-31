@@ -43,3 +43,18 @@ Thumbs.db
 # Generated files
 *.pyc
 *.pyo
+
+# Vite build cache
+ari/viz/frontend/vite.config.ts.timestamp-*.mjs
+vite.config.ts.timestamp-*.mjs
+
+# Legacy backup files
+*.legacy
+dashboard.html.legacy
+
+# Frontend build output
+ari/viz/frontend/dist/
+ari/viz/frontend/.vite/
+
+# node_modules (should already be ignored, ensure)
+node_modules/

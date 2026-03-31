@@ -1,0 +1,5 @@
+name: paper-re-skill
+display_name: "Revise the paper"
+description: "Rewrites paper sections based on reviewer feedback to improve quality and address weaknesses"
+requires_env: []
+version: "0.4.0"

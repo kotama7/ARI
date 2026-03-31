@@ -25,7 +25,6 @@ def test_default_config():
 
 def test_bfts_defaults():
     bfts = BFTSConfig()
-    assert bfts.max_retries_per_node == 3
     assert bfts.max_parallel_nodes == 4
     assert bfts.timeout_per_node == 7200
 

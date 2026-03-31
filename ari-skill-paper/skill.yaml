@@ -1,0 +1,5 @@
+name: paper-skill
+display_name: "Write the paper"
+description: "Auto-generates a complete LaTeX academic paper from experiment results and scientific data"
+requires_env: []
+version: "0.4.0"

@@ -45,11 +45,38 @@ class _SkillConnection:
         path = path.replace("{{ari_root}}", ari_root)
         return Path(path)
 
+    @staticmethod
+    def _resolve_python(skill_path: Path) -> str:
+        """Return the best Python interpreter for a skill.
+
+        Priority:
+        1. Skill-local venv  (<skill>/.venv/bin/python)
+        2. Python recorded by setup.sh  ($ARI_ROOT/.ari_python)
+        3. sys.executable (fallback)
+        """
+        # 1. Skill-local venv
+        skill_python = skill_path / ".venv" / "bin" / "python"
+        if skill_python.is_file():
+            return str(skill_python)
+
+        # 2. Recorded by setup.sh
+        import os as _os
+        ari_root = _os.environ.get("ARI_ROOT", str(Path(__file__).parents[3]))
+        marker = Path(ari_root) / ".ari_python"
+        if marker.is_file():
+            recorded = marker.read_text().strip()
+            if recorded and Path(recorded).is_file():
+                return recorded
+
+        # 3. Fallback
+        return sys.executable
+
     def _server_params(self) -> StdioServerParameters:
         import os
         skill_path = self._skill_path()
+        python = self._resolve_python(skill_path)
         return StdioServerParameters(
-            command=sys.executable,
+            command=python,
             args=[str(skill_path / "src" / "server.py")],
             env={**os.environ, "PYTHONPATH": str(skill_path)},
         )
@@ -162,10 +189,13 @@ class MCPClient:
                 self._connections[skill.name] = conn
             return self._connections[skill.name]
 
-    def list_tools(self) -> list[dict]:
-        """Return a list of all skill tools (connect and cache on first call)."""
+    def list_tools(self, phase: str | None = None) -> list[dict]:
+        """Return skill tools, optionally filtered by phase ('bfts' | 'pipeline' | None=all)."""
         if self._tools_cache is not None:
-            return self._tools_cache
+            if phase is None:
+                return self._tools_cache
+            _pm = getattr(self, '_phase_map', {})
+            return [t for t in self._tools_cache if _pm.get(t['name'], 'all') in (phase, 'all')]
 
         tools: list[dict] = []
         for skill in self.skills:
@@ -180,7 +210,13 @@ class MCPClient:
                 logger.warning("Failed to load skill '%s': %s", skill.name, e)
 
         self._tools_cache = tools
-        return tools
+        self._phase_map = {t["name"]: getattr(
+            next((s for s in self.skills if s.name == self._tool_registry.get(t["name"],"")), None),
+            "phase", "all") for t in tools}
+
+        if phase is None:
+            return self._tools_cache
+        return [t for t in self._tools_cache if self._phase_map.get(t["name"], "all") in (phase, "all")]
 
     def call_tool(self, tool_name: str, args: dict) -> dict:
         """Call a tool. Reuses connection pool and retries on failure."""

@@ -6,7 +6,7 @@
   **A universal research automation system. Laptop to supercomputer. Local models to cloud APIs. Novice to expert. Computation to physical world.**
 
   [![Tests](https://img.shields.io/badge/tests-60%20passed-brightgreen)](./ari-core)
-  [![Version](https://img.shields.io/badge/version-v0.3.0-orange)](https://github.com/kotama7/ARI/releases)
+  [![Version](https://img.shields.io/badge/version-v0.4.0-orange)](https://github.com/kotama7/ARI/releases)
   [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
   [![MCP](https://img.shields.io/badge/protocol-MCP-purple)](https://modelcontextprotocol.io)
   [![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
@@ -91,9 +91,16 @@ ari run experiment.md
 
 **With HPC (SLURM cluster):**
 ```bash
-export ARI_LLM_MODEL=openai/gpt-5.2
+export ARI_BACKEND=openai
 export OPENAI_API_KEY=sk-...
-ari run experiment.md --config ari-core/config/workflow.yaml
+ari run experiment.md --profile hpc
+```
+
+**Dashboard & CLI:**
+```bash
+ari viz ./checkpoints/my_run/   # launch web dashboard
+ari projects                     # list all runs
+ari settings                     # view/modify config
 ```
 
 See **[docs/quickstart.md](docs/quickstart.md)** for full setup.
@@ -132,15 +139,15 @@ gmx mdrun -v -deffnm simulation -ntmpi 32
 
 ---
 
-## Experiment Monitor
+## Web Dashboard
 
-Monitor running experiments in real time:
+A 9-page React/TypeScript SPA lets you control experiments from the browser:
 
 ```bash
-ari viz --checkpoint logs/<ckpt_dir> --port 9878
+ari viz ./checkpoints/my_run/ --port 8765
 ```
 
-Open `http://localhost:9878` to see the live BFTS tree.  Click any node to inspect its tool-call **Trace**, generated **Code**, and raw **Output**.
+Home, Experiments, Live Monitor, Tree + Code Viewer, Results + Paper, Experiment Wizard, VirSci Ideas, Workflow Editor, Settings — all in one interface. Real-time log streaming via SSE and WebSocket.
 
 ---
 
@@ -156,6 +163,7 @@ Open `http://localhost:9878` to see the live BFTS tree.  Click any node to inspe
 | `ari-skill-idea` | arXiv survey, hypothesis generation | ✗ |
 | `ari-skill-web` | DuckDuckGo, page fetch, arXiv | ✗ |
 | `ari-skill-memory` | Ancestor-scoped node memory | ✗ |
+| `ari-skill-transform` | LLM-powered tree analysis and data extraction | ✗ |
 | `ari-skill-plot` | Figure generation | ✓* |
 | `ari-skill-paper` | LaTeX writing + BibTeX + review | ✓* |
 | `ari-skill-paper-re` | ReAct reproducibility verification | ✓* |

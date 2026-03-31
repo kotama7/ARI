@@ -1,0 +1,12 @@
+profile: hpc
+hpc:
+  enabled: true
+  scheduler: auto
+  partition: auto
+  cpus_per_task: 8
+  memory_gb: 32
+  walltime: "04:00:00"
+  max_concurrent_jobs: 4
+bfts:
+  max_total_nodes: 20
+  parallel: 4

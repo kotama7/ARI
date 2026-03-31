@@ -4,25 +4,60 @@ llm:
   base_url: ""
 
 resources:
-  cpus: 64           # Default CPU count for reproducibility experiments
+  cpus: 48           # Default CPU count for reproducibility experiments
   timeout_minutes: 60 # Default job timeout
+  executor: slurm    # Job executor: slurm / local / pbs / lsf
 
 author_name: Artificial Research Intelligence
+
+bfts_pipeline:
+- stage: generate_idea
+  skill: idea-skill
+  tool: generate_ideas
+  description: "LLM generates research hypotheses; BFTS creates root node"
+  depends_on: []
+  enabled: true
+  phase: bfts
+- stage: select_and_run
+  skill: hpc-skill
+  tool: ""
+  description: "BFTS selects best node; ReAct agent runs experiment (code generation, HPC submission, result parsing)"
+  depends_on: [generate_idea]
+  enabled: true
+  phase: bfts
+- stage: evaluate
+  skill: evaluator-skill
+  tool: evaluate_node
+  description: "LLM evaluator scores node, extracts metrics, determines scientific contribution"
+  depends_on: [select_and_run]
+  enabled: true
+  phase: bfts
+- stage: frontier_expand
+  skill: idea-skill
+  tool: generate_ideas
+  description: "BFTS expands best completed node into children; loops back to select_and_run"
+  depends_on: [evaluate]
+  enabled: true
+  phase: bfts
+  loop_back_to: select_and_run
+
 pipeline:
 - depends_on: []
-  description: arXiv keyword search -> related_refs.json
+  description: AI Scientist v2-style iterative citation collection -> related_refs.json
   enabled: true
   inputs:
-    limit: 15
-    query: '{{keywords}}'
-
+    experiment_summary: '{{paper_context}}'
+    keywords: '{{keywords}}'
+    max_rounds: 20
+    min_papers: 10
   load_inputs: []
   outputs:
     file: '{{ckpt}}/related_refs.json'
+  phase: paper
   skill: web-skill
   skip_if_exists: '{{ckpt}}/related_refs.json'
   stage: search_related_work
-  tool: search_semantic_scholar
+  tool: collect_references_iterative
 - depends_on: []
   description: LLM-powered experiment tree analysis -> science_data.json
   enabled: true
@@ -33,6 +68,7 @@ pipeline:
   load_inputs: []
   outputs:
     file: '{{ckpt}}/science_data.json'
+  phase: paper
   skill: transform-skill
   skip_if_exists: '{{ckpt}}/science_data.json'
   stage: transform_data
@@ -50,6 +86,7 @@ pipeline:
   load_inputs: []
   outputs:
     file: '{{ckpt}}/figures_manifest.json'
+  phase: paper
   skill: plot-skill
   skip_if_exists: '{{ckpt}}/figures_manifest.json'
   stage: generate_figures
@@ -73,6 +110,7 @@ pipeline:
   outputs:
     bib_file: '{{ckpt}}/refs.bib'
     file: '{{ckpt}}/full_paper.tex'
+  phase: paper
   skill: paper-skill
   skip_if_exists: '{{ckpt}}/full_paper.tex'
   stage: write_paper
@@ -91,6 +129,7 @@ pipeline:
   - figures_manifest_json
   outputs:
     file: '{{ckpt}}/review_report.json'
+  phase: paper
   skill: paper-skill
   skip_if_exists: '{{ckpt}}/review_report.json'
   stage: review_paper
@@ -106,10 +145,11 @@ pipeline:
     timeout_minutes: "{{resources.timeout_minutes}}"
     tolerance_pct: 5.0
     work_dir: '{{ckpt}}/repro'
-    # executor: resolved from ARI_EXECUTOR env (local/slurm/pbs/lsf)
+    executor: "{{resources.executor}}"
   load_inputs: []
   outputs:
     file: '{{ckpt}}/reproducibility_report.json'
+  phase: paper
   skill: paper-re-skill
   skip_if_exists: '{{ckpt}}/reproducibility_report.json'
   stage: reproducibility_check

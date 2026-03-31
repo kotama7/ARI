@@ -11,8 +11,18 @@ mcp = FastMCP("review-response-skill")
 import os
 import re as _re
 
-LLM_MODEL = os.environ.get("LLM_MODEL", "ollama/qwen3:8b")
-LLM_API_BASE = os.environ.get("LLM_API_BASE", "http://127.0.0.1:11434")
+LLM_MODEL = os.environ.get("ARI_LLM_MODEL") or os.environ.get("LLM_MODEL") or "ollama/qwen3:8b"
+_ari_base = os.environ.get("ARI_LLM_API_BASE")
+if _ari_base is not None:
+    LLM_API_BASE = _ari_base or None
+else:
+    _legacy = os.environ.get("LLM_API_BASE", "")
+    if _legacy:
+        LLM_API_BASE = _legacy
+    elif LLM_MODEL.startswith("ollama"):
+        LLM_API_BASE = "http://127.0.0.1:11434"
+    else:
+        LLM_API_BASE = None
 MODEL = LLM_MODEL  # backward compat
 
 

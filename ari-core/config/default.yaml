@@ -13,8 +13,8 @@ hpc:
   max_nodes: 4
   max_walltime: 04:00:00
   mode: local
-  partition: your-gpu-partition
-  scheduler: slurm
+  partition: auto
+  scheduler: auto
 llm:
   api_key: ${ANTHROPIC_API_KEY}
   backend: claude
@@ -31,27 +31,44 @@ output:
   format: paper
   venue: arxiv
 skills:
+# ── BFTS phase: tools used during tree search / experiment execution ─────────
 - name: idea-skill
   path: /path/to/ari/ari-skill-idea
+  phase: bfts
 - name: coding-skill
   path: /path/to/ari/ari-skill-coding
+  phase: bfts
 - name: hpc-skill
   path: /path/to/ari/ari-skill-hpc
+  phase: bfts
 - name: benchmark-skill
   path: /path/to/ari/ari-skill-benchmark
+  phase: bfts
 - name: web-skill
   path: /path/to/ari/ari-skill-web
-- name: paper-skill
-  path: /path/to/ari/ari-skill-paper
-- name: vlm-skill
-  path: /path/to/ari/ari-skill-vlm
-- name: review-skill
-  path: /path/to/ari/ari-skill-review
-- name: paper-re-skill
-  path: /path/to/ari/ari-skill-paper-re
+  phase: bfts
 - name: memory-skill
   path: /path/to/ari/ari-skill-memory
+  phase: bfts
 - name: evaluator-skill
   path: /path/to/ari/ari-skill-evaluator
+  phase: bfts
+# ── Pipeline phase: tools used AFTER BFTS completes (paper / review) ─────────
+- name: paper-skill
+  path: /path/to/ari/ari-skill-paper
+  phase: pipeline
+- name: vlm-skill
+  path: /path/to/ari/ari-skill-vlm
+  phase: pipeline
+- name: review-skill
+  path: /path/to/ari/ari-skill-review
+  phase: pipeline
+- name: paper-re-skill
+  path: /path/to/ari/ari-skill-paper-re
+  phase: pipeline
 - name: plot-skill
   path: /path/to/ari/ari-skill-plot
+  phase: pipeline
+- name: transform-skill
+  path: /path/to/ari/ari-skill-transform
+  phase: pipeline

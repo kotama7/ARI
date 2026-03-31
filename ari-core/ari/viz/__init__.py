@@ -1,1 +1,1 @@
-"""ARI real-time experiment visualizer."""
+"""ARI viz package."""
