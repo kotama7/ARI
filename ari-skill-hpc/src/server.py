@@ -240,8 +240,9 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         if name == "run_bash":
             import subprocess
             cmd = arguments.get("command", "")
-            import os as _os
-            _cwd = arguments.get("cwd") or _os.environ.get("ARI_WORK_DIR") or None
+            _cwd = arguments.get("cwd") or os.environ.get("ARI_WORK_DIR") or None
+            if _cwd:
+                os.makedirs(_cwd, exist_ok=True)
             try:
                 result = subprocess.run(
                     cmd, shell=True, capture_output=True, text=True, timeout=120,

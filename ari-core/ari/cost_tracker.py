@@ -6,15 +6,35 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Optional
 
+# Pricing per 1K tokens (input, output) in USD.
+# Sources: openai.com/api/pricing, claude.com/pricing, ai.google.dev/pricing
+# Last verified: 2026-03-28
 _PRICING: dict[str, tuple[float, float]] = {
-    "gpt-4o":            (0.0025, 0.010),
+    # OpenAI
+    "gpt-5.2":           (0.00175, 0.014),
+    "gpt-5":             (0.00125, 0.010),
     "gpt-4o-mini":       (0.00015, 0.0006),
-    "gpt-5":             (0.01, 0.04),
-    "gpt-5.2":           (0.01, 0.04),
-    "claude-3-5-sonnet": (0.003, 0.015),
-    "claude-3-opus":     (0.015, 0.075),
+    "gpt-4o":            (0.0025, 0.010),
     "gpt-4":             (0.03, 0.06),
     "gpt-3.5-turbo":     (0.0005, 0.0015),
+    "o3-mini":           (0.0011, 0.0044),
+    "o4-mini":           (0.0011, 0.0044),
+    "o3":                (0.002, 0.008),
+    # Anthropic
+    "claude-opus-4-6":   (0.005, 0.025),
+    "claude-sonnet-4-6": (0.003, 0.015),
+    "claude-sonnet-4-5": (0.003, 0.015),
+    "claude-opus-4-5":   (0.005, 0.025),
+    "claude-opus-4-1":   (0.015, 0.075),
+    "claude-opus-4":     (0.015, 0.075),
+    "claude-sonnet-4":   (0.003, 0.015),
+    "claude-haiku-4-5":  (0.001, 0.005),
+    "claude-3-5-sonnet": (0.003, 0.015),
+    "claude-3-opus":     (0.015, 0.075),
+    # Google Gemini
+    "gemini-2.5-pro":    (0.00125, 0.010),
+    "gemini-2.0-flash":  (0.0001, 0.0004),
+    "gemini-1.5-pro":    (0.00125, 0.005),
 }
 
 def _estimate_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
@@ -106,6 +126,7 @@ _tracker: Optional[CostTracker] = None
 def init(log_dir: str | Path) -> CostTracker:
     global _tracker
     _tracker = CostTracker(log_dir)
+    _install_litellm_callback()
     return _tracker
 
 def record(**kwargs) -> None:
@@ -114,3 +135,48 @@ def record(**kwargs) -> None:
 
 def get() -> Optional[CostTracker]:
     return _tracker
+
+
+# ── litellm global callback ─────────────────────────────────────────────────
+# Catches ALL litellm.completion/acompletion calls across the process,
+# including those from MCP skill servers (paper-skill, plot-skill, etc.)
+# which call litellm directly without going through ari.llm.client.
+
+def _litellm_success_handler(kwargs, response_obj, start_time, end_time):
+    """litellm success_callback: log every LLM call to cost_tracker."""
+    if _tracker is None:
+        return
+    try:
+        usage = getattr(response_obj, "usage", None)
+        if not usage:
+            return
+        prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
+        completion_tokens = getattr(usage, "completion_tokens", 0) or 0
+        if prompt_tokens == 0 and completion_tokens == 0:
+            return
+        model = kwargs.get("model", "") or getattr(response_obj, "model", "") or ""
+        # Detect skill/phase from litellm metadata if available
+        metadata = kwargs.get("litellm_params", {}).get("metadata", {}) or {}
+        skill = metadata.get("skill", "") or ""
+        _tracker.record(
+            model=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            phase=metadata.get("phase", ""),
+            skill=skill,
+            node_id=metadata.get("node_id", ""),
+        )
+    except Exception:
+        pass  # Never break the LLM call due to tracking errors
+
+
+def _install_litellm_callback():
+    """Register the global litellm callback (idempotent)."""
+    try:
+        import litellm
+        if litellm.success_callback is None:
+            litellm.success_callback = []
+        if _litellm_success_handler not in litellm.success_callback:
+            litellm.success_callback.append(_litellm_success_handler)
+    except ImportError:
+        pass

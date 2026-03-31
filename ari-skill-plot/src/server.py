@@ -336,8 +336,8 @@ async def generate_figures_llm(
         " - Each figure must directly support a claim in the paper.\n"
         " - Use ACTUAL metric names and numeric values from the data — no 'a.u.' units.\n"
         " - Captions MUST be specific and descriptive. BAD: \"experimental results\". "
-        "   GOOD: \"GFLOP/s vs RHS width N (1–512) for CSR SpMM with Nb=64 on 192 threads; "
-        "   peak 699 GFLOP/s at N=64 (memory-bandwidth limited).\". "
+        "   GOOD: \"Score vs parameter X (0.1–0.9) for method A on benchmark B; "
+        "   best 76.3 at X=0.5 (configuration C, 10 trials).\". "
         "   Include: what metric, what x-axis, what experimental conditions, key quantitative finding.\n"
         " - NEVER produce a 'ranked configurations' bar chart unless the paper explicitly "
         "   compares ranked designs.\n"
@@ -345,22 +345,32 @@ async def generate_figures_llm(
         "   (b) comparison bar with real metric labels, (c) scaling plot."
     )
     user_prompt = (
-        f"Generate {n_figures} matplotlib figures from this HPC benchmark data.\n\n"
+        f"Generate {n_figures} matplotlib figures from this benchmark data.\n\n"
         f"DATA (configurations with all metrics):\n{data_summary}\n\n"
         f"output_dir = {repr(str(out_dir))}\n\n"
         "REQUIRED figures (read the data carefully and choose the best representation):\n"
-        f"RULES: Use real metric names (GFLOP/s, GB/s, etc.) from the data as axis labels. "
+        f"RULES: Use real metric names (score, throughput, etc.) from the data as axis labels. "
         "No 'a.u.', no 'Performance metric'. NO internal system terms.\n"
-        f"1. Primary performance plot: throughput (GFLOP/s or GB/s) vs the main sweep parameter "
-        f"   (e.g., N, threads) — use a line or scatter plot with labeled axes and units.\n"
+        f"1. Primary performance plot: score or throughput vs the main sweep parameter "
+        f"   (e.g., N, configuration) — use a line or scatter plot with labeled axes and units.\n"
         f"2. {_axis2} — scatter or line plot with specific units from the data.\n"
         f"3. Comparison or ablation: show effect of a design choice "
-        f"   (e.g., SIMD on/off, nnz/row, thread count) on throughput.\n\n"
+        f"   (e.g., feature on/off, parameter value, configuration) on performance.\n\n"
     )
 
     # Unified LLM routing: ARI_LLM_MODEL > LLM_MODEL; ARI_LLM_API_BASE > LLM_API_BASE
     LLM_MODEL = (os.environ.get("ARI_LLM_MODEL") or os.environ.get("LLM_MODEL") or "ollama_chat/qwen3:32b")
-    _ari_base = os.environ.get("ARI_LLM_API_BASE"); LLM_API_BASE = (_ari_base if _ari_base is not None else os.environ.get("LLM_API_BASE", "http://127.0.0.1:11434")) or None
+    _ari_base = os.environ.get("ARI_LLM_API_BASE")
+    if _ari_base is not None:
+        LLM_API_BASE = _ari_base or None
+    else:
+        _legacy_base = os.environ.get("LLM_API_BASE", "")
+        if _legacy_base:
+            LLM_API_BASE = _legacy_base
+        elif LLM_MODEL.startswith("ollama"):
+            LLM_API_BASE = "http://127.0.0.1:11434"
+        else:
+            LLM_API_BASE = None
     kwargs: dict = {
         "model": LLM_MODEL,
         "messages": [

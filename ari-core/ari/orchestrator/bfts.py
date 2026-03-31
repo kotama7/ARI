@@ -111,10 +111,6 @@ class BFTS:
         # Resource exhaustion: total nodes in search space reached the limit
         if self.total_nodes >= self.config.max_total_nodes:
             return True
-        # A node that has real data (succeeded) should NEVER be pruned based on retry count.
-        # Only prune failing nodes that have exhausted retries.
-        if not node.has_real_data and node.retry_count >= self.config.max_retries_per_node:
-            return True
         return False
 
 

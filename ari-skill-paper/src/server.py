@@ -1514,7 +1514,14 @@ async def review_compiled_paper(
             pass
 
     # 4. Build review prompt (AI Scientist v2-style structured review)
-    snippet = review_text[:12000]
+    # Include full paper text (up to 50000 chars) so the reviewer sees
+    # the bibliography section which is typically at the end.
+    _max_review_chars = 50000
+    if len(review_text) <= _max_review_chars:
+        snippet = review_text
+    else:
+        # Keep first 40000 + last 10000 to ensure bibliography is included
+        snippet = review_text[:40000] + "\n\n[... middle truncated ...]\n\n" + review_text[-10000:]
     captions_str = "\n".join(f"- {c}" for c in captions[:8]) if captions else "(none extracted)"
     figs_str = "\n".join(
         f"- {f.get('path','?')}: {f.get('description','')[:100]}" for f in figs_info[:5]
@@ -1533,21 +1540,29 @@ async def review_compiled_paper(
         "  recommendations: list of strings (concrete improvements, max 5)\n"
         "No markdown, no explanation outside JSON."
     )
-    # Count \cite{} calls and .bbl entries for citation verification
+    # Count unique \cite keys and .bbl entries for citation verification
     import re as _re_rv, pathlib as _pl_rv
     full_latex = _pl_rv.Path(tex_path).read_text(errors="ignore") if tex_path and _pl_rv.Path(tex_path).exists() else ""
-    _cite_count = len(_re_rv.findall(r"\\cite{", full_latex or snippet))
+    _cite_calls = len(_re_rv.findall(r"\\cite\{", full_latex or snippet))
+    _cite_keys_raw = _re_rv.findall(r"\\cite\{([^}]+)\}", full_latex or snippet)
+    _unique_keys = set()
+    for _ck in _cite_keys_raw:
+        for _k in _ck.split(","):
+            _k = _k.strip()
+            if _k:
+                _unique_keys.add(_k)
     _bbl_path = _pl_rv.Path(pdf_path).with_suffix(".bbl") if pdf_path else None
     _bbl_entries = 0
     if _bbl_path and _bbl_path.exists():
         _bbl_entries = _bbl_path.read_text(errors="ignore").count("\\bibitem")
     _citation_note = (
-        f"LaTeX \\cite{{}} calls found: {_cite_count}; "
+        f"Unique cite keys used: {len(_unique_keys)}; "
+        f"Total \\cite{{}} calls: {_cite_calls}; "
         f"Bibliography entries (.bbl): {_bbl_entries}"
     )
     review_user = (
         f"Experiment context: {experiment_summary[:500]}\n\n"
-        f"Paper text (first 5000 chars):\n{snippet}\n\n"
+        f"Paper text ({len(snippet)} chars):\n{snippet}\n\n"
         f"Figure captions found in LaTeX:\n{captions_str}\n\n"
         f"Figures generated (manifest):\n{figs_str}\n\n"
         f"Citation counts: {_citation_note}"

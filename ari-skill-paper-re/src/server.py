@@ -8,8 +8,10 @@ Philosophy:
 - Tests whether the paper is reproducible by an independent implementer.
 """
 
-import asyncio, json, os, re, subprocess, time
+import asyncio, json, logging, os, re, subprocess, time
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 import litellm
 from mcp.server.fastmcp import FastMCP
@@ -21,7 +23,14 @@ def _model():
 
 def _api_base():
     ari = os.environ.get("ARI_LLM_API_BASE")
-    return (ari if ari is not None else os.environ.get("LLM_API_BASE", "http://127.0.0.1:11434")) or None
+    if ari is not None:
+        return ari or None
+    legacy = os.environ.get("LLM_API_BASE", "")
+    if legacy:
+        return legacy
+    if _model().startswith("ollama"):
+        return "http://127.0.0.1:11434"
+    return None
 
 async def _llm(system, user):
     kwargs = {"model": _model(), "messages": [{"role":"system","content":system},{"role":"user","content":user}], "timeout": 120}
@@ -41,21 +50,32 @@ class Executor:
         self.log_file = log_file
         self.extra = extra or {}
 
+    @staticmethod
+    def _detect_arch() -> str:
+        """Detect CPU architecture of the current host."""
+        import platform
+        return platform.machine() or "unknown"
+
     def describe(self):
+        arch = self._detect_arch()
         k = self.kind
         if k == "local":
-            return f"local bash execution (no scheduler); {self.cpus} CPU threads available via OMP_NUM_THREADS"
+            return (f"local bash execution (no scheduler); "
+                    f"{self.cpus} CPU threads available; architecture={arch}")
         if k == "slurm":
             p = self.extra.get("partition", "")
             return (f"SLURM scheduler; include #SBATCH header directives; "
                     f"partition={p}, cpus-per-task={self.cpus}, "
-                    f"time=00:{self.timeout_minutes:02d}:00, output={self.log_file}")
+                    f"time=00:{self.timeout_minutes:02d}:00, output={self.log_file}; "
+                    f"architecture={arch}")
         if k == "pbs":
             return (f"PBS/Torque scheduler; include #PBS directives; "
-                    f"nodes=1:ppn={self.cpus}, walltime=00:{self.timeout_minutes:02d}:00")
+                    f"nodes=1:ppn={self.cpus}, walltime=00:{self.timeout_minutes:02d}:00; "
+                    f"architecture={arch}")
         if k == "lsf":
             return (f"LSF scheduler; include #BSUB directives; "
-                    f"ncpus={self.cpus}, runtime=00:{self.timeout_minutes:02d}")
+                    f"ncpus={self.cpus}, runtime=00:{self.timeout_minutes:02d}; "
+                    f"architecture={arch}")
         return f"{k} scheduler (include appropriate scheduler directives)"
 
     def submit(self, script_path):
@@ -167,6 +187,21 @@ async def reproduce_from_paper(
     # Resolve executor
     exe_kind  = executor or os.environ.get("ARI_EXECUTOR", "local")
     partition = os.environ.get("ARI_SLURM_PARTITION", "")
+    # Auto-detect partition when executor=slurm but partition is empty
+    if exe_kind == "slurm" and not partition:
+        try:
+            import subprocess as _sp
+            _sinfo = _sp.run(["sinfo", "-h", "-o", "%P"], capture_output=True, text=True, timeout=5)
+            _parts = [p.strip().rstrip("*") for p in _sinfo.stdout.strip().splitlines() if p.strip()]
+            if _parts:
+                partition = _parts[0]
+                log.info("Auto-detected SLURM partition: %s", partition)
+        except Exception:
+            pass
+    # Fallback to local if slurm requested but no partition available
+    if exe_kind == "slurm" and not partition:
+        log.warning("SLURM partition unavailable — falling back to local executor")
+        exe_kind = "local"
     wdir = work_dir or "/tmp/ari_repro"
     Path(wdir).mkdir(parents=True, exist_ok=True)
     log_file    = str(Path(wdir) / "repro_output.log")
@@ -189,60 +224,96 @@ async def reproduce_from_paper(
     claimed_val = float(config.get("claimed_value", 0))
     description = config.get("description", "")
 
-    # ACT: LLM generates complete experiment script from paper text alone
-    script_content = await _llm(
-        (
-            "You are a reproducibility engineer verifying a scientific paper claim. "
-            "Generate a self-contained executable script that reproduces the experiment FROM SCRATCH "
-            "based only on the paper description — do not assume access to any original source code.\n\n"
-            f"Execution environment: {exe.describe()}\n\n"
-            f"Use up to {threads} CPU threads. "
-            "Print the key metric value to stdout as: METRIC: <value>\n"
-            "End with: echo 'REPRO_EXIT_CODE:'$?\n"
-            "Choose appropriate language and toolchain. Return ONLY the script. No markdown."
-        ),
-        f"Paper:\n{paper_snippet}\n\nConfig:\n{json.dumps(config,indent=2)}\n\nDescription: {description}"
+    # ReAct loop: generate script → execute → check output → fix if needed
+    max_attempts = 3
+    script_content = ""
+    actual_output = ""
+    actual_val = None
+    job_id = ""
+    prev_errors: list[str] = []
+
+    _gen_system = (
+        "You are a reproducibility engineer verifying a scientific paper claim. "
+        "Generate a self-contained executable script that reproduces the experiment FROM SCRATCH "
+        "based only on the paper description — do not assume access to any original source code.\n\n"
+        f"Execution environment: {exe.describe()}\n\n"
+        f"Use up to {threads} CPU threads. "
+        "Print the key metric value to stdout as: METRIC: <value>\n"
+        "End with: echo 'REPRO_EXIT_CODE:'$?\n"
+        "Choose appropriate language and toolchain. Return ONLY the script. No markdown."
     )
-    # Strip markdown fences
-    mf = re.search(r"```(?:\w+)?\n(.*?)```", script_content, re.DOTALL)
-    if mf: script_content = mf.group(1)
-    # Do not inject shebang — LLM chose the language; trust its output
-    Path(script_path).write_text(script_content)
-    # Make executable so any shebang line works (bash, python, etc.)
-    Path(script_path).chmod(0o755)
+    _gen_user_base = (
+        f"Paper:\n{paper_snippet}\n\n"
+        f"Config:\n{json.dumps(config, indent=2)}\n\n"
+        f"Description: {description}"
+    )
 
-    # Submit / run
-    try:
-        if exe_kind == "local":
-            with open(log_file, "w") as f:
-                subprocess.run([script_path], stdout=f, stderr=subprocess.STDOUT,
-                               timeout=timeout_minutes * 60)
-            job_id = "local"
+    for attempt in range(1, max_attempts + 1):
+        # Generate or fix script
+        if attempt == 1:
+            script_content = await _llm(_gen_system, _gen_user_base)
         else:
-            job_id = exe.submit(script_path)
-    except Exception as e:
-        return {"error": str(e), "claimed_config": config, "verdict": "ERROR",
-                "generated_script_preview": script_content[:400]}
+            error_ctx = "\n".join(f"Attempt {i+1} error:\n{e}" for i, e in enumerate(prev_errors))
+            script_content = await _llm(
+                _gen_system,
+                f"{_gen_user_base}\n\n"
+                f"Previous attempts FAILED with these errors:\n{error_ctx}\n\n"
+                f"Fix the script to avoid these errors. Return ONLY the corrected script."
+            )
 
-    # Poll for completion
-    if job_id != "local":
-        deadline = time.time() + timeout_minutes * 60
-        while time.time() < deadline:
-            await asyncio.sleep(30)
-            if not exe.is_running(job_id):
-                break
-        else:
-            return {"error": "Timed out", "job_id": job_id, "claimed_config": config, "verdict": "TIMEOUT"}
+        # Strip markdown fences
+        mf = re.search(r"```(?:\w+)?\n(.*?)```", script_content, re.DOTALL)
+        if mf:
+            script_content = mf.group(1)
+        Path(script_path).write_text(script_content)
+        Path(script_path).chmod(0o755)
 
-    try: actual_output = Path(log_file).read_text()
-    except Exception: actual_output = ""
+        # Submit / run
+        try:
+            if exe_kind == "local":
+                with open(log_file, "w") as f:
+                    subprocess.run([script_path], stdout=f, stderr=subprocess.STDOUT,
+                                   timeout=timeout_minutes * 60)
+                job_id = "local"
+            else:
+                job_id = exe.submit(script_path)
+        except Exception as e:
+            prev_errors.append(f"Submission error: {e}")
+            log.warning("Attempt %d/%d: submission failed: %s", attempt, max_attempts, e)
+            continue
 
-    if not actual_output:
-        return {"error": "No output", "job_id": job_id, "claimed_config": config, "verdict": "UNVERIFIABLE"}
+        # Poll for completion
+        if job_id != "local":
+            deadline = time.time() + timeout_minutes * 60
+            while time.time() < deadline:
+                await asyncio.sleep(30)
+                if not exe.is_running(job_id):
+                    break
+            else:
+                prev_errors.append("Timed out waiting for job")
+                log.warning("Attempt %d/%d: timed out", attempt, max_attempts)
+                continue
 
-    # REASON: extract metric & compare
-    parse_res = await extract_metric_from_output(actual_output, metric_name)
-    actual_val = parse_res.get("value")
+        try:
+            actual_output = Path(log_file).read_text()
+        except Exception:
+            actual_output = ""
+
+        if not actual_output:
+            prev_errors.append("No output produced")
+            log.warning("Attempt %d/%d: no output", attempt, max_attempts)
+            continue
+
+        # Check if METRIC was produced
+        parse_res = await extract_metric_from_output(actual_output, metric_name)
+        actual_val = parse_res.get("value")
+        if actual_val is not None:
+            log.info("Attempt %d/%d: metric extracted: %s", attempt, max_attempts, actual_val)
+            break
+
+        # No metric found — collect error for next attempt
+        prev_errors.append(actual_output[-1000:])
+        log.warning("Attempt %d/%d: no metric in output, will retry", attempt, max_attempts)
 
     if actual_val is None:
         verdict, diff_pct = "UNVERIFIABLE", None

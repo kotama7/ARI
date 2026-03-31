@@ -2,4 +2,4 @@ name: plot-skill
 display_name: "Visualize results"
 description: "Generates charts and figures from experiment data with AI-chosen visualization types"
 requires_env: []
-version: "0.3.0"
+version: "0.4.0"

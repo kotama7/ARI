@@ -42,6 +42,8 @@
     .step-list{counter-reset:step;list-style:none;margin:16px 0;}
     .step-list li{counter-increment:step;display:flex;gap:14px;margin-bottom:16px;align-items:flex-start;}
     .step-list li::before{content:counter(step);min-width:28px;height:28px;background:rgba(37,99,235,.15);color:var(--blue-light);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700;flex-shrink:0;}
+    .lang-btn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:var(--text);padding:4px 12px;border-radius:20px;font-size:.8rem;font-weight:700;cursor:pointer;transition:.15s;}
+    .lang-btn:hover,.lang-btn.active{background:var(--blue);border-color:var(--blue);}
     @media(max-width:768px){.sidebar{display:none;}.main{margin-left:0;padding:24px;}}
   </style>
 </head>
@@ -50,37 +52,37 @@
 <nav class="sidebar">
   <div class="sidebar-logo">
     <img src="logo.png" alt="ARI"/>
-    ARI <span>Docs</span>
+    ARI <span id="t-docs-logo">Docs</span>
   </div>
-  <div class="nav-group">Getting Started</div>
-  <a class="nav-item" href="#overview">Overview</a>
-  <a class="nav-item" href="#install">Installation</a>
-  <a class="nav-item" href="#first-run">First Run</a>
-  <div class="nav-group">Core Concepts</div>
-  <a class="nav-item" href="#architecture">Architecture</a>
-  <a class="nav-item" href="#experiment-files">Experiment Files</a>
+  <div class="nav-group"><span id="t-nav-gs">Getting Started</span></div>
+  <a class="nav-item" href="#overview"><span id="t-nav-overview">Overview</span></a>
+  <a class="nav-item" href="#install"><span id="t-nav-install">Installation</span></a>
+  <a class="nav-item" href="#first-run"><span id="t-nav-first-run">First Run</span></a>
+  <div class="nav-group"><span id="t-nav-core">Core Concepts</span></div>
+  <a class="nav-item" href="#architecture"><span id="t-nav-arch">Architecture</span></a>
+  <a class="nav-item" href="#experiment-files"><span id="t-nav-expfiles">Experiment Files</span></a>
   <a class="nav-item" href="#workflow-yaml">workflow.yaml</a>
-  <div class="nav-group">Skills</div>
-  <a class="nav-item" href="#skills-overview">Skills Overview</a>
-  <a class="nav-item" href="#adding-skill">Adding a Skill</a>
-  <div class="nav-group">Configuration</div>
-  <a class="nav-item" href="#llm-config">LLM Configuration</a>
-  <a class="nav-item" href="#hpc-config">HPC / SLURM</a>
-  <a class="nav-item" href="#experiment-monitor">Experiment Monitor</a>
-  <a class="nav-item" href="#memory">Agent Memory</a>
+  <div class="nav-group"><span id="t-nav-skills-grp">Skills</span></div>
+  <a class="nav-item" href="#skills-overview"><span id="t-nav-skills">Skills Overview</span></a>
+  <a class="nav-item" href="#adding-skill"><span id="t-nav-add-skill">Adding a Skill</span></a>
+  <div class="nav-group"><span id="t-nav-config-grp">Configuration</span></div>
+  <a class="nav-item" href="#llm-config"><span id="t-nav-llm">LLM Configuration</span></a>
+  <a class="nav-item" href="#hpc-config"><span id="t-nav-hpc">HPC / SLURM</span></a>
+  <a class="nav-item" href="#experiment-monitor"><span id="t-nav-monitor">Experiment Monitor</span></a>
+  <a class="nav-item" href="#memory"><span id="t-nav-memory">Agent Memory</span></a>
   <div style="padding:24px 20px 0;border-top:1px solid var(--border);margin-top:16px;">
-    <a href="index.html" style="color:var(--muted);font-size:.85rem;">← Back to Home</a>
+    <a href="index.html" style="color:var(--muted);font-size:.85rem;"><span id="t-nav-back">&larr; Back to Home</span></a>
   </div>
 </nav>
 
 <main class="main">
 
-  <h1>ARI Documentation</h1>
-  <p>Technical reference for developers and researchers.</p>
+  <h1><span id="t-title">ARI Documentation</span></h1>
+  <p><span id="t-subtitle">Technical reference for developers and researchers.</span></p>
 
   <!-- OVERVIEW -->
-  <h2 id="overview">Overview</h2>
-  <p>ARI automates the full research cycle: hypothesis generation → experiment execution → paper writing → reproducibility verification. The system is built on three layers:</p>
+  <h2 id="overview"><span id="t-h-overview">Overview</span></h2>
+  <p><span id="t-overview-p1">ARI automates the full research cycle: hypothesis generation &rarr; experiment execution &rarr; paper writing &rarr; reproducibility verification. The system is built on three layers:</span></p>
   <div class="arch">
 ┌────────────────────────────────────────────┐
 │            experiment.md  /  CLI           │
@@ -98,29 +100,29 @@
   hpc, web,      idea, memory,    paper, plot,
   evaluator      transform        paper-re</div>
 
-  <div class="callout"><strong>Key principle:</strong> MCP skills are pure functions — no LLM calls inside. Three skills are annotated exceptions: <code>paper-skill</code>, <code>plot-skill</code>, <code>paper-re-skill</code>.</div>
+  <div class="callout"><span id="t-callout-key"><strong>Key principle:</strong> MCP skills are pure functions &mdash; no LLM calls inside. Three skills are annotated exceptions: <code>paper-skill</code>, <code>plot-skill</code>, <code>paper-re-skill</code>.</span></div>
 
   <!-- INSTALLATION -->
-  <h2 id="install">Installation</h2>
+  <h2 id="install"><span id="t-h-install">Installation</span></h2>
   <ol class="step-list">
-    <li><div><strong>Clone the repository</strong><pre><code>git clone https://github.com/kotama7/ARI && cd ari</code></pre></div></li>
-    <li><div><strong>Run setup</strong><pre><code>bash setup.sh</code></pre></div></li>
-    <li><div><strong>Install LaTeX</strong><pre><code><span class="cm"># With conda (no sudo needed)</span>
+    <li><div><strong><span id="t-install-s1">Clone the repository</span></strong><pre><code>git clone https://github.com/kotama7/ARI && cd ari</code></pre></div></li>
+    <li><div><strong><span id="t-install-s2">Run setup</span></strong><pre><code>bash setup.sh</code></pre></div></li>
+    <li><div><strong><span id="t-install-s3">Install LaTeX</span></strong><pre><code><span class="cm"># With conda (no sudo needed)</span>
 conda install -c conda-forge texlive-core
 
 <span class="cm"># Or system package</span>
 sudo apt install texlive-full        <span class="cm"># Debian/Ubuntu</span>
 sudo dnf install texlive             <span class="cm"># RHEL/CentOS</span></code></pre></div></li>
-    <li><div><strong>Set LLM backend</strong> — see <a href="#llm-config">LLM Configuration</a></div></li>
+    <li><div><strong><span id="t-install-s4">Set LLM backend</span></strong> &mdash; <span id="t-install-s4b">see <a href="#llm-config">LLM Configuration</a></span></div></li>
   </ol>
 
   <!-- FIRST RUN -->
-  <h2 id="first-run">First Run</h2>
+  <h2 id="first-run"><span id="t-h-first-run">First Run</span></h2>
   <pre><code><span class="cm"># Minimal experiment file</span>
 cat > experiment.md << 'EOF'
 ## Research Goal
-Maximize GFLOPS of matrix multiplication on this machine.
-&lt;!-- metric_keyword: GFLOPS --&gt;
+Maximize the target metric for my experiment on this machine.
+&lt;!-- metric_keyword: score --&gt;
 EOF
 
 <span class="cm"># Run</span>
@@ -132,44 +134,44 @@ ari run experiment.md --config ari-core/config/workflow.yaml
 <span class="cm"># On a SLURM cluster</span>
 sbatch your_pipeline_job.sh</code></pre>
 
-  <p>Output files appear in the checkpoint directory:</p>
+  <p><span id="t-first-run-p1">Output files appear in the checkpoint directory:</span></p>
   <table>
-    <tr><th>File</th><th>Description</th></tr>
-    <tr><td><code>nodes_tree.json</code></td><td>BFTS search tree (all explored configurations)</td></tr>
-    <tr><td><code>science_data.json</code></td><td>Science-facing data (no internal terms)</td></tr>
-    <tr><td><code>related_refs.json</code></td><td>arXiv references</td></tr>
-    <tr><td><code>figures_manifest.json</code></td><td>Generated figure paths and captions</td></tr>
-    <tr><td><code>full_paper.tex / .pdf</code></td><td>Generated paper</td></tr>
-    <tr><td><code>review_report.json</code></td><td>Automated review score and feedback</td></tr>
-    <tr><td><code>reproducibility_report.json</code></td><td>Reproducibility verification result</td></tr>
+    <tr><th><span id="t-tbl-file">File</span></th><th><span id="t-tbl-desc">Description</span></th></tr>
+    <tr><td><code>nodes_tree.json</code></td><td><span id="t-tbl-nodes">BFTS search tree (all explored configurations)</span></td></tr>
+    <tr><td><code>science_data.json</code></td><td><span id="t-tbl-science">Science-facing data (no internal terms)</span></td></tr>
+    <tr><td><code>related_refs.json</code></td><td><span id="t-tbl-refs">arXiv references</span></td></tr>
+    <tr><td><code>figures_manifest.json</code></td><td><span id="t-tbl-figures">Generated figure paths and captions</span></td></tr>
+    <tr><td><code>full_paper.tex / .pdf</code></td><td><span id="t-tbl-paper">Generated paper</span></td></tr>
+    <tr><td><code>review_report.json</code></td><td><span id="t-tbl-review">Automated review score and feedback</span></td></tr>
+    <tr><td><code>reproducibility_report.json</code></td><td><span id="t-tbl-repro">Reproducibility verification result</span></td></tr>
   </table>
 
   <!-- ARCHITECTURE -->
-  <h2 id="architecture">Architecture</h2>
-  <h3>BFTS — Best-First Tree Search</h3>
-  <p>ARI uses Best-First Tree Search to explore the hypothesis space. The LLM selects the most promising node to expand next, guided by real measurement data. Controlled via <code>ari-core/config/default.yaml</code>:</p>
+  <h2 id="architecture"><span id="t-h-arch">Architecture</span></h2>
+  <h3><span id="t-h-bfts">BFTS &mdash; Best-First Tree Search</span></h3>
+  <p><span id="t-bfts-p1">ARI uses Best-First Tree Search to explore the hypothesis space. The LLM selects the most promising node to expand next, guided by real measurement data. Controlled via <code>ari-core/config/default.yaml</code>:</span></p>
   <pre><code>bfts:
   max_total_nodes: 50      <span class="cm"># maximum nodes to explore</span>
   max_depth: 5             <span class="cm"># tree depth limit</span>
   max_parallel_nodes: 4    <span class="cm"># concurrent experiments</span>
   score_threshold: 0.3     <span class="cm"># minimum score to expand</span></code></pre>
 
-  <h3>ReAct Loop</h3>
-  <p>Each node runs: <strong>Reason → Act (tool call) → Observe → Reason...</strong> until a JSON result is produced. The agent automatically polls async HPC jobs without consuming step budget.</p>
+  <h3><span id="t-h-react">ReAct Loop</span></h3>
+  <p><span id="t-react-p1">Each node runs: <strong>Reason &rarr; Act (tool call) &rarr; Observe &rarr; Reason...</strong> until a JSON result is produced. The agent automatically polls async HPC jobs without consuming step budget.</span></p>
 
-  <h3>Post-BFTS Pipeline</h3>
-  <p>After BFTS completes, <code>workflow.yaml</code> drives a sequential pipeline. Stages are idempotent — re-runs skip already-completed stages.</p>
+  <h3><span id="t-h-post">Post-BFTS Pipeline</span></h3>
+  <p><span id="t-post-p1">After BFTS completes, <code>workflow.yaml</code> drives a sequential pipeline. Stages are idempotent &mdash; re-runs skip already-completed stages.</span></p>
 
   <!-- EXPERIMENT FILES -->
-  <h2 id="experiment-files">Experiment Files</h2>
-  <p>Experiment files are Markdown. No code changes needed — all domain knowledge lives here.</p>
+  <h2 id="experiment-files"><span id="t-h-expfiles">Experiment Files</span></h2>
+  <p><span id="t-expfiles-p1">Experiment files are Markdown. No code changes needed &mdash; all domain knowledge lives here.</span></p>
 
-  <h3>Minimal (3 lines)</h3>
+  <h3><span id="t-h-minimal">Minimal (3 lines)</span></h3>
   <pre><code>## Research Goal
-Maximize GFLOPS of matrix multiplication on this machine.
-&lt;!-- metric_keyword: GFLOPS --&gt;</code></pre>
+Maximize the target metric for my experiment on this machine.
+&lt;!-- metric_keyword: score --&gt;</code></pre>
 
-  <h3>Full Reference</h3>
+  <h3><span id="t-h-fullref">Full Reference</span></h3>
   <pre><code># Experiment Title
 
 ## Research Goal
@@ -193,31 +195,31 @@ The LLM reads this to generate hypotheses.
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=32
 #SBATCH --time=00:30:00
-gcc -O2 -fopenmp -o ./bench ./bench.c
-./bench
+python run_experiment.py
+
 ```
 
 ## Rules
 - HARD LIMIT: never exceed 64 threads
 - Always use absolute paths in slurm_submit
 
-&lt;!-- metric_keyword: GFLOPS --&gt;
+&lt;!-- metric_keyword: score --&gt;
 &lt;!-- min_expected_metric: 100 --&gt;</code></pre>
 
   <table>
-    <tr><th>Section</th><th>Required</th><th>Purpose</th></tr>
-    <tr><td><code>## Research Goal</code></td><td>✅</td><td>Drives LLM hypothesis generation</td></tr>
-    <tr><td><code>## Required Workflow</code></td><td></td><td>Sets tool execution sequence</td></tr>
-    <tr><td><code>## Hardware Limits</code></td><td></td><td>Hard constraints injected at every step</td></tr>
-    <tr><td><code>## SLURM Script Template</code></td><td></td><td>Starting point for LLM modifications</td></tr>
-    <tr><td><code>## Rules</code></td><td></td><td>Agent constraints and invariants</td></tr>
-    <tr><td><code>&lt;!-- metric_keyword --&gt;</code></td><td>✅</td><td>Metric name for extraction</td></tr>
-    <tr><td><code>&lt;!-- min_expected_metric --&gt;</code></td><td></td><td>Minimum acceptable value</td></tr>
+    <tr><th><span id="t-tbl-section">Section</span></th><th><span id="t-tbl-required">Required</span></th><th><span id="t-tbl-purpose">Purpose</span></th></tr>
+    <tr><td><code>## Research Goal</code></td><td>&#10004;</td><td><span id="t-tbl-goal-desc">Drives LLM hypothesis generation</span></td></tr>
+    <tr><td><code>## Required Workflow</code></td><td></td><td><span id="t-tbl-workflow-desc">Sets tool execution sequence</span></td></tr>
+    <tr><td><code>## Hardware Limits</code></td><td></td><td><span id="t-tbl-hw-desc">Hard constraints injected at every step</span></td></tr>
+    <tr><td><code>## SLURM Script Template</code></td><td></td><td><span id="t-tbl-slurm-desc">Starting point for LLM modifications</span></td></tr>
+    <tr><td><code>## Rules</code></td><td></td><td><span id="t-tbl-rules-desc">Agent constraints and invariants</span></td></tr>
+    <tr><td><code>&lt;!-- metric_keyword --&gt;</code></td><td>&#10004;</td><td><span id="t-tbl-metric-desc">Metric name for extraction</span></td></tr>
+    <tr><td><code>&lt;!-- min_expected_metric --&gt;</code></td><td></td><td><span id="t-tbl-minmetric-desc">Minimum acceptable value</span></td></tr>
   </table>
 
   <!-- WORKFLOW YAML -->
   <h2 id="workflow-yaml">workflow.yaml</h2>
-  <p>The single configuration file for the post-BFTS pipeline. Adding or reordering stages requires only YAML changes — no code changes.</p>
+  <p><span id="t-workflow-p1">The single configuration file for the post-BFTS pipeline. Adding or reordering stages requires only YAML changes &mdash; no code changes.</span></p>
   <pre><code>version: '1'
 slurm_partition: your_partition
 author_name: "Your Name or Organization"
@@ -258,40 +260,40 @@ pipeline:
     outputs:
       file: '{{ckpt}}/full_paper.tex'</code></pre>
 
-  <h3>Template Variables</h3>
+  <h3><span id="t-h-vars">Template Variables</span></h3>
   <table>
-    <tr><th>Variable</th><th>Value</th></tr>
-    <tr><td><code>{{ckpt}}</code></td><td>Checkpoint directory (absolute path)</td></tr>
-    <tr><td><code>{{ari_root}}</code></td><td>ARI project root</td></tr>
-    <tr><td><code>{{paper_context}}</code></td><td>Science-facing experiment summary</td></tr>
-    <tr><td><code>{{stages.NAME.outputs.file}}</code></td><td>Primary output of stage NAME</td></tr>
-    <tr><td><code>{{author_name}}</code></td><td>Top-level field from workflow.yaml</td></tr>
+    <tr><th><span id="t-tbl-variable">Variable</span></th><th><span id="t-tbl-value">Value</span></th></tr>
+    <tr><td><code>{{ckpt}}</code></td><td><span id="t-tbl-var-ckpt">Checkpoint directory (absolute path)</span></td></tr>
+    <tr><td><code>{{ari_root}}</code></td><td><span id="t-tbl-var-root">ARI project root</span></td></tr>
+    <tr><td><code>{{paper_context}}</code></td><td><span id="t-tbl-var-paper">Science-facing experiment summary</span></td></tr>
+    <tr><td><code>{{stages.NAME.outputs.file}}</code></td><td><span id="t-tbl-var-stages">Primary output of stage NAME</span></td></tr>
+    <tr><td><code>{{author_name}}</code></td><td><span id="t-tbl-var-author">Top-level field from workflow.yaml</span></td></tr>
   </table>
 
   <!-- SKILLS -->
-  <h2 id="skills-overview">Skills Overview</h2>
+  <h2 id="skills-overview"><span id="t-h-skills">Skills Overview</span></h2>
   <table>
-    <tr><th>Skill</th><th>Tools</th><th>Type</th></tr>
+    <tr><th><span id="t-tbl-skill">Skill</span></th><th><span id="t-tbl-tools">Tools</span></th><th><span id="t-tbl-type">Type</span></th></tr>
     <tr><td><code>ari-skill-hpc</code></td><td><code>slurm_submit</code>, <code>job_status</code>, <code>run_bash</code></td><td><span class="badge badge-det">Deterministic</span></td></tr>
     <tr><td><code>ari-skill-evaluator</code></td><td><code>evaluate</code>, <code>make_artifact</code></td><td><span class="badge badge-det">Deterministic</span></td></tr>
     <tr><td><code>ari-skill-idea</code></td><td><code>survey</code>, <code>generate_ideas</code></td><td><span class="badge badge-det">Deterministic</span></td></tr>
     <tr><td><code>ari-skill-web</code></td><td><code>web_search</code>, <code>search_arxiv</code></td><td><span class="badge badge-det">Deterministic</span></td></tr>
     <tr><td><code>ari-skill-memory</code></td><td><code>memory_set</code>, <code>memory_get</code></td><td><span class="badge badge-det">Deterministic</span></td></tr>
     <tr><td><code>ari-skill-transform</code></td><td><code>nodes_to_science_data</code></td><td><span class="badge badge-det">Deterministic</span></td></tr>
-    <tr><td><code>ari-skill-plot</code></td><td><code>generate_figures_llm</code></td><td><span class="badge badge-llm">LLM ✱</span></td></tr>
-    <tr><td><code>ari-skill-paper</code></td><td><code>write_paper_iterative</code>, <code>review_compiled_paper</code></td><td><span class="badge badge-llm">LLM ✱</span></td></tr>
-    <tr><td><code>ari-skill-paper-re</code></td><td><code>reproduce_from_paper</code></td><td><span class="badge badge-llm">LLM ✱</span></td></tr>
+    <tr><td><code>ari-skill-plot</code></td><td><code>generate_figures_llm</code></td><td><span class="badge badge-llm">LLM &#10039;</span></td></tr>
+    <tr><td><code>ari-skill-paper</code></td><td><code>write_paper_iterative</code>, <code>review_compiled_paper</code></td><td><span class="badge badge-llm">LLM &#10039;</span></td></tr>
+    <tr><td><code>ari-skill-paper-re</code></td><td><code>reproduce_from_paper</code></td><td><span class="badge badge-llm">LLM &#10039;</span></td></tr>
   </table>
-  <p style="font-size:.85rem;color:var(--muted);">✱ LLM exception — explicitly annotated in source. All others are pure functions.</p>
+  <p style="font-size:.85rem;color:var(--muted);"><span id="t-skills-note">&#10039; LLM exception &mdash; explicitly annotated in source. All others are pure functions.</span></p>
 
   <!-- ADDING A SKILL -->
-  <h2 id="adding-skill">Adding a Skill</h2>
+  <h2 id="adding-skill"><span id="t-h-add-skill">Adding a Skill</span></h2>
   <ol class="step-list">
-    <li><div><strong>Create the skill directory</strong><pre><code>ari-skill-yourskill/
+    <li><div><strong><span id="t-add-s1">Create the skill directory</span></strong><pre><code>ari-skill-yourskill/
 ├── src/server.py
 ├── tests/test_server.py
 └── pyproject.toml</code></pre></div></li>
-    <li><div><strong>Implement the server</strong><pre><code>from mcp.server.fastmcp import FastMCP
+    <li><div><strong><span id="t-add-s2">Implement the server</span></strong><pre><code>from mcp.server.fastmcp import FastMCP
 mcp = FastMCP("yourskill")
 
 @mcp.tool()
@@ -302,10 +304,10 @@ def your_tool(param: str) -> dict:
 
 if __name__ == "__main__":
     mcp.run()</code></pre></div></li>
-    <li><div><strong>Register in workflow.yaml</strong><pre><code>skills:
+    <li><div><strong><span id="t-add-s3">Register in workflow.yaml</span></strong><pre><code>skills:
   - name: yourskill
     path: '{{ari_root}}/ari-skill-yourskill'</code></pre></div></li>
-    <li><div><strong>Add a pipeline stage</strong><pre><code>pipeline:
+    <li><div><strong><span id="t-add-s4">Add a pipeline stage</span></strong><pre><code>pipeline:
   - stage: your_stage
     skill: yourskill
     tool: your_tool
@@ -316,7 +318,7 @@ if __name__ == "__main__":
   </ol>
 
   <!-- LLM CONFIG -->
-  <h2 id="llm-config">LLM Configuration</h2>
+  <h2 id="llm-config"><span id="t-h-llm">LLM Configuration</span></h2>
   <pre><code><span class="cm"># OpenAI</span>
 export ARI_LLM_MODEL=openai/gpt-4o
 export OPENAI_API_KEY=sk-...
@@ -333,11 +335,11 @@ export LLM_API_BASE=http://127.0.0.1:11434
 export ARI_LLM_MODEL=your-model-name
 export LLM_API_BASE=http://your-server:8000/v1</code></pre>
 
-  <div class="callout"><strong>Note:</strong> New models not in litellm's known list require an explicit provider prefix: <code>openai/gpt-5.2</code>, not just <code>gpt-5.2</code>.</div>
+  <div class="callout"><strong>Note:</strong> <span id="t-llm-callout">New models not in litellm's known list require an explicit provider prefix: <code>openai/gpt-5.2</code>, not just <code>gpt-5.2</code>.</span></div>
 
   <!-- HPC CONFIG -->
-  <h2 id="hpc-config">HPC / Execution Backend</h2>
-  <p>ARI uses a pluggable executor model. Set <code>ARI_EXECUTOR</code> to match your environment — no code changes needed.</p>
+  <h2 id="hpc-config"><span id="t-h-hpc">HPC / Execution Backend</span></h2>
+  <p><span id="t-hpc-p1">ARI uses a pluggable executor model. Set <code>ARI_EXECUTOR</code> to match your environment &mdash; no code changes needed.</span></p>
   <pre><code><span class="cm"># Environment variables</span>
 export ARI_EXECUTOR=slurm    <span class="cm"># local | slurm | pbs | lsf</span>
 export ARI_SLURM_PARTITION=your_partition  <span class="cm"># SLURM only</span>
@@ -348,56 +350,68 @@ inputs:
   timeout_minutes: 15
   tolerance_pct: 5.0</code></pre>
 
-  <p>For experiments (BFTS), configure in <code>default.yaml</code>:</p>
+  <p><span id="t-hpc-p2">For experiments (BFTS), configure in <code>default.yaml</code>:</span></p>
   <pre><code>hpc:
   mode: slurm          <span class="cm"># or "local" for laptop</span>
   scheduler: slurm
   max_nodes: 4
   max_walltime: "04:00:00"</code></pre>
-  <p>To run without a cluster, set <code>ARI_EXECUTOR=local</code>. ARI will execute experiments as local subprocesses.</p>
+  <p><span id="t-hpc-p3">To run without a cluster, set <code>ARI_EXECUTOR=local</code>. ARI will execute experiments as local subprocesses.</span></p>
 
   <!-- EXPERIMENT MONITOR -->
-  <h2 id="experiment-monitor">Experiment Monitor (<code>ari viz</code>)</h2>
-  <p>ARI ships a real-time experiment tree visualiser.  It shows every BFTS node, its status, metrics, and the full tool-call trace — all in a browser.</p>
+  <h2 id="experiment-monitor"><span id="t-h-monitor">Experiment Monitor (<code>ari viz</code>)</span></h2>
+  <p><span id="t-monitor-p1">ARI ships a real-time experiment tree visualiser. It shows every BFTS node, its status, metrics, and the full tool-call trace &mdash; all in a browser.</span></p>
 
-  <h3>Starting the monitor</h3>
+  <h3><span id="t-h-monitor-start">Starting the monitor</span></h3>
   <pre><code>ari viz --checkpoint &lt;ckpt_dir&gt; --port 9878</code></pre>
-  <p>Open <code>http://localhost:9878</code> in any browser.  The dashboard polls <code>/state</code> and reconnects over WebSocket automatically.</p>
+  <p><span id="t-monitor-start-p1">Open <code>http://localhost:9878</code> in any browser. The dashboard polls <code>/state</code> and reconnects over WebSocket automatically.</span></p>
 
-  <h3>Node detail panel</h3>
-  <p>Click any node circle to open the four-tab detail panel:</p>
+  <h3><span id="t-h-monitor-detail">Node detail panel</span></h3>
+  <p><span id="t-monitor-detail-p1">Click any node circle to open the four-tab detail panel:</span></p>
   <ul>
-    <li><strong>Overview</strong> — ID, status, type, execution time, parent, metrics, evaluation summary.</li>
-    <li><strong>Trace</strong> — Ordered list of every MCP tool call the agent made (name · step · result snippet). Fetched live from <code>/memory/&lt;node_id&gt;</code>.</li>
-    <li><strong>Code</strong> — Generated source files stored in node artifacts.</li>
-    <li><strong>Output</strong> — SLURM stdout / benchmark results stored in node artifacts.</li>
+    <li><span id="t-monitor-li-overview"><strong>Overview</strong> &mdash; ID, status, type, execution time, parent, metrics, evaluation summary.</span></li>
+    <li><span id="t-monitor-li-trace"><strong>Trace</strong> &mdash; Ordered list of every MCP tool call the agent made (name &middot; step &middot; result snippet). Fetched live from <code>/memory/&lt;node_id&gt;</code>.</span></li>
+    <li><span id="t-monitor-li-code"><strong>Code</strong> &mdash; Generated source files stored in node artifacts.</span></li>
+    <li><span id="t-monitor-li-output"><strong>Output</strong> &mdash; SLURM stdout / benchmark results stored in node artifacts.</span></li>
   </ul>
 
-  <h3>Status indicators</h3>
+  <h3><span id="t-h-monitor-status">Status indicators</span></h3>
   <ul>
-    <li>Green circle — <code>success</code></li>
-    <li>Red circle — <code>failed</code></li>
-    <li>Blue circle — <code>running</code></li>
-    <li>Grey circle — <code>pending</code></li>
+    <li><span id="t-monitor-green">Green circle &mdash; <code>success</code></span></li>
+    <li><span id="t-monitor-red">Red circle &mdash; <code>failed</code></span></li>
+    <li><span id="t-monitor-blue">Blue circle &mdash; <code>running</code></span></li>
+    <li><span id="t-monitor-grey">Grey circle &mdash; <code>pending</code></span></li>
   </ul>
-  <p>The footer shows total node count, per-status counts, and the best metric value seen so far.</p>
+  <p><span id="t-monitor-footer">The footer shows total node count, per-status counts, and the best metric value seen so far.</span></p>
 
-  <h3>Architecture</h3>
-  <p>The viz server (<code>ari/viz/server.py</code>) is a pure-stdlib asyncio HTTP + WebSocket handler — no external dependencies beyond the <code>websockets</code> package already installed by ARI. The dashboard HTML (<code>ari/viz/dashboard.html</code>) uses vanilla JS and an SVG canvas with no CDN calls.</p>
+  <h3><span id="t-h-monitor-arch">Architecture</span></h3>
+  <p><span id="t-monitor-arch-p1">The viz server (<code>ari/viz/server.py</code>) is a pure-stdlib asyncio HTTP + WebSocket handler &mdash; no external dependencies beyond the <code>websockets</code> package already installed by ARI. The dashboard is a React/TypeScript SPA built with Vite (<code>ari/viz/frontend/</code>), with modular components for each page (Home, Experiments, Monitor, Tree, Results, Wizard, Idea, Workflow, Settings). The production build is output to <code>ari/viz/static/dist/</code> and served by the Python server.</span></p>
 
   <!-- MEMORY SYSTEM -->
-  <h2 id="memory">Agent Memory</h2>
-  <p>ARI maintains a persistent memory store (<code>~/.ari/memory_store.jsonl</code>) shared across all experiments. Each entry contains:</p>
+  <h2 id="memory"><span id="t-h-memory">Agent Memory</span></h2>
+  <p><span id="t-memory-p1">ARI maintains a persistent memory store (<code>~/.ari/memory_store.jsonl</code>) shared across all experiments. Each entry contains:</span></p>
   <ul>
-    <li><code>node_id</code> — which node wrote the entry</li>
-    <li><code>ancestor_ids</code> — the full parent chain, used for scoped recall</li>
-    <li><code>text</code> — human-readable content (used for keyword search)</li>
-    <li><code>metadata</code> — tool name, step number, timestamps</li>
+    <li><span id="t-memory-li-node"><code>node_id</code> &mdash; which node wrote the entry</span></li>
+    <li><span id="t-memory-li-ancestors"><code>ancestor_ids</code> &mdash; the full parent chain, used for scoped recall</span></li>
+    <li><span id="t-memory-li-text"><code>text</code> &mdash; human-readable content (used for keyword search)</span></li>
+    <li><span id="t-memory-li-meta"><code>metadata</code> &mdash; tool name, step number, timestamps</span></li>
   </ul>
-  <p>When a node completes successfully, ARI automatically writes a <strong>RESULT SUMMARY</strong> entry containing the node label and all metric values. Child nodes can then retrieve parent results via <code>search_memory</code> using plain metric keywords.</p>
-  <p>The <code>Trace</code> tab in the Experiment Monitor reads these entries live via <code>GET /memory/&lt;node_id&gt;</code>.</p>
+  <p><span id="t-memory-p2">When a node completes successfully, ARI automatically writes a <strong>RESULT SUMMARY</strong> entry containing the node label and all metric values. Child nodes can then retrieve parent results via <code>search_memory</code> using plain metric keywords.</span></p>
+  <p><span id="t-memory-p3">The <code>Trace</code> tab in the Experiment Monitor reads these entries live via <code>GET /memory/&lt;node_id&gt;</code>.</span></p>
 
 
 </main>
+
+<!-- Language Switcher -->
+<div id="langbar" style="position:fixed;bottom:20px;right:20px;z-index:2147483647;display:flex;flex-direction:row;gap:6px;background:rgba(15,23,42,0.95);border:1px solid rgba(255,255,255,0.2);padding:6px 10px;border-radius:30px;box-shadow:0 4px 20px rgba(0,0,0,0.5);">
+  <button onclick="setLang('en')" id="btn-en" style="background:rgba(37,99,235,1);border:none;color:#fff;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:700;cursor:pointer;">EN</button>
+  <button onclick="setLang('ja')" id="btn-ja" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:#f1f5f9;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:700;cursor:pointer;">日本語</button>
+  <button onclick="setLang('zh')" id="btn-zh" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:#f1f5f9;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:700;cursor:pointer;">中文</button>
+</div>
+
+<script src="i18n/en.js"></script>
+<script src="i18n/ja.js"></script>
+<script src="i18n/zh.js"></script>
+<script src="i18n/i18n.js"></script>
 </body>
 </html>

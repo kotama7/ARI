@@ -65,7 +65,15 @@ def _model() -> str:
 
 def _api_base() -> str | None:
     ari = os.environ.get("ARI_LLM_API_BASE")
-    return (ari if ari is not None else os.environ.get("LLM_API_BASE", "http://127.0.0.1:11434")) or None
+    if ari is not None:
+        return ari or None          # Explicit empty string → None (OpenAI etc.)
+    legacy = os.environ.get("LLM_API_BASE", "")
+    if legacy:
+        return legacy
+    # Only fall back to Ollama URL when model string explicitly indicates Ollama
+    if _model().startswith("ollama"):
+        return "http://127.0.0.1:11434"
+    return None
 
 def _s2_api_key() -> str:
     return os.environ.get("SEMANTIC_SCHOLAR_API_KEY", "") or os.environ.get("S2_API_KEY", "")

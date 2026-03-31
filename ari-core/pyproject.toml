@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ari-core"
-version = "0.3.0"
+version = "0.4.0"
 description = "Artificial Research Intelligence - Core Framework"
 readme = "README.md"
 license = "MIT"

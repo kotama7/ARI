@@ -40,7 +40,7 @@ class WorkflowHints:
     # ---- Metrics validation ---------------------------------------------------
     # Minimum expected value for actual measurements (0 = no validation)
     min_expected_metric: float = 0.0
-    # Callable to extract actual values from result_str (e.g. MFLOPS regex)
+    # Callable to extract actual values from result_str (e.g. metric regex)
     metric_extractor: Callable[[str], list[float]] | None = None
 
     # ---- Additional system prompt -------------------------------------------
@@ -144,7 +144,7 @@ def from_experiment_text(experiment_text: str) -> WorkflowHints:
                 hints.provided_files.append((line, fname))
 
     # ── Parse HPC settings ────────────────────────────────────────────────
-    # Partition: genoa  /  Partition: genoa, Max CPUs: 64
+    # Partition: <name>  /  Partition: <name>, Max CPUs: 64
     m_part = re.search(r"(?:Partition|partition)[:\s]+([\w-]+)", experiment_text)
     if m_part:
         hints.slurm_partition = m_part.group(1).strip()

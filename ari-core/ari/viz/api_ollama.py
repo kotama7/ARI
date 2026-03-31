@@ -1,39 +1,14 @@
 from __future__ import annotations
-"""ARI viz: api_ollama."""
-"""ARI Experiment Tree Visualizer — WebSocket + HTTP server.
+"""ARI viz: api_ollama — GPU/model detection and Ollama proxy."""
 
-Usage:
-    python -m ari.viz.server --checkpoint ./logs/my_ckpt/ [--port 8765]
-"""
-
-
-import argparse
-import asyncio
 import json
-import re
+import logging
 import os
-import subprocess
-import threading
-import time
-import urllib.parse
-from datetime import datetime, timezone
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
-from typing import Set
-
-try:
-    import websockets
-    from websockets.server import serve as ws_serve
-except ImportError:
-    raise SystemExit("websockets package required: pip install websockets")
-
-# ──────────────────────────────────────────────
-# Shared state
-# ──────────────────────────────────────────────
-
-
 
 from . import state as _st
+
+log = logging.getLogger(__name__)
+from .api_settings import _api_get_settings
 
 
 def _api_ollama_resources() -> dict:
@@ -48,7 +23,7 @@ def _api_ollama_resources() -> dict:
             if len(parts) >= 3:
                 gpus.append({"index": parts[0].strip(), "name": parts[1].strip(), "memory": parts[2].strip()})
     except Exception:
-        pass
+        log.debug("nvidia-smi not available", exc_info=True)
     # Try Ollama models
     models = []
     try:
@@ -58,7 +33,7 @@ def _api_ollama_resources() -> dict:
         data = json.loads(resp.read())
         models = [m["name"] for m in data.get("models",[])]
     except Exception:
-        pass
+        log.debug("ollama models list failed", exc_info=True)
     # Always include Auto and CPU options first
     result_gpus = [{"index": "auto", "name": "Auto", "memory": ""}, {"index": "cpu", "name": "CPU only", "memory": ""}] + gpus
     return {"gpus": result_gpus, "models": models, "has_gpu": len(gpus)>0}
@@ -111,5 +86,5 @@ def _ollama_proxy(handler):
             handler.end_headers()
             handler.wfile.write(msg)
         except Exception:
-            pass
+            log.debug("failed to send proxy error response", exc_info=True)
 

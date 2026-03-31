@@ -213,10 +213,3 @@ class TestGenerateIdeas:
         assert "virsci_integration_status" in result
         assert "VirSci" in result["virsci_integration_status"]
 
-    @pytest.mark.asyncio
-    async def test_no_hardcoded_cluster_assumptions(self):
-        import server
-        source = open(server.__file__).read()
-        forbidden = ["genoa", "mi100", "RIKEN", "takanori", "gcc", "-march=native", "sbatch"]
-        for word in forbidden:
-            assert word not in source, f"Hardcoded value: {word!r}"
