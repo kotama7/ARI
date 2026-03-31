@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from ari.cost_tracker import _PRICING, _estimate_cost, CostTracker
+import ari.cost_tracker as cost_tracker_mod
 
 
 # ══════════════════════════════════════════════
@@ -266,3 +267,127 @@ class TestCostTracker:
         summary = json.loads((tmp_path / "cost_summary.json").read_text())
         assert "gpt-4o" in summary["by_model"]
         assert "anthropic/claude-sonnet-4-6" in summary["by_model"]
+
+
+# ══════════════════════════════════════════════
+# 5. Re-init must not reset cost to zero
+#    (regression test for the $0 bug)
+# ══════════════════════════════════════════════
+
+class TestCostTrackerReinit:
+    """Verify that calling init() twice or creating a new CostTracker
+    for the same directory preserves previously recorded costs."""
+
+    def test_new_tracker_reloads_existing_trace(self, tmp_path):
+        """Creating a second CostTracker on the same dir restores records from disk."""
+        ct1 = CostTracker(tmp_path)
+        ct1.record(model="gpt-4o", prompt_tokens=1000, completion_tokens=500,
+                   phase="bfts", skill="coding")
+        cost_before = ct1.total_cost_usd
+        tokens_before = ct1.total_tokens
+        assert cost_before > 0
+
+        # Simulate pipeline.py creating a new tracker for the same dir
+        ct2 = CostTracker(tmp_path)
+        assert ct2.total_cost_usd == cost_before
+        assert ct2.total_tokens == tokens_before
+
+    def test_new_tracker_continues_accumulating(self, tmp_path):
+        """After reload, new records are added on top of existing ones."""
+        ct1 = CostTracker(tmp_path)
+        ct1.record(model="gpt-4o", prompt_tokens=1000, completion_tokens=0)
+        cost_after_first = ct1.total_cost_usd
+
+        ct2 = CostTracker(tmp_path)
+        ct2.record(model="gpt-4o", prompt_tokens=1000, completion_tokens=0)
+        assert ct2.total_cost_usd == pytest.approx(cost_after_first * 2, rel=1e-6)
+        assert ct2.total_tokens == 2000
+
+        # Verify cost_summary.json reflects the full total
+        summary = json.loads((tmp_path / "cost_summary.json").read_text())
+        assert summary["call_count"] == 2
+        assert summary["total_tokens"] == 2000
+
+    def test_init_idempotent_same_dir(self, tmp_path):
+        """init() with the same directory returns the existing tracker."""
+        old_tracker = cost_tracker_mod._tracker
+        try:
+            ct1 = cost_tracker_mod.init(tmp_path)
+            ct1.record(model="gpt-4o", prompt_tokens=500, completion_tokens=100)
+            cost_before = ct1.total_cost_usd
+
+            # Second init with same path — must return same object
+            ct2 = cost_tracker_mod.init(tmp_path)
+            assert ct2 is ct1
+            assert ct2.total_cost_usd == cost_before
+        finally:
+            cost_tracker_mod._tracker = old_tracker
+
+    def test_init_idempotent_resolved_path(self, tmp_path):
+        """init() treats equivalent paths (./dir vs dir) as the same."""
+        old_tracker = cost_tracker_mod._tracker
+        try:
+            # Use two different Path representations of the same dir
+            path_a = tmp_path / "ckpt"
+            path_a.mkdir()
+            path_b = tmp_path / "." / "ckpt"
+
+            ct1 = cost_tracker_mod.init(path_a)
+            ct1.record(model="gpt-4o", prompt_tokens=200, completion_tokens=50)
+
+            ct2 = cost_tracker_mod.init(path_b)
+            assert ct2 is ct1
+        finally:
+            cost_tracker_mod._tracker = old_tracker
+
+    def test_init_different_dir_reloads(self, tmp_path):
+        """init() with a new directory creates a fresh tracker that reloads disk records."""
+        old_tracker = cost_tracker_mod._tracker
+        try:
+            dir_a = tmp_path / "run_a"
+            dir_a.mkdir()
+            dir_b = tmp_path / "run_b"
+            dir_b.mkdir()
+
+            ct1 = cost_tracker_mod.init(dir_a)
+            ct1.record(model="gpt-4o", prompt_tokens=1000, completion_tokens=500)
+
+            # Switch to a different dir — new tracker, no prior records
+            ct2 = cost_tracker_mod.init(dir_b)
+            assert ct2 is not ct1
+            assert ct2.total_cost_usd == 0.0
+            assert ct2.total_tokens == 0
+        finally:
+            cost_tracker_mod._tracker = old_tracker
+
+    def test_reload_skips_corrupt_lines(self, tmp_path):
+        """Corrupt JSONL lines are silently skipped during reload."""
+        trace = tmp_path / "cost_trace.jsonl"
+        good_record = {
+            "timestamp": "2026-03-31T00:00:00Z", "node_id": "", "phase": "bfts",
+            "skill": "coding", "model": "gpt-4o", "prompt_tokens": 1000,
+            "completion_tokens": 500, "total_tokens": 1500,
+            "estimated_cost_usd": 0.0075,
+        }
+        trace.write_text(
+            json.dumps(good_record) + "\n"
+            "NOT VALID JSON\n"
+            "\n"
+            + json.dumps(good_record) + "\n"
+        )
+        ct = CostTracker(tmp_path)
+        assert len(ct._records) == 2
+        assert ct.total_cost_usd == pytest.approx(0.015, rel=1e-6)
+
+    def test_reload_empty_trace(self, tmp_path):
+        """Empty cost_trace.jsonl does not crash."""
+        (tmp_path / "cost_trace.jsonl").write_text("")
+        ct = CostTracker(tmp_path)
+        assert ct.total_cost_usd == 0.0
+        assert ct.total_tokens == 0
+
+    def test_reload_no_trace_file(self, tmp_path):
+        """No cost_trace.jsonl file — starts fresh without error."""
+        ct = CostTracker(tmp_path)
+        assert ct.total_cost_usd == 0.0
+        assert len(ct._records) == 0

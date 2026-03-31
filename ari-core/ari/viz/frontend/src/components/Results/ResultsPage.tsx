@@ -89,6 +89,21 @@ export function ResultsPage() {
     });
   }, [populateDropdown, loadResults]);
 
+  // Re-fetch summary when experiment state changes (e.g. repro report generated)
+  const prevHasRepro = React.useRef(state?.has_repro);
+  const prevHasReview = React.useRef(state?.has_review);
+  useEffect(() => {
+    if (
+      selectedId &&
+      (state?.has_repro !== prevHasRepro.current ||
+       state?.has_review !== prevHasReview.current)
+    ) {
+      prevHasRepro.current = state?.has_repro;
+      prevHasReview.current = state?.has_review;
+      loadResults(selectedId);
+    }
+  }, [state?.has_repro, state?.has_review, selectedId, loadResults]);
+
   // Re-load when selection changes
   const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = e.target.value;
@@ -329,9 +344,12 @@ export function ResultsPage() {
                 ? 'green'
                 : verdict === 'FAILED' ||
                     verdict === 'FAIL' ||
-                    verdict === 'fail'
+                    verdict === 'fail' ||
+                    verdict === 'NOT_REPRODUCED'
                   ? 'red'
-                  : 'yellow';
+                  : verdict === 'ENVIRONMENT_MISMATCH'
+                    ? 'yellow'
+                    : 'yellow';
 
             const skip = new Set([
               'verdict',
@@ -391,42 +409,35 @@ export function ResultsPage() {
     return (
       <Card style={{ marginBottom: 16 }}>
         <div className="card-title">{t('exp_context')}</div>
-        <div style={{ overflow: 'auto' }}>
-          <table style={{ width: '100%', tableLayout: 'fixed' }}>
-            <colgroup>
-              <col style={{ width: 140 }} />
-              <col />
-            </colgroup>
-            <tbody>
-              {Object.entries(ctx).map(([k, v]) => (
-                <tr key={k}>
-                  <td
-                    style={{
-                      color: 'var(--muted)',
-                      fontSize: '.8rem',
-                      verticalAlign: 'top',
-                      paddingRight: 8,
-                    }}
-                  >
-                    {k}
-                  </td>
-                  <td
-                    style={{
-                      wordBreak: 'break-word',
-                      whiteSpace: 'pre-wrap',
-                      fontSize: '.8rem',
-                    }}
-                  >
-                    {String(
-                      typeof v === 'object'
-                        ? JSON.stringify(v, null, 2)
-                        : v,
-                    ).slice(0, 500)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div>
+          {Object.entries(ctx).map(([k, v]) => {
+            const text = String(
+              typeof v === 'object'
+                ? JSON.stringify(v, null, 2)
+                : v,
+            );
+            return (
+              <div key={k} style={{ marginBottom: 12 }}>
+                <div style={{ color: 'var(--muted)', fontSize: '.75rem', marginBottom: 2, fontWeight: 600 }}>
+                  {k}
+                </div>
+                {text.length <= 500 ? (
+                  <div style={{ fontSize: '.8rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                    {text}
+                  </div>
+                ) : (
+                  <details>
+                    <summary style={{ cursor: 'pointer', color: 'var(--blue-light)', fontSize: '.75rem', listStyle: 'none', userSelect: 'none' }}>
+                      {'▶ Show detail'}
+                    </summary>
+                    <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: '4px 0 0', fontSize: '.78rem', overflow: 'auto', maxHeight: 480 }}>
+                      {text}
+                    </pre>
+                  </details>
+                )}
+              </div>
+            );
+          })}
         </div>
       </Card>
     );

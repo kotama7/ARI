@@ -369,6 +369,12 @@ class AgentLoop:
                 "debug":       "The parent experiment had issues. Diagnose and fix them.",
                 "draft":       "Try a new implementation approach for the same goal.",
             }.get(node.label, "Extend or vary the parent experiment.")
+            # Reuse post_survey_hint so child nodes follow the same
+            # execution workflow as the parent (e.g. slurm_submit when
+            # a scheduler is configured, or run_bash for local mode).
+            _workflow_hint = ""
+            if self.hints.post_survey_hint:
+                _workflow_hint = f"\n\nWorkflow:\n{self.hints.post_survey_hint}"
             user_content = (
                 f"Experiment goal:\n{goal_text}\n"
                 f"Node: {node.id} depth={node.depth} task={node.label}\n\n"
@@ -376,6 +382,7 @@ class AgentLoop:
                 "The parent node already completed the survey and established a research direction. "
                 "Prior results are provided below. "
                 "Implement and run your specific experiment, then return JSON with measurements."
+                f"{_workflow_hint}"
             )
         else:
             first_tool = (self.hints.tool_sequence or ["survey"])[0]
@@ -602,7 +609,10 @@ class AgentLoop:
                     _FULL_LOG_TOOLS = {"generate_ideas", "survey", "make_metric_spec"}
                     _log_limit = len(rc) if r["name"] in _FULL_LOG_TOOLS else 200
                     logger.info("Tool call: %s -> %s", r["name"], rc[:_log_limit])
-                    print(f"[TOOL] {r['name']}", flush=True)
+                    if r["name"] in _FULL_LOG_TOOLS:
+                        print(f"[TOOL] {r['name']} -> {rc[:_log_limit]}", flush=True)
+                    else:
+                        print(f"[TOOL] {r['name']}", flush=True)
                     # Record in node trace for viz
                     if hasattr(node, "trace_log"):
                         _args_preview = str(_tc_args_by_name.get(r["name"], ""))[:500]

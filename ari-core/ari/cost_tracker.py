@@ -65,6 +65,38 @@ class CostTracker:
         self._summary_path = self._dir / "cost_summary.json"
         self._lock = threading.Lock()
         self._records: list[CallRecord] = []
+        # Reload existing records from cost_trace.jsonl so that
+        # re-initialisation (e.g. pipeline.py after cli.py) does not
+        # discard costs already written to disk.
+        self._reload_existing()
+
+    def _reload_existing(self) -> None:
+        """Restore in-memory records from an existing cost_trace.jsonl file."""
+        if not self._trace_path.exists():
+            return
+        try:
+            with open(self._trace_path, "r", encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        d = json.loads(line)
+                        self._records.append(CallRecord(
+                            timestamp=d.get("timestamp", ""),
+                            node_id=d.get("node_id", ""),
+                            phase=d.get("phase", ""),
+                            skill=d.get("skill", ""),
+                            model=d.get("model", ""),
+                            prompt_tokens=d.get("prompt_tokens", 0),
+                            completion_tokens=d.get("completion_tokens", 0),
+                            total_tokens=d.get("total_tokens", 0),
+                            estimated_cost_usd=d.get("estimated_cost_usd", 0.0),
+                        ))
+                    except (json.JSONDecodeError, KeyError):
+                        continue
+        except OSError:
+            pass
 
     def record(self, *, model: str, prompt_tokens: int, completion_tokens: int,
                node_id: str = "", phase: str = "", skill: str = "") -> None:
@@ -124,7 +156,18 @@ class CostTracker:
 _tracker: Optional[CostTracker] = None
 
 def init(log_dir: str | Path) -> CostTracker:
+    """Initialise (or reuse) the global cost tracker for *log_dir*.
+
+    Idempotent: if a tracker already exists for the same directory it is
+    returned as-is so that accumulated in-memory records are not lost.
+    If a *new* tracker is created it automatically reloads any records
+    already persisted in ``cost_trace.jsonl``.
+    """
     global _tracker
+    resolved = Path(log_dir).resolve()
+    if _tracker is not None and _tracker._dir.resolve() == resolved:
+        _install_litellm_callback()
+        return _tracker
     _tracker = CostTracker(log_dir)
     _install_litellm_callback()
     return _tracker

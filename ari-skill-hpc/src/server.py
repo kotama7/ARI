@@ -218,7 +218,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="run_bash",
-            description="Run a bash command on the login node and return stdout. Use to read output files (e.g. cat /path/to/file.out).",
+            description="Run a bash command on the current host and return stdout. Suitable for file I/O, compilation, and execution. When a job scheduler (e.g. slurm_submit) is available, prefer it for compute-intensive tasks to ensure execution on the intended target.",
             inputSchema={
                 "type": "object",
                 "properties": {

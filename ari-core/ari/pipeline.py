@@ -147,7 +147,10 @@ def build_best_nodes_context(all_nodes, experiment_goal: str = "") -> tuple[str,
     for i, r in enumerate(results[:5]):
         rank = "Best" if i == 0 else f"#{i+1}"
         metrics_str = str(r.metrics)
+        summary = (r.eval_summary or "")[:300]
         context_lines.append(f"  [{rank}] metrics={metrics_str}")
+        if summary:
+            context_lines.append(f"    summary: {summary}")
     return "\n".join(context_lines), results[0].metrics if results else {}
 
 
@@ -532,7 +535,19 @@ def run_pipeline(
             _sd = _json.loads(_sd_path.read_text())
             _exp_ctx = _sd.get("experiment_context", {})
             if _exp_ctx and not _exp_ctx.get("error"):
-                _exp_ctx_str = "Experiment context (LLM-extracted from raw artifacts):\n" + _json.dumps(_exp_ctx, ensure_ascii=False, indent=2)
+                # Prioritize key_results and implementation_details at the front
+                # so they survive truncation in downstream prompts.
+                _priority_parts = []
+                for _pk in ("_best_node_source_code", "key_results", "implementation_details", "reported_problem_instances"):
+                    if _pk in _exp_ctx:
+                        _priority_parts.append(f"{_pk}: {_json.dumps(_exp_ctx[_pk], ensure_ascii=False, indent=2)}")
+                _rest = {k: v for k, v in _exp_ctx.items()
+                         if k not in ("key_results", "implementation_details", "reported_problem_instances")}
+                _exp_ctx_str = (
+                    "Experiment context (LLM-extracted from raw artifacts):\n"
+                    + "\n".join(_priority_parts)
+                    + "\n" + _json.dumps(_rest, ensure_ascii=False, indent=2)
+                )
     except Exception as _ece:
         log.warning("Could not load experiment_context from science_data.json: %s", _ece)
 

@@ -1,6 +1,7 @@
 # ============================================================================
 # ARI — Runtime dependencies
-# Install: pip install -r requirements.txt
+
+au# Install: pip install -r requirements.txt
 #      or: uv pip install -r requirements.txt
 # ============================================================================
 

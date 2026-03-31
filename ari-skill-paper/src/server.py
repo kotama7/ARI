@@ -284,7 +284,7 @@ async def generate_section(
         raw = "\n".join(raw.split("\n")[1:])
     if raw.endswith("```"):
         raw = "\n".join(raw.split("\n")[:-1])
-    latex = raw.strip()
+    latex = _escape_text_underscores(raw.strip())
     return {"latex": latex, "tree_nodes_used": len(tree_evidence.split("\n")) if tree_evidence else 0}
 
 
@@ -923,6 +923,35 @@ async def write_paper_iterative(
         # Accept context as alias for experiment_summary (pipeline.py compat)
         if not experiment_summary and context:
             experiment_summary = context
+
+        # Extract implementation details from nodes_tree.json for richer paper content.
+        _impl_details = ""
+        if nodes_json_path and not nodes_json_path.lstrip().startswith("{"):
+            try:
+                _nodes_data = json.loads(Path(nodes_json_path).read_text())
+                _nodes_list = _nodes_data.get("nodes", []) if isinstance(_nodes_data, dict) else _nodes_data
+                _success_nodes = [n for n in _nodes_list if n.get("has_real_data") and n.get("metrics")]
+                # Sort by scientific score
+                _success_nodes.sort(
+                    key=lambda n: float((n.get("metrics") or {}).get("_scientific_score", 0)),
+                    reverse=True,
+                )
+                _impl_parts = []
+                for _sn in _success_nodes[:5]:
+                    _es = (_sn.get("eval_summary") or "")[:400]
+                    _met = json.dumps(_sn.get("metrics", {}), ensure_ascii=False)
+                    if _es:
+                        _impl_parts.append(f"- {_es}\n  metrics: {_met}")
+                if _impl_parts:
+                    _impl_details = (
+                        "\n\nImplementation details from experiment nodes "
+                        "(use these to write detailed Methodology with pseudocode):\n"
+                        + "\n".join(_impl_parts)
+                    )
+                    experiment_summary += _impl_details
+            except Exception as _e_nodes:
+                log.warning("Failed to extract impl details from nodes: %s", _e_nodes)
+
         # Parse figures manifest and append to experiment_summary for LLM context
         if figures_manifest_json:
             try:
@@ -940,7 +969,7 @@ async def write_paper_iterative(
                         # Use real caption from latex_snippets if available
                         _snip = _latex_snips.get(k, "")
                         cap_m = re.search(r"\\caption\{([^}]+)\}", _snip)
-                        cap = cap_m.group(1) if cap_m else f"Figure {i+1}: Experiment result"
+                        cap = cap_m.group(1) if cap_m else f"Figure {i+1}: Experimental results for {k}. See text for analysis."
                         fig_lines.append({"path": str(v), "basename": fname_base, "caption": cap, "latex": _snip})
                 else:
                     for fig in (figs_raw if isinstance(figs_raw, list) else []):
@@ -998,12 +1027,62 @@ async def write_paper_iterative(
                 _figs_raw_t = _fmc_t.get("figures", _fmc_t) if isinstance(_fmc_t, dict) else {}
                 _snips_t = _fmc_t.get("latex_snippets", {}) if isinstance(_fmc_t, dict) else {}
                 import os as _os_t
+                # Detect generic captions and refine them with VLM or LLM
+                _GENERIC_CAP_PAT = re.compile(
+                    r"^\s*(experimental results|results for|see text)",
+                    re.IGNORECASE,
+                )
                 if isinstance(_figs_raw_t, dict):
                     for _ki, _vi in _figs_raw_t.items():
                         _bn = _os_t.path.basename(str(_vi))
                         _snip = _snips_t.get(_ki, "")
                         _cap_m = re.search(r"\\caption\{([^}]+)\}", _snip)
-                        _cap = _sanitize_bfts_terms(_cap_m.group(1) if _cap_m else f"Experiment result")
+                        _cap = _sanitize_bfts_terms(_cap_m.group(1) if _cap_m else f"Experimental results for {_ki}. See text for analysis.")
+                        # If caption is generic, try VLM refinement on the figure
+                        if _GENERIC_CAP_PAT.search(_cap):
+                            _fig_path = Path(str(_vi))
+                            _png_path = _fig_path.with_suffix(".png")
+                            # Convert PDF to PNG if needed
+                            if not _png_path.exists() and _fig_path.exists() and _fig_path.suffix == ".pdf":
+                                try:
+                                    import fitz as _fitz_cap
+                                    _doc = _fitz_cap.open(str(_fig_path))
+                                    _pix = _doc[0].get_pixmap(dpi=150)
+                                    _pix.save(str(_png_path))
+                                    _doc.close()
+                                except Exception as _e_conv:
+                                    log.warning("PDF->PNG conversion failed for %s: %s", _ki, _e_conv)
+                            if _png_path.exists():
+                                try:
+                                    import base64 as _b64_cap
+                                    _img_data = _png_path.read_bytes()
+                                    _img_b64 = _b64_cap.b64encode(_img_data).decode()
+                                    _vlm_resp = await litellm.acompletion(
+                                        model=_get_model(),
+                                        messages=[{"role": "user", "content": [
+                                            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{_img_b64}"}},
+                                            {"type": "text", "text": (
+                                                "Write a single LaTeX figure caption (1-3 sentences) for this scientific figure. "
+                                                "Be specific: mention actual axis labels, metric names, key values, trends. "
+                                                "Do NOT use generic phrases like 'experimental results'. "
+                                                f"Experiment context: {experiment_summary[:300]}\n"
+                                                "Output ONLY the caption text."
+                                            )},
+                                        ]}],
+                                    )
+                                    _vlm_cap = _vlm_resp.choices[0].message.content.strip().strip('"')
+                                    if _vlm_cap and len(_vlm_cap) > 15:
+                                        _cap = _escape_text_underscores(_sanitize_bfts_terms(_vlm_cap))
+                                        # Use a lambda to avoid backslash interpretation in replacement string
+                                        _new_caption_str = f"\\caption{{{_cap}}}"
+                                        _snip = re.sub(
+                                            r"\\caption\{[^}]+\}",
+                                            lambda _m: _new_caption_str,
+                                            _snip,
+                                        )
+                                        log.info("Refined generic caption for %s via VLM", _ki)
+                                except Exception as _e_vlm:
+                                    log.warning("VLM caption refinement failed for %s: %s", _ki, _e_vlm)
                         _figs_for_tpl.append({"basename": _bn, "caption": _cap, "latex": _sanitize_bfts_terms(_snip)})
             except Exception as _et:
                 log.warning("Template figures parse failed: %s", _et)
@@ -1040,14 +1119,23 @@ async def write_paper_iterative(
             f"placeholder blocks in the provided LaTeX template. Target venue: {venue_info['name']}. "
             "Rules:\n"
             "1. Replace EACH placeholder block with real, detailed LaTeX content\n"
-            "2. Keep ALL \\section{}, \\subsection{}, \\begin{{figure}} and \\end{{figure}} lines EXACTLY as-is\n"
-            "3. Use \\cite{key} for citations — keys are listed as comments in the template\n"
+            "2. Keep ALL \\begin{{figure}}...\\end{{figure}} blocks EXACTLY as-is — "
+            "do NOT modify \\caption, \\includegraphics, or \\label inside them\n"
+            "3. Use ONLY \\cite{{key}} for ALL citations — never write Author et al. [YEAR] "
+            "or any other inline format. Every citation MUST use \\cite{{key}} syntax.\n"
             "4. Do NOT add extra \\section headers or remove existing ones\n"
             "5. Return the COMPLETE LaTeX document in ```latex ... ``` fences\n"
-            "6. The figures are already placed — reference them with Figure~\\ref{fig:N}\n"
+            "6. The figures are already placed — reference them with Figure~\\ref{{fig:N}}\n"
+            "7. In the Methodology section, describe the approach in enough detail for independent "
+            "reproduction. If pseudocode is appropriate, use the \\texttt{{algorithm}} or "
+            "\\texttt{{algorithmic}} LaTeX environment (NOT \\begin{{verbatim}}). "
+            "Use the implementation details provided in the experiment context.\n"
+            "8. In the Experiments section, explicitly state ALL parameters for the MAIN "
+            "benchmark configuration (not just validation/toy cases). A reader must be able "
+            "to reproduce the headline results from the parameters given in the paper.\n"
         )
         _user_prompt_a = (
-            f"Experiment context:\n{experiment_summary[:3000]}\n\n"
+            f"Experiment context:\n{experiment_summary[:30000]}\n\n"
             f"{refs_context}\n\n"
             f"Fill in this LaTeX template — replace ALL FILL blocks with real content:\n\n"
             f"```latex\n{latex_template}\n```"
@@ -1070,6 +1158,31 @@ async def write_paper_iterative(
         full_latex = _extract_latex(_raw_a) or _fill_template_with_llm_output(latex_template, _raw_a)
         if not full_latex:
             full_latex = latex_template  # fallback to template with placeholders
+        full_latex = _escape_text_underscores(full_latex)
+
+        # Post-process: restore refined captions that LLM may have overwritten.
+        # For each figure in _figs_for_tpl, find the corresponding \begin{figure}
+        # block in full_latex and replace its \caption{} with the refined one.
+        for _fig_info in _figs_for_tpl:
+            _ref_cap = _fig_info.get("caption", "")
+            _ref_bn = _fig_info.get("basename", "")
+            if not _ref_cap or not _ref_bn:
+                continue
+            # Skip if the caption is itself generic (refinement failed)
+            if re.search(r"^\s*(experimental results|results for|see text)", _ref_cap, re.IGNORECASE):
+                continue
+            # Find the figure block containing this file and replace its caption
+            _fig_pattern = re.compile(
+                r"(\\begin\{figure\}.*?\\includegraphics[^}]*\{" + re.escape(_ref_bn) + r"\}.*?)"
+                r"\\caption\{[^}]*\}"
+                r"(.*?\\end\{figure\})",
+                re.DOTALL,
+            )
+            _replacement = rf"\1\\caption{{{_ref_cap}}}\2"
+            _new_latex = _fig_pattern.sub(lambda m: m.group(1) + f"\\caption{{{_ref_cap}}}" + m.group(2), full_latex, count=1)
+            if _new_latex != full_latex:
+                full_latex = _new_latex
+                log.info("Restored refined caption for %s", _ref_bn)
 
         # Populate dummy sections/reviews dicts for compat with downstream code
         sections = {}
@@ -1100,7 +1213,7 @@ async def write_paper_iterative(
                         snip = _snips_c.get(key, "")
                         if snip and "\\begin{figure}" in snip:
                             return snip
-                        cap = f"Experimental result ({fname})"
+                        cap = f"Experimental results for {key}. See text for analysis."
                         return (f"\\begin{{figure}}[htbp]\n\\centering\n"
                                 f"\\includegraphics[width=0.85\\linewidth]{{{fname}}}\n"
                                 f"\\caption{{{cap}}}\n\\label{{fig:{key}}}\n\\end{{figure}}")
@@ -1114,7 +1227,7 @@ async def write_paper_iterative(
                         _fn = _os_fig.path.basename(str(_fp))
                         _snip = _snips_c.get(_k, "")
                         _cap_m = _re_fig.search(r"\\caption\{([^}]+)\}", _snip)
-                        cap = _cap_m.group(1) if _cap_m else f"Figure {_i}: performance results."
+                        cap = _cap_m.group(1) if _cap_m else f"Figure {_i}: Experimental results for {_k}. See text for analysis."
                         _fig_list.append(f"Figure {_i}: file={_fn}, caption={cap!r}")
                     _fig_inject_prompt = (
                         "The paper below is missing all figure inclusions. "
@@ -1161,7 +1274,7 @@ async def write_paper_iterative(
         # msg_history starts with the assembled full paper as 'assistant' turn
         # This mimics v2's approach where reflection LLM knows what it wrote
         _msg_history: list = [
-            {"role": "user", "content": f"Write a scientific LaTeX paper for this experiment:\n{experiment_summary[:2000]}"},
+            {"role": "user", "content": f"Write a scientific LaTeX paper for this experiment:\n{experiment_summary[:15000]}"},
             {"role": "assistant", "content": f"```latex\n{full_latex}\n```"},
         ]
         # v2 reference: perform_writeup.py compile_latex() + reflection rounds
@@ -1534,7 +1647,11 @@ async def review_compiled_paper(
         "  title_ok: bool (is the title specific, non-generic, no LaTeX errors?)\n"
         "  abstract_score: int 1-10 (quantitative claims, clarity, completeness)\n"
         "  body_score: int 1-10 (methodology, results, discussion quality)\n"
-        "  citation_ok: bool (are citations formatted and relevant?)\n"
+        "  citation_ok: bool (do all \\cite keys resolve to bibliography entries, and are citations relevant? "
+        "Minor formatting issues like missing venue in some entries should NOT cause citation_ok=false "
+        "if the cite-key-to-bibitem mapping is complete and citations are topically relevant. "
+        "NOTE: natbib/plainnat renders \\cite as 'Author [YEAR]' in the PDF — this is NORMAL, "
+        "not a formatting error. Check the LaTeX SOURCE for \\cite keys, not the PDF rendering.)\n"
         "  figure_caption_issues: list of strings (captions that do not match their figure or are vague)\n"
         "  issues: list of strings (specific problems found, max 8)\n"
         "  recommendations: list of strings (concrete improvements, max 5)\n"
@@ -1543,8 +1660,13 @@ async def review_compiled_paper(
     # Count unique \cite keys and .bbl entries for citation verification
     import re as _re_rv, pathlib as _pl_rv
     full_latex = _pl_rv.Path(tex_path).read_text(errors="ignore") if tex_path and _pl_rv.Path(tex_path).exists() else ""
-    _cite_calls = len(_re_rv.findall(r"\\cite\{", full_latex or snippet))
-    _cite_keys_raw = _re_rv.findall(r"\\cite\{([^}]+)\}", full_latex or snippet)
+    # Strip LaTeX comment lines (lines starting with %) before counting citations
+    _active_latex = "\n".join(
+        line for line in (full_latex or snippet).splitlines()
+        if not line.lstrip().startswith("%")
+    )
+    _cite_calls = len(_re_rv.findall(r"\\cite\{", _active_latex))
+    _cite_keys_raw = _re_rv.findall(r"\\cite\{([^}]+)\}", _active_latex)
     _unique_keys = set()
     for _ck in _cite_keys_raw:
         for _k in _ck.split(","):
@@ -1555,10 +1677,33 @@ async def review_compiled_paper(
     _bbl_entries = 0
     if _bbl_path and _bbl_path.exists():
         _bbl_entries = _bbl_path.read_text(errors="ignore").count("\\bibitem")
+    # Check for incomplete bib entries (missing venue/booktitle)
+    _bbl_text = _bbl_path.read_text(errors="ignore") if _bbl_path and _bbl_path.exists() else ""
+    _incomplete_bibs = []
+    if _bbl_text:
+        # Each bibitem block: from \bibitem to next \bibitem or \end{thebibliography}
+        _bib_blocks = _re_rv.split(r"(?=\\bibitem)", _bbl_text)
+        for _blk in _bib_blocks:
+            if "\\bibitem" not in _blk:
+                continue
+            _key_m = _re_rv.search(r"\\bibitem\[.*?\]\{([^}]+)\}", _blk)
+            _key_str = _key_m.group(1) if _key_m else "?"
+            # Check if block has venue info: \emph{...} or "In \emph{...}" or pages
+            _has_venue = bool(_re_rv.search(r"\\emph\{.{5,}\}", _blk))
+            _has_pages = "pages" in _blk.lower()
+            if not _has_venue and not _has_pages:
+                _incomplete_bibs.append(_key_str)
+    _completeness = ""
+    if _incomplete_bibs:
+        _completeness = f" Entries with missing venue/journal: {', '.join(_incomplete_bibs)}."
     _citation_note = (
         f"Unique cite keys used: {len(_unique_keys)}; "
         f"Total \\cite{{}} calls: {_cite_calls}; "
-        f"Bibliography entries (.bbl): {_bbl_entries}"
+        f"Bibliography entries (.bbl): {_bbl_entries}."
+        f"{_completeness}"
+        + (f" All {len(_unique_keys)} cited keys have matching bibliography entries."
+           if len(_unique_keys) == _bbl_entries and not _incomplete_bibs
+           else "")
     )
     review_user = (
         f"Experiment context: {experiment_summary[:500]}\n\n"

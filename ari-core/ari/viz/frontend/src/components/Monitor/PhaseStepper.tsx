@@ -45,9 +45,13 @@ export function PhaseStepper() {
 
   let activeId: string | null = null;
   if (rawPhase === 'idle') {
-    // 'idle' is ambiguous: could be pre-idea or mid-BFTS.
-    // Use phase_flags to disambiguate.
-    if (flags?.bfts || flags?.coding || flags?.evaluation) {
+    // 'idle' is ambiguous: could be pre-idea, mid-BFTS, or completed.
+    // Use phase_flags to disambiguate (check later phases first).
+    if (flags?.review) {
+      activeId = 'review';
+    } else if (flags?.paper) {
+      activeId = 'paper';
+    } else if (flags?.bfts || flags?.coding || flags?.evaluation) {
       activeId = 'bfts';
     } else if (flags?.idea) {
       activeId = 'idea';

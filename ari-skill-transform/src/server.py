@@ -45,7 +45,70 @@ def _node_artifacts_text(node: dict, max_chars: int = 3000) -> str:
     return combined[:max_chars]
 
 
-def _collect_source_files(node: dict, max_total: int = 16000) -> str:
+def _node_tool_outputs(node: dict, max_chars: int = 2000) -> str:
+    """Extract actual tool execution outputs from trace_log.
+
+    This is a deterministic extraction (no LLM, no domain knowledge).
+    It makes the agent's real observations available so downstream
+    LLM analysis is grounded in facts rather than guesses.
+
+    trace_log entries can be either:
+      - dicts with {"role": "tool", "content": "..."}
+      - strings like "  ← {'result': '...'}" (arrow format)
+    """
+    import ast
+    parts = []
+    total = 0
+    for entry in (node.get("trace_log") or []):
+        content = ""
+        if isinstance(entry, dict):
+            if entry.get("role") != "tool":
+                continue
+            content = entry.get("content", "")
+        elif isinstance(entry, str):
+            # Arrow format: tool results start with "  ← "
+            stripped = entry.strip()
+            if not stripped.startswith("←") and not stripped.startswith("\u2190"):
+                continue
+            # Extract the result part after the arrow
+            arrow_idx = stripped.find("←")
+            if arrow_idx < 0:
+                arrow_idx = stripped.find("\u2190")
+            if arrow_idx >= 0:
+                payload = stripped[arrow_idx + 1:].strip()
+                # Try to parse as Python dict literal
+                try:
+                    parsed = ast.literal_eval(payload)
+                    if isinstance(parsed, dict):
+                        content = parsed.get("result", str(parsed))
+                    else:
+                        content = str(parsed)
+                except Exception:
+                    content = payload
+        else:
+            continue
+
+        if not content or len(str(content)) < 10:
+            continue
+        # Unwrap JSON-wrapped results
+        if isinstance(content, str) and content.startswith("{"):
+            try:
+                parsed = json.loads(content)
+                content = parsed.get("result", content)
+            except Exception:
+                pass
+        text = str(content).strip()
+        if not text:
+            continue
+        chunk = text[:800]
+        if total + len(chunk) > max_chars:
+            break
+        parts.append(chunk)
+        total += len(chunk)
+    return "\n---\n".join(parts)
+
+
+def _collect_source_files(node: dict, max_total: int = 32000) -> str:
     """Read source files from the node's experiment directory on disk.
 
     Scans artifact commands for directory paths, then reads .c, .cpp, .h,
@@ -97,7 +160,7 @@ def _collect_source_files(node: dict, max_total: int = 16000) -> str:
                 continue
             if not text.strip():
                 continue
-            snippet = text[:4000]
+            snippet = text[:8000]
             entry = f"── {f.name} ──\n{snippet}\n"
             if total + len(entry) > max_total:
                 break
@@ -177,19 +240,25 @@ async def nodes_to_science_data(
         label = n.get("label", "?")
         metrics_str = json.dumps(n.get("metrics", {}), ensure_ascii=False)
         artifact_text = _node_artifacts_text(n, max_chars=1500)
+        tool_outputs = _node_tool_outputs(n, max_chars=2000)
         summary = n.get("eval_summary", "")
         source_code = _collect_source_files(n, max_total=4000)
         lines = [
             f"{indent}[{label.upper()} depth={n.get('depth', depth)}]",
             f"{indent}  metrics: {metrics_str}",
-            f"{indent}  summary: {summary[:200]}",
-            f"{indent}  artifacts: {artifact_text[:800]}",
+            f"{indent}  summary: {summary[:500]}",
+            f"{indent}  artifacts: {artifact_text[:2000]}",
         ]
+        if tool_outputs:
+            lines.append(f"{indent}  execution_outputs:\n{tool_outputs}")
         if source_code:
             lines.append(f"{indent}  source_files:\n{source_code}")
         return "\n".join(lines)
 
-    # Traverse tree breadth-first, preserving parent→child relationships
+    # Traverse tree breadth-first, preserving parent→child relationships.
+    # Include ALL nodes (not just successful ones) so the LLM can see
+    # the full execution context — including environment observations
+    # that may have been captured in exploratory or failed nodes.
     artifact_blocks = []
     visited = set()
     queue = [n for n in nodes if not n.get("parent_id")]  # roots first
@@ -201,9 +270,19 @@ async def nodes_to_science_data(
         if nid in visited:
             continue
         visited.add(nid)
+        depth = n.get("depth", 0)
         if n.get("has_real_data") and n.get("metrics"):
-            depth = n.get("depth", 0)
             artifact_blocks.append(_node_block(n, depth))
+        else:
+            # Non-successful nodes: include tool outputs only (compact)
+            tool_out = _node_tool_outputs(n, max_chars=2000)
+            if tool_out:
+                indent = "  " * depth
+                label = n.get("label", "?")
+                artifact_blocks.append(
+                    f"{indent}[{label.upper()} depth={depth} (no metrics)]\n"
+                    f"{indent}  execution_outputs:\n{tool_out}"
+                )
         # enqueue children
         for child_id in (n.get("children") or []):
             if child_id in node_index and child_id not in visited:
@@ -229,14 +308,23 @@ async def nodes_to_science_data(
         "Also include an 'experiment_context' object with all other findings. "
         "Use clear field names with units where applicable.\n\n"
         "The experiment tree may include actual source code and scripts from the "
-        "experiment directories (under 'source_files:'). If present, extract all "
+        "experiment directories (under 'source_files:'). If present, extract ALL "
         "details from the code that an independent researcher would need to "
         "reproduce the exact same results. Include these under "
-        "'implementation_details' within 'experiment_context'. "
-        "Extract ONLY what is actually present — do not invent details.\n\n"
+        "'implementation_details' within 'experiment_context'. Specifically:\n"
+        "  - Pseudocode for the key algorithms and functions\n"
+        "  - Data structures and their layouts\n"
+        "  - All optimization techniques applied (with specifics, not just names)\n"
+        "  - Build configuration and any platform-specific settings\n"
+        "  - Exact experimental parameters used\n"
+        "  - How each reported metric is computed\n"
+        "Extract ONLY what is actually present in the tree — do not invent details. "
+        "For any factual claim, it must be traceable to a specific node's output. "
+        "If information was not captured during execution, write 'not recorded' "
+        "rather than guessing.\n\n"
         "Return ONLY valid JSON with keys 'evaluation_protocol' and 'experiment_context'. "
         "No markdown fences.\n\n"
-        f"EXPERIMENT TREE:\n{artifacts_combined[:16000]}"
+        f"EXPERIMENT TREE:\n{artifacts_combined[:64000]}"
     )
 
     experiment_context: dict = {}
@@ -262,6 +350,17 @@ async def nodes_to_science_data(
                 experiment_context = parsed
     except Exception as e:
         experiment_context = {"error": f"LLM analysis failed: {e}"}
+
+    # Attach raw source code from the best nodes directly (not LLM-summarized)
+    # so the paper writer can describe implementations with full fidelity.
+    _best_sources = {}
+    for n in good_nodes[:3]:
+        src = _collect_source_files(n, max_total=8000)
+        if src:
+            label = n.get("label", n.get("id", "?"))[:30]
+            _best_sources[label] = src
+    if _best_sources:
+        experiment_context["_best_node_source_code"] = _best_sources
 
     return {
         "configurations": ranked,
