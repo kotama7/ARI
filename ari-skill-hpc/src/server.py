@@ -218,7 +218,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="run_bash",
-            description="Run a bash command on the login node and return stdout. Use to read output files (e.g. cat /path/to/file.out).",
+            description="Run a bash command on the current host and return stdout. Suitable for file I/O, compilation, and execution. When a job scheduler (e.g. slurm_submit) is available, prefer it for compute-intensive tasks to ensure execution on the intended target.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -240,8 +240,9 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         if name == "run_bash":
             import subprocess
             cmd = arguments.get("command", "")
-            import os as _os
-            _cwd = arguments.get("cwd") or _os.environ.get("ARI_WORK_DIR") or None
+            _cwd = arguments.get("cwd") or os.environ.get("ARI_WORK_DIR") or None
+            if _cwd:
+                os.makedirs(_cwd, exist_ok=True)
             try:
                 result = subprocess.run(
                     cmd, shell=True, capture_output=True, text=True, timeout=120,

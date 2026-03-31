@@ -48,6 +48,54 @@ LABEL_COLOR = {
 
 
 # ---------------------------------------------------------------------------
+# VLM caption helper
+# ---------------------------------------------------------------------------
+
+import base64
+import logging
+
+log = logging.getLogger(__name__)
+
+_VLM_MODEL = os.environ.get("VLM_MODEL", "openai/gpt-4o")
+
+
+async def _vlm_caption(png_path: str, fallback: str, context: str = "") -> str:
+    """Generate a figure caption by sending the PNG to a VLM."""
+    try:
+        data = Path(png_path).read_bytes()
+        b64 = base64.b64encode(data).decode()
+        mime = "image/png"
+        data_uri = f"data:{mime};base64,{b64}"
+        ctx_line = f"\nExperiment context: {context}" if context else ""
+        resp = await litellm.acompletion(
+            model=_VLM_MODEL,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": data_uri}},
+                    {"type": "text", "text": (
+                        "You are a scientific writing expert. "
+                        "Write a single LaTeX figure caption (1-3 sentences) for this figure. "
+                        "Be specific: mention the actual axis labels, metric names, "
+                        "key numeric values, trends, and number of data points visible. "
+                        "Do NOT use generic phrases like 'experimental results'. "
+                        "Output ONLY the caption text, no preamble."
+                        f"{ctx_line}"
+                    )},
+                ],
+            }],
+        )
+        caption = resp.choices[0].message.content.strip()
+        # Strip wrapping quotes if present
+        if caption.startswith('"') and caption.endswith('"'):
+            caption = caption[1:-1]
+        return caption or fallback
+    except Exception as e:
+        log.warning("VLM caption failed, using fallback: %s", e)
+        return fallback
+
+
+# ---------------------------------------------------------------------------
 # Tool 1: Deterministic figures (P2-compliant, no LLM)
 # ---------------------------------------------------------------------------
 
@@ -57,16 +105,19 @@ async def generate_figures(
     output_dir: str,
     figures: list = None,
     science_data_path: str = "",
+    vlm_captions: bool = True,
+    experiment_context: str = "",
 ) -> dict:
     """Generate scientific figures from BFTS data using deterministic matplotlib.
 
-    P2-compliant: no LLM calls. Pure matplotlib/networkx.
-
     Args:
-        nodes_json_path: Path to nodes_tree.json
-        output_dir:      Directory to write PDF files
-        figures:         List of figure IDs to generate (default: all)
-                         Options: "perf_bar", "tree_depth", "bfts_tree"
+        nodes_json_path:    Path to nodes_tree.json
+        output_dir:         Directory to write PDF files
+        figures:            List of figure IDs to generate (default: all)
+                            Options: "perf_bar", "tree_depth", "bfts_tree"
+        vlm_captions:       If True, use VLM to generate data-aware captions from
+                            the rendered figure image (default: True).
+        experiment_context: Optional description of the experiment for VLM context.
 
     Returns:
         figures (dict path), latex_snippets (dict LaTeX)
@@ -107,9 +158,28 @@ async def generate_figures(
 
     result: dict = {"figures": {}, "latex_snippets": {}}
 
+    # Extract metric info for data-aware captions
+    _metric_names: list[str] = []
+    _peak_val = 0.0
+    _peak_metric = "performance"
+    if rnodes:
+        _all_keys: set[str] = set()
+        for n in rnodes:
+            for mk, mv in n["metrics"].items():
+                if isinstance(mv, (int, float)):
+                    _all_keys.add(mk)
+        _metric_names = sorted(_all_keys)
+        _peak_metric = _metric_names[0] if _metric_names else "performance"
+        _peak_val = max(
+            (v for n in rnodes for v in n["metrics"].values() if isinstance(v, (int, float))),
+            default=0,
+        )
+
     def _save(fig, name: str) -> str:
         path = str(out_dir / f"{name}.pdf")
         fig.savefig(path, dpi=150, bbox_inches="tight")
+        png_path = str(out_dir / f"{name}.png")
+        fig.savefig(png_path, dpi=150, bbox_inches="tight")
         plt.close(fig)
         return path
 
@@ -141,10 +211,13 @@ async def generate_figures(
         fig.tight_layout()
         path = _save(fig, "perf_bar")
         result["figures"]["perf_bar"] = path
+        _top_val = vals[0] if vals else 0
+        _n_shown = len(top)
+        _metrics_str = ", ".join(_metric_names[:3]) if _metric_names else "primary metric"
         result["latex_snippets"]["perf_bar"] = _snippet(
             "perf_bar",
-            "Top configurations ranked by performance. "
-            "Each bar represents one compiler+threading configuration.",
+            f"Top {_n_shown} configurations ranked by {_metrics_str} "
+            f"(best: {_top_val:.1f}, {len(rnodes)} configurations evaluated).",
         )
 
     # ── Figure 2: Performance vs Tree Depth ──
@@ -172,10 +245,13 @@ async def generate_figures(
         fig.tight_layout()
         path = _save(fig, "tree_depth")
         result["figures"]["tree_depth"] = path
+        _depth_range = max(best_by_depth.keys()) if best_by_depth else 0
+        _best_overall = max(best_by_depth.values()) if best_by_depth else 0
         result["latex_snippets"]["tree_depth"] = _snippet(
             "tree_depth",
-            "Performance trend across the configuration search. "
-            "Dashed line shows the best result observed up to each point.",
+            f"{_peak_metric} across {_depth_range + 1} search steps "
+            f"(peak {_best_overall:.1f} at step {max(best_by_depth, key=best_by_depth.get) if best_by_depth else 0}). "
+            f"Dashed line shows the best result observed up to each point.",
         )
 
     # ── Figure 3: BFTS Tree Diagram ──
@@ -222,13 +298,32 @@ async def generate_figures(
             fig.tight_layout()
             path = _save(fig, "bfts_tree")
             result["figures"]["bfts_tree"] = path
+            _n_nodes = len(nodes)
+            _n_real = len(rnodes)
+            _max_depth = max((n.get("depth", 0) for n in nodes), default=0)
             result["latex_snippets"]["bfts_tree"] = _snippet(
                 "bfts_tree",
-                "Experiment exploration tree. Node size is proportional to measured primary metric. "
-                "Labels show performance for nodes with real experimental data.",
+                f"BFTS exploration tree ({_n_nodes} nodes, {_n_real} with measured data, "
+                f"depth {_max_depth}). Node size is proportional to {_peak_metric}; "
+                f"labels show metric values for nodes with real experimental data.",
             )
         except ImportError:
             result["figures"]["bfts_tree"] = "networkx not available"
+
+    # ── VLM caption generation ──
+    if vlm_captions and result["figures"]:
+        for fig_name, fig_path in result["figures"].items():
+            if not isinstance(fig_path, str) or not Path(fig_path).exists():
+                continue
+            png_path = str(Path(fig_path).with_suffix(".png"))
+            if not Path(png_path).exists():
+                continue
+            # Extract current fallback caption from snippet
+            snip = result["latex_snippets"].get(fig_name, "")
+            _fb_m = re.search(r"\\caption\{([^}]+)\}", snip)
+            fallback = _fb_m.group(1) if _fb_m else f"Results for {fig_name}."
+            caption = await _vlm_caption(png_path, fallback, context=experiment_context)
+            result["latex_snippets"][fig_name] = _snippet(fig_name, caption)
 
     return result
 
@@ -336,8 +431,8 @@ async def generate_figures_llm(
         " - Each figure must directly support a claim in the paper.\n"
         " - Use ACTUAL metric names and numeric values from the data — no 'a.u.' units.\n"
         " - Captions MUST be specific and descriptive. BAD: \"experimental results\". "
-        "   GOOD: \"GFLOP/s vs RHS width N (1–512) for CSR SpMM with Nb=64 on 192 threads; "
-        "   peak 699 GFLOP/s at N=64 (memory-bandwidth limited).\". "
+        "   GOOD: \"Score vs parameter X (0.1–0.9) for method A on benchmark B; "
+        "   best 76.3 at X=0.5 (configuration C, 10 trials).\". "
         "   Include: what metric, what x-axis, what experimental conditions, key quantitative finding.\n"
         " - NEVER produce a 'ranked configurations' bar chart unless the paper explicitly "
         "   compares ranked designs.\n"
@@ -345,22 +440,32 @@ async def generate_figures_llm(
         "   (b) comparison bar with real metric labels, (c) scaling plot."
     )
     user_prompt = (
-        f"Generate {n_figures} matplotlib figures from this HPC benchmark data.\n\n"
+        f"Generate {n_figures} matplotlib figures from this benchmark data.\n\n"
         f"DATA (configurations with all metrics):\n{data_summary}\n\n"
         f"output_dir = {repr(str(out_dir))}\n\n"
         "REQUIRED figures (read the data carefully and choose the best representation):\n"
-        f"RULES: Use real metric names (GFLOP/s, GB/s, etc.) from the data as axis labels. "
+        f"RULES: Use real metric names (score, throughput, etc.) from the data as axis labels. "
         "No 'a.u.', no 'Performance metric'. NO internal system terms.\n"
-        f"1. Primary performance plot: throughput (GFLOP/s or GB/s) vs the main sweep parameter "
-        f"   (e.g., N, threads) — use a line or scatter plot with labeled axes and units.\n"
+        f"1. Primary performance plot: score or throughput vs the main sweep parameter "
+        f"   (e.g., N, configuration) — use a line or scatter plot with labeled axes and units.\n"
         f"2. {_axis2} — scatter or line plot with specific units from the data.\n"
         f"3. Comparison or ablation: show effect of a design choice "
-        f"   (e.g., SIMD on/off, nnz/row, thread count) on throughput.\n\n"
+        f"   (e.g., feature on/off, parameter value, configuration) on performance.\n\n"
     )
 
     # Unified LLM routing: ARI_LLM_MODEL > LLM_MODEL; ARI_LLM_API_BASE > LLM_API_BASE
     LLM_MODEL = (os.environ.get("ARI_LLM_MODEL") or os.environ.get("LLM_MODEL") or "ollama_chat/qwen3:32b")
-    _ari_base = os.environ.get("ARI_LLM_API_BASE"); LLM_API_BASE = (_ari_base if _ari_base is not None else os.environ.get("LLM_API_BASE", "http://127.0.0.1:11434")) or None
+    _ari_base = os.environ.get("ARI_LLM_API_BASE")
+    if _ari_base is not None:
+        LLM_API_BASE = _ari_base or None
+    else:
+        _legacy_base = os.environ.get("LLM_API_BASE", "")
+        if _legacy_base:
+            LLM_API_BASE = _legacy_base
+        elif LLM_MODEL.startswith("ollama"):
+            LLM_API_BASE = "http://127.0.0.1:11434"
+        else:
+            LLM_API_BASE = None
     kwargs: dict = {
         "model": LLM_MODEL,
         "messages": [
@@ -537,10 +642,50 @@ async def generate_figures_llm(
                     f"\\begin{{figure}}[H]\n"
                     f"\\centering\n"
                     f"\\includegraphics[width=0.85\\linewidth]{{{pdf.name}}}\n"
-                    f"\\caption{{{metric_name} experimental results ({name})}}\n"
+                    f"\\caption{{{metric_name} across experimental configurations ({name}). "
+                    f"See text for detailed analysis.}}\n"
                     f"\\label{{fig:{name}}}\n"
                     f"\\end{{figure}}"
                 )
+
+        # ── VLM caption refinement ──
+        if figures:
+            _vlm_ctx = experiment_summary or context or ""
+            for fig_name, fig_path in figures.items():
+                if not Path(fig_path).exists():
+                    continue
+                # Convert PDF to PNG for VLM if only PDF exists
+                _png = Path(fig_path).with_suffix(".png")
+                if not _png.exists():
+                    try:
+                        import matplotlib.image as _mimg
+                        import matplotlib.pyplot as _mplt
+                        from matplotlib.backends.backend_pdf import PdfPages
+                        # Use matplotlib to render PDF page to PNG
+                        import subprocess as _sp
+                        _sp.run(["python3", "-c",
+                                 f"import matplotlib; matplotlib.use('Agg');"
+                                 f"from matplotlib.backends.backend_agg import FigureCanvasAgg;"
+                                 f"import fitz; doc=fitz.open('{fig_path}');"
+                                 f"pix=doc[0].get_pixmap(dpi=150);"
+                                 f"pix.save('{_png}')"],
+                                timeout=30, capture_output=True)
+                    except Exception:
+                        pass
+                if _png.exists():
+                    snip = latex_snippets.get(fig_name, "")
+                    _fb_m = re.search(r"\\caption\{([^}]+)\}", snip)
+                    fallback = _fb_m.group(1) if _fb_m else f"Results for {fig_name}."
+                    caption = await _vlm_caption(str(_png), fallback, context=_vlm_ctx)
+                    fname = Path(fig_path).name
+                    latex_snippets[fig_name] = (
+                        f"\\begin{{figure}}[H]\n"
+                        f"\\centering\n"
+                        f"\\includegraphics[width=0.85\\linewidth]{{{fname}}}\n"
+                        f"\\caption{{{caption}}}\n"
+                        f"\\label{{fig:{fig_name}}}\n"
+                        f"\\end{{figure}}"
+                    )
 
         return {
             "figures": figures,

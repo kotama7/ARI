@@ -14,7 +14,7 @@ verification according to `pipeline.yaml`.
 
 | Module | Role |
 |---|---|
-| `ari/orchestrator/bfts.py` | Branch-and-Frontier Tree Search |
+| `ari/orchestrator/bfts.py` | Best-First Tree Search |
 | `ari/agent/loop.py` | ReAct agent loop (per node) |
 | `ari/pipeline.py` | Post-BFTS pipeline driver |
 | `ari/evaluator/llm_evaluator.py` | Metric extraction and evaluation |

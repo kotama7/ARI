@@ -55,11 +55,15 @@ class LLMClient:
                 msgs.append(m)
             else:
                 msgs.append({"role": m.role, "content": m.content})
+        _model = self._model_name()
         kwargs: dict = {
-            "model": self._model_name(),
+            "model": _model,
             "messages": msgs,
-            "temperature": self.config.temperature,
         }
+        # gpt-5* models only support temperature=1; drop the param to avoid
+        # litellm.UnsupportedParamsError
+        if not self.config.model.startswith("gpt-5"):
+            kwargs["temperature"] = self.config.temperature
         if tools:
             kwargs["tools"] = tools
             # require_tool=True: always call a tool (exploration phase)
@@ -125,12 +129,14 @@ class LLMClient:
     def stream(self, messages: list[LLMMessage]) -> Iterator[str]:
         """Stream responses from the LLM."""
         msgs = [{"role": m.role, "content": m.content} for m in messages]
-        response = litellm.completion(
-            model=self._model_name(),
-            messages=msgs,
-            temperature=self.config.temperature,
-            stream=True,
-        )
+        kwargs: dict = {
+            "model": self._model_name(),
+            "messages": msgs,
+            "stream": True,
+        }
+        if not self.config.model.startswith("gpt-5"):
+            kwargs["temperature"] = self.config.temperature
+        response = litellm.completion(**kwargs)
         for chunk in response:
             delta = chunk.choices[0].delta
             if delta.content:

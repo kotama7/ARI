@@ -1,181 +1,349 @@
 # ARI QuickStart Guide
 
-## Overview
+This guide walks you through installing ARI, choosing an AI model, and running your first experiment using the **web dashboard**. No programming experience is required.
 
-ARI（Artificial Research Intelligence）は、実験 → 論文執筆 → 再現性検証を自動化するパイプラインです。
-MCPスキル（Web検索・図生成・論文執筆・再現性検証）を組み合わせて動作します。
-
----
-
-## 1. 必要な依存関係のインストール
-
-### Python 依存（pip）— 全環境共通
-
-```bash
-pip install litellm mcp fastmcp pymupdf pdfminer.six networkx seaborn
-```
-
-### PDF テキスト抽出ツール（`review_compiled_paper` で使用）
-
-ARI は PDF からテキストを抽出するために以下を順番に試みます：
-
-#### 方法 A：conda でインストール（**推奨・sudo不要**）
-
-```bash
-conda install -c conda-forge poppler
-```
-
-インストール後 `pdftotext` が使用可能になります：
-
-```bash
-which pdftotext   # → $CONDA_PREFIX/bin/pdftotext
-```
-
-> sudo権限がない環境（例: 共有HPCクラスター）では
-> システムパッケージ (`dnf install poppler-utils`) は使用できません。
-> conda 経由でインストールしてください。
-
-#### 方法 B：pip のみ（conda 不要）
-
-sudo も conda も不要。ARI は pymupdf / pdfminer を自動 fallback として使います：
-
-```bash
-pip install pymupdf pdfminer.six
-```
-
-#### PDF 抽出エンジンの優先順位
-
-| 優先 | エンジン | インストール |
-|------|----------|------|
-| 1 | `pymupdf (fitz)` | `pip install pymupdf` |
-| 2 | `pdfminer.six` | `pip install pdfminer.six` |
-| 3 | `pdftotext` | `conda install -c conda-forge poppler` |
+For CLI (command-line) usage, see [CLI Reference](cli_reference.md).
 
 ---
 
-## 2. LaTeX 環境のセットアップ
+## What You Will Need
+
+| Requirement | Details |
+|-------------|---------|
+| **Operating System** | Linux or macOS (Windows: use WSL2) |
+| **Python** | 3.10 or later |
+| **Git** | To clone the repository |
+| **Web browser** | Chrome, Firefox, Safari, or Edge |
+
+Optional (but recommended):
+
+| Tool | Why |
+|------|-----|
+| **conda / miniconda** | Easier LaTeX and PDF tool installation (no sudo needed) |
+| **Ollama** | Run AI models locally for free — no API key, no cost |
+| **LaTeX** | Required only if you want ARI to generate PDF papers |
+
+---
+
+## Step 1: Install ARI
+
+Open a terminal and run:
 
 ```bash
-# conda（sudo不要・推奨）
-conda install -c conda-forge texlive-core chktex
-
-# またはシステムパッケージ（sudo必要）
-sudo dnf install texlive texlive-latex   # RHEL/CentOS/Rocky
-sudo apt install texlive-full            # Ubuntu/Debian
+git clone https://github.com/kotama7/ARI.git
+cd ARI
+bash setup.sh
 ```
 
-TeX Live をユーザーローカルにインストールした場合:
+The setup script automatically detects your OS and installs everything needed. It works on Linux, macOS, and WSL2 — with or without conda and sudo.
+
+When setup finishes, you will see **"Setup Complete"** and next-step instructions.
+
+---
+
+## Step 2: Choose Your AI Model
+
+ARI needs an AI model (LLM) to think, plan, and run experiments. Choose one of the following:
+
+### Option A: Ollama — Free, runs on your computer (recommended)
+
+No account needed. No API key. No cost. Everything runs locally.
 
 ```bash
-export PDFLATEX_PATH=$HOME/.local/bin/pdflatex
+# Install Ollama
+curl -fsSL https://ollama.com/install.sh | sh     # Linux
+# brew install ollama                              # macOS
+
+# Download a model
+ollama pull qwen3:8b
+
+# Start the server (keep this terminal open)
+ollama serve
+```
+
+Set environment variables (open a new terminal):
+
+```bash
+export ARI_BACKEND=ollama
+export ARI_MODEL=qwen3:8b
+```
+
+> **Which model size?**
+>
+> | Model | RAM needed | Quality |
+> |-------|-----------|---------|
+> | `qwen3:8b` | 16 GB | Good — great for getting started |
+> | `qwen3:14b` | 32 GB | Better |
+> | `qwen3:32b` | 64 GB | Best |
+
+### Option B: OpenAI API (cloud, paid)
+
+```bash
+export ARI_BACKEND=openai
+export ARI_MODEL=openai/gpt-4o
+export OPENAI_API_KEY=sk-...     # Get from https://platform.openai.com/api-keys
+```
+
+### Option C: Anthropic API (cloud, paid)
+
+```bash
+export ARI_BACKEND=claude
+export ARI_MODEL=anthropic/claude-sonnet-4-5
+export ANTHROPIC_API_KEY=sk-ant-...  # Get from https://console.anthropic.com/
+```
+
+> **Tip:** Add `export` lines to your `~/.bashrc` or `~/.zshrc` to make them permanent.
+
+---
+
+## Step 3: Launch the Dashboard
+
+Start the ARI web dashboard:
+
+```bash
+ari viz ./checkpoints/ --port 8765
+```
+
+Open your browser and go to: **http://localhost:8765**
+
+You will see the ARI home screen:
+
+![ARI Home](images/en/dashboard_home.png)
+
+The left sidebar provides navigation to all dashboard pages:
+
+| Page | Description |
+|------|-------------|
+| **Home** | Overview with quick actions and recent experiments |
+| **Experiments** | List of all past experiment runs |
+| **Monitor** | Real-time pipeline progress with D3 tree visualization |
+| **Tree** | Full BFTS experiment tree — click nodes to inspect details |
+| **Results** | View generated paper, review, and reproducibility report |
+| **New Experiment** | Wizard to create and launch a new experiment |
+| **Ideas** | VirSci-generated research hypotheses |
+| **Workflow** | Edit the post-BFTS pipeline configuration |
+| **Settings** | Configure LLM, API keys, SLURM, and language |
+
+---
+
+## Step 4: Create Your First Experiment (Wizard)
+
+Click **"New Experiment"** in the sidebar (or the blue **"New Experiment"** button on the home page).
+
+![Experiment Wizard](images/en/dashboard_wizard.png)
+
+The wizard guides you through 4 steps:
+
+### Step 1 of 4 — Choose Mode
+
+| Mode | Best for |
+|------|----------|
+| **Chat** | Beginners. Describe what you want in natural language. The AI helps you refine it into a proper experiment. |
+| **Write MD** | Write or paste your experiment description in Markdown directly. |
+| **Upload** | Upload an existing `experiment.md` file from your computer. |
+
+**Recommended for beginners: Chat mode.** Just type what you want to optimize or investigate, for example:
+
+> "I want to find the best configuration for my experiment on this machine"
+
+The AI will ask clarifying questions and generate the experiment file automatically.
+
+### Step 2 of 4 — Scope
+
+Configure how large the experiment should be:
+
+| Setting | What it controls | Recommended for first run |
+|---------|-----------------|--------------------------|
+| **Max Depth** | How deep the search tree goes | 3 |
+| **Max Nodes** | Total number of experiments to run | 5–10 |
+| **Max ReAct Steps** | Reasoning steps per experiment | 80 (default) |
+| **Timeout** | Seconds per experiment | 7200 (default) |
+| **Parallel Workers** | Simultaneous experiments | 2–4 |
+
+> **Tip:** Start small (5–10 nodes, depth 3) for your first run. You can always increase later.
+
+### Step 3 of 4 — Resources
+
+Select your LLM provider and model:
+
+- **OpenAI / Anthropic / Ollama / Custom** — choose from the dropdown
+- For Ollama, you can type any model name (e.g., `qwen3:8b`)
+- Configure SLURM/HPC settings if running on a cluster
+
+### Step 4 of 4 — Launch
+
+Review your settings and click **Launch**. ARI will:
+
+1. Search related academic papers
+2. Generate research hypotheses (VirSci multi-agent deliberation)
+3. Run experiments using Best-First Tree Search
+4. Evaluate results with LLM peer review
+5. Write a LaTeX paper with figures and citations
+6. Verify reproducibility independently
+
+---
+
+## Step 5: Monitor the Experiment
+
+Once launched, the **Monitor** page shows real-time progress:
+
+![Monitor Page](images/en/dashboard_monitor.png)
+
+- **Pipeline stages** are shown at the top (Idea → BFTS → Paper → Review)
+- **Node tree** shows experiment progress with color-coded status
+- **Logs** stream in real time
+
+### Experiment Tree
+
+Click **Tree** in the sidebar for the full interactive experiment tree:
+
+![Tree View](images/en/dashboard_tree.png)
+
+- **Green** nodes = success
+- **Red** nodes = failed
+- **Blue** nodes = running
+- **Grey** nodes = pending
+
+Click any node to inspect:
+
+| Tab | What it shows |
+|-----|---------------|
+| **Overview** | Status, metrics, execution time, evaluation summary |
+| **Trace** | Every tool call the AI agent made (step by step) |
+| **Code** | Generated source code for this experiment |
+| **Output** | Job stdout, benchmark results |
+
+---
+
+## Step 6: View Results
+
+After the experiment completes, go to the **Results** page:
+
+![Results Page](images/en/dashboard_results.png)
+
+Here you can:
+
+- Read the generated paper (LaTeX / PDF)
+- View the automated peer review score and feedback
+- Check the reproducibility verification report
+- Download all artifacts
+
+Output files are saved in `./checkpoints/<run_id>/`:
+
+| File | Description |
+|------|-------------|
+| `full_paper.tex / .pdf` | Complete generated paper |
+| `review_report.json` | Peer review score and feedback |
+| `reproducibility_report.json` | Independent reproducibility verification |
+| `tree.json` | Full experiment tree with all metrics |
+| `science_data.json` | Cleaned data (no internal terms) |
+| `figures_manifest.json` | Generated figures |
+| `experiments/` | Per-node source code and output |
+
+---
+
+## Step 7: Configure Settings
+
+Open the **Settings** page to customize ARI:
+
+![Settings Page](images/en/dashboard_settings.png)
+
+### Dashboard Language
+
+Change the dashboard language (English, Japanese, Chinese) from the language dropdown at the top.
+
+### LLM Backend
+
+- Choose your provider (OpenAI, Anthropic, Ollama, Custom)
+- Set the default model and temperature
+- Enter your API key (stored locally, masked in the UI)
+
+### Paper Search
+
+- Optionally set a Semantic Scholar API key for higher rate limits
+
+### SLURM / HPC
+
+- Set default partition, CPU count, and memory for cluster jobs
+- Click **Detect** to auto-detect your cluster's available partitions
+
+### Per-Phase Model Overrides
+
+Use different models for different pipeline phases (e.g., a cheaper model for idea generation, a better model for paper writing).
+
+---
+
+## Additional Dashboard Pages
+
+### Ideas Page
+
+![Ideas Page](images/en/dashboard_ideas.png)
+
+View VirSci-generated research hypotheses with novelty and feasibility scores. See the experiment configuration, research goal, and BFTS node evaluations.
+
+### Workflow Editor
+
+![Workflow Page](images/en/dashboard_workflow.png)
+
+Edit the post-BFTS pipeline stages (transform data → generate figures → write paper → review → reproducibility check). Changes are saved as `workflow.yaml`.
+
+---
+
+## Troubleshooting
+
+### Installation
+
+| Problem | Solution |
+|---------|----------|
+| `ari: command not found` | Add `~/.local/bin` to your PATH: `export PATH="$HOME/.local/bin:$PATH"` |
+| Setup script fails | Check Python version: `python3 --version` (must be 3.10+) |
+| Permission denied | Don't use `sudo`. Run as your normal user. |
+
+### AI Model
+
+| Problem | Solution |
+|---------|----------|
+| Ollama connection refused | Make sure `ollama serve` is running in another terminal |
+| `LLM Provider NOT provided` | Use provider prefix: `openai/gpt-4o`, not just `gpt-4o` |
+| Slow or timeout | Use a smaller model (`qwen3:8b`) or increase timeout in Settings |
+
+### Experiment
+
+| Problem | Solution |
+|---------|----------|
+| All nodes failed | Open Tree view, click a failed node, check the Trace tab |
+| No results | Check Monitor page — the experiment may still be running |
+| Interrupted run | Go to Experiments page, find the run, click Resume |
+
+### Paper Generation
+
+| Problem | Solution |
+|---------|----------|
+| No PDF generated | Install LaTeX: `conda install -c conda-forge texlive-core` |
+| `No paper text available` | Install: `pip install pymupdf pdfminer.six` |
+
+---
+
+## Quick Start Recipe
+
+```bash
+# 1. Install
+git clone https://github.com/kotama7/ARI.git && cd ARI && bash setup.sh
+
+# 2. Set up AI (free, local)
+ollama pull qwen3:8b && ollama serve &
+export ARI_BACKEND=ollama ARI_MODEL=qwen3:8b
+
+# 3. Launch the dashboard
+ari viz ./checkpoints/ --port 8765
+# Open http://localhost:8765 and use the wizard to create your experiment!
 ```
 
 ---
 
-## 3. 設定ファイル（`ari-core/config/workflow.yaml`）
+## Next Steps
 
-```yaml
-# ── 論文設定 ──────────────────────────────────────
-# 著者名（デフォルト: Artificial Research Intelligence）
-author_name: Artificial Research Intelligence
-
-# 実験コンテキスト（技術仕様のみ・組織名・クラスター名を含めないこと）
-paper_context: |
-  実験の技術仕様をここに記述してください。
-  例：ハードウェア、コンパイラ、測定値など。
-  組織名・サーバー名・内部識別子は含めないこと。
-```
-
----
-
-## 4. 環境変数（SLURM スクリプト / .bashrc）
-
-```bash
-# LLM モデル設定
-# OpenAI 経由（新しいモデルは openai/ プレフィックスが必要）
-export ARI_LLM_MODEL=openai/gpt-5.2
-
-# Ollama ローカルモデル（プレフィックス不要）
-# export ARI_LLM_MODEL=qwen3:32b
-
-# OpenAI API キー（OpenAI モデル使用時）
-export OPENAI_API_KEY=sk-...
-
-# Ollama（ローカルLLM使用時）
-export OLLAMA_HOST=127.0.0.1:11434
-export LLM_API_BASE=http://127.0.0.1:11434
-
-# ARI が OpenAI を使う場合は LLM_API_BASE を空にする
-export ARI_LLM_API_BASE=
-
-# LaTeX パス（ユーザーローカルインストールの場合）
-export PDFLATEX_PATH=$HOME/.local/bin/pdflatex
-
-# ARI ルートディレクトリ
-export ARI_ROOT=/path/to/ari
-```
-
----
-
-## 5. 初回実行
-
-```bash
-# パイプライン実行（チェックポイント再利用可能）
-cd ~/ARI
-python3 run_pipeline.py <checkpoint_dir> ari-core/config/workflow.yaml
-
-# SLURM
-sbatch your_pipeline_job.sh
-
-# 結果確認
-ls ~/ARI/logs/<checkpoint_dir>/
-#   full_paper.tex           論文 LaTeX ソース
-#   full_paper.pdf           コンパイル済み PDF
-#   review_report.json       レビュースコア・指摘事項
-#   reproducibility_report.json  再現性検証結果
-```
-
----
-
-## 6. トラブルシューティング
-
-| エラー | 原因 | 対処 |
-|--------|------|------|
-| `bad escape \X at position 0` | 正規表現パターン内の無効なエスケープ | raw string `r'\\...'` を使用 |
-| `LLM Provider NOT provided` | litellm が新しいモデル名を未認識 | `openai/gpt-5.2` のようにプレフィックスを付ける |
-| `No paper text available` | PDF抽出ツール未インストール | `conda install -c conda-forge poppler` または `pip install pymupdf` |
-| `Missing $` in LaTeX | LLM が数式を `$` で囲んでいない | リフレクションループが自動修正（最大5ラウンド） |
-| `??` (undefined ref) | `\ref{}` ラベル不一致 | 同上（リフレクションループ） |
-| traceback が SLURM ログに出ない | MCP サーバーが stdio サブプロセス | `~/ARI/logs/ari_wpi_traceback.txt` を確認 |
-
----
-
-## 7. スキル一覧
-
-| スキル | 主要ツール | 説明 |
-|--------|-----------|------|
-| `paper-skill` | `write_paper_iterative`, `review_compiled_paper` | LaTeX論文生成・レビュー（最大5ラウンド自動修正） |
-| `web-skill` | `web_search`, `search_arxiv`, `search_semantic_scholar` | 関連論文検索 |
-| `plot-skill` | `generate_figures`, `generate_figures_llm` | matplotlib/seaborn 図生成 |
-| `paper-re-skill` | `reproduce_from_paper`, `extract_metric_from_output` | 再現性検証 |
-| `idea-skill` | `survey`, `generate_ideas` | アイデア生成 |
-
-## 8. 実験モニタ（Experiment Monitor）
-
-実験の進行をリアルタイムで可視化できます：
-
-```bash
-ari viz --checkpoint logs/<ckpt_dir> --port 9878
-```
-
-ブラウザで `http://localhost:9878` を開くと：
-
-- **実験ツリー** — BFTSノードが木構造で表示されます（成功🟢 / 失敗🔴 / 実行中🔵 / 待機⚪）
-- **ノード詳細** — ノードをクリックすると4タブのパネルが開きます
-  - **Overview** — ステータス・メトリクス・評価サマリ
-  - **Trace** — エージェントが実行したMCPツール呼び出しの全履歴
-  - **Code** — 生成されたソースコード
-  - **Output** — ジョブの標準出力・ベンチマーク結果
-- **ベストスコア** — 画面下部に現在の最高メトリクス値を常時表示
-
-複数実験を並行モニタする場合はポートを変えてください（例: `--port 9879`）。
+- **CLI usage:** See [CLI Reference](cli_reference.md) for command-line operations
+- **Experiment files:** See [Writing Experiment Files](experiment_file.md) for advanced syntax
+- **HPC clusters:** See [HPC Setup Guide](hpc_setup.md) for SLURM configuration
+- **Extending ARI:** See [Extension Guide](extension_guide.md) for adding new skills

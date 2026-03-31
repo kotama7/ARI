@@ -21,12 +21,13 @@ class LLMConfig(BaseModel):
 class SkillConfig(BaseModel):
     name: str
     path: str
+    phase: str = "all"  # "bfts" | "pipeline" | "all"
 
 
 class BFTSConfig(BaseModel):
     max_depth: int = 5
-    max_retries_per_node: int = 3
     max_total_nodes: int = 50
+    max_react_steps: int = 80
     timeout_per_node: int = 7200
     max_parallel_nodes: int = 4
 
@@ -106,16 +107,24 @@ def _discover_skills(base_dir: Path | None = None) -> list[SkillConfig]:
 
 def auto_config() -> ARIConfig:
     """Default configuration when config.yaml is omitted. Can be overridden by environment variables."""
+    # Determine backend from model name
+    _model = os.environ.get("ARI_MODEL", "qwen3:8b")
+    # Backend is determined solely by ARI_BACKEND env var (set by GUI wizard or user).
+    # No model-name guessing here — that violates the Zero Domain Knowledge Principle.
+    _backend = os.environ.get("ARI_BACKEND", "ollama")
+    _base_url = os.environ.get("OLLAMA_HOST", "http://localhost:11434") if _backend == "ollama" else os.environ.get("LLM_API_BASE", None)
     return ARIConfig(
         llm=LLMConfig(
-            backend="ollama",
-            model=os.environ.get("ARI_MODEL", "qwen3:8b"),
-            base_url=os.environ.get("OLLAMA_HOST", "http://localhost:11434"),
+            backend=_backend,
+            model=_model,
+            base_url=_base_url,
         ),
         skills=_discover_skills(),
         bfts=BFTSConfig(
             max_depth=int(os.environ.get("ARI_MAX_DEPTH", 5)),
             max_total_nodes=int(os.environ.get("ARI_MAX_NODES", 50)),
+            max_react_steps=int(os.environ.get("ARI_MAX_REACT", 80)),
+            timeout_per_node=int(os.environ.get("ARI_TIMEOUT_NODE", 7200)),
             max_parallel_nodes=int(os.environ.get("ARI_PARALLEL", 4)),
         ),
         checkpoint=CheckpointConfig(
@@ -125,6 +134,15 @@ def auto_config() -> ARIConfig:
             dir=os.environ.get("ARI_LOG_DIR", "./logs/{run_id}/"),
             level=os.environ.get("ARI_LOG_LEVEL", "INFO"),
         ),
+        resources={
+            k: v for k, v in {
+                "cpus": os.environ.get("ARI_SLURM_CPUS"),
+                "memory_gb": os.environ.get("ARI_SLURM_MEM_GB"),
+                "gpus": os.environ.get("ARI_SLURM_GPUS"),
+                "walltime": os.environ.get("ARI_SLURM_WALLTIME"),
+                "partition": os.environ.get("ARI_SLURM_PARTITION"),
+            }.items() if v is not None
+        },
     )
 
 

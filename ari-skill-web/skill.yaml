@@ -1,0 +1,5 @@
+name: web-skill
+display_name: "Search literature"
+description: "Retrieves related papers from arXiv and Semantic Scholar for hypothesis grounding"
+requires_env: []
+version: "0.4.0"

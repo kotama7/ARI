@@ -1,0 +1,5 @@
+name: transform-skill
+display_name: "Extract scientific context"
+description: "Traverses the full experiment tree and uses LLM to extract methodology setup and key findings"
+requires_env: []
+version: "0.4.0"

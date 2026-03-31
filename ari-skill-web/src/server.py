@@ -1,11 +1,148 @@
 """ari-skill-web: Web search and page fetch MCP server. P2 compliant."""
 from __future__ import annotations
+import json as _json
+import logging
+import os as _os
 import re
+import time as _time
+import unicodedata as _unicodedata
+import urllib.parse as _parse
+import urllib.request as _req
+
 import httpx
+import litellm
 from mcp.server.fastmcp import FastMCP
 
+log = logging.getLogger(__name__)
 mcp = FastMCP("web-skill")
 
+# ---------------------------------------------------------------------------
+# LLM helpers (same pattern as paper-skill / idea-skill)
+# ---------------------------------------------------------------------------
+
+def _get_model() -> str:
+    return (_os.environ.get("ARI_LLM_MODEL")
+            or _os.environ.get("LLM_MODEL")
+            or "ollama_chat/qwen3:32b")
+
+
+def _get_api_base() -> str | None:
+    ari_base = _os.environ.get("ARI_LLM_API_BASE")
+    if ari_base is not None:
+        return ari_base or None
+    if (_os.environ.get("OPENAI_API_KEY") and "ollama" not in _get_model()):
+        return None
+    return _os.environ.get("LLM_API_BASE") or None
+
+
+async def _llm_call(system: str, user: str, temperature: float = 0.3,
+                     max_tokens: int = 512) -> str:
+    """Make a single LLM call and return the text response."""
+    kwargs: dict = {
+        "model": _get_model(),
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    base = _get_api_base()
+    if base:
+        kwargs["api_base"] = base
+    resp = await litellm.acompletion(**kwargs)
+    raw = resp.choices[0].message.content or ""
+    # Strip <think> tags from reasoning models
+    if "</think>" in raw:
+        raw = raw.split("</think>")[-1]
+    return raw.strip()
+
+
+# ---------------------------------------------------------------------------
+# Internal Semantic Scholar search
+# ---------------------------------------------------------------------------
+
+def _clean_cite_key(s: str) -> str:
+    """Normalize cite key: remove accents, keep only safe chars."""
+    nfkd = _unicodedata.normalize("NFKD", s)
+    ascii_s = nfkd.encode("ASCII", "ignore").decode("ascii")
+    return re.sub(r"[^a-zA-Z0-9:_@{},-]+", "", ascii_s).lower()
+
+
+def _parse_s2_paper(p: dict) -> dict:
+    """Parse a single Semantic Scholar paper entry into our standard format."""
+    bibtex_raw = p.get("citationStyles", {}).get("bibtex", "")
+    cite_key = ""
+    if bibtex_raw:
+        nl = bibtex_raw.find("\n")
+        first_line = bibtex_raw[:nl] if nl > 0 else bibtex_raw.split("\n")[0]
+        clean_first = _clean_cite_key(first_line)
+        m = re.search(r"\{([^,}]+)", clean_first)
+        cite_key = m.group(1) if m else ""
+    return {
+        "title": p.get("title", ""),
+        "authors": [a.get("name", "") for a in p.get("authors", [])[:4]],
+        "year": str(p.get("year", "")),
+        "abstract": (p.get("abstract") or "")[:300],
+        "bibtex": bibtex_raw,
+        "cite_key": cite_key,
+    }
+
+
+def _search_s2_sync(query: str, limit: int = 10) -> list[dict]:
+    """Search Semantic Scholar API synchronously. Returns list of paper dicts.
+
+    Each paper: {title, authors, year, abstract, bibtex, cite_key}
+    """
+    fields = "title,authors,year,abstract,citationStyles"
+    url = (
+        "https://api.semanticscholar.org/graph/v1/paper/search"
+        f"?query={_parse.quote(query)}&fields={fields}&limit={limit}"
+    )
+    s2_key = _os.environ.get("S2_API_KEY", "")
+    try:
+        req_obj = _req.Request(url, headers={"x-api-key": s2_key} if s2_key else {})
+        with _req.urlopen(req_obj, timeout=15) as resp:
+            data = _json.loads(resp.read())
+    except Exception as e:
+        log.warning("S2 search failed for %r: %s", query, e)
+        return []
+
+    return [_parse_s2_paper(p) for p in data.get("data", [])]
+
+
+def _arxiv_fallback(query: str, limit: int = 8) -> list[dict]:
+    """Fallback: search arXiv when S2 returns nothing."""
+    try:
+        import arxiv as _arxiv
+        _search = _arxiv.Search(
+            query=query, max_results=min(limit, 8),
+            sort_by=_arxiv.SortCriterion.Relevance,
+        )
+        papers = []
+        for r in _search.results():
+            authors = [a.name for a in r.authors[:4]]
+            year = str(r.published.year) if r.published else ""
+            aid = r.get_short_id().replace("/", "").replace(".", "")
+            nl = chr(10)
+            bib = ("@article{" + aid + "," + nl
+                   + "  title={" + r.title + "}," + nl
+                   + "  author={" + " and ".join(authors) + "}," + nl
+                   + "  year={" + year + "}," + nl
+                   + "  url={" + r.entry_id + "}" + nl + "}")
+            papers.append({
+                "title": r.title, "authors": authors,
+                "year": year, "abstract": r.summary[:300],
+                "bibtex": bib, "cite_key": aid, "url": r.entry_id,
+            })
+        return papers
+    except Exception:
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Public MCP tools
+# ---------------------------------------------------------------------------
 
 @mcp.tool()
 def web_search(query: str, n: int = 5) -> dict:
@@ -98,10 +235,6 @@ def search_arxiv(query: str, max_results: int = 5) -> dict:
         return {"papers": [], "error": str(e)}
 
 
-
-
-
-
 @mcp.tool()
 async def search_semantic_scholar(
     query: str,
@@ -120,93 +253,243 @@ async def search_semantic_scholar(
     Returns:
         {papers: [{title, authors, year, abstract, bibtex, cite_key}], query, count}
     """
-    import unicodedata, re as _re
-    import urllib.request as _req, urllib.parse as _parse, json as _json
-
-    def _clean_key(s: str) -> str:
-        """Normalize cite key: remove accents, keep only safe chars."""
-        nfkd = unicodedata.normalize("NFKD", s)
-        ascii_s = nfkd.encode("ASCII", "ignore").decode("ascii")
-        return _re.sub(r"[^a-zA-Z0-9:_@{},-]+", "", ascii_s).lower()
-
-    fields = "title,authors,year,abstract,citationStyles"
-    url = (
-        "https://api.semanticscholar.org/graph/v1/paper/search"
-        f"?query={_parse.quote(query)}&fields={fields}&limit={limit}"
-    )
-    import os as _os_s2
-    s2_key = _os_s2.environ.get("S2_API_KEY", "")
-    try:
-        req_obj = _req.Request(url, headers={"x-api-key": s2_key} if s2_key else {})
-        with _req.urlopen(req_obj, timeout=15) as resp:
-            data = _json.loads(resp.read())
-    except Exception as e:
-        return {"papers": [], "error": str(e), "query": query, "count": 0}
-
-    papers = []
-    for p in data.get("data", []):
-        bibtex_raw = p.get("citationStyles", {}).get("bibtex", "")
-        # Clean cite key to ASCII-safe format
-        if bibtex_raw:
-            nl = bibtex_raw.find("\n")
-            first_line = bibtex_raw[:nl] if nl > 0 else bibtex_raw.split("\n")[0]
-            clean_first = _clean_key(first_line)
-            bibtex = clean_first + ("\n" + bibtex_raw.split("\n", 1)[1] if "\n" in bibtex_raw else "")
-            # Extract cite key from @Type{key,
-            m = _re.search(r"\{([^,}]+)", clean_first)
-            cite_key = m.group(1) if m else ""
-        else:
-            bibtex = ""
-            cite_key = ""
-        papers.append({
-            "title": p.get("title", ""),
-            "authors": [a.get("name", "") for a in p.get("authors", [])[:4]],
-            "year": str(p.get("year", "")),
-            "abstract": (p.get("abstract") or "")[:300],
-            "bibtex": bibtex_raw,  # keep original for refs.bib
-            "cite_key": cite_key,
-        })
+    papers = _search_s2_sync(query, limit)
 
     # Run extra queries and merge (deduplicated by title)
     if extra_queries:
-        import time as _teq
         seen_titles = {p["title"].lower() for p in papers}
         for eq in (extra_queries or [])[:3]:
-            _teq.sleep(1.0)
+            _time.sleep(1.0)
             try:
-                _eq_url = (
-                    "https://api.semanticscholar.org/graph/v1/paper/search"
-                    f"?query={_parse.quote(eq)}&fields={fields}&limit={limit}"
-                )
-                _eq_req = _req.Request(_eq_url, headers={"x-api-key": s2_key} if s2_key else {})
-                with _req.urlopen(_eq_req, timeout=15) as _resp2:
-                    _eq_data = _json.loads(_resp2.read())
-                for _ep in _eq_data.get("data", []):
-                    _et = (_ep.get("title") or "").lower()
-                    if _et and _et not in seen_titles:
-                        seen_titles.add(_et)
-                        _ebibtex = _ep.get("citationStyles", {}).get("bibtex", "") or ""
-                        _ecite_key = ""
-                        if _ebibtex:
-                            _enl = _ebibtex.find("\n")
-                            _efirst = _ebibtex[:_enl] if _enl > 0 else _ebibtex
-                            _eclean = _clean_key(_efirst)
-                            _ebibtex = _eclean + ("\n" + _ebibtex.split("\n", 1)[1] if "\n" in _ebibtex else "")
-                            import re as _re2
-                            _em = _re2.search(r"\{([^,}]+)", _eclean)
-                            _ecite_key = _em.group(1) if _em else ""
-                        papers.append({
-                            "title": _ep.get("title", ""),
-                            "authors": [a.get("name", "") for a in _ep.get("authors", [])],
-                            "year": str(_ep.get("year", "")),
-                            "abstract": (_ep.get("abstract") or "")[:300],
-                            "bibtex": _ebibtex,
-                            "cite_key": _ecite_key,
-                        })
+                extra = _search_s2_sync(eq, limit)
+                for ep in extra:
+                    et = (ep.get("title") or "").lower()
+                    if et and et not in seen_titles:
+                        seen_titles.add(et)
+                        papers.append(ep)
             except Exception:
                 pass
 
+    # Fallback to arxiv if Semantic Scholar returned nothing
+    if not papers:
+        papers = _arxiv_fallback(query, limit)
+
     return {"papers": papers, "query": query, "count": len(papers)}
+
+
+# ---------------------------------------------------------------------------
+# AI Scientist v2-style iterative citation collection
+# ---------------------------------------------------------------------------
+
+def _format_papers_for_llm(papers: list[dict]) -> str:
+    """Format collected papers as a numbered list for LLM context."""
+    if not papers:
+        return "(none yet)"
+    lines = []
+    for i, p in enumerate(papers, 1):
+        lines.append(f"{i}. {p['title']} ({p.get('year', '?')})")
+    return "\n".join(lines)
+
+
+def _parse_query_response(response: str) -> str:
+    """Extract search query from LLM JSON response."""
+    try:
+        data = _json.loads(response.strip())
+        if isinstance(data, dict):
+            return data.get("query", "")
+    except Exception:
+        pass
+    m = re.search(r'\{[^}]+\}', response)
+    if m:
+        try:
+            data = _json.loads(m.group(0))
+            return data.get("query", "")
+        except Exception:
+            pass
+    return ""
+
+
+def _parse_selection_response(response: str, max_idx: int) -> list[int]:
+    """Extract list of paper indices from LLM JSON response."""
+    # Try to find a JSON array in the response
+    for candidate in [response.strip(), *re.findall(r'\[[^\]]*\]', response)]:
+        try:
+            indices = _json.loads(candidate)
+            if isinstance(indices, list):
+                return [i for i in indices if isinstance(i, int) and 0 <= i < max_idx]
+        except Exception:
+            pass
+    return []
+
+
+_QUERY_SYSTEM = (
+    "You are an academic research librarian. Given an experiment description "
+    "and a list of already-collected reference papers, identify what topic area "
+    "is still missing from the bibliography.\n\n"
+    "If the bibliography already has adequate coverage (typically 10+ papers "
+    "covering the main method, related work, evaluation baselines, and "
+    "theoretical foundations), respond with exactly:\n"
+    "No more citations needed\n\n"
+    "Otherwise, respond with a JSON object:\n"
+    '{"description": "Brief description of what is missing", '
+    '"query": "3-6 word Semantic Scholar search query"}\n\n'
+    "Rules:\n"
+    "- Use broad, general academic terms (not narrow jargon)\n"
+    "- Each query should target ONE specific missing topic\n"
+    "- Do not repeat previous queries\n"
+    "- Output ONLY the JSON or the termination phrase, nothing else"
+)
+
+_SELECT_SYSTEM = (
+    "You are an academic reference selector. Given an experiment and candidate "
+    "papers, select which papers are relevant and should be added to the "
+    "bibliography.\n"
+    "Return a JSON array of indices (0-based) of papers to keep.\n"
+    "Example: [0, 2, 4]\n"
+    "If none are relevant, return: []\n"
+    "Output ONLY the JSON array, nothing else."
+)
+
+
+@mcp.tool()
+async def collect_references_iterative(
+    experiment_summary: str,
+    keywords: str,
+    max_rounds: int = 20,
+    min_papers: int = 10,
+) -> dict:
+    """AI Scientist v2-style iterative citation collection.
+
+    Round 1: searches Semantic Scholar using the provided keywords.
+    Subsequent rounds: LLM analyzes collected papers + experiment context,
+    identifies gaps, generates a targeted query, searches, and LLM selects
+    relevant papers. Stops when LLM says no more needed or min_papers reached.
+
+    Args:
+        experiment_summary: Description of the experiment and its results
+        keywords: Initial search keywords (used for round 1)
+        max_rounds: Maximum number of search rounds (default 20)
+        min_papers: Minimum papers before early termination allowed (default 10)
+
+    Returns:
+        {papers: [{title, authors, year, abstract, bibtex, cite_key}],
+         query: original keywords, count: N, rounds_used: M}
+    """
+    all_papers: list[dict] = []
+    seen_titles: set[str] = set()
+    all_queries: list[str] = []
+
+    def _add_papers(new_papers: list[dict]) -> int:
+        added = 0
+        for p in new_papers:
+            t = (p.get("title") or "").lower()
+            if t and t not in seen_titles:
+                seen_titles.add(t)
+                all_papers.append(p)
+                added += 1
+        return added
+
+    # ── Round 1: initial keyword search ──────────────────────────────────
+    # Split long keywords into shorter sub-queries for better S2 coverage
+    kw_parts = [k.strip() for k in re.split(r'[,;]', keywords) if k.strip()]
+    if not kw_parts:
+        kw_parts = [keywords]
+    # Also create a shortened version (first 5 words) of the full keywords
+    kw_words = keywords.split()
+    if len(kw_words) > 5:
+        kw_parts.append(" ".join(kw_words[:5]))
+
+    for i, kw in enumerate(kw_parts[:4]):
+        if i > 0:
+            _time.sleep(1.0)
+        results = _search_s2_sync(kw, limit=10)
+        _add_papers(results)
+        all_queries.append(kw)
+
+    # arXiv fallback if S2 returned nothing at all
+    if not all_papers:
+        _add_papers(_arxiv_fallback(keywords, 8))
+
+    # If no experiment_summary, return round-1 results only (backward compat)
+    if not experiment_summary or not experiment_summary.strip():
+        return {"papers": all_papers, "query": keywords, "count": len(all_papers),
+                "rounds_used": 1}
+
+    # ── Rounds 2..max_rounds: LLM-guided iterative search ────────────────
+    rounds_used = 1
+    for round_num in range(2, max_rounds + 1):
+        rounds_used = round_num
+        papers_summary = _format_papers_for_llm(all_papers)
+
+        # Stage 1: LLM generates search query
+        try:
+            query_user = (
+                f"Experiment:\n{experiment_summary[:1500]}\n\n"
+                f"Already collected papers ({len(all_papers)}):\n{papers_summary}\n\n"
+                f"Previous queries: {all_queries}\n"
+            )
+            query_resp = await _llm_call(_QUERY_SYSTEM, query_user,
+                                         temperature=0.3, max_tokens=200)
+        except Exception as e:
+            log.warning("Round %d: LLM query generation failed: %s", round_num, e)
+            continue
+
+        # Check for termination signal
+        if "no more citations needed" in query_resp.lower():
+            log.info("Round %d: LLM says no more citations needed", round_num)
+            break
+
+        new_query = _parse_query_response(query_resp)
+        if not new_query:
+            log.warning("Round %d: could not parse query from LLM response", round_num)
+            continue
+        if new_query.lower() in {q.lower() for q in all_queries}:
+            log.info("Round %d: duplicate query %r, skipping", round_num, new_query)
+            continue
+        all_queries.append(new_query)
+
+        # Search S2 with the new query
+        _time.sleep(1.0)
+        candidates = _search_s2_sync(new_query, limit=10)
+        new_candidates = [p for p in candidates
+                          if (p.get("title") or "").lower() not in seen_titles]
+        if not new_candidates:
+            continue
+
+        # Stage 2: LLM selects relevant papers
+        try:
+            candidates_text = "\n".join(
+                f"[{i}] {p['title']} ({p.get('year', '?')}) - "
+                f"{p.get('abstract', '')[:150]}"
+                for i, p in enumerate(new_candidates)
+            )
+            select_user = (
+                f"Experiment:\n{experiment_summary[:1000]}\n\n"
+                f"Already in bibliography ({len(all_papers)} papers):\n"
+                f"{papers_summary}\n\n"
+                f"Candidate papers to evaluate:\n{candidates_text}"
+            )
+            select_resp = await _llm_call(_SELECT_SYSTEM, select_user,
+                                          temperature=0.0, max_tokens=200)
+            indices = _parse_selection_response(select_resp, len(new_candidates))
+            selected = [new_candidates[i] for i in indices]
+        except Exception as e:
+            log.warning("Round %d: LLM selection failed: %s", round_num, e)
+            # On LLM failure, add all candidates (conservative approach)
+            selected = new_candidates
+
+        _add_papers(selected)
+        log.info("Round %d: query=%r, candidates=%d, selected=%d, total=%d",
+                 round_num, new_query, len(new_candidates), len(selected),
+                 len(all_papers))
+
+    return {
+        "papers": all_papers,
+        "query": keywords,
+        "count": len(all_papers),
+        "rounds_used": rounds_used,
+    }
+
 
 if __name__ == "__main__":
     mcp.run()

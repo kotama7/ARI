@@ -148,6 +148,14 @@ class SlurmClient:
         nodes = kwargs.get("nodes", 1)
         walltime = kwargs.get("walltime", "01:00:00")
         account = kwargs.get("account")
+        cpus_per_task = kwargs.get("cpus_per_task") or os.environ.get("ARI_SLURM_CPUS")
+        memory_gb = kwargs.get("memory_gb") or os.environ.get("ARI_SLURM_MEM_GB")
+        gres = kwargs.get("gres")  # e.g. "gpu:1"
+        # Fallback: construct gres from ARI_SLURM_GPUS env var if not explicitly provided
+        if not gres:
+            _env_gpus = os.environ.get("ARI_SLURM_GPUS")
+            if _env_gpus and int(_env_gpus) > 0:
+                gres = f"gpu:{_env_gpus}"
 
         import os as _os
         log_dir = _os.environ.get("SLURM_LOG_DIR", "")
@@ -158,6 +166,12 @@ class SlurmClient:
             f"#SBATCH --nodes={nodes}",
             f"#SBATCH --time={walltime}",
         ]
+        if cpus_per_task:
+            header_lines.append(f"#SBATCH --cpus-per-task={cpus_per_task}")
+        if memory_gb:
+            header_lines.append(f"#SBATCH --mem={memory_gb}G")
+        if gres:
+            header_lines.append(f"#SBATCH --gres={gres}")
         if log_dir:
             header_lines.append(f"#SBATCH --output={log_dir}/slurm_job_%j.out")
             header_lines.append(f"#SBATCH --error={log_dir}/slurm_job_%j.out")

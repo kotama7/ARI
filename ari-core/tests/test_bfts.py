@@ -44,13 +44,9 @@ def test_should_not_prune_shallow(bfts):
     assert bfts.should_prune(node) is False
 
 
-def test_should_prune_max_retries(bfts):
+def test_should_not_prune_failed_node(bfts):
+    """Failed nodes are not pruned — BFTS expands them with debug children."""
     node = Node(id="n1", parent_id=None, depth=0, retry_count=2)
-    assert bfts.should_prune(node) is True
-
-
-def test_should_not_prune_ok_node(bfts):
-    node = Node(id="n1", parent_id=None, depth=1, retry_count=0)
     assert bfts.should_prune(node) is False
 
 

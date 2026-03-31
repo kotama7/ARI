@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
 from mcp.server import Server
 from mcp.types import TextContent, Tool
+
+
+def _resolve_work_dir(explicit: str | None) -> str:
+    """Return the effective work directory: explicit arg > ARI_WORK_DIR env > /tmp/ari_work."""
+    wd = explicit or os.environ.get("ARI_WORK_DIR") or "/tmp/ari_work"
+    Path(wd).mkdir(parents=True, exist_ok=True)
+    return wd
 
 server = Server("coding-skill")
 
@@ -95,18 +103,18 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         result = _write_code(
             filename=arguments["filename"],
             code=arguments["code"],
-            work_dir=arguments.get("work_dir", "/tmp/ari_work"),
+            work_dir=_resolve_work_dir(arguments.get("work_dir")),
         )
     elif name == "run_code":
         result = _run_code(
             filename=arguments["filename"],
-            work_dir=arguments.get("work_dir", "/tmp/ari_work"),
+            work_dir=_resolve_work_dir(arguments.get("work_dir")),
             timeout=arguments.get("timeout", 60),
         )
     elif name == "run_bash":
         result = _run_bash(
             command=arguments["command"],
-            work_dir=arguments.get("work_dir", "/tmp/ari_work"),
+            work_dir=_resolve_work_dir(arguments.get("work_dir")),
             timeout=arguments.get("timeout", 60),
         )
     else:

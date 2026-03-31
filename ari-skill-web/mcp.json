@@ -3,6 +3,7 @@
     "web_search",
     "fetch_url",
     "search_arxiv",
-    "search_semantic_scholar"
+    "search_semantic_scholar",
+    "collect_references_iterative"
   ]
 }
