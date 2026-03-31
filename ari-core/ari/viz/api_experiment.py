@@ -32,6 +32,12 @@ def _api_run_stage(body: bytes) -> dict:
         # 'ari paper' runs the full post-BFTS pipeline including
         # paper generation, review, and reproducibility check
         cmd = ["python3", "-m", "ari.cli", "paper", ckpt]
+        # Mark paper pipeline start immediately so the GUI phase stepper
+        # transitions from BFTS to Paper without waiting for subprocess boot.
+        try:
+            Path(ckpt, ".pipeline_started").touch()
+        except Exception:
+            pass
     else:
         return {"ok": False, "error": f"Unknown stage: {stage}"}
     try:
@@ -321,7 +327,10 @@ def _api_launch(body: bytes) -> dict:
             _first_line = "experiment"
         _slug = _re_slug.sub(r"[^a-zA-Z0-9_-]", "_", _first_line).strip("_")[:40]
         _slug = _re_slug.sub(r"_+", "_", _slug)
-        ckpt_root = ckpt_parent / "checkpoints"
+        if ckpt_parent.name == "checkpoints":
+            ckpt_root = ckpt_parent
+        else:
+            ckpt_root = ckpt_parent / "checkpoints"
         ckpt_root.mkdir(parents=True, exist_ok=True)
         _pre_ckpt = ckpt_root / f"{_ts}_{_slug}"
         _pre_ckpt.mkdir(parents=True, exist_ok=True)

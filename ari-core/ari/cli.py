@@ -57,7 +57,7 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
     # frontier: completed nodes not yet expanded (true BFTS: expand on demand)
     frontier: list = []
 
-    while (pending or frontier) and len(all_nodes) < cfg.bfts.max_total_nodes:
+    while pending or (frontier and len(all_nodes) < cfg.bfts.max_total_nodes):
         # --- BFTS STEP: expand the best frontier node if we need more work ---
         # all_nodes tracks every node ever created (root + all children)
         _budget = cfg.bfts.max_total_nodes - len(all_nodes)
@@ -83,7 +83,7 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
         if not pending:
             break
 
-        batch_size = min(max_workers, len(pending), cfg.bfts.max_total_nodes - total_processed)
+        batch_size = min(max_workers, len(pending))
         batch = []
         for _ in range(batch_size):
             if not pending:

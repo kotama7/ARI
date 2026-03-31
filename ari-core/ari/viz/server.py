@@ -218,21 +218,18 @@ class _Handler(BaseHTTPRequestHandler):
                 _has_eval  = any((d/n).exists() for n in ["evaluation.json","eval_results.json","results.json"])
                 _pipeline_started = (d/".pipeline_started").exists()
                 _running_pid = data.get("running_pid")
-                # Phase detection (ordered)
+                # Phase detection (ordered — later phases take priority).
+                # Each marker indicates the phase is ACTIVE or COMPLETED,
+                # so later phases must be checked first.
                 if data["has_review"]:
                     _phase = "review"
-                elif data["has_paper"]:
+                elif data["has_paper"] or _pipeline_started:
                     _phase = "paper"
-                elif _pipeline_started:
-                    _phase = "paper"
-                elif _has_eval:
-                    _phase = "evaluation"
-                elif _has_code:
-                    _phase = "coding"
-                elif _has_nodes:
-                    _phase = "bfts"
                 elif _has_idea:
-                    _phase = "idea"
+                    # idea.json exists → Idea phase is DONE, BFTS is active.
+                    # Even before nodes_tree.json is written, the root node
+                    # is already running (implementing + submitting experiments).
+                    _phase = "bfts"
                 elif _running_pid:
                     _phase = "starting"
                 else:
@@ -255,10 +252,8 @@ class _Handler(BaseHTTPRequestHandler):
                 data["llm_model_actual"] = _all_mods[0] if len(_all_mods)==1 else (", ".join(_all_mods) if _all_mods else None)
                 data["phase_flags"] = {
                     "idea": _has_idea,
-                    "bfts": _has_nodes,
-                    "coding": _has_code,
-                    "evaluation": _has_eval,
-                    "paper": data["has_paper"],
+                    "bfts": _has_idea,  # BFTS starts as soon as idea is done
+                    "paper": data["has_paper"] or _pipeline_started,
                     "review": data["has_review"],
                 }
                 def _check_repro(d):
