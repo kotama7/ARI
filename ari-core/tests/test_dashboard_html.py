@@ -1,72 +1,71 @@
-"""Test dashboard.html HTML structure integrity."""
+"""Test React dashboard structure integrity."""
 import re
 from pathlib import Path
 
-DASHBOARD = Path(__file__).parent.parent / "ari/viz/dashboard.html"
+VIZ_DIR = Path(__file__).parent.parent / "ari" / "viz"
+FRONTEND_DIR = VIZ_DIR / "frontend"
+SRC_DIR = FRONTEND_DIR / "src"
+COMPONENTS_DIR = SRC_DIR / "components"
+DIST_DIR = VIZ_DIR / "static" / "dist"
 
 
-def _html_only(html: str) -> str:
-    """Strip <script> blocks to get HTML-only content."""
-    return re.sub(r"<script>.*?</script>", "", html, flags=re.DOTALL)
+def test_react_build_exists():
+    """The Vite build must produce static/dist/index.html."""
+    assert (DIST_DIR / "index.html").exists(), "dist/index.html not found"
 
 
-def test_dashboard_exists():
-    assert DASHBOARD.exists(), "dashboard.html not found"
+def test_react_source_exists():
+    """The React entry point App.tsx must exist."""
+    assert (SRC_DIR / "App.tsx").exists(), "frontend/src/App.tsx not found"
 
 
-def test_dashboard_div_balance():
-    """Every opening <div> must have a matching closing </div> (HTML-only)."""
-    html = _html_only(DASHBOARD.read_text())
-    opens = len(re.findall(r"<div[\s>]", html))
-    closes = len(re.findall(r"</div>", html))
-    assert opens == closes, f"Unbalanced divs: {opens} opens vs {closes} closes"
+def test_all_page_components_exist():
+    """Every page component file must exist under src/components/."""
+    pages = {
+        "Home/HomePage.tsx",
+        "Experiments/ExperimentsPage.tsx",
+        "Monitor/MonitorPage.tsx",
+        "Tree/TreePage.tsx",
+        "Results/ResultsPage.tsx",
+        "Wizard/WizardPage.tsx",
+        "Idea/IdeaPage.tsx",
+        "Workflow/WorkflowPage.tsx",
+        "Settings/SettingsPage.tsx",
+    }
+    missing = [p for p in pages if not (COMPONENTS_DIR / p).exists()]
+    assert not missing, f"Missing page components: {missing}"
 
 
-def test_page_new_div_balance():
-    """page-new wizard must close properly before Settings section."""
-    raw = DASHBOARD.read_text()
-    html = _html_only(raw)
-    idx_pn = html.find('<div class="page" id="page-new">')
-    idx_st = html.find("<!-- SETTINGS -->")
-    assert idx_pn > 0 and idx_st > 0
-    chunk = html[idx_pn:idx_st]
-    depth = sum(1 if chunk[i:i+4] == "<div" else (-1 if chunk[i:i+6] == "</div>" else 0) for i in range(len(chunk)))
-    assert depth == 0, f"page-new not closed at SETTINGS: depth={depth}"
+def test_wizard_step_components_exist():
+    """Wizard step sub-components must exist."""
+    steps = ["StepGoal.tsx", "StepScope.tsx", "StepResources.tsx", "StepLaunch.tsx"]
+    missing = [s for s in steps if not (COMPONENTS_DIR / "Wizard" / s).exists()]
+    assert not missing, f"Missing wizard step components: {missing}"
 
 
-def test_page_settings_div_balance():
-    html = _html_only(DASHBOARD.read_text())
-    idx_s = html.find('id="page-settings"')
-    idx_e = html.find('id="page-', idx_s + 10)
-    chunk = html[idx_s:idx_e if idx_e > 0 else len(html)]
-    depth = sum(1 if chunk[i:i+4] == "<div" else (-1 if chunk[i:i+6] == "</div>" else 0) for i in range(len(chunk)))
-    assert depth == 0, f"page-settings imbalanced: depth={depth}"
+def test_key_react_components_present():
+    """Critical React components/hooks must exist in the source tree."""
+    app_src = (SRC_DIR / "App.tsx").read_text()
+    context_src = (SRC_DIR / "context" / "AppContext.tsx").read_text()
+    i18n_src = (SRC_DIR / "i18n" / "index.ts").read_text()
+
+    assert "AppProvider" in app_src, "App.tsx must use AppProvider"
+    assert "useAppContext" in context_src, "AppContext must export useAppContext"
+    assert "useI18n" in i18n_src, "i18n/index.ts must export useI18n"
 
 
-def test_wizard_pages_exist():
-    html = DASHBOARD.read_text()
-    for step in range(1, 5):
-        assert f'id="wiz-step-{step}"' in html, f"wiz-step-{step} missing"
+def test_i18n_files_exist():
+    """Translation files for en, ja, zh must exist."""
+    i18n_dir = SRC_DIR / "i18n"
+    for lang in ["en.ts", "ja.ts", "zh.ts"]:
+        assert (i18n_dir / lang).exists(), f"Missing i18n file: {lang}"
 
 
-def test_all_page_ids_exist():
-    html = DASHBOARD.read_text()
-    for page in ["home", "experiments", "monitor", "results", "new", "settings", "idea"]:
-        assert f'id="page-{page}"' in html, f"page-{page} missing"
-
-
-def test_no_hardcoded_domains():
-    """No RIKEN/lab/person-specific content in dashboard HTML."""
-    html = DASHBOARD.read_text().lower()
-    banned = ["himeno", "/hs/work0", "kotama", "takanori.k"]
-    found = [w for w in banned if w in html]
-    assert not found, f"Hardcoded domain content in dashboard: {found}"
-
-
-def test_key_js_functions_present():
-    """Key JS functions must exist in dashboard.html or the companion dashboard.js."""
-    html = DASHBOARD.read_text()
-    js_file = DASHBOARD.parent / "static" / "dashboard.js"
-    combined = html + (js_file.read_text() if js_file.exists() else "")
-    for fn in ["function goto(", "function wizNext(", "function launchExperiment(", "function loadSettings("]:
-        assert fn in combined, f"Missing JS function: {fn}"
+def test_build_has_assets():
+    """The Vite build must produce .js and .css files in dist/assets/."""
+    assets_dir = DIST_DIR / "assets"
+    assert assets_dir.exists(), "dist/assets/ directory not found"
+    js_files = list(assets_dir.glob("*.js"))
+    css_files = list(assets_dir.glob("*.css"))
+    assert js_files, "No .js files in dist/assets/"
+    assert css_files, "No .css files in dist/assets/"

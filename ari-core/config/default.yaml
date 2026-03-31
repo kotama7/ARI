@@ -13,8 +13,8 @@ hpc:
   max_nodes: 4
   max_walltime: 04:00:00
   mode: local
-  partition: your-gpu-partition
-  scheduler: slurm
+  partition: auto
+  scheduler: auto
 llm:
   api_key: ${ANTHROPIC_API_KEY}
   backend: claude

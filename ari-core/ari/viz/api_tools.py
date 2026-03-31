@@ -1,61 +1,54 @@
 from __future__ import annotations
-"""ARI viz: api_tools."""
-"""ARI Experiment Tree Visualizer — WebSocket + HTTP server.
+"""ARI viz: api_tools — chat, config generation, file upload, SSH test."""
 
-Usage:
-    python -m ari.viz.server --checkpoint ./logs/my_ckpt/ [--port 8765]
-"""
-
-
-import argparse
-import asyncio
 import json
-import re
+import logging
 import os
-import subprocess
-import threading
-import time
-import urllib.parse
-from datetime import datetime, timezone
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import re
 from pathlib import Path
-from typing import Set
-
-try:
-    import websockets
-    from websockets.server import serve as ws_serve
-except ImportError:
-    raise SystemExit("websockets package required: pip install websockets")
-
-# ──────────────────────────────────────────────
-# Shared state
-# ──────────────────────────────────────────────
-
-
 
 from . import state as _st
 
+log = logging.getLogger(__name__)
+
 
 def _api_chat_goal(body: bytes) -> dict:
-    """Multi-turn chat using OpenAI directly (avoids LLMClient tool-forcing hang)."""
+    """Multi-turn chat using the provider configured in Settings."""
     data = json.loads(body)
     messages = data.get("messages", [])
     context_md = data.get("context_md", "")
     if not messages:
         return {"error": "messages required"}
     try:
-        import os
-        api_key = os.environ.get("OPENAI_API_KEY", "")
-        if not api_key:
-            env_path = Path.home() / ".env"
-            if env_path.exists():
-                for line in env_path.read_text().splitlines():
-                    if line.startswith("OPENAI_API_KEY="):
-                        api_key = line.split("=", 1)[1].strip()
-        if not api_key:
-            return {"error": "OPENAI_API_KEY not found"}
-        from openai import OpenAI
-        client = OpenAI(api_key=api_key, timeout=60.0)
+        from .api_settings import _api_get_settings
+        settings = _api_get_settings()
+        provider = settings.get("llm_provider", "") or os.environ.get("ARI_BACKEND", "openai")
+        model = settings.get("llm_model", "") or os.environ.get("ARI_MODEL", "gpt-4o-mini")
+        # Resolve API key: settings → environment → .env files
+        api_key = settings.get("api_key", "") or settings.get("llm_api_key", "")
+        if not api_key or len(api_key) < 20:
+            if provider == "openai":
+                api_key = os.environ.get("OPENAI_API_KEY", "")
+            elif provider in ("anthropic", "claude"):
+                api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if not api_key or len(api_key) < 20:
+            # Fallback: read from .env files
+            _ari_root = Path(__file__).parent.parent.parent.parent
+            for env_path in [_ari_root / ".env", Path.home() / ".env"]:
+                if env_path.exists():
+                    for line in env_path.read_text().splitlines():
+                        if "=" in line and not line.startswith("#"):
+                            k, v = line.split("=", 1)
+                            k, v = k.strip(), v.strip().strip('"').strip("'")
+                            if provider == "openai" and k == "OPENAI_API_KEY":
+                                api_key = v
+                            elif provider in ("anthropic", "claude") and k == "ANTHROPIC_API_KEY":
+                                api_key = v
+                    if api_key and len(api_key) >= 20:
+                        break
+        if not api_key or len(api_key) < 20:
+            key_name = "ANTHROPIC_API_KEY" if provider in ("anthropic", "claude") else "OPENAI_API_KEY"
+            return {"error": f"{key_name} not found. Configure it in Settings."}
         system = (
             "You are an assistant helping a researcher set up an ARI experiment. "
             "ARI automatically writes, runs, benchmarks code, then produces a paper. "
@@ -71,14 +64,27 @@ def _api_chat_goal(body: bytes) -> dict:
             "Do NOT output the MD before getting at least 2 user responses."
         )
         full_messages = [{"role": "system", "content": system}] + messages
-        # Use OpenAI model; always use gpt-4o-mini for reliable chat
-        model = "gpt-4o-mini"
-        resp = client.chat.completions.create(
-            model=model,
-            messages=full_messages,
-            max_tokens=800,
-            temperature=0.7,
-        )
+        # Use litellm for unified provider support
+        import litellm
+        litellm_model = model
+        if provider in ("anthropic", "claude"):
+            litellm_model = f"anthropic/{model}"
+        elif provider == "ollama":
+            litellm_model = f"ollama_chat/{model}"
+        kwargs = {
+            "model": litellm_model,
+            "messages": full_messages,
+            "max_tokens": 2048,
+            "api_key": api_key,
+            "timeout": 60,
+        }
+        # gpt-5* only supports temperature=1
+        if not model.startswith("gpt-5"):
+            kwargs["temperature"] = 0.7
+        if provider == "ollama":
+            base_url = settings.get("ollama_host", "") or os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+            kwargs["api_base"] = base_url
+        resp = litellm.completion(**kwargs)
         text = resp.choices[0].message.content or ""
         ready = "---READY---" in text
         md_content = ""
@@ -88,6 +94,7 @@ def _api_chat_goal(body: bytes) -> dict:
             md_content = parts[1].strip() if len(parts) > 1 else context_md
         return {"reply": text, "ready": ready, "md": md_content}
     except Exception as e:
+        log.warning("Chat goal error: %s", e, exc_info=True)
         return {"error": str(e)}
 
 
@@ -125,9 +132,12 @@ def _api_upload_file(headers, body: bytes) -> dict:
     content_type = headers.get("Content-Type", "")
     filename = headers.get("X-Filename", "upload.md")
     filename = Path(filename).name  # sanitize
+    err = _st.require_checkpoint_dir()
+    if err:
+        return {"ok": False, "error": err, "_status": 400}
     if "multipart/form-data" not in content_type:
         # Raw body upload with X-Filename header
-        save_path = Path.cwd() / filename
+        save_path = _st._checkpoint_dir / filename
         save_path.write_bytes(body)
         return {"ok": True, "path": str(save_path), "filename": filename}
     # Multipart: extract first file part
@@ -141,7 +151,7 @@ def _api_upload_file(headers, body: bytes) -> dict:
             data = part[header_end + 4:].rstrip(b"\r\n--")
             m = re.search(r'filename="([^"]+)"', header_raw)
             filename = Path(m.group(1)).name if m else "upload.md"
-            save_path = Path.cwd() / filename
+            save_path = _st._checkpoint_dir / filename
             save_path.write_bytes(data)
             return {"ok": True, "path": str(save_path), "filename": filename}
     return {"error": "no file found in upload"}
@@ -150,10 +160,12 @@ def _api_upload_file(headers, body: bytes) -> dict:
 
 def _api_ssh_test(body: bytes) -> dict:
     """Test SSH connectivity to a remote host."""
+    import shlex
     import subprocess as _sp, json as _json
     try:
         data = _json.loads(body) if body else {}
     except Exception:
+        log.debug("SSH test body parse error", exc_info=True)
         data = {}
     host = data.get("ssh_host", "")
     port = int(data.get("ssh_port", 22))
@@ -173,8 +185,9 @@ def _api_ssh_test(body: bytes) -> dict:
         if r.returncode == 0:
             info = r.stdout.strip().replace(chr(10), " | ")
             if ssh_path:
-                # Check ARI path exists
-                r2 = _sp.run(cmd[:-1] + [target, f"test -d {ssh_path} && echo 'ARI path OK'"],
+                # Check ARI path exists (sanitize path to prevent injection)
+                safe_path = shlex.quote(ssh_path)
+                r2 = _sp.run(cmd[:-1] + [target, f"test -d {safe_path} && echo 'ARI path OK'"],
                               capture_output=True, text=True, timeout=10)
                 if "ARI path OK" in r2.stdout:
                     info += f" | ARI: {ssh_path} ✓"

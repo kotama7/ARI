@@ -174,23 +174,36 @@ def _extract_keywords_from_nodes(nodes_json_path: str, base_topic: str = "") -> 
         _combined = " ".join(_summaries)[:1200]
         import litellm as _litellm, os as _os
         _model = _os.environ.get("ARI_MODEL", "gpt-4o-mini")
-        _resp = _litellm.completion(
+        _backend = _os.environ.get("ARI_BACKEND", "ollama")
+        if _backend == "ollama" and not _model.startswith(("ollama/", "ollama_chat/")):
+            _model = f"ollama_chat/{_model}"
+        elif _backend in ("claude", "anthropic") and not _model.startswith("anthropic/"):
+            _model = f"anthropic/{_model}"
+        _kw: dict = dict(
             model=_model,
             messages=[{
                 "role": "system",
                 "content": (
                     "You are a research librarian. "
-                    "Given experiment summaries, produce a SHORT academic search query "
-                    "(5-10 words) suitable for Semantic Scholar that captures the core "
-                    "technical topic. Return ONLY the query string, no explanation."
+                    "Given experiment summaries, produce a SHORT broad academic search query "
+                    "(3-6 words) for Semantic Scholar. "
+                    "Use GENERAL terms (e.g. 'algorithm optimization', not 'custom 4-stage pipelined batch-norm fused kernel'). "
+                    "Avoid domain-specific jargon, acronyms, or overly narrow terms. "
+                    "Return ONLY the query string, no explanation."
                 ),
             }, {
                 "role": "user",
                 "content": f"Experiment summaries:\n{_combined}",
             }],
-            temperature=0.0,
             max_tokens=30,
         )
+        # gpt-5* models only support temperature=1
+        _raw_model = _os.environ.get("ARI_MODEL", "")
+        if not _raw_model.startswith("gpt-5"):
+            _kw["temperature"] = 0.0
+        if _backend == "ollama":
+            _kw["api_base"] = _os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+        _resp = _litellm.completion(**_kw)
         _query = (_resp.choices[0].message.content or "").strip().strip('"')
         return _query if _query else base
     except Exception:
@@ -245,9 +258,19 @@ def _run_stage_subprocess(tool: str, args: dict, config_path: str, skill_name: s
         if skill_name else
         "skills = cfg.skills\n"
     )
+    # Pass checkpoint_dir to subprocess so cost_tracker can write there
+    _ckpt_env_val = repr(str(_os_sp.environ.get("ARI_CHECKPOINT_DIR", "")))
     script = (
-        "import json, sys\n"
+        "import json, sys, os\n"
         "sys.path.insert(0, " + _ari_root + ")\n"
+        "# Initialize cost tracker for MCP skill LLM calls\n"
+        "_ckpt_dir = os.environ.get('ARI_CHECKPOINT_DIR', '') or " + _ckpt_env_val + "\n"
+        "if _ckpt_dir:\n"
+        "    try:\n"
+        "        from ari import cost_tracker as _ct\n"
+        "        _ct.init(_ckpt_dir)\n"
+        "    except Exception:\n"
+        "        pass\n"
         "from ari.mcp.client import MCPClient\n"
         "from ari.config import load_config\n"
         "from pathlib import Path as _P\n"
@@ -278,9 +301,21 @@ def _run_stage_subprocess(tool: str, args: dict, config_path: str, skill_name: s
     # 3. Build env for subprocess — include API keys and ARI settings
     _sub_env = {**_os_sp.environ}
     for _ekey in ("ARI_LLM_MODEL", "ARI_LLM_API_BASE", "OPENAI_API_KEY",
-                  "ANTHROPIC_API_KEY", "SLURM_LOG_DIR", "ARI_WORK_DIR", "ARI_ROOT"):
+                  "ANTHROPIC_API_KEY", "SLURM_LOG_DIR", "ARI_WORK_DIR", "ARI_ROOT",
+                  "ARI_CHECKPOINT_DIR"):
         if _ekey in _os_sp.environ:
             _sub_env[_ekey] = _os_sp.environ[_ekey]
+    # Propagate LLM config from workflow.yaml to env so skills use the correct model
+    if config_path and "ARI_LLM_MODEL" not in _sub_env:
+        try:
+            from ari.config import load_config as _load_cfg
+            _cfg_for_env = _load_cfg(config_path)
+            if _cfg_for_env.llm.model:
+                _sub_env["ARI_LLM_MODEL"] = _cfg_for_env.llm.model
+            if _cfg_for_env.llm.base_url is not None:
+                _sub_env["ARI_LLM_API_BASE"] = _cfg_for_env.llm.base_url
+        except Exception:
+            pass
     # Ensure ARI_LLM_API_BASE="" when using OpenAI (prevents fallback to Ollama URL)
     if "ARI_LLM_API_BASE" not in _sub_env:
         _sub_env["ARI_LLM_API_BASE"] = ""
@@ -318,11 +353,17 @@ def _run_stage_subprocess(tool: str, args: dict, config_path: str, skill_name: s
     if proc.returncode != 0:
         raise RuntimeError(f"stderr: {proc.stderr[:2000]}\nstdout: {proc.stdout[:500]}")
     if proc.stderr.strip():
-        log.debug("Stage stderr: %s", proc.stderr[:300])
+        log.warning("Stage subprocess stderr: %s", proc.stderr[:1000])
     raw = proc.stdout.strip()
     if not raw:
         raise RuntimeError(f"Empty stdout. stderr: {proc.stderr[:1000]}")
-    return json.loads(raw)
+    parsed = json.loads(raw)
+    # Detect MCP-level errors returned as data (e.g. "Tool '...' not found. Available: []")
+    if isinstance(parsed, dict) and "error" in parsed and not any(
+        k for k in parsed if k != "error"
+    ):
+        raise RuntimeError(f"MCP tool error: {parsed['error']}")
+    return parsed
 
 
 def build_scientific_data(nodes_json_path: str) -> dict:
@@ -406,6 +447,16 @@ def run_pipeline(
     experiment_goal = experiment_data.get("goal", "")
     context, best_metrics = build_best_nodes_context(all_nodes, experiment_goal)
 
+    # Propagate checkpoint_dir to subprocess env so cost_tracker can log there
+    import os as _os_pipe
+    _os_pipe.environ["ARI_CHECKPOINT_DIR"] = str(checkpoint_dir)
+
+    # Mark paper pipeline start for GUI phase detection
+    try:
+        (checkpoint_dir / ".pipeline_started").touch()
+    except Exception:
+        pass
+
     # ── Initialize cost tracker ──────────────────────────────────────────────
     try:
         from ari import cost_tracker as _ct
@@ -447,7 +498,7 @@ def run_pipeline(
                        ensure_ascii=False, indent=2)
         )
     except Exception as _e:
-        log.warning("Failed to save nodes_tree.json: %s", _e)
+        log.error("CRITICAL: Failed to save nodes_tree.json: %s — paper pipeline stages may fail", _e)
         nodes_json_path = ""
 
     # Convert topic slug (e.g. "My_Research_Topic_v2") -> search query ("My Research Topic v2")
@@ -521,14 +572,28 @@ def run_pipeline(
         desc  = stage_cfg.get("description", stage_name)
 
         log.info("=== Stage [%s]: %s ===", stage_name, desc)
+        print(f"[Paper Pipeline] Stage [{stage_name}]: {desc} ...", flush=True)
 
         # ── depends_on check ─────────────────────────────────────────────
         _depends = stage_cfg.get("depends_on", [])
         if isinstance(_depends, str): _depends = [_depends]
-        _dep_fail = next((_d for _d in _depends if _d not in tpl_vars.get("stages", {})), None)
+        _dep_missing = next((_d for _d in _depends if _d not in tpl_vars.get("stages", {})), None)
+        # Also check if any dependency actually failed (registered but has no output)
+        _dep_failed = next(
+            (_d for _d in _depends
+             if _d in tpl_vars.get("stages", {})
+             and not tpl_vars["stages"][_d].get("output")
+             and _d in stage_outputs
+             and isinstance(stage_outputs.get(_d), dict)
+             and ("error" in stage_outputs[_d] or stage_outputs[_d].get("skipped"))),
+            None,
+        )
+        _dep_fail = _dep_missing or _dep_failed
         if _dep_fail:
-            log.warning("Stage [%s]: dep '%s' not resolved; skip", stage_name, _dep_fail)
-            stage_outputs[stage_name] = {"skipped": True, "reason": f"dep: {_dep_fail}"}
+            _reason = "not resolved" if _dep_missing else "failed or skipped"
+            log.warning("Stage [%s]: dep '%s' %s; skip", stage_name, _dep_fail, _reason)
+            print(f"[Paper Pipeline] Stage [{stage_name}]: SKIPPED (dep '{_dep_fail}' {_reason})", flush=True)
+            stage_outputs[stage_name] = {"skipped": True, "reason": f"dep {_reason}: {_dep_fail}"}
             tpl_vars["stages"][stage_name] = {"output": "", "outputs": {}}
             continue
 
@@ -550,6 +615,7 @@ def run_pipeline(
                     _skip_ok = _skip_file.stat().st_size > 0
             if _skip_ok:
                 log.info("Stage [%s]: skipping (output exists: %s)", stage_name, skip_path)
+                print(f"[Paper Pipeline] Stage [{stage_name}]: SKIPPED (output exists)", flush=True)
                 tpl_vars["stages"][stage_name] = {"output": skip_path, "outputs": {"file": skip_path}}
                 stage_outputs[stage_name] = {"skipped": True, "output": skip_path}
                 continue
@@ -609,41 +675,40 @@ def run_pipeline(
                     log.warning("revised paper too short (%d vs %d bytes); using original", _rev_size, _orig_size)
                     args["paper_path"] = str(_orig)
 
-        # ── tool call (with retry on transient connection errors) ─────────
-        import time as _retry_time
-        _max_retries = 5
-        _last_exc = None
-        result = None
-        for _attempt in range(_max_retries):
-            try:
-                log.info("Stage [%s]: calling tool=%s skill=%s args_keys=%s (attempt %d/%d)",
-                         stage_name, tool, skill, list(args.keys()), _attempt + 1, _max_retries)
-                result = _run_stage_subprocess(tool, args, config_path, skill_name=skill)
-                # Check if result itself contains a connection error (MCP returned error dict)
-                if isinstance(result, dict):
-                    _r_str = result.get("result", "")
-                    if isinstance(_r_str, str) and ("connection error" in _r_str.lower() or
-                                                     "internalservererror" in _r_str.lower()):
-                        raise RuntimeError(f"MCP tool returned connection error: {_r_str[:200]}")
-                _last_exc = None
-                break
-            except Exception as _retry_exc:
-                _msg = str(_retry_exc).lower()
-                if any(x in _msg for x in ("connection error", "connection reset", "timeout",
-                                            "internalservererror", "mcp tool returned connection")):
-                    _last_exc = _retry_exc
-                    if _attempt < _max_retries - 1:
-                        _wait = 30 * (_attempt + 1)  # 30, 60, 90, 120s backoff
-                        log.warning("Stage [%s] attempt %d failed (transient): %s. Retrying in %ds...",
-                                    stage_name, _attempt + 1, _retry_exc, _wait)
-                        _retry_time.sleep(_wait)
-                        continue
-                raise
-        if _last_exc:
-            raise _last_exc
-        stage_outputs[stage_name] = result
-
         try:
+            # ── tool call (with retry on transient connection errors) ─────────
+            import time as _retry_time
+            _max_retries = 5
+            _last_exc = None
+            result = None
+            for _attempt in range(_max_retries):
+                try:
+                    log.info("Stage [%s]: calling tool=%s skill=%s args_keys=%s (attempt %d/%d)",
+                             stage_name, tool, skill, list(args.keys()), _attempt + 1, _max_retries)
+                    result = _run_stage_subprocess(tool, args, config_path, skill_name=skill)
+                    # Check if result itself contains a connection error (MCP returned error dict)
+                    if isinstance(result, dict):
+                        _r_str = result.get("result", "")
+                        if isinstance(_r_str, str) and ("connection error" in _r_str.lower() or
+                                                         "internalservererror" in _r_str.lower()):
+                            raise RuntimeError(f"MCP tool returned connection error: {_r_str[:200]}")
+                    _last_exc = None
+                    break
+                except Exception as _retry_exc:
+                    _msg = str(_retry_exc).lower()
+                    if any(x in _msg for x in ("connection error", "connection reset", "timeout",
+                                                "internalservererror", "mcp tool returned connection")):
+                        _last_exc = _retry_exc
+                        if _attempt < _max_retries - 1:
+                            _wait = 30 * (_attempt + 1)  # 30, 60, 90, 120s backoff
+                            log.warning("Stage [%s] attempt %d failed (transient): %s. Retrying in %ds...",
+                                        stage_name, _attempt + 1, _retry_exc, _wait)
+                            _retry_time.sleep(_wait)
+                            continue
+                    raise
+            if _last_exc:
+                raise _last_exc
+            stage_outputs[stage_name] = result
             # ── save outputs ──────────────────────────────────────────────
             outputs_cfg = stage_cfg.get("outputs", {})
             # Support both "output_file: foo.json" (shorthand) and "outputs: {file: foo.json}" (full)
@@ -681,6 +746,7 @@ def run_pipeline(
                         import json as _jj
                         _dbg.write_text(_jj.dumps(result, ensure_ascii=False, default=str)[:5000])
                         log.warning("Stage [%s]: no latex in result; debug -> %s", stage_name, _dbg)
+                        raise RuntimeError(f"Stage [{stage_name}]: tool returned no latex content")
                     # Save bib alongside
                     bib_content = result.get("bib", "") if isinstance(result, dict) else ""
                     if bib_content:
@@ -725,10 +791,14 @@ def run_pipeline(
                     Path(primary_file).write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
                     log.info("Stage [%s]: wrote figures manifest %s (latex_snippets=%d)", stage_name, primary_file, len(latex_snips))
 
+            # Stage completed successfully
+            print(f"[Paper Pipeline] Stage [{stage_name}]: DONE", flush=True)
+
         except Exception:
             import traceback as _tb
             _exc = _tb.format_exc()
             log.warning("Stage [%s] failed:\n%s", stage_name, _exc)
+            print(f"[Paper Pipeline] Stage [{stage_name}]: FAILED\n{_exc[:300]}", flush=True)
             stage_outputs[stage_name] = {"error": "stage failed"}
             tpl_vars["stages"][stage_name] = {"output": "", "outputs": {}}
 

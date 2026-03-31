@@ -26,8 +26,8 @@ class SkillConfig(BaseModel):
 
 class BFTSConfig(BaseModel):
     max_depth: int = 5
-    max_retries_per_node: int = 3
     max_total_nodes: int = 50
+    max_react_steps: int = 80
     timeout_per_node: int = 7200
     max_parallel_nodes: int = 4
 
@@ -123,6 +123,8 @@ def auto_config() -> ARIConfig:
         bfts=BFTSConfig(
             max_depth=int(os.environ.get("ARI_MAX_DEPTH", 5)),
             max_total_nodes=int(os.environ.get("ARI_MAX_NODES", 50)),
+            max_react_steps=int(os.environ.get("ARI_MAX_REACT", 80)),
+            timeout_per_node=int(os.environ.get("ARI_TIMEOUT_NODE", 7200)),
             max_parallel_nodes=int(os.environ.get("ARI_PARALLEL", 4)),
         ),
         checkpoint=CheckpointConfig(
@@ -132,6 +134,15 @@ def auto_config() -> ARIConfig:
             dir=os.environ.get("ARI_LOG_DIR", "./logs/{run_id}/"),
             level=os.environ.get("ARI_LOG_LEVEL", "INFO"),
         ),
+        resources={
+            k: v for k, v in {
+                "cpus": os.environ.get("ARI_SLURM_CPUS"),
+                "memory_gb": os.environ.get("ARI_SLURM_MEM_GB"),
+                "gpus": os.environ.get("ARI_SLURM_GPUS"),
+                "walltime": os.environ.get("ARI_SLURM_WALLTIME"),
+                "partition": os.environ.get("ARI_SLURM_PARTITION"),
+            }.items() if v is not None
+        },
     )
 
 

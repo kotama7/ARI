@@ -3,7 +3,7 @@
 Design principles:
 - AgentLoop is a pure ReAct loop with no domain-specific knowledge
 - Experiment-specific settings are injected via WorkflowHints
-- Terms like SLURM or MFLOPS do not appear in this file
+- Domain-specific terms do not appear in this file
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from pathlib import Path
 from typing import Any
 
 from ari.agent.workflow import WorkflowHints
@@ -21,7 +22,7 @@ from ari.orchestrator.node import Node
 
 logger = logging.getLogger(__name__)
 
-MAX_REACT_STEPS = 80
+MAX_REACT_STEPS = 80  # default; overridden per-instance via AgentLoop(max_react_steps=...)
 MIN_TOOL_CALLS = 2
 
 # Clearly placeholder strings (used to detect LLM-fabricated values)
@@ -97,6 +98,8 @@ class AgentLoop:
         mcp: MCPClient,
         evaluator: object | None = None,
         workflow_hints: WorkflowHints | None = None,
+        max_react_steps: int = MAX_REACT_STEPS,
+        timeout_per_node: int = 7200,
     ) -> None:
         self.llm = llm
         self.memory = memory
@@ -104,6 +107,8 @@ class AgentLoop:
         self.evaluator = evaluator
         self._slurm_real_stdout: str = ""
         self.hints = workflow_hints or WorkflowHints()
+        self.max_react_steps = max_react_steps
+        self.timeout_per_node = timeout_per_node
 
     # ------------------------------------------------------------------
     # Tool filtering (derived from WorkflowHints)
@@ -336,9 +341,15 @@ class AgentLoop:
                 f"\n\nEXPERIMENT ENVIRONMENT:{hpc_hint}" if hpc_hint else ""
             )
         )
+        budget_hint = (
+            f"\n\nRESOURCE BUDGET:"
+            f"\n  - Max steps: {self.max_react_steps} (plan accordingly — do not waste steps on unnecessary actions)"
+            f"\n  - Time limit: {self.timeout_per_node // 60} minutes per node (you will be terminated if exceeded)"
+        )
         extra = (
             (f"\n\nNODE ROLE: {label_hint}" if label_hint else "")
             + work_dir_hint
+            + budget_hint
             + (f"\n\n{self.hints.extra_system_prompt}" if self.hints.extra_system_prompt else "")
         )
         system_content = SYSTEM_PROMPT.format(tool_desc=tool_desc, extra=extra)
@@ -430,7 +441,7 @@ class AgentLoop:
         exec_called = False          # whether run_bash / run_code has been called
         tool_outputs: list[str] = []
 
-        for step in range(MAX_REACT_STEPS):
+        for step in range(self.max_react_steps):
             job_ids = _extract_job_ids(messages, self.hints.job_id_key)
             job_output_read = exec_called and bool(job_ids) if self.hints.job_submitter_tool else False
 
@@ -443,7 +454,7 @@ class AgentLoop:
                 job_done = (exec_called and bool(job_ids)) and bool(tool_outputs)
             else:
                 job_done = exec_called and bool(tool_outputs)
-            force_finish = (job_done and step >= 5) or (step >= MAX_REACT_STEPS - 3 and can_finish)
+            force_finish = (job_done and step >= 5) or (step >= self.max_react_steps - 3 and can_finish)
 
             active = self._active_tools(tools, messages, job_ids, exec_called, force_finish)
             # force_finish overrides active: allow JSON output without requiring tool call
@@ -588,28 +599,46 @@ class AgentLoop:
                 executed_names: list[str] = []
                 for r in results:
                     rc = json.dumps(r["result"], ensure_ascii=False)
-                    logger.info("Tool call: %s -> %s", r["name"], rc[:200])
+                    _FULL_LOG_TOOLS = {"generate_ideas", "survey", "make_metric_spec"}
+                    _log_limit = len(rc) if r["name"] in _FULL_LOG_TOOLS else 200
+                    logger.info("Tool call: %s -> %s", r["name"], rc[:_log_limit])
                     print(f"[TOOL] {r['name']}", flush=True)
                     # Record in node trace for viz
                     if hasattr(node, "trace_log"):
-                        _args_preview = str(_tc_args_by_name.get(r["name"], ""))[:120]
-                        _res_preview = str(r.get("result", ""))[:200]
+                        _args_preview = str(_tc_args_by_name.get(r["name"], ""))[:500]
+                        _trace_limit = len(str(r.get("result", ""))) if r["name"] in _FULL_LOG_TOOLS else 2000
+                        _res_preview = str(r.get("result", ""))[:_trace_limit]
                         node.trace_log.append(f"→ {r['name']}({_args_preview})")
                         if _res_preview:
                             node.trace_log.append(f"  ← {_res_preview}")
+                    # Save code artifacts from run_bash/slurm_submit for viz
+                    if r["name"] in ("run_bash", "run_code", "slurm_submit"):
+                        try:
+                            _args_raw = _tc_args_by_name.get(r["name"], "")
+                            _args_d = json.loads(_args_raw) if isinstance(_args_raw, str) else _args_raw
+                            _code = _args_d.get("code") or _args_d.get("command") or _args_d.get("script", "")
+                            if _code and hasattr(node, "artifacts"):
+                                node.artifacts.append({
+                                    "type": "code",
+                                    "tool": r["name"],
+                                    "content": _code[:16000],
+                                    "step": step,
+                                })
+                        except Exception:
+                            pass
                     try:
                         self.mcp.call_tool("add_memory", {
                             "node_id": node.id,
-                            "text": f"Tool {r['name']}: {rc[:300]}",
+                            "text": f"Tool {r['name']}: {rc[:1000]}",
                             "metadata": {"step": step, "tool": r["name"]},
                         })
                     except Exception:
                         self.memory.add(
-                            f"Tool {r['name']}: {rc[:300]}",
+                            f"Tool {r['name']}: {rc[:1000]}",
                             metadata={"node_id": node.id, "step": step},
                         )
-                    if len(rc) > 800:
-                        rc = rc[:800] + "...[truncated]"
+                    if len(rc) > 4000:
+                        rc = rc[:4000] + "...[truncated]"
                     messages.append({
                         "role": "tool",
                         "tool_call_id": r["tool_call_id"],
@@ -679,6 +708,15 @@ class AgentLoop:
                             if isinstance(idea_data, dict) and "result" in idea_data:
                                 _inner = idea_data["result"]
                                 idea_data = json.loads(_inner) if isinstance(_inner, str) else _inner
+                            # Persist full idea data to checkpoint for Idea tab
+                            try:
+                                _ckpt = getattr(self, "checkpoint_dir", None)
+                                if _ckpt:
+                                    _idea_path = Path(_ckpt) / "idea.json"
+                                    _idea_path.write_text(json.dumps(idea_data, ensure_ascii=False, indent=2))
+                                    logger.info("Saved idea.json to %s", _idea_path)
+                            except Exception as _se:
+                                logger.warning("Failed to save idea.json: %s", _se)
                             pm = idea_data.get("primary_metric", "")
                             hib = idea_data.get("higher_is_better", True)
                             mr = idea_data.get("metric_rationale", "")
@@ -991,7 +1029,7 @@ class AgentLoop:
             # if LLM returns an empty response, force a tool call
             if not content.strip() and not response.tool_calls and not force_finish:
                 messages.append({"role": "user", "content": (
-                    f"Step {step+1}/{MAX_REACT_STEPS}: Your response was empty. "
+                    f"Step {step+1}/{self.max_react_steps}: Your response was empty. "
                     f"You MUST call a tool NOW. Available tools: "
                     f"{[t['function']['name'] for t in (effective_tools or [])]}"
                 )})
@@ -1034,17 +1072,17 @@ class AgentLoop:
                     logger.warning("Node %s: forced success at step %d", node.id, step + 1)
                     return node
                 messages.append({"role": "user", "content": (
-                    f"FINAL STEP {step+1}/{MAX_REACT_STEPS}. Reply ONLY with JSON:\n"
+                    f"FINAL STEP {step+1}/{self.max_react_steps}. Reply ONLY with JSON:\n"
                     '{"status":"success","artifacts":[{"type":"result","stdout":"<output>"}],'
                     '"summary":"<one sentence>"}'
                 )})
             elif not exec_called and has_exec:
                 messages.append({"role": "user", "content": (
-                    f"Step {step+1}/{MAX_REACT_STEPS}. You must still run the experiment. Do it now."
+                    f"Step {step+1}/{self.max_react_steps}. You must still run the experiment. Do it now."
                 )})
             else:
                 messages.append({"role": "user", "content": (
-                    f"Step {step+1}/{MAX_REACT_STEPS}. Continue or provide final JSON."
+                    f"Step {step+1}/{self.max_react_steps}. Continue or provide final JSON."
                 )})
 
         if exec_called and tool_outputs:

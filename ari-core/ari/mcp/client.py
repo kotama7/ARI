@@ -45,11 +45,38 @@ class _SkillConnection:
         path = path.replace("{{ari_root}}", ari_root)
         return Path(path)
 
+    @staticmethod
+    def _resolve_python(skill_path: Path) -> str:
+        """Return the best Python interpreter for a skill.
+
+        Priority:
+        1. Skill-local venv  (<skill>/.venv/bin/python)
+        2. Python recorded by setup.sh  ($ARI_ROOT/.ari_python)
+        3. sys.executable (fallback)
+        """
+        # 1. Skill-local venv
+        skill_python = skill_path / ".venv" / "bin" / "python"
+        if skill_python.is_file():
+            return str(skill_python)
+
+        # 2. Recorded by setup.sh
+        import os as _os
+        ari_root = _os.environ.get("ARI_ROOT", str(Path(__file__).parents[3]))
+        marker = Path(ari_root) / ".ari_python"
+        if marker.is_file():
+            recorded = marker.read_text().strip()
+            if recorded and Path(recorded).is_file():
+                return recorded
+
+        # 3. Fallback
+        return sys.executable
+
     def _server_params(self) -> StdioServerParameters:
         import os
         skill_path = self._skill_path()
+        python = self._resolve_python(skill_path)
         return StdioServerParameters(
-            command=sys.executable,
+            command=python,
             args=[str(skill_path / "src" / "server.py")],
             env={**os.environ, "PYTHONPATH": str(skill_path)},
         )

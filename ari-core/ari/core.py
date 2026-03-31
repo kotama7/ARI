@@ -72,7 +72,9 @@ def build_runtime(cfg, experiment_text: str = ""):
     if wf_hints.metric_extractor is None and metric_spec and metric_spec.artifact_extractor:
         wf_hints.metric_extractor = metric_spec.artifact_extractor
 
-    agent = AgentLoop(llm, memory, mcp, evaluator=evaluator, workflow_hints=wf_hints)
+    agent = AgentLoop(llm, memory, mcp, evaluator=evaluator, workflow_hints=wf_hints,
+                       max_react_steps=cfg.bfts.max_react_steps,
+                       timeout_per_node=cfg.bfts.timeout_per_node)
     scheduler = Scheduler(cfg.bfts)
     return llm, memory, mcp, bfts, agent, scheduler, metric_spec
 
@@ -93,6 +95,12 @@ def generate_paper_section(
     """Run the post-BFTS pipeline according to pipeline.yaml. No hardcoding."""
     from ari.pipeline import load_pipeline, run_pipeline
 
+    log.info("Starting paper pipeline (config_path=%s, checkpoint=%s)", config_path, checkpoint_dir)
+    print(f"\n{'='*60}")
+    print(f"  Paper Pipeline Starting")
+    print(f"  Checkpoint: {checkpoint_dir}")
+    print(f"{'='*60}", flush=True)
+
     # Load pipeline from workflow.yaml (preferred) or pipeline.yaml (legacy fallback)
     pipeline_yaml_candidates = [
         Path(config_path).parent / "workflow.yaml",
@@ -103,12 +111,23 @@ def generate_paper_section(
     pipeline_yaml = next((p for p in pipeline_yaml_candidates if p.exists()), None)
 
     if pipeline_yaml is None:
-        log.warning("pipeline.yaml not found; skipping post-BFTS pipeline")
+        log.error("pipeline.yaml not found in any candidate path; skipping post-BFTS pipeline. Searched: %s",
+                  [str(p) for p in pipeline_yaml_candidates])
+        print("[Paper Pipeline] ERROR: workflow.yaml not found, skipping paper generation", flush=True)
         return
+
+    log.info("Using pipeline config: %s (%d candidates searched)", pipeline_yaml,
+             len(pipeline_yaml_candidates))
 
     stages = load_pipeline(pipeline_yaml)
     if not stages:
-        log.info("No enabled pipeline stages in %s", pipeline_yaml)
+        log.error("No enabled pipeline stages in %s", pipeline_yaml)
+        print(f"[Paper Pipeline] ERROR: No enabled stages in {pipeline_yaml}", flush=True)
         return
 
+    stage_names = [s.get("stage", "?") for s in stages]
+    log.info("Paper pipeline: %d stages to execute", len(stages))
+    print(f"[Paper Pipeline] {len(stages)} stages: {', '.join(stage_names)}", flush=True)
     result = run_pipeline(stages, all_nodes, experiment_data, checkpoint_dir, config_path)
+    log.info("Paper pipeline completed: %s", list(result.keys()) if result else "no result")
+    print(f"[Paper Pipeline] Complete: {list(result.keys()) if result else 'no result'}", flush=True)

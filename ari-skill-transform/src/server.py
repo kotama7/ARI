@@ -45,6 +45,70 @@ def _node_artifacts_text(node: dict, max_chars: int = 3000) -> str:
     return combined[:max_chars]
 
 
+def _collect_source_files(node: dict, max_total: int = 16000) -> str:
+    """Read source files from the node's experiment directory on disk.
+
+    Scans artifact commands for directory paths, then reads .c, .cpp, .h,
+    .f90, .sh, and Makefile files from those directories.
+    Returns formatted source code snippets with filenames.
+    """
+    import re as _re_sf
+    dirs_seen: set[str] = set()
+    for art in (node.get("artifacts") or []):
+        content = art.get("content", "") if isinstance(art, dict) else str(art)
+        # Extract 'cd /path/to/...' from shell commands
+        for m in _re_sf.finditer(r'cd\s+(/\S+)', content):
+            d = m.group(1).rstrip("&;|")
+            if Path(d).is_dir():
+                dirs_seen.add(d)
+
+    if not dirs_seen:
+        return ""
+
+    # Accept any text-based source file; exclude known binary/data extensions
+    _binary_exts = {
+        ".o", ".a", ".so", ".dylib", ".dll", ".exe", ".bin",
+        ".pyc", ".pyo", ".class", ".jar",
+        ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".ico",
+        ".pdf", ".ps", ".eps",
+        ".zip", ".gz", ".bz2", ".xz", ".tar", ".7z",
+        ".pkl", ".npy", ".npz", ".h5", ".hdf5",
+        ".csv", ".tsv", ".parquet",
+        ".log", ".out", ".err",
+    }
+    parts = []
+    total = 0
+    for d in sorted(dirs_seen):
+        dp = Path(d)
+        for f in sorted(dp.iterdir()):
+            if not f.is_file():
+                continue
+            if f.suffix.lower() in _binary_exts:
+                continue
+            # Skip files larger than 64KB (likely data, not source)
+            try:
+                if f.stat().st_size > 65536:
+                    continue
+            except Exception:
+                continue
+            try:
+                text = f.read_text(errors="ignore")
+            except Exception:
+                continue
+            if not text.strip():
+                continue
+            snippet = text[:4000]
+            entry = f"── {f.name} ──\n{snippet}\n"
+            if total + len(entry) > max_total:
+                break
+            parts.append(entry)
+            total += len(entry)
+        if total >= max_total:
+            break
+
+    return "\n".join(parts)
+
+
 @mcp.tool()
 async def nodes_to_science_data(
     nodes_json_path: str,
@@ -114,12 +178,15 @@ async def nodes_to_science_data(
         metrics_str = json.dumps(n.get("metrics", {}), ensure_ascii=False)
         artifact_text = _node_artifacts_text(n, max_chars=1500)
         summary = n.get("eval_summary", "")
+        source_code = _collect_source_files(n, max_total=4000)
         lines = [
             f"{indent}[{label.upper()} depth={n.get('depth', depth)}]",
             f"{indent}  metrics: {metrics_str}",
             f"{indent}  summary: {summary[:200]}",
             f"{indent}  artifacts: {artifact_text[:800]}",
         ]
+        if source_code:
+            lines.append(f"{indent}  source_files:\n{source_code}")
         return "\n".join(lines)
 
     # Traverse tree breadth-first, preserving parent→child relationships
@@ -161,9 +228,15 @@ async def nodes_to_science_data(
         "  - 'ablation_axes': list of the most scientifically meaningful dimensions to ablate\n\n"
         "Also include an 'experiment_context' object with all other findings. "
         "Use clear field names with units where applicable.\n\n"
+        "The experiment tree may include actual source code and scripts from the "
+        "experiment directories (under 'source_files:'). If present, extract all "
+        "details from the code that an independent researcher would need to "
+        "reproduce the exact same results. Include these under "
+        "'implementation_details' within 'experiment_context'. "
+        "Extract ONLY what is actually present — do not invent details.\n\n"
         "Return ONLY valid JSON with keys 'evaluation_protocol' and 'experiment_context'. "
         "No markdown fences.\n\n"
-        f"EXPERIMENT TREE:\n{artifacts_combined[:8000]}"
+        f"EXPERIMENT TREE:\n{artifacts_combined[:16000]}"
     )
 
     experiment_context: dict = {}

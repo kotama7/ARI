@@ -2,4 +2,4 @@ name: evaluator-skill
 display_name: "Evaluate results"
 description: "LLM peer-review agent scores nodes to guide BFTS search direction"
 requires_env: []
-version: "0.3.0"
+version: "0.4.0"

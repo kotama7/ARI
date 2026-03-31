@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -51,7 +52,7 @@ def _setup_logging(cfg_logging, run_id: str) -> None:
 def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
               checkpoint_dir, run_id, total_processed=0):
     from ari.orchestrator.node import NodeStatus
-    max_workers = min(cfg.bfts.max_parallel_nodes, 4)
+    max_workers = max(1, min(cfg.bfts.max_parallel_nodes, 4))
 
     # frontier: completed nodes not yet expanded (true BFTS: expand on demand)
     frontier: list = []
@@ -138,11 +139,16 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                 if _max_cpus:
                     d["slurm_max_cpus"] = _max_cpus
                 return d
+            _timeout_s = cfg.bfts.timeout_per_node
             futures = {executor.submit(agent.run, n, _node_exp(n)): n for n in batch}
             for future in as_completed(futures):
                 node_ref = futures[future]
                 try:
-                    result = future.result()
+                    result = future.result(timeout=_timeout_s)
+                except TimeoutError:
+                    logging.getLogger(__name__).warning("Node %s timed out after %ds", node_ref.id, _timeout_s)
+                    node_ref.mark_failed(error_log=f"timeout: exceeded {_timeout_s}s limit")
+                    result = node_ref
                 except Exception as exc:
                     logging.getLogger(__name__).warning("Node %s raised exception: %s", node_ref.id, exc)
                     node_ref.mark_failed(error_log=f"exception: {exc}")
@@ -214,16 +220,14 @@ def run(
     # Ask LLM to generate a concise descriptive title from experiment content
     _raw_name = experiment.stem  # fallback
     try:
-        import os as _os_t
-        import openai as _oai_t
-        _oai_client = _oai_t.OpenAI(api_key=_os_t.environ.get("OPENAI_API_KEY"))
-        _title_resp = _oai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role":"user","content":
-                f"Generate a concise 3-5 word English title (snake_case, no special chars) for this research goal:\n{experiment_text[:500]}\nReply with ONLY the title."}],
+        from ari.llm.client import LLMClient
+        _title_llm = LLMClient(cfg.llm)
+        _title_resp = _title_llm.complete(
+            [{"role": "user", "content":
+              f"Generate a concise 3-5 word English title (snake_case, no special chars) for this research goal:\n{experiment_text[:500]}\nReply with ONLY the title."}],
             max_tokens=20, temperature=0.3,
         )
-        _raw_name = _title_resp.choices[0].message.content.strip().splitlines()[0]
+        _raw_name = _title_resp.strip().splitlines()[0].strip()
     except Exception:
         # Fallback: skip headings, use first meaningful content line
         _in_goal = False
@@ -269,20 +273,39 @@ def run(
 
     checkpoint_dir = Path(cfg.checkpoint.dir.replace("{run_id}", run_id))
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    agent.checkpoint_dir = str(checkpoint_dir)
+    # Copy experiment.md into checkpoint dir so the dashboard can display it immediately
+    import shutil as _shutil_cp
+    try:
+        _shutil_cp.copy2(str(experiment), checkpoint_dir / "experiment.md")
+    except Exception:
+        pass
     # Initialize cost tracker early so BFTS phase is also tracked
     try:
         from ari import cost_tracker as _ct_run
         _ct_run.init(checkpoint_dir)
     except Exception:
         pass
+    # Clear stale pipeline marker from previous run (for resume correctness)
+    (checkpoint_dir / ".pipeline_started").unlink(missing_ok=True)
 
-    total = _run_loop(cfg, bfts, agent, pending, all_nodes,
-                      experiment_data, checkpoint_dir, run_id)
-    console.print(Panel(
-        f"[bold green]Run complete.[/bold green]  Processed {total} nodes  |  Checkpoint: {checkpoint_dir}",
-        title="Done",
-    ))
-    generate_paper_section(all_nodes, experiment_data, checkpoint_dir, mcp, str(config))
+    from ari.pidfile import pid_context
+    with pid_context(checkpoint_dir):
+        total = _run_loop(cfg, bfts, agent, pending, all_nodes,
+                          experiment_data, checkpoint_dir, run_id)
+        console.print(Panel(
+            f"[bold green]Run complete.[/bold green]  Processed {total} nodes  |  Checkpoint: {checkpoint_dir}",
+            title="Done",
+        ))
+        # Resolve config_path: use --config if given, otherwise find package workflow.yaml
+        _pkg_wf = Path(__file__).parent.parent / "config" / "workflow.yaml"
+        _cfg_str = str(config) if config else (str(_pkg_wf) if _pkg_wf.exists() else "")
+        try:
+            generate_paper_section(all_nodes, experiment_data, checkpoint_dir, mcp, _cfg_str)
+        except Exception as _paper_err:
+            console.print(f"[bold red]Paper pipeline failed:[/bold red] {_paper_err}")
+            import traceback
+            traceback.print_exc()
 
 
 @app.command()
@@ -302,7 +325,9 @@ def resume(
         tree_data = json.load(f)
 
     run_id = tree_data["run_id"]
-    experiment_file = tree_data["experiment_file"]
+    # Prefer checkpoint/experiment.md over tree.json path (may be stale)
+    _ckpt_exp_r = checkpoint_dir / "experiment.md"
+    experiment_file = str(_ckpt_exp_r) if _ckpt_exp_r.exists() else tree_data["experiment_file"]
     exp_path = Path(experiment_file)
     experiment_text = exp_path.read_text() if exp_path.exists() else ""
     import re as _re_t3
@@ -358,14 +383,24 @@ def resume(
         raise typer.Exit(0)
 
     _, _, _, bfts, agent, _, _ = build_runtime(cfg, experiment_text)
-    total = _run_loop(cfg, bfts, agent, pending, all_nodes,
-                      experiment_data, checkpoint_dir, run_id, total_processed=completed)
-    _, _, mcp_resume, _, _, _, _ = build_runtime(cfg, experiment_text)
-    console.print(Panel(
-        f"[bold green]Resume complete.[/bold green]  +{total - completed} nodes",
-        title="Done",
-    ))
-    generate_paper_section(all_nodes, experiment_data, checkpoint_dir, mcp_resume, str(config) if config else "")
+    agent.checkpoint_dir = str(checkpoint_dir)
+    from ari.pidfile import pid_context
+    with pid_context(checkpoint_dir):
+        total = _run_loop(cfg, bfts, agent, pending, all_nodes,
+                          experiment_data, checkpoint_dir, run_id, total_processed=completed)
+        _, _, mcp_resume, _, _, _, _ = build_runtime(cfg, experiment_text)
+        console.print(Panel(
+            f"[bold green]Resume complete.[/bold green]  +{total - completed} nodes",
+            title="Done",
+        ))
+        _pkg_wf_r = Path(__file__).parent.parent / "config" / "workflow.yaml"
+        _cfg_str_r = str(config) if config else (str(_pkg_wf_r) if _pkg_wf_r.exists() else "")
+        try:
+            generate_paper_section(all_nodes, experiment_data, checkpoint_dir, mcp_resume, _cfg_str_r)
+        except Exception as _paper_err:
+            console.print(f"[bold red]Paper pipeline failed:[/bold red] {_paper_err}")
+            import traceback
+            traceback.print_exc()
 
 
 @app.command()
@@ -386,7 +421,15 @@ def paper(
         tree_data = json.load(f)
 
     run_id = tree_data["run_id"]
-    experiment_file = str(experiment) if experiment else tree_data.get("experiment_file", "")
+    # Prefer: --experiment flag > checkpoint/experiment.md > tree.json path
+    if experiment:
+        experiment_file = str(experiment)
+    else:
+        _ckpt_exp = checkpoint_dir / "experiment.md"
+        if _ckpt_exp.exists():
+            experiment_file = str(_ckpt_exp)
+        else:
+            experiment_file = tree_data.get("experiment_file", "")
     exp_path = Path(experiment_file)
     experiment_text = exp_path.read_text() if exp_path.exists() else ""
     import re as _re_tp
@@ -429,7 +472,9 @@ def paper(
     from pathlib import Path as _PL
     _pkg_wf = _PL(__file__).parent.parent / "config" / "workflow.yaml"
     _cfg_str = str(config) if config else (str(_pkg_wf) if _pkg_wf.exists() else "")
-    generate_paper_section(all_nodes, experiment_data, checkpoint_dir, mcp_paper, _cfg_str)
+    from ari.pidfile import pid_context
+    with pid_context(checkpoint_dir):
+        generate_paper_section(all_nodes, experiment_data, checkpoint_dir, mcp_paper, _cfg_str)
     console.print("[bold green]Paper pipeline complete.[/bold green]")
 
 

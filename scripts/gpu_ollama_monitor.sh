@@ -11,7 +11,7 @@ LOCAL_PORT=11435
 CHECK_INTERVAL=60
 MAX_WAIT=300
 
-log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >&2; }
 
 # 多重起動防止
 if [ -f "$LOCK_FILE" ]; then
@@ -129,12 +129,12 @@ wait_for_node() {
 }
 
 is_job_running() {
+    [ -n "$1" ] && [ "$(squeue -j "$1" -h -o "%T" 2>/dev/null)" = "RUNNING" ]
+}
 
 is_job_queued() {
     local state; state="$(squeue -j "$1" -h -o "%T" 2>/dev/null)"
     [ -n "$1" ] && { [ "$state" = "RUNNING" ] || [ "$state" = "PENDING" ]; }
-}
-    [ -n "$1" ] && [ "$(squeue -j "$1" -h -o "%T" 2>/dev/null)" = "RUNNING" ]
 }
 
 test_ollama() {

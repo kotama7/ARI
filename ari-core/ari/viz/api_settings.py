@@ -1,78 +1,61 @@
 from __future__ import annotations
-"""ARI viz: api_settings."""
-"""ARI Experiment Tree Visualizer — WebSocket + HTTP server.
+"""ARI viz: api_settings — env keys, settings, workflow, skills, profiles."""
 
-Usage:
-    python -m ari.viz.server --checkpoint ./logs/my_ckpt/ [--port 8765]
-"""
-
-
-import argparse
-import asyncio
 import json
-import re
+import logging
 import os
-import subprocess
-import threading
-import time
-import urllib.parse
-from datetime import datetime, timezone
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Set
-
-try:
-    import websockets
-    from websockets.server import serve as ws_serve
-except ImportError:
-    raise SystemExit("websockets package required: pip install websockets")
-
-# ──────────────────────────────────────────────
-# Shared state
-# ──────────────────────────────────────────────
-
-
 
 from . import state as _st
 
+log = logging.getLogger(__name__)
+
 
 def _api_get_env_keys() -> dict:
-    """Read API keys from project .env first, then ~/.env"""
-    # Prefer .env in ARI project root (2 levels up from server.py)
+    """Read API keys from all .env files (project-specific first, then global)."""
     _here = Path(__file__).parent
+    _ari_root = _here.parent.parent  # /ARI/
     candidates = [
-        _here.parent.parent / ".env",  # /ARI/.env
-        _here.parent / ".env",          # /ARI/ari-core/.env
-        Path.cwd() / ".env",
-        Path.home() / ".env",
+        _ari_root / ".env",             # /ARI/.env (project root — highest priority)
+        _ari_root / "ari-core" / ".env", # /ARI/ari-core/.env
+        Path.home() / ".env",            # ~/.env (global fallback)
     ]
-    env_path = next((p for p in candidates if p.exists()), Path.home() / ".env")
+    if _st._checkpoint_dir:
+        candidates.insert(0, _st._checkpoint_dir / ".env")
     keys = {}
-    if env_path.exists():
+    source = {}  # track which file each key came from
+    # Read all files; first occurrence wins (project > global)
+    for env_path in candidates:
+        if not env_path.exists():
+            continue
         for line in env_path.read_text().splitlines():
             line = line.strip()
-            if not line or line.startswith("#"): continue
+            if not line or line.startswith("#"):
+                continue
             if "=" in line:
                 k, _, v = line.partition("=")
                 k = k.strip(); v = v.strip().strip('"').strip("'")
-                if any(x in k.upper() for x in ["API_KEY","SECRET","TOKEN"]):
-                    keys[k] = v
-    # also check os.environ
-    for k in ["OPENAI_API_KEY","ANTHROPIC_API_KEY","GOOGLE_API_KEY","GEMINI_API_KEY"]:
+                if any(x in k.upper() for x in ["API_KEY", "SECRET", "TOKEN"]):
+                    if k not in keys:
+                        keys[k] = v
+                        source[k] = str(env_path)
+    # Also check os.environ as final fallback
+    for k in ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"]:
         if k not in keys and os.environ.get(k):
             keys[k] = os.environ[k]
-    return {"keys": keys}
+            source[k] = "os.environ"
+    return {"keys": keys, "source": source}
 
 
 
 def _api_save_env_key(body: bytes) -> dict:
-    """Append or update a key in ~/.env"""
+    """Append or update a key in project .env (ARI root)."""
     data = json.loads(body)
     key_name  = data.get("key","").strip()
     key_value = data.get("value","").strip()
     if not key_name or not key_value:
         return {"ok": False, "error": "key and value required"}
-    env_path = Path.home() / ".env"
+    env_path = _st._env_write_path
     lines = env_path.read_text().splitlines() if env_path.exists() else []
     found = False
     new_lines = []
@@ -91,22 +74,51 @@ def _api_save_env_key(body: bytes) -> dict:
 
 
 def _api_get_settings() -> dict:
-    if _st._settings_path.exists():
-        try:
-            return json.loads(_st._settings_path.read_text())
-        except Exception:
-            pass
-    return {
-        "llm_model": os.environ.get("ARI_LLM_MODEL", "gpt-5.2"),
+    # Read workflow.yaml defaults for llm_provider / llm_model fallback
+    _wf_provider = ""
+    _wf_model = ""
+    try:
+        import yaml as _yaml
+        for _wf_path in [
+            Path(__file__).parent.parent.parent / "config" / "workflow.yaml",
+            Path(__file__).parent.parent.parent.parent / "config" / "workflow.yaml",
+        ]:
+            if _wf_path.exists():
+                _wf = _yaml.safe_load(_wf_path.read_text()) or {}
+                _wf_llm = _wf.get("llm", {})
+                _wf_provider = _wf_llm.get("backend", "")
+                _wf_model = _wf_llm.get("model", "")
+                break
+    except Exception:
+        pass
+    defaults = {
+        "llm_model": os.environ.get("ARI_LLM_MODEL", "") or _wf_model,
+        "llm_provider": os.environ.get("ARI_BACKEND", "") or _wf_provider,
         "llm_api_key": "",
+        "ollama_host": os.environ.get("OLLAMA_HOST", "http://localhost:11434"),
         "temperature": 1.0,
         "semantic_scholar_key": "",
         "slurm_partition": "",
-        "slurm_cpus": 8,
-        "slurm_memory_gb": 32,
+        "slurm_cpus": None,
+        "slurm_memory_gb": None,
+        "slurm_gpus": 0,
         "slurm_walltime": "04:00:00",
         "mcp_skills": [],
     }
+    if _st._settings_path.exists():
+        try:
+            saved = json.loads(_st._settings_path.read_text())
+            # Merge: saved values override defaults, but missing keys get defaults
+            merged = {**defaults, **saved}
+            # If saved values are empty, fall back to workflow.yaml defaults
+            if not merged.get("llm_provider"):
+                merged["llm_provider"] = _wf_provider
+            if not merged.get("llm_model"):
+                merged["llm_model"] = _wf_model
+            return merged
+        except Exception:
+            log.warning("Failed to load settings.json", exc_info=True)
+    return defaults
 
 
 
@@ -114,6 +126,33 @@ def _api_get_settings() -> dict:
 
 def _api_save_settings(body: bytes) -> dict:
     data = json.loads(body)
+    # Extract API key — write to .env instead of settings.json
+    _raw_key = data.pop("api_key", "") or data.pop("llm_api_key", "") or ""
+    # Also remove from the dict so it's never persisted in settings.json
+    data.pop("api_key", None)
+    data.pop("llm_api_key", None)
+    if _raw_key and "test" not in _raw_key and len(_raw_key) >= 20:
+        _provider = data.get("llm_provider", "") or data.get("llm_backend", "")
+        _env_key_name = {
+            "openai": "OPENAI_API_KEY",
+            "anthropic": "ANTHROPIC_API_KEY",
+            "gemini": "GOOGLE_API_KEY",
+        }.get(_provider, "")
+        if _env_key_name:
+            _env_path = _st._env_write_path
+            _lines = _env_path.read_text().splitlines() if _env_path.exists() else []
+            _found = False
+            _new_lines = []
+            for _line in _lines:
+                if _line.strip().startswith(_env_key_name + "="):
+                    _new_lines.append(f"{_env_key_name}={_raw_key}")
+                    _found = True
+                else:
+                    _new_lines.append(_line)
+            if not _found:
+                _new_lines.append(f"{_env_key_name}={_raw_key}")
+            _env_path.write_text("\n".join(_new_lines) + "\n")
+            os.environ[_env_key_name] = _raw_key
     _st._settings_path.parent.mkdir(parents=True, exist_ok=True)
     _st._settings_path.write_text(json.dumps(data, indent=2))
     return {"ok": True}
@@ -126,8 +165,9 @@ def _api_get_workflow() -> dict:
     wf_candidates = [
         Path(__file__).parent.parent.parent / "config" / "workflow.yaml",
         Path(__file__).parent.parent.parent.parent / "config" / "workflow.yaml",
-        Path.cwd() / "config" / "workflow.yaml",
     ]
+    if _st._checkpoint_dir:
+        wf_candidates.insert(0, _st._checkpoint_dir / "workflow.yaml")
     for wf in wf_candidates:
         if wf.exists():
             try:
@@ -149,7 +189,7 @@ def _api_get_workflow() -> dict:
                                 "dir": skill_dir.name,
                             }
                         except Exception:
-                            pass
+                            log.debug("skill metadata read error", exc_info=True)
                 # Also collect from workflow.yaml skills section
                 for sk in data.get("skills", []):
                     sk_name = sk.get("name", "")
@@ -161,29 +201,17 @@ def _api_get_workflow() -> dict:
                             "version": "",
                             "dir": "",
                         }
-                # BFTS experiment loop stages (from ari-core code, not workflow.yaml)
-                bfts_pipeline = [
-                    {"stage": "generate_idea", "skill": "idea-skill", "tool": "generate_ideas",
-                     "description": "LLM generates research hypotheses for BFTS root node",
-                     "depends_on": [], "enabled": True, "phase": "bfts"},
-                    {"stage": "expand_node", "skill": "evaluator-skill", "tool": "evaluate_node",
-                     "description": "BFTS selects best node; LLM generates code + runs HPC job",
-                     "depends_on": ["generate_idea"], "enabled": True, "phase": "bfts"},
-                    {"stage": "evaluate_metrics", "skill": "evaluator-skill", "tool": "evaluate_node",
-                     "description": "Parse stdout/artifacts, extract metrics, score node",
-                     "depends_on": ["expand_node"], "enabled": True, "phase": "bfts"},
-                    {"stage": "bfts_select_next", "skill": "idea-skill", "tool": "generate_ideas",
-                     "description": "LLM selects best completed node to expand (BFTS step); loops back",
-                     "depends_on": ["evaluate_metrics"], "enabled": True, "phase": "bfts",
-                     "loop_back_to": "expand_node"},
-                ]
-                paper_pipeline = []
-                for s in (data.get("pipeline") or []):
-                    s2 = dict(s); s2["phase"] = "paper"; paper_pipeline.append(s2)
-                # Connect BFTS → Paper: paper phase starts after BFTS loop
-                for s in paper_pipeline:
-                    if not s.get("depends_on"):
-                        s["depends_on"] = ["bfts_select_next"]
+                # Read BFTS and paper pipelines from YAML (no hardcoded stages)
+                bfts_pipeline = data.get("bfts_pipeline") or []
+                paper_pipeline = data.get("pipeline") or []
+                # Connect BFTS → Paper: paper stages with empty depends_on
+                # link to the last BFTS stage
+                if bfts_pipeline:
+                    last_bfts = bfts_pipeline[-1]["stage"]
+                    paper_pipeline = [dict(s) for s in paper_pipeline]
+                    for s in paper_pipeline:
+                        if not s.get("depends_on"):
+                            s["depends_on"] = [last_bfts]
                 return {"ok": True, "workflow": data, "path": str(wf), "skill_mcp": skill_mcp,
                         "bfts_pipeline": bfts_pipeline,
                         "paper_pipeline": paper_pipeline,
@@ -195,18 +223,25 @@ def _api_get_workflow() -> dict:
 
 
 def _api_save_workflow(body: bytes) -> dict:
-    """Save modified workflow.yaml."""
+    """Save modified workflow.yaml into active checkpoint."""
     import yaml
+    err = _st.require_checkpoint_dir()
+    if err:
+        return {"ok": False, "error": err, "_status": 400}
     data = json.loads(body)
-    wf_path = data.get("path")
     pipeline = data.get("pipeline")
-    if not wf_path or not pipeline:
-        return {"ok": False, "error": "missing path or pipeline"}
-    wf_p = Path(wf_path)
-    if not wf_p.exists():
-        return {"ok": False, "error": "path not found"}
+    if not pipeline:
+        return {"ok": False, "error": "missing pipeline"}
+    # Always write to checkpoint dir, not arbitrary path
+    wf_p = _st._checkpoint_dir / "workflow.yaml"
     try:
-        existing = yaml.safe_load(wf_p.read_text())
+        existing = {}
+        # Read from source workflow if checkpoint copy doesn't exist yet
+        src_path = data.get("path")
+        if not wf_p.exists() and src_path and Path(src_path).exists():
+            existing = yaml.safe_load(Path(src_path).read_text()) or {}
+        elif wf_p.exists():
+            existing = yaml.safe_load(wf_p.read_text()) or {}
         existing["pipeline"] = pipeline
         wf_p.write_text(yaml.dump(existing, allow_unicode=True, sort_keys=False))
         return {"ok": True}

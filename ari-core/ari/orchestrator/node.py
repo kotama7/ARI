@@ -138,5 +138,5 @@ class Node:
             "name": self.name,
             "error_log": self.error_log,
             "ancestor_ids": self.ancestor_ids,
-            "trace_log": self.trace_log[-200:],  # last 200 entries (avoid huge JSON)
+            "trace_log": self.trace_log[-500:],  # last 500 entries
         }
