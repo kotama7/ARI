@@ -1,23 +1,23 @@
 # ARI CLI 参考
 
-ARI 命令行操作的完整参考。如需查看可视化仪表盘指南，请参阅 [快速入门指南](quickstart.md)。
+ARI 命令行操作的完整参考。CLI 为基于终端的工作流提供与 [Web 仪表盘](quickstart.md)相同的功能。
 
 ---
 
 ## 命令概览
 
-| 命令 | 描述 |
-|------|------|
-| `ari run` | 运行新实验 |
-| `ari resume` | 恢复中断的实验 |
-| `ari paper` | 仅生成论文（跳过实验） |
-| `ari status` | 显示实验树和摘要 |
-| `ari viz` | 启动 Web 仪表盘 |
-| `ari projects` | 列出所有过去的实验 |
-| `ari show` | 显示某次运行的详细结果 |
-| `ari delete` | 删除检查点 |
-| `ari settings` | 查看或修改配置 |
-| `ari skills-list` | 列出可用工具 |
+| 命令 | 描述 | 仪表盘等效操作 |
+|------|------|----------------|
+| `ari run` | 运行新实验 | New Experiment 向导 → Launch |
+| `ari resume` | 恢复中断的实验 | Experiments 页面 → Resume 按钮 |
+| `ari paper` | 仅生成论文（跳过实验） | `POST /api/run-stage {stage: "paper"}` |
+| `ari status` | 显示实验树和摘要 | Monitor / Tree 页面 |
+| `ari viz` | 启动 Web 仪表盘 | -- |
+| `ari projects` | 列出所有过去的实验 | Experiments 页面 |
+| `ari show` | 显示某次运行的详细结果 | Results 页面 |
+| `ari delete` | 删除检查点 | Experiments 页面 → Delete 按钮 |
+| `ari settings` | 查看或修改配置 | Settings 页面 |
+| `ari skills-list` | 列出可用工具 | Settings → MCP Skills |
 
 ---
 

@@ -24,7 +24,7 @@ def _load_data(result_path: str) -> pd.DataFrame:
     """Load data from CSV, JSON, or npy file into a DataFrame."""
     ext = os.path.splitext(result_path)[1].lower()
     if ext == ".csv":
-        return pd.read_csv(result_path)
+        return pd.read_csv(result_path, comment="#")
     elif ext == ".json":
         with open(result_path, "r") as f:
             raw = json.load(f)

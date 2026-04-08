@@ -1,4 +1,27 @@
 
+## v0.4.1 (2026-04-08)
+
+### Homepage & docs
+- New dedicated **Demo** section on the homepage with a top-nav link, hero CTA, and an auto-looping dashboard walkthrough video (en/ja/zh)
+- Inline **window-style sample paper viewer** on the homepage — scroll through all 11 PDF pages without leaving the page (image-based, avoids browser PDF download prompts)
+- New **Prior Work** nav link and `id="inspired"` anchor so the *Inspired By* section (AI Scientist v2 / HPC-AutoResearch / VirSci) is one click away; section title enlarged for visibility
+- `docs/movie/{en,ja,zh}/ari_dashboard_demo.mp4` shipped alongside `docs/sample_paper.pdf`; both are referenced from quickstart guides in all three languages
+- `docs/docs.html` now embeds the dashboard demo video and links to the sample paper from the *First Run* / *Experiment Monitor* sections
+
+### README
+- Added **README language switcher** (`README.md` / `README.ja.md` / `README.zh.md`) with a Languages bar at the top of each
+- Embedded the **dashboard demo video** inline via `<video>` raw URLs (works on github.com)
+- Added a `<details>` collapsible **scrollable sample paper preview** (11 PNG pages) so the paper can be browsed inside the README itself
+- Updated the *Demonstrated Results* table to match the actual sample paper (CSR SpMM / *Stoch-Loopline*: 26.22 GFLOP/s, 105.18 GB/s, +3.53 GFLOP/s prefetch gain on the `fx700` node) — replaces the previous stale stencil-benchmark numbers
+- Test count badge bumped from `60 passed` to `1200+` to reflect the current ~1240-test suite
+
+### i18n
+- New keys for the Demo section, Prior Work nav, sample-paper viewer captions, and watch-demo CTAs across `en.js` / `ja.js` / `zh.js`
+- `i18n.js` now force-`load()` + `play()`s every `<video[autoplay]>` after each `innerHTML` replacement, so language switches and dynamic insertions don't break dashboard auto-loop playback (with timed retries for slow preview iframes)
+
+### Assets
+- `docs/images/sample_paper/page-01.png` … `page-11.png` — 110 DPI PNG renders of the sample paper, used by the homepage viewer and the README `<details>` block
+
 ## v0.4.0 (2026-03-31)
 
 ### GUI Dashboard

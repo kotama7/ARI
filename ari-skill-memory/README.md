@@ -8,8 +8,7 @@ Prevents cross-contamination between parallel BFTS search branches.
 ## Concept
 
 In BFTS, nodes at the same depth run in parallel as independent branches.
-Each branch should only learn from its own ancestors — not from sibling branches.
-
+Each branch should only learn from its own ancestors — not from sibling br
 ```
 root (surveys literature → saves to memory)
  ├─ node_A (can recall root memory)

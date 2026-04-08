@@ -57,6 +57,27 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
     # frontier: completed nodes not yet expanded (true BFTS: expand on demand)
     frontier: list = []
 
+    # Load idea context from checkpoint for BFTS expansion
+    _idea_ctx_for_expand = ""
+    from pathlib import Path as _Path_idea
+    _idea_json_path = _Path_idea(checkpoint_dir) / "idea.json"
+    if _idea_json_path.exists():
+        try:
+            import json as _json_idea
+            _idea_data = _json_idea.loads(_idea_json_path.read_text())
+            _ideas = _idea_data.get("ideas", [])
+            _gap = _idea_data.get("gap_analysis", "")
+            if _ideas:
+                _best = _ideas[0]
+                _idea_ctx_for_expand = (
+                    f"Gap: {_gap[:300]}\n"
+                    f"Idea: {_best.get('title', '')}\n"
+                    f"Description: {_best.get('description', '')[:400]}\n"
+                    f"Plan: {_best.get('experiment_plan', '')[:400]}"
+                )
+        except Exception:
+            pass
+
     while pending or (frontier and len(all_nodes) < cfg.bfts.max_total_nodes):
         # --- BFTS STEP: expand the best frontier node if we need more work ---
         # all_nodes tracks every node ever created (root + all children)
@@ -72,7 +93,23 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                 console.print(f"  [yellow]Pruned frontier node {best.id[-8:]}[/yellow]")
                 continue
             try:
-                children = bfts.expand(best, experiment_goal=experiment_data.get("goal", ""))
+                # Reload idea context if not yet loaded (root node creates idea.json during run)
+                if not _idea_ctx_for_expand and _idea_json_path.exists():
+                    try:
+                        _idea_data = _json_idea.loads(_idea_json_path.read_text())
+                        _ideas = _idea_data.get("ideas", [])
+                        _gap = _idea_data.get("gap_analysis", "")
+                        if _ideas:
+                            _best = _ideas[0]
+                            _idea_ctx_for_expand = (
+                                f"Gap: {_gap[:300]}\n"
+                                f"Idea: {_best.get('title', '')}\n"
+                                f"Description: {_best.get('description', '')[:400]}\n"
+                                f"Plan: {_best.get('experiment_plan', '')[:400]}"
+                            )
+                    except Exception:
+                        pass
+                children = bfts.expand(best, experiment_goal=experiment_data.get("goal", ""), idea_context=_idea_ctx_for_expand)
                 all_nodes.extend(children)
                 pending.extend(children)
                 _budget -= len(children)

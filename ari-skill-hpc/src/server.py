@@ -238,7 +238,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     client = _get_slurm_client()
     try:
         if name == "run_bash":
-            import subprocess
+            import subprocess, platform
             cmd = arguments.get("command", "")
             _cwd = arguments.get("cwd") or os.environ.get("ARI_WORK_DIR") or None
             if _cwd:
@@ -251,7 +251,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 out = (result.stdout or "") + (result.stderr or "")
             except subprocess.TimeoutExpired:
                 out = "ERROR: command timed out after 120 seconds"
-            return [TextContent(type="text", text=out.strip() or "(empty output)")]
+            # Prepend host architecture so the LLM knows where this ran
+            _arch = platform.machine()  # e.g. x86_64, aarch64
+            _host_tag = f"[run_bash host: {_arch}]"
+            return [TextContent(type="text", text=f"{_host_tag}\n{out.strip() or '(empty output)'}")]
         if name == "slurm_submit":
             result = await client.submit(
                 script=arguments["script"],
@@ -278,6 +281,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             result = await singularity.run_gpu(client, arguments)
         else:
             result = {"error": f"Unknown tool: {name}"}
+    except Exception as exc:
+        result = {"error": f"{name} failed: {type(exc).__name__}: {exc}"}
     finally:
         client.close()
 

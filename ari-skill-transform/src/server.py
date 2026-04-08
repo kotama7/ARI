@@ -128,7 +128,7 @@ def _collect_source_files(node: dict, max_total: int = 32000) -> str:
     if not dirs_seen:
         return ""
 
-    # Accept any text-based source file; exclude known binary/data extensions
+    # Exclude known binary and non-text extensions
     _binary_exts = {
         ".o", ".a", ".so", ".dylib", ".dll", ".exe", ".bin",
         ".pyc", ".pyo", ".class", ".jar",
@@ -163,11 +163,9 @@ def _collect_source_files(node: dict, max_total: int = 32000) -> str:
             snippet = text[:8000]
             entry = f"── {f.name} ──\n{snippet}\n"
             if total + len(entry) > max_total:
-                break
+                continue  # try remaining smaller files
             parts.append(entry)
             total += len(entry)
-        if total >= max_total:
-            break
 
     return "\n".join(parts)
 
@@ -207,8 +205,17 @@ async def nodes_to_science_data(
         return {"error": "No successful nodes with real data found", "configurations": []}
 
     # Build ranked configurations (no domain-specific sorting — pass all to LLM)
+    # Include eval_summary and label so downstream stages (paper writing,
+    # reproducibility check) can associate each metric with the experiment
+    # that produced it (kernel type, configuration, setup).
     ranked = [
-        {"rank": i + 1, "parameters": {}, "metrics": n.get("metrics", {})}
+        {
+            "rank": i + 1,
+            "parameters": {},
+            "metrics": n.get("metrics", {}),
+            "label": n.get("label", ""),
+            "eval_summary": (n.get("eval_summary") or "")[:400],
+        }
         for i, n in enumerate(good_nodes)
     ]
 
@@ -242,7 +249,7 @@ async def nodes_to_science_data(
         artifact_text = _node_artifacts_text(n, max_chars=1500)
         tool_outputs = _node_tool_outputs(n, max_chars=2000)
         summary = n.get("eval_summary", "")
-        source_code = _collect_source_files(n, max_total=4000)
+        source_code = _collect_source_files(n, max_total=16000)
         lines = [
             f"{indent}[{label.upper()} depth={n.get('depth', depth)}]",
             f"{indent}  metrics: {metrics_str}",
@@ -355,7 +362,7 @@ async def nodes_to_science_data(
     # so the paper writer can describe implementations with full fidelity.
     _best_sources = {}
     for n in good_nodes[:3]:
-        src = _collect_source_files(n, max_total=8000)
+        src = _collect_source_files(n, max_total=16000)
         if src:
             label = n.get("label", n.get("id", "?"))[:30]
             _best_sources[label] = src

@@ -81,12 +81,16 @@ def _s2_api_key() -> str:
 S2_BASE = "https://api.semanticscholar.org/graph/v1"
 S2_FIELDS = "title,abstract,year,citationCount,authors"
 
+def _sanitize(text: str) -> str:
+    """Strip null bytes and other control chars that break API JSON parsing."""
+    return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", text)
+
 async def _llm(system: str, user: str, temperature: float = 0.7) -> str:
     kwargs: dict[str, Any] = {
         "model": _model(),
         "messages": [
-            {"role": "system", "content": system},
-            {"role": "user",   "content": user},
+            {"role": "system", "content": _sanitize(system)},
+            {"role": "user",   "content": _sanitize(user)},
         ],
         "temperature": temperature,
         "timeout": 120,
@@ -94,9 +98,16 @@ async def _llm(system: str, user: str, temperature: float = 0.7) -> str:
     base = _api_base()
     if base:
         kwargs["api_base"] = base
-    resp = await litellm.acompletion(**kwargs)
-    raw = resp.choices[0].message.content or ""
-    return re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+    last_err: Exception | None = None
+    for _attempt in range(3):
+        try:
+            resp = await litellm.acompletion(**kwargs)
+            raw = resp.choices[0].message.content or ""
+            return re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+        except Exception as e:
+            last_err = e
+            await asyncio.sleep(2 ** _attempt)
+    raise last_err  # type: ignore[misc]
 
 # ── Semantic Scholar paper retrieval (replaces VirSci's paper_search) ─────────
 

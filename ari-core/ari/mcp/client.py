@@ -12,6 +12,7 @@ import asyncio
 import atexit
 import logging
 import sys
+import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -26,6 +27,11 @@ logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
 RETRY_DELAY = 0.5
+DEFAULT_TOOL_TIMEOUT = 300   # seconds
+# Tools that perform internal LLM calls or heavy processing need longer timeouts
+SLOW_TOOL_TIMEOUT = 600      # seconds
+_SLOW_TOOLS = frozenset({"generate_ideas", "write_paper_iterative", "review_compiled_paper",
+                          "collect_references_iterative", "reproduce_from_paper"})
 
 
 class _SkillConnection:
@@ -35,6 +41,7 @@ class _SkillConnection:
         self.skill = skill
         self._session: ClientSession | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._loop_thread: threading.Thread | None = None
         self._context_stack: Any = None
 
     def _skill_path(self) -> Path:
@@ -100,34 +107,38 @@ class _SkillConnection:
             self._context_stack = None
             self._session = None
 
-    def _run(self, coro: Any) -> Any:
-        """Run a coroutine safely regardless of calling thread context.
+    def _ensure_loop(self) -> None:
+        """Ensure the dedicated event loop thread is running.
 
-        When called from a thread that already has a running event loop
-        (e.g. asyncio executor thread), create a fresh loop in the current
-        thread to avoid 'This event loop is already running' errors.
+        A single daemon thread runs ``loop.run_forever()`` for the
+        lifetime of this connection.  All coroutines are submitted via
+        ``asyncio.run_coroutine_threadsafe`` and therefore serialised on
+        the loop — no concurrent ``run_until_complete`` conflicts.
         """
-        import threading as _threading
+        if (
+            self._loop is not None
+            and not self._loop.is_closed()
+            and self._loop_thread is not None
+            and self._loop_thread.is_alive()
+        ):
+            return
+        self._loop = asyncio.new_event_loop()
+        self._loop_thread = threading.Thread(
+            target=self._loop.run_forever, daemon=True,
+        )
+        self._loop_thread.start()
 
-        # Check if there's already a running loop in the current thread
-        try:
-            running = asyncio.get_running_loop()
-        except RuntimeError:
-            running = None
+    def _run(self, coro: Any, timeout: int = DEFAULT_TOOL_TIMEOUT) -> Any:
+        """Run a coroutine on the connection's dedicated event loop thread.
 
-        if running is not None:
-            # We're inside a running loop (e.g. executor thread spawned by asyncio).
-            # Create a brand-new loop for this MCP call.
-            new_loop = asyncio.new_event_loop()
-            try:
-                return new_loop.run_until_complete(coro)
-            finally:
-                new_loop.close()
-        else:
-            # Normal sync context — use per-connection loop.
-            if self._loop is None or self._loop.is_closed():
-                self._loop = asyncio.new_event_loop()
-            return self._loop.run_until_complete(coro)
+        Thread-safe: concurrent callers are queued on the single loop via
+        ``asyncio.run_coroutine_threadsafe``, so there is no risk of
+        "This event loop is already running".
+        """
+        self._ensure_loop()
+        assert self._loop is not None
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        return future.result(timeout=timeout)
 
     def ensure_connected(self) -> None:
         if self._session is None:
@@ -151,21 +162,33 @@ class _SkillConnection:
 
         return self._run(_list())
 
-    def call_tool(self, tool_name: str, args: dict) -> dict:
+    def call_tool(self, tool_name: str, args: dict, timeout: int = DEFAULT_TOOL_TIMEOUT) -> dict:
         self.ensure_connected()
 
         async def _call() -> dict:
             assert self._session is not None
             result = await self._session.call_tool(tool_name, args)
             parts = [p.text for p in result.content if hasattr(p, "text")]
-            return {"result": "\n".join(parts) if parts else ""}
+            text = "\n".join(parts) if parts else ""
+            if not text:
+                return {"error": f"Tool '{tool_name}' returned empty response — the tool may have crashed or timed out."}
+            return {"result": text}
 
-        return self._run(_call())
+        return self._run(_call(), timeout=timeout)
 
     def close(self) -> None:
         if self._loop and not self._loop.is_closed():
-            self._loop.run_until_complete(self._stop())
+            # Submit _stop() to the loop thread (same path as _run)
+            future = asyncio.run_coroutine_threadsafe(self._stop(), self._loop)
+            try:
+                future.result(timeout=30)
+            except Exception:
+                pass
+            self._loop.call_soon_threadsafe(self._loop.stop)
+            if self._loop_thread is not None:
+                self._loop_thread.join(timeout=5)
             self._loop.close()
+        self._loop_thread = None
 
 
 class MCPClient:
@@ -237,10 +260,12 @@ class MCPClient:
                 return {"error": f"Skill '{skill_name}' not found"}
             conn = self._init_connection(skill)
 
+        timeout = SLOW_TOOL_TIMEOUT if tool_name in _SLOW_TOOLS else DEFAULT_TOOL_TIMEOUT
+
         last_error = ""
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                return conn.call_tool(tool_name, args)
+                return conn.call_tool(tool_name, args, timeout=timeout)
             except Exception as e:
                 last_error = f"{type(e).__name__}: {e}"
                 logger.warning(

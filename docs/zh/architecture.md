@@ -172,17 +172,31 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
 
 ### 技能（MCP 服务器）
 
-| 技能 | 工具 | 角色 |
-|------|------|------|
-| `ari-skill-hpc` | `run_bash`、`slurm_submit`、`job_status`、`read_output` | 代码执行 / HPC 作业管理 |
-| `ari-skill-memory` | `add_memory`、`search_memory`、`get_node_memory` | 祖先链实验记忆 |
-| `ari-skill-idea` | `survey`、`generate_ideas`、`make_metric_spec` | 文献搜索 + 假设生成（VirSci） |
-| `ari-skill-evaluator` | `make_metric_spec` | 指标规格生成（领域无关） |
-| `ari-skill-transform` | `nodes_to_science_data` | LLM 驱动的完整树分析 → science_data.json |
-| `ari-skill-web` | `search_semantic_scholar` | 学术文献搜索 |
-| `ari-skill-plot` | `generate_figures_llm` | LLM 编写 matplotlib → PDF 图表 |
-| `ari-skill-paper` | `write_paper_iterative`、`review_compiled_paper` | LaTeX 论文撰写 + 同行评审 |
-| `ari-skill-paper-re` | `reproduce_from_paper` | 可复现性验证智能体 |
+**默认技能**（在 `workflow.yaml` 中注册）：
+
+| 技能 | 工具 | 角色 | LLM? |
+|------|------|------|------|
+| `ari-skill-hpc` | `slurm_submit`、`job_status`、`job_cancel`、`run_bash`、`singularity_build`、`singularity_run`、`singularity_pull`、`singularity_build_fakeroot`、`singularity_run_gpu` | HPC 作业管理 + Singularity 容器 | ✗ |
+| `ari-skill-memory` | `add_memory`、`search_memory`、`get_node_memory`、`clear_node_memory` | 祖先链实验记忆（JSONL） | ✗ |
+| `ari-skill-idea` | `survey`、`generate_ideas` | 文献搜索（Semantic Scholar）+ VirSci 多智能体假设生成 | ✓ |
+| `ari-skill-evaluator` | `make_metric_spec` | 从实验文件提取指标规格 | △ |
+| `ari-skill-transform` | `nodes_to_science_data` | BFTS 树 → 面向科学的数据（剥离内部字段） | ✓ |
+| `ari-skill-web` | `web_search`、`fetch_url`、`search_arxiv`、`search_semantic_scholar`、`collect_references_iterative` | 网络搜索、arXiv、Semantic Scholar、迭代式引用收集 | △ |
+| `ari-skill-plot` | `generate_figures`、`generate_figures_llm` | 确定性 + LLM 驱动的 matplotlib 图表生成 | ✓ |
+| `ari-skill-paper` | `list_venues`、`get_template`、`generate_section`、`compile_paper`、`check_format`、`review_section`、`revise_section`、`write_paper_iterative`、`review_compiled_paper` | LaTeX 论文撰写、编译、同行评审 | ✓ |
+| `ari-skill-paper-re` | `extract_metric_from_output`、`reproduce_from_paper` | ReAct 可复现性验证智能体 | ✓ |
+
+**附加技能**（可用，不在默认工作流中）：
+
+| 技能 | 工具 | 角色 | LLM? |
+|------|------|------|------|
+| `ari-skill-coding` | `write_code`、`run_code`、`run_bash` | 代码生成 + 执行 | ✗ |
+| `ari-skill-benchmark` | `analyze_results`、`plot`、`statistical_test` | CSV/JSON/NPY 分析、绘图、scipy 统计 | ✗ |
+| `ari-skill-review` | `parse_review`、`generate_rebuttal`、`check_rebuttal` | 同行评审解析 + 反驳生成 | ✓ |
+| `ari-skill-vlm` | `review_figure`、`review_table` | 视觉语言模型图表/表格审查 | ✓ |
+| `ari-skill-orchestrator` | `run_experiment`、`get_status`、`list_runs`、`get_paper` | 将 ARI 作为 MCP 服务器暴露给外部智能体/IDE | ✗ |
+
+✗ = 无 LLM、△ = 仅部分工具使用 LLM、✓ = 主要工具使用 LLM。
 
 ---
 

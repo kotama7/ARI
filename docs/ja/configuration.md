@@ -10,16 +10,42 @@ skill パスには `{{ari_root}}` を使用してください — これは `$AR
 ```yaml
 llm:
   backend: openai          # ollama | openai | anthropic
-  model: gpt-4o            # モデル識別子
+  model: gpt-5.2           # モデル識別子
   base_url: ""             # OpenAI の場合は空、Ollama/vLLM の場合は設定
 
 author_name: "Artificial Research Intelligence"
 
 resources:
-  cpus: 32                 # 再現性実験のデフォルト CPU 数
-  timeout_minutes: 15      # デフォルトのジョブタイムアウト
+  cpus: 48                 # 再現性実験のデフォルト CPU 数
+  timeout_minutes: 60      # デフォルトのジョブタイムアウト
+  executor: slurm          # ジョブエグゼキュータ: slurm / local / pbs / lsf
 
+# BFTS フェーズステージ（ツリー探索中に順次実行）
+bfts_pipeline:
+  - stage: generate_idea
+    skill: idea-skill
+    tool: generate_ideas
+    phase: bfts
+  - stage: select_and_run
+    skill: hpc-skill
+    phase: bfts
+  - stage: evaluate
+    skill: evaluator-skill
+    tool: evaluate_node
+    phase: bfts
+  - stage: frontier_expand
+    skill: idea-skill
+    tool: generate_ideas
+    phase: bfts
+    loop_back_to: select_and_run
+
+# Post-BFTS パイプラインステージ
 pipeline:
+  - stage: search_related_work
+    skill: web-skill
+    tool: collect_references_iterative
+    skip_if_exists: '{{ckpt}}/related_refs.json'
+    # ...
   - stage: transform_data
     skill: transform-skill
     tool: nodes_to_science_data
@@ -29,26 +55,47 @@ pipeline:
       llm_base_url: '{{llm.base_url}}'
     outputs:
       file: '{{ckpt}}/science_data.json'
-
-  # ... 追加ステージ (generate_figures, search_related_work, write_paper, ...)
+    skip_if_exists: '{{ckpt}}/science_data.json'
+  - stage: generate_figures
+    skill: plot-skill
+    tool: generate_figures_llm
+    depends_on: [transform_data]
+    # ...
+  - stage: write_paper
+    skill: paper-skill
+    tool: write_paper_iterative
+    depends_on: [search_related_work, generate_figures]
+    # ...
+  - stage: review_paper
+    skill: paper-skill
+    tool: review_compiled_paper
+    depends_on: [write_paper]
+    # ...
+  - stage: reproducibility_check
+    skill: paper-re-skill
+    tool: reproduce_from_paper
+    depends_on: [write_paper]
+    # ...
 
 skills:
-  - name: memory-skill
-    path: "{{ari_root}}/ari-skill-memory"
-  - name: idea-skill
-    path: "{{ari_root}}/ari-skill-idea"
-  - name: hpc-skill
-    path: "{{ari_root}}/ari-skill-hpc"
-  - name: evaluator-skill
-    path: "{{ari_root}}/ari-skill-evaluator"
-  - name: transform-skill
-    path: "{{ari_root}}/ari-skill-transform"
+  - name: web-skill
+    path: "{{ari_root}}/ari-skill-web"
   - name: plot-skill
     path: "{{ari_root}}/ari-skill-plot"
   - name: paper-skill
     path: "{{ari_root}}/ari-skill-paper"
   - name: paper-re-skill
     path: "{{ari_root}}/ari-skill-paper-re"
+  - name: memory-skill
+    path: "{{ari_root}}/ari-skill-memory"
+  - name: evaluator-skill
+    path: "{{ari_root}}/ari-skill-evaluator"
+  - name: idea-skill
+    path: "{{ari_root}}/ari-skill-idea"
+  - name: hpc-skill
+    path: "{{ari_root}}/ari-skill-hpc"
+  - name: transform-skill
+    path: "{{ari_root}}/ari-skill-transform"
 ```
 
 ## 環境変数
@@ -88,7 +135,7 @@ llm:
 ```yaml
 llm:
   backend: anthropic
-  model: claude-opus-4-5
+  model: claude-sonnet-4-5
 ```
 
 ### 任意の OpenAI 互換 API（vLLM、LM Studio など）

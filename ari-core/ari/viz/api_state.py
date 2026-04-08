@@ -109,17 +109,34 @@ def _api_checkpoints() -> list:
                     "node_count": 0, "review_score": None, "best_metric": None, "mtime": 0}
             try:
                 info["mtime"] = int(d.stat().st_mtime)
+                _resolved = str(Path(d).resolve())
                 # Check if this is the active checkpoint with a tracked process
                 _is_active = bool(
                     _st._checkpoint_dir
-                    and Path(d).resolve() == Path(_st._checkpoint_dir).resolve()
+                    and _resolved == str(Path(_st._checkpoint_dir).resolve())
                 )
+                # Check in-memory process tracking (supports multiple experiments)
+                _tracked_proc = _st._running_procs.get(_resolved)
+                if _tracked_proc and _tracked_proc.poll() is not None:
+                    # Process finished — remove from tracking
+                    del _st._running_procs[_resolved]
+                    _tracked_proc = None
                 _proc_alive = bool(
-                    _is_active and _st._last_proc and _st._last_proc.poll() is None
+                    (_is_active and _st._last_proc and _st._last_proc.poll() is None)
+                    or _tracked_proc
                 )
-                if _is_active:
-                    info["status"] = "running" if _proc_alive else "stopped"
-                # Prefer tree.json (has trace_log) over nodes_tree.json
+                # Phase 1: Determine status from process tracking / PID file
+                if _proc_alive:
+                    info["status"] = "running"
+                elif _is_active:
+                    info["status"] = "stopped"
+                elif not _is_active:
+                    # Non-active: check .ari_pid (handles cross-instance case)
+                    _pid_status = _check_pid_alive(d)
+                    if _pid_status == "running":
+                        info["status"] = "running"
+                    # else: leave "unknown" for tree.json to refine
+                # Phase 2: Refine status from tree.json node data
                 nt = d / "nodes_tree.json"
                 tf = d / "tree.json"
                 if tf.exists() and tf.stat().st_size > 0:
@@ -130,15 +147,13 @@ def _api_checkpoints() -> list:
                         nodes = tree.get("nodes", [])
                         info["node_count"] = len(nodes)
                         statuses = {n.get("status") for n in nodes}
-                        if "running" in statuses:
-                            if _proc_alive:
-                                info["status"] = "running"
-                            elif not _is_active:
-                                # Non-active checkpoint: use .ari_pid to check
-                                # if the owning process is still alive
-                                info["status"] = _check_pid_alive(d)
-                        elif nodes:
-                            info["status"] = "completed"
+                        # Only refine status when process-based checks left it "unknown"
+                        if nodes and info["status"] not in ("running", "stopped"):
+                            if "running" in statuses:
+                                # Tree says running but no live process → orphaned
+                                info["status"] = "stopped"
+                            else:
+                                info["status"] = "completed"
                         # Fallback score from scientific_score if no review
                         if nodes:
                             sci_scores = [n.get("scientific_score") for n in nodes if n.get("scientific_score") is not None]
@@ -239,11 +254,13 @@ def _api_delete_checkpoint(body: bytes) -> dict:
     if "checkpoints" not in str(p) and "checkpoints" not in str(path):
         return {"error": "refusing to delete outside checkpoints/"}
     try:
-        if _st._checkpoint_dir and Path(_st._checkpoint_dir).resolve() == p.resolve():
+        _resolved_del = str(p.resolve())
+        if _st._checkpoint_dir and str(Path(_st._checkpoint_dir).resolve()) == _resolved_del:
             _st._checkpoint_dir = None  # Deselect if deleting active checkpoint
             _st._last_log_path = None   # Clear log path to stop stale log display
             _st._last_experiment_md = None
             _st._last_proc = None       # Clear process ref to stop log streaming
+        _st._running_procs.pop(_resolved_del, None)  # Clean up process tracking
         # Collect log files in parent dir that were created around the same time
         parent = p.parent
         deleted_logs = []

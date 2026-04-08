@@ -1,23 +1,23 @@
 # ARI CLI Reference
 
-Complete reference for ARI command-line operations. For the visual dashboard guide, see [QuickStart Guide](quickstart.md).
+Complete reference for ARI command-line operations. The CLI provides the same functionality as the [web dashboard](quickstart.md) for terminal-based workflows.
 
 ---
 
 ## Commands Overview
 
-| Command | Description |
-|---------|-------------|
-| `ari run` | Run a new experiment |
-| `ari resume` | Resume an interrupted experiment |
-| `ari paper` | Generate paper only (skip experiments) |
-| `ari status` | Show experiment tree and summary |
-| `ari viz` | Launch the web dashboard |
-| `ari projects` | List all past experiments |
-| `ari show` | Show detailed results for a run |
-| `ari delete` | Delete a checkpoint |
-| `ari settings` | View or modify configuration |
-| `ari skills-list` | List available tools |
+| Command | Description | Dashboard Equivalent |
+|---------|-------------|---------------------|
+| `ari run` | Run a new experiment | New Experiment wizard → Launch |
+| `ari resume` | Resume an interrupted experiment | Experiments page → Resume button |
+| `ari paper` | Generate paper only (skip experiments) | `POST /api/run-stage {stage: "paper"}` |
+| `ari status` | Show experiment tree and summary | Monitor / Tree page |
+| `ari viz` | Launch the web dashboard | — |
+| `ari projects` | List all past experiments | Experiments page |
+| `ari show` | Show detailed results for a run | Results page |
+| `ari delete` | Delete a checkpoint | Experiments page → Delete button |
+| `ari settings` | View or modify configuration | Settings page |
+| `ari skills-list` | List available tools | Settings → MCP Skills |
 
 ---
 

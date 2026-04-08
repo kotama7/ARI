@@ -4,6 +4,11 @@
 
 如需使用 CLI（命令行），请参阅 [CLI 参考](cli_reference.md)。
 
+> **安装前先预览**
+>
+> - 🎬 **仪表板演示视频** — [`movie/zh/ari_dashboard_demo.mp4`](../movie/zh/ari_dashboard_demo.mp4) 完整展示 Web UI 的实际操作。
+> - 📄 **示例输出论文** — [`sample_paper.pdf`](../sample_paper.pdf) 是 ARI 实际运行生成的论文，包含图表、引用和可复现性验证报告。
+
 ---
 
 ## 准备工作
@@ -286,6 +291,151 @@ AI 会提出澄清性问题，并自动生成实验文件。
 ![Workflow 页面](images/zh/dashboard_workflow.png)
 
 编辑 BFTS 后管线阶段（数据转换 → 生成图表 → 撰写论文 → 评审 → 可重现性检查）。更改将保存为 `workflow.yaml`。
+
+---
+
+## 仪表盘架构与 API
+
+仪表盘是一个由 Python asyncio HTTP 服务器提供服务的 React/TypeScript SPA（使用 Vite 构建）。它由两个组件组成：
+
+- **HTTP 服务器** (`ari/viz/server.py`): REST API + SSE 日志流（在主端口上）
+- **WebSocket 服务器**: 实时树更新（端口+1，例如仪表盘在 8765 时为 8766）
+
+### API 端点
+
+所有端点可通过 `http://localhost:<port>/` 访问。
+
+#### State & Monitoring
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/state` | GET | 完整的应用状态：当前阶段（idle/idea/bfts/paper/review）、节点数、实验配置、成本数据、LLM 模型信息 |
+| `/api/logs` | GET (SSE) | 来自 `ari.log` 和 `cost_trace.jsonl` 的实时日志 Server-Sent Events 流 |
+| `/memory/<node_id>` | GET | 节点的内存存储条目（工具调用追踪、指标、父链） |
+| `/codefile?path=<path>` | GET | 读取检查点目录中的文件（限制在检查点范围内，最大 2MB） |
+
+#### Experiment Management
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/api/launch` | POST | 启动新实验。请求体：`{experiment_md, profile, model, provider, max_nodes, max_depth, max_react, timeout_min, workers, partition, ...}`。返回：`{ok, pid, checkpoint_path}` |
+| `/api/run-stage` | POST | 运行指定阶段：`{stage: "resume"/"paper"/"review"}` |
+| `/api/stop` | POST | 优雅地停止运行中的实验（SIGTERM → SIGKILL 回退） |
+| `/api/checkpoints` | GET | 列出所有检查点目录及其状态、节点数、评审分数 |
+| `/api/checkpoint/<id>/summary` | GET | 详细摘要：树数据、评审、科学数据、论文文本 |
+| `/api/checkpoint/<id>/paper.pdf` | GET | 下载生成的 PDF |
+| `/api/checkpoint/<id>/paper.tex` | GET | 下载生成的 LaTeX |
+| `/api/active-checkpoint` | GET | 当前活跃的检查点路径 |
+| `/api/switch-checkpoint` | POST | 切换活跃检查点：`{path}` |
+| `/api/delete-checkpoint` | POST | 删除检查点及关联日志：`{path}` |
+| `/api/upload` | POST | 上传文件到活跃检查点（二进制请求体，`X-Filename` 头） |
+
+#### Configuration
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/api/settings` | GET | 当前设置：LLM 提供商/模型、Ollama 主机、SLURM 配置、MCP 技能 |
+| `/api/settings` | POST | 将设置保存到 `~/.ari/settings.json` 和 `.env`。请求体：`{llm_model, llm_provider, ollama_host, slurm_partition, ...}` |
+| `/api/env-keys` | GET | 来自 `.env` 文件的所有 API 密钥及来源信息 |
+| `/api/env-keys` | POST | 保存单个 API 密钥：`{key, value}` |
+| `/api/profiles` | GET | 可用的环境配置文件（laptop, hpc, cloud） |
+| `/api/models` | GET | 可用的 LLM 提供商和模型 |
+| `/api/workflow` | GET | 包含管线阶段和技能元数据的完整 workflow.yaml |
+| `/api/workflow` | POST | 保存修改后的 workflow.yaml：`{path, pipeline}` |
+| `/api/skills` | GET | 列出可用的 MCP 技能及其描述 |
+| `/api/skill/<name>` | GET | 技能详情：README、SKILL.md、server.py 源码 |
+
+#### Wizard & Tools
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/api/chat-goal` | POST | 用于实验目标细化的多轮 LLM 对话：`{messages, context_md}` |
+| `/api/config/generate` | POST | 从自然语言目标生成 experiment.md：`{goal}` |
+| `/api/ssh/test` | POST | 测试 SSH 连接：`{ssh_host, ssh_port, ssh_user, ssh_key, ssh_path}` |
+| `/api/scheduler/detect` | GET | 自动检测计算环境（SLURM, PBS, LSF, Kubernetes） |
+| `/api/slurm/partitions` | GET | 可用的 SLURM 分区 |
+| `/api/ollama-resources` | GET | GPU 信息（nvidia-smi）、可用的 Ollama 模型 |
+| `/api/gpu-monitor` | GET/POST | 启动/停止 GPU 监控守护进程 |
+
+#### WebSocket
+
+| 端点 | 描述 |
+|------|------|
+| `ws://localhost:<port+1>/ws` | 订阅实时树更新。消息格式：`{type: "update", data: tree.json, timestamp}` |
+
+### 安全性
+
+- API 密钥仅存储在 `.env` 文件中，不会存储在 `settings.json` 中
+- 文件访问（`/codefile`）限制在检查点目录范围内
+- 每个实验在独立的进程组中运行以实现隔离
+
+---
+
+## CLI 替代方案
+
+仪表盘的所有操作也可以通过命令行完成：
+
+### 运行实验
+
+```bash
+# 基本运行（自动检测配置）
+ari run experiment.md
+
+# 使用环境配置文件
+ari run experiment.md --profile hpc
+
+# 使用自定义配置
+ari run experiment.md --config ari-core/config/workflow.yaml
+
+# 恢复中断的运行
+ari resume ./checkpoints/20260328_matrix_opt/
+
+# 仅运行论文管线（实验已完成）
+ari paper ./checkpoints/20260328_matrix_opt/
+```
+
+### 监控与结果
+
+```bash
+# 显示节点树和状态
+ari status ./checkpoints/20260328_matrix_opt/
+
+# 列出所有项目
+ari projects
+
+# 显示详细结果（树 + 评审）
+ari show 20260328_matrix_opt
+
+# 列出可用工具
+ari skills-list
+```
+
+### 配置
+
+```bash
+# 查看当前设置
+ari settings
+
+# 更改模型
+ari settings --model openai/gpt-4o
+
+# 设置 SLURM 选项
+ari settings --partition gpu --cpus 64 --mem 128
+```
+
+### 环境变量
+
+| 变量 | 描述 | 默认值 |
+|------|------|--------|
+| `ARI_BACKEND` | LLM 后端：`ollama` / `openai` / `anthropic` | `ollama` |
+| `ARI_MODEL` | 模型名称（例如 `qwen3:8b`、`openai/gpt-4o`） | `qwen3:8b` |
+| `OPENAI_API_KEY` | OpenAI API 密钥 | -- |
+| `ANTHROPIC_API_KEY` | Anthropic API 密钥 | -- |
+| `OLLAMA_HOST` | Ollama 服务器 URL | `http://localhost:11434` |
+| `ARI_MAX_NODES` | 最大实验总数 | `50` |
+| `ARI_PARALLEL` | 并行实验数 | `4` |
+| `ARI_MAX_REACT` | 每个节点的最大 ReAct 步数 | `80` |
+| `ARI_TIMEOUT_NODE` | 每个节点的超时时间（秒） | `7200` |
 
 ---
 

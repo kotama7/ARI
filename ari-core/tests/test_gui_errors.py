@@ -807,8 +807,9 @@ class TestLaunchErrors:
                 "experiment_md": "## Research Goal\nTest goal",
             }).encode())
         if result.get("ok"):
-            exp_path = ckpt.parent / "experiment.md"
-            assert exp_path.exists()
+            # ckpt_parent is the parent of the "checkpoints" dir (not the checkpoint itself)
+            exp_path = ckpt.parent.parent / "experiment.md"
+            assert exp_path.exists(), f"experiment.md not found at {exp_path} (checked {ckpt.parent / 'experiment.md'} too)"
             assert "Test goal" in exp_path.read_text()
 
 
