@@ -109,6 +109,7 @@ def _api_run_stage(body: bytes) -> dict:
             cwd=str(Path(ckpt).parent.resolve()),
             env=proc_env,
         )
+        _st._running_procs[str(Path(ckpt).resolve())] = _st._last_proc
         return {"ok": True, "pid": _st._last_proc.pid, "stage": stage, "cmd": " ".join(cmd)}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -122,14 +123,25 @@ def _api_launch(body: bytes) -> dict:
         return {"ok": False, "error": f"Invalid request body: {e}"}
     profile = data.get("profile", "")
     experiment_md = data.get("experiment_md", "")
-    # Determine checkpoint parent: use _checkpoint_dir's parent (the checkpoints/ root)
-    # For a fresh launch, _checkpoint_dir may not exist yet — anchor to ari-core/
+    # Determine checkpoint parent: always use the canonical checkpoints root.
+    # Walk up from _checkpoint_dir to find the outermost "checkpoints" ancestor,
+    # preventing nested checkpoints/checkpoints/checkpoints/... paths.
+    _ari_root = Path(__file__).resolve().parent.parent.parent.parent  # ARI/
     ckpt_parent = None
     if _st._checkpoint_dir:
-        ckpt_parent = _st._checkpoint_dir.parent  # e.g. .../checkpoints/
+        # Walk up to find the outermost checkpoints/ directory
+        _p = Path(_st._checkpoint_dir).resolve()
+        while _p != _p.parent:
+            if _p.name == "checkpoints" and _p.parent.name != "checkpoints":
+                ckpt_parent = _p.parent  # parent of the real checkpoints/ dir
+                break
+            _p = _p.parent
+        # If no "checkpoints" ancestor found (e.g. test env), use direct parent
+        if ckpt_parent is None:
+            ckpt_parent = Path(_st._checkpoint_dir).parent
     if ckpt_parent is None:
         # Fallback: use ARI/workspace/ — never write into the source tree (ari-core/)
-        ckpt_parent = Path(__file__).resolve().parent.parent.parent.parent / "workspace"
+        ckpt_parent = _ari_root / "workspace"
     try:
         ckpt_parent.mkdir(parents=True, exist_ok=True)
     except OSError as e:
@@ -356,7 +368,10 @@ def _api_launch(body: bytes) -> dict:
             env=proc_env,
             start_new_session=True,
         )
-        return {"ok": True, "pid": _st._last_proc.pid, "checkpoint_root": str(ckpt_root)}
+        _st._running_procs[str(_pre_ckpt.resolve())] = _st._last_proc
+        return {"ok": True, "pid": _st._last_proc.pid,
+                "checkpoint_root": str(ckpt_root),
+                "checkpoint_path": str(_pre_ckpt)}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 

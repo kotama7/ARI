@@ -74,6 +74,105 @@ class TestSubmitLocal:
         assert result["status"] == "error"
         assert "sbatch failed" in result["message"]
 
+    @pytest.mark.asyncio
+    async def test_submit_failure_includes_partition_and_exit_code(self, client: SlurmClient) -> None:
+        """Error response must include partition name and exit code for diagnosis."""
+        mock_proc = AsyncMock()
+        mock_proc.communicate.return_value = (b"", b"sbatch: error: invalid partition specified: (null)")
+        mock_proc.returncode = 1
+
+        with patch("asyncio.create_subprocess_shell", return_value=mock_proc):
+            result = await client.submit(
+                script="echo hello",
+                job_name="test_job",
+                partition="fx700",
+            )
+
+        assert result["status"] == "error"
+        assert "exit=1" in result["message"]
+        assert "partition" in result  # partition key present for diagnosis
+
+    @pytest.mark.asyncio
+    async def test_submit_strips_partition_from_script_body(self, client: SlurmClient) -> None:
+        """LLM-generated #SBATCH --partition= in script body must be stripped.
+
+        The correct partition is set only via header_lines to avoid the bug
+        where _fix_partition wrote an empty partition when env vars were unset.
+        """
+        captured_script = None
+
+        async def mock_shell(cmd, **kwargs):
+            nonlocal captured_script
+            # cmd is "sbatch /tmp/xxx.sh" — read the temp file
+            import re
+            m = re.search(r"sbatch\s+(\S+)", cmd)
+            if m:
+                try:
+                    captured_script = open(m.group(1)).read()
+                except Exception:
+                    pass
+            mock = AsyncMock()
+            mock.communicate.return_value = (b"Submitted batch job 77777\n", b"")
+            mock.returncode = 0
+            return mock
+
+        script_with_partition = (
+            "#!/bin/bash\n"
+            "#SBATCH --partition=wrong_partition\n"
+            "#SBATCH --cpus-per-task=32\n"
+            "echo hello\n"
+        )
+
+        with patch("asyncio.create_subprocess_shell", side_effect=mock_shell), \
+             patch.dict("os.environ", {"SLURM_VALID_PARTITIONS": "", "SLURM_DEFAULT_PARTITION": ""}, clear=False):
+            result = await client.submit(
+                script=script_with_partition,
+                job_name="test_job",
+                partition="fx700",
+            )
+
+        assert result["job_id"] == "77777"
+        # The final script must have exactly ONE --partition line, and it must be fx700
+        if captured_script:
+            import re
+            partitions = re.findall(r"#SBATCH\s+--partition=(\S+)", captured_script)
+            assert len(partitions) == 1, f"Expected 1 partition directive, got {len(partitions)}: {partitions}"
+            assert partitions[0] == "fx700", f"Expected fx700, got {partitions[0]}"
+
+    @pytest.mark.asyncio
+    async def test_submit_no_empty_partition_when_env_unset(self, client: SlurmClient) -> None:
+        """Without SLURM_VALID_PARTITIONS / SLURM_DEFAULT_PARTITION, the kwarg
+        partition must be used as-is — never replaced with an empty string."""
+        captured_script = None
+
+        async def mock_shell(cmd, **kwargs):
+            nonlocal captured_script
+            import re
+            m = re.search(r"sbatch\s+(\S+)", cmd)
+            if m:
+                try:
+                    captured_script = open(m.group(1)).read()
+                except Exception:
+                    pass
+            mock = AsyncMock()
+            mock.communicate.return_value = (b"Submitted batch job 88888\n", b"")
+            mock.returncode = 0
+            return mock
+
+        with patch("asyncio.create_subprocess_shell", side_effect=mock_shell), \
+             patch.dict("os.environ", {"SLURM_VALID_PARTITIONS": "", "SLURM_DEFAULT_PARTITION": ""}, clear=False):
+            result = await client.submit(
+                script="#!/bin/bash\n#SBATCH --partition=fx700\necho hi",
+                job_name="test",
+                partition="fx700",
+            )
+
+        assert result["status"] == "submitted"
+        if captured_script:
+            assert "#SBATCH --partition=\n" not in captured_script, \
+                "Script must NOT contain empty --partition= directive"
+            assert "#SBATCH --partition=fx700" in captured_script
+
 
 class TestStatusLocal:
     @pytest.mark.asyncio

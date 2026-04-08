@@ -172,17 +172,31 @@ nodes_tree.json  (全ノード: メトリクス、成果物、メモリ、親子
 
 ### Skills (MCP サーバー)
 
-| Skill | ツール | 役割 |
-|-------|-------|------|
-| `ari-skill-hpc` | `run_bash`, `slurm_submit`, `job_status`, `read_output` | コード実行 / HPC ジョブ管理 |
-| `ari-skill-memory` | `add_memory`, `search_memory`, `get_node_memory` | 祖先チェーン実験メモリ |
-| `ari-skill-idea` | `survey`, `generate_ideas`, `make_metric_spec` | 文献調査 + 仮説生成（VirSci） |
-| `ari-skill-evaluator` | `make_metric_spec` | メトリクス仕様生成（ドメイン非依存） |
-| `ari-skill-transform` | `nodes_to_science_data` | LLM による全ツリー分析 → science_data.json |
-| `ari-skill-web` | `search_semantic_scholar` | 学術文献検索 |
-| `ari-skill-plot` | `generate_figures_llm` | LLM が matplotlib を記述 → PDF 図表 |
-| `ari-skill-paper` | `write_paper_iterative`, `review_compiled_paper` | LaTeX 論文執筆 + 査読 |
-| `ari-skill-paper-re` | `reproduce_from_paper` | 再現性検証エージェント |
+**デフォルト skills**（`workflow.yaml` に登録済み）:
+
+| Skill | ツール | 役割 | LLM? |
+|-------|-------|------|------|
+| `ari-skill-hpc` | `slurm_submit`, `job_status`, `job_cancel`, `run_bash`, `singularity_build`, `singularity_run`, `singularity_pull`, `singularity_build_fakeroot`, `singularity_run_gpu` | HPC ジョブ管理 + Singularity コンテナ | ✗ |
+| `ari-skill-memory` | `add_memory`, `search_memory`, `get_node_memory`, `clear_node_memory` | 祖先チェーン実験メモリ（JSONL） | ✗ |
+| `ari-skill-idea` | `survey`, `generate_ideas` | 文献検索（Semantic Scholar）+ VirSci マルチエージェント仮説生成 | ✓ |
+| `ari-skill-evaluator` | `make_metric_spec` | 実験ファイルからのメトリクス仕様抽出 | △ |
+| `ari-skill-transform` | `nodes_to_science_data` | BFTS ツリー → 科学データ（内部フィールド除去） | ✓ |
+| `ari-skill-web` | `web_search`, `fetch_url`, `search_arxiv`, `search_semantic_scholar`, `collect_references_iterative` | Web 検索、arXiv、Semantic Scholar、反復的引用収集 | △ |
+| `ari-skill-plot` | `generate_figures`, `generate_figures_llm` | 決定論的 + LLM ベースの matplotlib 図表生成 | ✓ |
+| `ari-skill-paper` | `list_venues`, `get_template`, `generate_section`, `compile_paper`, `check_format`, `review_section`, `revise_section`, `write_paper_iterative`, `review_compiled_paper` | LaTeX 論文執筆、コンパイル、査読 | ✓ |
+| `ari-skill-paper-re` | `extract_metric_from_output`, `reproduce_from_paper` | ReAct 再現性検証エージェント | ✓ |
+
+**追加 skills**（利用可能、デフォルトワークフローには含まれない）:
+
+| Skill | ツール | 役割 | LLM? |
+|-------|-------|------|------|
+| `ari-skill-coding` | `write_code`, `run_code`, `run_bash` | コード生成 + 実行 | ✗ |
+| `ari-skill-benchmark` | `analyze_results`, `plot`, `statistical_test` | CSV/JSON/NPY 分析、プロット、scipy 統計 | ✗ |
+| `ari-skill-review` | `parse_review`, `generate_rebuttal`, `check_rebuttal` | 査読パース + リバッタル生成 | ✓ |
+| `ari-skill-vlm` | `review_figure`, `review_table` | Vision-Language モデルによる図表・テーブルレビュー | ✓ |
+| `ari-skill-orchestrator` | `run_experiment`, `get_status`, `list_runs`, `get_paper` | ARI を外部エージェント/IDE 向けの MCP サーバーとして公開 | ✗ |
+
+✗ = LLM なし、△ = 一部ツールのみ LLM、✓ = 主要ツールが LLM を使用。
 
 ---
 

@@ -176,7 +176,7 @@ llm:
 # Anthropic
 llm:
   backend: anthropic
-  model: claude-3-5-sonnet-20241022
+  model: claude-sonnet-4-5
 
 # 任意の OpenAI 互換 API（vLLM、LM Studio など）
 llm:
@@ -210,11 +210,15 @@ ari-skill-paper/templates/
 `ari-skill-paper/src/server.py` の `VENUES` に追加します:
 
 ```python
-VENUES = {
-    "arxiv": {"page_limit": None, "template": "arxiv/main.tex"},
-    "neurips": {"page_limit": 9, "template": "neurips/main.tex"},
-    "your_venue": {"page_limit": 8, "template": "your_venue/main.tex"},  # ← 追加
-}
+VENUES = [
+    {"id": "neurips", "pages": 9},
+    {"id": "icpp", "pages": 10},
+    {"id": "sc", "pages": 12},
+    {"id": "isc", "pages": 12},
+    {"id": "arxiv", "pages": 0},     # 無制限
+    {"id": "acm", "pages": 10},
+    {"id": "your_venue", "pages": 8},  # ← 追加
+]
 ```
 
 ### パイプラインでの使用

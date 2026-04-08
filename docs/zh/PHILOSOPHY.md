@@ -30,7 +30,7 @@ ARI 通过 litellm 代理所有 LLM 调用。模型是配置项 — 不是代码
 llm:
   model: qwen3:8b           # Ollama, no API key, runs offline
   model: gpt-5.2            # OpenAI API
-  model: claude-opus-4-5    # Anthropic API
+  model: claude-sonnet-4-5    # Anthropic API
   base_url: http://...      # Any OpenAI-compatible API
 ```
 
