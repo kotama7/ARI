@@ -194,23 +194,22 @@ class TestReproExtractionPrompt:
         if not server_path.exists():
             pytest.skip("ari-skill-paper-re not found")
         text = server_path.read_text()
-        # Find the config extraction prompt
-        m = re.search(r'Extract the PRIMARY.*?No markdown\.', text, re.DOTALL)
+        m = re.search(r'Extract the PRIME.*?No markdown\.', text, re.DOTALL)
         assert m, "Extraction prompt not found"
         prompt = m.group(0)
         assert "threads" not in prompt.lower()
 
-    def test_extraction_prompt_requests_primary_result(self):
-        """Extraction prompt should emphasize main result, not peaks."""
+    def test_extraction_prompt_requests_prime_result(self):
+        """Extraction prompt should select the prime result (abstract/conclusion), not theoretical peaks."""
         from pathlib import Path
         server_path = Path(__file__).parent.parent.parent / "ari-skill-paper-re" / "src" / "server.py"
         if not server_path.exists():
             pytest.skip("ari-skill-paper-re not found")
         text = server_path.read_text()
-        m = re.search(r'Extract the PRIMARY.*?No markdown\.', text, re.DOTALL)
+        m = re.search(r'Extract the PRIME.*?No markdown\.', text, re.DOTALL)
         prompt = m.group(0)
-        assert "PRIMARY" in prompt
-        assert "NOT theoretical peaks" in prompt or "NOT theoretical" in prompt.replace("\n", " ")
+        assert "PRIME" in prompt
+        assert "NOT" in prompt and "theoretical" in prompt.lower()
 
 
 # ── build_best_nodes_context includes eval_summary ───────────────────────

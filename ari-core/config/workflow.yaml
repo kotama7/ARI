@@ -103,10 +103,12 @@ pipeline:
     max_revision_rounds: 2
     nodes_json_path: '{{ckpt}}/nodes_tree.json'
     refs_json: '{{stages.search_related_work.outputs.file}}'
+    science_data_json: '{{stages.transform_data.outputs.file}}'
     venue: arxiv
   load_inputs:
   - figures_manifest_json
   - refs_json
+  - science_data_json
   outputs:
     bib_file: '{{ckpt}}/refs.bib'
     file: '{{ckpt}}/full_paper.tex'

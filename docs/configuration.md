@@ -10,16 +10,42 @@ Use `{{ari_root}}` in skill paths — it resolves to `$ARI_ROOT` env var or the 
 ```yaml
 llm:
   backend: openai          # ollama | openai | anthropic
-  model: gpt-4o            # Model identifier
+  model: gpt-5.2           # Model identifier
   base_url: ""             # Leave empty for OpenAI; set for Ollama/vLLM
 
 author_name: "Artificial Research Intelligence"
 
 resources:
-  cpus: 32                 # Default CPU count for reproducibility experiments
-  timeout_minutes: 15      # Default job timeout
+  cpus: 48                 # Default CPU count for reproducibility experiments
+  timeout_minutes: 60      # Default job timeout
+  executor: slurm          # Job executor: slurm / local / pbs / lsf
 
+# BFTS phase stages (executed in order during tree search)
+bfts_pipeline:
+  - stage: generate_idea
+    skill: idea-skill
+    tool: generate_ideas
+    phase: bfts
+  - stage: select_and_run
+    skill: hpc-skill
+    phase: bfts
+  - stage: evaluate
+    skill: evaluator-skill
+    tool: evaluate_node
+    phase: bfts
+  - stage: frontier_expand
+    skill: idea-skill
+    tool: generate_ideas
+    phase: bfts
+    loop_back_to: select_and_run
+
+# Post-BFTS pipeline stages
 pipeline:
+  - stage: search_related_work
+    skill: web-skill
+    tool: collect_references_iterative
+    skip_if_exists: '{{ckpt}}/related_refs.json'
+    # ...
   - stage: transform_data
     skill: transform-skill
     tool: nodes_to_science_data
@@ -29,26 +55,47 @@ pipeline:
       llm_base_url: '{{llm.base_url}}'
     outputs:
       file: '{{ckpt}}/science_data.json'
-
-  # ... additional stages (generate_figures, search_related_work, write_paper, ...)
+    skip_if_exists: '{{ckpt}}/science_data.json'
+  - stage: generate_figures
+    skill: plot-skill
+    tool: generate_figures_llm
+    depends_on: [transform_data]
+    # ...
+  - stage: write_paper
+    skill: paper-skill
+    tool: write_paper_iterative
+    depends_on: [search_related_work, generate_figures]
+    # ...
+  - stage: review_paper
+    skill: paper-skill
+    tool: review_compiled_paper
+    depends_on: [write_paper]
+    # ...
+  - stage: reproducibility_check
+    skill: paper-re-skill
+    tool: reproduce_from_paper
+    depends_on: [write_paper]
+    # ...
 
 skills:
-  - name: memory-skill
-    path: "{{ari_root}}/ari-skill-memory"
-  - name: idea-skill
-    path: "{{ari_root}}/ari-skill-idea"
-  - name: hpc-skill
-    path: "{{ari_root}}/ari-skill-hpc"
-  - name: evaluator-skill
-    path: "{{ari_root}}/ari-skill-evaluator"
-  - name: transform-skill
-    path: "{{ari_root}}/ari-skill-transform"
+  - name: web-skill
+    path: "{{ari_root}}/ari-skill-web"
   - name: plot-skill
     path: "{{ari_root}}/ari-skill-plot"
   - name: paper-skill
     path: "{{ari_root}}/ari-skill-paper"
   - name: paper-re-skill
     path: "{{ari_root}}/ari-skill-paper-re"
+  - name: memory-skill
+    path: "{{ari_root}}/ari-skill-memory"
+  - name: evaluator-skill
+    path: "{{ari_root}}/ari-skill-evaluator"
+  - name: idea-skill
+    path: "{{ari_root}}/ari-skill-idea"
+  - name: hpc-skill
+    path: "{{ari_root}}/ari-skill-hpc"
+  - name: transform-skill
+    path: "{{ari_root}}/ari-skill-transform"
 ```
 
 ## Environment Variables
@@ -88,7 +135,7 @@ llm:
 ```yaml
 llm:
   backend: anthropic
-  model: claude-opus-4-5
+  model: claude-sonnet-4-5
 ```
 
 ### Any OpenAI-compatible API (vLLM, LM Studio, etc.)

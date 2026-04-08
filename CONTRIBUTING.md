@@ -13,15 +13,19 @@ ARI/
 │
 ├── ari-core/               ← Core engine (BFTS + ReAct + pipeline)
 ├── ari-skill-hpc/          ← SLURM / Singularity tools
-├── ari-skill-idea/         ← Survey + idea generation
-├── ari-skill-evaluator/    ← Metric extraction
-├── ari-skill-paper/        ← LaTeX generation + review
-├── ari-skill-paper-re/     ← Reproducibility verification
-├── ari-skill-memory/       ← Ancestor-scoped memory
-├── ari-skill-orchestrator/ ← ARI as MCP server
-├── ari-skill-review/       ← Rebuttal generation
-├── ari-skill-vlm/          ← Figure/table review (VLM)
-├── ari-skill-benchmark/    ← Result analysis + visualization
+├── ari-skill-idea/         ← Survey + VirSci idea generation (LLM)
+├── ari-skill-evaluator/    ← Metric spec extraction
+├── ari-skill-paper/        ← LaTeX generation + review (LLM)
+├── ari-skill-paper-re/     ← ReAct reproducibility verification (LLM)
+├── ari-skill-memory/       ← Ancestor-scoped node memory
+├── ari-skill-transform/    ← BFTS tree → science-facing data (LLM)
+├── ari-skill-web/          ← DuckDuckGo, arXiv, Semantic Scholar
+├── ari-skill-plot/         ← Figure generation (LLM)
+├── ari-skill-coding/       ← Code generation + execution
+├── ari-skill-benchmark/    ← Result analysis + visualization + statistics
+├── ari-skill-review/       ← Peer-review parsing + rebuttal (LLM)
+├── ari-skill-vlm/          ← Figure/table review via VLM (LLM)
+├── ari-skill-orchestrator/ ← ARI as MCP server for external agents
 │
 └── matrix_bench_experiment.md  ← Example experiment
 ```
@@ -58,25 +62,25 @@ if "MFLOPS" in result:  # domain-specific!
 metric_keyword = hints.metric_keyword  # from experiment.md
 ```
 
-### P2: Deterministic Skills
-MCP skill servers must **never** call an LLM.
-The only exceptions are `generate_section`, `review_section`, and `generate_ideas`
-— all called in post-BFTS or pre-BFTS phases, never inside the search loop.
+### P2: Deterministic Where Possible
+MCP skill tools should be deterministic by default. LLM-using tools must be explicitly annotated.
+Tools in the BFTS search loop (`ari-skill-hpc`, `ari-skill-memory`, `ari-skill-coding`) must remain deterministic.
+LLM usage is allowed in pre-BFTS (`generate_ideas`), pipeline-phase tools (`write_paper_iterative`, `generate_figures_llm`, etc.), and optional analysis tools (`collect_references_iterative`, `nodes_to_science_data`).
 
 ❌ Wrong:
 ```python
 @mcp.tool()
-def evaluate(artifacts: str) -> dict:
-    response = llm.complete(f"Extract metrics from: {artifacts}")  # FORBIDDEN
+def run_bash(command: str) -> dict:
+    response = llm.complete(f"Interpret: {command}")  # LLM in a BFTS-loop tool
     return response
 ```
 
 ✅ Right:
 ```python
 @mcp.tool()
-def evaluate(artifacts: str) -> dict:
-    match = re.search(r"MFLOPS:\s*([\d.]+)", artifacts)  # deterministic
-    return {"MFLOPS": float(match.group(1))} if match else {}
+def run_bash(command: str) -> dict:
+    result = subprocess.run(command, ...)  # deterministic
+    return {"stdout": result.stdout, "exit_code": result.returncode}
 ```
 
 ### P3: Multi-Objective Evaluation
@@ -115,14 +119,20 @@ Domain knowledge is always passed at runtime, never hardcoded.
 
 ## Adding a Post-BFTS Pipeline Stage
 
-Only edit `config/pipeline.yaml`. No core code changes needed:
+Only edit `config/workflow.yaml`. No core code changes needed:
 
 ```yaml
 pipeline:
   - stage: my_new_stage
-    skill: ari-skill-yourskill
+    skill: your-skill
     tool: your_tool
     enabled: true
+    phase: paper
+    depends_on: [write_paper]
+    inputs:
+      data: '{{ckpt}}/science_data.json'
+    outputs:
+      file: '{{ckpt}}/my_output.json'
 ```
 
 ## Testing

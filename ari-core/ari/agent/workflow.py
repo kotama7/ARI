@@ -73,9 +73,13 @@ def from_experiment_text(experiment_text: str) -> WorkflowHints:
         "Then implement and run the experiment for the best idea:\n"
         "1. Use run_bash() to write the complete implementation\n"
         "2. Use slurm_submit() if SLURM is available, or run_bash() otherwise\n"
-        "3. Use job_status() to monitor if SLURM was used\n"
+        "3. Call job_status() ONCE if SLURM was used — the framework auto-polls every 30s\n"
         "4. Use run_bash() to read and report results\n"
-        "IMPORTANT: Write a fully working implementation that produces actual numeric results."
+        "IMPORTANT: Write a fully working implementation that produces actual numeric results.\n"
+        "STEP BUDGET: You have a limited number of steps. Do NOT waste steps by:\n"
+        "  - Calling job_status() repeatedly (auto-poll handles this)\n"
+        "  - Writing text plans instead of calling tools\n"
+        "If a job takes long, use run_bash(command='sleep <seconds>') to wait before reading results."
     )
 
     # SLURM workflow detection — any HPC/cluster keyword triggers SLURM workflow
@@ -90,10 +94,15 @@ def from_experiment_text(experiment_text: str) -> WorkflowHints:
             "Then implement and run the experiment for the best idea:\n"
             "1. Use run_bash() to write the complete implementation to a file in the work directory\n"
             "2. Use slurm_submit() to run it via SLURM\n"
-            "3. Use job_status() to wait for completion\n"
+            "3. Call job_status() ONCE — the framework auto-polls every 30s until completion\n"
             "4. Use run_bash() to read the results\n"
             "IMPORTANT: Write a fully working implementation that produces actual numeric results.\n"
-            "Do NOT write placeholder scripts or stub implementations."
+            "Do NOT write placeholder scripts or stub implementations.\n"
+            "STEP BUDGET: You have a limited number of steps. Do NOT waste steps by:\n"
+            "  - Calling job_status() repeatedly (auto-poll handles this)\n"
+            "  - Resubmitting the same job without fixing the error\n"
+            "  - Writing text plans instead of calling tools\n"
+            "If a job takes long, estimate the expected runtime and use run_bash(command='sleep <seconds>') to wait."
         )
 
     # post_survey_hint: ## Required Workflow section
@@ -152,5 +161,20 @@ def from_experiment_text(experiment_text: str) -> WorkflowHints:
     m_cpu = re.search(r"Max CPUs?[:\s]+(\d+)", experiment_text, re.IGNORECASE)
     if m_cpu:
         hints.slurm_max_cpus = int(m_cpu.group(1))
+
+    # Auto-detect SLURM partition if not specified in experiment text
+    if not hints.slurm_partition:
+        _env_part = _os.environ.get("ARI_SLURM_PARTITION", "")
+        if _env_part:
+            hints.slurm_partition = _env_part
+        else:
+            try:
+                from ari.env_detect import get_slurm_partitions
+                _partitions = get_slurm_partitions()
+                _up = [p["name"] for p in _partitions if p.get("state") == "up"]
+                if _up:
+                    hints.slurm_partition = _up[0]
+            except Exception:
+                pass
 
     return hints

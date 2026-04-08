@@ -106,8 +106,14 @@ export function StepLaunch({
           onLaunched();
         }, 800);
 
-        // Poll for new checkpoint in background
-        pollNewCheckpoint(20);
+        // Switch to the specific launched checkpoint, or poll as fallback
+        if (r.checkpoint_path) {
+          api.switchCheckpoint(r.checkpoint_path).catch(() => {
+            pollNewCheckpoint(20);
+          });
+        } else {
+          pollNewCheckpoint(20);
+        }
       } else {
         setLaunchStatus(
           <span style={{ color: 'var(--red)' }}>{r.error}</span>,

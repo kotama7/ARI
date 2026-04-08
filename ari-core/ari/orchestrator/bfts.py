@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 
 from ari.config import BFTSConfig
+
+logger = logging.getLogger(__name__)
 from ari.llm.client import LLMClient, LLMMessage
 from ari.memory.client import MemoryClient
 from ari.orchestrator.node import Node, NodeLabel, NodeStatus
@@ -171,7 +174,7 @@ class BFTS:
             key=lambda n: float((n.metrics or {}).get("_scientific_score") or 0),
         )
 
-    def expand(self, node: Node, experiment_goal: str = "") -> list[Node]:
+    def expand(self, node: Node, experiment_goal: str = "", idea_context: str = "") -> list[Node]:
         """Expand a node and generate child nodes. Each child is assigned a label."""
         parent_status = "succeeded" if node.has_real_data else "failed/no-real-data"
         goal_line = f"Experiment goal: {experiment_goal}\n" if experiment_goal else ""
@@ -187,6 +190,10 @@ class BFTS:
             f"Scientific quality score from peer review: {sci_score:.2f}/1.0\n"
             if sci_score is not None else ""
         )
+        idea_block = (
+            f"\nResearch direction (from VirSci idea generation):\n{idea_context[:800]}\n"
+            if idea_context else ""
+        )
         prompt = (
             f"You are expanding a BFTS research tree node.\n\n"
             f"{goal_line}"
@@ -194,6 +201,7 @@ class BFTS:
             f"Parent metrics: {json.dumps(node.metrics, ensure_ascii=False)}\n"
             f"Parent summary: {node.eval_summary or 'none'}\n"
             f"{sci_note}"
+            f"{idea_block}"
             f"\n{label_hint}\n\n"
             f"⚠️ ABLATION STUDY REQUIREMENT: If you suggest an ablation, you MUST:\n"
             f"  1. Identify what component/parameter to remove or vary (be specific)\n"

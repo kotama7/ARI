@@ -1,23 +1,23 @@
 # ARI CLI リファレンス
 
-ARI のコマンドライン操作の完全なリファレンスです。ビジュアルダッシュボードのガイドについては、[クイックスタートガイド](quickstart.md)を参照してください。
+ARI のコマンドライン操作の完全なリファレンスです。CLI は [Web ダッシュボード](quickstart.md)と同等の機能をターミナルベースのワークフロー向けに提供します。
 
 ---
 
 ## コマンド一覧
 
-| コマンド | 説明 |
-|---------|------|
-| `ari run` | 新しい実験を実行 |
-| `ari resume` | 中断された実験を再開 |
-| `ari paper` | 論文のみ生成（実験をスキップ） |
-| `ari status` | 実験ツリーとサマリーを表示 |
-| `ari viz` | Web ダッシュボードを起動 |
-| `ari projects` | 過去のすべての実験を一覧表示 |
-| `ari show` | 実行結果の詳細を表示 |
-| `ari delete` | チェックポイントを削除 |
-| `ari settings` | 設定の表示または変更 |
-| `ari skills-list` | 利用可能なツールを一覧表示 |
+| コマンド | 説明 | ダッシュボード相当 |
+|---------|------|-------------------|
+| `ari run` | 新しい実験を実行 | New Experiment ウィザード → Launch |
+| `ari resume` | 中断された実験を再開 | Experiments ページ → Resume ボタン |
+| `ari paper` | 論文のみ生成（実験をスキップ） | `POST /api/run-stage {stage: "paper"}` |
+| `ari status` | 実験ツリーとサマリーを表示 | Monitor / Tree ページ |
+| `ari viz` | Web ダッシュボードを起動 | -- |
+| `ari projects` | 過去のすべての実験を一覧表示 | Experiments ページ |
+| `ari show` | 実行結果の詳細を表示 | Results ページ |
+| `ari delete` | チェックポイントを削除 | Experiments ページ → Delete ボタン |
+| `ari settings` | 設定の表示または変更 | Settings ページ |
+| `ari skills-list` | 利用可能なツールを一覧表示 | Settings → MCP Skills |
 
 ---
 

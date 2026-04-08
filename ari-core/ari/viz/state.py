@@ -13,6 +13,7 @@ _loop = None
 _checkpoint_dir: "Path | None" = None
 _last_mtime: float = 0.0
 _last_proc = None
+_running_procs: dict = {}  # {resolved_checkpoint_path_str: subprocess.Popen}
 _last_log_fh = None
 _last_log_path: "str | None" = None
 _last_experiment_md: "str | None" = None

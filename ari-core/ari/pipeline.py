@@ -472,8 +472,8 @@ def run_pipeline(
     _eval_criteria_path = checkpoint_dir / "evaluation_criteria.json"
     if not _eval_criteria_path.exists():
         _ec = {"primary_metric": "", "higher_is_better": True, "metric_rationale": ""}
+        # Strategy 1: check node memory_snapshot (populated if memory.add() succeeded)
         for _n in all_nodes:
-            # Each node stores its memory snapshots; look for EVALUATION_CRITERIA entries
             for _snap in (_n.memory_snapshot if hasattr(_n, "memory_snapshot") else []):
                 if isinstance(_snap, str) and "EVALUATION_CRITERIA:" in _snap:
                     import re as _re_ec
@@ -486,6 +486,17 @@ def run_pipeline(
                     break
             if _ec["primary_metric"]:
                 break
+        # Strategy 2: fallback to idea.json (always available when generate_ideas ran)
+        if not _ec["primary_metric"]:
+            try:
+                _idea_ec_path = Path(checkpoint_dir) / "idea.json"
+                if _idea_ec_path.exists():
+                    _idea_ec = json.loads(_idea_ec_path.read_text())
+                    _ec["primary_metric"] = _idea_ec.get("primary_metric", "")
+                    _ec["higher_is_better"] = _idea_ec.get("higher_is_better", True)
+                    _ec["metric_rationale"] = _idea_ec.get("metric_rationale", "")
+            except Exception:
+                pass
         try:
             _eval_criteria_path.write_text(json.dumps(_ec, indent=2))
             log.info("Saved evaluation_criteria.json: primary_metric=%s", _ec["primary_metric"])
@@ -538,7 +549,7 @@ def run_pipeline(
                 # Prioritize key_results and implementation_details at the front
                 # so they survive truncation in downstream prompts.
                 _priority_parts = []
-                for _pk in ("_best_node_source_code", "key_results", "implementation_details", "reported_problem_instances"):
+                for _pk in ("_best_node_source_code", "key_results", "key_validated_results", "implementation_details", "reported_problem_instances"):
                     if _pk in _exp_ctx:
                         _priority_parts.append(f"{_pk}: {_json.dumps(_exp_ctx[_pk], ensure_ascii=False, indent=2)}")
                 _rest = {k: v for k, v in _exp_ctx.items()
@@ -551,8 +562,33 @@ def run_pipeline(
     except Exception as _ece:
         log.warning("Could not load experiment_context from science_data.json: %s", _ece)
 
-    # Merge all context: static (workflow.yaml) + LLM-extracted + dynamic results
-    parts = [p for p in [_static_ctx, _exp_ctx_str, context] if p.strip()]
+    # Load idea.json: inject VirSci-generated research direction into paper context
+    _idea_ctx_str = ""
+    try:
+        _idea_path = Path(checkpoint_dir) / "idea.json"
+        if _idea_path.exists():
+            _idea_data = json.loads(_idea_path.read_text())
+            _gap = _idea_data.get("gap_analysis", "")
+            _ideas = _idea_data.get("ideas", [])
+            if _ideas:
+                _best_idea = _ideas[0]
+                _parts_idea = []
+                if _gap:
+                    _parts_idea.append(f"Research gap analysis: {_gap[:500]}")
+                _parts_idea.append(f"Research idea: {_best_idea.get('title', '')}")
+                _desc = _best_idea.get("description", "")
+                if _desc:
+                    _parts_idea.append(f"Idea description: {_desc[:600]}")
+                _plan = _best_idea.get("experiment_plan", "")
+                if _plan:
+                    _parts_idea.append(f"Experiment plan: {_plan[:400]}")
+                _idea_ctx_str = "Research direction (AI-generated):\n" + "\n".join(_parts_idea)
+                log.info("Loaded idea.json for paper context: %s", _best_idea.get("title", "")[:80])
+    except Exception as _ide:
+        log.warning("Could not load idea.json for paper context: %s", _ide)
+
+    # Merge all context: static (workflow.yaml) + idea + LLM-extracted + dynamic results
+    parts = [p for p in [_static_ctx, _idea_ctx_str, _exp_ctx_str, context] if p.strip()]
     _paper_ctx = "\n\n".join(parts) if parts else context
 
     # Template variable registry — grows as stages complete
@@ -563,6 +599,7 @@ def run_pipeline(
         "paper_context":     _paper_ctx,
         "slurm_partition":   _wf_cfg.get("slurm_partition", ""),  # resolved at runtime via ARI_SLURM_PARTITION env
         "keywords":          keywords,
+        "idea_context":      _idea_ctx_str,
         "stages":            {},
         "ari_root":          _os.environ.get("ARI_ROOT", str(Path(__file__).parents[2])),
         # Reproducibility check reads only the paper — no source_file injection.
