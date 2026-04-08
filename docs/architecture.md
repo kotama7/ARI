@@ -172,17 +172,31 @@ nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
 
 ### Skills (MCP servers)
 
-| Skill | Tools | Role |
-|-------|-------|------|
-| `ari-skill-hpc` | `run_bash`, `slurm_submit`, `job_status`, `read_output` | Code execution / HPC job management |
-| `ari-skill-memory` | `add_memory`, `search_memory`, `get_node_memory` | Ancestor-chain experiment memory |
-| `ari-skill-idea` | `survey`, `generate_ideas`, `make_metric_spec` | Literature search + hypothesis generation (VirSci) |
-| `ari-skill-evaluator` | `make_metric_spec` | Metric spec generation (domain-agnostic) |
-| `ari-skill-transform` | `nodes_to_science_data` | LLM-powered full tree analysis → science_data.json |
-| `ari-skill-web` | `search_semantic_scholar` | Academic literature search |
-| `ari-skill-plot` | `generate_figures_llm` | LLM writes matplotlib → PDF figures |
-| `ari-skill-paper` | `write_paper_iterative`, `review_compiled_paper` | LaTeX paper writing + peer review |
-| `ari-skill-paper-re` | `reproduce_from_paper` | Reproducibility verification agent |
+**Default skills** (registered in `workflow.yaml`):
+
+| Skill | Tools | Role | LLM? |
+|-------|-------|------|------|
+| `ari-skill-hpc` | `slurm_submit`, `job_status`, `job_cancel`, `run_bash`, `singularity_build`, `singularity_run`, `singularity_pull`, `singularity_build_fakeroot`, `singularity_run_gpu` | HPC job management + Singularity containers | ✗ |
+| `ari-skill-memory` | `add_memory`, `search_memory`, `get_node_memory`, `clear_node_memory` | Ancestor-chain experiment memory (JSONL) | ✗ |
+| `ari-skill-idea` | `survey`, `generate_ideas` | Literature search (Semantic Scholar) + VirSci multi-agent hypothesis generation | ✓ |
+| `ari-skill-evaluator` | `make_metric_spec` | Metric spec extraction from experiment file | △ |
+| `ari-skill-transform` | `nodes_to_science_data` | BFTS tree → science-facing data (strips internal fields) | ✓ |
+| `ari-skill-web` | `web_search`, `fetch_url`, `search_arxiv`, `search_semantic_scholar`, `collect_references_iterative` | Web search, arXiv, Semantic Scholar, iterative citation collection | △ |
+| `ari-skill-plot` | `generate_figures`, `generate_figures_llm` | Deterministic + LLM-based matplotlib figure generation | ✓ |
+| `ari-skill-paper` | `list_venues`, `get_template`, `generate_section`, `compile_paper`, `check_format`, `review_section`, `revise_section`, `write_paper_iterative`, `review_compiled_paper` | LaTeX paper writing, compilation, peer review | ✓ |
+| `ari-skill-paper-re` | `extract_metric_from_output`, `reproduce_from_paper` | ReAct reproducibility verification agent | ✓ |
+
+**Additional skills** (available, not in default workflow):
+
+| Skill | Tools | Role | LLM? |
+|-------|-------|------|------|
+| `ari-skill-coding` | `write_code`, `run_code`, `run_bash` | Code generation + execution | ✗ |
+| `ari-skill-benchmark` | `analyze_results`, `plot`, `statistical_test` | CSV/JSON/NPY analysis, plotting, scipy stats | ✗ |
+| `ari-skill-review` | `parse_review`, `generate_rebuttal`, `check_rebuttal` | Peer-review parsing + rebuttal generation | ✓ |
+| `ari-skill-vlm` | `review_figure`, `review_table` | Vision-Language model figure/table review | ✓ |
+| `ari-skill-orchestrator` | `run_experiment`, `get_status`, `list_runs`, `get_paper` | Expose ARI as MCP server for external agents/IDEs | ✗ |
+
+✗ = no LLM, △ = LLM in some tools only, ✓ = primary tools use LLM.
 
 ---
 

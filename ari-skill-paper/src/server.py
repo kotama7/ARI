@@ -44,6 +44,9 @@ SECTION_PROMPTS = {
     "experiment": (
         "Write a LaTeX experiments section for an academic paper. "
         "Present experimental setup, results, and analysis. "
+        "REPRODUCIBILITY RULE: Every numeric claim MUST state "
+        "the EXACT parameters used to produce it in the same sentence or paragraph. "
+        "A reader must be able to reproduce the number from the text alone without guessing which configuration was used. "
         "Do not omit or summarize any information provided in the context — use all of it as-is. "
         "CRITICAL for figures: the context provides available figures with filenames and captions. "
         "You MUST embed each figure at the most relevant location in the text using: "
@@ -62,6 +65,8 @@ SECTION_PROMPTS = {
         "Write a concise 150-250 word LaTeX abstract for an academic paper. "
         "Cover: problem statement, proposed method, key experimental result (with numbers), "
         "and main contribution. Focus ONLY on the experiment and its results. "
+        "When citing a numeric result, include the key parameters that produced it "
+        "so the claim is self-contained and reproducible. "
         "Do NOT mention any automation framework, search system, or tool used to discover these results. "
         "Output raw LaTeX text only (no \begin{abstract} tags, no section header)."
     ),
@@ -79,9 +84,8 @@ SECTION_PROMPTS = {
 # Generic instruction for all section-writing system prompts
 _FORBIDDEN_NOTICE = (
     "IMPORTANT: Write only information that enables independent reproduction of the results. "
-    "Reproducible information (USE these): CPU architecture (e.g. AMD EPYC, x86_64), "
-    "core/thread count, compiler name and version, compiler flags, OpenMP/MPI version, "
-    "memory bandwidth, cache size. "
+    "Reproducible information (USE these): hardware specifications, software versions, "
+    "build configuration, and experimental parameters. "
     "Non-reproducible information (DO NOT USE): cluster names, institution names, "
     "organization names, node IDs, job IDs, file paths, or any identifier specific "
     "to one computing environment. "
@@ -890,6 +894,7 @@ async def write_paper_iterative(
     nodes_json_path: str = "",
     refs_json: str = "",
     figures_manifest_json: str = "",  # JSON content of figures manifest (loaded by pipeline)
+    science_data_json: str = "",  # JSON content of science_data.json (loaded by pipeline)
     venue: str = "arxiv",
     max_revision_rounds: int = 2,
     author_name: str = "",  # config-specified author; defaults to "Artificial Research Intelligence"
@@ -952,6 +957,56 @@ async def write_paper_iterative(
             except Exception as _e_nodes:
                 log.warning("Failed to extract impl details from nodes: %s", _e_nodes)
 
+        # Enrich experiment_summary with source code and implementation details
+        # from science_data.json (produced by transform-skill).
+        if science_data_json:
+            try:
+                _sd = json.loads(science_data_json) if isinstance(science_data_json, str) else science_data_json
+                _sd_ctx = _sd.get("experiment_context", {})
+
+                # 1. Per-configuration results (FIRST — highest priority).
+                # Each configuration has different parameters; the LLM must
+                # associate each claimed number with its exact parameters.
+                _configs = _sd.get("configurations", [])
+                if _configs:
+                    _cfg_parts = []
+                    for _cfg in _configs[:10]:
+                        _cfg_parts.append(json.dumps(_cfg, ensure_ascii=False))
+                    experiment_summary += (
+                        "\n\nPER-CONFIGURATION RESULTS (each entry shows the exact "
+                        "parameters and metrics for one experiment — when reporting "
+                        "a number, state the parameters from the SAME entry):\n"
+                        + "\n".join(_cfg_parts)
+                    )
+
+                # 2. Implementation details (data structures, build config, etc.)
+                _impl_det = _sd_ctx.get("implementation_details", {})
+                if _impl_det:
+                    experiment_summary += (
+                        "\n\nIMPLEMENTATION DETAILS (from science_data analysis):\n"
+                        + json.dumps(_impl_det, indent=2, ensure_ascii=False)[:4000]
+                    )
+
+                # 3. Source code from best nodes (last — longest section).
+                _best_src = _sd_ctx.get("_best_node_source_code", {})
+                if _best_src:
+                    _src_parts = []
+                    _src_total = 0
+                    for _label, _code in _best_src.items():
+                        if _src_total + len(_code) > 16000:
+                            break
+                        _src_parts.append(f"── {_label} ──\n{_code}")
+                        _src_total += len(_code)
+                    if _src_parts:
+                        experiment_summary += (
+                            "\n\nACTUAL SOURCE CODE from experiment nodes "
+                            "(use these to write ACCURATE pseudocode that exactly "
+                            "matches the structure of this code):\n"
+                            + "\n\n".join(_src_parts)
+                        )
+            except Exception as _e_sd:
+                log.warning("Failed to extract science_data context: %s", _e_sd)
+
         # Parse figures manifest and append to experiment_summary for LLM context
         if figures_manifest_json:
             try:
@@ -968,7 +1023,7 @@ async def write_paper_iterative(
                         fname_base = _os_fig.path.basename(str(v))
                         # Use real caption from latex_snippets if available
                         _snip = _latex_snips.get(k, "")
-                        cap_m = re.search(r"\\caption\{([^}]+)\}", _snip)
+                        cap_m = re.search(r"\\caption\{((?:[^{}]|\{[^{}]*\})*)\}", _snip)
                         cap = cap_m.group(1) if cap_m else f"Figure {i+1}: Experimental results for {k}. See text for analysis."
                         fig_lines.append({"path": str(v), "basename": fname_base, "caption": cap, "latex": _snip})
                 else:
@@ -1036,7 +1091,7 @@ async def write_paper_iterative(
                     for _ki, _vi in _figs_raw_t.items():
                         _bn = _os_t.path.basename(str(_vi))
                         _snip = _snips_t.get(_ki, "")
-                        _cap_m = re.search(r"\\caption\{([^}]+)\}", _snip)
+                        _cap_m = re.search(r"\\caption\{((?:[^{}]|\{[^{}]*\})*)\}", _snip)
                         _cap = _sanitize_bfts_terms(_cap_m.group(1) if _cap_m else f"Experimental results for {_ki}. See text for analysis.")
                         # If caption is generic, try VLM refinement on the figure
                         if _GENERIC_CAP_PAT.search(_cap):
@@ -1076,7 +1131,7 @@ async def write_paper_iterative(
                                         # Use a lambda to avoid backslash interpretation in replacement string
                                         _new_caption_str = f"\\caption{{{_cap}}}"
                                         _snip = re.sub(
-                                            r"\\caption\{[^}]+\}",
+                                            r"\\caption\{(?:[^{}]|\{[^{}]*\})*\}",
                                             lambda _m: _new_caption_str,
                                             _snip,
                                         )
@@ -1127,12 +1182,22 @@ async def write_paper_iterative(
             "5. Return the COMPLETE LaTeX document in ```latex ... ``` fences\n"
             "6. The figures are already placed — reference them with Figure~\\ref{{fig:N}}\n"
             "7. In the Methodology section, describe the approach in enough detail for independent "
-            "reproduction. If pseudocode is appropriate, use the \\texttt{{algorithm}} or "
-            "\\texttt{{algorithmic}} LaTeX environment (NOT \\begin{{verbatim}}). "
-            "Use the implementation details provided in the experiment context.\n"
+            "reproduction. If ACTUAL SOURCE CODE is provided in the experiment context, "
+            "write pseudocode that EXACTLY matches the source code's structure. "
+            "Do NOT rearrange or restructure the algorithm. "
+            "Use the \\texttt{{algorithm}} or \\texttt{{algorithmic}} LaTeX environment "
+            "(NOT \\begin{{verbatim}}). "
+            "Report all settings that appear in the source code or build scripts "
+            "and are necessary for reproduction. "
+            "Include input data generation and preparation procedures — these affect results "
+            "and must be reproducible.\n"
             "8. In the Experiments section, explicitly state ALL parameters for the MAIN "
             "benchmark configuration (not just validation/toy cases). A reader must be able "
-            "to reproduce the headline results from the parameters given in the paper.\n"
+            "to reproduce the headline results from the information given in the paper.\n"
+            "9. NEVER replace \\bibliographystyle{{...}} or \\bibliography{{refs}} with "
+            "\\begin{{thebibliography}}...\\end{{thebibliography}}. "
+            "The BibTeX pipeline will generate the bibliography automatically from refs.bib. "
+            "Keep the \\bibliographystyle and \\bibliography commands exactly as provided in the template.\n"
         )
         _user_prompt_a = (
             f"Experiment context:\n{experiment_summary[:30000]}\n\n"
@@ -1174,7 +1239,7 @@ async def write_paper_iterative(
             # Find the figure block containing this file and replace its caption
             _fig_pattern = re.compile(
                 r"(\\begin\{figure\}.*?\\includegraphics[^}]*\{" + re.escape(_ref_bn) + r"\}.*?)"
-                r"\\caption\{[^}]*\}"
+                r"\\caption\{(?:[^{}]|\{[^{}]*\})*\}"
                 r"(.*?\\end\{figure\})",
                 re.DOTALL,
             )
@@ -1226,7 +1291,7 @@ async def write_paper_iterative(
                     for _i, (_k, _fp) in enumerate(_figs_c.items(), 1):
                         _fn = _os_fig.path.basename(str(_fp))
                         _snip = _snips_c.get(_k, "")
-                        _cap_m = _re_fig.search(r"\\caption\{([^}]+)\}", _snip)
+                        _cap_m = _re_fig.search(r"\\caption\{((?:[^{}]|\{[^{}]*\})*)\}", _snip)
                         cap = _cap_m.group(1) if _cap_m else f"Figure {_i}: Experimental results for {_k}. See text for analysis."
                         _fig_list.append(f"Figure {_i}: file={_fn}, caption={cap!r}")
                     _fig_inject_prompt = (
@@ -1359,11 +1424,13 @@ async def write_paper_iterative(
             _reflection_prompt = (
                 f"Reflection round {_ri+1}/{_n_reflections}. Review the LaTeX you just wrote:\n"
                 f"1) LaTeX compile errors and warnings (fix ALL): {_errs if _errs else 'none'}\n"
-                f"2) BibTeX: {'OK (bibliography compiled)' if _bbl_ok else 'FAILED — refs.bib may be missing or cite keys mismatch'}\n"
+                f"2) BibTeX: {'OK (bibliography compiled)' if _bbl_ok else 'FAILED — refs.bib may be missing or cite keys mismatch. Do NOT try to fix this by replacing bibliography commands with thebibliography environment — the build system will handle BibTeX compilation.'}\n"
                 f"3) Figures available but not referenced in paper: {_unused}\n"
                 f"4) Figure references in paper that do not match available files: {_invalid}\n"
                 f"5) chktex output (LaTeX style issues):\n```\n{_chktex}\n```\n"
                 f"\nNote: if there are undefined \\ref{{}} warnings, fix the \\label{{}} names to match.\n"
+                f"IMPORTANT: NEVER replace \\bibliographystyle{{...}} or \\bibliography{{refs}} with "
+                f"\\begin{{thebibliography}}...\\end{{thebibliography}}. Keep BibTeX commands as-is.\n"
                 f"If everything is correct, say: I am done\n"
                 f"Otherwise, provide a revised complete LaTeX document in ```latex ... ``` fences.\n"
                 f"Do NOT hallucinate results, hardware specs, or citations not in the provided data.\n"
@@ -1408,6 +1475,16 @@ async def write_paper_iterative(
                         _new_latex = _new_latex.replace(_bad, _repl)
                     # v2: fix bare % in numbers (e.g., "5%" → "5\%")
                     _new_latex = _re_cleanup.sub(r"(\d+(?:\.\d+)?)%", r"\1\\%", _new_latex)
+                    # Guard: if LLM replaced \bibliography{refs} with \begin{thebibliography},
+                    # revert to BibTeX commands so the build pipeline can generate .bbl properly.
+                    if r"\begin{thebibliography}" in _new_latex and bib_content:
+                        _new_latex = _re_cleanup.sub(
+                            r"\\begin\{thebibliography\}.*?\\end\{thebibliography\}",
+                            "\\bibliographystyle{plainnat}\n\\bibliography{refs}",
+                            _new_latex,
+                            flags=_re_cleanup.DOTALL,
+                        )
+                        log.warning("v2 reflection %d: reverted thebibliography to \\bibliography{refs}", _ri+1)
                     full_latex = _new_latex
                     log.info("v2 reflection %d: updated latex (%d chars)", _ri+1, len(full_latex))
                     # Update msg_history for next round
@@ -1606,8 +1683,10 @@ async def review_compiled_paper(
     # 2. Extract captions from LaTeX source
     captions = []
     if tex_text:
-        for m in _re.finditer(r"\\caption\{([^}]{10,})\}", tex_text):
-            captions.append(m.group(1).strip())
+        for m in _re.finditer(r"\\caption\{((?:[^{}]|\{[^{}]*\})*)\}", tex_text):
+            cap_text = m.group(1).strip()
+            if len(cap_text) >= 10:
+                captions.append(cap_text)
 
     # 3. Load figures manifest for figure consistency check
     figs_info = []

@@ -116,7 +116,7 @@ export async function stopExperiment(): Promise<any> {
 
 export async function launchExperiment(
   data: any,
-): Promise<{ ok: boolean; pid?: number; error?: string }> {
+): Promise<{ ok: boolean; pid?: number; error?: string; checkpoint_path?: string }> {
   return post('/api/launch', data);
 }
 

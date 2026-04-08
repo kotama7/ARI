@@ -176,7 +176,7 @@ llm:
 # Anthropic
 llm:
   backend: anthropic
-  model: claude-3-5-sonnet-20241022
+  model: claude-sonnet-4-5
 
 # 任何 OpenAI 兼容 API（vLLM、LM Studio 等）
 llm:
@@ -211,11 +211,15 @@ ari-skill-paper/templates/
 在 `ari-skill-paper/src/server.py` 中，添加到 `VENUES`：
 
 ```python
-VENUES = {
-    "arxiv": {"page_limit": None, "template": "arxiv/main.tex"},
-    "neurips": {"page_limit": 9, "template": "neurips/main.tex"},
-    "your_venue": {"page_limit": 8, "template": "your_venue/main.tex"},  # ← 添加
-}
+VENUES = [
+    {"id": "neurips", "pages": 9},
+    {"id": "icpp", "pages": 10},
+    {"id": "sc", "pages": 12},
+    {"id": "isc", "pages": 12},
+    {"id": "arxiv", "pages": 0},     # unlimited
+    {"id": "acm", "pages": 10},
+    {"id": "your_venue", "pages": 8},  # ← 添加
+]
 ```
 
 ### 在流水线中使用

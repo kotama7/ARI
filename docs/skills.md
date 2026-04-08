@@ -1,15 +1,14 @@
 # MCP Skills Reference
 
-Skills are MCP servers that provide deterministic tools to the ARI agent.
-No skill may contain LLM calls (except post-BFTS stages: paper generation and review).
+Skills are MCP servers that provide tools to the ARI agent. Tools are deterministic where possible; LLM-using tools are explicitly annotated. 14 skills total (9 default, 5 additional).
 
 ## ari-skill-hpc
 
-HPC job management via SLURM and Singularity.
+HPC job management via SLURM and Singularity. **LLM: No** (fully deterministic).
 
 ### Tools
 
-#### `slurm_submit(script, job_name, partition, nodes=1, walltime="01:00:00", work_dir="")`
+#### `slurm_submit(script, job_name, partition, nodes=1, walltime="01:00:00", work_dir)`
 
 Submit a SLURM batch job.
 
@@ -29,7 +28,7 @@ OMP_NUM_THREADS=32 ./bench
 ```
 
 **Notes:**
-- `--account` and `-A` headers are silently stripped (not valid on this cluster)
+- `--account` and `-A` headers are silently stripped
 - Empty `job_id` returns ERROR immediately
 - Never use `~` in paths inside scripts (not expanded in SBATCH)
 
@@ -43,16 +42,36 @@ result = job_status("12345")
 # Status values: PENDING, RUNNING, COMPLETED, FAILED, ERROR
 ```
 
+#### `job_cancel(job_id)`
+
+Cancel a running or pending SLURM job.
+
 #### `run_bash(command)`
 
-Run a read-only bash command on the login node.
+Run a bash command on the login node.
 
 ```python
 result = run_bash("cat /path/to/slurm_job_12345.out")
 # Returns: {"stdout": "...", "exit_code": 0}
 ```
 
-#### `singularity_run_gpu(image_path, command, partition, gres="gpu:1")`
+#### `singularity_build(definition_file, output_path, partition)`
+
+Build a Singularity container from a definition file.
+
+#### `singularity_run(image_path, command, work_dir, partition, nodes=1, walltime="01:00:00")`
+
+Run a Singularity container as a SLURM job.
+
+#### `singularity_pull(source, output_path, partition)`
+
+Pull a Singularity image from a remote registry.
+
+#### `singularity_build_fakeroot(definition_content, output_path, partition, walltime)`
+
+Build a Singularity container using fakeroot mode.
+
+#### `singularity_run_gpu(image_path, command, work_dir, partition, gres="gpu:1", cpus_per_task=8, walltime="01:00:00", bind_paths=[])`
 
 Run a Singularity container with GPU access (`--nv` flag).
 
@@ -60,22 +79,38 @@ Run a Singularity container with GPU access (`--nv` flag).
 
 ## ari-skill-idea
 
-Literature survey and idea generation.
+Literature survey and idea generation. **LLM: Yes** (generate_ideas uses VirSci multi-agent deliberation).
 
 ### Tools
 
-#### `survey(topic, max_papers=5)`
+#### `survey(topic, max_papers=8)`
 
-Search arXiv and Semantic Scholar. Fully deterministic (no LLM).
+Search Semantic Scholar for related papers. Deterministic (no LLM).
 
 ```python
 result = survey("OpenMP compiler optimization HPC benchmarks")
 # Returns: {"papers": [{"title": "...", "abstract": "...", "url": "..."}]}
 ```
 
+Requires `S2_API_KEY` environment variable for higher Semantic Scholar rate limits.
+
+#### `generate_ideas(topic, papers, experiment_context="", n_ideas=3, n_agents=4, max_discussion_rounds=2, max_recursion_depth=0)`
+
+Generate research hypotheses using VirSci multi-agent LLM deliberation. Multiple AI personas (researcher, critic, expert, synthesizer) debate the research question. Called **once** before BFTS starts (pre-BFTS only).
+
+Model: `ARI_LLM_MODEL` env > `LLM_MODEL` env > `ollama_chat/qwen3:32b`.
+
+---
+
+## ari-skill-evaluator
+
+Metric spec extraction from experiment files. **LLM: Conditional** (fallback only when metric_keyword not found in text).
+
+### Tools
+
 #### `make_metric_spec(experiment_text)`
 
-Parse experiment Markdown to extract evaluation criteria. Deterministic.
+Parse experiment Markdown to extract evaluation criteria. Deterministic when `metric_keyword` and `min_expected_metric` are present in the text; falls back to LLM if not found.
 
 ```python
 result = make_metric_spec(open("experiment.md").read())
@@ -86,113 +121,131 @@ result = make_metric_spec(open("experiment.md").read())
 # }
 ```
 
-#### `generate_ideas(topic, papers, experiment_context="", n_ideas=3)`
-
-Generate research hypotheses using LLM. Called **once** before BFTS starts (pre-BFTS only).
-
----
-
-## ari-skill-evaluator
-
-Metric extraction from experiment artifacts.
-
-### Tools
-
-#### `evaluate(artifacts, goal, metric_spec)`
-
-Extract metrics from raw artifact text. Returns `has_real_data` and `metrics` dict.
-No scalar score — multi-objective evaluation only.
-
-#### `make_artifact_extractor(metric_keyword)`
-
-Return Python code for extracting a specific metric from output text.
+Model (fallback): `ARI_MODEL` env > `gpt-4o-mini`.
 
 ---
 
 ## ari-skill-paper
 
-LaTeX paper generation and review (post-BFTS only).
+LaTeX paper generation, compilation, and review (post-BFTS only). **LLM: Yes**.
 
 ### Tools
 
-#### `generate_section(section, context, venue="arxiv", nodes_json_path="")`
+#### `list_venues()`
 
-Generate a LaTeX section using LLM. Searches `nodes_tree.json` for evidence.
+Returns available venue configurations.
 
-Section types: `introduction`, `related_work`, `method`, `experiment`, `conclusion`
+Supported venues: `neurips` (9 pages), `icpp` (10 pages), `sc` (12 pages), `isc` (12 pages), `arxiv` (unlimited), `acm` (10 pages).
 
-```python
-result = generate_section(
-    section="experiment",
-    context="Best result: 284172 MFLOPS with -O3 -fopenmp -march=native, 32 threads",
-    venue="arxiv",
-    nodes_json_path="/path/to/nodes_tree.json"
-)
-```
+#### `get_template(venue)`
+
+Returns the LaTeX template for a venue.
+
+#### `generate_section(section, context, venue="arxiv", refs_json="", nodes_json_path="")`
+
+Generate a LaTeX section using LLM. Section types: `introduction`, `related_work`, `method`, `experiment`, `conclusion`.
+
+#### `compile_paper(tex_dir, main_file="main.tex")`
+
+Run pdflatex compilation. Returns success status and error messages.
+
+#### `check_format(venue, pdf_path)`
+
+Validate paper format against venue requirements (page count, etc.).
 
 #### `review_section(latex, context, venue="arxiv")`
 
 Review a LaTeX section. Returns strengths, weaknesses, and suggestions.
 
+#### `revise_section(section, latex, feedback)`
+
+Revise a LaTeX section based on review feedback.
+
+#### `write_paper_iterative(experiment_summary, context, nodes_json_path, refs_json, figures_manifest_json, output_dir, max_revisions=2, venue="arxiv")`
+
+Full paper generation with iterative draft → review → revise loop. Primary pipeline tool.
+
+#### `review_compiled_paper(tex_path, pdf_path, figures_manifest_json, paper_summary)`
+
+PDF-based holistic paper review: text extraction, figure caption evaluation, structured quality report.
+
+Model: `ARI_LLM_MODEL` env > `LLM_MODEL` env > `ollama_chat/qwen3:32b`.
+
 ---
 
 ## ari-skill-paper-re
 
-Reproducibility verification. Fully deterministic (no LLM).
+Reproducibility verification via ReAct agent loop. **LLM: Yes**.
+
+The agent reads the generated paper, extracts the experimental configuration, re-implements and runs the experiment from scratch, then compares results against claimed metrics.
 
 ### Tools
 
-#### `extract_claims(paper_text, max_claims=50)`
+#### `extract_metric_from_output(output_text, metric_name)`
 
-Extract numeric claims from paper using regex patterns.
+LLM extracts a specific metric value from raw output text.
 
-#### `compare_with_results(claims, actual_metrics, tolerance_pct=10.0)`
+#### `reproduce_from_paper(paper_path="", paper_text="", experiment_goal="", work_dir="", source_file="", executor="", cpus=64, timeout_minutes=15, tolerance_pct=5.0)`
 
-Compare claims against measured metrics within a tolerance window.
+Full ReAct reproducibility verification. Internally uses sub-tools: `write_file`, `run_bash`, `read_file`, `report_metric`, `submit_job` (for non-local executors).
 
-#### `reproducibility_report(paper_text, actual_metrics, paper_title="", tolerance_pct=10.0)`
-
-Generate a complete reproducibility report.
+Supports executors: `local`, `slurm`, `pbs`, `lsf`. Max ReAct steps: 40.
 
 Verdict thresholds: ≥80% → REPRODUCED | 40–79% → PARTIAL | <40% → NOT_REPRODUCED
+
+Model: `ARI_LLM_MODEL` env > `LLM_MODEL` env > `ollama_chat/qwen3:32b`.
 
 ---
 
 ## ari-skill-memory
 
-Ancestor-scoped node memory. Prevents cross-branch contamination.
+Ancestor-scoped node memory. Prevents cross-branch contamination. **LLM: No** (deterministic keyword matching).
 
 ### Tools
 
 #### `add_memory(node_id, text, metadata=None)`
+
+Store a memory entry tagged with `node_id`.
+
 #### `search_memory(query, ancestor_ids, limit=5)`
 
-Only returns entries from nodes listed in `ancestor_ids` (the ancestor chain).
+Only returns entries from nodes listed in `ancestor_ids` (the ancestor chain). Uses keyword matching.
 
 #### `get_node_memory(node_id)`
+
+Retrieve all memories for a specific node.
+
 #### `clear_node_memory(node_id)`
 
-Storage: `~/.ari/memory_store.jsonl` (append-only JSONL)
+Delete all memories for a specific node.
+
+Storage: `~/.ari/memory_store.jsonl` (append-only JSONL, configurable via `ARI_MEMORY_PATH`)
 
 ---
 
 ## ari-skill-orchestrator
 
-Expose ARI as an MCP server for external agents and IDEs.
+Expose ARI as an MCP server for external agents and IDEs. **LLM: No** (delegates to ARI CLI).
 
 ### Tools
 
 #### `run_experiment(experiment_md, max_nodes=10, model="qwen3:32b")`
 
-Submit an experiment asynchronously. Returns `run_id`.
+Launch an ARI experiment asynchronously. Returns `run_id`.
 
 #### `get_status(run_id)`
 
 Return progress and current best metrics for a run.
 
+#### `list_runs()`
+
+List all past experiment runs.
+
 #### `get_paper(run_id)`
 
-Return the generated `experiment_section.tex`.
+Return the generated paper (LaTeX).
+
+Workspace: `ARI_WORKSPACE` env (default: `~/ARI`).
 
 ---
 
@@ -226,10 +279,17 @@ skills:
 
 ## ari-skill-transform
 
-Converts BFTS internal representation () to publication-ready scientific data format. Strips all internal fields (, , , ) and exposes only scientific content (, ).
+Converts BFTS internal representation to publication-ready scientific data format. Strips all internal fields (`node_id`, `label`, `depth`, `parent_id`) and exposes only scientific content (`configurations`, `experiment_context`). **LLM: Yes**.
 
-**Tools:**
--  — returns ranked configurations with metrics only
+### Tools
+
+#### `nodes_to_science_data(nodes_json_path, llm_model="", llm_base_url="")`
+
+LLM analyzes the full BFTS tree, extracting hardware specs, methodology, key findings, and comparisons.
+
+Returns: `{configurations, per_key_summary, experiment_context, summary_stats}`.
+
+Model: `llm_model` arg > `LLM_MODEL` env > `gpt-4o-mini`.
 
 **Why it exists:** Ensures BFTS-internal terminology never leaks into generated papers or figures.
 
@@ -237,9 +297,110 @@ Converts BFTS internal representation () to publication-ready scientific data fo
 
 ## ari-skill-web
 
-Web search and academic literature retrieval.
+Web search and academic literature retrieval. **LLM: Partial** (only `collect_references_iterative` uses LLM).
 
-**Tools:**
--  — general web search
--  — arXiv paper search
--  — Semantic Scholar citation lookup
+### Tools
+
+#### `web_search(query, n=5)`
+
+DuckDuckGo web search. No API key required. Deterministic.
+
+#### `fetch_url(url, max_chars=8000)`
+
+Fetch and extract text from a URL via BeautifulSoup. Deterministic.
+
+#### `search_arxiv(query, max_results=5)`
+
+arXiv paper search. Deterministic.
+
+#### `search_semantic_scholar(query, limit=8, extra_queries=None)`
+
+Semantic Scholar API with fallback to arXiv. Deterministic.
+
+#### `collect_references_iterative(experiment_summary, keywords, max_rounds=20, min_papers=10)`
+
+AI Scientist v2-style iterative citation collection. LLM generates search queries and selects relevant papers across multiple rounds.
+
+Model: `ARI_LLM_MODEL` env > `LLM_MODEL` env > `ollama_chat/qwen3:32b`.
+
+---
+
+## ari-skill-coding
+
+Code generation and execution. **LLM: No** (deterministic).
+
+### Tools
+
+#### `write_code(filename, code, work_dir="/tmp/ari_work")`
+
+Write a source file to the work directory.
+
+#### `run_code(filename, work_dir="/tmp/ari_work", timeout=60)`
+
+Execute a source file (auto-detects language from extension).
+
+#### `run_bash(command, work_dir="/tmp/ari_work", timeout=60)`
+
+Run a bash command in the work directory.
+
+Work directory: `work_dir` arg > `ARI_WORK_DIR` env > `/tmp/ari_work`.
+
+---
+
+## ari-skill-benchmark
+
+Performance analysis, plotting, and statistical testing. **LLM: No** (deterministic).
+
+### Tools
+
+#### `analyze_results(result_path, metrics)`
+
+Load and analyze CSV, JSON, or NPY result files. Returns summary statistics.
+
+#### `plot(data, plot_type, output_path, title="", xlabel="", ylabel="")`
+
+Generate matplotlib figures. Plot types: `bar`, `line`, `scatter`, `heatmap`.
+
+#### `statistical_test(data_a, data_b, test)`
+
+Run scipy statistical tests: `ttest`, `mannwhitney`, `wilcoxon`.
+
+---
+
+## ari-skill-review
+
+Peer-review parsing and rebuttal generation. **LLM: Yes**.
+
+### Tools
+
+#### `parse_review(review_text)`
+
+LLM parses a free-text review into structured form: summary, concerns (id/severity/text), questions, suggestions.
+
+#### `generate_rebuttal(concerns, paper_context, experiment_results)`
+
+LLM generates a point-by-point rebuttal in LaTeX format.
+
+#### `check_rebuttal(rebuttal, original_concerns)`
+
+LLM checks rebuttal completeness: coverage (0-1), missing items, suggestions.
+
+Model: `ARI_LLM_MODEL` env > `LLM_MODEL` env > `ollama/qwen3:8b`.
+
+---
+
+## ari-skill-vlm
+
+Vision-Language model for figure and table quality review. **LLM: Yes** (VLM).
+
+### Tools
+
+#### `review_figure(image_path, context="", criteria=None)`
+
+VLM reviews an experiment figure. Returns score (0-1), issues, suggestions.
+
+#### `review_table(latex_or_path, context="")`
+
+VLM reviews a table (LaTeX source or rendered image). Returns score, issues, suggestions.
+
+Model: `VLM_MODEL` env > `openai/gpt-4o`.

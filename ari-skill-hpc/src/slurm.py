@@ -100,15 +100,12 @@ class SlurmClient:
         import re as _re_acc
         script = _re_acc.sub(r"#SBATCH\s+(?:--account[=\s]|-A\s*)\S+[^\n]*\n?", "", script)
 
-        # Normalize partition in script
+        # Strip LLM-generated #SBATCH --partition= lines from the script body.
+        # The correct partition is always set via header_lines (from kwargs or auto-detect).
+        # This avoids the bug where _fix_partition could write an empty partition
+        # when SLURM_VALID_PARTITIONS / SLURM_DEFAULT_PARTITION are unset.
         import re as _re_part
-        _env_valid = os.environ.get("SLURM_VALID_PARTITIONS", "")
-        _valid = set(_env_valid.split(",")) if _env_valid else set()
-        _default_part = os.environ.get("SLURM_DEFAULT_PARTITION", "")
-        def _fix_partition(m):
-            p = m.group(1)
-            return f"#SBATCH --partition={p if p in _valid else _default_part}"
-        script = _re_part.sub(r"#SBATCH\s+--partition=(\S+)", _fix_partition, script)
+        script = _re_part.sub(r"#SBATCH\s+--partition=\S*\n?", "", script)
 
         job_name = kwargs.get("job_name", "mcp_job")
         # Auto-determine partition
@@ -217,7 +214,8 @@ class SlurmClient:
             return {
                 "job_id": "",
                 "status": "error",
-                "message": f"sbatch failed: {stderr}",
+                "message": f"sbatch failed (exit={rc}): {stderr or stdout}",
+                "partition": partition,
             }
 
         # Parse job ID from "Submitted batch job 12345"

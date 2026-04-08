@@ -30,7 +30,7 @@ ARI delegates all LLM calls through litellm. The model is configuration — not 
 llm:
   model: qwen3:8b           # Ollama, no API key, runs offline
   model: gpt-5.2            # OpenAI API
-  model: claude-opus-4-5    # Anthropic API
+  model: claude-sonnet-4-5    # Anthropic API
   base_url: http://...      # Any OpenAI-compatible API
 ```
 
