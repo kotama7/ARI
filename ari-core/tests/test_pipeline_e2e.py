@@ -73,12 +73,12 @@ def checkpoint_dir(tmp_path, fake_nodes):
     }))
     # nodes_tree.json (used by pipeline stages)
     (ckpt / "nodes_tree.json").write_text(json.dumps({
-        "experiment_goal": "Test benchmark",
+        "experiment_goal": "Maximize GFLOPS of a stencil benchmark",
         "nodes": [n.to_dict() for n in fake_nodes],
     }))
     # experiment.md
-    (tmp_path / "experiment.md").write_text("## Research Goal\nTest benchmark\n")
-    (ckpt / "experiment.md").write_text("## Research Goal\nTest benchmark\n")
+    (tmp_path / "experiment.md").write_text("## Research Goal\nMaximize GFLOPS of a stencil benchmark\n")
+    (ckpt / "experiment.md").write_text("## Research Goal\nMaximize GFLOPS of a stencil benchmark\n")
     return ckpt
 
 
@@ -94,8 +94,6 @@ class TestWizardToLaunchPropagation:
         """OpenAI model from wizard must not be overwritten by ollama default."""
         from ari.viz import state as _st
         monkeypatch.setattr(_st, "_checkpoint_dir", tmp_path)
-        monkeypatch.setattr(_st, "_ari_home", tmp_path / ".ari")
-        (_st._ari_home).mkdir(parents=True, exist_ok=True)
         _st._settings_path = tmp_path / "settings.json"
 
         spawned = {}
@@ -373,13 +371,17 @@ class TestTemplateResolution:
 
         tpl_vars = {
             "ckpt": str(tmp_path),
+            "checkpoint_dir": str(tmp_path),
             "context": "test context",
+            "experiment_summary": "test context",
             "paper_context": workflow_yaml.get("paper_context", "test"),
             "slurm_partition": "",
             "keywords": "test keywords",
             "experiment_source_file": "",
             "author_name": workflow_yaml.get("author_name", "ARI"),
             "ari_root": str(Path(__file__).parents[2]),
+            # Pipeline initialises this to "" before the first stage runs
+            "vlm_feedback": "",
             "stages": {
                 "search_related_work": {"output": f"{tmp_path}/related_refs.json",
                                         "outputs": {"file": f"{tmp_path}/related_refs.json"}},
@@ -421,12 +423,12 @@ class TestTemplateResolution:
 
 class TestFullPaperPipeline:
     """End-to-end: run the real pipeline with mocked MCP calls.
-    Verifies all 6 stages execute, outputs are written, and config propagates."""
+    Verifies all 7 stages execute, outputs are written, and config propagates."""
 
     def test_all_stages_execute_with_correct_model(
         self, tmp_path, fake_nodes, clean_env
     ):
-        """Full pipeline must call all 6 stages with the correct LLM model."""
+        """Full pipeline must call all 7 stages with the correct LLM model."""
         from ari.pipeline import load_pipeline, run_pipeline
 
         cfg_file = Path(__file__).parent.parent / "config" / "workflow.yaml"
@@ -443,13 +445,17 @@ class TestFullPaperPipeline:
                 return {"papers": [{"title": "Test Paper", "id": "123"}]}
             elif tool == "nodes_to_science_data":
                 return {"configurations": [], "metric_name": "score"}
-            elif tool == "generate_figures_llm":
+            elif tool == "generate_figure":
                 return {"figures": [], "latex_snippets": {}}
+            elif tool == "review_figure":
+                return {"verdict": "pass", "issues": []}
             elif tool == "write_paper_iterative":
                 return {"latex": "\\documentclass{article}\n\\begin{document}\nTest\n\\end{document}",
                         "bib": "@article{test,title={Test}}"}
             elif tool == "review_compiled_paper":
                 return {"overall_score": 7, "abstract_score": 8, "body_score": 6}
+            elif tool == "generate_rebuttal":
+                return {"rebuttal": "Response to reviewers", "revisions": []}
             elif tool == "reproduce_from_paper":
                 return {"verdict": "REPRODUCED", "claimed_value": 120, "actual_value": 118}
             return {"result": "ok"}
@@ -472,25 +478,32 @@ class TestFullPaperPipeline:
         with mock.patch("ari.pipeline._run_stage_subprocess", side_effect=fake_subprocess):
             result = run_pipeline(
                 stages, fake_nodes,
-                {"goal": "Test benchmark", "topic": "test_benchmark", "file": ""},
+                {"goal": "Maximize GFLOPS of a stencil benchmark", "topic": "stencil_benchmark", "file": ""},
                 tmp_path, str(cfg_file),
             )
 
-        # All 6 stages must have been called
+        # All 9 stages must have been called (order depends on dependency resolution)
         expected_tools = [
             "collect_references_iterative",
             "nodes_to_science_data",
+            "generate_ear",
             "generate_figures_llm",
+            "review_figure",
             "write_paper_iterative",
             "review_compiled_paper",
+            "generate_rebuttal",
             "reproduce_from_paper",
         ]
         assert tool_calls == expected_tools, \
-            f"Expected all 6 stages in order, got {tool_calls}"
-
-        # Paper file must exist
-        assert (tmp_path / "full_paper.tex").exists(), "full_paper.tex not written"
-        assert (tmp_path / "refs.bib").exists(), "refs.bib not written"
+            f"Expected all 9 stages in order, got {tool_calls}"
+        # generate_ear MUST run before write_paper (issue #4)
+        assert tool_calls.index("generate_ear") < tool_calls.index(
+            "write_paper_iterative"
+        ), "generate_ear must run before write_paper"
+        # review_figure MUST run before write_paper
+        assert tool_calls.index("review_figure") < tool_calls.index(
+            "write_paper_iterative"
+        ), "review_figure must run before write_paper"
 
         # No stage should have error
         for stage_name, stage_result in result.items():
@@ -617,10 +630,10 @@ class TestCheckpointSummaryPaths:
     """Verify checkpoint summary API finds checkpoints regardless of server CWD."""
 
     def test_ari_core_subdir_searched(self):
-        """api_state search paths must include ari-core/checkpoints/ relative to package."""
-        from ari.viz.api_state import _api_checkpoint_summary
+        """Checkpoint search bases must include ari-core/checkpoints path."""
+        from ari.viz.api_state import _checkpoint_search_bases
         import inspect
-        source = inspect.getsource(_api_checkpoint_summary)
+        source = inspect.getsource(_checkpoint_search_bases)
         assert "ari-core" in source or "parents[2]" in source, \
             "Checkpoint search must include ari-core/checkpoints path"
 

@@ -84,6 +84,8 @@ def test_select_next_node_invalid_llm_response(bfts, mock_llm, mock_memory):
 
 
 def test_expand(bfts, mock_llm):
+    # Even if the LLM returns multiple directions, expand() must hard-cap to 1
+    # so that workers create exactly one new node per call.
     mock_llm.complete.return_value = LLMResponse(
         content='["direction A", "direction B"]'
     )
@@ -91,11 +93,10 @@ def test_expand(bfts, mock_llm):
     node = Node(id="n1", parent_id=None, depth=0)
     children = bfts.expand(node)
 
-    assert len(children) == 2
+    assert len(children) == 1
     assert children[0].parent_id == "n1"
     assert children[0].depth == 1
-    assert children[1].parent_id == "n1"
-    assert len(node.children) == 2
+    assert len(node.children) == 1
 
 
 def test_expand_non_json_response(bfts, mock_llm):

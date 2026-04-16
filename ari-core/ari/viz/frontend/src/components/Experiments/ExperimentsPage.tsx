@@ -1,6 +1,8 @@
 import { useI18n } from '../../i18n';
 import { useAppContext } from '../../context/AppContext';
-import { fetchCheckpointSummary } from '../../services/api';
+import {
+  fetchCheckpointSummary,
+} from '../../services/api';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
@@ -133,6 +135,7 @@ export function ExperimentsPage() {
           </table>
         )}
       </Card>
+
     </div>
   );
 }

@@ -101,6 +101,42 @@ msg_step6_en="Final checks..."
 msg_step6_ja="最終チェック..."
 msg_step6_zh="最终检查..."
 
+msg_setup_env_title_en="Configuring .env (API keys + defaults)..."
+msg_setup_env_title_ja=".env を設定中（APIキー + デフォルト値）..."
+msg_setup_env_title_zh="正在配置 .env（API 密钥 + 默认值）..."
+
+msg_setv_creating_en="Creating new .env at"
+msg_setv_creating_ja=".env を新規作成:"
+msg_setv_creating_zh="正在创建新的 .env:"
+
+msg_setv_found_en="Existing .env found —"
+msg_setv_found_ja="既存の .env を検出 —"
+msg_setv_found_zh="检测到已有 .env —"
+
+msg_setv_already_set_en="already set in .env — skipped"
+msg_setv_already_set_ja="既に .env に設定済み — スキップ"
+msg_setv_already_set_zh="已在 .env 中 — 已跳过"
+
+msg_setv_enter_skip_en="Enter to skip"
+msg_setv_enter_skip_ja="Enter でスキップ"
+msg_setv_enter_skip_zh="按 Enter 跳过"
+
+msg_setv_saved_en="saved"
+msg_setv_saved_ja="保存しました"
+msg_setv_saved_zh="已保存"
+
+msg_setv_skipped_en="skipped (left commented)"
+msg_setv_skipped_ja="スキップ（コメントアウト）"
+msg_setv_skipped_zh="已跳过（保留注释）"
+
+msg_setv_skip_noninteractive_en="non-interactive — left commented"
+msg_setv_skip_noninteractive_ja="非対話モード — コメントのみ追加"
+msg_setv_skip_noninteractive_zh="非交互模式 — 仅添加注释"
+
+msg_setv_done_en=".env ready"
+msg_setv_done_ja=".env の準備完了"
+msg_setv_done_zh=".env 准备就绪"
+
 msg_import_fail_en="import failed"
 msg_import_fail_ja="インポート失敗"
 msg_import_fail_zh="导入失败"
@@ -132,6 +168,14 @@ msg_next_model_zh="选择你的 AI 模型:"
 msg_next_run_en="Run your first experiment:"
 msg_next_run_ja="最初の実験を実行:"
 msg_next_run_zh="运行第一个实验:"
+
+msg_next_paper_en="Generate a paper from results:"
+msg_next_paper_ja="結果から論文を生成:"
+msg_next_paper_zh="从结果生成论文:"
+
+msg_next_projects_en="List all projects:"
+msg_next_projects_ja="全プロジェクトを一覧表示:"
+msg_next_projects_zh="列出所有项目:"
 
 msg_next_dash_en="Open the dashboard (the fun part!):"
 msg_next_dash_ja="ダッシュボードを開く（ここからが楽しい！）:"

@@ -116,7 +116,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     if not expected_metrics or not metric_keyword:
         try:
             import litellm as _litellm, os as _os
-            _model = _os.environ.get("ARI_MODEL", "gpt-4o-mini")
+            _model = (_os.environ.get("ARI_MODEL_EVAL")
+                      or _os.environ.get("ARI_MODEL")
+                      or _os.environ.get("ARI_LLM_MODEL")
+                      or "gpt-4o-mini")
             _resp = await _litellm.acompletion(
                 model=_model,
                 messages=[{

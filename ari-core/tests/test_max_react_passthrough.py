@@ -181,10 +181,12 @@ class TestConfigToAgentLoop:
         )
         assert loop.max_react_steps == 80
 
-    def test_build_runtime_passes_max_react(self, monkeypatch):
+    def test_build_runtime_passes_max_react(self, monkeypatch, tmp_path):
         """build_runtime passes cfg.bfts.max_react_steps to AgentLoop."""
         monkeypatch.setenv("ARI_MAX_REACT", "55")
         cfg = auto_config()
+        ckpt = tmp_path / "checkpoints" / "test_run"
+        ckpt.mkdir(parents=True, exist_ok=True)
 
         captured = {}
         orig_init = None
@@ -199,7 +201,7 @@ class TestConfigToAgentLoop:
         with mock.patch.object(AgentLoop, "__init__", spy_init):
             from ari.core import build_runtime
             try:
-                build_runtime(cfg, experiment_text="test experiment")
+                build_runtime(cfg, experiment_text="test experiment", checkpoint_dir=ckpt)
             except Exception:
                 pass  # MCP/skill init may fail — we only care about the constructor call
 

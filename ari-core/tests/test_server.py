@@ -238,6 +238,54 @@ def test_state_no_content_without_checkpoint(state, monkeypatch):
     assert injected is None
 
 
+# ── _extract_goal_from_md ─────────────────────────────────────────────────────
+
+def test_extract_goal_from_md_research_goal_heading():
+    from ari.viz.server import _extract_goal_from_md
+    md = "# Experiment: X\n\n## Research Goal\nAchieve Y under Z constraint.\n\n## Other\nfoo\n"
+    assert _extract_goal_from_md(md) == "Achieve Y under Z constraint."
+
+
+def test_extract_goal_from_md_plain_goal_heading():
+    """`## Goal` (no 'Research' prefix) must also be recognized.
+
+    Regression for bug where IdeaPage showed only the top-level title
+    because the parser only matched 'research goal'.
+    """
+    from ari.viz.server import _extract_goal_from_md
+    md = (
+        "# Experiment: Investigate improvement on QCoder Benchmark\n\n"
+        "## Goal\n"
+        "Investigate whether benchmark performance on QCoder Benchmark "
+        "can be substantially improved in the current execution environment.\n\n"
+        "## Repository\nhttps://example.com\n"
+    )
+    goal = _extract_goal_from_md(md)
+    assert goal.startswith("Investigate whether benchmark performance")
+    assert "current execution environment" in goal
+    # Must NOT fall back to the top-level title.
+    assert not goal.startswith("Experiment: Investigate improvement")
+
+
+def test_extract_goal_from_md_multiline_body():
+    from ari.viz.server import _extract_goal_from_md
+    md = "## Goal\nLine one.\nLine two.\n\n## Next\nfoo\n"
+    assert _extract_goal_from_md(md) == "Line one. Line two."
+
+
+def test_extract_goal_from_md_fallback_to_first_line():
+    """When no Goal section is present, fall back to the first non-empty line."""
+    from ari.viz.server import _extract_goal_from_md
+    md = "# Only a title\n\nSome body.\n"
+    assert _extract_goal_from_md(md) == "Only a title"
+
+
+def test_extract_goal_from_md_empty():
+    from ari.viz.server import _extract_goal_from_md
+    assert _extract_goal_from_md("") == ""
+    assert _extract_goal_from_md("   \n\n") == ""
+
+
 # ── _api_launch subprocess ────────────────────────────────────────────────────
 
 def test_api_launch_uses_correct_command(state, tmp_path, monkeypatch):
@@ -557,16 +605,38 @@ def test_delete_deselects_active_checkpoint(state, tmp_path, monkeypatch):
     assert state._checkpoint_dir is None
 
 
+def test_delete_checkpoint_no_separate_logs_dir(state, tmp_path, monkeypatch):
+    """Deleting a checkpoint removes only the checkpoint dir (logs live inside it)."""
+    from ari.viz.api_state import _api_delete_checkpoint
+    ckpt_dir = tmp_path / "checkpoints" / "20260101_runlog"
+    ckpt_dir.mkdir(parents=True)
+    (ckpt_dir / "nodes_tree.json").write_text("{}")
+    (ckpt_dir / "ari.log").write_text("line1\nline2\n")
+
+    monkeypatch.delenv("ARI_LOG_DIR", raising=False)
+    monkeypatch.setattr(state, "_checkpoint_dir", None)
+    result = _api_delete_checkpoint(json.dumps({"path": str(ckpt_dir)}).encode())
+    assert result.get("ok") is True
+    assert not ckpt_dir.exists()
+
+
 # ── Upload isolation ──────────────────────────────────────────────────────────
 
-def test_upload_rejected_without_checkpoint(state, monkeypatch):
-    """File upload must fail with 400 when no checkpoint is active."""
+def test_upload_creates_staging_without_checkpoint(state, monkeypatch):
+    """File upload auto-creates staging dir when no checkpoint is active."""
     from ari.viz.api_tools import _api_upload_file
     monkeypatch.setattr(state, "_checkpoint_dir", None)
+    monkeypatch.setattr(state, "_staging_dir", None)
     headers = {"Content-Type": "text/plain", "X-Filename": "test.md"}
     result = _api_upload_file(headers, b"hello")
-    assert result.get("ok") is False
-    assert result.get("_status") == 400
+    assert result.get("ok") is True
+    assert result.get("filename") == "test.md"
+    # Cleanup
+    import shutil
+    if state._staging_dir and state._staging_dir.exists():
+        shutil.rmtree(str(state._staging_dir))
+    monkeypatch.setattr(state, "_checkpoint_dir", None)
+    monkeypatch.setattr(state, "_staging_dir", None)
 
 
 def test_upload_writes_to_checkpoint_dir(state, tmp_path, monkeypatch):
@@ -576,8 +646,8 @@ def test_upload_writes_to_checkpoint_dir(state, tmp_path, monkeypatch):
     headers = {"Content-Type": "text/plain", "X-Filename": "test.md"}
     result = _api_upload_file(headers, b"hello world")
     assert result.get("ok") is True
-    assert (tmp_path / "test.md").exists()
-    assert (tmp_path / "test.md").read_text() == "hello world"
+    assert (tmp_path / "uploads" / "test.md").exists()
+    assert (tmp_path / "uploads" / "test.md").read_text() == "hello world"
 
 
 # ══════════════════════════════════════════════
@@ -626,6 +696,154 @@ def test_delete_clears_last_proc(state, tmp_path, monkeypatch):
     assert state._checkpoint_dir is None
     assert state._last_proc is None
     assert state._last_log_path is None
+
+
+# ══════════════════════════════════════════════
+# Delete: clears _sub_experiments for deleted checkpoint
+# ══════════════════════════════════════════════
+
+def test_delete_clears_sub_experiments(state, tmp_path, monkeypatch):
+    """Deleting a checkpoint removes its entry from _sub_experiments."""
+    from ari.viz.api_state import _api_delete_checkpoint
+    ckpt_dir = tmp_path / "checkpoints" / "20260101000000_to_delete"
+    ckpt_dir.mkdir(parents=True)
+    monkeypatch.setattr(state, "_checkpoint_dir", None)
+    # Seed a sub-experiment entry for the checkpoint
+    state._sub_experiments["20260101000000_to_delete"] = {
+        "run_id": "20260101000000_to_delete", "recursion_depth": 0,
+    }
+    _api_delete_checkpoint(json.dumps({"path": str(ckpt_dir)}).encode())
+    assert "20260101000000_to_delete" not in state._sub_experiments
+
+
+# ══════════════════════════════════════════════
+# Delete: removes sibling experiments/{run_id}/ dir (per-node work_dirs)
+# ══════════════════════════════════════════════
+
+def test_delete_removes_experiments_dir(state, tmp_path, monkeypatch):
+    """Deleting a checkpoint also removes {workspace}/experiments/{run_id}/.
+
+    The two directories are created together during a BFTS run:
+      - {workspace}/checkpoints/{run_id}/           (checkpoint dir)
+      - {workspace}/experiments/{run_id}/{node_id}/ (per-node work_dirs)
+    A half-complete delete leaves orphan node work_dirs behind.
+    """
+    from ari.viz.api_state import _api_delete_checkpoint
+    run_id = "20260101000000_orphan_check"
+    ckpt_dir = tmp_path / "checkpoints" / run_id
+    ckpt_dir.mkdir(parents=True)
+    # Simulate per-node work_dirs that PathManager.ensure_node_work_dir would create
+    exp_dir = tmp_path / "experiments" / run_id
+    (exp_dir / "node_root").mkdir(parents=True)
+    (exp_dir / "node_root" / "script.py").write_text("print(1)\n")
+    (exp_dir / "node_abc12345").mkdir(parents=True)
+    (exp_dir / "node_abc12345" / "result.csv").write_text("a,b\n")
+
+    monkeypatch.setattr(state, "_checkpoint_dir", None)
+    result = _api_delete_checkpoint(json.dumps({"path": str(ckpt_dir)}).encode())
+    assert result.get("ok") is True
+    assert not ckpt_dir.exists(), "checkpoint dir should be deleted"
+    assert not exp_dir.exists(), (
+        "experiments/{run_id} should be deleted alongside the checkpoint — "
+        "otherwise per-node work_dirs become orphan data"
+    )
+    # The response advertises the extra deletion for observability.
+    # Field is a list of deleted paths (may include legacy-orphan fallbacks).
+    assert result.get("deleted_experiments") == [str(exp_dir)]
+
+
+def test_delete_without_experiments_dir_still_succeeds(state, tmp_path, monkeypatch):
+    """Missing experiments/{run_id}/ is not an error — just a no-op."""
+    from ari.viz.api_state import _api_delete_checkpoint
+    run_id = "20260101000000_no_exp_dir"
+    ckpt_dir = tmp_path / "checkpoints" / run_id
+    ckpt_dir.mkdir(parents=True)
+    # Deliberately do NOT create experiments/{run_id}/
+    monkeypatch.setattr(state, "_checkpoint_dir", None)
+    result = _api_delete_checkpoint(json.dumps({"path": str(ckpt_dir)}).encode())
+    assert result.get("ok") is True
+    assert "deleted_experiments" not in result
+
+
+def test_delete_keeps_unrelated_experiments_dirs(state, tmp_path, monkeypatch):
+    """Only the matching run_id's experiments dir is deleted; siblings survive."""
+    from ari.viz.api_state import _api_delete_checkpoint
+    target_run = "20260101000000_target"
+    other_run = "20260101000000_other"
+    ckpt_target = tmp_path / "checkpoints" / target_run
+    ckpt_target.mkdir(parents=True)
+    exp_target = tmp_path / "experiments" / target_run
+    exp_target.mkdir(parents=True)
+    (exp_target / "file.txt").write_text("t\n")
+    exp_other = tmp_path / "experiments" / other_run
+    exp_other.mkdir(parents=True)
+    (exp_other / "keep.txt").write_text("k\n")
+
+    monkeypatch.setattr(state, "_checkpoint_dir", None)
+    _api_delete_checkpoint(json.dumps({"path": str(ckpt_target)}).encode())
+    assert not exp_target.exists(), "target experiments dir must be deleted"
+    assert exp_other.exists(), "unrelated experiments dir must be preserved"
+    assert (exp_other / "keep.txt").read_text() == "k\n"
+
+
+def test_create_and_delete_paths_match(state, tmp_path, monkeypatch):
+    """Creation path (PathManager) and deletion path (_api_delete_checkpoint)
+    must target the exact same experiments/{run_id} directory."""
+    from ari.paths import PathManager
+    from ari.viz.api_state import _api_delete_checkpoint
+    run_id = "20260101000000_symmetry"
+
+    # Use PathManager — the same class cli.py uses — to create both sides.
+    pm = PathManager(tmp_path)
+    pm.checkpoints_root.mkdir(parents=True, exist_ok=True)
+    ckpt_dir = pm.ensure_checkpoint(run_id)
+    # Create a node work_dir the way cli.py does.
+    node_wd = pm.ensure_node_work_dir(run_id, "node_root")
+    (node_wd / "artifact.bin").write_text("X")
+    assert node_wd.is_dir() and node_wd.exists()
+
+    monkeypatch.setattr(state, "_checkpoint_dir", None)
+    result = _api_delete_checkpoint(json.dumps({"path": str(ckpt_dir)}).encode())
+    assert result.get("ok") is True
+    # The run_id bucket under experiments/ must be gone.
+    assert not (pm.experiments_root / run_id).exists()
+    assert not node_wd.exists()
+
+
+# ══════════════════════════════════════════════
+# Checkpoints listing: prunes stale _running_procs
+# ══════════════════════════════════════════════
+
+def test_checkpoints_prunes_stale_running_procs(state, tmp_path, monkeypatch):
+    """_api_checkpoints removes _running_procs entries for missing dirs."""
+    from ari.viz.api_state import _api_checkpoints
+    ckpt_parent = tmp_path / "checkpoints"
+    alive = ckpt_parent / "20260101000000_alive"
+    alive.mkdir(parents=True)
+    # Insert two _running_procs entries: one for an existing dir, one stale
+    alive_resolved = str(alive.resolve())
+    stale_resolved = str((ckpt_parent / "20260101000000_gone").resolve())
+    mock_proc = mock.MagicMock()
+    mock_proc.poll.return_value = None  # still "running"
+    state._running_procs[alive_resolved] = mock_proc
+    state._running_procs[stale_resolved] = mock_proc
+    # Patch search paths to only look at tmp_path
+    monkeypatch.setattr(state, "_ari_root", tmp_path / "_nope")
+    monkeypatch.setattr(state, "_checkpoint_dir", None)
+    with mock.patch("ari.viz.api_state.Path") as MockPath:
+        # We need the real Path for everything except __file__ parent chain
+        MockPath.side_effect = Path
+        MockPath.cwd.return_value = tmp_path
+        MockPath.home.return_value = tmp_path / "_nohome"
+        # Provide a search path list that includes our tmp checkpoints
+        import ari.viz.api_state as _mod
+        orig = _mod._api_checkpoints
+        # Just call the real function — the search path includes Path.cwd()/checkpoints
+        _api_checkpoints()
+    assert stale_resolved not in state._running_procs, \
+        "Stale _running_procs entry must be pruned"
+    # Cleanup
+    state._running_procs.clear()
 
 
 # ══════════════════════════════════════════════
@@ -1541,6 +1759,7 @@ def test_api_launch_no_checkpoint_dir(state, tmp_path, monkeypatch):
     monkeypatch.setattr(state, "_last_log_path", None)
     monkeypatch.setattr(state, "_last_log_fh", None)
     monkeypatch.setattr(state, "_settings_path", tmp_path / "settings.json")
+    monkeypatch.setattr(state, "_ari_root", tmp_path)
     (tmp_path / "settings.json").write_text("{}")
 
     mock_proc = mock.MagicMock()
@@ -1551,7 +1770,7 @@ def test_api_launch_no_checkpoint_dir(state, tmp_path, monkeypatch):
          mock.patch("threading.Thread"), \
          mock.patch("builtins.open", mock.mock_open()):
         result = _api_launch(json.dumps({
-            "experiment_md": "## Research Goal\nTest first launch\n",
+            "experiment_md": "## Research Goal\nMaximize GFLOPS of a stencil benchmark\n",
         }).encode())
 
     assert result.get("ok") is True, f"Expected ok=True, got: {result}"

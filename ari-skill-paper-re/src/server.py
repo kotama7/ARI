@@ -21,7 +21,11 @@ mcp = FastMCP("paper-reproducibility-skill")
 
 
 def _model():
-    return os.environ.get("ARI_LLM_MODEL") or os.environ.get("LLM_MODEL") or "ollama_chat/qwen3:32b"
+    # Phase-specific override so the GUI's per-phase model picker takes effect.
+    return (os.environ.get("ARI_MODEL_PAPER")
+            or os.environ.get("ARI_LLM_MODEL")
+            or os.environ.get("LLM_MODEL")
+            or "ollama_chat/qwen3:32b")
 
 
 def _api_base():

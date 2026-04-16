@@ -109,7 +109,7 @@ BFTS ルートノード作成
 BFTS expand() (ari/orchestrator/bfts.py)
   - _scientific_score でノードをランク付け
   - スコアを子提案 LLM に渡す
-  - LLM が 2-3 の子方向を提案（改善 / アブレーション / 検証）
+  - LLM が展開呼び出しごとに 1 つの子方向を提案（改善 / アブレーション / 検証 / ドラフト / デバッグ / その他）
   - ドメインヒントなし — LLM が「改善」の意味を決定
     │
     ▼ (ARI_MAX_NODES 到達後)
@@ -125,29 +125,146 @@ nodes_tree.json  (全ノード: メトリクス、成果物、メモリ、親子
     出力: science_data.json  { configurations, experiment_context, per_key_summary }
 
   ステージ 2: search_related_work  (ari-skill-web)  [ステージ 1 と並列]
-    LLM 生成キーワード → Semantic Scholar API
+    LLM 生成キーワード → 切替可能な検索バックエンド (Semantic Scholar / AlphaXiv / both)
     出力: related_refs.json
 
   ステージ 3: generate_figures  (ari-skill-plot)  [ステージ 1 の後]
-    入力: 完全な science_data.json（experiment_context を含む）
+    入力: 完全な science_data.json（experiment_context を含む）+ {{vlm_feedback}}
     LLM が完全な matplotlib コードを記述 → 実行 → PDF 図表を保存
     図表の種類はデータから自律的に選択（事前指定なし）
     出力: figures_manifest.json
 
-  ステージ 4: write_paper  (ari-skill-paper)  [ステージ 2, 3 の後]
+  ステージ 3b: vlm_review_figures  (ari-skill-vlm)  [ステージ 3 の後]
+    VLM が代表図 (fig_1.png) を視覚的にレビュー
+    スコア < 0.7: VLM フィードバックと共に generate_figures へループバック（最大 2 反復）
+    出力: vlm_figure_review.json
+
+  ステージ 4: generate_ear  (ari-skill-transform)  [ステージ 1 の後]
+    Experiment Artifact Repository を構築: コード、データ、ログ、再現性メタデータ
+    出力: ear_manifest.json, ear/ ディレクトリ
+
+  ステージ 5: write_paper  (ari-skill-paper)  [ステージ 2, 3, 4 の後]
     paper_context = experiment_context + best_nodes_metrics
     反復的セクション執筆: 下書き → LLM 査読 → 修正（最大 2 ラウンド）
     Semantic Scholar の結果から BibTeX 引用
     出力: full_paper.tex, refs.bib
 
-  ステージ 5: review_paper  (ari-skill-paper)  [ステージ 4 の後]
+  ステージ 6: review_paper  (ari-skill-paper)  [ステージ 5 の後]
     PDF → pdftotext → LLM 総合査読
     出力: review_report.json { score, verdict, citation_ok, feedback }
 
-  ステージ 6: reproducibility_check  (ari-skill-paper-re)  [ステージ 4 の後]
+  ステージ 7: respond_to_review  (ari-skill-review)  [ステージ 6 の後]
+    レビュー懸念をパース → 逐次反論を生成
+    出力: rebuttal.json
+
+  ステージ 8: reproducibility_check  (ari-skill-paper-re)  [ステージ 5 の後]
     論文を読み取り → 構成を抽出 → HPC ジョブを実行 → 主張値と実測値を比較
     出力: reproducibility_report.json { verdict, claimed, actual, tolerance_pct }
 ```
+
+---
+
+## ファイル構造
+
+### チェックポイントディレクトリのレイアウト
+
+各 ARI 実行は `{workspace}/checkpoints/{run_id}/` 以下にチェックポイントディレクトリを生成する。
+`run_id` は `YYYYMMDDHHMMSS_<slug>` の形式。ディレクトリ構築は `ari/paths.py` の `PathManager`
+が単一の真実の源泉 (single source of truth)。
+
+```
+checkpoints/{run_id}/
+├── experiment.md               # 入力: 研究目標 (起動時にコピー)
+├── launch_config.json          # Wizard/CLI 起動パラメータ
+├── meta.json                   # サブ実験メタデータ (親/再帰深度)
+├── workflow.yaml               # 起動時点のパイプライン設定スナップショット
+├── .ari_pid                    # 生存検知用 PID ファイル
+├── tree.json                   # 完全な BFTS ツリー (BFTS 中に書き込み)
+├── nodes_tree.json             # 軽量ツリーエクスポート (パイプライン入力)
+├── results.json                # ノード毎の artifact・metrics サマリ
+├── idea.json                   # 生成された仮説 (VirSci 出力)
+├── evaluation_criteria.json    # 主要指標と方向
+├── cost_trace.jsonl            # LLM 呼び出し毎のコスト/トークンログ
+├── cost_summary.json           # 集約コストサマリ
+├── ari.log                     # 構造化 JSON ログ
+├── ari_run_*.log               # GUI 起動時の stdout/stderr ログ
+├── .pipeline_started           # マーカー: post-BFTS パイプライン開始済み
+├── science_data.json           # Transform-skill 出力
+├── related_refs.json           # 文献検索結果
+├── figures_manifest.json       # 生成図メタデータ
+├── fig_*.{pdf,png,eps,svg}     # 生成された図
+├── vlm_review.json             # VLM 図レビュー出力
+├── full_paper.tex              # 生成された LaTeX 論文
+├── refs.bib                    # BibTeX 参照
+├── full_paper.pdf              # コンパイル済み PDF
+├── full_paper.bbl              # 文献リスト出力
+├── review_report.json          # LLM 査読出力
+├── rebuttal.json               # 逐次反論
+├── reproducibility_report.json # 再現性検証
+├── uploads/                    # ユーザアップロードファイル (ノード work_dir へコピー)
+├── paper/                      # LaTeX 編集用ワークスペース
+│   ├── full_paper.tex
+│   ├── full_paper.pdf
+│   ├── refs.bib
+│   └── figures/
+├── ear/                        # 実験 Artifact Repository
+│   ├── README.md
+│   ├── RESULTS.md
+│   └── <artifacts>
+└── repro/                      # 再現性実行ワークスペース
+    ├── run/
+    ├── reproducibility_report.json
+    └── repro_output.log
+```
+
+### ノード作業ディレクトリ
+
+ノード毎の作業ディレクトリは `checkpoints/` と兄弟ディレクトリとして作成される:
+
+```
+{workspace}/experiments/{slug}/{node_id}/
+```
+
+ノード実行時、`_run_loop` は以下のユーザファイルを各ノードの work_dir にコピーする:
+- **Provided files**: `experiment.md` の `## Provided Files` (`## 提供ファイル` / `## 提供文件`) にリストされたパス
+- **チェックポイント直下**: チェックポイント直下の非 meta ファイル
+- **uploads サブディレクトリ**: `checkpoint/uploads/` 内の非 meta ファイル
+
+`PathManager.META_FILES` がノード work_dir に絶対にコピーしてはいけないファイルを定義
+(`experiment.md`, `tree.json`, `nodes_tree.json`, `launch_config.json`, `meta.json`,
+`results.json`, `idea.json`, `cost_trace.jsonl`, `cost_summary.json`, `workflow.yaml`,
+`ari.log`, `evaluation_criteria.json`, `.ari_pid`, `.pipeline_started`)。
+拡張子が `.log` のファイルも meta 扱い。
+
+### tree.json と nodes_tree.json
+
+いずれも BFTS ノードツリーを含むが、ライフサイクルの異なるタイミングで書き込まれる:
+
+| ファイル          | 書き込み元                                            | フェーズ          | スキーマ                                              |
+|-------------------|-------------------------------------------------------|-------------------|-------------------------------------------------------|
+| `tree.json`       | `cli.py` の `_save_checkpoint()`                      | BFTS 中          | `{run_id, experiment_file, created_at, nodes}`        |
+| `nodes_tree.json` | `_save_checkpoint()` + `generate_paper_section()`     | BFTS + post-BFTS | `{experiment_goal, nodes}` (軽量)                    |
+
+**読み取り側の規約**: 全ての読み取りは `tree.json` を優先し、`nodes_tree.json` にフォールバック
+しなければならない。これにより BFTS 中の最新データを保ちつつ、`nodes_tree.json` を前提とする
+パイプラインステージとの互換性も維持する。
+
+### プロジェクト単位の状態 (チェックポイントごと)
+
+ARI はグローバルな設定ディレクトリを持たない。設定ファイルとエージェントメモリは
+すべてアクティブなチェックポイント配下に保存されるため、実験ごとに状態が分離され、
+`~/.ari/` は安全に削除できる:
+
+```
+checkpoints/{run_id}/
+├── settings.json        # GUI 設定 (LLM モデル、プロバイダ、HPC デフォルト)
+├── memory.json          # FileMemoryClient ストア (祖先チェーン)
+├── memory_store.jsonl   # ari-skill-memory MCP サーバのエントリ
+└── ...                  # tree.json / launch_config.json / uploads / ari.log
+```
+
+API キーは **絶対に** `settings.json` には保存されない。`.env` ファイル
+(探索順: checkpoint → ARI root → ari-core → home) または起動時に注入された環境変数から読み取る。
 
 ---
 
@@ -185,18 +302,19 @@ nodes_tree.json  (全ノード: メトリクス、成果物、メモリ、親子
 | `ari-skill-plot` | `generate_figures`, `generate_figures_llm` | 決定論的 + LLM ベースの matplotlib 図表生成 | ✓ |
 | `ari-skill-paper` | `list_venues`, `get_template`, `generate_section`, `compile_paper`, `check_format`, `review_section`, `revise_section`, `write_paper_iterative`, `review_compiled_paper` | LaTeX 論文執筆、コンパイル、査読 | ✓ |
 | `ari-skill-paper-re` | `extract_metric_from_output`, `reproduce_from_paper` | ReAct 再現性検証エージェント | ✓ |
+| `ari-skill-figure-router` | （図表タイプ分類） | 図表タイプ分類と生成ルーティング（SVG/matplotlib/LaTeX） | ✓ |
+| `ari-skill-benchmark` | `analyze_results`, `plot`, `statistical_test` | CSV/JSON/NPY 分析、プロット、scipy 統計（BFTS analyze ステージで使用） | ✗ |
+| `ari-skill-review` | `parse_review`, `generate_rebuttal`, `check_rebuttal` | 査読パース + リバッタル生成 | ✓ |
+| `ari-skill-vlm` | `review_figure`, `review_table` | VLM ベースの図表・テーブルレビュー（VLM レビューループを駆動） | ✓ |
+| `ari-skill-coding` | `write_code`, `run_code`, `read_file`, `run_bash` | コード生成 + 実行 + ページネーション付きファイル読取 | ✗ |
 
 **追加 skills**（利用可能、デフォルトワークフローには含まれない）:
 
 | Skill | ツール | 役割 | LLM? |
 |-------|-------|------|------|
-| `ari-skill-coding` | `write_code`, `run_code`, `run_bash` | コード生成 + 実行 | ✗ |
-| `ari-skill-benchmark` | `analyze_results`, `plot`, `statistical_test` | CSV/JSON/NPY 分析、プロット、scipy 統計 | ✗ |
-| `ari-skill-review` | `parse_review`, `generate_rebuttal`, `check_rebuttal` | 査読パース + リバッタル生成 | ✓ |
-| `ari-skill-vlm` | `review_figure`, `review_table` | Vision-Language モデルによる図表・テーブルレビュー | ✓ |
-| `ari-skill-orchestrator` | `run_experiment`, `get_status`, `list_runs`, `get_paper` | ARI を外部エージェント/IDE 向けの MCP サーバーとして公開 | ✗ |
+| `ari-skill-orchestrator` | `run_experiment`, `get_status`, `list_runs`, `list_children`, `get_paper` | ARI を MCP サーバーとして公開、再帰的サブ実験、デュアル stdio+HTTP トランスポート | ✗ |
 
-✗ = LLM なし、△ = 一部ツールのみ LLM、✓ = 主要ツールが LLM を使用。
+✗ = LLM なし、△ = 一部ツールのみ LLM、✓ = 主要ツールが LLM を使用。15 skills（14 デフォルト、1 追加）。
 
 ---
 

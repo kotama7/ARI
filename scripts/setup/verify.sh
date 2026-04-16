@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# verify.sh — Step 5: Final verification
+# verify.sh — Step 6: Final verification
 # ============================================================================
 
 echo ""
@@ -9,7 +9,7 @@ echo ""
 
 ERRORS=0
 
-for mod in mcp litellm fitz; do
+for mod in mcp litellm fitz websockets; do
   if $PYTHON -c "import $mod" 2>/dev/null; then
     ok "$mod ✔"
   else

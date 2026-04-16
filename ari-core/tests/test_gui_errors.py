@@ -328,22 +328,38 @@ class TestRequireCheckpointDir:
 class TestUploadFileErrors:
     """File upload validation and edge cases."""
 
-    def test_upload_no_checkpoint(self, monkeypatch):
+    def test_upload_no_checkpoint_creates_staging(self, monkeypatch):
+        """When no checkpoint exists, a staging directory is auto-created."""
         from ari.viz.api_tools import _api_upload_file
         monkeypatch.setattr(_st, "_checkpoint_dir", None)
+        monkeypatch.setattr(_st, "_staging_dir", None)
         headers = {"Content-Type": "application/octet-stream", "X-Filename": "test.txt"}
         result = _api_upload_file(headers, b"data")
-        assert result.get("ok") is False
-        assert "error" in result
+        assert result.get("ok") is True
+        assert result.get("filename") == "test.txt"
+        # Cleanup staging
+        import shutil
+        if _st._staging_dir and _st._staging_dir.exists():
+            shutil.rmtree(str(_st._staging_dir))
+        monkeypatch.setattr(_st, "_checkpoint_dir", None)
+        monkeypatch.setattr(_st, "_staging_dir", None)
 
-    def test_upload_checkpoint_deleted(self, monkeypatch, tmp_path):
-        """Checkpoint dir was deleted between check and write."""
+    def test_upload_checkpoint_deleted_falls_back_to_staging(self, monkeypatch, tmp_path):
+        """Checkpoint dir was deleted → staging directory is auto-created."""
         from ari.viz.api_tools import _api_upload_file
         gone = tmp_path / "gone_dir"
         monkeypatch.setattr(_st, "_checkpoint_dir", gone)
+        monkeypatch.setattr(_st, "_staging_dir", None)
         headers = {"Content-Type": "application/octet-stream", "X-Filename": "test.txt"}
         result = _api_upload_file(headers, b"data")
-        assert result.get("ok") is False
+        assert result.get("ok") is True
+        assert result.get("filename") == "test.txt"
+        # Cleanup
+        import shutil
+        if _st._staging_dir and _st._staging_dir.exists():
+            shutil.rmtree(str(_st._staging_dir))
+        monkeypatch.setattr(_st, "_checkpoint_dir", None)
+        monkeypatch.setattr(_st, "_staging_dir", None)
 
     def test_upload_empty_body(self, monkeypatch, tmp_path):
         from ari.viz.api_tools import _api_upload_file
@@ -353,7 +369,7 @@ class TestUploadFileErrors:
         headers = {"Content-Type": "application/octet-stream", "X-Filename": "empty.md"}
         result = _api_upload_file(headers, b"")
         assert result.get("ok") is True
-        assert (ckpt / "empty.md").read_bytes() == b""
+        assert (ckpt / "uploads" / "empty.md").read_bytes() == b""
 
     def test_upload_filename_sanitization(self, monkeypatch, tmp_path):
         """Path traversal in filename is stripped."""
@@ -368,8 +384,8 @@ class TestUploadFileErrors:
         result = _api_upload_file(headers, b"malicious")
         assert result.get("ok") is True
         assert result["filename"] == "passwd"
-        # File saved inside checkpoint, not at ../../etc/passwd
-        assert (ckpt / "passwd").exists()
+        # File saved inside checkpoint/uploads, not at ../../etc/passwd
+        assert (ckpt / "uploads" / "passwd").exists()
 
     def test_upload_multipart_no_file_part(self, monkeypatch, tmp_path):
         """Multipart body without a file part."""
@@ -791,7 +807,7 @@ class TestLaunchErrors:
         assert "not found" in result.get("error", "").lower() or "error" in result
 
     def test_launch_writes_experiment_md(self, monkeypatch, tmp_path):
-        """Launch writes experiment.md to ckpt_parent."""
+        """Launch writes experiment.md inside the pre-created checkpoint directory."""
         from ari.viz.api_experiment import _api_launch
         ckpt = tmp_path / "checkpoints" / "test_run"
         ckpt.mkdir(parents=True)
@@ -807,10 +823,14 @@ class TestLaunchErrors:
                 "experiment_md": "## Research Goal\nTest goal",
             }).encode())
         if result.get("ok"):
-            # ckpt_parent is the parent of the "checkpoints" dir (not the checkpoint itself)
-            exp_path = ckpt.parent.parent / "experiment.md"
-            assert exp_path.exists(), f"experiment.md not found at {exp_path} (checked {ckpt.parent / 'experiment.md'} too)"
+            # experiment.md must be inside the newly created checkpoint dir
+            _new_ckpt = Path(result["checkpoint_path"])
+            exp_path = _new_ckpt / "experiment.md"
+            assert exp_path.exists(), f"experiment.md not found at {exp_path}"
             assert "Test goal" in exp_path.read_text()
+            # Must NOT be written to the workspace/ckpt_parent root
+            assert not (ckpt.parent.parent / "experiment.md").exists(), \
+                "experiment.md should not be written to workspace root"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1197,7 +1217,7 @@ class TestSkillsListing:
         from ari.viz.api_settings import _api_skills
         import ari.viz.api_settings as _mod
         monkeypatch.setattr(_mod, "__file__", str(tmp_path / "viz" / "f.py"))
-        monkeypatch.setattr(_st, "_ari_home", tmp_path / "empty_home")
+        monkeypatch.setattr(_st, "_ari_root", tmp_path / "empty_home")
         result = _api_skills()
         assert isinstance(result, list)
 
@@ -1209,7 +1229,352 @@ class TestSkillsListing:
         root.mkdir()
         (root / "ari-skill-test").mkdir()
         monkeypatch.setattr(_mod, "__file__", str(root / "ari-core" / "ari" / "viz" / "f.py"))
-        monkeypatch.setattr(_st, "_ari_home", tmp_path / "empty_home")
+        monkeypatch.setattr(_st, "_ari_root", tmp_path / "empty_home")
         result = _api_skills()
         names = [s["name"] for s in result]
         assert "ari-skill-test" not in names  # no skill.yaml = not listed
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# _api_upload_delete: edge cases
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestUploadDeleteErrors:
+    """File deletion API validation and edge cases."""
+
+    def test_delete_success(self, monkeypatch, tmp_path):
+        """Deleting an existing file succeeds."""
+        from ari.viz.api_tools import _api_upload_delete
+        ckpt = tmp_path / "ckpt"
+        ckpt.mkdir()
+        (ckpt / "data.txt").write_text("hello")
+        monkeypatch.setattr(_st, "_checkpoint_dir", ckpt)
+        result = _api_upload_delete(json.dumps({"filename": "data.txt"}).encode())
+        assert result["ok"] is True
+        assert not (ckpt / "data.txt").exists()
+
+    def test_delete_nonexistent_file(self, monkeypatch, tmp_path):
+        """Deleting a file that does not exist returns error."""
+        from ari.viz.api_tools import _api_upload_delete
+        ckpt = tmp_path / "ckpt"
+        ckpt.mkdir()
+        monkeypatch.setattr(_st, "_checkpoint_dir", ckpt)
+        result = _api_upload_delete(json.dumps({"filename": "nope.txt"}).encode())
+        assert result["ok"] is False
+        assert "not found" in result.get("error", "").lower()
+
+    def test_delete_empty_filename(self, monkeypatch, tmp_path):
+        """Empty filename returns error."""
+        from ari.viz.api_tools import _api_upload_delete
+        ckpt = tmp_path / "ckpt"
+        ckpt.mkdir()
+        monkeypatch.setattr(_st, "_checkpoint_dir", ckpt)
+        result = _api_upload_delete(json.dumps({"filename": ""}).encode())
+        assert result["ok"] is False
+
+    def test_delete_no_checkpoint(self, monkeypatch):
+        """Delete without active checkpoint returns error."""
+        from ari.viz.api_tools import _api_upload_delete
+        monkeypatch.setattr(_st, "_checkpoint_dir", None)
+        result = _api_upload_delete(json.dumps({"filename": "x.txt"}).encode())
+        assert result["ok"] is False
+
+    def test_delete_path_traversal(self, monkeypatch, tmp_path):
+        """Path traversal in filename is sanitized."""
+        from ari.viz.api_tools import _api_upload_delete
+        ckpt = tmp_path / "ckpt"
+        ckpt.mkdir()
+        monkeypatch.setattr(_st, "_checkpoint_dir", ckpt)
+        result = _api_upload_delete(json.dumps({"filename": "../../etc/passwd"}).encode())
+        assert result["ok"] is False  # "passwd" not in ckpt
+
+    def test_delete_invalid_json(self, monkeypatch, tmp_path):
+        """Invalid JSON body returns error."""
+        from ari.viz.api_tools import _api_upload_delete
+        ckpt = tmp_path / "ckpt"
+        ckpt.mkdir()
+        monkeypatch.setattr(_st, "_checkpoint_dir", ckpt)
+        result = _api_upload_delete(b"not json")
+        assert result["ok"] is False
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Staging → launch copy
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestStagingCopyOnLaunch:
+    """Verify uploaded files are copied from staging to new checkpoint on launch."""
+
+    def test_staging_files_copied_to_new_checkpoint(self, monkeypatch, tmp_path):
+        """Files in staging dir are copied into the new checkpoint on launch."""
+        staging = tmp_path / "staging"
+        staging.mkdir()
+        (staging / "user_data.csv").write_text("a,b,c")
+        (staging / "notes.md").write_text("# Notes")
+        monkeypatch.setattr(_st, "_checkpoint_dir", staging)
+        monkeypatch.setattr(_st, "_staging_dir", staging)
+
+        from ari.viz.api_experiment import _api_launch
+        # Monkey-patch subprocess.Popen to avoid real process
+        import subprocess
+        class _FakePopen:
+            pid = 12345
+            def poll(self): return None
+        monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: _FakePopen())
+        # Set up minimal ari_root / settings
+        monkeypatch.setattr(_st, "_ari_root", tmp_path)
+        monkeypatch.setattr(_st, "_settings_path", tmp_path / "no_settings.json")
+        monkeypatch.setattr(_st, "_last_log_fh", None)
+        monkeypatch.setattr(_st, "_last_log_path", None)
+        monkeypatch.setattr(_st, "_last_proc", None)
+
+        payload = json.dumps({
+            "experiment_md": "## Research Goal\nTest",
+            "profile": "laptop",
+        }).encode()
+        result = _api_launch(payload)
+        assert result.get("ok") is True
+
+        # New checkpoint should contain the staged files (inside uploads/ subdir)
+        new_ckpt = Path(result["checkpoint_path"])
+        assert (new_ckpt / "uploads" / "user_data.csv").exists()
+        assert (new_ckpt / "uploads" / "user_data.csv").read_text() == "a,b,c"
+        assert (new_ckpt / "uploads" / "notes.md").exists()
+        assert (new_ckpt / "uploads" / "notes.md").read_text() == "# Notes"
+        # Staging dir should be cleaned up
+        assert _st._staging_dir is None
+
+    def test_staging_skips_internal_files(self, monkeypatch, tmp_path):
+        """Internal files (experiment.md, launch_config.json) are not duplicated from staging."""
+        staging = tmp_path / "staging"
+        staging.mkdir()
+        (staging / "experiment.md").write_text("old content")
+        (staging / "launch_config.json").write_text("{}")
+        (staging / "real_data.txt").write_text("data")
+        monkeypatch.setattr(_st, "_checkpoint_dir", staging)
+        monkeypatch.setattr(_st, "_staging_dir", staging)
+
+        from ari.viz.api_experiment import _api_launch
+        import subprocess
+        class _FakePopen:
+            pid = 99
+            def poll(self): return None
+        monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: _FakePopen())
+        monkeypatch.setattr(_st, "_ari_root", tmp_path)
+        monkeypatch.setattr(_st, "_settings_path", tmp_path / "no.json")
+        monkeypatch.setattr(_st, "_last_log_fh", None)
+        monkeypatch.setattr(_st, "_last_log_path", None)
+        monkeypatch.setattr(_st, "_last_proc", None)
+
+        payload = json.dumps({
+            "experiment_md": "## Research Goal\nNew",
+        }).encode()
+        result = _api_launch(payload)
+        assert result.get("ok") is True
+
+        new_ckpt = Path(result["checkpoint_path"])
+        # experiment.md should have the NEW content, not old staging content
+        assert "New" in (new_ckpt / "experiment.md").read_text()
+        # real_data.txt should be copied into uploads/
+        assert (new_ckpt / "uploads" / "real_data.txt").read_text() == "data"
+
+    def test_no_staging_no_error(self, monkeypatch, tmp_path):
+        """Launch without staging dir does not error."""
+        ckpt = tmp_path / "ckpt"
+        ckpt.mkdir()
+        monkeypatch.setattr(_st, "_checkpoint_dir", ckpt)
+        monkeypatch.setattr(_st, "_staging_dir", None)
+
+        from ari.viz.api_experiment import _api_launch
+        import subprocess
+        class _FakePopen:
+            pid = 42
+            def poll(self): return None
+        monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: _FakePopen())
+        monkeypatch.setattr(_st, "_ari_root", tmp_path)
+        monkeypatch.setattr(_st, "_settings_path", tmp_path / "no.json")
+        monkeypatch.setattr(_st, "_last_log_fh", None)
+        monkeypatch.setattr(_st, "_last_log_path", None)
+        monkeypatch.setattr(_st, "_last_proc", None)
+
+        payload = json.dumps({"experiment_md": "## Research Goal\nOK"}).encode()
+        result = _api_launch(payload)
+        assert result.get("ok") is True
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Real-time tree updates (WebSocket broadcast path)
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestRealtimeTreeUpdates:
+    """Verify the WS broadcast path the re-enabled useWebSocket hook consumes."""
+
+    def test_broadcast_schedules_send_to_all_clients(self, monkeypatch):
+        """_broadcast wraps data in {type:'update', data, timestamp} and dispatches."""
+        from ari.viz.api_state import _broadcast
+
+        sent: list[str] = []
+        class _FakeLoop:
+            def call_soon_threadsafe(self, fn, *a, **kw): fn(*a, **kw)
+        def _fake_run_coro_threadsafe(coro, loop):
+            async def _drain():
+                await coro
+            asyncio.new_event_loop().run_until_complete(_drain())
+            return mock.MagicMock()
+
+        async def _capture(msg):
+            sent.append(msg)
+
+        monkeypatch.setattr("ari.viz.api_state._do_broadcast", _capture)
+        monkeypatch.setattr(_st, "_clients", {mock.MagicMock()})
+        monkeypatch.setattr(_st, "_loop", _FakeLoop())
+        monkeypatch.setattr(
+            "ari.viz.api_state.asyncio.run_coroutine_threadsafe",
+            _fake_run_coro_threadsafe,
+        )
+
+        _broadcast({"nodes": [{"id": "n1", "status": "running"}]})
+
+        assert len(sent) == 1
+        payload = json.loads(sent[0])
+        assert payload["type"] == "update"
+        assert payload["data"]["nodes"][0]["status"] == "running"
+        assert "timestamp" in payload
+
+    def test_watcher_broadcasts_on_tree_json_mtime_change(self, monkeypatch, tmp_path):
+        """One watcher iteration: mtime change → _broadcast called with loaded tree."""
+        import ari.viz.api_state as _api
+        ckpt = tmp_path / "ckpt"
+        ckpt.mkdir()
+        tree_path = ckpt / "tree.json"
+        tree_path.write_text(json.dumps({"nodes": [{"id": "root", "status": "pending"}]}))
+
+        monkeypatch.setattr(_st, "_checkpoint_dir", ckpt)
+
+        broadcasts: list[dict] = []
+        monkeypatch.setattr(_api, "_broadcast", lambda d: broadcasts.append(d))
+
+        # Stop after a handful of iterations by raising from time.sleep
+        sleep_calls = {"n": 0}
+        def _fake_sleep(_s):
+            sleep_calls["n"] += 1
+            if sleep_calls["n"] == 1:
+                return  # first pass: initial mtime read
+            if sleep_calls["n"] == 2:
+                # mutate tree.json between passes
+                tree_path.write_text(json.dumps({
+                    "nodes": [{"id": "root", "status": "running"}],
+                }))
+                # force mtime to advance even on coarse filesystems
+                new_mtime = tree_path.stat().st_mtime + 2
+                os.utime(tree_path, (new_mtime, new_mtime))
+                return
+            raise RuntimeError("stop")
+
+        monkeypatch.setattr("ari.viz.api_state.time.sleep", _fake_sleep)
+
+        with pytest.raises(RuntimeError):
+            _api._watcher_thread()
+
+        assert any(
+            any(n.get("status") == "running" for n in b.get("nodes", []))
+            for b in broadcasts
+        ), f"expected running status broadcast, got {broadcasts}"
+
+    @pytest.mark.asyncio
+    async def test_ws_handler_registers_client_and_sends_initial_state(
+        self, monkeypatch, tmp_path,
+    ):
+        """Connecting client is added to _clients and receives current tree snapshot."""
+        from ari.viz.server import _ws_handler
+
+        ckpt = tmp_path / "ckpt"
+        ckpt.mkdir()
+        (ckpt / "tree.json").write_text(json.dumps({
+            "nodes": [{"id": "a", "status": "running"}]
+        }))
+        monkeypatch.setattr(_st, "_checkpoint_dir", ckpt)
+        monkeypatch.setattr(_st, "_clients", set())
+
+        class _FakeWS:
+            def __init__(self):
+                self.sent: list[str] = []
+                self.closed = False
+            async def send(self, msg):
+                self.sent.append(msg)
+            def __aiter__(self):
+                self.closed = True
+                async def _gen():
+                    return
+                    yield  # noqa
+                return _gen()
+
+        ws = _FakeWS()
+        # Immediately stop iteration by raising from __aiter__
+        async def _noop():
+            return
+        ws.__aiter__ = lambda: _AsyncStopIter()
+
+        class _AsyncStopIter:
+            def __aiter__(self): return self
+            async def __anext__(self): raise StopAsyncIteration
+
+        await _ws_handler(ws)
+
+        assert ws not in _st._clients  # removed in finally
+        assert len(ws.sent) == 1
+        payload = json.loads(ws.sent[0])
+        assert payload["type"] == "update"
+        assert payload["data"]["nodes"][0]["id"] == "a"
+
+    def test_save_tree_incremental_force_bypasses_throttle(
+        self, monkeypatch, tmp_path,
+    ):
+        """Rapid force-flushes from mark_running / post-completion all hit disk."""
+        from ari.cli import _save_tree_incremental
+        import ari.cli as _cli
+        from ari.orchestrator.node import Node, NodeStatus
+
+        # isolate throttle bookkeeping
+        monkeypatch.setattr(_cli, "_tree_last_save_mono", {}, raising=True)
+
+        ckpt = tmp_path / "ckpt"
+        ckpt.mkdir()
+        exp = tmp_path / "exp.md"
+        exp.write_text("# goal\n")
+
+        n = Node(id="n1", parent_id=None, depth=0)
+        n.status = NodeStatus.PENDING
+
+        # First write (throttle key empty): goes through
+        _save_tree_incremental(ckpt, "run1", str(exp), [n], force=False)
+        first_mtime = (ckpt / "tree.json").stat().st_mtime_ns
+
+        # Immediate second, not forced: throttle swallows it
+        n.status = NodeStatus.RUNNING
+        _save_tree_incremental(ckpt, "run1", str(exp), [n], force=False)
+        # status in tree.json should still be pending
+        data = json.loads((ckpt / "tree.json").read_text())
+        assert data["nodes"][0]["status"] == "pending"
+
+        # Forced flush (mark_running path): bypasses throttle
+        _save_tree_incremental(ckpt, "run1", str(exp), [n], force=True)
+        data = json.loads((ckpt / "tree.json").read_text())
+        assert data["nodes"][0]["status"] == "running"
+        assert (ckpt / "tree.json").stat().st_mtime_ns >= first_mtime
+
+    def test_mark_running_triggers_progress_callback(self):
+        """loop.AgentLoop.run's first action flushes tree.json via _progress_cb."""
+        import inspect
+        from ari.agent.loop import AgentLoop
+
+        src = inspect.getsource(AgentLoop.run)
+        # The real-time guarantee: mark_running must be followed by a forced flush
+        # before any long-running work (LLM calls) begins.
+        assert "node.mark_running()" in src
+        mr_idx = src.index("node.mark_running()")
+        # Look for a forced _notify_progress within the first ~500 chars of run()
+        assert "_notify_progress(force=True)" in src[mr_idx : mr_idx + 500], (
+            "mark_running() must be immediately followed by _notify_progress(force=True) "
+            "so the GUI sees the RUNNING transition before any LLM call"
+        )

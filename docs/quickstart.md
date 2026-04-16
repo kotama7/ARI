@@ -123,11 +123,12 @@ The left sidebar provides navigation to all dashboard pages:
 | **Experiments** | List of all past experiment runs |
 | **Monitor** | Real-time pipeline progress with D3 tree visualization |
 | **Tree** | Full BFTS experiment tree — click nodes to inspect details |
-| **Results** | View generated paper, review, and reproducibility report |
+| **Results** | Overleaf-like LaTeX editor, paper PDF viewer, review report, EAR browser |
 | **New Experiment** | Wizard to create and launch a new experiment |
 | **Ideas** | VirSci-generated research hypotheses |
-| **Workflow** | Edit the post-BFTS pipeline configuration |
-| **Settings** | Configure LLM, API keys, SLURM, and language |
+| **Workflow** | React Flow visual DAG editor for pipeline stages |
+| **Settings** | Configure LLM, API keys, SLURM, container, VLM, retrieval backend |
+| **Sub-Experiments** | Recursive sub-experiment tree (via orchestrator skill) |
 
 ---
 
@@ -228,8 +229,9 @@ After the experiment completes, go to the **Results** page:
 
 Here you can:
 
-- Read the generated paper (LaTeX / PDF)
+- **Edit the paper** with the built-in Overleaf-like LaTeX editor (edit `.tex`/`.bib` files, compile, and preview PDF inline)
 - View the automated peer review score and feedback
+- Browse the Experiment Artifact Repository (EAR) with code, data, and reproducibility metadata
 - Check the reproducibility verification report
 - Download all artifacts
 
@@ -239,10 +241,12 @@ Output files are saved in `./checkpoints/<run_id>/`:
 |------|-------------|
 | `full_paper.tex / .pdf` | Complete generated paper |
 | `review_report.json` | Peer review score and feedback |
+| `rebuttal.json` | Automated rebuttal to review comments |
 | `reproducibility_report.json` | Independent reproducibility verification |
 | `tree.json` | Full experiment tree with all metrics |
 | `science_data.json` | Cleaned data (no internal terms) |
 | `figures_manifest.json` | Generated figures |
+| `ear/` | Experiment Artifact Repository (code, data, logs, reproducibility metadata) |
 | `experiments/` | Per-node source code and output |
 
 ---
@@ -272,6 +276,21 @@ Change the dashboard language (English, Japanese, Chinese) from the language dro
 - Set default partition, CPU count, and memory for cluster jobs
 - Click **Detect** to auto-detect your cluster's available partitions
 
+### Container Runtime
+
+- Choose container mode: auto, Docker, Singularity, Apptainer, or none
+- Set container image and pull policy (always / on_start / never)
+- Click **Detect Runtime** to auto-detect available container runtimes
+
+### VLM Figure Review
+
+- Set the VLM model for figure quality review (default: `openai/gpt-4o`)
+- Configure review threshold and max iterations
+
+### Retrieval Backend
+
+- Choose paper search backend: Semantic Scholar (default), AlphaXiv, or both (parallel)
+
 ### Per-Phase Model Overrides
 
 Use different models for different pipeline phases (e.g., a cheaper model for idea generation, a better model for paper writing).
@@ -290,7 +309,7 @@ View VirSci-generated research hypotheses with novelty and feasibility scores. S
 
 ![Workflow Page](images/en/dashboard_workflow.png)
 
-Edit the post-BFTS pipeline stages (transform data → generate figures → write paper → review → reproducibility check). Changes are saved as `workflow.yaml`.
+A React Flow visual DAG editor for the post-BFTS pipeline. Drag nodes, draw edges, enable/disable stages, and assign skills. Swim-lane layout separates BFTS and Paper phases. Changes are saved as `workflow.yaml`.
 
 ---
 
@@ -335,7 +354,7 @@ All endpoints are accessible at `http://localhost:<port>/`.
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/settings` | GET | Current settings: LLM provider/model, Ollama host, SLURM config, MCP skills |
-| `/api/settings` | POST | Save settings to `~/.ari/settings.json` and `.env`. Body: `{llm_model, llm_provider, ollama_host, slurm_partition, ...}` |
+| `/api/settings` | POST | Save settings to `{checkpoint}/settings.json` and `.env` (requires an active project). Body: `{llm_model, llm_provider, ollama_host, slurm_partition, ...}` |
 | `/api/env-keys` | GET | All API keys from `.env` files with source info |
 | `/api/env-keys` | POST | Save a single API key: `{key, value}` |
 | `/api/profiles` | GET | Available environment profiles (laptop, hpc, cloud) |

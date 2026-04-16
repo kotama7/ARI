@@ -1,8 +1,9 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useI18n } from '../../i18n';
+import * as api from '../../services/api';
 import { StepGoal } from './StepGoal';
 import { StepScope } from './StepScope';
-import { StepResources } from './StepResources';
+import { StepResources, PROVIDER_MODELS } from './StepResources';
 import { StepLaunch } from './StepLaunch';
 
 interface ChatMessage {
@@ -22,6 +23,7 @@ interface ScopeValues {
   workers: number;
   maxReact: number;
   timeout: number;
+  maxRecursionDepth: number;
 }
 
 const STEP_KEYS = ['wiz_step1', 'wiz_step2', 'wiz_step3', 'wiz_step4'] as const;
@@ -49,6 +51,7 @@ export function WizardPage() {
     workers: 4,
     maxReact: 80,
     timeout: 120,
+    maxRecursionDepth: 0,
   });
 
   // ---- Step 3: Resources state ----
@@ -65,6 +68,11 @@ export function WizardPage() {
   const [hpcWall, setHpcWall] = useState('');
   const [hpcGpus, setHpcGpus] = useState('');
   const [phaseModels, setPhaseModels] = useState<Record<string, string>>({});
+  const [containerImage, setContainerImage] = useState('');
+  const [containerMode, setContainerMode] = useState('auto');
+
+  // ---- VLM Review state ----
+  const [vlmReviewModel, setVlmReviewModel] = useState('openai/gpt-4o');
 
   // ---- Step 4: Launch state ----
   const [profile, setProfile] = useState('laptop');
@@ -92,6 +100,38 @@ export function WizardPage() {
     if ((llm === 'ollama' || llm === 'custom') && customModel) return customModel;
     return model;
   }, [llm, customModel, model]);
+
+  // ── One-time settings load ─────────────────────────────────────────────
+  // Pre-populate llm/model/customModel/baseUrl/HPC fields from `settings.json`.
+  // Lives in WizardPage (not StepResources) on purpose: StepResources is
+  // unmounted when the user navigates away from step 3, and re-running the
+  // load on every remount would clobber the user's manual model selection.
+  // The ref guard ensures the fetch fires exactly once per WizardPage mount.
+  const settingsLoadedRef = useRef(false);
+  useEffect(() => {
+    if (settingsLoadedRef.current) return;
+    settingsLoadedRef.current = true;
+    api
+      .fetchSettings()
+      .then((s: any) => {
+        const prov = s.llm_provider || s.llm_backend || 'openai';
+        setLlm(prov);
+        const mdl = s.llm_model || '';
+        if (mdl) {
+          const models = PROVIDER_MODELS[prov] || [];
+          if (models.includes(mdl)) {
+            setModel(mdl);
+          } else {
+            setCustomModel(mdl);
+          }
+        }
+        if (s.ollama_host) setBaseUrl(s.ollama_host);
+        if (s.slurm_cpus) setHpcCpus(String(s.slurm_cpus));
+        if (s.slurm_memory_gb) setHpcMem(String(s.slurm_memory_gb));
+        if (s.slurm_walltime) setHpcWall(s.slurm_walltime);
+      })
+      .catch(() => {});
+  }, []);
 
   const goToStep = useCallback(
     (s: number) => {
@@ -195,6 +235,12 @@ export function WizardPage() {
           setHpcGpus={setHpcGpus}
           phaseModels={phaseModels}
           setPhaseModels={setPhaseModels}
+          containerImage={containerImage}
+          setContainerImage={setContainerImage}
+          containerMode={containerMode}
+          setContainerMode={setContainerMode}
+          vlmReviewModel={vlmReviewModel}
+          setVlmReviewModel={setVlmReviewModel}
           onBack={() => goToStep(2)}
           onNext={() => goToStep(4)}
         />
@@ -215,6 +261,7 @@ export function WizardPage() {
           maxReact={scope.maxReact}
           timeout={scope.timeout}
           workers={scope.workers}
+          maxRecursionDepth={scope.maxRecursionDepth}
           llmModel={effectiveModel}
           llmProvider={llm}
           hpcCpus={hpcCpus}
@@ -224,6 +271,9 @@ export function WizardPage() {
           partition={partition}
           phaseModels={phaseModels}
           savePath={savePath}
+          containerImage={containerImage}
+          containerMode={containerMode}
+          vlmReviewModel={vlmReviewModel}
           onBack={() => goToStep(3)}
           onLaunched={handleLaunched}
         />

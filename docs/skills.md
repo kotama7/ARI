@@ -1,6 +1,6 @@
 # MCP Skills Reference
 
-Skills are MCP servers that provide tools to the ARI agent. Tools are deterministic where possible; LLM-using tools are explicitly annotated. 14 skills total (9 default, 5 additional).
+Skills are MCP servers that provide tools to the ARI agent. Tools are deterministic where possible; LLM-using tools are explicitly annotated. 15 skills total (14 default, 1 additional).
 
 ## ari-skill-hpc
 
@@ -219,33 +219,47 @@ Retrieve all memories for a specific node.
 
 Delete all memories for a specific node.
 
-Storage: `~/.ari/memory_store.jsonl` (append-only JSONL, configurable via `ARI_MEMORY_PATH`)
+Storage: `{ARI_CHECKPOINT_DIR}/memory_store.jsonl` per experiment (append-only JSONL, override with `ARI_MEMORY_PATH`)
 
 ---
 
 ## ari-skill-orchestrator
 
-Expose ARI as an MCP server for external agents and IDEs. **LLM: No** (delegates to ARI CLI).
+Expose ARI as an MCP server for external agents and IDEs. Supports recursive sub-experiments. **LLM: No** (delegates to ARI CLI).
+
+Dual transport: **stdio** (MCP for Claude Desktop / other MCP clients) + **HTTP** (REST + SSE on `ARI_ORCHESTRATOR_PORT`, default 9890).
 
 ### Tools
 
-#### `run_experiment(experiment_md, max_nodes=10, model="qwen3:32b")`
+#### `run_experiment(experiment_md, max_nodes=10, model="qwen3:32b", parent_run_id="", recursion_depth=0, max_recursion_depth=0)`
 
-Launch an ARI experiment asynchronously. Returns `run_id`.
+Launch an ARI experiment asynchronously. Returns `run_id`. When `parent_run_id` is set, the experiment is tracked as a child of the parent (for recursive sub-experiment workflows).
 
 #### `get_status(run_id)`
 
-Return progress and current best metrics for a run.
+Return progress, current best metrics, and recursion metadata for a run.
 
 #### `list_runs()`
 
 List all past experiment runs.
 
+#### `list_children(run_id)`
+
+Return child runs of a parent experiment (for recursive sub-experiment tracking).
+
 #### `get_paper(run_id)`
 
 Return the generated paper (LaTeX).
 
-Workspace: `ARI_WORKSPACE` env (default: `~/ARI`).
+Workspace: `ARI_WORKSPACE` env (default: `~/ARI`). Parent-child relationships persisted in `meta.json` per checkpoint.
+
+---
+
+## ari-skill-figure-router
+
+Figure type classification and generation routing. **LLM: Yes**.
+
+Classifies requested figures into optimal rendering backends (SVG/matplotlib/LaTeX) and routes generation accordingly. Registered as a default skill with `phase: all`.
 
 ---
 
@@ -293,11 +307,24 @@ Model: `llm_model` arg > `LLM_MODEL` env > `gpt-4o-mini`.
 
 **Why it exists:** Ensures BFTS-internal terminology never leaks into generated papers or figures.
 
+#### `generate_ear(checkpoint_dir, llm_model="", llm_base_url="")`
+
+Builds a structured **Experiment Artifact Repository (EAR)** under `<checkpoint>/ear/` for reproducibility. Contents:
+
+- `README.md` and `RESULTS.md` (LLM-generated when available, deterministic fallback otherwise)
+- `code/<node_id>/` — source files copied from each node's experiment directory
+- `data/raw_metrics.json`, `data/science_data.json`, `data/figures/`
+- `logs/bfts_tree.json`, `logs/eval_scores.json`
+- `reproducibility/environment.json` (Python version, platform, pip packages, hardware)
+- `reproducibility/run_config.json`, `reproducibility/commands.md`
+
+Returns: `{ear_dir, manifest}` with paths to all generated files.
+
 ---
 
 ## ari-skill-web
 
-Web search and academic literature retrieval. **LLM: Partial** (only `collect_references_iterative` uses LLM).
+Web search and academic literature retrieval with pluggable backends. **LLM: Partial** (only `collect_references_iterative` uses LLM).
 
 ### Tools
 
@@ -317,17 +344,36 @@ arXiv paper search. Deterministic.
 
 Semantic Scholar API with fallback to arXiv. Deterministic.
 
+#### `search_papers(query, limit=8)`
+
+Dispatches to the configured retrieval backend (`ARI_RETRIEVAL_BACKEND`):
+- `"semantic_scholar"` (default) — Semantic Scholar API
+- `"alphaxiv"` — AlphaXiv via MCP JSON-RPC over HTTP
+- `"both"` — parallel execution with deduplication
+
+#### `set_retrieval_backend(backend)`
+
+Dynamically switch the retrieval backend at runtime. Valid values: `"semantic_scholar"`, `"alphaxiv"`, `"both"`.
+
 #### `collect_references_iterative(experiment_summary, keywords, max_rounds=20, min_papers=10)`
 
 AI Scientist v2-style iterative citation collection. LLM generates search queries and selects relevant papers across multiple rounds.
 
 Model: `ARI_LLM_MODEL` env > `LLM_MODEL` env > `ollama_chat/qwen3:32b`.
 
+#### `list_uploaded_files()`
+
+Lists user-uploaded files in the checkpoint directory. Deterministic.
+
+#### `read_uploaded_file(filename, max_chars=8000)`
+
+Reads text file content from uploaded files with binary detection. Deterministic.
+
 ---
 
 ## ari-skill-coding
 
-Code generation and execution. **LLM: No** (deterministic).
+Code generation, execution, and file reading. **LLM: No** (deterministic).
 
 ### Tools
 
@@ -337,11 +383,20 @@ Write a source file to the work directory.
 
 #### `run_code(filename, work_dir="/tmp/ari_work", timeout=60)`
 
-Execute a source file (auto-detects language from extension).
+Execute a source file (auto-detects language from extension). Output is truncated with an informative marker showing omitted character count and a hint to redirect to a file.
 
 #### `run_bash(command, work_dir="/tmp/ari_work", timeout=60)`
 
-Run a bash command in the work directory.
+Run a bash command in the work directory. Output truncation with `truncated` boolean flag in result.
+
+#### `read_file(filepath, offset=0, limit=2000, work_dir="/tmp/ari_work")`
+
+Read a text file with paginated access for large files. Returns content, `next_offset` for continuation, and total line count.
+
+```python
+result = read_file("results.csv", offset=0, limit=100)
+# Returns: {"content": "...", "next_offset": 100, "total_lines": 5000}
+```
 
 Work directory: `work_dir` arg > `ARI_WORK_DIR` env > `/tmp/ari_work`.
 

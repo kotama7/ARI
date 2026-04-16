@@ -83,6 +83,66 @@ def test_wizard_page():
     assert "StepLaunch" in src, "WizardPage must use StepLaunch"
 
 
+def test_step_resources_openai_models_include_dated_gpt4o_snapshot():
+    """Wizard's OpenAI dropdown must offer the gpt-4o-2024-08-06 dated snapshot.
+
+    The unversioned 'gpt-4o' alias dynamically routes to newer snapshots that
+    some OpenAI projects do not have access to (returns misleading
+    `missing_scope: model.request`). The dated `gpt-4o-2024-08-06` is a stable
+    fallback that ARI users can pick to bypass that routing surprise.
+    """
+    src = _read_component("Wizard/StepResources.tsx")
+    # Locate the openai array entry inside PROVIDER_MODELS
+    m = re.search(r"openai\s*:\s*\[([^\]]*)\]", src)
+    assert m, "PROVIDER_MODELS.openai array not found in StepResources.tsx"
+    openai_models_blob = m.group(1)
+    assert "'gpt-4o-2024-08-06'" in openai_models_blob \
+        or '"gpt-4o-2024-08-06"' in openai_models_blob, (
+            "gpt-4o-2024-08-06 must be selectable from the OpenAI provider dropdown; "
+            f"found: {openai_models_blob}"
+        )
+
+
+def test_step_resources_does_not_call_fetch_settings():
+    """StepResources must NOT call api.fetchSettings() inside its useEffect.
+
+    Why this matters: StepResources is unmounted when the user navigates from
+    Resources → Launch and re-mounted when they go back. If it re-loads
+    settings on every mount, the user's manual model selection (e.g.
+    `gpt-4o-2024-08-06`) gets clobbered by the value from settings.json
+    (`gpt-5.2`) and the experiment launches with the wrong model.
+
+    The settings load was lifted to WizardPage so it runs exactly once
+    per WizardPage mount, regardless of step navigation.
+    """
+    src = _read_component("Wizard/StepResources.tsx")
+    assert "fetchSettings" not in src, (
+        "StepResources.tsx must not call fetchSettings — that would re-clobber "
+        "the user's model selection on every step remount. The load was moved "
+        "to WizardPage.tsx for one-time initialization."
+    )
+
+
+def test_wizard_page_loads_settings_once():
+    """WizardPage must load settings exactly once per mount via fetchSettings,
+    guarded by a ref so the load survives StepResources remounts."""
+    src = _read_component("Wizard/WizardPage.tsx")
+    assert "fetchSettings" in src, (
+        "WizardPage.tsx must call api.fetchSettings to pre-populate llm/model "
+        "from settings.json on initial mount"
+    )
+    # The ref-guard pattern is the key invariant: it makes the load idempotent
+    # even under React StrictMode double-invocation.
+    assert "settingsLoadedRef" in src or "useRef" in src, (
+        "WizardPage.tsx must use a ref guard to ensure fetchSettings runs only "
+        "once per mount (otherwise React StrictMode or re-renders would refire it)"
+    )
+    assert "PROVIDER_MODELS" in src, (
+        "WizardPage.tsx must import PROVIDER_MODELS from StepResources to "
+        "validate the loaded model name against the dropdown options"
+    )
+
+
 def test_idea_page():
     src = _read_component("Idea/IdeaPage.tsx")
     assert "useI18n" in src, "IdeaPage must use useI18n"

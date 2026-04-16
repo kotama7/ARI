@@ -8,8 +8,10 @@ import {
   runStage as apiRunStage,
   stopExperiment,
   detectScheduler,
+  fetchExperimentDetail,
+  fetchResourceMetrics,
 } from '../../services/api';
-import type { AppState, TreeNode } from '../../types';
+import type { AppState, ResourceMetrics, TreeNode } from '../../types';
 import PhaseStepper from './PhaseStepper';
 import GpuMonitor from './GpuMonitor';
 import { TreeVisualization } from '../Tree/TreeVisualization';
@@ -72,6 +74,16 @@ function computeBestMetrics(nodes: TreeNode[]): { displays: MetricDisplay[]; too
 function IdeaCardContent({ state }: { state: AppState }) {
   const { t } = useI18n();
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailConfig, setDetailConfig] = useState('');
+
+  useEffect(() => {
+    if (!detailsOpen || detailConfig) return;
+    let cancelled = false;
+    fetchExperimentDetail()
+      .then((s) => { if (!cancelled) setDetailConfig(s); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [detailsOpen, detailConfig]);
 
   const mdContent = state.experiment_md_content || state.experiment_text || '';
   const ctx = (state.experiment_context as unknown as Record<string, any>) || {};
@@ -325,9 +337,7 @@ function IdeaCardContent({ state }: { state: AppState }) {
   }
 
   const detailText =
-    (state.experiment_detail_config
-      ? JSON.stringify(state.experiment_detail_config, null, 2)
-      : '') ||
+    detailConfig ||
     mdContent ||
     JSON.stringify(ctx, null, 2) ||
     '(no detail)';
@@ -368,6 +378,9 @@ export function MonitorPage() {
   const [gpuVisible, setGpuVisible] = useState(false);
   const [hasSlurm, setHasSlurm] = useState(false);
 
+  // Resource metrics
+  const [resourceMetrics, setResourceMetrics] = useState<ResourceMetrics | null>(null);
+
   // Stage execution status
   const [stageStatus, setStageStatus] = useState('');
 
@@ -387,6 +400,20 @@ export function MonitorPage() {
         setHasSlurm(!!d?.scheduler && d.scheduler !== 'none');
       })
       .catch(() => setHasSlurm(false));
+  }, []);
+
+  // ── Resource metrics polling ───────────────
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = () => {
+      fetchResourceMetrics()
+        .then((m) => { if (!cancelled) setResourceMetrics(m); })
+        .catch(() => {});
+    };
+    poll();
+    const timer = setInterval(poll, 5000);
+    return () => { cancelled = true; clearInterval(timer); };
   }, []);
 
   // ── Compute stats ─────────────────────────
@@ -722,6 +749,55 @@ export function MonitorPage() {
           <div className="stat-label">LLM Cost</div>
         </div>
       </div>
+
+      {/* Resource Metrics Card */}
+      {resourceMetrics && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="card-title">{t('resource_metrics')}</div>
+          <div className="grid-3">
+            <div className="stat-box">
+              <div
+                className="stat-val"
+                style={{
+                  color: resourceMetrics.process_count > 500
+                    ? '#f44'
+                    : resourceMetrics.process_count > 200
+                      ? '#fa0'
+                      : undefined,
+                }}
+              >
+                {resourceMetrics.process_count}
+              </div>
+              <div className="stat-label">{t('res_process_count')}</div>
+            </div>
+            <div className="stat-box">
+              <div className="stat-val">
+                {resourceMetrics.memory_rss_mb >= 1024
+                  ? `${(resourceMetrics.memory_rss_mb / 1024).toFixed(1)} GB`
+                  : `${resourceMetrics.memory_rss_mb.toFixed(0)} MB`}
+              </div>
+              <div className="stat-label">{t('res_memory')}</div>
+            </div>
+            <div className="stat-box">
+              <div
+                className="stat-val"
+                title={`1m: ${resourceMetrics.cpu_load_1m} / 5m: ${resourceMetrics.cpu_load_5m} / 15m: ${resourceMetrics.cpu_load_15m} (${resourceMetrics.cpu_count} cores)`}
+              >
+                {resourceMetrics.cpu_load_1m.toFixed(1)}
+                <span style={{ fontSize: '.65rem', color: 'var(--muted)' }}>
+                  {' '}/ {resourceMetrics.cpu_count}
+                </span>
+              </div>
+              <div className="stat-label">{t('res_cpu_load')}</div>
+            </div>
+          </div>
+          {resourceMetrics.experiment_pid && (
+            <div style={{ fontSize: '.75rem', color: 'var(--muted)', marginTop: 6 }}>
+              Experiment PID: {resourceMetrics.experiment_pid}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Node Tree Mini-View */}
       <div className="card" style={{ marginBottom: 16 }}>

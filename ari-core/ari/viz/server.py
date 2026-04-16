@@ -31,11 +31,17 @@ log = logging.getLogger(__name__)
 
 
 from . import state as _st
-from .api_state import _load_nodes_tree, _broadcast, _do_broadcast, _api_models, _api_checkpoints, _api_checkpoint_summary, _api_delete_checkpoint, _api_switch_checkpoint, _watcher_thread
+from .api_state import _load_nodes_tree, _broadcast, _do_broadcast, _api_models, _api_checkpoints, _api_checkpoint_summary, _api_delete_checkpoint, _api_switch_checkpoint, _api_ear, _watcher_thread, _api_checkpoint_files, _api_checkpoint_file_read, _api_checkpoint_file_save, _api_checkpoint_file_upload, _api_checkpoint_file_delete, _api_checkpoint_compile, _resolve_paper_file, _api_checkpoint_filetree, _api_checkpoint_filecontent, _api_checkpoint_memory
 from .api_settings import _api_get_env_keys, _api_save_env_key, _api_get_settings, _api_save_settings, _api_get_workflow, _api_save_workflow, _api_skill_detail, _api_skills, _api_profiles, _api_detect_scheduler
+from .api_workflow import _api_get_workflow_flow, _api_save_workflow_flow, _api_get_default_workflow, _api_save_skill_phases, _api_save_disabled_tools
 from .api_experiment import _api_run_stage, _api_launch, _api_logs_sse
 from .api_ollama import _api_ollama_resources, _ollama_proxy
-from .api_tools import _api_chat_goal, _api_generate_config, _api_upload_file, _api_ssh_test
+from .api_tools import _api_chat_goal, _api_generate_config, _api_upload_file, _api_upload_delete, _api_ssh_test
+from .api_orchestrator import (
+    _api_list_sub_experiments,
+    _api_get_sub_experiment,
+    _api_launch_sub_experiment,
+)
 
 
 async def _ws_handler(websocket) -> None:
@@ -62,8 +68,164 @@ REACT_DIST_DIR = Path(__file__).parent / "static" / "dist"
 REACT_INDEX = REACT_DIST_DIR / "index.html"
 
 
+_REDACT_KEYS = {"api_key", "apikey", "api-key", "token", "secret", "password"}
+
+
+def _extract_goal_from_md(md: str) -> str:
+    """Extract the Research Goal section body from an experiment.md string.
+
+    Accepts headings like `## Goal`, `## Research Goal`, or any heading
+    containing 'research goal'. Falls back to the first non-empty line
+    (stripped of leading #) when no Goal section is found.
+    """
+    if not md:
+        return ""
+    goal_lines: list[str] = []
+    in_goal = False
+    for line in md.splitlines():
+        s = line.strip()
+        heading = s.lstrip("#").strip().lower() if s.startswith("#") else ""
+        if heading in ("goal", "research goal") or "research goal" in heading:
+            in_goal = True
+            continue
+        if in_goal:
+            if s.startswith("#"):
+                break
+            if s:
+                goal_lines.append(s)
+    if goal_lines:
+        return " ".join(goal_lines)
+    if md.strip():
+        return next((l.lstrip("#").strip() for l in md.splitlines() if l.strip()), "")
+    return ""
+
+
+def _build_experiment_detail_config() -> str:
+    """Serialize merged (default + profile + launch) config as a redacted text block.
+
+    Called on-demand by /api/experiment-detail (not on every /state poll).
+    """
+    try:
+        import yaml as _yaml
+        import copy as _copy
+        config_root = Path(__file__).parent.parent.parent / "config"
+        default_cfg = {}
+        default_yaml = config_root / "default.yaml"
+        if default_yaml.exists():
+            default_cfg = _yaml.safe_load(default_yaml.read_text()) or {}
+        merged = _copy.deepcopy(default_cfg)
+
+        # Locate workflow.yaml / profile yaml
+        ckpt_dir = _st._checkpoint_dir
+        lc_profile = ""
+        if _st._launch_config:
+            lc_profile = _st._launch_config.get("profile", "")
+        if not lc_profile and ckpt_dir and ckpt_dir.exists():
+            lc_f = ckpt_dir / "launch_config.json"
+            if lc_f.exists():
+                try:
+                    lc_profile = json.loads(lc_f.read_text()).get("profile", "")
+                except Exception:
+                    pass
+        candidates = []
+        if ckpt_dir:
+            candidates.append(ckpt_dir / "workflow.yaml")
+        if lc_profile:
+            candidates.append(config_root / "profiles" / f"{lc_profile}.yaml")
+        candidates.append(config_root / "default.yaml")
+        for wf_path in candidates:
+            if wf_path.exists():
+                tmp = _yaml.safe_load(wf_path.read_text()) or {}
+                if tmp.get("bfts") or tmp.get("hpc"):
+                    for k, v in tmp.items():
+                        if isinstance(v, dict) and isinstance(merged.get(k), dict):
+                            merged[k].update(v)
+                        else:
+                            merged[k] = v
+                    break
+
+        # Overlay LLM info
+        saved = _api_get_settings()
+        launch_model = _st._launch_llm_model or saved.get("llm_model", "")
+        launch_provider = _st._launch_llm_provider or saved.get("llm_provider", "")
+        merged.setdefault("llm", {})
+        merged["llm"]["model"] = launch_model
+        merged["llm"]["backend"] = launch_provider
+        merged["llm"]["base_url"] = saved.get("ollama_host", "")
+
+        lines = []
+        for sk, sv in merged.items():
+            if sk == "skills":
+                continue
+            if isinstance(sv, dict):
+                lines.append(f"[{sk}]")
+                for dk, dv in sv.items():
+                    if dk.lower() in _REDACT_KEYS or "key" in dk.lower():
+                        lines.append(f"  {dk}: ***")
+                    else:
+                        lines.append(f"  {dk}: {dv}")
+            else:
+                lines.append(f"{sk}: {sv}")
+        return "\n".join(lines)
+    except Exception:
+        log.warning("Failed to build experiment_detail_config", exc_info=True)
+        return ""
+
+
+
+def _collect_resource_metrics() -> dict:
+    """Collect system resource metrics for the current user.
+
+    Reads ``/proc`` directly (no external dependencies) to count processes
+    and sum RSS for all processes owned by the current UID.
+    """
+    uid = os.getuid()
+    proc_count = 0
+    total_rss_kb = 0
+    try:
+        for entry in os.scandir("/proc"):
+            if not entry.name.isdigit():
+                continue
+            try:
+                if os.stat(entry.path).st_uid != uid:
+                    continue
+                proc_count += 1
+                statm = Path(entry.path, "statm").read_text().split()
+                total_rss_kb += int(statm[1]) * 4  # pages -> KB
+            except (FileNotFoundError, PermissionError, IndexError, ValueError):
+                pass
+    except Exception:
+        pass
+
+    # CPU load average
+    try:
+        load1, load5, load15 = os.getloadavg()
+    except Exception:
+        load1 = load5 = load15 = 0.0
+
+    # Experiment-specific: PID of running experiment
+    exp_pid = None
+    if _st._last_proc and _st._last_proc.poll() is None:
+        exp_pid = _st._last_proc.pid
+
+    return {
+        "process_count": proc_count,
+        "memory_rss_mb": round(total_rss_kb / 1024, 1),
+        "cpu_load_1m": round(load1, 2),
+        "cpu_load_5m": round(load5, 2),
+        "cpu_load_15m": round(load15, 2),
+        "cpu_count": os.cpu_count() or 1,
+        "experiment_pid": exp_pid,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
 
 class _Handler(BaseHTTPRequestHandler):
+    # HTTP/1.1 enables TCP keep-alive so Chrome's 6-per-origin connection
+    # pool isn't drained by short polls. SSE endpoints still send
+    # Connection: close so long-lived streams don't hog a keep-alive slot.
+    protocol_version = "HTTP/1.1"
+
     def log_message(self, *args):  # suppress request logs
         pass
 
@@ -105,7 +267,7 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path in ("/logo.png", "/logo"):
             logo_candidates = [
-                _st._ari_home / "docs" / "logo.png",
+                _st._ari_root / "docs" / "logo.png",
                 Path(__file__).parent.parent.parent.parent / "docs" / "logo.png",
             ]
             for lp in logo_candidates:
@@ -153,9 +315,15 @@ class _Handler(BaseHTTPRequestHandler):
             node_id = self.path[len("/memory/"):]
             try:
                 node_id = urllib.parse.unquote(node_id)
-                store = Path("~/.ari/memory_store.jsonl").expanduser()
+                # Project-scoped only — return empty list when there is no
+                # active checkpoint (no global ~/.ari fallback anymore).
+                store = (
+                    _st._checkpoint_dir / "memory_store.jsonl"
+                    if _st._checkpoint_dir is not None
+                    else None
+                )
                 entries = []
-                if store.exists():
+                if store is not None and store.exists():
                     for line in store.read_text().splitlines():
                         line = line.strip()
                         if not line:
@@ -189,6 +357,11 @@ class _Handler(BaseHTTPRequestHandler):
             _ckpt_valid = False
             if _st._checkpoint_dir:
                 _cd = Path(_st._checkpoint_dir)
+                # Always expose checkpoint_id / checkpoint_path when dir exists
+                # so File Explorer can browse files before marker files appear.
+                if _cd.is_absolute() and _cd.exists():
+                    data.setdefault("checkpoint_path", str(_cd))
+                    data.setdefault("checkpoint_id", _cd.name)
                 _ckpt_valid = _cd.is_absolute() and _cd.exists() and (
                     (_cd / "nodes_tree.json").exists() or (_cd / "tree.json").exists()
                     or (_cd / "idea.json").exists() or (_cd / "experiment.md").exists()
@@ -200,7 +373,10 @@ class _Handler(BaseHTTPRequestHandler):
                 data["has_review"] = (d / "review_report.json").exists()
                 # Detect current running phase
                 import glob as _glob
-                _nt = json.loads((d/"nodes_tree.json").read_text()) if (d/"nodes_tree.json").exists() else {}
+                _nt_path = d / "tree.json"
+                if not _nt_path.exists() or _nt_path.stat().st_size == 0:
+                    _nt_path = d / "nodes_tree.json"
+                _nt = json.loads(_nt_path.read_text()) if (_nt_path.exists() and _nt_path.stat().st_size > 0) else {}
                 _nodes = _nt.get("nodes", _nt) if isinstance(_nt, dict) else _nt
                 _has_nodes = bool(_nodes and len(_nodes) > 0)
                 # Fallback: also check tree.json nodes if nodes_tree.json missing
@@ -300,16 +476,7 @@ class _Handler(BaseHTTPRequestHandler):
                     if f.exists():
                         _exp_md = f.read_text(encoding="utf-8", errors="replace")
                         break
-                # Try 2: experiments/exp/node_{run_id}_root/experiment.md
-                if not _exp_md:
-                    run_id = d.name  # e.g. 9f55db693c85
-                    exp_dir = d.parent.parent / "experiments" / "exp" / f"node_{run_id}_root"
-                    for fname in ("experiment.md", "config.md"):
-                        f2 = exp_dir / fname
-                        if f2.exists():
-                            _exp_md = f2.read_text(encoding="utf-8", errors="replace")
-                            break
-                # Try 3: config_path recorded in results.json (the actual file cli.py was given)
+                # Try 2: config_path recorded in results.json (the actual file cli.py was given)
                 if not _exp_md:
                     _res_f = d / "results.json"
                     if _res_f.exists():
@@ -415,21 +582,8 @@ class _Handler(BaseHTTPRequestHandler):
                         "gpus":            _lc_data.get("hpc_gpus") or _hpc.get("gpus", None),
                         "walltime":        _lc_data.get("hpc_walltime") or _hpc.get("walltime", ""),
                     }
-                    # Full YAML detail for display
-                    _detail_lines = []
-                    _REDACT_KEYS = {"api_key", "apikey", "api-key", "token", "secret", "password"}
-                    for _sk, _sv in _merged.items():
-                        if _sk == "skills": continue  # skip skills list (too long)
-                        if isinstance(_sv, dict):
-                            _detail_lines.append(f"[{_sk}]")
-                            for _dk, _dv in _sv.items():
-                                if _dk.lower() in _REDACT_KEYS or "key" in _dk.lower():
-                                    _detail_lines.append(f"  {_dk}: ***")
-                                else:
-                                    _detail_lines.append(f"  {_dk}: {_dv}")
-                        else:
-                            _detail_lines.append(f"{_sk}: {_sv}")
-                    data["experiment_detail_config"] = "\n".join(_detail_lines)
+                    # Detail config is served via /api/experiment-detail (not in /state)
+                    # to keep 5-second polling payload small.
                 except Exception:
                     log.warning("Failed to build experiment_config", exc_info=True)
 
@@ -473,24 +627,7 @@ class _Handler(BaseHTTPRequestHandler):
                         pass
                 # Fallback: extract goal from experiment_md_content
                 if not data.get("experiment_goal") and data.get("experiment_md_content"):
-                    _md = data["experiment_md_content"]
-                    _goal_lines = []
-                    _in_goal = False
-                    for _gl in _md.splitlines():
-                        _gs = _gl.strip()
-                        if _gs.startswith("#") and "research goal" in _gs.lower():
-                            _in_goal = True
-                            continue
-                        if _in_goal:
-                            if _gs.startswith("#"):
-                                break
-                            if _gs:
-                                _goal_lines.append(_gs)
-                    if _goal_lines:
-                        data["experiment_goal"] = " ".join(_goal_lines)
-                    elif _md.strip():
-                        _first = next((l.lstrip("#").strip() for l in _md.splitlines() if l.strip()), "")
-                        data["experiment_goal"] = _first
+                    data["experiment_goal"] = _extract_goal_from_md(data["experiment_md_content"])
             # Fallback: experiment_md from project root experiment.md
             # Only serve when a process is currently running to prevent
             # leaking test content from previous launches.
@@ -509,19 +646,7 @@ class _Handler(BaseHTTPRequestHandler):
                     pass
             # Extract goal from md if not set
             if not data.get("experiment_goal") and data.get("experiment_md_content"):
-                _md2 = data["experiment_md_content"]
-                _glines, _in_g = [], False
-                for _gl in _md2.splitlines():
-                    _gs = _gl.strip()
-                    if _gs.startswith("#") and "research goal" in _gs.lower():
-                        _in_g = True; continue
-                    if _in_g:
-                        if _gs.startswith("#"): break
-                        if _gs: _glines.append(_gs)
-                if _glines:
-                    data["experiment_goal"] = " ".join(_glines)
-                elif _md2.strip():
-                    data["experiment_goal"] = next((l.lstrip("#").strip() for l in _md2.splitlines() if l.strip()), "")
+                data["experiment_goal"] = _extract_goal_from_md(data["experiment_md_content"])
             # Inject running_pid and status
             _pid_now = None
             _exit_code = None
@@ -616,35 +741,7 @@ class _Handler(BaseHTTPRequestHandler):
                         "gpus":            _lc_fb.get("hpc_gpus") or _hpc_fb.get("gpus"),
                         "walltime":        _lc_fb.get("hpc_walltime") or _hpc_fb.get("walltime", ""),
                     }
-                    # Also build experiment_detail_config
-                    _default_fb = {}
-                    _default_yaml_fb = _config_root_fb / "default.yaml"
-                    if _default_yaml_fb.exists():
-                        _default_fb = _yaml_fb.safe_load(_default_yaml_fb.read_text()) or {}
-                    import copy as _copy_fb
-                    _merged_fb = _copy_fb.deepcopy(_default_fb)
-                    for _k, _v in _wf_cfg_fb.items():
-                        if isinstance(_v, dict) and isinstance(_merged_fb.get(_k), dict):
-                            _merged_fb[_k].update(_v)
-                        else:
-                            _merged_fb[_k] = _v
-                    _merged_fb.setdefault("llm", {})
-                    _merged_fb["llm"]["model"]   = _lm
-                    _merged_fb["llm"]["backend"] = _lp
-                    _REDACT_FB = {"api_key", "apikey", "api-key", "token", "secret", "password"}
-                    _dl = []
-                    for _sk, _sv in _merged_fb.items():
-                        if _sk == "skills": continue
-                        if isinstance(_sv, dict):
-                            _dl.append(f"[{_sk}]")
-                            for _dk, _dv in _sv.items():
-                                if _dk.lower() in _REDACT_FB or "key" in _dk.lower():
-                                    _dl.append(f"  {_dk}: ***")
-                                else:
-                                    _dl.append(f"  {_dk}: {_dv}")
-                        else:
-                            _dl.append(f"{_sk}: {_sv}")
-                    data["experiment_detail_config"] = "\n".join(_dl)
+                    # Detail config is served via /api/experiment-detail (not in /state)
                 except Exception:
                     log.warning("Failed to build experiment_config (fallback)", exc_info=True)
             # Always inject running_pid if missing
@@ -682,7 +779,8 @@ class _Handler(BaseHTTPRequestHandler):
                     pass
             oh = ""
             try:
-                s = json.loads(_st._settings_path.read_text()) if _st._settings_path.exists() else {}
+                _sp = _st._settings_path
+                s = json.loads(_sp.read_text()) if (_sp is not None and _sp.exists()) else {}
                 oh = s.get("ollama_host","")
             except Exception:
                 pass
@@ -694,12 +792,12 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         elif self.path.startswith("/codefile"):
-            # Serve file content for artifact file paths (restricted to checkpoint dir)
+            # Serve file content for artifact file paths
             qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             fpath = qs.get("path", [""])[0]
             try:
                 p = Path(fpath).resolve()
-                # Security: restrict to checkpoint directory
+                # Security: allow files inside active checkpoint or any checkpoints/ dir
                 allowed = False
                 if _st._checkpoint_dir:
                     try:
@@ -707,10 +805,24 @@ class _Handler(BaseHTTPRequestHandler):
                         allowed = True
                     except ValueError:
                         pass
-                if allowed and p.exists() and p.is_file() and p.stat().st_size < 2_000_000:
+                if not allowed and "checkpoints" in str(p):
+                    # Also allow any file under a checkpoints/ directory
+                    for parent in p.parents:
+                        if parent.name == "checkpoints":
+                            allowed = True
+                            break
+                if allowed and p.exists() and p.is_file() and p.stat().st_size < 20_000_000:
                     body = p.read_bytes()
+                    ext = p.suffix.lower()
+                    ctype_map = {
+                        ".pdf": "application/pdf", ".png": "image/png",
+                        ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                        ".svg": "image/svg+xml", ".eps": "application/postscript",
+                        ".tiff": "image/tiff", ".gif": "image/gif",
+                    }
+                    ctype = ctype_map.get(ext, "text/plain; charset=utf-8")
                     self.send_response(200)
-                    self.send_header("Content-Type", "text/plain; charset=utf-8")
+                    self.send_header("Content-Type", ctype)
                     self.send_header("Access-Control-Allow-Origin", "*")
                     self.send_header("Content-Length", str(len(body)))
                     self.end_headers()
@@ -729,8 +841,8 @@ class _Handler(BaseHTTPRequestHandler):
             ckpt_id = m.group(1); ext = m.group(2)
             fname = "full_paper." + ext
             search_paths = [
-                _st._ari_home / "ari-core" / "checkpoints" / ckpt_id / fname,
-                Path.home() / ".ari" / "checkpoints" / ckpt_id / fname,
+                _st._ari_root / "ari-core" / "checkpoints" / ckpt_id / fname,
+                _st._ari_root / "workspace" / "checkpoints" / ckpt_id / fname,
             ]
             if _st._checkpoint_dir and _st._checkpoint_dir.name == ckpt_id:
                 search_paths.insert(0, _st._checkpoint_dir / fname)
@@ -756,6 +868,64 @@ class _Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/api/checkpoint/") and self.path.endswith("/summary"):
             ckpt_id = self.path[len("/api/checkpoint/"):-len("/summary")]
             self._json(_api_checkpoint_summary(urllib.parse.unquote(ckpt_id)))
+        elif self.path.startswith("/api/checkpoint/") and self.path.endswith("/memory"):
+            ckpt_id = self.path[len("/api/checkpoint/"):-len("/memory")]
+            self._json(_api_checkpoint_memory(urllib.parse.unquote(ckpt_id)))
+        elif self.path.startswith("/api/checkpoint/") and urllib.parse.urlparse(self.path).path.endswith("/files"):
+            parsed_p = urllib.parse.urlparse(self.path).path
+            ckpt_id = parsed_p[len("/api/checkpoint/"):-len("/files")]
+            self._json(_api_checkpoint_files(urllib.parse.unquote(ckpt_id)))
+        elif self.path.startswith("/api/checkpoint/") and ("/file/raw" in self.path or "/file?" in self.path):
+            parsed = urllib.parse.urlparse(self.path)
+            # path = /api/checkpoint/{ckpt_id}/file/raw  or  /api/checkpoint/{ckpt_id}/file
+            parts = parsed.path.strip("/").split("/")
+            # parts = ["api", "checkpoint", ckpt_id, "file", ...]
+            ckpt_id = urllib.parse.unquote(parts[2]) if len(parts) > 2 else ""
+            qs = urllib.parse.parse_qs(parsed.query)
+            fname = qs.get("name", [""])[0]
+            is_raw = len(parts) > 4 and parts[4] == "raw"
+            if is_raw:
+                # Serve binary file (images, PDFs, etc.)
+                fpath, err = _resolve_paper_file(ckpt_id, fname)
+                if err:
+                    self.send_response(404); self.end_headers()
+                else:
+                    ext = fpath.suffix.lower()
+                    ctype_map = {
+                        ".pdf": "application/pdf", ".png": "image/png",
+                        ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                        ".svg": "image/svg+xml", ".eps": "application/postscript",
+                        ".tiff": "image/tiff",
+                    }
+                    ctype = ctype_map.get(ext, "application/octet-stream")
+                    data = fpath.read_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", ctype)
+                    self.send_header("Content-Length", str(len(data)))
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(data)
+                return
+            else:
+                # Serve text file content as JSON
+                self._json(_api_checkpoint_file_read(ckpt_id, fname))
+        elif self.path.startswith("/api/checkpoint/") and urllib.parse.urlparse(self.path).path.endswith("/filetree"):
+            parsed_ft = urllib.parse.urlparse(self.path)
+            ckpt_id_ft = parsed_ft.path[len("/api/checkpoint/"):-len("/filetree")]
+            qs_ft = urllib.parse.parse_qs(parsed_ft.query)
+            node_id_ft = qs_ft.get("node_id", [""])[0]
+            self._json(_api_checkpoint_filetree(urllib.parse.unquote(ckpt_id_ft), node_id_ft))
+        elif self.path.startswith("/api/checkpoint/") and "/filecontent" in self.path:
+            parsed_fc = urllib.parse.urlparse(self.path)
+            parts_fc = parsed_fc.path.strip("/").split("/")
+            ckpt_id_fc = urllib.parse.unquote(parts_fc[2]) if len(parts_fc) > 2 else ""
+            qs_fc = urllib.parse.parse_qs(parsed_fc.query)
+            fpath_fc = qs_fc.get("path", [""])[0]
+            node_id_fc = qs_fc.get("node_id", [""])[0]
+            self._json(_api_checkpoint_filecontent(ckpt_id_fc, fpath_fc, node_id_fc))
+        elif self.path.startswith("/api/ear/"):
+            run_id = self.path[len("/api/ear/"):]
+            self._json(_api_ear(urllib.parse.unquote(run_id)))
         elif self.path == "/api/settings":
             self._json(_api_get_settings())
         elif self.path == "/api/profiles":
@@ -763,6 +933,8 @@ class _Handler(BaseHTTPRequestHandler):
         elif self.path == "/api/upload":
             # Serve upload form page
             self._json({"error": "use POST /api/upload"})
+        elif self.path == "/api/experiment-detail":
+            self._json({"experiment_detail_config": _build_experiment_detail_config()})
         elif self.path == "/api/active-checkpoint":
             self._json({"path": str(_st._checkpoint_dir) if _st._checkpoint_dir else None,
                         "id": _st._checkpoint_dir.name if _st._checkpoint_dir else None})
@@ -773,6 +945,18 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(_api_skill_detail(skill_name))
         elif self.path == "/api/skills":
             self._json(_api_skills())
+        elif self.path == "/api/resource-metrics":
+            self._json(_collect_resource_metrics())
+        elif self.path == "/api/container/info":
+            from ari.container import get_container_info
+            self._json(get_container_info())
+        elif self.path == "/api/container/images":
+            from ari.container import list_images
+            self._json({"images": list_images()})
+        elif self.path == "/api/workflow/default":
+            self._json(_api_get_default_workflow())
+        elif self.path == "/api/workflow/flow":
+            self._json(_api_get_workflow_flow())
         elif self.path == "/api/scheduler/detect":
             self._json(_api_detect_scheduler())
         elif self.path == "/api/slurm/partitions":
@@ -783,8 +967,14 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
             self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Connection", "close")
             self.end_headers()
             _api_logs_sse(self.wfile)
+        elif self.path == "/api/sub-experiments":
+            self._json(_api_list_sub_experiments())
+        elif self.path.startswith("/api/sub-experiments/"):
+            run_id = self.path[len("/api/sub-experiments/"):]
+            self._json(_api_get_sub_experiment(urllib.parse.unquote(run_id)))
         else:
             # SPA fallback: serve React index.html for client-side routing
             if not self.path.startswith("/api/"):
@@ -804,6 +994,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(_api_save_settings(body))
         elif self.path == "/api/launch":
             r = _api_launch(body); self._json(r, status=r.pop("_status", 200))
+        elif self.path == "/api/sub-experiments/launch":
+            r = _api_launch_sub_experiment(body); self._json(r, status=r.pop("_status", 200))
         elif self.path == "/api/run-stage":
             r = _api_run_stage(body); self._json(r, status=r.pop("_status", 200))
         elif self.path == "/api/config/generate":
@@ -812,6 +1004,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(_api_chat_goal(body))
         elif self.path == "/api/upload":
             r = _api_upload_file(self.headers, body); self._json(r, status=r.pop("_status", 200))
+        elif self.path == "/api/upload/delete":
+            self._json(_api_upload_delete(body))
         elif self.path == "/api/env-keys":
             self._json(_api_save_env_key(body))
         elif self.path == "/api/ssh/test":
@@ -877,7 +1071,36 @@ class _Handler(BaseHTTPRequestHandler):
                 else:
                     report["main"] = f"stopped(SIGTERM) pid={pid}"
             else:
-                report["main"] = "not running"
+                # Fallback: GUI restarted or proc handle lost — use .ari_pid
+                # from the active checkpoint. Without this, pkill below is the
+                # only option and it also kills the GUI process itself.
+                from ari.pidfile import read_pid as _read_pid
+                _pid = _read_pid(Path(_st._checkpoint_dir)) if _st._checkpoint_dir else None
+                if _pid:
+                    try:
+                        os.killpg(os.getpgid(_pid), _sig_stop.SIGTERM)
+                    except ProcessLookupError:
+                        _pid = None  # already gone
+                    except Exception:
+                        try: os.kill(_pid, _sig_stop.SIGTERM)
+                        except Exception: log.debug("pidfile SIGTERM failed", exc_info=True)
+                if _pid:
+                    for _ in range(50):
+                        try:
+                            os.kill(_pid, 0)
+                        except ProcessLookupError:
+                            break
+                        _time_stop.sleep(0.1)
+                    try:
+                        os.kill(_pid, 0)
+                        # still alive → SIGKILL
+                        try: os.killpg(os.getpgid(_pid), _sig_stop.SIGKILL)
+                        except Exception: os.kill(_pid, _sig_stop.SIGKILL)
+                        report["main"] = f"killed(SIGKILL) pid={_pid} (via pidfile)"
+                    except ProcessLookupError:
+                        report["main"] = f"stopped(SIGTERM) pid={_pid} (via pidfile)"
+                else:
+                    report["main"] = "not running"
 
             # --- 2. GPU monitor process ---
             if _st._gpu_monitor_proc and _st._gpu_monitor_proc.poll() is None:
@@ -927,10 +1150,39 @@ class _Handler(BaseHTTPRequestHandler):
 
             stopped = report["main"] != "not running"
             self._json({"ok": True, "stopped": stopped, "report": report})
+        elif self.path == "/api/checkpoint/file/save":
+            self._json(_api_checkpoint_file_save(body))
+        elif self.path == "/api/checkpoint/file/delete":
+            self._json(_api_checkpoint_file_delete(body))
+        elif self.path == "/api/checkpoint/compile":
+            self._json(_api_checkpoint_compile(body))
+        elif re.match(r"^/api/checkpoint/[^/]+/file/upload$", self.path):
+            m = re.match(r"^/api/checkpoint/([^/]+)/file/upload$", self.path)
+            ckpt_id = urllib.parse.unquote(m.group(1))
+            fname = self.headers.get("X-Filename", "upload.bin")
+            self._json(_api_checkpoint_file_upload(ckpt_id, fname, body))
         elif self.path == "/api/delete-checkpoint":
             self._json(_api_delete_checkpoint(body))
         elif self.path == "/api/workflow":
             r = _api_save_workflow(body); self._json(r, status=r.pop("_status", 200))
+        elif self.path == "/api/workflow/flow":
+            r = _api_save_workflow_flow(body); self._json(r, status=r.pop("_status", 200))
+        elif self.path == "/api/workflow/skills":
+            r = _api_save_skill_phases(body); self._json(r, status=r.pop("_status", 200))
+        elif self.path == "/api/workflow/disabled-tools":
+            r = _api_save_disabled_tools(body); self._json(r, status=r.pop("_status", 200))
+        elif self.path == "/api/container/pull":
+            data_cp = json.loads(body or b'{}')
+            try:
+                from ari.container import ContainerConfig, pull_image
+                _cp_cfg = ContainerConfig(
+                    image=data_cp.get("image", ""),
+                    mode=data_cp.get("mode", "auto"),
+                )
+                ok = pull_image(_cp_cfg)
+                self._json({"ok": ok})
+            except Exception as e:
+                self._json({"ok": False, "error": str(e)})
         else:
             self.send_response(404)
             self.end_headers()
@@ -974,7 +1226,7 @@ def _http_thread(port: int) -> None:
                 _newest = max(_all_ckpts, key=lambda c: c.get("mtime", 0))
                 _np = Path(_newest["path"])
                 if _np.exists():
-                    _st._checkpoint_dir = _np
+                    _st.set_active_checkpoint(_np)
                     _st._last_mtime = 0.0
                     # Restore launch config from checkpoint or parent dir
                     for _lc_cand in [_np / "launch_config.json", _np.parent / "launch_config.json"]:
@@ -999,7 +1251,7 @@ def _http_thread(port: int) -> None:
 # ──────────────────────────────────────────────
 
 async def _main(checkpoint: Path, port: int) -> None:
-    _st._checkpoint_dir = checkpoint
+    _st.set_active_checkpoint(checkpoint)
     _st._port = port
     _st._loop = asyncio.get_running_loop()
 
