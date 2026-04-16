@@ -80,6 +80,64 @@ def _resolve_templates(value: Any, vars_: dict) -> Any:
 
 
 # ---------------------------------------------------------------------------
+# loop_back_to runtime helpers
+# ---------------------------------------------------------------------------
+
+
+def _should_loop_back(stage_cfg: dict, result: Any) -> bool:
+    """Decide whether a stage's result triggers a loop_back_to jump.
+
+    Supported YAML fields:
+    - loop_threshold: numeric — loop if `result["score"] < loop_threshold`
+    - loop_when_result_key: str — loop if `result[key]` is truthy
+
+    Returns False if result is not a dict (no signal to act on).
+    """
+    if not isinstance(result, dict):
+        return False
+    threshold = stage_cfg.get("loop_threshold")
+    if threshold is not None:
+        try:
+            score = float(result.get("score", 1.0))
+        except (TypeError, ValueError):
+            score = 1.0
+        if score < float(threshold):
+            return True
+    when_key = stage_cfg.get("loop_when_result_key")
+    if when_key and result.get(when_key):
+        return True
+    return False
+
+
+def _format_vlm_feedback(result: dict) -> str:
+    """Flatten a VLM-style review result dict into a text block suitable for
+    injection into a regeneration stage's system prompt.
+
+    Consumes keys produced by vlm-skill:review_figure:
+        score, issues, suggestions, review_text
+    """
+    parts: list[str] = []
+    if "score" in result:
+        try:
+            parts.append(f"Previous VLM score: {float(result['score']):.2f}")
+        except (TypeError, ValueError):
+            parts.append(f"Previous VLM score: {result['score']}")
+    _issues = result.get("issues") or []
+    if isinstance(_issues, str):
+        _issues = [_issues]
+    if _issues:
+        parts.append("Issues reported: " + "; ".join(str(i) for i in _issues))
+    _sugg = result.get("suggestions") or []
+    if isinstance(_sugg, str):
+        _sugg = [_sugg]
+    if _sugg:
+        parts.append("Suggested improvements: " + "; ".join(str(s) for s in _sugg))
+    if result.get("review_text"):
+        parts.append(f"Reviewer notes: {result['review_text']}")
+    return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
 # Context-building from BFTS nodes
 # ---------------------------------------------------------------------------
 
@@ -283,7 +341,7 @@ def _run_stage_subprocess(tool: str, args: dict, config_path: str, skill_name: s
         "    _cfg_path = str(_pkg_cfg) if _pkg_cfg.exists() else _cfg_path\n"
         "cfg = load_config(_cfg_path)\n"
         + _skill_filter +
-        "mcp = MCPClient(skills)\n"
+        "mcp = MCPClient(skills, disabled_tools=getattr(cfg, 'disabled_tools', []) or [])\n"
         "mcp.list_tools()\n"
         "with open(" + _apath + ") as _af:\n"
         "    _call_args = json.load(_af)\n"
@@ -595,7 +653,9 @@ def run_pipeline(
     import os as _os
     tpl_vars: dict = {
         "ckpt":              str(checkpoint_dir),
+        "checkpoint_dir":    str(checkpoint_dir),
         "context":           context,
+        "experiment_summary": context,
         "paper_context":     _paper_ctx,
         "slurm_partition":   _wf_cfg.get("slurm_partition", ""),  # resolved at runtime via ARI_SLURM_PARTITION env
         "keywords":          keywords,
@@ -616,7 +676,17 @@ def run_pipeline(
 
     stage_outputs: dict[str, Any] = {}
 
-    for stage_cfg in stages:
+    # Index-based iteration so loop_back_to can rewind the cursor. A
+    # per-source-stage counter caps total iterations so a misbehaving VLM
+    # reviewer cannot pin the pipeline in an infinite regenerate loop.
+    _loop_iterations: dict[str, int] = {}
+    # Initialise the feedback slot so {{vlm_feedback}} resolves to "" on
+    # the first pass (before any loop has injected real feedback).
+    tpl_vars.setdefault("vlm_feedback", "")
+
+    _stage_idx = 0
+    while _stage_idx < len(stages):
+        stage_cfg = stages[_stage_idx]
         stage_name = stage_cfg.get("stage", "unknown")
         skill_key  = stage_cfg.get("skill", "")
         skill = skill_key if ("skill" in skill_key) else (skill_key + "-skill" if skill_key else "")
@@ -625,6 +695,17 @@ def run_pipeline(
 
         log.info("=== Stage [%s]: %s ===", stage_name, desc)
         print(f"[Paper Pipeline] Stage [{stage_name}]: {desc} ...", flush=True)
+
+        # ── disabled_tools check ────────────────────────────────────────
+        # Honour tools toggled off in the GUI Workflow page.
+        _disabled = set(_wf_cfg.get("disabled_tools") or [])
+        if tool and tool in _disabled:
+            log.info("Stage [%s]: tool '%s' is disabled_tools; skip", stage_name, tool)
+            print(f"[Paper Pipeline] Stage [{stage_name}]: SKIPPED (tool '{tool}' disabled)", flush=True)
+            stage_outputs[stage_name] = {"skipped": True, "reason": f"tool disabled: {tool}"}
+            tpl_vars["stages"][stage_name] = {"output": "", "outputs": {}}
+            _stage_idx += 1
+            continue
 
         # ── depends_on check ─────────────────────────────────────────────
         _depends = stage_cfg.get("depends_on", [])
@@ -647,6 +728,7 @@ def run_pipeline(
             print(f"[Paper Pipeline] Stage [{stage_name}]: SKIPPED (dep '{_dep_fail}' {_reason})", flush=True)
             stage_outputs[stage_name] = {"skipped": True, "reason": f"dep {_reason}: {_dep_fail}"}
             tpl_vars["stages"][stage_name] = {"output": "", "outputs": {}}
+            _stage_idx += 1
             continue
 
         # ── skip_if_exists check ──────────────────────────────────────────
@@ -670,6 +752,7 @@ def run_pipeline(
                 print(f"[Paper Pipeline] Stage [{stage_name}]: SKIPPED (output exists)", flush=True)
                 tpl_vars["stages"][stage_name] = {"output": skip_path, "outputs": {"file": skip_path}}
                 stage_outputs[stage_name] = {"skipped": True, "output": skip_path}
+                _stage_idx += 1
                 continue
 
         # ── resolve inputs ────────────────────────────────────────────────
@@ -846,6 +929,78 @@ def run_pipeline(
             # Stage completed successfully
             print(f"[Paper Pipeline] Stage [{stage_name}]: DONE", flush=True)
 
+            # ── loop_back_to runtime ─────────────────────────────────────
+            # If this stage declares a `loop_back_to` target and its result
+            # meets the `loop_threshold` / `loop_when_result_key` condition,
+            # rewind the stage cursor to the target and re-run the range,
+            # injecting any review feedback into tpl_vars so the upstream
+            # stage can consume it (e.g. {{vlm_feedback}} in plot-skill).
+            _loop_target = stage_cfg.get("loop_back_to")
+            if _loop_target and _should_loop_back(stage_cfg, result):
+                _count = _loop_iterations.get(stage_name, 0)
+                try:
+                    _max_iter = int(stage_cfg.get("loop_max_iterations", 2))
+                except (TypeError, ValueError):
+                    _max_iter = 2
+                if _count >= _max_iter:
+                    log.info(
+                        "[loop_back] %s: loop_max_iterations (%d) reached; proceeding",
+                        stage_name, _max_iter,
+                    )
+                    print(
+                        f"[Paper Pipeline] Stage [{stage_name}]: loop max "
+                        f"({_max_iter}) reached, proceeding",
+                        flush=True,
+                    )
+                else:
+                    _target_idx = next(
+                        (i for i, s in enumerate(stages)
+                         if s.get("stage") == _loop_target and i < _stage_idx),
+                        None,
+                    )
+                    if _target_idx is None:
+                        log.warning(
+                            "[loop_back] %s: target '%s' not found earlier in "
+                            "pipeline; ignoring loop directive",
+                            stage_name, _loop_target,
+                        )
+                    else:
+                        _loop_iterations[stage_name] = _count + 1
+                        # Surface review feedback to downstream template vars
+                        tpl_vars["vlm_feedback"] = _format_vlm_feedback(result)
+                        # Reset state for stages [target_idx .. _stage_idx]
+                        # so they actually re-run (don't hit skip_if_exists
+                        # on their own outputs).
+                        for _reset_idx in range(_target_idx, _stage_idx + 1):
+                            _reset_name = stages[_reset_idx].get("stage", "")
+                            tpl_vars["stages"].pop(_reset_name, None)
+                            stage_outputs.pop(_reset_name, None)
+                            _reset_skip = stages[_reset_idx].get("skip_if_exists", "")
+                            if _reset_skip:
+                                try:
+                                    _reset_path = Path(
+                                        _resolve_templates(_reset_skip, tpl_vars)
+                                    )
+                                    _reset_path.unlink(missing_ok=True)
+                                except Exception as _reset_err:
+                                    log.debug(
+                                        "[loop_back] could not clear skip marker "
+                                        "for %s: %s",
+                                        _reset_name, _reset_err,
+                                    )
+                        log.info(
+                            "[loop_back] %s → %s (iter %d/%d); feedback injected",
+                            stage_name, _loop_target, _count + 1, _max_iter,
+                        )
+                        print(
+                            f"[Paper Pipeline] Stage [{stage_name}]: LOOPING "
+                            f"BACK to {_loop_target} (iter {_count + 1}/"
+                            f"{_max_iter})",
+                            flush=True,
+                        )
+                        _stage_idx = _target_idx
+                        continue  # skip the _stage_idx += 1 below
+
         except Exception:
             import traceback as _tb
             _exc = _tb.format_exc()
@@ -853,5 +1008,7 @@ def run_pipeline(
             print(f"[Paper Pipeline] Stage [{stage_name}]: FAILED\n{_exc[:300]}", flush=True)
             stage_outputs[stage_name] = {"error": "stage failed"}
             tpl_vars["stages"][stage_name] = {"output": "", "outputs": {}}
+
+        _stage_idx += 1
 
     return stage_outputs

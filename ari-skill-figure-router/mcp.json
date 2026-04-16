@@ -1,0 +1,12 @@
+{
+  "name": "figure-router-skill",
+  "version": "0.1.0",
+  "description": "Figure generation router: classifies figure type and dispatches to appropriate generator",
+  "tools": [
+    "classify_figure_need",
+    "generate_figure",
+    "generate_svg_diagram"
+  ],
+  "runtime": "python",
+  "entrypoint": "src/server.py"
+}

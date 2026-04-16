@@ -61,7 +61,12 @@ mcp = FastMCP("idea-generation-skill")
 # ── ARI LLM config ────────────────────────────────────────────────────────────
 
 def _model() -> str:
-    return os.environ.get("ARI_LLM_MODEL") or os.environ.get("LLM_MODEL") or "ollama_chat/qwen3:32b"
+    # Phase-specific override (ARI_MODEL_IDEA) wins over the global model so
+    # the GUI Settings page's per-phase model picker actually takes effect.
+    return (os.environ.get("ARI_MODEL_IDEA")
+            or os.environ.get("ARI_LLM_MODEL")
+            or os.environ.get("LLM_MODEL")
+            or "ollama_chat/qwen3:32b")
 
 def _api_base() -> str | None:
     ari = os.environ.get("ARI_LLM_API_BASE")

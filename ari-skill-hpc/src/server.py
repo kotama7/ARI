@@ -216,45 +216,17 @@ async def list_tools() -> list[Tool]:
                 "required": ["image_path", "command", "partition"],
             },
         ),
-        Tool(
-            name="run_bash",
-            description="Run a bash command on the current host and return stdout. Suitable for file I/O, compilation, and execution. When a job scheduler (e.g. slurm_submit) is available, prefer it for compute-intensive tasks to ensure execution on the intended target.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "command": {
-                        "type": "string",
-                        "description": "Bash command to execute (e.g. 'cat /path/to/slurm_job_12345.out')",
-                    },
-                },
-                "required": ["command"],
-            },
-        ),
     ]
+
+
+import logging as _logging
+_hpc_log = _logging.getLogger("ari.skill.hpc")
 
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     client = _get_slurm_client()
     try:
-        if name == "run_bash":
-            import subprocess, platform
-            cmd = arguments.get("command", "")
-            _cwd = arguments.get("cwd") or os.environ.get("ARI_WORK_DIR") or None
-            if _cwd:
-                os.makedirs(_cwd, exist_ok=True)
-            try:
-                result = subprocess.run(
-                    cmd, shell=True, capture_output=True, text=True, timeout=120,
-                    cwd=_cwd
-                )
-                out = (result.stdout or "") + (result.stderr or "")
-            except subprocess.TimeoutExpired:
-                out = "ERROR: command timed out after 120 seconds"
-            # Prepend host architecture so the LLM knows where this ran
-            _arch = platform.machine()  # e.g. x86_64, aarch64
-            _host_tag = f"[run_bash host: {_arch}]"
-            return [TextContent(type="text", text=f"{_host_tag}\n{out.strip() or '(empty output)'}")]
         if name == "slurm_submit":
             result = await client.submit(
                 script=arguments["script"],

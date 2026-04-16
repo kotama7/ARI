@@ -123,11 +123,12 @@ ari viz ./checkpoints/ --port 8765
 | **Experiments** | 所有过去实验运行的列表 |
 | **Monitor** | 实时管线进度，带 D3 树形可视化 |
 | **Tree** | 完整的 BFTS 实验树 — 点击节点查看详情 |
-| **Results** | 查看生成的论文、评审和可重现性报告 |
+| **Results** | 类 Overleaf LaTeX 编辑器、论文 PDF 查看器、评审报告、EAR 浏览器 |
 | **New Experiment** | 创建并启动新实验的向导 |
 | **Ideas** | VirSci 生成的研究假说 |
-| **Workflow** | 编辑 BFTS 后管线配置 |
-| **Settings** | 配置 LLM、API 密钥、SLURM 和语言 |
+| **Workflow** | BFTS 后管线的 React Flow 可视化 DAG 编辑器 |
+| **Settings** | 配置 LLM、API 密钥、SLURM、容器、VLM 和检索后端 |
+| **Sub-Experiments** | 递归子实验树（通过 orchestrator 技能） |
 
 ---
 
@@ -228,8 +229,9 @@ AI 会提出澄清性问题，并自动生成实验文件。
 
 在这里你可以：
 
-- 阅读生成的论文（LaTeX / PDF）
+- **编辑论文** — 使用内置类 Overleaf LaTeX 编辑器编辑 `.tex`/`.bib` 文件、编译并内嵌预览 PDF
 - 查看自动同行评审的评分和反馈
+- 浏览 Experiment Artifact Repository (EAR)（代码、数据、可重现性元数据）
 - 检查可重现性验证报告
 - 下载所有产物
 
@@ -239,10 +241,12 @@ AI 会提出澄清性问题，并自动生成实验文件。
 |------|------|
 | `full_paper.tex / .pdf` | 完整生成的论文 |
 | `review_report.json` | 同行评审评分和反馈 |
+| `rebuttal.json` | 对评审意见的自动反驳 |
 | `reproducibility_report.json` | 独立的可重现性验证 |
 | `tree.json` | 包含所有指标的完整实验树 |
 | `science_data.json` | 清洗后的数据（无内部术语） |
 | `figures_manifest.json` | 生成的图表 |
+| `ear/` | Experiment Artifact Repository（代码、数据、日志、可重现性元数据） |
 | `experiments/` | 各节点的源代码和输出 |
 
 ---
@@ -272,6 +276,21 @@ AI 会提出澄清性问题，并自动生成实验文件。
 - 设置默认分区、CPU 数量和集群任务的内存
 - 点击 **Detect** 自动检测集群的可用分区
 
+### 容器运行时
+
+- 选择容器模式：auto、Docker、Singularity、Apptainer 或 none
+- 设置容器镜像和拉取策略（always / on_start / never）
+- 点击 **Detect Runtime** 自动检测可用的容器运行时
+
+### VLM 图表审阅
+
+- 设置图表质量审阅的 VLM 模型（默认：`openai/gpt-4o`）
+- 配置审阅阈值和最大迭代次数
+
+### 检索后端
+
+- 选择论文搜索后端：Semantic Scholar（默认）、AlphaXiv 或 both（并行）
+
 ### 按阶段模型覆盖
 
 为不同的管线阶段使用不同的模型（例如，用较便宜的模型进行创意生成，用更好的模型撰写论文）。
@@ -290,7 +309,7 @@ AI 会提出澄清性问题，并自动生成实验文件。
 
 ![Workflow 页面](images/zh/dashboard_workflow.png)
 
-编辑 BFTS 后管线阶段（数据转换 → 生成图表 → 撰写论文 → 评审 → 可重现性检查）。更改将保存为 `workflow.yaml`。
+BFTS 后管线的 React Flow 可视化 DAG 编辑器。可拖动节点、绘制连线、启用/禁用阶段并分配技能。泳道布局区分 BFTS 和 Paper 阶段。更改将保存为 `workflow.yaml`。
 
 ---
 
@@ -335,7 +354,7 @@ AI 会提出澄清性问题，并自动生成实验文件。
 | 端点 | 方法 | 描述 |
 |------|------|------|
 | `/api/settings` | GET | 当前设置：LLM 提供商/模型、Ollama 主机、SLURM 配置、MCP 技能 |
-| `/api/settings` | POST | 将设置保存到 `~/.ari/settings.json` 和 `.env`。请求体：`{llm_model, llm_provider, ollama_host, slurm_partition, ...}` |
+| `/api/settings` | POST | 将设置保存到 `{checkpoint}/settings.json` 和 `.env`（需要选中项目）。请求体：`{llm_model, llm_provider, ollama_host, slurm_partition, ...}` |
 | `/api/env-keys` | GET | 来自 `.env` 文件的所有 API 密钥及来源信息 |
 | `/api/env-keys` | POST | 保存单个 API 密钥：`{key, value}` |
 | `/api/profiles` | GET | 可用的环境配置文件（laptop, hpc, cloud） |

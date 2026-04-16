@@ -10,8 +10,14 @@ Reads nodes_tree.json (BFTS output) and uses an LLM to deeply understand:
 
 Replaces the former regex-only transform with full LLM comprehension.
 """
+from __future__ import annotations
+
 import json
 import os
+import platform
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import litellm
@@ -377,6 +383,464 @@ async def nodes_to_science_data(
             "count": len(ranked),
             "best": max((v["best_value"] for v in per_key_summary.values()), default=0),
         },
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Experiment Artifact Repository (EAR) — issue #4
+# ──────────────────────────────────────────────────────────────────────────
+
+
+def _safe_run(cmd: list[str], timeout: int = 10) -> str:
+    """Run a shell command and return its trimmed stdout, or '' on failure."""
+    try:
+        out = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout
+        )
+        return (out.stdout or "").strip()
+    except Exception:
+        return ""
+
+
+def _capture_environment() -> dict:
+    """Capture python version, platform, key packages, and hardware specs."""
+    env: dict = {
+        "python_version": sys.version.split()[0],
+        "python_implementation": platform.python_implementation(),
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "processor": platform.processor() or "unknown",
+        "hostname": platform.node(),
+    }
+    # Best-effort: pip list (may take a few seconds; cap timeout)
+    pip_out = _safe_run([sys.executable, "-m", "pip", "list", "--format=json"], timeout=15)
+    if pip_out:
+        try:
+            env["installed_packages"] = json.loads(pip_out)
+        except Exception:
+            env["installed_packages"] = []
+    else:
+        env["installed_packages"] = []
+    # Hardware specs (best-effort)
+    cpu_count = os.cpu_count() or 0
+    env["cpu_count"] = cpu_count
+    # Linux memory
+    try:
+        with open("/proc/meminfo") as fh:
+            meminfo = {}
+            for line in fh:
+                if ":" in line:
+                    k, v = line.split(":", 1)
+                    meminfo[k.strip()] = v.strip()
+            if "MemTotal" in meminfo:
+                env["mem_total"] = meminfo["MemTotal"]
+    except Exception:
+        pass
+    return env
+
+
+def _collect_node_source_dirs(node: dict) -> list[Path]:
+    """Find on-disk experiment directories referenced by a node's artifacts."""
+    import re as _re
+    dirs: list[Path] = []
+    seen: set[str] = set()
+    for art in (node.get("artifacts") or []):
+        content = art.get("content", "") if isinstance(art, dict) else str(art)
+        for m in _re.finditer(r"(?:cd|pushd)\s+(/\S+)", content):
+            d = m.group(1).rstrip("&;|\"'")
+            if d and d not in seen:
+                p = Path(d)
+                if p.is_dir():
+                    dirs.append(p)
+                    seen.add(d)
+    return dirs
+
+
+def _copy_node_sources(node: dict, dest_dir: Path) -> int:
+    """Copy source files from a node's experiment directory into dest_dir.
+
+    Returns the number of files copied.
+    """
+    src_dirs = _collect_node_source_dirs(node)
+    if not src_dirs:
+        return 0
+    # Skip binary / heavy file extensions
+    binary_exts = {
+        ".o", ".a", ".so", ".dylib", ".dll", ".exe", ".bin",
+        ".pyc", ".pyo", ".class", ".jar",
+        ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".ico",
+        ".pdf", ".ps", ".eps",
+        ".zip", ".gz", ".bz2", ".xz", ".tar", ".7z",
+        ".pkl", ".npy", ".npz", ".h5", ".hdf5",
+        ".parquet",
+    }
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    copied = 0
+    for sd in src_dirs:
+        for f in sorted(sd.iterdir()):
+            if not f.is_file():
+                continue
+            if f.suffix.lower() in binary_exts:
+                continue
+            try:
+                if f.stat().st_size > 256 * 1024:  # 256KB cap per file
+                    continue
+            except Exception:
+                continue
+            try:
+                shutil.copy2(f, dest_dir / f.name)
+                copied += 1
+            except Exception:
+                continue
+    return copied
+
+
+def _llm_generate_doc(prompt: str, model: str, base_url: str = "") -> str:
+    """Best-effort LLM call. Returns empty string on failure (caller falls back)."""
+    try:
+        kwargs: dict = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if base_url:
+            kwargs["api_base"] = base_url
+        resp = litellm.completion(**kwargs)
+        return (resp.choices[0].message.content or "").strip()
+    except Exception:
+        return ""
+
+
+def _build_readme_fallback(nodes: list[dict], goal: str, top_node: dict | None) -> str:
+    """Deterministic README when LLM is unavailable."""
+    n_total = len(nodes)
+    n_real = sum(1 for n in nodes if n.get("has_real_data"))
+    lines = [
+        "# Experiment Artifact Repository",
+        "",
+        f"**Goal:** {goal[:400] if goal else '(not recorded)'}",
+        "",
+        f"- Total nodes explored: {n_total}",
+        f"- Nodes with real measurements: {n_real}",
+    ]
+    if top_node:
+        sci = (top_node.get("metrics") or {}).get("_scientific_score")
+        lines.append(
+            f"- Best node: id={top_node.get('id', '?')[-8:]} "
+            f"score={sci if sci is not None else 'n/a'}"
+        )
+        if top_node.get("eval_summary"):
+            lines.append("")
+            lines.append(f"**Best result summary:** {top_node['eval_summary'][:300]}")
+    return "\n".join(lines) + "\n"
+
+
+def _build_results_md_fallback(nodes: list[dict]) -> str:
+    """Deterministic RESULTS.md when LLM is unavailable."""
+    real = [n for n in nodes if n.get("has_real_data") and n.get("metrics")]
+    real.sort(
+        key=lambda n: float((n.get("metrics") or {}).get("_scientific_score") or 0.0),
+        reverse=True,
+    )
+    lines = ["# Results", "", "| node_id | label | scientific_score | metrics |", "| --- | --- | --- | --- |"]
+    for n in real[:25]:
+        m = n.get("metrics") or {}
+        sci = m.get("_scientific_score")
+        sci_str = f"{float(sci):.2f}" if sci is not None else "n/a"
+        metrics_str = json.dumps(
+            {k: v for k, v in m.items() if not k.startswith("_")}, ensure_ascii=False
+        )[:160]
+        lines.append(
+            f"| {str(n.get('id', '?'))[-8:]} | {n.get('label', '?')} | {sci_str} | {metrics_str} |"
+        )
+    if not real:
+        lines.append("| _no nodes with measurements_ | | | |")
+    return "\n".join(lines) + "\n"
+
+
+def _build_commands_md(top_node: dict | None) -> str:
+    """Document the commands needed to reproduce the top-scoring node."""
+    if not top_node:
+        return "# Reproduction commands\n\n_No top node available._\n"
+    cmds: list[str] = []
+    for art in (top_node.get("artifacts") or []):
+        content = art.get("content", "") if isinstance(art, dict) else str(art)
+        if not content:
+            continue
+        for line in content.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            cmds.append(stripped)
+    out = [
+        "# Reproduction commands",
+        "",
+        f"_Top-scoring node: `{str(top_node.get('id', '?'))[-8:]}` "
+        f"(label={top_node.get('label', '?')})_",
+        "",
+        "```bash",
+    ]
+    if cmds:
+        out.extend(cmds[:50])
+    else:
+        out.append("# No reproducible commands captured for this node.")
+    out.append("```")
+    return "\n".join(out) + "\n"
+
+
+def _consolidate_metrics(nodes: list[dict]) -> dict:
+    """Consolidate per-node metrics into a single JSON-serialisable dict."""
+    out: dict = {"nodes": [], "summary": {}}
+    all_keys: dict[str, list] = {}
+    for n in nodes:
+        m = n.get("metrics") or {}
+        if not m:
+            continue
+        out["nodes"].append({
+            "id": n.get("id", ""),
+            "label": n.get("label", ""),
+            "raw_label": n.get("raw_label", ""),
+            "depth": n.get("depth", 0),
+            "has_real_data": bool(n.get("has_real_data", False)),
+            "metrics": m,
+        })
+        for k, v in m.items():
+            if isinstance(v, (int, float)):
+                all_keys.setdefault(k, []).append(v)
+    for k, vals in all_keys.items():
+        if not vals:
+            continue
+        out["summary"][k] = {
+            "min": min(vals),
+            "max": max(vals),
+            "mean": sum(vals) / len(vals),
+            "count": len(vals),
+        }
+    return out
+
+
+def _copy_figures(checkpoint_dir: Path, figures_dir: Path) -> int:
+    """Copy any figure files (PDF/PNG/SVG) from the checkpoint into figures/."""
+    figures_dir.mkdir(parents=True, exist_ok=True)
+    copied = 0
+    for ext in ("*.pdf", "*.png", "*.svg", "*.jpg", "*.jpeg"):
+        for f in checkpoint_dir.glob(ext):
+            try:
+                shutil.copy2(f, figures_dir / f.name)
+                copied += 1
+            except Exception:
+                continue
+    return copied
+
+
+@mcp.tool()
+def generate_ear(
+    checkpoint_dir: str,
+    llm_model: str = "",
+    llm_base_url: str = "",
+) -> dict:
+    """Generate Experiment Artifact Repository directory from checkpoint.
+
+    Builds a structured 'pseudo-GitHub' directory under <checkpoint_dir>/ear/
+    containing README/RESULTS docs, source code, consolidated metrics,
+    figures, environment info, and reproduction commands.
+
+    Args:
+        checkpoint_dir: Path to the checkpoint directory containing
+            tree.json (or nodes_tree.json) and science_data.json.
+        llm_model: Optional LLM model name (litellm format) used to
+            auto-generate README.md and RESULTS.md. Falls back to a
+            deterministic template when no LLM is available.
+        llm_base_url: Optional base URL for OpenAI-compatible LLM APIs.
+
+    Returns:
+        Summary JSON containing:
+        - ear_dir: Absolute path to the generated EAR directory
+        - file_count: Number of files written under ear/
+        - source_files: Number of source files copied
+        - has_readme / has_results: Whether the docs were generated
+    """
+    ckpt = Path(checkpoint_dir).expanduser().resolve()
+    if not ckpt.exists() or not ckpt.is_dir():
+        return {"error": f"checkpoint dir not found: {ckpt}"}
+
+    # ── Load tree ──
+    tree_path = ckpt / "tree.json"
+    if not tree_path.exists():
+        tree_path = ckpt / "nodes_tree.json"
+    if not tree_path.exists():
+        return {"error": f"no tree.json or nodes_tree.json under {ckpt}"}
+    try:
+        tree_data = json.loads(tree_path.read_text())
+    except Exception as e:
+        return {"error": f"could not parse tree json: {e}"}
+
+    nodes: list[dict] = tree_data if isinstance(tree_data, list) else tree_data.get("nodes", [])
+    goal: str = (
+        tree_data.get("experiment_goal", "") if isinstance(tree_data, dict) else ""
+    )
+
+    # ── Identify top-scoring node ──
+    real_nodes = [n for n in nodes if n.get("has_real_data") and n.get("metrics")]
+    real_nodes.sort(
+        key=lambda n: float((n.get("metrics") or {}).get("_scientific_score") or 0.0),
+        reverse=True,
+    )
+    top_node = real_nodes[0] if real_nodes else None
+
+    # ── Build EAR directory tree ──
+    ear = ckpt / "ear"
+    code_dir = ear / "code"
+    data_dir = ear / "data"
+    figures_dir = data_dir / "figures"
+    logs_dir = ear / "logs"
+    repro_dir = ear / "reproducibility"
+    for d in (ear, code_dir, data_dir, figures_dir, logs_dir, repro_dir):
+        d.mkdir(parents=True, exist_ok=True)
+
+    file_count = 0
+    source_files = 0
+
+    # ── code/<node_id>/ — copy source files per node ──
+    for n in nodes:
+        node_id = str(n.get("id") or "").strip()
+        if not node_id:
+            continue
+        node_dir = code_dir / node_id
+        copied = _copy_node_sources(n, node_dir)
+        if copied:
+            source_files += copied
+            file_count += copied
+        else:
+            # Remove empty per-node dir to avoid cluttering the tree
+            try:
+                node_dir.rmdir()
+            except OSError:
+                pass
+
+    # ── data/raw_metrics.json ──
+    raw_metrics = _consolidate_metrics(nodes)
+    (data_dir / "raw_metrics.json").write_text(
+        json.dumps(raw_metrics, ensure_ascii=False, indent=2)
+    )
+    file_count += 1
+
+    # ── data/science_data.json (copy if present) ──
+    sd_src = ckpt / "science_data.json"
+    if sd_src.exists():
+        try:
+            shutil.copy2(sd_src, data_dir / "science_data.json")
+            file_count += 1
+        except Exception:
+            pass
+
+    # ── data/figures/ ──
+    fig_count = _copy_figures(ckpt, figures_dir)
+    file_count += fig_count
+
+    # ── logs/bfts_tree.json ──
+    try:
+        shutil.copy2(tree_path, logs_dir / "bfts_tree.json")
+        file_count += 1
+    except Exception:
+        pass
+
+    # ── logs/eval_scores.json ──
+    eval_scores = []
+    for n in nodes:
+        sci = (n.get("metrics") or {}).get("_scientific_score")
+        if sci is not None:
+            eval_scores.append({
+                "node_id": n.get("id", ""),
+                "label": n.get("label", ""),
+                "raw_label": n.get("raw_label", ""),
+                "depth": n.get("depth", 0),
+                "scientific_score": sci,
+                "eval_summary": (n.get("eval_summary") or "")[:500],
+            })
+    (logs_dir / "eval_scores.json").write_text(
+        json.dumps(eval_scores, ensure_ascii=False, indent=2)
+    )
+    file_count += 1
+
+    # ── reproducibility/environment.json ──
+    env_info = _capture_environment()
+    (repro_dir / "environment.json").write_text(
+        json.dumps(env_info, ensure_ascii=False, indent=2)
+    )
+    file_count += 1
+
+    # ── reproducibility/run_config.json ──
+    run_config: dict = {
+        "checkpoint_dir": str(ckpt),
+        "experiment_goal": goal[:1000] if goal else "",
+        "node_count": len(nodes),
+        "real_data_count": len(real_nodes),
+    }
+    # Pull workflow.yaml summary if available
+    wf = ckpt.parent.parent / "config" / "workflow.yaml"
+    if wf.exists():
+        try:
+            run_config["workflow_yaml"] = wf.read_text()[:4000]
+        except Exception:
+            pass
+    (repro_dir / "run_config.json").write_text(
+        json.dumps(run_config, ensure_ascii=False, indent=2)
+    )
+    file_count += 1
+
+    # ── reproducibility/commands.md ──
+    (repro_dir / "commands.md").write_text(_build_commands_md(top_node))
+    file_count += 1
+
+    # ── README.md ──
+    model = llm_model or os.environ.get("LLM_MODEL", "") or os.environ.get("ARI_LLM_MODEL", "")
+    base_url = llm_base_url or os.environ.get("ARI_LLM_API_BASE", "")
+    readme_text = ""
+    if model:
+        readme_prompt = (
+            "Write a concise README.md for an experiment artifact repository. "
+            "Cover: (1) what was done, (2) the best result, (3) the key finding. "
+            "Keep it under ~200 words and avoid speculation. "
+            f"Goal: {goal[:600]}\n\n"
+            f"Top result metrics: {json.dumps((top_node or {}).get('metrics', {}), ensure_ascii=False)}\n"
+            f"Top result summary: {((top_node or {}).get('eval_summary') or '')[:600]}\n"
+            f"Total nodes: {len(nodes)}, with measurements: {len(real_nodes)}.\n\n"
+            "Return Markdown only, no code fences."
+        )
+        readme_text = _llm_generate_doc(readme_prompt, model, base_url)
+    if not readme_text:
+        readme_text = _build_readme_fallback(nodes, goal, top_node)
+    (ear / "README.md").write_text(readme_text)
+    file_count += 1
+
+    # ── RESULTS.md ──
+    results_text = ""
+    if model:
+        results_prompt = (
+            "Generate a structured RESULTS.md for an experiment artifact repository. "
+            "Include: (1) a metrics table for the top configurations, "
+            "(2) a comparison table vs. baseline / parent if any, "
+            "(3) one short paragraph on what the best run achieved. "
+            "Use Markdown tables. Do NOT invent metrics that are not in the data.\n\n"
+            f"Top nodes (sorted by scientific_score):\n"
+            f"{json.dumps([{'id': n.get('id', '')[-8:], 'label': n.get('label', ''), 'metrics': n.get('metrics', {})} for n in real_nodes[:10]], ensure_ascii=False, indent=2)}\n\n"
+            "Return Markdown only, no code fences."
+        )
+        results_text = _llm_generate_doc(results_prompt, model, base_url)
+    if not results_text:
+        results_text = _build_results_md_fallback(nodes)
+    (ear / "RESULTS.md").write_text(results_text)
+    file_count += 1
+
+    return {
+        "ear_dir": str(ear),
+        "file_count": file_count,
+        "source_files": source_files,
+        "figure_count": fig_count,
+        "node_count": len(nodes),
+        "has_readme": (ear / "README.md").exists(),
+        "has_results": (ear / "RESULTS.md").exists(),
+        "top_node_id": (top_node or {}).get("id", ""),
     }
 
 

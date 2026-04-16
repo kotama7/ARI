@@ -133,6 +133,24 @@ export function StepGoal({
     }
   };
 
+  const handleDelete = async (idx: number) => {
+    const file = uploadedFiles[idx];
+    if (!file || file.path === 'error') {
+      // Just remove from local state
+      setUploadedFiles(uploadedFiles.filter((_, i) => i !== idx));
+      return;
+    }
+    try {
+      const r = await api.deleteUploadedFile(file.name);
+      if (r.ok) {
+        setUploadedFiles(uploadedFiles.filter((_, i) => i !== idx));
+      }
+    } catch {
+      // Remove from local state even on network error
+      setUploadedFiles(uploadedFiles.filter((_, i) => i !== idx));
+    }
+  };
+
   const handleUpload = async (
     e: ChangeEvent<HTMLInputElement>,
     fileType: string,
@@ -460,11 +478,32 @@ export function StepGoal({
           {uploadedFiles.map((f, i) => (
             <div
               key={i}
-              style={{ color: f.path === 'error' ? 'var(--red)' : 'var(--green)' }}
+              style={{
+                color: f.path === 'error' ? 'var(--red)' : 'var(--green)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
             >
-              {f.path === 'error'
-                ? `✗ ${f.name}: error`
-                : `✓ ${f.name} → ${f.path}`}
+              <span style={{ flex: 1 }}>
+                {f.path === 'error'
+                  ? `✗ ${f.name}: error`
+                  : `✓ ${f.name}`}
+              </span>
+              <button
+                onClick={() => handleDelete(i)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--red)',
+                  cursor: 'pointer',
+                  padding: '0 4px',
+                  fontSize: '.8rem',
+                }}
+                title="Remove"
+              >
+                {'✕'}
+              </button>
             </div>
           ))}
         </div>

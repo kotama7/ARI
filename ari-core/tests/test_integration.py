@@ -154,13 +154,18 @@ def test_template_variables_all_resolve():
     # Simulate tpl_vars as pipeline.py builds them
     tpl_vars = {
         "ckpt": "/tmp/ckpt",
+        "checkpoint_dir": "/tmp/ckpt",
         "context": "test context",
+        "experiment_summary": "test context",
         "paper_context": wf.get("paper_context", "test"),
         "slurm_partition": wf.get("slurm_partition", "cpu"),
         "keywords": "keyword1 keyword2",
         "experiment_source_file": "/tmp/source.c",
         "author_name": wf.get("author_name", "Artificial Research Intelligence"),
         "ari_root": "/tmp/ari",
+        # vlm_feedback is empty on the first pass; pipeline.py sets it to
+        # "" via setdefault so {{vlm_feedback}} resolves to an empty string.
+        "vlm_feedback": "",
         # Expose nested dicts for dot-notation access (e.g. resources.cpus)
         **{section: sec_val
            for section, sec_val in wf.items()

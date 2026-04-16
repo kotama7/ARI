@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { useAppContext } from '../../context/AppContext';
-import { fetchState } from '../../services/api';
+import { fetchState, fetchExperimentDetail } from '../../services/api';
 import type { AppState, TreeNode } from '../../types';
 import { Card } from '../common';
 
@@ -47,6 +47,7 @@ export default function IdeaPage() {
   const { t } = useI18n();
   const { state: ctxState } = useAppContext();
   const [state, setState] = useState<AppState | null>(null);
+  const [detailConfig, setDetailConfig] = useState('');
 
   // Always fetch fresh state on mount so ideas / gap_analysis are present
   useEffect(() => {
@@ -55,6 +56,9 @@ export default function IdeaPage() {
       .catch(() => {
         if (ctxState) setState(ctxState);
       });
+    fetchExperimentDetail()
+      .then((s) => setDetailConfig(s))
+      .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!state) return <p style={{ color: 'var(--muted)' }}>{t('loading')}</p>;
@@ -92,19 +96,15 @@ export default function IdeaPage() {
   if (state.experiment_md_content) {
     detailParts.push('=== experiment.md ===\n' + state.experiment_md_content.trim());
   }
-  if (state.experiment_detail_config) {
-    detailParts.push(
-      '\n=== config (merged) ===\n' +
-        (typeof state.experiment_detail_config === 'string'
-          ? state.experiment_detail_config
-          : JSON.stringify(state.experiment_detail_config, null, 2)
-        ).trim(),
-    );
+  if (detailConfig) {
+    detailParts.push('\n=== config (merged) ===\n' + detailConfig.trim());
   }
 
   // Goal
   const ctx = (state.experiment_context || {}) as Record<string, string>;
   const goal = state.experiment_goal || ctx.goal || ctx.research_goal || '';
+  // Full experiment.md content (title + all sections) for the Research Goal card.
+  const goalFull = state.experiment_md_content || '';
 
   // Nodes
   const nodes: TreeNode[] = state.nodes || [];
@@ -214,7 +214,31 @@ export default function IdeaPage() {
 
         {/* Research Goal */}
         <Card title="🎯 Research Goal">
-          <div style={{ fontSize: '.88rem', lineHeight: 1.6 }}>{goal || '(not available)'}</div>
+          <div style={{ fontSize: '.88rem', lineHeight: 1.6, marginBottom: goalFull ? '10px' : 0 }}>
+            {goal || '(not available)'}
+          </div>
+          {goalFull && (
+            <details>
+              <summary style={{ cursor: 'pointer', fontSize: '.78rem', color: 'var(--accent)' }}>
+                {t('show_details')}
+              </summary>
+              <pre
+                style={{
+                  fontSize: '.78rem',
+                  whiteSpace: 'pre-wrap',
+                  marginTop: '6px',
+                  padding: '8px',
+                  background: 'var(--bg)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '4px',
+                  maxHeight: '400px',
+                  overflow: 'auto',
+                }}
+              >
+                {goalFull}
+              </pre>
+            </details>
+          )}
         </Card>
 
         {/* Gap Analysis (hidden if no data) */}

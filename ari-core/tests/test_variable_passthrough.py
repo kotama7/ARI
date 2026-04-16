@@ -21,7 +21,10 @@ _REACT_COMPONENTS = _REACT_SRC / "components"
 
 
 def _step_scope():   return (_REACT_COMPONENTS / "Wizard" / "StepScope.tsx").read_text()
-def _step_resources(): return (_REACT_COMPONENTS / "Wizard" / "StepResources.tsx").read_text()
+def _step_resources():
+    sr = (_REACT_COMPONENTS / "Wizard" / "StepResources.tsx").read_text()
+    wp = (_REACT_COMPONENTS / "Wizard" / "WizardPage.tsx").read_text()
+    return sr + "\n" + wp
 def _step_launch():  return (_REACT_COMPONENTS / "Wizard" / "StepLaunch.tsx").read_text()
 def _wizard_page():  return (_REACT_COMPONENTS / "Wizard" / "WizardPage.tsx").read_text()
 def _settings_page(): return (_REACT_COMPONENTS / "Settings" / "SettingsPage.tsx").read_text()

@@ -4,7 +4,9 @@
 # 使い方: nohup bash ~/ARI/scripts/gpu_ollama_monitor.sh >> ~/ARI/logs/gpu_monitor.log 2>&1 &
 
 SBATCH_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/run_ollama_gpu.sh"
-SETTINGS_FILE="${HOME}/.ari/settings.json"
+# Settings live per-project under each checkpoint dir now.  We only push
+# updates through the GUI API which rebinds them to whatever project is
+# currently selected — there is no longer a global ~/.ari/settings.json.
 NODE_FILE="${HOME}/ARI/logs/ollama_gpu_node.txt"
 LOCK_FILE="${HOME}/ARI/logs/gpu_monitor.pid"
 LOCAL_PORT=11435
@@ -85,18 +87,17 @@ start_tunnel() {
 
 update_settings() {
     local host="$1"
-    python3 - << PYEOF
-import json, pathlib
-p = pathlib.Path("${SETTINGS_FILE}")
-s = json.loads(p.read_text()) if p.exists() else {}
-s["ollama_host"] = "${host}"
-p.parent.mkdir(parents=True, exist_ok=True)
-p.write_text(json.dumps(s, indent=2))
-print(f"settings.json: ollama_host = ${host}")
-PYEOF
+    # Fetch current settings from the GUI (project-scoped), patch ollama_host,
+    # and POST the merged document back.  No on-disk fallback — if the GUI is
+    # not running or no project is selected the update is skipped.
+    local payload
+    payload=$(curl -s --max-time 5 http://localhost:9886/api/settings 2>/dev/null \
+        | python3 -c "import sys,json; d=json.load(sys.stdin) if sys.stdin else {}; d['ollama_host']='${host}'; print(json.dumps(d))" 2>/dev/null) || return 0
+    [ -z "$payload" ] && return 0
     curl -s -X POST http://localhost:9886/api/save-settings \
         -H "Content-Type: application/json" \
-        -d "$(cat "${SETTINGS_FILE}")" >/dev/null 2>&1 || true
+        -d "$payload" >/dev/null 2>&1 || true
+    log "Pushed ollama_host=${host} to GUI"
 }
 
 submit_job() {

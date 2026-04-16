@@ -1,187 +1,255 @@
 llm:
   backend: openai
   model: gpt-5.2
-  base_url: ""
-
+  base_url: ''
 resources:
-  cpus: 48           # Default CPU count for reproducibility experiments
-  timeout_minutes: 60 # Default job timeout
-  executor: slurm    # Job executor: slurm / local / pbs / lsf
-
+  cpus: 48
+  timeout_minutes: 60
+  executor: slurm
 author_name: Artificial Research Intelligence
-
 bfts_pipeline:
 - stage: generate_idea
   skill: idea-skill
   tool: generate_ideas
-  description: "LLM generates research hypotheses; BFTS creates root node"
+  description: LLM generates research hypotheses; BFTS creates root node
   depends_on: []
-  enabled: true
+  enabled: false
   phase: bfts
 - stage: select_and_run
   skill: hpc-skill
-  tool: ""
-  description: "BFTS selects best node; ReAct agent runs experiment (code generation, HPC submission, result parsing)"
-  depends_on: [generate_idea]
+  tool: ''
+  description: BFTS selects best node; ReAct agent runs experiment (code generation,
+    HPC submission, result parsing)
+  depends_on:
+  - generate_idea
   enabled: true
   phase: bfts
 - stage: evaluate
   skill: evaluator-skill
   tool: evaluate_node
-  description: "LLM evaluator scores node, extracts metrics, determines scientific contribution"
-  depends_on: [select_and_run]
+  description: LLM evaluator scores node, extracts metrics, determines scientific
+    contribution
+  depends_on:
+  - select_and_run
+  enabled: true
+  phase: bfts
+- stage: analyze_results
+  skill: benchmark-skill
+  tool: analyze_results
+  description: Statistical analysis of experiment metrics
+  depends_on:
+  - evaluate
   enabled: true
   phase: bfts
 - stage: frontier_expand
   skill: idea-skill
   tool: generate_ideas
-  description: "BFTS expands best completed node into children; loops back to select_and_run"
-  depends_on: [evaluate]
+  description: BFTS expands best completed node into children; loops back to select_and_run
+  depends_on:
+  - analyze_results
   enabled: true
   phase: bfts
   loop_back_to: select_and_run
-
 pipeline:
-- depends_on: []
-  description: AI Scientist v2-style iterative citation collection -> related_refs.json
-  enabled: true
-  inputs:
-    experiment_summary: '{{paper_context}}'
-    keywords: '{{keywords}}'
-    max_rounds: 20
-    min_papers: 10
-  load_inputs: []
-  outputs:
-    file: '{{ckpt}}/related_refs.json'
-  phase: paper
+- stage: search_related_work
   skill: web-skill
-  skip_if_exists: '{{ckpt}}/related_refs.json'
-  stage: search_related_work
   tool: collect_references_iterative
-- depends_on: []
-  description: LLM-powered experiment tree analysis -> science_data.json
+  description: AI Scientist v2-style iterative citation collection -> related_refs.json
+  depends_on: []
   enabled: true
-  inputs:
-    nodes_json_path: '{{ckpt}}/nodes_tree.json'
-    llm_model: '{{llm.model}}'
-    llm_base_url: '{{llm.base_url}}'
-  load_inputs: []
-  outputs:
-    file: '{{ckpt}}/science_data.json'
   phase: paper
+  inputs:
+    experiment_summary: '{{experiment_summary}}'
+    keywords: '{{keywords}}'
+  outputs:
+    file: '{{checkpoint_dir}}/related_refs.json'
+- stage: transform_data
   skill: transform-skill
-  skip_if_exists: '{{ckpt}}/science_data.json'
-  stage: transform_data
   tool: nodes_to_science_data
-- depends_on:
-  - transform_data
-  description: LLM generates matplotlib code -> PDF figures
+  description: LLM-powered experiment tree analysis -> science_data.json
+  depends_on: []
   enabled: true
-  inputs:
-    experiment_summary: '{{paper_context}}'
-    n_figures: 3
-    nodes_json_path: '{{ckpt}}/nodes_tree.json'
-    output_dir: '{{ckpt}}'
-    science_data_path: '{{stages.transform_data.outputs.file}}'
-  load_inputs: []
-  outputs:
-    file: '{{ckpt}}/figures_manifest.json'
   phase: paper
+  inputs:
+    nodes_json_path: '{{checkpoint_dir}}/tree.json'
+  outputs:
+    file: '{{checkpoint_dir}}/science_data.json'
+- stage: generate_ear
+  skill: transform-skill
+  tool: generate_ear
+  description: Build the EAR
+  depends_on:
+  - transform_data
+  enabled: true
+  phase: paper
+  inputs:
+    checkpoint_dir: '{{checkpoint_dir}}'
+  outputs:
+    file: '{{checkpoint_dir}}/ear_manifest.json'
+- stage: generate_figures
   skill: plot-skill
-  skip_if_exists: '{{ckpt}}/figures_manifest.json'
-  stage: generate_figures
   tool: generate_figures_llm
-- depends_on:
+  description: LLM generates matplotlib code -> PDF figures
+  depends_on:
+  - transform_data
+  enabled: true
+  phase: paper
+  inputs:
+    nodes_json_path: '{{checkpoint_dir}}/tree.json'
+    science_data_path: '{{checkpoint_dir}}/science_data.json'
+    n_figures: 3
+    output_dir: '{{checkpoint_dir}}'
+    experiment_summary: '{{experiment_summary}}'
+    vlm_feedback: '{{vlm_feedback}}'
+  outputs:
+    file: '{{checkpoint_dir}}/figures_manifest.json'
+- stage: vlm_review_figures
+  skill: vlm-skill
+  tool: review_figure
+  description: VLM-based visual review of the primary figure
+  depends_on:
+  - generate_figures
+  enabled: true
+  phase: paper
+  loop_back_to: generate_figures
+  loop_threshold: 0.7
+  loop_max_iterations: 2
+  inputs:
+    image_path: '{{checkpoint_dir}}/fig_1.png'
+    context: '{{experiment_summary}}'
+  outputs:
+    file: '{{checkpoint_dir}}/vlm_review.json'
+- stage: write_paper
+  skill: paper-skill
+  tool: write_paper_iterative
+  description: AI Scientist v2-style iterative paper writing with BibTeX
+  depends_on:
   - search_related_work
   - generate_figures
-  description: AI Scientist v2-style iterative paper writing with BibTeX
+  - generate_ear
   enabled: true
+  phase: paper
   inputs:
-    author_name: '{{author_name}}'
-    experiment_summary: '{{paper_context}}'
-    figures_manifest_json: '{{ckpt}}/figures_manifest.json'
-    max_revision_rounds: 2
-    nodes_json_path: '{{ckpt}}/nodes_tree.json'
-    refs_json: '{{stages.search_related_work.outputs.file}}'
-    science_data_json: '{{stages.transform_data.outputs.file}}'
-    venue: arxiv
+    experiment_summary: '{{experiment_summary}}'
+    nodes_json_path: '{{checkpoint_dir}}/tree.json'
+    figures_manifest_json: '{{checkpoint_dir}}/figures_manifest.json'
+    refs_json: '{{checkpoint_dir}}/related_refs.json'
+    science_data_json: '{{checkpoint_dir}}/science_data.json'
   load_inputs:
   - figures_manifest_json
   - refs_json
   - science_data_json
   outputs:
-    bib_file: '{{ckpt}}/refs.bib'
-    file: '{{ckpt}}/full_paper.tex'
-  phase: paper
+    file: '{{checkpoint_dir}}/full_paper.tex'
+    bib_file: '{{checkpoint_dir}}/refs.bib'
+  skip_if_exists: '{{checkpoint_dir}}/full_paper.tex'
+- stage: review_paper
   skill: paper-skill
-  skip_if_exists: '{{ckpt}}/full_paper.tex'
-  stage: write_paper
-  tool: write_paper_iterative
-- depends_on:
-  - write_paper
+  tool: review_compiled_paper
   description: 'AI Scientist v2-style review: PDF->text, figure captions, holistic
     LLM evaluation'
-  enabled: true
-  inputs:
-    experiment_summary: '{{paper_context}}'
-    figures_manifest_json: '{{ckpt}}/figures_manifest.json'
-    pdf_path: '{{ckpt}}/full_paper.pdf'
-    tex_path: '{{ckpt}}/full_paper.tex'
-  load_inputs:
-  - figures_manifest_json
-  outputs:
-    file: '{{ckpt}}/review_report.json'
-  phase: paper
-  skill: paper-skill
-  skip_if_exists: '{{ckpt}}/review_report.json'
-  stage: review_paper
-  tool: review_compiled_paper
-- depends_on:
+  depends_on:
   - write_paper
+  enabled: true
+  phase: paper
+  inputs:
+    tex_path: '{{checkpoint_dir}}/full_paper.tex'
+    pdf_path: '{{checkpoint_dir}}/full_paper.pdf'
+  outputs:
+    file: '{{checkpoint_dir}}/review_report.json'
+- stage: respond_to_review
+  skill: review-skill
+  tool: generate_rebuttal
+  description: Parse review comments and generate rebuttal
+  depends_on:
+  - review_paper
+  enabled: true
+  phase: paper
+  inputs:
+    review_report: '{{checkpoint_dir}}/review_report.json'
+    tex_path: '{{checkpoint_dir}}/full_paper.tex'
+  outputs:
+    file: '{{checkpoint_dir}}/rebuttal.json'
+- stage: reproducibility_check
+  skill: paper-re-skill
+  tool: reproduce_from_paper
   description: 'ReAct reproducibility: extract config from paper -> run HPC job ->
     verify'
+  depends_on:
+  - write_paper
   enabled: true
-  inputs:
-    paper_path: '{{ckpt}}/full_paper.tex'
-    cpus: "{{resources.cpus}}"
-    timeout_minutes: "{{resources.timeout_minutes}}"
-    tolerance_pct: 5.0
-    work_dir: '{{ckpt}}/repro'
-    executor: "{{resources.executor}}"
-  load_inputs: []
-  outputs:
-    file: '{{ckpt}}/reproducibility_report.json'
   phase: paper
-  skill: paper-re-skill
-  skip_if_exists: '{{ckpt}}/reproducibility_report.json'
-  stage: reproducibility_check
-  tool: reproduce_from_paper
+  inputs:
+    paper_path: '{{checkpoint_dir}}/full_paper.tex'
+    work_dir: '{{checkpoint_dir}}'
+    executor: '{{resources.executor}}'
+  outputs:
+    file: '{{checkpoint_dir}}/reproducibility_report.json'
 skills:
 - description: DuckDuckGo / arXiv search (deterministic, no LLM)
   name: web-skill
   path: '{{ari_root}}/ari-skill-web'
+  phase: none
 - description: Matplotlib/seaborn figure generation (LLM-assisted)
   name: plot-skill
   path: '{{ari_root}}/ari-skill-plot'
+  phase: paper
 - description: AI Scientist v2-style paper writing [LLM exception to P2]
   name: paper-skill
   path: '{{ari_root}}/ari-skill-paper'
+  phase: paper
 - description: Reproducibility check against experiment nodes
   name: paper-re-skill
   path: '{{ari_root}}/ari-skill-paper-re'
+  phase: paper
 - description: Persistent key-value memory for experiment context
   name: memory-skill
   path: '{{ari_root}}/ari-skill-memory'
+  phase: bfts
 - description: BFTS node evaluation (runs HPC jobs, parses metrics)
   name: evaluator-skill
   path: '{{ari_root}}/ari-skill-evaluator'
+  phase: bfts
 - description: Hypothesis / experiment idea generation
   name: idea-skill
   path: '{{ari_root}}/ari-skill-idea'
-- description: SLURM job submission and monitoring
+  phase: none
+- description: SLURM job submission and Singularity container operations
   name: hpc-skill
   path: '{{ari_root}}/ari-skill-hpc'
+  phase: bfts
+- description: Code writing / reading / bash execution (container-aware)
+  name: coding-skill
+  path: '{{ari_root}}/ari-skill-coding'
+  phase: bfts
 - description: Convert BFTS internal data to science-facing format (strips label/depth/node_id)
   name: transform-skill
   path: '{{ari_root}}/ari-skill-transform'
+  phase: paper
+- description: Figure type classification and generation routing
+  name: figure-router-skill
+  path: '{{ari_root}}/ari-skill-figure-router'
+  phase: all
+- description: Experiment result analysis and statistical testing
+  name: benchmark-skill
+  path: '{{ari_root}}/ari-skill-benchmark'
+  phase: bfts
+- description: Peer review parsing and rebuttal generation
+  name: review-skill
+  path: '{{ari_root}}/ari-skill-review'
+  phase: paper
+- description: VLM-based figure and table review
+  name: vlm-skill
+  path: '{{ari_root}}/ari-skill-vlm'
+  phase: paper
 version: '1'
+retrieval:
+  backend: semantic_scholar
+  alphaxiv_endpoint: https://api.alphaxiv.org/mcp/v1
+container:
+  mode: auto
+  image: ''
+  pull: on_start
+disabled_tools:
+- generate_ideas
+- survey

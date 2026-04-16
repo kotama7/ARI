@@ -1,5 +1,6 @@
 """ari-skill-web: Web search and page fetch MCP server. P2 compliant."""
 from __future__ import annotations
+import asyncio
 import json as _json
 import logging
 import os as _os
@@ -15,6 +16,14 @@ from mcp.server.fastmcp import FastMCP
 
 log = logging.getLogger(__name__)
 mcp = FastMCP("web-skill")
+
+# ---------------------------------------------------------------------------
+# Pluggable retrieval backend (Issue #11)
+# ---------------------------------------------------------------------------
+_retrieval_backend: str = _os.environ.get("ARI_RETRIEVAL_BACKEND", "semantic_scholar")
+_ALPHAXIV_ENDPOINT: str = _os.environ.get(
+    "ARI_ALPHAXIV_ENDPOINT", "https://api.alphaxiv.org/mcp/v1"
+)
 
 # ---------------------------------------------------------------------------
 # LLM helpers (same pattern as paper-skill / idea-skill)
@@ -141,8 +150,129 @@ def _arxiv_fallback(query: str, limit: int = 8) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# AlphaXiv MCP search (Issue #11)
+# ---------------------------------------------------------------------------
+
+async def _search_alphaxiv(query: str, max_results: int = 10) -> list[dict]:
+    """Search AlphaXiv via MCP JSON-RPC over HTTP."""
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "search_papers",
+            "arguments": {"query": query, "max_results": max_results},
+        },
+    }
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.post(_ALPHAXIV_ENDPOINT, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+        result = data.get("result", data)
+        # MCP tool results may be wrapped in content[]
+        if isinstance(result, dict) and "content" in result:
+            for item in result["content"]:
+                if item.get("type") == "text":
+                    result = _json.loads(item["text"])
+                    break
+        papers = result if isinstance(result, list) else result.get("papers", [])
+        return [
+            {
+                "title": p.get("title", ""),
+                "authors": p.get("authors", [])[:4] if isinstance(p.get("authors"), list) else [],
+                "abstract": (p.get("abstract") or "")[:300],
+                "url": p.get("url", ""),
+                "arxiv_id": p.get("arxiv_id", ""),
+            }
+            for p in papers
+        ]
+    except Exception as e:
+        log.warning("AlphaXiv search failed for %r: %s", query, e)
+        return []
+
+
+async def _search_semantic_scholar_async(query: str, max_results: int = 10) -> list[dict]:
+    """Async wrapper around _search_s2_sync for parallel dispatch."""
+    loop = asyncio.get_event_loop()
+    papers = await loop.run_in_executor(None, _search_s2_sync, query, max_results)
+    return papers
+
+
+async def _dispatch_search(query: str, max_results: int = 10) -> list[dict]:
+    """Dispatch search based on configured retrieval backend."""
+    backend = _retrieval_backend
+    if backend == "alphaxiv":
+        return await _search_alphaxiv(query, max_results)
+    elif backend == "both":
+        results = await asyncio.gather(
+            _search_alphaxiv(query, max_results),
+            _search_semantic_scholar_async(query, max_results),
+            return_exceptions=True,
+        )
+        merged: list[dict] = []
+        seen_ids: set[str] = set()
+        seen_titles: set[str] = set()
+        for r in results:
+            if isinstance(r, Exception):
+                log.warning("Parallel search error: %s", r)
+                continue
+            for p in r:
+                aid = p.get("arxiv_id", "")
+                title_lower = (p.get("title") or "").lower()
+                if aid and aid in seen_ids:
+                    continue
+                if title_lower and title_lower in seen_titles:
+                    continue
+                if aid:
+                    seen_ids.add(aid)
+                if title_lower:
+                    seen_titles.add(title_lower)
+                merged.append(p)
+        return merged
+    else:
+        return _search_s2_sync(query, max_results)
+
+
+# ---------------------------------------------------------------------------
 # Public MCP tools
 # ---------------------------------------------------------------------------
+
+@mcp.tool()
+def set_retrieval_backend(backend: str) -> dict:
+    """Set the paper retrieval backend.
+
+    Args:
+        backend: One of "alphaxiv", "semantic_scholar", or "both"
+
+    Returns:
+        {ok: bool, backend: str}
+    """
+    global _retrieval_backend
+    valid = {"alphaxiv", "semantic_scholar", "both"}
+    if backend not in valid:
+        return {"ok": False, "error": f"Invalid backend: {backend}. Must be one of {valid}"}
+    _retrieval_backend = backend
+    return {"ok": True, "backend": _retrieval_backend}
+
+
+@mcp.tool()
+async def search_papers(query: str, max_results: int = 10) -> dict:
+    """Search for academic papers using the configured retrieval backend.
+
+    Dispatches to AlphaXiv, Semantic Scholar, or both depending on the
+    configured backend (set via set_retrieval_backend or ARI_RETRIEVAL_BACKEND).
+
+    Args:
+        query: Search query string
+        max_results: Maximum papers to return
+
+    Returns:
+        {papers: list, query: str, count: int, backend: str}
+    """
+    papers = await _dispatch_search(query, max_results)
+    return {"papers": papers, "query": query, "count": len(papers), "backend": _retrieval_backend}
+
 
 @mcp.tool()
 def web_search(query: str, n: int = 5) -> dict:
@@ -488,6 +618,84 @@ async def collect_references_iterative(
         "query": keywords,
         "count": len(all_papers),
         "rounds_used": rounds_used,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Uploaded / checkpoint file access tools
+# ---------------------------------------------------------------------------
+
+_CHECKPOINT_DIR: str = _os.environ.get("ARI_CHECKPOINT_DIR", "")
+
+
+@mcp.tool()
+def list_uploaded_files() -> dict:
+    """List files uploaded by the user in the current experiment checkpoint.
+
+    Returns a list of filenames and sizes available in the uploads/ subdirectory.
+    Use read_uploaded_file to read any file by name.
+
+    Returns:
+        {files: [{name, size_bytes}], checkpoint_dir: str}
+    """
+    ckpt = _CHECKPOINT_DIR
+    if not ckpt:
+        return {"files": [], "error": "ARI_CHECKPOINT_DIR not set"}
+    from pathlib import Path as _Path
+    uploads = _Path(ckpt) / "uploads"
+    if not uploads.exists():
+        return {"files": [], "checkpoint_dir": ckpt}
+    files = []
+    for f in sorted(uploads.iterdir()):
+        if f.is_file():
+            files.append({"name": f.name, "size_bytes": f.stat().st_size})
+    return {"files": files, "checkpoint_dir": ckpt}
+
+
+@mcp.tool()
+def read_uploaded_file(filename: str, max_chars: int = 50000) -> dict:
+    """Read the content of an uploaded file from the checkpoint uploads directory.
+
+    Supports text files (.md, .txt, .yaml, .yml, .json, .csv, .py, .tex, etc.).
+    Binary files will return a size indication instead of content.
+
+    Args:
+        filename: Name of the file to read (as returned by list_uploaded_files)
+        max_chars: Maximum characters to return (default 50000)
+
+    Returns:
+        {name: str, content: str, size_bytes: int}
+    """
+    ckpt = _CHECKPOINT_DIR
+    if not ckpt:
+        return {"error": "ARI_CHECKPOINT_DIR not set"}
+    from pathlib import Path as _Path
+    # Sanitize: prevent directory traversal
+    safe_name = _Path(filename).name
+    fpath = _Path(ckpt) / "uploads" / safe_name
+    if not fpath.exists():
+        return {"error": f"File not found: {safe_name}"}
+    size = fpath.stat().st_size
+    # Try to read as text
+    _TEXT_EXTS = {
+        ".md", ".txt", ".yaml", ".yml", ".json", ".csv", ".py",
+        ".tex", ".bib", ".sh", ".cfg", ".ini", ".toml", ".xml",
+        ".html", ".css", ".js", ".ts", ".r", ".m", ".c", ".cpp",
+        ".h", ".java", ".go", ".rs", ".jl", ".log",
+    }
+    ext = fpath.suffix.lower()
+    if ext in _TEXT_EXTS or size < 100_000:
+        try:
+            text = fpath.read_text(encoding="utf-8", errors="replace")
+            if len(text) > max_chars:
+                text = text[:max_chars] + f"\n... (truncated, {size} bytes total)"
+            return {"name": safe_name, "content": text, "size_bytes": size}
+        except Exception:
+            pass
+    return {
+        "name": safe_name,
+        "content": f"[Binary file, {size} bytes. Cannot display as text.]",
+        "size_bytes": size,
     }
 
 

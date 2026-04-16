@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
 import type { TreeNode } from '../../types';
+import { fetchCheckpointMemory, type MemoryEntry } from '../../services/api';
 
 // ── Colour constants (same as original dashboard.js) ──
 
@@ -14,16 +15,18 @@ const LABEL_COLORS: Record<string, string> = {
 
 // ── Types ──
 
-type TabName = 'overview' | 'trace' | 'code' | 'raw';
+type TabName = 'overview' | 'trace' | 'code' | 'memory' | 'raw';
 
 interface DetailPanelProps {
   node: TreeNode | null;
+  allNodes?: TreeNode[];
+  checkpointId?: string;
   onClose: () => void;
 }
 
 // ── Component ──
 
-export function DetailPanel({ node, onClose }: DetailPanelProps) {
+export function DetailPanel({ node, allNodes, checkpointId, onClose }: DetailPanelProps) {
   const { t } = useI18n();
   const [width, setWidth] = useState(320);
   const [activeTab, setActiveTab] = useState<TabName>('overview');
@@ -36,6 +39,68 @@ export function DetailPanel({ node, onClose }: DetailPanelProps) {
   useEffect(() => {
     setActiveTab('overview');
   }, [node?.id]);
+
+  // ── Memory data ──
+  const [memEntries, setMemEntries] = useState<MemoryEntry[] | null>(null);
+  const [globalEntries, setGlobalEntries] = useState<MemoryEntry[]>([]);
+  const [memLoading, setMemLoading] = useState(false);
+  const [memError, setMemError] = useState<string | null>(null);
+
+  // Ancestor chain (root → ... → self) computed from parent_id walk
+  const ancestorIds = useMemo<string[]>(() => {
+    if (!node || !allNodes) return node ? [node.id] : [];
+    const byId = new Map<string, TreeNode>();
+    allNodes.forEach((n) => byId.set(n.id, n));
+    const chain: string[] = [];
+    let cur: TreeNode | undefined = byId.get(node.id);
+    const seen = new Set<string>();
+    while (cur && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      chain.unshift(cur.id);
+      const pid = cur.parent_id;
+      cur = pid ? byId.get(pid) : undefined;
+    }
+    return chain;
+  }, [node, allNodes]);
+
+  useEffect(() => {
+    if (!checkpointId || !node) {
+      setMemEntries(null);
+      return;
+    }
+    let aborted = false;
+    setMemLoading(true);
+    setMemError(null);
+    fetchCheckpointMemory(checkpointId)
+      .then((r) => {
+        if (aborted) return;
+        if (r.error) {
+          setMemError(r.error);
+          setMemEntries([]);
+          setGlobalEntries([]);
+        } else {
+          setMemEntries(r.entries || []);
+          setGlobalEntries(r.global || []);
+        }
+      })
+      .catch((e) => {
+        if (aborted) return;
+        setMemError(String(e));
+        setMemEntries([]);
+      })
+      .finally(() => {
+        if (!aborted) setMemLoading(false);
+      });
+    return () => {
+      aborted = true;
+    };
+  }, [checkpointId, node?.id]);
+
+  const visibleMemory = useMemo(() => {
+    if (!memEntries || !node) return [] as MemoryEntry[];
+    const allowed = new Set(ancestorIds);
+    return memEntries.filter((e) => allowed.has(e.node_id));
+  }, [memEntries, node, ancestorIds]);
 
   // ── Resize drag handlers ──
 
@@ -333,6 +398,7 @@ export function DetailPanel({ node, onClose }: DetailPanelProps) {
             {tabBtn('overview', '📋 Overview')}
             {traceLog.length > 0 && tabBtn('trace', '🔧 MCP Trace', traceLog.length)}
             {codeSnippets.length > 0 && tabBtn('code', '💻 Code', codeSnippets.length)}
+            {tabBtn('memory', `🧠 ${t('memory_tab')}`, visibleMemory.length + globalEntries.length)}
             {tabBtn('raw', '{ } Raw')}
           </div>
 
@@ -414,6 +480,175 @@ export function DetailPanel({ node, onClose }: DetailPanelProps) {
                   </pre>
                 </React.Fragment>
               ))}
+            </div>
+          )}
+
+          {/* Memory tab */}
+          {activeTab === 'memory' && (
+            <div>
+              {memLoading && (
+                <div style={{ fontSize: '.72rem', color: 'var(--muted)' }}>
+                  Loading memory…
+                </div>
+              )}
+              {memError && (
+                <div style={{ fontSize: '.72rem', color: 'var(--red)' }}>
+                  {memError}
+                </div>
+              )}
+              {!memLoading &&
+                !memError &&
+                visibleMemory.length === 0 &&
+                globalEntries.length === 0 && (
+                  <div style={{ fontSize: '.75rem', color: 'var(--muted)' }}>
+                    {t('memory_empty')}
+                  </div>
+                )}
+              {!memLoading && visibleMemory.length > 0 && (
+                <div
+                  style={{
+                    fontSize: '.72rem',
+                    color: 'var(--muted)',
+                    marginBottom: 6,
+                  }}
+                >
+                  <span className="badge badge-blue" style={{ marginRight: 4 }}>
+                    {t('memory_own')}
+                  </span>
+                  <span className="badge badge-muted">
+                    {t('memory_inherited')}
+                  </span>
+                </div>
+              )}
+              {globalEntries.length > 0 && (
+                <div style={{ marginBottom: 8 }}>
+                  <div
+                    style={{
+                      fontSize: '.7rem',
+                      color: 'var(--muted)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '.04em',
+                      margin: '8px 0 4px',
+                    }}
+                  >
+                    {t('memory_global_header')} ({globalEntries.length})
+                  </div>
+                  {globalEntries.map((e, i) => (
+                    <div
+                      key={`g-${i}`}
+                      style={{
+                        borderLeft: '3px solid #f59e0b',
+                        background: 'rgba(245,158,11,.06)',
+                        padding: '6px 8px',
+                        margin: '4px 0',
+                        borderRadius: 3,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: '.68rem',
+                          color: 'var(--muted)',
+                          display: 'flex',
+                          gap: 6,
+                          flexWrap: 'wrap',
+                          marginBottom: 3,
+                        }}
+                      >
+                        <span style={{ color: '#f59e0b' }}>
+                          {t('memory_source_global')}
+                        </span>
+                        {e.tags && e.tags.length > 0 && (
+                          <span>tags: {e.tags.join(', ')}</span>
+                        )}
+                        {e.ts && (
+                          <span>
+                            {new Date(Number(e.ts) * 1000).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                      <div
+                        style={{
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                          fontSize: '.75rem',
+                          maxHeight: 160,
+                          overflow: 'auto',
+                        }}
+                      >
+                        {e.text}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {visibleMemory.map((e, i) => {
+                const own = e.node_id === node.id;
+                const depthIdx = ancestorIds.indexOf(e.node_id);
+                const tsStr = e.ts
+                  ? new Date(Number(e.ts) * 1000).toLocaleString()
+                  : '';
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      borderLeft: `3px solid ${own ? '#60a5fa' : 'var(--border)'}`,
+                      background: own
+                        ? 'rgba(59,130,246,.06)'
+                        : 'rgba(255,255,255,.03)',
+                      padding: '6px 8px',
+                      margin: '4px 0',
+                      borderRadius: 3,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: '.68rem',
+                        color: 'var(--muted)',
+                        display: 'flex',
+                        gap: 6,
+                        flexWrap: 'wrap',
+                        marginBottom: 3,
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontFamily: 'monospace',
+                          color: own ? '#60a5fa' : 'var(--muted)',
+                        }}
+                      >
+                        {t('memory_from_node')} {e.node_id || '—'}
+                        {depthIdx >= 0 && ` [${depthIdx}]`}
+                      </span>
+                      <span>
+                        {e.source === 'mcp'
+                          ? t('memory_source_mcp')
+                          : t('memory_source_file')}
+                      </span>
+                      {e.metadata &&
+                        typeof e.metadata === 'object' &&
+                        Object.keys(e.metadata).length > 0 && (
+                          <span>
+                            {Object.entries(e.metadata)
+                              .map(([k, v]) => `${k}=${String(v)}`)
+                              .join(' ')}
+                          </span>
+                        )}
+                      {tsStr && <span>{tsStr}</span>}
+                    </div>
+                    <div
+                      style={{
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
+                        fontSize: '.75rem',
+                        maxHeight: 160,
+                        overflow: 'auto',
+                      }}
+                    >
+                      {e.text}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
 

@@ -403,17 +403,23 @@ class TestUploadIntegration:
         headers = {"Content-Type": "text/plain", "X-Filename": "my_experiment.md"}
         result = _api_upload_file(headers, b"## Goal\nUploaded content\n")
         assert result.get("ok") is True
-        saved = _st._checkpoint_dir / "my_experiment.md"
+        saved = _st._checkpoint_dir / "uploads" / "my_experiment.md"
         assert saved.exists()
         assert "Uploaded content" in saved.read_text()
 
-    def test_upload_rejected_without_checkpoint(self, monkeypatch):
+    def test_upload_creates_staging_without_checkpoint(self, monkeypatch):
         from ari.viz.api_tools import _api_upload_file
         monkeypatch.setattr(_st, "_checkpoint_dir", None)
+        monkeypatch.setattr(_st, "_staging_dir", None)
         headers = {"Content-Type": "text/plain", "X-Filename": "test.md"}
         result = _api_upload_file(headers, b"data")
-        assert result.get("ok") is False
-        assert result.get("_status") == 400
+        assert result.get("ok") is True
+        assert result.get("filename") == "test.md"
+        import shutil
+        if _st._staging_dir and _st._staging_dir.exists():
+            shutil.rmtree(str(_st._staging_dir))
+        monkeypatch.setattr(_st, "_checkpoint_dir", None)
+        monkeypatch.setattr(_st, "_staging_dir", None)
 
     def test_upload_sanitizes_filename(self):
         from ari.viz.api_tools import _api_upload_file

@@ -7,6 +7,7 @@ interface ScopeValues {
   workers: number;
   maxReact: number;
   timeout: number;
+  maxRecursionDepth: number;
 }
 
 interface ScopePreset {
@@ -15,15 +16,16 @@ interface ScopePreset {
   react: number;
   workers: number;
   timeout: number;
+  maxRecursionDepth: number;
   est: string;
 }
 
 const SCOPE_PRESETS: ScopePreset[] = [
-  { depth: 3, nodes: 10, react: 20, workers: 2, timeout: 30, est: '~30 min' },
-  { depth: 5, nodes: 30, react: 80, workers: 4, timeout: 120, est: '~1-2 h' },
-  { depth: 9, nodes: 60, react: 150, workers: 8, timeout: 300, est: '~3-5 h' },
-  { depth: 12, nodes: 100, react: 300, workers: 12, timeout: 480, est: '~5-8 h' },
-  { depth: 15, nodes: 120, react: 500, workers: 16, timeout: 720, est: '~8-12 h' },
+  { depth: 3, nodes: 10, react: 20, workers: 2, timeout: 30, maxRecursionDepth: 0, est: '~30 min' },
+  { depth: 5, nodes: 30, react: 80, workers: 4, timeout: 120, maxRecursionDepth: 0, est: '~1-2 h' },
+  { depth: 9, nodes: 60, react: 150, workers: 8, timeout: 300, maxRecursionDepth: 1, est: '~3-5 h' },
+  { depth: 12, nodes: 100, react: 300, workers: 12, timeout: 480, maxRecursionDepth: 2, est: '~5-8 h' },
+  { depth: 15, nodes: 120, react: 500, workers: 16, timeout: 720, maxRecursionDepth: 3, est: '~8-12 h' },
 ];
 
 const PRESET_LABELS = ['Quick', 'Standard', 'Thorough', 'Deep', 'Exhaustive'];
@@ -59,6 +61,7 @@ export function StepScope({
         maxReact: c.react,
         workers: c.workers,
         timeout: c.timeout,
+        maxRecursionDepth: c.maxRecursionDepth,
       });
     },
     [setScopeVal, setScope],
@@ -171,6 +174,25 @@ export function StepScope({
               style={{ width: '100%' }}
               onChange={(e) =>
                 handleFieldChange('timeout', parseInt(e.target.value) || 120)
+              }
+            />
+          </div>
+          <div className="form-row" style={{ flex: 1, minWidth: 140 }}>
+            <label>
+              Max Recursion Depth{' '}
+              <span style={{ color: 'var(--muted)', fontSize: '.78rem' }}>(0-5)</span>
+            </label>
+            <input
+              type="number"
+              value={scope.maxRecursionDepth}
+              min={0}
+              max={5}
+              style={{ width: '100%' }}
+              onChange={(e) =>
+                handleFieldChange(
+                  'maxRecursionDepth',
+                  e.target.value === '' ? 0 : parseInt(e.target.value),
+                )
               }
             />
           </div>
