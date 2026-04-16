@@ -77,25 +77,55 @@ pipeline:
     depends_on: [write_paper]
     # ...
 
+retrieval:
+  backend: semantic_scholar    # semantic_scholar | alphaxiv | both
+  alphaxiv_endpoint: https://api.alphaxiv.org/mcp/v1
+
+container:
+  mode: auto                   # auto | docker | singularity | apptainer | none
+  image: ""                    # 容器镜像名（空 = 不使用容器）
+  pull: on_start               # always | on_start | never
+
 skills:
   - name: web-skill
     path: "{{ari_root}}/ari-skill-web"
+    phase: all
   - name: plot-skill
     path: "{{ari_root}}/ari-skill-plot"
+    phase: paper
   - name: paper-skill
     path: "{{ari_root}}/ari-skill-paper"
+    phase: paper
   - name: paper-re-skill
     path: "{{ari_root}}/ari-skill-paper-re"
+    phase: paper
   - name: memory-skill
     path: "{{ari_root}}/ari-skill-memory"
+    phase: bfts
   - name: evaluator-skill
     path: "{{ari_root}}/ari-skill-evaluator"
+    phase: bfts
   - name: idea-skill
     path: "{{ari_root}}/ari-skill-idea"
+    phase: bfts
   - name: hpc-skill
     path: "{{ari_root}}/ari-skill-hpc"
+    phase: bfts
   - name: transform-skill
     path: "{{ari_root}}/ari-skill-transform"
+    phase: paper
+  - name: figure-router-skill
+    path: "{{ari_root}}/ari-skill-figure-router"
+    phase: all
+  - name: benchmark-skill
+    path: "{{ari_root}}/ari-skill-benchmark"
+    phase: bfts
+  - name: review-skill
+    path: "{{ari_root}}/ari-skill-review"
+    phase: paper
+  - name: vlm-skill
+    path: "{{ari_root}}/ari-skill-vlm"
+    phase: paper
 ```
 
 ## 环境变量
@@ -106,10 +136,14 @@ skills:
 | `ARI_PARALLEL` | 并发节点执行数 | `1` |
 | `ARI_EXECUTOR` | 执行后端：`local`、`slurm`、`pbs`、`lsf` | `local` |
 | `ARI_SLURM_PARTITION` | SLURM 分区名称 | （无） |
+| `ARI_SLURM_CPUS` | 覆盖 SLURM 作业的 CPU 数 | （自动检测） |
 | `SLURM_LOG_DIR` | SLURM 输出文件存放位置 | （无） |
 | `OLLAMA_HOST` | Ollama 服务器地址 | `127.0.0.1:11434` |
 | `OPENAI_API_KEY` | OpenAI API 密钥 | （无） |
 | `ANTHROPIC_API_KEY` | Anthropic API 密钥 | （无） |
+| `ARI_RETRIEVAL_BACKEND` | 论文搜索后端: `semantic_scholar` / `alphaxiv` / `both` | `semantic_scholar` |
+| `VLM_MODEL` | 图表审阅 VLM 模型 | `openai/gpt-4o` |
+| `ARI_ORCHESTRATOR_PORT` | orchestrator 技能的 HTTP 端口 | `9890` |
 
 ## LLM 后端
 
@@ -163,6 +197,9 @@ llm:
 | `{{resources.timeout_minutes}}` | `resources:` 部分中的超时时间 |
 | `{{stages.<name>.outputs.file}}` | 已完成阶段的输出文件路径 |
 | `{{author_name}}` | 顶层配置中的作者名称 |
+| `{{vlm_feedback}}` | VLM 审阅反馈（在从 `vlm_review_figures` 回环时注入） |
+| `{{paper_context}}` | 面向科研的实验摘要 |
+| `{{keywords}}` | LLM 生成的搜索关键词 |
 
 ---
 

@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ari.agent.workflow import WorkflowHints, from_experiment_text
+from ari.agent.workflow import WorkflowHints, from_experiment_text, enrich_hints_from_mcp
 from ari.orchestrator.node import Node, NodeStatus
 
 
@@ -35,6 +35,197 @@ class TestWorkflowHintsFromExperiment:
         text = "# Experiment\nUse sbatch to submit jobs"
         hints = from_experiment_text(text)
         assert "slurm_submit" in hints.post_survey_hint
+
+
+# ── Web research & memory tool hint tests ────────────────────────────────
+
+_MOCK_MCP_TOOLS = [
+    {"name": "make_metric_spec", "description": "Create metric spec", "inputSchema": {"properties": {"goal": {}}}, "skill_name": "evaluator-skill"},
+    {"name": "survey", "description": "Survey related work", "inputSchema": {"properties": {"query": {}}}, "skill_name": "idea-skill"},
+    {"name": "generate_ideas", "description": "Generate hypotheses", "inputSchema": {"properties": {"context": {}}}, "skill_name": "idea-skill"},
+    {"name": "run_bash", "description": "Run bash command", "inputSchema": {"properties": {"command": {}}}, "skill_name": "hpc-skill"},
+    {"name": "slurm_submit", "description": "Submit SLURM job", "inputSchema": {"properties": {"script": {}}}, "skill_name": "hpc-skill"},
+    {"name": "job_status", "description": "Check job status", "inputSchema": {"properties": {"job_id": {}}}, "skill_name": "hpc-skill"},
+    {"name": "web_search", "description": "Search the web", "inputSchema": {"properties": {"query": {}}}, "skill_name": "web-skill"},
+    {"name": "search_papers", "description": "Search academic papers", "inputSchema": {"properties": {"query": {}}}, "skill_name": "web-skill"},
+    {"name": "fetch_url", "description": "Fetch web page", "inputSchema": {"properties": {"url": {}}}, "skill_name": "web-skill"},
+    {"name": "search_arxiv", "description": "Search arXiv", "inputSchema": {"properties": {"query": {}}}, "skill_name": "web-skill"},
+    {"name": "add_memory", "description": "Save memory", "inputSchema": {"properties": {"node_id": {}, "text": {}}}, "skill_name": "memory-skill"},
+    {"name": "search_memory", "description": "Search memories", "inputSchema": {"properties": {"query": {}}}, "skill_name": "memory-skill"},
+]
+
+def _enriched_hints(text: str) -> WorkflowHints:
+    """Build hints and enrich with mock MCP tools (simulating real flow)."""
+    hints = from_experiment_text(text)
+    enrich_hints_from_mcp(hints, _MOCK_MCP_TOOLS)
+    return hints
+
+
+class TestWebResearchToolHints:
+    """Verify post_survey_hint includes web research and memory tools after MCP enrichment."""
+
+    def test_default_hint_includes_web_search(self):
+        """Default (non-SLURM) hint should mention web_search after enrichment."""
+        hints = _enriched_hints("Run a benchmark locally")
+        assert "web_search" in hints.post_survey_hint
+
+    def test_default_hint_includes_search_papers(self):
+        hints = _enriched_hints("Run a benchmark locally")
+        assert "search_papers" in hints.post_survey_hint
+
+    def test_default_hint_includes_search_arxiv(self):
+        hints = _enriched_hints("Run a benchmark locally")
+        assert "search_arxiv" in hints.post_survey_hint
+
+    def test_default_hint_includes_fetch_url(self):
+        hints = _enriched_hints("Run a benchmark locally")
+        assert "fetch_url" in hints.post_survey_hint
+
+    def test_slurm_hint_includes_web_search(self):
+        """SLURM hint should also mention web_search after enrichment."""
+        hints = _enriched_hints("Use sbatch on SLURM partition gpu")
+        assert "web_search" in hints.post_survey_hint
+
+    def test_slurm_hint_includes_search_papers(self):
+        hints = _enriched_hints("Use sbatch on SLURM partition gpu")
+        assert "search_papers" in hints.post_survey_hint
+
+    def test_slurm_hint_includes_fetch_url(self):
+        hints = _enriched_hints("Use sbatch on SLURM partition gpu")
+        assert "fetch_url" in hints.post_survey_hint
+
+    def test_default_hint_includes_add_memory(self):
+        """Default hint should mention add_memory after enrichment."""
+        hints = _enriched_hints("Run a benchmark locally")
+        assert "add_memory" in hints.post_survey_hint
+
+    def test_default_hint_includes_search_memory(self):
+        hints = _enriched_hints("Run a benchmark locally")
+        assert "search_memory" in hints.post_survey_hint
+
+    def test_slurm_hint_includes_add_memory(self):
+        """SLURM hint should also mention add_memory after enrichment."""
+        hints = _enriched_hints("Use sbatch on SLURM partition gpu")
+        assert "add_memory" in hints.post_survey_hint
+
+    def test_slurm_hint_includes_search_memory(self):
+        hints = _enriched_hints("Use sbatch on SLURM partition gpu")
+        assert "search_memory" in hints.post_survey_hint
+
+    def test_tool_sequence_includes_web_tools(self):
+        """tool_sequence should include web research tools after enrichment."""
+        hints = _enriched_hints("Run a benchmark locally")
+        assert "web_search" in hints.tool_sequence
+        assert "search_papers" in hints.tool_sequence
+        assert "fetch_url" in hints.tool_sequence
+
+    def test_tool_sequence_includes_memory_tools(self):
+        """tool_sequence should include memory tools after enrichment."""
+        hints = _enriched_hints("Run a benchmark locally")
+        assert "add_memory" in hints.tool_sequence
+        assert "search_memory" in hints.tool_sequence
+
+    def test_slurm_tool_sequence_includes_web_tools(self):
+        """SLURM tool_sequence should also include web research tools after enrichment."""
+        hints = _enriched_hints("Use sbatch on SLURM partition gpu")
+        assert "web_search" in hints.tool_sequence
+        assert "search_papers" in hints.tool_sequence
+        assert "fetch_url" in hints.tool_sequence
+
+    def test_slurm_tool_sequence_includes_memory_tools(self):
+        """SLURM tool_sequence should also include memory tools after enrichment."""
+        hints = _enriched_hints("Use sbatch on SLURM partition gpu")
+        assert "add_memory" in hints.tool_sequence
+        assert "search_memory" in hints.tool_sequence
+
+    def test_child_node_inherits_web_tools(self):
+        """Child nodes should see web research tools in their workflow hint."""
+        hints = _enriched_hints("Use SLURM with sbatch")
+        content = _make_loop_and_build_messages(hints, node_depth=1)
+        assert "web_search" in content
+        assert "fetch_url" in content
+
+    def test_child_node_inherits_memory_tools(self):
+        """Child nodes should see memory tools in their workflow hint."""
+        hints = _enriched_hints("Use SLURM with sbatch")
+        content = _make_loop_and_build_messages(hints, node_depth=1)
+        assert "add_memory" in content
+        assert "search_memory" in content
+
+    def test_required_workflow_override_replaces_hints(self):
+        """## Required Workflow section should override default hints entirely."""
+        text = "# Experiment\nUse sbatch\n## Required Workflow\n1. Do custom step\n2. Done\n"
+        hints = from_experiment_text(text)
+        # Required Workflow replaces default, so web tools may not be present
+        assert "custom step" in hints.post_survey_hint
+
+    def test_no_mcp_tools_keeps_static_hint(self):
+        """Without MCP enrichment, hints should still have a valid post_survey_hint."""
+        hints = from_experiment_text("Run a benchmark locally")
+        assert "generate_ideas" in hints.post_survey_hint
+        assert "STEP BUDGET" in hints.post_survey_hint
+
+
+# ── Dynamic async-job tool hint tests ───────────────────────────────────
+# Verify that slurm_submit / job_status descriptions are derived from MCP
+# tool metadata (name, inputSchema.properties) rather than hardcoded.
+
+class TestDynamicJobSubmitterHint:
+    def test_slurm_submit_listed_in_available_tools(self):
+        """slurm_submit should appear in the AVAILABLE TOOLS section with its schema-derived signature."""
+        hints = _enriched_hints("Use sbatch on SLURM partition gpu")
+        # Signature must include the actual inputSchema property ("script")
+        assert "slurm_submit(script)" in hints.post_survey_hint
+        # Description from MCP metadata must be present verbatim
+        assert "Submit SLURM job" in hints.post_survey_hint
+
+    def test_job_status_listed_in_available_tools(self):
+        """job_status should appear with its schema-derived signature (job_id)."""
+        hints = _enriched_hints("Use sbatch on SLURM partition gpu")
+        assert "job_status(job_id)" in hints.post_survey_hint
+        assert "Check job status" in hints.post_survey_hint
+
+    def test_workflow_steps_reference_submitter_from_hints(self):
+        """Step template must reference the hints.job_submitter_tool name."""
+        hints = _enriched_hints("Use sbatch on SLURM partition gpu")
+        assert hints.job_submitter_tool == "slurm_submit"
+        assert f"{hints.job_submitter_tool}()" in hints.post_survey_hint
+        assert f"{hints.job_poller_tool}()" in hints.post_survey_hint
+
+    def test_alternate_submitter_name_is_honored(self):
+        """When a non-slurm submitter is registered, the hint must use that name, not 'slurm_submit'."""
+        hints = WorkflowHints()
+        hints.job_submitter_tool = "pbs_submit"
+        hints.job_poller_tool = "pbs_status"
+        hints.job_reader_tool = "run_bash"
+        alt_tools = [
+            {"name": "run_bash", "description": "Run bash",
+             "inputSchema": {"properties": {"command": {}}}, "skill_name": "hpc-skill"},
+            {"name": "pbs_submit", "description": "Submit PBS job",
+             "inputSchema": {"properties": {"script": {}, "queue": {}}}, "skill_name": "hpc-skill"},
+            {"name": "pbs_status", "description": "Check PBS job",
+             "inputSchema": {"properties": {"job_id": {}}}, "skill_name": "hpc-skill"},
+        ]
+        enrich_hints_from_mcp(hints, alt_tools, hpc_enabled=True)
+        assert "pbs_submit(script, queue)" in hints.post_survey_hint
+        assert "pbs_status(job_id)" in hints.post_survey_hint
+        # Step template references the alternate submitter name, not slurm_submit
+        assert "pbs_submit()" in hints.post_survey_hint
+        assert "slurm_submit" not in hints.post_survey_hint
+
+    def test_local_profile_omits_slurm_tools(self):
+        """hpc_enabled=False must strip slurm_submit/job_status from the hint entirely."""
+        hints = from_experiment_text("Run locally", hpc_enabled=False)
+        enrich_hints_from_mcp(hints, _MOCK_MCP_TOOLS, hpc_enabled=False)
+        assert "slurm_submit" not in hints.post_survey_hint
+        assert "job_status" not in hints.post_survey_hint
+        assert hints.job_submitter_tool is None
+
+    def test_local_profile_omits_slurm_from_tool_sequence(self):
+        hints = from_experiment_text("Run locally", hpc_enabled=False)
+        enrich_hints_from_mcp(hints, _MOCK_MCP_TOOLS, hpc_enabled=False)
+        assert "slurm_submit" not in hints.tool_sequence
+        assert "job_status" not in hints.tool_sequence
 
 
 # ── Child node prompt tests ──────────────────────────────────────────────
@@ -113,19 +304,28 @@ class TestChildNodeWorkflowInheritance:
 
 class TestRunBashDescription:
     def test_run_bash_description_is_environment_neutral(self):
-        """run_bash tool description should not assume HPC or any specific environment."""
+        """run_bash tool description should not assume HPC or any specific environment.
+
+        run_bash lives in coding-skill now (moved out of hpc-skill so the
+        laptop profile can drop hpc-skill entirely without losing shell
+        access).
+        """
         from pathlib import Path
-        server_path = Path(__file__).parent.parent.parent / "ari-skill-hpc" / "src" / "server.py"
+        server_path = Path(__file__).parent.parent.parent / "ari-skill-coding" / "src" / "server.py"
         if not server_path.exists():
-            pytest.skip("ari-skill-hpc not found")
+            pytest.skip("ari-skill-coding not found")
         text = server_path.read_text()
-        # Find the run_bash description
-        m = re.search(r'name="run_bash".*?description="([^"]+)"', text, re.DOTALL)
-        assert m, "run_bash tool not found"
-        desc = m.group(1)
+        # Find the run_bash description (may span multiple lines and use
+        # a parenthesised / concatenated literal).
+        m = re.search(
+            r'name="run_bash"[^)]*?description=\s*\(?\s*(.*?)\)?,\s*\n\s*inputSchema',
+            text, re.DOTALL,
+        )
+        assert m, "run_bash tool not found in coding-skill"
+        desc = m.group(1).lower()
         # Should not hardcode "login node" or "HPC"
-        assert "login node" not in desc.lower()
-        assert "hpc" not in desc.lower()
+        assert "login node" not in desc
+        assert "hpc" not in desc
 
 
 # ── Citation comment stripping test ──────────────────────────────────────

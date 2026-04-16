@@ -77,25 +77,55 @@ pipeline:
     depends_on: [write_paper]
     # ...
 
+retrieval:
+  backend: semantic_scholar    # semantic_scholar | alphaxiv | both
+  alphaxiv_endpoint: https://api.alphaxiv.org/mcp/v1
+
+container:
+  mode: auto                   # auto | docker | singularity | apptainer | none
+  image: ""                    # コンテナイメージ名（空 = コンテナ未使用）
+  pull: on_start               # always | on_start | never
+
 skills:
   - name: web-skill
     path: "{{ari_root}}/ari-skill-web"
+    phase: all
   - name: plot-skill
     path: "{{ari_root}}/ari-skill-plot"
+    phase: paper
   - name: paper-skill
     path: "{{ari_root}}/ari-skill-paper"
+    phase: paper
   - name: paper-re-skill
     path: "{{ari_root}}/ari-skill-paper-re"
+    phase: paper
   - name: memory-skill
     path: "{{ari_root}}/ari-skill-memory"
+    phase: bfts
   - name: evaluator-skill
     path: "{{ari_root}}/ari-skill-evaluator"
+    phase: bfts
   - name: idea-skill
     path: "{{ari_root}}/ari-skill-idea"
+    phase: bfts
   - name: hpc-skill
     path: "{{ari_root}}/ari-skill-hpc"
+    phase: bfts
   - name: transform-skill
     path: "{{ari_root}}/ari-skill-transform"
+    phase: paper
+  - name: figure-router-skill
+    path: "{{ari_root}}/ari-skill-figure-router"
+    phase: all
+  - name: benchmark-skill
+    path: "{{ari_root}}/ari-skill-benchmark"
+    phase: bfts
+  - name: review-skill
+    path: "{{ari_root}}/ari-skill-review"
+    phase: paper
+  - name: vlm-skill
+    path: "{{ari_root}}/ari-skill-vlm"
+    phase: paper
 ```
 
 ## 環境変数
@@ -106,10 +136,14 @@ skills:
 | `ARI_PARALLEL` | 同時実行ノード数 | `1` |
 | `ARI_EXECUTOR` | 実行バックエンド: `local`, `slurm`, `pbs`, `lsf` | `local` |
 | `ARI_SLURM_PARTITION` | SLURM パーティション名 | (なし) |
+| `ARI_SLURM_CPUS` | SLURM ジョブの CPU 数オーバーライド | (自動検出) |
 | `SLURM_LOG_DIR` | SLURM 出力ファイルの保存先 | (なし) |
 | `OLLAMA_HOST` | Ollama サーバーアドレス | `127.0.0.1:11434` |
 | `OPENAI_API_KEY` | OpenAI API キー | (なし) |
 | `ANTHROPIC_API_KEY` | Anthropic API キー | (なし) |
+| `ARI_RETRIEVAL_BACKEND` | 論文検索バックエンド: `semantic_scholar` / `alphaxiv` / `both` | `semantic_scholar` |
+| `VLM_MODEL` | 図レビュー用 VLM モデル | `openai/gpt-4o` |
+| `ARI_ORCHESTRATOR_PORT` | orchestrator スキルの HTTP ポート | `9890` |
 
 ## LLM バックエンド
 
@@ -163,6 +197,9 @@ llm:
 | `{{resources.timeout_minutes}}` | `resources:` セクションのタイムアウト |
 | `{{stages.<name>.outputs.file}}` | 完了したステージの出力ファイルパス |
 | `{{author_name}}` | トップレベル設定の著者名 |
+| `{{vlm_feedback}}` | VLM レビューフィードバック（`vlm_review_figures` からのループバック時に注入） |
+| `{{paper_context}}` | 科学的に整形された実験サマリ |
+| `{{keywords}}` | LLM 生成検索キーワード |
 
 ---
 

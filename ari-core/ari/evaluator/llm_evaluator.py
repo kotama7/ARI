@@ -106,6 +106,10 @@ class LLMEvaluator:
         self.model = model
         self.api_base = api_base
         self.metric_spec = metric_spec or MetricSpec()  # default: generic
+        # Per-run score history for calibration context.
+        # Each entry: {"node_id": str, "score": float, "label": str}
+        self._score_history: list[dict] = []
+        self._max_score_history: int = 15
 
     def _build_system_prompt(self) -> str:
         spec_section = self.metric_spec.to_prompt_section()
@@ -113,11 +117,65 @@ class LLMEvaluator:
             return self.BASE_SYSTEM
         return self.BASE_SYSTEM + f"\n\nDomain context:\n{spec_section}"
 
+    def _build_score_context(self) -> str:
+        """Render the score-distribution context block for the user prompt.
+
+        This is the calibration injection that prevents score collapse:
+        the LLM sees what scores it has assigned earlier in the same run,
+        sorted by score descending, and is asked to use the full 0-1 range.
+        Returns an empty string when no scores are available yet.
+        """
+        if not self._score_history:
+            return ""
+        sorted_h = sorted(
+            self._score_history, key=lambda h: h.get("score", 0.0), reverse=True
+        )[: self._max_score_history]
+        scores = [float(h.get("score", 0.0)) for h in sorted_h]
+        lo = min(scores)
+        hi = max(scores)
+        lines = [
+            "Score distribution context for the current run "
+            f"(top {len(sorted_h)} of {len(self._score_history)}, sorted by score):"
+        ]
+        for h in sorted_h:
+            lines.append(
+                f"  - {h.get('node_id', '?'):>10s} "
+                f"score={float(h.get('score', 0.0)):.2f} "
+                f"label={h.get('label') or '?'}"
+            )
+        lines.append(
+            f"Note: scores in this run so far range from {lo:.2f} to {hi:.2f}. "
+            "Use the full 0.0–1.0 range deliberately. "
+            "Differentiate clearly between weak, average, and strong contributions; "
+            "do not cluster every node around the middle."
+        )
+        return "\n".join(lines) + "\n\n"
+
+    def _record_score(self, node_id: str | None, score: float, label: str | None) -> None:
+        """Record a freshly assigned score so future evaluations can calibrate."""
+        if not node_id or score is None:
+            return
+        try:
+            entry = {
+                "node_id": (str(node_id)[-8:] if len(str(node_id)) > 8 else str(node_id)),
+                "score": float(score),
+                "label": str(label or ""),
+            }
+        except (TypeError, ValueError):
+            return
+        self._score_history.append(entry)
+        # Cap memory: keep at most 2x the max so we always have room to sort+slice
+        cap = max(self._max_score_history * 2, 30)
+        if len(self._score_history) > cap:
+            self._score_history = self._score_history[-cap:]
+
     def evaluate_sync(
         self,
         goal: str,
         artifacts: list[dict],
         summary: str,
+        node_id: str | None = None,
+        node_label: str | None = None,
     ) -> dict:
         """Synchronous evaluate (for calling from AgentLoop). Handles running event loops gracefully."""
         import asyncio
@@ -130,7 +188,10 @@ class LLMEvaluator:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
-                return loop.run_until_complete(self.evaluate(goal, artifacts, summary))
+                return loop.run_until_complete(
+                    self.evaluate(goal, artifacts, summary,
+                                  node_id=node_id, node_label=node_label)
+                )
             finally:
                 loop.close()
 
@@ -149,7 +210,10 @@ class LLMEvaluator:
                     _log.info("evaluate_sync (thread): metrics=%s", result.get("metrics", {}))
                     return result
             else:
-                return asyncio.run(self.evaluate(goal, artifacts, summary))
+                return asyncio.run(
+                    self.evaluate(goal, artifacts, summary,
+                                  node_id=node_id, node_label=node_label)
+                )
         except Exception as e:
             _log.warning("evaluate_sync failed: %s", e)
             return {"score": None, "reason": f"sync error: {e}",
@@ -160,10 +224,14 @@ class LLMEvaluator:
         goal: str,
         artifacts: list[dict],
         summary: str,
+        node_id: str | None = None,
+        node_label: str | None = None,
     ) -> dict:
         """Return dict: score, reason, has_real_data, has_paper_section, metrics."""
         artifact_str = str(artifacts)[:2000]
+        score_context_block = self._build_score_context()
         prompt = (
+            f"{score_context_block}"
             f"Goal: {goal}\n\n"
             f"Artifacts: {artifact_str}\n\n"
             f"Summary: {summary[:500]}"
@@ -205,6 +273,10 @@ class LLMEvaluator:
                 extracted_metrics["_scientific_score"] = sci_score
             if comparison_found:
                 extracted_metrics["_comparison_found"] = 1.0
+
+            # Record this score so future evaluations in the same run can
+            # calibrate against the distribution and avoid score collapse.
+            self._record_score(node_id, sci_score, node_label)
 
             return {
                 "reason": str(data.get("reason", "")),

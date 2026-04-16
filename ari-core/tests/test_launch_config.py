@@ -538,7 +538,10 @@ class TestPreCreatedCheckpointDir:
         fn_start = src.find("def _api_launch(")
         assert fn_start > 0
         fn_body = src[fn_start:]
-        idx_mkdir = fn_body.find("_pre_ckpt.mkdir(")
+        # PathManager.ensure_checkpoint() or _pre_ckpt.mkdir() both satisfy this
+        idx_mkdir = fn_body.find("ensure_checkpoint(")
+        if idx_mkdir < 0:
+            idx_mkdir = fn_body.find("_pre_ckpt.mkdir(")
         idx_popen = fn_body.find("_st._last_proc = subprocess.Popen(")
         assert idx_mkdir > 0, "Pre-created checkpoint mkdir not found"
         assert idx_popen > 0, "subprocess.Popen not found"

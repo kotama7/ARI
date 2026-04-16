@@ -109,7 +109,7 @@ BFTS root node created
 BFTS expand() (ari/orchestrator/bfts.py)
   - Ranks nodes by _scientific_score
   - Passes score to child-proposal LLM
-  - LLM proposes 2-3 child directions (improve / ablation / validation)
+  - LLM proposes 1 child direction per expansion call (improve / ablation / validation / draft / debug / other)
   - No domain hints — LLM decides what "improvement" means
     │
     ▼ (after ARI_MAX_NODES reached)
@@ -125,29 +125,147 @@ nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
     Output: science_data.json  { configurations, experiment_context, per_key_summary }
 
   Stage 2: search_related_work  (ari-skill-web)  [parallel with stage 1]
-    LLM-generated keywords → Semantic Scholar API
+    LLM-generated keywords → pluggable retrieval (Semantic Scholar / AlphaXiv / both)
     Output: related_refs.json
 
   Stage 3: generate_figures  (ari-skill-plot)  [after stage 1]
-    Input: full science_data.json (including experiment_context)
+    Input: full science_data.json (including experiment_context) + {{vlm_feedback}}
     LLM writes complete matplotlib code → executes → saves PDF figures
     Figure types chosen autonomously from data (not prescribed)
     Output: figures_manifest.json
 
-  Stage 4: write_paper  (ari-skill-paper)  [after stages 2, 3]
+  Stage 3b: vlm_review_figures  (ari-skill-vlm)  [after stage 3]
+    VLM visually reviews primary figure (fig_1.png)
+    If score < 0.7: loop back to generate_figures with VLM feedback (max 2 iterations)
+    Output: vlm_figure_review.json
+
+  Stage 4: generate_ear  (ari-skill-transform)  [after stage 1]
+    Builds Experiment Artifact Repository: code, data, logs, reproducibility metadata
+    Output: ear_manifest.json, ear/ directory
+
+  Stage 5: write_paper  (ari-skill-paper)  [after stages 2, 3, 4]
     paper_context = experiment_context + best_nodes_metrics
     Iterative section writing: draft → LLM review → revise (max 2 rounds)
     BibTeX citations from Semantic Scholar results
     Output: full_paper.tex, refs.bib
 
-  Stage 5: review_paper  (ari-skill-paper)  [after stage 4]
+  Stage 6: review_paper  (ari-skill-paper)  [after stage 5]
     PDF → pdftotext → LLM holistic review
     Output: review_report.json { score, verdict, citation_ok, feedback }
 
-  Stage 6: reproducibility_check  (ari-skill-paper-re)  [after stage 4]
+  Stage 7: respond_to_review  (ari-skill-review)  [after stage 6]
+    Parse review concerns → generate point-by-point rebuttal
+    Output: rebuttal.json
+
+  Stage 8: reproducibility_check  (ari-skill-paper-re)  [after stage 5]
     Reads paper → extracts configuration → runs HPC job → compares claimed vs actual
     Output: reproducibility_report.json { verdict, claimed, actual, tolerance_pct }
 ```
+
+---
+
+## File Structure
+
+### Checkpoint Directory Layout
+
+Each ARI run produces a checkpoint directory under `{workspace}/checkpoints/{run_id}/`.
+`run_id` has the form `YYYYMMDDHHMMSS_<slug>`. `PathManager` in `ari/paths.py` is the
+single source of truth for directory construction.
+
+```
+checkpoints/{run_id}/
+├── experiment.md               # Input: research goal (copied on launch)
+├── launch_config.json          # Wizard/CLI launch parameters
+├── meta.json                   # Sub-experiment metadata (parent/depth)
+├── workflow.yaml               # Snapshot of pipeline config at launch
+├── .ari_pid                    # PID file for liveness detection
+├── tree.json                   # Full BFTS tree (written during BFTS)
+├── nodes_tree.json             # Lightweight tree export (pipeline input)
+├── results.json                # Per-node artifacts + metrics summary
+├── idea.json                   # Generated hypothesis (VirSci output)
+├── evaluation_criteria.json    # Primary metric + direction
+├── cost_trace.jsonl            # Per-LLM-call cost/token log (streamed)
+├── cost_summary.json           # Aggregated cost summary
+├── ari.log                     # Structured JSON log
+├── ari_run_*.log               # GUI-launched stdout/stderr log
+├── .pipeline_started           # Marker: post-BFTS pipeline has begun
+├── science_data.json           # Transform-skill output
+├── related_refs.json           # Literature search results
+├── figures_manifest.json       # Generated figure metadata
+├── fig_*.{pdf,png,eps,svg}     # Generated figures
+├── vlm_review.json             # VLM figure review output
+├── full_paper.tex              # Generated LaTeX paper
+├── refs.bib                    # BibTeX references
+├── full_paper.pdf              # Compiled PDF
+├── full_paper.bbl              # Bibliography output
+├── review_report.json          # LLM peer-review output
+├── rebuttal.json               # Point-by-point rebuttal
+├── reproducibility_report.json # Reproducibility verification
+├── uploads/                    # User-uploaded files (copied to node work_dirs)
+├── paper/                      # LaTeX editing workspace (Overleaf-like)
+│   ├── full_paper.tex
+│   ├── full_paper.pdf
+│   ├── refs.bib
+│   └── figures/
+├── ear/                        # Experiment Artifact Repository
+│   ├── README.md
+│   ├── RESULTS.md
+│   └── <artifacts>
+└── repro/                      # Reproducibility run workspace
+    ├── run/
+    ├── reproducibility_report.json
+    └── repro_output.log
+```
+
+### Node Work Directories
+
+Per-node working directories are created as siblings of `checkpoints/`:
+
+```
+{workspace}/experiments/{slug}/{node_id}/
+```
+
+At node execution time, `_run_loop` copies user files into each node's work_dir:
+- **Provided files**: paths listed under `## Provided Files` (or `## 提供ファイル` / `## 提供文件`) in `experiment.md`
+- **Checkpoint root**: non-meta files directly in the checkpoint dir
+- **Uploads subdir**: non-meta files in `checkpoint/uploads/`
+
+`PathManager.META_FILES` defines files that must never be copied to node work dirs
+(`experiment.md`, `tree.json`, `nodes_tree.json`, `launch_config.json`, `meta.json`,
+`results.json`, `idea.json`, `cost_trace.jsonl`, `cost_summary.json`, `workflow.yaml`,
+`ari.log`, `evaluation_criteria.json`, `.ari_pid`, `.pipeline_started`). Any file with
+a `.log` extension is also treated as meta.
+
+### tree.json vs nodes_tree.json
+
+Both files contain the BFTS node tree, but are written at different lifecycle stages:
+
+| File              | Writer                                                | Phase            | Schema                                                |
+|-------------------|-------------------------------------------------------|------------------|-------------------------------------------------------|
+| `tree.json`       | `_save_checkpoint()` in cli.py                        | During BFTS      | `{run_id, experiment_file, created_at, nodes}`        |
+| `nodes_tree.json` | `_save_checkpoint()` + `generate_paper_section()`     | BFTS + post-BFTS | `{experiment_goal, nodes}` (lightweight)              |
+
+**Reader convention**: All readers MUST prefer `tree.json` and fall back to
+`nodes_tree.json`. This ensures up-to-date data during BFTS while remaining
+compatible with pipeline stages that expect `nodes_tree.json`.
+
+### Project-scoped state (per checkpoint)
+
+ARI no longer maintains a global config directory.  Every settings file and
+agent memory store lives under the active checkpoint, so each experiment
+gets its own isolated state and `~/.ari/` is safe to remove:
+
+```
+checkpoints/{run_id}/
+├── settings.json        # GUI settings (LLM model, provider, HPC defaults)
+├── memory.json          # FileMemoryClient store (ancestor-chain)
+├── memory_store.jsonl   # ari-skill-memory MCP server entries
+└── ...                  # tree.json / launch_config.json / uploads / ari.log
+```
+
+API keys are **never** stored in `settings.json`. They are read from `.env`
+files (search order: checkpoint → ARI root → ari-core → home) or from
+environment variables injected at launch.
 
 ---
 
@@ -180,23 +298,25 @@ nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
 | `ari-skill-memory` | `add_memory`, `search_memory`, `get_node_memory`, `clear_node_memory` | Ancestor-chain experiment memory (JSONL) | ✗ |
 | `ari-skill-idea` | `survey`, `generate_ideas` | Literature search (Semantic Scholar) + VirSci multi-agent hypothesis generation | ✓ |
 | `ari-skill-evaluator` | `make_metric_spec` | Metric spec extraction from experiment file | △ |
-| `ari-skill-transform` | `nodes_to_science_data` | BFTS tree → science-facing data (strips internal fields) | ✓ |
-| `ari-skill-web` | `web_search`, `fetch_url`, `search_arxiv`, `search_semantic_scholar`, `collect_references_iterative` | Web search, arXiv, Semantic Scholar, iterative citation collection | △ |
+| `ari-skill-transform` | `nodes_to_science_data`, `generate_ear` | BFTS tree → science-facing data + Experiment Artifact Repository | ✓ |
+| `ari-skill-web` | `web_search`, `fetch_url`, `search_arxiv`, `search_semantic_scholar`, `search_papers`, `set_retrieval_backend`, `collect_references_iterative`, `list_uploaded_files`, `read_uploaded_file` | Web search, arXiv, pluggable retrieval (Semantic Scholar / AlphaXiv), uploaded file access | △ |
 | `ari-skill-plot` | `generate_figures`, `generate_figures_llm` | Deterministic + LLM-based matplotlib figure generation | ✓ |
 | `ari-skill-paper` | `list_venues`, `get_template`, `generate_section`, `compile_paper`, `check_format`, `review_section`, `revise_section`, `write_paper_iterative`, `review_compiled_paper` | LaTeX paper writing, compilation, peer review | ✓ |
 | `ari-skill-paper-re` | `extract_metric_from_output`, `reproduce_from_paper` | ReAct reproducibility verification agent | ✓ |
+| `ari-skill-figure-router` | (figure type classification) | Figure type classification and generation routing (SVG/matplotlib/LaTeX) | ✓ |
+| `ari-skill-benchmark` | `analyze_results`, `plot`, `statistical_test` | CSV/JSON/NPY analysis, plotting, scipy stats (used in BFTS analyze stage) | ✗ |
+| `ari-skill-review` | `parse_review`, `generate_rebuttal`, `check_rebuttal` | Peer-review parsing + rebuttal generation | ✓ |
+| `ari-skill-vlm` | `review_figure`, `review_table` | VLM-based figure/table review (drives VLM review loop) | ✓ |
+
+| `ari-skill-coding` | `write_code`, `run_code`, `read_file`, `run_bash` | Code generation + execution + paginated file read | ✗ |
 
 **Additional skills** (available, not in default workflow):
 
 | Skill | Tools | Role | LLM? |
 |-------|-------|------|------|
-| `ari-skill-coding` | `write_code`, `run_code`, `run_bash` | Code generation + execution | ✗ |
-| `ari-skill-benchmark` | `analyze_results`, `plot`, `statistical_test` | CSV/JSON/NPY analysis, plotting, scipy stats | ✗ |
-| `ari-skill-review` | `parse_review`, `generate_rebuttal`, `check_rebuttal` | Peer-review parsing + rebuttal generation | ✓ |
-| `ari-skill-vlm` | `review_figure`, `review_table` | Vision-Language model figure/table review | ✓ |
-| `ari-skill-orchestrator` | `run_experiment`, `get_status`, `list_runs`, `get_paper` | Expose ARI as MCP server for external agents/IDEs | ✗ |
+| `ari-skill-orchestrator` | `run_experiment`, `get_status`, `list_runs`, `list_children`, `get_paper` | Expose ARI as MCP server, recursive sub-experiments, dual stdio+HTTP transport | ✗ |
 
-✗ = no LLM, △ = LLM in some tools only, ✓ = primary tools use LLM.
+✗ = no LLM, △ = LLM in some tools only, ✓ = primary tools use LLM. 15 skills total (14 default, 1 additional).
 
 ---
 
@@ -218,30 +338,31 @@ def bfts(experiment, config):
 
         # --- BFTS STEP 1: expand the best frontier node ---
         # LLM reads metrics of all completed nodes and selects
-        # the most promising one to expand (not all at once)
+        # the most promising one to expand (one child per call)
         while frontier and len(pending) < max_parallel:
-            best = llm_select_best_to_expand(frontier)  # by _scientific_score
-            frontier.remove(best)
-            children = llm_propose_directions(best)     # improve/ablation/validation
-            pending.extend(children)
-            all_nodes.extend(children)
+            best = llm_select_best_to_expand(frontier)  # by _scientific_score + diversity_bonus
+            # Frontier nodes stay available for re-expansion
+            child = llm_propose_one_direction(best, existing_children=best.children)
+            pending.append(child)
+            all_nodes.append(child)
 
         # --- BFTS STEP 2: run a batch of pending nodes ---
         batch = llm_select_next_nodes(pending, max_parallel)
+        record_run(batch)  # track label diversity
         results = parallel_run(batch)
 
         for node in results:
             memory.write(node.eval_summary)   # save to ancestor-chain memory
-            if node.status == SUCCESS:
-                frontier.append(node)         # will expand when selected
-            else:
-                frontier.append(node)         # failed → expand with "debug" children
+            frontier.append(node)             # will expand when selected
 
     return max(all_nodes, key=lambda n: n.metrics.get("_scientific_score", 0))
 ```
 
 Key properties:
-- **Lazy expansion**: a completed node is not expanded until LLM selects it — low-scoring nodes may wait indefinitely
+- **Single-child expansion**: `expand()` generates exactly one child per call with rich context (sibling scores, ancestor chain, tree diversity metrics, existing children) to avoid duplicates
+- **Persistent frontier**: completed nodes stay in frontier after expansion, available for re-expansion with `_touched_this_round` / `_failed_this_round` tracking
+- **Diversity bonus**: `+0.05` for underrepresented labels (last 20 runs tracked) encourages exploration variety
+- **Score calibration**: evaluator injects recent score history into prompts to prevent score collapse (all scores clustering around the same value)
 - **No retry**: failed nodes produce `debug` children via `expand()`, not re-executions
 - **Strict budget**: `len(all_nodes) < max_total_nodes` prevents overshoot
 - **`generate_ideas` called once**: suppressed after root node to prevent looping
@@ -255,6 +376,7 @@ Key properties:
 | `debug` | Fix parent's failure |
 | `ablation` | Remove one component to measure its impact |
 | `validation` | Re-run parent with different conditions |
+| *(custom)* | Unknown labels fall back to `other`; `raw_label` preserves the original string |
 
 ---
 

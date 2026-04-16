@@ -109,7 +109,7 @@ BFTS 根节点创建
 BFTS expand() (ari/orchestrator/bfts.py)
   - 按 _scientific_score 对节点排名
   - 将分数传递给子节点提议 LLM
-  - LLM 提议 2-3 个子方向（改进 / 消融 / 验证）
+  - LLM 每次扩展调用提议 1 个子方向（改进 / 消融 / 验证 / 草稿 / 调试 / 其他）
   - 无领域提示 — LLM 决定"改进"的含义
     │
     ▼ (达到 ARI_MAX_NODES 后)
@@ -125,29 +125,144 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
     输出：science_data.json  { configurations, experiment_context, per_key_summary }
 
   阶段 2：search_related_work  (ari-skill-web)  [与阶段 1 并行]
-    LLM 生成的关键词 → Semantic Scholar API
+    LLM 生成的关键词 → 可插拔检索后端 (Semantic Scholar / AlphaXiv / both)
     输出：related_refs.json
 
   阶段 3：generate_figures  (ari-skill-plot)  [在阶段 1 之后]
-    输入：完整的 science_data.json（包含 experiment_context）
+    输入：完整的 science_data.json（包含 experiment_context）+ {{vlm_feedback}}
     LLM 编写完整的 matplotlib 代码 → 执行 → 保存为 PDF 图表
     图表类型由 LLM 根据数据自主选择（非预设）
     输出：figures_manifest.json
 
-  阶段 4：write_paper  (ari-skill-paper)  [在阶段 2、3 之后]
+  阶段 3b：vlm_review_figures  (ari-skill-vlm)  [在阶段 3 之后]
+    VLM 视觉审阅主图 (fig_1.png)
+    若得分 < 0.7：携带 VLM 反馈回环到 generate_figures（最多 2 次迭代）
+    输出：vlm_figure_review.json
+
+  阶段 4：generate_ear  (ari-skill-transform)  [在阶段 1 之后]
+    构建 Experiment Artifact Repository：代码、数据、日志、可重现性元数据
+    输出：ear_manifest.json、ear/ 目录
+
+  阶段 5：write_paper  (ari-skill-paper)  [在阶段 2、3、4 之后]
     paper_context = experiment_context + best_nodes_metrics
     迭代式章节撰写：草稿 → LLM 审阅 → 修改（最多 2 轮）
     BibTeX 引用来自 Semantic Scholar 结果
     输出：full_paper.tex、refs.bib
 
-  阶段 5：review_paper  (ari-skill-paper)  [在阶段 4 之后]
+  阶段 6：review_paper  (ari-skill-paper)  [在阶段 5 之后]
     PDF → pdftotext → LLM 整体审阅
     输出：review_report.json { score, verdict, citation_ok, feedback }
 
-  阶段 6：reproducibility_check  (ari-skill-paper-re)  [在阶段 4 之后]
+  阶段 7：respond_to_review  (ari-skill-review)  [在阶段 6 之后]
+    解析评审顾虑 → 生成逐点反驳
+    输出：rebuttal.json
+
+  阶段 8：reproducibility_check  (ari-skill-paper-re)  [在阶段 5 之后]
     读取论文 → 提取配置 → 运行 HPC 作业 → 比较声称值与实际值
     输出：reproducibility_report.json { verdict, claimed, actual, tolerance_pct }
 ```
+
+---
+
+## 文件结构
+
+### 检查点目录布局
+
+每次 ARI 运行都会在 `{workspace}/checkpoints/{run_id}/` 下生成检查点目录。
+`run_id` 格式为 `YYYYMMDDHHMMSS_<slug>`。`ari/paths.py` 中的 `PathManager`
+是目录构造的唯一真实来源。
+
+```
+checkpoints/{run_id}/
+├── experiment.md               # 输入: 研究目标 (启动时复制)
+├── launch_config.json          # 向导/CLI 启动参数
+├── meta.json                   # 子实验元数据 (父/递归深度)
+├── workflow.yaml               # 启动时流水线配置的快照
+├── .ari_pid                    # 用于存活检测的 PID 文件
+├── tree.json                   # 完整 BFTS 树 (BFTS 阶段写入)
+├── nodes_tree.json             # 轻量树导出 (流水线输入)
+├── results.json                # 每节点 artifact + metrics 摘要
+├── idea.json                   # 生成的假设 (VirSci 输出)
+├── evaluation_criteria.json    # 主要指标 + 方向
+├── cost_trace.jsonl            # 每次 LLM 调用的成本/token 日志
+├── cost_summary.json           # 成本汇总
+├── ari.log                     # 结构化 JSON 日志
+├── ari_run_*.log               # GUI 启动时的 stdout/stderr 日志
+├── .pipeline_started           # 标记: post-BFTS 流水线已开始
+├── science_data.json           # Transform-skill 输出
+├── related_refs.json           # 文献搜索结果
+├── figures_manifest.json       # 生成的图片元数据
+├── fig_*.{pdf,png,eps,svg}     # 生成的图片
+├── vlm_review.json             # VLM 图片审查输出
+├── full_paper.tex              # 生成的 LaTeX 论文
+├── refs.bib                    # BibTeX 引用
+├── full_paper.pdf              # 编译后的 PDF
+├── full_paper.bbl              # 参考文献输出
+├── review_report.json          # LLM 同行评审输出
+├── rebuttal.json               # 逐点反驳
+├── reproducibility_report.json # 可复现性验证
+├── uploads/                    # 用户上传的文件 (复制到节点 work_dir)
+├── paper/                      # LaTeX 编辑工作区 (类 Overleaf)
+│   ├── full_paper.tex
+│   ├── full_paper.pdf
+│   ├── refs.bib
+│   └── figures/
+├── ear/                        # 实验 Artifact Repository
+│   ├── README.md
+│   ├── RESULTS.md
+│   └── <artifacts>
+└── repro/                      # 可复现性运行工作区
+    ├── run/
+    ├── reproducibility_report.json
+    └── repro_output.log
+```
+
+### 节点工作目录
+
+每节点的工作目录作为 `checkpoints/` 的兄弟目录创建:
+
+```
+{workspace}/experiments/{slug}/{node_id}/
+```
+
+在节点执行时，`_run_loop` 将以下用户文件复制到每个节点的 work_dir:
+- **Provided files**: `experiment.md` 中 `## Provided Files` (`## 提供ファイル` / `## 提供文件`) 下列出的路径
+- **检查点根**: 检查点目录中的非 meta 文件
+- **uploads 子目录**: `checkpoint/uploads/` 中的非 meta 文件
+
+`PathManager.META_FILES` 定义了绝不能复制到节点 work_dir 的文件
+(`experiment.md`, `tree.json`, `nodes_tree.json`, `launch_config.json`, `meta.json`,
+`results.json`, `idea.json`, `cost_trace.jsonl`, `cost_summary.json`, `workflow.yaml`,
+`ari.log`, `evaluation_criteria.json`, `.ari_pid`, `.pipeline_started`)。
+扩展名为 `.log` 的文件也视为 meta。
+
+### tree.json 和 nodes_tree.json
+
+两个文件都包含 BFTS 节点树，但在生命周期的不同阶段写入:
+
+| 文件              | 写入方                                                | 阶段             | 模式                                                  |
+|-------------------|-------------------------------------------------------|------------------|-------------------------------------------------------|
+| `tree.json`       | `cli.py` 中的 `_save_checkpoint()`                    | BFTS 阶段        | `{run_id, experiment_file, created_at, nodes}`        |
+| `nodes_tree.json` | `_save_checkpoint()` + `generate_paper_section()`     | BFTS + post-BFTS | `{experiment_goal, nodes}` (轻量)                     |
+
+**读取方约定**: 所有读取方必须优先使用 `tree.json` 并回退到 `nodes_tree.json`。
+这可确保 BFTS 期间获得最新数据，同时保持与预期 `nodes_tree.json` 的流水线阶段的兼容性。
+
+### 项目级状态 (每个检查点)
+
+ARI 不再维护全局配置目录。所有设置文件和代理记忆都存储在活动检查点目录下，
+因此每个实验拥有独立状态，`~/.ari/` 可以安全删除:
+
+```
+checkpoints/{run_id}/
+├── settings.json        # GUI 设置 (LLM 模型、提供者、HPC 默认值)
+├── memory.json          # FileMemoryClient 存储 (祖先链)
+├── memory_store.jsonl   # ari-skill-memory MCP 服务条目
+└── ...                  # tree.json / launch_config.json / uploads / ari.log
+```
+
+API 密钥 **绝不** 存储在 `settings.json` 中。它们从 `.env` 文件
+(搜索顺序: checkpoint → ARI root → ari-core → home) 或启动时注入的环境变量中读取。
 
 ---
 
@@ -185,18 +300,19 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
 | `ari-skill-plot` | `generate_figures`、`generate_figures_llm` | 确定性 + LLM 驱动的 matplotlib 图表生成 | ✓ |
 | `ari-skill-paper` | `list_venues`、`get_template`、`generate_section`、`compile_paper`、`check_format`、`review_section`、`revise_section`、`write_paper_iterative`、`review_compiled_paper` | LaTeX 论文撰写、编译、同行评审 | ✓ |
 | `ari-skill-paper-re` | `extract_metric_from_output`、`reproduce_from_paper` | ReAct 可复现性验证智能体 | ✓ |
+| `ari-skill-figure-router` | （图表类型分类） | 图表类型分类和生成路由（SVG/matplotlib/LaTeX） | ✓ |
+| `ari-skill-benchmark` | `analyze_results`、`plot`、`statistical_test` | CSV/JSON/NPY 分析、绘图、scipy 统计（BFTS analyze 阶段使用） | ✗ |
+| `ari-skill-review` | `parse_review`、`generate_rebuttal`、`check_rebuttal` | 同行评审解析 + 反驳生成 | ✓ |
+| `ari-skill-vlm` | `review_figure`、`review_table` | VLM 驱动的图表/表格审查（驱动 VLM 审查循环） | ✓ |
+| `ari-skill-coding` | `write_code`、`run_code`、`read_file`、`run_bash` | 代码生成 + 执行 + 分页文件读取 | ✗ |
 
 **附加技能**（可用，不在默认工作流中）：
 
 | 技能 | 工具 | 角色 | LLM? |
 |------|------|------|------|
-| `ari-skill-coding` | `write_code`、`run_code`、`run_bash` | 代码生成 + 执行 | ✗ |
-| `ari-skill-benchmark` | `analyze_results`、`plot`、`statistical_test` | CSV/JSON/NPY 分析、绘图、scipy 统计 | ✗ |
-| `ari-skill-review` | `parse_review`、`generate_rebuttal`、`check_rebuttal` | 同行评审解析 + 反驳生成 | ✓ |
-| `ari-skill-vlm` | `review_figure`、`review_table` | 视觉语言模型图表/表格审查 | ✓ |
-| `ari-skill-orchestrator` | `run_experiment`、`get_status`、`list_runs`、`get_paper` | 将 ARI 作为 MCP 服务器暴露给外部智能体/IDE | ✗ |
+| `ari-skill-orchestrator` | `run_experiment`、`get_status`、`list_runs`、`list_children`、`get_paper` | 将 ARI 作为 MCP 服务器暴露，递归子实验，双 stdio+HTTP 传输 | ✗ |
 
-✗ = 无 LLM、△ = 仅部分工具使用 LLM、✓ = 主要工具使用 LLM。
+✗ = 无 LLM、△ = 仅部分工具使用 LLM、✓ = 主要工具使用 LLM。15 个技能（14 默认，1 附加）。
 
 ---
 

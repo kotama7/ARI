@@ -6,7 +6,7 @@
   **通用研究自动化系统。从笔记本到超级计算机。从本地模型到云端 API。从新手到专家。从计算实验到物理世界。**
 
   [![Tests](https://img.shields.io/badge/tests-1200%2B-brightgreen)](./ari-core)
-  [![Version](https://img.shields.io/badge/version-v0.4.1-orange)](https://github.com/kotama7/ARI/releases)
+  [![Version](https://img.shields.io/badge/version-v0.5.0-orange)](https://github.com/kotama7/ARI/releases)
   [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
   [![MCP](https://img.shields.io/badge/protocol-MCP-purple)](https://modelcontextprotocol.io)
   [![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
@@ -102,6 +102,8 @@ ARI 的 MCP 插件架构有意设计为超越计算的能力扩展：
   ari-skill-hpc        → SLURM 任务提交
   ari-skill-evaluator  → 从 stdout 提取指标
   ari-skill-paper      → LaTeX 论文写作
+  ari-skill-vlm        → VLM 图表/表格质量审阅
+  ari-skill-web        → 可插拔检索（Semantic Scholar + AlphaXiv）
 
 明天（物理世界）:
   ari-skill-robot      → 通过 ROS2 MCP 桥接的机械臂控制
@@ -147,7 +149,6 @@ ari run experiment.md --profile hpc   # 使用 SLURM 集群
 # 矩阵乘法优化
 ## Research Goal
 最大化此机器上 DGEMM 的 GFLOPS。
-<!-- metric_keyword: GFLOPS -->
 ```
 
 **专家（完整控制）:**
@@ -165,8 +166,7 @@ gmx mdrun -v -deffnm simulation -ntmpi 32
 ## Rules
 - HARD LIMIT: 永不超过 128 个 MPI 任务
 - 在 slurm_submit 中始终使用 work_dir=/abs/path
-<!-- metric_keyword: energy_score -->
-<!-- min_expected_metric: -500 -->
+<!-- min_expected_metric: 50000 -->
 ```
 ```
 
@@ -174,7 +174,7 @@ gmx mdrun -v -deffnm simulation -ntmpi 32
 
 ## Web 仪表板（主要界面）
 
-用于可视化实验管理的 9 页 React/TypeScript SPA。启动方式：
+用于可视化实验管理的 10 页 React/TypeScript SPA。启动方式：
 
 ```bash
 ari viz ./checkpoints/ --port 8765   # http://localhost:8765
@@ -183,14 +183,15 @@ ari viz ./checkpoints/ --port 8765   # http://localhost:8765
 | 页面 | 功能 |
 |------|----------|
 | **Home** | 快捷操作、最近的实验、系统状态 |
-| **New Experiment** | 4 步向导：聊天/编写/上传目标 → 范围（深度、节点、工作进程）→ 资源（LLM、HPC）→ 启动 |
+| **New Experiment** | 4 步向导：聊天/编写/上传目标 → 范围（深度、节点、工作进程、递归深度）→ 资源（LLM、HPC、容器）→ 启动 |
 | **Experiments** | 列出/删除/恢复所有检查点项目，显示状态和审稿评分 |
 | **Monitor** | 实时阶段步进器（Idle → Idea → BFTS → Paper → Review）、实时日志流（SSE）、成本追踪 |
 | **Tree** | 交互式 BFTS 节点树，点击任意节点查看指标、工具调用追踪、生成代码和输出 |
-| **Results** | 查看/下载论文（PDF/TeX）、审稿报告、可复现性结果、生成的图表 |
+| **Results** | 类 Overleaf LaTeX 编辑器（编辑/编译/预览）、论文 PDF 查看器、审稿报告、可复现性结果、EAR 浏览器 |
 | **Ideas** | VirSci 生成的假设，包含新颖性/可行性评分和差距分析 |
-| **Workflow** | 编辑 BFTS 后流水线阶段（依赖、启用/禁用、输入/输出） |
-| **Settings** | LLM 提供商/模型、API 密钥（基于 .env）、SLURM 分区自动检测、SSH 远程测试、Ollama 主机 |
+| **Workflow** | React Flow 可视化 DAG 编辑器（拖拽、连接、启用/禁用、技能分配） |
+| **Settings** | LLM 提供商/模型、API 密钥、SLURM、容器运行时、VLM 审阅模型、检索后端、Ollama 主机 |
+| **Sub-Experiments** | 递归子实验树与父子追踪（通过 orchestrator 技能） |
 
 通过 WebSocket（树变更）和 SSE（日志流）实现实时更新。所有数据按项目隔离。
 
@@ -204,12 +205,20 @@ ari viz ./checkpoints/ --port 8765   # http://localhost:8765
 | `/api/launch` | POST | 使用完整配置启动新实验 |
 | `/api/run-stage` | POST | 运行特定阶段（resume / paper / review） |
 | `/api/checkpoints` | GET | 列出所有检查点项目 |
-| `/api/settings` | GET/POST | 读写 LLM、SLURM 和 API 密钥设置 |
+| `/api/settings` | GET/POST | 读写 LLM、SLURM、容器和 API 密钥设置 |
 | `/api/workflow` | GET/POST | 读写 workflow.yaml 流水线 |
+| `/api/workflow/flow` | GET/POST | 工作流的 React Flow 图表示 |
 | `/api/chat-goal` | POST | 用于实验目标精炼的多轮 LLM 聊天 |
 | `/api/upload` | POST | 上传 experiment.md 或数据文件 |
+| `/api/upload/delete` | POST | 删除已上传文件 |
 | `/api/stop` | POST | 优雅地停止运行中的实验 |
 | `/api/logs` | GET (SSE) | 流式实时日志和成本数据 |
+| `/api/checkpoint/{id}/files` | GET | 列出论文目录中的文件 |
+| `/api/checkpoint/{id}/file` | GET/POST | 读写论文文件 |
+| `/api/checkpoint/compile` | POST | 触发 LaTeX 编译 |
+| `/api/checkpoint/{id}/filetree` | GET | 检查点的完整目录树 |
+| `/api/ear/{run_id}` | GET | 实验产物仓库内容 |
+| `/api/sub-experiments` | GET/POST | 列出/启动递归子实验 |
 | `/memory/<node_id>` | GET | 检索节点内存（工具调用追踪） |
 | `ws://host:{port+1}/ws` | WebSocket | 订阅实时树更新 |
 
@@ -246,6 +255,8 @@ ari viz ./checkpoints/ --port 8765   # http://localhost:8765
 | `review_report.json` | 自动同行评审评分和反馈 |
 | `reproducibility_report.json` | 独立的可复现性验证 |
 | `figures_manifest.json` | 生成的图表路径和标题 |
+| `rebuttal.json` | 对审稿意见的自动反驳 |
+| `ear/` | 实验产物仓库（代码、数据、日志、可复现性元数据） |
 | `cost_trace.jsonl` | 每次调用的 LLM 成本追踪 |
 | `experiments/<slug>/<node_id>/` | 每个节点的工作目录和生成代码 |
 
@@ -256,24 +267,25 @@ ari viz ./checkpoints/ --port 8765   # http://localhost:8765
 
 ### 技能（MCP 插件服务器）
 
-共 14 个技能。其中 9 个在 `workflow.yaml` 中默认注册；另外 5 个可以通过添加到配置中启用。
+共 15 个技能。其中 14 个在 `workflow.yaml` 中默认注册；另外 1 个（orchestrator）可以通过添加到配置中启用。
 
 | 技能 | 角色 | LLM? | 默认 |
 |---|---|---|---|
 | `ari-skill-hpc` | SLURM 提交 / 轮询 / Singularity / bash | ✗ | ✓ |
 | `ari-skill-evaluator` | 从实验文件中提取指标 | △ | ✓ |
 | `ari-skill-idea` | arXiv 调研 + VirSci 假设生成 | ✓ | ✓ |
-| `ari-skill-web` | DuckDuckGo、arXiv、Semantic Scholar、迭代引用收集 | △ | ✓ |
+| `ari-skill-web` | DuckDuckGo、arXiv、Semantic Scholar / AlphaXiv、迭代引用收集、上传文件访问 | △ | ✓ |
 | `ari-skill-memory` | 祖先作用域的节点内存（JSONL） | ✗ | ✓ |
-| `ari-skill-transform` | BFTS 树 → 面向科学的数据格式 | ✓ | ✓ |
+| `ari-skill-transform` | BFTS 树 → 面向科学的数据 + EAR 生成 | ✓ | ✓ |
 | `ari-skill-plot` | Matplotlib/seaborn 图表生成 | ✓ | ✓ |
 | `ari-skill-paper` | LaTeX 写作 + BibTeX + 评审 | ✓ | ✓ |
 | `ari-skill-paper-re` | ReAct 可复现性验证 | ✓ | ✓ |
-| `ari-skill-coding` | 代码生成 + 执行 + bash | ✗ | — |
-| `ari-skill-benchmark` | CSV/JSON 分析、绘图、统计检验 | ✗ | — |
-| `ari-skill-review` | 同行评审解析、反驳生成 | ✓ | — |
-| `ari-skill-vlm` | 视觉-语言模型图表/表格审阅 | ✓ | — |
-| `ari-skill-orchestrator` | 将 ARI 作为 MCP 服务器暴露给外部 agent | ✗ | — |
+| `ari-skill-figure-router` | 图类型分类与生成路由（SVG/matplotlib/LaTeX） | ✓ | ✓ |
+| `ari-skill-benchmark` | CSV/JSON 分析、绘图、统计检验 | ✗ | ✓ |
+| `ari-skill-review` | 同行评审解析、反驳生成 | ✓ | ✓ |
+| `ari-skill-vlm` | 视觉-语言模型图表/表格审阅 | ✓ | ✓ |
+| `ari-skill-coding` | 代码生成 + 执行 + 文件读取 + bash | ✗ | ✓ |
+| `ari-skill-orchestrator` | 将 ARI 作为 MCP 服务器暴露、递归子实验、stdio+HTTP 双传输 | ✗ | — |
 
 ✗ = 不使用 LLM，△ = 仅部分工具使用 LLM，✓ = 主要工具使用 LLM。
 

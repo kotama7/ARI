@@ -21,7 +21,8 @@ class LLMConfig(BaseModel):
 class SkillConfig(BaseModel):
     name: str
     path: str
-    phase: str = "all"  # "bfts" | "pipeline" | "all"
+    description: str = ""
+    phase: str = "all"  # "bfts" | "paper" | "all" | "none"
 
 
 class BFTSConfig(BaseModel):
@@ -38,13 +39,14 @@ class CheckpointConfig(BaseModel):
 
 class LoggingConfig(BaseModel):
     level: str = "INFO"
-    dir: str = "./logs/{run_id}/"
+    dir: str = "./checkpoints/{run_id}/"
     format: str = "json"
 
 
 class ARIConfig(BaseModel):
     llm: LLMConfig = LLMConfig()
     skills: list[SkillConfig] = []
+    disabled_tools: list[str] = []  # Tool names to hide from the agent
     bfts: BFTSConfig = BFTSConfig()
     checkpoint: CheckpointConfig = CheckpointConfig()
     logging: LoggingConfig = LoggingConfig()
@@ -89,8 +91,92 @@ def load_config(path: str) -> ARIConfig:
     if "skills" not in raw:
         cfg = ARIConfig(**{k: v for k, v in raw.items() if k in ARIConfig.model_fields})
         cfg.skills = _discover_skills()
+        _merge_bfts_disabled_tools(cfg, raw)
+        _apply_llm_env_overrides(cfg)
+        _apply_checkpoint_env_overrides(cfg)
         return cfg
-    return ARIConfig(**{k: v for k, v in raw.items() if k in ARIConfig.model_fields})
+    cfg = ARIConfig(**{k: v for k, v in raw.items() if k in ARIConfig.model_fields})
+    _merge_bfts_disabled_tools(cfg, raw)
+    _apply_llm_env_overrides(cfg)
+    _apply_checkpoint_env_overrides(cfg)
+    return cfg
+
+
+def _apply_checkpoint_env_overrides(cfg: "ARIConfig") -> None:
+    """Let ARI_CHECKPOINT_DIR override checkpoint.dir from YAML.
+
+    The GUI launcher pre-creates a checkpoint directory and passes its path via
+    ARI_CHECKPOINT_DIR so the spawned CLI writes tree.json to the same place the
+    GUI is watching. Without this override, load_config() ignores the env var
+    and the CLI creates a sibling {run_id} directory, so the GUI sees no nodes.
+    """
+    _ckpt = os.environ.get("ARI_CHECKPOINT_DIR", "")
+    if _ckpt:
+        cfg.checkpoint.dir = _ckpt
+    _log = os.environ.get("ARI_LOG_DIR", "")
+    if _log:
+        cfg.logging.dir = _log
+    elif _ckpt:
+        cfg.logging.dir = _ckpt
+
+
+def apply_bfts_env_overrides(cfg: "ARIConfig") -> None:
+    """Let GUI-injected ARI_MAX_NODES/DEPTH/REACT/PARALLEL/TIMEOUT_NODE win over YAML.
+
+    Without this, workflow.yaml and environment profiles (laptop/hpc/cloud) are
+    authoritative and silently contradict the caps the GUI wizard specifies.
+    Call this AFTER any profile overrides so the explicit user choice wins.
+    """
+    _n = os.environ.get("ARI_MAX_NODES")
+    if _n:
+        try: cfg.bfts.max_total_nodes = int(_n)
+        except ValueError: pass
+    _d = os.environ.get("ARI_MAX_DEPTH")
+    if _d:
+        try: cfg.bfts.max_depth = int(_d)
+        except ValueError: pass
+    _r = os.environ.get("ARI_MAX_REACT")
+    if _r:
+        try: cfg.bfts.max_react_steps = int(_r)
+        except ValueError: pass
+    _p = os.environ.get("ARI_PARALLEL")
+    if _p:
+        try: cfg.bfts.max_parallel_nodes = int(_p)
+        except ValueError: pass
+    _t = os.environ.get("ARI_TIMEOUT_NODE")
+    if _t:
+        try: cfg.bfts.timeout_per_node = int(_t)
+        except ValueError: pass
+
+
+def _apply_llm_env_overrides(cfg: "ARIConfig") -> None:
+    """Let GUI-injected ARI_MODEL / ARI_BACKEND / ARI_LLM_API_BASE override YAML.
+
+    Without this, workflow.yaml's `llm.model` is authoritative and silently
+    contradicts the model the GUI wizard/settings pass via env vars.
+    """
+    _m = os.environ.get("ARI_MODEL") or os.environ.get("ARI_LLM_MODEL")
+    if _m:
+        cfg.llm.model = _m
+    _b = os.environ.get("ARI_BACKEND")
+    if _b:
+        cfg.llm.backend = _b
+    _u = os.environ.get("ARI_LLM_API_BASE")
+    if _u is not None and _u != "":
+        cfg.llm.base_url = _u
+
+
+def _merge_bfts_disabled_tools(cfg: "ARIConfig", raw: dict) -> None:
+    """Auto-disable MCP tools whose bfts_pipeline stage is disabled.
+
+    When a user toggles a BFTS stage off in the GUI, the stage's `tool`
+    is added to `disabled_tools` so the AgentLoop cannot call it either.
+    """
+    for stage in raw.get("bfts_pipeline") or []:
+        if not stage.get("enabled", True):
+            tool = stage.get("tool", "")
+            if tool and tool not in cfg.disabled_tools:
+                cfg.disabled_tools.append(tool)
 
 
 def _discover_skills(base_dir: Path | None = None) -> list[SkillConfig]:
@@ -113,6 +199,13 @@ def auto_config() -> ARIConfig:
     # No model-name guessing here — that violates the Zero Domain Knowledge Principle.
     _backend = os.environ.get("ARI_BACKEND", "ollama")
     _base_url = os.environ.get("OLLAMA_HOST", "http://localhost:11434") if _backend == "ollama" else os.environ.get("LLM_API_BASE", None)
+    # Checkpoint dir: ARI_CHECKPOINT_DIR (explicit) > workspace/checkpoints/{run_id}/
+    # Use PathManager-based workspace path so CLI and GUI share the same location.
+    _ckpt_dir = os.environ.get("ARI_CHECKPOINT_DIR", "")
+    if not _ckpt_dir:
+        _ari_root = Path(__file__).resolve().parents[2]  # ARI/
+        _ckpt_dir = str(_ari_root / "workspace" / "checkpoints" / "{run_id}")
+    _log_dir = os.environ.get("ARI_LOG_DIR", _ckpt_dir)
     return ARIConfig(
         llm=LLMConfig(
             backend=_backend,
@@ -128,10 +221,10 @@ def auto_config() -> ARIConfig:
             max_parallel_nodes=int(os.environ.get("ARI_PARALLEL", 4)),
         ),
         checkpoint=CheckpointConfig(
-            dir=os.environ.get("ARI_CHECKPOINT_DIR", "./checkpoints/{run_id}/"),
+            dir=_ckpt_dir,
         ),
         logging=LoggingConfig(
-            dir=os.environ.get("ARI_LOG_DIR", "./logs/{run_id}/"),
+            dir=_log_dir,
             level=os.environ.get("ARI_LOG_LEVEL", "INFO"),
         ),
         resources={

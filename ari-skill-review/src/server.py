@@ -11,7 +11,10 @@ mcp = FastMCP("review-response-skill")
 import os
 import re as _re
 
-LLM_MODEL = os.environ.get("ARI_LLM_MODEL") or os.environ.get("LLM_MODEL") or "ollama/qwen3:8b"
+LLM_MODEL = (os.environ.get("ARI_MODEL_REVIEW")
+             or os.environ.get("ARI_LLM_MODEL")
+             or os.environ.get("LLM_MODEL")
+             or "ollama/qwen3:8b")
 _ari_base = os.environ.get("ARI_LLM_API_BASE")
 if _ari_base is not None:
     LLM_API_BASE = _ari_base or None
@@ -104,9 +107,21 @@ async def parse_review(review_text: str) -> dict:
 
 @mcp.tool()
 async def generate_rebuttal(
-    concerns: list[dict], paper_context: str, experiment_results: str
+    review_report: str, tex_path: str
 ) -> dict:
     """Generate a rebuttal to review comments."""
+    from pathlib import Path
+
+    report_path = Path(review_report)
+    if report_path.exists():
+        report = json.loads(report_path.read_text())
+    else:
+        report = {}
+    concerns = report.get("concerns", [])
+
+    tex = Path(tex_path)
+    paper_context = tex.read_text() if tex.exists() else ""
+
     system = (
         "You are an academic rebuttal writer. "
         "Generate a rebuttal addressing each review concern.\n"
@@ -119,7 +134,6 @@ async def generate_rebuttal(
         {
             "concerns": concerns,
             "paper_context": paper_context,
-            "experiment_results": experiment_results,
         },
         ensure_ascii=False,
     )

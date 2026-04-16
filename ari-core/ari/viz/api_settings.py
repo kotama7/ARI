@@ -4,11 +4,37 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from pathlib import Path
 
 from . import state as _st
 
 log = logging.getLogger(__name__)
+
+
+def _extract_tools_from_server(skill_dir: Path) -> list[str]:
+    """Extract MCP tool names from server.py when mcp.json has no tools.
+
+    Looks for two patterns:
+    - ``@mcp.tool()`` decorator followed by ``async def <name>(`` or ``def <name>(``
+    - ``Tool(name="<name>"`` in ``list_tools()`` style registration
+    """
+    server_py = skill_dir / "src" / "server.py"
+    if not server_py.exists():
+        return []
+    try:
+        src = server_py.read_text()
+    except Exception:
+        return []
+    tools: list[str] = []
+    # Pattern 1: @mcp.tool() decorator
+    for m in re.finditer(r"@mcp\.tool\(\)\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(", src):
+        tools.append(m.group(1))
+    # Pattern 2: Tool(name="...")
+    for m in re.finditer(r'Tool\(\s*name\s*=\s*"(\w+)"', src):
+        if m.group(1) not in tools:
+            tools.append(m.group(1))
+    return tools
 
 
 def _api_get_env_keys() -> dict:
@@ -98,26 +124,36 @@ def _api_get_settings() -> dict:
         "ollama_host": os.environ.get("OLLAMA_HOST", "http://localhost:11434"),
         "temperature": 1.0,
         "semantic_scholar_key": "",
+        "retrieval_backend": os.environ.get("ARI_RETRIEVAL_BACKEND", "semantic_scholar"),
         "slurm_partition": "",
         "slurm_cpus": None,
         "slurm_memory_gb": None,
         "slurm_gpus": 0,
         "slurm_walltime": "04:00:00",
         "mcp_skills": [],
+        "container_mode": "auto",
+        "container_image": "",
+        "container_pull": "on_start",
+        "vlm_review_enabled": True,
+        "vlm_review_model": "openai/gpt-4o",
+        "vlm_review_max_iter": 3,
+        "vlm_review_threshold": 0.7,
     }
-    if _st._settings_path.exists():
+    # Read project-scoped settings only.  When no checkpoint is selected the
+    # GUI displays built-in defaults (workflow.yaml + hardcoded values) — ARI
+    # no longer maintains any global ~/.ari/settings.json fallback.
+    _active = _st._settings_path
+    if _active is not None and _active.exists():
         try:
-            saved = json.loads(_st._settings_path.read_text())
-            # Merge: saved values override defaults, but missing keys get defaults
+            saved = json.loads(_active.read_text())
             merged = {**defaults, **saved}
-            # If saved values are empty, fall back to workflow.yaml defaults
             if not merged.get("llm_provider"):
                 merged["llm_provider"] = _wf_provider
             if not merged.get("llm_model"):
                 merged["llm_model"] = _wf_model
             return merged
         except Exception:
-            log.warning("Failed to load settings.json", exc_info=True)
+            log.warning("Failed to load settings file %s", _active, exc_info=True)
     return defaults
 
 
@@ -153,8 +189,17 @@ def _api_save_settings(body: bytes) -> dict:
                 _new_lines.append(f"{_env_key_name}={_raw_key}")
             _env_path.write_text("\n".join(_new_lines) + "\n")
             os.environ[_env_key_name] = _raw_key
-    _st._settings_path.parent.mkdir(parents=True, exist_ok=True)
-    _st._settings_path.write_text(json.dumps(data, indent=2))
+    # Settings are always project-scoped now.  Without an active checkpoint
+    # there is nowhere to persist, so refuse the write and prompt the user.
+    _active = _st._settings_path
+    if _active is None:
+        return {
+            "ok": False,
+            "error": "No active project. Create or select a checkpoint before saving settings.",
+            "_status": 400,
+        }
+    _active.parent.mkdir(parents=True, exist_ok=True)
+    _active.write_text(json.dumps(data, indent=2))
     return {"ok": True}
 
 
@@ -175,32 +220,132 @@ def _api_get_workflow() -> dict:
                 # Load MCP tool metadata from each skill directory
                 ari_root = wf.parent.parent.parent
                 skill_mcp: dict = {}
+                # Build dir-name → mcp data mapping first
+                dir_mcp: dict[str, dict] = {}
                 for skill_dir in sorted(ari_root.glob("ari-skill-*")):
                     mcp_file = skill_dir / "mcp.json"
+                    tools: list = []
+                    mcp_name = skill_dir.name
+                    mcp_desc = ""
+                    mcp_ver = ""
                     if mcp_file.exists():
                         try:
                             mcp_data = json.loads(mcp_file.read_text())
-                            name = mcp_data.get("name") or skill_dir.name
-                            skill_mcp[name] = {
-                                "name": name,
-                                "description": mcp_data.get("description", ""),
-                                "tools": mcp_data.get("tools", []),
-                                "version": mcp_data.get("version", ""),
-                                "dir": skill_dir.name,
-                            }
+                            mcp_name = mcp_data.get("name") or skill_dir.name
+                            mcp_desc = mcp_data.get("description", "")
+                            tools = mcp_data.get("tools", [])
+                            mcp_ver = mcp_data.get("version", "")
                         except Exception:
                             log.debug("skill metadata read error", exc_info=True)
-                # Also collect from workflow.yaml skills section
+                    # Fallback: extract tool names from server.py if
+                    # mcp.json has no tools listed
+                    if not tools:
+                        tools = _extract_tools_from_server(skill_dir)
+                    entry = {
+                        "name": mcp_name,
+                        "description": mcp_desc,
+                        "tools": tools,
+                        "version": mcp_ver,
+                        "dir": skill_dir.name,
+                    }
+                    dir_mcp[skill_dir.name] = entry
+                    skill_mcp[entry["name"]] = entry
+                # Resolve workflow.yaml skills section: map workflow skill
+                # names to their mcp.json tools via the path field
                 for sk in data.get("skills", []):
                     sk_name = sk.get("name", "")
-                    if sk_name not in skill_mcp:
+                    sk_path = sk.get("path", "")
+                    # Resolve {{ari_root}} and extract directory name
+                    resolved = sk_path.replace("{{ari_root}}", str(ari_root))
+                    dir_name = Path(resolved).name if resolved else ""
+                    if dir_name and dir_name in dir_mcp:
+                        # Merge mcp.json data under the workflow skill name
+                        src = dir_mcp[dir_name]
+                        entry = {
+                            "name": sk_name,
+                            "description": sk.get("description") or src["description"],
+                            "tools": src["tools"],
+                            "version": src["version"],
+                            "dir": src["dir"],
+                        }
+                        # Read phase directly from workflow.yaml skills entry
+                        if sk.get("phase"):
+                            entry["phase"] = sk["phase"]
+                        skill_mcp[sk_name] = entry
+                        # Remove the mcp.json alias if it differs from
+                        # the workflow name (e.g. review-response-skill
+                        # vs review-skill) to avoid duplicate entries
+                        mcp_alias = src["name"]
+                        if mcp_alias != sk_name and mcp_alias in skill_mcp:
+                            del skill_mcp[mcp_alias]
+                    elif sk_name not in skill_mcp:
                         skill_mcp[sk_name] = {
                             "name": sk_name,
                             "description": sk.get("description", ""),
                             "tools": [],
                             "version": "",
-                            "dir": "",
+                            "phase": sk.get("phase", "all"),
+                            "dir": dir_name,
                         }
+                # Enrich skill_mcp with phase info from default.yaml
+                default_yaml = ari_root / "ari-core" / "config" / "default.yaml"
+                if not default_yaml.exists():
+                    default_yaml = wf.parent / "default.yaml"
+                if default_yaml.exists():
+                    try:
+                        import yaml as _yaml
+                        default_data = _yaml.safe_load(default_yaml.read_text()) or {}
+                        for sk_def in default_data.get("skills", []):
+                            sk_name = sk_def.get("name", "")
+                            sk_phase = sk_def.get("phase", "")
+                            if sk_name in skill_mcp:
+                                skill_mcp[sk_name]["phase"] = sk_phase
+                            # Also resolve dir-based entries
+                            sk_dir = Path(sk_def.get("path", "")).name
+                            if sk_dir in dir_mcp and dir_mcp[sk_dir]["name"] in skill_mcp:
+                                skill_mcp[dir_mcp[sk_dir]["name"]]["phase"] = sk_phase
+                    except Exception:
+                        log.debug("default.yaml phase read error", exc_info=True)
+                # Also set phase from pipeline stage assignments
+                bfts_skills = set()
+                paper_skills = set()
+                for s in data.get("bfts_pipeline") or []:
+                    bfts_skills.add(s.get("skill", ""))
+                for s in data.get("pipeline") or []:
+                    paper_skills.add(s.get("skill", ""))
+                for sk_name, entry in skill_mcp.items():
+                    if "phase" not in entry:
+                        if sk_name in bfts_skills:
+                            entry["phase"] = "bfts"
+                        elif sk_name in paper_skills:
+                            entry["phase"] = "pipeline"
+
+                # Determine usage: stage / active / registered
+                # Scan core source for tool name references
+                core_dir = ari_root / "ari-core" / "ari"
+                _core_src = ""
+                if core_dir.is_dir():
+                    for py in core_dir.rglob("*.py"):
+                        if "viz/" in str(py) or "__pycache__" in str(py):
+                            continue
+                        try:
+                            _core_src += py.read_text(errors="ignore")
+                        except Exception:
+                            pass
+                for sk_name, entry in skill_mcp.items():
+                    if sk_name in bfts_skills or sk_name in paper_skills:
+                        entry["usage"] = "stage"
+                    else:
+                        tool_names = [
+                            t if isinstance(t, str) else t.get("name", "")
+                            for t in entry.get("tools", [])
+                        ]
+                        called = any(
+                            f'"{tn}"' in _core_src or f"'{tn}'" in _core_src
+                            for tn in tool_names if tn
+                        )
+                        entry["usage"] = "active" if called else "registered"
+
                 # Read BFTS and paper pipelines from YAML (no hardcoded stages)
                 bfts_pipeline = data.get("bfts_pipeline") or []
                 paper_pipeline = data.get("pipeline") or []
@@ -213,6 +358,7 @@ def _api_get_workflow() -> dict:
                         if not s.get("depends_on"):
                             s["depends_on"] = [last_bfts]
                 return {"ok": True, "workflow": data, "path": str(wf), "skill_mcp": skill_mcp,
+                        "disabled_tools": data.get("disabled_tools") or [],
                         "bfts_pipeline": bfts_pipeline,
                         "paper_pipeline": paper_pipeline,
                         "full_pipeline": bfts_pipeline + paper_pipeline}
@@ -294,9 +440,9 @@ def _api_skills() -> list:
     try:
         # Search multiple candidate root directories for ari-skill-* packages
         _search_roots = [
-            _st._ari_home,
-            Path(__file__).parent.parent.parent.parent,  # ~/ARI/
-            Path(__file__).parent.parent.parent,          # ~/ARI/ari-core/
+            _st._ari_root,
+            Path(__file__).parent.parent.parent.parent,  # ARI/
+            Path(__file__).parent.parent.parent,          # ARI/ari-core/
         ]
         _seen = set()
         _all_dirs = []
@@ -330,7 +476,7 @@ def _api_skills() -> list:
 
 def _api_profiles() -> list:
     profiles = []
-    profiles_dir = _st._ari_home / "ari-core" / "config" / "profiles"
+    profiles_dir = _st._ari_root / "ari-core" / "config" / "profiles"
     if profiles_dir.exists():
         for p in sorted(profiles_dir.glob("*.yaml")):
             profiles.append({"name": p.stem, "path": str(p)})

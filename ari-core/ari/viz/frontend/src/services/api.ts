@@ -5,6 +5,7 @@ import type {
   AppState,
   Checkpoint,
   CheckpointSummary,
+  ResourceMetrics,
   Settings,
   WorkflowData,
   WorkflowStage,
@@ -36,12 +37,61 @@ export async function fetchState(): Promise<AppState> {
   return get<AppState>('/state');
 }
 
+export async function fetchExperimentDetail(): Promise<string> {
+  const d = await get<{ experiment_detail_config?: string }>('/api/experiment-detail');
+  return d.experiment_detail_config ?? '';
+}
+
 export async function fetchCheckpoints(): Promise<Checkpoint[]> {
   return get<Checkpoint[]>('/api/checkpoints');
 }
 
 export async function fetchCheckpointSummary(id: string): Promise<CheckpointSummary> {
   return get<CheckpointSummary>(`/api/checkpoint/${encodeURIComponent(id)}/summary`);
+}
+
+export interface MemoryEntry {
+  node_id: string;
+  text: string;
+  metadata: Record<string, unknown>;
+  tags?: string[];
+  ts?: number;
+  source: 'mcp' | 'file_client' | 'global';
+}
+
+export interface MemoryResponse {
+  id: string;
+  entries: MemoryEntry[];
+  by_node: Record<string, MemoryEntry[]>;
+  global?: MemoryEntry[];
+  global_path?: string;
+  count: number;
+  error?: string;
+}
+
+export async function fetchCheckpointMemory(id: string): Promise<MemoryResponse> {
+  return get<MemoryResponse>(`/api/checkpoint/${encodeURIComponent(id)}/memory`);
+}
+
+// ── EAR (Experiment Artifact Repository) ─────────
+export interface EARFile {
+  path: string;
+  type: 'file' | 'dir';
+  size?: number;
+}
+
+export interface EARData {
+  run_id?: string;
+  ear_dir?: string;
+  files?: EARFile[];
+  readme?: string;
+  results?: string;
+  file_count?: number;
+  error?: string;
+}
+
+export async function fetchEAR(runId: string): Promise<EARData> {
+  return get<EARData>(`/api/ear/${encodeURIComponent(runId)}`);
 }
 
 export async function deleteCheckpoint(
@@ -151,6 +201,12 @@ export async function uploadFile(
   return res.json();
 }
 
+export async function deleteUploadedFile(
+  filename: string,
+): Promise<{ ok: boolean; error?: string }> {
+  return post('/api/upload/delete', { filename });
+}
+
 // ── SSH / HPC ──────────────────────────────────
 
 export async function testSSH(
@@ -186,8 +242,165 @@ export async function gpuMonitorAction(action: string): Promise<any> {
   return post('/api/gpu-monitor', { action, confirmed: true });
 }
 
+// ── resource metrics ──────────────────────────
+
+export async function fetchResourceMetrics(): Promise<ResourceMetrics> {
+  return get<ResourceMetrics>('/api/resource-metrics');
+}
+
+// ── container ─────────────────────────────────
+
+export async function fetchContainerInfo(): Promise<{
+  runtime: string;
+  version: string;
+  available: boolean;
+}> {
+  return get('/api/container/info');
+}
+
+export interface ContainerImage {
+  name: string;
+  size: string;
+}
+
+export async function fetchContainerImages(): Promise<{ images: ContainerImage[] }> {
+  return get('/api/container/images');
+}
+
+export async function pullContainerImage(
+  image: string,
+  mode?: string,
+): Promise<{ ok: boolean; error?: string }> {
+  return post('/api/container/pull', { image, mode: mode || 'auto' });
+}
+
+// ── checkpoint file management (Overleaf-like) ──
+
+export interface CheckpointFile {
+  name: string;
+  size: number;
+  editable: boolean;
+  ext: string;
+  abs_path: string;
+}
+
+export async function fetchCheckpointFiles(
+  id: string,
+): Promise<{ id: string; path: string; files: CheckpointFile[]; error?: string }> {
+  return get(`/api/checkpoint/${encodeURIComponent(id)}/files`);
+}
+
+export async function fetchCheckpointFileContent(
+  id: string,
+  filename: string,
+): Promise<{ name: string; content: string; error?: string }> {
+  return get(`/api/checkpoint/${encodeURIComponent(id)}/file?name=${encodeURIComponent(filename)}`);
+}
+
+export async function saveCheckpointFile(
+  checkpointId: string,
+  filename: string,
+  content: string,
+): Promise<{ ok: boolean; error?: string }> {
+  return post('/api/checkpoint/file/save', {
+    checkpoint_id: checkpointId,
+    filename,
+    content,
+  });
+}
+
+export async function uploadCheckpointFile(
+  checkpointId: string,
+  file: File,
+): Promise<{ ok: boolean; name?: string; error?: string }> {
+  const res = await fetch(`/api/checkpoint/${encodeURIComponent(checkpointId)}/file/upload`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/octet-stream',
+      'X-Filename': file.name,
+    },
+    body: file,
+  });
+  if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+  return res.json();
+}
+
+export async function deleteCheckpointFile(
+  checkpointId: string,
+  filename: string,
+): Promise<{ ok: boolean; error?: string }> {
+  return post('/api/checkpoint/file/delete', {
+    checkpoint_id: checkpointId,
+    filename,
+  });
+}
+
+export async function compileCheckpointPaper(
+  checkpointId: string,
+  mainFile?: string,
+): Promise<{ ok: boolean; log: string }> {
+  return post('/api/checkpoint/compile', {
+    checkpoint_id: checkpointId,
+    main_file: mainFile || 'full_paper.tex',
+  });
+}
+
+// ── workflow flow (React Flow) ────────────────
+
+export async function fetchWorkflowFlow(): Promise<any> {
+  return get('/api/workflow/flow');
+}
+
+export async function saveWorkflowFlow(data: any): Promise<{ ok: boolean; error?: string }> {
+  return post('/api/workflow/flow', data);
+}
+
+export async function fetchWorkflowDefault(): Promise<any> {
+  return get('/api/workflow/default');
+}
+
+export async function saveSkillPhases(
+  skills: { name: string; phase: string }[],
+): Promise<{ ok: boolean; error?: string }> {
+  return post('/api/workflow/skills', { skills });
+}
+
+export async function saveDisabledTools(
+  disabled_tools: string[],
+): Promise<{ ok: boolean; error?: string }> {
+  return post('/api/workflow/disabled-tools', { disabled_tools });
+}
+
 // ── models ─────────────────────────────────────
 
 export async function fetchModels(): Promise<any> {
   return get('/api/models');
+}
+
+// ── sub-experiments (recursive orchestration) ──
+
+export interface SubExperiment {
+  run_id: string;
+  parent_run_id?: string | null;
+  recursion_depth: number;
+  max_recursion_depth: number;
+  created_at?: string;
+  checkpoint_dir?: string;
+}
+
+export async function fetchSubExperiments(): Promise<{ sub_experiments: SubExperiment[] }> {
+  return get('/api/sub-experiments');
+}
+
+export async function fetchSubExperiment(runId: string): Promise<SubExperiment> {
+  return get(`/api/sub-experiments/${encodeURIComponent(runId)}`);
+}
+
+export async function launchSubExperiment(data: {
+  experiment_md: string;
+  max_recursion_depth?: number;
+  parent_run_id?: string;
+  recursion_depth?: number;
+}): Promise<{ ok: boolean; run_id?: string; pid?: number; error?: string }> {
+  return post('/api/sub-experiments/launch', data);
 }

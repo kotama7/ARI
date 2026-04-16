@@ -194,8 +194,9 @@ class _SkillConnection:
 class MCPClient:
     """MCP client with connection pooling and retry logic."""
 
-    def __init__(self, skills: list[SkillConfig]) -> None:
+    def __init__(self, skills: list[SkillConfig], disabled_tools: list[str] | None = None) -> None:
         self.skills = skills
+        self.disabled_tools: set[str] = set(disabled_tools or [])
         self._connections: dict[str, _SkillConnection] = {}
         self._conn_lock = __import__('threading').Lock()
         self._tool_registry: dict[str, str] = {}  # tool_name -> skill.name
@@ -213,15 +214,28 @@ class MCPClient:
             return self._connections[skill.name]
 
     def list_tools(self, phase: str | None = None) -> list[dict]:
-        """Return skill tools, optionally filtered by phase ('bfts' | 'pipeline' | None=all)."""
-        if self._tools_cache is not None:
-            if phase is None:
-                return self._tools_cache
-            _pm = getattr(self, '_phase_map', {})
-            return [t for t in self._tools_cache if _pm.get(t['name'], 'all') in (phase, 'all')]
+        """Return skill tools, optionally filtered by phase and disabled_tools."""
+        if self._tools_cache is None:
+            self._build_tools_cache()
 
+        tools = self._tools_cache
+        # Filter by disabled_tools
+        if self.disabled_tools:
+            tools = [t for t in tools if t["name"] not in self.disabled_tools]
+        # Filter by phase
+        if phase is not None:
+            _pm = self._phase_map
+            tools = [t for t in tools if _pm.get(t["name"], "all") in (phase, "all")]
+        return tools
+
+    def _build_tools_cache(self) -> None:
+        """Discover tools from all enabled skills (called once, lazily)."""
         tools: list[dict] = []
         for skill in self.skills:
+            # Skip disabled skills (phase: none) — don't start MCP server
+            if getattr(skill, "phase", "all") == "none":
+                logger.info("Skipping disabled skill '%s' (phase=none)", skill.name)
+                continue
             try:
                 conn = self._init_connection(skill)
                 skill_tools = conn.list_tools()
@@ -237,12 +251,19 @@ class MCPClient:
             next((s for s in self.skills if s.name == self._tool_registry.get(t["name"],"")), None),
             "phase", "all") for t in tools}
 
-        if phase is None:
-            return self._tools_cache
-        return [t for t in self._tools_cache if self._phase_map.get(t["name"], "all") in (phase, "all")]
-
     def call_tool(self, tool_name: str, args: dict) -> dict:
         """Call a tool. Reuses connection pool and retries on failure."""
+        # ── Trace: log tool call args for propagation debugging ────
+        _TRACE_TOOLS = {"make_metric_spec", "generate_ideas", "survey"}
+        if tool_name in _TRACE_TOOLS:
+            import json as _json_trace
+            _args_str = _json_trace.dumps(args, ensure_ascii=False)
+            logger.info(
+                "[mcp] call_tool %s: args_len=%d args=%s",
+                tool_name, len(_args_str), _args_str[:500],
+            )
+        else:
+            logger.debug("[mcp] call_tool %s: args_keys=%s", tool_name, list(args.keys()))
         skill_name = self._tool_registry.get(tool_name)
         if not skill_name:
             registered = list(self._tool_registry.keys())
