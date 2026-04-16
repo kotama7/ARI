@@ -38,6 +38,7 @@ export interface Settings {
   ollama_host: string;
   temperature: number;
   semantic_scholar_key: string;
+  retrieval_backend: string;
   ssh_host: string;
   ssh_port: number;
   ssh_user: string;
@@ -55,6 +56,13 @@ export interface Settings {
   model_eval: string;
   model_paper: string;
   model_review: string;
+  container_mode: string;
+  container_image: string;
+  container_pull: string;
+  vlm_review_enabled: boolean;
+  vlm_review_model: string;
+  vlm_review_max_iter: number;
+  vlm_review_threshold: number;
 }
 
 export interface AppState {
@@ -76,7 +84,6 @@ export interface AppState {
   experiment_goal: string;
   experiment_context: string;
   experiment_config: Record<string, unknown>;
-  experiment_detail_config: Record<string, unknown>;
   cost: number;
   node_count: number;
   ideas: unknown[];
@@ -116,9 +123,21 @@ export interface WorkflowData {
   bfts_pipeline: WorkflowStage[];
   paper_pipeline: WorkflowStage[];
   skill_mcp: Record<string, unknown>;
+  disabled_tools: string[];
   path: string;
   ok: boolean;
   error: string | null;
+}
+
+export interface ResourceMetrics {
+  process_count: number;
+  memory_rss_mb: number;
+  cpu_load_1m: number;
+  cpu_load_5m: number;
+  cpu_load_15m: number;
+  cpu_count: number;
+  experiment_pid: number | null;
+  timestamp: string;
 }
 
 export interface ReviewReport {

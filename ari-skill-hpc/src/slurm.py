@@ -107,6 +107,17 @@ class SlurmClient:
         import re as _re_part
         script = _re_part.sub(r"#SBATCH\s+--partition=\S*\n?", "", script)
 
+        # Strip LLM-generated #SBATCH --cpus-per-task / -c lines from the
+        # script body. The authoritative value comes from kwargs or
+        # ARI_SLURM_CPUS (auto-detected from sinfo when the wizard left it
+        # blank). Without this, a stale LLM-written value placed AFTER the
+        # header would override the partition-aware value because later
+        # #SBATCH directives win.
+        import re as _re_cpu
+        script = _re_cpu.sub(
+            r"#SBATCH\s+(?:--cpus-per-task[=\s]|-c\s+)\S+[^\n]*\n?", "", script
+        )
+
         job_name = kwargs.get("job_name", "mcp_job")
         # Auto-determine partition
         import os as _os, subprocess as _sp

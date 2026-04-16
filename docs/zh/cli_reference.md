@@ -271,6 +271,15 @@ ari skills-list [--config <config.yaml>]
 |------|------|--------|
 | `ARI_EXECUTOR` | 执行后端（`local` / `slurm` / `pbs` / `lsf`） | `local` |
 | `ARI_SLURM_PARTITION` | SLURM 分区名称 | — |
+| `ARI_SLURM_CPUS` | 覆盖 SLURM 作业的 CPU 数 | (自动检测) |
+
+### 检索与 VLM
+
+| 变量 | 描述 | 默认值 |
+|------|------|--------|
+| `ARI_RETRIEVAL_BACKEND` | 论文搜索: `semantic_scholar` / `alphaxiv` / `both` | `semantic_scholar` |
+| `VLM_MODEL` | 图表审阅 VLM 模型 | `openai/gpt-4o` |
+| `ARI_ORCHESTRATOR_PORT` | orchestrator 技能的 HTTP 端口 | `9890` |
 
 ### 按阶段模型覆盖
 

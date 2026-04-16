@@ -5,17 +5,18 @@
 # Works on Linux, macOS, and WSL2 — with or without conda/sudo.
 #
 # Module layout (scripts/setup/):
-#   colors.sh       — Terminal colors & logging helpers
-#   spinner.sh      — Ant-march animation for long-running commands
-#   messages.sh     — i18n message catalog (en/ja/zh)
-#   lang_select.sh  — Interactive language selector
-#   detect_env.sh   — OS, shell, Python, pip, git detection
-#   install_core.sh — [1/5] ari-core + skill plugins
-#   install_deps.sh — [2/5] Python dependencies
-#   install_pdf.sh  — [3/5] PDF tools (optional)
-#   install_latex.sh— [4/5] LaTeX (optional)
-#   verify.sh       — [5/5] Final verification
-#   banner.sh       — Completion banner & next steps
+#   colors.sh          — Terminal colors & logging helpers
+#   spinner.sh         — Ant-march animation for long-running commands
+#   messages.sh        — i18n message catalog (en/ja/zh)
+#   lang_select.sh     — Interactive language selector
+#   detect_env.sh      — OS, shell, Python, pip, git detection
+#   install_core.sh    — [1/6] ari-core + skill plugins
+#   install_deps.sh    — [2/6] Python dependencies
+#   install_pdf.sh     — [3/6] PDF tools (optional)
+#   install_latex.sh   — [4/6] LaTeX (optional)
+#   install_frontend.sh— [5/6] React dashboard build
+#   verify.sh          — [6/6] Final verification
+#   banner.sh          — Completion banner & next steps
 # ============================================================================
 set -euo pipefail
 
@@ -56,6 +57,7 @@ load lang_select.sh
 load detect_env.sh      # OS, shell, Python, pip, git
 load install_core.sh    # [1/6] ari-core + skills
 load install_deps.sh    # [2/6] Python dependencies
+load setup_env.sh       # Configure .env (API keys + defaults)
 load install_pdf.sh     # [3/6] PDF tools
 load install_latex.sh   # [4/6] LaTeX
 load install_frontend.sh # [5/6] React dashboard build

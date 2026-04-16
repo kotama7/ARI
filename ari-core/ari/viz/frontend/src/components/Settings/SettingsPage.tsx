@@ -11,6 +11,7 @@ import {
   deleteCheckpoint,
   testSSH as apiTestSSH,
   generateConfig,
+  fetchContainerInfo,
 } from '../../services/api';
 import type { Checkpoint } from '../../types';
 import { Card } from '../common';
@@ -58,6 +59,7 @@ export default function SettingsPage() {
 
   // Paper
   const [ssKey, setSsKey] = useState('');
+  const [retrievalBackend, setRetrievalBackend] = useState('semantic_scholar');
 
   // SLURM
   const [partitions, setPartitions] = useState<{ name: string; nodes: number; cpus: number }[]>([]);
@@ -73,6 +75,16 @@ export default function SettingsPage() {
   const [sshPath, setSshPath] = useState('');
   const [sshKeyPath, setSshKeyPath] = useState('');
   const [sshStatus, setSshStatus] = useState('');
+
+  // Container
+  const [containerMode, setContainerMode] = useState('auto');
+  const [containerImage, setContainerImage] = useState('');
+  const [containerPull, setContainerPull] = useState('on_start');
+  const [containerRuntime, setContainerRuntime] = useState('');
+  const [containerVersion, setContainerVersion] = useState('');
+
+  // VLM Review
+  const [vlmReviewModel, setVlmReviewModel] = useState('openai/gpt-4o');
 
   // Skills
   const [skills, setSkills] = useState<SkillInfo[]>([]);
@@ -102,6 +114,7 @@ export default function SettingsPage() {
       setApiKey(r.llm_api_key || '');
       setBaseUrl(r.ollama_host || '');
       setSsKey(r.semantic_scholar_key || '');
+      setRetrievalBackend(r.retrieval_backend || 'semantic_scholar');
       setSshHost(r.ssh_host || '');
       setSshPort(r.ssh_port || 22);
       setSshUser(r.ssh_user || '');
@@ -111,6 +124,10 @@ export default function SettingsPage() {
       setCpus(r.slurm_cpus || 8);
       setMemGb(r.slurm_memory_gb || 32);
       setWalltime(r.slurm_walltime || '04:00:00');
+      setContainerMode(r.container_mode || 'auto');
+      setContainerImage(r.container_image || '');
+      setContainerPull(r.container_pull || 'on_start');
+      setVlmReviewModel(r.vlm_review_model || 'openai/gpt-4o');
     } catch {
       // ignore
     }
@@ -191,6 +208,7 @@ export default function SettingsPage() {
       temperature,
       llm_api_key: apiKey,
       semantic_scholar_key: ssKey,
+      retrieval_backend: retrievalBackend,
       ssh_host: sshHost,
       ssh_port: sshPort,
       ssh_user: sshUser,
@@ -201,6 +219,10 @@ export default function SettingsPage() {
       slurm_cpus: cpus,
       slurm_memory_gb: memGb,
       slurm_walltime: walltime,
+      container_mode: containerMode,
+      container_image: containerImage,
+      container_pull: containerPull,
+      vlm_review_model: vlmReviewModel,
     };
 
     try {
@@ -251,6 +273,19 @@ export default function SettingsPage() {
       }
     } catch (e) {
       alert('Delete failed: ' + String(e));
+    }
+  }
+
+  // ── Detect container runtime ────────────
+
+  async function handleDetectRuntime() {
+    try {
+      const r = await fetchContainerInfo();
+      setContainerRuntime(r.runtime || 'none');
+      setContainerVersion(r.version || '');
+    } catch {
+      setContainerRuntime('none');
+      setContainerVersion('');
     }
   }
 
@@ -403,6 +438,25 @@ export default function SettingsPage() {
 
         {/* ── Paper Retrieval ──────────────── */}
         <Card title={t('settings_paper')}>
+          <label style={labelStyle}>Paper Retrieval Backend</label>
+          <div style={{ display: 'flex', gap: '16px', marginBottom: '12px' }}>
+            {([
+              ['semantic_scholar', 'Semantic Scholar'],
+              ['alphaxiv', 'AlphaXiv'],
+              ['both', 'Both (parallel)'],
+            ] as const).map(([val, label]) => (
+              <label key={val} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '.85rem', cursor: 'pointer' }}>
+                <input
+                  type="radio"
+                  name="retrieval_backend"
+                  value={val}
+                  checked={retrievalBackend === val}
+                  onChange={() => setRetrievalBackend(val)}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
           <label style={labelStyle}>Semantic Scholar API Key</label>
           <input
             type="password"
@@ -411,6 +465,20 @@ export default function SettingsPage() {
             placeholder="(optional)"
             style={inputStyle}
           />
+        </Card>
+
+        {/* ── VLM Figure Review ─────────────── */}
+        <Card title="VLM Figure Review">
+          <label style={labelStyle}>VLM Model</label>
+          <select
+            value={vlmReviewModel}
+            onChange={(e) => setVlmReviewModel(e.target.value)}
+            style={inputStyle}
+          >
+            {(PROVIDER_MODELS[provider] || PROVIDER_MODELS[DEFAULT_PROVIDER]).map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
         </Card>
 
         {/* ── SLURM / HPC ─────────────────── */}
@@ -484,6 +552,63 @@ export default function SettingsPage() {
                 onChange={(e) => setWalltime(e.target.value)}
                 style={inputStyle}
               />
+            </div>
+          </div>
+        </Card>
+
+        {/* ── Container ────────────────────── */}
+        <Card title="Container">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={labelStyle}>Mode</label>
+              <select
+                value={containerMode}
+                onChange={(e) => setContainerMode(e.target.value)}
+                style={inputStyle}
+              >
+                <option value="auto">Auto</option>
+                <option value="docker">Docker</option>
+                <option value="singularity">Singularity</option>
+                <option value="apptainer">Apptainer</option>
+                <option value="none">None</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Pull Policy</label>
+              <select
+                value={containerPull}
+                onChange={(e) => setContainerPull(e.target.value)}
+                style={inputStyle}
+              >
+                <option value="always">Always</option>
+                <option value="on_start">On Start</option>
+                <option value="never">Never</option>
+              </select>
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={labelStyle}>Image</label>
+              <input
+                type="text"
+                value={containerImage}
+                onChange={(e) => setContainerImage(e.target.value)}
+                placeholder="ghcr.io/kotama7/ari:latest"
+                style={inputStyle}
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
+              <button className="btn btn-outline btn-sm" onClick={handleDetectRuntime}>
+                Detect Runtime
+              </button>
+              {containerRuntime && (
+                <span
+                  className={containerRuntime !== 'none' ? 'badge badge-green' : 'badge'}
+                  style={{ fontSize: '.75rem' }}
+                >
+                  {containerRuntime}
+                  {containerRuntime !== 'none' ? ' \u2713' : ''}
+                  {containerVersion ? ` (${containerVersion})` : ''}
+                </span>
+              )}
             </div>
           </div>
         </Card>

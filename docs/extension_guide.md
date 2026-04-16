@@ -263,7 +263,7 @@ bfts:
 
 ## 7. Exposing ARI to External Systems
 
-Use `ari-skill-orchestrator` to trigger ARI from other agents, IDEs, or scripts.
+Use `ari-skill-orchestrator` to trigger ARI from other agents, IDEs, or scripts. The orchestrator supports dual transport: **stdio** (MCP for Claude Desktop) + **HTTP** (REST + SSE on `ARI_ORCHESTRATOR_PORT`, default 9890).
 
 ### From Claude Desktop
 
@@ -293,9 +293,31 @@ async with ClientSession(...) as session:
     run_id = result["run_id"]
 ```
 
-### As a REST API (via orchestrator)
+### Recursive Sub-Experiments
 
-The orchestrator MCP server can be proxied via an HTTP gateway for CI/CD integration.
+The orchestrator supports parent-child experiment tracking. Child experiments can be launched from a parent:
+
+```python
+result = await session.call_tool("run_experiment", {
+    "experiment_md": "...",
+    "parent_run_id": "parent_20260414",
+    "max_recursion_depth": 2
+})
+```
+
+Use `list_children(run_id)` to retrieve child runs. The GUI Sub-Experiments page visualizes the hierarchy.
+
+### As a REST API (via HTTP transport)
+
+When launched with HTTP transport enabled (`ARI_ORCHESTRATOR_PORT`), the orchestrator exposes REST endpoints and SSE for CI/CD integration:
+
+```bash
+# Launch an experiment
+curl -X POST http://localhost:9890/run -d '{"experiment_md": "...", "max_nodes": 10}'
+
+# Check status
+curl http://localhost:9890/status/{run_id}
+```
 
 ---
 

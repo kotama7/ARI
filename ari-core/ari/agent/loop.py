@@ -45,8 +45,15 @@ RULES:
 - NEVER fabricate numeric values — only report values from actual tool outputs
 - When all experiments are done, return JSON: {{"status": "success", "metrics": {{...}}, "summary": "..."}}
 - Do NOT call gap_analysis or generate_hypothesis
-- Ensure your experiment is reproducible: capture whatever information would be needed for an independent researcher to reproduce your results and verify your findings{extra}
+- Ensure your experiment is reproducible: capture whatever information would be needed for an independent researcher to reproduce your results and verify your findings{memory_rules}{extra}
 """
+
+_MEMORY_RULES_PER_NODE = """
+- When available, save decisive intermediate findings with `add_memory(node_id=\"{node_id}\", text=..., metadata=...)` — concrete numbers, failed approaches with root cause, design decisions. Skip chatter and verbose logs.
+- Use `search_memory(query=..., ancestor_ids=[...], limit=5)` if you need to recall what ancestor nodes already established before repeating work."""
+
+_MEMORY_RULES_GLOBAL = """
+- For stable cross-experiment lessons (reproducible failure modes, reliable hyperparameters, environment quirks), save with `add_global_memory(text=..., tags=[...])`. Before major decisions, probe with `search_global_memory(query=..., tags=[...])` to reuse prior insight."""
 
 
 def _extract_job_ids(messages: list[dict], job_id_key: str) -> list[str]:
@@ -334,14 +341,38 @@ class AgentLoop:
     # Main loop
     # ------------------------------------------------------------------
 
+    def _notify_progress(self, *, force: bool = False) -> None:
+        """Flush current node state to tree.json via orchestrator callback.
+
+        The callback is attached by cli.py (``agent._progress_cb``) so the GUI
+        Tree view can animate RUNNING transitions and trace_log growth without
+        waiting for the entire batch to finish.
+        """
+        cb = getattr(self, "_progress_cb", None)
+        if cb is None:
+            return
+        try:
+            cb(force=force) if force else cb()
+        except TypeError:
+            try:
+                cb()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
     def run(self, node: Node, experiment: dict) -> Node:
         node.mark_running()
-        # Inject work_dir BEFORE forking MCP servers (env snapshot taken at fork time)
+        # Notify the orchestrator so tree.json picks up the RUNNING state
+        # immediately (before the first LLM round-trip, which can take >30 s).
+        self._notify_progress(force=True)
+        # Inject work_dir BEFORE forking MCP servers (env snapshot taken at fork time).
+        # Directory creation is handled by PathManager in cli.py; this only sets the env var.
         _work_dir_early = experiment.get("work_dir", "") if isinstance(experiment, dict) else ""
         if _work_dir_early:
             import os as _os_early
             _os_early.environ["ARI_WORK_DIR"] = _work_dir_early
-            _os_early.makedirs(_work_dir_early, exist_ok=True)
+            _os_early.makedirs(_work_dir_early, exist_ok=True)  # idempotent safety net
         tools = self._available_tools_openai(suppress=getattr(self, "_suppress_tools", set()), phase="bfts")
         tool_names = [t["function"]["name"] for t in tools] if tools else []
         tool_desc = ", ".join(tool_names) if tool_names else "none"
@@ -357,12 +388,43 @@ class AgentLoop:
             hpc_hint += f"\n  - SLURM partition: {slurm_partition}"
         if slurm_max_cpus:
             hpc_hint += f"\n  - Max CPUs available: {slurm_max_cpus}"
+        # Container environment — tell the LLM it is already inside a container
+        # so it does not try to build/pull another image as a setup step.
+        import os as _os_ct
+        import platform as _plat_ct
+        _ct_image = _os_ct.environ.get("ARI_CONTAINER_IMAGE", "").strip()
+        _ct_mode = _os_ct.environ.get("ARI_CONTAINER_MODE", "").strip()
+        container_hint = ""
+        if _ct_image:
+            _arch = _plat_ct.machine()
+            container_hint = (
+                f"\n  - Container: already running inside `{_ct_image}`"
+                f" (runtime={_ct_mode or 'auto'}, arch={_arch})."
+                f" Commands issued via run_bash execute inside this container."
+                f" Do NOT build, pull, or switch container images — reuse this one."
+            )
+        # List provided files already present in work_dir
+        _provided_hint = ""
+        if work_dir:
+            import os as _os_ls
+            try:
+                _files_in_wd = [
+                    f for f in _os_ls.listdir(work_dir)
+                    if _os_ls.path.isfile(_os_ls.path.join(work_dir, f))
+                ]
+                if _files_in_wd:
+                    _file_list = ", ".join(sorted(_files_in_wd))
+                    _provided_hint = f"\n  - Provided files (ready to use): {_file_list}"
+            except OSError:
+                pass
+        _env_body = hpc_hint + container_hint
         work_dir_hint = (
             f"\n\nEXPERIMENT ENVIRONMENT:"
             f"\n  - Work directory (REQUIRED): {work_dir} — write ALL files here, cd here first"
-            + hpc_hint
+            + _provided_hint
+            + _env_body
             if work_dir else (
-                f"\n\nEXPERIMENT ENVIRONMENT:{hpc_hint}" if hpc_hint else ""
+                f"\n\nEXPERIMENT ENVIRONMENT:{_env_body}" if _env_body else ""
             )
         )
         budget_hint = (
@@ -376,11 +438,26 @@ class AgentLoop:
             + budget_hint
             + (f"\n\n{self.hints.extra_system_prompt}" if self.hints.extra_system_prompt else "")
         )
-        system_content = SYSTEM_PROMPT.format(tool_desc=tool_desc, extra=extra)
+        memory_rules = ""
+        if "add_memory" in tool_names:
+            memory_rules += _MEMORY_RULES_PER_NODE.format(node_id=node.id)
+        if "add_global_memory" in tool_names:
+            memory_rules += _MEMORY_RULES_GLOBAL
+        system_content = SYSTEM_PROMPT.format(tool_desc=tool_desc, memory_rules=memory_rules, extra=extra)
         # pass only goal from experiment dict (workflow_hint is injected via post_survey_hint)
         goal_text = experiment.get("goal", "") if isinstance(experiment, dict) else str(experiment)
+        # ── Trace: log goal_text before truncation ─────────────────
+        import hashlib as _hl_goal
+        _goal_hash = _hl_goal.sha256(goal_text.encode()).hexdigest()[:16]
+        logger.info(
+            "[loop.run] node=%s goal_text: len=%d sha256=%s first100=%r",
+            node.id, len(goal_text), _goal_hash, goal_text[:100],
+        )
         # truncate goal_text to first 1500 chars if too long
         if len(goal_text) > 1500:
+            logger.warning(
+                "[loop.run] goal_text truncated: %d -> 1500 chars", len(goal_text),
+            )
             goal_text = goal_text[:1500] + "\n...[truncated]"
         # Root node vs child node prompt
         _is_child = node.depth > 0
@@ -458,14 +535,40 @@ class AgentLoop:
                 except Exception as _e:
                     logger.debug("search_memory failed: %s", _e)
 
+        # Inject long-term (cross-experiment) memory if the tool is available
+        if "search_global_memory" in tool_names:
+            try:
+                _g_query = (self.experiment_goal or node.eval_summary or "")[:200]
+                g_result = self.mcp.call_tool("search_global_memory", {
+                    "query": _g_query,
+                    "limit": 5,
+                })
+                if isinstance(g_result, str):
+                    import json as _j2; g_result = _j2.loads(g_result)
+                g_entries = g_result.get("results", []) if isinstance(g_result, dict) else []
+                if g_entries:
+                    g_summary = "\n".join(
+                        f"- {e.get('text', '')}" for e in g_entries if e.get("text")
+                    )
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            f"[Long-term cross-experiment memory ({len(g_entries)} entries):]\n"
+                            f"{g_summary[:800]}\n"
+                        ),
+                    })
+            except Exception as _e:
+                logger.debug("search_global_memory failed: %s", _e)
+
         # Track current node depth for tool filtering
         self._current_node_depth = node.depth
 
-        # Inject work_dir as env var so run_bash defaults to it
+        # Inject work_dir as env var so run_bash defaults to it.
+        # Directory creation is handled by PathManager in cli.py.
         import os as _os
         if work_dir:
             _os.environ["ARI_WORK_DIR"] = work_dir
-            _os.makedirs(work_dir, exist_ok=True)
+            _os.makedirs(work_dir, exist_ok=True)  # idempotent safety net
 
         self._slurm_real_stdout = ""  # reset per-run state
         tools_called = 0
@@ -650,12 +753,14 @@ class AgentLoop:
                         print(f"[TOOL] {r['name']}", flush=True)
                     # Record in node trace for viz
                     if hasattr(node, "trace_log"):
-                        _args_preview = str(_tc_args_by_name.get(r["name"], ""))[:500]
-                        _trace_limit = len(str(r.get("result", ""))) if r["name"] in _FULL_LOG_TOOLS else 2000
-                        _res_preview = str(r.get("result", ""))[:_trace_limit]
+                        _args_preview = str(_tc_args_by_name.get(r["name"], ""))[:4000]
+                        _res_preview = str(r.get("result", ""))
                         node.trace_log.append(f"→ {r['name']}({_args_preview})")
                         if _res_preview:
                             node.trace_log.append(f"  ← {_res_preview}")
+                        # Push an incremental tree.json update so the GUI shows
+                        # tool-call progress live (throttled inside the callback).
+                        self._notify_progress()
                     # Save code artifacts from run_bash/slurm_submit for viz
                     if r["name"] in ("run_bash", "run_code", "slurm_submit"):
                         try:
@@ -821,6 +926,10 @@ class AgentLoop:
                                         f"Experiment plan: {_best.get('experiment_plan', '')[:600]}\n\n"
                                         f"Implement THIS idea. Follow the experiment plan above."
                                     )
+                                    logger.info(
+                                        "[loop.run] idea_injection: title=%r len=%d",
+                                        _best.get('title', ''), len(_idea_msg),
+                                    )
                                     messages.append({"role": "user", "content": _idea_msg})
                                     self._idea_injected = True
                                     self._idea_context = _idea_msg
@@ -904,8 +1013,12 @@ class AgentLoop:
                             tool_outputs.append(f"exit_code: {exit_code}")
 
                             # sbatch submitted via run_bash → record job_id in messages
+                            # Only when an async-job workflow is active; skipped for local runs.
                             import re as _re
-                            sbatch_match = _re.search(r"Submitted batch job (\d+)", stdout)
+                            sbatch_match = (
+                                _re.search(r"Submitted batch job (\d+)", stdout)
+                                if self.hints.job_submitter_tool else None
+                            )
                             if sbatch_match:
                                 sbatch_jid = sbatch_match.group(1)
                                 logger.info("Detected sbatch job %s from run_bash stdout", sbatch_jid)
@@ -1066,6 +1179,8 @@ class AgentLoop:
                                 goal=experiment.get("goal", "")[:500],
                                 artifacts=artifacts,
                                 summary=summary,
+                                node_id=node.id,
+                                node_label=(node.label.value if hasattr(node.label, "value") else str(node.label)),
                             )
                             node.metrics = eval_result.get("metrics", {})
                             node.has_real_data = bool(eval_result.get("has_real_data", False))
@@ -1142,6 +1257,8 @@ class AgentLoop:
                                 goal=experiment.get("goal", "")[:500] if isinstance(experiment, dict) else str(experiment)[:500],
                                 artifacts=_artifacts,
                                 summary=_eval_summary,
+                                node_id=node.id,
+                                node_label=(node.label.value if hasattr(node.label, "value") else str(node.label)),
                             )
                             node.metrics = eval_result.get("metrics", {})
                             node.has_real_data = bool(eval_result.get("has_real_data", False))
@@ -1208,6 +1325,8 @@ class AgentLoop:
                         goal=experiment.get("goal", "")[:500] if isinstance(experiment, dict) else str(experiment)[:500],
                         artifacts=_artifacts,
                         summary=summary,
+                        node_id=node.id,
+                        node_label=(node.label.value if hasattr(node.label, "value") else str(node.label)),
                     )
                     node.metrics = eval_result.get("metrics", {})
                     node.has_real_data = bool(eval_result.get("has_real_data", False))

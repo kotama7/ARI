@@ -28,7 +28,8 @@ root (surveys literature → saves to memory)
 
 ## Storage
 
-Entries are stored in `~/.ari/memory_store.jsonl` (append-only JSONL).
+Entries are stored per experiment under `{ARI_CHECKPOINT_DIR}/memory_store.jsonl`
+(override with `ARI_MEMORY_PATH`).  No global fallback.  Append-only JSONL.
 
 ## Tests
 

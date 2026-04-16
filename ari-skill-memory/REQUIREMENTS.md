@@ -9,7 +9,7 @@ Design Principle P2 compliant: **No LLM calls. Fully deterministic.**
 
 ## Design
 
-- Storage: `~/.ari/memory_store.jsonl` (append-only JSONL)
+- Storage: `{ARI_CHECKPOINT_DIR}/memory_store.jsonl` per experiment, override with `ARI_MEMORY_PATH` (append-only JSONL)
 - Scope: `search_memory` only returns entries from nodes in `ancestor_ids`
 - Siblings and unrelated nodes are invisible to each other
 

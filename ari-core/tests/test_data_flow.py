@@ -246,8 +246,10 @@ def test_experiment_goal_displayed_in_ui():
 # ── HPC Resource Fields in Wizard Step 3 ──────────────────────────────────
 
 def _react_resources():
-    """Read the StepResources React component source."""
-    return (REACT_COMPONENTS / "Wizard" / "StepResources.tsx").read_text()
+    """Read the wizard resource-related component sources (StepResources + WizardPage)."""
+    sr = (REACT_COMPONENTS / "Wizard" / "StepResources.tsx").read_text()
+    wp = (REACT_COMPONENTS / "Wizard" / "WizardPage.tsx").read_text()
+    return sr + "\n" + wp
 
 
 def _react_launch():

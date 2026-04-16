@@ -581,7 +581,9 @@ class TestSettingsModelListStatic:
     def test_step_resources_no_qwen_hardcode_fallback(self):
         """StepResources settings prefill must NOT hardcode 'qwen3:8b' as fallback.
         This caused qwen to appear even when OpenAI was selected."""
-        src = (_REACT_COMPONENTS / "Wizard" / "StepResources.tsx").read_text()
+        sr = (_REACT_COMPONENTS / "Wizard" / "StepResources.tsx").read_text()
+        wp = (_REACT_COMPONENTS / "Wizard" / "WizardPage.tsx").read_text()
+        src = sr + "\n" + wp
         # The settings prefill uses: s.llm_provider || s.llm_backend || 'openai'
         # It should NOT hardcode qwen3:8b as a fallback model outside PROVIDER_MODELS
         import re

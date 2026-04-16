@@ -43,7 +43,10 @@ def _api_exp(): return (_VIZ / "api_experiment.py").read_text()
 def _api_set(): return (_VIZ / "api_settings.py").read_text()
 def _combined(): return _read_react_sources()
 def _settings_page(): return (_REACT_COMPONENTS / "Settings" / "SettingsPage.tsx").read_text()
-def _step_resources(): return (_REACT_COMPONENTS / "Wizard" / "StepResources.tsx").read_text()
+def _step_resources():
+    sr = (_REACT_COMPONENTS / "Wizard" / "StepResources.tsx").read_text()
+    wp = (_REACT_COMPONENTS / "Wizard" / "WizardPage.tsx").read_text()
+    return sr + "\n" + wp
 def _step_launch(): return (_REACT_COMPONENTS / "Wizard" / "StepLaunch.tsx").read_text()
 
 
@@ -156,11 +159,17 @@ class TestServerSettingsHandler:
         src = _srv() + _api_set()
         assert "settings.json" in src, "settings.json must be written somewhere in viz stack"
 
-    def test_server_settings_file_in_ari_home(self):
-        """Settings must be stored in ~/.ari/settings.json (not cwd)."""
-        srv = _srv()
-        assert ".ari" in srv or "_ari_home" in srv, \
-            "settings.json must be in ~/.ari/ directory"
+    def test_server_settings_file_is_project_scoped(self):
+        """Settings must be persisted under the active checkpoint dir."""
+        src = _srv() + _api_set()
+        # Project-scoped persistence flows through state._settings_path which
+        # set_active_checkpoint() rebinds to {checkpoint}/settings.json.  We
+        # accept any reference to that helper or to the project path API.
+        assert (
+            "_settings_path" in src
+            or "project_settings_path" in src
+            or "active_settings_path" in src
+        ), "settings.json must be project-scoped (per-checkpoint)"
 
     def test_server_persists_llm_model(self):
         # _api_save_settings in api_settings.py handles persistence
@@ -446,13 +455,13 @@ class TestSettingsJsonRoundtrip:
             "settings.json default must not contain an API key value"
 
     def test_settings_file_path_is_portable(self):
-        """Settings file path must be relative to home dir, not hardcoded."""
-        srv = _srv()
-        # Find settings.json path construction
-        assert ".ari" in srv, "settings must be in ~/.ari/"
-        assert "Path.home()" in srv or "_ari_home" in srv or \
-               "expanduser" in srv, \
-            "Settings path must use home dir (not hardcoded absolute path)"
+        """Settings file path must derive from the active checkpoint dir,
+        not a hardcoded absolute path."""
+        src = _srv() + _api_set()
+        # Path comes from state._settings_path or PathManager.project_settings_path.
+        assert (
+            "_settings_path" in src or "project_settings_path" in src
+        ), "settings path must be derived from project state, not hardcoded"
 
 
 # ═══════════════════════════════════════════════════════════════════════════

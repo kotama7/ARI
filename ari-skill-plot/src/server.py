@@ -340,6 +340,7 @@ async def generate_figures_llm(
     context: str = "",
     n_figures: int = 3,
     science_data_path: str = "",  # preferred: science-facing data from transform-skill
+    vlm_feedback: str = "",  # injected by pipeline loop_back_to after VLM review
 ) -> dict:
     import sys as _sys_fig
     print(f"[DEBUG generate_figures_llm] nodes_json_path={nodes_json_path!r}", file=_sys_fig.stderr)
@@ -347,6 +348,7 @@ async def generate_figures_llm(
     print(f"[DEBUG generate_figures_llm] output_dir={output_dir!r}", file=_sys_fig.stderr)
     print(f"[DEBUG generate_figures_llm] LLM_MODEL={os.environ.get('ARI_LLM_MODEL','unset')!r}", file=_sys_fig.stderr)
     print(f"[DEBUG generate_figures_llm] API_KEY set={bool(os.environ.get('OPENAI_API_KEY'))}", file=_sys_fig.stderr)
+    print(f"[DEBUG generate_figures_llm] vlm_feedback_len={len(vlm_feedback)}", file=_sys_fig.stderr)
     """Generate scientific figures using LLM-written matplotlib code.
 
     AI Scientist v2-style: LLM analyzes experimental data, writes
@@ -357,6 +359,9 @@ async def generate_figures_llm(
         output_dir:          Directory to write PDF figure files
         experiment_summary / context: Experiment description
         n_figures:           Number of figures to generate
+        vlm_feedback:        VLM review feedback from the previous iteration
+                              (empty on first pass, non-empty when the
+                              pipeline looped back after a low-score review).
 
     Returns:
         figures (dict name->path), latex_snippets (dict name->latex)
@@ -424,9 +429,10 @@ async def generate_figures_llm(
         "Write complete, runnable Python matplotlib code to produce publication-quality figures. "
         "Output ONLY valid Python code (no markdown fences, no explanation). "
         "The code must: (1) use matplotlib.use('Agg'), "
-        "(2) save figures as fig_1.pdf, fig_2.pdf, ... in output_dir, "
+        "(2) save each figure TWICE — once as fig_N.pdf (for LaTeX embedding) "
+        "and once as fig_N.png (dpi=200, for VLM review) in output_dir, "
         "(3) at the very end print a JSON list: "
-        '[{"name":"fig_1","path":"<full_path>","caption":"<caption>"},...]'
+        '[{"name":"fig_1","path":"<full_path_to_pdf>","caption":"<caption>"},...]'
         " CRITICAL REQUIREMENTS:\n"
         " - Each figure must directly support a claim in the paper.\n"
         " - Use ACTUAL metric names and numeric values from the data — no 'a.u.' units.\n"
@@ -452,6 +458,16 @@ async def generate_figures_llm(
         f"3. Comparison or ablation: show effect of a design choice "
         f"   (e.g., feature on/off, parameter value, configuration) on performance.\n\n"
     )
+    # If the pipeline looped back with VLM feedback, surface it at the top
+    # of the user prompt so the LLM regenerates figures that address the
+    # reviewer's complaints instead of blindly re-producing the same output.
+    if vlm_feedback.strip():
+        user_prompt = (
+            "PREVIOUS ATTEMPT WAS REVIEWED BY A VLM AND REJECTED.\n"
+            "You MUST address every issue listed below in the new figures.\n"
+            f"{vlm_feedback}\n\n"
+            "---\n\n"
+        ) + user_prompt
 
     # Unified LLM routing: ARI_LLM_MODEL > LLM_MODEL; ARI_LLM_API_BASE > LLM_API_BASE
     LLM_MODEL = (os.environ.get("ARI_LLM_MODEL") or os.environ.get("LLM_MODEL") or "ollama_chat/qwen3:32b")

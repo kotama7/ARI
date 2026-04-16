@@ -77,25 +77,55 @@ pipeline:
     depends_on: [write_paper]
     # ...
 
+retrieval:
+  backend: semantic_scholar    # semantic_scholar | alphaxiv | both
+  alphaxiv_endpoint: https://api.alphaxiv.org/mcp/v1
+
+container:
+  mode: auto                   # auto | docker | singularity | apptainer | none
+  image: ""                    # Container image name (empty = no container)
+  pull: on_start               # always | on_start | never
+
 skills:
   - name: web-skill
     path: "{{ari_root}}/ari-skill-web"
+    phase: all
   - name: plot-skill
     path: "{{ari_root}}/ari-skill-plot"
+    phase: paper
   - name: paper-skill
     path: "{{ari_root}}/ari-skill-paper"
+    phase: paper
   - name: paper-re-skill
     path: "{{ari_root}}/ari-skill-paper-re"
+    phase: paper
   - name: memory-skill
     path: "{{ari_root}}/ari-skill-memory"
+    phase: bfts
   - name: evaluator-skill
     path: "{{ari_root}}/ari-skill-evaluator"
+    phase: bfts
   - name: idea-skill
     path: "{{ari_root}}/ari-skill-idea"
+    phase: bfts
   - name: hpc-skill
     path: "{{ari_root}}/ari-skill-hpc"
+    phase: bfts
   - name: transform-skill
     path: "{{ari_root}}/ari-skill-transform"
+    phase: paper
+  - name: figure-router-skill
+    path: "{{ari_root}}/ari-skill-figure-router"
+    phase: all
+  - name: benchmark-skill
+    path: "{{ari_root}}/ari-skill-benchmark"
+    phase: bfts
+  - name: review-skill
+    path: "{{ari_root}}/ari-skill-review"
+    phase: paper
+  - name: vlm-skill
+    path: "{{ari_root}}/ari-skill-vlm"
+    phase: paper
 ```
 
 ## Environment Variables
@@ -106,10 +136,14 @@ skills:
 | `ARI_PARALLEL` | Concurrent node execution | `1` |
 | `ARI_EXECUTOR` | Execution backend: `local`, `slurm`, `pbs`, `lsf` | `local` |
 | `ARI_SLURM_PARTITION` | SLURM partition name | (none) |
+| `ARI_SLURM_CPUS` | Override CPU count for SLURM jobs | (auto-detected) |
 | `SLURM_LOG_DIR` | Where SLURM output files go | (none) |
 | `OLLAMA_HOST` | Ollama server address | `127.0.0.1:11434` |
 | `OPENAI_API_KEY` | OpenAI API key | (none) |
 | `ANTHROPIC_API_KEY` | Anthropic API key | (none) |
+| `ARI_RETRIEVAL_BACKEND` | Paper search backend: `semantic_scholar`, `alphaxiv`, `both` | `semantic_scholar` |
+| `VLM_MODEL` | VLM model for figure review | `openai/gpt-4o` |
+| `ARI_ORCHESTRATOR_PORT` | HTTP port for orchestrator skill | `9890` |
 
 ## LLM Backends
 
@@ -163,6 +197,9 @@ Any value in `inputs:` supports `{{variable}}` substitution:
 | `{{resources.timeout_minutes}}` | Timeout from `resources:` section |
 | `{{stages.<name>.outputs.file}}` | Output file path of a completed stage |
 | `{{author_name}}` | Author name from top-level config |
+| `{{vlm_feedback}}` | VLM review feedback (injected on loop-back from `vlm_review_figures`) |
+| `{{paper_context}}` | Science-facing experiment summary |
+| `{{keywords}}` | LLM-generated search keywords |
 
 ---
 

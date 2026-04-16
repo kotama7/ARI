@@ -271,6 +271,15 @@ ari skills-list [--config <config.yaml>]
 |----------|-------------|---------|
 | `ARI_EXECUTOR` | Execution backend (`local` / `slurm` / `pbs` / `lsf`) | `local` |
 | `ARI_SLURM_PARTITION` | SLURM partition name | — |
+| `ARI_SLURM_CPUS` | Override CPU count for SLURM jobs | (auto-detected) |
+
+### Retrieval & VLM
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ARI_RETRIEVAL_BACKEND` | Paper search: `semantic_scholar` / `alphaxiv` / `both` | `semantic_scholar` |
+| `VLM_MODEL` | VLM model for figure review | `openai/gpt-4o` |
+| `ARI_ORCHESTRATOR_PORT` | HTTP port for orchestrator skill | `9890` |
 
 ### Per-Phase Model Overrides
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from collections import Counter
 
 from ari.config import BFTSConfig
 
@@ -34,6 +35,53 @@ class BFTS:
         self.config = config
         self.llm = llm
         self.total_nodes: int = 0
+        # Recently-run node labels (most recent last). Used by diversity_bonus()
+        # to softly reward exploration of underrepresented exploration types.
+        self._recent_label_history: list[str] = []
+        self._max_recent_labels: int = 20
+
+    def record_run(self, node: Node) -> None:
+        """Record that a node has just been (or is about to be) executed.
+
+        Used by select_next_node()/diversity_bonus() to track which
+        exploration labels have been over- or under-represented recently.
+        """
+        if node is None:
+            return
+        try:
+            label = node.label.value if hasattr(node.label, "value") else str(node.label or "")
+        except Exception:
+            label = ""
+        if not label:
+            return
+        self._recent_label_history.append(label)
+        if len(self._recent_label_history) > self._max_recent_labels:
+            self._recent_label_history = self._recent_label_history[-self._max_recent_labels :]
+
+    def diversity_bonus(self, node: Node) -> float:
+        """Return a small additive score bonus for nodes with underrepresented labels.
+
+        - +0.05 if this node's label is underrepresented in the recent history
+          (count strictly less than the most common label's count).
+        - 0.0 otherwise.
+
+        This is intentionally soft: scientific_score still dominates ranking.
+        """
+        if not self._recent_label_history:
+            return 0.0
+        try:
+            label = node.label.value if hasattr(node.label, "value") else str(node.label or "")
+        except Exception:
+            return 0.0
+        if not label:
+            return 0.0
+        counts = Counter(self._recent_label_history)
+        max_count = max(counts.values())
+        my_count = counts.get(label, 0)
+        # "Underrepresented" = at most half the most common label's count
+        if my_count * 2 <= max_count:
+            return 0.05
+        return 0.0
 
     def select_next_node(
         self,
@@ -70,12 +118,15 @@ class BFTS:
                 json.dumps(node.metrics, ensure_ascii=False)
                 if node.metrics else "not_yet_measured"
             )
+            bonus = self.diversity_bonus(node)
+            bonus_note = f", diversity_bonus=+{bonus:.2f}" if bonus > 0 else ""
             desc = (
                 f"[{i}] id={node.id[-8:]}, depth={node.depth}, "
                 f"retry={node.retry_count}, "
                 f"has_real_data={node.has_real_data}, "
                 f"metrics={metrics_str}, "
                 f"summary={repr((node.eval_summary or 'none')[:120])}"
+                f"{bonus_note}"
             )
             candidate_descriptions.append(desc)
 
@@ -89,6 +140,8 @@ class BFTS:
             f"- Prefer unexplored directions (low retry) over already-tried paths\n"
             f"- Consider all metrics holistically (multi-objective)\n"
             f"- Deeper nodes with excellent results are worth continuing\n"
+            f"- A small diversity_bonus is awarded to underrepresented exploration "
+            f"types; treat it as a soft tiebreaker, not a primary signal\n"
             f"Reply with ONLY the index number (0-based) of the best node."
         )
 
@@ -100,9 +153,15 @@ class BFTS:
         except (ValueError, AttributeError):
             pass
 
-        # Fallback: prefer nodes with has_real_data=True, otherwise pick first
+        # Fallback: prefer nodes with has_real_data=True, then rank by
+        # scientific_score + diversity_bonus, then pick first.
+        def _fallback_score(n: Node) -> float:
+            sci = float((n.metrics or {}).get("_scientific_score") or 0.0)
+            return sci + self.diversity_bonus(n)
+
         real_nodes = [n for n in candidates if n.has_real_data]
-        return real_nodes[0] if real_nodes else candidates[0]
+        pool = real_nodes if real_nodes else candidates
+        return max(pool, key=_fallback_score)
 
     def should_prune(self, node: Node) -> bool:
         """Determine whether to prune this node.
@@ -174,48 +233,148 @@ class BFTS:
             key=lambda n: float((n.metrics or {}).get("_scientific_score") or 0),
         )
 
-    def expand(self, node: Node, experiment_goal: str = "", idea_context: str = "") -> list[Node]:
-        """Expand a node and generate child nodes. Each child is assigned a label."""
+    def expand(
+        self,
+        node: Node,
+        experiment_goal: str = "",
+        idea_context: str = "",
+        siblings: list[Node] | None = None,
+        ancestors: list[Node] | None = None,
+        all_run_nodes: list[Node] | None = None,
+        existing_children: list[Node] | None = None,
+    ) -> list[Node]:
+        """Expand a node and generate exactly one child node.
+
+        expand() always yields at most one new child per call so that workers
+        create new nodes one at a time (no pre-batching). Callers that want
+        more children for the same parent should call expand() repeatedly,
+        passing the previously-created children via ``existing_children`` so
+        the LLM can avoid proposing duplicate directions.
+
+        Label decisions emerge from LLM judgment based on context, not from
+        a hardcoded template. The prompt provides:
+          - Parent summary, score, and status
+          - Sibling scores at the same depth (if any)
+          - All ancestor scores
+          - Tree diversity metrics (unique labels seen so far, depth distribution)
+          - Already-spawned children of this parent (to avoid duplication)
+        """
         parent_status = "succeeded" if node.has_real_data else "failed/no-real-data"
         goal_line = f"Experiment goal: {experiment_goal}\n" if experiment_goal else ""
-        # Rule-based label guidance based on parent state
-        if not node.has_real_data:
-            label_hint = "Parent FAILED — prefer \"debug\" or \"draft\" to fix the issue."
-        elif node.depth == 0:
-            label_hint = "Root node succeeded — suggest \"improve\", \"ablation\", and \"validation\" directions."
-        else:
-            label_hint = "Parent succeeded — prefer \"improve\", \"ablation\", or \"validation\"; use \"draft\" only for fundamentally new approaches."
         sci_score = (node.metrics or {}).get("_scientific_score")
         sci_note = (
-            f"Scientific quality score from peer review: {sci_score:.2f}/1.0\n"
-            if sci_score is not None else ""
+            f"Parent scientific score: {sci_score:.2f}/1.0\n"
+            if sci_score is not None
+            else "Parent scientific score: not yet evaluated\n"
         )
         idea_block = (
-            f"\nResearch direction (from VirSci idea generation):\n{idea_context[:800]}\n"
-            if idea_context else ""
+            f"\nResearch direction (from upstream idea generation):\n{idea_context[:800]}\n"
+            if idea_context
+            else ""
         )
+
+        # ── Sibling scores at same depth ──
+        sibling_lines: list[str] = []
+        for s in siblings or []:
+            if s.id == node.id:
+                continue
+            ss = (s.metrics or {}).get("_scientific_score")
+            sl = s.label.value if hasattr(s.label, "value") else str(s.label or "?")
+            sibling_lines.append(
+                f"  - id={s.id[-8:]} label={sl} score="
+                + (f"{float(ss):.2f}" if ss is not None else "n/a")
+            )
+        siblings_block = (
+            "Sibling scores at same depth:\n" + "\n".join(sibling_lines) + "\n\n"
+            if sibling_lines
+            else "Sibling scores at same depth: (none)\n\n"
+        )
+
+        # ── Ancestor scores (root → parent) ──
+        ancestor_lines: list[str] = []
+        for a in ancestors or []:
+            ass = (a.metrics or {}).get("_scientific_score")
+            al = a.label.value if hasattr(a.label, "value") else str(a.label or "?")
+            ancestor_lines.append(
+                f"  - depth={a.depth} id={a.id[-8:]} label={al} score="
+                + (f"{float(ass):.2f}" if ass is not None else "n/a")
+            )
+        ancestors_block = (
+            "Ancestor scores:\n" + "\n".join(ancestor_lines) + "\n\n"
+            if ancestor_lines
+            else "Ancestor scores: (none)\n\n"
+        )
+
+        # ── Already-spawned children of this parent (avoid duplicating) ──
+        existing_lines: list[str] = []
+        for c in existing_children or []:
+            cl = c.label.value if hasattr(c.label, "value") else str(c.label or "?")
+            cdir = (c.eval_summary or "").strip().replace("\n", " ")
+            existing_lines.append(
+                f"  - id={c.id[-8:]} label={cl} direction={repr(cdir[:160])}"
+            )
+        existing_block = (
+            "Already-spawned children of THIS parent (do NOT duplicate these directions; "
+            "propose something complementary):\n"
+            + "\n".join(existing_lines) + "\n\n"
+            if existing_lines
+            else "Already-spawned children of THIS parent: (none — this is the first child)\n\n"
+        )
+
+        # ── Tree diversity metrics ──
+        seen_labels: list[str] = []
+        depth_counts: dict[int, int] = {}
+        for n in all_run_nodes or []:
+            try:
+                lbl = n.label.value if hasattr(n.label, "value") else str(n.label or "")
+            except Exception:
+                lbl = ""
+            if lbl and lbl not in seen_labels:
+                seen_labels.append(lbl)
+            try:
+                d = int(getattr(n, "depth", 0) or 0)
+            except (TypeError, ValueError):
+                d = 0
+            depth_counts[d] = depth_counts.get(d, 0) + 1
+        diversity_block = (
+            "Tree diversity so far:\n"
+            f"  unique labels observed: {seen_labels if seen_labels else '(none)'}\n"
+            f"  depth distribution: {depth_counts if depth_counts else '(empty)'}\n\n"
+        )
+
         prompt = (
-            f"You are expanding a BFTS research tree node.\n\n"
+            "You are expanding a BFTS research tree node.\n\n"
             f"{goal_line}"
-            f"Parent node: id={node.id[-8:]}, depth={node.depth}, status={parent_status}\n"
+            f"Parent node id={node.id[-8:]}, depth={node.depth}, status={parent_status}\n"
             f"Parent metrics: {json.dumps(node.metrics, ensure_ascii=False)}\n"
             f"Parent summary: {node.eval_summary or 'none'}\n"
             f"{sci_note}"
-            f"{idea_block}"
-            f"\n{label_hint}\n\n"
-            f"⚠️ ABLATION STUDY REQUIREMENT: If you suggest an ablation, you MUST:\n"
-            f"  1. Identify what component/parameter to remove or vary (be specific)\n"
-            f"  2. State the baseline: parent metrics = {json.dumps(node.metrics or {}, ensure_ascii=False)[:300]}\n"
-            f"  3. Predict what delta you expect and why it matters scientifically\n"
-            f"  An ablation without a defined baseline is scientifically invalid.\n\n"
-            f"Suggest 2-3 child research directions. For each, assign a label from:\n"
-            f"  draft      - new implementation from scratch\n"
-            f"  improve    - improve parent results (tune flags/params)\n"
-            f"  debug      - fix parent failure/error\n"
-            f"  ablation   - remove ONE component and compare metric vs parent baseline; must quantify the delta\n"
-            f"  validation - re-run parent with different seeds/conditions\n\n"
-            f"Reply ONLY with a JSON array, each element: {{\"label\": \"...\", \"direction\": \"...\"}}\n"
-            f"Example: [{{\"label\": \"improve\", \"direction\": \"Try -Ofast flag\"}}, ...]"
+            f"{idea_block}\n"
+            f"{siblings_block}"
+            f"{ancestors_block}"
+            f"{existing_block}"
+            f"{diversity_block}"
+            "Propose exactly ONE child research direction that is the most scientifically "
+            "valuable next step. The \"label\" field MUST be exactly one of these five "
+            "values (all lowercase, no other strings allowed, no synonyms, no inventions): "
+            "draft, improve, debug, ablation, validation. "
+            "Base your choice on the experimental context above, not on a fixed template.\n\n"
+            "Label selection guidance:\n"
+            "- 'debug': parent FAILED or has no real data — diagnose and fix it.\n"
+            "- 'improve': parent succeeded and you want to push its metrics higher by tuning "
+            "parameters, flags, or algorithms.\n"
+            "- 'ablation': isolate which component drives the parent's gains by removing or "
+            "varying ONE component. State explicitly what is removed/varied and what delta vs. "
+            "the parent metrics you expect.\n"
+            "- 'validation': rigorously verify the parent's claims (different seeds, edge "
+            "cases, stress tests, expected-degradation checks).\n"
+            "- 'draft': start a fresh implementation from scratch to introduce a fundamentally "
+            "NEW perspective (use this instead of inventing a new label like 'replication' or "
+            "'generalization').\n\n"
+            "Reply ONLY with a JSON array containing exactly one element: "
+            "[{\"label\": \"<one of: draft|improve|debug|ablation|validation>\", "
+            "\"direction\": \"...\"}]\n"
+            "Example: [{\"label\": \"validation\", \"direction\": \"<one-sentence plan>\"}]"
         )
 
         response = self.llm.complete([LLMMessage(role="user", content=prompt)])
@@ -233,11 +392,17 @@ class BFTS:
         if not isinstance(directions, list):
             directions = [str(directions)]
 
+        # Hard cap: expand() must yield at most one child per call.
+        # Workers create new nodes one at a time; we never pre-create batches.
+        directions = directions[:1]
+
         children: list[Node] = []
         for item in directions:
             child_id = f"node_{uuid.uuid4().hex[:8]}"
+            raw_label_text = ""
             if isinstance(item, dict):
-                label = NodeLabel.from_str(item.get("label", "draft"))
+                raw_label_text = str(item.get("label", "")).strip()
+                label = NodeLabel.from_str(raw_label_text or "draft")
                 direction_text = item.get("direction", str(item))
             else:
                 # Fallback: auto-infer label when item is a plain string
@@ -260,12 +425,19 @@ class BFTS:
                 depth=node.depth + 1,
                 memory_snapshot=list(node.memory_snapshot),
                 label=label,
+                raw_label=raw_label_text,
                 ancestor_ids=list(node.ancestor_ids) + [node.id],
                 # ↑ ancestor chain: parent ancestors + parent itself
                 # child nodes can only access memories in ancestor_ids
             )
             child.eval_summary = direction_text
-            child.name = _make_node_name(label.value if hasattr(label, "value") else str(label), direction_text, node.depth + 1)
+            # Prefer the raw LLM label for naming when label==OTHER
+            display_label = (
+                raw_label_text
+                if (label == NodeLabel.OTHER and raw_label_text)
+                else (label.value if hasattr(label, "value") else str(label))
+            )
+            child.name = _make_node_name(display_label, direction_text, node.depth + 1)
             node.children.append(child_id)
             children.append(child)
             self.total_nodes += 1

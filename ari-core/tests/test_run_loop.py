@@ -55,13 +55,19 @@ def _make_agent(succeed: bool = True):
 
 
 def _make_bfts(children_per_expand: int = 2):
-    """Return a mock BFTS that creates *children_per_expand* child nodes."""
+    """Return a mock BFTS that creates *children_per_expand* child nodes per call.
+
+    Note: real expand() now caps to 1 child per call. Tests that simulate the
+    old multi-child behavior still work because we control the mock here, but
+    callers should be aware that production code will call expand() multiple
+    times to fill worker slots instead of relying on a multi-child return.
+    """
     bfts = MagicMock()
     bfts.should_prune.return_value = False
 
     _expand_counter = {"n": 0}
 
-    def _expand(node, experiment_goal=""):
+    def _expand(node, *args, **kwargs):
         children = []
         for _ in range(children_per_expand):
             _expand_counter["n"] += 1
@@ -326,3 +332,45 @@ class TestRunLoopEdgeCases:
                 f"Node {n.id} not executed: {n.status}"
             )
         assert total == 3
+
+
+class TestFrontierExpandDisabled:
+    """When frontier_expand is disabled in bfts_pipeline, the loop must NOT
+    expand completed nodes — only run the initial pending set."""
+
+    def test_no_expand_when_frontier_expand_disabled(self, tmp_path):
+        """With frontier_expand disabled, root should run but no children created."""
+        import yaml
+        from ari.cli import _run_loop
+
+        # Write workflow.yaml with frontier_expand disabled
+        wf = {
+            "bfts_pipeline": [
+                {"stage": "generate_idea", "enabled": True, "phase": "bfts"},
+                {"stage": "select_and_run", "enabled": True, "phase": "bfts"},
+                {"stage": "evaluate", "enabled": True, "phase": "bfts"},
+                {"stage": "frontier_expand", "enabled": False, "phase": "bfts"},
+            ],
+        }
+        (tmp_path / "workflow.yaml").write_text(yaml.dump(wf))
+
+        cfg = _make_cfg(max_total_nodes=10, max_parallel=2)
+        bfts = _make_bfts(children_per_expand=2)
+        agent = _make_agent(succeed=True)
+
+        root = Node(id="root", parent_id=None, depth=0)
+        pending = [root]
+        all_nodes = [root]
+        exp_data = {"goal": "test", "topic": "t", "file": "f.md"}
+
+        total = _run_loop(
+            cfg, bfts, agent, pending, all_nodes, exp_data,
+            checkpoint_dir=tmp_path, run_id="test-disabled",
+        )
+
+        # Root was executed
+        assert root.status == NodeStatus.SUCCESS
+        assert total == 1
+        # No expansion happened — only root in all_nodes
+        assert len(all_nodes) == 1
+        bfts.expand.assert_not_called()

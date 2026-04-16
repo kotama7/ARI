@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useI18n } from '../../i18n';
 import * as api from '../../services/api';
+import type { ContainerImage } from '../../services/api';
 
-const PROVIDER_MODELS: Record<string, string[]> = {
-  openai: ['gpt-5.2', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-4o', 'gpt-4o-mini', 'o3', 'o1-mini'],
+export const PROVIDER_MODELS: Record<string, string[]> = {
+  openai: ['gpt-5.2', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-4o', 'gpt-4o-2024-08-06', 'gpt-4o-mini', 'o3', 'o1-mini'],
   anthropic: ['claude-opus-4-5', 'claude-sonnet-4-5', 'claude-haiku-3-5'],
   ollama: ['qwen3:8b', 'qwen3:32b', 'llama3.3', 'gemma3:27b', 'mistral'],
   custom: [],
@@ -58,6 +59,12 @@ interface StepResourcesProps {
   setHpcGpus: (v: string) => void;
   phaseModels: Record<string, string>;
   setPhaseModels: (pm: Record<string, string>) => void;
+  containerImage: string;
+  setContainerImage: (v: string) => void;
+  containerMode: string;
+  setContainerMode: (v: string) => void;
+  vlmReviewModel: string;
+  setVlmReviewModel: (v: string) => void;
   onBack: () => void;
   onNext: () => void;
 }
@@ -89,6 +96,12 @@ export function StepResources({
   setHpcGpus,
   phaseModels,
   setPhaseModels,
+  containerImage,
+  setContainerImage,
+  containerMode,
+  setContainerMode,
+  vlmReviewModel,
+  setVlmReviewModel,
   onBack,
   onNext,
 }: StepResourcesProps) {
@@ -103,6 +116,11 @@ export function StepResources({
   const [cpuPlaceholder, setCpuPlaceholder] = useState('auto');
   const [memPlaceholder, setMemPlaceholder] = useState('auto');
   const [initialized, setInitialized] = useState(false);
+  const [containerImages, setContainerImages] = useState<ContainerImage[]>([]);
+  const [containerRuntime, setContainerRuntime] = useState('none');
+  const [pullStatus, setPullStatus] = useState('');
+  const [pulling, setPulling] = useState(false);
+  const [pullImageName, setPullImageName] = useState('');
 
   const handleSetLlm = useCallback(
     (provider: string) => {
@@ -144,32 +162,19 @@ export function StepResources({
         setSchedulerClass('badge badge-muted');
       });
 
-    // Pre-populate from settings
-    api
-      .fetchSettings()
-      .then((s) => {
-        const prov = s.llm_provider || s.llm_backend || 'openai';
-        handleSetLlm(prov);
-
-        const mdl = s.llm_model || '';
-        if (mdl) {
-          const models = PROVIDER_MODELS[prov] || [];
-          if (models.includes(mdl)) {
-            setModel(mdl);
-          } else {
-            setCustomModel(mdl);
-          }
-        }
-
-        if (s.ollama_host) setBaseUrl(s.ollama_host);
-        if (s.slurm_cpus) setHpcCpus(String(s.slurm_cpus));
-        if (s.slurm_memory_gb) setHpcMem(String(s.slurm_memory_gb));
-        if (s.slurm_walltime) setHpcWall(s.slurm_walltime);
-      })
-      .catch(() => {});
+    // NOTE: Settings are loaded ONCE in WizardPage.tsx (`useEffect` with
+    // `settingsLoadedRef`) so that user selections survive step navigation.
+    // Re-loading them here would clobber the user's manual model selection
+    // every time StepResources remounts (e.g. when navigating Launch ↔ Resources).
 
     // Auto-read API key
     autoReadApiKey();
+
+    // Load container info & images
+    api.fetchContainerInfo().then((info) => {
+      setContainerRuntime(info.runtime);
+    }).catch(() => {});
+    loadContainerImages();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialized]);
 
@@ -237,6 +242,36 @@ export function StepResources({
     if (!hpcMem) {
       const m = Math.round((parseInt(String(p.memory)) || 0) / 1024);
       setMemPlaceholder(m >= 1 ? 'auto (' + m + ' GB)' : 'auto');
+    }
+  };
+
+  const loadContainerImages = async () => {
+    try {
+      const r = await api.fetchContainerImages();
+      setContainerImages(r.images || []);
+    } catch {
+      setContainerImages([]);
+    }
+  };
+
+  const handlePull = async () => {
+    if (!pullImageName.trim()) return;
+    setPulling(true);
+    setPullStatus('Pulling…');
+    try {
+      const r = await api.pullContainerImage(pullImageName.trim(), containerMode);
+      if (r.ok) {
+        setPullStatus('Pull complete');
+        await loadContainerImages();
+        setContainerImage(pullImageName.trim());
+        setPullImageName('');
+      } else {
+        setPullStatus('Pull failed: ' + (r.error || 'unknown error'));
+      }
+    } catch (e: any) {
+      setPullStatus('Pull failed: ' + (e.message || 'unknown error'));
+    } finally {
+      setPulling(false);
     }
   };
 
@@ -356,6 +391,83 @@ export function StepResources({
             </div>
           </div>
         )}
+      </div>
+
+      {/* Container card */}
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-title">
+          Container
+          <span
+            className={containerRuntime !== 'none' ? 'badge badge-green' : 'badge badge-muted'}
+            style={{ marginLeft: 8, fontSize: '.7rem' }}
+          >
+            {containerRuntime}
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <div className="form-row" style={{ flex: 2, minWidth: 200 }}>
+            <label>Image</label>
+            <select
+              value={containerImage}
+              style={{ width: '100%' }}
+              onChange={(e) => setContainerImage(e.target.value)}
+            >
+              <option value="">(no container)</option>
+              {containerImages.map((img) => (
+                <option key={img.name} value={img.name}>
+                  {img.name}{img.size ? ` (${img.size})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="form-row" style={{ flex: 1, minWidth: 140 }}>
+            <label>Mode</label>
+            <select
+              value={containerMode}
+              style={{ width: '100%' }}
+              onChange={(e) => setContainerMode(e.target.value)}
+            >
+              <option value="auto">Auto</option>
+              <option value="docker">Docker</option>
+              <option value="singularity">Singularity</option>
+              <option value="apptainer">Apptainer</option>
+              <option value="none">None</option>
+            </select>
+          </div>
+        </div>
+        {/* Pull image */}
+        <div style={{ marginTop: 10 }}>
+          <label style={{ fontSize: '.8rem', color: 'var(--muted)', fontWeight: 600 }}>
+            Pull new image
+          </label>
+          <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+            <input
+              type="text"
+              value={pullImageName}
+              placeholder="e.g. ghcr.io/kotama7/ari:latest"
+              style={{ flex: 1 }}
+              onChange={(e) => setPullImageName(e.target.value)}
+              disabled={pulling}
+            />
+            <button
+              className="btn btn-outline btn-sm"
+              type="button"
+              onClick={handlePull}
+              disabled={pulling || !pullImageName.trim()}
+            >
+              {pulling ? 'Pulling…' : 'Pull'}
+            </button>
+          </div>
+          {pullStatus && (
+            <div style={{
+              fontSize: '.75rem',
+              marginTop: 3,
+              color: pullStatus.startsWith('Pull complete') ? 'var(--green)' : pullStatus.startsWith('Pull failed') ? 'var(--red, #e74c3c)' : 'var(--muted)',
+            }}>
+              {pullStatus}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* LLM Configuration card */}
@@ -502,7 +614,7 @@ export function StepResources({
           </div>
         )}
 
-        {/* Per-phase model override (Advanced) */}
+        {/* Advanced LLM Settings */}
         <details style={{ marginTop: 12 }}>
           <summary
             style={{
@@ -513,28 +625,55 @@ export function StepResources({
               userSelect: 'none',
             }}
           >
-            {'⚙'} Per-Phase Model Override (Advanced)
+            {'⚙'} Advanced
           </summary>
-          <div
-            style={{
-              marginTop: 10,
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: 8,
-            }}
-          >
-            {PHASES.map((phase) => (
-              <div key={phase}>
+          <div style={{ marginTop: 10 }}>
+            {/* Per-phase model override */}
+            <div style={{ fontSize: '.78rem', fontWeight: 600, color: 'var(--muted)', marginBottom: 6 }}>
+              Per-Phase Model Override
+            </div>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: 8,
+              }}
+            >
+              {PHASES.map((phase) => (
+                <div key={phase}>
+                  <label style={{ fontSize: '.75rem', color: 'var(--muted)' }}>
+                    {PHASE_LABELS[phase]}
+                  </label>
+                  <select
+                    className="input-sm"
+                    style={{ width: '100%' }}
+                    value={phaseModels[phase] || ''}
+                    onChange={(e) => handlePhaseModelChange(phase, e.target.value)}
+                  >
+                    <option value="">default</option>
+                    {currentModels.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+
+            {/* VLM Figure Review model */}
+            <div style={{ borderTop: '1px solid var(--border, #333)', marginTop: 14, paddingTop: 12 }}>
+              <div key="vlm">
                 <label style={{ fontSize: '.75rem', color: 'var(--muted)' }}>
-                  {PHASE_LABELS[phase]}
+                  {'🖼'} VLM Figure Review
                 </label>
                 <select
                   className="input-sm"
                   style={{ width: '100%' }}
-                  value={phaseModels[phase] || ''}
-                  onChange={(e) => handlePhaseModelChange(phase, e.target.value)}
+                  value={vlmReviewModel}
+                  onChange={(e) => setVlmReviewModel(e.target.value)}
                 >
-                  <option value="">default</option>
+                  <option value="">default (gpt-4o)</option>
                   {currentModels.map((m) => (
                     <option key={m} value={m}>
                       {m}
@@ -542,7 +681,7 @@ export function StepResources({
                   ))}
                 </select>
               </div>
-            ))}
+            </div>
           </div>
         </details>
       </div>

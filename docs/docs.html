@@ -145,6 +145,8 @@ sbatch your_pipeline_job.sh</code></pre>
     <tr><td><code>full_paper.tex / .pdf</code></td><td><span id="t-tbl-paper">Generated paper</span></td></tr>
     <tr><td><code>review_report.json</code></td><td><span id="t-tbl-review">Automated review score and feedback</span></td></tr>
     <tr><td><code>reproducibility_report.json</code></td><td><span id="t-tbl-repro">Reproducibility verification result</span></td></tr>
+    <tr><td><code>rebuttal.json</code></td><td>Automated rebuttal to review comments</td></tr>
+    <tr><td><code>ear/</code></td><td>Experiment Artifact Repository (code, data, logs, reproducibility metadata)</td></tr>
   </table>
 
   <!-- ARCHITECTURE -->
@@ -278,19 +280,20 @@ pipeline:
     <tr><td><code>ari-skill-hpc</code></td><td><code>slurm_submit</code>, <code>job_status</code>, <code>job_cancel</code>, <code>run_bash</code>, <code>singularity_*</code></td><td><span class="badge badge-det">Deterministic</span></td></tr>
     <tr><td><code>ari-skill-evaluator</code></td><td><code>make_metric_spec</code></td><td><span class="badge badge-det">Deterministic △</span></td></tr>
     <tr><td><code>ari-skill-idea</code></td><td><code>survey</code>, <code>generate_ideas</code></td><td><span class="badge badge-llm">LLM &#10039;</span></td></tr>
-    <tr><td><code>ari-skill-web</code></td><td><code>web_search</code>, <code>fetch_url</code>, <code>search_arxiv</code>, <code>search_semantic_scholar</code>, <code>collect_references_iterative</code></td><td><span class="badge badge-det">Partial LLM △</span></td></tr>
+    <tr><td><code>ari-skill-web</code></td><td><code>web_search</code>, <code>fetch_url</code>, <code>search_arxiv</code>, <code>search_papers</code>, <code>collect_references_iterative</code>, <code>list_uploaded_files</code>, <code>read_uploaded_file</code></td><td><span class="badge badge-det">Partial LLM △</span></td></tr>
     <tr><td><code>ari-skill-memory</code></td><td><code>add_memory</code>, <code>search_memory</code>, <code>get_node_memory</code>, <code>clear_node_memory</code></td><td><span class="badge badge-det">Deterministic</span></td></tr>
-    <tr><td><code>ari-skill-transform</code></td><td><code>nodes_to_science_data</code></td><td><span class="badge badge-llm">LLM &#10039;</span></td></tr>
+    <tr><td><code>ari-skill-transform</code></td><td><code>nodes_to_science_data</code>, <code>generate_ear</code></td><td><span class="badge badge-llm">LLM &#10039;</span></td></tr>
     <tr><td><code>ari-skill-plot</code></td><td><code>generate_figures</code>, <code>generate_figures_llm</code></td><td><span class="badge badge-llm">LLM &#10039;</span></td></tr>
     <tr><td><code>ari-skill-paper</code></td><td><code>write_paper_iterative</code>, <code>review_compiled_paper</code>, <code>generate_section</code>, ...</td><td><span class="badge badge-llm">LLM &#10039;</span></td></tr>
     <tr><td><code>ari-skill-paper-re</code></td><td><code>reproduce_from_paper</code>, <code>extract_metric_from_output</code></td><td><span class="badge badge-llm">LLM &#10039;</span></td></tr>
-    <tr><td><code>ari-skill-coding</code></td><td><code>write_code</code>, <code>run_code</code>, <code>run_bash</code></td><td><span class="badge badge-det">Deterministic</span></td></tr>
+    <tr><td><code>ari-skill-coding</code></td><td><code>write_code</code>, <code>run_code</code>, <code>read_file</code>, <code>run_bash</code></td><td><span class="badge badge-det">Deterministic</span></td></tr>
     <tr><td><code>ari-skill-benchmark</code></td><td><code>analyze_results</code>, <code>plot</code>, <code>statistical_test</code></td><td><span class="badge badge-det">Deterministic</span></td></tr>
     <tr><td><code>ari-skill-review</code></td><td><code>parse_review</code>, <code>generate_rebuttal</code>, <code>check_rebuttal</code></td><td><span class="badge badge-llm">LLM &#10039;</span></td></tr>
     <tr><td><code>ari-skill-vlm</code></td><td><code>review_figure</code>, <code>review_table</code></td><td><span class="badge badge-llm">LLM &#10039;</span></td></tr>
-    <tr><td><code>ari-skill-orchestrator</code></td><td><code>run_experiment</code>, <code>get_status</code>, <code>list_runs</code>, <code>get_paper</code></td><td><span class="badge badge-det">Deterministic</span></td></tr>
+    <tr><td><code>ari-skill-orchestrator</code></td><td><code>run_experiment</code>, <code>get_status</code>, <code>list_runs</code>, <code>list_children</code>, <code>get_paper</code></td><td><span class="badge badge-det">Deterministic</span></td></tr>
+    <tr><td><code>ari-skill-figure-router</code></td><td>(figure type classification)</td><td><span class="badge badge-llm">LLM &#10039;</span></td></tr>
   </table>
-  <p style="font-size:.85rem;color:var(--muted);"><span id="t-skills-note">&#10039; LLM-using tools are explicitly annotated. △ = LLM in some tools only. 14 skills total (9 default, 5 additional).</span></p>
+  <p style="font-size:.85rem;color:var(--muted);"><span id="t-skills-note">&#10039; LLM-using tools are explicitly annotated. △ = LLM in some tools only. 15 skills total (14 default, 1 additional).</span></p>
 
   <!-- ADDING A SKILL -->
   <h2 id="adding-skill"><span id="t-h-add-skill">Adding a Skill</span></h2>
@@ -403,7 +406,7 @@ inputs:
 
   <!-- MEMORY SYSTEM -->
   <h2 id="memory"><span id="t-h-memory">Agent Memory</span></h2>
-  <p><span id="t-memory-p1">ARI maintains a persistent memory store (<code>~/.ari/memory_store.jsonl</code>) shared across all experiments. Each entry contains:</span></p>
+  <p><span id="t-memory-p1">ARI keeps a per-experiment memory store at <code>{checkpoint}/memory_store.jsonl</code> (override path with <code>ARI_MEMORY_PATH</code>). Each entry contains:</span></p>
   <ul>
     <li><span id="t-memory-li-node"><code>node_id</code> &mdash; which node wrote the entry</span></li>
     <li><span id="t-memory-li-ancestors"><code>ancestor_ids</code> &mdash; the full parent chain, used for scoped recall</span></li>

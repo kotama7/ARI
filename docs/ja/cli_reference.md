@@ -271,6 +271,15 @@ ari skills-list [--config <config.yaml>]
 |------|------|-----------|
 | `ARI_EXECUTOR` | 実行バックエンド（`local` / `slurm` / `pbs` / `lsf`） | `local` |
 | `ARI_SLURM_PARTITION` | SLURM パーティション名 | -- |
+| `ARI_SLURM_CPUS` | SLURM ジョブの CPU 数オーバーライド | (自動検出) |
+
+### 検索・VLM
+
+| 変数 | 説明 | デフォルト |
+|------|------|-----------|
+| `ARI_RETRIEVAL_BACKEND` | 論文検索: `semantic_scholar` / `alphaxiv` / `both` | `semantic_scholar` |
+| `VLM_MODEL` | 図レビュー用 VLM モデル | `openai/gpt-4o` |
+| `ARI_ORCHESTRATOR_PORT` | orchestrator スキルの HTTP ポート | `9890` |
 
 ### フェーズごとのモデルオーバーライド
 

@@ -4,18 +4,25 @@ import { useAppContext } from '../../context/AppContext';
 import type { TreeNode } from '../../types';
 import { TreeVisualization } from './TreeVisualization';
 import { DetailPanel } from './DetailPanel';
+import { FileExplorer } from './FileExplorer';
 
 // ── Component ──
 
 export function TreePage() {
   const { t } = useI18n();
-  const { nodesData, refreshState } = useAppContext();
+  const { nodesData, refreshState, state, checkpoints } = useAppContext();
 
   const [filterStatus, setFilterStatus] = useState('');
   const [filterDepth, setFilterDepth] = useState('');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   // Key to force TreeVisualization re-mount on Reset Layout
   const [layoutKey, setLayoutKey] = useState(0);
+  // File explorer toggle
+  const [showFileExplorer, setShowFileExplorer] = useState(true);
+
+  // Use state.checkpoint_id when available; fallback to latest checkpoint from list
+  const checkpointId = state?.checkpoint_id
+    ?? (checkpoints.length > 0 ? checkpoints[0].id : null);
 
   // Apply filters (same logic as original renderTreeD3)
   const filteredNodes = useMemo(() => {
@@ -123,13 +130,26 @@ export function TreePage() {
           <option value="3">Depth 3+</option>
         </select>
 
+        {/* File explorer toggle */}
+        <button
+          onClick={() => setShowFileExplorer((v) => !v)}
+          className="btn btn-outline btn-sm"
+          style={{
+            fontSize: '.8rem',
+            background: showFileExplorer ? 'rgba(59,130,246,.15)' : undefined,
+            borderColor: showFileExplorer ? '#3b82f6' : undefined,
+          }}
+        >
+          {'\u{1F4C2}'} {t('file_explorer_btn')}
+        </button>
+
         {/* Refresh button */}
         <button
           onClick={handleRefresh}
           className="btn btn-outline btn-sm"
           style={{ fontSize: '.8rem' }}
         >
-          {'🔄'} Refresh
+          {'\u{1F504}'} Refresh
         </button>
 
         {/* Reset Layout button */}
@@ -138,11 +158,11 @@ export function TreePage() {
           className="btn btn-outline btn-sm"
           style={{ fontSize: '.8rem' }}
         >
-          {'↺'} Reset Layout
+          {'\u21BA'} Reset Layout
         </button>
       </div>
 
-      {/* Main area: tree + detail panel */}
+      {/* Main area: file explorer + tree + detail panel */}
       <div
         style={{
           flex: 1,
@@ -152,6 +172,17 @@ export function TreePage() {
           minHeight: 0,
         }}
       >
+        {/* File explorer (left sidebar, shown when toggled).
+            When a node is selected, show that node's work_dir; else the
+            full checkpoint directory. */}
+        {showFileExplorer && (
+          <FileExplorer
+            checkpointId={checkpointId}
+            nodeId={selectedNodeId}
+            onClose={() => setShowFileExplorer(false)}
+          />
+        )}
+
         {/* Tree visualization (flex:1) */}
         <TreeVisualization
           key={layoutKey}
@@ -162,7 +193,12 @@ export function TreePage() {
 
         {/* Detail panel (320px, resizable, shown only when node selected) */}
         {selectedNode && (
-          <DetailPanel node={selectedNode} onClose={handleCloseDetail} />
+          <DetailPanel
+            node={selectedNode}
+            allNodes={nodesData}
+            checkpointId={checkpointId ?? undefined}
+            onClose={handleCloseDetail}
+          />
         )}
       </div>
     </div>

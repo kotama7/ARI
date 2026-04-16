@@ -42,7 +42,9 @@ def _settings_page():
 
 
 def _step_resources():
-    return (_REACT_COMPONENTS / "Wizard" / "StepResources.tsx").read_text()
+    sr = (_REACT_COMPONENTS / "Wizard" / "StepResources.tsx").read_text()
+    wp = (_REACT_COMPONENTS / "Wizard" / "WizardPage.tsx").read_text()
+    return sr + "\n" + wp
 
 
 def _step_launch():

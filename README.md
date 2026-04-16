@@ -6,7 +6,7 @@
   **A universal research automation system. Laptop to supercomputer. Local models to cloud APIs. Novice to expert. Computation to physical world.**
 
   [![Tests](https://img.shields.io/badge/tests-1200%2B-brightgreen)](./ari-core)
-  [![Version](https://img.shields.io/badge/version-v0.4.1-orange)](https://github.com/kotama7/ARI/releases)
+  [![Version](https://img.shields.io/badge/version-v0.5.0-orange)](https://github.com/kotama7/ARI/releases)
   [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
   [![MCP](https://img.shields.io/badge/protocol-MCP-purple)](https://modelcontextprotocol.io)
   [![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
@@ -102,6 +102,8 @@ Today (computational):
   ari-skill-hpc        → SLURM job submission
   ari-skill-evaluator  → metric extraction from stdout
   ari-skill-paper      → LaTeX paper writing
+  ari-skill-vlm        → VLM figure/table quality review
+  ari-skill-web        → pluggable retrieval (Semantic Scholar + AlphaXiv)
 
 Tomorrow (physical world):
   ari-skill-robot      → robot arm control via ROS2 MCP bridge
@@ -147,7 +149,6 @@ See **[docs/quickstart.md](docs/quickstart.md)** for the full dashboard walkthro
 # Matrix Multiply Optimization
 ## Research Goal
 Maximize GFLOPS of DGEMM on this machine.
-<!-- metric_keyword: GFLOPS -->
 ```
 
 **Expert (full control):**
@@ -165,8 +166,7 @@ gmx mdrun -v -deffnm simulation -ntmpi 32
 ## Rules
 - HARD LIMIT: never exceed 128 MPI tasks
 - Always use work_dir=/abs/path in slurm_submit
-<!-- metric_keyword: energy_score -->
-<!-- min_expected_metric: -500 -->
+<!-- min_expected_metric: 50000 -->
 ```
 ```
 
@@ -174,7 +174,7 @@ gmx mdrun -v -deffnm simulation -ntmpi 32
 
 ## Web Dashboard (Primary Interface)
 
-A 9-page React/TypeScript SPA for visual experiment management. Launch with:
+A 10-page React/TypeScript SPA for visual experiment management. Launch with:
 
 ```bash
 ari viz ./checkpoints/ --port 8765   # http://localhost:8765
@@ -183,14 +183,15 @@ ari viz ./checkpoints/ --port 8765   # http://localhost:8765
 | Page | Features |
 |------|----------|
 | **Home** | Quick actions, recent experiments, system status |
-| **New Experiment** | 4-step wizard: Chat/Write/Upload goal → Scope (depth, nodes, workers) → Resources (LLM, HPC) → Launch |
+| **New Experiment** | 4-step wizard: Chat/Write/Upload goal → Scope (depth, nodes, workers, recursion) → Resources (LLM, HPC, container) → Launch |
 | **Experiments** | List/delete/resume all checkpoint projects with status and review scores |
 | **Monitor** | Real-time phase stepper (Idle → Idea → BFTS → Paper → Review), live log streaming (SSE), cost tracking |
 | **Tree** | Interactive BFTS node tree, click any node to inspect metrics, tool-call trace, generated code, and output |
-| **Results** | View/download paper (PDF/TeX), review report, reproducibility results, generated figures |
+| **Results** | Overleaf-like LaTeX editor (edit/compile/preview), paper PDF viewer, review report, reproducibility results, EAR browser |
 | **Ideas** | VirSci-generated hypotheses with novelty/feasibility scores and gap analysis |
-| **Workflow** | Edit post-BFTS pipeline stages (dependencies, enable/disable, inputs/outputs) |
-| **Settings** | LLM provider/model, API keys (.env-based), SLURM partition auto-detect, SSH remote test, Ollama host |
+| **Workflow** | React Flow visual DAG editor for pipeline stages (drag, connect, enable/disable, skill assignment) |
+| **Settings** | LLM provider/model, API keys, SLURM, container runtime, VLM review model, retrieval backend, Ollama host |
+| **Sub-Experiments** | Recursive sub-experiment tree with parent-child tracking (via orchestrator skill) |
 
 Real-time updates via WebSocket (tree changes) and SSE (log streaming). All data is per-project isolated.
 
@@ -204,12 +205,20 @@ The dashboard exposes a REST + WebSocket API that can also be used programmatica
 | `/api/launch` | POST | Launch new experiment with full config |
 | `/api/run-stage` | POST | Run specific stage (resume / paper / review) |
 | `/api/checkpoints` | GET | List all checkpoint projects |
-| `/api/settings` | GET/POST | Read/write LLM, SLURM, and API key settings |
+| `/api/settings` | GET/POST | Read/write LLM, SLURM, container, and API key settings |
 | `/api/workflow` | GET/POST | Read/write workflow.yaml pipeline |
+| `/api/workflow/flow` | GET/POST | React Flow graph representation of workflow |
 | `/api/chat-goal` | POST | Multi-turn LLM chat for experiment goal refinement |
 | `/api/upload` | POST | Upload experiment.md or data files |
+| `/api/upload/delete` | POST | Delete an uploaded file |
 | `/api/stop` | POST | Gracefully stop running experiment |
 | `/api/logs` | GET (SSE) | Stream real-time logs and cost data |
+| `/api/checkpoint/{id}/files` | GET | List files in paper directory |
+| `/api/checkpoint/{id}/file` | GET/POST | Read/save paper files |
+| `/api/checkpoint/compile` | POST | Trigger LaTeX compilation |
+| `/api/checkpoint/{id}/filetree` | GET | Full checkpoint directory tree |
+| `/api/ear/{run_id}` | GET | Experiment Artifact Repository contents |
+| `/api/sub-experiments` | GET/POST | List/launch recursive sub-experiments |
 | `/memory/<node_id>` | GET | Retrieve node memory (tool-call trace) |
 | `ws://host:{port+1}/ws` | WebSocket | Subscribe to real-time tree updates |
 
@@ -246,6 +255,8 @@ After a run completes, outputs are saved in `./checkpoints/<run_id>/`:
 | `review_report.json` | Automated peer review score and feedback |
 | `reproducibility_report.json` | Independent reproducibility verification |
 | `figures_manifest.json` | Generated figure paths and captions |
+| `rebuttal.json` | Automated rebuttal to review comments |
+| `ear/` | Experiment Artifact Repository (code, data, logs, reproducibility metadata) |
 | `cost_trace.jsonl` | Per-call LLM cost tracking |
 | `experiments/<slug>/<node_id>/` | Per-node work directories and generated code |
 
@@ -256,24 +267,25 @@ After a run completes, outputs are saved in `./checkpoints/<run_id>/`:
 
 ### Skills (MCP plugin servers)
 
-14 skills total. 9 are registered by default in `workflow.yaml`; 5 additional skills can be enabled by adding them to the config.
+15 skills total. 14 are registered by default in `workflow.yaml`; 1 additional skill (orchestrator) can be enabled by adding it to the config.
 
 | Skill | Role | LLM? | Default |
 |---|---|---|---|
 | `ari-skill-hpc` | SLURM submit / poll / Singularity / bash | ✗ | ✓ |
 | `ari-skill-evaluator` | Metric extraction from experiment file | △ | ✓ |
 | `ari-skill-idea` | arXiv survey + VirSci hypothesis generation | ✓ | ✓ |
-| `ari-skill-web` | DuckDuckGo, arXiv, Semantic Scholar, iterative citation collection | △ | ✓ |
+| `ari-skill-web` | DuckDuckGo, arXiv, Semantic Scholar / AlphaXiv, iterative citation, uploaded file access | △ | ✓ |
 | `ari-skill-memory` | Ancestor-scoped node memory (JSONL) | ✗ | ✓ |
-| `ari-skill-transform` | BFTS tree → science-facing data format | ✓ | ✓ |
+| `ari-skill-transform` | BFTS tree → science-facing data + EAR generation | ✓ | ✓ |
 | `ari-skill-plot` | Matplotlib/seaborn figure generation | ✓ | ✓ |
 | `ari-skill-paper` | LaTeX writing + BibTeX + review | ✓ | ✓ |
 | `ari-skill-paper-re` | ReAct reproducibility verification | ✓ | ✓ |
-| `ari-skill-coding` | Code generation + execution + bash | ✗ | — |
-| `ari-skill-benchmark` | CSV/JSON analysis, plotting, statistical tests | ✗ | — |
-| `ari-skill-review` | Peer-review parsing, rebuttal generation | ✓ | — |
-| `ari-skill-vlm` | Vision-Language model figure/table review | ✓ | — |
-| `ari-skill-orchestrator` | Expose ARI as MCP server for external agents | ✗ | — |
+| `ari-skill-figure-router` | Figure type classification and generation routing (SVG/matplotlib/LaTeX) | ✓ | ✓ |
+| `ari-skill-benchmark` | CSV/JSON analysis, plotting, statistical tests | ✗ | ✓ |
+| `ari-skill-review` | Peer-review parsing, rebuttal generation | ✓ | ✓ |
+| `ari-skill-vlm` | Vision-Language model figure/table review | ✓ | ✓ |
+| `ari-skill-coding` | Code generation + execution + file read + bash | ✗ | ✓ |
+| `ari-skill-orchestrator` | Expose ARI as MCP server, recursive sub-experiments, dual stdio+HTTP transport | ✗ | — |
 
 ✗ = no LLM, △ = LLM used in some tools only, ✓ = primary tools use LLM.
 

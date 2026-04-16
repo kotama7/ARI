@@ -128,16 +128,31 @@ def _api_generate_config(body: bytes) -> dict:
 
 
 def _api_upload_file(headers, body: bytes) -> dict:
-    """Handle file upload."""
+    """Handle file upload.
+
+    If no checkpoint directory exists yet (e.g. fresh wizard), a staging
+    directory is created automatically under {ARI}/workspace/staging/ so
+    uploads succeed before launch. The staging root must share the workspace
+    with checkpoints/, otherwise launched runs end up under an unrelated
+    parent and disappear from the GUI's checkpoint list.
+    """
     content_type = headers.get("Content-Type", "")
     filename = headers.get("X-Filename", "upload.md")
     filename = Path(filename).name  # sanitize
     err = _st.require_checkpoint_dir()
     if err:
-        return {"ok": False, "error": err, "_status": 400}
+        # Auto-create staging directory so wizard uploads work before launch
+        from ari.paths import PathManager
+        _pm = PathManager(_st._ari_root / "workspace")
+        staging = _pm.new_staging_dir()
+        _st.set_active_checkpoint(staging)
+        _st._staging_dir = staging
+        log.info("Created staging dir for uploads: %s", staging)
+    uploads_dir = _st._checkpoint_dir / "uploads"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
     if "multipart/form-data" not in content_type:
         # Raw body upload with X-Filename header
-        save_path = _st._checkpoint_dir / filename
+        save_path = uploads_dir / filename
         save_path.write_bytes(body)
         return {"ok": True, "path": str(save_path), "filename": filename}
     # Multipart: extract first file part
@@ -151,11 +166,37 @@ def _api_upload_file(headers, body: bytes) -> dict:
             data = part[header_end + 4:].rstrip(b"\r\n--")
             m = re.search(r'filename="([^"]+)"', header_raw)
             filename = Path(m.group(1)).name if m else "upload.md"
-            save_path = _st._checkpoint_dir / filename
+            save_path = uploads_dir / filename
             save_path.write_bytes(data)
             return {"ok": True, "path": str(save_path), "filename": filename}
     return {"error": "no file found in upload"}
 
+
+
+def _api_upload_delete(body: bytes) -> dict:
+    """Delete a previously uploaded file from the checkpoint/staging directory."""
+    try:
+        data = json.loads(body) if body else {}
+    except Exception:
+        return {"ok": False, "error": "Invalid JSON"}
+    filename = data.get("filename", "")
+    if not filename:
+        return {"ok": False, "error": "filename required"}
+    filename = Path(filename).name  # sanitize
+    err = _st.require_checkpoint_dir()
+    if err:
+        return {"ok": False, "error": err}
+    target = _st._checkpoint_dir / "uploads" / filename
+    if not target.exists():
+        # Fallback: check root for backward compatibility
+        target = _st._checkpoint_dir / filename
+    if not target.exists():
+        return {"ok": False, "error": f"File not found: {filename}"}
+    try:
+        target.unlink()
+        return {"ok": True, "filename": filename}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 def _api_ssh_test(body: bytes) -> dict:

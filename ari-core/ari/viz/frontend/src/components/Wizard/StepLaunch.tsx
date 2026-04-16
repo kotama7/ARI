@@ -18,6 +18,7 @@ interface StepLaunchProps {
   maxReact: number;
   timeout: number;
   workers: number;
+  maxRecursionDepth: number;
   // LLM values for launch payload
   llmModel: string;
   llmProvider: string;
@@ -29,6 +30,11 @@ interface StepLaunchProps {
   partition: string;
   phaseModels: Record<string, string>;
   savePath: string;
+  // Container
+  containerImage: string;
+  containerMode: string;
+  // VLM Review
+  vlmReviewModel: string;
   // Navigation
   onBack: () => void;
   onLaunched: () => void;
@@ -48,6 +54,7 @@ export function StepLaunch({
   maxReact,
   timeout,
   workers,
+  maxRecursionDepth,
   llmModel,
   llmProvider,
   hpcCpus,
@@ -57,6 +64,9 @@ export function StepLaunch({
   partition,
   phaseModels,
   savePath,
+  containerImage,
+  containerMode,
+  vlmReviewModel,
   onBack,
   onLaunched,
 }: StepLaunchProps) {
@@ -83,6 +93,7 @@ export function StepLaunch({
         max_react: maxReact || null,
         timeout_min: timeout || null,
         workers: workers || null,
+        max_recursion_depth: maxRecursionDepth ?? 3,
         llm_model: llmModel,
         llm_provider: llmProvider || 'openai',
         hpc_cpus: parseInt(hpcCpus) || null,
@@ -93,6 +104,9 @@ export function StepLaunch({
         paper_format: paperFormat || '',
         language: language || 'en',
         phase_models: phaseModels,
+        container_image: containerImage || '',
+        container_mode: containerMode || 'auto',
+        vlm_review_model: vlmReviewModel,
       });
 
       if (r.ok) {

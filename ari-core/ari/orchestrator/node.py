@@ -26,13 +26,15 @@ class NodeLabel(str, Enum):
     DEBUG      = "debug"       # Debug parent node failures/errors
     ABLATION   = "ablation"    # Ablation by varying parent node configuration
     VALIDATION = "validation"  # Validate parent node results (multiple seeds, etc.)
+    OTHER      = "other"       # LLM-invented label (e.g. replication, generalization);
+                               # the original string is kept on Node.raw_label
 
     @classmethod
     def from_str(cls, s: str) -> "NodeLabel":
         try:
             return cls(s.lower())
-        except ValueError:
-            return cls.DRAFT
+        except (ValueError, AttributeError):
+            return cls.OTHER
 
     def system_hint(self) -> str:
         """Hint text appended to the system prompt by loop.py."""
@@ -64,6 +66,11 @@ class NodeLabel(str, Enum):
                 "(5) Checking that disabling an optimization degrades performance as expected. "
                 "Report pass/fail for each validation scenario and highlight any unexpected results."
             ),
+            NodeLabel.OTHER: (
+                "This node uses a custom exploration label proposed by the planner. "
+                "Carry out the experimental direction described in eval_summary, "
+                "treating it as the primary instruction."
+            ),
         }
         return hints.get(self, "")
 
@@ -86,6 +93,7 @@ class Node:
     has_real_data: bool = False
     eval_summary: str | None = None  # LLM evaluation comment
     label: NodeLabel = NodeLabel.DRAFT  # Exploration purpose label
+    raw_label: str = ""  # Original LLM-proposed label (preserved when label==OTHER)
     name: str = ""  # Human-readable short name (set after hypothesis is known)
     ancestor_ids: list[str] = field(default_factory=list)
     # ancestor_ids: list of node IDs from root to parent of self (self not included)
@@ -135,8 +143,9 @@ class Node:
             "has_real_data": self.has_real_data,
             "eval_summary": self.eval_summary,
             "label": self.label.value,
+            "raw_label": self.raw_label,
             "name": self.name,
             "error_log": self.error_log,
             "ancestor_ids": self.ancestor_ids,
-            "trace_log": self.trace_log[-500:],  # last 500 entries
+            "trace_log": self.trace_log,
         }

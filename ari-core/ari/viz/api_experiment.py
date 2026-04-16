@@ -117,42 +117,66 @@ def _api_run_stage(body: bytes) -> dict:
 
 
 def _api_launch(body: bytes) -> dict:
+    import hashlib as _hl
     try:
         data = json.loads(body)
     except (json.JSONDecodeError, TypeError, ValueError) as e:
         return {"ok": False, "error": f"Invalid request body: {e}"}
     profile = data.get("profile", "")
     experiment_md = data.get("experiment_md", "")
-    # Determine checkpoint parent: always use the canonical checkpoints root.
-    # Walk up from _checkpoint_dir to find the outermost "checkpoints" ancestor,
-    # preventing nested checkpoints/checkpoints/checkpoints/... paths.
-    _ari_root = Path(__file__).resolve().parent.parent.parent.parent  # ARI/
-    ckpt_parent = None
-    if _st._checkpoint_dir:
-        # Walk up to find the outermost checkpoints/ directory
-        _p = Path(_st._checkpoint_dir).resolve()
-        while _p != _p.parent:
-            if _p.name == "checkpoints" and _p.parent.name != "checkpoints":
-                ckpt_parent = _p.parent  # parent of the real checkpoints/ dir
-                break
-            _p = _p.parent
-        # If no "checkpoints" ancestor found (e.g. test env), use direct parent
-        if ckpt_parent is None:
-            ckpt_parent = Path(_st._checkpoint_dir).parent
-    if ckpt_parent is None:
-        # Fallback: use ARI/workspace/ — never write into the source tree (ari-core/)
-        ckpt_parent = _ari_root / "workspace"
+    # ── Trace: log received experiment_md from GUI ──────────────────
+    _md_hash = _hl.sha256(experiment_md.encode()).hexdigest()[:16] if experiment_md else "(empty)"
+    log.info(
+        "[launch] experiment_md received: len=%d sha256=%s first200=%r",
+        len(experiment_md), _md_hash, experiment_md[:200],
+    )
+    # Determine workspace root via PathManager (single source of truth).
+    from ari.paths import PathManager as _PM
+    _ari_root = _st._ari_root
+    if _st._checkpoint_dir and _st._checkpoint_dir != _st._staging_dir:
+        _pm = _PM.from_checkpoint_dir(_st._checkpoint_dir)
+    else:
+        _pm = _PM(_ari_root / "workspace")
+    ckpt_parent = _pm.root
+    log.info("[launch] ckpt_parent=%s (checkpoint_dir=%s)", ckpt_parent, _st._checkpoint_dir)
     try:
         ckpt_parent.mkdir(parents=True, exist_ok=True)
     except OSError as e:
         return {"ok": False, "error": f"Cannot create checkpoint directory {ckpt_parent}: {e}"}
-    # Write experiment.md inside the project root (not cwd)
-    config_path = ckpt_parent / "experiment.md"
+    # Pre-create checkpoint directory early so experiment.md is written
+    # directly inside it (not at the workspace root).
+    import time as _time_early
+    _ts_early = _time_early.strftime("%Y%m%d%H%M%S")
+    _first_line_early = ""
+    for _line_e in (experiment_md or "").splitlines():
+        _stripped_e = _line_e.strip()
+        if _stripped_e and not _stripped_e.startswith("#"):
+            _first_line_early = _stripped_e[:60]
+            break
+    if not _first_line_early:
+        _first_line_early = "experiment"
+    _slug_early = _PM.slugify(_first_line_early)
+    ckpt_root = _pm.checkpoints_root
+    ckpt_root.mkdir(parents=True, exist_ok=True)
+    _run_id_early = f"{_ts_early}_{_slug_early}"
+    _pre_ckpt = _pm.ensure_checkpoint(_run_id_early)
+    # Write experiment.md inside the checkpoint directory (single canonical location)
+    config_path = _pre_ckpt / "experiment.md"
     if experiment_md:
         try:
             config_path.write_text(experiment_md, encoding="utf-8")
+            log.info("[launch] wrote experiment.md to %s (%d bytes)", config_path, len(experiment_md))
         except Exception as e:
             return {"ok": False, "error": f"Failed to write experiment file: {e}"}
+    else:
+        log.warning("[launch] experiment_md is empty; using existing file at %s", config_path)
+    # Verify written content matches what was received
+    if config_path.exists():
+        _written = config_path.read_text(encoding="utf-8")
+        _written_hash = _hl.sha256(_written.encode()).hexdigest()[:16]
+        log.info("[launch] config_path on disk: len=%d sha256=%s path=%s", len(_written), _written_hash, config_path)
+        if experiment_md and _written_hash != _md_hash:
+            log.error("[launch] MISMATCH: written file hash %s != received hash %s", _written_hash, _md_hash)
     _st._last_experiment_md = experiment_md or (config_path.read_text(encoding="utf-8") if config_path.exists() else "")
     if not config_path.exists():
         return {"ok": False, "error": f"Experiment file not found: {config_path}"}
@@ -186,10 +210,13 @@ def _api_launch(body: bytes) -> dict:
                         k = k.strip(); v = v.strip()
                         if k not in proc_env or not proc_env[k]:
                             proc_env[k] = v
-        # Inject model from saved Settings
+        # Inject model from saved Settings.  Project-scoped only — when the
+        # checkpoint has no settings.json the launch falls back to defaults
+        # already baked into the CLI / config layer.
         try:
-            if _st._settings_path.exists():
-                saved = json.loads(_st._settings_path.read_text())
+            _sp = _st._settings_path
+            saved = json.loads(_sp.read_text()) if (_sp is not None and _sp.exists()) else {}
+            if saved:
                 llm_model = saved.get("llm_model", "")
                 llm_provider = saved.get("llm_provider", "") or saved.get("llm_backend", "")
                 if llm_model:
@@ -217,11 +244,26 @@ def _api_launch(body: bytes) -> dict:
                     # Non-Ollama backends: explicitly clear base URL so skills
                     # don't fall back to the Ollama default (http://127.0.0.1:11434)
                     proc_env["ARI_LLM_API_BASE"] = ""
+                # Retrieval backend from settings → ARI_RETRIEVAL_BACKEND
+                _retrieval_backend = saved.get("retrieval_backend", "")
+                if _retrieval_backend:
+                    proc_env["ARI_RETRIEVAL_BACKEND"] = _retrieval_backend
                 # Per-skill model overrides → ARI_MODEL_IDEA, ARI_MODEL_CODING, etc.
                 for skill in ["idea","bfts","coding","eval","paper","review"]:
                     val = saved.get(f"model_{skill}", "")
                     if val:
                         proc_env[f"ARI_MODEL_{skill.upper()}"] = val
+                # VLM review model from settings
+                _vlm_model = saved.get("vlm_review_model", "")
+                if _vlm_model:
+                    proc_env["VLM_MODEL"] = _vlm_model
+                # Container settings from Settings page (fallback; wizard overrides below)
+                _ct_image = saved.get("container_image", "")
+                _ct_mode = saved.get("container_mode", "")
+                if _ct_image and "ARI_CONTAINER_IMAGE" not in proc_env:
+                    proc_env["ARI_CONTAINER_IMAGE"] = _ct_image
+                if _ct_mode and _ct_mode != "auto" and "ARI_CONTAINER_MODE" not in proc_env:
+                    proc_env["ARI_CONTAINER_MODE"] = _ct_mode
         except Exception:
             log.warning("Failed to inject LLM settings from saved config", exc_info=True)
         # BFTS scope overrides from wizard
@@ -266,11 +308,46 @@ def _api_launch(body: bytes) -> dict:
                     proc_env["ARI_SLURM_PARTITION"] = _parts[0]
             except Exception:
                 pass
+        # Auto-detect CPU count from the resolved partition when the wizard
+        # left the field blank. The wizard's "auto (N CPUs)" placeholder is
+        # only a hint string — without this fallback, ARI_SLURM_CPUS stays
+        # unset and the LLM may pick a value exceeding the partition limit.
+        if wiz_hpc_cpus is None and data.get("profile") == "hpc":
+            _final_part = proc_env.get("ARI_SLURM_PARTITION", "")
+            if _final_part:
+                try:
+                    import subprocess as _sp_cpu
+                    _r_cpu = _sp_cpu.run(
+                        ["sinfo", "-p", _final_part, "-h", "-o", "%c"],
+                        capture_output=True, text=True, timeout=5,
+                    )
+                    # %c may yield multiple lines for heterogeneous partitions;
+                    # pick the smallest so we never exceed any node's capacity.
+                    _vals = [int(v) for v in _r_cpu.stdout.split() if v.strip().isdigit()]
+                    if _vals:
+                        proc_env["ARI_SLURM_CPUS"] = str(min(_vals))
+                except Exception:
+                    pass
+        # VLM review model override from wizard
+        wiz_vlm_model = data.get("vlm_review_model")
+        if wiz_vlm_model:
+            proc_env["VLM_MODEL"] = str(wiz_vlm_model)
+        # Retrieval backend override from wizard/launch request
+        wiz_retrieval = data.get("retrieval_backend")
+        if wiz_retrieval:
+            proc_env["ARI_RETRIEVAL_BACKEND"] = str(wiz_retrieval)
         # Per-phase model overrides from wizard Advanced section
         phase_models = data.get("phase_models", {}) or {}
         for phase, model in phase_models.items():
             if model:
                 proc_env[f"ARI_MODEL_{phase.upper()}"] = model
+        # Container overrides from wizard
+        wiz_container_image = data.get("container_image")
+        wiz_container_mode = data.get("container_mode")
+        if wiz_container_image:
+            proc_env["ARI_CONTAINER_IMAGE"] = str(wiz_container_image)
+        if wiz_container_mode:
+            proc_env["ARI_CONTAINER_MODE"] = str(wiz_container_mode)
         # Per-experiment default model override (from wizard) takes precedence over Settings
         wiz_model = data.get("llm_model", "") or data.get("model", "")
         wiz_provider = data.get("llm_provider", "")
@@ -324,37 +401,100 @@ def _api_launch(body: bytes) -> dict:
         if phase_models:
             _launch_cfg["phase_models"] = {k: v for k, v in phase_models.items() if v}
         _st._launch_config = _launch_cfg
-        import time, shutil, re as _re_slug
-        # Pre-create checkpoint directory so log and config files are
-        # written directly inside it from the start (no watcher/move needed).
-        _ts = time.strftime("%Y%m%d%H%M%S")
-        # Build slug from experiment text (same approach as cli.py fallback)
-        _first_line = ""
-        for _line in (experiment_md or "").splitlines():
-            _stripped = _line.strip()
-            if _stripped and not _stripped.startswith("#"):
-                _first_line = _stripped[:60]
-                break
-        if not _first_line:
-            _first_line = "experiment"
-        _slug = _re_slug.sub(r"[^a-zA-Z0-9_-]", "_", _first_line).strip("_")[:40]
-        _slug = _re_slug.sub(r"_+", "_", _slug)
-        if ckpt_parent.name == "checkpoints":
-            ckpt_root = ckpt_parent
-        else:
-            ckpt_root = ckpt_parent / "checkpoints"
-        ckpt_root.mkdir(parents=True, exist_ok=True)
-        _pre_ckpt = ckpt_root / f"{_ts}_{_slug}"
-        _pre_ckpt.mkdir(parents=True, exist_ok=True)
-        # Write log, experiment.md, and launch_config.json directly inside
+        import time, shutil
+        # Write log and launch_config.json inside pre-created checkpoint
         log_path = _pre_ckpt / f"ari_run_{int(time.time())}.log"
         _st._last_log_path = log_path
         _st._last_log_fh = open(log_path, "w")
-        if experiment_md:
-            (_pre_ckpt / "experiment.md").write_text(experiment_md, encoding="utf-8")
         (_pre_ckpt / "launch_config.json").write_text(json.dumps(_launch_cfg, indent=2))
+        # Copy workflow.yaml into checkpoint dir for reproducibility
+        _wf_src = Path(__file__).resolve().parent.parent.parent / "config" / "workflow.yaml"
+        if _wf_src.exists():
+            try:
+                shutil.copy2(str(_wf_src), str(_pre_ckpt / "workflow.yaml"))
+            except Exception:
+                log.warning("Failed to copy workflow.yaml to checkpoint", exc_info=True)
+        # Copy uploaded files from staging/previous checkpoint to new checkpoint
+        _staging = _st._staging_dir
+        _uploaded_paths: list[Path] = []
+        if _staging and _staging.exists() and _staging != _pre_ckpt:
+            import shutil as _shutil_stage
+            _uploads_dest = _pre_ckpt / "uploads"
+            _uploads_dest.mkdir(parents=True, exist_ok=True)
+            # Collect user files: new layout (staging/uploads/) + legacy (staging root)
+            _user_files: list[Path] = []
+            _staging_uploads = _staging / "uploads"
+            if _staging_uploads.is_dir():
+                _user_files.extend(f for f in _staging_uploads.iterdir() if f.is_file())
+            _user_files.extend(
+                f for f in _staging.iterdir()
+                if f.is_file() and not _PM.is_meta_file(f.name)
+            )
+            for _f in _user_files:
+                _dest = _uploads_dest / _f.name
+                if not _dest.exists():
+                    _shutil_stage.copy2(str(_f), str(_dest))
+                    log.info("Copied uploaded file: %s -> %s", _f.name, _dest)
+                _uploaded_paths.append(_dest)
+            # Clean up staging directory
+            try:
+                _shutil_stage.rmtree(str(_staging))
+            except Exception:
+                pass
+            _st._staging_dir = None
+        # Plan A: auto-append uploaded file paths to ## Provided Files section
+        if _uploaded_paths:
+            import re as _re_pf
+            _pf_lines = "\n".join(f"- {p}" for p in _uploaded_paths)
+            _md_path = _pre_ckpt / "experiment.md"
+            _md_text = _md_path.read_text(encoding="utf-8") if _md_path.exists() else ""
+            # Choose section header based on language setting
+            _lang = data.get("language", "en") or "en"
+            _section_headers = {
+                "ja": "提供ファイル",
+                "zh": "提供文件",
+            }
+            _section_header = _section_headers.get(_lang, "Provided Files")
+            if _re_pf.search(r"##\s*(?:提供ファイル|提供文件|Provided Files?|Local Files?|Files?)\s*\n",
+                             _md_text, re.IGNORECASE):
+                # Append to existing section (before the next ## or end)
+                def _append_files(m: "re.Match[str]") -> str:
+                    return m.group(0).rstrip("\n") + "\n" + _pf_lines + "\n"
+                _md_text = _re_pf.sub(
+                    r"(##\s*(?:提供ファイル|提供文件|Provided Files?|Local Files?|Files?)\s*\n.*?)(?=\n##|\Z)",
+                    _append_files, _md_text, count=1, flags=re.DOTALL | re.IGNORECASE,
+                )
+            else:
+                _md_text = _md_text.rstrip("\n") + f"\n\n## {_section_header}\n" + _pf_lines + "\n"
+            _md_path.write_text(_md_text, encoding="utf-8")
+            log.info("Auto-appended %d uploaded file(s) to ## %s", len(_uploaded_paths), _section_header)
+        # Sub-experiment recursion metadata: when the wizard or another launcher
+        # supplies max_recursion_depth/parent_run_id, persist it as meta.json so
+        # the orchestrator and the GUI can reconstruct the parent->child tree.
+        _wiz_max_recursion = data.get("max_recursion_depth")
+        _wiz_parent_run = data.get("parent_run_id")
+        _wiz_recursion_depth = data.get("recursion_depth")
+        if (
+            _wiz_max_recursion is not None
+            or _wiz_parent_run is not None
+            or _wiz_recursion_depth is not None
+        ):
+            from datetime import datetime as _dt, timezone as _tz
+            _meta_doc = {
+                "run_id": _pre_ckpt.name,
+                "parent_run_id": _wiz_parent_run or None,
+                "recursion_depth": int(_wiz_recursion_depth or 0),
+                "max_recursion_depth": int(_wiz_max_recursion) if _wiz_max_recursion is not None else 3,
+                "created_at": _dt.now(_tz.utc).isoformat(),
+                "checkpoint_dir": str(_pre_ckpt),
+            }
+            (_pre_ckpt / "meta.json").write_text(json.dumps(_meta_doc, indent=2))
+            _st.set_sub_experiment(_pre_ckpt.name, _meta_doc)
+            proc_env["ARI_PARENT_RUN_ID"] = _pre_ckpt.name
+            proc_env["ARI_RECURSION_DEPTH"] = str(int(_wiz_recursion_depth or 0) + 1)
+            proc_env["ARI_MAX_RECURSION_DEPTH"] = str(int(_wiz_max_recursion) if _wiz_max_recursion is not None else 3)
         # Point active checkpoint to the pre-created dir immediately
-        _st._checkpoint_dir = _pre_ckpt
+        _st.set_active_checkpoint(_pre_ckpt)
         _st._last_mtime = 0.0
         # Tell CLI to use this pre-created checkpoint directory
         proc_env["ARI_CHECKPOINT_DIR"] = str(_pre_ckpt)
@@ -444,7 +584,7 @@ def _api_logs_sse(wfile) -> None:
                     msg = json.dumps({"msg": f"--- Switched to log: {log_file.name} ---"})
                     wfile.write(b"data: " + msg.encode() + b"\n\n")
                     wfile.flush()
-            if log_file and log_file.exists():
+            if log_file and log_file.exists() and log_file.stat().st_size > log_offset:
                 with open(log_file, "r", encoding="utf-8", errors="replace") as fh:
                     fh.seek(log_offset)
                     chunk = fh.read(256 * 1024)  # read up to 256 KB of new data
@@ -463,7 +603,7 @@ def _api_logs_sse(wfile) -> None:
             # Tail checkpoint cost_trace for live progress
             if _st._checkpoint_dir and _st._checkpoint_dir.exists():
                 ct = _st._checkpoint_dir / "cost_trace.jsonl"
-                if ct.exists():
+                if ct.exists() and ct.stat().st_size > ckpt_offset:
                     with open(ct, "r", encoding="utf-8", errors="replace") as fh:
                         fh.seek(ckpt_offset)
                         chunk = fh.read(64 * 1024)
