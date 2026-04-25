@@ -13,6 +13,9 @@ from ari.viz.api_workflow import (
     _api_get_default_workflow,
     _api_get_workflow_flow,
     _api_save_workflow_flow,
+    _api_save_skill_phases,
+    _api_save_disabled_tools,
+    _normalize_phase_value,
 )
 
 
@@ -477,24 +480,14 @@ def test_skill_mcp_usage_registered_for_unused():
     if not r.get("ok"):
         pytest.skip("workflow API unavailable")
     mcp = r.get("skill_mcp", {})
-    # plot-skill is the generate_figures stage (restored after issue #9 close),
-    # so its usage should be "stage" (pipeline-driven).
+    # plot-skill owns the generate_figures stage (now with unified
+    # matplotlib + SVG generation after figure-router consolidation), so
+    # its usage should be "stage" (pipeline-driven).
     if "plot-skill" in mcp:
         assert mcp["plot-skill"].get("usage") == "stage", (
             f"plot-skill should be marked as 'stage' since it's wired into "
             f"the generate_figures pipeline stage, got "
             f"{mcp['plot-skill'].get('usage')!r}"
-        )
-    # figure-router-skill is defined but intentionally NOT in any pipeline
-    # stage (see workflow.yaml comments + closed issue #9), so it should be
-    # either 'registered' or 'active' (depending on core-source references),
-    # never 'stage'.
-    if "figure-router-skill" in mcp:
-        assert mcp["figure-router-skill"].get("usage") != "stage", (
-            f"figure-router-skill must not be wired into the paper pipeline; "
-            f"it was replaced by plot-skill batch generation to produce "
-            f"figures_manifest.json. Got usage="
-            f"{mcp['figure-router-skill'].get('usage')!r}"
         )
 
 
@@ -597,3 +590,231 @@ def test_frontend_agent_runtime_tools_data_available():
         entry = mcp[name]
         assert "tools" in entry, f"Active skill '{name}' missing 'tools' key"
         assert "description" in entry, f"Active skill '{name}' missing 'description' key"
+
+
+# ── _normalize_phase_value ───────────────────────────
+
+def test_normalize_phase_passes_plain_string():
+    assert _normalize_phase_value("bfts") == "bfts"
+    assert _normalize_phase_value("none") == "none"
+    assert _normalize_phase_value("all") == "all"
+
+
+def test_normalize_phase_single_item_list_collapses():
+    assert _normalize_phase_value(["bfts"]) == "bfts"
+
+
+def test_normalize_phase_multi_item_list_preserved():
+    assert _normalize_phase_value(["bfts", "paper", "reproduce"]) == [
+        "bfts", "paper", "reproduce",
+    ]
+
+
+def test_normalize_phase_all_in_list_collapses_to_all():
+    assert _normalize_phase_value(["bfts", "all", "paper"]) == "all"
+
+
+def test_normalize_phase_none_with_others_drops_none():
+    assert _normalize_phase_value(["none", "bfts"]) == "bfts"
+    assert _normalize_phase_value(["bfts", "none", "paper"]) == ["bfts", "paper"]
+
+
+def test_normalize_phase_empty_list_defaults_to_all():
+    assert _normalize_phase_value([]) == "all"
+
+
+def test_normalize_phase_deduplicates_list():
+    assert _normalize_phase_value(["bfts", "bfts", "paper"]) == ["bfts", "paper"]
+
+
+# ── _api_save_skill_phases ───────────────────────────
+
+SKILLS_YAML = {
+    "bfts_pipeline": [],
+    "pipeline": [],
+    "skills": [
+        {"name": "idea-skill", "path": "/x/idea", "phase": "none"},
+        {"name": "memory-skill", "path": "/x/mem", "phase": "bfts"},
+        {"name": "paper-skill", "path": "/x/pap", "phase": "paper"},
+    ],
+}
+
+
+def _write_skills_yaml(tmp_path, data=None):
+    """Helper: write a minimal workflow.yaml into tmp_path."""
+    import yaml
+    wf = tmp_path / "workflow.yaml"
+    wf.write_text(yaml.dump(data or SKILLS_YAML, allow_unicode=True, sort_keys=False))
+    return wf
+
+
+def test_save_skill_phases_single_string(tmp_path):
+    import yaml
+    wf = _write_skills_yaml(tmp_path)
+    with patch("ari.viz.api_workflow._st") as mock_st:
+        mock_st._checkpoint_dir = tmp_path
+        body = json.dumps({"skills": [{"name": "idea-skill", "phase": "bfts"}]}).encode()
+        r = _api_save_skill_phases(body)
+    assert r["ok"] is True
+    saved = yaml.safe_load(wf.read_text())
+    idea = next(s for s in saved["skills"] if s["name"] == "idea-skill")
+    assert idea["phase"] == "bfts"
+
+
+def test_save_skill_phases_multi_phase_list(tmp_path):
+    import yaml
+    wf = _write_skills_yaml(tmp_path)
+    with patch("ari.viz.api_workflow._st") as mock_st:
+        mock_st._checkpoint_dir = tmp_path
+        body = json.dumps({
+            "skills": [{"name": "idea-skill", "phase": ["bfts", "paper", "reproduce"]}],
+        }).encode()
+        r = _api_save_skill_phases(body)
+    assert r["ok"] is True
+    saved = yaml.safe_load(wf.read_text())
+    idea = next(s for s in saved["skills"] if s["name"] == "idea-skill")
+    assert idea["phase"] == ["bfts", "paper", "reproduce"]
+
+
+def test_save_skill_phases_disables_via_none(tmp_path):
+    import yaml
+    wf = _write_skills_yaml(tmp_path, data={
+        "skills": [{"name": "idea-skill", "path": "/x", "phase": "bfts"}],
+    })
+    with patch("ari.viz.api_workflow._st") as mock_st:
+        mock_st._checkpoint_dir = tmp_path
+        body = json.dumps({"skills": [{"name": "idea-skill", "phase": "none"}]}).encode()
+        r = _api_save_skill_phases(body)
+    assert r["ok"] is True
+    saved = yaml.safe_load(wf.read_text())
+    assert saved["skills"][0]["phase"] == "none"
+
+
+def test_save_skill_phases_does_not_touch_other_skills(tmp_path):
+    import yaml
+    wf = _write_skills_yaml(tmp_path)
+    with patch("ari.viz.api_workflow._st") as mock_st:
+        mock_st._checkpoint_dir = tmp_path
+        body = json.dumps({"skills": [{"name": "idea-skill", "phase": "bfts"}]}).encode()
+        _api_save_skill_phases(body)
+    saved = yaml.safe_load(wf.read_text())
+    mem = next(s for s in saved["skills"] if s["name"] == "memory-skill")
+    pap = next(s for s in saved["skills"] if s["name"] == "paper-skill")
+    assert mem["phase"] == "bfts"   # untouched
+    assert pap["phase"] == "paper"  # untouched
+
+
+def test_save_skill_phases_empty_list_is_400(tmp_path):
+    with patch("ari.viz.api_workflow._st") as mock_st:
+        mock_st._checkpoint_dir = tmp_path
+        r = _api_save_skill_phases(json.dumps({"skills": []}).encode())
+    assert r["ok"] is False
+    assert r.get("_status") == 400
+
+
+def test_save_skill_phases_missing_field_is_400(tmp_path):
+    with patch("ari.viz.api_workflow._st") as mock_st:
+        mock_st._checkpoint_dir = tmp_path
+        r = _api_save_skill_phases(json.dumps({"wrong_key": []}).encode())
+    assert r["ok"] is False
+    assert r.get("_status") == 400
+
+
+def test_save_skill_phases_unknown_skill_is_ignored(tmp_path):
+    import yaml
+    wf = _write_skills_yaml(tmp_path)
+    with patch("ari.viz.api_workflow._st") as mock_st:
+        mock_st._checkpoint_dir = tmp_path
+        body = json.dumps({"skills": [{"name": "nonexistent", "phase": "bfts"}]}).encode()
+        r = _api_save_skill_phases(body)
+    # No matching skill name → no change, but still OK
+    assert r["ok"] is True
+    saved = yaml.safe_load(wf.read_text())
+    for s in saved["skills"]:
+        assert s["phase"] == SKILLS_YAML["skills"][
+            [sk["name"] for sk in SKILLS_YAML["skills"]].index(s["name"])
+        ]["phase"]
+
+
+# ── _api_save_disabled_tools ─────────────────────────
+
+def test_save_disabled_tools_add(tmp_path):
+    import yaml
+    wf = _write_skills_yaml(tmp_path)
+    with patch("ari.viz.api_workflow._st") as mock_st:
+        mock_st._checkpoint_dir = tmp_path
+        body = json.dumps({"disabled_tools": ["generate_ideas", "survey"]}).encode()
+        r = _api_save_disabled_tools(body)
+    assert r["ok"] is True
+    saved = yaml.safe_load(wf.read_text())
+    assert saved["disabled_tools"] == ["generate_ideas", "survey"]
+
+
+def test_save_disabled_tools_clear(tmp_path):
+    import yaml
+    wf = _write_skills_yaml(tmp_path, data={
+        "skills": [],
+        "disabled_tools": ["generate_ideas", "survey"],
+    })
+    with patch("ari.viz.api_workflow._st") as mock_st:
+        mock_st._checkpoint_dir = tmp_path
+        body = json.dumps({"disabled_tools": []}).encode()
+        r = _api_save_disabled_tools(body)
+    assert r["ok"] is True
+    saved = yaml.safe_load(wf.read_text())
+    assert saved["disabled_tools"] == []
+
+
+def test_save_disabled_tools_missing_field_is_400(tmp_path):
+    with patch("ari.viz.api_workflow._st") as mock_st:
+        mock_st._checkpoint_dir = tmp_path
+        r = _api_save_disabled_tools(json.dumps({}).encode())
+    assert r["ok"] is False
+
+
+def test_save_disabled_tools_preserves_skills(tmp_path):
+    """Saving disabled_tools must not mutate the skills section."""
+    import yaml
+    wf = _write_skills_yaml(tmp_path)
+    with patch("ari.viz.api_workflow._st") as mock_st:
+        mock_st._checkpoint_dir = tmp_path
+        _api_save_disabled_tools(json.dumps({"disabled_tools": ["foo"]}).encode())
+    saved = yaml.safe_load(wf.read_text())
+    # idea-skill was phase: none, should remain untouched
+    idea = next(s for s in saved["skills"] if s["name"] == "idea-skill")
+    assert idea["phase"] == "none"
+
+
+# ── checkpoint-vs-package precedence (regression) ────
+
+def test_skill_phases_writes_checkpoint_not_package(tmp_path):
+    """Regression: when both checkpoint/ and package config/ workflow.yaml exist,
+    _api_save_skill_phases writes to the checkpoint copy (first match) and leaves
+    the package file untouched. This is the current intended behaviour and why
+    new experiments inherit stale `phase: none` from the package."""
+    import yaml
+    ckpt = tmp_path / "ckpt"
+    ckpt.mkdir()
+    ckpt_wf = ckpt / "workflow.yaml"
+    ckpt_wf.write_text(yaml.dump({
+        "skills": [{"name": "idea-skill", "path": "/x", "phase": "none"}],
+    }, sort_keys=False))
+
+    pkg_wf = Path(
+        __import__("ari.viz.api_workflow", fromlist=["__file__"]).__file__
+    ).parent.parent.parent / "config" / "workflow.yaml"
+    pkg_mtime_before = pkg_wf.stat().st_mtime if pkg_wf.exists() else None
+
+    with patch("ari.viz.api_workflow._st") as mock_st:
+        mock_st._checkpoint_dir = ckpt
+        body = json.dumps({"skills": [{"name": "idea-skill", "phase": "bfts"}]}).encode()
+        r = _api_save_skill_phases(body)
+    assert r["ok"] is True
+
+    # Checkpoint updated
+    saved = yaml.safe_load(ckpt_wf.read_text())
+    assert saved["skills"][0]["phase"] == "bfts"
+
+    # Package file not touched (mtime unchanged if it existed)
+    if pkg_mtime_before is not None:
+        assert pkg_wf.stat().st_mtime == pkg_mtime_before

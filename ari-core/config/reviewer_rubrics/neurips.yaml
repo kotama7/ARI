@@ -1,0 +1,156 @@
+id: neurips
+version: "2026"
+venue: NeurIPS
+domain: ML / AI
+description: >-
+  AI Scientist v1/v2-compatible NeurIPS reviewer rubric, faithfully mirroring
+  the review form and prompt from SakanaAI/AI-Scientist-v2
+  (arXiv:2408.06292 Appendix A.4; ai_scientist/perform_review.py).
+  All scored dimensions, text sections, and scale-tier descriptions are kept
+  in lock-step with v2 so outputs are directly comparable.
+
+params:
+  num_reflections: 5
+  num_fs_examples: 1
+  num_reviews_ensemble: 1
+  temperature: 0.75
+  score_threshold_decision: 6
+  fewshot_mode: static
+  fewshot_dir: fewshot_examples/neurips
+
+score_dimensions:
+  # Order mirrors AI Scientist v2 template_instructions.txt JSON field order
+  # so our LLM output aligns 1:1 with v2 outputs (scales verified against
+  # llm_review.py:113-122 aggregation clamps).
+  #
+  # ---- AI Scientist v2 composite dimensions [1-4] ----
+  - name: originality
+    scale: [1, 4]
+    description: >-
+      Originality. 1=low, 2=medium, 3=high, 4=very high. Are the tasks or
+      methods new? Novel combination of known techniques? Is it clear how
+      this work differs from prior contributions? Is related work adequately
+      cited?
+  - name: quality
+    scale: [1, 4]
+    description: >-
+      Quality. 1=low, 2=medium, 3=high, 4=very high. Is the submission
+      technically sound? Are claims well supported (theoretical analysis or
+      experimental results)? Are methods appropriate? Complete work or work
+      in progress? Are authors careful/honest about both strengths and
+      weaknesses?
+  - name: clarity
+    scale: [1, 4]
+    description: >-
+      Clarity. 1=low, 2=medium, 3=high, 4=very high. Is the submission clearly
+      written? Well organised? Does it adequately inform the reader?
+  - name: significance
+    scale: [1, 4]
+    description: >-
+      Significance. 1=low, 2=medium, 3=high, 4=very high. Are results
+      important? Will others use the ideas or build on them? Does it address
+      a difficult task better than previous work? Does it advance state of
+      the art demonstrably?
+  # ---- Ethics flag (AI Scientist v2: boolean → 0/1 integer here) ----
+  - name: ethical_concerns
+    scale: [0, 1]
+    description: >-
+      Ethics review flag. 0 = no ethical concerns, 1 = flag for ethics review
+      (e.g., human subjects without IRB, dual-use risk, privacy-sensitive data,
+      deployment-scale bias). Mirrors AI Scientist v2 "Ethical Concerns: bool".
+  # ---- NeurIPS 2024 canonical dimensions [1-4] ----
+  - name: soundness
+    scale: [1, 4]
+    description: >-
+      Soundness of technical claims and methodology. 4=excellent, 3=good,
+      2=fair, 1=poor. Whether central claims are adequately supported by
+      theoretical analysis or experimental results.
+  - name: presentation
+    scale: [1, 4]
+    description: >-
+      Quality of presentation. 4=excellent, 3=good, 2=fair, 1=poor. Writing
+      clarity, organisation, and contextualisation relative to prior work.
+  - name: contribution
+    scale: [1, 4]
+    description: >-
+      Overall contribution to the research area. 4=excellent, 3=good, 2=fair,
+      1=poor. Importance and originality of the contribution.
+  # ---- Overall & Confidence ----
+  - name: overall
+    scale: [1, 10]
+    description: >-
+      Overall rating. 10=Award quality. 9=Very Strong Accept. 8=Strong Accept.
+      7=Accept. 6=Weak Accept (>=6 = acceptance threshold per NeurIPS
+      convention). 5=Borderline accept. 4=Borderline reject. 3=Reject.
+      2=Strong Reject. 1=Very Strong Reject.
+  - name: confidence
+    scale: [1, 5]
+    description: >-
+      Reviewer confidence. 5=absolutely certain (familiar with related work,
+      checked math/details carefully). 4=confident but not absolutely certain.
+      3=fairly confident. 2=willing to defend but likely missed details.
+      1=educated guess.
+
+text_sections:
+  - { name: summary, required: true }   # AI Scientist v2 requires Summary first
+  - { name: strengths, required: true }
+  - { name: weaknesses, required: true }
+  - { name: questions, required: true }
+  - { name: limitations, required: false }
+
+decision:
+  type: binary
+  options: [accept, reject]
+  threshold_dimension: overall
+  threshold_value: 6
+
+prompt_overrides:
+  # system_hint is appended after the hard-coded prefix
+  # ("You are a rigorous peer reviewer for NeurIPS (ML / AI). ") in
+  # ari-skill-paper/src/review_engine.py:build_system_prompt.
+  # The text below mirrors the AI Scientist v2 reviewer instruction form
+  # (ai_scientist/perform_review.py :: neurips_form + reviewer_system_prompt)
+  # so outputs from this rubric are directly comparable to v2 experiments.
+  system_hint: |-
+    You are an AI researcher who is reviewing a paper that was submitted to
+    a prestigious ML venue. Be critical and cautious in your decision.
+
+    ## Review Form (AI Scientist v2 — arXiv:2408.06292 App. A.4)
+    1. Summary — briefly summarise the paper and its contributions. This is not
+       the place to critique the paper; the authors should generally agree with
+       a well-written summary.
+    2. Strengths and Weaknesses — assess each of (each 1-4: low/medium/high/very high):
+       - Originality: Are the tasks or methods new? Novel combination of known
+         techniques? Is it clear how this work differs from prior contributions?
+         Is related work adequately cited?
+       - Quality: Is the submission technically sound? Are claims well supported
+         (theoretical analysis or experimental results)? Are methods appropriate?
+         Do the authors critically self-evaluate their work — strengths and
+         weaknesses alike?
+       - Clarity: Is the submission clearly written? Well organised? Does it
+         adequately inform the reader (with additional detail, could improve
+         further)?
+       - Significance: Are the results important? Are others (practitioners or
+         researchers) likely to use the ideas or build on them? Does it address
+         a difficult task in a better way than previous work? Does it advance
+         the state of the art demonstrably?
+    3. Questions — carefully describe any questions and suggestions for the
+       authors. Frame them to be actionable.
+    4. Limitations — have the authors adequately addressed limitations and
+       potential negative societal impact of their work?
+    5. Ethical Concerns — flag the paper for an ethics review (set
+       ethical_concerns=1) when there are ethical issues (human subjects
+       without IRB, dual-use, privacy-invasive data, etc.). Otherwise 0.
+    6. Soundness (1-4): 4=excellent, 3=good, 2=fair, 1=poor.
+    7. Presentation (1-4): 4=excellent, 3=good, 2=fair, 1=poor.
+    8. Contribution (1-4): 4=excellent, 3=good, 2=fair, 1=poor.
+    9. Overall (1-10): 10=Award quality, 9=Very Strong Accept, 8=Strong Accept,
+       7=Accept, 6=Weak Accept (threshold), 5=Borderline accept,
+       4=Borderline reject, 3=Reject, 2=Strong Reject, 1=Very Strong Reject.
+    10. Confidence (1-5): 5=absolutely certain, 4=confident but not absolutely
+        certain, 3=fairly confident, 2=willing to defend but may have missed
+        something, 1=educated guess.
+
+    Provide fair, rigorous, balanced assessment. Avoid generic boilerplate.
+    Output strictly as JSON (no markdown, no prose outside JSON) — schema
+    defined below.

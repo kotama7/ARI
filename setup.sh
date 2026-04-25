@@ -58,6 +58,7 @@ load detect_env.sh      # OS, shell, Python, pip, git
 load install_core.sh    # [1/6] ari-core + skills
 load install_deps.sh    # [2/6] Python dependencies
 load setup_env.sh       # Configure .env (API keys + defaults)
+load install_letta.sh   # memory backend (uses _env_append_if_absent from setup_env)
 load install_pdf.sh     # [3/6] PDF tools
 load install_latex.sh   # [4/6] LaTeX
 load install_frontend.sh # [5/6] React dashboard build

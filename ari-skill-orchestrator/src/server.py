@@ -44,7 +44,23 @@ except ImportError:
 # Configuration
 # ---------------------------------------------------------------------------
 
-ARI_WORKSPACE = Path(os.environ.get("ARI_WORKSPACE", Path.home() / "ARI"))
+def _default_workspace() -> Path:
+    """Resolve the ARI workspace root.
+
+    Prefers $ARI_WORKSPACE, then derives from this file's location
+    (ari-skill-orchestrator/src/server.py → parents[2] = repo root),
+    finally falls back to ``~/ARI``.
+    """
+    env = os.environ.get("ARI_WORKSPACE")
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve().parents[2]
+    if (here / "ari-core").is_dir():
+        return here
+    return Path.home() / "ARI"
+
+
+ARI_WORKSPACE = _default_workspace()
 DEFAULT_LOGS_DIR = ARI_WORKSPACE / "logs"
 ARI_CLI_DEFAULT = str(ARI_WORKSPACE / "ari-core" / ".venv" / "bin" / "ari")
 ARI_CLI = ARI_CLI_DEFAULT if Path(ARI_CLI_DEFAULT).exists() else "ari"

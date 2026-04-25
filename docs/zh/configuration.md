@@ -73,13 +73,62 @@ pipeline:
     # ...
   - stage: reproducibility_check
     skill: paper-re-skill
-    tool: reproduce_from_paper
+    # 由 ari-core/ari/agent/react_driver.py 驱动，而非单个 tool。
+    # paper-re 仅提供确定性的两端；ReAct 循环运行在 phase 列表包含
+    # `reproduce` 的 MCP 技能之上。
+    pre_tool: extract_repro_config
+    post_tool: build_repro_report
     depends_on: [write_paper]
-    # ...
+    react:
+      agent_phase: reproduce
+      max_steps: 40
+      final_tool: report_metric
+      # 将智能体隔离在 checkpoint 根目录之外；路径校验会拒绝引用
+      # 沙箱之外文件的工具参数 (论文 .tex 作为 allow-list 放行)。
+      sandbox: '{{checkpoint_dir}}/repro_sandbox'
+      system_prompt: |
+        You are a reproducibility engineer...
+      user_prompt: |
+        Target: reproduce {{pre.metric_name}} = {{pre.claimed_value}}
+        ...
 
 retrieval:
   backend: semantic_scholar    # semantic_scholar | alphaxiv | both
   alphaxiv_endpoint: https://api.alphaxiv.org/mcp/v1
+
+# ── 论文审阅 (基于评审规范，AI Scientist v1/v2 兼容) ─────────────────
+# 通过 CLI 标志（--rubric、--fewshot-mode、--num-reviews-ensemble、
+# --num-reflections）或环境变量（ARI_RUBRIC、ARI_FEWSHOT_MODE、
+# ARI_NUM_REVIEWS_ENSEMBLE、ARI_NUM_REFLECTIONS）覆盖。
+# ari-core/config/reviewer_rubrics/ 中内置 16 种评审规范：
+#   neurips（默认，v2 兼容）| iclr | icml | cvpr | acl | sc | osdi
+#   | usenix_security | stoc | siggraph | chi | icra | nature
+#   | journal_generic | workshop | generic_conference
+# 加上内置的 `legacy` 回退（v0.5 schema）。新 venue 只需把 <id>.yaml
+# 放进 reviewer_rubrics/ 即可，无需修改代码。
+#
+# Few-shot 语料库管理
+# ------------------
+# reviewer_rubrics/fewshot_examples/<rubric>/ 下的文件可通过 GUI
+# (New Experiment 向导 → Paper Review → Few-shot 示例) 或
+# scripts/fewshot/sync.py 管理。viz 服务器暴露的 REST 端点：
+#   GET  /api/rubrics                           rubric 列表（向导用）
+#   GET  /api/fewshot/<rubric>                  fewshot 示例列表
+#   POST /api/fewshot/<rubric>/sync             从 manifest.yaml 拉取
+#   POST /api/fewshot/<rubric>/upload           上传一个示例
+#   POST /api/fewshot/<rubric>/<example>/delete 删除一个示例
+
+memory:
+  # v0.6.0: Letta 是唯一的生产后端。这里的值会在加载时被注入到
+  # 技能子进程的环境变量中。智能体的聊天 LLM 句柄已固定为
+  # `letta/letta-free`，因为 ari-skill-memory 只调用
+  # archival_insert / archival_search 而从不发送聊天消息，
+  # 因此该选择器没有运行时效果。
+  backend: letta
+  letta:
+    base_url: http://localhost:8283
+    collection_prefix: ari_
+    embedding_config: letta-default
 
 container:
   mode: auto                   # auto | docker | singularity | apptainer | none
@@ -87,9 +136,14 @@ container:
   pull: on_start               # always | on_start | never
 
 skills:
+  # `phase` 控制 ReAct 智能体在哪些 pipeline-phase 下能看到该技能的
+  # MCP 工具。字符串仅加入一个 phase，数组可加入多个 phase。标注
+  # `reproduce` 的技能会暴露给可复现性 ReAct(见上方 reproducibility_check
+  # stage)。`memory-skill` / `transform-skill` / `evaluator-skill`
+  # 被刻意排除在 reproduce 之外，以防止智能体访问 BFTS 阶段的产物。
   - name: web-skill
     path: "{{ari_root}}/ari-skill-web"
-    phase: all
+    phase: [paper, reproduce]
   - name: plot-skill
     path: "{{ari_root}}/ari-skill-plot"
     phase: paper
@@ -107,25 +161,22 @@ skills:
     phase: bfts
   - name: idea-skill
     path: "{{ari_root}}/ari-skill-idea"
-    phase: bfts
+    phase: none
   - name: hpc-skill
     path: "{{ari_root}}/ari-skill-hpc"
-    phase: bfts
+    phase: [bfts, reproduce]
+  - name: coding-skill
+    path: "{{ari_root}}/ari-skill-coding"
+    phase: [bfts, reproduce]
   - name: transform-skill
     path: "{{ari_root}}/ari-skill-transform"
     phase: paper
-  - name: figure-router-skill
-    path: "{{ari_root}}/ari-skill-figure-router"
-    phase: all
   - name: benchmark-skill
     path: "{{ari_root}}/ari-skill-benchmark"
     phase: bfts
-  - name: review-skill
-    path: "{{ari_root}}/ari-skill-review"
-    phase: paper
   - name: vlm-skill
     path: "{{ari_root}}/ari-skill-vlm"
-    phase: paper
+    phase: [paper, reproduce]
 ```
 
 ## 环境变量
@@ -144,6 +195,41 @@ skills:
 | `ARI_RETRIEVAL_BACKEND` | 论文搜索后端: `semantic_scholar` / `alphaxiv` / `both` | `semantic_scholar` |
 | `VLM_MODEL` | 图表审阅 VLM 模型 | `openai/gpt-4o` |
 | `ARI_ORCHESTRATOR_PORT` | orchestrator 技能的 HTTP 端口 | `9890` |
+| `LETTA_BASE_URL` | Letta 服务器端点 | `http://localhost:8283` |
+| `LETTA_API_KEY` | Letta Cloud 必需 | （无） |
+| `LETTA_EMBEDDING_CONFIG` | 归档内存使用的嵌入句柄（智能体的聊天 LLM 不被 ARI 调用，已固定为 `letta/letta-free`） | `letta-default` |
+| `ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA` | `auto` / `pip` / `docker` / `singularity` / `none` | `auto` |
+| `ARI_MEMORY_LETTA_TIMEOUT_S` | 单次调用超时 | `10` |
+| `ARI_MEMORY_LETTA_OVERFETCH` | 祖先后过滤的 over-fetch K 值 | `200` |
+| `ARI_MEMORY_LETTA_DISABLE_SELF_EDIT` | 禁用 Letta self-edit (CoW 安全) | `true` |
+| `ARI_MEMORY_ACCESS_LOG` | 启用 `{checkpoint}/memory_access.jsonl` | `on` |
+| `ARI_MEMORY_AUTO_RESTORE` | `ari resume` 时自动恢复备份 | `true` |
+| `ARI_RUBRIC` | 评审使用的 rubric_id（例 `neurips`、`sc`、`nature`） | `neurips` |
+| `ARI_FEWSHOT_MODE` | `static` / `dynamic` | `static` |
+| `ARI_NUM_REVIEWS_ENSEMBLE` | 独立审稿人数量 | `1` |
+| `ARI_NUM_REFLECTIONS` | self-reflection 循环轮数 | `5` |
+
+## 记忆后端 (Letta)
+
+v0.6.0 用 [Letta](https://docs.letta.com) 替换了原本的确定性 JSONL 记忆
+存储。Letta 可在以下四种模式下运行：
+
+| 模式 | 要求 | 存储 | 备注 |
+|------|------|------|------|
+| Docker Compose | `docker` + `docker compose` | Postgres | 笔记本默认，支持 pre-filter |
+| Singularity / Apptainer | `singularity` / `apptainer` | Postgres | HPC 默认，SLURM 感知的数据目录 |
+| pip（无容器） | Python 3.10+ | SQLite | 祖先作用域回落到 over-fetch + post-filter |
+| Letta Cloud | API key | 托管 | `LETTA_BASE_URL=https://api.letta.com` |
+
+`ari setup` 自动检测最佳模式。也可通过 `ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA`
+强制指定。start/stop/health/backup/restore 由 `ari memory` 子命令处理 —
+详情见 `docs/zh/cli_reference.md`。
+
+一次性迁移 v0.5.x 检查点：
+
+```bash
+ari memory migrate --checkpoint /path/to/ckpt --react
+```
 
 ## LLM 后端
 

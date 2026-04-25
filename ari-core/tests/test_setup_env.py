@@ -28,7 +28,6 @@ SETUP_ENV_SH = SETUP_DIR / "setup_env.sh"
 # thousands of library-internal env vars we don't own.
 SOURCE_ROOTS = [
     REPO_ROOT / "ari-core" / "ari",
-    REPO_ROOT / "run_pipeline.py",
 ] + sorted(
     p / "src" for p in REPO_ROOT.glob("ari-skill-*") if (p / "src").is_dir()
 )

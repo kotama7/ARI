@@ -1,4 +1,389 @@
 
+## v0.6.0 (2026-04-26)
+
+### Memory (Letta): drop the dead `LETTA_LLM_CONFIG` knob; mock the agent's chat model
+
+`ari-skill-memory` never invokes the Letta agent's chat / messages API
+— only `archival_insert` and `archival_search`, both of which use
+embeddings. The user-facing "Agent LLM" picker in Settings → Memory
+(Letta) was therefore controlling a value that had no runtime effect.
+
+- **Removed**: `letta_llm_config` field on `MemoryConfig`,
+  `LETTA_LLM_CONFIG` env propagation in viz / config, the `llm_config`
+  key in `workflow.yaml`, the GUI Agent LLM provider/model picker,
+  related i18n strings (en/ja/zh), and corresponding doc rows.
+- **Hardcoded**: `_SdkLettaAdapter._model` is now fixed to
+  `letta/letta-free`. The Letta SDK requires `model=` on
+  `agents.create`, so the value still has to be supplied — it just
+  isn't operator-configurable anymore.
+- **Lock-in tests**: new `ari-skill-memory/tests/test_llm_config_removed.py`
+  pins (a) the field is gone from `MemoryConfig`, (b) `load_config`
+  ignores `LETTA_LLM_CONFIG`, (c) `_SdkLettaAdapter` always passes the
+  fixed mock handle to `agents.create`. Updated `test_settings_propagation.py`
+  and `test_settings_roundtrip.py` to assert the env var and GUI table
+  are NOT present.
+
+This is a no-op for runtime behavior — embeddings (the only Letta
+component ARI actually exercises) are still configured via
+`LETTA_EMBEDDING_CONFIG` and the Settings page.
+
+
+### Paper review: `review_paper` unified (ensemble + Area Chair folded in); `ari-skill-review` removed
+
+The separate `review_paper`, `review_paper_ensemble`, `area_chair_meta_review`,
+and `respond_to_review` pipeline stages are collapsed into a single
+`review_paper` stage. `review_compiled_paper` now always runs the ensemble
+path internally (N=1 is a no-op wrapper around a single reviewer, N>1 also
+runs the Area Chair meta-review). The separately enabled ensemble stage was
+always N=1 in practice because the GUI-set `ARI_NUM_REVIEWS_ENSEMBLE` was
+never read inside the skill; the unified path reads it correctly.
+
+- **Unified output**: `review_report.json` now contains `ensemble_reviews[]`
+  and `meta_review{}` inline when N>1. `ensemble_reviews.json` and
+  `meta_review.json` are no longer emitted. Frontend rendering is
+  unchanged — `ResultsPage` already read these fields from the merged
+  payload.
+- **N resolution**: explicit `num_reviews_ensemble` arg >
+  `$ARI_NUM_REVIEWS_ENSEMBLE` > `rubric.params.num_reviews_ensemble`
+  (defaults to 1). Previously the env var was set by CLI/GUI but never
+  consumed inside the skill.
+- **Removed MCP tools** (from `ari-skill-paper`): `review_compiled_paper_ensemble`,
+  `meta_review`. The underlying `run_ensemble` and `run_meta_review` helpers
+  remain and are now called from `review_compiled_paper`.
+- **Removed skill**: `ari-skill-review` (rebuttal generation) is deleted in
+  full. The rebuttal step was not load-bearing for the pipeline — the
+  review score is the final quality signal, and a rebuttal to our own
+  paper's review added no signal. Associated `ARI_MODEL_REVIEW` env var,
+  default-registry entry, and tests are removed. 14 skills → 13 skills
+  (12 default + orchestrator).
+- **Workflow stages removed** (in `ari-core/config/workflow.yaml`):
+  `review_paper_ensemble`, `area_chair_meta_review`, `respond_to_review`.
+
+### Figure skill consolidation: `ari-skill-figure-router` folded into `ari-skill-plot`
+
+`ari-skill-figure-router` was registered as a default skill but never
+wired into any pipeline stage, and its matplotlib path duplicated
+`ari-skill-plot:generate_figures_llm`. Its one genuinely unique
+feature — LLM-generated SVG architecture diagrams — is merged into
+`ari-skill-plot`, so all figure generation (data plots + architecture
+diagrams) flows through a single skill and the existing VLM review
+loop drives both kinds. 15 skills → 14 skills (13 default + orchestrator).
+
+- **New output contract for `plot-skill.generate_figures_llm`**
+  - The LLM now returns one JSON array; each element has a per-figure
+    `kind` field: `"plot"` (matplotlib Python code) or `"svg"`
+    (self-contained SVG markup). Schema:
+    ```
+    [{"name":"fig_1","kind":"plot","code":"<python>","caption":"..."},
+     {"name":"fig_2","kind":"svg", "svg":"<svg>...</svg>", "caption":"..."}]
+    ```
+  - Matplotlib snippets are executed per-figure in isolated subprocesses
+    (previously the skill concatenated all figures into a single
+    LLM-written script, so one broken figure killed every output).
+    Each snippet receives `output_dir` and `name` pre-defined and must
+    save both `<name>.pdf` (dpi=150, LaTeX embedding) and `<name>.png`
+    (dpi=200, VLM review). Reassignment of `output_dir` is stripped to
+    protect the pipeline contract.
+  - SVG snippets are written to `<name>.svg` and rasterised to
+    `<name>.pdf` + `<name>.png` via `cairosvg`, with an Inkscape CLI
+    fallback for environments without the cairo native library.
+    `cairosvg>=2.7` is now a hard dependency of `ari-skill-plot`.
+  - Return shape gains `figure_kinds: {name: "plot"|"svg"}` and
+    (on partial failure) `errors: [str]`. Existing keys
+    `figures: {name: pdf_path}` and `latex_snippets: {name: latex}`
+    are preserved byte-compatibly, so `ari-skill-paper` needs no
+    changes.
+  - On a fully unparseable LLM response, the skill retries once with a
+    simpler plot-only instruction before giving up — tighter than the
+    previous "execute then fall back" retry and no longer depends on
+    stderr parsing.
+
+- **Pipeline integration (no stage changes required)**
+  - `ari/pipeline.py`'s `generate_figures` special-case persists the
+    new `figure_kinds` dict into `figures_manifest.json`:
+    `{figures, latex_snippets, figure_kinds?}`. Empty `figure_kinds`
+    is omitted for byte-compatibility with older manifests.
+  - `vlm-skill:review_figure` still points at
+    `{{checkpoint_dir}}/fig_1.png` — now produced for both kinds — so
+    the existing `loop_back_to: generate_figures` +
+    `vlm_feedback`-via-user-prompt loop drives SVG regeneration too,
+    without touching `workflow.yaml`.
+  - `vlm_feedback` is prepended to the figure-generation prompt on
+    loop-back exactly as before; the LLM can now address the VLM's
+    critique by switching a figure from `kind:"plot"` to
+    `kind:"svg"` (e.g. when the reviewer says "this should be a
+    pipeline diagram, not a bar chart") within one iteration.
+
+- **Removed**
+  - Whole directory `ari-skill-figure-router/` (tools
+    `classify_figure_need`, `generate_figure`, `generate_svg_diagram`).
+  - `ari-core/tests/test_figure_router.py` (43 static AST checks
+    against the deleted source).
+  - `figure-router-skill` entry in `ari-core/config/workflow.yaml`
+    skills list and in `docs/configuration.md` (en/ja/zh).
+  - `figure-router` rows in README.md / README.ja.md / README.zh.md
+    and in `docs/architecture.md` + `docs/skills.md` (en/ja/zh).
+  - `ari-skill-figure-router` entry from the search roots in
+    `tests/test_gui_env_propagation.py`.
+
+- **GUI (Results page)**
+  - `ResultsPage.tsx` figure grid was wired for a list-of-objects
+    shape that the pipeline never actually wrote (dict), so no
+    figures were rendering. The renderer now accepts both shapes:
+    dict `{name: path}` is normalised to a list and captions are
+    extracted from `latex_snippets` server-side JSON; list entries
+    with explicit `caption`/`kind` are still respected.
+  - The old `figure_type` badge (`graph` / `architecture` / `table`)
+    is replaced with a `kind` badge (`Plot` / `Diagram`) sourced from
+    `figure_kinds` in the manifest.
+  - The "No results data found" empty state also handles the dict
+    manifest shape, so it stops firing when figures exist but are
+    stored as a dict.
+
+- **Workflow contract tests**
+  - `test_generate_figures_uses_batch_tool` loses its figure-router
+    comparison (the comparator skill no longer exists) but still
+    asserts `plot-skill` + `generate_figures_llm` own the stage.
+  - `test_figure_router_not_in_paper_pipeline` and
+    `test_figure_router_still_defined_in_skills` are collapsed into
+    a single `test_figure_router_fully_removed` negative test so the
+    registration cannot silently come back.
+  - `test_skill_mcp_usage_registered_for_unused` drops the
+    figure-router branch; `plot-skill` is still asserted as
+    `usage="stage"` (pipeline-driven).
+
+- **Design-principle impact**
+  - `ari-skill-plot` stays under the existing P2 exception envelope
+    ("LLM-writes-code skills may relax P2 as long as the surrounding
+    pipeline is deterministic"). SVG rasterisation via `cairosvg`
+    is deterministic; inkscape fallback output can vary across
+    Inkscape versions but is only exercised when cairosvg is absent.
+  - No change to `ari-skill-figure-router` philosophy bullets —
+    the skill simply no longer exists.
+
+**Upgrade note**: no checkpoint migration required. Old
+`figures_manifest.json` files without `figure_kinds` keep loading
+(the key is optional everywhere it's read). Any user `workflow.yaml`
+that carried a `figure-router-skill` entry or a stage pointing at
+`figure-router-skill:generate_figure` must drop those lines; the
+paper pipeline never invoked them, so dropping them is a no-op in
+practice.
+
+### Reproducibility ReAct: pipeline-driven `react_driver` replaces the paper-re loop
+
+The reproducibility stage no longer hides a private ReAct loop inside
+`ari-skill-paper-re`. The loop is now owned by
+`ari-core/ari/agent/react_driver.py` and driven from
+`ari-core/ari/pipeline.py` when a stage declares a `react:` block; the
+skill has been reduced to two deterministic(-ish) endpoints
+(`extract_repro_config`, `build_repro_report`) plus the existing
+`extract_metric_from_output` helper. `reproduce_from_paper` is gone.
+
+- **Workflow schema additions**
+  - `skills[].phase` now accepts a list (e.g.
+    `phase: [paper, reproduce]`). The matching logic in
+    `MCPClient.list_tools(phase=…)` treats list and string forms
+    uniformly and still honours `"all"` / `"none"`.
+  - Stages may declare a `react:` block with
+    `agent_phase`, `max_steps`, `final_tool`, `sandbox`,
+    `system_prompt`, `user_prompt`, plus sibling fields
+    `pre_tool`, `post_tool` on the stage itself.
+  - New phase value `reproduce` scopes the MCP tools exposed to the
+    reproducibility agent. The default `workflow.yaml` opts
+    `web-skill`, `vlm-skill`, `hpc-skill`, and `coding-skill` into
+    `reproduce`; `memory-skill`, `transform-skill`, and
+    `evaluator-skill` deliberately stay out so the agent cannot reach
+    BFTS-phase artefacts (`nodes_tree.json`, ancestor memories, …).
+- **Sandbox**
+  - The default `reproducibility_check` stage points at
+    `{{checkpoint_dir}}/repro_sandbox/` and `react_driver` rejects
+    tool calls whose arguments reference absolute paths outside the
+    sandbox (plus explicit allow-list entries such as the paper
+    `.tex`). `ARI_WORK_DIR` is injected into the MCP server
+    environment at spawn so `coding-skill.run_bash` cwds into the
+    sandbox by default.
+- **GUI (Workflow page)**
+  - The Skill Inventory gains a third toggle column, **Reproduce**,
+    alongside BFTS / Paper. Internal state is a `Set<phase>` so a
+    skill can belong to multiple phases simultaneously; the backend
+    `_api_save_skill_phases` endpoint accepts either string or list
+    phase payloads.
+  - React-driver stages render a read-only summary
+    (pre_tool / post_tool / agent_phase / final_tool / max_steps /
+    sandbox) in the Node Edit modal instead of the single-tool
+    dropdown, so the `react:` block cannot be clobbered from the flow
+    editor. The flow round-trip preserves `pre_tool` and `post_tool`
+    and leaves the full `react:` block intact via the existing-YAML
+    merge path.
+- **Tests**
+  - New `ari-core/tests/test_react_driver.py` (14 cases) covers sandbox
+    path validation, the ReAct loop's final-tool termination, and log
+    persistence using stub LLM / MCP clients.
+  - New `TestSkillPhaseRoundtrip` suite in
+    `test_workflow_contract.py` confirms `_api_save_skill_phases`
+    preserves list phases, collapses single-entry lists, and drops
+    `none` when other phases are present.
+  - `test_pipeline_e2e.py` was updated so the full paper-pipeline e2e
+    expects the new `extract_repro_config` / `build_repro_report` MCP
+    calls and stubs out `react_driver.run_react` to keep the test
+    offline.
+
+### Memory backend: Letta replaces the JSONL store
+
+`ari-skill-memory` is now backed by [Letta](https://docs.letta.com)
+(ex-MemGPT). The v0.5.x file-based stores — `memory_store.jsonl` and
+`~/.ari/global_memory.jsonl` — are **removed entirely**. A portable
+`memory_backup.jsonl.gz` snapshot is written inside each checkpoint so
+`cp -r checkpoints/foo /elsewhere/ && ari resume` keeps working.
+
+- **New library**: `ari_skill_memory.backends` exposes a
+  `MemoryBackend` ABC with `LettaBackend` (production) and
+  `InMemoryBackend` (test-only fake). `server.py` is now a thin
+  dispatcher over the library; ari-core's viz and pipeline import the
+  same library in-process.
+- **New MCP tool**: `get_experiment_context()` returns seeded
+  experiment-level facts (goal, primary metric, hardware spec) from
+  Letta core memory.
+- **Removed MCP tools**: `add_global_memory`, `search_global_memory`,
+  `list_global_memory`. Cross-experiment global memory is no longer a
+  feature — stable lessons belong in `experiment.md`, code, or prior
+  papers.
+- **Copy-on-Write**: write-side tools reject `node_id` ≠
+  `$ARI_CURRENT_NODE_ID`; Letta self-edit is disabled by default
+  (`ARI_MEMORY_LETTA_DISABLE_SELF_EDIT=true`), so ancestor entries are
+  byte-stable across siblings.
+- **ReAct trace migrated**: `FileMemoryClient` → `LettaMemoryClient`
+  (one-line swap at `ari-core/ari/core.py:87`). No more
+  `{checkpoint}/memory.json`. Old files are picked up automatically by
+  the first-launch auto-migration.
+- **Access log**: every write/read emits an event to
+  `{checkpoint}/memory_access.jsonl` (rotated at
+  `ARI_MEMORY_ACCESS_LOG_MAX_MB`, 100 MB default). Consumed by the
+  Tree dashboard `memory_access` API.
+- **Pipeline enrichment**: `pipeline.py` injects each node's memory
+  into `nodes_tree.json` (bounded by `ARI_TRANSFORM_MEMORY_MAX_ENTRIES`
+  and `ARI_TRANSFORM_MEMORY_MAX_CHARS`) so downstream stages
+  (transform, paper, EAR) become memory-aware with no per-skill MCP
+  call.
+- **`ari memory` subcommand**: `migrate` / `backup` / `restore` /
+  `start-local` / `stop-local` / `prune-local` / `compact-access` /
+  `health`. First-launch auto-migration and on-`ari resume` auto-restore.
+- **Deployment**: `scripts/letta/docker-compose.yml` +
+  `start_singularity.sh` + `start_pip.sh`, integrated via
+  `scripts/setup/install_letta.sh` into `setup.sh`. Auto-detects
+  laptop / HPC / container-less environments; honours
+  `ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA`.
+- **Dashboard**: new **Memory (Letta)** settings card, new
+  `/api/memory/{health, detect, start-local, stop-local}` endpoints,
+  `/api/checkpoint/{id}/memory_access` for per-node provenance.
+- **Design-principle impact**: **P2 relaxed for `ari-skill-memory`**
+  (embedding retrieval is not bit-reproducible). **P5 scoped**: BFTS
+  *trajectory* may differ across re-runs; numerical metrics still
+  reproduce. See `docs/PHILOSOPHY.md`.
+- **Observability**: `cost_tracker.CallRecord` gains `component`,
+  `op`, `backend`, `embedding_tokens`, `latency_ms` (additive,
+  back-compat).
+- **Tests**: full new suite under `ari-skill-memory/tests/` exercising
+  ancestor scope, CoW, access log, ReAct, backup/restore, checkpoint
+  isolation, and the removal of global-memory tools.
+
+**Upgrade note**: running `ari run` / `ari resume` / `ari viz` on a
+v0.5.x checkpoint triggers automatic migration. The source JSONL /
+JSON files are renamed to `*.migrated-<ts>` (never re-read). Any
+`~/.ari/global_memory.jsonl` is detected at startup but not imported —
+the entries must be manually promoted to `experiment.md` Rules or
+committed code.
+
+### Rubric-driven paper review (AI Scientist v1/v2 compatibility)
+
+The paper review phase is now fully rubric-driven and compatible with
+**The AI Scientist** (Nature / arXiv:2408.06292 Appendix A.4) so ARI
+outputs can be directly compared with v1/v2.
+
+- **New rubric system** (`ari-core/config/reviewer_rubrics/`): 16
+  bundled YAMLs covering ML conferences (`neurips` — default,
+  v2-compatible — `iclr`, `icml`, `cvpr`, `acl`), systems/HPC (`sc`,
+  `osdi`, `usenix_security`), theory/graphics (`stoc`, `siggraph`),
+  HCI/robotics (`chi`, `icra`), and journals/generic (`nature`,
+  `journal_generic`, `workshop`, `generic_conference`), plus a
+  built-in `legacy` fallback (v0.5 schema). Each declares
+  `score_dimensions`, `text_sections`, `decision` rules and execution
+  parameters. Add any venue by dropping a YAML — no code changes.
+  SHA256 hash computed per rubric for P2 determinism.
+- **Rubric loader**: `ari_skill_paper.rubric` validates schema,
+  clamps out-of-scale scores, resolves `rubric_id → ARI_RUBRIC env →
+  neurips → legacy fallback`.
+- **Rubric-driven engine**: `ari_skill_paper.review_engine` builds
+  prompts from the rubric, runs a **self-reflection loop** (default 5
+  rounds, +2% accuracy per Nature Ablation), loads **few-shot
+  examples** (static / dynamic), and normalises output to the rubric
+  schema.
+- **VLM findings integration**: per-figure VLM feedback (score,
+  issues, suggestions) is injected into the review prompt as reviewer
+  notes — previously VLM and paper review were parallel & independent.
+- **New MCP tools** (`ari-skill-paper`):
+  - `review_compiled_paper` — extended with `rubric_id`,
+    `vlm_findings_json`, `num_reflections`, `num_fs_examples`
+  - `review_compiled_paper_ensemble` — N independent reviewer agents
+    with temperature jitter (AI Scientist v1 best config). Disabled by
+    default; enable in `workflow.yaml` when variance-reducing
+    aggregation is needed (N× cost).
+  - `meta_review` — "You are an Area Chair" aggregation of the
+    ensemble into a final decision.
+  - `list_rubrics` — enumerates available rubrics for the viz API /
+    Wizard dropdown.
+- **Nature Ablation defaults**: `num_reflections=5`,
+  `num_fs_examples=1`, `num_reviews_ensemble=1`, `temperature=0.75`,
+  `score_threshold_decision=6` (NeurIPS Weak Accept).
+- **Phase 2 dynamic few-shot** (stub + static fallback):
+  `fewshot_mode: dynamic` in a rubric triggers OpenReview-based
+  similarity retrieval; cache key is
+  `sha256(title+abstract+rubric_hash)` for determinism. Falls back to
+  static when `openreview-py` is absent or `ARI_STRICT_DYNAMIC` is
+  false. SC and CHI force static (reviews closed).
+- **CLI**: `ari paper --rubric <id> --fewshot-mode static|dynamic
+  --num-reviews-ensemble N --num-reflections N`. Environment variable
+  equivalents: `ARI_RUBRIC`, `ARI_FEWSHOT_MODE`,
+  `ARI_NUM_REVIEWS_ENSEMBLE`, `ARI_NUM_REFLECTIONS`.
+- **Few-shot corpus scripts**: `scripts/fewshot/sync.py` +
+  `fetch_openreview.py` + `fetch_arxiv.py` + `manifest.yaml`.
+  NeurIPS ships with one synthetic placeholder example; add real
+  examples by editing `manifest.yaml` and running `python
+  scripts/fewshot/sync.py`.
+- **Dashboard**: New Experiment Wizard → "Paper Review" section
+  (rubric dropdown dynamically populated from `/api/rubrics`, few-shot
+  mode toggle, ensemble size, reflection rounds). Results page
+  `renderReviewScores()` now shows NeurIPS-form scores, decision
+  badge, strengths / weaknesses / questions / limitations sections,
+  issues / recommendations lists, ensemble badges, Area Chair meta-review
+  card, and few-shot sources.
+- **Few-shot management from the GUI**: the Wizard now ships a
+  `FewshotManager` sub-panel that lists existing examples for the
+  selected rubric and exposes three actions:
+  - **Auto-sync** — runs `scripts/fewshot/sync.py --venue <rubric>`
+    server-side to pull the corpus declared in `manifest.yaml`
+    (including the three AI Scientist v2 samples from GitHub under
+    Apache-2.0).
+  - **Upload** — accepts a JSON review form + optional `.txt` excerpt
+    + optional PDF (base64). Writes into
+    `reviewer_rubrics/fewshot_examples/<rubric>/<id>.*`.
+  - **Delete** — removes all sibling files of an example.
+  Backed by `GET /api/fewshot/<rubric>`,
+  `POST /api/fewshot/<rubric>/sync`,
+  `POST /api/fewshot/<rubric>/upload`,
+  `POST /api/fewshot/<rubric>/<example>/delete`.
+  All endpoints require the rubric to exist in `reviewer_rubrics/`
+  (prevents provisioning arbitrary directories via crafted ids) and
+  strip `../` / slash characters from inputs.
+- **Workflow**: `workflow.yaml` pipes `vlm_review_figures` into
+  `review_paper`; new `review_paper_ensemble` and
+  `area_chair_meta_review` stages are scaffolded (disabled by default).
+- **Breaking change**: `review_compiled_paper` output now follows the
+  rubric schema (`scores`, `score_dimensions`, `decision`,
+  `rubric_hash`, etc.). Legacy consumers should set
+  `ARI_RUBRIC=legacy` or the `--rubric legacy` flag to keep the
+  pre-v0.6.0 JSON shape.
+
 ## v0.5.0 (2026-04-15)
 
 ### Project-scoped settings & memory (no more ~/.ari/)

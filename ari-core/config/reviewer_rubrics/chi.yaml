@@ -1,0 +1,73 @@
+id: chi
+version: "2026"
+venue: ACM CHI
+domain: HCI
+closed_review: true
+
+params:
+  num_reflections: 5
+  num_fs_examples: 0
+  num_reviews_ensemble: 1
+  temperature: 0.75
+  score_threshold_decision: 3
+  fewshot_mode: static   # CHI reviews are closed
+  fewshot_dir: ""
+
+score_dimensions:
+  - name: contribution_to_hci
+    scale: [1, 5]
+    description: >-
+      Contribution to HCI knowledge — how much does this advance the field?
+  - name: originality
+    scale: [1, 5]
+    description: >-
+      Novelty relative to prior CHI work.
+  - name: methodological_rigor
+    scale: [1, 5]
+    description: >-
+      Quality of study design and analysis rigor (empirical validity,
+      statistical treatment, or artifact evaluation quality as applicable).
+  - name: presentation
+    scale: [1, 5]
+    description: >-
+      Writing, figures, and paper organisation.
+  - name: overall
+    scale: [1, 5]
+    description: >-
+      Overall recommendation. 5.0=definitely accept, 4.0=accept,
+      3.0=neutral/borderline, 2.0=reject, 1.0=definitely reject.
+      Matches CHI's 1.0-5.0 Overall Rating.
+  - name: confidence
+    scale: [1, 4]
+    description: >-
+      Expertise (CHI's official 4-point scale). 4=Expert, 3=Knowledgeable,
+      2=Passing Knowledge, 1=No Knowledge of the topic.
+  - name: ethical_concerns
+    scale: [0, 1]
+    description: >-
+      Ethics flag (0 = no concerns, 1 = concerns requiring ethics review).
+      CHI expects IRB approval documentation for human-subjects studies —
+      flag submissions lacking required approvals.
+
+text_sections:
+  - { name: summary, required: true }
+  - { name: strengths, required: true }
+  - { name: weaknesses, required: true }
+  - { name: comments_for_authors, required: true }
+  - { name: comments_to_committee, required: false }
+
+decision:
+  type: categorical
+  options: [accept, borderline, reject]
+  threshold_dimension: overall
+  threshold_value: 3
+
+prompt_overrides:
+  system_hint: >-
+    Follow CHI reviewer guidelines. Identify the paper's primary contribution
+    type (Empirical, Artifact, Theoretical, Methodological, Survey, Dataset)
+    in the summary. For human-subjects research, verify IRB / ethics-board
+    approval — flag ethical_concerns=1 otherwise. Confidence uses CHI's
+    4-point scale (Expert=4 / Knowledgeable=3 / Passing=2 / No Knowledge=1).
+    Dynamic few-shot retrieval is unsupported because CHI reviews are not
+    publicly available.

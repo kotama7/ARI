@@ -88,6 +88,19 @@ def _api_run_stage(body: bytes) -> dict:
             proc_env["ARI_LLM_MODEL"] = _eff_model
         if _eff_provider:
             proc_env["ARI_BACKEND"] = _eff_provider
+        # Restore paper-review (rubric-driven) selections from the launch
+        # config so re-runs use the same rubric the user chose at launch
+        # time. Without this, the paper-skill resolver falls back to its
+        # 'neurips' default and silently overwrites the original verdict.
+        for _lc_key, _env_key in (
+            ("rubric_id", "ARI_RUBRIC"),
+            ("fewshot_mode", "ARI_FEWSHOT_MODE"),
+            ("num_reviews_ensemble", "ARI_NUM_REVIEWS_ENSEMBLE"),
+            ("num_reflections", "ARI_NUM_REFLECTIONS"),
+        ):
+            _v = _lc.get(_lc_key)
+            if _v not in (None, "") and not proc_env.get(_env_key):
+                proc_env[_env_key] = str(_v)
         # Partition auto-detect for HPC
         if not proc_env.get("ARI_SLURM_PARTITION"):
             _part = _lc.get("partition", "")
@@ -264,6 +277,19 @@ def _api_launch(body: bytes) -> dict:
                     proc_env["ARI_CONTAINER_IMAGE"] = _ct_image
                 if _ct_mode and _ct_mode != "auto" and "ARI_CONTAINER_MODE" not in proc_env:
                     proc_env["ARI_CONTAINER_MODE"] = _ct_mode
+                # Memory (Letta) settings → env vars consumed by
+                # ari-skill-memory's MemoryConfig and the agent-creation
+                # path. Settings.json wins over workflow.yaml because
+                # the GUI is the operator's authoritative surface.
+                _letta_base = saved.get("letta_base_url", "")
+                if _letta_base:
+                    proc_env["LETTA_BASE_URL"] = _letta_base
+                _letta_key = saved.get("letta_api_key", "")
+                if _letta_key:
+                    proc_env["LETTA_API_KEY"] = _letta_key
+                _letta_emb = saved.get("letta_embedding_config", "")
+                if _letta_emb:
+                    proc_env["LETTA_EMBEDDING_CONFIG"] = _letta_emb
         except Exception:
             log.warning("Failed to inject LLM settings from saved config", exc_info=True)
         # BFTS scope overrides from wizard
@@ -332,6 +358,19 @@ def _api_launch(body: bytes) -> dict:
         wiz_vlm_model = data.get("vlm_review_model")
         if wiz_vlm_model:
             proc_env["VLM_MODEL"] = str(wiz_vlm_model)
+        # Paper review (rubric-driven) overrides from wizard
+        wiz_rubric = data.get("rubric_id")
+        if wiz_rubric:
+            proc_env["ARI_RUBRIC"] = str(wiz_rubric)
+        wiz_fewshot_mode = data.get("fewshot_mode")
+        if wiz_fewshot_mode:
+            proc_env["ARI_FEWSHOT_MODE"] = str(wiz_fewshot_mode)
+        wiz_num_ensemble = data.get("num_reviews_ensemble")
+        if wiz_num_ensemble is not None:
+            proc_env["ARI_NUM_REVIEWS_ENSEMBLE"] = str(int(wiz_num_ensemble))
+        wiz_num_reflections = data.get("num_reflections")
+        if wiz_num_reflections is not None:
+            proc_env["ARI_NUM_REFLECTIONS"] = str(int(wiz_num_reflections))
         # Retrieval backend override from wizard/launch request
         wiz_retrieval = data.get("retrieval_backend")
         if wiz_retrieval:
@@ -400,6 +439,17 @@ def _api_launch(body: bytes) -> dict:
             _launch_cfg["partition"] = proc_env["ARI_SLURM_PARTITION"]
         if phase_models:
             _launch_cfg["phase_models"] = {k: v for k, v in phase_models.items() if v}
+        # Persist paper-review (rubric-driven) selections so GUI re-runs
+        # via /api/run-stage replay the user's choice instead of falling
+        # back to the paper-skill default ('neurips').
+        if proc_env.get("ARI_RUBRIC"):
+            _launch_cfg["rubric_id"] = proc_env["ARI_RUBRIC"]
+        if proc_env.get("ARI_FEWSHOT_MODE"):
+            _launch_cfg["fewshot_mode"] = proc_env["ARI_FEWSHOT_MODE"]
+        if proc_env.get("ARI_NUM_REVIEWS_ENSEMBLE"):
+            _launch_cfg["num_reviews_ensemble"] = int(proc_env["ARI_NUM_REVIEWS_ENSEMBLE"])
+        if proc_env.get("ARI_NUM_REFLECTIONS"):
+            _launch_cfg["num_reflections"] = int(proc_env["ARI_NUM_REFLECTIONS"])
         _st._launch_config = _launch_cfg
         import time, shutil
         # Write log and launch_config.json inside pre-created checkpoint
@@ -525,116 +575,124 @@ _ansi_re = __import__("re").compile(r"\x1b\[[0-9;]*[mGKHF]|\x1b\[\?[0-9]+[hl]|\x
 
 
 def _api_logs_sse(wfile) -> None:
-    """Stream logs via SSE: tries log file, then checkpoint dir files."""
+    """Stream logs via SSE: tries log file, then checkpoint dir files.
+
+    Treats client disconnection (BrokenPipeError / ConnectionResetError on
+    write) as a clean exit signal — the EventSource consumer in MonitorPage
+    cancels the reader on unmount/restart, which is normal.
+    """
     import time
-    start_msg = b"data: " + json.dumps({"msg": "Log stream started"}).encode() + b"\n\n"
-    wfile.write(start_msg)
-    wfile.flush()
-    try:
-        log_offset = 0       # byte offset into the log file
-        ckpt_offset = 0      # byte offset into cost_trace.jsonl
-        log_remainder = ""   # leftover partial line from log file
-        ckpt_remainder = ""  # leftover partial line from cost_trace
-        last_log_seen = None  # track which file we're reading
-        for _ in range(600):  # tail for up to 10 min
-            # Always re-resolve log file (handles new experiments starting)
-            # Only show logs if a process is running, _last_log_path was set,
-            # or a checkpoint directory exists (may contain log files)
-            if not (_st._last_proc and _st._last_proc.poll() is None) and not _st._last_log_path and not (_st._checkpoint_dir and _st._checkpoint_dir.exists()):
+
+    def _emit(payload: dict) -> bool:
+        """Write one SSE event. Return False if the client has gone away."""
+        try:
+            wfile.write(b"data: " + json.dumps(payload).encode() + b"\n\n")
+            wfile.flush()
+            return True
+        except (BrokenPipeError, ConnectionResetError):
+            return False
+
+    if not _emit({"msg": "Log stream started"}):
+        return
+
+    log_offset = 0       # byte offset into the log file
+    ckpt_offset = 0      # byte offset into cost_trace.jsonl
+    log_remainder = ""   # leftover partial line from log file
+    ckpt_remainder = ""  # leftover partial line from cost_trace
+    last_log_seen = None  # track which file we're reading
+    for _ in range(600):  # tail for up to 10 min
+        # Only show logs if a process is running, _last_log_path was set,
+        # or a checkpoint directory exists (may contain log files)
+        if not (_st._last_proc and _st._last_proc.poll() is None) and not _st._last_log_path and not (_st._checkpoint_dir and _st._checkpoint_dir.exists()):
+            time.sleep(1)
+            continue
+        log_file = _st._last_log_path
+        if not log_file or not log_file.exists() or log_file.stat().st_size == 0:
+            # Search in _st._checkpoint_dir only (not parent — avoid orphan logs)
+            if not (_st._checkpoint_dir and _st._checkpoint_dir.exists()):
                 time.sleep(1)
                 continue
-            log_file = _st._last_log_path
-            if not log_file or not log_file.exists() or log_file.stat().st_size == 0:
-                # Search in _st._checkpoint_dir only (not parent — avoid orphan logs)
-                if not (_st._checkpoint_dir and _st._checkpoint_dir.exists()):
-                    time.sleep(1)
-                    continue
-                # Only search inside the active checkpoint dir itself
-                candidates = sorted(
-                    _st._checkpoint_dir.glob("ari_run_*.log"),
+            # Only search inside the active checkpoint dir itself
+            candidates = sorted(
+                _st._checkpoint_dir.glob("ari_run_*.log"),
+                key=lambda p: p.stat().st_mtime, reverse=True
+            )
+            # Skip zero-byte logs
+            candidates = [c for c in candidates if c.stat().st_size > 0]
+            if not candidates:
+                # Also check parent (for logs written during launch, not yet moved)
+                # Match by timestamp: checkpoint name starts with YYYYMMDDHHMMSS_
+                _ckpt_name = _st._checkpoint_dir.name
+                _ckpt_ts = _ckpt_name[:14] if len(_ckpt_name) >= 14 and _ckpt_name[:8].isdigit() else ""
+                _parent_logs = sorted(
+                    _st._checkpoint_dir.parent.glob("ari_run_*.log"),
                     key=lambda p: p.stat().st_mtime, reverse=True
                 )
-                # Skip zero-byte logs
-                candidates = [c for c in candidates if c.stat().st_size > 0]
+                _parent_logs = [c for c in _parent_logs if c.stat().st_size > 0]
+                if _ckpt_ts and _parent_logs:
+                    # Match log by mtime proximity to checkpoint creation
+                    _ckpt_mtime = _st._checkpoint_dir.stat().st_mtime
+                    candidates = [c for c in _parent_logs if abs(c.stat().st_mtime - _ckpt_mtime) < 120]
                 if not candidates:
-                    # Also check parent (for logs written during launch, not yet moved)
-                    # Match by timestamp: checkpoint name starts with YYYYMMDDHHMMSS_
-                    _ckpt_name = _st._checkpoint_dir.name
-                    _ckpt_ts = _ckpt_name[:14] if len(_ckpt_name) >= 14 and _ckpt_name[:8].isdigit() else ""
-                    _parent_logs = sorted(
-                        _st._checkpoint_dir.parent.glob("ari_run_*.log"),
-                        key=lambda p: p.stat().st_mtime, reverse=True
-                    )
-                    _parent_logs = [c for c in _parent_logs if c.stat().st_size > 0]
-                    if _ckpt_ts and _parent_logs:
-                        # Match log by mtime proximity to checkpoint creation
-                        import re as _re
-                        _ckpt_mtime = _st._checkpoint_dir.stat().st_mtime
-                        candidates = [c for c in _parent_logs if abs(c.stat().st_mtime - _ckpt_mtime) < 120]
-                    if not candidates:
-                        candidates = _parent_logs[:1]  # fallback: most recent
-                if candidates:
-                    log_file = candidates[0]
-            # Reset offset when log file changes (new experiment)
-            if log_file != last_log_seen:
-                log_offset = 0
-                log_remainder = ""
-                last_log_seen = log_file
-                if log_file:
-                    msg = json.dumps({"msg": f"--- Switched to log: {log_file.name} ---"})
-                    wfile.write(b"data: " + msg.encode() + b"\n\n")
-                    wfile.flush()
-            if log_file and log_file.exists() and log_file.stat().st_size > log_offset:
-                with open(log_file, "r", encoding="utf-8", errors="replace") as fh:
-                    fh.seek(log_offset)
-                    chunk = fh.read(256 * 1024)  # read up to 256 KB of new data
-                    log_offset = fh.tell()
+                    candidates = _parent_logs[:1]  # fallback: most recent
+            if candidates:
+                log_file = candidates[0]
+        # Reset offset when log file changes (new experiment)
+        if log_file != last_log_seen:
+            log_offset = 0
+            log_remainder = ""
+            last_log_seen = log_file
+            if log_file:
+                if not _emit({"msg": f"--- Switched to log: {log_file.name} ---"}):
+                    return
+        if log_file and log_file.exists() and log_file.stat().st_size > log_offset:
+            with open(log_file, "r", encoding="utf-8", errors="replace") as fh:
+                fh.seek(log_offset)
+                chunk = fh.read(256 * 1024)  # read up to 256 KB of new data
+                log_offset = fh.tell()
+            if chunk:
+                chunk = log_remainder + chunk
+                parts = chunk.split("\n")
+                # Last element may be incomplete line — save for next iteration
+                log_remainder = parts.pop()
+                for line in parts:
+                    if not line.strip():
+                        continue
+                    clean = _ansi_re.sub("", line)
+                    if not _emit({"msg": clean}):
+                        return
+        # Tail checkpoint cost_trace for live progress
+        if _st._checkpoint_dir and _st._checkpoint_dir.exists():
+            ct = _st._checkpoint_dir / "cost_trace.jsonl"
+            if ct.exists() and ct.stat().st_size > ckpt_offset:
+                with open(ct, "r", encoding="utf-8", errors="replace") as fh:
+                    fh.seek(ckpt_offset)
+                    chunk = fh.read(64 * 1024)
+                    ckpt_offset = fh.tell()
                 if chunk:
-                    chunk = log_remainder + chunk
+                    chunk = ckpt_remainder + chunk
                     parts = chunk.split("\n")
-                    # Last element may be incomplete line — save for next iteration
-                    log_remainder = parts.pop()
+                    ckpt_remainder = parts.pop()
                     for line in parts:
-                        if line.strip():
-                            clean = _ansi_re.sub("", line)
-                            msg = json.dumps({"msg": clean})
-                            wfile.write(b"data: " + msg.encode() + b"\n\n")
-                    wfile.flush()
-            # Tail checkpoint cost_trace for live progress
-            if _st._checkpoint_dir and _st._checkpoint_dir.exists():
-                ct = _st._checkpoint_dir / "cost_trace.jsonl"
-                if ct.exists() and ct.stat().st_size > ckpt_offset:
-                    with open(ct, "r", encoding="utf-8", errors="replace") as fh:
-                        fh.seek(ckpt_offset)
-                        chunk = fh.read(64 * 1024)
-                        ckpt_offset = fh.tell()
-                    if chunk:
-                        chunk = ckpt_remainder + chunk
-                        parts = chunk.split("\n")
-                        ckpt_remainder = parts.pop()
-                        for line in parts:
-                            if not line.strip():
-                                continue
-                            try:
-                                d2 = json.loads(line)
-                                skill = d2.get("skill","") or d2.get("phase","")
-                                model = d2.get("model","")
-                                tok = d2.get("total_tokens",0)
-                                ts = d2.get("timestamp","")[-8:]
-                                nid = d2.get("node_id","")
-                                txt = f"[{ts}] {skill or 'thinking'} | model={model.split('/')[-1]} tokens={tok}" + (f" node={nid[:8]}" if nid else "")
-                                msg = json.dumps({"msg": txt})
-                                wfile.write(b"data: " + msg.encode() + b"\n\n")
-                            except Exception:
-                                log.debug("cost_trace SSE parse error", exc_info=True)
-                        wfile.flush()
-            # Check if process done
-            if _st._last_proc and _st._last_proc.poll() is not None:
-                break
-            time.sleep(1)
-    except Exception:
-        pass
-    wfile.write(b"data: " + json.dumps({"msg": "[end of log]"}).encode() + b"\n\n")
-    wfile.flush()
+                        if not line.strip():
+                            continue
+                        try:
+                            d2 = json.loads(line)
+                        except json.JSONDecodeError:
+                            log.debug("cost_trace SSE parse error", exc_info=True)
+                            continue
+                        skill = d2.get("skill","") or d2.get("phase","")
+                        model = d2.get("model","")
+                        tok = d2.get("total_tokens",0)
+                        ts = d2.get("timestamp","")[-8:]
+                        nid = d2.get("node_id","")
+                        txt = f"[{ts}] {skill or 'thinking'} | model={model.split('/')[-1]} tokens={tok}" + (f" node={nid[:8]}" if nid else "")
+                        if not _emit({"msg": txt}):
+                            return
+        # Check if process done
+        if _st._last_proc and _st._last_proc.poll() is not None:
+            break
+        time.sleep(1)
+    _emit({"msg": "[end of log]"})
 
 

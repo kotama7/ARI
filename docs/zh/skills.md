@@ -1,6 +1,6 @@
 # MCP 技能参考
 
-技能是为 ARI 智能体提供工具的 MCP 服务器。工具尽可能保持确定性；使用 LLM 的工具会明确标注。共 15 个技能（14 个默认，1 个附加）。
+技能是为 ARI 智能体提供工具的 MCP 服务器。工具尽可能保持确定性；使用 LLM 的工具会明确标注。共 13 个技能（12 个默认，1 个附加）。
 
 ## ari-skill-hpc
 
@@ -165,61 +165,134 @@ LaTeX 论文生成、编译和审阅（仅限 Post-BFTS）。**LLM：是**。
 
 完整论文生成，包含迭代式草稿 -> 审阅 -> 修改循环。主要流水线工具。
 
-#### `review_compiled_paper(tex_path, pdf_path, figures_manifest_json, paper_summary)`
+#### `review_compiled_paper(tex_path, pdf_path, figures_manifest_json, experiment_summary, rubric_id="", vlm_findings_json="", num_reflections=None, num_fs_examples=None)`
 
-基于 PDF 的整体论文审阅：文本提取、图表标题评估、结构化质量报告。
+**AI Scientist v1/v2 兼容** 的基于评审规范的论文审阅（遵循 Nature /
+arXiv:2408.06292 附录 A.4）。从 `ari-core/config/reviewer_rubrics/<rubric_id>.yaml`
+加载评审规范，根据 `score_dimensions` / `text_sections` / `decision` 动态生成
+提示。VLM 的逐图反馈（分数 / 问题 / 建议）作为审稿人备注注入，并附加
+Few-shot 示例，经 Self-reflection 循环自我批评修订后输出符合评审规范的 JSON。
+
+已内置评审规范（`ari-core/config/reviewer_rubrics/` 下 16 个 YAML）：
+
+| 类别 | rubric_id |
+|---|---|
+| ML 会议 | `neurips`（默认，v2 兼容）/ `iclr` / `icml` / `cvpr` / `acl` |
+| 系统 / HPC | `sc` / `osdi` / `usenix_security` |
+| 理论 / 图形学 | `stoc` / `siggraph` |
+| HCI / 机器人 | `chi` / `icra` |
+| 期刊 / 通用 | `nature` / `journal_generic` / `workshop` / `generic_conference` |
+
+在 `reviewer_rubrics/` 目录放一份 YAML 即可扩展新的会议，无需修改代码。
+每个评审规范声明 `score_dimensions` / `text_sections` / `decision` 规则、
+执行参数及用于 P2 确定性的 SHA256 哈希。
+
+解析顺序：显式 `rubric_id` 参数 → `ARI_RUBRIC` 环境变量 → `neurips` →
+内置 `legacy` 回退（v0.5 schema，当 `rubric_id` 与 YAML 都解析不到时使用）。
+
+Nature Ablation 默认值：
+
+- `num_reflections: 5` — +2% 平衡精度
+- `num_fs_examples: 1` — +2% 精度（ICLR 审稿指南 1-shot）
+- `num_reviews_ensemble: 1` — 集成只降方差不提升精度
+- `temperature: 0.75`
 
 模型：`ARI_LLM_MODEL` 环境变量 > `LLM_MODEL` 环境变量 > `ollama_chat/qwen3:32b`。
+
+**集成 + Area Chair 元审稿（内置）：** `review_compiled_paper` 通过集成路径
+运行 N 个独立审稿人代理（带温度抖动，AI Scientist v1 best-config 风格）。
+当 N>1 时，还会在内部运行 Area Chair 元审稿，并将 `ensemble_reviews: [...]`
+和 `meta_review: {...}` 附加到输出。N 的解析顺序：显式参数 >
+`ARI_NUM_REVIEWS_ENSEMBLE` 环境变量 > `rubric.params.num_reviews_ensemble`
+（默认 1）。N=1 等价于单审稿人。
+
+#### `list_rubrics()`
+
+返回可用 rubric 的列表（id、venue、domain、version、SHA256 hash、path）。
+viz API `/api/rubrics` 和 New Experiment 向导下拉菜单会用到。
+
+##### Few-shot 语料库管理
+
+`ari-core/config/reviewer_rubrics/fewshot_examples/<rubric>/` 下的文件可通过**New Experiment 向导 → Paper Review → Few-shot 示例** 子面板 (GUI) 或 `scripts/fewshot/sync.py` (CLI) 管理。
+
+GUI 操作:
+
+- **Auto-sync**: 服务器端运行 `scripts/fewshot/sync.py --venue <rubric>` 拉取 `manifest.yaml` 中声明的条目。默认包含 AI Scientist v2 的三个示例 (`132_automated_relational` / `2_carpe_diem` / `attention`)，从 Apache-2.0 许可的 `SakanaAI/AI-Scientist-v2` 仓库下载。
+- **Upload**: 接受符合 rubric schema 的 JSON + 可选 `.txt` 摘录 + 可选 PDF (base64)，自动标注 `_source: "GUI upload (rubric=<id>)"`。
+- **Delete**: 删除示例的所有扩展名文件。
+
+REST 端点:
+
+- `GET  /api/fewshot/<rubric>`
+- `POST /api/fewshot/<rubric>/sync`
+- `POST /api/fewshot/<rubric>/upload`
+- `POST /api/fewshot/<rubric>/<example>/delete`
+
+所有端点都会拒绝 `reviewer_rubrics/` 中不存在的 rubric，并从输入中剥离 `../` / 斜杠字符。
 
 ---
 
 ## ari-skill-paper-re
 
-通过 ReAct 智能体循环进行可复现性验证。**LLM：是**（ReAct）。
+可复现性验证辅助。**LLM：是**（两次一次性 LLM 调用，技能内部不再包含循环）。
 
-智能体读取生成的论文，提取实验配置，从头重新实现并运行实验，然后将结果与声称的指标进行比较。
+自 v0.6.0 起，ReAct 循环位于 `ari-core/ari/agent/react_driver.py`。当 stage 声明 `react:` 块时，由 `ari.pipeline._run_react_stage` 驱动循环。本技能仅保留可复现流程的两个确定性端点：
+
+```
+pre_tool (extract_repro_config)  →  react_driver  →  post_tool (build_repro_report)
+          一次 LLM                    受 MCP 白名单           一次 LLM
+          (paper-re)                  约束的 ReAct            (paper-re)
+```
+
+ReAct 循环只能看到 `workflow.yaml` 中 `skills[].phase` 列表包含 `reproduce` 的 MCP 工具（默认：`web-skill` / `vlm-skill` / `hpc-skill` / `coding-skill`）。`memory-skill` / `transform-skill` / `evaluator-skill` 被刻意排除，因此智能体无法访问 BFTS 阶段的产物（`nodes_tree.json`、祖先记忆等）。
 
 ### 工具
 
+#### `extract_repro_config(paper_path="", paper_text="")`
+
+一次性 LLM 调用。读取论文文本（或 `paper_path`，`.pdf` 通过 `pdftotext` 转换），抽取作者在摘要/结论中宣传的值及其邻近的精确实验参数，返回 `{metric_name, claimed_value, description, threads}`。
+
+#### `build_repro_report(claimed_config, actual_value, actual_unit="", actual_notes="", tolerance_pct=5.0)`
+
+一次性 LLM 调用，生成 2-3 句判定说明。在 `react_driver` 完成后由流水线调用。`actual_value` 是 ReAct 智能体通过 `report_metric` 上报的值（若智能体未能得到可靠测量则为 `None`）。
+
+判定阈值：在 `tolerance_pct` 内 → REPRODUCED | 20% 内 → PARTIAL | 其它 → NOT_REPRODUCED | `actual_value is None` → UNVERIFIABLE。
+
 #### `extract_metric_from_output(output_text, metric_name)`
 
-LLM 从原始输出文本中提取特定指标值。
+供 ReAct 智能体从原始基准输出中解析数值指标的辅助工具（LLM 抽取 + regex 回退）。pre/post 流水线端点不会调用它。
 
-#### `reproduce_from_paper(paper_path="", paper_text="", experiment_goal="", work_dir="", source_file="", executor="", cpus=64, timeout_minutes=15, tolerance_pct=5.0)`
-
-完整的 ReAct 可复现性验证。内部使用子工具：`write_file`、`run_bash`、`read_file`、`report_metric`、`submit_job`（用于非本地执行器）。
-
-支持的执行器：`local`、`slurm`、`pbs`、`lsf`。最大 ReAct 步数：40。
-
-判定阈值：≥80% → REPRODUCED | 40-79% → PARTIAL | <40% → NOT_REPRODUCED
-
-模型：`ARI_LLM_MODEL` 环境变量 > `LLM_MODEL` 环境变量 > `ollama_chat/qwen3:32b`。
+模型：`ARI_MODEL_PAPER` > `ARI_LLM_MODEL` > `LLM_MODEL` > `ollama_chat/qwen3:32b`。
 
 ---
 
 ## ari-skill-memory
 
-祖先链作用域的节点记忆。防止跨分支污染。**LLM：否**（确定性关键词匹配）。
+祖先作用域的节点记忆（v0.6.0 起由 [Letta](https://docs.letta.com) 支持）。防止跨分支污染，ReAct 轨迹也存放在同一个 Letta 代理中。**LLM：△**（基于嵌入的检索。P2 放宽详见 `docs/PHILOSOPHY.md`）。
 
 ### 工具
 
 #### `add_memory(node_id, text, metadata=None)`
 
-存储标记了 `node_id` 的记忆条目。
+存储标记了 `node_id` 的条目。**Copy-on-Write**：若 `node_id` 与 `$ARI_CURRENT_NODE_ID` 不一致，则拒绝写入。
 
 #### `search_memory(query, ancestor_ids, limit=5)`
 
-仅返回 `ancestor_ids`（祖先链）中列出的节点的条目。使用关键词匹配。
+仅按 Letta 相关度分数（`score` ∈ [0, 1]）返回 `ancestor_ids` 中的节点条目。兄弟/子节点永远不会返回。
 
 #### `get_node_memory(node_id)`
 
-检索特定节点的所有记忆。
+按时间顺序返回特定节点的所有条目（无评分）。
 
 #### `clear_node_memory(node_id)`
 
-删除特定节点的所有记忆。
+仅用于调试的单节点清除。与 `add_memory` 使用相同的 CoW 规则。
 
-存储位置：每个实验位于 `{ARI_CHECKPOINT_DIR}/memory_store.jsonl`（仅追加 JSONL，可用 `ARI_MEMORY_PATH` 覆盖）
+#### `get_experiment_context()`
+
+返回 Letta 核心记忆中种入的稳定事实（`experiment_goal`、`primary_metric`、`hardware_spec` 等）。种入仅在首个节点的 `generate_ideas` 完成时（即 `primary_metric` 被确定的时刻）执行一次，在此之前调用会返回 `{}`。之后可安全反复调用（带 60 秒进程内缓存）。
+
+存储：每个检查点拥有一个 Letta 代理（两个集合 `ari_node_*` 与 `ari_react_*`）。可移植快照位于 `{ARI_CHECKPOINT_DIR}/memory_backup.jsonl.gz`，写/读遥测位于 `{ARI_CHECKPOINT_DIR}/memory_access.jsonl`。v0.5.x 的 JSONL（`memory_store.jsonl`、`~/.ari/global_memory.jsonl`）已移除；使用 `ari memory migrate --react` 迁移。跨实验“全局记忆”已弃用。
 
 ---
 
@@ -254,42 +327,6 @@ LLM 从原始输出文本中提取特定指标值。
 工作空间：`ARI_WORKSPACE` 环境变量（默认：`~/ARI`）。父子关系保存在每个检查点的 `meta.json` 中。
 
 ---
-
-## ari-skill-figure-router
-
-图表类型分类与生成路由。**LLM：是**。
-
-将请求的图表分类到最佳渲染后端（SVG / matplotlib / LaTeX）并相应地路由生成。以 `phase: all` 注册为默认技能。
-
----
-
-## 编写新技能
-
-1. 创建 `ari-skill-yourskill/src/server.py`：
-
-```python
-from mcp.server.fastmcp import FastMCP
-mcp = FastMCP("your-skill")
-
-@mcp.tool()
-def your_tool(param: str) -> dict:
-    """Tool description."""
-    # NO LLM calls here
-    return {"result": process(param)}
-
-if __name__ == "__main__":
-    mcp.run()
-```
-
-2. 在 BFTS 配置 YAML 中注册：
-
-```yaml
-skills:
-  - name: your-skill
-    path: /path/to/ari-skill-yourskill
-```
-
-3. 在 `experiment.md` 的 `## Required Workflow` 中引用工具名称。
 
 ## ari-skill-transform
 
@@ -422,28 +459,6 @@ result = read_file("results.csv", offset=0, limit=100)
 
 ---
 
-## ari-skill-review
-
-同行评审解析和反驳生成。**LLM：是**。
-
-### 工具
-
-#### `parse_review(review_text)`
-
-LLM 将自由文本评审解析为结构化形式：摘要、关注点（id/严重程度/文本）、问题、建议。
-
-#### `generate_rebuttal(concerns, paper_context, experiment_results)`
-
-LLM 生成 LaTeX 格式的逐点反驳。
-
-#### `check_rebuttal(rebuttal, original_concerns)`
-
-LLM 检查反驳完整性：覆盖率（0-1）、遗漏项、建议。
-
-模型：`ARI_LLM_MODEL` 环境变量 > `LLM_MODEL` 环境变量 > `ollama/qwen3:8b`。
-
----
-
 ## ari-skill-vlm
 
 视觉语言模型，用于图表和表格质量审查。**LLM：是**（VLM）。
@@ -459,3 +474,38 @@ VLM 审查实验图表。返回评分（0-1）、问题和建议。
 VLM 审查表格（LaTeX 源码或渲染图像）。返回评分、问题和建议。
 
 模型：`VLM_MODEL` 环境变量 > `openai/gpt-4o`。
+
+---
+
+## 编写新技能
+
+1. 创建 `ari-skill-yourskill/src/server.py`：
+
+```python
+from mcp.server.fastmcp import FastMCP
+mcp = FastMCP("your-skill")
+
+@mcp.tool()
+def your_tool(param: str) -> dict:
+    """Tool description."""
+    # NO LLM calls here
+    return {"result": process(param)}
+
+if __name__ == "__main__":
+    mcp.run()
+```
+
+2. 在 `ari-core/config/workflow.yaml` 中注册。`phase` 控制
+   各 pipeline-phase 的 ReAct 智能体是否能看到该技能（单个 phase
+   写字符串，多个 phase 写数组）：
+
+```yaml
+skills:
+  - name: your-skill
+    path: '{{ari_root}}/ari-skill-yourskill'
+    phase: [paper, reproduce]
+```
+
+   有效 phase 值：`bfts`、`paper`、`reproduce`、`all`、`none`。
+
+3. 在 `experiment.md` 的 `## Required Workflow` 中引用工具名称。

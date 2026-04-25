@@ -116,20 +116,37 @@ def _resolve(value, vars_):
 
 # ─── workflow.yaml interface ─────────────────────────────────────────────────
 
+def _stage_tool_names(stage: dict) -> list[str]:
+    """Collect all tool-name references from a stage definition.
+
+    A standard stage has a single ``tool`` field. A stage that runs under
+    react_driver instead declares ``pre_tool`` and ``post_tool``; both
+    must still resolve to real functions in the skill's server.py.
+    """
+    names: list[str] = []
+    if stage.get("tool"):
+        names.append(stage["tool"])
+    for key in ("pre_tool", "post_tool"):
+        t = stage.get(key)
+        if t:
+            names.append(t)
+    return names
+
+
 def test_all_workflow_tools_exist():
     wf = _load_wf()
     skill_paths = {s["name"]: ARI_ROOT / s["path"].replace("{{ari_root}}/", "")
                    for s in wf["skills"]}
     errors = []
     for stage in wf.get("pipeline", []):
-        tool = stage["tool"]
         skill = stage["skill"]
         if skill not in skill_paths:
             errors.append(f'{stage["stage"]}: unknown skill "{skill}"')
             continue
         src = (skill_paths[skill] / "src/server.py").read_text()
-        if f"def {tool}(" not in src and f"async def {tool}(" not in src:
-            errors.append(f'{stage["stage"]}: tool "{tool}" not in {skill}')
+        for tool in _stage_tool_names(stage):
+            if f"def {tool}(" not in src and f"async def {tool}(" not in src:
+                errors.append(f'{stage["stage"]}: tool "{tool}" not in {skill}')
     assert not errors, "\n".join(errors)
 
 
@@ -139,7 +156,14 @@ def test_workflow_tool_params_match():
                    for s in wf["skills"]}
     errors = []
     for stage in wf.get("pipeline", []):
-        tool = stage["tool"]
+        # react stages route inputs through pre_tool/post_tool and the
+        # ReAct loop itself — not a single tool — so the per-input arg
+        # check does not apply. Contract tests cover the react block.
+        if stage.get("react"):
+            continue
+        tool = stage.get("tool", "")
+        if not tool:
+            continue
         src = (skill_paths[stage["skill"]] / "src/server.py").read_text()
         args = _func_args(src, tool)
         for k in stage.get("inputs", {}):

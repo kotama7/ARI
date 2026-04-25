@@ -1,9 +1,10 @@
 {
   "name": "ari-skill-paper-re",
-  "description": "Extracts numeric claims from papers and verifies reproducibility by comparing with experimental results (deterministic)",
-  "version": "0.1.0",
+  "description": "Reproducibility verification helpers. Extracts the paper's advertised metric and produces the verdict + interpretation; the ReAct loop itself runs in ari-core/agent/react_driver.py.",
+  "version": "0.2.0",
   "tools": [
+    "extract_repro_config",
     "extract_metric_from_output",
-    "reproduce_from_paper"
+    "build_repro_report"
   ]
 }

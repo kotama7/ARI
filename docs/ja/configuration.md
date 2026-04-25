@@ -73,13 +73,63 @@ pipeline:
     # ...
   - stage: reproducibility_check
     skill: paper-re-skill
-    tool: reproduce_from_paper
+    # ari-core/ari/agent/react_driver.py が駆動。単一 tool ではなく、
+    # paper-re が決定論的な両端を担い、ReAct ループは phase リストに
+    # `reproduce` を含む MCP スキルで動作します。
+    pre_tool: extract_repro_config
+    post_tool: build_repro_report
     depends_on: [write_paper]
-    # ...
+    react:
+      agent_phase: reproduce
+      max_steps: 40
+      final_tool: report_metric
+      # エージェントを checkpoint ルートから隔離。パス検証によって
+      # sandbox 外のファイルを参照するツール引数は拒否されます
+      # (論文 .tex は allow-list 扱い)。
+      sandbox: '{{checkpoint_dir}}/repro_sandbox'
+      system_prompt: |
+        You are a reproducibility engineer...
+      user_prompt: |
+        Target: reproduce {{pre.metric_name}} = {{pre.claimed_value}}
+        ...
 
 retrieval:
   backend: semantic_scholar    # semantic_scholar | alphaxiv | both
   alphaxiv_endpoint: https://api.alphaxiv.org/mcp/v1
+
+# ── 論文査読 (ルーブリック駆動、AI Scientist v1/v2 互換) ─────────────
+# CLI フラグ (--rubric、--fewshot-mode、--num-reviews-ensemble、
+# --num-reflections) または環境変数 (ARI_RUBRIC、ARI_FEWSHOT_MODE、
+# ARI_NUM_REVIEWS_ENSEMBLE、ARI_NUM_REFLECTIONS) で上書き可能。
+# ari-core/config/reviewer_rubrics/ に同梱されている 16 種のルーブリック:
+#   neurips (既定、v2 互換) | iclr | icml | cvpr | acl | sc | osdi
+#   | usenix_security | stoc | siggraph | chi | icra | nature
+#   | journal_generic | workshop | generic_conference
+# 加えて内蔵の `legacy` フォールバック (v0.5 スキーマ)。新しい venue は
+# <id>.yaml を reviewer_rubrics/ に追加するだけで対応 (コード変更不要)。
+#
+# Few-shot コーパス管理
+# --------------------
+# reviewer_rubrics/fewshot_examples/<rubric>/ 配下のファイルは GUI
+# (New Experiment Wizard → Paper Review → Few-shot サンプル) または
+# scripts/fewshot/sync.py から管理できます。viz サーバが公開する REST:
+#   GET  /api/rubrics                           rubric 一覧 (Wizard 用)
+#   GET  /api/fewshot/<rubric>                  fewshot 例の一覧
+#   POST /api/fewshot/<rubric>/sync             manifest.yaml から取得
+#   POST /api/fewshot/<rubric>/upload           1 件アップロード
+#   POST /api/fewshot/<rubric>/<example>/delete 1 件削除
+
+memory:
+  # v0.6.0: Letta が唯一の本番バックエンドです。ここでの値はスキル
+  # 子プロセスの環境変数として読み込み時に注入されます。エージェント
+  # 用チャット LLM は `letta/letta-free` に固定されています
+  # (ari-skill-memory は archival_insert / archival_search だけを
+  # 呼び、チャットメッセージは送らないためピッカーは無効でした)。
+  backend: letta
+  letta:
+    base_url: http://localhost:8283
+    collection_prefix: ari_
+    embedding_config: letta-default
 
 container:
   mode: auto                   # auto | docker | singularity | apptainer | none
@@ -87,9 +137,16 @@ container:
   pull: on_start               # always | on_start | never
 
 skills:
+  # `phase` は ReAct エージェントがどの pipeline-phase でそのスキルの
+  # MCP ツールを見られるかを制御します。単一文字列なら一つの phase
+  # のみ、配列なら複数の phase にオプトインします。`reproduce` に
+  # タグ付けされたスキルは再現性 ReAct (上の reproducibility_check
+  # ステージ参照) に露出します。`memory-skill` / `transform-skill` /
+  # `evaluator-skill` はエージェントが BFTS フェーズの成果物に
+  # 到達できないよう、意図的に reproduce から除外しています。
   - name: web-skill
     path: "{{ari_root}}/ari-skill-web"
-    phase: all
+    phase: [paper, reproduce]
   - name: plot-skill
     path: "{{ari_root}}/ari-skill-plot"
     phase: paper
@@ -107,25 +164,22 @@ skills:
     phase: bfts
   - name: idea-skill
     path: "{{ari_root}}/ari-skill-idea"
-    phase: bfts
+    phase: none
   - name: hpc-skill
     path: "{{ari_root}}/ari-skill-hpc"
-    phase: bfts
+    phase: [bfts, reproduce]
+  - name: coding-skill
+    path: "{{ari_root}}/ari-skill-coding"
+    phase: [bfts, reproduce]
   - name: transform-skill
     path: "{{ari_root}}/ari-skill-transform"
     phase: paper
-  - name: figure-router-skill
-    path: "{{ari_root}}/ari-skill-figure-router"
-    phase: all
   - name: benchmark-skill
     path: "{{ari_root}}/ari-skill-benchmark"
     phase: bfts
-  - name: review-skill
-    path: "{{ari_root}}/ari-skill-review"
-    phase: paper
   - name: vlm-skill
     path: "{{ari_root}}/ari-skill-vlm"
-    phase: paper
+    phase: [paper, reproduce]
 ```
 
 ## 環境変数
@@ -144,6 +198,41 @@ skills:
 | `ARI_RETRIEVAL_BACKEND` | 論文検索バックエンド: `semantic_scholar` / `alphaxiv` / `both` | `semantic_scholar` |
 | `VLM_MODEL` | 図レビュー用 VLM モデル | `openai/gpt-4o` |
 | `ARI_ORCHESTRATOR_PORT` | orchestrator スキルの HTTP ポート | `9890` |
+| `LETTA_BASE_URL` | Letta サーバエンドポイント | `http://localhost:8283` |
+| `LETTA_API_KEY` | Letta Cloud で必須 | (なし) |
+| `LETTA_EMBEDDING_CONFIG` | アーカイバルメモリ用の埋め込みハンドル（エージェントのチャット LLM は ARI から呼び出さないため `letta/letta-free` に固定） | `letta-default` |
+| `ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA` | `auto` / `pip` / `docker` / `singularity` / `none` | `auto` |
+| `ARI_MEMORY_LETTA_TIMEOUT_S` | 呼び出しごとのタイムアウト | `10` |
+| `ARI_MEMORY_LETTA_OVERFETCH` | 祖先ポストフィルタ用のオーバーフェッチ K | `200` |
+| `ARI_MEMORY_LETTA_DISABLE_SELF_EDIT` | Letta self-edit を無効化 (CoW セーフ) | `true` |
+| `ARI_MEMORY_ACCESS_LOG` | `{checkpoint}/memory_access.jsonl` を有効化 | `on` |
+| `ARI_MEMORY_AUTO_RESTORE` | `ari resume` 時にバックアップを自動復元 | `true` |
+| `ARI_RUBRIC` | 査読 rubric_id (例: `neurips`、`sc`、`nature`) | `neurips` |
+| `ARI_FEWSHOT_MODE` | `static` / `dynamic` | `static` |
+| `ARI_NUM_REVIEWS_ENSEMBLE` | 独立査読者数 | `1` |
+| `ARI_NUM_REFLECTIONS` | self-reflection ループ回数 | `5` |
+
+## メモリバックエンド (Letta)
+
+v0.6.0 で決定論的 JSONL メモリストアを [Letta](https://docs.letta.com)
+へ置き換えました。Letta は次の 4 通りで動作します:
+
+| モード | 要件 | ストア | 備考 |
+|------|------|--------|------|
+| Docker Compose | `docker` + `docker compose` | Postgres | ノートPC既定、pre-filter 対応 |
+| Singularity / Apptainer | `singularity` / `apptainer` | Postgres | HPC 既定、SLURM 認識のデータ DIR |
+| pip (コンテナレス) | Python 3.10+ | SQLite | ancestor スコープは over-fetch + post-filter にフォールバック |
+| Letta Cloud | API キー | マネージド | `LETTA_BASE_URL=https://api.letta.com` |
+
+`ari setup` が最適なモードを自動検出します。`ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA`
+で強制指定も可能。start/stop/health/backup/restore は `ari memory` サブ
+コマンドが扱います — 詳細は `docs/ja/cli_reference.md` を参照。
+
+v0.5.x チェックポイントのワンショット移行:
+
+```bash
+ari memory migrate --checkpoint /path/to/ckpt --react
+```
 
 ## LLM バックエンド
 

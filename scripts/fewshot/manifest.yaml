@@ -1,0 +1,42 @@
+# Few-shot corpus manifest.
+# scripts/fewshot/sync.py reads this to fetch paper PDFs + review JSONs into
+# ari-core/config/reviewer_rubrics/fewshot_examples/<rubric_id>/.
+#
+# For each entry:
+#   - `id`:       local filename stem
+#   - `source`:   openreview | arxiv | github_raw | synthetic
+#   - `license`:  license identifier for compliance tracking
+#   - optional `note`: free-form provenance string
+
+# The three examples below are re-used from SakanaAI/AI-Scientist-v2
+# (Apache-2.0). Running `python scripts/fewshot/sync.py --venue neurips`
+# refreshes the .json (and, for github_raw, also pulls the .pdf/.txt).
+neurips:
+  - id: 132_automated_relational
+    source: github_raw
+    base_url: https://raw.githubusercontent.com/SakanaAI/AI-Scientist-v2/main/ai_scientist/fewshot_examples
+    files: [json, pdf, txt]
+    license: Apache-2.0
+    note: ICLR 2020 submission #132 (Accept). Used as first-choice fewshot (matches v2 default num_fs_examples=1).
+  - id: 2_carpe_diem
+    source: github_raw
+    base_url: https://raw.githubusercontent.com/SakanaAI/AI-Scientist-v2/main/ai_scientist/fewshot_examples
+    files: [json, pdf, txt]
+    license: Apache-2.0
+    note: ICLR 2020 submission #2 (Reject). Provides a low-score reference for calibration.
+  - id: attention
+    source: github_raw
+    base_url: https://raw.githubusercontent.com/SakanaAI/AI-Scientist-v2/main/ai_scientist/fewshot_examples
+    files: [json, pdf, txt]
+    license: Apache-2.0
+    note: Attention Is All You Need (NeurIPS 2017). Strong-accept reference.
+
+iclr: []  # iclr rubric reuses neurips/ fewshot_dir
+icml: []  # icml rubric reuses neurips/ fewshot_dir
+acl: []   # add ACL Rolling Review samples via OpenReview when needed
+
+# Closed-review venues (SC, CHI): fewshot must be authored by domain experts or
+# synthesised from Artifact Evaluation reports. Leave empty unless you have
+# locally-prepared samples.
+sc: []
+chi: []

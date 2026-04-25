@@ -55,6 +55,13 @@ class CallRecord:
     completion_tokens: int
     total_tokens: int
     estimated_cost_usd: float
+    # additive fields; default-None keeps
+    # existing callers source-compatible.
+    component: str | None = None      # "memory" | "llm" | None
+    op: str | None = None             # "add" | "search" | "purge" | ...
+    backend: str | None = None        # "letta" | None
+    embedding_tokens: int = 0
+    latency_ms: float | None = None
 
 class CostTracker:
     """Thread-safe per-experiment cost tracker."""
@@ -99,7 +106,10 @@ class CostTracker:
             pass
 
     def record(self, *, model: str, prompt_tokens: int, completion_tokens: int,
-               node_id: str = "", phase: str = "", skill: str = "") -> None:
+               node_id: str = "", phase: str = "", skill: str = "",
+               component: str | None = None, op: str | None = None,
+               backend: str | None = None, embedding_tokens: int = 0,
+               latency_ms: float | None = None) -> None:
         cost = _estimate_cost(model, prompt_tokens, completion_tokens)
         rec = CallRecord(
             timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -107,6 +117,8 @@ class CostTracker:
             prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
             total_tokens=prompt_tokens + completion_tokens,
             estimated_cost_usd=cost,
+            component=component, op=op, backend=backend,
+            embedding_tokens=embedding_tokens, latency_ms=latency_ms,
         )
         with self._lock:
             self._records.append(rec)
@@ -172,6 +184,99 @@ def init(log_dir: str | Path) -> CostTracker:
     _install_litellm_callback()
     return _tracker
 
+
+def init_from_env() -> Optional[CostTracker]:
+    """Initialise the tracker from ``ARI_CHECKPOINT_DIR`` if set.
+
+    Designed for MCP skill subprocesses: they inherit the checkpoint dir
+    via env var and just need a one-line call to start logging. Returns
+    the tracker on success, ``None`` when the env var is missing or the
+    directory cannot be created.
+    """
+    import os as _os
+    ckpt = _os.environ.get("ARI_CHECKPOINT_DIR", "").strip()
+    if not ckpt:
+        return None
+    try:
+        return init(ckpt)
+    except Exception:
+        return None
+
+
+_DEFAULT_METADATA: dict[str, str] = {}
+
+
+def set_default_metadata(**kwargs: str) -> None:
+    """Record default metadata (skill, phase, ...) merged into every
+    ``litellm.completion`` / ``acompletion`` call issued from this process.
+
+    Call sites that pass their own ``metadata=`` kwarg win on key collisions —
+    defaults only fill in unset fields. Used by skill subprocesses so the
+    skill name is attributed automatically without touching every call site.
+    """
+    for k, v in kwargs.items():
+        if v is None:
+            _DEFAULT_METADATA.pop(k, None)
+        else:
+            _DEFAULT_METADATA[k] = str(v)
+    _install_litellm_metadata_injector()
+
+
+_injector_installed = False
+
+
+def _install_litellm_metadata_injector() -> None:
+    """Wrap ``litellm.completion`` / ``litellm.acompletion`` so the defaults
+    from :func:`set_default_metadata` get merged into the caller's
+    ``metadata=`` kwarg. Idempotent."""
+    global _injector_installed
+    if _injector_installed:
+        return
+    try:
+        import litellm as _litellm
+    except ImportError:
+        return
+
+    def _merge(user_md):
+        merged = dict(_DEFAULT_METADATA)
+        if isinstance(user_md, dict):
+            merged.update({k: v for k, v in user_md.items() if v not in (None, "")})
+        return merged
+
+    _orig_completion = _litellm.completion
+    _orig_acompletion = _litellm.acompletion
+
+    def _completion(*args, **kwargs):
+        kwargs["metadata"] = _merge(kwargs.get("metadata"))
+        return _orig_completion(*args, **kwargs)
+
+    async def _acompletion(*args, **kwargs):
+        kwargs["metadata"] = _merge(kwargs.get("metadata"))
+        return await _orig_acompletion(*args, **kwargs)
+
+    _litellm.completion = _completion
+    _litellm.acompletion = _acompletion
+    _injector_installed = True
+
+
+def bootstrap_skill(skill: str, phase: str | None = None) -> Optional[CostTracker]:
+    """Convenience for MCP skill servers: initialise the tracker from env
+    and register the skill name (and optional phase) as default metadata.
+
+    Usage at the top of a skill's ``server.py``::
+
+        try:
+            from ari import cost_tracker as _ct
+            _ct.bootstrap_skill("paper")
+        except Exception:
+            pass
+    """
+    md: dict[str, str] = {"skill": skill}
+    if phase:
+        md["phase"] = phase
+    set_default_metadata(**md)
+    return init_from_env()
+
 def record(**kwargs) -> None:
     if _tracker is not None:
         _tracker.record(**kwargs)
@@ -198,16 +303,20 @@ def _litellm_success_handler(kwargs, response_obj, start_time, end_time):
         if prompt_tokens == 0 and completion_tokens == 0:
             return
         model = kwargs.get("model", "") or getattr(response_obj, "model", "") or ""
-        # Detect skill/phase from litellm metadata if available
-        metadata = kwargs.get("litellm_params", {}).get("metadata", {}) or {}
-        skill = metadata.get("skill", "") or ""
+        # Detect skill/phase/node_id from litellm metadata.
+        # litellm forwards a caller's ``metadata=`` kwarg into
+        # ``kwargs['litellm_params']['metadata']``; the plain top-level
+        # ``metadata`` key is also checked so that tests (which invoke the
+        # handler directly) and older litellm versions still work.
+        lp = kwargs.get("litellm_params", {}) or {}
+        metadata = (lp.get("metadata") or kwargs.get("metadata") or {})
         _tracker.record(
             model=model,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
-            phase=metadata.get("phase", ""),
-            skill=skill,
-            node_id=metadata.get("node_id", ""),
+            phase=metadata.get("phase", "") or "",
+            skill=metadata.get("skill", "") or "",
+            node_id=metadata.get("node_id", "") or "",
         )
     except Exception:
         pass  # Never break the LLM call due to tracking errors

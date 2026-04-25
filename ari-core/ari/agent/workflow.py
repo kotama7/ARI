@@ -217,10 +217,16 @@ def from_experiment_text(experiment_text: str, *, hpc_enabled: bool = True) -> W
         hints.tool_sequence = ["make_metric_spec", "survey", "generate_ideas", "run_bash"]
     hints.post_survey_hint = _build_post_survey_hint(use_slurm=False)
 
-    # SLURM workflow detection — any HPC/cluster keyword triggers SLURM workflow
-    # Only when HPC is enabled (profile != laptop)
+    # SLURM workflow detection — triggered either by HPC/cluster keywords in
+    # the experiment markdown, or by the wizard/launcher exporting a partition
+    # via ARI_SLURM_PARTITION (profile=hpc path). Without the env-var branch,
+    # a plain-English experiment.md running on an HPC profile would fall back
+    # to the run_bash workflow and bypass SLURM entirely.
+    import os as _os_slurm
     slurm_keywords = ["slurm_submit", "sbatch", "partition:", "srun", "#slurm", "slurm"]
-    if hpc_enabled and any(kw in text_lower for kw in slurm_keywords):
+    _env_partition = _os_slurm.environ.get("ARI_SLURM_PARTITION", "").strip()
+    _slurm_forced = hpc_enabled and bool(_env_partition)
+    if hpc_enabled and (_slurm_forced or any(kw in text_lower for kw in slurm_keywords)):
         hints.job_submitter_tool = "slurm_submit"
         hints.job_poller_tool = "job_status"
         hints.job_reader_tool = "run_bash"

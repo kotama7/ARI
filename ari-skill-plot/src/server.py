@@ -23,6 +23,13 @@ from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("plot-skill")
 
+# Wire skill-scoped cost tracking (see ari.cost_tracker.bootstrap_skill).
+try:
+    from ari import cost_tracker as _ari_cost_tracker  # type: ignore
+    _ari_cost_tracker.bootstrap_skill("plot")
+except Exception:
+    pass
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -93,6 +100,125 @@ async def _vlm_caption(png_path: str, fallback: str, context: str = "") -> str:
     except Exception as e:
         log.warning("VLM caption failed, using fallback: %s", e)
         return fallback
+
+
+# ---------------------------------------------------------------------------
+# Figure execution helpers (shared by generate_figures_llm)
+# ---------------------------------------------------------------------------
+
+
+def _rasterize_svg(svg_code: str, png_path: Path, pdf_path: Path) -> bool:
+    """Write PNG and PDF renderings of `svg_code`. Returns True on success.
+
+    Tries cairosvg first; falls back to inkscape CLI when cairosvg or its
+    underlying cairo library is unavailable. Either path is sufficient —
+    both raster files are required before the caller considers the figure
+    done (PNG for VLM review, PDF for LaTeX embedding).
+    """
+    try:
+        import cairosvg  # type: ignore
+        cairosvg.svg2png(
+            bytestring=svg_code.encode("utf-8"),
+            write_to=str(png_path),
+            output_width=1200,
+        )
+        cairosvg.svg2pdf(
+            bytestring=svg_code.encode("utf-8"),
+            write_to=str(pdf_path),
+        )
+        if png_path.exists() and pdf_path.exists():
+            return True
+    except Exception as e:
+        log.warning("cairosvg failed (%s); trying inkscape fallback", e)
+    svg_tmp = png_path.with_suffix(".svg")
+    try:
+        svg_tmp.write_text(svg_code, encoding="utf-8")
+    except OSError:
+        return False
+    for target, export_type, extra in (
+        (png_path, "png", ["--export-width=1200"]),
+        (pdf_path, "pdf", []),
+    ):
+        try:
+            subprocess.run(
+                ["inkscape", str(svg_tmp),
+                 f"--export-type={export_type}",
+                 f"--export-filename={target}", *extra],
+                capture_output=True, timeout=30,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+    return png_path.exists() and pdf_path.exists()
+
+
+def _run_plot_code(code: str, out_dir: Path, name: str) -> tuple[bool, str]:
+    """Execute one matplotlib snippet in a subprocess.
+
+    The snippet is expected to write {out_dir}/{name}.pdf and
+    {out_dir}/{name}.png. `output_dir` and `name` are predefined for the
+    snippet; any reassignment of `output_dir` is stripped to protect the
+    pipeline contract.
+    """
+    preamble = (
+        "import matplotlib\n"
+        "matplotlib.use('Agg')\n"
+        "import json, os\n"
+        f"output_dir = {str(out_dir)!r}\n"
+        f"name = {name!r}\n"
+        "try:\n    import seaborn as sns; sns.set_theme(style='whitegrid')\n"
+        "except ImportError:\n    pass\n"
+        "import matplotlib.legend as _mpl_leg\n"
+        "if not hasattr(_mpl_leg.Legend, 'legendHandles'):\n"
+        "    _mpl_leg.Legend.legendHandles = property(lambda self: self.legend_handles)\n"
+    )
+    safe_lines = []
+    for line in code.split("\n"):
+        s = line.lstrip()
+        if s.startswith("output_dir") and "=" in s.split("#")[0]:
+            safe_lines.append("# (removed by preamble) " + line)
+        else:
+            safe_lines.append(line)
+    code = "\n".join(safe_lines)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tf:
+        tf.write(preamble)
+        tf.write(code)
+        tmp = tf.name
+    try:
+        proc = subprocess.run(
+            [sys.executable, tmp], capture_output=True, text=True, timeout=90,
+        )
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+    return proc.returncode == 0, proc.stderr[:400]
+
+
+def _extract_figure_manifest(raw: str) -> list[dict]:
+    """Parse the LLM response into a list of per-figure items.
+
+    Accepts either a JSON array or a JSON array wrapped in markdown fences.
+    Returns [] if nothing parseable is found.
+    """
+    raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+    fence = re.search(r"```(?:json)?\s*\n(.*?)```", raw, re.DOTALL)
+    payload = fence.group(1).strip() if fence else raw
+    try:
+        data = json.loads(payload)
+        if isinstance(data, list):
+            return [x for x in data if isinstance(x, dict)]
+    except json.JSONDecodeError:
+        pass
+    m = re.search(r"\[\s*\{.*\}\s*\]", payload, re.DOTALL)
+    if m:
+        try:
+            data = json.loads(m.group(0))
+            if isinstance(data, list):
+                return [x for x in data if isinstance(x, dict)]
+        except json.JSONDecodeError:
+            pass
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -425,38 +551,43 @@ async def generate_figures_llm(
     _axis3 = f"{metric_name} vs {param_keys[1]}" if len(param_keys) > 1 else f"distribution of {metric_name}"
 
     system_prompt = (
-        "You are a scientific visualization expert. "
-        "Write complete, runnable Python matplotlib code to produce publication-quality figures. "
-        "Output ONLY valid Python code (no markdown fences, no explanation). "
-        "The code must: (1) use matplotlib.use('Agg'), "
-        "(2) save each figure TWICE — once as fig_N.pdf (for LaTeX embedding) "
-        "and once as fig_N.png (dpi=200, for VLM review) in output_dir, "
-        "(3) at the very end print a JSON list: "
-        '[{"name":"fig_1","path":"<full_path_to_pdf>","caption":"<caption>"},...]'
-        " CRITICAL REQUIREMENTS:\n"
+        "You are a scientific visualization expert. Produce figures for a research paper.\n"
+        "For EACH figure, independently choose ONE generator:\n"
+        "  - kind=\"plot\": matplotlib Python code (data plots — bar, line, scatter, heatmap, etc.)\n"
+        "  - kind=\"svg\":  self-contained SVG code (architecture/concept/flow/pipeline diagrams).\n"
+        "Prefer plot for quantitative data; prefer svg for system/architecture/concept illustrations.\n\n"
+        "OUTPUT FORMAT: a single JSON array, no markdown fences, no prose. Schema per element:\n"
+        '  {"name":"fig_1","kind":"plot","code":"<matplotlib python>","caption":"<caption>"}\n'
+        '  {"name":"fig_2","kind":"svg","svg":"<svg ...>...</svg>","caption":"<caption>"}\n\n'
+        "For kind=\"plot\" the code MUST:\n"
+        "  - use matplotlib.use('Agg')\n"
+        "  - save BOTH output_dir/<name>.pdf (dpi=150) AND output_dir/<name>.png (dpi=200)\n"
+        "  - use the predefined variables `output_dir` and `name` (do NOT reassign them)\n"
+        "For kind=\"svg\" the svg MUST:\n"
+        "  - start with <svg ...> and end with </svg>\n"
+        "  - use viewBox for responsive sizing, readable fonts (14–16px), clean palette\n"
+        "  - be self-contained (no external references)\n\n"
+        "CRITICAL REQUIREMENTS:\n"
         " - Each figure must directly support a claim in the paper.\n"
         " - Use ACTUAL metric names and numeric values from the data — no 'a.u.' units.\n"
-        " - Captions MUST be specific and descriptive. BAD: \"experimental results\". "
-        "   GOOD: \"Score vs parameter X (0.1–0.9) for method A on benchmark B; "
-        "   best 76.3 at X=0.5 (configuration C, 10 trials).\". "
-        "   Include: what metric, what x-axis, what experimental conditions, key quantitative finding.\n"
+        " - Captions MUST be specific (metric, axis, values, conditions, key finding).\n"
+        "   BAD: \"experimental results\". "
+        "GOOD: \"Score vs X (0.1–0.9); best 76.3 at X=0.5, 10 trials.\".\n"
         " - NEVER produce a 'ranked configurations' bar chart unless the paper explicitly "
-        "   compares ranked designs.\n"
-        " - Prefer: (a) line/scatter of throughput vs sweep parameter, "
-        "   (b) comparison bar with real metric labels, (c) scaling plot."
+        "compares ranked designs.\n"
     )
     user_prompt = (
-        f"Generate {n_figures} matplotlib figures from this benchmark data.\n\n"
+        f"Generate {n_figures} figures from this benchmark data.\n\n"
         f"DATA (configurations with all metrics):\n{data_summary}\n\n"
         f"output_dir = {repr(str(out_dir))}\n\n"
         "REQUIRED figures (read the data carefully and choose the best representation):\n"
         f"RULES: Use real metric names (score, throughput, etc.) from the data as axis labels. "
         "No 'a.u.', no 'Performance metric'. NO internal system terms.\n"
-        f"1. Primary performance plot: score or throughput vs the main sweep parameter "
-        f"   (e.g., N, configuration) — use a line or scatter plot with labeled axes and units.\n"
-        f"2. {_axis2} — scatter or line plot with specific units from the data.\n"
-        f"3. Comparison or ablation: show effect of a design choice "
-        f"   (e.g., feature on/off, parameter value, configuration) on performance.\n\n"
+        f"1. Primary performance plot (kind=\"plot\"): score or throughput vs the main sweep parameter "
+        f"   (e.g., N, configuration) — line or scatter plot with labeled axes and units.\n"
+        f"2. {_axis2} (kind=\"plot\") — scatter or line plot with specific units from the data.\n"
+        f"3. Comparison, ablation, or architecture/pipeline figure: choose kind=\"svg\" "
+        f"   ONLY if the figure is a system/architecture/concept diagram; otherwise kind=\"plot\".\n\n"
     )
     # If the pipeline looped back with VLM feedback, surface it at the top
     # of the user prompt so the LLM regenerates figures that address the
@@ -509,208 +640,145 @@ async def generate_figures_llm(
     if response is None:
         raise _last_fig_exc
     raw = response.choices[0].message.content or ""
-    raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+    manifest = _extract_figure_manifest(raw)
 
-    # Strip markdown fences
-    code_match = re.search(r"```python\n(.*?)```", raw, re.DOTALL)
-    if not code_match:
-        code_match = re.search(r"```\n(.*?)```", raw, re.DOTALL)
-    code = code_match.group(1) if code_match else raw
-
-    # Execute
-    try:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tf:
-            preamble = (
-                "import json\n"
-                "output_dir = " + repr(str(out_dir)) + "\n"
-                "try:\n    import seaborn as sns; sns.set_theme(style='whitegrid')\n"
-                "except ImportError:\n    pass\n"
-                # Matplotlib compat: legendHandles was renamed legend_handles in mpl 3.7+
-                "import matplotlib.legend as _mpl_leg\n"
-                "if not hasattr(_mpl_leg.Legend, 'legendHandles'):\n"
-                "    _mpl_leg.Legend.legendHandles = property(lambda self: self.legend_handles)\n"
-            )
-            # Strip any output_dir reassignment from LLM code to prevent path override
-            safe_code_lines = []
-            for line in code.split("\n"):
-                stripped = line.lstrip()
-                if stripped.startswith("output_dir") and "=" in stripped.split("#")[0]:
-                    safe_code_lines.append("# (removed by preamble) " + line)
-                else:
-                    safe_code_lines.append(line)
-            code = "\n".join(safe_code_lines)
-            tf.write(preamble)
-            tf.write(code)
-            tmp_path = tf.name
-
-        proc = subprocess.run(
-            [sys.executable, tmp_path],
-            capture_output=True, text=True, timeout=120,
+    # If the LLM produced no parseable manifest, retry once with a simpler,
+    # plot-only instruction (no SVG) to increase the chance of success.
+    async def _retry_plot_only() -> list[dict]:
+        simple_system = (
+            "You are a matplotlib expert. Output a JSON array only (no markdown, no prose). "
+            'Schema per item: {"name":"fig_N","kind":"plot","code":"<python>","caption":"<caption>"}. '
+            "Each code snippet must use matplotlib.use('Agg'), the predefined `output_dir` "
+            "and `name` variables, and save BOTH output_dir/<name>.pdf AND output_dir/<name>.png."
         )
-        os.unlink(tmp_path)
+        simple_user = (
+            f"Generate {n_figures} simple matplotlib figures from this data. "
+            f"Use only matplotlib (no seaborn, no networkx).\n\nDATA:\n{data_summary[:800]}"
+        )
+        kwargs2 = dict(kwargs)
+        kwargs2["messages"] = [
+            {"role": "system", "content": simple_system},
+            {"role": "user", "content": simple_user},
+        ]
+        kwargs2["temperature"] = 0.1
+        kwargs2["timeout"] = 120
+        try:
+            response2 = await litellm.acompletion(**kwargs2)
+            raw2 = response2.choices[0].message.content or ""
+            return _extract_figure_manifest(raw2)
+        except Exception:
+            return []
 
-        if proc.returncode != 0:
-            # Retry with simpler prompt that avoids advanced matplotlib features
-            stderr_snippet = proc.stderr[:400]
-            simple_user_prompt = (
-                "Generate "
-                + str(n_figures)
-                + " simple matplotlib figures from experiment data.\n\n"
-                "DATA:\n" + data_summary[:800] + "\n\noutput_dir = " + repr(str(out_dir)) + "\n\n"
-                "Write ONLY simple bar charts using basic matplotlib only. "
-                "Do NOT use seaborn, networkx, or any advanced features. "
-                "Only: import matplotlib; matplotlib.use(\'Agg\'); import matplotlib.pyplot as plt; import json. "
-                "Save figures as fig_1.pdf, fig_2.pdf, ... in output_dir. "
-                "At the very end print ONE line of JSON: "
-                "[{\"name\":\"fig_1\",\"path\":\"<full_path>\",\"caption\":\"<caption>\"},...]. "
-                "Write complete runnable Python code:"
+    if not manifest:
+        manifest = await _retry_plot_only()
+
+    figures: dict = {}
+    latex_snippets: dict = {}
+    figure_kinds: dict = {}
+    errors: list[str] = []
+
+    for item in manifest:
+        name = str(item.get("name") or "").strip() or f"fig_{len(figures) + 1}"
+        kind = str(item.get("kind") or "plot").strip().lower()
+        caption = str(item.get("caption") or "").strip()
+
+        pdf_path = out_dir / f"{name}.pdf"
+        png_path = out_dir / f"{name}.png"
+
+        if kind == "svg":
+            svg_code = str(item.get("svg") or "").strip()
+            if not svg_code or "<svg" not in svg_code or "</svg>" not in svg_code:
+                errors.append(f"{name}: invalid or missing svg")
+                continue
+            svg_path = out_dir / f"{name}.svg"
+            svg_path.write_text(svg_code, encoding="utf-8")
+            if not _rasterize_svg(svg_code, png_path, pdf_path):
+                errors.append(f"{name}: svg rasterization failed")
+                continue
+        else:
+            code_str = str(item.get("code") or "").strip()
+            if not code_str:
+                errors.append(f"{name}: missing plot code")
+                continue
+            ok, stderr_tail = _run_plot_code(code_str, out_dir, name)
+            if not ok or not pdf_path.exists():
+                errors.append(f"{name}: plot code failed — {stderr_tail}")
+                continue
+            kind = "plot"
+
+        figures[name] = str(pdf_path.resolve())
+        figure_kinds[name] = kind
+        fname = pdf_path.name
+        latex_snippets[name] = (
+            f"\\begin{{figure}}[H]\n"
+            f"\\centering\n"
+            f"\\includegraphics[width=0.85\\linewidth]{{{fname}}}\n"
+            f"\\caption{{{caption or f'Results for {name}.'}}}\n"
+            f"\\label{{fig:{name}}}\n"
+            f"\\end{{figure}}"
+        )
+
+    # Fallback: scan dir for any figures written outside the manifest flow
+    if not figures:
+        for pdf in sorted(out_dir.glob("fig_*.pdf")):
+            name = pdf.stem
+            figures[name] = str(pdf.resolve())
+            figure_kinds[name] = "plot"
+            latex_snippets[name] = (
+                f"\\begin{{figure}}[H]\n"
+                f"\\centering\n"
+                f"\\includegraphics[width=0.85\\linewidth]{{{pdf.name}}}\n"
+                f"\\caption{{{metric_name} across experimental configurations ({name}). "
+                f"See text for detailed analysis.}}\n"
+                f"\\label{{fig:{name}}}\n"
+                f"\\end{{figure}}"
             )
-            kwargs2 = dict(kwargs)
-            kwargs2["messages"] = [
-                {"role": "system", "content": (
-                    "You are a Python matplotlib expert. Write only simple, runnable code. "
-                    "No seaborn. No networkx. No advanced matplotlib features. Output ONLY Python code."
-                )},
-                {"role": "user", "content": simple_user_prompt},
-            ]
-            kwargs2["temperature"] = 0.1
-            try:
-                kwargs2["timeout"] = 120
-                response2 = await litellm.acompletion(**kwargs2)
-                raw2 = response2.choices[0].message.content or ""
-                raw2 = re.sub(r"<think>.*?</think>", "", raw2, flags=re.DOTALL).strip()
-                cm2 = re.search(r"```python\n(.*?)```", raw2, re.DOTALL)
-                if not cm2:
-                    cm2 = re.search(r"```\n(.*?)```", raw2, re.DOTALL)
-                code2 = cm2.group(1) if cm2 else raw2
-                safe2 = []
-                for ln2 in code2.split("\n"):
-                    s2 = ln2.lstrip()
-                    if s2.startswith("output_dir") and "=" in s2.split("#")[0]:
-                        safe2.append("# (removed by preamble) " + ln2)
-                    else:
-                        safe2.append(ln2)
-                code2 = "\n".join(safe2)
-                with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tf2:
-                    tf2.write(preamble)
-                    tf2.write(code2)
-                    tmp_path2 = tf2.name
-                proc2 = subprocess.run(
-                    [sys.executable, tmp_path2],
-                    capture_output=True, text=True, timeout=120,
-                )
-                os.unlink(tmp_path2)
-                if proc2.returncode != 0:
-                    return {
-                        "error": "Code execution failed (both attempts). "
-                                 "First: " + stderr_snippet + "; Second: " + proc2.stderr[:300],
-                        "code": code2[:300],
-                    }
-                proc = proc2
-                code = code2
-            except Exception as _retry_exc:
-                return {
-                    "error": "Code execution failed: " + stderr_snippet + "; retry error: " + str(_retry_exc),
-                    "code": code[:300],
-                }
 
-        # Parse JSON output
-        fig_list: list = []
-        for line in proc.stdout.strip().split("\n"):
-            line = line.strip()
-            if line.startswith("["):
+    # ── VLM caption refinement ──
+    if figures:
+        _vlm_ctx = experiment_summary or context or ""
+        for fig_name, fig_path in figures.items():
+            if not Path(fig_path).exists():
+                continue
+            _png = Path(fig_path).with_suffix(".png")
+            if not _png.exists():
+                # PDF-only (e.g. plot code skipped the .png save) — try to
+                # rasterize via PyMuPDF so VLM still has something to look at.
                 try:
-                    fig_list = json.loads(line)
-                    break
+                    subprocess.run(
+                        [sys.executable, "-c",
+                         f"import fitz; doc=fitz.open({str(fig_path)!r});"
+                         f"doc[0].get_pixmap(dpi=150).save({str(_png)!r})"],
+                        timeout=30, capture_output=True,
+                    )
                 except Exception:
                     pass
-
-        figures: dict = {}
-        latex_snippets: dict = {}
-        for item in fig_list:
-            name = item.get("name", "fig")
-            path = item.get("path", "")
-            # Resolve to absolute path so downstream skills can find the file
-            # regardless of working directory
-            _p = Path(path)
-            if not _p.is_absolute():
-                _p = (out_dir / _p.name).resolve() if _p.name else Path(path).resolve()
-            path = str(_p)
-            caption = item.get("caption", "").strip()
-            if Path(path).exists():
-                figures[name] = path
-                fname = Path(path).name
-                latex_snippets[name] = (
+            if _png.exists():
+                snip = latex_snippets.get(fig_name, "")
+                _fb_m = re.search(r"\\caption\{([^}]+)\}", snip)
+                fallback = _fb_m.group(1) if _fb_m else f"Results for {fig_name}."
+                caption = await _vlm_caption(str(_png), fallback, context=_vlm_ctx)
+                fname = Path(fig_path).name
+                latex_snippets[fig_name] = (
                     f"\\begin{{figure}}[H]\n"
                     f"\\centering\n"
                     f"\\includegraphics[width=0.85\\linewidth]{{{fname}}}\n"
                     f"\\caption{{{caption}}}\n"
-                    f"\\label{{fig:{name}}}\n"
+                    f"\\label{{fig:{fig_name}}}\n"
                     f"\\end{{figure}}"
                 )
 
-        # Fallback: scan dir
-        if not figures:
-            for pdf in sorted(out_dir.glob("fig_*.pdf")):
-                name = pdf.stem
-                figures[name] = str(pdf.resolve())
-                latex_snippets[name] = (
-                    f"\\begin{{figure}}[H]\n"
-                    f"\\centering\n"
-                    f"\\includegraphics[width=0.85\\linewidth]{{{pdf.name}}}\n"
-                    f"\\caption{{{metric_name} across experimental configurations ({name}). "
-                    f"See text for detailed analysis.}}\n"
-                    f"\\label{{fig:{name}}}\n"
-                    f"\\end{{figure}}"
-                )
-
-        # ── VLM caption refinement ──
-        if figures:
-            _vlm_ctx = experiment_summary or context or ""
-            for fig_name, fig_path in figures.items():
-                if not Path(fig_path).exists():
-                    continue
-                # Convert PDF to PNG for VLM if only PDF exists
-                _png = Path(fig_path).with_suffix(".png")
-                if not _png.exists():
-                    try:
-                        import matplotlib.image as _mimg
-                        import matplotlib.pyplot as _mplt
-                        from matplotlib.backends.backend_pdf import PdfPages
-                        # Use matplotlib to render PDF page to PNG
-                        import subprocess as _sp
-                        _sp.run(["python3", "-c",
-                                 f"import matplotlib; matplotlib.use('Agg');"
-                                 f"from matplotlib.backends.backend_agg import FigureCanvasAgg;"
-                                 f"import fitz; doc=fitz.open('{fig_path}');"
-                                 f"pix=doc[0].get_pixmap(dpi=150);"
-                                 f"pix.save('{_png}')"],
-                                timeout=30, capture_output=True)
-                    except Exception:
-                        pass
-                if _png.exists():
-                    snip = latex_snippets.get(fig_name, "")
-                    _fb_m = re.search(r"\\caption\{([^}]+)\}", snip)
-                    fallback = _fb_m.group(1) if _fb_m else f"Results for {fig_name}."
-                    caption = await _vlm_caption(str(_png), fallback, context=_vlm_ctx)
-                    fname = Path(fig_path).name
-                    latex_snippets[fig_name] = (
-                        f"\\begin{{figure}}[H]\n"
-                        f"\\centering\n"
-                        f"\\includegraphics[width=0.85\\linewidth]{{{fname}}}\n"
-                        f"\\caption{{{caption}}}\n"
-                        f"\\label{{fig:{fig_name}}}\n"
-                        f"\\end{{figure}}"
-                    )
-
-        return {
-            "figures": figures,
-            "latex_snippets": latex_snippets,
-            "generated_code_preview": code[:200] + "...",
-        }
-
-    except Exception:
-        return {"error": traceback.format_exc()[:500]}
+    result: dict = {
+        "figures": figures,
+        "latex_snippets": latex_snippets,
+        "figure_kinds": figure_kinds,
+    }
+    if errors:
+        result["errors"] = errors[:10]
+    if not figures:
+        result["error"] = "No figures produced. " + ("; ".join(errors[:5]) if errors
+                                                     else "Empty or unparseable LLM response.")
+    return result
 
 
 def main() -> None:

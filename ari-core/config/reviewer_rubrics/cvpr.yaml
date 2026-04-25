@@ -1,0 +1,43 @@
+id: cvpr
+version: "2026"
+venue: CVPR / ICCV / ECCV
+domain: Computer Vision
+closed_review: true
+
+params:
+  num_reflections: 5
+  num_fs_examples: 0   # CVPR reviews are not published in an aggregated public archive
+  num_reviews_ensemble: 1
+  temperature: 0.75
+  score_threshold_decision: 5
+  fewshot_mode: static
+  fewshot_dir: ""
+
+score_dimensions:
+  - { name: novelty,              scale: [1, 10], description: Originality relative to published CV literature }
+  - { name: technical_correctness, scale: [1, 10], description: Correctness of method, proofs, and experimental design }
+  - { name: empirical_evaluation, scale: [1, 10], description: Rigor of benchmarks, baselines, ablations, and statistical comparison }
+  - { name: clarity,              scale: [1, 10], description: Writing, figures, and qualitative/quantitative visualisation quality }
+  - { name: significance,         scale: [1, 10], description: Likely impact on the CV community and downstream applications }
+  - { name: overall,              scale: [1, 10], description: Overall rating (>=6 = weak accept, CVPR convention) }
+  - { name: confidence,           scale: [1, 5],  description: Reviewer confidence }
+
+text_sections:
+  - { name: strengths, required: true }
+  - { name: weaknesses, required: true }
+  - { name: questions, required: true }
+  - { name: limitations, required: false }
+  - { name: ethical_considerations, required: false }
+
+decision:
+  type: categorical
+  options: [strong_accept, accept, borderline, reject, strong_reject]
+  threshold_dimension: overall
+  threshold_value: 6
+
+prompt_overrides:
+  system_hint: >-
+    Follow CVPR/ICCV/ECCV reviewer guidelines. Evaluate datasets, benchmarks,
+    ablations, and qualitative figures as first-class evidence. Flag unfair
+    comparisons (e.g., different training budgets, cherry-picked checkpoints)
+    and verify that claims generalise beyond a single dataset.

@@ -84,6 +84,16 @@ def _api_chat_goal(body: bytes) -> dict:
         if provider == "ollama":
             base_url = settings.get("ollama_host", "") or os.environ.get("OLLAMA_HOST", "http://localhost:11434")
             kwargs["api_base"] = base_url
+        # Best-effort cost tracking for wizard chat. Requires a checkpoint
+        # dir; skip silently if none is active (e.g. pre-launch).
+        _ckpt = getattr(_st, "_checkpoint_dir", None)
+        if _ckpt:
+            try:
+                from ari import cost_tracker as _ct
+                _ct.init(_ckpt)
+            except Exception:
+                pass
+        kwargs["metadata"] = {"phase": "wizard", "skill": "chat_goal"}
         resp = litellm.completion(**kwargs)
         text = resp.choices[0].message.content or ""
         ready = "---READY---" in text
@@ -110,6 +120,14 @@ def _api_generate_config(body: bytes) -> dict:
         from ari.llm.client import LLMClient
         cfg = auto_config()
         client = LLMClient(cfg.llm)
+        # Ensure cost tracker is initialized so this call is captured
+        _ckpt = getattr(_st, "_checkpoint_dir", None)
+        if _ckpt:
+            try:
+                from ari import cost_tracker as _ct
+                _ct.init(_ckpt)
+            except Exception:
+                pass
         prompt = (
             "You are helping a researcher set up an automated experiment. "
             "Convert the following research goal into a concise experiment.md file "
@@ -118,7 +136,10 @@ def _api_generate_config(body: bytes) -> dict:
             f"Research goal: {goal}"
         )
         messages = [{"role": "user", "content": prompt}]
-        resp = client.complete(messages, require_tool=False)
+        resp = client.complete(
+            messages, require_tool=False,
+            phase="wizard", skill="generate_config",
+        )
         # LLMResponse.content is a plain str
         text = resp.content if hasattr(resp, "content") else str(resp)
         return {"content": text or "## Research Goal\n\n" + goal}

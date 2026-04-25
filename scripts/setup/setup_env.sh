@@ -119,7 +119,6 @@ _env_append_if_absent "# ARI_MODEL_IDEA="
 _env_append_if_absent "# ARI_MODEL_CODING="
 _env_append_if_absent "# ARI_MODEL_EVAL="
 _env_append_if_absent "# ARI_MODEL_PAPER="
-_env_append_if_absent "# ARI_MODEL_REVIEW="
 _env_append_if_absent "# ARI_MODEL_BFTS="
 
 # --- 3) VLM review ----------------------------------------------------------
@@ -138,8 +137,33 @@ _env_append_if_absent "# ARI_CHECKPOINT_DIR="
 _env_append_if_absent "# ARI_LOG_DIR="
 _env_append_if_absent "# ARI_LOG_LEVEL=INFO"
 _env_append_if_absent "# ARI_SOURCE_FILE="
-_env_append_if_absent "# ARI_MEMORY_PATH=  # explicit override; defaults to {ARI_CHECKPOINT_DIR}/memory_store.jsonl"
-_env_append_if_absent "# ARI_GLOBAL_MEMORY_PATH=  # cross-experiment long-term memory; defaults to ~/.ari/global_memory.jsonl"
+# v0.6.0 removed the local JSONL store.
+# These legacy keys have no effect and are kept as comments so upgraders
+# can delete them manually.
+_env_append_if_absent "# ARI_MEMORY_PATH=  # (v0.5.x legacy — ignored under v0.6.0)"
+_env_append_if_absent "# ARI_GLOBAL_MEMORY_PATH=  # (v0.5.x legacy — global memory was removed)"
+
+# --- 4b) Memory (Letta) -----------------------------------------------------
+# Letta is the sole production memory backend as of v0.6.0.
+_env_section "Memory (Letta)"
+_env_append_if_absent "# LETTA_BASE_URL=http://localhost:8283"
+_env_append_if_absent "# LETTA_API_KEY="
+_env_append_if_absent "# LETTA_EMBEDDING_CONFIG=letta-default"
+_env_append_if_absent "# LETTA_LLM_CONFIG=letta-default"
+_env_append_if_absent "# ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA=auto  # auto|pip|docker|singularity|none"
+_env_append_if_absent "# ARI_MEMORY_LETTA_TIMEOUT_S=10"
+_env_append_if_absent "# ARI_MEMORY_LETTA_OVERFETCH=200"
+_env_append_if_absent "# ARI_TRANSFORM_MEMORY_MAX_ENTRIES=20"
+_env_append_if_absent "# ARI_TRANSFORM_MEMORY_MAX_CHARS=2000"
+_env_append_if_absent "# ARI_REACT_MEMORY_SEARCH_LIMIT=10"
+_env_append_if_absent "# ARI_REACT_MEMORY_MAX_ENTRY_CHARS=0"
+# Internal / tests only — do not set unless you know why:
+_env_append_if_absent "# ARI_MEMORY_BACKEND=letta  # letta | in_memory (test fake)"
+_env_append_if_absent "# ARI_MEMORY_LETTA_DISABLE_SELF_EDIT=true"
+_env_append_if_absent "# ARI_MEMORY_ACCESS_LOG=on"
+_env_append_if_absent "# ARI_MEMORY_AUTO_RESTORE=true"
+_env_append_if_absent "# ARI_CURRENT_NODE_ID=  # runtime-only; set per-node by ari-core"
+_env_append_if_absent "# ARI_LETTA_VENV=  # override pip-mode venv path"
 
 # --- 5) ARI limits / scheduling --------------------------------------------
 _env_section "ARI limits"
@@ -152,6 +176,7 @@ _env_append_if_absent "# ARI_PARALLEL=4"
 _env_append_if_absent "# ARI_PARENT_RUN_ID="
 _env_append_if_absent "# ARI_RETRIEVAL_BACKEND=semantic_scholar"
 _env_append_if_absent "# ARI_EXECUTOR="
+_env_append_if_absent "# ARI_MAX_CHILD_PROCS="
 
 # --- 6) Container -----------------------------------------------------------
 _env_section "Container"
@@ -173,6 +198,7 @@ _env_append_if_absent "# SLURM_LOG_DIR="
 _env_append_if_absent "# SLURM_DEFAULT_PARTITION="
 _env_append_if_absent "# SLURM_VALID_PARTITIONS="
 _env_append_if_absent "# SLURM_JOB_ID=   # runtime-only; set by Slurm itself"
+_env_append_if_absent "# SLURM_CLUSTER_NAME=  # runtime-only; set by Slurm itself"
 _env_append_if_absent "# ARI_SLURM_CPUS="
 _env_append_if_absent "# ARI_SLURM_MEM_GB="
 _env_append_if_absent "# ARI_SLURM_GPUS="
@@ -191,6 +217,14 @@ _env_append_if_absent "# ARI_ORCHESTRATOR_SSE_TIMEOUT="
 _env_section "LaTeX"
 _env_append_if_absent "# PDFLATEX_PATH=pdflatex"
 _env_append_if_absent "# BIBTEX_PATH=bibtex"
+
+# --- 9a) Skill: ari-skill-paper (review rubric) ----------------------------
+_env_section "ari-skill-paper"
+_env_append_if_absent "# ARI_RUBRIC="
+_env_append_if_absent "# ARI_RUBRIC_DIR="
+_env_append_if_absent "# ARI_STRICT_DYNAMIC="
+_env_append_if_absent "# ARI_NUM_REVIEWS_ENSEMBLE="
+_env_append_if_absent "# ARI_NUM_REFLECTIONS="
 
 # --- 9b) Skill: ari-skill-web ----------------------------------------------
 _env_section "ari-skill-web"

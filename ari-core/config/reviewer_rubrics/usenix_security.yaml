@@ -1,0 +1,47 @@
+id: usenix_security
+version: "2026"
+venue: USENIX Security / IEEE S&P / ACM CCS / NDSS
+domain: Computer Security
+closed_review: true
+
+params:
+  num_reflections: 5
+  num_fs_examples: 0
+  num_reviews_ensemble: 1
+  temperature: 0.75
+  score_threshold_decision: 3
+  fewshot_mode: static
+  fewshot_dir: ""
+
+score_dimensions:
+  - { name: threat_model_clarity,    scale: [1, 5], description: Precision of attacker capabilities, assumptions, and trust boundaries }
+  - { name: technical_rigor,         scale: [1, 5], description: Soundness of attack/defence construction, proofs, and measurements }
+  - { name: novelty,                 scale: [1, 5], description: Originality over prior attacks/defences and systematisation efforts }
+  - { name: practical_impact,        scale: [1, 5], description: Severity and real-world applicability of findings }
+  - { name: ethical_disclosure,      scale: [1, 5], description: Responsible disclosure, IRB review, and harm minimisation (5=no concerns) }
+  - { name: reproducibility,         scale: [1, 5], description: Artifact availability, datasets, and evaluation scripts }
+  - { name: writing_quality,         scale: [1, 5], description: Clarity and organisation }
+  - { name: overall,                 scale: [1, 5], description: Overall recommendation }
+  - { name: confidence,              scale: [1, 5], description: Reviewer confidence (domain expertise) }
+
+text_sections:
+  - { name: strengths, required: true }
+  - { name: weaknesses, required: true }
+  - { name: detailed_comments, required: true }
+  - { name: ethical_considerations, required: true }
+  - { name: questions_for_authors, required: false }
+
+decision:
+  type: categorical
+  options: [accept, minor_revision, major_revision, reject]
+  threshold_dimension: overall
+  threshold_value: 4
+
+prompt_overrides:
+  system_hint: >-
+    Follow USENIX Security / IEEE S&P / ACM CCS reviewer norms. Ethical disclosure
+    and threat-model precision are non-negotiable first-class dimensions. Reject
+    attacks lacking IRB / responsible-disclosure discussion when human subjects or
+    deployed systems are involved. Check whether claimed primitives match the
+    stated threat model, and whether evaluation measures end-to-end realism
+    rather than lab-only conditions.
