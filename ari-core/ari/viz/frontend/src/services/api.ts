@@ -73,6 +73,36 @@ export async function fetchCheckpointMemory(id: string): Promise<MemoryResponse>
   return get<MemoryResponse>(`/api/checkpoint/${encodeURIComponent(id)}/memory`);
 }
 
+export interface MemoryAccessEvent {
+  ts: number;
+  node_id: string;
+  op: 'read' | 'write';
+  query?: string;
+  text_preview?: string;
+  results?: Array<{ entry_id?: string; score?: number; [k: string]: unknown }>;
+  [k: string]: unknown;
+}
+
+export interface MemoryAccessResponse {
+  node_id: string;
+  writes: MemoryAccessEvent[];
+  reads: MemoryAccessEvent[];
+  read_by_entry: Record<string, { count: number; last_ts: number }>;
+  error?: string;
+}
+
+export async function fetchMemoryAccess(
+  id: string,
+  nodeId: string,
+  op: 'read' | 'write' | 'all' = 'all',
+  limit = 200,
+): Promise<MemoryAccessResponse> {
+  const q = new URLSearchParams({ node_id: nodeId, op, limit: String(limit) });
+  return get<MemoryAccessResponse>(
+    `/api/checkpoint/${encodeURIComponent(id)}/memory_access?${q.toString()}`,
+  );
+}
+
 // ── EAR (Experiment Artifact Repository) ─────────
 export interface EARFile {
   path: string;
@@ -127,8 +157,95 @@ export async function fetchEnvKeys(): Promise<{ keys: Record<string, string> }> 
   return get('/api/env-keys');
 }
 
+// ── memory (Letta) lifecycle ───────────────────
+
+export interface MemoryHealth {
+  status: string;
+  latency_ms: number;
+  namespace: string | null;
+  server_version: string;
+  detected_deployment: string;
+  reason?: string;
+  error?: string;
+}
+
+export async function fetchMemoryHealth(): Promise<MemoryHealth> {
+  return get<MemoryHealth>('/api/memory/health');
+}
+
+export async function restartLetta(
+  path: string = 'auto',
+): Promise<{
+  ok: boolean;
+  start?: { ok: boolean; path?: string; stdout?: string; error?: string };
+  stop?: { ok: boolean; attempts?: string[] };
+  error?: string;
+}> {
+  return post('/api/memory/restart', { path });
+}
+
 export async function fetchProfiles(): Promise<string[]> {
   return get<string[]>('/api/profiles');
+}
+
+export interface RubricSummary {
+  id: string;
+  venue: string;
+  domain: string;
+  version: string;
+  closed_review?: boolean;
+  path: string;
+}
+
+export async function fetchRubrics(): Promise<RubricSummary[]> {
+  return get<RubricSummary[]>('/api/rubrics');
+}
+
+export interface FewshotExample {
+  id: string;
+  files: Array<{ ext: string; size: number }>;
+  source: string;
+  decision: string;
+  overall: number | null;
+}
+
+export interface FewshotListing {
+  rubric_id: string;
+  count: number;
+  examples: FewshotExample[];
+  error?: string;
+}
+
+export async function fetchFewshot(rubricId: string): Promise<FewshotListing> {
+  return get<FewshotListing>(`/api/fewshot/${encodeURIComponent(rubricId)}`);
+}
+
+export async function syncFewshot(rubricId: string): Promise<any> {
+  return post(`/api/fewshot/${encodeURIComponent(rubricId)}/sync`, {});
+}
+
+export async function uploadFewshot(
+  rubricId: string,
+  payload: {
+    example_id: string;
+    review_json: string;
+    paper_txt?: string;
+    paper_pdf?: string;
+  },
+): Promise<any> {
+  return post(`/api/fewshot/${encodeURIComponent(rubricId)}/upload`, payload);
+}
+
+export async function deleteFewshot(
+  rubricId: string,
+  exampleId: string,
+): Promise<any> {
+  return post(
+    `/api/fewshot/${encodeURIComponent(rubricId)}/${encodeURIComponent(
+      exampleId,
+    )}/delete`,
+    {},
+  );
 }
 
 // ── skills / workflow ──────────────────────────
@@ -360,7 +477,7 @@ export async function fetchWorkflowDefault(): Promise<any> {
 }
 
 export async function saveSkillPhases(
-  skills: { name: string; phase: string }[],
+  skills: { name: string; phase: string | string[] }[],
 ): Promise<{ ok: boolean; error?: string }> {
   return post('/api/workflow/skills', { skills });
 }

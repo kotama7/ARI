@@ -25,6 +25,11 @@ logger = logging.getLogger(__name__)
 MAX_REACT_STEPS = 80  # default; overridden per-instance via AgentLoop(max_react_steps=...)
 MIN_TOOL_CALLS = 2
 
+# MCP tools that the parent (ari-core) drives itself and must never be
+# exposed to the LLM — otherwise the model could set an arbitrary node
+# id and bypass the memory skill's CoW check.
+_INTERNAL_MCP_TOOLS = frozenset({"_set_current_node"})
+
 # Clearly placeholder strings (used to detect LLM-fabricated values)
 _FAKE_PATTERNS = [
     "found n papers", "[title1]", "[title2]",
@@ -52,8 +57,9 @@ _MEMORY_RULES_PER_NODE = """
 - When available, save decisive intermediate findings with `add_memory(node_id=\"{node_id}\", text=..., metadata=...)` — concrete numbers, failed approaches with root cause, design decisions. Skip chatter and verbose logs.
 - Use `search_memory(query=..., ancestor_ids=[...], limit=5)` if you need to recall what ancestor nodes already established before repeating work."""
 
-_MEMORY_RULES_GLOBAL = """
-- For stable cross-experiment lessons (reproducible failure modes, reliable hyperparameters, environment quirks), save with `add_global_memory(text=..., tags=[...])`. Before major decisions, probe with `search_global_memory(query=..., tags=[...])` to reuse prior insight."""
+# Global memory tools were removed in v0.6.0 — this block is kept empty
+# so the existing call-site conditional can stay.
+_MEMORY_RULES_GLOBAL = ""
 
 
 def _extract_job_ids(messages: list[dict], job_id_key: str) -> list[str]:
@@ -128,7 +134,7 @@ class AgentLoop:
         suppress: set of tool names to exclude (e.g. already-called once-only tools).
         phase: if set, only tools with matching phase (or phase='all') are included.
         """
-        suppress = suppress or set()
+        suppress = (suppress or set()) | _INTERNAL_MCP_TOOLS
         return [
             {
                 "type": "function",
@@ -142,8 +148,17 @@ class AgentLoop:
             if t.get("name", "") not in suppress
         ]
 
-    def _execute_tool_calls(self, tool_calls: list[dict]) -> list[dict]:
-        """Execute a batch of tool calls and return results."""
+    def _execute_tool_calls(
+        self, tool_calls: list[dict], node_id: str | None = None,
+    ) -> list[dict]:
+        """Execute a batch of tool calls and return results.
+
+        ``node_id`` (optional): the BFTS node currently executing this
+        agent loop. When provided and a tool call targets a CoW-guarded
+        memory tool, ``cow_node_id`` is forwarded to MCPClient so the
+        (_set_current_node, write) pair is locked atomically — this is
+        what prevents the env-var race when ``max_parallel_nodes > 1``.
+        """
         import json as _json
         results = []
         for tc in tool_calls:
@@ -153,7 +168,10 @@ class AgentLoop:
                 args = _json.loads(func.get("arguments", "{}"))
             except _json.JSONDecodeError:
                 args = {}
-            result = self.mcp.call_tool(name, args)
+            if node_id and name in self.mcp._COW_TOOLS:
+                result = self.mcp.call_tool(name, args, cow_node_id=node_id)
+            else:
+                result = self.mcp.call_tool(name, args)
             results.append({"tool_call_id": tc.get("id", ""), "name": name, "result": result})
         return results
 
@@ -366,6 +384,11 @@ class AgentLoop:
         # Notify the orchestrator so tree.json picks up the RUNNING state
         # immediately (before the first LLM round-trip, which can take >30 s).
         self._notify_progress(force=True)
+        # NB: ARI_CURRENT_NODE_ID synchronization is now done per-call via
+        # MCPClient.call_tool(..., cow_node_id=node.id), which locks the
+        # (_set_current_node, write) pair so concurrent BFTS nodes don't
+        # race on the shared memory-skill env var. The previous once-per-
+        # run _set_current_node was unsafe at max_parallel_nodes > 1.
         # Inject work_dir BEFORE forking MCP servers (env snapshot taken at fork time).
         # Directory creation is handled by PathManager in cli.py; this only sets the env var.
         _work_dir_early = experiment.get("work_dir", "") if isinstance(experiment, dict) else ""
@@ -441,8 +464,8 @@ class AgentLoop:
         memory_rules = ""
         if "add_memory" in tool_names:
             memory_rules += _MEMORY_RULES_PER_NODE.format(node_id=node.id)
-        if "add_global_memory" in tool_names:
-            memory_rules += _MEMORY_RULES_GLOBAL
+        # add_global_memory was removed in v0.6.0 (§3) so the global rules
+        # block is always empty — the conditional is kept for future use.
         system_content = SYSTEM_PROMPT.format(tool_desc=tool_desc, memory_rules=memory_rules, extra=extra)
         # pass only goal from experiment dict (workflow_hint is injected via post_survey_hint)
         goal_text = experiment.get("goal", "") if isinstance(experiment, dict) else str(experiment)
@@ -704,7 +727,10 @@ class AgentLoop:
             llm_msgs = window
             effective_tools = active if active is not None else tools
             # force_finish: active=None → effective_tools=tools but require_tool=False
-            response = self.llm.complete(llm_msgs, tools=effective_tools, require_tool=(active is not None))
+            response = self.llm.complete(
+                llm_msgs, tools=effective_tools, require_tool=(active is not None),
+                node_id=node.id, phase="react", skill="agent_loop",
+            )
 
             if response.tool_calls:
                 # Reject tool calls outside of active_tools
@@ -735,7 +761,7 @@ class AgentLoop:
                     ],
                 })
 
-                results = self._execute_tool_calls(response.tool_calls)
+                results = self._execute_tool_calls(response.tool_calls, node_id=node.id)
                 # Build args lookup by tool name for trace logging
                 _tc_args_by_name = {
                     tc.get("function", {}).get("name", ""): tc.get("function", {}).get("arguments", "")
@@ -781,7 +807,7 @@ class AgentLoop:
                             "node_id": node.id,
                             "text": f"Tool {r['name']}: {rc[:1000]}",
                             "metadata": {"step": step, "tool": r["name"]},
-                        })
+                        }, cow_node_id=node.id)
                     except Exception:
                         self.memory.add(
                             f"Tool {r['name']}: {rc[:1000]}",
@@ -820,7 +846,7 @@ class AgentLoop:
                                         "node_id": node.id,
                                         "text": summary,
                                         "metadata": {"type": "survey_papers"},
-                                    })
+                                    }, cow_node_id=node.id)
                                 except Exception:
                                     self.memory.add(
                                         summary,
@@ -898,6 +924,31 @@ class AgentLoop:
                                     lambda text, p=_pat_pm: [float(x) for x in p.findall(text)]
                                 )
                                 logger.info("generate_ideas set primary_metric=%s higher_is_better=%s", pm, hib)
+                                # Seed Letta core memory with experiment-level static facts.
+                                # Spec: docs/architecture.md:462-465, docs/skills.md:319-323.
+                                # primary_metric is only known after generate_ideas, so we seed
+                                # here rather than at the literal moment of checkpoint creation.
+                                try:
+                                    from ari_skill_memory.backends import get_backend as _gmb
+                                    from ari.env_detect import get_environment_summary as _es
+                                    _ckpt = getattr(self, "checkpoint_dir", None)
+                                    if _ckpt:
+                                        _exp_md = Path(_ckpt) / "experiment.md"
+                                        _goal = _exp_md.read_text(errors="ignore") if _exp_md.exists() else ""
+                                        _gmb(checkpoint_dir=Path(_ckpt)).seed_core_memory(
+                                            persona="",
+                                            human="",
+                                            context={
+                                                "experiment_goal": _goal,
+                                                "primary_metric": pm,
+                                                "higher_is_better": hib,
+                                                "metric_rationale": mr,
+                                                "hardware_spec": _es(),
+                                            },
+                                        )
+                                        logger.info("seeded core memory (pm=%s)", pm)
+                                except Exception as _seed_err:
+                                    logger.warning("seed_core_memory failed: %s", _seed_err)
                         except Exception as _gie:
                             logger.warning("generate_ideas result parse failed: %s", _gie)
 
@@ -1079,7 +1130,7 @@ class AgentLoop:
                                     "arguments": json.dumps({"job_id": job_ids[-1]}),
                                 },
                             }]
-                            poll_results = self._execute_tool_calls(poll_tc)
+                            poll_results = self._execute_tool_calls(poll_tc, node_id=node.id)
                             rc2 = json.dumps(poll_results[0]["result"], ensure_ascii=False)
                             logger.info("Auto-poll job %s: %s", job_ids[-1], rc2[:100])
                             # OpenAI requires tool message to follow assistant message with tool_calls
@@ -1205,7 +1256,7 @@ class AgentLoop:
                             "node_id": node.id,
                             "text": f"RESULT SUMMARY node={node.id} label={node.label}: metrics=[{metrics_str}] summary={summary[:300]}",
                             "metadata": {"type": "result_summary", "metrics": node.metrics},
-                        })
+                        }, cow_node_id=node.id)
                     except Exception:
                         pass
                     node.mark_success(artifacts=artifacts, eval_summary=summary)
@@ -1274,7 +1325,7 @@ class AgentLoop:
                             "node_id": node.id,
                             "text": f"RESULT SUMMARY node={node.id} label={node.label}: metrics=[{_ms}] stdout={self._slurm_real_stdout[:300]}",
                             "metadata": {"type": "result_summary", "metrics": node.metrics},
-                        })
+                        }, cow_node_id=node.id)
                     except Exception:
                         pass
                     node.mark_success(
@@ -1292,7 +1343,7 @@ class AgentLoop:
                             "node_id": node.id,
                             "text": f"RESULT SUMMARY node={node.id} label={node.label}: metrics=[{_ms}] summary={summary[:300]}",
                             "metadata": {"type": "result_summary", "metrics": node.metrics},
-                        })
+                        }, cow_node_id=node.id)
                     except Exception:
                         pass
                     node.mark_success(
@@ -1340,7 +1391,7 @@ class AgentLoop:
                     "node_id": node.id,
                     "text": f"RESULT SUMMARY node={node.id} label={node.label}: metrics=[{_ms}] summary={summary[:300]}",
                     "metadata": {"type": "result_summary", "metrics": node.metrics},
-                })
+                }, cow_node_id=node.id)
             except Exception:
                 pass
             node.mark_success(

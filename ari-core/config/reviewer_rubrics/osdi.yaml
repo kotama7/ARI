@@ -1,0 +1,45 @@
+id: osdi
+version: "2026"
+venue: OSDI / SOSP / VLDB / SIGMOD / EuroSys
+domain: Systems & Databases
+closed_review: true
+
+params:
+  num_reflections: 5
+  num_fs_examples: 0
+  num_reviews_ensemble: 1
+  temperature: 0.75
+  score_threshold_decision: 3
+  fewshot_mode: static
+  fewshot_dir: ""
+
+score_dimensions:
+  - { name: technical_merit,          scale: [1, 5], description: Novelty and depth of the systems contribution (mechanisms, abstractions, implementation) }
+  - { name: experimental_methodology, scale: [1, 5], description: Benchmark selection, workloads, baselines, and measurement methodology }
+  - { name: performance_evaluation,   scale: [1, 5], description: Depth of measurement — latency, throughput, scalability, tail behaviour }
+  - { name: artifact_evaluation,      scale: [1, 5], description: Availability and quality of artifact (code, deployment, reproducibility) }
+  - { name: practical_relevance,      scale: [1, 5], description: Applicability to real workloads / production systems }
+  - { name: writing_quality,          scale: [1, 5], description: Clarity, organisation, and motivating examples }
+  - { name: overall,                  scale: [1, 5], description: Overall recommendation }
+  - { name: confidence,               scale: [1, 5], description: Reviewer confidence }
+
+text_sections:
+  - { name: strengths, required: true }
+  - { name: weaknesses, required: true }
+  - { name: detailed_comments, required: true }
+  - { name: questions_for_authors, required: false }
+  - { name: artifact_notes, required: false }
+
+decision:
+  type: categorical
+  options: [accept, weak_accept, borderline, weak_reject, reject]
+  threshold_dimension: overall
+  threshold_value: 3
+
+prompt_overrides:
+  system_hint: >-
+    Follow OSDI/SOSP/VLDB reviewer norms. A systems paper must demonstrate an
+    end-to-end implementation running on realistic workloads; reject
+    simulation-only claims where a real system is plausible. Challenge unfair
+    baselines, unreproducible artifacts, and cherry-picked workload selections.
+    Artifact evaluation (ACM Badging or equivalent) is a first-class dimension.

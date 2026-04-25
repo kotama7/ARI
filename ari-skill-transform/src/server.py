@@ -25,6 +25,12 @@ from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("transform-skill")
 
+try:
+    from ari import cost_tracker as _ari_cost_tracker  # type: ignore
+    _ari_cost_tracker.bootstrap_skill("transform")
+except Exception:
+    pass
+
 
 def _load_nodes(nodes_json_path: str) -> list[dict]:
     data = json.loads(Path(nodes_json_path).read_text())
@@ -44,7 +50,12 @@ def _node_artifacts_text(node: dict, max_chars: int = 3000) -> str:
         elif isinstance(art, str):
             parts.append(art)
     for mem in (node.get("memory") or []):
-        text = mem if isinstance(mem, str) else mem.get("content", "")
+        # pipeline.py now enriches each
+        # node with Letta-backed memory entries that carry `text`; the
+        # legacy `content` key is kept for pre-v0.6.0 fixtures.
+        text = mem if isinstance(mem, str) else (
+            mem.get("text") or mem.get("content") or ""
+        )
         if text:
             parts.append(str(text))
     combined = "\n".join(parts)

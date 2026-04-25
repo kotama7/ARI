@@ -22,7 +22,11 @@ class SkillConfig(BaseModel):
     name: str
     path: str
     description: str = ""
-    phase: str = "all"  # "bfts" | "paper" | "all" | "none"
+    # Single phase string ("bfts" | "paper" | "reproduce" | "all" | "none")
+    # or a list of phases ([..., "reproduce"]) declaring every phase in which
+    # this skill is exposed to the AgentLoop ReAct. "all" matches any phase;
+    # "none" disables the skill entirely.
+    phase: str | list[str] = "all"
 
 
 class BFTSConfig(BaseModel):
@@ -43,6 +47,13 @@ class LoggingConfig(BaseModel):
     format: str = "json"
 
 
+class EvaluatorConfig(BaseModel):
+    # Weights for the five judge axes. Empty dict → evaluator uses its
+    # hardcoded equal-weight default (0.2 each). Override per-axis as needed;
+    # only keys in the canonical axis set are honoured.
+    axis_weights: dict[str, float] = {}
+
+
 class ARIConfig(BaseModel):
     llm: LLMConfig = LLMConfig()
     skills: list[SkillConfig] = []
@@ -50,6 +61,7 @@ class ARIConfig(BaseModel):
     bfts: BFTSConfig = BFTSConfig()
     checkpoint: CheckpointConfig = CheckpointConfig()
     logging: LoggingConfig = LoggingConfig()
+    evaluator: EvaluatorConfig = EvaluatorConfig()
     resources: dict = {}  # Generic resource config (cpus, timeout_minutes, etc.)
     model_config = {"extra": "allow"}  # Accept unknown top-level keys
 
@@ -69,6 +81,33 @@ def _resolve_env_recursive(data):
     return data
 
 
+def _apply_memory_section(raw: dict) -> None:
+    """Export the workflow.yaml ``memory:`` section as env vars.
+
+    settings.json and env vars override these values; absence of the
+    section logs a deprecation WARNING so v0.5.x workflow.yaml imports
+    are visible to the operator.
+    """
+    import logging
+    log = logging.getLogger(__name__)
+    mem = raw.get("memory")
+    if mem is None:
+        log.warning(
+            "workflow.yaml has no `memory:` section — defaulting to "
+            "backend=letta, base_url=http://localhost:8283."
+        )
+        return
+    backend = (mem.get("backend") or "letta").strip().lower()
+    os.environ.setdefault("ARI_MEMORY_BACKEND", backend)
+    letta = mem.get("letta") or {}
+    if letta.get("base_url"):
+        os.environ.setdefault("LETTA_BASE_URL", str(letta["base_url"]))
+    if letta.get("embedding_config"):
+        os.environ.setdefault(
+            "LETTA_EMBEDDING_CONFIG", str(letta["embedding_config"])
+        )
+
+
 def load_config(path: str) -> ARIConfig:
     """Load configuration from config.yaml. Returns auto_config if the file does not exist."""
     config_path = Path(path)
@@ -77,6 +116,7 @@ def load_config(path: str) -> ARIConfig:
     with open(config_path) as f:
         raw = yaml.safe_load(f) or {}
     raw = _resolve_env_recursive(raw)
+    _apply_memory_section(raw)
     # Resolve {{ari_root}} in skill paths (and anywhere else in config)
     _ari_root = os.environ.get("ARI_ROOT", str(Path(__file__).resolve().parents[2]))
     def _resolve_ari_root(data):

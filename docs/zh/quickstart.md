@@ -42,7 +42,9 @@ bash setup.sh
 
 安装脚本会自动检测你的操作系统并安装所有必要的依赖。支持 Linux、macOS 和 WSL2 — 无论是否有 conda 和 sudo 均可使用。
 
-安装完成后，你将看到 **"Setup Complete"** 以及后续操作说明。
+v0.6.0 起，安装脚本同时启动 **[Letta](https://docs.letta.com)** (`ari-skill-memory` 的后端)。它按 Docker → Singularity/Apptainer → pip 顺序自动检测最佳部署路径。如需跳过 Letta 启动（如在 CI 或容器构建中），请在执行 `bash setup.sh` 之前 `export SKIP_LETTA_SETUP=1`；想要完全非交互运行可同时设置 `ARI_NONINTERACTIVE=1`。
+
+安装完成后，你将看到 **"Setup Complete"** 以及后续操作说明。Letta 的连通性可随后通过 `ari memory health` 验证。
 
 ---
 
@@ -176,6 +178,14 @@ AI 会提出澄清性问题，并自动生成实验文件。
 - 对于 Ollama，可以输入任意模型名称（例如 `qwen3:8b`）
 - 如果在集群上运行，可配置 SLURM/HPC 设置
 
+**Paper Review（v0.6.0+）** — 选择论文的审阅方式：
+
+- **Rubric** — 从内置 16 种中选择（`neurips` 默认且 v2 兼容，加上 `iclr`、`icml`、`cvpr`、`acl`、`sc`、`osdi`、`usenix_security`、`stoc`、`siggraph`、`chi`、`icra`、`nature`、`journal_generic`、`workshop`、`generic_conference`）。在 `ari-core/config/reviewer_rubrics/` 放入你自己的 YAML 即可扩展任何会议。
+- **Few-shot mode** — `static`（使用内置示例）或 `dynamic`（Phase 2 OpenReview 检索；评审封闭的会议会回退到 static）。
+- **Reviewer ensemble (N)** — 独立审稿人数。N>1 时还会运行 Area Chair 元审稿。
+- **Reflection rounds** — 每个审稿人 self-reflection 迭代次数（Nature Ablation 默认 5）。
+- **Few-shot examples** — 直接在向导中从 manifest 自动同步、上传自定义 JSON+PDF 样本，或删除不需要的样本。
+
 ### 步骤 4/4 — 启动
 
 检查你的设置并点击 **Launch**。ARI 将：
@@ -240,8 +250,7 @@ AI 会提出澄清性问题，并自动生成实验文件。
 | 文件 | 描述 |
 |------|------|
 | `full_paper.tex / .pdf` | 完整生成的论文 |
-| `review_report.json` | 同行评审评分和反馈 |
-| `rebuttal.json` | 对评审意见的自动反驳 |
+| `review_report.json` | 同行评审评分和反馈（N>1 时内联集成评审与元评审） |
 | `reproducibility_report.json` | 独立的可重现性验证 |
 | `tree.json` | 包含所有指标的完整实验树 |
 | `science_data.json` | 清洗后的数据（无内部术语） |

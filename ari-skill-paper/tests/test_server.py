@@ -155,3 +155,125 @@ def test_all_venue_templates_exist():
         assert venue_dir.is_dir(), f"Missing template dir for {venue['id']}"
         assert (venue_dir / "main.tex").is_file()
         assert (venue_dir / "refs.bib").is_file()
+
+
+# --- review_compiled_paper: N resolution + ensemble/meta integration ---
+#
+# Guards the GUI → env → skill chain: the Wizard stuffs N into
+# ARI_NUM_REVIEWS_ENSEMBLE via _api_launch (covered in
+# ari-core/tests/test_wizard.py); these tests verify the skill side
+# consumes that env and drives run_ensemble + run_meta_review accordingly.
+
+import json as _jsn  # noqa: E402
+
+
+def _canned_review_json() -> str:
+    return _jsn.dumps({
+        "soundness": 3, "presentation": 3, "contribution": 3,
+        "overall": 6, "confidence": 3,
+        "strengths": "S", "weaknesses": "W", "questions": "Q",
+        "decision": "accept",
+    })
+
+
+@pytest.mark.asyncio
+async def test_review_compiled_paper_env_drives_n(tmp_path, monkeypatch):
+    """ARI_NUM_REVIEWS_ENSEMBLE=3 must route through run_ensemble with N=3
+    and trigger run_meta_review (N>1), without the caller passing N."""
+    from src import server as _srv
+    from src.review_engine import FewshotExample
+
+    tex = tmp_path / "full_paper.tex"
+    tex.write_text(
+        r"\documentclass{article}\begin{document}"
+        r"A minimal but non-empty paper body for the extractor to return."
+        r"\end{document}"
+    )
+    monkeypatch.setenv("ARI_NUM_REVIEWS_ENSEMBLE", "3")
+    monkeypatch.delenv("ARI_RUBRIC", raising=False)
+    # num_reflections=0 keeps each reviewer to a single LLM call so we can
+    # count total calls deterministically: 3 ensemble + 1 meta = 4.
+    monkeypatch.setenv("ARI_NUM_REFLECTIONS", "0")
+
+    calls: list[dict] = []
+
+    async def fake_llm(messages, temperature, model=None):
+        calls.append({"temperature": temperature, "model": model})
+        return _canned_review_json()
+
+    monkeypatch.setattr(_srv, "_litellm_caller", fake_llm)
+    monkeypatch.setattr(_srv, "load_static_fewshot", lambda r: [])
+    monkeypatch.setattr(_srv, "load_dynamic_fewshot", lambda r, t, a: [])
+
+    out = await _srv.review_compiled_paper(tex_path=str(tex), rubric_id="neurips")
+
+    # Ensemble ran N=3 times; meta-review aggregated → +1 call
+    assert out.get("n") == 3, f"expected n=3, got {out.get('n')}"
+    assert len(out.get("ensemble_reviews", [])) == 3
+    assert isinstance(out.get("meta_review"), dict)
+    assert len(calls) == 4
+    # Temperature jitter across ensemble members (at least two distinct)
+    ensemble_temps = {c["temperature"] for c in calls[:3]}
+    assert len(ensemble_temps) > 1, f"expected jittered temps, got {ensemble_temps}"
+
+
+@pytest.mark.asyncio
+async def test_review_compiled_paper_n1_no_ensemble_or_meta(tmp_path, monkeypatch):
+    """N=1 (the default) must NOT attach ensemble_reviews or meta_review —
+    otherwise the frontend renders a spurious ensemble badge for a single review."""
+    from src import server as _srv
+
+    tex = tmp_path / "full_paper.tex"
+    tex.write_text(
+        r"\documentclass{article}\begin{document}"
+        r"Another minimal non-empty paper body for the extractor."
+        r"\end{document}"
+    )
+    monkeypatch.setenv("ARI_NUM_REVIEWS_ENSEMBLE", "1")
+    monkeypatch.delenv("ARI_RUBRIC", raising=False)
+    monkeypatch.setenv("ARI_NUM_REFLECTIONS", "0")
+
+    calls: list[dict] = []
+
+    async def fake_llm(messages, temperature, model=None):
+        calls.append({"temperature": temperature, "model": model})
+        return _canned_review_json()
+
+    monkeypatch.setattr(_srv, "_litellm_caller", fake_llm)
+    monkeypatch.setattr(_srv, "load_static_fewshot", lambda r: [])
+    monkeypatch.setattr(_srv, "load_dynamic_fewshot", lambda r, t, a: [])
+
+    out = await _srv.review_compiled_paper(tex_path=str(tex), rubric_id="neurips")
+
+    assert out.get("n") == 1
+    assert "ensemble_reviews" not in out
+    assert "meta_review" not in out
+    assert len(calls) == 1  # single review, no meta aggregation
+
+
+@pytest.mark.asyncio
+async def test_review_compiled_paper_arg_beats_env(tmp_path, monkeypatch):
+    """Explicit num_reviews_ensemble arg must override the env var."""
+    from src import server as _srv
+
+    tex = tmp_path / "full_paper.tex"
+    tex.write_text(
+        r"\documentclass{article}\begin{document}"
+        r"Non-empty body so the extractor returns text."
+        r"\end{document}"
+    )
+    monkeypatch.setenv("ARI_NUM_REVIEWS_ENSEMBLE", "5")
+    monkeypatch.delenv("ARI_RUBRIC", raising=False)
+    monkeypatch.setenv("ARI_NUM_REFLECTIONS", "0")
+
+    async def fake_llm(messages, temperature, model=None):
+        return _canned_review_json()
+
+    monkeypatch.setattr(_srv, "_litellm_caller", fake_llm)
+    monkeypatch.setattr(_srv, "load_static_fewshot", lambda r: [])
+    monkeypatch.setattr(_srv, "load_dynamic_fewshot", lambda r, t, a: [])
+
+    out = await _srv.review_compiled_paper(
+        tex_path=str(tex), rubric_id="neurips", num_reviews_ensemble=2,
+    )
+    assert out.get("n") == 2, f"arg=2 must win over env=5, got n={out.get('n')}"

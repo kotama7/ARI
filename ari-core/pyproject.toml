@@ -4,20 +4,24 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ari-core"
-version = "0.5.0"
+version = "0.6.0"
 description = "Artificial Research Intelligence - Core Framework"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"
 dependencies = [
     "litellm>=1.0",
-    "mem0ai>=0.1",
     "pydantic>=2.0",
     "typer>=0.12",
     "rich>=13.0",
     "pyyaml>=6.0",
     "paramiko>=3.0",
 ]
+# NOTE: ari-core imports ``ari_skill_memory`` directly (first
+# ari-core→ari-skill-* dependency, introduced in v0.6.0). The skill is
+# not published to PyPI — ``setup.sh`` installs it in editable mode
+# before installing ari-core. Do not list it under ``dependencies`` or
+# pip will try to resolve it from an index and fail.
 
 [project.scripts]
 ari = "ari.cli:app"

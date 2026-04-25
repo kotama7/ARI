@@ -63,6 +63,9 @@ export interface Settings {
   vlm_review_model: string;
   vlm_review_max_iter: number;
   vlm_review_threshold: number;
+  letta_base_url: string;
+  letta_api_key: string;
+  letta_embedding_config: string;
 }
 
 export interface AppState {
@@ -109,9 +112,15 @@ export interface WorkflowStage {
   inputs: Record<string, unknown>;
   outputs: Record<string, unknown>;
   load_inputs: string[];
+  // Stage `phase` is still a single string ("bfts" | "paper" | …). Skill-level
+  // phase (SkillMcpEntry) is the one that can be string | string[].
   phase: string;
   skip_if_exists: string | null;
   loop_back_to: string | null;
+  // React-driver stages declare these instead of (or alongside) `tool`.
+  pre_tool?: string;
+  post_tool?: string;
+  react?: Record<string, unknown> | null;
 }
 
 export interface WorkflowData {
@@ -140,6 +149,13 @@ export interface ResourceMetrics {
   timestamp: string;
 }
 
+export interface ReviewScoreDimension {
+  name: string;
+  value: number | null;
+  scale: [number, number];
+  description?: string;
+}
+
 export interface ReviewReport {
   abstract_score: number | null;
   body_score: number | null;
@@ -147,6 +163,24 @@ export interface ReviewReport {
   score: number | null;
   scores: Record<string, number>;
   citation_ok: boolean;
+  rubric_id?: string;
+  rubric_version?: string;
+  rubric_hash?: string;
+  venue?: string;
+  score_dimensions?: ReviewScoreDimension[];
+  strengths?: string;
+  weaknesses?: string;
+  questions?: string;
+  limitations?: string;
+  decision?: 'accept' | 'reject' | 'weak_accept' | 'weak_reject' | 'borderline' | string;
+  confidence?: number | null;
+  reflection_trace?: unknown[];
+  fewshot_sources?: Array<{ id: string; title?: string; score?: number; license?: string }>;
+  ensemble_reviews?: ReviewReport[];
+  meta_review?: ReviewReport | null;
+  issues?: string[];
+  recommendations?: string[];
+  figure_caption_issues?: string[];
 }
 
 export interface CheckpointSummary {

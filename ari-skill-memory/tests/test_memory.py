@@ -1,96 +1,72 @@
-"""Tests for ari-skill-memory server."""
-import json
-import tempfile
-from pathlib import Path
-from unittest.mock import patch
+"""Tests for the node-scope MCP tool surface."""
+from __future__ import annotations
+
+import os
+
 import pytest
 
 
-def _make_store(entries: list[dict]) -> str:
-    f = tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False)
-    for e in entries:
-        f.write(json.dumps(e) + "\n")
-    f.close()
-    return f.name
+def test_add_memory_returns_ok(backend):
+    r = backend.add_memory("nX", "tool slurm_submit result=ok", {})
+    assert r["ok"] is True
+    assert "id" in r
 
 
-@patch("src.server.STORE_PATH")
-def test_add_memory(mock_path, tmp_path):
-    mock_path.__str__ = lambda s: str(tmp_path / "mem.jsonl")
-    import src.server as srv
-    with patch.object(srv, "STORE_PATH", tmp_path / "mem.jsonl"):
-        result = srv.add_memory("node_abc", "tool slurm_submit result=ok", {})
-        assert result["ok"] is True
-        data = json.loads((tmp_path / "mem.jsonl").read_text().strip())
-        assert data["node_id"] == "node_abc"
-        assert "slurm_submit" in data["text"]
+def test_search_memory_ancestor_only(backend, monkeypatch):
+    # seed three nodes — only root + child are ancestors of nX
+    monkeypatch.setenv("ARI_CURRENT_NODE_ID", "root")
+    backend.add_memory("root", "MFLOPS baseline 12000", {})
+    monkeypatch.setenv("ARI_CURRENT_NODE_ID", "node_child1")
+    backend.add_memory("node_child1", "MFLOPS improved 280000", {})
+    monkeypatch.setenv("ARI_CURRENT_NODE_ID", "node_sibling")
+    backend.add_memory("node_sibling", "MFLOPS sibling 100", {})
 
-
-@patch("src.server.STORE_PATH")
-def test_search_memory_ancestor_only(mock_path, tmp_path):
-    import src.server as srv
-    store = tmp_path / "mem.jsonl"
-    store.write_text(
-        json.dumps({"node_id": "root", "text": "MFLOPS baseline 12000", "metadata": {}, "ts": 1}) + "\n"
-        + json.dumps({"node_id": "node_child1", "text": "MFLOPS improved 280000", "metadata": {}, "ts": 2}) + "\n"
-        + json.dumps({"node_id": "node_sibling", "text": "MFLOPS sibling 100", "metadata": {}, "ts": 3}) + "\n"
+    r = backend.search_memory(
+        "MFLOPS", ancestor_ids=["root", "node_child1"], limit=10
     )
-    with patch.object(srv, "STORE_PATH", store):
-        # ancestor_ids contains only "root" and "node_child1" → sibling is not visible
-        result = srv.search_memory("MFLOPS", ancestor_ids=["root", "node_child1"], limit=10)
-        texts = [r["text"] for r in result["results"]]
-        assert any("baseline" in t for t in texts)
-        assert any("improved" in t for t in texts)
-        assert not any("sibling" in t for t in texts)
+    texts = [x["text"] for x in r["results"]]
+    assert any("baseline" in t for t in texts)
+    assert any("improved" in t for t in texts)
+    assert not any("sibling" in t for t in texts)
 
 
-@patch("src.server.STORE_PATH")
-def test_search_memory_empty_ancestors(mock_path, tmp_path):
-    import src.server as srv
-    store = tmp_path / "mem.jsonl"
-    store.write_text(json.dumps({"node_id": "root", "text": "something", "metadata": {}, "ts": 1}) + "\n")
-    with patch.object(srv, "STORE_PATH", store):
-        result = srv.search_memory("something", ancestor_ids=[], limit=5)
-        assert result["results"] == []
+def test_search_memory_empty_ancestors(backend):
+    r = backend.search_memory("something", ancestor_ids=[], limit=5)
+    assert r["results"] == []
 
 
-@patch("src.server.STORE_PATH")
-def test_get_node_memory(mock_path, tmp_path):
-    import src.server as srv
-    store = tmp_path / "mem.jsonl"
-    store.write_text(
-        json.dumps({"node_id": "n1", "text": "entry A", "metadata": {}, "ts": 1}) + "\n"
-        + json.dumps({"node_id": "n2", "text": "entry B", "metadata": {}, "ts": 2}) + "\n"
-    )
-    with patch.object(srv, "STORE_PATH", store):
-        result = srv.get_node_memory("n1")
-        assert len(result["entries"]) == 1
-        assert result["entries"][0]["text"] == "entry A"
+def test_get_node_memory(backend, monkeypatch):
+    monkeypatch.setenv("ARI_CURRENT_NODE_ID", "n1")
+    backend.add_memory("n1", "entry A", {})
+    monkeypatch.setenv("ARI_CURRENT_NODE_ID", "n2")
+    backend.add_memory("n2", "entry B", {})
+
+    r = backend.get_node_memory("n1")
+    assert len(r["entries"]) == 1
+    assert r["entries"][0]["text"] == "entry A"
 
 
-@patch("src.server.STORE_PATH")
-def test_clear_node_memory(mock_path, tmp_path):
-    import src.server as srv
-    store = tmp_path / "mem.jsonl"
-    store.write_text(
-        json.dumps({"node_id": "n1", "text": "to delete", "metadata": {}, "ts": 1}) + "\n"
-        + json.dumps({"node_id": "n2", "text": "to keep", "metadata": {}, "ts": 2}) + "\n"
-    )
-    with patch.object(srv, "STORE_PATH", store):
-        result = srv.clear_node_memory("n1")
-        assert result["removed"] == 1
-        remaining = srv._load_all()
-        assert all(e["node_id"] != "n1" for e in remaining)
+def test_clear_node_memory(backend, monkeypatch):
+    monkeypatch.setenv("ARI_CURRENT_NODE_ID", "n1")
+    backend.add_memory("n1", "to delete", {})
+    r = backend.clear_node_memory("n1")
+    assert r["removed"] == 1
+    assert backend.get_node_memory("n1")["entries"] == []
 
 
-@patch("src.server.STORE_PATH")
-def test_search_score_ordering(mock_path, tmp_path):
-    import src.server as srv
-    store = tmp_path / "mem.jsonl"
-    store.write_text(
-        json.dumps({"node_id": "root", "text": "MFLOPS", "metadata": {}, "ts": 1}) + "\n"
-        + json.dumps({"node_id": "root", "text": "MFLOPS MFLOPS high result", "metadata": {}, "ts": 2}) + "\n"
-    )
-    with patch.object(srv, "STORE_PATH", store):
-        result = srv.search_memory("MFLOPS", ancestor_ids=["root"], limit=5)
-        assert result["results"][0]["score"] >= result["results"][-1]["score"]
+def test_search_score_ordering(backend, monkeypatch):
+    monkeypatch.setenv("ARI_CURRENT_NODE_ID", "root")
+    backend.add_memory("root", "MFLOPS", {})
+    backend.add_memory("root", "MFLOPS MFLOPS high result", {})
+    r = backend.search_memory("MFLOPS high", ancestor_ids=["root"], limit=5)
+    assert r["results"][0]["score"] >= r["results"][-1]["score"]
+
+
+def test_score_contract_is_float(backend, monkeypatch):
+    """search_memory score is a float in [0, 1]."""
+    monkeypatch.setenv("ARI_CURRENT_NODE_ID", "root")
+    backend.add_memory("root", "alpha beta gamma", {})
+    r = backend.search_memory("alpha", ancestor_ids=["root"], limit=5)
+    score = r["results"][0]["score"]
+    assert isinstance(score, float)
+    assert 0.0 <= score <= 1.0

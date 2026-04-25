@@ -42,7 +42,9 @@ bash setup.sh
 
 The setup script automatically detects your OS and installs everything needed. It works on Linux, macOS, and WSL2 — with or without conda and sudo.
 
-When setup finishes, you will see **"Setup Complete"** and next-step instructions.
+In v0.6.0 the setup script also bootstraps **[Letta](https://docs.letta.com)** (the memory backend used by `ari-skill-memory`). It auto-detects the best deployment path: Docker → Singularity/Apptainer → pip. To skip the Letta bootstrap (for example in CI or container builds) export `SKIP_LETTA_SETUP=1` before running `bash setup.sh`. To run setup non-interactively, export `ARI_NONINTERACTIVE=1`.
+
+When setup finishes, you will see **"Setup Complete"** and next-step instructions. You can verify Letta later with `ari memory health`.
 
 ---
 
@@ -176,6 +178,14 @@ Select your LLM provider and model:
 - For Ollama, you can type any model name (e.g., `qwen3:8b`)
 - Configure SLURM/HPC settings if running on a cluster
 
+**Paper Review (v0.6.0+)** — choose how the generated paper is reviewed:
+
+- **Rubric** — pick one of 16 bundled venues (`neurips` default and v2-compatible, plus `iclr`, `icml`, `cvpr`, `acl`, `sc`, `osdi`, `usenix_security`, `stoc`, `siggraph`, `chi`, `icra`, `nature`, `journal_generic`, `workshop`, `generic_conference`). Drop your own YAML into `ari-core/config/reviewer_rubrics/` to add a custom venue.
+- **Few-shot mode** — `static` (use the bundled examples) or `dynamic` (Phase 2 OpenReview retrieval; falls back to static for closed-review venues).
+- **Reviewer ensemble (N)** — number of independent reviewer agents. N>1 also runs an Area Chair meta-review.
+- **Reflection rounds** — self-reflection iterations per reviewer (Nature Ablation default: 5).
+- **Few-shot examples** — auto-sync from the manifest, upload your own JSON+PDF samples, or delete unwanted ones — directly from the wizard.
+
 ### Step 4 of 4 — Launch
 
 Review your settings and click **Launch**. ARI will:
@@ -240,8 +250,7 @@ Output files are saved in `./checkpoints/<run_id>/`:
 | File | Description |
 |------|-------------|
 | `full_paper.tex / .pdf` | Complete generated paper |
-| `review_report.json` | Peer review score and feedback |
-| `rebuttal.json` | Automated rebuttal to review comments |
+| `review_report.json` | Peer review score and feedback (incl. ensemble reviews + meta-review when N>1) |
 | `reproducibility_report.json` | Independent reproducibility verification |
 | `tree.json` | Full experiment tree with all metrics |
 | `science_data.json` | Cleaned data (no internal terms) |

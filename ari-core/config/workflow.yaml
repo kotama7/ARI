@@ -2,6 +2,12 @@ llm:
   backend: openai
   model: gpt-5.2
   base_url: ''
+memory:
+  backend: letta
+  letta:
+    base_url: http://localhost:8283
+    collection_prefix: ari_
+    embedding_config: letta-default
 resources:
   cpus: 48
   timeout_minutes: 60
@@ -13,7 +19,7 @@ bfts_pipeline:
   tool: generate_ideas
   description: LLM generates research hypotheses; BFTS creates root node
   depends_on: []
-  enabled: false
+  enabled: true
   phase: bfts
 - stage: select_and_run
   skill: hpc-skill
@@ -105,8 +111,11 @@ pipeline:
     file: '{{checkpoint_dir}}/figures_manifest.json'
 - stage: vlm_review_figures
   skill: vlm-skill
-  tool: review_figure
-  description: VLM-based visual review of the primary figure
+  tool: review_figures_all
+  description: VLM-based visual review of every figure in figures_manifest.json.
+    Aggregate score = min across figures, so a single weak figure trips loop_back
+    and forces regeneration. issues/suggestions are prefixed with [fig_id] so the
+    plot-skill regenerator knows which figure to fix.
   depends_on:
   - generate_figures
   enabled: true
@@ -115,7 +124,7 @@ pipeline:
   loop_threshold: 0.7
   loop_max_iterations: 2
   inputs:
-    image_path: '{{checkpoint_dir}}/fig_1.png'
+    figures_manifest_path: '{{checkpoint_dir}}/figures_manifest.json'
     context: '{{experiment_summary}}'
   outputs:
     file: '{{checkpoint_dir}}/vlm_review.json'
@@ -146,8 +155,15 @@ pipeline:
 - stage: review_paper
   skill: paper-skill
   tool: review_compiled_paper
-  description: 'AI Scientist v2-style review: PDF->text, figure captions, holistic
-    LLM evaluation'
+  description: 'Rubric-driven paper review (AI Scientist v1/v2-compatible, NeurIPS
+    form + reflection). Runs N independent reviewers via the ensemble path; when N>1,
+    also runs the Area Chair meta-review to aggregate divergent scores. N=1 is a single
+    reviewer. Reviewer independence contract: this stage evaluates paper text only
+    (no VLM findings, no experiment brief, no figures manifest) to match AI Scientist
+    v2''s perform_review. VLM review runs independently (vlm_review_figures) and is
+    combined post-hoc by merge_reviews. rubric_id, fewshot_mode, num_reflections,
+    num_reviews_ensemble are read from environment variables: ARI_RUBRIC, ARI_FEWSHOT_MODE,
+    ARI_NUM_REFLECTIONS, ARI_NUM_REVIEWS_ENSEMBLE.'
   depends_on:
   - write_paper
   enabled: true
@@ -157,39 +173,90 @@ pipeline:
     pdf_path: '{{checkpoint_dir}}/full_paper.pdf'
   outputs:
     file: '{{checkpoint_dir}}/review_report.json'
-- stage: respond_to_review
-  skill: review-skill
-  tool: generate_rebuttal
-  description: Parse review comments and generate rebuttal
+- stage: merge_reviews
+  skill: paper-skill
+  tool: merge_reviews
+  description: Post-hoc merge of the independent text reviewer output (review_report.json)
+    with the independent VLM figure review (vlm_review.json). Purely structural merge
+    — no LLM call. Attaches vlm_figure_review and _review_composition metadata to
+    review_report.json so downstream consumers (GUI, CLI) can see both outputs with
+    clear source attribution.
   depends_on:
   - review_paper
+  - vlm_review_figures
   enabled: true
   phase: paper
   inputs:
-    review_report: '{{checkpoint_dir}}/review_report.json'
-    tex_path: '{{checkpoint_dir}}/full_paper.tex'
+    review_report_path: '{{checkpoint_dir}}/review_report.json'
+    vlm_review_path: '{{checkpoint_dir}}/vlm_review.json'
   outputs:
-    file: '{{checkpoint_dir}}/rebuttal.json'
+    # The tool updates review_report.json in-place; outputs.file MUST point
+    # elsewhere or the runner's tool-result writeback will clobber the merged
+    # report with the tool's summary dict.
+    file: '{{checkpoint_dir}}/review_merge_log.json'
 - stage: reproducibility_check
   skill: paper-re-skill
-  tool: reproduce_from_paper
-  description: 'ReAct reproducibility: extract config from paper -> run HPC job ->
-    verify'
+  pre_tool: extract_repro_config
+  post_tool: build_repro_report
+  description: 'ReAct reproducibility: paper-re extracts claimed value -> react_driver
+    runs MCP-whitelisted ReAct -> paper-re builds verdict'
   depends_on:
   - write_paper
   enabled: true
   phase: paper
+  react:
+    agent_phase: reproduce
+    max_steps: 40
+    final_tool: report_metric
+    sandbox: '{{checkpoint_dir}}/repro_sandbox'
+    system_prompt: "You are a reproducibility engineer verifying a scientific paper's\n\
+      experimental claims. Your task: independently reproduce the reported\nresult\
+      \ using ONLY the paper text.\n\nWORKFLOW:\n1. ANALYZE the paper. Identify the\
+      \ exact algorithm, all parameters,\n   environment configuration, and the EXACT\
+      \ parameters that produced\n   the target metric value (the paper may describe\
+      \ multiple\n   configurations; use only those matching the claimed number).\n\
+      2. CHECK the execution environment (CPU architecture, compiler\n   version,\
+      \ available resources).\n3. IMPLEMENT the source code faithfully; replicate\
+      \ pseudocode\n   structure and all optimizations/preprocessing described.\n\
+      4. COMPILE and run a SMALL-SCALE correctness test.\n5. RUN the full-scale benchmark\
+      \ with the paper's exact parameters.\n6. DIAGNOSE deviations >20%: profile,\
+      \ compare against the paper,\n   experiment with stated settings, fix, re-run.\n\
+      7. Call report_metric(value=...) with the final reliable measurement.\n\nCRITICAL\
+      \ RULES:\n- Reproduce the paper's algorithm faithfully — do NOT 'improve' it.\n\
+      - Report ONLY values from actual measurements, never fabricated numbers.\n-\
+      \ Write ALL files under the sandbox work directory: {{sandbox}}\n- Do NOT read\
+      \ files from the checkpoint directory other than the\n  paper text itself. You\
+      \ have NO access to prior experiment artifacts.\n\nTarget: reproduce {{pre.metric_name}}\
+      \ = {{pre.claimed_value}}\nExperimental parameters from the paper: {{pre.description}}\n"
+    user_prompt: 'Paper text (truncated if long):
+
+      {{paper_text}}
+
+
+      Target: reproduce {{pre.metric_name}} = {{pre.claimed_value}}
+
+      Description from paper: {{pre.description}}
+
+
+      Begin now. Analyze the methodology, check the environment, implement
+
+      the code, run the experiment, and call report_metric with the result.
+
+      '
   inputs:
     paper_path: '{{checkpoint_dir}}/full_paper.tex'
-    work_dir: '{{checkpoint_dir}}'
-    executor: '{{resources.executor}}'
+    paper_text_from: full_paper.tex
+    tolerance_pct: 5.0
   outputs:
     file: '{{checkpoint_dir}}/reproducibility_report.json'
+  tool: ''
 skills:
 - description: DuckDuckGo / arXiv search (deterministic, no LLM)
   name: web-skill
   path: '{{ari_root}}/ari-skill-web'
-  phase: none
+  phase:
+  - paper
+  - reproduce
 - description: Matplotlib/seaborn figure generation (LLM-assisted)
   name: plot-skill
   path: '{{ari_root}}/ari-skill-plot'
@@ -213,35 +280,33 @@ skills:
 - description: Hypothesis / experiment idea generation
   name: idea-skill
   path: '{{ari_root}}/ari-skill-idea'
-  phase: none
+  phase: bfts
 - description: SLURM job submission and Singularity container operations
   name: hpc-skill
   path: '{{ari_root}}/ari-skill-hpc'
-  phase: bfts
+  phase:
+  - bfts
+  - reproduce
 - description: Code writing / reading / bash execution (container-aware)
   name: coding-skill
   path: '{{ari_root}}/ari-skill-coding'
-  phase: bfts
+  phase:
+  - bfts
+  - reproduce
 - description: Convert BFTS internal data to science-facing format (strips label/depth/node_id)
   name: transform-skill
   path: '{{ari_root}}/ari-skill-transform'
   phase: paper
-- description: Figure type classification and generation routing
-  name: figure-router-skill
-  path: '{{ari_root}}/ari-skill-figure-router'
-  phase: all
 - description: Experiment result analysis and statistical testing
   name: benchmark-skill
   path: '{{ari_root}}/ari-skill-benchmark'
   phase: bfts
-- description: Peer review parsing and rebuttal generation
-  name: review-skill
-  path: '{{ari_root}}/ari-skill-review'
-  phase: paper
 - description: VLM-based figure and table review
   name: vlm-skill
   path: '{{ari_root}}/ari-skill-vlm'
-  phase: paper
+  phase:
+  - paper
+  - reproduce
 version: '1'
 retrieval:
   backend: semantic_scholar
@@ -250,6 +315,4 @@ container:
   mode: auto
   image: ''
   pull: on_start
-disabled_tools:
-- generate_ideas
-- survey
+disabled_tools: []

@@ -129,3 +129,33 @@ When a node fails, ARI does not retry the same approach. Instead, the failed nod
 ## Corollary: Reproducibility Is a First-Class Principle
 
 ARI's agent system prompt includes one general scientific principle: *ensure your experiment is reproducible*. This is not a domain rule — it applies equally to chemistry, HPC, and machine learning. The agent decides autonomously what information needs to be captured. The paper reviewer then independently evaluates whether the paper is reproducible, closing the loop without any hardcoded criteria.
+
+## Memory (v0.6.0): P2 relaxed for one skill, P5 scoped
+
+ARI's original design declared **P2 — deterministic where possible** and
+**P5 — reproducibility-first**. v0.6.0 replaces the deterministic JSONL
+memory store with [Letta](https://docs.letta.com) so ARI can use
+embedding-based retrieval and proper agent memory management. This is
+the only place in the system where P2 is relaxed, and its consequences
+are bounded and documented.
+
+- **What still holds.** Numerical experiment results remain reproducible
+  given the same seed. Stored memory *text* is byte-stable: ancestor
+  entries are Copy-on-Write protected at write time, and Letta's
+  self-edit pass is disabled by default
+  (`ARI_MEMORY_LETTA_DISABLE_SELF_EDIT=true`).
+- **What may differ.** Because retrieval depends on embedding FP
+  arithmetic and vector-index state, the BFTS *trajectory* (which nodes
+  are explored, in which order) may diverge across re-runs. The
+  reproducibility verifier records the memory backend in
+  `reproducibility_report.json` so readers can interpret trajectory
+  divergence correctly.
+- **Why this trade.** The deterministic keyword scorer worked but
+  did not scale to cross-experiment reasoning. Letta brings structured
+  core memory, vector retrieval, and a uniform agent/collection model
+  that lets every skill use the same memory surface without
+  re-implementing retrieval.
+
+Operationally, Letta is a dependency you run locally (Docker / Singularity
+/ pip) or on Letta Cloud. See `docs/configuration.md` and the
+`ari memory` CLI for setup.

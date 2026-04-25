@@ -1,6 +1,7 @@
 """MCP Server for LaTeX paper writing support."""
 
 import asyncio
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -8,6 +9,42 @@ from pathlib import Path
 import logging
 import litellm
 from mcp.server.fastmcp import FastMCP
+
+# Wire cost tracking for LLM calls made inside this skill subprocess.
+# ari-core is injected onto PYTHONPATH by ari.mcp.client, so this import
+# succeeds under ARI; optional for standalone skill testing.
+try:
+    from ari import cost_tracker as _ari_cost_tracker  # type: ignore
+    _ari_cost_tracker.bootstrap_skill("paper")
+except Exception:
+    pass
+
+try:
+    from src.review_engine import (  # type: ignore
+        build_user_prompt,
+        fewshot_block,
+        load_dynamic_fewshot,
+        load_static_fewshot,
+        normalize_review,
+        resolve_rubric,
+        run_ensemble,
+        run_meta_review,
+        run_single_review,
+    )
+    from src.rubric import list_available_rubrics, load_rubric  # type: ignore
+except ImportError:  # running from within src/
+    from review_engine import (  # type: ignore
+        build_user_prompt,
+        fewshot_block,
+        load_dynamic_fewshot,
+        load_static_fewshot,
+        normalize_review,
+        resolve_rubric,
+        run_ensemble,
+        run_meta_review,
+        run_single_review,
+    )
+    from rubric import list_available_rubrics, load_rubric  # type: ignore
 
 log = logging.getLogger(__name__)
 
@@ -579,6 +616,31 @@ def _make_cite_key(paper: dict, seen: dict) -> str:
 
 
 
+def _escape_bibtex_field_values(entry: str) -> str:
+    """Escape LaTeX-unsafe characters inside braced field values of a BibTeX entry.
+
+    Semantic Scholar's `citationStyles.bibtex` returns raw `&`, `%`, `#` in fields like
+    `title` and `booktitle` (e.g. "Principles & Practice of Parallel Programming").
+    These pass straight through bibtex into the .bbl, which is then parsed as LaTeX —
+    causing "Misplaced alignment tab character &" or comment-truncation errors.
+
+    Escapes only inside the outermost `{...}` of `field = {...}` lines, and only when
+    not already escaped (no preceding backslash) and not part of a command/entity.
+    """
+    import re as _re_e
+    out_lines = []
+    for line in entry.split("\n"):
+        m = _re_e.match(r"(\s*[A-Za-z][A-Za-z0-9_-]*\s*=\s*)\{(.*)\}(,?\s*)$", line)
+        if not m:
+            out_lines.append(line); continue
+        prefix, value, suffix = m.group(1), m.group(2), m.group(3)
+        value = _re_e.sub(r"(?<!\\)&", r"\\&", value)
+        value = _re_e.sub(r"(?<!\\)%", r"\\%", value)
+        value = _re_e.sub(r"(?<!\\)#", r"\\#", value)
+        out_lines.append(f"{prefix}{{{value}}}{suffix}")
+    return "\n".join(out_lines)
+
+
 def _build_bib_content(refs_json: str) -> tuple:
     """Build BibTeX file content from references JSON.
 
@@ -611,7 +673,7 @@ def _build_bib_content(refs_json: str) -> tuple:
             lines = real_bib.split("\n")
             if lines:
                 lines[0] = _re_bib.sub(r"\{[^,}]+,", "{" + key + ",", lines[0])
-            entries.append("\n".join(lines))
+            entries.append(_escape_bibtex_field_values("\n".join(lines)))
         else:
             # Fallback: synthesize from arXiv metadata
             key = _make_cite_key(p, seen)
@@ -620,13 +682,13 @@ def _build_bib_content(refs_json: str) -> tuple:
             year = (p.get("published", "2024") or "2024")[:4]
             note = (p.get("abstract", "")[:120]
                     .replace("{", "").replace("}", "").replace("\n", " "))
-            entries.append(
+            entries.append(_escape_bibtex_field_values(
                 "@article{" + key + ",\n"
                 "  author = {" + authors + "},\n"
                 "  title  = {" + title.replace("{","").replace("}","") + "},\n"
                 "  year   = {" + year + "},\n"
                 "  note   = {" + note + "}\n}"
-            )
+            ))
         key_list.append((key, title))
     return "\n\n".join(entries), key_list
 
@@ -788,8 +850,9 @@ def _build_latex_template(
     _title_hint = experiment_summary.split("\n")[0][:100].strip() if experiment_summary else "Research Paper"
 
     template = f"""\\documentclass[11pt]{{article}}
-\\usepackage{{geometry,booktabs,hyperref,amsmath,graphicx,float,caption,natbib}}
+\\usepackage{{geometry,booktabs,hyperref,amsmath,amssymb,graphicx,float,caption,natbib}}
 \\geometry{{margin=2.5cm}}
+\\graphicspath{{{{figures/}}{{./}}}}
 
 % ============================================================
 % INSTRUCTIONS FOR THE LLM:
@@ -1612,35 +1675,35 @@ async def write_paper_iterative(
 
 
 
-@mcp.tool()
-async def review_compiled_paper(
-    tex_path: str = "",
-    pdf_path: str = "",
-    figures_manifest_json: str = "",
-    experiment_summary: str = "",
-) -> dict:
-    """Review the compiled paper: PDF → text extraction, figure caption eval, holistic LLM review.
+async def _litellm_caller(
+    messages: list[dict], temperature: float, model: str | None = None
+) -> str:
+    """LLM adapter used by review_engine to call the project's default backend."""
+    import json as _json2  # noqa: F401
+    _kw = {
+        "model": model or _get_model(),
+        "messages": messages,
+        "temperature": float(temperature),
+        "max_tokens": 8192,
+    }
+    _apib = _get_api_base()
+    if _apib:
+        _kw["api_base"] = _apib
+    _resp = await litellm.acompletion(**_kw)
+    return _resp.choices[0].message.content or ""
 
-    AI Scientist v2-style review pipeline:
-      1. pdftotext: converts compiled PDF to plain text
-      2. Caption extraction: pulls caption{} blocks from LaTeX source
-      3. Figure consistency: LLM checks each caption matches figure description
-      4. Holistic review: LLM scores title, abstract, body, bibliography quality
-      5. Returns structured report with scores and actionable issues
 
-    Args:
-        tex_path:              Path to full_paper.tex
-        pdf_path:              Path to compiled full_paper.pdf
-        figures_manifest_json: JSON string of figures manifest (from generate_figures)
-        experiment_summary:    Brief description of the experiment for context
+def _extract_paper_artifacts(
+    tex_path: str, pdf_path: str, figures_manifest_json: str
+) -> tuple[str, list[str], list[dict], str]:
+    """Shared preprocessing for all review flows.
 
-    Returns:
-        {overall_score, title_ok, abstract_score, body_score, figure_reviews,
-         issues, recommendations, pdf_text_snippet}
+    Returns (paper_text, captions, figures_info, citation_note).
     """
     import re as _re, subprocess as _sp, json as _json
+    import pathlib as _pl_rv
 
-    # 1. Extract text from PDF using pymupdf (fitz) — pdftotext may not be installed
+    # 1. Extract text from PDF
     pdf_text = ""
     if pdf_path:
         try:
@@ -1648,27 +1711,24 @@ async def review_compiled_paper(
             _doc = _fitz.open(pdf_path)
             pdf_text = "\n".join(_page.get_text() for _page in _doc)
             _doc.close()
-            log.info("pymupdf extracted %d chars from PDF", len(pdf_text))
         except Exception as _fe:
             log.warning("pymupdf failed: %s", _fe)
-        # fallback 2: pdfminer.six
         if not pdf_text:
             try:
                 from pdfminer.high_level import extract_text as _pdfminer_extract
                 pdf_text = _pdfminer_extract(pdf_path)
-                log.info("pdfminer extracted %d chars from PDF", len(pdf_text))
             except Exception as _pe:
                 log.warning("pdfminer failed: %s", _pe)
-        # fallback 3: pdftotext (if installed)
         if not pdf_text:
             try:
-                _r = _sp.run(["pdftotext", pdf_path, "-"],
-                             capture_output=True, text=True, timeout=30)
+                _r = _sp.run(
+                    ["pdftotext", pdf_path, "-"],
+                    capture_output=True, text=True, timeout=30,
+                )
                 pdf_text = _r.stdout
             except Exception as _e:
                 log.warning("pdftotext failed: %s", _e)
 
-    # Fallback: read .tex as text if PDF not available
     tex_text = ""
     if tex_path:
         try:
@@ -1677,75 +1737,45 @@ async def review_compiled_paper(
             pass
 
     review_text = pdf_text if pdf_text.strip() else tex_text
-    if not review_text.strip():
-        return {"error": "No paper text available for review", "overall_score": 0}
 
-    # 2. Extract captions from LaTeX source
-    captions = []
+    # 2. Captions
+    captions: list[str] = []
     if tex_text:
         for m in _re.finditer(r"\\caption\{((?:[^{}]|\{[^{}]*\})*)\}", tex_text):
             cap_text = m.group(1).strip()
             if len(cap_text) >= 10:
                 captions.append(cap_text)
 
-    # 3. Load figures manifest for figure consistency check
-    figs_info = []
+    # 3. Figures manifest
+    figs_info: list[dict] = []
     if figures_manifest_json:
         try:
-            figs_data = _json.loads(figures_manifest_json) if isinstance(figures_manifest_json, str) else figures_manifest_json
+            figs_data = (
+                _json.loads(figures_manifest_json)
+                if isinstance(figures_manifest_json, str)
+                else figures_manifest_json
+            )
             raw = figs_data.get("figures", []) if isinstance(figs_data, dict) else []
-            # figures can be a list of dicts OR a dict {name: path}
             if isinstance(raw, list):
                 figs_info = raw
             elif isinstance(raw, dict):
-                # Convert {name: path} dict → list of {name, path} dicts
                 figs_info = [{"name": k, "path": str(v)} for k, v in raw.items()]
-            else:
-                figs_info = []
         except Exception:
             pass
 
-    # 4. Build review prompt (AI Scientist v2-style structured review)
-    # Include full paper text (up to 50000 chars) so the reviewer sees
-    # the bibliography section which is typically at the end.
-    _max_review_chars = 50000
-    if len(review_text) <= _max_review_chars:
-        snippet = review_text
-    else:
-        # Keep first 40000 + last 10000 to ensure bibliography is included
-        snippet = review_text[:40000] + "\n\n[... middle truncated ...]\n\n" + review_text[-10000:]
-    captions_str = "\n".join(f"- {c}" for c in captions[:8]) if captions else "(none extracted)"
-    figs_str = "\n".join(
-        f"- {f.get('path','?')}: {f.get('description','')[:100]}" for f in figs_info[:5]
-    ) if figs_info else "(no figures manifest)"
-
-    review_system = (
-        "You are a rigorous scientific paper reviewer. "
-        "Evaluate the paper on these criteria and return ONLY valid JSON with these exact keys:\n"
-        "  overall_score: int 1-10\n"
-        "  title_ok: bool (is the title specific, non-generic, no LaTeX errors?)\n"
-        "  abstract_score: int 1-10 (quantitative claims, clarity, completeness)\n"
-        "  body_score: int 1-10 (methodology, results, discussion quality)\n"
-        "  citation_ok: bool (do all \\cite keys resolve to bibliography entries, and are citations relevant? "
-        "Minor formatting issues like missing venue in some entries should NOT cause citation_ok=false "
-        "if the cite-key-to-bibitem mapping is complete and citations are topically relevant. "
-        "NOTE: natbib/plainnat renders \\cite as 'Author [YEAR]' in the PDF — this is NORMAL, "
-        "not a formatting error. Check the LaTeX SOURCE for \\cite keys, not the PDF rendering.)\n"
-        "  figure_caption_issues: list of strings (captions that do not match their figure or are vague)\n"
-        "  issues: list of strings (specific problems found, max 8)\n"
-        "  recommendations: list of strings (concrete improvements, max 5)\n"
-        "No markdown, no explanation outside JSON."
+    # 4. Citation audit
+    full_latex = (
+        _pl_rv.Path(tex_path).read_text(errors="ignore")
+        if tex_path and _pl_rv.Path(tex_path).exists()
+        else ""
     )
-    # Count unique \cite keys and .bbl entries for citation verification
-    import re as _re_rv, pathlib as _pl_rv
-    full_latex = _pl_rv.Path(tex_path).read_text(errors="ignore") if tex_path and _pl_rv.Path(tex_path).exists() else ""
-    # Strip LaTeX comment lines (lines starting with %) before counting citations
     _active_latex = "\n".join(
-        line for line in (full_latex or snippet).splitlines()
+        line
+        for line in (full_latex or review_text).splitlines()
         if not line.lstrip().startswith("%")
     )
-    _cite_calls = len(_re_rv.findall(r"\\cite\{", _active_latex))
-    _cite_keys_raw = _re_rv.findall(r"\\cite\{([^}]+)\}", _active_latex)
+    _cite_calls = len(_re.findall(r"\\cite\{", _active_latex))
+    _cite_keys_raw = _re.findall(r"\\cite\{([^}]+)\}", _active_latex)
     _unique_keys = set()
     for _ck in _cite_keys_raw:
         for _k in _ck.split(","):
@@ -1756,67 +1786,252 @@ async def review_compiled_paper(
     _bbl_entries = 0
     if _bbl_path and _bbl_path.exists():
         _bbl_entries = _bbl_path.read_text(errors="ignore").count("\\bibitem")
-    # Check for incomplete bib entries (missing venue/booktitle)
-    _bbl_text = _bbl_path.read_text(errors="ignore") if _bbl_path and _bbl_path.exists() else ""
-    _incomplete_bibs = []
-    if _bbl_text:
-        # Each bibitem block: from \bibitem to next \bibitem or \end{thebibliography}
-        _bib_blocks = _re_rv.split(r"(?=\\bibitem)", _bbl_text)
-        for _blk in _bib_blocks:
-            if "\\bibitem" not in _blk:
-                continue
-            _key_m = _re_rv.search(r"\\bibitem\[.*?\]\{([^}]+)\}", _blk)
-            _key_str = _key_m.group(1) if _key_m else "?"
-            # Check if block has venue info: \emph{...} or "In \emph{...}" or pages
-            _has_venue = bool(_re_rv.search(r"\\emph\{.{5,}\}", _blk))
-            _has_pages = "pages" in _blk.lower()
-            if not _has_venue and not _has_pages:
-                _incomplete_bibs.append(_key_str)
-    _completeness = ""
-    if _incomplete_bibs:
-        _completeness = f" Entries with missing venue/journal: {', '.join(_incomplete_bibs)}."
-    _citation_note = (
+    citation_note = (
         f"Unique cite keys used: {len(_unique_keys)}; "
         f"Total \\cite{{}} calls: {_cite_calls}; "
         f"Bibliography entries (.bbl): {_bbl_entries}."
-        f"{_completeness}"
-        + (f" All {len(_unique_keys)} cited keys have matching bibliography entries."
-           if len(_unique_keys) == _bbl_entries and not _incomplete_bibs
-           else "")
     )
-    review_user = (
-        f"Experiment context: {experiment_summary[:500]}\n\n"
-        f"Paper text ({len(snippet)} chars):\n{snippet}\n\n"
-        f"Figure captions found in LaTeX:\n{captions_str}\n\n"
-        f"Figures generated (manifest):\n{figs_str}\n\n"
-        f"Citation counts: {_citation_note}"
-    )
-    _kw: dict = {
-        "model": _get_model(),
-        "messages": [
-            {"role": "system", "content": review_system},
-            {"role": "user", "content": review_user},
-        ],
-        "temperature": 0.0, "max_tokens": 8192,
-    }
-    _apib = _get_api_base()
-    if _apib:
-        _kw["api_base"] = _apib
+    return review_text, captions, figs_info, citation_note
+
+
+def _parse_vlm_findings(vlm_findings_json: str) -> list[dict]:
+    """Accept JSON string, list, or dict payload; return list of per-figure findings."""
+    import json as _json
+    if not vlm_findings_json:
+        return []
+    if isinstance(vlm_findings_json, list):
+        return [f for f in vlm_findings_json if isinstance(f, dict)]
     try:
-        _resp = await litellm.acompletion(**_kw)
-        raw = _resp.choices[0].message.content or ""
-        if "</think>" in raw:
-            raw = raw.split("</think>")[-1].strip()
-        s = raw.find("{"); e = raw.rfind("}") + 1
-        review = _json.loads(raw[s:e]) if s >= 0 and e > s else {}
-    except Exception as _e:
-        log.warning("review LLM failed: %s", _e)
-        review = {"error": str(_e)}
+        data = _json.loads(vlm_findings_json)
+    except Exception:
+        return []
+    if isinstance(data, list):
+        return [f for f in data if isinstance(f, dict)]
+    if isinstance(data, dict):
+        figs = data.get("figures") or data.get("findings") or data.get("reviews")
+        if isinstance(figs, list):
+            return [f for f in figs if isinstance(f, dict)]
+        # {figure_path: {score, issues...}} shape
+        return [{"figure_path": k, **(v if isinstance(v, dict) else {})} for k, v in data.items()]
+    return []
 
-    review["pdf_text_snippet"] = pdf_text[:500] if pdf_text else "(no PDF text)"
-    review["captions_found"] = captions
-    return review
 
+@mcp.tool()
+async def review_compiled_paper(
+    tex_path: str = "",
+    pdf_path: str = "",
+    figures_manifest_json: str = "",
+    experiment_summary: str = "",
+    rubric_id: str = "",
+    vlm_findings_json: str = "",
+    num_reflections: int | None = None,
+    num_fs_examples: int | None = None,
+    num_reviews_ensemble: int | None = None,
+) -> dict:
+    """Rubric-driven compiled-paper review (single + ensemble + Area Chair meta).
+
+    Runs N independent reviewer agents via the ensemble path. When N>1, also
+    runs the Area Chair meta-review to aggregate divergent scores into a final
+    decision. N=1 is equivalent to a single reviewer.
+
+    Flow:
+      1. Extract paper text (PDF → pymupdf/pdfminer/pdftotext; .tex fallback)
+      2. Load rubric (arg → $ARI_RUBRIC → 'neurips' fallback)
+      3. Load few-shot examples (static from fewshot_dir, or dynamic OpenReview retrieval)
+      4. Run N reviewers with temperature jitter; each does initial draft + reflection
+      5. If N>1: run Area Chair meta-review
+      6. Normalize to rubric schema (score_dimensions, text_sections, decision)
+
+    Reviewer independence: VLM findings, experiment_summary, and figures_manifest
+    are accepted for workflow-yaml backward compatibility but are NOT injected
+    into the reviewer prompt. The VLM review is merged post-hoc by merge_reviews.
+
+    N resolution: arg > $ARI_NUM_REVIEWS_ENSEMBLE > rubric.params.num_reviews_ensemble.
+
+    Args:
+        tex_path:              Path to full_paper.tex
+        pdf_path:              Path to compiled full_paper.pdf
+        figures_manifest_json: (ignored — kept for workflow.yaml compat)
+        experiment_summary:    (ignored — kept for workflow.yaml compat)
+        rubric_id:             Rubric id (see config/reviewer_rubrics/*.yaml for the full list)
+        vlm_findings_json:     (ignored — kept for workflow.yaml compat; see merge_reviews)
+        num_reflections:       Override rubric's default reflection rounds
+        num_fs_examples:       Override rubric's default few-shot example count
+        num_reviews_ensemble:  Override N (number of reviewer agents). Default: rubric / env.
+    """
+    import os as _os
+    # Resolve rubric (arg → env → 'neurips' default → 'neurips' fallback)
+    rubric = resolve_rubric(rubric_id or None)
+
+    # num_reflections: explicit arg > env var > rubric default
+    if num_reflections is not None:
+        rubric.params.num_reflections = int(num_reflections)
+    else:
+        env_r = _os.environ.get("ARI_NUM_REFLECTIONS", "").strip()
+        # Accept 0 (disable reflection) as well as positive ints
+        if env_r and env_r.lstrip("+").isdigit():
+            rubric.params.num_reflections = max(0, int(env_r))
+    if num_fs_examples is not None:
+        rubric.params.num_fs_examples = int(num_fs_examples)
+
+    # N: explicit arg > env var > rubric default
+    if num_reviews_ensemble is not None:
+        n = int(num_reviews_ensemble)
+    else:
+        env_n = _os.environ.get("ARI_NUM_REVIEWS_ENSEMBLE", "").strip()
+        n = int(env_n) if env_n.isdigit() and int(env_n) >= 1 else rubric.params.num_reviews_ensemble
+    rubric.params.num_reviews_ensemble = max(1, n)
+
+    paper_text, captions, figs_info, citation_note = _extract_paper_artifacts(
+        tex_path, pdf_path, figures_manifest_json
+    )
+    if not paper_text.strip():
+        return {
+            "error": "No paper text available for review",
+            "rubric_id": rubric.id,
+            "rubric_hash": rubric.hash,
+            "overall_score": 0,
+        }
+
+    # Reviewer independence contract: VLM findings, experiment_summary, and
+    # figures_manifest_json are NOT injected into the text reviewer's prompt.
+    # The text reviewer evaluates paper text only, matching AI Scientist v2.
+    # The VLM output (vlm_review.json) is merged post-hoc by merge_reviews.
+    # We still accept vlm_findings_json / experiment_summary / figures_manifest_json
+    # as arguments for workflow.yaml backward compatibility — they are ignored.
+    _ = (vlm_findings_json, experiment_summary, figures_manifest_json)
+
+    # Load few-shot examples (static default, dynamic if rubric requests + env allows)
+    if rubric.params.fewshot_mode == "dynamic":
+        title = paper_text.strip().split("\n", 1)[0][:200] if paper_text else ""
+        abstract = paper_text[:2000]
+        examples = load_dynamic_fewshot(rubric, title, abstract)
+    else:
+        examples = load_static_fewshot(rubric)
+
+    user_prompt = build_user_prompt(rubric, paper_text, captions, citation_note)
+
+    reviews = await run_ensemble(
+        rubric, user_prompt, _litellm_caller, fewshot_examples=examples,
+    )
+    # Primary review (reviews[0]) is the top-level shape for consumers that
+    # expect a single review dict. N=1 => pass-through; N>1 => primary doubles
+    # as the headline review and the full list is attached as ensemble_reviews.
+    primary = reviews[0] if reviews else {
+        "error": "ensemble returned no reviews",
+        "rubric_id": rubric.id,
+        "overall_score": 0,
+    }
+    out: dict = dict(primary)
+    out["rubric_id"] = rubric.id
+    out["rubric_version"] = rubric.version
+    out["rubric_hash"] = rubric.hash
+    out["venue"] = rubric.venue
+    out["n"] = len(reviews)
+    out["fewshot_sources"] = [
+        {"id": ex.paper_id, "source": ex.source} for ex in examples
+    ]
+    out["pdf_text_snippet"] = paper_text[:500]
+    out["captions_found"] = captions
+    if len(reviews) > 1:
+        out["ensemble_reviews"] = reviews
+        meta = await run_meta_review(rubric, reviews, _litellm_caller)
+        meta["rubric_id"] = rubric.id
+        meta["rubric_hash"] = rubric.hash
+        meta["source_review_count"] = len(reviews)
+        out["meta_review"] = meta
+    return out
+
+
+
+@mcp.tool()
+async def merge_reviews(
+    review_report_path: str,
+    vlm_review_path: str = "",
+) -> dict:
+    """Merge independent text reviewer output with VLM figure review.
+
+    Reviewer independence contract:
+      - review_compiled_paper (text reviewer) evaluates the paper text only,
+        matching AI Scientist v2's perform_review (no VLM findings in prompt).
+      - vlm_review_figures (VLM reviewer) evaluates figure images independently.
+      - This stage combines both outputs into review_report.json with clear
+        source attribution, so downstream consumers can see which findings
+        came from which reviewer.
+
+    The combination is purely structural (no LLM call): the VLM output is
+    attached under `vlm_figure_review` and a `_review_composition` metadata
+    block documents the provenance. Text-review fields are NOT modified.
+
+    Args:
+        review_report_path: Path to review_report.json produced by
+            review_compiled_paper. Will be updated in place.
+        vlm_review_path: Path to vlm_review.json produced by vlm-skill's
+            review_figure stage. Optional — if missing or empty, a
+            placeholder is written and the merge is treated as no-op.
+
+    Returns:
+        Dict with ok flag, paths, and a summary of what was merged.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    rr_path = _Path(review_report_path)
+    if not rr_path.exists():
+        return {"error": f"review_report not found: {rr_path}"}
+
+    try:
+        report = _json.loads(rr_path.read_text())
+    except Exception as e:
+        return {"error": f"failed to parse review_report: {e}"}
+
+    vlm_data = None
+    vlm_err = None
+    if vlm_review_path:
+        vp = _Path(vlm_review_path)
+        if vp.exists():
+            try:
+                vlm_data = _json.loads(vp.read_text())
+            except Exception as e:
+                vlm_err = str(e)
+
+    report["vlm_figure_review"] = vlm_data
+    report["_review_composition"] = {
+        "text_reviewer": {
+            "source": "review_compiled_paper",
+            "input": "paper text + captions + citation audit",
+            "parity": "AI Scientist v2 (arXiv:2408.06292) perform_review",
+        },
+        "vlm_reviewer": {
+            "source": "vlm-skill/review_figure",
+            "input": "figure images",
+            "load_status": "ok" if vlm_data is not None else (
+                f"error: {vlm_err}" if vlm_err else "missing"
+            ),
+        },
+        "merge_policy": (
+            "structural post-hoc merge; no LLM synthesis; text-review fields "
+            "are unchanged; VLM output attached under vlm_figure_review"
+        ),
+    }
+
+    rr_path.write_text(_json.dumps(report, indent=2, ensure_ascii=False))
+    return {
+        "ok": True,
+        "review_report_path": str(rr_path),
+        "vlm_review_path": vlm_review_path,
+        "has_vlm_review": vlm_data is not None,
+        "text_review_top_keys": [
+            k for k in report
+            if k not in ("vlm_figure_review", "_review_composition")
+        ],
+    }
+
+
+@mcp.tool()
+async def list_rubrics() -> list[dict]:
+    """List all reviewer rubrics available in config/reviewer_rubrics/."""
+    return list_available_rubrics()
 
 
 def _strip_invalid_cite_keys(latex: str, bib_content: str) -> str:

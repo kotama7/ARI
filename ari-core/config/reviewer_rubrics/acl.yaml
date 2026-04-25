@@ -1,0 +1,76 @@
+id: acl
+version: "2026"
+venue: ACL / EMNLP / NAACL (ACL Rolling Review)
+domain: NLP
+
+params:
+  num_reflections: 5
+  num_fs_examples: 0   # No NLP-specific fewshot shipped; do NOT reuse NeurIPS (domain mismatch).
+  num_reviews_ensemble: 1
+  temperature: 0.75
+  score_threshold_decision: 4
+  fewshot_mode: static
+  fewshot_dir: fewshot_examples/acl
+
+score_dimensions:
+  - name: soundness
+    scale: [1, 5]
+    description: >-
+      Technical soundness. 5=strong, conclusions are well supported. 4=fairly strong.
+      3=acceptable but some limitations. 2=questionable. 1=does not support claims.
+  - name: excitement
+    scale: [1, 5]
+    description: >-
+      Significance / excitement of the contribution. 5=exciting, will shape research.
+      4=interesting. 3=fair. 2=marginal. 1=uninteresting.
+  - name: reproducibility
+    scale: [1, 5]
+    description: >-
+      Reproducibility (code, data, reproducibility checklist). 5=easy to reproduce.
+      4=mostly reproducible. 3=mostly reproducible with effort. 2=hard. 1=impossible.
+  - name: overall
+    scale: [1, 5]
+    description: >-
+      Overall Assessment. 5=strong accept. 4=accept. 3=borderline (Findings quality).
+      2=weak reject. 1=reject.
+  - name: confidence
+    scale: [1, 5]
+    description: >-
+      Reviewer confidence. 5=positive certain, 1=educated guess.
+  # ACL ARR uses yes/no checkboxes for these — encoded as 0/1 ints.
+  - name: ethical_concerns
+    scale: [0, 1]
+    description: >-
+      Ethical concerns flag (0 = no concerns, 1 = concerns requiring
+      ethics committee review). ACL ARR treats this as yes/no, not scored.
+  - name: best_paper
+    scale: [0, 1]
+    description: >-
+      Best Paper candidate flag (0 = no, 1 = nominate for best paper).
+      ACL ARR explicitly asks reviewers to flag best-paper candidates.
+
+text_sections:
+  - { name: paper_summary, required: true }
+  - { name: strengths, required: true }
+  - { name: weaknesses, required: true }
+  - { name: questions, required: true }
+  - { name: comments_suggestions_typos, required: false }
+  - { name: missing_references, required: false }
+  - { name: limitations, required: false }
+  - { name: ethical_considerations, required: false }
+
+decision:
+  type: categorical
+  options: [accept_long, accept_short, findings, reject]
+  threshold_dimension: overall
+  threshold_value: 4
+
+prompt_overrides:
+  system_hint: >-
+    Follow the ACL Rolling Review (ARR) guidelines for ACL / EMNLP / NAACL.
+    Start with a paper_summary before strengths/weaknesses. Reproducibility
+    Checklist and Ethical Considerations are first-class evaluation criteria.
+    Ethical concerns and Best Paper candidacy are yes/no flags (0/1), not
+    scored dimensions. List missing_references if the paper fails to cite
+    closely related prior work. For borderline papers consider the Findings
+    option instead of outright reject.

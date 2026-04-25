@@ -620,6 +620,58 @@ def test_delete_checkpoint_no_separate_logs_dir(state, tmp_path, monkeypatch):
     assert not ckpt_dir.exists()
 
 
+def test_delete_checkpoint_purges_memory_backend(state, tmp_path, monkeypatch):
+    """Deleting a checkpoint must invoke backend.purge_checkpoint() so Letta
+    agents + archival entries bound to the checkpoint are cleaned up."""
+    from ari.viz.api_state import _api_delete_checkpoint
+    import ari_skill_memory.backends as _mem_backends
+
+    ckpt_dir = tmp_path / "checkpoints" / "20260101_purge"
+    ckpt_dir.mkdir(parents=True)
+
+    calls = []
+
+    class _FakeBackend:
+        def purge_checkpoint(self):
+            calls.append("purge")
+            return {"removed_node": 0, "removed_react": 0}
+
+    def _fake_get_backend(*, checkpoint_dir=None, reset=False):
+        calls.append(("get_backend", str(checkpoint_dir)))
+        return _FakeBackend()
+
+    monkeypatch.setattr(_mem_backends, "get_backend", _fake_get_backend)
+    monkeypatch.setattr(state, "_checkpoint_dir", None)
+
+    result = _api_delete_checkpoint(json.dumps({"path": str(ckpt_dir)}).encode())
+    assert result.get("ok") is True
+    assert "purge" in calls, "backend.purge_checkpoint() was not called"
+    assert any(
+        isinstance(c, tuple) and c[0] == "get_backend" and str(ckpt_dir) in c[1]
+        for c in calls
+    ), "get_backend was not called with the deleted checkpoint path"
+
+
+def test_delete_checkpoint_succeeds_when_memory_purge_fails(state, tmp_path, monkeypatch):
+    """A failing memory backend (e.g. Letta unreachable) must not block the
+    on-disk delete — it's a best-effort call."""
+    from ari.viz.api_state import _api_delete_checkpoint
+    import ari_skill_memory.backends as _mem_backends
+
+    ckpt_dir = tmp_path / "checkpoints" / "20260101_purge_fail"
+    ckpt_dir.mkdir(parents=True)
+
+    def _broken_get_backend(*, checkpoint_dir=None, reset=False):
+        raise RuntimeError("Letta SDK not installed")
+
+    monkeypatch.setattr(_mem_backends, "get_backend", _broken_get_backend)
+    monkeypatch.setattr(state, "_checkpoint_dir", None)
+
+    result = _api_delete_checkpoint(json.dumps({"path": str(ckpt_dir)}).encode())
+    assert result.get("ok") is True
+    assert not ckpt_dir.exists()
+
+
 # ── Upload isolation ──────────────────────────────────────────────────────────
 
 def test_upload_creates_staging_without_checkpoint(state, monkeypatch):

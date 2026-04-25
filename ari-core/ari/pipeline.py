@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import subprocess
 import sys
@@ -18,6 +19,24 @@ from typing import Any
 import yaml
 
 log = logging.getLogger(__name__)
+
+
+def parse_metric_from_experiment_md(text: str) -> str:
+    """Parse the primary metric from an experiment.md ``Metrics:`` line.
+
+    Used as the last-resort source for ``evaluation_criteria.json`` when the
+    user pre-supplies an experiment description and the agent never invokes
+    ``generate_ideas``. Returns the first metric token, e.g. ``"GB/s"`` from
+    ``"Metrics: GB/s, GFlops/s"``. Returns ``""`` when no Metrics line is found.
+    """
+    if not text:
+        return ""
+    m = re.search(r"(?im)^\s*Metrics?\s*[:\-]\s*(.+)$", text)
+    if not m:
+        return ""
+    raw = m.group(1).strip()
+    first = re.split(r"[,\s]+", raw, maxsplit=1)[0].strip(" .;")
+    return first
 
 
 # ---------------------------------------------------------------------------
@@ -113,8 +132,10 @@ def _format_vlm_feedback(result: dict) -> str:
     """Flatten a VLM-style review result dict into a text block suitable for
     injection into a regeneration stage's system prompt.
 
-    Consumes keys produced by vlm-skill:review_figure:
-        score, issues, suggestions, review_text
+    Consumes keys produced by vlm-skill:review_figure and review_figures_all:
+        score, issues, suggestions, review_text. The aggregate variant also
+        emits per_figure (ignored here — feedback to the regenerator goes
+        through the prefixed [fig_id] entries already in issues/suggestions).
     """
     parts: list[str] = []
     if "score" in result:
@@ -264,6 +285,7 @@ def _extract_keywords_from_nodes(nodes_json_path: str, base_topic: str = "") -> 
             _kw["temperature"] = 0.0
         if _backend == "ollama":
             _kw["api_base"] = _os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+        _kw["metadata"] = {"phase": "pipeline", "skill": "search_query"}
         _resp = _litellm.completion(**_kw)
         _query = (_resp.choices[0].message.content or "").strip().strip('"')
         return _query if _query else base
@@ -291,6 +313,219 @@ def _call_with_retry(fn, max_retries: int = 3, delay: float = 5.0):
                     continue
             raise
     raise last_exc
+
+
+def _run_react_stage(
+    stage_cfg: dict,
+    args: dict,
+    tpl_vars: dict,
+    config_path: str,
+    checkpoint_dir: Path,
+    stage_name: str,
+) -> dict:
+    """Drive a pre_tool → ReAct loop → post_tool stage.
+
+    The stage YAML declares:
+
+        react:
+          agent_phase: reproduce      # phase filter for MCP tool exposure
+          max_steps: 40
+          final_tool: report_metric
+          sandbox: '{{checkpoint_dir}}/repro_sandbox'
+          system_prompt: |
+            ...
+          user_prompt: |
+            ...
+        pre_tool: extract_repro_config     # one-shot MCP call before ReAct
+        post_tool: build_repro_report      # one-shot MCP call after ReAct
+
+    Template variables available in system_prompt/user_prompt:
+      - {{sandbox}} — resolved sandbox path
+      - {{pre.X}}   — fields returned by pre_tool
+      - {{<input>}} — any stage input key
+      - {{checkpoint_dir}}, {{ari_root}}, … — the usual pipeline templates
+    """
+    react_cfg   = stage_cfg.get("react") or {}
+    skill_name  = stage_cfg.get("skill", "")
+    pre_tool    = stage_cfg.get("pre_tool", "")
+    post_tool   = stage_cfg.get("post_tool", "")
+    agent_phase = react_cfg.get("agent_phase", "reproduce")
+    final_tool  = react_cfg.get("final_tool", "report_metric")
+    try:
+        max_steps = int(react_cfg.get("max_steps", 40))
+    except (TypeError, ValueError):
+        max_steps = 40
+
+    # ── Sandbox ─────────────────────────────────────────────────────
+    sandbox_tpl = react_cfg.get("sandbox", "")
+    sandbox: Path | None = None
+    if sandbox_tpl:
+        sandbox_str = _resolve_templates(sandbox_tpl, tpl_vars)
+        if sandbox_str:
+            sandbox = Path(sandbox_str)
+            sandbox.mkdir(parents=True, exist_ok=True)
+
+    # ── Pre-tool: extract claimed config ────────────────────────────
+    pre_result: dict = {}
+    if pre_tool:
+        log.info("Stage [%s] pre_tool: %s", stage_name, pre_tool)
+        # Forward the whole args dict; the tool picks what it needs.
+        try:
+            pre_result = _run_stage_subprocess(
+                pre_tool, dict(args), config_path, skill_name=skill_name,
+            )
+        except Exception as e:
+            log.error("Stage [%s] pre_tool '%s' failed: %s", stage_name, pre_tool, e)
+            return {"error": f"pre_tool {pre_tool} failed: {e}", "verdict": "ERROR"}
+        if isinstance(pre_result, dict) and pre_result.get("error"):
+            return {
+                "error": f"pre_tool error: {pre_result.get('error')}",
+                "verdict": "ERROR",
+                "claimed_config": pre_result,
+            }
+        if not isinstance(pre_result, dict):
+            pre_result = {"value": pre_result}
+
+    # ── Prompt building ─────────────────────────────────────────────
+    local_vars = dict(tpl_vars)
+    local_vars["pre"] = pre_result
+    local_vars["sandbox"] = str(sandbox) if sandbox is not None else ""
+    for k, v in args.items():
+        local_vars.setdefault(k, v)
+
+    system_prompt = _resolve_templates(
+        react_cfg.get("system_prompt", ""), local_vars,
+    )
+    user_prompt = _resolve_templates(
+        react_cfg.get("user_prompt", ""), local_vars,
+    )
+    if not system_prompt or not user_prompt:
+        return {
+            "error": "react block missing system_prompt or user_prompt",
+            "verdict": "ERROR",
+            "claimed_config": pre_result,
+        }
+
+    # ── Build MCPClient + LLM (in-process) ──────────────────────────
+    from ari.agent.react_driver import run_react as _run_react
+    from ari.config import load_config as _load_cfg
+    from ari.llm.client import LLMClient as _LLM
+    from ari.mcp.client import MCPClient as _MCP
+
+    # Point coding-skill's run_bash (and friends) at the sandbox before MCP
+    # servers are spawned — their env is snapshotted at fork time, so setting
+    # ARI_WORK_DIR *after* the spawn has no effect. We restore the original
+    # value in the finally block below so the rest of the pipeline is
+    # unaffected.
+    _prev_work_dir = os.environ.get("ARI_WORK_DIR")
+    if sandbox is not None:
+        os.environ["ARI_WORK_DIR"] = str(sandbox)
+
+    _cfg = _load_cfg(config_path)
+    _llm = _LLM(_cfg.llm)
+    _mcp = _MCP(
+        _cfg.skills,
+        disabled_tools=getattr(_cfg, "disabled_tools", []) or [],
+    )
+    # Warm the tool cache once; subsequent phase filters read from it.
+    try:
+        _mcp.list_tools()
+    except Exception as _warm_exc:
+        log.warning("Stage [%s]: MCP warm-up had errors: %s", stage_name, _warm_exc)
+
+    # Paths the agent may legitimately reach outside the sandbox
+    # (the paper text it's reproducing from).
+    allow_paths: list[Path] = []
+    for _allow_key in ("paper_path",):
+        _v = args.get(_allow_key)
+        if _v and Path(str(_v)).exists():
+            allow_paths.append(Path(str(_v)))
+
+    # ── Run the ReAct loop ──────────────────────────────────────────
+    log.info(
+        "Stage [%s]: react starts (phase=%s, final_tool=%s, max_steps=%d, "
+        "sandbox=%s)",
+        stage_name, agent_phase, final_tool, max_steps, sandbox,
+    )
+    try:
+        _react_out = _run_react(
+            _llm, _mcp,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            agent_phase=agent_phase,
+            final_tool=final_tool,
+            max_steps=max_steps,
+            sandbox=sandbox,
+            allow_paths=allow_paths,
+            log_dir=sandbox if sandbox else checkpoint_dir,
+        )
+    except Exception as e:
+        log.exception("Stage [%s]: react_driver crashed: %s", stage_name, e)
+        return {
+            "error": f"react_driver crashed: {type(e).__name__}: {e}",
+            "verdict": "ERROR",
+            "claimed_config": pre_result,
+        }
+    finally:
+        try:
+            _mcp.close_all()
+        except Exception:
+            pass
+        # Restore ARI_WORK_DIR for the rest of the pipeline.
+        if sandbox is not None:
+            if _prev_work_dir is None:
+                os.environ.pop("ARI_WORK_DIR", None)
+            else:
+                os.environ["ARI_WORK_DIR"] = _prev_work_dir
+
+    # ── Post-tool: compose verdict + interpretation ─────────────────
+    final_args = _react_out.get("final_args") or {}
+    actual_value = final_args.get("value") if isinstance(final_args, dict) else None
+    actual_unit  = final_args.get("unit", "") if isinstance(final_args, dict) else ""
+    actual_notes = final_args.get("notes", "") if isinstance(final_args, dict) else ""
+
+    report: dict = {}
+    if post_tool:
+        log.info("Stage [%s] post_tool: %s", stage_name, post_tool)
+        _post_args: dict = {
+            "claimed_config": pre_result,
+            "actual_value":   actual_value,
+            "actual_unit":    actual_unit,
+            "actual_notes":   actual_notes,
+        }
+        # Forward tolerance_pct and any other scalar inputs the post_tool expects.
+        for _extra_key in ("tolerance_pct",):
+            if _extra_key in args:
+                _post_args[_extra_key] = args[_extra_key]
+        try:
+            report = _run_stage_subprocess(
+                post_tool, _post_args, config_path, skill_name=skill_name,
+            )
+        except Exception as e:
+            log.error("Stage [%s] post_tool '%s' failed: %s", stage_name, post_tool, e)
+            report = {
+                "error": f"post_tool {post_tool} failed: {e}",
+                "verdict": "ERROR",
+                "claimed_config": pre_result,
+                "actual_value":   actual_value,
+            }
+
+    if not isinstance(report, dict):
+        report = {"value": report}
+    if not report:
+        report = {
+            "claimed_config": pre_result,
+            "actual_value":   actual_value,
+            "actual_unit":    actual_unit,
+            "actual_notes":   actual_notes,
+        }
+
+    # Enrich with ReAct-loop metadata for observability.
+    report.setdefault("react_status", _react_out.get("status", ""))
+    report.setdefault("react_steps",  _react_out.get("tool_calls_count", 0))
+    if not final_args:
+        report.setdefault("react_warning", "agent did not call final_tool")
+    return report
 
 
 def _run_stage_subprocess(tool: str, args: dict, config_path: str, skill_name: str = "") -> Any:
@@ -555,6 +790,23 @@ def run_pipeline(
                     _ec["metric_rationale"] = _idea_ec.get("metric_rationale", "")
             except Exception:
                 pass
+        # Strategy 3: parse experiment.md for a "Metrics:" line. Triggered when
+        # the user pre-supplies an experiment description and the agent never
+        # calls generate_ideas (so neither memory nor idea.json carry a metric).
+        if not _ec["primary_metric"]:
+            try:
+                _exp_md = Path(checkpoint_dir) / "experiment.md"
+                if _exp_md.exists():
+                    _first = parse_metric_from_experiment_md(
+                        _exp_md.read_text(errors="ignore")
+                    )
+                    if _first:
+                        _ec["primary_metric"] = _first
+                        _ec["metric_rationale"] = (
+                            f"Parsed from experiment.md Metrics line ({_first})"
+                        )
+            except Exception:
+                pass
         try:
             _eval_criteria_path.write_text(json.dumps(_ec, indent=2))
             log.info("Saved evaluation_criteria.json: primary_metric=%s", _ec["primary_metric"])
@@ -562,9 +814,54 @@ def run_pipeline(
             log.warning("Failed to save evaluation_criteria.json: %s", _ece)
 
     # Save nodes_tree.json (referenced by downstream stages via {{ckpt}}/nodes_tree.json)
+    # enrich each node with its memory entries so
+    # downstream stages (transform, paper, EAR) become memory-aware without
+    # issuing an MCP call themselves.
     nodes_json_path = str(checkpoint_dir / "nodes_tree.json")
     try:
-        nodes_data = [n.to_dict() for n in all_nodes]
+        try:
+            from ari_skill_memory.backends import get_backend as _get_mem_backend
+            _mem_backend = _get_mem_backend(checkpoint_dir=checkpoint_dir)
+        except Exception as _mbe:
+            log.warning("pipeline: memory backend unavailable: %s", _mbe)
+            _mem_backend = None
+
+        _max_entries = int(os.environ.get("ARI_TRANSFORM_MEMORY_MAX_ENTRIES", "20") or 20)
+        _max_chars = int(os.environ.get("ARI_TRANSFORM_MEMORY_MAX_CHARS", "2000") or 2000)
+
+        def _cap_memory_entries(entries: list[dict]) -> list[dict]:
+            entries = sorted(
+                entries or [], key=lambda e: e.get("ts", 0.0), reverse=True
+            )[:_max_entries]
+            capped = []
+            for e in entries:
+                t = e.get("text", "") or ""
+                if len(t) > _max_chars:
+                    t = t[:_max_chars] + "…[truncated]"
+                capped.append({
+                    "text": t,
+                    "metadata": e.get("metadata", {}) or {},
+                    "ts": e.get("ts", 0.0),
+                })
+            return capped
+
+        nodes_data = []
+        for _n in all_nodes:
+            d = _n.to_dict()
+            if _mem_backend is not None:
+                try:
+                    res = _mem_backend.get_node_memory(_n.id)
+                    entries = res.get("entries", []) or []
+                except Exception as _e_enrich:
+                    log.warning(
+                        "pipeline: memory enrichment failed for node %s: %s",
+                        _n.id, _e_enrich,
+                    )
+                    entries = []
+                d["memory"] = _cap_memory_entries(entries)
+            else:
+                d["memory"] = []
+            nodes_data.append(d)
         Path(nodes_json_path).write_text(
             json.dumps({"experiment_goal": experiment_goal, "nodes": nodes_data},
                        ensure_ascii=False, indent=2)
@@ -816,33 +1113,52 @@ def run_pipeline(
             _max_retries = 5
             _last_exc = None
             result = None
-            for _attempt in range(_max_retries):
-                try:
-                    log.info("Stage [%s]: calling tool=%s skill=%s args_keys=%s (attempt %d/%d)",
-                             stage_name, tool, skill, list(args.keys()), _attempt + 1, _max_retries)
-                    result = _run_stage_subprocess(tool, args, config_path, skill_name=skill)
-                    # Check if result itself contains a connection error (MCP returned error dict)
-                    if isinstance(result, dict):
-                        _r_str = result.get("result", "")
-                        if isinstance(_r_str, str) and ("connection error" in _r_str.lower() or
-                                                         "internalservererror" in _r_str.lower()):
-                            raise RuntimeError(f"MCP tool returned connection error: {_r_str[:200]}")
-                    _last_exc = None
-                    break
-                except Exception as _retry_exc:
-                    _msg = str(_retry_exc).lower()
-                    if any(x in _msg for x in ("connection error", "connection reset", "timeout",
-                                                "internalservererror", "mcp tool returned connection")):
-                        _last_exc = _retry_exc
-                        if _attempt < _max_retries - 1:
-                            _wait = 30 * (_attempt + 1)  # 30, 60, 90, 120s backoff
-                            log.warning("Stage [%s] attempt %d failed (transient): %s. Retrying in %ds...",
-                                        stage_name, _attempt + 1, _retry_exc, _wait)
-                            _retry_time.sleep(_wait)
-                            continue
-                    raise
-            if _last_exc:
-                raise _last_exc
+            # Stages declaring a `react:` block run a ReAct loop between an
+            # optional pre_tool (config extraction) and post_tool (report
+            # building). See ari.agent.react_driver.
+            if stage_cfg.get("react"):
+                log.info(
+                    "Stage [%s]: react block present; pre=%s post=%s phase=%s",
+                    stage_name, stage_cfg.get("pre_tool", ""),
+                    stage_cfg.get("post_tool", ""),
+                    stage_cfg.get("react", {}).get("agent_phase", "reproduce"),
+                )
+                result = _run_react_stage(
+                    stage_cfg=stage_cfg,
+                    args=args,
+                    tpl_vars=tpl_vars,
+                    config_path=config_path,
+                    checkpoint_dir=checkpoint_dir,
+                    stage_name=stage_name,
+                )
+            else:
+                for _attempt in range(_max_retries):
+                    try:
+                        log.info("Stage [%s]: calling tool=%s skill=%s args_keys=%s (attempt %d/%d)",
+                                 stage_name, tool, skill, list(args.keys()), _attempt + 1, _max_retries)
+                        result = _run_stage_subprocess(tool, args, config_path, skill_name=skill)
+                        # Check if result itself contains a connection error (MCP returned error dict)
+                        if isinstance(result, dict):
+                            _r_str = result.get("result", "")
+                            if isinstance(_r_str, str) and ("connection error" in _r_str.lower() or
+                                                             "internalservererror" in _r_str.lower()):
+                                raise RuntimeError(f"MCP tool returned connection error: {_r_str[:200]}")
+                        _last_exc = None
+                        break
+                    except Exception as _retry_exc:
+                        _msg = str(_retry_exc).lower()
+                        if any(x in _msg for x in ("connection error", "connection reset", "timeout",
+                                                    "internalservererror", "mcp tool returned connection")):
+                            _last_exc = _retry_exc
+                            if _attempt < _max_retries - 1:
+                                _wait = 30 * (_attempt + 1)  # 30, 60, 90, 120s backoff
+                                log.warning("Stage [%s] attempt %d failed (transient): %s. Retrying in %ds...",
+                                            stage_name, _attempt + 1, _retry_exc, _wait)
+                                _retry_time.sleep(_wait)
+                                continue
+                        raise
+                if _last_exc:
+                    raise _last_exc
             stage_outputs[stage_name] = result
             # ── save outputs ──────────────────────────────────────────────
             outputs_cfg = stage_cfg.get("outputs", {})
@@ -919,12 +1235,16 @@ def run_pipeline(
             if stage_name == "generate_figures" or "figures" in stage_name:
                 figs = result.get("figures", {}) if isinstance(result, dict) else {}
                 latex_snips = result.get("latex_snippets", {}) if isinstance(result, dict) else {}
+                fig_kinds = result.get("figure_kinds", {}) if isinstance(result, dict) else {}
                 if figs and primary_file:
                     manifest = {"figures": figs}
                     if latex_snips:
                         manifest["latex_snippets"] = latex_snips
+                    if fig_kinds:
+                        manifest["figure_kinds"] = fig_kinds
                     Path(primary_file).write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
-                    log.info("Stage [%s]: wrote figures manifest %s (latex_snippets=%d)", stage_name, primary_file, len(latex_snips))
+                    log.info("Stage [%s]: wrote figures manifest %s (latex_snippets=%d, kinds=%d)",
+                             stage_name, primary_file, len(latex_snips), len(fig_kinds))
 
             # Stage completed successfully
             print(f"[Paper Pipeline] Stage [{stage_name}]: DONE", flush=True)

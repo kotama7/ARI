@@ -1,0 +1,64 @@
+id: icml
+version: "2026"
+venue: ICML
+domain: ML / AI
+
+params:
+  num_reflections: 5
+  num_fs_examples: 1
+  num_reviews_ensemble: 1
+  temperature: 0.75
+  score_threshold_decision: 6
+  fewshot_mode: static
+  fewshot_dir: fewshot_examples/neurips
+
+score_dimensions:
+  - name: soundness
+    scale: [1, 4]
+    description: >-
+      Technical soundness. 4=excellent, 3=good, 2=fair, 1=poor.
+  - name: presentation
+    scale: [1, 4]
+    description: >-
+      Presentation quality. 4=excellent, 3=good, 2=fair, 1=poor.
+  - name: contribution
+    scale: [1, 4]
+    description: >-
+      Contribution significance. 4=excellent, 3=good, 2=fair, 1=poor.
+  - name: ethical_concerns
+    scale: [0, 1]
+    description: >-
+      Ethics / broader-impact flag (0 = no concerns, 1 = concerns requiring
+      ethics review). ICML 2024+ form includes an explicit ethics flag.
+  - name: overall
+    scale: [1, 10]
+    description: >-
+      Overall rating. >=6 = above acceptance threshold (ICML convention).
+      10=top 3%, 8=top 25%, 6=marginally above threshold, 5=marginally below,
+      3=reject, 1=trivial/wrong.
+  - name: confidence
+    scale: [1, 5]
+    description: >-
+      Reviewer confidence. 5=absolutely certain, 1=educated guess.
+
+text_sections:
+  - { name: summary, required: true }   # ICML form: "Summary Of The Review"
+  - { name: strengths, required: true }
+  - { name: weaknesses, required: true }
+  - { name: questions, required: true }
+  - { name: limitations, required: false }
+  - { name: broader_impact_concerns, required: false }
+
+decision:
+  type: binary
+  options: [accept, reject]
+  threshold_dimension: overall
+  threshold_value: 6
+
+prompt_overrides:
+  system_hint: >-
+    Follow the ICML 2026 reviewer guidelines. Begin with a paper summary.
+    Flag ethical / broader-impact concerns distinctly from general weaknesses
+    (use broader_impact_concerns text section and ethical_concerns flag).
+    ICML reviewers should note dataset/method risks with deployment
+    implications even if the paper itself has no immediate concerns.

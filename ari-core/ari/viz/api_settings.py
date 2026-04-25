@@ -40,7 +40,7 @@ def _extract_tools_from_server(skill_dir: Path) -> list[str]:
 def _api_get_env_keys() -> dict:
     """Read API keys from all .env files (project-specific first, then global)."""
     _here = Path(__file__).parent
-    _ari_root = _here.parent.parent  # /ARI/
+    _ari_root = _here.parent.parent.parent  # /ARI/
     candidates = [
         _ari_root / ".env",             # /ARI/.env (project root — highest priority)
         _ari_root / "ari-core" / ".env", # /ARI/ari-core/.env
@@ -138,6 +138,15 @@ def _api_get_settings() -> dict:
         "vlm_review_model": "openai/gpt-4o",
         "vlm_review_max_iter": 3,
         "vlm_review_threshold": 0.7,
+        # Memory (Letta) card.
+        "letta_deployment": "auto",
+        "letta_deployment_image": "",
+        "letta_deployment_venv": "",
+        "letta_base_url": os.environ.get("LETTA_BASE_URL", "http://localhost:8283"),
+        "letta_api_key": "",
+        "letta_embedding_config": os.environ.get(
+            "LETTA_EMBEDDING_CONFIG", "letta-default"
+        ),
     }
     # Read project-scoped settings only.  When no checkpoint is selected the
     # GUI displays built-in defaults (workflow.yaml + hardcoded values) — ARI
@@ -273,8 +282,8 @@ def _api_get_workflow() -> dict:
                             entry["phase"] = sk["phase"]
                         skill_mcp[sk_name] = entry
                         # Remove the mcp.json alias if it differs from
-                        # the workflow name (e.g. review-response-skill
-                        # vs review-skill) to avoid duplicate entries
+                        # the workflow name (e.g. vlm-review-skill vs
+                        # vlm-skill) to avoid duplicate entries
                         mcp_alias = src["name"]
                         if mcp_alias != sk_name and mcp_alias in skill_mcp:
                             del skill_mcp[mcp_alias]
@@ -490,5 +499,36 @@ def _api_detect_scheduler() -> dict:
         return get_environment_summary()
     except Exception as e:
         return {"error": str(e), "scheduler": "none", "container": "none", "partitions": []}
+
+
+def _api_rubrics() -> list:
+    """Return reviewer rubrics available under ari-core/config/reviewer_rubrics/.
+
+    Used by the New Experiment wizard dropdown and the ReviewPanel header.
+    """
+    try:
+        import yaml  # type: ignore
+    except ImportError:
+        return []
+    rubrics_dir = _st._ari_root / "ari-core" / "config" / "reviewer_rubrics"
+    out: list[dict] = []
+    if not rubrics_dir.exists():
+        return out
+    for p in sorted(rubrics_dir.glob("*.yaml")):
+        try:
+            data = yaml.safe_load(p.read_text()) or {}
+            if not isinstance(data, dict):
+                continue
+            out.append({
+                "id": str(data.get("id", p.stem)),
+                "venue": str(data.get("venue", "")),
+                "domain": str(data.get("domain", "")),
+                "version": str(data.get("version", "")),
+                "closed_review": bool(data.get("closed_review", False)),
+                "path": str(p),
+            })
+        except Exception:
+            continue
+    return out
 
 

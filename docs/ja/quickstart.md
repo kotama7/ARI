@@ -42,7 +42,9 @@ bash setup.sh
 
 セットアップスクリプトは OS を自動検出し、必要なものをすべてインストールします。Linux、macOS、WSL2 で動作し、conda や sudo の有無を問いません。
 
-セットアップが完了すると、**「Setup Complete」** と次のステップの案内が表示されます。
+v0.6.0 では、セットアップスクリプトが **[Letta](https://docs.letta.com)** (`ari-skill-memory` のバックエンド) も併せて立ち上げます。Docker → Singularity/Apptainer → pip の順に最適な配置を自動選択します。CI やコンテナビルド時など Letta のブートストラップをスキップしたい場合は `SKIP_LETTA_SETUP=1` を、対話プロンプトを抑制したい場合は `ARI_NONINTERACTIVE=1` を `bash setup.sh` 実行前にエクスポートしてください。
+
+セットアップが完了すると、**「Setup Complete」** と次のステップの案内が表示されます。Letta の疎通確認は後から `ari memory health` で行えます。
 
 ---
 
@@ -176,6 +178,14 @@ LLM プロバイダーとモデルを選択します：
 - Ollama の場合は任意のモデル名を入力できます（例: `qwen3:8b`）
 - クラスターで実行する場合は SLURM/HPC の設定を行います
 
+**Paper Review (v0.6.0+)** — 生成された論文の査読方法を選択します:
+
+- **Rubric** — 同梱の 16 種類から選択 (`neurips` 既定 / v2 互換、`iclr`、`icml`、`cvpr`、`acl`、`sc`、`osdi`、`usenix_security`、`stoc`、`siggraph`、`chi`、`icra`、`nature`、`journal_generic`、`workshop`、`generic_conference`)。`ari-core/config/reviewer_rubrics/` に独自 YAML を追加すれば任意の venue に対応できます。
+- **Few-shot mode** — `static` (同梱例使用) / `dynamic` (Phase 2 OpenReview 取得; 査読クローズドの venue では static にフォールバック)。
+- **Reviewer ensemble (N)** — 独立査読者数。N>1 の場合は Area Chair メタ査読も自動で走ります。
+- **Reflection rounds** — 査読者ごとの self-reflection 回数 (Nature Ablation 既定 5)。
+- **Few-shot examples** — manifest からの自動同期、独自 JSON+PDF サンプルのアップロード、不要な例の削除をウィザードから直接行えます。
+
 ### ステップ 4/4 — 起動
 
 設定を確認して **Launch** をクリックします。ARI は以下を実行します：
@@ -240,8 +250,7 @@ LLM プロバイダーとモデルを選択します：
 | ファイル | 説明 |
 |---------|------|
 | `full_paper.tex / .pdf` | 生成された完全な論文 |
-| `review_report.json` | ピアレビューのスコアとフィードバック |
-| `rebuttal.json` | レビューコメントへの自動反論 |
+| `review_report.json` | ピアレビューのスコアとフィードバック（N>1 のときアンサンブル査読とメタ査読を同梱） |
 | `reproducibility_report.json` | 独立した再現性検証 |
 | `tree.json` | すべてのメトリクスを含む完全な実験ツリー |
 | `science_data.json` | クリーンなデータ（内部用語なし） |

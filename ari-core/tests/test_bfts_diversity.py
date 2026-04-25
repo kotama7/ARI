@@ -72,7 +72,9 @@ def test_evaluator_injects_score_distribution_context():
         captured["messages"] = kwargs.get("messages", [])
         return _fake_completion_response(
             '{"has_real_data": true, "metrics": {"x": 1.0}, "reason": "ok", '
-            '"scientific_score": 0.7, "comparison_found": false}'
+            '"axis_scores": {"measurement_validity": 0.7, "comparative_rigor": 0.7, '
+            '"novelty": 0.7, "reproducibility": 0.7, "clarity_of_contribution": 0.7}, '
+            '"comparison_found": false}'
         )
 
     with patch("ari.evaluator.llm_evaluator.litellm.acompletion", side_effect=_fake_acompletion):
@@ -84,9 +86,10 @@ def test_evaluator_injects_score_distribution_context():
             node_label="ablation",
         )
 
-    # Result must be returned successfully
+    # Result must be returned successfully. With all five axes at 0.7 the
+    # weighted harmonic mean collapses to 0.7 (modulo float epsilon).
     assert result["has_real_data"] is True
-    assert result["scientific_score"] == 0.7
+    assert result["scientific_score"] == pytest.approx(0.7)
 
     # User prompt must contain the calibration block
     user_msg = next(m for m in captured["messages"] if m["role"] == "user")
@@ -122,7 +125,9 @@ def test_evaluator_records_score_after_evaluation():
     async def _fake_acompletion(**kwargs):
         return _fake_completion_response(
             '{"has_real_data": true, "metrics": {}, "reason": "ok", '
-            '"scientific_score": 0.42, "comparison_found": false}'
+            '"axis_scores": {"measurement_validity": 0.42, "comparative_rigor": 0.42, '
+            '"novelty": 0.42, "reproducibility": 0.42, "clarity_of_contribution": 0.42}, '
+            '"comparison_found": false}'
         )
 
     with patch("ari.evaluator.llm_evaluator.litellm.acompletion", side_effect=_fake_acompletion):

@@ -456,6 +456,76 @@ class TestRunStageErrors:
         # Empty body → stage defaults to "paper"
         assert isinstance(result, dict)
 
+    def test_rerun_restores_rubric_from_launch_config(self, monkeypatch, tmp_path):
+        """A rerun via /api/run-stage must replay the rubric chosen at launch.
+
+        Regression: without restoration, the paper-skill resolver falls back
+        to its 'neurips' default and silently overwrites the original
+        review_report.json verdict with a NeurIPS one.
+        """
+        import subprocess
+        from ari.viz.api_experiment import _api_run_stage
+
+        ckpt = tmp_path / "ckpt"
+        ckpt.mkdir()
+        (ckpt / "launch_config.json").write_text(json.dumps({
+            "llm_model": "gpt-5.2", "llm_provider": "openai",
+            "rubric_id": "sc",
+            "fewshot_mode": "dynamic",
+            "num_reviews_ensemble": 3,
+            "num_reflections": 2,
+        }))
+        monkeypatch.setattr(_st, "_checkpoint_dir", ckpt)
+        monkeypatch.delenv("ARI_RUBRIC", raising=False)
+        monkeypatch.delenv("ARI_FEWSHOT_MODE", raising=False)
+        monkeypatch.delenv("ARI_NUM_REVIEWS_ENSEMBLE", raising=False)
+        monkeypatch.delenv("ARI_NUM_REFLECTIONS", raising=False)
+
+        captured: dict = {}
+        class _FakeProc:
+            pid = 99999
+            stdout = None
+        def _fake_popen(cmd, **kwargs):
+            captured["env"] = kwargs.get("env") or {}
+            return _FakeProc()
+        monkeypatch.setattr(subprocess, "Popen", _fake_popen)
+
+        result = _api_run_stage(json.dumps({"stage": "paper"}).encode())
+        assert result.get("ok") is True
+        env = captured["env"]
+        assert env.get("ARI_RUBRIC") == "sc"
+        assert env.get("ARI_FEWSHOT_MODE") == "dynamic"
+        assert env.get("ARI_NUM_REVIEWS_ENSEMBLE") == "3"
+        assert env.get("ARI_NUM_REFLECTIONS") == "2"
+
+    def test_rerun_omits_rubric_env_when_launch_config_lacks_it(
+        self, monkeypatch, tmp_path,
+    ):
+        """No rubric in launch_config → no env injection (paper-skill default applies)."""
+        import subprocess
+        from ari.viz.api_experiment import _api_run_stage
+
+        ckpt = tmp_path / "ckpt"
+        ckpt.mkdir()
+        (ckpt / "launch_config.json").write_text(json.dumps({
+            "llm_model": "gpt-5.2", "llm_provider": "openai",
+        }))
+        monkeypatch.setattr(_st, "_checkpoint_dir", ckpt)
+        monkeypatch.delenv("ARI_RUBRIC", raising=False)
+
+        captured: dict = {}
+        class _FakeProc:
+            pid = 99999
+            stdout = None
+        def _fake_popen(cmd, **kwargs):
+            captured["env"] = kwargs.get("env") or {}
+            return _FakeProc()
+        monkeypatch.setattr(subprocess, "Popen", _fake_popen)
+
+        result = _api_run_stage(json.dumps({"stage": "paper"}).encode())
+        assert result.get("ok") is True
+        assert "ARI_RUBRIC" not in captured["env"]
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 9. _api_ssh_test: edge cases
