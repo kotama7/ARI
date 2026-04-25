@@ -6,7 +6,7 @@
   **A universal research automation system. Laptop to supercomputer. Local models to cloud APIs. Novice to expert. Computation to physical world.**
 
   [![Tests](https://img.shields.io/badge/tests-1200%2B-brightgreen)](./ari-core)
-  [![Version](https://img.shields.io/badge/version-v0.5.0-orange)](https://github.com/kotama7/ARI/releases)
+  [![Version](https://img.shields.io/badge/version-v0.6.0-orange)](https://github.com/kotama7/ARI/releases)
   [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
   [![MCP](https://img.shields.io/badge/protocol-MCP-purple)](https://modelcontextprotocol.io)
   [![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
@@ -183,14 +183,14 @@ ari viz ./checkpoints/ --port 8765   # http://localhost:8765
 | Page | Features |
 |------|----------|
 | **Home** | Quick actions, recent experiments, system status |
-| **New Experiment** | 4-step wizard: Chat/Write/Upload goal → Scope (depth, nodes, workers, recursion) → Resources (LLM, HPC, container) → Launch |
+| **New Experiment** | 4-step wizard: Chat/Write/Upload goal → Scope (depth, nodes, workers, recursion) → Resources (LLM, HPC, container, **Paper Review** rubric / few-shot manager / ensemble size / reflection rounds) → Launch |
 | **Experiments** | List/delete/resume all checkpoint projects with status and review scores |
 | **Monitor** | Real-time phase stepper (Idle → Idea → BFTS → Paper → Review), live log streaming (SSE), cost tracking |
 | **Tree** | Interactive BFTS node tree, click any node to inspect metrics, tool-call trace, generated code, and output |
 | **Results** | Overleaf-like LaTeX editor (edit/compile/preview), paper PDF viewer, review report, reproducibility results, EAR browser |
 | **Ideas** | VirSci-generated hypotheses with novelty/feasibility scores and gap analysis |
-| **Workflow** | React Flow visual DAG editor for pipeline stages (drag, connect, enable/disable, skill assignment) |
-| **Settings** | LLM provider/model, API keys, SLURM, container runtime, VLM review model, retrieval backend, Ollama host |
+| **Workflow** | React Flow visual DAG editor for pipeline stages, with `BFTS / Paper / Reproduce` phase toggles per skill |
+| **Settings** | LLM provider/model, API keys, SLURM, container runtime, VLM review model, retrieval backend, Ollama host, **Memory (Letta)** backend |
 | **Sub-Experiments** | Recursive sub-experiment tree with parent-child tracking (via orchestrator skill) |
 
 Real-time updates via WebSocket (tree changes) and SSE (log streaming). All data is per-project isolated.
@@ -219,6 +219,11 @@ The dashboard exposes a REST + WebSocket API that can also be used programmatica
 | `/api/checkpoint/{id}/filetree` | GET | Full checkpoint directory tree |
 | `/api/ear/{run_id}` | GET | Experiment Artifact Repository contents |
 | `/api/sub-experiments` | GET/POST | List/launch recursive sub-experiments |
+| `/api/rubrics` | GET | List bundled review rubrics (Wizard dropdown) |
+| `/api/fewshot/<rubric>` | GET | List few-shot review examples for a rubric |
+| `/api/fewshot/<rubric>/{sync,upload,delete}` | POST | Sync from manifest, upload one example, delete one |
+| `/api/memory/{health,detect,start-local,stop-local,restart}` | GET/POST | Letta backend admin |
+| `/api/checkpoint/{id}/memory_access` | GET | Per-node memory write/read provenance log |
 | `/memory/<node_id>` | GET | Retrieve node memory (tool-call trace) |
 | `ws://host:{port+1}/ws` | WebSocket | Subscribe to real-time tree updates |
 
@@ -239,6 +244,7 @@ All dashboard features are also available via the command line:
 | `ari delete <checkpoint>` | Delete a checkpoint |
 | `ari settings` | View/modify config (model, partition, etc.) |
 | `ari skills-list` | List all available MCP tools |
+| `ari memory <subcmd>` | Manage Letta memory (`migrate` / `backup` / `restore` / `start-local` / `stop-local` / `prune-local` / `compact-access` / `health`) |
 | `ari viz <checkpoint_dir>` | Launch web dashboard |
 
 ### Output Files
@@ -252,10 +258,9 @@ After a run completes, outputs are saved in `./checkpoints/<run_id>/`:
 | `idea.json` | VirSci-generated hypotheses and gap analysis |
 | `science_data.json` | Science-facing data (no internal BFTS terms) |
 | `full_paper.tex` / `.pdf` | Generated LaTeX paper and compiled PDF |
-| `review_report.json` | Automated peer review score and feedback |
-| `reproducibility_report.json` | Independent reproducibility verification |
+| `review_report.json` | Rubric-driven peer review (AI Scientist v1/v2-compatible). Single reviewer by default; `ARI_NUM_REVIEWS_ENSEMBLE>1` adds `ensemble_reviews[]` + Area Chair `meta_review{}` inline. |
+| `reproducibility_report.json` | Independent reproducibility verification (sandboxed `react_driver` over MCP `phase: reproduce` skills) |
 | `figures_manifest.json` | Generated figure paths and captions |
-| `rebuttal.json` | Automated rebuttal to review comments |
 | `ear/` | Experiment Artifact Repository (code, data, logs, reproducibility metadata) |
 | `cost_trace.jsonl` | Per-call LLM cost tracking |
 | `experiments/<slug>/<node_id>/` | Per-node work directories and generated code |
@@ -267,7 +272,9 @@ After a run completes, outputs are saved in `./checkpoints/<run_id>/`:
 
 ### Skills (MCP plugin servers)
 
-15 skills total. 14 are registered by default in `workflow.yaml`; 1 additional skill (orchestrator) can be enabled by adding it to the config.
+13 skills total. 12 are registered by default in `workflow.yaml`; 1 additional skill (orchestrator) can be enabled by adding it to the config.
+
+In v0.6.0 two skills were retired: `ari-skill-figure-router` was folded into `ari-skill-plot` (a single skill now owns both matplotlib plots and SVG architecture diagrams, both feeding the same VLM review loop), and `ari-skill-review` (rebuttal generation) was deleted — the rubric-driven review score is the final quality signal.
 
 | Skill | Role | LLM? | Default |
 |---|---|---|---|
@@ -275,14 +282,12 @@ After a run completes, outputs are saved in `./checkpoints/<run_id>/`:
 | `ari-skill-evaluator` | Metric extraction from experiment file | △ | ✓ |
 | `ari-skill-idea` | arXiv survey + VirSci hypothesis generation | ✓ | ✓ |
 | `ari-skill-web` | DuckDuckGo, arXiv, Semantic Scholar / AlphaXiv, iterative citation, uploaded file access | △ | ✓ |
-| `ari-skill-memory` | Ancestor-scoped node memory (JSONL) | ✗ | ✓ |
+| `ari-skill-memory` | Ancestor-scoped node memory (Letta-backed, v0.6.0+) | △ | ✓ |
 | `ari-skill-transform` | BFTS tree → science-facing data + EAR generation | ✓ | ✓ |
-| `ari-skill-plot` | Matplotlib/seaborn figure generation | ✓ | ✓ |
-| `ari-skill-paper` | LaTeX writing + BibTeX + review | ✓ | ✓ |
+| `ari-skill-plot` | Unified figure generation (matplotlib plots + SVG diagrams per-figure, VLM-loop aware) | ✓ | ✓ |
+| `ari-skill-paper` | LaTeX writing + BibTeX + rubric-driven review (single or N-reviewer ensemble + Area Chair meta) | ✓ | ✓ |
 | `ari-skill-paper-re` | ReAct reproducibility verification | ✓ | ✓ |
-| `ari-skill-figure-router` | Figure type classification and generation routing (SVG/matplotlib/LaTeX) | ✓ | ✓ |
 | `ari-skill-benchmark` | CSV/JSON analysis, plotting, statistical tests | ✗ | ✓ |
-| `ari-skill-review` | Peer-review parsing, rebuttal generation | ✓ | ✓ |
 | `ari-skill-vlm` | Vision-Language model figure/table review | ✓ | ✓ |
 | `ari-skill-coding` | Code generation + execution + file read + bash | ✗ | ✓ |
 | `ari-skill-orchestrator` | Expose ARI as MCP server, recursive sub-experiments, dual stdio+HTTP transport | ✗ | — |
@@ -294,10 +299,10 @@ After a run completes, outputs are saved in `./checkpoints/<run_id>/`:
 | # | Principle | Meaning |
 |---|-----------|---------|
 | P1 | Domain-agnostic core | `ari-core` has zero experiment-specific knowledge |
-| P2 | Deterministic where possible | MCP tools are deterministic by default; LLM-using tools are explicitly annotated |
+| P2 | Deterministic where possible | MCP tools are deterministic by default; LLM-using tools are explicitly annotated. *Relaxed for `ari-skill-memory` in v0.6.0 — Letta-backed retrieval is embedding-based.* |
 | P3 | Multi-objective metrics | No hardcoded scalar score |
 | P4 | Dependency injection | Switching experiments = editing `.md` only |
-| P5 | Reproducibility-first | Papers describe hardware by specs, not cluster names |
+| P5 | Reproducibility-first | Papers describe hardware by specs, not cluster names. *BFTS trajectory may diverge across re-runs when memory is Letta-backed; numerical results remain reproducible.* See `docs/PHILOSOPHY.md`. |
 
 ---
 

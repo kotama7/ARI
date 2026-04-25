@@ -1,0 +1,34 @@
+# Docker Compose deployment.
+# Brings up Letta + Postgres on a laptop/workstation. Managed by
+# `ari memory start-local` / `stop-local`.
+services:
+  letta:
+    image: letta/letta:latest
+    container_name: ari-letta
+    restart: unless-stopped
+    ports:
+      - "8283:8283"
+    # Pull provider API keys (OPENAI_API_KEY, ANTHROPIC_API_KEY, ...)
+    # from the project's .env so embeddings and core LLM handles work
+    # inside the container. Path is relative to this compose file.
+    env_file:
+      - ../../.env
+    environment:
+      LETTA_SERVER_PASS: "${LETTA_API_KEY:-}"
+      LETTA_PG_URI: "postgresql://letta:letta@pg/letta"
+    depends_on:
+      - pg
+    volumes:
+      - letta-data:/app/letta
+  pg:
+    image: postgres:16-alpine
+    container_name: ari-letta-pg
+    environment:
+      POSTGRES_USER: letta
+      POSTGRES_PASSWORD: letta
+      POSTGRES_DB: letta
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+volumes:
+  letta-data:
+  pg-data:

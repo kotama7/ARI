@@ -11,7 +11,8 @@
     "review_section",
     "revise_section",
     "write_paper_iterative",
-    "review_compiled_paper"
+    "review_compiled_paper",
+    "list_rubrics"
   ],
   "runtime": "python",
   "entrypoint": "src/server.py"

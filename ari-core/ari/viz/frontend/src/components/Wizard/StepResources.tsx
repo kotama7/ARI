@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useI18n } from '../../i18n';
 import * as api from '../../services/api';
 import type { ContainerImage } from '../../services/api';
@@ -65,9 +65,36 @@ interface StepResourcesProps {
   setContainerMode: (v: string) => void;
   vlmReviewModel: string;
   setVlmReviewModel: (v: string) => void;
+  rubricId: string;
+  setRubricId: (v: string) => void;
+  fewshotMode: 'static' | 'dynamic';
+  setFewshotMode: (v: 'static' | 'dynamic') => void;
+  numReviewsEnsemble: number;
+  setNumReviewsEnsemble: (v: number) => void;
+  numReflections: number;
+  setNumReflections: (v: number) => void;
   onBack: () => void;
   onNext: () => void;
 }
+
+const RUBRIC_OPTIONS: Array<{ id: string; label: string }> = [
+  { id: 'neurips', label: 'NeurIPS (ML/AI, v2-compatible)' },
+  { id: 'iclr', label: 'ICLR (ML/AI)' },
+  { id: 'icml', label: 'ICML (ML/AI)' },
+  { id: 'cvpr', label: 'CVPR / ICCV / ECCV (Computer Vision)' },
+  { id: 'acl', label: 'ACL / EMNLP (NLP)' },
+  { id: 'sc', label: 'SC (HPC / Systems)' },
+  { id: 'chi', label: 'CHI (HCI)' },
+  { id: 'usenix_security', label: 'USENIX Security / S&P / CCS (Security)' },
+  { id: 'osdi', label: 'OSDI / SOSP / VLDB (Systems & Databases)' },
+  { id: 'stoc', label: 'STOC / FOCS / SODA (Theory)' },
+  { id: 'icra', label: 'ICRA / IROS / RSS (Robotics)' },
+  { id: 'siggraph', label: 'SIGGRAPH / SIGGRAPH Asia (Graphics)' },
+  { id: 'nature', label: 'Nature / Science (Natural & Life Sciences)' },
+  { id: 'journal_generic', label: 'Generic Journal (revision-cycle)' },
+  { id: 'workshop', label: 'Workshop / Short Paper' },
+  { id: 'generic_conference', label: 'Generic Conference' },
+];
 
 export function StepResources({
   mode,
@@ -102,9 +129,47 @@ export function StepResources({
   setContainerMode,
   vlmReviewModel,
   setVlmReviewModel,
+  rubricId,
+  setRubricId,
+  fewshotMode,
+  setFewshotMode,
+  numReviewsEnsemble,
+  setNumReviewsEnsemble,
+  numReflections,
+  setNumReflections,
   onBack,
   onNext,
 }: StepResourcesProps) {
+  const [rubricsFromApi, setRubricsFromApi] = useState<
+    Array<{ id: string; label: string }>
+  >([]);
+  const [closedReviewRubrics, setClosedReviewRubrics] = useState<Set<string>>(
+    new Set(),
+  );
+  useEffect(() => {
+    api
+      .fetchRubrics()
+      .then((rs) => {
+        if (Array.isArray(rs) && rs.length > 0) {
+          setRubricsFromApi(
+            rs.map((r) => ({
+              id: r.id,
+              label: `${r.id} — ${r.venue}${r.domain ? ` (${r.domain})` : ''}`,
+            })),
+          );
+          setClosedReviewRubrics(
+            new Set(rs.filter((r) => r.closed_review).map((r) => r.id)),
+          );
+        }
+      })
+      .catch(() => {});
+  }, []);
+  const isClosedReview = closedReviewRubrics.has(rubricId);
+  useEffect(() => {
+    if (isClosedReview && fewshotMode === 'dynamic') {
+      setFewshotMode('static');
+    }
+  }, [isClosedReview, fewshotMode, setFewshotMode]);
   const { t } = useI18n();
   const [schedulerLabel, setSchedulerLabel] = useState('detecting…');
   const [schedulerClass, setSchedulerClass] = useState('badge badge-blue');
@@ -682,8 +747,99 @@ export function StepResources({
                 </select>
               </div>
             </div>
+
           </div>
         </details>
+      </div>
+
+      {/* Paper Review card (rubric-driven) */}
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-title">
+          {'📝'} {t('wiz_paper_review_section')}
+        </div>
+
+        <div className="form-row">
+          <label>{t('wiz_rubric')}</label>
+          <select
+            value={rubricId}
+            style={{ width: '100%' }}
+            onChange={(e) => setRubricId(e.target.value)}
+          >
+            {(rubricsFromApi.length > 0 ? rubricsFromApi : RUBRIC_OPTIONS).map(
+              (r) => (
+                <option key={r.id} value={r.id}>
+                  {r.label}
+                </option>
+              ),
+            )}
+          </select>
+        </div>
+
+        <div className="form-row">
+          <label>{t('wiz_fewshot_mode')}</label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              type="button"
+              className={`btn btn-sm ${fewshotMode === 'static' ? 'btn-primary' : 'btn-outline'}`}
+              onClick={() => setFewshotMode('static')}
+            >
+              {t('wiz_fewshot_static')}
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm ${fewshotMode === 'dynamic' ? 'btn-primary' : 'btn-outline'}`}
+              onClick={() => setFewshotMode('dynamic')}
+              disabled={isClosedReview}
+              title={
+                isClosedReview
+                  ? t('wiz_fewshot_dynamic_unsupported')
+                  : undefined
+              }
+            >
+              {t('wiz_fewshot_dynamic')}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div>
+            <label style={{ fontSize: '.75rem', color: 'var(--muted)' }}>
+              {t('wiz_num_reviews_ensemble')}
+            </label>
+            <input
+              className="input-sm"
+              type="number"
+              min={1}
+              max={10}
+              value={numReviewsEnsemble}
+              onChange={(e) =>
+                setNumReviewsEnsemble(
+                  Math.max(1, Math.min(10, parseInt(e.target.value) || 1)),
+                )
+              }
+              style={{ width: '100%' }}
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: '.75rem', color: 'var(--muted)' }}>
+              {t('wiz_num_reflections')}
+            </label>
+            <input
+              className="input-sm"
+              type="number"
+              min={0}
+              max={10}
+              value={numReflections}
+              onChange={(e) =>
+                setNumReflections(
+                  Math.max(0, Math.min(10, parseInt(e.target.value) || 0)),
+                )
+              }
+              style={{ width: '100%' }}
+            />
+          </div>
+        </div>
+        <FewshotManager rubricId={rubricId} />
       </div>
 
       {/* Navigation */}
@@ -697,6 +853,267 @@ export function StepResources({
           Next {'→'}
         </button>
       </div>
+    </div>
+  );
+}
+
+
+// ── Few-shot examples manager (embedded in Step 3) ─────────────────────
+function FewshotManager({ rubricId }: { rubricId: string }) {
+  const { t } = useI18n();
+  const [listing, setListing] = useState<api.FewshotListing | null>(null);
+  const [busy, setBusy] = useState('');
+  const [msg, setMsg] = useState('');
+
+  const refresh = useCallback(() => {
+    if (!rubricId) return;
+    api
+      .fetchFewshot(rubricId)
+      .then(setListing)
+      .catch((e) => setMsg(String(e)));
+  }, [rubricId]);
+
+  useEffect(() => {
+    refresh();
+  }, [rubricId, refresh]);
+
+  const [showUpload, setShowUpload] = useState(false);
+  const [uploadId, setUploadId] = useState('');
+  const [uploadJson, setUploadJson] = useState('');
+  const [uploadTxt, setUploadTxt] = useState('');
+  const [uploadPdfB64, setUploadPdfB64] = useState('');
+
+  const handleSync = async () => {
+    setBusy('sync');
+    setMsg('');
+    try {
+      const r = await api.syncFewshot(rubricId);
+      if (r?.error) setMsg(String(r.error));
+      else {
+        const base = `${t('wiz_fewshot_sync_ok')} (rc=${r.returncode})`;
+        setMsg(r.hint ? `${base} — ${r.hint}` : base);
+        refresh();
+      }
+    } catch (e: any) {
+      setMsg(e?.message || String(e));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      const b64 = result.includes(',') ? result.split(',')[1] : result;
+      setUploadPdfB64(b64);
+    };
+    reader.readAsDataURL(f);
+  };
+
+  const handleUpload = async () => {
+    if (!uploadId.trim() || !uploadJson.trim()) {
+      setMsg(t('wiz_fewshot_upload_missing'));
+      return;
+    }
+    setBusy('upload');
+    setMsg('');
+    try {
+      const r = await api.uploadFewshot(rubricId, {
+        example_id: uploadId.trim(),
+        review_json: uploadJson,
+        paper_txt: uploadTxt || undefined,
+        paper_pdf: uploadPdfB64 || undefined,
+      });
+      if (r?.error) setMsg(String(r.error));
+      else {
+        setMsg(t('wiz_fewshot_upload_ok'));
+        setShowUpload(false);
+        setUploadId('');
+        setUploadJson('');
+        setUploadTxt('');
+        setUploadPdfB64('');
+        refresh();
+      }
+    } catch (e: any) {
+      setMsg(e?.message || String(e));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const handleDelete = async (eid: string) => {
+    if (!confirm(`${t('wiz_fewshot_delete_confirm')} ${eid}?`)) return;
+    setBusy('delete');
+    try {
+      await api.deleteFewshot(rubricId, eid);
+      refresh();
+    } catch (e: any) {
+      setMsg(e?.message || String(e));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        padding: 10,
+        border: '1px dashed var(--border, #333)',
+        borderRadius: 6,
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 6,
+        }}
+      >
+        <div style={{ fontSize: '.8rem', fontWeight: 700 }}>
+          {t('wiz_fewshot_examples')} ({listing?.count ?? '—'})
+        </div>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button
+            className="btn btn-sm btn-outline"
+            type="button"
+            disabled={!!busy}
+            onClick={handleSync}
+            title={t('wiz_fewshot_sync_title')}
+          >
+            {busy === 'sync' ? '…' : '↻'} {t('wiz_fewshot_sync')}
+          </button>
+          <button
+            className="btn btn-sm btn-outline"
+            type="button"
+            disabled={!!busy}
+            onClick={() => setShowUpload(!showUpload)}
+          >
+            {'＋'} {t('wiz_fewshot_upload')}
+          </button>
+        </div>
+      </div>
+
+      {listing?.examples && listing.examples.length > 0 ? (
+        <div style={{ display: 'grid', gap: 4, fontSize: '.75rem' }}>
+          {listing.examples.map((ex) => (
+            <div
+              key={ex.id}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '4px 6px',
+                background: 'var(--muted-bg, rgba(255,255,255,0.03))',
+                borderRadius: 4,
+              }}
+            >
+              <div>
+                <span style={{ fontWeight: 600 }}>{ex.id}</span>
+                {ex.overall != null && (
+                  <span style={{ color: 'var(--muted)' }}> · overall {ex.overall}</span>
+                )}
+                {ex.decision && (
+                  <span style={{ color: 'var(--muted)' }}> · {ex.decision}</span>
+                )}
+                <span style={{ color: 'var(--muted)' }}>
+                  {' '}
+                  · {ex.files.map((f) => f.ext).join(', ')}
+                </span>
+              </div>
+              <button
+                className="btn btn-sm btn-outline"
+                type="button"
+                disabled={!!busy}
+                onClick={() => handleDelete(ex.id)}
+                title={t('wiz_fewshot_delete')}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ fontSize: '.75rem', color: 'var(--muted)' }}>
+          {t('wiz_fewshot_empty')}
+        </div>
+      )}
+
+      {showUpload && (
+        <div
+          style={{
+            marginTop: 10,
+            padding: 8,
+            border: '1px solid var(--border, #333)',
+            borderRadius: 4,
+            display: 'grid',
+            gap: 6,
+          }}
+        >
+          <label style={{ fontSize: '.7rem', color: 'var(--muted)' }}>
+            {t('wiz_fewshot_upload_id')}
+          </label>
+          <input
+            className="input-sm"
+            value={uploadId}
+            onChange={(e) => setUploadId(e.target.value)}
+            placeholder="my_paper_2026"
+          />
+          <label style={{ fontSize: '.7rem', color: 'var(--muted)' }}>
+            {t('wiz_fewshot_upload_json')}
+          </label>
+          <textarea
+            className="input-sm"
+            value={uploadJson}
+            onChange={(e) => setUploadJson(e.target.value)}
+            rows={6}
+            placeholder='{"soundness": 3, "presentation": 3, "contribution": 3, "overall": 6, "confidence": 4, "strengths": "...", "weaknesses": "...", "questions": "...", "decision": "accept"}'
+            style={{ width: '100%', fontFamily: 'monospace', fontSize: '.7rem' }}
+          />
+          <label style={{ fontSize: '.7rem', color: 'var(--muted)' }}>
+            {t('wiz_fewshot_upload_txt')}
+          </label>
+          <textarea
+            className="input-sm"
+            value={uploadTxt}
+            onChange={(e) => setUploadTxt(e.target.value)}
+            rows={3}
+            placeholder="Paper excerpt / abstract …"
+            style={{ width: '100%', fontSize: '.7rem' }}
+          />
+          <label style={{ fontSize: '.7rem', color: 'var(--muted)' }}>
+            {t('wiz_fewshot_upload_pdf')}
+          </label>
+          <input type="file" accept="application/pdf" onChange={handlePdfChange} />
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              className="btn btn-sm btn-primary"
+              type="button"
+              disabled={!!busy}
+              onClick={handleUpload}
+            >
+              {busy === 'upload' ? '…' : t('wiz_fewshot_upload_submit')}
+            </button>
+            <button
+              className="btn btn-sm btn-outline"
+              type="button"
+              onClick={() => setShowUpload(false)}
+            >
+              {t('wiz_fewshot_upload_cancel')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {msg && (
+        <div style={{ marginTop: 6, fontSize: '.7rem', color: 'var(--muted)' }}>
+          {msg}
+        </div>
+      )}
     </div>
   );
 }

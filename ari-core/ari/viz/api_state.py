@@ -305,13 +305,21 @@ def _api_checkpoint_summary(ckpt_id: str) -> dict:
             break
 
     for fname in ("review_report.json", "science_data.json",
-                  "figures_manifest.json"):
+                  "figures_manifest.json", "vlm_review.json"):
         p = d / fname
         if p.exists() and p.stat().st_size > 0:
             try:
                 result[fname.replace(".json", "")] = json.loads(p.read_text(encoding="utf-8", errors="replace"))
             except Exception as e:
                 result[fname.replace(".json", "")] = {"_parse_error": str(e)}
+
+    # review_report.json already contains ensemble_reviews + meta_review
+    # inline (the unified review_compiled_paper tool writes them directly).
+    # Attach VLM findings so the GUI ReviewPanel can render them alongside.
+    rr = result.get("review_report")
+    if isinstance(rr, dict):
+        if isinstance(result.get("vlm_review"), (dict, list)):
+            rr["vlm_findings"] = result["vlm_review"]
     # paper tex snippet — check checkpoint root first, then paper/ subdir.
     # Older runs wrote full_paper.tex/pdf at the checkpoint root; newer
     # runs (or those edited via the Overleaf-like UI) may keep them only
@@ -643,6 +651,15 @@ def _api_delete_checkpoint(body: bytes) -> dict:
         except Exception:
             log.debug("log cleanup error", exc_info=True)
             pass
+        # Best-effort memory purge before removing the checkpoint dir so the
+        # Letta agent + archival entries bound to this checkpoint are cleaned.
+        # Failures are logged but never block the on-disk delete.
+        try:
+            from ari_skill_memory.backends import get_backend
+            backend = get_backend(checkpoint_dir=p)
+            backend.purge_checkpoint()
+        except Exception as _e:
+            log.warning("memory purge failed for %s: %s", p, _e)
         shutil.rmtree(str(p))
         # Also remove the sibling experiments/{run_id}/ directory that
         # holds per-node work_dirs created by PathManager.ensure_node_work_dir.
@@ -938,82 +955,43 @@ def _api_checkpoint_filecontent(ckpt_id: str, filepath: str, node_id: str = "") 
 
 
 def _api_checkpoint_memory(ckpt_id: str) -> dict:
-    """Return memory entries for a checkpoint, grouped by node_id.
-
-    Reads both stores:
-      - memory_store.jsonl (ari-skill-memory MCP server, node-scoped)
-      - memory.json       (FileMemoryClient, flat list)
+    """Return memory entries for a checkpoint, grouped by node_id.-process backend library — viz never spawns the MCP skill.
     """
     d = _resolve_checkpoint_dir(ckpt_id)
     if d is None:
         return {"error": "checkpoint not found"}
 
     entries: list[dict] = []
+    err: str | None = None
 
-    jsonl_path = d / "memory_store.jsonl"
-    if jsonl_path.exists():
-        try:
-            for line in jsonl_path.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    e = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
+    try:
+        import os as _os_mem
+        _os_mem.environ["ARI_CHECKPOINT_DIR"] = str(d)
+        from ari_skill_memory.backends import get_backend
+        backend = get_backend(checkpoint_dir=d)
+        # node-scope entries
+        for nid, lst in backend.list_all_nodes().get("by_node", {}).items():
+            for e in lst:
                 entries.append({
-                    "node_id": e.get("node_id", ""),
+                    "node_id": nid,
                     "text": e.get("text", ""),
-                    "metadata": e.get("metadata", {}),
+                    "metadata": e.get("metadata", {}) or {},
                     "ts": e.get("ts"),
                     "source": "mcp",
                 })
-        except Exception:
-            log.debug("memory_store.jsonl read failed", exc_info=True)
-
-    json_path = d / "memory.json"
-    if json_path.exists():
-        try:
-            raw = json.loads(json_path.read_text(encoding="utf-8"))
-            if isinstance(raw, list):
-                for e in raw:
-                    if not isinstance(e, dict):
-                        continue
-                    md = e.get("metadata", {}) or {}
-                    entries.append({
-                        "node_id": md.get("node_id", ""),
-                        "text": e.get("content", ""),
-                        "metadata": md,
-                        "ts": e.get("ts"),
-                        "source": "file_client",
-                    })
-        except Exception:
-            log.debug("memory.json read failed", exc_info=True)
-
-    # Long-term / cross-experiment memory (global, not per-checkpoint)
-    global_entries: list[dict] = []
-    global_path_env = os.environ.get("ARI_GLOBAL_MEMORY_PATH")
-    global_path = Path(global_path_env).expanduser() if global_path_env else Path.home() / ".ari" / "global_memory.jsonl"
-    if global_path.exists():
-        try:
-            for line in global_path.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    e = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                global_entries.append({
-                    "node_id": "",
-                    "text": e.get("text", ""),
-                    "metadata": e.get("metadata", {}),
-                    "tags": e.get("tags", []),
-                    "ts": e.get("ts"),
-                    "source": "global",
-                })
-        except Exception:
-            log.debug("global_memory.jsonl read failed", exc_info=True)
+        # react-trace entries
+        for e in backend.list_react_entries():
+            md = e.get("metadata", {}) or {}
+            entries.append({
+                "node_id": md.get("node_id", ""),
+                "text": e.get("content", ""),
+                "metadata": md,
+                "ts": e.get("ts"),
+                "source": "file_client",
+            })
+    except Exception as e:  # pragma: no cover - depends on Letta deployment
+        err = f"memory backend unavailable: {e}"
+        log.warning("viz: %s", err)
 
     by_node: dict[str, list[dict]] = {}
     for e in entries:
@@ -1023,9 +1001,11 @@ def _api_checkpoint_memory(ckpt_id: str) -> dict:
         "id": ckpt_id,
         "entries": entries,
         "by_node": by_node,
-        "global": global_entries,
-        "global_path": str(global_path),
-        "count": len(entries) + len(global_entries),
+        # Global memory is removed in v0.6.0. The field is retained
+        # so the existing frontend schema keeps working.
+        "global": [],
+        "error": err,
+        "count": len(entries),
     }
 
 

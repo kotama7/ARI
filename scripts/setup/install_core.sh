@@ -9,6 +9,15 @@ echo ""
 
 colony_say
 
+# ari-core imports ari_skill_memory at runtime (viz, pipeline, memory
+# client). Install the memory skill first so ari-core's editable install
+# can resolve the import path without pip hitting PyPI.
+if [ -f "$ARI_ROOT/ari-skill-memory/pyproject.toml" ]; then
+  $PIP install -e "$ARI_ROOT/ari-skill-memory/" >/dev/null 2>&1 || {
+    warn "ari-skill-memory install failed — ari-core import of ari_skill_memory will break"
+  }
+fi
+
 if [ -f "$ARI_ROOT/ari-core/pyproject.toml" ] || [ -f "$ARI_ROOT/ari-core/setup.py" ]; then
   run_with_ants "ari-core" $PIP install -e "$ARI_ROOT/ari-core/" || {
     fail "$(m core_fail): $ARI_ROOT/ari-core/"
@@ -56,6 +65,19 @@ if [ -n "$SKILL_NAMES" ]; then
 fi
 if [ $SKILL_FAIL -gt 0 ]; then
   warn "$SKILL_FAIL skill(s) skipped (non-fatal)"
+fi
+
+# Ensure the reviewer rubric directory is present (v0.6.0+ rubric-driven review).
+RUBRIC_DIR="$ARI_ROOT/ari-core/config/reviewer_rubrics"
+if [ -d "$RUBRIC_DIR" ]; then
+  RUBRIC_N=$(find "$RUBRIC_DIR" -maxdepth 1 -name "*.yaml" -o -name "*.yml" 2>/dev/null | wc -l)
+  if [ "$RUBRIC_N" -gt 0 ]; then
+    ok "Reviewer rubrics: $RUBRIC_N available in $RUBRIC_DIR"
+  else
+    warn "reviewer_rubrics dir exists but contains no YAMLs"
+  fi
+else
+  warn "reviewer_rubrics dir missing at $RUBRIC_DIR"
 fi
 
 # Record the Python path used for installation so that ari-core can launch

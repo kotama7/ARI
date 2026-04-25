@@ -371,8 +371,12 @@ def _build_launch_env(state, tmp_path, monkeypatch, settings: dict,
 
     # Clean env
     for k in list(os.environ):
-        if k.startswith("ARI_") or k in (
-            "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "OLLAMA_HOST",
+        if (
+            k.startswith("ARI_")
+            or k.startswith("LETTA_")
+            or k in (
+                "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "OLLAMA_HOST",
+            )
         ):
             monkeypatch.delenv(k, raising=False)
     if pre_env:
@@ -432,6 +436,16 @@ def _build_launch_env(state, tmp_path, monkeypatch, settings: dict,
                 val = saved.get(f"model_{skill}", "")
                 if val:
                     proc_env[f"ARI_MODEL_{skill.upper()}"] = val
+            # Memory (Letta) env injection — mirror api_experiment.py.
+            _letta_base = saved.get("letta_base_url", "")
+            if _letta_base:
+                proc_env["LETTA_BASE_URL"] = _letta_base
+            _letta_key = saved.get("letta_api_key", "")
+            if _letta_key:
+                proc_env["LETTA_API_KEY"] = _letta_key
+            _letta_emb = saved.get("letta_embedding_config", "")
+            if _letta_emb:
+                proc_env["LETTA_EMBEDDING_CONFIG"] = _letta_emb
     except Exception:
         pass
 
@@ -527,6 +541,41 @@ class TestLaunchEnvBuilding:
             settings={"llm_model": "gpt-4o", "llm_provider": "openai"},
             wizard_data={"max_react": 120})
         assert env["ARI_MAX_REACT"] == "120"
+
+    def test_letta_settings_propagate_to_env(
+        self, state, tmp_path, monkeypatch, clean_env,
+    ):
+        """settings.json letta_* values become LETTA_* env vars in the
+        subprocess. The memory skill's MemoryConfig reads these — if
+        propagation breaks, the skill silently falls back to flaky
+        defaults (the original 522/empty-body bug)."""
+        env = _build_launch_env(state, tmp_path, monkeypatch, settings={
+            "llm_model": "gpt-4o", "llm_provider": "openai",
+            "letta_base_url": "http://letta-host:8283",
+            "letta_api_key": "k-secret",
+            "letta_embedding_config": "openai/text-embedding-3-small",
+        })
+        assert env["LETTA_BASE_URL"] == "http://letta-host:8283"
+        assert env["LETTA_API_KEY"] == "k-secret"
+        assert env["LETTA_EMBEDDING_CONFIG"] == "openai/text-embedding-3-small"
+        # The Letta agent's chat LLM is hardcoded inside ari-skill-memory
+        # (ARI never invokes it); LETTA_LLM_CONFIG must NOT be set even if
+        # legacy settings.json contains it.
+        assert "LETTA_LLM_CONFIG" not in env
+
+    def test_letta_settings_absent_does_not_inject(
+        self, state, tmp_path, monkeypatch, clean_env,
+    ):
+        """If the operator hasn't set Letta values in Settings, we must
+        NOT inject empty strings — that would override env / workflow
+        defaults. The memory skill needs to be able to fall back."""
+        env = _build_launch_env(state, tmp_path, monkeypatch, settings={
+            "llm_model": "gpt-4o", "llm_provider": "openai",
+        })
+        assert "LETTA_BASE_URL" not in env or env["LETTA_BASE_URL"] != ""
+        assert env.get("LETTA_API_KEY", "") == ""
+        assert env.get("LETTA_EMBEDDING_CONFIG", "") == ""
+        assert "LETTA_LLM_CONFIG" not in env
 
     def test_per_skill_model_overrides(self, state, tmp_path, monkeypatch, clean_env):
         env = _build_launch_env(state, tmp_path, monkeypatch,

@@ -112,6 +112,18 @@ def _build_proc_env_and_launch_cfg(
     for phase, model in phase_models.items():
         if model:
             proc_env[f"ARI_MODEL_{phase.upper()}"] = model
+    wiz_rubric = data.get("rubric_id")
+    if wiz_rubric:
+        proc_env["ARI_RUBRIC"] = str(wiz_rubric)
+    wiz_fewshot_mode = data.get("fewshot_mode")
+    if wiz_fewshot_mode:
+        proc_env["ARI_FEWSHOT_MODE"] = str(wiz_fewshot_mode)
+    wiz_num_ensemble = data.get("num_reviews_ensemble")
+    if wiz_num_ensemble is not None:
+        proc_env["ARI_NUM_REVIEWS_ENSEMBLE"] = str(int(wiz_num_ensemble))
+    wiz_num_reflections = data.get("num_reflections")
+    if wiz_num_reflections is not None:
+        proc_env["ARI_NUM_REFLECTIONS"] = str(int(wiz_num_reflections))
     wiz_model = data.get("llm_model", "") or data.get("model", "")
     wiz_provider = data.get("llm_provider", "")
     if wiz_model:
@@ -154,6 +166,14 @@ def _build_proc_env_and_launch_cfg(
         _launch_cfg["partition"] = proc_env["ARI_SLURM_PARTITION"]
     if phase_models:
         _launch_cfg["phase_models"] = {k: v for k, v in phase_models.items() if v}
+    if proc_env.get("ARI_RUBRIC"):
+        _launch_cfg["rubric_id"] = proc_env["ARI_RUBRIC"]
+    if proc_env.get("ARI_FEWSHOT_MODE"):
+        _launch_cfg["fewshot_mode"] = proc_env["ARI_FEWSHOT_MODE"]
+    if proc_env.get("ARI_NUM_REVIEWS_ENSEMBLE"):
+        _launch_cfg["num_reviews_ensemble"] = int(proc_env["ARI_NUM_REVIEWS_ENSEMBLE"])
+    if proc_env.get("ARI_NUM_REFLECTIONS"):
+        _launch_cfg["num_reflections"] = int(proc_env["ARI_NUM_REFLECTIONS"])
 
     return proc_env, _launch_cfg
 
@@ -290,6 +310,32 @@ class TestWizardOverridesInLaunchCfg:
             settings={"llm_provider": "openai", "llm_model": "gpt-5.2"},
             wizard_data={"phase_models": {"idea": "gpt-4o", "paper": "claude-sonnet-4-5"}})
         assert cfg["phase_models"] == {"idea": "gpt-4o", "paper": "claude-sonnet-4-5"}
+
+    def test_rubric_id_persisted(self, state, tmp_path, monkeypatch, clean_env):
+        """Wizard rubric_id ('sc' for Supercomputing etc.) survives to launch_config."""
+        _, cfg = _build_proc_env_and_launch_cfg(state, tmp_path, monkeypatch,
+            settings={"llm_provider": "openai", "llm_model": "gpt-5.2"},
+            wizard_data={"rubric_id": "sc"})
+        assert cfg["rubric_id"] == "sc"
+
+    def test_rubric_omitted_when_unset(self, state, tmp_path, monkeypatch, clean_env):
+        _, cfg = _build_proc_env_and_launch_cfg(state, tmp_path, monkeypatch,
+            settings={"llm_provider": "openai", "llm_model": "gpt-5.2"})
+        assert "rubric_id" not in cfg
+
+    def test_review_tuning_persisted(self, state, tmp_path, monkeypatch, clean_env):
+        _, cfg = _build_proc_env_and_launch_cfg(state, tmp_path, monkeypatch,
+            settings={"llm_provider": "openai", "llm_model": "gpt-5.2"},
+            wizard_data={
+                "rubric_id": "sc",
+                "fewshot_mode": "dynamic",
+                "num_reviews_ensemble": 3,
+                "num_reflections": 2,
+            })
+        assert cfg["rubric_id"] == "sc"
+        assert cfg["fewshot_mode"] == "dynamic"
+        assert cfg["num_reviews_ensemble"] == 3
+        assert cfg["num_reflections"] == 2
 
     def test_full_wizard_config(self, state, tmp_path, monkeypatch, clean_env):
         """Complete wizard configuration is fully captured."""

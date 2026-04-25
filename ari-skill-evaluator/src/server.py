@@ -9,6 +9,12 @@ from mcp.types import TextContent, Tool
 
 server = Server("evaluator-skill")
 
+try:
+    from ari import cost_tracker as _ari_cost_tracker  # type: ignore
+    _ari_cost_tracker.bootstrap_skill("evaluator")
+except Exception:
+    pass
+
 
 def _parse_success_metrics(text: str) -> list[str]:
     """Extract metric names from the experiment file (deterministic).

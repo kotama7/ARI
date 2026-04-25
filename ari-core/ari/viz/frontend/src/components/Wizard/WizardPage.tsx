@@ -74,6 +74,12 @@ export function WizardPage() {
   // ---- VLM Review state ----
   const [vlmReviewModel, setVlmReviewModel] = useState('openai/gpt-4o');
 
+  // ---- Paper Review (rubric-driven) state ----
+  const [rubricId, setRubricId] = useState('neurips');
+  const [fewshotMode, setFewshotMode] = useState<'static' | 'dynamic'>('static');
+  const [numReviewsEnsemble, setNumReviewsEnsemble] = useState(1);
+  const [numReflections, setNumReflections] = useState(5);
+
   // ---- Step 4: Launch state ----
   const [profile, setProfile] = useState('laptop');
   const [paperFormat, setPaperFormat] = useState('arxiv');
@@ -241,6 +247,14 @@ export function WizardPage() {
           setContainerMode={setContainerMode}
           vlmReviewModel={vlmReviewModel}
           setVlmReviewModel={setVlmReviewModel}
+          rubricId={rubricId}
+          setRubricId={setRubricId}
+          fewshotMode={fewshotMode}
+          setFewshotMode={setFewshotMode}
+          numReviewsEnsemble={numReviewsEnsemble}
+          setNumReviewsEnsemble={setNumReviewsEnsemble}
+          numReflections={numReflections}
+          setNumReflections={setNumReflections}
           onBack={() => goToStep(2)}
           onNext={() => goToStep(4)}
         />
@@ -274,6 +288,10 @@ export function WizardPage() {
           containerImage={containerImage}
           containerMode={containerMode}
           vlmReviewModel={vlmReviewModel}
+          rubricId={rubricId}
+          fewshotMode={fewshotMode}
+          numReviewsEnsemble={numReviewsEnsemble}
+          numReflections={numReflections}
           onBack={() => goToStep(3)}
           onLaunched={handleLaunched}
         />

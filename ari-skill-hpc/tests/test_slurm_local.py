@@ -123,7 +123,12 @@ class TestSubmitLocal:
             "echo hello\n"
         )
 
+        # Mock sinfo to return empty so the real host's cluster doesn't pollute the test.
+        import subprocess as _sp
+        mock_sinfo = _sp.CompletedProcess(args=["sinfo"], returncode=0, stdout="", stderr="")
+
         with patch("asyncio.create_subprocess_shell", side_effect=mock_shell), \
+             patch("subprocess.run", return_value=mock_sinfo), \
              patch.dict("os.environ", {"SLURM_VALID_PARTITIONS": "", "SLURM_DEFAULT_PARTITION": ""}, clear=False):
             result = await client.submit(
                 script=script_with_partition,
@@ -159,7 +164,12 @@ class TestSubmitLocal:
             mock.returncode = 0
             return mock
 
+        # Mock sinfo to return empty so the real host's cluster doesn't pollute the test.
+        import subprocess as _sp
+        mock_sinfo = _sp.CompletedProcess(args=["sinfo"], returncode=0, stdout="", stderr="")
+
         with patch("asyncio.create_subprocess_shell", side_effect=mock_shell), \
+             patch("subprocess.run", return_value=mock_sinfo), \
              patch.dict("os.environ", {"SLURM_VALID_PARTITIONS": "", "SLURM_DEFAULT_PARTITION": ""}, clear=False):
             result = await client.submit(
                 script="#!/bin/bash\n#SBATCH --partition=fx700\necho hi",

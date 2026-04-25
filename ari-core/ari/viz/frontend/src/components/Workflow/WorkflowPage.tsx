@@ -53,6 +53,8 @@ function PhaseNode({ data }: { data: any }) {
     (t: any) => (typeof t === 'string' ? t : t.name),
   );
   const activeTool = data.tool || '';
+  const disabledNames: string[] = data.disabledToolNames || [];
+  const isOff = (t: string) => disabledNames.includes(t);
   return (
     <div
       style={{
@@ -74,22 +76,35 @@ function PhaseNode({ data }: { data: any }) {
       {/* MCP tool badges */}
       {availableTools.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 4 }}>
-          {availableTools.map((t) => (
-            <span
-              key={t}
-              style={{
-                fontSize: '.58rem',
-                padding: '1px 4px',
-                borderRadius: 4,
-                border: `1px solid ${t === activeTool ? col : 'var(--border, #444)'}`,
-                background: t === activeTool ? col + '22' : 'transparent',
-                color: t === activeTool ? col : 'var(--muted, #666)',
-                fontWeight: t === activeTool ? 700 : 400,
-              }}
-            >
-              {t}
-            </span>
-          ))}
+          {availableTools.map((t) => {
+            const active = t === activeTool;
+            const off = isOff(t);
+            return (
+              <span
+                key={t}
+                style={{
+                  fontSize: '.58rem',
+                  padding: '1px 4px',
+                  borderRadius: 4,
+                  border: `1px solid ${off ? 'var(--border, #333)' : active ? col : 'var(--border, #444)'}`,
+                  background: off ? 'transparent' : active ? col + '22' : 'transparent',
+                  color: off ? 'var(--muted, #555)' : active ? col : 'var(--muted, #666)',
+                  fontWeight: !off && active ? 700 : 400,
+                  textDecoration: off ? 'line-through' : 'none',
+                  opacity: off ? 0.5 : 1,
+                }}
+                title={
+                  off
+                    ? `${t}: disabled in MCP Skill Inventory — stage cannot call this tool`
+                    : active
+                      ? `${t}: this stage's tool`
+                      : t
+                }
+              >
+                {t}
+              </span>
+            );
+          })}
         </div>
       )}
       {!availableTools.length && activeTool && (
@@ -326,7 +341,10 @@ interface SkillMcpEntry {
   tools: string[];
   version: string;
   dir: string;
-  phase?: string;
+  // workflow.yaml can now declare skill phases as either a single string
+  // ("bfts" | "paper" | "reproduce" | "all" | "none") or a list of phases
+  // (e.g. ["paper", "reproduce"]) — normalize on read/write.
+  phase?: string | string[];
   usage?: string;
 }
 
@@ -492,6 +510,15 @@ function NodeEditModal({
   const skillNames = Object.keys(skillMcp).sort();
   const toolsForSkill = skill && skillMcp[skill] ? skillMcp[skill].tools : [];
 
+  // React-driver stages use pre_tool/post_tool plus a `react:` block instead of
+  // a single tool. The modal cannot safely round-trip the full block (system
+  // prompts, sandbox path, max_steps, …), so we show a read-only summary and
+  // only allow editing `skill` / `description` / `phase` here.
+  const preTool: string = (node.data as any)?.pre_tool || '';
+  const postTool: string = (node.data as any)?.post_tool || '';
+  const reactBlock = (node.data as any)?.react;
+  const isReactStage = Boolean(preTool || postTool || reactBlock);
+
   return (
     <div
       style={{
@@ -565,31 +592,88 @@ function NodeEditModal({
               </div>
             )}
           </div>
-          <div>
-            <label style={{ fontSize: '.82rem', display: 'block', marginBottom: 4 }}>MCP Tool</label>
-            {toolsForSkill.length > 0 ? (
-              <select
-                value={tool}
-                onChange={(e) => setTool(e.target.value)}
-                style={inputStyle}
-              >
-                <option value="">(none — use all tools)</option>
-                {toolsForSkill.map((t) => (
-                  <option key={typeof t === 'string' ? t : (t as any).name} value={typeof t === 'string' ? t : (t as any).name}>
-                    {typeof t === 'string' ? t : (t as any).name}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                type="text"
-                value={tool}
-                onChange={(e) => setTool(e.target.value)}
-                placeholder={skill ? '(no tools found — type manually)' : '(select a skill first)'}
-                style={inputStyle}
-              />
-            )}
-          </div>
+          {isReactStage ? (
+            <div
+              style={{
+                background: 'rgba(245, 158, 11, 0.08)',
+                border: '1px solid rgba(245, 158, 11, 0.4)',
+                borderRadius: 6,
+                padding: 10,
+                fontSize: '.72rem',
+                lineHeight: 1.4,
+              }}
+            >
+              <div style={{ color: '#f59e0b', fontWeight: 600, marginBottom: 4 }}>
+                ReAct-driver stage (tool fields read-only)
+              </div>
+              <div style={{ color: 'var(--muted)' }}>
+                This stage runs under <code>ari.agent.react_driver</code>: it
+                calls <code>pre_tool</code>, drives a ReAct loop over the MCP
+                skills opted into <code>agent_phase</code>, then calls{' '}
+                <code>post_tool</code>. The full <code>react:</code> block
+                (prompts, sandbox, max_steps, final_tool) must be edited in{' '}
+                <code>config/workflow.yaml</code> directly.
+              </div>
+              <ul style={{ margin: '8px 0 0', paddingLeft: 16, color: 'var(--text, #ddd)' }}>
+                {preTool && (
+                  <li>
+                    pre_tool: <code>{preTool}</code>
+                  </li>
+                )}
+                {postTool && (
+                  <li>
+                    post_tool: <code>{postTool}</code>
+                  </li>
+                )}
+                {reactBlock && (reactBlock as any).agent_phase && (
+                  <li>
+                    agent_phase: <code>{(reactBlock as any).agent_phase}</code>
+                  </li>
+                )}
+                {reactBlock && (reactBlock as any).final_tool && (
+                  <li>
+                    final_tool: <code>{(reactBlock as any).final_tool}</code>
+                  </li>
+                )}
+                {reactBlock && (reactBlock as any).max_steps && (
+                  <li>
+                    max_steps: <code>{(reactBlock as any).max_steps}</code>
+                  </li>
+                )}
+                {reactBlock && (reactBlock as any).sandbox && (
+                  <li>
+                    sandbox: <code>{(reactBlock as any).sandbox}</code>
+                  </li>
+                )}
+              </ul>
+            </div>
+          ) : (
+            <div>
+              <label style={{ fontSize: '.82rem', display: 'block', marginBottom: 4 }}>MCP Tool</label>
+              {toolsForSkill.length > 0 ? (
+                <select
+                  value={tool}
+                  onChange={(e) => setTool(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="">(none — use all tools)</option>
+                  {toolsForSkill.map((t) => (
+                    <option key={typeof t === 'string' ? t : (t as any).name} value={typeof t === 'string' ? t : (t as any).name}>
+                      {typeof t === 'string' ? t : (t as any).name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={tool}
+                  onChange={(e) => setTool(e.target.value)}
+                  placeholder={skill ? '(no tools found — type manually)' : '(select a skill first)'}
+                  style={inputStyle}
+                />
+              )}
+            </div>
+          )}
           <div>
             <label style={{ fontSize: '.82rem', display: 'block', marginBottom: 4 }}>Description</label>
             <textarea
@@ -760,6 +844,7 @@ export default function WorkflowPage() {
           return;
         }
         const flow = flowRes.flow || { nodes: [], edges: [] };
+        const initialDisabled: string[] = wfRes.ok && wfRes.disabled_tools ? wfRes.disabled_tools : [];
         // Attach callbacks and available MCP tools to node data
         const augNodes = (flow.nodes || []).map((n: Node) => {
           const skillEntry = mcp[n.data?.skill || ''];
@@ -768,6 +853,7 @@ export default function WorkflowPage() {
             data: {
               ...n.data,
               availableTools: skillEntry?.tools || [],
+              disabledToolNames: initialDisabled,
               onToggle: (enabled: boolean) => {
                 setNodes((nds) =>
                   nds.map((nd) =>
@@ -817,6 +903,18 @@ export default function WorkflowPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Keep PhaseNode badges in sync when the user toggles disabledTools
+  // from the MCP Skill Inventory section.
+  useEffect(() => {
+    const names = [...disabledTools];
+    setNodes((nds) =>
+      nds.map((n) => ({
+        ...n,
+        data: { ...n.data, disabledToolNames: names },
+      })),
+    );
+  }, [disabledTools]);
 
   // ── Auto-save (debounced 2s) ──────────────
 
@@ -1190,12 +1288,22 @@ export default function WorkflowPage() {
                     )}
                     {tools.length > 0 && (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 4 }}>
-                        {tools.map((t) => (
-                          <span key={t} style={{
-                            fontSize: '.56rem', padding: '1px 4px', borderRadius: 4,
-                            border: '1px solid var(--border, #444)', color: 'var(--muted, #888)',
-                          }}>{t}</span>
-                        ))}
+                        {tools.map((t) => {
+                          const off = disabledTools.has(t);
+                          return (
+                            <span
+                              key={t}
+                              style={{
+                                fontSize: '.56rem', padding: '1px 4px', borderRadius: 4,
+                                border: '1px solid var(--border, #444)',
+                                color: off ? 'var(--muted, #555)' : 'var(--muted, #888)',
+                                textDecoration: off ? 'line-through' : 'none',
+                                opacity: off ? 0.5 : 1,
+                              }}
+                              title={off ? `${t}: disabled in MCP Skill Inventory` : t}
+                            >{t}</span>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1352,21 +1460,47 @@ export default function WorkflowPage() {
           })
           .sort(([a], [b]) => a.localeCompare(b));
 
-        const handlePhaseToggle = (skillName: string, currentPhase: string | undefined, toggledPhase: 'bfts' | 'paper') => {
-          const norm = currentPhase === 'pipeline' ? 'paper' : (currentPhase || 'all');
-          const hasBfts = norm === 'bfts' || norm === 'all';
-          const hasPaper = norm === 'paper' || norm === 'all';
+        // Phase values understood by ari.mcp.client._phase_matches. "all"
+        // matches every phase; "none" disables the skill. A skill may also
+        // declare a list like ["paper", "reproduce"].
+        type PhaseName = 'bfts' | 'paper' | 'reproduce';
+        const PHASE_LIST: PhaseName[] = ['bfts', 'paper', 'reproduce'];
 
-          let newBfts = hasBfts;
-          let newPaper = hasPaper;
-          if (toggledPhase === 'bfts') newBfts = !hasBfts;
-          if (toggledPhase === 'paper') newPaper = !hasPaper;
+        const phasesOfEntry = (
+          currentPhase: string | string[] | undefined,
+        ): Set<PhaseName> => {
+          // Legacy value: "pipeline" meant the paper pipeline.
+          const toPhases = (v: string): PhaseName[] => {
+            const s = v === 'pipeline' ? 'paper' : v;
+            if (s === 'all') return [...PHASE_LIST];
+            if (s === 'none' || s === '') return [];
+            return PHASE_LIST.includes(s as PhaseName) ? [s as PhaseName] : [];
+          };
+          const acc = new Set<PhaseName>();
+          if (Array.isArray(currentPhase)) {
+            for (const v of currentPhase) toPhases(String(v)).forEach((p) => acc.add(p));
+          } else {
+            toPhases(currentPhase || 'all').forEach((p) => acc.add(p));
+          }
+          return acc;
+        };
 
-          let newPhase: string;
-          if (newBfts && newPaper) newPhase = 'all';
-          else if (newBfts) newPhase = 'bfts';
-          else if (newPaper) newPhase = 'paper';
-          else newPhase = 'none';
+        const phasesToYaml = (phases: Set<PhaseName>): string | string[] => {
+          if (phases.size === 0) return 'none';
+          if (phases.size === PHASE_LIST.length) return 'all';
+          if (phases.size === 1) return [...phases][0];
+          return PHASE_LIST.filter((p) => phases.has(p));
+        };
+
+        const handlePhaseToggle = (
+          skillName: string,
+          currentPhase: string | string[] | undefined,
+          toggledPhase: PhaseName,
+        ) => {
+          const phases = phasesOfEntry(currentPhase);
+          if (phases.has(toggledPhase)) phases.delete(toggledPhase);
+          else phases.add(toggledPhase);
+          const newPhase = phasesToYaml(phases);
 
           // Update local state
           setSkillMcp((prev) => ({
@@ -1401,10 +1535,11 @@ export default function WorkflowPage() {
                 const tools: string[] = (entry.tools || []).map(
                   (t: any) => (typeof t === 'string' ? t : t.name),
                 );
-                const phase = entry.phase === 'pipeline' ? 'paper' : (entry.phase || 'all');
-                const hasBfts = phase === 'bfts' || phase === 'all';
-                const hasPaper = phase === 'paper' || phase === 'all';
-                const isDisabled = phase === 'none';
+                const enabledPhases = phasesOfEntry(entry.phase);
+                const hasBfts = enabledPhases.has('bfts');
+                const hasPaper = enabledPhases.has('paper');
+                const hasReproduce = enabledPhases.has('reproduce');
+                const isDisabled = enabledPhases.size === 0;
                 return (
                   <div
                     key={name}
@@ -1463,6 +1598,18 @@ export default function WorkflowPage() {
                           style={{ accentColor: '#8b5cf6' }}
                         />
                         <span style={{ color: '#8b5cf6' }}>Paper</span>
+                      </label>
+                      <label
+                        style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}
+                        title="Expose this skill to the ReAct reproducibility agent (paper-re)."
+                      >
+                        <input
+                          type="checkbox"
+                          checked={hasReproduce}
+                          onChange={() => handlePhaseToggle(name, entry.phase, 'reproduce')}
+                          style={{ accentColor: '#f59e0b' }}
+                        />
+                        <span style={{ color: '#f59e0b' }}>Reproduce</span>
                       </label>
                     </div>
                     {tools.length > 0 && (

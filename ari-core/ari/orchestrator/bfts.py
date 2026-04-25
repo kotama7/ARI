@@ -145,7 +145,10 @@ class BFTS:
             f"Reply with ONLY the index number (0-based) of the best node."
         )
 
-        response = self.llm.complete([LLMMessage(role="user", content=prompt)])
+        response = self.llm.complete(
+            [LLMMessage(role="user", content=prompt)],
+            phase="bfts", skill="select_next_node",
+        )
         try:
             idx = int(response.content.strip())
             if 0 <= idx < len(candidates):
@@ -219,7 +222,10 @@ class BFTS:
             "Reply with ONLY the index number (0-based)."
         )
 
-        response = self.llm.complete([LLMMessage(role="user", content=prompt)])
+        response = self.llm.complete(
+            [LLMMessage(role="user", content=prompt)],
+            phase="bfts", skill="select_best_to_expand",
+        )
         try:
             idx = int(response.content.strip())
             if 0 <= idx < len(frontier):
@@ -377,7 +383,10 @@ class BFTS:
             "Example: [{\"label\": \"validation\", \"direction\": \"<one-sentence plan>\"}]"
         )
 
-        response = self.llm.complete([LLMMessage(role="user", content=prompt)])
+        response = self.llm.complete(
+            [LLMMessage(role="user", content=prompt)],
+            node_id=node.id, phase="bfts", skill="expand",
+        )
 
         try:
             raw = response.content.strip()

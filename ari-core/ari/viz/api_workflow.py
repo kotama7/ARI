@@ -87,6 +87,13 @@ def workflow_yaml_to_flow(yaml_data: dict) -> dict:
                     "tool": s.get("tool", ""),
                     "phase": s.get("phase", ""),
                     "description": s.get("description", ""),
+                    # React-driver stages expose pre_tool/post_tool instead of
+                    # a single tool; carry both so the UI can show them
+                    # read-only and _merge_stages round-trips them back into
+                    # workflow.yaml verbatim.
+                    "pre_tool": s.get("pre_tool", ""),
+                    "post_tool": s.get("post_tool", ""),
+                    "react": s.get("react") or None,
                 },
             })
 
@@ -136,7 +143,13 @@ def workflow_yaml_to_flow(yaml_data: dict) -> dict:
 
 
 # Fields that React Flow carries — only these are updated from the flow editor.
-_FLOW_FIELDS = {"stage", "skill", "tool", "description", "depends_on", "enabled", "phase", "loop_back_to"}
+# pre_tool/post_tool are included so that react stages survive an edit roundtrip
+# (_merge_stages still preserves the full `react:` block via the
+# existing-YAML fallback).
+_FLOW_FIELDS = {
+    "stage", "skill", "tool", "description", "depends_on",
+    "enabled", "phase", "loop_back_to", "pre_tool", "post_tool",
+}
 
 
 def _merge_stages(existing: list[dict], from_flow: list[dict]) -> list[dict]:
@@ -226,6 +239,21 @@ def flow_to_workflow_yaml(flow_data: dict) -> dict:
             "phase": phase,
         }
 
+        # React-driver stages: forward pre_tool/post_tool only when set, so
+        # _merge_stages does not insert empty strings into stages that never
+        # had them. The `react:` block itself is preserved by the
+        # existing-YAML fallback in _merge_stages.
+        pre_t = str(data.get("pre_tool") or "").strip()
+        post_t = str(data.get("post_tool") or "").strip()
+        if pre_t:
+            stage["pre_tool"] = pre_t
+        if post_t:
+            stage["post_tool"] = post_t
+        # When the stage is driven by react_driver (pre/post tools present)
+        # the flat `tool` field is redundant — drop it to keep the YAML clean.
+        if pre_t or post_t:
+            stage.pop("tool", None)
+
         if nid in loop_backs:
             stage["loop_back_to"] = loop_backs[nid]
 
@@ -303,10 +331,46 @@ def _api_save_workflow_flow(body: bytes) -> dict:
     return {"ok": False, "error": "workflow.yaml not found"}
 
 
+def _normalize_phase_value(phase: object) -> str | list[str]:
+    """Coerce a client-supplied phase into the canonical YAML form.
+
+    - A list with a single entry collapses to that string ("bfts", "all", "none")
+      so single-phase skills stay compact in workflow.yaml.
+    - Multi-phase lists are kept as a list, deduplicated, with "all" and "none"
+      resolved (all → collapse to "all", none present with other values → "none"
+      is dropped because it would disable the skill).
+    - Plain strings pass through unchanged.
+    """
+    if isinstance(phase, list):
+        seen: list[str] = []
+        for p in phase:
+            s = str(p).strip()
+            if s and s not in seen:
+                seen.append(s)
+        if not seen:
+            return "all"
+        if "all" in seen:
+            return "all"
+        # "none" is exclusive: if the user unchecks everything they should send
+        # ["none"] explicitly; any phase alongside "none" drops "none".
+        if "none" in seen and len(seen) > 1:
+            seen = [p for p in seen if p != "none"]
+        if len(seen) == 1:
+            return seen[0]
+        return seen
+    return str(phase)
+
+
 def _api_save_skill_phases(body: bytes) -> dict:
     """POST /api/workflow/skills — Update skill phase assignments in workflow.yaml.
 
-    Expected body: {"skills": [{"name": "web-skill", "phase": "all"}, ...]}
+    Expected body::
+
+        {"skills": [{"name": "web-skill", "phase": "all"}, ...]}
+
+    or with a list phase::
+
+        {"skills": [{"name": "web-skill", "phase": ["paper", "reproduce"]}, ...]}
     """
     import yaml
 
@@ -315,8 +379,12 @@ def _api_save_skill_phases(body: bytes) -> dict:
     if not updates or not isinstance(updates, list):
         return {"ok": False, "error": "missing skills array", "_status": 400}
 
-    # Build lookup: name -> phase
-    phase_map = {s["name"]: s["phase"] for s in updates if "name" in s and "phase" in s}
+    # Build lookup: name -> normalized phase (str or list[str])
+    phase_map: dict[str, str | list[str]] = {}
+    for s in updates:
+        if not isinstance(s, dict) or "name" not in s or "phase" not in s:
+            continue
+        phase_map[s["name"]] = _normalize_phase_value(s["phase"])
     if not phase_map:
         return {"ok": False, "error": "no valid skill phase entries", "_status": 400}
 

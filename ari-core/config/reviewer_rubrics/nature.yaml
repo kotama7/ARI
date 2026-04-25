@@ -1,0 +1,49 @@
+id: nature
+version: "2026"
+venue: Nature / Science / Cell / PNAS
+domain: Natural & Life Sciences
+closed_review: true
+
+params:
+  num_reflections: 5
+  num_fs_examples: 0
+  num_reviews_ensemble: 1
+  temperature: 0.6   # slightly conservative — journal reviews reward caution
+  score_threshold_decision: 4
+  fewshot_mode: static
+  fewshot_dir: ""
+
+score_dimensions:
+  - { name: scientific_rigor,        scale: [1, 5], description: Experimental design, controls, and methodological correctness }
+  - { name: novelty,                 scale: [1, 5], description: Conceptual advance relative to published literature }
+  - { name: broad_impact,            scale: [1, 5], description: Relevance across disciplines and to a general scientific audience }
+  - { name: statistical_validity,    scale: [1, 5], description: Sample size, statistical tests, effect sizes, multiple-comparison corrections }
+  - { name: reproducibility,         scale: [1, 5], description: Methods detail, data availability, and code availability }
+  - { name: ethical_compliance,      scale: [1, 5], description: IRB / IACUC / ethical-approval documentation (5 = fully documented, 1 = concerns) }
+  - { name: writing_quality,         scale: [1, 5], description: Clarity for a broad scientific readership }
+  - { name: overall,                 scale: [1, 5], description: Overall recommendation }
+  - { name: confidence,              scale: [1, 5], description: Reviewer expertise confidence }
+
+text_sections:
+  - { name: summary, required: true }
+  - { name: major_concerns, required: true }
+  - { name: minor_concerns, required: false }
+  - { name: statistical_review, required: false }
+  - { name: data_and_code_availability, required: false }
+  - { name: ethical_considerations, required: false }
+
+decision:
+  type: categorical
+  options: [accept, minor_revision, major_revision, reject_and_resubmit, reject]
+  threshold_dimension: overall
+  threshold_value: 4
+
+prompt_overrides:
+  system_hint: >-
+    Follow Nature / Science / Cell family reviewer norms. Demand methodological
+    rigor, statistical validity (sample sizes, effect sizes, correction for
+    multiple comparisons), and data/code availability. Assess whether the
+    claimed advance justifies publication in a venue requiring broad impact —
+    results that are technically correct but incremental should be redirected.
+    Ethical compliance (IRB / IACUC / consent) is non-negotiable where
+    applicable.

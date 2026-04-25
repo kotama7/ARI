@@ -97,25 +97,25 @@ class TestSettingsSavePayload:
         src = _settings_page()
         fn_idx = src.find("handleSave")
         assert fn_idx >= 0, "handleSave not found"
-        body = src[fn_idx:fn_idx + 500]
+        body = src[fn_idx:fn_idx + 1500]
         assert "llm_backend" in body or "provider" in body, "handleSave must send provider"
 
     def test_handleSave_sends_llm_model(self):
         src = _settings_page()
         fn_idx = src.find("handleSave")
-        body = src[fn_idx:fn_idx + 500]
+        body = src[fn_idx:fn_idx + 1500]
         assert "llm_model" in body, "handleSave must send llm_model"
 
     def test_handleSave_sends_api_key(self):
         src = _settings_page()
         fn_idx = src.find("handleSave")
-        body = src[fn_idx:fn_idx + 500]
+        body = src[fn_idx:fn_idx + 1500]
         assert "api_key" in body or "llm_api_key" in body, "handleSave must send api_key"
 
     def test_handleSave_sends_base_url(self):
         src = _settings_page()
         fn_idx = src.find("handleSave")
-        body = src[fn_idx:fn_idx + 500]
+        body = src[fn_idx:fn_idx + 1500]
         assert "base_url" in body or "baseUrl" in body, "handleSave must send base URL"
 
     def test_api_service_posts_settings(self):
@@ -136,7 +136,7 @@ class TestSettingsSavePayload:
         """handleSave must use modelSelect with modelCustom fallback."""
         src = _settings_page()
         fn_idx = src.find("handleSave")
-        body = src[fn_idx:fn_idx + 500]
+        body = src[fn_idx:fn_idx + 1500]
         assert "modelSelect" in body, \
             "handleSave must read from modelSelect dropdown"
         assert "modelCustom" in body, \
@@ -315,7 +315,7 @@ class TestSettingsPageLoad:
         src = _settings_page()
         fn_idx = src.find("loadSettings")
         assert fn_idx >= 0, "loadSettings not found in SettingsPage"
-        body = src[fn_idx:fn_idx + 500]
+        body = src[fn_idx:fn_idx + 1500]
         assert "setProvider" in body, "loadSettings must set provider state"
 
     def test_settings_page_populates_base_url(self):
@@ -323,7 +323,7 @@ class TestSettingsPageLoad:
         src = _settings_page()
         fn_idx = src.find("loadSettings")
         assert fn_idx >= 0
-        body = src[fn_idx:fn_idx + 500]
+        body = src[fn_idx:fn_idx + 1500]
         assert "setBaseUrl" in body or "ollama_host" in body, \
             "loadSettings must read ollama_host and populate base URL"
 
@@ -332,7 +332,7 @@ class TestSettingsPageLoad:
         src = _settings_page()
         fn_idx = src.find("loadSettings")
         assert fn_idx >= 0
-        body = src[fn_idx:fn_idx + 500]
+        body = src[fn_idx:fn_idx + 1500]
         assert "setApiKey" in body, "loadSettings must populate API key"
 
     def test_provider_change_populates_model_list(self):
@@ -376,7 +376,7 @@ class TestSlurmSettingsRoundtrip:
         """handleSave must include slurm_* in POST body."""
         src = _settings_page()
         fn_idx = src.find("handleSave")
-        body = src[fn_idx:fn_idx + 800]
+        body = src[fn_idx:fn_idx + 1800]
         assert "slurm_cpus" in body, "handleSave must send slurm_cpus"
         assert "slurm_memory_gb" in body, "handleSave must send slurm_memory_gb"
 
@@ -462,6 +462,120 @@ class TestSettingsJsonRoundtrip:
         assert (
             "_settings_path" in src or "project_settings_path" in src
         ), "settings path must be derived from project state, not hardcoded"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CONTRACT: Memory (Letta) settings — handle/embedding configurability
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestLettaMemorySettings:
+    """The Settings page must expose Letta config so operators can pick
+    a non-flaky embedding handle. The original add_memory 400 was caused
+    by an agent created with letta/letta-free routing through
+    embeddings.memgpt.ai, which intermittently returns 522/empty body.
+    These tests pin the GUI/API contract that prevents regression."""
+
+    LETTA_KEYS = {
+        "letta_base_url", "letta_api_key",
+        "letta_embedding_config",
+    }
+
+    def test_api_settings_defaults_include_letta_keys(self):
+        """GET /api/settings defaults must include all letta_* keys so
+        the GUI can render them on a fresh project."""
+        src = _api_set()
+        for key in self.LETTA_KEYS:
+            assert key in src, f"api_settings.py defaults missing: {key}"
+
+    def test_settings_page_renders_memory_card(self):
+        """The SettingsPage must show a Memory card titled via i18n."""
+        src = _settings_page()
+        assert "settings_memory" in src, (
+            "SettingsPage must render the Memory card via t('settings_memory')"
+        )
+
+    def test_settings_page_state_for_letta_fields(self):
+        """All Letta values must be backed by component state so the
+        GUI can edit them. We check the state-hook names. Note: the
+        Letta agent's chat LLM is hardcoded inside ari-skill-memory, so
+        the GUI no longer exposes lettaLlm* state."""
+        src = _settings_page()
+        for needle in (
+            "lettaBaseUrl", "lettaApiKey",
+            "lettaEmbedProvider", "lettaEmbedModel",
+        ):
+            assert needle in src, f"SettingsPage missing state hook: {needle}"
+
+    def test_settings_page_provider_model_two_stage(self):
+        """Memory card must offer a two-stage provider→model picker
+        for the embedding handle. The LLM picker was removed: ARI never
+        invokes the Letta agent's chat LLM, so the model is hardcoded
+        inside ari-skill-memory."""
+        src = _settings_page()
+        assert "LETTA_EMBEDDING_BY_PROVIDER" in src
+        assert "LETTA_EMBEDDING_BY_PROVIDER[lettaEmbedProvider]" in src
+        assert "LETTA_LLM_BY_PROVIDER" not in src
+
+    def test_settings_page_has_restart_button(self):
+        """The Memory card must expose a Restart Letta button — Letta
+        does not reload env on .env changes, so the operator needs an
+        in-GUI way to bounce it after editing keys/handles."""
+        src = _settings_page()
+        assert "restartLetta" in src, "must call restartLetta()"
+        assert "settings_memory_restart" in src, (
+            "Restart button must use the i18n key"
+        )
+        assert "settings_memory_restart_confirm" in src, (
+            "Restart action must require confirmation"
+        )
+
+    def test_handleSave_sends_all_letta_keys(self):
+        """handleSave must include all letta_* keys in the POST body —
+        otherwise the GUI silently fails to persist them."""
+        src = _settings_page()
+        fn_idx = src.find("handleSave")
+        body = src[fn_idx:fn_idx + 2500]
+        for key in self.LETTA_KEYS:
+            assert key in body, f"handleSave must POST: {key}"
+
+    def test_loadSettings_reads_all_letta_keys(self):
+        """The mount-time loader must read every letta_* key the API
+        returns, otherwise saved values won't appear in the GUI on
+        reload."""
+        src = _settings_page()
+        for key in self.LETTA_KEYS:
+            assert f"r.{key}" in src, (
+                f"loadSettings must hydrate from r.{key}"
+            )
+
+    def test_letta_free_warning_is_surfaced(self):
+        """When the operator picks the known-flaky letta/letta-free
+        handle, the GUI must show a warning naming the failure mode.
+        This is the user-facing companion to the LettaBackend integrity
+        check; a silent dropdown would let users pick the broken option
+        without warning."""
+        src = _settings_page()
+        assert "letta/letta-free" in src
+        assert "settings_memory_letta_free_warning" in src
+
+    def test_api_experiment_propagates_letta_env(self):
+        """api_experiment.py must inject letta_* settings into the
+        subprocess env. The skill subprocess inherits proc_env (see
+        ari/mcp/client.py:115) so what we set here is what the skill
+        sees. LETTA_LLM_CONFIG is intentionally omitted — the Letta
+        agent's chat LLM is hardcoded inside ari-skill-memory."""
+        src = _api_exp()
+        for env_name in (
+            "LETTA_BASE_URL", "LETTA_API_KEY",
+            "LETTA_EMBEDDING_CONFIG",
+        ):
+            assert env_name in src, (
+                f"api_experiment.py must set {env_name} in proc_env"
+            )
+        assert "LETTA_LLM_CONFIG" not in src, (
+            "api_experiment.py must NOT propagate LETTA_LLM_CONFIG — "
+            "the agent's chat LLM is hardcoded in ari-skill-memory."
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════════════

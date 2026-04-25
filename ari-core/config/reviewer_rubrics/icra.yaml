@@ -1,0 +1,45 @@
+id: icra
+version: "2026"
+venue: ICRA / IROS / RSS / CoRL
+domain: Robotics
+closed_review: true
+
+params:
+  num_reflections: 5
+  num_fs_examples: 0
+  num_reviews_ensemble: 1
+  temperature: 0.75
+  score_threshold_decision: 3
+  fewshot_mode: static
+  fewshot_dir: ""
+
+score_dimensions:
+  - { name: technical_contribution,    scale: [1, 5], description: Novelty and depth of the robotics contribution }
+  - { name: experimental_validation,   scale: [1, 5], description: Quality of real-robot / simulation experiments }
+  - { name: sim_to_real_evidence,      scale: [1, 5], description: Evidence of transfer to physical hardware (if applicable; 5 = physical deployment, 1 = simulation only when real would be feasible) }
+  - { name: practical_relevance,       scale: [1, 5], description: Impact on real robotics systems and applications }
+  - { name: reproducibility,           scale: [1, 5], description: Code, data, hardware specifications, and video supplements }
+  - { name: clarity,                   scale: [1, 5], description: Writing, figures, and system-diagram quality }
+  - { name: overall,                   scale: [1, 5], description: Overall recommendation }
+  - { name: confidence,                scale: [1, 5], description: Reviewer confidence }
+
+text_sections:
+  - { name: strengths, required: true }
+  - { name: weaknesses, required: true }
+  - { name: questions, required: true }
+  - { name: limitations, required: false }
+  - { name: video_supplement_notes, required: false }
+
+decision:
+  type: categorical
+  options: [accept, borderline, reject]
+  threshold_dimension: overall
+  threshold_value: 3
+
+prompt_overrides:
+  system_hint: >-
+    Follow ICRA/IROS/RSS/CoRL reviewer norms. When physical hardware evaluation
+    is feasible, simulation-only validation should be penalised. Evaluate the
+    video supplement (if provided) as evidence for claims about robustness,
+    control quality, and failure modes. Flag missing baseline comparisons,
+    unrealistic task setups, and overclaims of generalisation.

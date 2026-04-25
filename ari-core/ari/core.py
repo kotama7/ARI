@@ -55,7 +55,10 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
     from ari.evaluator import LLMEvaluator
     from ari.llm.client import LLMClient
     from ari.mcp.client import MCPClient
-    from ari.memory.file_client import FileMemoryClient
+    # ReAct trace now lives in Letta. The
+    # v0.5.x FileMemoryClient is kept only as a v0.5.x → v0.6.0 migration
+    # source (`ari memory migrate --react`).
+    from ari.memory.letta_client import LettaMemoryClient
     from ari.orchestrator.bfts import BFTS
     from ari.orchestrator.scheduler import Scheduler
     from ari.paths import PathManager
@@ -84,7 +87,8 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
 
     llm = _phase_llm("coding")          # AgentLoop / ReAct
     bfts_llm = _phase_llm("bfts")       # BFTS orchestrator
-    memory = FileMemoryClient(str(PathManager.project_memory_path(checkpoint_dir)))
+    # the one-line swap.
+    memory = LettaMemoryClient(checkpoint_dir=str(checkpoint_dir))
     _disabled = list(cfg.disabled_tools)
     _skills = list(cfg.skills)
     if not cfg.resources.get("hpc_enabled", True):
@@ -102,10 +106,12 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
 
     # Evaluator may also use a phase-specific model override (ARI_MODEL_EVAL).
     _eval_model = _os_phase.environ.get("ARI_MODEL_EVAL") or llm._model_name()
+    _axis_weights = getattr(getattr(cfg, "evaluator", None), "axis_weights", None) or None
     evaluator = LLMEvaluator(
         model=_eval_model,
         api_base=llm.config.base_url if llm.config.backend == "ollama" else None,
         metric_spec=metric_spec,
+        axis_weights=_axis_weights,
     )
 
     # WorkflowHints: auto-extracted from experiment file

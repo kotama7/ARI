@@ -18,6 +18,7 @@ ARI のコマンドライン操作の完全なリファレンスです。CLI は
 | `ari delete` | チェックポイントを削除 | Experiments ページ → Delete ボタン |
 | `ari settings` | 設定の表示または変更 | Settings ページ |
 | `ari skills-list` | 利用可能なツールを一覧表示 | Settings → MCP Skills |
+| `ari memory ...` | Letta メモリバックエンドを管理 | Settings → Memory (Letta) |
 
 ---
 
@@ -87,16 +88,40 @@ ari resume ./checkpoints/20260328_matrix_opt/
 実験を実行せずに論文のみを生成します。実験がすでに完了している場合に便利です。
 
 ```bash
-ari paper <checkpoint_dir> [--experiment <experiment.md>] [--config <config.yaml>]
+ari paper <checkpoint_dir> [--experiment <experiment.md>] [--config <config.yaml>] \
+                           [--rubric <rubric_id>] \
+                           [--fewshot-mode static|dynamic] \
+                           [--num-reviews-ensemble N] \
+                           [--num-reflections N]
+
+# 同梱ルーブリック (16 種): neurips (既定、v2 互換)、iclr、icml、cvpr、acl、
+#   sc、chi、osdi、stoc、icra、siggraph、nature、usenix_security、
+#   journal_generic、workshop、generic_conference。加えて内蔵の `legacy`
+#   フォールバック (v0.5 スキーマ) も利用可能。
+#   ari-core/config/reviewer_rubrics/ に <id>.yaml を追加するだけで
+#   新しい venue に対応できます。
 ```
 
-**使用例：**
+**使用例 — v2 互換の既定 (NeurIPS 形式、1-shot、5 reflection):**
 
 ```bash
 ari paper ./checkpoints/20260328_matrix_opt/
 ```
 
-BFTS 後のパイプラインを実行します：データ変換、図表生成、論文執筆、レビュー、再現性チェック。
+**使用例 — Supercomputing (SC) ルーブリックで 5 名アンサンブル + メタ査読:**
+
+```bash
+ari paper ./checkpoints/20260328_matrix_opt/ \
+          --rubric sc --num-reviews-ensemble 5
+```
+
+論文パイプラインは: データ変換、図生成、論文執筆、VLM 図査読、**ルーブリック
+駆動の論文査読** (rubric 形式 + reflection + オプションのアンサンブル + Area
+Chair メタ査読)、再現性チェック (`ari/agent/react_driver.py` 駆動の ReAct
+エージェント) を実行します。
+
+CLI フラグは環境変数でも設定可能: `ARI_RUBRIC`、`ARI_FEWSHOT_MODE`、
+`ARI_NUM_REVIEWS_ENSEMBLE`、`ARI_NUM_REFLECTIONS`。
 
 ---
 
@@ -232,6 +257,47 @@ ari settings --model qwen3:32b --partition gpu --cpus 64 --mem 128
 
 ---
 
+## ari memory
+
+v0.6.0 で追加された Letta メモリバックエンド管理用のコマンド群。各
+サブコマンドは `--checkpoint <path>` または `ARI_CHECKPOINT_DIR` 環境変数
+から対象チェックポイントを解決します。
+
+```bash
+ari memory <subcommand> [options]
+```
+
+| サブコマンド | 説明 |
+|------------|------|
+| `health` | バックエンドへ ping、レイテンシ、namespace ハッシュ、サーバーバージョンを表示 |
+| `migrate` | v0.5.x の `memory_store.jsonl` (および `--react` 付与時は `memory.json`) を Letta コレクションへ一括取り込み。元ファイルは `*.migrated-<ts>` にリネーム |
+| `backup` | Letta 上のメモリを `{ckpt}/memory_backup.jsonl.gz` (gzipped JSONL) にスナップショット保存。パイプライン段の境界とシャットダウン時に自動実行 |
+| `restore` | `backup` の逆。`--on-conflict=skip\|overwrite\|merge` (既定 `skip`)。`ari resume` 時に Letta が空なら自動実行 |
+| `start-local` | ローカル Letta サーバを起動: `--path=auto\|docker\|singularity\|pip` |
+| `stop-local` | docker/singularity/pip Letta を停止 (best-effort) |
+| `prune-local` | ローカル Letta の状態 (volumes / venv / `~/.letta`) を削除。`--yes` 必須 |
+| `compact-access` | ローテーション済みの `memory_access.<ts>.jsonl` を `memory_access.summary.json` に集約し原ファイルを削除 |
+
+**使用例:**
+
+```bash
+# 現在のチェックポイントで Letta 到達性をチェック
+ARI_CHECKPOINT_DIR=/path/to/ckpt ari memory health
+
+# v0.5.x チェックポイントをアップグレード
+ari memory migrate --checkpoint /path/to/ckpt --react
+
+# ポータブルなアーカイブ
+ari memory backup  --checkpoint /path/to/ckpt
+rsync -a /path/to/ckpt/ other-host:/home/user/ckpt/
+ssh other-host "ari memory restore --checkpoint /home/user/ckpt"
+
+# `ari setup` で Letta が起動しなかった場合
+ari memory start-local --path=docker
+```
+
+---
+
 ## ari skills-list
 
 利用可能なすべての MCP ツールとその説明を一覧表示します。
@@ -281,6 +347,31 @@ ari skills-list [--config <config.yaml>]
 | `VLM_MODEL` | 図レビュー用 VLM モデル | `openai/gpt-4o` |
 | `ARI_ORCHESTRATOR_PORT` | orchestrator スキルの HTTP ポート | `9890` |
 
+### メモリ (Letta)
+
+| 変数 | 説明 | デフォルト |
+|------|------|-----------|
+| `LETTA_BASE_URL` | Letta サーバエンドポイント | `http://localhost:8283` |
+| `LETTA_API_KEY` | Letta Cloud で必須 | -- |
+| `LETTA_EMBEDDING_CONFIG` | アーカイバルメモリ用の埋め込みハンドル（チャット LLM は ARI から呼び出さないため固定） | `letta-default` |
+| `ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA` | `auto` / `pip` / `docker` / `singularity` / `none` | `auto` |
+| `ARI_MEMORY_LETTA_TIMEOUT_S` | 呼び出しごとのタイムアウト | `10` |
+| `ARI_MEMORY_LETTA_OVERFETCH` | 祖先ポストフィルタ用のオーバーフェッチ K | `200` |
+| `ARI_MEMORY_LETTA_DISABLE_SELF_EDIT` | Letta self-edit を無効化 (CoW セーフ) | `true` |
+| `ARI_MEMORY_ACCESS_LOG` | `{checkpoint}/memory_access.jsonl` への書き込み | `on` |
+| `ARI_MEMORY_ACCESS_LOG_MAX_MB` | ローテーション閾値 | `100` |
+| `ARI_MEMORY_AUTO_RESTORE` | `ari resume` 時にバックアップを自動復元 | `true` |
+| `ARI_MEMORY_BACKUP_INTERVAL_S` | 実行中の機会的バックアップ (0 = OFF) | `0` |
+
+### 論文査読 (ルーブリック)
+
+| 変数 | 説明 | デフォルト |
+|------|------|-----------|
+| `ARI_RUBRIC` | 査読に使う rubric_id (例: `neurips`、`sc`、`nature`、`generic_conference`) | `neurips` |
+| `ARI_FEWSHOT_MODE` | `static` (内蔵 examples) / `dynamic` (OpenReview 等から取得) | `static` |
+| `ARI_NUM_REVIEWS_ENSEMBLE` | 独立査読者数 (N>1 で Area Chair メタ査読も実行) | `1` |
+| `ARI_NUM_REFLECTIONS` | self-reflection ループ回数 | `5` |
+
 ### フェーズごとのモデルオーバーライド
 
 | 変数 | フェーズ |
@@ -288,7 +379,6 @@ ari skills-list [--config <config.yaml>]
 | `ARI_MODEL_IDEA` | アイデア生成 |
 | `ARI_MODEL_BFTS` | BFTS 実験 |
 | `ARI_MODEL_PAPER` | 論文執筆 |
-| `ARI_MODEL_REVIEW` | 論文レビュー |
 
 ### .env ファイル
 

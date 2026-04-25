@@ -35,6 +35,11 @@ interface StepLaunchProps {
   containerMode: string;
   // VLM Review
   vlmReviewModel: string;
+  // Paper Review (rubric-driven)
+  rubricId: string;
+  fewshotMode: 'static' | 'dynamic';
+  numReviewsEnsemble: number;
+  numReflections: number;
   // Navigation
   onBack: () => void;
   onLaunched: () => void;
@@ -67,6 +72,10 @@ export function StepLaunch({
   containerImage,
   containerMode,
   vlmReviewModel,
+  rubricId,
+  fewshotMode,
+  numReviewsEnsemble,
+  numReflections,
   onBack,
   onLaunched,
 }: StepLaunchProps) {
@@ -107,6 +116,10 @@ export function StepLaunch({
         container_image: containerImage || '',
         container_mode: containerMode || 'auto',
         vlm_review_model: vlmReviewModel,
+        rubric_id: rubricId,
+        fewshot_mode: fewshotMode,
+        num_reviews_ensemble: numReviewsEnsemble,
+        num_reflections: numReflections,
       });
 
       if (r.ok) {

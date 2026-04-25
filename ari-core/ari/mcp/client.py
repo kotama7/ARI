@@ -25,6 +25,27 @@ from ari.config import SkillConfig
 
 logger = logging.getLogger(__name__)
 
+
+def _normalize_phases(phase: str | list[str] | None) -> list[str]:
+    """Coerce SkillConfig.phase into a flat list of phase strings."""
+    if phase is None:
+        return ["all"]
+    if isinstance(phase, str):
+        return [phase]
+    return [str(p) for p in phase]
+
+
+def _phase_matches(skill_phase: str | list[str], want: str) -> bool:
+    """True iff a skill declared `skill_phase` should be exposed for `want`."""
+    phases = _normalize_phases(skill_phase)
+    return want in phases or "all" in phases
+
+
+def _phase_is_disabled(skill_phase: str | list[str]) -> bool:
+    """True iff the skill is fully disabled (phase == 'none' or ['none'])."""
+    phases = [p for p in _normalize_phases(skill_phase) if p]
+    return phases == ["none"]
+
 MAX_RETRIES = 3
 RETRY_DELAY = 0.5
 DEFAULT_TOOL_TIMEOUT = 300   # seconds
@@ -82,10 +103,16 @@ class _SkillConnection:
         import os
         skill_path = self._skill_path()
         python = self._resolve_python(skill_path)
+        # Expose ari-core on the skill subprocess's PYTHONPATH so the skill
+        # can `from ari import cost_tracker` and wire itself into the shared
+        # cost_trace.jsonl. ari-core is kept last so the skill's own src/
+        # layout wins on name collisions.
+        ari_core_root = str(Path(__file__).parents[2])
+        pythonpath = os.pathsep.join([str(skill_path), ari_core_root])
         return StdioServerParameters(
             command=python,
             args=[str(skill_path / "src" / "server.py")],
-            env={**os.environ, "PYTHONPATH": str(skill_path)},
+            env={**os.environ, "PYTHONPATH": pythonpath},
         )
 
     async def _start(self) -> None:
@@ -194,11 +221,22 @@ class _SkillConnection:
 class MCPClient:
     """MCP client with connection pooling and retry logic."""
 
+    # Tools whose CoW guard reads ARI_CURRENT_NODE_ID inside the
+    # pooled memory-skill MCP server. The (set_current_node, write)
+    # pair must be atomic across all parallel nodes that share this
+    # MCPClient — see ``call_tool(cow_node_id=...)`` below.
+    _COW_TOOLS: frozenset = frozenset({"add_memory", "clear_node_memory"})
+
     def __init__(self, skills: list[SkillConfig], disabled_tools: list[str] | None = None) -> None:
+        import threading as _t
         self.skills = skills
         self.disabled_tools: set[str] = set(disabled_tools or [])
         self._connections: dict[str, _SkillConnection] = {}
-        self._conn_lock = __import__('threading').Lock()
+        self._conn_lock = _t.Lock()
+        # Serialises (_set_current_node, memory write) pairs across
+        # parallel BFTS nodes. RLock so the same thread can re-enter
+        # if a future caller wraps higher-level helpers.
+        self._cow_lock = _t.RLock()
         self._tool_registry: dict[str, str] = {}  # tool_name -> skill.name
         self._tools_cache: list[dict] | None = None
         atexit.register(self.close_all)
@@ -222,18 +260,19 @@ class MCPClient:
         # Filter by disabled_tools
         if self.disabled_tools:
             tools = [t for t in tools if t["name"] not in self.disabled_tools]
-        # Filter by phase
+        # Filter by phase. Skill `phase` may be a string or a list; matching is
+        # any-of with "all" as wildcard.
         if phase is not None:
             _pm = self._phase_map
-            tools = [t for t in tools if _pm.get(t["name"], "all") in (phase, "all")]
+            tools = [t for t in tools if _phase_matches(_pm.get(t["name"], "all"), phase)]
         return tools
 
     def _build_tools_cache(self) -> None:
         """Discover tools from all enabled skills (called once, lazily)."""
         tools: list[dict] = []
         for skill in self.skills:
-            # Skip disabled skills (phase: none) — don't start MCP server
-            if getattr(skill, "phase", "all") == "none":
+            # Skip disabled skills (phase: none / [none]) — don't start MCP server
+            if _phase_is_disabled(getattr(skill, "phase", "all")):
                 logger.info("Skipping disabled skill '%s' (phase=none)", skill.name)
                 continue
             try:
@@ -251,8 +290,38 @@ class MCPClient:
             next((s for s in self.skills if s.name == self._tool_registry.get(t["name"],"")), None),
             "phase", "all") for t in tools}
 
-    def call_tool(self, tool_name: str, args: dict) -> dict:
-        """Call a tool. Reuses connection pool and retries on failure."""
+    def call_tool(
+        self,
+        tool_name: str,
+        args: dict,
+        *,
+        cow_node_id: str | None = None,
+    ) -> dict:
+        """Call a tool. Reuses connection pool and retries on failure.
+
+        ``cow_node_id`` (optional): when set and ``tool_name`` is a
+        CoW-guarded memory tool (``add_memory`` / ``clear_node_memory``),
+        ``_set_current_node({node_id: cow_node_id})`` is invoked under a
+        process-wide lock immediately before the actual call so the two
+        operations are atomic across parallel BFTS nodes that share this
+        MCPClient. Without this, the memory skill's ``ARI_CURRENT_NODE_ID``
+        env var (set by ``_set_current_node``) is racy and one node's
+        write can be rejected by another node's set.
+        """
+        if cow_node_id and tool_name in self._COW_TOOLS:
+            with self._cow_lock:
+                self._call_tool_unlocked(
+                    "_set_current_node", {"node_id": cow_node_id},
+                )
+                return self._call_tool_unlocked(tool_name, args)
+        return self._call_tool_unlocked(tool_name, args)
+
+    def _call_tool_unlocked(self, tool_name: str, args: dict) -> dict:
+        """Internal: same as call_tool but without the CoW gate.
+
+        Holds no locks; safe to call from inside ``_cow_lock`` for the
+        atomic (set + write) sequence.
+        """
         # ── Trace: log tool call args for propagation debugging ────
         _TRACE_TOOLS = {"make_metric_spec", "generate_ideas", "survey"}
         if tool_name in _TRACE_TOOLS:

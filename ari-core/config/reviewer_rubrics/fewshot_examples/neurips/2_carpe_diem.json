@@ -1,0 +1,46 @@
+{
+  "_source": "SakanaAI/AI-Scientist-v2 (Apache-2.0): ai_scientist/fewshot_examples/2_carpe_diem.json",
+  "_paper": "Carpe Diem: Recency Bias for Adaptive Mini-Batch Selection (ICLR 2020 submission #2)",
+  "Summary": "This paper proposes Recency Bias, an adaptive mini batch selection method for training deep neural networks. To select informative minibatches for training, the proposed method maintains a fixed size sliding window of past model predictions for each data sample. At a given iteration, samples which have highly inconsistent predictions within the sliding window are added to the minibatch. The main contribution of this paper is the introduction of a sliding window to remember past model predictions, as an improvement over the SOTA approach: Active Bias, which maintains a growing window of model predictions. Empirical studies are performed to show the superiority of Recency Bias over two SOTA approaches. Results are shown on the task of (1) image classification from scratch and (2) image classification by fine-tuning pretrained networks.",
+  "Strengths": [
+    "The idea of using a sliding window over a growing window in active batch selection is interesting.",
+    "Overall, the paper is well written. In particular, the Related Work section has a nice flow and puts the proposed method into context. Despite the method having limited novelty (sliding window instead of a growing window), the method has been well motivated by pointing out the limitations in SOTA methods.",
+    "The results section is well structured. It's nice to see hyperparameter tuning results and loss convergence graphs in various learning settings for each dataset."
+  ],
+  "Weaknesses": [
+    "The key concern about the paper is the lack of rigorous experimentation to study the usefulness of the proposed method. Despite the paper stating that there have been earlier works that attempt mini-batch selection, the paper does not compare with them. This is limiting. Further, since the proposed method is not specific to the domain of images, evaluating it on tasks other than image classification, such as text classification for instance, would have helped validate its applicability across domains.",
+    "Considering the limited results, a deeper analysis of the proposed method would have been nice. The idea of a sliding window over a growing window is a generic one, and there have been many efforts to theoretically analyze active learning over the last two decades. How does the proposed method fit in there?",
+    "The claim of 20.5% reduction in test error mentioned in the abstract has not been clearly addressed and pointed out in the results section of the paper.",
+    "The results would have been more complete if results were shown in a setting where just recency bias is used without the use of the selection pressure parameter.",
+    "The intuition behind the method is described well, however, the proposed method would have been really solidified if it were analysed in the context of a simple machine learning problem (such as logistic regression)."
+  ],
+  "Originality": 3,
+  "Quality": 2,
+  "Clarity": 4,
+  "Significance": 2,
+  "Questions": [
+    "How important is the warm-up phase to the proposed method?",
+    "Fig 4: Why are there sharp dips periodically in all the graphs? What do these correspond to?",
+    "The results are not conclusively in favor of the proposed method, and only are marginally better than the competitors. Why does online batch perform consistently than the proposed method?"
+  ],
+  "Limitations": [
+    "The primary concern is about the strength of the experimental results, which showed only a modest benefit on relatively simple datasets."
+  ],
+  "Ethical Concerns": false,
+  "Soundness": 2,
+  "Presentation": 3,
+  "Contribution": 2,
+  "Overall": 4,
+  "Confidence": 3,
+  "Decision": "Reject",
+  "soundness": 2,
+  "presentation": 3,
+  "contribution": 2,
+  "overall": 4,
+  "confidence": 3,
+  "strengths": "The idea of using a sliding window over a growing window in active batch selection is interesting. The paper is well written, with a strong Related Work section that contextualises the proposed method. The results section is well structured with hyperparameter tuning results and loss convergence graphs.",
+  "weaknesses": "Lack of rigorous experimentation: earlier works on mini-batch selection are not compared. Evaluation is limited to image classification. A deeper theoretical analysis is missing (e.g., how does the method fit into active-learning theory, expected model variance). The claimed 20.5% test-error reduction is not clearly addressed in the results. Ablation on the selection pressure parameter is missing. No analysis on a simple ML problem such as logistic regression.",
+  "questions": "How important is the warm-up phase to the proposed method? What causes the periodic sharp dips in Fig 4? Why does online batch perform consistently better than the proposed method?",
+  "limitations": "The primary concern is the strength of the experimental results, which show only a modest benefit on relatively simple datasets.",
+  "decision": "reject"
+}

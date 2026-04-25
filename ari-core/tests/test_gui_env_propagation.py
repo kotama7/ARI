@@ -30,14 +30,12 @@ _CANDIDATE_SUBPATHS = [
     ("ari-skill-web", "src"),
     ("ari-skill-vlm", "src"),
     ("ari-skill-coding", "src"),
-    ("ari-skill-figure-router", "src"),
     ("ari-skill-idea", "src"),
     ("ari-skill-evaluator", "src"),
     ("ari-skill-benchmark", "src"),
     ("ari-skill-paper", "src"),
     ("ari-skill-paper-re", "src"),
     ("ari-skill-plot", "src"),
-    ("ari-skill-review", "src"),
     ("ari-skill-orchestrator", "src"),
     ("ari-skill-memory", "src"),
     ("ari-skill-transform", "src"),
@@ -132,7 +130,6 @@ ENV_VARS_WITH_CONSUMERS: list[tuple[str, str]] = [
     ("ARI_MODEL_CODING", "AgentLoop (ReAct / coding) LLM model"),
     ("ARI_MODEL_EVAL", "evaluator-skill LLM model"),
     ("ARI_MODEL_PAPER", "paper-re skill LLM model"),
-    ("ARI_MODEL_REVIEW", "review-skill LLM model"),
     ("ARI_MODEL_BFTS", "BFTS orchestrator LLM model"),
 ]
 
@@ -258,14 +255,13 @@ def test_checkpoint_env_reaches_config_object(monkeypatch, tmp_path):
 def _clear_phase_env(monkeypatch):
     for v in ("ARI_MODEL", "ARI_LLM_MODEL", "LLM_MODEL"):
         monkeypatch.delenv(v, raising=False)
-    for phase in ("IDEA", "CODING", "EVAL", "PAPER", "REVIEW", "BFTS"):
+    for phase in ("IDEA", "CODING", "EVAL", "PAPER", "BFTS"):
         monkeypatch.delenv(f"ARI_MODEL_{phase}", raising=False)
 
 
 @pytest.mark.parametrize("skill,phase_var", [
     ("ari-skill-idea",       "ARI_MODEL_IDEA"),
     ("ari-skill-paper-re",   "ARI_MODEL_PAPER"),
-    ("ari-skill-review",     "ARI_MODEL_REVIEW"),
     ("ari-skill-evaluator",  "ARI_MODEL_EVAL"),
 ])
 def test_phase_model_has_precedence_over_global(skill, phase_var):

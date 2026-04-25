@@ -28,6 +28,22 @@ from ari.paths import PathManager
 app = typer.Typer(name="ari", help="ARI - Artificial Research Intelligence")
 console = Console()
 
+# `ari memory` subparser.
+try:
+    from ari.memory_cli import memory_app as _memory_app
+    app.add_typer(_memory_app, name="memory")
+except Exception as _e:  # pragma: no cover - import guard
+    logging.getLogger(__name__).warning("ari memory subcommand unavailable: %s", _e)
+
+
+def _safe_backup(checkpoint_dir: "Path | None") -> None:
+    """On-exit backup wrapper — swallow errors so shutdown isn't blocked."""
+    try:
+        from ari.memory_cli import _do_backup
+        _do_backup(Path(checkpoint_dir))
+    except Exception as e:
+        logging.getLogger(__name__).debug("exit-backup skipped: %s", e)
+
 
 def _resolve_cfg(config: "Path | None"):
     """Load config from --config, else fall back to the package workflow.yaml.
@@ -642,6 +658,25 @@ def run(
     checkpoint_dir = Path(cfg.checkpoint.dir.replace("{run_id}", run_id))
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     (checkpoint_dir / "uploads").mkdir(exist_ok=True)
+    # auto-migrate v0.5.x sources on first launch.
+    try:
+        from ari.memory.auto_migrate import maybe_auto_migrate
+        _am = maybe_auto_migrate(checkpoint_dir)
+        if _am.get("ran") and _am.get("imported"):
+            logging.getLogger(__name__).info(
+                "v0.5.x auto-migration: %s", _am["imported"]
+            )
+    except Exception as _amerr:
+        logging.getLogger(__name__).warning(
+            "auto-migrate skipped: %s", _amerr
+        )
+    # — on-exit backup.
+    try:
+        import atexit as _atexit_bk
+        from ari.memory_cli import _do_backup as _do_bk
+        _atexit_bk.register(lambda _p=checkpoint_dir: _safe_backup(_p))
+    except Exception:
+        pass
     _, _, mcp, bfts, agent, _, _ = build_runtime(cfg, experiment_text, checkpoint_dir=checkpoint_dir)
     root = Node(id=f"node_{run_id}_root", parent_id=None, depth=0)
     root.name = f"root: {_raw_name[:100]}"
@@ -763,6 +798,28 @@ def resume(
         console.print("[yellow]No pending nodes.[/yellow]")
         raise typer.Exit(0)
 
+    #+ — auto-migrate v0.5.x sources
+    # and auto-restore from memory_backup.jsonl.gz when Letta is empty.
+    try:
+        from ari.memory.auto_migrate import maybe_auto_migrate
+        maybe_auto_migrate(checkpoint_dir)
+    except Exception as _amerr:
+        logging.getLogger(__name__).warning("auto-migrate skipped: %s", _amerr)
+    if os.environ.get("ARI_MEMORY_AUTO_RESTORE", "true").lower() != "false":
+        try:
+            from ari.memory_cli import _do_restore, _backup_path
+            if _backup_path(checkpoint_dir).exists():
+                from ari_skill_memory.backends import get_backend
+                os.environ["ARI_CHECKPOINT_DIR"] = str(checkpoint_dir)
+                _b = get_backend(checkpoint_dir=checkpoint_dir)
+                if not _b.list_all_nodes().get("by_node") and not _b.list_react_entries():
+                    _r = _do_restore(checkpoint_dir, on_conflict="skip")
+                    logging.getLogger(__name__).info(
+                        "auto-restore from backup: %s", _r
+                    )
+        except Exception as _reerr:
+            logging.getLogger(__name__).warning("auto-restore skipped: %s", _reerr)
+
     _, _, _, bfts, agent, _, _ = build_runtime(cfg, experiment_text, checkpoint_dir=checkpoint_dir)
     agent.checkpoint_dir = str(checkpoint_dir)
     from ari.pidfile import pid_context
@@ -789,8 +846,31 @@ def paper(
     checkpoint_dir: Path = typer.Argument(..., help="Path to checkpoint directory"),
     experiment: Path | None = typer.Option(None, help="Experiment .md file (auto-detected from checkpoint if omitted)"),
     config: Path | None = typer.Option(None, help="Config YAML (auto-generated if omitted)"),
+    rubric: str | None = typer.Option(None, "--rubric", help="Reviewer rubric id (neurips|iclr|icml|cvpr|acl|sc|chi|usenix_security|osdi|stoc|icra|siggraph|nature|journal_generic|workshop|generic_conference)"),
+    fewshot_mode: str | None = typer.Option(None, "--fewshot-mode", help="Few-shot mode: static (default) or dynamic (OpenReview retrieval, Phase 2)"),
+    num_reviews_ensemble: int | None = typer.Option(None, "--num-reviews-ensemble", help="Number of independent reviewer agents (default 1 per rubric)"),
+    num_reflections: int | None = typer.Option(None, "--num-reflections", help="Reflection rounds (default 5 per rubric)"),
 ) -> None:
-    """Run paper pipeline from existing checkpoint (skip experiment phase)."""
+    """Run paper pipeline from existing checkpoint (skip experiment phase).
+
+    Reviewer behaviour follows the AI Scientist v1/v2 pipeline (NeurIPS form,
+    reflection loop, N-reviewer ensemble with Area Chair meta-review when N>1).
+    Configure per-run via --rubric / --fewshot-mode / --num-reviews-ensemble /
+    --num-reflections, or globally via ARI_RUBRIC / ARI_FEWSHOT_MODE /
+    ARI_NUM_REVIEWS_ENSEMBLE / ARI_NUM_REFLECTIONS environment variables.
+    """
+    import os as _os_cli
+    if rubric:
+        _os_cli.environ["ARI_RUBRIC"] = rubric
+    if fewshot_mode:
+        if fewshot_mode not in ("static", "dynamic"):
+            console.print(f"[red]--fewshot-mode must be static or dynamic (got {fewshot_mode!r})[/red]")
+            raise typer.Exit(1)
+        _os_cli.environ["ARI_FEWSHOT_MODE"] = fewshot_mode
+    if num_reviews_ensemble is not None:
+        _os_cli.environ["ARI_NUM_REVIEWS_ENSEMBLE"] = str(num_reviews_ensemble)
+    if num_reflections is not None:
+        _os_cli.environ["ARI_NUM_REFLECTIONS"] = str(num_reflections)
     from ari.orchestrator.node import Node, NodeStatus
 
     tree_file = checkpoint_dir / "tree.json"
@@ -1159,6 +1239,21 @@ def delete_project(
         if not confirm:
             console.print("[yellow]Aborted.[/yellow]")
             raise typer.Exit(0)
+    # clean up per-checkpoint Letta namespace first.
+    # Failure does NOT block local deletion — orphaned Letta entries can be
+    # swept later with `ari memory prune-local`.
+    try:
+        import os as _os_del
+        _os_del.environ["ARI_CHECKPOINT_DIR"] = str(p)
+        from ari_skill_memory.backends import get_backend, clear_backend_cache
+        clear_backend_cache()
+        get_backend(checkpoint_dir=p).purge_checkpoint()
+        clear_backend_cache()
+    except Exception as e:
+        import logging as _lg
+        _lg.getLogger(__name__).warning(
+            "memory namespace cleanup failed: %s — proceeding with rmtree", e
+        )
     shutil.rmtree(p)
     console.print(f"[green]✓ Deleted {p.name}[/green]")
 

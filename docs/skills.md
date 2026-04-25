@@ -1,6 +1,6 @@
 # MCP Skills Reference
 
-Skills are MCP servers that provide tools to the ARI agent. Tools are deterministic where possible; LLM-using tools are explicitly annotated. 15 skills total (14 default, 1 additional).
+Skills are MCP servers that provide tools to the ARI agent. Tools are deterministic where possible; LLM-using tools are explicitly annotated. 13 skills total (12 default, 1 additional).
 
 ## ari-skill-hpc
 
@@ -165,61 +165,184 @@ Revise a LaTeX section based on review feedback.
 
 Full paper generation with iterative draft → review → revise loop. Primary pipeline tool.
 
-#### `review_compiled_paper(tex_path, pdf_path, figures_manifest_json, paper_summary)`
+#### `review_compiled_paper(tex_path, pdf_path, figures_manifest_json, experiment_summary, rubric_id="", vlm_findings_json="", num_reflections=None, num_fs_examples=None)`
 
-PDF-based holistic paper review: text extraction, figure caption evaluation, structured quality report.
+Rubric-driven paper review compatible with the **AI Scientist v1/v2** pipeline
+(Nature / arXiv:2408.06292 Appendix A.4). Loads a YAML rubric from
+`ari-core/config/reviewer_rubrics/<rubric_id>.yaml`, renders prompts from the
+rubric's `score_dimensions` / `text_sections` / `decision` schema, injects VLM
+per-figure findings as reviewer notes, optionally prepends few-shot example
+reviews, runs a self-reflection loop, then normalises the output to a
+rubric-stable JSON schema.
+
+Bundled rubrics (16 YAMLs in `ari-core/config/reviewer_rubrics/`):
+
+| Family | Rubric IDs |
+|---|---|
+| ML conferences | `neurips` (default, v2-compatible), `iclr`, `icml`, `cvpr`, `acl` |
+| Systems / HPC | `sc`, `osdi`, `usenix_security` |
+| Theory / graphics | `stoc`, `siggraph` |
+| HCI / robotics | `chi`, `icra` |
+| Journals / generic | `nature`, `journal_generic`, `workshop`, `generic_conference` |
+
+Add a new venue by dropping `<id>.yaml` into `reviewer_rubrics/` — no code
+changes required. Each rubric declares `score_dimensions`, `text_sections`,
+`decision` rules, execution parameters, and a SHA256 hash for P2 determinism.
+
+Rubric resolution order: explicit `rubric_id` arg → `ARI_RUBRIC` env →
+`neurips` → built-in `legacy` fallback (v0.5 schema, used when neither
+`rubric_id` nor any matching YAML resolves).
+
+Nature Ablation defaults (best-config rationale):
+
+- `num_reflections: 5` — +2% balanced accuracy
+- `num_fs_examples: 1` — +2% balanced accuracy (1-shot from ICLR reviewer guidelines)
+- `num_reviews_ensemble: 1` — ensemble does not improve accuracy, only variance
+- `temperature: 0.75`
 
 Model: `ARI_LLM_MODEL` env > `LLM_MODEL` env > `ollama_chat/qwen3:32b`.
+
+**Ensemble + Area Chair meta-review (built in):** `review_compiled_paper` runs
+N independent reviewer agents via the ensemble path (temperature jitter, AI
+Scientist v1 best-config style). When N>1, it also runs the Area Chair
+meta-review internally and attaches `ensemble_reviews: [...]` and
+`meta_review: {...}` to the output. N resolves as: explicit arg >
+`ARI_NUM_REVIEWS_ENSEMBLE` env > `rubric.params.num_reviews_ensemble`
+(defaults to 1). N=1 is equivalent to a single reviewer.
+
+#### `list_rubrics()`
+
+Returns the list of available rubrics (id, venue, domain, version, SHA256
+hash, path). Used by the viz API `/api/rubrics` and the New Experiment wizard
+dropdown.
+
+##### Few-shot corpus management
+
+The files under `ari-core/config/reviewer_rubrics/fewshot_examples/<rubric>/`
+can be managed from the **New Experiment Wizard → Paper Review → Few-shot
+Examples** sub-panel (GUI) or with `scripts/fewshot/sync.py` (CLI).
+
+GUI actions:
+
+- **Auto-sync** — server-side runs `scripts/fewshot/sync.py --venue <rubric>`
+  which pulls entries declared in `scripts/fewshot/manifest.yaml`. By default
+  this includes the three AI Scientist v2 fewshot papers
+  (`132_automated_relational`, `2_carpe_diem`, `attention`) downloaded from
+  the Apache-2.0 `SakanaAI/AI-Scientist-v2` repo.
+- **Upload** — accepts a rubric-shaped JSON review form plus an optional
+  `.txt` excerpt and optional PDF (base64). The JSON is stamped with
+  `_source: "GUI upload (rubric=<id>)"` for provenance.
+- **Delete** — removes every sibling file of an example.
+
+Backing REST endpoints:
+
+- `GET  /api/fewshot/<rubric>`              list examples
+- `POST /api/fewshot/<rubric>/sync`          sync from manifest
+- `POST /api/fewshot/<rubric>/upload`        upload one example
+- `POST /api/fewshot/<rubric>/<example>/delete` delete
+
+All endpoints refuse any rubric not present in `reviewer_rubrics/` and strip
+`../` sequences / slashes from both rubric and example ids.
 
 ---
 
 ## ari-skill-paper-re
 
-Reproducibility verification via ReAct agent loop. **LLM: Yes**.
+Reproducibility verification helpers. **LLM: Yes** (two one-shot LLM
+calls, no in-skill loop).
 
-The agent reads the generated paper, extracts the experimental configuration, re-implements and runs the experiment from scratch, then compares results against claimed metrics.
+Starting from v0.6.0, the ReAct loop lives in
+`ari-core/ari/agent/react_driver.py`. The driver is invoked by
+`ari.pipeline._run_react_stage` whenever a stage declares a `react:`
+block. The skill now contains only the deterministic edges of the
+reproducibility flow:
+
+```
+pre_tool (extract_repro_config)  →  react_driver  →  post_tool (build_repro_report)
+          one LLM call               MCP-whitelisted         one LLM call
+          (paper-re)                 ReAct loop              (paper-re)
+```
+
+The ReAct loop sees only MCP tools whose `skills[].phase` list in
+`workflow.yaml` includes `reproduce` (e.g. `web-skill`, `vlm-skill`,
+`hpc-skill`, `coding-skill`). `memory-skill`, `transform-skill`, and
+`evaluator-skill` are deliberately excluded so the agent cannot reach
+BFTS-phase artefacts (`nodes_tree.json`, ancestor memories, etc.).
 
 ### Tools
 
+#### `extract_repro_config(paper_path="", paper_text="")`
+
+One-shot LLM call. Reads the paper text (or the file at `paper_path`;
+`.pdf` is converted via `pdftotext`) and returns
+`{metric_name, claimed_value, description, threads}` — the value the
+authors advertise plus the exact experimental parameters stated nearby.
+
+#### `build_repro_report(claimed_config, actual_value, actual_unit="", actual_notes="", tolerance_pct=5.0)`
+
+One-shot LLM call that writes the 2–3 sentence interpretation. Called
+by the pipeline *after* `react_driver` finishes; `actual_value` is the
+number the ReAct agent passed to its `report_metric` final tool
+(`None` if the agent never produced a reliable measurement).
+
+Verdict thresholds: ≤`tolerance_pct` → REPRODUCED | ≤20% → PARTIAL |
+else → NOT_REPRODUCED | `actual_value is None` → UNVERIFIABLE.
+
 #### `extract_metric_from_output(output_text, metric_name)`
 
-LLM extracts a specific metric value from raw output text.
+Helper the ReAct agent may call to parse a numeric metric from raw
+benchmark stdout (LLM extraction with a regex fallback). Not used by
+the pre/post pipeline endpoints.
 
-#### `reproduce_from_paper(paper_path="", paper_text="", experiment_goal="", work_dir="", source_file="", executor="", cpus=64, timeout_minutes=15, tolerance_pct=5.0)`
-
-Full ReAct reproducibility verification. Internally uses sub-tools: `write_file`, `run_bash`, `read_file`, `report_metric`, `submit_job` (for non-local executors).
-
-Supports executors: `local`, `slurm`, `pbs`, `lsf`. Max ReAct steps: 40.
-
-Verdict thresholds: ≥80% → REPRODUCED | 40–79% → PARTIAL | <40% → NOT_REPRODUCED
-
-Model: `ARI_LLM_MODEL` env > `LLM_MODEL` env > `ollama_chat/qwen3:32b`.
+Model: `ARI_MODEL_PAPER` > `ARI_LLM_MODEL` > `LLM_MODEL` >
+`ollama_chat/qwen3:32b`.
 
 ---
 
 ## ari-skill-memory
 
-Ancestor-scoped node memory. Prevents cross-branch contamination. **LLM: No** (deterministic keyword matching).
+Ancestor-scoped node memory, backed by [Letta](https://docs.letta.com)
+in v0.6.0. Prevents cross-branch contamination and stores a separate
+ReAct-trace collection for the agent loop. **LLM: △** (embedding-based
+retrieval; see PHILOSOPHY.md for the P2/P5 relaxation note).
 
 ### Tools
 
 #### `add_memory(node_id, text, metadata=None)`
 
-Store a memory entry tagged with `node_id`.
+Store an entry tagged with `node_id`. **Copy-on-Write**: rejects writes
+whose `node_id` ≠ `$ARI_CURRENT_NODE_ID` so a child cannot mutate an
+ancestor's entries.
 
 #### `search_memory(query, ancestor_ids, limit=5)`
 
-Only returns entries from nodes listed in `ancestor_ids` (the ancestor chain). Uses keyword matching.
+Return entries whose `node_id` is in `ancestor_ids`, ranked by Letta
+relevance (`score` ∈ [0, 1]). Siblings and children are never returned.
 
 #### `get_node_memory(node_id)`
 
-Retrieve all memories for a specific node.
+All entries for a specific node (chronological, no scoring).
 
 #### `clear_node_memory(node_id)`
 
-Delete all memories for a specific node.
+Debug-only per-node clear. Same CoW rule as `add_memory`.
 
-Storage: `{ARI_CHECKPOINT_DIR}/memory_store.jsonl` per experiment (append-only JSONL, override with `ARI_MEMORY_PATH`)
+#### `get_experiment_context()`
+
+Stable experiment facts read from Letta core memory — `experiment_goal`,
+`primary_metric`, `hardware_spec`, etc. Seeded once after the first
+node's `generate_ideas` completes (the moment `primary_metric` is
+determined); safe to call repeatedly (60 s in-process cache). Returns
+`{}` until that seed runs.
+
+Storage: per-checkpoint Letta agent with two archival collections
+(`ari_node_*`, `ari_react_*`). A snapshot at
+`{ARI_CHECKPOINT_DIR}/memory_backup.jsonl.gz` keeps checkpoints
+portable. v0.5.x JSONL stores (`memory_store.jsonl`,
+`~/.ari/global_memory.jsonl`) are removed; use `ari memory migrate`
+to import legacy data. Cross-experiment "global memory" is no longer
+a feature — stable lessons belong in `experiment.md`, code, or prior
+papers.
 
 ---
 
@@ -254,42 +377,6 @@ Return the generated paper (LaTeX).
 Workspace: `ARI_WORKSPACE` env (default: `~/ARI`). Parent-child relationships persisted in `meta.json` per checkpoint.
 
 ---
-
-## ari-skill-figure-router
-
-Figure type classification and generation routing. **LLM: Yes**.
-
-Classifies requested figures into optimal rendering backends (SVG/matplotlib/LaTeX) and routes generation accordingly. Registered as a default skill with `phase: all`.
-
----
-
-## Writing a New Skill
-
-1. Create `ari-skill-yourskill/src/server.py`:
-
-```python
-from mcp.server.fastmcp import FastMCP
-mcp = FastMCP("your-skill")
-
-@mcp.tool()
-def your_tool(param: str) -> dict:
-    """Tool description."""
-    # NO LLM calls here
-    return {"result": process(param)}
-
-if __name__ == "__main__":
-    mcp.run()
-```
-
-2. Register in your BFTS config YAML:
-
-```yaml
-skills:
-  - name: your-skill
-    path: /path/to/ari-skill-yourskill
-```
-
-3. Reference the tool name in `experiment.md`'s `## Required Workflow`.
 
 ## ari-skill-transform
 
@@ -422,28 +509,6 @@ Run scipy statistical tests: `ttest`, `mannwhitney`, `wilcoxon`.
 
 ---
 
-## ari-skill-review
-
-Peer-review parsing and rebuttal generation. **LLM: Yes**.
-
-### Tools
-
-#### `parse_review(review_text)`
-
-LLM parses a free-text review into structured form: summary, concerns (id/severity/text), questions, suggestions.
-
-#### `generate_rebuttal(concerns, paper_context, experiment_results)`
-
-LLM generates a point-by-point rebuttal in LaTeX format.
-
-#### `check_rebuttal(rebuttal, original_concerns)`
-
-LLM checks rebuttal completeness: coverage (0-1), missing items, suggestions.
-
-Model: `ARI_LLM_MODEL` env > `LLM_MODEL` env > `ollama/qwen3:8b`.
-
----
-
 ## ari-skill-vlm
 
 Vision-Language model for figure and table quality review. **LLM: Yes** (VLM).
@@ -459,3 +524,38 @@ VLM reviews an experiment figure. Returns score (0-1), issues, suggestions.
 VLM reviews a table (LaTeX source or rendered image). Returns score, issues, suggestions.
 
 Model: `VLM_MODEL` env > `openai/gpt-4o`.
+
+---
+
+## Writing a New Skill
+
+1. Create `ari-skill-yourskill/src/server.py`:
+
+```python
+from mcp.server.fastmcp import FastMCP
+mcp = FastMCP("your-skill")
+
+@mcp.tool()
+def your_tool(param: str) -> dict:
+    """Tool description."""
+    # NO LLM calls here
+    return {"result": process(param)}
+
+if __name__ == "__main__":
+    mcp.run()
+```
+
+2. Register in `ari-core/config/workflow.yaml`. `phase` scopes which
+   pipeline-phase ReAct agents see the skill (string for one phase,
+   list for several):
+
+```yaml
+skills:
+  - name: your-skill
+    path: '{{ari_root}}/ari-skill-yourskill'
+    phase: [paper, reproduce]
+```
+
+   Valid phase values: `bfts`, `paper`, `reproduce`, `all`, `none`.
+
+3. Reference the tool name in `experiment.md`'s `## Required Workflow`.

@@ -7,7 +7,6 @@
 
 # --- Core framework deps (also declared in ari-core/pyproject.toml) ---------
 litellm>=1.0
-mem0ai>=0.1
 pydantic>=2.0
 typer>=0.12
 rich>=13.0
@@ -17,6 +16,9 @@ paramiko>=3.0
 # --- MCP (skill communication) ---------------------------------------------
 mcp>=1.0
 fastmcp
+
+# --- Memory backend (ari-skill-memory default is Letta) --------------------
+letta-client>=0.1
 
 # --- Visualization server ---------------------------------------------------
 websockets>=12.0
