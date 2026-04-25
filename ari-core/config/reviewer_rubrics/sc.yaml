@@ -1,0 +1,79 @@
+id: sc
+version: "2026"
+venue: ACM/IEEE Supercomputing (SC)
+domain: HPC / Systems
+closed_review: true
+
+params:
+  num_reflections: 5
+  num_fs_examples: 0  # SC reviews are closed; no public fewshot available
+  num_reviews_ensemble: 1
+  temperature: 0.75
+  score_threshold_decision: 3
+  fewshot_mode: static   # dynamic unsupported (closed reviews)
+  fewshot_dir: ""
+
+score_dimensions:
+  - name: novelty
+    scale: [1, 5]
+    description: >-
+      Originality / novelty of the contribution relative to prior HPC work.
+  - name: potential_impact
+    scale: [1, 5]
+    description: >-
+      Potential impact on HPC practice and the supercomputing community.
+  - name: technical_correctness
+    scale: [1, 5]
+    description: >-
+      Soundness and correctness of the technical approach.
+  - name: experimental_methodology
+    scale: [1, 5]
+    description: >-
+      Benchmark selection, evaluation rigor, and methodological choices.
+  - name: scalability_evaluation
+    scale: [1, 5]
+    description: >-
+      Rigor of scaling study (strong vs. weak scaling, large-scale runs) —
+      a first-class dimension at SC, distinct from general experimental
+      methodology.
+  - name: reproducibility
+    scale: [1, 5]
+    description: >-
+      SC Artifact Description / Artifact Evaluation (AD/AE). Availability of
+      code, data, build scripts, and machine configuration.
+  - name: writing_quality
+    scale: [1, 5]
+    description: >-
+      Clarity and organisation of the paper.
+  - name: overall
+    scale: [1, 5]
+    description: >-
+      Overall recommendation. 5=strong accept, 4=accept, 3=borderline,
+      2=weak reject, 1=reject.
+  - name: confidence
+    scale: [1, 5]
+    description: >-
+      Reviewer confidence (domain expertise).
+
+text_sections:
+  - { name: summary, required: true }
+  - { name: strengths, required: true }
+  - { name: weaknesses, required: true }
+  - { name: detailed_comments, required: true }
+  - { name: reproducibility_notes, required: false }
+
+decision:
+  type: categorical
+  options: [accept, weak_accept, borderline, weak_reject, reject]
+  threshold_dimension: overall
+  threshold_value: 3
+
+prompt_overrides:
+  system_hint: >-
+    Follow ACM/IEEE SC Technical Papers reviewer criteria. SC demands a
+    proper scaling study (strong/weak scaling at scale) and artifact
+    description/evaluation (AD/AE) — these are first-class dimensions
+    distinct from general experimental methodology. Reject simulation-only
+    or toy-scale evaluations when real-HPC deployment is feasible.
+    Dynamic few-shot retrieval is unsupported because SC reviews are not
+    publicly available.

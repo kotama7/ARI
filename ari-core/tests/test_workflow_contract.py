@@ -8,6 +8,7 @@ no phantom fields, and dynamic skill colours.
 import json
 import os
 import re
+import shutil
 import tempfile
 from pathlib import Path
 from unittest import mock
@@ -772,24 +773,19 @@ class TestPaperPipelineFileContract:
     # ── generate_figures must produce a batch manifest for write_paper ──
 
     def test_generate_figures_uses_batch_tool(self):
-        """generate_figures must use plot-skill:generate_figures_llm, not
-        figure-router's single-figure API.
+        """generate_figures must use plot-skill:generate_figures_llm.
 
-        Regression context: the pipeline briefly used
-        figure-router-skill:generate_figure which only makes one figure per
-        call and returns {success, output_path, ...} — write_paper then
-        received an empty figures_manifest_json and produced an image-free
-        PDF. pipeline.py's special-case at line ~836 expects the tool to
-        return {figures, latex_snippets}, which plot-skill.generate_figures_llm
-        provides.
+        plot-skill's batch API returns {figures, latex_snippets, figure_kinds}
+        in one call. pipeline.py's special case at stage_name == "generate_figures"
+        expects this shape and writes figures_manifest.json from it; if the
+        stage pointed elsewhere, write_paper would receive an empty manifest.
         """
         stage = self._get_stage("generate_figures")
         if not stage.get("enabled", True):
             pytest.skip("generate_figures disabled")
         assert stage.get("skill") == "plot-skill", (
             f"generate_figures must use plot-skill (batch), not "
-            f"{stage.get('skill')!r}. figure-router-skill:generate_figure is "
-            f"single-figure and does not populate figures_manifest.json."
+            f"{stage.get('skill')!r}."
         )
         assert stage.get("tool") == "generate_figures_llm", (
             f"generate_figures must call generate_figures_llm (returns "
@@ -824,30 +820,21 @@ class TestPaperPipelineFileContract:
             f"load_inputs, got: {out!r}"
         )
 
-    def test_figure_router_not_in_paper_pipeline(self):
-        """figure-router-skill is intentionally out of the paper pipeline.
+    def test_figure_router_fully_removed(self):
+        """figure-router-skill was consolidated into plot-skill.
 
-        It's a single-figure / agent-driven tool; paper pipeline stages are
-        one-call-per-stage. Keeping it wired here reintroduces the
-        image-free-paper regression. It should still be defined in skills[]
-        so agent tasks can call it directly — see the skills-section test.
+        plot-skill/generate_figures_llm now emits both matplotlib plots and
+        SVG diagrams per-figure via a `kind` field. figure-router-skill must
+        not reappear in the skills registry or any pipeline stage.
         """
-        for stage in self.paper.values():
-            if not stage.get("enabled", True):
-                continue
-            assert stage.get("skill") != "figure-router-skill", (
-                f"Paper stage '{stage['stage']}' uses figure-router-skill; "
-                f"that skill is for direct agent use, not the paper pipeline."
-            )
-
-    def test_figure_router_still_defined_in_skills(self):
-        """figure-router-skill should remain in the skills[] registry so it's
-        callable by agents even though the paper pipeline no longer uses it."""
         skill_names = {s["name"] for s in self.data.get("skills", [])}
-        assert "figure-router-skill" in skill_names, (
-            "figure-router-skill should still be registered as a skill "
-            "(reachable by agents) even if removed from the paper pipeline."
+        assert "figure-router-skill" not in skill_names, (
+            "figure-router-skill was consolidated into plot-skill; do not "
+            "re-register it — SVG generation is now a `kind:\"svg\"` item "
+            "in plot-skill:generate_figures_llm output."
         )
+        for stage in self.paper.values():
+            assert stage.get("skill") != "figure-router-skill"
 
     # ── Stages that HEAD required to have inputs/outputs ──
 
@@ -862,7 +849,7 @@ class TestPaperPipelineFileContract:
          {"tex_path", "pdf_path"},
          "review_report.json"),
         ("reproducibility_check",
-         {"paper_path", "work_dir"},
+         {"paper_path"},
          "reproducibility_report.json"),
         ("generate_ear",
          {"checkpoint_dir"},
@@ -887,6 +874,16 @@ class TestPaperPipelineFileContract:
         assert out_file.endswith(expected_output_suffix), (
             f"{stage_name}.outputs.file should end with {expected_output_suffix!r}, "
             f"got: {out_file!r}"
+        )
+
+        # reproducibility_check now runs via the react driver and declares its
+        # sandbox in the react block instead of an inputs.work_dir argument.
+        if stage_name == "reproducibility_check":
+            react = stage.get("react") or {}
+            assert react.get("sandbox"), (
+                "reproducibility_check.react.sandbox must be set so the ReAct "
+                "agent has a dedicated work directory isolated from the "
+                "checkpoint root"
         )
 
     # ── Global invariants ──
@@ -1013,6 +1010,95 @@ class TestPaperPipelineFileContract:
             "GUI will not set has_pdf correctly."
         )
 
+    # ── merge_reviews must not clobber review_paper's output ──
+
+    def test_merge_reviews_outputs_file_differs_from_review_paper(self):
+        """merge_reviews updates review_report.json in-place inside the tool;
+        its return value is a metadata-only summary. If outputs.file points at
+        the same path, pipeline.py's tool-result writeback overwrites the
+        merged report with that summary, leaving the GUI to render `—/10`
+        across abstract/body/overall (legacy fallback path with all scores
+        null). Keep these paths distinct."""
+        merge = self._get_stage("merge_reviews")
+        if not merge.get("enabled", True):
+            pytest.skip("merge_reviews disabled")
+        review = self._get_stage("review_paper")
+        merge_out = (merge.get("outputs") or {}).get("file", "")
+        review_out = (review.get("outputs") or {}).get("file", "")
+        assert merge_out and review_out, (
+            "Both stages must declare outputs.file"
+        )
+        assert merge_out != review_out, (
+            f"merge_reviews.outputs.file ({merge_out!r}) must differ from "
+            f"review_paper.outputs.file ({review_out!r}); the merge tool "
+            f"writes review_report.json in-place, so the runner must not "
+            f"clobber it with the tool's summary dict."
+        )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Skill phase roundtrip (GUI list-phase support)
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+class TestSkillPhaseRoundtrip:
+    """_api_save_skill_phases must preserve list-form phases written by the
+    new GUI so that skills opted into `reproduce` stay opted in."""
+
+    def _run_save(self, tmp_path, payload_phase):
+        from ari.viz import api_workflow as aw
+        from ari.viz import state as _st
+
+        ckpt = tmp_path / "ckpt"
+        ckpt.mkdir()
+        # Copy the real workflow.yaml so the test exercises the real schema
+        shutil.copy(_WORKFLOW_YAML, ckpt / "workflow.yaml")
+
+        with mock.patch.object(_st, "_checkpoint_dir", ckpt):
+            body = json.dumps({
+                "skills": [{"name": "web-skill", "phase": payload_phase}],
+            }).encode()
+            resp = aw._api_save_skill_phases(body)
+            assert resp.get("ok"), resp
+
+        reloaded = yaml.safe_load((ckpt / "workflow.yaml").read_text())
+        web = next(s for s in reloaded["skills"] if s["name"] == "web-skill")
+        return web["phase"]
+
+    def test_list_phase_preserved_as_list(self, tmp_path):
+        phase = self._run_save(tmp_path, ["paper", "reproduce"])
+        assert phase == ["paper", "reproduce"], (
+            f"List phase must be written back as a list, got {phase!r}"
+        )
+
+    def test_single_phase_collapses_to_string(self, tmp_path):
+        phase = self._run_save(tmp_path, ["reproduce"])
+        assert phase == "reproduce", (
+            f"Single-entry list should collapse to a string, got {phase!r}"
+        )
+
+    def test_all_three_phases_preserved_as_list(self, tmp_path):
+        """The backend does NOT collapse a full-coverage list to 'all' — that
+        is a cosmetic decision the GUI makes. 'all' in YAML means every
+        phase (including phases added later); writing a literal list only
+        opts the skill into the phases named."""
+        phase = self._run_save(tmp_path, ["bfts", "paper", "reproduce"])
+        assert phase == ["bfts", "paper", "reproduce"], f"Got {phase!r}"
+
+    def test_all_literal_accepted(self, tmp_path):
+        phase = self._run_save(tmp_path, "all")
+        assert phase == "all", f"Got {phase!r}"
+
+    def test_string_phase_accepted(self, tmp_path):
+        phase = self._run_save(tmp_path, "paper")
+        assert phase == "paper", f"Got {phase!r}"
+
+    def test_none_with_other_phases_drops_none(self, tmp_path):
+        phase = self._run_save(tmp_path, ["none", "reproduce"])
+        assert phase == "reproduce", (
+            f"'none' must be dropped when other phases are present, got {phase!r}"
+        )
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 10. Pipeline execution contract (write_paper actually lands full_paper.tex)
@@ -1058,12 +1144,11 @@ class TestWritePaperExecutionContract:
                     "fig_2": "\\begin{figure}fig 2\\end{figure}",
                 },
             },
-            "review_figure": {"score": 0.9, "issues": [], "suggestions": [],
-                               "review_text": "looks good"},
+            "review_figures_all": {"score": 0.9, "issues": [], "suggestions": [],
+                                    "review_text": "looks good", "per_figure": {}},
             "generate_ear": {"ear_dir": str(ckpt / "ear"), "file_count": 0},
             "write_paper_iterative": {"latex": fake_latex, "bib": "@article{x,}"},
             "review_compiled_paper": {"score": 5},
-            "generate_rebuttal": {"rebuttal_latex": "rb", "point_by_point": []},
             "reproduce_from_paper": {"ok": True},
         }
         called: list[str] = []
@@ -1157,11 +1242,11 @@ class TestWritePaperExecutionContract:
                 "figures": {"fig_1": str(ckpt / "fig_1.pdf")},
                 "latex_snippets": {"fig_1": "\\begin{figure}f\\end{figure}"},
             },
-            "review_figure": {"score": 0.9, "issues": []},
+            "review_figures_all": {"score": 0.9, "issues": [], "suggestions": [],
+                                    "review_text": "", "per_figure": {}},
             "generate_ear": {"ear_dir": "", "file_count": 0},
             "write_paper_iterative": {"latex": fake_latex, "bib": ""},
             "review_compiled_paper": {"score": 5},
-            "generate_rebuttal": {"rebuttal_latex": "rb"},
             "reproduce_from_paper": {"ok": True},
         }
 
@@ -1209,12 +1294,13 @@ class TestWritePaperExecutionContract:
         ckpt.mkdir()
         (ckpt / "idea.json").write_text('{"primary_metric": "m", "ideas": []}')
 
-        # review_figure returns low-then-high so we observe exactly one loop
+        # review_figures_all returns low-then-high so we observe exactly one loop
         _review_scores = iter([
             {"score": 0.3, "issues": ["axis labels unreadable", "no legend"],
              "suggestions": ["enlarge fonts", "add legend box"],
-             "review_text": "font too small"},
-            {"score": 0.95, "issues": [], "suggestions": [], "review_text": "ok"},
+             "review_text": "font too small", "per_figure": {}},
+            {"score": 0.95, "issues": [], "suggestions": [],
+             "review_text": "ok", "per_figure": {}},
         ])
         # Capture the vlm_feedback arg that generate_figures_llm receives
         # on each call so we can verify the loop wiring.
@@ -1227,7 +1313,6 @@ class TestWritePaperExecutionContract:
             "generate_ear": {"ear_dir": str(ckpt / "ear"), "file_count": 0},
             "write_paper_iterative": {"latex": fake_latex, "bib": "@article{x,}"},
             "review_compiled_paper": {"score": 5},
-            "generate_rebuttal": {"rebuttal_latex": "rb", "point_by_point": []},
             "reproduce_from_paper": {"ok": True},
         }
 
@@ -1241,7 +1326,7 @@ class TestWritePaperExecutionContract:
                     "figures": {"fig_1": str(ckpt / "fig_1.pdf")},
                     "latex_snippets": {"fig_1": "\\begin{figure}f\\end{figure}"},
                 }
-            if tool == "review_figure":
+            if tool == "review_figures_all":
                 return next(_review_scores)
             return static_returns.get(tool, {})
 
@@ -1317,7 +1402,6 @@ class TestWritePaperExecutionContract:
             "generate_ear": {"ear_dir": str(ckpt / "ear"), "file_count": 0},
             "write_paper_iterative": {"latex": fake_latex, "bib": "@article{x,}"},
             "review_compiled_paper": {"score": 5},
-            "generate_rebuttal": {"rebuttal_latex": "rb", "point_by_point": []},
             "reproduce_from_paper": {"ok": True},
         }
 
@@ -1330,8 +1414,9 @@ class TestWritePaperExecutionContract:
                     "figures": {"fig_1": str(ckpt / "fig_1.pdf")},
                     "latex_snippets": {"fig_1": "\\begin{figure}f\\end{figure}"},
                 }
-            if tool == "review_figure":
-                return {"score": 0.1, "issues": ["bad"], "suggestions": ["fix"]}
+            if tool == "review_figures_all":
+                return {"score": 0.1, "issues": ["bad"], "suggestions": ["fix"],
+                        "review_text": "", "per_figure": {}}
             return static_returns.get(tool, {})
 
         monkeypatch.setattr(_pipe, "_run_stage_subprocess", fake_subproc)

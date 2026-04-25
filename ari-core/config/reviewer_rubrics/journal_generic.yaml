@@ -1,0 +1,47 @@
+id: journal_generic
+version: "2026"
+venue: Generic Journal (TPAMI / JMLR / TACL / IEEE TNNLS etc.)
+domain: Any
+closed_review: true
+
+params:
+  num_reflections: 5
+  num_fs_examples: 0
+  num_reviews_ensemble: 1
+  temperature: 0.7
+  score_threshold_decision: 3
+  fewshot_mode: static
+  fewshot_dir: ""
+
+score_dimensions:
+  - { name: technical_quality,  scale: [1, 5], description: Correctness and depth of the technical contribution }
+  - { name: novelty,            scale: [1, 5], description: Originality relative to prior journal and conference work }
+  - { name: significance,       scale: [1, 5], description: Expected long-term impact on the field (journals reward durability) }
+  - { name: completeness,       scale: [1, 5], description: Whether the work is an archival-quality, self-contained exposition (journal-level completeness) }
+  - { name: reproducibility,    scale: [1, 5], description: Availability of code, data, and detailed methods }
+  - { name: presentation,       scale: [1, 5], description: Writing quality and organisation }
+  - { name: overall,            scale: [1, 5], description: Overall recommendation }
+  - { name: confidence,         scale: [1, 5], description: Reviewer confidence }
+
+text_sections:
+  - { name: summary, required: true }
+  - { name: strengths, required: true }
+  - { name: weaknesses, required: true }
+  - { name: required_changes, required: true }
+  - { name: suggested_changes, required: false }
+  - { name: questions_for_authors, required: false }
+
+decision:
+  type: categorical
+  options: [accept, minor_revision, major_revision, reject_and_resubmit, reject]
+  threshold_dimension: overall
+  threshold_value: 3
+
+prompt_overrides:
+  system_hint: >-
+    Follow generic journal reviewer norms (TPAMI / JMLR / TACL / IEEE TNNLS or
+    equivalent). Journal review rewards completeness, self-containedness, and
+    durable impact — not incremental novelty. Prefer revision decisions
+    (minor / major) over outright reject when the contribution is salvageable.
+    Separate required changes (must-fix for acceptance) from suggested
+    improvements in the review text.

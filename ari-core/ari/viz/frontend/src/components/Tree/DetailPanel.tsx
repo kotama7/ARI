@@ -1,7 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
 import type { TreeNode } from '../../types';
-import { fetchCheckpointMemory, type MemoryEntry } from '../../services/api';
+import {
+  fetchCheckpointMemory,
+  fetchMemoryAccess,
+  type MemoryEntry,
+  type MemoryAccessResponse,
+} from '../../services/api';
 
 // ── Colour constants (same as original dashboard.js) ──
 
@@ -15,7 +20,7 @@ const LABEL_COLORS: Record<string, string> = {
 
 // ── Types ──
 
-type TabName = 'overview' | 'trace' | 'code' | 'memory' | 'raw';
+type TabName = 'overview' | 'trace' | 'code' | 'memory' | 'access' | 'raw';
 
 interface DetailPanelProps {
   node: TreeNode | null;
@@ -101,6 +106,37 @@ export function DetailPanel({ node, allNodes, checkpointId, onClose }: DetailPan
     const allowed = new Set(ancestorIds);
     return memEntries.filter((e) => allowed.has(e.node_id));
   }, [memEntries, node, ancestorIds]);
+
+  // ── Access log data (lazy: fetched only when the Access tab is opened) ──
+  const [accessData, setAccessData] = useState<MemoryAccessResponse | null>(null);
+  const [accessLoading, setAccessLoading] = useState(false);
+  const [accessError, setAccessError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activeTab !== 'access' || !checkpointId || !node) {
+      return;
+    }
+    let aborted = false;
+    setAccessLoading(true);
+    setAccessError(null);
+    fetchMemoryAccess(checkpointId, node.id)
+      .then((r) => {
+        if (aborted) return;
+        if (r.error) setAccessError(r.error);
+        setAccessData(r);
+      })
+      .catch((e) => {
+        if (aborted) return;
+        setAccessError(String(e));
+        setAccessData(null);
+      })
+      .finally(() => {
+        if (!aborted) setAccessLoading(false);
+      });
+    return () => {
+      aborted = true;
+    };
+  }, [activeTab, checkpointId, node?.id]);
 
   // ── Resize drag handlers ──
 
@@ -399,6 +435,7 @@ export function DetailPanel({ node, allNodes, checkpointId, onClose }: DetailPan
             {traceLog.length > 0 && tabBtn('trace', '🔧 MCP Trace', traceLog.length)}
             {codeSnippets.length > 0 && tabBtn('code', '💻 Code', codeSnippets.length)}
             {tabBtn('memory', `🧠 ${t('memory_tab')}`, visibleMemory.length + globalEntries.length)}
+            {tabBtn('access', `📒 ${t('memory_access_tab')}`)}
             {tabBtn('raw', '{ } Raw')}
           </div>
 
@@ -649,6 +686,145 @@ export function DetailPanel({ node, allNodes, checkpointId, onClose }: DetailPan
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* Access log tab */}
+          {activeTab === 'access' && (
+            <div>
+              {accessLoading && (
+                <div style={{ fontSize: '.72rem', color: 'var(--muted)' }}>
+                  Loading access log…
+                </div>
+              )}
+              {accessError && (
+                <div style={{ fontSize: '.72rem', color: 'var(--red)' }}>
+                  {accessError}
+                </div>
+              )}
+              {!accessLoading &&
+                !accessError &&
+                accessData &&
+                accessData.writes.length === 0 &&
+                accessData.reads.length === 0 && (
+                  <div style={{ fontSize: '.75rem', color: 'var(--muted)' }}>
+                    {t('memory_access_empty')}
+                  </div>
+                )}
+              {accessData && (accessData.writes.length > 0 || accessData.reads.length > 0) && (
+                <div style={{ fontSize: '.72rem', color: 'var(--muted)', marginBottom: 6 }}>
+                  <span className="badge badge-blue" style={{ marginRight: 4 }}>
+                    {t('memory_access_writes')}: {accessData.writes.length}
+                  </span>
+                  <span className="badge badge-muted">
+                    {t('memory_access_reads')}: {accessData.reads.length}
+                  </span>
+                </div>
+              )}
+              {accessData && accessData.writes.length > 0 && (
+                <div style={{ marginBottom: 8 }}>
+                  <div
+                    style={{
+                      fontSize: '.7rem',
+                      color: 'var(--muted)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '.04em',
+                      margin: '8px 0 4px',
+                    }}
+                  >
+                    {t('memory_access_writes')} ({accessData.writes.length})
+                  </div>
+                  {accessData.writes.map((ev, i) => (
+                    <div
+                      key={`w-${i}`}
+                      style={{
+                        borderLeft: '3px solid #60a5fa',
+                        background: 'rgba(59,130,246,.06)',
+                        padding: '6px 8px',
+                        margin: '4px 0',
+                        borderRadius: 3,
+                        fontSize: '.72rem',
+                      }}
+                    >
+                      <div style={{ color: 'var(--muted)', marginBottom: 3 }}>
+                        {ev.ts
+                          ? new Date(Number(ev.ts) * 1000).toLocaleString()
+                          : ''}
+                      </div>
+                      {ev.text_preview && (
+                        <div
+                          style={{
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word',
+                            maxHeight: 120,
+                            overflow: 'auto',
+                          }}
+                        >
+                          {ev.text_preview}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {accessData && accessData.reads.length > 0 && (
+                <div>
+                  <div
+                    style={{
+                      fontSize: '.7rem',
+                      color: 'var(--muted)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '.04em',
+                      margin: '8px 0 4px',
+                    }}
+                  >
+                    {t('memory_access_reads')} ({accessData.reads.length})
+                  </div>
+                  {accessData.reads.map((ev, i) => (
+                    <div
+                      key={`r-${i}`}
+                      style={{
+                        borderLeft: '3px solid #86efac',
+                        background: 'rgba(134,239,172,.06)',
+                        padding: '6px 8px',
+                        margin: '4px 0',
+                        borderRadius: 3,
+                        fontSize: '.72rem',
+                      }}
+                    >
+                      <div
+                        style={{
+                          color: 'var(--muted)',
+                          marginBottom: 3,
+                          display: 'flex',
+                          gap: 6,
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        {ev.ts && (
+                          <span>{new Date(Number(ev.ts) * 1000).toLocaleString()}</span>
+                        )}
+                        {ev.results && (
+                          <span>
+                            {t('memory_access_hits')}: {ev.results.length}
+                          </span>
+                        )}
+                      </div>
+                      {ev.query && (
+                        <div
+                          style={{
+                            fontFamily: 'monospace',
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word',
+                          }}
+                        >
+                          {t('memory_access_query')}: {ev.query}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

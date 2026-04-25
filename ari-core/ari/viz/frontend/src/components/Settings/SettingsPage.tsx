@@ -12,6 +12,7 @@ import {
   testSSH as apiTestSSH,
   generateConfig,
   fetchContainerInfo,
+  restartLetta,
 } from '../../services/api';
 import type { Checkpoint } from '../../types';
 import { Card } from '../common';
@@ -33,6 +34,69 @@ const PROVIDER_KEY_PLACEHOLDER: Record<string, string> = {
   gemini: 'AIza...',
   ollama: '(not required)',
 };
+
+// ── Memory (Letta) — provider × model picker ────────
+//
+// Letta freezes the agent's embedding_config at agent creation. The
+// default ``letta/letta-free`` handle routes through the MemGPT-hosted
+// embeddings.memgpt.ai endpoint and intermittently returns 522/empty
+// body — Letta then surfaces this as a 400 with the misleading
+// "Expecting value: line 1 column 1 (char 0)" message. We expose
+// per-provider model lists here so the operator can pick a known-good
+// combination and warn when letta-free is selected.
+//
+// Handles are stored on settings.json as ``provider/model`` strings,
+// matching what Letta's SDK (and ari_skill_memory.MemoryConfig)
+// expects. Some providers use a different prefix for chat models
+// (e.g. ``ollama_chat/`` vs ``ollama/``) — kept on each entry.
+type LettaModelEntry = { handle: string; label?: string };
+type LettaProviderTable = Record<string, LettaModelEntry[]>;
+
+const LETTA_EMBEDDING_BY_PROVIDER: LettaProviderTable = {
+  openai: [
+    { handle: 'openai/text-embedding-3-small', label: 'text-embedding-3-small (recommended)' },
+    { handle: 'openai/text-embedding-3-large', label: 'text-embedding-3-large' },
+    { handle: 'openai/text-embedding-ada-002', label: 'text-embedding-ada-002' },
+  ],
+  gemini: [
+    { handle: 'gemini/text-embedding-004', label: 'text-embedding-004' },
+  ],
+  ollama: [
+    { handle: 'ollama/nomic-embed-text', label: 'nomic-embed-text (local)' },
+    { handle: 'ollama/mxbai-embed-large', label: 'mxbai-embed-large (local)' },
+    { handle: 'ollama/all-minilm', label: 'all-minilm (local)' },
+  ],
+  letta: [
+    { handle: 'letta/letta-free', label: 'letta-free (external; flaky)' },
+    { handle: 'letta-default', label: 'letta-default (resolves to letta-free)' },
+  ],
+};
+
+// The Letta agent's chat LLM is bound to a fixed mock handle
+// (letta/letta-free) inside ari-skill-memory because ARI never invokes
+// the agent's chat API — only archival_insert / archival_search, which
+// use embeddings. So no LLM picker is rendered; only the embedding
+// picker below is operator-facing.
+const LETTA_EMBED_PROVIDERS = ['openai', 'gemini', 'ollama', 'letta'] as const;
+
+const CUSTOM_HANDLE_VALUE = '__custom__';
+
+function _splitHandle(
+  handle: string,
+  table: LettaProviderTable,
+): { provider: string; model: string } {
+  // Find a provider whose entries contain this handle.
+  for (const [prov, entries] of Object.entries(table)) {
+    if (entries.some((e) => e.handle === handle)) return { provider: prov, model: handle };
+  }
+  // Try heuristic split on first slash; fall back to "letta" provider.
+  if (handle.includes('/')) {
+    const prov = handle.split('/')[0];
+    if (prov in table) return { provider: prov, model: handle };
+  }
+  if (handle === 'letta-default') return { provider: 'letta', model: handle };
+  return { provider: CUSTOM_HANDLE_VALUE, model: handle };
+}
 
 // ── Skill row type ───────────────────────────────────
 
@@ -86,6 +150,29 @@ export default function SettingsPage() {
   // VLM Review
   const [vlmReviewModel, setVlmReviewModel] = useState('openai/gpt-4o');
 
+  // Memory (Letta)
+  const [lettaBaseUrl, setLettaBaseUrl] = useState('http://localhost:8283');
+  const [lettaApiKey, setLettaApiKey] = useState('');
+  // Two-stage picker: provider, then model. Storage stays as a flat
+  // ``provider/model`` handle string in settings.json so the env
+  // propagation (LETTA_EMBEDDING_CONFIG / LETTA_LLM_CONFIG) doesn't change.
+  const [lettaEmbedProvider, setLettaEmbedProvider] = useState('openai');
+  const [lettaEmbedModel, setLettaEmbedModel] = useState(
+    'openai/text-embedding-3-small'
+  );
+  const [lettaEmbedCustom, setLettaEmbedCustom] = useState('');
+  // Deployment selector — values match _api_memory_start_local's `path`
+  // contract (auto/docker/singularity/pip). "auto" delegates to
+  // _detect_deployment(); the other three force a specific path so the
+  // user can override the detector when e.g. docker is on PATH but the
+  // daemon socket isn't reachable.
+  const [lettaDeployment, setLettaDeployment] = useState<
+    'auto' | 'docker' | 'singularity' | 'pip'
+  >('auto');
+  // Restart UX: single-flight state; status text + last result.
+  const [lettaRestarting, setLettaRestarting] = useState(false);
+  const [lettaRestartMsg, setLettaRestartMsg] = useState('');
+
   // Skills
   const [skills, setSkills] = useState<SkillInfo[]>([]);
 
@@ -128,6 +215,17 @@ export default function SettingsPage() {
       setContainerImage(r.container_image || '');
       setContainerPull(r.container_pull || 'on_start');
       setVlmReviewModel(r.vlm_review_model || 'openai/gpt-4o');
+      // Memory (Letta): split the saved flat handle back into a
+      // (provider, model) pair so the two-stage picker shows what's
+      // currently in effect. Unknown handles drop to "custom" so the
+      // operator can keep / edit them without losing the value.
+      setLettaBaseUrl(r.letta_base_url || 'http://localhost:8283');
+      setLettaApiKey(r.letta_api_key || '');
+      const savedEmb = r.letta_embedding_config || 'openai/text-embedding-3-small';
+      const embSplit = _splitHandle(savedEmb, LETTA_EMBEDDING_BY_PROVIDER);
+      setLettaEmbedProvider(embSplit.provider);
+      setLettaEmbedModel(embSplit.model);
+      setLettaEmbedCustom(savedEmb);
     } catch {
       // ignore
     }
@@ -201,6 +299,11 @@ export default function SettingsPage() {
     const model =
       modelSelect && modelSelect !== '__custom__' ? modelSelect : modelCustom || '';
 
+    const lettaEmbedding =
+      lettaEmbedProvider === CUSTOM_HANDLE_VALUE
+        ? lettaEmbedCustom.trim()
+        : lettaEmbedModel;
+
     const data: Record<string, unknown> = {
       llm_model: model,
       llm_backend: provider,
@@ -223,6 +326,9 @@ export default function SettingsPage() {
       container_image: containerImage,
       container_pull: containerPull,
       vlm_review_model: vlmReviewModel,
+      letta_base_url: lettaBaseUrl.trim(),
+      letta_api_key: lettaApiKey,
+      letta_embedding_config: lettaEmbedding,
     };
 
     try {
@@ -479,6 +585,178 @@ export default function SettingsPage() {
               <option key={m} value={m}>{m}</option>
             ))}
           </select>
+        </Card>
+
+        {/* ── Memory (Letta) ─────────────────── */}
+        <Card title={t('settings_memory')}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={labelStyle}>{t('settings_memory_base_url')}</label>
+              <input
+                type="text"
+                value={lettaBaseUrl}
+                onChange={(e) => setLettaBaseUrl(e.target.value)}
+                placeholder="http://localhost:8283"
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>{t('settings_memory_api_key')}</label>
+              <input
+                type="password"
+                value={lettaApiKey}
+                onChange={(e) => setLettaApiKey(e.target.value)}
+                placeholder="(optional)"
+                style={inputStyle}
+              />
+            </div>
+
+            {/* Embedding — provider + model two-stage picker */}
+            <div>
+              <label style={labelStyle}>
+                {t('settings_memory_embedding_provider')}
+              </label>
+              <select
+                value={lettaEmbedProvider}
+                onChange={(e) => {
+                  const p = e.target.value;
+                  setLettaEmbedProvider(p);
+                  if (p !== CUSTOM_HANDLE_VALUE) {
+                    const first = LETTA_EMBEDDING_BY_PROVIDER[p]?.[0];
+                    if (first) setLettaEmbedModel(first.handle);
+                  }
+                }}
+                style={inputStyle}
+              >
+                {LETTA_EMBED_PROVIDERS.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+                <option value={CUSTOM_HANDLE_VALUE}>{t('custom_entry')}</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>
+                {t('settings_memory_embedding_model')}
+              </label>
+              {lettaEmbedProvider !== CUSTOM_HANDLE_VALUE ? (
+                <select
+                  value={lettaEmbedModel}
+                  onChange={(e) => setLettaEmbedModel(e.target.value)}
+                  style={inputStyle}
+                >
+                  {(LETTA_EMBEDDING_BY_PROVIDER[lettaEmbedProvider] || []).map((m) => (
+                    <option key={m.handle} value={m.handle}>
+                      {m.label || m.handle}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={lettaEmbedCustom}
+                  onChange={(e) => setLettaEmbedCustom(e.target.value)}
+                  placeholder="provider/model"
+                  style={inputStyle}
+                />
+              )}
+            </div>
+
+          </div>
+
+          {/* Letta-free warning (now keyed off the new provider state) */}
+          {lettaEmbedProvider === 'letta' && (
+            <div
+              style={{
+                marginTop: '10px',
+                fontSize: '.78rem',
+                color: 'var(--red)',
+                background: 'rgba(239,68,68,.08)',
+                border: '1px solid rgba(239,68,68,.3)',
+                padding: '8px 10px',
+                borderRadius: '6px',
+              }}
+            >
+              {t('settings_memory_letta_free_warning')}
+            </div>
+          )}
+
+          {/* Restart Letta — long-lived daemon doesn't reload env, so
+              changes to provider keys / handles need a server restart
+              to take effect. The button calls /api/memory/restart which
+              runs stop_local + start_local. */}
+          <div
+            style={{
+              marginTop: '12px',
+              display: 'flex',
+              gap: '8px',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+            }}
+          >
+            <label style={{ fontSize: '.8rem', color: 'var(--muted)' }}>
+              {t('settings_memory_deployment')}
+            </label>
+            <select
+              value={lettaDeployment}
+              onChange={(e) =>
+                setLettaDeployment(
+                  e.target.value as 'auto' | 'docker' | 'singularity' | 'pip',
+                )
+              }
+              disabled={lettaRestarting}
+              style={{ ...inputStyle, width: 'auto', minWidth: '160px' }}
+            >
+              <option value="auto">{t('settings_memory_deployment_auto')}</option>
+              <option value="docker">Docker</option>
+              <option value="singularity">Singularity</option>
+              <option value="pip">{t('settings_memory_deployment_pip')}</option>
+            </select>
+            <button
+              className="btn btn-outline btn-sm"
+              disabled={lettaRestarting}
+              onClick={async () => {
+                if (!confirm(t('settings_memory_restart_confirm'))) return;
+                setLettaRestarting(true);
+                setLettaRestartMsg(t('settings_memory_restart_running'));
+                try {
+                  const r = await restartLetta(lettaDeployment);
+                  setLettaRestartMsg(
+                    r.ok
+                      ? `✓ ${t('settings_memory_restart_ok')}${
+                          r.start?.path ? ` (${r.start.path})` : ''
+                        }`
+                      : `✗ ${r.start?.error || r.error || 'failed'}`
+                  );
+                } catch (e) {
+                  setLettaRestartMsg(`✗ ${String(e)}`);
+                } finally {
+                  setLettaRestarting(false);
+                }
+                setTimeout(() => setLettaRestartMsg(''), 8000);
+              }}
+            >
+              {lettaRestarting ? t('settings_memory_restart_running') : t('settings_memory_restart')}
+            </button>
+            {lettaRestartMsg && (
+              <span
+                className={lettaRestartMsg.startsWith('✓') ? 'badge badge-green' : ''}
+                style={
+                  lettaRestartMsg.startsWith('✗')
+                    ? { color: 'var(--red)', fontSize: '.8rem' }
+                    : { fontSize: '.8rem' }
+                }
+              >
+                {lettaRestartMsg}
+              </span>
+            )}
+          </div>
+
+          <div style={{ marginTop: '8px', fontSize: '.78rem', color: 'var(--muted)' }}>
+            {t('settings_memory_note')}
+          </div>
+          <div style={{ marginTop: '4px', fontSize: '.78rem', color: 'var(--muted)' }}>
+            {t('settings_memory_key_note')}
+          </div>
         </Card>
 
         {/* ── SLURM / HPC ─────────────────── */}

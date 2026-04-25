@@ -346,15 +346,36 @@ class TestExecutorPropagation:
         assert resolved != "local", \
             "Executor must not fall back to 'local' when config specifies 'slurm'"
 
-    def test_repro_stage_receives_executor_input(self, workflow_yaml):
-        """reproducibility_check stage must have executor in its inputs."""
+    def test_repro_stage_exposes_hpc_skill(self, workflow_yaml):
+        """reproducibility_check now runs under react_driver; the executor
+        choice is handled inside hpc-skill (reachable via phase=reproduce),
+        not through a stage `executor` input. Verify:
+          - the stage declares a react block with agent_phase=reproduce
+          - hpc-skill's phase list contains `reproduce`
+        """
         stages = workflow_yaml.get("pipeline", [])
         repro = next((s for s in stages if s["stage"] == "reproducibility_check"), None)
         assert repro is not None, "reproducibility_check stage missing"
-        assert "executor" in repro.get("inputs", {}), \
-            "reproducibility_check must receive executor as input"
-        assert "{{resources.executor}}" in repro["inputs"]["executor"], \
-            "executor must reference {{resources.executor}} from config"
+
+        react_cfg = repro.get("react") or {}
+        assert react_cfg, (
+            "reproducibility_check must declare a react: block (driven by "
+            "ari.agent.react_driver, not a single MCP tool)"
+        )
+        assert react_cfg.get("agent_phase") == "reproduce", (
+            "react.agent_phase must be 'reproduce' so only MCP skills opted "
+            "into that phase are exposed to the agent"
+        )
+
+        skills = {s["name"]: s for s in workflow_yaml.get("skills", [])}
+        hpc = skills.get("hpc-skill") or {}
+        phases = hpc.get("phase", [])
+        if isinstance(phases, str):
+            phases = [phases]
+        assert "reproduce" in phases, (
+            "hpc-skill must include 'reproduce' in its phase list so the "
+            "ReAct reproducibility agent can submit jobs"
+        )
 
 
 # ══════════════════════════════════════════════
@@ -447,17 +468,27 @@ class TestFullPaperPipeline:
                 return {"configurations": [], "metric_name": "score"}
             elif tool == "generate_figure":
                 return {"figures": [], "latex_snippets": {}}
-            elif tool == "review_figure":
-                return {"verdict": "pass", "issues": []}
+            elif tool == "review_figures_all":
+                return {
+                    "score": 0.9,
+                    "issues": [],
+                    "suggestions": [],
+                    "review_text": "",
+                    "per_figure": {},
+                }
             elif tool == "write_paper_iterative":
                 return {"latex": "\\documentclass{article}\n\\begin{document}\nTest\n\\end{document}",
                         "bib": "@article{test,title={Test}}"}
             elif tool == "review_compiled_paper":
                 return {"overall_score": 7, "abstract_score": 8, "body_score": 6}
-            elif tool == "generate_rebuttal":
-                return {"rebuttal": "Response to reviewers", "revisions": []}
-            elif tool == "reproduce_from_paper":
-                return {"verdict": "REPRODUCED", "claimed_value": 120, "actual_value": 118}
+            elif tool == "merge_reviews":
+                return {"ok": True, "has_vlm_review": True}
+            elif tool == "extract_repro_config":
+                return {"metric_name": "GFLOPS", "claimed_value": 120.0,
+                        "description": "16 threads", "threads": 16}
+            elif tool == "build_repro_report":
+                return {"verdict": "REPRODUCED", "claimed_value": 120,
+                        "actual_value": 118, "interpretation": "close enough"}
             return {"result": "ok"}
 
         # Also capture the subprocess env to verify model propagation
@@ -475,35 +506,52 @@ class TestFullPaperPipeline:
             r.stderr = ""
             return r
 
-        with mock.patch("ari.pipeline._run_stage_subprocess", side_effect=fake_subprocess):
+        # react_driver makes real LLM calls mid-stage; stub it so the e2e
+        # pipeline does not hit a live endpoint. The test's concern is the
+        # sequence of MCP tool calls, not the agent's reasoning quality.
+        _fake_react = {
+            "status": "completed",
+            "final_args": {"value": 118.0, "unit": "GFLOPS", "notes": "ok"},
+            "messages": [],
+            "tool_calls_count": 0,
+        }
+        with mock.patch(
+            "ari.pipeline._run_stage_subprocess", side_effect=fake_subprocess
+        ), mock.patch(
+            "ari.agent.react_driver.run_react", return_value=_fake_react,
+        ), mock.patch(
+            "ari.mcp.client.MCPClient.list_tools", return_value=[],
+        ):
             result = run_pipeline(
                 stages, fake_nodes,
                 {"goal": "Maximize GFLOPS of a stencil benchmark", "topic": "stencil_benchmark", "file": ""},
                 tmp_path, str(cfg_file),
             )
 
-        # All 9 stages must have been called (order depends on dependency resolution)
+        # The reproducibility stage now invokes two MCP tools (pre/post) and
+        # runs the ReAct loop in-process via react_driver.
         expected_tools = [
             "collect_references_iterative",
             "nodes_to_science_data",
             "generate_ear",
             "generate_figures_llm",
-            "review_figure",
+            "review_figures_all",
             "write_paper_iterative",
             "review_compiled_paper",
-            "generate_rebuttal",
-            "reproduce_from_paper",
+            "merge_reviews",  # v0.6.0+: post-hoc merge of text + VLM reviews
+            "extract_repro_config",
+            "build_repro_report",
         ]
         assert tool_calls == expected_tools, \
-            f"Expected all 9 stages in order, got {tool_calls}"
+            f"Expected all pipeline MCP calls in order, got {tool_calls}"
         # generate_ear MUST run before write_paper (issue #4)
         assert tool_calls.index("generate_ear") < tool_calls.index(
             "write_paper_iterative"
         ), "generate_ear must run before write_paper"
-        # review_figure MUST run before write_paper
-        assert tool_calls.index("review_figure") < tool_calls.index(
+        # VLM review MUST run before write_paper
+        assert tool_calls.index("review_figures_all") < tool_calls.index(
             "write_paper_iterative"
-        ), "review_figure must run before write_paper"
+        ), "review_figures_all must run before write_paper"
 
         # No stage should have error
         for stage_name, stage_result in result.items():

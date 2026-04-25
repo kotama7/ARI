@@ -31,6 +31,7 @@ export function ResultsPage() {
 
   // Overleaf-like file management state
   const [ckptFiles, setCkptFiles] = useState<CheckpointFile[]>([]);
+  const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(new Set());
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [editorContent, setEditorContent] = useState('');
   const [editorDirty, setEditorDirty] = useState(false);
@@ -281,55 +282,290 @@ export function ResultsPage() {
     loadFiles(id);
   };
 
+  // Decision → badge variant mapping
+  const decisionVariant = (
+    d?: string,
+  ): 'green' | 'red' | 'yellow' | 'muted' => {
+    if (!d) return 'muted';
+    if (d === 'accept' || d === 'weak_accept') return 'green';
+    if (d === 'reject' || d === 'weak_reject') return 'red';
+    if (d === 'borderline') return 'yellow';
+    return 'muted';
+  };
+
+  const decisionLabel = (d?: string): string => {
+    if (!d) return '—';
+    const key = `review_${d}`;
+    const localized = t(key);
+    return localized === key ? d : localized;
+  };
+
+  // Render one dimensional score (rubric-driven)
+  const renderDimension = (
+    name: string,
+    value: number | null | undefined,
+    scale: [number, number] | undefined,
+  ) => {
+    const [lo, hi] = scale ?? [0, 10];
+    const range = hi - lo || 1;
+    const pct =
+      value != null ? Math.max(0, Math.min(100, ((value - lo) / range) * 100)) : 0;
+    return (
+      <div key={name}>
+        <div
+          style={{
+            fontSize: '.8rem',
+            color: 'var(--muted)',
+            marginBottom: 4,
+            textTransform: 'capitalize',
+          }}
+        >
+          {name.replace(/_/g, ' ')}
+        </div>
+        <div style={{ fontSize: '1.4rem', fontWeight: 800 }}>
+          {value != null ? value : '—'}{' '}
+          <span style={{ fontSize: '.9rem', color: 'var(--muted)' }}>
+            /{hi}
+          </span>
+        </div>
+        {value != null && (
+          <div className="score-bar">
+            <div className="score-fill" style={{ width: `${pct}%` }} />
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // Render review scores section
   const renderReviewScores = () => {
     const rr = summary?.review_report;
     if (!rr) return null;
 
-    const scores: [string, number | null][] = [
-      [
-        t('abstract'),
-        rr.abstract_score ?? rr.scores?.abstract ?? null,
-      ],
+    // Rubric-driven path: new schema with score_dimensions
+    const hasRubric =
+      !!rr.rubric_id || (rr.score_dimensions && rr.score_dimensions.length > 0);
+
+    const legacyScores: [string, number | null][] = [
+      [t('abstract'), rr.abstract_score ?? rr.scores?.abstract ?? null],
       [t('body'), rr.body_score ?? rr.scores?.body ?? null],
-      [
-        t('overall'),
-        rr.overall_score ?? rr.score ?? null,
-      ],
+      [t('overall'), rr.overall_score ?? rr.score ?? null],
     ];
+
+    const textSections: Array<{ key: string; label: string; body?: string }> = [
+      { key: 'strengths', label: t('review_strengths'), body: rr.strengths },
+      { key: 'weaknesses', label: t('review_weaknesses'), body: rr.weaknesses },
+      { key: 'questions', label: t('review_questions'), body: rr.questions },
+      {
+        key: 'limitations',
+        label: t('review_limitations'),
+        body: rr.limitations,
+      },
+    ].filter((s) => s.body && s.body.trim().length > 0);
 
     return (
       <Card style={{ marginBottom: 16 }}>
-        <div className="card-title">{t('review_scores')}</div>
-        <div className="grid-3">
-          {scores.map(([label, value]) => (
-            <div key={label}>
-              <div
-                style={{
-                  fontSize: '.8rem',
-                  color: 'var(--muted)',
-                  marginBottom: 4,
-                }}
-              >
-                {label}
-              </div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 800 }}>
-                {value != null ? value : '—'}{' '}
-                <span style={{ fontSize: '.9rem', color: 'var(--muted)' }}>
-                  /10
-                </span>
-              </div>
-              {value != null && (
-                <div className="score-bar">
-                  <div
-                    className="score-fill"
-                    style={{ width: `${(value as number) * 10}%` }}
-                  />
-                </div>
-              )}
-            </div>
-          ))}
+        <div
+          className="card-title"
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 8,
+            flexWrap: 'wrap',
+          }}
+        >
+          <span>{t('review_scores')}</span>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            {rr.rubric_id && (
+              <Badge variant="muted">
+                {t('review_rubric')}: {rr.rubric_id}
+                {rr.rubric_version ? ` @${rr.rubric_version}` : ''}
+              </Badge>
+            )}
+            {rr.venue && <Badge variant="muted">{rr.venue}</Badge>}
+            {rr.decision && (
+              <Badge variant={decisionVariant(rr.decision)}>
+                {t('review_decision')}: {decisionLabel(rr.decision)}
+              </Badge>
+            )}
+          </div>
         </div>
+
+        {hasRubric && rr.score_dimensions && rr.score_dimensions.length > 0 ? (
+          <div
+            className="grid-3"
+            style={{
+              gridTemplateColumns: `repeat(${Math.min(
+                rr.score_dimensions.length,
+                5,
+              )}, minmax(0, 1fr))`,
+            }}
+          >
+            {rr.score_dimensions.map((d) =>
+              renderDimension(d.name, d.value, d.scale),
+            )}
+          </div>
+        ) : (
+          <div className="grid-3">
+            {legacyScores.map(([label, value]) => (
+              <div key={label}>
+                <div
+                  style={{
+                    fontSize: '.8rem',
+                    color: 'var(--muted)',
+                    marginBottom: 4,
+                  }}
+                >
+                  {label}
+                </div>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800 }}>
+                  {value != null ? value : '—'}{' '}
+                  <span style={{ fontSize: '.9rem', color: 'var(--muted)' }}>
+                    /10
+                  </span>
+                </div>
+                {value != null && (
+                  <div className="score-bar">
+                    <div
+                      className="score-fill"
+                      style={{ width: `${(value as number) * 10}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {rr.confidence != null && (
+          <div style={{ marginTop: 12, fontSize: '.9rem' }}>
+            {t('review_confidence')}:{' '}
+            <strong>{rr.confidence}</strong>
+          </div>
+        )}
+
+        {textSections.length > 0 && (
+          <div style={{ marginTop: 16, display: 'grid', gap: 12 }}>
+            {textSections.map((s) => (
+              <div key={s.key}>
+                <div
+                  style={{
+                    fontSize: '.85rem',
+                    fontWeight: 700,
+                    marginBottom: 4,
+                  }}
+                >
+                  {s.label}
+                </div>
+                <div
+                  style={{
+                    whiteSpace: 'pre-wrap',
+                    fontSize: '.85rem',
+                    lineHeight: 1.5,
+                    color: 'var(--muted)',
+                  }}
+                >
+                  {s.body}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {rr.issues && rr.issues.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: '.85rem', fontWeight: 700, marginBottom: 4 }}>
+              {t('review_issues')}
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: '.85rem' }}>
+              {rr.issues.map((x, i) => (
+                <li key={i}>{x}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {rr.recommendations && rr.recommendations.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: '.85rem', fontWeight: 700, marginBottom: 4 }}>
+              {t('review_recommendations')}
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: '.85rem' }}>
+              {rr.recommendations.map((x, i) => (
+                <li key={i}>{x}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {rr.figure_caption_issues && rr.figure_caption_issues.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: '.85rem', fontWeight: 700, marginBottom: 4 }}>
+              {t('review_figure_caption_issues')}
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: '.85rem' }}>
+              {rr.figure_caption_issues.map((x, i) => (
+                <li key={i}>{x}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {rr.ensemble_reviews && rr.ensemble_reviews.length > 1 && (
+          <div style={{ marginTop: 16 }}>
+            <div style={{ fontSize: '.85rem', fontWeight: 700, marginBottom: 6 }}>
+              {t('review_ensemble')} ({rr.ensemble_reviews.length})
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {rr.ensemble_reviews.map((er, i) => (
+                <Badge key={i} variant={decisionVariant(er.decision)}>
+                  #{i + 1}:{' '}
+                  {er.overall_score ?? er.score ?? '—'}{' '}
+                  {er.decision ? `(${decisionLabel(er.decision)})` : ''}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {rr.meta_review && (
+          <div style={{ marginTop: 12, padding: 10, border: '1px solid var(--border)', borderRadius: 6 }}>
+            <div style={{ fontSize: '.85rem', fontWeight: 700, marginBottom: 4 }}>
+              {t('review_meta')}
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              {rr.meta_review.decision && (
+                <Badge variant={decisionVariant(rr.meta_review.decision)}>
+                  {decisionLabel(rr.meta_review.decision)}
+                </Badge>
+              )}
+              <span style={{ fontSize: '.9rem' }}>
+                {t('overall')}:{' '}
+                <strong>
+                  {rr.meta_review.overall_score ?? rr.meta_review.score ?? '—'}
+                </strong>
+              </span>
+            </div>
+          </div>
+        )}
+
+        {rr.fewshot_sources && rr.fewshot_sources.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: '.85rem', fontWeight: 700, marginBottom: 4 }}>
+              {t('review_fewshot_sources')}
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {rr.fewshot_sources.map((fs, i) => (
+                <Badge key={i} variant="muted">
+                  {fs.title ?? fs.id}
+                  {fs.score != null ? ` (${fs.score.toFixed(2)})` : ''}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
         {rr.citation_ok != null && (
           <div style={{ marginTop: 12 }}>
             {t('citations')}:{' '}
@@ -360,6 +596,150 @@ export function ResultsPage() {
     if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
     return `${(b / (1024 * 1024)).toFixed(1)} MB`;
   };
+
+  // Group flat path-name files (e.g. "figures/fig_1.pdf") into a directory tree.
+  type FileTreeNode = {
+    name: string;
+    path: string;
+    isDir: boolean;
+    file?: CheckpointFile;
+    children: FileTreeNode[];
+  };
+  const buildFileTree = (files: CheckpointFile[]): FileTreeNode[] => {
+    const root: FileTreeNode = { name: '', path: '', isDir: true, children: [] };
+    for (const f of files) {
+      const segs = f.name.split('/').filter(Boolean);
+      let cur = root;
+      for (let i = 0; i < segs.length; i++) {
+        const seg = segs[i];
+        const isLast = i === segs.length - 1;
+        const path = segs.slice(0, i + 1).join('/');
+        let child = cur.children.find((c) => c.name === seg && c.isDir === !isLast);
+        if (!child) {
+          child = { name: seg, path, isDir: !isLast, children: [] };
+          if (isLast) child.file = f;
+          cur.children.push(child);
+        }
+        cur = child;
+      }
+    }
+    const sortRec = (n: FileTreeNode) => {
+      n.children.sort((a, b) => {
+        if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+      n.children.forEach(sortRec);
+    };
+    sortRec(root);
+    return root.children;
+  };
+
+  const toggleDir = (path: string) => {
+    setCollapsedDirs((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path); else next.add(path);
+      return next;
+    });
+  };
+
+  const renderTreeNodes = (nodes: FileTreeNode[], depth: number): React.ReactNode =>
+    nodes.map((n) => {
+      if (n.isDir) {
+        const collapsed = collapsedDirs.has(n.path);
+        return (
+          <div key={'d:' + n.path}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '3px 4px',
+                paddingLeft: 4 + depth * 12,
+                borderRadius: 4,
+                cursor: 'pointer',
+                color: 'var(--text, #eee)',
+              }}
+              onClick={() => toggleDir(n.path)}
+              title={n.path}
+            >
+              <span style={{ flexShrink: 0, width: 10, fontSize: '.7rem', color: 'var(--muted)' }}>
+                {collapsed ? '▶' : '▼'}
+              </span>
+              <span style={{ flexShrink: 0 }}>{collapsed ? '\u{1F4C1}' : '\u{1F4C2}'}</span>
+              <span
+                style={{
+                  flex: 1,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  fontWeight: 600,
+                }}
+              >
+                {n.name}
+              </span>
+              <span style={{ color: 'var(--muted)', fontSize: '.65rem', flexShrink: 0 }}>
+                {n.children.length}
+              </span>
+            </div>
+            {!collapsed && renderTreeNodes(n.children, depth + 1)}
+          </div>
+        );
+      }
+      const f = n.file!;
+      return (
+        <div
+          key={'f:' + f.name}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '3px 4px',
+            paddingLeft: 4 + depth * 12,
+            borderRadius: 4,
+            cursor: 'pointer',
+            background: activeFile === f.name ? 'var(--blue-light, #3b82f6)22' : 'transparent',
+            borderLeft: activeFile === f.name ? '2px solid var(--blue-light, #3b82f6)' : '2px solid transparent',
+          }}
+          onClick={() => handleFileClick(f)}
+        >
+          <span style={{ flexShrink: 0, width: 10 }} />
+          <span style={{ flexShrink: 0 }}>{fileIcon(f.ext)}</span>
+          <span
+            style={{
+              flex: 1,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              color: 'var(--text, #eee)',
+            }}
+            title={f.name}
+          >
+            {n.name}
+          </span>
+          <span style={{ color: 'var(--muted)', fontSize: '.65rem', flexShrink: 0 }}>
+            {fmtSize(f.size)}
+          </span>
+          <button
+            onClick={(e) => { e.stopPropagation(); handleDeleteFile(f.name); }}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--muted, #666)',
+              cursor: 'pointer',
+              fontSize: '.72rem',
+              padding: '0 2px',
+              flexShrink: 0,
+              opacity: 0.5,
+            }}
+            onMouseEnter={(e) => { (e.target as HTMLElement).style.opacity = '1'; (e.target as HTMLElement).style.color = 'var(--red, #ef4444)'; }}
+            onMouseLeave={(e) => { (e.target as HTMLElement).style.opacity = '0.5'; (e.target as HTMLElement).style.color = 'var(--muted, #666)'; }}
+            title={`Delete ${f.name}`}
+          >
+            {'✕'}
+          </button>
+        </div>
+      );
+    });
 
   const isImage = (ext: string) => ['.png', '.jpg', '.jpeg', '.svg', '.tiff', '.eps'].includes(ext);
   const isBinaryPdf = (ext: string) => ext === '.pdf';
@@ -494,57 +874,7 @@ export function ResultsPage() {
             <div style={{ fontWeight: 700, marginBottom: 6, color: 'var(--muted)', fontSize: '.72rem', textTransform: 'uppercase', letterSpacing: '.5px' }}>
               Files ({ckptFiles.length})
             </div>
-            {ckptFiles.map((f) => (
-              <div
-                key={f.name}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '3px 4px',
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                  background: activeFile === f.name ? 'var(--blue-light, #3b82f6)22' : 'transparent',
-                  borderLeft: activeFile === f.name ? '2px solid var(--blue-light, #3b82f6)' : '2px solid transparent',
-                }}
-                onClick={() => handleFileClick(f)}
-              >
-                <span style={{ flexShrink: 0 }}>{fileIcon(f.ext)}</span>
-                <span
-                  style={{
-                    flex: 1,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    color: 'var(--text, #eee)',
-                  }}
-                  title={f.name}
-                >
-                  {f.name}
-                </span>
-                <span style={{ color: 'var(--muted)', fontSize: '.65rem', flexShrink: 0 }}>
-                  {fmtSize(f.size)}
-                </span>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleDeleteFile(f.name); }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--muted, #666)',
-                    cursor: 'pointer',
-                    fontSize: '.72rem',
-                    padding: '0 2px',
-                    flexShrink: 0,
-                    opacity: 0.5,
-                  }}
-                  onMouseEnter={(e) => { (e.target as HTMLElement).style.opacity = '1'; (e.target as HTMLElement).style.color = 'var(--red, #ef4444)'; }}
-                  onMouseLeave={(e) => { (e.target as HTMLElement).style.opacity = '0.5'; (e.target as HTMLElement).style.color = 'var(--muted, #666)'; }}
-                  title={`Delete ${f.name}`}
-                >
-                  {'\u2715'}
-                </button>
-              </div>
-            ))}
+            {renderTreeNodes(buildFileTree(ckptFiles), 0)}
             {ckptFiles.length === 0 && (
               <div style={{ color: 'var(--muted)', fontSize: '.75rem', padding: 8 }}>
                 No files
@@ -1033,26 +1363,49 @@ export function ResultsPage() {
   const renderFigures = () => {
     if (!summary) return null;
     const fm = summary.figures_manifest as any;
-    if (!fm || !fm.figures || !fm.figures.length) return null;
+    if (!fm || !fm.figures) return null;
+
+    // plot-skill writes `figures` as a dict {name: path}; older runs may
+    // have stored a list [{path, caption, ...}]. Normalize to a list here
+    // so the grid works with both shapes.
+    const kinds = (fm.figure_kinds || {}) as Record<string, string>;
+    const snippets = (fm.latex_snippets || {}) as Record<string, string>;
+    const extractCaption = (snip: string): string => {
+      const m = snip.match(/\\caption\{([^}]+)\}/);
+      return m ? m[1] : '';
+    };
+    const figs: Array<{ name: string; path: string; caption: string; kind: string }> =
+      Array.isArray(fm.figures)
+        ? fm.figures.map((fig: any, idx: number) => ({
+            name: fig.name || `fig_${idx + 1}`,
+            path: fig.path || fig,
+            caption: fig.caption || '',
+            kind: fig.kind || fig.figure_kind || '',
+          }))
+        : Object.entries(fm.figures as Record<string, string>).map(([name, path]) => ({
+            name,
+            path: String(path),
+            caption: extractCaption(snippets[name] || ''),
+            kind: kinds[name] || '',
+          }));
+
+    if (!figs.length) return null;
 
     return (
       <Card style={{ marginBottom: 16 }}>
         <div className="card-title">{'📈'} Figures</div>
         <div className="grid-2">
-          {fm.figures.map((fig: any, idx: number) => {
-            const path = fig.path || fig;
-            const caption = fig.caption || '';
-            const figType = fig.figure_type || '';
-            const typeBadge: Record<string, string> = {
-              graph: 'Graph',
-              architecture: 'Architecture',
-              table: 'Table',
+          {figs.map((fig, idx) => {
+            const { path, caption, kind } = fig;
+            const kindBadge: Record<string, string> = {
+              plot: 'Plot',
+              svg: 'Diagram',
             };
             return (
               <div key={idx}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                  {figType && typeBadge[figType] && (
-                    <Badge variant="blue">{typeBadge[figType]}</Badge>
+                  {kind && kindBadge[kind] && (
+                    <Badge variant="blue">{kindBadge[kind]}</Badge>
                   )}
                   {caption && (
                     <span style={{ fontSize: '.8rem', color: 'var(--muted)' }}>
@@ -1150,7 +1503,12 @@ export function ResultsPage() {
               !summary.reproducibility_report &&
               !summary.repro &&
               !(summary.science_data as any)?.experiment_context &&
-              !(summary.figures_manifest as any)?.figures?.length && (
+              !(() => {
+                const figs = (summary.figures_manifest as any)?.figures;
+                if (Array.isArray(figs)) return figs.length > 0;
+                if (figs && typeof figs === 'object') return Object.keys(figs).length > 0;
+                return false;
+              })() && (
                 <div className="empty-state">
                   <div className="empty-icon">{'📊'}</div>
                   <p>No results data found in this checkpoint</p>

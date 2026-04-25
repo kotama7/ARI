@@ -6,7 +6,7 @@
   **通用研究自动化系统。从笔记本到超级计算机。从本地模型到云端 API。从新手到专家。从计算实验到物理世界。**
 
   [![Tests](https://img.shields.io/badge/tests-1200%2B-brightgreen)](./ari-core)
-  [![Version](https://img.shields.io/badge/version-v0.5.0-orange)](https://github.com/kotama7/ARI/releases)
+  [![Version](https://img.shields.io/badge/version-v0.6.0-orange)](https://github.com/kotama7/ARI/releases)
   [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
   [![MCP](https://img.shields.io/badge/protocol-MCP-purple)](https://modelcontextprotocol.io)
   [![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
@@ -183,14 +183,14 @@ ari viz ./checkpoints/ --port 8765   # http://localhost:8765
 | 页面 | 功能 |
 |------|----------|
 | **Home** | 快捷操作、最近的实验、系统状态 |
-| **New Experiment** | 4 步向导：聊天/编写/上传目标 → 范围（深度、节点、工作进程、递归深度）→ 资源（LLM、HPC、容器）→ 启动 |
+| **New Experiment** | 4 步向导：聊天/编写/上传目标 → 范围（深度、节点、工作进程、递归深度）→ 资源（LLM、HPC、容器、**Paper Review** 评审 rubric / few-shot 管理 / 集成评审数 / 反思轮数）→ 启动 |
 | **Experiments** | 列出/删除/恢复所有检查点项目，显示状态和审稿评分 |
 | **Monitor** | 实时阶段步进器（Idle → Idea → BFTS → Paper → Review）、实时日志流（SSE）、成本追踪 |
 | **Tree** | 交互式 BFTS 节点树，点击任意节点查看指标、工具调用追踪、生成代码和输出 |
 | **Results** | 类 Overleaf LaTeX 编辑器（编辑/编译/预览）、论文 PDF 查看器、审稿报告、可复现性结果、EAR 浏览器 |
 | **Ideas** | VirSci 生成的假设，包含新颖性/可行性评分和差距分析 |
-| **Workflow** | React Flow 可视化 DAG 编辑器（拖拽、连接、启用/禁用、技能分配） |
-| **Settings** | LLM 提供商/模型、API 密钥、SLURM、容器运行时、VLM 审阅模型、检索后端、Ollama 主机 |
+| **Workflow** | React Flow 可视化 DAG 编辑器（拖拽、连接、启用/禁用、技能分配，含 `BFTS / Paper / Reproduce` phase 切换） |
+| **Settings** | LLM 提供商/模型、API 密钥、SLURM、容器运行时、VLM 审阅模型、检索后端、Ollama 主机、**Memory (Letta)** 后端 |
 | **Sub-Experiments** | 递归子实验树与父子追踪（通过 orchestrator 技能） |
 
 通过 WebSocket（树变更）和 SSE（日志流）实现实时更新。所有数据按项目隔离。
@@ -219,6 +219,11 @@ ari viz ./checkpoints/ --port 8765   # http://localhost:8765
 | `/api/checkpoint/{id}/filetree` | GET | 检查点的完整目录树 |
 | `/api/ear/{run_id}` | GET | 实验产物仓库内容 |
 | `/api/sub-experiments` | GET/POST | 列出/启动递归子实验 |
+| `/api/rubrics` | GET | 列出内置评审 rubric（向导下拉框） |
+| `/api/fewshot/<rubric>` | GET | 列出某 rubric 的 few-shot 示例 |
+| `/api/fewshot/<rubric>/{sync,upload,delete}` | POST | 从 manifest 同步 / 上传一个 / 删除一个 |
+| `/api/memory/{health,detect,start-local,stop-local,restart}` | GET/POST | Letta 后端管理 |
+| `/api/checkpoint/{id}/memory_access` | GET | 节点级写/读溯源日志 |
 | `/memory/<node_id>` | GET | 检索节点内存（工具调用追踪） |
 | `ws://host:{port+1}/ws` | WebSocket | 订阅实时树更新 |
 
@@ -239,6 +244,7 @@ ari viz ./checkpoints/ --port 8765   # http://localhost:8765
 | `ari delete <checkpoint>` | 删除检查点 |
 | `ari settings` | 查看/修改配置（模型、分区等） |
 | `ari skills-list` | 列出所有可用的 MCP 工具 |
+| `ari memory <subcmd>` | 管理 Letta 内存后端（`migrate` / `backup` / `restore` / `start-local` / `stop-local` / `prune-local` / `compact-access` / `health`） |
 | `ari viz <checkpoint_dir>` | 启动 Web 仪表板 |
 
 ### 输出文件
@@ -252,10 +258,9 @@ ari viz ./checkpoints/ --port 8765   # http://localhost:8765
 | `idea.json` | VirSci 生成的假设和差距分析 |
 | `science_data.json` | 面向科学的数据（无内部 BFTS 术语） |
 | `full_paper.tex` / `.pdf` | 生成的 LaTeX 论文和编译后的 PDF |
-| `review_report.json` | 自动同行评审评分和反馈 |
-| `reproducibility_report.json` | 独立的可复现性验证 |
+| `review_report.json` | 基于 rubric 的论文评审（兼容 AI Scientist v1/v2）。默认单评审；当 `ARI_NUM_REVIEWS_ENSEMBLE>1` 时，内联 `ensemble_reviews[]` 与 Area Chair `meta_review{}` |
+| `reproducibility_report.json` | 独立可复现性验证（沙箱化的 `react_driver` 仅访问 phase: reproduce 的 MCP 技能） |
 | `figures_manifest.json` | 生成的图表路径和标题 |
-| `rebuttal.json` | 对审稿意见的自动反驳 |
 | `ear/` | 实验产物仓库（代码、数据、日志、可复现性元数据） |
 | `cost_trace.jsonl` | 每次调用的 LLM 成本追踪 |
 | `experiments/<slug>/<node_id>/` | 每个节点的工作目录和生成代码 |
@@ -267,7 +272,9 @@ ari viz ./checkpoints/ --port 8765   # http://localhost:8765
 
 ### 技能（MCP 插件服务器）
 
-共 15 个技能。其中 14 个在 `workflow.yaml` 中默认注册；另外 1 个（orchestrator）可以通过添加到配置中启用。
+共 13 个技能。其中 12 个在 `workflow.yaml` 中默认注册；另外 1 个（orchestrator）可以通过添加到配置中启用。
+
+v0.6.0 移除了两个技能：`ari-skill-figure-router` 被合并进 `ari-skill-plot`（单个技能同时负责 matplotlib 绘图和 SVG 架构示意图，两者共用同一套 VLM 审阅回路）；`ari-skill-review`（反驳撰写）被删除 — 基于评审规范的审稿得分已是最终质量信号，对自己论文的反驳不会带来新的信息。
 
 | 技能 | 角色 | LLM? | 默认 |
 |---|---|---|---|
@@ -275,14 +282,12 @@ ari viz ./checkpoints/ --port 8765   # http://localhost:8765
 | `ari-skill-evaluator` | 从实验文件中提取指标 | △ | ✓ |
 | `ari-skill-idea` | arXiv 调研 + VirSci 假设生成 | ✓ | ✓ |
 | `ari-skill-web` | DuckDuckGo、arXiv、Semantic Scholar / AlphaXiv、迭代引用收集、上传文件访问 | △ | ✓ |
-| `ari-skill-memory` | 祖先作用域的节点内存（JSONL） | ✗ | ✓ |
+| `ari-skill-memory` | 祖先作用域的节点内存（v0.6.0 起由 Letta 支持） | △ | ✓ |
 | `ari-skill-transform` | BFTS 树 → 面向科学的数据 + EAR 生成 | ✓ | ✓ |
-| `ari-skill-plot` | Matplotlib/seaborn 图表生成 | ✓ | ✓ |
-| `ari-skill-paper` | LaTeX 写作 + BibTeX + 评审 | ✓ | ✓ |
+| `ari-skill-plot` | 统一图表生成（按图选择 matplotlib 绘图或 SVG 图，支持 VLM 循环） | ✓ | ✓ |
+| `ari-skill-paper` | LaTeX 写作 + BibTeX + 规范驱动评审（单审稿 或 N 人集成 + Area Chair 元评审） | ✓ | ✓ |
 | `ari-skill-paper-re` | ReAct 可复现性验证 | ✓ | ✓ |
-| `ari-skill-figure-router` | 图类型分类与生成路由（SVG/matplotlib/LaTeX） | ✓ | ✓ |
 | `ari-skill-benchmark` | CSV/JSON 分析、绘图、统计检验 | ✗ | ✓ |
-| `ari-skill-review` | 同行评审解析、反驳生成 | ✓ | ✓ |
 | `ari-skill-vlm` | 视觉-语言模型图表/表格审阅 | ✓ | ✓ |
 | `ari-skill-coding` | 代码生成 + 执行 + 文件读取 + bash | ✗ | ✓ |
 | `ari-skill-orchestrator` | 将 ARI 作为 MCP 服务器暴露、递归子实验、stdio+HTTP 双传输 | ✗ | — |
@@ -294,10 +299,10 @@ ari viz ./checkpoints/ --port 8765   # http://localhost:8765
 | # | 原则 | 含义 |
 |---|-----------|---------|
 | P1 | 领域无关的核心 | `ari-core` 不包含任何实验特定知识 |
-| P2 | 尽可能确定性 | MCP 工具默认是确定性的；使用 LLM 的工具明确标注 |
+| P2 | 尽可能确定性 | MCP 工具默认是确定性的；使用 LLM 的工具明确标注。*v0.6.0 起 `ari-skill-memory` 采用 Letta 嵌入检索，此规则对该技能放宽。* |
 | P3 | 多目标指标 | 没有硬编码的标量评分 |
 | P4 | 依赖注入 | 切换实验 = 仅编辑 `.md` |
-| P5 | 可复现性优先 | 论文用规格而非集群名称描述硬件 |
+| P5 | 可复现性优先 | 论文用规格而非集群名称描述硬件。*Letta 后端下 BFTS 轨迹可能在重新运行时不同，但数值结果仍可复现。* 详见 `docs/PHILOSOPHY.md`。 |
 
 ---
 

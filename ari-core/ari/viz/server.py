@@ -31,8 +31,9 @@ log = logging.getLogger(__name__)
 
 
 from . import state as _st
-from .api_state import _load_nodes_tree, _broadcast, _do_broadcast, _api_models, _api_checkpoints, _api_checkpoint_summary, _api_delete_checkpoint, _api_switch_checkpoint, _api_ear, _watcher_thread, _api_checkpoint_files, _api_checkpoint_file_read, _api_checkpoint_file_save, _api_checkpoint_file_upload, _api_checkpoint_file_delete, _api_checkpoint_compile, _resolve_paper_file, _api_checkpoint_filetree, _api_checkpoint_filecontent, _api_checkpoint_memory
-from .api_settings import _api_get_env_keys, _api_save_env_key, _api_get_settings, _api_save_settings, _api_get_workflow, _api_save_workflow, _api_skill_detail, _api_skills, _api_profiles, _api_detect_scheduler
+from .api_state import _load_nodes_tree, _broadcast, _do_broadcast, _api_models, _api_checkpoints, _api_checkpoint_summary, _api_delete_checkpoint, _api_switch_checkpoint, _api_ear, _watcher_thread, _api_checkpoint_files, _api_checkpoint_file_read, _api_checkpoint_file_save, _api_checkpoint_file_upload, _api_checkpoint_file_delete, _api_checkpoint_compile, _resolve_paper_file, _api_checkpoint_filetree, _api_checkpoint_filecontent, _api_checkpoint_memory, _resolve_checkpoint_dir
+from .api_memory import _api_memory_access
+from .api_settings import _api_get_env_keys, _api_save_env_key, _api_get_settings, _api_save_settings, _api_get_workflow, _api_save_workflow, _api_skill_detail, _api_skills, _api_profiles, _api_detect_scheduler, _api_rubrics
 from .api_workflow import _api_get_workflow_flow, _api_save_workflow_flow, _api_get_default_workflow, _api_save_skill_phases, _api_save_disabled_tools
 from .api_experiment import _api_run_stage, _api_launch, _api_logs_sse
 from .api_ollama import _api_ollama_resources, _ollama_proxy
@@ -56,6 +57,9 @@ async def _ws_handler(websocket) -> None:
             }))
         async for _ in websocket:
             pass  # ignore incoming messages
+    except websockets.exceptions.ConnectionClosed:
+        # Normal client disconnect (close frame, keepalive timeout, tab closed).
+        pass
     finally:
         _st._clients.discard(websocket)
 
@@ -220,13 +224,67 @@ def _collect_resource_metrics() -> dict:
     }
 
 
+import socket as _socket
+
+
+class _DualStackServer(ThreadingHTTPServer):
+    """Bind a single IPv6 socket that also accepts IPv4 connections.
+
+    Distros that resolve `localhost` to ::1 (e.g. systemd-resolved overriding
+    /etc/hosts) get ERR_CONNECTION_REFUSED otherwise, since plain "" + AF_INET
+    only listens on 0.0.0.0.
+    """
+    address_family = _socket.AF_INET6
+
+    def server_bind(self) -> None:
+        try:
+            self.socket.setsockopt(_socket.IPPROTO_IPV6, _socket.IPV6_V6ONLY, 0)
+        except (AttributeError, OSError):
+            pass
+        super().server_bind()
+
+
+_access_log_lock = threading.Lock()
+
+
+def _write_access_log(checkpoint_dir: Path, entry: dict) -> None:
+    log_path = checkpoint_dir / "viz_access.jsonl"
+    line = json.dumps(entry, ensure_ascii=False) + "\n"
+    with _access_log_lock:
+        with log_path.open("a", encoding="utf-8") as f:
+            f.write(line)
+
+
 class _Handler(BaseHTTPRequestHandler):
     # HTTP/1.1 enables TCP keep-alive so Chrome's 6-per-origin connection
     # pool isn't drained by short polls. SSE endpoints still send
     # Connection: close so long-lived streams don't hog a keep-alive slot.
     protocol_version = "HTTP/1.1"
 
-    def log_message(self, *args):  # suppress request logs
+    def handle_one_request(self):
+        self._req_start = time.monotonic()
+        super().handle_one_request()
+
+    def log_request(self, code='-', size='-'):
+        try:
+            ckpt = _st._checkpoint_dir
+            if ckpt is None:
+                return
+            entry = {
+                "ts": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+                "method": getattr(self, "command", None) or "-",
+                "path": getattr(self, "path", None) or "-",
+                "status": int(code) if str(code).isdigit() else code,
+                "duration_ms": round(
+                    (time.monotonic() - getattr(self, "_req_start", time.monotonic())) * 1000, 2
+                ),
+                "client": self.client_address[0] if self.client_address else "-",
+            }
+            _write_access_log(Path(ckpt), entry)
+        except Exception:
+            pass
+
+    def log_message(self, *args):  # suppress stderr noise
         pass
 
     def _serve_spa_index(self):
@@ -312,30 +370,25 @@ class _Handler(BaseHTTPRequestHandler):
             else:
                 self.send_response(404); self.end_headers()
         elif self.path.startswith("/memory/"):
+            # legacy endpoint, kept for backwards
+            # compatibility. Forwards to the backend library so Letta-backed
+            # checkpoints work.
             node_id = self.path[len("/memory/"):]
             try:
                 node_id = urllib.parse.unquote(node_id)
-                # Project-scoped only — return empty list when there is no
-                # active checkpoint (no global ~/.ari fallback anymore).
-                store = (
-                    _st._checkpoint_dir / "memory_store.jsonl"
-                    if _st._checkpoint_dir is not None
-                    else None
-                )
-                entries = []
-                if store is not None and store.exists():
-                    for line in store.read_text().splitlines():
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            e = json.loads(line)
-                            # Match by exact ID or by partial suffix (short IDs in dashboard)
-                            _eid = e.get("node_id", "")
-                            if _eid == node_id or _eid.endswith(node_id) or node_id.endswith(_eid):
-                                entries.append({"text": e.get("text",""), "metadata": e.get("metadata",{})})
-                        except Exception:
-                            pass
+                if _st._checkpoint_dir is None:
+                    entries = []
+                else:
+                    import os as _os_legacy
+                    _os_legacy.environ["ARI_CHECKPOINT_DIR"] = str(_st._checkpoint_dir)
+                    from ari_skill_memory.backends import get_backend
+                    backend = get_backend(checkpoint_dir=_st._checkpoint_dir)
+                    raw = backend.get_node_memory(node_id).get("entries", [])
+                    entries = [
+                        {"text": e.get("text", ""),
+                         "metadata": e.get("metadata", {})}
+                        for e in raw
+                    ]
                 payload = json.dumps({"entries": entries}, ensure_ascii=False).encode()
             except Exception as ex:
                 payload = json.dumps({"entries": [], "error": str(ex)}).encode()
@@ -865,12 +918,38 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(_api_ollama_resources())
         elif self.path == "/api/checkpoints":
             self._json(_api_checkpoints())
+        elif self.path == "/api/rubrics":
+            self._json(_api_rubrics())
+        elif self.path.startswith("/api/fewshot/"):
+            from .api_fewshot import _api_fewshot_list
+            rid = self.path[len("/api/fewshot/"):].split("?")[0]
+            self._json(_api_fewshot_list(urllib.parse.unquote(rid)))
         elif self.path.startswith("/api/checkpoint/") and self.path.endswith("/summary"):
             ckpt_id = self.path[len("/api/checkpoint/"):-len("/summary")]
             self._json(_api_checkpoint_summary(urllib.parse.unquote(ckpt_id)))
         elif self.path.startswith("/api/checkpoint/") and self.path.endswith("/memory"):
             ckpt_id = self.path[len("/api/checkpoint/"):-len("/memory")]
             self._json(_api_checkpoint_memory(urllib.parse.unquote(ckpt_id)))
+        elif "/memory_access" in self.path and self.path.startswith("/api/checkpoint/"):
+            parsed = urllib.parse.urlparse(self.path)
+            ckpt_id = parsed.path[len("/api/checkpoint/"):-len("/memory_access")]
+            qs = urllib.parse.parse_qs(parsed.query or "")
+            node_id = (qs.get("node_id") or [""])[0]
+            op = (qs.get("op") or ["all"])[0]
+            try:
+                limit = int((qs.get("limit") or ["200"])[0])
+            except ValueError:
+                limit = 200
+            self._json(_api_memory_access(
+                urllib.parse.unquote(ckpt_id), node_id, op=op, limit=limit,
+                resolver=_resolve_checkpoint_dir,
+            ))
+        elif self.path == "/api/memory/health":
+            from .api_memory import _api_memory_health
+            self._json(_api_memory_health(_st._checkpoint_dir))
+        elif self.path == "/api/memory/detect":
+            from .api_memory import _api_memory_detect
+            self._json(_api_memory_detect())
         elif self.path.startswith("/api/checkpoint/") and urllib.parse.urlparse(self.path).path.endswith("/files"):
             parsed_p = urllib.parse.urlparse(self.path).path
             ckpt_id = parsed_p[len("/api/checkpoint/"):-len("/files")]
@@ -992,6 +1071,15 @@ class _Handler(BaseHTTPRequestHandler):
         body = self.rfile.read(length) if length else b"{}"
         if self.path == "/api/settings":
             self._json(_api_save_settings(body))
+        elif self.path == "/api/memory/start-local":
+            from .api_memory import _api_memory_start_local
+            self._json(_api_memory_start_local(body))
+        elif self.path == "/api/memory/stop-local":
+            from .api_memory import _api_memory_stop_local
+            self._json(_api_memory_stop_local())
+        elif self.path == "/api/memory/restart":
+            from .api_memory import _api_memory_restart
+            self._json(_api_memory_restart(body))
         elif self.path == "/api/launch":
             r = _api_launch(body); self._json(r, status=r.pop("_status", 200))
         elif self.path == "/api/sub-experiments/launch":
@@ -1012,6 +1100,28 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(_api_ssh_test(body))
         elif self.path == "/api/switch-checkpoint":
             self._json(_api_switch_checkpoint(body))
+        elif self.path.startswith("/api/fewshot/") and self.path.endswith("/sync"):
+            from .api_fewshot import _api_fewshot_sync
+            rid = self.path[len("/api/fewshot/"):-len("/sync")]
+            self._json(_api_fewshot_sync(urllib.parse.unquote(rid)))
+        elif self.path.startswith("/api/fewshot/") and self.path.endswith("/upload"):
+            from .api_fewshot import _api_fewshot_upload
+            rid = self.path[len("/api/fewshot/"):-len("/upload")]
+            try:
+                fields = json.loads(body or b"{}")
+            except Exception as e:
+                self._json({"error": f"invalid JSON body: {e}"}, status=400); return
+            self._json(_api_fewshot_upload(urllib.parse.unquote(rid), fields))
+        elif self.path.startswith("/api/fewshot/") and self.path.endswith("/delete"):
+            from .api_fewshot import _api_fewshot_delete
+            rest = self.path[len("/api/fewshot/"):-len("/delete")]
+            parts = rest.split("/", 1)
+            if len(parts) != 2:
+                self._json({"error": "path must be /api/fewshot/<rubric>/<example>/delete"}, status=400); return
+            self._json(_api_fewshot_delete(
+                urllib.parse.unquote(parts[0]),
+                urllib.parse.unquote(parts[1]),
+            ))
         elif self.path.startswith("/api/ollama/"):
             _ollama_proxy(self)
             return
@@ -1242,7 +1352,11 @@ def _http_thread(port: int) -> None:
             pass
             import logging
             logging.getLogger(__name__).info(f"Auto-restored checkpoint: {_st._checkpoint_dir.name}")
-    srv = ThreadingHTTPServer(("", port), _Handler)
+    try:
+        srv = _DualStackServer(("", port), _Handler)
+    except OSError:
+        # IPv6 unavailable (rare on modern Linux) — fall back to IPv4-only.
+        srv = ThreadingHTTPServer(("", port), _Handler)
     srv.serve_forever()
 
 

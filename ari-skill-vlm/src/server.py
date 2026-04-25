@@ -11,6 +11,12 @@ from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("vlm-review-skill")
 
+try:
+    from ari import cost_tracker as _ari_cost_tracker  # type: ignore
+    _ari_cost_tracker.bootstrap_skill("vlm")
+except Exception:
+    pass
+
 DEFAULT_MODEL = os.environ.get("VLM_MODEL", "openai/gpt-4o")
 
 
@@ -29,6 +35,57 @@ def _encode_image(image_path: str) -> str:
     mime = mime_map.get(suffix, "image/png")
     data = base64.b64encode(path.read_bytes()).decode()
     return f"data:{mime};base64,{data}"
+
+
+def _prefer_raster_sibling(path: Path) -> Path | None:
+    """Return a readable raster sibling of ``path`` (VLMs cannot read PDF)."""
+    for ext in (".png", ".jpg", ".jpeg", ".webp"):
+        candidate = path.with_suffix(ext)
+        if candidate.exists():
+            return candidate
+    if path.exists() and path.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"):
+        return path
+    return None
+
+
+def _resolve_figure_path(image_path: str) -> Path:
+    """Resolve a figure path with a manifest fallback.
+
+    The pipeline hard-codes ``image_path`` as ``{ckpt}/fig_1.png`` but the
+    LLM that generates figures is free to pick any name (e.g. ``fig_3``).
+    When the literal path is missing, look for ``figures_manifest.json``
+    in the same directory and substitute the first figure listed there,
+    preferring a ``.png`` sibling when the manifest only points at a PDF.
+    """
+    p = Path(image_path)
+    if p.exists():
+        return p
+
+    manifest = p.parent / "figures_manifest.json"
+    if not manifest.exists():
+        raise FileNotFoundError(image_path)
+
+    import json as _json
+    try:
+        figs = (_json.loads(manifest.read_text()) or {}).get("figures") or {}
+    except Exception as e:
+        raise FileNotFoundError(
+            f"{image_path} (and figures_manifest.json unparseable: {e})"
+        ) from None
+    if not figs:
+        raise FileNotFoundError(
+            f"{image_path} (figures_manifest.json has no figures)"
+        )
+
+    first_path = Path(next(iter(figs.values())))
+    raster = _prefer_raster_sibling(first_path)
+    if raster is not None:
+        return raster
+    if first_path.exists():
+        return first_path
+    raise FileNotFoundError(
+        f"{image_path} (manifest pointed at {first_path}, no readable image found)"
+    )
 
 
 def _build_figure_prompt(context: str, criteria: list[str]) -> str:
@@ -92,26 +149,13 @@ def _parse_json_response(text: str) -> dict:
     return json.loads(cleaned)
 
 
-@mcp.tool(
-    name="review_figure",
-    description="Review a scientific figure using a Vision Language Model.",
-)
-async def review_figure(
-    image_path: str,
-    context: str = "",
-    criteria: list[str] | None = None,
+async def _review_one_figure(
+    resolved_path: Path,
+    context: str,
+    criteria: list[str],
 ) -> dict:
-    """Review a figure image with VLM.
-
-    Args:
-        image_path: Path to the figure image file.
-        context: Description or paper context for the figure.
-        criteria: Evaluation criteria (default: clarity, accuracy, completeness).
-    """
-    if criteria is None:
-        criteria = ["clarity", "accuracy", "completeness"]
-
-    data_uri = _encode_image(image_path)
+    """Run the VLM review on a single resolved image path."""
+    data_uri = _encode_image(str(resolved_path))
     prompt = _build_figure_prompt(context, criteria)
 
     messages = [
@@ -132,6 +176,122 @@ async def review_figure(
         "issues": list(result.get("issues", [])),
         "suggestions": list(result.get("suggestions", [])),
         "review_text": str(result.get("review_text", "")),
+    }
+
+
+@mcp.tool(
+    name="review_figure",
+    description="Review a scientific figure using a Vision Language Model.",
+)
+async def review_figure(
+    image_path: str,
+    context: str = "",
+    criteria: list[str] | None = None,
+) -> dict:
+    """Review a figure image with VLM.
+
+    Args:
+        image_path: Path to the figure image file.
+        context: Description or paper context for the figure.
+        criteria: Evaluation criteria (default: clarity, accuracy, completeness).
+    """
+    if criteria is None:
+        criteria = ["clarity", "accuracy", "completeness"]
+
+    resolved_path = _resolve_figure_path(image_path)
+    return await _review_one_figure(resolved_path, context, criteria)
+
+
+@mcp.tool(
+    name="review_figures_all",
+    description=(
+        "Review every figure listed in a figures_manifest.json with the VLM. "
+        "Returns an aggregate dict (score=min across figures, issues/suggestions "
+        "prefixed with [fig_id]) plus a per_figure breakdown. The aggregate "
+        "shape matches review_figure so the pipeline's loop_back machinery "
+        "can consume it unchanged."
+    ),
+)
+async def review_figures_all(
+    figures_manifest_path: str,
+    context: str = "",
+    criteria: list[str] | None = None,
+) -> dict:
+    """Review all figures in a manifest.
+
+    Args:
+        figures_manifest_path: Path to figures_manifest.json (the file written
+            by plot-skill.generate_figures_llm). Its ``figures`` mapping is
+            ``{fig_id: path}``; each path is resolved to a raster sibling
+            (PNG/JPG) before sending to the VLM.
+        context: Shared paper / experiment context for all figures.
+        criteria: Evaluation criteria (default: clarity, accuracy, completeness).
+    """
+    import json as _json
+
+    if criteria is None:
+        criteria = ["clarity", "accuracy", "completeness"]
+
+    manifest_path = Path(figures_manifest_path)
+    if not manifest_path.exists():
+        raise FileNotFoundError(figures_manifest_path)
+
+    try:
+        figs = (_json.loads(manifest_path.read_text()) or {}).get("figures") or {}
+    except Exception as e:
+        raise ValueError(
+            f"figures_manifest.json unparseable: {figures_manifest_path}: {e}"
+        ) from None
+    if not figs:
+        raise ValueError(
+            f"figures_manifest.json has no figures: {figures_manifest_path}"
+        )
+
+    per_figure: dict[str, dict] = {}
+    agg_issues: list[str] = []
+    agg_suggestions: list[str] = []
+    agg_review_chunks: list[str] = []
+
+    for fig_id, raw_path in figs.items():
+        target = Path(raw_path)
+        raster = _prefer_raster_sibling(target)
+        if raster is None and target.exists() and target.suffix.lower() in (
+            ".png", ".jpg", ".jpeg", ".webp",
+        ):
+            raster = target
+
+        if raster is None:
+            note = f"manifest path missing or not rasterizable: {raw_path}"
+            per_figure[fig_id] = {
+                "score": 0.0,
+                "issues": [note],
+                "suggestions": ["Re-render the figure as PNG before review."],
+                "review_text": "",
+            }
+            agg_issues.append(f"[{fig_id}] {note}")
+            agg_suggestions.append(
+                f"[{fig_id}] Re-render the figure as PNG before review."
+            )
+            continue
+
+        review = await _review_one_figure(raster, context, criteria)
+        per_figure[fig_id] = review
+        for item in review["issues"]:
+            agg_issues.append(f"[{fig_id}] {item}")
+        for item in review["suggestions"]:
+            agg_suggestions.append(f"[{fig_id}] {item}")
+        if review["review_text"]:
+            agg_review_chunks.append(f"[{fig_id}] {review['review_text']}")
+
+    scores = [r["score"] for r in per_figure.values()]
+    aggregate_score = min(scores) if scores else 0.0
+
+    return {
+        "score": aggregate_score,
+        "issues": agg_issues,
+        "suggestions": agg_suggestions,
+        "review_text": "\n\n".join(agg_review_chunks),
+        "per_figure": per_figure,
     }
 
 

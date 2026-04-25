@@ -391,3 +391,319 @@ class TestCostTrackerReinit:
         ct = CostTracker(tmp_path)
         assert ct.total_cost_usd == 0.0
         assert len(ct._records) == 0
+
+
+# ══════════════════════════════════════════════
+# 6. Metadata propagation via litellm callback
+#    (regression: node_id/phase/skill were empty in cost_trace.jsonl)
+# ══════════════════════════════════════════════
+
+class _FakeUsage:
+    def __init__(self, prompt=100, completion=50):
+        self.prompt_tokens = prompt
+        self.completion_tokens = completion
+
+
+class _FakeResponse:
+    def __init__(self, model="gpt-4o", prompt=100, completion=50):
+        self.model = model
+        self.usage = _FakeUsage(prompt, completion)
+
+
+class TestLitellmCallbackMetadata:
+    """Verify that node_id/phase/skill supplied via litellm ``metadata=`` are
+    carried into ``cost_trace.jsonl`` via ``_litellm_success_handler``."""
+
+    def _fresh_tracker(self, tmp_path):
+        """Drop the global singleton and return a fresh tracker on tmp_path."""
+        old = cost_tracker_mod._tracker
+        ct = cost_tracker_mod.init(tmp_path)
+        return ct, old
+
+    def test_metadata_from_litellm_params(self, tmp_path):
+        """Primary path: litellm forwards ``metadata=`` into
+        ``kwargs['litellm_params']['metadata']``."""
+        _, prior = self._fresh_tracker(tmp_path)
+        try:
+            kwargs = {
+                "model": "gpt-4o",
+                "litellm_params": {
+                    "metadata": {"node_id": "n42", "phase": "react", "skill": "agent_loop"},
+                },
+            }
+            cost_tracker_mod._litellm_success_handler(kwargs, _FakeResponse(), 0, 0)
+            line = (tmp_path / "cost_trace.jsonl").read_text().strip().splitlines()[-1]
+            rec = json.loads(line)
+            assert rec["node_id"] == "n42"
+            assert rec["phase"] == "react"
+            assert rec["skill"] == "agent_loop"
+        finally:
+            cost_tracker_mod._tracker = prior
+
+    def test_metadata_from_top_level_kwarg(self, tmp_path):
+        """Fallback path: metadata present at the top level (tests + older litellm)."""
+        _, prior = self._fresh_tracker(tmp_path)
+        try:
+            kwargs = {
+                "model": "gpt-4o",
+                "metadata": {"node_id": "root", "phase": "bfts", "skill": "expand"},
+            }
+            cost_tracker_mod._litellm_success_handler(kwargs, _FakeResponse(), 0, 0)
+            rec = json.loads((tmp_path / "cost_trace.jsonl").read_text().strip().splitlines()[-1])
+            assert rec["node_id"] == "root"
+            assert rec["phase"] == "bfts"
+            assert rec["skill"] == "expand"
+        finally:
+            cost_tracker_mod._tracker = prior
+
+    def test_missing_metadata_leaves_fields_empty(self, tmp_path):
+        """No metadata → fields are empty strings (not errors)."""
+        _, prior = self._fresh_tracker(tmp_path)
+        try:
+            kwargs = {"model": "gpt-4o"}
+            cost_tracker_mod._litellm_success_handler(kwargs, _FakeResponse(), 0, 0)
+            rec = json.loads((tmp_path / "cost_trace.jsonl").read_text().strip().splitlines()[-1])
+            assert rec["node_id"] == ""
+            assert rec["phase"] == ""
+            assert rec["skill"] == ""
+            # Tokens and model still captured
+            assert rec["model"] == "gpt-4o"
+            assert rec["prompt_tokens"] == 100
+        finally:
+            cost_tracker_mod._tracker = prior
+
+    def test_zero_tokens_skipped(self, tmp_path):
+        """Calls with zero prompt+completion tokens don't produce a record."""
+        _, prior = self._fresh_tracker(tmp_path)
+        try:
+            kwargs = {"model": "gpt-4o"}
+            resp = _FakeResponse(prompt=0, completion=0)
+            cost_tracker_mod._litellm_success_handler(kwargs, resp, 0, 0)
+            assert not (tmp_path / "cost_trace.jsonl").exists() or \
+                   (tmp_path / "cost_trace.jsonl").read_text() == ""
+        finally:
+            cost_tracker_mod._tracker = prior
+
+
+# ══════════════════════════════════════════════
+# 7. LLMClient → cost_tracker: no double recording
+#    (regression: records previously appeared twice per call)
+# ══════════════════════════════════════════════
+
+class TestLLMClientNoDoubleRecord:
+    """``LLMClient.complete`` must record exactly once per LLM call."""
+
+    def test_no_direct_record_call_in_client(self, tmp_path):
+        """Confirm the client doesn't also call ``_ct.record`` directly —
+        the global litellm callback is the single source of truth. Comment
+        lines mentioning ``_ct.record`` are ignored; only executable code
+        counts."""
+        from ari.llm.client import LLMClient
+        import inspect
+        src = inspect.getsource(LLMClient.complete)
+        code_lines = [ln for ln in src.splitlines() if not ln.lstrip().startswith("#")]
+        stripped = "\n".join(code_lines)
+        assert "_ct.record(" not in stripped, (
+            "LLMClient.complete() must not call cost_tracker.record() directly; "
+            "rely on the global litellm success_callback instead to avoid double-counting."
+        )
+
+    def test_metadata_injected_into_kwargs(self):
+        """LLMClient.complete constructs kwargs containing a metadata dict
+        with the node_id/phase/skill it was told about."""
+        import litellm as _litellm
+        from ari.config import LLMConfig
+        from ari.llm.client import LLMClient, LLMMessage
+
+        captured: dict = {}
+
+        class _StubUsage:
+            prompt_tokens = 1
+            completion_tokens = 1
+            total_tokens = 2
+
+        class _StubMsg:
+            content = "ok"
+            tool_calls = None
+
+        class _StubChoice:
+            message = _StubMsg()
+
+        class _StubResp:
+            choices = [_StubChoice()]
+            usage = _StubUsage()
+
+        orig = _litellm.completion
+        try:
+            def _fake(*args, **kwargs):
+                captured.update(kwargs)
+                return _StubResp()
+            _litellm.completion = _fake
+            client = LLMClient(LLMConfig(backend="openai", model="gpt-4o"))
+            client.complete(
+                [LLMMessage(role="user", content="hi")],
+                node_id="node-1", phase="react", skill="agent_loop",
+            )
+        finally:
+            _litellm.completion = orig
+
+        md = captured.get("metadata", {})
+        assert md.get("node_id") == "node-1"
+        assert md.get("phase") == "react"
+        assert md.get("skill") == "agent_loop"
+
+    def test_set_context_persists_across_calls(self):
+        """Context set via ``set_context`` is reused on subsequent complete calls."""
+        import litellm as _litellm
+        from ari.config import LLMConfig
+        from ari.llm.client import LLMClient, LLMMessage
+
+        captured = []
+
+        class _Resp:
+            class _Choice:
+                class _M:
+                    content = "x"
+                    tool_calls = None
+                message = _M()
+            choices = [_Choice()]
+
+            class _U:
+                prompt_tokens = 1
+                completion_tokens = 1
+                total_tokens = 2
+
+            usage = _U()
+
+        orig = _litellm.completion
+        try:
+            def _fake(*args, **kwargs):
+                captured.append(kwargs.get("metadata", {}))
+                return _Resp()
+            _litellm.completion = _fake
+            client = LLMClient(LLMConfig(backend="openai", model="gpt-4o"))
+            client.set_context(node_id="n-7", phase="bfts", skill="expand")
+            client.complete([LLMMessage(role="user", content="a")])
+            client.complete([LLMMessage(role="user", content="b")])
+        finally:
+            _litellm.completion = orig
+
+        assert all(c.get("node_id") == "n-7" for c in captured)
+        assert all(c.get("phase") == "bfts" for c in captured)
+        assert all(c.get("skill") == "expand" for c in captured)
+
+
+# ══════════════════════════════════════════════
+# 8. Skill bootstrap / env init / default-metadata injector
+#    (skills running in subprocesses rely on these)
+# ══════════════════════════════════════════════
+
+class TestSkillBootstrap:
+    def test_init_from_env_without_var(self, tmp_path, monkeypatch):
+        """Missing ARI_CHECKPOINT_DIR → init_from_env returns None cleanly."""
+        monkeypatch.delenv("ARI_CHECKPOINT_DIR", raising=False)
+        old = cost_tracker_mod._tracker
+        try:
+            assert cost_tracker_mod.init_from_env() is None
+        finally:
+            cost_tracker_mod._tracker = old
+
+    def test_init_from_env_with_var(self, tmp_path, monkeypatch):
+        """Env var set → tracker initialised pointing at that dir."""
+        monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+        old = cost_tracker_mod._tracker
+        try:
+            tracker = cost_tracker_mod.init_from_env()
+            assert tracker is not None
+            assert Path(tracker._trace_path).parent == tmp_path
+        finally:
+            cost_tracker_mod._tracker = old
+
+    def test_set_default_metadata_injects_into_acompletion(self, tmp_path, monkeypatch):
+        """After bootstrap_skill, litellm.acompletion calls carry the skill name."""
+        import litellm as _litellm
+        import asyncio
+
+        # Reset the injector flag so the monkey-patch re-installs cleanly
+        cost_tracker_mod._injector_installed = False
+        cost_tracker_mod._DEFAULT_METADATA.clear()
+
+        captured: dict = {}
+
+        async def _fake_acompletion(*args, **kwargs):
+            captured.update(kwargs)
+
+            class _R:
+                usage = _FakeUsage()
+                model = kwargs.get("model", "gpt-4o")
+
+            return _R()
+
+        def _fake_completion(*args, **kwargs):
+            captured.update(kwargs)
+
+            class _R:
+                usage = _FakeUsage()
+                model = kwargs.get("model", "gpt-4o")
+
+            return _R()
+
+        orig_a = _litellm.acompletion
+        orig_c = _litellm.completion
+        old_tracker = cost_tracker_mod._tracker
+        monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+        try:
+            _litellm.acompletion = _fake_acompletion
+            _litellm.completion = _fake_completion
+            cost_tracker_mod.bootstrap_skill("paper", phase="write")
+
+            # sync path
+            _litellm.completion(model="gpt-4o")
+            assert captured["metadata"]["skill"] == "paper"
+            assert captured["metadata"]["phase"] == "write"
+
+            captured.clear()
+            # async path
+            asyncio.run(_litellm.acompletion(model="gpt-4o"))
+            assert captured["metadata"]["skill"] == "paper"
+            assert captured["metadata"]["phase"] == "write"
+        finally:
+            _litellm.acompletion = orig_a
+            _litellm.completion = orig_c
+            cost_tracker_mod._tracker = old_tracker
+            cost_tracker_mod._injector_installed = False
+            cost_tracker_mod._DEFAULT_METADATA.clear()
+
+    def test_default_metadata_does_not_overwrite_caller(self, tmp_path, monkeypatch):
+        """Caller-supplied metadata wins on key collisions; defaults only fill gaps."""
+        import litellm as _litellm
+
+        cost_tracker_mod._injector_installed = False
+        cost_tracker_mod._DEFAULT_METADATA.clear()
+        captured: dict = {}
+
+        def _fake_completion(*args, **kwargs):
+            captured.update(kwargs)
+
+            class _R:
+                usage = _FakeUsage()
+                model = "gpt-4o"
+
+            return _R()
+
+        orig = _litellm.completion
+        try:
+            _litellm.completion = _fake_completion
+            cost_tracker_mod.set_default_metadata(skill="paper", phase="write")
+
+            # Caller overrides phase and adds node_id
+            _litellm.completion(model="gpt-4o",
+                                metadata={"phase": "reflect", "node_id": "n-9"})
+            md = captured["metadata"]
+            assert md["skill"] == "paper"       # from defaults (not specified by caller)
+            assert md["phase"] == "reflect"     # caller wins
+            assert md["node_id"] == "n-9"       # caller-only field
+        finally:
+            _litellm.completion = orig
+            cost_tracker_mod._injector_installed = False
+            cost_tracker_mod._DEFAULT_METADATA.clear()

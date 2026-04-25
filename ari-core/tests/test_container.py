@@ -490,7 +490,7 @@ class TestConfigFromEnv:
 class TestRunShellInContainer:
     """run_shell_in_container wraps shell commands in the container."""
 
-    @patch("ari.container.subprocess.run")
+    @patch("ari.container._run_shell_sandboxed")
     def test_no_image_runs_directly(self, mock_run):
         mock_run.return_value = subprocess.CompletedProcess(
             args="echo hello", returncode=0, stdout="hello\n", stderr="",
@@ -501,7 +501,7 @@ class TestRunShellInContainer:
         call_kwargs = mock_run.call_args
         assert call_kwargs.kwargs.get("shell") is True
 
-    @patch("ari.container.subprocess.run")
+    @patch("ari.container._run_shell_sandboxed")
     def test_docker_wraps_command(self, mock_run):
         mock_run.return_value = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="ok\n", stderr="",
@@ -518,7 +518,7 @@ class TestRunShellInContainer:
         assert "-c" in args
         assert "python run.py" in args
 
-    @patch("ari.container.subprocess.run")
+    @patch("ari.container._run_shell_sandboxed")
     def test_singularity_wraps_command(self, mock_run):
         mock_run.return_value = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="ok\n", stderr="",
@@ -535,7 +535,7 @@ class TestRunShellInContainer:
         # in the read-only SIF and blocks on "missing git" style errors.
         assert "--writable-tmpfs" in args
 
-    @patch("ari.container.subprocess.run")
+    @patch("ari.container._run_shell_sandboxed")
     def test_apptainer_wraps_command(self, mock_run):
         mock_run.return_value = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="ok\n", stderr="",
@@ -548,7 +548,7 @@ class TestRunShellInContainer:
         assert "--writable-tmpfs" in args
 
     @patch("ari.container.detect_runtime", return_value="docker")
-    @patch("ari.container.subprocess.run")
+    @patch("ari.container._run_shell_sandboxed")
     def test_auto_mode_detects_runtime(self, mock_run, mock_detect):
         mock_run.return_value = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="ok\n", stderr="",

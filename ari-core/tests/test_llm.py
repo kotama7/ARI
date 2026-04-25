@@ -113,6 +113,60 @@ def test_complete_with_tool_calls(mock_litellm, llm_client):
 
 
 @patch("ari.llm.client.litellm")
+def test_complete_accepts_phase_and_skill_kwargs(mock_litellm, llm_client):
+    """Regression: react_driver passes phase=/skill= to complete().
+
+    Before the fix, complete() rejected these kwargs with
+    ``TypeError: ... unexpected keyword argument 'phase'`` and the
+    reproducibility ReAct loop burned all 40 steps doing nothing.
+    """
+    mock_message = MagicMock()
+    mock_message.content = "ok"
+    mock_message.tool_calls = None
+    mock_choice = MagicMock()
+    mock_choice.message = mock_message
+    mock_response = MagicMock()
+    mock_response.choices = [mock_choice]
+    mock_response.usage = None
+    mock_litellm.completion.return_value = mock_response
+
+    result = llm_client.complete(
+        [LLMMessage(role="user", content="hi")],
+        phase="reproduce",
+        skill="react_driver",
+        node_id="node-7",
+    )
+    assert result.content == "ok"
+
+    kwargs = mock_litellm.completion.call_args.kwargs
+    assert kwargs["metadata"] == {
+        "node_id": "node-7",
+        "phase": "reproduce",
+        "skill": "react_driver",
+    }
+
+
+@patch("ari.llm.client.litellm")
+def test_complete_set_context_defaults_propagate(mock_litellm, llm_client):
+    """set_context(...) values should appear in metadata when no per-call
+    overrides are passed."""
+    mock_message = MagicMock()
+    mock_message.content = "ok"
+    mock_message.tool_calls = None
+    mock_choice = MagicMock()
+    mock_choice.message = mock_message
+    mock_response = MagicMock()
+    mock_response.choices = [mock_choice]
+    mock_response.usage = None
+    mock_litellm.completion.return_value = mock_response
+
+    llm_client.set_context(node_id="n1", phase="ideate", skill="idea")
+    llm_client.complete([LLMMessage(role="user", content="hi")])
+    md = mock_litellm.completion.call_args.kwargs["metadata"]
+    assert md == {"node_id": "n1", "phase": "ideate", "skill": "idea"}
+
+
+@patch("ari.llm.client.litellm")
 def test_stream(mock_litellm, llm_client):
     chunk1 = MagicMock()
     chunk1.choices = [MagicMock()]

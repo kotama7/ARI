@@ -18,6 +18,7 @@ Complete reference for ARI command-line operations. The CLI provides the same fu
 | `ari delete` | Delete a checkpoint | Experiments page → Delete button |
 | `ari settings` | View or modify configuration | Settings page |
 | `ari skills-list` | List available tools | Settings → MCP Skills |
+| `ari memory ...` | Manage the Letta memory backend | Settings → Memory (Letta) |
 
 ---
 
@@ -87,16 +88,39 @@ Loads the saved tree, identifies pending/failed nodes, and continues from where 
 Generate the paper without running experiments. Useful when experiments are already complete.
 
 ```bash
-ari paper <checkpoint_dir> [--experiment <experiment.md>] [--config <config.yaml>]
+ari paper <checkpoint_dir> [--experiment <experiment.md>] [--config <config.yaml>] \
+                           [--rubric <rubric_id>] \
+                           [--fewshot-mode static|dynamic] \
+                           [--num-reviews-ensemble N] \
+                           [--num-reflections N]
+
+# 16 bundled rubrics: neurips (default, v2-compatible), iclr, icml, cvpr, acl,
+#   sc, chi, osdi, stoc, icra, siggraph, nature, usenix_security,
+#   journal_generic, workshop, generic_conference. Plus the built-in `legacy`
+#   fallback for v0.5 schema. Drop a new <id>.yaml into
+#   ari-core/config/reviewer_rubrics/ to add any venue.
 ```
 
-**Example:**
+**Example — v2-compatible default (NeurIPS form, 1-shot, 5 reflections):**
 
 ```bash
 ari paper ./checkpoints/20260328_matrix_opt/
 ```
 
-Runs the post-BFTS pipeline: data transformation, figure generation, paper writing, review, and reproducibility check.
+**Example — Supercomputing (SC) rubric with 5-reviewer ensemble + meta-review:**
+
+```bash
+ari paper ./checkpoints/20260328_matrix_opt/ \
+          --rubric sc --num-reviews-ensemble 5
+```
+
+The paper pipeline runs: data transformation, figure generation, paper writing,
+VLM figure review, **rubric-driven paper review** (rubric form + reflection +
+optional ensemble + Area Chair meta-review), and reproducibility check (ReAct
+agent driven by `ari/agent/react_driver.py`).
+
+CLI flags can also be set via env vars: `ARI_RUBRIC`, `ARI_FEWSHOT_MODE`,
+`ARI_NUM_REVIEWS_ENSEMBLE`, `ARI_NUM_REFLECTIONS`.
 
 ---
 
@@ -232,6 +256,47 @@ ari settings --model qwen3:32b --partition gpu --cpus 64 --mem 128
 
 ---
 
+## ari memory
+
+Admin commands for the Letta memory backend added in v0.6.0. Each
+subcommand resolves the target checkpoint from `--checkpoint <path>`
+or the `ARI_CHECKPOINT_DIR` env var.
+
+```bash
+ari memory <subcommand> [options]
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `health` | Ping the backend; show latency, namespace hash, server version. |
+| `migrate` | One-shot import of v0.5.x `memory_store.jsonl` (+ `memory.json` with `--react`) into the checkpoint's Letta collections. Source files are renamed to `*.migrated-<ts>`. |
+| `backup` | Snapshot Letta-stored memory to `{ckpt}/memory_backup.jsonl.gz` (gzipped JSONL). Written automatically at pipeline-stage boundaries and on shutdown. |
+| `restore` | Inverse of `backup`. `--on-conflict=skip\|overwrite\|merge` (default `skip`). Auto-invoked on `ari resume` when Letta is empty. |
+| `start-local` | Bring up a local Letta server: `--path=auto\|docker\|singularity\|pip`. |
+| `stop-local` | Stop docker/singularity/pip Letta (best-effort). |
+| `prune-local` | Delete local Letta state (volumes / venv / `~/.letta`). Requires `--yes`. |
+| `compact-access` | Summarise rotated `memory_access.<ts>.jsonl` files into `memory_access.summary.json` and delete the originals. |
+
+**Examples:**
+
+```bash
+# Check Letta reachability for the current checkpoint
+ARI_CHECKPOINT_DIR=/path/to/ckpt ari memory health
+
+# Upgrade a v0.5.x checkpoint
+ari memory migrate --checkpoint /path/to/ckpt --react
+
+# Portable archival
+ari memory backup  --checkpoint /path/to/ckpt
+rsync -a /path/to/ckpt/ other-host:/home/user/ckpt/
+ssh other-host "ari memory restore --checkpoint /home/user/ckpt"
+
+# Start a local Letta if ari setup didn't
+ari memory start-local --path=docker
+```
+
+---
+
 ## ari skills-list
 
 List all available MCP tools and their descriptions.
@@ -281,6 +346,22 @@ ari skills-list [--config <config.yaml>]
 | `VLM_MODEL` | VLM model for figure review | `openai/gpt-4o` |
 | `ARI_ORCHESTRATOR_PORT` | HTTP port for orchestrator skill | `9890` |
 
+### Memory (Letta)
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `LETTA_BASE_URL` | Letta server endpoint | `http://localhost:8283` |
+| `LETTA_API_KEY` | Required for Letta Cloud | — |
+| `LETTA_EMBEDDING_CONFIG` | Embedding handle for archival memory (the agent's chat LLM is hardcoded; ARI never invokes it) | `letta-default` |
+| `ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA` | `auto` / `pip` / `docker` / `singularity` / `none` | `auto` |
+| `ARI_MEMORY_LETTA_TIMEOUT_S` | Per-call timeout | `10` |
+| `ARI_MEMORY_LETTA_OVERFETCH` | Over-fetch K for ancestor post-filter fallback | `200` |
+| `ARI_MEMORY_LETTA_DISABLE_SELF_EDIT` | Disable Letta self-edit (CoW-safe) | `true` |
+| `ARI_MEMORY_ACCESS_LOG` | Write `{checkpoint}/memory_access.jsonl` | `on` |
+| `ARI_MEMORY_ACCESS_LOG_MAX_MB` | Rotate threshold | `100` |
+| `ARI_MEMORY_AUTO_RESTORE` | Auto-restore backup on `ari resume` | `true` |
+| `ARI_MEMORY_BACKUP_INTERVAL_S` | Opportunistic backup during run (0 = off) | `0` |
+
 ### Per-Phase Model Overrides
 
 | Variable | Phase |
@@ -288,7 +369,6 @@ ari skills-list [--config <config.yaml>]
 | `ARI_MODEL_IDEA` | Idea generation |
 | `ARI_MODEL_BFTS` | BFTS experiments |
 | `ARI_MODEL_PAPER` | Paper writing |
-| `ARI_MODEL_REVIEW` | Paper review |
 
 ### .env File
 

@@ -27,6 +27,26 @@ class LLMClient:
     def __init__(self, config: LLMConfig) -> None:
         self.config = config
         # Pass per-call settings instead of using global config
+        self._node_id: str = ""
+        self._phase: str = ""
+        self._skill: str = ""
+
+    def set_context(
+        self,
+        *,
+        node_id: str | None = None,
+        phase: str | None = None,
+        skill: str | None = None,
+    ) -> None:
+        """Attach context that will be sent as litellm metadata on every
+        subsequent ``complete()`` call. Pass ``None`` to leave a field
+        unchanged; pass ``""`` to explicitly clear it."""
+        if node_id is not None:
+            self._node_id = str(node_id)
+        if phase is not None:
+            self._phase = str(phase)
+        if skill is not None:
+            self._skill = str(skill)
 
     def _model_name(self) -> str:
         backend = self.config.backend
@@ -44,10 +64,19 @@ class LLMClient:
         messages: list[LLMMessage] | list[dict],
         tools: list[dict] | None = None,
         require_tool: bool = True,
+        *,
+        node_id: str | None = None,
+        phase: str | None = None,
+        skill: str | None = None,
     ) -> LLMResponse:
         """Send messages to the LLM and return a response.
 
         messages can be LLMMessage dataclasses or raw dicts (for tool role support).
+
+        node_id/phase/skill are forwarded to litellm via ``metadata`` and picked
+        up by ``cost_tracker``'s global success_callback so every call is
+        attributed to a node/phase/skill in ``cost_trace.jsonl``. Defaults fall
+        back to attributes set on the client (see ``set_context``).
         """
         msgs = []
         for m in messages:
@@ -56,9 +85,17 @@ class LLMClient:
             else:
                 msgs.append({"role": m.role, "content": m.content})
         _model = self._model_name()
+        _node_id = node_id if node_id is not None else getattr(self, "_node_id", "")
+        _phase = phase if phase is not None else getattr(self, "_phase", "")
+        _skill = skill if skill is not None else getattr(self, "_skill", "")
         kwargs: dict = {
             "model": _model,
             "messages": msgs,
+            "metadata": {
+                "node_id": str(_node_id or ""),
+                "phase": str(_phase or ""),
+                "skill": str(_skill or ""),
+            },
         }
         # gpt-5* models only support temperature=1; drop the param to avoid
         # litellm.UnsupportedParamsError
@@ -106,20 +143,10 @@ class LLMClient:
         _log = _logging.getLogger('ari.llm.client')
         _log.info("LLM response: tool_calls=%s content_preview=%r",
                   bool(tool_calls), (message.content or "")[:100])
-        # ── Cost tracking ────────────────────────────────────────────────
-        if usage:
-            try:
-                from ari import cost_tracker as _ct
-                _ct.record(
-                    model=kwargs.get("model", self._model_name()),
-                    prompt_tokens=usage["prompt_tokens"],
-                    completion_tokens=usage["completion_tokens"],
-                    phase=str(getattr(self, "_phase", "")),
-                    skill=str(getattr(self, "_skill", "")),
-                    node_id=str(getattr(self, "_node_id", "")),
-                )
-            except Exception:
-                pass
+        # Cost tracking is handled by the litellm global success_callback
+        # installed in ari.cost_tracker; the metadata above carries the
+        # node/phase/skill context. Don't call _ct.record() here — doing so
+        # would double-count every LLM call.
         return LLMResponse(
             content=message.content or "",
             tool_calls=tool_calls,

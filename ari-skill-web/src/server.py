@@ -17,6 +17,12 @@ from mcp.server.fastmcp import FastMCP
 log = logging.getLogger(__name__)
 mcp = FastMCP("web-skill")
 
+try:
+    from ari import cost_tracker as _ari_cost_tracker  # type: ignore
+    _ari_cost_tracker.bootstrap_skill("web")
+except Exception:
+    pass
+
 # ---------------------------------------------------------------------------
 # Pluggable retrieval backend (Issue #11)
 # ---------------------------------------------------------------------------

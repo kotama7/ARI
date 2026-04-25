@@ -28,3 +28,13 @@ else
   fail "$(m cli_fail)"
   ERRORS=$((ERRORS + 1))
 fi
+
+# confirm Letta is reachable. Warning only:
+# a user might defer Letta install and set it up manually later.
+URL="${LETTA_BASE_URL:-http://localhost:8283}"
+if curl -fsS "${URL}/v1/health/" >/dev/null 2>&1 \
+    || curl -fsS "${URL}/v1/health"  >/dev/null 2>&1; then
+  ok "Letta reachable at ${URL} ✔"
+else
+  warn "Letta not reachable at ${URL} — run 'ari memory start-local' before 'ari run'."
+fi

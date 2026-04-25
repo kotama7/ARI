@@ -1,5 +1,0 @@
-name: figure-router-skill
-display_name: "Figure Router"
-description: "Classifies figure type and routes generation to appropriate tool (AutoFigure-Edit SVG, matplotlib, LaTeX)"
-requires_env: []
-version: "0.1.0"

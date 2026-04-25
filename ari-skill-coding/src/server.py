@@ -97,7 +97,7 @@ def _truncate(text: str, limit: int) -> tuple[str, bool]:
     omitted = len(text) - limit
     marker = (
         f"\n\n... [{omitted} chars truncated — "
-        f"redirect output to a file via run_bash (e.g. `python3 prog.py > out.log 2>&1`) "
+        f"redirect output to a file via run_bash (e.g. `<your command> > out.log 2>&1`) "
         f"and use read_file to retrieve the full content] ...\n\n"
     )
     return text[:half] + marker + text[-half:], True
@@ -111,13 +111,23 @@ async def list_tools() -> list[Tool]:
     return [
         Tool(
             name="write_code",
-            description="Write code to a file in the specified working directory",
+            description=(
+                "Write source code to a file in the specified working directory. "
+                "Language is chosen by the caller; pick whatever fits the task "
+                "(e.g. Python, C, C++, Fortran, Rust, Go, shell, ...). "
+                "For compiled languages, invoke the compiler via run_bash afterwards."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "filename": {
                         "type": "string",
-                        "description": "File name to write (e.g. main.py)",
+                        "description": (
+                            "File name to write. The extension determines the "
+                            "interpreter used by run_code and the tooling expected "
+                            "from run_bash (e.g. main.py, main.c, main.cpp, "
+                            "main.f90, main.rs, main.go, run.sh)."
+                        ),
                     },
                     "code": {
                         "type": "string",
@@ -135,10 +145,15 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="run_code",
             description=(
-                "Execute a Python file and return stdout/stderr/exit_code. "
+                "Execute a source file using an interpreter selected by its "
+                "extension (.py -> python3, .sh -> bash, .js -> node, "
+                ".rb -> ruby, .pl -> perl, .lua -> lua). "
+                "For compiled languages (C/C++/Fortran/Rust/Go/...) or any "
+                "custom build step, use run_bash to invoke the compiler and "
+                "then run the resulting binary — run_code does NOT compile. "
                 "Output is truncated if large; check the 'truncated' flag and "
                 "re-run via run_bash with shell redirection (e.g. "
-                "`python3 prog.py > out.log 2>&1`) then use read_file to fetch "
+                "`<your command> > out.log 2>&1`) then use read_file to fetch "
                 "the full output."
             ),
             inputSchema={
@@ -287,14 +302,37 @@ def _format_run_result(stdout: str, stderr: str, returncode: int) -> dict:
     }
 
 
+_INTERPRETERS: dict[str, list[str]] = {
+    ".py": ["python3"],
+    ".sh": ["bash"],
+    ".js": ["node"],
+    ".rb": ["ruby"],
+    ".pl": ["perl"],
+    ".lua": ["lua"],
+}
+
+
 def _run_code(filename: str, work_dir: str, timeout: int) -> dict:
     file_path = Path(work_dir) / filename
     if not file_path.exists():
         return {"error": f"File not found: {file_path}", "exit_code": -1}
 
+    interp = _INTERPRETERS.get(file_path.suffix.lower())
+    if interp is None:
+        return {
+            "error": (
+                f"run_code has no interpreter for '{file_path.suffix}'. "
+                "Use run_bash to compile and/or execute this file "
+                "(e.g. `gcc -O3 main.c -o main && ./main`, "
+                "`gfortran -O3 main.f90 -o main && ./main`, "
+                "`cargo run --release`)."
+            ),
+            "exit_code": -1,
+        }
+
     try:
         result = _run_sandboxed(
-            ["python3", str(file_path)],
+            interp + [str(file_path)],
             timeout=timeout,
             cwd=work_dir,
         )

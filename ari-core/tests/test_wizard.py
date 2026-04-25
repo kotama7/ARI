@@ -285,6 +285,57 @@ class TestLaunchEnvInjection:
         assert env.get("OPENAI_API_KEY"), "OPENAI_API_KEY not set"
 
 
+class TestLaunchReviewParamsInjection:
+    """Wizard review-phase fields must flow into proc_env env vars so the
+    paper-skill reads them at run time. Guards the Wizard → api_experiment →
+    subprocess → ari-skill-paper chain for rubric/fewshot/ensemble/reflection.
+    """
+
+    def test_all_review_params_injected(self, monkeypatch, tmp_path):
+        result, spawned = _launch({
+            "experiment_md": "## Research Goal\nTest\n",
+            "rubric_id": "iclr",
+            "fewshot_mode": "dynamic",
+            "num_reviews_ensemble": 3,
+            "num_reflections": 2,
+        }, monkeypatch, tmp_path)
+
+        assert result.get("ok") is True
+        env = spawned["env"]
+        assert env.get("ARI_RUBRIC") == "iclr"
+        assert env.get("ARI_FEWSHOT_MODE") == "dynamic"
+        assert env.get("ARI_NUM_REVIEWS_ENSEMBLE") == "3"
+        assert env.get("ARI_NUM_REFLECTIONS") == "2"
+
+    def test_omitted_params_do_not_set_env(self, monkeypatch, tmp_path):
+        """When the Wizard omits review fields, the launcher must not stamp
+        placeholder ARI_* vars into the child env (the skill's defaults win)."""
+        result, spawned = _launch({
+            "experiment_md": "## Research Goal\nTest\n",
+        }, monkeypatch, tmp_path)
+
+        assert result.get("ok") is True
+        env = spawned["env"]
+        assert env.get("ARI_RUBRIC") in (None, "")
+        assert env.get("ARI_FEWSHOT_MODE") in (None, "")
+        assert env.get("ARI_NUM_REVIEWS_ENSEMBLE") in (None, "")
+        assert env.get("ARI_NUM_REFLECTIONS") in (None, "")
+
+    def test_num_reviews_ensemble_zero_is_injected(self, monkeypatch, tmp_path):
+        """0 is a valid explicit value and must round-trip (the skill clamps
+        to >=1, but the launcher must not silently drop it)."""
+        result, spawned = _launch({
+            "experiment_md": "## Research Goal\nTest\n",
+            "num_reviews_ensemble": 0,
+            "num_reflections": 0,
+        }, monkeypatch, tmp_path)
+
+        assert result.get("ok") is True
+        env = spawned["env"]
+        assert env.get("ARI_NUM_REVIEWS_ENSEMBLE") == "0"
+        assert env.get("ARI_NUM_REFLECTIONS") == "0"
+
+
 # ══════════════════════════════════════════════
 # Launch API — profile and CLI args
 # ══════════════════════════════════════════════
