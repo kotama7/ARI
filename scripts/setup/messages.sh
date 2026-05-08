@@ -137,6 +137,46 @@ msg_setv_done_en=".env ready"
 msg_setv_done_ja=".env の準備完了"
 msg_setv_done_zh=".env 准备就绪"
 
+msg_setv_current_en="current"
+msg_setv_current_ja="現在値"
+msg_setv_current_zh="当前值"
+
+msg_setv_default_en="default"
+msg_setv_default_ja="デフォルト"
+msg_setv_default_zh="默认值"
+
+msg_setv_enter_keep_en="Enter to keep"
+msg_setv_enter_keep_ja="Enter で維持"
+msg_setv_enter_keep_zh="按 Enter 保持"
+
+msg_setv_or_replace_en="or type a new value"
+msg_setv_or_replace_ja="または新しい値を入力"
+msg_setv_or_replace_zh="或输入新值"
+
+msg_setv_pick_or_custom_en="Pick a number or type a custom value (Enter for default)"
+msg_setv_pick_or_custom_ja="番号を選択するか任意の値を入力（Enterでデフォルト）"
+msg_setv_pick_or_custom_zh="选择编号或输入自定义值（按 Enter 使用默认）"
+
+msg_setv_letta_emb_label_en="Letta embedding handle for archival memory"
+msg_setv_letta_emb_label_ja="Letta archival メモリの埋め込みハンドル"
+msg_setv_letta_emb_label_zh="Letta archival 内存的嵌入句柄"
+
+msg_setv_letta_emb_hint_en="The historical 'letta-default' (= letta/letta-free) endpoint has been retired upstream and now returns 404 for every embedding request. Pick an OpenAI handle (BYO key) or type a self-hosted handle you have registered with this Letta server."
+msg_setv_letta_emb_hint_ja="従来の 'letta-default'（= letta/letta-free）は上流で廃止され、すべての埋め込みリクエストが 404 を返します。OpenAI ハンドル（自前の OPENAI_API_KEY が必要）を選ぶか、Letta サーバに登録済みの自前ハンドルを入力してください。"
+msg_setv_letta_emb_hint_zh="旧的 'letta-default'（= letta/letta-free）已被上游停用，所有嵌入请求都会返回 404。请选择 OpenAI 句柄（需自备 OPENAI_API_KEY），或输入已在此 Letta 服务器注册的自托管句柄。"
+
+msg_setv_letta_emb_dead_en="this handle is no longer reachable upstream — strongly recommend changing"
+msg_setv_letta_emb_dead_ja="このハンドルは上流で到達不能です — 変更を強く推奨"
+msg_setv_letta_emb_dead_zh="该句柄上游已不可达 — 强烈建议更换"
+
+msg_setv_letta_sif_label_en="Letta SIF image (Apptainer/Singularity)"
+msg_setv_letta_sif_label_ja="Letta SIF イメージ（Apptainer/Singularity）"
+msg_setv_letta_sif_label_zh="Letta SIF 镜像（Apptainer/Singularity）"
+
+msg_setv_letta_sif_hint_en="Path used by scripts/letta/start_singularity.sh. Pulled from docker://letta/letta:latest if missing on first start. Pin a custom path here for shared/cached images."
+msg_setv_letta_sif_hint_ja="scripts/letta/start_singularity.sh が参照するパスです。初回起動時に docker://letta/letta:latest から pull されます。共有/キャッシュ済みのイメージを使う場合はここで指定。"
+msg_setv_letta_sif_hint_zh="scripts/letta/start_singularity.sh 使用的路径。如果缺失，首次启动时会从 docker://letta/letta:latest 拉取。若需使用共享/缓存的镜像请在此指定。"
+
 msg_import_fail_en="import failed"
 msg_import_fail_ja="インポート失敗"
 msg_import_fail_zh="导入失败"

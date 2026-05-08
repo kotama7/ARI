@@ -20,6 +20,20 @@
 # ============================================================================
 set -euo pipefail
 
+# --- Parse simple flags -----------------------------------------------------
+# v0.7.0: --with-registry installs the ari-registry FastAPI server deps
+#         (fastapi / uvicorn / python-multipart). The publish flow itself
+#         does not require these — they are only needed if you intend to
+#         run `ari registry serve` on this host.
+WITH_REGISTRY="${ARI_WITH_REGISTRY:-0}"
+for arg in "$@"; do
+  case "$arg" in
+    --with-registry) WITH_REGISTRY=1 ;;
+    --without-registry) WITH_REGISTRY=0 ;;
+  esac
+done
+export WITH_REGISTRY
+
 # --- Detect project root ----------------------------------------------------
 ARI_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 SETUP_DIR="$ARI_ROOT/scripts/setup"
@@ -59,6 +73,7 @@ load install_core.sh    # [1/6] ari-core + skills
 load install_deps.sh    # [2/6] Python dependencies
 load setup_env.sh       # Configure .env (API keys + defaults)
 load install_letta.sh   # memory backend (uses _env_append_if_absent from setup_env)
+load install_paperbench.sh # PaperBench upstream (SimpleJudge) — required for ORS
 load install_pdf.sh     # [3/6] PDF tools
 load install_latex.sh   # [4/6] LaTeX
 load install_frontend.sh # [5/6] React dashboard build

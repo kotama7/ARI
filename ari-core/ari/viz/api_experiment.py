@@ -387,6 +387,49 @@ def _api_launch(body: bytes) -> dict:
             proc_env["ARI_CONTAINER_IMAGE"] = str(wiz_container_image)
         if wiz_container_mode:
             proc_env["ARI_CONTAINER_MODE"] = str(wiz_container_mode)
+        # ORS (PaperBench-format auto rubric) overrides from wizard.
+        # Snapshot stored on launch is also persisted to launch_config.json.
+        wiz_ors = data.get("ors") or {}
+        if isinstance(wiz_ors, dict):
+            _ors_map = {
+                # Note: v0.7+ replaced single-shot replicator with the agent
+                # solver; ARI_MODEL_REPLICATE is now read by run_replicator_agent
+                # as ARI_MODEL_REPLICATOR (legacy alias kept for back-compat).
+                "replicator_model":   "ARI_MODEL_REPLICATOR",
+                "rubric_gen_model":   "ARI_MODEL_RUBRIC_GEN",
+                "rubric_audit_model": "ARI_MODEL_RUBRIC_AUDIT",
+                "judge_model":        "ARI_MODEL_JUDGE",
+                "phase1_sandbox_kind":"ARI_PHASE1_SANDBOX",
+            }
+            for k, env_k in _ors_map.items():
+                v = wiz_ors.get(k)
+                if v not in (None, ""):
+                    proc_env[env_k] = str(v)
+            if wiz_ors.get("phase1_max_runtime_sec"):
+                proc_env["ARI_PHASE1_MAX_RUNTIME_SEC"] = str(int(wiz_ors["phase1_max_runtime_sec"]))
+            if wiz_ors.get("rubric_gen_target_leaves") is not None:
+                proc_env["ARI_RUBRIC_GEN_TARGET_LEAVES"] = str(int(wiz_ors["rubric_gen_target_leaves"]))
+            if wiz_ors.get("rubric_gen_temperature") is not None:
+                proc_env["ARI_RUBRIC_GEN_TEMPERATURE"] = str(float(wiz_ors["rubric_gen_temperature"]))
+            if wiz_ors.get("rubric_gen_two_stage") is not None:
+                proc_env["ARI_RUBRIC_GEN_TWO_STAGE"] = "1" if wiz_ors["rubric_gen_two_stage"] else "0"
+            if wiz_ors.get("judge_n_runs") is not None:
+                proc_env["ARI_JUDGE_N_RUNS"] = str(int(wiz_ors["judge_n_runs"]))
+            # Replicator agent (v0.7+) — wall-clock budget and BasicAgent vs
+            # IterativeAgent toggle. Surfaced to the workflow.yaml stage via
+            # the corresponding launch_config.ors keys (see workflow.yaml::
+            # ors_build_reproduce inputs); these env vars are only consumed
+            # if the wizard sends the values directly.
+            if wiz_ors.get("replicator_time_limit_sec") is not None:
+                proc_env["ARI_REPLICATOR_TIME_LIMIT_SEC"] = str(
+                    int(wiz_ors["replicator_time_limit_sec"])
+                )
+            if wiz_ors.get("iterative_agent") is not None:
+                proc_env["ARI_REPLICATOR_ITERATIVE"] = (
+                    "1" if wiz_ors["iterative_agent"] else "0"
+                )
+            if wiz_ors.get("replicator_max_steps") is not None:
+                proc_env["ARI_REPLICATOR_MAX_STEPS"] = str(int(wiz_ors["replicator_max_steps"]))
         # Per-experiment default model override (from wizard) takes precedence over Settings
         wiz_model = data.get("llm_model", "") or data.get("model", "")
         wiz_provider = data.get("llm_provider", "")
@@ -450,6 +493,12 @@ def _api_launch(body: bytes) -> dict:
             _launch_cfg["num_reviews_ensemble"] = int(proc_env["ARI_NUM_REVIEWS_ENSEMBLE"])
         if proc_env.get("ARI_NUM_REFLECTIONS"):
             _launch_cfg["num_reflections"] = int(proc_env["ARI_NUM_REFLECTIONS"])
+        _include_ear = bool(data.get("include_ear", True))
+        _launch_cfg["include_ear"] = _include_ear
+        # Persist the ORS snapshot verbatim so launch_config.json is the
+        # tamper-evident provenance of model choices for this run.
+        if isinstance(wiz_ors, dict) and wiz_ors:
+            _launch_cfg["ors"] = {k: v for k, v in wiz_ors.items()}
         _st._launch_config = _launch_cfg
         import time, shutil
         # Write log and launch_config.json inside pre-created checkpoint
@@ -457,11 +506,34 @@ def _api_launch(body: bytes) -> dict:
         _st._last_log_path = log_path
         _st._last_log_fh = open(log_path, "w")
         (_pre_ckpt / "launch_config.json").write_text(json.dumps(_launch_cfg, indent=2))
-        # Copy workflow.yaml into checkpoint dir for reproducibility
+        # Copy workflow.yaml into checkpoint dir for reproducibility.
+        # When the wizard's "Include EAR" toggle is OFF (include_ear=False),
+        # disable the EAR stages and strip them from downstream depends_on so
+        # write_paper / finalize_paper still run for this experiment only.
         _wf_src = Path(__file__).resolve().parent.parent.parent / "config" / "workflow.yaml"
+        _wf_dst = _pre_ckpt / "workflow.yaml"
         if _wf_src.exists():
             try:
-                shutil.copy2(str(_wf_src), str(_pre_ckpt / "workflow.yaml"))
+                if _include_ear:
+                    shutil.copy2(str(_wf_src), str(_wf_dst))
+                else:
+                    import yaml as _yaml_ear
+                    _wf_doc = _yaml_ear.safe_load(_wf_src.read_text())
+                    # ors_seed_sandbox seeds repro_sandbox/ from the EAR
+                    # publish_record. Disabling it forces ors_build_reproduce
+                    # to run the LLM Replicator from the paper alone, which is
+                    # the intended semantics when the user opts out of EAR.
+                    _ear_stages = {"generate_ear", "ear_curate", "ear_publish", "ors_seed_sandbox"}
+                    for _s in _wf_doc.get("pipeline") or []:
+                        if _s.get("stage") in _ear_stages:
+                            _s["enabled"] = False
+                        _dep = _s.get("depends_on")
+                        if isinstance(_dep, list):
+                            _s["depends_on"] = [_d for _d in _dep if _d not in _ear_stages]
+                        elif isinstance(_dep, str) and _dep in _ear_stages:
+                            _s["depends_on"] = []
+                    _wf_dst.write_text(_yaml_ear.safe_dump(_wf_doc, sort_keys=False))
+                    log.info("[launch] include_ear=False: EAR stages disabled in checkpoint workflow.yaml")
             except Exception:
                 log.warning("Failed to copy workflow.yaml to checkpoint", exc_info=True)
         # Copy uploaded files from staging/previous checkpoint to new checkpoint

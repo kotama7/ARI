@@ -368,7 +368,7 @@ def test_get_workflow_returns_pipelines(orchestrator):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Phase 5: recursion chain semantics (max=0 runs, child blocked)
+# lineage decisions: recursion chain semantics (max=0 runs, child blocked)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_recursion_chain_depth_2(orchestrator, isolated_logs):

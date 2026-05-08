@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ari://schemas/replication_rubric.schema.json",
+  "title": "ORS Auto-Rubric (PaperBench TaskNode compatible)",
+  "type": "object",
+  "required": ["version", "paper_sha256", "generator", "reproduce_contract", "rubric"],
+  "properties": {
+    "version":        { "const": "3" },
+    "paper_sha256":   { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "rubric_sha256":  { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "generator": {
+      "type": "object",
+      "required": ["model", "prompt_sha256", "generated_at"],
+      "properties": {
+        "model":          { "type": "string" },
+        "prompt_sha256":  { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "generated_at":   { "type": "string", "format": "date-time" },
+        "temperature":    { "type": "number" },
+        "seed":           { "type": "integer" },
+        "snapshot":       { "type": "object" }
+      }
+    },
+    "reproduce_contract": {
+      "type": "object",
+      "description": "Phase 1 execution requirements (PaperBench reproduce.sh contract).",
+      "required": ["script_path", "max_runtime_sec"],
+      "properties": {
+        "script_path":      { "const": "reproduce.sh" },
+        "max_runtime_sec":  { "type": "integer", "minimum": 60, "maximum": 43200 },
+        "expected_artifacts": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "audit": {
+      "type": "object",
+      "properties": {
+        "auditor_model":   { "type": "string" },
+        "audited_at":      { "type": "string", "format": "date-time" },
+        "flags_count":     { "type": "integer" }
+      }
+    },
+    "rubric": {
+      "$ref": "#/$defs/task_node",
+      "description": "Root TaskNode (PaperBench-compatible). Pass this directly to SimpleJudge."
+    }
+  },
+  "$defs": {
+    "task_node": {
+      "type": "object",
+      "required": ["id", "requirements", "weight"],
+      "properties": {
+        "id":           { "type": "string", "format": "uuid" },
+        "requirements": { "type": "string", "minLength": 10 },
+        "weight":       { "type": "integer", "minimum": 0 },
+        "sub_tasks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/task_node" }
+        },
+        "task_category": {
+          "enum": ["Code Development", "Code Execution", "Result Analysis", null]
+        },
+        "finegrained_task_category": {
+          "enum": [
+            "Environment & Infrastructure Setup",
+            "Dataset and Model Acquisition",
+            "Data Processing & Preparation",
+            "Method Implementation",
+            "Experimental Setup",
+            "Evaluation, Metrics & Benchmarking",
+            "Logging, Analysis & Presentation",
+            null
+          ],
+          "description": "PaperBench closed vocabulary; mirrors VALID_FINEGRAINED_TASK_CATEGORIES in vendor/paperbench/.../tasks.py."
+        },
+        "rationale_from_paper": {
+          "type": "object",
+          "description": "Required at leaf nodes (sub_tasks empty). Optional at internal nodes.",
+          "required": ["section", "quote"],
+          "properties": {
+            "section": { "type": "string" },
+            "quote":   { "type": "string", "minLength": 10 }
+          }
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "enum": ["unverifiable", "duplicate", "no_paper_evidence", "vague_qualifier"]
+          }
+        }
+      }
+    }
+  }
+}

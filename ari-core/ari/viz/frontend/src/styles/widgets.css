@@ -1,0 +1,90 @@
+/* Page-specific widgets: tree visualisation, wizard, logs, phases,
+ * settings, stat boxes, detail panel, project switcher, figure preview,
+ * tooltip, phase stepper.
+ * Phase B split from dashboard.css.
+ */
+
+/* Tree vis */
+#tree-canvas{width:100%;background:var(--card);border:1px solid var(--border);border-radius:12px;min-height:500px;position:relative;overflow:auto}
+.tree-node{position:absolute;background:var(--bg);border:2px solid var(--border);border-radius:10px;padding:10px 14px;cursor:pointer;min-width:140px;transition:.15s;font-size:.8rem}
+.tree-node:hover,.tree-node.selected{border-color:var(--blue);box-shadow:0 0 0 2px rgba(59,130,246,.2)}
+.tree-node.running{border-color:var(--yellow)}
+.tree-node.failed{border-color:var(--red)}
+.tree-node.completed{border-color:var(--green)}
+.tree-edge{position:absolute;pointer-events:none}
+.tree-wrap{position:relative}
+
+/* Wizard */
+.wizard-steps{display:flex;gap:0;margin-bottom:32px}
+.step-pill{flex:1;text-align:center;padding:10px;font-size:.8rem;font-weight:600;color:var(--muted);border-bottom:2px solid var(--border);transition:.15s}
+.step-pill.active{color:var(--blue-light);border-bottom-color:var(--blue)}
+.step-pill.done{color:var(--green);border-bottom-color:var(--green)}
+.wizard-page{display:none}
+.wizard-page.active{display:block}
+
+/* Logs */
+#log-output{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:16px;font-family:var(--font-mono);font-size:.8rem;height:300px;overflow:auto;line-height:1.6;color:#94a3b8}
+.log-line{padding:1px 0}
+
+/* Phase bar (legacy) */
+.phases{display:flex;gap:0;border-radius:8px;overflow:hidden;margin-bottom:20px}
+.phase{flex:1;padding:10px;text-align:center;font-size:.78rem;font-weight:600;background:rgba(255,255,255,.04);color:var(--muted);border-right:1px solid var(--border);transition:.3s}
+.phase:last-child{border-right:none}
+.phase.active{background:rgba(59,130,246,.15);color:var(--blue-light)}
+.phase.done{background:rgba(34,197,94,.1);color:var(--green)}
+
+/* Phase stepper (modern) */
+.phase-step{
+  display:flex;flex-direction:column;align-items:center;
+  padding:8px 10px;border-radius:8px;
+  border:1px solid var(--border);background:var(--card);
+  cursor:default;transition:all .2s;flex-shrink:0;min-width:60px;
+}
+.phase-step .pstep-icon{font-size:1.3rem;line-height:1.2}
+.phase-step .pstep-label{font-size:.65rem;color:var(--muted);margin-top:2px;white-space:nowrap}
+.phase-step.done{border-color:rgba(16,185,129,.4);background:rgba(16,185,129,.1)}
+.phase-step.done .pstep-label{color:#10b981}
+.phase-step.active{
+  border-color:var(--primary);background:rgba(59,130,246,.15);
+  box-shadow:0 0 10px rgba(59,130,246,.3);
+  animation:pulse-step 2s ease-in-out infinite;
+}
+.phase-step.active .pstep-label{color:var(--primary);font-weight:700}
+.phase-step.error{border-color:rgba(239,68,68,.6);background:rgba(239,68,68,.15)}
+.phase-step.error .pstep-label{color:#ef4444;font-weight:700}
+@keyframes pulse-step{
+  0%,100%{box-shadow:0 0 8px rgba(59,130,246,.3)}
+  50%{box-shadow:0 0 18px rgba(59,130,246,.6)}
+}
+.pstep-arrow{color:var(--muted);font-size:.7rem;padding:0 2px;flex-shrink:0;margin-top:-4px}
+
+/* Settings */
+.settings-section{margin-bottom:24px}
+.settings-section h3{font-size:.9rem;font-weight:700;margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+
+/* Stat boxes */
+.stat-box{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 20px}
+.stat-val{font-size:1.8rem;font-weight:800;margin-bottom:2px}
+.stat-label{font-size:.8rem;color:var(--muted)}
+
+/* Tooltip */
+#tooltip{position:fixed;background:rgba(15,17,23,.97);border:1px solid var(--border);border-radius:10px;padding:12px 16px;font-size:.82rem;max-width:340px;z-index:9999;display:none;pointer-events:none;line-height:1.6}
+
+/* Detail panel */
+#detail-panel{width:320px;min-width:180px;max-width:60vw;background:var(--sidebar);border-left:1px solid var(--border);padding:20px;overflow:auto;display:none;position:relative;transition:none}
+#detail-panel.open{display:block}
+#detail-resize-handle{position:absolute;left:0;top:0;bottom:0;width:5px;cursor:col-resize;background:transparent;z-index:10}
+#detail-resize-handle:hover{background:rgba(99,102,241,.4)}
+.detail-field{margin-bottom:12px}
+.detail-key{font-size:.75rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
+.detail-val{font-size:.85rem;word-break:break-all}
+
+/* Project switcher */
+#project-switcher{padding:10px 16px;border-top:1px solid var(--border);margin-top:auto}
+#project-switcher label{font-size:.72rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px}
+#project-select{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:6px;font-size:.78rem;cursor:pointer}
+#project-select:focus{outline:none;border-color:var(--blue)}
+.project-status{font-size:.72rem;color:var(--muted);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Figure display */
+.figure-img{max-width:100%;border-radius:8px;border:1px solid var(--border);margin-top:8px}

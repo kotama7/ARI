@@ -1,6 +1,7 @@
 """MCP Server for LaTeX paper writing support."""
 
 import asyncio
+import json
 import os
 import re
 import subprocess
@@ -1035,10 +1036,31 @@ async def write_paper_iterative(
                     _cfg_parts = []
                     for _cfg in _configs[:10]:
                         _cfg_parts.append(json.dumps(_cfg, ensure_ascii=False))
+                    # Some configurations carry a typed split (params /
+                    # measurements / predictions / scores) sourced from the
+                    # coding-skill's emit_results contract or the LLM
+                    # evaluator's split. When present, use those — they
+                    # are authoritative and disambiguate inputs (matrix
+                    # size, threads) from outcomes (GFlops/s, accuracy).
+                    # Fall back to the flat ``metrics`` view only when the
+                    # typed fields are absent.
                     experiment_summary += (
                         "\n\nPER-CONFIGURATION RESULTS (each entry shows the exact "
                         "parameters and metrics for one experiment — when reporting "
-                        "a number, state the parameters from the SAME entry):\n"
+                        "a number, state the parameters from the SAME entry).\n"
+                        "Field semantics for each entry:\n"
+                        "  parameters  — INPUT knobs the run used (matrix size, "
+                        "thread count, seeds). Cite these as the configuration. "
+                        "NEVER quote them as the experiment's headline result.\n"
+                        "  measurements — MEASURED outputs (throughput, accuracy, "
+                        "latency). These are the values that go in the abstract / "
+                        "results section.\n"
+                        "  predictions  — model-derived ceilings (e.g. roofline "
+                        "compute peak). Useful for context, not as results.\n"
+                        "  scores       — derived ratios (efficiency, speedup).\n"
+                        "  metrics      — back-compat flat union; prefer the typed "
+                        "fields above when they are populated.\n"
+                        "Entries:\n"
                         + "\n".join(_cfg_parts)
                     )
 
@@ -1050,13 +1072,33 @@ async def write_paper_iterative(
                         + json.dumps(_impl_det, indent=2, ensure_ascii=False)[:4000]
                     )
 
+                # 2b. Hardware/software environment, populated from
+                # node_report.json's executor / hostname / cpu_info / compilers
+                # (captured by ari.agent.run_env at experiment time).
+                # Surfaced separately so the paper has factual hardware
+                # specs to write under "Hardware/software environment"
+                # instead of saying "not recorded".
+                _hw = _sd_ctx.get("hardware", "")
+                if _hw:
+                    if isinstance(_hw, dict):
+                        _hw_text = json.dumps(_hw, indent=2, ensure_ascii=False)
+                    else:
+                        _hw_text = str(_hw)
+                    experiment_summary += (
+                        "\n\nHARDWARE/SOFTWARE ENVIRONMENT (factual capture from "
+                        "experiment runtime — write a concrete description in the "
+                        "paper using these values, do NOT write 'not recorded' "
+                        "if any value is present here):\n"
+                        + _hw_text[:2500]
+                    )
+
                 # 3. Source code from best nodes (last — longest section).
                 _best_src = _sd_ctx.get("_best_node_source_code", {})
                 if _best_src:
                     _src_parts = []
                     _src_total = 0
                     for _label, _code in _best_src.items():
-                        if _src_total + len(_code) > 16000:
+                        if _src_total + len(_code) > 32000:
                             break
                         _src_parts.append(f"── {_label} ──\n{_code}")
                         _src_total += len(_code)
@@ -1263,7 +1305,7 @@ async def write_paper_iterative(
             "Keep the \\bibliographystyle and \\bibliography commands exactly as provided in the template.\n"
         )
         _user_prompt_a = (
-            f"Experiment context:\n{experiment_summary[:30000]}\n\n"
+            f"Experiment context:\n{experiment_summary[:48000]}\n\n"
             f"{refs_context}\n\n"
             f"Fill in this LaTeX template — replace ALL FILL blocks with real content:\n\n"
             f"```latex\n{latex_template}\n```"
@@ -2076,6 +2118,169 @@ def _extract_latex(llm_response: str) -> str:
     else:
         result = llm_response[s:]
     return _strip_fill_markers(result)
+
+
+# ─── Code Availability injection ─────────────────────────────
+#
+# This is a deterministic, no-LLM transformation of an already-compiled
+# .tex file. We add the Code Availability section + machine-readable
+# macros (\codeavailability / \codedigest / \coderef) so:
+#   - readers see a citable section,
+#   - the reproducibility sandbox extracts the ref+digest deterministically.
+#
+# Idempotent: re-running with the same digest is a no-op. Re-running with
+# a *different* digest replaces the prior block.
+
+_CODE_AVAIL_BEGIN = "% ari-code-availability:begin"
+_CODE_AVAIL_END = "% ari-code-availability:end"
+
+
+def _render_code_availability_block(ref: str, sha256: str, doi: str = "", license_id: str = "") -> str:
+    """Render the LaTeX block to insert.
+
+    The block sandwiches the Code Availability section between sentinel
+    comments so we can find and replace it on re-injection.
+    """
+    sha_short = sha256[:16] + "..." if sha256 else ""
+    parts = [
+        _CODE_AVAIL_BEGIN,
+        r"\providecommand{\codeavailability}[1]{}",
+        r"\providecommand{\codedigest}[1]{}",
+        r"\providecommand{\coderef}[1]{}",
+        r"\section*{Code Availability}",
+    ]
+    if ref:
+        parts.append(r"\coderef{" + ref + "}%")
+    if sha256:
+        parts.append(r"\codedigest{" + sha256 + "}%")
+    if doi:
+        parts.append(r"\codeavailability{" + doi + "}%")
+    body_lines = []
+    if ref:
+        body_lines.append(
+            r"The curated Experimental Artifact Repository for this paper is "
+            r"available at \texttt{" + ref + "}."
+        )
+        body_lines.append(
+            r"It can be retrieved with one command: \texttt{ari clone " + ref + "}."
+        )
+    if sha256:
+        body_lines.append(
+            r"Bundle integrity is verified by SHA-256 digest \texttt{" + sha_short + "} "
+            r"(full digest: \texttt{" + sha256 + "})."
+        )
+    if doi:
+        body_lines.append(r"Persistent identifier: \texttt{" + doi + "}.")
+    if license_id:
+        body_lines.append(r"License: " + license_id + ".")
+    if body_lines:
+        parts.append(" ".join(body_lines))
+    parts.append(_CODE_AVAIL_END)
+    return "\n".join(parts)
+
+
+@mcp.tool()
+def inject_code_availability(
+    tex_path: str,
+    ref: str = "",
+    sha256: str = "",
+    doi: str = "",
+    license_id: str = "",
+    checkpoint_dir: str = "",
+) -> dict:
+    """Inject (or refresh) the Code Availability section in an existing .tex.
+
+    No-op if both ``ref`` and ``sha256`` are empty (the section is omitted
+    rather than rendered with placeholders — FR-PA2 / O-1 soft fail).
+
+    Idempotent: re-running with the same args produces no diff. Running
+    with new digest values replaces the prior block in place.
+
+    Args:
+        tex_path: path to the compiled paper .tex (e.g. ``full_paper.tex``).
+        ref: bundle reference (``ari://``, ``gh:``, ``doi:``, ``file://``, ``https://``).
+        sha256: 64-hex bundle digest (from ``ear_published/manifest.lock``).
+        doi: optional persistent identifier (Zenodo DOI, etc.).
+        license_id: optional SPDX license string from ``publish.yaml``.
+
+    Returns:
+        ``{"injected": bool, "tex_path": str, "block": str | None}``.
+    """
+    p = Path(tex_path)
+    if not p.exists():
+        return {"injected": False, "error": f"tex not found: {tex_path}"}
+
+    # ── Auto-load ref/sha/doi from checkpoint metadata when not given ──
+    # The pipeline calls this stage with checkpoint_dir but no ref/sha,
+    # because those values become known only after curate (manifest.lock)
+    # and publish (publish_record.json). Look them up from disk.
+    if checkpoint_dir and not (ref or sha256):
+        ckpt = Path(checkpoint_dir)
+        manifest = ckpt / "ear_published" / "manifest.lock"
+        record = ckpt / "publish_record.json"
+        if manifest.exists():
+            try:
+                m = json.loads(manifest.read_text(encoding="utf-8"))
+                sha256 = sha256 or m.get("bundle_sha256", "")
+                if not license_id:
+                    license_id = (m.get("publish") or {}).get("license") or ""
+            except Exception:
+                pass
+        if record.exists():
+            try:
+                r = json.loads(record.read_text(encoding="utf-8"))
+                ref = ref or r.get("ref", "")
+                if not doi:
+                    extra = r.get("extra") or {}
+                    doi = extra.get("doi") or ""
+            except Exception:
+                pass
+
+    content = p.read_text(encoding="utf-8")
+
+    # FR-PA2: omit the section entirely when neither ref nor sha is provided.
+    if not ref and not sha256:
+        # Strip any prior block (so a re-run with no context cleans up).
+        new_content = _strip_existing_code_avail_block(content)
+        if new_content != content:
+            p.write_text(new_content, encoding="utf-8")
+            return {"injected": False, "tex_path": str(p), "block": None, "stripped_prior": True}
+        return {"injected": False, "tex_path": str(p), "block": None}
+
+    block = _render_code_availability_block(ref=ref, sha256=sha256, doi=doi, license_id=license_id)
+    new_content, replaced = _splice_code_avail_block(content, block)
+    if new_content == content:
+        # No change (idempotent re-injection) — return success without writing.
+        return {"injected": True, "tex_path": str(p), "block": block, "noop": True}
+    p.write_text(new_content, encoding="utf-8")
+    return {"injected": True, "tex_path": str(p), "block": block, "replaced": replaced}
+
+
+def _strip_existing_code_avail_block(content: str) -> str:
+    pattern = re.compile(
+        re.escape(_CODE_AVAIL_BEGIN) + r".*?" + re.escape(_CODE_AVAIL_END) + r"\n?",
+        re.DOTALL,
+    )
+    return pattern.sub("", content)
+
+
+def _splice_code_avail_block(content: str, block: str) -> tuple[str, bool]:
+    """Return (new_content, replaced_existing)."""
+    pattern = re.compile(
+        re.escape(_CODE_AVAIL_BEGIN) + r".*?" + re.escape(_CODE_AVAIL_END),
+        re.DOTALL,
+    )
+    if pattern.search(content):
+        return pattern.sub(lambda _m: block, content, count=1), True
+    # Insert immediately before \end{document}; if that anchor is missing,
+    # append at end (templates without an explicit \end{document} are rare
+    # but possible for partial drafts).
+    end_doc = r"\end{document}"
+    idx = content.rfind(end_doc)
+    if idx == -1:
+        return content.rstrip() + "\n\n" + block + "\n", False
+    return content[:idx] + block + "\n\n" + content[idx:], False
+
 
 def main():
     mcp.run()

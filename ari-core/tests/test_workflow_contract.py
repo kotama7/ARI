@@ -848,9 +848,12 @@ class TestPaperPipelineFileContract:
         ("review_paper",
          {"tex_path", "pdf_path"},
          "review_report.json"),
-        ("reproducibility_check",
-         {"paper_path"},
-         "reproducibility_report.json"),
+        # v0.6.0 §4.1 split the legacy reproducibility_check stage into the
+        # ors_* multi-stage flow. ors_grade is the terminal stage that emits
+        # the per-leaf grade JSON consumed downstream.
+        ("ors_grade",
+         {"paper_path", "rubric_path"},
+         "ors_grade.json"),
         ("generate_ear",
          {"checkpoint_dir"},
          "ear_manifest.json"),
@@ -874,16 +877,6 @@ class TestPaperPipelineFileContract:
         assert out_file.endswith(expected_output_suffix), (
             f"{stage_name}.outputs.file should end with {expected_output_suffix!r}, "
             f"got: {out_file!r}"
-        )
-
-        # reproducibility_check now runs via the react driver and declares its
-        # sandbox in the react block instead of an inputs.work_dir argument.
-        if stage_name == "reproducibility_check":
-            react = stage.get("react") or {}
-            assert react.get("sandbox"), (
-                "reproducibility_check.react.sandbox must be set so the ReAct "
-                "agent has a dedicated work directory isolated from the "
-                "checkpoint root"
         )
 
     # ── Global invariants ──

@@ -103,11 +103,87 @@ export async function fetchMemoryAccess(
   );
 }
 
+// ── Node report (v0.7.0) ───────────────────────────────────
+export interface NodeReportFilesChanged {
+  added: Array<{ path: string; sha256?: string }>;
+  modified: Array<{
+    path: string;
+    sha256_before?: string;
+    sha256_after?: string;
+  }>;
+  deleted: string[];
+  inherited_unchanged: Array<{ path: string; from_node_id?: string }>;
+}
+
+export interface NodeReportSelfAssessment {
+  succeeded?: boolean;
+  headline?: string;
+  concerns?: string[];
+}
+
+export interface NodeReport {
+  schema_version: number;
+  node_id: string;
+  parent_id?: string | null;
+  ancestor_ids?: string[];
+  label?: string;
+  raw_label?: string;
+  depth?: number;
+  status?: string;
+  started_at?: string;
+  completed_at?: string;
+  original_direction?: string | null;
+  files_changed: NodeReportFilesChanged;
+  what_was_done?: string;
+  delta_vs_parent?: string;
+  metrics?: Record<string, unknown>;
+  self_assessment?: NodeReportSelfAssessment;
+  next_steps_hints?: string[];
+  build_command?: string;
+  run_command?: string;
+  artifacts?: Array<{
+    filename: string;
+    role: string;
+    size?: number;
+    sha256?: string;
+  }>;
+  evaluator_reason?: string;
+  trace_log_summary?: string;
+  migration_source?: 'fresh' | 'auto';
+}
+
+export interface NodeReportResponse {
+  run_id?: string;
+  node_id?: string;
+  report?: NodeReport;
+  error?: string;
+}
+
+export async function fetchNodeReport(
+  runId: string,
+  nodeId: string,
+): Promise<NodeReportResponse> {
+  return get<NodeReportResponse>(
+    `/api/nodes/${encodeURIComponent(runId)}/${encodeURIComponent(nodeId)}/report`,
+  );
+}
+
 // ── EAR (Experiment Artifact Repository) ─────────
 export interface EARFile {
   path: string;
   type: 'file' | 'dir';
   size?: number;
+}
+
+export interface EARPublishedSummary {
+  ear_published_dir?: string;
+  bundle_sha256?: string;
+  file_count?: number;
+  visibility?: string;
+  excluded_count?: number;
+  files?: string[];
+  created_at?: string;
+  error?: string;
 }
 
 export interface EARData {
@@ -117,11 +193,161 @@ export interface EARData {
   readme?: string;
   results?: string;
   file_count?: number;
+  publish_yaml_present?: boolean;
+  published?: EARPublishedSummary | null;
   error?: string;
 }
 
 export async function fetchEAR(runId: string): Promise<EARData> {
   return get<EARData>(`/api/ear/${encodeURIComponent(runId)}`);
+}
+
+// ── Curate ───────────────
+export interface EARCurateResult {
+  ear_published_dir?: string;
+  manifest_path?: string;
+  bundle_sha256?: string;
+  included_files?: string[];
+  excluded_count?: number;
+  skipped?: boolean;
+  error?: string;
+  kind?: string;
+}
+
+export async function curateEAR(runId: string): Promise<EARCurateResult> {
+  return post<EARCurateResult>(`/api/ear/${encodeURIComponent(runId)}/curate`, {});
+}
+
+// ── publish.yaml editor ──────────
+export interface PublishYamlData {
+  include?: string[];
+  exclude?: string[];
+  max_file_mb?: number;
+  license?: string;
+  visibility?: string;
+  required?: boolean;
+  auto_promote?: boolean;
+  _parse_error?: string;
+  [k: string]: any;
+}
+
+export interface PublishYamlResponse {
+  exists?: boolean;
+  path?: string;
+  text?: string;
+  data?: PublishYamlData;
+  error?: string;
+  ok?: boolean;
+}
+
+export async function fetchPublishYaml(runId: string): Promise<PublishYamlResponse> {
+  return get<PublishYamlResponse>(`/api/ear/${encodeURIComponent(runId)}/publish-yaml`);
+}
+
+export async function savePublishYaml(
+  runId: string,
+  payload: { text?: string; data?: PublishYamlData },
+): Promise<PublishYamlResponse> {
+  return post<PublishYamlResponse>(
+    `/api/ear/${encodeURIComponent(runId)}/publish-yaml`,
+    payload,
+  );
+}
+
+// ── Clone-verify ───────────────
+export interface CloneVerifyRequest {
+  ref: string;
+  dest: string;
+  expect_sha256?: string;
+  extract?: boolean;
+}
+export interface CloneVerifyResult {
+  ref?: string;
+  dest?: string;
+  bundle_sha256?: string;
+  file_count?: number;
+  extracted?: boolean;
+  error?: string;
+  kind?: string;
+}
+export async function cloneVerifyBundle(req: CloneVerifyRequest): Promise<CloneVerifyResult> {
+  return post<CloneVerifyResult>('/api/ear/clone-verify', req);
+}
+
+// ── Publish ───────────────
+export interface PublishSettings {
+  default_backend?: string;
+  auto_promote?: boolean;
+  registries?: Array<{ name: string; url: string; token?: string }>;
+  zenodo_sandbox?: boolean;
+  gh_user?: string;
+  error?: string;
+}
+
+export interface PublishPreview {
+  run_id?: string;
+  ear_published_dir?: string;
+  bundle_sha256?: string;
+  files?: string[];
+  file_count?: number;
+  visibility?: string;
+  license?: string;
+  publish?: Record<string, unknown>;
+  error?: string;
+  needs_curate?: boolean;
+}
+
+export interface PublishRunRequest {
+  backend?: string;
+  visibility?: string;
+  dry_run?: boolean;
+  consent?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface PublishRunResult {
+  backend?: string;
+  ref?: string;
+  bundle_sha256?: string;
+  visibility?: string;
+  dry_run?: boolean;
+  extra?: Record<string, unknown>;
+  timestamp?: string;
+  error?: string;
+  kind?: string;
+}
+
+export interface PublishRecord {
+  published?: boolean;
+  backend?: string;
+  ref?: string;
+  bundle_sha256?: string;
+  visibility?: string;
+  dry_run?: boolean;
+  timestamp?: string;
+  promoted_at?: string;
+  promote_failed_at?: string;
+  extra?: Record<string, unknown>;
+  error?: string;
+}
+
+export async function fetchPublishSettings(): Promise<PublishSettings> {
+  return get<PublishSettings>('/api/publish/settings');
+}
+export async function savePublishSettings(s: PublishSettings): Promise<{ ok?: boolean; error?: string }> {
+  return post('/api/publish/settings', s);
+}
+export async function previewPublish(runId: string): Promise<PublishPreview> {
+  return get<PublishPreview>(`/api/publish/${encodeURIComponent(runId)}/preview`);
+}
+export async function runPublish(runId: string, req: PublishRunRequest): Promise<PublishRunResult> {
+  return post<PublishRunResult>(`/api/publish/${encodeURIComponent(runId)}`, req);
+}
+export async function promotePublish(runId: string, target: string): Promise<{ ref?: string; visibility?: string; error?: string }> {
+  return post(`/api/publish/${encodeURIComponent(runId)}/promote`, { target });
+}
+export async function fetchPublishRecord(runId: string): Promise<PublishRecord> {
+  return get<PublishRecord>(`/api/publish/${encodeURIComponent(runId)}/record`);
 }
 
 export async function deleteCheckpoint(
@@ -414,6 +640,13 @@ export async function fetchCheckpointFileContent(
   return get(`/api/checkpoint/${encodeURIComponent(id)}/file?name=${encodeURIComponent(filename)}`);
 }
 
+export async function fetchCheckpointFilecontent(
+  id: string,
+  path: string,
+): Promise<{ name?: string; content?: string; error?: string }> {
+  return get(`/api/checkpoint/${encodeURIComponent(id)}/filecontent?path=${encodeURIComponent(path)}`);
+}
+
 export async function saveCheckpointFile(
   checkpointId: string,
   filename: string,
@@ -503,6 +736,12 @@ export interface SubExperiment {
   max_recursion_depth: number;
   created_at?: string;
   checkpoint_dir?: string;
+  // v0.7.0: surfaced when this sub-experiment was launched by lineage decision
+  // switch_to_idea / fanout / opt-in inherit_idea_index. Lets the GUI
+  // render lineage provenance on the Experiments page.
+  inherit_idea_index?: number | null;
+  parent_terminated?: boolean | null;
+  parent_terminated_rationale?: string | null;
 }
 
 export async function fetchSubExperiments(): Promise<{ sub_experiments: SubExperiment[] }> {
@@ -518,6 +757,8 @@ export async function launchSubExperiment(data: {
   max_recursion_depth?: number;
   parent_run_id?: string;
   recursion_depth?: number;
+  inherit_idea_index?: number;
 }): Promise<{ ok: boolean; run_id?: string; pid?: number; error?: string }> {
   return post('/api/sub-experiments/launch', data);
 }
+

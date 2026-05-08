@@ -1,6 +1,6 @@
 # MCP 技能参考
 
-技能是为 ARI 智能体提供工具的 MCP 服务器。工具尽可能保持确定性；使用 LLM 的工具会明确标注。共 13 个技能（12 个默认，1 个附加）。
+技能是为 ARI 智能体提供工具的 MCP 服务器。工具尽可能保持确定性；使用 LLM 的工具会明确标注。**共 14 个技能**（13 个默认，1 个附加）。v0.7.0 新增 `ari-skill-replicate`，用于 PaperBench 形式的可复现性流程。
 
 ## ari-skill-hpc
 
@@ -211,6 +211,14 @@ Nature Ablation 默认值：
 返回可用 rubric 的列表（id、venue、domain、version、SHA256 hash、path）。
 viz API `/api/rubrics` 和 New Experiment 向导下拉菜单会用到。
 
+#### `inject_code_availability(tex_path, checkpoint_dir)` — v0.7.0
+
+作为 `finalize_paper` 阶段运行。从 `ear_published/manifest.lock` 与 `publish_record.json` 自动加载 `ref` / `bundle_sha256` / `doi`，并将机器可读的 `\codeavailability{}` / `\codedigest{}` / `\coderef{}` 宏与人类可读的 Code Availability 章节注入 `full_paper.tex`。digest 是信任锚点，读者无需信任 registry 即可 `ari clone <ref> --expect-sha256 <baked-digest>` 进行验证。如果未策展 bundle 则静默跳过（保持 v0.6.0 checkpoint 兼容）。
+
+#### `merge_reviews(review_report_path, vlm_review_path)` — v0.7.0
+
+将 `review_report.json`（文本评审）与 `vlm_review.json`（VLM 图表评审）做事后结构合并。完全确定性、无 LLM。附加 `vlm_figure_review` 与 `_review_composition` 元数据，使 GUI / CLI 能附带来源标注同时显示两类输出。上游阶段保持独立（与 AI Scientist v2 `perform_review` 契约一致），在此处方完成对账。
+
 ##### Few-shot 语料库管理
 
 `ari-core/config/reviewer_rubrics/fewshot_examples/<rubric>/` 下的文件可通过**New Experiment 向导 → Paper Review → Few-shot 示例** 子面板 (GUI) 或 `scripts/fewshot/sync.py` (CLI) 管理。
@@ -234,35 +242,84 @@ REST 端点:
 
 ## ari-skill-paper-re
 
-可复现性验证辅助。**LLM：是**（两次一次性 LLM 调用，技能内部不再包含循环）。
+基于 PaperBench (arXiv:2504.01848) **SimpleJudge** 的可复现性评分。**LLM：是**（评分由 upstream `SimpleJudge` 内部的 LLM 调用完成；ARI 在本技能中不增加额外的 LLM 调用）。
 
-自 v0.6.0 起，ReAct 循环位于 `ari-core/ari/agent/react_driver.py`。当 stage 声明 `react:` 块时，由 `ari.pipeline._run_react_stage` 驱动循环。本技能仅保留可复现流程的两个确定性端点：
+v0.7.0 将 v0.6.0 的 LLM 驱动判定路径替换为以 PaperBench 为评分内核的确定性端到端链：
 
 ```
-pre_tool (extract_repro_config)  →  react_driver  →  post_tool (build_repro_report)
-          一次 LLM                    受 MCP 白名单           一次 LLM
-          (paper-re)                  约束的 ReAct            (paper-re)
+ors_generate_rubric  (replicate-skill)    → ors_rubric.json + ors_rubric.meta.json
+ear_publish          (transform-skill)    → bundle.tar.gz + publish_record.json (默认 local-tarball)
+ors_seed_sandbox     (paper-re-skill)     → repro_sandbox/{reproduce.sh, code/...}
+                                              (确定性；fetch_code_bundle ← publish_record.json)
+ors_build_reproduce  (paper-re-skill)     → repro_sandbox/{reproduce.sh, source files}
+                                              (LLM 回退；如已 seed 则跳过)
+ors_run_reproduce    (paper-re-skill)     → ors_phase1.json   (Phase 1：在沙箱中执行 reproduce.sh)
+ors_grade            (paper-re-skill)     → ors_grade.json    (Phase 2：用 SimpleJudge 对 rubric 叶节点评分)
 ```
 
-ReAct 循环只能看到 `workflow.yaml` 中 `skills[].phase` 列表包含 `reproduce` 的 MCP 工具（默认：`web-skill` / `vlm-skill` / `hpc-skill` / `coding-skill`）。`memory-skill` / `transform-skill` / `evaluator-skill` 被刻意排除，因此智能体无法访问 BFTS 阶段的产物（`nodes_tree.json`、祖先记忆等）。
+EAR 开启的运行通过 `ors_seed_sandbox`（确定性）获取 reproduce.sh；LLM `ors_build_reproduce` 在 reproduce.sh 已存在时跳过，所以仅在 EAR 关闭（论文唯一复现）时触发。
+
+PaperBench 以 git submodule 形式同捆于 `ari-skill-paper-re/vendor/paperbench`。主要逐叶评分 completer 通过 LiteLLM (`_litellm_completer.py`) 路由，因此任意供应商可用（`gpt-5-mini` / `anthropic/claude-...` / `gemini/...` / `ollama/...`）；分数解析的 structured completer 仍使用 `gpt-4o-2024-08-06`（在 PaperBench 允许列表内）。
 
 ### 工具
 
-#### `extract_repro_config(paper_path="", paper_text="")`
+#### `fetch_code_bundle(ref="", sha256="", dest, checkpoint_dir="", overwrite=False)`
 
-一次性 LLM 调用。读取论文文本（或 `paper_path`，`.pdf` 通过 `pdftotext` 转换），抽取作者在摘要/结论中宣传的值及其邻近的精确实验参数，返回 `{metric_name, claimed_value, description, threads}`。
+确定性地填充沙箱（无 LLM）。**v0.7.0+**: 传入 `checkpoint_dir` 可从 `{checkpoint_dir}/publish_record.json` 自动读取 ref + sha256（即 `ari ear publish` 写入的文件）。当 `dest/reproduce.sh` 已存在时返回 `populated=False, skipped_reason=...` 并跳过。
 
-#### `build_repro_report(claimed_config, actual_value, actual_unit="", actual_notes="", tolerance_pct=5.0)`
+#### `build_reproduce_sh(paper_path, paper_text, rubric_path, output_dir, model="", overwrite=False)`
 
-一次性 LLM 调用，生成 2-3 句判定说明。在 `react_driver` 完成后由流水线调用。`actual_value` 是 ReAct 智能体通过 `report_metric` 上报的值（若智能体未能得到可靠测量则为 `None`）。
+**v0.7.0+ 新增的 LLM 驱动 replicator**。`fetch_code_bundle` 的兄弟工具。读取论文（与 rubric 的 `expected_artifacts`）并将自包含的 `reproduce.sh` + 源文件写入 `output_dir`。通过 LiteLLM 路由，任意供应商可用。当 `output_dir/reproduce.sh` 已存在时跳过。模型：`model` 参数 > `ARI_MODEL_REPLICATE` > `ARI_LLM_MODEL` > `claude-opus-4-7`。
 
-判定阈值：在 `tolerance_pct` 内 → REPRODUCED | 20% 内 → PARTIAL | 其它 → NOT_REPRODUCED | `actual_value is None` → UNVERIFIABLE。
+#### `run_reproduce(rubric_path, repo_dir, sandbox_kind="", timeout_global_sec=0, partition="", cpus=0, walltime="")`
 
-#### `extract_metric_from_output(output_text, metric_name)`
+**Phase 1**。在沙箱中执行 `repo_dir/reproduce.sh`，捕获 `reproduce.log` 与产物列表，并对照 rubric envelope 的 `expected_artifacts` 检查缺失项 `missing`。
 
-供 ReAct 智能体从原始基准输出中解析数值指标的辅助工具（LLM 抽取 + regex 回退）。pre/post 流水线端点不会调用它。
+沙箱优先级（默认 `auto`）：`slurm`（sbatch + `ARI_SLURM_PARTITION` 存在，BFTS 同分区）→ `docker`（守护可用且非 HPC 时）→ `apptainer` → `singularity` → `local`。**SLURM dispatch** 在 v0.7.0 已从 v0.5.0 恢复：使用 `sbatch --wait` 同步执行，并生成 spool relocation 包装器以保护 `$0` 相对 cd。
 
-模型：`ARI_MODEL_PAPER` > `ARI_LLM_MODEL` > `LLM_MODEL` > `ollama_chat/qwen3:32b`。
+#### `grade_with_simplejudge(rubric_path, repo_dir, paper_path="", paper_text="", judge_model="", n_runs=3, skip_negative_control=False)`
+
+**Phase 2**。主评分 completer 通过 LiteLLM 运行 + 直连 OpenAI 的 structured score-parser。`n_runs`（默认 3）次按 PaperBench 加权叶节点聚合取均值，附负样本对照。
+
+返回值：`{ors_score, raw_score, leaf_grades, judge_model, n_runs, rubric_sha256, elapsed_sec, negative_control: {empty, boilerplate, passed}}`。
+
+模型：`judge_model` 参数 > `ARI_MODEL_JUDGE` > `ARI_LLM_MODEL` > `gpt-5-mini`。任意 LiteLLM 可识别的 model id 均可（绕过 PaperBench 原生 `CONTEXT_WINDOW_LENGTHS` 约束）。
+
+---
+
+## ari-skill-replicate
+
+v0.7.0 引入的 PaperBench 形式 **自动 rubric 生成与审计**。读取论文并输出 frozen rubric（`replication_rubric.schema.json`，带 provenance 元数据的 PaperBench `TaskNode` 树）。**LLM：是**。
+
+与 `ari-skill-paper-re.grade_with_simplejudge` 共同构成取代 v0.6.0 `react_driver` 可复现性检查的 ORS 流水线。
+
+### 工具
+
+#### `generate_rubric(paper_path, paper_text, output_path, target_leaf_count=0, model="", temperature=0.0, seed=0, two_stage=True)`
+
+生成 PaperBench 兼容的 rubric。当 `target_leaf_count=0` 时按论文长度自动估算叶节点数（约 1 叶 / 75 词，限制在 [50, 400]）。
+
+`two_stage=True`（默认）使用 **两阶段生成**: ①骨架阶段定义根 + 直接子节点（每项贡献/实验一个）并分配各子树叶数预算 → ②子树阶段对每个直接子节点并行运行，递归展开 4–6 层。合并后，违反 schema `minLength=10` 的叶（`quote` / `requirements` 过短）会被自动剪除。在 PaperBench 参考论文上的实测：相比单次调用 **叶数约 4 倍、深度增加 1–2 层**，API token 消耗约 5 倍。`two_stage=False` 可回退到单次调用（`prompts/adversarial_reviewer.md`）。
+
+#### `audit_rubric(rubric_path, paper_path, paper_text, auditor_model="")`
+
+独立审计步骤。将问题叶节点标记为 `vague_qualifier` / `no_paper_evidence` / `duplicate` / `unverifiable`；超过 20% 时建议重新生成。
+
+#### `suggest_target_leaf_count(paper_path, paper_text)`
+
+返回根据论文长度自动估算的目标叶数与词数。供 GUI Wizard "Target leaves" 字段预填使用。
+
+### 环境变量
+
+| 变量 | 默认值 | 用途 |
+|---|---|---|
+| `ARI_MODEL_RUBRIC_GEN` | `gemini/gemini-2.5-pro` | 生成 LLM |
+| `ARI_MODEL_RUBRIC_AUDIT` | `anthropic/claude-opus-4-7` | 审计 LLM（与生成器独立） |
+| `ARI_RUBRIC_GEN_TARGET_LEAVES` | (未设置) | 覆盖目标叶数。`0` / 未设置时按论文长度自动。GUI Wizard "Target leaves" 字段。 |
+| `ARI_RUBRIC_GEN_TEMPERATURE` | (未设置) | 覆盖生成器 temperature。GUI Wizard "Temperature" 字段。 |
+| `ARI_RUBRIC_GEN_TWO_STAGE` | (未设置) | 强制开/关两阶段生成（`1`/`true`/`on` vs `0`/`false`/`off`）。未设置时使用 kwarg 默认（当前 `True`）。GUI Wizard "两阶段生成" 切换。 |
+
+`server.py` 按 "显式 kwarg → 环境变量 → 默认值" 的顺序解析。`workflow.yaml` 的 `ors_generate_rubric` 阶段未显式传递这三个参数，因此 GUI Wizard 的值始终生效。
 
 ---
 
@@ -278,7 +335,9 @@ ReAct 循环只能看到 `workflow.yaml` 中 `skills[].phase` 列表包含 `repr
 
 #### `search_memory(query, ancestor_ids, limit=5)`
 
-仅按 Letta 相关度分数（`score` ∈ [0, 1]）返回 `ancestor_ids` 中的节点条目。兄弟/子节点永远不会返回。
+按 **Letta `passages.search`（基于 embedding 的语义搜索）排序**，仅返回 `ancestor_ids` 中节点的条目。兄弟/子节点永远不会返回。
+
+实现说明（对 Letta 0.16.7 在 2026-05-04 验证）：本技能刻意 **不使用** SDK 的 `passages.list(search=q)`。该 SDK 路径在服务端为 `GET /archival-memory?search=q`，是 SQL **子串匹配**（`WHERE LOWER(text) LIKE LOWER(%q%)`），并非语义搜索。像 `"Validate the loopline performance model"` 这类自然语言查询不会与 `RESULT SUMMARY metrics=[...]` 这类结构化条目子串匹配，因此生产中即便有 84 条有效 passage，`search_memory` 也只返回 0 条。本技能改为调用 `passages.search`（`GET /archival-memory/search`，`embed_query=True`），以 `top_k = max(letta_overfetch, limit*40)` 拉取，再在本地按 `ancestor_ids` / `ari_checkpoint` / `kind == "node_scope"` 做 post-filter。`add_memory` 插入时已支付的 embedding 成本现在能在检索中真正被使用；子节点会按其 `eval_summary` 查询的 **语义相关度** 顺序看到祖先条目。
 
 #### `get_node_memory(node_id)`
 
@@ -334,28 +393,73 @@ ReAct 循环只能看到 `workflow.yaml` 中 `skills[].phase` 列表包含 `repr
 
 ### 工具
 
-#### `nodes_to_science_data(nodes_json_path, llm_model="", llm_base_url="")`
+#### `nodes_to_science_data(nodes_json_path, llm_model="", llm_base_url="", primary_metric="", higher_is_better="true")`
 
-LLM 分析完整的 BFTS 树，提取硬件规格、方法论、关键发现和比较结果。
+LLM 分析完整的 BFTS 树，提取硬件规格、方法论、关键发现和比较结果。`primary_metric` 和 `higher_is_better` 由 pipeline 从 `evaluation_criteria.json` 通过 `tpl_vars` 传入，用于 `summary_stats` 的方向感知归约（v0.7.0+）。
 
-返回：`{configurations, per_key_summary, experiment_context, summary_stats}`。
+返回（v0.7.0+）：
+
+```text
+configurations[*]:
+  rank, label, eval_summary
+  parameters / measurements / predictions / scores  ← 类型化分离
+                                                       (D: results.json 或
+                                                        C: _params_dict)
+  metrics                                            ← 兼容性 flat union
+  _typed_source: "results.json" | "llm_evaluator" | (无)
+per_key_summary  (输入参数键 & 「_…」保留键被排除)
+summary_stats    { count, primary_metric, direction,
+                   primary_metric_best, primary_metric_n,
+                   typed_split_coverage }
+experiment_context, implementation_overview, report_driven
+```
+
+**类型化分离的来源优先级**（D > C > legacy）：
+
+1. `experiments/{run_id}/{node_id}/results.json` — 由 `coding-skill::emit_results` 写入（D 契约）
+2. `node.metrics::_params_dict` / `_measurements_dict` — LLM evaluator 在 `MetricSpec.expected_params` 设置下输出（C 契约）
+3. 旧路径：`parameters: {}`，扁平 `metrics` 容纳所有内容
+
+**鲁棒性**：LLM 响应解析器剥离 `<think>` 块和 ` ```json ` 围栏，然后从每个候选 `{` 走匹配大括号，按长度降序尝试 `json.loads`。可以救援 `{...} prose {...}` 类型的形状。失败时将原始响应保存到 `{checkpoint_dir}/science_data.debug.txt` 以便事后审计。
 
 模型：`llm_model` 参数 > `LLM_MODEL` 环境变量 > `gpt-4o-mini`。
 
-**存在意义：** 确保 BFTS 内部术语不会泄漏到生成的论文或图表中。
+**存在意义：** 确保 BFTS 内部术语不会泄漏到生成的论文或图表中，并保证输入尺寸描述符（`nnz`、`M`、`K`）不会在 best-of 归约中与测量输出（`GFlops_per_s`、accuracy）混淆。
 
 #### `generate_ear(checkpoint_dir, llm_model="", llm_base_url="")`
 
-在 `<checkpoint>/ear/` 下构建用于可重现性的 **Experiment Artifact Repository (EAR)**。内容：
+在 `<checkpoint>/ear/` 下构建用于可重现性的 **Experiment Artifact Repository (EAR)**。采用 node_report 驱动的布局，与论文配套代码仓库一致：
 
-- `README.md` 与 `RESULTS.md`（条件允许时由 LLM 生成，否则使用确定性回退）
-- `code/<node_id>/` — 从每个节点的实验目录复制的源文件
-- `data/raw_metrics.json`、`data/science_data.json`、`data/figures/`
-- `logs/bfts_tree.json`、`logs/eval_scores.json`
-- `reproducibility/environment.json`（Python 版本、平台、pip 包、硬件）
-- `reproducibility/run_config.json`、`reproducibility/commands.md`
+- `README.md` — 确定性渲染；当 `science_data.json::implementation_overview.architecture` 存在时附带 `Architecture` 段
+- `reproduce.sh` — 直接插入 best 节点 `node_report.json::{build_command, run_command}` 的 literal
+- `environment.json` — 捕获的运行时环境（Python、平台、pip、硬件）
+- `code/` — best 链中 contributing 节点的 `files_changed.added` ∪ `modified` 联合 verbatim 放置（不再有 `code/<node_id>/`）
+- `data/` — `checkpoint/uploads/` 的 verbatim 镜像（**仅输入数据**，空则不存在）。**实验输出不打包**——由 `reproduce.sh` 再生成
+- `figures/` — checkpoint 根下的 `*.{pdf,png,svg,jpg,jpeg}` 直接置于顶层
+- `LICENSE` — 由 `publish.yaml::license` 生成（MIT / Apache-2.0 / BSD-3-Clause / GPL-3.0 / CC-BY-4.0）
 
-返回：`{ear_dir, manifest}` — 所有生成文件的路径。
+两份 ARI 审计日志放在 `<checkpoint>/` 根目录下（位于 `ear/` 之外，因此**不会**被打包进发布产物）：
+
+- `EVOLUTION.md` — Step / Label 形式的搜索轨迹（含 delta 与 concerns）；不出现 `node_id` 等不透明内部标识
+- `_provenance.json` — 来源元数据（`from_node_id`、`introduced_by`、`excluded_nodes`）；其内部路径相对于 checkpoint（`ear/code/...`）
+
+其他 ARI 内部元数据（`tree.json`、`science_data.json`、`raw_metrics.json`、`eval_scores.json`、`commands.md`）同样保留在 checkpoint 根目录，不进入 `ear/`。`run_config.json` 移至 `checkpoint/run_config.json`。
+
+返回：`{ear_dir, code_layout, verbatim_files, rendered_files, data_count, figure_count, top_node_id, best_chain_depth, excluded_count, has_readme, has_evolution, has_reproduce_sh, has_license, has_environment, ...}`。
+
+#### `curate_ear(checkpoint_dir)` — v0.7.0
+
+依据 `{checkpoint}/ear/publish.yaml` 的 allowlist 与内置 deny list（`.env*`、`secrets/**`、`*.pem`、`*.key`、`id_rsa`、`id_ed25519`），将 `{checkpoint}/ear/` 策展为 `{checkpoint}/ear_published/`。在 `manifest.lock` 中写入正规化的 `bundle_sha256`（按 `{path, sha256, size}` 排序后 JSON 的 sha256），这就是论文 `\codedigest{...}` 宏所要烧录的 digest。**确定性、无 LLM**。`publish.yaml` 缺失时静默跳过（保持 v0.6.0 checkpoint 后向兼容）。
+
+#### `publish_ear(checkpoint_dir, backend="ari-registry", visibility="staged", dry_run=False)` — v0.7.0
+
+`ari.publish.publish` 的 MCP 薄包装。从 `ear_published/` 构建可复现 tarball（条目排序、mtime/uid/gid 归一化），交由后端（`ari-registry` / `gh` / `zenodo` / `local-tarball`）发布，并将 `publish_record.json` 写入 checkpoint 根目录。首发布始终为 `visibility=staged`（FR-P5）；只有 `auto_promote=true` 且可复现性检查通过时才能晋升为 public。
+
+`ARI_PUBLISH_DRYRUN=1` 强制 dry-run（CI 安全开关）。
+
+#### LICENSE 模板 — v0.7.0
+
+当 `publish.yaml::license` 已设定且作者未自带 `ear/LICENSE` 时，`generate_ear` 会从 `ari-skill-transform/src/licenses/` 写入 **MIT** / **Apache-2.0** / **BSD-3-Clause** / **GPL-3.0** / **CC-BY-4.0** 之一。
 
 ---
 

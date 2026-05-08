@@ -346,36 +346,129 @@ class TestExecutorPropagation:
         assert resolved != "local", \
             "Executor must not fall back to 'local' when config specifies 'slurm'"
 
-    def test_repro_stage_exposes_hpc_skill(self, workflow_yaml):
-        """reproducibility_check now runs under react_driver; the executor
-        choice is handled inside hpc-skill (reachable via phase=reproduce),
-        not through a stage `executor` input. Verify:
-          - the stage declares a react block with agent_phase=reproduce
-          - hpc-skill's phase list contains `reproduce`
-        """
+    def test_ors_stages_present(self, workflow_yaml):
+        """The PaperBench-format reproducibility flow uses three discrete
+        stages (rubric.md §4.1 rewrite): ors_generate_rubric → ors_run_reproduce
+        → ors_grade. Verify the dependency chain and tool wiring."""
         stages = workflow_yaml.get("pipeline", [])
-        repro = next((s for s in stages if s["stage"] == "reproducibility_check"), None)
-        assert repro is not None, "reproducibility_check stage missing"
+        by_name = {s["stage"]: s for s in stages}
 
-        react_cfg = repro.get("react") or {}
-        assert react_cfg, (
-            "reproducibility_check must declare a react: block (driven by "
-            "ari.agent.react_driver, not a single MCP tool)"
-        )
-        assert react_cfg.get("agent_phase") == "reproduce", (
-            "react.agent_phase must be 'reproduce' so only MCP skills opted "
-            "into that phase are exposed to the agent"
+        gen = by_name.get("ors_generate_rubric")
+        ph1 = by_name.get("ors_run_reproduce")
+        gr  = by_name.get("ors_grade")
+        assert gen and ph1 and gr, "ORS stages missing from workflow.yaml"
+
+        assert gen["skill"] == "replicate-skill" and gen["tool"] == "generate_rubric"
+        assert ph1["skill"] == "paper-re-skill" and ph1["tool"] == "run_reproduce"
+        assert gr["skill"]  == "paper-re-skill" and gr["tool"]  == "grade_with_simplejudge"
+
+        # Dependency chain enforces order.
+        assert "ors_generate_rubric" in (ph1.get("depends_on") or [])
+        assert "ors_run_reproduce"   in (gr.get("depends_on")  or [])
+
+        # The legacy reproducibility_check stage must be gone.
+        assert "reproducibility_check" not in by_name, \
+            "legacy reproducibility_check stage must be removed (rubric.md §4.1)"
+
+    def test_every_stage_skill_is_registered(self, workflow_yaml):
+        """Every `pipeline[*].skill` referenced by an enabled stage must
+        appear in the top-level `skills:` registry.
+
+        Regression: ors_generate_rubric referenced `replicate-skill` which
+        was not in the skills list; the pipeline filtered cfg.skills by name,
+        got an empty list, and the MCP client reported `generate_rubric` as
+        not found at runtime."""
+        registered = {s["name"] for s in workflow_yaml.get("skills", [])}
+        unregistered = [
+            (s["stage"], s["skill"])
+            for s in workflow_yaml.get("pipeline", [])
+            if s.get("enabled", True) and s.get("skill")
+            and s["skill"] not in registered
+        ]
+        assert not unregistered, (
+            f"Stages reference skills missing from skills: list — {unregistered}"
         )
 
-        skills = {s["name"]: s for s in workflow_yaml.get("skills", [])}
-        hpc = skills.get("hpc-skill") or {}
-        phases = hpc.get("phase", [])
-        if isinstance(phases, str):
-            phases = [phases]
-        assert "reproduce" in phases, (
-            "hpc-skill must include 'reproduce' in its phase list so the "
-            "ReAct reproducibility agent can submit jobs"
+
+# ══════════════════════════════════════════════
+# 5b. ORS rubric output: tool-written envelope must not be overwritten
+# ══════════════════════════════════════════════
+
+class TestOrsRubricOutputPreservation:
+    """The `generate_rubric` tool writes the full PaperBench-format envelope
+    to its `output_path` arg. The pipeline's `outputs.file` write at
+    pipeline.py:1288 must not clobber that envelope, otherwise the
+    downstream `grade_with_simplejudge` stage cannot parse the rubric.
+
+    The original bug: `outputs.file: ors_rubric.json` (same path as
+    `output_path`) caused the pipeline to overwrite the envelope with the
+    metadata return dict. Fix: `outputs.file: ors_rubric.meta.json`."""
+
+    def test_rubric_envelope_survives_pipeline_write(
+        self, tmp_path, fake_nodes, clean_env,
+    ):
+        from ari.pipeline import load_pipeline, run_pipeline
+
+        cfg_file = Path(__file__).parent.parent / "config" / "workflow.yaml"
+        all_stages = load_pipeline(cfg_file)
+        # Filter to just ors_generate_rubric and drop its depends_on so the
+        # stage runs in isolation. The fake_nodes fixture doesn't satisfy
+        # write_paper, but we just need the pipeline's output handling.
+        stage = next(s for s in all_stages if s["stage"] == "ors_generate_rubric")
+        stage = {**stage, "depends_on": []}
+        # Pre-create the paper file the stage's input references, so any
+        # post-template-resolution check that reads it doesn't fail.
+        (tmp_path / "full_paper.tex").write_text("\\documentclass{article}\\begin{document}T\\end{document}")
+
+        # Fake that simulates the real generator: write envelope to
+        # output_path, then return metadata.
+        envelope = {
+            "version": "3",
+            "paper_sha256": "a" * 64,
+            "rubric_sha256": "b" * 64,
+            "rubric": {"id": "root", "requirements": "Replicate.", "weight": 1, "sub_tasks": []},
+        }
+
+        def fake_subprocess(tool, args, config_path, skill_name=""):
+            assert tool == "generate_rubric"
+            out_path = Path(args["output_path"])
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(json.dumps(envelope, indent=2))
+            return {
+                "rubric_path": str(out_path),
+                "rubric_sha256": envelope["rubric_sha256"],
+                "paper_sha256": envelope["paper_sha256"],
+                "leaves_count": 0,
+                "depth": 0,
+                "category_breakdown": {},
+                "warnings": [],
+            }
+
+        with mock.patch(
+            "ari.pipeline._run_stage_subprocess", side_effect=fake_subprocess,
+        ):
+            run_pipeline(
+                [stage], fake_nodes,
+                {"goal": "test", "topic": "t", "file": ""},
+                tmp_path, str(cfg_file),
+            )
+
+        # The envelope file MUST still contain the envelope, not the metadata.
+        rubric_file = tmp_path / "ors_rubric.json"
+        assert rubric_file.exists(), "Tool-written rubric envelope is missing"
+        loaded = json.loads(rubric_file.read_text())
+        assert "rubric" in loaded and isinstance(loaded["rubric"], dict), (
+            f"ors_rubric.json was clobbered with non-envelope content: "
+            f"keys={list(loaded.keys())}"
         )
+        assert loaded["rubric_sha256"] == envelope["rubric_sha256"]
+
+        # The metadata side-file should exist separately so callers can still
+        # introspect leaves_count etc. without re-parsing the envelope.
+        meta_file = tmp_path / "ors_rubric.meta.json"
+        assert meta_file.exists(), "Pipeline did not write the metadata side-file"
+        meta = json.loads(meta_file.read_text())
+        assert "rubric_path" in meta and meta["rubric_path"].endswith("ors_rubric.json")
 
 
 # ══════════════════════════════════════════════
@@ -403,6 +496,11 @@ class TestTemplateResolution:
             "ari_root": str(Path(__file__).parents[2]),
             # Pipeline initialises this to "" before the first stage runs
             "vlm_feedback": "",
+            # Surfaced from evaluation_criteria.json by run_pipeline; tests
+            # use empty strings (legacy path — transform_data falls back to
+            # omitting the scalar best when primary_metric is empty).
+            "primary_metric": "",
+            "higher_is_better": "True",
             "stages": {
                 "search_related_work": {"output": f"{tmp_path}/related_refs.json",
                                         "outputs": {"file": f"{tmp_path}/related_refs.json"}},
@@ -483,12 +581,21 @@ class TestFullPaperPipeline:
                 return {"overall_score": 7, "abstract_score": 8, "body_score": 6}
             elif tool == "merge_reviews":
                 return {"ok": True, "has_vlm_review": True}
-            elif tool == "extract_repro_config":
-                return {"metric_name": "GFLOPS", "claimed_value": 120.0,
-                        "description": "16 threads", "threads": 16}
-            elif tool == "build_repro_report":
-                return {"verdict": "REPRODUCED", "claimed_value": 120,
-                        "actual_value": 118, "interpretation": "close enough"}
+            elif tool == "generate_rubric":
+                return {"rubric_path": str(tmp_path / "ors_rubric.json"),
+                        "rubric_sha256": "0" * 64,
+                        "leaves_count": 10, "depth": 1,
+                        "category_breakdown": {"Code Development": 5, "Code Execution": 4, "Result Analysis": 1},
+                        "warnings": []}
+            elif tool == "run_reproduce":
+                return {"executed": True, "exit_code": 0,
+                        "log_path": str(tmp_path / "reproduce.log"),
+                        "artifacts": [], "missing": [], "elapsed_sec": 0.1,
+                        "sandbox_kind": "local"}
+            elif tool == "grade_with_simplejudge":
+                return {"rubric_sha256": "0" * 64, "ors_score": 0.0,
+                        "raw_score": 0.0, "leaf_grades": [], "judge_model": "test/mock",
+                        "n_runs": 1, "elapsed_sec": 0.1}
             return {"result": "ok"}
 
         # Also capture the subprocess env to verify model propagation
@@ -528,19 +635,35 @@ class TestFullPaperPipeline:
                 tmp_path, str(cfg_file),
             )
 
-        # The reproducibility stage now invokes two MCP tools (pre/post) and
-        # runs the ReAct loop in-process via react_driver.
+        # The reproducibility stage now follows the PaperBench-format Phase 1/2
+        # flow (rubric.md §4.1 rewrite): ors_generate_rubric → ors_run_reproduce
+        # → ors_grade. The legacy LLM-driven extract_repro_config /
+        # build_repro_report tools were removed in §4.1.
+        # v0.7.0+: paper pipeline gains ear_curate (transform-skill:curate_ear)
+        # between generate_ear and generate_figures, and finalize_paper
+        # (paper-skill:inject_code_availability) between write_paper and
+        # review_paper.
+        # v0.7.0+ (Phase 6 #4): finalize_paper now depends on ear_publish
+        # so publish_record.json (i.e. the bundle ref) is on disk when the
+        # injector reads it. ear_publish is therefore reordered ahead of
+        # inject_code_availability.
         expected_tools = [
             "collect_references_iterative",
             "nodes_to_science_data",
             "generate_ear",
+            "curate_ear",                    # v0.7.0
             "generate_figures_llm",
             "review_figures_all",
             "write_paper_iterative",
+            "publish_ear",                   # v0.7.0 reordered ahead of inject_code_availability
+            "inject_code_availability",      # v0.7.0
             "review_compiled_paper",
             "merge_reviews",  # v0.6.0+: post-hoc merge of text + VLM reviews
-            "extract_repro_config",
-            "build_repro_report",
+            "generate_rubric",               # ORS Phase: auto-rubric
+            "fetch_code_bundle",             # ORS X: seed sandbox from EAR (no-op if none)
+            "build_reproduce_sh",            # ORS Phase: replicator (paper → reproduce.sh)
+            "run_reproduce",                 # ORS Phase 1
+            "grade_with_simplejudge",        # ORS Phase 2
         ]
         assert tool_calls == expected_tools, \
             f"Expected all pipeline MCP calls in order, got {tool_calls}"

@@ -19,6 +19,10 @@ Complete reference for ARI command-line operations. The CLI provides the same fu
 | `ari settings` | View or modify configuration | Settings page |
 | `ari skills-list` | List available tools | Settings → MCP Skills |
 | `ari memory ...` | Manage the Letta memory backend | Settings → Memory (Letta) |
+| `ari ear <subcmd>` | EAR curation/publishing/promotion lifecycle (v0.7.0) | — |
+| `ari clone <ref>` | Fetch a curated EAR bundle (file/https/ari/gh/doi); verify by digest (v0.7.0) | — |
+| `ari registry <subcmd>` | Self-hosted EAR registry: `serve` / `token issue|revoke|list` (v0.7.0) | — |
+| `ari migrate node-reports <checkpoint>` | Backfill `node_report.json` for legacy (v0.6.0) checkpoints | — |
 
 ---
 
@@ -256,6 +260,80 @@ ari settings --model qwen3:32b --partition gpu --cpus 64 --mem 128
 
 ---
 
+## ari migrate node-reports
+
+v0.7.0 (task2.md) introduces a per-node `node_report.json` substrate
+recorded into `experiments/{run_id}/{node_id}/`. Pre-existing checkpoints
+do not have these reports, so the downstream consumers (`generate_ear`,
+`nodes_to_science_data`, `bfts.expand`, the GUI Tree Report tab) fall
+back to legacy heuristics. Run this command once per legacy checkpoint
+to backfill reports best-effort:
+
+```bash
+ari migrate node-reports /path/to/checkpoint
+ari migrate node-reports /path/to/checkpoint --overwrite   # also rewrite existing reports
+```
+
+The reconstructed reports get `migration_source: "auto"` so downstream
+filters can apply slightly more conservative rules (e.g. `for_code` keeps
+auto-reconstructed nodes even if the recovered `files_changed` is empty,
+since the diff may have been impossible to recover). Fields that cannot
+be inferred (`original_direction`, `delta_vs_parent`, `next_steps_hints`)
+are nulled.
+
+---
+
+## ari ear — v0.7.0
+
+Curation, publishing, and promotion of the **Experiment Artifact
+Repository** for one checkpoint. Curation is deterministic (no LLM);
+publishing ships the curated tarball to a backend that returns a
+verifiable reference.
+
+```bash
+ari ear curate   <checkpoint> [--show-files] [--json]
+ari ear status   <checkpoint>
+ari ear publish  <checkpoint> [--backend ari-registry|local-tarball|gh|zenodo] \
+                              [--visibility staged] [--dry-run]
+ari ear promote  <checkpoint> [--target public|unlisted]
+```
+
+| Subcommand | What it does |
+|------------|--------------|
+| `curate` | Apply `ear/publish.yaml` allowlist + built-in deny list (`.env*`, `secrets/**`, `*.pem`, `*.key`, `id_rsa`, `id_ed25519`); write `{checkpoint}/ear_published/` + `manifest.lock` (with deterministic `bundle_sha256`). Skips silently if `publish.yaml` is absent. |
+| `status` | Show curation manifest summary + `publish_record.json` if any. |
+| `publish` | Build a reproducible tarball from `ear_published/`, ship to backend. Always starts at `visibility=staged` (FR-P5). `ARI_PUBLISH_DRYRUN=1` forces `--dry-run`. |
+| `promote` | Move staged → `public`/`unlisted`. Demotion is rejected. |
+
+Backends: `ari-registry` (self-hosted, see `ari registry`),
+`local-tarball` (no server), `gh` (GitHub release), `zenodo` (DOI mint).
+
+**Example end-to-end**:
+
+```bash
+# 1. Author curates the bundle (after running the paper pipeline).
+ari ear curate ./checkpoints/run_20260504_xy/
+
+# 2. Inspect what made it past the allow/deny rules.
+ari ear status ./checkpoints/run_20260504_xy/
+# bundle_sha256: 0ccabb16...
+# files:         42
+# visibility:    staged
+
+# 3. Ship it to a registry (still staged).
+ari ear publish ./checkpoints/run_20260504_xy/ --backend ari-registry
+
+# 4. After the reviewer + reproducibility check pass, promote to public.
+ari ear promote ./checkpoints/run_20260504_xy/ --target public
+```
+
+The `bundle_sha256` is the value baked into the paper's
+`\codedigest{...}` macro by the `finalize_paper` stage. Anyone with
+the paper can verify any future copy of the bundle by digest, even
+if the registry has gone offline.
+
+---
+
 ## ari memory
 
 Admin commands for the Letta memory backend added in v0.6.0. Each
@@ -417,3 +495,118 @@ EOF
 - Always use absolute paths (not `~` or relative paths)
 - Never redirect stdout in SLURM scripts (SLURM captures it via `--output`)
 - Never add `--account` or `-A` flags unless your cluster requires them
+
+---
+
+## `ari clone <ref> [<dest>]` — v0.7.0+
+
+Fetch + verify + extract a curated EAR bundle. **No code execution** —
+this command only retrieves bytes and confirms their digest. Designed to
+be the "1 line install" path for readers reproducing a paper's
+experiments.
+
+### Supported refs
+
+| Scheme | Resolver |
+|---|---|
+| `file://<path>` | local file/dir |
+| `https://<url>` / `http://<url>` | tarball download |
+| `ari://<id>` | ari-registry |
+| `gh:<user>/<repo>` | GitHub repo or release |
+| `doi:<doi>` | Zenodo deposition |
+
+### Flags
+
+```
+--expect-sha256 <hex>   Required bundle digest. Hard fail on mismatch.
+--no-extract            Just fetch the tarball; do not extract it.
+--registry <name>       Limit ari:// resolver to a named registry from
+                        ~/.ari/registries.yaml.
+--token <env-or-value>  Bearer token. Looked up in $ENV first, falls back
+                        to the literal value (so you can pass either
+                        --token MY_TOKEN_VAR or --token "raw-token-string").
+```
+
+### Verification model
+
+1. The resolver writes the artifact (tarball or directory) into a temp dir.
+2. The orchestrator extracts into a *sibling* temp dir.
+3. Each file's sha256 is recomputed and compared against `manifest.lock`.
+4. The whole-bundle digest is re-derived from the canonical
+   files-only manifest and compared to `manifest.lock.bundle_sha256`.
+5. If `--expect-sha256` was given, that value must equal the recomputed
+   digest. Hard fail on mismatch.
+6. The temp dir is renamed into `dest`. A failure at any earlier step
+   leaves no partial dest behind.
+
+### Example
+
+```bash
+# Step 1: author curates the bundle.
+ari ear curate <checkpoint>
+
+# Step 2: reader fetches with digest verification.
+ari clone file:///path/to/bundle.tar.gz ./reproduce \
+  --expect-sha256 0ccabb16f05c0d3476f2f074fbd229469f11295cf928959526fc93f370c76edf
+```
+
+The digest baked into the paper (`\codedigest{...}`) is the same
+value as `manifest.lock.bundle_sha256`. The reader does not need to
+trust the registry at runtime; the paper itself is the trust anchor.
+
+---
+
+## `ari registry` — v0.7.0+
+
+Run a self-hosted HTTP registry for curated EAR bundles. Acts as the
+default backend for `ari ear publish` and the `ari://` resolver in
+`ari clone`. Optional — `local-tarball` works without a server, and
+Zenodo / GitHub release backends are recommended for academic
+permanence.
+
+```bash
+ari registry serve   [--host 0.0.0.0] [--port 8290] [--data-dir <dir>]
+ari registry token issue  <user>          # plaintext shown ONCE
+ari registry token revoke <token-id>
+ari registry token list
+```
+
+Setup:
+
+```bash
+# 1. Install server deps (skipped by the default install to stay slim).
+./setup.sh --with-registry        # or pip install fastapi uvicorn[standard] python-multipart
+
+# 2. Start it (defaults: 127.0.0.1:8290, sqlite under ~/.ari/registry-data).
+./scripts/registry/start_local.sh
+
+# 3. Mint a token for a user.
+ari registry token issue alice
+# Plaintext shown once — store securely.
+```
+
+| Aspect | Detail |
+|---|---|
+| Endpoints | `POST /artifact`, `GET\|HEAD /artifact/<id>`, `GET /artifact/<id>/manifest.lock`, `POST /artifact/<id>/promote`, `DELETE /artifact/<id>`, `/healthz`, `/version` |
+| Auth | bearer-token (sqlite-hashed); upload + delete + promote require owner token |
+| Visibility | `staged` (owner only) → `unlisted` (id-only) / `public` (open). Demotion rejected. |
+| Artifact id | `sha256(bundle.tar.gz)[:16]` (content-addressed) |
+| Storage | `${ARI_REGISTRY_DATA}/artifacts/<id>/{bundle.tar.gz, manifest.lock, meta.json}` |
+
+Deploy modes (see [docs/registry.md](registry.md) for full details):
+
+- `scripts/registry/start_local.sh` — uvicorn + sqlite, single-process. Laptop / dev.
+- `scripts/registry/docker-compose.yml` — nginx + uvicorn + sqlite-on-volume. Production.
+- `scripts/registry/start_singularity.sh` — Apptainer / Singularity SIF. HPC.
+
+Configure the client by writing `~/.ari/registries.yaml`:
+
+```yaml
+registries:
+  - name: default
+    url: http://127.0.0.1:8290
+    token: $ARI_REGISTRY_TOKEN
+```
+
+Then `export ARI_REGISTRY_TOKEN=ari_<paste-from-issue>` and use
+`ari clone ari://<id>` or `ari ear publish --backend ari-registry`.

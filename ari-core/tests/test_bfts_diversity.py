@@ -16,7 +16,7 @@ from ari.config import BFTSConfig
 from ari.evaluator.llm_evaluator import LLMEvaluator
 from ari.llm.client import LLMClient, LLMResponse
 from ari.orchestrator.bfts import BFTS
-from ari.orchestrator.node import Node, NodeLabel
+from ari.orchestrator.node import Node, NodeLabel, NodeStatus
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -253,6 +253,88 @@ def test_expand_passes_sibling_and_ancestor_scores(bfts, mock_llm):
     assert "improve" in prompt
     assert "ablation" in prompt
     assert "draft" in prompt
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Fix 2b: child diversity — show ALL existing siblings + label-quota signal
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _new_child(node_id: str, parent_id: str, label: NodeLabel,
+               status: NodeStatus, summary: str = "",
+               score: float | None = None) -> Node:
+    n = Node(id=node_id, parent_id=parent_id, depth=1, status=status, label=label)
+    n.eval_summary = summary
+    if score is not None:
+        n.metrics = {"_scientific_score": score}
+    return n
+
+
+def test_expand_includes_pending_and_failed_siblings(bfts, mock_llm):
+    """All existing children (incl. PENDING/FAILED) must appear with status."""
+    mock_llm.complete.return_value = LLMResponse(
+        content='[{"label":"validation","direction":"verify edge cases"}]'
+    )
+    parent = Node(id="node_par00000", parent_id=None, depth=0, has_real_data=True)
+    pending = _new_child("node_pendingc", parent.id, NodeLabel.IMPROVE,
+                         NodeStatus.PENDING, summary="tune the threshold")
+    failed = _new_child("node_failed00", parent.id, NodeLabel.IMPROVE,
+                        NodeStatus.FAILED, summary="raise batch size",
+                        score=0.12)
+
+    bfts.expand(parent, existing_children=[pending, failed])
+    prompt = mock_llm.complete.call_args[0][0][0].content
+
+    assert "pendingc" in prompt
+    assert "failed00" in prompt
+    assert "status=pending" in prompt
+    assert "status=failed" in prompt
+    # Score appears for the failed child (has metrics)
+    assert "0.12" in prompt
+
+
+def test_expand_emits_label_distribution_and_saturation(bfts, mock_llm):
+    """When ≥2 children share a label, prompt must flag it as saturated."""
+    mock_llm.complete.return_value = LLMResponse(
+        content='[{"label":"ablation","direction":"drop component X"}]'
+    )
+    parent = Node(id="node_par00000", parent_id=None, depth=0, has_real_data=True)
+    children = [
+        _new_child(f"node_c{i:07d}", parent.id, NodeLabel.IMPROVE,
+                   NodeStatus.PENDING, summary=f"tune knob {i}")
+        for i in range(3)
+    ]
+    bfts.expand(parent, existing_children=children)
+    prompt = mock_llm.complete.call_args[0][0][0].content
+
+    assert "improve=3" in prompt
+    assert "saturated" in prompt
+    assert "propose a DIFFERENT label" in prompt
+
+
+def test_expand_no_saturation_when_labels_balanced(bfts, mock_llm):
+    """A single child of each label must NOT trigger the saturation directive."""
+    mock_llm.complete.return_value = LLMResponse(
+        content='[{"label":"draft","direction":"new approach"}]'
+    )
+    parent = Node(id="node_par00000", parent_id=None, depth=0, has_real_data=True)
+    children = [
+        _new_child("node_c0000001", parent.id, NodeLabel.IMPROVE,
+                   NodeStatus.SUCCESS, summary="A"),
+        _new_child("node_c0000002", parent.id, NodeLabel.ABLATION,
+                   NodeStatus.SUCCESS, summary="B"),
+        _new_child("node_c0000003", parent.id, NodeLabel.VALIDATION,
+                   NodeStatus.PENDING, summary="C"),
+    ]
+    bfts.expand(parent, existing_children=children)
+    prompt = mock_llm.complete.call_args[0][0][0].content
+
+    # Distribution still appears (informational)
+    assert "improve=1" in prompt
+    assert "ablation=1" in prompt
+    assert "validation=1" in prompt
+    # But no saturation banner
+    assert "saturated" not in prompt
 
 
 # ──────────────────────────────────────────────────────────────────────────────

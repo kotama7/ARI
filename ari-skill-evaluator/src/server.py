@@ -118,6 +118,13 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     metric_keyword = _parse_metric_keyword(text)
     min_expected = _parse_min_expected(text)
 
+    # ``expected_params`` lists the input knobs the experiment runs on
+    # (matrix size, thread count, seed). They are NOT measurements and
+    # MUST be excluded from best-of reductions downstream. Inferred only
+    # via the LLM fallback below — the regex-based path doesn't extract
+    # them because experiment.md has no consistent "## Parameters" header.
+    expected_params: list[str] = []
+
     # If the experiment file does not specify metrics, delegate to LLM
     if not expected_metrics or not metric_keyword:
         try:
@@ -135,16 +142,19 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                         "Given an experiment description, identify: "
                         "(1) the primary numeric metric to maximize/minimize (one short name, e.g. GFLOP_per_s), "
                         "(2) whether higher is better, "
-                        "(3) a list of all relevant metric names the experiment should report. "
+                        "(3) the list of MEASURED metric names the experiment should report (outputs only — throughput, accuracy, latency, etc.), "
+                        "(4) the list of INPUT parameter names the experiment runs on (matrix size, thread count, seed, etc. — these are knobs, NOT measurements). "
+                        "Strictly disjoint: a name appears in measurements OR params, never both. "
                         "Respond ONLY with JSON: "
-                        '{{"metric_keyword":"<name>","higher_is_better":true,"expected_metrics":["<m1>","<m2>"]}}'
+                        '{{"metric_keyword":"<name>","higher_is_better":true,'
+                        '"expected_metrics":["<m1>","<m2>"],"expected_params":["<p1>","<p2>"]}}'
                     ),
                 }, {
                     "role": "user",
                     "content": "Experiment description:\n" + text[:2000]
                 }],
                 temperature=0.0,
-                max_tokens=200,
+                max_tokens=300,
             )
             import json as _json, re as _re
             _raw = _resp.choices[0].message.content or ""
@@ -155,6 +165,9 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     metric_keyword = _parsed.get("metric_keyword", "")
                 if not expected_metrics:
                     expected_metrics = _parsed.get("expected_metrics", [])
+                _ep = _parsed.get("expected_params", [])
+                if isinstance(_ep, list):
+                    expected_params = [str(p) for p in _ep if p]
         except Exception as _e:
             pass  # Fall through to empty defaults
 
@@ -162,6 +175,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
     result = {
         "expected_metrics": expected_metrics,
+        "expected_params": expected_params,
         "metric_keyword": metric_keyword,
         "min_expected_metric": min_expected,
         "scoring_guide": scoring_guide,

@@ -20,7 +20,7 @@ Optional env:
   - ``LETTA_EMBEDDING_CONFIG``   — embedding handle (default ``letta-default``;
                                    per project notes, set to
                                    ``openai/text-embedding-3-small`` for
-                                   the local 0.9.1 deployment).
+                                   the local Letta deployment).
 
 The test creates a uniquely-named ari_agent_<random>, exercises the
 non-ASCII insert path, asserts no 400, and tears the agent down.

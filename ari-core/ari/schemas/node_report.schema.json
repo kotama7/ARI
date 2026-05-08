@@ -1,0 +1,125 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/node_report.schema.json",
+  "title": "ARI node_report.json",
+  "description": "Per-BFTS-node self report. Written at mark_success/mark_failed time and consumed by generate_ear, nodes_to_science_data, and bfts.expand.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "node_id",
+    "label",
+    "depth",
+    "status",
+    "files_changed",
+    "metrics",
+    "artifacts"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "node_id": {"type": "string"},
+    "parent_id": {"type": ["string", "null"]},
+    "ancestor_ids": {"type": "array", "items": {"type": "string"}},
+    "label": {
+      "type": "string",
+      "enum": ["draft", "improve", "debug", "ablation", "validation", "other"]
+    },
+    "raw_label": {"type": "string"},
+    "depth": {"type": "integer", "minimum": 0},
+    "status": {"type": "string"},
+    "started_at": {"type": "string"},
+    "completed_at": {"type": "string"},
+    "original_direction": {"type": ["string", "null"]},
+    "files_changed": {
+      "type": "object",
+      "required": ["added", "modified", "deleted", "inherited_unchanged"],
+      "properties": {
+        "added": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "sha256"],
+            "properties": {
+              "path": {"type": "string"},
+              "sha256": {"type": "string"}
+            }
+          }
+        },
+        "modified": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path"],
+            "properties": {
+              "path": {"type": "string"},
+              "sha256_before": {"type": "string"},
+              "sha256_after": {"type": "string"}
+            }
+          }
+        },
+        "deleted": {"type": "array", "items": {"type": "string"}},
+        "inherited_unchanged": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path"],
+            "properties": {
+              "path": {"type": "string"},
+              "from_node_id": {"type": "string"},
+              "sha256": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+    "what_was_done": {"type": "string"},
+    "delta_vs_parent": {"type": "string"},
+    "metrics": {"type": "object"},
+    "self_assessment": {
+      "type": "object",
+      "properties": {
+        "succeeded": {"type": "boolean"},
+        "headline": {"type": "string"},
+        "concerns": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "next_steps_hints": {"type": "array", "items": {"type": "string"}},
+    "build_command": {"type": "string"},
+    "run_command": {"type": "string"},
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["filename", "role"],
+        "properties": {
+          "filename": {"type": "string"},
+          "role": {
+            "type": "string",
+            "enum": ["data_output", "log", "binary", "figure", "unknown"]
+          },
+          "sha256": {"type": "string"},
+          "size": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "evaluator_reason": {"type": "string"},
+    "trace_log_summary": {"type": "string"},
+    "migration_source": {"type": "string", "enum": ["fresh", "auto"]},
+    "executor": {"type": "string", "description": "How the node's tool calls executed: 'slurm' (via slurm_submit) | 'local' (run_bash on agent host) | 'singularity' | '' (unknown / no capture)"},
+    "hostname": {"type": "string", "description": "Hostname of the compute resource that produced the metrics (set by ari.agent.run_env from inside the executing process)"},
+    "slurm_job_id": {"type": "string"},
+    "slurm_partition": {"type": "string"},
+    "slurm_nodelist": {"type": "string"},
+    "cpu_info": {
+      "type": "object",
+      "properties": {
+        "model": {"type": "string"},
+        "threads": {"type": "integer", "minimum": 0},
+        "mhz": {"type": "number", "minimum": 0},
+        "arch": {"type": "string"},
+        "vendor": {"type": "string"}
+      }
+    },
+    "mem_total_kb": {"type": "integer", "minimum": 0},
+    "compilers": {"type": "object", "additionalProperties": {"type": "string"}}
+  }
+}

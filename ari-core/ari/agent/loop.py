@@ -48,6 +48,7 @@ RULES:
 - Your FIRST action must be a tool call. Never output a text plan.
 - If `make_metric_spec` tool is available and this is a new experiment (not a continuation), call it early to self-determine evaluation criteria.
 - NEVER fabricate numeric values — only report values from actual tool outputs
+- AFTER your final measurement run, when `emit_results` is available, call it once to record a typed split between INPUT parameters (matrix size, thread count, seeds — knobs you ran on) and MEASUREMENTS (throughput, accuracy, latency — what you measured). This lets downstream stages distinguish "what we ran on" from "what we measured" so a best-of reduction never picks an input size as the result. Do NOT include input parameters in `measurements` and do NOT include measured outputs in `params`.
 - When all experiments are done, return JSON: {{"status": "success", "metrics": {{...}}, "summary": "..."}}
 - Do NOT call gap_analysis or generate_hypothesis
 - Ensure your experiment is reproducible: capture whatever information would be needed for an independent researcher to reproduce your results and verify your findings{memory_rules}{extra}
@@ -504,7 +505,20 @@ class AgentLoop:
                 f"Node: {node.id} depth={node.depth} task={node.label}\n\n"
                 f"Task: {_label_desc}\n"
                 "The parent node already completed the survey and established a research direction. "
-                "Prior results are provided below. "
+                "Prior results are provided below for context — but they belong to the parent, "
+                "NOT to you.\n\n"
+                "MANDATORY: You must produce NEW artifacts to count as having run an experiment.\n"
+                "  • Inherited files: source code, scripts, configs, compiled binaries.\n"
+                "  • NOT inherited: the parent's results.csv, slurm-*.out, run.log, "
+                "metrics.json — those have been deliberately excluded so you cannot "
+                "silently reuse the parent's numbers.\n"
+                "  • Modify or extend the source code to reflect your `task` label "
+                "(e.g. `improve` must change the kernel; `ablation` must disable a "
+                "component; `validation` must run with different conditions / inputs).\n"
+                "  • Re-build (when code changes), re-run, and write fresh result files.\n"
+                "  • A node that produces zero added/modified files relative to its "
+                "parent will be flagged STERILE by BFTS and its score clamped to 0.0 — "
+                "merely reading or quoting the parent's numbers does NOT count as work.\n\n"
                 "Implement and run your specific experiment, then return JSON with measurements."
                 f"{_workflow_hint}"
             )
@@ -969,13 +983,49 @@ class AgentLoop:
                                 _gap = _ij_data.get("gap_analysis", "")
                                 if _ideas_list:
                                     _best = _ideas_list[0]
+                                    # Reach §1〜§7 of the plan, not just §1.
+                                    # The legacy ``experiment_plan[:600]`` slice
+                                    # truncated past the kernel/parameter section,
+                                    # so plan items like §5 b ("real-world graphs
+                                    # (power-law), PDE/banded, ML sparsity")
+                                    # never made it to the implementing agent —
+                                    # producing make_random_csr-only runs that
+                                    # SC reviewers correctly flag as synthetic.
+                                    # _extract_plan_sections is the same §-tag
+                                    # parser cli.py uses for BFTS expand context.
+                                    _plan_text = _best.get("experiment_plan", "") or ""
+                                    _plan_block = ""
+                                    if _plan_text:
+                                        try:
+                                            from ari.pipeline import _extract_plan_sections as _eps
+                                            _secs = _eps(_plan_text)
+                                        except Exception:
+                                            _secs = []
+                                        if _secs:
+                                            # Per-section budget keeps the
+                                            # injected message bounded even when
+                                            # the plan is several KB; total stays
+                                            # under ~6 KB of plan body.
+                                            _per = max(400, 6000 // max(1, len(_secs)))
+                                            _lines = ["Experiment plan sections:"]
+                                            for _tag, _t, _b in _secs:
+                                                _lines.append(f"  {_tag} {_t}")
+                                                if _b:
+                                                    _lines.append(f"    {_b[:_per]}")
+                                            _plan_block = "\n".join(_lines)
+                                        else:
+                                            # No §-tags → fall back to a single
+                                            # generous slice (4 KB) rather than
+                                            # the previous 600-char cut.
+                                            _plan_block = f"Experiment plan:\n{_plan_text[:4000]}"
                                     _idea_msg = (
                                         f"RESEARCH DIRECTION (from idea generation):\n"
-                                        f"Gap analysis: {_gap[:400]}\n\n"
+                                        f"Gap analysis: {_gap[:1500]}\n\n"
                                         f"Selected idea: {_best.get('title', 'Untitled')}\n"
-                                        f"Description: {_best.get('description', '')[:600]}\n"
-                                        f"Experiment plan: {_best.get('experiment_plan', '')[:600]}\n\n"
-                                        f"Implement THIS idea. Follow the experiment plan above."
+                                        f"Description: {_best.get('description', '')[:2000]}\n"
+                                        f"{_plan_block}\n\n"
+                                        f"Implement THIS idea. Follow the experiment plan above — "
+                                        f"address EVERY section, not just §1."
                                     )
                                     logger.info(
                                         "[loop.run] idea_injection: title=%r len=%d",
@@ -996,6 +1046,9 @@ class AgentLoop:
                                 spec_data = json.loads(spec_data["result"]) if isinstance(spec_data["result"], str) else spec_data["result"]
                             kw = spec_data.get("metric_keyword")
                             expected = spec_data.get("expected_metrics", [])
+                            expected_params = spec_data.get("expected_params", [])
+                            if not isinstance(expected_params, list):
+                                expected_params = []
                             guide = spec_data.get("scoring_guide", "")
                             # update metric_extractor to keyword-based
                             if kw:
@@ -1005,7 +1058,7 @@ class AgentLoop:
                                     lambda text, p=_pat: [float(x) for x in p.findall(text) if float(x) >= 1.0]
                                 )
                             # update MetricSpec in LLMEvaluator
-                            if self.evaluator and (expected or guide):
+                            if self.evaluator and (expected or expected_params or guide):
                                 from ari.evaluator import MetricSpec
                                 import re as _re_art
                                 _art_pat = _re_art.compile(rf"{kw or 'metric'}[:\s=]+([\d.]+)", _re_art.IGNORECASE) if kw else None
@@ -1017,12 +1070,13 @@ class AgentLoop:
                                 self.evaluator.metric_spec = MetricSpec(
                                     name=f"self-determined: {kw or 'generic'}",
                                     expected_metrics=expected,
+                                    expected_params=expected_params,
                                     artifact_extractor=_dyn_extractor,
                                     scoring_guide=guide,
                                 )
                             logger.info(
-                                "ARI self-determined MetricSpec: keyword=%s expected=%s",
-                                kw, expected
+                                "ARI self-determined MetricSpec: keyword=%s expected=%s params=%s",
+                                kw, expected, expected_params
                             )
                         except Exception as _e:
                             logger.warning("make_metric_spec result parse failed: %s", _e)

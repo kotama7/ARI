@@ -1,11 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
 import type { TreeNode } from '../../types';
+import { MemoryEntryCard } from './DetailPanelTabs/MemoryEntryCard';
 import {
   fetchCheckpointMemory,
   fetchMemoryAccess,
+  fetchNodeReport,
   type MemoryEntry,
   type MemoryAccessResponse,
+  type NodeReport,
 } from '../../services/api';
 
 // ── Colour constants (same as original dashboard.js) ──
@@ -20,7 +23,7 @@ const LABEL_COLORS: Record<string, string> = {
 
 // ── Types ──
 
-type TabName = 'overview' | 'trace' | 'code' | 'memory' | 'access' | 'raw';
+type TabName = 'overview' | 'trace' | 'code' | 'memory' | 'access' | 'report' | 'raw';
 
 interface DetailPanelProps {
   node: TreeNode | null;
@@ -137,6 +140,66 @@ export function DetailPanel({ node, allNodes, checkpointId, onClose }: DetailPan
       aborted = true;
     };
   }, [activeTab, checkpointId, node?.id]);
+
+  // ── Node report data (lazy: fetched only when the Report tab is opened) ──
+  const [reportData, setReportData] = useState<NodeReport | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportAvailable, setReportAvailable] = useState<boolean | null>(null);
+
+  // Probe once per node-id whether a report exists, so we can show/hide the
+  // tab without forcing the user to click it. We hit the same endpoint —
+  // tiny payload — and remember the answer.
+  useEffect(() => {
+    if (!checkpointId || !node) {
+      setReportAvailable(null);
+      setReportData(null);
+      return;
+    }
+    let aborted = false;
+    fetchNodeReport(checkpointId, node.id)
+      .then((r) => {
+        if (aborted) return;
+        if (r.error || !r.report) {
+          setReportAvailable(false);
+          setReportData(null);
+        } else {
+          setReportAvailable(true);
+          setReportData(r.report);
+        }
+      })
+      .catch(() => {
+        if (!aborted) setReportAvailable(false);
+      });
+    return () => {
+      aborted = true;
+    };
+  }, [checkpointId, node?.id]);
+
+  useEffect(() => {
+    if (activeTab !== 'report' || !checkpointId || !node) {
+      return;
+    }
+    if (reportData) return; // already loaded by the availability probe.
+    let aborted = false;
+    setReportLoading(true);
+    setReportError(null);
+    fetchNodeReport(checkpointId, node.id)
+      .then((r) => {
+        if (aborted) return;
+        if (r.error) setReportError(r.error);
+        else if (r.report) setReportData(r.report);
+      })
+      .catch((e) => {
+        if (!aborted) setReportError(String(e));
+      })
+      .finally(() => {
+        if (!aborted) setReportLoading(false);
+      });
+    return () => {
+      aborted = true;
+    };
+  }, [activeTab, checkpointId, node?.id, reportData]);
 
   // ── Resize drag handlers ──
 
@@ -436,6 +499,8 @@ export function DetailPanel({ node, allNodes, checkpointId, onClose }: DetailPan
             {codeSnippets.length > 0 && tabBtn('code', '💻 Code', codeSnippets.length)}
             {tabBtn('memory', `🧠 ${t('memory_tab')}`, visibleMemory.length + globalEntries.length)}
             {tabBtn('access', `📒 ${t('memory_access_tab')}`)}
+            {/* Report tab — hidden when no node_report.json exists for this node. */}
+            {reportAvailable && tabBtn('report', `📝 ${t('report_tab')}`)}
             {tabBtn('raw', '{ } Raw')}
           </div>
 
@@ -571,119 +636,36 @@ export function DetailPanel({ node, allNodes, checkpointId, onClose }: DetailPan
                     {t('memory_global_header')} ({globalEntries.length})
                   </div>
                   {globalEntries.map((e, i) => (
-                    <div
+                    <MemoryEntryCard
                       key={`g-${i}`}
-                      style={{
-                        borderLeft: '3px solid #f59e0b',
-                        background: 'rgba(245,158,11,.06)',
-                        padding: '6px 8px',
-                        margin: '4px 0',
-                        borderRadius: 3,
+                      entry={e}
+                      variant="global"
+                      labels={{
+                        fromNode: t('memory_from_node'),
+                        sourceMcp: t('memory_source_mcp'),
+                        sourceFile: t('memory_source_file'),
+                        sourceGlobal: t('memory_source_global'),
                       }}
-                    >
-                      <div
-                        style={{
-                          fontSize: '.68rem',
-                          color: 'var(--muted)',
-                          display: 'flex',
-                          gap: 6,
-                          flexWrap: 'wrap',
-                          marginBottom: 3,
-                        }}
-                      >
-                        <span style={{ color: '#f59e0b' }}>
-                          {t('memory_source_global')}
-                        </span>
-                        {e.tags && e.tags.length > 0 && (
-                          <span>tags: {e.tags.join(', ')}</span>
-                        )}
-                        {e.ts && (
-                          <span>
-                            {new Date(Number(e.ts) * 1000).toLocaleString()}
-                          </span>
-                        )}
-                      </div>
-                      <div
-                        style={{
-                          whiteSpace: 'pre-wrap',
-                          wordBreak: 'break-word',
-                          fontSize: '.75rem',
-                          maxHeight: 160,
-                          overflow: 'auto',
-                        }}
-                      >
-                        {e.text}
-                      </div>
-                    </div>
+                    />
                   ))}
                 </div>
               )}
               {visibleMemory.map((e, i) => {
                 const own = e.node_id === node.id;
                 const depthIdx = ancestorIds.indexOf(e.node_id);
-                const tsStr = e.ts
-                  ? new Date(Number(e.ts) * 1000).toLocaleString()
-                  : '';
                 return (
-                  <div
+                  <MemoryEntryCard
                     key={i}
-                    style={{
-                      borderLeft: `3px solid ${own ? '#60a5fa' : 'var(--border)'}`,
-                      background: own
-                        ? 'rgba(59,130,246,.06)'
-                        : 'rgba(255,255,255,.03)',
-                      padding: '6px 8px',
-                      margin: '4px 0',
-                      borderRadius: 3,
+                    entry={e}
+                    variant={own ? 'own' : 'inherited'}
+                    ancestorIndex={depthIdx}
+                    labels={{
+                      fromNode: t('memory_from_node'),
+                      sourceMcp: t('memory_source_mcp'),
+                      sourceFile: t('memory_source_file'),
+                      sourceGlobal: t('memory_source_global'),
                     }}
-                  >
-                    <div
-                      style={{
-                        fontSize: '.68rem',
-                        color: 'var(--muted)',
-                        display: 'flex',
-                        gap: 6,
-                        flexWrap: 'wrap',
-                        marginBottom: 3,
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontFamily: 'monospace',
-                          color: own ? '#60a5fa' : 'var(--muted)',
-                        }}
-                      >
-                        {t('memory_from_node')} {e.node_id || '—'}
-                        {depthIdx >= 0 && ` [${depthIdx}]`}
-                      </span>
-                      <span>
-                        {e.source === 'mcp'
-                          ? t('memory_source_mcp')
-                          : t('memory_source_file')}
-                      </span>
-                      {e.metadata &&
-                        typeof e.metadata === 'object' &&
-                        Object.keys(e.metadata).length > 0 && (
-                          <span>
-                            {Object.entries(e.metadata)
-                              .map(([k, v]) => `${k}=${String(v)}`)
-                              .join(' ')}
-                          </span>
-                        )}
-                      {tsStr && <span>{tsStr}</span>}
-                    </div>
-                    <div
-                      style={{
-                        whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-word',
-                        fontSize: '.75rem',
-                        maxHeight: 160,
-                        overflow: 'auto',
-                      }}
-                    >
-                      {e.text}
-                    </div>
-                  </div>
+                  />
                 );
               })}
             </div>
@@ -823,6 +805,116 @@ export function DetailPanel({ node, allNodes, checkpointId, onClose }: DetailPan
                       )}
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Report tab — node_report.json structured view (v0.7.0). */}
+          {activeTab === 'report' && (
+            <div style={{ fontSize: '.78rem' }}>
+              {reportLoading && <div style={{ color: 'var(--muted)' }}>Loading…</div>}
+              {reportError && (
+                <div style={{ color: 'var(--danger, #ef4444)' }}>{reportError}</div>
+              )}
+              {reportData && (
+                <div>
+                  {reportData.delta_vs_parent && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ color: 'var(--muted)', marginBottom: 2 }}>
+                        {t('report_delta_vs_parent')}
+                      </div>
+                      <div>{reportData.delta_vs_parent}</div>
+                    </div>
+                  )}
+                  {reportData.self_assessment?.headline && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ color: 'var(--muted)', marginBottom: 2 }}>
+                        {t('report_headline')}
+                      </div>
+                      <div>{reportData.self_assessment.headline}</div>
+                    </div>
+                  )}
+                  {(reportData.self_assessment?.concerns ?? []).length > 0 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ color: '#f59e0b', marginBottom: 2 }}>
+                        ⚠ {t('report_concerns')}
+                      </div>
+                      <ul style={{ margin: 0, paddingLeft: 18 }}>
+                        {reportData.self_assessment!.concerns!.map((c, i) => (
+                          <li key={i}>{c}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {(reportData.next_steps_hints ?? []).length > 0 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ color: 'var(--muted)', marginBottom: 2 }}>
+                        {t('report_next_steps')}
+                      </div>
+                      <ul style={{ margin: 0, paddingLeft: 18 }}>
+                        {reportData.next_steps_hints!.map((h, i) => (
+                          <li key={i}>{h}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ color: 'var(--muted)', marginBottom: 2 }}>
+                      {t('report_files_changed')}
+                    </div>
+                    <div style={{ fontSize: '.72rem' }}>
+                      {reportData.files_changed.added.length > 0 && (
+                        <div>
+                          <span style={{ color: '#10b981' }}>+ added:</span>{' '}
+                          {reportData.files_changed.added.map((e) => e.path).join(', ')}
+                        </div>
+                      )}
+                      {reportData.files_changed.modified.length > 0 && (
+                        <div>
+                          <span style={{ color: '#3b82f6' }}>~ modified:</span>{' '}
+                          {reportData.files_changed.modified.map((e) => e.path).join(', ')}
+                        </div>
+                      )}
+                      {reportData.files_changed.deleted.length > 0 && (
+                        <div>
+                          <span style={{ color: '#ef4444' }}>− deleted:</span>{' '}
+                          {reportData.files_changed.deleted.join(', ')}
+                        </div>
+                      )}
+                      {reportData.files_changed.added.length === 0 &&
+                        reportData.files_changed.modified.length === 0 &&
+                        reportData.files_changed.deleted.length === 0 && (
+                          <div style={{ color: 'var(--muted)' }}>
+                            {t('report_no_changes')}
+                          </div>
+                        )}
+                    </div>
+                  </div>
+                  {(reportData.build_command || reportData.run_command) && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ color: 'var(--muted)', marginBottom: 2 }}>
+                        {t('report_commands')}
+                      </div>
+                      <pre
+                        className="code"
+                        style={{
+                          fontSize: '.7rem',
+                          padding: 6,
+                          maxHeight: 120,
+                          overflow: 'auto',
+                        }}
+                      >
+                        {reportData.build_command ? reportData.build_command + '\n' : ''}
+                        {reportData.run_command || ''}
+                      </pre>
+                    </div>
+                  )}
+                  {reportData.migration_source === 'auto' && (
+                    <div style={{ color: '#f59e0b', fontSize: '.7rem' }}>
+                      ⚠ {t('report_migrated_auto')}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

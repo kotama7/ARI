@@ -46,3 +46,14 @@ else
     fi
   done
 fi
+
+# v0.7.0: optional ari-registry server deps (only when --with-registry is given).
+# requirements.txt always lists them so existing CI installs continue to work,
+# but on minimal installs we skip them to keep the dep surface small.
+if [ "${WITH_REGISTRY:-0}" = "1" ]; then
+  echo ""
+  echo "  🐜 ari-registry server deps (--with-registry)"
+  $INSTALLER install fastapi 'uvicorn[standard]' python-multipart >/dev/null 2>&1 \
+    && ok "fastapi / uvicorn / python-multipart" \
+    || warn "ari-registry server deps install failed (run 'ari registry serve' may not work)"
+fi

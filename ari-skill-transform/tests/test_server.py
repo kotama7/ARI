@@ -1,7 +1,7 @@
 import asyncio, json, sys, tempfile
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parents[1] / 'src'))
-from server import nodes_to_science_data
+from server import nodes_to_science_data, _robust_extract_json
 
 SAMPLE = [
     {'has_real_data': True, 'metrics': {'score': 277573.1}, 'memory': ['config_optimized threads=64'], 'label': 'improve', 'depth': 2, 'node_id': 'abc123', 'id': 'abc123'},
@@ -19,11 +19,14 @@ def test_basic():
     assert len(r['configurations']) == 2
 
 def test_strips_internal_fields():
+    # ``label`` is intentionally retained (downstream paper writing /
+    # reproducibility-check stages associate metrics with the experiment
+    # that produced them via the label). Only orchestrator scaffolding —
+    # depth, node_id, status — must be stripped.
     with tempfile.NamedTemporaryFile(suffix='.json', mode='w') as f:
         json.dump(SAMPLE, f); f.flush()
         r = _run(nodes_to_science_data(f.name))
     for cfg in r['configurations']:
-        assert 'label' not in cfg
         assert 'depth' not in cfg
         assert 'node_id' not in cfg
         assert 'status' not in cfg
@@ -39,3 +42,196 @@ def test_sort_order():
         json.dump(SAMPLE, f); f.flush()
         r = _run(nodes_to_science_data(f.name))
     assert r['configurations'][0]['metrics']['score'] > r['configurations'][1]['metrics']['score']
+
+
+def test_summary_stats_omits_naive_best_when_primary_metric_absent():
+    # The old behaviour took max() over every per_key_summary entry, which
+    # picked input parameters like nnz over real measurements. Without a
+    # declared primary_metric the new behaviour must omit the scalar best
+    # entirely rather than fabricate one.
+    sample = [
+        {'has_real_data': True,
+         'metrics': {'GFlops_per_s': 26.8, 'nnz': 3840000, 'M': 120000},
+         'label': 'draft', 'depth': 0, 'id': 'n1'},
+    ]
+    with tempfile.NamedTemporaryFile(suffix='.json', mode='w') as f:
+        json.dump(sample, f); f.flush()
+        r = _run(nodes_to_science_data(f.name))
+    assert 'best' not in r['summary_stats'], r['summary_stats']
+    assert 'primary_metric_best' not in r['summary_stats'], r['summary_stats']
+
+
+def test_summary_stats_uses_primary_metric_with_direction():
+    # higher_is_better=True picks max over the primary metric, ignoring
+    # other keys (notably nnz=3.84M which used to dominate the old max()).
+    sample = [
+        {'has_real_data': True,
+         'metrics': {'GFlops_per_s': 26.8, 'time_s': 0.0046, 'nnz': 3840000},
+         'label': 'draft', 'depth': 0, 'id': 'n1'},
+        {'has_real_data': True,
+         'metrics': {'GFlops_per_s': 22.3, 'time_s': 0.0089, 'nnz': 3840000},
+         'label': 'improve', 'depth': 1, 'id': 'n2'},
+    ]
+    with tempfile.NamedTemporaryFile(suffix='.json', mode='w') as f:
+        json.dump(sample, f); f.flush()
+        r = _run(nodes_to_science_data(
+            f.name, primary_metric='GFlops_per_s', higher_is_better='true'
+        ))
+    ss = r['summary_stats']
+    assert ss['primary_metric'] == 'GFlops_per_s'
+    assert ss['direction'] == 'higher_is_better'
+    assert ss['primary_metric_best'] == 26.8
+    assert ss['primary_metric_n'] == 2
+
+    # lower_is_better picks min — important for time_s style metrics.
+    with tempfile.NamedTemporaryFile(suffix='.json', mode='w') as f:
+        json.dump(sample, f); f.flush()
+        r = _run(nodes_to_science_data(
+            f.name, primary_metric='time_s', higher_is_better='false'
+        ))
+    assert r['summary_stats']['direction'] == 'lower_is_better'
+    assert r['summary_stats']['primary_metric_best'] == 0.0046
+
+
+# ── _robust_extract_json: malformed-output tolerance ──────────────────
+
+def test_extract_strips_code_fences():
+    assert _robust_extract_json('```json\n{"a": 1}\n```') == {"a": 1}
+
+
+def test_extract_strips_think_tag():
+    raw = '<think>plan</think>\n{"a": 1}'
+    assert _robust_extract_json(raw) == {"a": 1}
+
+
+def test_extract_picks_largest_balanced_object():
+    # The legacy greedy `\\{.*\\}` would have grabbed both braces and the
+    # prose between them, failing to parse. The matched-brace walker must
+    # extract the larger valid object on its own.
+    raw = '{"first": 1} \n\nNote: also: {"second": {"nested": "ok"}}'
+    out = _robust_extract_json(raw)
+    assert out == {"second": {"nested": "ok"}}
+
+
+def test_extract_raises_on_unrecoverable():
+    import pytest
+    with pytest.raises(ValueError):
+        _robust_extract_json('no json here at all')
+
+
+# ── results.json (D: emit_results contract) integration ────────────────
+
+
+def test_results_json_populates_parameters_and_filters_per_key_summary():
+    # Simulate a checkpoint layout:
+    #   {tmp}/checkpoints/{run_id}/tree.json
+    #   {tmp}/experiments/{run_id}/{node_id}/results.json
+    # `nodes_to_science_data` should pick up results.json, set parameters
+    # from results.params, and EXCLUDE those keys from per_key_summary so
+    # input sizes (nnz, M, K) can never dominate the best-of reduction.
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        run_id = "20260505_test_run"
+        ck = root / "checkpoints" / run_id
+        ck.mkdir(parents=True)
+        wd = root / "experiments" / run_id / "node_a"
+        wd.mkdir(parents=True)
+
+        sample = [
+            {'has_real_data': True, 'id': 'node_a',
+             'metrics': {'GFlops_per_s': 26.8, 'nnz': 3840000, 'M': 120000},
+             'label': 'draft', 'depth': 0},
+            {'has_real_data': True, 'id': 'node_b',
+             'metrics': {'GFlops_per_s': 22.3, 'nnz': 3840000, 'M': 120000},
+             'label': 'improve', 'depth': 1},
+        ]
+        tree = ck / "tree.json"
+        tree.write_text(json.dumps(sample))
+
+        # Only node_a emits a typed results.json — node_b is "legacy" with
+        # no results.json so its metrics dict is treated as-is.
+        (wd / "results.json").write_text(json.dumps({
+            "schema_version": "1.0",
+            "params": {"M": 120000, "nnz": 3840000},
+            "measurements": {"GFlops_per_s": 26.8},
+            "predictions": {},
+            "scores": {},
+        }))
+
+        r = _run(nodes_to_science_data(
+            str(tree),
+            primary_metric='GFlops_per_s', higher_is_better='true',
+        ))
+
+        # node_a: parameters populated from results.params
+        cfg_a = next(c for c in r['configurations'] if c['label'] == 'draft')
+        assert cfg_a['parameters'] == {"M": 120000, "nnz": 3840000}
+        assert cfg_a['measurements'] == {"GFlops_per_s": 26.8}
+        # node_b: no results.json → parameters stays empty (legacy path)
+        cfg_b = next(c for c in r['configurations'] if c['label'] == 'improve')
+        assert cfg_b['parameters'] == {}
+
+        # per_key_summary must exclude the declared input params (nnz, M).
+        # GFlops_per_s remains because it is not in any node's params set.
+        assert 'GFlops_per_s' in r['per_key_summary']
+        assert 'nnz' not in r['per_key_summary']
+        assert 'M' not in r['per_key_summary']
+
+        # summary_stats.primary_metric_best is computed only over GFlops_per_s
+        # → 26.8 (max of 26.8, 22.3), never the 3,840,000 input size.
+        assert r['summary_stats']['primary_metric_best'] == 26.8
+
+
+def test_llm_evaluator_typed_split_populates_parameters_when_no_results_json():
+    # When results.json (D path) is absent but the LLM evaluator emitted
+    # the typed _params_dict / _measurements_dict (C path), nodes_to_
+    # science_data must still populate configurations[*].parameters and
+    # exclude the param keys from per_key_summary.
+    sample = [
+        {'has_real_data': True, 'id': 'node_a',
+         'metrics': {
+             'GFlops_per_s': 26.8, 'nnz': 3840000, 'M': 120000,
+             '_params_dict': {'M': 120000, 'nnz': 3840000},
+             '_measurements_dict': {'GFlops_per_s': 26.8},
+             '_scientific_score': 0.4,
+         },
+         'label': 'draft', 'depth': 0},
+    ]
+    with tempfile.NamedTemporaryFile(suffix='.json', mode='w') as f:
+        json.dump(sample, f); f.flush()
+        r = _run(nodes_to_science_data(
+            f.name, primary_metric='GFlops_per_s', higher_is_better='true',
+        ))
+    cfg = r['configurations'][0]
+    assert cfg['parameters'] == {'M': 120000, 'nnz': 3840000}
+    assert cfg['measurements'] == {'GFlops_per_s': 26.8}
+    assert cfg.get('_typed_source') == 'llm_evaluator'
+    # Reserved underscore keys + declared params must be excluded from
+    # per_key_summary so primary_metric_best can never pick them up.
+    assert 'nnz' not in r['per_key_summary']
+    assert 'M' not in r['per_key_summary']
+    assert '_params_dict' not in r['per_key_summary']
+    assert '_scientific_score' not in r['per_key_summary']
+    assert 'GFlops_per_s' in r['per_key_summary']
+    # typed_split_coverage tracks adoption of the emit_results contract.
+    assert r['summary_stats']['typed_split_coverage']['llm_evaluator'] == 1
+    assert r['summary_stats']['typed_split_coverage']['results.json'] == 0
+    assert r['summary_stats']['typed_split_coverage']['none'] == 0
+
+
+def test_typed_split_coverage_legacy_run_reports_none():
+    # A run with no typed split anywhere should still surface coverage
+    # stats, with everything in the "none" bucket. This lets dashboards
+    # show "0/N nodes adopted the contract" rather than failing silently.
+    sample = [
+        {'has_real_data': True, 'id': 'na',
+         'metrics': {'GFlops_per_s': 26.8},
+         'label': 'draft', 'depth': 0},
+    ]
+    with tempfile.NamedTemporaryFile(suffix='.json', mode='w') as f:
+        json.dump(sample, f); f.flush()
+        r = _run(nodes_to_science_data(f.name))
+    cov = r['summary_stats']['typed_split_coverage']
+    assert cov['none'] == 1
+    assert cov['results.json'] == 0
+    assert cov['llm_evaluator'] == 0
