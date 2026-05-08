@@ -645,13 +645,8 @@ def write_node_report(
         return out_path
 
 
-# ── helpers used by migration ────────────────────────────────────────────
-#
-# Phase 5 (REFACTORING.md §8): legacy reconstruction lives in
-# ``ari.migrations.v05_to_v07.node_reports``.  We re-export the public
-# callable here so ``from ari.orchestrator.node_report import
-# reconstruct_report_from_legacy`` still works and v1.0 can drop this
-# shim cleanly.
-from ari.migrations.v05_to_v07.node_reports import (  # noqa: E402
-    reconstruct_report_from_legacy,
-)
+# Phase 3E (REFACTORING.md §3 + orchestrator/REFACTORING.md §2 Step 1)
+# moved this module into a package; ``reconstruct_report_from_legacy``
+# is re-exported from ``ari.orchestrator.node_report.__init__`` and the
+# ``legacy_reconstruct`` shim sub-module — importing it here would
+# create a cycle (the migrations module pulls helpers from this file).

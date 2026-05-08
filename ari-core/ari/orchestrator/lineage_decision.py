@@ -253,13 +253,39 @@ def __getattr__(name: str):  # PEP 562 — preserve ``_SYSTEM_PROMPT`` API.
     raise AttributeError(name)
 
 
+_DEFAULTS_CACHE: dict | None = None
+
+
+def _config_default(key: str, fallback: str) -> str:
+    """Read a model default from the bundled ``configs/defaults.yaml``.
+
+    Phase PC7 (PROMPTS_AND_CONFIG.md §3-7) externalises hard-coded
+    fallbacks like ``"gpt-4o-mini"`` so ops can update venue defaults
+    without a code change.  The lookup falls back to *fallback* if the
+    YAML is missing — keeps the function pure and import-safe.
+    """
+    global _DEFAULTS_CACHE
+    try:
+        if _DEFAULTS_CACHE is None:
+            from ari.configs import FilesystemConfigLoader
+            data = FilesystemConfigLoader().load("defaults")
+            _DEFAULTS_CACHE = data if isinstance(data, dict) else {}
+        models = _DEFAULTS_CACHE.get("models") or {}
+        v = models.get(key)
+        if isinstance(v, str) and v:
+            return v
+    except Exception:
+        pass
+    return fallback
+
+
 def _default_model() -> str:
     return (
         os.environ.get("ARI_MODEL_LINEAGE")
         or os.environ.get("ARI_MODEL_EVAL")
         or os.environ.get("ARI_MODEL")
         or os.environ.get("ARI_LLM_MODEL")
-        or "gpt-4o-mini"
+        or _config_default("lineage_decision_default", "gpt-4o-mini")
     )
 
 
