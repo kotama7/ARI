@@ -22,6 +22,16 @@ _EXPECTED_HASHES: list[tuple[str, str]] = [
         "agent/system",
         "a50abe13d568c07c6cd25b930d27b48c42179fbe629cdf64ab2d3ed48585cdbf",
     ),
+    # PC4 — orchestrator lineage decision prompt.
+    (
+        "orchestrator/lineage_decision",
+        "33986674d50606428fc0e8f7c177894a21794d42b28acdfafc297819f9a9a6fd",
+    ),
+    # PC4 — orchestrator root-idea selector prompt.
+    (
+        "orchestrator/root_idea_selector",
+        "803cc751a8874e05bbaddcafdac0215a54d4dea6c6b561f292931972cdbeb07d",
+    ),
 ]
 
 
