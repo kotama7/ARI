@@ -22,7 +22,16 @@ class FileMemoryClient(MemoryClient):
     - search() uses TF-IDF-style keyword scoring
     """
 
-    def __init__(self, path: str = "~/.ari/memory.json") -> None:
+    def __init__(self, path: str | Path) -> None:
+        """File-based memory store.
+
+        ``path`` is required as of Phase DR1
+        (DEPRECATION_REMOVAL.md tier A): the previous
+        ``"~/.ari/memory.json"`` default silently re-introduced the
+        global config directory v0.5.0 was supposed to retire.  All
+        callers should pass ``{checkpoint}/memory_store.jsonl`` (or
+        another explicit project-scoped path).
+        """
         self._path = Path(path).expanduser()
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
