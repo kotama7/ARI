@@ -1,0 +1,68 @@
+# Phase DR4 / DEPRECATION_REMOVAL.md §8-2 — Refactor guard rails.
+#
+# Two guards live here:
+# 1. **No new ``~/.ari/`` references** — diff against ``main`` and fail
+#    on additions outside the ``migrations/`` package.
+# 2. **No accidental writes to ``$HOME/.ari/`` during pytest** — run the
+#    test suite under a redirected HOME and assert the directory stays
+#    empty.
+
+name: refactor-guards
+
+on:
+  pull_request:
+    branches:
+      - main
+      - refactoring
+
+jobs:
+  no-home-ari-writes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        working-directory: ari-core
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[test] || pip install -e .
+          pip install pytest pytest-asyncio pytest-mock respx
+      - name: Run tests under a redirected HOME
+        run: |
+          export HOME="$RUNNER_TEMP/fake_home"
+          mkdir -p "$HOME"
+          pytest ari-core/tests/ -q \
+            --ignore=ari-core/tests/test_letta_restart_live.py \
+            --ignore=ari-core/tests/test_letta_start_scripts.py \
+            --ignore=ari-core/tests/test_ollama_gpu.py
+          if [ -d "$HOME/.ari" ]; then
+            echo "::error::Tests created $HOME/.ari/ — see ari-core/tests/REFACTORING.md"
+            ls -la "$HOME/.ari" || true
+            exit 1
+          fi
+
+  no-new-home-ari-refs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect new ~/.ari references in core
+        run: |
+          # Compare against the merge base; allow the migrations/
+          # package and `_deprecation` warnings through.
+          base="$(git merge-base origin/${{ github.base_ref || 'main' }} HEAD)"
+          ADDED=$(git diff "$base" HEAD -- 'ari-core/ari/**.py' \
+            | grep -E '^\+.*(Path\.home\(\).*\.ari|~/\.ari)' \
+            | grep -vE '(migrations|_deprecation|warn_deprecated_path|# .*~/\.ari)' \
+            || true)
+          if [ -n "$ADDED" ]; then
+            echo "::error::New ~/.ari/ references introduced outside migrations/ + _deprecation warning helpers."
+            echo "$ADDED"
+            exit 1
+          fi
