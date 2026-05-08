@@ -3,7 +3,8 @@ import { useI18n } from '../../i18n';
 import * as api from '../../services/api';
 import { StepGoal } from './StepGoal';
 import { StepScope } from './StepScope';
-import { StepResources, PROVIDER_MODELS } from './StepResources';
+import { StepResources, PROVIDER_MODELS, ORS_DEFAULTS } from './StepResources';
+import type { OrsSettings } from './StepResources';
 import { StepLaunch } from './StepLaunch';
 
 interface ChatMessage {
@@ -80,6 +81,12 @@ export function WizardPage() {
   const [numReviewsEnsemble, setNumReviewsEnsemble] = useState(1);
   const [numReflections, setNumReflections] = useState(5);
 
+  // ---- EAR (per-experiment opt-out) ----
+  const [includeEar, setIncludeEar] = useState(true);
+
+  // ---- ORS (PaperBench-format auto rubric) settings ----
+  const [ors, setOrs] = useState<OrsSettings>({ ...ORS_DEFAULTS });
+
   // ---- Step 4: Launch state ----
   const [profile, setProfile] = useState('laptop');
   const [paperFormat, setPaperFormat] = useState('arxiv');
@@ -135,6 +142,9 @@ export function WizardPage() {
         if (s.slurm_cpus) setHpcCpus(String(s.slurm_cpus));
         if (s.slurm_memory_gb) setHpcMem(String(s.slurm_memory_gb));
         if (s.slurm_walltime) setHpcWall(s.slurm_walltime);
+        if (s.ors && typeof s.ors === 'object') {
+          setOrs((prev) => ({ ...prev, ...s.ors }));
+        }
       })
       .catch(() => {});
   }, []);
@@ -255,6 +265,8 @@ export function WizardPage() {
           setNumReviewsEnsemble={setNumReviewsEnsemble}
           numReflections={numReflections}
           setNumReflections={setNumReflections}
+          ors={ors}
+          setOrs={setOrs}
           onBack={() => goToStep(2)}
           onNext={() => goToStep(4)}
         />
@@ -292,6 +304,9 @@ export function WizardPage() {
           fewshotMode={fewshotMode}
           numReviewsEnsemble={numReviewsEnsemble}
           numReflections={numReflections}
+          includeEar={includeEar}
+          setIncludeEar={setIncludeEar}
+          ors={ors}
           onBack={() => goToStep(3)}
           onLaunched={handleLaunched}
         />

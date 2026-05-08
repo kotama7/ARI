@@ -16,6 +16,46 @@ log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Phase 3: rubric loader for dynamic-axis evaluator wiring
+# ---------------------------------------------------------------------------
+
+
+def _load_rubric_dict_for_axes() -> "dict | None":
+    """Load the active rubric as a parsed YAML dict.
+
+    The dict is the **same shape** the rubric YAML files have on disk
+    (id / score_dimensions / decision / etc.) — no Rubric dataclass is
+    constructed because ``ari.evaluator.dynamic_axes.rubric_to_axes``
+    accepts both shapes and we want to avoid a hard dependency on
+    ari-skill-paper from ari-core.
+
+    Source: ``ARI_RUBRIC`` env var (default ``neurips``) → YAML under
+    ``ari-core/config/reviewer_rubrics/<id>.yaml``. Returns None when no
+    rubric file is found, in which case the evaluator runs with the
+    generic floor + plan-derived axes only.
+    """
+    rid = (os.environ.get("ARI_RUBRIC") or "neurips").strip()
+    rubrics_dir = Path(__file__).parent.parent / "config" / "reviewer_rubrics"
+    candidates = [rubrics_dir / f"{rid}.yaml"]
+    if rid != "neurips":
+        candidates.append(rubrics_dir / "neurips.yaml")  # safe fallback
+    try:
+        import yaml as _y
+    except Exception:
+        return None
+    for p in candidates:
+        if not p.exists():
+            continue
+        try:
+            data = _y.safe_load(p.read_text())
+            if isinstance(data, dict):
+                return data
+        except Exception as e:
+            log.warning("failed to load rubric %s: %s", p, e)
+    return None
+
+
+# ---------------------------------------------------------------------------
 # MetricSpec: auto-generated from evaluator-skill
 # ---------------------------------------------------------------------------
 
@@ -107,11 +147,20 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
     # Evaluator may also use a phase-specific model override (ARI_MODEL_EVAL).
     _eval_model = _os_phase.environ.get("ARI_MODEL_EVAL") or llm._model_name()
     _axis_weights = getattr(getattr(cfg, "evaluator", None), "axis_weights", None) or None
+    # Phase 3: pass rubric + checkpoint_dir so the evaluator builds dynamic
+    # axes (generic floor + rubric.score_dimensions + plan §-tag keywords)
+    # automatically. Plan-derived axes refresh on every evaluate() call when
+    # idea.json mtime changes — no manual refresh needed. With no rubric
+    # available the evaluator falls back to the generic floor only, which
+    # matches legacy behaviour.
+    _rubric_for_axes = _load_rubric_dict_for_axes()
     evaluator = LLMEvaluator(
         model=_eval_model,
         api_base=llm.config.base_url if llm.config.backend == "ollama" else None,
         metric_spec=metric_spec,
         axis_weights=_axis_weights,
+        checkpoint_dir=str(checkpoint_dir),
+        rubric=_rubric_for_axes,
     )
 
     # WorkflowHints: auto-extracted from experiment file
@@ -158,8 +207,14 @@ def generate_paper_section(
     print(f"  Checkpoint: {checkpoint_dir}")
     print(f"{'='*60}", flush=True)
 
-    # Load pipeline from workflow.yaml (preferred) or pipeline.yaml (legacy fallback)
+    # Load pipeline from workflow.yaml (preferred) or pipeline.yaml (legacy
+    # fallback). The per-checkpoint copy is searched first so launch-time
+    # rewrites (e.g. include_ear=False disabling EAR / ors_seed_sandbox stages)
+    # actually take effect — symmetrical with how the BFTS phase already reads
+    # the checkpoint copy at cli.py:478.
     pipeline_yaml_candidates = [
+        Path(checkpoint_dir) / "workflow.yaml",
+        Path(checkpoint_dir) / "pipeline.yaml",
         Path(config_path).parent / "workflow.yaml",
         Path(config_path).parent / "pipeline.yaml",
         Path(__file__).parent.parent / "config" / "workflow.yaml",

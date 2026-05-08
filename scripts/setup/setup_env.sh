@@ -79,6 +79,155 @@ _prompt_secret() {
   fi
 }
 
+# Delete every line in $ENV_FILE that defines KEY (commented or not).
+# Used by reprompts that need to overwrite a dead default such as
+# LETTA_EMBEDDING_CONFIG=letta-default.
+_env_delete_key() {
+  local key="$1"
+  [ -f "$ENV_FILE" ] || return 0
+  # POSIX-portable in-place: write to a temp and replace.
+  local tmp
+  tmp="$(mktemp "${ENV_FILE}.XXXXXX")" || return 1
+  grep -vE "^[[:space:]]*#?[[:space:]]*${key}=" "$ENV_FILE" > "$tmp" || true
+  mv "$tmp" "$ENV_FILE"
+}
+
+# Prompt for a plain (non-secret) value with a default. Locks in the value
+# uncommented in $ENV_FILE so install_letta.sh / runtime can pick it up
+# deterministically.
+#
+# Usage: _prompt_value KEY LABEL DEFAULT [HINT]
+#
+# Behaviour:
+#   * If KEY is already set in .env to a value other than DEFAULT and not
+#     in the list of known-dead values: keep it, skip the prompt.
+#   * Non-interactive (no TTY or ARI_NONINTERACTIVE=1): write `# KEY=`
+#     placeholder when missing; never overwrite an existing value.
+#   * Interactive: show current (if any) + default, accept Enter to keep
+#     the current value, or accept any string as the new value.
+_prompt_value() {
+  local key="$1"; local label="$2"; local default="$3"; local hint="${4:-}"
+  local current
+  current="$(_env_get "$key")"
+
+  if [[ "${ARI_NONINTERACTIVE:-0}" == "1" ]] || [ ! -t 0 ]; then
+    if [ -z "$current" ]; then
+      info "$key $(m setv_skip_noninteractive)"
+      _env_append_if_absent "# ${key}=${default}"
+    else
+      ok "$key $(m setv_already_set)"
+    fi
+    return
+  fi
+
+  echo ""
+  if [ -n "$hint" ]; then
+    printf "  🐜 %s\n" "$hint"
+  fi
+  if [ -n "$current" ]; then
+    printf "  🐜 %s [%s] %s: %s\n" "$label" "$key" "$(m setv_current)" "$current"
+    printf "  🐜 (%s, %s): " \
+      "$(m setv_enter_keep)" "$(m setv_or_replace)"
+  else
+    printf "  🐜 %s [%s]\n" "$label" "$key"
+    printf "  🐜 (%s: %s): " "$(m setv_default)" "$default"
+  fi
+
+  local val=""
+  read -r val || val=""
+  if [ -z "$val" ]; then
+    val="${current:-$default}"
+  fi
+
+  _env_delete_key "$key"
+  printf '%s=%s\n' "$key" "$val" >> "$ENV_FILE"
+  ok "$key=$val $(m setv_saved)"
+}
+
+# Prompt for one of a known set of choices, with the option to type a
+# custom value. The first option in OPTIONS is the default.
+#
+# Usage: _prompt_choice KEY LABEL HINT OPT1 OPT2 ...
+#
+# Behaviour mirrors _prompt_value, with two extensions:
+#   * Numeric input "1".."N" picks options[N-1].
+#   * Any non-numeric, non-empty input is taken as a custom value (e.g.
+#     a self-hosted Ollama embedding handle the user has registered).
+_prompt_choice() {
+  local key="$1"; local label="$2"; local hint="$3"
+  shift 3
+  local opts=("$@")
+  local default="${opts[0]}"
+  local current
+  current="$(_env_get "$key")"
+
+  # Detect known-dead values and force a reprompt even when the key is
+  # already set. The Letta-hosted free embedding endpoint started
+  # returning HTTP 404 for /v1/embeddings sometime after the MemGPT →
+  # Letta rebrand, so preserving these silently leaves writes broken.
+  local force=0
+  case "$current" in
+    "letta-default"|"letta/letta-free"|"")
+      force=1 ;;
+  esac
+
+  if [[ "${ARI_NONINTERACTIVE:-0}" == "1" ]] || [ ! -t 0 ]; then
+    if [ -z "$current" ]; then
+      info "$key $(m setv_skip_noninteractive)"
+      _env_append_if_absent "# ${key}=${default}"
+    elif [ "$force" -eq 1 ]; then
+      warn "$key=${current} $(m setv_letta_emb_dead) — $(m setv_skip_noninteractive)"
+    else
+      ok "$key $(m setv_already_set)"
+    fi
+    return
+  fi
+
+  if [ "$force" -eq 0 ]; then
+    ok "$key $(m setv_already_set) ($current)"
+    return
+  fi
+
+  echo ""
+  if [ -n "$hint" ]; then
+    printf "  🐜 %s\n" "$hint"
+  fi
+  if [ -n "$current" ]; then
+    printf "  🐜 %s [%s] %s: %s\n" "$label" "$key" "$(m setv_current)" "$current"
+    if [ "$current" = "letta-default" ] || [ "$current" = "letta/letta-free" ]; then
+      printf "  🐜 ⚠ %s\n" "$(m setv_letta_emb_dead)"
+    fi
+  else
+    printf "  🐜 %s [%s]\n" "$label" "$key"
+  fi
+  local i=0
+  for opt in "${opts[@]}"; do
+    if [ "$i" -eq 0 ]; then
+      printf "    %d) %s  (%s)\n" "$((i+1))" "$opt" "$(m setv_default)"
+    else
+      printf "    %d) %s\n" "$((i+1))" "$opt"
+    fi
+    i=$((i+1))
+  done
+  printf "  🐜 %s: " "$(m setv_pick_or_custom)"
+
+  local sel=""
+  read -r sel || sel=""
+
+  local val=""
+  if [ -z "$sel" ]; then
+    val="$default"
+  elif [[ "$sel" =~ ^[0-9]+$ ]] && [ "$sel" -ge 1 ] && [ "$sel" -le "${#opts[@]}" ]; then
+    val="${opts[$((sel-1))]}"
+  else
+    val="$sel"
+  fi
+
+  _env_delete_key "$key"
+  printf '%s=%s\n' "$key" "$val" >> "$ENV_FILE"
+  ok "$key=$val $(m setv_saved)"
+}
+
 # --- create file if missing -------------------------------------------------
 if [ ! -f "$ENV_FILE" ]; then
   info "$(m setv_creating) $ENV_FILE"
@@ -120,6 +269,40 @@ _env_append_if_absent "# ARI_MODEL_CODING="
 _env_append_if_absent "# ARI_MODEL_EVAL="
 _env_append_if_absent "# ARI_MODEL_PAPER="
 _env_append_if_absent "# ARI_MODEL_BFTS="
+# v0.6.0 §4.1 split the legacy ARI_MODEL_PAPER into rubric / replicator / judge
+# so the reproducibility pipeline can target a different model per stage.
+_env_append_if_absent "# ARI_MODEL_RUBRIC_GEN="
+_env_append_if_absent "# ARI_MODEL_RUBRIC_AUDIT="
+_env_append_if_absent "# ARI_MODEL_REPLICATE="
+_env_append_if_absent "# ARI_MODEL_REPLICATOR="
+_env_append_if_absent "# ARI_MODEL_JUDGE="
+# Rubric generator knobs (consumed by ari-skill-replicate). All three fall
+# back to defaults baked into the generator when unset; the GUI wizard can
+# write these per-run.
+_env_append_if_absent "# ARI_RUBRIC_GEN_TARGET_LEAVES="
+_env_append_if_absent "# ARI_RUBRIC_GEN_TEMPERATURE="
+_env_append_if_absent "# ARI_RUBRIC_GEN_TWO_STAGE="
+# Replicator (PaperBench BasicAgent / IterativeAgent) knobs. time-limit
+# defaults to 12 h to match upstream; iterative=1 disables the submit tool
+# so the agent uses its full budget; max_steps=0 means unlimited.
+_env_append_if_absent "# ARI_REPLICATOR_TIME_LIMIT_SEC="
+_env_append_if_absent "# ARI_REPLICATOR_ITERATIVE="
+_env_append_if_absent "# ARI_REPLICATOR_MAX_STEPS="
+# SimpleJudge knob. n_runs defaults to 1 to match PaperBench paper §4.1
+# (single-pass judging); raise for variance reduction at the cost of
+# grading API spend.
+_env_append_if_absent "# ARI_JUDGE_N_RUNS="
+# lineage decisions (LLM judge picks continue / switch / fanout /
+# terminate during BFTS) and root idea selection (LLM picks ideas[0] from
+# the VirSci pool). When unset, both fall back through ARI_MODEL_EVAL →
+# ARI_MODEL → ARI_LLM_MODEL → gpt-4o-mini.
+_env_append_if_absent "# ARI_MODEL_LINEAGE="
+_env_append_if_absent "# ARI_MODEL_ROOT_SELECT="
+# lineage decisions: recursion budget surfaced to the lineage_decision judge so
+# it avoids switch_to_idea / fanout when the next child would exceed
+# the configured max. Set automatically by api_orchestrator at sub-
+# experiment launch — users do not normally override it.
+_env_append_if_absent "# ARI_RECURSION_DEPTH="
 
 # --- 3) VLM review ----------------------------------------------------------
 _env_section "VLM review"
@@ -148,7 +331,30 @@ _env_append_if_absent "# ARI_GLOBAL_MEMORY_PATH=  # (v0.5.x legacy — global me
 _env_section "Memory (Letta)"
 _env_append_if_absent "# LETTA_BASE_URL=http://localhost:8283"
 _env_append_if_absent "# LETTA_API_KEY="
-_env_append_if_absent "# LETTA_EMBEDDING_CONFIG=letta-default"
+
+# Embedding handle — the historical default `letta-default` (= `letta/letta-free`)
+# now resolves to https://inference.letta.com/v1/embeddings, which has been
+# silently retired (every model returns 404). Lock in a working handle here
+# so archival_insert / add_memory don't fail at run time. Existing dead
+# values (`letta-default`, `letta/letta-free`) are detected and reprompted.
+_env_append_if_absent "# LETTA_EMBEDDING_CONFIG=openai/text-embedding-3-small"
+_prompt_choice "LETTA_EMBEDDING_CONFIG" \
+  "$(m setv_letta_emb_label)" \
+  "$(m setv_letta_emb_hint)" \
+  "openai/text-embedding-3-small" \
+  "openai/text-embedding-3-large" \
+  "openai/text-embedding-ada-002" \
+  "letta/letta-free"
+
+# Singularity / Apptainer SIF for the local Letta server. Read by
+# scripts/letta/start_singularity.sh and start.sh — both fall back to
+# `${ARI_ROOT}/scripts/letta/letta.sif` when unset, but pinning it here
+# makes the chosen image explicit across resume / restart.
+_prompt_value "ARI_LETTA_SIF" \
+  "$(m setv_letta_sif_label)" \
+  "${ARI_ROOT}/scripts/letta/letta.sif" \
+  "$(m setv_letta_sif_hint)"
+
 _env_append_if_absent "# LETTA_LLM_CONFIG=letta-default"
 _env_append_if_absent "# ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA=auto  # auto|pip|docker|singularity|none"
 _env_append_if_absent "# ARI_MEMORY_LETTA_TIMEOUT_S=10"
@@ -186,6 +392,18 @@ _env_append_if_absent "# ARI_CONTAINERS_DIR="
 _env_append_if_absent "# APPTAINER_CACHEDIR="
 _env_append_if_absent "# SINGULARITY_CACHEDIR="
 
+# --- 6b) ari-skill-paper-re sandbox / PaperBench ---------------------------
+# ARI_PHASE1_SANDBOX selects the sandbox runtime for run_reproduce
+# (apptainer | docker | local). The image vars override the default
+# ubuntu:24.04 / .sif used by run_reproduce.
+_env_append_if_absent "# ARI_PHASE1_SANDBOX=local"
+_env_append_if_absent "# ARI_PHASE1_APPTAINER_IMAGE="
+_env_append_if_absent "# ARI_PHASE1_SINGULARITY_IMAGE="
+_env_append_if_absent "# ARI_PHASE1_DOCKER_IMAGE=ubuntu:24.04"
+# Override path to the vendored PaperBench source tree if the default
+# (ari-skill-paper-re/vendor/paperbench) is unavailable.
+_env_append_if_absent "# ARI_PAPERBENCH_PATH="
+
 # --- 7) SLURM ---------------------------------------------------------------
 _env_section "SLURM"
 _env_append_if_absent "# SLURM_MODE=local"
@@ -198,7 +416,10 @@ _env_append_if_absent "# SLURM_LOG_DIR="
 _env_append_if_absent "# SLURM_DEFAULT_PARTITION="
 _env_append_if_absent "# SLURM_VALID_PARTITIONS="
 _env_append_if_absent "# SLURM_JOB_ID=   # runtime-only; set by Slurm itself"
+_env_append_if_absent "# SLURM_JOB_PARTITION=   # runtime-only; set by Slurm itself"
+_env_append_if_absent "# SLURM_JOB_NODELIST=    # runtime-only; set by Slurm itself"
 _env_append_if_absent "# SLURM_CLUSTER_NAME=  # runtime-only; set by Slurm itself"
+_env_append_if_absent "# SLURM_PARTITION=   # fallback partition probed by paper-re sandbox runner"
 _env_append_if_absent "# ARI_SLURM_CPUS="
 _env_append_if_absent "# ARI_SLURM_MEM_GB="
 _env_append_if_absent "# ARI_SLURM_GPUS="
@@ -253,3 +474,23 @@ _env_append_if_absent "# OSS_BUCKET_NAME="
 _env_append_if_absent "# OSS_ENDPOINT="
 
 ok "$(m setv_done) ($ENV_FILE)"
+
+# --- 11) v0.7.0: EAR publish + ari-registry + Zenodo + gh backend ----------
+# All commented by default — only flip on what you actually use. Tokens
+# stay env-var-only so they don't leak into shell history when you mint
+# them with `ari registry token issue <user>`.
+_env_section "ari-registry / publish (v0.7.0)"
+_env_append_if_absent "# ARI_PUBLISH_DRYRUN=false"
+_env_append_if_absent "# ARI_PUBLISH_SETTINGS=\$HOME/.ari/publish.yaml"
+_env_append_if_absent "# ARI_LOCAL_TARBALL_OUT="
+_env_append_if_absent "# ARI_REGISTRIES_FILE=\$HOME/.ari/registries.yaml"
+_env_append_if_absent "# ARI_REGISTRY_DATA=\$HOME/.ari/registry-data"
+_env_append_if_absent "# ARI_REGISTRY_URL=https://registry.example.com"
+_env_append_if_absent "# ARI_REGISTRY_NAME=default"
+_env_append_if_absent "# ARI_REGISTRY_TOKEN="
+_env_append_if_absent "# ARI_CLONE_HTTP_TIMEOUT=60"
+_env_append_if_absent "# ARI_REPRO_CLONE_LOG=         # set automatically by react_driver"
+_env_append_if_absent "# ZENODO_TOKEN="
+_env_append_if_absent "# ZENODO_SANDBOX=false"
+_env_append_if_absent "# ARI_GH_REPO=user/repo"
+_env_append_if_absent "# ARI_GH_MODE=commit          # commit | releases"

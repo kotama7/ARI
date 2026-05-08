@@ -71,26 +71,96 @@ pipeline:
     tool: review_compiled_paper
     depends_on: [write_paper]
     # ...
-  - stage: reproducibility_check
-    skill: paper-re-skill
-    # 由 ari-core/ari/agent/react_driver.py 驱动，而非单个 tool。
-    # paper-re 仅提供确定性的两端；ReAct 循环运行在 phase 列表包含
-    # `reproduce` 的 MCP 技能之上。
-    pre_tool: extract_repro_config
-    post_tool: build_repro_report
+  # ─── EAR 策展/发布/最终化 (v0.7.0) ───
+  - stage: ear_curate
+    skill: transform-skill
+    tool: curate_ear
+    depends_on: [generate_ear]
+    inputs:
+      checkpoint_dir: '{{checkpoint_dir}}'
+    outputs:
+      file: '{{checkpoint_dir}}/ear_curate.status.json'
+  - stage: finalize_paper
+    skill: paper-skill
+    tool: inject_code_availability
+    depends_on: [write_paper, ear_curate]
+    # 从 ear_published/manifest.lock 与 publish_record.json 自动加载
+    # ref/sha/doi，将 \codeavailability/\codedigest/\coderef 宏注入
+    # full_paper.tex；若无策展过的 bundle 则静默跳过。
+  - stage: ear_publish
+    skill: transform-skill
+    tool: publish_ear
+    depends_on: [ear_curate]
+    enabled: false           # 默认禁用；置 true 或传 publish=true
+    inputs:
+      checkpoint_dir: '{{checkpoint_dir}}'
+      backend: ari-registry
+      visibility: staged
+      dry_run: false
+    outputs:
+      file: '{{checkpoint_dir}}/publish_record.json'
+  - stage: merge_reviews
+    skill: paper-skill
+    tool: merge_reviews
+    depends_on: [review_paper, vlm_review_figures]
+    # 文本与 VLM 评审结果的事后结构合并（无 LLM）。
+
+  # ─── ORS 自动 rubric 可复现性（PaperBench, v0.7.0）───
+  # 取代旧的 `reproducibility_check`。
+  - stage: ors_generate_rubric
+    skill: replicate-skill
+    tool: generate_rubric
     depends_on: [write_paper]
-    react:
-      agent_phase: reproduce
-      max_steps: 40
-      final_tool: report_metric
-      # 将智能体隔离在 checkpoint 根目录之外；路径校验会拒绝引用
-      # 沙箱之外文件的工具参数 (论文 .tex 作为 allow-list 放行)。
-      sandbox: '{{checkpoint_dir}}/repro_sandbox'
-      system_prompt: |
-        You are a reproducibility engineer...
-      user_prompt: |
-        Target: reproduce {{pre.metric_name}} = {{pre.claimed_value}}
-        ...
+    inputs:
+      paper_path: '{{checkpoint_dir}}/full_paper.tex'
+      output_path: '{{checkpoint_dir}}/ors_rubric.json'
+      target_leaf_count: 0     # 0 = 按论文长度自动估算
+  - stage: ear_publish          # v0.7.0+：默认启用，使用 local-tarball
+    skill: transform-skill
+    tool: publish_ear
+    depends_on: [ear_curate]
+    enabled: true
+    inputs:
+      backend: local-tarball    # 零依赖；在 checkpoint 旁生成 bundle.tar.gz
+      visibility: staged
+  - stage: ors_seed_sandbox     # v0.7.0+：从 EAR bundle 确定性播种到沙箱
+    skill: paper-re-skill
+    tool: fetch_code_bundle
+    depends_on: [ear_publish]
+    inputs:
+      checkpoint_dir: '{{checkpoint_dir}}'    # 从 publish_record.json 自动读取 ref
+      dest: '{{checkpoint_dir}}/repro_sandbox'
+  - stage: ors_build_reproduce  # v0.7.0+：LLM 回退（如已 seed 则跳过）
+    skill: paper-re-skill
+    tool: build_reproduce_sh
+    depends_on: [ors_generate_rubric, ors_seed_sandbox, finalize_paper]
+    inputs:
+      paper_path: '{{checkpoint_dir}}/full_paper.tex'
+      rubric_path: '{{checkpoint_dir}}/ors_rubric.json'
+      output_dir: '{{checkpoint_dir}}/repro_sandbox'
+      overwrite: false
+  - stage: ors_run_reproduce
+    skill: paper-re-skill
+    tool: run_reproduce        # Phase 1（在沙箱中执行 reproduce.sh）
+    depends_on: [ors_generate_rubric, ors_build_reproduce]
+    inputs:
+      rubric_path: '{{checkpoint_dir}}/ors_rubric.json'
+      repo_dir: '{{checkpoint_dir}}/repro_sandbox'
+      sandbox_kind: ''         # auto: slurm → docker → apptainer → singularity → local
+      timeout_global_sec: 0    # 0 = 使用 rubric.reproduce_contract.max_runtime_sec
+      partition: ''            # 留空 → ARI_SLURM_PARTITION → launch_config.json
+      cpus: 0                  # 留空 → ARI_SLURM_CPUS（默认 8）
+      walltime: ''             # 留空 → ARI_SLURM_WALLTIME → 由 timeout 推导
+  - stage: ors_grade
+    skill: paper-re-skill
+    tool: grade_with_simplejudge   # Phase 2（PaperBench SimpleJudge via LiteLLM）
+    depends_on: [ors_run_reproduce]
+    inputs:
+      rubric_path: '{{checkpoint_dir}}/ors_rubric.json'
+      repo_dir: '{{checkpoint_dir}}/repro_sandbox'
+      paper_path: '{{checkpoint_dir}}/full_paper.tex'
+      n_runs: 3
+      judge_model: gpt-5-mini  # 任意 LiteLLM 可识别的模型 ID
 
 retrieval:
   backend: semantic_scholar    # semantic_scholar | alphaxiv | both
@@ -177,6 +247,10 @@ skills:
   - name: vlm-skill
     path: "{{ari_root}}/ari-skill-vlm"
     phase: [paper, reproduce]
+  # v0.7.0：PaperBench 形式自动 rubric 生成与审计
+  - name: replicate-skill
+    path: "{{ari_root}}/ari-skill-replicate"
+    phase: paper
 ```
 
 ## 环境变量
@@ -208,6 +282,23 @@ skills:
 | `ARI_FEWSHOT_MODE` | `static` / `dynamic` | `static` |
 | `ARI_NUM_REVIEWS_ENSEMBLE` | 独立审稿人数量 | `1` |
 | `ARI_NUM_REFLECTIONS` | self-reflection 循环轮数 | `5` |
+| `ARI_MODEL_RUBRIC_GEN` | `replicate-skill.generate_rubric` 的生成 LLM (v0.7.0) | `gemini/gemini-2.5-pro` |
+| `ARI_MODEL_RUBRIC_AUDIT` | `audit_rubric` 的审计 LLM（与生成器独立） | `anthropic/claude-opus-4-7` |
+| `ARI_RUBRIC_GEN_TARGET_LEAVES` | 覆盖 `generate_rubric` 的目标叶数。`0` / 未设置时按论文长度自动（约 1 叶 / 75 词，限制在 [50, 400]）。GUI Wizard "Target leaves" 字段。 | (未设置) |
+| `ARI_RUBRIC_GEN_TEMPERATURE` | 覆盖生成器 temperature。GUI Wizard "Temperature" 字段。 | (未设置) |
+| `ARI_RUBRIC_GEN_TWO_STAGE` | 强制开/关两阶段生成（骨架 + 并行子树），`1`/`true`/`on` vs `0`/`false`/`off`。相比单次调用：叶数约 4 倍、深度增加 1–2 层，API token 消耗约 5 倍。未设置时使用 kwarg 默认（当前 ON）。GUI Wizard "两阶段生成" 切换。 | (未设置，默认 ON) |
+| `ARI_MODEL_REPLICATE` | `build_reproduce_sh`（论文 → reproduce.sh，v0.7.0）的复现器 LLM | `claude-opus-4-7` |
+| `ARI_MODEL_JUDGE` | `grade_with_simplejudge`（PaperBench Phase 2, v0.7.0；LiteLLM 路由，任意提供方均可）的裁判 LLM | `gpt-5-mini` |
+| `ARI_MODEL_LINEAGE` | `decide_lineage_action` 的判定 LLM（lineage decision, v0.7.0）。未设置时按 `ARI_MODEL_EVAL` → `ARI_MODEL` → `ARI_LLM_MODEL` → `gpt-4o-mini` 顺序回退 | (auto) |
+| `ARI_MODEL_ROOT_SELECT` | 从 VirSci 池中重选 `ideas[0]` 的 LLM（lineage decision, v0.7.0）。回退顺序与 `ARI_MODEL_LINEAGE` 相同 | (auto) |
+| `ARI_PHASE1_SANDBOX` | Phase 1 沙箱：`auto` / `slurm` / `docker` / `apptainer` / `singularity` / `local` | `auto` |
+| `ARI_SLURM_WALLTIME` | SLURM Phase 1 沙箱的 `--time` HH:MM:SS（v0.7.0, 已恢复）。留空则从 rubric 的 `max_runtime_sec` 推导。 | (auto) |
+| `ARI_PHASE1_DOCKER_IMAGE` | docker 沙箱镜像 | `ubuntu:24.04` |
+| `ARI_PHASE1_APPTAINER_IMAGE` / `ARI_PHASE1_SINGULARITY_IMAGE` | Apptainer/Singularity 沙箱镜像 | `docker://ubuntu:24.04` |
+| `ARI_PUBLISH_DRYRUN` | 强制 `ari ear publish --dry-run`（CI 安全开关, v0.7.0） | (off) |
+| `ARI_REGISTRY_DATA` | `ari registry serve` 的 sqlite + artifact 存储根目录 | `~/.ari/registry-data` |
+| `ARI_REGISTRY_TOKEN` | 用于 `ari clone ari://...` / `ari ear publish --backend ari-registry` 的 bearer token | (无) |
+| `ARI_REPRO_CLONE_POLICY` | 可复现性沙箱 git shim 策略：`passthrough` / `deny` / `warn` | `passthrough` |
 
 ## 记忆后端 (Letta)
 
@@ -300,6 +391,67 @@ llm:
 
 ---
 
+## Plan Promote (v0.7.0+)
+
+`plan_promote` 控制 VirSci 的 experiment plan 如何展开到检查点的
+`experiment.md`。CLI 传入的用户源 `experiment.md` **不会被修改** —
+只有检查点内的副本会被以 HTML 注释为边界自动追加块（重复运行幂等）。
+
+```yaml
+plan_promote: index_only          # full | index_only | off
+```
+
+| Mode | 内容 | 典型大小 |
+|---|---|---|
+| `full` | 选定 idea + plan §标题正文 + Alternatives | ~5 KB |
+| `index_only` (default) | 选定 idea + plan §标题 + Alternatives | ~1.5 KB |
+| `off` | 不追加 | 0 |
+
+Phase 3 评估器和 BFTS expand idea_ctx 都从 `idea.json` 读取**原始** plan，
+所以 `full` / `index_only` 主要是 experiment.md 中**人和 paper-skill 看到
+什么**的差异。
+
+## Lineage Decision (v0.7.0+)
+
+BFTS 停滞时 LLM judge 决定继续 / 切换备选 idea / 并行 fanout / 终止。
+LLM 输出限定为 4 个动作，target index 必须在备选池内，任何错误都
+silently 降级为 `continue`，BFTS 循环不会因此 hook 卡住。
+
+```yaml
+lineage_decision:
+  mode: stagnation_rule           # off | stagnation_rule | every_node
+  stagnation_window: 5
+  stagnation_threshold: 0.02
+  min_nodes_before_decision: 3
+  rate_limit_per_run: 5
+```
+
+| Mode | 触发 | 成本 |
+|---|---|---|
+| `off` | 不触发 | 0 |
+| `stagnation_rule` (default) | 连续 `stagnation_window` 节点 composite 平稳 | 每 run 0–`rate_limit_per_run` 次 LLM 调用 |
+| `every_node` | 每个 BFTS step（LLM 也决定时机） | 每 node 1 次 LLM 调用 |
+
+每次触发的 decision（含 `continue`）追加到 `{checkpoint}/lineage_decisions.jsonl`，
+事后可完整复盘「何时停滞、何时切换、何时终止」。`root_idea_selection`
+也写入同一文件（不同 `trigger`）。
+
+## Root Idea Selection (v0.7.0+)
+
+VirSci 写完 `idea.json` 后，LLM 根据 venue rubric 与 ancestor research
+thread 决定 `ideas[0]` 保持还是换为 `ideas[N]`。Default 保留 VirSci
+的分数顺序（`ideas[0]`）；LLM 输出超出范围时同样回退到 `ideas[0]`。
+启动时 1 次 LLM 调用，无 per-node 成本。
+
+```yaml
+root_idea_selection:
+  enabled: true                   # v0.7.0+ default
+```
+
+决定记录到 `lineage_decisions.jsonl`（`trigger: "root_idea_selection"`），
+并在 `idea.json` 中以 `_root_choice` 持久化。子（recursion）检测到
+`_inherited_from` / `_root_choice` 即跳过重选。
+
 ## BFTS 调优
 
 通过环境变量控制 BFTS 行为：
@@ -311,3 +463,77 @@ export ARI_EXECUTOR=slurm    # Submit each node as a SLURM job
 ```
 
 或在 `workflow.yaml` 的 `bfts:` 部分设置默认值（如果您的版本支持）。
+
+---
+
+## EAR 精选 (`ear/publish.yaml`) — v0.7.0+
+
+精选机制让作者通过 allowlist 控制 `{checkpoint}/ear/` 中哪些子集进入
+可发布的 bundle (`{checkpoint}/ear_published/` + `manifest.lock`)。
+ari-core 内置的 **deny list** 始终强于 `include`,
+防止意外公开机密文件。
+
+### Schema (`ari-core/ari/schemas/publish.schema.json`)
+
+```yaml
+# 示例：<checkpoint>/ear/publish.yaml
+include:                     # 相对 ear/ 的 glob (allowlist)
+  - "README.md"
+  - "LICENSE"
+  - "reproduce.sh"
+  - "code/**"                # contributing 链的 verbatim 源文件
+  - "data/**"                # 仅上传输入数据；不打包实验输出
+  - "figures/**"             # 顶层 figures
+  - "environment.json"
+# 注：EVOLUTION.md 和 _provenance.json 是位于 ear/ 外（checkpoint 根目录）
+# 的 ARI 审计日志，不会被收入发布 bundle。
+exclude: []                  # 用户指定排除 (在 include 之后应用)
+max_file_mb: 100             # 超过此大小的 allowlist 文件会显式失败
+visibility: staged           # staged|public|unlisted|private-token|embargoed-until:YYYY-MM-DD
+required: false
+auto_promote: false
+license: MIT                 # SPDX；ear/LICENSE 据此从模板生成
+backend: ari-registry
+```
+
+v0.6.0 旧路径（`code/<node_id>/**`、`data/raw_metrics.json`、`logs/**`、`reproducibility/**`）在 v0.7.0 中不再产生；请从旧的 `publish.yaml` 中移除。
+
+### 内置 deny 模式
+
+以下模式 **始终** 排除,即便 `include` 命中:
+
+```
+.env, .env.*, **/.env, **/.env.*
+**/secrets/**, secrets/**
+**/*.pem, **/*.key
+**/id_rsa, **/id_ed25519
+```
+
+`manifest.lock` 仅记录被排除的数量,不记录路径。
+
+### 行为
+
+- `publish.yaml` **不存在** 时,`ear_curate` 阶段静默跳过,
+  论文 Code Availability 段落省略 (与 v0.6.0 检查点完全向后兼容)。
+- **bundle digest** (`manifest.lock` 中的 `bundle_sha256`) 是
+  按路径排序的文件记录 (path + size + sha256) 的规范 JSON 的 sha256,
+  跨机器可复现, 是写入论文的永久真实值。
+- 精选是 **原子的**: `max_file_mb` 超限等硬失败时,
+  之前正常的 `ear_published/` 不会被破坏。
+
+### CLI
+
+```bash
+ari ear curate <checkpoint>            # 友好输出
+ari ear curate <checkpoint> --json     # 机器可读
+ari ear status <checkpoint>            # 显示 manifest 摘要
+
+ari ear publish <checkpoint> --backend ari-registry --visibility staged
+ari ear promote <checkpoint> --target public
+```
+
+### Pipeline 集成
+
+`workflow.yaml` 在 paper 管线中,`ear_curate` 阶段插入到 `generate_ear`
+与 `generate_figures` 之间, 调用 transform skill 的 `curate_ear`
+MCP 工具; `publish.yaml` 不存在时为 no-op。

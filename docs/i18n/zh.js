@@ -131,7 +131,9 @@ window.LANGS.zh = {
   'nav-phi': '理念',
   'nav-how': '工作原理',
   'nav-docs': '文档',
-  'footer-text': 'v0.6.0 · 开源 · MIT 许可证',
+  'footer-text': 'v0.7.0 · 开源 · MIT 许可证',
+  'paperbench-desc': 'OpenAI 提出的基准，用于评测 AI 代理能否从零复现前沿 ML 论文。每篇论文被分解为细粒度的 TaskNode 评分树，由 LLM 裁判（"SimpleJudge"）打分。v0.7.0 将 PaperBench 同捆于 <code>ari-skill-paper-re/vendor/paperbench</code>，作为 ARI 可复现性检查（ORS Phase 2）的确定性核心。',
+  'memgpt-desc': '层次化记忆 + 工具调度的分页机制，使 LLM 代理在受限上下文中表现得仿佛"无限"。MemGPT 论文演化为 <a href="https://docs.letta.com" target="_blank" style="color:var(--blue-light);">Letta</a>，v0.6.0 起被 ARI 采用为记忆后端，取代 v0.5.x 的 JSONL store，提供祖先作用域归档记忆与每个 checkpoint 的可移植快照。',
   // === docs.html ===
   'docs-logo': '文档',
   'nav-gs': '入门',
@@ -253,4 +255,5 @@ window.LANGS.zh = {
   'memory-li-meta': '<code>{checkpoint}/memory_access.jsonl</code> &mdash; 供 Tree 仪表板使用的追加式写/读遥测',
   'memory-p2': '写入端工具强制执行 <strong>Copy-on-Write</strong>（子节点不能修改祖先的条目），<code>search_memory</code> 严格按传入的 <code>ancestor_ids</code> 过滤，因此兄弟分支之间不会交叉污染。Letta 的 self-edit 默认关闭（<code>ARI_MEMORY_LETTA_DISABLE_SELF_EDIT=true</code>）。',
   'memory-p3': '实验监控的 <code>Trace</code> 标签页通过 Letta 库实时读取这些条目。使用 <code>ari memory</code> 子命令（<code>migrate</code> / <code>backup</code> / <code>restore</code> / <code>start-local</code> 等）管理后端。',
+  'memory-p4': '<strong>v0.7.0 注记 &mdash;</strong> 在 Letta 0.16.x 上，SDK 的 <code>passages.list(search=q)</code> 是 SQL 子串过滤（<code>LOWER(text) LIKE LOWER(%q%)</code>）而非语义搜索；长的自然语言查询在真实数据上会静默地返回 0 条祖先条目。<code>search_memory</code> 改为调用 <code>passages.search</code>（<code>GET /archival-memory/search</code>，<code>embed_query=True</code>），以 <code>top_k = max(letta_overfetch, limit*40)</code> 拉取，再在本地按 <code>ancestor_ids</code> + <code>ari_checkpoint</code> 做 post-filter。<code>add_memory</code> 插入时已支付的 embedding 成本现在能在检索中真正被使用；子节点按其 <code>eval_summary</code> 查询的相关度顺序看到祖先条目。',
 };

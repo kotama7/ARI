@@ -15,6 +15,87 @@ from ari.memory.client import MemoryClient
 from ari.orchestrator.node import Node, NodeLabel, NodeStatus
 
 
+def _load_sibling_node_reports(siblings: list["Node"]) -> dict[str, dict]:
+    """Best-effort: load `node_report.json` for every sibling.
+
+    Returns ``{node_id: report}``. Empty when ``ARI_CHECKPOINT_DIR`` is not
+    set or no report files exist (e.g. early in the run, or in tests).
+    """
+    import json as _json
+    import os as _os
+
+    ckpt_env = _os.environ.get("ARI_CHECKPOINT_DIR", "")
+    if not ckpt_env:
+        return {}
+    try:
+        from ari.paths import PathManager as _PM
+        pm = _PM.from_checkpoint_dir(ckpt_env)
+        run_id = _os.path.basename(ckpt_env.rstrip("/"))
+    except Exception:
+        return {}
+
+    out: dict[str, dict] = {}
+    for c in siblings:
+        try:
+            rp = pm.node_work_dir(run_id, c.id) / "node_report.json"
+            if rp.is_file():
+                out[c.id] = _json.loads(rp.read_text())
+        except Exception:
+            continue
+    return out
+
+
+def _format_parent_report_block(node: Node) -> str:
+    """Read node_report.json (if present) and format it for expand()'s prompt.
+
+    Returns "" on any failure so expand() falls back to the legacy text
+    summary path. We resolve the run_id from ``ARI_CHECKPOINT_DIR``; in tests
+    or non-checkpoint contexts this env var is absent and we silently no-op.
+    """
+    import json as _json
+    import os as _os
+
+    ckpt_env = _os.environ.get("ARI_CHECKPOINT_DIR", "")
+    if not ckpt_env:
+        return ""
+    try:
+        from ari.paths import PathManager as _PM
+        pm = _PM.from_checkpoint_dir(ckpt_env)
+        run_id = _os.path.basename(ckpt_env.rstrip("/"))
+        rp = pm.node_work_dir(run_id, node.id) / "node_report.json"
+        if not rp.is_file():
+            return ""
+        rep = _json.loads(rp.read_text())
+    except Exception:
+        return ""
+
+    sa = rep.get("self_assessment") or {}
+    concerns = sa.get("concerns") or []
+    hints = rep.get("next_steps_hints") or []
+    delta = (rep.get("delta_vs_parent") or "").strip()
+    fc = rep.get("files_changed") or {}
+    added = [e.get("path") for e in (fc.get("added") or [])][:5]
+    modified = [e.get("path") for e in (fc.get("modified") or [])][:5]
+    parts = ["\nParent node_report (structured self-report):"]
+    if delta:
+        parts.append(f"  delta_vs_parent: {delta[:240]}")
+    if added:
+        parts.append(f"  files added: {added}")
+    if modified:
+        parts.append(f"  files modified: {modified}")
+    if concerns:
+        parts.append("  concerns flagged by evaluator:")
+        for c in concerns[:5]:
+            parts.append(f"    - {c[:200]}")
+    if hints:
+        parts.append("  next-step hints from evaluator axes:")
+        for h in hints[:5]:
+            parts.append(f"    - {h[:200]}")
+    if len(parts) == 1:
+        return ""
+    return "\n".join(parts) + "\n"
+
+
 def _make_node_name(label: str, direction_text: str, depth: int) -> str:
     """Generate a short human-readable name from label + direction text."""
     import re as _re
@@ -274,10 +355,16 @@ class BFTS:
             else "Parent scientific score: not yet evaluated\n"
         )
         idea_block = (
-            f"\nResearch direction (from upstream idea generation):\n{idea_context[:800]}\n"
+            f"\nResearch direction (from upstream idea generation):\n{idea_context}\n"
             if idea_context
             else ""
         )
+
+        # ── Parent's node_report (delta_vs_parent / concerns / hints) ──
+        # Best-effort: when present, this enriches the prompt with the
+        # parent's structured self-assessment so the planner can target
+        # specific weaknesses or follow up on concrete next-step hints.
+        parent_report_block = _format_parent_report_block(node)
 
         # ── Sibling scores at same depth ──
         sibling_lines: list[str] = []
@@ -312,20 +399,62 @@ class BFTS:
         )
 
         # ── Already-spawned children of this parent (avoid duplicating) ──
+        # Show ALL existing children (PENDING / RUNNING / FAILED / SUCCESS).
+        # The previous `for_synthesis` filter dropped in-flight siblings the
+        # moment any sibling produced a node_report, which collapsed the dedup
+        # signal exactly when more children were being created in parallel.
+        # `status` + `score` let the LLM distinguish "tried and failed" from
+        # "in flight, propose something complementary".
+        sibling_reports = _load_sibling_node_reports(existing_children or [])
+        sibling_label_counts: Counter = Counter()
         existing_lines: list[str] = []
-        for c in existing_children or []:
+        for c in (existing_children or []):
             cl = c.label.value if hasattr(c.label, "value") else str(c.label or "?")
+            sibling_label_counts[cl] += 1
             cdir = (c.eval_summary or "").strip().replace("\n", " ")
-            existing_lines.append(
-                f"  - id={c.id[-8:]} label={cl} direction={repr(cdir[:160])}"
+            cstatus = c.status.value if hasattr(c.status, "value") else str(c.status or "?")
+            cscore = (c.metrics or {}).get("_scientific_score")
+            score_part = f" score={float(cscore):.2f}" if isinstance(cscore, (int, float)) else ""
+            line = (
+                f"  - id={c.id[-8:]} label={cl} status={cstatus}{score_part}"
+                f" direction={repr(cdir[:160])}"
             )
-        existing_block = (
-            "Already-spawned children of THIS parent (do NOT duplicate these directions; "
-            "propose something complementary):\n"
-            + "\n".join(existing_lines) + "\n\n"
-            if existing_lines
-            else "Already-spawned children of THIS parent: (none — this is the first child)\n\n"
-        )
+            rep = sibling_reports.get(c.id)
+            if rep:
+                fc = rep.get("files_changed") or {}
+                added = [e.get("path") for e in (fc.get("added") or [])][:5]
+                if added:
+                    line += f" files_added={added}"
+            existing_lines.append(line)
+
+        if existing_lines:
+            label_dist_str = ", ".join(
+                f"{lbl}={cnt}" for lbl, cnt in sorted(sibling_label_counts.items())
+            )
+            saturated = sorted(
+                lbl for lbl, cnt in sibling_label_counts.items() if cnt >= 2
+            )
+            quota_lines = [
+                f"  label distribution among THIS parent's existing children: "
+                f"{{{label_dist_str}}}"
+            ]
+            if saturated:
+                quota_lines.append(
+                    f"  labels already saturated (≥2 appearances): {saturated} — "
+                    "propose a DIFFERENT label unless you have a strong scientific "
+                    "reason to repeat one of these."
+                )
+            existing_block = (
+                "Already-spawned children of THIS parent (do NOT duplicate these "
+                "directions; propose something complementary):\n"
+                + "\n".join(existing_lines) + "\n"
+                + "\n".join(quota_lines) + "\n\n"
+            )
+        else:
+            existing_block = (
+                "Already-spawned children of THIS parent: "
+                "(none — this is the first child)\n\n"
+            )
 
         # ── Tree diversity metrics ──
         seen_labels: list[str] = []
@@ -355,7 +484,8 @@ class BFTS:
             f"Parent metrics: {json.dumps(node.metrics, ensure_ascii=False)}\n"
             f"Parent summary: {node.eval_summary or 'none'}\n"
             f"{sci_note}"
-            f"{idea_block}\n"
+            f"{idea_block}"
+            f"{parent_report_block}\n"
             f"{siblings_block}"
             f"{ancestors_block}"
             f"{existing_block}"
@@ -440,6 +570,10 @@ class BFTS:
                 # child nodes can only access memories in ancestor_ids
             )
             child.eval_summary = direction_text
+            # Preserve the parent's chosen direction verbatim so the
+            # node_report can record "what we set out to do" even after
+            # the evaluator overwrites eval_summary on completion.
+            child.original_direction = direction_text
             # Prefer the raw LLM label for naming when label==OTHER
             display_label = (
                 raw_label_text

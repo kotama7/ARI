@@ -1,0 +1,23 @@
+/* Layout: app frame (body, root, sidebar, main, pages) and typography.
+ * Phase B split from dashboard.css.
+ */
+
+body{background:var(--bg);color:var(--text);font-family:var(--font);display:flex;height:100vh;overflow:hidden}
+#root{display:flex;width:100%;height:100%}
+
+/* Sidebar */
+#sidebar{width:220px;min-width:220px;background:var(--sidebar);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:16px 0}
+.sidebar-logo{padding:12px 20px 20px;font-size:1.2rem;font-weight:800;letter-spacing:-0.5px;color:var(--blue-light)}
+.sidebar-logo span{color:var(--muted);font-weight:400;font-size:.75rem;display:block;margin-top:2px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;cursor:pointer;color:var(--muted);font-size:.875rem;font-weight:500;transition:.15s;border-left:3px solid transparent}
+.nav-item:hover{color:var(--text);background:rgba(255,255,255,.04)}
+.nav-item.active{color:var(--blue-light);background:rgba(59,130,246,.1);border-left-color:var(--blue)}
+.nav-icon{font-size:1.1rem;width:20px;text-align:center}
+
+/* Main */
+#main{flex:1;overflow:auto;display:flex;flex-direction:column}
+.page{display:block;flex:1;padding:28px;overflow:auto}
+
+/* Typography */
+h1{font-size:1.5rem;font-weight:700;margin-bottom:4px}
+.subtitle{color:var(--muted);font-size:.9rem;margin-bottom:24px}

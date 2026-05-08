@@ -1,0 +1,7 @@
+name: replicate-skill
+display_name: "ORS Auto-Rubric (PaperBench-format)"
+description: "Generates and audits PaperBench-compatible auto rubrics from papers."
+requires_env:
+  - ARI_MODEL_RUBRIC_GEN
+  - ARI_MODEL_RUBRIC_AUDIT
+version: "0.1.0"

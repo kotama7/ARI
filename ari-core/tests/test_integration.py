@@ -190,6 +190,11 @@ def test_template_variables_all_resolve():
         # vlm_feedback is empty on the first pass; pipeline.py sets it to
         # "" via setdefault so {{vlm_feedback}} resolves to an empty string.
         "vlm_feedback": "",
+        # Surfaced from evaluation_criteria.json by run_pipeline. Empty
+        # primary_metric is the legacy path: transform_data falls back to
+        # omitting the scalar best rather than fabricating one.
+        "primary_metric": "",
+        "higher_is_better": "True",
         # Expose nested dicts for dot-notation access (e.g. resources.cpus)
         **{section: sec_val
            for section, sec_val in wf.items()

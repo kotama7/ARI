@@ -561,6 +561,142 @@ class TestVirsciDiscussionLoop:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# 6.5. Phase 2.5 — pinned-idea append behaviour
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+class TestPinnedAppend:
+    """When the child checkpoint already has an idea.json with _pinned
+    entries (written by _api_launch_sub_experiment after inherit_idea_index
+    materialisation), generate_ideas must prepend those entries so the
+    inherit directive survives. New VirSci ideas become alternatives.
+    """
+
+    @pytest.mark.asyncio
+    async def test_pinned_idea_preserved_at_index_zero(self, tmp_path, monkeypatch):
+        # Seed a child idea.json with one pinned idea (the inherit-from-N flow).
+        seed = {
+            "ideas": [
+                {
+                    "title": "InheritedFromParent",
+                    "description": "parent's chosen alternative",
+                    "experiment_plan": "1) base\n2) refine",
+                    "novelty_score": 0.6,
+                    "feasibility_score": 0.7,
+                    "overall_score": 0.65,
+                    "_pinned": True,
+                    "_inherited_from": {"parent_run_id": "p_xyz", "index": 1},
+                }
+            ],
+            "_inherited_from": {"parent_run_id": "p_xyz", "index": 1},
+        }
+        (tmp_path / "idea.json").write_text(json.dumps(seed))
+        monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+
+        with patch("server._llm", new_callable=AsyncMock) as mock_llm, \
+             patch("server._s2_search", return_value=[]):
+            mock_llm.side_effect = [
+                "Gap text.",
+                MOCK_IDEA_JSON, MOCK_IDEA_JSON,  # 1 idea × 2 agents
+                MOCK_METRIC_JSON,
+            ]
+            result = await server.generate_ideas(
+                topic="topic", papers=MOCK_S2_RAW,
+                n_ideas=1, n_agents=2, max_discussion_rounds=0,
+            )
+        assert len(result["ideas"]) == 2  # 1 pinned + 1 new
+        assert result["ideas"][0]["title"] == "InheritedFromParent"
+        assert result["ideas"][0]["_pinned"] is True
+        # New idea appended after pinned — not at index 0.
+        assert result["ideas"][1]["title"] == "Adaptive Precision GEMM"
+        # Top-level provenance carried through.
+        assert result["_inherited_from"]["parent_run_id"] == "p_xyz"
+
+    @pytest.mark.asyncio
+    async def test_no_pinned_when_seed_absent(self, tmp_path, monkeypatch):
+        """Without a seed, generate_ideas behaves exactly as before."""
+        monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+        with patch("server._llm", new_callable=AsyncMock) as mock_llm, \
+             patch("server._s2_search", return_value=[]):
+            mock_llm.side_effect = [
+                "Gap.", MOCK_IDEA_JSON, MOCK_IDEA_JSON, MOCK_METRIC_JSON,
+            ]
+            result = await server.generate_ideas(
+                topic="topic", papers=MOCK_S2_RAW,
+                n_ideas=1, n_agents=2, max_discussion_rounds=0,
+            )
+        assert len(result["ideas"]) == 1
+        # No _pinned marker on freshly generated ideas.
+        assert "_pinned" not in result["ideas"][0]
+        assert "_inherited_from" not in result
+
+    @pytest.mark.asyncio
+    async def test_pinned_dedupes_new_idea_with_matching_title(self, tmp_path, monkeypatch):
+        """lineage decisions: when child VirSci generates an idea whose title
+        matches a pinned idea (case-insensitive, whitespace-normalised),
+        the duplicate is dropped to keep child idea.json tidy."""
+        seed = {
+            "ideas": [
+                {
+                    "title": "Adaptive Precision GEMM",  # same as MOCK_IDEA_JSON title
+                    "description": "parent's pin",
+                    "novelty_score": 0.6, "feasibility_score": 0.7,
+                    "overall_score": 0.65,
+                    "_pinned": True,
+                }
+            ],
+        }
+        (tmp_path / "idea.json").write_text(json.dumps(seed))
+        monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+
+        with patch("server._llm", new_callable=AsyncMock) as mock_llm, \
+             patch("server._s2_search", return_value=[]):
+            mock_llm.side_effect = [
+                "Gap.", MOCK_IDEA_JSON, MOCK_IDEA_JSON, MOCK_METRIC_JSON,
+            ]
+            result = await server.generate_ideas(
+                topic="topic", papers=MOCK_S2_RAW,
+                n_ideas=1, n_agents=2, max_discussion_rounds=0,
+            )
+        # Only the pinned idea remains; the duplicate-titled new idea
+        # was deduped.
+        assert len(result["ideas"]) == 1
+        assert result["ideas"][0]["title"] == "Adaptive Precision GEMM"
+        assert result["ideas"][0]["_pinned"] is True
+
+    @pytest.mark.asyncio
+    async def test_unpinned_seed_ignored(self, tmp_path, monkeypatch):
+        """Existing ideas without ``_pinned`` (e.g. mid-run interruptions)
+        must NOT pollute the next generate_ideas output."""
+        seed = {
+            "ideas": [
+                {
+                    "title": "StaleNotPinned",
+                    "description": "leftover from a prior run",
+                    "novelty_score": 0.5,
+                    "feasibility_score": 0.5,
+                    "overall_score": 0.5,
+                }
+            ],
+        }
+        (tmp_path / "idea.json").write_text(json.dumps(seed))
+        monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+
+        with patch("server._llm", new_callable=AsyncMock) as mock_llm, \
+             patch("server._s2_search", return_value=[]):
+            mock_llm.side_effect = [
+                "Gap.", MOCK_IDEA_JSON, MOCK_IDEA_JSON, MOCK_METRIC_JSON,
+            ]
+            result = await server.generate_ideas(
+                topic="topic", papers=MOCK_S2_RAW,
+                n_ideas=1, n_agents=2, max_discussion_rounds=0,
+            )
+        titles = [i["title"] for i in result["ideas"]]
+        assert "StaleNotPinned" not in titles
+        assert "Adaptive Precision GEMM" in titles
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # 7. No hardcoded environment assumptions
 # ══════════════════════════════════════════════════════════════════════════════
 

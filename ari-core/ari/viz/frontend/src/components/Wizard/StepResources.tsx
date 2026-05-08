@@ -10,6 +10,55 @@ export const PROVIDER_MODELS: Record<string, string[]> = {
   custom: [],
 };
 
+type OrsProvider = 'openai' | 'anthropic' | 'google' | 'ollama' | 'custom';
+
+const ORS_PROVIDER_MODELS: Record<OrsProvider, string[]> = {
+  openai: [
+    'gpt-5.4',
+    'gpt-5.2',
+    'gpt-5.4-mini',
+    'gpt-4o-2024-11-20',
+    'gpt-4o-2024-08-06',
+    'gpt-4o',
+    'gpt-4o-mini',
+    'o3',
+    'o1-mini',
+  ],
+  anthropic: [
+    'claude-opus-4-7',
+    'claude-opus-4-5',
+    'claude-sonnet-4-5',
+    'claude-haiku-3-5',
+  ],
+  google: ['gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro'],
+  ollama: ['qwen3:8b', 'qwen3:32b', 'llama3.3', 'gemma3:27b', 'mistral'],
+  custom: [],
+};
+
+const ORS_PROVIDER_LABELS: Record<OrsProvider, string> = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  google: 'Google',
+  ollama: 'Ollama (local)',
+  custom: 'Custom',
+};
+
+function inferOrsProvider(model: string): OrsProvider {
+  if (!model) return 'custom';
+  for (const provider of [
+    'openai',
+    'anthropic',
+    'google',
+    'ollama',
+  ] as const) {
+    if (ORS_PROVIDER_MODELS[provider].includes(model)) return provider;
+  }
+  if (model.startsWith('claude-')) return 'anthropic';
+  if (model.startsWith('gpt-') || /^o[1-9]/.test(model)) return 'openai';
+  if (model.startsWith('gemini-')) return 'google';
+  return 'custom';
+}
+
 const PHASES = ['idea', 'bfts', 'coding', 'eval', 'paper', 'review'] as const;
 const PHASE_LABELS: Record<string, string> = {
   idea: '💡 Idea',
@@ -31,6 +80,40 @@ interface GpuOption {
   name: string;
   memory?: string;
 }
+
+export interface OrsSettings {
+  replicator_model: string;
+  rubric_gen_model: string;
+  rubric_audit_model: string;
+  judge_model: string;
+  rubric_gen_temperature: number;
+  rubric_gen_target_leaves: number;     // 0 = auto
+  rubric_gen_two_stage: boolean;        // skeleton + parallel subtrees
+  judge_n_runs: number;                 // PaperBench paper §4.1: single-pass; ari default >1 is independent variance reduction
+  phase1_max_runtime_sec: number;       // ARI's reproduce.sh wall cap (ors_run_reproduce)
+  phase1_sandbox_kind: 'auto' | 'docker' | 'apptainer' | 'singularity' | 'local';
+  // v0.7+ replicator-agent fields. The vendored PaperBench solver
+  // (BasicAgent / IterativeAgent) is driven against repro_sandbox/.
+  replicator_time_limit_sec: number;    // Agent rollout wall budget (PaperBench §5.2: 12h)
+  iterative_agent: boolean;             // PaperBench §5.3: removes early-end, prompts step-by-step
+  replicator_max_steps: number;         // 0 = unlimited (only time_limit_sec constrains)
+}
+
+export const ORS_DEFAULTS: OrsSettings = {
+  replicator_model: 'claude-opus-4-7',
+  rubric_gen_model: 'gemini-2.5-pro',
+  rubric_audit_model: 'claude-opus-4-7',
+  judge_model: 'gpt-4o-2024-11-20',
+  rubric_gen_temperature: 0.0,
+  rubric_gen_target_leaves: 0,
+  rubric_gen_two_stage: true,
+  judge_n_runs: 1,                      // PaperBench parity (paper §4.1 single-pass)
+  phase1_max_runtime_sec: 43200,        // 12 h, matches paper §2.2 reproduce.sh cap
+  phase1_sandbox_kind: 'auto',
+  replicator_time_limit_sec: 43200,     // 12 h, matches paper §5.2
+  iterative_agent: false,               // BasicAgent default; flip on for IterativeAgent
+  replicator_max_steps: 0,              // unbounded; rely on time_limit_sec
+};
 
 interface StepResourcesProps {
   mode: string;
@@ -73,6 +156,8 @@ interface StepResourcesProps {
   setNumReviewsEnsemble: (v: number) => void;
   numReflections: number;
   setNumReflections: (v: number) => void;
+  ors: OrsSettings;
+  setOrs: (o: OrsSettings) => void;
   onBack: () => void;
   onNext: () => void;
 }
@@ -137,6 +222,8 @@ export function StepResources({
   setNumReviewsEnsemble,
   numReflections,
   setNumReflections,
+  ors,
+  setOrs,
   onBack,
   onNext,
 }: StepResourcesProps) {
@@ -752,6 +839,239 @@ export function StepResources({
         </details>
       </div>
 
+      {/* ORS Reproducibility Evaluation (PaperBench-format auto rubric) */}
+      <div className="card" style={{ marginTop: 16 }}>
+        <details open>
+          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
+            {'🧪'} {t('ors_section_title')}
+          </summary>
+          <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
+            <OrsModelPicker
+              label={t('ors_replicator_model')}
+              help={t('ors_replicator_help')}
+              value={ors.replicator_model}
+              onChange={(v) => setOrs({ ...ors, replicator_model: v })}
+            />
+
+            <div>
+              <OrsModelPicker
+                label={t('ors_rubric_gen_model')}
+                help={t('ors_rubric_gen_help')}
+                value={ors.rubric_gen_model}
+                onChange={(v) => setOrs({ ...ors, rubric_gen_model: v })}
+              />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 6 }}>
+                <div>
+                  <label style={{ fontSize: '.7rem', color: 'var(--muted)' }}>
+                    Temperature
+                  </label>
+                  <input
+                    className="input-sm"
+                    type="number"
+                    step="0.1"
+                    min={0}
+                    max={2}
+                    style={{ width: '100%' }}
+                    value={ors.rubric_gen_temperature}
+                    onChange={(e) =>
+                      setOrs({
+                        ...ors,
+                        rubric_gen_temperature:
+                          parseFloat(e.target.value) || 0,
+                      })
+                    }
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '.7rem', color: 'var(--muted)' }}>
+                    Target leaves (0 = auto)
+                  </label>
+                  <input
+                    className="input-sm"
+                    type="number"
+                    min={0}
+                    max={400}
+                    style={{ width: '100%' }}
+                    value={ors.rubric_gen_target_leaves}
+                    onChange={(e) =>
+                      setOrs({
+                        ...ors,
+                        rubric_gen_target_leaves:
+                          Math.max(0, Math.min(400, parseInt(e.target.value) || 0)),
+                      })
+                    }
+                  />
+                </div>
+              </div>
+              <div style={{ marginTop: 8, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                <input
+                  id="ors-rubric-two-stage"
+                  type="checkbox"
+                  checked={ors.rubric_gen_two_stage}
+                  onChange={(e) =>
+                    setOrs({ ...ors, rubric_gen_two_stage: e.target.checked })
+                  }
+                  style={{ marginTop: 3 }}
+                />
+                <label htmlFor="ors-rubric-two-stage" style={{ fontSize: '.75rem', lineHeight: 1.4 }}>
+                  <div style={{ fontWeight: 500 }}>{t('ors_rubric_two_stage')}</div>
+                  <div style={{ color: 'var(--muted)', fontSize: '.7rem', marginTop: 2 }}>
+                    {t('ors_rubric_two_stage_help')}
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <OrsModelPicker
+              label={t('ors_rubric_audit_model')}
+              help={t('ors_rubric_audit_help')}
+              value={ors.rubric_audit_model}
+              onChange={(v) => setOrs({ ...ors, rubric_audit_model: v })}
+            />
+
+            <div>
+              <OrsModelPicker
+                label={t('ors_judge_model')}
+                help={t('ors_judge_help')}
+                value={ors.judge_model}
+                onChange={(v) => setOrs({ ...ors, judge_model: v })}
+              />
+              <div style={{ marginTop: 6 }}>
+                <label style={{ fontSize: '.7rem', color: 'var(--muted)' }}>
+                  {t('ors_judge_n_runs')}
+                </label>
+                <input
+                  className="input-sm"
+                  type="number"
+                  min={1}
+                  max={10}
+                  style={{ width: '100%' }}
+                  value={ors.judge_n_runs}
+                  onChange={(e) =>
+                    setOrs({
+                      ...ors,
+                      judge_n_runs: Math.max(1, Math.min(10, parseInt(e.target.value) || 1)),
+                    })
+                  }
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div>
+                <label style={{ fontSize: '.75rem', color: 'var(--muted)' }}>
+                  {t('ors_phase1_max_runtime')}
+                </label>
+                <input
+                  className="input-sm"
+                  type="number"
+                  min={0.1}
+                  max={12}
+                  step="0.5"
+                  style={{ width: '100%' }}
+                  value={(ors.phase1_max_runtime_sec / 3600).toFixed(2)}
+                  onChange={(e) => {
+                    const hours = Math.max(0.1, Math.min(12, parseFloat(e.target.value) || 6));
+                    setOrs({ ...ors, phase1_max_runtime_sec: Math.round(hours * 3600) });
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '.75rem', color: 'var(--muted)' }}>
+                  Phase 1 Sandbox
+                </label>
+                <select
+                  className="input-sm"
+                  style={{ width: '100%' }}
+                  value={ors.phase1_sandbox_kind}
+                  onChange={(e) =>
+                    setOrs({
+                      ...ors,
+                      phase1_sandbox_kind: e.target.value as
+                        | 'auto'
+                        | 'docker'
+                        | 'apptainer'
+                        | 'singularity'
+                        | 'local',
+                    })
+                  }
+                >
+                  <option value="auto">auto (docker → apptainer → singularity → local)</option>
+                  <option value="docker">docker</option>
+                  <option value="apptainer">apptainer</option>
+                  <option value="singularity">singularity</option>
+                  <option value="local">local</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Replicator Agent (v0.7+) — PaperBench BasicAgent / IterativeAgent */}
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+              <div style={{ fontSize: '.85rem', fontWeight: 600, marginBottom: 8 }}>
+                {t('ors_replicator_agent') || 'Replicator Agent'}
+                <span style={{ fontSize: '.7rem', color: 'var(--muted)', fontWeight: 400, marginLeft: 8 }}>
+                  ({t('ors_replicator_agent_help') || 'PaperBench BasicAgent / IterativeAgent driven against repro_sandbox/'})
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div>
+                  <label style={{ fontSize: '.75rem', color: 'var(--muted)' }}>
+                    {t('ors_replicator_mode') || 'Agent variant'}
+                  </label>
+                  <select
+                    className="input-sm"
+                    style={{ width: '100%' }}
+                    value={ors.iterative_agent ? 'iterative' : 'basic'}
+                    onChange={(e) =>
+                      setOrs({ ...ors, iterative_agent: e.target.value === 'iterative' })
+                    }
+                  >
+                    <option value="basic">BasicAgent (paper §5.2)</option>
+                    <option value="iterative">IterativeAgent (paper §5.3 — step-by-step, no early end)</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '.75rem', color: 'var(--muted)' }}>
+                    {t('ors_replicator_time_limit') || 'Agent time limit (h)'}
+                  </label>
+                  <input
+                    className="input-sm"
+                    type="number"
+                    min={0.5}
+                    max={36}
+                    step="0.5"
+                    style={{ width: '100%' }}
+                    value={(ors.replicator_time_limit_sec / 3600).toFixed(2)}
+                    onChange={(e) => {
+                      const hours = Math.max(0.5, Math.min(36, parseFloat(e.target.value) || 12));
+                      setOrs({ ...ors, replicator_time_limit_sec: Math.round(hours * 3600) });
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginTop: 8 }}>
+                <label style={{ fontSize: '.75rem', color: 'var(--muted)' }}>
+                  {t('ors_replicator_max_steps') || 'Agent max steps (0 = unlimited)'}
+                </label>
+                <input
+                  className="input-sm"
+                  type="number"
+                  min={0}
+                  max={10000}
+                  style={{ width: '100%' }}
+                  value={ors.replicator_max_steps}
+                  onChange={(e) =>
+                    setOrs({ ...ors, replicator_max_steps: Math.max(0, parseInt(e.target.value) || 0) })
+                  }
+                />
+              </div>
+            </div>
+          </div>
+        </details>
+      </div>
+
       {/* Paper Review card (rubric-driven) */}
       <div className="card" style={{ marginTop: 16 }}>
         <div className="card-title">
@@ -852,6 +1172,95 @@ export function StepResources({
         <button className="btn btn-primary" onClick={onNext}>
           Next {'→'}
         </button>
+      </div>
+    </div>
+  );
+}
+
+
+function OrsModelPicker({
+  label,
+  help,
+  value,
+  onChange,
+}: {
+  label: string;
+  help: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [provider, setProvider] = useState<OrsProvider>(() =>
+    inferOrsProvider(value),
+  );
+  const list = ORS_PROVIDER_MODELS[provider];
+  const inList = list.includes(value);
+  const customMode = provider === 'custom' || !inList;
+
+  const handleProviderChange = (p: OrsProvider) => {
+    setProvider(p);
+    if (p !== 'custom') {
+      const models = ORS_PROVIDER_MODELS[p];
+      if (models.length > 0) onChange(models[0]);
+    }
+  };
+
+  const handleModelChange = (m: string) => {
+    if (m === '__custom__') {
+      onChange('');
+    } else {
+      onChange(m);
+    }
+  };
+
+  return (
+    <div>
+      <label style={{ fontSize: '.75rem', color: 'var(--muted)' }}>
+        {label}
+      </label>
+      <div style={{ fontSize: '.7rem', color: 'var(--muted)' }}>{help}</div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 2fr',
+          gap: 6,
+          marginTop: 4,
+        }}
+      >
+        <select
+          className="input-sm"
+          value={provider}
+          onChange={(e) => handleProviderChange(e.target.value as OrsProvider)}
+        >
+          {(
+            ['openai', 'anthropic', 'google', 'ollama', 'custom'] as OrsProvider[]
+          ).map((p) => (
+            <option key={p} value={p}>
+              {ORS_PROVIDER_LABELS[p]}
+            </option>
+          ))}
+        </select>
+        {customMode ? (
+          <input
+            className="input-sm"
+            type="text"
+            value={value}
+            placeholder="model name (e.g. local-llama)"
+            onChange={(e) => onChange(e.target.value)}
+          />
+        ) : (
+          <select
+            className="input-sm"
+            value={value}
+            onChange={(e) => handleModelChange(e.target.value)}
+          >
+            {list.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+            <option value="__custom__">{'Custom…'}</option>
+          </select>
+        )}
       </div>
     </div>
   );

@@ -131,7 +131,9 @@ window.LANGS.ja = {
   'nav-phi': '理念',
   'nav-how': '仕組み',
   'nav-docs': 'ドキュメント',
-  'footer-text': 'v0.6.0 · オープンソース · MIT ライセンス',
+  'footer-text': 'v0.7.0 · オープンソース · MIT ライセンス',
+  'paperbench-desc': 'OpenAI による、AI エージェントがフロンティア ML 論文をスクラッチから再現できるかを評価するベンチマーク。各論文は細粒度の TaskNode ルーブリックに分解され、LLM 採点器（"SimpleJudge"）が評価します。v0.7.0 では PaperBench を <code>ari-skill-paper-re/vendor/paperbench</code> に同梱し、ARI の再現性チェック（ORS Phase 2）の決定論的コアとして利用しています。',
+  'memgpt-desc': '階層メモリ + ツール仲介ページングで LLM エージェントを「無限コンテキスト」のように動作させる手法。MemGPT 論文は <a href="https://docs.letta.com" target="_blank" style="color:var(--blue-light);">Letta</a> へ進化し、v0.6.0 から ARI のメモリバックエンドとして採用されました。v0.5.x の JSONL ストアを置き換え、祖先スコープのアーカイバルメモリと checkpoint ごとの可搬スナップショットを提供します。',
   // === docs.html ===
   'docs-logo': 'ドキュメント',
   'nav-gs': 'はじめに',
@@ -253,4 +255,5 @@ window.LANGS.ja = {
   'memory-li-meta': '<code>{checkpoint}/memory_access.jsonl</code> &mdash; Tree ダッシュボード向けの追記専用 write/read テレメトリ',
   'memory-p2': '書き込みツールは <strong>Copy-on-Write</strong>（子ノードが祖先のエントリを改変できない）を強制し、<code>search_memory</code> は渡された <code>ancestor_ids</code> で厳密にフィルタするので、兄弟ブランチ同士が混ざることはありません。Letta の self-edit は <code>ARI_MEMORY_LETTA_DISABLE_SELF_EDIT=true</code> で既定オフ。',
   'memory-p3': '実験モニターの <code>Trace</code> タブは Letta ベースのライブラリ経由でこれらのエントリを読み取ります。バックエンドは <code>ari memory</code> コマンド（<code>migrate</code> / <code>backup</code> / <code>restore</code> / <code>start-local</code> ほか）で管理します。',
+  'memory-p4': '<strong>v0.7.0 メモ &mdash;</strong> Letta 0.16.x では SDK の <code>passages.list(search=q)</code> は SQL substring filter (<code>LOWER(text) LIKE LOWER(%q%)</code>) であって semantic search ではなく、長い自然文クエリは祖先エントリに対して 0 件しか返らない問題が本番で観測されました。<code>search_memory</code> は代わりに <code>passages.search</code>（<code>GET /archival-memory/search</code>、<code>embed_query=True</code>）を <code>top_k = max(letta_overfetch, limit*40)</code> で叩き、<code>ancestor_ids</code> + <code>ari_checkpoint</code> でローカル post-filter します。<code>add_memory</code> 挿入時に支払っている embedding コストが retrieval で正しく消費される形になり、子は <code>eval_summary</code> クエリに対する関連度順で祖先エントリを受け取ります。',
 };

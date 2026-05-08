@@ -102,6 +102,13 @@ class Node:
     children: list[str] = field(default_factory=list)
     created_at: str = ""
     completed_at: str = ""
+    # Direction text decided by the parent's expand() LLM call. Preserved
+    # verbatim through the lifetime of the node so downstream consumers can
+    # see "what we set out to do" even after evaluator overwrites eval_summary.
+    original_direction: str | None = None
+    # Relative pointer (from checkpoint root) to the per-node report file.
+    # Optional: present only after `node_report.json` has been written.
+    node_report_path: str | None = None
 
     def __post_init__(self) -> None:
         if not self.created_at:
@@ -148,4 +155,6 @@ class Node:
             "error_log": self.error_log,
             "ancestor_ids": self.ancestor_ids,
             "trace_log": self.trace_log,
+            "original_direction": self.original_direction,
+            "node_report_path": self.node_report_path,
         }

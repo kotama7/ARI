@@ -24,6 +24,198 @@ from rich.tree import Tree
 from ari.config import load_config, auto_config
 from ari.core import build_runtime, generate_paper_section
 from ari.paths import PathManager
+from ari.pipeline import _extract_plan_sections
+
+
+# ---------------------------------------------------------------------------
+# lineage decision config + executor
+# ---------------------------------------------------------------------------
+
+_LINEAGE_LOG = logging.getLogger("ari.cli.lineage")
+
+
+def _load_lineage_decision_config() -> dict:
+    """Read lineage_decision settings from workflow.yaml + active rubric.
+
+    Schema in workflow.yaml::
+
+        lineage_decision:
+          mode: off | stagnation_rule | every_node   # default off
+          stagnation_window: 5      # only used when mode = stagnation_rule
+          stagnation_threshold: 0.02
+          min_nodes_before_decision: 3
+          rate_limit_per_run: 5     # max actions per run (cap)
+
+    lineage decisions: the active rubric (``ARI_RUBRIC``) may override these
+    via a ``lineage_thresholds:`` field, so different venues can tune
+    when escalation fires (HPC kernel runs may need a longer window
+    than ML training runs):
+
+        # ari-core/config/reviewer_rubrics/<id>.yaml
+        lineage_thresholds:
+          stagnation_window: 8
+          stagnation_threshold: 0.01
+          min_nodes_before_decision: 5
+
+    Precedence: rubric override > workflow.yaml > built-in defaults.
+    """
+    base: dict = {}
+    try:
+        import yaml as _yaml
+        _candidates = [
+            Path(__file__).parent.parent / "config" / "workflow.yaml",
+            Path.cwd() / "config" / "workflow.yaml",
+        ]
+        for p in _candidates:
+            if p.exists():
+                base = (_yaml.safe_load(p.read_text()) or {}).get(
+                    "lineage_decision", {}
+                ) or {}
+                break
+    except Exception:
+        base = {}
+
+    # Overlay rubric-specific thresholds when present.
+    try:
+        rid = (os.environ.get("ARI_RUBRIC") or "").strip()
+        if rid:
+            import yaml as _yaml2
+            rubric_path = (
+                Path(__file__).parent.parent
+                / "config" / "reviewer_rubrics" / f"{rid}.yaml"
+            )
+            if rubric_path.exists():
+                rubric_data = _yaml2.safe_load(rubric_path.read_text()) or {}
+                overrides = rubric_data.get("lineage_thresholds") or {}
+                if isinstance(overrides, dict):
+                    merged = dict(base)
+                    for k in (
+                        "stagnation_window",
+                        "stagnation_threshold",
+                        "min_nodes_before_decision",
+                        "rate_limit_per_run",
+                    ):
+                        if k in overrides:
+                            merged[k] = overrides[k]
+                    base = merged
+    except Exception:
+        pass
+    return base
+
+
+def _mark_parent_terminated(parent_ckpt: Path, rationale: str) -> None:
+    """lineage decisions: write parent_terminated=true into meta.json so any
+    descendant run started later can decide whether to cancel itself.
+
+    Existing children (already running) are not signalled — they have
+    their own BFTS loops and their own lineage_decision hooks. The
+    flag is purely a hint that propagates *forward* through future
+    sub-experiment launches.
+    """
+    meta_p = parent_ckpt / "meta.json"
+    try:
+        meta = json.loads(meta_p.read_text()) if meta_p.exists() else {}
+        if not isinstance(meta, dict):
+            meta = {}
+        meta["parent_terminated"] = True
+        meta["parent_terminated_rationale"] = rationale[:300]
+        meta_p.write_text(json.dumps(meta, indent=2))
+    except Exception as _e_meta:
+        _LINEAGE_LOG.warning("could not mark parent_terminated: %s", _e_meta)
+
+
+def _execute_lineage_decision(
+    decision,                    # LineageDecision
+    *,
+    parent_run_id: str,
+    parent_ckpt: Path,
+    experiment_data: dict,
+) -> bool:
+    """Carry out the LLM-chosen action via Phase 2.5 plumbing.
+
+    Returns True iff the BFTS loop should stop expanding new nodes
+    (the ``terminate`` action).
+    """
+    action = decision.action
+    if action in ("continue", None, ""):
+        return False
+    if action == "terminate":
+        _LINEAGE_LOG.info(
+            "lineage decision: terminate (rationale=%s)", decision.rationale[:140]
+        )
+        # lineage decisions: persist the terminate signal in meta.json so
+        # descendants spawned after this point can opt out.
+        _mark_parent_terminated(parent_ckpt, decision.rationale)
+        return True
+    if action in ("switch_to_idea", "fanout"):
+        if decision.target_idea_index is None:
+            _LINEAGE_LOG.warning(
+                "lineage decision: %s with no target_idea_index — skipping",
+                action,
+            )
+            return False
+        try:
+            from ari.viz.api_orchestrator import _api_launch_sub_experiment
+        except Exception as e:
+            _LINEAGE_LOG.warning("lineage decision: import launch API failed: %s", e)
+            return False
+        body = {
+            "experiment_md": (
+                f"Auto-spawned by parent {parent_run_id} via lineage decision "
+                f"({action}). Rationale: {decision.rationale[:300]}\n"
+            ),
+            "parent_run_id": parent_run_id,
+            "inherit_idea_index": int(decision.target_idea_index),
+        }
+        if decision.disable_generate_ideas:
+            # lineage decisions: child runs the inherited idea verbatim, no resampling.
+            os.environ.setdefault("ARI_DISABLED_TOOLS_FOR_CHILD", "")
+        try:
+            res = _api_launch_sub_experiment(json.dumps(body).encode())
+            _LINEAGE_LOG.info(
+                "lineage decision: %s → child %s (rationale=%s)",
+                action, res.get("run_id", "?"), decision.rationale[:140],
+            )
+        except Exception as e:
+            _LINEAGE_LOG.warning("lineage decision: launch failed: %s", e)
+        return False  # parent continues; child runs in parallel
+    return False
+
+
+def _build_idea_ctx_for_expand(idea_data: dict) -> str:
+    """Build the BFTS-expand idea context with §-tag extraction.
+
+    Replaces the legacy 400-char truncation that dropped §4-§6 of the
+    VirSci experiment_plan (model calibration / comparisons), causing
+    BFTS to never explore those branches. Each section title is always
+    included; bodies are truncated only if the total context grows large.
+    """
+    ideas = idea_data.get("ideas") or []
+    if not ideas:
+        return ""
+    best = ideas[0]
+    gap = idea_data.get("gap_analysis", "")
+    parts = [
+        f"Gap: {gap[:1500]}",
+        f"Idea: {best.get('title', '')}",
+        f"Description: {best.get('description', '')[:2000]}",
+    ]
+    plan_text = best.get("experiment_plan", "")
+    if plan_text:
+        sections = _extract_plan_sections(plan_text)
+        if sections:
+            plan_lines = ["Plan sections:"]
+            # Total body budget for the plan portion. Per-section trimming
+            # falls back when overall context grows too large.
+            per_section_budget = max(400, 6000 // max(1, len(sections)))
+            for tag, title, body in sections:
+                plan_lines.append(f"  {tag} {title}")
+                if body:
+                    plan_lines.append(f"    {body[:per_section_budget]}")
+            parts.append("\n".join(plan_lines))
+        else:
+            parts.append(f"Plan: {plan_text[:4000]}")
+    return "\n".join(parts)
 
 app = typer.Typer(name="ari", help="ARI - Artificial Research Intelligence")
 console = Console()
@@ -34,6 +226,141 @@ try:
     app.add_typer(_memory_app, name="memory")
 except Exception as _e:  # pragma: no cover - import guard
     logging.getLogger(__name__).warning("ari memory subcommand unavailable: %s", _e)
+
+# `ari ear` subparser (curation/publish/promote/status).
+try:
+    from ari.cli_ear import ear_app as _ear_app
+    app.add_typer(_ear_app, name="ear")
+except Exception as _e:  # pragma: no cover - import guard
+    logging.getLogger(__name__).warning("ari ear subcommand unavailable: %s", _e)
+
+# `ari registry` subparser (server admin — only loaded when CLI is invoked).
+try:
+    from ari.registry.cli import registry_app as _registry_app
+    app.add_typer(_registry_app, name="registry")
+except Exception as _e:  # pragma: no cover - import guard
+    logging.getLogger(__name__).warning("ari registry subcommand unavailable: %s", _e)
+
+
+# ── ari migrate ───────────────────────────────────────────────────────
+# v0.7.0: best-effort backfill of node_report.json into legacy checkpoints.
+migrate_app = typer.Typer(name="migrate", help="One-shot data migrations.")
+app.add_typer(migrate_app, name="migrate")
+
+
+@migrate_app.command("node-reports")
+def cmd_migrate_node_reports(
+    checkpoint: Path = typer.Argument(..., help="Checkpoint directory to backfill."),
+    overwrite: bool = typer.Option(False, "--overwrite",
+                                   help="Re-write node_report.json even if one already exists."),
+) -> None:
+    """Backfill `node_report.json` for every node in a legacy checkpoint.
+
+    Best-effort: fields we cannot recover (original_direction,
+    delta_vs_parent, next_steps_hints) are nulled, and migration_source is
+    set to "auto" so downstream filters know the report is not first-class.
+    """
+    from ari.orchestrator import node_report as _nr
+
+    checkpoint = checkpoint.resolve()
+    if not checkpoint.is_dir():
+        console.print(f"[red]not a directory: {checkpoint}[/red]")
+        raise typer.Exit(2)
+
+    tree_path = checkpoint / "tree.json"
+    if not tree_path.is_file():
+        console.print(f"[red]no tree.json under {checkpoint}[/red]")
+        raise typer.Exit(2)
+
+    try:
+        tree = json.loads(tree_path.read_text())
+    except Exception as exc:
+        console.print(f"[red]failed to read tree.json: {exc}[/red]")
+        raise typer.Exit(2)
+
+    nodes = tree.get("nodes") or []
+    run_id = tree.get("run_id") or checkpoint.name
+
+    pm = PathManager.from_checkpoint_dir(checkpoint)
+    by_id = {n.get("id"): n for n in nodes}
+
+    written = 0
+    skipped = 0
+    failed = 0
+
+    for node_dict in nodes:
+        nid = node_dict.get("id")
+        if not nid:
+            continue
+        work_dir = pm.node_work_dir(run_id, nid)
+        out_path = work_dir / "node_report.json"
+        if out_path.exists() and not overwrite:
+            skipped += 1
+            continue
+        parent_id = node_dict.get("parent_id")
+        parent_wd = pm.node_work_dir(run_id, parent_id) if parent_id else None
+        if parent_wd is not None and not parent_wd.is_dir():
+            parent_wd = None
+        try:
+            report = _nr.reconstruct_report_from_legacy(
+                node_dict=node_dict,
+                work_dir=work_dir if work_dir.is_dir() else None,
+                parent_work_dir=parent_wd,
+            )
+            work_dir.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(json.dumps(report, indent=2, ensure_ascii=False))
+            written += 1
+        except Exception as exc:
+            logging.getLogger(__name__).warning("migrate %s failed: %s", nid, exc)
+            failed += 1
+
+    console.print(
+        f"[green]migrated[/green] {written} node(s); "
+        f"skipped={skipped} failed={failed} (run_id={run_id})"
+    )
+
+
+# ── ari clone ────────────────────────────────────────────────────────
+# v0.7.0: fetch + verify + extract a curated EAR bundle.
+@app.command("clone")
+def cmd_clone(
+    ref: str = typer.Argument(..., help="Bundle reference: file://, https://, ari://, gh:, doi:"),
+    dest: Path | None = typer.Argument(None, help="Destination directory (default: derived from ref)"),
+    expect_sha256: str | None = typer.Option(None, "--expect-sha256", help="Required bundle digest. Hard fail on mismatch."),
+    no_extract: bool = typer.Option(False, "--no-extract", help="Just download the tarball; do not extract."),
+    registry: str | None = typer.Option(None, "--registry", help="Limit ari:// to a named registry."),
+    token: str | None = typer.Option(None, "--token", help="Bearer token (env var name OR literal value)."),
+) -> None:
+    """Fetch a curated EAR bundle and verify its digest. No code execution."""
+    from ari.clone import clone, CloneError
+
+    # Allow --token foo or --token ENV_VAR_NAME (env var lookup is convenient
+    # so tokens never appear in shell history).
+    real_token = None
+    if token:
+        real_token = os.environ.get(token, token)
+
+    try:
+        result = clone(
+            ref,
+            dest=dest,
+            expect_sha256=expect_sha256,
+            extract=not no_extract,
+            registry=registry,
+            token=real_token,
+        )
+    except CloneError as e:
+        console.print(f"[red]ari clone failed:[/red] {e}")
+        raise typer.Exit(2)
+    except NotImplementedError as e:
+        console.print(f"[yellow]{e}[/yellow]")
+        raise typer.Exit(2)
+
+    console.print(f"[green]cloned[/green] {ref} → {result.dest}")
+    if result.bundle_sha256:
+        console.print(f"  bundle_sha256: {result.bundle_sha256}")
+    console.print(f"  files:         {result.file_count}")
+    console.print(f"  extracted:     {result.extracted}")
 
 
 def _safe_backup(checkpoint_dir: "Path | None") -> None:
@@ -81,6 +408,17 @@ def _setup_logging(cfg_logging, run_id: str) -> None:
     fh.setLevel(level)
     root = logging.getLogger()
     root.setLevel(level)
+    # Remove FileHandlers attached by previous _setup_logging calls. Without
+    # this, repeated invocations (e.g. tests, GUI relaunches) leak handlers
+    # whose underlying files may have been deleted, causing FileNotFoundError
+    # on subsequent log emissions.
+    for existing in list(root.handlers):
+        if isinstance(existing, logging.FileHandler) and Path(existing.baseFilename).name == "ari.log":
+            root.removeHandler(existing)
+            try:
+                existing.close()
+            except Exception:
+                pass
     root.addHandler(fh)
 
 
@@ -169,23 +507,32 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
     # Load idea context from checkpoint for BFTS expansion
     _idea_ctx_for_expand = ""
     from pathlib import Path as _Path_idea
+    # lineage decision bug fix: import json at function scope, not inside the
+    # conditional. Otherwise, when idea.json doesn't exist at startup
+    # (root node hasn't generated it yet), the reload path inside the
+    # BFTS loop tries to use _json_idea before it has been imported,
+    # causing every root_idea_selection attempt to fail with
+    # "cannot access local variable '_json_idea' where it is not
+    # associated with a value".
+    import json as _json_idea
     _idea_json_path = _Path_idea(checkpoint_dir) / "idea.json"
     if _idea_json_path.exists():
         try:
-            import json as _json_idea
             _idea_data = _json_idea.loads(_idea_json_path.read_text())
-            _ideas = _idea_data.get("ideas", [])
-            _gap = _idea_data.get("gap_analysis", "")
-            if _ideas:
-                _best = _ideas[0]
-                _idea_ctx_for_expand = (
-                    f"Gap: {_gap[:300]}\n"
-                    f"Idea: {_best.get('title', '')}\n"
-                    f"Description: {_best.get('description', '')[:400]}\n"
-                    f"Plan: {_best.get('experiment_plan', '')[:400]}"
-                )
+            _idea_ctx_for_expand = _build_idea_ctx_for_expand(_idea_data)
         except Exception:
             pass
+
+    # lineage decisions: lineage decision config + per-run state
+    _lineage_cfg = _load_lineage_decision_config()
+    _lineage_mode = str(_lineage_cfg.get("mode", "off")).lower()
+    _lineage_stop_requested = False
+    _lineage_actions_taken = 0
+    _lineage_rate_limit = int(_lineage_cfg.get("rate_limit_per_run", 5) or 5)
+    _lineage_min_nodes = int(_lineage_cfg.get("min_nodes_before_decision", 3) or 3)
+    _lineage_window = int(_lineage_cfg.get("stagnation_window", 5) or 5)
+    _lineage_threshold = float(_lineage_cfg.get("stagnation_threshold", 0.02) or 0.02)
+    _lineage_run_id = run_id  # captured for child launches
 
     while pending or (_expand_enabled and frontier and len(all_nodes) < cfg.bfts.max_total_nodes):
         # --- BFTS STEP: fill empty worker slots one at a time ---
@@ -233,17 +580,80 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                 # Reload idea context if not yet loaded (root node creates idea.json during run)
                 if not _idea_ctx_for_expand and _idea_json_path.exists():
                     try:
-                        _idea_data = _json_idea.loads(_idea_json_path.read_text())
-                        _ideas = _idea_data.get("ideas", [])
-                        _gap = _idea_data.get("gap_analysis", "")
-                        if _ideas:
-                            _best = _ideas[0]
-                            _idea_ctx_for_expand = (
-                                f"Gap: {_gap[:300]}\n"
-                                f"Idea: {_best.get('title', '')}\n"
-                                f"Description: {_best.get('description', '')[:400]}\n"
-                                f"Plan: {_best.get('experiment_plan', '')[:400]}"
+                        # lineage decision: optional LLM root idea selection — runs
+                        # ONCE the first time idea.json appears, before any
+                        # BFTS expand has used ideas[0]. Skipped when the
+                        # idea.json was inherited (parent already chose).
+                        try:
+                            import yaml as _yaml_root
+                            _wf_path = (
+                                Path(__file__).parent.parent / "config" / "workflow.yaml"
                             )
+                            _wf_for_root = (
+                                _yaml_root.safe_load(_wf_path.read_text())
+                                if _wf_path.exists() else {}
+                            ) or {}
+                            _root_cfg = (_wf_for_root.get("root_idea_selection")
+                                         or {})
+                            _root_enabled = bool(_root_cfg.get("enabled", False))
+                        except Exception:
+                            _root_enabled = False
+                        if _root_enabled:
+                            try:
+                                _idea_data_pre = _json_idea.loads(
+                                    _idea_json_path.read_text()
+                                )
+                                _already_inherited = (
+                                    isinstance(_idea_data_pre, dict)
+                                    and "_inherited_from" in _idea_data_pre
+                                )
+                                _already_chosen = (
+                                    isinstance(_idea_data_pre, dict)
+                                    and "_root_choice" in _idea_data_pre
+                                )
+                                if (not _already_inherited
+                                    and not _already_chosen
+                                    and len(_idea_data_pre.get("ideas") or []) > 1):
+                                    import asyncio as _asyncio_root
+                                    from ari.orchestrator.root_idea_selector import (
+                                        append_root_selection_log,
+                                        apply_root_choice,
+                                        select_root_idea,
+                                    )
+                                    _choice = _asyncio_root.run(
+                                        select_root_idea(_idea_data_pre)
+                                    )
+                                    _swapped = False
+                                    if _choice.chosen_index != 0:
+                                        _swapped = apply_root_choice(
+                                            str(_idea_json_path),
+                                            _choice.chosen_index,
+                                            rationale=_choice.rationale,
+                                        )
+                                        _LINEAGE_LOG.info(
+                                            "root_idea_selection: promoted ideas[%d] (rationale=%s)",
+                                            _choice.chosen_index,
+                                            _choice.rationale[:140],
+                                        )
+                                    try:
+                                        append_root_selection_log(
+                                            checkpoint_dir,
+                                            pool_size=len(_idea_data_pre.get("ideas") or []),
+                                            choice=_choice,
+                                            swapped=_swapped,
+                                        )
+                                    except Exception as _re_log:
+                                        _LINEAGE_LOG.warning(
+                                            "root selection log append failed: %s",
+                                            _re_log,
+                                        )
+                            except Exception as _re:
+                                _LINEAGE_LOG.warning(
+                                    "root_idea_selection failed: %s", _re,
+                                )
+
+                        _idea_data = _json_idea.loads(_idea_json_path.read_text())
+                        _idea_ctx_for_expand = _build_idea_ctx_for_expand(_idea_data)
                     except Exception:
                         pass
                 # Build context for label-free expansion: siblings (same depth, same parent),
@@ -328,7 +738,32 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
             # to build on, not just a textual summary. Runs BEFORE provided/
             # checkpoint copies so the parent's (possibly modified) versions
             # take precedence via the `not _dst.exists()` guards below.
+            #
+            # Phase 7 — *output* artifacts (results.csv, slurm-*.out, run.log,
+            # job stdout/stderr) are deliberately EXCLUDED from inheritance.
+            # Without this exclusion, a child's ReAct agent finds its parent's
+            # results already on disk and silently re-reads them as if its own
+            # experiment had completed — producing 10 BFTS nodes that all
+            # report the same numbers from a single SLURM run. Code, scripts,
+            # and configs still inherit so the agent has the parent's state to
+            # build on; only result files must be re-generated by the child's
+            # own experiment.
+            import fnmatch as _fnmatch
             import shutil as _sh_parent
+            _OUTPUT_BLACKLIST = (
+                "results.csv", "results_*.csv", "*_results.csv",
+                "result.csv", "metrics.csv",
+                "run.log", "run_*.log", "*.run.log",
+                "slurm-*.out", "slurm-*.err",
+                "stdout.txt", "stderr.txt", "out.txt", "err.txt",
+                "*.metrics.json", "metrics.json",
+                "node_report.json",
+            )
+            def _is_output_artifact(rel_path: str, name: str) -> bool:
+                for pat in _OUTPUT_BLACKLIST:
+                    if _fnmatch.fnmatch(name, pat) or _fnmatch.fnmatch(rel_path, pat):
+                        return True
+                return False
             for _n in batch:
                 _pid = getattr(_n, "parent_id", None)
                 if not _pid:
@@ -337,6 +772,7 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                 if not _parent_wd.is_dir():
                     continue
                 _dst_root = Path(_n.work_dir)
+                _skipped_outputs = 0
                 try:
                     for _src in _parent_wd.rglob("*"):
                         if _src.is_dir():
@@ -344,13 +780,17 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                         if PathManager.is_meta_file(_src.name):
                             continue
                         _rel = _src.relative_to(_parent_wd)
+                        if _is_output_artifact(str(_rel), _src.name):
+                            _skipped_outputs += 1
+                            continue
                         _dst = _dst_root / _rel
                         if _dst.exists():
                             continue
                         _dst.parent.mkdir(parents=True, exist_ok=True)
                         _sh_parent.copy2(str(_src), str(_dst))
                     logging.getLogger(__name__).info(
-                        "Inherited parent work_dir %s -> %s", _parent_wd, _dst_root
+                        "Inherited parent work_dir %s -> %s (skipped %d output artifact(s))",
+                        _parent_wd, _dst_root, _skipped_outputs,
                     )
                 except Exception as _pe:
                     logging.getLogger(__name__).warning(
@@ -472,6 +912,78 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                     frontier.append(result)
                     console.print(f"    Added failed node to frontier for debug expansion")
 
+                # Write per-node node_report.json now that the node is fully
+                # marked. This is best-effort: any failure is logged and
+                # ignored so the orchestration loop continues.
+                try:
+                    from ari.orchestrator.node_report import (
+                        compute_files_changed, write_node_report,
+                    )
+                    _parent_wd_for_report = (
+                        _pm.node_work_dir(run_id, result.parent_id)
+                        if getattr(result, "parent_id", None) else None
+                    )
+                    if _parent_wd_for_report is not None and not _parent_wd_for_report.is_dir():
+                        _parent_wd_for_report = None
+
+                    # Phase 7-2: sterile-node detection.
+                    # When a child node finishes its ReAct loop without
+                    # writing or modifying ANY file relative to its parent,
+                    # the agent never actually ran a new experiment — it
+                    # only re-read the inherited code/configs and reported
+                    # numbers (often parent-style ones it derived from
+                    # inherited artifacts that escaped the output blacklist).
+                    # Without this gate, BFTS happily expands sterile chains
+                    # for the rest of its budget because the LLM judge gives
+                    # them small but non-zero scores.
+                    if _parent_wd_for_report is not None and getattr(result, "parent_id", None):
+                        try:
+                            _result_wd = Path(
+                                getattr(result, "work_dir", "")
+                                or _pm.node_work_dir(run_id, result.id)
+                            )
+                            _fc = compute_files_changed(
+                                _parent_wd_for_report, _result_wd,
+                            )
+                            _added = len(_fc.get("added") or [])
+                            _modified = len(_fc.get("modified") or [])
+                            _deleted = len(_fc.get("deleted") or [])
+                            if _added + _modified + _deleted == 0:
+                                # Sterile — clamp score and mark for BFTS to skip.
+                                if isinstance(result.metrics, dict):
+                                    result.metrics["_sterile"] = True
+                                    result.metrics["_scientific_score"] = 0.0
+                                result.has_real_data = False
+                                logging.getLogger(__name__).warning(
+                                    "Node %s flagged STERILE (label=%s, parent=%s): "
+                                    "no files added/modified/deleted vs parent. "
+                                    "Score clamped to 0.0 and has_real_data=False so "
+                                    "BFTS does not expand from this no-op chain.",
+                                    result.id, result.label,
+                                    (result.parent_id or "")[-8:],
+                                )
+                        except Exception as _ster_e:
+                            logging.getLogger(__name__).warning(
+                                "sterile check failed for %s: %s",
+                                result.id, _ster_e,
+                            )
+
+                    write_node_report(
+                        node=result,
+                        work_dir=Path(getattr(result, "work_dir", "") or _pm.node_work_dir(run_id, result.id)),
+                        parent_work_dir=_parent_wd_for_report,
+                        eval_result={
+                            "scientific_score": result.metrics.get("_scientific_score"),
+                            "axis_scores": result.metrics.get("_axis_scores", {}),
+                            "reason": result.eval_summary or "",
+                            "has_real_data": bool(result.has_real_data),
+                        } if isinstance(result.metrics, dict) else None,
+                    )
+                except Exception as _nre:
+                    logging.getLogger(__name__).warning(
+                        "node_report: failed to write for %s: %s", result.id, _nre
+                    )
+
                 # Save checkpoint after each node completes (not just after batch)
                 # This ensures progress is preserved if SIGTERM interrupts mid-batch
                 _save_tree_incremental(
@@ -479,10 +991,109 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                     force=True,
                 )
 
+                # lineage decisions: lineage decision hook (after per-node save).
+                if (_lineage_mode in ("stagnation_rule", "every_node")
+                    and not _lineage_stop_requested
+                    and _lineage_actions_taken < _lineage_rate_limit
+                    and len(all_nodes) >= _lineage_min_nodes
+                    and _idea_json_path.exists()):
+                    try:
+                        import asyncio as _asyncio_l
+                        from ari.orchestrator.lineage_decision import (
+                            append_decision_log,
+                            build_lineage_state,
+                            decide_lineage_action,
+                            detect_stagnation,
+                        )
+                        # Pull current composite scores for stagnation check.
+                        _composites = []
+                        for _n in all_nodes:
+                            _s = (_n.metrics if hasattr(_n, "metrics") else {}).get(
+                                "_scientific_score"
+                            )
+                            if isinstance(_s, (int, float)):
+                                _composites.append(float(_s))
+                        _should_call = (
+                            _lineage_mode == "every_node"
+                            or detect_stagnation(
+                                _composites,
+                                window=_lineage_window,
+                                threshold=_lineage_threshold,
+                            )
+                        )
+                        if _should_call:
+                            _idea_data_l = json.loads(_idea_json_path.read_text())
+                            _budget_left = (
+                                cfg.bfts.max_total_nodes - len(all_nodes)
+                            )
+                            # lineage decisions: surface recursion budget so the
+                            # judge LLM does not propose switches that
+                            # would be rejected by the launch API.
+                            _rec_depth = int(
+                                os.environ.get("ARI_RECURSION_DEPTH", "0") or 0
+                            )
+                            _max_rec = int(
+                                os.environ.get("ARI_MAX_RECURSION_DEPTH", "3") or 3
+                            )
+                            _state = build_lineage_state(
+                                all_nodes=list(all_nodes),
+                                idea_data=_idea_data_l,
+                                budget_remaining=_budget_left,
+                                recursion_depth=_rec_depth,
+                                max_recursion_depth=_max_rec,
+                            )
+                            _decision = _asyncio_l.run(
+                                decide_lineage_action(_state)
+                            )
+                            _LINEAGE_LOG.info(
+                                "lineage decision (%s): action=%s rationale=%s",
+                                _lineage_mode, _decision.action,
+                                _decision.rationale[:120],
+                            )
+                            _stop = _execute_lineage_decision(
+                                _decision,
+                                parent_run_id=_lineage_run_id,
+                                parent_ckpt=Path(checkpoint_dir),
+                                experiment_data=experiment_data,
+                            )
+                            # Persist every fired decision (continue
+                            # included) so the analysis log captures both
+                            # actions taken and explicit "no-action" calls.
+                            try:
+                                append_decision_log(
+                                    checkpoint_dir,
+                                    state=_state,
+                                    decision=_decision,
+                                    trigger=_lineage_mode,
+                                    executed=(_decision.action != "continue"),
+                                    extra={
+                                        "stop_requested": bool(_stop),
+                                        "actions_taken_so_far": _lineage_actions_taken,
+                                        "rate_limit": _lineage_rate_limit,
+                                    },
+                                )
+                            except Exception as _le_persist:
+                                _LINEAGE_LOG.warning(
+                                    "decision log append failed: %s", _le_persist,
+                                )
+                            if _decision.action != "continue":
+                                _lineage_actions_taken += 1
+                            if _stop:
+                                _lineage_stop_requested = True
+                    except Exception as _le:
+                        _LINEAGE_LOG.warning("lineage decision hook failed: %s", _le)
+
+            if _lineage_stop_requested:
+                _LINEAGE_LOG.info("lineage decision: stop requested — exiting BFTS loop")
+                break
+
         _save_tree_incremental(
             checkpoint_dir, run_id, experiment_data["file"], all_nodes,
             force=True,
         )
+
+        if _lineage_stop_requested:
+            break
 
     return total_processed
 
@@ -689,11 +1300,16 @@ def run(
         _shutil_cp.copy2(str(experiment), checkpoint_dir / "experiment.md")
     except Exception:
         pass
-    # Copy workflow.yaml into checkpoint dir for reproducibility
+    # Copy workflow.yaml into checkpoint dir for reproducibility. Skip when
+    # the GUI launcher (api_experiment._api_launch) has already populated it,
+    # because that copy may carry per-launch rewrites (e.g. include_ear=False
+    # disabling EAR / ors_seed_sandbox stages) that an unconditional copy from
+    # source would silently undo.
     _wf_src = config if config and config.exists() else (Path(__file__).parent.parent / "config" / "workflow.yaml")
-    if _wf_src and Path(_wf_src).exists():
+    _wf_dst = checkpoint_dir / "workflow.yaml"
+    if _wf_src and Path(_wf_src).exists() and not _wf_dst.exists():
         try:
-            _shutil_cp.copy2(str(_wf_src), checkpoint_dir / "workflow.yaml")
+            _shutil_cp.copy2(str(_wf_src), _wf_dst)
         except Exception:
             pass
     # Initialize cost tracker early so BFTS phase is also tracked
@@ -713,9 +1329,19 @@ def run(
             f"[bold green]Run complete.[/bold green]  Processed {total} nodes  |  Checkpoint: {checkpoint_dir}",
             title="Done",
         ))
-        # Resolve config_path: use --config if given, otherwise find package workflow.yaml
+        # Resolve config_path. Prefer the per-checkpoint workflow.yaml so any
+        # launch-time rewrites (e.g. include_ear=False disabling EAR / ors_seed
+        # stages) actually drive the paper pipeline. Fall back to --config or
+        # the package source for direct CLI runs that never wrote a checkpoint
+        # copy.
         _pkg_wf = Path(__file__).parent.parent / "config" / "workflow.yaml"
-        _cfg_str = str(config) if config else (str(_pkg_wf) if _pkg_wf.exists() else "")
+        _ckpt_wf = checkpoint_dir / "workflow.yaml"
+        if _ckpt_wf.exists():
+            _cfg_str = str(_ckpt_wf)
+        elif config:
+            _cfg_str = str(config)
+        else:
+            _cfg_str = str(_pkg_wf) if _pkg_wf.exists() else ""
         try:
             generate_paper_section(all_nodes, experiment_data, checkpoint_dir, mcp, _cfg_str)
         except Exception as _paper_err:
@@ -752,6 +1378,12 @@ def resume(
     experiment_data = {"goal": experiment_text, "topic": _tp3, "file": experiment_file}
 
     cfg = _resolve_cfg(config)
+    # The explicit checkpoint_dir argument is the single source of truth for
+    # both checkpoint files and logs; ignore stale CWD-relative defaults from
+    # LoggingConfig/CheckpointConfig (which would otherwise write into
+    # ./checkpoints/{run_id}/ regardless of where the checkpoint actually lives).
+    cfg.logging.dir = str(checkpoint_dir)
+    cfg.checkpoint.dir = str(checkpoint_dir)
     _setup_logging(cfg.logging, run_id)
 
     node_map: dict[str, Node] = {}
@@ -831,8 +1463,16 @@ def resume(
             f"[bold green]Resume complete.[/bold green]  +{total - completed} nodes",
             title="Done",
         ))
+        # Prefer per-checkpoint workflow.yaml (carries launch-time rewrites)
+        # over the package source.
         _pkg_wf_r = Path(__file__).parent.parent / "config" / "workflow.yaml"
-        _cfg_str_r = str(config) if config else (str(_pkg_wf_r) if _pkg_wf_r.exists() else "")
+        _ckpt_wf_r = checkpoint_dir / "workflow.yaml"
+        if _ckpt_wf_r.exists():
+            _cfg_str_r = str(_ckpt_wf_r)
+        elif config:
+            _cfg_str_r = str(config)
+        else:
+            _cfg_str_r = str(_pkg_wf_r) if _pkg_wf_r.exists() else ""
         try:
             generate_paper_section(all_nodes, experiment_data, checkpoint_dir, mcp_resume, _cfg_str_r)
         except Exception as _paper_err:
@@ -899,6 +1539,10 @@ def paper(
     experiment_data = {"goal": experiment_text, "topic": _tp_tp, "file": experiment_file}
 
     cfg = _resolve_cfg(config)
+    # See the matching note in `resume`: when the checkpoint_dir argument is
+    # explicit, it owns log/checkpoint paths regardless of YAML defaults.
+    cfg.logging.dir = str(checkpoint_dir)
+    cfg.checkpoint.dir = str(checkpoint_dir)
     _setup_logging(cfg.logging, run_id)
 
     node_map: dict[str, Node] = {}
@@ -929,10 +1573,17 @@ def paper(
         f"[bold green]Running paper pipeline[/bold green]\nCheckpoint: {checkpoint_dir}",
         title="ARI Paper",
     ))
-    # Resolve config path: use --config if given, otherwise find package workflow.yaml
+    # Prefer per-checkpoint workflow.yaml (carries launch-time rewrites) over
+    # the package source.
     from pathlib import Path as _PL
     _pkg_wf = _PL(__file__).parent.parent / "config" / "workflow.yaml"
-    _cfg_str = str(config) if config else (str(_pkg_wf) if _pkg_wf.exists() else "")
+    _ckpt_wf = _PL(checkpoint_dir) / "workflow.yaml"
+    if _ckpt_wf.exists():
+        _cfg_str = str(_ckpt_wf)
+    elif config:
+        _cfg_str = str(config)
+    else:
+        _cfg_str = str(_pkg_wf) if _pkg_wf.exists() else ""
     from ari.pidfile import pid_context
     with pid_context(checkpoint_dir):
         generate_paper_section(all_nodes, experiment_data, checkpoint_dir, mcp_paper, _cfg_str)

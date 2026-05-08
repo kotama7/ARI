@@ -147,6 +147,19 @@ def _api_get_settings() -> dict:
         "letta_embedding_config": os.environ.get(
             "LETTA_EMBEDDING_CONFIG", "letta-default"
         ),
+        # ORS (PaperBench-format auto rubric) defaults.
+        "ors": {
+            "replicator_model":   os.environ.get("ARI_MODEL_REPLICATE",   "claude-opus-4-7"),
+            "rubric_gen_model":   os.environ.get("ARI_MODEL_RUBRIC_GEN",  "gemini-2.5-pro"),
+            "rubric_audit_model": os.environ.get("ARI_MODEL_RUBRIC_AUDIT","claude-opus-4-7"),
+            "judge_model":        os.environ.get("ARI_MODEL_JUDGE",       "gpt-4o-2024-11-20"),
+            "rubric_gen_temperature":   0.0,
+            "rubric_gen_target_leaves": 0,
+            "rubric_gen_two_stage":     True,
+            "judge_n_runs":             3,
+            "phase1_max_runtime_sec":   21600,
+            "phase1_sandbox_kind":      os.environ.get("ARI_PHASE1_SANDBOX", "auto"),
+        },
     }
     # Read project-scoped settings only.  When no checkpoint is selected the
     # GUI displays built-in defaults (workflow.yaml + hardcoded values) — ARI

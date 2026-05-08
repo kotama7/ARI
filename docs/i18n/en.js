@@ -131,7 +131,9 @@ window.LANGS.en = {
   'demo-paper-title': '📄 Read the sample paper inline',
   'demo-paper-sub': 'Scroll inside the window below — this is the actual PDF that ARI generated end-to-end.',
   'dashboard-see-demo': '▶ <a href="#demo" style="color:#93c5fd;">See the live walkthrough in the Demo section ↑</a>',
-  'footer-text': 'v0.6.0 · Open source · MIT License',
+  'footer-text': 'v0.7.0 · Open source · MIT License',
+  'paperbench-desc': 'OpenAI\'s benchmark for evaluating whether AI agents can reproduce frontier ML papers from scratch. Each paper is decomposed into a fine-grained TaskNode rubric scored by an LLM judge ("SimpleJudge"). v0.7.0 vendors PaperBench under <code>ari-skill-paper-re/vendor/paperbench</code> and uses it as the deterministic core of ARI\'s reproducibility check (ORS Phase 2).',
+  'memgpt-desc': 'Hierarchical memory + tool-mediated paging that lets an LLM agent operate as if it had unbounded context. The MemGPT paper became <a href="https://docs.letta.com" target="_blank" style="color:var(--blue-light);">Letta</a>, which v0.6.0 adopted as ARI\'s memory backend — replacing the v0.5.x JSONL store with ancestor-scoped archival memory and a portable per-checkpoint snapshot.',
   // === docs.html ===
   'docs-logo': 'Docs',
   'nav-gs': 'Getting Started',
@@ -253,4 +255,5 @@ window.LANGS.en = {
   'memory-li-meta': '<code>{checkpoint}/memory_access.jsonl</code> &mdash; append-only write/read telemetry for the Tree dashboard',
   'memory-p2': 'Write-side tools enforce <strong>Copy-on-Write</strong> (a child cannot mutate an ancestor&#39;s entries) and <code>search_memory</code> strictly filters by the <code>ancestor_ids</code> you pass, so sibling branches never cross-contaminate. Letta self-edit is disabled by default via <code>ARI_MEMORY_LETTA_DISABLE_SELF_EDIT=true</code>.',
   'memory-p3': 'The <code>Trace</code> tab in the Experiment Monitor reads these entries live through the Letta-backed library. Manage the backend with <code>ari memory</code> (<code>migrate</code> / <code>backup</code> / <code>restore</code> / <code>start-local</code> / &#8230;).',
+  'memory-p4': '<strong>v0.7.0 note &mdash;</strong> on Letta 0.16.x the SDK call <code>passages.list(search=q)</code> is a SQL substring filter (<code>LOWER(text) LIKE LOWER(%q%)</code>), not semantic search &mdash; long natural-language queries silently returned 0 ancestor entries against real data. <code>search_memory</code> uses <code>passages.search</code> (<code>GET /archival-memory/search</code>, <code>embed_query=True</code>) with <code>top_k = max(letta_overfetch, limit*40)</code> and post-filters by <code>ancestor_ids</code> + <code>ari_checkpoint</code> locally. The embedding cost paid on every <code>add_memory</code> insert is now actually consumed by retrieval; children see ancestor entries ranked by relevance to their <code>eval_summary</code> query.',
 };

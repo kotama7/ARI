@@ -1,8 +1,11 @@
+import { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { useAppContext } from '../../context/AppContext';
 import {
   fetchCheckpointSummary,
+  fetchSubExperiments,
 } from '../../services/api';
+import type { SubExperiment } from '../../services/api';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
@@ -17,6 +20,23 @@ function StatusBadge({ status }: { status: string }) {
 export function ExperimentsPage() {
   const { t } = useI18n();
   const { setCurrentPage, checkpoints, refreshCheckpoints } = useAppContext();
+
+  // lineage decisions (v0.7.0): pull sub-experiment metadata so we can render
+  // lineage provenance — parent run id and inherit_idea_index — for
+  // any checkpoint that was auto-spawned by a lineage decision5c decision.
+  const [subById, setSubById] = useState<Record<string, SubExperiment>>({});
+  useEffect(() => {
+    let alive = true;
+    fetchSubExperiments()
+      .then((r) => {
+        if (!alive) return;
+        const m: Record<string, SubExperiment> = {};
+        for (const s of r.sub_experiments) m[s.run_id] = s;
+        setSubById(m);
+      })
+      .catch(() => { /* swallow — lineage column degrades to empty */ });
+    return () => { alive = false; };
+  }, [checkpoints]);
 
   const navigateTo = (page: string) => {
     setCurrentPage(page);
@@ -77,6 +97,7 @@ export function ExperimentsPage() {
                 <th>{t('status')}</th>
                 <th>BFTS Nodes</th>
                 <th>{t('review_score')}</th>
+                <th>{t('experiments.lineage')}</th>
                 <th>{t('date')}</th>
                 <th>{t('actions')}</th>
               </tr>
@@ -84,6 +105,10 @@ export function ExperimentsPage() {
             <tbody>
               {checkpoints.map((c) => {
                 const d = new Date(c.mtime * 1000).toLocaleString();
+                const sub = subById[c.id];
+                const parent = sub?.parent_run_id ?? null;
+                const inheritIdx = sub?.inherit_idea_index ?? null;
+                const terminated = sub?.parent_terminated ?? false;
                 return (
                   <tr key={c.id}>
                     <td>
@@ -100,6 +125,29 @@ export function ExperimentsPage() {
                         <strong>{c.review_score}</strong>
                       ) : (
                         '—'
+                      )}
+                    </td>
+                    <td style={{ fontSize: '.78rem', color: 'var(--muted)' }}>
+                      {parent ? (
+                        <div>
+                          <div>
+                            ↳ <code style={{ fontSize: '.78rem' }}>
+                              {parent.slice(0, 14)}
+                            </code>
+                          </div>
+                          {inheritIdx != null && (
+                            <Badge variant="muted">
+                              {t('experiments.inherits')} ideas[{inheritIdx}]
+                            </Badge>
+                          )}
+                          {terminated && (
+                            <Badge variant="red">
+                              {t('experiments.terminated')}
+                            </Badge>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{ opacity: 0.4 }}>—</span>
                       )}
                     </td>
                     <td

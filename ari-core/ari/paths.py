@@ -54,6 +54,7 @@ class PathManager:
         "meta.json",
         "tree.json",
         "nodes_tree.json",
+        "bfts_tree.json",
         "results.json",
         "idea.json",
         "cost_trace.jsonl",
@@ -63,10 +64,25 @@ class PathManager:
         ".ari_pid",
         ".pipeline_started",
         "evaluation_criteria.json",
+        # Internal access logs — written by viz/memory backends at the
+        # checkpoint root. These are diagnostics, not experiment artefacts,
+        # and must not be copied into node work_dirs nor surfaced as files.
+        "viz_access.jsonl",
+        "memory_access.jsonl",
+        "memory_access.summary.json",
+        # Per-node self-report. Each child must generate its own; never
+        # inherit the parent's via the work_dir physical-copy data path.
+        "node_report.json",
     })
 
     # File extensions that are ARI internal — never copied into node work dirs.
     META_EXTENSIONS: frozenset[str] = frozenset({".log"})
+
+    # Filename patterns (regex, full-match) that are ARI metadata.
+    # Used in addition to META_FILES for rotated/timestamped variants.
+    _META_PATTERNS: tuple[re.Pattern, ...] = (
+        re.compile(r"^memory_access\.[^/]+\.jsonl$"),
+    )
 
     def __init__(self, workspace_root: str | Path = ".") -> None:
         self._root = Path(workspace_root).resolve()
@@ -178,7 +194,9 @@ class PathManager:
         if filename in cls.META_FILES:
             return True
         _, ext = os.path.splitext(filename)
-        return ext in cls.META_EXTENSIONS
+        if ext in cls.META_EXTENSIONS:
+            return True
+        return any(p.match(filename) for p in cls._META_PATTERNS)
 
     # ── slug helpers ──────────────────────────────────────────────────
 

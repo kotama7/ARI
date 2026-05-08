@@ -261,7 +261,10 @@ def _clear_phase_env(monkeypatch):
 
 @pytest.mark.parametrize("skill,phase_var", [
     ("ari-skill-idea",       "ARI_MODEL_IDEA"),
-    ("ari-skill-paper-re",   "ARI_MODEL_PAPER"),
+    # paper-re's _model() block reads ARI_MODEL_JUDGE (v0.6.0 §4.1 split:
+    # the legacy single ARI_MODEL_PAPER was replaced by ARI_MODEL_JUDGE for
+    # SimpleJudge grading and ARI_MODEL_REPLICATE for the replicator).
+    ("ari-skill-paper-re",   "ARI_MODEL_JUDGE"),
     ("ari-skill-evaluator",  "ARI_MODEL_EVAL"),
 ])
 def test_phase_model_has_precedence_over_global(skill, phase_var):

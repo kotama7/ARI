@@ -401,32 +401,10 @@ class TestReproSnippetSize:
         assert len(snippet) == 20000 + len("\n\n[...truncated...]\n\n") + 10000
 
 
-# ── Repro claimed_value extraction prompt test ───────────────────────────
-
-class TestReproExtractionPrompt:
-    def test_extraction_prompt_no_threads(self):
-        """Extraction prompt should NOT ask for threads (environment-dependent)."""
-        from pathlib import Path
-        server_path = Path(__file__).parent.parent.parent / "ari-skill-paper-re" / "src" / "server.py"
-        if not server_path.exists():
-            pytest.skip("ari-skill-paper-re not found")
-        text = server_path.read_text()
-        m = re.search(r'Extract the PRIME.*?No markdown\.', text, re.DOTALL)
-        assert m, "Extraction prompt not found"
-        prompt = m.group(0)
-        assert "threads" not in prompt.lower()
-
-    def test_extraction_prompt_requests_prime_result(self):
-        """Extraction prompt should select the prime result (abstract/conclusion), not theoretical peaks."""
-        from pathlib import Path
-        server_path = Path(__file__).parent.parent.parent / "ari-skill-paper-re" / "src" / "server.py"
-        if not server_path.exists():
-            pytest.skip("ari-skill-paper-re not found")
-        text = server_path.read_text()
-        m = re.search(r'Extract the PRIME.*?No markdown\.', text, re.DOTALL)
-        prompt = m.group(0)
-        assert "PRIME" in prompt
-        assert "NOT" in prompt and "theoretical" in prompt.lower()
+# ── Repro claimed_value extraction prompt test ──────────────────────────
+# Removed in v0.6.0 §4.1 rewrite: the legacy LLM-driven extract_metric_from_output
+# tool and its "Extract the PRIME …" prompt were dropped in favour of
+# rubric-carried claims read by PaperBench SimpleJudge.
 
 
 # ── build_best_nodes_context includes eval_summary ───────────────────────

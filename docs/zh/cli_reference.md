@@ -19,6 +19,10 @@ ARI 命令行操作的完整参考。CLI 为基于终端的工作流提供与 [W
 | `ari settings` | 查看或修改配置 | Settings 页面 |
 | `ari skills-list` | 列出可用工具 | Settings → MCP Skills |
 | `ari memory ...` | 管理 Letta 记忆后端 | Settings → Memory (Letta) |
+| `ari ear <subcmd>` | EAR 策展/发布/晋升生命周期 (v0.7.0) | — |
+| `ari clone <ref>` | 拉取策展过的 EAR bundle (file/https/ari/gh/doi)，按 digest 校验 (v0.7.0) | — |
+| `ari registry <subcmd>` | 自托管 EAR registry：`serve` / `token issue\|revoke\|list` (v0.7.0) | — |
+| `ari migrate node-reports <checkpoint>` | 为旧 (v0.6.0) checkpoint 补齐 `node_report.json` | — |
 
 ---
 
@@ -255,6 +259,50 @@ ari settings --model qwen3:32b --partition gpu --cpus 64 --mem 128
 
 ---
 
+## ari ear — v0.7.0
+
+针对单个 checkpoint 进行 **Experiment Artifact Repository** 的策展、发布、晋升生命周期管理。策展是确定性的（无 LLM）；发布把策展过的 tarball 送到后端，得到可验证的 ref。
+
+```bash
+ari ear curate   <checkpoint> [--show-files] [--json]
+ari ear status   <checkpoint>
+ari ear publish  <checkpoint> [--backend ari-registry|local-tarball|gh|zenodo] \
+                              [--visibility staged] [--dry-run]
+ari ear promote  <checkpoint> [--target public|unlisted]
+```
+
+| 子命令 | 行为 |
+|--------|------|
+| `curate` | 应用 `ear/publish.yaml` allowlist 与内置 deny list (`.env*`、`secrets/**`、`*.pem`、`*.key`、`id_rsa`、`id_ed25519`)，写出 `{checkpoint}/ear_published/` + `manifest.lock`（含确定性 `bundle_sha256`）。`publish.yaml` 缺失则静默跳过。 |
+| `status` | 显示策展 manifest 摘要 + 可能存在的 `publish_record.json`。 |
+| `publish` | 从 `ear_published/` 构建可复现 tarball，送到 backend。首次发布始终 `visibility=staged` (FR-P5)。`ARI_PUBLISH_DRYRUN=1` 强制 `--dry-run`。 |
+| `promote` | staged → `public`/`unlisted` 升级。降级被拒。 |
+
+后端：`ari-registry`（自托管）、`local-tarball`（无服务器）、`gh`（GitHub release）、`zenodo`（DOI 注册）。
+
+**端到端示例**：
+
+```bash
+# 1. 论文流水线之后由作者策展 bundle
+ari ear curate ./checkpoints/run_20260504_xy/
+
+# 2. 查看通过 allow/deny 规则的内容
+ari ear status ./checkpoints/run_20260504_xy/
+# bundle_sha256: 0ccabb16...
+# files:         42
+# visibility:    staged
+
+# 3. 以 staged 推送到 registry
+ari ear publish ./checkpoints/run_20260504_xy/ --backend ari-registry
+
+# 4. 评审 + 可复现性检查通过后晋升为 public
+ari ear promote ./checkpoints/run_20260504_xy/ --target public
+```
+
+`bundle_sha256` 在 `finalize_paper` 阶段被烧入论文的 `\codedigest{...}` 宏。任何持有论文的人，即使 registry 已下线，也能通过 digest 校验任意未来的 bundle 副本。
+
+---
+
 ## ari memory
 
 v0.6.0 新增的 Letta 记忆后端管理命令。每个子命令通过 `--checkpoint <path>`
@@ -424,3 +472,91 @@ EOF
 - 始终使用绝对路径（不要使用 `~` 或相对路径）
 - 不要在 SLURM 脚本中重定向 stdout（SLURM 通过 `--output` 自动捕获）
 - 除非你的集群要求，否则不要添加 `--account` 或 `-A` 标志
+
+---
+
+## `ari clone <ref> [<dest>]` — v0.7.0+
+
+获取 + 验证 + 解压 精选的 EAR 包 (不执行代码)。
+为复现论文的读者提供「一行安装」入口。
+
+### 支持的引用方案 (按 PR 渐进发布)
+
+| 方案 | 解析器 |
+|---|---|
+| `file://<path>` | 本地文件/目录 |
+| `https://<url>` | tarball 下载 |
+| `ari://<id>` | ari-registry |
+| `gh:<user>/<repo>` | GitHub |
+| `doi:<doi>` | Zenodo |
+
+### 标志
+
+```
+--expect-sha256 <hex>   强制 bundle digest 检验, 不匹配时硬失败。
+--no-extract            仅下载 tarball, 不解压。
+--registry <name>       将 ari:// 解析限定到 ~/.ari/registries.yaml 的某个 registry。
+--token <env-or-value>  bearer token (先查环境变量, 否则字面量)。
+```
+
+### 校验模型
+
+1. 解析器把 artifact 物化到临时目录
+2. 协调器解压到 sibling 临时目录
+3. 重算每个文件的 sha256, 与 manifest.lock 对比
+4. 从规范化的 files-only manifest 重算 bundle digest, 与
+   `manifest.lock.bundle_sha256` 对比
+5. 若指定了 `--expect-sha256`, 必须等于重算 digest, 否则硬失败
+6. 全部通过后才 rename 到 dest。失败不会留下半成品 (atomic)
+
+---
+
+## `ari registry` — v0.7.0+
+
+托管策展过的 EAR bundle 的最小 HTTP registry。是 `ari ear publish` 与 `ari clone` 中 `ari://` 解析器的默认后端。可选——`local-tarball` 无需服务器，学术永久性建议 Zenodo / GitHub release。
+
+```bash
+ari registry serve   [--host 0.0.0.0] [--port 8290] [--data-dir <dir>]
+ari registry token issue  <user>          # 明文仅显示一次
+ari registry token revoke <token-id>
+ari registry token list
+```
+
+启动步骤：
+
+```bash
+# 1. 安装服务端依赖（默认安装跳过以保持精简）
+./setup.sh --with-registry        # 或 pip install fastapi uvicorn[standard] python-multipart
+
+# 2. 启动（默认 127.0.0.1:8290，sqlite 位于 ~/.ari/registry-data 下）
+./scripts/registry/start_local.sh
+
+# 3. 为用户颁发 token
+ari registry token issue alice
+# 明文仅显示一次——请妥善保管
+```
+
+| 项 | 内容 |
+|---|---|
+| 端点 | `POST /artifact`、`GET\|HEAD /artifact/<id>`、`GET /artifact/<id>/manifest.lock`、`POST /artifact/<id>/promote`、`DELETE /artifact/<id>`、`/healthz`、`/version` |
+| 认证 | bearer token（sqlite 哈希存储），upload/delete/promote 需所有者 token |
+| 可见性 | `staged`（仅所有者） → `unlisted`（仅知道 id 的人） / `public`（开放）。降级被拒。 |
+| Artifact id | `sha256(bundle.tar.gz)[:16]`，内容寻址 |
+| 存储 | `${ARI_REGISTRY_DATA}/artifacts/<id>/{bundle.tar.gz, manifest.lock, meta.json}` |
+
+部署模式（详见 [docs/registry.md](registry.md)）：
+
+- `scripts/registry/start_local.sh` — uvicorn + sqlite，单进程。Laptop / dev。
+- `scripts/registry/docker-compose.yml` — nginx + uvicorn + sqlite-on-volume。Production。
+- `scripts/registry/start_singularity.sh` — Apptainer / Singularity SIF。HPC。
+
+客户端配置（`~/.ari/registries.yaml`）：
+
+```yaml
+registries:
+  - name: default
+    url: http://127.0.0.1:8290
+    token: $ARI_REGISTRY_TOKEN
+```
+
+随后 `export ARI_REGISTRY_TOKEN=ari_<颁发的值>`，便可使用 `ari clone ari://<id>` 或 `ari ear publish --backend ari-registry`。
