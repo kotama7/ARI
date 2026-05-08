@@ -211,19 +211,14 @@ class BFTS:
             )
             candidate_descriptions.append(desc)
 
-        prompt = (
-            f"You are selecting the most promising node to explore next in a research tree.\n\n"
-            f"Experiment goal: {experiment_goal}\n\n"
-            f"Relevant past memories:\n{memory_context}\n\n"
-            f"Candidates:\n" + "\n".join(candidate_descriptions) + "\n\n"
-            f"Selection criteria:\n"
-            f"- Nodes with has_real_data=True and strong metrics are high-value\n"
-            f"- Prefer unexplored directions (low retry) over already-tried paths\n"
-            f"- Consider all metrics holistically (multi-objective)\n"
-            f"- Deeper nodes with excellent results are worth continuing\n"
-            f"- A small diversity_bonus is awarded to underrepresented exploration "
-            f"types; treat it as a soft tiebreaker, not a primary signal\n"
-            f"Reply with ONLY the index number (0-based) of the best node."
+        # Phase PC5 (PROMPTS_AND_CONFIG.md §3-4): the inline prompt was
+        # extracted to ``ari/prompts/orchestrator/bfts_select.md`` with
+        # byte-equivalent formatting (verified during PC5 lift).
+        from ari.prompts import FilesystemPromptLoader as _PL_bs
+        prompt = _PL_bs().load("orchestrator/bfts_select").format(
+            experiment_goal=experiment_goal,
+            memory_context=memory_context,
+            candidates="\n".join(candidate_descriptions),
         )
 
         response = self.llm.complete(
@@ -292,15 +287,12 @@ class BFTS:
             )
             candidate_descriptions.append(desc)
 
-        prompt = (
-            f"You are selecting which completed research node to expand next in a BFTS tree.\n\n"
-            f"Experiment goal: {experiment_goal}\n\n"
-            f"Completed nodes awaiting expansion:\n"
-            + "\n".join(candidate_descriptions)
-            + "\n\nSelect the single most promising node to expand. "
-            "Prefer nodes with high scientific_score, strong metrics, and unexplored directions. "
-            "Avoid nodes that have already been retried many times or are at excessive depth.\n"
-            "Reply with ONLY the index number (0-based)."
+        # Phase PC5 (PROMPTS_AND_CONFIG.md §3-4): see
+        # ``ari/prompts/orchestrator/bfts_expand_select.md``.
+        from ari.prompts import FilesystemPromptLoader as _PL_bes
+        prompt = _PL_bes().load("orchestrator/bfts_expand_select").format(
+            experiment_goal=experiment_goal,
+            candidates="\n".join(candidate_descriptions),
         )
 
         response = self.llm.complete(
@@ -477,40 +469,27 @@ class BFTS:
             f"  depth distribution: {depth_counts if depth_counts else '(empty)'}\n\n"
         )
 
-        prompt = (
-            "You are expanding a BFTS research tree node.\n\n"
-            f"{goal_line}"
-            f"Parent node id={node.id[-8:]}, depth={node.depth}, status={parent_status}\n"
-            f"Parent metrics: {json.dumps(node.metrics, ensure_ascii=False)}\n"
-            f"Parent summary: {node.eval_summary or 'none'}\n"
-            f"{sci_note}"
-            f"{idea_block}"
-            f"{parent_report_block}\n"
-            f"{siblings_block}"
-            f"{ancestors_block}"
-            f"{existing_block}"
-            f"{diversity_block}"
-            "Propose exactly ONE child research direction that is the most scientifically "
-            "valuable next step. The \"label\" field MUST be exactly one of these five "
-            "values (all lowercase, no other strings allowed, no synonyms, no inventions): "
-            "draft, improve, debug, ablation, validation. "
-            "Base your choice on the experimental context above, not on a fixed template.\n\n"
-            "Label selection guidance:\n"
-            "- 'debug': parent FAILED or has no real data — diagnose and fix it.\n"
-            "- 'improve': parent succeeded and you want to push its metrics higher by tuning "
-            "parameters, flags, or algorithms.\n"
-            "- 'ablation': isolate which component drives the parent's gains by removing or "
-            "varying ONE component. State explicitly what is removed/varied and what delta vs. "
-            "the parent metrics you expect.\n"
-            "- 'validation': rigorously verify the parent's claims (different seeds, edge "
-            "cases, stress tests, expected-degradation checks).\n"
-            "- 'draft': start a fresh implementation from scratch to introduce a fundamentally "
-            "NEW perspective (use this instead of inventing a new label like 'replication' or "
-            "'generalization').\n\n"
-            "Reply ONLY with a JSON array containing exactly one element: "
-            "[{\"label\": \"<one of: draft|improve|debug|ablation|validation>\", "
-            "\"direction\": \"...\"}]\n"
-            "Example: [{\"label\": \"validation\", \"direction\": \"<one-sentence plan>\"}]"
+        # Phase PC5 (PROMPTS_AND_CONFIG.md §3-4): see
+        # ``ari/prompts/orchestrator/bfts_expand.md``.  The optional
+        # block variables (sci_note, idea_block, parent_report_block,
+        # siblings_block, ancestors_block, existing_block,
+        # diversity_block) are passed through verbatim — caller
+        # already ensures they end with newlines or are empty strings.
+        from ari.prompts import FilesystemPromptLoader as _PL_be
+        prompt = _PL_be().load("orchestrator/bfts_expand").format(
+            goal_line=goal_line,
+            parent_id_short=node.id[-8:],
+            parent_depth=node.depth,
+            parent_status=parent_status,
+            parent_metrics_json=json.dumps(node.metrics, ensure_ascii=False),
+            parent_summary=node.eval_summary or 'none',
+            sci_note=sci_note,
+            idea_block=idea_block,
+            parent_report_block=parent_report_block,
+            siblings_block=siblings_block,
+            ancestors_block=ancestors_block,
+            existing_block=existing_block,
+            diversity_block=diversity_block,
         )
 
         response = self.llm.complete(

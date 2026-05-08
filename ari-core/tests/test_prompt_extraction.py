@@ -37,6 +37,21 @@ _EXPECTED_HASHES: list[tuple[str, str]] = [
         "pipeline/keyword_librarian",
         "c538a34ef8351eb59958b115a6221c2b5db7188521900ed5d913f6d73369e108",
     ),
+    # PC5 — BFTS select-next prompt.
+    (
+        "orchestrator/bfts_select",
+        "3724d98c3d7c10748d799dfe1d534e4385399f60c4f1823ca588f01ce178b702",
+    ),
+    # PC5 — BFTS expand-select prompt.
+    (
+        "orchestrator/bfts_expand_select",
+        "cff71dfe47770d9fdc23c704ca01717030f73b7ecb36f95cb9f1a49624709465",
+    ),
+    # PC5 — BFTS expand prompt.
+    (
+        "orchestrator/bfts_expand",
+        "5bb9cd1ba19910d3eef7ed789451869dd9b256421610bc71138dbfce7deabce9",
+    ),
 ]
 
 
