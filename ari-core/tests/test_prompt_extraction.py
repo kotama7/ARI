@@ -32,6 +32,11 @@ _EXPECTED_HASHES: list[tuple[str, str]] = [
         "orchestrator/root_idea_selector",
         "803cc751a8874e05bbaddcafdac0215a54d4dea6c6b561f292931972cdbeb07d",
     ),
+    # PC2 — pipeline keyword librarian prompt.
+    (
+        "pipeline/keyword_librarian",
+        "c538a34ef8351eb59958b115a6221c2b5db7188521900ed5d913f6d73369e108",
+    ),
 ]
 
 
