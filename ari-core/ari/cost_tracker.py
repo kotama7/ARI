@@ -193,9 +193,9 @@ def init_from_env() -> Optional[CostTracker]:
     the tracker on success, ``None`` when the env var is missing or the
     directory cannot be created.
     """
-    import os as _os
-    ckpt = _os.environ.get("ARI_CHECKPOINT_DIR", "").strip()
-    if not ckpt:
+    from ari.paths import PathManager as _PathManager
+    ckpt = _PathManager.checkpoint_dir_from_env()
+    if ckpt is None:
         return None
     try:
         return init(ckpt)

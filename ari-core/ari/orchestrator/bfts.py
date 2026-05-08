@@ -24,13 +24,13 @@ def _load_sibling_node_reports(siblings: list["Node"]) -> dict[str, dict]:
     import json as _json
     import os as _os
 
-    ckpt_env = _os.environ.get("ARI_CHECKPOINT_DIR", "")
-    if not ckpt_env:
+    from ari.paths import PathManager as _PM
+    ckpt_path = _PM.checkpoint_dir_from_env()
+    if ckpt_path is None:
         return {}
     try:
-        from ari.paths import PathManager as _PM
-        pm = _PM.from_checkpoint_dir(ckpt_env)
-        run_id = _os.path.basename(ckpt_env.rstrip("/"))
+        pm = _PM.from_checkpoint_dir(ckpt_path)
+        run_id = _os.path.basename(str(ckpt_path).rstrip("/"))
     except Exception:
         return {}
 
@@ -55,13 +55,13 @@ def _format_parent_report_block(node: Node) -> str:
     import json as _json
     import os as _os
 
-    ckpt_env = _os.environ.get("ARI_CHECKPOINT_DIR", "")
-    if not ckpt_env:
+    from ari.paths import PathManager as _PM
+    ckpt_path = _PM.checkpoint_dir_from_env()
+    if ckpt_path is None:
         return ""
     try:
-        from ari.paths import PathManager as _PM
-        pm = _PM.from_checkpoint_dir(ckpt_env)
-        run_id = _os.path.basename(ckpt_env.rstrip("/"))
+        pm = _PM.from_checkpoint_dir(ckpt_path)
+        run_id = _os.path.basename(str(ckpt_path).rstrip("/"))
         rp = pm.node_work_dir(run_id, node.id) / "node_report.json"
         if not rp.is_file():
             return ""

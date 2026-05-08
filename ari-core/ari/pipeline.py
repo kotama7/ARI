@@ -782,13 +782,19 @@ def _run_stage_subprocess(tool: str, args: dict, config_path: str, skill_name: s
         if skill_name else
         "skills = cfg.skills\n"
     )
-    # Pass checkpoint_dir to subprocess so cost_tracker can write there
-    _ckpt_env_val = repr(str(_os_sp.environ.get("ARI_CHECKPOINT_DIR", "")))
+    # Pass checkpoint_dir to subprocess so cost_tracker can write there.
+    # The parent captures the env value via PathManager so this is the
+    # only spot in pipeline.py that touches ARI_CHECKPOINT_DIR; the child
+    # script itself still reads its own env at runtime (subprocess boundary).
+    from ari.paths import PathManager as _PM_pipe
+    _ckpt_path_pipe = _PM_pipe.checkpoint_dir_from_env()
+    _ckpt_env_val = repr(str(_ckpt_path_pipe) if _ckpt_path_pipe is not None else "")
     script = (
         "import json, sys, os\n"
         "sys.path.insert(0, " + _ari_root + ")\n"
         "# Initialize cost tracker for MCP skill LLM calls\n"
-        "_ckpt_dir = os.environ.get('ARI_CHECKPOINT_DIR', '') or " + _ckpt_env_val + "\n"
+        "from ari.paths import PathManager as _PM_ct\n"
+        "_ckpt_dir = str(_PM_ct.checkpoint_dir_from_env() or '') or " + _ckpt_env_val + "\n"
         "if _ckpt_dir:\n"
         "    try:\n"
         "        from ari import cost_tracker as _ct\n"
