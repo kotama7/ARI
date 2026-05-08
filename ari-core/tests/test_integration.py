@@ -237,7 +237,10 @@ def test_slurm_partition_resolves_to_real_value():
 # ─── pipeline.py ─────────────────────────────────────────────────────────────
 
 def test_pipeline_has_paper_context_tpl_var():
-    src = (ARI_ROOT / "ari-core/ari/pipeline.py").read_text()
+    # Phase 3C: ``pipeline.py`` → ``pipeline/__init__.py``.
+    pkg_init = ARI_ROOT / "ari-core/ari/pipeline/__init__.py"
+    legacy = ARI_ROOT / "ari-core/ari/pipeline.py"
+    src = pkg_init.read_text() if pkg_init.exists() else legacy.read_text()
     assert '"paper_context"' in src, "pipeline.py must provide paper_context tpl var"
     assert '"slurm_partition"' in src, "pipeline.py must provide slurm_partition tpl var"
     assert '"experiment_source_file"' in src, "pipeline.py must provide experiment_source_file tpl var"
