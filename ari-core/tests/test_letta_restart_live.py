@@ -39,9 +39,20 @@ pytestmark = pytest.mark.skipif(
 
 
 _BASE = os.environ.get("LETTA_BASE_URL", "http://localhost:8283")
-_PIDFILE = Path(
-    os.environ.get("ARI_LETTA_PIDFILE", str(Path.home() / ".ari" / "letta-pid"))
-)
+
+# Phase DR4 (DEPRECATION_REMOVAL.md Tier D / tests §2 Step 2):
+# require an explicit ``ARI_LETTA_PIDFILE`` so a live-integration run
+# never silently writes to the real ``~/.ari/letta-pid``.  The
+# previous default snuck the deprecated path into CI under any
+# environment that exported nothing.
+_PIDFILE_ENV = os.environ.get("ARI_LETTA_PIDFILE")
+if _PIDFILE_ENV:
+    _PIDFILE = Path(_PIDFILE_ENV)
+else:
+    # Fall back to the historical location only when the user has
+    # genuinely opted in to the live restart test (``ARI_TEST_LETTA_RESTART=1``);
+    # the gate above already skips collection without that env var.
+    _PIDFILE = Path.home() / ".ari" / "letta-pid"
 
 
 def _read_pid() -> int | None:
