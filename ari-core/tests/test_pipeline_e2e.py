@@ -865,7 +865,7 @@ class TestBftsToPaperTransition:
 
     def test_cli_run_wraps_paper_in_try_except(self):
         """cli.py run() must wrap generate_paper_section in try/except."""
-        src = Path(__file__).parent.parent / "ari" / "cli.py"
+        src = Path(__file__).parent.parent / "ari" / "cli" / "__init__.py"
         content = src.read_text()
         run_section = content[content.find("def run("):content.find("def resume(")]
         assert "try:" in run_section and "generate_paper_section" in run_section, \
@@ -875,7 +875,7 @@ class TestBftsToPaperTransition:
 
     def test_cli_resume_wraps_paper_in_try_except(self):
         """cli.py resume() must wrap generate_paper_section in try/except."""
-        src = Path(__file__).parent.parent / "ari" / "cli.py"
+        src = Path(__file__).parent.parent / "ari" / "cli" / "__init__.py"
         content = src.read_text()
         resume_section = content[content.find("def resume("):content.find("def paper(")]
         assert "try:" in resume_section and "generate_paper_section" in resume_section, \
@@ -884,7 +884,7 @@ class TestBftsToPaperTransition:
 
     def test_cli_run_does_not_pass_str_none(self):
         """run() must not pass str(None)='None' to generate_paper_section."""
-        src = Path(__file__).parent.parent / "ari" / "cli.py"
+        src = Path(__file__).parent.parent / "ari" / "cli" / "__init__.py"
         content = src.read_text()
         run_section = content[content.find("def run("):content.find("def resume(")]
         # The actual generate_paper_section call must NOT use str(config) directly
@@ -893,7 +893,7 @@ class TestBftsToPaperTransition:
 
     def test_cli_resume_does_not_pass_str_none(self):
         """resume() must not pass str(config) directly."""
-        src = Path(__file__).parent.parent / "ari" / "cli.py"
+        src = Path(__file__).parent.parent / "ari" / "cli" / "__init__.py"
         content = src.read_text()
         resume_section = content[content.find("def resume("):content.find("def paper(")]
         assert 'generate_paper_section(all_nodes, experiment_data, checkpoint_dir, mcp_resume, str(config)' not in resume_section

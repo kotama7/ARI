@@ -290,10 +290,19 @@ def test_profile_file_is_findable():
 
     Regression: an extra .parent hop pointed at the repo root and silently
     dropped every override (laptop/hpc/cloud) without warning.
+
+    Phase 3A note: ``ari.cli`` became a package; ``__file__`` is now
+    ``ari/cli/__init__.py`` so we walk up one extra level to land on
+    ``ari-core/``.
     """
     from pathlib import Path
     from ari import cli as _cli
-    profiles_dir = Path(_cli.__file__).parent.parent / "config" / "profiles"
+    cli_init = Path(_cli.__file__)
+    if cli_init.parent.name == "cli":
+        ari_root = cli_init.parent.parent.parent
+    else:
+        ari_root = cli_init.parent.parent
+    profiles_dir = ari_root / "config" / "profiles"
     for name in ("laptop", "hpc", "cloud"):
         assert (profiles_dir / f"{name}.yaml").exists(), (
             f"profile {name}.yaml must be discoverable at {profiles_dir}"

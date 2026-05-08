@@ -28,194 +28,16 @@ from ari.pipeline import _extract_plan_sections
 
 
 # ---------------------------------------------------------------------------
-# lineage decision config + executor
+# lineage decision config + executor (extracted to ari.cli.lineage in Phase 3A)
 # ---------------------------------------------------------------------------
 
-_LINEAGE_LOG = logging.getLogger("ari.cli.lineage")
-
-
-def _load_lineage_decision_config() -> dict:
-    """Read lineage_decision settings from workflow.yaml + active rubric.
-
-    Schema in workflow.yaml::
-
-        lineage_decision:
-          mode: off | stagnation_rule | every_node   # default off
-          stagnation_window: 5      # only used when mode = stagnation_rule
-          stagnation_threshold: 0.02
-          min_nodes_before_decision: 3
-          rate_limit_per_run: 5     # max actions per run (cap)
-
-    lineage decisions: the active rubric (``ARI_RUBRIC``) may override these
-    via a ``lineage_thresholds:`` field, so different venues can tune
-    when escalation fires (HPC kernel runs may need a longer window
-    than ML training runs):
-
-        # ari-core/config/reviewer_rubrics/<id>.yaml
-        lineage_thresholds:
-          stagnation_window: 8
-          stagnation_threshold: 0.01
-          min_nodes_before_decision: 5
-
-    Precedence: rubric override > workflow.yaml > built-in defaults.
-    """
-    base: dict = {}
-    try:
-        import yaml as _yaml
-        _candidates = [
-            Path(__file__).parent.parent / "config" / "workflow.yaml",
-            Path.cwd() / "config" / "workflow.yaml",
-        ]
-        for p in _candidates:
-            if p.exists():
-                base = (_yaml.safe_load(p.read_text()) or {}).get(
-                    "lineage_decision", {}
-                ) or {}
-                break
-    except Exception:
-        base = {}
-
-    # Overlay rubric-specific thresholds when present.
-    try:
-        rid = (os.environ.get("ARI_RUBRIC") or "").strip()
-        if rid:
-            import yaml as _yaml2
-            rubric_path = (
-                Path(__file__).parent.parent
-                / "config" / "reviewer_rubrics" / f"{rid}.yaml"
-            )
-            if rubric_path.exists():
-                rubric_data = _yaml2.safe_load(rubric_path.read_text()) or {}
-                overrides = rubric_data.get("lineage_thresholds") or {}
-                if isinstance(overrides, dict):
-                    merged = dict(base)
-                    for k in (
-                        "stagnation_window",
-                        "stagnation_threshold",
-                        "min_nodes_before_decision",
-                        "rate_limit_per_run",
-                    ):
-                        if k in overrides:
-                            merged[k] = overrides[k]
-                    base = merged
-    except Exception:
-        pass
-    return base
-
-
-def _mark_parent_terminated(parent_ckpt: Path, rationale: str) -> None:
-    """lineage decisions: write parent_terminated=true into meta.json so any
-    descendant run started later can decide whether to cancel itself.
-
-    Existing children (already running) are not signalled — they have
-    their own BFTS loops and their own lineage_decision hooks. The
-    flag is purely a hint that propagates *forward* through future
-    sub-experiment launches.
-    """
-    meta_p = parent_ckpt / "meta.json"
-    try:
-        meta = json.loads(meta_p.read_text()) if meta_p.exists() else {}
-        if not isinstance(meta, dict):
-            meta = {}
-        meta["parent_terminated"] = True
-        meta["parent_terminated_rationale"] = rationale[:300]
-        meta_p.write_text(json.dumps(meta, indent=2))
-    except Exception as _e_meta:
-        _LINEAGE_LOG.warning("could not mark parent_terminated: %s", _e_meta)
-
-
-def _execute_lineage_decision(
-    decision,                    # LineageDecision
-    *,
-    parent_run_id: str,
-    parent_ckpt: Path,
-    experiment_data: dict,
-) -> bool:
-    """Carry out the LLM-chosen action via Phase 2.5 plumbing.
-
-    Returns True iff the BFTS loop should stop expanding new nodes
-    (the ``terminate`` action).
-    """
-    action = decision.action
-    if action in ("continue", None, ""):
-        return False
-    if action == "terminate":
-        _LINEAGE_LOG.info(
-            "lineage decision: terminate (rationale=%s)", decision.rationale[:140]
-        )
-        # lineage decisions: persist the terminate signal in meta.json so
-        # descendants spawned after this point can opt out.
-        _mark_parent_terminated(parent_ckpt, decision.rationale)
-        return True
-    if action in ("switch_to_idea", "fanout"):
-        if decision.target_idea_index is None:
-            _LINEAGE_LOG.warning(
-                "lineage decision: %s with no target_idea_index — skipping",
-                action,
-            )
-            return False
-        try:
-            from ari.viz.api_orchestrator import _api_launch_sub_experiment
-        except Exception as e:
-            _LINEAGE_LOG.warning("lineage decision: import launch API failed: %s", e)
-            return False
-        body = {
-            "experiment_md": (
-                f"Auto-spawned by parent {parent_run_id} via lineage decision "
-                f"({action}). Rationale: {decision.rationale[:300]}\n"
-            ),
-            "parent_run_id": parent_run_id,
-            "inherit_idea_index": int(decision.target_idea_index),
-        }
-        if decision.disable_generate_ideas:
-            # lineage decisions: child runs the inherited idea verbatim, no resampling.
-            os.environ.setdefault("ARI_DISABLED_TOOLS_FOR_CHILD", "")
-        try:
-            res = _api_launch_sub_experiment(json.dumps(body).encode())
-            _LINEAGE_LOG.info(
-                "lineage decision: %s → child %s (rationale=%s)",
-                action, res.get("run_id", "?"), decision.rationale[:140],
-            )
-        except Exception as e:
-            _LINEAGE_LOG.warning("lineage decision: launch failed: %s", e)
-        return False  # parent continues; child runs in parallel
-    return False
-
-
-def _build_idea_ctx_for_expand(idea_data: dict) -> str:
-    """Build the BFTS-expand idea context with §-tag extraction.
-
-    Replaces the legacy 400-char truncation that dropped §4-§6 of the
-    VirSci experiment_plan (model calibration / comparisons), causing
-    BFTS to never explore those branches. Each section title is always
-    included; bodies are truncated only if the total context grows large.
-    """
-    ideas = idea_data.get("ideas") or []
-    if not ideas:
-        return ""
-    best = ideas[0]
-    gap = idea_data.get("gap_analysis", "")
-    parts = [
-        f"Gap: {gap[:1500]}",
-        f"Idea: {best.get('title', '')}",
-        f"Description: {best.get('description', '')[:2000]}",
-    ]
-    plan_text = best.get("experiment_plan", "")
-    if plan_text:
-        sections = _extract_plan_sections(plan_text)
-        if sections:
-            plan_lines = ["Plan sections:"]
-            # Total body budget for the plan portion. Per-section trimming
-            # falls back when overall context grows too large.
-            per_section_budget = max(400, 6000 // max(1, len(sections)))
-            for tag, title, body in sections:
-                plan_lines.append(f"  {tag} {title}")
-                if body:
-                    plan_lines.append(f"    {body[:per_section_budget]}")
-            parts.append("\n".join(plan_lines))
-        else:
-            parts.append(f"Plan: {plan_text[:4000]}")
-    return "\n".join(parts)
+from ari.cli.lineage import (
+    _LINEAGE_LOG,
+    _load_lineage_decision_config,
+    _mark_parent_terminated,
+    _execute_lineage_decision,
+    _build_idea_ctx_for_expand,
+)
 
 app = typer.Typer(name="ari", help="ARI - Artificial Research Intelligence")
 console = Console()
@@ -244,80 +66,9 @@ except Exception as _e:  # pragma: no cover - import guard
 
 # ── ari migrate ───────────────────────────────────────────────────────
 # v0.7.0: best-effort backfill of node_report.json into legacy checkpoints.
-migrate_app = typer.Typer(name="migrate", help="One-shot data migrations.")
+# Implementation lives in ``ari.cli.migrate`` (Phase 3A extraction).
+from ari.cli.migrate import migrate_app, cmd_migrate_node_reports
 app.add_typer(migrate_app, name="migrate")
-
-
-@migrate_app.command("node-reports")
-def cmd_migrate_node_reports(
-    checkpoint: Path = typer.Argument(..., help="Checkpoint directory to backfill."),
-    overwrite: bool = typer.Option(False, "--overwrite",
-                                   help="Re-write node_report.json even if one already exists."),
-) -> None:
-    """Backfill `node_report.json` for every node in a legacy checkpoint.
-
-    Best-effort: fields we cannot recover (original_direction,
-    delta_vs_parent, next_steps_hints) are nulled, and migration_source is
-    set to "auto" so downstream filters know the report is not first-class.
-    """
-    from ari.orchestrator import node_report as _nr
-
-    checkpoint = checkpoint.resolve()
-    if not checkpoint.is_dir():
-        console.print(f"[red]not a directory: {checkpoint}[/red]")
-        raise typer.Exit(2)
-
-    tree_path = checkpoint / "tree.json"
-    if not tree_path.is_file():
-        console.print(f"[red]no tree.json under {checkpoint}[/red]")
-        raise typer.Exit(2)
-
-    try:
-        tree = json.loads(tree_path.read_text())
-    except Exception as exc:
-        console.print(f"[red]failed to read tree.json: {exc}[/red]")
-        raise typer.Exit(2)
-
-    nodes = tree.get("nodes") or []
-    run_id = tree.get("run_id") or checkpoint.name
-
-    pm = PathManager.from_checkpoint_dir(checkpoint)
-    by_id = {n.get("id"): n for n in nodes}
-
-    written = 0
-    skipped = 0
-    failed = 0
-
-    for node_dict in nodes:
-        nid = node_dict.get("id")
-        if not nid:
-            continue
-        work_dir = pm.node_work_dir(run_id, nid)
-        out_path = work_dir / "node_report.json"
-        if out_path.exists() and not overwrite:
-            skipped += 1
-            continue
-        parent_id = node_dict.get("parent_id")
-        parent_wd = pm.node_work_dir(run_id, parent_id) if parent_id else None
-        if parent_wd is not None and not parent_wd.is_dir():
-            parent_wd = None
-        try:
-            report = _nr.reconstruct_report_from_legacy(
-                node_dict=node_dict,
-                work_dir=work_dir if work_dir.is_dir() else None,
-                parent_work_dir=parent_wd,
-            )
-            work_dir.mkdir(parents=True, exist_ok=True)
-            out_path.write_text(json.dumps(report, indent=2, ensure_ascii=False))
-            written += 1
-        except Exception as exc:
-            logging.getLogger(__name__).warning("migrate %s failed: %s", nid, exc)
-            failed += 1
-
-    console.print(
-        f"[green]migrated[/green] {written} node(s); "
-        f"skipped={skipped} failed={failed} (run_id={run_id})"
-    )
 
 
 # ── ari clone ────────────────────────────────────────────────────────
@@ -589,7 +340,7 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                         try:
                             import yaml as _yaml_root
                             _wf_path = (
-                                Path(__file__).parent.parent / "config" / "workflow.yaml"
+                                Path(__file__).resolve().parent.parent.parent / "config" / "workflow.yaml"
                             )
                             _wf_for_root = (
                                 _yaml_root.safe_load(_wf_path.read_text())
@@ -1103,10 +854,10 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
 def _apply_profile(cfg, profile_name: str) -> None:
     """Deep-merge an environment profile into the config."""
     import yaml as _yaml
-    # Profiles live at ari-core/config/profiles/. __file__ is ari-core/ari/cli.py
-    # so two .parent hops reach ari-core; a third hop overshoots to the repo root
-    # (where no config/ exists) and silently drops every profile override.
-    profiles_dir = Path(__file__).parent.parent / "config" / "profiles"
+    # Profiles live at ari-core/config/profiles/. After Phase 3A
+    # ``__file__`` is ``ari-core/ari/cli/__init__.py`` so we walk up
+    # three parents (cli → ari → ari-core) to reach the bundled root.
+    profiles_dir = Path(__file__).resolve().parent.parent.parent / "config" / "profiles"
     p = profiles_dir / f"{profile_name}.yaml"
     if not p.exists():
         logging.getLogger(__name__).warning(
@@ -1167,7 +918,7 @@ def run(
     # (which inherit os.environ) can wrap run_bash commands in the container.
     try:
         import yaml as _yaml_ct
-        _wf_ct_path = Path(__file__).parent.parent / "config" / "workflow.yaml"
+        _wf_ct_path = Path(__file__).resolve().parent.parent.parent / "config" / "workflow.yaml"
         _ct_cfg_raw = {}
         if _wf_ct_path.exists():
             _ct_cfg_raw = (_yaml_ct.safe_load(_wf_ct_path.read_text()) or {}).get("container", {})
@@ -1305,7 +1056,7 @@ def run(
     # because that copy may carry per-launch rewrites (e.g. include_ear=False
     # disabling EAR / ors_seed_sandbox stages) that an unconditional copy from
     # source would silently undo.
-    _wf_src = config if config and config.exists() else (Path(__file__).parent.parent / "config" / "workflow.yaml")
+    _wf_src = config if config and config.exists() else (Path(__file__).resolve().parent.parent.parent / "config" / "workflow.yaml")
     _wf_dst = checkpoint_dir / "workflow.yaml"
     if _wf_src and Path(_wf_src).exists() and not _wf_dst.exists():
         try:
@@ -1334,7 +1085,7 @@ def run(
         # stages) actually drive the paper pipeline. Fall back to --config or
         # the package source for direct CLI runs that never wrote a checkpoint
         # copy.
-        _pkg_wf = Path(__file__).parent.parent / "config" / "workflow.yaml"
+        _pkg_wf = Path(__file__).resolve().parent.parent.parent / "config" / "workflow.yaml"
         _ckpt_wf = checkpoint_dir / "workflow.yaml"
         if _ckpt_wf.exists():
             _cfg_str = str(_ckpt_wf)
@@ -1465,7 +1216,7 @@ def resume(
         ))
         # Prefer per-checkpoint workflow.yaml (carries launch-time rewrites)
         # over the package source.
-        _pkg_wf_r = Path(__file__).parent.parent / "config" / "workflow.yaml"
+        _pkg_wf_r = Path(__file__).resolve().parent.parent.parent / "config" / "workflow.yaml"
         _ckpt_wf_r = checkpoint_dir / "workflow.yaml"
         if _ckpt_wf_r.exists():
             _cfg_str_r = str(_ckpt_wf_r)
