@@ -38,7 +38,22 @@ def _read_react_sources():
     return "\n".join(parts)
 
 
-def _srv():   return (_VIZ / "server.py").read_text()
+def _srv():
+    """Concatenate the viz server source files.
+
+    Phase 3B (viz/REFACTORING.md §2 Step 1) moves the WebSocket
+    handler + UI helpers out of ``server.py``; the cross-file checks
+    below still need to see the moved definitions in their natural
+    declaration order, so put ``ui_helpers.py`` (which now owns
+    ``_REDACT_KEYS`` etc.) ahead of ``server.py``.
+    """
+    parts = []
+    for sib in ("ui_helpers.py", "websocket.py"):
+        p = _VIZ / sib
+        if p.exists():
+            parts.append(p.read_text())
+    parts.append((_VIZ / "server.py").read_text())
+    return "\n".join(parts)
 def _api_exp(): return (_VIZ / "api_experiment.py").read_text()
 def _api_set(): return (_VIZ / "api_settings.py").read_text()
 def _combined(): return _read_react_sources()
