@@ -427,18 +427,15 @@ def _extract_keywords_from_nodes(nodes_json_path: str, base_topic: str = "") -> 
             _model = f"ollama_chat/{_model}"
         elif _backend in ("claude", "anthropic") and not _model.startswith("anthropic/"):
             _model = f"anthropic/{_model}"
+        # Phase PC2 (PROMPTS_AND_CONFIG.md §3-5): keyword librarian
+        # prompt lives in ``ari/prompts/pipeline/keyword_librarian.md``.
+        from ari.prompts import FilesystemPromptLoader as _PL_pipe
+        _kw_system = _PL_pipe().load("pipeline/keyword_librarian")
         _kw: dict = dict(
             model=_model,
             messages=[{
                 "role": "system",
-                "content": (
-                    "You are a research librarian. "
-                    "Given experiment summaries, produce a SHORT broad academic search query "
-                    "(3-6 words) for Semantic Scholar. "
-                    "Use GENERAL terms (e.g. 'algorithm optimization', not 'custom 4-stage pipelined batch-norm fused kernel'). "
-                    "Avoid domain-specific jargon, acronyms, or overly narrow terms. "
-                    "Return ONLY the query string, no explanation."
-                ),
+                "content": _kw_system,
             }, {
                 "role": "user",
                 "content": f"Experiment summaries:\n{_combined}",
