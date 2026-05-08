@@ -39,6 +39,24 @@ EOF
 export ARI_REGISTRY_TOKEN=ari_<paste-from-step-3>
 ```
 
+## Settings file resolution (v0.7+)
+
+Both `ari publish` (the `ari-registry` backend) and `ari clone ari://`
+look up `registries.yaml` in this priority order:
+
+1. `$ARI_REGISTRIES_FILE` — explicit env override.
+2. `{checkpoint_dir}/.ari/registries.yaml` — populated by sub-experiment
+   launchers; lets a run pin its registry config to its checkpoint.
+3. `$(pwd)/.ari/registries.yaml` — convenient when running from inside
+   a project directory.
+4. `~/.ari/registries.yaml` — **DEPRECATED since v0.5.0**, retained
+   behind a `DeprecationWarning`. The fallback will be removed in v1.0.
+
+Server-side state (`ari registry serve`) lives at
+`$ARI_REGISTRY_DATA/`; the legacy `~/.ari/registry-data` fallback is
+under the same v1.0 deprecation policy. Set the env var explicitly to
+avoid the warning.
+
 ## Endpoints
 
 | Method | Path                                    | Auth   | Notes |
