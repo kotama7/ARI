@@ -1385,8 +1385,8 @@ def _api_checkpoint_memory(ckpt_id: str) -> dict:
     err: str | None = None
 
     try:
-        import os as _os_mem
-        _os_mem.environ["ARI_CHECKPOINT_DIR"] = str(d)
+        from ari.paths import PathManager as _PM_mem
+        _PM_mem.set_checkpoint_dir_env(d)
         from ari_skill_memory.backends import get_backend
         backend = get_backend(checkpoint_dir=d)
         # node-scope entries

@@ -379,8 +379,8 @@ class _Handler(BaseHTTPRequestHandler):
                 if _st._checkpoint_dir is None:
                     entries = []
                 else:
-                    import os as _os_legacy
-                    _os_legacy.environ["ARI_CHECKPOINT_DIR"] = str(_st._checkpoint_dir)
+                    from ari.paths import PathManager as _PM_legacy
+                    _PM_legacy.set_checkpoint_dir_env(_st._checkpoint_dir)
                     from ari_skill_memory.backends import get_backend
                     backend = get_backend(checkpoint_dir=_st._checkpoint_dir)
                     raw = backend.get_node_memory(node_id).get("entries", [])
