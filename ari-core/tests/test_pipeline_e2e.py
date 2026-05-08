@@ -900,7 +900,11 @@ class TestBftsToPaperTransition:
 
     def test_nodes_tree_write_failure_logged_as_error(self):
         """pipeline.py must log ERROR (not WARNING) when nodes_tree.json write fails."""
-        src = Path(__file__).parent.parent / "ari" / "pipeline.py"
+        # Phase 3C: ``pipeline.py`` → ``pipeline/__init__.py``.
+        ari_root = Path(__file__).parent.parent / "ari"
+        pkg_init = ari_root / "pipeline" / "__init__.py"
+        legacy = ari_root / "pipeline.py"
+        src = pkg_init if pkg_init.exists() else legacy
         content = src.read_text()
         idx = content.find("Failed to save nodes_tree.json")
         assert idx > 0, "Expected log message for nodes_tree.json failure"

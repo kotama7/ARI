@@ -547,7 +547,13 @@ class TestPipelineFieldConsistency:
 
     @pytest.fixture(autouse=True)
     def _load(self):
-        self.pipeline_src = (_ARI_CORE / "ari" / "pipeline.py").read_text()
+        # Phase 3C (Phase 3): ``ari.pipeline`` is now a package; the
+        # implementations still live in ``__init__.py`` until the rest
+        # of the split lands.  Fall back to the legacy single-file
+        # path in case a future split moves the body.
+        pkg_init = _ARI_CORE / "ari" / "pipeline" / "__init__.py"
+        legacy = _ARI_CORE / "ari" / "pipeline.py"
+        self.pipeline_src = pkg_init.read_text() if pkg_init.exists() else legacy.read_text()
 
     def test_skip_if_exists_implemented(self):
         """pipeline.py must process skip_if_exists."""
@@ -973,7 +979,10 @@ class TestPaperPipelineFileContract:
     def test_pipeline_py_implements_loop_back_to(self):
         """pipeline.py must actually honour loop_back_to at runtime (not
         just for GUI DAG rendering)."""
-        src = (_ARI_CORE / "ari" / "pipeline.py").read_text()
+        # Phase 3C: ``pipeline.py`` is now ``pipeline/__init__.py``.
+        pkg_init = _ARI_CORE / "ari" / "pipeline" / "__init__.py"
+        legacy = _ARI_CORE / "ari" / "pipeline.py"
+        src = pkg_init.read_text() if pkg_init.exists() else legacy.read_text()
         assert "loop_back_to" in src, (
             "pipeline.py must reference loop_back_to to implement the runtime"
         )
