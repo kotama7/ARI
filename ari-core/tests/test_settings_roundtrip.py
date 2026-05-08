@@ -5,7 +5,7 @@ GUI Settings save/load roundtrip tests.
 
 Verifies the full cycle:
   1. User edits Settings page → JS collects values → POST /api/settings
-  2. server.py writes ~/.ari/settings.json
+  2. server.py writes {checkpoint_dir}/settings.json (project-scoped since v0.5.0)
   3. GET /api/settings → returns correct fields
   4. /state endpoint merges settings → returns to dashboard
   5. Dashboard JS reads state → displays correct values in UI
