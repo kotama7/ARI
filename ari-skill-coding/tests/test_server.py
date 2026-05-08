@@ -98,7 +98,11 @@ def test_run_bash_uses_container_when_env_set(work_dir, monkeypatch):
     monkeypatch.setenv("ARI_CONTAINER_IMAGE", "ghcr.io/example/img:latest")
     monkeypatch.setenv("ARI_CONTAINER_MODE", "singularity")
     # Patch container helpers at their source module so the local import
-    # inside _run_bash picks up the fakes.
+    # inside _run_bash picks up the fakes.  Phase 4 routes skill access
+    # through ``ari.public.container``; we still patch ``ari.container``
+    # directly because the skill's own ``_run_bash`` uses that import
+    # path internally.
+    from ari.public import container as _ct  # noqa: F401  - boundary check
     import ari.container as _ct
     monkeypatch.setattr(_ct, "run_shell_in_container", _fake_run_shell)
     monkeypatch.setattr(_srv.subprocess, "run", _fake_subprocess_run)
