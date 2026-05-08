@@ -583,15 +583,12 @@ class LLMEvaluator:
                     except (TypeError, ValueError):
                         axis_scores[k] = 0.0
             else:
-                legacy = data.get("scientific_score")
-                if legacy is not None:
-                    try:
-                        uniform = max(min(float(legacy), 1.0), 0.0)
-                    except (TypeError, ValueError):
-                        uniform = 0.0
-                    axis_scores = {k: uniform for k in iter_names}
-                else:
-                    axis_scores = {k: 0.0 for k in iter_names}
+                # Phase 5 (REFACTORING.md §8): legacy 5-axis fallback
+                # lives in ``ari.migrations.v05_to_v07.legacy_axes``.
+                from ari.migrations.v05_to_v07.legacy_axes import (
+                    legacy_uniform_axis_scores,
+                )
+                axis_scores = legacy_uniform_axis_scores(data, iter_names)
 
             weights = self._resolve_axis_weights()
             composite = weighted_harmonic_mean(
