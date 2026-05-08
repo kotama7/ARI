@@ -236,25 +236,21 @@ def _parse_decision(raw: str, state: LineageState) -> LineageDecision:
 # ---------------------------------------------------------------------------
 
 
-_SYSTEM_PROMPT = (
-    "You are a research orchestrator. Given the current state of an "
-    "exploratory research run, decide the next lineage-level action. "
-    "Possible actions:\n"
-    "  continue       — current idea is still productive; keep exploring\n"
-    "  switch_to_idea — current idea has stagnated; switch to an alternative\n"
-    "  fanout         — current idea succeeded; explore an alternative in parallel\n"
-    "  terminate      — research thread is exhausted; stop\n"
-    "Choose the LEAST disruptive action that fits the evidence. Prefer "
-    "continue unless there is a concrete reason to escalate. When choosing "
-    "switch_to_idea or fanout, set target_idea_index to a value that "
-    "appears in the alternatives pool. When choosing switch_to_idea, set "
-    "disable_generate_ideas=true (the child should run with the chosen "
-    "idea pinned, not regenerate). For fanout you may set it false so the "
-    "child can also explore additional novel directions.\n"
-    "Reply ONLY with JSON: "
-    '{"action":str,"target_idea_index":int|null,'
-    '"disable_generate_ideas":bool,"rationale":str}. No markdown.'
-)
+# Phase PC4 (PROMPTS_AND_CONFIG.md §3-2): the system prompt body lives
+# in ``ari/prompts/orchestrator/lineage_decision.md``.  ``_SYSTEM_PROMPT``
+# stays available via PEP-562 ``__getattr__`` for any external caller
+# that imports it directly.
+
+
+def _load_system_prompt() -> str:
+    from ari.prompts import FilesystemPromptLoader
+    return FilesystemPromptLoader().load("orchestrator/lineage_decision")
+
+
+def __getattr__(name: str):  # PEP 562 — preserve ``_SYSTEM_PROMPT`` API.
+    if name == "_SYSTEM_PROMPT":
+        return _load_system_prompt()
+    raise AttributeError(name)
 
 
 def _default_model() -> str:
@@ -283,7 +279,7 @@ async def decide_lineage_action(
     kwargs: dict[str, Any] = {
         "model": model or _default_model(),
         "messages": [
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "system", "content": _load_system_prompt()},
             {"role": "user", "content": user},
         ],
         "temperature": temperature,
