@@ -1,8 +1,24 @@
 [project]
 name = "ari-skill-paper-re"
-version = "0.1.0"
+version = "0.7.0"
 requires-python = ">=3.13"
-dependencies = ["mcp>=1.0"]
+dependencies = [
+    "mcp>=1.0",
+    # PaperBench upstream dependencies. The vendored packages
+    # (paperbench / nanoeval / preparedness_turn_completer) are loaded
+    # via sys.path injection from ``vendor/paperbench/`` at module import
+    # time (see ``src/_vendor_path.py``); the third-party deps below come
+    # from PyPI / GitHub.
+    "chz @ git+https://github.com/openai/chz.git",
+    "blobfile>=3.0.0",
+    "structlog>=25.1.0",
+    "tiktoken>=0.9.0",
+    "openai>=1.99.9",
+    "tenacity>=9.0.0",
+    "litellm>=1.40.0",
+    "pydantic>=2.0",
+    "typing-extensions",
+]
 
 [project.scripts]
 ari-skill-paper-re = "server:main"

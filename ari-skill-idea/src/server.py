@@ -172,11 +172,18 @@ async def _virsci_discussion_loop(
     paper_reference: str,
     n_agents: int,
     max_rounds: int,
+    ancestor_block: str = "",
 ) -> dict:
     """
     Adapted from VirSci SciTeam.generate_idea().
     Uses VirSci's Prompts templates if available; falls back to inline prompts.
     ARI's LLM (litellm) replaces agentscope agents.
+
+    ``ancestor_block`` (Phase 2): a free-form context string describing
+    research directions explored by ancestor runs. Injected between the
+    existing-idea recap and the topic prompt so each agent sees what was
+    already considered. The vendor templates remain unmodified — this is
+    a wrapper-layer concatenation only.
     """
 
     # Build prompt templates from VirSci if available, else inline fallback
@@ -222,6 +229,7 @@ async def _virsci_discussion_loop(
             idea_prompt = (
                 prompt_task
                 + existing_block
+                + ancestor_block
                 + prompt_topic_fmt.format(topic)
                 + prompt_reference.format(paper_reference)
                 + prompt_response
@@ -382,6 +390,31 @@ async def generate_ideas(
     if experiment_context:
         paper_reference += f"\n\nExperiment context: {experiment_context[:400]}"
 
+    # Phase 2: load ancestor catalog (read-only) so VirSci agents stay aware
+    # of prior research thread and can refine / extend / explicitly pivot.
+    # vendor/virsci is untouched — we inject via prompt concatenation only.
+    ancestor_block = ""
+    try:
+        _ckpt = os.environ.get("ARI_CHECKPOINT_DIR")
+        if _ckpt:
+            # Lazy import: ari-core may not be on PYTHONPATH for some
+            # standalone test invocations of this skill.
+            try:
+                from ari.lineage import (  # type: ignore
+                    format_ancestor_pool_for_virsci,
+                    get_idea_pool_for_ckpt,
+                )
+            except Exception:
+                format_ancestor_pool_for_virsci = None  # type: ignore
+                get_idea_pool_for_ckpt = None  # type: ignore
+            if format_ancestor_pool_for_virsci and get_idea_pool_for_ckpt:
+                pool = get_idea_pool_for_ckpt(
+                    _ckpt, walk_ancestors=True, exclude_self=True,
+                )
+                ancestor_block = format_ancestor_pool_for_virsci(pool)
+    except Exception:
+        ancestor_block = ""  # never block idea generation on lineage errors
+
     # Gap analysis
     gap_raw = await _llm(
         "Identify research gaps in 3-4 sentences. Be concise. No markdown.",
@@ -396,6 +429,7 @@ async def generate_ideas(
             paper_reference=paper_reference,
             n_agents=n_agents,
             max_rounds=max(1, max_discussion_rounds),
+            ancestor_block=ancestor_block,
         )
         for i in range(n_ideas)
     ]
@@ -447,9 +481,52 @@ async def generate_ideas(
         else "VirSci submodule unavailable — using inline fallback prompts"
     )
 
-    return {
+    # Phase 2.5: when the child checkpoint already has an idea.json with a
+    # pinned idea (written by ``_api_launch_sub_experiment`` after
+    # inherit_idea_index materialisation), prepend those entries so the
+    # caller's chosen direction stays at ideas[0]. Newly generated ideas
+    # become alternatives at ideas[N+1..]. Without this, generate_ideas
+    # would silently overwrite the inherit directive and BFTS would drift.
+    pinned_ideas: list[dict] = []
+    pinned_metadata: dict = {}
+    try:
+        _ckpt = os.environ.get("ARI_CHECKPOINT_DIR")
+        if _ckpt:
+            _existing = Path(_ckpt) / "idea.json"
+            if _existing.exists():
+                _old = json.loads(_existing.read_text())
+                for _idea in (_old.get("ideas") or []):
+                    if isinstance(_idea, dict) and _idea.get("_pinned"):
+                        pinned_ideas.append(_idea)
+                if pinned_ideas:
+                    # Preserve provenance fields from the seed file.
+                    for _k in ("_inherited_from",):
+                        if _k in _old:
+                            pinned_metadata[_k] = _old[_k]
+    except Exception:
+        pass
+
+    # lineage decisions: drop newly generated ideas whose title matches a pinned
+    # idea (case-insensitive, whitespace-normalised). Without this, a
+    # child's VirSci that saw the parent's selected idea via the
+    # ancestor catalog often re-proposes near-duplicates as alternatives,
+    # cluttering child idea.json with effectively the same direction
+    # under slightly different titles. Strict title match keeps the
+    # heuristic conservative — semantic-similarity dedup is left for
+    # downstream tooling.
+    def _norm(title: str) -> str:
+        return " ".join((title or "").lower().split())
+
+    pinned_keys = {_norm(p.get("title", "")) for p in pinned_ideas}
+    deduped_new = [
+        idea for idea in ideas_out
+        if _norm(idea.get("title", "")) not in pinned_keys
+    ]
+    final_ideas = pinned_ideas + deduped_new
+
+    out: dict = {
         "gap_analysis":      gap_raw,
-        "ideas":             ideas_out,
+        "ideas":             final_ideas,
         "primary_metric":    metric_data.get("primary_metric", ""),
         "higher_is_better":  metric_data.get("higher_is_better", True),
         "metric_rationale":  metric_data.get("metric_rationale", ""),
@@ -458,6 +535,9 @@ async def generate_ideas(
         "discussion_rounds": max_discussion_rounds,
         "virsci_integration_status": virsci_status,
     }
+    if pinned_metadata:
+        out.update(pinned_metadata)
+    return out
 
 
 if __name__ == "__main__":

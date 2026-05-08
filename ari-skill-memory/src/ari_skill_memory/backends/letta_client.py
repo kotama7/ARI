@@ -85,14 +85,18 @@ def build_default_client(cfg: MemoryConfig) -> LettaClientProtocol:
 
 
 class _SdkLettaAdapter:
-    """Adapter over ``letta-client`` targeting Letta server 0.9.x.
+    """Adapter over ``letta-client`` targeting Letta server 0.16.x.
 
-    The 0.9 server stores passages as ``{id, text, created_at, embedding}``
-    with no server-side tags/metadata/filtering. We encode the ARI
-    metadata dict as a JSON footer on the passage text; any filtered
-    search raises ``NotImplementedError`` so LettaBackend falls back to
-    its overfetch + post-filter path. Tests inject a fake and bypass
-    this class entirely.
+    Letta stores passages as ``{id, text, created_at, embedding}`` with
+    no server-side metadata filtering exposed to the archival-memory
+    REST routes. We encode the ARI metadata dict as a JSON footer on
+    the passage text; any filtered search raises ``NotImplementedError``
+    so LettaBackend falls back to its overfetch + post-filter path.
+    Tests inject a fake and bypass this class entirely.
+
+    Note: ``passages.list(search=q)`` is server-side SQL substring
+    matching, NOT semantic search — see ``LettaBackend.search_memory``
+    for the rationale on why we don't use it as a fallback.
     """
 
     _META_SEP = "\n<<<ARI_META>>>\n"
@@ -226,14 +230,20 @@ class _SdkLettaAdapter:
         self, *, agent_id: str, collection: str, query: str,
         filter: dict | None, limit: int,
     ) -> list[dict]:
-        # 0.9 has no server-side filter; force backend's overfetch path
+        # Letta exposes no server-side metadata filter for archival
+        # passages — JSON-footer metadata only round-trips through the
+        # text field. Force the backend's over-fetch + post-filter path
         # whenever a filter is requested.
         if filter is not None:
             raise NotImplementedError("passage filter not supported by server")
-        page = self._letta.agents.passages.list(
-            agent_id=agent_id, search=query, limit=limit,
+        # Real semantic search route (`GET /archival-memory/search`,
+        # embed_query=True). Distinct from `passages.list(search=q)`
+        # which is SQL substring matching — see `LettaBackend.search_memory`
+        # for the rationale on the route choice.
+        resp = self._letta.agents.passages.search(
+            agent_id=agent_id, query=query, top_k=limit,
         )
-        return self._rows_from_page(page)
+        return self._rows_from_search(resp)
 
     def archival_list(
         self, *, agent_id: str, collection: str, filter: dict | None = None,
@@ -298,6 +308,28 @@ class _SdkLettaAdapter:
                 "text": text,
                 "metadata": meta,
                 "score": 0.0,
+            })
+        return out
+
+    def _rows_from_search(self, resp: Any) -> list[dict]:
+        """Decode a ``PassageSearchResponse``.
+
+        Each result carries ``id``, ``content`` (the passage text — note
+        the field rename vs ``passages.list``'s ``text``), ``timestamp``,
+        ``tags``. The SDK does not expose the raw similarity score, so
+        we fall back to a synthetic descending rank score (1.0, 0.99,
+        ...) to preserve order when the caller persists ``score``.
+        """
+        results = getattr(resp, "results", None) or []
+        out: list[dict] = []
+        for rank, r in enumerate(results):
+            blob = getattr(r, "content", None) or getattr(r, "text", "") or ""
+            text, meta = self._decode(blob)
+            out.append({
+                "id": getattr(r, "id", None),
+                "text": text,
+                "metadata": meta,
+                "score": max(0.0, 1.0 - rank * 0.01),
             })
         return out
 

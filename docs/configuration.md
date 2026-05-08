@@ -71,27 +71,96 @@ pipeline:
     tool: review_compiled_paper
     depends_on: [write_paper]
     # ...
-  - stage: reproducibility_check
-    skill: paper-re-skill
-    # Driven by ari-core/ari/agent/react_driver.py, not a single tool.
-    # paper-re provides the deterministic bookends; the ReAct loop runs
-    # over MCP skills whose phase list contains `reproduce`.
-    pre_tool: extract_repro_config
-    post_tool: build_repro_report
+  # ─── EAR curation/publishing/finalization ── (v0.7.0) ───
+  - stage: ear_curate
+    skill: transform-skill
+    tool: curate_ear
+    depends_on: [generate_ear]
+    inputs:
+      checkpoint_dir: '{{checkpoint_dir}}'
+    outputs:
+      file: '{{checkpoint_dir}}/ear_curate.status.json'
+  - stage: finalize_paper
+    skill: paper-skill
+    tool: inject_code_availability
+    depends_on: [write_paper, ear_curate]
+    # Auto-loads ref/sha/doi from ear_published/manifest.lock and
+    # publish_record.json; injects \codeavailability/\codedigest/\coderef
+    # macros into full_paper.tex. Skips silently when no curated bundle.
+  - stage: ear_publish
+    skill: transform-skill
+    tool: publish_ear
+    depends_on: [ear_curate]
+    enabled: false           # opt-in; set to true (or pass publish=true)
+    inputs:
+      checkpoint_dir: '{{checkpoint_dir}}'
+      backend: ari-registry
+      visibility: staged
+      dry_run: false
+    outputs:
+      file: '{{checkpoint_dir}}/publish_record.json'
+  - stage: merge_reviews
+    skill: paper-skill
+    tool: merge_reviews
+    depends_on: [review_paper, vlm_review_figures]
+    # Post-hoc structural merge of text + VLM reviewer outputs (no LLM).
+
+  # ─── ORS auto-rubric reproducibility (PaperBench, v0.7.0) ───
+  # Replaces the legacy `reproducibility_check` stage.
+  - stage: ors_generate_rubric
+    skill: replicate-skill
+    tool: generate_rubric
     depends_on: [write_paper]
-    react:
-      agent_phase: reproduce
-      max_steps: 40
-      final_tool: report_metric
-      # Keep the agent out of the checkpoint root; path validation rejects
-      # any tool argument that references files outside this directory
-      # (plus an allow-list for the paper .tex).
-      sandbox: '{{checkpoint_dir}}/repro_sandbox'
-      system_prompt: |
-        You are a reproducibility engineer...
-      user_prompt: |
-        Target: reproduce {{pre.metric_name}} = {{pre.claimed_value}}
-        ...
+    inputs:
+      paper_path: '{{checkpoint_dir}}/full_paper.tex'
+      output_path: '{{checkpoint_dir}}/ors_rubric.json'
+      target_leaf_count: 0     # 0 = auto from paper length
+  - stage: ear_publish          # v0.7.0+: enabled by default with local-tarball
+    skill: transform-skill
+    tool: publish_ear
+    depends_on: [ear_curate]
+    enabled: true
+    inputs:
+      backend: local-tarball    # zero-deps; writes bundle.tar.gz next to ckpt
+      visibility: staged
+  - stage: ors_seed_sandbox     # v0.7.0+: deterministic seed from EAR bundle
+    skill: paper-re-skill
+    tool: fetch_code_bundle
+    depends_on: [ear_publish]
+    inputs:
+      checkpoint_dir: '{{checkpoint_dir}}'    # auto-load ref from publish_record.json
+      dest: '{{checkpoint_dir}}/repro_sandbox'
+  - stage: ors_build_reproduce  # v0.7.0+: LLM fallback (skips if seeded above)
+    skill: paper-re-skill
+    tool: build_reproduce_sh
+    depends_on: [ors_generate_rubric, ors_seed_sandbox, finalize_paper]
+    inputs:
+      paper_path: '{{checkpoint_dir}}/full_paper.tex'
+      rubric_path: '{{checkpoint_dir}}/ors_rubric.json'
+      output_dir: '{{checkpoint_dir}}/repro_sandbox'
+      overwrite: false
+  - stage: ors_run_reproduce
+    skill: paper-re-skill
+    tool: run_reproduce        # Phase 1 (sandbox-execute reproduce.sh)
+    depends_on: [ors_generate_rubric, ors_build_reproduce]
+    inputs:
+      rubric_path: '{{checkpoint_dir}}/ors_rubric.json'
+      repo_dir: '{{checkpoint_dir}}/repro_sandbox'
+      sandbox_kind: ''         # auto: slurm → docker → apptainer → singularity → local
+      timeout_global_sec: 0    # 0 = use rubric.reproduce_contract.max_runtime_sec
+      partition: ''            # blank → ARI_SLURM_PARTITION → launch_config.json
+      cpus: 0                  # blank → ARI_SLURM_CPUS (default 8)
+      walltime: ''             # blank → ARI_SLURM_WALLTIME → derived from timeout
+  - stage: ors_grade
+    skill: paper-re-skill
+    tool: grade_with_simplejudge   # Phase 2 (PaperBench SimpleJudge via LiteLLM)
+    depends_on: [ors_run_reproduce]
+    inputs:
+      rubric_path: '{{checkpoint_dir}}/ors_rubric.json'
+      repo_dir: '{{checkpoint_dir}}/repro_sandbox'
+      paper_path: '{{checkpoint_dir}}/full_paper.tex'
+      n_runs: 3
+      judge_model: gpt-5-mini  # any LiteLLM-recognised model id
 
 retrieval:
   backend: semantic_scholar    # semantic_scholar | alphaxiv | both
@@ -141,10 +210,10 @@ skills:
   # `phase` controls which pipeline-phase ReAct agents see the skill's
   # MCP tools. A single string opts the skill into exactly one phase;
   # a list opts it into several. Skills tagged `reproduce` are exposed
-  # to the reproducibility ReAct (see `reproducibility_check` stage
-  # above). `memory-skill`, `transform-skill`, and `evaluator-skill`
-  # are deliberately left out of `reproduce` so the agent cannot reach
-  # BFTS-phase artefacts.
+  # to any future stage that opts in via a `react:` block. The default
+  # v0.7.0 workflow no longer routes the reproducibility check through
+  # `react_driver` — it uses the deterministic PaperBench Phase 1 +
+  # Phase 2 chain (`ors_run_reproduce` / `ors_grade`) instead.
   - name: web-skill
     path: "{{ari_root}}/ari-skill-web"
     phase: [paper, reproduce]
@@ -181,6 +250,10 @@ skills:
   - name: vlm-skill
     path: "{{ari_root}}/ari-skill-vlm"
     phase: [paper, reproduce]
+  # v0.7.0: PaperBench-format auto-rubric generator + auditor.
+  - name: replicate-skill
+    path: "{{ari_root}}/ari-skill-replicate"
+    phase: paper
 ```
 
 ## Environment Variables
@@ -209,6 +282,24 @@ skills:
 | `ARI_MEMORY_ACCESS_LOG` | `on` / `off` — enable `{checkpoint}/memory_access.jsonl` | `on` |
 | `ARI_MEMORY_AUTO_RESTORE` | Auto-restore `memory_backup.jsonl.gz` on `ari resume` | `true` |
 | `ARI_CURRENT_NODE_ID` | Runtime-only; set by ari-core per-node to enforce write-side CoW | (runtime) |
+| `ARI_MODEL_RUBRIC_GEN` | Generator LLM for `ari-skill-replicate.generate_rubric` (v0.7.0) | `gemini/gemini-2.5-pro` |
+| `ARI_MODEL_RUBRIC_AUDIT` | Auditor LLM for `audit_rubric` (independent of generator) | `anthropic/claude-opus-4-7` |
+| `ARI_RUBRIC_GEN_TARGET_LEAVES` | Override per-paper target leaf count consumed by `generate_rubric`. `0`/unset → auto from paper length (~1 leaf / 75 words, clamped to [50, 400]). Set by the GUI Wizard's "Target leaves" field. | (unset) |
+| `ARI_RUBRIC_GEN_TEMPERATURE` | Override generator temperature. Set by the GUI Wizard's "Temperature" field. | (unset) |
+| `ARI_RUBRIC_GEN_TWO_STAGE` | Force the rubric generator's two-stage path on/off (`1`/`true`/`on` vs `0`/`false`/`off`). Two-stage = skeleton + parallel subtree calls; produces ~4× more leaves and 1–2 levels more depth than a single call at ~5× more API tokens. Unset → kwarg default (currently on). Set by the GUI Wizard's "Two-stage generation" toggle. | (unset, default on) |
+| `ARI_MODEL_REPLICATE` | Replicator LLM for `build_reproduce_sh` (paper → reproduce.sh, v0.7.0) | `claude-opus-4-7` |
+| `ARI_MODEL_JUDGE` | Judge LLM for `grade_with_simplejudge` (PaperBench Phase 2, v0.7.0; routed via LiteLLM, any provider OK) | `gpt-5-mini` |
+| `ARI_MODEL_LINEAGE` | LLM judge for `decide_lineage_action` (lineage decision, v0.7.0). Falls through `ARI_MODEL_EVAL` → `ARI_MODEL` → `ARI_LLM_MODEL` → `gpt-4o-mini` | (auto) |
+| `ARI_MODEL_ROOT_SELECT` | LLM that picks `ideas[0]` from the VirSci pool (lineage decision, v0.7.0). Same fallback chain as `ARI_MODEL_LINEAGE` | (auto) |
+| `ARI_RUBRIC` | Rubric id used by both review and the BFTS dynamic axis evaluator (Phase 3, v0.7.0). Reads `ari-core/config/reviewer_rubrics/<id>.yaml` | `neurips` |
+| `ARI_PHASE1_SANDBOX` | Phase 1 sandbox: `auto` / `slurm` / `docker` / `apptainer` / `singularity` / `local` | `auto` |
+| `ARI_PHASE1_DOCKER_IMAGE` | Container image for the docker sandbox runner | `ubuntu:24.04` |
+| `ARI_PHASE1_APPTAINER_IMAGE` / `ARI_PHASE1_SINGULARITY_IMAGE` | Image for the Apptainer/Singularity sandbox runner | `docker://ubuntu:24.04` |
+| `ARI_SLURM_WALLTIME` | `--time` HH:MM:SS for the SLURM Phase 1 sandbox (v0.7.0, restored). Falls back to a value derived from the rubric's `max_runtime_sec`. | (auto) |
+| `ARI_PUBLISH_DRYRUN` | Force `ari ear publish --dry-run` (CI safety, v0.7.0) | (off) |
+| `ARI_REGISTRY_DATA` | sqlite + artifact storage root for `ari registry serve` | `~/.ari/registry-data` |
+| `ARI_REGISTRY_TOKEN` | Bearer token for `ari clone ari://...` / `ari ear publish --backend ari-registry` | (none) |
+| `ARI_REPRO_CLONE_POLICY` | Git-shim policy in the reproducibility sandbox: `passthrough` / `deny` / `warn` | `passthrough` |
 
 ## Memory backend (Letta)
 
@@ -302,6 +393,77 @@ This prevents broken outputs from silently blocking downstream stages.
 
 ---
 
+## Plan Promote (v0.7.0+)
+
+`plan_promote` controls how VirSci's experiment plan is materialised into
+the in-checkpoint `experiment.md`. The user's source `experiment.md`
+(passed on the CLI) is **never** modified — only the in-checkpoint copy
+gets the auto-appended block, between HTML comment markers so re-runs
+are idempotent.
+
+```yaml
+plan_promote: index_only          # full | index_only | off
+```
+
+| Mode | Block contents | Typical size |
+|---|---|---|
+| `full` | Selected idea + every plan §-tag body + alternatives | ~5 KB |
+| `index_only` (default) | Selected idea + plan §-tag titles + alternatives | ~1.5 KB |
+| `off` | (no auto-append) | 0 |
+
+The Phase 3 evaluator and the BFTS expand idea-context both read the
+**raw** plan from `idea.json`, so the choice between `full` and
+`index_only` is mostly cosmetic — it decides what humans (and
+paper-skill) see in `experiment.md`.
+
+## Lineage Decision Hook (v0.7.0+)
+
+When a BFTS run stagnates, an LLM judge decides whether to keep
+exploring, switch to one of the alternative ideas, fan out to a
+parallel child run, or terminate the lineage. The judge is constrained
+to four actions, every output is validated against the alternatives
+pool, and any error degrades silently to `continue` so the BFTS loop
+never blocks on this hook.
+
+```yaml
+lineage_decision:
+  mode: stagnation_rule           # off | stagnation_rule | every_node
+  stagnation_window: 5            # composite-score window
+  stagnation_threshold: 0.02      # max-min < threshold ⇒ stagnant
+  min_nodes_before_decision: 3    # never fire on the very first nodes
+  rate_limit_per_run: 5           # cap escalations per run
+```
+
+| Mode | Trigger | Cost |
+|---|---|---|
+| `off` | never | 0 |
+| `stagnation_rule` (default) | composite scores flat for `stagnation_window` consecutive nodes | 0–`rate_limit_per_run` LLM calls per run |
+| `every_node` | every BFTS step (LLM also decides timing) | 1 LLM call per node |
+
+Every fired decision (including `continue`) is appended to
+`{checkpoint}/lineage_decisions.jsonl` so post-hoc analysis can
+correlate lineage actions with outcome quality. The same file holds
+`root_idea_selection` records (different `trigger` field) so a single
+log captures all lineage decisions LLM judgements.
+
+## Root Idea Selection (v0.7.0+)
+
+After VirSci writes `idea.json`, an LLM picks which entry should be the
+run's root, given the venue rubric and the ancestor research thread.
+The default keeps VirSci's score-based ordering (`ideas[0]`); an
+out-of-range LLM choice falls back to the same default. One LLM call
+per run start; no per-node cost.
+
+```yaml
+root_idea_selection:
+  enabled: true                   # default v0.7.0+
+```
+
+The decision is logged to `lineage_decisions.jsonl` as
+`{trigger: "root_idea_selection", action: "root_swap" | "root_keep"}`
+and persisted in `idea.json` as `_root_choice`. Children (recursion)
+detect either marker and skip re-selection.
+
 ## BFTS Tuning
 
 Control BFTS behavior via environment variables:
@@ -313,3 +475,85 @@ export ARI_EXECUTOR=slurm    # Submit each node as a SLURM job
 ```
 
 Or set defaults in `workflow.yaml` `bfts:` section (if supported by your version).
+
+---
+
+## EAR Curation (`ear/publish.yaml`) — v0.7.0+
+
+Curation gates which subset of `{checkpoint}/ear/` becomes the publish-ready
+bundle (`{checkpoint}/ear_published/` + `manifest.lock`). The author owns
+this allowlist; ari-core enforces a **built-in deny list** that always
+outranks `include`.
+
+### Schema (`ari-core/ari/schemas/publish.schema.json`)
+
+```yaml
+# Example: <checkpoint>/ear/publish.yaml
+include:                     # Glob allowlist (relative to ear/)
+  - "README.md"
+  - "LICENSE"
+  - "reproduce.sh"
+  - "code/**"                # verbatim source files (best chain contributing union)
+  - "data/**"                # uploaded inputs only — never experiment outputs
+  - "figures/**"             # top-level figures
+  - "environment.json"
+# Note: EVOLUTION.md and _provenance.json are ARI audit logs at checkpoint
+# root, *outside* ear/ — they are never candidates for the published bundle.
+exclude: []                  # User-controlled exclusions (applied after `include`)
+max_file_mb: 100             # Files larger than this fail curation explicitly
+visibility: staged           # staged|public|unlisted|private-token|embargoed-until:YYYY-MM-DD
+required: false              # If true, a publish failure hard-fails the paper pipeline
+auto_promote: false          # If true, reproducibility-pass auto-promotes staged->public
+license: MIT                 # SPDX id; the LICENSE file is generated from this template
+backend: ari-registry        # ari-registry|gh|zenodo|s3|local-tarball (CLI --backend overrides)
+```
+
+The legacy v0.6.0 paths (`code/<node_id>/**`, `data/raw_metrics.json`,
+`logs/**`, `reproducibility/**`) are no longer produced by `generate_ear`
+and should be removed from older `publish.yaml` files. See
+`docs/skills.md` for the full new layout description.
+
+### Built-in deny patterns
+
+These are **always** filtered, even if `include` matches them:
+
+```
+.env, .env.*, **/.env, **/.env.*
+**/secrets/**, secrets/**
+**/*.pem, **/*.key
+**/id_rsa, **/id_ed25519
+```
+
+Paths of denied files are **not** recorded in `manifest.lock` — only the
+count, so the manifest itself never leaks the names of secrets that were
+present in `ear/`.
+
+### Behaviour
+
+- If `publish.yaml` is **absent**, the `ear_curate` stage is skipped silently and
+  the paper's Code Availability section is omitted (full back-compat with v0.6.0
+  checkpoints).
+- The **bundle digest** (`bundle_sha256` in `manifest.lock`) is `sha256` of a
+  canonical JSON containing the sorted file records (path + size + sha256). It
+  is reproducible across machines and is the value baked into the paper.
+- Curation is **atomic**: a hard failure (e.g. `max_file_mb` violation) leaves
+  any previously good `ear_published/` intact.
+
+### CLI
+
+```bash
+# Curate
+ari ear curate <checkpoint>            # Pretty output
+ari ear curate <checkpoint> --json     # Machine-readable
+ari ear status <checkpoint>            # Show manifest summary
+
+# Publish & promote
+ari ear publish <checkpoint> --backend ari-registry --visibility staged
+ari ear promote <checkpoint> --target public
+```
+
+### Pipeline integration
+
+`workflow.yaml` adds the `ear_curate` stage between `generate_ear` and
+`generate_figures`. The stage is wired to the transform skill's
+`curate_ear` MCP tool and is a no-op when `publish.yaml` is absent.

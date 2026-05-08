@@ -49,6 +49,28 @@ if [[ "${SKIP_LETTA_SETUP:-0}" == "1" ]]; then
   return 0 2>/dev/null || exit 0
 fi
 
+# Resolve user-pinned Letta values from .env into the current process so that
+# the downstream start_singularity.sh / start_pip.sh and ari runtime all see
+# the same image and embedding handle the user just locked in via setup_env.
+# Environment variables already set externally win (CI / shell overrides).
+_letta_load_from_env() {
+  local key="$1"
+  local cur="${!key:-}"
+  if [[ -n "$cur" ]]; then return 0; fi
+  local env_file="${ENV_FILE:-$ARI_ROOT/.env}"
+  [[ -f "$env_file" ]] || return 0
+  local line
+  line="$(grep -E "^[[:space:]]*${key}=" "$env_file" | tail -1 || true)"
+  [[ -z "$line" ]] && return 0
+  local val="${line#*=}"
+  val="${val%\"}"; val="${val#\"}"
+  val="${val%\'}"; val="${val#\'}"
+  export "${key}=${val}"
+}
+_letta_load_from_env ARI_LETTA_SIF
+_letta_load_from_env LETTA_EMBEDDING_CONFIG
+_letta_load_from_env LETTA_BASE_URL
+
 # If Letta is already reachable, we're done.
 URL="${LETTA_BASE_URL:-http://localhost:8283}"
 if curl -fsS "${URL}/v1/health/" >/dev/null 2>&1 \

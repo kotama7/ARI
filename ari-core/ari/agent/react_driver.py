@@ -16,7 +16,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+import shutil
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +29,74 @@ from ari.mcp.client import MCPClient
 log = logging.getLogger(__name__)
 
 _MAX_TOOL_OUTPUT = 4000
+
+
+# ---------------------------------------------------------------------------
+# Sandbox shims: rewrite ``git clone <paper-URL>`` to
+# ``ari clone --expect-sha256``. Runs inside the reproducibility sandbox only.
+# ---------------------------------------------------------------------------
+
+_SHIM_TEMPLATE_DIR = Path(__file__).parent / "shims"
+
+
+def setup_sandbox_shims(
+    sandbox: Path,
+    *,
+    code_availability_ref: str = "",
+    code_availability_sha256: str = "",
+    clone_policy: str = "passthrough",
+) -> dict[str, str]:
+    """Materialise <sandbox>/.shims/git and return env overrides.
+
+    The caller (pipeline._run_react_stage) merges these into ``os.environ``
+    *before* the MCP client spawns subprocesses — MCP servers snapshot env
+    at fork time, so setting these later has no effect.
+
+    The shim is scoped strictly to the sandbox: PATH is mutated only in the
+    pipeline's process and its subprocesses, never in the user's shell.
+    """
+    if sandbox is None:
+        return {}
+    shims_dir = sandbox / ".shims"
+    shims_dir.mkdir(parents=True, exist_ok=True)
+
+    src = _SHIM_TEMPLATE_DIR / "git.sh"
+    dst = shims_dir / "git"
+    if not src.exists():  # pragma: no cover - sanity guard
+        log.warning("react_driver: shim template missing at %s", src)
+        return {}
+    shutil.copyfile(src, dst)
+    dst.chmod(dst.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+    real_git = shutil.which("git") or "/usr/bin/git"
+    log_path = sandbox / "repro_clone_log.jsonl"
+
+    env = {
+        "PATH": f"{shims_dir}{os.pathsep}{os.environ.get('PATH', '')}",
+        "ARI_REAL_GIT": real_git,
+        "ARI_REPRO_CODE_AVAIL_REF": code_availability_ref or "",
+        "ARI_REPRO_CODE_AVAIL_SHA256": (code_availability_sha256 or "").lower(),
+        "ARI_REPRO_CLONE_POLICY": clone_policy or "passthrough",
+        "ARI_REPRO_CLONE_LOG": str(log_path),
+    }
+    return env
+
+
+def restore_env(snapshot: dict[str, str | None]) -> None:
+    """Reverse a previous os.environ.update with a None-aware semantic.
+
+    ``snapshot`` maps env-var name → its value before our patch (None means
+    "was unset"). Pass the snapshot built by ``snapshot_env(keys)`` below.
+    """
+    for k, v in snapshot.items():
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
+
+
+def snapshot_env(keys: list[str]) -> dict[str, str | None]:
+    return {k: os.environ.get(k) for k in keys}
 
 
 def _truncate(text: str, limit: int = _MAX_TOOL_OUTPUT) -> str:
@@ -57,15 +128,34 @@ def _build_window(messages: list[dict], max_msgs: int = 50) -> list[dict]:
 
 _PATH_TOKEN_RE = re.compile(r"(?<![\w/.])(/[A-Za-z0-9._/-]+)")
 
+# Argument keys whose values are free-form text and MUST NOT be scanned for
+# path tokens. C++ "// comment" → false-positive `//`; URLs in `notes`
+# (e.g., http://example.com) → false-positive `//example.com`; example paths
+# embedded in a description → false-positive on whatever absolute path is
+# quoted in human-readable text. Bash commands and explicit path fields are
+# still scanned (they're real attack vectors).
+_FREEFORM_KEYS = frozenset({
+    "content", "code", "source_code", "text", "body",
+    "message", "description", "summary", "notes", "note",
+    "comment", "comments", "value", "values", "label",
+    "prompt", "query", "instruction", "explanation",
+    "stdout", "stderr", "output_text", "result_text",
+})
+
 
 def _validate_paths_in_args(
     args: Any, sandbox: Path, allow_extra: list[Path] | None = None,
 ) -> str | None:
     """Reject args containing absolute paths outside the sandbox.
 
-    Scans all string values recursively. An absolute path is allowed iff it
-    resolves under ``sandbox`` or any path in ``allow_extra``. Path-traversal
-    sequences (``..``) are rejected outright.
+    Scans string values recursively, EXCEPT those keyed under one of
+    ``_FREEFORM_KEYS`` (and their subtrees). Without this skip, scanning
+    ``content`` / ``code`` / ``notes`` produces false-positive sandbox
+    violations on C++ ``//`` comments, URLs (``http://...``), and any
+    absolute path that appears inside human-readable text.
+
+    An absolute path is allowed iff it resolves under ``sandbox`` or any path
+    in ``allow_extra``. Path-traversal sequences (``..``) are rejected outright.
 
     Returns an error string on violation, or ``None`` when clean.
     """
@@ -88,7 +178,8 @@ def _validate_paths_in_args(
 
     def _scan_string(s: str) -> str | None:
         if "../" in s or s.endswith("/..") or " .. " in f" {s} ":
-            return f"path-traversal pattern in: {s[:120]!r}"
+            shown = s if len(s) <= 120 else s[:120] + "...(truncated)"
+            return f"path-traversal pattern in: {shown!r}"
         for tok in _PATH_TOKEN_RE.findall(s):
             if not _path_ok(tok):
                 return f"absolute path outside sandbox: {tok}"
@@ -98,7 +189,9 @@ def _validate_paths_in_args(
         if isinstance(v, str):
             return _scan_string(v)
         if isinstance(v, dict):
-            for x in v.values():
+            for k, x in v.items():
+                if isinstance(k, str) and k.lower() in _FREEFORM_KEYS:
+                    continue  # free-form text: skip path scanning
                 err = _walk(x)
                 if err:
                     return err
@@ -302,17 +395,29 @@ def run_react(
             })
 
     if log_dir is not None:
+        def _trunc_log(text: str, limit: int) -> str:
+            """Truncate with an explicit suffix so readers know data was cut."""
+            if not text or len(text) <= limit:
+                return text
+            return text[:limit] + f"...(truncated, {len(text) - limit} chars omitted)"
+
         try:
             log_dir.mkdir(parents=True, exist_ok=True)
             entries = []
             for m in messages:
                 e: dict = {
                     "role": m.get("role", ""),
-                    "content": (m.get("content") or "")[:500],
+                    "content": _trunc_log(m.get("content") or "", 2000),
                 }
                 if m.get("tool_calls"):
                     e["tool_calls"] = [
-                        tc["function"]["name"] for tc in m["tool_calls"]
+                        {
+                            "name": tc["function"]["name"],
+                            "arguments": _trunc_log(
+                                tc["function"].get("arguments") or "", 2000,
+                            ),
+                        }
+                        for tc in m["tool_calls"]
                     ]
                 if m.get("tool_call_id"):
                     e["tool_call_id"] = m["tool_call_id"]

@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/publish.schema.json",
+  "title": "ARI publish.yaml",
+  "description": "Curation policy for {checkpoint}/ear/. Controls what subset of the EAR is curated into ear_published/ and later sent to a publish backend.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "include": {
+      "type": "array",
+      "description": "Glob patterns (relative to ear/) explicitly included in the curated bundle. If empty/absent, nothing is published.",
+      "items": {"type": "string"},
+      "default": []
+    },
+    "exclude": {
+      "type": "array",
+      "description": "Glob patterns (relative to ear/) excluded from the curated bundle. Built-in deny patterns are applied unconditionally on top of this list.",
+      "items": {"type": "string"},
+      "default": []
+    },
+    "max_file_mb": {
+      "type": "number",
+      "description": "Hard cap (megabytes, 1024^2 bytes). Any included file larger than this fails curation explicitly (no silent drops).",
+      "minimum": 0,
+      "default": 100
+    },
+    "visibility": {
+      "description": "Initial visibility for the published bundle. Effective publish always starts at 'staged' and is promoted via ari ear promote.",
+      "oneOf": [
+        {"type": "string", "enum": ["public", "unlisted", "private-token", "staged"]},
+        {"type": "string", "pattern": "^embargoed-until:[0-9]{4}-[0-9]{2}-[0-9]{2}$"}
+      ],
+      "default": "staged"
+    },
+    "required": {
+      "type": "boolean",
+      "description": "If true, paper publish is hard-failed when curation/upload fails. If false (default), the Code Availability section is omitted on failure.",
+      "default": false
+    },
+    "auto_promote": {
+      "type": "boolean",
+      "description": "If true, the pipeline auto-promotes the published artifact (staged -> public) once reproducibility_check passes. Default false to avoid accidental DOI mints / public exposure.",
+      "default": false
+    },
+    "license": {
+      "type": "string",
+      "description": "SPDX-style license identifier (e.g. 'MIT', 'Apache-2.0', 'CC-BY-4.0'). Surfaced in Zenodo metadata and in the Code Availability section."
+    },
+    "backend": {
+      "type": "string",
+      "enum": ["ari-registry", "gh", "zenodo", "s3", "local-tarball"],
+      "description": "Default publish backend. CLI --backend overrides this.",
+      "default": "ari-registry"
+    }
+  }
+}

@@ -206,6 +206,39 @@ class LettaBackend(MemoryBackend):
     def search_memory(
         self, query: str, ancestor_ids: list[str], limit: int = 5
     ) -> dict:
+        """Ancestor-scoped retrieval.
+
+        Two paths:
+          1. Server-side metadata filter (fast; requires a Letta build
+             that supports pre-filter on archival passages — none of the
+             current builds do, since ARI metadata round-trips through a
+             JSON footer in the passage text rather than Letta-native
+             tags).
+          2. Semantic ``passages.search`` over-fetch + post-filter by
+             metadata locally.
+
+        Path (2) deliberately uses ``passages.search`` (the real
+        semantic / embedding-based route, ``GET /archival-memory/search``,
+        ``embed_query=True``) and **not** ``passages.list(search=q)``.
+        Verified against ``letta.sif`` (Letta 0.16.7): the latter maps
+        to ``GET /archival-memory?search=q``, routes to
+        ``query_agent_passages_async`` with the default
+        ``embed_query=False``, and ends in a SQL substring filter
+        (``LOWER(text) LIKE LOWER(%q%)``) — NOT semantic. Long natural-
+        language queries (``"Validate the loopline performance model"``)
+        never substring-match structured passages like
+        ``"RESULT SUMMARY metrics=[GFlops_per_s=15.82, ...]"``, so the
+        substring path was silently invisible to the child agent.
+
+        ``passages.search`` ranks the agent's whole archival pool by
+        embedding cosine similarity to the query, returning ``top_k``
+        scored results. We pass ``top_k = max(letta_overfetch, limit*40)``
+        so the ancestor entries that ARI cares about are essentially
+        guaranteed to be inside the ranked window for typical run
+        scales (≤ 200 passages / checkpoint). The post-filter retains
+        only ``node_id ∈ ancestor_ids`` and the ARI checkpoint scope;
+        the ranked order is preserved (no ts re-sort).
+        """
         if not ancestor_ids:
             return {"results": []}
         client = self._ensure_client()
@@ -226,26 +259,31 @@ class LettaBackend(MemoryBackend):
             )
             filtered = raw  # client applied filter
         except NotImplementedError:
-            # Pre-filter unsupported — overfetch + post-filter.
+            # Pre-filter unsupported. Run semantic ``passages.search``
+            # over the agent's whole pool with an over-fetch budget,
+            # then post-filter by ancestor metadata. Embedding-ranked
+            # order is preserved (we do NOT re-sort by ts) so the
+            # child sees the entries most relevant to its query first.
+            allowed = set(ancestor_ids)
             overfetch = max(self.cfg.letta_overfetch, limit * 40)
-            raw = client.archival_search(
+            ranked_rows = client.archival_search(
                 agent_id=agent_id,
                 collection=self.node_collection,
                 query=query,
                 filter=None,
                 limit=overfetch,
             )
-            allowed = set(ancestor_ids)
             filtered = [
-                r for r in raw
+                r for r in ranked_rows
                 if r.get("metadata", {}).get("node_id") in allowed
                 and r.get("metadata", {}).get("ari_checkpoint") == self.ckpt_hash
                 and r.get("metadata", {}).get("kind") == "node_scope"
             ]
-            if len(filtered) < min(limit, len(raw)):
-                log.warning(
+            if len(filtered) < min(limit, len(ranked_rows)):
+                log.debug(
                     "ari-memory: post-filter dropped results below limit "
-                    "(raw=%d, kept=%d, limit=%d)", len(raw), len(filtered), limit,
+                    "(raw=%d, kept=%d, limit=%d)",
+                    len(ranked_rows), len(filtered), limit,
                 )
         results = []
         for r in filtered[:limit]:

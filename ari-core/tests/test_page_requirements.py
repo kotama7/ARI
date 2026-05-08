@@ -214,9 +214,19 @@ def test_i18n_no_circular_refs():
 
 
 def test_stepper_error_css():
-    """CSS must have .phase-step.error style."""
-    css_path = SRC_DIR / "styles" / "dashboard.css"
-    css = css_path.read_text() if css_path.exists() else ""
+    """CSS must have .phase-step.error style.
+
+    v0.7.0 Phase B split the monolithic dashboard.css into per-topic
+    files imported via @import. Walk the styles/ dir to verify the
+    rule still exists somewhere.
+    """
+    styles_dir = SRC_DIR / "styles"
+    if not styles_dir.exists():
+        # Fallback for older repo layouts that kept everything inline.
+        legacy = SRC_DIR / "styles" / "dashboard.css"
+        css = legacy.read_text() if legacy.exists() else ""
+    else:
+        css = "\n".join(p.read_text() for p in styles_dir.glob("*.css"))
     assert ".phase-step.error" in css, "Missing .phase-step.error CSS rule"
 
 

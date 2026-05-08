@@ -1,0 +1,45 @@
+# ari-registry production stack: nginx ↔ uvicorn ↔ sqlite (file vol)
+#
+# This compose file is intentionally minimal. For larger deployments,
+# swap the sqlite volume for a postgres service and point ARI_REGISTRY_DB
+# at it.
+#
+# Usage:
+#   cd scripts/registry
+#   ARI_REGISTRY_TOKEN_USER=admin docker compose up -d
+#   docker compose exec api ari registry token issue $ARI_REGISTRY_TOKEN_USER
+version: "3.9"
+
+services:
+  api:
+    image: python:3.12-slim
+    working_dir: /opt/ari
+    volumes:
+      - ../..:/opt/ari:ro
+      - registry-data:/var/lib/ari-registry
+    environment:
+      ARI_REGISTRY_DATA: /var/lib/ari-registry
+      ARI_REGISTRY_HOST: 0.0.0.0
+      ARI_REGISTRY_PORT: "8290"
+    command: >
+      bash -c "
+        pip install -e ari-core/ &&
+        pip install fastapi uvicorn[standard] python-multipart pyyaml &&
+        ari registry serve --host 0.0.0.0 --port 8290 --data-dir /var/lib/ari-registry
+      "
+    expose:
+      - "8290"
+    restart: unless-stopped
+
+  proxy:
+    image: nginx:1.27-alpine
+    depends_on: [api]
+    ports:
+      - "8443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - registry-data:/var/lib/ari-registry:ro
+    restart: unless-stopped
+
+volumes:
+  registry-data:

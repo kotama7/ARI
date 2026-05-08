@@ -7,11 +7,13 @@ from pathlib import Path
 import pytest
 
 from src.server import (
+    _emit_results,
     _read_file,
     _run_bash,
     _run_code,
     _truncate,
     _write_code,
+    _RESULTS_SCHEMA_VERSION,
     _STDOUT_LIMIT,
 )
 
@@ -204,3 +206,81 @@ def test_read_file_redirect_workflow(work_dir):
     full = _read_file("out.log", work_dir, offset=0, limit=_STDOUT_LIMIT * 4)
     assert "error" not in full
     assert big_payload in full["content"]
+
+
+# ── emit_results ──────────────────────────────────────────────────────────
+
+
+def test_emit_results_writes_typed_payload(work_dir):
+    import json as _json
+    r = _emit_results(
+        params={"M": 120000, "K": 120000, "nnz_per_row": 32, "threads": 8},
+        measurements={"GFlops_per_s": 26.864, "GB_per_s": 63.802},
+        predictions={"peak_gflops_model": 686.45},
+        scores={"_scientific_score": 0.37},
+        file="results.json",
+        work_dir=work_dir,
+    )
+    assert r["status"] == "written"
+    assert r["schema_version"] == _RESULTS_SCHEMA_VERSION
+    assert set(r["params_keys"]) == {"M", "K", "nnz_per_row", "threads"}
+    assert set(r["measurements_keys"]) == {"GFlops_per_s", "GB_per_s"}
+
+    payload = _json.loads(Path(r["path"]).read_text())
+    assert payload["schema_version"] == _RESULTS_SCHEMA_VERSION
+    assert payload["params"]["M"] == 120000
+    assert payload["measurements"]["GFlops_per_s"] == 26.864
+    assert payload["predictions"]["peak_gflops_model"] == 686.45
+    assert payload["scores"]["_scientific_score"] == 0.37
+
+
+def test_emit_results_overwrites_existing(work_dir):
+    import json as _json
+    _emit_results(
+        params={"x": 1}, measurements={"y": 1.0},
+        predictions={}, scores={}, file="r.json", work_dir=work_dir,
+    )
+    _emit_results(
+        params={"x": 2}, measurements={"y": 2.0},
+        predictions={}, scores={}, file="r.json", work_dir=work_dir,
+    )
+    payload = _json.loads((Path(work_dir) / "r.json").read_text())
+    assert payload["params"]["x"] == 2  # second call wins
+
+
+def test_emit_results_coerces_non_jsonable(work_dir):
+    # pathlib.Path is not directly JSON-serialisable; the helper must
+    # str-coerce rather than crash so emit_results never fails the run.
+    import json as _json
+    r = _emit_results(
+        params={"src": Path("/tmp/foo")},
+        measurements={"latency": 0.001},
+        predictions={}, scores={}, file="r.json", work_dir=work_dir,
+    )
+    assert r["status"] == "written"
+    payload = _json.loads(Path(r["path"]).read_text())
+    assert payload["params"]["src"] == "/tmp/foo"
+
+
+def test_emit_results_refuses_path_traversal(work_dir):
+    # ``file`` is normalised to its basename so a malicious agent cannot
+    # write outside the node's work_dir via ``../../escape.json``.
+    r = _emit_results(
+        params={}, measurements={"v": 1.0},
+        predictions={}, scores={},
+        file="../../escape.json", work_dir=work_dir,
+    )
+    assert r["status"] == "written"
+    assert Path(r["path"]).parent.resolve() == Path(work_dir).resolve()
+
+
+def test_emit_results_empty_dicts_are_fine(work_dir):
+    import json as _json
+    r = _emit_results(
+        params={}, measurements={}, predictions={}, scores={},
+        file="empty.json", work_dir=work_dir,
+    )
+    assert r["status"] == "written"
+    payload = _json.loads(Path(r["path"]).read_text())
+    assert payload["params"] == {}
+    assert payload["measurements"] == {}

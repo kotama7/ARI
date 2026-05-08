@@ -1,0 +1,31 @@
+\documentclass{article}
+\title{A Minimal Reproducibility Test Paper}
+\author{Test Author}
+\begin{document}
+\maketitle
+
+\section{Introduction}
+We propose a Mask Network for identifying critical states in policy refinement.
+Our refinement method achieves a strictly larger improvement in cumulative
+reward than JSRL and Random baselines on the selfish mining environment.
+
+\section{Method}
+The MaskNetwork class outputs 0 for inputs identified as critical states and 1
+for non-critical states. We refine only the actions corresponding to critical
+states, leaving non-critical actions untouched.
+
+\section{Experiments}
+We measure cumulative reward before and after refinement using JSRL.
+Experiment II runs the selfish mining environment with the JSRL refinement
+method, producing pre-refinement and post-refinement cumulative reward
+measurements.
+
+\section{Results}
+The 'Ours' refinement method brings the largest improvement to the pretrained
+policy network. Across 5 seeds, Ours improves cumulative reward by 23.4\%,
+while JSRL achieves 14.1\% and Random achieves 6.2\%.
+
+\section{Conclusion}
+The proposed method outperforms baselines on cumulative reward improvement.
+
+\end{document}

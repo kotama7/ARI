@@ -50,18 +50,28 @@ def weighted_harmonic_mean(
     axes: dict[str, float],
     weights: dict[str, float],
     epsilon: float = _HARMONIC_EPSILON,
+    axis_names: "tuple[str, ...] | None" = None,
 ) -> float:
-    """Weighted harmonic mean over the canonical AXIS_NAMES.
+    """Weighted harmonic mean over a set of axes.
 
     Missing or non-numeric axis values are treated as 0. Each value is floored
     at ``epsilon`` to keep the denominator finite. Weights for axes that are
-    not in AXIS_NAMES are ignored; absent weights default to the equal weight
-    fallback. Returns 0.0 if the total weight is zero.
+    not in the iteration set are ignored; absent weights default to the equal
+    weight fallback. Returns 0.0 if the total weight is zero.
+
+    By default iterates over the canonical AXIS_NAMES (legacy / 5-axis path).
+    When Phase 3 dynamic axes are in use, the evaluator passes its own
+    ``axis_names`` so the harmonic mean covers the dynamic set.
     """
+    names = axis_names if axis_names is not None else AXIS_NAMES
     total_w = 0.0
     denom = 0.0
-    for name in AXIS_NAMES:
-        w = float(weights.get(name, _DEFAULT_AXIS_WEIGHTS[name]))
+    for name in names:
+        # Default to a small equal weight when neither weights nor the
+        # legacy default mapping covers this name (covers Phase 3 axes
+        # whose weight isn't in _DEFAULT_AXIS_WEIGHTS).
+        fallback_w = _DEFAULT_AXIS_WEIGHTS.get(name, 1.0 / max(1, len(names)))
+        w = float(weights.get(name, fallback_w))
         if w <= 0.0:
             continue
         raw = axes.get(name, 0.0)
@@ -91,6 +101,7 @@ class MetricSpec:
         # For HPC performance experiments (example)
         MetricSpec(
             name="HPC benchmark speedup",
+            expected_params=["M", "K", "nnz", "threads"],
             expected_metrics=["throughput", "speedup", "efficiency"],
             scoring_guide=(
                 "has_real_data=true when numeric throughput values appear in artifacts.\n"
@@ -105,7 +116,14 @@ class MetricSpec:
     """
 
     name: str = "generic experiment"
+    # ``expected_metrics`` lists the *measured* quantities (what the experiment
+    # produces — throughput, accuracy, latency). ``expected_params`` lists the
+    # *input* knobs the experiment runs on (matrix size, thread count, seed).
+    # Splitting them lets the evaluator emit a typed ``params`` / ``measurements``
+    # pair instead of one ambiguous flat dict, so downstream best-of reductions
+    # can never accidentally pick an input size as the "best metric".
     expected_metrics: list[str] = field(default_factory=list)
+    expected_params: list[str] = field(default_factory=list)
     scoring_guide: str = ""
     artifact_extractor: object = field(default=None)  # callable(artifacts_text: str) -> dict
     # Optional per-axis weights for the harmonic-mean composite. When None,
@@ -127,8 +145,10 @@ class MetricSpec:
 
     def to_prompt_section(self) -> str:
         lines = [f"Experiment type: {self.name}"]
+        if self.expected_params:
+            lines.append(f"Expected params (inputs, NOT measurements): {', '.join(self.expected_params)}")
         if self.expected_metrics:
-            lines.append(f"Expected metrics: {', '.join(self.expected_metrics)}")
+            lines.append(f"Expected metrics (measurements): {', '.join(self.expected_metrics)}")
         if self.scoring_guide:
             lines.append(f"Domain-specific scoring guide:\n{self.scoring_guide}")
         return "\n".join(lines)
@@ -145,7 +165,17 @@ class LLMEvaluator:
         "You are a research data extractor AND a scientific peer reviewer.\n"
         "Analyze the experiment artifacts and return a JSON with:\n"
         "  has_real_data: bool (true only if numeric measurements appear in artifacts)\n"
-        "  metrics: dict of extracted numeric values (e.g. {{\"GFLOP_per_s\": 754.8}})\n"
+        "  params: dict of INPUT/configuration values the experiment ran on. "
+        "These are knobs, not outcomes. Examples: matrix dimensions (M, K, "
+        "nnz), thread count, batch size, ISA flags, seeds. They are NOT "
+        "candidates for a best-of reduction.\n"
+        "  measurements: dict of MEASURED quantities — what a peer reviewer "
+        "would treat as the experiment's result. Examples: GFLOP_per_s, "
+        "GB_per_s, latency_s, accuracy. ARE candidates for best-of.\n"
+        "  metrics: dict — for back-compat, the union of params and measurements "
+        "as a single flat dict (e.g. {{\"GFLOP_per_s\": 754.8, \"M\": 120000}}). "
+        "Downstream consumers may read either the typed split above or this flat "
+        "view. NEVER include the same key in both views with different values.\n"
         "  reason: str (one sentence describing what was measured)\n"
         "  axis_scores: dict with EXACTLY these five keys, each a float in 0.0-1.0:\n"
         "    - measurement_validity: are numeric measurements present and methodologically sound?\n"
@@ -169,6 +199,10 @@ class LLMEvaluator:
         api_base: str | None = None,
         metric_spec: MetricSpec | None = None,
         axis_weights: dict[str, float] | None = None,
+        axes: "list | None" = None,
+        *,
+        checkpoint_dir: "str | None" = None,
+        rubric: "dict | None" = None,
     ) -> None:
         self.model = model
         self.api_base = api_base
@@ -178,22 +212,162 @@ class LLMEvaluator:
         self._ctor_axis_weights: dict[str, float] | None = (
             dict(axis_weights) if axis_weights else None
         )
+        # Phase 3 modes:
+        #   1. ``axes=`` explicit list      → static dynamic mode (tests + advanced)
+        #   2. ``checkpoint_dir`` + ``rubric`` → auto dynamic mode (core.py default)
+        #   3. neither                       → legacy 5-axis path (back-compat)
+        self._checkpoint_dir = checkpoint_dir
+        self._rubric = rubric
+        # lineage decisions: cache key is a "mtime:contenthash" signature, not just
+        # mtime, so coarse-mtime filesystems / same-second swaps still
+        # invalidate the cached axes set.
+        self._axes_idea_mtime: "str | None" = None
+        if axes:
+            self._dynamic_axes = list(axes)
+            self._axis_names: tuple[str, ...] = tuple(
+                a.name for a in self._dynamic_axes
+            )
+        elif rubric is not None or checkpoint_dir is not None:
+            # Build initial axes from whatever is currently available.
+            # idea.json may not yet exist at runtime construction; the
+            # ``_refresh_axes_if_needed`` hook in evaluate() picks up plan
+            # axes once the root node has produced idea.json.
+            from ari.evaluator.dynamic_axes import build_axes_for_run
+            self._dynamic_axes = list(
+                build_axes_for_run(
+                    rubric=rubric, idea_data=self._read_idea_data()
+                )
+            )
+            self._axis_names = tuple(a.name for a in self._dynamic_axes)
+            self._axes_idea_mtime = self._idea_json_signature()
+        else:
+            self._dynamic_axes = None
+            self._axis_names = AXIS_NAMES
         # Per-run score history for calibration context.
         # Each entry: {"node_id": str, "score": float, "label": str}
         self._score_history: list[dict] = []
         self._max_score_history: int = 15
 
+    def _idea_json_path(self):
+        from pathlib import Path as _Path
+        if not self._checkpoint_dir:
+            return None
+        return _Path(self._checkpoint_dir) / "idea.json"
+
+    def _idea_json_signature(self) -> str | None:
+        """lineage decisions: cache-key based on file content hash + mtime.
+
+        mtime alone is insufficient — same-second swaps (root_idea_
+        selection rewrites idea.json shortly after generate_ideas)
+        leave mtime unchanged on coarse-mtime filesystems, hiding the
+        plan-derived axis update. Hashing the content avoids that
+        race; mtime is folded in only as a fast-path optimisation.
+        """
+        p = self._idea_json_path()
+        if p is None or not p.exists():
+            return None
+        try:
+            import hashlib
+            data = p.read_bytes()
+            mt = p.stat().st_mtime
+            h = hashlib.md5(data).hexdigest()[:16]
+            return f"{mt:.6f}:{h}"
+        except OSError:
+            return None
+
+    def _read_idea_data(self) -> dict:
+        p = self._idea_json_path()
+        if p is None or not p.exists():
+            return {}
+        try:
+            return json.loads(p.read_text())
+        except Exception:
+            return {}
+
+    def _refresh_axes_if_needed(self) -> None:
+        """Rebuild dynamic axes when idea.json appears or changes content.
+
+        Cheap (deterministic, no LLM); only re-derived when the source
+        changed. Skipped entirely in static-axes / legacy modes.
+        """
+        if self._dynamic_axes is None:
+            return  # legacy 5-axis path
+        if self._checkpoint_dir is None:
+            return  # static axes provided at construction; nothing to refresh
+        cur_sig = self._idea_json_signature()
+        if cur_sig is None:
+            return  # idea.json absent; keep whatever axes we had
+        if cur_sig == self._axes_idea_mtime:
+            return  # cached (signature unchanged)
+        try:
+            from ari.evaluator.dynamic_axes import build_axes_for_run
+            self._dynamic_axes = list(
+                build_axes_for_run(rubric=self._rubric, idea_data=self._read_idea_data())
+            )
+            self._axis_names = tuple(a.name for a in self._dynamic_axes)
+            self._axes_idea_mtime = cur_sig
+        except Exception as e:
+            logger.warning("axes refresh failed: %s", e)
+
     def _resolve_axis_weights(self) -> dict[str, float]:
-        """Resolve axis weights with precedence: MetricSpec > ctor > defaults."""
+        """Resolve axis weights with precedence: MetricSpec > ctor > axes > defaults."""
         if self.metric_spec.axis_weights:
             return {k: float(v) for k, v in self.metric_spec.axis_weights.items()}
         if self._ctor_axis_weights:
             return dict(self._ctor_axis_weights)
+        if self._dynamic_axes:
+            # Each AxisDef carries its own weight; the harmonic-mean
+            # interpretation is unchanged but the axis set is wider.
+            return {a.name: float(a.weight) for a in self._dynamic_axes}
         return dict(_DEFAULT_AXIS_WEIGHTS)
 
     def _build_system_prompt(self) -> str:
         spec_section = self.metric_spec.to_prompt_section()
         weights = self._resolve_axis_weights()
+
+        if self._dynamic_axes:
+            # Phase 3 path: replace the BASE_SYSTEM's hard-coded 5-axis block
+            # with the dynamic axes. We rebuild the prompt explicitly to
+            # avoid the awkwardness of regex-patching BASE_SYSTEM.
+            from ari.evaluator.dynamic_axes import axes_to_prompt_section
+            base = (
+                "You are a research data extractor AND a scientific peer reviewer.\n"
+                "Analyze the experiment artifacts and return a JSON with:\n"
+                "  has_real_data: bool (true only if numeric measurements appear in artifacts)\n"
+                "  params: dict of INPUT/configuration values (NOT measurements). "
+                "Examples: matrix size, thread count, seed.\n"
+                "  measurements: dict of MEASURED quantities (the experiment's output). "
+                "Examples: GFLOP_per_s, accuracy, latency.\n"
+                "  metrics: dict — flat union of params and measurements (back-compat).\n"
+                "  reason: str (one sentence describing what was measured)\n"
+                + axes_to_prompt_section(self._dynamic_axes)
+                + "\n  comparison_found: bool (true if results involve comparison with existing approaches)\n"
+                # Phase 6 #5 — explicit guidance for the
+                # claim_implementation_alignment axis. The judge must
+                # actively cross-reference plan / model claims against
+                # the implementation, not just rate whether artifacts
+                # look reasonable in isolation.
+                "\nWhen scoring claim_implementation_alignment, look for "
+                "concrete preconditions or contracts the plan / model "
+                "states (e.g. 'eliminates RFO traffic', 'preserves "
+                "equivariance', 'requires sorted input') and cross-"
+                "reference them against the artifacts. Score low when "
+                "the implementation contradicts a stated assumption, "
+                "even if the kernel runs without errors.\n"
+                "Return ONLY valid JSON, no markdown fences."
+            )
+            weights_line = (
+                "Axis weights (for your reference — the composite is a weighted harmonic mean):\n"
+                + ", ".join(
+                    f"{a.name}={weights.get(a.name, 0.0):.2f} [{a.source}]"
+                    for a in self._dynamic_axes
+                )
+            )
+            head = base + "\n\n" + weights_line
+            if spec_section.strip() == "Experiment type: generic experiment":
+                return head
+            return head + f"\n\nDomain context:\n{spec_section}"
+
         weights_line = (
             "Axis weights (for your reference — the composite is a weighted harmonic mean):\n"
             + ", ".join(f"{k}={weights.get(k, 0.0):.2f}" for k in AXIS_NAMES)
@@ -318,6 +492,10 @@ class LLMEvaluator:
         node_label: str | None = None,
     ) -> dict:
         """Return dict: score, reason, has_real_data, has_paper_section, metrics."""
+        # Phase 3 dynamic axes: refresh from idea.json mtime when it has
+        # changed (root node typically writes it after this evaluator was
+        # constructed). No-op in static / legacy modes.
+        self._refresh_axes_if_needed()
         artifact_str = str(artifacts)[:2000]
         score_context_block = self._build_score_context()
         prompt = (
@@ -349,7 +527,25 @@ class LLMEvaluator:
             if m:
                 raw = m.group(0)
             data = json.loads(raw)
-            extracted_metrics = data.get("metrics", {})
+            # Typed split: ``params`` (inputs) and ``measurements`` (outputs)
+            # are the canonical view. ``metrics`` is kept as a back-compat
+            # flat union so downstream code that doesn't yet know about the
+            # split (plot-skill, paper-skill prompts) still works.
+            raw_params = data.get("params") or {}
+            raw_measurements = data.get("measurements") or {}
+            params_dict = dict(raw_params) if isinstance(raw_params, dict) else {}
+            measurements_dict = (
+                dict(raw_measurements) if isinstance(raw_measurements, dict) else {}
+            )
+            # Prefer the LLM's explicit flat ``metrics`` view when present.
+            # Fall back to a synthesized union when only the split was given —
+            # measurements take precedence on key collisions because they
+            # represent the experiment outcome (the value a reviewer would
+            # quote), not the input it was run on.
+            flat_metrics = data.get("metrics")
+            if not isinstance(flat_metrics, dict) or not flat_metrics:
+                flat_metrics = {**params_dict, **measurements_dict}
+            extracted_metrics = dict(flat_metrics)
 
             # Supplement with raw artifact text via MetricSpec artifact_extractor
             # (domain-specific fallback when LLM misses some metrics)
@@ -359,6 +555,16 @@ class LLMEvaluator:
             )
             extra_metrics = self.metric_spec.extract_from_artifacts(artifacts_text)
             extracted_metrics.update(extra_metrics)
+            # The artifact extractor cannot distinguish params from measurements
+            # (it scans free-form text). When the metric_spec declares which
+            # names are inputs, route those to params_dict so the downstream
+            # split stays clean.
+            _declared_params = set(self.metric_spec.expected_params or [])
+            for k, v in extra_metrics.items():
+                if k in _declared_params:
+                    params_dict[k] = v
+                else:
+                    measurements_dict.setdefault(k, v)
 
             # Parse per-axis scores and derive the composite via weighted
             # harmonic mean. If the judge returned only the legacy
@@ -366,8 +572,12 @@ class LLMEvaluator:
             # value across all axes so older judges degrade gracefully.
             raw_axes = data.get("axis_scores")
             axis_scores: dict[str, float] = {}
+            # Phase 3: iterate over self._axis_names so dynamic axes (rubric
+            # / plan-derived) are honoured. Falls back to legacy AXIS_NAMES
+            # when the evaluator was constructed without ``axes=``.
+            iter_names = self._axis_names
             if isinstance(raw_axes, dict):
-                for k in AXIS_NAMES:
+                for k in iter_names:
                     try:
                         axis_scores[k] = max(min(float(raw_axes.get(k, 0.0)), 1.0), 0.0)
                     except (TypeError, ValueError):
@@ -379,12 +589,14 @@ class LLMEvaluator:
                         uniform = max(min(float(legacy), 1.0), 0.0)
                     except (TypeError, ValueError):
                         uniform = 0.0
-                    axis_scores = {k: uniform for k in AXIS_NAMES}
+                    axis_scores = {k: uniform for k in iter_names}
                 else:
-                    axis_scores = {k: 0.0 for k in AXIS_NAMES}
+                    axis_scores = {k: 0.0 for k in iter_names}
 
             weights = self._resolve_axis_weights()
-            composite = weighted_harmonic_mean(axis_scores, weights)
+            composite = weighted_harmonic_mean(
+                axis_scores, weights, axis_names=iter_names
+            )
 
             comparison_found = bool(data.get("comparison_found", False))
             if composite > 0:
@@ -392,6 +604,15 @@ class LLMEvaluator:
             extracted_metrics["_axis_scores"] = axis_scores
             if comparison_found:
                 extracted_metrics["_comparison_found"] = 1.0
+            # Typed views — present iff the LLM honoured the new contract.
+            # Stored under reserved underscore keys so they don't collide
+            # with experiment-named metrics. Downstream consumers that
+            # know about the split (nodes_to_science_data) read these in
+            # preference to inferring from the flat dict.
+            if params_dict:
+                extracted_metrics["_params_dict"] = params_dict
+            if measurements_dict:
+                extracted_metrics["_measurements_dict"] = measurements_dict
 
             # Record this score so future evaluations in the same run can
             # calibrate against the distribution and avoid score collapse.
