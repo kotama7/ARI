@@ -367,7 +367,7 @@ class TestTemplateResolution:
 class TestCliIdeaLoading:
     def test_run_loop_loads_idea_json_for_expand(self):
         """_run_loop must load idea.json and pass idea_context to bfts.expand()."""
-        src = Path(__file__).parent.parent / "ari" / "cli.py"
+        src = Path(__file__).parent.parent / "ari" / "cli" / "__init__.py"
         content = src.read_text()
         assert "idea.json" in content, "cli.py must reference idea.json"
         assert "idea_context" in content, "cli.py must pass idea_context"

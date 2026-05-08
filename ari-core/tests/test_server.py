@@ -1080,7 +1080,7 @@ def test_max_workers_floor_at_one():
 def test_cli_run_loop_max_workers_zero_safe():
     """_run_loop with max_parallel_nodes=0 must still produce max_workers >= 1."""
     import re
-    cli_src = Path(__file__).parent.parent / "ari" / "cli.py"
+    cli_src = Path(__file__).parent.parent / "ari" / "cli" / "__init__.py"
     src = cli_src.read_text()
     # Verify the guard is present: max(1, min(...))
     assert re.search(r"max\(\s*1\s*,\s*min\(", src), \
