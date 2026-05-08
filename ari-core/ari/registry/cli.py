@@ -17,7 +17,8 @@ registry_app.add_typer(token_app, name="token")
 
 
 def _data_dir() -> Path:
-    return Path(os.environ.get("ARI_REGISTRY_DATA") or Path.home() / ".ari" / "registry-data")
+    from . import resolve_data_dir
+    return resolve_data_dir()
 
 
 @registry_app.command("serve")

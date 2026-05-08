@@ -23,11 +23,24 @@ from typing import Optional
 def _resolve_registries() -> list[dict]:
     """Read registries.yaml or env-provided config. Returns a list of
     dicts with at least ``name``, ``url``, optional ``token``.
+
+    Phase DR2 (DEPRECATION_REMOVAL.md tier B): the legacy
+    ``~/.ari/registries.yaml`` fallback emits a DeprecationWarning the
+    first time it is honoured.  v1.0 will remove it; users should
+    set ``ARI_REGISTRIES_FILE`` or place the file under their
+    checkpoint.
     """
-    cfg_paths = [
-        Path(os.environ.get("ARI_REGISTRIES_FILE") or "") if os.environ.get("ARI_REGISTRIES_FILE") else None,
-        Path.home() / ".ari" / "registries.yaml",
+    cfg_paths: list[Path | None] = [
+        Path(os.environ["ARI_REGISTRIES_FILE"]) if os.environ.get("ARI_REGISTRIES_FILE") else None,
     ]
+    legacy = Path.home() / ".ari" / "registries.yaml"
+    if legacy.exists():
+        from ari._deprecation import warn_deprecated_path
+        warn_deprecated_path(
+            legacy,
+            replacement="ARI_REGISTRIES_FILE env or {checkpoint}/.ari/registries.yaml",
+        )
+        cfg_paths.append(legacy)
     for p in cfg_paths:
         if p and p.exists():
             try:
@@ -95,7 +108,10 @@ def publish(
     reg = _select_registry(registry_name)
     if not reg:
         raise RuntimeError(
-            "no ari-registry configured. Set ARI_REGISTRY_URL or write ~/.ari/registries.yaml"
+            "no ari-registry configured. Set ARI_REGISTRY_URL, "
+            "or write registries.yaml in your checkpoint or working "
+            "directory (see docs/registry.md for format). "
+            "Note: ~/.ari/ paths are deprecated and will be removed in v1.0."
         )
 
     base_url = str(reg.get("url", "")).rstrip("/")

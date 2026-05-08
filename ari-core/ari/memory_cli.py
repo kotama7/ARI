@@ -305,7 +305,20 @@ def prune_local_cmd(
         ["docker", "compose", "-f", str(root / "docker-compose.yml"), "down", "-v"],
         check=False,
     )
-    venv = Path(os.environ.get("ARI_LETTA_VENV", str(Path.home() / ".ari/letta-venv")))
+    env_value = os.environ.get("ARI_LETTA_VENV", "").strip()
+    if env_value:
+        venv = Path(env_value)
+    else:
+        # Phase DR2 (DEPRECATION_REMOVAL.md tier B): the legacy
+        # ``~/.ari/letta-venv/`` fallback is kept for one minor version
+        # behind a DeprecationWarning; v1.0 makes ARI_LETTA_VENV mandatory.
+        venv = Path.home() / ".ari/letta-venv"
+        if venv.exists():
+            from ari._deprecation import warn_deprecated_path
+            warn_deprecated_path(
+                venv,
+                replacement="ARI_LETTA_VENV environment variable (will be required in v1.0)",
+            )
     if venv.exists():
         shutil.rmtree(venv, ignore_errors=True)
     dotletta = Path.home() / ".letta"
