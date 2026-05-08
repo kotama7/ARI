@@ -221,16 +221,21 @@ def load_disabled_stage_names(config_yaml: str | Path) -> set[str]:
 def load_workflow(config_dir: str | Path) -> dict:
     """Load workflow.yaml if present, else fall back to pipeline.yaml.
 
-    Returns full workflow dict including skills list.
+    Returns full workflow dict including skills list.  Search order
+    (workflow.yaml first, pipeline.yaml as legacy fallback) is delegated
+    to ``ari.config.finder`` so this and the viz / CLI sites share one
+    discovery path (Phase 2 §6-2).
     """
-    base = Path(config_dir)
-    for name in ("workflow.yaml", "pipeline.yaml"):
-        p = base / name
-        if p.exists():
-            data = yaml.safe_load(p.read_text())
-            data["_source"] = str(p)
-            return data
-    return {"pipeline": [], "skills": []}
+    from ari.config.finder import find_workflow_in_dir, load_workflow_config
+    p = find_workflow_in_dir(config_dir)
+    if p is None:
+        return {"pipeline": [], "skills": []}
+    data = load_workflow_config(p)
+    if not data:
+        # finder returned a path but YAML parse failed — preserve the
+        # legacy "no workflow loaded" semantics.
+        return {"pipeline": [], "skills": []}
+    return data
 
 
 # ---------------------------------------------------------------------------

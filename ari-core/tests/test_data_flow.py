@@ -331,10 +331,15 @@ def test_api_launch_injects_hpc_env_vars():
 
 
 def test_config_reads_hpc_env_vars():
-    """config.py auto_config() must read ARI_SLURM_* into resources dict."""
-    config_src = (VIZ_DIR.parent / "config.py").read_text()
-    assert "ARI_SLURM_CPUS" in config_src, "config.py must read ARI_SLURM_CPUS"
-    assert "ARI_SLURM_MEM_GB" in config_src, "config.py must read ARI_SLURM_MEM_GB"
-    assert "ARI_SLURM_GPUS" in config_src, "config.py must read ARI_SLURM_GPUS"
-    assert "ARI_SLURM_WALLTIME" in config_src, "config.py must read ARI_SLURM_WALLTIME"
-    assert "ARI_SLURM_PARTITION" in config_src, "config.py must read ARI_SLURM_PARTITION"
+    """ari/config (package) auto_config() must read ARI_SLURM_* into resources dict.
+
+    After Phase 2 the config module became a package
+    (``ari/config/__init__.py``); the env-var reads still live in the
+    package init file.
+    """
+    config_src = (VIZ_DIR.parent / "config" / "__init__.py").read_text()
+    assert "ARI_SLURM_CPUS" in config_src, "config must read ARI_SLURM_CPUS"
+    assert "ARI_SLURM_MEM_GB" in config_src, "config must read ARI_SLURM_MEM_GB"
+    assert "ARI_SLURM_GPUS" in config_src, "config must read ARI_SLURM_GPUS"
+    assert "ARI_SLURM_WALLTIME" in config_src, "config must read ARI_SLURM_WALLTIME"
+    assert "ARI_SLURM_PARTITION" in config_src, "config must read ARI_SLURM_PARTITION"

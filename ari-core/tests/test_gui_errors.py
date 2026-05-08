@@ -1602,11 +1602,11 @@ class TestRealtimeTreeUpdates:
     ):
         """Rapid force-flushes from mark_running / post-completion all hit disk."""
         from ari.cli import _save_tree_incremental
-        import ari.cli as _cli
+        import ari.checkpoint as _ck
         from ari.orchestrator.node import Node, NodeStatus
 
-        # isolate throttle bookkeeping
-        monkeypatch.setattr(_cli, "_tree_last_save_mono", {}, raising=True)
+        # isolate throttle bookkeeping (Phase 2 §6-1: lives in ari.checkpoint)
+        monkeypatch.setattr(_ck, "_INCR_LAST_SAVE_MONO", {}, raising=True)
 
         ckpt = tmp_path / "ckpt"
         ckpt.mkdir()

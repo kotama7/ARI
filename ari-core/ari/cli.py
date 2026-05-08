@@ -379,10 +379,17 @@ def _resolve_cfg(config: "Path | None"):
     (saved by the GUI Workflow page) because auto_config does not read
     workflow.yaml. Falling back to the package workflow.yaml honours the
     GUI toggles in BFTS and paper phases alike.
+
+    Package-yaml discovery is delegated to ``ari.config.finder`` so the
+    bundled-fallback path lives in one place (Phase 2 §6-2).  The CLI
+    only consults the package fallback (no checkpoint search) so the
+    existing semantic — "explicit --config wins, then bundle, then
+    auto_config()" — is preserved exactly.
     """
     if config and config.exists():
         return load_config(str(config))
-    _pkg_wf = Path(__file__).parent.parent / "config" / "workflow.yaml"
+    from ari.config.finder import package_config_root
+    _pkg_wf = package_config_root() / "workflow.yaml"
     if _pkg_wf.exists():
         return load_config(str(_pkg_wf))
     return auto_config()
@@ -430,10 +437,10 @@ def _setup_logging(cfg_logging, run_id: str) -> None:
 # finishes its ReAct loop. These helpers let the orchestrator and the agent
 # loop flush current state mid-run so the GUI (polling /state every 5 s) can
 # animate tree growth, RUNNING transitions, and trace_log accumulation.
-
-_tree_save_lock = threading.Lock()
-_tree_save_min_interval_s = 1.0
-_tree_last_save_mono: dict[str, float] = {}
+#
+# Phase 2 §6-1: throttling + JSON layout live in ``ari.checkpoint``;
+# this wrapper just feeds it the (run_id, experiment_file, nodes)
+# triple via ``_save_checkpoint``.
 
 
 def _save_tree_incremental(
@@ -446,23 +453,18 @@ def _save_tree_incremental(
 ) -> None:
     """Thread-safe + throttled wrapper around ``_save_checkpoint``.
 
-    Multiple worker threads call this concurrently while agents run in
-    parallel. The lock serialises writes so partial JSON never reaches the
-    GUI; the throttle avoids thrashing disk on every ReAct step. ``force``
-    bypasses the throttle (used on node terminal state transitions).
+    Delegates locking and throttling to
+    ``ari.checkpoint.save_tree_incremental``; we still own the
+    "build the payload from Node objects" step here because Node is a
+    BFTS concept, not a checkpoint concept.
     """
-    key = str(checkpoint_dir)
-    now = time.monotonic()
-    with _tree_save_lock:
-        if not force:
-            last = _tree_last_save_mono.get(key, 0.0)
-            if now - last < _tree_save_min_interval_s:
-                return
-        _tree_last_save_mono[key] = now
-        try:
-            _save_checkpoint(checkpoint_dir, run_id, experiment_file, list(nodes))
-        except Exception:
-            logging.getLogger(__name__).debug("incremental tree save failed", exc_info=True)
+    from ari.checkpoint import save_tree_incremental as _save_inc
+    nodes_snapshot = list(nodes)
+    _save_inc(
+        checkpoint_dir,
+        lambda: _save_checkpoint(checkpoint_dir, run_id, experiment_file, nodes_snapshot),
+        force=force,
+    )
 
 
 def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
@@ -1686,8 +1688,19 @@ def viz(
 
 
 def _save_checkpoint(checkpoint_dir, run_id, experiment_file, nodes):
-    # ── Trace: record experiment file hash in tree.json for post-mortem ──
+    """Build the (tree, nodes_tree, results) payload and write all three files.
+
+    JSON file names + key order are fixed by the GUI / paper pipeline
+    contract; the actual write is delegated to ``ari.checkpoint`` so
+    only one place owns ``json.dumps(..., indent=2)`` (Phase 2 §6-1).
+    """
     import hashlib as _hl_ck
+    from ari.checkpoint import (
+        save_tree_json as _save_tree,
+        save_nodes_tree_json as _save_nodes_tree,
+        save_results_json as _save_results,
+    )
+    # ── Trace: record experiment file hash in tree.json for post-mortem ──
     _exp_path = Path(experiment_file)
     _exp_sha = ""
     _exp_len = 0
@@ -1702,7 +1715,7 @@ def _save_checkpoint(checkpoint_dir, run_id, experiment_file, nodes):
         "created_at": datetime.now(timezone.utc).isoformat(),
         "nodes": [n.to_dict() for n in nodes],
     }
-    (checkpoint_dir / "tree.json").write_text(json.dumps(tree, indent=2, ensure_ascii=False))
+    _save_tree(checkpoint_dir, tree)
     # Also write lightweight nodes_tree.json for backward compat with pipeline stages
     _exp_goal = ""
     try:
@@ -1715,7 +1728,7 @@ def _save_checkpoint(checkpoint_dir, run_id, experiment_file, nodes):
         "experiment_goal": _exp_goal,
         "nodes": tree["nodes"],
     }
-    (checkpoint_dir / "nodes_tree.json").write_text(json.dumps(nodes_tree, indent=2, ensure_ascii=False))
+    _save_nodes_tree(checkpoint_dir, nodes_tree)
     results = {
         "run_id": run_id,
         "nodes": {n.id: {"artifacts": n.artifacts, "metrics": n.metrics,
@@ -1723,7 +1736,7 @@ def _save_checkpoint(checkpoint_dir, run_id, experiment_file, nodes):
                           "status": n.status.value, "error_log": n.error_log}
                   for n in nodes},
     }
-    (checkpoint_dir / "results.json").write_text(json.dumps(results, indent=2, ensure_ascii=False))
+    _save_results(checkpoint_dir, results)
 
 
 # ─────────────────────────────────────────

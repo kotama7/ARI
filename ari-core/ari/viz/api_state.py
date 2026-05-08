@@ -36,46 +36,16 @@ def _check_pid_alive(checkpoint_dir: Path) -> str:
 
 
 def _load_nodes_tree() -> dict | None:
+    """Load the active checkpoint's node tree (Phase 2 §6-1 delegation).
+
+    Search order, retry-on-mid-write semantics, and the empty-dict
+    rejection rule live in ``ari.checkpoint.load_nodes_tree``; this
+    wrapper only feeds it the active checkpoint dir from ``_st``.
+    """
     if _st._checkpoint_dir is None:
         return None
-    # tree.json has full data (trace_log, memory, code); nodes_tree.json is lightweight export
-    p = _st._checkpoint_dir / "tree.json"
-    if not p.exists():
-        p = _st._checkpoint_dir / "nodes_tree.json"
-    if not p.exists():
-        # Fallback: scan node_* subdirectories for the most recent tree.json.
-        # This covers experiments where tree.json lives inside per-node work dirs
-        # (e.g. checkpoints/experiments/{run_id}/node_*/tree.json).
-        _candidates = sorted(
-            _st._checkpoint_dir.glob("node_*/tree.json"),
-            key=lambda f: f.stat().st_mtime,
-            reverse=True,
-        )
-        # Pick the newest non-empty tree.json
-        for _c in _candidates:
-            try:
-                if _c.stat().st_size > 2:  # skip empty "{}"
-                    p = _c
-                    break
-            except OSError:
-                continue
-        else:
-            return None
-    # Retry once on parse failure (file may be mid-write)
-    for _attempt in range(2):
-        try:
-            data = json.loads(p.read_text(encoding="utf-8"))
-            # Skip truly empty dicts (e.g. root node's tree.json may be "{}")
-            if not data or (isinstance(data, dict) and "nodes" not in data):
-                return None
-            return data
-        except json.JSONDecodeError:
-            if _attempt == 0:
-                time.sleep(0.15)
-        except Exception:
-            log.debug("nodes_tree load error", exc_info=True)
-            return None
-    return None
+    from ari.checkpoint import load_nodes_tree as _load
+    return _load(_st._checkpoint_dir)
 
 
 

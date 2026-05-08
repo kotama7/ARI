@@ -112,7 +112,8 @@ def _build_experiment_detail_config() -> str:
     try:
         import yaml as _yaml
         import copy as _copy
-        config_root = Path(__file__).parent.parent.parent / "config"
+        from ari.config.finder import package_config_root, find_profile_yaml
+        config_root = package_config_root()
         default_cfg = {}
         default_yaml = config_root / "default.yaml"
         if default_yaml.exists():
@@ -135,7 +136,9 @@ def _build_experiment_detail_config() -> str:
         if ckpt_dir:
             candidates.append(ckpt_dir / "workflow.yaml")
         if lc_profile:
-            candidates.append(config_root / "profiles" / f"{lc_profile}.yaml")
+            prof = find_profile_yaml(lc_profile, package_root=config_root)
+            if prof is not None:
+                candidates.append(prof)
         candidates.append(config_root / "default.yaml")
         for wf_path in candidates:
             if wf_path.exists():
