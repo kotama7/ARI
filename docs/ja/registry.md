@@ -20,7 +20,7 @@
 ari registry token issue alice
 
 # 4. クライアント設定（`~/.ari/registries.yaml` は v0.5.0 で廃止 — $ARI_REGISTRIES_FILE を推奨）
-cat > ~/.ari/registries.yaml <<EOF
+cat > ~/.ari/registries.yaml <<EOF   # DEPRECATED since v0.5.0
 registries:
   - name: default
     url: http://127.0.0.1:8290
