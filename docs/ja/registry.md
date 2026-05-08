@@ -14,11 +14,12 @@
 
 # 2. 起動
 ./scripts/registry/start_local.sh # uvicorn を 127.0.0.1:8290 で、sqlite は ~/.ari/registry-data 配下
+                                  # NOTE: `~/.ari/` は v0.5.0 で廃止。$ARI_REGISTRY_DATA を明示設定推奨
 
 # 3. token を発行（平文は 1 度だけ表示）
 ari registry token issue alice
 
-# 4. クライアント設定
+# 4. クライアント設定（`~/.ari/registries.yaml` は v0.5.0 で廃止 — $ARI_REGISTRIES_FILE を推奨）
 cat > ~/.ari/registries.yaml <<EOF
 registries:
   - name: default

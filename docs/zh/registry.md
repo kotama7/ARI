@@ -14,11 +14,12 @@
 
 # 2. 启动
 ./scripts/registry/start_local.sh # uvicorn 监听 127.0.0.1:8290，sqlite 位于 ~/.ari/registry-data
+                                  # 注意：`~/.ari/` 自 v0.5.0 起已弃用；建议设置 $ARI_REGISTRY_DATA
 
 # 3. 颁发 token（明文仅显示一次）
 ari registry token issue alice
 
-# 4. 配置客户端
+# 4. 配置客户端（`~/.ari/registries.yaml` 自 v0.5.0 起已弃用 — 优先 $ARI_REGISTRIES_FILE）
 cat > ~/.ari/registries.yaml <<EOF
 registries:
   - name: default

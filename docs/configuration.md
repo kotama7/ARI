@@ -297,7 +297,7 @@ skills:
 | `ARI_PHASE1_APPTAINER_IMAGE` / `ARI_PHASE1_SINGULARITY_IMAGE` | Image for the Apptainer/Singularity sandbox runner | `docker://ubuntu:24.04` |
 | `ARI_SLURM_WALLTIME` | `--time` HH:MM:SS for the SLURM Phase 1 sandbox (v0.7.0, restored). Falls back to a value derived from the rubric's `max_runtime_sec`. | (auto) |
 | `ARI_PUBLISH_DRYRUN` | Force `ari ear publish --dry-run` (CI safety, v0.7.0) | (off) |
-| `ARI_REGISTRY_DATA` | sqlite + artifact storage root for `ari registry serve` | `~/.ari/registry-data` |
+| `ARI_REGISTRY_DATA` | sqlite + artifact storage root for `ari registry serve` | `~/.ari/registry-data` *(`~/.ari/` **DEPRECATED since v0.5.0**; set this var explicitly — fallback is removed in v1.0)* |
 | `ARI_REGISTRY_TOKEN` | Bearer token for `ari clone ari://...` / `ari ear publish --backend ari-registry` | (none) |
 | `ARI_REPRO_CLONE_POLICY` | Git-shim policy in the reproducibility sandbox: `passthrough` / `deny` / `warn` | `passthrough` |
 
