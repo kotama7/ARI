@@ -64,6 +64,18 @@ _EXPECTED_HASHES: list[tuple[str, str]] = [
         "evaluator/peer_review",
         "05205ee7b5215dd88418539d940c9140f3a0f4e1be940a4b330daea15a72a798",
     ),
+    # PC8 — viz wizard chat-goal prompt.
+    (
+        "viz/wizard_chat_goal",
+        "723a3f64dd110c480232829c89ddb97d536f77e7ecaa6fa336225eb04e900a58",
+    ),
+    # PC8 — viz wizard generate-config prompt.  Template form (with the
+    # ``{goal}`` placeholder unsubstituted); the call-site formats it
+    # against the user's research goal at runtime.
+    (
+        "viz/wizard_generate_config",
+        "4bfc6a4237c57de8232b48020c709eece289f29a9260d68922a753ab1e664624",
+    ),
 ]
 
 

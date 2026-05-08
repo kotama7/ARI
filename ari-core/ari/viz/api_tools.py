@@ -49,20 +49,12 @@ def _api_chat_goal(body: bytes) -> dict:
         if not api_key or len(api_key) < 20:
             key_name = "ANTHROPIC_API_KEY" if provider in ("anthropic", "claude") else "OPENAI_API_KEY"
             return {"error": f"{key_name} not found. Configure it in Settings."}
-        system = (
-            "You are an assistant helping a researcher set up an ARI experiment. "
-            "ARI automatically writes, runs, benchmarks code, then produces a paper. "
-            "Ask focused questions ONE AT A TIME to understand: "
-            "(1) what to optimize or investigate, "
-            "(2) how to measure success (metric name and direction), "
-            "(3) platform/hardware constraints, "
-            "(4) any baseline to compare against. "
-            "Be concise. After 3-5 exchanges and sufficient info, output EXACTLY: "
-            "---READY--- "
-            "followed by a complete experiment.md with sections: "
-            "## Research Goal, ## Evaluation Metric, ## Constraints. "
-            "Do NOT output the MD before getting at least 2 user responses."
-        )
+        # Phase PC8 (PROMPTS_AND_CONFIG.md §3-8): wizard chat-goal
+        # system prompt lives in ``ari/prompts/viz/wizard_chat_goal.md``.
+        from ari.prompts import FilesystemPromptLoader as _PL_w1
+        system = _PL_w1().load("viz/wizard_chat_goal")
+        if system.endswith("\n"):
+            system = system[:-1]
         full_messages = [{"role": "system", "content": system}] + messages
         # Use litellm for unified provider support
         import litellm
@@ -128,13 +120,14 @@ def _api_generate_config(body: bytes) -> dict:
                 _ct.init(_ckpt)
             except Exception:
                 pass
-        prompt = (
-            "You are helping a researcher set up an automated experiment. "
-            "Convert the following research goal into a concise experiment.md file "
-            "with a ## Research Goal section. Keep it to 3-5 sentences maximum. "
-            "Do not add code or technical details. "
-            f"Research goal: {goal}"
-        )
+        # Phase PC8 (PROMPTS_AND_CONFIG.md §3-8): wizard
+        # generate-config prompt lives in
+        # ``ari/prompts/viz/wizard_generate_config.md``.
+        from ari.prompts import FilesystemPromptLoader as _PL_w2
+        _wizard_template = _PL_w2().load("viz/wizard_generate_config")
+        if _wizard_template.endswith("\n"):
+            _wizard_template = _wizard_template[:-1]
+        prompt = _wizard_template.format(goal=goal)
         messages = [{"role": "user", "content": prompt}]
         resp = client.complete(
             messages, require_tool=False,
