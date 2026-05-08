@@ -978,8 +978,8 @@ def run_pipeline(
     context, best_metrics = build_best_nodes_context(all_nodes, experiment_goal)
 
     # Propagate checkpoint_dir to subprocess env so cost_tracker can log there
-    import os as _os_pipe
-    _os_pipe.environ["ARI_CHECKPOINT_DIR"] = str(checkpoint_dir)
+    from ari.paths import PathManager as _PM_pipe_set
+    _PM_pipe_set.set_checkpoint_dir_env(checkpoint_dir)
 
     # Mark paper pipeline start for GUI phase detection
     try:

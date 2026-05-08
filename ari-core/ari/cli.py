@@ -1440,7 +1440,7 @@ def resume(
             from ari.memory_cli import _do_restore, _backup_path
             if _backup_path(checkpoint_dir).exists():
                 from ari_skill_memory.backends import get_backend
-                os.environ["ARI_CHECKPOINT_DIR"] = str(checkpoint_dir)
+                PathManager.set_checkpoint_dir_env(checkpoint_dir)
                 _b = get_backend(checkpoint_dir=checkpoint_dir)
                 if not _b.list_all_nodes().get("by_node") and not _b.list_react_entries():
                     _r = _do_restore(checkpoint_dir, on_conflict="skip")
@@ -1892,8 +1892,7 @@ def delete_project(
     # Failure does NOT block local deletion — orphaned Letta entries can be
     # swept later with `ari memory prune-local`.
     try:
-        import os as _os_del
-        _os_del.environ["ARI_CHECKPOINT_DIR"] = str(p)
+        PathManager.set_checkpoint_dir_env(p)
         from ari_skill_memory.backends import get_backend, clear_backend_cache
         clear_backend_cache()
         get_backend(checkpoint_dir=p).purge_checkpoint()

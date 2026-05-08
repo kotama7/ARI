@@ -225,6 +225,17 @@ class PathManager:
         val = os.environ.get("ARI_CHECKPOINT_DIR", "").strip()
         return Path(val) if val else None
 
+    @staticmethod
+    def set_checkpoint_dir_env(checkpoint_dir: str | Path) -> None:
+        """Set ``ARI_CHECKPOINT_DIR`` so child processes inherit the run pin.
+
+        ARI uses an env-var hand-off when spawning MCP skills, Letta and
+        delete subprocesses so they bind to the same checkpoint as the
+        parent.  Going through this helper keeps every writer routed
+        through PathManager (Phase 1 receiving-criterion §10).
+        """
+        os.environ["ARI_CHECKPOINT_DIR"] = str(checkpoint_dir)
+
     @classmethod
     def from_env(cls) -> "PathManager":
         """Build a :class:`PathManager` from the current process env.
