@@ -33,9 +33,10 @@ console = Console()
 
 def _resolve_ckpt(path: "str | Path | None", scan: bool = False) -> Path:
     if path is None:
-        env = os.environ.get("ARI_CHECKPOINT_DIR", "").strip()
-        if env:
-            return Path(env).expanduser().resolve()
+        from ari.paths import PathManager
+        env_ckpt = PathManager.checkpoint_dir_from_env()
+        if env_ckpt is not None:
+            return env_ckpt.expanduser().resolve()
         raise typer.BadParameter(
             "--checkpoint is required (no ARI_CHECKPOINT_DIR in env)"
         )

@@ -1200,10 +1200,8 @@ def run(
     # here, producing a different name from the GUI's checkpoint dir, and the
     # delete handler (which joins experiments_root with the checkpoint name)
     # left the experiments directory as an orphan.
-    _gui_ckpt = os.environ.get("ARI_CHECKPOINT_DIR", "").strip()
-    _adopted_run_id = ""
-    if _gui_ckpt:
-        _adopted_run_id = Path(_gui_ckpt).name
+    _gui_ckpt_path = PathManager.checkpoint_dir_from_env()
+    _adopted_run_id = _gui_ckpt_path.name if _gui_ckpt_path is not None else ""
     if _adopted_run_id:
         run_id = _adopted_run_id
         # Best-effort raw name for UI labels: strip the leading timestamp.

@@ -150,7 +150,9 @@ def _apply_checkpoint_env_overrides(cfg: "ARIConfig") -> None:
     GUI is watching. Without this override, load_config() ignores the env var
     and the CLI creates a sibling {run_id} directory, so the GUI sees no nodes.
     """
-    _ckpt = os.environ.get("ARI_CHECKPOINT_DIR", "")
+    from ari.paths import PathManager
+    _ckpt_path = PathManager.checkpoint_dir_from_env()
+    _ckpt = str(_ckpt_path) if _ckpt_path is not None else ""
     if _ckpt:
         cfg.checkpoint.dir = _ckpt
     _log = os.environ.get("ARI_LOG_DIR", "")
@@ -241,7 +243,9 @@ def auto_config() -> ARIConfig:
     _base_url = os.environ.get("OLLAMA_HOST", "http://localhost:11434") if _backend == "ollama" else os.environ.get("LLM_API_BASE", None)
     # Checkpoint dir: ARI_CHECKPOINT_DIR (explicit) > workspace/checkpoints/{run_id}/
     # Use PathManager-based workspace path so CLI and GUI share the same location.
-    _ckpt_dir = os.environ.get("ARI_CHECKPOINT_DIR", "")
+    from ari.paths import PathManager
+    _ckpt_path = PathManager.checkpoint_dir_from_env()
+    _ckpt_dir = str(_ckpt_path) if _ckpt_path is not None else ""
     if not _ckpt_dir:
         _ari_root = Path(__file__).resolve().parents[2]  # ARI/
         _ckpt_dir = str(_ari_root / "workspace" / "checkpoints" / "{run_id}")

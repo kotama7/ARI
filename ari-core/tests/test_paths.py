@@ -334,3 +334,38 @@ class TestIntegration:
         assert not (wd / "experiment.md").exists()
         assert not (wd / "tree.json").exists()
         assert not (wd / "ari_run_123.log").exists()
+
+
+
+# ── env-driven helpers (PR-1A) ────────────────────────────────────────────
+
+
+class TestEnvHelpers:
+    def test_checkpoint_dir_from_env_unset(self, monkeypatch):
+        monkeypatch.delenv("ARI_CHECKPOINT_DIR", raising=False)
+        assert PathManager.checkpoint_dir_from_env() is None
+
+    def test_checkpoint_dir_from_env_blank(self, monkeypatch):
+        monkeypatch.setenv("ARI_CHECKPOINT_DIR", "   ")
+        assert PathManager.checkpoint_dir_from_env() is None
+
+    def test_checkpoint_dir_from_env_returns_path(self, monkeypatch, tmp_path):
+        ck = tmp_path / "checkpoints" / "abc"
+        monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(ck))
+        out = PathManager.checkpoint_dir_from_env()
+        assert isinstance(out, Path)
+        assert str(out) == str(ck)
+
+    def test_from_env_unset_falls_back_to_cwd(self, monkeypatch):
+        monkeypatch.delenv("ARI_CHECKPOINT_DIR", raising=False)
+        pm = PathManager.from_env()
+        assert pm.root == Path(".").resolve()
+
+    def test_from_env_with_checkpoint_dir_infers_workspace(self, monkeypatch, tmp_path):
+        ck = tmp_path / "checkpoints" / "run1"
+        ck.mkdir(parents=True)
+        monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(ck))
+        pm = PathManager.from_env()
+        # workspace_root is the parent of the outermost checkpoints/ dir.
+        assert pm.root == tmp_path.resolve()
+        assert pm.checkpoint_dir("run1") == ck.resolve()
