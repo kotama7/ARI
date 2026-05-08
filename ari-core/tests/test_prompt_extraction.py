@@ -52,6 +52,18 @@ _EXPECTED_HASHES: list[tuple[str, str]] = [
         "orchestrator/bfts_expand",
         "5bb9cd1ba19910d3eef7ed789451869dd9b256421610bc71138dbfce7deabce9",
     ),
+    # PC6 — evaluator extract-metrics prompt (BASE_SYSTEM legacy 5-axis).
+    # The .md file ends with a trailing newline; the in-class constant
+    # does not, so the .py call site strips one before exposing it.
+    (
+        "evaluator/extract_metrics",
+        "a9cf2dcbea0d6c8414514e5ad0f17b60215269218ae7fc042aec393321ebeffb",
+    ),
+    # PC6 — evaluator dynamic-axes peer-review prompt.
+    (
+        "evaluator/peer_review",
+        "05205ee7b5215dd88418539d940c9140f3a0f4e1be940a4b330daea15a72a798",
+    ),
 ]
 
 
