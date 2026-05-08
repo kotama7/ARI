@@ -20,19 +20,30 @@ from pathlib import Path
 from typing import Optional
 
 
-def _resolve_registries() -> list[dict]:
+def _resolve_registries(checkpoint_dir: Path | None = None) -> list[dict]:
     """Read registries.yaml or env-provided config. Returns a list of
     dicts with at least ``name``, ``url``, optional ``token``.
 
-    Phase DR2 (DEPRECATION_REMOVAL.md tier B): the legacy
-    ``~/.ari/registries.yaml`` fallback emits a DeprecationWarning the
-    first time it is honoured.  v1.0 will remove it; users should
-    set ``ARI_REGISTRIES_FILE`` or place the file under their
-    checkpoint.
+    Phase DR2/DR3 (DEPRECATION_REMOVAL.md tier B):
+
+    Search order:
+        1. ``$ARI_REGISTRIES_FILE`` env override
+        2. ``{checkpoint_dir}/.ari/registries.yaml`` when set (DR3 —
+           lets a run pin its registry config to the checkpoint)
+        3. ``$(pwd)/.ari/registries.yaml``
+        4. ``~/.ari/registries.yaml`` (DEPRECATED, v1.0 removal)
+
+    The DR3 checkpoint-scoped path makes future-default registries
+    portable across machines via the EAR bundle; the cwd path keeps
+    pre-Phase-1 workflows ergonomic; the home-dir fallback emits a
+    ``DeprecationWarning`` the first time it is honoured.
     """
     cfg_paths: list[Path | None] = [
         Path(os.environ["ARI_REGISTRIES_FILE"]) if os.environ.get("ARI_REGISTRIES_FILE") else None,
     ]
+    if checkpoint_dir is not None:
+        cfg_paths.append(Path(checkpoint_dir) / ".ari" / "registries.yaml")
+    cfg_paths.append(Path.cwd() / ".ari" / "registries.yaml")
     legacy = Path.home() / ".ari" / "registries.yaml"
     if legacy.exists():
         from ari._deprecation import warn_deprecated_path

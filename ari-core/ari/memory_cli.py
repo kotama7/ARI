@@ -110,7 +110,11 @@ def migrate_cmd(
         console.print(f"[green]✓ imported {len(react_entries)} react entries[/green]")
 
     # Global memory: detect but do not migrate.
-    global_path = Path.home() / ".ari" / "global_memory.jsonl"
+    # Phase 5 (REFACTORING.md §8) parks the legacy path in
+    # ``ari.migrations.v05_to_v07.memory`` so all readers reference one
+    # constant — the v1.0 deletion only has to remove that file.
+    from ari.migrations.v05_to_v07.memory import LEGACY_GLOBAL_PATH
+    global_path = LEGACY_GLOBAL_PATH
     if global_path.exists():
         console.print(
             f"[yellow]WARNING: {global_path} found — global memory is removed in "

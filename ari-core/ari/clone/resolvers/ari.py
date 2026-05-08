@@ -22,17 +22,27 @@ from typing import Optional
 from .https import resolve as _https_resolve  # reuse the streaming download
 
 
-def _load_registries(name_filter: Optional[str] = None) -> list[dict]:
+def _load_registries(
+    name_filter: Optional[str] = None,
+    *,
+    checkpoint_dir: Optional[Path] = None,
+) -> list[dict]:
     """Search registries.yaml in priority order.
 
-    Phase DR2 (DEPRECATION_REMOVAL.md tier B): the legacy
-    ``~/.ari/registries.yaml`` path emits a DeprecationWarning the first
-    time it is consulted; v1.0 will drop it in favour of
-    ``ARI_REGISTRIES_FILE`` or ``{checkpoint}/.ari/registries.yaml``.
+    Phase DR2/DR3 (DEPRECATION_REMOVAL.md tier B):
+
+    Search order:
+        1. ``$ARI_REGISTRIES_FILE`` env override
+        2. ``{checkpoint_dir}/.ari/registries.yaml`` when set (DR3)
+        3. ``$(pwd)/.ari/registries.yaml``
+        4. ``~/.ari/registries.yaml`` (DEPRECATED, v1.0 removal)
     """
     paths: list[Path] = []
     if os.environ.get("ARI_REGISTRIES_FILE"):
         paths.append(Path(os.environ["ARI_REGISTRIES_FILE"]))
+    if checkpoint_dir is not None:
+        paths.append(Path(checkpoint_dir) / ".ari" / "registries.yaml")
+    paths.append(Path.cwd() / ".ari" / "registries.yaml")
     legacy = Path.home() / ".ari" / "registries.yaml"
     if legacy.exists():
         from ari._deprecation import warn_deprecated_path
