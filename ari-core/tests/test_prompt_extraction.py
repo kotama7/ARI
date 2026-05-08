@@ -1,0 +1,53 @@
+"""Phase PC regression — extracted prompt files stay byte-identical.
+
+PROMPTS_AND_CONFIG.md §4 demands a sha256 hash check on every
+externalised prompt so a stray ``\\n`` change cannot silently shift
+LLM behaviour.  Add a row here for each new ``ari/prompts/<key>.md``
+that lands.
+"""
+from __future__ import annotations
+
+import hashlib
+
+import pytest
+
+from ari.prompts import FilesystemPromptLoader
+
+
+# (key, expected sha256 of the on-disk prompt body before the run)
+_EXPECTED_HASHES: list[tuple[str, str]] = [
+    # PC3 — agent system prompt.  Hash captured against the original
+    # ``SYSTEM_PROMPT`` constant immediately before extraction.
+    (
+        "agent/system",
+        "a50abe13d568c07c6cd25b930d27b48c42179fbe629cdf64ab2d3ed48585cdbf",
+    ),
+]
+
+
+@pytest.mark.parametrize("key,expected_sha", _EXPECTED_HASHES, ids=lambda v: v if isinstance(v, str) else "")
+def test_prompt_byte_identical(key: str, expected_sha: str):
+    """Each externalised prompt must hash to the value pinned in this file."""
+    text = FilesystemPromptLoader().load(key)
+    actual = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    assert actual == expected_sha, (
+        f"prompt '{key}' drifted: expected {expected_sha}, got {actual}.\n"
+        "If the change is intentional, update _EXPECTED_HASHES."
+    )
+
+
+def test_agent_system_prompt_format_preserves_template_vars():
+    """``.format(...)`` over the externalised prompt produces a string
+    that matches what the inline constant produced."""
+    text = FilesystemPromptLoader().load("agent/system")
+    formatted = text.format(tool_desc="X", memory_rules="", extra="")
+    assert "AVAILABLE TOOLS:\nX" in formatted
+    assert formatted.endswith("findings\n")
+
+
+def test_loader_versioned_returns_stable_hash_prefix():
+    text, version = FilesystemPromptLoader().load_versioned("agent/system")
+    assert text
+    assert len(version) == 12
+    # Version is the truncated sha256 — must be deterministic.
+    assert version == hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]

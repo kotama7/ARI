@@ -38,21 +38,24 @@ _FAKE_PATTERNS = [
     "what was actually done",
 ]
 
-SYSTEM_PROMPT = """\
-You are a research agent. You MUST use tools to execute experiments. Do NOT write plans or text descriptions — call a tool immediately.
+# Phase PC3 (PROMPTS_AND_CONFIG.md §3-1): the system prompt body lives
+# in ``ari/prompts/agent/system.md``.  ``__getattr__`` below exposes the
+# legacy ``SYSTEM_PROMPT`` module attribute so external callers and the
+# Phase-0 smoke tests keep working without code changes.
 
-AVAILABLE TOOLS:
-{tool_desc}
+_SYSTEM_PROMPT_KEY = "agent/system"
 
-RULES:
-- Your FIRST action must be a tool call. Never output a text plan.
-- If `make_metric_spec` tool is available and this is a new experiment (not a continuation), call it early to self-determine evaluation criteria.
-- NEVER fabricate numeric values — only report values from actual tool outputs
-- AFTER your final measurement run, when `emit_results` is available, call it once to record a typed split between INPUT parameters (matrix size, thread count, seeds — knobs you ran on) and MEASUREMENTS (throughput, accuracy, latency — what you measured). This lets downstream stages distinguish "what we ran on" from "what we measured" so a best-of reduction never picks an input size as the result. Do NOT include input parameters in `measurements` and do NOT include measured outputs in `params`.
-- When all experiments are done, return JSON: {{"status": "success", "metrics": {{...}}, "summary": "..."}}
-- Do NOT call gap_analysis or generate_hypothesis
-- Ensure your experiment is reproducible: capture whatever information would be needed for an independent researcher to reproduce your results and verify your findings{memory_rules}{extra}
-"""
+
+def _system_prompt_template() -> str:
+    """Load the agent system prompt template from disk."""
+    from ari.prompts import FilesystemPromptLoader
+    return FilesystemPromptLoader().load(_SYSTEM_PROMPT_KEY)
+
+
+def __getattr__(name: str):  # PEP 562 — keep ``SYSTEM_PROMPT`` source-compatible.
+    if name == "SYSTEM_PROMPT":
+        return _system_prompt_template()
+    raise AttributeError(name)
 
 _MEMORY_RULES_PER_NODE = """
 - When available, save decisive intermediate findings with `add_memory(node_id=\"{node_id}\", text=..., metadata=...)` — concrete numbers, failed approaches with root cause, design decisions. Skip chatter and verbose logs.
@@ -467,7 +470,7 @@ class AgentLoop:
             memory_rules += _MEMORY_RULES_PER_NODE.format(node_id=node.id)
         # add_global_memory was removed in v0.6.0 (§3) so the global rules
         # block is always empty — the conditional is kept for future use.
-        system_content = SYSTEM_PROMPT.format(tool_desc=tool_desc, memory_rules=memory_rules, extra=extra)
+        system_content = _system_prompt_template().format(tool_desc=tool_desc, memory_rules=memory_rules, extra=extra)
         # pass only goal from experiment dict (workflow_hint is injected via post_survey_hint)
         goal_text = experiment.get("goal", "") if isinstance(experiment, dict) else str(experiment)
         # ── Trace: log goal_text before truncation ─────────────────
