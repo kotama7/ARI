@@ -550,10 +550,10 @@ Storage: per-checkpoint Letta agent with two archival collections
 (`ari_node_*`, `ari_react_*`). A snapshot at
 `{ARI_CHECKPOINT_DIR}/memory_backup.jsonl.gz` keeps checkpoints
 portable. v0.5.x JSONL stores (`memory_store.jsonl`,
-`~/.ari/global_memory.jsonl`) are removed; use `ari memory migrate`
-to import legacy data. Cross-experiment "global memory" is no longer
-a feature — stable lessons belong in `experiment.md`, code, or prior
-papers.
+`~/.ari/global_memory.jsonl` — **DEPRECATED since v0.5.0**) are
+removed; use `ari memory migrate` to import legacy data. Cross-
+experiment "global memory" is no longer a feature — stable lessons
+belong in `experiment.md`, code, or prior papers.
 
 ---
 

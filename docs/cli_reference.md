@@ -521,7 +521,10 @@ experiments.
 --expect-sha256 <hex>   Required bundle digest. Hard fail on mismatch.
 --no-extract            Just fetch the tarball; do not extract it.
 --registry <name>       Limit ari:// resolver to a named registry from
-                        ~/.ari/registries.yaml.
+                        registries.yaml.  (`~/.ari/registries.yaml` is
+                        **DEPRECATED since v0.5.0** — set
+                        $ARI_REGISTRIES_FILE or place the file under
+                        the active checkpoint.)
 --token <env-or-value>  Bearer token. Looked up in $ENV first, falls back
                         to the literal value (so you can pass either
                         --token MY_TOKEN_VAR or --token "raw-token-string").
@@ -578,6 +581,8 @@ Setup:
 ./setup.sh --with-registry        # or pip install fastapi uvicorn[standard] python-multipart
 
 # 2. Start it (defaults: 127.0.0.1:8290, sqlite under ~/.ari/registry-data).
+#    NOTE: ~/.ari/ is DEPRECATED since v0.5.0 — set $ARI_REGISTRY_DATA
+#    explicitly; the home-dir fallback is removed in v1.0.
 ./scripts/registry/start_local.sh
 
 # 3. Mint a token for a user.
@@ -599,7 +604,9 @@ Deploy modes (see [docs/registry.md](registry.md) for full details):
 - `scripts/registry/docker-compose.yml` — nginx + uvicorn + sqlite-on-volume. Production.
 - `scripts/registry/start_singularity.sh` — Apptainer / Singularity SIF. HPC.
 
-Configure the client by writing `~/.ari/registries.yaml`:
+Configure the client by writing `registries.yaml`
+(`~/.ari/registries.yaml` is **DEPRECATED since v0.5.0** — prefer
+`$ARI_REGISTRIES_FILE` or `{checkpoint}/.ari/registries.yaml`):
 
 ```yaml
 registries:

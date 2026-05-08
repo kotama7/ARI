@@ -495,7 +495,9 @@ EOF
 ```
 --expect-sha256 <hex>   强制 bundle digest 检验, 不匹配时硬失败。
 --no-extract            仅下载 tarball, 不解压。
---registry <name>       将 ari:// 解析限定到 ~/.ari/registries.yaml 的某个 registry。
+--registry <name>       将 ari:// 解析限定到 registries.yaml 的某个 registry
+                        （`~/.ari/registries.yaml` 自 **v0.5.0 起已弃用** —
+                        优先 $ARI_REGISTRIES_FILE 或 checkpoint 配下）。
 --token <env-or-value>  bearer token (先查环境变量, 否则字面量)。
 ```
 
@@ -529,6 +531,7 @@ ari registry token list
 ./setup.sh --with-registry        # 或 pip install fastapi uvicorn[standard] python-multipart
 
 # 2. 启动（默认 127.0.0.1:8290，sqlite 位于 ~/.ari/registry-data 下）
+#    注意：`~/.ari/` 自 v0.5.0 起已弃用，建议设置 $ARI_REGISTRY_DATA
 ./scripts/registry/start_local.sh
 
 # 3. 为用户颁发 token
@@ -550,7 +553,8 @@ ari registry token issue alice
 - `scripts/registry/docker-compose.yml` — nginx + uvicorn + sqlite-on-volume。Production。
 - `scripts/registry/start_singularity.sh` — Apptainer / Singularity SIF。HPC。
 
-客户端配置（`~/.ari/registries.yaml`）：
+客户端配置（`~/.ari/registries.yaml` 自 **v0.5.0 起已弃用**;
+优先 `$ARI_REGISTRIES_FILE` 或 `{checkpoint}/.ari/registries.yaml`）：
 
 ```yaml
 registries:

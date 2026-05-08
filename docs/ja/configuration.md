@@ -298,7 +298,7 @@ skills:
 | `ARI_PHASE1_DOCKER_IMAGE` | docker サンドボックスのコンテナイメージ | `ubuntu:24.04` |
 | `ARI_PHASE1_APPTAINER_IMAGE` / `ARI_PHASE1_SINGULARITY_IMAGE` | Apptainer/Singularity サンドボックスのイメージ | `docker://ubuntu:24.04` |
 | `ARI_PUBLISH_DRYRUN` | `ari ear publish --dry-run` を強制 (CI 安全, v0.7.0) | (off) |
-| `ARI_REGISTRY_DATA` | `ari registry serve` の sqlite + artifact 保管 root | `~/.ari/registry-data` |
+| `ARI_REGISTRY_DATA` | `ari registry serve` の sqlite + artifact 保管 root | `~/.ari/registry-data` *(`~/.ari/` は **v0.5.0 で廃止**; v1.0 でフォールバック削除)* |
 | `ARI_REGISTRY_TOKEN` | `ari clone ari://...` / `ari ear publish --backend ari-registry` 用 bearer token | (なし) |
 | `ARI_REPRO_CLONE_POLICY` | 再現性サンドボックス git shim ポリシー: `passthrough` / `deny` / `warn` | `passthrough` |
 

@@ -12,18 +12,25 @@ permanence.
 
 ## Quick start
 
+> **Note:** `~/.ari/` paths are **DEPRECATED since v0.5.0** and will be
+> removed in v1.0.  Set `ARI_REGISTRY_DATA` and `ARI_REGISTRIES_FILE`
+> (or place `registries.yaml` under your checkpoint) to opt in to the
+> new layout — see `docs/refactor_audit.md` and
+> `DEPRECATION_REMOVAL.md`.
+
 ```bash
 # 1. install server deps (skipped by default to keep the install slim)
 ./setup.sh --with-registry        # or: pip install fastapi uvicorn[standard] python-multipart
 
 # 2. start it
 ./scripts/registry/start_local.sh # uvicorn on 127.0.0.1:8290, sqlite under ~/.ari/registry-data
+                                  # (DEPRECATED — set $ARI_REGISTRY_DATA)
 
 # 3. mint a token (plaintext is shown ONCE)
 ari registry token issue alice
 
 # 4. configure the client
-cat > ~/.ari/registries.yaml <<EOF
+cat > ~/.ari/registries.yaml <<EOF   # DEPRECATED — prefer $ARI_REGISTRIES_FILE
 registries:
   - name: default
     url: http://127.0.0.1:8290
