@@ -68,6 +68,27 @@ class TestValidatePaths:
         )
         assert err and "traversal" in err
 
+    def test_cpp_double_slash_in_content_ok(self, tmp_path):
+        """C++ `// comment` inside `content` must not trip path scanning."""
+        cpp = "int main() {\n    // initialise\n    return 0;\n}\n"
+        assert _validate_paths_in_args(
+            {"path": "main.cpp", "content": cpp}, tmp_path,
+        ) is None
+
+    def test_url_in_notes_ok(self, tmp_path):
+        """A URL inside a free-form `notes` field must not be flagged."""
+        assert _validate_paths_in_args(
+            {"value": 1.0, "notes": "see https://example.com/docs for details"},
+            tmp_path,
+        ) is None
+
+    def test_outside_path_in_command_still_rejected(self, tmp_path):
+        """Bash `command` is NOT free-form — paths in it are still scanned."""
+        err = _validate_paths_in_args(
+            {"command": "cat /etc/passwd"}, tmp_path,
+        )
+        assert err and "outside sandbox" in err
+
     def test_no_sandbox_skips_check(self, tmp_path):
         assert _validate_paths_in_args(
             {"path": "/etc/passwd"}, None,

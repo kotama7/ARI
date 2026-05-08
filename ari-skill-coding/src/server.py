@@ -207,6 +207,78 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="emit_results",
+            description=(
+                "Write a typed results.json file separating input parameters "
+                "from measurements. Use this at the END of an experiment run "
+                "after collecting numeric outputs — it lets downstream stages "
+                "(transform → science_data, paper writing, summary stats) "
+                "tell apart 'what we measured' from 'what we ran on', so a "
+                "best-of reduction never accidentally picks an input size "
+                "(e.g. nnz, M, K, threads) over a real metric (e.g. GFlops/s). "
+                "All four dicts may be empty; fields are best-effort. The file "
+                "is overwritten when called repeatedly; pass a different "
+                "'file' name to keep multiple result variants."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "params": {
+                        "type": "object",
+                        "description": (
+                            "Input/configuration parameters that DO NOT "
+                            "represent measurement quality. Examples: "
+                            "matrix dimensions (M, K, nnz, RHS_width), "
+                            "thread count, ISA flags, packing mode, seed. "
+                            "These are excluded from best-of reductions."
+                        ),
+                        "additionalProperties": True,
+                    },
+                    "measurements": {
+                        "type": "object",
+                        "description": (
+                            "Actual measured quantities — the values a peer "
+                            "reviewer would treat as the experiment's result. "
+                            "Examples: GFlops_per_s, GB_per_s, latency_s, "
+                            "accuracy. These ARE candidates for the best-of "
+                            "primary metric."
+                        ),
+                        "additionalProperties": True,
+                    },
+                    "predictions": {
+                        "type": "object",
+                        "description": (
+                            "Optional model-derived numbers (e.g. roofline "
+                            "compute peak, memory bandwidth ceiling). Kept "
+                            "separate so they cannot be mistaken for "
+                            "measurements during reduction."
+                        ),
+                        "additionalProperties": True,
+                    },
+                    "scores": {
+                        "type": "object",
+                        "description": (
+                            "Optional derived scores (e.g. parallel "
+                            "efficiency, speedup ratio). Like predictions, "
+                            "kept separate from raw measurements."
+                        ),
+                        "additionalProperties": True,
+                    },
+                    "file": {
+                        "type": "string",
+                        "description": "Output file name (default: results.json)",
+                        "default": "results.json",
+                    },
+                    "work_dir": {
+                        "type": "string",
+                        "description": "Working directory",
+                        "default": "/tmp/ari_work",
+                    },
+                },
+                "required": [],
+            },
+        ),
+        Tool(
             name="read_file",
             description=(
                 "Read a text file from the working directory. Supports "
@@ -269,6 +341,15 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             offset=arguments.get("offset", 0),
             limit=arguments.get("limit", _READ_FILE_LIMIT),
         )
+    elif name == "emit_results":
+        result = _emit_results(
+            params=arguments.get("params") or {},
+            measurements=arguments.get("measurements") or {},
+            predictions=arguments.get("predictions") or {},
+            scores=arguments.get("scores") or {},
+            file=arguments.get("file") or "results.json",
+            work_dir=_resolve_work_dir(arguments.get("work_dir")),
+        )
     else:
         result = {"error": f"Unknown tool: {name}"}
 
@@ -284,6 +365,86 @@ def _write_code(filename: str, code: str, work_dir: str) -> dict:
     return {
         "path": str(file_path),
         "lines": len(code.splitlines()),
+        "status": "written",
+    }
+
+
+# Schema version for the typed results contract — bumped when the on-disk
+# layout changes in a way downstream readers must distinguish. Consumers
+# (transform-skill, llm_evaluator) should accept any v1.* layout silently
+# and warn on unknown majors.
+_RESULTS_SCHEMA_VERSION = "1.0"
+
+
+def _coerce_jsonable_dict(d: dict) -> dict:
+    """Best-effort: drop values that can't survive a JSON round-trip.
+
+    The contract is "structured numeric/string data, no objects". Anything
+    that isn't directly JSON-serialisable (e.g. numpy scalars, pathlib
+    paths) is coerced via str() so the file is always readable downstream.
+    Failures are silent — emit_results is a write-only tool and crashing
+    on a stray non-serialisable value would defeat its purpose as a
+    last-step reporter.
+    """
+    out: dict = {}
+    if not isinstance(d, dict):
+        return out
+    for k, v in d.items():
+        try:
+            json.dumps(v)
+            out[str(k)] = v
+        except (TypeError, ValueError):
+            try:
+                out[str(k)] = str(v)
+            except Exception:
+                continue
+    return out
+
+
+def _emit_results(
+    params: dict,
+    measurements: dict,
+    predictions: dict,
+    scores: dict,
+    file: str,
+    work_dir: str,
+) -> dict:
+    """Write a typed results.json separating params from measurements.
+
+    See the tool description for the contract semantics. The file is
+    overwritten if it exists; callers that want to preserve prior runs
+    must pass a distinct ``file`` name (e.g. ``results_seed42.json``).
+    """
+    work_path = Path(work_dir)
+    work_path.mkdir(parents=True, exist_ok=True)
+    # Refuse to escape work_dir; emit_results is a node-local reporter.
+    safe_name = Path(file).name or "results.json"
+    out_path = work_path / safe_name
+
+    payload = {
+        "schema_version": _RESULTS_SCHEMA_VERSION,
+        "params":       _coerce_jsonable_dict(params),
+        "measurements": _coerce_jsonable_dict(measurements),
+        "predictions":  _coerce_jsonable_dict(predictions),
+        "scores":       _coerce_jsonable_dict(scores),
+    }
+    try:
+        out_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except OSError as e:
+        return {
+            "error": f"emit_results: write failed: {e}",
+            "path": str(out_path),
+        }
+    return {
+        "path": str(out_path),
+        "schema_version": _RESULTS_SCHEMA_VERSION,
+        "params_keys":       list(payload["params"].keys()),
+        "measurements_keys": list(payload["measurements"].keys()),
+        "predictions_keys":  list(payload["predictions"].keys()),
+        "scores_keys":       list(payload["scores"].keys()),
         "status": "written",
     }
 
@@ -356,6 +517,17 @@ def _run_bash(command: str, work_dir: str, timeout: int) -> dict:
             _ct_cfg = config_from_env()
         except Exception:
             _ct_cfg = None
+        # Capture local execution env (hostname, cpu_info, …) once per
+        # work_dir so the node_report builder can later record where this
+        # experiment ran. Skip when running in container — host metadata
+        # would be misleading and the host probes would defeat the
+        # container-isolation contract.
+        if _ct_cfg is None:
+            try:
+                from ari.agent.run_env import capture_env
+                capture_env(work_dir, executor="local")
+            except Exception:
+                pass
         if _ct_cfg is not None:
             result = run_shell_in_container(
                 _ct_cfg, command, cwd=work_dir, timeout=timeout,

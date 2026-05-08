@@ -51,8 +51,36 @@ RETRY_DELAY = 0.5
 DEFAULT_TOOL_TIMEOUT = 300   # seconds
 # Tools that perform internal LLM calls or heavy processing need longer timeouts
 SLOW_TOOL_TIMEOUT = 600      # seconds
+# Agent/sandbox tools whose internal budgets are measured in hours. Keep the
+# MCP-level timeout above the tool's own ceiling — otherwise MCP times out
+# mid-rollout, retries, hits any idempotent-skip path inside the tool (e.g.
+# build_reproduce_sh skipping when the partial first attempt already wrote
+# reproduce.sh), and surfaces a misleading "skipped" result.
+VERY_SLOW_TOOL_TIMEOUT = 13 * 3600  # 13 h ≥ build_reproduce_sh's 12 h default
+_VERY_SLOW_TOOLS = frozenset({
+    "build_reproduce_sh",        # PaperBench BasicAgent rollout, default 12 h
+    "run_reproduce",             # Phase 1 sbatch, default up to 4 h
+    "grade_with_simplejudge",    # Phase 2 judge, n_runs × minutes
+})
 _SLOW_TOOLS = frozenset({"generate_ideas", "write_paper_iterative", "review_compiled_paper",
                           "collect_references_iterative", "reproduce_from_paper"})
+
+
+def _resolve_tool_timeout(tool_name: str, args: dict) -> int:
+    """Resolve MCP-level timeout for a tool call.
+
+    Priority: explicit per-call budget in args > _VERY_SLOW_TOOLS tier >
+    _SLOW_TOOLS tier > DEFAULT_TOOL_TIMEOUT.
+    """
+    for k in ("time_limit_sec", "timeout_global_sec", "wall_time_sec"):
+        v = args.get(k)
+        if isinstance(v, (int, float)) and v > 0:
+            return int(v) + 600  # +10 min buffer for setup / teardown
+    if tool_name in _VERY_SLOW_TOOLS:
+        return VERY_SLOW_TOOL_TIMEOUT
+    if tool_name in _SLOW_TOOLS:
+        return SLOW_TOOL_TIMEOUT
+    return DEFAULT_TOOL_TIMEOUT
 
 
 class _SkillConnection:
@@ -350,7 +378,7 @@ class MCPClient:
                 return {"error": f"Skill '{skill_name}' not found"}
             conn = self._init_connection(skill)
 
-        timeout = SLOW_TOOL_TIMEOUT if tool_name in _SLOW_TOOLS else DEFAULT_TOOL_TIMEOUT
+        timeout = _resolve_tool_timeout(tool_name, args)
 
         last_error = ""
         for attempt in range(1, MAX_RETRIES + 1):

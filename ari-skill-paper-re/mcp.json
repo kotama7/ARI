@@ -1,10 +1,11 @@
 {
   "name": "ari-skill-paper-re",
-  "description": "Reproducibility verification helpers. Extracts the paper's advertised metric and produces the verdict + interpretation; the ReAct loop itself runs in ari-core/agent/react_driver.py.",
-  "version": "0.2.0",
+  "description": "Reproducibility grading via PaperBench SimpleJudge: Phase 1 sandbox runner (run_reproduce) and Phase 2 grader (grade_with_simplejudge).",
+  "version": "0.4.0",
   "tools": [
-    "extract_repro_config",
-    "extract_metric_from_output",
-    "build_repro_report"
+    "fetch_code_bundle",
+    "build_reproduce_sh",
+    "run_reproduce",
+    "grade_with_simplejudge"
   ]
 }

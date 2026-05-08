@@ -287,23 +287,24 @@ an allow-list for input files like `paper_path`). See
 
 ## Testing
 
-All PRs must keep the test suite green. Indicative counts as of v0.6.0:
+All PRs must keep the test suite green. Indicative counts as of v0.7.0:
 
 | Package                | Tests |
 |------------------------|------:|
-| `ari-core`             | 1,545 |
-| `ari-skill-idea`       |    61 |
-| `ari-skill-paper`      |    44 |
+| `ari-core`             | 1,976 |
+| `ari-skill-paper-re`   |    81 |
+| `ari-skill-replicate`  |    78 |
+| `ari-skill-idea`       |    65 |
+| `ari-skill-paper`      |    55 |
+| `ari-skill-memory`     |    48 |
 | `ari-skill-web`        |    38 |
 | `ari-skill-hpc`        |    30 |
-| `ari-skill-memory`     |    24 |
-| `ari-skill-coding`     |    19 |
+| `ari-skill-vlm`        |    30 |
+| `ari-skill-coding`     |    24 |
 | `ari-skill-benchmark`  |    18 |
-| `ari-skill-vlm`        |    18 |
+| `ari-skill-transform`  |    13 |
 | `ari-skill-evaluator`  |     6 |
-| `ari-skill-paper-re`   |     6 |
-| `ari-skill-transform`  |     4 |
-| **Total**              | **1,813** |
+| **Total**              | **2,435** |
 
 Run everything from the repo root:
 

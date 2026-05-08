@@ -1,0 +1,73 @@
+/* Reusable components: cards, badges, buttons, tables, inputs, score bar.
+ * Phase B split from dashboard.css.
+ */
+
+/* Cards */
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px}
+.card+.card{margin-top:16px}
+.wf-stage-card{min-width:0}
+.wf-stage-card table{table-layout:fixed;display:table;white-space:normal}
+.wf-stage-card td{padding:0;border-bottom:none;max-width:none;overflow:visible;text-overflow:clip}
+.wf-stage-card label{display:inline;font-size:.72rem;font-weight:normal;color:var(--text);margin-bottom:0}
+.wf-stage-card input[type="checkbox"]{width:auto;padding:0;border:none;box-shadow:none}
+.card-title{font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:12px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+
+/* Badges */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:20px;font-size:.75rem;font-weight:600}
+.badge-green{background:rgba(34,197,94,.15);color:var(--green)}
+.badge-red{background:rgba(239,68,68,.15);color:var(--red)}
+.badge-yellow{background:rgba(245,158,11,.15);color:var(--yellow)}
+.badge-blue{background:rgba(59,130,246,.15);color:var(--blue-light)}
+.badge-muted{background:rgba(100,116,139,.15);color:var(--muted)}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-size:.875rem;font-weight:600;transition:.15s}
+.btn-primary{background:var(--blue);color:#fff}
+.btn-primary:hover{background:#2563eb}
+.btn-outline{background:transparent;color:var(--text);border:1px solid var(--border)}
+.btn-outline:hover{background:rgba(255,255,255,.06)}
+.btn-danger{background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.3)}
+.btn-sm{padding:5px 10px;font-size:.8rem}
+
+/* Tables */
+table{width:100%;border-collapse:collapse;font-size:.875rem}
+th{text-align:left;padding:10px 12px;color:var(--muted);font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border)}
+td{padding:10px 12px;border-bottom:1px solid rgba(42,48,64,.5)}
+tr:hover td{background:rgba(255,255,255,.02)}
+
+/* Inputs */
+input,select,textarea{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:9px 12px;border-radius:8px;font-size:.875rem;font-family:inherit;width:100%}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 2px rgba(59,130,246,.2)}
+label{display:block;font-size:.8rem;font-weight:600;color:var(--muted);margin-bottom:6px}
+.form-row{margin-bottom:16px}
+.form-row-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+
+/* Score meter */
+.score-bar{height:8px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden;margin-top:6px}
+.score-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--blue),var(--purple));transition:.5s}
+
+/* Range slider */
+.range-wrap{position:relative;padding-bottom:20px}
+input[type=range]{-webkit-appearance:none;width:100%;height:6px;background:var(--border);border-radius:3px;outline:none;border:none;padding:0}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--blue);cursor:pointer}
+.range-labels{display:flex;justify-content:space-between;font-size:.75rem;color:var(--muted);margin-top:6px}
+input[type=range]+input[type=number]{margin-top:4px}
+
+/* Toggle */
+.toggle-group{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.toggle-btn{flex:1;padding:8px 16px;text-align:center;cursor:pointer;font-size:.875rem;font-weight:600;color:var(--muted);transition:.15s}
+.toggle-btn.active{background:var(--blue);color:#fff}
+
+/* Pre / code */
+pre.code{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;font-family:var(--font-mono);font-size:.78rem;overflow:auto;max-height:300px;white-space:pre-wrap;word-break:break-all}
+
+/* Spinner */
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.2);border-top-color:var(--blue);border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Empty state */
+.empty-state{text-align:center;padding:60px 20px;color:var(--muted)}
+.empty-state .empty-icon{font-size:2.5rem;margin-bottom:12px}
+.empty-state p{font-size:.9rem}

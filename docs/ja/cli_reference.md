@@ -19,6 +19,30 @@ ARI のコマンドライン操作の完全なリファレンスです。CLI は
 | `ari settings` | 設定の表示または変更 | Settings ページ |
 | `ari skills-list` | 利用可能なツールを一覧表示 | Settings → MCP Skills |
 | `ari memory ...` | Letta メモリバックエンドを管理 | Settings → Memory (Letta) |
+| `ari ear <subcmd>` | EAR キュレーション/公開/プロモーションのライフサイクル (v0.7.0) | — |
+| `ari clone <ref>` | キュレート済み EAR バンドルを取得 (file/https/ari/gh/doi)、digest 検証 (v0.7.0) | — |
+| `ari registry <subcmd>` | セルフホスト EAR レジストリ: `serve` / `token issue\|revoke\|list` (v0.7.0) | — |
+| `ari migrate node-reports <checkpoint>` | 旧 (v0.6.0) checkpoint に `node_report.json` を補完 | — |
+
+---
+
+## ari migrate node-reports
+
+v0.7.0 (task2.md) で `experiments/{run_id}/{node_id}/node_report.json` を
+ノードごとに記録するようになりました。旧 checkpoint には存在しないため、
+ダウンストリーム (generate_ear / nodes_to_science_data / bfts.expand /
+GUI Tree Report タブ) はレガシーヒューリスティックにフォールバックします。
+旧 checkpoint に対しては一度だけ以下を実行してレポートを補完してください:
+
+```bash
+ari migrate node-reports /path/to/checkpoint
+ari migrate node-reports /path/to/checkpoint --overwrite   # 既存レポートも上書き
+```
+
+再構築されたレポートには `migration_source: "auto"` が付くため、ダウンストリーム
+フィルタはやや保守的に振る舞います (例: `for_code` は files_changed 空でも
+auto レポートのノードを採用)。復元できないフィールド (`original_direction`,
+`delta_vs_parent`, `next_steps_hints`) は null になります。
 
 ---
 
@@ -257,6 +281,53 @@ ari settings --model qwen3:32b --partition gpu --cpus 64 --mem 128
 
 ---
 
+## ari ear — v0.7.0
+
+1 つの checkpoint に対する **Experiment Artifact Repository** の
+キュレーション・公開・プロモーションを行います。キュレーションは
+決定論的 (LLM 不使用)、公開は curated tarball をバックエンドに送って
+検証可能な ref を得ます。
+
+```bash
+ari ear curate   <checkpoint> [--show-files] [--json]
+ari ear status   <checkpoint>
+ari ear publish  <checkpoint> [--backend ari-registry|local-tarball|gh|zenodo] \
+                              [--visibility staged] [--dry-run]
+ari ear promote  <checkpoint> [--target public|unlisted]
+```
+
+| サブコマンド | 動作 |
+|--------------|------|
+| `curate` | `ear/publish.yaml` の allowlist と built-in deny list (`.env*`、`secrets/**`、`*.pem`、`*.key`、`id_rsa`、`id_ed25519`) を適用し、`{checkpoint}/ear_published/` + `manifest.lock` (決定論的 `bundle_sha256` 入り) を書き出す。`publish.yaml` が無ければ静かにスキップ。 |
+| `status` | キュレーション manifest 概要 + `publish_record.json` を表示。 |
+| `publish` | `ear_published/` から再現可能な tarball を構築し、バックエンドへ送信。最初は常に `visibility=staged` (FR-P5)。`ARI_PUBLISH_DRYRUN=1` で `--dry-run` を強制。 |
+| `promote` | staged → `public`/`unlisted` に昇格。降格は拒否。 |
+
+バックエンド: `ari-registry` (セルフホスト)、`local-tarball` (サーバ不要)、`gh` (GitHub release)、`zenodo` (DOI 採番)。
+
+**エンドツーエンドの例**:
+
+```bash
+# 1. 著者が論文パイプライン後にバンドルをキュレート
+ari ear curate ./checkpoints/run_20260504_xy/
+
+# 2. allow/deny ルール後の中身を確認
+ari ear status ./checkpoints/run_20260504_xy/
+# bundle_sha256: 0ccabb16...
+# files:         42
+# visibility:    staged
+
+# 3. registry に staged で publish
+ari ear publish ./checkpoints/run_20260504_xy/ --backend ari-registry
+
+# 4. 査読 + 再現性チェック合格後に public に昇格
+ari ear promote ./checkpoints/run_20260504_xy/ --target public
+```
+
+`bundle_sha256` は `finalize_paper` ステージで論文の `\codedigest{...}` マクロに焼き付けられます。論文を持っている人なら、registry が落ちていても任意のコピーを digest で検証できます。
+
+---
+
 ## ari memory
 
 v0.6.0 で追加された Letta メモリバックエンド管理用のコマンド群。各
@@ -427,3 +498,94 @@ EOF
 - 常に絶対パスを使用してください（`~` や相対パスは使わない）
 - SLURM スクリプト内で標準出力をリダイレクトしないでください（SLURM が `--output` で自動キャプチャします）
 - クラスターで必要とされない限り、`--account` や `-A` フラグを追加しないでください
+
+---
+
+## `ari clone <ref> [<dest>]` — v0.7.0+
+
+curated な EAR bundle を「取得 + digest 検証 + 展開」する。
+**コード実行は伴わない**。論文を再現する読者の「1 行 install」経路を提供する。
+
+### 対応スキーム (PR ごとに段階展開)
+
+| スキーム | resolver |
+|---|---|
+| `file://<path>` | ローカル file/dir |
+| `https://<url>` | tarball ダウンロード |
+| `ari://<id>` | ari-registry |
+| `gh:<user>/<repo>` | GitHub repo or release |
+| `doi:<doi>` | Zenodo deposition |
+
+### フラグ
+
+```
+--expect-sha256 <hex>   bundle digest を強制検証。不一致は hard fail。
+--no-extract            tarball のみ取得 (展開なし)。
+--registry <name>       ari:// resolver を ~/.ari/registries.yaml の特定 registry に限定。
+--token <env-or-value>  bearer token (環境変数名 → 値の順で解決)。
+```
+
+### 検証モデル
+
+1. resolver が artifact を一時 dir に展開
+2. orchestrator が sibling 一時 dir に展開
+3. 各ファイルの sha256 を再計算し manifest.lock と照合
+4. 正規化 files-only manifest から bundle digest を再計算し
+   `manifest.lock.bundle_sha256` と照合
+5. `--expect-sha256` 指定時はそれが再計算 digest と一致しなければ hard fail
+6. 全工程成功時のみ dest に rename。失敗時は dest を残さない (atomic)
+
+---
+
+## `ari registry` — v0.7.0+
+
+キュレート済み EAR バンドルをホスティングするセルフホスト HTTP
+レジストリ。`ari ear publish` と `ari clone` の `ari://` resolver の
+デフォルト backend です。サーバ無しで運用したいなら `local-tarball`
+で問題ありませんし、学術的恒久性なら Zenodo / GitHub release を推奨します。
+
+```bash
+ari registry serve   [--host 0.0.0.0] [--port 8290] [--data-dir <dir>]
+ari registry token issue  <user>          # 平文は1度のみ表示
+ari registry token revoke <token-id>
+ari registry token list
+```
+
+セットアップ:
+
+```bash
+# 1. サーバ依存の追加インストール (デフォルトでは含めない)
+./setup.sh --with-registry        # または pip install fastapi uvicorn[standard] python-multipart
+
+# 2. 起動 (デフォルト 127.0.0.1:8290、sqlite は ~/.ari/registry-data 配下)
+./scripts/registry/start_local.sh
+
+# 3. ユーザに token を発行
+ari registry token issue alice
+# 平文は 1 度のみ表示 — 安全に保管
+```
+
+| 項目 | 内容 |
+|------|------|
+| エンドポイント | `POST /artifact`、`GET\|HEAD /artifact/<id>`、`GET /artifact/<id>/manifest.lock`、`POST /artifact/<id>/promote`、`DELETE /artifact/<id>`、`/healthz`、`/version` |
+| 認証 | bearer token (sqlite ハッシュ保管)。upload/delete/promote は所有者 token 必須 |
+| 可視性 | `staged` (所有者のみ) → `unlisted` (id 知っている者のみ) / `public` (公開)。降格は拒否 |
+| Artifact id | `sha256(bundle.tar.gz)[:16]` のコンテンツアドレス |
+| ストレージ | `${ARI_REGISTRY_DATA}/artifacts/<id>/{bundle.tar.gz, manifest.lock, meta.json}` |
+
+デプロイモード (詳細は [docs/registry.md](registry.md)):
+
+- `scripts/registry/start_local.sh` — uvicorn + sqlite、シングルプロセス。Laptop / dev。
+- `scripts/registry/docker-compose.yml` — nginx + uvicorn + sqlite-on-volume。Production。
+- `scripts/registry/start_singularity.sh` — Apptainer / Singularity SIF。HPC。
+
+クライアント設定 (`~/.ari/registries.yaml`):
+
+```yaml
+registries:
+  - name: default
+    url: http://127.0.0.1:8290
+    token: $ARI_REGISTRY_TOKEN
+```
+
+そのうえで `export ARI_REGISTRY_TOKEN=ari_<発行された値>` し、`ari clone ari://<id>` や `ari ear publish --backend ari-registry` を使います。

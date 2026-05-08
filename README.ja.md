@@ -5,8 +5,8 @@
 
   **ユニバーサルな研究自動化システム。ノートPCからスーパーコンピュータまで。ローカルモデルからクラウドAPIまで。初学者から熟練研究者まで。計算実験から物理世界まで。**
 
-  [![Tests](https://img.shields.io/badge/tests-1200%2B-brightgreen)](./ari-core)
-  [![Version](https://img.shields.io/badge/version-v0.6.0-orange)](https://github.com/kotama7/ARI/releases)
+  [![Tests](https://img.shields.io/badge/tests-2200%2B-brightgreen)](./ari-core)
+  [![Version](https://img.shields.io/badge/version-v0.7.0-orange)](https://github.com/kotama7/ARI/releases)
   [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
   [![MCP](https://img.shields.io/badge/protocol-MCP-purple)](https://modelcontextprotocol.io)
   [![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)

@@ -70,6 +70,8 @@
   <a class="nav-item" href="#hpc-config"><span id="t-nav-hpc">HPC / SLURM</span></a>
   <a class="nav-item" href="#experiment-monitor"><span id="t-nav-monitor">Experiment Monitor</span></a>
   <a class="nav-item" href="#memory"><span id="t-nav-memory">Agent Memory</span></a>
+  <a class="nav-item" href="#publish"><span id="t-nav-publish">Publish &amp; Clone (v0.7.0)</span></a>
+  <a class="nav-item" href="#ors-repro"><span id="t-nav-ors-repro">Reproducibility (PaperBench)</span></a>
   <div style="padding:24px 20px 0;border-top:1px solid var(--border);margin-top:16px;">
     <a href="index.html" style="color:var(--muted);font-size:.85rem;"><span id="t-nav-back">&larr; Back to Home</span></a>
   </div>
@@ -139,14 +141,14 @@ sbatch your_pipeline_job.sh</code></pre>
   <table>
     <tr><th><span id="t-tbl-file">File</span></th><th><span id="t-tbl-desc">Description</span></th></tr>
     <tr><td><code>nodes_tree.json</code></td><td><span id="t-tbl-nodes">BFTS search tree (all explored configurations)</span></td></tr>
-    <tr><td><code>science_data.json</code></td><td><span id="t-tbl-science">Science-facing data (no internal terms)</span></td></tr>
+    <tr><td><code>science_data.json</code></td><td><span id="t-tbl-science">Science-facing data (no internal terms). v0.7.0 adds a typed split on each <code>configurations[*]</code>: <code>parameters</code> (input knobs — never a headline result) vs. <code>measurements</code> (measured outputs) vs. <code>predictions</code> (model ceilings) vs. <code>scores</code> (derived ratios), sourced from the coding-skill <code>emit_results</code> contract or the LLM-evaluator's typed split. <code>summary_stats</code> reduces direction-aware over a known <code>primary_metric</code> instead of <code>max()</code> over every key.</span></td></tr>
     <tr><td><code>related_refs.json</code></td><td><span id="t-tbl-refs">arXiv references</span></td></tr>
     <tr><td><code>figures_manifest.json</code></td><td><span id="t-tbl-figures">Generated figure paths and captions</span></td></tr>
     <tr><td><code>full_paper.tex / .pdf</code></td><td><span id="t-tbl-paper">Generated paper</span></td></tr>
     <tr><td><code>review_report.json</code></td><td><span id="t-tbl-review">Rubric-driven paper review (AI Scientist v1/v2-compatible): scores, strengths, weaknesses, decision. When N&gt;1, includes <code>ensemble_reviews[]</code> (the N individual reviews) and <code>meta_review</code> (Area Chair aggregation) inline.</span></td></tr>
     <tr><td><code>vlm_review.json</code></td><td><span id="t-tbl-vlm">Per-figure VLM findings (score, issues, suggestions) — piped into paper review as reviewer notes</span></td></tr>
-    <tr><td><code>reproducibility_report.json</code></td><td><span id="t-tbl-repro">Reproducibility verification result</span></td></tr>
-    <tr><td><code>ear/</code></td><td>Experiment Artifact Repository (code, data, logs, reproducibility metadata)</td></tr>
+    <tr><td><code>ors_rubric.json / ors_phase1.json / ors_grade.json</code></td><td><span id="t-tbl-repro">PaperBench-format reproducibility (v0.7.0): auto-rubric, Phase 1 sandbox run, Phase 2 SimpleJudge grading. Replaces the v0.6.0 <code>reproducibility_report.json</code>.</span></td></tr>
+    <tr><td><code>ear/</code> + <code>ear_published/</code> + <code>manifest.lock</code> + <code>publish_record.json</code></td><td>Experiment Artifact Repository, curated bundle, deterministic <code>bundle_sha256</code>, publish backend record (v0.7.0).</td></tr>
   </table>
 
   <h3 id="rubric-review"><span id="t-h-rubric">Rubric-driven paper review (v0.6.0+)</span></h3>
@@ -427,7 +429,27 @@ export ARI_SLURM_PARTITION=your_partition  <span class="cm"># SLURM only</span>
   </ul>
   <p><span id="t-memory-p2">Write-side tools enforce <strong>Copy-on-Write</strong> (a child cannot mutate an ancestor&#39;s entries) and <code>search_memory</code> strictly filters by the <code>ancestor_ids</code> you pass, so sibling branches never cross-contaminate. Letta self-edit is disabled by default via <code>ARI_MEMORY_LETTA_DISABLE_SELF_EDIT=true</code>.</span></p>
   <p><span id="t-memory-p3">The <code>Trace</code> tab in the Experiment Monitor reads these entries live through the Letta-backed library. Manage the backend with <code>ari memory</code> (<code>migrate</code> / <code>backup</code> / <code>restore</code> / <code>start-local</code> / &#8230;).</span></p>
+  <p style="background:rgba(255,193,7,.08);border-left:3px solid #ffc107;padding:.6em .9em;border-radius:4px;font-size:.92em;"><span id="t-memory-p4"><strong>v0.7.0 note &mdash;</strong> on Letta 0.16.x the SDK call <code>passages.list(search=q)</code> is a SQL substring filter (<code>LOWER(text) LIKE LOWER(%q%)</code>), not semantic search &mdash; long natural-language queries silently returned 0 ancestor entries against real data. <code>search_memory</code> uses <code>passages.search</code> (<code>GET /archival-memory/search</code>, <code>embed_query=True</code>) with <code>top_k = max(letta_overfetch, limit*40)</code> and post-filters by <code>ancestor_ids</code> + <code>ari_checkpoint</code> locally. The embedding cost paid on every <code>add_memory</code> insert is now actually consumed by retrieval; children see ancestor entries ranked by relevance to their <code>eval_summary</code> query.</span></p>
 
+  <!-- PUBLICATION LIFECYCLE (v0.7.0) -->
+  <h2 id="publish"><span id="t-h-publish">Publication Lifecycle (v0.7.0)</span></h2>
+  <p><span id="t-publish-p1">v0.7.0 turns the Experiment Artifact Repository (EAR) into a curated, digest-anchored publication chain. The author writes a small <code>ear/publish.yaml</code> allowlist; ari-core enforces a built-in deny list (<code>.env*</code>, <code>secrets/**</code>, <code>*.pem</code>, &#8230;) and computes a deterministic <code>bundle_sha256</code> over a canonical <code>{path,sha256,size}</code> manifest. The digest is baked into the paper&#39;s <code>\codedigest{...}</code> macro by the <code>finalize_paper</code> stage, so any reader can verify the bundle from the paper alone &mdash; even if the registry hosting it disappears.</span></p>
+  <ul>
+    <li><span id="t-publish-li-curate"><code>ari ear curate &lt;ckpt&gt;</code> &mdash; deterministic, no LLM. Produces <code>ear_published/</code> + <code>manifest.lock</code>.</span></li>
+    <li><span id="t-publish-li-publish"><code>ari ear publish &lt;ckpt&gt; --backend ari-registry|local-tarball|gh|zenodo</code> &mdash; always starts at <code>visibility=staged</code> (FR-P5).</span></li>
+    <li><span id="t-publish-li-promote"><code>ari ear promote &lt;ckpt&gt; --target public|unlisted</code> &mdash; visibility moves up only.</span></li>
+    <li><span id="t-publish-li-clone"><code>ari clone &lt;ref&gt; --expect-sha256 &lt;hex&gt;</code> &mdash; reader-side fetch + verify. Resolvers: <code>file://</code>, <code>https://</code>, <code>ari://&lt;id&gt;</code>, <code>gh:&lt;u&gt;/&lt;r&gt;</code>, <code>doi:&lt;doi&gt;</code>. <strong>No code execution.</strong></span></li>
+    <li><span id="t-publish-li-registry"><code>ari registry serve</code> &mdash; optional self-hosted FastAPI registry with sqlite-backed bearer tokens, content-addressed artefact storage, and three deploy modes (local uvicorn, docker-compose, Apptainer). See <a href="registry.md">docs/registry.md</a>.</span></li>
+  </ul>
+
+  <!-- REPRODUCIBILITY (v0.7.0) -->
+  <h2 id="ors-repro"><span id="t-h-ors-repro">Reproducibility &mdash; PaperBench-format (v0.7.0)</span></h2>
+  <p><span id="t-ors-p1">The legacy LLM-driven verdict path (<code>extract_repro_config</code> &rarr; <code>react_driver</code> &rarr; <code>build_repro_report</code>) is replaced by a deterministic two-phase grading flow compatible with PaperBench (<a href="https://arxiv.org/abs/2504.01848" target="_blank">arXiv:2504.01848</a>). Three pipeline stages run in sequence:</span></p>
+  <ol>
+    <li><span id="t-ors-li1"><code>ors_generate_rubric</code> (new <code>ari-skill-replicate</code>) &mdash; auto-generates a frozen PaperBench TaskNode rubric from the final paper. Default <strong>two-stage</strong> generation: a skeleton pass defines the root + per-contribution direct children with leaf budgets, then parallel subtree passes recursively populate each child to depth 4&ndash;6. Yields ~4&times; more leaves and 1&ndash;2 levels more depth than the legacy single-call path, at ~5&times; more API tokens; toggle off via the GUI Wizard "Two-stage generation" checkbox or <code>ARI_RUBRIC_GEN_TWO_STAGE=0</code> for cheap runs. <code>audit_rubric</code> flags vague/unverifiable leaves and recommends regeneration when &gt;20% are flagged.</span></li>
+    <li><span id="t-ors-li2"><code>ors_run_reproduce</code> (paper-re &mdash; Phase 1) &mdash; executes <code>reproduce.sh</code> in a sandbox: <code>docker</code> &rarr; <code>apptainer</code> &rarr; <code>singularity</code> &rarr; <code>local</code> (overridable via <code>ARI_PHASE1_SANDBOX</code>). Captures <code>reproduce.log</code> and reports any rubric-declared <code>expected_artifacts</code> that did not appear.</span></li>
+    <li><span id="t-ors-li3"><code>ors_grade</code> (paper-re &mdash; Phase 2) &mdash; runs PaperBench <code>SimpleJudge</code> over the rubric leaves <em>n_runs</em> times (default 3), averages the weighted leaf scores, and runs a one-off negative control (empty repo + trivial <code>reproduce.sh</code>). Both controls must score &lt;5% (<code>passed=true</code>) for the rubric to be considered honest.</span></li>
+  </ol>
 
 </main>
 

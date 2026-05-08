@@ -200,7 +200,21 @@ class SlurmClient:
         if work_dir and f"#SBATCH -D {work_dir}" not in "\n".join(header_lines):
             header_lines.append(f"#SBATCH -D {work_dir}")
 
-        full_script = "\n".join(header_lines) + "\n\n" + script + "\n"
+        # Inject run-env capture: writes <work_dir>/_run_env.json with
+        # hostname / SLURM job_id / partition / cpu_info, executed on the
+        # compute node so it reflects WHERE the job ran (not where ari runs).
+        # node_report.py later picks this up and exposes it on node_report.json.
+        try:
+            from ari.agent.run_env import shell_capture_snippet
+            _capture = shell_capture_snippet(executor="slurm")
+        except Exception:
+            _capture = ""
+
+        full_script = (
+            "\n".join(header_lines) + "\n"
+            + _capture + "\n"
+            + script + "\n"
+        )
 
 
         if self.mode == "local":

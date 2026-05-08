@@ -1,3 +1,6 @@
 [submodule "ari-skill-idea/vendor/virsci"]
 	path = ari-skill-idea/vendor/virsci
 	url = https://github.com/kotama7/Virtual-Scientists.git
+[submodule "ari-skill-paper-re/vendor/paperbench"]
+	path = ari-skill-paper-re/vendor/paperbench
+	url = https://github.com/openai/preparedness.git

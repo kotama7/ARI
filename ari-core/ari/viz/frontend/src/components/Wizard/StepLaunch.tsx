@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { useI18n } from '../../i18n';
 import * as api from '../../services/api';
+import type { OrsSettings } from './StepResources';
 
 interface StepLaunchProps {
   profile: string;
@@ -40,6 +41,11 @@ interface StepLaunchProps {
   fewshotMode: 'static' | 'dynamic';
   numReviewsEnsemble: number;
   numReflections: number;
+  // EAR (per-experiment opt-out)
+  includeEar: boolean;
+  setIncludeEar: (v: boolean) => void;
+  // ORS (PaperBench-format auto rubric) snapshot
+  ors: OrsSettings;
   // Navigation
   onBack: () => void;
   onLaunched: () => void;
@@ -76,6 +82,9 @@ export function StepLaunch({
   fewshotMode,
   numReviewsEnsemble,
   numReflections,
+  includeEar,
+  setIncludeEar,
+  ors,
   onBack,
   onLaunched,
 }: StepLaunchProps) {
@@ -120,6 +129,8 @@ export function StepLaunch({
         fewshot_mode: fewshotMode,
         num_reviews_ensemble: numReviewsEnsemble,
         num_reflections: numReflections,
+        include_ear: includeEar,
+        ors,
       });
 
       if (r.ok) {
@@ -215,6 +226,30 @@ export function StepLaunch({
             <option value="ja">{'日本語'}</option>
             <option value="zh">{'中文'}</option>
           </select>
+        </div>
+
+        {/* Include EAR */}
+        <div className="form-row" style={{ marginTop: 8 }}>
+          <label htmlFor="wiz-include-ear" style={{ cursor: 'pointer' }}>
+            <input
+              id="wiz-include-ear"
+              type="checkbox"
+              checked={includeEar}
+              onChange={(e) => setIncludeEar(e.target.checked)}
+              style={{ marginRight: 6 }}
+            />
+            {t('wiz_include_ear')}
+          </label>
+          <div
+            style={{
+              fontSize: '.78rem',
+              color: 'var(--muted)',
+              marginTop: 4,
+              lineHeight: 1.4,
+            }}
+          >
+            {t('wiz_include_ear_help')}
+          </div>
         </div>
 
         {/* Research Goal Summary */}

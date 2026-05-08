@@ -1,18 +1,21 @@
-"""ari-skill-paper-re: Reproducibility verification helpers.
+"""ari-skill-paper-re: Reproducibility grading via PaperBench SimpleJudge.
 
-This skill no longer drives a ReAct loop. The ReAct loop is driven by
-``ari-core/ari/agent/react_driver.py`` from the workflow pipeline, which
-uses the MCP skill set filtered by ``phase: reproduce`` declared in
-``workflow.yaml``. This skill provides only the deterministic endpoints:
+This skill exposes:
 
-- ``extract_repro_config`` — one-shot LLM call extracting the paper's
-  advertised metric value and experimental parameters.
-- ``build_repro_report`` — one-shot LLM call producing the final verdict
-  and interpretation given claimed + actual measurements.
-- ``extract_metric_from_output`` — helper the ReAct agent may call to
-  parse a numeric metric from raw benchmark stdout.
+- ``run_reproduce``          — Phase 1 sandbox runner for ``reproduce.sh``.
+- ``grade_with_simplejudge`` — Phase 2 grader, a thin wrapper around the
+  upstream PaperBench ``SimpleJudge`` (see ``_paperbench_bridge.py``).
+- ``fetch_code_bundle``      — pre-populates the sandbox with the curated
+  EAR bundle (deterministic, no LLM).
+- ``build_reproduce_sh``     — LLM-driven replicator; reads the paper and
+  writes ``reproduce.sh`` + supporting source files into the sandbox. Used
+  when no curated bundle / EAR is available. Skips when reproduce.sh is
+  already present, so it composes cleanly after fetch_code_bundle / EAR.
 
-All three are P2 exceptions (single-shot LLM usage).
+The legacy LLM-driven metric-verdict tools (``extract_repro_config``,
+``extract_metric_from_output``, ``build_repro_report``) were removed in the
+§4.1 rewrite; the rubric now carries claims and PaperBench
+``SimpleJudge`` reads the reproduce.log directly.
 """
 
 from __future__ import annotations
@@ -20,11 +23,12 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
+import shutil
 import subprocess
+import tempfile
+import time
 from pathlib import Path
 
-import litellm
 from mcp.server.fastmcp import FastMCP
 
 log = logging.getLogger(__name__)
@@ -36,47 +40,6 @@ try:
     _ari_cost_tracker.bootstrap_skill("paper-re")
 except Exception:
     pass
-
-
-# ─── LLM helpers ──────────────────────────────────────────────────────
-
-def _model() -> str:
-    # Phase-specific override so the GUI's per-phase model picker takes effect.
-    return (
-        os.environ.get("ARI_MODEL_PAPER")
-        or os.environ.get("ARI_LLM_MODEL")
-        or os.environ.get("LLM_MODEL")
-        or "ollama_chat/qwen3:32b"
-    )
-
-
-def _api_base() -> str | None:
-    ari = os.environ.get("ARI_LLM_API_BASE")
-    if ari is not None:
-        return ari or None
-    legacy = os.environ.get("LLM_API_BASE", "")
-    if legacy:
-        return legacy
-    if _model().startswith("ollama"):
-        return "http://127.0.0.1:11434"
-    return None
-
-
-async def _llm(system: str, user: str, timeout: int = 120) -> str:
-    kwargs: dict = {
-        "model": _model(),
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user",   "content": user},
-        ],
-        "timeout": timeout,
-    }
-    base = _api_base()
-    if base:
-        kwargs["api_base"] = base
-    resp = await litellm.acompletion(**kwargs)
-    raw = resp.choices[0].message.content or ""
-    return re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
 
 
 def _load_paper_text(paper_path: str, paper_text: str) -> str:
@@ -103,186 +66,839 @@ def _load_paper_text(paper_path: str, paper_text: str) -> str:
         return ""
 
 
-def _clip_paper(paper_text: str, head: int = 20000, tail: int = 10000) -> str:
-    """Truncate a long paper to a head+tail snippet so the LLM fits in context."""
-    limit = head + tail
-    if len(paper_text) <= limit:
-        return paper_text
-    return paper_text[:head] + "\n\n[...truncated...]\n\n" + paper_text[-tail:]
-
-
-# ─── MCP tools ────────────────────────────────────────────────────────
+# ─── fetch_code_bundle MCP tool ───────────────────────────────────────
+#
+# Used by the reproducibility pipeline as a `pre_tool` to populate the
+# sandbox before Phase 1 runs. The agent never has to clone — the working
+# tree is already there. This is defense-in-depth on top of the git shim.
 
 
 @mcp.tool()
-async def extract_repro_config(
-    paper_path: str = "",
-    paper_text: str = "",
+async def fetch_code_bundle(
+    ref: str = "",
+    sha256: str = "",
+    dest: str = "",
+    checkpoint_dir: str = "",
+    overwrite: bool = False,
 ) -> dict:
-    """Extract the paper's advertised result and its exact configuration.
+    """Pre-populate the sandbox with the curated EAR bundle (no LLM call).
 
-    Returns ``{metric_name, claimed_value, description, threads}`` where
-    ``threads`` is an int parsed from the description when stated, else 0.
+    Args:
+        ref: bundle reference (file://, https://, ari://, gh:, doi:). When
+            empty AND ``checkpoint_dir`` is given, ref + sha256 are loaded
+            from ``{checkpoint_dir}/publish_record.json`` (the file ``ari
+            ear publish`` writes).
+        sha256: required 64-hex bundle digest. Hard fail on mismatch.
+        dest: target directory.
+        checkpoint_dir: when non-empty, this enables auto-loading ref +
+            sha256 from publish_record.json. Mirrors the convention used by
+            ``inject_code_availability``.
+        overwrite: when False (default) and ``dest/reproduce.sh`` exists,
+            no work is done — composes with build_reproduce_sh / EAR
+            pre-populate.
+
+    Returns:
+        ``{"populated": bool, "dest": str, "bundle_sha256": str, "files": int}``
+        or ``{"populated": False, "skipped_reason": str}`` on the no-op path.
     """
-    text = _load_paper_text(paper_path, paper_text)
-    if not text:
-        return {"error": "No paper text provided", "metric_name": "", "claimed_value": 0.0}
+    # Auto-load ref + sha256 from publish_record.json when not given.
+    if not ref and checkpoint_dir:
+        rec_path = Path(checkpoint_dir) / "publish_record.json"
+        if rec_path.is_file():
+            try:
+                rec = json.loads(rec_path.read_text())
+                ref = ref or str(rec.get("ref") or "")
+                sha256 = sha256 or str(rec.get("bundle_sha256") or "")
+            except Exception as e:
+                log.warning("fetch_code_bundle: cannot read %s: %s", rec_path, e)
 
-    snippet = _clip_paper(text)
+    if not ref:
+        return {"populated": False, "skipped_reason": "no code_availability_ref"}
+    if not dest:
+        return {"populated": False, "skipped_reason": "no dest"}
 
-    system = (
-        "Extract the PRIME experimental result from the paper — the value "
-        "highlighted in the abstract and conclusion as the paper's main "
-        "achievement. This is NOT necessarily from the 'main' benchmark "
-        "setup; it is the number the authors chose to advertise. "
-        "Do NOT use theoretical peaks, roofline upper bounds, or predictions. "
-        "Include in the description the EXACT experimental parameters "
-        "(all sizes, settings, configuration) stated near the claimed value. "
-        "Return ONLY JSON: {\"metric_name\": str, \"claimed_value\": float, "
-        "\"description\": str}. No markdown."
-    )
-
-    raw = await _llm(system, f"Paper:\n{snippet}")
-    m = re.search(r"\{.*\}", raw, re.DOTALL)
-    if not m:
+    dest_path = Path(dest)
+    if (dest_path / "reproduce.sh").is_file() and not overwrite:
         return {
-            "error": "Could not extract config from LLM output",
-            "raw": raw[:500],
-            "metric_name": "", "claimed_value": 0.0, "description": "",
+            "populated": False,
+            "skipped_reason": f"reproduce.sh already present at {dest_path}/reproduce.sh; "
+                              f"pass overwrite=True to re-fetch",
+            "dest": str(dest_path),
         }
+
+    # ari.clone refuses non-empty destinations. When overwrite=True, clear
+    # the target so subsequent stages get a clean slate.
+    if dest_path.exists() and any(dest_path.iterdir()):
+        if overwrite:
+            shutil.rmtree(dest_path)
+        else:
+            return {
+                "populated": False,
+                "skipped_reason": f"dest non-empty (no reproduce.sh, but other files): "
+                                  f"{dest_path}; pass overwrite=True to clear",
+                "dest": str(dest_path),
+            }
+
     try:
-        cfg = json.loads(m.group(0))
-    except json.JSONDecodeError as e:
-        return {
-            "error": f"JSON parse failed: {e}",
-            "raw": raw[:500],
-            "metric_name": "", "claimed_value": 0.0, "description": "",
-        }
-
-    metric_name   = str(cfg.get("metric_name") or "metric")
-    claimed_value = float(cfg.get("claimed_value") or 0.0)
-    description   = str(cfg.get("description") or "")
-
-    threads = 0
-    m_thr = re.search(r"(\d+)\s*(?:OpenMP\s+)?threads", description, re.IGNORECASE)
-    if m_thr:
-        try:
-            threads = int(m_thr.group(1))
-        except ValueError:
-            pass
-
+        from ari.clone import clone, CloneError
+    except Exception as e:
+        return {"populated": False, "error": f"ari.clone not importable: {e}"}
+    try:
+        result = clone(ref, dest=dest_path, expect_sha256=sha256 or None)
+    except CloneError as e:
+        return {"populated": False, "error": str(e)}
     return {
-        "metric_name":   metric_name,
-        "claimed_value": claimed_value,
-        "description":   description,
-        "threads":       threads,
+        "populated": True,
+        "dest": str(result.dest),
+        "bundle_sha256": result.bundle_sha256,
+        "files": result.file_count,
     }
 
 
+# ─── build_reproduce_sh MCP tool (agent-driven replicator) ────────────
+#
+# v0.7+: this tool wraps PaperBench's BasicAgent / IterativeAgent solver
+# (vendored under ``vendor/paperbench``), driven against ari's HPC sandbox
+# via :class:`_compute.LocalComputer` / :class:`_compute.ApptainerComputer`.
+# The pre-v0.7 single-shot LLM replicator has been deleted — see CHANGELOG.
+#
+# Composition contract: this tool is the agentic sibling of
+# ``fetch_code_bundle``. Both target the same destination (typically
+# ``{checkpoint_dir}/repro_sandbox``). The replicator skips with
+# ``skipped_reason`` when reproduce.sh is already present unless the caller
+# passes ``overwrite=True``, so a workflow that runs fetch_code_bundle (or
+# a stage that copies EAR) before this tool will not regenerate the sandbox
+# unnecessarily.
+
+
 @mcp.tool()
-async def extract_metric_from_output(output_text: str, metric_name: str) -> dict:
-    """Extract a numeric metric value from raw benchmark output text."""
-    prompt = (
-        f"Extract the {metric_name} value from the output below.\n"
-        "Return ONLY valid JSON: {\"value\": float or null, \"unit\": str, "
-        "\"raw_match\": str}\n"
-        f"Output:\n{output_text[-2000:]}"
-    )
-    try:
-        kwargs: dict = {
-            "model": _model(),
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0,
-            "timeout": 60,
+async def build_reproduce_sh(
+    paper_path: str = "",
+    paper_text: str = "",
+    rubric_path: str = "",
+    output_dir: str = "",
+    model: str = "",
+    time_limit_sec: int = 12 * 3600,
+    iterative_agent: bool = False,
+    max_steps: int = 0,
+    sandbox_kind: str = "auto",
+    apptainer_image: str = "",
+    overwrite: bool = False,
+) -> dict:
+    """Replicator: drive a PaperBench-style ReAct agent against the workspace.
+
+    Args:
+        paper_path: path to .tex / .pdf / .txt; used when ``paper_text`` is empty.
+        paper_text: inline paper content (overrides ``paper_path``).
+        rubric_path: optional path to the frozen rubric envelope. When given,
+            the rubric's ``reproduce_contract.expected_artifacts`` is fed to
+            the agent prompt so its output aligns with the grader's
+            expectations.
+        output_dir: target sandbox directory (typically ``repro_sandbox/``).
+            Becomes the agent's workspace; reproduce.sh ends up at its root.
+        model: LiteLLM / OpenAI model id; overrides ``ARI_MODEL_REPLICATOR``.
+        time_limit_sec: hard wall-clock budget for the agent rollout.
+            PaperBench paper §5.2 uses 12 h by default; ``IterativeAgent``
+            extended runs use up to 36 h.
+        iterative_agent: when True, switches the agent to PaperBench's
+            IterativeAgent variant (no submit-tool early termination,
+            step-by-step prompting; see paper §5.3).
+        max_steps: optional hard cap on agent steps; 0 = unlimited (only
+            ``time_limit_sec`` constrains).
+        sandbox_kind: ``auto`` | ``local`` | ``apptainer`` | ``slurm``;
+            see :func:`_compute.make_computer`.
+        apptainer_image: SIF path for ``sandbox_kind=apptainer``.
+        overwrite: when False (default) and ``output_dir/reproduce.sh`` is
+            already present, no rollout is performed — returns
+            ``populated=False, skipped_reason=...``.
+
+    Returns the populated flag, written file list, expected_artifacts seen,
+    max_runtime_sec, model id, and warnings (or ``error`` on failure).
+    """
+    if not output_dir:
+        return {"populated": False, "error": "output_dir is required"}
+
+    out = Path(output_dir)
+    if (out / "reproduce.sh").is_file() and not overwrite:
+        return {
+            "populated": False,
+            "skipped_reason": (
+                f"reproduce.sh already present at {out / 'reproduce.sh'}; "
+                f"pass overwrite=True to regenerate"
+            ),
+            "output_dir": str(out),
         }
-        base = _api_base()
-        if base:
-            kwargs["api_base"] = base
-        resp = await litellm.acompletion(**kwargs)
-        raw = resp.choices[0].message.content or ""
-        if "</think>" in raw:
-            raw = raw.split("</think>")[-1]
-        s, e = raw.find("{"), raw.rfind("}") + 1
-        if s >= 0 and e > s:
-            res = json.loads(raw[s:e])
-            if res.get("value") is not None:
-                res["value"] = float(res["value"])
-            return res
+
+    text = _load_paper_text(paper_path, paper_text)
+    if not text:
+        return {"populated": False, "error": "No paper text provided"}
+
+    expected_artifacts: list[str] = []
+    if rubric_path:
+        try:
+            rubric = json.loads(Path(rubric_path).read_text())
+            expected_artifacts = list(
+                (rubric.get("reproduce_contract") or {}).get("expected_artifacts") or []
+            )
+        except Exception as e:
+            log.warning("build_reproduce_sh: cannot read rubric %s: %s", rubric_path, e)
+
+    out.mkdir(parents=True, exist_ok=True)
+    paper_md = out / "_input_paper.md"
+    paper_md.write_text(text, encoding="utf-8")
+
+    from _replicator_agent import run_replicator_agent
+
+    # Defaults come from env (set by api_experiment.py) when the workflow.yaml
+    # passed sentinel values (0 / empty string). These are applied here, not
+    # in workflow.yaml templating, because pipeline._resolve_templates is a
+    # regex substitution (no Jinja2 ``| default(...)`` filter).
+    chosen_model = (
+        model
+        or os.environ.get("ARI_MODEL_REPLICATOR")
+        or os.environ.get("ARI_LLM_MODEL")
+        or "gpt-5-mini"
+    )
+    if not int(time_limit_sec):
+        time_limit_sec = int(os.environ.get("ARI_REPLICATOR_TIME_LIMIT_SEC") or 12 * 3600)
+    if not iterative_agent:
+        iterative_agent = os.environ.get("ARI_REPLICATOR_ITERATIVE", "0") == "1"
+    if not int(max_steps):
+        max_steps = int(os.environ.get("ARI_REPLICATOR_MAX_STEPS") or 0)
+    if sandbox_kind in (None, "", "auto"):
+        sandbox_kind = os.environ.get("ARI_PHASE1_SANDBOX") or "auto"
+
+    # Pick the completer flavour based on the model id. PaperBench upstream's
+    # OpenAIResponsesTurnCompleter only accepts OpenAI Responses API models;
+    # for Anthropic / Gemini / Ollama / etc. we route through LiteLLM via
+    # our LiteLLMBasicAgentCompleterConfig.
+    is_openai_responses = (
+        chosen_model.startswith(("gpt-", "o1-", "o3-", "o4-", "o5-"))
+        and "/" not in chosen_model
+    )
+    if is_openai_responses:
+        from paperbench.solvers.basicagent.completer import (
+            OpenAIResponsesTurnCompleterConfig,
+        )
+        completer_config = OpenAIResponsesTurnCompleterConfig(model=chosen_model)
+    else:
+        from _litellm_completer import get_litellm_basicagent_completer_config
+        completer_config = get_litellm_basicagent_completer_config()(
+            model=chosen_model,
+        )
+
+    return await run_replicator_agent(
+        paper_md_path=str(paper_md),
+        output_dir=str(out),
+        expected_artifacts=expected_artifacts,
+        time_limit_sec=int(time_limit_sec),
+        iterative_agent=bool(iterative_agent),
+        max_steps=int(max_steps) or None,
+        completer_config=completer_config,
+        sandbox_kind=sandbox_kind,
+        apptainer_image=apptainer_image or None,
+    )
+
+
+# ─── Phase 1 / Phase 2 (PaperBench-format) ─────────────────────────────
+
+
+def _has_bin(name: str) -> bool:
+    return subprocess.run(["which", name], capture_output=True).returncode == 0
+
+
+def _docker_works() -> bool:
+    if not _has_bin("docker"):
+        return False
+    return subprocess.run(["docker", "info"], capture_output=True).returncode == 0
+
+
+def _on_hpc() -> bool:
+    return any(os.environ.get(k) for k in ("SLURM_CLUSTER_NAME", "SLURM_JOB_ID"))
+
+
+def _slurm_available() -> bool:
+    """We can submit to SLURM iff sbatch is on PATH AND we know which
+    partition to target (either via ARI_SLURM_PARTITION env, set by
+    api_experiment.py from the wizard / launch_config.json, or via an
+    explicit caller-supplied partition arg)."""
+    if not _has_bin("sbatch"):
+        return False
+    return bool(os.environ.get("ARI_SLURM_PARTITION"))
+
+
+def _phase1_sandbox_kind(default: str = "auto") -> str:
+    """Resolve sandbox kind.
+
+    ``auto`` priority:
+        1. ``slurm`` — when sbatch is available AND ARI_SLURM_PARTITION is
+           set. The reproduce.sh from BFTS was almost certainly compiled with
+           ``-march=native`` on a partition CPU (e.g. AVX-512 on sx40), so
+           re-running on the login node usually fails. Submit back to the
+           same partition.
+        2. ``docker`` — when daemon is usable AND we're not inside SLURM.
+        3. ``apptainer`` → ``singularity`` → ``local``.
+
+    Explicit ``ARI_PHASE1_SANDBOX`` always wins. Accepted explicit values:
+    ``docker | apptainer | singularity | slurm | local | auto``.
+
+    SLURM support was present in v0.5.0 (pre-§4.1 rewrite) and lost in the
+    v0.6.0 paper-re rewrite alongside the legacy metric-verdict tools.
+    """
+    val = os.environ.get("ARI_PHASE1_SANDBOX") or default
+    if val == "auto":
+        if _slurm_available():
+            return "slurm"
+        if _docker_works() and not _on_hpc():
+            return "docker"
+        if _has_bin("apptainer"):
+            return "apptainer"
+        if _has_bin("singularity"):
+            return "singularity"
+        return "local"
+    return val
+
+
+def _judge_model() -> str:
+    # Routed through LiteLLM via _litellm_completer, so any provider/model
+    # litellm understands works (e.g. ``gpt-5-mini``, ``anthropic/claude-...``,
+    # ``gemini/gemini-2.5-flash``). Falls back to the global ARI model env
+    # so the same default applies repo-wide.
+    return (
+        os.environ.get("ARI_MODEL_JUDGE")
+        or os.environ.get("ARI_LLM_MODEL")
+        or "gpt-5-mini"
+    )
+
+
+def _read_log_tail(p: Path, max_bytes: int = 200_000) -> str:
+    try:
+        data = p.read_bytes()
+    except Exception:
+        return ""
+    if len(data) <= max_bytes:
+        return data.decode("utf-8", errors="replace")
+    return data[-max_bytes:].decode("utf-8", errors="replace")
+
+
+def _run_reproduce_local(repo_dir: Path, log_path: Path, timeout: int) -> dict:
+    """Execute reproduce.sh in-place (no sandbox). Used as a fallback."""
+    script = repo_dir / "reproduce.sh"
+    if not script.is_file():
+        return {"executed": False, "exit_code": None, "error": "reproduce.sh missing"}
+    try:
+        script.chmod(script.stat().st_mode | 0o111)
+    except Exception:
+        pass
+    start = time.time()
+    with log_path.open("wb") as logf:
+        try:
+            proc = subprocess.run(
+                ["bash", str(script)],
+                cwd=str(repo_dir),
+                stdout=logf,
+                stderr=subprocess.STDOUT,
+                timeout=timeout,
+                check=False,
+            )
+            return {
+                "executed": True,
+                "exit_code": int(proc.returncode),
+                "elapsed_sec": round(time.time() - start, 2),
+            }
+        except subprocess.TimeoutExpired:
+            return {
+                "executed": True,
+                "exit_code": None,
+                "timed_out": True,
+                "elapsed_sec": round(time.time() - start, 2),
+            }
+
+
+def _run_reproduce_apptainer(
+    repo_dir: Path, log_path: Path, timeout: int, *, runner: str = "apptainer",
+) -> dict:
+    """Execute reproduce.sh in an Apptainer/Singularity container.
+
+    Image resolution:
+      1. ``ARI_PHASE1_APPTAINER_IMAGE`` (file:// path or library://, docker://,
+         shub:// URI accepted by ``apptainer exec``).
+      2. Default: ``docker://ubuntu:24.04`` — Apptainer/Singularity can pull
+         and execute a docker image directly without a Docker daemon.
+
+    Falls back to local if the binary is missing.
+    """
+    if not _has_bin(runner):
+        log.info("%s not on PATH; falling back to local reproduce", runner)
+        return _run_reproduce_local(repo_dir, log_path, timeout)
+    image = os.environ.get("ARI_PHASE1_APPTAINER_IMAGE") \
+        or os.environ.get("ARI_PHASE1_SINGULARITY_IMAGE") \
+        or "docker://ubuntu:24.04"
+    cmd = [
+        runner, "exec",
+        "--bind", f"{repo_dir}:{repo_dir}",
+        "--pwd", str(repo_dir),
+        "--no-home",
+        image,
+        "bash", "-c", "chmod +x reproduce.sh && ./reproduce.sh",
+    ]
+    start = time.time()
+    with log_path.open("wb") as logf:
+        try:
+            proc = subprocess.run(
+                cmd, stdout=logf, stderr=subprocess.STDOUT,
+                timeout=timeout, check=False,
+            )
+            return {
+                "executed": True,
+                "exit_code": int(proc.returncode),
+                "elapsed_sec": round(time.time() - start, 2),
+            }
+        except subprocess.TimeoutExpired:
+            return {
+                "executed": True,
+                "exit_code": None,
+                "timed_out": True,
+                "elapsed_sec": round(time.time() - start, 2),
+            }
+
+
+def _resolve_partition(partition: str = "") -> str:
+    """Resolve target SLURM partition. Priority: explicit arg → env →
+    launch_config.json (sibling of repo_dir's checkpoint dir, looked up by
+    walking up from repo_dir at the call site)."""
+    return (
+        partition
+        or os.environ.get("ARI_SLURM_PARTITION", "")
+        or os.environ.get("SLURM_PARTITION", "")
+    )
+
+
+def _resolve_partition_for_repo(repo_dir: Path, partition: str = "") -> str:
+    """Same as ``_resolve_partition`` but additionally consults
+    ``{checkpoint_dir}/launch_config.json`` when the env is unset.
+    ``repo_dir`` is typically ``{checkpoint_dir}/repro_sandbox`` so we look
+    one level up."""
+    p = _resolve_partition(partition)
+    if p:
+        return p
+    for candidate in (repo_dir.parent / "launch_config.json", repo_dir / "launch_config.json"):
+        if candidate.is_file():
+            try:
+                cfg = json.loads(candidate.read_text())
+                p = str(cfg.get("partition") or "")
+                if p:
+                    return p
+            except Exception:
+                pass
+    return ""
+
+
+def _walltime_str(timeout_sec: int) -> str:
+    """SLURM ``--time`` HH:MM:SS string, capped to a reasonable upper bound."""
+    secs = max(60, int(timeout_sec))
+    h, rem = divmod(secs, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+def _run_reproduce_slurm(
+    repo_dir: Path,
+    log_path: Path,
+    timeout: int,
+    *,
+    partition: str = "",
+    cpus: int = 0,
+    walltime: str = "",
+) -> dict:
+    """Submit reproduce.sh to SLURM with ``sbatch --wait`` and capture output.
+
+    Restored from the v0.5.0 ``Executor`` abstraction that the §4.1 rewrite
+    accidentally dropped. Same place the BFTS executor sends jobs to —
+    closes the loop "BFTS ran on sx40 → reproduction also runs on sx40 →
+    AVX-512 etc. work because the build is on the same hardware".
+
+    Falls back to ``_run_reproduce_local`` when sbatch is missing or no
+    partition can be resolved.
+    """
+    if not _has_bin("sbatch"):
+        log.info("sbatch not on PATH; falling back to local reproduce")
+        return _run_reproduce_local(repo_dir, log_path, timeout)
+    resolved_partition = _resolve_partition_for_repo(repo_dir, partition)
+    if not resolved_partition:
+        log.warning(
+            "SLURM dispatch requested but no partition resolved "
+            "(arg/env/launch_config.json all empty); falling back to local"
+        )
+        return _run_reproduce_local(repo_dir, log_path, timeout)
+
+    script = repo_dir / "reproduce.sh"
+    if not script.is_file():
+        return {"executed": False, "exit_code": None, "error": "reproduce.sh missing"}
+    try:
+        script.chmod(script.stat().st_mode | 0o111)
     except Exception:
         pass
 
-    # Regex fallback
-    m = re.search(
-        r"METRIC[:\s]+([0-9]+\.?[0-9]*(?:e[+-]?[0-9]+)?)",
-        output_text, re.IGNORECASE,
+    n_cpus = int(cpus) if cpus and int(cpus) > 0 else int(os.environ.get("ARI_SLURM_CPUS", "8"))
+    wt = walltime or os.environ.get("ARI_SLURM_WALLTIME", "") or _walltime_str(timeout)
+
+    # sbatch copies the submitted script to its spool dir and runs it from
+    # there, so ``$0`` inside the script resolves to the spool copy path.
+    # ``reproduce.sh`` typically uses ``cd "$(dirname "$0")/code"`` which
+    # would break under spool-relocation. Submit a tiny wrapper next to
+    # reproduce.sh that invokes it by ABSOLUTE path; ``$0`` inside
+    # reproduce.sh then resolves correctly to ``{repo_dir}/reproduce.sh``.
+    import shlex
+    wrapper = repo_dir / ".slurm_wrap.sh"
+    wrapper.write_text(
+        "#!/usr/bin/env bash\n"
+        f"exec bash {shlex.quote(str(script))}\n"
     )
-    if m:
-        return {"value": float(m.group(1)), "unit": "", "raw_match": m.group(0)}
-    return {"value": None, "unit": "", "raw_match": "", "error": "extraction failed"}
+    wrapper.chmod(0o755)
+
+    # ``sbatch --wait`` blocks until the job terminates, then exits with the
+    # job's exit code. ``--output`` writes both stdout AND stderr to the same
+    # file the local runner uses (job-internal).
+    cmd = [
+        "sbatch", "--wait",
+        "--partition", resolved_partition,
+        "--cpus-per-task", str(n_cpus),
+        "--time", wt,
+        "--job-name", "ari-ors",
+        "--chdir", str(repo_dir),
+        "--output", str(log_path),
+        "--export", "ALL",
+        str(wrapper),
+    ]
+    log.info("[ors] sbatch %s", " ".join(cmd[1:]))
+    start = time.time()
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 60)
+    except subprocess.TimeoutExpired:
+        return {
+            "executed": True,
+            "exit_code": None,
+            "timed_out": True,
+            "elapsed_sec": round(time.time() - start, 2),
+            "partition": resolved_partition,
+        }
+    # sbatch --wait returns the job's exit code. Anything sbatch itself
+    # printed lands in proc.stdout/stderr (e.g. "Submitted batch job ...").
+    if proc.returncode != 0 and not log_path.is_file():
+        # sbatch itself failed (queue rejection, bad partition, etc.) —
+        # surface stderr so the caller can debug.
+        return {
+            "executed": False,
+            "exit_code": int(proc.returncode),
+            "error": (proc.stderr or proc.stdout or "sbatch failed").strip()[:1000],
+            "elapsed_sec": round(time.time() - start, 2),
+            "partition": resolved_partition,
+        }
+    return {
+        "executed": True,
+        "exit_code": int(proc.returncode),
+        "elapsed_sec": round(time.time() - start, 2),
+        "partition": resolved_partition,
+        "cpus": n_cpus,
+        "walltime": wt,
+    }
+
+
+def _run_reproduce_docker(repo_dir: Path, log_path: Path, timeout: int) -> dict:
+    """Execute reproduce.sh in a docker sandbox. Falls back to local on docker missing."""
+    if not _docker_works():
+        log.info("docker daemon not usable; falling back to local reproduce")
+        return _run_reproduce_local(repo_dir, log_path, timeout)
+    image = os.environ.get("ARI_PHASE1_DOCKER_IMAGE", "ubuntu:24.04")
+    cmd = [
+        "docker", "run", "--rm",
+        "-v", f"{repo_dir}:/work",
+        "-w", "/work",
+        image,
+        "bash", "-c", "chmod +x reproduce.sh && ./reproduce.sh",
+    ]
+    start = time.time()
+    with log_path.open("wb") as logf:
+        try:
+            proc = subprocess.run(
+                cmd, stdout=logf, stderr=subprocess.STDOUT,
+                timeout=timeout, check=False,
+            )
+            return {
+                "executed": True,
+                "exit_code": int(proc.returncode),
+                "elapsed_sec": round(time.time() - start, 2),
+            }
+        except subprocess.TimeoutExpired:
+            return {
+                "executed": True,
+                "exit_code": None,
+                "timed_out": True,
+                "elapsed_sec": round(time.time() - start, 2),
+            }
 
 
 @mcp.tool()
-async def build_repro_report(
-    claimed_config: dict,
-    actual_value: float | None = None,
-    actual_unit: str = "",
-    actual_notes: str = "",
-    tolerance_pct: float = 5.0,
+async def run_reproduce(
+    rubric_path: str,
+    repo_dir: str,
+    sandbox_kind: str = "",
+    timeout_global_sec: int = 0,
+    partition: str = "",
+    cpus: int = 0,
+    walltime: str = "",
 ) -> dict:
-    """Compare actual vs. claimed and return a verdict + interpretation.
+    """Phase 1: execute reproduce.sh in a sandbox; capture log + artifact list.
 
-    Called after the ReAct driver finishes. ``actual_value`` is the value
-    the agent reported via its ``report_metric`` final-tool; ``None`` means
-    the agent never produced a reliable measurement.
+    Args:
+        rubric_path: path to the frozen rubric JSON envelope (provides
+            ``reproduce_contract.max_runtime_sec`` and
+            ``reproduce_contract.expected_artifacts``).
+        repo_dir: candidate submission directory (must contain ``reproduce.sh``).
+        sandbox_kind: ``docker`` | ``apptainer`` | ``singularity`` | ``slurm``
+            | ``local`` | ``auto``. Default reads ``ARI_PHASE1_SANDBOX``
+            (then ``auto``). ``auto`` priority: slurm (when sbatch + partition
+            present) → docker (when daemon usable and not on HPC) → apptainer
+            → singularity → local.
+        timeout_global_sec: 0 → use the rubric's ``max_runtime_sec``.
+        partition: SLURM partition (only used when sandbox_kind=slurm).
+            Defaults to ``ARI_SLURM_PARTITION`` env then to
+            ``{checkpoint_dir}/launch_config.json::partition`` (i.e. the same
+            partition the BFTS phase used).
+        cpus: ``--cpus-per-task`` for SLURM. Defaults to ARI_SLURM_CPUS=8.
+        walltime: ``--time`` HH:MM:SS for SLURM. Defaults to ARI_SLURM_WALLTIME
+            then to a value derived from timeout_global_sec.
+
+    Returns the executed flag, exit code, log path, produced artifact list,
+    missing expected artifacts, and elapsed time.
     """
-    metric_name   = str(claimed_config.get("metric_name") or "metric")
-    claimed_value = float(claimed_config.get("claimed_value") or 0.0)
-
-    diff_pct: float | None = None
-    if actual_value is not None and claimed_value != 0:
-        diff_pct = abs(float(actual_value) - claimed_value) / claimed_value * 100.0
-
-    if actual_value is None:
-        verdict = "UNVERIFIABLE"
-    elif diff_pct is None:
-        verdict = "UNVERIFIABLE"
-    elif diff_pct <= tolerance_pct:
-        verdict = "REPRODUCED"
-    elif diff_pct <= 20.0:
-        verdict = "PARTIAL"
-    else:
-        verdict = "NOT_REPRODUCED"
-
-    diff_str = f"{diff_pct:.1f}%" if diff_pct is not None else "N/A"
-    notes_ctx = f" Agent notes: {actual_notes[:200]}" if actual_notes else ""
+    repo = Path(repo_dir)
+    if not repo.is_dir():
+        return {
+            "executed": False,
+            "skipped_reason": f"repo_dir not present: {repo_dir}",
+            "exit_code": None,
+            "log_path": "",
+            "artifacts": [],
+            "missing": [],
+            "elapsed_sec": 0.0,
+            "sandbox_kind": "",
+        }
     try:
-        interpretation = await _llm(
-            "Write a 2-3 sentence reproducibility verdict. Be factual, concise. "
-            "No markdown.",
-            f"Paper claims {claimed_value} {metric_name}. "
-            f"Measured: {actual_value}. "
-            f"Verdict: {verdict} (diff: {diff_str}).{notes_ctx}",
-            timeout=60,
-        )
+        rubric = json.loads(Path(rubric_path).read_text())
     except Exception as e:
-        log.warning("interpretation LLM failed: %s", e)
-        interpretation = (
-            f"{verdict}. Claimed={claimed_value} {metric_name}, "
-            f"measured={actual_value} (diff {diff_str})."
-        )
+        return {"executed": False, "error": f"cannot read rubric: {e}"}
 
-    return {
-        "verdict":        verdict,
-        "claimed_config": claimed_config,
-        "claimed_value":  claimed_value,
-        "actual_value":   actual_value,
-        "actual_unit":    actual_unit,
-        "actual_notes":   actual_notes,
-        "diff_pct":       round(diff_pct, 2) if diff_pct is not None else None,
-        "metric_name":    metric_name,
-        "tolerance_pct":  tolerance_pct,
-        "interpretation": interpretation,
+    rc = rubric.get("reproduce_contract") or {}
+    max_runtime = int(timeout_global_sec or rc.get("max_runtime_sec") or 21600)
+    expected = list(rc.get("expected_artifacts") or [])
+    requested = (sandbox_kind or _phase1_sandbox_kind()).lower()
+    if requested == "auto":
+        requested = _phase1_sandbox_kind()
+    kind = requested
+
+    log_path = repo / "reproduce.log"
+    if kind == "docker":
+        exec_res = _run_reproduce_docker(repo, log_path, max_runtime)
+    elif kind in ("local", ""):
+        exec_res = _run_reproduce_local(repo, log_path, max_runtime)
+    elif kind == "apptainer":
+        exec_res = _run_reproduce_apptainer(repo, log_path, max_runtime, runner="apptainer")
+    elif kind == "singularity":
+        exec_res = _run_reproduce_apptainer(repo, log_path, max_runtime, runner="singularity")
+    elif kind == "slurm":
+        exec_res = _run_reproduce_slurm(
+            repo, log_path, max_runtime,
+            partition=partition, cpus=int(cpus or 0), walltime=walltime,
+        )
+    else:
+        return {"executed": False, "error": f"unknown sandbox_kind: {kind}"}
+
+    artifacts = []
+    for f in repo.rglob("*"):
+        if f.is_file():
+            artifacts.append(str(f.relative_to(repo)))
+    missing = [e for e in expected if e not in artifacts]
+
+    out = {
+        "executed": exec_res.get("executed", False),
+        "exit_code": exec_res.get("exit_code"),
+        "log_path": str(log_path),
+        "artifacts": artifacts,
+        "missing": missing,
+        "elapsed_sec": exec_res.get("elapsed_sec", 0.0),
+        "sandbox_kind": kind,
     }
+    # SLURM-only metadata: partition / cpus / walltime actually used.
+    for k in ("partition", "cpus", "walltime"):
+        if k in exec_res:
+            out[k] = exec_res[k]
+    if "error" in exec_res:
+        out["error"] = exec_res["error"]
+    if "timed_out" in exec_res:
+        out["timed_out"] = True
+    if "error" in exec_res:
+        out["error"] = exec_res["error"]
+    return out
+
+
+async def _grade_once(
+    pb_taskroot,
+    paper_md: str,
+    repo_dir: Path,
+    reproduce_log: str,
+    judge_model: str,
+):
+    from _paperbench_bridge import judge_submission
+
+    return await judge_submission(
+        paper_md=paper_md,
+        rubric=pb_taskroot,
+        submission_dir=repo_dir,
+        reproduce_log=reproduce_log,
+        judge_model=judge_model,
+    )
+
+
+async def _negative_control_check(
+    pb_taskroot,
+    paper_md: str,
+    judge_model: str,
+) -> dict:
+    """Apply rubric to (a) empty repo and (b) trivial-reproduce.sh repo.
+
+    Both should score below 5%. ``passed=True`` only if both fall under 0.05.
+    """
+    from _paperbench_bridge import aggregate_graded_tree
+
+    results: dict = {}
+    with tempfile.TemporaryDirectory() as empty:
+        graded = await _grade_once(pb_taskroot, paper_md, Path(empty), "", judge_model)
+        results["empty"] = aggregate_graded_tree(graded)["ors_score"]
+    with tempfile.TemporaryDirectory() as bp:
+        bp_path = Path(bp)
+        sh = bp_path / "reproduce.sh"
+        sh.write_text("#!/bin/bash\necho 'no-op'\nexit 0\n")
+        sh.chmod(0o755)
+        graded = await _grade_once(pb_taskroot, paper_md, bp_path, "", judge_model)
+        results["boilerplate"] = aggregate_graded_tree(graded)["ors_score"]
+    results["passed"] = (results["empty"] < 0.05 and results["boilerplate"] < 0.05)
+    return results
+
+
+@mcp.tool()
+async def grade_with_simplejudge(
+    rubric_path: str,
+    repo_dir: str,
+    paper_path: str = "",
+    paper_text: str = "",
+    judge_model: str = "",
+    n_runs: int = 0,
+    skip_negative_control: bool = False,
+) -> dict:
+    """Phase 2: run PaperBench SimpleJudge against the (post-Phase-1) repo.
+
+    ``n_runs=0`` (the workflow.yaml sentinel) resolves to
+    ``ARI_JUDGE_N_RUNS`` env var, defaulting to 1 (PaperBench paper §4.1
+    single-pass).
+    ``judge_model=""`` resolves to ``ARI_MODEL_JUDGE`` env or
+    :func:`_judge_model`.
+
+    Workflow:
+      1. Load rubric envelope, strip our metadata via ``to_paperbench_format``.
+      2. Construct ``TaskNode`` tree.
+      3. Run ``SimpleJudge.judge()`` for ``n_runs`` iterations.
+      4. Average per-leaf scores (PaperBench weighted aggregation).
+      5. Run a one-off negative control (empty + trivial reproduce.sh repo).
+      6. Return result envelope.
+    """
+    if not n_runs:
+        n_runs = int(os.environ.get("ARI_JUDGE_N_RUNS") or 1)
+    if not judge_model:
+        judge_model = _judge_model()
+    from _paperbench_bridge import (
+        aggregate_graded_tree,
+        average_graded_runs,
+        task_node_from_dict,
+    )
+
+    try:
+        rubric = json.loads(Path(rubric_path).read_text())
+    except Exception as e:
+        return {"error": f"cannot read rubric: {e}"}
+
+    pb_dict = _strip_to_paperbench_format(rubric)
+    pb_taskroot = task_node_from_dict(pb_dict)
+
+    paper_md = _load_paper_text(paper_path, paper_text)
+
+    # If repo_dir is missing, degrade to scoring against an effectively empty
+    # submission per workflow.yaml §"ORS auto-rubric reproducibility".
+    repo = Path(repo_dir)
+    _empty_submission_dir: tempfile.TemporaryDirectory | None = None
+    degraded_reason = ""
+    if not repo.is_dir():
+        _empty_submission_dir = tempfile.TemporaryDirectory()
+        repo = Path(_empty_submission_dir.name)
+        degraded_reason = f"repo_dir not present: {repo_dir}"
+    log_path = repo / "reproduce.log"
+    reproduce_log = _read_log_tail(log_path) if log_path.is_file() else ""
+
+    chosen_model = judge_model or _judge_model()
+    n_runs = max(1, int(n_runs))
+
+    try:
+        start = time.time()
+        runs = []
+        for _ in range(n_runs):
+            runs.append(await _grade_once(pb_taskroot, paper_md, repo, reproduce_log, chosen_model))
+        if n_runs == 1:
+            agg = aggregate_graded_tree(runs[0])
+        else:
+            agg = average_graded_runs(runs)
+
+        out = {
+            "rubric_sha256": rubric.get("rubric_sha256"),
+            "ors_score": agg["ors_score"],
+            "raw_score": agg["raw_score"],
+            "leaf_grades": agg["leaf_grades"],
+            "judge_model": chosen_model,
+            "n_runs": n_runs,
+            "elapsed_sec": round(time.time() - start, 2),
+        }
+        if degraded_reason:
+            out["degraded"] = True
+            out["degraded_reason"] = degraded_reason
+        if not skip_negative_control:
+            out["negative_control_check"] = await _negative_control_check(
+                pb_taskroot, paper_md, chosen_model,
+            )
+        return out
+    finally:
+        if _empty_submission_dir is not None:
+            _empty_submission_dir.cleanup()
+
+
+def _strip_to_paperbench_format(rubric: dict) -> dict:
+    """Local copy of ari-skill-replicate.manifest.to_paperbench_format.
+
+    Avoids a hard import from ari-skill-paper-re into ari-skill-replicate
+    (each skill ships independently). The two implementations MUST stay in sync.
+    """
+    KEEP = {"id", "requirements", "weight", "sub_tasks",
+            "task_category", "finegrained_task_category"}
+
+    def strip(node: dict) -> dict:
+        out: dict = {k: v for k, v in node.items() if k in KEEP}
+        out["weight"] = int(node.get("weight", 1))
+        out["sub_tasks"] = [strip(c) for c in (node.get("sub_tasks") or [])]
+        return out
+
+    root = rubric.get("rubric")
+    if not isinstance(root, dict):
+        raise ValueError("Rubric envelope missing 'rubric' root TaskNode")
+    return strip(root)
 
 
 def main() -> None:

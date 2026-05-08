@@ -13,6 +13,15 @@ resources:
   timeout_minutes: 60
   executor: slurm
 author_name: Artificial Research Intelligence
+plan_promote: index_only
+lineage_decision:
+  mode: stagnation_rule
+  stagnation_window: 5
+  stagnation_threshold: 0.05
+  min_nodes_before_decision: 3
+  rate_limit_per_run: 5
+root_idea_selection:
+  enabled: true
 bfts_pipeline:
 - stage: generate_idea
   skill: idea-skill
@@ -78,6 +87,8 @@ pipeline:
   phase: paper
   inputs:
     nodes_json_path: '{{checkpoint_dir}}/tree.json'
+    primary_metric: '{{primary_metric}}'
+    higher_is_better: '{{higher_is_better}}'
   outputs:
     file: '{{checkpoint_dir}}/science_data.json'
 - stage: generate_ear
@@ -92,6 +103,22 @@ pipeline:
     checkpoint_dir: '{{checkpoint_dir}}'
   outputs:
     file: '{{checkpoint_dir}}/ear_manifest.json'
+- stage: ear_curate
+  skill: transform-skill
+  tool: curate_ear
+  description: Curate {checkpoint}/ear/ into {checkpoint}/ear_published/ via publish.yaml.
+    Skips silently if publish.yaml is absent (back-compat for v0.6.0 checkpoints).
+    The MCP tool itself writes ear_published/manifest.lock; the workflow output here
+    is a small status JSON so pipeline writes never collide with the real manifest
+    (which is the trust anchor baked into the paper).
+  depends_on:
+  - generate_ear
+  enabled: true
+  phase: paper
+  inputs:
+    checkpoint_dir: '{{checkpoint_dir}}'
+  outputs:
+    file: '{{checkpoint_dir}}/ear_curate.status.json'
 - stage: generate_figures
   skill: plot-skill
   tool: generate_figures_llm
@@ -112,10 +139,10 @@ pipeline:
 - stage: vlm_review_figures
   skill: vlm-skill
   tool: review_figures_all
-  description: VLM-based visual review of every figure in figures_manifest.json.
-    Aggregate score = min across figures, so a single weak figure trips loop_back
-    and forces regeneration. issues/suggestions are prefixed with [fig_id] so the
-    plot-skill regenerator knows which figure to fix.
+  description: VLM-based visual review of every figure in figures_manifest.json. Aggregate
+    score = min across figures, so a single weak figure trips loop_back and forces
+    regeneration. issues/suggestions are prefixed with [fig_id] so the plot-skill
+    regenerator knows which figure to fix.
   depends_on:
   - generate_figures
   enabled: true
@@ -152,6 +179,43 @@ pipeline:
     file: '{{checkpoint_dir}}/full_paper.tex'
     bib_file: '{{checkpoint_dir}}/refs.bib'
   skip_if_exists: '{{checkpoint_dir}}/full_paper.tex'
+- stage: ear_publish
+  description: Package the curated EAR into a local tarball + publish_record.json
+    so the ORS sandbox can fetch it via fetch_code_bundle. Default backend is local-tarball
+    (zero deps, lives next to the checkpoint); switch to ari-registry / zenodo / gh
+    to publish externally. Always visibility=staged.
+  skill: transform-skill
+  tool: publish_ear
+  depends_on:
+  - ear_curate
+  enabled: true
+  phase: paper
+  inputs:
+    checkpoint_dir: '{{checkpoint_dir}}'
+    backend: local-tarball
+    visibility: staged
+    dry_run: false
+  outputs:
+    file: '{{checkpoint_dir}}/publish_record.json'
+- stage: finalize_paper
+  skill: paper-skill
+  tool: inject_code_availability
+  description: Inject the Code Availability section + machine-readable \codeavailability/\codedigest/\coderef
+    macros into full_paper.tex. Skips silently when no curated bundle is available
+    (publish.yaml absent or curate skipped). The injector auto-loads ref/sha/doi from
+    ear_published/manifest.lock and publish_record.json so the workflow does not need
+    to thread these values stage-to-stage.
+  depends_on:
+  - write_paper
+  - ear_curate
+  - ear_publish
+  enabled: true
+  phase: paper
+  inputs:
+    tex_path: '{{checkpoint_dir}}/full_paper.tex'
+    checkpoint_dir: '{{checkpoint_dir}}'
+  outputs:
+    file: '{{checkpoint_dir}}/finalize_paper.json'
 - stage: review_paper
   skill: paper-skill
   tool: review_compiled_paper
@@ -190,66 +254,117 @@ pipeline:
     review_report_path: '{{checkpoint_dir}}/review_report.json'
     vlm_review_path: '{{checkpoint_dir}}/vlm_review.json'
   outputs:
-    # The tool updates review_report.json in-place; outputs.file MUST point
-    # elsewhere or the runner's tool-result writeback will clobber the merged
-    # report with the tool's summary dict.
     file: '{{checkpoint_dir}}/review_merge_log.json'
-- stage: reproducibility_check
-  skill: paper-re-skill
-  pre_tool: extract_repro_config
-  post_tool: build_repro_report
-  description: 'ReAct reproducibility: paper-re extracts claimed value -> react_driver
-    runs MCP-whitelisted ReAct -> paper-re builds verdict'
+- stage: ors_generate_rubric
+  skill: replicate-skill
+  tool: generate_rubric
+  description: Auto-generate a PaperBench-format rubric from the final paper. The
+    tool writes the full rubric envelope to `output_path` (ors_rubric.json); `outputs.file`
+    records the metadata return dict separately so the envelope is not overwritten.
   depends_on:
   - write_paper
   enabled: true
   phase: paper
-  react:
-    agent_phase: reproduce
-    max_steps: 40
-    final_tool: report_metric
-    sandbox: '{{checkpoint_dir}}/repro_sandbox'
-    system_prompt: "You are a reproducibility engineer verifying a scientific paper's\n\
-      experimental claims. Your task: independently reproduce the reported\nresult\
-      \ using ONLY the paper text.\n\nWORKFLOW:\n1. ANALYZE the paper. Identify the\
-      \ exact algorithm, all parameters,\n   environment configuration, and the EXACT\
-      \ parameters that produced\n   the target metric value (the paper may describe\
-      \ multiple\n   configurations; use only those matching the claimed number).\n\
-      2. CHECK the execution environment (CPU architecture, compiler\n   version,\
-      \ available resources).\n3. IMPLEMENT the source code faithfully; replicate\
-      \ pseudocode\n   structure and all optimizations/preprocessing described.\n\
-      4. COMPILE and run a SMALL-SCALE correctness test.\n5. RUN the full-scale benchmark\
-      \ with the paper's exact parameters.\n6. DIAGNOSE deviations >20%: profile,\
-      \ compare against the paper,\n   experiment with stated settings, fix, re-run.\n\
-      7. Call report_metric(value=...) with the final reliable measurement.\n\nCRITICAL\
-      \ RULES:\n- Reproduce the paper's algorithm faithfully — do NOT 'improve' it.\n\
-      - Report ONLY values from actual measurements, never fabricated numbers.\n-\
-      \ Write ALL files under the sandbox work directory: {{sandbox}}\n- Do NOT read\
-      \ files from the checkpoint directory other than the\n  paper text itself. You\
-      \ have NO access to prior experiment artifacts.\n\nTarget: reproduce {{pre.metric_name}}\
-      \ = {{pre.claimed_value}}\nExperimental parameters from the paper: {{pre.description}}\n"
-    user_prompt: 'Paper text (truncated if long):
-
-      {{paper_text}}
-
-
-      Target: reproduce {{pre.metric_name}} = {{pre.claimed_value}}
-
-      Description from paper: {{pre.description}}
-
-
-      Begin now. Analyze the methodology, check the environment, implement
-
-      the code, run the experiment, and call report_metric with the result.
-
-      '
   inputs:
     paper_path: '{{checkpoint_dir}}/full_paper.tex'
-    paper_text_from: full_paper.tex
-    tolerance_pct: 5.0
+    output_path: '{{checkpoint_dir}}/ors_rubric.json'
+    target_leaf_count: 0
   outputs:
-    file: '{{checkpoint_dir}}/reproducibility_report.json'
-  tool: ''
+    file: '{{checkpoint_dir}}/ors_rubric.meta.json'
+- stage: ors_seed_sandbox
+  skill: paper-re-skill
+  tool: fetch_code_bundle
+  description: Seed repro_sandbox/ from the curated EAR bundle published by ear_publish
+    (file:// local-tarball by default). When ear is OFF or ear_publish skipped, publish_record.json
+    is absent and this stage no-ops so the next stage (ors_build_reproduce) drives
+    the LLM-only fallback.
+  depends_on:
+  - ear_publish
+  enabled: true
+  phase: paper
+  inputs:
+    checkpoint_dir: '{{checkpoint_dir}}'
+    dest: '{{checkpoint_dir}}/repro_sandbox'
+  outputs:
+    file: '{{checkpoint_dir}}/ors_seed.json'
+- stage: ors_build_reproduce
+  skill: paper-re-skill
+  tool: build_reproduce_sh
+  description: Replicator — drive PaperBench's BasicAgent / IterativeAgent (vendored
+    under ari-skill-paper-re/vendor/paperbench) against the workspace at repro_sandbox/.
+    The agent reads the paper and the rubric's expected_artifacts and writes
+    reproduce.sh + supporting source by repeatedly invoking bash/python tools until
+    submit (or time_limit_sec). v0.7+ replaced the v0.6 single-shot LLM replicator;
+    see CHANGELOG. Skipped automatically when reproduce.sh is already present.
+  depends_on:
+  - ors_generate_rubric
+  - ors_seed_sandbox
+  - finalize_paper
+  enabled: true
+  phase: paper
+  inputs:
+    paper_path: '{{checkpoint_dir}}/full_paper.tex'
+    rubric_path: '{{checkpoint_dir}}/ors_rubric.json'
+    output_dir: '{{checkpoint_dir}}/repro_sandbox'
+    # Replicator agent parameters. Empty strings / 0 trigger the MCP tool's
+    # built-in defaults (see ari-skill-paper-re/src/server.py::build_reproduce_sh)
+    # which read ARI_REPLICATOR_* env vars set by api_experiment.py from
+    # the wizard / launch_config.json.
+    model: ''
+    time_limit_sec: 0
+    iterative_agent: false
+    max_steps: 0
+    sandbox_kind: auto
+    apptainer_image: ''
+    overwrite: false
+  outputs:
+    file: '{{checkpoint_dir}}/ors_replicator.json'
+- stage: ors_run_reproduce
+  skill: paper-re-skill
+  tool: run_reproduce
+  description: Phase 1 — execute reproduce.sh in the configured sandbox. Auto sandbox
+    priority slurm > docker > apptainer > singularity > local. sandbox_kind=slurm
+    fires when sbatch is on PATH and ARI_SLURM_PARTITION is set (i.e. the same partition
+    BFTS used). partition / cpus / walltime blank → run_reproduce resolves from ARI_SLURM_*
+    env then from launch_config.json. ARI_PHASE1_SANDBOX overrides everything.
+  depends_on:
+  - ors_generate_rubric
+  - ors_build_reproduce
+  enabled: true
+  phase: paper
+  inputs:
+    rubric_path: '{{checkpoint_dir}}/ors_rubric.json'
+    repo_dir: '{{checkpoint_dir}}/repro_sandbox'
+    sandbox_kind: ''
+    timeout_global_sec: 0
+    partition: ''
+    cpus: 0
+    walltime: ''
+  outputs:
+    file: '{{checkpoint_dir}}/ors_phase1.json'
+- stage: ors_grade
+  skill: paper-re-skill
+  tool: grade_with_simplejudge
+  description: Phase 2 — score the post-reproduce submission with PaperBench SimpleJudge.
+    Main per-leaf judge runs through LiteLLM, so judge_model accepts any provider
+    LiteLLM understands (gpt-5-mini, anthropic/claude-..., gemini/..., ollama/...).
+    n_runs default is 1 to match PaperBench paper §4.1 (single-pass judging);
+    increase for variance reduction at the cost of grading API spend.
+  depends_on:
+  - ors_run_reproduce
+  enabled: true
+  phase: paper
+  inputs:
+    rubric_path: '{{checkpoint_dir}}/ors_rubric.json'
+    repo_dir: '{{checkpoint_dir}}/repro_sandbox'
+    paper_path: '{{checkpoint_dir}}/full_paper.tex'
+    # n_runs / judge_model: 0 / empty triggers the MCP tool's default
+    # (read from ARI_JUDGE_N_RUNS / ARI_MODEL_JUDGE env vars set by
+    # api_experiment.py from the wizard); paper §4.1 single-pass = 1.
+    n_runs: 0
+    judge_model: ''
+  outputs:
+    file: '{{checkpoint_dir}}/ors_grade.json'
 skills:
 - description: DuckDuckGo / arXiv search (deterministic, no LLM)
   name: web-skill
@@ -268,6 +383,10 @@ skills:
 - description: Reproducibility check against experiment nodes
   name: paper-re-skill
   path: '{{ari_root}}/ari-skill-paper-re'
+  phase: paper
+- description: PaperBench-format auto-rubric generator (ORS Phase 0)
+  name: replicate-skill
+  path: '{{ari_root}}/ari-skill-replicate'
   phase: paper
 - description: Persistent key-value memory for experiment context
   name: memory-skill

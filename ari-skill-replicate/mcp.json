@@ -1,0 +1,11 @@
+{
+  "name": "ari-skill-replicate",
+  "version": "0.1.0",
+  "description": "Auto-generates and audits PaperBench-compatible reproducibility rubrics from papers.",
+  "tools": [
+    "generate_rubric",
+    "audit_rubric"
+  ],
+  "runtime": "python",
+  "entrypoint": "src/server.py"
+}

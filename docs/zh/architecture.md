@@ -111,6 +111,35 @@ BFTS expand() (ari/orchestrator/bfts.py)
   - 将分数传递给子节点提议 LLM
   - LLM 每次扩展调用提议 1 个子方向（改进 / 消融 / 验证 / 草稿 / 调试 / 其他）
   - 无领域提示 — LLM 决定"改进"的含义
+  - v0.7.0：当父节点存在 node_report.json 时，提示词中加入 delta_vs_parent /
+    self_assessment.concerns / next_steps_hints 与 files added/modified；同辈
+    去重通过 filter_nodes(for_synthesis) 过滤后，连带列出每个 sibling 的
+    files_changed.added，避免提议会写相同文件的方向。
+
+每节点自报告 (v0.7.0)
+  ari-core/ari/orchestrator/node_report.py 在 mark_success / mark_failed 时
+  生成 node_report.json，记录：
+    - files_changed (added / modified / deleted / inherited_unchanged) —
+      由父子 work_dir 的 sha256 diff 推导
+    - original_direction (bfts.expand 在创建子节点时保存，evaluator 不会覆写)
+    - self_assessment.{succeeded, headline, concerns} — 根据 evaluator
+      的 axis_rationales 派生（axis_score < 0.4 → concerns，0.4..0.7 →
+      next_steps_hints，≥0.7 → 不暴露）
+    - build_command / run_command — 从 work_dir 中的 run_job.sh / Makefile grep
+    - artifacts[].role — 按扩展名确定性分类
+    - migration_source ("fresh" 或 "auto")
+  PathManager.META_FILES 包含 node_report.json，确保父→子物理 work_dir 复制
+  不会让子节点继承父节点的报告。
+
+公共选择助手 (v0.7.0)
+  ari-core/ari/orchestrator/node_selection.py:
+    - filter_nodes：「该节点是否传给下游」的单一实现，3 种 criteria
+      (for_synthesis / for_code / for_narrative)；always_include_node_ids 让
+      best 节点必通过；丢弃成功节点 >50% 时输出 warning。
+    - select_source_files_for_publication：纯元数据文件级选择（无 I/O）；
+      transform_data 与 generate_ear 共享同一 selection（FR-SS-5 契约测试固化）。
+    - load_selected_sources(size_budget)：负责文件 I/O；transform 用 16KB cap，
+      generate_ear 不限。
     │
     ▼ (达到 ARI_MAX_NODES 后)
 nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
@@ -140,8 +169,19 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
     输出：vlm_figure_review.json
 
   阶段 4：generate_ear  (ari-skill-transform)  [在阶段 1 之后]
-    构建 Experiment Artifact Repository：代码、数据、日志、可重现性元数据
-    输出：ear_manifest.json、ear/ 目录
+    以 node_report 驱动的确定性 ear/ 构建。
+      - code/ = best 链中 contributing 节点的 files_changed.added/modified 的 union（verbatim）
+      - data/ = checkpoint/uploads/ 的 verbatim 镜像（仅输入；实验输出不打包）
+      - figures/ = checkpoint 根下 *.{pdf,png,svg,jpg,jpeg} 置于顶层
+      - README.md / reproduce.sh — 由 node_reports 确定性渲染
+      - LICENSE — 由 publish.yaml::license SPDX 模板生成（MIT / Apache-2.0 / BSD-3-Clause / GPL-3.0 / CC-BY-4.0）
+    EVOLUTION.md 和 _provenance.json 作为 ARI 审计日志写入 checkpoint 根目录
+    （ear/ 之外），不会被打包进发布产物。
+    transform_data 与 generate_ear 共享同一 select_source_files_for_publication，
+    确保 LLM 看到的源字节与 ear/code/ 发布的字节完全一致。ARI 内部元数据
+    （tree.json、science_data.json、raw_metrics.json 等）不会进入 ear/。
+    输出：ear_manifest.json、ear/ 目录、checkpoint/EVOLUTION.md、
+          checkpoint/_provenance.json
 
   阶段 5：write_paper  (ari-skill-paper)  [在阶段 2、3、4 之后]
     paper_context = experiment_context + best_nodes_metrics
@@ -156,18 +196,74 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
     输出：review_report.json { score, verdict, citation_ok, feedback,
           ensemble_reviews[] (N>1), meta_review{} (N>1) }
 
-  阶段 7：reproducibility_check  (ari-skill-paper-re + react_driver)  [在阶段 5 之后]
-    pre_tool  (paper-re.extract_repro_config)
-        从论文抽取作者宣传的结果
-        { metric_name, claimed_value, description, threads }
-    react_driver  (ari-core/ari/agent/react_driver.py)
-        只驱动 phase=reproduce 已加入的 MCP 技能 (web / vlm / hpc / coding)
-        构成的 ReAct 循环。memory-skill / transform-skill / evaluator-skill
-        被刻意排除，智能体无法访问 BFTS 阶段的产物 (nodes_tree.json、
-        祖先记忆等)。沙箱限定在 {{checkpoint_dir}}/repro_sandbox 内。
-    post_tool (paper-re.build_repro_report)
-        比较实测值与声称值，输出裁决和解释。
-    输出：reproducibility_report.json { verdict, claimed, actual, tolerance_pct }
+  阶段 7：ear_curate  (ari-skill-transform: curate_ear)  [在阶段 4 之后, v0.7.0]
+    依据 {checkpoint}/ear/publish.yaml 的 allowlist 与内置 deny list
+    (.env*, secrets/**, *.pem, *.key, id_rsa, id_ed25519) 构建
+    {checkpoint}/ear_published/ + manifest.lock；bundle_sha256 是
+    正规化 {path,sha256,size} JSON 的 sha256，跨机器确定。
+    publish.yaml 缺失时静默跳过。
+
+  阶段 8：finalize_paper  (ari-skill-paper: inject_code_availability)  [在阶段 5+7 之后, v0.7.0]
+    从 ear_published/manifest.lock + publish_record.json 自动加载
+    ref / sha / doi，将机器可读的 \codeavailability{} / \codedigest{}
+    / \coderef{} 宏与人类可读的 Code Availability 章节注入
+    full_paper.tex。digest 是信任锚点，读者无需信任 registry，即可用
+    `ari clone <ref> --expect-sha256 <baked-digest>` 进行验证。
+
+  阶段 9：ear_publish  (ari-skill-transform: publish_ear)  [在阶段 7 之后, 可选]
+    从 ear_published/ 构建可复现 tarball，并发布到 backend
+    (ari-registry / local-tarball / gh / zenodo)。首发布始终
+    visibility=staged (FR-P5)。默认禁用，可通过 workflow.yaml 中
+    `enabled: true` 或运行参数 publish=true 启用。
+    输出：publish_record.json
+
+  阶段 10：review_paper / merge_reviews  (ari-skill-paper)  [在阶段 5+3b 之后]
+    review_paper 仅评审论文文本 (不传入 VLM 输出与 figure manifest，
+    与 AI Scientist v2 perform_review 契约一致)；merge_reviews
+    将 review_report.json 与 vlm_review.json 做结构合并 (无 LLM)。
+    输出：review_report.json (附 vlm_figure_review)
+
+  阶段 11：ors_generate_rubric  (ari-skill-replicate)  [在阶段 5 之后, v0.7.0]
+    从最终论文自动生成 PaperBench 形式 (TaskNode 树) rubric。
+    task_category 与 finegrained_task_category 锁定到 PaperBench 封闭
+    词汇 (LLM 越界由确定性归一化器纠正)；JSON 输出时清洗游离 LaTeX
+    backslash escape。
+    输出：ors_rubric.json + ors_rubric.meta.json
+
+  阶段 12：ors_seed_sandbox  (ari-skill-paper-re: fetch_code_bundle)  [v0.7.0]
+    从策展过的 EAR bundle 确定性播种到 repro_sandbox/ (无 LLM)。
+    从 publish_record.json 自动加载 ref + sha256 (本字段由 ear_publish 写入)。
+    EAR 关闭时 publish_record.json 不存在，本阶段 no-op，让下一阶段的
+    LLM 回退接管。
+    输出：ors_seed.json
+
+  阶段 13：ors_build_reproduce  (ari-skill-paper-re: build_reproduce_sh)  [v0.7.0]
+    LLM 驱动 replicator：读取论文 + rubric 的 expected_artifacts，
+    将自包含 reproduce.sh + 源文件写入沙箱。reproduce.sh 已存在则跳过
+    (放在 ors_seed_sandbox 之后即可在 EAR 开启时不触发)。LiteLLM 路由，
+    供应商无关 (gpt-5-mini / anthropic/claude-... / gemini/... / ollama/...)。
+    输出：ors_replicator.json + repro_sandbox/{reproduce.sh, source...}
+
+  阶段 14：ors_run_reproduce  (ari-skill-paper-re: run_reproduce)  [在阶段 13 之后, v0.7.0]
+    Phase 1。在沙箱中执行 reproduce.sh：
+      slurm (sbatch + ARI_SLURM_PARTITION 存在 = BFTS 同 partition)
+      → docker (守护可用且非 HPC) → apptainer → singularity → local。
+      可用 ARI_PHASE1_SANDBOX 覆盖。
+    SLURM 路径使用 sbatch --wait 与 spool relocation 包装器
+    (.slurm_wrap.sh，通过绝对路径 exec reproduce.sh 以保护 $0 相对 cd)。
+    捕获 reproduce.log，并对照 rubric 中的 expected_artifacts。
+    输出：ors_phase1.json { executed, exit_code, log_path,
+                             artifacts, missing, sandbox_kind,
+                             [partition, cpus, walltime] }
+
+  阶段 15：ors_grade  (ari-skill-paper-re: grade_with_simplejudge)  [在阶段 14 之后, v0.7.0]
+    Phase 2。主评分 completer 通过 LiteLLM 路由 (任意供应商；绕过
+    PaperBench 原生 CONTEXT_WINDOW_LENGTHS 约束)，structured score-parser
+    仍使用 gpt-4o-2024-08-06。N 次 (默认 3) 加权聚合 + negative control
+    (两者均需 < 5%)。
+    输出：ors_grade.json { ors_score, raw_score, leaf_grades,
+                          judge_model, n_runs, rubric_sha256,
+                          negative_control: {empty, boilerplate, passed} }
 ```
 
 ---
@@ -302,11 +398,12 @@ API 密钥 **绝不** 存储在 `settings.json` 中。它们从 `.env` 文件
 | `ari-skill-memory` | `add_memory`、`search_memory`、`get_node_memory`、`clear_node_memory`、`get_experiment_context` | 祖先作用域的节点记忆（Letta 后端） | △ |
 | `ari-skill-idea` | `survey`、`generate_ideas` | 文献搜索（Semantic Scholar）+ VirSci 多智能体假设生成 | ✓ |
 | `ari-skill-evaluator` | `make_metric_spec` | 从实验文件提取指标规格 | △ |
-| `ari-skill-transform` | `nodes_to_science_data` | BFTS 树 → 面向科学的数据（剥离内部字段） | ✓ |
+| `ari-skill-transform` | `nodes_to_science_data`、`generate_ear`、`curate_ear`、`publish_ear` | BFTS 树 → 科学数据 + EAR + curate/publish 生命周期 (v0.7.0) | ✓ |
 | `ari-skill-web` | `web_search`、`fetch_url`、`search_arxiv`、`search_semantic_scholar`、`collect_references_iterative` | 网络搜索、arXiv、Semantic Scholar、迭代式引用收集 | △ |
 | `ari-skill-plot` | `generate_figures`、`generate_figures_llm` | 确定性 + LLM 图表生成（按图通过 `kind` 字段选择 matplotlib 绘图或 SVG 图） | ✓ |
-| `ari-skill-paper` | `list_venues`、`get_template`、`generate_section`、`compile_paper`、`check_format`、`review_section`、`revise_section`、`write_paper_iterative`、`review_compiled_paper`、`list_rubrics` | LaTeX 论文撰写、编译、基于评审规范的同行评审 (兼容 AI Scientist v1/v2)。`review_compiled_paper` 通过集成路径运行 N 名独立审稿人；当 N>1 时还会在内部运行 Area Chair 元审稿。 | ✓ |
-| `ari-skill-paper-re` | `extract_repro_config`、`build_repro_report`、`extract_metric_from_output` | 可复现性 ReAct 的确定性 pre/post 端点 (循环本体位于 `ari-core/ari/agent/react_driver.py`) | ✓ |
+| `ari-skill-paper` | `list_venues`、`get_template`、`generate_section`、`compile_paper`、`check_format`、`review_section`、`revise_section`、`write_paper_iterative`、`review_compiled_paper`、`list_rubrics`、`inject_code_availability`、`merge_reviews` | LaTeX 论文撰写、编译、基于评审规范的同行评审 (兼容 AI Scientist v1/v2)。v0.7.0：`inject_code_availability` 注入 `\codeavailability{}` / `\codedigest{}` / `\coderef{}` 宏；`merge_reviews` 事后合并文本评审与 VLM 评审 JSON。 | ✓ |
+| `ari-skill-paper-re` | `fetch_code_bundle`、`run_reproduce`、`grade_with_simplejudge` | PaperBench 形式可复现性 (v0.7.0)：通过 `ari.clone` 预填沙箱、Phase 1 沙箱 runner、Phase 2 PaperBench SimpleJudge 评分。PaperBench 同捆于 `vendor/paperbench`。 | ✓ |
+| `ari-skill-replicate` | `generate_rubric`、`audit_rubric` | PaperBench 形式自动 rubric 生成与审计 (v0.7.0)。驱动 ORS 可复现性流。 | ✓ |
 | `ari-skill-benchmark` | `analyze_results`、`plot`、`statistical_test` | CSV/JSON/NPY 分析、绘图、scipy 统计（BFTS analyze 阶段使用） | ✗ |
 | `ari-skill-vlm` | `review_figure`、`review_table` | VLM 驱动的图表/表格审查（驱动 VLM 审查循环） | ✓ |
 | `ari-skill-coding` | `write_code`、`run_code`、`read_file`、`run_bash` | 代码生成 + 执行 + 分页文件读取 | ✗ |
@@ -317,7 +414,7 @@ API 密钥 **绝不** 存储在 `settings.json` 中。它们从 `.env` 文件
 |------|------|------|------|
 | `ari-skill-orchestrator` | `run_experiment`、`get_status`、`list_runs`、`list_children`、`get_paper` | 将 ARI 作为 MCP 服务器暴露，递归子实验，双 stdio+HTTP 传输 | ✗ |
 
-✗ = 无 LLM、△ = 仅部分工具使用 LLM、✓ = 主要工具使用 LLM。13 个技能（12 默认，1 附加）。
+✗ = 无 LLM、△ = 仅部分工具使用 LLM、✓ = 主要工具使用 LLM。**共 14 个技能**（13 默认，1 附加）— v0.7.0 新增 `ari-skill-replicate`。
 
 ---
 
@@ -379,9 +476,59 @@ def bfts(experiment, config):
 
 ---
 
+## 发布生命周期 (v0.7.0)
+
+ARI v0.7.0 把 EAR 从「整盘塞入 ear/」演进为 **digest 锚定的发布链**。作者只需写一个简短的 `ear/publish.yaml`，digest 计算与传输由 ari-core 处理。digest 烧录于论文 (`\codedigest{...}`)，即使发布托管的 registry 消失，任何地方依然可以验证。
+
+```
+generate_ear ──▶ {checkpoint}/ear/                 (作者完整 repo)
+                  + ear/publish.yaml               (allowlist + license/visibility)
+        │
+        ▼ ear_curate (transform-skill)
+        ▼
+{checkpoint}/ear_published/  +  manifest.lock      ({path,sha256,size} 正规化 JSON 的 sha256)
+        │
+        ▼ ear_publish (transform-skill, 可选)
+        ▼
+backend.publish ──▶ ari-registry / gh / zenodo / local-tarball
+        │
+        ▼ 写入 publish_record.json
+        │
+        ▼ finalize_paper (paper-skill: inject_code_availability)
+        ▼
+full_paper.tex 注入 \codeavailability{} \codedigest{} \coderef{}
+        │
+        ▼ ari clone <ref> --expect-sha256 <baked digest>
+        ▼
+读者本机：bundle 字节经 digest 校验，无任何代码执行
+```
+
+### `ari clone` resolvers
+
+| Scheme | 解析 | 备注 |
+|--------|------|------|
+| `file://<path>` | 本地文件/目录 | 离线 / 镜像 |
+| `https://<url>` / `http://<url>` | tarball 下载 | 任意 HTTPS host |
+| `ari://<id>` | ari-registry 客户端 | 从 `~/.ari/registries.yaml` 读取 endpoint/token |
+| `gh:<user>/<repo>` | GitHub repo / release | API + tarball |
+| `doi:<doi>` | Zenodo deposition | DOI → 文件列表 → bundle |
+
+### `ari registry`（可选自托管）
+
+`ari/registry/` 中的极简 FastAPI 服务。SQLite token store，`${ARI_REGISTRY_DATA}/artifacts/<id>/{bundle.tar.gz, manifest.lock, meta.json}` 内容寻址存储。可见性单调可升 `staged` → `unlisted` / `public`（降级被拒）。部署方式：uvicorn (laptop)、docker-compose (production)、Apptainer (HPC)。详见 [docs/registry.md](registry.md)。
+
+### 可复现性沙箱补强
+
+- **`_run_env.json`** — `ari/agent/run_env.py` 在每个 work_dir 内（在执行进程内部）写入 hostname / SLURM job/partition/nodelist / CPU model/threads/MHz/arch / mem_total / 编译器版本，使 SLURM 作业（运行节点与代理不同）也能保留准确的硬件元数据。`node_report` builder 据此丰富报告，下游阶段（论文、可复现性）可以复原 "在 sx40 partition、hostname X、Intel Xeon …上运行" 的事实，不必从空的 artefact 中猜测。
+- **Git shim** (`ari/agent/shims/git.sh`) — 通过 `PATH=<sandbox>/.shims:<orig_path>` 接入可复现性沙箱。仅拦截与论文 `code_availability_ref` 匹配的 `git clone` URL；其余命令透传给真实 git。所有 clone 尝试记录到 `<sandbox>/repro_clone_log.jsonl`。可通过 `ARI_REPRO_CLONE_POLICY=passthrough|deny|warn` 切换行为。
+
+---
+
 ## 流水线驱动的 ReAct (react_driver)
 
-BFTS 自带的 ReAct 循环(`ari.agent.AgentLoop`，与 `Node` 树紧耦合)之外，还有一个轻量 ReAct 驱动 `ari.agent.react_driver.run_react`，面向无需 BFTS 上下文的 ReAct 智能体。当 stage 声明 `react:` 块时，由 `ari.pipeline._run_react_stage` 调用；目前被 `reproducibility_check` 使用。
+BFTS 自带的 ReAct 循环(`ari.agent.AgentLoop`，与 `Node` 树紧耦合)之外，还有一个轻量 ReAct 驱动 `ari.agent.react_driver.run_react`，面向无需 BFTS 上下文的 ReAct 智能体。当 stage 声明 `react:` 块时，由 `ari.pipeline._run_react_stage` 调用。
+
+**v0.7.0**: `reproducibility_check` 不再使用 `react_driver`。PaperBench 形式流（`ors_generate_rubric` → `ors_run_reproduce` → `ors_grade`）以确定性 Phase 1 沙箱 runner + Phase 2 SimpleJudge 评分（`ari-skill-paper-re`）取代之。`react_driver` 仍保留在代码中以便将来通过 `react:` 块接入新的 stage，但默认 `workflow.yaml` 不再连接它。
 
 ```
 pipeline.py ──▶ pre_tool (MCP)  → 声称的配置
@@ -414,8 +561,7 @@ root ──▶ memory["root"]
   └─ node_B  (仅读取 root，不读取 node_A 分支)
 ```
 
-`search_memory` 查询 = 节点自身的 `eval_summary` 文本（而非领域关键词）。
-这确保了检索到的记忆与当前节点的工作在语义上相关。
+`search_memory` 以 `query = node.eval_summary` 调用。在 Letta 0.16.7 上，本技能调用 `passages.search`（`GET /archival-memory/search`，`embed_query=True`），以 `top_k = max(letta_overfetch, limit*40)` 拉取，再按 `ancestor_ids` / `ari_checkpoint` / `kind == "node_scope"` 做本地 post-filter。**服务端返回的 embedding 排序得以保留**，子节点按其查询的语义相关度从高到低看到祖先条目。被刻意避开的 `passages.list(search=q)` 路由实际上是 SQL substring filter（`LOWER(text) LIKE LOWER(%q%)`），长的自然语言查询无法与 `RESULT SUMMARY metrics=[...]` 这类结构化条目子串匹配，会静默返回 0 条 —— 详见 `ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py` 的 live verification。
 
 ### v0.6.0：基于 Letta
 
@@ -584,7 +730,7 @@ search_memory(
 | `goal_text` | 1500 字符 | `loop.py:469-474` |
 | Survey 结果记忆条目 | 前 5 篇论文，每篇 abstract 200 字符 | `loop.py:830-833` |
 | 先验知识查询 | 200 字符 | `loop.py:528` |
-| 先验知识条目 | relevance 前 5 名 | `loop.py:532` |
+| 先验知识条目 | 按 Letta `passages.search` 嵌入排序前 5 条 | `loop.py:532`（见 Memory Architecture 节）|
 | 先验知识拼接 | 800 字符 | `loop.py:545` |
 
 ### 故意 **不注入** 的信息

@@ -38,3 +38,10 @@ httpx>=0.25
 beautifulsoup4>=4.12
 arxiv>=2.0
 nest-asyncio
+
+# --- v0.7.0: ari-registry server (optional; only needed if you run
+#     `ari registry serve`). The publish backend uses urllib so these are
+#     not required for `ari ear publish` / `ari clone`.
+fastapi>=0.110
+uvicorn[standard]>=0.27
+python-multipart>=0.0.9

@@ -31,7 +31,7 @@ log = logging.getLogger(__name__)
 
 
 from . import state as _st
-from .api_state import _load_nodes_tree, _broadcast, _do_broadcast, _api_models, _api_checkpoints, _api_checkpoint_summary, _api_delete_checkpoint, _api_switch_checkpoint, _api_ear, _watcher_thread, _api_checkpoint_files, _api_checkpoint_file_read, _api_checkpoint_file_save, _api_checkpoint_file_upload, _api_checkpoint_file_delete, _api_checkpoint_compile, _resolve_paper_file, _api_checkpoint_filetree, _api_checkpoint_filecontent, _api_checkpoint_memory, _resolve_checkpoint_dir
+from .api_state import _load_nodes_tree, _broadcast, _do_broadcast, _api_models, _api_checkpoints, _api_checkpoint_summary, _api_delete_checkpoint, _api_switch_checkpoint, _api_ear, _watcher_thread, _api_checkpoint_files, _api_checkpoint_file_read, _api_checkpoint_file_save, _api_checkpoint_file_upload, _api_checkpoint_file_delete, _api_checkpoint_compile, _resolve_paper_file, _api_checkpoint_filetree, _api_checkpoint_filecontent, _api_checkpoint_memory, _resolve_checkpoint_dir, _api_lineage_decisions
 from .api_memory import _api_memory_access
 from .api_settings import _api_get_env_keys, _api_save_env_key, _api_get_settings, _api_save_settings, _api_get_workflow, _api_save_workflow, _api_skill_detail, _api_skills, _api_profiles, _api_detect_scheduler, _api_rubrics
 from .api_workflow import _api_get_workflow_flow, _api_save_workflow_flow, _api_get_default_workflow, _api_save_skill_phases, _api_save_disabled_tools
@@ -659,6 +659,14 @@ class _Handler(BaseHTTPRequestHandler):
                         data["experiment_context"] = sci.get("experiment_context", {})
                         confs = sci.get("configurations", [])
                         if confs:
+                            # best_nodes mirrors configurations[:3] verbatim —
+                            # including the typed split fields (parameters /
+                            # measurements / predictions / scores / _typed_source)
+                            # when nodes_to_science_data populated them. Frontend
+                            # consumers can render parameters as the experiment
+                            # configuration and measurements as the headline
+                            # numbers without re-classifying the flat metrics
+                            # bag themselves.
                             data["best_nodes"] = confs[:3]
                             # Collect all unique metric keys (non-underscore)
                             all_keys = set()
@@ -667,6 +675,20 @@ class _Handler(BaseHTTPRequestHandler):
                                     if not k.startswith("_"):
                                         all_keys.add(k)
                             data["all_metric_keys"] = sorted(all_keys)
+                            # Surface the primary metric name + best value
+                            # alongside best_nodes so the GUI can label the
+                            # leaderboard with the right scalar without
+                            # re-deriving it. Shape mirrors science_data.json
+                            # so consumers can introspect even when stats
+                            # were not computed (legacy run).
+                            data["summary_stats"] = sci.get("summary_stats", {})
+                            # Provenance of the typed split — "results.json"
+                            # (D contract), "llm_evaluator" (C contract), or
+                            # absent (legacy). One value per best_node.
+                            data["typed_split_sources"] = [
+                                c.get("_typed_source") or ""
+                                for c in confs[:3]
+                            ]
                     except Exception:
                         pass
                 # Inject experiment goal from experiment.md or results.json
@@ -1002,11 +1024,37 @@ class _Handler(BaseHTTPRequestHandler):
             fpath_fc = qs_fc.get("path", [""])[0]
             node_id_fc = qs_fc.get("node_id", [""])[0]
             self._json(_api_checkpoint_filecontent(ckpt_id_fc, fpath_fc, node_id_fc))
+        elif self.path.startswith("/api/ear/") and self.path.endswith("/publish-yaml"):
+            from .api_state import _api_ear_publish_yaml_get
+            rid = self.path[len("/api/ear/"):-len("/publish-yaml")]
+            self._json(_api_ear_publish_yaml_get(urllib.parse.unquote(rid)))
         elif self.path.startswith("/api/ear/"):
             run_id = self.path[len("/api/ear/"):]
             self._json(_api_ear(urllib.parse.unquote(run_id)))
+        elif self.path.startswith("/api/nodes/") and self.path.endswith("/report"):
+            # /api/nodes/<run_id>/<node_id>/report — v0.7.0 Tree Report tab.
+            from .api_state import _api_node_report
+            tail = self.path[len("/api/nodes/"):-len("/report")]
+            parts = tail.split("/", 1)
+            if len(parts) == 2:
+                rid, nid = (urllib.parse.unquote(p) for p in parts)
+                self._json(_api_node_report(rid, nid))
+            else:
+                self._json({"error": "expected /api/nodes/<run_id>/<node_id>/report"})
         elif self.path == "/api/settings":
             self._json(_api_get_settings())
+        # ── Publish ──
+        elif self.path == "/api/publish/settings":
+            from .api_publish import _api_publish_settings_get
+            self._json(_api_publish_settings_get())
+        elif self.path.startswith("/api/publish/") and self.path.endswith("/preview"):
+            from .api_publish import _api_publish_preview
+            rid = self.path[len("/api/publish/"):-len("/preview")]
+            self._json(_api_publish_preview(urllib.parse.unquote(rid)))
+        elif self.path.startswith("/api/publish/") and self.path.endswith("/record"):
+            from .api_publish import _api_publish_record
+            rid = self.path[len("/api/publish/"):-len("/record")]
+            self._json(_api_publish_record(urllib.parse.unquote(rid)))
         elif self.path == "/api/profiles":
             self._json(_api_profiles())
         elif self.path == "/api/upload":
@@ -1054,6 +1102,14 @@ class _Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/api/sub-experiments/"):
             run_id = self.path[len("/api/sub-experiments/"):]
             self._json(_api_get_sub_experiment(urllib.parse.unquote(run_id)))
+        elif self.path.startswith("/api/lineage-decisions/"):
+            # lineage decisions GUI: stream the contents of
+            # {checkpoint}/lineage_decisions.jsonl so the LineageDecisions
+            # panel can render every lineage decisions escalation.
+            ckpt_name = urllib.parse.unquote(
+                self.path[len("/api/lineage-decisions/"):]
+            )
+            self._json(_api_lineage_decisions(ckpt_name))
         else:
             # SPA fallback: serve React index.html for client-side routing
             if not self.path.startswith("/api/"):
@@ -1100,6 +1156,30 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(_api_ssh_test(body))
         elif self.path == "/api/switch-checkpoint":
             self._json(_api_switch_checkpoint(body))
+        elif self.path.startswith("/api/ear/") and self.path.endswith("/curate"):
+            from .api_state import _api_ear_curate
+            rid = self.path[len("/api/ear/"):-len("/curate")]
+            self._json(_api_ear_curate(urllib.parse.unquote(rid)))
+        elif self.path.startswith("/api/ear/") and self.path.endswith("/publish-yaml"):
+            from .api_state import _api_ear_publish_yaml_set
+            rid = self.path[len("/api/ear/"):-len("/publish-yaml")]
+            self._json(_api_ear_publish_yaml_set(urllib.parse.unquote(rid), body))
+        elif self.path == "/api/ear/clone-verify":
+            from .api_state import _api_ear_clone_verify
+            self._json(_api_ear_clone_verify(body))
+        # ── Publish API ───────────────────────────────────
+        elif self.path == "/api/publish/settings":
+            from .api_publish import _api_publish_settings_set
+            self._json(_api_publish_settings_set(body))
+        elif self.path.startswith("/api/publish/") and self.path.endswith("/promote"):
+            from .api_publish import _api_publish_promote
+            rid = self.path[len("/api/publish/"):-len("/promote")]
+            self._json(_api_publish_promote(urllib.parse.unquote(rid), body))
+        elif self.path.startswith("/api/publish/") and not self.path.endswith(("/preview", "/record", "/settings")):
+            from .api_publish import _api_publish_run
+            rid = self.path[len("/api/publish/"):]
+            r = _api_publish_run(urllib.parse.unquote(rid), body)
+            self._json(r, status=r.pop("_status", 200))
         elif self.path.startswith("/api/fewshot/") and self.path.endswith("/sync"):
             from .api_fewshot import _api_fewshot_sync
             rid = self.path[len("/api/fewshot/"):-len("/sync")]

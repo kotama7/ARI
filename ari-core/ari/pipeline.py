@@ -40,6 +40,146 @@ def parse_metric_from_experiment_md(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# plan-promote: VirSci idea.json → checkpoint experiment.md auto-append
+# ---------------------------------------------------------------------------
+
+_AUTO_APPEND_BEGIN = "<!-- AUTO-APPENDED BY VirSci (idea.json) — DO NOT EDIT -->"
+_AUTO_APPEND_END = "<!-- END AUTO-APPENDED -->"
+
+
+def _extract_plan_sections(plan_text: str) -> list[tuple[str, str, str]]:
+    """Split a VirSci experiment_plan into (tag, title, body) tuples.
+
+    Heading variants recognised, in priority order:
+
+      1.  ``### N) Title``           — Markdown H3 with numbered prefix.
+                                       VirSci's preferred top-level format.
+      2.  ``## N) Title`` or ``# N)`` — other Markdown header levels.
+      3.  ``§N Title`` / ``§N) Title``— legacy ARI-internal anchor.
+      4.  ``N) Title`` / ``N. Title`` — bare-numbered enumeration at the
+                                        line start (used inside narrative).
+
+    Why priority matters: VirSci often emits Markdown headers ``### 1)
+    Implementation plan`` AND, deeper inside the body, sub-step lists
+    like ``1. Baseline kernel skeleton``. A naive regex that accepts only
+    bare-numbered lines picks up the sub-steps and **silently swallows
+    the top-level structure**, so callers see e.g. five "ablation step"
+    entries instead of the actual five major sections (Implementation,
+    Modeling, Validation, Ablation, Reproducibility).
+
+    The fix: try the strongest pattern first (Markdown header) and only
+    fall back to bare numbering when nothing strong was found.
+    """
+    if not plan_text or not plan_text.strip():
+        return []
+
+    # Strongest signal first: Markdown headers (H1/H2/H3) carrying a
+    # numbered or §-tagged title. ``###`` wins because that's how
+    # VirSci formats top-level plan sections in v0.6.x.
+    md_pattern = re.compile(
+        r"^\s*#{1,3}\s+(?:§\s*(?P<sym>\d+)|(?P<num>\d+))"
+        r"\s*[\)\.\:]\s*(?P<title>.+?)\s*$",
+        re.MULTILINE,
+    )
+    md_matches = list(md_pattern.finditer(plan_text))
+    if md_matches:
+        matches = md_matches
+    else:
+        # Fallback to bare numbering / §-tag at line start.
+        bare_pattern = re.compile(
+            r"^\s*(?:§\s*(?P<sym>\d+)|(?P<num>\d+))\s*[\)\.\:]\s*"
+            r"(?P<title>.+?)\s*$",
+            re.MULTILINE,
+        )
+        matches = list(bare_pattern.finditer(plan_text))
+    if not matches:
+        return [("§1", "Plan", plan_text.strip())]
+    out: list[tuple[str, str, str]] = []
+    for i, m in enumerate(matches):
+        idx = m.group("sym") or m.group("num") or str(i + 1)
+        tag = f"§{idx}"
+        title = m.group("title").strip()
+        start = m.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(plan_text)
+        body = plan_text[start:end].strip()
+        out.append((tag, title, body))
+    return out
+
+
+def _build_auto_append_block(idea_data: dict, mode: str = "index_only") -> str:
+    """Render the auto-append block for checkpoint experiment.md.
+
+    mode:
+      - "index_only" (default): selected idea + §-tag titles + alternatives
+      - "full"               : selected idea + plan §bodies + alternatives
+      - "off"                : returns "" (caller should skip writing)
+    """
+    if mode == "off":
+        return ""
+    ideas = idea_data.get("ideas") or []
+    if not ideas:
+        return ""
+    best = ideas[0]
+    title = (best.get("title") or "").strip()
+    score = best.get("overall_score", "")
+    plan = (best.get("experiment_plan") or "").strip()
+    sections = _extract_plan_sections(plan)
+
+    lines: list[str] = [_AUTO_APPEND_BEGIN, "## Selected research idea"]
+    lines.append(f"{title} (ideas[0], score {score})")
+
+    if mode == "full":
+        lines.append("")
+        lines.append("## Detailed experiment plan")
+        for tag, sec_title, body in sections:
+            lines.append(f"### {tag} {sec_title}")
+            lines.append(body)
+            lines.append("")
+    else:  # index_only
+        lines.append("")
+        lines.append("## Plan sections (full text in idea.json)")
+        for tag, sec_title, _body in sections:
+            lines.append(f"  {tag} {sec_title}")
+
+    if len(ideas) > 1:
+        lines.append("")
+        lines.append("## Alternatives considered (not pursued in this run)")
+        for i, alt in enumerate(ideas[1:], start=1):
+            alt_title = (alt.get("title") or "").strip().replace("\n", " ")[:200]
+            alt_score = alt.get("overall_score", "")
+            lines.append(f"- ideas[{i}] (score {alt_score}): {alt_title}")
+
+    lines.append(_AUTO_APPEND_END)
+    return "\n".join(lines)
+
+
+def _promote_plan_to_experiment_md(
+    checkpoint_dir: str | Path, idea_data: dict, mode: str = "index_only"
+) -> bool:
+    """Append a VirSci-derived plan block to checkpoint/experiment.md.
+
+    Idempotent: when the auto-append marker is already present, this is a
+    no-op. The user's source experiment.md is never touched — only the
+    in-checkpoint copy is enriched.
+
+    Returns True iff the file was modified.
+    """
+    if mode == "off":
+        return False
+    ckpt = Path(checkpoint_dir)
+    exp_md = ckpt / "experiment.md"
+    text = exp_md.read_text() if exp_md.exists() else ""
+    if _AUTO_APPEND_BEGIN in text:
+        return False  # already promoted; idempotent
+    block = _build_auto_append_block(idea_data, mode=mode)
+    if not block:
+        return False
+    new_text = (text.rstrip() + "\n\n" + block + "\n") if text else (block + "\n")
+    exp_md.write_text(new_text)
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Workflow / Pipeline loading
 # ---------------------------------------------------------------------------
 
@@ -55,6 +195,27 @@ def load_pipeline(config_yaml: str | Path) -> list[dict]:
     data = yaml.safe_load(path.read_text())
     stages = data.get("pipeline", [])
     return [s for s in stages if s.get("enabled", True)]
+
+
+def load_disabled_stage_names(config_yaml: str | Path) -> set[str]:
+    """Names of pipeline stages with ``enabled: false``.
+
+    Used by ``run_pipeline`` so depends_on on an intentionally-disabled
+    stage (e.g. EAR-off skipping ``generate_ear``) does not cascade-skip
+    every downstream consumer.
+    """
+    path = Path(config_yaml).expanduser()
+    if not path.exists():
+        return set()
+    try:
+        data = yaml.safe_load(path.read_text()) or {}
+    except Exception:
+        return set()
+    return {
+        s.get("stage", "")
+        for s in (data.get("pipeline") or [])
+        if not s.get("enabled", True) and s.get("stage")
+    }
 
 
 def load_workflow(config_dir: str | Path) -> dict:
@@ -328,16 +489,16 @@ def _run_react_stage(
     The stage YAML declares:
 
         react:
-          agent_phase: reproduce      # phase filter for MCP tool exposure
+          agent_phase: <phase>        # phase filter for MCP tool exposure
           max_steps: 40
-          final_tool: report_metric
-          sandbox: '{{checkpoint_dir}}/repro_sandbox'
+          final_tool: <name>
+          sandbox: '{{checkpoint_dir}}/<dir>'
           system_prompt: |
             ...
           user_prompt: |
             ...
-        pre_tool: extract_repro_config     # one-shot MCP call before ReAct
-        post_tool: build_repro_report      # one-shot MCP call after ReAct
+        pre_tool:  <mcp tool name>    # one-shot MCP call before ReAct (optional)
+        post_tool: <mcp tool name>    # one-shot MCP call after ReAct (optional)
 
     Template variables available in system_prompt/user_prompt:
       - {{sandbox}} — resolved sandbox path
@@ -421,6 +582,69 @@ def _run_react_stage(
     if sandbox is not None:
         os.environ["ARI_WORK_DIR"] = str(sandbox)
 
+    # ── Sandbox shims ──
+    # Install <sandbox>/.shims/git and inject env vars *before* MCP spawn so
+    # subprocesses inherit them. Restored in the finally block. The shim
+    # rewrites `git clone <paper-URL>` to `ari clone --expect-sha256 ...`
+    # and logs every clone attempt to <sandbox>/repro_clone_log.jsonl.
+    from ari.agent.react_driver import setup_sandbox_shims as _setup_shims, snapshot_env as _snap_env
+    _shim_env_keys = [
+        "PATH", "ARI_REAL_GIT",
+        "ARI_REPRO_CODE_AVAIL_REF", "ARI_REPRO_CODE_AVAIL_SHA256",
+        "ARI_REPRO_CLONE_POLICY", "ARI_REPRO_CLONE_LOG",
+    ]
+    _shim_env_snapshot: dict[str, str | None] = {}
+    if sandbox is not None:
+        _shim_env_snapshot = _snap_env(_shim_env_keys)
+        # Resolve ref/sha from pre_result (when the stage has a pre_tool that
+        # returns code_availability_ref/_sha256) or from explicit react_cfg
+        # overrides; clone policy from react_cfg (default passthrough — see
+        # task.md FR-R5).
+        _ref = (pre_result.get("code_availability_ref")
+                if isinstance(pre_result, dict) else "") or react_cfg.get("code_availability_ref", "")
+        _sha = (pre_result.get("code_availability_sha256")
+                if isinstance(pre_result, dict) else "") or react_cfg.get("code_availability_sha256", "")
+        _policy = react_cfg.get("clone_policy", "passthrough")
+        _shim_env = _setup_shims(
+            sandbox,
+            code_availability_ref=str(_ref or ""),
+            code_availability_sha256=str(_sha or ""),
+            clone_policy=str(_policy or "passthrough"),
+        )
+        os.environ.update(_shim_env)
+        log.info(
+            "Stage [%s]: sandbox shim installed (policy=%s, ref=%s, sha=%s)",
+            stage_name, _policy, (_ref or '<unset>'),
+            ((_sha or '')[:16] + '…') if _sha else '<unset>',
+        )
+
+        # ── Pre-populate sandbox with the curated bundle (FR-R2). ──
+        # Done *outside* the ReAct loop and *outside* MCP — direct ari.clone
+        # invocation. The agent never sees this step; it just inherits a
+        # populated <sandbox>/curated_bundle/ tree.
+        if _ref and _sha:
+            _curated_dest = sandbox / "curated_bundle"
+            if _curated_dest.exists() and any(_curated_dest.iterdir()):
+                log.info("Stage [%s]: curated_bundle/ already populated, skipping pre-fetch", stage_name)
+            else:
+                try:
+                    from ari.clone import clone as _ari_clone, CloneError as _CE
+                    _r = _ari_clone(_ref, dest=_curated_dest, expect_sha256=_sha)
+                    log.info(
+                        "Stage [%s]: curated_bundle/ populated: %d files, sha=%s",
+                        stage_name, _r.file_count, (_r.bundle_sha256 or '')[:16] + '…',
+                    )
+                except _CE as _ce:
+                    log.warning(
+                        "Stage [%s]: curated_bundle pre-fetch failed: %s — continuing with empty sandbox",
+                        stage_name, _ce,
+                    )
+                except Exception as _e:
+                    log.warning(
+                        "Stage [%s]: curated_bundle pre-fetch unexpected error: %s",
+                        stage_name, _e,
+                    )
+
     _cfg = _load_cfg(config_path)
     _llm = _LLM(_cfg.llm)
     _mcp = _MCP(
@@ -477,6 +701,10 @@ def _run_react_stage(
                 os.environ.pop("ARI_WORK_DIR", None)
             else:
                 os.environ["ARI_WORK_DIR"] = _prev_work_dir
+            # Reverse the sandbox shim env injection.
+            if _shim_env_snapshot:
+                from ari.agent.react_driver import restore_env as _restore_env
+                _restore_env(_shim_env_snapshot)
 
     # ── Post-tool: compose verdict + interpretation ─────────────────
     final_args = _react_out.get("final_args") or {}
@@ -890,6 +1118,15 @@ def run_pipeline(
     except Exception:
         _wf_cfg = {}
     _static_ctx = (_wf_cfg.get("paper_context") or "").strip()
+    # Stages the user / launch-config intentionally turned off (enabled: false).
+    # The depends_on check below treats these as resolved so a disabled
+    # upstream (e.g. EAR-off skipping generate_ear) does not cascade-skip
+    # every downstream consumer.
+    _disabled_stages: set[str] = {
+        s.get("stage", "")
+        for s in (_wf_cfg.get("pipeline") or [])
+        if not s.get("enabled", True) and s.get("stage")
+    }
 
     # Load LLM-extracted experiment context from science_data.json if available.
     # This contains hardware info, methodology, findings extracted by the transform stage.
@@ -917,7 +1154,10 @@ def run_pipeline(
     except Exception as _ece:
         log.warning("Could not load experiment_context from science_data.json: %s", _ece)
 
-    # Load idea.json: inject VirSci-generated research direction into paper context
+    # Load idea.json: inject VirSci-generated research direction into paper context.
+    # NOTE: this is the *directive* path — it reads only the current ckpt's idea.json
+    # (no ancestor walk). Catalog-level ancestor access lives in ari/lineage.py and
+    # is invoked explicitly by VirSci / sub-experiment launch, not here.
     _idea_ctx_str = ""
     try:
         _idea_path = Path(checkpoint_dir) / "idea.json"
@@ -926,6 +1166,23 @@ def run_pipeline(
             _gap = _idea_data.get("gap_analysis", "")
             _ideas = _idea_data.get("ideas", [])
             if _ideas:
+                # Phase 1: auto-append plan/alternatives to checkpoint experiment.md.
+                # Mode is read from workflow.yaml (default index_only). Idempotent —
+                # safe to call repeatedly across pipeline retries.
+                try:
+                    _plan_promote_mode = str(_wf_cfg.get("plan_promote", "index_only")).lower()
+                    if _plan_promote_mode in ("full", "index_only"):
+                        _did_promote = _promote_plan_to_experiment_md(
+                            checkpoint_dir, _idea_data, mode=_plan_promote_mode
+                        )
+                        if _did_promote:
+                            log.info(
+                                "plan-promote: appended VirSci block to %s/experiment.md (mode=%s)",
+                                checkpoint_dir, _plan_promote_mode,
+                            )
+                except Exception as _epp:
+                    log.warning("plan-promote failed (non-fatal): %s", _epp)
+
                 _best_idea = _ideas[0]
                 _parts_idea = []
                 if _gap:
@@ -934,9 +1191,21 @@ def run_pipeline(
                 _desc = _best_idea.get("description", "")
                 if _desc:
                     _parts_idea.append(f"Idea description: {_desc[:600]}")
+                # Phase 1: pass the full plan via §-tagged structure so paper-skill
+                # gets §4 (model calibration) and §6 (comparisons) — previously
+                # truncated to 400 chars which dropped both sections.
                 _plan = _best_idea.get("experiment_plan", "")
                 if _plan:
-                    _parts_idea.append(f"Experiment plan: {_plan[:400]}")
+                    _plan_sections = _extract_plan_sections(_plan)
+                    if _plan_sections:
+                        _plan_lines = ["Experiment plan sections:"]
+                        for _tag, _t, _body in _plan_sections:
+                            _plan_lines.append(f"  {_tag} {_t}")
+                            if _body:
+                                _plan_lines.append(f"    {_body[:600]}")
+                        _parts_idea.append("\n".join(_plan_lines))
+                    else:
+                        _parts_idea.append(f"Experiment plan: {_plan[:1500]}")
                 _idea_ctx_str = "Research direction (AI-generated):\n" + "\n".join(_parts_idea)
                 log.info("Loaded idea.json for paper context: %s", _best_idea.get("title", "")[:80])
     except Exception as _ide:
@@ -948,6 +1217,32 @@ def run_pipeline(
 
     # Template variable registry — grows as stages complete
     import os as _os
+    # Surface primary_metric / higher_is_better from evaluation_criteria.json
+    # so downstream stages (transform_data, plot, paper) can be direction-
+    # aware when reducing per-key metrics. Falls back to empty / True when
+    # the criteria file is absent (legacy path).
+    _eval_criteria_for_tpl: dict = {}
+    try:
+        _ec_path = Path(checkpoint_dir) / "evaluation_criteria.json"
+        if _ec_path.exists():
+            _eval_criteria_for_tpl = json.loads(_ec_path.read_text())
+    except Exception:
+        pass
+    # Surface launch_config.json under the ``launch_config`` template key so
+    # workflow.yaml stages can read user wizard choices (e.g.
+    # ``launch_config.ors.iterative_agent``) via dot notation. Note that
+    # _resolve_templates is a regex substitution, not Jinja2 — no filters
+    # are supported, so the YAML must use plain ``{{ a.b.c }}`` references
+    # (no ``| default(...)``); MCP tools should themselves apply defaults
+    # when the templated string is empty or sentinel-like.
+    _launch_cfg_for_tpl: dict = {}
+    try:
+        _lc_path = Path(checkpoint_dir) / "launch_config.json"
+        if _lc_path.exists():
+            _launch_cfg_for_tpl = json.loads(_lc_path.read_text())
+    except Exception:
+        pass
+
     tpl_vars: dict = {
         "ckpt":              str(checkpoint_dir),
         "checkpoint_dir":    str(checkpoint_dir),
@@ -957,12 +1252,15 @@ def run_pipeline(
         "slurm_partition":   _wf_cfg.get("slurm_partition", ""),  # resolved at runtime via ARI_SLURM_PARTITION env
         "keywords":          keywords,
         "idea_context":      _idea_ctx_str,
+        "primary_metric":    str(_eval_criteria_for_tpl.get("primary_metric", "")),
+        "higher_is_better":  str(bool(_eval_criteria_for_tpl.get("higher_is_better", True))),
         "stages":            {},
         "ari_root":          _os.environ.get("ARI_ROOT", str(Path(__file__).parents[2])),
         # Reproducibility check reads only the paper — no source_file injection.
         # Providing original source would be "repeat experiment", not "reproduce from paper".
         "experiment_source_file": _os.environ.get("ARI_SOURCE_FILE", ""),
         "author_name":       "Artificial Research Intelligence",  # default; overridden by workflow.yaml
+        "launch_config":     _launch_cfg_for_tpl,
         # Expose all top-level string/int config values for template substitution
         **{k: str(v) for k, v in _wf_cfg.items() if isinstance(v, (str, int, float)) and k not in ("paper_context",)},
         # Expose nested dicts (e.g. resources, bfts) as nested keys for dot-notation access
@@ -1007,7 +1305,16 @@ def run_pipeline(
         # ── depends_on check ─────────────────────────────────────────────
         _depends = stage_cfg.get("depends_on", [])
         if isinstance(_depends, str): _depends = [_depends]
-        _dep_missing = next((_d for _d in _depends if _d not in tpl_vars.get("stages", {})), None)
+        # A dep that is disabled (enabled: false in workflow.yaml) is a no-op
+        # by design — treat it as resolved instead of cascading "not resolved"
+        # to every downstream stage. The "failed or skipped" check below still
+        # gates on real failures.
+        _dep_missing = next(
+            (_d for _d in _depends
+             if _d not in tpl_vars.get("stages", {})
+             and _d not in _disabled_stages),
+            None,
+        )
         # Also check if any dependency actually failed (registered but has no output)
         _dep_failed = next(
             (_d for _d in _depends

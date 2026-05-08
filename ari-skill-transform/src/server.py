@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -35,6 +36,79 @@ except Exception:
 def _load_nodes(nodes_json_path: str) -> list[dict]:
     data = json.loads(Path(nodes_json_path).read_text())
     return data if isinstance(data, list) else data.get("nodes", [])
+
+
+def _robust_extract_json(raw: str) -> dict:
+    """Extract a JSON object from an LLM response, surviving common malformations.
+
+    Strategy (each step is best-effort and falls through on failure):
+      1. Strip <think>…</think> blocks and ```json fences.
+      2. Walk balanced braces from each candidate '{' to find the largest
+         valid object (handles "{...} prose {...}" by parsing the right one,
+         not the concatenation that the legacy greedy `\\{.*\\}` produced).
+      3. As a last resort, try the legacy first-`{` to last-`}` slice.
+
+    Raises ValueError with the underlying parser message if every attempt
+    fails. Caller is responsible for saving the raw payload for debugging
+    before swallowing the error.
+    """
+    if not raw:
+        raise ValueError("empty response")
+    # Strip <think>...</think> noise some models emit.
+    text = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+    # Strip the most common code fences.
+    text = re.sub(r"^\s*```(?:json)?\s*", "", text)
+    text = re.sub(r"\s*```\s*$", "", text)
+    text = text.strip()
+
+    # Walk balanced braces from each '{' to find the largest valid object.
+    candidates: list[str] = []
+    n = len(text)
+    for start in range(n):
+        if text[start] != "{":
+            continue
+        depth = 0
+        in_str = False
+        esc = False
+        for i in range(start, n):
+            c = text[i]
+            if in_str:
+                if esc:
+                    esc = False
+                elif c == "\\":
+                    esc = True
+                elif c == '"':
+                    in_str = False
+            else:
+                if c == '"':
+                    in_str = True
+                elif c == "{":
+                    depth += 1
+                elif c == "}":
+                    depth -= 1
+                    if depth == 0:
+                        candidates.append(text[start:i + 1])
+                        break
+    # Prefer the longest candidate (typically the outermost / most complete).
+    candidates.sort(key=len, reverse=True)
+    last_err: Exception | None = None
+    for cand in candidates:
+        try:
+            return json.loads(cand)
+        except Exception as e:
+            last_err = e
+            continue
+
+    # Last-resort: legacy first-`{` to last-`}` slice.
+    s = text.find("{")
+    e_ = text.rfind("}") + 1
+    if s >= 0 and e_ > s:
+        try:
+            return json.loads(text[s:e_])
+        except Exception as e:
+            last_err = e
+
+    raise ValueError(f"could not extract JSON: {last_err}")
 
 
 def _node_artifacts_text(node: dict, max_chars: int = 3000) -> str:
@@ -125,27 +199,111 @@ def _node_tool_outputs(node: dict, max_chars: int = 2000) -> str:
     return "\n---\n".join(parts)
 
 
-def _collect_source_files(node: dict, max_total: int = 32000) -> str:
+_SOURCE_EXTS = {
+    ".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx",
+    ".py", ".pyx", ".pyi",
+    ".cu", ".cuh", ".cl",
+    ".rs", ".go", ".java", ".kt", ".scala",
+    ".js", ".jsx", ".ts", ".tsx", ".mjs",
+    ".f", ".f90", ".f95", ".f03", ".for",
+    ".jl", ".m", ".r", ".sh", ".bash", ".zsh",
+    ".tex", ".bib",
+    ".yaml", ".yml", ".toml", ".json",
+    ".md", ".rst", ".txt",
+    ".cmake", ".mk",
+}
+
+_BINARY_MAGIC_PREFIXES = (
+    b"\x7fELF",          # ELF executable / shared object
+    b"MZ",               # PE/COFF (Windows .exe / .dll)
+    b"\xCF\xFA\xED\xFE", # Mach-O 64-bit LE
+    b"\xCE\xFA\xED\xFE", # Mach-O 32-bit LE
+    b"\xFE\xED\xFA\xCE", # Mach-O 32-bit BE
+    b"\xFE\xED\xFA\xCF", # Mach-O 64-bit BE
+    b"\xCA\xFE\xBA\xBE", # Java class / Mach-O fat
+    b"PK\x03\x04",       # ZIP / JAR / docx
+    b"\x1f\x8b",         # gzip
+    b"BZh",              # bzip2
+    b"\xFD7zXZ\x00",     # xz
+    b"7z\xBC\xAF\x27\x1C", # 7-zip
+    b"\x89PNG\r\n\x1a\n", # PNG
+    b"\xFF\xD8\xFF",     # JPEG
+    b"%PDF",             # PDF
+    b"\x93NUMPY",        # numpy .npy
+    b"\x80\x04",         # python pickle protocol 4
+    b"\x80\x05",         # python pickle protocol 5
+)
+
+
+def _looks_like_binary(path: Path) -> bool:
+    """Detect binary content by magic bytes / NUL presence / printable ratio.
+
+    Catches files that slip past extension-based filters (e.g. compiled
+    executables produced by g++ with no extension like ``spmm_envelope``).
+    """
+    try:
+        with path.open("rb") as fh:
+            head = fh.read(4096)
+    except Exception:
+        return True
+    if not head:
+        return False
+    for magic in _BINARY_MAGIC_PREFIXES:
+        if head.startswith(magic):
+            return True
+    if b"\x00" in head:
+        return True
+    # Printable-ASCII ratio over the sniff window. Tabs/newlines/CR count
+    # as printable; anything below 85% printable is treated as binary.
+    printable = sum(
+        1 for b in head
+        if 0x20 <= b < 0x7F or b in (0x09, 0x0A, 0x0D, 0x0C)
+    )
+    return (printable / len(head)) < 0.85
+
+
+def _collect_source_files(node: dict, max_total: int = 65536) -> str:
     """Read source files from the node's experiment directory on disk.
 
-    Scans artifact commands for directory paths, then reads .c, .cpp, .h,
-    .f90, .sh, and Makefile files from those directories.
+    Two artifact shapes are supported (mirrors ``_collect_node_source_dirs``
+    in the EAR generator):
+    1. Shell-script content containing ``cd /path``.
+    2. Absolute file or directory paths recorded as artifact strings —
+       the parent directory of such a file is treated as the node's
+       working directory.
+
+    Source-extension files (``.cpp``, ``.py``, ...) are processed before
+    other files so that even when the budget fills up the actual source
+    code is preserved (the failure mode otherwise: a sibling compiled
+    binary with no extension consumes the budget and the ``.cpp`` is
+    dropped, leaving the paper writer with no algorithm body).
+
     Returns formatted source code snippets with filenames.
     """
     import re as _re_sf
     dirs_seen: set[str] = set()
     for art in (node.get("artifacts") or []):
         content = art.get("content", "") if isinstance(art, dict) else str(art)
-        # Extract 'cd /path/to/...' from shell commands
+        if not content:
+            continue
         for m in _re_sf.finditer(r'cd\s+(/\S+)', content):
             d = m.group(1).rstrip("&;|")
             if Path(d).is_dir():
                 dirs_seen.add(d)
+        stripped = content.strip()
+        if stripped.startswith("/") and "\n" not in stripped and " " not in stripped:
+            p = Path(stripped)
+            if p.is_file() and p.parent.is_dir():
+                dirs_seen.add(str(p.parent))
+            elif p.is_dir():
+                dirs_seen.add(str(p))
 
     if not dirs_seen:
         return ""
 
-    # Exclude known binary and non-text extensions
+    # Exclude known binary and non-text extensions (fast path; the
+    # _looks_like_binary content sniff covers the rest, including
+    # extensionless compiled executables).
     _binary_exts = {
         ".o", ".a", ".so", ".dylib", ".dll", ".exe", ".bin",
         ".pyc", ".pyo", ".class", ".jar",
@@ -156,35 +314,103 @@ def _collect_source_files(node: dict, max_total: int = 32000) -> str:
         ".csv", ".tsv", ".parquet",
         ".log", ".out", ".err",
     }
-    parts = []
-    total = 0
+    candidates: list[Path] = []
     for d in sorted(dirs_seen):
         dp = Path(d)
-        for f in sorted(dp.iterdir()):
+        try:
+            entries = list(dp.iterdir())
+        except Exception:
+            continue
+        for f in entries:
             if not f.is_file():
                 continue
             if f.suffix.lower() in _binary_exts:
                 continue
-            # Skip files larger than 64KB (likely data, not source)
-            try:
-                if f.stat().st_size > 65536:
-                    continue
-            except Exception:
+            candidates.append(f)
+    # Sort: source-extension files first (priority 0), others second
+    # (priority 1), alphabetical within each group. This keeps .cpp /
+    # .py / etc. ahead of incidental siblings (logs, env captures,
+    # extensionless binaries) so they survive the budget gate.
+    candidates.sort(
+        key=lambda p: (0 if p.suffix.lower() in _SOURCE_EXTS else 1, p.name)
+    )
+
+    parts = []
+    total = 0
+    for f in candidates:
+        try:
+            if f.stat().st_size > 65536:
                 continue
-            try:
-                text = f.read_text(errors="ignore")
-            except Exception:
-                continue
-            if not text.strip():
-                continue
-            snippet = text[:8000]
-            entry = f"── {f.name} ──\n{snippet}\n"
-            if total + len(entry) > max_total:
-                continue  # try remaining smaller files
-            parts.append(entry)
-            total += len(entry)
+        except Exception:
+            continue
+        if _looks_like_binary(f):
+            continue
+        try:
+            text = f.read_text(errors="ignore")
+        except Exception:
+            continue
+        if not text.strip():
+            continue
+        snippet = text[:16000]
+        entry = f"── {f.name} ──\n{snippet}\n"
+        if total + len(entry) > max_total:
+            continue  # try remaining smaller files
+        parts.append(entry)
+        total += len(entry)
 
     return "\n".join(parts)
+
+
+def _load_node_reports_for_tree(nodes_json_path: str, nodes: list[dict]) -> dict[str, dict]:
+    """Best-effort discovery of `node_report.json` files for *nodes*.
+
+    Walks two candidate work_dir layouts so both PathManager-shaped
+    workspaces (`{ws}/checkpoints/{run_id}/`,
+    `{ws}/experiments/{run_id}/{node_id}/`) and flatter test fixtures work.
+    """
+    from pathlib import Path as _P
+    p = _P(nodes_json_path).expanduser().resolve()
+    if p.is_file():
+        ckpt = p.parent
+    else:
+        ckpt = p if p.is_dir() else _P(".").resolve()
+
+    workspace = ckpt.parent.parent if ckpt.parent.name == "checkpoints" else ckpt.parent
+    run_id = ckpt.name
+
+    reports: dict[str, dict] = {}
+    for n in nodes:
+        nid = n.get("id")
+        if not nid:
+            continue
+        for cand in (
+            workspace / "experiments" / run_id / nid / "node_report.json",
+            workspace / "experiments" / nid / "node_report.json",
+            ckpt / "experiments" / nid / "node_report.json",
+        ):
+            if cand.is_file():
+                try:
+                    reports[nid] = json.loads(cand.read_text())
+                except Exception:
+                    continue
+                break
+    return reports
+
+
+def _resolve_best_node_for_synthesis(nodes: list[dict]) -> str:
+    """Same best-node rule as generate_ear (argmax score, validation tie-break)."""
+    real = [n for n in nodes if n.get("has_real_data") and n.get("metrics")]
+    if not real:
+        return ""
+    real.sort(
+        key=lambda n: (
+            float((n.get("metrics") or {}).get("_scientific_score") or 0.0),
+            1 if str(n.get("label") or "").lower() == "validation" else 0,
+            int(n.get("depth") or 0),
+        ),
+        reverse=True,
+    )
+    return real[0].get("id", "")
 
 
 @mcp.tool()
@@ -192,6 +418,8 @@ async def nodes_to_science_data(
     nodes_json_path: str,
     llm_model: str = "",
     llm_base_url: str = "",
+    primary_metric: str = "",
+    higher_is_better: str = "true",
 ) -> dict:
     """
     LLM-powered conversion of BFTS experiment tree to publication-ready scientific data.
@@ -201,47 +429,158 @@ async def nodes_to_science_data(
     implementation details, comparison baselines, and key findings.
 
     Args:
-        nodes_json_path: Path to nodes_tree.json produced by BFTS
-        llm_model:       LLM model name (litellm format). Falls back to env LLM_MODEL.
-        llm_base_url:    Optional base URL for OpenAI-compatible API.
+        nodes_json_path:   Path to nodes_tree.json produced by BFTS
+        llm_model:         LLM model name (litellm format). Falls back to env LLM_MODEL.
+        llm_base_url:      Optional base URL for OpenAI-compatible API.
+        primary_metric:    Name of the metric used for "best" reduction. When empty,
+                           summary_stats omits a single-scalar best (the previous
+                           naive max-over-all-values produced absurd results when the
+                           metrics dict mixed measurements with input parameters like
+                           nnz / M / K). Resolved upstream from evaluation_criteria.json.
+        higher_is_better:  "true" or "false" — direction for primary_metric reduction.
+                           Accepted as a string because workflow.yaml templating renders
+                           bool values as their str() form.
 
     Returns:
         configurations:  list of {rank, parameters, metrics} for successful nodes
         per_key_summary: best/min/max/n per metric key
         experiment_context: LLM-extracted dict with hardware, methodology, findings
-        summary_stats:   basic count/best stats
+        summary_stats:   {count, primary_metric, primary_metric_best, direction}
+        implementation_overview: optional LLM-produced architecture / key_algorithms /
+                                 optimizations summary (only present when the model
+                                 produced it as part of the JSON output)
+        report_driven:   true when filter_nodes(for_synthesis) provided the LLM
+                         input substrate (i.e. node_report.json is available);
+                         false on the legacy artifact-text fallback.
     """
+    _hib = str(higher_is_better).strip().lower() not in ("false", "0", "no", "")
     try:
         nodes = _load_nodes(nodes_json_path)
     except Exception as e:
         return {"error": str(e), "configurations": []}
+
+    # ── Best-effort: load node_report.json for every node ──
+    reports = _load_node_reports_for_tree(nodes_json_path, nodes)
 
     # Filter to successful nodes with real measurements
     good_nodes = [n for n in nodes if n.get("has_real_data") and n.get("metrics")]
     if not good_nodes:
         return {"error": "No successful nodes with real data found", "configurations": []}
 
+    # ── results.json (typed coding-skill emit_results contract) ──
+    # Each node's work_dir may contain a typed payload that splits inputs
+    # (params) from outputs (measurements/predictions/scores). When present,
+    # we propagate it onto configurations[*] so paper-writing and figure
+    # generation can tell apart "what we ran on" from "what we measured" —
+    # otherwise the metrics dict mixes both and per_key_summary's reduction
+    # treats input sizes (nnz, M, K) as candidate maxima.
+    _ckpt_dir = Path(nodes_json_path).expanduser().resolve().parent
+    _workspace = (
+        _ckpt_dir.parent.parent if _ckpt_dir.parent.name == "checkpoints"
+        else _ckpt_dir.parent
+    )
+    _run_id = _ckpt_dir.name
+
+    def _node_results_json(nid: str) -> dict:
+        """Return parsed results.json for a node, or {} when absent / malformed."""
+        if not nid:
+            return {}
+        cand = _workspace / "experiments" / _run_id / nid / "results.json"
+        if not cand.is_file():
+            cand = _workspace / "experiments" / nid / "results.json"
+            if not cand.is_file():
+                return {}
+        try:
+            data = json.loads(cand.read_text())
+        except Exception:
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    # Map node_id → typed payload (only stores entries that exist on disk).
+    typed_results: dict[str, dict] = {}
+    for n in good_nodes:
+        nid = n.get("id") or n.get("node_id") or ""
+        rj = _node_results_json(nid)
+        if rj:
+            typed_results[nid] = rj
+
     # Build ranked configurations (no domain-specific sorting — pass all to LLM)
     # Include eval_summary and label so downstream stages (paper writing,
     # reproducibility check) can associate each metric with the experiment
     # that produced it (kernel type, configuration, setup).
-    ranked = [
-        {
+    #
+    # Source priority for the typed split (params / measurements):
+    #   1. results.json (D — coding-skill emit_results contract). Authoritative
+    #      because the experiment script declared its own contract.
+    #   2. node.metrics["_params_dict"] / "_measurements_dict" (C — LLM
+    #      evaluator emitted the split). Used when no results.json is on disk.
+    #   3. Empty (legacy). parameters stays {} and downstream consumers
+    #      treat the flat metrics dict as a single ambiguous bag.
+    ranked: list[dict] = []
+    for i, n in enumerate(good_nodes):
+        nid = n.get("id") or n.get("node_id") or ""
+        cfg: dict = {
             "rank": i + 1,
             "parameters": {},
             "metrics": n.get("metrics", {}),
             "label": n.get("label", ""),
             "eval_summary": (n.get("eval_summary") or "")[:400],
         }
-        for i, n in enumerate(good_nodes)
-    ]
+        rj = typed_results.get(nid) or {}
+        if rj:
+            if isinstance(rj.get("params"), dict):
+                cfg["parameters"] = dict(rj["params"])
+            if isinstance(rj.get("measurements"), dict):
+                cfg["measurements"] = dict(rj["measurements"])
+            if isinstance(rj.get("predictions"), dict):
+                cfg["predictions"] = dict(rj["predictions"])
+            if isinstance(rj.get("scores"), dict):
+                cfg["scores"] = dict(rj["scores"])
+            cfg["_typed_schema_version"] = rj.get("schema_version", "")
+            cfg["_typed_source"] = "results.json"
+        else:
+            # Fallback to the LLM evaluator's typed split if it was emitted.
+            mref = n.get("metrics") or {}
+            ev_params = mref.get("_params_dict") if isinstance(mref, dict) else None
+            ev_meas = mref.get("_measurements_dict") if isinstance(mref, dict) else None
+            if isinstance(ev_params, dict) and ev_params:
+                cfg["parameters"] = dict(ev_params)
+                cfg["_typed_source"] = "llm_evaluator"
+            if isinstance(ev_meas, dict) and ev_meas:
+                cfg["measurements"] = dict(ev_meas)
+                cfg.setdefault("_typed_source", "llm_evaluator")
+        ranked.append(cfg)
 
-    # Per-key summary
+    # ── per_key_summary: exclude declared input parameters ──
+    # Once a node declares a typed split (via results.json D-path OR via
+    # the LLM evaluator's _params_dict C-path), its param keys are inputs
+    # by construction and must NOT participate in best/min/max reductions
+    # (they used to dominate via raw size — nnz=3.84M was bigger than any
+    # GFlops/s measurement). Build a global "input_keys" set across nodes
+    # and skip them in per_key_summary. Also exclude the reserved "_…"
+    # bookkeeping keys that the evaluator stores on metrics.
+    input_keys: set[str] = set()
+    for rj in typed_results.values():
+        if isinstance(rj.get("params"), dict):
+            input_keys.update(str(k) for k in rj["params"].keys())
+    for n in good_nodes:
+        mref = n.get("metrics") or {}
+        ev_params = mref.get("_params_dict") if isinstance(mref, dict) else None
+        if isinstance(ev_params, dict):
+            input_keys.update(str(k) for k in ev_params.keys())
+
+    def _is_reserved(k: str) -> bool:
+        # Underscore-prefixed keys are internal bookkeeping (axis scores,
+        # composite, comparison flag, typed-split mirrors). They're not
+        # measurements and must never appear in per_key_summary.
+        return isinstance(k, str) and k.startswith("_")
+
     all_keys: list[str] = []
     for n in good_nodes:
         for k in n.get("metrics", {}):
-            if k not in all_keys:
-                all_keys.append(k)
+            if k in all_keys or k in input_keys or _is_reserved(k):
+                continue
+            all_keys.append(k)
     per_key_summary: dict = {}
     for k in all_keys:
         vals = [n["metrics"][k] for n in good_nodes
@@ -254,9 +593,106 @@ async def nodes_to_science_data(
 
     # ── LLM analysis: read top nodes' artifacts and extract scientific context ──
     model = llm_model or os.environ.get("LLM_MODEL", "gpt-4o-mini")
-    # Build a tree-aware summary: preserve parent-child structure so the LLM
-    # understands the search trajectory (root → improve → ablation → validation).
-    # Include ALL successful nodes (not just top-5) so ablation/validation results appear.
+
+    # ── Report-driven path: when reports exist, narrow the LLM input via
+    #    filter_nodes(for_synthesis) and pull source bytes via the same
+    #    selection that generate_ear publishes (FR-SS-5 contract).
+    report_driven = False
+    selected_source_blob = ""
+    selected_node_blocks: list[str] = []
+    best_id_for_synth = _resolve_best_node_for_synthesis(nodes)
+    if reports and best_id_for_synth:
+        try:
+            from ari.orchestrator import node_selection as _ns
+
+            kept = _ns.filter_nodes(
+                nodes, reports, "for_synthesis",
+                always_include_node_ids={best_id_for_synth},
+            )
+            # Build compact per-report blocks.
+            for n in kept:
+                rep = reports.get(n.get("id")) or {}
+                label = str(n.get("label") or "?").upper()
+                depth = n.get("depth", 0)
+                metrics = json.dumps(n.get("metrics") or {}, ensure_ascii=False)
+                fc = rep.get("files_changed") or {}
+                added = [e.get("path") for e in (fc.get("added") or [])][:8]
+                modified = [e.get("path") for e in (fc.get("modified") or [])][:8]
+                sa = rep.get("self_assessment") or {}
+                lines = [
+                    f"[{label} depth={depth}]",
+                    f"  metrics: {metrics}",
+                ]
+                if rep.get("delta_vs_parent"):
+                    lines.append(f"  delta_vs_parent: {rep['delta_vs_parent'][:240]}")
+                if added:
+                    lines.append(f"  files_added: {added}")
+                if modified:
+                    lines.append(f"  files_modified: {modified}")
+                if sa.get("headline"):
+                    lines.append(f"  headline: {sa['headline'][:240]}")
+                if sa.get("concerns"):
+                    lines.append(f"  concerns: {sa['concerns'][:5]}")
+                if rep.get("build_command"):
+                    lines.append(f"  build: {rep['build_command'][:160]}")
+                if rep.get("run_command"):
+                    lines.append(f"  run: {rep['run_command'][:160]}")
+                # Compute-resource provenance (where this measurement came from).
+                # node_report exposes these as top-level fields when ari.agent.run_env
+                # captured them; absent for legacy runs.
+                _exec = rep.get("executor", "")
+                _host = rep.get("hostname", "")
+                _jid = rep.get("slurm_job_id", "")
+                _part = rep.get("slurm_partition", "")
+                _cpu = rep.get("cpu_info") or {}
+                if _exec or _host:
+                    parts = [f"executor={_exec or 'unknown'}", f"host={_host or 'unknown'}"]
+                    if _part: parts.append(f"partition={_part}")
+                    if _jid: parts.append(f"slurm_job={_jid}")
+                    if _cpu.get("model"):
+                        parts.append(
+                            f"cpu={_cpu.get('model')[:60]} ({_cpu.get('threads', '?')}t)"
+                        )
+                    lines.append("  ran_on: " + ", ".join(parts))
+                selected_node_blocks.append("\n".join(lines))
+
+            # Pull verbatim source bytes — same selection used by generate_ear.
+            from pathlib import Path as _P
+            sel = _ns.select_source_files_for_publication(
+                nodes, reports, best_id_for_synth,
+            )
+            ckpt_dir = _P(nodes_json_path).expanduser().resolve().parent
+            workspace = (ckpt_dir.parent.parent
+                         if ckpt_dir.parent.name == "checkpoints"
+                         else ckpt_dir.parent)
+            run_id_for_src = ckpt_dir.name
+
+            def _wd(nid: str):
+                cand = workspace / "experiments" / run_id_for_src / nid
+                if cand.is_dir():
+                    return cand
+                return workspace / "experiments" / nid
+
+            loaded = _ns.load_selected_sources(
+                sel, work_dir_for=_wd, size_budget=16384,
+            )
+            for rel_path, payload in sorted(loaded.items()):
+                try:
+                    text = payload["bytes"].decode("utf-8", errors="replace")
+                except Exception:
+                    continue
+                selected_source_blob += (
+                    f"\n# === {rel_path} (from {payload['from_node_id']}) ===\n"
+                    + text + "\n"
+                )
+
+            if selected_node_blocks:
+                report_driven = True
+        except Exception:
+            report_driven = False
+
+    # Legacy fallback: read artifacts text + tool outputs for every node.
+    # Kept verbatim so checkpoints without node_report.json still work.
     node_index = {n["id"]: n for n in nodes if "id" in n}
 
     def _node_block(n, depth=0) -> str:
@@ -266,7 +702,7 @@ async def nodes_to_science_data(
         artifact_text = _node_artifacts_text(n, max_chars=1500)
         tool_outputs = _node_tool_outputs(n, max_chars=2000)
         summary = n.get("eval_summary", "")
-        source_code = _collect_source_files(n, max_total=16000)
+        source_code = _collect_source_files(n, max_total=32000)
         lines = [
             f"{indent}[{label.upper()} depth={n.get('depth', depth)}]",
             f"{indent}  metrics: {metrics_str}",
@@ -314,64 +750,133 @@ async def nodes_to_science_data(
 
     artifacts_combined = "\n\n".join(artifact_blocks)
 
-    analysis_prompt = (
-        "You are a scientific analyst. Read the following experiment tree "
-        "(nodes ordered root-to-leaf, showing the search trajectory) "
-        "and extract information a peer reviewer needs to evaluate this work.\n\n"
-        "Include only scientifically meaningful content: successful measurements, "
-        "key improvements, ablation insights, and validated results. "
-        "Omit failed runs, debug artifacts, and internal system details.\n\n"
-        "Your JSON output MUST include an 'evaluation_protocol' object with:\n"
-        "  - 'domain': what research domain/task this is (inferred from outputs)\n"
-        "  - 'primary_metrics': list of the most important metrics for this domain "
-        "(e.g. task-appropriate success rate, throughput, or accuracy — infer from the experiment outputs, do not assume domain)\n"
-        "  - 'required_reporting': list of quantities that MUST be reported for "
-        "reproducibility in this domain (sample size, sparsity, precision, config params, etc.)\n"
-        "  - 'standard_baselines': list of standard baselines this domain typically compares against\n"
-        "  - 'ablation_axes': list of the most scientifically meaningful dimensions to ablate\n\n"
-        "Also include an 'experiment_context' object with all other findings. "
-        "Use clear field names with units where applicable.\n\n"
-        "The experiment tree may include actual source code and scripts from the "
-        "experiment directories (under 'source_files:'). If present, extract ALL "
-        "details from the code that an independent researcher would need to "
-        "reproduce the exact same results. Include these under "
-        "'implementation_details' within 'experiment_context'. Specifically:\n"
-        "  - Pseudocode for the key algorithms and functions\n"
-        "  - Data structures and their layouts\n"
-        "  - All optimization techniques applied (with specifics, not just names)\n"
-        "  - Build configuration and any platform-specific settings\n"
-        "  - Exact experimental parameters used\n"
-        "  - How each reported metric is computed\n"
-        "Extract ONLY what is actually present in the tree — do not invent details. "
-        "For any factual claim, it must be traceable to a specific node's output. "
-        "If information was not captured during execution, write 'not recorded' "
-        "rather than guessing.\n\n"
-        "Return ONLY valid JSON with keys 'evaluation_protocol' and 'experiment_context'. "
-        "No markdown fences.\n\n"
-        f"EXPERIMENT TREE:\n{artifacts_combined[:64000]}"
-    )
+    if report_driven:
+        # ── Compact prompt fed by node_report aggregates + verbatim source. ──
+        # Drops 64KB-budgeted artifact text in favour of structured reports
+        # plus the same source bytes that ear/code/ will publish (FR-SS-5).
+        report_blob = "\n\n".join(selected_node_blocks)
+        analysis_prompt = (
+            "You are a scientific analyst. Read the following structured node "
+            "reports (search trajectory; each node lists its delta_vs_parent, "
+            "files added/modified, headline metric, concerns flagged by the "
+            "evaluator, and the literal build/run commands) and the verbatim "
+            "source files from the contributing chain, then extract what a "
+            "peer reviewer needs to evaluate this work.\n\n"
+            "Include only scientifically meaningful content: successful "
+            "measurements, key improvements, ablation insights, and validated "
+            "results. Omit failed runs and internal system details.\n\n"
+            "Return ONLY valid JSON with these keys:\n"
+            "  'evaluation_protocol': {domain, primary_metrics[], "
+            "required_reporting[], standard_baselines[], ablation_axes[]}\n"
+            "  'experiment_context': {hardware, methodology, findings, "
+            "implementation_details, ...}\n"
+            "    The 'hardware' field MUST be filled from the 'ran_on:' lines "
+            "in the node reports — combine the executor type, hostname, "
+            "SLURM partition, CPU model, thread count, and memory across "
+            "contributing nodes. If different nodes ran on different hosts, "
+            "list them. Do NOT write 'not recorded' when ran_on data is "
+            "present in the reports.\n"
+            "  'implementation_overview' (OPTIONAL): {architecture: '1-3 "
+            "sentence prose summary', key_algorithms: [{name, pseudocode}], "
+            "optimizations: ['…']}.  Omit this whole key if the reports do "
+            "not contain enough material.  Do NOT include source code "
+            "verbatim under this key — code lives in ear/code/.\n\n"
+            "Extract ONLY what is actually present below. Do not invent "
+            "details. If information was not captured, write 'not recorded'.\n\n"
+            f"NODE REPORTS:\n{report_blob[:14000]}\n\n"
+            f"VERBATIM SOURCE (from contributing chain):\n"
+            f"{selected_source_blob[:16000]}"
+        )
+    else:
+        analysis_prompt = (
+            "You are a scientific analyst. Read the following experiment tree "
+            "(nodes ordered root-to-leaf, showing the search trajectory) "
+            "and extract information a peer reviewer needs to evaluate this work.\n\n"
+            "Include only scientifically meaningful content: successful measurements, "
+            "key improvements, ablation insights, and validated results. "
+            "Omit failed runs, debug artifacts, and internal system details.\n\n"
+            "Your JSON output MUST include an 'evaluation_protocol' object with:\n"
+            "  - 'domain': what research domain/task this is (inferred from outputs)\n"
+            "  - 'primary_metrics': list of the most important metrics for this domain "
+            "(e.g. task-appropriate success rate, throughput, or accuracy — infer from the experiment outputs, do not assume domain)\n"
+            "  - 'required_reporting': list of quantities that MUST be reported for "
+            "reproducibility in this domain (sample size, sparsity, precision, config params, etc.)\n"
+            "  - 'standard_baselines': list of standard baselines this domain typically compares against\n"
+            "  - 'ablation_axes': list of the most scientifically meaningful dimensions to ablate\n\n"
+            "Also include an 'experiment_context' object with all other findings. "
+            "Use clear field names with units where applicable.\n\n"
+            "The experiment tree may include actual source code and scripts from the "
+            "experiment directories (under 'source_files:'). If present, extract ALL "
+            "details from the code that an independent researcher would need to "
+            "reproduce the exact same results. Include these under "
+            "'implementation_details' within 'experiment_context'. Specifically:\n"
+            "  - Pseudocode for the key algorithms and functions\n"
+            "  - Data structures and their layouts\n"
+            "  - All optimization techniques applied (with specifics, not just names)\n"
+            "  - Build configuration and any platform-specific settings\n"
+            "  - Exact experimental parameters used\n"
+            "  - How each reported metric is computed\n"
+            "Extract ONLY what is actually present in the tree — do not invent details. "
+            "For any factual claim, it must be traceable to a specific node's output. "
+            "If information was not captured during execution, write 'not recorded' "
+            "rather than guessing.\n\n"
+            "Return ONLY valid JSON with keys 'evaluation_protocol' and 'experiment_context'. "
+            "No markdown fences.\n\n"
+            f"EXPERIMENT TREE:\n{artifacts_combined[:64000]}"
+        )
 
     experiment_context: dict = {}
+    implementation_overview: dict | None = None
     try:
         kwargs: dict = {
             "model": model,
             "messages": [{"role": "user", "content": analysis_prompt}],
+            # NFR-6: observability meta — cost_tracker forwards this onto
+            # the call record so we can grep for prompt-shrink coverage and
+            # implementation_overview success rate over time.
+            "metadata": {
+                "skill": "transform",
+                "tool": "nodes_to_science_data",
+                "report_driven": report_driven,
+                "prompt_chars": len(analysis_prompt),
+                # Filled in below based on the parsed JSON.
+                "implementation_overview_extracted": False,
+            },
         }
         if llm_base_url:
             kwargs["api_base"] = llm_base_url
         response = await litellm.acompletion(**kwargs)
         raw = response.choices[0].message.content or ""
-        import re as _re
-        m = _re.search(r"\{.*\}", raw, _re.DOTALL)
-        if m:
-            parsed = json.loads(m.group(0))
-            # Support both new format {evaluation_protocol, experiment_context}
-            # and legacy flat format
-            if "experiment_context" in parsed:
-                experiment_context = parsed["experiment_context"]
-                experiment_context["_evaluation_protocol"] = parsed.get("evaluation_protocol", {})
-            else:
-                experiment_context = parsed
+        try:
+            parsed = _robust_extract_json(raw)
+        except Exception as parse_err:
+            # Persist the raw payload so the failure is debuggable. Without
+            # this, the previous error message ("Expecting ':' delimiter")
+            # was unactionable because the original response was discarded.
+            try:
+                _dbg = Path(nodes_json_path).expanduser().resolve().parent / "science_data.debug.txt"
+                _dbg.write_text(
+                    f"# nodes_to_science_data: JSON parse failed\n"
+                    f"# error: {parse_err}\n"
+                    f"# response_chars: {len(raw)}\n"
+                    f"# ------ raw response ------\n{raw}\n"
+                )
+            except Exception:
+                pass
+            raise
+        # Support both new format {evaluation_protocol, experiment_context}
+        # and legacy flat format
+        if "experiment_context" in parsed:
+            experiment_context = parsed["experiment_context"]
+            experiment_context["_evaluation_protocol"] = parsed.get("evaluation_protocol", {})
+        else:
+            experiment_context = parsed
+        # Optional new-schema field. Surfaced into generate_ear's
+        # README "Architecture" section if present.
+        if isinstance(parsed.get("implementation_overview"), dict):
+            implementation_overview = parsed["implementation_overview"]
+            # Update the per-call meta so cost_tracker records success.
+            kwargs["metadata"]["implementation_overview_extracted"] = True
     except Exception as e:
         experiment_context = {"error": f"LLM analysis failed: {e}"}
 
@@ -379,22 +884,53 @@ async def nodes_to_science_data(
     # so the paper writer can describe implementations with full fidelity.
     _best_sources = {}
     for n in good_nodes[:3]:
-        src = _collect_source_files(n, max_total=16000)
+        src = _collect_source_files(n, max_total=32000)
         if src:
             label = n.get("label", n.get("id", "?"))[:30]
             _best_sources[label] = src
     if _best_sources:
         experiment_context["_best_node_source_code"] = _best_sources
 
-    return {
+    # ── summary_stats: direction-aware reduction over the primary metric ──
+    # Previously this was max() over every per_key_summary entry, which
+    # picked the largest *number* regardless of what it represented (often
+    # an input parameter like nnz=3,840,000). When a primary_metric is
+    # known, reduce only over that key with the correct direction; when it
+    # is not, omit the scalar best entirely rather than fabricate one.
+    summary_stats: dict = {"count": len(ranked)}
+    # typed_split_coverage: how many ranked configs have an authoritative
+    # params/measurements split, broken down by source. Lets us monitor
+    # adoption of the emit_results contract over time without grepping
+    # individual configurations.
+    _ts_counts: dict[str, int] = {"results.json": 0, "llm_evaluator": 0, "none": 0}
+    for c in ranked:
+        src = c.get("_typed_source") or "none"
+        _ts_counts[src] = _ts_counts.get(src, 0) + 1
+    summary_stats["typed_split_coverage"] = _ts_counts
+    pm = (primary_metric or "").strip()
+    if pm:
+        summary_stats["primary_metric"] = pm
+        summary_stats["direction"] = "higher_is_better" if _hib else "lower_is_better"
+        pm_vals = [
+            n["metrics"][pm] for n in good_nodes
+            if pm in n.get("metrics", {})
+            and isinstance(n["metrics"][pm], (int, float))
+        ]
+        if pm_vals:
+            summary_stats["primary_metric_best"] = (
+                max(pm_vals) if _hib else min(pm_vals)
+            )
+            summary_stats["primary_metric_n"] = len(pm_vals)
+    out = {
         "configurations": ranked,
         "per_key_summary": per_key_summary,
         "experiment_context": experiment_context,
-        "summary_stats": {
-            "count": len(ranked),
-            "best": max((v["best_value"] for v in per_key_summary.values()), default=0),
-        },
+        "summary_stats": summary_stats,
+        "report_driven": report_driven,
     }
+    if implementation_overview is not None:
+        out["implementation_overview"] = implementation_overview
+    return out
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -451,19 +987,44 @@ def _capture_environment() -> dict:
 
 
 def _collect_node_source_dirs(node: dict) -> list[Path]:
-    """Find on-disk experiment directories referenced by a node's artifacts."""
+    """Find on-disk experiment directories referenced by a node's artifacts.
+
+    Two patterns are supported:
+    1. Shell-script content containing ``cd /path`` or ``pushd /path``.
+    2. An artifact whose content is itself an absolute path to a file or
+       directory inside the experiment workspace. Many skills record
+       artifacts simply as ``"/abs/path/to/file"``; the parent directory of
+       such a file is treated as the node's working directory.
+    """
     import re as _re
     dirs: list[Path] = []
     seen: set[str] = set()
+
+    def _add(p: Path) -> None:
+        try:
+            if p.is_dir():
+                key = str(p)
+                if key not in seen:
+                    dirs.append(p)
+                    seen.add(key)
+        except OSError:
+            return
+
     for art in (node.get("artifacts") or []):
         content = art.get("content", "") if isinstance(art, dict) else str(art)
+        if not content:
+            continue
         for m in _re.finditer(r"(?:cd|pushd)\s+(/\S+)", content):
             d = m.group(1).rstrip("&;|\"'")
-            if d and d not in seen:
-                p = Path(d)
-                if p.is_dir():
-                    dirs.append(p)
-                    seen.add(d)
+            if d:
+                _add(Path(d))
+        stripped = content.strip()
+        if stripped.startswith("/") and "\n" not in stripped and " " not in stripped:
+            p = Path(stripped)
+            if p.is_file():
+                _add(p.parent)
+            elif p.is_dir():
+                _add(p)
     return dirs
 
 
@@ -569,33 +1130,95 @@ def _build_results_md_fallback(nodes: list[dict]) -> str:
 
 
 def _build_commands_md(top_node: dict | None) -> str:
-    """Document the commands needed to reproduce the top-scoring node."""
+    """Document the commands needed to reproduce the top-scoring node.
+
+    Distinguishes three artifact shapes:
+    - single absolute path → output artifact (listed under "Output artifacts")
+    - multi-line shell-like text → inline commands
+    - sibling files of artifact paths matching ``*.sh``/``Makefile`` → run scripts
+      whose contents are inlined verbatim (this is what reproduces the run).
+    """
     if not top_node:
         return "# Reproduction commands\n\n_No top node available._\n"
-    cmds: list[str] = []
+
+    artifact_paths: list[str] = []
+    inline_cmds: list[str] = []
     for art in (top_node.get("artifacts") or []):
         content = art.get("content", "") if isinstance(art, dict) else str(art)
         if not content:
             continue
+        stripped = content.strip()
+        if (
+            stripped.startswith("/")
+            and "\n" not in stripped
+            and " " not in stripped
+        ):
+            artifact_paths.append(stripped)
+            continue
         for line in content.splitlines():
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#"):
+            ln = line.strip()
+            if not ln or ln.startswith("#"):
                 continue
-            cmds.append(stripped)
+            inline_cmds.append(ln)
+
+    script_blocks: list[tuple[str, str]] = []
+    seen_dirs: set[str] = set()
+    script_exts = {".sh", ".bash", ".zsh"}
+    script_names = {"Makefile", "makefile", "GNUmakefile"}
+    for p in artifact_paths:
+        parent = Path(p).parent
+        key = str(parent)
+        if key in seen_dirs or not parent.is_dir():
+            continue
+        seen_dirs.add(key)
+        for f in sorted(parent.iterdir()):
+            if not f.is_file():
+                continue
+            if f.suffix.lower() not in script_exts and f.name not in script_names:
+                continue
+            try:
+                if f.stat().st_size > 64 * 1024:
+                    continue
+                text = f.read_text(errors="ignore")
+            except Exception:
+                continue
+            script_blocks.append((f.name, text))
+
     out = [
         "# Reproduction commands",
         "",
         f"_Top-scoring node: `{str(top_node.get('id', '?'))[-8:]}` "
         f"(label={top_node.get('label', '?')})_",
         "",
-        "```bash",
     ]
-    if cmds:
-        out.extend(cmds[:50])
-    else:
+    if script_blocks:
+        out.append("## Run scripts (from node working directory)")
+        out.append("")
+        for name, text in script_blocks[:6]:
+            out.append(f"### `{name}`")
+            out.append("```bash")
+            for ln in text.splitlines()[:300]:
+                out.append(ln.rstrip())
+            out.append("```")
+            out.append("")
+    if inline_cmds:
+        out.append("## Inline commands recorded in artifacts")
+        out.append("")
+        out.append("```bash")
+        out.extend(inline_cmds[:50])
+        out.append("```")
+        out.append("")
+    if artifact_paths:
+        out.append("## Output artifacts")
+        out.append("")
+        for p in artifact_paths[:50]:
+            out.append(f"- `{p}`")
+        out.append("")
+    if not (script_blocks or inline_cmds or artifact_paths):
+        out.append("```bash")
         out.append("# No reproducible commands captured for this node.")
-    out.append("```")
-    return "\n".join(out) + "\n"
+        out.append("```")
+    return "\n".join(out).rstrip() + "\n"
 
 
 def _consolidate_metrics(nodes: list[dict]) -> dict:
@@ -643,38 +1266,645 @@ def _copy_figures(checkpoint_dir: Path, figures_dir: Path) -> int:
     return copied
 
 
+# ── PR #C helpers (node_report-driven generate_ear) ──────────────────────
+
+# Whitelist of source-file extensions and basenames that may end up under
+# ear/code/. These are the "publishable code surfaces"; everything else is
+# either an experiment output (not published; reproduce.sh regenerates) or
+# an internal artefact (logs, build caches).
+_EAR_CODE_EXTS: frozenset[str] = frozenset({
+    ".c", ".cc", ".cpp", ".cxx", ".h", ".hpp", ".hh",
+    ".f", ".f90", ".for",
+    ".py", ".ipynb",
+    ".sh", ".bash", ".zsh",
+    ".rs", ".go", ".java", ".scala", ".kt",
+    ".cu", ".cuda", ".cl",
+    ".ts", ".tsx", ".js", ".jsx", ".mjs",
+    ".mk", ".cmake",
+    ".toml", ".yaml", ".yml", ".cfg", ".ini",
+    ".r", ".jl", ".lua", ".swift",
+    ".proto", ".thrift", ".sql",
+})
+
+_EAR_CODE_BASENAMES: frozenset[str] = frozenset({
+    "Makefile", "makefile", "GNUmakefile",
+    "CMakeLists.txt",
+    "Dockerfile",
+    ".dockerignore",
+    "requirements.txt",
+    "environment.yml", "environment.yaml",
+    "pyproject.toml", "setup.py", "setup.cfg", "MANIFEST.in",
+    "Cargo.toml", "go.mod", "package.json", "tsconfig.json",
+    "build.gradle", "pom.xml",
+    ".gitignore",
+})
+
+# Hard blocklist (filename or filename pattern). These are never copied into
+# ear/code/ even if their extension matches the whitelist.
+_EAR_CODE_BLOCKLIST_NAMES: frozenset[str] = frozenset({
+    "memory_access.jsonl", "viz_access.jsonl", "cost_trace.jsonl",
+    "nodes_tree.json", "tree.json", "bfts_tree.json",
+    "science_data.json", "raw_metrics.json", "eval_scores.json",
+    "node_report.json",
+    ".DS_Store", "Thumbs.db",
+})
+
+# Subdirectories never recursed into.
+_EAR_CODE_BLOCKLIST_DIRS: frozenset[str] = frozenset({
+    ".git", ".cache", ".pytest_cache", "__pycache__",
+    "node_modules", ".ipynb_checkpoints",
+    ".venv", "venv", "build", "dist", "target",
+    ".tox", ".mypy_cache", ".ruff_cache",
+})
+
+_EAR_CODE_FILE_SIZE_CAP = 256 * 1024  # 256KB / file
+
+
+def _is_publishable_code_file(rel_path: str, full_path: Path) -> bool:
+    """Return True if *rel_path* should be copied into ear/code/."""
+    name = Path(rel_path).name
+    if name in _EAR_CODE_BLOCKLIST_NAMES:
+        return False
+    # Block anything under a known build / cache dir.
+    for part in Path(rel_path).parts[:-1]:
+        if part in _EAR_CODE_BLOCKLIST_DIRS:
+            return False
+    # slurm-*.{out,err} are logs.
+    if name.startswith("slurm-") and (name.endswith(".out") or name.endswith(".err")):
+        return False
+    if name in _EAR_CODE_BASENAMES:
+        return True
+    suffix = Path(name).suffix.lower()
+    if suffix in _EAR_CODE_EXTS:
+        return True
+    if name.startswith("Dockerfile."):
+        return True
+    return False
+
+
+def _resolve_pm_run_id(ckpt: Path) -> tuple[Path, str]:
+    """Return (workspace_root, run_id) inferred from *ckpt*.
+
+    The PathManager mirrors `experiments/{run_id}/{node_id}/` as a sibling of
+    `checkpoints/{run_id}/`. Some test fixtures place experiments alongside
+    the checkpoint instead, so we accept that fallback as well.
+    """
+    return (ckpt.parent.parent if ckpt.parent.name == "checkpoints" else ckpt.parent,
+            ckpt.name)
+
+
+def _node_work_dir(workspace: Path, run_id: str, node_id: str) -> Path:
+    """Resolve the on-disk work_dir for a node, with sensible fallbacks."""
+    candidates = [
+        workspace / "experiments" / run_id / node_id,
+        workspace / "experiments" / node_id,  # test fixtures sometimes flatten this.
+    ]
+    for c in candidates:
+        if c.is_dir():
+            return c
+    return candidates[0]
+
+
+def _load_node_reports(workspace: Path, run_id: str, nodes: list[dict]) -> dict[str, dict]:
+    """Load every available `node_report.json` keyed by node id."""
+    reports: dict[str, dict] = {}
+    for n in nodes:
+        nid = n.get("id")
+        if not nid:
+            continue
+        wd = _node_work_dir(workspace, run_id, nid)
+        rp = wd / "node_report.json"
+        if rp.is_file():
+            try:
+                reports[nid] = json.loads(rp.read_text())
+            except Exception:
+                continue
+    return reports
+
+
+def _resolve_best_node(nodes: list[dict]) -> dict | None:
+    """argmax(_scientific_score), with `validation`-label tie-break and depth secondary."""
+    real = [n for n in nodes if n.get("has_real_data") and n.get("metrics")]
+    if not real:
+        return None
+    def _score(n: dict) -> float:
+        return float((n.get("metrics") or {}).get("_scientific_score") or 0.0)
+    real.sort(
+        key=lambda n: (
+            _score(n),
+            1 if str(n.get("label") or "").lower() == "validation" else 0,
+            int(n.get("depth") or 0),
+        ),
+        reverse=True,
+    )
+    return real[0]
+
+
+def _gather_uploads(checkpoint_dir: Path) -> list[Path]:
+    uploads = checkpoint_dir / "uploads"
+    if not uploads.is_dir():
+        return []
+    out: list[Path] = []
+    for p in sorted(uploads.rglob("*")):
+        if p.is_file():
+            out.append(p)
+    return out
+
+
+def _gather_top_level_figures(checkpoint_dir: Path) -> list[Path]:
+    out: list[Path] = []
+    for ext in ("*.pdf", "*.png", "*.svg", "*.jpg", "*.jpeg"):
+        for f in sorted(checkpoint_dir.glob(ext)):
+            if f.is_file():
+                out.append(f)
+    return out
+
+
+def _render_evolution_md(chain: list[dict], reports: dict[str, dict]) -> str:
+    """Deterministic EVOLUTION.md from the for_narrative chain.
+
+    Step number + label is the only identifier the reader sees — opaque
+    `node_id` and `depth_in_chain` strings are excluded by spec (FR-E-RENDER-2).
+    """
+    if not chain:
+        return "# Evolution\n\n_No nodes were retained for the narrative._\n"
+
+    # Pick the primary metric to track per-step: the metric with the most
+    # successful step appearances.
+    metric_counter: dict[str, int] = {}
+    for n in chain:
+        for k in (n.get("metrics") or {}):
+            if k.startswith("_"):
+                continue
+            metric_counter[k] = metric_counter.get(k, 0) + 1
+    primary_metric = (
+        max(metric_counter, key=metric_counter.get) if metric_counter else None
+    )
+    best_id = chain[-1].get("id")
+
+    rows: list[str] = ["# Evolution", "", "## Search trajectory", ""]
+    rows.append("| Step | Label | Headline metric | Δ vs parent | What changed |")
+    rows.append("|---|---|---|---|---|")
+
+    prev_metric: float | None = None
+    per_step_blocks: list[str] = []
+    for idx, node in enumerate(chain, start=1):
+        nid = node.get("id")
+        report = reports.get(nid) or {}
+        label = str(node.get("label") or "other")
+        if nid == best_id:
+            label_disp = f"{label} (best)"
+        else:
+            label_disp = label
+        # Headline metric value.
+        m_val: float | None = None
+        if primary_metric:
+            v = (node.get("metrics") or {}).get(primary_metric)
+            if isinstance(v, (int, float)):
+                m_val = float(v)
+        m_str = f"{m_val:.3g} {primary_metric}" if m_val is not None else "—"
+        # Δ vs parent.
+        if m_val is not None and prev_metric and prev_metric != 0:
+            pct = (m_val - prev_metric) / abs(prev_metric) * 100.0
+            sign = "+" if pct >= 0 else ""
+            delta_str = f"{sign}{pct:.0f}%"
+        elif m_val is not None and prev_metric is None:
+            delta_str = "—"
+        else:
+            delta_str = "—"
+        prev_metric = m_val if m_val is not None else prev_metric
+        delta_text = (
+            (report.get("delta_vs_parent") or "").replace("|", " ").splitlines()
+        )
+        delta_text_first = delta_text[0] if delta_text else ""
+        if not delta_text_first:
+            delta_text_first = (
+                (report.get("self_assessment") or {}).get("headline") or ""
+            ).replace("|", " ").splitlines()[:1]
+            delta_text_first = delta_text_first[0] if delta_text_first else ""
+        rows.append(
+            f"| {idx} | {label_disp} | {m_str} | {delta_str} | "
+            f"{delta_text_first[:90]} |"
+        )
+
+        block = [f"### Step {idx}: {label_disp}", ""]
+        if delta_text_first:
+            block.append(f"**What changed:** {delta_text_first}")
+            block.append("")
+        sa = report.get("self_assessment") or {}
+        if sa.get("headline"):
+            block.append(f"**Headline:** {sa['headline']}")
+            block.append("")
+        if sa.get("concerns"):
+            block.append("**Concerns:**")
+            for c in sa["concerns"]:
+                block.append(f"- {c}")
+            block.append("")
+        if nid == best_id and report.get("next_steps_hints"):
+            block.append("**Suggested next steps:**")
+            for h in report["next_steps_hints"]:
+                block.append(f"- {h}")
+            block.append("")
+        per_step_blocks.append("\n".join(block).rstrip())
+
+    rows.append("")
+    rows.append("## Per-step details")
+    rows.append("")
+    rows.extend(per_step_blocks)
+    return "\n".join(rows).rstrip() + "\n"
+
+
+_BARE_VAR_ASSIGN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+
+
+def _is_substantive_command(line: str) -> bool:
+    """Whether a single line actually invokes something (vs env-var setup)."""
+    s = line.strip()
+    if not s or s.startswith("#"):
+        return False
+    if s.startswith(("set ", "export ", "source ", "cd ", "module ", "ulimit ", "shopt ")):
+        return False
+    if _BARE_VAR_ASSIGN_RE.match(s):
+        return False
+    return True
+
+
+def _find_runnable_script_in_code(code_dir: Path) -> str | None:
+    """Locate a script in code/ that can be wrapped as the run command.
+
+    Preference: ``run_job.sh`` (BFTS executor convention) → ``run.sh`` →
+    ``main.sh`` → first executable ``*.sh``. Returns the path RELATIVE to
+    ``code_dir`` (e.g. ``run_job.sh``), or None if nothing usable.
+    """
+    if not code_dir.is_dir():
+        return None
+    for name in ("run_job.sh", "run.sh", "main.sh"):
+        if (code_dir / name).is_file():
+            return name
+    for p in sorted(code_dir.glob("*.sh")):
+        return p.name
+    return None
+
+
+def _render_reproduce_sh(best_report: dict | None, code_dir: Path | None = None) -> str | None:
+    """Deterministic reproduce.sh body, or None if no usable input.
+
+    Strategy:
+      1. Build from ``best_report.{build_command, run_command}`` when at
+         least one is substantive (not just env-var setup).
+      2. Otherwise fall back to wrapping the actual script the BFTS executor
+         ran (``code/run_job.sh`` or similar). Bug 3b workaround: when the
+         node_report's build/run extraction degenerated to env-var-only
+         lines, the real compile + run are still in ``code/run_job.sh``.
+      3. Returns None when both inputs are absent.
+    """
+    build = (best_report.get("build_command") or "").strip() if best_report else ""
+    run = (best_report.get("run_command") or "").strip() if best_report else ""
+    has_substantive = _is_substantive_command(build) or _is_substantive_command(run)
+
+    if has_substantive:
+        lines = [
+            "#!/usr/bin/env bash",
+            "# Generated by ARI generate_ear from node_report.json::{build_command, run_command}.",
+            "# Manual review recommended: absolute paths and machine-specific flags may need",
+            "# adjustment for your environment.",
+            "set -euo pipefail",
+            'cd "$(dirname "$0")/code"',
+            "",
+        ]
+        if build:
+            lines.append(build)
+        if run:
+            lines.append(run)
+        return "\n".join(lines) + "\n"
+
+    # Fallback: wrap the runnable script in code/.
+    wrapped = _find_runnable_script_in_code(code_dir) if code_dir is not None else None
+    if not wrapped:
+        return None
+    return (
+        "#!/usr/bin/env bash\n"
+        "# Generated by ARI generate_ear (fallback wrapper).\n"
+        "# node_report.json::{build_command, run_command} did not contain\n"
+        "# substantive commands; this script invokes the executor's actual\n"
+        f"# run script ({wrapped}) verbatim.\n"
+        "set -euo pipefail\n"
+        'cd "$(dirname "$0")/code"\n'
+        '\n'
+        '# Provide common build env vars in case the inner script omits them.\n'
+        'export CXX="${CXX:-g++}"\n'
+        'export CXXFLAGS="${CXXFLAGS:--O3 -march=native -fopenmp -std=c++17}"\n'
+        '\n'
+        f'bash {wrapped}\n'
+        'rc=$?\n'
+        '\n'
+        '# Promote per-run output artifacts from code/ up to the repo root so\n'
+        '# the rubric\'s expected_artifacts (repo-relative paths like\n'
+        '# "results.csv") can match them. The inner script writes outputs in\n'
+        '# its CWD (= code/), but the PaperBench grader looks for them at\n'
+        '# repo root. Idempotent — re-runs overwrite stale copies.\n'
+        'shopt -s nullglob\n'
+        'for _f in *.csv *.tsv *.pdf *.png *.svg *.jpg *.jpeg *.json *.log *.txt; do\n'
+        '    [ "$_f" = "run.log" ] && continue   # surfaced via stdout below instead\n'
+        '    cp -f "$_f" "../$_f"\n'
+        'done\n'
+        'shopt -u nullglob\n'
+        '\n'
+        '# Surface stderr that the inner script may have redirected to a\n'
+        '# local log so the Phase 2 grader (which only sees the runner-\n'
+        '# captured stdout) can inspect it too.\n'
+        'if [ -f run.log ]; then\n'
+        '    echo "--- code/run.log (stderr from inner script) ---"\n'
+        '    cat run.log\n'
+        'fi\n'
+        '\n'
+        'exit "$rc"\n'
+    )
+
+
+def _render_readme(
+    *,
+    goal: str,
+    best_node: dict | None,
+    best_report: dict | None,
+    impl_overview: dict | None,
+    has_data_dir: bool,
+    has_figures_dir: bool,
+    has_evolution: bool,
+    has_environment: bool,
+    has_license: bool,
+    has_reproduce_sh: bool,
+) -> str:
+    title = goal.strip() or "Experiment Artifact Repository"
+    title = title.splitlines()[0][:200]
+
+    lines = [f"# {title}", ""]
+    if best_report or best_node:
+        sa = (best_report or {}).get("self_assessment") or {}
+        headline = (sa.get("headline") or "").strip()
+        if not headline and best_node:
+            headline = (best_node.get("eval_summary") or "").strip()
+        lines.append("## Headline result")
+        lines.append("")
+        if headline:
+            lines.append(headline)
+            lines.append("")
+        metrics = ((best_report or {}).get("metrics")
+                   or (best_node or {}).get("metrics") or {})
+        if metrics:
+            lines.append("| Metric | Value |")
+            lines.append("|---|---|")
+            for k, v in metrics.items():
+                if k.startswith("_"):
+                    continue
+                lines.append(f"| {k} | {v} |")
+            lines.append("")
+
+    lines.append("## Build & run")
+    lines.append("")
+    if has_reproduce_sh:
+        lines.append("```bash")
+        lines.append("bash reproduce.sh")
+        lines.append("```")
+    else:
+        lines.append("_No reproduce.sh was generated; see code/ for build instructions._")
+    lines.append("")
+
+    lines.append("## Layout")
+    lines.append("")
+    lines.append("- `code/` — verbatim source files from contributing nodes "
+                 "in the best chain")
+    if has_data_dir:
+        lines.append("- `data/` — input data files mirrored from the uploaded "
+                     "dataset. Experiment outputs (CSV etc.) are NOT included; "
+                     "they are regenerated by `reproduce.sh`.")
+    if has_figures_dir:
+        lines.append("- `figures/` — figures referenced by the paper")
+    if has_environment:
+        lines.append("- `environment.json` — captured runtime environment")
+    if has_license:
+        lines.append("- `LICENSE` — license declared by the author")
+    lines.append("")
+
+    if impl_overview and isinstance(impl_overview, dict):
+        arch = (impl_overview.get("architecture") or "").strip()
+        if arch:
+            lines.append("## Architecture")
+            lines.append("")
+            lines.append(arch)
+            lines.append("")
+        algos = impl_overview.get("key_algorithms") or []
+        if algos:
+            lines.append("## Key algorithms")
+            lines.append("")
+            for a in algos:
+                if isinstance(a, dict) and a.get("pseudocode"):
+                    lines.append(f"### {a.get('name', '(unnamed)')}")
+                    lines.append("")
+                    lines.append("```")
+                    lines.append(a["pseudocode"])
+                    lines.append("```")
+                    lines.append("")
+
+    lines.append("## Provenance")
+    lines.append("")
+    lines.append("Source and data files are verbatim copies from the *contributing* "
+                 "nodes in the best chain (determined deterministically via "
+                 "`node_report::files_changed`). README and reproduce.sh "
+                 "are rendered deterministically from each node's `node_report.json`. "
+                 "LLM does not modify code or data files. The full search "
+                 "trajectory and per-file origin audit are kept alongside the "
+                 "checkpoint as `EVOLUTION.md` and `_provenance.json` (outside "
+                 "this artifact).")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _read_publish_yaml(checkpoint_dir: Path) -> dict:
+    py_path = checkpoint_dir / "ear" / "publish.yaml"
+    if not py_path.is_file():
+        return {}
+    try:
+        import yaml as _yaml
+        return _yaml.safe_load(py_path.read_text()) or {}
+    except Exception:
+        return {}
+
+
+_LICENSE_TEMPLATE_DIR = Path(__file__).parent / "licenses"
+_SPDX_TO_TEMPLATE: dict[str, str] = {
+    "MIT": "mit.txt",
+    "Apache-2.0": "apache-2.0.txt",
+    "BSD-3-Clause": "bsd-3-clause.txt",
+    "GPL-3.0": "gpl-3.0.txt",
+    "GPL-3.0-only": "gpl-3.0.txt",
+    "GPL-3.0-or-later": "gpl-3.0.txt",
+    "CC-BY-4.0": "cc-by-4.0.txt",
+}
+
+
+def _write_license_if_needed(
+    ear_dir: Path,
+    publish_yaml: dict,
+    *,
+    author: str,
+    year: int,
+) -> bool:
+    """Write ear/LICENSE from SPDX template iff one isn't already there."""
+    target = ear_dir / "LICENSE"
+    if target.exists():
+        return True
+    spdx = (publish_yaml.get("license") or "").strip()
+    if not spdx:
+        return False
+    template = _SPDX_TO_TEMPLATE.get(spdx)
+    if not template:
+        return False
+    template_path = _LICENSE_TEMPLATE_DIR / template
+    if not template_path.is_file():
+        return False
+    body = template_path.read_text()
+    body = body.replace("{year}", str(year)).replace("{author}", author or "Authors")
+    target.write_text(body)
+    return True
+
+
+def _read_meta_author(ckpt: Path) -> tuple[str, int]:
+    from datetime import datetime as _dt, timezone as _tz
+    year = _dt.now(_tz.utc).year
+    author = ""
+    meta_path = ckpt / "meta.json"
+    if meta_path.is_file():
+        try:
+            meta = json.loads(meta_path.read_text())
+            if isinstance(meta, dict):
+                author = str(meta.get("author") or meta.get("authors") or "")
+        except Exception:
+            pass
+    return (author, year)
+
+
+def _resolve_goal(ckpt: Path, tree_data: object) -> str:
+    if isinstance(tree_data, dict):
+        g = tree_data.get("experiment_goal") or ""
+        if g:
+            return g
+    exp_md = ckpt / "experiment.md"
+    if exp_md.is_file():
+        try:
+            return exp_md.read_text().strip()
+        except Exception:
+            pass
+    meta_path = ckpt / "meta.json"
+    if meta_path.is_file():
+        try:
+            meta = json.loads(meta_path.read_text())
+            if isinstance(meta, dict):
+                return (meta.get("experiment_goal") or meta.get("goal")
+                        or meta.get("research_goal") or meta.get("idea") or "")
+        except Exception:
+            pass
+    return ""
+
+
+def _read_implementation_overview(ckpt: Path) -> dict | None:
+    sd = ckpt / "science_data.json"
+    if not sd.is_file():
+        return None
+    try:
+        data = json.loads(sd.read_text())
+    except Exception:
+        return None
+    if not isinstance(data, dict):
+        return None
+    overview = data.get("implementation_overview")
+    return overview if isinstance(overview, dict) else None
+
+
+def _fallback_collect_code_workdir_scan(work_dir: Path) -> list[tuple[str, bytes]]:
+    """Last-resort: enumerate the best node's work_dir for publishable files."""
+    if not work_dir.is_dir():
+        return []
+    out: list[tuple[str, bytes]] = []
+    for p in sorted(work_dir.rglob("*")):
+        if not p.is_file():
+            continue
+        rel = str(p.relative_to(work_dir))
+        if not _is_publishable_code_file(rel, p):
+            continue
+        try:
+            if p.stat().st_size > _EAR_CODE_FILE_SIZE_CAP:
+                continue
+            out.append((rel, p.read_bytes()))
+        except OSError:
+            continue
+    return out
+
+
+def _wipe_legacy_subdirs(ear_dir: Path) -> None:
+    """Remove legacy v0.6.0 subdirs so re-runs converge on the new layout."""
+    for sub in ("logs", "reproducibility"):
+        d = ear_dir / sub
+        if d.is_dir():
+            shutil.rmtree(d, ignore_errors=True)
+    # RESULTS.md is the v0.6.0 name; EVOLUTION.md and _provenance.json are
+    # v0.7.0 names that have since moved to checkpoint root — remove any
+    # stale copies left behind under ear/.
+    for stale in ("RESULTS.md", "EVOLUTION.md", "_provenance.json"):
+        p = ear_dir / stale
+        if p.is_file():
+            try:
+                p.unlink()
+            except OSError:
+                pass
+    # data/raw_metrics.json, data/science_data.json, data/figures are removed
+    # only if `data/` exists from a previous run; handled below in the build.
+
+
 @mcp.tool()
 def generate_ear(
     checkpoint_dir: str,
     llm_model: str = "",
     llm_base_url: str = "",
 ) -> dict:
-    """Generate Experiment Artifact Repository directory from checkpoint.
+    """Generate the Experiment Artifact Repository for *checkpoint_dir*.
 
-    Builds a structured 'pseudo-GitHub' directory under <checkpoint_dir>/ear/
-    containing README/RESULTS docs, source code, consolidated metrics,
-    figures, environment info, and reproduction commands.
+    The layout is *node_report-driven* and shaped like a typical
+    paper-companion code repository:
 
-    Args:
-        checkpoint_dir: Path to the checkpoint directory containing
-            tree.json (or nodes_tree.json) and science_data.json.
-        llm_model: Optional LLM model name (litellm format) used to
-            auto-generate README.md and RESULTS.md. Falls back to a
-            deterministic template when no LLM is available.
-        llm_base_url: Optional base URL for OpenAI-compatible LLM APIs.
+        <checkpoint>/
+        ├── EVOLUTION.md       (search trajectory; opaque node_ids omitted)
+        ├── _provenance.json   (origin metadata; sha256 lives in manifest.lock)
+        └── ear/
+            ├── README.md          (deterministic + optional architecture section)
+            ├── LICENSE            (SPDX template, optional)
+            ├── reproduce.sh       (best report build_command + run_command literal)
+            ├── environment.json   (captured runtime environment)
+            ├── code/              (verbatim files from contributing chain nodes)
+            ├── data/              (uploads/ mirror — input data only)
+            └── figures/           (top-level *.{pdf,png,svg,jpg,jpeg})
 
-    Returns:
-        Summary JSON containing:
-        - ear_dir: Absolute path to the generated EAR directory
-        - file_count: Number of files written under ear/
-        - source_files: Number of source files copied
-        - has_readme / has_results: Whether the docs were generated
+    `EVOLUTION.md` and `_provenance.json` are ARI audit logs (search
+    trajectory + per-file origin) and live at checkpoint root, *outside*
+    `ear/`, so they are not bundled into the published artifact.
+
+    Other internal ARI metadata (tree.json, science_data.json,
+    raw_metrics.json, eval_scores.json, commands.md) also stays at
+    checkpoint root; experiment output files (CSVs etc.) are not bundled —
+    `reproduce.sh` regenerates them.
+
+    Behaviour with respect to `node_report.json`:
+    - Each contributing node's `node_report.json` is consulted via
+      `select_source_files_for_publication` to decide which (node_id,
+      rel_path) pairs are publishable code.
+    - If reports are missing for every node, the tool falls back to a
+      whitelist scan of the best node's work_dir.
     """
+    from ari.orchestrator import node_selection as _ns
+
     ckpt = Path(checkpoint_dir).expanduser().resolve()
     if not ckpt.exists() or not ckpt.is_dir():
         return {"error": f"checkpoint dir not found: {ckpt}"}
 
-    # ── Load tree ──
     tree_path = ckpt / "tree.json"
     if not tree_path.exists():
         tree_path = ckpt / "nodes_tree.json"
@@ -685,173 +1915,368 @@ def generate_ear(
     except Exception as e:
         return {"error": f"could not parse tree json: {e}"}
 
-    nodes: list[dict] = tree_data if isinstance(tree_data, list) else tree_data.get("nodes", [])
-    goal: str = (
-        tree_data.get("experiment_goal", "") if isinstance(tree_data, dict) else ""
+    nodes: list[dict] = (
+        tree_data if isinstance(tree_data, list) else tree_data.get("nodes", [])
     )
+    goal = _resolve_goal(ckpt, tree_data)
 
-    # ── Identify top-scoring node ──
-    real_nodes = [n for n in nodes if n.get("has_real_data") and n.get("metrics")]
-    real_nodes.sort(
-        key=lambda n: float((n.get("metrics") or {}).get("_scientific_score") or 0.0),
-        reverse=True,
-    )
-    top_node = real_nodes[0] if real_nodes else None
+    workspace, run_id = _resolve_pm_run_id(ckpt)
+    reports = _load_node_reports(workspace, run_id, nodes)
 
-    # ── Build EAR directory tree ──
+    best_node = _resolve_best_node(nodes)
+    best_id = (best_node or {}).get("id", "")
+    best_report = reports.get(best_id) if best_id else None
+
+    # ── ear/ directory tree (start fresh on legacy subdirs) ──
     ear = ckpt / "ear"
     code_dir = ear / "code"
+    ear.mkdir(parents=True, exist_ok=True)
+    code_dir.mkdir(parents=True, exist_ok=True)
+    _wipe_legacy_subdirs(ear)
+    # Wipe any pre-existing `code/<node_id>/` subdir so the new flat layout
+    # converges (only if we do have reports — fallback may still want them).
+    if code_dir.exists():
+        for sub in list(code_dir.iterdir()):
+            if sub.is_dir() and sub.name.startswith("node_"):
+                shutil.rmtree(sub, ignore_errors=True)
+    # Wipe data/ ARI internals from previous runs.
     data_dir = ear / "data"
-    figures_dir = data_dir / "figures"
-    logs_dir = ear / "logs"
-    repro_dir = ear / "reproducibility"
-    for d in (ear, code_dir, data_dir, figures_dir, logs_dir, repro_dir):
-        d.mkdir(parents=True, exist_ok=True)
+    if data_dir.exists():
+        for legacy in ("raw_metrics.json", "science_data.json"):
+            lp = data_dir / legacy
+            if lp.is_file():
+                try:
+                    lp.unlink()
+                except OSError:
+                    pass
+        legacy_figs = data_dir / "figures"
+        if legacy_figs.is_dir():
+            shutil.rmtree(legacy_figs, ignore_errors=True)
 
     file_count = 0
-    source_files = 0
+    verbatim_files = 0
+    code_layout = "fallback_workdir_scan"
 
-    # ── code/<node_id>/ — copy source files per node ──
-    for n in nodes:
-        node_id = str(n.get("id") or "").strip()
-        if not node_id:
-            continue
-        node_dir = code_dir / node_id
-        copied = _copy_node_sources(n, node_dir)
-        if copied:
-            source_files += copied
-            file_count += copied
-        else:
-            # Remove empty per-node dir to avoid cluttering the tree
+    # ── code/ collection ──
+    written_files: list[tuple[str, str | None, str]] = []  # (dest_rel, from_node_id, introduced_by)
+
+    if best_id and reports:
+        selection = _ns.select_source_files_for_publication(nodes, reports, best_id)
+        # Map node_id -> work_dir.
+        def _wd(nid: str) -> Path:
+            return _node_work_dir(workspace, run_id, nid)
+        loaded = _ns.load_selected_sources(
+            selection, work_dir_for=_wd, size_budget=None,
+        )
+        for rel_path, payload in loaded.items():
+            full = code_dir / rel_path
+            if not _is_publishable_code_file(rel_path, full):
+                continue
+            if payload["size"] > _EAR_CODE_FILE_SIZE_CAP:
+                continue
+            full.parent.mkdir(parents=True, exist_ok=True)
+            full.write_bytes(payload["bytes"])
+            # Mark introduction event.
+            from_node_id = payload["from_node_id"]
+            from_report = reports.get(from_node_id) or {}
+            fc = from_report.get("files_changed") or {}
+            introduced_by = "modified"
+            if any((e.get("path") == rel_path) for e in (fc.get("added") or [])):
+                introduced_by = "added"
+            elif any((e.get("path") == rel_path) for e in (fc.get("modified") or [])):
+                introduced_by = "modified"
+            else:
+                introduced_by = "fallback_workdir_scan"
+            written_files.append((rel_path, from_node_id, introduced_by))
+            verbatim_files += 1
+        if written_files:
+            code_layout = "node_report"
+        excluded_nodes = list(selection.excluded_nodes)
+    else:
+        excluded_nodes = []
+
+    # Fallback: best work_dir whitelist scan if nothing was selected.
+    if not written_files and best_id:
+        best_wd = _node_work_dir(workspace, run_id, best_id)
+        for rel_path, data in _fallback_collect_code_workdir_scan(best_wd):
+            full = code_dir / rel_path
+            full.parent.mkdir(parents=True, exist_ok=True)
+            full.write_bytes(data)
+            written_files.append((rel_path, best_id, "fallback_workdir_scan"))
+            verbatim_files += 1
+        code_layout = "fallback_workdir_scan"
+
+    file_count += verbatim_files
+
+    # ── data/ — uploads/ verbatim mirror (input only) ──
+    data_records: list[dict] = []
+    uploads_root = ckpt / "uploads"
+    upload_files = _gather_uploads(ckpt)
+    if upload_files:
+        data_dir.mkdir(parents=True, exist_ok=True)
+        for src in upload_files:
+            rel = src.relative_to(uploads_root)
+            dst = data_dir / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
             try:
-                node_dir.rmdir()
-            except OSError:
-                pass
-
-    # ── data/raw_metrics.json ──
-    raw_metrics = _consolidate_metrics(nodes)
-    (data_dir / "raw_metrics.json").write_text(
-        json.dumps(raw_metrics, ensure_ascii=False, indent=2)
-    )
-    file_count += 1
-
-    # ── data/science_data.json (copy if present) ──
-    sd_src = ckpt / "science_data.json"
-    if sd_src.exists():
+                shutil.copy2(src, dst)
+                data_records.append({
+                    "dest": f"data/{rel.as_posix()}",
+                    "from_path": f"uploads/{rel.as_posix()}",
+                    "size": dst.stat().st_size,
+                })
+                file_count += 1
+            except Exception:
+                continue
+    elif data_dir.exists():
+        # Empty uploads — remove the now-empty data/.
         try:
-            shutil.copy2(sd_src, data_dir / "science_data.json")
-            file_count += 1
-        except Exception:
+            for child in list(data_dir.iterdir()):
+                if child.is_dir():
+                    shutil.rmtree(child, ignore_errors=True)
+                else:
+                    child.unlink()
+            data_dir.rmdir()
+        except OSError:
             pass
 
-    # ── data/figures/ ──
-    fig_count = _copy_figures(ckpt, figures_dir)
-    file_count += fig_count
+    has_data_dir = data_dir.is_dir()
 
-    # ── logs/bfts_tree.json ──
-    try:
-        shutil.copy2(tree_path, logs_dir / "bfts_tree.json")
-        file_count += 1
-    except Exception:
-        pass
+    # ── figures/ — top-level mirror ──
+    figures_dir = ear / "figures"
+    fig_records: list[dict] = []
+    fig_files = _gather_top_level_figures(ckpt)
+    if fig_files:
+        figures_dir.mkdir(parents=True, exist_ok=True)
+        for src in fig_files:
+            dst = figures_dir / src.name
+            try:
+                shutil.copy2(src, dst)
+                fig_records.append({
+                    "dest": f"figures/{src.name}",
+                    "from_path": src.name,
+                    "size": dst.stat().st_size,
+                })
+                file_count += 1
+            except Exception:
+                continue
+    elif figures_dir.exists():
+        # Old run left an empty dir behind.
+        try:
+            figures_dir.rmdir()
+        except OSError:
+            pass
 
-    # ── logs/eval_scores.json ──
-    eval_scores = []
-    for n in nodes:
-        sci = (n.get("metrics") or {}).get("_scientific_score")
-        if sci is not None:
-            eval_scores.append({
-                "node_id": n.get("id", ""),
-                "label": n.get("label", ""),
-                "raw_label": n.get("raw_label", ""),
-                "depth": n.get("depth", 0),
-                "scientific_score": sci,
-                "eval_summary": (n.get("eval_summary") or "")[:500],
-            })
-    (logs_dir / "eval_scores.json").write_text(
-        json.dumps(eval_scores, ensure_ascii=False, indent=2)
+    has_figures_dir = figures_dir.is_dir()
+
+    # ── EVOLUTION.md ──
+    chain = _ns.build_parent_chain(best_id, nodes) if best_id else []
+    narrative_chain = _ns.filter_nodes(
+        chain, reports, "for_narrative",
+        always_include_node_ids={best_id} if best_id else (),
     )
-    file_count += 1
+    has_evolution = False
+    if narrative_chain:
+        evo = _render_evolution_md(narrative_chain, reports)
+        # EVOLUTION.md is an ARI audit log, not part of the published EAR;
+        # it lives at checkpoint root alongside tree.json / science_data.json.
+        (ckpt / "EVOLUTION.md").write_text(evo)
+        has_evolution = True
 
-    # ── reproducibility/environment.json ──
+    # ── reproduce.sh ──
+    repro_body = _render_reproduce_sh(best_report, code_dir=code_dir)
+    has_reproduce_sh = False
+    if repro_body:
+        repro_path = ear / "reproduce.sh"
+        repro_path.write_text(repro_body)
+        try:
+            repro_path.chmod(0o755)
+        except OSError:
+            pass
+        file_count += 1
+        has_reproduce_sh = True
+
+    # ── environment.json (top-level) ──
     env_info = _capture_environment()
-    (repro_dir / "environment.json").write_text(
+    (ear / "environment.json").write_text(
         json.dumps(env_info, ensure_ascii=False, indent=2)
     )
     file_count += 1
+    has_environment = True
 
-    # ── reproducibility/run_config.json ──
-    run_config: dict = {
-        "checkpoint_dir": str(ckpt),
-        "experiment_goal": goal[:1000] if goal else "",
-        "node_count": len(nodes),
-        "real_data_count": len(real_nodes),
-    }
-    # Pull workflow.yaml summary if available
-    wf = ckpt.parent.parent / "config" / "workflow.yaml"
-    if wf.exists():
-        try:
-            run_config["workflow_yaml"] = wf.read_text()[:4000]
-        except Exception:
-            pass
-    (repro_dir / "run_config.json").write_text(
-        json.dumps(run_config, ensure_ascii=False, indent=2)
+    # ── LICENSE (optional, SPDX template-driven) ──
+    publish_yaml = _read_publish_yaml(ckpt)
+    author, year = _read_meta_author(ckpt)
+    has_license = _write_license_if_needed(
+        ear, publish_yaml, author=author, year=year,
     )
-    file_count += 1
+    if has_license and (ear / "LICENSE").is_file():
+        file_count += 1
 
-    # ── reproducibility/commands.md ──
-    (repro_dir / "commands.md").write_text(_build_commands_md(top_node))
-    file_count += 1
-
-    # ── README.md ──
-    model = llm_model or os.environ.get("LLM_MODEL", "") or os.environ.get("ARI_LLM_MODEL", "")
-    base_url = llm_base_url or os.environ.get("ARI_LLM_API_BASE", "")
-    readme_text = ""
-    if model:
-        readme_prompt = (
-            "Write a concise README.md for an experiment artifact repository. "
-            "Cover: (1) what was done, (2) the best result, (3) the key finding. "
-            "Keep it under ~200 words and avoid speculation. "
-            f"Goal: {goal[:600]}\n\n"
-            f"Top result metrics: {json.dumps((top_node or {}).get('metrics', {}), ensure_ascii=False)}\n"
-            f"Top result summary: {((top_node or {}).get('eval_summary') or '')[:600]}\n"
-            f"Total nodes: {len(nodes)}, with measurements: {len(real_nodes)}.\n\n"
-            "Return Markdown only, no code fences."
-        )
-        readme_text = _llm_generate_doc(readme_prompt, model, base_url)
-    if not readme_text:
-        readme_text = _build_readme_fallback(nodes, goal, top_node)
+    # ── README.md (deterministic + optional impl_overview) ──
+    impl_overview = _read_implementation_overview(ckpt)
+    readme_text = _render_readme(
+        goal=goal,
+        best_node=best_node,
+        best_report=best_report,
+        impl_overview=impl_overview,
+        has_data_dir=has_data_dir,
+        has_figures_dir=has_figures_dir,
+        has_evolution=has_evolution,
+        has_environment=has_environment,
+        has_license=has_license,
+        has_reproduce_sh=has_reproduce_sh,
+    )
     (ear / "README.md").write_text(readme_text)
     file_count += 1
 
-    # ── RESULTS.md ──
-    results_text = ""
-    if model:
-        results_prompt = (
-            "Generate a structured RESULTS.md for an experiment artifact repository. "
-            "Include: (1) a metrics table for the top configurations, "
-            "(2) a comparison table vs. baseline / parent if any, "
-            "(3) one short paragraph on what the best run achieved. "
-            "Use Markdown tables. Do NOT invent metrics that are not in the data.\n\n"
-            f"Top nodes (sorted by scientific_score):\n"
-            f"{json.dumps([{'id': n.get('id', '')[-8:], 'label': n.get('label', ''), 'metrics': n.get('metrics', {})} for n in real_nodes[:10]], ensure_ascii=False, indent=2)}\n\n"
-            "Return Markdown only, no code fences."
+    # ── _provenance.json (checkpoint-root audit log; not part of EAR) ──
+    # `dest` paths are checkpoint-relative so a reader of this file can
+    # locate every artifact without knowing it was generated from inside
+    # `ear/`. Files that live under `ear/` are recorded as `ear/...`.
+    file_records: list[dict] = []
+    for rel_path, from_nid, introduced_by in written_files:
+        node = next((n for n in nodes if n.get("id") == from_nid), None)
+        depth = int((node or {}).get("depth") or 0)
+        size = (code_dir / rel_path).stat().st_size if (code_dir / rel_path).is_file() else 0
+        file_records.append({
+            "dest": f"ear/code/{rel_path}",
+            "from_node_id": from_nid,
+            "from_filename": Path(rel_path).name,
+            "verbatim": True,
+            "introduced_by": introduced_by,
+            "depth_in_chain": depth,
+            "size": size,
+        })
+    data_records_prov = [
+        {**rec, "dest": f"ear/{rec['dest']}"} for rec in data_records
+    ]
+    fig_records_prov = [
+        {**rec, "dest": f"ear/{rec['dest']}"} for rec in fig_records
+    ]
+    provenance = {
+        "schema_version": 1,
+        "best_node_id": best_id,
+        "method": code_layout,
+        "files": file_records,
+        "data": data_records_prov,
+        "figures": fig_records_prov,
+        "rendered": [
+            {"dest": "ear/README.md", "method": "deterministic_render",
+             "source_field": "node_reports + (optional) science_data.json::implementation_overview"},
+            {"dest": "EVOLUTION.md", "method": "deterministic_render",
+             "source_field": "node_reports::delta_vs_parent + metrics"} if has_evolution else None,
+            {"dest": "ear/reproduce.sh", "method": "deterministic_render",
+             "source_field": "node_reports::{build_command, run_command}"} if has_reproduce_sh else None,
+        ],
+        "excluded_nodes": list(excluded_nodes),
+        "warnings": [],
+    }
+    provenance["rendered"] = [r for r in provenance["rendered"] if r is not None]
+    (ckpt / "_provenance.json").write_text(
+        json.dumps(provenance, ensure_ascii=False, indent=2)
+    )
+
+    # ── checkpoint/run_config.json (moved from ear/reproducibility/) ──
+    real_nodes = [n for n in nodes if n.get("has_real_data") and n.get("metrics")]
+    run_config: dict = {
+        "checkpoint_dir": str(ckpt),
+        "experiment_goal": (goal or "")[:2000],
+        "node_count": len(nodes),
+        "real_data_count": len(real_nodes),
+    }
+    if best_node:
+        run_config["top_node_id"] = best_node.get("id", "")
+        run_config["top_node_label"] = best_node.get("label", "")
+        run_config["top_node_metrics"] = best_node.get("metrics") or {}
+    try:
+        (ckpt / "run_config.json").write_text(
+            json.dumps(run_config, ensure_ascii=False, indent=2)
         )
-        results_text = _llm_generate_doc(results_prompt, model, base_url)
-    if not results_text:
-        results_text = _build_results_md_fallback(nodes)
-    (ear / "RESULTS.md").write_text(results_text)
-    file_count += 1
+    except Exception:
+        pass
 
     return {
         "ear_dir": str(ear),
+        "code_layout": code_layout,
+        "verbatim_files": verbatim_files,
+        # Back-compat alias.
+        "source_files": verbatim_files,
+        "rendered_files": (1 if has_evolution else 0)
+                          + (1 if has_reproduce_sh else 0)
+                          + 1,  # README.md is always rendered
+        "data_count": len(data_records),
+        "figure_count": len(fig_records),
+        "top_node_id": best_id,
+        "best_chain_depth": len(chain),
+        "excluded_count": len(excluded_nodes),
+        "warnings_count": 0,
         "file_count": file_count,
-        "source_files": source_files,
-        "figure_count": fig_count,
         "node_count": len(nodes),
         "has_readme": (ear / "README.md").exists(),
-        "has_results": (ear / "RESULTS.md").exists(),
-        "top_node_id": (top_node or {}).get("id", ""),
+        # Back-compat: callers and existing tests expect has_results.
+        "has_results": (ear / "README.md").exists(),
+        "has_evolution": has_evolution,
+        "has_reproduce_sh": has_reproduce_sh,
+        "has_license": has_license,
+        "has_environment": has_environment,
+    }
+
+
+@mcp.tool()
+def curate_ear(checkpoint_dir: str) -> dict:
+    """Curate {checkpoint}/ear/ into {checkpoint}/ear_published/ + manifest.lock.
+
+    Reads {checkpoint}/ear/publish.yaml. If publish.yaml is absent, returns
+    {"skipped": true} and does not touch ear_published/. The bundle digest
+    (sha256 of the canonical manifest) is the value that gets baked into
+    the paper's Code Availability section.
+    """
+    from curate import curate_to_dict  # type: ignore  # local module
+    return curate_to_dict(checkpoint_dir)
+
+
+@mcp.tool()
+def publish_ear(
+    checkpoint_dir: str,
+    backend: str = "ari-registry",
+    visibility: str = "staged",
+    dry_run: bool = False,
+) -> dict:
+    """Publish {checkpoint}/ear_published/ to a backend.
+
+    Thin MCP wrapper around ari.publish.publish so the publish step can
+    be a workflow stage. Always starts at visibility=staged (FR-P5).
+    """
+    try:
+        from ari.publish import publish, PublishError  # type: ignore
+    except Exception as e:
+        return {"error": f"ari.publish not importable: {e}"}
+    try:
+        rec = publish(checkpoint_dir, backend=backend, visibility=visibility, dry_run=dry_run)
+    except PublishError as e:
+        return {"error": str(e), "kind": "PublishError"}
+    return {
+        "backend": rec.backend, "ref": rec.ref, "bundle_sha256": rec.bundle_sha256,
+        "visibility": rec.visibility, "timestamp": rec.timestamp,
+        "dry_run": rec.dry_run, "extra": rec.extra,
+    }
+
+
+@mcp.tool()
+def promote_ear(checkpoint_dir: str, target: str = "public") -> dict:
+    """Promote a previously-published artefact to a wider visibility."""
+    try:
+        from ari.publish import promote, PublishError  # type: ignore
+    except Exception as e:
+        return {"error": f"ari.publish not importable: {e}"}
+    try:
+        rec = promote(checkpoint_dir, target=target)
+    except PublishError as e:
+        return {"error": str(e), "kind": "PublishError"}
+    return {
+        "ref": rec.ref, "visibility": rec.visibility,
+        "promoted_at": rec.promoted_at, "promote_failed_at": rec.promote_failed_at,
     }
 
 
