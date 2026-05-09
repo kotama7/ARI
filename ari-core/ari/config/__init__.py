@@ -117,8 +117,12 @@ def load_config(path: str) -> ARIConfig:
         raw = yaml.safe_load(f) or {}
     raw = _resolve_env_recursive(raw)
     _apply_memory_section(raw)
-    # Resolve {{ari_root}} in skill paths (and anywhere else in config)
-    _ari_root = os.environ.get("ARI_ROOT", str(Path(__file__).resolve().parents[2]))
+    # Resolve {{ari_root}} in skill paths (and anywhere else in config).
+    # Phase 2 converted ``config.py`` → ``config/__init__.py`` so this
+    # file now sits one level deeper; ``parents[3]`` reaches the repo
+    # root (the parent of ``ari-core/``) where the ``ari-skill-*``
+    # directories live.
+    _ari_root = os.environ.get("ARI_ROOT", str(Path(__file__).resolve().parents[3]))
     def _resolve_ari_root(data):
         if isinstance(data, dict):
             return {k: _resolve_ari_root(v) for k, v in data.items()}
@@ -224,7 +228,9 @@ def _merge_bfts_disabled_tools(cfg: "ARIConfig", raw: dict) -> None:
 def _discover_skills(base_dir: Path | None = None) -> list[SkillConfig]:
     """Auto-detect ari-skill-* directories and return a list of SkillConfig."""
     if base_dir is None:
-        base_dir = Path(__file__).resolve().parents[2]
+        # Phase 2 — file moved into a package; ``parents[3]`` reaches
+        # the repo root (alongside the ``ari-skill-*`` directories).
+        base_dir = Path(__file__).resolve().parents[3]
     skills = []
     for skill_dir in sorted(base_dir.glob("ari-skill-*")):
         server = skill_dir / "src" / "server.py"
@@ -247,7 +253,9 @@ def auto_config() -> ARIConfig:
     _ckpt_path = PathManager.checkpoint_dir_from_env()
     _ckpt_dir = str(_ckpt_path) if _ckpt_path is not None else ""
     if not _ckpt_dir:
-        _ari_root = Path(__file__).resolve().parents[2]  # ARI/
+        # Phase 2 — file moved into a package, so we walk up one extra
+        # parent to reach the repo root (``ARI/``).
+        _ari_root = Path(__file__).resolve().parents[3]  # ARI/
         _ckpt_dir = str(_ari_root / "workspace" / "checkpoints" / "{run_id}")
     _log_dir = os.environ.get("ARI_LOG_DIR", _ckpt_dir)
     return ARIConfig(

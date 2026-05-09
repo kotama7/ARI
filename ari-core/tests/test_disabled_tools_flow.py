@@ -118,7 +118,15 @@ def test_run_pipeline_skips_disabled_tools(tmp_path: Path, monkeypatch):
 def test_pipeline_subprocess_script_passes_disabled_tools():
     """The generated subprocess script must forward disabled_tools to MCPClient."""
     # Inspect the source literal — cheapest + most stable assertion.
-    src = Path(_pipeline.__file__).read_text()
+    # Phase 3C extracted the subprocess generator to
+    # ``ari.pipeline.stage_runner``; fall back to the package init for
+    # historical checkouts.
+    pkg_dir = Path(_pipeline.__file__).resolve().parent
+    sources = [Path(_pipeline.__file__).read_text()]
+    sr = pkg_dir / "stage_runner.py"
+    if sr.exists():
+        sources.append(sr.read_text())
+    src = "\n".join(sources)
     assert (
         "MCPClient(skills, disabled_tools=getattr(cfg, 'disabled_tools', []) or [])"
         in src
