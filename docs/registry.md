@@ -12,31 +12,36 @@ permanence.
 
 ## Quick start
 
-> **Note:** `~/.ari/` paths are **DEPRECATED since v0.5.0** and will be
-> removed in v1.0.  Set `ARI_REGISTRY_DATA` and `ARI_REGISTRIES_FILE`
-> (or place `registries.yaml` under your checkpoint) to opt in to the
-> new layout — see `docs/refactor_audit.md` and
-> `DEPRECATION_REMOVAL.md`.
+> **Note:** v0.5.0 removed the global `$HOME/.ari/` directory — every
+> registry path is now scoped to either an explicit env var
+> (`ARI_REGISTRY_DATA`, `ARI_REGISTRIES_FILE`) or to the active
+> checkpoint (`$ARI_CHECKPOINT_DIR/.ari/registries.yaml`).  See
+> `docs/refactor_audit.md` and `docs/howto/migration.md` for the
+> migration recipe; the legacy fallback is removed in v1.0.
 
 ```bash
 # 1. install server deps (skipped by default to keep the install slim)
 ./setup.sh --with-registry        # or: pip install fastapi uvicorn[standard] python-multipart
 
-# 2. start it
-./scripts/registry/start_local.sh # uvicorn on 127.0.0.1:8290, sqlite under ~/.ari/registry-data
-                                  # (DEPRECATED — set $ARI_REGISTRY_DATA)
+# 2. point the server at a data directory
+export ARI_REGISTRY_DATA="$PWD/.ari_registry"
 
-# 3. mint a token (plaintext is shown ONCE)
+# 3. start it (uvicorn on 127.0.0.1:8290)
+./scripts/registry/start_local.sh
+
+# 4. mint a token (plaintext is shown ONCE)
 ari registry token issue alice
 
-# 4. configure the client
-cat > ~/.ari/registries.yaml <<EOF   # DEPRECATED — prefer $ARI_REGISTRIES_FILE
+# 5. configure the client
+export ARI_REGISTRIES_FILE="$ARI_CHECKPOINT_DIR/.ari/registries.yaml"
+mkdir -p "$(dirname "$ARI_REGISTRIES_FILE")"
+cat > "$ARI_REGISTRIES_FILE" <<EOF
 registries:
   - name: default
     url: http://127.0.0.1:8290
     token: \$ARI_REGISTRY_TOKEN
 EOF
-export ARI_REGISTRY_TOKEN=ari_<paste-from-step-3>
+export ARI_REGISTRY_TOKEN=ari_<paste-from-step-4>
 ```
 
 ## Settings file resolution (v0.7+)
@@ -49,12 +54,14 @@ look up `registries.yaml` in this priority order:
    launchers; lets a run pin its registry config to its checkpoint.
 3. `$(pwd)/.ari/registries.yaml` — convenient when running from inside
    a project directory.
-4. `~/.ari/registries.yaml` — **DEPRECATED since v0.5.0**, retained
-   behind a `DeprecationWarning`. The fallback will be removed in v1.0.
+
+The legacy `$HOME/.ari/registries.yaml` lookup was **removed in v0.5.0**
+and emits a `DeprecationWarning` (with a fallback that will disappear in
+v1.0); set one of the three locations above explicitly.
 
 Server-side state (`ari registry serve`) lives at
-`$ARI_REGISTRY_DATA/`; the legacy `~/.ari/registry-data` fallback is
-under the same v1.0 deprecation policy. Set the env var explicitly to
+`$ARI_REGISTRY_DATA/`. The legacy `$HOME/.ari/registry-data` fallback is
+under the same v1.0 deprecation policy — set the env var explicitly to
 avoid the warning.
 
 ## Endpoints

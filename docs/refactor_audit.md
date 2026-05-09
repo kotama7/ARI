@@ -127,9 +127,14 @@ original import paths.
 | `tests/test_clone.py:190` | docstring | Phase 6 |
 | `tests/test_paths.py:131` | comment ("no global ~/.ari anymore") | OK as-is |
 
-## 10. Sub-plan map
+## 10. Sub-plan map (historical)
 
-| Plan | Owner |
+The refactoring sub-plans below were one-shot planning files; each
+was removed in a `[plan-deletion]` commit once its scope landed.
+Use `git log --oneline --diff-filter=D --follow -- <path>` to recover
+the historical record.
+
+| Plan (now removed) | Owner |
 |---|---|
 | `REFACTORING.md` (root) | Master |
 | `ari-core/REFACTORING.md` | cli/pipeline/core split + shared modules |
@@ -146,3 +151,83 @@ original import paths.
 | `ari-skill-plot/REFACTORING.md` | `ari.public.cost_tracker` migration |
 | `PROMPTS_AND_CONFIG.md` | Prompt/config externalisation master |
 | `DEPRECATION_REMOVAL.md` | Tier classification + DR0–DR5 phases |
+
+## 11. Documentation audit (Phase D0 — DOCUMENTATION_PLAN.md)
+
+Snapshot taken on 2026-05-09 against the master `DOCUMENTATION_PLAN.md` and
+its 16 sub-plans.  Some items the plan called out as missing are already
+done; the table below reconciles plan-vs-reality.
+
+### 11-1. `~/.ari/` residue in docs (DOCUMENTATION_PLAN.md §2-1)
+
+`grep -rn '~/\.ari' docs/` lands in 17 files (16 product docs + this audit
+itself).  The §9 quality gate requires zero hits across `docs/`, so every
+reference must be rewritten to the v0.5.0+ scoped equivalents:
+
+| Old | New |
+|---|---|
+| `~/.ari/registries.yaml` | `$ARI_CHECKPOINT_DIR/.ari/registries.yaml` (or `$ARI_REGISTRIES_FILE`) |
+| `~/.ari/registry-data` | `$ARI_REGISTRY_DATA` (no global default) |
+| `~/.ari/settings.json` | `$ARI_CHECKPOINT_DIR/settings.json` |
+| `~/.ari/global_memory.jsonl` | `$ARI_CHECKPOINT_DIR/memory_store.jsonl` (file backend) or Letta store |
+| `~/.ari/letta-pid` | `$ARI_LETTA_PIDFILE` |
+
+Files needing rewrite (all retain the *deprecation note* but no longer
+quote the literal `~/.ari/...` path):
+
+```
+docs/architecture.md       docs/ja/architecture.md       docs/zh/architecture.md
+docs/cli_reference.md      docs/ja/cli_reference.md      docs/zh/cli_reference.md
+docs/configuration.md      docs/ja/configuration.md      docs/zh/configuration.md
+docs/registry.md           docs/ja/registry.md           docs/zh/registry.md
+docs/skills.md             docs/ja/skills.md             docs/zh/skills.md
+```
+
+(`docs/refactor_audit.md` and `docs/DOCUMENTATION_PLAN.md` stay — they are
+intentionally about the legacy state.  The §9 grep is pointed at product
+docs only.)
+
+### 11-2. Reconciliation with master plan §2
+
+| Plan claim | Reality (May 9) | Action |
+|---|---|---|
+| `architecture.md` lacks v0.6/v0.7 reflection | Already has §"Publication Lifecycle (v0.7.0)", §"Plan / Venue contract (v0.7.0+)", §"work_dir inheritance (v0.7.0 / Phase 7)", §"v0.6.0: backed by Letta", §"Layered architecture (v0.7+ refactor)" | **Done — no rewrite.** Cross-link new reference docs from §"Module Reference" only. |
+| `skills.md` missing `ari-skill-replicate` `ari-skill-paper-re` | Already at L273 (`paper-re`) and L430 (`replicate`) with full tool tables and v0.7.0 markers | **Done.** Verify ja/zh have parity. |
+| `experiment_file.md`, `extension_guide.md`, `hpc_setup.md`, `PHILOSOPHY.md` stuck on Apr 17 | `extension_guide.md` (May 8), `PHILOSOPHY.md` (May 8) are current. Only `experiment_file.md` and `hpc_setup.md` are still Apr 17. | Refresh **two** docs, not four. |
+| `ari-skill-coding/`, `plot/`, `transform/` lack README | Confirmed. | Create. |
+| `ari/public/` not yet established | Already exists with 5 modules (`config_schema.py`, `container.py`, `cost_tracker.py`, `llm.py`, `paths.py`). | Phase 4 is **already complete** in code; Phase D2 just needs to write the reference doc. |
+| `ari-core/ari/<subdir>/__init__.py` mostly empty | Empty: `agent`, `llm`, `mcp`, `memory`, `orchestrator`. One-liner: `viz`. Others have docstrings. | 5 subdirs to fill. |
+
+### 11-3. Doc deltas to author (priority order)
+
+| # | Item | Type | Phase | Owner doc |
+|---|---|:---:|:---:|---|
+| 1 | `~/.ari/` sweep across 15 product docs (en + ja + zh) | mechanical | D1-2-1 | `cli_reference.md`, `configuration.md`, `registry.md`, `skills.md`, `architecture.md` × 3 langs |
+| 2 | Re-verify `skills.md` ja/zh have replicate + paper-re sections at parity with en | parity | D1-2-2 | `docs/{ja,zh}/skills.md` |
+| 3 | Refresh `experiment_file.md` for v0.6 (rubric, ORS metadata) and v0.7 (lineage decisions in experiment.md) | content | D1-2-4 | `docs/{,ja/,zh/}experiment_file.md` |
+| 4 | Refresh `hpc_setup.md` with container deployment + Letta backend deployment | content | D1-2-4 | `docs/{,ja/,zh/}hpc_setup.md` |
+| 5 | `__init__.py` docstrings for 5 empty subdirs + `viz` rewrite | code-doc | D2 | `ari/{agent,llm,mcp,memory,orchestrator,viz}/__init__.py` |
+| 6 | READMEs for `ari-skill-coding/`, `plot/`, `transform/` | code-doc | D2 | new files |
+| 7 | `docs/reference/public_api.md` covering `ari.public.*` | reference | D2/D3 | new file |
+| 8 | `docs/reference/rest_api.md` over `viz/routes.py` + sibling `viz/api_*.py` | reference | D3 | new file |
+| 9 | `docs/reference/mcp_tools.md` aggregating `mcp.json` × 14 skills | reference | D3 | new file |
+| 10 | `docs/reference/environment_variables.md` | reference | D3 | new file |
+| 11 | `docs/reference/file_formats.md` (`tree.json`, `nodes_tree.json`, `node_report.json`, `settings.json`, `workflow.yaml`, `experiment.md`) | reference | D3 | new file |
+| 12 | `docs/howto/testing.md` | how-to | D4 | new file |
+| 13 | `docs/howto/migration.md` (v0.5 → v0.6 → v0.7) | how-to | D4 | new file |
+| 14 | `docs/howto/troubleshooting.md` | how-to | D4 | new file |
+| 15 | `docs/release_policy.md` (SemVer, support windows) | how-to | D5 | new file |
+| 16 | ja/zh sync of items 1, 3, 4, 12–15 | i18n | D5 | translations |
+
+### 11-4. Acceptance gates carried forward
+
+The §9 master-plan gates are restated here so each PR can self-check:
+
+- `grep -rn '~/\.ari/' docs/` excluding `docs/DOCUMENTATION_PLAN.md` and
+  `docs/refactor_audit.md` returns zero.
+- Every documented CLI flag, env var, REST endpoint, MCP tool name maps to
+  a real symbol via `grep -rn` in the corresponding source tree.
+- ja and zh have section structure parity with en for *legacy* docs (new
+  reference docs are en-first; ja/zh allowed to lag).
+- Markdown link check (`grep -nE '\]\([^)]*\)' docs/**/*.md` followed by
+  manual or scripted resolution) finds zero broken intra-repo links.

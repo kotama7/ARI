@@ -365,9 +365,10 @@ checkpoints/{run_id}/
 ### プロジェクト単位の状態 (チェックポイントごと)
 
 ARI はグローバルな設定ディレクトリを持たない。設定ファイルとエージェントメモリは
-すべてアクティブなチェックポイント配下に保存されるため、実験ごとに状態が分離され、
-`~/.ari/` は安全に削除できる
-（`~/.ari/` は **v0.5.0 で廃止** — 詳細は `docs/refactor_audit.md`）:
+すべてアクティブなチェックポイント配下に保存されるため、実験ごとに状態が分離される。
+v0.5.0 でグローバルな `$HOME/.ari/` ディレクトリは廃止された。残るファイルシステム
+フォールバックは `DeprecationWarning` を出し、v1.0 で完全削除される
+（詳細は `docs/refactor_audit.md` と `docs/howto/migration.md`）:
 
 ```
 checkpoints/{run_id}/
@@ -594,7 +595,7 @@ full_paper.tex に \codeavailability{} \codedigest{} \coderef{}
 |--------|--------|------|
 | `file://<path>` | ローカルファイル/ディレクトリ | オフライン・ミラー |
 | `https://<url>` / `http://<url>` | tarball ダウンロード | 任意の HTTPS ホスト |
-| `ari://<id>` | ari-registry クライアント | `~/.ari/registries.yaml` から endpoint/token *(`~/.ari/` は **v0.5.0 で廃止**; `$ARI_REGISTRIES_FILE` または `{checkpoint}/.ari/registries.yaml` を推奨)* |
+| `ari://<id>` | ari-registry クライアント | `registries.yaml` から endpoint/token を取得。解決順: `$ARI_REGISTRIES_FILE` → `{checkpoint}/.ari/registries.yaml` → `./.ari/registries.yaml`。`$HOME/.ari/` 配下のレガシー設定は v0.5.0 で廃止され、`DeprecationWarning` を経て v1.0 で削除予定。 |
 | `gh:<user>/<repo>` | GitHub repo / release | API + tarball |
 | `doi:<doi>` | Zenodo deposition | DOI → ファイル一覧 → bundle |
 

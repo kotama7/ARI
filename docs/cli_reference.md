@@ -521,10 +521,12 @@ experiments.
 --expect-sha256 <hex>   Required bundle digest. Hard fail on mismatch.
 --no-extract            Just fetch the tarball; do not extract it.
 --registry <name>       Limit ari:// resolver to a named registry from
-                        registries.yaml.  (`~/.ari/registries.yaml` is
-                        **DEPRECATED since v0.5.0** — set
-                        $ARI_REGISTRIES_FILE or place the file under
-                        the active checkpoint.)
+                        registries.yaml.  Set $ARI_REGISTRIES_FILE or
+                        place the file under
+                        $ARI_CHECKPOINT_DIR/.ari/registries.yaml; the
+                        legacy $HOME/.ari/registries.yaml fallback was
+                        removed in v0.5.0 and emits a
+                        DeprecationWarning until v1.0.
 --token <env-or-value>  Bearer token. Looked up in $ENV first, falls back
                         to the literal value (so you can pass either
                         --token MY_TOKEN_VAR or --token "raw-token-string").
@@ -580,9 +582,11 @@ Setup:
 # 1. Install server deps (skipped by the default install to stay slim).
 ./setup.sh --with-registry        # or pip install fastapi uvicorn[standard] python-multipart
 
-# 2. Start it (defaults: 127.0.0.1:8290, sqlite under ~/.ari/registry-data).
-#    NOTE: ~/.ari/ is DEPRECATED since v0.5.0 — set $ARI_REGISTRY_DATA
-#    explicitly; the home-dir fallback is removed in v1.0.
+# 2. Point the server at a data directory and start it (default port 8290).
+#    NOTE: $HOME/.ari/registry-data was removed as a default in v0.5.0;
+#    set $ARI_REGISTRY_DATA explicitly. The legacy fallback emits a
+#    DeprecationWarning and disappears in v1.0.
+export ARI_REGISTRY_DATA="$PWD/.ari_registry"
 ./scripts/registry/start_local.sh
 
 # 3. Mint a token for a user.
@@ -604,9 +608,11 @@ Deploy modes (see [docs/registry.md](registry.md) for full details):
 - `scripts/registry/docker-compose.yml` — nginx + uvicorn + sqlite-on-volume. Production.
 - `scripts/registry/start_singularity.sh` — Apptainer / Singularity SIF. HPC.
 
-Configure the client by writing `registries.yaml`
-(`~/.ari/registries.yaml` is **DEPRECATED since v0.5.0** — prefer
-`$ARI_REGISTRIES_FILE` or `{checkpoint}/.ari/registries.yaml`):
+Configure the client by writing `registries.yaml` to one of the
+v0.5.0+ locations (`$ARI_REGISTRIES_FILE` env override, the active
+`$ARI_CHECKPOINT_DIR/.ari/registries.yaml`, or
+`./.ari/registries.yaml`); the legacy `$HOME/.ari/registries.yaml`
+fallback emits a DeprecationWarning and is removed in v1.0:
 
 ```yaml
 registries:
