@@ -848,7 +848,9 @@ class TestCheckpointDirPassthrough:
 
     def test_cli_run_sets_checkpoint_dir_on_agent(self):
         """cli.py run command must set agent.checkpoint_dir after build_runtime."""
-        cli_src = (Path(__file__).parent.parent / "ari" / "cli" / "__init__.py").read_text()
+        # Phase 3A run-split: ``run``/``resume`` live in ``ari/cli/run.py``.
+        cli_dir = Path(__file__).parent.parent / "ari" / "cli"
+        cli_src = "\n".join(p.read_text() for p in sorted(cli_dir.glob("*.py")))
         # Find within the run() function (before resume())
         run_fn_start = cli_src.find("def run(")
         assert run_fn_start > 0, "run() function not found"
@@ -864,7 +866,8 @@ class TestCheckpointDirPassthrough:
 
     def test_cli_resume_sets_checkpoint_dir_on_agent(self):
         """cli.py resume command must also set agent.checkpoint_dir."""
-        cli_src = (Path(__file__).parent.parent / "ari" / "cli" / "__init__.py").read_text()
+        cli_dir = Path(__file__).parent.parent / "ari" / "cli"
+        cli_src = "\n".join(p.read_text() for p in sorted(cli_dir.glob("*.py")))
         # Find the resume function
         resume_start = cli_src.find("def resume(")
         assert resume_start > 0, "resume function not found"

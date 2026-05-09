@@ -149,7 +149,11 @@ def test_cli_adopts_checkpoint_dir_name_as_run_id(tmp_path, monkeypatch):
     experiments/{run_id}/ aligns with checkpoints/{run_id}/.
     """
     import ari.cli as cli_mod
-    source = Path(cli_mod.__file__).read_text()
+    # Phase 3A: ``ari.cli`` is a package; concatenate every sub-module
+    # so the source-text checks find the literals regardless of which
+    # file they landed in.
+    cli_dir = Path(cli_mod.__file__).resolve().parent
+    source = "\n".join(p.read_text() for p in sorted(cli_dir.glob("*.py")))
     # The key mechanism: adopting ARI_CHECKPOINT_DIR's name before the
     # timestamp/LLM title path. If this block is ever removed, the delete
     # alignment breaks again and the user's bug returns.
