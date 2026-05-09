@@ -547,13 +547,17 @@ class TestPipelineFieldConsistency:
 
     @pytest.fixture(autouse=True)
     def _load(self):
-        # Phase 3C (Phase 3): ``ari.pipeline`` is now a package; the
-        # implementations still live in ``__init__.py`` until the rest
-        # of the split lands.  Fall back to the legacy single-file
-        # path in case a future split moves the body.
-        pkg_init = _ARI_CORE / "ari" / "pipeline" / "__init__.py"
+        # Phase 3C: ``ari.pipeline`` is now a package; concatenate every
+        # ``*.py`` file so cross-file source-text checks still find the
+        # implementations regardless of which sub-module owns them.
+        pkg_dir = _ARI_CORE / "ari" / "pipeline"
         legacy = _ARI_CORE / "ari" / "pipeline.py"
-        self.pipeline_src = pkg_init.read_text() if pkg_init.exists() else legacy.read_text()
+        if pkg_dir.is_dir():
+            self.pipeline_src = "\n".join(
+                p.read_text() for p in sorted(pkg_dir.rglob("*.py"))
+            )
+        else:
+            self.pipeline_src = legacy.read_text()
 
     def test_skip_if_exists_implemented(self):
         """pipeline.py must process skip_if_exists."""
@@ -979,10 +983,13 @@ class TestPaperPipelineFileContract:
     def test_pipeline_py_implements_loop_back_to(self):
         """pipeline.py must actually honour loop_back_to at runtime (not
         just for GUI DAG rendering)."""
-        # Phase 3C: ``pipeline.py`` is now ``pipeline/__init__.py``.
-        pkg_init = _ARI_CORE / "ari" / "pipeline" / "__init__.py"
+        # Phase 3C: ``pipeline.py`` → ``pipeline/`` package; concatenate.
+        pkg_dir = _ARI_CORE / "ari" / "pipeline"
         legacy = _ARI_CORE / "ari" / "pipeline.py"
-        src = pkg_init.read_text() if pkg_init.exists() else legacy.read_text()
+        if pkg_dir.is_dir():
+            src = "\n".join(p.read_text() for p in sorted(pkg_dir.rglob("*.py")))
+        else:
+            src = legacy.read_text()
         assert "loop_back_to" in src, (
             "pipeline.py must reference loop_back_to to implement the runtime"
         )

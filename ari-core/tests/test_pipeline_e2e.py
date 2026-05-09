@@ -743,8 +743,10 @@ class TestStderrLogging:
             r.stderr = "MCP server connection failed: timeout"
             return r
 
+        # Phase 3C extracted ``_run_stage_subprocess`` and its logger
+        # to ``ari.pipeline.stage_runner``; patch the new location.
         with mock.patch("subprocess.run", side_effect=fake_run), \
-             mock.patch("ari.pipeline.log") as mock_log:
+             mock.patch("ari.pipeline.stage_runner.log") as mock_log:
             _run_stage_subprocess("tool", {}, "", skill_name="sk")
 
         # Must be warning, not debug
@@ -900,12 +902,16 @@ class TestBftsToPaperTransition:
 
     def test_nodes_tree_write_failure_logged_as_error(self):
         """pipeline.py must log ERROR (not WARNING) when nodes_tree.json write fails."""
-        # Phase 3C: ``pipeline.py`` → ``pipeline/__init__.py``.
+        # Phase 3C: ``pipeline.py`` → ``pipeline/`` package.  Concatenate
+        # every sub-module so this check still finds the warning string
+        # regardless of which file it landed in.
         ari_root = Path(__file__).parent.parent / "ari"
-        pkg_init = ari_root / "pipeline" / "__init__.py"
+        pkg_dir = ari_root / "pipeline"
         legacy = ari_root / "pipeline.py"
-        src = pkg_init if pkg_init.exists() else legacy
-        content = src.read_text()
+        if pkg_dir.is_dir():
+            content = "\n".join(p.read_text() for p in sorted(pkg_dir.rglob("*.py")))
+        else:
+            content = legacy.read_text()
         idx = content.find("Failed to save nodes_tree.json")
         assert idx > 0, "Expected log message for nodes_tree.json failure"
         # Check the 200 chars before the message for log level
