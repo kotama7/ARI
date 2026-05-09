@@ -11,7 +11,7 @@ DASHBOARD = VIZ_DIR / "dashboard.html"
 # Source files for grepping
 API_EXPERIMENT = VIZ_DIR / "api_experiment.py"
 API_SETTINGS = VIZ_DIR / "api_settings.py"
-SERVER = VIZ_DIR / "server.py"
+SERVER = VIZ_DIR / "server.py"  # legacy ref, prefer _viz_server_concat()
 
 # React frontend source directories
 REACT_SRC = VIZ_DIR / "frontend" / "src"
@@ -35,6 +35,19 @@ def _combined():
 
 
 # ── Wizard ──────────────────────────────────────────────────────────────────
+
+def _viz_server_concat(viz_dir: Path) -> str:
+    """Phase 3B PR-3B-1: ``server.py`` was split into sibling modules
+    (``websocket.py``, ``ui_helpers.py``, ``routes.py``); concatenate
+    them so existing source-text checks still find the moved literals.
+    """
+    parts = []
+    for name in ("ui_helpers.py", "websocket.py", "routes.py", "server.py"):
+        p = viz_dir / name
+        if p.exists():
+            parts.append(p.read_text())
+    return "\n".join(parts)
+
 
 def test_wizard_provider_default_not_empty():
     """launchExperiment must always send a non-empty provider fallback."""
@@ -107,7 +120,7 @@ def test_server_ari_backend_not_overridden_when_empty():
 
 def test_server_no_cwd_experiment_md_fallback():
     """State handler must NOT fall back to cwd/experiment.md (project isolation)."""
-    src = SERVER.read_text()
+    src = _viz_server_concat(VIZ_DIR)
     assert 'cwd() / "experiment.md"' not in src, "cwd fallback must be removed"
     assert '_last_experiment_md' in src
 
@@ -203,7 +216,7 @@ def test_api_modules_no_unused_http_server_import():
 def test_last_experiment_md_only_used_when_running():
     """_last_experiment_md must only be used as fallback when a process is running.
     Stale test data in _last_experiment_md must not leak into the dashboard."""
-    src = SERVER.read_text()
+    src = _viz_server_concat(VIZ_DIR)
     import re
     # Find all usages of _last_experiment_md
     usages = [(i+1, line.strip()) for i, line in enumerate(src.splitlines())
@@ -225,7 +238,7 @@ def test_last_experiment_md_only_used_when_running():
 
 def test_experiment_md_search_prefers_checkpoint_dir():
     """server.py must look for experiment.md in checkpoint dir BEFORE _last_experiment_md."""
-    src = SERVER.read_text()
+    src = _viz_server_concat(VIZ_DIR)
     # In the state handler, the checkpoint dir search must come before _last_experiment_md
     idx_ckpt_search = src.find('# Try 1: checkpoint dir')
     idx_last_md = src.find('_st._last_experiment_md', idx_ckpt_search)

@@ -41,14 +41,16 @@ def _read_react_sources():
 def _srv():
     """Concatenate the viz server source files.
 
-    Phase 3B (viz/REFACTORING.md §2 Step 1) moves the WebSocket
-    handler + UI helpers out of ``server.py``; the cross-file checks
-    below still need to see the moved definitions in their natural
-    declaration order, so put ``ui_helpers.py`` (which now owns
-    ``_REDACT_KEYS`` etc.) ahead of ``server.py``.
+    Phase 3B PR-3B-1 split ``server.py`` into
+    ``ui_helpers.py`` / ``websocket.py`` / ``routes.py``; cross-file
+    grep checks below need to see every definition that used to live
+    in the legacy single-file ``server.py``, so glue them all together.
+    ``ui_helpers.py`` (which owns ``_REDACT_KEYS`` etc.) goes first so
+    the sequential ``_REDACT_KEYS`` checks find the definition before
+    its imports.
     """
     parts = []
-    for sib in ("ui_helpers.py", "websocket.py"):
+    for sib in ("ui_helpers.py", "websocket.py", "routes.py"):
         p = _VIZ / sib
         if p.exists():
             parts.append(p.read_text())
