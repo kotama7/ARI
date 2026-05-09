@@ -35,6 +35,19 @@ def _reset_state(monkeypatch, tmp_path):
 # Chat API (/api/chat-goal)
 # ══════════════════════════════════════════════
 
+def _viz_server_concat(viz_dir: Path) -> str:
+    """Phase 3B PR-3B-1: ``server.py`` was split into sibling modules
+    (``websocket.py``, ``ui_helpers.py``, ``routes.py``); concatenate
+    them so existing source-text checks still find the moved literals.
+    """
+    parts = []
+    for name in ("ui_helpers.py", "websocket.py", "routes.py", "server.py"):
+        p = viz_dir / name
+        if p.exists():
+            parts.append(p.read_text())
+    return "\n".join(parts)
+
+
 class TestChatGoal:
     """Tests for _api_chat_goal (wizard chat mode)."""
 
@@ -735,16 +748,16 @@ class TestIdeaTabVirsci:
 
     def test_server_injects_ideas_from_idea_json(self):
         """server.py /state handler must read idea.json and inject ideas."""
-        src = (VIZ_DIR / "server.py").read_text()
+        src = _viz_server_concat(VIZ_DIR)
         assert "idea.json" in src
         assert '"ideas"' in src
 
     def test_server_injects_gap_analysis(self):
-        src = (VIZ_DIR / "server.py").read_text()
+        src = _viz_server_concat(VIZ_DIR)
         assert '"gap_analysis"' in src
 
     def test_server_injects_primary_metric(self):
-        src = (VIZ_DIR / "server.py").read_text()
+        src = _viz_server_concat(VIZ_DIR)
         assert "idea_primary_metric" in src
 
     def test_loop_saves_idea_json(self):
