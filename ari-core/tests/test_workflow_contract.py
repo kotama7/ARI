@@ -1004,12 +1004,17 @@ class TestPaperPipelineFileContract:
         )
 
     def test_api_state_still_reads_full_paper_tex(self):
-        """Guard the other side of the contract: ensure api_state.py still
-        looks for 'full_paper.tex' at the checkpoint root. If it's renamed
-        here but not in workflow.yaml (or vice versa), the GUI goes silent."""
-        api_state_src = (
-            _ARI_CORE / "ari" / "viz" / "api_state.py"
-        ).read_text()
+        """Guard the other side of the contract: ensure the api_state
+        layer still looks for 'full_paper.tex' at the checkpoint root.
+        If it's renamed here but not in workflow.yaml (or vice versa),
+        the GUI goes silent.
+
+        Phase 3B PR-3B-2 split api_state.py into sibling modules
+        (checkpoint_api / ear / file_api / etc.); concatenate every
+        ``viz/*.py`` so the source-text grep still finds the literal.
+        """
+        viz_dir = _ARI_CORE / "ari" / "viz"
+        api_state_src = "\n".join(p.read_text() for p in sorted(viz_dir.glob("*.py")))
         assert '"full_paper.tex"' in api_state_src, (
             "api_state.py no longer references 'full_paper.tex' — "
             "workflow.yaml contract is out of sync with the GUI summary code."
