@@ -1080,8 +1080,10 @@ def test_max_workers_floor_at_one():
 def test_cli_run_loop_max_workers_zero_safe():
     """_run_loop with max_parallel_nodes=0 must still produce max_workers >= 1."""
     import re
-    cli_src = Path(__file__).parent.parent / "ari" / "cli" / "__init__.py"
-    src = cli_src.read_text()
+    # Phase 3A bfts_loop split: ``_run_loop`` body lives in
+    # ``ari/cli/bfts_loop.py``; concatenate the cli package's source.
+    cli_dir = Path(__file__).parent.parent / "ari" / "cli"
+    src = "\n".join(p.read_text() for p in sorted(cli_dir.glob("*.py")))
     # Verify the guard is present: max(1, min(...))
     assert re.search(r"max\(\s*1\s*,\s*min\(", src), \
         "cli.py must guard max_workers with max(1, ...) to prevent zero workers"

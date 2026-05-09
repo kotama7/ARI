@@ -367,8 +367,12 @@ class TestTemplateResolution:
 class TestCliIdeaLoading:
     def test_run_loop_loads_idea_json_for_expand(self):
         """_run_loop must load idea.json and pass idea_context to bfts.expand()."""
-        src = Path(__file__).parent.parent / "ari" / "cli" / "__init__.py"
-        content = src.read_text()
+        # Phase 3A bfts_loop split: ``_run_loop`` lives in
+        # ``ari/cli/bfts_loop.py``; concatenate the cli package's source
+        # so this contract check still finds the literal regardless of
+        # which sub-module owns the body.
+        cli_dir = Path(__file__).parent.parent / "ari" / "cli"
+        content = "\n".join(p.read_text() for p in sorted(cli_dir.glob("*.py")))
         assert "idea.json" in content, "cli.py must reference idea.json"
         assert "idea_context" in content, "cli.py must pass idea_context"
         # Verify expand call includes idea_context parameter
