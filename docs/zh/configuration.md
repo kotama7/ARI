@@ -296,7 +296,7 @@ skills:
 | `ARI_PHASE1_DOCKER_IMAGE` | docker 沙箱镜像 | `ubuntu:24.04` |
 | `ARI_PHASE1_APPTAINER_IMAGE` / `ARI_PHASE1_SINGULARITY_IMAGE` | Apptainer/Singularity 沙箱镜像 | `docker://ubuntu:24.04` |
 | `ARI_PUBLISH_DRYRUN` | 强制 `ari ear publish --dry-run`（CI 安全开关, v0.7.0） | (off) |
-| `ARI_REGISTRY_DATA` | `ari registry serve` 的 sqlite + artifact 存储根目录 | `~/.ari/registry-data` *(`~/.ari/` 自 **v0.5.0 起已弃用**; v1.0 移除回退)* |
+| `ARI_REGISTRY_DATA` | `ari registry serve` 的 sqlite + artifact 存储根目录 | (无 — 必须显式设置。v0.5.0 以前的 `$HOME/.ari/registry-data` 回退会发出 DeprecationWarning，v1.0 中移除) |
 | `ARI_REGISTRY_TOKEN` | 用于 `ari clone ari://...` / `ari ear publish --backend ari-registry` 的 bearer token | (无) |
 | `ARI_REPRO_CLONE_POLICY` | 可复现性沙箱 git shim 策略：`passthrough` / `deny` / `warn` | `passthrough` |
 

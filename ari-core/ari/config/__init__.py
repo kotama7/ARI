@@ -7,62 +7,166 @@ import re
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class LLMConfig(BaseModel):
-    backend: str = "ollama"
-    model: str = "qwen3:8b"
-    api_key: str | None = None
-    base_url: str | None = None
-    temperature: float = 0.7
+    backend: str = Field(
+        "ollama",
+        description="LLM backend identifier consumed by the agent loop "
+                    "(`ollama`, `openai`, `litellm`, ...). Overridden by "
+                    "the `ARI_BACKEND` environment variable.",
+    )
+    model: str = Field(
+        "qwen3:8b",
+        description="LiteLLM-style model identifier. Overridden by "
+                    "`ARI_MODEL` / `ARI_LLM_MODEL` env vars at load time.",
+    )
+    api_key: str | None = Field(
+        None,
+        description="API key for the chosen backend. Prefer setting via "
+                    "the provider-specific env var (`OPENAI_API_KEY`, ...).",
+    )
+    base_url: str | None = Field(
+        None,
+        description="API base URL override. Required when pointing at a "
+                    "self-hosted Ollama / OpenAI-compatible endpoint; "
+                    "overridden by `ARI_LLM_API_BASE` / `OLLAMA_HOST`.",
+    )
+    temperature: float = Field(
+        0.7,
+        description="Sampling temperature applied to non-judge LLM calls.",
+    )
 
 
 class SkillConfig(BaseModel):
-    name: str
-    path: str
-    description: str = ""
-    # Single phase string ("bfts" | "paper" | "reproduce" | "all" | "none")
-    # or a list of phases ([..., "reproduce"]) declaring every phase in which
-    # this skill is exposed to the AgentLoop ReAct. "all" matches any phase;
-    # "none" disables the skill entirely.
-    phase: str | list[str] = "all"
+    name: str = Field(
+        ...,
+        description="Skill package directory name (e.g. `ari-skill-coding`).",
+    )
+    path: str = Field(
+        ...,
+        description="Filesystem path to the skill package root.",
+    )
+    description: str = Field(
+        "",
+        description="Optional human-readable description; mirrors "
+                    "`mcp.json:description` when present.",
+    )
+    phase: str | list[str] = Field(
+        "all",
+        description="Pipeline phase(s) in which this skill is exposed to "
+                    "the AgentLoop ReAct. Single string (`bfts` / `paper` "
+                    "/ `reproduce` / `all` / `none`) or a list. `all` "
+                    "matches any phase; `none` disables the skill.",
+    )
 
 
 class BFTSConfig(BaseModel):
-    max_depth: int = 5
-    max_total_nodes: int = 50
-    max_react_steps: int = 80
-    timeout_per_node: int = 7200
-    max_parallel_nodes: int = 4
+    max_depth: int = Field(
+        5,
+        description="Hard cap on BFTS tree depth. Overridden by "
+                    "`ARI_MAX_DEPTH`.",
+    )
+    max_total_nodes: int = Field(
+        50,
+        description="Hard cap on total BFTS nodes per run. Overridden "
+                    "by `ARI_MAX_NODES`.",
+    )
+    max_react_steps: int = Field(
+        80,
+        description="Maximum ReAct iterations within a single node. "
+                    "Overridden by `ARI_MAX_REACT`.",
+    )
+    timeout_per_node: int = Field(
+        7200,
+        description="Per-node wall-time budget in seconds. Overridden "
+                    "by `ARI_TIMEOUT_NODE`.",
+    )
+    max_parallel_nodes: int = Field(
+        4,
+        description="Maximum BFTS nodes that may execute concurrently. "
+                    "Overridden by `ARI_PARALLEL`.",
+    )
 
 
 class CheckpointConfig(BaseModel):
-    dir: str = "./checkpoints/{run_id}/"
+    dir: str = Field(
+        "./checkpoints/{run_id}/",
+        description="Checkpoint root template. `{run_id}` is substituted "
+                    "at run start. Overridden by `ARI_CHECKPOINT_DIR` "
+                    "(an explicit env path always wins).",
+    )
 
 
 class LoggingConfig(BaseModel):
-    level: str = "INFO"
-    dir: str = "./checkpoints/{run_id}/"
-    format: str = "json"
+    level: str = Field(
+        "INFO",
+        description="Python `logging` level. Overridden by "
+                    "`ARI_LOG_LEVEL`.",
+    )
+    dir: str = Field(
+        "./checkpoints/{run_id}/",
+        description="Log directory. Defaults to the active checkpoint "
+                    "(via `ARI_LOG_DIR` or `ARI_CHECKPOINT_DIR`).",
+    )
+    format: str = Field(
+        "json",
+        description="Log record format (`json` for machine-parseable "
+                    "lines or `text` for human-readable).",
+    )
 
 
 class EvaluatorConfig(BaseModel):
-    # Weights for the five judge axes. Empty dict → evaluator uses its
-    # hardcoded equal-weight default (0.2 each). Override per-axis as needed;
-    # only keys in the canonical axis set are honoured.
-    axis_weights: dict[str, float] = {}
+    axis_weights: dict[str, float] = Field(
+        default_factory=dict,
+        description="Per-axis weight overrides for the BFTS judge. "
+                    "Empty → equal weights (0.2 each). Only keys in "
+                    "the canonical axis set are honoured; unknown keys "
+                    "are silently dropped.",
+    )
 
 
 class ARIConfig(BaseModel):
-    llm: LLMConfig = LLMConfig()
-    skills: list[SkillConfig] = []
-    disabled_tools: list[str] = []  # Tool names to hide from the agent
-    bfts: BFTSConfig = BFTSConfig()
-    checkpoint: CheckpointConfig = CheckpointConfig()
-    logging: LoggingConfig = LoggingConfig()
-    evaluator: EvaluatorConfig = EvaluatorConfig()
-    resources: dict = {}  # Generic resource config (cpus, timeout_minutes, etc.)
+    llm: LLMConfig = Field(
+        default_factory=LLMConfig,
+        description="LLM backend configuration shared by the agent loop "
+                    "and most LLM-using skills.",
+    )
+    skills: list[SkillConfig] = Field(
+        default_factory=list,
+        description="Skills to register with the agent. Auto-discovered "
+                    "via `_discover_skills()` when the YAML omits the "
+                    "section.",
+    )
+    disabled_tools: list[str] = Field(
+        default_factory=list,
+        description="MCP tool names hidden from the agent. The viz "
+                    "wizard appends to this list when stages are toggled "
+                    "off.",
+    )
+    bfts: BFTSConfig = Field(
+        default_factory=BFTSConfig,
+        description="BFTS exploration limits.",
+    )
+    checkpoint: CheckpointConfig = Field(
+        default_factory=CheckpointConfig,
+        description="Checkpoint directory configuration.",
+    )
+    logging: LoggingConfig = Field(
+        default_factory=LoggingConfig,
+        description="Logging configuration.",
+    )
+    evaluator: EvaluatorConfig = Field(
+        default_factory=EvaluatorConfig,
+        description="Evaluator (BFTS judge) configuration.",
+    )
+    resources: dict = Field(
+        default_factory=dict,
+        description="Generic resource defaults (cpus, memory_gb, gpus, "
+                    "walltime, partition) used by the HPC skill when a "
+                    "stage does not override them.",
+    )
     model_config = {"extra": "allow"}  # Accept unknown top-level keys
 
 

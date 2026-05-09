@@ -420,8 +420,10 @@ compatible with pipeline stages that expect `nodes_tree.json`.
 
 ARI no longer maintains a global config directory.  Every settings file and
 agent memory store lives under the active checkpoint, so each experiment
-gets its own isolated state and `~/.ari/` is safe to remove
-(`~/.ari/` is **DEPRECATED since v0.5.0** — see `docs/refactor_audit.md`):
+gets its own isolated state.  v0.5.0 removed the global `$HOME/.ari/`
+directory; the few remaining filesystem fallbacks emit a
+`DeprecationWarning` and disappear in v1.0 (see `docs/refactor_audit.md`
+and `docs/howto/migration.md`):
 
 ```
 checkpoints/{run_id}/
@@ -533,7 +535,7 @@ else (S3, Zenodo, gh release, local mirror) still verifies.
 |--------|----------|-------|
 | `file://<path>` | local file or directory | offline / mirror |
 | `https://<url>` / `http://<url>` | tarball download | any HTTPS host |
-| `ari://<id>` | ari-registry client | reads `~/.ari/registries.yaml` for endpoint/token *(`~/.ari/` **DEPRECATED since v0.5.0**; prefer `$ARI_REGISTRIES_FILE` or `{checkpoint}/.ari/registries.yaml`)* |
+| `ari://<id>` | ari-registry client | reads `registries.yaml` for endpoint/token. Resolution: `$ARI_REGISTRIES_FILE` → `{checkpoint}/.ari/registries.yaml` → `./.ari/registries.yaml`. The legacy `$HOME/.ari/` location was removed in v0.5.0 and emits a `DeprecationWarning` (fallback dropped in v1.0). |
 | `gh:<user>/<repo>` | GitHub repo or release | API + tarball |
 | `doi:<doi>` | Zenodo deposition | DOI → file list → bundle |
 

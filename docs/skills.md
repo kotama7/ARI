@@ -549,11 +549,11 @@ determined); safe to call repeatedly (60 s in-process cache). Returns
 Storage: per-checkpoint Letta agent with two archival collections
 (`ari_node_*`, `ari_react_*`). A snapshot at
 `{ARI_CHECKPOINT_DIR}/memory_backup.jsonl.gz` keeps checkpoints
-portable. v0.5.x JSONL stores (`memory_store.jsonl`,
-`~/.ari/global_memory.jsonl` — **DEPRECATED since v0.5.0**) are
-removed; use `ari memory migrate` to import legacy data. Cross-
-experiment "global memory" is no longer a feature — stable lessons
-belong in `experiment.md`, code, or prior papers.
+portable. The v0.5.x JSONL stores were removed in v0.5.0
+(checkpoint-scoped `memory_store.jsonl` and the legacy global JSONL that
+once lived under `$HOME/.ari/`); use `ari memory migrate` to import
+legacy data. Cross-experiment "global memory" is no longer a feature —
+stable lessons belong in `experiment.md`, code, or prior papers.
 
 ---
 
@@ -801,6 +801,36 @@ Generate matplotlib figures. Plot types: `bar`, `line`, `scatter`, `heatmap`.
 #### `statistical_test(data_a, data_b, test)`
 
 Run scipy statistical tests: `ttest`, `mannwhitney`, `wilcoxon`.
+
+---
+
+## ari-skill-plot
+
+Scientific figure generator. Two modes: **deterministic** (`generate_figures`, P2-safe matplotlib over a fixed schema) and **LLM-driven** (`generate_figures_llm`, an AI-Scientist-v2-style code-write-and-run path with optional VLM caption pass). **LLM: Mixed** (deterministic + P2-exception).
+
+### Tools
+
+#### `generate_figures(nodes_json_path, output_dir, figure_spec)`
+
+Render canonical comparison figures from `nodes_tree.json` into `output_dir`.  Returns a manifest of every emitted figure with its caption and source node ids.  Byte-deterministic for a given matplotlib version.
+
+#### `generate_figures_llm(nodes_json_path, intent, output_dir)`
+
+LLM examines the data shape + natural-language `intent`, writes matplotlib code, runs it in the same `_run_plot_code` sandbox, and (optionally) calls a VLM to caption the result.  P2 exception.
+
+### Environment variables
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `VLM_MODEL` | Vision LLM for caption pass | `openai/gpt-4o` |
+| `ARI_LLM_MODEL` | LLM that writes matplotlib code in `_llm` mode | (none — required for `_llm`) |
+| `LLM_MODEL` | Cross-skill fallback | (none) |
+| `ARI_LLM_API_BASE` | LiteLLM API base override | LiteLLM default |
+| `OPENAI_API_KEY` | Required for OpenAI-hosted LLM/VLM | (none) |
+
+### ari-core boundary
+
+`src/server.py` imports `from ari import cost_tracker`; Phase 4 of the master refactor migrates this to `ari.public.cost_tracker`.
 
 ---
 

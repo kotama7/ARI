@@ -1,100 +1,149 @@
 # Writing Experiment Files
 
-Experiment files are Markdown documents that fully describe what ARI should do.
-No code changes are needed — all domain knowledge lives here.
+Experiment files (`experiment.md`) describe what ARI should do.  They
+live at the root of every checkpoint and are the single source of
+domain knowledge for a run — no code changes are required to drive a
+new experiment.
 
 ## Minimal Example
 
 ```markdown
-# My Experiment
+We propose a CSR-format sparse-dense matrix multiplication (SpMM) for
+CPUs that maintains high performance even when the right-hand side
+matrix size varies.  Build a roofline model from theoretical compute
+and memory bandwidth and compare measurements against it.
 
-## Research Goal
-Maximize the throughput of matrix multiplication using different BLAS implementations.
-
-## Required Workflow
-1. Survey prior work on matrix multiplication optimization
-2. Submit a SLURM job to compile and run the benchmark
-3. Poll until the job completes
-4. Read the output and report MFLOPS
-
-<!-- min_expected_metric: 1000 -->
-<!-- metric_keyword: MFLOPS -->
+Metrics: GB/s, GFlops/s
 ```
 
-## Full Reference
+That is it.  ARI parses the **`Metrics:`** line as a last-resort source
+for `evaluation_criteria.json` (`primary_metric`); the prose body seeds
+the LLM-driven `generate_ideas` flow, which fills in the rest of the
+plan.
 
-### Section: Research Goal
+## Recognised Sections
 
-Describes what the experiment is trying to achieve. The LLM reads this to understand the domain and propose hypotheses.
+ARI does not require any specific section structure — the file is read
+as plain Markdown — but the following headings are conventional and
+some are consumed by deterministic helpers:
+
+### `Metrics:` line (required)
 
 ```markdown
-## Research Goal
-Maximize GFLOPS of a stencil benchmark on your HPC cluster.
-Explore compiler flags (-O2, -O3, -Ofast) and thread counts (1, 32, 64).
+Metrics: GB/s, GFlops/s
 ```
 
-### Section: Required Workflow
+`parse_metric_from_experiment_md` (`ari-core/ari/pipeline/experiment_md.py:31`)
+extracts the first token (`GB/s` here) and stores it as
+`evaluation_criteria.json:primary_metric` when no idea has fixed one
+yet.  Plain prose with the words "metric" or "metrics" works too.
 
-Tells the agent which tools to call and in what order.
+### `## Research Goal` (optional, recommended)
 
-```markdown
-## Required Workflow
-1. Call `survey` to find related literature
-2. Call `slurm_submit` with a SLURM script
-3. Call `job_status` to wait for completion
-4. Call `run_bash` to read the output file
-5. Return JSON with measured values
-```
+A one-paragraph statement of intent, typed in plain English.  The LLM
+reads this verbatim during `generate_ideas`; vagueness here propagates
+into vague hypotheses.
 
-### Section: Hardware Limits
+### `## Required Workflow` (optional)
 
-Hard constraints that must not be violated.
+An ordered list of tool calls if you want to constrain the agent's
+sequencing.  Most users let the agent decide and skip this section.
 
-```markdown
-## Hardware Limits
-- Partition: your_partition
-- Max CPUs: 64 (--cpus-per-task must be ≤ 64)
-- Compiler: gcc only (no mpicc, icc, aocc)
-```
+### `## Hardware Limits` / `## Rules` (optional)
 
-### Magic Comments (metadata)
+Hard constraints in bullet form.  The agent reads these as part of the
+system context; the planner respects them when choosing partitions,
+compilers, etc.
 
-These are parsed automatically by `make_metric_spec`:
+### `## SLURM Script Template` (optional)
+
+A baseline script the LLM is allowed to mutate.  Only useful if the
+benchmark's launch protocol is unusual.
+
+### Magic comments (parsed by helpers)
 
 | Comment | Purpose |
 |---------|---------|
-| `<!-- min_expected_metric: N -->` | Minimum acceptable metric value |
-| `<!-- metric_keyword: NAME -->` | Name of the metric to extract (e.g., MFLOPS) |
+| `<!-- min_expected_metric: N -->` | Soft floor used by reviewers |
+| `<!-- metric_keyword: NAME -->`   | Hint for the metric extractor |
 
-### Section: SLURM Script Template
+## v0.6 / v0.7 additions
 
-Provide a working baseline script. The LLM will modify it to test hypotheses.
+### Rubric / venue selection (v0.6)
 
-```markdown
-## SLURM Script Template
-\`\`\`bash
-#!/bin/bash
-#SBATCH --nodes=1
-#SBATCH --cpus-per-task=32
-#SBATCH --time=00:30:00
+`experiment.md` is the **plan**; the **venue** lives in
+`ari-core/config/reviewer_rubrics/<id>.yaml` and is selected via the
+`ARI_RUBRIC` environment variable.  The rubric supplies the dimensions
+the BFTS judge scores against and the criteria the published review
+uses — switching `ARI_RUBRIC` changes both at once.  See
+`docs/architecture.md#plan--venue-contract-v070` for the full
+two-file contract.
 
-gcc -O3 -fopenmp -o ./benchmark ./benchmark.c
-export OMP_NUM_THREADS=32
-./benchmark
-\`\`\`
-```
+### Auto-appended VirSci block (v0.6)
 
-### Section: Rules
-
-Specific constraints for the agent. Use HARD LIMITS for things the LLM must never violate.
+When `generate_ideas` runs, the pipeline writes a labelled block back
+into the checkpoint's `experiment.md`:
 
 ```markdown
-## Rules
-- Always use work_dir=/abs/path/to/workdir in slurm_submit
-- NEVER redirect stdout in the script (SLURM captures it automatically)
-- Output file: slurm_job_{JOBID}.out
+<!-- AUTO-APPENDED BY VirSci (idea.json) — DO NOT EDIT -->
+## Selected idea
+...
+## Plan §-tags
+...
+## Alternatives considered
+...
+<!-- END AUTO-APPENDED -->
 ```
 
-## Complete Example
+The block is idempotent (it is rewritten on every promote, never
+duplicated).  Edit only the prose **above** the marker; everything
+between `BEGIN`/`END` markers is owned by the auto-append helper.
 
-See the example experiment files in the repository for complete working examples.
+### Lineage-decision recording (v0.7)
+
+`stagnation_rule` watches the BFTS composite-score trajectory.  Once
+it fires, the LLM judge picks one of `continue` / `switch_to_idea` /
+`fanout` / `terminate` and the decision is appended (one record per
+fired decision) to `{ckpt}/lineage_decisions.jsonl`.  No manual edits
+to `experiment.md` are required — the catalog of alternative ideas
+sits in `idea.json`, and the lineage walk reads `meta.json:parent_run_id`.
+
+### Sub-experiment inheritance (v0.7)
+
+| Channel | Direction | Mechanism |
+|---|---|---|
+| `venue.md` (rubric) | inherit | `ARI_RUBRIC` env propagates |
+| `memory` | inherit | ancestor-scoped read (`ari-skill-memory`) |
+| `idea.json` (catalog) | inherit (read-only) | `ari/lineage.py` walks `meta.json:parent_run_id` |
+| `plan.md` / `experiment.md` (directive) | **NOT inherited** | child writes its own |
+
+Children are free to pivot; only the catalog and the rubric flow down.
+
+### ORS metadata (v0.7)
+
+The reproducibility flow (`ari-skill-replicate` + `ari-skill-paper-re`)
+does not require new fields in `experiment.md` itself — instead, the
+checkpoint accumulates artefacts beside it (`ors_rubric.json`,
+`ors_grade.json`, `repro_sandbox/`).  See
+`docs/architecture.md#publication-lifecycle-v070` for the full
+artefact list.
+
+## Where to put `experiment.md`
+
+ARI looks for the file in this order:
+
+1. The active checkpoint's root: `$ARI_CHECKPOINT_DIR/experiment.md`.
+2. The argument to `ari run experiment.md` (copied into the checkpoint
+   on first launch).
+
+There is no global default and no `$HOME/.ari/` lookup — the v0.5.0
+refactor scoped every input file to the checkpoint.
+
+## See also
+
+- `docs/architecture.md#plan--venue-contract-v070` — full two-file
+  contract.
+- `docs/architecture.md#publication-lifecycle-v070` — what ARI emits
+  alongside `experiment.md`.
+- `docs/skills.md` — which skills consume which experiment-file
+  sections.

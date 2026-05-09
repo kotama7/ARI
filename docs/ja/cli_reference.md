@@ -521,9 +521,11 @@ curated な EAR bundle を「取得 + digest 検証 + 展開」する。
 ```
 --expect-sha256 <hex>   bundle digest を強制検証。不一致は hard fail。
 --no-extract            tarball のみ取得 (展開なし)。
---registry <name>       ari:// resolver を registries.yaml の特定 registry に限定
-                        (`~/.ari/registries.yaml` は **v0.5.0 で廃止** —
-                        $ARI_REGISTRIES_FILE または checkpoint 配下を推奨)。
+--registry <name>       ari:// resolver を registries.yaml の特定 registry に限定。
+                        `$ARI_REGISTRIES_FILE` env var、または
+                        `$ARI_CHECKPOINT_DIR/.ari/registries.yaml` を設定すること。
+                        レガシーの `$HOME/.ari/registries.yaml` は v0.5.0 で
+                        廃止され DeprecationWarning を出す（v1.0 でフォールバック削除）。
 --token <env-or-value>  bearer token (環境変数名 → 値の順で解決)。
 ```
 
@@ -559,8 +561,10 @@ ari registry token list
 # 1. サーバ依存の追加インストール (デフォルトでは含めない)
 ./setup.sh --with-registry        # または pip install fastapi uvicorn[standard] python-multipart
 
-# 2. 起動 (デフォルト 127.0.0.1:8290、sqlite は ~/.ari/registry-data 配下)
-#    NOTE: `~/.ari/` は v0.5.0 で廃止。$ARI_REGISTRY_DATA を明示設定推奨
+# 2. データディレクトリを指定して起動 (デフォルトポート 8290)
+#    NOTE: `$HOME/.ari/registry-data` は v0.5.0 でデフォルトから削除されました。
+#    $ARI_REGISTRY_DATA を明示設定すること（レガシーフォールバックは v1.0 で削除）。
+export ARI_REGISTRY_DATA="$PWD/.ari_registry"
 ./scripts/registry/start_local.sh
 
 # 3. ユーザに token を発行
@@ -582,8 +586,10 @@ ari registry token issue alice
 - `scripts/registry/docker-compose.yml` — nginx + uvicorn + sqlite-on-volume。Production。
 - `scripts/registry/start_singularity.sh` — Apptainer / Singularity SIF。HPC。
 
-クライアント設定 (`~/.ari/registries.yaml` — **v0.5.0 で廃止**;
-`$ARI_REGISTRIES_FILE` または `{checkpoint}/.ari/registries.yaml` を推奨):
+クライアント設定の `registries.yaml` を以下のいずれかに配置:
+`$ARI_REGISTRIES_FILE` env override、`$ARI_CHECKPOINT_DIR/.ari/registries.yaml`、
+または `./.ari/registries.yaml`。`$HOME/.ari/registries.yaml` は v0.5.0 で
+廃止され、フォールバックは v1.0 で削除されます。
 
 ```yaml
 registries:
