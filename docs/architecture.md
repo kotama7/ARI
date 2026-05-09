@@ -1100,3 +1100,28 @@ pipeline:
 ```
 
 No changes to `ari-core` required.
+
+---
+
+## Layered architecture (v0.7+ refactor)
+
+The post-refactor `ari-core/ari/` package is organised in five layers
+to minimise coupling.  See `CONTRIBUTING.md` for the design discipline
+that keeps the layering intact.
+
+| Layer | Subpackage | Owns |
+|---|---|---|
+| 0 — primitives | `paths`, `checkpoint`, `_deprecation`, `cost_tracker`, `pidfile`, `lineage`, `env_detect`, `schemas`, `configs`, `prompts`, `protocols` | Path resolution, deprecation warnings, cost tracking, prompt/config loaders, structural protocols. No internal ARI deps. |
+| 1 — domain models | `llm`, `mcp`, `memory`, `clone`, `publish`, `evaluator`, `orchestrator/node`, `orchestrator/scheduler`, `orchestrator/node_selection` | Data models + thin wrappers over upstream libs (litellm, MCP, Letta). |
+| 2 — orchestrator | `orchestrator/{bfts, lineage_decision, node_report, root_idea_selector}` | BFTS exploration, lineage-decision LLM hook, per-node reports. |
+| 3 — agent | `agent/{loop, react_driver, workflow, message_utils, tool_manager, guidance, run_env}` | ReAct execution + experiment-specific WorkflowHints injection. |
+| 4 — pipeline | `pipeline/{__init__, experiment_md, yaml_loader, stage_control, context_builder, stage_runner, orchestrator}` | YAML-driven stage runner, paper-pipeline glue. |
+| 5 — entry points | `cli/{__init__, run, projects, commands, bfts_loop, lineage, migrate}`, `cli_ear`, `viz/*`, `registry/*`, `public/*` | Typer CLI, viz HTTP server, registry FastAPI, public re-export layer for skills. |
+
+Migration code (`migrations/v05_to_v07/*`) lives outside the layers
+and will be deleted in v1.0.  Skills must only import from `ari.public.*`
+— the boundary CI in `ari-core/tests/test_public_api_boundary.py`
+enforces this on every PR.
+
+Shared cross-layer Protocols live in `ari/protocols/` (canonical
+implementations: `Evaluator`, `PromptLoader`, `ConfigLoader`).
