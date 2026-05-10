@@ -38,15 +38,26 @@ jobs:
           # (ari-core imports it directly), then core itself.
           pip install -e ari-skill-memory
           pip install -e ari-core
+          # ari-core tests transitively import a few skill modules via
+          # `sys.path.insert(...)` (e.g. test_event_loop_and_csv reaches
+          # into ari-skill-benchmark/src/server.py).  Pull their PyPI
+          # deps without installing the skill packages — keeps the job
+          # fast and avoids paper-re's git+chz vendor pull.
+          pip install scipy numpy pandas
           pip install pytest pytest-asyncio pytest-mock respx
       - name: Run tests under a redirected HOME
         run: |
           export HOME="$RUNNER_TEMP/fake_home"
           mkdir -p "$HOME"
+          # test_dashboard_html.py asserts the Vite production bundle
+          # exists at ari-core/ari/viz/static/dist/.  That artefact is
+          # produced by a separate frontend build job; this guard only
+          # cares about ~/.ari/ writes, not frontend bundling.
           pytest ari-core/tests/ -q \
             --ignore=ari-core/tests/test_letta_restart_live.py \
             --ignore=ari-core/tests/test_letta_start_scripts.py \
-            --ignore=ari-core/tests/test_ollama_gpu.py
+            --ignore=ari-core/tests/test_ollama_gpu.py \
+            --ignore=ari-core/tests/test_dashboard_html.py
           if [ -d "$HOME/.ari" ]; then
             echo "::error::Tests created $HOME/.ari/ — see docs/refactor_audit.md"
             ls -la "$HOME/.ari" || true
