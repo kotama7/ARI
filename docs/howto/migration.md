@@ -132,7 +132,8 @@ guide walks the upgrade paths.
 
 ## v0.8 → v1.0 (future)
 
-The `DEPRECATION_REMOVAL.md` programme schedules:
+The deprecation programme (`CONTRIBUTING.md::Deprecation process`,
+`docs/release_policy.md`) schedules:
 
 - Removal of every `$HOME/.ari/...` filesystem fallback (currently
   emitting `DeprecationWarning`).

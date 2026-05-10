@@ -55,13 +55,15 @@ be removed.  We follow this lifecycle:
 3. **Remove** — the next MAJOR drops the warning and removes the
    code.
 
-Examples currently in flight (see `DEPRECATION_REMOVAL.md`):
+Examples currently in flight (full programme is folded into
+`CONTRIBUTING.md::Deprecation process`):
 
 | Item | Announced | Warned since | Removal target |
 |---|---|---|---|
-| `$HOME/.ari/registries.yaml` fallback | v0.5.0 | v0.5.0 | v1.0 |
-| `$HOME/.ari/registry-data` fallback | v0.5.0 | v0.5.0 | v1.0 |
+| `$HOME/.ari/registries.yaml` fallback | v0.5.0 | v0.7.1 | v1.0 |
+| `$HOME/.ari/registry-data` fallback | v0.5.0 | v0.7.1 | v1.0 |
 | Legacy v0.5 JSONL memory store | v0.5.0 | v0.5.0 | v1.0 |
+| `~/.ari/memory.json` default arg | v0.7.0 | v0.7.1 (removed) | v1.0 |
 | `ari/migrations/v05_to_v07/` shims | v0.7.0 | v0.7.0 | v1.0 |
 
 ## Release checklist
@@ -75,8 +77,8 @@ When cutting a release:
    `ari-skill-*/pyproject.toml`.
 3. Run the full test suite + the refactor-guards CI workflow.
 4. Run the docs gate:
-   - `grep -rn '~/\.ari/' docs/` excluding `DOCUMENTATION_PLAN.md`
-     and `refactor_audit.md` returns zero.
+   - `grep -rn '~/\.ari/' docs/` excluding `refactor_audit.md`
+     returns zero.
    - Every documented env var maps to a real source reference.
    - Every documented MCP tool exists in the skill's `mcp.json`.
 5. Tag: `git tag v0.X.Y && git push origin v0.X.Y`.
@@ -98,7 +100,7 @@ When cutting a release:
 ## See also
 
 - `CHANGELOG.md` — per-release notes.
-- `DEPRECATION_REMOVAL.md` — full deprecation programme.
+- `CONTRIBUTING.md::Deprecation process` — full deprecation programme.
 - `docs/howto/migration.md` — per-version migration recipes.
 - `docs/reference/public_api.md` — the surface this policy
   protects.

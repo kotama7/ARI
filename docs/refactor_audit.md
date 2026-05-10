@@ -1,9 +1,11 @@
 # Refactor Audit (Phase 0)
 
-> Living document.  Mirrors `REFACTORING.md` / `DEPRECATION_REMOVAL.md`
-> while the cleanup is in flight.  Will be folded into
-> `docs/architecture.md` and `CONTRIBUTING.md` when Phase 6 lands and
-> the temporary planning files are removed.
+> Historical inventory snapshot, preserved verbatim from the start of
+> the v0.7.1 refactor.  Every "plan" cell in the tables below has now
+> shipped — the running architecture lives in `docs/architecture.md`
+> (Layered architecture section) and `CONTRIBUTING.md`
+> (Software-engineering discipline §1–5).  This file is kept for
+> archaeology; do not edit it as if the work were still in flight.
 
 ## 1. Giant modules (Phase 3 split targets)
 
