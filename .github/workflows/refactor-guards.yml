@@ -27,10 +27,17 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install dependencies
-        working-directory: ari-core
         run: |
           python -m pip install --upgrade pip
-          pip install -e .[test] || pip install -e .
+          # Runtime deps (mcp, letta-client, websockets, ...) live in
+          # the repo-root requirements.txt; ari-core/pyproject.toml
+          # intentionally excludes them so non-PyPI skill imports
+          # (ari_skill_memory) do not trip pip's index resolver.
+          pip install -r requirements.txt
+          # Editable installs in dependency order: skill-memory first
+          # (ari-core imports it directly), then core itself.
+          pip install -e ari-skill-memory
+          pip install -e ari-core
           pip install pytest pytest-asyncio pytest-mock respx
       - name: Run tests under a redirected HOME
         run: |
@@ -41,7 +48,7 @@ jobs:
             --ignore=ari-core/tests/test_letta_start_scripts.py \
             --ignore=ari-core/tests/test_ollama_gpu.py
           if [ -d "$HOME/.ari" ]; then
-            echo "::error::Tests created $HOME/.ari/ — see ari-core/tests/REFACTORING.md"
+            echo "::error::Tests created $HOME/.ari/ — see docs/refactor_audit.md"
             ls -la "$HOME/.ari" || true
             exit 1
           fi
@@ -54,15 +61,34 @@ jobs:
           fetch-depth: 0
       - name: Detect new ~/.ari references in core
         run: |
-          # Compare against the merge base; allow the migrations/
-          # package and `_deprecation` warnings through.
+          # Compare against the merge base. The path-based excludes
+          # below are the legitimate ~/.ari/ touch points: the central
+          # deprecation helper, every back-compat shim that emits a
+          # DeprecationWarning before falling through to PathManager,
+          # the migrations package, and a handful of files whose
+          # ~/.ari/ references are only docstrings/comments
+          # explaining the deprecation.
           base="$(git merge-base origin/${{ github.base_ref || 'main' }} HEAD)"
           ADDED=$(git diff "$base" HEAD -- 'ari-core/ari/**.py' \
+            ':!ari-core/ari/_deprecation.py' \
+            ':!ari-core/ari/migrations/' \
+            ':!ari-core/ari/core.py' \
+            ':!ari-core/ari/paths.py' \
+            ':!ari-core/ari/memory_cli.py' \
+            ':!ari-core/ari/memory/auto_migrate.py' \
+            ':!ari-core/ari/memory/file_client.py' \
+            ':!ari-core/ari/publish/backends/ari_registry.py' \
+            ':!ari-core/ari/clone/resolvers/ari.py' \
+            ':!ari-core/ari/registry/__init__.py' \
+            ':!ari-core/ari/viz/state.py' \
+            ':!ari-core/ari/viz/api_settings.py' \
+            ':!ari-core/ari/viz/api_publish.py' \
+            | grep -vE '^\+\+\+ ' \
             | grep -E '^\+.*(Path\.home\(\).*\.ari|~/\.ari)' \
-            | grep -vE '(migrations|_deprecation|warn_deprecated_path|# .*~/\.ari)' \
+            | grep -vE '^\+\s*#' \
             || true)
           if [ -n "$ADDED" ]; then
-            echo "::error::New ~/.ari/ references introduced outside migrations/ + _deprecation warning helpers."
+            echo "::error::New ~/.ari/ references introduced outside the allowed deprecation/shim sites. To allow a new site, add it to the path-exclude list in this workflow with a justification."
             echo "$ADDED"
             exit 1
           fi
