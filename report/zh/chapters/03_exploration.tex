@@ -1,0 +1,179 @@
+% translated-from: en/chapters/03_exploration.tex@c6e8bb5773a959a3261dbf791c3c3768cf3012402c9b354dada040ccbeee22ba
+% glossary:        5bca8d57a70f021e20c0af79aa06cd21013495c1a8246887ae889cd8a056f5fd
+% model:           claude-opus-4-7
+
+\section{探索算法}\label{sec:exploration}
+
+\subsection{形式化}\label{sec:exploration:formalization}
+
+探索循环维护一棵树 $\Tree=(\Nodes, E)$,其中每个节点
+$n\in\Nodes$ 代表一次研究步骤:构想修订、代码改动、基准运行、
+分析等。节点携带
+
+\begin{itemize}
+  \item 离散状态 $\statefn{n}\in\{\StateOpen,\StateEval,\StateDone,\StateFailed\}$ (\code{node.py:10}),
+  \item 取自 \texttt{NodeLabel} 的类别\term{标签} (\code{node.py:18}),
+  \item 用于按轴评估指标的自由形式 dict
+        \texttt{node.metrics},含独立的标量
+        $\texttt{\_scientific\_score}\in[0,1]$,
+  \item 标志节点是否携带实测值(而非临时文本)的布尔
+        \texttt{has\_real\_data},以及
+  \item 选择提示中使用的簿记字段 \texttt{depth} 与
+        \texttt{retry\_count}。
+\end{itemize}
+
+将按轴信号汇总为标量 scientific score 的工作委托给任何实现
+\texttt{Evaluator} 协议
+(\code{ari-core/ari/protocols/evaluator.py:19}) 的对象;ARI 不
+固定线性组合。该协议是 BFTS 与下游评分细则评估之间唯一的接缝,
+保持搜索引擎对如何将轴归约为标量保持中立。
+
+硬性探索预算只有一个常量 \texttt{config.max\_total\_nodes},由
+\code{bfts.py:should\_prune}(第 245 行)强制。步数与成本预算
+由调用侧的 \texttt{cost\_tracker.py:77} 单独强制,而不在 BFTS
+引擎内。
+
+\subsection{节点选择(LLM 主导)}\label{sec:exploration:node-selection}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F03_node_score.tex}}
+  \caption{交给 LLM 用以挑选下一节点的选择信号。输入被拼接成结
+           构化候选描述;软性的 \texttt{diversity\_bonus} 仅作平
+           手解决,不作主信号。}
+  \label{fig:nodescore}
+\end{figure}
+
+ARI 有意\emph{不}将节点排序归约为闭式标量效用。相反,
+\texttt{select\_next\_node}(第 167 行,「下一智能体步该操作哪
+个节点」)与 \texttt{select\_best\_to\_expand}(第 258 行,「
+哪个完成节点最值得扩展」)都把候选描述列表交给 LLM,并解析返回
+的单个 0 起始索引。每个节点 $n$ 的候选描述形如:
+\begin{quote}\small\texttt{[i] id=..., depth=..., retry=..., has\_real\_data=..., metrics=\{...\}, summary=..., diversity\_bonus=+0.05}\end{quote}
+消费它的提示分别位于
+\texttt{ari/prompts/orchestrator/bfts\_select.md}(选择)与
+\texttt{ari/prompts/orchestrator/bfts\_expand\_select.md}(扩展
+目标)。提示中列出的选择标准:\texttt{has\_real\_data=True} 且
+metrics 强者高价值;未探明方向优先于已尝试路径;metrics 整体多
+目标加权;深而成果好的节点值得继续;\texttt{diversity\_bonus}
+仅当软性平手解决项处理。
+
+\subsubsection*{多样性奖励}\label{sec:exploration:diversity}
+
+\texttt{BFTS.diversity\_bonus}(第 142 行)以
+\texttt{\_recent\_label\_history}(由 \texttt{record\_run} 填
+充的滑动窗)跟踪近期标签。对于其标签在该窗中相对最常见标签为
+\emph{欠表达}的节点,函数返回:
+\begin{equation}\label{eq:diversity}
+  \mathrm{div}(n) \;=\; \begin{cases}
+    +0.05 & \text{若 } \mathrm{count}(\mathrm{label}(n)) \le \tfrac{1}{2}\,\max_\ell \mathrm{count}(\ell),\\
+    0     & \text{否则}
+  \end{cases}
+\end{equation}
+$0.05$ 这个常数有意小:scientific score 仍主导排序,奖励仅打破
+近似平手。
+
+\subsubsection*{LLM 回退}\label{sec:exploration:fallback}
+
+若 LLM 返回无法解析的索引,\texttt{select\_next\_node} 回退至
+确定性排序(\code{bfts.py:237},\texttt{\_fallback\_score}):
+\begin{equation}\label{eq:fallback}
+  \_\mathrm{fallback\_score}(n)
+   \;=\; \texttt{\_scientific\_score}(n) \;+\; \mathrm{div}(n).
+\end{equation}
+有 \texttt{has\_real\_data=True} 节点时优先,返回回退分数最大
+的候选。即使 LLM 调用退化,循环也保证向前推进。
+
+\subsection{扩展(每次调用 1 个子节点)}\label{sec:exploration:expansion}
+
+\code{bfts.py:expand}(第 315 行)每次调用\emph{恰好}生成一个
+新子节点。同一父节点希望多个子节点的调用方反复调用
+\texttt{expand},通过 \texttt{existing\_children} 参数把已生成
+的子节点串入,使 LLM 避免提议重复方向。
+
+各新子的标签由 LLM 判断而非硬编码模板决定;提示
+(\texttt{ari/prompts/orchestrator/bfts\_expand.md})接收:
+
+\begin{itemize}
+  \item 父节点状态(\texttt{succeeded} /
+        \texttt{failed/no-real-data})与
+        \texttt{\_scientific\_score};
+  \item 父节点结构化的 \texttt{node\_report}
+        (\texttt{delta\_vs\_parent} / \texttt{concerns} /
+        \texttt{hints},\code{node\_report/builder.py})若存在,
+        以便规划者瞄准具体弱点;
+  \item 同深度的兄弟得分,以及自根至父的祖先得分;
+  \item 整树多样性指标(目前已见的唯一标签、深度分布);以及
+  \item 此父节点已生成的子节点标签,避免重复提议。
+\end{itemize}
+
+子节点以 \StateOpen{} 创建,交给智能体循环执行
+(\cref{sec:exploration:react}),所有轴填齐后变为
+\StateDone{};智能体循环抛异常时变为 \StateFailed{}。
+
+\subsection{剪枝与终止}\label{sec:exploration:termination}
+
+\texttt{should\_prune}(第 245 行)只施加\emph{硬}截止:当
+\texttt{self.total\_nodes >= self.config.max\_total\_nodes} 时
+后续扩展停止。\texttt{depth} 有意作\emph{软}信号流入 LLM 提示
+而非硬上限,因此深处出现的高质量节点不会被机械抛弃。
+
+下列任一条件满足即停止:
+
+\begin{itemize}
+  \item 全局 \texttt{max\_total\_nodes} 达到;
+  \item 调用侧 \texttt{cost\_tracker.py} 强制的步数 / 成本预算
+        耗尽;
+  \item \term{停滞检测器}
+        (\code{lineage\_decision.py:334},
+        \texttt{detect\_stagnation}) 观察到
+        \texttt{\_scientific\_score} 的运行最大值在滑动窗内不再
+        改善;
+  \item \texttt{LineageDecision}
+        (\code{lineage\_decision.py:149}) 显式终止该分支。
+\end{itemize}
+
+这些当中实际最常发生哪一种,是一个经验问题,留待冻结检查点就位
+后由 \cref{chapter:eval} 回答;本报告不主张其分布。
+
+\subsection{谱系与可复现性}\label{sec:exploration:lineage}
+
+谱系即最佳节点祖先的链条,作为 \texttt{tree.json} 中的
+\texttt{lineage} 键写入检查点。\texttt{LineageState} 数据类
+(\code{lineage\_decision.py:64}) 捕获 BFTS 用于决定是否继续
+的滚动统计;跨检查点的遍历器
+\code{lineage.py:126} (\texttt{walk\_ancestor\_ckpts}) 提供
+跨运行的父指针。构想池经
+\code{lineage.py:157} (\texttt{get\_idea\_pool\_for\_ckpt}) 继
+承,排序后的根构想选择记录在
+\code{root\_idea\_selector.py:39}(\texttt{RootChoice})中以便
+事后审计。
+
+可复现性依赖三项不变量。其一,每次随机化操作以节点标识符播种。
+其二,每次工具调用将参数与输出写入所属节点的工作目录,绝不写
+入父节点 —— 由 MCP 层的 \texttt{cow\_node\_id} 校验强制。其
+三,成本账本(\code{cost\_tracker.py:181},\texttt{init})为每
+节点附加美元金额,因此给定相同提示,预算检查保持确定。
+
+\subsection{ReAct 驱动器}\label{sec:exploration:react}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F04_react_loop.tex}}
+  \caption{ReAct 循环。实线为主循环;虚线反向边表示当观测已闭
+           合开放问题时的提前退出。}
+  \label{fig:react}
+\end{figure}
+
+每个节点的扩展运行 ReAct 风格的智能体循环
+(\code{ari-core/ari/agent/loop.py:77},\texttt{class AgentLoop})。
+最大步数由 \texttt{MAX\_REACT\_STEPS = 80}(\code{loop.py:25})
+控制,可按实例通过 \texttt{max\_react\_steps} 关键字覆盖。另一
+保护 \texttt{MIN\_TOOL\_CALLS = 2}(第 26 行)防止平凡过短的轨
+迹。
+
+智能体可用工具集合按阶段由 \texttt{ari.agent.tool\_manager} 过
+滤;例如探索阶段屏蔽论文撰写工具,使 BFTS 扩展不会捷径地变成
+草稿。一小部分 MCP 工具为 \texttt{ari-core} 自身预留(memory
+CoW 操作)并对 LLM 隐藏;这保证模型无法设置任意 node id 来绕
+过记忆技能的写时复制校验(参见 \code{loop.py} 的 docstring)。

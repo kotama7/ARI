@@ -1,0 +1,71 @@
+# Build outputs
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+*.run.xml
+*.nav
+*.snm
+*.vrb
+*.idx
+*.ilg
+*.ind
+*.glo
+*.gls
+
+# tex4ht / make4ht intermediates (HTML build)
+*.4ct
+*.4tc
+*.dvi
+*.xdv
+*.idv
+*.lg
+*.tmp
+*.xref
+en/main.css
+ja/main.css
+zh/main.css
+en/main.html
+ja/main.html
+zh/main.html
+
+# PDFs of the report itself: track final main.pdf only
+en/*.pdf
+ja/*.pdf
+zh/*.pdf
+!en/main.pdf
+!ja/main.pdf
+!zh/main.pdf
+
+# HTML output (generated)
+html/en/
+html/ja/
+html/zh/
+
+# Figure preview / TikZ render scratch
+shared/figures/preview/
+
+# Reference PDFs (copyright; meta only)
+shared/references_pdf/*.pdf
+shared/references_pdf/*.pdf.tmp
+!shared/references_pdf/.gitkeep
+!shared/references_pdf/README.md
+!shared/references_pdf/*.pdf.meta.yaml
+
+# Translation runtime
+scripts/__pycache__/
+scripts/.venv/
+scripts/translation_cache.json
+scripts/translation_cache.lock
+
+# Reference fetch caches / logs
+shared/references.cache.json
+shared/references.log.yaml

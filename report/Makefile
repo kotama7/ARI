@@ -1,0 +1,134 @@
+# report/Makefile — build PDFs/HTML for en/ja/zh, run quality gates.
+# All targets are best-effort under the development environment;
+# missing tools (biber, latexml, Noto CJK) are detected at run time.
+
+SHELL := /usr/bin/env bash
+.SHELLFLAGS := -eu -o pipefail -c
+
+# ------------------------------------------------------------------ helpers
+PYTHON   ?= python3
+LATEXMK  ?= latexmk
+LUALATEX ?= lualatex
+XELATEX  ?= xelatex
+LATEXML  ?= latexml
+LATEXMLPOST ?= latexmlpost
+BIBER    ?= biber
+
+REPO_ROOT := $(abspath $(dir $(MAKEFILE_LIST))/..)
+SCRIPTS   := scripts
+FIGSCRIPTS:= shared/figures/scripts
+SHARED    := shared
+
+LANGS := en ja zh
+PDF_TARGETS  := $(addsuffix /main.pdf,$(LANGS))
+HTML_TARGETS := $(addprefix html/,$(LANGS))
+
+VENV := scripts/.venv
+PIP  := $(VENV)/bin/pip
+PY   := $(VENV)/bin/python
+
+# ------------------------------------------------------------------ phony
+.PHONY: all pdf-all html-all check-all clean distclean \
+        pdf-en pdf-ja pdf-zh \
+        html-en html-ja html-zh \
+        figures tables \
+        check-i18n check-glossary check-code-refs check-bib check-bib-strict \
+        check-tikz check-figures check-figures-render check-toc \
+        translate-changed translate-all pull-pdfs \
+        venv
+
+all: check-all pdf-all html-all
+
+# ------------------------------------------------------------------ env
+venv: $(VENV)/bin/activate
+
+$(VENV)/bin/activate: $(SCRIPTS)/requirements.txt
+	$(PYTHON) -m venv $(VENV)
+	$(PIP) install --upgrade pip wheel
+	$(PIP) install -r $(SCRIPTS)/requirements.txt
+	@touch $@
+
+# ------------------------------------------------------------------ pdf
+pdf-all: $(PDF_TARGETS)
+
+pdf-en: en/main.pdf
+pdf-ja: ja/main.pdf
+pdf-zh: zh/main.pdf
+
+en/main.pdf ja/main.pdf:
+	cd $(@D) && $(LATEXMK) -lualatex -interaction=nonstopmode -file-line-error main.tex
+
+zh/main.pdf:
+	cd $(@D) && $(LATEXMK) -xelatex -interaction=nonstopmode -file-line-error main.tex
+
+# ------------------------------------------------------------------ html (LaTeXML primary, make4ht fallback per-chapter)
+html-all: $(HTML_TARGETS)
+
+html-en html-ja html-zh: html/%: %/main.tex venv
+	mkdir -p html/$*
+	bash $(SCRIPTS)/build_html.sh $* || (echo "[html] LaTeXML failed for $*; consider make4ht fallback per chapter" && exit 1)
+	$(PY) $(SCRIPTS)/inject_langnav.py html/$*/index.html
+
+# ------------------------------------------------------------------ figures
+figures: venv
+	$(PY) $(FIGSCRIPTS)/build_all.py
+
+# expand FIG=<slug> to render a single TikZ to PNG for visual inspection
+figure: venv
+	@test -n "$(FIG)" || (echo "Usage: make figure FIG=F04_react_loop" && exit 1)
+	$(PY) $(SCRIPTS)/render_tikz.py $(SHARED)/figures/tikz/$(FIG).tex
+
+# ------------------------------------------------------------------ tables
+tables: venv
+	$(PY) $(SCRIPTS)/build_tables.py
+
+# ------------------------------------------------------------------ checks
+check-all: check-i18n check-glossary check-code-refs check-bib check-tikz check-figures check-toc
+
+check-i18n: venv
+	$(PY) $(SCRIPTS)/check_i18n.py
+
+check-glossary: venv
+	$(PY) $(SCRIPTS)/check_glossary.py
+
+check-code-refs: venv
+	$(PY) $(SCRIPTS)/check_code_refs.py --root $(REPO_ROOT)
+
+check-bib: venv
+	$(PY) $(SCRIPTS)/check_bib.py
+
+check-bib-strict: venv
+	$(PY) $(SCRIPTS)/check_bib.py --strict
+
+check-tikz: venv
+	$(PY) $(SCRIPTS)/check_tikz.py
+
+check-figures: venv
+	$(PY) $(SCRIPTS)/check_figures.py
+
+check-figures-render: venv
+	$(PY) $(SCRIPTS)/check_figures.py --render-all
+
+check-toc: venv
+	$(PY) $(SCRIPTS)/check_toc_consistency.py
+
+# ------------------------------------------------------------------ translate
+translate-all: venv
+	$(PY) $(SCRIPTS)/translate.py --target ja --all
+	$(PY) $(SCRIPTS)/translate.py --target zh --all
+
+translate-changed: venv
+	$(PY) $(SCRIPTS)/translate.py --target ja --changed
+	$(PY) $(SCRIPTS)/translate.py --target zh --changed
+
+# ------------------------------------------------------------------ pdfs of references
+pull-pdfs: venv
+	$(PY) $(SCRIPTS)/pull_pdfs.py
+
+# ------------------------------------------------------------------ clean
+clean:
+	-find . -name '*.aux' -o -name '*.log' -o -name '*.toc' -o -name '*.out' -o -name '*.fdb_latexmk' -o -name '*.fls' -o -name '*.synctex.gz' | xargs rm -f
+
+distclean: clean
+	rm -rf $(VENV) html/en html/ja html/zh
+	-find . -name '*.bbl' -o -name '*.bcf' -o -name '*.run.xml' -o -name '*.blg' | xargs rm -f

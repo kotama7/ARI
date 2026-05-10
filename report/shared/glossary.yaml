@@ -1,0 +1,421 @@
+# report/shared/glossary.yaml
+# Master en/ja/zh terminology table for the system report.
+# Gate 7 (glossary fixation) enforces these translations.
+# `forbidden_alternatives` lists known wrong / inconsistent renderings that
+# must NOT appear in the body text.
+#
+# When adding/changing entries:
+#   1. update version + bump `version`
+#   2. invalidate the translation cache by running `scripts/translate.py --bump-glossary`
+#   3. re-run `make translate-changed`
+version: 1
+
+entries:
+
+  # ------------------------------------------------------------ system / pipeline
+  - key: ari_system
+    en: ARI
+    ja: ARI
+    zh: ARI
+    do_not_translate: true
+
+  - key: research_automation
+    en: research automation
+    ja: 研究自動化
+    zh: 研究自动化
+
+  - key: pipeline
+    en: pipeline
+    ja: パイプライン
+    zh: 流水线
+
+  - key: orchestrator
+    en: orchestrator
+    ja: オーケストレータ
+    zh: 编排器
+
+  - key: skill
+    en: skill
+    ja: スキル
+    zh: 技能
+
+  - key: checkpoint
+    en: checkpoint
+    ja: チェックポイント
+    zh: 检查点
+
+  - key: lineage
+    en: lineage
+    ja: 系譜
+    zh: 谱系
+
+  - key: workflow
+    en: workflow
+    ja: ワークフロー
+    zh: 工作流
+
+  # ------------------------------------------------------------ exploration
+  - key: exploration
+    en: exploration
+    ja: 探索
+    zh: 探索
+
+  - key: tree_search
+    en: tree search
+    ja: 木探索
+    zh: 树搜索
+
+  - key: bfts
+    en: BFTS
+    ja: BFTS
+    zh: BFTS
+    do_not_translate: true
+
+  - key: node
+    en: node
+    ja: ノード
+    zh: 节点
+
+  - key: node_score
+    en: node score
+    ja: ノードスコア
+    zh: 节点评分
+
+  - key: node_selection
+    en: node selection
+    ja: ノード選択
+    zh: 节点选择
+
+  - key: branching_budget
+    en: branching budget
+    ja: 拡張幅
+    zh: 扩展预算
+
+  - key: termination_criterion
+    en: termination criterion
+    ja: 停止条件
+    zh: 终止条件
+
+  - key: utility_function
+    en: utility function
+    ja: 効用関数
+    zh: 效用函数
+
+  - key: novelty
+    en: novelty
+    ja: 新規性
+    zh: 新颖性
+
+  - key: depth
+    en: depth
+    ja: 深さ
+    zh: 深度
+
+  # ------------------------------------------------------------ ReAct / agent
+  - key: ReAct
+    en: ReAct
+    ja: ReAct
+    zh: ReAct
+    do_not_translate: true
+
+  - key: react_loop
+    en: ReAct loop
+    ja: ReAct ループ
+    zh: ReAct 循环
+
+  - key: agent_loop
+    en: agent loop
+    ja: エージェントループ
+    zh: 智能体循环
+
+  - key: tool_call
+    en: tool call
+    ja: ツール呼び出し
+    zh: 工具调用
+
+  - key: think
+    en: think
+    ja: 思考
+    zh: 思考
+
+  - key: act
+    en: act
+    ja: 行動
+    zh: 行动
+
+  - key: observe
+    en: observe
+    ja: 観測
+    zh: 观察
+
+  # ------------------------------------------------------------ paper generation
+  - key: paper_generation
+    en: paper generation
+    ja: 論文生成
+    zh: 论文生成
+
+  - key: paper_skill
+    en: paper skill
+    ja: paper スキル
+    zh: paper 技能
+
+  - key: paper_re_skill
+    en: paper-re skill
+    ja: paper-re スキル
+    zh: paper-re 技能
+
+  - key: replicate_skill
+    en: replicate skill
+    ja: replicate スキル
+    zh: replicate 技能
+
+  - key: review_skill
+    en: review skill
+    ja: review スキル
+    zh: review 技能
+
+  - key: rubric
+    en: rubric
+    ja: ルブリック
+    zh: 评分细则
+
+  - key: rubric_tree
+    en: rubric tree
+    ja: ルブリックツリー
+    zh: 评分细则树
+
+  - key: leaf_grading
+    en: leaf-level grading
+    ja: 葉ノード評価
+    zh: 叶节点评分
+
+  - key: review_refine_loop
+    en: review/refine loop
+    ja: レビュー・改稿ループ
+    zh: 评审与改稿循环
+
+  - key: convergence_criterion
+    en: convergence criterion
+    ja: 収束基準
+    zh: 收敛标准
+
+  - key: paper_score
+    en: paper score
+    ja: 論文スコア
+    zh: 论文评分
+
+  - key: refine
+    en: refine
+    ja: 改稿
+    zh: 改稿
+
+  # ------------------------------------------------------------ benchmarks / evaluation
+  - key: PaperBench
+    en: PaperBench
+    ja: PaperBench
+    zh: PaperBench
+    do_not_translate: true
+
+  - key: AIDE
+    en: AIDE
+    ja: AIDE
+    zh: AIDE
+    do_not_translate: true
+
+  - key: VirSci
+    en: VirSci
+    ja: VirSci
+    zh: VirSci
+    do_not_translate: true
+
+  - key: AI_Scientist
+    en: AI Scientist
+    ja: AI Scientist
+    zh: AI Scientist
+    do_not_translate: true
+
+  - key: MLE_bench
+    en: MLE-bench
+    ja: MLE-bench
+    zh: MLE-bench
+    do_not_translate: true
+
+  - key: experiment_setup
+    en: experimental setup
+    ja: 実験設定
+    zh: 实验设置
+
+  - key: exploration_curve
+    en: exploration curve
+    ja: 探索曲線
+    zh: 探索曲线
+
+  - key: cost_accounting
+    en: cost accounting
+    ja: コスト計上
+    zh: 成本核算
+
+  - key: best_reward
+    en: best reward
+    ja: 最良報酬
+    zh: 最佳奖励
+
+  - key: step
+    en: step
+    ja: ステップ
+    zh: 步
+
+  - key: seed
+    en: seed
+    ja: シード
+    zh: 种子
+
+  # ------------------------------------------------------------ design principles
+  - key: determinism
+    en: determinism
+    ja: 決定性
+    zh: 确定性
+
+  - key: reproducibility
+    en: reproducibility
+    ja: 再現性
+    zh: 可复现性
+
+  - key: design_principle
+    en: design principle
+    ja: 設計原則
+    zh: 设计原则
+
+  - key: scope
+    en: scope
+    ja: 適用範囲
+    zh: 适用范围
+
+  # ------------------------------------------------------------ infra
+  - key: hpc_center
+    en: HPC center
+    ja: HPC センター
+    zh: HPC 中心
+
+  - key: container
+    en: container
+    ja: コンテナ
+    zh: 容器
+
+  - key: api_key
+    en: API key
+    ja: API キー
+    zh: API 密钥
+
+  - key: configuration_reference
+    en: configuration reference
+    ja: 設定リファレンス
+    zh: 配置参考
+
+  # ------------------------------------------------------------ artifacts
+  - key: tree_json
+    en: tree.json
+    ja: tree.json
+    zh: tree.json
+    do_not_translate: true
+
+  - key: nodes_tree_json
+    en: nodes_tree.json
+    ja: nodes_tree.json
+    zh: nodes_tree.json
+    do_not_translate: true
+
+  - key: results_json
+    en: results.json
+    ja: results.json
+    zh: results.json
+    do_not_translate: true
+
+  # ------------------------------------------------------------ algorithms / general
+  - key: state_space
+    en: state space
+    ja: 状態空間
+    zh: 状态空间
+
+  - key: state_machine
+    en: state machine
+    ja: 状態機械
+    zh: 状态机
+
+  - key: dag
+    en: DAG
+    ja: DAG
+    zh: DAG
+    do_not_translate: true
+
+  - key: swim_lane
+    en: swim lane
+    ja: スイムレーン
+    zh: 泳道
+
+  - key: failure_mode
+    en: failure mode
+    ja: 故障モード
+    zh: 故障模式
+
+  - key: guardrail
+    en: guardrail
+    ja: ガードレール
+    zh: 护栏
+
+  # ------------------------------------------------------------ related work
+  - key: tree_search_for_code
+    en: tree search for code
+    ja: コードのための木探索
+    zh: 面向代码的树搜索
+
+  - key: autonomous_research_agent
+    en: autonomous research agent
+    ja: 自律型研究エージェント
+    zh: 自主研究智能体
+
+  - key: paper_evaluation
+    en: paper evaluation
+    ja: 論文評価
+    zh: 论文评估
+
+  - key: foundations
+    en: foundations
+    ja: 基礎技術
+    zh: 基础
+
+  # ------------------------------------------------------------ this report
+  - key: this_report
+    en: this report
+    ja: 本レポート
+    zh: 本报告
+
+  - key: snapshot
+    en: snapshot
+    ja: スナップショット
+    zh: 快照
+
+  - key: section
+    en: Section
+    ja: 第\,節
+    zh: 第\,节
+
+forbidden_alternatives:
+  ja:
+    探索: ["サーチ", "サーチング"]
+    論文生成: ["ペーパー生成", "論文作成"]
+    ルブリック: ["評価表", "採点表", "ルーブリック"]
+    ノード: ["ノオド"]
+    チェックポイント: ["チェック点", "保存点"]
+    系譜: ["系統図"]
+    決定性: ["確定性"]
+    パイプライン: []   # `パイプ` 単独は forbidden alternative として使えない(`パイプライン` 内部にマッチしてしまう)
+  zh:
+    探索: ["探勘", "勘探", "搜寻"]
+    论文生成: ["文章生成", "撰文生成"]
+    评分细则: ["评分标准", "评分准则", "评分项"]
+    节点: ["结点"]
+    检查点: ["检查站"]
+    谱系: ["族谱", "家谱"]
+    确定性: ["决定性", "决定论"]
+    流水线: ["管道", "管线"]

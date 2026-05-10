@@ -1,0 +1,185 @@
+% translated-from: en/chapters/02_system_overview.tex@813ea79b56f223b149ed5dd17e19d3f6c003d13811351b08c3997e483a1a08e3
+% glossary:        5bca8d57a70f021e20c0af79aa06cd21013495c1a8246887ae889cd8a056f5fd
+% model:           claude-opus-4-7
+
+\section{システム概観}\label{sec:overview}
+
+\subsection{フルスタック}\label{sec:overview:layout}
+
+\begin{figure*}[t]
+  \centering
+  \resizebox{0.95\textwidth}{!}{\input{../shared/figures/tikz/F10_full_stack.tex}}
+  \caption{v0.7.1 における ARI のフルスタック。CLI / SDK 入口は
+           単一のオーケストレータ(\texttt{ari-core})を駆動する;
+           オーケストレータは三つのエンジン(BFTS、系譜歩行器、
+           ReAct \texttt{AgentLoop})を所有し、MCP 層を通じて 14
+           スキルレジストリへ分配する。永続化はすべて単一のチェ
+           ックポイントディレクトリに落ちる:コスト台帳、
+           \texttt{tree.json}、\texttt{results.json}。実線は制御、
+           破線は状態を表す。}
+  \label{fig:fullstack}
+\end{figure*}
+
+\Cref{fig:fullstack} は v0.7.1 の ARI フルスタックを描く。シス
+テムは一つのドライバと多数のツール提供者に分かれる。ドライバ
+(\texttt{ari-core})はオーケストレータ、BFTS エンジン、系譜歩
+行器、エージェントループ、チェックポイント、コストトラッカ、設
+定ローダを保有する。各スキルは独立した Python パッケージとして
+MCP サーバ形式で出荷され、固有の \texttt{skill.yaml} 宣言を持つ。
+現在ツリーに含まれる 14 のスキル:\texttt{benchmark}、
+\texttt{coding}、\texttt{evaluator}、\texttt{hpc}、
+\texttt{idea}、\texttt{memory}、\texttt{orchestrator}、
+\texttt{paper}、\texttt{paper-re}、\texttt{plot}、
+\texttt{replicate}、\texttt{transform}、\texttt{vlm}、
+\texttt{web}。
+
+オーケストレータは呼び出しの分配のみを担い、ドメイン作業自体は
+実行しない。この分離が重要なのは、スキルを追加・差し替えても探
+索アルゴリズムには触れずに済むからである:
+\code{ari-core/ari/orchestrator/bfts.py:114} の BFTS コードは、
+どのスキルが参加するかを知らない;すべては MCP 分配層を介する。
+
+\Cref{fig:architecture} は本レポートの残りで使う「運用ビュー」
+(制御 + 状態出力)であり、\cref{fig:fullstack} は「層別ビュー」
+(ドライバ → MCP → スキル → 永続化)である。
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F01_architecture.tex}}
+  \caption{運用ビュー:オーケストレータがスキルレジストリへ分配
+           する;各スキルはアクティブなチェックポイントディレク
+           トリのみへ書き込む。破線は状態を表す。}
+  \label{fig:architecture}
+\end{figure}
+
+\subsection{パイプライン DAG}\label{sec:overview:pipeline}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F05_pipeline_dag.tex}}
+  \caption{パイプライン DAG: idea $\to$ exploration $\to$ paper
+           $\to$ review、ただし \term{改稿} がバックエッジを閉じ
+           る。破線出力はチェックポイントへ永続化される;改稿サ
+           イクルは草稿を書き直し、レビューを再実行する。}
+  \label{fig:pipeline}
+\end{figure}
+
+一回の実行は四つのステーションのパイプラインに帰着する
+(\cref{fig:pipeline})。idea ステーションは研究問題を選択または
+生成し、exploration ステーションは BFTS の下でノードを派生させ、
+paper ステーションは最良系譜を草稿に編成し、review ステーション
+はルブリックで草稿を採点する。グラフは DAG にレビューから紙への
+バックエッジを 1 本加えた構造である:このエッジのみが非単調性を
+生じうる(改稿が軸を悪化させ得る);\term{収束基準}
+(\cref{sec:paper:loop})がバックエッジ回数の上界を与える。
+
+パイプライン実行器は
+\code{ari-core/ari/pipeline/orchestrator.py:131}
+(\texttt{run\_pipeline});探索出力と論文入力の間隙を埋める科学
+データ組立器は同ファイル 68 行目の
+\texttt{build\_scientific\_data} である。
+
+\subsection{BFTS 制御フロー}\label{sec:overview:bfts-flow}
+
+\begin{figure*}[t]
+  \centering
+  \resizebox{0.95\textwidth}{!}{\input{../shared/figures/tikz/F11_bfts_control.tex}}
+  \caption{BFTS 制御フロー。LLM 主導の意思決定点は二つ
+           (\texttt{select\_next\_node}、\texttt{expand})、各々
+           別個のプロンプトファイルを参照する;選択判断は LLM が
+           解析不能なインデックスを返したとき決定的な
+           \texttt{\_fallback\_score}(\texttt{\_scientific\_score}
+           と \texttt{diversity\_bonus} の和)へフォールバックす
+           る。枝刈りは \texttt{should\_prune}(max-total-nodes
+           ハードカット)と停滞検出器の両方で gating される。詳細
+           は \cref{sec:exploration}。}
+  \label{fig:bftsflow}
+\end{figure*}
+
+\Cref{fig:bftsflow} は 1 BFTS ステップを端から端まで追う。実装
+は \cref{sec:exploration} で展開する;図は本レポートの残りで使
+う語彙(フロンティア、選択、フォールバック、expand、prune、停
+滞)と、各 LLM 主導ステップを実体化するプロンプトファイル
+(\texttt{bfts\_select.md}、
+\texttt{bfts\_expand\_select.md}、
+\texttt{bfts\_expand.md})を確定する。
+
+\subsection{paper-re コンポーネントビュー}\label{sec:overview:paperre-component}
+
+\begin{figure*}[t]
+  \centering
+  \resizebox{0.95\textwidth}{!}{\input{../shared/figures/tikz/F12_paperre_components.tex}}
+  \caption{\texttt{paper-re} スキルの構成要素。最上段が ARI のア
+           ダプタ層(ドライバ + ソルバサブクラス + 境界付きツール
+           ラッパ + パスアダプタ);中段が vendoring された
+           PaperBench パッケージ(\texttt{BasicAgentSolver}、
+           \texttt{TaskNode}、\texttt{SimpleJudge});下段が
+           submission ごとの \texttt{GradedTaskNode} 木を単一の
+           \texttt{rubric.json} スコアと ARI 側の
+           \texttt{reproduce.sh} に畳み込む bridge である。詳細は
+           \cref{sec:paper:paperbench}。}
+  \label{fig:paperre}
+\end{figure*}
+
+\Cref{fig:paperre} は \texttt{paper-re} の二段階目のビューであ
+る。この層での ARI の貢献は小さいが具体的である:
+\texttt{AriPBSolver} サブクラスは \texttt{\_get\_tools}(
+\texttt{\_BoundedOutputTool} を挿入するため)と
+\texttt{\_run\_agent}(docker sanity-check を迂回し vendor パスを
+適合させるため)のみオーバーライドする;それ以外はすべて
+PaperBench upstream を逐語的に流れ、これにより ARI は upstream
+の複製タスク枠組みに整合する。第 4 章で図を詳細に追う。
+
+\subsection{チェックポイントスコープと設計原則}\label{sec:overview:principles}
+
+ARI は 5 つの\term{設計原則} (P1--P5) を中心に構築されている。最
+も拘束的なのが \textbf{P2:決定性} である。すべての乱択ステップ
+は乱数シードを記録し、すべての LLM 呼び出しはモデル同一性、プロ
+ンプト、出力を記録し、すべてのツール呼び出しは
+\texttt{cow\_node\_id} を伴うことで、書き込みが正しいノードの作
+業ツリーへ落ちることを保証する。チェックポイントを再走させれば、
+時計依存またはモデル側非決定性として明示的にマークされた領域を除
+き、バイト単位で同一の成果物を再現しなければならない。
+
+その他の原則は次の通り:
+
+\begin{itemize}
+  \item \textbf{P1 単一成果物ツリー}:実行のすべての出力は
+        \texttt{\$ARI\_CHECKPOINT\_DIR} 配下に存在する。
+        \texttt{\$HOME} や \texttt{/tmp} へ漏出しない。
+  \item \textbf{P3 小コンポーネント}:各スキルは独立パッケージで
+        ある;スキル交換のために \texttt{ari-core} を再構築する
+        必要はない。
+  \item \textbf{P4 明示的系譜}:各ノードと各チェックポイントは
+        親を記録するため、派生実験は差分のみを再計算できる。
+  \item \textbf{P5 コスト透明性}:\texttt{cost\_tracker.py} は各
+        モデル呼び出しにドルコストを付与し、利用者が実行を予算で
+        制限できるようにする。
+\end{itemize}
+
+チェックポイント直列化器は 3 つのトップレベルファイルを書き出す。
+完全な探索木は \texttt{checkpoint.py:49} を経て
+\texttt{tree.json} に入り、ノード単位のペイロードは
+\texttt{checkpoint.py:59} を経て \texttt{nodes\_tree.json} に入
+り、実行末の集計は \texttt{checkpoint.py:64} を経て
+\texttt{results.json} に入る。チェックポイントを跨ぐ系譜歩行は
+\texttt{lineage.py:126}(\texttt{walk\_ancestor\_ckpts})が担い、
+子から先祖へと辿る。
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F13_checkpoint_layout.tex}}
+  \caption{チェックポイントディレクトリのレイアウト。実行レベル
+           ファイル(左帯)はオーケストレータが書く;ノード別作
+           業ツリー(右帯)は 1 BFTS 拡張内で生成された成果物を
+           保持する。実行の再現はまさに「このディレクトリに対し
+           て再実行する」ことであり、レイアウトはそれ以外の状態
+           が不要であることを保証する。}
+  \label{fig:checkpoint}
+\end{figure}
+
+\Cref{fig:checkpoint} はチェックポイントのオンディスク形状を描く:
+左に共有の実行レベルファイル、右にノード別作業ツリー。この形状
+が契約である:ARI の出力を入力にとる任意のツール(後続実行、リ
+グレッションチェック、論文草稿)は、このような単一ディレクトリ
+を指せばよい。

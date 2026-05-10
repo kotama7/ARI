@@ -1,0 +1,17 @@
+citekey: starace2025paperbench
+fetched_at: '2026-05-09T13:55:06+00:00'
+fetched_by: scripts batch on 2026-05-09 (arXiv direct)
+source:
+  s2_paperId: null
+  preferred_url: https://arxiv.org/pdf/2504.01848.pdf
+  resolved_via: arXiv direct
+  arxiv_id: '2504.01848'
+file:
+  filename: starace2025paperbench.pdf
+  size_bytes: 1703363
+  sha256: 2f58f1a6581af9d99432422dccf3cf61f5c263377c1e4550e7333c4a22d7184d
+  page_count: 30
+license:
+  type: arXiv non-exclusive distribution licence
+  closed_access: false
+notes: ''

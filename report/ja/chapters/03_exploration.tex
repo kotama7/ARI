@@ -1,0 +1,204 @@
+% translated-from: en/chapters/03_exploration.tex@c6e8bb5773a959a3261dbf791c3c3768cf3012402c9b354dada040ccbeee22ba
+% glossary:        5bca8d57a70f021e20c0af79aa06cd21013495c1a8246887ae889cd8a056f5fd
+% model:           claude-opus-4-7
+
+\section{探索アルゴリズム}\label{sec:exploration}
+
+\subsection{形式化}\label{sec:exploration:formalization}
+
+探索ループは木 $\Tree=(\Nodes, E)$ を維持し、各ノード
+$n\in\Nodes$ は研究の一ステップ — アイディア改訂、コード変更、
+ベンチマーク実行、分析など — を表す。ノードは以下を保持する:
+
+\begin{itemize}
+  \item 離散状態 $\statefn{n}\in\{\StateOpen,\StateEval,\StateDone,\StateFailed\}$ (\code{node.py:10})、
+  \item \texttt{NodeLabel} から取られたカテゴリカルな\term{ラベル}
+        (\code{node.py:18})、
+  \item 軸ごとの評価指標を保持する自由形式 dict
+        \texttt{node.metrics}、区別されたスカラー
+        $\texttt{\_scientific\_score}\in[0,1]$ を含む、
+  \item ノードが provisional なテキストではなく実測値を伴うかを
+        示す Boolean \texttt{has\_real\_data}、ならびに
+  \item 選択プロンプトで使われる帳簿フィールド \texttt{depth} と
+        \texttt{retry\_count}。
+\end{itemize}
+
+軸レベル信号からスカラー scientific score への集約は、
+\texttt{Evaluator} プロトコル
+(\code{ari-core/ari/protocols/evaluator.py:19})の任意の実装に委
+譲される;ARI は固定の線形結合を pin しない。プロトコルは BFTS
+と下流のルブリック評価との唯一の継ぎ目であり、軸をスカラーへ縮約
+する方法について検索エンジンを agnostic に保つ。
+
+ハードな探索予算は単一の定数 \texttt{config.max\_total\_nodes}
+であり、\code{bfts.py:should\_prune} (line~245) によって強制さ
+れる。ステップ・コスト予算は BFTS エンジン内ではなく呼び出し側
+の \texttt{cost\_tracker.py:77} によって別途強制される。
+
+\subsection{ノード選択(LLM 主導)}\label{sec:exploration:node-selection}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F03_node_score.tex}}
+  \caption{次に操作するノードを選ぶ LLM に渡される選択シグナル。
+           入力は構造化された候補記述に連結される;ソフトな
+           \texttt{diversity\_bonus} はタイブレーカであり、主シ
+           グナルではない。}
+  \label{fig:nodescore}
+\end{figure}
+
+ARI は意図的にノードのランキングを閉形式のスカラー効用に\emph{
+縮約しない}。代わりに、\texttt{select\_next\_node}(line~167、
+「次のエージェントステップが操作すべきノードはどれか?」)と
+\texttt{select\_best\_to\_expand}(line~258、「拡張するに最も値
+する完了ノードはどれか?」)の双方が候補記述リストを LLM に渡し、
+0 始まりの単一インデックスを解析して受け取る。各ノード $n$ の候
+補記述は次の形式の一行:
+\begin{quote}\small\texttt{[i] id=..., depth=..., retry=..., has\_real\_data=..., metrics=\{...\}, summary=..., diversity\_bonus=+0.05}\end{quote}
+であり、これを消費するプロンプトは
+\texttt{ari/prompts/orchestrator/bfts\_select.md}(選択)および
+\texttt{ari/prompts/orchestrator/bfts\_expand\_select.md}(拡張対
+象)に置かれる。プロンプトが列挙する選択基準は:
+\texttt{has\_real\_data=True} で強い metrics を持つノードは高価
+値;未踏方向は試行済みの経路より優先;metrics は全体論的に多目
+的に重み付け;優れた結果を持つ深いノードは継続に値する;
+\texttt{diversity\_bonus} はソフトなタイブレーカとしてのみ扱う。
+
+\subsubsection*{多様性ボーナス}\label{sec:exploration:diversity}
+
+\texttt{BFTS.diversity\_bonus}(line~142)は最近のラベルを
+\texttt{\_recent\_label\_history}(\texttt{record\_run} で埋まる
+スライディング窓)で追跡する。当該窓内で最頻ラベルに対し相対的に
+\emph{過少表現}のラベルを持つノードに対し、関数は次を返す:
+\begin{equation}\label{eq:diversity}
+  \mathrm{div}(n) \;=\; \begin{cases}
+    +0.05 & \text{もし } \mathrm{count}(\mathrm{label}(n)) \le \tfrac{1}{2}\,\max_\ell \mathrm{count}(\ell),\\
+    0     & \text{それ以外}
+  \end{cases}
+\end{equation}
+$0.05$ という定数は意図的に小さい:scientific score が依然として
+ランキングを支配し、ボーナスはほぼ同点のものを破るのみである。
+
+\subsubsection*{LLM フォールバック}\label{sec:exploration:fallback}
+
+LLM が解析不能なインデックスを返した場合、
+\texttt{select\_next\_node} は決定的なランキングへフォールバック
+する(\code{bfts.py:237}、\texttt{\_fallback\_score}):
+\begin{equation}\label{eq:fallback}
+  \_\mathrm{fallback\_score}(n)
+   \;=\; \texttt{\_scientific\_score}(n) \;+\; \mathrm{div}(n).
+\end{equation}
+\texttt{has\_real\_data=True} のノードがあればそれが優先され、フ
+ォールバックスコア最大の候補が返される。これにより、LLM 呼び出
+しが degrade してもループは必ず前進する。
+
+\subsection{拡張(1 呼び出しにつき 1 子)}\label{sec:exploration:expansion}
+
+\code{bfts.py:expand}(line~315)は 1 回の呼び出しで\emph{ちょう
+ど 1 つ}の新しい子を生成する。同じ親に対して複数の子が欲しい呼
+び出し側は \texttt{expand} を反復的に呼び、これまでに生成された
+子を \texttt{existing\_children} 引数経由で渡すことで、LLM が重
+複方向を提案するのを避ける。
+
+各新子のラベルはハードコードされたテンプレートではなく LLM の判
+断で決まる;プロンプト
+(\texttt{ari/prompts/orchestrator/bfts\_expand.md})には以下が
+渡される:
+
+\begin{itemize}
+  \item 親の状態(\texttt{succeeded} /
+        \texttt{failed/no-real-data})と
+        \texttt{\_scientific\_score};
+  \item 親の構造化された \texttt{node\_report}
+        (\texttt{delta\_vs\_parent} / \texttt{concerns} /
+        \texttt{hints}、\code{node\_report/builder.py})が存在す
+        る場合、planner が特定の弱点を狙えるよう含める;
+  \item 同じ深さの兄弟スコア、ならびにルートから親までの先祖ス
+        コア;
+  \item ツリー全体の多様性指標(これまでに見たユニークラベル、
+        深さ分布);ならびに
+  \item この親で既に生成された子のラベル(重複提案を避けるた
+        め)。
+\end{itemize}
+
+子は \StateOpen{} で生成され、エージェントループに実行のため渡
+され(\cref{sec:exploration:react})、すべての軸が埋まれば
+\StateDone{} に、エージェントループが例外を投げれば
+\StateFailed{} に遷移する。
+
+\subsection{枝刈りと停止}\label{sec:exploration:termination}
+
+\texttt{should\_prune}(line~245)は \emph{ハード} カットオフの
+みを適用する:\texttt{self.total\_nodes >= self.config.max\_total\_nodes}
+の時点で以降の拡張が止まる。\texttt{depth} は意図的に\emph{ソフ
+ト}なシグナルとして扱われ、ハード上限ではなく LLM プロンプトに
+流されるため、木の深部に現れる高品質ノードが機械的に捨てられな
+い。
+
+ループは次のいずれかが満たされれば停止する:
+
+\begin{itemize}
+  \item グローバル \texttt{max\_total\_nodes} 上限到達;
+  \item 呼び出し側の \texttt{cost\_tracker.py} が強制するステップ
+        / コスト予算の枯渇;
+  \item \term{停滞検出器}
+        (\code{lineage\_decision.py:334}、
+        \texttt{detect\_stagnation})が、\texttt{\_scientific\_score}
+        の移動最大値がスライディング窓内で改善しないことを観測;
+  \item \texttt{LineageDecision}
+        (\code{lineage\_decision.py:149})が当該分岐を明示的に
+        停止。
+\end{itemize}
+
+これらのうちどれが実際に最も頻出するかは経験的問いであり、凍結
+チェックポイントが揃い次第 \cref{chapter:eval} で答える;本レポ
+ートはその分布を主張しない。
+
+\subsection{系譜と再現性}\label{sec:exploration:lineage}
+
+系譜とは最良ノードの先祖の連鎖であり、\texttt{tree.json} の
+\texttt{lineage} キーとしてチェックポイントへ書かれる。
+\texttt{LineageState} データクラス
+(\code{lineage\_decision.py:64})は BFTS が継続判定に用いる移動
+統計を保持し、跨チェックポイントの歩行器
+\code{lineage.py:126}(\texttt{walk\_ancestor\_ckpts})は実行を
+跨ぐ親ポインタを提供する。アイディアプールは
+\code{lineage.py:157}(\texttt{get\_idea\_pool\_for\_ckpt})経由
+で継承され、ランキング付きルートアイディアの選択は
+\code{root\_idea\_selector.py:39}(\texttt{RootChoice})に記録
+されて事後監査可能となる。
+
+再現性は三つの不変量にかかる。第一に、すべての乱択操作はノード
+識別子から自身を播種する。第二に、すべてのツール呼び出しは引数
+と出力を該当ノードの作業ツリーへ書き、決して親へは書かない —
+これは MCP 層の \texttt{cow\_node\_id} チェックで強制される。第
+三に、コスト台帳(\code{cost\_tracker.py:181}、\texttt{init})が
+ノードあたりのドル額を付与するため、同一プロンプトでの予算検査
+は決定的となる。
+
+\subsection{ReAct ドライバ}\label{sec:exploration:react}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F04_react_loop.tex}}
+  \caption{ReAct ループ。実線が主サイクル;破線のバックエッジは
+           観測がすでに開いた問いを閉じた場合の早期離脱を表す。}
+  \label{fig:react}
+\end{figure}
+
+各ノードの拡張は ReAct 形式のエージェントループ
+(\code{ari-core/ari/agent/loop.py:77}、\texttt{class AgentLoop})
+を走らせる。最大ステップ数は \texttt{MAX\_REACT\_STEPS = 80}
+(\code{loop.py:25})であり、インスタンスごとに
+\texttt{max\_react\_steps} キーワードで上書きできる。別ガード
+\texttt{MIN\_TOOL\_CALLS = 2}(line~26)が trivially 短い軌跡を
+防ぐ。
+
+エージェントが利用できるツール集合は
+\texttt{ari.agent.tool\_manager} がフェーズ別にフィルタする;例
+えば探索フェーズは論文執筆ツールをマスクし、BFTS 拡張が草稿に
+ショートカットされるのを防ぐ。一部の MCP ツールは
+\texttt{ari-core} 自身用に予約されており(memory CoW 操作)、
+LLM からは隠されるため、モデルが任意のノード ID を設定してメモ
+リスキルのコピーオンライトチェックを迂回することはできない
+(\code{loop.py} の docstring 参照)。

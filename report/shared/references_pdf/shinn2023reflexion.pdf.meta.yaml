@@ -1,0 +1,17 @@
+citekey: shinn2023reflexion
+fetched_at: '2026-05-09T13:55:08+00:00'
+fetched_by: scripts batch on 2026-05-09 (arXiv direct)
+source:
+  s2_paperId: null
+  preferred_url: https://arxiv.org/pdf/2303.11366.pdf
+  resolved_via: arXiv direct
+  arxiv_id: '2303.11366'
+file:
+  filename: shinn2023reflexion.pdf
+  size_bytes: 591097
+  sha256: 6059b6f89fea9959bd3dab553fbb97756a3dfb1b15e3cbab2fbf3ab6664333bd
+  page_count: 19
+license:
+  type: arXiv non-exclusive distribution licence
+  closed_access: false
+notes: ''

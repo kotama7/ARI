@@ -1,0 +1,50 @@
+\section{Evaluation (deferred)}\label{chapter:eval}
+
+\textbf{This chapter is intentionally short. The evaluation has not
+been carried out for this snapshot.} The previous draft of this
+report quoted concrete medians and per-leaf scores; on review we
+found those numbers were illustrative examples written during R3a
+drafting, not measurements from a frozen ARI checkpoint, so they
+have been removed. Only artefacts that are real are kept.
+
+What \emph{is} real:
+
+\begin{itemize}
+  \item The cost-accounting machinery: \texttt{CostTracker}
+        (\code{cost\_tracker.py:77}) attaches per-call dollar costs
+        to every model invocation; \texttt{init} on line~181 wires
+        the tracker to a checkpoint directory; the resulting
+        \texttt{cost\_usd} field is written into
+        \texttt{results.json} at end of run.
+  \item The exploration loop terminates via the stagnation detector
+        (\cref{sec:exploration:termination}); the empirical
+        frequency at which stagnation rather than $\Tmax$ /
+        $\Cmax$ fires is intended to be reported here once a
+        snapshot exists.
+  \item The PGF figure scripts (\code{shared/figures/scripts/})
+        are seed-pinned; running \code{make figures} regenerates
+        deterministic synthetic placeholders that pass
+        \code{check\_figures}, but those placeholders are
+        \emph{not} cited as evidence in the body.
+\end{itemize}
+
+What is \emph{not yet} done:
+
+\begin{itemize}
+  \item Pinning a frozen ARI v0.7.1 checkpoint and extracting
+        \texttt{tree.json} / \texttt{results.json} into
+        \code{shared/figures/data/}. Today the data directory holds
+        only \code{*.meta.yaml} files marked
+        \code{source.synthetic: true}.
+  \item Reporting median run cost, per-seed exploration curves, and
+        per-category rubric distributions from real reviews. These
+        will appear here in a follow-up PR that lands the frozen
+        checkpoint and re-derives the aggregates.
+  \item Reporting any PaperBench-style replication number from the
+        \texttt{paper-re} skill on real target papers.
+\end{itemize}
+
+Until those follow-ups land, this chapter contains no quantitative
+claims. Cross-references from other chapters (e.g.\ in
+\cref{sec:exploration:termination}) point here only to mark where
+the empirical evidence will live, not where it currently lives.

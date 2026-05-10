@@ -1,0 +1,17 @@
+citekey: wei2022chain
+fetched_at: '2026-05-09T13:55:08+00:00'
+fetched_by: scripts batch on 2026-05-09 (arXiv direct)
+source:
+  s2_paperId: null
+  preferred_url: https://arxiv.org/pdf/2201.11903.pdf
+  resolved_via: arXiv direct
+  arxiv_id: '2201.11903'
+file:
+  filename: wei2022chain.pdf
+  size_bytes: 891773
+  sha256: 7d9f878c23b460e4566aa4ec9201b1abfb3b8faefb2b1356e411cb90fef72a12
+  page_count: 43
+license:
+  type: arXiv non-exclusive distribution licence
+  closed_access: false
+notes: ''

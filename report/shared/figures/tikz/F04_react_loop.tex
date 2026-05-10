@@ -1,0 +1,35 @@
+% F04: ReAct loop — Think / Act / Observe / Reflect with numbered stages,
+%       paper-style typography.
+% style.tikzstyles is loaded by shared/preamble.tex / standalone wrapper.
+\begin{tikzpicture}[node distance=2.0cm and 2.5cm]
+
+  \node[state init]                            (think) {\figlabel{react.think}};
+  \node[state, right=of think]                 (act)   {\figlabel{react.act}};
+  \node[state, below=of act]                   (obs)   {\figlabel{react.observe}};
+  \node[state final, below=of think]           (refl)  {\figlabel{react.reflect}};
+
+  % numbered step badges, perched on each state's upper-left corner
+  \node[numbered step, above left=0.05cm and -0.15cm of think.north west] {1};
+  \node[numbered step, above left=0.05cm and -0.15cm of act.north west]   {2};
+  \node[numbered step, above left=0.05cm and -0.15cm of obs.north west]   {3};
+  \node[numbered step, above left=0.05cm and -0.15cm of refl.north west]  {4};
+
+  % external annotations (yellow = memory, orange = phase-filtered tools)
+  \node[station, fill=ari-orange!22, draw=ari-vermilion,
+        above=0.6cm of act]                    (tools) {\figlabel{F4.toolset}};
+  \node[station, fill=ari-yellow!30, draw=ari-orange,
+        left=0.6cm of think]                   (mem)   {\figlabel{F4.memcontext}};
+
+  % --- big arrows (paper-style) ---
+  \draw[big arrow] (think) -- (act)   node[edge label, font=\sffamily\footnotesize]{\figlabel{F4.tool_call}};
+  \draw[big arrow] (act)   -- (obs)   node[edge label, font=\sffamily\footnotesize]{\figlabel{F4.execute}};
+  \draw[big arrow] (obs)   -- (refl)  node[edge label, font=\sffamily\footnotesize]{\figlabel{F4.parse}};
+  \draw[big arrow] (refl)  -- (think) node[edge label, font=\sffamily\footnotesize]{\figlabel{F4.update}};
+  \draw[arrow dashed] (obs) to[bend left=18] (think);
+
+  \draw[arrow dashed] (tools.south) -- (act.north);
+  \draw[arrow dashed] (mem.east)    -- (think.west);
+
+  % budget annotation
+  \node[stage title, below=0.3cm of refl] {\figlabel{F4.maxsteps}};
+\end{tikzpicture}

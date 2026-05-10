@@ -1,0 +1,35 @@
+\section{Notation Table}\label{sec:notation}
+
+The table below mirrors the macros defined in
+\code{shared/notation.tex}. Every symbol used in the body must
+appear here; a static check (\texttt{check\_notation.py}) verifies
+that no body symbol is undefined.
+
+\begin{tabularx}{\columnwidth}{@{}lX@{}}
+  \toprule
+  Symbol & Meaning \\
+  \midrule
+  $\Nodes$            & set of nodes in the search tree \\
+  $\Tree$             & search tree $(\Nodes, E)$ \\
+  $n\in\Nodes$        & individual node \\
+  $\children{n}$      & children of $n$ \\
+  $\parentof{n}$      & parent of $n$ \\
+  $\depth{n}$         & depth of $n$ \\
+  $\statefn{n}$       & node state $\in\{\StateOpen,\StateEval,\StateDone,\StateFailed\}$ \\
+  $\nodescore{n}$     & scalar reward of $n$ \\
+  $\axes{n}$          & per-axis evaluation vector \\
+  $\aggregate$        & axis $\to$ scalar aggregator \\
+  $\mathrm{div}(n)$   & diversity bonus (\cref{eq:diversity}) \\
+  $\_\mathrm{fallback\_score}(n)$ & deterministic fallback ranking (\cref{eq:fallback}) \\
+  $\Tmax,\Cmax$       & step / cost budgets \\
+  $\Rubric$           & rubric tree \\
+  $\rubricitem{i}$    & rubric leaf $i$'s category \\
+  $\rubricweight{i}$  & rubric leaf $i$'s weight \\
+  $\judgefn{i}$       & rubric leaf $i$'s judge \\
+  $\paper$            & paper draft \\
+  $\paperscore{\paper}$ & paper aggregate score (\cref{eq:paperscore}) \\
+  $\refine$           & refine operator (\cref{eq:refine}) \\
+  $\ckpt$             & checkpoint directory \\
+  $\lineage{n}$       & lineage chain ending at $n$ \\
+  \bottomrule
+\end{tabularx}

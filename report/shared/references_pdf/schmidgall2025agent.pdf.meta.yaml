@@ -1,0 +1,17 @@
+citekey: schmidgall2025agent
+fetched_at: '2026-05-09T13:55:09+00:00'
+fetched_by: scripts batch on 2026-05-09 (arXiv direct)
+source:
+  s2_paperId: null
+  preferred_url: https://arxiv.org/pdf/2501.04227.pdf
+  resolved_via: arXiv direct
+  arxiv_id: '2501.04227'
+file:
+  filename: schmidgall2025agent.pdf
+  size_bytes: 3644380
+  sha256: 67b9543ae1d8e3ad86a65e2a436ddbd12700d7c8f4a66c5b4c2a6fccc1674d75
+  page_count: 84
+license:
+  type: arXiv non-exclusive distribution licence
+  closed_access: false
+notes: ''

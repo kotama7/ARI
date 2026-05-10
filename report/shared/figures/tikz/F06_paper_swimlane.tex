@@ -1,0 +1,51 @@
+% F06: paper-generation swim lane — paper-style three-lane workflow.
+% Lanes are coloured stage containers; numbered step markers sit to the
+% left of each station; the orange refine back-edge is on top.
+% style.tikzstyles is loaded by shared/preamble.tex / standalone wrapper.
+\begin{tikzpicture}[node distance=1.0cm and 1.6cm]
+
+  % --- six stations laid out in a 3-row grid -------------------------
+  \node[station]                                       (i1)  {\figlabel{F6.brainstorm}};
+  \node[station, right=2.6cm of i1]                    (i2)  {\figlabel{F6.refine_idea}};
+
+  \node[station emph, below=1.4cm of i1]               (e1)  {\figlabel{F6.bfts}};
+  \node[station, right=2.6cm of e1]                    (e2)  {\figlabel{F6.replicate}};
+
+  \node[station, below=1.4cm of e1]                    (w1)  {\figlabel{F6.draft}};
+  \node[station emph, right=2.6cm of w1]               (w2)  {\figlabel{F6.review_refine}};
+
+  % --- numbered step markers, perched on the upper-left corner of each
+  % station (PaperBench-style badge), so they never overlap any arrow.
+  \node[numbered step, above left=0.05cm and -0.2cm of i1.north west] {1};
+  \node[numbered step, above left=0.05cm and -0.2cm of i2.north west] {2};
+  \node[numbered step, above left=0.05cm and -0.2cm of e1.north west] {3};
+  \node[numbered step, above left=0.05cm and -0.2cm of e2.north west] {4};
+  \node[numbered step, above left=0.05cm and -0.2cm of w1.north west] {5};
+  \node[numbered step, above left=0.05cm and -0.2cm of w2.north west] {6};
+
+  % --- intra-lane forward arrows (thick, paper-style) ----------------
+  \draw[big arrow] (i1) -- (i2);
+  \draw[big arrow] (e1) -- (e2);
+  \draw[big arrow] (w1) -- (w2);
+
+  % --- inter-lane forward arrows: short straight verticals ----------
+  \draw[big arrow] (i2.south) -- (e2.north);
+  \draw[big arrow] (e2.south) -- (w2.north);
+
+  % --- refine back-edge (orange, on top, label in middle) ----------
+  \draw[big arrow, draw=ari-vermilion] (w2.south) to[bend left=35]
+       node[edge label, fill=ari-orange!15, font=\sffamily\bfseries\footnotesize, midway]
+       {\figlabel{F6.refine}}
+       (w1.south);
+
+  % --- lane backgrounds (in background layer) ----------------------
+  \begin{scope}[on background layer]
+    \node[stage container, fit=(i1)(i2), inner sep=10pt]   (laneI) {};
+    \node[stage container, fit=(e1)(e2), inner sep=10pt]   (laneE) {};
+    \node[stage container, fit=(w1)(w2), inner sep=10pt]   (laneW) {};
+  \end{scope}
+  % lane labels OUTSIDE on the right, after the lanes are drawn (top layer)
+  \node[stage title, right=4pt of laneI.east, anchor=west] {\figlabel{F6.lane.idea}};
+  \node[stage title, right=4pt of laneE.east, anchor=west] {\figlabel{F6.lane.experiment}};
+  \node[stage title, right=4pt of laneW.east, anchor=west] {\figlabel{F6.lane.write}};
+\end{tikzpicture}

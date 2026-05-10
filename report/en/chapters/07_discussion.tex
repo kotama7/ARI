@@ -1,0 +1,50 @@
+\section{Discussion and Limitations}\label{sec:discussion}
+
+\subsection{Determinism vs novelty}\label{sec:discussion:p2}
+
+P2, the determinism principle, is the binding constraint of the
+system. Strictly enforcing P2 forces \term{ari-skill-memory} to
+declare ``no LLM calls'' --- it must score its retrievals by a
+deterministic keyword function rather than an embedding model whose
+output depends on a remote service. The trade-off is that retrieval
+quality is bounded by what keyword scoring can recover.
+
+This is not an accident: every reproducibility win comes at the cost
+of a closed door for non-determinism. We accept the cost because the
+checkpoint, not the run, is the contract with downstream users.
+
+\subsection{Scaling limits}\label{sec:discussion:scaling}
+
+The single-machine assumption underlying the BFTS scheduler is the
+biggest scaling constraint. A run that wants to expand
+$\bbranch>10$ in parallel needs a different scheduler; the current
+scheduler at \code{ari-core/ari/orchestrator/scheduler.py} serialises
+expansions of the same parent. A multi-host expansion would require
+extending the lineage discipline (P4) to handle merges, not just
+ancestor walks.
+
+A separate constraint is the cost of the LLM grader. Empirically the
+grader is one of the dominant line items in a run, alongside the
+explorer; whether it is the second-largest in absolute dollars is
+something \cref{chapter:eval} is meant to settle once a frozen
+checkpoint exists. Caching grader outputs by (paper-hash,
+rubric-hash) would help; we have not yet shipped this.
+
+\subsection{Open problems}\label{sec:discussion:open}
+
+\begin{enumerate}
+  \item \textbf{Off-policy refine}. The current refine cycle uses the
+        same model as the writer. Decoupling the two so the writer
+        and the refiner can be different models would let cheaper
+        models do the heavy structural rewrites.
+  \item \textbf{Rubric inheritance across checkpoints}. A child
+        checkpoint should be able to reuse its parent's rubric by
+        default; right now the rubric is regenerated.
+  \item \textbf{Tool-failure recovery}. A failed tool call currently
+        marks the node \StateFailed{}. A recovery policy that retries
+        with a degraded tool (e.g.\ a smaller model) would reduce the
+        long-tail cost.
+\end{enumerate}
+
+These three are tractable; we expect each to be a single-PR change
+landed before v0.8.

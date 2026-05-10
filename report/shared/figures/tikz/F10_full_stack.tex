@@ -1,0 +1,87 @@
+% F10: ARI full-stack architecture — single column, 4 skill groups stacked
+%       so the role bands never overlap.
+% style.tikzstyles is loaded by shared/preamble.tex / standalone wrapper.
+\begin{tikzpicture}[node distance=0.6cm and 0.6cm]
+
+  % --- top row: external entry points -------------------------------
+  \node[block external]                                  (cli)    {\figlabel{F10.cli}};
+  \node[block external, right=1.2cm of cli]              (web)    {\figlabel{F10.viz}};
+
+  % --- driver --------------------------------------------------------
+  \node[block native big, below=1.2cm of cli, xshift=2.0cm] (orch) {\figlabel{F10.orchestrator}};
+
+  % --- engines row (under orchestrator) ------------------------------
+  \node[block lane native, below=1.4cm of orch]          (bfts)   {\figlabel{F10.bfts}};
+  \node[block lane native, left=1.0cm of bfts]           (lin)    {\figlabel{F10.lineage}};
+  \node[block lane native, right=1.0cm of bfts]          (loop)   {\figlabel{F10.agentloop}};
+
+  % --- MCP layer ----------------------------------------------------
+  \node[mcp band, below=1.5cm of bfts]                   (mcp)    {\figlabel{F10.mcp}};
+
+  % --- generation row -----------------------------------------------
+  \node[block lane native, below=2.0cm of mcp.south west, anchor=north west, xshift=0.5cm]
+                                                         (gen1)   {\figlabel{F10.s.idea}};
+  \node[block lane native, right=of gen1]                (gen2)   {\figlabel{F10.s.coding}};
+
+  % --- evaluation row (right of generation, same y) ----------------
+  \node[block lane native, right=2.5cm of gen2]          (ev1)    {\figlabel{F10.s.eval}};
+  \node[block lane native, right=of ev1]                 (ev2)    {\figlabel{F10.s.review}};
+
+  % --- writing & replication row -----------------------------------
+  \node[block lane native, right=2.5cm of ev2]           (wr1)    {\figlabel{F10.s.paper}};
+  \node[block lane native, right=of wr1]                 (wr2)    {\figlabel{F10.s.paperre}};
+  \node[block lane native, right=of wr2]                 (wr3)    {\figlabel{F10.s.replicate}};
+
+  % --- infrastructure / I-O row (separate row below) ---------------
+  \node[block lane native, below=2.5cm of gen1]          (in1)    {\figlabel{F10.s.memory}};
+  \node[block lane native, right=of in1]                 (in2)    {\figlabel{F10.s.bench}};
+  \node[block lane native, right=of in2]                 (in3)    {\figlabel{F10.s.hpc}};
+  \node[block lane native, right=of in3]                 (in4)    {\figlabel{F10.s.plot}};
+  \node[block lane native, right=of in4]                 (in5)    {\figlabel{F10.s.transform}};
+  \node[block lane native, right=of in5]                 (in6)    {\figlabel{F10.s.vlm}};
+  \node[block lane native, right=of in6]                 (in7)    {\figlabel{F10.s.web}};
+
+  % --- persistence row (bottom) -------------------------------------
+  \node[artifact, below=2.0cm of in2]                    (cost)   {\figlabel{F10.cost}};
+  \node[artifact, right=of cost]                         (ckpt)   {\figlabel{F10.ckpt}};
+  \node[artifact, right=of ckpt]                         (tree)   {\figlabel{F10.tree}};
+  \node[artifact, right=of tree]                         (res)    {\figlabel{F10.results}};
+
+  % --- group bands (one per role, with labels OUTSIDE each band) ----
+  \begin{scope}[on background layer]
+    \node[group, fit=(gen1)(gen2)]                       (gG)     {};
+    \node[group, fit=(ev1)(ev2)]                         (gE)     {};
+    \node[group, fit=(wr1)(wr2)(wr3)]                    (gW)     {};
+    \node[group, fit=(in1)(in2)(in3)(in4)(in5)(in6)(in7)] (gI)    {};
+  \end{scope}
+  % labels above their bands, anchored to the band's top-left, with vertical clearance
+  \node[band label, above=4pt of gG.north west, anchor=south west] {\figlabel{F10.band.gen}};
+  \node[band label, above=4pt of gE.north west, anchor=south west] {\figlabel{F10.band.eval}};
+  \node[band label, above=4pt of gW.north west, anchor=south west] {\figlabel{F10.band.write}};
+  \node[band label, above=4pt of gI.north west, anchor=south west] {\figlabel{F10.band.infra}};
+
+  % --- edges --------------------------------------------------------
+  \draw[arrow] (cli) -- (orch.north west);
+  \draw[arrow] (web) -- (orch.north east);
+
+  \draw[arrow] (orch.south) -- (bfts.north);
+  \draw[arrow dashed] (bfts.west) -- (lin.east);
+  \draw[arrow dashed] (bfts.east) -- (loop.west);
+
+  \draw[arrow] (bfts.south) -- (mcp.north);
+  \draw[arrow dashed] (lin.south) to[bend right=15] (mcp.north west);
+  \draw[arrow dashed] (loop.south) to[bend left=15] (mcp.north east);
+
+  % MCP -> each skill group head (one arrow per row to reduce clutter)
+  \draw[arrow] (mcp.south) to[bend right=10] (gen1.north);
+  \draw[arrow] (mcp.south) -- (ev1.north);
+  \draw[arrow] (mcp.south) to[bend left=10] (wr1.north);
+  \draw[arrow dashed] (mcp.south) to[bend right=25] (in1.north);
+
+  % skills -> persistence
+  \draw[arrow dashed] (in1.south) -- (cost.north);
+  \draw[arrow dashed] (in1.south) to[bend right=8] (ckpt.north);
+  \draw[arrow dashed] (gen2.south) to[bend right=15] (tree.north);
+  \draw[arrow dashed] (wr2.south) to[bend left=10] (res.north);
+
+\end{tikzpicture}

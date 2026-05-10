@@ -1,0 +1,25 @@
+figure_id: F09
+description: "Synthetic illustration of rubric-score-by-category violins (5 categories, 80 reviews each)."
+source:
+  ari_version: null
+  checkpoint_id: null
+  experiment_dir: null
+  generated_at: "2026-05-09T13:30:00Z"
+  generator: "shared/figures/scripts/rubric_dist.py:_synthetic_fallback (np.random.default_rng(0))"
+  synthetic: true
+  intended_replacement: "Aggregate rubric reviews from PaperBench-eligible runs once collected."
+schema:
+  format: jsonl
+  fields:
+    - {name: category, dtype: str, values: [clarity, novelty, experiments, rigor, impact]}
+    - {name: score,    dtype: float, range: [1, 5]}
+provenance:
+  raw_source: synthetic
+  transform: "scripts/rubric_dist.py --extract"
+  hash_sha256: null
+license: synthetic
+notes: |
+  Each category's distribution is N(loc=3 + 0.15*i, scale=0.6) clipped to
+  [1, 5]; the bimodality discussed in the body is a verbal claim, not a
+  property of this synthetic distribution. Replace with real reviews before
+  R5 if the report is to be cited externally.

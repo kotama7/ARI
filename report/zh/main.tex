@@ -1,0 +1,42 @@
+\documentclass[a4paper,10pt,twocolumn]{article}
+
+% Opt in to CJK; preamble loads ctex (xelatex) or fontspec+Fandol (lualatex)
+% depending on engine. The lualatex path is what `make4ht -ul` uses for HTML.
+\def\AriCJK{}
+\def\AriLangZh{}
+\input{../shared/preamble.tex}
+\input{strings.tex}
+
+\title{ARI:自主研究基础设施}
+\author{树神 宇德}
+\date{快照 v0.7.1, 2026}
+
+\begin{document}
+\twocolumn[
+\maketitle
+\begin{abstract}
+本报告描述了一个自主研究基础设施 \textbf{ARI},它将基于树搜索的
+探索循环与论文生成流水线相结合。探索循环是对研究步节点的最佳优先
+树搜索 (BFTS);节点扩展由 ReAct 风格的智能体执行,该智能体向 14
+个领域技能的注册表发出工具调用。论文流水线将存活的谱系汇编为草稿,
+并在层次化评分细则下迭代改稿。所有产物都驻留在单一的检查点目录中,
+该目录是可复现性、谱系与成本核算的单位。本报告形式化算法,在源代码
+层面描述实现,呈现评估快照,并讨论制约设计的确定性与新颖性的权衡。
+\end{abstract}
+\vspace{2ex}
+]
+
+\input{chapters/01_introduction.tex}
+\input{chapters/02_system_overview.tex}
+\input{chapters/03_exploration.tex}
+\input{chapters/04_paper_pipeline.tex}
+\input{chapters/05_evaluation.tex}
+\input{chapters/06_related.tex}
+\input{chapters/07_discussion.tex}
+
+\appendix
+\input{chapters/appendix_notation.tex}
+
+\printbibliography
+
+\end{document}

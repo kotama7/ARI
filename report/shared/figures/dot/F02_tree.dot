@@ -1,0 +1,17 @@
+digraph T {
+  graph [rankdir=TB, ranksep=0.6, nodesep=0.4];
+  node  [shape=box, style="rounded", fontsize=10];
+  n0 [label="N0\nr=0.50"];
+  n1 [label="N1\nr=0.62"];
+  n2 [label="N2\nr=0.48"];
+  n3 [label="N3\nr=0.71"];
+  n4 [label="N4\nr=0.66"];
+  n5 [label="N5\nr=0.40"];
+  n6 [label="N6\nr=0.74"];
+  n0 -> n1;
+  n0 -> n2;
+  n1 -> n3;
+  n1 -> n4;
+  n2 -> n5;
+  n4 -> n6;
+}

@@ -1,0 +1,47 @@
+% F01: ARI architecture — operational view, role-grouped, vertical layout
+%       so the whole figure fits inside one column without truncation.
+% style.tikzstyles is loaded by shared/preamble.tex / standalone wrapper.
+\begin{tikzpicture}[node distance=0.6cm and 0.6cm]
+
+  % --- driver (top) ---------------------------------------------------
+  \node[block emph wide]                                    (orch)   {\figlabel{F1.orchestrator}};
+
+  % --- 6 domain skills, two rows × three columns ----------------------
+  \node[block lane, below left=1.7cm and 2.0cm of orch]    (idea)   {\figlabel{F1.idea}};
+  \node[block lane, right=of idea]                          (code)   {\figlabel{F1.coding}};
+  \node[block lane, right=1.6cm of code]                    (eval)   {\figlabel{F1.evaluator}};
+  \node[block lane, right=of eval]                          (rev)    {\figlabel{F1.review}};
+  \node[block lane, right=1.6cm of rev]                     (paper)  {\figlabel{F1.paper}};
+  \node[block lane, right=of paper]                         (replic) {\figlabel{F1.replicate}};
+
+  % --- support row (memory + web) ------------------------------------
+  \node[block lane, below=1.4cm of code]                    (memory) {\figlabel{F1.memory}};
+  \node[block lane, below=1.4cm of rev]                     (web)    {\figlabel{F1.web}};
+
+  % --- artefacts -----------------------------------------------------
+  \node[artifact, below=1.4cm of memory]                    (ckpt)   {\figlabel{F1.checkpoint}};
+  \node[artifact, right=of ckpt]                            (tree)   {\figlabel{F1.tree_json}};
+  \node[artifact, right=of tree]                            (results) {\figlabel{F1.results_json}};
+
+  % --- group bands ---------------------------------------------------
+  \begin{scope}[on background layer]
+    \node[group, fit=(idea)(code)]                          (gen)    {};
+    \node[group, fit=(eval)(rev)]                           (evl)    {};
+    \node[group, fit=(paper)(replic)]                       (wrt)    {};
+    \node[band label, above=0.05cm of gen.north west, anchor=south west] {\figlabel{F1.band.gen}};
+    \node[band label, above=0.05cm of evl.north west, anchor=south west] {\figlabel{F1.band.eval}};
+    \node[band label, above=0.05cm of wrt.north west, anchor=south west] {\figlabel{F1.band.write}};
+  \end{scope}
+
+  % --- edges ---------------------------------------------------------
+  \foreach \s in {idea,code,eval,rev,paper,replic}
+    \draw[arrow] (orch.south) -- (\s.north);
+  \draw[arrow] (orch.south) to[bend right=14] (memory.north);
+  \draw[arrow] (orch.south) to[bend right=10] (web.north);
+
+  \draw[arrow dashed] (memory.south) -- (ckpt.north);
+  \draw[arrow dashed] (eval.south)   to[bend right=10] (tree.north);
+  \draw[arrow dashed] (rev.south)    to[bend right=12] (tree.north);
+  \draw[arrow dashed] (paper.south)  to[bend right=18] (results.north);
+  \draw[arrow dashed] (replic.south) to[bend right=22] (results.north);
+\end{tikzpicture}

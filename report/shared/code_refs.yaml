@@ -1,0 +1,182 @@
+# shared/code_refs.yaml
+# Implementation file:line citations referenced by the report body.
+# Gate 2 (code citation validity) reads this file via scripts/check_code_refs.py
+# and verifies (a) each entry's path exists, (b) line numbers fall within bounds.
+#
+# Schema:
+#   <slug>:
+#     path:    repo-relative file path
+#     anchor:  short symbol name (function/class/identifier) the line should contain
+#     line:    integer (1-based)
+#     used_in: list of report-side anchors (chapter file or section label)
+#
+# Adding/changing entries:
+#   1. add the row here
+#   2. cite in the body as e.g.  \cite[file=node\_selection.py,line=80]{code:node_selection.filter}
+#   3. run `make check-code-refs`
+
+version: 1
+repo_root_token: "<repo>"   # check_code_refs.py prepends $REPO_ROOT to each path
+
+entries:
+
+  # ======================================== exploration core (Chapter 3)
+  code:bfts.class:
+    path: ari-core/ari/orchestrator/bfts.py
+    anchor: "class BFTS"
+    line: 114
+    used_in: ["en/chapters/03_exploration.tex#bfts-class"]
+
+  code:bfts.select_next:
+    path: ari-core/ari/orchestrator/bfts.py
+    anchor: "def select_next_node"
+    line: 167
+    used_in: ["en/chapters/03_exploration.tex#sec:node-selection"]
+
+  code:bfts.select_best:
+    path: ari-core/ari/orchestrator/bfts.py
+    anchor: "def select_best_to_expand"
+    line: 258
+    used_in: ["en/chapters/03_exploration.tex#sec:node-selection"]
+
+  code:bfts.expand:
+    path: ari-core/ari/orchestrator/bfts.py
+    anchor: "def expand"
+    line: 315
+    used_in: ["en/chapters/03_exploration.tex#sec:expansion"]
+
+  code:node_selection.filter:
+    path: ari-core/ari/orchestrator/node_selection.py
+    anchor: "def filter_nodes"
+    line: 80
+    used_in: ["en/chapters/03_exploration.tex#sec:node-selection"]
+
+  code:node_selection.parent_chain:
+    path: ari-core/ari/orchestrator/node_selection.py
+    anchor: "def build_parent_chain"
+    line: 169
+    used_in: ["en/chapters/03_exploration.tex#sec:lineage"]
+
+  code:node_selection.source_select:
+    path: ari-core/ari/orchestrator/node_selection.py
+    anchor: "def select_source_files_for_publication"
+    line: 204
+    used_in: ["en/chapters/04_paper_pipeline.tex#sec:source-selection"]
+
+  code:node.status_enum:
+    path: ari-core/ari/orchestrator/node.py
+    anchor: "class NodeStatus"
+    line: 10
+    used_in: ["en/chapters/03_exploration.tex#sec:formalization"]
+
+  code:node.label_enum:
+    path: ari-core/ari/orchestrator/node.py
+    anchor: "class NodeLabel"
+    line: 18
+    used_in: ["en/chapters/03_exploration.tex#sec:formalization"]
+
+  code:node.dataclass:
+    path: ari-core/ari/orchestrator/node.py
+    anchor: "class Node"
+    line: 81
+    used_in: ["en/chapters/03_exploration.tex#sec:formalization"]
+
+  code:lineage_decision.state:
+    path: ari-core/ari/orchestrator/lineage_decision.py
+    anchor: "class LineageState"
+    line: 64
+    used_in: ["en/chapters/03_exploration.tex#sec:lineage"]
+
+  code:lineage_decision.decision:
+    path: ari-core/ari/orchestrator/lineage_decision.py
+    anchor: "class LineageDecision"
+    line: 149
+    used_in: ["en/chapters/03_exploration.tex#sec:lineage"]
+
+  code:lineage_decision.detect_stagnation:
+    path: ari-core/ari/orchestrator/lineage_decision.py
+    anchor: "def detect_stagnation"
+    line: 334
+    used_in: ["en/chapters/03_exploration.tex#sec:termination"]
+
+  code:root_idea.choice:
+    path: ari-core/ari/orchestrator/root_idea_selector.py
+    anchor: "class RootChoice"
+    line: 39
+    used_in: ["en/chapters/03_exploration.tex#sec:root-selection"]
+
+  # ======================================== ReAct / agent (Chapter 3.6)
+  code:agent_loop.class:
+    path: ari-core/ari/agent/loop.py
+    anchor: "class AgentLoop"
+    line: 77
+    used_in: ["en/chapters/03_exploration.tex#sec:react"]
+
+  code:agent_loop.max_steps:
+    path: ari-core/ari/agent/loop.py
+    anchor: "MAX_REACT_STEPS"
+    line: 25
+    used_in: ["en/chapters/03_exploration.tex#sec:react"]
+
+  # ======================================== pipeline / paper (Chapter 4)
+  code:pipeline.run:
+    path: ari-core/ari/pipeline/orchestrator.py
+    anchor: "def run_pipeline"
+    line: 131
+    used_in: ["en/chapters/04_paper_pipeline.tex#sec:pipeline-overview"]
+
+  code:pipeline.scientific_data:
+    path: ari-core/ari/pipeline/orchestrator.py
+    anchor: "def build_scientific_data"
+    line: 68
+    used_in: ["en/chapters/04_paper_pipeline.tex#sec:scientific-data"]
+
+  code:evaluator.protocol:
+    path: ari-core/ari/protocols/evaluator.py
+    anchor: "class Evaluator"
+    line: 19
+    used_in: ["en/chapters/04_paper_pipeline.tex#sec:rubric"]
+
+  # ======================================== checkpoint / lineage (Chapter 2)
+  code:checkpoint.save_tree:
+    path: ari-core/ari/checkpoint.py
+    anchor: "def save_tree_json"
+    line: 49
+    used_in: ["en/chapters/02_system_overview.tex#sec:checkpoint"]
+
+  code:checkpoint.save_results:
+    path: ari-core/ari/checkpoint.py
+    anchor: "def save_results_json"
+    line: 64
+    used_in: ["en/chapters/02_system_overview.tex#sec:checkpoint"]
+
+  code:lineage.walk_ancestors:
+    path: ari-core/ari/lineage.py
+    anchor: "def walk_ancestor_ckpts"
+    line: 126
+    used_in: ["en/chapters/02_system_overview.tex#sec:lineage"]
+
+  code:lineage.idea_pool:
+    path: ari-core/ari/lineage.py
+    anchor: "def get_idea_pool_for_ckpt"
+    line: 157
+    used_in: ["en/chapters/03_exploration.tex#sec:lineage"]
+
+  # ======================================== cost / config (Chapter 5)
+  code:cost_tracker.class:
+    path: ari-core/ari/cost_tracker.py
+    anchor: "class CostTracker"
+    line: 77
+    used_in: ["en/chapters/05_evaluation.tex#sec:cost"]
+
+  code:cost_tracker.init:
+    path: ari-core/ari/cost_tracker.py
+    anchor: "def init("
+    line: 181
+    used_in: ["en/chapters/05_evaluation.tex#sec:cost"]
+
+  code:config.loader_protocol:
+    path: ari-core/ari/configs/_loader.py
+    anchor: "class ConfigLoader"
+    line: 21
+    used_in: ["en/chapters/02_system_overview.tex#sec:config"]
