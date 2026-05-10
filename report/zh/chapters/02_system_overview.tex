@@ -1,0 +1,160 @@
+% translated-from: en/chapters/02_system_overview.tex@813ea79b56f223b149ed5dd17e19d3f6c003d13811351b08c3997e483a1a08e3
+% glossary:        5bca8d57a70f021e20c0af79aa06cd21013495c1a8246887ae889cd8a056f5fd
+% model:           claude-opus-4-7
+
+\section{系统概览}\label{sec:overview}
+
+\subsection{完整堆栈}\label{sec:overview:layout}
+
+\begin{figure*}[t]
+  \centering
+  \resizebox{0.95\textwidth}{!}{\input{../shared/figures/tikz/F10_full_stack.tex}}
+  \caption{v0.7.1 时 ARI 的完整堆栈。CLI / SDK 入口驱动单一编排
+           器(\texttt{ari-core});编排器拥有三个引擎(BFTS、谱
+           系遍历器、ReAct \texttt{AgentLoop}),并经 MCP 层向
+           14 技能注册表分派。所有持久化都落在单一检查点目录:
+           成本账本、\texttt{tree.json}、\texttt{results.json}。
+           实线为控制,虚线为状态。}
+  \label{fig:fullstack}
+\end{figure*}
+
+\Cref{fig:fullstack} 描绘了 v0.7.1 的 ARI 完整堆栈。系统分为
+一个驱动器与多个工具提供方。驱动器(\texttt{ari-core})拥有
+编排器、BFTS 引擎、谱系遍历器、智能体循环、检查点、成本追踪
+器与配置加载器。每个技能为独立 Python 包,以 MCP 服务器形式
+发布,并附自身 \texttt{skill.yaml} 声明。当前在树的 14 个技
+能:\texttt{benchmark}、\texttt{coding}、
+\texttt{evaluator}、\texttt{hpc}、\texttt{idea}、
+\texttt{memory}、\texttt{orchestrator}、\texttt{paper}、
+\texttt{paper-re}、\texttt{plot}、\texttt{replicate}、
+\texttt{transform}、\texttt{vlm}、\texttt{web}。
+
+编排器只负责调用分派,不执行领域工作。这种分离至关重要:技能
+可被增删或替换而不必触动搜索算法 ——
+\code{ari-core/ari/orchestrator/bfts.py:114} 中的 BFTS 代码并
+不知道哪些技能参与运行;一切由 MCP 分派层中介。
+
+\Cref{fig:architecture} 是本报告其余部分使用的「运营视图」
+(控制 + 状态输出);\cref{fig:fullstack} 是「分层视图」(驱
+动器 → MCP → 技能 → 持久化)。
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F01_architecture.tex}}
+  \caption{运营视图:编排器分派至技能注册表;每个技能仅向当前
+           活动的检查点目录写入。虚线表示状态。}
+  \label{fig:architecture}
+\end{figure}
+
+\subsection{流水线 DAG}\label{sec:overview:pipeline}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F05_pipeline_dag.tex}}
+  \caption{流水线 DAG:idea $\to$ exploration $\to$ paper $\to$
+           review,由 \term{改稿} 闭合反向边。虚线输出持久化至
+           检查点;改稿循环重写草稿并重跑评审。}
+  \label{fig:pipeline}
+\end{figure}
+
+一次运行可归约为四个工位的流水线 (\cref{fig:pipeline})。idea
+工位选取或生成研究问题;exploration 工位在 BFTS 下扩展节点;
+paper 工位将最佳谱系汇编为草稿;review 工位以评分细则评估草
+稿。该图为 DAG 加上一条由 review 回到 paper 的反向边:仅此边
+可能引入非单调性(改稿可能恶化某一轴),而\term{收敛标准}
+(\cref{sec:paper:loop})则是限定反向边数量的约束。
+
+流水线运行器是 \code{ari-core/ari/pipeline/orchestrator.py:131}
+(\texttt{run\_pipeline});连接探索输出与论文输入的科学数据
+组装器为同文件第 68 行的 \texttt{build\_scientific\_data}。
+
+\subsection{BFTS 控制流}\label{sec:overview:bfts-flow}
+
+\begin{figure*}[t]
+  \centering
+  \resizebox{0.95\textwidth}{!}{\input{../shared/figures/tikz/F11_bfts_control.tex}}
+  \caption{BFTS 控制流。两个 LLM 主导的决策点
+           (\texttt{select\_next\_node}、\texttt{expand})各自
+           查询独立的提示文件;选择决策在 LLM 返回不可解析索引
+           时,回退到确定性 \texttt{\_fallback\_score}
+           (\texttt{\_scientific\_score} 与
+           \texttt{diversity\_bonus} 之和)。剪枝由
+           \texttt{should\_prune}(max-total-nodes 硬截止)与停
+           滞检测器共同把关。详见 \cref{sec:exploration}。}
+  \label{fig:bftsflow}
+\end{figure*}
+
+\Cref{fig:bftsflow} 端到端追踪一次 BFTS 步骤。实现详见
+\cref{sec:exploration};该图固定本报告其余部分使用的词汇(前
+沿、选择、回退、expand、prune、停滞)以及实现各 LLM 主导步骤
+的提示文件(\texttt{bfts\_select.md}、
+\texttt{bfts\_expand\_select.md}、
+\texttt{bfts\_expand.md})。
+
+\subsection{paper-re 组件视图}\label{sec:overview:paperre-component}
+
+\begin{figure*}[t]
+  \centering
+  \resizebox{0.95\textwidth}{!}{\input{../shared/figures/tikz/F12_paperre_components.tex}}
+  \caption{\texttt{paper-re} 技能的组件。顶行为 ARI 的适配层
+           (驱动器 + 求解器子类 + 有界工具包装 + 路径适配器);
+           中行为 vendor 化的 PaperBench 包
+           (\texttt{BasicAgentSolver}、\texttt{TaskNode}、
+           \texttt{SimpleJudge});底行为 bridge,把按 submission
+           的 \texttt{GradedTaskNode} 树折叠成单一
+           \texttt{rubric.json} 得分,加上 ARI 侧的
+           \texttt{reproduce.sh}。详见 \cref{sec:paper:paperbench}。}
+  \label{fig:paperre}
+\end{figure*}
+
+\Cref{fig:paperre} 是 \texttt{paper-re} 的第二级视图。在此层
+ARI 的贡献小但具体:\texttt{AriPBSolver} 子类只覆写
+\texttt{\_get\_tools}(为插入 \texttt{\_BoundedOutputTool})与
+\texttt{\_run\_agent}(为绕过 docker sanity-check 与适配
+vendor 路径);其余皆从 PaperBench 上游逐字流过,使 ARI 与上
+游复现任务框架保持一致。第 4 章详细解读该图。
+
+\subsection{检查点作用域与设计原则}\label{sec:overview:principles}
+
+ARI 围绕五条\term{设计原则} (P1--P5) 构建。最具约束力者为
+\textbf{P2:确定性}。每一步随机化均记录其种子;每次 LLM 调用均
+记录模型身份、提示与输出;每次工具调用都携带
+\texttt{cow\_node\_id} 以确保写入落在所属节点的工作目录内。重
+跑检查点必须再现相同的产物,字节级一致,除非字段被显式标记为
+时钟相关或模型端非确定。
+
+其余原则简述如下:
+
+\begin{itemize}
+  \item \textbf{P1 单一产物树}:运行的全部输出位于
+        \texttt{\$ARI\_CHECKPOINT\_DIR} 之下,不外溢至
+        \texttt{\$HOME} 或 \texttt{/tmp}。
+  \item \textbf{P3 小组件}:每个技能为独立包;替换技能不需重建
+        \texttt{ari-core}。
+  \item \textbf{P4 显式谱系}:每个节点与每个检查点均记录其父级,
+        派生实验仅须重算其差量。
+  \item \textbf{P5 成本透明}:\texttt{cost\_tracker.py} 为每次
+        模型调用附加美元成本,使运行预算可控。
+\end{itemize}
+
+检查点序列化器写出三个顶层文件。完整搜索树经
+\texttt{checkpoint.py:49} 写入 \texttt{tree.json};按节点的载
+荷经 \texttt{checkpoint.py:59} 写入 \texttt{nodes\_tree.json};
+运行末聚合经 \texttt{checkpoint.py:64} 写入
+\texttt{results.json}。跨检查点的谱系遍历调用
+\texttt{lineage.py:126} (\texttt{walk\_ancestor\_ckpts}),由子
+向祖先攀登。
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F13_checkpoint_layout.tex}}
+  \caption{检查点目录布局。运行级文件(左带)由编排器写入;按
+           节点工作目录(右带)保存一次 BFTS 扩展内产生的产物。
+           复现一次运行就是「针对此目录重跑」,该布局保证不需要
+           其他状态。}
+  \label{fig:checkpoint}
+\end{figure}
+
+\Cref{fig:checkpoint} 描绘检查点的磁盘形状:左侧为共享运行级文件,
+右侧为按节点工作目录。该形状即契约:任何把 ARI 输出当输入的工具
+(后续运行、回归检查、论文草稿),只需指向单一这样的目录即可。

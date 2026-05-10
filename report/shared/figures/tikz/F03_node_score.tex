@@ -1,0 +1,52 @@
+% F03: signals consumed by the LLM-driven node selector.
+% Replaces the earlier closed-form utility figure: ARI does not pin
+% a scalar utility; instead a structured candidate description is
+% handed to the LLM and an index is parsed back. See F11 for the full
+% control flow; this figure focuses on the *information* that flows in.
+% style.tikzstyles is loaded by shared/preamble.tex / standalone wrapper.
+\begin{tikzpicture}[node distance=0.5cm and 1.6cm]
+
+  % per-node signals (left column), all stations for paper-style typography
+  \node[station]                                       (real)   {\figlabel{F3.has_real}};
+  \node[station, below=of real]                        (metrics){\figlabel{F3.metrics}};
+  \node[station, below=of metrics]                     (depth)  {\figlabel{F3.depth_signal}};
+  \node[station, below=of depth]                       (retry)  {\figlabel{F3.retry}};
+  \node[station, below=of retry]                       (summ)   {\figlabel{F3.summary}};
+  \node[station, fill=ari-pink!22, below=of summ]      (div)    {\figlabel{F3.div}};
+
+  % LLM selector (centre) — wider station emph
+  \node[station emph big, right=2.2cm of metrics, yshift=-1.5cm]
+                                                       (sel)    {\figlabel{F3.selector}};
+  % the consumed prompt file (above the selector)
+  \node[station, fill=ari-yellow!30, draw=ari-orange,
+        above=0.6cm of sel]                            (prom)   {\figlabel{F3.prompt}};
+
+  % output (right) — single index back to caller
+  \node[station emph big, right=2.2cm of sel]          (idx)    {\figlabel{F3.index}};
+
+  % deterministic fallback when LLM index is unparseable
+  \node[station, dashed, draw=ari-vermilion, below=1.0cm of sel]
+                                                       (fb)     {\figlabel{F3.fallback}};
+
+  % --- numbered step badges --------------------------------------
+  \node[numbered step, above left=0.05cm and -0.2cm of real.north west] {1};
+  \node[numbered step, above left=0.05cm and -0.2cm of sel.north west]  {2};
+  \node[numbered step, above left=0.05cm and -0.2cm of idx.north west]  {3};
+
+  % --- edges -----------------------------------------------------
+  \foreach \n in {real,metrics,depth,retry,summ}
+    \draw[arrow] (\n.east) -- (sel.west);
+  \draw[arrow dashed] (div.east) to[bend right=8] (sel.west);
+  \draw[arrow dashed] (prom.south) -- (sel.north);
+  \draw[big arrow] (sel.east) -- (idx.west)
+       node[edge label, font=\sffamily\footnotesize]{\figlabel{F3.parse}};
+  \draw[big arrow, draw=ari-vermilion] (sel.south) -- (fb.north)
+       node[edge label, font=\sffamily\footnotesize]{\figlabel{F3.unparseable}};
+  \draw[big arrow, draw=ari-vermilion] (fb.east) to[bend right=22] (idx.south);
+
+  % --- background grouping for input column ----------------------
+  \begin{scope}[on background layer]
+    \node[stage container, fit=(real)(metrics)(depth)(retry)(summ)(div)] (col) {};
+    \node[stage title, above=4pt of col.north west, anchor=south west] {\figlabel{F3.band.signals}};
+  \end{scope}
+\end{tikzpicture}

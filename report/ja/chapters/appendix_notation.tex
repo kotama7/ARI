@@ -1,0 +1,42 @@
+% translated-from: en/chapters/appendix_notation.tex@ce5cee04a7f1e3eb8a68674d8e7018746a5a277d779c3dd061a439f83ae2a738
+% glossary:        5bca8d57a70f021e20c0af79aa06cd21013495c1a8246887ae889cd8a056f5fd
+% model:           claude-opus-4-7
+
+\section{記号表}\label{sec:notation}
+
+下表は \code{shared/notation.tex} で定義されたマクロを反映する。
+本文で使われる各記号はここに必ず現れる;静的検査
+(\texttt{check\_notation.py})が、本文中に未定義の記号がないか
+を検証する。記号は数式モードと地の文の双方で使えるよう
+\texttt{\textbackslash ensuremath\{\}} でラップされている;新た
+な記号を導入する際は、まずこのファイルへ追加し、対応するマクロ
+を \texttt{notation.tex} に登録してから本文で参照すること。
+
+\begin{tabularx}{\columnwidth}{@{}lX@{}}
+  \toprule
+  記号 & 意味 \\
+  \midrule
+  $\Nodes$            & 探索木のノード集合 \\
+  $\Tree$             & 探索木 $(\Nodes, E)$ \\
+  $n\in\Nodes$        & 個別のノード \\
+  $\children{n}$      & $n$ の子集合 \\
+  $\parentof{n}$      & $n$ の親 \\
+  $\depth{n}$         & $n$ の深さ \\
+  $\statefn{n}$       & ノード状態 $\in\{\StateOpen,\StateEval,\StateDone,\StateFailed\}$ \\
+  $\nodescore{n}$     & $n$ のスカラー報酬 \\
+  $\axes{n}$          & 軸ごとの評価ベクトル \\
+  $\aggregate$        & 軸 $\to$ スカラー集約器 \\
+  $\mathrm{div}(n)$   & 多様性ボーナス (\cref{eq:diversity}) \\
+  $\_\mathrm{fallback\_score}(n)$ & 決定的フォールバックランキング (\cref{eq:fallback}) \\
+  $\Tmax,\Cmax$       & ステップ・コスト予算 \\
+  $\Rubric$           & ルブリックの木 \\
+  $\rubricitem{i}$    & 葉 $i$ のカテゴリ \\
+  $\rubricweight{i}$  & 葉 $i$ の重み \\
+  $\judgefn{i}$       & 葉 $i$ の判官 \\
+  $\paper$            & 論文草稿 \\
+  $\paperscore{\paper}$ & 論文集約スコア (\cref{eq:paperscore}) \\
+  $\refine$           & 改稿演算子 (\cref{eq:refine}) \\
+  $\ckpt$             & チェックポイントディレクトリ \\
+  $\lineage{n}$       & $n$ で終端する系譜の連鎖 \\
+  \bottomrule
+\end{tabularx}

@@ -1,0 +1,213 @@
+% shared/figures/style.tikzstyles
+% Centralized TikZ style file. Every TikZ source MUST \input this file at the top.
+% NEVER redefine `minimum width` / `text width` inline (gate T2 / scripts/check_tikz.py).
+% Color names (ari-blue etc.) are defined in shared/preamble.tex.
+
+\usetikzlibrary{positioning, shapes.geometric, shapes.arrows, arrows.meta, calc, fit, backgrounds, automata, decorations.markings}
+% lualatex offers graph drawing libraries:
+%   \usetikzlibrary{graphs, graphdrawing}
+%   \usegdlibrary{layered, force, trees}
+% Enable per-figure if needed.
+
+\tikzset{
+  % --------------------------- global defaults
+  every picture/.style={
+    node distance=1.6cm and 2.2cm,    % vertical and horizontal between nodes
+  },
+  every node/.style={
+    font=\small,
+    align=center,
+    inner sep=4pt,
+  },
+
+  % --------------------------- standard rectangular block
+  block/.style={
+    rectangle, draw=ari-black, rounded corners=2pt,
+    minimum width=2.8cm, minimum height=1.0cm,
+    text width=2.6cm,
+    align=center,
+  },
+  block emph/.style={
+    block, fill=ari-blue!15, very thick,
+  },
+  % wider variant for blocks that hold a small equation or compound label
+  block wide/.style={
+    block, minimum width=3.6cm, text width=3.4cm,
+  },
+  block emph wide/.style={
+    block emph, minimum width=3.6cm, text width=3.4cm,
+  },
+  block aux/.style={
+    block, fill=ari-grid, dashed,
+  },
+  % swim-lane station: narrower so several fit per lane
+  block lane/.style={
+    block, minimum width=2.4cm, text width=2.2cm,
+  },
+  block lane wide/.style={
+    block, minimum width=3.2cm, text width=3.0cm,
+  },
+  mcp band/.style={
+    block emph, minimum width=8cm, text width=7.6cm,
+  },
+  block ckpt root/.style={
+    block native, minimum width=5.2cm, text width=5.0cm,
+  },
+  artifact wide/.style={
+    artifact, minimum width=3.6cm, text width=3.4cm,
+  },
+  artifact medium/.style={
+    artifact, minimum width=3.0cm, text width=2.8cm,
+  },
+  block lane native wide/.style={
+    block lane native, minimum width=3.6cm, text width=3.4cm,
+  },
+  block native big/.style={
+    block native, minimum width=4.0cm, text width=3.8cm,
+  },
+  block emph big/.style={
+    block emph, minimum width=3.6cm, text width=3.4cm,
+  },
+  block big/.style={
+    block, minimum width=3.0cm, text width=2.8cm,
+  },
+  decision wide/.style={
+    decision, text width=2.4cm,
+  },
+  block lane med/.style={
+    block lane, text width=2.4cm,
+  },
+  % --------------------------- paper-style workflow primitives
+  % a black circle containing a small white number, used as a step marker
+  numbered step/.style={
+    circle, fill=ari-black, text=white,
+    font=\bfseries\small, inner sep=2pt, minimum size=18pt,
+  },
+  % a labelled stage container, used in horizontal workflow figures
+  stage container/.style={
+    rectangle, draw=ari-blue, very thick,
+    rounded corners=6pt, fill=ari-skyblue!12,
+    inner sep=14pt, minimum height=3.0cm,
+  },
+  stage container vendor/.style={
+    stage container, draw=ari-vermilion, fill=ari-orange!10,
+  },
+  stage title/.style={
+    font=\bfseries\small\sffamily, text=ari-black,
+  },
+  % a paper-style station: small rectangle with bold title; sits inside a stage
+  station/.style={
+    rectangle, draw=ari-black, line width=0.7pt,
+    rounded corners=2pt, fill=white,
+    minimum width=2.6cm, minimum height=0.8cm,
+    text width=2.4cm, align=center,
+    font=\sffamily\footnotesize,
+  },
+  station emph/.style={
+    station, fill=ari-skyblue!25, line width=1pt,
+  },
+  station emph wide/.style={
+    station emph, minimum width=3.0cm, text width=2.8cm,
+  },
+  station emph big/.style={
+    station emph, minimum width=3.4cm, text width=3.2cm, minimum height=1.0cm,
+  },
+  big arrow/.style={
+    -{Stealth[length=8pt,width=8pt]}, line width=1.5pt, draw=ari-black,
+  },
+  % Layered colour-coding: native ARI code, vendor (third-party), and
+  % external entry points. These let multi-layer diagrams (F10 / F12)
+  % communicate ownership at a glance.
+  block native/.style={
+    block, fill=ari-skyblue!18, draw=ari-blue, very thick,
+  },
+  block vendor/.style={
+    block, fill=ari-orange!22, draw=ari-vermilion, very thick,
+  },
+  block external/.style={
+    block, fill=ari-green!18, draw=ari-green, very thick,
+  },
+  block lane native/.style={
+    block lane, fill=ari-skyblue!18, draw=ari-blue,
+  },
+  block lane vendor/.style={
+    block lane, fill=ari-orange!22, draw=ari-vermilion,
+  },
+  % a thin label that sits above a fit-grouped band
+  band label/.style={
+    font=\bfseries\footnotesize\sffamily,
+    text=ari-black,
+  },
+
+  % --------------------------- decision diamond
+  decision/.style={
+    diamond, draw, aspect=2,
+    minimum width=2.6cm, minimum height=1.0cm,
+    text width=2.0cm,
+    align=center, inner sep=1pt,
+  },
+
+  % --------------------------- circular state node
+  state/.style={
+    circle, draw=ari-black,
+    minimum width=1.6cm,
+    inner sep=2pt,
+  },
+  state init/.style={
+    state, fill=ari-blue!15,
+  },
+  state final/.style={
+    state, fill=ari-green!15, double,
+  },
+
+  % --------------------------- artifact (file/data)
+  artifact/.style={
+    block, fill=ari-grid, dashed,
+  },
+
+  % --------------------------- arrows (always with shorten so they don't bite into nodes)
+  arrow/.style={
+    ->, >=Stealth, thick,
+    shorten <=2pt, shorten >=2pt,
+  },
+  arrow dashed/.style={
+    arrow, dashed,
+  },
+  arrow thick/.style={
+    arrow, very thick,
+  },
+  arrow back/.style={
+    arrow, draw=ari-vermilion,
+  },
+
+  % --------------------------- edge labels (background-filled to stay readable on top of edges)
+  edge label/.style={
+    midway, font=\footnotesize,
+    fill=white, inner sep=1pt,
+    rounded corners=1pt,
+  },
+  edge label above/.style={
+    edge label, sloped, above,
+  },
+
+  % --------------------------- swim lane (for paper-pipeline figure F6)
+  swim lane/.style={
+    draw=ari-grid, dashed,
+    minimum height=2.5cm, text width=12cm,
+    align=left, anchor=north west,
+  },
+  swim lane label/.style={
+    font=\bfseries\footnotesize,
+    anchor=north west,
+  },
+
+  % --------------------------- group / fit boundary
+  group/.style={
+    draw=ari-skyblue!50, very thick, rounded corners=4pt,
+    inner sep=10pt,
+  },
+  group strong/.style={
+    draw=ari-blue, very thick, rounded corners=4pt,
+    inner sep=10pt, fill=ari-skyblue!8,
+  },
+}

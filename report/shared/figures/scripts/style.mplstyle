@@ -1,0 +1,48 @@
+# shared/figures/scripts/style.mplstyle — pinned matplotlib style for the report.
+# Loaded via plt.style.use(SHARED / 'figures/scripts/style.mplstyle').
+# Okabe-Ito palette (color-vision-deficiency safe).
+
+# ----- backend
+backend                  : pgf
+pgf.rcfonts              : False     # let LaTeX preamble own the fonts
+pgf.preamble             : \usepackage{lmodern}\usepackage[utf8]{inputenc}\usepackage[T1]{fontenc}
+
+# ----- figure
+figure.figsize           : 4.5, 2.78 # 4.5 x 2.78 ≈ golden ratio
+figure.dpi               : 150
+figure.constrained_layout.use : True
+savefig.bbox             : tight
+savefig.dpi              : 300
+
+# ----- font
+font.family              : serif
+font.serif               : Latin Modern Roman
+font.size                : 9
+axes.titlesize           : 10
+axes.labelsize           : 9
+xtick.labelsize          : 8
+ytick.labelsize          : 8
+legend.fontsize          : 8
+
+# ----- axes
+axes.spines.top          : False
+axes.spines.right        : False
+axes.linewidth           : 0.6
+axes.grid                : True
+axes.grid.axis           : y
+grid.color               : DDDDDD
+grid.linewidth           : 0.4
+
+# ----- lines
+lines.linewidth          : 1.2
+lines.markersize         : 4
+lines.markeredgewidth    : 0.5
+patch.linewidth          : 0.6
+
+# ----- legend
+legend.frameon           : False
+legend.borderpad         : 0.3
+legend.handlelength      : 1.5
+
+# ----- color cycle (Okabe-Ito; first is black)
+axes.prop_cycle          : cycler(color=['000000','E69F00','56B4E9','009E73','F0E442','0072B2','D55E00','CC79A7'])

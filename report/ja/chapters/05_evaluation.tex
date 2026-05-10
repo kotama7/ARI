@@ -1,0 +1,53 @@
+% translated-from: en/chapters/05_evaluation.tex@408435f6db3270515ca9cc26283d323defb2ba34c89ae8d8e69a7aab7a794752
+% glossary:        5bca8d57a70f021e20c0af79aa06cd21013495c1a8246887ae889cd8a056f5fd
+% model:           claude-opus-4-7
+
+\section{評価(保留)}\label{chapter:eval}
+
+\textbf{本章は意図的に短い。本スナップショットでは評価を実施し
+ていない。}本レポートの旧草稿は具体的な中央値や葉ごとのスコアを
+記載していたが、見直したところ、それらの数値は R3a 執筆時に書か
+れた説明用例示であり、凍結された ARI チェックポイントからの計測
+ではないことが判明した。そのため、それらは削除した。実在する成
+果物のみを残す。
+
+\emph{実装済み}のもの:
+
+\begin{itemize}
+  \item コスト計上機構:\texttt{CostTracker}
+        (\code{cost\_tracker.py:77})が各モデル呼び出しに対して
+        ドルコストを付与する。\texttt{init} は 181 行目でトラ
+        ッカをチェックポイントディレクトリに繋ぐ;結果として
+        \texttt{cost\_usd} フィールドが \texttt{results.json} に
+        実行末に書かれる。
+  \item 探索ループは停滞検出器
+        (\cref{sec:exploration:termination})により終了する;
+        $\Tmax$ / $\Cmax$ ではなく停滞が支配する経験的頻度を本
+        章で報告する予定 — スナップショットが揃った時点で。
+  \item PGF 図の生成スクリプト
+        (\code{shared/figures/scripts/})はシードが固定されてい
+        る。\code{make figures} は決定的な合成プレースホルダを再
+        生成し \code{check\_figures} を通過させるが、それらのプ
+        レースホルダは本文での証拠としては \emph{引用していない}。
+\end{itemize}
+
+\emph{未実装}のもの:
+
+\begin{itemize}
+  \item ARI v0.7.1 の凍結チェックポイントの確定と、
+        \texttt{tree.json} / \texttt{results.json} の
+        \code{shared/figures/data/} への抽出。現状、この data ディ
+        レクトリには \code{*.meta.yaml} のみが置かれ、いずれも
+        \code{source.synthetic: true} とマークされている。
+  \item 中央値の実行コスト、シード別の探索曲線、実レビューに基
+        づくカテゴリ別ルブリック分布の報告。これらは凍結チェッ
+        クポイントを上陸させ集約値を再導出する後続 PR で本章に
+        現れる予定である。
+  \item 実対象論文に対する \texttt{paper-re} スキルからの
+        PaperBench 風の再現スコアの報告。
+\end{itemize}
+
+これらの後続作業が上陸するまで、本章は定量的主張を一切含まない。
+他章からの相互参照(例えば \cref{sec:exploration:termination} 内)
+は、経験的証拠が将来配置される場所を指し示すのみであり、現在置
+かれている場所を指してはいない。

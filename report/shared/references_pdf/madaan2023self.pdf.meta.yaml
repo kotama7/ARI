@@ -1,0 +1,17 @@
+citekey: madaan2023self
+fetched_at: '2026-05-09T13:55:07+00:00'
+fetched_by: scripts batch on 2026-05-09 (arXiv direct)
+source:
+  s2_paperId: null
+  preferred_url: https://arxiv.org/pdf/2303.17651.pdf
+  resolved_via: arXiv direct
+  arxiv_id: '2303.17651'
+file:
+  filename: madaan2023self.pdf
+  size_bytes: 2014949
+  sha256: 81e44592314d80218ad108d3490cd0b84ba5962fefd5c84819987afd77a57087
+  page_count: 54
+license:
+  type: arXiv non-exclusive distribution licence
+  closed_access: false
+notes: ''

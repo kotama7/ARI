@@ -1,0 +1,70 @@
+% translated-from: en/chapters/01_introduction.tex@75f1c63f8411e43d75ae1c4ed650c71aef3c98d2788e145bd4c7806f13addc0b
+% glossary:        5bca8d57a70f021e20c0af79aa06cd21013495c1a8246887ae889cd8a056f5fd
+% model:           claude-opus-4-7
+
+\section{はじめに}\label{sec:intro}
+
+\subsection{動機}\label{sec:intro:motivation}
+
+機械学習および周辺領域の研究ワークフローには共通の骨格がある:研
+究アイディアを発想し、実験を設計・実行し、結果を分析し、論文を執
+筆し、そして反復する。各ステップは大規模言語モデルにとってますま
+す扱いやすくなっているが、それらを単一の自律ループへ縫合すること
+は、これまで未解決のエンジニアリング課題であった。最も近接する既
+発表システム --- AIDE、AI~Scientist ファミリ、VirSci、PaperBench
+評価器 --- は、それぞれ 1〜2 軸を埋めはするが、残りの軸は人手に
+任せている。
+
+ARI はこの空隙を埋めるために存在する。本稿ではユーザが研究問題と
+計算予算を与えると仮定する;システムは、発表可能な論文、各主張を
+裏付ける実験コード、そして到達経路の完全な監査記録を返す。監査記
+録は譲歩できない要件である:探索木の各ノード、各ツール呼び出し、
+各モデル呼び出し、そして API 利用の各ドルが、単一の\term{チェッ
+クポイントディレクトリ}内に記録される(\cite{jiang2025aide} は同
+様の規律を採用している)。チェックポイントは再現性の単位である。
+
+\subsection{貢献}\label{sec:intro:contrib}
+
+本レポートは以下の三つの貢献を形式化する:
+
+\begin{enumerate}
+  \item 研究ステップノード上の\textbf{最良優先木探索}であり、
+        その選択スコア $\utility{n}$ は経験報酬、新規性項、深さ
+        ペナルティを分離している
+        (\cref{sec:exploration:formalization})。実装は
+        \code{ari-core/ari/orchestrator/bfts.py:114} にある。
+  \item 階層型ルブリック $\Rubric$ をキーに据える\textbf{論文生成
+        パイプライン};葉判官が個々の主張を採点し、システムスコ
+        アは
+        $\paperscore{\paper}=\sum_i \rubricweight{i}\,\judgefn{i}(\paper)$
+        となる(\cref{sec:paper:rubric})。PaperBench 複製器は
+        ツール呼び出しとして統合される
+        (\cref{sec:paper:paperbench})。
+  \item パイプラインを完全に再現可能にする\textbf{チェックポイ
+        ントスコープ}の規律:すべての外部状態(メモリ、コスト台
+        帳、系譜ポインタ)は \texttt{\$ARI\_CHECKPOINT\_DIR} 配
+        下に書かれ、ユーザのホームディレクトリには決して書き出
+        されない。これは P2 決定性原則の運用上の帰結である
+        (\cref{sec:overview:principles})。
+\end{enumerate}
+
+\subsection{本レポートの適用範囲}\label{sec:intro:scope}
+
+スナップショットは \texttt{ari-core} および 14 個の
+\texttt{ari-skill-*} パッケージの v0.7.1 で凍結する。実装引用は
+ファイル名と行番号を併記する;読者は \cref{sec:overview:layout} の
+配置図を介してリポジトリと突合できる。本来この版で
+\cref{chapter:eval} に並ぶはずの数値結果は、参照すべき凍結チェ
+ックポイントがまだ作成されていないため未提供であり、当該章は
+「保留」と明記してある。表紙にスナップショットバージョンを記す
+のは、本レポートが行うどの主張も後続のコード修正によって遡及的
+に無効化されないようにするためである。
+
+\subsection{構成}\label{sec:intro:organisation}
+
+\Cref{sec:overview} は ARI のトップダウンビューを与える:オーケ
+ストレータ、14 個のスキル、パイプライン DAG、設計原則。
+\Cref{sec:exploration,sec:paper} は二つの技術的核であり、それぞ
+れ形式化された定義と経験的観察を含む。\Cref{chapter:eval} は評価
+スナップショット;\cref{sec:related} は本研究の位置づけ;
+\cref{sec:discussion} は未解決問題を集約する。

@@ -1,0 +1,51 @@
+% translated-from: en/chapters/06_related.tex@8f026556abfcacdffc644fd0f52447496dea53aa0c5942a062e763d6180b5998
+% glossary:        5bca8d57a70f021e20c0af79aa06cd21013495c1a8246887ae889cd8a056f5fd
+% model:           claude-opus-4-7
+
+\section{相关工作}\label{sec:related}
+
+我们将 ARI 与四条先行研究脉络对照定位。
+
+\subsection{面向代码的树搜索}\label{sec:related:treesearch}
+
+AIDE \cite{jiang2025aide} 将 ML 工程形式化为在计划/代码/调试
+状态上的树搜索;AlphaCode \cite{li2022competition} 是大规模
+生成与过滤在竞赛编程上的范例;MLE-bench 评估器
+\cite{chan2024mle} 现已成为衡量 ML 工程智能体的标准。
+ARI 沿用 AIDE 的 BFTS 骨架,但增加
+(i) LLM 主导的候选选择器
+(\cref{sec:exploration:node-selection}) —— 不固定闭式标量效
+用,使选择提示可联合权衡 \texttt{has\_real\_data}、整套
+metrics、深度、重试次数与软性 \texttt{diversity\_bonus};
+以及 (ii) 跨运行的谱系
+(\cref{sec:exploration:lineage}),AIDE 与 MLE-bench 均未形式
+化此项。
+
+\subsection{自主研究智能体}\label{sec:related:autonomous}
+
+AI~Scientist 系列 \cite{lu2024ai} 端到端闭合类
+似循环(idea $\to$ experiment $\to$ paper),但未将评分细则与
+改稿循环作为一等对象暴露。VirSci \cite{su2024many} 模拟
+多个科学家人格,以共识评分输出;Agent~Laboratory
+\cite{schmidgall2025agent} 将智能体视为协作者而非驱动
+者。ARI 在两点运维上有别:\textbf{一切都驻留在检查点中}
+(P1 / P4),且评分细则即探索与撰写之间的契约。
+
+\subsection{论文评估}\label{sec:related:eval}
+
+PaperBench \cite{starace2025paperbench} 是与我们 \texttt{paper-re}
+集成最接近的对应物;它开创了评分细则即树的形式。我们沿用其按
+叶的分级与聚合权重 (\cref{eq:paperscore}),并扩展以按轴下限作
+为改稿护栏 (\cref{sec:paper:failures})。
+
+\subsection{基础}\label{sec:related:foundations}
+
+智能体循环遵循 ReAct 模式 \cite{yao2023react};改稿循
+环源自 Self-Refine \cite{madaan2023self} 与 Reflexion
+\cite{shinn2023reflexion};在 \emph{思考} 步给 LLM 一份逐步
+草稿板的设计源自 Chain-of-Thought \cite{wei2022chain}。
+这些参考文献均未提议检查点作用域的状态,这是 ARI 的贡献。
+
+早期草稿曾另引一份 ML 研究智能体基准,但当候选来源均无法通过我
+们的校验规则 (\cref{sec:paper:failures}) 时,我们将该引用从相关
+工作中移除;此节仅保留可经 S2 校验的条目。

@@ -1,0 +1,16 @@
+# Pin versions for reproducible figure / translation / bib pipelines.
+# matched against the environment we develop on (TinyTeX 2025, Python 3.11+).
+matplotlib>=3.10,<4
+numpy>=2.2,<3
+pandas>=2.2,<3
+networkx>=3.4,<4
+pygraphviz>=1.14
+pyyaml>=6.0
+requests>=2.31
+python-dotenv>=1.0
+rapidfuzz>=3.5
+anthropic>=0.49
+arxiv>=2.1
+biblib-simple>=0.1
+jsonschema>=4
+beautifulsoup4>=4.12

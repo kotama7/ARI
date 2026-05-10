@@ -62,7 +62,6 @@ Thumbs.db
 
 # ── Additional experiment/runtime directories ────────────────────
 containers/
-report/
 workspace/
 *.sif
 

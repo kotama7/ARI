@@ -1,0 +1,59 @@
+% translated-from: en/chapters/01_introduction.tex@75f1c63f8411e43d75ae1c4ed650c71aef3c98d2788e145bd4c7806f13addc0b
+% glossary:        5bca8d57a70f021e20c0af79aa06cd21013495c1a8246887ae889cd8a056f5fd
+% model:           claude-opus-4-7
+
+\section{引言}\label{sec:intro}
+
+\subsection{动机}\label{sec:intro:motivation}
+
+机器学习及相邻领域的研究流程具有共同骨架:构思研究构想、设计并执
+行实验、分析结果、撰写论文,然后迭代。其中每一步对大语言模型而言
+都日益可行,但将它们串接为单一自主循环至今仍是一个未解的工程问
+题。最接近此目标的已发表系统 --- AIDE、AI~Scientist 系列、VirSci
+与 PaperBench 评估器 --- 各自仅覆盖其中一两个轴向,其余仍依赖人
+工介入。
+
+ARI 旨在填补此空缺。我们假定用户提供研究问题与算力预算;系统返
+回可发表的论文、支撑每项主张的实验代码,以及完整的执行审计轨
+迹。该审计轨迹不可妥协:搜索树的每一个节点、每一次工具调用、每
+一次模型调用,以及每一美元的 API 花费,均记录于单一的\term{检查
+点目录}之中(\cite{jiang2025aide} 采用了类似的纪律)。检查点
+是可复现性的单位。
+
+\subsection{贡献}\label{sec:intro:contrib}
+
+本报告对以下三项贡献加以形式化:
+
+\begin{enumerate}
+  \item 在研究步节点上的\textbf{最佳优先树搜索},其选择评分
+        $\utility{n}$ 将经验奖励、新颖性项与深度惩罚分离开来
+        (\cref{sec:exploration:formalization})。该实现位于
+        \code{ari-core/ari/orchestrator/bfts.py:114}。
+  \item 由层次化评分细则 $\Rubric$ 驱动的\textbf{论文生成流水线};
+        其叶判官对各项主张进行评分,系统评分为
+        $\paperscore{\paper}=\sum_i \rubricweight{i}\,\judgefn{i}(\paper)$
+        (\cref{sec:paper:rubric})。PaperBench 复现器作为工具调
+        用集成 (\cref{sec:paper:paperbench})。
+  \item \textbf{检查点作用域}纪律,使流水线完全可复现:每一项外
+        部状态(记忆、成本账本、谱系指针)都写入
+        \texttt{\$ARI\_CHECKPOINT\_DIR} 之下,绝不进入用户主目
+        录。这是 P2 确定性原则的运维落地
+        (\cref{sec:overview:principles})。
+\end{enumerate}
+
+\subsection{本报告的范围}\label{sec:intro:scope}
+
+我们将快照冻结于 \texttt{ari-core} 与十四个 \texttt{ari-skill-*}
+包的 v0.7.1 版本。实现引用标注文件名与行号;读者可对照
+\cref{sec:overview:layout} 的布局图加以核验。原应出现于
+\cref{chapter:eval} 的数值结果暂不可用 —— 其所依赖的冻结检查
+点尚未生成 —— 故该章标注为「暂缓」。封面注明快照版本,旨在使
+本报告所做的任何主张都不会被后续代码修改追溯性地推翻。
+
+\subsection{结构}\label{sec:intro:organisation}
+
+\Cref{sec:overview} 自顶向下概述 ARI:编排器、十四个技能、流水
+线 DAG 与设计原则。\Cref{sec:exploration,sec:paper} 是两个技术
+核心,各自含形式化定义与经验观察。\Cref{chapter:eval} 给出评估
+快照;\cref{sec:related} 定位本工作于先行研究中;
+\cref{sec:discussion} 汇集开放问题。

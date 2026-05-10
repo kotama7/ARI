@@ -1,0 +1,37 @@
+digraph R {
+  graph [rankdir=LR, ranksep=0.5, nodesep=0.3];
+  node  [shape=box, style="rounded", fontsize=10];
+  root [label="PaperBench rubric"];
+  c0 [label="clarity\nw=0.20"];
+  root -> c0;
+  c0l0 [shape=ellipse, label="abstract"];
+  c0 -> c0l0;
+  c0l1 [shape=ellipse, label="structure"];
+  c0 -> c0l1;
+  c0l2 [shape=ellipse, label="language"];
+  c0 -> c0l2;
+  c1 [label="novelty\nw=0.20"];
+  root -> c1;
+  c1l0 [shape=ellipse, label="idea"];
+  c1 -> c1l0;
+  c1l1 [shape=ellipse, label="comparison"];
+  c1 -> c1l1;
+  c2 [label="rigor\nw=0.30"];
+  root -> c2;
+  c2l0 [shape=ellipse, label="theory"];
+  c2 -> c2l0;
+  c2l1 [shape=ellipse, label="experiments"];
+  c2 -> c2l1;
+  c2l2 [shape=ellipse, label="ablation"];
+  c2 -> c2l2;
+  c3 [label="impact\nw=0.20"];
+  root -> c3;
+  c3l0 [shape=ellipse, label="scope"];
+  c3 -> c3l0;
+  c3l1 [shape=ellipse, label="applicability"];
+  c3 -> c3l1;
+  c4 [label="ethics\nw=0.10"];
+  root -> c4;
+  c4l0 [shape=ellipse, label="risks"];
+  c4 -> c4l0;
+}

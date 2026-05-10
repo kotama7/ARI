@@ -1,0 +1,17 @@
+citekey: chan2024mle
+fetched_at: '2026-05-09T13:55:08+00:00'
+fetched_by: scripts batch on 2026-05-09 (arXiv direct)
+source:
+  s2_paperId: null
+  preferred_url: https://arxiv.org/pdf/2410.07095.pdf
+  resolved_via: arXiv direct
+  arxiv_id: '2410.07095'
+file:
+  filename: chan2024mle.pdf
+  size_bytes: 817725
+  sha256: 1dab9a33edeab25ea359c4d6857d03512ccd47ed5782631031cfe8dcbebe7988
+  page_count: 29
+license:
+  type: arXiv non-exclusive distribution licence
+  closed_access: false
+notes: ''
