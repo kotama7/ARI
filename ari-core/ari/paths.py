@@ -206,6 +206,51 @@ class PathManager:
         slug = re.sub(r"[^a-zA-Z0-9_-]", "_", text).strip("_")[:max_len]
         return re.sub(r"_+", "_", slug)
 
+    # ── env-driven helpers ────────────────────────────────────────────
+    #
+    # ``ARI_CHECKPOINT_DIR`` is the single env var that pins ARI to a
+    # specific run.  These helpers exist so that no other module needs
+    # to read the env variable directly — callers go through
+    # ``PathManager`` and stay independent of the spelling.
+
+    @staticmethod
+    def checkpoint_dir_from_env() -> Path | None:
+        """Return ``Path(ARI_CHECKPOINT_DIR)`` when set, else ``None``.
+
+        The env var is treated as the canonical run pin used by every
+        ARI subprocess (CLI, MCP servers, viz).  Returning ``None`` lets
+        callers preserve their existing fallback semantics (cwd lookup,
+        explicit ``--checkpoint`` argument, etc.).
+        """
+        val = os.environ.get("ARI_CHECKPOINT_DIR", "").strip()
+        return Path(val) if val else None
+
+    @staticmethod
+    def set_checkpoint_dir_env(checkpoint_dir: str | Path) -> None:
+        """Set ``ARI_CHECKPOINT_DIR`` so child processes inherit the run pin.
+
+        ARI uses an env-var hand-off when spawning MCP skills, Letta and
+        delete subprocesses so they bind to the same checkpoint as the
+        parent.  Going through this helper keeps every writer routed
+        through PathManager (Phase 1 receiving-criterion §10).
+        """
+        os.environ["ARI_CHECKPOINT_DIR"] = str(checkpoint_dir)
+
+    @classmethod
+    def from_env(cls) -> "PathManager":
+        """Build a :class:`PathManager` from the current process env.
+
+        - If ``ARI_CHECKPOINT_DIR`` is set, infer the workspace root via
+          :meth:`from_checkpoint_dir` so ``experiments/`` and
+          ``staging/`` resolve as siblings of the active checkpoint.
+        - Otherwise fall back to the current working directory, matching
+          the behaviour of ``PathManager()``.
+        """
+        ckpt = cls.checkpoint_dir_from_env()
+        if ckpt is not None:
+            return cls.from_checkpoint_dir(ckpt)
+        return cls()
+
     # ── factory: build from checkpoint_dir path ───────────────────────
 
     @classmethod

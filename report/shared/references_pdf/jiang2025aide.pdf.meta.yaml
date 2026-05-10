@@ -1,0 +1,17 @@
+citekey: jiang2025aide
+fetched_at: '2026-05-09T13:55:06+00:00'
+fetched_by: scripts batch on 2026-05-09 (arXiv direct)
+source:
+  s2_paperId: null
+  preferred_url: https://arxiv.org/pdf/2502.13138.pdf
+  resolved_via: arXiv direct
+  arxiv_id: '2502.13138'
+file:
+  filename: jiang2025aide.pdf
+  size_bytes: 648632
+  sha256: 5fc52573eab9c8cb568b0c5aab6ee75752d198504babf8278ad23fe3d542cb41
+  page_count: 17
+license:
+  type: arXiv non-exclusive distribution licence
+  closed_access: false
+notes: ''

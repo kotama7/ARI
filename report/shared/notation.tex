@@ -1,0 +1,69 @@
+% shared/notation.tex — central registry of mathematical notation.
+% All math symbols used in en/ja/zh chapters MUST be defined here.
+% Gate 3 (notation registration) greps chapter sources against this file.
+%
+% Naming conventions:
+%   * scalars       lowercase     (r, b, t)
+%   * vectors       \mathbf{...}  (\mathbf{e})
+%   * sets/spaces   \mathcal{...} (\mathcal{N}, \mathcal{T})
+%   * functions     \mathrm{...}  (\mathrm{ch}, \mathrm{pa})
+
+% ============================== sets / spaces
+\newcommand{\Nodes}{\mathcal{N}}
+\newcommand{\Tree}{\mathcal{T}}
+\newcommand{\Reals}{\mathbb{R}}
+\newcommand{\Naturals}{\mathbb{N}}
+
+% ============================== individual nodes
+\newcommand{\node}[1]{n_{#1}}
+\newcommand{\children}[1]{\mathrm{ch}(#1)}
+\newcommand{\parentof}[1]{\mathrm{pa}(#1)}
+\newcommand{\depth}[1]{\mathrm{depth}(#1)}
+
+% ============================== node state
+\newcommand{\statefn}[1]{s(#1)}
+% State labels are usable in both math and text mode (the body sometimes
+% references them inline outside $...$). \ensuremath wraps the math content.
+\newcommand{\StateOpen}{\ensuremath{\mathrm{open}}}
+\newcommand{\StateEval}{\ensuremath{\mathrm{eval}}}
+\newcommand{\StateDone}{\ensuremath{\mathrm{done}}}
+\newcommand{\StateFailed}{\ensuremath{\mathrm{failed}}}
+
+% ============================== rewards and evaluation axes
+\newcommand{\nodescore}[1]{r(#1)}            % scalar reward
+\newcommand{\axes}[1]{\mathbf{e}(#1)}        % per-axis evaluation vector
+\newcommand{\aggregate}{\phi}                % \phi: R^k -> R
+\newcommand{\axesdim}{k}                     % number of axes
+
+% ============================== exploration utility / policy
+\newcommand{\utility}[1]{U(#1)}
+\newcommand{\rewardhat}[1]{\hat r(#1)}
+\newcommand{\novelty}[1]{\mathrm{novelty}(#1)}
+\newcommand{\policy}{\pi}
+\newcommand{\softmaxbeta}{\beta}
+\newcommand{\utilcoef}[1]{\alpha_{#1}}
+
+% ============================== budget
+\newcommand{\bbranch}{b}
+\newcommand{\Tmax}{T_{\max}}
+\newcommand{\Cmax}{C_{\max}}
+
+% ============================== rubric
+\newcommand{\Rubric}{R}
+\newcommand{\rubricitem}[1]{c_{#1}}
+\newcommand{\rubricweight}[1]{w_{#1}}
+\newcommand{\judgefn}[1]{\mathrm{judge}_{#1}}
+
+% ============================== paper score
+\newcommand{\paper}{P}
+\newcommand{\paperscore}[1]{\mathrm{score}(#1)}
+\newcommand{\refine}{\mathrm{Refine}}
+
+% ============================== checkpoint / lineage
+\newcommand{\ckpt}{\mathrm{ckpt}}
+\newcommand{\lineage}[1]{\mathrm{lin}(#1)}
+
+% ============================== misc
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\indicator}[1]{\mathbb{1}\!\left[#1\right]}

@@ -26,14 +26,22 @@ ARI/
 │
 ├── ari-core/                        ← core engine (BFTS + ReAct + pipeline)
 │   ├── ari/
-│   │   ├── agent/                   ← AgentLoop (BFTS) + react_driver
-│   │   ├── orchestrator/            ← BFTS, node tree, scheduler
-│   │   ├── pipeline.py              ← paper-pipeline executor
+│   │   ├── public/                  ← stable re-export layer for skills (v0.7.1)
+│   │   ├── protocols/               ← cross-layer Protocols (Evaluator, …)
+│   │   ├── prompts/                 ← externalised LLM prompts (sha256-pinned)
+│   │   ├── configs/                 ← model_prices.yaml etc. (loader-driven)
+│   │   ├── migrations/v05_to_v07/   ← isolated legacy shims (removed in v1.0)
+│   │   ├── agent/                   ← AgentLoop + message_utils + tool_manager + guidance + react_driver
+│   │   ├── orchestrator/            ← BFTS, node tree, scheduler, node_report/
+│   │   ├── pipeline/                ← paper-pipeline executor (split package, v0.7.1)
+│   │   ├── cli/                     ← Typer CLI (split package, v0.7.1)
 │   │   ├── mcp/client.py            ← MCP client + phase filter
-│   │   ├── viz/                     ← HTTP + SSE GUI backend
+│   │   ├── viz/                     ← HTTP + SSE GUI backend (routes.py, websocket.py, …)
+│   │   ├── paths.py                 ← PathManager (single source for ARI_CHECKPOINT_DIR)
+│   │   ├── checkpoint.py            ← shared tree.json I/O
 │   │   └── …
 │   ├── config/workflow.yaml         ← default workflow definition
-│   └── tests/                       ← 1,545 tests
+│   └── tests/                       ← 1,545 tests + boundary + prompt-extraction guards
 │
 ├── ari-skill-hpc/                   ← SLURM / Singularity tools
 ├── ari-skill-idea/                  ← Survey + VirSci idea generation (LLM)
@@ -333,3 +341,76 @@ re-run that file first.
   `docs/ja/` and `docs/zh/`; UI strings belong in i18n bundles.
 - When touching a doc file, update the `docs/ja/` and `docs/zh/`
   counterparts in the same PR.
+
+---
+
+## Software-engineering discipline (v0.7+ refactor)
+
+These five rules are the load-bearing constraints that keep the
+post-refactor layering intact.  PRs that break them should be
+rejected.
+
+### 1. Separation of concerns — one module, one reason to change
+
+- Don't mix business logic, I/O, prompt strings, and config defaults
+  in the same file.
+- Splitting purely "to reduce line count" is rejected — the trigger
+  is a *different reason to change*.
+- Routes / dispatch tables (e.g. `viz/routes.py:_Handler`) must not
+  embed authentication, caching, logging, and serialization in one
+  if-elif tree.
+
+### 2. Loose coupling — favour Protocols over concrete classes
+
+- New code must NOT add `from ari.X.concrete import ConcreteClass`
+  imports unless required by Composition Root (`core.build_runtime`).
+- Inject dependencies as `ari.protocols.X` types: `Evaluator`,
+  `PromptLoader`, `ConfigLoader` — and the future `LLMClient`,
+  `MCPClient`, `MemoryClient` Protocols planned in
+  `ari/protocols/`.
+- New module-level singletons (global state via `_st._x = ...`) are
+  forbidden.  The legacy `ari/viz/state.py:_st` is grandfathered.
+
+### 3. Public API — skills only see `ari.public.*`
+
+- Skill-side code must import from `ari.public.{container,
+  cost_tracker, paths, llm, config_schema}` — never from the private
+  package layout (`ari.container`, `ari.cost_tracker`, …).
+- `ari-core/tests/test_public_api_boundary.py` is the CI enforcement
+  point.  New skills that violate the boundary cannot be merged.
+
+### 4. Prompts and config are external, byte-stable
+
+- Every LLM call inside `ari-core/ari/` MUST load its system /
+  template prompt from `ari/prompts/<area>/<purpose>.md` via
+  `FilesystemPromptLoader` — no inline `f"You are a ..."` strings, no
+  module-level `_SYSTEM_PROMPT = (...)` constants.
+- The prompt file is byte-equivalent to the inline original; pin the
+  sha256 in `ari-core/tests/test_prompt_extraction.py` so silent
+  edits surface as a CI failure.
+- Lookup tables (model prices, default model names) live in
+  `ari/configs/<key>.yaml` and are loaded via `FilesystemConfigLoader`.
+- Skills use the same pattern under `<skill>/src/prompts/`.
+
+### 5. Behaviour-preservation contract for refactors
+
+- A "refactor" PR must not change the LLM input or output.  When
+  externalising prompts, verify
+  `sha256(inline_orig) == sha256(loaded_template)` before merge.
+- `ari --help` and every subcommand `--help` output must be diff-
+  identical against the pre-refactor baseline.
+- Tests must stay green at the same count (additions allowed,
+  removals forbidden).
+- For dispatch tables, preserve the if-elif order verbatim — the
+  viz routes had a documented case where a startswith() vs == ordering
+  shift would silently re-route requests.
+
+### Deprecation process
+
+- Touching a v0.5-era code path?  Add a `warn_deprecated_path()`,
+  `warn_deprecated_env()`, or `warn_deprecated_field()` call from
+  `ari/_deprecation.py` and document the v1.0 removal target.
+- Migration code lives in `ari/migrations/v05_to_v07/` only;
+  call-sites use thin shims.
+- New `~/.ari/` references are blocked by the
+  `.github/workflows/refactor-guards.yml` CI guard.

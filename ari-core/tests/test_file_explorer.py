@@ -69,6 +69,19 @@ def _make_checkpoint(tmp_path, name="20260101_TestExp"):
 # 1. _api_checkpoint_filetree
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _viz_server_concat(viz_dir: Path) -> str:
+    """Phase 3B PR-3B-1: ``server.py`` was split into sibling modules
+    (``websocket.py``, ``ui_helpers.py``, ``routes.py``); concatenate
+    them so existing source-text checks still find the moved literals.
+    """
+    parts = []
+    for name in ("ui_helpers.py", "websocket.py", "routes.py", "server.py"):
+        p = viz_dir / name
+        if p.exists():
+            parts.append(p.read_text())
+    return "\n".join(parts)
+
+
 class TestCheckpointFiletree:
     """Tests for the file tree listing API."""
 
@@ -371,22 +384,22 @@ class TestServerRouting:
 
     def test_server_imports_filetree_api(self):
         """server.py imports _api_checkpoint_filetree."""
-        server_src = (Path(__file__).parent.parent / "ari" / "viz" / "server.py").read_text()
+        server_src = _viz_server_concat(Path(__file__).parent.parent / "ari" / "viz")
         assert "_api_checkpoint_filetree" in server_src
 
     def test_server_imports_filecontent_api(self):
         """server.py imports _api_checkpoint_filecontent."""
-        server_src = (Path(__file__).parent.parent / "ari" / "viz" / "server.py").read_text()
+        server_src = _viz_server_concat(Path(__file__).parent.parent / "ari" / "viz")
         assert "_api_checkpoint_filecontent" in server_src
 
     def test_server_has_filetree_route(self):
         """server.py has a route for /filetree."""
-        server_src = (Path(__file__).parent.parent / "ari" / "viz" / "server.py").read_text()
+        server_src = _viz_server_concat(Path(__file__).parent.parent / "ari" / "viz")
         assert "/filetree" in server_src
 
     def test_server_has_filecontent_route(self):
         """server.py has a route for /filecontent."""
-        server_src = (Path(__file__).parent.parent / "ari" / "viz" / "server.py").read_text()
+        server_src = _viz_server_concat(Path(__file__).parent.parent / "ari" / "viz")
         assert "/filecontent" in server_src
 
 

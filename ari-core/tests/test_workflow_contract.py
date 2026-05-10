@@ -547,7 +547,17 @@ class TestPipelineFieldConsistency:
 
     @pytest.fixture(autouse=True)
     def _load(self):
-        self.pipeline_src = (_ARI_CORE / "ari" / "pipeline.py").read_text()
+        # Phase 3C: ``ari.pipeline`` is now a package; concatenate every
+        # ``*.py`` file so cross-file source-text checks still find the
+        # implementations regardless of which sub-module owns them.
+        pkg_dir = _ARI_CORE / "ari" / "pipeline"
+        legacy = _ARI_CORE / "ari" / "pipeline.py"
+        if pkg_dir.is_dir():
+            self.pipeline_src = "\n".join(
+                p.read_text() for p in sorted(pkg_dir.rglob("*.py"))
+            )
+        else:
+            self.pipeline_src = legacy.read_text()
 
     def test_skip_if_exists_implemented(self):
         """pipeline.py must process skip_if_exists."""
@@ -973,7 +983,13 @@ class TestPaperPipelineFileContract:
     def test_pipeline_py_implements_loop_back_to(self):
         """pipeline.py must actually honour loop_back_to at runtime (not
         just for GUI DAG rendering)."""
-        src = (_ARI_CORE / "ari" / "pipeline.py").read_text()
+        # Phase 3C: ``pipeline.py`` → ``pipeline/`` package; concatenate.
+        pkg_dir = _ARI_CORE / "ari" / "pipeline"
+        legacy = _ARI_CORE / "ari" / "pipeline.py"
+        if pkg_dir.is_dir():
+            src = "\n".join(p.read_text() for p in sorted(pkg_dir.rglob("*.py")))
+        else:
+            src = legacy.read_text()
         assert "loop_back_to" in src, (
             "pipeline.py must reference loop_back_to to implement the runtime"
         )
@@ -988,12 +1004,17 @@ class TestPaperPipelineFileContract:
         )
 
     def test_api_state_still_reads_full_paper_tex(self):
-        """Guard the other side of the contract: ensure api_state.py still
-        looks for 'full_paper.tex' at the checkpoint root. If it's renamed
-        here but not in workflow.yaml (or vice versa), the GUI goes silent."""
-        api_state_src = (
-            _ARI_CORE / "ari" / "viz" / "api_state.py"
-        ).read_text()
+        """Guard the other side of the contract: ensure the api_state
+        layer still looks for 'full_paper.tex' at the checkpoint root.
+        If it's renamed here but not in workflow.yaml (or vice versa),
+        the GUI goes silent.
+
+        Phase 3B PR-3B-2 split api_state.py into sibling modules
+        (checkpoint_api / ear / file_api / etc.); concatenate every
+        ``viz/*.py`` so the source-text grep still finds the literal.
+        """
+        viz_dir = _ARI_CORE / "ari" / "viz"
+        api_state_src = "\n".join(p.read_text() for p in sorted(viz_dir.glob("*.py")))
         assert '"full_paper.tex"' in api_state_src, (
             "api_state.py no longer references 'full_paper.tex' — "
             "workflow.yaml contract is out of sync with the GUI summary code."

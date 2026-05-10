@@ -1,0 +1,54 @@
+\section{Related Work}\label{sec:related}
+
+We position ARI against four threads of prior art.
+
+\subsection{Tree search for code}\label{sec:related:treesearch}
+
+AIDE \cite{jiang2025aide} formalises ML-engineering as a tree search
+over plan / code / debug states; AlphaCode \cite{li2022competition}
+is the canonical reference for large-scale generate-and-filter on
+competitive programming; the MLE-bench evaluator
+\cite{chan2024mle} is now the standard for measuring
+ML-engineering agents. ARI inherits the BFTS skeleton from AIDE but
+adds (i) an LLM-driven candidate selector (\cref{sec:exploration:node-selection}),
+which avoids fixing a closed-form scalar utility and lets the
+selection prompt weigh \texttt{has\_real\_data}, full
+\texttt{metrics}, depth, retry count, and a soft
+\texttt{diversity\_bonus} jointly, and
+(ii) the cross-run lineage (\cref{sec:exploration:lineage}) which
+neither AIDE nor MLE-bench formalises.
+
+\subsection{Autonomous research agents}\label{sec:related:autonomous}
+
+The AI~Scientist family \cite{lu2024ai} closes a similar
+loop end-to-end (idea $\to$ experiment $\to$ paper) but does not
+expose the rubric and refine cycle as a first-class object. VirSci
+\cite{su2024many} simulates several scientist personas and uses
+their consensus to score outputs; Agent~Laboratory
+\cite{schmidgall2025agent} treats the agent as a collaborator
+rather than a driver. ARI differs in two operational respects:
+\textbf{everything lives in a checkpoint} (P1 / P4), and the rubric
+is the contract between explore and write.
+
+\subsection{Paper evaluation}\label{sec:related:eval}
+
+PaperBench \cite{starace2025paperbench} is the closest analogue to our
+\texttt{paper-re} integration; it pioneered the rubric-as-tree
+formalism. We adopt the same per-leaf grade and aggregate weight
+(\cref{eq:paperscore}) but extend it with a per-axis floor used as a
+refine guard (\cref{sec:paper:failures}).
+
+\subsection{Foundations}\label{sec:related:foundations}
+
+The agent loop follows the ReAct pattern \cite{yao2023react};
+the refine cycle is descended from Self-Refine
+\cite{madaan2023self} and Reflexion \cite{shinn2023reflexion};
+and the choice to give the LLM a step-by-step scratchpad in
+\emph{Think} is descended from Chain-of-Thought
+\cite{wei2022chain}. None of these references propose a
+checkpoint-scoped state; that is ARI's contribution.
+
+An earlier draft cited a separate ML-research-agent benchmark, but we
+removed that reference once it became clear that none of the candidate
+sources met our verification rule (\cref{sec:paper:failures}); we keep
+the related-work coverage to entries that can be S2-verified.

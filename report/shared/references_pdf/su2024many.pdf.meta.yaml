@@ -1,0 +1,17 @@
+citekey: su2024many
+fetched_at: '2026-05-09T13:55:09+00:00'
+fetched_by: scripts batch on 2026-05-09 (arXiv direct)
+source:
+  s2_paperId: null
+  preferred_url: https://arxiv.org/pdf/2410.09403.pdf
+  resolved_via: arXiv direct
+  arxiv_id: '2410.09403'
+file:
+  filename: su2024many.pdf
+  size_bytes: 1811010
+  sha256: 5aa5065d7aa271c41c65474fbeca2aa561e82d708feeb09eda091747f78751f7
+  page_count: 40
+license:
+  type: arXiv non-exclusive distribution licence
+  closed_access: false
+notes: ''

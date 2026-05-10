@@ -53,9 +53,10 @@ def _logs_root_candidates() -> list[Path]:
     # ARI_CHECKPOINT_DIR points at a *single* run; its parent is the logs
     # root. Skip when the parent is /tmp or a similar non-checkpoint
     # directory to avoid scanning unrelated artifacts (ssh sockets, etc.).
-    ck = os.environ.get("ARI_CHECKPOINT_DIR")
-    if ck:
-        parent = Path(ck).expanduser().parent
+    from ari.paths import PathManager
+    ck = PathManager.checkpoint_dir_from_env()
+    if ck is not None:
+        parent = ck.expanduser().parent
         # Only accept if the parent dir name is "checkpoints" or otherwise
         # plausibly a checkpoint root. Permission-locked roots like /tmp
         # would otherwise slow walks and trigger PermissionError.

@@ -8,8 +8,12 @@
     POST /api/publish/<run_id>/promote
     GET  /api/publish/<run_id>/record
 
-Settings are stored in ~/.ari/publish.yaml; per-checkpoint overrides
-live in {checkpoint}/settings.json under the 'publish' key.
+Settings location:
+    1. $ARI_PUBLISH_SETTINGS (preferred)
+    2. ~/.ari/publish.yaml (DEPRECATED since v0.5.0, removed in v1.0)
+
+Per-checkpoint overrides live in ``{checkpoint}/settings.json`` under
+the 'publish' key.
 """
 from __future__ import annotations
 
@@ -21,11 +25,34 @@ from typing import Any
 from .api_state import _resolve_checkpoint_dir
 
 
-_SETTINGS_PATH = Path(os.environ.get("ARI_PUBLISH_SETTINGS") or Path.home() / ".ari" / "publish.yaml")
+def _resolve_settings_path() -> Path:
+    """Locate publish.yaml, deferring legacy-path detection to call time.
+
+    Phase DR2 (DEPRECATION_REMOVAL.md tier B): the legacy
+    ``~/.ari/publish.yaml`` path emits a DeprecationWarning the first
+    time it is consulted; v1.0 will drop it in favour of
+    ``$ARI_PUBLISH_SETTINGS`` or ``{checkpoint}/settings.json``'s
+    publish section.
+
+    Resolved on every call (rather than at module import) so test
+    fixtures can monkeypatch HOME / env without re-importing.
+    """
+    env = os.environ.get("ARI_PUBLISH_SETTINGS", "").strip()
+    if env:
+        return Path(env)
+    legacy = Path.home() / ".ari" / "publish.yaml"
+    if legacy.exists():
+        from ari._deprecation import warn_deprecated_path
+        warn_deprecated_path(
+            legacy,
+            replacement="ARI_PUBLISH_SETTINGS env or {checkpoint}/settings.json publish section",
+        )
+    return legacy
 
 
 def _load_settings() -> dict:
-    if not _SETTINGS_PATH.exists():
+    settings_path = _resolve_settings_path()
+    if not settings_path.exists():
         return {
             "default_backend": "ari-registry",
             "auto_promote": False,
@@ -35,17 +62,18 @@ def _load_settings() -> dict:
         }
     try:
         import yaml  # type: ignore
-        return yaml.safe_load(_SETTINGS_PATH.read_text(encoding="utf-8")) or {}
+        return yaml.safe_load(settings_path.read_text(encoding="utf-8")) or {}
     except Exception as e:
-        return {"error": f"failed to load {_SETTINGS_PATH}: {e}"}
+        return {"error": f"failed to load {settings_path}: {e}"}
 
 
 def _save_settings(data: dict) -> dict:
-    _SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    settings_path = _resolve_settings_path()
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         import yaml  # type: ignore
-        _SETTINGS_PATH.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
-        return {"ok": True, "path": str(_SETTINGS_PATH)}
+        settings_path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
+        return {"ok": True, "path": str(settings_path)}
     except Exception as e:
         return {"error": f"failed to write settings: {e}"}
 

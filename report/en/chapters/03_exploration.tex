@@ -1,0 +1,208 @@
+\section{Exploration Algorithm}\label{sec:exploration}
+
+\subsection{Formalisation}\label{sec:exploration:formalization}
+
+The exploration loop maintains a tree $\Tree=(\Nodes, E)$ in which
+each node $n\in\Nodes$ represents a single research step: an idea
+revision, a code change, a benchmark run, an analysis, etc. A node
+carries
+
+\begin{itemize}
+  \item a discrete state $\statefn{n}\in\{\StateOpen,\StateEval,\StateDone,\StateFailed\}$ (\code{node.py:10}),
+  \item a categorical \term{label} drawn from \texttt{NodeLabel}
+        (\code{node.py:18}),
+  \item per-axis evaluation metrics in a freeform dict
+        \texttt{node.metrics}, including a distinguished scalar
+        $\texttt{\_scientific\_score}\in[0,1]$,
+  \item a Boolean \texttt{has\_real\_data} that flags whether the
+        node carries actual measurements rather than provisional
+        text, and
+  \item bookkeeping fields \texttt{depth} and \texttt{retry\_count}
+        used by the selection prompts.
+\end{itemize}
+
+The aggregation of axis-level signals into the scientific score is
+delegated to any implementation of the \texttt{Evaluator} protocol
+(\code{ari-core/ari/protocols/evaluator.py:19}); ARI does not pin a
+fixed linear combination. The protocol is the only seam between BFTS
+and downstream rubric evaluation, which keeps the search engine
+agnostic about how axes get reduced to a scalar.
+
+The hard exploration budget is a single constant
+\texttt{config.max\_total\_nodes}, enforced by
+\code{bfts.py:should\_prune} (line~245). Step / cost budgets are
+enforced separately by \texttt{cost\_tracker.py:77} at the call
+site, not inside the BFTS engine.
+
+\subsection{Node selection (LLM-driven)}\label{sec:exploration:node-selection}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F03_node_score.tex}}
+  \caption{Selection signals fed to the LLM that picks the next node
+           to operate on. Inputs are concatenated into a structured
+           candidate description; the soft \texttt{diversity\_bonus}
+           is a tiebreaker, not a primary signal.}
+  \label{fig:nodescore}
+\end{figure}
+
+ARI deliberately does \emph{not} reduce node ranking to a closed-form
+scalar utility. Instead, both \texttt{select\_next\_node} (line~167,
+``which node should the next agent step operate on?'') and
+\texttt{select\_best\_to\_expand} (line~258, ``which completed node
+is most worth expanding?'') hand a list of candidate descriptions to
+the LLM and parse a single 0-based index back. The candidate
+description for each node $n$ is a one-liner of the form
+\begin{quote}\small\texttt{[i] id=..., depth=..., retry=..., has\_real\_data=..., metrics=\{...\}, summary=..., diversity\_bonus=+0.05}\end{quote}
+and the prompt that consumes the list lives at
+\texttt{ari/prompts/orchestrator/bfts\_select.md} (selection) and
+\texttt{ari/prompts/orchestrator/bfts\_expand\_select.md} (expansion
+target). The selection criteria the prompt enumerates are:
+nodes with \texttt{has\_real\_data=True} and strong metrics are
+high-value; unexplored directions are preferred over already-tried
+paths; metrics are weighed holistically (multi-objective); deeper
+nodes with excellent results are worth continuing; the
+\texttt{diversity\_bonus} is treated as a soft tiebreaker only.
+
+\subsubsection*{Diversity bonus}\label{sec:exploration:diversity}
+
+\texttt{BFTS.diversity\_bonus} (line~142) tracks recent labels in
+\texttt{\_recent\_label\_history} (a sliding window populated by
+\texttt{record\_run}). For a node whose label is \emph{under-}
+represented relative to the most common label in that window, the
+function returns
+\begin{equation}\label{eq:diversity}
+  \mathrm{div}(n) \;=\; \begin{cases}
+    +0.05 & \text{if } \mathrm{count}(\mathrm{label}(n)) \le \tfrac{1}{2}\,\max_\ell \mathrm{count}(\ell),\\
+    0     & \text{otherwise.}
+  \end{cases}
+\end{equation}
+The constant $0.05$ is small by design: scientific score still
+dominates ranking, and the bonus only breaks near-ties.
+
+\subsubsection*{LLM fallback}\label{sec:exploration:fallback}
+
+If the LLM returns an unparseable index, \texttt{select\_next\_node}
+falls back to a deterministic ranking
+(\code{bfts.py:237}, \texttt{\_fallback\_score}):
+\begin{equation}\label{eq:fallback}
+  \_\mathrm{fallback\_score}(n)
+   \;=\; \texttt{\_scientific\_score}(n) \;+\; \mathrm{div}(n).
+\end{equation}
+Nodes with \texttt{has\_real\_data=True} are preferred when any are
+available, and the candidate with the highest fallback score is
+returned. This guarantees the loop always makes progress even when
+the LLM call degrades.
+
+\subsection{Expansion (one child per call)}\label{sec:exploration:expansion}
+
+\code{bfts.py:expand} (line~315) generates \emph{exactly one} new
+child per invocation. Callers wanting more children for the same
+parent call \texttt{expand} repeatedly, threading the previously
+created children through the \texttt{existing\_children} argument so
+the LLM can avoid proposing duplicate directions.
+
+The label of each new child is decided by the LLM rather than by a
+hardcoded template; the prompt
+(\texttt{ari/prompts/orchestrator/bfts\_expand.md}) is fed:
+
+\begin{itemize}
+  \item the parent's status (\texttt{succeeded} /
+        \texttt{failed/no-real-data}) and
+        \texttt{\_scientific\_score};
+  \item the parent's structured \texttt{node\_report}
+        (\texttt{delta\_vs\_parent} / \texttt{concerns} /
+        \texttt{hints}, see \code{node\_report/builder.py}) when
+        present, so the planner can target specific weaknesses;
+  \item sibling scores at the same depth, and ancestor scores from
+        root to parent;
+  \item tree-wide diversity metrics (unique labels seen so far,
+        depth distribution); and
+  \item the labels of children already spawned at this parent, so
+        duplicates are not proposed.
+\end{itemize}
+
+A child is created in state \StateOpen{}, handed to the agent loop
+for execution (\cref{sec:exploration:react}), and transitions to
+\StateDone{} when all axes are populated or to \StateFailed{} if the
+agent loop raises.
+
+\subsection{Pruning and termination}\label{sec:exploration:termination}
+
+\texttt{should\_prune} (line~245) applies only \emph{hard} cutoffs:
+when \texttt{self.total\_nodes >= self.config.max\_total\_nodes},
+further expansion stops. \texttt{depth} is intentionally treated as
+a \emph{soft} signal that flows into the LLM prompt rather than a
+hard cap, so high-quality nodes appearing deep in the tree are not
+discarded mechanically.
+
+The loop terminates when any of:
+
+\begin{itemize}
+  \item the global \texttt{max\_total\_nodes} cap is hit;
+  \item the per-call step / cost budgets enforced by
+        \texttt{cost\_tracker.py} run out;
+  \item the \term{stagnation detector}
+        (\code{lineage\_decision.py:334},
+        \texttt{detect\_stagnation}) observes that the running max
+        of \texttt{\_scientific\_score} has not improved over a
+        sliding window;
+  \item a \texttt{LineageDecision}
+        (\code{lineage\_decision.py:149}) explicitly halts the
+        branch.
+\end{itemize}
+
+Which of these fires most often is an empirical question that
+\cref{chapter:eval} is meant to answer once a frozen checkpoint
+is in place; the present report does not claim a distribution.
+
+\subsection{Lineage and reproducibility}\label{sec:exploration:lineage}
+
+A lineage is the chain of ancestors of the best node, written into
+the checkpoint as the \texttt{lineage} key in \texttt{tree.json}.
+The \texttt{LineageState} dataclass
+(\code{lineage\_decision.py:64}) captures the running statistics
+that BFTS uses to decide whether to continue, and the cross-checkpoint
+walker \code{lineage.py:126} (\texttt{walk\_ancestor\_ckpts})
+provides parent pointers across runs. Idea pools are inherited via
+\code{lineage.py:157} (\texttt{get\_idea\_pool\_for\_ckpt}), and a
+ranked root-idea selection is recorded by
+\code{root\_idea\_selector.py:39} (\texttt{RootChoice}) so the
+choice is auditable post hoc.
+
+Reproducibility hinges on three invariants. (i)~Every randomised
+operation seeds itself from the node identifier. (ii)~Every tool
+call records its arguments and outputs into the node's working tree,
+never the parent's --- this is enforced by the MCP layer's
+\texttt{cow\_node\_id} check. (iii)~The cost ledger
+(\code{cost\_tracker.py:181}, \texttt{init}) attaches a per-node
+dollar amount, so the budget check is deterministic given the same
+prompts.
+
+\subsection{ReAct driver}\label{sec:exploration:react}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F04_react_loop.tex}}
+  \caption{The ReAct loop. Solid edges are the main cycle; the
+           dashed back edge represents an early-exit when the
+           observation already closes the open question.}
+  \label{fig:react}
+\end{figure}
+
+Each node's expansion runs a ReAct-style agent loop
+(\code{ari-core/ari/agent/loop.py:77}, \texttt{class AgentLoop}).
+The maximum step count is \texttt{MAX\_REACT\_STEPS = 80}
+(\code{loop.py:25}); it can be overridden per-instance via the
+\texttt{max\_react\_steps} keyword. A separate guard
+\texttt{MIN\_TOOL\_CALLS = 2} (line~26) prevents trivially short
+trajectories.
+
+The set of tools available to the agent is filtered per phase by
+\texttt{ari.agent.tool\_manager}; for example, the exploration phase
+masks the paper-writing tools so that BFTS expansion cannot
+short-circuit into a draft. A small set of MCP tools is reserved
+for \texttt{ari-core} itself (memory CoW operations) and is hidden
+from the LLM, ensuring that the model cannot set an arbitrary node
+id and bypass the memory skill's copy-on-write check
+(see the docstring of \code{loop.py}).

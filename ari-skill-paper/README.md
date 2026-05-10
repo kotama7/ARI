@@ -67,8 +67,82 @@ Citations use `@misc` format (appropriate for arXiv preprints):
 }
 ```
 
+## All MCP tools
+
+| Tool | Purpose |
+|---|---|
+| `list_venues` | Available LaTeX venues (`acm` / `neurips` / `sc` / `icpp` / `arxiv`) |
+| `get_template` | Fetch the LaTeX template for a venue |
+| `generate_section` | LLM writes one section |
+| `compile_paper` | `pdflatex` compile |
+| `check_format` | LaTeX format validation |
+| `review_section` | LLM rubric review of one section |
+| `revise_section` | LLM rewrite from review feedback |
+| `write_paper_iterative` | End-to-end generate / review / revise loop |
+| `review_compiled_paper` | Final-pass review on the compiled PDF (delegates VLM-side checks to `ari-skill-vlm`) |
+| `list_rubrics` | Reviewer rubric catalogue |
+| `inject_code_availability` | v0.7.0 — append the `\codedigest{...}` block |
+| `merge_reviews` | v0.7.0 — combine rubric review + VLM review |
+
+## Venue templates
+
+`templates/` ships:
+
+- `acm.tex`
+- `neurips.tex`
+- `sc.tex`
+- `icpp.tex`
+- `arxiv.tex`
+
+## Rubric system (v0.6+)
+
+Reviewer rubrics are YAML files under `ARI_RUBRIC_DIR` (defaults to
+`ari-core/config/reviewer_rubrics/`).  `ARI_RUBRIC` selects the
+active rubric; the same file drives both BFTS scoring and the
+published paper review (see
+`docs/architecture.md#plan--venue-contract-v070`).
+
+`ARI_STRICT_DYNAMIC=true` forces dynamic-axis generation even when
+the rubric defines fixed axes.
+
+## Environment variables
+
+| Variable | Purpose |
+|---|---|
+| `ARI_RUBRIC_DIR` | Rubric YAML directory |
+| `ARI_RUBRIC` | Active rubric id |
+| `ARI_STRICT_DYNAMIC` | Force dynamic-axis generation |
+| `ARI_CHECKPOINT_DIR` | Where the few-shot cache (`.ari_fewshot_cache`) lives |
+| `ARI_LLM_MODEL` | Paper-generation LLM |
+
+## settings.json fields
+
+The skill consumes a `paper:` section from the per-checkpoint
+`settings.json` (rubric override, venue default, ensemble size).
+See `docs/configuration.md` for the canonical schema.
+
+## Tests
+
+```bash
+pytest tests/test_server.py -q             # MCP API
+pytest tests/test_rubric.py -q             # rubric evaluation
+pytest tests/test_code_availability.py -q  # \codedigest injection
+```
+
+## P2 exception
+
+The skill calls an LLM heavily, so output is non-deterministic.
+Combine with rubric-driven review + ensemble voting to dampen
+variance.
+
 ## Installation
 
 ```bash
 pip install -e .
 ```
+
+## See also
+
+- `docs/skills.md#ari-skill-paper` — high-level summary.
+- `docs/reference/mcp_tools.md` — argument signatures.
+- `ari-skill-vlm` — figure / table review delegate.

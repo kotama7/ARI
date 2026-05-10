@@ -161,37 +161,23 @@ class LLMEvaluator:
     Domain knowledge is passed externally via MetricSpec.
     """
 
-    BASE_SYSTEM = (
-        "You are a research data extractor AND a scientific peer reviewer.\n"
-        "Analyze the experiment artifacts and return a JSON with:\n"
-        "  has_real_data: bool (true only if numeric measurements appear in artifacts)\n"
-        "  params: dict of INPUT/configuration values the experiment ran on. "
-        "These are knobs, not outcomes. Examples: matrix dimensions (M, K, "
-        "nnz), thread count, batch size, ISA flags, seeds. They are NOT "
-        "candidates for a best-of reduction.\n"
-        "  measurements: dict of MEASURED quantities — what a peer reviewer "
-        "would treat as the experiment's result. Examples: GFLOP_per_s, "
-        "GB_per_s, latency_s, accuracy. ARE candidates for best-of.\n"
-        "  metrics: dict — for back-compat, the union of params and measurements "
-        "as a single flat dict (e.g. {{\"GFLOP_per_s\": 754.8, \"M\": 120000}}). "
-        "Downstream consumers may read either the typed split above or this flat "
-        "view. NEVER include the same key in both views with different values.\n"
-        "  reason: str (one sentence describing what was measured)\n"
-        "  axis_scores: dict with EXACTLY these five keys, each a float in 0.0-1.0:\n"
-        "    - measurement_validity: are numeric measurements present and methodologically sound?\n"
-        "    - comparative_rigor: are results compared against baselines or prior work?\n"
-        "    - novelty: does the work advance beyond existing approaches?\n"
-        "    - reproducibility: is there enough detail for someone else to reproduce the result?\n"
-        "    - clarity_of_contribution: is the scientific claim stated clearly and specifically?\n"
-        "    Score 0.0 on an axis when that dimension is absent or fatally weak. "
-        "    Score toward 1.0 as the dimension approaches publishable quality. "
-        "    These axes are combined via weighted harmonic mean, so a low score on ANY axis "
-        "    drags the overall score down — differentiate axes deliberately.\n"
-        "  axis_rationales: dict with the same five keys; each value is one sentence "
-        "    explaining the score for that axis.\n"
-        "  comparison_found: bool (true if results involve comparison with existing approaches)\n"
-        "Return ONLY valid JSON, no markdown fences."
-    )
+    # Phase PC6 (PROMPTS_AND_CONFIG.md §3-1): the 5-axis system prompt
+    # body lives in ``ari/prompts/evaluator/extract_metrics.md``.  Load
+    # it once at class-definition time so existing
+    # ``LLMEvaluator.BASE_SYSTEM`` accesses (incl. tests) keep returning
+    # the same string.
+    @staticmethod
+    def _load_base_system() -> str:
+        from ari.prompts import FilesystemPromptLoader
+        text = FilesystemPromptLoader().load("evaluator/extract_metrics")
+        # The Python constant did not have a trailing newline; the file
+        # storage layer may add one — strip a single trailing ``\n`` so
+        # ``BASE_SYSTEM`` stays byte-identical to the legacy constant.
+        if text.endswith("\n"):
+            text = text[:-1]
+        return text
+
+    BASE_SYSTEM = _load_base_system.__func__()  # type: ignore[func-returns-value]
 
     def __init__(
         self,
@@ -327,35 +313,20 @@ class LLMEvaluator:
 
         if self._dynamic_axes:
             # Phase 3 path: replace the BASE_SYSTEM's hard-coded 5-axis block
-            # with the dynamic axes. We rebuild the prompt explicitly to
-            # avoid the awkwardness of regex-patching BASE_SYSTEM.
+            # with the dynamic axes. PC6 lifts the surrounding prose into
+            # ``ari/prompts/evaluator/peer_review.md`` and injects the
+            # computed axes block via ``{axes_block}`` so the static text
+            # is no longer duplicated between code and the prompt file.
             from ari.evaluator.dynamic_axes import axes_to_prompt_section
-            base = (
-                "You are a research data extractor AND a scientific peer reviewer.\n"
-                "Analyze the experiment artifacts and return a JSON with:\n"
-                "  has_real_data: bool (true only if numeric measurements appear in artifacts)\n"
-                "  params: dict of INPUT/configuration values (NOT measurements). "
-                "Examples: matrix size, thread count, seed.\n"
-                "  measurements: dict of MEASURED quantities (the experiment's output). "
-                "Examples: GFLOP_per_s, accuracy, latency.\n"
-                "  metrics: dict — flat union of params and measurements (back-compat).\n"
-                "  reason: str (one sentence describing what was measured)\n"
-                + axes_to_prompt_section(self._dynamic_axes)
-                + "\n  comparison_found: bool (true if results involve comparison with existing approaches)\n"
-                # Phase 6 #5 — explicit guidance for the
-                # claim_implementation_alignment axis. The judge must
-                # actively cross-reference plan / model claims against
-                # the implementation, not just rate whether artifacts
-                # look reasonable in isolation.
-                "\nWhen scoring claim_implementation_alignment, look for "
-                "concrete preconditions or contracts the plan / model "
-                "states (e.g. 'eliminates RFO traffic', 'preserves "
-                "equivariance', 'requires sorted input') and cross-"
-                "reference them against the artifacts. Score low when "
-                "the implementation contradicts a stated assumption, "
-                "even if the kernel runs without errors.\n"
-                "Return ONLY valid JSON, no markdown fences."
+            from ari.prompts import FilesystemPromptLoader as _PL_pr
+            base = _PL_pr().load("evaluator/peer_review").format(
+                axes_block=axes_to_prompt_section(self._dynamic_axes),
             )
+            # peer_review.md persists with a trailing newline; the legacy
+            # constant did not, so trim a single trailing ``\n`` so
+            # downstream concatenations stay byte-identical.
+            if base.endswith("\n"):
+                base = base[:-1]
             weights_line = (
                 "Axis weights (for your reference — the composite is a weighted harmonic mean):\n"
                 + ", ".join(
@@ -583,15 +554,12 @@ class LLMEvaluator:
                     except (TypeError, ValueError):
                         axis_scores[k] = 0.0
             else:
-                legacy = data.get("scientific_score")
-                if legacy is not None:
-                    try:
-                        uniform = max(min(float(legacy), 1.0), 0.0)
-                    except (TypeError, ValueError):
-                        uniform = 0.0
-                    axis_scores = {k: uniform for k in iter_names}
-                else:
-                    axis_scores = {k: 0.0 for k in iter_names}
+                # Phase 5 (REFACTORING.md §8): legacy 5-axis fallback
+                # lives in ``ari.migrations.v05_to_v07.legacy_axes``.
+                from ari.migrations.v05_to_v07.legacy_axes import (
+                    legacy_uniform_axis_scores,
+                )
+                axis_scores = legacy_uniform_axis_scores(data, iter_names)
 
             weights = self._resolve_axis_weights()
             composite = weighted_harmonic_mean(

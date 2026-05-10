@@ -354,6 +354,74 @@ def _select_best_node(self, nodes: list[Node]) -> Node:
 
 ---
 
+## Public API + Prompts / Configs (v0.7+)
+
+### `ari.public.*` — the only stable surface for skills
+
+ARI core is free to refactor its internal modules.  Skills must only
+import via the re-export layer:
+
+| Skill use case                 | Public import                       |
+|--------------------------------|-------------------------------------|
+| Cost-tracker integration       | `from ari.public import cost_tracker` |
+| Container runtime helpers      | `from ari.public import container`    |
+| Path / checkpoint resolution   | `from ari.public.paths import PathManager` |
+| LLM client                     | `from ari.public.llm import LLMClient` |
+| Pydantic config models         | `from ari.public.config_schema import ARIConfig, LLMConfig, ...` |
+
+`ari-core/tests/test_public_api_boundary.py` walks every
+`ari-skill-*/{src,tests}/` Python file with AST and fails on imports
+outside `ari.public.*`.
+
+### `ari/prompts/` — every LLM prompt lives here
+
+Each prompt is a Markdown file with `{var}` placeholders that the
+call-site fills via `str.format()`.  Adding a new core LLM call means:
+
+1. Drop the template in `ari-core/ari/prompts/<area>/<purpose>.md`
+   (e.g. `ari/prompts/orchestrator/lineage_decision.md`).
+2. Load it in the call-site:
+
+   ```python
+   from ari.prompts import FilesystemPromptLoader
+   prompt = FilesystemPromptLoader().load("orchestrator/lineage_decision")
+   ```
+
+3. Pin a sha256 row in `ari-core/tests/test_prompt_extraction.py` so a
+   silent edit surfaces as a CI failure.
+
+Conventions:
+
+- Use `str.format()` placeholders (`{var_name}`); no Jinja, no
+  conditional / loop logic inside templates.
+- Preserve every byte (newlines, leading spaces, trailing newline) of
+  the original Python constant — the byte-equivalence is what makes
+  the LLM output deterministic.
+- Skills already follow the same pattern via their own `src/prompts/`
+  directories (see `ari-skill-replicate`, `ari-skill-paper-re`); keep
+  using that layout for new skills.
+
+### `ari/configs/` — non-Pydantic lookup tables
+
+Tables that change without code changes (model prices, default model
+names) live as YAML under `ari-core/ari/configs/`:
+
+| File                | Owner                                        |
+|---------------------|----------------------------------------------|
+| `model_prices.yaml` | LLM cost estimation (`ari/cost_tracker.py`)  |
+| `defaults.yaml`     | Default model fall-backs (e.g. lineage_decision_default) |
+
+Read via `from ari.configs import FilesystemConfigLoader; loader.load("model_prices")`.
+
+### `ari/migrations/v05_to_v07/` — legacy compatibility
+
+v0.5 → v0.7 migration helpers (legacy ``node_report.json``
+reconstruction, the v0.5 global memory JSONL constant, etc.) are
+isolated here.  v1.0 will drop the package; until then code in this
+directory must NOT acquire new dependencies on the live runtime.
+
+---
+
 ## Versioning and Compatibility
 
 - All skill tool interfaces are versioned via their `pyproject.toml`

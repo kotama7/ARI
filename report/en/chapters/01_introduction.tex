@@ -1,0 +1,66 @@
+\section{Introduction}\label{sec:intro}
+
+\subsection{Motivation}\label{sec:intro:motivation}
+
+Research workflows in machine learning and adjacent fields share a
+common skeleton: brainstorm a research idea, design and run an
+experiment, analyse the result, write a paper, and iterate. Each step
+is increasingly tractable for large language models, but stitching
+them into a single autonomous loop has, so far, been an open
+engineering problem. The published systems that come closest --- AIDE,
+the AI~Scientist family, VirSci, and PaperBench evaluators --- each
+fix one or two of these axes while leaving the others manual.
+
+ARI exists to fill that gap. We assume the user supplies a research
+question and a compute budget; the system returns a publishable paper,
+the experimental code that backs every claim, and a complete audit
+trail of how it got there. The audit trail is non-negotiable: every
+node of the search tree, every tool call, every model invocation, and
+every dollar of API spend is recorded inside a single \term{checkpoint
+directory} (\cite{jiang2025aide} adopt a similar discipline). The
+checkpoint is the unit of reproducibility.
+
+\subsection{Contributions}\label{sec:intro:contrib}
+
+This report formalises three contributions:
+
+\begin{enumerate}
+  \item A \textbf{best-first tree search} over research-step nodes
+        whose selection score $\utility{n}$ separates the empirical
+        reward, a novelty term, and a depth penalty
+        (\cref{sec:exploration:formalization}). The implementation
+        lives in \code{ari-core/ari/orchestrator/bfts.py:114}.
+  \item A \textbf{paper-generation pipeline} keyed off a hierarchical
+        rubric $\Rubric$ whose leaf judges grade individual claims;
+        the system score is $\paperscore{\paper}=\sum_i \rubricweight{i}\,\judgefn{i}(\paper)$
+        (\cref{sec:paper:rubric}). The PaperBench replicator is
+        integrated as a tool call (\cref{sec:paper:paperbench}).
+  \item A \textbf{checkpoint scoping} discipline that makes the
+        pipeline fully reproducible: every external state (memory,
+        cost ledger, lineage pointers) is written below
+        \texttt{\$ARI\_CHECKPOINT\_DIR}, never the user's home
+        directory. This is the operational consequence of the P2
+        determinism principle (\cref{sec:overview:principles}).
+\end{enumerate}
+
+\subsection{Scope of this report}\label{sec:intro:scope}
+
+We freeze the snapshot at version v0.7.1 of \texttt{ari-core} and the
+fourteen \texttt{ari-skill-*} packages. Implementation citations name
+file and line; readers can verify them against the repository in the
+\cref{sec:overview:layout} layout map. The numerical results that
+this version of the report would normally place in \cref{chapter:eval}
+are not yet available --- the frozen checkpoint that they would draw
+from has not been produced --- and that chapter is therefore marked
+``deferred''. The snapshot version is part of the title page so that
+later code modifications do not retroactively invalidate any claim
+the report does make.
+
+\subsection{Organisation}\label{sec:intro:organisation}
+
+\Cref{sec:overview} gives a top-down view of ARI: the orchestrator,
+the fourteen skills, the pipeline DAG, and the design principles.
+\Cref{sec:exploration,sec:paper} are the two technical cores, each
+with its own formal definitions and empirical observations.
+\Cref{chapter:eval} is the evaluation snapshot; \cref{sec:related}
+positions the work; \cref{sec:discussion} collects open problems.

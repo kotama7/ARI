@@ -1,0 +1,9 @@
+# ARI core defaults.  Phase PC7 (PROMPTS_AND_CONFIG.md §3-7).
+#
+# Out-of-band defaults that the code used to hard-code; centralising
+# them here lets ops change values without touching Python.
+
+models:
+  # Default model for LLM-driven lineage decisions when no env override
+  # is set.  Read by ``ari/orchestrator/lineage_decision.py:_default_model``.
+  lineage_decision_default: gpt-4o-mini

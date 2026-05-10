@@ -182,6 +182,19 @@ def _build_proc_env_and_launch_cfg(
 # A. launch_config.json records all effective values
 # ══════════════════════════════════════════════════════════════════════════
 
+def _viz_server_concat(viz_dir: Path) -> str:
+    """Phase 3B PR-3B-1: ``server.py`` was split into sibling modules
+    (``websocket.py``, ``ui_helpers.py``, ``routes.py``); concatenate
+    them so existing source-text checks still find the moved literals.
+    """
+    parts = []
+    for name in ("ui_helpers.py", "websocket.py", "routes.py", "server.py"):
+        p = viz_dir / name
+        if p.exists():
+            parts.append(p.read_text())
+    return "\n".join(parts)
+
+
 class TestLaunchCfgRecordsEffectiveValues:
     """launch_config always records BFTS defaults even without wizard override."""
 
@@ -437,7 +450,7 @@ class TestLaunchCfgToStateConsistency:
     def test_bfts_keys_match_experiment_config_keys(self):
         """launch_config keys map correctly to experiment_config keys in server.py."""
         from pathlib import Path
-        srv = (Path(__file__).parent.parent / "ari" / "viz" / "server.py").read_text()
+        srv = _viz_server_concat(Path(__file__).parent.parent / "ari" / "viz")
         # experiment_config reads these keys from _lc_data
         for key in ["max_nodes", "max_depth", "max_react", "parallel", "timeout_node_s"]:
             assert f'_lc_data.get("{key}")' in srv, \
@@ -445,7 +458,7 @@ class TestLaunchCfgToStateConsistency:
 
     def test_hpc_keys_match_experiment_config_keys(self):
         from pathlib import Path
-        srv = (Path(__file__).parent.parent / "ari" / "viz" / "server.py").read_text()
+        srv = _viz_server_concat(Path(__file__).parent.parent / "ari" / "viz")
         for key in ["hpc_cpus", "hpc_memory_gb", "hpc_gpus", "hpc_walltime", "partition"]:
             assert f'_lc_data.get("{key}")' in srv, \
                 f"server.py experiment_config must read '{key}' from _lc_data"
@@ -462,7 +475,7 @@ class TestLaunchCfgToStateConsistency:
     def test_state_reads_launch_config_from_parent_dir(self):
         """server.py must check parent dir for launch_config.json fallback."""
         from pathlib import Path
-        srv = (Path(__file__).parent.parent / "ari" / "viz" / "server.py").read_text()
+        srv = _viz_server_concat(Path(__file__).parent.parent / "ari" / "viz")
         assert "d.parent" in srv and "launch_config.json" in srv, \
             "server.py must fall back to d.parent / launch_config.json"
 
@@ -507,7 +520,7 @@ class TestServerAutoRestore:
     def test_auto_restore_code_in_server(self):
         """server.py watcher must use _api_checkpoints for auto-restore."""
         from pathlib import Path
-        srv = (Path(__file__).parent.parent / "ari" / "viz" / "server.py").read_text()
+        srv = _viz_server_concat(Path(__file__).parent.parent / "ari" / "viz")
         assert "_api_checkpoints()" in srv, \
             "Watcher must use _api_checkpoints() for checkpoint discovery"
         # Must restore launch_config from checkpoint or parent

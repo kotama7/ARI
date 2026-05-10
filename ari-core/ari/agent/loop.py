@@ -38,21 +38,24 @@ _FAKE_PATTERNS = [
     "what was actually done",
 ]
 
-SYSTEM_PROMPT = """\
-You are a research agent. You MUST use tools to execute experiments. Do NOT write plans or text descriptions — call a tool immediately.
+# Phase PC3 (PROMPTS_AND_CONFIG.md §3-1): the system prompt body lives
+# in ``ari/prompts/agent/system.md``.  ``__getattr__`` below exposes the
+# legacy ``SYSTEM_PROMPT`` module attribute so external callers and the
+# Phase-0 smoke tests keep working without code changes.
 
-AVAILABLE TOOLS:
-{tool_desc}
+_SYSTEM_PROMPT_KEY = "agent/system"
 
-RULES:
-- Your FIRST action must be a tool call. Never output a text plan.
-- If `make_metric_spec` tool is available and this is a new experiment (not a continuation), call it early to self-determine evaluation criteria.
-- NEVER fabricate numeric values — only report values from actual tool outputs
-- AFTER your final measurement run, when `emit_results` is available, call it once to record a typed split between INPUT parameters (matrix size, thread count, seeds — knobs you ran on) and MEASUREMENTS (throughput, accuracy, latency — what you measured). This lets downstream stages distinguish "what we ran on" from "what we measured" so a best-of reduction never picks an input size as the result. Do NOT include input parameters in `measurements` and do NOT include measured outputs in `params`.
-- When all experiments are done, return JSON: {{"status": "success", "metrics": {{...}}, "summary": "..."}}
-- Do NOT call gap_analysis or generate_hypothesis
-- Ensure your experiment is reproducible: capture whatever information would be needed for an independent researcher to reproduce your results and verify your findings{memory_rules}{extra}
-"""
+
+def _system_prompt_template() -> str:
+    """Load the agent system prompt template from disk."""
+    from ari.prompts import FilesystemPromptLoader
+    return FilesystemPromptLoader().load(_SYSTEM_PROMPT_KEY)
+
+
+def __getattr__(name: str):  # PEP 562 — keep ``SYSTEM_PROMPT`` source-compatible.
+    if name == "SYSTEM_PROMPT":
+        return _system_prompt_template()
+    raise AttributeError(name)
 
 _MEMORY_RULES_PER_NODE = """
 - When available, save decisive intermediate findings with `add_memory(node_id=\"{node_id}\", text=..., metadata=...)` — concrete numbers, failed approaches with root cause, design decisions. Skip chatter and verbose logs.
@@ -63,45 +66,12 @@ _MEMORY_RULES_PER_NODE = """
 _MEMORY_RULES_GLOBAL = ""
 
 
-def _extract_job_ids(messages: list[dict], job_id_key: str) -> list[str]:
-    """Extract async job IDs from tool messages (JSON field and sbatch stdout)."""
-    import re as _re_jid
-    seen: set[str] = set()
-    ids: list[str] = []
-    for m in messages:
-        if m.get("role") != "tool":
-            continue
-        content = m.get("content", "")
-        # Direct "Submitted batch job NNN" scan (eliminates need for synthetic inject)
-        for _sbatch_m in _re_jid.finditer(r"Submitted batch job (\d+)", content):
-            jid = _sbatch_m.group(1)
-            if jid not in seen:
-                seen.add(jid)
-                ids.append(jid)
-        # JSON structured result
-        try:
-            r = json.loads(content)
-            if isinstance(r, dict) and "result" in r:
-                r = json.loads(r["result"])
-            if isinstance(r, dict) and job_id_key in r:
-                jid = str(r[job_id_key])
-                if jid not in seen:
-                    seen.add(jid)
-                    ids.append(jid)
-        except Exception:
-            pass
-    return ids
-
-
-def _tool_was_called(messages: list[dict], tool_name: str) -> bool:
-    """Check whether the message history contains a call to the specified tool."""
-    for m in messages:
-        if m.get("role") != "assistant":
-            continue
-        for tc in m.get("tool_calls") or []:
-            if tc.get("function", {}).get("name") == tool_name:
-                return True
-    return False
+# Phase 3D — message-history helpers extracted to
+# ``ari.agent.message_utils``.  Re-imported under the same names so
+# any caller (incl. the Phase-0 smoke tests) that did
+# ``from ari.agent.loop import _extract_job_ids, _tool_was_called``
+# keeps working byte-for-byte.
+from ari.agent.message_utils import _extract_job_ids, _tool_was_called  # noqa: F401
 
 
 class AgentLoop:
@@ -127,54 +97,18 @@ class AgentLoop:
         self._idea_context = ""
 
     # ------------------------------------------------------------------
-    # Tool filtering (derived from WorkflowHints)
+    # Tool filtering (Phase 3D — bodies in ari.agent.tool_manager)
     # ------------------------------------------------------------------
 
     def _available_tools_openai(self, suppress: set | None = None, phase: str | None = None) -> list[dict]:
-        """Return the MCP tool list in OpenAI function-calling format.
-        suppress: set of tool names to exclude (e.g. already-called once-only tools).
-        phase: if set, only tools with matching phase (or phase='all') are included.
-        """
-        suppress = (suppress or set()) | _INTERNAL_MCP_TOOLS
-        return [
-            {
-                "type": "function",
-                "function": {
-                    "name": t.get("name", ""),
-                    "description": t.get("description", ""),
-                    "parameters": t.get("inputSchema") or t.get("parameters") or {"type": "object", "properties": {}},
-                },
-            }
-            for t in self.mcp.list_tools(phase=phase)
-            if t.get("name", "") not in suppress
-        ]
+        from ari.agent.tool_manager import available_tools_openai as _at
+        return _at(self.mcp, suppress=suppress, phase=phase)
 
     def _execute_tool_calls(
         self, tool_calls: list[dict], node_id: str | None = None,
     ) -> list[dict]:
-        """Execute a batch of tool calls and return results.
-
-        ``node_id`` (optional): the BFTS node currently executing this
-        agent loop. When provided and a tool call targets a CoW-guarded
-        memory tool, ``cow_node_id`` is forwarded to MCPClient so the
-        (_set_current_node, write) pair is locked atomically — this is
-        what prevents the env-var race when ``max_parallel_nodes > 1``.
-        """
-        import json as _json
-        results = []
-        for tc in tool_calls:
-            func = tc.get("function", {})
-            name = func.get("name", "")
-            try:
-                args = _json.loads(func.get("arguments", "{}"))
-            except _json.JSONDecodeError:
-                args = {}
-            if node_id and name in self.mcp._COW_TOOLS:
-                result = self.mcp.call_tool(name, args, cow_node_id=node_id)
-            else:
-                result = self.mcp.call_tool(name, args)
-            results.append({"tool_call_id": tc.get("id", ""), "name": name, "result": result})
-        return results
+        from ari.agent.tool_manager import execute_tool_calls as _et
+        return _et(self.mcp, tool_calls, node_id=node_id)
 
     def _active_tools(
         self,
@@ -184,68 +118,16 @@ class AgentLoop:
         exec_called: bool,
         force_all: bool,
     ) -> list[dict] | None:
-        """
-        Filter available tools based on current progress.
-        Returning None makes all tools available (e.g. during forced-finish phase).
-        """
-        if force_all or not all_tools:
-            return None
-
-        h = self.hints
-        # If no sequence is specified, all tools are available
-        if not h.tool_sequence:
-            return None
-
-        seq = h.tool_sequence  # e.g. ["survey", "slurm_submit", "job_status", "run_bash"]
-
-        def has(name: str) -> bool:
-            return _tool_was_called(messages, name)
-
-        def by_name(*names: str) -> list[dict]:
-            return [t for t in all_tools if t["function"]["name"] in names]
-
-        # async job read complete
-        if h.job_reader_tool and exec_called and job_ids:
-            return None  # everything done → JSON output phase
-
-        # async job submitted
-        if h.job_submitter_tool and job_ids:
-            # If job is COMPLETED, re-enable slurm_submit (for submitting the next experiment)
-            _last_job_done = False
-            for _msg in reversed(messages):
-                if _msg.get("role") == "tool":
-                    import json as _json
-                    try:
-                        _r = _json.loads(_msg.get("content", "{}"))
-                        if isinstance(_r, dict) and _r.get("status") in ("COMPLETED", "FAILED"):
-                            _last_job_done = True
-                    except Exception:
-                        pass
-                    break
-            if _last_job_done:
-                # COMPLETED: provide slurm_submit + run_bash + job_status
-                # (even if stdout is null, can submit next experiment or read output file)
-                extra = [h.job_submitter_tool] if h.job_submitter_tool else []
-                rb = ["run_bash"] if any(t["function"]["name"] == "run_bash" for t in all_tools) else []
-                candidates = extra + rb
-                if h.job_poller_tool:
-                    candidates = candidates + [h.job_poller_tool]
-                if h.job_reader_tool and h.job_reader_tool not in candidates:
-                    candidates = candidates + [h.job_reader_tool]
-                return by_name(*candidates) or None
-            candidates = []
-            if h.job_poller_tool:
-                candidates.append(h.job_poller_tool)
-            if h.job_reader_tool:
-                candidates.append(h.job_reader_tool)
-            return by_name(*candidates) or None
-
-        # All tools available — LLM decides what to call
-        return None
+        from ari.agent.tool_manager import active_tools as _act
+        return _act(self.hints, all_tools, messages, job_ids, exec_called, force_all)
 
     # ------------------------------------------------------------------
-    # Step guidance (derived from WorkflowHints)
+    # Step guidance + metrics validation
     # ------------------------------------------------------------------
+    #
+    # Phase 3D: bodies live in ``ari.agent.guidance``; methods stay as
+    # 1-line delegators so subclass overrides + monkeypatches keep
+    # working untouched.
 
     def _guidance(
         self,
@@ -254,107 +136,12 @@ class AgentLoop:
         tool_outputs: list[str],
         messages: list[dict] | None = None,
     ) -> str | None:
-        """Return additional instructions to LLM based on the most recent tool call."""
-        h = self.hints
-
-        # Generic: detect tool error in the most recent tool message
-        for _msg in reversed(messages or []):
-            if _msg.get("role") == "tool":
-                _tc = _msg.get("content", "")
-                try:
-                    import json as _jg
-                    _parsed = _jg.loads(_tc) if isinstance(_tc, str) and _tc.startswith("{") else {}
-                    if isinstance(_parsed, dict) and "error" in _parsed:
-                        return (
-                            f"The previous tool call ({last_tool}) returned an error:\n"
-                            f"  {_parsed['error']}\n"
-                            "Read the error carefully. Diagnose the root cause and try a different approach. "
-                            "Do NOT retry the exact same call."
-                        )
-                except Exception:
-                    pass
-                break
-
-        # after survey completes
-        if last_tool == "survey" and not job_ids:
-            if h.post_survey_hint:
-                return f"Good. Now proceed:\n{h.post_survey_hint}"
-            return "Good. Now execute the experiment using available tools."
-
-        # after async job submitted
-        if h.job_submitter_tool and last_tool == h.job_submitter_tool and job_ids:
-            jid = job_ids[-1]
-            poller = h.job_poller_tool or "job_status"
-            return (
-                f"Job {jid} submitted. "
-                f"The system will automatically poll {poller}() every 30 seconds until the job completes. "
-                f"Do NOT call {poller}() manually — it wastes steps. "
-                f"Instead, call {poller}(job_id='{jid}') ONCE and the framework will handle polling."
-            )
-
-        # after job status checked
-        if h.job_poller_tool and last_tool == h.job_poller_tool and job_ids:
-            jid = job_ids[-1]
-            reader = h.job_reader_tool or "run_bash"
-            if h.output_file_pattern:
-                path = h.output_file_pattern.format(job_id=jid)
-                return f"Good. Now read results:\n{reader}(command='cat {path}')"
-            return (
-                f"Good. Job completed. Use {reader}() to read the job output. "
-                f"Check the output path specified in your job script. "
-                f"Do NOT call {h.job_poller_tool}() again — the job is already done."
-            )
-
-        # after execution result read
-        if h.job_reader_tool and last_tool in (h.job_reader_tool, "run_bash", "run_code"):
-            summary = "\n".join(tool_outputs[-5:])
-            return (
-                f"Execution output:\n{summary}\n\n"
-                "Now return the final JSON with REAL measured values.\n"
-                'Format: {"status":"success","artifacts":[...],"summary":"..."}\n'
-                "Use ONLY values from actual tool outputs."
-            )
-
-        return None
-
-    # ------------------------------------------------------------------
-    # metrics validation (derived from WorkflowHints)
-    # ------------------------------------------------------------------
+        from ari.agent.guidance import guidance as _guidance_fn
+        return _guidance_fn(self.hints, last_tool, job_ids, tool_outputs, messages)
 
     def _validate_metrics(self, result_str: str, job_ids: list[str], node: Node) -> bool:
-        """
-        Validate metrics. Returns True and marks node as failed if there is a problem.
-        Returns False if no problem.
-        """
-        h = self.hints
-        if h.metric_extractor is None and h.min_expected_metric == 0:
-            return False
-
-        vals: list[float] = []
-        if h.metric_extractor:
-            try:
-                vals = h.metric_extractor(result_str)
-            except Exception:
-                pass
-
-        if not vals:
-            return False
-
-        # values appeared without going through a job → hallucination
-        if h.job_submitter_tool and not job_ids:
-            logger.warning("Node %s: metrics without async job → hallucination", node.id)
-            return True  # treat as fabricated value
-
-        # threshold check
-        if h.min_expected_metric > 0 and len(vals) > 1 and max(vals) < h.min_expected_metric:
-            logger.warning("Node %s: metric too low %s < %s → failed",
-                           node.id, vals, h.min_expected_metric)
-            node.mark_failed(
-                error_log=f"Metric too low: max={max(vals)} < expected={h.min_expected_metric}"
-            )
-            return True  # marked node as failed
-
-        return False
+        from ari.agent.guidance import validate_metrics as _vm
+        return _vm(self.hints, result_str, job_ids, node)
 
     # ------------------------------------------------------------------
     # Main loop
@@ -467,7 +254,7 @@ class AgentLoop:
             memory_rules += _MEMORY_RULES_PER_NODE.format(node_id=node.id)
         # add_global_memory was removed in v0.6.0 (§3) so the global rules
         # block is always empty — the conditional is kept for future use.
-        system_content = SYSTEM_PROMPT.format(tool_desc=tool_desc, memory_rules=memory_rules, extra=extra)
+        system_content = _system_prompt_template().format(tool_desc=tool_desc, memory_rules=memory_rules, extra=extra)
         # pass only goal from experiment dict (workflow_hint is injected via post_survey_hint)
         goal_text = experiment.get("goal", "") if isinstance(experiment, dict) else str(experiment)
         # ── Trace: log goal_text before truncation ─────────────────

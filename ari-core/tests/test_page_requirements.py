@@ -11,8 +11,20 @@ SRC_DIR = FRONTEND_DIR / "src"
 COMPONENTS_DIR = SRC_DIR / "components"
 DIST_DIR = VIZ_DIR / "static" / "dist"
 
-# Server-side Python sources
-SERVER = (VIZ_DIR / "server.py").read_text()
+# Server-side Python sources.  Phase 3B PR-3B-1: ``server.py`` was
+# split into sibling modules (``websocket.py``, ``ui_helpers.py``,
+# ``routes.py``); concatenate them so existing source-text checks
+# still find the moved literals.
+def _viz_server_concat(viz_dir: Path) -> str:
+    parts = []
+    for name in ("ui_helpers.py", "websocket.py", "routes.py", "server.py"):
+        p = viz_dir / name
+        if p.exists():
+            parts.append(p.read_text())
+    return "\n".join(parts)
+
+
+SERVER = _viz_server_concat(VIZ_DIR)
 API_EXPERIMENT = (VIZ_DIR / "api_experiment.py").read_text()
 API_SETTINGS = (VIZ_DIR / "api_settings.py").read_text()
 API_STATE = (VIZ_DIR / "api_state.py").read_text()

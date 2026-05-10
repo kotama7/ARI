@@ -743,8 +743,10 @@ class TestStderrLogging:
             r.stderr = "MCP server connection failed: timeout"
             return r
 
+        # Phase 3C extracted ``_run_stage_subprocess`` and its logger
+        # to ``ari.pipeline.stage_runner``; patch the new location.
         with mock.patch("subprocess.run", side_effect=fake_run), \
-             mock.patch("ari.pipeline.log") as mock_log:
+             mock.patch("ari.pipeline.stage_runner.log") as mock_log:
             _run_stage_subprocess("tool", {}, "", skill_name="sk")
 
         # Must be warning, not debug
@@ -865,7 +867,8 @@ class TestBftsToPaperTransition:
 
     def test_cli_run_wraps_paper_in_try_except(self):
         """cli.py run() must wrap generate_paper_section in try/except."""
-        src = Path(__file__).parent.parent / "ari" / "cli.py"
+        _cli_dir = Path(__file__).parent.parent / "ari" / "cli"
+        src = type("_S", (), {"read_text": lambda self: "\n".join(p.read_text() for p in sorted(_cli_dir.glob("*.py")))})()
         content = src.read_text()
         run_section = content[content.find("def run("):content.find("def resume(")]
         assert "try:" in run_section and "generate_paper_section" in run_section, \
@@ -875,16 +878,21 @@ class TestBftsToPaperTransition:
 
     def test_cli_resume_wraps_paper_in_try_except(self):
         """cli.py resume() must wrap generate_paper_section in try/except."""
-        src = Path(__file__).parent.parent / "ari" / "cli.py"
-        content = src.read_text()
-        resume_section = content[content.find("def resume("):content.find("def paper(")]
+        # Phase 3A: ``resume`` lives in run.py.  Read run.py directly and
+        # bound the slice with the next ``def`` after ``def resume(``.
+        run_py = Path(__file__).parent.parent / "ari" / "cli" / "run.py"
+        content = run_py.read_text() if run_py.exists() else ""
+        resume_start = content.find("def resume(")
+        next_def = content.find("\ndef ", resume_start + 1) if resume_start >= 0 else -1
+        resume_section = content[resume_start:next_def] if resume_start >= 0 else ""
         assert "try:" in resume_section and "generate_paper_section" in resume_section, \
             "resume() must wrap generate_paper_section in try/except"
         assert "traceback" in resume_section
 
     def test_cli_run_does_not_pass_str_none(self):
         """run() must not pass str(None)='None' to generate_paper_section."""
-        src = Path(__file__).parent.parent / "ari" / "cli.py"
+        _cli_dir = Path(__file__).parent.parent / "ari" / "cli"
+        src = type("_S", (), {"read_text": lambda self: "\n".join(p.read_text() for p in sorted(_cli_dir.glob("*.py")))})()
         content = src.read_text()
         run_section = content[content.find("def run("):content.find("def resume(")]
         # The actual generate_paper_section call must NOT use str(config) directly
@@ -893,15 +901,26 @@ class TestBftsToPaperTransition:
 
     def test_cli_resume_does_not_pass_str_none(self):
         """resume() must not pass str(config) directly."""
-        src = Path(__file__).parent.parent / "ari" / "cli.py"
-        content = src.read_text()
-        resume_section = content[content.find("def resume("):content.find("def paper(")]
+        # Phase 3A: ``resume`` lives in run.py.
+        run_py = Path(__file__).parent.parent / "ari" / "cli" / "run.py"
+        content = run_py.read_text() if run_py.exists() else ""
+        resume_start = content.find("def resume(")
+        next_def = content.find("\ndef ", resume_start + 1) if resume_start >= 0 else -1
+        resume_section = content[resume_start:next_def] if resume_start >= 0 else ""
         assert 'generate_paper_section(all_nodes, experiment_data, checkpoint_dir, mcp_resume, str(config)' not in resume_section
 
     def test_nodes_tree_write_failure_logged_as_error(self):
         """pipeline.py must log ERROR (not WARNING) when nodes_tree.json write fails."""
-        src = Path(__file__).parent.parent / "ari" / "pipeline.py"
-        content = src.read_text()
+        # Phase 3C: ``pipeline.py`` → ``pipeline/`` package.  Concatenate
+        # every sub-module so this check still finds the warning string
+        # regardless of which file it landed in.
+        ari_root = Path(__file__).parent.parent / "ari"
+        pkg_dir = ari_root / "pipeline"
+        legacy = ari_root / "pipeline.py"
+        if pkg_dir.is_dir():
+            content = "\n".join(p.read_text() for p in sorted(pkg_dir.rglob("*.py")))
+        else:
+            content = legacy.read_text()
         idx = content.find("Failed to save nodes_tree.json")
         assert idx > 0, "Expected log message for nodes_tree.json failure"
         # Check the 200 chars before the message for log level

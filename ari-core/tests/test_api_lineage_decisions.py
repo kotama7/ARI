@@ -54,6 +54,19 @@ def _resolve(ckpt_id, ckpt_path):
     return _impl
 
 
+def _viz_server_concat(viz_dir: Path) -> str:
+    """Phase 3B PR-3B-1: ``server.py`` was split into sibling modules
+    (``websocket.py``, ``ui_helpers.py``, ``routes.py``); concatenate
+    them so existing source-text checks still find the moved literals.
+    """
+    parts = []
+    for name in ("ui_helpers.py", "websocket.py", "routes.py", "server.py"):
+        p = viz_dir / name
+        if p.exists():
+            parts.append(p.read_text())
+    return "\n".join(parts)
+
+
 def test_lineage_decisions_endpoint_reads_jsonl(tmp_path: Path):
     ckpt = tmp_path / "ckpt_a"
     ckpt.mkdir()
@@ -167,9 +180,11 @@ def test_lineage_decisions_chronological_order(tmp_path: Path):
 
 
 def test_lineage_decisions_route_dispatches_in_http_layer():
-    """The HTTP do_GET handler in ari.viz.server routes the path to the
-    helper. We verify the route table directly (route entry exists)."""
+    """The HTTP do_GET handler in ari.viz routes the path to the
+    helper. Phase 3B PR-3B-1 split the dispatch table out into
+    ``ari/viz/routes.py``; concat the viz package so this check finds
+    the literal regardless of which sub-module owns it now."""
     import ari.viz.server as srv
-    src = Path(srv.__file__).read_text()
+    src = _viz_server_concat(Path(srv.__file__).resolve().parent)
     assert "/api/lineage-decisions/" in src
     assert "_api_lineage_decisions(" in src

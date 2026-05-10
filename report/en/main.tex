@@ -1,0 +1,43 @@
+\documentclass[a4paper,10pt,twocolumn]{article}
+
+\input{../shared/preamble.tex}
+\input{strings.tex}
+
+\title{ARI: An Autonomous Research Infrastructure}
+\author{Takanori Kotama}
+\date{Snapshot v0.7.1, 2026}
+
+\begin{document}
+\twocolumn[
+\maketitle
+\begin{abstract}
+We describe \textbf{ARI}, an autonomous research infrastructure that
+couples a tree-search-based exploration loop with a paper-generation
+pipeline. The exploration loop is a best-first tree search (BFTS) over
+research-step nodes; expansion uses a ReAct-style agent that issues tool
+calls into a registry of fourteen domain skills. The paper pipeline
+turns the surviving lineage into a draft, then iteratively refines it
+under a hierarchical rubric. Every artefact lives inside a single
+checkpoint directory, which is the unit of reproducibility, lineage, and
+cost accounting. This report formalises the algorithms, describes the
+implementation in source-code terms, presents an evaluation snapshot,
+and discusses the determinism / novelty trade-off that constrains the
+design.
+\end{abstract}
+\vspace{2ex}
+]
+
+\input{chapters/01_introduction.tex}
+\input{chapters/02_system_overview.tex}
+\input{chapters/03_exploration.tex}
+\input{chapters/04_paper_pipeline.tex}
+\input{chapters/05_evaluation.tex}
+\input{chapters/06_related.tex}
+\input{chapters/07_discussion.tex}
+
+\appendix
+\input{chapters/appendix_notation.tex}
+
+\printbibliography
+
+\end{document}

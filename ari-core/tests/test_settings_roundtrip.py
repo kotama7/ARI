@@ -5,7 +5,7 @@ GUI Settings save/load roundtrip tests.
 
 Verifies the full cycle:
   1. User edits Settings page → JS collects values → POST /api/settings
-  2. server.py writes ~/.ari/settings.json
+  2. server.py writes {checkpoint_dir}/settings.json (project-scoped since v0.5.0)
   3. GET /api/settings → returns correct fields
   4. /state endpoint merges settings → returns to dashboard
   5. Dashboard JS reads state → displays correct values in UI
@@ -38,7 +38,24 @@ def _read_react_sources():
     return "\n".join(parts)
 
 
-def _srv():   return (_VIZ / "server.py").read_text()
+def _srv():
+    """Concatenate the viz server source files.
+
+    Phase 3B PR-3B-1 split ``server.py`` into
+    ``ui_helpers.py`` / ``websocket.py`` / ``routes.py``; cross-file
+    grep checks below need to see every definition that used to live
+    in the legacy single-file ``server.py``, so glue them all together.
+    ``ui_helpers.py`` (which owns ``_REDACT_KEYS`` etc.) goes first so
+    the sequential ``_REDACT_KEYS`` checks find the definition before
+    its imports.
+    """
+    parts = []
+    for sib in ("ui_helpers.py", "websocket.py", "routes.py"):
+        p = _VIZ / sib
+        if p.exists():
+            parts.append(p.read_text())
+    parts.append((_VIZ / "server.py").read_text())
+    return "\n".join(parts)
 def _api_exp(): return (_VIZ / "api_experiment.py").read_text()
 def _api_set(): return (_VIZ / "api_settings.py").read_text()
 def _combined(): return _read_react_sources()

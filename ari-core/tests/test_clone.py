@@ -187,8 +187,11 @@ def test_clone_unknown_scheme_raises(tmp_path):
 def test_clone_ari_scheme_requires_registry_config(tmp_path, monkeypatch):
     """ari:// is implemented, but only when a registry is configured.
 
-    Without ARI_REGISTRY_URL or ~/.ari/registries.yaml, the resolver fails
-    with a clear error instead of pretending to succeed.
+    Without ``ARI_REGISTRY_URL`` or a discoverable ``registries.yaml``
+    (``$ARI_REGISTRIES_FILE`` / ``{checkpoint}/.ari/registries.yaml`` /
+    ``$(pwd)/.ari/registries.yaml`` — note: ``~/.ari/registries.yaml``
+    is deprecated since v0.5.0), the resolver fails with a clear
+    error instead of pretending to succeed.
     """
     monkeypatch.delenv("ARI_REGISTRY_URL", raising=False)
     monkeypatch.delenv("ARI_REGISTRY_TOKEN", raising=False)

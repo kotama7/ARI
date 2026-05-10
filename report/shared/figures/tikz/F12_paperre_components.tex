@@ -1,0 +1,62 @@
+% F12: paper-re components — ARI adapter layer + vendored PaperBench + bridge.
+% style.tikzstyles is loaded by shared/preamble.tex / standalone wrapper.
+% inline-width: vendor-coloured override (BasicAgentSolver, TaskNode,
+% SimpleJudge need a wider variant of `block vendor` that is not worth a
+% dedicated style — see F12 vendor band).
+\begin{tikzpicture}[node distance=1.0cm and 1.4cm]
+
+  % --- top: ARI adapter layer ----------------------------------------
+  \node[block native big]                                   (driver) {\figlabel{F12.driver}};
+  \node[block lane native wide, below=1.2cm of driver]      (solver) {\figlabel{F12.solver}};
+  \node[block lane native wide, left=of solver]             (bound)  {\figlabel{F12.bounded}};
+  \node[block lane native wide, right=of solver]            (adapt)  {\figlabel{F12.adapt}};
+
+  % --- middle: vendor PaperBench -------------------------------------
+  \node[block vendor, below=2.0cm of solver,
+        minimum width=4.0cm, text width=3.8cm]              (basic)  {\figlabel{F12.basic}};
+  \node[block lane vendor, fill=ari-orange!22, draw=ari-vermilion,
+        minimum width=3.2cm, text width=3.0cm,
+        left=of basic]                                      (tasks)  {\figlabel{F12.tasknode}};
+  \node[block lane vendor, fill=ari-orange!22, draw=ari-vermilion,
+        minimum width=3.2cm, text width=3.0cm,
+        right=of basic]                                     (judge)  {\figlabel{F12.simplejudge}};
+
+  % --- bottom: bridge / aggregation ----------------------------------
+  \node[block native big, below=2.0cm of basic]             (bridge) {\figlabel{F12.bridge}};
+  \node[block lane native wide, left=of bridge]             (graded) {\figlabel{F12.graded}};
+  \node[block lane native wide, right=of bridge]            (agg)    {\figlabel{F12.agg}};
+  \node[block native big, below=1.0cm of bridge]            (avg)    {\figlabel{F12.avg}};
+
+  % --- artefacts -----------------------------------------------------
+  \node[artifact, right=2.0cm of avg]                       (rubricj){\figlabel{F12.rubricjson}};
+  \node[artifact, left=2.0cm of avg]                        (repro)  {\figlabel{F12.reproduce}};
+
+  % --- group bands ---------------------------------------------------
+  \begin{scope}[on background layer]
+    \node[group strong, fit=(driver)(solver)(bound)(adapt)] (band1) {};
+    \node[group, draw=ari-vermilion, very thick,
+          fill=ari-orange!8, fit=(basic)(tasks)(judge)]     (band2) {};
+    \node[group strong, fit=(bridge)(graded)(agg)(avg)]     (band3) {};
+  \end{scope}
+  \node[band label, above=4pt of band1.north west, anchor=south west] {\figlabel{F12.band.ari}};
+  \node[band label, above=4pt of band2.north west, anchor=south west, text=ari-vermilion] {\figlabel{F12.band.vendor}};
+  \node[band label, above=4pt of band3.north west, anchor=south west] {\figlabel{F12.band.bridge}};
+
+  % --- edges ---
+  \draw[arrow] (driver) -- (solver);
+  \draw[arrow dashed] (bound) -- (solver);
+  \draw[arrow dashed] (adapt) -- (solver);
+
+  \draw[arrow] (solver) -- (basic) node[edge label, near end]{\figlabel{F12.subclass}};
+  \draw[arrow dashed] (tasks) -- (basic);
+  \draw[arrow dashed] (judge) -- (basic);
+
+  \draw[arrow] (basic) -- (bridge) node[edge label]{\figlabel{F12.judged}};
+  \draw[arrow dashed] (graded) -- (bridge);
+  \draw[arrow dashed] (agg) -- (bridge);
+  \draw[arrow] (bridge) -- (avg);
+
+  \draw[arrow dashed] (avg.east) -- (rubricj);
+  \draw[arrow dashed] (avg.west) -- (repro);
+
+\end{tikzpicture}

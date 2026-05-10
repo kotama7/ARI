@@ -54,21 +54,19 @@ def _default_model() -> str:
     )
 
 
-_SYSTEM_PROMPT = (
-    "You are a research orchestrator picking the ROOT idea for a run "
-    "from a VirSci-generated pool. VirSci has already scored each idea by "
-    "novelty/feasibility/clarity, but you have additional context (venue "
-    "rubric, ancestor research thread, run notes). Your job is to pick "
-    "the idea most likely to produce a strong submission for this venue, "
-    "considering all signals.\n\n"
-    "Rules:\n"
-    "  - chosen_index MUST be an integer that exists in the pool.\n"
-    "  - Default to VirSci's choice (index 0) UNLESS another idea is "
-    "    clearly stronger given the additional context.\n"
-    "  - One sentence rationale describing your reasoning.\n"
-    "Reply ONLY in JSON: "
-    '{"chosen_index": int, "rationale": str}. No markdown.'
-)
+# Phase PC4 (PROMPTS_AND_CONFIG.md §3-3): the system prompt body lives
+# in ``ari/prompts/orchestrator/root_idea_selector.md``.
+
+
+def _load_system_prompt() -> str:
+    from ari.prompts import FilesystemPromptLoader
+    return FilesystemPromptLoader().load("orchestrator/root_idea_selector")
+
+
+def __getattr__(name: str):  # PEP 562 — preserve ``_SYSTEM_PROMPT`` API.
+    if name == "_SYSTEM_PROMPT":
+        return _load_system_prompt()
+    raise AttributeError(name)
 
 
 def _format_pool(idea_data: dict) -> str:
@@ -154,7 +152,7 @@ async def select_root_idea(
     kwargs: dict[str, Any] = {
         "model": model or _default_model(),
         "messages": [
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "system", "content": _load_system_prompt()},
             {"role": "user", "content": user},
         ],
         "temperature": temperature,

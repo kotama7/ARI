@@ -1,0 +1,233 @@
+% translated-from: en/chapters/04_paper_pipeline.tex@e4a959d4405d3a0ff9d71cc2cef14e592a31610d1bd8bee71993349cd5d0c271
+% glossary:        5bca8d57a70f021e20c0af79aa06cd21013495c1a8246887ae889cd8a056f5fd
+% model:           claude-opus-4-7
+
+\section{論文生成パイプライン}\label{sec:paper}
+
+\subsection{パイプライン概観}\label{sec:paper:overview}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F06_paper_swimlane.tex}}
+  \caption{論文生成スイムレーン:着想、実験、執筆。各レーンが一
+           つのフェーズに対応する;\texttt{review/refine} から
+           \texttt{draft} へのバックエッジが唯一の非単調遷移であ
+           る (\cref{sec:paper:loop})。}
+  \label{fig:swim}
+\end{figure}
+
+論文生成パイプラインは ARI における二本目の活動の木である
+(\cref{fig:swim})。探索が停止すると、生き残った系譜が
+\term{paper スキル}に手渡されて草稿が生成され、続いて
+\term{review スキル}が草稿を採点する。実装は
+\code{ari-core/ari/pipeline/orchestrator.py:131} の
+\texttt{run\_pipeline} 関数であり、同ファイル 68 行目の
+\texttt{build\_scientific\_data} ヘルパが、paper スキルが必要と
+する成果物群をノード単位で集約する。
+
+一回の実行は永続化される 3 つの成果物を生む:\texttt{draft.tex}
+(LaTeX 論文本体)、\texttt{review.json}(葉ごとのルブリックスコ
+アと根拠)、そして \texttt{rubric.json}(本実行で使用したルブリ
+ックインスタンス;ルブリックを動的生成する場合に有用)。
+
+\subsection{ルブリック形式}\label{sec:paper:rubric}
+
+\term{ルブリック} $\Rubric$ を、葉が組
+$(\rubricitem{i},\rubricweight{i},\judgefn{i})$ を保持する有限木
+としてモデル化する。各葉 $i$ は、カテゴリ記述子
+$\rubricitem{i}$、非負の重み $\rubricweight{i}$
+($\sum_i \rubricweight{i}=1$ を満たす)、そして段階的スコアを
+返す\emph{判官関数} $\judgefn{i}:\paper\to[0,1]$ を持つ。論文ス
+コアは凸結合
+\begin{equation}\label{eq:paperscore}
+  \paperscore{\paper} \;=\; \sum_i \rubricweight{i}\,\judgefn{i}(\paper).
+\end{equation}
+で与えられる。
+この形式は PaperBench のルブリック木と共有されており、ARI は
+これを vendoring された PaperBench パッケージを通じて直接再利
+用する(\cref{sec:paper:paperbench}):葉型 \texttt{TaskNode} は
+\texttt{paperbench.rubric.tasks} 由来、graded leaf 型
+\texttt{GradedTaskNode} は \texttt{paperbench.judge.graded\_task\_node}
+由来、重み付き集約エンベロープは
+\code{ari-skill-paper-re/src/\_paperbench\_bridge.py:75} の
+\texttt{aggregate\_graded\_tree} 由来である。
+
+本番では二種類の判官族を用いる:LLM ベース判官は ARI 用に
+PaperBench の \texttt{SimpleJudge}
+(\code{ari-skill-paper-re/src/\_paperbench\_bridge.py:54})をラ
+ップして実装する;決定的判官は二値または数値検証器を持つ項目
+(例えば「再現可能性」「ドル絶対値で報告したコスト」)に使う。
+両者は \texttt{Evaluator} プロトコル
+(\code{ari-core/ari/protocols/evaluator.py:19})を実装する。
+
+\subsection{review/refine ループ}\label{sec:paper:loop}
+
+改稿サイクルはフィードバック $J(\paper_t)$ の下で
+$\paper_t$ を $\paper_{t+1}$ へと反復的に書き換える:
+\begin{equation}\label{eq:refine}
+  \paper_{t+1} \;=\; \refine\!\bigl(\paper_t, J(\paper_t)\bigr).
+\end{equation}
+
+\term{収束基準}
+$\paperscore{\paper_{t+1}}-\paperscore{\paper_t}<\epsilon$ が連
+続二回成立した時、またはパイプラインあたり 3 回の上限に達した時
+にサイクルは停止する。各分岐 — 収束 vs.\ 上限 — がどの程度の
+頻度で発火するかは、凍結チェックポイントが揃い次第
+\cref{chapter:eval} で報告する予定であり、本章では定量主張を行
+わない。
+
+改稿は意図的に軸ごとに非単調である:明確性の修正が数値軸を僅かに
+劣化させ得る。これが \cref{fig:swim} のバックエッジの源であり、
+収束基準は集約スコアにかかるのであって軸ごとではない。
+
+\subsection{paper-re による PaperBench 統合}\label{sec:paper:paperbench}
+
+\term{paper-re スキル}(\texttt{ari-skill-paper-re})は ARI の
+PaperBench 互換複製ドライバである。統合は\emph{再実装ではない}:
+PaperBench は \texttt{vendor/paperbench} に vendoring されて出
+荷され、これにより ARI は upstream のタスク・ルブリック意味論を
+逐語的に追跡する(配置要件は PaperBench の
+\texttt{rubric.md \S{}8} に文書化されている)。3 つの統合点を述
+べる。
+
+\subsubsection*{1. ソルバ サブクラス: \texttt{AriPBSolver}}
+
+\code{ari-skill-paper-re/src/\_replicator\_agent.py:269} は
+PaperBench upstream の
+\texttt{paperbench.solvers.basic.BasicAgentSolver} をサブクラス
+化する。chz の immutable-config 規則により新フィールドが追加さ
+れなくてもサブクラスにデコレータが必要となるが、ARI のオーバー
+ライドは最小限である:
+
+\begin{itemize}
+  \item \texttt{\_get\_tools()}:submit 以外の全ツールを
+        \texttt{\_BoundedOutputTool} でラップし、bash / python /
+        file-read / search の出力を次の API 呼び出しへ流す前にサ
+        イズ制限する。\texttt{submit} は名前で dispatch され、
+        \texttt{execute()} が呼ばれることがないので、ラップされ
+        ずにそのまま通過する。
+  \item \texttt{\_run\_agent()}:
+        \texttt{paperbench.solvers.utils.sanity\_check\_docker}
+        を \texttt{\_bypass\_docker\_sanity\_check} で迂回し、
+        upstream のハードコード
+        \texttt{/home/\{submission,paper\}} パスを ARI のワーク
+        スペース相対レイアウト
+        (\texttt{LocalComputer} cwd = \texttt{repro\_sandbox/}、
+        論文を \texttt{paper/} に、submission を \texttt{submission/}
+        に置く)へ書き換える。プロンプト内容はその他の点で
+        upstream の \texttt{get\_instructions} /
+        \texttt{get\_system\_message} から逐語的に取得され、
+        ARI は upstream の複製タスク枠組み(7 日予算、「すべての
+        結果を複製するまで停止しない」等)に整合する。
+\end{itemize}
+
+\texttt{AriPBSolver} はまた upstream の
+\texttt{check\_for\_existing\_run} を保持しており、部分的に完了
+した実行を冪等に再開できる。
+
+\subsubsection*{2. ルブリック駆動の成果物リスト}
+
+vendor PaperBench は ARI の論文ごとのルブリック木を知らないた
+め、\texttt{AriPBSolver.\_run\_agent} は
+\texttt{LocalPBTask.rubric\_expected\_artifacts} が空でない場合、
+ユーザ指示に \texttt{EXPECTED\_ARTIFACTS} ブロックを追記する。
+追記されるブロックは、成功した \texttt{reproduce.sh} が産出すべ
+きパスを列挙する;これがないと、grader の葉主張はどのファイル
+を検証すべきかのヒントを欠く。ルブリック木自体は
+\code{ari-skill-paper-re/src/\_paperbench\_bridge.py:63}
+(\texttt{task\_node\_from\_dict})で構築される。
+
+\subsubsection*{3. ドライバ: \texttt{run\_replicator\_agent}}
+
+\code{ari-skill-paper-re/src/\_replicator\_agent.py:365} が非同
+期エントリポイントである。標準の \texttt{build\_reproduce\_sh}
+エンベロープ
+$\{$\texttt{populated},
+\texttt{output\_dir}, \texttt{files},
+\texttt{expected\_artifacts}, \texttt{max\_runtime\_sec},
+\texttt{model}, \texttt{prompt\_sha256}, \texttt{notes},
+\texttt{warnings}$\}$ を返す。\texttt{output\_dir} はエージェ
+ントのワークスペースであると同時に、ARI が rollout 後に
+\texttt{reproduce.sh} を見つけることを期待する場所でもある;
+upstream のソルバは \texttt{agent.log} 等の bookkeeping を
+\texttt{run\_dir} に書き込むため、これをワークスペース自身に向
+けることで成果物が \texttt{reproduce.sh} と隣接する。
+
+既定の completer は \texttt{OpenAIResponsesTurnCompleterConfig}
+でモデルは \texttt{gpt-5-mini}(環境変数
+\texttt{ARI\_MODEL\_REPLICATOR} で上書き可能);LiteLLM ルート
+の代替は \texttt{\_litellm\_completer.py} のヘルパ経由で配線さ
+れる。既定の時間上限は実行あたり 12 時間;\texttt{sandbox\_kind}
+は \texttt{auto} で、ローカル Apptainer イメージが供給されてい
+れば fallback する。
+
+\subsubsection*{4. 採点と集約}
+
+複製エージェントが完了すると、採点は
+\code{ari-skill-paper-re/src/\_paperbench\_bridge.py} の
+\texttt{judge\_submission} に委譲される。この関数は ARI の
+$($\texttt{paper\_md}, \texttt{submission\_dir},
+\texttt{reproduce\_log}, \texttt{judge\_model}$)$ タプルを
+upstream の \texttt{SimpleJudge} に適合させ、submission ごとに
+\texttt{GradedTaskNode} 木を生成する。実行間の集約は次の二つの
+ヘルパで処理される:
+
+\begin{itemize}
+  \item \texttt{aggregate\_graded\_tree}(line~75):一つの
+        \texttt{GradedTaskNode} をルブリック重み
+        $\rubricweight{i}$ 経由で重み付きスカラーへ畳み込み、
+        カテゴリ別内訳を併せて返す。
+  \item \texttt{average\_graded\_runs}(line~91 周辺):$n$ 個
+        の \texttt{GradedTaskNode} 木に対する実行ごとの平均を取
+        り、ノイズ低減のためエージェントを再走させた場合でも単
+        一の複製スコアが報告される。
+\end{itemize}
+
+二段階設計 — 葉採点には vendor の \texttt{SimpleJudge}、形状と
+集約には ARI のアダプタ — により、PaperBench upstream のアップ
+グレードは vendor swap となり(ARI コード変更不要)、ARI は葉採
+点を単一数値へ結合する仕方を完全にコントロールする。同じエンベ
+ロープが葉が二値のとき $\judgefn{i}\in\{0,1\}$ として
+\cref{eq:paperscore} に流れる。
+
+\subsection{故障モードとガードレール}\label{sec:paper:failures}
+
+頻出する故障モードを 3 つ命名する:
+
+\begin{itemize}
+  \item \textbf{LLM のみの裏付け}:論文が、系譜中のいずれのノー
+        ドも裏付けない主張をする。緩和策は静的検査:数値主張ま
+        たは因果主張は、ノード成果物への
+        \texttt{\textbackslash code\{...\}} 参照経由で必ず辿れ
+        ねばならない。
+  \item \textbf{引用ハルシネーション}:論文が存在しない論文を引
+        用する。緩和策は構造的:LLM が引用キーを発明することを
+        禁じ、すべての bib エントリは Semantic Scholar に対して
+        検証されなければならない (\cref{sec:related})。
+  \item \textbf{改稿ドリフト}:スコアは上昇するが論文が一貫性を
+        失う。緩和策はルブリックの軸ごと下限:いずれかの軸が
+        $0.5$ を下回れば改稿は中止される。
+\end{itemize}
+
+草稿時のソースファイル選択は \code{node\_selection.py:204}
+(\texttt{select\_source\_files\_for\_publication})が担う;主張
+が頼ることのできる系譜ノードを正確に列挙することで、LLM のみの
+裏付け型の故障を防ぐ。コンパニオンの
+\texttt{load\_selected\_sources}(line~258)が
+\texttt{(node\_id, rel\_path)} 各組のバイトを読み、オプションの
+\texttt{size\_budget} を尊重するので、論文草稿が context を超え
+ることは決してない。
+
+\subsection{複製器のためのツール出力境界}\label{sec:paper:bounded-tool}
+
+複製エージェントは単一の bash セッション内で何時間も過ごし得
+る;ツール出力(長い stdout、大規模ディレクトリリスト)は放置
+すれば後続の各プロンプトを支配する。ARI は
+\texttt{\_BoundedOutputTool}
+(\code{ari-skill-paper-re/src/\_replicator\_agent.py:243})でこ
+れを境界し、同ツールが内部ツールの \texttt{execute()} をラッ
+プして出力を \texttt{\_truncate\_tool\_output}(line~218)で構
+成可能なバイト上限へ後処理する。これが PaperBench upstream の
+自由形式トランスクリプトと ARI の境界付き再生可能なものとの違
+いであり、複数時間の rollout でもプロンプト予算を予測可能に保
+つ理由である。

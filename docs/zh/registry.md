@@ -8,18 +8,23 @@
 
 ## 快速开始
 
+> **备注：** v0.5.0 已移除全局 `$HOME/.ari/` 目录。所有 registry 相关路径都需通过 env var（`ARI_REGISTRY_DATA`、`ARI_REGISTRIES_FILE`）或位于活动检查点之下（`$ARI_CHECKPOINT_DIR/.ari/registries.yaml`）。详见 `docs/refactor_audit.md` 与 `docs/howto/migration.md`；遗留回退在 v1.0 中移除。
+
 ```bash
 # 1. 安装服务端依赖（默认 install 跳过以保持精简）
 ./setup.sh --with-registry        # 或: pip install fastapi uvicorn[standard] python-multipart
 
-# 2. 启动
-./scripts/registry/start_local.sh # uvicorn 监听 127.0.0.1:8290，sqlite 位于 ~/.ari/registry-data
+# 2. 指定数据目录并启动（默认端口 8290）
+export ARI_REGISTRY_DATA="$PWD/.ari_registry"
+./scripts/registry/start_local.sh
 
 # 3. 颁发 token（明文仅显示一次）
 ari registry token issue alice
 
 # 4. 配置客户端
-cat > ~/.ari/registries.yaml <<EOF
+export ARI_REGISTRIES_FILE="$ARI_CHECKPOINT_DIR/.ari/registries.yaml"
+mkdir -p "$(dirname "$ARI_REGISTRIES_FILE")"
+cat > "$ARI_REGISTRIES_FILE" <<EOF
 registries:
   - name: default
     url: http://127.0.0.1:8290
