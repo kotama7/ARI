@@ -1,0 +1,38 @@
+% translated-from: en/chapters/appendix_notation.tex@ce5cee04a7f1e3eb8a68674d8e7018746a5a277d779c3dd061a439f83ae2a738
+% glossary:        5bca8d57a70f021e20c0af79aa06cd21013495c1a8246887ae889cd8a056f5fd
+% model:           claude-opus-4-7
+
+\section{记号表}\label{sec:notation}
+
+下表镜像 \code{shared/notation.tex} 中定义的宏。本文使用的每个
+符号都须出现于此;静态检查 (\texttt{check\_notation.py}) 校验
+本文中无未定义符号。
+
+\begin{tabularx}{\columnwidth}{@{}lX@{}}
+  \toprule
+  符号 & 含义 \\
+  \midrule
+  $\Nodes$            & 搜索树的节点集 \\
+  $\Tree$             & 搜索树 $(\Nodes, E)$ \\
+  $n\in\Nodes$        & 单一节点 \\
+  $\children{n}$      & $n$ 的子集 \\
+  $\parentof{n}$      & $n$ 的父节点 \\
+  $\depth{n}$         & $n$ 的深度 \\
+  $\statefn{n}$       & 节点状态 $\in\{\StateOpen,\StateEval,\StateDone,\StateFailed\}$ \\
+  $\nodescore{n}$     & $n$ 的标量奖励 \\
+  $\axes{n}$          & 按轴评估向量 \\
+  $\aggregate$        & 轴 $\to$ 标量聚合器 \\
+  $\mathrm{div}(n)$   & 多样性奖励 (\cref{eq:diversity}) \\
+  $\_\mathrm{fallback\_score}(n)$ & 确定性回退排序 (\cref{eq:fallback}) \\
+  $\Tmax,\Cmax$       & 步数 / 成本预算 \\
+  $\Rubric$           & 评分细则树 \\
+  $\rubricitem{i}$    & 第 $i$ 叶的类别 \\
+  $\rubricweight{i}$  & 第 $i$ 叶的权重 \\
+  $\judgefn{i}$       & 第 $i$ 叶的判官 \\
+  $\paper$            & 论文草稿 \\
+  $\paperscore{\paper}$ & 论文聚合得分 (\cref{eq:paperscore}) \\
+  $\refine$           & 改稿算子 (\cref{eq:refine}) \\
+  $\ckpt$             & 检查点目录 \\
+  $\lineage{n}$       & 终止于 $n$ 的谱系链 \\
+  \bottomrule
+\end{tabularx}

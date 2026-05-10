@@ -1,0 +1,17 @@
+citekey: li2022competition
+fetched_at: '2026-05-09T13:55:10+00:00'
+fetched_by: scripts batch on 2026-05-09 (arXiv direct)
+source:
+  s2_paperId: null
+  preferred_url: https://arxiv.org/pdf/2203.07814.pdf
+  resolved_via: arXiv direct
+  arxiv_id: '2203.07814'
+file:
+  filename: li2022competition.pdf
+  size_bytes: 3797220
+  sha256: 4facd32698069e8eda5e3714f12be8519dbe2a184e9386e37a9939d7f4030bea
+  page_count: 74
+license:
+  type: arXiv non-exclusive distribution licence
+  closed_access: false
+notes: ''

@@ -1,0 +1,66 @@
+% F11: BFTS control flow — paper-style numbered workflow.
+% Five numbered stages: (1) frontier, (2) LLM-driven select, (3) parse-or-fall back,
+% (4) expand into a child, (5) prune-or-continue. The fall-back side path is
+% drawn below the main spine; back-edges (append, continue) are vermilion.
+% style.tikzstyles is loaded by shared/preamble.tex / standalone wrapper.
+\begin{tikzpicture}[node distance=1.2cm and 1.4cm]
+
+  % --- main spine: five stations, evenly spaced --------------------
+  \node[station]                                       (front) {\figlabel{F11.frontier}};
+  \node[station emph wide, right=2.0cm of front]       (sel)   {\figlabel{F11.select}};
+  \node[decision wide, right=2.0cm of sel]             (dec)   {\figlabel{F11.parse}};
+  \node[station emph, right=2.0cm of dec]              (exp)   {\figlabel{F11.expand}};
+  \node[decision wide, right=2.0cm of exp]             (prune) {\figlabel{F11.prune}};
+
+  % --- numbered step markers (five stages) -------------------------
+  \node[numbered step, above left=0.05cm and -0.2cm of front.north west] {1};
+  \node[numbered step, above left=0.05cm and -0.2cm of sel.north west]   {2};
+  \node[numbered step, above left=0.05cm and -0.2cm of dec.north west]   {3};
+  \node[numbered step, above left=0.05cm and -0.2cm of exp.north west]   {4};
+  \node[numbered step, above left=0.05cm and -0.2cm of prune.north west] {5};
+
+  % --- prompts above the LLM-driven stations ----------------------
+  \node[station, fill=ari-yellow!30, draw=ari-orange,
+        above=0.7cm of sel]                            (psel)  {\figlabel{F11.prompt.select}};
+  \node[station, fill=ari-yellow!30, draw=ari-orange,
+        above=0.7cm of exp]                            (pexp)  {\figlabel{F11.prompt.expand}};
+
+  % --- side path: deterministic fall-back below the decision ------
+  \node[station, dashed, draw=ari-vermilion,
+        below=1.4cm of dec]                            (fb)    {\figlabel{F11.fallback}};
+  \node[station, fill=ari-pink!22, below=of fb]        (div)   {\figlabel{F11.diversity}};
+
+  % --- expansion outputs below the expand station -----------------
+  \node[artifact, below=1.4cm of exp]                  (child) {\figlabel{F11.child}};
+
+  % --- stagnation auxiliary input to prune ------------------------
+  \node[station, dashed, below=1.4cm of prune]         (stag)  {\figlabel{F11.stagnation}};
+
+  % --- main forward arrows ---------------------------------------
+  \draw[big arrow] (front) -- (sel);
+  \draw[big arrow] (sel)   -- (dec);
+  \draw[big arrow] (dec)   -- (exp)
+       node[edge label, midway, font=\sffamily\footnotesize]{\figlabel{F11.ok}};
+  \draw[big arrow] (exp)   -- (prune);
+
+  % --- prompt hooks ---------------------------------------------
+  \draw[arrow dashed] (psel) -- (sel);
+  \draw[arrow dashed] (pexp) -- (exp);
+
+  % --- fall-back side path -------------------------------------
+  \draw[big arrow, draw=ari-vermilion] (dec.south) -- (fb.north)
+       node[edge label, font=\sffamily\footnotesize]{\figlabel{F11.fail}};
+  \draw[arrow dashed] (div.north) -- (fb.south);
+  \draw[big arrow, draw=ari-vermilion] (fb.east) to[bend right=12] (exp.south west);
+
+  % --- expand → child + back-edges -----------------------------
+  \draw[big arrow] (exp) -- (child);
+  \draw[big arrow, draw=ari-vermilion] (child.south) to[out=-90, in=-90, looseness=1.0]
+       node[edge label, font=\sffamily\footnotesize, pos=0.3]{\figlabel{F11.append}}
+       (front.south);
+
+  \draw[arrow dashed] (stag.north) -- (prune.south);
+  \draw[big arrow, draw=ari-vermilion] (prune.north) to[bend right=22]
+       node[edge label, font=\sffamily\footnotesize]{\figlabel{F11.continue}}
+       (exp.north east);
+\end{tikzpicture}

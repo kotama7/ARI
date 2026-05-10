@@ -22,11 +22,35 @@ from typing import Optional
 from .https import resolve as _https_resolve  # reuse the streaming download
 
 
-def _load_registries(name_filter: Optional[str] = None) -> list[dict]:
-    paths = []
+def _load_registries(
+    name_filter: Optional[str] = None,
+    *,
+    checkpoint_dir: Optional[Path] = None,
+) -> list[dict]:
+    """Search registries.yaml in priority order.
+
+    Phase DR2/DR3 (DEPRECATION_REMOVAL.md tier B):
+
+    Search order:
+        1. ``$ARI_REGISTRIES_FILE`` env override
+        2. ``{checkpoint_dir}/.ari/registries.yaml`` when set (DR3)
+        3. ``$(pwd)/.ari/registries.yaml``
+        4. ``~/.ari/registries.yaml`` (DEPRECATED, v1.0 removal)
+    """
+    paths: list[Path] = []
     if os.environ.get("ARI_REGISTRIES_FILE"):
         paths.append(Path(os.environ["ARI_REGISTRIES_FILE"]))
-    paths.append(Path.home() / ".ari" / "registries.yaml")
+    if checkpoint_dir is not None:
+        paths.append(Path(checkpoint_dir) / ".ari" / "registries.yaml")
+    paths.append(Path.cwd() / ".ari" / "registries.yaml")
+    legacy = Path.home() / ".ari" / "registries.yaml"
+    if legacy.exists():
+        from ari._deprecation import warn_deprecated_path
+        warn_deprecated_path(
+            legacy,
+            replacement="ARI_REGISTRIES_FILE env or {checkpoint}/.ari/registries.yaml",
+        )
+        paths.append(legacy)
     for p in paths:
         if p.exists():
             try:
@@ -75,7 +99,10 @@ def resolve(
 
     if not registries:
         raise RuntimeError(
-            "no ari-registry configured. Set ARI_REGISTRY_URL or write ~/.ari/registries.yaml"
+            "no ari-registry configured. Set ARI_REGISTRY_URL, "
+            "or write registries.yaml in your checkpoint or working "
+            "directory (see docs/registry.md for format). "
+            "Note: ~/.ari/ paths are deprecated and will be removed in v1.0."
         )
 
     last_err: Optional[Exception] = None

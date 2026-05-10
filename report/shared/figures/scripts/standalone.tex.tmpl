@@ -1,0 +1,242 @@
+% Auto-generated wrapper for stand-alone TikZ rendering. See scripts/render_tikz.py.
+% We use the article class (not standalone[tikz]) so that style.tikzstyles
+% can be \input cleanly: standalone[tikz] is too strict about preamble paragraph state.
+\documentclass[10pt]{article}
+
+\usepackage[a3paper,landscape,margin=10mm]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools,bm}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{xcolor}
+\definecolor{ari-black}{HTML}{000000}
+\definecolor{ari-orange}{HTML}{E69F00}
+\definecolor{ari-skyblue}{HTML}{56B4E9}
+\definecolor{ari-green}{HTML}{009E73}
+\definecolor{ari-yellow}{HTML}{F0E442}
+\definecolor{ari-blue}{HTML}{0072B2}
+\definecolor{ari-vermilion}{HTML}{D55E00}
+\definecolor{ari-pink}{HTML}{CC79A7}
+\definecolor{ari-grid}{HTML}{DDDDDD}
+
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usetikzlibrary{positioning, shapes.geometric, shapes.arrows, arrows.meta, calc, fit, backgrounds, automata, decorations.markings}
+
+% Inline tikzset definitions (mirrored from shared/preamble.tex). We do NOT
+% \input style.tikzstyles here because the file's outer braces leak as text
+% under article-class preamble, contaminating the rendered figure.
+\tikzset{
+  every picture/.style={node distance=1.6cm and 2.2cm},
+  every node/.style={font=\small, align=center, inner sep=4pt},
+  block/.style={rectangle, draw=ari-black, rounded corners=2pt,
+                minimum width=2.8cm, minimum height=1.0cm,
+                text width=2.6cm, align=center},
+  block emph/.style={block, fill=ari-blue!15, very thick},
+  block wide/.style={block, minimum width=3.6cm, text width=3.4cm},
+  block emph wide/.style={block emph, minimum width=3.6cm, text width=3.4cm},
+  block aux/.style={block, fill=ari-grid, dashed},
+  block lane/.style={block, minimum width=2.4cm, text width=2.2cm},
+  block lane wide/.style={block, minimum width=3.2cm, text width=3.0cm},
+  mcp band/.style={block emph, minimum width=8cm, text width=7.6cm},
+  block native/.style={block, fill=ari-skyblue!18, draw=ari-blue, very thick},
+  block vendor/.style={block, fill=ari-orange!22, draw=ari-vermilion, very thick},
+  block external/.style={block, fill=ari-green!18, draw=ari-green, very thick},
+  block lane native/.style={block lane, fill=ari-skyblue!18, draw=ari-blue},
+  block lane vendor/.style={block lane, fill=ari-orange!22, draw=ari-vermilion},
+  band label/.style={font=\bfseries\footnotesize\sffamily, text=ari-black},
+  block ckpt root/.style={block native, minimum width=5.2cm, text width=5.0cm},
+  artifact wide/.style={artifact, minimum width=3.6cm, text width=3.4cm},
+  artifact medium/.style={artifact, minimum width=3.0cm, text width=2.8cm},
+  block lane native wide/.style={block lane native, minimum width=3.6cm, text width=3.4cm},
+  block native big/.style={block native, minimum width=4.0cm, text width=3.8cm},
+  block emph big/.style={block emph, minimum width=3.6cm, text width=3.4cm},
+  block big/.style={block, minimum width=3.0cm, text width=2.8cm},
+  decision wide/.style={decision, text width=2.4cm},
+  block lane med/.style={block lane, text width=2.4cm},
+  numbered step/.style={circle, fill=ari-black, text=white, font=\bfseries\small, inner sep=2pt, minimum size=18pt},
+  stage container/.style={rectangle, draw=ari-blue, very thick, rounded corners=6pt, fill=ari-skyblue!12, inner sep=14pt, minimum height=3.0cm},
+  stage container vendor/.style={stage container, draw=ari-vermilion, fill=ari-orange!10},
+  stage title/.style={font=\bfseries\small\sffamily, text=ari-black},
+  station/.style={rectangle, draw=ari-black, line width=0.7pt, rounded corners=2pt, fill=white, minimum width=2.6cm, minimum height=0.8cm, text width=2.4cm, align=center, font=\sffamily\footnotesize},
+  station emph/.style={station, fill=ari-skyblue!25, line width=1pt},
+  station emph wide/.style={station emph, minimum width=3.0cm, text width=2.8cm},
+  station emph big/.style={station emph, minimum width=3.4cm, text width=3.2cm, minimum height=1.0cm},
+  big arrow/.style={-{Stealth[length=8pt,width=8pt]}, line width=1.5pt, draw=ari-black},
+  decision/.style={diamond, draw, aspect=2, minimum width=2.6cm,
+                   minimum height=1.0cm, text width=2.0cm,
+                   align=center, inner sep=1pt},
+  state/.style={circle, draw=ari-black, minimum width=1.6cm, inner sep=2pt},
+  state init/.style={state, fill=ari-blue!15},
+  state final/.style={state, fill=ari-green!15, double},
+  artifact/.style={block, fill=ari-grid, dashed},
+  arrow/.style={->, >=Stealth, thick, shorten <=2pt, shorten >=2pt},
+  arrow dashed/.style={arrow, dashed},
+  arrow thick/.style={arrow, very thick},
+  arrow back/.style={arrow, draw=ari-vermilion},
+  edge label/.style={midway, font=\footnotesize, fill=white,
+                     inner sep=1pt, rounded corners=1pt},
+  edge label above/.style={edge label, sloped, above},
+  swim lane/.style={draw=ari-grid, dashed, minimum height=2.5cm,
+                    text width=12cm, align=left, anchor=north west},
+  swim lane label/.style={font=\bfseries\footnotesize, anchor=north west},
+  group/.style={draw=ari-skyblue!50, very thick, rounded corners=4pt, inner sep=10pt},
+  group strong/.style={draw=ari-blue, very thick, rounded corners=4pt, inner sep=10pt, fill=ari-skyblue!8},
+}
+
+% pdf metadata-free, no page numbers
+\pagestyle{empty}
+
+\makeatletter
+\newcommand{\figlabeldef}[2]{\@namedef{figlabel@#1}{#2}}
+\newcommand{\figlabel}[1]{%
+  \@ifundefined{figlabel@#1}%
+    {[#1]}%
+    {\csname figlabel@#1\endcsname}%
+}
+\makeatother
+
+% English fallback labels covering all keys used across F01..F13.
+\figlabeldef{F1.orchestrator}{Orchestrator}
+\figlabeldef{F1.idea}{idea}
+\figlabeldef{F1.coding}{coding}
+\figlabeldef{F1.paper}{paper}
+\figlabeldef{F1.replicate}{replicate}
+\figlabeldef{F1.memory}{memory}
+\figlabeldef{F1.evaluator}{evaluator}
+\figlabeldef{F1.review}{review}
+\figlabeldef{F1.web}{web}
+\figlabeldef{F1.checkpoint}{checkpoint dir}
+\figlabeldef{F1.tree_json}{tree.json}
+\figlabeldef{F1.results_json}{results.json}
+\figlabeldef{F1.band.gen}{generation}
+\figlabeldef{F1.band.eval}{evaluation}
+\figlabeldef{F1.band.write}{writing}
+\figlabeldef{F3.has_real}{has\_real\_data}
+\figlabeldef{F3.metrics}{metrics dict}
+\figlabeldef{F3.depth_signal}{depth}
+\figlabeldef{F3.retry}{retry\_count}
+\figlabeldef{F3.summary}{eval\_summary}
+\figlabeldef{F3.div}{diversity\_bonus}
+\figlabeldef{F3.selector}{select\_next\_node (LLM)}
+\figlabeldef{F3.prompt}{bfts\_select.md}
+\figlabeldef{F3.index}{chosen index}
+\figlabeldef{F3.fallback}{\_fallback\_score}
+\figlabeldef{F3.parse}{parse}
+\figlabeldef{F3.unparseable}{LLM fail}
+\figlabeldef{F3.band.signals}{candidate signals}
+\figlabeldef{react.think}{Think}
+\figlabeldef{react.act}{Act}
+\figlabeldef{react.observe}{Observe}
+\figlabeldef{react.reflect}{Reflect}
+\figlabeldef{F4.tool_call}{tool call}
+\figlabeldef{F4.execute}{execute}
+\figlabeldef{F4.parse}{parse}
+\figlabeldef{F4.update}{update}
+\figlabeldef{F4.toolset}{phase-filtered tool set}
+\figlabeldef{F4.memcontext}{memory context}
+\figlabeldef{F4.maxsteps}{MAX\_REACT\_STEPS=80, MIN\_TOOL\_CALLS=2}
+\figlabeldef{F5.idea}{idea}
+\figlabeldef{F5.exploration}{exploration}
+\figlabeldef{F5.paper}{paper}
+\figlabeldef{F5.review}{review}
+\figlabeldef{F5.tree_json}{tree.json}
+\figlabeldef{F5.draft}{draft.tex}
+\figlabeldef{F5.rubric}{rubric.json}
+\figlabeldef{F5.refine}{refine}
+\figlabeldef{F5.band.search}{search}
+\figlabeldef{F5.band.write}{write \& review}
+\figlabeldef{F6.lane.idea}{idea}
+\figlabeldef{F6.lane.experiment}{experiment}
+\figlabeldef{F6.lane.write}{write}
+\figlabeldef{F6.brainstorm}{brainstorm}
+\figlabeldef{F6.refine_idea}{refine idea}
+\figlabeldef{F6.bfts}{BFTS}
+\figlabeldef{F6.replicate}{replicate}
+\figlabeldef{F6.draft}{draft}
+\figlabeldef{F6.review_refine}{review/refine}
+\figlabeldef{F6.refine}{refine}
+\figlabeldef{F10.cli}{CLI / SDK}
+\figlabeldef{F10.viz}{viz HTTP}
+\figlabeldef{F10.orchestrator}{ari-core orchestrator}
+\figlabeldef{F10.bfts}{BFTS engine}
+\figlabeldef{F10.lineage}{lineage walker}
+\figlabeldef{F10.agentloop}{ReAct AgentLoop}
+\figlabeldef{F10.mcp}{MCP dispatch (skill registry)}
+\figlabeldef{F10.s.idea}{idea}
+\figlabeldef{F10.s.coding}{coding}
+\figlabeldef{F10.s.paper}{paper}
+\figlabeldef{F10.s.paperre}{paper-re}
+\figlabeldef{F10.s.replicate}{replicate}
+\figlabeldef{F10.s.eval}{evaluator}
+\figlabeldef{F10.s.review}{review}
+\figlabeldef{F10.s.memory}{memory}
+\figlabeldef{F10.s.bench}{benchmark}
+\figlabeldef{F10.s.hpc}{hpc}
+\figlabeldef{F10.s.plot}{plot}
+\figlabeldef{F10.s.transform}{transform}
+\figlabeldef{F10.s.vlm}{vlm}
+\figlabeldef{F10.s.web}{web}
+\figlabeldef{F10.cost}{cost\_tracker}
+\figlabeldef{F10.ckpt}{checkpoint}
+\figlabeldef{F10.tree}{tree.json}
+\figlabeldef{F10.results}{results.json}
+\figlabeldef{F10.band.gen}{generation}
+\figlabeldef{F10.band.eval}{evaluation}
+\figlabeldef{F10.band.write}{writing \& replication}
+\figlabeldef{F10.band.infra}{infrastructure / I-O}
+\figlabeldef{F11.frontier}{frontier nodes}
+\figlabeldef{F11.select}{select\_next\_node}
+\figlabeldef{F11.prompt.select}{bfts\_select.md}
+\figlabeldef{F11.parse}{parse index?}
+\figlabeldef{F11.fallback}{\_fallback\_score}
+\figlabeldef{F11.diversity}{diversity\_bonus}
+\figlabeldef{F11.expand}{expand}
+\figlabeldef{F11.prompt.expand}{bfts\_expand.md}
+\figlabeldef{F11.child}{new child node}
+\figlabeldef{F11.prune}{should\_prune?}
+\figlabeldef{F11.stagnation}{stagnation detector}
+\figlabeldef{F11.ok}{valid index}
+\figlabeldef{F11.fail}{LLM fail}
+\figlabeldef{F11.append}{append}
+\figlabeldef{F11.continue}{continue}
+\figlabeldef{F12.driver}{run\_replicator\_agent}
+\figlabeldef{F12.solver}{AriPBSolver}
+\figlabeldef{F12.bounded}{\_BoundedOutputTool}
+\figlabeldef{F12.adapt}{\_adapt\_vendor\_paths}
+\figlabeldef{F12.basic}{BasicAgentSolver (vendor)}
+\figlabeldef{F12.tasknode}{TaskNode}
+\figlabeldef{F12.simplejudge}{SimpleJudge}
+\figlabeldef{F12.bridge}{paperbench\_bridge}
+\figlabeldef{F12.graded}{GradedTaskNode}
+\figlabeldef{F12.agg}{aggregate\_graded\_tree}
+\figlabeldef{F12.avg}{average\_graded\_runs}
+\figlabeldef{F12.rubricjson}{rubric.json}
+\figlabeldef{F12.reproduce}{reproduce.sh}
+\figlabeldef{F12.band.ari}{ARI adapter}
+\figlabeldef{F12.band.vendor}{vendor (PaperBench)}
+\figlabeldef{F12.band.bridge}{bridge \& aggregation}
+\figlabeldef{F12.subclass}{subclass}
+\figlabeldef{F12.judged}{graded}
+\figlabeldef{F13.root}{\$ARI\_CHECKPOINT\_DIR/}
+\figlabeldef{F13.tree}{tree.json}
+\figlabeldef{F13.nodes}{nodes\_tree.json}
+\figlabeldef{F13.results}{results.json}
+\figlabeldef{F13.cost}{costs.json}
+\figlabeldef{F13.memory}{memory\_store.jsonl}
+\figlabeldef{F13.lineage}{lineage.yaml}
+\figlabeldef{F13.node0}{node\_<id\_0>/}
+\figlabeldef{F13.node1}{node\_<id\_1>/}
+\figlabeldef{F13.node2}{node\_<id\_2>/}
+\figlabeldef{F13.nodeN}{...}
+\figlabeldef{F13.nodeout}{outputs/}
+\figlabeldef{F13.nodelog}{agent.log}
+\figlabeldef{F13.nodereport}{node\_report.json}
+\figlabeldef{F13.band.shared}{run-level files}
+\figlabeldef{F13.band.pernode}{per-node working trees}
+\providecommand{\term}[1]{\textit{#1}}
+
+\begin{document}
+\centering
+\input{__TIKZ__}
+\end{document}

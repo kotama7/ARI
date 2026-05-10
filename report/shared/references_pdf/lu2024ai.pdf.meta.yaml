@@ -1,0 +1,17 @@
+citekey: lu2024ai
+fetched_at: '2026-05-09T13:55:07+00:00'
+fetched_by: scripts batch on 2026-05-09 (arXiv direct)
+source:
+  s2_paperId: null
+  preferred_url: https://arxiv.org/pdf/2408.06292.pdf
+  resolved_via: arXiv direct
+  arxiv_id: '2408.06292'
+file:
+  filename: lu2024ai.pdf
+  size_bytes: 11731143
+  sha256: e911f90b0114d5e3fc23a0000177ea670fa9ed79d5f9a664efa2980fdb350507
+  page_count: 186
+license:
+  type: arXiv non-exclusive distribution licence
+  closed_access: false
+notes: ''

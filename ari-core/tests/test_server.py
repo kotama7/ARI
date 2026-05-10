@@ -36,6 +36,19 @@ def api_state():
 
 # ── _api_checkpoints ─────────────────────────────────────────────────────────
 
+def _viz_server_concat(viz_dir: Path) -> str:
+    """Phase 3B PR-3B-1: ``server.py`` was split into sibling modules
+    (``websocket.py``, ``ui_helpers.py``, ``routes.py``); concatenate
+    them so existing source-text checks still find the moved literals.
+    """
+    parts = []
+    for name in ("ui_helpers.py", "websocket.py", "routes.py", "server.py"):
+        p = viz_dir / name
+        if p.exists():
+            parts.append(p.read_text())
+    return "\n".join(parts)
+
+
 def test_api_checkpoints_empty(state, api_state, tmp_path, monkeypatch):
     """Returns empty list when checkpoint dir doesn't exist."""
     monkeypatch.chdir(tmp_path)
@@ -1016,7 +1029,7 @@ def test_state_experiment_config_falls_back_to_settings(state, tmp_path, monkeyp
 
 def test_experiment_config_no_question_marks():
     """server.py must not use '?' as a fallback value in experiment_config."""
-    src = (_VIZ_DIR / "server.py").read_text()
+    src = _viz_server_concat(_VIZ_DIR)
     # Find the experiment_config dict block
     import re
     m = re.search(r'data\["experiment_config"\]\s*=\s*\{(.+?)\}', src, re.DOTALL)
@@ -1080,8 +1093,10 @@ def test_max_workers_floor_at_one():
 def test_cli_run_loop_max_workers_zero_safe():
     """_run_loop with max_parallel_nodes=0 must still produce max_workers >= 1."""
     import re
-    cli_src = Path(__file__).parent.parent / "ari" / "cli.py"
-    src = cli_src.read_text()
+    # Phase 3A bfts_loop split: ``_run_loop`` body lives in
+    # ``ari/cli/bfts_loop.py``; concatenate the cli package's source.
+    cli_dir = Path(__file__).parent.parent / "ari" / "cli"
+    src = "\n".join(p.read_text() for p in sorted(cli_dir.glob("*.py")))
     # Verify the guard is present: max(1, min(...))
     assert re.search(r"max\(\s*1\s*,\s*min\(", src), \
         "cli.py must guard max_workers with max(1, ...) to prevent zero workers"
@@ -1183,7 +1198,7 @@ def test_experiment_md_preserved_when_process_running(state, monkeypatch):
 
 def test_server_fallback_has_process_guard():
     """server.py fallback for experiment_md must check _last_proc.poll() is None."""
-    src = (_VIZ_DIR / "server.py").read_text()
+    src = _viz_server_concat(_VIZ_DIR)
     import re
     # Find the if-statement line directly after the "Fallback" comment
     m = re.search(
@@ -1201,7 +1216,7 @@ def test_server_fallback_has_process_guard():
 def test_server_state_has_experiment_md_cleanup():
     """server.py /state handler must clear _last_experiment_md when process exits,
     but must NOT clear _launch_llm_model/_provider (needed for CONFIG display)."""
-    src = (_VIZ_DIR / "server.py").read_text()
+    src = _viz_server_concat(_VIZ_DIR)
     import re
     m = re.search(r'elif self\.path == "/state":.+?_load_nodes_tree', src, re.DOTALL)
     assert m, "/state handler not found"
@@ -1260,7 +1275,7 @@ def test_launch_config_json_used_as_fallback(state, tmp_path, monkeypatch):
 
 def test_server_reads_launch_config_json():
     """server.py must read launch_config.json as fallback for model info."""
-    src = (_VIZ_DIR / "server.py").read_text()
+    src = _viz_server_concat(_VIZ_DIR)
     assert "launch_config.json" in src, \
         "server.py must reference launch_config.json for persistent model info"
 

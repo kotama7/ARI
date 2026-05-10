@@ -1,0 +1,201 @@
+% translated-from: en/chapters/04_paper_pipeline.tex@e4a959d4405d3a0ff9d71cc2cef14e592a31610d1bd8bee71993349cd5d0c271
+% glossary:        5bca8d57a70f021e20c0af79aa06cd21013495c1a8246887ae889cd8a056f5fd
+% model:           claude-opus-4-7
+
+\section{论文生成流水线}\label{sec:paper}
+
+\subsection{流水线概述}\label{sec:paper:overview}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F06_paper_swimlane.tex}}
+  \caption{论文生成泳道:构思、实验、撰写。每条泳道对应一个阶段;
+           由 \texttt{review/refine} 回到 \texttt{draft} 的反向
+           边是唯一的非单调转移 (\cref{sec:paper:loop})。}
+  \label{fig:swim}
+\end{figure}
+
+论文生成流水线是 ARI 的第二棵活动树 (\cref{fig:swim})。一旦探
+索终止,存活谱系交付给 \term{paper 技能} 生成草稿,再交给
+\term{review 技能} 评分。实现是
+\code{ari-core/ari/pipeline/orchestrator.py:131} 的
+\texttt{run\_pipeline} 函数;同文件第 68 行的
+\texttt{build\_scientific\_data} 助手将各节点产物汇集成 paper
+技能所需的输入。
+
+一次运行写出三件持久产物:\texttt{draft.tex}(LaTeX 论文本身)、
+\texttt{review.json}(按叶的评分细则得分及理由)与
+\texttt{rubric.json}(本次运行所用的细则实例,用于动态生成场
+景)。
+
+\subsection{评分细则形式}\label{sec:paper:rubric}
+
+我们将\term{评分细则} $\Rubric$ 建模为有限树,叶节点携带元组
+$(\rubricitem{i},\rubricweight{i},\judgefn{i})$。每个叶 $i$ 含
+类别描述符 $\rubricitem{i}$、非负权重 $\rubricweight{i}$ 满足
+$\sum_i \rubricweight{i}=1$,以及\emph{判官函数}
+$\judgefn{i}:\paper\to[0,1]$,返回分级得分。论文得分即凸组合
+\begin{equation}\label{eq:paperscore}
+  \paperscore{\paper} \;=\; \sum_i \rubricweight{i}\,\judgefn{i}(\paper).
+\end{equation}
+此形式与 PaperBench 的细则树共享,ARI 直接通过 vendor 化的
+PaperBench 包(\cref{sec:paper:paperbench})复用之:叶类型
+\texttt{TaskNode} 来自 \texttt{paperbench.rubric.tasks},graded
+leaf 类型 \texttt{GradedTaskNode} 来自
+\texttt{paperbench.judge.graded\_task\_node},加权聚合包络来自
+\code{ari-skill-paper-re/src/\_paperbench\_bridge.py:75} 的
+\texttt{aggregate\_graded\_tree}。
+
+生产中使用两个判官族:LLM 评分器在 ARI 侧由包装 PaperBench 的
+\texttt{SimpleJudge}
+(\code{ari-skill-paper-re/src/\_paperbench\_bridge.py:54}) 实
+现;确定性评分器用于具备二元或数值校验的项目(如「可复现性」、
+「以美元绝对值报告的成本」)。两者均实现 \texttt{Evaluator} 协议
+(\code{ari-core/ari/protocols/evaluator.py:19})。
+
+\subsection{review/refine 循环}\label{sec:paper:loop}
+
+改稿循环按反馈 $J(\paper_t)$ 迭代地将 $\paper_t$ 重写为
+$\paper_{t+1}$:
+\begin{equation}\label{eq:refine}
+  \paper_{t+1} \;=\; \refine\!\bigl(\paper_t, J(\paper_t)\bigr).
+\end{equation}
+
+当 $\paperscore{\paper_{t+1}}-\paperscore{\paper_t}<\epsilon$
+连续两轮成立,或达到流水线级三次迭代上限时,循环终止。每条分支
+(收敛 vs.\ 上限)实际触发的频率,是 \cref{chapter:eval} 待冻
+结检查点就位后报告的内容;此处不做定量主张。
+
+改稿在每条轴上是有意非单调的:修复清晰度问题可能轻微降低某数值
+轴。这正是 \cref{fig:swim} 中反向边的来源;收敛标准作用于聚合
+得分,而非按轴。
+
+\subsection{paper-re 的 PaperBench 集成}\label{sec:paper:paperbench}
+
+\term{paper-re 技能}(\texttt{ari-skill-paper-re})是 ARI 的
+PaperBench 兼容复现驱动器。集成\emph{不是}重新实现:PaperBench
+被 vendor 化于 \texttt{vendor/paperbench},使 ARI 与上游任务与
+细则语义保持逐字一致(布局要求记于 PaperBench 的
+\texttt{rubric.md \S{}8})。三处集成点值得说明。
+
+\subsubsection*{1. 求解器子类: \texttt{AriPBSolver}}
+
+\code{ari-skill-paper-re/src/\_replicator\_agent.py:269} 子类化
+PaperBench 上游的
+\texttt{paperbench.solvers.basic.BasicAgentSolver}。chz 不可变
+配置规则要求子类亦带装饰器,即便未新增字段。ARI 的覆写最少:
+
+\begin{itemize}
+  \item \texttt{\_get\_tools()}:除 submit 外所有工具均被
+        \texttt{\_BoundedOutputTool} 包裹,使 bash / python /
+        file-read / search 输出在流入下次 API 调用前先大小封顶。
+        \texttt{submit} 按名分派、不调用
+        \texttt{execute()},因此原样通过。
+  \item \texttt{\_run\_agent()}:用
+        \texttt{\_bypass\_docker\_sanity\_check} 绕过
+        \texttt{paperbench.solvers.utils.sanity\_check\_docker};
+        将上游硬编码的 \texttt{/home/\{submission,paper\}} 路径
+        改写为 ARI 的工作空间相对布局
+        (\texttt{LocalComputer} cwd = \texttt{repro\_sandbox/}、
+        论文置 \texttt{paper/}、submission 置
+        \texttt{submission/})。提示内容其余从上游
+        \texttt{get\_instructions} / \texttt{get\_system\_message}
+        逐字而来,使 ARI 与上游复现任务框架(7 天预算、「直至
+        复现所有结果不得停止」等)保持一致。
+\end{itemize}
+
+\texttt{AriPBSolver} 还保留上游的
+\texttt{check\_for\_existing\_run},因此部分完成的运行可幂等地
+恢复。
+
+\subsubsection*{2. 细则驱动的产物列表}
+
+vendor PaperBench 不知 ARI 的逐论文细则树,故
+\texttt{AriPBSolver.\_run\_agent} 在
+\texttt{LocalPBTask.rubric\_expected\_artifacts} 非空时,向用户
+指令追加 \texttt{EXPECTED\_ARTIFACTS} 块。该块列出成功的
+\texttt{reproduce.sh} 应产出的路径;否则,grader 的叶主张缺乏对
+应验证的文件提示。细则树本身由
+\code{ari-skill-paper-re/src/\_paperbench\_bridge.py:63}
+(\texttt{task\_node\_from\_dict}) 构建。
+
+\subsubsection*{3. 驱动器: \texttt{run\_replicator\_agent}}
+
+\code{ari-skill-paper-re/src/\_replicator\_agent.py:365} 是异步
+入口。返回标准 \texttt{build\_reproduce\_sh} 包络
+$\{$\texttt{populated},
+\texttt{output\_dir}, \texttt{files},
+\texttt{expected\_artifacts}, \texttt{max\_runtime\_sec},
+\texttt{model}, \texttt{prompt\_sha256}, \texttt{notes},
+\texttt{warnings}$\}$。\texttt{output\_dir} 既是智能体的工作
+空间,也是 ARI 期望 rollout 后找到 \texttt{reproduce.sh} 的
+位置;上游求解器把 \texttt{agent.log} 等簿记写入
+\texttt{run\_dir},我们将其指向工作空间本身,使产物与
+\texttt{reproduce.sh} 同处。
+
+默认 completer 为 \texttt{OpenAIResponsesTurnCompleterConfig},
+模型 \texttt{gpt-5-mini}(可由环境变量
+\texttt{ARI\_MODEL\_REPLICATOR} 覆盖);LiteLLM 路由的替代由
+\texttt{\_litellm\_completer.py} 助手装配。默认时间上限每次运
+行 12 小时;\texttt{sandbox\_kind} 为 \texttt{auto},若提供本
+地 Apptainer 镜像则回退至此。
+
+\subsubsection*{4. 评分与聚合}
+
+复现智能体完成后,评分通过
+\code{ari-skill-paper-re/src/\_paperbench\_bridge.py} 的
+\texttt{judge\_submission} 委派。该函数将 ARI 的
+$($\texttt{paper\_md}, \texttt{submission\_dir},
+\texttt{reproduce\_log}, \texttt{judge\_model}$)$ 元组适配到上
+游 \texttt{SimpleJudge},按 submission 产出
+\texttt{GradedTaskNode} 树。运行间聚合由两个助手处理:
+
+\begin{itemize}
+  \item \texttt{aggregate\_graded\_tree}(第 75 行):将单个
+        \texttt{GradedTaskNode} 通过细则权重 $\rubricweight{i}$
+        汇成加权标量,并附按类别细分。
+  \item \texttt{average\_graded\_runs}(第 91 行附近):取 $n$
+        个 \texttt{GradedTaskNode} 树的逐运行均值,即便智能体
+        多次重跑以降噪,也只报告单一复现得分。
+\end{itemize}
+
+两阶段设计 —— 叶评分用 vendor 的 \texttt{SimpleJudge},形状与
+聚合用 ARI 的适配 —— 意味着升级 PaperBench 上游只是 vendor
+swap(无需改 ARI 代码),而 ARI 完全控制如何把叶得分组合成单
+一数值。同样的包络在叶为二值时按 $\judgefn{i}\in\{0,1\}$ 流入
+\cref{eq:paperscore}。
+
+\subsection{故障模式与护栏}\label{sec:paper:failures}
+
+下述三类故障模式常见到值得命名:
+
+\begin{itemize}
+  \item \textbf{LLM-only 支撑}:论文做出谱系中无节点支撑的主
+        张。缓解为静态检查:每项数值或宣称的因果主张必须可经
+        由 \texttt{\textbackslash code\{...\}} 引用追溯到节点
+        产物。
+  \item \textbf{引用幻觉}:论文引用并不存在的工作。缓解结构化
+        进行:禁止 LLM 杜撰引用键,所有 bib 条目须经 Semantic
+        Scholar 校验 (\cref{sec:related})。
+  \item \textbf{改稿漂移}:得分上升但论文连贯性下降。缓解为细
+        则的按轴下限:任一轴跌破 $0.5$ 即终止改稿。
+\end{itemize}
+
+撰稿时的源文件选择由 \code{node\_selection.py:204}
+(\texttt{select\_source\_files\_for\_publication}) 完成;它通
+过枚举主张可依赖的谱系节点,防止 LLM-only 支撑型故障。
+\texttt{load\_selected\_sources}(第 258 行)读取每个
+\texttt{(node\_id, rel\_path)} 对的字节,并尊重可选的
+\texttt{size\_budget},使论文草稿绝不超出 context。
+
+\subsection{复现器的工具输出边界}\label{sec:paper:bounded-tool}
+
+复现智能体可能在单一 bash 会话中运行数小时;其工具输出(长
+stdout、大目录列表)若不处理将主导后续每次提示。ARI 用
+\texttt{\_BoundedOutputTool}
+(\code{ari-skill-paper-re/src/\_replicator\_agent.py:243}) 加以
+界定,该工具包装内部工具的 \texttt{execute()},并经
+\texttt{\_truncate\_tool\_output}(第 218 行)按可配置字节上限
+后处理输出。这就是 PaperBench 上游的自由形式 transcript 与 ARI
+有界、可重放版本的差别;也是多小时 rollout 中提示预算保持可预
+测的原因。

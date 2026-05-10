@@ -1,0 +1,58 @@
+% translated-from: en/chapters/06_related.tex@8f026556abfcacdffc644fd0f52447496dea53aa0c5942a062e763d6180b5998
+% glossary:        5bca8d57a70f021e20c0af79aa06cd21013495c1a8246887ae889cd8a056f5fd
+% model:           claude-opus-4-7
+
+\section{関連研究}\label{sec:related}
+
+ARI を 4 つの先行研究の流れに対して位置付ける。
+
+\subsection{コードのための木探索}\label{sec:related:treesearch}
+
+AIDE \cite{jiang2025aide} は ML 工学を計画・コード・デバッグ状態
+上の木探索として形式化する;AlphaCode \cite{li2022competition}
+は競技プログラミングに対する大規模生成・濾過の規範的参照であり;
+MLE-bench 評価器 \cite{chan2024mle} はいまや ML 工学エージェント
+を計測する標準である。ARI は AIDE から BFTS の骨格を継承するが、
+(i) LLM 駆動の候補選択器(\cref{sec:exploration:node-selection})—
+閉形式のスカラー効用を固定せず、選択プロンプトが
+\texttt{has\_real\_data}、metrics 全体、深さ、リトライ回数、
+ソフト \texttt{diversity\_bonus} を一括重み付けできる —、
+および
+(ii) 実行間の系譜(\cref{sec:exploration:lineage})— AIDE も
+MLE-bench も形式化していない — を追加している。
+
+\subsection{自律研究エージェント}\label{sec:related:autonomous}
+
+AI~Scientist ファミリ \cite{lu2024ai} は同様のループ
+(idea $\to$ experiment $\to$ paper)をエンドツーエンドで閉じる
+が、ルブリックと改稿サイクルを第一級オブジェクトとして露出させ
+ない。VirSci \cite{su2024many} は複数の科学者ペルソナを模擬し、
+彼らの合意で出力を採点する;Agent~Laboratory
+\cite{schmidgall2025agent} はエージェントを駆動者ではなく協働者
+として扱う。ARI は二点の運用面で異なる:\textbf{すべてがチェッ
+クポイントの中で生きる}(P1 / P4)、そしてルブリックが探索と執
+筆の間の契約である。
+
+\subsection{論文評価}\label{sec:related:eval}
+
+PaperBench \cite{starace2025paperbench} は我々の \texttt{paper-re}
+統合に最も近い類例である;それはルブリック・アズ・ツリー形式の
+先駆者であった。我々は同じ葉ごとの採点と集約重み
+(\cref{eq:paperscore})を採用するが、改稿ガードとして使う軸ごと
+の下限で拡張している (\cref{sec:paper:failures})。
+
+\subsection{基礎}\label{sec:related:foundations}
+
+エージェントループは ReAct パターン \cite{yao2023react} に従う;
+改稿サイクルは Self-Refine \cite{madaan2023self} と Reflexion
+\cite{shinn2023reflexion} の系譜にある;\emph{思考}ステップで
+LLM に逐次的なスクラッチパッドを与えるという選択は
+Chain-of-Thought \cite{wei2022chain} の系譜にある。これらの参照
+のいずれもチェックポイントスコープの状態を提案していない;それ
+が ARI の貢献である。
+
+初期の草稿は別の ML 研究エージェントベンチマークも引用していた
+が、いずれの候補ソースも我々の検証規則
+(\cref{sec:paper:failures})を通らないことが明らかになった時点
+で、その参照を取り除いた;関連研究の網羅性は S2 で検証可能なエ
+ントリのみに保つ。

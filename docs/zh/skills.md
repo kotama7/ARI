@@ -351,7 +351,7 @@ v0.7.0 引入的 PaperBench 形式 **自动 rubric 生成与审计**。读取论
 
 返回 Letta 核心记忆中种入的稳定事实（`experiment_goal`、`primary_metric`、`hardware_spec` 等）。种入仅在首个节点的 `generate_ideas` 完成时（即 `primary_metric` 被确定的时刻）执行一次，在此之前调用会返回 `{}`。之后可安全反复调用（带 60 秒进程内缓存）。
 
-存储：每个检查点拥有一个 Letta 代理（两个集合 `ari_node_*` 与 `ari_react_*`）。可移植快照位于 `{ARI_CHECKPOINT_DIR}/memory_backup.jsonl.gz`，写/读遥测位于 `{ARI_CHECKPOINT_DIR}/memory_access.jsonl`。v0.5.x 的 JSONL（`memory_store.jsonl`、`~/.ari/global_memory.jsonl`）已移除；使用 `ari memory migrate --react` 迁移。跨实验“全局记忆”已弃用。
+存储：每个检查点拥有一个 Letta 代理（两个集合 `ari_node_*` 与 `ari_react_*`）。可移植快照位于 `{ARI_CHECKPOINT_DIR}/memory_backup.jsonl.gz`，写/读遥测位于 `{ARI_CHECKPOINT_DIR}/memory_access.jsonl`。v0.5.x 的 JSONL 存储（检查点级 `memory_store.jsonl` 以及曾经位于 `$HOME/.ari/` 下的遗留全局 JSONL）已在 v0.5.0 移除；使用 `ari memory migrate --react` 迁移。跨实验“全局记忆”已弃用。
 
 ---
 
@@ -560,6 +560,36 @@ result = read_file("results.csv", offset=0, limit=100)
 #### `statistical_test(data_a, data_b, test)`
 
 运行 scipy 统计检验：`ttest`、`mannwhitney`、`wilcoxon`。
+
+---
+
+## ari-skill-plot
+
+科学论文图表生成器。两种模式：**确定性模式**（`generate_figures`，P2-safe 的 matplotlib + 固定 schema）与 **LLM 模式**（`generate_figures_llm`，AI-Scientist-v2 风格让 LLM 写代码并执行，可选 VLM 添加图注）。**LLM：混合**（确定性 + P2 例外）。
+
+### 工具
+
+#### `generate_figures(nodes_json_path, output_dir, figure_spec)`
+
+从 `nodes_tree.json` 渲染规范化对比图到 `output_dir`。返回每个生成图的清单（含 caption 与源节点 id）。给定 matplotlib 版本下字节确定。
+
+#### `generate_figures_llm(nodes_json_path, intent, output_dir)`
+
+LLM 检视数据形状与自然语言 `intent`，编写 matplotlib 代码，在与确定性模式相同的 `_run_plot_code` 沙箱中执行，并（可选地）调用 VLM 为生成的图添加 caption。P2 例外。
+
+### 环境变量
+
+| 变量 | 用途 | 默认 |
+|---|---|---|
+| `VLM_MODEL` | 用于图注生成的 Vision LLM | `openai/gpt-4o` |
+| `ARI_LLM_MODEL` | `_llm` 模式中编写 matplotlib 代码的 LLM | （无 — `_llm` 必需）|
+| `LLM_MODEL` | 跨技能回退 | （无）|
+| `ARI_LLM_API_BASE` | LiteLLM API base 覆盖 | LiteLLM 默认 |
+| `OPENAI_API_KEY` | 使用 OpenAI 系模型时所需 | （无）|
+
+### ari-core 边界
+
+`src/server.py` 中 `from ari import cost_tracker`；Phase 4 重构将其迁移到 `ari.public.cost_tracker`。
 
 ---
 

@@ -23,9 +23,15 @@ from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("plot-skill")
 
-# Wire skill-scoped cost tracking (see ari.cost_tracker.bootstrap_skill).
+# Wire skill-scoped cost tracking via the public re-export module
+# (Phase 4 — REFACTORING.md §7).  Falls back to the legacy
+# ``ari.cost_tracker`` import path so older ari-core checkouts that
+# predate ``ari.public`` keep functioning.
 try:
-    from ari import cost_tracker as _ari_cost_tracker  # type: ignore
+    try:
+        from ari.public import cost_tracker as _ari_cost_tracker  # type: ignore
+    except ImportError:
+        from ari import cost_tracker as _ari_cost_tracker  # type: ignore  # noqa: F401
     _ari_cost_tracker.bootstrap_skill("plot")
 except Exception:
     pass

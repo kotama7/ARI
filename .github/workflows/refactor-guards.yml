@@ -1,0 +1,105 @@
+# Phase DR4 / DEPRECATION_REMOVAL.md §8-2 — Refactor guard rails.
+#
+# Two guards live here:
+# 1. **No new ``~/.ari/`` references** — diff against ``main`` and fail
+#    on additions outside the ``migrations/`` package.
+# 2. **No accidental writes to ``$HOME/.ari/`` during pytest** — run the
+#    test suite under a redirected HOME and assert the directory stays
+#    empty.
+
+name: refactor-guards
+
+on:
+  pull_request:
+    branches:
+      - main
+      - refactoring
+
+jobs:
+  no-home-ari-writes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Runtime deps (mcp, letta-client, websockets, ...) live in
+          # the repo-root requirements.txt; ari-core/pyproject.toml
+          # intentionally excludes them so non-PyPI skill imports
+          # (ari_skill_memory) do not trip pip's index resolver.
+          pip install -r requirements.txt
+          # Editable installs in dependency order: skill-memory first
+          # (ari-core imports it directly), then core itself.
+          pip install -e ari-skill-memory
+          pip install -e ari-core
+          # ari-core tests transitively import a few skill modules via
+          # `sys.path.insert(...)` (e.g. test_event_loop_and_csv reaches
+          # into ari-skill-benchmark/src/server.py).  Pull their PyPI
+          # deps without installing the skill packages — keeps the job
+          # fast and avoids paper-re's git+chz vendor pull.
+          pip install scipy numpy pandas
+          pip install pytest pytest-asyncio pytest-mock respx
+      - name: Run tests under a redirected HOME
+        run: |
+          export HOME="$RUNNER_TEMP/fake_home"
+          mkdir -p "$HOME"
+          # test_dashboard_html.py asserts the Vite production bundle
+          # exists at ari-core/ari/viz/static/dist/.  That artefact is
+          # produced by a separate frontend build job; this guard only
+          # cares about ~/.ari/ writes, not frontend bundling.
+          pytest ari-core/tests/ -q \
+            --ignore=ari-core/tests/test_letta_restart_live.py \
+            --ignore=ari-core/tests/test_letta_start_scripts.py \
+            --ignore=ari-core/tests/test_ollama_gpu.py \
+            --ignore=ari-core/tests/test_dashboard_html.py
+          if [ -d "$HOME/.ari" ]; then
+            echo "::error::Tests created $HOME/.ari/ — see docs/refactor_audit.md"
+            ls -la "$HOME/.ari" || true
+            exit 1
+          fi
+
+  no-new-home-ari-refs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect new ~/.ari references in core
+        run: |
+          # Compare against the merge base. The path-based excludes
+          # below are the legitimate ~/.ari/ touch points: the central
+          # deprecation helper, every back-compat shim that emits a
+          # DeprecationWarning before falling through to PathManager,
+          # the migrations package, and a handful of files whose
+          # ~/.ari/ references are only docstrings/comments
+          # explaining the deprecation.
+          base="$(git merge-base origin/${{ github.base_ref || 'main' }} HEAD)"
+          ADDED=$(git diff "$base" HEAD -- 'ari-core/ari/**.py' \
+            ':!ari-core/ari/_deprecation.py' \
+            ':!ari-core/ari/migrations/' \
+            ':!ari-core/ari/core.py' \
+            ':!ari-core/ari/paths.py' \
+            ':!ari-core/ari/memory_cli.py' \
+            ':!ari-core/ari/memory/auto_migrate.py' \
+            ':!ari-core/ari/memory/file_client.py' \
+            ':!ari-core/ari/publish/backends/ari_registry.py' \
+            ':!ari-core/ari/clone/resolvers/ari.py' \
+            ':!ari-core/ari/registry/__init__.py' \
+            ':!ari-core/ari/viz/state.py' \
+            ':!ari-core/ari/viz/api_settings.py' \
+            ':!ari-core/ari/viz/api_publish.py' \
+            | grep -vE '^\+\+\+ ' \
+            | grep -E '^\+.*(Path\.home\(\).*\.ari|~/\.ari)' \
+            | grep -vE '^\+\s*#' \
+            || true)
+          if [ -n "$ADDED" ]; then
+            echo "::error::New ~/.ari/ references introduced outside the allowed deprecation/shim sites. To allow a new site, add it to the path-exclude list in this workflow with a justification."
+            echo "$ADDED"
+            exit 1
+          fi

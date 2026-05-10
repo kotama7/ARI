@@ -354,7 +354,9 @@ checkpoints/{run_id}/
 ### 项目级状态 (每个检查点)
 
 ARI 不再维护全局配置目录。所有设置文件和代理记忆都存储在活动检查点目录下，
-因此每个实验拥有独立状态，`~/.ari/` 可以安全删除:
+因此每个实验拥有独立状态。v0.5.0 已经移除全局 `$HOME/.ari/` 目录；
+仅存的几个文件系统回退会发出 `DeprecationWarning`，并在 v1.0 中彻底移除
+（详见 `docs/refactor_audit.md` 与 `docs/howto/migration.md`）:
 
 ```
 checkpoints/{run_id}/
@@ -509,7 +511,7 @@ full_paper.tex 注入 \codeavailability{} \codedigest{} \coderef{}
 |--------|------|------|
 | `file://<path>` | 本地文件/目录 | 离线 / 镜像 |
 | `https://<url>` / `http://<url>` | tarball 下载 | 任意 HTTPS host |
-| `ari://<id>` | ari-registry 客户端 | 从 `~/.ari/registries.yaml` 读取 endpoint/token |
+| `ari://<id>` | ari-registry 客户端 | 从 `registries.yaml` 读取 endpoint/token。解析顺序：`$ARI_REGISTRIES_FILE` → `{checkpoint}/.ari/registries.yaml` → `./.ari/registries.yaml`。位于 `$HOME/.ari/` 下的遗留位置在 v0.5.0 已被废弃，发出 `DeprecationWarning`，v1.0 中删除回退。 |
 | `gh:<user>/<repo>` | GitHub repo / release | API + tarball |
 | `doi:<doi>` | Zenodo deposition | DOI → 文件列表 → bundle |
 

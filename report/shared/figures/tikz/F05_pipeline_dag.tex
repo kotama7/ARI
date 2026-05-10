@@ -1,0 +1,47 @@
+% F05: pipeline DAG — paper-style workflow with numbered stages.
+% Inspired by PaperBench Fig 1 (Starace+ 2025): four numbered stages,
+% coloured containers with labels above, persisted artefacts below each
+% station, and a single emphasised refine back-edge.
+% style.tikzstyles is loaded by shared/preamble.tex / standalone wrapper.
+\begin{tikzpicture}[node distance=0.8cm and 1.2cm]
+
+  % --- four stations, evenly spaced -----------------------------------
+  \node[station]                                 (idea)  {\figlabel{F5.idea}};
+  \node[station emph, right=2.6cm of idea]       (expl)  {\figlabel{F5.exploration}};
+  \node[station, right=2.6cm of expl]            (paper) {\figlabel{F5.paper}};
+  \node[station, right=2.6cm of paper]           (rev)   {\figlabel{F5.review}};
+
+  % --- numbered step markers (above-left of each station) ------------
+  \node[numbered step, above left=0.05cm and -0.2cm of idea.north west] {1};
+  \node[numbered step, above left=0.05cm and -0.2cm of expl.north west] {2};
+  \node[numbered step, above left=0.05cm and -0.2cm of paper.north west] {3};
+  \node[numbered step, above left=0.05cm and -0.2cm of rev.north west] {4};
+
+  % --- artefacts, one per station, below ----------------------------
+  \node[artifact, below=1.4cm of expl]           (tree)  {\figlabel{F5.tree_json}};
+  \node[artifact, below=1.4cm of paper]          (draft) {\figlabel{F5.draft}};
+  \node[artifact, below=1.4cm of rev]            (rubric){\figlabel{F5.rubric}};
+
+  % --- thick forward arrows -----------------------------------------
+  \draw[big arrow] (idea)  -- (expl);
+  \draw[big arrow] (expl)  -- (paper);
+  \draw[big arrow] (paper) -- (rev);
+
+  % --- station → artefact (state) ----------------------------------
+  \draw[arrow dashed] (expl)  -- (tree);
+  \draw[arrow dashed] (paper) -- (draft);
+  \draw[arrow dashed] (rev)   -- (rubric);
+
+  % --- refine back-edge (curved, orange, on top) ------------------
+  \draw[big arrow, draw=ari-vermilion] (rev.north) to[bend right=42]
+        node[edge label, fill=ari-orange!15, font=\sffamily\bfseries\footnotesize]{\figlabel{F5.refine}}
+        (paper.north);
+
+  % --- group bands (search vs write&review), in background --------
+  \begin{scope}[on background layer]
+    \node[stage container, fit=(idea)(expl)] (g1) {};
+    \node[stage container, fit=(paper)(rev)] (g2) {};
+    \node[stage title, above=4pt of g1.north west, anchor=south west] {\figlabel{F5.band.search}};
+    \node[stage title, above=4pt of g2.north west, anchor=south west] {\figlabel{F5.band.write}};
+  \end{scope}
+\end{tikzpicture}

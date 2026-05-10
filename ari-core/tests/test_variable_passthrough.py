@@ -29,7 +29,13 @@ def _step_launch():  return (_REACT_COMPONENTS / "Wizard" / "StepLaunch.tsx").re
 def _wizard_page():  return (_REACT_COMPONENTS / "Wizard" / "WizardPage.tsx").read_text()
 def _settings_page(): return (_REACT_COMPONENTS / "Settings" / "SettingsPage.tsx").read_text()
 def _api():   return (_VIZ / "api_experiment.py").read_text()
-def _cfg():   return (_ARI / "config.py").read_text()
+def _cfg():
+    # Phase 2 §6-2: ``ari.config`` is now a package; env-var reads live
+    # in ``__init__.py``.
+    pkg_init = _ARI / "config" / "__init__.py"
+    if pkg_init.exists():
+        return pkg_init.read_text()
+    return (_ARI / "config.py").read_text()
 def _srv():   return (_VIZ / "server.py").read_text()
 def _set():   return (_VIZ / "api_settings.py").read_text()
 

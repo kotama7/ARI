@@ -1,0 +1,26 @@
+figure_id: F08
+description: "Synthetic illustration of best-reward-vs-step curve under BFTS (3 seeds)."
+source:
+  ari_version: null
+  checkpoint_id: null
+  experiment_dir: null
+  generated_at: "2026-05-09T13:30:00Z"
+  generator: "shared/figures/scripts/tree_curve.py:_synthetic_fallback (np.random.default_rng(0))"
+  synthetic: true
+  intended_replacement: "Real ARI checkpoint of bench_x at v0.7.x; to be supplied in a follow-up PR."
+schema:
+  format: csv
+  columns:
+    - {name: step,        dtype: int}
+    - {name: seed,        dtype: int}
+    - {name: best_reward, dtype: float}
+    - {name: cost_usd,    dtype: float}
+provenance:
+  raw_source: synthetic
+  transform: "scripts/tree_curve.py --extract"
+  hash_sha256: null
+license: synthetic
+notes: |
+  Until a frozen ARI checkpoint is provided, this figure is a deterministic
+  synthetic example seeded with np.random.default_rng(0). The shape and the
+  knee location should not be read as empirical observations.

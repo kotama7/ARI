@@ -1,0 +1,17 @@
+citekey: yao2023react
+fetched_at: '2026-05-09T13:55:05+00:00'
+fetched_by: scripts batch on 2026-05-09 (arXiv direct)
+source:
+  s2_paperId: null
+  preferred_url: https://arxiv.org/pdf/2210.03629.pdf
+  resolved_via: arXiv direct
+  arxiv_id: '2210.03629'
+file:
+  filename: yao2023react.pdf
+  size_bytes: 633805
+  sha256: f285b0971ae4a790e402fb93966bed3adde2cf0a04977d08b2b40d6ab0cace69
+  page_count: 33
+license:
+  type: arXiv non-exclusive distribution licence
+  closed_access: false
+notes: ''

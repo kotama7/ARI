@@ -1,0 +1,11 @@
+figure_id: F02
+description: "Synthetic illustration of a small BFTS tree (7 nodes)."
+source:
+  synthetic: true
+  generator: "shared/figures/scripts/tree_render.py:_synthetic_tree"
+  intended_replacement: "An actual frozen tree.json from an ARI v0.7.x run."
+schema:
+  format: json
+  shape: "{nodes: [{id, reward, children: [...]}]}"
+provenance: {raw_source: synthetic, hash_sha256: null}
+license: synthetic

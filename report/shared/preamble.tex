@@ -1,0 +1,179 @@
+% shared/preamble.tex — common preamble for en/ja/zh main.tex
+% Engine-aware (lualatex for en/ja, xelatex for zh).
+
+\usepackage{ifluatex}
+\usepackage{ifxetex}
+
+% ----------------------------------------------------------------- math + symbols
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{bm}
+
+% ----------------------------------------------------------------- typography
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{seqsplit}          % \seqsplit{} for long identifiers
+% Globally tolerate slightly looser line breaks. The two-column layout makes
+% strict \fussy break long file:line identifiers; \sloppy lets TeX add stretch
+% rather than emit Overfull \hbox warnings.
+\sloppy
+\setlength{\emergencystretch}{6em}
+% \code{...}: like \texttt{...} but the content is broken char-by-char so
+% file:line citations don't blow past the column edge.
+\providecommand{\code}[1]{\texttt{\seqsplit{#1}}}
+
+% ----------------------------------------------------------------- CJK fonts
+% Loaded only when the engine is lualatex/xelatex AND a CJK-capable font set
+% can be resolved. If the host has no Noto CJK installed, the build still
+% completes but ja/zh glyphs render as missing-character warnings.
+% luatexja-fontspec is only loaded when the document declares itself as
+% needing CJK support. Set \AriCJK in the language-specific main.tex
+% (ja/main.tex, zh/main.tex) to opt in. Loading it for en/main.tex
+% causes a luatexja-microtype patch warning we don't need.
+% Engine + language-aware CJK setup. Set \AriCJK in the doc's main.tex
+% to opt in; \AriLangJa / \AriLangZh select which lang's fonts to load.
+% This lets `make4ht -ul` drive lualatex even for zh (HTML build),
+% while keeping the canonical zh PDF on xelatex+ctex.
+\ifdefined\luatexversion
+  \ifdefined\AriCJK
+    \ifdefined\AriLangJa
+      \IfFileExists{luatexja-fontspec.sty}{%
+        \PassOptionsToPackage{nopatch=microtype}{luatexja}%
+        \usepackage{luatexja-fontspec}%
+        \IfFontExistsTF{NotoSerifCJKjp-Regular}{%
+          \setmainjfont{NotoSerifCJKjp-Regular}[BoldFont=NotoSansCJKjp-Bold]%
+          \setsansjfont{NotoSansCJKjp-Regular}%
+        }{}%
+      }{}%
+    \fi
+    \ifdefined\AriLangZh
+      \usepackage{fontspec}%
+      \IfFontExistsTF{FandolSong-Regular}{%
+        \setmainfont{FandolSong-Regular}[BoldFont=FandolSong-Bold]%
+      }{}%
+    \fi
+  \fi
+\fi
+\ifdefined\XeTeXversion
+  \ifdefined\AriCJK
+    \IfFileExists{ctex.sty}{%
+      \usepackage[fontset=fandol]{ctex}%
+    }{}%
+  \fi
+\fi
+
+% ----------------------------------------------------------------- layout
+\usepackage[a4paper,margin=20mm,columnsep=8mm]{geometry}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{caption}
+\captionsetup{font=small,labelfont=bf}
+
+% ----------------------------------------------------------------- color (Okabe-Ito)
+\usepackage{xcolor}
+\definecolor{ari-black}{HTML}{000000}
+\definecolor{ari-orange}{HTML}{E69F00}
+\definecolor{ari-skyblue}{HTML}{56B4E9}
+\definecolor{ari-green}{HTML}{009E73}
+\definecolor{ari-yellow}{HTML}{F0E442}
+\definecolor{ari-blue}{HTML}{0072B2}
+\definecolor{ari-vermilion}{HTML}{D55E00}
+\definecolor{ari-pink}{HTML}{CC79A7}
+\definecolor{ari-grid}{HTML}{DDDDDD}
+
+% ----------------------------------------------------------------- TikZ + PGF
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usetikzlibrary{positioning, shapes.geometric, shapes.arrows, arrows.meta, calc, fit, backgrounds, automata, decorations.markings}
+% Inlined copy of shared/figures/style.tikzstyles so the styles register at preamble
+% time. The standalone wrapper (scripts/standalone.tex.tmpl) reads the same style
+% file via \input — both paths arrive at the same definitions.
+\tikzset{
+  every picture/.style={node distance=1.6cm and 2.2cm},
+  every node/.style={font=\small, align=center, inner sep=4pt},
+  block/.style={rectangle, draw=ari-black, rounded corners=2pt,
+                minimum width=2.8cm, minimum height=1.0cm,
+                text width=2.6cm, align=center},
+  block emph/.style={block, fill=ari-blue!15, very thick},
+  block wide/.style={block, minimum width=3.6cm, text width=3.4cm},
+  block emph wide/.style={block emph, minimum width=3.6cm, text width=3.4cm},
+  block aux/.style={block, fill=ari-grid, dashed},
+  block lane/.style={block, minimum width=2.4cm, text width=2.2cm},
+  block lane wide/.style={block, minimum width=3.2cm, text width=3.0cm},
+  mcp band/.style={block emph, minimum width=8cm, text width=7.6cm},
+  block ckpt root/.style={block native, minimum width=5.2cm, text width=5.0cm},
+  artifact wide/.style={artifact, minimum width=3.6cm, text width=3.4cm},
+  artifact medium/.style={artifact, minimum width=3.0cm, text width=2.8cm},
+  block lane native wide/.style={block lane native, minimum width=3.6cm, text width=3.4cm},
+  block native big/.style={block native, minimum width=4.0cm, text width=3.8cm},
+  block emph big/.style={block emph, minimum width=3.6cm, text width=3.4cm},
+  block big/.style={block, minimum width=3.0cm, text width=2.8cm},
+  decision wide/.style={decision, text width=2.4cm},
+  block lane med/.style={block lane, text width=2.4cm},
+  numbered step/.style={circle, fill=ari-black, text=white, font=\bfseries\small, inner sep=2pt, minimum size=18pt},
+  stage container/.style={rectangle, draw=ari-blue, very thick, rounded corners=6pt, fill=ari-skyblue!12, inner sep=14pt, minimum height=3.0cm},
+  stage container vendor/.style={stage container, draw=ari-vermilion, fill=ari-orange!10},
+  stage title/.style={font=\bfseries\small\sffamily, text=ari-black},
+  station/.style={rectangle, draw=ari-black, line width=0.7pt, rounded corners=2pt, fill=white, minimum width=2.6cm, minimum height=0.8cm, text width=2.4cm, align=center, font=\sffamily\footnotesize},
+  station emph/.style={station, fill=ari-skyblue!25, line width=1pt},
+  station emph wide/.style={station emph, minimum width=3.0cm, text width=2.8cm},
+  station emph big/.style={station emph, minimum width=3.4cm, text width=3.2cm, minimum height=1.0cm},
+  big arrow/.style={-{Stealth[length=8pt,width=8pt]}, line width=1.5pt, draw=ari-black},
+  block native/.style={block, fill=ari-skyblue!18, draw=ari-blue, very thick},
+  block vendor/.style={block, fill=ari-orange!22, draw=ari-vermilion, very thick},
+  block external/.style={block, fill=ari-green!18, draw=ari-green, very thick},
+  block lane native/.style={block lane, fill=ari-skyblue!18, draw=ari-blue},
+  block lane vendor/.style={block lane, fill=ari-orange!22, draw=ari-vermilion},
+  band label/.style={font=\bfseries\footnotesize\sffamily, text=ari-black},
+  decision/.style={diamond, draw, aspect=2, minimum width=2.6cm,
+                   minimum height=1.0cm, text width=2.0cm,
+                   align=center, inner sep=1pt},
+  state/.style={circle, draw=ari-black, minimum width=1.6cm, inner sep=2pt},
+  state init/.style={state, fill=ari-blue!15},
+  state final/.style={state, fill=ari-green!15, double},
+  artifact/.style={block, fill=ari-grid, dashed},
+  arrow/.style={->, >=Stealth, thick, shorten <=2pt, shorten >=2pt},
+  arrow dashed/.style={arrow, dashed},
+  arrow thick/.style={arrow, very thick},
+  arrow back/.style={arrow, draw=ari-vermilion},
+  edge label/.style={midway, font=\footnotesize, fill=white,
+                     inner sep=1pt, rounded corners=1pt},
+  edge label above/.style={edge label, sloped, above},
+  swim lane/.style={draw=ari-grid, dashed, minimum height=2.5cm,
+                    text width=12cm, align=left, anchor=north west},
+  swim lane label/.style={font=\bfseries\footnotesize, anchor=north west},
+  group/.style={draw=ari-skyblue!50, very thick, rounded corners=4pt, inner sep=10pt},
+  group strong/.style={draw=ari-blue, very thick, rounded corners=4pt, inner sep=10pt, fill=ari-skyblue!8},
+}
+
+% ----------------------------------------------------------------- biblatex
+% Default to biber; ARI's own dev environment does not yet have biber installed,
+% so we expose a fallback hook (\AriBibBackend) that can be set to `bibtex` at
+% build time via `lualatex "\def\AriBibBackend{bibtex}\input{main}"` if needed.
+\providecommand{\AriBibBackend}{biber}
+\usepackage[backend=\AriBibBackend,style=numeric-comp,sorting=nyt,maxnames=6]{biblatex}
+\addbibresource{../shared/references.bib}
+
+% ----------------------------------------------------------------- hyperref last
+\usepackage[colorlinks=true,linkcolor=ari-blue,citecolor=ari-blue,urlcolor=ari-vermilion]{hyperref}
+\usepackage{cleveref}
+
+% ----------------------------------------------------------------- notation macros
+\input{../shared/notation.tex}
+
+% ----------------------------------------------------------------- figure label abstraction (i18n)
+% \figlabeldef{key}{value} sets, \figlabel{key} reads.
+\makeatletter
+\newcommand{\figlabeldef}[2]{\@namedef{figlabel@#1}{#2}}
+\newcommand{\figlabel}[1]{%
+  \@ifundefined{figlabel@#1}%
+    {\PackageWarning{figlabel}{Undefined figlabel '#1'; using key}#1}%
+    {\csname figlabel@#1\endcsname}%
+}
+\makeatother
+
+% ----------------------------------------------------------------- glossary term wrapper
+\newcommand{\term}[1]{\textit{#1}}

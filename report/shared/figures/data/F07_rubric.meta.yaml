@@ -1,0 +1,11 @@
+figure_id: F07
+description: "Synthetic illustration of a 5-category PaperBench-style rubric tree."
+source:
+  synthetic: true
+  generator: "shared/figures/scripts/rubric_render.py:_synthetic_rubric"
+  intended_replacement: "A real rubric.json from a PaperBench run."
+schema:
+  format: yaml
+  shape: "{title, categories: [{name, weight, leaves: [...]}]}"
+provenance: {raw_source: synthetic, hash_sha256: null}
+license: synthetic

@@ -26,7 +26,8 @@ def build_app(data_dir=None):
     except ImportError as e:  # pragma: no cover
         raise RuntimeError("fastapi is required to run the registry; pip install fastapi uvicorn") from e
 
-    data_dir = Path(data_dir or os.environ.get("ARI_REGISTRY_DATA") or Path.home() / ".ari" / "registry-data")
+    from ari.registry import resolve_data_dir
+    data_dir = resolve_data_dir(data_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
     storage = FilesystemStorage(data_dir)
     tokens = TokenStore(data_dir / "tokens.db")

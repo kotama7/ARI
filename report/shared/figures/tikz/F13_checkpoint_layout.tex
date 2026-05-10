@@ -1,0 +1,49 @@
+% F13: checkpoint directory layout — what every run leaves on disk.
+% style.tikzstyles is loaded by shared/preamble.tex / standalone wrapper.
+\begin{tikzpicture}[node distance=0.35cm and 1.0cm]
+
+  % --- root (top centre) ----------------------------------------------
+  \node[block ckpt root]                               (ckpt)  {\figlabel{F13.root}};
+
+  % --- left column: run-level files (header + entries) ---------------
+  \node[band label, below left=1.2cm and 0.8cm of ckpt, anchor=north east, text=ari-blue]
+                                                       (lh)    {\figlabel{F13.band.shared}};
+  \node[artifact wide, below=of lh.south east, anchor=north east] (tree)  {\figlabel{F13.tree}};
+  \node[artifact wide, below=of tree]                  (nodes) {\figlabel{F13.nodes}};
+  \node[artifact wide, below=of nodes]                 (res)   {\figlabel{F13.results}};
+  \node[artifact wide, below=of res]                   (cost)  {\figlabel{F13.cost}};
+  \node[artifact wide, below=of cost]                  (mem)   {\figlabel{F13.memory}};
+  \node[artifact wide, below=of mem]                   (lin)   {\figlabel{F13.lineage}};
+
+  % --- right column: per-node working trees --------------------------
+  \node[band label, below right=1.2cm and 0.8cm of ckpt, anchor=north west, text=ari-blue]
+                                                       (rh)    {\figlabel{F13.band.pernode}};
+  \node[block lane native wide, below=of rh.south west, anchor=north west] (n0) {\figlabel{F13.node0}};
+  \node[block lane native wide, below=of n0]           (n1)    {\figlabel{F13.node1}};
+  \node[block lane native wide, below=of n1]           (n2)    {\figlabel{F13.node2}};
+  \node[block lane native wide, dashed, below=of n2]   (nN)    {\figlabel{F13.nodeN}};
+
+  % --- per-node internals (sub-tree for n0) --------------------------
+  \node[artifact medium, right=1.2cm of n0]            (out)   {\figlabel{F13.nodeout}};
+  \node[artifact medium, below=of out]                 (log)   {\figlabel{F13.nodelog}};
+  \node[artifact medium, below=of log]                 (rep)   {\figlabel{F13.nodereport}};
+
+  % --- root → column headers ------------------------------------------
+  \draw[arrow dashed, very thick] (ckpt.south west) to[bend right=10] (lh.north);
+  \draw[arrow dashed, very thick] (ckpt.south east) to[bend left=10] (rh.north);
+
+  % --- header → first file ------------------------------------------
+  \draw[arrow dashed, very thick, ari-blue] (lh.south) -- (tree.north);
+  \draw[arrow dashed, very thick, ari-blue] (rh.south) -- (n0.north);
+
+  % --- per-node n0 → 3 internals -----------------------------------
+  \draw[arrow dashed] (n0.east) -- (out.west);
+  \draw[arrow dashed] (n0.east) to[bend right=10] (log.west);
+  \draw[arrow dashed] (n0.east) to[bend right=18] (rep.west);
+
+  % --- group bands ---------------------------------------------------
+  \begin{scope}[on background layer]
+    \node[group, fit=(lh)(tree)(nodes)(res)(cost)(mem)(lin)] (gA) {};
+    \node[group, fit=(rh)(n0)(n1)(n2)(nN)(out)(log)(rep)]    (gB) {};
+  \end{scope}
+\end{tikzpicture}

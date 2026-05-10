@@ -1,0 +1,129 @@
+# `ari.public` — Stable API for skills
+
+`ari.public` is the **only** module surface that `ari-skill-*`
+packages may depend on.  Everything outside it is internal and may
+change without notice.  The package is a thin re-export layer over
+the corresponding `ari.<module>` private implementations so core can
+refactor freely while the skill-facing contract stays put.  It was
+introduced in v0.7.1 (Phase 4 of the v0.7+ refactor) and is enforced
+by `ari-core/tests/test_public_api_boundary.py`.
+
+## Sub-modules
+
+| Sub-module | What it re-exports | Skills that use it |
+|---|---|---|
+| `ari.public.config_schema` | Pydantic config models (`ARIConfig`, `LLMConfig`, ...) | callers needing typed settings |
+| `ari.public.container` | Container runtime helpers (`ContainerConfig`, `run_in_container`, ...) | `ari-skill-coding` (tests) |
+| `ari.public.cost_tracker` | LLM cost recording (`bootstrap_skill`, `record`, ...) | `ari-skill-plot` (LLM call cost) |
+| `ari.public.llm` | `LLMClient` (LiteLLM wrapper with cost integration) | callers that prefer ARI's wrapper |
+| `ari.public.paths` | `PathManager` (checkpoint path resolver) | callers that need scoped paths |
+
+## `ari.public.config_schema`
+
+Re-exports the Pydantic models from `ari.config`:
+
+```python
+from ari.public.config_schema import (
+    ARIConfig,
+    BFTSConfig,
+    CheckpointConfig,
+    EvaluatorConfig,
+    LLMConfig,
+    LoggingConfig,
+    SkillConfig,
+)
+
+cfg = ARIConfig.model_validate(yaml.safe_load(open("ari.yaml")))
+```
+
+The exported names track `ari/config.py` symbol-for-symbol; consult
+that file for current field shapes.  Source:
+`ari-core/ari/public/config_schema.py`.
+
+## `ari.public.container`
+
+Re-exports the container runtime from `ari.container`:
+
+| Symbol | Purpose |
+|---|---|
+| `ContainerConfig` | Dataclass: `mode`, `image`, `bind_paths`, `gpu`, ... |
+| `detect_runtime()` | Returns `"singularity"` / `"apptainer"` / `"docker"` / `"none"` based on `which` lookups |
+| `config_from_env()` | Builds a `ContainerConfig` from `ARI_CONTAINER_*` env vars (returns `None` when unset) |
+| `pull_image(cfg)` | Pulls / builds the image referenced by `cfg` |
+| `run_in_container(cfg, cmd, ...)` | Runs a process inside the container, returning exit code + captured streams |
+| `run_shell_in_container(cfg, script, ...)` | Same, but takes a bash script string |
+| `list_images()` | Inventory of available images in the active runtime |
+| `get_container_info()` | Diagnostic dict with runtime + image health |
+
+Source: `ari-core/ari/container.py` → `ari-core/ari/public/container.py`.
+
+## `ari.public.cost_tracker`
+
+Re-exports the LLM cost tracker from `ari.cost_tracker`:
+
+| Symbol | Purpose |
+|---|---|
+| `CostTracker` | Aggregator instance written to `cost_log.jsonl` |
+| `CallRecord` | Per-call dataclass (`model`, `prompt_tokens`, `completion_tokens`, `cost_usd`, `metadata`) |
+| `init(log_dir)` | Initialise the global tracker rooted at `log_dir` |
+| `init_from_env()` | Initialise using `ARI_CHECKPOINT_DIR` automatically (most callers want this) |
+| `bootstrap_skill(skill_name, phase=None)` | Convenience wrapper for skills — initialises + tags every record |
+| `record(**kwargs)` | Append a manual `CallRecord` (used when not going through LiteLLM callback) |
+| `set_default_metadata(**kwargs)` | Tag every subsequent record with extra metadata |
+| `get()` | Get the current tracker (or `None`) |
+
+Skills typically only need `bootstrap_skill` at startup; the LiteLLM
+callback handles the rest.  Source:
+`ari-core/ari/cost_tracker.py` → `ari-core/ari/public/cost_tracker.py`.
+
+## `ari.public.llm`
+
+Re-exports `LLMClient` from `ari.llm.client`:
+
+```python
+from ari.public.llm import LLMClient
+
+client = LLMClient(model="ollama/qwen3:32b")
+resp = await client.complete([{"role": "user", "content": "..."}])
+```
+
+Use this in preference to calling LiteLLM directly — `LLMClient`
+threads through ARI's cost tracker and metadata tagging.  Source:
+`ari-core/ari/llm/client.py` → `ari-core/ari/public/llm.py`.
+
+## `ari.public.paths`
+
+Re-exports `PathManager` from `ari.paths`:
+
+```python
+from ari.public.paths import PathManager
+
+paths = PathManager.from_env()        # honours ARI_CHECKPOINT_DIR
+nodes_json = paths.checkpoint / "nodes_tree.json"
+```
+
+`PathManager` is the central resolver — never read `ARI_CHECKPOINT_DIR`
+directly from a skill.  Source: `ari-core/ari/paths.py` →
+`ari-core/ari/public/paths.py`.
+
+## Stability guarantees
+
+- **MAJOR (SemVer)** — symbols, signatures, and behaviour can break.
+- **MINOR** — new symbols added; existing ones extended in
+  backwards-compatible ways (new optional kwargs allowed).
+- **PATCH** — bug fixes only.
+
+Anything imported via `from ari import <X>` directly (rather than
+`from ari.public import <X>`) bypasses this contract — skill authors
+should grep their imports against `ari/public/__init__.py` and move
+internal-import boundaries through the public layer.
+
+## See also
+
+- `ari-core/ari/public/__init__.py` — module-level docstring with
+  the canonical sub-module list.
+- `docs/extension_guide.md` — how to write a new skill that depends
+  only on `ari.public`.
+- `CONTRIBUTING.md::Software-engineering discipline §3` — public-API
+  rule (skills only see `ari.public.*`).
+- `docs/refactor_audit.md` (§4) — historical Phase 4 inventory.

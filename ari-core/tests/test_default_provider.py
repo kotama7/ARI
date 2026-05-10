@@ -82,6 +82,19 @@ def clean_env(monkeypatch):
 # A. DEFAULT VALUES: Never Empty
 # ══════════════════════════════════════════════════════════════════════════
 
+def _viz_server_concat(viz_dir: Path) -> str:
+    """Phase 3B PR-3B-1: ``server.py`` was split into sibling modules
+    (``websocket.py``, ``ui_helpers.py``, ``routes.py``); concatenate
+    them so existing source-text checks still find the moved literals.
+    """
+    parts = []
+    for name in ("ui_helpers.py", "websocket.py", "routes.py", "server.py"):
+        p = viz_dir / name
+        if p.exists():
+            parts.append(p.read_text())
+    return "\n".join(parts)
+
+
 class TestDefaultProviderConstant:
     """React DEFAULT_PROVIDER constant exists and is consistent with workflow.yaml."""
 
@@ -525,24 +538,24 @@ class TestSettingsToStatePropagation:
     """Saved settings flow into /state endpoint response."""
 
     def test_server_state_reads_settings(self):
-        srv = (_VIZ / "server.py").read_text()
+        srv = _viz_server_concat(_VIZ)
         # /state handler must call _api_get_settings
         assert "_api_get_settings" in srv, \
             "server.py /state handler must call _api_get_settings"
 
     def test_state_experiment_config_has_llm_backend(self):
-        srv = (_VIZ / "server.py").read_text()
+        srv = _viz_server_concat(_VIZ)
         assert "llm_backend" in srv, \
             "state experiment_config must include llm_backend"
 
     def test_state_experiment_config_has_llm_model(self):
-        srv = (_VIZ / "server.py").read_text()
+        srv = _viz_server_concat(_VIZ)
         assert "llm_model" in srv, \
             "state experiment_config must include llm_model"
 
     def test_state_priority_launch_over_settings(self):
         """State must prefer launch config over saved settings."""
-        srv = (_VIZ / "server.py").read_text()
+        srv = _viz_server_concat(_VIZ)
         # _launch_llm_model must appear before saved2.get("llm_model")
         idx_launch = srv.find("_launch_llm_model")
         idx_saved = srv.find('saved2.get("llm_model"')

@@ -7,41 +7,52 @@ from pathlib import Path
 from typing import Optional
 
 # Pricing per 1K tokens (input, output) in USD.
-# Sources: openai.com/api/pricing, claude.com/pricing, ai.google.dev/pricing
-# Last verified: 2026-03-28
-_PRICING: dict[str, tuple[float, float]] = {
-    # OpenAI
-    "gpt-5.2":           (0.00175, 0.014),
-    "gpt-5":             (0.00125, 0.010),
-    "gpt-4o-mini":       (0.00015, 0.0006),
-    "gpt-4o":            (0.0025, 0.010),
-    "gpt-4":             (0.03, 0.06),
-    "gpt-3.5-turbo":     (0.0005, 0.0015),
-    "o3-mini":           (0.0011, 0.0044),
-    "o4-mini":           (0.0011, 0.0044),
-    "o3":                (0.002, 0.008),
-    # Anthropic
-    "claude-opus-4-6":   (0.005, 0.025),
-    "claude-sonnet-4-6": (0.003, 0.015),
-    "claude-sonnet-4-5": (0.003, 0.015),
-    "claude-opus-4-5":   (0.005, 0.025),
-    "claude-opus-4-1":   (0.015, 0.075),
-    "claude-opus-4":     (0.015, 0.075),
-    "claude-sonnet-4":   (0.003, 0.015),
-    "claude-haiku-4-5":  (0.001, 0.005),
-    "claude-3-5-sonnet": (0.003, 0.015),
-    "claude-3-opus":     (0.015, 0.075),
-    # Google Gemini
-    "gemini-2.5-pro":    (0.00125, 0.010),
-    "gemini-2.0-flash":  (0.0001, 0.0004),
-    "gemini-1.5-pro":    (0.00125, 0.005),
-}
+#
+# Phase PC1: the actual table lives in ``ari/configs/model_prices.yaml``
+# so adding a new model is a YAML edit, not a code change.  We load it
+# lazily on first use to avoid forcing PyYAML on contexts that never
+# call ``_estimate_cost`` (e.g. shallow CLI imports).
+
+
+def _load_pricing() -> dict[str, tuple[float, float]]:
+    try:
+        from ari.configs import FilesystemConfigLoader
+        raw = FilesystemConfigLoader().load("model_prices")
+    except Exception:
+        return {}
+    out: dict[str, tuple[float, float]] = {}
+    if not isinstance(raw, dict):
+        return out
+    for k, v in raw.items():
+        if isinstance(v, (list, tuple)) and len(v) == 2:
+            try:
+                out[str(k)] = (float(v[0]), float(v[1]))
+            except (TypeError, ValueError):
+                continue
+    return out
+
+
+_PRICING_CACHE: dict[str, tuple[float, float]] | None = None
+
+
+def _pricing() -> dict[str, tuple[float, float]]:
+    global _PRICING_CACHE
+    if _PRICING_CACHE is None:
+        _PRICING_CACHE = _load_pricing()
+    return _PRICING_CACHE
+
+
+def __getattr__(name: str):  # PEP 562 — keep ``_PRICING`` source-compatible.
+    if name == "_PRICING":
+        return _pricing()
+    raise AttributeError(name)
 
 def _estimate_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
-    key = next((k for k in _PRICING if k in model.lower()), None)
+    pricing = _pricing()
+    key = next((k for k in pricing if k in model.lower()), None)
     if not key:
         return 0.0
-    inp, out = _PRICING[key]
+    inp, out = pricing[key]
     return (prompt_tokens * inp + completion_tokens * out) / 1000.0
 
 @dataclass
@@ -193,9 +204,9 @@ def init_from_env() -> Optional[CostTracker]:
     the tracker on success, ``None`` when the env var is missing or the
     directory cannot be created.
     """
-    import os as _os
-    ckpt = _os.environ.get("ARI_CHECKPOINT_DIR", "").strip()
-    if not ckpt:
+    from ari.paths import PathManager as _PathManager
+    ckpt = _PathManager.checkpoint_dir_from_env()
+    if ckpt is None:
         return None
     try:
         return init(ckpt)

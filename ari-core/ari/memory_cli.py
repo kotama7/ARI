@@ -33,9 +33,10 @@ console = Console()
 
 def _resolve_ckpt(path: "str | Path | None", scan: bool = False) -> Path:
     if path is None:
-        env = os.environ.get("ARI_CHECKPOINT_DIR", "").strip()
-        if env:
-            return Path(env).expanduser().resolve()
+        from ari.paths import PathManager
+        env_ckpt = PathManager.checkpoint_dir_from_env()
+        if env_ckpt is not None:
+            return env_ckpt.expanduser().resolve()
         raise typer.BadParameter(
             "--checkpoint is required (no ARI_CHECKPOINT_DIR in env)"
         )
@@ -43,7 +44,8 @@ def _resolve_ckpt(path: "str | Path | None", scan: bool = False) -> Path:
 
 
 def _get_backend(checkpoint_dir: Path):
-    os.environ["ARI_CHECKPOINT_DIR"] = str(checkpoint_dir)
+    from ari.paths import PathManager
+    PathManager.set_checkpoint_dir_env(checkpoint_dir)
     from ari_skill_memory.backends import get_backend
     return get_backend(checkpoint_dir=checkpoint_dir)
 
@@ -108,7 +110,11 @@ def migrate_cmd(
         console.print(f"[green]✓ imported {len(react_entries)} react entries[/green]")
 
     # Global memory: detect but do not migrate.
-    global_path = Path.home() / ".ari" / "global_memory.jsonl"
+    # Phase 5 (REFACTORING.md §8) parks the legacy path in
+    # ``ari.migrations.v05_to_v07.memory`` so all readers reference one
+    # constant — the v1.0 deletion only has to remove that file.
+    from ari.migrations.v05_to_v07.memory import LEGACY_GLOBAL_PATH
+    global_path = LEGACY_GLOBAL_PATH
     if global_path.exists():
         console.print(
             f"[yellow]WARNING: {global_path} found — global memory is removed in "
@@ -303,7 +309,20 @@ def prune_local_cmd(
         ["docker", "compose", "-f", str(root / "docker-compose.yml"), "down", "-v"],
         check=False,
     )
-    venv = Path(os.environ.get("ARI_LETTA_VENV", str(Path.home() / ".ari/letta-venv")))
+    env_value = os.environ.get("ARI_LETTA_VENV", "").strip()
+    if env_value:
+        venv = Path(env_value)
+    else:
+        # Phase DR2 (DEPRECATION_REMOVAL.md tier B): the legacy
+        # ``~/.ari/letta-venv/`` fallback is kept for one minor version
+        # behind a DeprecationWarning; v1.0 makes ARI_LETTA_VENV mandatory.
+        venv = Path.home() / ".ari/letta-venv"
+        if venv.exists():
+            from ari._deprecation import warn_deprecated_path
+            warn_deprecated_path(
+                venv,
+                replacement="ARI_LETTA_VENV environment variable (will be required in v1.0)",
+            )
     if venv.exists():
         shutil.rmtree(venv, ignore_errors=True)
     dotletta = Path.home() / ".letta"

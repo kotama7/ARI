@@ -420,7 +420,10 @@ compatible with pipeline stages that expect `nodes_tree.json`.
 
 ARI no longer maintains a global config directory.  Every settings file and
 agent memory store lives under the active checkpoint, so each experiment
-gets its own isolated state and `~/.ari/` is safe to remove:
+gets its own isolated state.  v0.5.0 removed the global `$HOME/.ari/`
+directory; the few remaining filesystem fallbacks emit a
+`DeprecationWarning` and disappear in v1.0 (see `docs/refactor_audit.md`
+and `docs/howto/migration.md`):
 
 ```
 checkpoints/{run_id}/
@@ -444,19 +447,33 @@ environment variables injected at launch.
 |--------|-------------|
 | `ari/orchestrator/bfts.py` | Branch-and-Frontier Tree Search — node expansion, selection, pruning; ranks by `_scientific_score` |
 | `ari/orchestrator/node.py` | Node dataclass — id, parent_id, depth, label, metrics, artifacts, memory |
+| `ari/orchestrator/node_report/` | Per-node self-report builder + legacy reconstruction (split into a package in v0.7.1) |
+| `ari/orchestrator/lineage_decision.py` | Lineage-decision LLM hook (BFTS rewind / branch / continue) |
+| `ari/orchestrator/root_idea_selector.py` | VirSci pool → `ideas[0]` re-selector |
 | `ari/agent/loop.py` | ReAct agent loop — LLM + tool calls per node; auto-polls SLURM jobs; injects ancestor memory |
+| `ari/agent/message_utils.py` / `tool_manager.py` / `guidance.py` | Helpers extracted from `agent/loop.py` (Phase 3D, v0.7.1) |
 | `ari/agent/workflow.py` | WorkflowHints — auto-extracted from experiment text (tool sequence, metric keyword, partition) |
-| `ari/pipeline.py` | Post-BFTS pipeline driver — template resolution, stage execution, output wiring |
-| `ari/evaluator/llm_evaluator.py` | Metric extraction + peer-review scoring (`scientific_score`, `comparison_found`) |
+| `ari/agent/react_driver.py` | Pipeline-driven ReAct entry-point used by paper-pipeline stages |
+| `ari/pipeline/` | Post-BFTS pipeline driver, split into `experiment_md`, `yaml_loader`, `stage_control`, `context_builder`, `stage_runner`, `orchestrator` (Phase 3C, v0.7.1) |
+| `ari/evaluator/llm_evaluator.py` | Metric extraction + peer-review scoring (`scientific_score`, `comparison_found`); selected via `ari.protocols.Evaluator` injection |
 | `ari/memory/letta_client.py` | `LettaMemoryClient` — ReAct-trace persistence backed by the `ari_react_*` Letta collection |
 | `ari/memory/file_client.py` | Deprecated v0.5.x file-backed client; kept only for `ari memory migrate --react` |
-| `ari/memory/auto_migrate.py` | First-launch v0.5.x JSONL → Letta importer |
+| `ari/memory/auto_migrate.py` | First-launch v0.5.x JSONL → Letta importer (legacy shim wraps `migrations/v05_to_v07/memory.py`) |
 | `ari/memory_cli.py` | `ari memory …` subcommand (migrate / backup / restore / start-local / …) |
 | `ari/mcp/client.py` | Async MCP client — thread-safe, fresh event loops for parallel execution |
 | `ari/llm/client.py` | LLM routing via litellm (Ollama, OpenAI, Anthropic, any OpenAI-compatible) |
-| `ari/config.py` | Config dataclasses (BFTSConfig, LLMConfig, PipelineConfig) |
-| `ari/core.py` | Top-level runtime builder — wires all components |
-| `ari/cli.py` | CLI: `ari run`, `ari paper`, `ari status` |
+| `ari/config/` | Config dataclasses (BFTSConfig, LLMConfig, PipelineConfig) + workflow.yaml finder (Phase 2) |
+| `ari/configs/` | YAML lookup tables (`model_prices.yaml`, `defaults.yaml`) loaded via `FilesystemConfigLoader` |
+| `ari/prompts/` | Externalised LLM prompts (`agent/`, `orchestrator/`, `pipeline/`, `evaluator/`, `viz/`) loaded via `FilesystemPromptLoader`; sha256-pinned in `tests/test_prompt_extraction.py` |
+| `ari/protocols/` | Cross-layer Protocols — `Evaluator`, `PromptLoader`, `ConfigLoader` |
+| `ari/paths.py` | `PathManager` — single source of truth for `ARI_CHECKPOINT_DIR` reads + writes (Phase 1) |
+| `ari/checkpoint.py` | Shared `tree.json` / `nodes_tree.json` I/O (Phase 2) |
+| `ari/_deprecation.py` | `warn_deprecated_path / _env / _field` helpers backing the DR1–DR4 warnings |
+| `ari/migrations/v05_to_v07/` | Isolated v0.5 → v0.7 migration shims (scheduled for removal in v1.0) |
+| `ari/public/` | Stable re-export layer skills are allowed to import (`container`, `cost_tracker`, `paths`, `llm`, `config_schema`); CI-enforced by `tests/test_public_api_boundary.py` |
+| `ari/core.py` | Top-level runtime builder — composition root for Protocol-injected dependencies |
+| `ari/cli/` | Typer CLI split package: `__init__`, `run`, `projects`, `commands`, `bfts_loop`, `lineage`, `migrate` (Phase 3A, v0.7.1) |
+| `ari/viz/routes.py` / `websocket.py` / `ui_helpers.py` / `checkpoint_*` / `state_sync.py` | HTTP + SSE GUI backend, split out of the legacy `viz/server.py` and `viz/api_state.py` (Phase 3B, v0.7.1) |
 
 ### Skills (MCP servers)
 
@@ -532,7 +549,7 @@ else (S3, Zenodo, gh release, local mirror) still verifies.
 |--------|----------|-------|
 | `file://<path>` | local file or directory | offline / mirror |
 | `https://<url>` / `http://<url>` | tarball download | any HTTPS host |
-| `ari://<id>` | ari-registry client | reads `~/.ari/registries.yaml` for endpoint/token |
+| `ari://<id>` | ari-registry client | reads `registries.yaml` for endpoint/token. Resolution: `$ARI_REGISTRIES_FILE` → `{checkpoint}/.ari/registries.yaml` → `./.ari/registries.yaml`. The legacy `$HOME/.ari/` location was removed in v0.5.0 and emits a `DeprecationWarning` (fallback dropped in v1.0). |
 | `gh:<user>/<repo>` | GitHub repo or release | API + tarball |
 | `doi:<doi>` | Zenodo deposition | DOI → file list → bundle |
 
@@ -1099,3 +1116,28 @@ pipeline:
 ```
 
 No changes to `ari-core` required.
+
+---
+
+## Layered architecture (v0.7+ refactor)
+
+The post-refactor `ari-core/ari/` package is organised in five layers
+to minimise coupling.  See `CONTRIBUTING.md` for the design discipline
+that keeps the layering intact.
+
+| Layer | Subpackage | Owns |
+|---|---|---|
+| 0 — primitives | `paths`, `checkpoint`, `_deprecation`, `cost_tracker`, `pidfile`, `lineage`, `env_detect`, `schemas`, `configs`, `prompts`, `protocols` | Path resolution, deprecation warnings, cost tracking, prompt/config loaders, structural protocols. No internal ARI deps. |
+| 1 — domain models | `llm`, `mcp`, `memory`, `clone`, `publish`, `evaluator`, `orchestrator/node`, `orchestrator/scheduler`, `orchestrator/node_selection` | Data models + thin wrappers over upstream libs (litellm, MCP, Letta). |
+| 2 — orchestrator | `orchestrator/{bfts, lineage_decision, node_report, root_idea_selector}` | BFTS exploration, lineage-decision LLM hook, per-node reports. |
+| 3 — agent | `agent/{loop, react_driver, workflow, message_utils, tool_manager, guidance, run_env}` | ReAct execution + experiment-specific WorkflowHints injection. |
+| 4 — pipeline | `pipeline/{__init__, experiment_md, yaml_loader, stage_control, context_builder, stage_runner, orchestrator}` | YAML-driven stage runner, paper-pipeline glue. |
+| 5 — entry points | `cli/{__init__, run, projects, commands, bfts_loop, lineage, migrate}`, `cli_ear`, `viz/*`, `registry/*`, `public/*` | Typer CLI, viz HTTP server, registry FastAPI, public re-export layer for skills. |
+
+Migration code (`migrations/v05_to_v07/*`) lives outside the layers
+and will be deleted in v1.0.  Skills must only import from `ari.public.*`
+— the boundary CI in `ari-core/tests/test_public_api_boundary.py`
+enforces this on every PR.
+
+Shared cross-layer Protocols live in `ari/protocols/` (canonical
+implementations: `Evaluator`, `PromptLoader`, `ConfigLoader`).

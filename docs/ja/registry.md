@@ -8,18 +8,23 @@
 
 ## クイックスタート
 
+> **メモ:** v0.5.0 でグローバル `$HOME/.ari/` ディレクトリは廃止されました。レジストリ関連のパスは `ARI_REGISTRY_DATA` `ARI_REGISTRIES_FILE` env var、もしくはアクティブなチェックポイント（`$ARI_CHECKPOINT_DIR/.ari/registries.yaml`）配下にスコープされます。詳細は `docs/refactor_audit.md` と `docs/howto/migration.md`。レガシーフォールバックは v1.0 で削除されます。
+
 ```bash
 # 1. サーバ依存をインストール（デフォルト install には含めず slim を保つ）
 ./setup.sh --with-registry        # または: pip install fastapi uvicorn[standard] python-multipart
 
-# 2. 起動
-./scripts/registry/start_local.sh # uvicorn を 127.0.0.1:8290 で、sqlite は ~/.ari/registry-data 配下
+# 2. データディレクトリを指定して起動（デフォルトポート 8290）
+export ARI_REGISTRY_DATA="$PWD/.ari_registry"
+./scripts/registry/start_local.sh
 
 # 3. token を発行（平文は 1 度だけ表示）
 ari registry token issue alice
 
 # 4. クライアント設定
-cat > ~/.ari/registries.yaml <<EOF
+export ARI_REGISTRIES_FILE="$ARI_CHECKPOINT_DIR/.ari/registries.yaml"
+mkdir -p "$(dirname "$ARI_REGISTRIES_FILE")"
+cat > "$ARI_REGISTRIES_FILE" <<EOF
 registries:
   - name: default
     url: http://127.0.0.1:8290

@@ -7,62 +7,166 @@ import re
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class LLMConfig(BaseModel):
-    backend: str = "ollama"
-    model: str = "qwen3:8b"
-    api_key: str | None = None
-    base_url: str | None = None
-    temperature: float = 0.7
+    backend: str = Field(
+        "ollama",
+        description="LLM backend identifier consumed by the agent loop "
+                    "(`ollama`, `openai`, `litellm`, ...). Overridden by "
+                    "the `ARI_BACKEND` environment variable.",
+    )
+    model: str = Field(
+        "qwen3:8b",
+        description="LiteLLM-style model identifier. Overridden by "
+                    "`ARI_MODEL` / `ARI_LLM_MODEL` env vars at load time.",
+    )
+    api_key: str | None = Field(
+        None,
+        description="API key for the chosen backend. Prefer setting via "
+                    "the provider-specific env var (`OPENAI_API_KEY`, ...).",
+    )
+    base_url: str | None = Field(
+        None,
+        description="API base URL override. Required when pointing at a "
+                    "self-hosted Ollama / OpenAI-compatible endpoint; "
+                    "overridden by `ARI_LLM_API_BASE` / `OLLAMA_HOST`.",
+    )
+    temperature: float = Field(
+        0.7,
+        description="Sampling temperature applied to non-judge LLM calls.",
+    )
 
 
 class SkillConfig(BaseModel):
-    name: str
-    path: str
-    description: str = ""
-    # Single phase string ("bfts" | "paper" | "reproduce" | "all" | "none")
-    # or a list of phases ([..., "reproduce"]) declaring every phase in which
-    # this skill is exposed to the AgentLoop ReAct. "all" matches any phase;
-    # "none" disables the skill entirely.
-    phase: str | list[str] = "all"
+    name: str = Field(
+        ...,
+        description="Skill package directory name (e.g. `ari-skill-coding`).",
+    )
+    path: str = Field(
+        ...,
+        description="Filesystem path to the skill package root.",
+    )
+    description: str = Field(
+        "",
+        description="Optional human-readable description; mirrors "
+                    "`mcp.json:description` when present.",
+    )
+    phase: str | list[str] = Field(
+        "all",
+        description="Pipeline phase(s) in which this skill is exposed to "
+                    "the AgentLoop ReAct. Single string (`bfts` / `paper` "
+                    "/ `reproduce` / `all` / `none`) or a list. `all` "
+                    "matches any phase; `none` disables the skill.",
+    )
 
 
 class BFTSConfig(BaseModel):
-    max_depth: int = 5
-    max_total_nodes: int = 50
-    max_react_steps: int = 80
-    timeout_per_node: int = 7200
-    max_parallel_nodes: int = 4
+    max_depth: int = Field(
+        5,
+        description="Hard cap on BFTS tree depth. Overridden by "
+                    "`ARI_MAX_DEPTH`.",
+    )
+    max_total_nodes: int = Field(
+        50,
+        description="Hard cap on total BFTS nodes per run. Overridden "
+                    "by `ARI_MAX_NODES`.",
+    )
+    max_react_steps: int = Field(
+        80,
+        description="Maximum ReAct iterations within a single node. "
+                    "Overridden by `ARI_MAX_REACT`.",
+    )
+    timeout_per_node: int = Field(
+        7200,
+        description="Per-node wall-time budget in seconds. Overridden "
+                    "by `ARI_TIMEOUT_NODE`.",
+    )
+    max_parallel_nodes: int = Field(
+        4,
+        description="Maximum BFTS nodes that may execute concurrently. "
+                    "Overridden by `ARI_PARALLEL`.",
+    )
 
 
 class CheckpointConfig(BaseModel):
-    dir: str = "./checkpoints/{run_id}/"
+    dir: str = Field(
+        "./checkpoints/{run_id}/",
+        description="Checkpoint root template. `{run_id}` is substituted "
+                    "at run start. Overridden by `ARI_CHECKPOINT_DIR` "
+                    "(an explicit env path always wins).",
+    )
 
 
 class LoggingConfig(BaseModel):
-    level: str = "INFO"
-    dir: str = "./checkpoints/{run_id}/"
-    format: str = "json"
+    level: str = Field(
+        "INFO",
+        description="Python `logging` level. Overridden by "
+                    "`ARI_LOG_LEVEL`.",
+    )
+    dir: str = Field(
+        "./checkpoints/{run_id}/",
+        description="Log directory. Defaults to the active checkpoint "
+                    "(via `ARI_LOG_DIR` or `ARI_CHECKPOINT_DIR`).",
+    )
+    format: str = Field(
+        "json",
+        description="Log record format (`json` for machine-parseable "
+                    "lines or `text` for human-readable).",
+    )
 
 
 class EvaluatorConfig(BaseModel):
-    # Weights for the five judge axes. Empty dict → evaluator uses its
-    # hardcoded equal-weight default (0.2 each). Override per-axis as needed;
-    # only keys in the canonical axis set are honoured.
-    axis_weights: dict[str, float] = {}
+    axis_weights: dict[str, float] = Field(
+        default_factory=dict,
+        description="Per-axis weight overrides for the BFTS judge. "
+                    "Empty → equal weights (0.2 each). Only keys in "
+                    "the canonical axis set are honoured; unknown keys "
+                    "are silently dropped.",
+    )
 
 
 class ARIConfig(BaseModel):
-    llm: LLMConfig = LLMConfig()
-    skills: list[SkillConfig] = []
-    disabled_tools: list[str] = []  # Tool names to hide from the agent
-    bfts: BFTSConfig = BFTSConfig()
-    checkpoint: CheckpointConfig = CheckpointConfig()
-    logging: LoggingConfig = LoggingConfig()
-    evaluator: EvaluatorConfig = EvaluatorConfig()
-    resources: dict = {}  # Generic resource config (cpus, timeout_minutes, etc.)
+    llm: LLMConfig = Field(
+        default_factory=LLMConfig,
+        description="LLM backend configuration shared by the agent loop "
+                    "and most LLM-using skills.",
+    )
+    skills: list[SkillConfig] = Field(
+        default_factory=list,
+        description="Skills to register with the agent. Auto-discovered "
+                    "via `_discover_skills()` when the YAML omits the "
+                    "section.",
+    )
+    disabled_tools: list[str] = Field(
+        default_factory=list,
+        description="MCP tool names hidden from the agent. The viz "
+                    "wizard appends to this list when stages are toggled "
+                    "off.",
+    )
+    bfts: BFTSConfig = Field(
+        default_factory=BFTSConfig,
+        description="BFTS exploration limits.",
+    )
+    checkpoint: CheckpointConfig = Field(
+        default_factory=CheckpointConfig,
+        description="Checkpoint directory configuration.",
+    )
+    logging: LoggingConfig = Field(
+        default_factory=LoggingConfig,
+        description="Logging configuration.",
+    )
+    evaluator: EvaluatorConfig = Field(
+        default_factory=EvaluatorConfig,
+        description="Evaluator (BFTS judge) configuration.",
+    )
+    resources: dict = Field(
+        default_factory=dict,
+        description="Generic resource defaults (cpus, memory_gb, gpus, "
+                    "walltime, partition) used by the HPC skill when a "
+                    "stage does not override them.",
+    )
     model_config = {"extra": "allow"}  # Accept unknown top-level keys
 
 
@@ -117,8 +221,12 @@ def load_config(path: str) -> ARIConfig:
         raw = yaml.safe_load(f) or {}
     raw = _resolve_env_recursive(raw)
     _apply_memory_section(raw)
-    # Resolve {{ari_root}} in skill paths (and anywhere else in config)
-    _ari_root = os.environ.get("ARI_ROOT", str(Path(__file__).resolve().parents[2]))
+    # Resolve {{ari_root}} in skill paths (and anywhere else in config).
+    # Phase 2 converted ``config.py`` → ``config/__init__.py`` so this
+    # file now sits one level deeper; ``parents[3]`` reaches the repo
+    # root (the parent of ``ari-core/``) where the ``ari-skill-*``
+    # directories live.
+    _ari_root = os.environ.get("ARI_ROOT", str(Path(__file__).resolve().parents[3]))
     def _resolve_ari_root(data):
         if isinstance(data, dict):
             return {k: _resolve_ari_root(v) for k, v in data.items()}
@@ -150,7 +258,9 @@ def _apply_checkpoint_env_overrides(cfg: "ARIConfig") -> None:
     GUI is watching. Without this override, load_config() ignores the env var
     and the CLI creates a sibling {run_id} directory, so the GUI sees no nodes.
     """
-    _ckpt = os.environ.get("ARI_CHECKPOINT_DIR", "")
+    from ari.paths import PathManager
+    _ckpt_path = PathManager.checkpoint_dir_from_env()
+    _ckpt = str(_ckpt_path) if _ckpt_path is not None else ""
     if _ckpt:
         cfg.checkpoint.dir = _ckpt
     _log = os.environ.get("ARI_LOG_DIR", "")
@@ -222,7 +332,9 @@ def _merge_bfts_disabled_tools(cfg: "ARIConfig", raw: dict) -> None:
 def _discover_skills(base_dir: Path | None = None) -> list[SkillConfig]:
     """Auto-detect ari-skill-* directories and return a list of SkillConfig."""
     if base_dir is None:
-        base_dir = Path(__file__).resolve().parents[2]
+        # Phase 2 — file moved into a package; ``parents[3]`` reaches
+        # the repo root (alongside the ``ari-skill-*`` directories).
+        base_dir = Path(__file__).resolve().parents[3]
     skills = []
     for skill_dir in sorted(base_dir.glob("ari-skill-*")):
         server = skill_dir / "src" / "server.py"
@@ -241,9 +353,13 @@ def auto_config() -> ARIConfig:
     _base_url = os.environ.get("OLLAMA_HOST", "http://localhost:11434") if _backend == "ollama" else os.environ.get("LLM_API_BASE", None)
     # Checkpoint dir: ARI_CHECKPOINT_DIR (explicit) > workspace/checkpoints/{run_id}/
     # Use PathManager-based workspace path so CLI and GUI share the same location.
-    _ckpt_dir = os.environ.get("ARI_CHECKPOINT_DIR", "")
+    from ari.paths import PathManager
+    _ckpt_path = PathManager.checkpoint_dir_from_env()
+    _ckpt_dir = str(_ckpt_path) if _ckpt_path is not None else ""
     if not _ckpt_dir:
-        _ari_root = Path(__file__).resolve().parents[2]  # ARI/
+        # Phase 2 — file moved into a package, so we walk up one extra
+        # parent to reach the repo root (``ARI/``).
+        _ari_root = Path(__file__).resolve().parents[3]  # ARI/
         _ckpt_dir = str(_ari_root / "workspace" / "checkpoints" / "{run_id}")
     _log_dir = os.environ.get("ARI_LOG_DIR", _ckpt_dir)
     return ARIConfig(
