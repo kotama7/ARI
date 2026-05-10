@@ -2,6 +2,126 @@
 
 All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PATCH`.
 
+## v0.7.1 (2026-05-10)
+
+Headline: structural refactor + documentation overhaul. **No public-API,
+LLM-I/O, or checkpoint-format changes.** Every refactor commit on this branch
+asserts `[no behavior change]` or `[byte-equivalent]`. The refactor splits the
+six largest hot-spot modules (8,691 lines, six files) into a five-layer package
+layout, externalises every inline LLM prompt to `ari/prompts/`, formalises the
+skill → core boundary through `ari.public`, isolates v0.5→v0.7 migration code
+under `ari.migrations`, and removes legacy `~/.ari/` defaults from publish /
+clone / registry / memory paths (with deprecation warnings, not removals — the
+v1.0 removal target is unchanged). Documentation is rewritten end-to-end and
+the trilingual report (`report/{en,ja,zh}/`) is added.
+
+### Changed — package layout (post-refactor, no behavior change)
+
+The post-refactor `ari-core/ari/` package is organised in five layers (see
+`docs/architecture.md::Layered architecture` and
+`CONTRIBUTING.md::Software-engineering discipline`):
+
+- **Phase 1** — every `ARI_CHECKPOINT_DIR` env read and write is routed
+  through `ari.paths.PathManager` (31 call-sites).
+- **Phase 2** — workflow.yaml discovery and `tree.json` I/O collapsed into
+  `ari/config/finder.py` and `ari/checkpoint.py`.
+- **Phase 3A** — `ari/cli.py` (1,962 lines) → `ari/cli/{__init__, run,
+  projects, commands, bfts_loop, lineage, migrate}.py`.
+- **Phase 3B** — `ari/viz/server.py` (1,489 lines) → `viz/{routes, websocket,
+  ui_helpers}.py` (`_Handler` extracted into `routes.py`); `viz/api_state.py`
+  (1,434 lines) → 7 sibling modules (`checkpoint_finder`, `state_sync`,
+  `checkpoint_api`, `ear`, `file_api`, `checkpoint_lifecycle`,
+  `node_work_api`).
+- **Phase 3C** — `ari/pipeline.py` (1,641 lines) → `ari/pipeline/{__init__,
+  experiment_md, yaml_loader, stage_control, context_builder, stage_runner,
+  orchestrator}.py`.
+- **Phase 3D** — `ari/agent/loop.py` (1,459 lines) → `agent/{loop,
+  message_utils, tool_manager, guidance}.py`.
+- **Phase 3E** — `ari/orchestrator/node_report.py` (706 lines) →
+  `orchestrator/node_report/{builder, legacy_reconstruct}.py` package.
+- **Phase 4** — public re-export layer at `ari/public/{container,
+  cost_tracker, paths, llm, config_schema}.py`. Skills now import only from
+  `ari.public.*`. `ari-core/tests/test_public_api_boundary.py` enforces the
+  boundary in CI; `ari-skill-coding/tests/test_server.py` and
+  `ari-skill-plot/src/server.py` are migrated off direct
+  `ari.container` / `ari.cost_tracker` imports.
+- **Phase 5** — v0.5 → v0.7 migration code isolated under
+  `ari/migrations/v05_to_v07/`. Call-sites are thin shims; the whole subtree
+  is scheduled for removal in v1.0 (already announced in v0.7.0).
+- **Phase PC0–PC8** — every inline LLM prompt in `ari-core/` is loaded from
+  `ari/prompts/<area>/<purpose>.md` via `FilesystemPromptLoader` (agent system
+  prompt, BFTS prompts, evaluator base + dynamic-axes peer review, lineage
+  decision, root idea selector, keyword librarian, viz wizard). Model price
+  tables and the lineage default model live in `ari/configs/*.yaml`, loaded
+  via `FilesystemConfigLoader`. `ari-core/tests/test_prompt_extraction.py`
+  pins the sha256 of every externalised prompt against the inline original;
+  silent edits surface as a CI failure.
+- **Phase PC6** — `ari.protocols.Evaluator` formalised; the
+  `LLMEvaluator` is now selected via Protocol injection at the composition
+  root (`ari.core.build_runtime`).
+- **DR1–DR4** — `~/.ari/memory.json` default arg removed
+  (`memory/file_client.py`); publish / clone / registry now warn on legacy
+  `~/.ari/registries.yaml` + `~/.ari/registry-data` and fall back to
+  checkpoint-scoped lookup; `memory/auto_migrate.py` and
+  `memory_cli.py` legacy paths are wrapped in `_deprecation`
+  helpers; test isolation around `~/.ari/` writes is tightened.
+
+### Added — CI guards and contracts
+
+- `.github/workflows/refactor-guards.yml`: fails the build on a new
+  `~/.ari/` reference outside `ari/migrations/` or `docs/refactor_audit.md`
+  and on a skill-side import that bypasses `ari.public.*`.
+- `ari-core/tests/test_public_api_boundary.py`: the canonical enforcement
+  for the skill → core boundary.
+- `ari-core/tests/test_prompt_extraction.py`: sha256 pins on every
+  externalised prompt.
+- `ari/protocols/`: shared cross-layer Protocols (`Evaluator`, `PromptLoader`,
+  `ConfigLoader`).
+
+### Documentation
+
+- DOCUMENTATION_PLAN Phase D0–D5 executed end-to-end: 17 obsolete planning
+  files removed (master plans, per-module REFACTORING.md / DEPRECATION.md /
+  PROMPTS_AND_CONFIG.md). The information they carried is folded into
+  `docs/architecture.md` (Layered architecture section), `CONTRIBUTING.md`
+  (Software-engineering discipline §1–5 + Deprecation process), and
+  `docs/refactor_audit.md` (the inventory snapshot).
+- New `docs/release_policy.md`: SemVer interpretation, public-surface
+  definition, support window, deprecation lifecycle, release checklist.
+- New `docs/refactor_audit.md`: the Phase 0 inventory (giant modules,
+  `ARI_CHECKPOINT_DIR` direct reads, cross-file duplication, skill→core
+  boundary violations, `~/.ari/` references) preserved for archaeology.
+- New trilingual report sources at `report/{en,ja,zh}/` (introduction,
+  system overview, exploration, paper pipeline, evaluation, related work,
+  discussion, appendix) with shared `references.bib`, `glossary.yaml`,
+  `notation.tex`, `preamble.tex`. Build pipeline includes:
+  `Makefile`, `setup_fonts.sh`, `.latexmkrc`, `scripts/translate.py`
+  (LLM-driven en→ja/zh translation), `scripts/build_html_pandoc.py`,
+  TikZ/pgf figure pipeline (`shared/figures/{tikz,pgf,dot}/`), and a
+  consistency-check suite (`check_bib`, `check_code_refs`,
+  `check_figures`, `check_glossary`, `check_i18n`,
+  `check_logs_for_secrets`, `check_notation`, `check_tikz`,
+  `check_toc_consistency`).
+- `docs/architecture.md::Module Reference` updated to point at the new
+  package layout (`ari/cli/`, `ari/pipeline/`, `ari/agent/`,
+  `ari/viz/routes.py`, `ari/orchestrator/node_report/`).
+- `CONTRIBUTING.md::Repository Structure` and the new
+  `Software-engineering discipline (v0.7+ refactor)` section document the
+  five load-bearing rules: separation of concerns, loose coupling via
+  Protocols, public-API boundary, external prompts/config, and the
+  behaviour-preservation contract for refactors.
+
+### Compatibility
+
+- All v0.7.0 checkpoints continue to load on v0.7.1 unchanged.
+- `ari --help` and every subcommand `--help` output is byte-identical to
+  v0.7.0 (verified by Phase 3A's behaviour-preservation pin).
+- All externalised prompts are sha256-equivalent to the v0.7.0 inline
+  originals (verified by `tests/test_prompt_extraction.py`).
+- The skill → core import boundary is now CI-enforced; out-of-tree skills
+  importing private `ari.<module>` names will need to migrate to
+  `ari.public.*` before upgrading.
+
 ## v0.7.0 (2026-05-08)
 
 Headline: PaperBench-compatible reproducibility chain (ORS), BFTS lineage decisions

@@ -131,7 +131,7 @@ window.LANGS.ja = {
   'nav-phi': '理念',
   'nav-how': '仕組み',
   'nav-docs': 'ドキュメント',
-  'footer-text': 'v0.7.0 · オープンソース · MIT ライセンス',
+  'footer-text': 'v0.7.1 · オープンソース · MIT ライセンス',
   'paperbench-desc': 'OpenAI による、AI エージェントがフロンティア ML 論文をスクラッチから再現できるかを評価するベンチマーク。各論文は細粒度の TaskNode ルーブリックに分解され、LLM 採点器（"SimpleJudge"）が評価します。v0.7.0 では PaperBench を <code>ari-skill-paper-re/vendor/paperbench</code> に同梱し、ARI の再現性チェック（ORS Phase 2）の決定論的コアとして利用しています。',
   'memgpt-desc': '階層メモリ + ツール仲介ページングで LLM エージェントを「無限コンテキスト」のように動作させる手法。MemGPT 論文は <a href="https://docs.letta.com" target="_blank" style="color:var(--blue-light);">Letta</a> へ進化し、v0.6.0 から ARI のメモリバックエンドとして採用されました。v0.5.x の JSONL ストアを置き換え、祖先スコープのアーカイバルメモリと checkpoint ごとの可搬スナップショットを提供します。',
   // === docs.html ===

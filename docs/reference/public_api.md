@@ -4,8 +4,9 @@
 packages may depend on.  Everything outside it is internal and may
 change without notice.  The package is a thin re-export layer over
 the corresponding `ari.<module>` private implementations so core can
-refactor freely while the skill-facing contract stays put (Phase 4
-of `REFACTORING.md`).
+refactor freely while the skill-facing contract stays put.  It was
+introduced in v0.7.1 (Phase 4 of the v0.7+ refactor) and is enforced
+by `ari-core/tests/test_public_api_boundary.py`.
 
 ## Sub-modules
 
@@ -123,4 +124,6 @@ internal-import boundaries through the public layer.
   the canonical sub-module list.
 - `docs/extension_guide.md` — how to write a new skill that depends
   only on `ari.public`.
-- `ari-core/REFACTORING.md` (§7) — original Phase 4 plan.
+- `CONTRIBUTING.md::Software-engineering discipline §3` — public-API
+  rule (skills only see `ari.public.*`).
+- `docs/refactor_audit.md` (§4) — historical Phase 4 inventory.

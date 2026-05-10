@@ -26,14 +26,22 @@ ARI/
 │
 ├── ari-core/                        ← core engine (BFTS + ReAct + pipeline)
 │   ├── ari/
-│   │   ├── agent/                   ← AgentLoop (BFTS) + react_driver
-│   │   ├── orchestrator/            ← BFTS, node tree, scheduler
-│   │   ├── pipeline.py              ← paper-pipeline executor
+│   │   ├── public/                  ← stable re-export layer for skills (v0.7.1)
+│   │   ├── protocols/               ← cross-layer Protocols (Evaluator, …)
+│   │   ├── prompts/                 ← externalised LLM prompts (sha256-pinned)
+│   │   ├── configs/                 ← model_prices.yaml etc. (loader-driven)
+│   │   ├── migrations/v05_to_v07/   ← isolated legacy shims (removed in v1.0)
+│   │   ├── agent/                   ← AgentLoop + message_utils + tool_manager + guidance + react_driver
+│   │   ├── orchestrator/            ← BFTS, node tree, scheduler, node_report/
+│   │   ├── pipeline/                ← paper-pipeline executor (split package, v0.7.1)
+│   │   ├── cli/                     ← Typer CLI (split package, v0.7.1)
 │   │   ├── mcp/client.py            ← MCP client + phase filter
-│   │   ├── viz/                     ← HTTP + SSE GUI backend
+│   │   ├── viz/                     ← HTTP + SSE GUI backend (routes.py, websocket.py, …)
+│   │   ├── paths.py                 ← PathManager (single source for ARI_CHECKPOINT_DIR)
+│   │   ├── checkpoint.py            ← shared tree.json I/O
 │   │   └── …
 │   ├── config/workflow.yaml         ← default workflow definition
-│   └── tests/                       ← 1,545 tests
+│   └── tests/                       ← 1,545 tests + boundary + prompt-extraction guards
 │
 ├── ari-skill-hpc/                   ← SLURM / Singularity tools
 ├── ari-skill-idea/                  ← Survey + VirSci idea generation (LLM)
