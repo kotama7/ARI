@@ -86,6 +86,27 @@ Execute the rollout's `reproduce.sh` in a fresh sandbox (paper §2.2).
 Honors `ARI_PHASE1_SANDBOX` (`auto`/`docker`/`apptainer`/`singularity`/
 `slurm`/`local`).
 
+### MPI / multi-node — **Supported via rubric.execution_profile** (v0.7.2+)
+
+(Replaces the pre-v0.7.2 status "Pending Phase 4 wrapping".)
+
+Under `sandbox_kind="slurm"` (v0.7.2+), full SLURM control: `--nodes`,
+`--ntasks`, `--ntasks-per-node`, `--nodelist`, `--exclude`, `--exclusive`,
+`--gpus-per-task`, `--gpus-per-node`, `--gres=gpu:<type>:N`, `--mem`,
+`--mem-per-cpu`, `--constraint`, `--cpu-bind`, `--mem-bind`, `--hint`, and
+an `extra_sbatch_args` pass-through for any remaining flag. All args
+default to 0 / "" / False / None so legacy single-node call sites stay
+byte-identical. When `rubric_path` carries
+`reproduce_contract.execution_profile`, every caller arg left at its
+default is auto-resolved from the matching profile field (explicit caller
+args always win — **supports MPI / multi-node reproduction via rubric.
+execution_profile**). See `docs/reference/execution_profile.md` for the
+full 21-field schema and example rubrics.
+
+Runtime safety probes (`_is_shared_fs`, `_slurm_has_gres`): repo_dir is
+warned about when node-local; `--gres=gpu:<type>:N` is silently dropped
+when `sinfo` reports no GRES so the submission is not rejected.
+
 ### `grade_with_simplejudge(...)`
 Run `SimpleJudge` against the reproduced submission. `n_runs=1` matches
 PaperBench paper §4.1; higher values average for variance reduction.

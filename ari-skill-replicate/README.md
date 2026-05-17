@@ -33,3 +33,55 @@ Resolution order (server.py): explicit kwarg → env var → default. The MCP to
 ## Output schema
 
 See `schemas/replication_rubric.schema.json`. The root rubric is a PaperBench `TaskNode` tree wrapped with frozen provenance metadata (paper sha256, generator model, prompt sha256, optional audit metadata). The downstream consumer is `ari-skill-paper-re.grade_with_simplejudge`, which wraps PaperBench's `SimpleJudge`.
+
+## `execution_profile` (HPC / parallel-execution hints)
+
+Optional sibling of `expected_artifacts` under `reproduce_contract`. Populated by the generator when the paper specifies parallel execution properties (MPI rank counts, GPU types, node exclusivity, etc.); consumed by `ari-skill-paper-re` Phase 2 sbatch and the BasicAgent prompt. Omit entirely for legacy single-CPU papers — backward compatible.
+
+```jsonc
+"reproduce_contract": {
+  "script_path": "reproduce.sh",
+  "max_runtime_sec": 7200,
+  "expected_artifacts": ["submission/results/scaling_strong.csv"],
+  "execution_profile": {
+    "kind": "mpi_gpu",                                  // cpu_single | gpu_single | gpu_multi | mpi | mpi_gpu
+    "paper_max_ranks": 32,
+    "paper_max_nodes": 4,
+    "min_ranks": 4,
+    "result_aggregation": "rank0_csv",
+    "metric_columns": ["nodes", "ranks", "runtime_sec", "gflops"],
+    "accepts_reduced_scale": true,
+    "requested_nodes": 4,
+    "ntasks_per_node": 8,
+    "exclusive": true,                                  // → --exclusive
+    "requested_gpus_per_task": 1,                       // → --gpus-per-task=1
+    "gpu_type": "v100",                                 // combined → --gres=gpu:v100:1
+    "memory_gb_per_node": 256,                          // → --mem=256G
+    "constraint": "skylake",                            // → --constraint=skylake
+    "cpu_bind": "cores",                                // → --cpu-bind=cores
+    "module_loads": ["cuda/12.4", "openmpi/4.1"],       // injected into reproduce.sh prelude
+    "extra_sbatch_args": ["--account=projX"]            // escape hatch (pass-through)
+  }
+}
+```
+
+The full set of fields (each consumed as a SLURM flag in Phase 2):
+
+| Field | Consumed as | Notes |
+|---|---|---|
+| `kind` | agent prompt only | drives whether agent uses CUDA / MPI |
+| `paper_max_ranks`, `paper_max_nodes`, `min_ranks`, `min_nodes` | agent prompt | the agent's scale budget |
+| `metric_columns`, `result_aggregation`, `accepts_reduced_scale` | agent prompt | CSV header contract |
+| `requested_nodes` | `--nodes=N` | |
+| `ntasks_per_node` | `--ntasks-per-node=N` | 0 = leave to SLURM |
+| `requested_nodelist` / `exclude_nodes` | `--nodelist=...` / `--exclude=...` | |
+| `exclusive` | `--exclusive` | important for performance reproduction |
+| `requested_gpus_per_task` / `requested_gpus_per_node` | `--gpus-per-task=N` / `--gpus-per-node=N` | |
+| `gpu_type` | `--gres=gpu:<type>:N` | combined with gpus-per-task |
+| `memory_gb_per_node` / `memory_gb_per_cpu` | `--mem=NG` / `--mem-per-cpu=NG` | |
+| `constraint` | `--constraint=...` | e.g. `skylake`, `haswell\|broadwell` |
+| `cpu_bind`, `mem_bind`, `hint` | `--cpu-bind=...`, `--mem-bind=...`, `--hint=...` | NUMA / CPU affinity |
+| `module_loads` | reproduce.sh prelude | `module load <names>` |
+| `extra_sbatch_args` | concatenated to sbatch | escape hatch for any flag not above |
+
+For the consumer side (sbatch flag mapping, GRES runtime check, shared-FS check), see `ari-skill-paper-re/REQUIREMENTS.md`.

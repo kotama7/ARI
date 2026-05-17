@@ -154,3 +154,21 @@ prompt_overrides:
     Provide fair, rigorous, balanced assessment. Avoid generic boilerplate.
     Output strictly as JSON (no markdown, no prose outside JSON) — schema
     defined below.
+
+  author_hint: |-
+    You are drafting a NeurIPS Technical Paper. NeurIPS reviewers grade
+    along Soundness / Presentation / Contribution (1–4 each) and apply
+    the NeurIPS Reproducibility Checklist. To score well:
+
+    1. Every numeric claim must specify the dataset, model size,
+       hyperparameters, random seed handling, number of runs, and
+       hardware in the same place as the result — not scattered.
+    2. Include an explicit Limitations section and a Broader Impacts
+       paragraph; reviewers WILL flag their absence.
+    3. Report error bars or confidence intervals, not point estimates.
+       If you ran a single seed, say so explicitly and justify it.
+    4. Link to code + data with a stable identifier (anonymized for
+       double-blind) and state the license. Missing code/data hurts
+       the Contribution score even when the method is novel.
+    5. Avoid over-claiming: every abstract bullet must trace to a
+       result in §4 or §5 with a section/figure reference.

@@ -139,6 +139,51 @@ EXPECTED_ARTIFACTS DISCIPLINE (read carefully — common failure point):
   When in doubt, OMIT a path and let a Code Execution leaf check log content
   instead. The leaf-level grader can read reproduce.log directly.
 
+EXECUTION_PROFILE (OPTIONAL — populate iff the paper specifies parallel /
+distributed execution properties; OMIT ENTIRELY for single-machine papers
+including NLP / vision / theory / single-CPU / single-GPU / serverless /
+small-scale ML; the downstream replicator handles single-machine reproduction
+without a profile):
+
+  Only populate when the paper carries explicit statements like
+  "we evaluated at N MPI ranks", "we trained on M GPUs with data
+  parallelism", "we sharded across K database nodes", or "experiments ran
+  on exclusive nodes with specific memory / CPU constraints".
+
+  Field semantics (mirror ``replication_rubric.schema.json``):
+    - kind: closed enum — pick the closest fit; if none applies, OMIT
+      execution_profile entirely.
+        * cpu_single   — single-process CPU (rarely needs a profile)
+        * gpu_single   — single-process single-GPU
+        * gpu_multi    — single-process multi-GPU (DDP on one machine)
+        * mpi          — multi-process / multi-rank, no GPU
+        * mpi_gpu      — multi-process / multi-rank, GPU per rank
+    - paper_max_ranks / paper_max_nodes / min_ranks / min_nodes — scale
+      envelope.
+    - result_aggregation: "rank0_csv" when multiple ranks must write one
+      combined CSV.
+    - metric_columns: required CSV header (paper-defined; varies by
+      domain — runtime_sec / gflops for HPC, eval_loss / accuracy for
+      ML, query_p50_ms for DB).
+    - accepts_reduced_scale (default true): allow smaller-scale runs for
+      partial credit.
+    - SLURM hints (consumed by paper-re Phase 2 sbatch when present;
+      useful for any cluster-style evaluation, not only HPC):
+      requested_nodes, ntasks_per_node, requested_nodelist,
+      exclude_nodes, exclusive, requested_gpus_per_task,
+      requested_gpus_per_node, gpu_type, memory_gb_per_node,
+      memory_gb_per_cpu, constraint, cpu_bind, mem_bind, hint,
+      module_loads (e.g. ["cuda/12.4","openmpi/4.1"]), extra_sbatch_args
+      (escape hatch).
+
+  Concrete examples (DO NOT copy verbatim; extract from the paper):
+    * HPC: "Our experiment ran on 8 exclusive nodes × 4 V100 GPUs with
+      OpenMPI 4.1 on a Skylake cluster".
+    * ML training: "We trained the 70B-param model on 16 H100 GPUs using
+      PyTorch DDP with --gpus-per-task=1, --ntasks=16".
+    * DB sharding: "We deployed N database nodes with --nodes=N
+      --exclusive to measure tail-latency at p99".
+
 OUTPUT FORMAT:
 You MUST output a single JSON object — no prose, no markdown fences. The JSON
 object MUST conform to this schema (a partial envelope; the host will fill in
@@ -150,6 +195,9 @@ generator metadata, paper_sha256, and rubric_sha256):
     "script_path": "reproduce.sh",
     "max_runtime_sec": <integer 60..43200>,
     "expected_artifacts": [<relative paths the experiment program emits — see RULES above>]
+    // Optionally: "execution_profile": { "kind": "...", ... }
+    //   — include only when the paper specifies HPC / parallel
+    //   execution properties (multi-rank, MPI, GPU type, exclusivity).
   },
   "rubric": <root TaskNode>
 }

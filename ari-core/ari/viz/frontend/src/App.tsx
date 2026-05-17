@@ -14,11 +14,25 @@ const WizardPage = lazy(() => import('./components/Wizard/WizardPage').then((m) 
 const IdeaPage = lazy(() => import('./components/Idea/IdeaPage'));
 const WorkflowPage = lazy(() => import('./components/Workflow/WorkflowPage'));
 const SettingsPage = lazy(() => import('./components/Settings/SettingsPage'));
+const PaperRegistryPage = lazy(() =>
+  import('./components/PaperBench').then((m) => ({ default: m.PaperRegistryPage })),
+);
+const PaperImportDialog = lazy(() =>
+  import('./components/PaperBench').then((m) => ({ default: m.PaperImportDialog })),
+);
+const PaperBenchWizard = lazy(() =>
+  import('./components/PaperBench').then((m) => ({ default: m.PaperBenchWizard })),
+);
+const PaperBenchResultsView = lazy(() =>
+  import('./components/PaperBench').then((m) => ({ default: m.ResultsView })),
+);
 
 // ── helpers ──
 
 function parseHash(): string {
-  const raw = window.location.hash.replace(/^#\/?/, '');
+  // Strip query string so '#/paperbench/results?job=xyz' resolves to
+  // 'paperbench/results' in the PAGE_MAP lookup.
+  const raw = window.location.hash.replace(/^#\/?/, '').split('?')[0];
   // Map legacy "new" route to "wizard"
   if (raw === 'new') return 'wizard';
   return raw || 'home';
@@ -35,6 +49,10 @@ const PAGE_MAP: Record<string, LazyExoticComponent<ComponentType>> = {
   idea: IdeaPage,
   workflow: WorkflowPage,
   settings: SettingsPage,
+  paperbench: PaperRegistryPage,
+  'paperbench/import': PaperImportDialog,
+  'paperbench/run': PaperBenchWizard,
+  'paperbench/results': PaperBenchResultsView,
 };
 
 // ── inner router (uses context) ──

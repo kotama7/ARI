@@ -265,3 +265,436 @@ async def test_run_reproduce_returns_unknown_sandbox_error(tmp_path):
         sandbox_kind="quantum-foam",
     )
     assert "unknown sandbox_kind" in res["error"]
+
+
+# ── v0.7.2: shared FS heuristic ──────────────────────────────────────────
+
+
+def test_is_shared_fs_recognises_home(tmp_path, monkeypatch):
+    home = Path.home()
+    assert S._is_shared_fs(home) is True
+
+
+def test_is_shared_fs_rejects_tmp():
+    assert S._is_shared_fs(Path("/tmp/foo")) is False
+    assert S._is_shared_fs(Path("/var/tmp/x")) is False
+
+
+def test_is_shared_fs_recognises_typical_shared_prefixes():
+    assert S._is_shared_fs(Path("/work/user/repo")) is True
+    assert S._is_shared_fs(Path("/scratch/run-42")) is True
+    assert S._is_shared_fs(Path("/lustre/foo")) is True
+    assert S._is_shared_fs(Path("/nfs/bar")) is True
+
+
+# ── v0.7.2: GRES probe ──────────────────────────────────────────────────
+
+
+def test_slurm_has_gres_false_without_sinfo():
+    with patch.object(S, "_has_bin", lambda n: n != "sinfo"):
+        assert S._slurm_has_gres() is False
+
+
+def test_slurm_has_gres_true_when_sinfo_reports_gpu():
+    def fake_run(cmd, **kw):
+        return _FakeProc(returncode=0, stdout="gpu:v100:4\ngpu:a100:8\n", stderr="")
+    with patch.object(S, "_has_bin", lambda n: n == "sinfo"):
+        with patch.object(S.subprocess, "run", fake_run):
+            assert S._slurm_has_gres() is True
+
+
+def test_slurm_has_gres_false_when_sinfo_reports_null():
+    def fake_run(cmd, **kw):
+        return _FakeProc(returncode=0, stdout="(null)\n(null)\n", stderr="")
+    with patch.object(S, "_has_bin", lambda n: n == "sinfo"):
+        with patch.object(S.subprocess, "run", fake_run):
+            assert S._slurm_has_gres() is False
+
+
+# ── v0.7.2: 15-arg sbatch command construction (S6-S10) ─────────────────
+
+
+def _capture_cmd_call(captured: dict):
+    """Helper: return a fake subprocess.run that captures cmd + creates the
+    --output file so post-checks pass."""
+    def fake_run(cmd, **kw):
+        captured["cmd"] = cmd
+        out_idx = cmd.index("--output")
+        Path(cmd[out_idx + 1]).write_text("ok\n")
+        return _FakeProc(returncode=0)
+    return fake_run
+
+
+def _patch_slurm_has_gres(monkeypatch, has_gres: bool):
+    monkeypatch.setattr(S, "_slurm_has_gres", lambda: has_gres)
+    # Most tests assume a modern SLURM that accepts --cpu-bind /
+    # --mem-bind at sbatch level. The sx40 sandbox in production reality
+    # does not — see test_cpu_bind_dropped_when_sbatch_does_not_support_it
+    # for the regression guard. Default to True here so the suite stays
+    # readable; override per-test for the drop path.
+    monkeypatch.setattr(S, "_sbatch_supports", lambda flag: True)
+
+
+def test_S6_exclusive_arg_appears_in_sbatch(tmp_path, monkeypatch):
+    """S6: exclusive=True → ``--exclusive`` in sbatch cmd."""
+    repo = _setup_slurm(tmp_path)
+    captured: dict = {}
+    _patch_slurm_has_gres(monkeypatch, True)
+    with patch.object(S, "_has_bin", lambda n: n == "sbatch"):
+        with patch.object(S.subprocess, "run", _capture_cmd_call(captured)):
+            S._run_reproduce_slurm(
+                repo, repo / "reproduce.log", timeout=600,
+                exclusive=True,
+            )
+    assert "--exclusive" in captured["cmd"]
+
+
+def test_S7_memory_arg_appears_in_sbatch(tmp_path, monkeypatch):
+    """S7: memory_gb_per_node=128 → ``--mem=128G`` in sbatch cmd."""
+    repo = _setup_slurm(tmp_path)
+    captured: dict = {}
+    _patch_slurm_has_gres(monkeypatch, True)
+    with patch.object(S, "_has_bin", lambda n: n == "sbatch"):
+        with patch.object(S.subprocess, "run", _capture_cmd_call(captured)):
+            S._run_reproduce_slurm(
+                repo, repo / "reproduce.log", timeout=600,
+                memory_gb_per_node=128,
+            )
+    assert "--mem=128G" in captured["cmd"]
+
+
+def test_S7b_memory_per_cpu_arg_appears_in_sbatch(tmp_path, monkeypatch):
+    """S7b: memory_gb_per_cpu=4 → ``--mem-per-cpu=4G`` in sbatch cmd."""
+    repo = _setup_slurm(tmp_path)
+    captured: dict = {}
+    _patch_slurm_has_gres(monkeypatch, True)
+    with patch.object(S, "_has_bin", lambda n: n == "sbatch"):
+        with patch.object(S.subprocess, "run", _capture_cmd_call(captured)):
+            S._run_reproduce_slurm(
+                repo, repo / "reproduce.log", timeout=600,
+                memory_gb_per_cpu=4,
+            )
+    assert "--mem-per-cpu=4G" in captured["cmd"]
+
+
+def test_S8_gpu_type_combined_with_per_task(tmp_path, monkeypatch):
+    """S8: gpu_type="v100", gpus_per_task=2 → ``--gres=gpu:v100:2`` AND
+    ``--gpus-per-task 2`` both present."""
+    repo = _setup_slurm(tmp_path)
+    captured: dict = {}
+    _patch_slurm_has_gres(monkeypatch, True)
+    with patch.object(S, "_has_bin", lambda n: n == "sbatch"):
+        with patch.object(S.subprocess, "run", _capture_cmd_call(captured)):
+            S._run_reproduce_slurm(
+                repo, repo / "reproduce.log", timeout=600,
+                gpus_per_task=2, gpu_type="v100",
+            )
+    cmd = captured["cmd"]
+    assert "--gres=gpu:v100:2" in cmd
+    assert cmd[cmd.index("--gpus-per-task") + 1] == "2"
+
+
+def test_S9_hw_constraint_and_cpu_bind(tmp_path, monkeypatch):
+    """S9: constraint="skylake", cpu_bind="cores" → both as ``--FLAG=VAL``."""
+    repo = _setup_slurm(tmp_path)
+    captured: dict = {}
+    _patch_slurm_has_gres(monkeypatch, True)
+    with patch.object(S, "_has_bin", lambda n: n == "sbatch"):
+        with patch.object(S.subprocess, "run", _capture_cmd_call(captured)):
+            S._run_reproduce_slurm(
+                repo, repo / "reproduce.log", timeout=600,
+                constraint="skylake", cpu_bind="cores",
+            )
+    cmd = captured["cmd"]
+    assert "--constraint=skylake" in cmd
+    assert "--cpu-bind=cores" in cmd
+
+
+def test_S10_extra_sbatch_args_pass_through(tmp_path, monkeypatch):
+    """S10: extra_sbatch_args=["--hint=nomultithread", "--account=projX"]
+    appears verbatim before the wrapper path."""
+    repo = _setup_slurm(tmp_path)
+    captured: dict = {}
+    _patch_slurm_has_gres(monkeypatch, True)
+    with patch.object(S, "_has_bin", lambda n: n == "sbatch"):
+        with patch.object(S.subprocess, "run", _capture_cmd_call(captured)):
+            S._run_reproduce_slurm(
+                repo, repo / "reproduce.log", timeout=600,
+                extra_sbatch_args=["--account=projX", "--reservation=res1"],
+            )
+    cmd = captured["cmd"]
+    assert "--account=projX" in cmd
+    assert "--reservation=res1" in cmd
+
+
+def test_S11_complex_profile_all_args_emitted(tmp_path, monkeypatch):
+    """S11: 16-arg full profile produces every expected flag in one sbatch."""
+    repo = _setup_slurm(tmp_path)
+    captured: dict = {}
+    _patch_slurm_has_gres(monkeypatch, True)
+    with patch.object(S, "_has_bin", lambda n: n == "sbatch"):
+        with patch.object(S.subprocess, "run", _capture_cmd_call(captured)):
+            S._run_reproduce_slurm(
+                repo, repo / "reproduce.log", timeout=7200,
+                nodes=4, ntasks=32, ntasks_per_node=8,
+                nodelist="node[01-04]", exclude_nodes="badnode01",
+                exclusive=True,
+                gpus_per_task=1, gpus_per_node=4, gpu_type="v100",
+                memory_gb_per_node=256, memory_gb_per_cpu=8,
+                constraint="skylake", cpu_bind="cores",
+                mem_bind="local", hint="nomultithread",
+                extra_sbatch_args=["--account=projX"],
+            )
+    cmd = captured["cmd"]
+    # Pair-style flags
+    assert cmd[cmd.index("--nodes") + 1] == "4"
+    assert cmd[cmd.index("--ntasks") + 1] == "32"
+    assert cmd[cmd.index("--ntasks-per-node") + 1] == "8"
+    assert cmd[cmd.index("--nodelist") + 1] == "node[01-04]"
+    assert cmd[cmd.index("--exclude") + 1] == "badnode01"
+    assert cmd[cmd.index("--gpus-per-task") + 1] == "1"
+    assert cmd[cmd.index("--gpus-per-node") + 1] == "4"
+    # Standalone / KEY=VAL flags
+    assert "--exclusive" in cmd
+    assert "--gres=gpu:v100:1" in cmd
+    assert "--mem=256G" in cmd
+    assert "--mem-per-cpu=8G" in cmd
+    assert "--constraint=skylake" in cmd
+    assert "--cpu-bind=cores" in cmd
+    assert "--mem-bind=local" in cmd
+    assert "--hint=nomultithread" in cmd
+    assert "--account=projX" in cmd
+
+
+def test_gpu_flags_all_dropped_when_cluster_has_no_gres(tmp_path, monkeypatch):
+    """T15 / S13 (v0.7.2 real-SLURM smoke finding): GRES-less cluster —
+    ALL GPU-related flags (``--gres``, ``--gpus-per-task``,
+    ``--gpus-per-node``) must be dropped, not just ``--gres``. Modern
+    SLURM rejects every GPU resource request with ``Invalid generic
+    resource (gres) specification`` when GRES is unconfigured, even when
+    physical GPUs are visible on the host. The agent prompt's CLUSTER
+    SHAPE block still surfaces the visible GPUs via nvidia-smi, so the
+    replicator can use them at runtime without going through SLURM.
+    """
+    repo = _setup_slurm(tmp_path)
+    captured: dict = {}
+    _patch_slurm_has_gres(monkeypatch, False)
+    with patch.object(S, "_has_bin", lambda n: n == "sbatch"):
+        with patch.object(S.subprocess, "run", _capture_cmd_call(captured)):
+            S._run_reproduce_slurm(
+                repo, repo / "reproduce.log", timeout=600,
+                gpus_per_task=1, gpus_per_node=4, gpu_type="v100",
+            )
+    cmd = captured["cmd"]
+    assert all(not c.startswith("--gres=") for c in cmd), cmd
+    assert "--gpus-per-task" not in cmd, cmd
+    assert "--gpus-per-node" not in cmd, cmd
+
+
+def test_cpu_bind_dropped_when_sbatch_does_not_support_it(tmp_path, monkeypatch):
+    """v0.7.2 real-SLURM smoke finding: ``--cpu-bind`` / ``--mem-bind``
+    are documented srun-only on many SLURM versions (incl. sx40). When
+    ``sbatch --help`` does not advertise them, the implementation must
+    drop them silently with a warning rather than letting sbatch reject
+    the whole submission with "unrecognized option".
+    """
+    repo = _setup_slurm(tmp_path)
+    captured: dict = {}
+    _patch_slurm_has_gres(monkeypatch, True)
+    # Override: this local sbatch does NOT support --cpu-bind / --mem-bind
+    monkeypatch.setattr(S, "_sbatch_supports", lambda flag: False)
+    with patch.object(S, "_has_bin", lambda n: n == "sbatch"):
+        with patch.object(S.subprocess, "run", _capture_cmd_call(captured)):
+            S._run_reproduce_slurm(
+                repo, repo / "reproduce.log", timeout=600,
+                cpu_bind="cores", mem_bind="local",
+            )
+    cmd = captured["cmd"]
+    assert all(not c.startswith("--cpu-bind") for c in cmd), cmd
+    assert all(not c.startswith("--mem-bind") for c in cmd), cmd
+
+
+def test_S4_nodelist_arg_propagates(tmp_path, monkeypatch):
+    """S4: nodelist="sx40" → ``--nodelist sx40`` in sbatch cmd. Used when
+    operator wants to pin a specific debug node."""
+    repo = _setup_slurm(tmp_path)
+    captured: dict = {}
+    _patch_slurm_has_gres(monkeypatch, True)
+    with patch.object(S, "_has_bin", lambda n: n == "sbatch"):
+        with patch.object(S.subprocess, "run", _capture_cmd_call(captured)):
+            S._run_reproduce_slurm(
+                repo, repo / "reproduce.log", timeout=600,
+                nodelist="sx40",
+            )
+    cmd = captured["cmd"]
+    assert cmd[cmd.index("--nodelist") + 1] == "sx40"
+
+
+def test_S1_legacy_call_emits_only_4_extra_flags(tmp_path, monkeypatch):
+    """S1: legacy single-CPU paper (no new args) emits the same sbatch flag
+    set as pre-v0.7.2 — backward-compat regression guard."""
+    repo = _setup_slurm(tmp_path)
+    captured: dict = {}
+    _patch_slurm_has_gres(monkeypatch, True)
+    with patch.object(S, "_has_bin", lambda n: n == "sbatch"):
+        with patch.object(S.subprocess, "run", _capture_cmd_call(captured)):
+            S._run_reproduce_slurm(
+                repo, repo / "reproduce.log", timeout=600,
+            )
+    cmd = captured["cmd"]
+    # New v0.7.2 flags must all be ABSENT
+    for forbidden in (
+        "--nodes", "--ntasks", "--ntasks-per-node", "--nodelist",
+        "--exclude", "--exclusive", "--gpus-per-task", "--gpus-per-node",
+    ):
+        assert forbidden not in cmd, f"{forbidden} leaked into legacy sbatch"
+    for prefix in (
+        "--gres=", "--mem=", "--mem-per-cpu=", "--constraint=",
+        "--cpu-bind=", "--mem-bind=", "--hint=",
+    ):
+        assert all(not c.startswith(prefix) for c in cmd), f"{prefix}* leaked"
+
+
+# ── v0.7.2: run_reproduce auto-resolve from execution_profile ────────────
+
+
+@pytest.mark.asyncio
+async def test_S5_execution_profile_auto_resolves_into_sbatch(tmp_path, monkeypatch):
+    """S5: rubric.execution_profile.requested_* fills run_reproduce caller
+    args that are at the zero default. End-to-end pass through the MCP
+    tool surface."""
+    repo = _setup_slurm(tmp_path)
+    monkeypatch.setenv("ARI_SLURM_PARTITION", "sx40")
+    rubric = tmp_path / "rubric.json"
+    rubric.write_text(json.dumps({
+        "reproduce_contract": {
+            "max_runtime_sec": 600,
+            "expected_artifacts": [],
+            "execution_profile": {
+                "kind": "mpi_gpu",
+                "requested_nodes": 4,
+                "min_ranks": 32,
+                "ntasks_per_node": 8,
+                "exclusive": True,
+                "requested_gpus_per_task": 1,
+                "gpu_type": "v100",
+                "memory_gb_per_node": 256,
+                "constraint": "skylake",
+                "cpu_bind": "cores",
+                "extra_sbatch_args": ["--account=projX"],
+            },
+        },
+    }))
+
+    captured: dict = {}
+
+    def fake_run(cmd, **kw):
+        captured["cmd"] = cmd
+        out_idx = cmd.index("--output")
+        Path(cmd[out_idx + 1]).write_text("ok\n")
+        return _FakeProc(returncode=0)
+
+    monkeypatch.setattr(S, "_slurm_has_gres", lambda: True)
+    monkeypatch.setattr(S, "_sbatch_supports", lambda flag: True)
+    with patch.object(S, "_has_bin", lambda n: n == "sbatch"):
+        with patch.object(S.subprocess, "run", fake_run):
+            res = await S.run_reproduce(
+                rubric_path=str(rubric),
+                repo_dir=str(repo),
+                sandbox_kind="slurm",
+                partition="sx40",
+            )
+    assert res["executed"] is True
+    cmd = captured["cmd"]
+    # Profile-derived flags all present:
+    assert cmd[cmd.index("--nodes") + 1] == "4"
+    assert cmd[cmd.index("--ntasks") + 1] == "32"
+    assert cmd[cmd.index("--ntasks-per-node") + 1] == "8"
+    assert "--exclusive" in cmd
+    assert cmd[cmd.index("--gpus-per-task") + 1] == "1"
+    assert "--gres=gpu:v100:1" in cmd
+    assert "--mem=256G" in cmd
+    assert "--constraint=skylake" in cmd
+    assert "--cpu-bind=cores" in cmd
+    assert "--account=projX" in cmd
+    # MCP-surface metadata reflects the chosen shape
+    assert res["nodes"] == 4
+    assert res["ntasks"] == 32
+    assert res["exclusive"] is True
+    assert res["gpu"]["type"] == "v100"
+
+
+@pytest.mark.asyncio
+async def test_caller_arg_overrides_rubric_hint(tmp_path, monkeypatch):
+    """Explicit run_reproduce caller arg WINS over execution_profile hint."""
+    repo = _setup_slurm(tmp_path)
+    monkeypatch.setenv("ARI_SLURM_PARTITION", "sx40")
+    rubric = tmp_path / "rubric.json"
+    rubric.write_text(json.dumps({
+        "reproduce_contract": {
+            "max_runtime_sec": 600,
+            "execution_profile": {
+                "requested_nodes": 4,        # ← rubric wants 4
+                "exclusive": True,
+            },
+        },
+    }))
+    captured: dict = {}
+
+    def fake_run(cmd, **kw):
+        captured["cmd"] = cmd
+        out_idx = cmd.index("--output")
+        Path(cmd[out_idx + 1]).write_text("ok\n")
+        return _FakeProc(returncode=0)
+
+    monkeypatch.setattr(S, "_slurm_has_gres", lambda: True)
+    monkeypatch.setattr(S, "_sbatch_supports", lambda flag: True)
+    with patch.object(S, "_has_bin", lambda n: n == "sbatch"):
+        with patch.object(S.subprocess, "run", fake_run):
+            await S.run_reproduce(
+                rubric_path=str(rubric),
+                repo_dir=str(repo),
+                sandbox_kind="slurm",
+                partition="sx40",
+                nodes=2,  # ← caller forces 2; overrides rubric's 4
+            )
+    cmd = captured["cmd"]
+    assert cmd[cmd.index("--nodes") + 1] == "2", "caller arg must win"
+    # exclusive is OR-merged, not overridden — preserved from rubric
+    assert "--exclusive" in cmd
+
+
+@pytest.mark.asyncio
+async def test_legacy_rubric_without_execution_profile_unchanged(tmp_path, monkeypatch):
+    """Backward-compat: a rubric without execution_profile emits the same
+    4-flag sbatch as pre-v0.7.2 (S1 at the MCP-tool surface)."""
+    repo = _setup_slurm(tmp_path)
+    monkeypatch.setenv("ARI_SLURM_PARTITION", "sx40")
+    rubric = tmp_path / "rubric.json"
+    rubric.write_text(json.dumps({
+        "reproduce_contract": {"max_runtime_sec": 600, "expected_artifacts": []},
+    }))
+    captured: dict = {}
+
+    def fake_run(cmd, **kw):
+        captured["cmd"] = cmd
+        out_idx = cmd.index("--output")
+        Path(cmd[out_idx + 1]).write_text("ok\n")
+        return _FakeProc(returncode=0)
+
+    monkeypatch.setattr(S, "_slurm_has_gres", lambda: True)
+    monkeypatch.setattr(S, "_sbatch_supports", lambda flag: True)
+    with patch.object(S, "_has_bin", lambda n: n == "sbatch"):
+        with patch.object(S.subprocess, "run", fake_run):
+            res = await S.run_reproduce(
+                rubric_path=str(rubric),
+                repo_dir=str(repo),
+                sandbox_kind="slurm",
+                partition="sx40",
+            )
+    cmd = captured["cmd"]
+    for forbidden in ("--nodes", "--ntasks", "--exclusive", "--gpus-per-task"):
+        assert forbidden not in cmd
+    # New metadata keys absent in legacy response
+    for k in ("nodes", "ntasks", "exclusive", "gpu"):
+        assert k not in res

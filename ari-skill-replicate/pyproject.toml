@@ -4,13 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ari-skill-replicate"
-version = "0.1.0"
-description = "ORS Auto-Rubric (PaperBench-format) generator and auditor"
+version = "0.2.0"
+description = "ORS Auto-Rubric (PaperBench-format) generator and auditor; v0.2.0 adds venue-conditioned templates + Step 4 reproduction-package generator (HPC PaperBench audit research plan §5)"
 requires-python = ">=3.13"
 dependencies = [
     "mcp>=1.0",
     "litellm>=1.0",
     "jsonschema>=4.0",
+    "pymupdf4llm>=0.0.10",
 ]
 
 [tool.hatch.build.targets.wheel]

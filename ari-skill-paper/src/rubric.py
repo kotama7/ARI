@@ -79,7 +79,8 @@ class Rubric:
     score_dimensions: list[ScoreDimension]
     text_sections: list[TextSection]
     decision: Decision
-    system_hint: str = ""
+    system_hint: str = ""    # reviewer-side framing (used by review_engine)
+    author_hint: str = ""    # author-side framing (used by paper-writing)
     description: str = ""
     source_path: str = ""
     hash: str = ""
@@ -117,6 +118,10 @@ class Rubric:
                 "num_reviews_ensemble": self.params.num_reviews_ensemble,
                 "temperature": self.params.temperature,
                 "fewshot_mode": self.params.fewshot_mode,
+            },
+            "prompt_overrides": {
+                "system_hint": self.system_hint,
+                "author_hint": self.author_hint,
             },
         }
 
@@ -248,9 +253,14 @@ def _parse_rubric(data: dict, source_path: Path) -> Rubric:
             f"Rubric {data['id']}: num_reflections must be >= 0"
         )
 
-    # Prompt overrides
+    # Prompt overrides — both reviewer-side (system_hint) and author-side
+    # (author_hint) live under the same prompt_overrides block. Reviewer
+    # hint is injected by review_engine.py; author hint is injected by
+    # server.py::generate_section so paper drafting is venue-conditioned
+    # at the same strength as peer review.
     overrides = data.get("prompt_overrides", {}) or {}
     system_hint = str(overrides.get("system_hint", "") or "")
+    author_hint = str(overrides.get("author_hint", "") or "")
 
     # Hash: SHA256 of canonical YAML bytes for determinism traceability
     try:
@@ -269,6 +279,7 @@ def _parse_rubric(data: dict, source_path: Path) -> Rubric:
         text_sections=sects,
         decision=decision,
         system_hint=system_hint,
+        author_hint=author_hint,
         description=str(data.get("description", "")),
         source_path=str(source_path),
         hash=digest,

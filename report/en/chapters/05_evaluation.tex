@@ -31,7 +31,7 @@ What \emph{is} real:
 What is \emph{not yet} done:
 
 \begin{itemize}
-  \item Pinning a frozen ARI v0.7.1 checkpoint and extracting
+  \item Pinning a frozen ARI v0.7.2 checkpoint and extracting
         \texttt{tree.json} / \texttt{results.json} into
         \code{shared/figures/data/}. Today the data directory holds
         only \code{*.meta.yaml} files marked
@@ -40,11 +40,25 @@ What is \emph{not yet} done:
         per-category rubric distributions from real reviews. These
         will appear here in a follow-up PR that lands the frozen
         checkpoint and re-derives the aggregates.
-  \item Reporting any PaperBench-style replication number from the
-        \texttt{paper-re} skill on real target papers.
+  \item Reporting full-rollout PaperBench-style replication numbers
+        from the \texttt{paper-re} skill on real target papers
+        (sc24-00052 TS-SpGEMM, sc24-00019 cuSZ-i): each requires a
+        12-hour \texttt{BasicAgent} rollout against a real LLM
+        completer, deferred to the operational v0.7.3 pass.
 \end{itemize}
 
-Until those follow-ups land, this chapter contains no quantitative
-claims. Cross-references from other chapters (e.g.\ in
+Cross-references from other chapters (e.g.\ in
 \cref{sec:exploration:termination}) point here only to mark where
 the empirical evidence will live, not where it currently lives.
+
+v0.7.2 does record two minor plumbing checks against the new
+\texttt{execution\_profile} pathway: rubric generation against the
+preprints of two contrasting SC24 papers correctly emitted
+\texttt{kind:"mpi"} (with the full reported scale envelope) for a
+multi-rank HPC paper and correctly omitted the field for a
+single-machine paper; and a multi-flag \texttt{sbatch} dispatch
+against a local SLURM partition was accepted by the queue manager
+after the GRES-availability and \texttt{sbatch --help} probes
+dropped two flags the local SLURM version did not support. These
+are operational sanity checks on the plumbing, not measurements
+of the methodology, and are not cited as evidence in the body.

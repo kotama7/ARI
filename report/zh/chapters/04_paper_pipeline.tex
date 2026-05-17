@@ -53,6 +53,95 @@ leaf 类型 \texttt{GradedTaskNode} 来自
 「以美元绝对值报告的成本」)。两者均实现 \texttt{Evaluator} 协议
 (\code{ari-core/ari/protocols/evaluator.py:19})。
 
+\subsubsection*{venue 条件化的 rubric 模板}
+
+rubric 生成器 (\texttt{ari-skill-replicate.generate\_rubric})
+接受可选的 venue 标识符, 由此从
+\code{ari-core/config/paperbench\_rubrics/} 选取 YAML 模板。
+模板的 \texttt{prompt\_overrides} 块经由专用占位符注入到 skeleton
+和 subtree 提示词中。 ARI 核心保持 domain-agnostic (P4 原则),
+venue 知识封闭于 YAML 中。 这与 \texttt{ari-skill-paper} 在 peer
+review 侧已采用的
+\code{ari-core/config/reviewer\_rubrics/} 模式完全同构。
+
+支援两个模式。 \texttt{agent\_benchmark} 模式下 skeleton 通道按
+论文科学结构分解 (每个主要贡献对应一个直接子节点), 叶子评分
+候选 submission 的 \texttt{reproduce.sh} 输出是否再现了论文 —
+即原始 PaperBench 范式。 \texttt{paper\_audit} 模式下 rubric 根
+的直接子节点是 YAML 的 \texttt{top\_level\_axes} 列声明的
+\emph{固定}审计轴, 叶子不再评分 submission 输出, 而是评分论文
+文本 (以及可选的 Artifact Description / Artifact Evaluation 附
+录) 的描述完整性 — 这是面向 HPC 再现性审计研究的范式倒置, 问
+题不再是 「智能体能否再现这篇论文?」 而是 「这篇论文是否描述
+了足够再现所需的信息?」。 本次发布同捆模板为 \texttt{generic}
+(向后兼容)、 \texttt{sc} (六轴: 环境/数据/执行/图表/扩展性/结
+论)、 \texttt{neurips} (NeurIPS Reproducibility Checklist 轴)、
+\texttt{nature} (wet-lab Reporting Summary 轴)。
+\texttt{paper\_audit} 模式要求 two-stage 生成路径 — 单次 pass
+的提示词无法保证固定轴约束。
+
+\subsubsection*{paper-audit 机制 (v0.7.2)}
+
+为将 \texttt{paper\_audit} 模式的得分从个位数 baseline 提升到
+按上述再现性轴对论文进行判别的区域,组合使用四个正交机制。 全部
+为纯粹的 ARI 包装层,vendor 化的 PaperBench \texttt{SimpleJudge}
+保持无改动;各机制独立可开关,便于消融分析。
+
+\begin{enumerate}
+  \item \emph{多模态 markdown 图像扩展器}
+    (\code{ari-skill-paper-re/src/\_litellm\_completer.py})。
+    论文 PDF 由 \texttt{pymupdf4llm.to\_markdown(write\_images=True)}
+    转换为 markdown,并对每页 PNG 生成
+    \texttt{!\hspace{0pt}[\hspace{0pt}]\hspace{0pt}(path)} 引用。
+    \texttt{async\_completion} 中的扩展器在 LiteLLM 调用前将
+    它们改写为 OpenAI 多模态 content blocks,具备视觉能力的判官
+    (Claude 4.6/4.7, GPT-5, Gemini 2.5) 可在同一 context 中
+    同时看到正文与图表。 vendor \texttt{SimpleJudge} 仍将
+    \texttt{paper\_md} 嵌入为文本 Path;多模态转换发生在 LiteLLM
+    边界,vendor-swap 性得以保留。
+
+  \item \emph{paper-audit 提示词补丁} 位于
+    \code{ari-skill-paper-re/src/\_paperbench\_bridge.py}。 vendor
+    PaperBench 的 \texttt{TASK\_CATEGORY\_QUESTIONS} 在
+    \texttt{Code Development} / \texttt{Code Execution} /
+    \texttt{Result Analysis} 三类下都以 submission 为主语提问
+    (「submission 的代码包含 X 吗?」「\texttt{reproduce.sh}
+    产出了与 Y 相符的证据吗?」)。 在空 submission 的 paper-audit
+    中这些提问结构性地始终收敛到 「否」,即便 concat AD/AE 后
+    mean score 仍卡在 $\sim 0.3$。 call 作用域的 monkey-patch
+    将其换为 paper-audit 风格的提问 (「论文是否以具体形式
+    描述 X?」「论文主张 Y 是否与他处实验证据内在一致?」),
+    退出时恢复原值,因此同进程内的 \texttt{agent\_benchmark}
+    调用不受影响。
+
+  \item \emph{Step 4 再现包生成器} 作为
+    \code{ari-skill-replicate/src/reproduce\_plan.py} 中的
+    \texttt{generate\_reproduce\_plan} MCP 工具暴露。 LLM 阅读
+    论文 (若存在,concat 后含 AD/AE Appendix) 并向目标目录写出
+    四个产物: \texttt{reproduce\_plan.md} (含逐实验再现性分类的
+    分步重构指南)、 \texttt{verification\_code.py} (针对论文数值
+    主张的带容差一致性检查桩)、 \texttt{install\_commands.txt}
+    (从 paper / AD / AE 抽取的 shell 命令)、 \texttt{reproduce.log}
+    (由论文自身报告值合成的模拟执行日志)。 将此目录作为
+    \texttt{judge\_submission} 的 \texttt{submission\_dir} 传入,
+    \texttt{SimpleJudge} 的 \texttt{Result Analysis} 分支即可获得
+    待评证据。 同捆 prompt 不依赖 venue (由 regression test 强制),
+    venue 特有的再现性准则与 rubric 生成共用同一份 YAML 模板。
+
+  \item \emph{分级输入条件}。 dogfood 脚本
+    \code{scripts/sc\_paper\_dogfood.py} 支持
+    \texttt{-{}-paper-extras AD.pdf AE.pdf} 将额外 PDF concat 到
+    主 \texttt{paper.md},以便在同一 rubric 下分别测量
+    \texttt{paper-only} / \texttt{paper+AD} / \texttt{paper+AD+AE}
+    / \texttt{paper+AD+AE+metadata} 四种条件下的 score,从而分解
+    各产物层的贡献。
+\end{enumerate}
+
+四个机制的合计效应为超加 (super-additive):合并效果超过各机制
+独立提升之和。 单机制最大提升来自提示词补丁 (机制 2),其次为
+AD/AE concat (机制 4),多模态扩展器 (机制 1) 提供较小但
+paper-agnostic 一致的增益。
+
 \subsection{review/refine 循环}\label{sec:paper:loop}
 
 改稿循环按反馈 $J(\paper_t)$ 迭代地将 $\paper_t$ 重写为
@@ -164,6 +253,60 @@ $($\texttt{paper\_md}, \texttt{submission\_dir},
 swap(无需改 ARI 代码),而 ARI 完全控制如何把叶得分组合成单
 一数值。同样的包络在叶为二值时按 $\judgefn{i}\in\{0,1\}$ 流入
 \cref{eq:paperscore}。
+
+\subsection{领域广度:执行配置契约}\label{sec:paper:paperbench:v072}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F14_execution_profile.tex}}
+  \caption{\texttt{reproduce\_contract.execution\_profile} 字段从
+           单一 rubric 成果物流入两个消费方:BasicAgent 的 user
+           消息(左侧带,经 \texttt{\_format\_hpc\_appendix})与
+           Phase 2 \texttt{sbatch} 调度器(右侧带,经
+           \texttt{\_run\_reproduce\_slurm})。三个运行时探测把
+           发出的标志集适配到本地 SLURM 部署,因此同一份 rubric
+           可在异构集群上不加修改地忠实调度。}
+  \label{fig:execution-profile}
+\end{figure}
+
+PaperBench 上游的 \texttt{BasicAgent} 是按单一 Docker 容器加单一
+GPU 设计的。 为覆盖方法论本质上并行的论文 —— 多 rank MPI 核函数、
+多节点训练、 集群特定的模块环境 —— \texttt{paper-re} 技能为
+每个 \texttt{reproduce\_contract} 增加一个可选
+\texttt{execution\_profile} 字段以扩展评分单契约。 该字段在设计
+上与领域无关:\texttt{kind} 枚举(\texttt{cpu\_single},
+\texttt{gpu\_single}, \texttt{gpu\_multi}, \texttt{mpi},
+\texttt{mpi\_gpu})命名的是并行执行形状而非特定科学领域,兄弟
+字段声明论文的规模包络、 期望的 CSV 聚合方案、 SLURM allocation
+提示。 当评分单生成器判定论文为单机实验时该字段省略,管道退化为
+原 4 标志 \texttt{sbatch} 调用:契约是累加性而非破坏性的。
+
+代理 prompt 在 \texttt{execution\_profile} 非空时通过为 user 消
+息追加三个区块来吸收该契约:配置本体、周围 SLURM allocation 的
+快照(\texttt{SLURM\_JOB\_NUM\_NODES}, \texttt{SLURM\_NTASKS},
+可见 GPU 列表)、以及覆盖共享 FS 路径规范、优先 \texttt{srun}、
+Python 环境激活、模块加载、多节点 fan-out、 \texttt{timeout}
+包装的简短「计算节点执行约定」。 同时一个 regression test 保证
+反向不成立:运行在无关 SLURM allocation 中的 ARI 不应把 SLURM/MPI
+描述泄漏到非 HPC 论文的 prompt。
+
+同样的契约流入 Phase 2 调度器。 除了既有的 partition / time /
+CPU 数标志外,\texttt{paper-re} 现在构造的 \texttt{sbatch} 命令
+携带完整的布局集(nodes, ntasks, ntasks-per-node, nodelist,
+exclude, exclusive)、GPU 集(gpus-per-task, gpus-per-node, GRES
+type)、内存集(per-node, per-CPU)、硬件约束集(constraint,
+NUMA bindings, hint),外加任意 pass-through 标志的逃生口。
+针对异构 SLURM 部署有三个运行时探测护航:共享文件系统警告、 在
+报告无 GRES 的集群上丢弃所有 GPU 相关标志的 GRES 可用性探测,
+以及丢弃版本不兼容标志(如 SLURM 版本仅在 \texttt{srun} 上接受
+的 \texttt{--cpu-bind})的 \texttt{sbatch --help} 探测。 这些联
+合作用意味着同一份评分单可在 GRES 配置的多 V100 集群、 无 GRES
+的沙箱分区、 或单节点工作站上忠实调度,而无需修改评分单本身。
+
+只有 wrapper 层在变化:此扩展贯穿期间 vendored \texttt{paperbench}
+树与 \texttt{ari-core} 包均未改动。 终端用户可见面 —— 与 v0.7.1
+GUI 相同的论文注册表 / 向导 / 结果视图,并在向导的再现步骤增加
+执行配置覆盖面板 —— 参见 \cref{sec:paper:paperbench}。
 
 \subsection{故障模式与护栏}\label{sec:paper:failures}
 

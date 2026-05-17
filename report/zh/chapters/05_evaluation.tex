@@ -29,7 +29,7 @@ R3a 起草期间写下的示例,并非源自冻结的 ARI 检查点的实测,故
 \emph{未实现}的部分:
 
 \begin{itemize}
-  \item 确定 ARI v0.7.1 冻结检查点,并将 \texttt{tree.json} /
+  \item 确定 ARI v0.7.2 冻结检查点,并将 \texttt{tree.json} /
         \texttt{results.json} 抽取至
         \code{shared/figures/data/}。目前该数据目录仅含
         \code{*.meta.yaml},每份都标注
@@ -37,10 +37,21 @@ R3a 起草期间写下的示例,并非源自冻结的 ARI 检查点的实测,故
   \item 报告中位运行成本、按种子的探索曲线、基于真实评审的按类
         别评分细则分布。这些将由后续 PR 在落入冻结检查点并重新
         计算聚合后于本章呈现。
-  \item 报告 \texttt{paper-re} 技能针对真实目标论文的 PaperBench
-        风格再现得分。
+  \item 报告 \texttt{paper-re} 技能针对真实目标论文
+        (sc24-00052 TS-SpGEMM, sc24-00019 cuSZ-i) 的完整 rollout
+        PaperBench 风格再现得分。 每篇需对真实 LLM completer
+        进行 12 小时 \texttt{BasicAgent} rollout, 推迟到操作性
+        v0.7.3 pass。
 \end{itemize}
 
-在上述后续工作落地之前,本章不做任何定量主张。其他章节中的交叉
-引用(例如 \cref{sec:exploration:termination} 内的)仅指示经验证
-据将来安置之处,而非当前所在之处。
+其他章节中的交叉引用(例如 \cref{sec:exploration:termination}
+内的)仅指示经验证据将来安置之处,而非当前所在之处。
+
+v0.7.2 记录了对新 \texttt{execution\_profile} 路径的两项小型
+管道核查:针对两篇对照性 SC24 论文 preprint 的评分单生成正确
+为多 rank HPC 论文发出 \texttt{kind:"mpi"}(携带完整规模包络),
+并对单机论文正确省略该字段;对本地 SLURM 分区的多标志
+\texttt{sbatch} 调度,在 GRES 可用性探测与 \texttt{sbatch --help}
+探测剥离本地 SLURM 版本不支持的两个标志后被队列管理器接受。
+这些是管道层的运行 sanity check 而非方法论度量,正文中未作为
+证据引用。

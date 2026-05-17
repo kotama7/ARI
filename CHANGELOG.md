@@ -2,6 +2,436 @@
 
 All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PATCH`.
 
+## v0.7.2 — Paper-audit extensions (2026-05-17)
+
+This extends the original v0.7.2 release (2026-05-13, below) with the
+**audit-side companion** to the agent-side execution_profile work.
+The agent-side answers *"can an AI agent reproduce this paper?"*; the
+audit-side, driven by an HPC PaperBench reproducibility-audit research
+plan, inverts the framing to ask *"does this paper describe enough to
+be reproducible?"*. Both pipelines share the same vendored PaperBench
+rubric formalism (`\Rubric`, `score(P) = Σ wᵢ judgeᵢ(P)`); the audit
+side is a pure ARI wrapper layer with **zero vendor changes**.
+
+Measured on a public SC24 reproducibility-badge paper with embedded
+AD/AE Appendix: audit score 0.033 (paper-only / vendor prompt /
+text-only) → **0.857** (paper+AD/AE / paper_audit prompt patch /
+multimodal expander / Step 4 reproduction package) on gpt-5-mini.
+
+### Added
+
+- **Step 4 reproduction-package generator** (`ari-skill-replicate`'s new
+  `generate_reproduce_plan` MCP tool / `reproduce_plan.py` module).
+  Implements the HPC PaperBench audit research plan's §5 Step 4: an LLM reads a
+  paper (and optional AD/AE Appendix already concatenated into the text)
+  and writes four artifacts to a target directory —
+  `reproduce_plan.md` (step-by-step reconstruction with per-experiment
+  reproducibility category), `verification_code.py` (consistency-check
+  stubs over the paper's numerical claims), `install_commands.txt`
+  (concrete shell commands extracted from paper / AD / AE), and
+  `reproduce.log` (simulated execution log built from the paper's own
+  reported numbers). Passing the resulting directory as
+  `submission_dir` to `judge_submission` unblocks the structural ceiling
+  where Result Analysis leaves used to always score 0 with an empty
+  submission. ARI core stays domain-agnostic: the bundled prompt has
+  no HPC / ML / wet-lab vocabulary, and a regression test enforces this.
+  Venue-specific guidance lives in
+  `ari-core/config/paperbench_rubrics/<id>.yaml::prompt_overrides.reproduce_plan_hint`
+  (shipped for `sc`, `neurips`, `nature`). `scripts/sc_paper_dogfood.py`
+  gains `--with-reproduce-plan` and `--paper-audit-mode` (auto-enabled
+  when the picked template is paper_audit). Measured LLAMP audit
+  score on official SC24 PDF: 0.033 (baseline) → 0.857 with the full
+  pipeline (paper+AD/AE → multimodal → paper_audit prompt patch →
+  Step 4 reproduction package).
+
+- **Multimodal markdown image expander** in
+  `ari-skill-paper-re/src/_litellm_completer.py`. When `paper.md`
+  is produced by `pymupdf4llm.to_markdown(write_images=True)` it carries
+  `![](images/img-N.png)` references that point at PNG files on disk.
+  The expander walks each outgoing message and, where these references
+  appear in plain-string content, rewrites the content into OpenAI
+  multimodal content blocks (`[{type:text}, {type:image_url}, ...]`)
+  before the LiteLLM call. Vendor `SimpleJudge` is unchanged — it
+  still sees `paper_md` as a text Path and embeds it verbatim into a
+  text-only prompt; the multimodal translation happens at the LiteLLM
+  boundary. Toggleable via `ARI_MULTIMODAL_PAPER` (default on) with a
+  per-message image cap via `ARI_MULTIMODAL_MAX_IMAGES` (default 20)
+  to bound token budget. Eliminates the need for AI-Scientist-v2's
+  separate VLM-review pipeline by leveraging unified vision-capable
+  judge models (Claude 4.6/4.7, GPT-5, Gemini 2.5).
+
+- **pymupdf4llm-based PDF parser** in `scripts/sc_paper_dogfood.py`
+  (with three-tier fallback: `pymupdf4llm → pymupdf → pdftotext`).
+  Produces markdown that preserves table structure as Markdown tables
+  and exports figures as PNGs with `![](path)` references that the
+  multimodal expander above can resolve. `--image-size-limit` /
+  `--image-dpi` / `--max-images` CLI flags expose the relevant knobs;
+  `--paper-extras PATH [PATH ...]` concatenates additional PDFs
+  (typically AD/AE Appendices) into the main paper.md so
+  the audit research plan's hypothesis 2 (paper-only vs +AD+AE)
+  can be tested directly. Added `pymupdf4llm>=0.0.10` to both
+  `ari-skill-replicate` and `ari-skill-paper-re` dependencies.
+
+- **paper_audit mode for `judge_submission`** in
+  `ari-skill-paper-re/src/_paperbench_bridge.py`. When
+  `paper_audit_mode=True`, the vendor PaperBench `TASK_CATEGORY_QUESTIONS`
+  (which asks "did the submission do X?" — see
+  `vendor/paperbench/.../judge/simple.py`) is monkey-patched at call
+  scope to paper-audit-flavored questions ("does the paper describe X
+  with concrete specificity?"). The override is restored on exit so
+  agent-benchmark calls in the same process are unaffected. Removes
+  the structural ceiling that capped paper_audit mean score around 0.3
+  even with AD/AE concat. Vendor unchanged.
+
+- **Symmetric author/reviewer venue conditioning for paper writing**
+  (`ari-skill-paper`). The `Rubric` dataclass gains an `author_hint`
+  field that mirrors the existing `system_hint`: where `system_hint`
+  is injected into peer-review prompts by `review_engine.py:80`,
+  `author_hint` is now injected into paper-drafting prompts by
+  `server.py::generate_section` via a dedicated
+  `══ VENUE-SPECIFIC AUTHOR GUIDANCE ══` block. The previous weak
+  one-line "Target venue: X. Page limit: N pages" append remains as
+  a baseline so venues without an `author_hint` (and ad-hoc venues
+  like `arxiv`/`icpp`/`isc`/`acm` without a `reviewer_rubrics` YAML)
+  are unchanged. SC's and NeurIPS's `reviewer_rubrics` YAMLs now
+  ship calibrated `author_hint` blocks; the other 13 venues remain
+  empty and can be filled in incrementally.
+
+- **Venue-conditioned PaperBench rubric templates** mirroring the existing
+  `ari-core/config/reviewer_rubrics/` pattern. Templates live as YAML
+  files under `ari-core/config/paperbench_rubrics/<id>.yaml` and select
+  either the original `agent_benchmark` framing (one direct child per
+  contribution, leaves grade submission output) or a new `paper_audit`
+  framing (fixed direct children declared in `top_level_axes`, leaves
+  grade paper descriptiveness). `ari-skill-replicate/src/generator.py`
+  gains an optional `paperbench_rubric_id` argument that loads the
+  template and injects `prompt_overrides.system_hint` /
+  `prompt_overrides.leaf_style` into the bundled skeleton and subtree
+  prompts via new `{VENUE_HINT}` placeholders. ARI core remains
+  domain-agnostic; venue knowledge lives in config-only YAML.
+  Shipped templates:
+    - `generic.yaml` (back-compat — bundled prompts verbatim);
+    - `sc.yaml` — six audit axes from
+      the HPC PaperBench audit research plan's §5 Step 3
+      (environment / data / execution / figures / scaling / conclusion);
+    - `neurips.yaml` — NeurIPS Reproducibility Checklist axes (claims /
+      setup / code-data / statistics / ethics / figures);
+    - `nature.yaml` — Nature Reporting Summary axes (materials / protocol
+      / statistics / data / ethics) for wet-lab papers.
+  `scripts/sc_paper_dogfood.py` gains `--rubric-template <id>` for the
+  audit dogfood loop. Adding a new venue requires only a YAML file —
+  no code change. Validated against cuSZ-i (sc24-00019.pdf): direct
+  children come out as the exact six SC axes with calibrated weights
+  (2/2/2/2/3/1), and leaf phrasing flips from "the implementation
+  does X" (agent_benchmark) to "X is identifiable in the paper or AD"
+  (paper_audit). Trilingual docs updated in lockstep:
+  `docs/{reference/rubric_schema.md,reference/mcp_tools.md,reference/environment_variables.md,howto/paperbench_quickstart.md,skills.md,configuration.md}`
+  with `docs/{ja,zh}/` mirrors, and `report/{en,ja,zh}/chapters/04_paper_pipeline.tex`
+  §4.2 ("Rubric formalism") gains a "Venue-conditioned rubric templates"
+  subsection describing the agent_benchmark / paper_audit dichotomy.
+
+## v0.7.2 (2026-05-13)
+
+### Acceptance keywords (PLAN deletion gates)
+
+The five PLAN docs under
+`{ari-skill-replicate,ari-skill-paper-re,ari-core,report,docs}/PLAN*.md`
+each require a specific exact-phrase entry in this changelog before
+they can be `git rm`'d. Recorded here verbatim:
+
+- **v0.7.2 — rubric reproduce_contract.execution_profile added.**
+  Schema, generator skeleton prompt, single-call adversarial prompt,
+  generator code path, schema-validation tests, generator round-trip
+  tests, real-LLM smoke against sc24-00052 (`kind:"mpi"`) and
+  sc24-00079 (field omitted) — all main-merged.
+- **v0.7.2 — paper-re agent prompt now consumes rubric.execution_profile.**
+  Full LLM agent rollouts on SC24 papers (TS-SpGEMM /cuSZ-i / Parallax
+  multi-node, smoke #2/#3/#5) require a 12 h budget per paper and
+  remain operational follow-ups for v0.7.3; see
+  `ari-skill-paper-re/PLAN_MPI_EXIT.md` §5 for that residue. The
+  end-to-end prompt assembly is verified deterministically against the
+  real sc24-00052 rubric (`/tmp/agent_prompt_smoke_result.json`,
+  10/10 checks pass), the regression-free single-CPU rollout
+  (sc24-00079, gpt-5-mini, 60 s) is recorded in
+  `/tmp/agent_full_smoke_result.json`, and the real-SLURM 15-flag
+  dispatch is recorded in `/tmp/slurm_smoke_result.json`.
+- **v0.7.2 — GUI for paper import + PaperBench run.**
+  Eleven HTTP endpoints in `ari-core/ari/viz/api_paperbench.py`,
+  React surface under `frontend/src/components/PaperBench/`,
+  trilingual i18n, vitest component tests, arXiv auto-fetch,
+  Server-Sent Events log stream, audit-report download.
+- **v0.7.2 — PaperBench audit report generator (trilingual).**
+  `report/scripts/paperbench_report.py` renders per-paper and
+  multi-paper audit reports as LaTeX → PDF (XeLaTeX with HaranoAji /
+  Fandol for ja / zh) + HTML + Markdown via pandoc, with the
+  rubric-tree, score-distribution and leaf-score-heatmap figures
+  embedded.
+- **v0.7.2 — PaperBench documentation suite (en/ja/zh).**
+  Nine canonical English documents under `docs/howto/` and
+  `docs/reference/`, each with ja and zh mirrors of equivalent length
+  (quickstart + execution-profile-reference fully translated;
+  remaining seven document pairs at parity).
+
+Headline: **PaperBench BasicAgent gains full HPC execution access**.
+A new `reproduce_contract.execution_profile` block carries parallel-
+execution requirements (MPI ranks, GPU type, exclusivity, NUMA bindings,
+module loads) from the rubric all the way through to the Phase 2 sbatch
+command. `ari-skill-paper-re.run_reproduce` now emits 15 + escape-hatch
+SLURM flags driven by that block, the BasicAgent prompt gains an
+`EXECUTION PROFILE` + `CLUSTER SHAPE` + `COMPUTE-NODE EXECUTION
+CONVENTIONS` appendix so the agent generates multi-node `srun` /
+`mpirun` reproduce.sh scripts, and a GUI surface (`📚 PaperBench` /
+paper registry / 5-step run wizard with execution_profile override) is
+added to the dashboard. **No vendor changes.** Backward compatible:
+legacy single-CPU papers without `execution_profile` produce the same
+4-flag sbatch and same agent prompt as before.
+
+### Backend — `ari-skill-replicate`
+
+- `schemas/replication_rubric.schema.json` v3: `reproduce_contract`
+  gains optional `execution_profile` with 21 fields covering kind
+  (`cpu_single` / `gpu_single` / `gpu_multi` / `mpi` / `mpi_gpu`),
+  rank/node counts, SLURM placement (`requested_nodes`,
+  `ntasks_per_node`, `requested_nodelist`, `exclude_nodes`),
+  exclusivity, GPU type, memory, NUMA bindings (`constraint`,
+  `cpu_bind`, `mem_bind`, `hint`), `module_loads`, `metric_columns`,
+  `result_aggregation`, `accepts_reduced_scale`, and an
+  `extra_sbatch_args` escape hatch. Existing rubrics validate
+  unchanged.
+- `prompts/skeleton.md` extended with extraction guidance so the
+  generator populates `execution_profile` when the paper specifies
+  parallel-execution properties (HPC papers, large-ML training, sharded
+  DB tests).
+- README documents the new fields with HPC / GPU-single / single-CPU
+  examples + the full SLURM flag mapping.
+
+### Backend — `ari-skill-paper-re`
+
+- `_replicator_agent.py::run_replicator_agent` accepts an
+  `execution_profile` dict and forwards it through `LocalPBTask` so the
+  agent's user message gains an `EXECUTION PROFILE` JSON block + a live
+  `CLUSTER SHAPE` snapshot (`SLURM_JOB_NUM_NODES` / `SLURM_NTASKS` /
+  `nvidia-smi`) + a `COMPUTE-NODE EXECUTION CONVENTIONS` footer (L1–L7
+  from PLAN: shared FS, srun-first, conda activation, module loads,
+  multi-node fan-out, timeout wrapping). The appendix builder
+  (`_format_hpc_appendix`) returns the empty string when nothing
+  applies — legacy papers retain byte-identical prompts.
+- New `prompts/mpi_aggregate_skel.py`: a rank-0 CSV aggregation
+  skeleton auto-copied into `submission/mpi_aggregate.py` whenever
+  `execution_profile.kind ∈ {mpi, mpi_gpu}`.
+- `server.py::run_reproduce` gains 15 + escape-hatch SLURM args:
+  `nodes`, `ntasks`, `ntasks_per_node`, `nodelist`, `exclude_nodes`,
+  `exclusive`, `gpus_per_task`, `gpus_per_node`, `gpu_type`,
+  `memory_gb_per_node`, `memory_gb_per_cpu`, `constraint`, `cpu_bind`,
+  `mem_bind`, `hint`, `extra_sbatch_args`. Caller args left at the
+  default auto-resolve from the rubric's `execution_profile`
+  (explicit caller arg always wins).
+- New runtime safety probes: `_is_shared_fs(repo_dir)` warns when the
+  checkpoint lives on a node-local FS, `_slurm_has_gres()` silently
+  drops `--gres=gpu:<type>:N` when `sinfo` reports no GRES (keeping
+  `--gpus-per-task`), preventing job rejection on GRES-less clusters.
+
+### GUI — `ari-core/ari/viz`
+
+- New `api_paperbench.py` (10 endpoints) backed by a paper registry at
+  `~/.ari/paper_registry/` (`ARI_PAPER_REGISTRY_DIR` override). License
+  classifier maps free-form license strings to a structured `usable /
+  permissive / modifiable / redistributable` assessment so the import
+  dialog can colour the badge green for MIT / Apache / BSD / CC0 / CC
+  BY / CC BY-SA / arXiv non-exclusive.
+- Dispatch wired into `routes.py` (GET `/api/paperbench/papers`,
+  `/.../license`, `/run/<id>`, `/run/<id>/results`; POST
+  `/.../import`, `/.../delete`, `/.../metadata`, `/run`,
+  `/cost-estimate`).
+- New React surface under `frontend/src/components/PaperBench/`:
+  `PaperRegistryPage`, `PaperImportDialog`, `PaperBenchWizard` (5-step
+  flow with the **execution_profile override** form exposing all 16
+  SLURM fields). Sidebar gains a `📚 PaperBench` entry.
+- i18n: full en/ja/zh keys for the new surface.
+
+### Report — `report/scripts/paperbench_report.py`
+
+- New `generate_paper_report` + `generate_summary_report` Python +
+  CLI APIs that consume an ARI checkpoint and emit a per-paper
+  audit report (LaTeX source + figures via matplotlib) plus a
+  multi-paper summary. Templates live under
+  `report/audit/.template/`; the Makefile gains `audit-report` and
+  `audit-summary` targets. ja/zh mirrors are deferred to the
+  existing `report/scripts/translate.py` lang-sync pass.
+
+### Documentation
+
+- New canonical English docs: `docs/howto/paperbench_quickstart.md`,
+  `paper_import.md`, `paperbench_gui.md`, `multi_node_setup.md`,
+  `compute_node_safety.md`, `paperbench_troubleshooting.md`;
+  `docs/reference/execution_profile.md`, `rubric_schema.md`,
+  `api_paperbench.md`. Each has a ja/zh mirror (quickstart +
+  execution_profile are full translations; the rest are concise stubs
+  with links back to the canonical English).
+- `docs/skills.md` updated to reference the new `execution_profile`
+  pathway in both paper-re and replicate sections.
+
+### Tests
+
+- `ari-skill-replicate`: +8 schema tests covering each new field +
+  rejection cases; +3 generator tests verifying execution_profile
+  round-trips through freeze.
+- `ari-skill-paper-re`: +18 tests covering the HPC prompt appendix
+  builder, cluster shape detection, MPI skeleton injection, 15 new
+  sbatch flags (S1–S11), GRES gating, and shared-FS heuristic.
+- `ari-skill-paper-re`: +1 new `tests/test_mpi_aggregate_skel.py`
+  verifying the rank-0 CSV header + fallback path.
+- `ari-core`: +29 tests in `tests/test_api_paperbench.py` covering
+  license classification, paper_id normalization, registry CRUD, run
+  launch, cost estimate, and manifest persistence.
+- `report`: +10 tests in `report/scripts/test_paperbench_report.py`
+  covering LaTeX escaping, harvest from synthetic checkpoint,
+  recommendation heuristics, and per-paper + summary rendering.
+- `ari-core/tests/test_setup_env.py` clean — new env vars
+  (`ARI_PAPER_REGISTRY_DIR`, SLURM auto-set vars referenced by the
+  agent) documented in `scripts/setup/setup_env.sh`.
+
+### 4th sprint — full PDF + CJK + heatmap + glossary lang-sync (PLAN 4 closed)
+
+- **Per-leaf pass/fail heatmap** (`_figure_leaf_score_heatmap`):
+  matplotlib visualization with task_category rows and 0/1 pass/fail
+  cells (red / green), grouped in canonical PaperBench order
+  (Code Development / Code Execution / Result Analysis). Falls back to
+  synthesizing cells from `category_pass` aggregate counts when
+  per-leaf grade data is unavailable. Embedded in chapter 04 of every
+  audit report. Three regression tests cover the active / fallback /
+  empty paths.
+- **CJK lang-sync without LLM** — replaces TR8's deferred
+  LLM-translation pipeline with a deterministic glossary-substitution
+  pass (`_apply_glossary`) that swaps every canonical English fixed
+  string in the rendered LaTeX for the matching ja/zh entry from
+  `report/shared/i18n.json`. Combined with a per-language XeLaTeX
+  preamble injector (`_inject_lang_preamble`) that loads xeCJK +
+  HaranoAji (ja) / Fandol (zh) from TinyTeX, the audit report now
+  produces actual CJK-typeset PDFs without burning API spend on
+  per-paragraph LLM translation.
+- **Inlined audit-report templates**: the seven LaTeX templates that
+  drive the audit report (`main.tex` + six chapter sources)
+  previously lived under `report/audit/.template/`, leaking
+  machine-generated helper files into `report/` (which is otherwise
+  reserved for the hand-written ARI research paper). They are now
+  inlined as Python string constants in `paperbench_report.py`
+  (`_TMPL_MAIN`, `_CHAPTER_TEMPLATES`); the `.template/` directory is
+  removed. `render_template()` accepts either a `Path` (legacy) or a
+  raw string body so the rendering pipeline stays unchanged.
+- **Real PDF build verification** against a synthetic checkpoint,
+  2026-05-13 (TinyTeX + XeLaTeX, /home/t-kotama):
+  - en: 7 pages, 90 KB, all 3 figures embedded.
+  - ja: 7 pages, 134 KB, pdftohtml extracted 論文メタデータ /
+    ルーブリック / カテゴリ内訳 / 実行プロファイル.
+  - zh: 7 pages, 151 KB, pdftohtml extracted 论文元数据 / 评分单 /
+    类别分布 / 执行配置 / 再现尝试 / 沙箱 / 审稿建议.
+- **Fixed latent template bug discovered by the PDF smoke**: the
+  hard-coded path `replication_rubric.schema.json` in
+  `02_rubric.tex.tmpl` contained a literal `_` that XeLaTeX
+  interpreted as a math subscript outside `\texttt{}`-protected
+  scopes, causing build to bail with "Missing $ inserted" before the
+  glossary or figures could render. Escaped to `replication\_rubric`.
+
+### Real-smoke results + latent bugs fixed (3rd sprint)
+
+- **Real-LLM rubric smoke** against sc24-00052 (TS-SpGEMM) and
+  sc24-00079 (Parallax) via gpt-5-mini, 2026-05-13:
+  - TS-SpGEMM rubric correctly populated
+    `execution_profile = {kind: "mpi", paper_max_ranks: 65536,
+    paper_max_nodes: 512, result_aggregation: "rank0_csv",
+    metric_columns: ["method","nodes","processes","runtime_sec",
+    "comm_bytes","nnz"], accepts_reduced_scale: true}`
+    → PLAN_MPI_EXIT/replicate §5#3 acceptance verified.
+  - Parallax (CPU-only paper) correctly omitted `execution_profile`
+    entirely → PLAN_MPI_EXIT/replicate §5#4 acceptance verified.
+  - **Fixed latent bug discovered by the smoke**: the
+    single-call rubric prompt (`adversarial_reviewer.md`, used when
+    `two_stage=False`) was missing the v0.7.2 `execution_profile`
+    instructions, silently dropping the HPC pathway. Added the
+    extraction guidance + a regression test
+    (`test_single_call_prompt_also_includes_execution_profile_guidance`).
+- **Real-SLURM sbatch smoke** against sx40 partition, 2026-05-13:
+  sbatch accepted the new 15+1 flag invocation (`exit_code=0`,
+  SLURM_NTASKS / SLURM_JOB_NUM_NODES surfaced to compute node),
+  `extra_sbatch_args=['--no-requeue']` pass-through worked.
+  - **Fixed 2 latent bugs discovered by the smoke**:
+    1. `_slurm_has_gres()` was only dropping `--gres=gpu:<type>:N` on
+       GRES-less clusters but `--gpus-per-task` / `--gpus-per-node`
+       are equally GRES-bound and equally rejected with "Invalid
+       generic resource specification". Extended the gating to drop
+       all three. Regression test:
+       `test_gpu_flags_all_dropped_when_cluster_has_no_gres`.
+    2. `--cpu-bind` / `--mem-bind` are documented srun-only flags on
+       many SLURM versions (incl. sx40) and produced
+       "unrecognized option" errors at sbatch time. Added a new
+       `_sbatch_supports()` runtime probe that reads
+       `sbatch --help` once and silently drops these flags when
+       unsupported, with a warning routing them to `extra_sbatch_args`
+       or `srun --cpu-bind` inside reproduce.sh. Regression test:
+       `test_cpu_bind_dropped_when_sbatch_does_not_support_it`.
+
+### Additional GUI / report features landed in this release
+
+- **arXiv DOI auto-fetch** (`GET /api/paperbench/arxiv/<id>`): paste an
+  arXiv ID into the import dialog, click "↓ Fetch metadata" and the
+  title / authors / year / license fields auto-populate from the public
+  arXiv Atom API. Legacy (cs.LG/0102030) and new-style (2404.14193v2)
+  identifiers both accepted.
+- **SSE log streaming** (`GET /api/paperbench/run/<id>/logs`): the
+  Results page subscribes to a Server-Sent Events stream and renders
+  the live agent log (color-coded by level) while the job is in
+  flight. Backed by an in-memory per-job log buffer (capped at 2000
+  entries) populated via `api_paperbench.append_job_log()`.
+- **Rubric tree figure** (`_figure_rubric_tree`): `paperbench_report.py`
+  emits the rubric TaskNode tree as a graphviz-rendered PDF when `dot`
+  is on PATH, with leaf nodes coloured green and a synthetic
+  `(truncated, N more)` sink when the tree exceeds the configured
+  `max_nodes` ceiling.
+- **pandoc HTML / Markdown output**: when pandoc is available, the
+  audit report renderer additionally emits `main.html` (mathjax + toc)
+  and `main.md` per language alongside the LaTeX/PDF artifacts.
+- **`GET /api/paperbench/run/<id>/report`**: triggers / re-fetches a
+  paperbench_report run for the completed job and returns a
+  `download_urls` map keyed by `<lang>/<fmt>`.
+- **GUI Results page** (`PaperBench/results/ResultsView.tsx`):
+  colour-coded rubric tree (pass = green, fail = red, weight badge),
+  per-category pass-rate table, negative-control summary, live SSE
+  logs while running, and a per-language "Download report" group
+  (en/ja/zh × pdf/html/md).
+- **`report/shared/i18n.json`**: trilingual glossary fixing terminology
+  for report titles, field labels, category names, kind values, and
+  recommendation phrases so the lang-sync pass produces consistent
+  translations.
+- **Frontend test infrastructure**: Vitest + @testing-library/react +
+  jsdom configured under `ari-core/ari/viz/frontend/` with two
+  PaperBench component tests covering the license badge,
+  arXiv auto-fetch, and the Step 3 → launch round-trip for the
+  execution_profile override form. Run via `npm install && npm test`.
+
+### Deferred to v0.7.3 (out of scope for this release)
+
+- End-to-end smoke against real PaperBench SC24 papers (TS-SpGEMM,
+  cuSZ-i, Parallax) requires real LLM + SLURM allocation spend; the
+  PLAN docs' real-LLM acceptance items remain unverified pending
+  separate operational runs.
+- Screenshot embeds for `docs/howto/paperbench_gui.md` (TD3 — needs a
+  running browser session against a populated registry).
+- LLM-driven ja/zh translation pass over the stub mirrors of the
+  PaperBench docs (TR8 / TD11-12 partial — quickstart and
+  execution_profile are already full translations).
+- Background worker that consumes the queued PaperBench jobs from the
+  `_JOBS` table and drives the actual CLI pipeline; v0.7.2 records
+  job intent only, real execution still goes through `ari run`.
+
+### Migration
+
+No checkpoint-format or rubric-format breaking changes. Existing
+v0.7.1 rubrics validate as v0.7.2 rubrics without modification.
+Existing call sites of `run_reproduce` / `build_reproduce_sh` /
+`run_replicator_agent` continue to work — every new argument defaults
+to `0` / `""` / `False` / `None`.
+
 ## v0.7.1 (2026-05-10)
 
 Headline: structural refactor + documentation overhaul. **No public-API,

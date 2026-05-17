@@ -56,9 +56,27 @@
 \fi
 \ifdefined\XeTeXversion
   \ifdefined\AriCJK
-    \IfFileExists{ctex.sty}{%
-      \usepackage[fontset=fandol]{ctex}%
-    }{}%
+    \ifdefined\AriLangJa
+      % XeLaTeX + Japanese: xeCJK + HaranoAji (Adobe-Japan1 CIDs, ships
+      % with TinyTeX). Without this branch the engine substitutes
+      % missing glyphs with the default ``.notdef'' rectangle, which
+      % rasterizes to an F-shaped tofu and pollutes the whole document.
+      \IfFileExists{xeCJK.sty}{%
+        \usepackage{xeCJK}%
+        \IfFontExistsTF{HaranoAjiMincho-Regular.otf}{%
+          \setCJKmainfont{HaranoAjiMincho-Regular.otf}[%
+            BoldFont=HaranoAjiMincho-Bold.otf,%
+            ItalicFont=HaranoAjiMincho-Regular.otf]%
+          \setCJKsansfont{HaranoAjiGothic-Regular.otf}[%
+            BoldFont=HaranoAjiGothic-Bold.otf]%
+        }{}%
+      }{}%
+    \fi
+    \ifdefined\AriLangZh
+      \IfFileExists{ctex.sty}{%
+        \usepackage[fontset=fandol]{ctex}%
+      }{}%
+    \fi
   \fi
 \fi
 

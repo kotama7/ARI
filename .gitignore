@@ -114,3 +114,11 @@ ari-core/ari/viz/static/dist/
 # ── AI session artifacts ────────────────────────────────────────
 HEARTBEAT.md
 memory/
+
+# ── External research artifacts (never commit) ─────────────────
+# Local-only PDFs used as test inputs / research plans. References in
+# ARI source/docs use abstract names ("HPC PaperBench audit research
+# plan", DOI placeholders) so the repo stays usable without these
+# files; ignore them here so they cannot be accidentally staged.
+/HPC_PaperBench_Final_Proposal_for_Professors.pdf
+/SC41406.2024.*.pdf
