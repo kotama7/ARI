@@ -282,6 +282,15 @@ _env_append_if_absent "# ARI_MODEL_JUDGE="
 _env_append_if_absent "# ARI_RUBRIC_GEN_TARGET_LEAVES="
 _env_append_if_absent "# ARI_RUBRIC_GEN_TEMPERATURE="
 _env_append_if_absent "# ARI_RUBRIC_GEN_TWO_STAGE="
+# v0.7.2 paper-audit knobs. _DIR overrides the search root for
+# venue-conditioned PaperBench rubric templates (default: ari-core/config/
+# paperbench_rubrics/). _PAPER toggles the multimodal markdown image
+# expander in the LiteLLM completer (default on). _MAX_IMAGES caps the
+# number of figures attached per judge message (default 20) to bound
+# token spend on vision-capable models.
+_env_append_if_absent "# ARI_PAPERBENCH_RUBRIC_DIR="
+_env_append_if_absent "# ARI_MULTIMODAL_PAPER="
+_env_append_if_absent "# ARI_MULTIMODAL_MAX_IMAGES="
 # Replicator (PaperBench BasicAgent / IterativeAgent) knobs. time-limit
 # defaults to 12 h to match upstream; iterative=1 disables the submit tool
 # so the agent uses its full budget; max_steps=0 means unlimited.

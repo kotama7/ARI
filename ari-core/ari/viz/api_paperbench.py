@@ -14,7 +14,7 @@ Endpoints powering the React-side **paper registry + PaperBench run wizard**:
 
 The on-disk layout for the registry mirrors PLAN_GUI_PAPERBENCH §5.1::
 
-    {ARI_PAPER_REGISTRY_DIR}/                # default: ~/.ari/paper_registry
+    {ARI_PAPER_REGISTRY_DIR or PathManager.paper_registry_root}/
     ├── manifest.jsonl                       # one paper per line
     └── papers/
         └── <paper_id>/
@@ -70,13 +70,18 @@ log = logging.getLogger(__name__)
 def _registry_root() -> Path:
     """Resolve the paper registry directory.
 
-    Precedence: ``ARI_PAPER_REGISTRY_DIR`` env var → ``~/.ari/paper_registry``.
+    Precedence: ``ARI_PAPER_REGISTRY_DIR`` env var →
+    ``PathManager.paper_registry_root`` (a workspace-rooted directory,
+    typically ``./paper_registry``). v0.5+ ARI no longer maintains a
+    global per-user data directory; the central PathManager keeps the
+    on-disk layout enforceable from one place.
     Created lazily on first write.
     """
     explicit = os.environ.get("ARI_PAPER_REGISTRY_DIR")
     if explicit:
         return Path(explicit).expanduser().resolve()
-    return (Path.home() / ".ari" / "paper_registry").resolve()
+    from ari.paths import PathManager  # local import to avoid cycle
+    return PathManager.from_env().paper_registry_root.resolve()
 
 
 def _manifest_path() -> Path:
