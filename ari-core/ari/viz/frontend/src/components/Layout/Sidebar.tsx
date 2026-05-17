@@ -16,6 +16,7 @@ const NAV_ITEMS: NavEntry[] = [
   { key: 'tree', icon: '🌳', labelKey: 'nav_tree' },
   { key: 'results', icon: '📊', labelKey: 'nav_results' },
   { key: 'new', icon: '✨', labelKey: 'nav_new' },
+  { key: 'paperbench', icon: '📚', labelKey: 'nav_paperbench' },
   { key: 'idea', icon: '💡', labelKey: 'nav_idea' },
   { key: 'workflow', icon: '⚡', labelKey: 'nav_workflow' },
   { key: 'settings', icon: '⚙️', labelKey: 'nav_settings' },

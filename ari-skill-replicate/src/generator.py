@@ -15,6 +15,11 @@ import jsonschema
 
 from categories import normalize_rubric_node
 from manifest import compute_prompt_sha256, freeze
+from rubric_template import (
+    PaperBenchRubricTemplate,
+    build_skeleton_venue_hint,
+    load_paperbench_rubric,
+)
 
 log = logging.getLogger(__name__)
 
@@ -64,17 +69,50 @@ def _render_prompt(paper_text: str, target_leaves: int) -> str:
     return tmpl.replace("{TARGET_LEAVES}", str(target_leaves)).replace("{PAPER_TEXT}", paper_text)
 
 
-def _render_skeleton_prompt(paper_text: str, target_leaves: int) -> str:
+def _render_skeleton_prompt(
+    paper_text: str,
+    target_leaves: int,
+    template: PaperBenchRubricTemplate | None = None,
+) -> str:
     tmpl = (PROMPTS_DIR / "skeleton.md").read_text()
-    return tmpl.replace("{TARGET_LEAVES}", str(target_leaves)).replace("{PAPER_TEXT}", paper_text)
+    venue_hint = build_skeleton_venue_hint(template) if template else ""
+    return (
+        tmpl
+        .replace("{VENUE_HINT}", venue_hint)
+        .replace("{TARGET_LEAVES}", str(target_leaves))
+        .replace("{PAPER_TEXT}", paper_text)
+    )
 
 
-def _render_subtree_prompt(paper_text: str, parent_requirements: str, target_leaves: int) -> str:
+def _render_subtree_prompt(
+    paper_text: str,
+    parent_requirements: str,
+    target_leaves: int,
+    template: PaperBenchRubricTemplate | None = None,
+) -> str:
     tmpl = (PROMPTS_DIR / "subtree.md").read_text()
+    # The leaf_style override only applies to the subtree pass — paper_audit
+    # rubrics need leaves phrased as YES/NO audit questions, not as commands
+    # the submission performs.
+    if template:
+        leaf_style = (template.prompt_overrides.leaf_style or "").strip()
+        if leaf_style:
+            venue_hint = (
+                "=================================================================\n"
+                f"VENUE OVERRIDE: {template.venue}  (subtree leaf style)\n"
+                "=================================================================\n\n"
+                f"{leaf_style}\n\n"
+                "=================================================================\n"
+            )
+        else:
+            venue_hint = ""
+    else:
+        venue_hint = ""
     # Replace PARENT_REQUIREMENTS first; it appears twice in the template
     # (the explicit scope block and inside the OUTPUT FORMAT example).
     return (
         tmpl
+        .replace("{VENUE_HINT}", venue_hint)
         .replace("{PARENT_REQUIREMENTS}", parent_requirements)
         .replace("{TARGET_LEAVES}", str(target_leaves))
         .replace("{PAPER_TEXT}", paper_text)
@@ -348,13 +386,18 @@ def _extract_subtree_budgets(skeleton_root: dict, default_total: int) -> dict[st
 
 
 async def _generate_subtree(
-    call, paper_text: str, parent_node: dict, target_leaves: int
+    call,
+    paper_text: str,
+    parent_node: dict,
+    target_leaves: int,
+    template: PaperBenchRubricTemplate | None = None,
 ) -> tuple[dict | None, list[str]]:
     """Generate one populated subtree for a single d2 node."""
     prompt = _render_subtree_prompt(
         paper_text=paper_text,
         parent_requirements=parent_node.get("requirements", ""),
         target_leaves=target_leaves,
+        template=template,
     )
     parsed, errors = await _call_with_retry(call, prompt, label=f"subtree[{parent_node.get('id','?')[:8]}]")
     if parsed is None:
@@ -407,6 +450,7 @@ async def _generate_two_stage(
     target_total_leaves: int,
     call,
     subtree_concurrency: int = 4,
+    template: PaperBenchRubricTemplate | None = None,
 ) -> tuple[dict | None, list[str]]:
     """Two-pass generation: skeleton → parallel subtrees → merge.
 
@@ -416,7 +460,7 @@ async def _generate_two_stage(
     errors: list[str] = []
 
     # ── Pass 1: skeleton ──
-    skel_prompt = _render_skeleton_prompt(paper_text, target_total_leaves)
+    skel_prompt = _render_skeleton_prompt(paper_text, target_total_leaves, template=template)
     skeleton, skel_errs = await _call_with_retry(call, skel_prompt, label="skeleton")
     errors.extend(skel_errs)
     if skeleton is None:
@@ -440,7 +484,7 @@ async def _generate_two_stage(
     async def _one(child: dict) -> tuple[dict, dict | None, list[str]]:
         async with sem:
             budget = budgets.get(child.get("id") or "", max(8, target_total_leaves // len(children)))
-            sub, errs = await _generate_subtree(call, paper_text, child, budget)
+            sub, errs = await _generate_subtree(call, paper_text, child, budget, template=template)
             return child, sub, errs
 
     results = await asyncio.gather(*[_one(c) for c in children])
@@ -477,8 +521,14 @@ async def generate_rubric_async(
     timeout_sec: int = 600,
     llm_call=None,  # injection point for tests
     two_stage: bool = False,
+    paperbench_rubric_id: str | None = None,
 ) -> dict:
     """Core async generator. ``llm_call`` (kwarg) overrides the litellm call.
+
+    ``paperbench_rubric_id`` selects a venue-conditioned template from
+    ``ari-core/config/paperbench_rubrics/<id>.yaml``. ``None`` (default)
+    preserves the original prompt verbatim. Mirrors the
+    ``ari-skill-paper`` venue-rubric pattern.
 
     Returns a result dict with ``rubric_path``, ``rubric_sha256``,
     ``leaves_count``, ``depth``, ``category_breakdown``, and ``warnings``.
@@ -489,6 +539,19 @@ async def generate_rubric_async(
     target = target_leaf_count or compute_target_leaf_count(paper_text)
     chosen_model = model or _model()
     prompt = _render_prompt(paper_text, target)
+
+    template: PaperBenchRubricTemplate | None = None
+    if paperbench_rubric_id:
+        template = load_paperbench_rubric(paperbench_rubric_id)
+        if template.mode == "paper_audit" and not two_stage:
+            return {
+                "error": (
+                    f"paper_audit template '{paperbench_rubric_id}' requires "
+                    "two_stage=True (single-pass skeleton+leaves cannot "
+                    "honour the fixed-axis constraint)"
+                ),
+                "warnings": [],
+            }
 
     call = llm_call or (lambda p: _llm_call(p, chosen_model, temperature, timeout_sec))
 
@@ -501,6 +564,7 @@ async def generate_rubric_async(
             paper_text=paper_text,
             target_total_leaves=target,
             call=call,
+            template=template,
         )
         last_errors.extend(errs)
         if parsed is not None:
@@ -530,7 +594,7 @@ async def generate_rubric_async(
             # ``prompt`` is the legacy single-call template — record the
             # skeleton prompt's hash instead so provenance reflects the
             # actual primary template used.
-            skel_prompt = _render_skeleton_prompt(paper_text, target)
+            skel_prompt = _render_skeleton_prompt(paper_text, target, template=template)
             frozen = freeze(
                 parsed,
                 generator_model=chosen_model,

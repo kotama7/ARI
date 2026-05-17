@@ -34,7 +34,7 @@
 \emph{未実装}のもの:
 
 \begin{itemize}
-  \item ARI v0.7.1 の凍結チェックポイントの確定と、
+  \item ARI v0.7.2 の凍結チェックポイントの確定と、
         \texttt{tree.json} / \texttt{results.json} の
         \code{shared/figures/data/} への抽出。現状、この data ディ
         レクトリには \code{*.meta.yaml} のみが置かれ、いずれも
@@ -43,11 +43,25 @@
         づくカテゴリ別ルブリック分布の報告。これらは凍結チェッ
         クポイントを上陸させ集約値を再導出する後続 PR で本章に
         現れる予定である。
-  \item 実対象論文に対する \texttt{paper-re} スキルからの
-        PaperBench 風の再現スコアの報告。
+  \item 実対象論文 (sc24-00052 TS-SpGEMM、 sc24-00019 cuSZ-i) に
+        対する \texttt{paper-re} スキルからのフルロールアウト
+        PaperBench 風の再現スコア報告。 これらは各々実 LLM
+        completer に対する 12 時間 \texttt{BasicAgent} ロール
+        アウトを要し、 オペレーショナル v0.7.3 パスに持ち越す。
 \end{itemize}
 
-これらの後続作業が上陸するまで、本章は定量的主張を一切含まない。
 他章からの相互参照(例えば \cref{sec:exploration:termination} 内)
 は、経験的証拠が将来配置される場所を指し示すのみであり、現在置
 かれている場所を指してはいない。
+
+v0.7.2 は新 \texttt{execution\_profile} 経路に対する 2 件の
+小規模な配管チェックを記録している:対照的な 2 篇の SC24 論文の
+preprint に対するルーブリック生成が、 マルチランク HPC 論文に
+対しては \texttt{kind:"mpi"}(報告済みの完全なスケール包絡を伴う)
+を正しく発行し、 単一マシン論文に対してはフィールドを正しく省略
+した;ローカル SLURM パーティションに対するマルチフラグ
+\texttt{sbatch} ディスパッチは、 ローカル SLURM バージョンが
+対応しない 2 フラグを GRES 可用性プローブと \texttt{sbatch --help}
+プローブが drop した後、 キューマネージャに受理された。 これらは
+配管の運用上の sanity check であって方法論の測定ではなく、 本文
+中の証拠としては引用していない。

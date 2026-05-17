@@ -182,7 +182,11 @@ def test_restart_endpoint_failure_propagates():
 
 
 def test_server_routes_restart_endpoint():
-    """server.py must wire POST /api/memory/restart → _api_memory_restart."""
-    src = (Path(__file__).resolve().parents[1] / "ari" / "viz" / "server.py").read_text()
+    """routes.py must wire POST /api/memory/restart → _api_memory_restart.
+
+    The dispatch moved from server.py to routes.py during the v0.7.1
+    Phase-3B refactor; this test checks the new home.
+    """
+    src = (Path(__file__).resolve().parents[1] / "ari" / "viz" / "routes.py").read_text()
     assert "/api/memory/restart" in src
     assert "_api_memory_restart" in src

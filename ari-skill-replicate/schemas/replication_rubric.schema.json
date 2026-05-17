@@ -30,6 +30,57 @@
         "expected_artifacts": {
           "type": "array",
           "items": { "type": "string" }
+        },
+        "execution_profile": {
+          "type": "object",
+          "description": "Optional HPC/parallel-execution hints. Consumed by ari-skill-paper-re Phase 2 sbatch and BasicAgent prompt. Omit for legacy single-node papers (backward-compat).",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": ["cpu_single", "gpu_single", "gpu_multi", "mpi", "mpi_gpu"]
+            },
+            "paper_max_ranks":  { "type": "integer", "minimum": 1 },
+            "paper_max_nodes":  { "type": "integer", "minimum": 1 },
+            "min_ranks":        { "type": "integer", "minimum": 1, "default": 1 },
+            "min_nodes":        { "type": "integer", "minimum": 1, "default": 1 },
+            "result_aggregation": {
+              "type": "string",
+              "enum": ["rank0_csv"]
+            },
+            "metric_columns": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Required column names in submission/results/*.csv"
+            },
+            "accepts_reduced_scale": {
+              "type": "boolean",
+              "default": true
+            },
+            "requested_nodes":        { "type": "integer", "minimum": 1 },
+            "ntasks_per_node":        { "type": "integer", "minimum": 0, "default": 0 },
+            "requested_nodelist":     { "type": ["string", "null"] },
+            "exclude_nodes":          { "type": "string", "default": "" },
+            "exclusive":              { "type": "boolean", "default": false },
+            "requested_gpus_per_task":{ "type": "integer", "minimum": 0, "default": 0 },
+            "requested_gpus_per_node":{ "type": "integer", "minimum": 0, "default": 0 },
+            "gpu_type":               { "type": "string", "default": "" },
+            "memory_gb_per_node":     { "type": "integer", "minimum": 0, "default": 0 },
+            "memory_gb_per_cpu":      { "type": "integer", "minimum": 0, "default": 0 },
+            "constraint":             { "type": "string", "default": "" },
+            "cpu_bind":               { "type": "string", "default": "" },
+            "mem_bind":               { "type": "string", "default": "" },
+            "hint":                   { "type": "string", "default": "" },
+            "module_loads": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": []
+            },
+            "extra_sbatch_args": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": []
+            }
+          }
         }
       }
     },

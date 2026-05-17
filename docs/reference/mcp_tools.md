@@ -126,6 +126,33 @@ The skill explicitly declares "no LLM calls" in its design doc — see
 | `generate_rubric` | Two-stage (skeleton + subtree) PaperBench rubric synthesis | ✓ |
 | `audit_rubric` | LLM audits leaves for vague / unverifiable / duplicate criteria | ✓ |
 
+### `generate_rubric` — venue-conditioned templates (unreleased)
+
+`generate_rubric` accepts an optional `paperbench_rubric_id` argument
+that selects a venue-conditioned template from
+`ari-core/config/paperbench_rubrics/<id>.yaml`. Mirrors the
+`reviewer_rubrics/` venue pattern already used by `ari-skill-paper`'s
+peer-review path.
+
+| Argument | Type | Default | Effect |
+|---|---|---|---|
+| `paperbench_rubric_id` | `str` | `""` | Empty = bundled prompt verbatim (back-compat). Otherwise loads the YAML template and injects `prompt_overrides.system_hint` / `prompt_overrides.leaf_style` into the skeleton + subtree prompts. |
+
+Shipped templates:
+
+| `id` | `mode` | Top-level structure |
+|---|---|---|
+| `generic` | `agent_benchmark` | Decompose by scientific contribution (current default behaviour). |
+| `sc` | `paper_audit` | Six fixed audit axes for HPC papers (env / data / execution / figures / scaling / conclusion). |
+| `neurips` | `paper_audit` | Six axes per NeurIPS Reproducibility Checklist (claims / setup / code+data / statistics / ethics / figures). |
+| `nature` | `paper_audit` | Five axes for wet-lab papers (materials / protocol / statistics / data / ethics). |
+
+`paper_audit` mode requires `two_stage=True`; the generator returns an
+error if the single-pass path is requested with a `paper_audit`
+template (the single-pass prompt cannot honour the fixed-axis
+constraint). See [`rubric_schema.md`](rubric_schema.md#venue-conditioned-templates)
+for the YAML schema and authoring guide.
+
 ## ari-skill-transform — tree walk + EAR pipeline
 
 `mcp.json` has no tools listed (the file is internal-only); the

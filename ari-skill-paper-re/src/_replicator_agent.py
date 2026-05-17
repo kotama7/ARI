@@ -1,6 +1,20 @@
 """Agent-mode Replicator: drive PaperBench's BasicAgent / IterativeAgent
 solver against ari's checkpoint workspace.
 
+v0.7.2 additions (PLAN_MPI_EXIT):
+
+* ``run_replicator_agent`` accepts an ``execution_profile`` dict (rubric's
+  ``reproduce_contract.execution_profile``) and forwards it via
+  :class:`LocalPBTask` so the agent's user message gets the EXECUTION
+  PROFILE / CLUSTER SHAPE / COMPUTE-NODE EXECUTION CONVENTIONS blocks
+  (mirroring ``prompts/replicator.md``).
+* Cluster shape is captured at call-site from SLURM env vars
+  (``SLURM_JOB_NUM_NODES``, ``SLURM_NTASKS``) plus a best-effort GPU list
+  via ``nvidia-smi``.
+* The MPI aggregation skeleton (``prompts/mpi_aggregate_skel.py``) is
+  auto-copied into ``submission/`` when ``execution_profile.kind`` ∈
+  {``"mpi"``, ``"mpi_gpu"``}.
+
 This is the v0.7+ replacement for the v0.6 single-shot Replicator
 (``_replicator.py``). The single-shot version is *deleted* — see release
 notes; if you want it back, ``git revert`` the deletion commit. Agent mode
@@ -31,8 +45,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import os
+import shutil
+import subprocess
 import time
 from pathlib import Path
 from typing import Any
@@ -62,6 +79,176 @@ from _compute import LocalComputer, ApptainerComputer, make_computer
 from _compute.local_pbtask import LocalPBTask, make_local_pbtask
 
 log = logging.getLogger(__name__)
+
+
+# ─── cluster shape + HPC prompt appendix ─────────────────────────────────
+
+
+def _detect_gpu_list() -> str:
+    """Best-effort GPU enumeration for the prompt's CLUSTER SHAPE block.
+
+    Returns a comma-joined string of GPU model names (e.g.
+    "Tesla V100-SXM2-16GB ×4") or "none visible" when nvidia-smi is absent
+    or reports no devices. Never raises — this is purely informational.
+    """
+    try:
+        r = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return "none visible"
+    if r.returncode != 0:
+        return "none visible"
+    names = [n.strip() for n in (r.stdout or "").splitlines() if n.strip()]
+    if not names:
+        return "none visible"
+    counts: dict[str, int] = {}
+    for n in names:
+        counts[n] = counts.get(n, 0) + 1
+    return ", ".join(f"{name} ×{c}" for name, c in counts.items())
+
+
+def detect_cluster_shape() -> dict[str, str]:
+    """Snapshot the current allocation's shape from SLURM env + nvidia-smi.
+
+    Used by ``run_replicator_agent`` to seed the agent's CLUSTER SHAPE
+    prompt block. Outside SLURM, both rank/node counts fall back to "1"
+    (the legacy single-node behaviour).
+    """
+    return {
+        "SLURM_JOB_NUM_NODES": os.environ.get("SLURM_JOB_NUM_NODES", "1"),
+        "SLURM_NTASKS": os.environ.get("SLURM_NTASKS", "1"),
+        "GPU_LIST": _detect_gpu_list(),
+    }
+
+
+_MPI_KINDS = ("mpi", "mpi_gpu")
+
+
+def _format_hpc_appendix(
+    *,
+    expected_artifacts: list[str],
+    execution_profile: dict,
+    cluster_shape: dict,
+) -> str:
+    """Build the ari-side prompt appendix appended to the vendor instructions.
+
+    Domain isolation: HPC-specific content (CLUSTER SHAPE, MPI / srun /
+    sbatch / multi-node fan-out conventions) is emitted ONLY when the
+    rubric's ``execution_profile`` is non-empty (the explicit HPC opt-in
+    signal). When only ``expected_artifacts`` is present (legacy non-HPC
+    paper), the appendix degrades to the same EXPECTED_ARTIFACTS-only
+    block emitted by v0.7.1 — byte-identical agent prompts for non-HPC
+    papers.
+
+    Returns an empty string when none of the three inputs has content,
+    preserving the pre-v0.7.2 zero-overhead behaviour.
+    """
+    has_artifacts = bool(expected_artifacts)
+    has_profile = bool(execution_profile)
+    # ``has_shape`` only counts as a signal when execution_profile is also
+    # set. A non-HPC paper running inside an unrelated SLURM allocation
+    # should NOT pull in CLUSTER SHAPE / COMPUTE-NODE conventions just
+    # because $SLURM_NTASKS happens to be set.
+    has_shape = has_profile and any(
+        cluster_shape.get(k) and cluster_shape.get(k) not in ("1", "none visible", "")
+        for k in ("SLURM_JOB_NUM_NODES", "SLURM_NTASKS", "GPU_LIST")
+    )
+    if not (has_artifacts or has_profile):
+        return ""
+
+    parts: list[str] = []
+
+    if has_artifacts:
+        parts.append(
+            "EXPECTED_ARTIFACTS (rubric-driven; ``reproduce.sh`` MUST produce "
+            "these at the workspace root):\n"
+            + "\n".join(f"  - {a}" for a in expected_artifacts)
+        )
+
+    # Below this point: HPC-specific blocks. Gated on ``has_profile`` so
+    # they never leak into non-HPC paper runs.
+    if not has_profile:
+        return "\n\n" + "\n\n".join(parts)
+
+    parts.append(
+        "EXECUTION PROFILE (from the rubric):\n"
+        + json.dumps(execution_profile, indent=2, ensure_ascii=False)
+    )
+
+    if has_shape:
+        parts.append(
+            "CLUSTER SHAPE (current allocation):\n"
+            f"  - SLURM_JOB_NUM_NODES = {cluster_shape.get('SLURM_JOB_NUM_NODES', '1')}\n"
+            f"  - SLURM_NTASKS        = {cluster_shape.get('SLURM_NTASKS', '1')}\n"
+            f"  - GPU devices visible = {cluster_shape.get('GPU_LIST', 'none visible')}"
+        )
+
+    kind = (execution_profile or {}).get("kind", "")
+    conventions: list[str] = []
+    if kind in _MPI_KINDS:
+        metric_cols = (execution_profile or {}).get("metric_columns") or []
+        cols_repr = (
+            ", ".join(repr(c) for c in metric_cols) if metric_cols else "<rubric.metric_columns>"
+        )
+        conventions.append(
+            "  - reproduce.sh MUST launch via ``srun -n $SLURM_NTASKS`` or\n"
+            "    ``mpirun -np $SLURM_NTASKS``. Rank 0 collects metrics via\n"
+            "    MPI_Reduce/Gather (or mpi4py ``comm.gather``) and writes\n"
+            "    ``submission/results/<file>.csv`` with header EXACTLY:\n"
+            f"        [{cols_repr}]\n"
+            "    A helper skeleton (``submission/mpi_aggregate.py``) has\n"
+            "    been auto-injected — copy it into your CSV-emit step."
+        )
+    if kind in ("gpu_single", "gpu_multi") or kind in _MPI_KINDS:
+        conventions.append(
+            "  - kind is GPU-bearing: reproduce.sh MUST use CUDA (nvcc) OR\n"
+            "    PyTorch CUDA / cupy. Do NOT fall back to NumPy unless\n"
+            "    EXECUTION_PROFILE is empty."
+        )
+    if (execution_profile or {}).get("accepts_reduced_scale"):
+        conventions.append(
+            "  - accepts_reduced_scale=true: if you cannot reach\n"
+            "    paper_max_ranks/nodes in this allocation, run as many\n"
+            "    scale points as fit and add a ``paper_paper_scale_point``\n"
+            "    boolean column to the CSV (false for reduced points)."
+        )
+    module_loads = (execution_profile or {}).get("module_loads") or []
+    if module_loads:
+        conventions.append(
+            "  - module_loads is non-empty. PREPEND to reproduce.sh:\n"
+            f"        module load {' '.join(module_loads)}"
+        )
+    if conventions:
+        parts.append("CONVENTIONS:\n" + "\n".join(conventions))
+
+    # COMPUTE-NODE conventions are HPC-flavoured; only emit when the
+    # rubric explicitly opted into the HPC pathway via execution_profile.
+    parts.append(
+        "COMPUTE-NODE EXECUTION CONVENTIONS:\n"
+        "  Shared filesystem:\n"
+        "    - All paths in reproduce.sh must resolve on EVERY allocated node.\n"
+        "    - $HOME-based or /work/-based paths only. NEVER /tmp or /var/tmp.\n"
+        "  MPI invocation (PREFER srun over mpirun):\n"
+        "    - ``srun -n $SLURM_NTASKS <cmd>`` uses SLURM's PMI/PMIx and works\n"
+        "      without a separately-installed OpenMPI/MPICH.\n"
+        "    - Test ``which mpirun`` before assuming it is on PATH.\n"
+        "  Python env:\n"
+        "    - bash shebang does NOT activate conda. Prepend\n"
+        "      ``source ~/.bashrc`` or\n"
+        "      ``source ~/miniconda3/etc/profile.d/conda.sh && conda activate <env>``\n"
+        "      when needed.\n"
+        "  Multi-node fan-out:\n"
+        "    - reproduce.sh starts as 1 rank. Use\n"
+        "      ``srun -N $SLURM_JOB_NUM_NODES -n $SLURM_NTASKS <cmd>``\n"
+        "      to spread across all allocated nodes.\n"
+        "  Timeout wrapping:\n"
+        "    - Wrap long stages with ``timeout 1800 <cmd>`` so one slow step\n"
+        "      does not eat the whole SLURM walltime."
+    )
+
+    return "\n\n" + "\n\n".join(parts)
 
 
 # ─── docker sanity bypass ─────────────────────────────────────────────────
@@ -325,19 +512,26 @@ class AriPBSolver(BasicAgentSolver):
             )
             instructions = _adapt_vendor_paths(instructions)
             system_msg = _adapt_vendor_paths(system_msg)
-            # ari-side addition: rubric-driven expected_artifacts. Vendor's
-            # prompts don't know about ari's rubric tree, so the grader's
-            # leaf claims would otherwise lack a hint about which files
-            # ``reproduce.sh`` should produce.
-            artifacts = []
+            # ari-side addition: rubric-driven expected_artifacts +
+            # (v0.7.2) execution_profile + cluster shape + HPC compute-node
+            # conventions. Vendor's prompts don't know about ari's rubric
+            # tree or the surrounding SLURM allocation, so the agent would
+            # otherwise generate a single-node CPU implementation regardless
+            # of the rubric's HPC requirements.
+            artifacts: list[str] = []
+            exec_profile: dict = {}
+            cluster_shape: dict = {}
             if isinstance(task, LocalPBTask):
                 artifacts = task.rubric_expected_artifacts
-            if artifacts:
-                instructions += (
-                    "\n\nEXPECTED_ARTIFACTS (rubric-driven; ``reproduce.sh`` "
-                    "MUST produce these at the workspace root):\n"
-                    + "\n".join(f"  - {a}" for a in artifacts)
-                )
+                exec_profile = task.rubric_execution_profile
+                cluster_shape = task.cluster_shape
+            appendix = _format_hpc_appendix(
+                expected_artifacts=artifacts,
+                execution_profile=exec_profile,
+                cluster_shape=cluster_shape,
+            )
+            if appendix:
+                instructions += appendix
             await self._execute_agent_and_periodically_upload_logs(
                 computer=computer,
                 task=task,
@@ -367,6 +561,7 @@ async def run_replicator_agent(
     paper_md_path: str,
     output_dir: str,
     expected_artifacts: list[str],
+    execution_profile: dict | None = None,
     time_limit_sec: int = 12 * 3600,
     iterative_agent: bool = False,
     max_steps: int | None = None,
@@ -399,6 +594,24 @@ async def run_replicator_agent(
     work.mkdir(parents=True, exist_ok=True)
     run_id = run_id or f"ari-{int(time.time())}"
 
+    exec_profile = dict(execution_profile or {})
+    cluster_shape = detect_cluster_shape()
+
+    # Auto-inject the MPI aggregation skeleton when the rubric declares an
+    # MPI-bearing kind. Placed at ``submission/mpi_aggregate.py`` so the
+    # agent can simply copy or import from it; absent execution_profile
+    # short-circuits silently.
+    if exec_profile.get("kind") in _MPI_KINDS:
+        skel_src = Path(__file__).resolve().parent / "prompts" / "mpi_aggregate_skel.py"
+        if skel_src.is_file():
+            sub = work / "submission"
+            sub.mkdir(parents=True, exist_ok=True)
+            try:
+                shutil.copy2(skel_src, sub / "mpi_aggregate.py")
+                log.info("injected MPI aggregate skeleton → %s", sub / "mpi_aggregate.py")
+            except OSError as e:
+                log.warning("could not inject MPI aggregate skeleton: %s", e)
+
     computer = make_computer(
         work_dir=work,
         kind=sandbox_kind,
@@ -417,6 +630,8 @@ async def run_replicator_agent(
         work_dir=str(work),
         instructions=_INSTRUCTIONS_TXT_STUB,
         rubric_expected_artifacts=expected_artifacts,
+        rubric_execution_profile=exec_profile,
+        cluster_shape=cluster_shape,
         paper_id=paper_id,
         run_id=run_id,
         run_group_id=run_group_id,

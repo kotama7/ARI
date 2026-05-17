@@ -169,6 +169,72 @@ def average_graded_runs(runs: list[GradedTaskNode]) -> dict:
 # ─── async adapter: our calling convention → upstream SimpleJudge ─────────
 
 
+_PAPER_AUDIT_QUESTIONS = {
+    "Code Development": (
+        "Does the paper or its AD/AE Appendix describe this implementation "
+        "detail with concrete, reconstructable specificity — concrete "
+        "versions, parameters, configuration, file paths, or code "
+        "fragments? Mere mentions or vague descriptions are NOT sufficient. "
+        "Note: a submission may not exist; in paper_audit mode you are "
+        "scoring the paper's self-description, not whether a submission "
+        "reproduces it."
+    ),
+    "Code Execution": (
+        "Does the paper or its AD/AE Appendix document the execution "
+        "procedure for this (commands, scripts, sbatch parameters, "
+        "environment variables, hardware setup) with enough detail that "
+        "an HPC practitioner could reproduce it without consulting the "
+        "authors? Note: a submission may not exist; in paper_audit mode "
+        "you are scoring the paper's self-description, not whether a "
+        "submission reproduces it."
+    ),
+    "Result Analysis": (
+        "Is the paper's claim INTERNALLY CONSISTENT with the experimental "
+        "evidence presented elsewhere in the paper (figures, tables, "
+        "body text, AD/AE Appendix)? Cross-check the textual claim "
+        "against the numerical or visual evidence — both the magnitude "
+        "and the scaling trend must match within reasonable tolerance. "
+        "Note: a submission may not exist; in paper_audit mode you are "
+        "checking the paper's own internal consistency, not whether a "
+        "submission reproduced the result."
+    ),
+    "Subtree": "What is the weighted score of all the criteria in the subtree?",
+}
+
+
+def _patch_task_category_questions(replacement: dict[str, str] | None = None):
+    """Context manager: swap PaperBench's ``TASK_CATEGORY_QUESTIONS`` so
+    SimpleJudge's grading prompt asks paper-audit-flavored questions
+    instead of submission-flavored ones.
+
+    The vendor ``simple.py`` imports the constant into its module
+    namespace at module load time, so both
+    ``paperbench.rubric.tasks.TASK_CATEGORY_QUESTIONS`` AND
+    ``paperbench.judge.simple.TASK_CATEGORY_QUESTIONS`` must be patched
+    to make the override take effect. Always restored on exit so the
+    agent-benchmark code path is unaffected by a paper_audit call.
+    """
+    import contextlib
+    import paperbench.judge.simple as ps_simple  # type: ignore
+    import paperbench.rubric.tasks as ps_tasks   # type: ignore
+
+    if replacement is None:
+        replacement = _PAPER_AUDIT_QUESTIONS
+
+    @contextlib.contextmanager
+    def _patch():
+        orig_simple = ps_simple.TASK_CATEGORY_QUESTIONS
+        orig_tasks = ps_tasks.TASK_CATEGORY_QUESTIONS
+        ps_simple.TASK_CATEGORY_QUESTIONS = replacement
+        ps_tasks.TASK_CATEGORY_QUESTIONS = replacement
+        try:
+            yield
+        finally:
+            ps_simple.TASK_CATEGORY_QUESTIONS = orig_simple
+            ps_tasks.TASK_CATEGORY_QUESTIONS = orig_tasks
+    return _patch()
+
+
 async def judge_submission(
     *,
     paper_md: str,
@@ -178,6 +244,7 @@ async def judge_submission(
     judge_model: str,
     addendum: str | None = None,
     judge_addendum: str | None = None,
+    paper_audit_mode: bool = False,
 ) -> GradedTaskNode:
     """Run upstream SimpleJudge against the given submission.
 
@@ -186,6 +253,15 @@ async def judge_submission(
     ``submission_dir``. This wrapper writes ``paper_md`` to a temp file and,
     if the caller provided an inline ``reproduce_log`` string, persists it
     into ``submission_dir/reproduce.log`` so the judge can find it.
+
+    ``paper_audit_mode``: when True, the vendor's
+    ``TASK_CATEGORY_QUESTIONS`` (which asks about a submission's code /
+    reproduce.sh / produced evidence) is monkey-patched to paper-audit
+    questions (about the paper's own self-description and internal
+    consistency) for the duration of the call. This breaks the structural
+    ceiling where ``Result Analysis`` leaves always score 0 with an empty
+    submission. The override is scoped to this call only; agent-benchmark
+    callers see the original vendor prompt.
     """
     # Main per-leaf grading completer routes through LiteLLM so any provider
     # works (OpenAI snapshots not in PaperBench's CONTEXT_WINDOW_LENGTHS,
@@ -215,5 +291,10 @@ async def judge_submission(
             paper_md=paper_md_path,
             completer_config=cfg,
         )
-        await judge.before_grading()
-        return await judge.grade(rubric, judge.grade_leaf)
+        if paper_audit_mode:
+            with _patch_task_category_questions():
+                await judge.before_grading()
+                return await judge.grade(rubric, judge.grade_leaf)
+        else:
+            await judge.before_grading()
+            return await judge.grade(rubric, judge.grade_leaf)

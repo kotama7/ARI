@@ -60,6 +60,104 @@ PaperBench の \texttt{SimpleJudge}
 両者は \texttt{Evaluator} プロトコル
 (\code{ari-core/ari/protocols/evaluator.py:19})を実装する。
 
+\subsubsection*{venue 条件付きルブリックテンプレート}
+
+ルブリック生成器 (\texttt{ari-skill-replicate.generate\_rubric})
+は任意の venue 識別子を受け取り、 これにより
+\code{ari-core/config/paperbench\_rubrics/} 配下の YAML
+テンプレートを選択する。 テンプレートの \texttt{prompt\_overrides}
+ブロックは専用プレースホルダ経由で skeleton/subtree プロンプトに
+注入される。 ARI コアはドメイン非依存 (P4) のまま保たれ、 venue
+知識は YAML に閉じる。 これは \texttt{ari-skill-paper} の peer-review
+側がすでに \code{ari-core/config/reviewer\_rubrics/} で採用している
+パターンと完全に同型である。
+
+二つのモードを支援する。 \texttt{agent\_benchmark} モードでは
+skeleton パスが論文の科学構造で分解 (主要貢献ごとに直下ノード 1
+個) し、 葉は候補 submission の \texttt{reproduce.sh} 出力が論文
+を再現できているかを採点する — これが元来の PaperBench 枠組み。
+\texttt{paper\_audit} モードではルブリック根の直下ノードは YAML
+の \texttt{top\_level\_axes} 列で宣言された\emph{固定}監査軸集合
+となり、 葉は submission 出力ではなく論文本文 (および任意の
+Artifact Description / Artifact Evaluation 補遺) の記述完全性を
+採点する — これは HPC 再現性監査研究を意図した枠組みの反転で、
+問いが「エージェントは論文を再現できるか?」ではなく「論文は再現
+に必要な情報を十分記述しているか?」に変わる。 本リリース同梱の
+テンプレートは \texttt{generic} (後方互換)、 \texttt{sc} (6 軸:
+環境/データ/実行/図表/scaling/結論)、 \texttt{neurips} (NeurIPS
+Reproducibility Checklist 軸)、 \texttt{nature} (wet-lab
+Reporting Summary 軸) である。 \texttt{paper\_audit} モードは
+two-stage 生成パスを要求する — single-pass プロンプトでは固定軸
+制約を遵守できないためである。
+
+\subsubsection*{paper-audit 機構 (v0.7.2)}
+
+\texttt{paper\_audit} モードの score を一桁台の baseline から
+上記の再現性軸に沿って論文を判別する領域まで押し上げるため、
+4 つの直交する機構を組み合わせる。 いずれも純粋に ARI 側の
+wrapper 層であり、 vendor 化された PaperBench \texttt{SimpleJudge}
+は無改修。 各機構は独立にトグル可能で、 寄与の ablation が行える。
+
+\begin{enumerate}
+  \item \emph{マルチモーダル markdown 画像展開器}
+    (\code{ari-skill-paper-re/src/\_litellm\_completer.py})。
+    論文 PDF は \texttt{pymupdf4llm.to\_markdown(write\_images=True)}
+    により markdown に変換され、 ページ単位 PNG への
+    \texttt{!\hspace{0pt}[\hspace{0pt}]\hspace{0pt}(path)} 参照を
+    生成する。 \texttt{async\_completion} 内の展開器が LiteLLM
+    呼出前にそれらを OpenAI multimodal content blocks に書き換え、
+    vision 対応判官 (Claude 4.6/4.7, GPT-5, Gemini 2.5) は本文と
+    図表を同一 context で参照できる。 vendor \texttt{SimpleJudge}
+    は引き続き \texttt{paper\_md} を text Path として埋込み、
+    multimodal 変換は LiteLLM 境界で行われるため vendor-swap 性
+    は保たれる。
+
+  \item \emph{paper-audit プロンプトパッチ} を
+    \code{ari-skill-paper-re/src/\_paperbench\_bridge.py} で実施。
+    vendor PaperBench の \texttt{TASK\_CATEGORY\_QUESTIONS} は
+    \texttt{Code Development} / \texttt{Code Execution} /
+    \texttt{Result Analysis} の 3 カテゴリで submission を
+    主語とする問い (「submission のコードに X はあるか?」「
+    \texttt{reproduce.sh} は Y を生んだか?」) を発する。
+    空 submission での paper-audit ではこれらは構造的に常に
+    「No」へ収束し、 AD/AE concat を行っても mean score が
+    $\sim 0.3$ で頭打ちする。 call スコープの monkey-patch で
+    これらを paper-audit 用問い (「論文は X を具体性をもって
+    記述しているか?」「論文の主張 Y は他所の実験証拠と内的
+    整合するか?」) と差替え、 終了時に元へ戻すため、 同一
+    プロセス内の \texttt{agent\_benchmark} 呼出は影響を受けない。
+
+  \item \emph{Step 4 再現パッケージ生成器} を
+    \code{ari-skill-replicate/src/reproduce\_plan.py} の
+    \texttt{generate\_reproduce\_plan} MCP ツールとして提供。 LLM
+    が論文 (および存在すれば AD/AE Appendix concat 版) を読み、
+    対象ディレクトリに 4 つの成果物を書き出す:
+    \texttt{reproduce\_plan.md} (実験ごとの再現性カテゴリ付き
+    段階的再構成手順)、 \texttt{verification\_code.py} (論文の
+    数値主張に対する許容誤差付き整合性チェック雛形)、
+    \texttt{install\_commands.txt} (paper / AD / AE から抽出した
+    shell コマンド)、 \texttt{reproduce.log} (論文自身の報告値で
+    合成した模擬実行ログ)。 このディレクトリを
+    \texttt{judge\_submission} の \texttt{submission\_dir} として
+    渡すことで、 \texttt{SimpleJudge} の \texttt{Result Analysis}
+    分岐に評価対象が供給される。 同梱プロンプトは venue 非依存
+    (regression test で強制)、 venue 固有の再現性基準は rubric
+    生成と同じ YAML テンプレートに閉じる。
+
+  \item \emph{段階的入力条件}。 dogfood スクリプト
+    \code{scripts/sc\_paper\_dogfood.py} は
+    \texttt{-{}-paper-extras AD.pdf AE.pdf} で追加 PDF を本体
+    \texttt{paper.md} に concat する。 これにより同一 rubric で
+    \texttt{paper-only} / \texttt{paper+AD} / \texttt{paper+AD+AE}
+    / \texttt{paper+AD+AE+metadata} 各条件の score を測定でき、
+    各成果物層の寄与を分解できる。
+\end{enumerate}
+
+4 機構の合計効果は加算超過 (super-additive) であり、 単独最大は
+プロンプトパッチ (機構 2)、 次が AD/AE concat (機構 4)、
+マルチモーダル展開器 (機構 1) は小さいが paper-agnostic に
+一貫した寄与をもたらす。
+
 \subsection{review/refine ループ}\label{sec:paper:loop}
 
 改稿サイクルはフィードバック $J(\paper_t)$ の下で
@@ -189,6 +287,73 @@ upstream の \texttt{SimpleJudge} に適合させ、submission ごとに
 点を単一数値へ結合する仕方を完全にコントロールする。同じエンベ
 ロープが葉が二値のとき $\judgefn{i}\in\{0,1\}$ として
 \cref{eq:paperscore} に流れる。
+
+\subsection{ドメイン幅:実行プロファイル契約}\label{sec:paper:paperbench:v072}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F14_execution_profile.tex}}
+  \caption{\texttt{reproduce\_contract.execution\_profile} は単一の
+           rubric 成果物から二つの消費者へ流れる:BasicAgent の
+           user メッセージ(左バンド、\texttt{\_format\_hpc\_appendix}
+           経由)と Phase 2 \texttt{sbatch} ディスパッチャ(右バンド、
+           \texttt{\_run\_reproduce\_slurm} 経由)。 3 つのランタイム
+           プローブがディスパッチされるフラグ集合を局所 SLURM デプロ
+           イメントに合わせて適応させるため、 同じ rubric が異種
+           クラスタ間で改修なしに忠実にディスパッチできる。}
+  \label{fig:execution-profile}
+\end{figure}
+
+PaperBench upstream の \texttt{BasicAgent} は単一 Docker
+コンテナ+単一 GPU 前提で設計されている。 方法論が本質的に並列な
+論文 — マルチランク MPI カーネル、マルチノード学習、 クラスタ
+固有のモジュール環境 — を覆うため、 \texttt{paper-re} スキルは
+全ての \texttt{reproduce\_contract} に optional な
+\texttt{execution\_profile} フィールドを足してルーブリック契約を
+拡張する。 このフィールドは設計上ドメイン非依存である:
+\texttt{kind} 列挙(\texttt{cpu\_single}, \texttt{gpu\_single},
+\texttt{gpu\_multi}, \texttt{mpi}, \texttt{mpi\_gpu})は特定の
+科学領域ではなく並列実行形状を名指しし、 兄弟フィールドは論文の
+スケール範囲、 期待される CSV 集約スキーマ、 SLURM allocation
+ヒントを宣言する。 ルーブリック生成器が論文を単一マシン実験と
+判定した場合フィールドは省略され、 パイプラインは旧来の 4 フラグ
+\texttt{sbatch} 起動へ縮退する:契約は加算的であって破壊的では
+ない。
+
+エージェントプロンプトは \texttt{execution\_profile} が非空のとき
+ユーザメッセージに 3 ブロックを追加することで契約を取り込む:
+プロファイル本体、 周囲の SLURM allocation のスナップショット
+(\texttt{SLURM\_JOB\_NUM\_NODES}, \texttt{SLURM\_NTASKS},
+可視 GPU 一覧)、 そして共有 FS パス規律、 \texttt{srun} 優先、
+Python 環境の活性化、モジュールロード、マルチノード fan-out、
+\texttt{timeout} 包みを覆う短い「計算ノード実行規約」。 逆方向の
+リークが起こらないことを担保する regression test も置く:無関係な
+SLURM allocation 内で ARI を走らせても、 非 HPC 論文のプロンプト
+に SLURM/MPI 記述を流入させない。
+
+同じ契約は Phase 2 ディスパッチャにも流れる。 既存の partition /
+time / CPU 数フラグに加え、 \texttt{paper-re} は配置セット
+(nodes, ntasks, ntasks-per-node, nodelist, exclude, exclusive)、
+GPU セット(gpus-per-task, gpus-per-node, GRES type)、 メモリ
+セット(per-node, per-CPU)、 ハードウェア制約セット(constraint,
+NUMA バインディング, hint)、 加えて任意の pass-through フラグの
+escape hatch を含む \texttt{sbatch} コマンドを構築する。 異種の
+SLURM デプロイメントに対しては 3 つのランタイムプローブで防御
+する:共有 FS 警告、 GRES 未配備クラスタで全 GPU 関連フラグを
+drop する GRES 可用性プローブ、 およびバージョン非互換フラグ
+(例: \texttt{srun} でのみ受理される SLURM 版での
+\texttt{--cpu-bind})を drop する \texttt{sbatch --help} プローブ。
+これらにより、 同じルーブリックが GRES 配備済の multi-V100
+クラスタでも、 GRES 無しのサンドボックスパーティションでも、
+単一ノードワークステーションでも、 ルーブリック自身を変えずに
+忠実にディスパッチできる。
+
+変わるのは wrapper レイヤだけである:この拡張を通じて vendored
+\texttt{paperbench} ツリーと \texttt{ari-core} パッケージは無改修。
+end-user 可視面 — v0.7.1 の GUI と同じ paper-registry / ウィザード
+/ 結果ビューに、 ウィザードの再現ステップへ execution-profile
+上書きパネルを追加した — については \cref{sec:paper:paperbench}
+を参照。
 
 \subsection{故障モードとガードレール}\label{sec:paper:failures}
 

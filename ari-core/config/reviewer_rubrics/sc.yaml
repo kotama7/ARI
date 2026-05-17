@@ -77,3 +77,21 @@ prompt_overrides:
     or toy-scale evaluations when real-HPC deployment is feasible.
     Dynamic few-shot retrieval is unsupported because SC reviews are not
     publicly available.
+  # author_hint is the inverse of system_hint: it tells the drafting LLM
+  # what an SC reviewer will look for, so the paper is written to make
+  # those signals easy to surface. Injected by ari-skill-paper's
+  # generate_section as a venue-conditioning block.
+  author_hint: >-
+    You are drafting an SC Technical Paper. SC reviewers grade scaling
+    behaviour (strong AND weak scaling at scale) and Artifact
+    Description/Evaluation (AD/AE) as first-class axes — these MUST
+    each have a dedicated subsection or paragraph that names the
+    metric, the nodes/ranks/GPUs swept, the result, and a sentence
+    interpreting the curve. Do NOT bury scaling claims inside the
+    method section. State the testbed (cluster name, node type,
+    interconnect, compiler/MPI versions) explicitly enough that
+    another lab could match the hardware. When reporting speedups or
+    throughputs, give the absolute baseline number in the same
+    sentence; reviewers will reject the claim if the baseline isn't
+    visible. Be cautious with simulation-only or single-node studies
+    — SC expects real-HPC deployment unless explicitly justified.

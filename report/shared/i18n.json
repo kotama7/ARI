@@ -1,0 +1,108 @@
+{
+  "_meta": {
+    "description": "Trilingual glossary of fixed strings used in PaperBench audit reports. Consumed by report/scripts/paperbench_report.py (when emitting per-language sections) and report/scripts/translate.py (lang-sync pass) to keep terminology stable across en/ja/zh mirrors.",
+    "source_of_truth": "en"
+  },
+  "report_titles": {
+    "audit_report":          { "en": "PaperBench Audit Report",          "ja": "PaperBench 監査レポート",           "zh": "PaperBench 审计报告" },
+    "audit_summary":         { "en": "PaperBench Audit Summary",         "ja": "PaperBench 監査サマリ",             "zh": "PaperBench 审计汇总" },
+    "paper_metadata":        { "en": "Paper Metadata",                   "ja": "論文メタデータ",                     "zh": "论文元数据" },
+    "rubric":                { "en": "Rubric",                           "ja": "ルーブリック",                       "zh": "评分单" },
+    "reproduction":          { "en": "Reproduction Attempt",             "ja": "再現の試行",                         "zh": "再现尝试" },
+    "grading":               { "en": "Grading",                          "ja": "採点",                               "zh": "判分" },
+    "blocking_issues":       { "en": "Blocking Issues",                  "ja": "ブロッキング課題",                   "zh": "阻塞性问题" },
+    "recommendations":       { "en": "Reviewer Recommendations",         "ja": "レビュー提言",                       "zh": "审稿建议" }
+  },
+  "field_labels": {
+    "paper_id":              { "en": "Paper ID",        "ja": "論文 ID",        "zh": "论文 ID" },
+    "title":                 { "en": "Title",           "ja": "タイトル",       "zh": "标题" },
+    "authors":               { "en": "Authors",         "ja": "著者",           "zh": "作者" },
+    "venue":                 { "en": "Venue",           "ja": "会議/誌名",      "zh": "会议/期刊" },
+    "year":                  { "en": "Year",            "ja": "発表年",         "zh": "年份" },
+    "license":               { "en": "License",         "ja": "ライセンス",     "zh": "许可证" },
+    "source":                { "en": "Source",          "ja": "ソース",         "zh": "来源" },
+    "artifact":              { "en": "Artifact",        "ja": "アーティファクト","zh": "产物" },
+    "leaves_count":          { "en": "Total leaves",    "ja": "リーフ総数",     "zh": "叶节点总数" },
+    "tree_depth":            { "en": "Tree depth",      "ja": "木の深さ",       "zh": "树深度" },
+    "generator":             { "en": "Generator",       "ja": "生成器",         "zh": "生成器" },
+    "two_stage":             { "en": "Two-stage",       "ja": "二段階",         "zh": "两阶段" },
+    "auditor_flags":         { "en": "Auditor flags",   "ja": "監査フラグ",     "zh": "审计标记" },
+    "category_breakdown":    { "en": "Category Breakdown", "ja": "カテゴリ内訳", "zh": "类别分布" },
+    "execution_profile":     { "en": "Execution Profile", "ja": "実行プロファイル", "zh": "执行配置" },
+    "sandbox":               { "en": "Sandbox",         "ja": "サンドボックス", "zh": "沙箱" },
+    "partition":             { "en": "Partition",       "ja": "パーティション", "zh": "分区" },
+    "wallclock":             { "en": "Wallclock",       "ja": "壁時計時間",     "zh": "墙钟时间" },
+    "exit_code":             { "en": "Exit code",       "ja": "終了コード",     "zh": "退出码" },
+    "elapsed_sec":           { "en": "Elapsed (sec)",   "ja": "経過 (秒)",       "zh": "耗时 (秒)" },
+    "multi_node":            { "en": "Multi-node",      "ja": "マルチノード",   "zh": "多节点" },
+    "exclusive":             { "en": "Exclusive",       "ja": "排他",           "zh": "独占" },
+    "gpu_spec":              { "en": "GPU spec",        "ja": "GPU 仕様",       "zh": "GPU 规格" },
+    "ors_score":             { "en": "ORS Score",       "ja": "ORS スコア",      "zh": "ORS 分数" },
+    "pass_rate":             { "en": "Pass Rate",       "ja": "合格率",         "zh": "通过率" },
+    "category":              { "en": "Category",        "ja": "カテゴリ",       "zh": "类别" },
+    "passed":                { "en": "Pass",            "ja": "合格",           "zh": "通过" },
+    "total":                 { "en": "Total",           "ja": "合計",           "zh": "总计" },
+    "rate":                  { "en": "Rate",            "ja": "割合",           "zh": "比率" },
+    "score_distribution":    { "en": "Score Distribution", "ja": "スコア分布",   "zh": "分数分布" },
+    "top_failed_leaves":     { "en": "Top Failed Leaves", "ja": "重み付け上位の不合格リーフ", "zh": "权重最高的失败叶节点" },
+    "negative_control":      { "en": "Negative Control", "ja": "ネガティブコントロール", "zh": "负向控制" }
+  },
+  "category_terms": {
+    "Code Development":      { "en": "Code Development", "ja": "コード開発",      "zh": "代码开发" },
+    "Code Execution":        { "en": "Code Execution",   "ja": "コード実行",      "zh": "代码执行" },
+    "Result Analysis":       { "en": "Result Analysis",  "ja": "結果分析",        "zh": "结果分析" },
+    "Environment & Infrastructure Setup": { "en": "Environment & Infrastructure Setup", "ja": "環境・基盤設定",        "zh": "环境与基础设施搭建" },
+    "Dataset and Model Acquisition":      { "en": "Dataset and Model Acquisition",      "ja": "データセット・モデル取得", "zh": "数据集与模型获取" },
+    "Data Processing & Preparation":      { "en": "Data Processing & Preparation",      "ja": "データ処理・準備",        "zh": "数据处理与准备" },
+    "Method Implementation":              { "en": "Method Implementation",              "ja": "手法実装",                "zh": "方法实现" },
+    "Experimental Setup":                 { "en": "Experimental Setup",                 "ja": "実験設定",                "zh": "实验设置" },
+    "Evaluation, Metrics & Benchmarking": { "en": "Evaluation, Metrics & Benchmarking", "ja": "評価・指標・ベンチマーク", "zh": "评估、指标与基准测试" },
+    "Logging, Analysis & Presentation":   { "en": "Logging, Analysis & Presentation",   "ja": "ロギング・分析・表示",    "zh": "日志、分析与呈现" }
+  },
+  "kind_terms": {
+    "cpu_single":            { "en": "Single CPU",        "ja": "シングル CPU",   "zh": "单 CPU" },
+    "gpu_single":            { "en": "Single GPU",        "ja": "シングル GPU",   "zh": "单 GPU" },
+    "gpu_multi":             { "en": "Multi GPU (single node)", "ja": "マルチ GPU (単一ノード)", "zh": "多 GPU (单节点)" },
+    "mpi":                   { "en": "MPI (multi-rank)",  "ja": "MPI (マルチランク)", "zh": "MPI (多 rank)" },
+    "mpi_gpu":               { "en": "MPI + GPU",         "ja": "MPI + GPU",      "zh": "MPI + GPU" }
+  },
+  "fixed_phrases": {
+    "no_concerns_flagged":   { "en": "No automated concerns flagged.",      "ja": "自動検出された懸念はありません。",           "zh": "未自动标记任何顾虑。" },
+    "skipped_or_unavailable":{ "en": "(skipped or unavailable)",            "ja": "(スキップまたは利用不可)",                   "zh": "（已跳过或不可用）" },
+    "no_blocking_issues":    { "en": "(no blocking issues reported)",       "ja": "(報告されたブロッキング課題なし)",           "zh": "（未报告阻塞性问题）" },
+    "no_failures":           { "en": "(no failures recorded)",              "ja": "(失敗の記録なし)",                            "zh": "（无失败记录）" },
+    "no_submission_files":   { "en": "(no submission files)",               "ja": "(提出ファイルなし)",                          "zh": "（无提交文件）" },
+    "no_grade_data":         { "en": "(no grade data — figure omitted)",    "ja": "(採点データなし — 図を省略)",                 "zh": "（无判分数据 — 已省略图）" },
+    "missing_artifacts":     { "en": "Missing:",                            "ja": "不足:",                                       "zh": "缺失:" },
+    "all_artifacts_emitted": { "en": "All expected artefacts were emitted.","ja": "期待されたすべてのアーティファクトが出力された。", "zh": "已生成所有预期产物。" },
+    "none_single_node":      { "en": "(none — single-node CPU paper)",      "ja": "(なし — シングルノード CPU 論文)",            "zh": "（无 — 单节点 CPU 论文）" },
+    "profile_empty":         { "en": "(profile empty)",                     "ja": "(プロファイル空)",                            "zh": "（配置为空）" },
+    "advisory_footer":       {
+      "en": "This report is advisory — final assessment requires human review of the attached primary artefacts (rubric.json, grade.json, submission/, reproduce.log).",
+      "ja": "本レポートは助言的なものです — 最終評価には添付一次資料 (rubric.json, grade.json, submission/, reproduce.log) の人的レビューが必要です。",
+      "zh": "本报告仅供参考 — 最终评估需对附加一次资料 (rubric.json, grade.json, submission/, reproduce.log) 进行人工审查。"
+    }
+  },
+  "recommendation_phrases": {
+    "score_below_20pct": {
+      "en": "Score below 20%: review reproduce.sh for missing GPU usage or shortcut implementations bypassing the paper's actual method.",
+      "ja": "スコアが 20% 未満: GPU 利用の漏れや論文の本来の手法を回避したショートカット実装がないか reproduce.sh を確認してください。",
+      "zh": "分数低于 20%：检查 reproduce.sh 是否遗漏 GPU 使用,或绕过论文实际方法的简化实现。"
+    },
+    "missing_artefacts": {
+      "en": "Expected artefact(s) missing — the agent did not emit the files the rubric declared.",
+      "ja": "期待されたアーティファクトが不足 — エージェントがルーブリック宣言のファイルを出力していません。",
+      "zh": "缺失预期产物 — 代理未输出评分单声明的文件。"
+    },
+    "nonzero_exit_code": {
+      "en": "reproduce.sh exited with a non-zero code — investigate the reproduce.log tail before re-running.",
+      "ja": "reproduce.sh が非ゼロで終了しました — 再実行前に reproduce.log の末尾を調査してください。",
+      "zh": "reproduce.sh 以非零退出 — 重运行前请检查 reproduce.log 末尾。"
+    },
+    "mpi_but_single_node": {
+      "en": "execution_profile is MPI but the run was single-node; consider raising --nodes / --ntasks for a faithful reproduction.",
+      "ja": "execution_profile が MPI なのに実行はシングルノードでした; 忠実な再現には --nodes / --ntasks の引き上げを検討してください。",
+      "zh": "execution_profile 为 MPI 但运行为单节点;为忠实再现请考虑提高 --nodes / --ntasks。"
+    }
+  }
+}

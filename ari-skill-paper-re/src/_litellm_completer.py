@@ -15,9 +15,13 @@ OpenAI direct, since the parse task is small and reliable there.
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
+import os
+import re
 import time
+from pathlib import Path
 from typing import Any, Unpack
 
 import tiktoken
@@ -78,6 +82,151 @@ def _infer_encoding_name(model: str) -> str:
         return tiktoken.encoding_name_for_model(model.split("/")[-1])
     except KeyError:
         return "o200k_base"
+
+
+# ── multimodal markdown-image expansion ──────────────────────────────────
+#
+# When ``paper_md`` is built by ``pymupdf4llm.to_markdown(write_images=True)``
+# it carries ``![](images/img-N.png)`` references that point at PNG files
+# on disk next to the markdown. Vendor ``SimpleJudge`` embeds ``paper_md``
+# verbatim into a text-only prompt, so without help those references reach
+# the judge as raw markdown bytes and the figures are never seen.
+#
+# This expander runs once per ``async_completion`` call. For every message
+# whose ``content`` is a plain string it scans for markdown image syntax,
+# resolves each path against the search roots below, and rewrites the
+# content into a list of OpenAI multimodal blocks
+# (``[{"type":"text","text":...},{"type":"image_url","image_url":{...}},...]``).
+# LiteLLM transparently forwards this shape to Anthropic / Gemini / OpenAI
+# multimodal endpoints, so vendor SimpleJudge stays unmodified and the
+# vendor-swap property in report §4.4 is preserved.
+#
+# Toggle off with env ``ARI_MULTIMODAL_PAPER=0`` for A/B comparisons.
+
+_MARKDOWN_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
+
+
+def _multimodal_enabled() -> bool:
+    return os.environ.get("ARI_MULTIMODAL_PAPER", "1").strip().lower() not in {
+        "0", "false", "off", "no",
+    }
+
+
+def _max_images_per_message() -> int:
+    """Read each call so env-var overrides set late by callers still take
+    effect — module-level constants would freeze too early when this
+    module is imported transitively by ``judge_submission``."""
+    try:
+        return max(1, int(os.environ.get("ARI_MULTIMODAL_MAX_IMAGES", "20") or "20"))
+    except ValueError:
+        return 20
+
+
+def _resolve_image(rel: str, search_roots: list[Path]) -> Path | None:
+    """Resolve a markdown image reference against the supplied search roots.
+
+    Accepts absolute paths verbatim. Relative paths are tried under each
+    root in order; the first hit wins. Returns None on miss so the caller
+    can leave the markdown reference intact (graceful degradation).
+    """
+    p = Path(rel)
+    if p.is_absolute():
+        return p if p.is_file() else None
+    for root in search_roots:
+        cand = (root / rel).resolve()
+        if cand.is_file():
+            return cand
+    return None
+
+
+def _png_to_data_url(path: Path) -> str:
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:image/png;base64,{encoded}"
+
+
+def _expand_one_string(content: str, search_roots: list[Path]) -> list[dict] | str:
+    """Split a markdown string into OpenAI multimodal blocks.
+
+    Returns the original string when there are no image refs (so we can
+    leave the message ``content`` as-is and avoid an unnecessary list
+    wrapping for the common case).
+    """
+    matches = list(_MARKDOWN_IMAGE_RE.finditer(content))
+    if not matches:
+        return content
+    max_images = _max_images_per_message()
+    blocks: list[dict] = []
+    images_added = 0
+    cursor = 0
+    for m in matches:
+        start, end = m.span()
+        if start > cursor:
+            preceding = content[cursor:start]
+            if preceding.strip():
+                blocks.append({"type": "text", "text": preceding})
+        if images_added < max_images:
+            img_path = _resolve_image(m.group(2), search_roots)
+            if img_path is not None:
+                try:
+                    blocks.append({
+                        "type": "image_url",
+                        "image_url": {"url": _png_to_data_url(img_path)},
+                    })
+                    images_added += 1
+                except Exception as e:
+                    log.warning("multimodal: failed to attach %s: %s", img_path, e)
+                    blocks.append({"type": "text", "text": m.group(0)})
+            else:
+                # Reference unresolvable — keep markdown verbatim so the
+                # judge at least sees the caption-like alt text.
+                blocks.append({"type": "text", "text": m.group(0)})
+        else:
+            blocks.append({"type": "text", "text": m.group(0)})
+        cursor = end
+    if cursor < len(content):
+        trailing = content[cursor:]
+        if trailing.strip():
+            blocks.append({"type": "text", "text": trailing})
+    return blocks if any(b.get("type") == "image_url" for b in blocks) else content
+
+
+def _expand_markdown_images(
+    conversation: list[Any], extra_image_roots: list[Path] | None = None,
+) -> list[Any]:
+    """Walk a conversation and rewrite text content with image refs to
+    multimodal blocks. Non-string ``content`` (already a list) is left
+    alone — SimpleJudge sometimes pre-assembles such payloads itself.
+    """
+    if not _multimodal_enabled():
+        return list(conversation)
+    cwd = Path.cwd()
+    roots: list[Path] = list(extra_image_roots or [])
+    # Common places to look: cwd, the ARI checkpoint dir (where the dogfood
+    # script drops paper.md + images/), the parent of paper.md if known.
+    roots.append(cwd)
+    seen: set[Path] = set()
+    unique_roots: list[Path] = []
+    for r in roots:
+        rr = r.resolve()
+        if rr not in seen and rr.is_dir():
+            seen.add(rr)
+            unique_roots.append(rr)
+    out: list[Any] = []
+    for msg in conversation:
+        if not isinstance(msg, dict):
+            out.append(msg); continue
+        content = msg.get("content")
+        if isinstance(content, str):
+            expanded = _expand_one_string(content, unique_roots)
+            if expanded is content:
+                out.append(msg)
+            else:
+                new = dict(msg)
+                new["content"] = expanded
+                out.append(new)
+        else:
+            out.append(msg)
+    return out
 
 
 class LiteLLMTurnCompleter(TurnCompleter):
@@ -175,9 +324,10 @@ class LiteLLMTurnCompleter(TurnCompleter):
     ) -> "LiteLLMTurnCompleter.Completion":
         import litellm
 
+        expanded_messages = _expand_markdown_images(list(conversation))
         kwargs: dict[str, Any] = {
             "model": self.model,
-            "messages": list(conversation),
+            "messages": expanded_messages,
         }
         if self.api_base:
             kwargs["api_base"] = self.api_base

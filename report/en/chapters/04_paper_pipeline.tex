@@ -56,6 +56,117 @@ deterministic grader for items with a binary or numeric verifier
 Both implement the \texttt{Evaluator} protocol
 (\code{ari-core/ari/protocols/evaluator.py:19}).
 
+\subsubsection*{Venue-conditioned rubric templates}
+
+The rubric generator (\texttt{ari-skill-replicate.generate\_rubric})
+accepts an optional venue identifier that selects a YAML template
+from \code{ari-core/config/paperbench\_rubrics/}.  The template's
+\texttt{prompt\_overrides} block is injected into the skeleton and
+subtree prompts via dedicated placeholders; ARI core remains
+domain-agnostic (P4), and venue knowledge is confined to YAML.  This
+mirrors the existing \code{ari-core/config/reviewer\_rubrics/}
+pattern that drives \texttt{ari-skill-paper}'s peer-review path.
+
+Two modes are supported.  In \texttt{agent\_benchmark} mode the
+skeleton pass decomposes the paper by scientific structure (one
+direct child per major contribution) and leaves grade whether a
+candidate submission's \texttt{reproduce.sh} output reproduces the
+paper --- the original PaperBench framing.  In \texttt{paper\_audit}
+mode the rubric root's direct children are a \emph{fixed} set of
+audit axes declared in the YAML's \texttt{top\_level\_axes} list,
+and leaves grade descriptive completeness of the paper text (plus
+optional Artifact Description / Artifact Evaluation appendices)
+rather than submission output --- a framing inversion targeted at
+HPC reproducibility-audit research, where the question is no longer
+``can an agent reproduce this paper?'' but ``does this paper
+describe enough to be reproducible?''.  Templates shipped with the
+current release are \texttt{generic} (back-compat), \texttt{sc}
+(six axes: environment / data / execution / figures / scaling /
+conclusion), \texttt{neurips} (NeurIPS Reproducibility Checklist
+axes), and \texttt{nature} (wet-lab Reporting Summary axes).  The
+\texttt{paper\_audit} mode requires the two-stage generator path
+because a single-pass prompt cannot honour the fixed-axis
+constraint.
+
+\subsubsection*{Paper-audit mechanisms (v0.7.2)}
+
+Four orthogonal mechanisms compose to lift the \texttt{paper\_audit}
+score from a low single-digit baseline to a regime where the rubric
+discriminates papers along the reproducibility axes named above.
+All four are pure ARI wrapper layers --- the vendored PaperBench
+\texttt{SimpleJudge} is unchanged --- and each is independently
+toggleable so the contribution of each mechanism can be ablated.
+
+\begin{enumerate}
+  \item \emph{Multimodal markdown image expander}
+    (\code{ari-skill-paper-re/src/\_litellm\_completer.py}).  The
+    paper PDF is converted to markdown by
+    \texttt{pymupdf4llm.to\_markdown(write\_images=True)} which
+    emits \texttt{!\hspace{0pt}[\hspace{0pt}]\hspace{0pt}(path)}
+    references to per-page PNGs.  An expander in
+    \texttt{async\_completion} rewrites those references into
+    OpenAI multimodal content blocks before the LiteLLM call, so
+    vision-capable judges (Claude 4.6/4.7, GPT-5, Gemini 2.5) see
+    figures alongside text in the same context.  Vendor
+    \texttt{SimpleJudge} is unchanged --- it still embeds
+    \texttt{paper\_md} as a text Path; the multimodal translation
+    happens at the LiteLLM boundary so the vendor-swap property
+    holds.
+
+  \item \emph{Paper-audit prompt patch} in
+    \code{ari-skill-paper-re/src/\_paperbench\_bridge.py}.  Vendor
+    PaperBench's \texttt{TASK\_CATEGORY\_QUESTIONS} ask
+    submission-oriented questions (``does the code contain X?'',
+    ``did \texttt{reproduce.sh} produce evidence matching Y?'') for
+    each of \texttt{Code Development} / \texttt{Code Execution} /
+    \texttt{Result Analysis}.  In paper-audit mode with an empty
+    submission those questions structurally collapse to ``no'',
+    capping the mean score around $0.3$ even when AD/AE are
+    concatenated.  An at-call-scope monkey-patch swaps these for
+    paper-audit-flavoured questions (``does the paper describe X
+    with concrete specificity?'', ``is the paper's claim Y
+    internally consistent with the experimental evidence presented
+    elsewhere?'') and restores the originals on exit, so
+    \texttt{agent\_benchmark} calls in the same process are
+    unaffected.
+
+  \item \emph{Step 4 reproduction-package generator}, exposed as
+    the \texttt{generate\_reproduce\_plan} MCP tool in
+    \code{ari-skill-replicate/src/reproduce\_plan.py}.  An LLM
+    reads the paper (with AD/AE Appendix concatenated when present)
+    and emits four artifacts to a target directory:
+    \texttt{reproduce\_plan.md} (step-by-step reconstruction with
+    per-experiment reproducibility category),
+    \texttt{verification\_code.py} (consistency-check stubs over
+    the paper's numerical claims with tolerances),
+    \texttt{install\_commands.txt} (shell commands extracted from
+    paper / AD / AE), and \texttt{reproduce.log} (a simulated
+    execution log built from the paper's own reported numbers).
+    Passing this directory as \texttt{submission\_dir} to
+    \texttt{judge\_submission} gives \texttt{SimpleJudge}'s
+    \texttt{Result Analysis} branch the evidence it needs to grade
+    against; the bundled prompt is venue-agnostic (a regression
+    test enforces this), and venue-specific reproducibility
+    criteria live in the same YAML templates as the rubric hint.
+
+  \item \emph{Stepwise input conditions}.  The dogfood script
+    \code{scripts/sc\_paper\_dogfood.py} supports
+    \texttt{-{}-paper-extras AD.pdf AE.pdf} which concatenates
+    additional PDFs into the main \texttt{paper.md} so the same
+    rubric can be scored under \texttt{paper-only},
+    \texttt{paper+AD}, \texttt{paper+AD+AE}, and
+    \texttt{paper+AD+AE+metadata} conditions.  This is the input
+    axis required to measure the relative contribution of each
+    artifact layer.
+\end{enumerate}
+
+The four mechanisms compose super-additively: the lift from
+combining all four exceeds the sum of their independent lifts, with
+the largest single-mechanism contribution coming from the
+prompt patch (mechanism 2) and the second from AD/AE concatenation
+(mechanism 4); the multimodal expander (mechanism 1) provides a
+small but consistent paper-agnostic boost.
+
 \subsection{Review/refine loop}\label{sec:paper:loop}
 
 The refine cycle iteratively rewrites $\paper_t$ to $\paper_{t+1}$
@@ -187,6 +298,80 @@ changes), while ARI retains full control of how leaf grades are
 combined into a single number. The same envelope feeds into
 \cref{eq:paperscore} as $\judgefn{i}\in\{0,1\}$ when the leaf is
 binary.
+
+\subsection{Domain breadth: the execution-profile contract}\label{sec:paper:paperbench:v072}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F14_execution_profile.tex}}
+  \caption{The \texttt{reproduce\_contract.execution\_profile} field
+           threads from a single rubric artefact into two consumers:
+           the BasicAgent user message (left band, via
+           \texttt{\_format\_hpc\_appendix}) and the Phase 2
+           \texttt{sbatch} dispatcher (right band, via
+           \texttt{\_run\_reproduce\_slurm}). Three runtime probes
+           adapt the dispatched flag set to the local SLURM
+           deployment, so the same rubric dispatches faithfully on
+           heterogeneous clusters without being modified.}
+  \label{fig:execution-profile}
+\end{figure}
+
+The PaperBench upstream \texttt{BasicAgent} is designed for a
+single Docker container with one GPU. To cover papers whose
+methodology is fundamentally parallel --- multi-rank MPI kernels,
+multi-node training, cluster-specific module environments --- the
+\texttt{paper-re} skill extends the rubric contract with an
+optional \texttt{execution\_profile} field on every
+\texttt{reproduce\_contract} (\cref{fig:execution-profile}). The
+field is domain-agnostic by
+design: its \texttt{kind} enum
+(\texttt{cpu\_single}, \texttt{gpu\_single}, \texttt{gpu\_multi},
+\texttt{mpi}, \texttt{mpi\_gpu}) names a parallel-execution shape
+rather than a specific scientific domain, and its sibling fields
+declare a paper's scale envelope, expected CSV aggregation
+schema, and any SLURM allocation hints. When the rubric generator
+judges a paper to be single-machine the field is omitted, and the
+pipeline degenerates to the original four-flag \texttt{sbatch}
+invocation: the contract is additive, not breaking.
+
+The agent prompt picks up the contract by appending three blocks
+to its user message when \texttt{execution\_profile} is
+non-empty: the profile itself, a snapshot of the surrounding
+SLURM allocation (\texttt{SLURM\_JOB\_NUM\_NODES},
+\texttt{SLURM\_NTASKS}, the visible GPU list), and a short
+``compute-node execution conventions'' rubric covering shared-FS
+path discipline, \texttt{srun}-over-\texttt{mpirun} preference,
+Python environment activation, module loads, multi-node fan-out,
+and \texttt{timeout} wrapping. A regression test ensures the
+inverse never holds: ARI running inside an unrelated SLURM
+allocation must not leak SLURM/MPI prose into the prompt of a
+non-HPC paper.
+
+The same contract feeds the Phase 2 dispatcher. Beyond the
+existing partition / time / cpu-count flags, \texttt{paper-re}
+now constructs \texttt{sbatch} commands carrying the full
+placement set (nodes, ntasks, ntasks-per-node, nodelist, exclude,
+exclusive), GPU set (gpus-per-task, gpus-per-node, GRES type),
+memory set (per-node, per-CPU), and hardware-constraint set
+(constraint, NUMA bindings, hint), plus an escape hatch for
+arbitrary pass-through flags. Three runtime probes guard against
+heterogeneous SLURM deployments: a shared-filesystem warning, a
+GRES-availability probe that drops every GPU-related flag on
+clusters that report no GRES, and an \texttt{sbatch --help} probe
+that drops version-incompatible flags (e.g.\ \texttt{--cpu-bind}
+on SLURM versions that accept it only on \texttt{srun}).
+Together these mean that the same rubric can dispatch faithfully
+on a multi-V100 cluster with GRES, on a sandbox partition without
+GRES, or on a single-node workstation, with no change to the
+rubric itself.
+
+The wrapper layer is the only thing that changes: the vendored
+\texttt{paperbench} tree and the \texttt{ari-core} package are
+unchanged across this expansion. The visible end-user surface ---
+the same paper-registry / wizard / results view as the
+v0.7.1 GUI, with an execution-profile override panel added to
+the wizard's reproduce step --- is described in
+\cref{sec:paper:paperbench}.
 
 \subsection{Failure modes and guardrails}\label{sec:paper:failures}
 
