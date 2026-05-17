@@ -1,0 +1,21 @@
+id: generic
+version: "2026"
+venue: Generic PaperBench Replication
+domain: Any
+
+# agent_benchmark = original PaperBench framing. Direct children
+# decompose by scientific structure (one per contribution / experiment);
+# leaves grade whether a submission reproduces the paper.
+mode: agent_benchmark
+
+# top_level_axes is unused when mode = agent_benchmark; the skeleton
+# pass chooses the structure based on the paper's own contributions list.
+top_level_axes: []
+
+prompt_overrides:
+  # Empty system_hint preserves the current bundled skeleton.md prompt
+  # verbatim. Selecting this template is therefore equivalent to passing
+  # paperbench_rubric_id=None — exposed as a YAML so users can extend it
+  # without modifying the skill source.
+  system_hint: ""
+  leaf_style: ""

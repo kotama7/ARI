@@ -32,7 +32,7 @@ try:
         run_meta_review,
         run_single_review,
     )
-    from src.rubric import list_available_rubrics, load_rubric  # type: ignore
+    from src.rubric import RubricError, list_available_rubrics, load_rubric  # type: ignore
 except ImportError:  # running from within src/
     from review_engine import (  # type: ignore
         build_user_prompt,
@@ -45,7 +45,7 @@ except ImportError:  # running from within src/
         run_meta_review,
         run_single_review,
     )
-    from rubric import list_available_rubrics, load_rubric  # type: ignore
+    from rubric import RubricError, list_available_rubrics, load_rubric  # type: ignore
 
 log = logging.getLogger(__name__)
 
@@ -291,10 +291,33 @@ async def generate_section(
                         )
             except Exception:
                 pass
+        # Venue-conditioned author guidance — mirrors the peer-review
+        # system_hint injection in review_engine.py:80 but for the author
+        # side. Loads the venue's reviewer_rubrics YAML and injects
+        # ``prompt_overrides.author_hint`` so paper drafting is conditioned
+        # with the same strength as peer review. Falls back to no-op when
+        # the venue has no rubric yaml (arxiv / icpp / acm / isc currently).
+        author_hint_block = ""
+        try:
+            _r = load_rubric(venue)
+            _ah = (_r.author_hint or "").strip()
+            if _ah:
+                author_hint_block = (
+                    "\n══ VENUE-SPECIFIC AUTHOR GUIDANCE ══\n"
+                    f"You are drafting for submission to {_r.venue}. "
+                    f"Score dimensions a reviewer will apply: "
+                    f"{', '.join(_r.dimension_names())}.\n\n"
+                    f"{_ah}\n"
+                    "══ END VENUE GUIDANCE ══\n\n"
+                )
+        except (RubricError, FileNotFoundError):
+            pass
+
         system_prompt = (
             f"{SECTION_PROMPTS[section]} "
             f"Target venue: {venue_info['name']}. "
             f"Page limit: {venue_info['pages']} pages. "
+            + author_hint_block
             + _FORBIDDEN_NOTICE
             + _cite_hint +
             "\nUse the provided experiment data. "

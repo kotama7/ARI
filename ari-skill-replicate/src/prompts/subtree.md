@@ -1,3 +1,4 @@
+{VENUE_HINT}
 You are a senior reviewer populating ONE SUBTREE of a hierarchical
 paper-replication grading rubric. The skeleton has already defined the
 parent node assigned to you below; YOUR job is to recursively decompose

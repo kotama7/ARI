@@ -72,6 +72,20 @@
   <a class="nav-item" href="#memory"><span id="t-nav-memory">Agent Memory</span></a>
   <a class="nav-item" href="#publish"><span id="t-nav-publish">Publish &amp; Clone (v0.7.0)</span></a>
   <a class="nav-item" href="#ors-repro"><span id="t-nav-ors-repro">Reproducibility (PaperBench)</span></a>
+  <div class="nav-group">PaperBench (v0.7.2)</div>
+  <a class="nav-item" href="howto/paperbench_quickstart.md"><span id="t-nav-pb-quick">Quickstart</span></a>
+  <a class="nav-item" href="howto/paper_import.md"><span id="t-nav-pb-import">Paper Import</span></a>
+  <a class="nav-item" href="howto/paperbench_gui.md"><span id="t-nav-pb-gui">GUI Guide</span></a>
+  <a class="nav-item" href="reference/execution_profile.md"><span id="t-nav-pb-exec">execution_profile</span></a>
+  <a class="nav-item" href="reference/rubric_schema.md"><span id="t-nav-pb-rubric">Rubric Schema</span></a>
+  <a class="nav-item" href="reference/api_paperbench.md"><span id="t-nav-pb-api">API Reference</span></a>
+  <a class="nav-item" href="howto/multi_node_setup.md"><span id="t-nav-pb-multi">Multi-node Setup</span></a>
+  <a class="nav-item" href="howto/compute_node_safety.md"><span id="t-nav-pb-safety">Compute-Node Safety</span></a>
+  <a class="nav-item" href="howto/paperbench_troubleshooting.md"><span id="t-nav-pb-trouble">Troubleshooting</span></a>
+  <div class="nav-group">Paper-Audit (v0.7.2)</div>
+  <a class="nav-item" href="#paper-audit"><span id="t-nav-audit-overview">Audit Overview</span></a>
+  <a class="nav-item" href="reference/rubric_schema.md#venue-conditioned-templates"><span id="t-nav-audit-venue">Venue Templates</span></a>
+  <a class="nav-item" href="reference/mcp_tools.md#generate_rubric--venue-conditioned-templates-unreleased"><span id="t-nav-audit-tools">Audit MCP Tools</span></a>
   <div style="padding:24px 20px 0;border-top:1px solid var(--border);margin-top:16px;">
     <a href="index.html" style="color:var(--muted);font-size:.85rem;"><span id="t-nav-back">&larr; Back to Home</span></a>
   </div>
@@ -450,6 +464,18 @@ export ARI_SLURM_PARTITION=your_partition  <span class="cm"># SLURM only</span>
     <li><span id="t-ors-li2"><code>ors_run_reproduce</code> (paper-re &mdash; Phase 1) &mdash; executes <code>reproduce.sh</code> in a sandbox: <code>docker</code> &rarr; <code>apptainer</code> &rarr; <code>singularity</code> &rarr; <code>local</code> (overridable via <code>ARI_PHASE1_SANDBOX</code>). Captures <code>reproduce.log</code> and reports any rubric-declared <code>expected_artifacts</code> that did not appear.</span></li>
     <li><span id="t-ors-li3"><code>ors_grade</code> (paper-re &mdash; Phase 2) &mdash; runs PaperBench <code>SimpleJudge</code> over the rubric leaves <em>n_runs</em> times (default 3), averages the weighted leaf scores, and runs a one-off negative control (empty repo + trivial <code>reproduce.sh</code>). Both controls must score &lt;5% (<code>passed=true</code>) for the rubric to be considered honest.</span></li>
   </ol>
+
+  <!-- PAPER-AUDIT MODE (v0.7.2) -->
+  <h2 id="paper-audit"><span id="t-h-paper-audit">Paper-Audit Mode &mdash; PaperBench-format (v0.7.2)</span></h2>
+  <p><span id="t-pa-p1">v0.7.2 adds the <strong>audit-side companion</strong> to the agent-side reproducibility check. Where the agent-side asks <em>&ldquo;can an AI agent reproduce this paper?&rdquo;</em>, the audit-side inverts the framing to <em>&ldquo;does this paper describe enough to be reproducible?&rdquo;</em> &mdash; using the same vendored PaperBench rubric formalism with zero vendor changes. Driven by the SC reproducibility framework (Artifact Description / Artifact Evaluation Appendices) and generalised to NeurIPS Reproducibility Checklist and Nature Reporting Summary venues.</span></p>
+  <p><span id="t-pa-p2">Four orthogonal mechanisms compose to lift the audit score from a low single-digit baseline (0.033 measured on LLAMP / sc24-00070) up to 0.857 on the same paper:</span></p>
+  <ol>
+    <li><span id="t-pa-li1"><strong>Venue-conditioned rubric templates</strong> &mdash; <code>ari-core/config/paperbench_rubrics/&lt;id&gt;.yaml</code> declares <code>mode: paper_audit</code> with a fixed set of <code>top_level_axes</code>. The bundled <code>sc.yaml</code> emits six SC-specific axes (environment / data / execution / figures / scaling / conclusion) per <code>HPC PaperBench audit research plan</code> &sect;5 Step 3. Generator code in <code>ari-skill-replicate</code> stays domain-agnostic; venue knowledge lives in YAML. See <a href="reference/rubric_schema.md#venue-conditioned-templates">rubric schema</a>.</span></li>
+    <li><span id="t-pa-li2"><strong>Multimodal expander</strong> &mdash; <code>pymupdf4llm</code> converts the paper PDF to markdown with <code>![](images/img-N.png)</code> references; an expander in <code>_litellm_completer.async_completion</code> rewrites these into OpenAI multimodal content blocks so vision-capable judges see figures alongside text. Vendor <code>SimpleJudge</code> unchanged.</span></li>
+    <li><span id="t-pa-li3"><strong>paper_audit prompt patch</strong> in <code>ari-skill-paper-re/src/_paperbench_bridge.py</code> &mdash; monkey-patches PaperBench's <code>TASK_CATEGORY_QUESTIONS</code> (which asks <em>&ldquo;did the submission do X?&rdquo;</em>) at call scope to ask <em>&ldquo;does the paper describe X with concrete specificity?&rdquo;</em>. Restored on exit so agent-benchmark calls are unaffected. Breaks the structural ceiling that capped paper_audit mean score around 0.3.</span></li>
+    <li><span id="t-pa-li4"><strong>Step 4 reproduction-package generator</strong> (new <code>generate_reproduce_plan</code> MCP tool) &mdash; an LLM reads the paper and emits four artifacts to a target dir: <code>reproduce_plan.md</code>, <code>verification_code.py</code>, <code>install_commands.txt</code>, <code>reproduce.log</code> (simulated from the paper's own numbers). Passing this dir as <code>submission_dir</code> to <code>judge_submission</code> gives the vendor <code>SimpleJudge</code>'s <code>Result Analysis</code> branch evidence to grade against. Implements <code>HPC PaperBench audit research plan</code> &sect;5 Step 4.</span></li>
+  </ol>
+  <p><span id="t-pa-p3">CLI dogfood: <code>python scripts/sc_paper_dogfood.py --pdf paper.pdf --rubric-template sc --with-reproduce-plan --judge-dryrun</code>. The <code>--paper-extras AD.pdf AE.pdf</code> flag concatenates Artifact Description and Artifact Evaluation Appendices so the audit can test <code>HPC PaperBench audit research plan</code> hypothesis 2 (paper-only vs +AD+AE).</span></p>
 
 </main>
 

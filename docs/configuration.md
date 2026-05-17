@@ -177,6 +177,17 @@ retrieval:
 # Plus the built-in `legacy` fallback (v0.5 schema). Add new venues by
 # dropping <id>.yaml into reviewer_rubrics/ — no code changes required.
 #
+# `prompt_overrides.author_hint` (unreleased) is the inverse of
+# system_hint: it's injected into paper-drafting prompts by
+# `generate_section` so writing is venue-conditioned at the same
+# strength as peer review. SC and NeurIPS ship calibrated hints;
+# other venues default to empty (legacy weak append).
+#
+# PaperBench rubric templates (separate venue YAMLs for the rubric
+# generator) live under ari-core/config/paperbench_rubrics/. See
+# docs/reference/rubric_schema.md#venue-conditioned-templates for the
+# YAML schema; shipped templates: generic | sc | neurips | nature.
+#
 # Few-shot corpus management
 # --------------------------
 # Files under reviewer_rubrics/fewshot_examples/<rubric>/ may be managed
@@ -287,6 +298,7 @@ skills:
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | Override per-paper target leaf count consumed by `generate_rubric`. `0`/unset → auto from paper length (~1 leaf / 75 words, clamped to [50, 400]). Set by the GUI Wizard's "Target leaves" field. | (unset) |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | Override generator temperature. Set by the GUI Wizard's "Temperature" field. | (unset) |
 | `ARI_RUBRIC_GEN_TWO_STAGE` | Force the rubric generator's two-stage path on/off (`1`/`true`/`on` vs `0`/`false`/`off`). Two-stage = skeleton + parallel subtree calls; produces ~4× more leaves and 1–2 levels more depth than a single call at ~5× more API tokens. Unset → kwarg default (currently on). Set by the GUI Wizard's "Two-stage generation" toggle. | (unset, default on) |
+| `ARI_PAPERBENCH_RUBRIC_DIR` | Override the search root for venue-conditioned PaperBench rubric templates. The loader checks this dir first, then `<cwd>/ari-core/config/paperbench_rubrics/`, `<cwd>/config/paperbench_rubrics/`, and the repo-relative fallback. Unset → built-in defaults. | (unset) |
 | `ARI_MODEL_REPLICATE` | Replicator LLM for `build_reproduce_sh` (paper → reproduce.sh, v0.7.0) | `claude-opus-4-7` |
 | `ARI_MODEL_JUDGE` | Judge LLM for `grade_with_simplejudge` (PaperBench Phase 2, v0.7.0; routed via LiteLLM, any provider OK) | `gpt-5-mini` |
 | `ARI_MODEL_LINEAGE` | LLM judge for `decide_lineage_action` (lineage decision, v0.7.0). Falls through `ARI_MODEL_EVAL` → `ARI_MODEL` → `ARI_LLM_MODEL` → `gpt-4o-mini` | (auto) |

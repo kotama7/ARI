@@ -1,0 +1,116 @@
+id: neurips
+version: "2026"
+venue: NeurIPS — ML Reproducibility Audit
+domain: Machine Learning / AI
+
+# paper_audit framing applied to the NeurIPS Reproducibility Checklist
+# axes. Direct children mirror the published checklist categories so the
+# rubric's structure aligns with what reviewers already use to score
+# reproducibility during peer review. Leaves grade descriptive
+# completeness of the paper (plus optional code/data appendix), not
+# whether a submission reproduces the work.
+mode: paper_audit
+
+# Weights calibrated against the NeurIPS Reproducibility Checklist
+# emphasis: claims/code/data each carry the most weight because they
+# carry the most reproducibility signal at the venue.
+top_level_axes:
+  - id: claims_supported
+    name: Claims supported by results
+    weight: 2
+    description: >-
+      Every main claim in the abstract and conclusion is matched to an
+      experimental result or theorem presented elsewhere in the paper;
+      no claim asserts more than the evidence supports.
+  - id: experimental_setup
+    name: Experimental setup specification
+    weight: 2
+    description: >-
+      Dataset(s), train/test splits, model architectures, hyperparameters,
+      compute (hardware + wall-time + cost), random seeds, and evaluation
+      metrics are specified with concrete values.
+  - id: code_data_available
+    name: Code and data availability
+    weight: 2
+    description: >-
+      Code (URL, license, commit/version) and datasets (URL/DOI, version,
+      license) are identifiable and openly available — or, when not
+      shareable, the limitation is acknowledged with a concrete reason.
+  - id: statistical_rigor
+    name: Statistical rigor
+    weight: 2
+    description: >-
+      Reported results include error bars / confidence intervals, the
+      number of runs is stated, and statistical-significance claims are
+      backed by an appropriate test (not just point estimates).
+  - id: ethics_limitations
+    name: Ethics, limitations, broader impacts
+    weight: 1
+    description: >-
+      The paper includes a clear Limitations section and a Broader
+      Impacts statement when applicable (per NeurIPS Checklist).
+  - id: figures_consistent
+    name: Numerical/figure consistency
+    weight: 1
+    description: >-
+      Numbers reported in body text, tables, and figures are internally
+      consistent; no contradictory metric values across the paper.
+
+prompt_overrides:
+  system_hint: |
+    You are auditing an ML paper against the NeurIPS Reproducibility
+    Checklist.
+
+    KEY FRAMING — same as the SC reproducibility audit: you are scoring
+    the paper's *self-description* (text + optional code/data
+    appendices), NOT whether a candidate submission reproduces it.
+
+    NEURIPS-SPECIFIC EMPHASIS — surface these failure modes:
+      - claims unsupported by the cited experiment (over-claiming)
+      - missing hyperparameters, random seeds, or train/test split
+        details that would block independent reproduction
+      - code/data linked but unavailable, broken, or version-pinned to
+        an irrecoverable snapshot
+      - point estimates reported without error bars or run counts
+      - missing Limitations / Broader Impacts sections when relevant
+      - contradictory numbers across body text, tables, and figures
+
+  leaf_style: |
+    Each leaf MUST be a paper-audit YES/NO question phrased as one of:
+      - "<X> is identifiable in the paper or supplementary."
+      - "<X> is specified with concrete values."
+      - "<X> reports error bars / confidence intervals."
+      - "<X> includes the number of runs used to compute the value."
+      - "<claim> is backed by the cited experimental result."
+    Leaves MUST NOT phrase requirements as commands the submission
+    performs.
+
+  reproduce_plan_hint: |
+    For NeurIPS / ML papers, the reproduce_plan.md MUST cover (one
+    section per experiment / table):
+
+      - Dataset: name, version, train/val/test split, preprocessing
+                 pipeline, license
+      - Model: architecture, parameter count, initialisation seed
+      - Training: optimizer, learning rate schedule, batch size,
+                  number of epochs, gradient clipping, mixed precision
+      - Hyperparameters: full table (use the paper's appendix when
+                          present)
+      - Compute: GPU model + count, wall-clock time, peak memory,
+                 estimated training cost in USD
+      - Evaluation: metric definitions, number of runs, statistical
+                    test, error bars / confidence intervals reported
+      - Random seeds: which seeds, how many runs were averaged
+
+    The install_commands.txt MUST include: conda/pip env definition,
+    package versions pinned (cite requirements.txt when present),
+    dataset download commands with checksums.
+
+    The verification_code.py MUST include checks for: reported
+    accuracy / F1 / perplexity within stated confidence interval,
+    training-time scaling vs hardware count, statistical-significance
+    claims (p-values, paired comparisons).
+
+    Use these venue-specific Reproducibility category labels:
+      - `seed_dependent` — results contingent on a specific seed list
+      - `dataset_unavailable` — dataset behind login or never released

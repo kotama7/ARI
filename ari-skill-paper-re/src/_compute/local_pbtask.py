@@ -74,6 +74,8 @@ class LocalPBTask(PBTask):
 
     paper_md_path: str
     rubric_expected_artifacts: list[str] = []
+    rubric_execution_profile: dict = {}
+    cluster_shape: dict = {}
     work_dir: str
 
     @override
@@ -154,6 +156,8 @@ def make_local_pbtask(
     work_dir: str,
     instructions: str,
     rubric_expected_artifacts: list[str] | None = None,
+    rubric_execution_profile: dict | None = None,
+    cluster_shape: dict | None = None,
     paper_id: str = "ari-local",
     run_id: str = "local-run",
     run_group_id: str = "local-group",
@@ -176,6 +180,8 @@ def make_local_pbtask(
     return LocalPBTask(
         paper_md_path=paper_md_path,
         rubric_expected_artifacts=list(rubric_expected_artifacts or []),
+        rubric_execution_profile=dict(rubric_execution_profile or {}),
+        cluster_shape=dict(cluster_shape or {}),
         work_dir=work_dir,
         prompt=[{"role": "user", "content": instructions}],
         # PBTask carries Task identifiers from nanoeval; we synthesize

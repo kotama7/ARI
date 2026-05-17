@@ -27,3 +27,14 @@ export function useI18n() {
 }
 
 export { en, ja, zh };
+
+/**
+ * useT — convenience hook returning only the `t` function from useI18n.
+ *
+ * Component code that doesn't need to mutate the language can write
+ * ``const t = useT()`` instead of ``const { t } = useI18n()``. Mirrors
+ * the conventional `useTranslation()` → `t` pattern from react-i18next.
+ */
+export function useT() {
+  return useI18n().t;
+}

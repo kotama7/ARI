@@ -379,6 +379,254 @@ async def test_bounded_output_tool_proxies_truncated_execute(monkeypatch):
     assert wrapped.get_oai_tool_call() == bash.get_oai_tool_call()
 
 
+# ─── execution_profile / cluster shape / HPC appendix ────────────────────
+
+
+def test_format_hpc_appendix_returns_empty_for_legacy_single_node():
+    """Legacy single-node paper (no artifacts, no profile, default shape)
+    yields no appendix → preserves the pre-v0.7.2 behaviour exactly."""
+    from _replicator_agent import _format_hpc_appendix
+
+    out = _format_hpc_appendix(
+        expected_artifacts=[],
+        execution_profile={},
+        cluster_shape={"SLURM_JOB_NUM_NODES": "1", "SLURM_NTASKS": "1", "GPU_LIST": "none visible"},
+    )
+    assert out == ""
+
+
+def test_format_hpc_appendix_includes_expected_artifacts_only():
+    """Domain isolation: when only artifacts are present (non-HPC paper),
+    the appendix is byte-equivalent to the pre-v0.7.2 EXPECTED_ARTIFACTS-only
+    block. CLUSTER SHAPE / EXECUTION PROFILE / COMPUTE-NODE CONVENTIONS
+    must NOT leak into non-HPC paper runs."""
+    from _replicator_agent import _format_hpc_appendix
+
+    out = _format_hpc_appendix(
+        expected_artifacts=["results.csv", "perf.csv"],
+        execution_profile={},
+        cluster_shape={"SLURM_JOB_NUM_NODES": "1", "SLURM_NTASKS": "1", "GPU_LIST": "none visible"},
+    )
+    assert "EXPECTED_ARTIFACTS" in out
+    assert "- results.csv" in out
+    assert "- perf.csv" in out
+    # Domain-isolation: no HPC-specific content when execution_profile is empty
+    assert "EXECUTION PROFILE" not in out
+    assert "CLUSTER SHAPE" not in out
+    assert "COMPUTE-NODE EXECUTION CONVENTIONS" not in out
+    assert "SLURM" not in out
+    assert "mpirun" not in out
+    assert "srun" not in out
+
+
+def test_format_hpc_appendix_no_hpc_leak_when_inside_unrelated_slurm():
+    """Regression guard: even when ARI happens to run inside a SLURM
+    allocation, a non-HPC paper (no execution_profile in its rubric) must
+    NOT see CLUSTER SHAPE or COMPUTE-NODE conventions. Otherwise an NLP /
+    vision / theory paper would receive HPC-flavoured agent guidance just
+    because $SLURM_NTASKS is set in the environment.
+    """
+    from _replicator_agent import _format_hpc_appendix
+
+    out = _format_hpc_appendix(
+        expected_artifacts=["nlp_eval.csv"],
+        execution_profile={},                              # non-HPC paper
+        cluster_shape={                                    # but inside SLURM
+            "SLURM_JOB_NUM_NODES": "4",
+            "SLURM_NTASKS": "32",
+            "GPU_LIST": "Tesla V100 ×4",
+        },
+    )
+    # The agent still sees EXPECTED_ARTIFACTS, but nothing else.
+    assert "EXPECTED_ARTIFACTS" in out
+    assert "- nlp_eval.csv" in out
+    assert "CLUSTER SHAPE" not in out
+    assert "SLURM_JOB_NUM_NODES = 4" not in out
+    assert "COMPUTE-NODE EXECUTION CONVENTIONS" not in out
+    assert "srun" not in out
+    assert "mpirun" not in out
+
+
+def test_format_hpc_appendix_mpi_kind_emits_full_conventions():
+    """MPI execution_profile drives the srun / mpirun / metric_columns
+    convention block and the COMPUTE-NODE conventions footer."""
+    from _replicator_agent import _format_hpc_appendix
+
+    out = _format_hpc_appendix(
+        expected_artifacts=["submission/results/scaling.csv"],
+        execution_profile={
+            "kind": "mpi_gpu",
+            "paper_max_ranks": 32,
+            "metric_columns": ["nodes", "ranks", "runtime_sec", "gflops"],
+            "accepts_reduced_scale": True,
+            "module_loads": ["cuda/12.4", "openmpi/4.1"],
+        },
+        cluster_shape={
+            "SLURM_JOB_NUM_NODES": "4",
+            "SLURM_NTASKS": "32",
+            "GPU_LIST": "Tesla V100-SXM2-16GB ×4",
+        },
+    )
+    # EXECUTION PROFILE block JSON-encoded
+    assert "EXECUTION PROFILE" in out
+    assert '"kind": "mpi_gpu"' in out
+    assert '"metric_columns"' in out
+    # CLUSTER SHAPE picked up the SLURM env
+    assert "SLURM_JOB_NUM_NODES = 4" in out
+    assert "SLURM_NTASKS        = 32" in out
+    assert "V100" in out
+    # MPI convention: srun preferred, metric_columns reflected
+    assert "srun -n $SLURM_NTASKS" in out
+    assert "'nodes'" in out and "'gflops'" in out
+    assert "submission/mpi_aggregate.py" in out
+    # accepts_reduced_scale
+    assert "paper_paper_scale_point" in out
+    # module_loads
+    assert "module load cuda/12.4 openmpi/4.1" in out
+    # COMPUTE-NODE conventions are always present
+    assert "COMPUTE-NODE EXECUTION CONVENTIONS" in out
+    assert "PREFER srun over mpirun" in out
+    assert "Multi-node fan-out" in out
+    assert "Timeout wrapping" in out
+
+
+def test_format_hpc_appendix_gpu_single_warns_off_numpy():
+    """A GPU-bearing kind without MPI still emits the "do NOT fall back to
+    NumPy" guidance — agent must use CUDA / cupy."""
+    from _replicator_agent import _format_hpc_appendix
+
+    out = _format_hpc_appendix(
+        expected_artifacts=[],
+        execution_profile={"kind": "gpu_single"},
+        cluster_shape={"SLURM_JOB_NUM_NODES": "1", "SLURM_NTASKS": "1", "GPU_LIST": "Tesla V100"},
+    )
+    assert "EXECUTION PROFILE" in out
+    assert "NumPy" in out
+
+
+def test_detect_cluster_shape_reads_slurm_env(monkeypatch):
+    from _replicator_agent import detect_cluster_shape
+
+    monkeypatch.setenv("SLURM_JOB_NUM_NODES", "4")
+    monkeypatch.setenv("SLURM_NTASKS", "32")
+    shape = detect_cluster_shape()
+    assert shape["SLURM_JOB_NUM_NODES"] == "4"
+    assert shape["SLURM_NTASKS"] == "32"
+    # GPU_LIST is best-effort; "none visible" when nvidia-smi is absent
+    assert isinstance(shape["GPU_LIST"], str)
+
+
+def test_detect_cluster_shape_defaults_outside_slurm(monkeypatch):
+    from _replicator_agent import detect_cluster_shape
+
+    monkeypatch.delenv("SLURM_JOB_NUM_NODES", raising=False)
+    monkeypatch.delenv("SLURM_NTASKS", raising=False)
+    shape = detect_cluster_shape()
+    assert shape["SLURM_JOB_NUM_NODES"] == "1"
+    assert shape["SLURM_NTASKS"] == "1"
+
+
+async def test_run_agent_passes_execution_profile_into_user_message(monkeypatch):
+    """end-to-end: execution_profile → LocalPBTask → AriPBSolver._run_agent
+    → user_msg contains EXECUTION PROFILE block.
+    """
+    captured: dict = {}
+
+    async def _capture(self, *, computer, task, prompt):
+        captured["prompt"] = prompt
+
+    monkeypatch.setattr(
+        BasicAgentSolver,
+        "_execute_agent_and_periodically_upload_logs",
+        _capture,
+        raising=True,
+    )
+    monkeypatch.setenv("SLURM_JOB_NUM_NODES", "4")
+    monkeypatch.setenv("SLURM_NTASKS", "32")
+
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        paper = td / "paper.md"
+        paper.write_text("# Paper\n\nClaim: TS-SpGEMM scales to 32 ranks.\n")
+        out = td / "ws"
+
+        await run_replicator_agent(
+            paper_md_path=str(paper),
+            output_dir=str(out),
+            expected_artifacts=["submission/results/scaling.csv"],
+            execution_profile={
+                "kind": "mpi_gpu",
+                "paper_max_ranks": 32,
+                "metric_columns": ["nodes", "ranks", "runtime_sec", "gflops"],
+                "module_loads": ["cuda/12.4"],
+            },
+            time_limit_sec=60,
+            iterative_agent=False,
+            sandbox_kind="local",
+        )
+
+        user_msg = captured["prompt"][1]["content"]
+        # EXPECTED_ARTIFACTS still present
+        assert "EXPECTED_ARTIFACTS" in user_msg
+        assert "- submission/results/scaling.csv" in user_msg
+        # NEW: EXECUTION PROFILE JSON block
+        assert "EXECUTION PROFILE" in user_msg
+        assert '"kind": "mpi_gpu"' in user_msg
+        # NEW: CLUSTER SHAPE from SLURM env
+        assert "SLURM_JOB_NUM_NODES = 4" in user_msg
+        assert "SLURM_NTASKS        = 32" in user_msg
+        # NEW: COMPUTE-NODE conventions footer
+        assert "COMPUTE-NODE EXECUTION CONVENTIONS" in user_msg
+        assert "module load cuda/12.4" in user_msg
+
+        # MPI skeleton was auto-injected
+        skel = out / "submission" / "mpi_aggregate.py"
+        assert skel.is_file()
+        assert "gather_and_write_csv" in skel.read_text()
+
+
+async def test_run_agent_no_appendix_for_legacy_paper(monkeypatch):
+    """Legacy call site without execution_profile, no artifacts: user_msg
+    must contain neither EXECUTION PROFILE nor EXPECTED_ARTIFACTS blocks,
+    only the vendor instructions. Verifies backward compat (P2 acceptance).
+    """
+    captured: dict = {}
+
+    async def _capture(self, *, computer, task, prompt):
+        captured["prompt"] = prompt
+
+    monkeypatch.setattr(
+        BasicAgentSolver,
+        "_execute_agent_and_periodically_upload_logs",
+        _capture,
+        raising=True,
+    )
+    monkeypatch.delenv("SLURM_JOB_NUM_NODES", raising=False)
+    monkeypatch.delenv("SLURM_NTASKS", raising=False)
+
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        paper = td / "paper.md"
+        paper.write_text("# A trivial CPU paper.\n")
+        out = td / "ws"
+
+        await run_replicator_agent(
+            paper_md_path=str(paper),
+            output_dir=str(out),
+            expected_artifacts=[],
+            time_limit_sec=60,
+            iterative_agent=False,
+            sandbox_kind="local",
+        )
+
+        user_msg = captured["prompt"][1]["content"]
+        assert "EXECUTION PROFILE" not in user_msg
+        assert "EXPECTED_ARTIFACTS" not in user_msg
+        assert "COMPUTE-NODE EXECUTION CONVENTIONS" not in user_msg
+        # MPI skeleton must NOT be injected for legacy papers
+        assert not (out / "submission" / "mpi_aggregate.py").exists()
+
+
 async def test_instructions_txt_is_brief_stub(monkeypatch):
     """The workspace's ``instructions.txt`` is now just a pointer, not the
     canonical prompt. The full task brief is delivered via the LLM
