@@ -451,6 +451,18 @@ _env_append_if_absent "# ARI_NUM_REFLECTIONS="
 _env_section "ari-skill-web"
 _env_append_if_absent "# ARI_ALPHAXIV_ENDPOINT=https://api.alphaxiv.org/mcp/v1"
 
+# --- 9c) Skill: PaperBench (paper-re + viz/api_paperbench, v0.7.2) --------
+# PaperBench's BasicAgent reads SLURM env vars at run time to populate the
+# CLUSTER SHAPE prompt block (see ari-skill-paper-re/src/_replicator_agent.py
+# ::detect_cluster_shape and the MPI aggregation skeleton). These are set
+# automatically by sbatch; they're listed here so setup_env.sh test +
+# documentation tooling acknowledge them as recognised vars.
+_env_section "ari-skill-paper-re / PaperBench"
+_env_append_if_absent "# ARI_PAPER_REGISTRY_DIR=\$HOME/.ari/paper_registry  # override paper registry root (default: ~/.ari/paper_registry)"
+_env_append_if_absent "# SLURM_JOB_NUM_NODES=  # auto-populated by sbatch; surfaced in agent prompt CLUSTER SHAPE"
+_env_append_if_absent "# SLURM_NTASKS=         # auto-populated by sbatch; surfaced in agent prompt CLUSTER SHAPE"
+_env_append_if_absent "# SLURM_PROCID=         # auto-populated by srun; read by mpi_aggregate_skel.py fallback"
+
 # --- 10) Skill: ari-skill-idea (agentscope vendor) -------------------------
 # Used by ari-skill-idea/vendor/virsci/agentscope — studio/online app,
 # gradio UI, and ModelScope integration. Leave commented unless you run

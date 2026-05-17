@@ -1,0 +1,132 @@
+id: sc
+version: "2026"
+venue: ACM/IEEE Supercomputing (SC) — Reproducibility Audit
+domain: HPC / Systems
+
+# paper_audit = the paper text (and AD/AE Appendix when supplied) is the
+# evaluation target. Leaves grade descriptiveness, not whether a candidate
+# submission reproduces the paper. Matches HPC PaperBench audit research plan §5
+# Step 3 "Hierarchical rubric for paper audit".
+mode: paper_audit
+
+# Fixed direct children — the rubric root's sub_tasks list will be exactly
+# these six axes in this order. Weights mirror the example calibrated in the
+# proposal (Hardware 2 / Software 2 / Execution 2 / Figures 2 / Scaling 3 /
+# Conclusion 1; SC's reproducibility initiative weighs scaling slightly
+# higher because mis-stated scaling is the most common HPC-specific defect).
+top_level_axes:
+  - id: env_reconstructable
+    name: Environment reconstructability
+    weight: 2
+    description: >-
+      Hardware configuration (CPU/GPU model, node count, interconnect),
+      compiler version, MPI implementation, and software stack are
+      identifiable from the paper body or AD Appendix.
+  - id: data_available
+    name: Data availability
+    weight: 2
+    description: >-
+      Input datasets, problem sizes, and benchmark configurations used in
+      experiments are findable or openly available per the paper or
+      Artifact Description.
+  - id: execution_specified
+    name: Execution-procedure specification
+    weight: 2
+    description: >-
+      Job scripts, sbatch parameters, run commands, and any environment
+      setup needed to reproduce the experiments are reconstructable from
+      the paper or AD/AE Appendix.
+  - id: figures_consistent
+    name: Numerical/figure consistency
+    weight: 2
+    description: >-
+      Numerical values reported in body text, tables, and figures are
+      internally consistent (no contradictory speedups, throughputs, or
+      problem sizes across the paper).
+  - id: scaling_consistent
+    name: Scaling-claim consistency
+    weight: 3
+    description: >-
+      Strong/weak scaling behavior stated in the text matches the curves
+      and numbers in the figures, and the scaling regime (number of
+      nodes/ranks/GPUs) covers the range needed to support the claim.
+  - id: conclusion_supported
+    name: Conclusion-evidence integrity
+    weight: 1
+    description: >-
+      Top-line claims in the abstract and conclusion are backed by
+      experimental evidence presented elsewhere in the paper; no claim
+      asserts more than the results support.
+
+prompt_overrides:
+  system_hint: |
+    You are auditing an HPC paper for the ACM/IEEE Supercomputing
+    Reproducibility Initiative.
+
+    KEY FRAMING CHANGE — read this twice:
+      You are NOT grading whether a candidate submission reproduces the
+      paper. You ARE grading whether the paper's own text (plus the
+      Artifact Description / Artifact Evaluation Appendix when supplied)
+      contains enough information for an HPC practitioner to reproduce
+      the work. Code execution is OUT OF SCOPE for this rubric;
+      descriptive completeness and internal consistency are IN SCOPE.
+
+    HPC-SPECIFIC EMPHASIS — the proposal mandates that the rubric must
+    surface these failure modes:
+      - mis-stated hardware / node count / interconnect
+      - missing compiler/MPI version pinning
+      - opaque job scripts (sbatch params hidden behind narrative text)
+      - speedup/throughput values that contradict figures or tables
+      - scaling claims (strong/weak) unsupported by the reported range
+      - conclusions that overshoot the experimental evidence
+
+    Treat AD/AE absence as a reproducibility signal, not as an automatic
+    fail — surface it via the env_reconstructable / execution_specified
+    axes.
+
+  leaf_style: |
+    Each leaf MUST be a paper-audit YES/NO question phrased as one of:
+      - "<X> is identifiable in the paper or AD Appendix."
+      - "<X> is specified with concrete values/versions."
+      - "<X> is reconstructable from the paper or AE Appendix."
+      - "<X> is consistent between body text, tables, and figures."
+      - "<conclusion claim> is backed by the cited experimental result."
+    Leaves MUST NOT phrase requirements as commands the submission
+    performs (e.g., "The implementation partitions input into 8x8x8
+    chunks") — that style is for agent_benchmark mode and is rejected
+    here.
+
+  reproduce_plan_hint: |
+    For SC (HPC) papers, the reproduce_plan.md MUST cover (one section
+    per experiment):
+
+      - Hardware: cluster name, node count, CPU/GPU model, interconnect
+                  type, NIC link rate
+      - Software stack: compiler + version, MPI implementation + version,
+                        CUDA / driver version, math libraries
+      - SLURM allocation: partition, nodes, ntasks, ntasks-per-node,
+                          gpus-per-task / gres, exclusive flag, time limit
+      - Module loads: explicit `module load` commands, env vars
+                      (LD_LIBRARY_PATH, PATH, OMP_NUM_THREADS, etc.)
+      - Build commands: cmake / make flags, configure options,
+                        cross-compile notes when relevant
+      - Run commands: srun / mpirun invocation with rank/topology binding,
+                      input file paths, scale-down knobs
+      - Scale variants: explicit instructions for reducing to single-node
+                        execution when the full cluster is not available
+                        (use this for the `small_scale_reproducible`
+                        category)
+
+    The install_commands.txt MUST be reconstructable into a runnable
+    bash script (cite AD section for each block).
+
+    The verification_code.py MUST include checks for: speedup values,
+    throughput values (in physical units like GB/s or GFLOP/s),
+    strong/weak scaling efficiency, error/accuracy metrics (RRMSE,
+    PSNR, compression ratio).
+
+    Use these venue-specific Reproducibility category labels in
+    addition to the global ones:
+      - `requires_HPC_allocation` — only runs at >=N nodes per paper
+      - `requires_proprietary_data` — proprietary dataset / facility
+                                       module / vendor-specific driver

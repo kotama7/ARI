@@ -67,5 +67,88 @@ CONSTRAINTS ON FILES:
 EXPECTED_ARTIFACTS (from the rubric, may be empty):
 {EXPECTED_ARTIFACTS}
 
+%% ============================================================ %%
+%% DOMAIN ISOLATION: every block below this line is appended to
+%% the agent prompt ONLY when the rubric's
+%% ``reproduce_contract.execution_profile`` is non-empty (the
+%% explicit HPC / parallel-execution opt-in). For non-HPC papers
+%% (NLP, vision, theory, single-machine ML, etc.) these blocks
+%% are not emitted at all — the agent prompt degrades to the
+%% EXPECTED_ARTIFACTS-only form. Domain-bias regression test:
+%% ``tests/test_replicator_agent.py::test_format_hpc_appendix_
+%% no_hpc_leak_when_inside_unrelated_slurm``.
+%% ============================================================ %%
+
+EXECUTION PROFILE (from the rubric, may be empty):
+{EXECUTION_PROFILE}
+
+CLUSTER SHAPE (current allocation; emitted only when EXECUTION_PROFILE
+is non-empty AND we are inside a SLURM allocation):
+- SLURM_JOB_NUM_NODES = {SLURM_JOB_NUM_NODES}
+- SLURM_NTASKS        = {SLURM_NTASKS}
+- GPU devices visible = {GPU_LIST}
+
+CONVENTIONS:
+  - If EXECUTION_PROFILE.kind in ("mpi", "mpi_gpu"):
+      reproduce.sh must launch via ``srun -n <ranks>`` or
+      ``mpirun -np <ranks>``. Rank 0 must collect metrics via
+      ``MPI_Reduce``/``MPI_Gather`` (or ``comm.gather`` from ``mpi4py``) and
+      write to ``submission/results/<file>.csv`` with columns EXACTLY
+      matching EXECUTION_PROFILE.metric_columns. Per-rank logs may go to
+      ``submission/logs/rank-<rank>.log`` (optional). A helper skeleton
+      (``submission/mpi_aggregate.py``) is auto-injected for kind="mpi" /
+      "mpi_gpu" runs — copy it into your reproduce.sh's CSV-emit step.
+  - If EXECUTION_PROFILE.accepts_reduced_scale is true and you cannot reach
+      paper_max_ranks/nodes inside the current allocation, run as many
+      scale points as fit in the time budget and add a
+      ``paper_paper_scale_point`` column (boolean) to the CSV — false for
+      reduced points.
+  - If EXECUTION_PROFILE.kind in ("gpu_single", "gpu_multi"):
+      reproduce.sh must use CUDA (.cu compiled with nvcc) OR PyTorch CUDA /
+      cupy. Do NOT fall back to NumPy unless EXECUTION_PROFILE is empty.
+
+COMPUTE-NODE EXECUTION CONVENTIONS:
+
+  Shared filesystem:
+    - All paths in reproduce.sh must resolve on EVERY allocated node.
+    - ``$HOME``-based or ``/work/``-based paths only. NEVER ``/tmp`` or
+      ``/var/tmp`` (node-local; multi-node sbatch will fail).
+
+  MPI invocation (PREFER srun over mpirun):
+    - ``srun -n $SLURM_NTASKS <command>`` uses SLURM's PMI/PMIx integration
+      and works without a separately-installed OpenMPI/MPICH (which many
+      clusters lack).
+    - If srun is unavailable, fall back to ``pip install --user mpi4py``
+      then Python-level MPI via ``mpi4py.MPI``.
+    - DO NOT assume ``mpirun`` is on PATH. Test with ``which mpirun``
+      first.
+
+  Python env:
+    - ``bash`` shebang lines do NOT automatically activate conda /
+      virtualenv. If your reproduce.sh needs a specific Python env,
+      PREPEND one of:
+          source ~/.bashrc
+          source ~/miniconda3/etc/profile.d/conda.sh && conda activate <env>
+    - Otherwise rely on ``/usr/bin/python3`` + ``pip install --user ...``.
+
+  Module loads (when EXECUTION_PROFILE.module_loads is non-empty):
+    - At the very top of reproduce.sh:
+          module load cuda/12.4 openmpi/4.1   # exact list from
+                                              # EXECUTION_PROFILE.module_loads
+
+  Multi-node fan-out:
+    - When SLURM_JOB_NUM_NODES > 1, reproduce.sh starts as a SINGLE rank
+      on the first allocated node. To use ALL nodes you must fan out:
+          srun -N $SLURM_JOB_NUM_NODES -n $SLURM_NTASKS <command>
+    - Without this, your script only uses 1 node regardless of allocation
+      size.
+
+  Timeout wrapping:
+    - SLURM ``--time`` enforces a hard wallclock; jobs are SIGTERM'd at
+      the limit. For partial-result safety, wrap long stages with
+      ``timeout``:
+          timeout 1800 python long_step.py    # 30 min per-step ceiling
+      This ensures one slow step does not eat the whole walltime budget.
+
 PAPER:
 {PAPER_TEXT}

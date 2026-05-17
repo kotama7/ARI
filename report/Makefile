@@ -61,6 +61,37 @@ en/main.pdf ja/main.pdf:
 zh/main.pdf:
 	cd $(@D) && $(LATEXMK) -xelatex -interaction=nonstopmode -file-line-error main.tex
 
+# ------------------------------------------------------------------ PaperBench audit reports (v0.7.2)
+#
+# Render a per-paper audit report from an ARI checkpoint.
+# Usage:  make audit-report CHECKPOINT=/var/tmp/ari/.../20260511_... PAPER_ID=sc24-00019
+# Optional: AUDIT_OUTPUT (default: audit/<PAPER_ID>), AUDIT_LANGS (default: en),
+#           AUDIT_FORMATS (default: pdf)
+AUDIT_OUTPUT  ?= audit/$(PAPER_ID)
+AUDIT_LANGS   ?= en
+AUDIT_FORMATS ?= pdf
+
+audit-report:
+	@test -n "$(CHECKPOINT)" || (echo "Usage: make audit-report CHECKPOINT=<ckpt> PAPER_ID=<id>" && exit 1)
+	@test -n "$(PAPER_ID)"   || (echo "Usage: make audit-report CHECKPOINT=<ckpt> PAPER_ID=<id>" && exit 1)
+	$(PYTHON) -m scripts.paperbench_report paper \
+	    --checkpoint $(CHECKPOINT) --paper-id $(PAPER_ID) \
+	    --output-root $(AUDIT_OUTPUT) \
+	    --languages $(AUDIT_LANGS) --formats $(AUDIT_FORMATS)
+
+# Summary across multiple checkpoints. Pass CHECKPOINTS as a space-separated list.
+# Usage:  make audit-summary CHECKPOINTS="ckpt1 ckpt2" PAPER_IDS="p1 p2" RUN_ID=20260511
+AUDIT_SUMMARY_OUTPUT ?= audit/_summary/$(RUN_ID)
+
+audit-summary:
+	@test -n "$(CHECKPOINTS)" || (echo "Usage: make audit-summary CHECKPOINTS='c1 c2' RUN_ID=<id>" && exit 1)
+	@test -n "$(RUN_ID)"      || (echo "Usage: make audit-summary CHECKPOINTS='c1 c2' RUN_ID=<id>" && exit 1)
+	$(PYTHON) -m scripts.paperbench_report summary \
+	    $(foreach c,$(CHECKPOINTS),--checkpoint $(c)) \
+	    $(foreach p,$(PAPER_IDS),--paper-id $(p)) \
+	    --output-root $(AUDIT_SUMMARY_OUTPUT) \
+	    --languages $(AUDIT_LANGS) --formats $(AUDIT_FORMATS)
+
 # ------------------------------------------------------------------ html (LaTeXML primary, make4ht fallback per-chapter)
 html-all: $(HTML_TARGETS)
 

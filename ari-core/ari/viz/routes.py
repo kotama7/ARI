@@ -51,6 +51,15 @@ from .api_state import _api_node_report, _api_ear_clone_verify, _api_ear_curate,
 log = logging.getLogger(__name__)
 
 
+# Frontend bundle locations. Mirrors the constants in ``server.py`` —
+# ``_serve_spa_index`` reads these directly, so they must resolve in
+# this module's namespace too. Both files sit in ``ari/viz/`` so
+# ``Path(__file__).parent`` resolves identically.
+DASHBOARD_PATH = Path(__file__).parent / "dashboard.html"
+REACT_DIST_DIR = Path(__file__).parent / "static" / "dist"
+REACT_INDEX = REACT_DIST_DIR / "index.html"
+
+
 # Phase 3B PR-3B-1: shared access-log lock so concurrent requests don't
 # interleave their viz_access.jsonl lines.
 _access_log_lock = threading.Lock()
@@ -921,6 +930,104 @@ class _Handler(BaseHTTPRequestHandler):
                 self.path[len("/api/lineage-decisions/"):]
             )
             self._json(_api_lineage_decisions(ckpt_name))
+        # ── PaperBench (v0.7.2) ──────────────────────────────────────────
+        elif self.path == "/api/paperbench/papers":
+            from .api_paperbench import _api_list_papers
+            self._json(_api_list_papers())
+        elif self.path.startswith("/api/paperbench/arxiv/"):
+            from .api_paperbench import _api_arxiv_fetch
+            aid = urllib.parse.unquote(self.path[len("/api/paperbench/arxiv/"):])
+            self._json(_api_arxiv_fetch(aid))
+        elif self.path.startswith("/api/paperbench/papers/") and self.path.endswith("/license"):
+            from .api_paperbench import _api_paper_license
+            pid_pb = self.path[len("/api/paperbench/papers/"):-len("/license")]
+            self._json(_api_paper_license(urllib.parse.unquote(pid_pb)))
+        elif self.path.startswith("/api/paperbench/run/") and (
+            self.path.endswith("/logs") or "/logs?" in self.path
+        ):
+            # SSE stream for PaperBench job logs. The browser opens an
+            # EventSource and we push each appended log line until the
+            # job's status leaves {queued, running}. Loops with a short
+            # sleep + heartbeat comment so the connection stays alive
+            # through HTTP/1.1 keep-alive timeouts.
+            from .api_paperbench import _job_logs_since, _job_snapshot, append_job_log  # noqa: F401
+            parsed_sse = urllib.parse.urlparse(self.path)
+            jid_sse = urllib.parse.unquote(
+                parsed_sse.path[len("/api/paperbench/run/"):-len("/logs")]
+            )
+            q_sse = dict(urllib.parse.parse_qsl(parsed_sse.query))
+            try:
+                since_idx = int(q_sse.get("since", "0"))
+            except ValueError:
+                since_idx = 0
+            # Last-Event-ID resume support
+            last_id = self.headers.get("Last-Event-ID")
+            if last_id and last_id.isdigit():
+                since_idx = max(since_idx, int(last_id))
+
+            snap0 = _job_snapshot(jid_sse)
+            if not snap0:
+                self.send_response(404)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "job not found"}).encode("utf-8"))
+            else:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Connection", "close")
+                self.end_headers()
+                idx = since_idx
+                # Cap the streaming window so a stuck job doesn't hold the
+                # worker thread forever. The browser will reconnect using
+                # Last-Event-ID when it needs more.
+                deadline = time.time() + 300  # 5 min per stream
+                try:
+                    while True:
+                        new_rows = _job_logs_since(jid_sse, idx)
+                        for row in new_rows:
+                            payload = json.dumps(row, ensure_ascii=False)
+                            line = f"id: {idx}\nevent: log\ndata: {payload}\n\n"
+                            self.wfile.write(line.encode("utf-8"))
+                            self.wfile.flush()
+                            idx += 1
+                        snap = _job_snapshot(jid_sse)
+                        if snap.get("status") in ("completed", "failed"):
+                            done_payload = json.dumps({"status": snap.get("status")}, ensure_ascii=False)
+                            self.wfile.write(f"event: done\ndata: {done_payload}\n\n".encode("utf-8"))
+                            self.wfile.flush()
+                            break
+                        if time.time() > deadline:
+                            self.wfile.write(": stream-timeout — reconnect\n\n".encode("utf-8"))
+                            self.wfile.flush()
+                            break
+                        # Heartbeat comment to keep proxies from closing the
+                        # idle connection. SSE comments start with ':'.
+                        self.wfile.write(b": heartbeat\n\n")
+                        self.wfile.flush()
+                        time.sleep(1.0)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+        elif self.path.startswith("/api/paperbench/run/") and self.path.endswith("/results"):
+            from .api_paperbench import _api_run_results
+            jid = self.path[len("/api/paperbench/run/"):-len("/results")]
+            self._json(_api_run_results(urllib.parse.unquote(jid)))
+        elif self.path.startswith("/api/paperbench/run/") and (
+            self.path.endswith("/report") or "/report?" in self.path
+        ):
+            from .api_paperbench import _api_run_report
+            parsed = urllib.parse.urlparse(self.path)
+            jid = parsed.path[len("/api/paperbench/run/"):-len("/report")]
+            q = {k: urllib.parse.unquote(v) for k, v in urllib.parse.parse_qsl(parsed.query)}
+            for key in ("languages", "formats"):
+                if key in q:
+                    q[key] = q[key].split(",")
+            self._json(_api_run_report(urllib.parse.unquote(jid), q))
+        elif self.path.startswith("/api/paperbench/run/"):
+            from .api_paperbench import _api_run_status
+            jid = self.path[len("/api/paperbench/run/"):]
+            self._json(_api_run_status(urllib.parse.unquote(jid)))
         else:
             # SPA fallback: serve React index.html for client-side routing
             if not self.path.startswith("/api/"):
@@ -1013,6 +1120,40 @@ class _Handler(BaseHTTPRequestHandler):
                 urllib.parse.unquote(parts[0]),
                 urllib.parse.unquote(parts[1]),
             ))
+        # ── PaperBench (v0.7.2) ──────────────────────────────────────────
+        elif self.path == "/api/paperbench/papers/import":
+            from .api_paperbench import _api_import_paper
+            try:
+                fields = json.loads(body or b"{}")
+            except json.JSONDecodeError as e:
+                self._json({"error": f"invalid JSON body: {e}"}, status=400); return
+            self._json(_api_import_paper(fields))
+        elif self.path.startswith("/api/paperbench/papers/") and self.path.endswith("/delete"):
+            from .api_paperbench import _api_delete_paper
+            pid_pb = self.path[len("/api/paperbench/papers/"):-len("/delete")]
+            self._json(_api_delete_paper(urllib.parse.unquote(pid_pb)))
+        elif self.path.startswith("/api/paperbench/papers/") and self.path.endswith("/metadata"):
+            from .api_paperbench import _api_patch_paper_metadata
+            pid_pb = self.path[len("/api/paperbench/papers/"):-len("/metadata")]
+            try:
+                fields = json.loads(body or b"{}")
+            except json.JSONDecodeError as e:
+                self._json({"error": f"invalid JSON body: {e}"}, status=400); return
+            self._json(_api_patch_paper_metadata(urllib.parse.unquote(pid_pb), fields))
+        elif self.path == "/api/paperbench/run":
+            from .api_paperbench import _api_launch_run
+            try:
+                fields = json.loads(body or b"{}")
+            except json.JSONDecodeError as e:
+                self._json({"error": f"invalid JSON body: {e}"}, status=400); return
+            self._json(_api_launch_run(fields))
+        elif self.path == "/api/paperbench/cost-estimate":
+            from .api_paperbench import _api_cost_estimate
+            try:
+                fields = json.loads(body or b"{}")
+            except json.JSONDecodeError as e:
+                self._json({"error": f"invalid JSON body: {e}"}, status=400); return
+            self._json(_api_cost_estimate(fields))
         elif self.path.startswith("/api/ollama/"):
             _ollama_proxy(self)
             return

@@ -558,6 +558,112 @@ async def test_two_stage_drops_invalid_leaves_instead_of_failing(tmp_path):
     assert "pruned" in msgs
 
 
+@pytest.mark.asyncio
+async def test_generate_rubric_preserves_execution_profile(tmp_path):
+    """A rubric envelope carrying execution_profile must round-trip through
+    generate_rubric_async and survive freeze + schema validation. This is the
+    P1 acceptance criterion for HPC-aware rubrics (cf. PLAN_MPI_EXIT.md §5).
+    """
+    paper_text = "We ran TS-SpGEMM on 4 nodes with 8 MPI ranks per node. " * 80
+    env = _envelope_partial(leaves=20)
+    env["reproduce_contract"]["execution_profile"] = {
+        "kind": "mpi_gpu",
+        "paper_max_ranks": 32,
+        "paper_max_nodes": 4,
+        "min_ranks": 4,
+        "min_nodes": 1,
+        "result_aggregation": "rank0_csv",
+        "metric_columns": ["nodes", "ranks", "runtime_sec", "gflops"],
+        "accepts_reduced_scale": True,
+        "requested_nodes": 4,
+        "ntasks_per_node": 8,
+        "exclusive": True,
+        "requested_gpus_per_task": 1,
+        "gpu_type": "v100",
+        "memory_gb_per_node": 256,
+        "constraint": "skylake",
+        "module_loads": ["cuda/12.4", "openmpi/4.1"],
+        "extra_sbatch_args": ["--account=projX"],
+    }
+    out_path = tmp_path / "rubric.json"
+
+    async def fake_llm(prompt: str) -> str:
+        return json.dumps(env)
+
+    res = await G.generate_rubric_async(
+        paper_text=paper_text,
+        output_path=str(out_path),
+        target_leaf_count=20,
+        model="test/mock",
+        llm_call=fake_llm,
+    )
+    assert "error" not in res, res
+    written = json.loads(out_path.read_text())
+    prof = written["reproduce_contract"]["execution_profile"]
+    assert prof["kind"] == "mpi_gpu"
+    assert prof["paper_max_ranks"] == 32
+    assert prof["requested_nodes"] == 4
+    assert prof["exclusive"] is True
+    assert prof["gpu_type"] == "v100"
+    assert prof["module_loads"] == ["cuda/12.4", "openmpi/4.1"]
+    assert prof["extra_sbatch_args"] == ["--account=projX"]
+    # sha256 covers the full envelope including execution_profile.
+    assert M.verify(written) is True
+
+
+@pytest.mark.asyncio
+async def test_generate_rubric_without_execution_profile_unchanged(tmp_path):
+    """Backward compat: legacy single-node paper rubric without
+    execution_profile still generates + validates."""
+    paper_text = "A small CPU-only paper. " * 80
+    env = _envelope_partial(leaves=15)
+    assert "execution_profile" not in env["reproduce_contract"]
+    out_path = tmp_path / "rubric.json"
+
+    async def fake_llm(prompt: str) -> str:
+        return json.dumps(env)
+
+    res = await G.generate_rubric_async(
+        paper_text=paper_text,
+        output_path=str(out_path),
+        target_leaf_count=15,
+        model="test/mock",
+        llm_call=fake_llm,
+    )
+    assert "error" not in res, res
+    written = json.loads(out_path.read_text())
+    assert "execution_profile" not in written["reproduce_contract"]
+    assert M.verify(written) is True
+
+
+def test_skeleton_prompt_includes_execution_profile_guidance():
+    """The skeleton template must explicitly instruct the LLM about
+    execution_profile so HPC paper structure gets captured at generation
+    time (P1 acceptance criterion)."""
+    rendered = G._render_skeleton_prompt(paper_text="X" * 100, target_leaves=50)
+    assert "execution_profile" in rendered
+    assert "kind" in rendered
+    assert "mpi" in rendered
+    assert "gpu_single" in rendered
+    assert "module_loads" in rendered
+
+
+def test_single_call_prompt_also_includes_execution_profile_guidance():
+    """The single-call ``adversarial_reviewer.md`` template (used when
+    `two_stage=False`) must carry the same execution_profile guidance.
+    Without it, users who opt into single-call mode silently lose the
+    HPC pathway — discovered during the v0.7.2 real-LLM smoke against
+    sc24-00052, which returned ``execution_profile: null`` when
+    `two_stage=False` despite the paper being MPI."""
+    rendered = G._render_prompt(paper_text="X" * 100, target_leaves=50)
+    assert "execution_profile" in rendered
+    assert "kind" in rendered
+    assert "mpi" in rendered
+    assert "gpu_single" in rendered
+    assert "module_loads" in rendered
+    assert "OMIT" in rendered  # explicit instruction for non-HPC papers
+
+
 def test_prompt_includes_expected_artifacts_discipline():
     """A2: rubric prompt must explicitly tell the LLM how to populate
     expected_artifacts — over-specifying it (especially with figure paths

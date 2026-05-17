@@ -197,6 +197,22 @@ Rubric resolution order: explicit `rubric_id` arg → `ARI_RUBRIC` env →
 `neurips` → built-in `legacy` fallback (v0.5 schema, used when neither
 `rubric_id` nor any matching YAML resolves).
 
+#### Symmetric author / reviewer venue conditioning (unreleased)
+
+`prompt_overrides` carries two parallel fields:
+
+- `system_hint` — injected into peer-review prompts by `review_engine`
+  (existing behaviour).
+- `author_hint` — injected into paper-drafting prompts by
+  `generate_section` as a dedicated `══ VENUE-SPECIFIC AUTHOR
+  GUIDANCE ══` block. Tells the drafter what reviewers will look for,
+  so the paper is written to make those signals easy to surface.
+
+Empty `author_hint` preserves the legacy weak append (just `Target
+venue: X. Page limit: N pages.`). SC and NeurIPS ship calibrated
+`author_hint` blocks; remaining venues are empty and can be filled in
+incrementally without touching code.
+
 Nature Ablation defaults (best-config rationale):
 
 - `num_reflections: 5` — +2% balanced accuracy
@@ -294,6 +310,30 @@ ors_grade            (paper-re-skill)     → ors_grade.json    (Phase 2: Simple
 EAR-on runs flow through `ors_seed_sandbox` (deterministic seed); the
 LLM `ors_build_reproduce` skips when reproduce.sh is already present,
 so it only fires on EAR-off runs (paper-only reproduction).
+
+**v0.7.2 HPC additions.** Both `build_reproduce_sh` and `run_reproduce`
+consume the optional `reproduce_contract.execution_profile` block
+([reference](reference/execution_profile.md)):
+
+- The agent prompt receives an `EXECUTION PROFILE` JSON block + a live
+  `CLUSTER SHAPE` snapshot from `SLURM_JOB_NUM_NODES` / `SLURM_NTASKS`
+  / `nvidia-smi`, plus a `COMPUTE-NODE EXECUTION CONVENTIONS` footer
+  (shared FS, srun-first, conda activation, multi-node fan-out,
+  timeout wrapping). The full appendix lives in
+  `ari-skill-paper-re/src/_replicator_agent.py::_format_hpc_appendix`.
+- For `kind ∈ {mpi, mpi_gpu}` an MPI aggregation skeleton
+  (`prompts/mpi_aggregate_skel.py`) is auto-copied into
+  `submission/mpi_aggregate.py`.
+- `run_reproduce` exposes 15 new SLURM flags (`--nodes`, `--ntasks`,
+  `--ntasks-per-node`, `--nodelist`, `--exclude`, `--exclusive`,
+  `--gpus-per-task`, `--gpus-per-node`, `--gres=gpu:<type>:N`, `--mem`,
+  `--mem-per-cpu`, `--constraint`, `--cpu-bind`, `--mem-bind`,
+  `--hint`) plus an `extra_sbatch_args` escape hatch. Each caller arg
+  auto-resolves from `execution_profile` when left at its default.
+- Runtime probes: `_is_shared_fs(repo_dir)` warns on node-local paths,
+  `_slurm_has_gres()` silently drops `--gres` when the cluster has no
+  GRES configured (keeping `--gpus-per-task`) so the submission is not
+  rejected.
 
 PaperBench is vendored as a git submodule under
 `ari-skill-paper-re/vendor/paperbench`; the bridge module
@@ -441,7 +481,7 @@ v0.6.0 `react_driver`-based check.
 
 ### Tools
 
-#### `generate_rubric(paper_path, paper_text, output_path, target_leaf_count=0, model="", temperature=0.0, seed=0, two_stage=True)`
+#### `generate_rubric(paper_path, paper_text, output_path, target_leaf_count=0, model="", temperature=0.0, seed=0, two_stage=True, paperbench_rubric_id="")`
 
 Produces a PaperBench-compatible rubric. When `target_leaf_count=0`,
 the leaf count is auto-computed from paper length (~1 leaf / 75 words,
@@ -460,6 +500,20 @@ PaperBench reference paper, at the cost of ~5× more API tokens. Set
 `two_stage=False` to use the legacy single-call path
 (`prompts/adversarial_reviewer.md`).
 
+`paperbench_rubric_id` (unreleased) selects a venue-conditioned template
+from `ari-core/config/paperbench_rubrics/<id>.yaml`. Empty string =
+bundled prompt verbatim (back-compat). Non-empty values load the YAML
+and inject `prompt_overrides.system_hint` / `prompt_overrides.leaf_style`
+into the skeleton + subtree prompts via `{VENUE_HINT}` placeholders.
+This mirrors the `reviewer_rubrics/` venue pattern already used by
+`ari-skill-paper` for peer review, so the same `venue → YAML → prompt`
+flow is now available for the rubric generator. Shipped templates:
+`generic` (back-compat), `sc` (HPC paper-audit, 6 axes), `neurips`
+(ML reproducibility, 6 axes), `nature` (wet-lab, 5 axes). `paper_audit`
+mode requires `two_stage=True`. See
+[`docs/reference/rubric_schema.md`](reference/rubric_schema.md#venue-conditioned-templates)
+for the YAML schema.
+
 #### `audit_rubric(rubric_path, paper_path, paper_text, auditor_model="")`
 
 Independent auditor pass. Flags problematic leaves:
@@ -474,6 +528,16 @@ Recommends regeneration when more than 20% of leaves are flagged.
 
 Returns the auto-computed target and the paper's word count. Useful for
 the GUI Wizard to pre-fill the "Target leaves" field.
+
+### v0.7.2 — `reproduce_contract.execution_profile`
+
+The skeleton + subtree prompts now instruct the generator to populate
+`reproduce_contract.execution_profile` when the paper specifies parallel
+execution properties (MPI rank counts, GPU type, exclusivity, memory,
+NUMA bindings). Schema:
+[`docs/reference/execution_profile.md`](reference/execution_profile.md).
+The field is optional and backward-compatible — single-CPU papers leave
+it absent.
 
 ### Environment
 

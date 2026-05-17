@@ -56,6 +56,32 @@ def test_sc_rubric_has_reproducibility_dimension():
     assert r.params.fewshot_mode == "static"  # dynamic unsupported for SC
 
 
+def test_sc_rubric_carries_author_hint():
+    """sc.yaml's prompt_overrides.author_hint must parse into
+    Rubric.author_hint so ari-skill-paper's generate_section can inject
+    it during paper drafting (symmetric with system_hint for
+    review_engine).
+    """
+    r = load_rubric("sc")
+    assert r.author_hint
+    # SC-specific author guidance the YAML promises.
+    assert "scaling" in r.author_hint.lower()
+    assert "ad/ae" in r.author_hint.lower()
+
+
+def test_neurips_rubric_carries_author_hint():
+    r = load_rubric("neurips")
+    assert r.author_hint
+    assert "limitations" in r.author_hint.lower()
+
+
+def test_workshop_rubric_has_no_author_hint():
+    """Venues without an author_hint must default to empty so the
+    legacy paper-writing path (weak append) is preserved."""
+    r = load_rubric("workshop")
+    assert r.author_hint == ""
+
+
 def test_all_venues_load():
     ids = [
         "neurips", "iclr", "icml", "cvpr", "acl", "sc", "chi",

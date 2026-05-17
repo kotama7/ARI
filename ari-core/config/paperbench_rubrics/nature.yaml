@@ -1,0 +1,118 @@
+id: nature
+version: "2026"
+venue: Nature — Wet-lab Reproducibility Audit
+domain: Biology / Materials / Wet-lab Science
+
+# paper_audit framing for wet-lab papers. The axes mirror Nature's
+# Reporting Summary checklist (statistics, materials, animals, human
+# subjects, etc.) — these are very different from SC's scaling axis or
+# NeurIPS's hyperparameter axis, but the same paper_audit machinery
+# supports them by simply declaring different top_level_axes here.
+mode: paper_audit
+
+# Weights skewed toward materials-and-protocol traceability, which is
+# the most common reproducibility failure mode in wet-lab papers.
+top_level_axes:
+  - id: materials_traceable
+    name: Materials traceability
+    weight: 3
+    description: >-
+      Reagents, antibodies, cell lines, organisms, and key chemicals
+      are identified with vendor + catalog number + lot/RRID where
+      applicable, enabling another lab to source the same materials.
+  - id: protocol_specified
+    name: Protocol specification
+    weight: 3
+    description: >-
+      Experimental protocols (procedure steps, durations, temperatures,
+      concentrations, equipment models) are described in enough detail
+      that an experienced wet-lab researcher could reproduce them
+      without consulting external protocols, or are linked to a public
+      protocol with a stable identifier (protocols.io DOI etc.).
+  - id: statistics_reported
+    name: Statistical analysis reported
+    weight: 2
+    description: >-
+      Sample sizes (n), statistical tests used, significance thresholds,
+      and randomization / blinding procedures are stated where
+      applicable; replicates (biological vs technical) are
+      distinguished.
+  - id: data_availability
+    name: Data availability
+    weight: 1
+    description: >-
+      Raw data, processed data, and any associated code are deposited
+      with stable identifiers (GEO / SRA / Zenodo / etc.) or the
+      availability statement explains the access restriction.
+  - id: ethics_compliance
+    name: Ethics compliance
+    weight: 1
+    description: >-
+      Approvals from IRB / IACUC / biosafety committees are referenced
+      where applicable; consent, animal welfare, and dual-use
+      considerations are addressed when relevant.
+
+prompt_overrides:
+  system_hint: |
+    You are auditing a wet-lab paper against Nature's Reporting Summary
+    checklist.
+
+    KEY FRAMING — paper_audit: you are scoring the paper's own
+    descriptive completeness (main text + Methods + Reporting Summary +
+    Supplementary), NOT whether anyone has actually re-run the
+    experiment in a lab.
+
+    NATURE-SPECIFIC EMPHASIS — surface these failure modes:
+      - reagents / antibodies / cell lines without RRID, vendor, or
+        catalog numbers
+      - protocols described qualitatively without concrete parameters
+        (temperature, time, concentration, equipment model)
+      - sample sizes (n) and replicate types unstated
+      - missing or inappropriate statistical test for the design
+      - data deposited but accession number missing or non-functional
+      - missing ethics approval references when human/animal subjects
+        are involved
+
+  leaf_style: |
+    Each leaf MUST be a paper-audit YES/NO question phrased as one of:
+      - "<reagent X> is identified with vendor + catalog number / RRID."
+      - "<step Y> specifies concentration / temperature / duration."
+      - "<measurement Z> reports n and replicate type."
+      - "<dataset W> is deposited with a stable accession identifier."
+      - "<approval V> is referenced for the applicable subject type."
+    Leaves MUST NOT phrase requirements as commands the submission
+    performs.
+
+  reproduce_plan_hint: |
+    For Nature / wet-lab papers, the reproduce_plan.md MUST cover (one
+    section per experiment / figure panel):
+
+      - Materials: every reagent, antibody, cell line, organism with
+                    vendor + catalog number + lot/RRID (cite the paper's
+                    Materials section verbatim)
+      - Protocol: step-by-step procedure with concentrations,
+                    temperatures, durations, equipment models (link to
+                    protocols.io DOI when the paper provides one)
+      - Sample sizes: n per group, replicate type (biological vs
+                       technical), randomization / blinding
+      - Statistics: tests used, significance thresholds, multiple-
+                     comparison corrections
+      - Data deposition: accession IDs for raw + processed data
+                          (GEO / SRA / Zenodo / etc.)
+      - Ethics: IRB / IACUC / biosafety approval references when human
+                / animal subjects involved
+
+    The install_commands.txt MUST include: protocols.io DOI fetch,
+    data download commands (with checksums), software environment
+    setup if computational analysis is part of the experiment.
+
+    The verification_code.py MUST include checks for: statistical
+    test outcomes (p-values vs claimed threshold), sample sizes meet
+    the paper's power-analysis claim, effect-size magnitudes within
+    reported error bars.
+
+    Use these venue-specific Reproducibility category labels:
+      - `wet_lab_only` — requires hands-on bench experiments
+      - `requires_irb_approval` — needs new ethics review at the
+                                    reproducing institution
+      - `cell_line_unavailable` — discontinued / proprietary cell line

@@ -1,0 +1,52 @@
+% F14: execution_profile contract (v0.7.2) — how the optional
+% reproduce_contract.execution_profile field threads from a single
+% rubric artefact into the BasicAgent prompt and the Phase 2 sbatch
+% dispatcher, gated by three runtime probes that adapt the dispatched
+% flag set to the local SLURM deployment.
+% style.tikzstyles is loaded by shared/preamble.tex / standalone wrapper.
+\begin{tikzpicture}[node distance=1.2cm and 0.45cm]
+
+  % --- middle row: the two consumer drivers --------------------------
+  \node[block native big]                                       (prompt)    {\figlabel{F14.prompt}};
+  \node[block native big, right=4.2cm of prompt]                (sbatchn)   {\figlabel{F14.sbatch}};
+
+  % --- top: the rubric contract sits above-centre --------------------
+  \node[artifact wide, above=2.0cm of $(prompt)!0.5!(sbatchn)$] (rubric)    {\figlabel{F14.rubric}};
+
+  % --- middle-left children (prompt blocks) --------------------------
+  \node[block lane native, below=of prompt]                     (bshape)    {\figlabel{F14.b.shape}};
+  \node[block lane native, left=of bshape]                      (bprof)     {\figlabel{F14.b.profile}};
+  \node[block lane native, right=of bshape]                     (bconv)     {\figlabel{F14.b.conventions}};
+
+  % --- middle-right children (sbatch probes) -------------------------
+  \node[block lane native, below=of sbatchn]                    (probegres) {\figlabel{F14.probe.gres}};
+  \node[block lane native, left=of probegres]                   (probefs)   {\figlabel{F14.probe.fs}};
+  \node[block lane native, right=of probegres]                  (probehelp) {\figlabel{F14.probe.help}};
+
+  % --- bottom: outcome -----------------------------------------------
+  \node[artifact wide, below=1.4cm of $(bshape)!0.5!(probegres)$] (outcome) {\figlabel{F14.outcome}};
+
+  % --- group bands ---------------------------------------------------
+  \begin{scope}[on background layer]
+    \node[group strong, fit=(prompt)(bprof)(bshape)(bconv)]              (bandL) {};
+    \node[group strong, fit=(sbatchn)(probefs)(probegres)(probehelp)]    (bandR) {};
+  \end{scope}
+  \node[band label, above=4pt of bandL.north west, anchor=south west] {\figlabel{F14.band.prompt}};
+  \node[band label, above=4pt of bandR.north west, anchor=south west] {\figlabel{F14.band.sbatch}};
+
+  % --- edges ---------------------------------------------------------
+  \draw[arrow] (rubric.south) to[bend right=15] (prompt.north);
+  \draw[arrow] (rubric.south) to[bend left=15]  (sbatchn.north);
+
+  \draw[arrow dashed] (prompt)  -- (bprof);
+  \draw[arrow dashed] (prompt)  -- (bshape);
+  \draw[arrow dashed] (prompt)  -- (bconv);
+
+  \draw[arrow dashed] (sbatchn) -- (probefs);
+  \draw[arrow dashed] (sbatchn) -- (probegres);
+  \draw[arrow dashed] (sbatchn) -- (probehelp);
+
+  \draw[arrow] (bshape)    -- (outcome);
+  \draw[arrow] (probegres) -- (outcome);
+
+\end{tikzpicture}

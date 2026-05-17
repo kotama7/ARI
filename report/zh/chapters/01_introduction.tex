@@ -44,11 +44,14 @@ ARI 旨在填补此空缺。我们假定用户提供研究问题与算力预算;
 \subsection{本报告的范围}\label{sec:intro:scope}
 
 我们将快照冻结于 \texttt{ari-core} 与十四个 \texttt{ari-skill-*}
-包的 v0.7.1 版本。实现引用标注文件名与行号;读者可对照
-\cref{sec:overview:layout} 的布局图加以核验。原应出现于
-\cref{chapter:eval} 的数值结果暂不可用 —— 其所依赖的冻结检查
-点尚未生成 —— 故该章标注为「暂缓」。封面注明快照版本,旨在使
-本报告所做的任何主张都不会被后续代码修改追溯性地推翻。
+包的 v0.7.2 版本。 v0.7.2 未新增顶层技能;它扩展了
+\texttt{ari-skill-replicate} 与 \texttt{ari-skill-paper-re} 的
+评分单契约与 SLURM 调度层,以覆盖方法论本质上并行的论文
+(\cref{sec:paper:paperbench:v072})。实现引用标注文件名与行号;
+读者可对照 \cref{sec:overview:layout} 的布局图加以核验。原应
+出现于 \cref{chapter:eval} 的数值结果暂不可用 —— 其所依赖的
+冻结检查点尚未生成 —— 故该章标注为「暂缓」。封面注明快照版本,
+旨在使本报告所做的任何主张都不会被后续代码修改追溯性地推翻。
 
 \subsection{结构}\label{sec:intro:organisation}
 

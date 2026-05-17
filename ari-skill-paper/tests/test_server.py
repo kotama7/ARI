@@ -94,6 +94,55 @@ async def test_generate_section_calls_litellm():
         assert "Introduction" in result["latex"]
 
 
+@pytest.mark.asyncio
+async def test_generate_section_injects_sc_author_hint():
+    """SC's reviewer_rubrics yaml ships an author_hint; generate_section
+    must inject it into the system prompt so paper drafting is
+    venue-conditioned at the same strength as peer review."""
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = "\\section{X}\nbody"
+    captured: dict = {}
+
+    async def _capture(**kwargs):
+        captured.update(kwargs)
+        return mock_response
+
+    with patch("src.server.litellm.acompletion", side_effect=_capture):
+        await generate_section("introduction", "ctx", "sc")
+
+    system_msg = next(m for m in captured["messages"] if m["role"] == "system")["content"]
+    # The block header MUST appear so the LLM sees a clearly-delimited
+    # venue-conditioning section.
+    assert "VENUE-SPECIFIC AUTHOR GUIDANCE" in system_msg
+    # SC-specific signals from sc.yaml's author_hint must be threaded in.
+    assert "scaling" in system_msg.lower()
+    # The drafter should also see the reviewer's score dimensions.
+    assert "reproducibility" in system_msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_generate_section_no_hint_for_venue_without_rubric():
+    """Venues without a reviewer_rubrics yaml (arxiv, icpp, isc, acm)
+    must still work — author_hint injection silently no-ops."""
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = "\\section{X}\nbody"
+    captured: dict = {}
+
+    async def _capture(**kwargs):
+        captured.update(kwargs)
+        return mock_response
+
+    with patch("src.server.litellm.acompletion", side_effect=_capture):
+        await generate_section("introduction", "ctx", "arxiv")
+
+    system_msg = next(m for m in captured["messages"] if m["role"] == "system")["content"]
+    assert "VENUE-SPECIFIC AUTHOR GUIDANCE" not in system_msg
+    # The legacy "Target venue: arXiv" weak hint must still be present.
+    assert "arXiv" in system_msg
+
+
 # --- compile_paper ---
 
 @pytest.mark.asyncio

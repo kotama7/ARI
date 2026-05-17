@@ -166,6 +166,87 @@ def test_short_quote_rejected(validator):
         validator.validate(env)
 
 
+# ── execution_profile (HPC hints) ──
+
+
+def test_execution_profile_omitted_is_valid(validator):
+    """Backward compat: rubric without execution_profile must still validate."""
+    env = _envelope(_root([_leaf()]))
+    assert "execution_profile" not in env["reproduce_contract"]
+    validator.validate(env)
+
+
+def test_execution_profile_minimal(validator):
+    env = _envelope(_root([_leaf()]))
+    env["reproduce_contract"]["execution_profile"] = {"kind": "gpu_single"}
+    validator.validate(env)
+
+
+def test_execution_profile_full(validator):
+    env = _envelope(_root([_leaf()]))
+    env["reproduce_contract"]["execution_profile"] = {
+        "kind": "mpi_gpu",
+        "paper_max_ranks": 65536,
+        "paper_max_nodes": 8192,
+        "min_ranks": 4,
+        "min_nodes": 1,
+        "result_aggregation": "rank0_csv",
+        "metric_columns": ["nodes", "ranks", "runtime_sec", "gflops"],
+        "accepts_reduced_scale": True,
+        "requested_nodes": 4,
+        "ntasks_per_node": 8,
+        "requested_nodelist": "node[01-04]",
+        "exclude_nodes": "badnode01",
+        "exclusive": True,
+        "requested_gpus_per_task": 1,
+        "requested_gpus_per_node": 4,
+        "gpu_type": "v100",
+        "memory_gb_per_node": 256,
+        "memory_gb_per_cpu": 8,
+        "constraint": "skylake",
+        "cpu_bind": "cores",
+        "mem_bind": "local",
+        "hint": "nomultithread",
+        "module_loads": ["cuda/12.4", "openmpi/4.1"],
+        "extra_sbatch_args": ["--account=projX"],
+    }
+    validator.validate(env)
+
+
+def test_execution_profile_bad_kind_rejected(validator):
+    env = _envelope(_root([_leaf()]))
+    env["reproduce_contract"]["execution_profile"] = {"kind": "warp_drive"}
+    with pytest.raises(jsonschema.ValidationError):
+        validator.validate(env)
+
+
+def test_execution_profile_negative_ranks_rejected(validator):
+    env = _envelope(_root([_leaf()]))
+    env["reproduce_contract"]["execution_profile"] = {"kind": "mpi", "paper_max_ranks": 0}
+    with pytest.raises(jsonschema.ValidationError):
+        validator.validate(env)
+
+
+def test_execution_profile_bad_aggregation_rejected(validator):
+    env = _envelope(_root([_leaf()]))
+    env["reproduce_contract"]["execution_profile"] = {
+        "kind": "mpi",
+        "result_aggregation": "broadcast",
+    }
+    with pytest.raises(jsonschema.ValidationError):
+        validator.validate(env)
+
+
+def test_execution_profile_module_loads_array_of_strings(validator):
+    env = _envelope(_root([_leaf()]))
+    env["reproduce_contract"]["execution_profile"] = {
+        "kind": "mpi",
+        "module_loads": [123],  # not a string
+    }
+    with pytest.raises(jsonschema.ValidationError):
+        validator.validate(env)
+
+
 # ── PaperBench rice/rubric.json fixture round-trip ──
 
 PB_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "paperbench_rubric_sample.json"
