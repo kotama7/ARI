@@ -106,6 +106,28 @@ class PathManager:
     def staging_root(self) -> Path:
         return self._root / "staging"
 
+    @property
+    def paper_registry_root(self) -> Path:
+        """``{workspace_root}/paper_registry/`` — cross-checkpoint store
+        for externally-imported papers used by PaperBench audit runs.
+
+        Imported papers (paper.pdf + optional AD/AE Appendix PDFs + per-
+        paper manifest entry) are shared across all checkpoints because
+        the same paper can be evaluated under many rubrics. Layout::
+
+            {workspace_root}/paper_registry/
+            ├── manifest.jsonl                 # one paper per line
+            └── papers/
+                └── <paper_id>/
+                    ├── paper.pdf              # required
+                    ├── ad.pdf                 # optional (AD Appendix)
+                    └── ae.pdf                 # optional (AE Appendix)
+
+        Override the location with the ``ARI_PAPER_REGISTRY_DIR`` env
+        var when ``viz/api_paperbench.py`` is consulted standalone.
+        """
+        return self._root / "paper_registry"
+
     # ── project-scoped (per-run) paths ────────────────────────────────
     #
     # ARI no longer maintains a global config/data directory.  Every
