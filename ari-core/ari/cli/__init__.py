@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
+from dotenv import load_dotenv
 import typer
 from rich.console import Console
 from rich.panel import Panel
@@ -26,6 +27,27 @@ from ari.core import build_runtime, generate_paper_section
 from ari.paths import PathManager
 from ari.pipeline import _extract_plan_sections
 
+
+def _load_repo_dotenv() -> None:
+    """Populate os.environ from ``$ARI_ROOT/.env`` if present.
+
+    Shell sessions often omit ``source .env``; Docker Compose loads it for Letta but
+    the ``ari`` CLI would otherwise stick to packaged ``workflow.yaml`` defaults
+    (e.g. openai/gpt-5.2).  ``override=False`` keeps explicit exports / wizard
+    settings authoritative.
+    """
+    root = Path(
+        os.environ.get(
+            "ARI_ROOT",
+            str(Path(__file__).resolve().parents[3]),
+        )
+    )
+    env_file = root / ".env"
+    if env_file.is_file():
+        load_dotenv(env_file, override=False)
+
+
+_load_repo_dotenv()
 
 # ---------------------------------------------------------------------------
 # lineage decision config + executor (extracted to ari.cli.lineage in Phase 3A)

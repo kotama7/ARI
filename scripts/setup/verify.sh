@@ -23,7 +23,8 @@ if command -v ari &>/dev/null; then
 elif $PYTHON -m ari.cli --help &>/dev/null 2>&1; then
   ok "ari CLI: $PYTHON -m ari.cli ✔"
   warn "$(m cli_not_in_path)"
-  echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
+  echo "    export PATH=\"\$ARI_ROOT/.venv/bin:\$PATH\""
+  echo "    # pip install --user の場合のみ: export PATH=\"\$HOME/.local/bin:\$PATH\""
 else
   fail "$(m cli_fail)"
   ERRORS=$((ERRORS + 1))
