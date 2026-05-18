@@ -2,6 +2,96 @@
 
 All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PATCH`.
 
+## v0.7.3 — macOS local-dev compat + .env hierarchy alignment (2026-05-18)
+
+Patch release that incorporates the external contributor work from
+PR #25 (waka320, "macOS local-dev compat") with a documentation /
+implementation alignment pass on top. No vendor changes; no behaviour
+change for HPC / Linux deployments beyond the .env loading fix
+described below.
+
+### Added
+
+- **Repo `.env` is now loaded by the `ari` CLI on import** following
+  the 4-tier priority already documented in `docs/cli_reference.md`
+  (and already implemented by the viz API in
+  `ari/viz/api_settings.py` and `ari/viz/api_experiment.py`):
+  `$ARI_CHECKPOINT_DIR/.env` → `$ARI_ROOT/.env` →
+  `$ARI_ROOT/ari-core/.env` → `~/.env`. `override=False` keeps shell
+  exports authoritative; higher-priority files win on conflicts
+  (python-dotenv first-set-wins). Previously `ari run` silently fell
+  through to packaged `workflow.yaml` defaults when users forgot to
+  `source .env`, while `docker compose` was reading the same file
+  for Letta.
+- **PEP 668 / Homebrew-Python safe install path**: `scripts/setup/`
+  now creates and uses `$ARI_ROOT/.venv` instead of relying on
+  `pip install --user`. The PATH hint surfaced by `verify.sh` and
+  `banner.sh` switched from `~/.local/bin` to `$ARI_ROOT/.venv/bin`
+  (a comment for the `pip install --user` path is retained).
+- **Letta Postgres ships pgvector by default**:
+  `scripts/letta/docker-compose.yml` now uses
+  `pgvector/pgvector:pg16` with `scripts/letta/pg-init/01-vector.sql`
+  enabling the `vector` extension on first volume init. Adds a
+  `pg_isready` healthcheck and `depends_on: condition: service_healthy`
+  so `letta` does not race the DB. Fixes `type "vector" does not exist`
+  on fresh `ari memory start-local`.
+- **`install_letta.sh` waits up to 120 s** (was 60 s) for Letta
+  readiness — first-boot Postgres init on slow disks routinely
+  exceeded the old budget.
+- **`install_paperbench.sh` survives a missing `git-lfs`** by
+  injecting `filter.lfs.*=` overrides + `GIT_LFS_SKIP_SMUDGE=1` for
+  the submodule checkout, and detects an incomplete prior checkout
+  (`pyproject.toml` missing) before retrying.
+- **`ari run` prints a docs pointer** when the experiment file
+  argument doesn't exist (points to `docs/experiment_file.md`).
+
+### Changed
+
+- **`scripts/setup/`** is now portable across BSD `grep` / Bash 3.2
+  (macOS default) and GNU `grep` / Bash 5.x (Linux):
+  `detect_env.sh` swaps `grep -P` for POSIX `grep -oE`,
+  `install_letta.sh` replaces `${PROMPT,,}` with `tr '[:upper:]' '[:lower:]'`,
+  `spinner.sh` drops `local -n` (Bash 4.3+ nameref) in favour of
+  `eval`-based array indirection.
+- **`docs/reference/environment_variables.md`** now lists the
+  actually supported `ARI_MEMORY_BACKEND` values (`letta` and
+  `in_memory`). The previously documented `file` / `local` strings
+  were never accepted by
+  `ari-skill-memory/src/ari_skill_memory/config.py`'s validator.
+- **`ari-skill-memory` skips `nest_asyncio.apply()` on Python 3.14+**
+  to avoid an `AttributeError` in FastMCP/anyio's event-loop glue.
+  The stdio FastMCP transport does not rely on nested-loop patching
+  on 3.14.
+
+### Removed
+
+- **`examples/starter_experiment.md` and the `examples/` directory.**
+  ARI has no `examples/` convention historically (templates live
+  under `ari-skill-paper/templates/`, samples under
+  `docs/images/sample_paper/`), and `docs/experiment_file.md`
+  already carries a richer "Minimal Example" (the SpMM roofline
+  prompt). The useful content has been folded into
+  `docs/experiment_file.md` (en / ja / zh) as an explicit
+  "smoke test" framing, and `scripts/setup/banner.sh` now points
+  users at that doc. The starter's `ARI_MEMORY_BACKEND=in_memory`
+  workaround was intentionally not migrated — `in_memory` is
+  test-only per the validator in
+  `ari-skill-memory/src/ari_skill_memory/config.py:82-86`.
+
+### Version bumps
+
+- `ari-core`: 0.7.2 → 0.7.3
+- READMEs (en / ja / zh): badge v0.7.1 → v0.7.3 (had drifted two
+  releases behind)
+- `docs/i18n/{en,ja,zh}.js` footer: v0.7.2 → v0.7.3
+
+### Credit
+
+PR #25 by Waka.Y (waka320) — macOS local-dev compat groundwork
+(cherry-picked verbatim as `chore(macos): bootstrap repo .env in CLI
++ local dev ergonomics`). Subsequent docs-alignment commits in
+v0.7.3 are by the maintainer.
+
 ## v0.7.2 — Paper-audit extensions (2026-05-17)
 
 This extends the original v0.7.2 release (2026-05-13, below) with the

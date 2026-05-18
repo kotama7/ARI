@@ -21,6 +21,11 @@ for `evaluation_criteria.json` (`primary_metric`); the prose body seeds
 the LLM-driven `generate_ideas` flow, which fills in the rest of the
 plan.
 
+The example above is also a fine **smoke test** on a fresh install:
+save it as `experiment.md` and run `ari run experiment.md` to verify
+the CLI, `.env` loading, and memory backend end-to-end without
+committing to a real research goal yet.
+
 ## Recognised Sections
 
 ARI does not require any specific section structure — the file is read
