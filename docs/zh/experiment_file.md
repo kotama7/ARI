@@ -20,6 +20,10 @@ Metrics: GB/s, GFlops/s
 `evaluation_criteria.json:primary_metric` 的兜底来源；正文随后被
 LLM 驱动的 `generate_ideas` 用于补全计划其余部分。
 
+上面的示例也可直接当作**冒烟测试**：保存为 `experiment.md` 后执行
+`ari run experiment.md`，可以在还没正式定下研究目标前，一次性
+验证 CLI、`.env` 读取与记忆后端是否端到端可用。
+
 ## 识别的章节
 
 ARI 不强制要求特定章节结构（按纯 Markdown 读取）。但下列标题是惯例，

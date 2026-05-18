@@ -131,7 +131,7 @@ window.LANGS.zh = {
   'nav-phi': '理念',
   'nav-how': '工作原理',
   'nav-docs': '文档',
-  'footer-text': 'v0.7.2 · 开源 · MIT 许可证',
+  'footer-text': 'v0.7.3 · 开源 · MIT 许可证',
   'paperbench-desc': 'OpenAI 提出的基准，用于评测 AI 代理能否从零复现前沿 ML 论文。每篇论文被分解为细粒度的 TaskNode 评分树，由 LLM 裁判（"SimpleJudge"）打分。v0.7.0 将 PaperBench 同捆于 <code>ari-skill-paper-re/vendor/paperbench</code>，作为 ARI 可复现性检查（ORS Phase 2）的确定性核心。v0.7.2 新增 <strong>paper-audit 模式</strong>：将同一 rubric 机构反向使用，审计论文本身是否描述了足够的可复现性 — 提供 venue 条件化模板 (sc / neurips / nature)、LLM 生成的再现包 (reproduce_plan + 验证代码 + 模拟日志)、多模态图表检查、以及打破 Result Analysis 叶子结构性上限的 paper_audit 提示词补丁。',
   'memgpt-desc': '层次化记忆 + 工具调度的分页机制，使 LLM 代理在受限上下文中表现得仿佛"无限"。MemGPT 论文演化为 <a href="https://docs.letta.com" target="_blank" style="color:var(--blue-light);">Letta</a>，v0.6.0 起被 ARI 采用为记忆后端，取代 v0.5.x 的 JSONL store，提供祖先作用域归档记忆与每个 checkpoint 的可移植快照。',
   // === docs.html ===

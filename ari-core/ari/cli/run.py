@@ -175,6 +175,18 @@ def run(
     from ari.orchestrator.node import Node
     import hashlib as _hl_run
 
+    experiment = experiment.expanduser()
+    if not experiment.is_file():
+        logging.getLogger(__name__).error("experiment path not found: %s", experiment.resolve())
+        typer.echo(
+            typer.style("File not found: ", fg=typer.colors.RED, bold=True)
+            + str(experiment)
+            + "\n\n"
+            + "See docs/experiment_file.md for the experiment.md format.\n",
+            err=True,
+        )
+        raise typer.Exit(1)
+
     experiment_text = experiment.read_text()
     # ── Trace: log experiment file as read from disk ────────────────
     _exp_hash = _hl_run.sha256(experiment_text.encode()).hexdigest()[:16]
