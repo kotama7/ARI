@@ -29,22 +29,36 @@ from ari.pipeline import _extract_plan_sections
 
 
 def _load_repo_dotenv() -> None:
-    """Populate os.environ from ``$ARI_ROOT/.env`` if present.
+    """Populate ``os.environ`` from ``.env`` files.
 
-    Shell sessions often omit ``source .env``; Docker Compose loads it for Letta but
-    the ``ari`` CLI would otherwise stick to packaged ``workflow.yaml`` defaults
-    (e.g. openai/gpt-5.2).  ``override=False`` keeps explicit exports / wizard
-    settings authoritative.
+    Priority order matches ``docs/cli_reference.md`` (and the viz API in
+    ``ari.viz.api_settings`` / ``api_experiment``):
+
+    1. ``$ARI_CHECKPOINT_DIR/.env`` (highest, when the env var is set)
+    2. ``$ARI_ROOT/.env``
+    3. ``$ARI_ROOT/ari-core/.env``
+    4. ``~/.env`` (lowest)
+
+    ``override=False`` keeps shell exports authoritative and gives the higher
+    entries above precedence over the lower ones (first-set wins).
     """
-    root = Path(
+    project_root = Path(
         os.environ.get(
             "ARI_ROOT",
             str(Path(__file__).resolve().parents[3]),
         )
     )
-    env_file = root / ".env"
-    if env_file.is_file():
-        load_dotenv(env_file, override=False)
+    candidates: list[Path] = []
+    ckpt_env = os.environ.get("ARI_CHECKPOINT_DIR")
+    if ckpt_env:
+        candidates.append(Path(ckpt_env).expanduser() / ".env")
+    candidates.append(project_root / ".env")
+    candidates.append(project_root / "ari-core" / ".env")
+    candidates.append(Path.home() / ".env")
+
+    for env_file in candidates:
+        if env_file.is_file():
+            load_dotenv(env_file, override=False)
 
 
 _load_repo_dotenv()
