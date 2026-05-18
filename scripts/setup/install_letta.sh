@@ -116,7 +116,7 @@ if [[ "${ARI_NONINTERACTIVE:-0}" != "1" ]] && [[ -t 0 ]]; then
   read -r PROMPT || PROMPT="y"
 fi
 PROMPT="${PROMPT:-y}"
-if [[ "${PROMPT,,}" == "n" ]]; then
+if [[ "$(echo "$PROMPT" | tr '[:upper:]' '[:lower:]')" == "n" ]]; then
   warn "$(m_safe install_letta_skipped "Letta install deferred — run 'ari memory start-local' later.")"
   _env_append_if_absent "# ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA=${ARI_DETECTED_LETTA_PATH}"
   return 0 2>/dev/null || exit 0
@@ -139,8 +139,8 @@ case "${ARI_DETECTED_LETTA_PATH}" in
     ;;
 esac
 
-# Poll for health.
-for _i in $(seq 1 30); do
+# Poll for health (PostgreSQL init on first boot can exceed 60 s on slower disks).
+for _i in $(seq 1 60); do
   if curl -fsS "${URL}/v1/health/" >/dev/null 2>&1 \
       || curl -fsS "${URL}/v1/health"  >/dev/null 2>&1; then
     ok "$(m_safe install_letta_up "Letta reachable at ${URL}")"
@@ -151,5 +151,5 @@ for _i in $(seq 1 30); do
   sleep 2
 done
 
-warn "$(m_safe install_letta_timeout "Letta not reachable after 60 s — retry with 'ari memory start-local'.")"
+warn "$(m_safe install_letta_timeout "Letta not reachable after 120 s — check: docker compose -f scripts/letta/docker-compose.yml logs letta pg  •  retry: ari memory start-local.")"
 _env_append_if_absent "# ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA=${ARI_DETECTED_LETTA_PATH}"
