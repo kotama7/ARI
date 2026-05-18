@@ -1,6 +1,13 @@
 # Docker Compose deployment.
 # Brings up Letta + Postgres on a laptop/workstation. Managed by
 # `ari memory start-local` / `stop-local`.
+#
+# Postgres must ship pgvector (`VECTOR` type). Plain postgres:16-alpine
+# lacks it and Letta will crash migrating with:
+#   type "vector" does not exist
+# After changing DB image, reset volumes if migrations half-applied:
+#   docker compose -f scripts/letta/docker-compose.yml down -v
+#   docker compose -f scripts/letta/docker-compose.yml up -d
 services:
   letta:
     image: letta/letta:latest
@@ -17,18 +24,27 @@ services:
       LETTA_SERVER_PASS: "${LETTA_API_KEY:-}"
       LETTA_PG_URI: "postgresql://letta:letta@pg/letta"
     depends_on:
-      - pg
+      pg:
+        condition: service_healthy
     volumes:
       - letta-data:/app/letta
   pg:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: ari-letta-pg
     environment:
       POSTGRES_USER: letta
       POSTGRES_PASSWORD: letta
       POSTGRES_DB: letta
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U letta -d letta"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 30s
     volumes:
       - pg-data:/var/lib/postgresql/data
+      # First boot only — enables vector type before Letta migrations.
+      - ./pg-init:/docker-entrypoint-initdb.d:ro
 volumes:
   letta-data:
   pg-data:
