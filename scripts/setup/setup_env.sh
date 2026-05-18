@@ -373,7 +373,7 @@ _env_append_if_absent "# ARI_TRANSFORM_MEMORY_MAX_CHARS=2000"
 _env_append_if_absent "# ARI_REACT_MEMORY_SEARCH_LIMIT=10"
 _env_append_if_absent "# ARI_REACT_MEMORY_MAX_ENTRY_CHARS=0"
 # Internal / tests only — do not set unless you know why:
-_env_append_if_absent "# ARI_MEMORY_BACKEND=letta  # letta | in_memory — use in_memory if Letta is not running"
+_env_append_if_absent "# ARI_MEMORY_BACKEND=letta  # letta | in_memory (test fake)"
 _env_append_if_absent "# ARI_MEMORY_LETTA_DISABLE_SELF_EDIT=true"
 _env_append_if_absent "# ARI_MEMORY_ACCESS_LOG=on"
 _env_append_if_absent "# ARI_MEMORY_AUTO_RESTORE=true"

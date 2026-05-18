@@ -145,12 +145,7 @@ _colony_messages_zh=(
 
 colony_say() {
   local lang="${SETUP_LANG:-en}"
-  local arr_name="_colony_messages_${lang}"
-  # Use eval to support Bash 3.2 (macOS default) which lacks nameref (local -n)
-  local len
-  eval "len=\${#${arr_name}[@]}"
-  local idx=$(( RANDOM % len ))
-  local msg
-  eval "msg=\${${arr_name}[$idx]}"
-  echo -e "  ${CYAN}🐜💬${RESET} ${msg}"
+  local -n msgs="_colony_messages_${lang}"
+  local idx=$(( RANDOM % ${#msgs[@]} ))
+  echo -e "  ${CYAN}🐜💬${RESET} ${msgs[$idx]}"
 }

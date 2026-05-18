@@ -42,19 +42,11 @@ fi
 
 echo ""
 echo -e "${BOLD}  $(m next)${RESET}"
-
-# Prefer venv-installed console script — works even when ~/bin has no symlink.
-ARI_BIN="${ARI_ROOT}/.venv/bin/ari"
-
-# Prefer bundled starter when present (experiment.md itself is gitignored for user edits).
-ARI_STARTER="$ARI_ROOT/examples/starter_experiment.md"
-
 echo ""
 echo "  $(m next_model)"
 echo ""
 echo "     # 🐜 Ollama (free, local)"
-echo "     ollama pull qwen3:8b"
-echo "     ollama serve   # omit if localhost:11434 already answers (daemon running)"
+echo "     ollama pull qwen3:8b && ollama serve"
 echo "     export ARI_BACKEND=ollama ARI_MODEL=qwen3:8b"
 echo ""
 echo "     # 🐜 OpenAI (cloud API)"
@@ -64,41 +56,16 @@ echo "     # 🐜 Anthropic (cloud API)"
 echo "     export ARI_BACKEND=claude ARI_MODEL=anthropic/claude-sonnet-4-5 ANTHROPIC_API_KEY=sk-ant-..."
 echo ""
 echo "  $(m next_run)"
-if [ -x "$ARI_BIN" ]; then
-  if [ -f "$ARI_STARTER" ]; then
-    echo "     \"$ARI_BIN\" run \"$ARI_STARTER\""
-  else
-    echo "     \"$ARI_BIN\" run experiment.md"
-  fi
-else
-  if [ -f "$ARI_STARTER" ]; then
-    echo "     ari run \"$ARI_STARTER\""
-  else
-    echo "     ari run experiment.md"
-  fi
-fi
-echo "     # or: \"$PYTHON\" -m ari.cli run <path-to-experiment.md>"
+echo "     ari run experiment.md"
 echo ""
 echo "  $(m next_paper)"
-if [ -x "$ARI_BIN" ]; then
-  echo "     \"$ARI_BIN\" paper ./checkpoints/<run_id>/"
-else
-  echo "     ari paper ./checkpoints/<run_id>/"
-fi
+echo "     ari paper ./checkpoints/<run_id>/"
 echo ""
 echo "  $(m next_projects)"
-if [ -x "$ARI_BIN" ]; then
-  echo "     \"$ARI_BIN\" projects"
-else
-  echo "     ari projects"
-fi
+echo "     ari projects"
 echo ""
 echo "  $(m next_dash)"
-if [ -x "$ARI_BIN" ]; then
-  echo "     \"$ARI_BIN\" viz ./checkpoints/ --port 9886"
-else
-  echo "     ari viz ./checkpoints/ --port 9886"
-fi
+echo "     ari viz ./checkpoints/ --port 9886"
 echo "     # → http://localhost:9886 🐜"
 echo ""
 
