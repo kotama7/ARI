@@ -181,9 +181,9 @@ msg_import_fail_en="import failed"
 msg_import_fail_ja="インポート失敗"
 msg_import_fail_zh="导入失败"
 
-msg_cli_not_in_path_en="'ari' not on PATH — add this repo's venv:"
-msg_cli_not_in_path_ja="'ari' が PATH にありません — リポジトリの .venv を PATH に:"
-msg_cli_not_in_path_zh="'ari' 不在 PATH 中 — 请将仓库的 .venv 加入 PATH:"
+msg_cli_not_in_path_en="'ari' not in PATH — add ~/.local/bin:"
+msg_cli_not_in_path_ja="'ari' が PATH にありません — ~/.local/bin を追加:"
+msg_cli_not_in_path_zh="'ari' 不在 PATH 中 — 请添加 ~/.local/bin:"
 
 msg_cli_fail_en="ari CLI not found"
 msg_cli_fail_ja="ari CLI が見つかりません"

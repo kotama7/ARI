@@ -74,7 +74,7 @@ page is the alphabetical lookup.
 
 | Variable | Purpose |
 |---|---|
-| `ARI_MEMORY_BACKEND` | `letta` (default) or `in_memory` (no Letta required; ephemeral RAM-only backend for local smoke tests) |
+| `ARI_MEMORY_BACKEND` | `letta` (default since v0.6) / `file` / `local` |
 | `ARI_MEMORY_AUTO_RESTORE` | Auto-restore from `memory_backup.jsonl.gz` on resume |
 | `ARI_MEMORY_ACCESS_LOG` | Path to `memory_access.jsonl` |
 | `ARI_CURRENT_NODE_ID` | Set by the agent loop; skills read it but never set it |
