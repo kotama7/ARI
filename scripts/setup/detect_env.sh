@@ -27,7 +27,7 @@ ok "$(m shell): $CURRENT_SHELL"
 PYTHON=""
 for candidate in python3 python; do
   if command -v "$candidate" &>/dev/null; then
-    ver=$("$candidate" --version 2>&1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
+    ver=$("$candidate" --version 2>&1 | grep -oP '\d+\.\d+' | head -1)
     major=$(echo "$ver" | cut -d. -f1)
     minor=$(echo "$ver" | cut -d. -f2)
     if [ "$major" -ge 3 ] && [ "$minor" -ge 10 ]; then
@@ -53,34 +53,17 @@ if [ -z "$PYTHON" ]; then
 fi
 ok "Python: $PYTHON ($($PYTHON --version 2>&1))"
 
-# --- Create / activate virtual environment ----------------------------------
-# PEP 668: Homebrew / externally-managed Python refuses pip installs outside a venv.
-VENV_DIR="$ARI_ROOT/.venv"
-if [ ! -f "$VENV_DIR/bin/python" ]; then
-  info "仮想環境を作成中: $VENV_DIR"
-  "$PYTHON" -m venv "$VENV_DIR" || {
-    fail "venv の作成に失敗しました: $VENV_DIR"
-    exit 1
-  }
-  ok "仮想環境を作成しました: $VENV_DIR"
-else
-  ok "仮想環境が見つかりました: $VENV_DIR"
-fi
-PYTHON="$VENV_DIR/bin/python"
-export PYTHON
-
-# --- Find pip (use venv pip directly) ---------------------------------------
+# --- Find pip (must match the detected Python) ------------------------------
 PIP=""
-# venv always has pip; use it directly to avoid any system pip confusion
-if [ -f "$VENV_DIR/bin/pip" ]; then
-  PIP="$VENV_DIR/bin/pip"
-elif $PYTHON -m pip --version &>/dev/null 2>&1; then
+# Prefer $PYTHON -m pip to guarantee pip matches the correct Python version
+if $PYTHON -m pip --version &>/dev/null 2>&1; then
   PIP="$PYTHON -m pip"
 else
   for candidate in pip3 pip; do
     if command -v "$candidate" &>/dev/null; then
-      pip_py_ver=$("$candidate" --version 2>&1 | sed 's/.*python \([0-9][0-9]*\.[0-9][0-9]*\).*/\1/' | grep -oE '^[0-9]+\.[0-9]+' || echo "")
-      python_ver=$("$PYTHON" --version 2>&1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
+      # Verify this pip belongs to the same Python
+      pip_py_ver=$("$candidate" --version 2>&1 | grep -oP 'python \K\d+\.\d+' || echo "")
+      python_ver=$("$PYTHON" --version 2>&1 | grep -oP '\d+\.\d+' | head -1)
       if [ "$pip_py_ver" = "$python_ver" ]; then
         PIP="$candidate"
         break
