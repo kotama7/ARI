@@ -182,9 +182,7 @@ def run(
             typer.style("File not found: ", fg=typer.colors.RED, bold=True)
             + str(experiment)
             + "\n\n"
-            + "Tip: bundled starter at examples/starter_experiment.md:\n"
-            + "       ari run examples/starter_experiment.md\n"
-            + "     Or copy it to experiment.md (see docs/experiment_file.md).\n",
+            + "See docs/experiment_file.md for the experiment.md format.\n",
             err=True,
         )
         raise typer.Exit(1)

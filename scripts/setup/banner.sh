@@ -46,9 +46,6 @@ echo -e "${BOLD}  $(m next)${RESET}"
 # Prefer venv-installed console script — works even when ~/bin has no symlink.
 ARI_BIN="${ARI_ROOT}/.venv/bin/ari"
 
-# Prefer bundled starter when present (experiment.md itself is gitignored for user edits).
-ARI_STARTER="$ARI_ROOT/examples/starter_experiment.md"
-
 echo ""
 echo "  $(m next_model)"
 echo ""
@@ -65,19 +62,12 @@ echo "     export ARI_BACKEND=claude ARI_MODEL=anthropic/claude-sonnet-4-5 ANTHR
 echo ""
 echo "  $(m next_run)"
 if [ -x "$ARI_BIN" ]; then
-  if [ -f "$ARI_STARTER" ]; then
-    echo "     \"$ARI_BIN\" run \"$ARI_STARTER\""
-  else
-    echo "     \"$ARI_BIN\" run experiment.md"
-  fi
+  echo "     \"$ARI_BIN\" run experiment.md"
 else
-  if [ -f "$ARI_STARTER" ]; then
-    echo "     ari run \"$ARI_STARTER\""
-  else
-    echo "     ari run experiment.md"
-  fi
+  echo "     ari run experiment.md"
 fi
 echo "     # or: \"$PYTHON\" -m ari.cli run <path-to-experiment.md>"
+echo "     # Format and a copy-pasteable minimal example: docs/experiment_file.md"
 echo ""
 echo "  $(m next_paper)"
 if [ -x "$ARI_BIN" ]; then
