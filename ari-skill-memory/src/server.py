@@ -7,15 +7,9 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 
 import nest_asyncio
-
-# Python 3.14 + nest-asyncio patched event loops triggers anyio/asyncio glue that
-# can fail with AttributeError ('NoneType' has no attribute 'set_name') inside
-# mcp.run(); stdio FastMCP does not rely on nested loop patching on 3.14+.
-if sys.version_info < (3, 14):
-    nest_asyncio.apply()
+nest_asyncio.apply()
 
 from mcp.server.fastmcp import FastMCP
 
