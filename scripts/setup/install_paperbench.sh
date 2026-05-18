@@ -30,10 +30,35 @@ PB_ROOT="$ARI_ROOT/ari-skill-paper-re/vendor/paperbench"
 PB_PROJECT="$PB_ROOT/project/paperbench"
 COMMON_DIR="$PB_ROOT/project/common"
 
-# 1) Make sure the submodule is fetched.
+# 1) Make sure the submodule is fetched (and not incomplete).
+# An incomplete checkout (dir exists but pyproject.toml missing) happens when
+# git-lfs is absent and the smudge filter kills the checkout. Detect and retry.
+_pb_needs_checkout=0
 if [ ! -d "$PB_PROJECT" ]; then
+  _pb_needs_checkout=1
+elif [ ! -f "$PB_PROJECT/pyproject.toml" ]; then
+  warn "PaperBench checkout appears incomplete (pyproject.toml missing) — re-initialising"
+  ( cd "$ARI_ROOT" && git submodule deinit -f -- ari-skill-paper-re/vendor/paperbench 2>/dev/null || true )
+  _pb_needs_checkout=1
+fi
+
+if [ "$_pb_needs_checkout" -eq 1 ]; then
   if [ -f "$ARI_ROOT/.gitmodules" ] && grep -q "vendor/paperbench" "$ARI_ROOT/.gitmodules" 2>/dev/null; then
-    if ! ( cd "$ARI_ROOT" && git submodule update --init --depth 1 -- ari-skill-paper-re/vendor/paperbench ); then
+    # Without git-lfs, the upstream repo's filter.lfs.process still invokes
+    # `git-lfs filter-process` and checkout aborts. Override LFS filters for
+    # this command only (source + pointer files suffice for ORS).
+    _pb_git=(git)
+    if ! command -v git-lfs >/dev/null 2>&1; then
+      warn "git-lfs not found — skipping LFS file download (source-only checkout)"
+      _pb_git+=(
+        -c filter.lfs.smudge=
+        -c filter.lfs.clean=
+        -c filter.lfs.process=
+        -c filter.lfs.required=false
+      )
+      export GIT_LFS_SKIP_SMUDGE=1
+    fi
+    if ! ( cd "$ARI_ROOT" && "${_pb_git[@]}" submodule update --init --depth 1 -- ari-skill-paper-re/vendor/paperbench ); then
       fail "git submodule init failed for ari-skill-paper-re/vendor/paperbench"
       exit 1
     fi
