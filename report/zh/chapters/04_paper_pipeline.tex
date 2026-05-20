@@ -132,6 +132,61 @@ leaderboard 数据不再可比。)
 AD/AE concat (机制 3),多模态扩展器 (机制 1) 提供较小但
 paper-agnostic 一致的增益。
 
+\subsubsection*{3-stage bridge contract (v0.7.3)}\label{sec:paper:bridge}
+
+paper-audit 模式针对论文本身,而
+\term{3-stage bridge contract}
+(\code{ari-skill-paper-re/src/\_paperbench\_bridge.py}) 暴露符合
+PaperBench 协议的循环 ---- agent rollout、 reproduction、 grading
+---- 作为三个 keyword-only async 可调用项,共享同一调用词汇:
+\code{rollout\_submission(\ldots)}、
+\code{reproduce\_submission(\ldots)}、
+\code{judge\_submission(\ldots)}。 各自包装现有单段 worker
+(Stage~1 \code{\_replicator\_agent.run\_replicator\_agent}、
+Stage~2 \code{server.run\_reproduce}、
+Stage~3 vendor \texttt{SimpleJudge}),因此 bridge 是公共接口而非
+重新实现。 使其 vendor-faithful 的关键设计:
+
+\begin{itemize}
+  \item \emph{container\_image 别名解析} --- 短别名
+    \texttt{pb-env} / \texttt{pb-reproducer} 展开为
+    \code{scripts/build\_pb\_images.sh} 所生成的 canonical
+    \texttt{image:latest} 标签; URI / 路径 / 任意 tag 原样通过,
+    用户镜像兼容性维持。
+  \item \emph{fail-loud 前置条件} --- 当 Stage~2 请求无法满足
+    (缺 docker daemon / apptainer / sbatch / partition / GRES) 时
+    抛出 \texttt{RuntimeError},不会静默降级到 host CPU。两个 opt-in
+    env (\texttt{ARI\_PHASE1\_ALLOW\_FALLBACK=1},
+    \texttt{ARI\_SLURM\_ALLOW\_NO\_GRES=1}) 可回到 legacy 行为。
+  \item \emph{code\_only 一致} --- Stage~1 instruction 默认
+    \texttt{code\_only=True} (agent 仅被要求写代码)。 bridge 的
+    \code{judge\_submission} 接受 \texttt{code\_only} 并镜像
+    vendor \code{paperbench/grade.py:109-112} 的
+    \code{TaskNode.code\_only()} 裁剪。 \texttt{reproduce.log} 不在
+    时自动启用。
+  \item \emph{salvage retries} --- opt-in 类似 vendor 的
+    \code{reproduce\_on\_computer\_with\_salvaging}
+    (\code{paperbench/reproduce.py:252} mirror),
+    对 early-failure 试行用 Python~3.11 venv 前置脚本 wrap。
+    总 wall-clock 预算跨尝试 honor (retry-time 除外)。
+  \item \emph{executed-submission tarball} --- 每次 Stage~2 完成
+    生成 \texttt{submission\_executed\_<UTC>.tar.gz} 以确保
+    可重新评分。 对应 vendor \code{paperbench/reproduce.py:230-244}。
+  \item \emph{host-FS source-removal 防护} ---
+    \texttt{forbid\_host\_filesystem=True} 时拒绝
+    \texttt{sandbox\_kind=local} / \texttt{slurm}, 保障 benchmark
+    公平性。
+  \item \emph{agent.env 注入} --- \texttt{agent\_env\_path}
+    (\texttt{ARI\_AGENT\_ENV\_PATH} 或
+    \texttt{\~{}/.ari/agent.env} 自动发现) 加载论文级凭据到 agent
+    env; 调用进程的 \texttt{HF\_TOKEN} 自动转发 (vendor
+    \code{nano/eval.py:172-179} 模式)。
+  \item \emph{Blacklist URL 强制} ---
+    \texttt{blacklist\_urls} 在 agent instruction prompt 前置
+    \texttt{FORBIDDEN URLS} block 并导出
+    \texttt{ARI\_BLACKLIST\_URLS} env 供下游 tool wrapper 拒绝。
+\end{itemize}
+
 \subsection{review/refine 循环}\label{sec:paper:loop}
 
 改稿循环按反馈 $J(\paper_t)$ 迭代地将 $\paper_t$ 重写为

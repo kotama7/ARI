@@ -152,6 +152,70 @@ prompt patch (mechanism 2) and the second from AD/AE concatenation
 (mechanism 3); the multimodal expander (mechanism 1) provides a
 small but consistent paper-agnostic boost.
 
+\subsubsection*{3-stage bridge contract (v0.7.3)}\label{sec:paper:bridge}
+
+Where paper-audit mode targets the paper itself, the
+\term{3-stage bridge contract} (\code{ari-skill-paper-re/src/\_paperbench\_bridge.py})
+exposes the protocol-faithful PaperBench loop --- agent rollout,
+reproduction, and grading --- as three keyword-only async callables
+sharing one calling vocabulary:
+\code{rollout\_submission(paper\_md, work\_dir, agent\_model, sandbox\_kind, container\_image, iterative\_agent, env, agent\_env\_path, forbid\_host\_filesystem, blacklist\_urls, time\_limit\_sec, \ldots)},
+\code{reproduce\_submission(submission\_dir, sandbox\_kind, container\_image, partition, gpus\_per\_task, gpu\_type, memory\_gb\_per\_node, exclusive, extra\_sbatch\_args, capture\_tarball, salvage\_retries, retry\_threshold\_sec, time\_limit\_sec)},
+and \code{judge\_submission(paper\_md, rubric, submission\_dir, reproduce\_log, judge\_model, paper\_audit\_mode, code\_only, \ldots)}.
+Internally each wraps the existing single-stage worker
+(\code{\_replicator\_agent.run\_replicator\_agent} for Stage~1,
+\code{server.run\_reproduce} for Stage~2, vendor \texttt{SimpleJudge}
+for Stage~3), so the bridge is a public surface, not a
+re-implementation. The deliberate-design choices that make it
+vendor-faithful are:
+
+\begin{itemize}
+  \item \emph{container\_image alias resolution} --- short aliases
+    \texttt{pb-env} / \texttt{pb-reproducer} expand to the canonical
+    \texttt{image:latest} tags produced by
+    \code{scripts/build\_pb\_images.sh}; URIs / paths / arbitrary
+    tags pass through verbatim so user images keep working.
+  \item \emph{Fail-loud preconditions} --- when a Stage~2 request
+    cannot be served (missing docker daemon / apptainer / sbatch
+    / partition / GRES), a \texttt{RuntimeError} is raised rather
+    than silently downgrading to host CPU. Two opt-in env vars
+    (\texttt{ARI\_PHASE1\_ALLOW\_FALLBACK=1},
+    \texttt{ARI\_SLURM\_ALLOW\_NO\_GRES=1}) preserve the legacy
+    silent-fallback for sites that need it.
+  \item \emph{code\_only consistency} --- Stage~1 instructions
+    default to \texttt{code\_only=True} (the agent is asked to write
+    code, not execute it). The bridge's \code{judge\_submission}
+    accepts \texttt{code\_only} and mirrors vendor
+    \code{paperbench/grade.py:109-112}'s
+    \code{TaskNode.code\_only()} pruning so the grader's scope
+    matches the agent's. Auto-enabled when no \texttt{reproduce.log}
+    is present.
+  \item \emph{Salvage retries} --- opt-in vendor-style
+    \code{reproduce\_on\_computer\_with\_salvaging} (mirror of
+    \code{paperbench/reproduce.py:252}) wrapping early-failure
+    attempts in a Python~3.11 venv prelude. Total wall-clock budget
+    is honoured across attempts (retry-time exclusion).
+  \item \emph{Executed-submission tarball} --- every Stage~2 call
+    writes \texttt{submission\_executed\_<UTC>.tar.gz} alongside
+    the submission so a run is re-gradable later, matching vendor
+    \code{paperbench/reproduce.py:230-244}.
+  \item \emph{Host-FS source-removal guard} --- caller-toggle
+    \texttt{forbid\_host\_filesystem=True} refuses
+    \texttt{sandbox\_kind=local} / \texttt{slurm} for
+    benchmark-fair runs (both leak the host workspace to the
+    agent's bash tool).
+  \item \emph{agent.env injection} --- \texttt{agent\_env\_path}
+    (auto-discovered from \texttt{ARI\_AGENT\_ENV\_PATH} or
+    \texttt{\~{}/.ari/agent.env}) loads per-paper credentials into
+    the agent's env; the calling process's \texttt{HF\_TOKEN} is
+    automatically forwarded (vendor
+    \code{nano/eval.py:172-179} pattern).
+  \item \emph{Blacklist URL enforcement} ---
+    \texttt{blacklist\_urls} prepends a \texttt{FORBIDDEN URLS}
+    block to the agent instruction prompt and exports
+    \texttt{ARI\_BLACKLIST\_URLS} for downstream tool wrappers.
+\end{itemize}
+
 \subsection{Review/refine loop}\label{sec:paper:loop}
 
 The refine cycle iteratively rewrites $\paper_t$ to $\paper_{t+1}$
