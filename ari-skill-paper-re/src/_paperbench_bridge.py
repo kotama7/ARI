@@ -10,9 +10,21 @@ convention used inside ARI:
   - ``task_node_from_dict``      — dict → upstream TaskNode
   - ``aggregate_graded_tree``    — weighted tree score envelope
   - ``average_graded_runs``      — n-run mean over GradedTaskNode trees
-  - ``judge_submission``         — async adapter that wires our (paper_md,
-                                    submission_dir, reproduce_log, judge_model)
-                                    inputs into a real upstream SimpleJudge run.
+  - ``rollout_submission``       — PaperBench Stage 1 (agent rollout that
+                                    writes reproduce.sh); thin wrapper over
+                                    :func:`_replicator_agent.run_replicator_agent`.
+  - ``reproduce_submission``     — PaperBench Stage 2 (execute reproduce.sh
+                                    in the chosen sandbox, capture
+                                    reproduce.log); thin wrapper over
+                                    :func:`server.run_reproduce`.
+  - ``judge_submission``         — PaperBench Stage 3 (SimpleJudge over the
+                                    executed submission).
+
+The three Stage adapters share the same ``(paper_md, work_dir or
+submission_dir, model, ...)`` calling style so a caller (e.g.
+``scripts/sc_paper_dogfood.py`` or ``ari-core``'s viz worker) can
+sequence ``rollout_submission → reproduce_submission → judge_submission``
+without translating between independent argument vocabularies.
 
 Resolution of the upstream package follows:
   1. ``ARI_PAPERBENCH_PATH`` (explicit override).
@@ -298,3 +310,140 @@ async def judge_submission(
         else:
             await judge.before_grading()
             return await judge.grade(rubric, judge.grade_leaf)
+
+
+# ─── Stage 1: agent rollout ──────────────────────────────────────────────
+
+
+async def rollout_submission(
+    *,
+    paper_md: str,
+    work_dir: Path | str,
+    agent_model: str,
+    time_limit_sec: int = 12 * 3600,
+    iterative_agent: bool = False,
+    max_steps: int | None = None,
+    sandbox_kind: str = "auto",
+    container_image: str = "",
+    env: dict[str, str] | None = None,
+    expected_artifacts: list[str] | None = None,
+    execution_profile: dict | None = None,
+    paper_id: str = "ari-local",
+    run_id: str | None = None,
+) -> dict:
+    """PaperBench Stage 1 — drive a BasicAgent / IterativeAgent rollout
+    that writes a ``reproduce.sh`` (plus supporting code) into ``work_dir``.
+
+    Public companion to :func:`judge_submission`: paper_md is written to
+    ``work_dir/_input_paper.md`` and the existing
+    :func:`_replicator_agent.run_replicator_agent` is invoked. The chosen
+    completer mirrors :func:`server.build_reproduce_sh`: vanilla OpenAI
+    Responses for ``gpt-*`` / ``o[1-5]-*`` model ids, LiteLLM-routed
+    otherwise (Anthropic / Gemini / Ollama / ...).
+
+    ``container_image`` honours the same priority chain as
+    :func:`server.build_reproduce_sh`: explicit value wins, else legacy
+    ``ARI_PHASE1_APPTAINER_IMAGE`` / ``ARI_PHASE1_SINGULARITY_IMAGE`` env.
+    Only the Apptainer / Singularity sandbox kinds consume the image at
+    Stage 1; ``sandbox_kind=slurm`` / ``local`` runs the agent on the
+    host filesystem (see :func:`_compute.make_computer`).
+
+    Returns the standard ``build_reproduce_sh`` envelope
+    (``{populated, output_dir, files, expected_artifacts,
+    max_runtime_sec, model, agent_runtime_sec, notes, warnings}``).
+    Pass ``output_dir`` directly to :func:`reproduce_submission` as
+    ``submission_dir`` to chain into Stage 2.
+    """
+    work = Path(work_dir).resolve()
+    work.mkdir(parents=True, exist_ok=True)
+    paper_md_path = work / "_input_paper.md"
+    paper_md_path.write_text(paper_md or "", encoding="utf-8")
+
+    is_openai_responses = (
+        agent_model.startswith(("gpt-", "o1-", "o3-", "o4-", "o5-"))
+        and "/" not in agent_model
+    )
+    if is_openai_responses:
+        from paperbench.solvers.basicagent.completer import (  # type: ignore
+            OpenAIResponsesTurnCompleterConfig,
+        )
+        completer_config: Any = OpenAIResponsesTurnCompleterConfig(model=agent_model)
+    else:
+        from _litellm_completer import get_litellm_basicagent_completer_config
+        completer_config = get_litellm_basicagent_completer_config()(model=agent_model)
+
+    from _replicator_agent import run_replicator_agent
+
+    return await run_replicator_agent(
+        paper_md_path=str(paper_md_path),
+        output_dir=str(work),
+        expected_artifacts=list(expected_artifacts or []),
+        execution_profile=dict(execution_profile or {}),
+        time_limit_sec=int(time_limit_sec),
+        iterative_agent=bool(iterative_agent),
+        max_steps=max_steps,
+        completer_config=completer_config,
+        sandbox_kind=sandbox_kind,
+        apptainer_image=container_image or None,
+        env=env,
+        paper_id=paper_id,
+        run_id=run_id,
+    )
+
+
+# ─── Stage 2: reproduce.sh execution ────────────────────────────────────
+
+
+async def reproduce_submission(
+    *,
+    submission_dir: Path | str,
+    sandbox_kind: str = "auto",
+    container_image: str = "",
+    time_limit_sec: int = 6 * 3600,
+    partition: str = "",
+    gpus_per_task: int = 0,
+    gpu_type: str = "",
+    memory_gb_per_node: int = 0,
+    exclusive: bool = False,
+    extra_sbatch_args: list[str] | None = None,
+) -> dict:
+    """PaperBench Stage 2 — execute ``submission_dir/reproduce.sh`` in the
+    chosen sandbox, capture stdout/stderr into ``reproduce.log``.
+
+    Public companion to :func:`rollout_submission` and
+    :func:`judge_submission`. Wraps :func:`server.run_reproduce` so callers
+    using the bridge can drive Stage 2 without speaking the MCP tool's
+    full 23-arg signature. The submission directory is reused in-place as
+    the executed-submission output (matching the vendor reproducer
+    container behaviour where reproduce.log is written back to the
+    bind-mounted submission dir).
+
+    Infrastructure preconditions are enforced loudly: a missing docker
+    daemon / apptainer binary / sbatch / partition raises
+    ``RuntimeError`` unless ``ARI_PHASE1_ALLOW_FALLBACK=1`` is set, and a
+    GRES-less cluster with GPU request raises unless
+    ``ARI_SLURM_ALLOW_NO_GRES=1``. The returned dict adds
+    ``executed_submission_dir`` and ``reproduce_log_path`` keys so
+    downstream :func:`judge_submission` can wire its ``submission_dir`` /
+    ``reproduce_log`` arguments directly.
+    """
+    from server import run_reproduce  # lazy: server imports this module
+
+    sub = Path(submission_dir).resolve()
+    res = await run_reproduce(
+        rubric_path="",
+        repo_dir=str(sub),
+        sandbox_kind=sandbox_kind,
+        container_image=container_image,
+        timeout_global_sec=int(time_limit_sec),
+        partition=partition,
+        gpus_per_task=int(gpus_per_task),
+        gpu_type=gpu_type,
+        memory_gb_per_node=int(memory_gb_per_node),
+        exclusive=bool(exclusive),
+        extra_sbatch_args=list(extra_sbatch_args or []),
+    )
+    if isinstance(res, dict):
+        res.setdefault("executed_submission_dir", str(sub))
+        res.setdefault("reproduce_log_path", str(sub / "reproduce.log"))
+    return res

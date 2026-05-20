@@ -1054,10 +1054,17 @@ async def run_reproduce(
             "elapsed_sec": 0.0,
             "sandbox_kind": "",
         }
-    try:
-        rubric = json.loads(Path(rubric_path).read_text())
-    except Exception as e:
-        return {"executed": False, "error": f"cannot read rubric: {e}"}
+    # rubric_path is the canonical source for ``max_runtime_sec`` /
+    # ``expected_artifacts`` / ``execution_profile``, but the public
+    # :func:`_paperbench_bridge.reproduce_submission` wrapper drives this
+    # tool without a rubric — explicit caller args supply the same info.
+    # Treat empty / missing rubric_path as "no hint dict; use caller args".
+    rubric: dict = {}
+    if rubric_path:
+        try:
+            rubric = json.loads(Path(rubric_path).read_text())
+        except Exception as e:
+            return {"executed": False, "error": f"cannot read rubric: {e}"}
 
     rc = rubric.get("reproduce_contract") or {}
     max_runtime = int(timeout_global_sec or rc.get("max_runtime_sec") or 21600)
