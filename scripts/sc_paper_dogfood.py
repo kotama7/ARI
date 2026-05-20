@@ -179,6 +179,7 @@ async def run_judge_dryrun(
     judge_model: str,
     submission_dir: Path | None = None,
     paper_audit_mode: bool = False,
+    code_only: bool = False,
 ) -> None:
     """Pipe the generated rubric into judge_submission.
 
@@ -193,6 +194,11 @@ async def run_judge_dryrun(
     ``ari-skill-paper-re/src/_paperbench_bridge.py``). Required for
     paper_audit-mode templates so leaves phrased as "X is identifiable
     in the paper" are graded correctly.
+
+    ``code_only`` prunes the rubric to Code Development leaves only
+    (vendor :meth:`TaskNode.code_only`). Use when Stage 2 was skipped
+    so the grader's scope matches the agent's instructions (Stage 1
+    code_only=True). Mutually exclusive with ``paper_audit_mode``.
     """
     from _paperbench_bridge import judge_submission, task_node_from_dict  # type: ignore
 
@@ -208,6 +214,7 @@ async def run_judge_dryrun(
     try:
         files = sorted(p.name for p in submission_dir.iterdir()) if submission_dir.is_dir() else []
         print(f"[judge] model={judge_model}  paper_audit_mode={paper_audit_mode}  "
+              f"code_only={code_only}  "
               f"submission={submission_dir} (files: {files or '<empty>'})")
         graded = await judge_submission(
             paper_md=paper_text,
@@ -216,6 +223,7 @@ async def run_judge_dryrun(
             reproduce_log="",
             judge_model=judge_model,
             paper_audit_mode=paper_audit_mode,
+            code_only=code_only,
         )
     finally:
         if own_tmp is not None:
@@ -555,11 +563,34 @@ def main() -> int:
               f"elapsed_sec={reproduce_res.get('elapsed_sec')} "
               f"log={reproduce_res.get('reproduce_log_path')}")
 
+    # Auto-enable judge code_only when Stage 2 was skipped — the agent
+    # was told to "only write code" (Stage 1 code_only=True is the ARI
+    # default per _compute/local_pbtask.py:166-175), and grading
+    # Code Execution / Result Analysis leaves against an empty
+    # submission would systematically zero them via the vendor's
+    # ``reproduce.sh failed to modify or create any files`` safeguard.
+    # paper_audit_mode and code_only are mutually exclusive (the bridge
+    # asserts) — paper_audit wins when both would apply (the user
+    # explicitly picked a paper_audit template / flag).
+    code_only = (
+        args.with_rollout
+        and not args.with_reproduction
+        and not paper_audit_mode
+    )
+    if code_only:
+        print(
+            "[hint] --with-rollout without --with-reproduction → judge will run "
+            "in code_only mode (rubric pruned to Code Development leaves only) "
+            "to match the Stage 1 'write code, do not execute' instruction. "
+            "Pass --with-reproduction to grade against an executed submission."
+        )
+
     if args.judge_dryrun:
         asyncio.run(run_judge_dryrun(
             envelope, paper_text, args.judge_model,
             submission_dir=submission_dir,
             paper_audit_mode=paper_audit_mode,
+            code_only=code_only,
         ))
 
     print(f"\n[done] artifacts under {out_dir}")

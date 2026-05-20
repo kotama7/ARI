@@ -257,6 +257,7 @@ async def judge_submission(
     addendum: str | None = None,
     judge_addendum: str | None = None,
     paper_audit_mode: bool = False,
+    code_only: bool = False,
 ) -> GradedTaskNode:
     """Run upstream SimpleJudge against the given submission.
 
@@ -274,7 +275,30 @@ async def judge_submission(
     ceiling where ``Result Analysis`` leaves always score 0 with an empty
     submission. The override is scoped to this call only; agent-benchmark
     callers see the original vendor prompt.
+
+    ``code_only``: when True, the rubric tree is pruned via vendor
+    :meth:`paperbench.rubric.tasks.TaskNode.code_only` so that ONLY
+    ``Code Development`` leaves are graded. This mirrors vendor
+    :mod:`paperbench.grade.run_judge` (``grade.py:109-112``) which
+    applies the same reduction when ``judge.code_only=True`` is set on
+    the upstream task config. Use this when Stage 2 (executed
+    submission) was skipped — the agent was told to "only write code"
+    and grading Code Execution / Result Analysis leaves against an
+    empty submission would systematically zero them via the vendor's
+    ``reproduce.sh failed to modify or create any files`` safeguard
+    (judge/simple.py:557-560). Pairing rollout-only with this flag
+    keeps the agent's instructions consistent with the grader's
+    scope. Mutually exclusive with ``paper_audit_mode`` (paper-audit
+    targets paper text, code-only targets a Stage 1 submission).
     """
+    if code_only and paper_audit_mode:
+        raise ValueError(
+            "code_only and paper_audit_mode are mutually exclusive: "
+            "code_only grades a Stage 1 submission against the Code "
+            "Development subtree; paper_audit_mode grades the paper "
+            "itself for describability. Pick one."
+        )
+
     # Main per-leaf grading completer routes through LiteLLM so any provider
     # works (OpenAI snapshots not in PaperBench's CONTEXT_WINDOW_LENGTHS,
     # Anthropic, Gemini, Ollama, …). The int/float structured completers
@@ -289,6 +313,18 @@ async def judge_submission(
         log_path = submission_dir / "reproduce.log"
         if not log_path.is_file():
             log_path.write_text(reproduce_log)
+
+    # Apply vendor's code-only reduction BEFORE constructing the judge so
+    # ``judge.grade(rubric, ...)`` walks the pruned tree. Mirror of
+    # ``paperbench/grade.py:109-112``: if ``rubric.code_only()`` returns
+    # None (e.g. the tree had no Code Development leaves at all), fall
+    # back to a single-node Code Development tree so SimpleJudge still
+    # has something to grade.
+    if code_only:
+        pruned = rubric.code_only()
+        if pruned is None:
+            pruned = rubric.set_task_category("Code Development").set_sub_tasks([])
+        rubric = pruned
 
     with tempfile.TemporaryDirectory() as tmp:
         paper_md_path = Path(tmp) / "paper.md"

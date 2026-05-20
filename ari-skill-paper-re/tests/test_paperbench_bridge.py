@@ -165,3 +165,81 @@ def test_reproduce_submission_signature_honors_sandbox_and_slurm_flags():
         "exclusive", "extra_sbatch_args",
     ):
         assert required in params, f"reproduce_submission missing {required!r}"
+
+
+def test_judge_submission_code_only_prunes_rubric_tree():
+    """Mirror of vendor ``paperbench/grade.py:109-112``: when
+    ``code_only=True`` is passed, the rubric tree is reduced to
+    Code Development leaves only (per ``TaskNode.code_only`` in
+    ``rubric/tasks.py:338-344``) BEFORE SimpleJudge is constructed.
+
+    This is the structural test (the reducer call is what matters; the
+    actual LLM-driven grade_leaf is exercised in the upstream test).
+    We exercise reduce-then-aggregate which gives an apples-to-apples
+    comparison: graded.score over a pruned tree counts only Code Dev.
+    """
+    import uuid
+    rubric_dict = {
+        "id": str(uuid.uuid4()),
+        "requirements": "root",
+        "weight": 1,
+        "sub_tasks": [
+            {"id": str(uuid.uuid4()), "requirements": "implement X",
+             "weight": 1, "task_category": "Code Development"},
+            {"id": str(uuid.uuid4()), "requirements": "run Y",
+             "weight": 1, "task_category": "Code Execution"},
+            {"id": str(uuid.uuid4()), "requirements": "analyze Z",
+             "weight": 1, "task_category": "Result Analysis"},
+        ],
+    }
+    root = B.task_node_from_dict(rubric_dict)
+
+    # Pre-reduction: 3 leaves spanning all three categories.
+    leaves_before = []
+    def _walk(n):
+        if not n.sub_tasks:
+            leaves_before.append(n)
+        for c in n.sub_tasks:
+            _walk(c)
+    _walk(root)
+    assert len(leaves_before) == 3
+    assert {l.task_category for l in leaves_before} == {
+        "Code Development", "Code Execution", "Result Analysis"
+    }
+
+    # Post-reduction (the vendor method used inside judge_submission).
+    pruned = root.code_only()
+    assert pruned is not None
+    leaves_after = []
+    def _walk2(n):
+        if not n.sub_tasks:
+            leaves_after.append(n)
+        for c in n.sub_tasks:
+            _walk2(c)
+    _walk2(pruned)
+    assert len(leaves_after) == 1
+    assert leaves_after[0].task_category == "Code Development"
+    assert leaves_after[0].requirements == "implement X"
+
+
+def test_judge_submission_rejects_code_only_with_paper_audit_mode():
+    """code_only (grade a Stage 1 submission against Code Dev subtree)
+    and paper_audit_mode (grade the paper itself for describability)
+    are conceptually orthogonal targets. Combining them would feed an
+    executed-or-not submission to a judge asking 'is the paper specific
+    enough?' — meaningless. The bridge MUST refuse loudly.
+    """
+    import asyncio, uuid
+    rubric_dict = {
+        "id": str(uuid.uuid4()),
+        "requirements": "root",
+        "weight": 1,
+        "task_category": "Code Development",
+    }
+    root = B.task_node_from_dict(rubric_dict)
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        asyncio.run(B.judge_submission(
+            paper_md="x", rubric=root, submission_dir=Path("/tmp"),
+            judge_model="test/m",
+            paper_audit_mode=True, code_only=True,
+        ))

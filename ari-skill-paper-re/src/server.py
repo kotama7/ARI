@@ -1203,6 +1203,7 @@ async def _grade_once(
     repo_dir: Path,
     reproduce_log: str,
     judge_model: str,
+    code_only: bool = False,
 ):
     from _paperbench_bridge import judge_submission
 
@@ -1212,6 +1213,7 @@ async def _grade_once(
         submission_dir=repo_dir,
         reproduce_log=reproduce_log,
         judge_model=judge_model,
+        code_only=code_only,
     )
 
 
@@ -1219,23 +1221,35 @@ async def _negative_control_check(
     pb_taskroot,
     paper_md: str,
     judge_model: str,
+    code_only: bool = False,
 ) -> dict:
     """Apply rubric to (a) empty repo and (b) trivial-reproduce.sh repo.
 
     Both should score below 5%. ``passed=True`` only if both fall under 0.05.
+
+    ``code_only`` is threaded so the negative-control grading uses the
+    same rubric scope as the main grading call. Without this, a code_only
+    main run would be compared against a full-rubric control, which
+    sometimes inverts the pass/fail decision.
     """
     from _paperbench_bridge import aggregate_graded_tree
 
     results: dict = {}
     with tempfile.TemporaryDirectory() as empty:
-        graded = await _grade_once(pb_taskroot, paper_md, Path(empty), "", judge_model)
+        graded = await _grade_once(
+            pb_taskroot, paper_md, Path(empty), "", judge_model,
+            code_only=code_only,
+        )
         results["empty"] = aggregate_graded_tree(graded)["ors_score"]
     with tempfile.TemporaryDirectory() as bp:
         bp_path = Path(bp)
         sh = bp_path / "reproduce.sh"
         sh.write_text("#!/bin/bash\necho 'no-op'\nexit 0\n")
         sh.chmod(0o755)
-        graded = await _grade_once(pb_taskroot, paper_md, bp_path, "", judge_model)
+        graded = await _grade_once(
+            pb_taskroot, paper_md, bp_path, "", judge_model,
+            code_only=code_only,
+        )
         results["boilerplate"] = aggregate_graded_tree(graded)["ors_score"]
     results["passed"] = (results["empty"] < 0.05 and results["boilerplate"] < 0.05)
     return results
@@ -1250,6 +1264,7 @@ async def grade_with_simplejudge(
     judge_model: str = "",
     n_runs: int = 0,
     skip_negative_control: bool = False,
+    code_only: bool = False,
 ) -> dict:
     """Phase 2: run PaperBench SimpleJudge against the (post-Phase-1) repo.
 
@@ -1302,11 +1317,23 @@ async def grade_with_simplejudge(
     chosen_model = judge_model or _judge_model()
     n_runs = max(1, int(n_runs))
 
+    # Auto-enable code_only when there is no reproduce.log to grade against
+    # — Stage 1 instruction defaults to code_only=True
+    # (`_compute/local_pbtask.py:166-175`), so the Stage 3 grader should
+    # match that scope rather than penalising the agent for Code Execution
+    # / Result Analysis leaves it was never asked to satisfy. Explicit
+    # caller-supplied code_only=True always wins.
+    if not code_only and not log_path.is_file():
+        code_only = True
+
     try:
         start = time.time()
         runs = []
         for _ in range(n_runs):
-            runs.append(await _grade_once(pb_taskroot, paper_md, repo, reproduce_log, chosen_model))
+            runs.append(await _grade_once(
+                pb_taskroot, paper_md, repo, reproduce_log, chosen_model,
+                code_only=code_only,
+            ))
         if n_runs == 1:
             agg = aggregate_graded_tree(runs[0])
         else:
@@ -1319,6 +1346,7 @@ async def grade_with_simplejudge(
             "leaf_grades": agg["leaf_grades"],
             "judge_model": chosen_model,
             "n_runs": n_runs,
+            "code_only": code_only,
             "elapsed_sec": round(time.time() - start, 2),
         }
         if degraded_reason:
@@ -1327,6 +1355,7 @@ async def grade_with_simplejudge(
         if not skip_negative_control:
             out["negative_control_check"] = await _negative_control_check(
                 pb_taskroot, paper_md, chosen_model,
+                code_only=code_only,
             )
         return out
     finally:

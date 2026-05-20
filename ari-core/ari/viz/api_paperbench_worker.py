@@ -144,6 +144,8 @@ def _run_reproduce_args(rubric_path: Path, repro_dir: Path, cfg: dict) -> dict:
 def _grade_args(paper_pdf: Path, rubric_path: Path, repro_dir: Path, cfg: dict) -> dict:
     # Wizard stores the judge model under ``model``; the skill tool expects
     # ``judge_model``. Translate at this boundary.
+    # ``code_only`` is wizard-overridable but the MCP tool auto-enables it
+    # when no reproduce.log is present, so leaving it unset is usually fine.
     return {
         "rubric_path": str(rubric_path),
         "repo_dir": str(repro_dir),
@@ -151,6 +153,7 @@ def _grade_args(paper_pdf: Path, rubric_path: Path, repro_dir: Path, cfg: dict) 
         "judge_model": str(cfg.get("model") or ""),
         "n_runs": int(cfg.get("n_runs") or 0),
         "skip_negative_control": bool(cfg.get("skip_negative_control", False)),
+        "code_only": bool(cfg.get("code_only", False)),
     }
 
 
