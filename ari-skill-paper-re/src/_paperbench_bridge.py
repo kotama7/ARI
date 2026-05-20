@@ -368,6 +368,7 @@ async def rollout_submission(
     paper_id: str = "ari-local",
     run_id: str | None = None,
     forbid_host_filesystem: bool = False,
+    blacklist_urls: list[str] | None = None,
 ) -> dict:
     """PaperBench Stage 1 — drive a BasicAgent / IterativeAgent rollout
     that writes a ``reproduce.sh`` (plus supporting code) into ``work_dir``.
@@ -402,6 +403,21 @@ async def rollout_submission(
     Use this for benchmark-mode runs where source-leak fairness
     matters; the operator must then supply ``sandbox_kind=apptainer``
     or ``singularity`` with a real ``container_image``.
+
+    ``blacklist_urls`` (default None): list of URLs / domains the
+    agent must not fetch during rollout. Mirrors vendor PaperBench's
+    per-paper ``data/papers/<id>/blacklist.txt`` mechanism for keeping
+    the agent from short-circuiting reproduction by cloning the
+    original paper's codebase. ARI does not have a per-paper registry
+    (LLM-generated rubrics; one-paper-at-a-time), so the caller
+    supplies blacklist URLs explicitly. Enforcement is two-layer:
+    (1) the entries are prepended verbatim to the agent's instruction
+    prompt under a ``FORBIDDEN URLS`` heading so the LLM knows the
+    rule; (2) they are also exported as ``ARI_BLACKLIST_URLS`` env
+    var (newline-joined) so downstream tools / wrappers can refuse.
+    This is best-effort — a determined agent can still encode URLs
+    obliquely; running with sandbox_kind=apptainer and no_network
+    is the only hard guarantee.
 
     Returns the standard ``build_reproduce_sh`` envelope
     (``{populated, output_dir, files, expected_artifacts,
@@ -464,6 +480,31 @@ async def rollout_submission(
                 merged_env[k] = v
         if env:
             merged_env.update(env)
+
+    # blacklist_urls enforcement: export as env (for downstream tool
+    # wrappers) AND prepend a FORBIDDEN URLS section to paper_md so
+    # the agent's instruction prompt carries it. The prepended block
+    # is plain Markdown so vendor's prompt-building code reads it
+    # verbatim; mirrors vendor PaperBench's per-paper blacklist.txt.
+    bl_entries = [str(u).strip() for u in (blacklist_urls or []) if str(u).strip()]
+    if bl_entries:
+        if merged_env is None:
+            merged_env = {}
+        merged_env["ARI_BLACKLIST_URLS"] = "\n".join(bl_entries)
+        prelude = (
+            "# FORBIDDEN URLS / RESOURCES\n\n"
+            "You MUST NOT fetch, clone, curl, wget, pip-install-from, or\n"
+            "otherwise access any of the URLs / domains listed below at any\n"
+            "point during this rollout. They are the paper's own codebase\n"
+            "(or other reference sources whose use would short-circuit the\n"
+            "reproduction). Producing reproduce.sh that references them is\n"
+            "also forbidden. If a tool call would touch one of these, abort\n"
+            "the call and explain in your reasoning.\n\n"
+        )
+        prelude += "\n".join(f"  - {u}" for u in bl_entries) + "\n\n---\n\n"
+        paper_md = prelude + (paper_md or "")
+
+    container_image = _resolve_container_image_alias(container_image)
 
     work = Path(work_dir).resolve()
     work.mkdir(parents=True, exist_ok=True)
@@ -536,6 +577,35 @@ def _load_dotenv_file(path: Path) -> dict[str, str]:
     return out
 
 
+# Short aliases for the vendor PaperBench Docker images that
+# ``scripts/build_pb_images.sh`` produces. Operators can pass
+# ``container_image="pb-env"`` / ``"pb-reproducer"`` to the bridge and
+# the call resolves to the canonical ``image:latest`` tag at runtime,
+# making wizard / CLI presets short and human-friendly without
+# hardcoding the tag string at every call site.
+_PB_IMAGE_ALIASES: dict[str, str] = {
+    "pb-env": "pb-env:latest",
+    "pb-reproducer": "pb-reproducer:latest",
+}
+
+
+def _resolve_container_image_alias(value: str) -> str:
+    """Resolve short PaperBench image aliases to their canonical tag.
+
+    Accepts the bare alias (``pb-env``) or any string that already
+    contains a tag separator (``:``), an absolute path (``/``), or a
+    URI scheme (``docker://``, ``library://``, ``shub://``). Anything
+    not matching an alias is returned verbatim so user-supplied SIF
+    paths and arbitrary image tags continue to work.
+    """
+    v = (value or "").strip()
+    if not v:
+        return v
+    if v in _PB_IMAGE_ALIASES:
+        return _PB_IMAGE_ALIASES[v]
+    return v
+
+
 # ─── Stage 2: reproduce.sh execution ────────────────────────────────────
 
 
@@ -594,7 +664,23 @@ async def reproduce_submission(
     """
     from server import run_reproduce  # lazy: server imports this module
 
+    container_image = _resolve_container_image_alias(container_image)
     sub = Path(submission_dir).resolve()
+
+    # Wall-clock budget shared by ALL attempts (initial + salvage
+    # retries). Vendor's reproduce.py:timeout is per-attempt, but
+    # ARI's contract is "time_limit_sec is the user's total budget" —
+    # retry-time exclusion (a la BasicAgent's use_real_time_limit at
+    # Stage 1) lets us spend that budget across multiple attempts
+    # without overshooting. Each attempt's per-call timeout is the
+    # REMAINING budget capped to the original time_limit_sec.
+    import time as _time
+    overall_start = _time.time()
+    overall_budget_sec = int(time_limit_sec)
+
+    def _remaining_budget() -> int:
+        spent = int(_time.time() - overall_start)
+        return max(0, overall_budget_sec - spent)
 
     async def _attempt(use_salvage_wrapper: bool) -> dict:
         if use_salvage_wrapper:
@@ -605,7 +691,7 @@ async def reproduce_submission(
                 repo_dir=str(sub),
                 sandbox_kind=sandbox_kind,
                 container_image=container_image,
-                timeout_global_sec=int(time_limit_sec),
+                timeout_global_sec=_remaining_budget(),
                 partition=partition,
                 gpus_per_task=int(gpus_per_task),
                 gpu_type=gpu_type,
@@ -622,7 +708,8 @@ async def reproduce_submission(
     attempts.append({"attempt": 1, "salvage": False, **_attempt_summary(res)})
 
     # Salvage retry condition: caller opted in AND first attempt failed
-    # AND finished fast (likely an environment issue, not a slow run).
+    # AND finished fast (likely an environment issue, not a slow run)
+    # AND there is still budget remaining for another attempt.
     n = 0
     while (
         salvage_retries > 0
@@ -630,13 +717,14 @@ async def reproduce_submission(
         and isinstance(res, dict)
         and res.get("exit_code") not in (0, None)
         and float(res.get("elapsed_sec") or 0) < float(retry_threshold_sec)
+        and _remaining_budget() > 0
     ):
         n += 1
         log.info(
-            "[salvage] attempt %d/%d (exit=%s elapsed=%.1fs<threshold=%ds)",
+            "[salvage] attempt %d/%d (exit=%s elapsed=%.1fs<threshold=%ds remaining=%ds)",
             n, salvage_retries,
             res.get("exit_code"), res.get("elapsed_sec") or 0.0,
-            retry_threshold_sec,
+            retry_threshold_sec, _remaining_budget(),
         )
         res = await _attempt(use_salvage_wrapper=True)
         attempts.append({"attempt": n + 1, "salvage": True, **_attempt_summary(res)})

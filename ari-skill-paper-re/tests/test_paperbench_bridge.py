@@ -348,6 +348,85 @@ def test_write_executed_tarball_round_trip(tmp_path):
     assert any(n.endswith("/results/metric.txt") for n in names), names
 
 
+def test_resolve_container_image_alias():
+    """``pb-env`` / ``pb-reproducer`` short aliases must resolve to the
+    canonical ``image:latest`` tags that ``scripts/build_pb_images.sh``
+    produces. Anything else (URIs, paths, arbitrary tags, empty) must
+    pass through verbatim — operators rely on supplying their own
+    images for non-vendor workflows.
+    """
+    assert B._resolve_container_image_alias("pb-env") == "pb-env:latest"
+    assert B._resolve_container_image_alias("pb-reproducer") == "pb-reproducer:latest"
+    assert B._resolve_container_image_alias("") == ""
+    assert B._resolve_container_image_alias("ubuntu:24.04") == "ubuntu:24.04"
+    assert B._resolve_container_image_alias("docker://nvcr.io/nvidia/pytorch:24.05-py3") == \
+        "docker://nvcr.io/nvidia/pytorch:24.05-py3"
+    assert B._resolve_container_image_alias("/scratch/img.sif") == "/scratch/img.sif"
+    # Whitespace tolerance (operators pasting wizard input):
+    assert B._resolve_container_image_alias("  pb-env  ") == "pb-env:latest"
+
+
+def test_rollout_submission_signature_includes_blacklist_urls():
+    """(g) regression: bridge surface exposes blacklist_urls so the
+    wizard / CLI can forbid the agent from accessing the paper's own
+    codebase URL during rollout.
+    """
+    import inspect
+    sig = inspect.signature(B.rollout_submission)
+    assert "blacklist_urls" in sig.parameters
+    assert sig.parameters["blacklist_urls"].default is None
+
+
+def test_blacklist_urls_prepend_into_paper_md_smoke(tmp_path, monkeypatch):
+    """Smoke that the blacklist enforcement path:
+      (a) prepends a FORBIDDEN URLS section into the agent's paper_md.
+      (b) exports ARI_BLACKLIST_URLS as env.
+
+    We mock run_replicator_agent to capture the values it received.
+    """
+    import asyncio
+    captured: dict = {}
+
+    async def fake_run_replicator_agent(**kwargs):
+        # Snapshot the values the bridge handed off.
+        captured["env"] = dict(kwargs.get("env") or {})
+        captured["paper_md_path"] = kwargs.get("paper_md_path")
+        return {"populated": False, "warnings": [], "files": []}
+
+    # _replicator_agent is imported lazily inside rollout_submission.
+    import importlib, sys as _sys
+    fake_mod = type(_sys)("_replicator_agent")
+    fake_mod.run_replicator_agent = fake_run_replicator_agent  # type: ignore
+    monkeypatch.setitem(_sys.modules, "_replicator_agent", fake_mod)
+
+    # Stub out the OpenAI Responses completer + LiteLLM completer so
+    # the bridge does not try to import them for a non-OpenAI fake
+    # model.
+    asyncio.run(B.rollout_submission(
+        paper_md="hello paper body",
+        work_dir=tmp_path / "wd",
+        agent_model="anthropic/test",  # routes through LiteLLM branch
+        sandbox_kind="local",
+        blacklist_urls=[
+            "https://github.com/author/original-repo",
+            "https://huggingface.co/author/original-model",
+        ],
+    ))
+
+    # Env carries newline-joined entries
+    env = captured.get("env") or {}
+    assert "ARI_BLACKLIST_URLS" in env, env
+    assert "github.com/author/original-repo" in env["ARI_BLACKLIST_URLS"]
+    assert "huggingface.co/author/original-model" in env["ARI_BLACKLIST_URLS"]
+
+    # paper_md on disk has the FORBIDDEN URLS prelude
+    pm = Path(captured["paper_md_path"]).read_text()
+    assert "# FORBIDDEN URLS" in pm
+    assert "github.com/author/original-repo" in pm
+    assert pm.rstrip().endswith("hello paper body"), \
+        "original paper body must follow the prelude"
+
+
 def test_judge_submission_rejects_code_only_with_paper_audit_mode():
     """code_only (grade a Stage 1 submission against Code Dev subtree)
     and paper_audit_mode (grade the paper itself for describability)
