@@ -182,14 +182,17 @@ async def run_judge_dryrun(
 ) -> None:
     """Pipe the generated rubric into judge_submission.
 
-    When ``submission_dir`` is supplied (e.g. from --with-reproduce-plan
-    Step 4 output), the judge sees a real reproduction package; otherwise
-    an empty tempdir is used and ``Result Analysis`` leaves cannot score.
+    When ``submission_dir`` is supplied (a real PaperBench Step 2
+    executed submission directory), the judge grades against it;
+    otherwise an empty tempdir is used and ``Result Analysis`` leaves
+    cannot score (which is the correct behaviour — empty submission
+    means no reproduction was performed).
 
     ``paper_audit_mode`` swaps the vendor's submission-oriented
     TASK_CATEGORY_QUESTIONS to paper-audit flavors (see
     ``ari-skill-paper-re/src/_paperbench_bridge.py``). Required for
-    paper_audit-mode templates to break the structural ceiling.
+    paper_audit-mode templates so leaves phrased as "X is identifiable
+    in the paper" are graded correctly.
     """
     from _paperbench_bridge import judge_submission, task_node_from_dict  # type: ignore
 
@@ -280,18 +283,6 @@ def main() -> int:
                     help="After rubric gen, run judge_submission on an empty submission.")
     ap.add_argument("--judge-model", default=os.environ.get("ARI_MODEL_JUDGE", "gpt-5-mini"),
                     help="LLM model for judge.grade_leaf. Default: gpt-5-mini.")
-    ap.add_argument("--with-reproduce-plan", action="store_true",
-                    help="HPC PaperBench audit research plan §5 Step 4: ask the LLM "
-                         "to generate a reproduction package (reproduce_plan.md "
-                         "/ verification_code.py / install_commands.txt / "
-                         "reproduce.log) from the paper, write it to "
-                         "<out>/submission/, then pass that as submission_dir "
-                         "to judge_submission. Unblocks Result Analysis "
-                         "category leaves that would otherwise score 0 on an "
-                         "empty submission.")
-    ap.add_argument("--reproduce-plan-model", default="",
-                    help="LLM model for the Step 4 generator. Empty = inherit "
-                         "ARI_MODEL_REPRODUCE_PLAN env or ARI_MODEL_REPLICATE.")
     ap.add_argument("--paper-audit-mode", action="store_true",
                     help="Patch vendor SimpleJudge's TASK_CATEGORY_QUESTIONS "
                          "to paper-audit-flavored questions during judge "
@@ -396,31 +387,14 @@ def main() -> int:
           f"direct_children={len(direct_children)}  "
           f"top_weights={[int(c.get('weight', 0)) for c in direct_children]}")
 
-    # Step 4 (HPC PaperBench audit research plan §5): LLM-generated reproduction
-    # package. Writes 4 artifacts to <out>/submission/ so the vendor
-    # SimpleJudge's Result Analysis branch has evidence to grade against.
+    # NOTE: PaperBench Step 2 (executed submission) is not implemented in
+    # this dogfood script. The judge below runs against an empty
+    # submission, so Result Analysis category leaves will score 0 —
+    # that is the correct behaviour. To grade a real reproduction, run
+    # vendor PaperBench's IterativeAgent / BasicAgent to produce an
+    # executed submission and pass it through ari-skill-paper-re's
+    # judge_submission directly.
     submission_dir: Path | None = None
-    if args.with_reproduce_plan:
-        from reproduce_plan import generate_reproduce_plan_async  # type: ignore
-        submission_dir = out_dir / "submission"
-        print(f"\n[step4] generating reproduction package → {submission_dir}/")
-        rp_res = asyncio.run(generate_reproduce_plan_async(
-            paper_text=paper_text,
-            output_dir=str(submission_dir),
-            model=args.reproduce_plan_model,
-            paperbench_rubric_id=rubric_template_id,
-        ))
-        if "error" in rp_res:
-            print(f"[step4.error] {rp_res['error']}")
-            if rp_res.get("warnings"):
-                for w in rp_res["warnings"]:
-                    print(f"  warn: {w}")
-            return 1
-        print(f"[step4] model={rp_res['model']}  wrote: "
-              f"{', '.join(rp_res['files'])}")
-        if rp_res.get("warnings"):
-            for w in rp_res["warnings"]:
-                print(f"  warn: {w}")
 
     # Detect paper_audit mode from the loaded template (auto-enable the
     # vendor prompt patch when the user picked a paper_audit YAML).
