@@ -90,12 +90,17 @@ constraint.
 
 \subsubsection*{Paper-audit mechanisms (v0.7.2)}
 
-Four orthogonal mechanisms compose to lift the \texttt{paper\_audit}
+Three orthogonal mechanisms compose to lift the \texttt{paper\_audit}
 score from a low single-digit baseline to a regime where the rubric
 discriminates papers along the reproducibility axes named above.
-All four are pure ARI wrapper layers --- the vendored PaperBench
+All three are pure ARI wrapper layers --- the vendored PaperBench
 \texttt{SimpleJudge} is unchanged --- and each is independently
 toggleable so the contribution of each mechanism can be ablated.
+(An earlier ``Step~4 reproduction-package generator'' that drafted
+an LLM-simulated \texttt{reproduce.log} from the paper's own
+reported numbers was removed as off-protocol: it short-circuited
+PaperBench's executed-submission stage and inflated the audit
+score in a way not comparable to leaderboard runs.)
 
 \begin{enumerate}
   \item \emph{Multimodal markdown image expander}
@@ -130,41 +135,21 @@ toggleable so the contribution of each mechanism can be ablated.
     \texttt{agent\_benchmark} calls in the same process are
     unaffected.
 
-  \item \emph{Step 4 reproduction-package generator}, exposed as
-    the \texttt{generate\_reproduce\_plan} MCP tool in
-    \code{ari-skill-replicate/src/reproduce\_plan.py}.  An LLM
-    reads the paper (with AD/AE Appendix concatenated when present)
-    and emits four artifacts to a target directory:
-    \texttt{reproduce\_plan.md} (step-by-step reconstruction with
-    per-experiment reproducibility category),
-    \texttt{verification\_code.py} (consistency-check stubs over
-    the paper's numerical claims with tolerances),
-    \texttt{install\_commands.txt} (shell commands extracted from
-    paper / AD / AE), and \texttt{reproduce.log} (a simulated
-    execution log built from the paper's own reported numbers).
-    Passing this directory as \texttt{submission\_dir} to
-    \texttt{judge\_submission} gives \texttt{SimpleJudge}'s
-    \texttt{Result Analysis} branch the evidence it needs to grade
-    against; the bundled prompt is venue-agnostic (a regression
-    test enforces this), and venue-specific reproducibility
-    criteria live in the same YAML templates as the rubric hint.
-
   \item \emph{Stepwise input conditions}.  The dogfood script
     \code{scripts/sc\_paper\_dogfood.py} supports
     \texttt{-{}-paper-extras AD.pdf AE.pdf} which concatenates
     additional PDFs into the main \texttt{paper.md} so the same
     rubric can be scored under \texttt{paper-only},
-    \texttt{paper+AD}, \texttt{paper+AD+AE}, and
-    \texttt{paper+AD+AE+metadata} conditions.  This is the input
-    axis required to measure the relative contribution of each
-    artifact layer.
+    \texttt{paper+AD}, and \texttt{paper+AD+AE} conditions.  This
+    is the input axis required to measure the relative
+    contribution of each artifact layer.
 \end{enumerate}
 
-The four mechanisms compose super-additively: the lift from
-combining all four exceeds the sum of their independent lifts, with
-the largest single-mechanism contribution coming from the
+The three mechanisms compose super-additively: the lift from
+combining all three exceeds the sum of their independent lifts,
+with the largest single-mechanism contribution coming from the
 prompt patch (mechanism 2) and the second from AD/AE concatenation
-(mechanism 4); the multimodal expander (mechanism 1) provides a
+(mechanism 3); the multimodal expander (mechanism 1) provides a
 small but consistent paper-agnostic boost.
 
 \subsection{Review/refine loop}\label{sec:paper:loop}

@@ -83,9 +83,14 @@ review 侧已采用的
 \subsubsection*{paper-audit 机制 (v0.7.2)}
 
 为将 \texttt{paper\_audit} 模式的得分从个位数 baseline 提升到
-按上述再现性轴对论文进行判别的区域,组合使用四个正交机制。 全部
+按上述再现性轴对论文进行判别的区域,组合使用三个正交机制。 全部
 为纯粹的 ARI 包装层,vendor 化的 PaperBench \texttt{SimpleJudge}
 保持无改动;各机制独立可开关,便于消融分析。
+(此前曾存在「Step~4 再现包生成器」作为第四个机制,但其将论文
+自身报告值由 LLM 转写为 \texttt{reproduce.log} 供 judge 评分,
+属于 off-protocol 实现,已被移除。 它短路了 PaperBench 的
+executed-submission 阶段,使 audit score 被人为抬高,与
+leaderboard 数据不再可比。)
 
 \begin{enumerate}
   \item \emph{多模态 markdown 图像扩展器}
@@ -114,32 +119,17 @@ review 侧已采用的
     退出时恢复原值,因此同进程内的 \texttt{agent\_benchmark}
     调用不受影响。
 
-  \item \emph{Step 4 再现包生成器} 作为
-    \code{ari-skill-replicate/src/reproduce\_plan.py} 中的
-    \texttt{generate\_reproduce\_plan} MCP 工具暴露。 LLM 阅读
-    论文 (若存在,concat 后含 AD/AE Appendix) 并向目标目录写出
-    四个产物: \texttt{reproduce\_plan.md} (含逐实验再现性分类的
-    分步重构指南)、 \texttt{verification\_code.py} (针对论文数值
-    主张的带容差一致性检查桩)、 \texttt{install\_commands.txt}
-    (从 paper / AD / AE 抽取的 shell 命令)、 \texttt{reproduce.log}
-    (由论文自身报告值合成的模拟执行日志)。 将此目录作为
-    \texttt{judge\_submission} 的 \texttt{submission\_dir} 传入,
-    \texttt{SimpleJudge} 的 \texttt{Result Analysis} 分支即可获得
-    待评证据。 同捆 prompt 不依赖 venue (由 regression test 强制),
-    venue 特有的再现性准则与 rubric 生成共用同一份 YAML 模板。
-
   \item \emph{分级输入条件}。 dogfood 脚本
     \code{scripts/sc\_paper\_dogfood.py} 支持
     \texttt{-{}-paper-extras AD.pdf AE.pdf} 将额外 PDF concat 到
     主 \texttt{paper.md},以便在同一 rubric 下分别测量
     \texttt{paper-only} / \texttt{paper+AD} / \texttt{paper+AD+AE}
-    / \texttt{paper+AD+AE+metadata} 四种条件下的 score,从而分解
-    各产物层的贡献。
+    三种条件下的 score,从而分解各产物层的贡献。
 \end{enumerate}
 
-四个机制的合计效应为超加 (super-additive):合并效果超过各机制
+三个机制的合计效应为超加 (super-additive):合并效果超过各机制
 独立提升之和。 单机制最大提升来自提示词补丁 (机制 2),其次为
-AD/AE concat (机制 4),多模态扩展器 (机制 1) 提供较小但
+AD/AE concat (机制 3),多模态扩展器 (机制 1) 提供较小但
 paper-agnostic 一致的增益。
 
 \subsection{review/refine 循环}\label{sec:paper:loop}
