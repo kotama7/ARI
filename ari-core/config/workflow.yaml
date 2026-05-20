@@ -315,7 +315,7 @@ pipeline:
     iterative_agent: false
     max_steps: 0
     sandbox_kind: auto
-    apptainer_image: ''
+    container_image: ''
     overwrite: false
   outputs:
     file: '{{checkpoint_dir}}/ors_replicator.json'
@@ -336,6 +336,7 @@ pipeline:
     rubric_path: '{{checkpoint_dir}}/ors_rubric.json'
     repo_dir: '{{checkpoint_dir}}/repro_sandbox'
     sandbox_kind: ''
+    container_image: ''
     timeout_global_sec: 0
     partition: ''
     cpus: 0
