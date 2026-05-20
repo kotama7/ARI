@@ -162,9 +162,70 @@ python -m report.scripts.paperbench_report paper \
 ja/zh ミラーは XeLaTeX + Noto CJK font 必須。 `report/setup_fonts.sh`
 実行と `fc-list | grep -i 'noto.*cjk'` で確認。
 
+## v0.7.3 アップデート: sandbox / GPU エラー
+
+### Q. `RuntimeError: sandbox_kind=docker requested but docker daemon is not reachable`
+
+docker daemon が起動していないか到達不能。bridge / `run_reproduce` は
+silent fallback を拒否する。docker を起動するか、`sandbox_kind` を
+別の値 (`local` / `apptainer` / `slurm`) に変えるか、または legacy
+fallback を opt-in する: `export ARI_PHASE1_ALLOW_FALLBACK=1`。
+`sandbox_kind=apptainer` の binary 不在、`sandbox_kind=slurm` の sbatch
+不在 / partition 解決失敗 にも同じ対処。
+
+### Q. `RuntimeError: GPU resources requested ... but cluster has no GRES configured`
+
+クラスタの SLURM に GPU GRES 設定が無いが、caller が `gpus_per_task` /
+`gpu_type` を指定。bridge は拒否する (36 h queue 待った後 all-CPU 実行
+は最悪の failure mode)。 解決策:
+
+1. SLURM の GRES 設定を直す
+2. GRES 設定済 partition を選ぶ (`sinfo -o '%P %G'` で確認)
+3. silent drop を opt-in: `export ARI_SLURM_ALLOW_NO_GRES=1`
+
+### Q. agent が Stage 1 を動かしたが Stage 3 で全 leaf が 0 点
+
+2 つの原因 (v0.7.3 で両方対処済み):
+
+1. **`reproduce.log` 不在** — Stage 2 がスキップされ vendor SimpleJudge
+   の safeguard 「`reproduce.sh` failed to modify or create any files.
+   All result analysis tasks will be graded as 0」 が発火。v0.7.3 で
+   judge が `code_only=True` を自動有効化し rubric を Code Development
+   葉のみに pruning する。
+2. **`paper_audit_mode` が誤って ON** — paper-audit mode は論文自体を
+   採点。`code_only` と排他で、両方 True なら bridge が `ValueError`。
+
+## v0.7.3: HF_TOKEN / agent.env
+
+### Q. 論文が gated dataset / model のため HF_TOKEN が必要
+
+`setup.sh` の interactive prompt で登録するか、`.env` に追加:
+
+```
+HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+`bridge.rollout_submission` が calling process env から自動転送する。
+paper 別 credentials は `~/.ari/agent.env` に `KEY=VALUE` 形式で配置 —
+bridge が `agent_env_path=None` 時に auto-discover。 `ARI_AGENT_ENV_PATH`
+で path 上書き可。
+
+## v0.7.3: salvage retries + executed-submission tarball
+
+`bridge.reproduce_submission(salvage_retries=N, retry_threshold_sec=60)`
+で early-failure (exit≠0 かつ elapsed<threshold) 時に Python 3.11 + venv
+prelude 付き salvage wrapper で N 回 retry。総 wall-clock budget は
+attempts 跨いで honor。
+
+毎回 `submission_executed_<UTC>.tar.gz` が `submission_dir` 隣に生成。
+返却 dict の `executed_tarball` キーが絶対パス。`capture_tarball=False`
+で抑止、`tarball_dir=` で出力先上書き。
+
 ## 関連
 
 - [クイックスタート](paperbench_quickstart.md)
 - [マルチノード設定](multi_node_setup.md)
 - [計算ノード安全規約](compute_node_safety.md)
 - [実行プロファイル仕様](../reference/execution_profile.md)
+- [PaperBench API + bridge contract](../reference/api_paperbench.md)
+- [環境変数](../reference/environment_variables.md)

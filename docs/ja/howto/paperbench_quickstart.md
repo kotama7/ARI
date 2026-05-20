@@ -100,6 +100,53 @@ python scripts/sc_paper_dogfood.py \
 詳細は [`rubric_schema.md`](../reference/rubric_schema.md#venue-conditioned-templates)
 を参照。
 
+## 7. (上級) 完全な 3-stage プロトコルを CLI で実行 (v0.7.3)
+
+dogfood スクリプトは PaperBench の Stage 1 → 2 → 3 を bridge surface
+(`ari-skill-paper-re/src/_paperbench_bridge.py`) 経由で駆動する。
+
+- **Stage 1** (`rollout_submission`) — vendor BasicAgent / IterativeAgent
+  が `reproduce.sh` を書く
+- **Stage 2** (`reproduce_submission`) — 選択した sandbox で実行、
+  `reproduce.log` と `submission_executed_<UTC>.tar.gz` を採取
+- **Stage 3** (`judge_submission`) — executed submission を採点
+
+```bash
+python scripts/sc_paper_dogfood.py \
+    --pdf /path/to/paper.pdf \
+    --rubric-model gpt-5-mini --two-stage \
+    --with-rollout \
+        --rollout-model gpt-5-mini \
+        --rollout-time-limit-sec 14400 \
+        --rollout-sandbox local \
+    --with-reproduction \
+        --reproduce-sandbox slurm \
+        --reproduce-partition <PARTITION> \
+        --reproduce-gpus-per-task 1 \
+        --reproduce-time-limit-sec 7200 \
+    --judge-dryrun --judge-model gpt-5-mini \
+    --out $HOME/.ari_pb_<run_id>
+```
+
+`--paper-audit-mode`(および `sc.yaml` 等 `paper_audit` テンプレート)
+とは**排他** — paper_audit は論文自体を採点、`--with-reproduction` は
+実行された submission を採点。両立しない。
+
+vendor image を使う場合は先に `scripts/build_pb_images.sh` で
+`pb-env` / `pb-reproducer` をビルドしてから
+`--rollout-container-image pb-env --reproduce-container-image pb-reproducer`
+を渡す。
+
+> **fail-loud 前提条件 (v0.7.3)**。
+> 要求した sandbox / GPU リソースがホストで提供できない場合、エラーで
+> 止まり host CPU に黙ってフォールバックしない:
+> - `ARI_PHASE1_ALLOW_FALLBACK=1` — docker / apptainer / sbatch が
+>   missing 時の legacy fallback を opt-in
+> - `ARI_SLURM_ALLOW_NO_GRES=1` — GRES 未設定クラスタで `--gres` /
+>   `--gpus-*` フラグを silent drop する legacy 挙動を opt-in
+>
+> 両方デフォルト OFF(actionable エラー発生)。
+
 ## 次のステップ
 
 - [ルブリックスキーマ + venue テンプレート](../reference/rubric_schema.md)
@@ -107,3 +154,5 @@ python scripts/sc_paper_dogfood.py \
 - [マルチノード設定](multi_node_setup.md)
 - [計算ノード安全規約](compute_node_safety.md)
 - [トラブルシューティング](paperbench_troubleshooting.md)
+- [PaperBench bridge API](../reference/api_paperbench.md)
+- [環境変数](../reference/environment_variables.md)

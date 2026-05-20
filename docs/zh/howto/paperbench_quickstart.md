@@ -98,6 +98,53 @@ python scripts/sc_paper_dogfood.py \
 新增 venue 只需 YAML 一个文件 — 详见
 [`rubric_schema.md`](../reference/rubric_schema.md#venue-conditioned-templates)。
 
+## 7. (进阶) 通过 CLI 执行完整 3-stage 协议 (v0.7.3)
+
+dogfood 脚本通过 bridge surface
+(`ari-skill-paper-re/src/_paperbench_bridge.py`) 驱动 PaperBench 的
+Stage 1 → 2 → 3:
+
+- **Stage 1** (`rollout_submission`) — vendor BasicAgent / IterativeAgent
+  编写 `reproduce.sh`
+- **Stage 2** (`reproduce_submission`) — 在所选 sandbox 中执行,
+  抓取 `reproduce.log` 与 `submission_executed_<UTC>.tar.gz`
+- **Stage 3** (`judge_submission`) — 对执行后的 submission 评分
+
+```bash
+python scripts/sc_paper_dogfood.py \
+    --pdf /path/to/paper.pdf \
+    --rubric-model gpt-5-mini --two-stage \
+    --with-rollout \
+        --rollout-model gpt-5-mini \
+        --rollout-time-limit-sec 14400 \
+        --rollout-sandbox local \
+    --with-reproduction \
+        --reproduce-sandbox slurm \
+        --reproduce-partition <PARTITION> \
+        --reproduce-gpus-per-task 1 \
+        --reproduce-time-limit-sec 7200 \
+    --judge-dryrun --judge-model gpt-5-mini \
+    --out $HOME/.ari_pb_<run_id>
+```
+
+与 `--paper-audit-mode`(以及 `sc.yaml` 等 `paper_audit` 模板)
+**互斥** — paper_audit 评分论文本身; `--with-reproduction` 评分执行
+后的 submission, 二者不可同时启用。
+
+若需使用 vendor 镜像, 请先执行 `scripts/build_pb_images.sh` 构建
+`pb-env` / `pb-reproducer`, 然后传入
+`--rollout-container-image pb-env --reproduce-container-image pb-reproducer`。
+
+> **fail-loud 前置条件 (v0.7.3)**。
+> 当请求的 sandbox / GPU 资源在 host 不可满足时, 直接报错而不会静默
+> 降级到 host CPU:
+> - `ARI_PHASE1_ALLOW_FALLBACK=1` — 当 docker / apptainer / sbatch
+>   缺失时, opt-in 回到 legacy 静默降级
+> - `ARI_SLURM_ALLOW_NO_GRES=1` — 集群无 GRES 配置时, opt-in 静默
+>   丢弃 `--gres` / `--gpus-*` 标志
+>
+> 两者默认 OFF (报错并给出可操作的提示)。
+
 ## 下一步
 
 - [Rubric schema 与 venue 模板](../reference/rubric_schema.md)
@@ -105,3 +152,5 @@ python scripts/sc_paper_dogfood.py \
 - [多节点搭建](multi_node_setup.md)
 - [计算节点安全约定](compute_node_safety.md)
 - [故障排查](paperbench_troubleshooting.md)
+- [PaperBench bridge API](../reference/api_paperbench.md)
+- [环境变量](../reference/environment_variables.md)

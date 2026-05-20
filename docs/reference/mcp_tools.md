@@ -108,9 +108,41 @@ The skill explicitly declares "no LLM calls" in its design doc — see
 | Tool | Purpose | LLM |
 |---|---|:---:|
 | `fetch_code_bundle` | Fetch + verify a code bundle by ref + sha256 | ✗ |
-| `build_reproduce_sh` | LLM writes `reproduce.sh` from paper text + rubric | ✓ |
-| `run_reproduce` | Run `reproduce.sh` in a SLURM / Docker / Apptainer sandbox | ✗ |
-| `grade_with_simplejudge` | LLM grades reproduce outputs against the rubric leaves | ✓ |
+| `build_reproduce_sh` | Stage 1 — vendor BasicAgent / IterativeAgent rollout writes `reproduce.sh` | ✓ |
+| `run_reproduce` | Stage 2 — execute `reproduce.sh` in a `local` / `docker` / `apptainer` / `singularity` / `slurm` sandbox | ✗ |
+| `grade_with_simplejudge` | Stage 3 — LLM grades the executed submission against the rubric leaves | ✓ |
+
+### v0.7.3 new fields (Stage 1)
+
+| Tool | New args |
+|---|---|
+| `build_reproduce_sh` | `container_image` (replaces / supersedes legacy `apptainer_image`; both accepted for back-compat) |
+
+### v0.7.3 new fields (Stage 2)
+
+| Tool | New args |
+|---|---|
+| `run_reproduce` | `container_image` (honoured by docker / apptainer / singularity sandboxes; alias `pb-env` / `pb-reproducer` resolves to vendor `image:latest` tags built by `scripts/build_pb_images.sh`) |
+
+Fail-loud preconditions: missing docker daemon / apptainer binary /
+sbatch / partition raise `RuntimeError` rather than silently falling
+back to local CPU. Opt back into legacy fallback via
+`ARI_PHASE1_ALLOW_FALLBACK=1`; opt back into silent GRES-flag drop via
+`ARI_SLURM_ALLOW_NO_GRES=1`. See
+[environment_variables.md](environment_variables.md#paperbench-reproduction-phase-stage-2).
+Mixing typed (`gpu_type` / `--gres=gpu:TYPE:N`) with untyped
+(`--gpus-per-task`) GPU requests is automatically canonicalised to
+the typed form — SLURM 24.05 rejects the mixed form.
+
+### v0.7.3 new fields (Stage 3)
+
+| Tool | New args |
+|---|---|
+| `grade_with_simplejudge` | `code_only` (prune rubric to Code Development leaves only, mirrors vendor `paperbench/grade.py:109-112`; auto-enables when no `reproduce.log` is present so Stage 1-only runs aren't systematically zeroed) |
+
+For an in-process Python surface that chains all three stages with a
+single calling vocabulary, see
+[`api_paperbench.md` § Bridge contract](api_paperbench.md#bridge-contract-in-process-python-surface).
 
 ## ari-skill-plot — figure generation
 

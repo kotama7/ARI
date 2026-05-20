@@ -41,14 +41,33 @@ From the registry page, tick one or more papers and click
 1. **Papers** — verify your selection.
 2. **Rubric** — pick the generator model (default `gemini-2.5-pro`,
    two-stage on). See [Rubric schema](../reference/execution_profile.md).
-3. **Reproduce** — choose the replicator model + time budget. Expand
-   *Execution profile override* to override SLURM allocation flags
-   (`--nodes`, `--gpus-per-task`, `--exclusive`, ...). When the rubric
-   already carries an `execution_profile`, these fields pre-fill from it.
+3. **Reproduce** — choose the replicator model + time budget +
+   sandbox kind (`auto` / `local` / `apptainer` / `docker` / `slurm`) +
+   `container_image` (SIF path, `docker://` URI, or short alias
+   `pb-env` / `pb-reproducer` when you ran
+   `scripts/build_pb_images.sh`). Expand *Execution profile override*
+   to override SLURM allocation flags (`--nodes`, `--gpus-per-task`,
+   `gpu_type`, `memory_gb_per_node`, `--exclusive`, `extra_sbatch_args`,
+   …). When the rubric already carries an `execution_profile`, these
+   fields pre-fill from it. Caller args always win over rubric hints.
 4. **Judge** — set the SimpleJudge model + `n_runs` (default 1 — see
-   PaperBench paper §4.1).
+   PaperBench paper §4.1). When Stage 2 (reproduce) is skipped, the
+   judge auto-enables `code_only` mode so the rubric is pruned to
+   Code Development leaves (mirrors vendor `paperbench/grade.py:109-112`
+   and prevents systematic 0s on Result Analysis leaves the agent
+   was never asked to execute).
 5. **Launch** — review the cost estimate, then click *Dry run* to verify
    or *Launch all* to enqueue the jobs.
+
+> **Fail-loud preconditions.** Wizard requests sandbox/GPU resources
+> the host cannot satisfy raise loudly rather than silently downgrading
+> to the host CPU. To opt back into the legacy silent fallback, set:
+> - `ARI_PHASE1_ALLOW_FALLBACK=1` — when docker daemon / apptainer
+>   binary / sbatch / partition is missing, fall back to local exec.
+> - `ARI_SLURM_ALLOW_NO_GRES=1` — when the cluster has no GRES
+>   configured for GPUs, drop `--gres` / `--gpus-*` flags.
+>
+> Both default OFF (refuses the request, surfaces an actionable error).
 
 ## 3. Wait
 
@@ -108,6 +127,41 @@ matching `sc.yaml`'s `top_level_axes`, with leaves phrased as
 implementation does X"`. Adding a new venue is a YAML-only change —
 see [`rubric_schema.md`](../reference/rubric_schema.md#venue-conditioned-templates).
 
+## 7. (Advanced) Full 3-stage protocol via CLI
+
+The dogfood script also drives PaperBench's full Stage 1 → Stage 2 →
+Stage 3 protocol via the bridge surface
+(`ari-skill-paper-re/src/_paperbench_bridge.py`). Stage 1
+(`rollout_submission`) runs a vendor BasicAgent / IterativeAgent that
+writes `reproduce.sh`. Stage 2 (`reproduce_submission`) executes it in
+the chosen sandbox and captures `reproduce.log` + an
+`submission_executed_<UTC>.tar.gz` provenance snapshot. Stage 3
+(`judge_submission`) grades the executed submission.
+
+```bash
+python scripts/sc_paper_dogfood.py \
+    --pdf /path/to/paper.pdf \
+    --rubric-model gpt-5-mini --two-stage \
+    --with-rollout \
+        --rollout-model gpt-5-mini \
+        --rollout-time-limit-sec 14400 \
+        --rollout-sandbox local \
+    --with-reproduction \
+        --reproduce-sandbox slurm \
+        --reproduce-partition <PARTITION> \
+        --reproduce-gpus-per-task 1 \
+        --reproduce-time-limit-sec 7200 \
+    --judge-dryrun --judge-model gpt-5-mini \
+    --out $HOME/.ari_pb_<run_id>
+```
+
+Mutually exclusive with `--paper-audit-mode` (and with `paper_audit`
+rubric templates such as `sc.yaml` — these grade the paper itself,
+not an executed submission). To run the full protocol with vendor
+images, first build `pb-env` / `pb-reproducer` via
+`scripts/build_pb_images.sh` then pass
+`--rollout-container-image pb-env --reproduce-container-image pb-reproducer`.
+
 ## Next steps
 
 - [Rubric schema + venue templates](../reference/rubric_schema.md)
@@ -115,3 +169,5 @@ see [`rubric_schema.md`](../reference/rubric_schema.md#venue-conditioned-templat
 - [Multi-node setup](multi_node_setup.md)
 - [Compute-node safety conventions](compute_node_safety.md)
 - [Troubleshooting](paperbench_troubleshooting.md)
+- [PaperBench bridge API](../reference/api_paperbench.md)
+- [Environment variables](../reference/environment_variables.md)

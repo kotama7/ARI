@@ -153,9 +153,67 @@ python -m report.scripts.paperbench_report paper \
 ja/zh 镜像需要 XeLaTeX + Noto CJK 字体。运行
 `report/setup_fonts.sh` 并用 `fc-list | grep -i 'noto.*cjk'` 验证。
 
+## v0.7.3 更新: sandbox / GPU 错误
+
+### Q. `RuntimeError: sandbox_kind=docker requested but docker daemon is not reachable`
+
+docker daemon 未启动或不可达。bridge / `run_reproduce` 拒绝静默降级。
+解决方法: 启动 docker、切换到其他 `sandbox_kind`、或 opt-in legacy
+fallback: `export ARI_PHASE1_ALLOW_FALLBACK=1`。同样适用于
+`sandbox_kind=apptainer` 二进制缺失、`sandbox_kind=slurm` sbatch
+缺失 / partition 无法解析。
+
+### Q. `RuntimeError: GPU resources requested ... but cluster has no GRES configured`
+
+集群 SLURM 未配置 GRES, 但 caller 传入 `gpus_per_task` / `gpu_type`。
+bridge 拒绝以避免 "排队 36 h 后全 CPU 执行" 这种最差失败模式。 解决:
+
+1. 修复集群 SLURM 的 GRES 配置
+2. 选择已配置 GRES 的 partition (`sinfo -o '%P %G'`)
+3. opt-in 静默丢弃: `export ARI_SLURM_ALLOW_NO_GRES=1`
+
+### Q. agent 完成 Stage 1, 但 Stage 3 所有 leaf 评分为 0
+
+两种原因 (v0.7.3 都已处理):
+
+1. **`reproduce.log` 不存在** — Stage 2 被跳过, vendor SimpleJudge 的
+   保护 "`reproduce.sh` failed to modify or create any files. All
+   result analysis tasks will be graded as 0" 触发。v0.7.3 在
+   judge 调用上自动启用 `code_only=True`, 将 rubric 裁剪为仅
+   Code Development 叶。
+2. **`paper_audit_mode` 误开** — paper-audit 评分论文本身, 与
+   `code_only` 互斥, 两者同时 True 时 bridge 抛出 `ValueError`。
+
+## v0.7.3: HF_TOKEN / agent.env
+
+### Q. 论文需要 HF_TOKEN 获取 gated 数据集 / 模型
+
+通过 `setup.sh` 交互式输入注册, 或加入 `.env`:
+
+```
+HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+`bridge.rollout_submission` 会自动从调用进程 env 转发。 论文级别 凭据
+放入 `~/.ari/agent.env` (`KEY=VALUE` 每行一条) — bridge 在
+`agent_env_path=None` 时自动发现。 通过 `ARI_AGENT_ENV_PATH` 覆盖路径。
+
+## v0.7.3: salvage retries + executed-submission tarball
+
+`bridge.reproduce_submission(salvage_retries=N, retry_threshold_sec=60)`
+在 early-failure (exit≠0 且 elapsed<threshold) 时, 使用 Python 3.11
++ venv 前置脚本的 salvage wrapper 重试 N 次。 总 wall-clock 预算跨
+尝试 honor。
+
+每次调用生成 `submission_executed_<UTC>.tar.gz`, 放在 `submission_dir`
+旁。 返回 dict 的 `executed_tarball` 键为绝对路径。 `capture_tarball=False`
+禁用, `tarball_dir=` 覆盖输出位置。
+
 ## 相关
 
 - [快速入门](paperbench_quickstart.md)
 - [多节点搭建](multi_node_setup.md)
 - [计算节点安全](compute_node_safety.md)
 - [执行配置参考](../reference/execution_profile.md)
+- [PaperBench API + bridge contract](../reference/api_paperbench.md)
+- [环境变量](../reference/environment_variables.md)

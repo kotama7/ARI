@@ -124,6 +124,22 @@ curl http://localhost:8765/api/paperbench/run/<job_id>
 - **ネガティブコントロール結果**
 - **レポートダウンロード** — en/ja/zh × pdf/html/md (`POST /run/<id>/report`)
 
+## v0.7.3 アップデート
+
+- **Step 3 Reproduce: `container_image` フィールド追加** — SIF パス /
+  `docker://` URI / `image:tag` / 短縮エイリアス `pb-env` /
+  `pb-reproducer` (`scripts/build_pb_images.sh` で構築) を受領。
+  `sandbox=docker`/`apptainer`/`singularity` 時のみ有効。
+- **GPU フラグ整合**: `gpus_per_task` 単独 → `--ntasks 1` を自動 pair。
+  `gpu_type` 設定時は `--gres=gpu:TYPE:N` を canonical として
+  untyped `--gpus-per-task` を drop (SLURM 24.05 の typed/untyped 衝突回避)。
+- **fail-loud 前提条件**: docker daemon / apptainer / sbatch / partition
+  / GRES が不足する場合エラーで停止 (legacy 静黙フォールバックは
+  `ARI_PHASE1_ALLOW_FALLBACK=1` / `ARI_SLURM_ALLOW_NO_GRES=1` で opt-in)。
+- **Step 4 Judge: `code_only` 自動有効化** — Stage 2 がスキップされた
+  時 (reproduce.log 不在), rubric が Code Development 葉のみに pruning
+  され、Code Execution / Result Analysis 葉の structural 0 を回避。
+
 ## 関連
 
 - [論文取り込み](paper_import.md)

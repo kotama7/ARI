@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>ARI — Artificial Research Intelligence</title>
+  <title>ARI — Autonomous Research Infrastructure</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
     :root {
@@ -140,7 +140,7 @@
 <!-- HERO -->
 <div class="hero">
   <img class="logo" src="logo.png" alt="ARI"/>
-  <p class="hero-eyebrow"><span id="t-hero-eyebrow">Artificial Research Intelligence</span></p>
+  <p class="hero-eyebrow"><span id="t-hero-eyebrow">Autonomous Research Infrastructure</span></p>
   <h1><span id="t-hero-title">Research, automated end-to-end.</span></h1>
   <p class="hero-sub"><span id="t-hero-sub">Describe your goal in plain text. ARI runs the experiments, writes the paper, and verifies the results — entirely on its own. Currently supports digital computation experiments (HPC, ML, systems).</span></p>
   <div class="hero-cta">
@@ -249,7 +249,7 @@
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px;">
         <div style="font-size:1.4rem;margin-bottom:10px;">📋</div>
         <h3 style="font-size:1.05rem;font-weight:700;margin-bottom:8px;">PaperBench</h3>
-        <p style="color:var(--muted);font-size:.9rem;line-height:1.6;margin-bottom:16px;"><span id="t-paperbench-desc">OpenAI's benchmark for evaluating whether AI agents can reproduce frontier ML papers from scratch. Each paper is decomposed into a fine-grained TaskNode rubric scored by an LLM judge ("SimpleJudge"). v0.7.0 vendors PaperBench under <code>ari-skill-paper-re/vendor/paperbench</code> as the deterministic core of ARI's reproducibility check (ORS Phase 2). v0.7.2 adds <strong>paper-audit mode</strong>: the same rubric machinery, inverted to audit whether a paper itself describes enough to be reproducible — venue-conditioned templates (sc / neurips / nature), an LLM-generated reproduction package (reproduce_plan + verification code + simulated log), multimodal figure inspection, and a paper_audit prompt patch that breaks the structural ceiling on Result Analysis leaves.</span></p>
+        <p style="color:var(--muted);font-size:.9rem;line-height:1.6;margin-bottom:16px;"><span id="t-paperbench-desc">OpenAI's benchmark for evaluating whether AI agents can reproduce frontier ML papers from scratch. Each paper is decomposed into a fine-grained TaskNode rubric scored by an LLM judge ("SimpleJudge"). v0.7.0 vendors PaperBench under <code>ari-skill-paper-re/vendor/paperbench</code> as the deterministic core of ARI's reproducibility check (ORS Phase 2). v0.7.2 adds <strong>paper-audit mode</strong>: the same rubric machinery inverted to audit whether a paper itself describes enough to be reproducible — venue-conditioned templates (sc / neurips / nature), multimodal figure inspection, and a paper_audit prompt patch that breaks the structural ceiling on Result Analysis leaves. v0.7.3 ships the <strong>3-stage bridge contract</strong> (<code>rollout_submission</code> / <code>reproduce_submission</code> / <code>judge_submission</code>) honouring vendor protocol with container image plumbing, salvage retries, executed-submission tarballs, code_only consistency, agent.env injection, and host-FS source-removal guard.</span></p>
         <a href="https://arxiv.org/abs/2504.01848" target="_blank" style="font-size:.85rem;color:var(--blue-light);">arxiv.org/abs/2504.01848 →</a>
       </div>
 
@@ -515,7 +515,7 @@ Primary score
 <!-- FOOTER -->
 <footer>
   <div class="footer-logo">
-    <img src="logo.png" alt="ARI"/> ARI — Artificial Research Intelligence
+    <img src="logo.png" alt="ARI"/> ARI — Autonomous Research Infrastructure
   </div>
   <p><span id="t-footer-text">v0.7.2 · Open source · MIT License</span> · <a href="https://github.com/kotama7/ARI">GitHub</a> · <a href="PHILOSOPHY.md">Philosophy</a> · <a href="docs.html">Docs</a> · <a href="https://discord.gg/SbMzNtYkq">Discord</a></p>
   <p style="margin-top:8px;font-size:.8rem;"><span id="t-footer-tagline">From laptop to supercomputer. From idea to verified paper.</span></p>

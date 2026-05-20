@@ -123,6 +123,23 @@ curl http://localhost:8765/api/paperbench/run/<job_id>
 - **负向控制结果**
 - **报告下载** — en/ja/zh × pdf/html/md (`POST /run/<id>/report`)
 
+## v0.7.3 更新
+
+- **Step 3 Reproduce: 新增 `container_image` 字段** — 接受 SIF 路径 /
+  `docker://` URI / `image:tag` / 短别名 `pb-env` / `pb-reproducer`
+  (由 `scripts/build_pb_images.sh` 构建)。仅在
+  `sandbox=docker`/`apptainer`/`singularity` 时生效。
+- **GPU 标志一致性**: `gpus_per_task` 单独 → 自动配对 `--ntasks 1`;
+  设置 `gpu_type` 时 `--gres=gpu:TYPE:N` 为 canonical, 同时 drop
+  untyped `--gpus-per-task` (避免 SLURM 24.05 的 typed/untyped 冲突)。
+- **fail-loud 前置条件**: docker daemon / apptainer / sbatch / partition
+  / GRES 缺失时报错停止 (设置
+  `ARI_PHASE1_ALLOW_FALLBACK=1` / `ARI_SLURM_ALLOW_NO_GRES=1` opt-in
+  回到 legacy 静默降级)。
+- **Step 4 Judge: `code_only` 自动启用** — 当 Stage 2 被跳过
+  (无 reproduce.log) 时, rubric 被裁剪为仅 Code Development 叶,
+  避免 Code Execution / Result Analysis 叶被 structural 0 化。
+
 ## 相关
 
 - [论文导入](paper_import.md)
