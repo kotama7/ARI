@@ -103,36 +103,31 @@ be reproducible?"*. Both pipelines share the same vendored PaperBench
 rubric formalism (`\Rubric`, `score(P) = Σ wᵢ judgeᵢ(P)`); the audit
 side is a pure ARI wrapper layer with **zero vendor changes**.
 
-Measured on a public SC24 reproducibility-badge paper with embedded
-AD/AE Appendix: audit score 0.033 (paper-only / vendor prompt /
-text-only) → **0.857** (paper+AD/AE / paper_audit prompt patch /
-multimodal expander / Step 4 reproduction package) on gpt-5-mini.
+### Removed
+
+- **Step 4 "reproduction-package generator" — RETRACTED as off-protocol.**
+  An earlier entry in this release shipped `generate_reproduce_plan`
+  (MCP tool + `reproduce_plan.py` + `prompts/reproduce_plan.md` +
+  `--with-reproduce-plan` flag in `scripts/sc_paper_dogfood.py` +
+  `prompt_overrides.reproduce_plan_hint` blocks in
+  `paperbench_rubrics/{sc,neurips,nature}.yaml`). It asked an LLM to
+  write a `reproduce.log` whose "observed" values were transcribed
+  verbatim from the paper's own tables/figures, then fed that to
+  `SimpleJudge` as the submission. PaperBench's 3-stage protocol
+  (vendor README) requires Step 2 — actually executing the agent's
+  submitted codebase in a GPU container to produce an _executed
+  submission_ — before grading; skipping Step 2 and substituting
+  paper-paraphrased text produces an inflated score that is not
+  comparable to PaperBench leaderboard numbers. The previously-claimed
+  audit score of **0.857** on the SC24 paper is hereby **retracted**;
+  the same paper with an empty submission (the protocol-correct input
+  for "no reproduction was performed") scores far lower. The entire
+  code path has been removed. Re-introducing automated submission
+  generation will require wiring vendor PaperBench's
+  `IterativeAgent` / `BasicAgent` + Alcatraz container runner so the
+  log comes from real execution.
 
 ### Added
-
-- **Step 4 reproduction-package generator** (`ari-skill-replicate`'s new
-  `generate_reproduce_plan` MCP tool / `reproduce_plan.py` module).
-  Implements the HPC PaperBench audit research plan's §5 Step 4: an LLM reads a
-  paper (and optional AD/AE Appendix already concatenated into the text)
-  and writes four artifacts to a target directory —
-  `reproduce_plan.md` (step-by-step reconstruction with per-experiment
-  reproducibility category), `verification_code.py` (consistency-check
-  stubs over the paper's numerical claims), `install_commands.txt`
-  (concrete shell commands extracted from paper / AD / AE), and
-  `reproduce.log` (simulated execution log built from the paper's own
-  reported numbers). Passing the resulting directory as
-  `submission_dir` to `judge_submission` unblocks the structural ceiling
-  where Result Analysis leaves used to always score 0 with an empty
-  submission. ARI core stays domain-agnostic: the bundled prompt has
-  no HPC / ML / wet-lab vocabulary, and a regression test enforces this.
-  Venue-specific guidance lives in
-  `ari-core/config/paperbench_rubrics/<id>.yaml::prompt_overrides.reproduce_plan_hint`
-  (shipped for `sc`, `neurips`, `nature`). `scripts/sc_paper_dogfood.py`
-  gains `--with-reproduce-plan` and `--paper-audit-mode` (auto-enabled
-  when the picked template is paper_audit). Measured LLAMP audit
-  score on official SC24 PDF: 0.033 (baseline) → 0.857 with the full
-  pipeline (paper+AD/AE → multimodal → paper_audit prompt patch →
-  Step 4 reproduction package).
 
 - **Multimodal markdown image expander** in
   `ari-skill-paper-re/src/_litellm_completer.py`. When `paper.md`
@@ -521,6 +516,113 @@ v0.7.1 rubrics validate as v0.7.2 rubrics without modification.
 Existing call sites of `run_reproduce` / `build_reproduce_sh` /
 `run_replicator_agent` continue to work — every new argument defaults
 to `0` / `""` / `False` / `None`.
+
+## v0.7.2 — BFTS audit (2026-05-13, parallel track)
+
+Landed on the same date as the original v0.7.2 paper-audit release
+above; merged in from the `bfts` branch as a separate
+orchestration-layer thread. Headline: **BFTS algorithm audit**.
+Twenty-five orchestration-layer discrepancies between the v0.7.1
+implementation, its prompts, and the
+technical report were grouped under `bfts_audit_plan.md` and resolved in
+a single release. No checkpoint-format change; existing `tree.json`
+files resume cleanly.
+
+### Bug fixes (Phase 1)
+
+- **B-1**: removed the `BFTS.total_nodes` counter that double-bookkept
+  the live `len(all_nodes)` view. `should_prune(node, *, current_total)`
+  now takes the count from the caller — single source of truth.
+- **B-2**: `BFTSConfig.max_depth` was previously dead config. It is now
+  enforced by `should_prune` (`depth ≥ max_depth → prune`) and surfaced
+  to the expand-prompt as `Current depth: D / max_depth M`.
+- **B-3**: dropped the `retry_count` signal from `select_next_node`
+  candidate descriptions and from `bfts_select.md` ("prefer unexplored
+  directions (low retry)" was misleading — ARI never retries).
+- **B-4**: `should_prune` now also retires sterile nodes
+  (`metrics._sterile is True`), aligning the run-loop's existing sterile
+  gate with the pruning predicate.
+- **B-5**: deleted `ari/orchestrator/scheduler.py` and its `Scheduler`
+  callsite in `core.build_runtime`. The asyncio-based class was unused
+  and shadowed the real `ThreadPoolExecutor` path in `bfts_loop`.
+- **B-6**: `BFTSConfig.max_expansions_per_node` (default 4) plus
+  `BFTS.expansion_count(node_id)`. The run-loop now retires frontier
+  nodes when (Rule A) a child beat the parent on `_scientific_score`,
+  or (Rule B) the node has been expanded ≥ `max_expansions_per_node`
+  times.
+- **B-7**: fallback child created when the LLM returns no directions
+  now inherits `memory_snapshot`, `eval_summary`, `original_direction`,
+  and a normalised `name`, matching the regular child-creation path.
+- **B-8**: `select_next_node` candidate one-liners now include
+  `label=...` (the format used by `select_best_to_expand` already).
+- **B-9**: `_extract_directions_json` replaces the legacy
+  `re.search(r"\[.*\]", DOTALL)` greedy pattern. It strips
+  `<think>...</think>` reasoning blocks, scans for balanced brackets,
+  falls back to a lone `{...}`, and finally to the raw string.
+- **B-10**: removed `max_retries_per_node=…` from every test fixture
+  (`test_bfts.py`, `test_bfts_diversity.py`, `test_idea_integration.py`)
+  and the YAML default — the Pydantic field never existed.
+
+### Improvements (Phase 2)
+
+- **I-1**: `bfts_expand.md` switched from "MUST be one of … no
+  inventions" to "strongly prefer one of [draft, improve, debug,
+  ablation, validation]; otherwise the LLM string is preserved in
+  `raw_label`". `NodeLabel.OTHER`'s role is documented in `node.py`.
+- **I-2**: `diversity_bonus` docstring matches the implementation
+  (`my_count * 2 ≤ max_count`, i.e. "at most half as often").
+- **I-3 / L-3**: `BFTS._fallback_score` + `BFTS._select_fallback`
+  unify the LLM-fail-path scoring for `select_next_node` and
+  `select_best_to_expand`. Both now apply the diversity bonus.
+- **I-4**: expand prompt now carries `Current depth: D / max_depth M`
+  (always) and `Remaining node budget: K / max_total_nodes` (when the
+  caller provides `budget_remaining`, which `bfts_loop` always does).
+- **I-5**: `_resolve_pm_and_run_id` helper deduplicates the
+  `ARI_CHECKPOINT_DIR → (PathManager, run_id)` boilerplate previously
+  copy-pasted across `_load_sibling_node_reports` and
+  `_format_parent_report_block`.
+- **I-6**: the string-fallback label inference (used when the LLM
+  returns a plain string instead of JSON) now uses word-boundary
+  regex patterns, so "invalid" no longer trips the VALIDATION branch.
+- **I-7**: `bfts.record_run(result)` is now called **after**
+  `future.result()` returns, so the diversity bonus reflects nodes
+  that actually executed (success or failure) rather than nodes that
+  were merely selected.
+- **I-8**: `BFTS._get_node_report` introduces an mtime-keyed cache
+  for `node_report.json` reads — both sibling listing and the
+  parent-report enrichment path share it.
+- **I-9**: `threading.Lock`-protected mutation of
+  `_recent_label_history`, `_expansion_count`, and `_report_cache`.
+  LLM calls remain **outside** the lock.
+
+### Low-priority cleanups (Phase 3)
+
+- **L-1**: `_make_node_name` applies NFKC normalisation and whitespace
+  collapsing before truncation, so full-width labels and double-space
+  directions produce clean names.
+- **L-2**: `_PromptBudget` dataclass centralises the prompt-truncation
+  magic numbers (`[:240]`, `[:200]`, …) used by `expand()` /
+  `select_next_node`.
+- **L-3**: see I-3 — the same PR delivered both.
+- **L-4**: `_hash_experiment_file` memoises the experiment-file
+  sha256 keyed by `(path, mtime_ns)` — `_save_checkpoint` no longer
+  re-hashes the same `.md` after every node completion.
+- **L-5**: B-5 deleted the `asyncio.get_event_loop()` call site
+  entirely; L-5 is retired.
+- **L-6**: `BFTSConfig.label_saturation_threshold` (default 2) makes
+  the previously-hardcoded saturation cutoff configurable.
+
+### Docs / report
+
+- `docs/architecture.md::BFTS Algorithm` rewritten for v0.7.2 (depth
+  predicate, sterile predicate, frontier retire rules, `record_run`
+  timing).
+- `docs/configuration.md::BFTS Tuning` adds the full `BFTSConfig`
+  table and the new `max_expansions_per_node` /
+  `label_saturation_threshold` knobs.
+- Technical report (`report/en/chapters/03_exploration.tex`) revised
+  for the v0.7.2 formalisation of $\Pi$, $\sigma$, $\rho$, and the
+  retire predicate.
 
 ## v0.7.1 (2026-05-10)
 
