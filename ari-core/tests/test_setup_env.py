@@ -223,8 +223,11 @@ def test_idempotent(tmp_path):
     assert first == second, "setup_env.sh must be idempotent"
 
 
-def test_prompts_only_for_four_critical_keys():
-    """_prompt_secret must target exactly OPENAI/ANTHROPIC/GOOGLE/S2."""
+def test_prompts_only_for_critical_keys():
+    """_prompt_secret must target only the documented critical keys.
+    Adding a new prompt is a deliberate UX change and requires updating
+    this allow-list.
+    """
     text = SETUP_ENV_SH.read_text()
     prompted = set(re.findall(r'_prompt_secret\s+"([A-Z_][A-Z0-9_]*)"', text))
     assert prompted == {
@@ -232,6 +235,11 @@ def test_prompts_only_for_four_critical_keys():
         "ANTHROPIC_API_KEY",
         "GOOGLE_API_KEY",
         "S2_API_KEY",
+        # Required by vendor PaperBench papers whose Stage 1 rollout
+        # needs huggingface-cli login (gated dataset / model downloads).
+        # Surfaced to the agent via rollout_submission's agent_env_path
+        # auto-load and the HF_TOKEN env passthrough.
+        "HF_TOKEN",
     }, f"Unexpected prompted keys: {prompted}"
 
 

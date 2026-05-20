@@ -249,6 +249,16 @@ _prompt_secret "ANTHROPIC_API_KEY"       "Anthropic API key"
 _prompt_secret "GOOGLE_API_KEY"          "Google (Gemini) API key"
 _prompt_secret "S2_API_KEY"              "Semantic Scholar API key"
 _env_append_if_absent "# SEMANTIC_SCHOLAR_API_KEY="
+# Hugging Face Hub token — required by vendor PaperBench papers whose
+# Stage 1 rollout needs to ``huggingface-cli login`` (e.g. gated dataset
+# / model downloads). Mirrors vendor ``agent.env`` pattern. Used by
+# rollout_submission(agent_env_path=...) and by paperbench Stage 2
+# reproduce.sh scripts that pip-install gated weights.
+_prompt_secret "HF_TOKEN"                "Hugging Face Hub token (optional; needed for gated papers)"
+# Default path the bridge auto-loads when rollout_submission's
+# ``agent_env_path=None``. Leave blank to use the bundled default
+# (``$HOME/.ari/agent.env``); set explicitly to override.
+_env_append_if_absent "# ARI_AGENT_ENV_PATH="
 
 # --- 2) LLM / backend (defaults) -------------------------------------------
 _env_section "LLM / backend"
