@@ -265,6 +265,18 @@ def make_computer(
         kind = "apptainer" if image else "local"
 
     if kind in ("local", "slurm"):
+        if kind == "slurm":
+            log.warning(
+                "Stage 1 (agent rollout) with sandbox_kind=%r executes on the "
+                "host filesystem — there is NO container isolation. The "
+                "agent's bash/python tools run as plain subprocesses against "
+                "%s. This is intentional (per-command sbatch is not viable at "
+                "ReAct cadence; the assumption is that ari itself is already "
+                "running inside an sbatch allocation), but if you expected the "
+                "agent to be sandboxed inside %r, pass sandbox_kind=apptainer "
+                "with container_image=<SIF or docker://… URI> instead.",
+                kind, str(work_dir), kind,
+            )
         return LocalComputer(work_dir, env=env, timeout_sec=timeout_sec)
     if kind in ("apptainer", "singularity"):
         if not image:
