@@ -2,6 +2,30 @@
 
 All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PATCH`.
 
+## Unreleased
+
+### Added
+
+- **Configurable BFTS evaluation layers (4 layers).** `default.yaml`
+  now lets users pick from multiple options at each evaluation surface
+  in the BFTS pipeline. Defaults reproduce the prior behaviour exactly,
+  so unmodified configs are a no-op.
+  - `evaluator.composite` — formula collapsing per-axis judge scores
+    into `_scientific_score`: `harmonic_mean` (default), `arithmetic_mean`,
+    `weighted_min` (bottleneck), or `geometric_mean`.
+  - `evaluator.axis_mode` + `evaluator.custom_axes` — axis set sent
+    to the judge LLM: `dynamic` (default; rubric + plan keywords),
+    `legacy` (the canonical 5-axis set), or `custom` (verbatim list).
+  - `bfts.frontier_score` — deterministic fallback ranking strategy:
+    `scientific_plus_diversity` (default), `scientific_only`,
+    `depth_penalized` (with `bfts.depth_penalty_lambda`), or
+    `ucb_like` (with `bfts.ucb_c`).
+  - `bfts.select_prompt` / `bfts.expand_select_prompt` —
+    `FilesystemPromptLoader` keys for the two LLM selection prompts;
+    user-supplied templates must keep the same placeholder set.
+  - Full reference: `docs/configuration.md` § BFTS Evaluation Layers
+    (mirrored under `docs/ja/` and `docs/zh/`).
+
 ## v0.7.3 — macOS local-dev compat + .env hierarchy alignment (2026-05-18)
 
 Patch release that incorporates the external contributor work from
@@ -128,6 +152,78 @@ side is a pure ARI wrapper layer with **zero vendor changes**.
   log comes from real execution.
 
 ### Added
+
+- **3-stage PaperBench bridge contract** in
+  `ari-skill-paper-re/src/_paperbench_bridge.py`. Adds two new
+  keyword-only async functions —
+  `rollout_submission(*, paper_md, work_dir, agent_model, sandbox_kind,
+  container_image, iterative_agent, time_limit_sec, ...)` (Stage 1,
+  agent rollout that writes reproduce.sh) and
+  `reproduce_submission(*, submission_dir, sandbox_kind, container_image,
+  partition, gpus_per_task, gpu_type, memory_gb_per_node, exclusive,
+  extra_sbatch_args, time_limit_sec)` (Stage 2, executes reproduce.sh
+  in the chosen sandbox and captures reproduce.log) — that mirror the
+  call style of the existing `judge_submission` (Stage 3). All three
+  share the same `(paper_md, work_dir-or-submission_dir, model, ...)`
+  vocabulary so a caller can sequence the protocol-correct PaperBench
+  3-stage pipeline (rollout → reproduce → judge) without translating
+  between independent argument shapes. Internally, Stage 1 calls
+  `_replicator_agent.run_replicator_agent` and Stage 2 calls
+  `server.run_reproduce`; the bridge centralises completer-picking
+  (OpenAI Responses for `gpt-*`/`o[1-5]-*`, LiteLLM otherwise) and
+  adds `executed_submission_dir` / `reproduce_log_path` keys to the
+  Stage 2 return dict so the Stage 3 judge can be chained directly.
+  This is the legitimate counterpart to the retracted Step 4 "fake
+  reproduce.log" generator (above) — the submission fed to the judge
+  comes from REAL agent rollout + REAL reproduce.sh execution.
+  Exposed via `scripts/sc_paper_dogfood.py --with-rollout` /
+  `--with-reproduction` (mutually exclusive with `--paper-audit-mode`
+  by construction). `server.run_reproduce` now tolerates `rubric_path=""`
+  so the bridge wrapper can drive it without a rubric file when the
+  caller supplies all hints via explicit args.
+
+- **`container_image` field end-to-end** (wizard → API → worker →
+  MCP tool → sandbox runner). Adds a unified container image
+  parameter to the PaperBench wizard's Reproduce step
+  (`ari-core/ari/viz/frontend/src/components/PaperBench/PaperBenchWizard.tsx`)
+  with i18n labels for en/ja/zh. Propagates through
+  `api_paperbench_worker.py` (`_build_reproduce_args` accepts both
+  `container_image` and the legacy `apptainer_image` alias;
+  `_run_reproduce_args` reads `container_image`),
+  `server.build_reproduce_sh` (Stage 1; same dual-arg accept), and
+  `server.run_reproduce` + `_run_reproduce_docker` /
+  `_run_reproduce_apptainer` (Stage 2; explicit `image` arg replaces
+  the previous env-var-only path). Image priority: explicit field →
+  env (`ARI_PHASE1_DOCKER_IMAGE` / `ARI_PHASE1_APPTAINER_IMAGE`) →
+  hardcoded fallback (`ubuntu:24.04`). Previously, a user picking
+  `sandbox_kind=docker` or `apptainer` in the wizard always got
+  `ubuntu:24.04` regardless of what they intended; the wizard had no
+  UI for the field, the worker code looked for a key the wizard
+  never populated, and Stage 2 ignored the (always-empty) value.
+  `workflow.yaml` updated symmetrically for the `ari paper` CLI
+  path (`ors_build_reproduce` / `ors_run_reproduce` inputs).
+
+- **Fail-loud preconditions for sandbox / GPU mismatches** in
+  `ari-skill-paper-re/src/server.py`. Four sites previously silently
+  downgraded user-requested isolation/resources to host-CPU execution
+  with only a warning log: (a) `sandbox_kind=docker` with no docker
+  daemon → fell back to local; (b) `sandbox_kind=apptainer` /
+  `singularity` with missing binary → same; (c) `sandbox_kind=slurm`
+  with missing sbatch or no resolvable partition → same; (d) SLURM
+  with GPU request but GRES-less cluster → dropped all
+  `--gres` / `--gpus-per-task` / `--gpus-per-node` flags. All four
+  now raise `RuntimeError` with an actionable message by default
+  (the user explicitly picked the sandbox/GPU; silently running on
+  host-CPU after a long queue wait is the worst possible failure
+  mode). Legacy silent-fallback behaviour preserved behind two
+  opt-in env vars documented in `scripts/setup/setup_env.sh`:
+  `ARI_PHASE1_ALLOW_FALLBACK=1` for the docker/apptainer/sbatch
+  cases, `ARI_SLURM_ALLOW_NO_GRES=1` for the GPU GRES case. Stage 1
+  `sandbox_kind=slurm`/`local` additionally emits a one-shot WARNING
+  at `LocalComputer` construction making the host-filesystem
+  execution contract explicit (the agent's bash/python tools run as
+  plain subprocesses against `work_dir` — pass `sandbox_kind=apptainer`
+  with `container_image=...` for true Stage 1 isolation).
 
 - **Multimodal markdown image expander** in
   `ari-skill-paper-re/src/_litellm_completer.py`. When `paper.md`
