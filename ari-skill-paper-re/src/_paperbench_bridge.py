@@ -367,7 +367,21 @@ async def rollout_submission(
         from paperbench.solvers.basicagent.completer import (  # type: ignore
             OpenAIResponsesTurnCompleterConfig,
         )
-        completer_config: Any = OpenAIResponsesTurnCompleterConfig(model=agent_model)
+        # Preserve the vendor BasicAgentSolver default_factory's
+        # ``tools=[WebSearchToolParam(type="web_search_preview")]``. We
+        # construct a fresh completer_config (so the caller's agent_model
+        # wins over the vendor's hardcoded "gpt-4.1-mini"), and the
+        # vendor's default web search tool would otherwise be lost.
+        # Without this, IterativeAgent mode degrades to bash + read-file
+        # only (no web search, no PythonTool, no SearchFile) — the agent
+        # cannot look up library versions or check baselines.
+        from openai.types.responses.web_search_tool_param import (  # type: ignore
+            WebSearchToolParam,
+        )
+        completer_config: Any = OpenAIResponsesTurnCompleterConfig(
+            model=agent_model,
+            tools=[WebSearchToolParam(type="web_search_preview")],
+        )
     else:
         from _litellm_completer import get_litellm_basicagent_completer_config
         completer_config = get_litellm_basicagent_completer_config()(model=agent_model)

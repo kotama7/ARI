@@ -290,7 +290,19 @@ async def build_reproduce_sh(
         from paperbench.solvers.basicagent.completer import (
             OpenAIResponsesTurnCompleterConfig,
         )
-        completer_config = OpenAIResponsesTurnCompleterConfig(model=chosen_model)
+        from openai.types.responses.web_search_tool_param import (
+            WebSearchToolParam,
+        )
+        # Preserve the vendor BasicAgentSolver default_factory's
+        # ``tools=[WebSearchToolParam(type="web_search_preview")]`` — we
+        # construct a fresh completer_config to thread chosen_model, so
+        # the vendor's web search tool would otherwise be lost. Without
+        # this, the agent cannot look up library versions, baselines,
+        # or recent commits during rollout.
+        completer_config = OpenAIResponsesTurnCompleterConfig(
+            model=chosen_model,
+            tools=[WebSearchToolParam(type="web_search_preview")],
+        )
     else:
         from _litellm_completer import get_litellm_basicagent_completer_config
         completer_config = get_litellm_basicagent_completer_config()(
@@ -802,16 +814,33 @@ def _run_reproduce_slurm(
     if exclusive:
         cmd.append("--exclusive")
     # ── GPU ── (post-GRES-gating)
-    if effective_gpus_per_task > 0:
-        cmd += ["--gpus-per-task", str(effective_gpus_per_task)]
-    if effective_gpus_per_node > 0:
-        cmd += ["--gpus-per-node", str(effective_gpus_per_node)]
+    # SLURM requires --gpus-per-task be paired with --ntasks or --gpus
+    # (per `sbatch: error: --gpus-per-task or --tres-per-task used without
+    # either --gpus or -n/--ntasks is not allowed`). When the caller
+    # supplied only --gpus-per-task with no --ntasks, default ntasks to 1
+    # so the simple "I want one GPU" case works without forcing the
+    # operator to know SLURM's pairing rule.
+    if effective_gpus_per_task > 0 and not (
+        any(c == "--ntasks" for c in cmd)
+        or any(c == "--gpus" for c in cmd)
+    ):
+        cmd += ["--ntasks", "1"]
+    # SLURM rejects combining typed and untyped GPU requests with
+    # `Invalid GRES specification (with and without type identification)`
+    # when both ``--gpus-per-task=N`` and ``--gres=gpu:TYPE:N`` are
+    # present (verified on SLURM 24.05/qc-a100). When the caller
+    # specified a gpu_type, that is the more specific request → emit
+    # only ``--gres=gpu:TYPE:N`` and drop the untyped --gpus-per-task /
+    # --gpus-per-node companions. When no gpu_type is given, keep the
+    # untyped flags as-is for sites that don't care about GPU model.
     if effective_gpu_type:
-        # SLURM ``--gres`` is per-node. Prefer gpus_per_task when set
-        # (the common rubric hint maps to ``--gpus-per-task``); fall back
-        # to gpus_per_node, then to 1 as a minimum.
         gres_count = effective_gpus_per_task or effective_gpus_per_node or 1
         cmd += [f"--gres=gpu:{effective_gpu_type}:{gres_count}"]
+    else:
+        if effective_gpus_per_task > 0:
+            cmd += ["--gpus-per-task", str(effective_gpus_per_task)]
+        if effective_gpus_per_node > 0:
+            cmd += ["--gpus-per-node", str(effective_gpus_per_node)]
     # ── メモリ ──
     if memory_gb_per_node and int(memory_gb_per_node) > 0:
         cmd += [f"--mem={int(memory_gb_per_node)}G"]

@@ -402,8 +402,14 @@ def test_S7b_memory_per_cpu_arg_appears_in_sbatch(tmp_path, monkeypatch):
 
 
 def test_S8_gpu_type_combined_with_per_task(tmp_path, monkeypatch):
-    """S8: gpu_type="v100", gpus_per_task=2 → ``--gres=gpu:v100:2`` AND
-    ``--gpus-per-task 2`` both present."""
+    """S8 (updated for SLURM 24.05 qc-a100 smoke finding): when both
+    gpu_type and gpus_per_task are set, the dispatcher must emit ONLY
+    ``--gres=gpu:TYPE:N`` and drop the untyped ``--gpus-per-task``
+    companion. SLURM 24.05 rejects mixing typed and untyped GPU
+    requests with ``Invalid GRES specification (with and without type
+    identification)``. The gpu_type request is more specific, so it
+    wins; the untyped --gpus-per-task is dropped.
+    """
     repo = _setup_slurm(tmp_path)
     captured: dict = {}
     _patch_slurm_has_gres(monkeypatch, True)
@@ -415,7 +421,13 @@ def test_S8_gpu_type_combined_with_per_task(tmp_path, monkeypatch):
             )
     cmd = captured["cmd"]
     assert "--gres=gpu:v100:2" in cmd
-    assert cmd[cmd.index("--gpus-per-task") + 1] == "2"
+    # Untyped GPU flags must NOT also be present (the SLURM-conflict
+    # we're guarding against).
+    assert "--gpus-per-task" not in cmd, (
+        "When gpu_type is set, --gpus-per-task must be dropped to avoid "
+        "SLURM 'Invalid GRES specification' error."
+    )
+    assert "--gpus-per-node" not in cmd
 
 
 def test_S9_hw_constraint_and_cpu_bind(tmp_path, monkeypatch):
@@ -476,8 +488,11 @@ def test_S11_complex_profile_all_args_emitted(tmp_path, monkeypatch):
     assert cmd[cmd.index("--ntasks-per-node") + 1] == "8"
     assert cmd[cmd.index("--nodelist") + 1] == "node[01-04]"
     assert cmd[cmd.index("--exclude") + 1] == "badnode01"
-    assert cmd[cmd.index("--gpus-per-task") + 1] == "1"
-    assert cmd[cmd.index("--gpus-per-node") + 1] == "4"
+    # GPU: when gpu_type is set, --gres=gpu:TYPE:N is canonical and
+    # the untyped --gpus-per-task / --gpus-per-node are dropped (see
+    # test_S8 for the SLURM 24.05 conflict this avoids).
+    assert "--gpus-per-task" not in cmd
+    assert "--gpus-per-node" not in cmd
     # Standalone / KEY=VAL flags
     assert "--exclusive" in cmd
     assert "--gres=gpu:v100:1" in cmd
@@ -537,6 +552,52 @@ def test_gpu_flags_dropped_when_cluster_has_no_gres_and_opted_in(
     assert all(not c.startswith("--gres=") for c in cmd), cmd
     assert "--gpus-per-task" not in cmd, cmd
     assert "--gpus-per-node" not in cmd, cmd
+
+
+def test_gpus_per_task_auto_pairs_with_ntasks_one(tmp_path, monkeypatch):
+    """Real-cluster smoke (ai-h100l) finding: SLURM 24.05 rejects
+    ``--gpus-per-task`` unless paired with ``--ntasks`` or ``--gpus``
+    (error: ``--gpus-per-task or --tres-per-task used without either
+    --gpus or -n/--ntasks is not allowed``). When the caller passes
+    only ``gpus_per_task`` (the common ``--reproduce-gpus-per-task 1``
+    wizard path), the dispatcher must auto-default ``--ntasks 1`` so
+    the request is valid.
+    """
+    repo = _setup_slurm(tmp_path)
+    captured: dict = {}
+    _patch_slurm_has_gres(monkeypatch, True)
+    with patch.object(S, "_has_bin", lambda n: n == "sbatch"):
+        with patch.object(S.subprocess, "run", _capture_cmd_call(captured)):
+            S._run_reproduce_slurm(
+                repo, repo / "reproduce.log", timeout=600,
+                gpus_per_task=1,
+            )
+    cmd = captured["cmd"]
+    assert "--gpus-per-task" in cmd, cmd
+    assert "--ntasks" in cmd, "auto-default to --ntasks 1 missing"
+    # Auto value is "1"
+    ntasks_idx = cmd.index("--ntasks")
+    assert cmd[ntasks_idx + 1] == "1", cmd
+
+
+def test_gpus_per_task_respects_explicit_ntasks(tmp_path, monkeypatch):
+    """When the caller already specified ``ntasks`` explicitly, the
+    auto-pairing must NOT clobber it.
+    """
+    repo = _setup_slurm(tmp_path)
+    captured: dict = {}
+    _patch_slurm_has_gres(monkeypatch, True)
+    with patch.object(S, "_has_bin", lambda n: n == "sbatch"):
+        with patch.object(S.subprocess, "run", _capture_cmd_call(captured)):
+            S._run_reproduce_slurm(
+                repo, repo / "reproduce.log", timeout=600,
+                ntasks=4, gpus_per_task=2,
+            )
+    cmd = captured["cmd"]
+    # Caller's --ntasks 4 must be the only --ntasks entry.
+    ntasks_indices = [i for i, c in enumerate(cmd) if c == "--ntasks"]
+    assert len(ntasks_indices) == 1, f"multiple --ntasks entries in {cmd}"
+    assert cmd[ntasks_indices[0] + 1] == "4"
 
 
 def test_cpu_bind_dropped_when_sbatch_does_not_support_it(tmp_path, monkeypatch):
@@ -659,7 +720,9 @@ async def test_S5_execution_profile_auto_resolves_into_sbatch(tmp_path, monkeypa
     assert cmd[cmd.index("--ntasks") + 1] == "32"
     assert cmd[cmd.index("--ntasks-per-node") + 1] == "8"
     assert "--exclusive" in cmd
-    assert cmd[cmd.index("--gpus-per-task") + 1] == "1"
+    # gpu_type=v100 set → --gres=gpu:v100:1 is canonical, --gpus-per-task
+    # is dropped to avoid SLURM 24.05 typed/untyped GPU conflict.
+    assert "--gpus-per-task" not in cmd
     assert "--gres=gpu:v100:1" in cmd
     assert "--mem=256G" in cmd
     assert "--constraint=skylake" in cmd
