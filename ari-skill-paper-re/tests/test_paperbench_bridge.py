@@ -222,6 +222,132 @@ def test_judge_submission_code_only_prunes_rubric_tree():
     assert leaves_after[0].requirements == "implement X"
 
 
+def test_rollout_submission_forbid_host_filesystem_raises_for_local_slurm():
+    """``forbid_host_filesystem=True`` + sandbox_kind in {local, slurm}
+    must raise RuntimeError BEFORE any agent rollout starts. The error
+    message must point the user at sandbox_kind=apptainer.
+    """
+    import asyncio
+    for sandbox in ("local", "slurm"):
+        with pytest.raises(RuntimeError, match="forbid_host_filesystem"):
+            asyncio.run(B.rollout_submission(
+                paper_md="x", work_dir="/tmp/.does-not-matter",
+                agent_model="gpt-5-mini",
+                sandbox_kind=sandbox,
+                forbid_host_filesystem=True,
+            ))
+
+
+def test_rollout_submission_forbid_host_filesystem_allows_apptainer():
+    """The guard must NOT fire for sandbox_kind=apptainer/singularity —
+    those have real container isolation.
+    """
+    import inspect
+    sig = inspect.signature(B.rollout_submission)
+    assert "forbid_host_filesystem" in sig.parameters
+    assert "agent_env_path" in sig.parameters
+    # Default is permissive so existing dogfood / dev workflows are not
+    # broken — caller must opt in.
+    assert sig.parameters["forbid_host_filesystem"].default is False
+    assert sig.parameters["agent_env_path"].default is None
+
+
+def test_load_dotenv_file_handles_comments_quotes_and_empty():
+    """The agent.env / .env loader must skip comments, strip quotes,
+    and accept empty values."""
+    import tempfile
+    from pathlib import Path as _P
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".env", delete=False) as f:
+        f.write(
+            "# leading comment\n"
+            "\n"
+            "FOO=bar\n"
+            "QUOTED=\"baz qux\"\n"
+            "SINGLE='hi'\n"
+            "EMPTY=\n"
+            "HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n"
+            "  # indented comment\n"
+            "no_equals_sign_ignored\n"
+        )
+        path = _P(f.name)
+    try:
+        got = B._load_dotenv_file(path)
+        assert got["FOO"] == "bar"
+        assert got["QUOTED"] == "baz qux"
+        assert got["SINGLE"] == "hi"
+        assert got["EMPTY"] == ""
+        assert got["HF_TOKEN"].startswith("hf_")
+        assert "no_equals_sign_ignored" not in got
+    finally:
+        path.unlink()
+
+
+def test_reproduce_submission_signature_includes_tarball_and_salvage():
+    """Regression for the (b) tarball capture and (a) salvage retries
+    Stage 2 fixes: both flags must be on the bridge surface so a
+    caller (wizard / CLI / external orchestrator) can opt in/out.
+    """
+    import inspect
+    sig = inspect.signature(B.reproduce_submission)
+    params = set(sig.parameters)
+    for required in (
+        "capture_tarball", "tarball_dir",
+        "salvage_retries", "retry_threshold_sec",
+    ):
+        assert required in params, f"reproduce_submission missing {required!r}"
+    # Defaults: tarball ON, salvage OFF (preserves existing dogfood
+    # behaviour and only adds work when caller asks).
+    assert sig.parameters["capture_tarball"].default is True
+    assert sig.parameters["salvage_retries"].default == 0
+
+
+def test_install_and_restore_salvage_wrapper_roundtrip(tmp_path):
+    """The salvage wrapper must wrap reproduce.sh with a venv prelude
+    AND restore the original byte-for-byte on cleanup."""
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    repro = sub / "reproduce.sh"
+    original_body = "#!/usr/bin/env bash\necho original\n"
+    repro.write_text(original_body)
+    repro.chmod(0o755)
+
+    B._install_salvage_wrapper(sub)
+    wrapped = repro.read_text()
+    assert "ari-skill-paper-re salvage retry" in wrapped
+    assert ".salvage_venv" in wrapped
+    assert "original reproduce.sh body" in wrapped
+    assert wrapped.endswith(original_body)
+    # Backup preserved exactly
+    backup = repro.with_suffix(repro.suffix + B._SALVAGE_WRAPPER_SUFFIX)
+    assert backup.is_file()
+    assert backup.read_text() == original_body
+
+    B._restore_salvage_wrapper(sub)
+    assert repro.read_text() == original_body
+    assert not backup.is_file()
+
+
+def test_write_executed_tarball_round_trip(tmp_path):
+    """(b) Tarball capture writes a gzip tarball alongside the
+    submission and contains every file from the executed dir."""
+    import tarfile
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    (sub / "reproduce.sh").write_text("#!/bin/bash\necho ok\n")
+    (sub / "reproduce.log").write_text("ok\n")
+    (sub / "results").mkdir()
+    (sub / "results" / "metric.txt").write_text("0.42\n")
+
+    tar = B._write_executed_tarball(sub, None)
+    assert tar.is_file()
+    assert tar.name.startswith("submission_executed_") and tar.suffix == ".gz"
+    with tarfile.open(tar, "r:gz") as tf:
+        names = sorted(tf.getnames())
+    # Includes the submission dir + its members (arcname=submission_dir.name)
+    assert any(n.endswith("/reproduce.sh") for n in names), names
+    assert any(n.endswith("/results/metric.txt") for n in names), names
+
+
 def test_judge_submission_rejects_code_only_with_paper_audit_mode():
     """code_only (grade a Stage 1 submission against Code Dev subtree)
     and paper_audit_mode (grade the paper itself for describability)

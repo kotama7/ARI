@@ -362,10 +362,12 @@ async def rollout_submission(
     sandbox_kind: str = "auto",
     container_image: str = "",
     env: dict[str, str] | None = None,
+    agent_env_path: Path | str | None = None,
     expected_artifacts: list[str] | None = None,
     execution_profile: dict | None = None,
     paper_id: str = "ari-local",
     run_id: str | None = None,
+    forbid_host_filesystem: bool = False,
 ) -> dict:
     """PaperBench Stage 1 — drive a BasicAgent / IterativeAgent rollout
     that writes a ``reproduce.sh`` (plus supporting code) into ``work_dir``.
@@ -384,12 +386,85 @@ async def rollout_submission(
     Stage 1; ``sandbox_kind=slurm`` / ``local`` runs the agent on the
     host filesystem (see :func:`_compute.make_computer`).
 
+    ``env`` is the in-memory env dict passed straight to the agent's
+    subprocess. ``agent_env_path`` (path to a vendor-style ``agent.env``
+    file with one ``KEY=VALUE`` pair per line) is loaded and merged
+    INTO ``env`` with explicit ``env`` keys winning. Mirrors vendor
+    ``nano/task.py:117 agent_env_path = get_agents_dir() / "agent.env"``
+    so per-paper credentials (e.g. ``HF_TOKEN``, ``OPENAI_API_KEY``
+    overrides) reach the agent inside its sandbox. Required for any
+    paper that needs huggingface access during rollout.
+
+    ``forbid_host_filesystem`` (default False): when True, refuse to
+    start the rollout if ``sandbox_kind`` resolves to ``local`` or
+    ``slurm`` (both run the agent's bash/python on the host filesystem
+    with no isolation — see ``_compute/computer.py:LocalComputer``).
+    Use this for benchmark-mode runs where source-leak fairness
+    matters; the operator must then supply ``sandbox_kind=apptainer``
+    or ``singularity`` with a real ``container_image``.
+
     Returns the standard ``build_reproduce_sh`` envelope
     (``{populated, output_dir, files, expected_artifacts,
     max_runtime_sec, model, agent_runtime_sec, notes, warnings}``).
     Pass ``output_dir`` directly to :func:`reproduce_submission` as
     ``submission_dir`` to chain into Stage 2.
     """
+    # Resolve effective sandbox_kind for the host-filesystem guard.
+    # ``auto`` + container_image set → apptainer; ``auto`` + no image
+    # → local. Match :func:`_compute.make_computer`'s resolution.
+    effective_sandbox = (sandbox_kind or "auto").lower()
+    explicit = os.environ.get("ARI_PHASE1_SANDBOX", "").strip().lower()
+    if explicit:
+        effective_sandbox = explicit
+    if effective_sandbox == "auto":
+        effective_sandbox = "apptainer" if container_image else "local"
+    if forbid_host_filesystem and effective_sandbox in ("local", "slurm"):
+        raise RuntimeError(
+            f"forbid_host_filesystem=True but the effective sandbox_kind "
+            f"resolves to {effective_sandbox!r}, which runs the agent's "
+            f"bash/python tools directly on the host filesystem (no "
+            f"container isolation; see _compute/computer.py LocalComputer). "
+            f"For benchmark-fair runs where the agent must not see the host "
+            f"workspace, pass sandbox_kind='apptainer' (or 'singularity') "
+            f"with a real container_image. Pass forbid_host_filesystem=False "
+            f"to opt back into host-FS execution (the default for development "
+            f"workflows where the agent is expected to be able to read the "
+            f"paper's repo)."
+        )
+
+    # Merge agent_env_path → env (in-memory env wins). When
+    # agent_env_path is unset, fall back to the operator-configured
+    # default (``ARI_AGENT_ENV_PATH`` env) and then to ``~/.ari/agent.env``
+    # if either is present. This is the auto-load path so wizard users
+    # don't have to thread the file location explicitly.
+    if agent_env_path is None:
+        for candidate in (
+            os.environ.get("ARI_AGENT_ENV_PATH", "").strip(),
+            str(Path.home() / ".ari" / "agent.env"),
+        ):
+            if candidate and Path(candidate).is_file():
+                agent_env_path = candidate
+                log.info("rollout_submission: auto-loading agent.env from %s", candidate)
+                break
+
+    # Lift HF_TOKEN from the calling process env into the agent's env
+    # by default (mirrors vendor's nano/eval.py:172-179 pattern of
+    # forwarding well-known credential names). This keeps the
+    # "setup.sh asked me to register HF_TOKEN" → "the agent sees it"
+    # contract working without requiring an agent.env file at all.
+    merged_env: dict[str, str] | None = None
+    if env or agent_env_path or any(os.environ.get(k) for k in ("HF_TOKEN",)):
+        merged_env = {}
+        if agent_env_path:
+            for k, v in _load_dotenv_file(Path(agent_env_path)).items():
+                merged_env[k] = v
+        for k in ("HF_TOKEN",):
+            v = os.environ.get(k)
+            if v and k not in merged_env:
+                merged_env[k] = v
+        if env:
+            merged_env.update(env)
+
     work = Path(work_dir).resolve()
     work.mkdir(parents=True, exist_ok=True)
     paper_md_path = work / "_input_paper.md"
@@ -435,10 +510,30 @@ async def rollout_submission(
         completer_config=completer_config,
         sandbox_kind=sandbox_kind,
         apptainer_image=container_image or None,
-        env=env,
+        env=merged_env if merged_env is not None else env,
         paper_id=paper_id,
         run_id=run_id,
     )
+
+
+def _load_dotenv_file(path: Path) -> dict[str, str]:
+    """Minimal ``.env`` parser for agent.env-style files.
+
+    Format: ``KEY=VALUE`` per line; ``#`` starts a comment; surrounding
+    quotes on the value are stripped. No expansion, no multi-line
+    values — matches the vendor ``agent.env`` shape (one secret per
+    line, plain strings).
+    """
+    if not path.is_file():
+        return {}
+    out: dict[str, str] = {}
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        out[k.strip()] = v.strip().strip("\"").strip("'")
+    return out
 
 
 # ─── Stage 2: reproduce.sh execution ────────────────────────────────────
@@ -456,6 +551,10 @@ async def reproduce_submission(
     memory_gb_per_node: int = 0,
     exclusive: bool = False,
     extra_sbatch_args: list[str] | None = None,
+    capture_tarball: bool = True,
+    tarball_dir: Path | str | None = None,
+    salvage_retries: int = 0,
+    retry_threshold_sec: int = 60,
 ) -> dict:
     """PaperBench Stage 2 — execute ``submission_dir/reproduce.sh`` in the
     chosen sandbox, capture stdout/stderr into ``reproduce.log``.
@@ -476,24 +575,179 @@ async def reproduce_submission(
     ``executed_submission_dir`` and ``reproduce_log_path`` keys so
     downstream :func:`judge_submission` can wire its ``submission_dir`` /
     ``reproduce_log`` arguments directly.
+
+    ``capture_tarball`` (default True) packages the executed submission
+    dir into ``submission_executed.tar.gz`` alongside the submission
+    (timestamped to avoid clobbering prior runs). Mirrors vendor
+    ``reproduce.py:230-244`` which writes per-attempt tarballs for
+    re-grading and provenance. ``tarball_dir`` overrides the destination
+    directory (default: ``submission_dir.parent``). The path is returned
+    as ``executed_tarball``.
+
+    ``salvage_retries`` (default 0 = no retry) controls vendor-style
+    salvage retries: if the first attempt exits non-zero AND finishes
+    under ``retry_threshold_sec``, retry up to N more times with a
+    Python 3.11 + fresh venv wrapper around reproduce.sh. Mirrors
+    vendor ``reproduce.py:252 reproduce_on_computer_with_salvaging``
+    (which uses a Cartesian ``{use_py3_11, make_venv}`` retry matrix).
+    The attempts log lives in the returned ``salvage_attempts`` list.
     """
     from server import run_reproduce  # lazy: server imports this module
 
     sub = Path(submission_dir).resolve()
-    res = await run_reproduce(
-        rubric_path="",
-        repo_dir=str(sub),
-        sandbox_kind=sandbox_kind,
-        container_image=container_image,
-        timeout_global_sec=int(time_limit_sec),
-        partition=partition,
-        gpus_per_task=int(gpus_per_task),
-        gpu_type=gpu_type,
-        memory_gb_per_node=int(memory_gb_per_node),
-        exclusive=bool(exclusive),
-        extra_sbatch_args=list(extra_sbatch_args or []),
-    )
+
+    async def _attempt(use_salvage_wrapper: bool) -> dict:
+        if use_salvage_wrapper:
+            _install_salvage_wrapper(sub)
+        try:
+            return await run_reproduce(
+                rubric_path="",
+                repo_dir=str(sub),
+                sandbox_kind=sandbox_kind,
+                container_image=container_image,
+                timeout_global_sec=int(time_limit_sec),
+                partition=partition,
+                gpus_per_task=int(gpus_per_task),
+                gpu_type=gpu_type,
+                memory_gb_per_node=int(memory_gb_per_node),
+                exclusive=bool(exclusive),
+                extra_sbatch_args=list(extra_sbatch_args or []),
+            )
+        finally:
+            if use_salvage_wrapper:
+                _restore_salvage_wrapper(sub)
+
+    attempts: list[dict] = []
+    res = await _attempt(use_salvage_wrapper=False)
+    attempts.append({"attempt": 1, "salvage": False, **_attempt_summary(res)})
+
+    # Salvage retry condition: caller opted in AND first attempt failed
+    # AND finished fast (likely an environment issue, not a slow run).
+    n = 0
+    while (
+        salvage_retries > 0
+        and n < int(salvage_retries)
+        and isinstance(res, dict)
+        and res.get("exit_code") not in (0, None)
+        and float(res.get("elapsed_sec") or 0) < float(retry_threshold_sec)
+    ):
+        n += 1
+        log.info(
+            "[salvage] attempt %d/%d (exit=%s elapsed=%.1fs<threshold=%ds)",
+            n, salvage_retries,
+            res.get("exit_code"), res.get("elapsed_sec") or 0.0,
+            retry_threshold_sec,
+        )
+        res = await _attempt(use_salvage_wrapper=True)
+        attempts.append({"attempt": n + 1, "salvage": True, **_attempt_summary(res)})
+
     if isinstance(res, dict):
         res.setdefault("executed_submission_dir", str(sub))
         res.setdefault("reproduce_log_path", str(sub / "reproduce.log"))
+        if len(attempts) > 1:
+            res["salvage_attempts"] = attempts
+        if capture_tarball:
+            try:
+                tar_path = _write_executed_tarball(sub, tarball_dir)
+                res["executed_tarball"] = str(tar_path)
+            except Exception as e:
+                log.warning("submission_executed.tar.gz capture failed: %s", e)
+                res.setdefault("warnings", []).append(
+                    f"submission_executed.tar.gz capture failed: {e}"
+                )
     return res
+
+
+def _attempt_summary(res: dict) -> dict:
+    """Extract the fields the caller cares about from a single
+    run_reproduce return — used to populate salvage_attempts list."""
+    if not isinstance(res, dict):
+        return {"executed": False, "error": "non-dict run_reproduce return"}
+    return {
+        "executed": res.get("executed"),
+        "exit_code": res.get("exit_code"),
+        "elapsed_sec": res.get("elapsed_sec"),
+        "error": res.get("error"),
+    }
+
+
+def _write_executed_tarball(
+    submission_dir: Path,
+    tarball_dir: Path | str | None,
+) -> Path:
+    """Write a timestamped ``submission_executed.tar.gz`` next to the
+    submission (or into ``tarball_dir`` when supplied). Returns the
+    path of the written tarball. Mirrors vendor
+    ``reproduce.py:tar_and_extract_from_computer`` semantics —
+    timestamp distinguishes per-attempt artefacts so a salvage retry
+    doesn't clobber the previous attempt's record.
+    """
+    import tarfile
+    import time as _time
+
+    out_dir = Path(tarball_dir).resolve() if tarball_dir else submission_dir.parent.resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = _time.strftime("%Y%m%dT%H%M%S", _time.gmtime())
+    tar_path = out_dir / f"submission_executed_{stamp}.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tf:
+        tf.add(submission_dir, arcname=submission_dir.name)
+    return tar_path
+
+
+_SALVAGE_WRAPPER_SUFFIX = ".pre_salvage"
+
+
+def _install_salvage_wrapper(submission_dir: Path) -> None:
+    """Wrap submission_dir/reproduce.sh with a vendor-style salvage
+    prelude that creates a fresh Python 3.11 venv and uses it for the
+    duration of the rerun. Mirrors the rationale of
+    ``vendor/.../reproduce.py:252 reproduce_on_computer_with_salvaging``
+    (use_py3_11=True, make_venv=True). The original script is moved to
+    ``reproduce.sh.pre_salvage`` so :func:`_restore_salvage_wrapper`
+    can put it back regardless of outcome.
+    """
+    orig = submission_dir / "reproduce.sh"
+    if not orig.is_file():
+        return
+    backup = orig.with_suffix(orig.suffix + _SALVAGE_WRAPPER_SUFFIX)
+    if not backup.is_file():
+        backup.write_bytes(orig.read_bytes())
+    body = orig.read_text()
+    wrapped = (
+        "#!/usr/bin/env bash\n"
+        "# AUTO-INSERTED BY ari-skill-paper-re salvage retry. The original\n"
+        "# reproduce.sh body follows the venv prelude. Original is\n"
+        "# preserved as reproduce.sh.pre_salvage.\n"
+        "set -e\n"
+        "PY311=$(command -v python3.11 || true)\n"
+        "if [ -n \"${PY311}\" ]; then\n"
+        "  if [ ! -d .salvage_venv ]; then\n"
+        "    \"${PY311}\" -m venv .salvage_venv\n"
+        "  fi\n"
+        "  # shellcheck disable=SC1091\n"
+        "  . .salvage_venv/bin/activate\n"
+        "fi\n"
+        "set +e\n"
+        "# ─── original reproduce.sh body ───────────────────────────\n"
+    ) + body
+    orig.write_text(wrapped)
+    try:
+        orig.chmod(0o755)
+    except OSError:
+        pass
+
+
+def _restore_salvage_wrapper(submission_dir: Path) -> None:
+    """Reverse :func:`_install_salvage_wrapper`."""
+    orig = submission_dir / "reproduce.sh"
+    backup = orig.with_suffix(orig.suffix + _SALVAGE_WRAPPER_SUFFIX)
+    if backup.is_file():
+        orig.write_bytes(backup.read_bytes())
+        try:
+            orig.chmod(0o755)
+        except OSError:
+            pass
+        try:
+            backup.unlink()
+        except OSError:
+            pass
