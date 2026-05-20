@@ -409,6 +409,12 @@ _env_append_if_absent "# ARI_PHASE1_SANDBOX=local"
 _env_append_if_absent "# ARI_PHASE1_APPTAINER_IMAGE="
 _env_append_if_absent "# ARI_PHASE1_SINGULARITY_IMAGE="
 _env_append_if_absent "# ARI_PHASE1_DOCKER_IMAGE=ubuntu:24.04"
+# ARI_PHASE1_ALLOW_FALLBACK=1 opts into the legacy silent-fallback-to-
+# local-host behaviour when sandbox_kind=docker/apptainer/slurm is
+# requested but the corresponding tool (docker daemon / apptainer / sbatch)
+# is missing. Default: fail loud (the user explicitly picked a sandbox;
+# silently running on the host defeats the isolation intent).
+_env_append_if_absent "# ARI_PHASE1_ALLOW_FALLBACK="
 # Override path to the vendored PaperBench source tree if the default
 # (ari-skill-paper-re/vendor/paperbench) is unavailable.
 _env_append_if_absent "# ARI_PAPERBENCH_PATH="
@@ -434,6 +440,11 @@ _env_append_if_absent "# ARI_SLURM_MEM_GB="
 _env_append_if_absent "# ARI_SLURM_GPUS="
 _env_append_if_absent "# ARI_SLURM_WALLTIME=04:00:00"
 _env_append_if_absent "# ARI_SLURM_PARTITION="
+# ARI_SLURM_ALLOW_NO_GRES=1 opts into silently dropping --gres / --gpus-*
+# flags when the cluster has no GRES configured. Default: fail loud
+# (silently downgrading a GPU request to CPU after a long queue wait is
+# the worst possible failure mode; surface the contradiction at submit).
+_env_append_if_absent "# ARI_SLURM_ALLOW_NO_GRES="
 
 # --- 8) Orchestrator / viz --------------------------------------------------
 _env_section "Orchestrator"
@@ -468,6 +479,7 @@ _env_append_if_absent "# ARI_ALPHAXIV_ENDPOINT=https://api.alphaxiv.org/mcp/v1"
 # documentation tooling acknowledge them as recognised vars.
 _env_section "ari-skill-paper-re / PaperBench"
 _env_append_if_absent "# ARI_PAPER_REGISTRY_DIR=\$HOME/.ari/paper_registry  # override paper registry root (default: ~/.ari/paper_registry)"
+_env_append_if_absent "# ARI_PAPERBENCH_WORKER_DISABLED=  # set to 1 to suppress the GUI wizard's background pipeline spawn (tests / CI / dry-run debugging)"
 _env_append_if_absent "# SLURM_JOB_NUM_NODES=  # auto-populated by sbatch; surfaced in agent prompt CLUSTER SHAPE"
 _env_append_if_absent "# SLURM_NTASKS=         # auto-populated by sbatch; surfaced in agent prompt CLUSTER SHAPE"
 _env_append_if_absent "# SLURM_PROCID=         # auto-populated by srun; read by mpi_aggregate_skel.py fallback"

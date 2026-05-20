@@ -179,20 +179,44 @@ def test_slurm_dispatch_constructs_correct_sbatch_command(tmp_path, monkeypatch)
     assert str(repo / "reproduce.sh") in wrapper_text
 
 
-def test_slurm_dispatch_falls_back_to_local_without_sbatch(tmp_path, monkeypatch):
+def test_slurm_dispatch_raises_loudly_without_sbatch(tmp_path, monkeypatch):
     repo = _setup_slurm(tmp_path)
     monkeypatch.setenv("ARI_SLURM_PARTITION", "sx40")
+    monkeypatch.delenv("ARI_PHASE1_ALLOW_FALLBACK", raising=False)
     with patch.object(S, "_has_bin", lambda n: False):
-        # No subprocess.run patch needed — _run_reproduce_local handles it.
+        with pytest.raises(RuntimeError, match="sbatch.*not on PATH"):
+            S._run_reproduce_slurm(repo, repo / "reproduce.log", timeout=10)
+
+
+def test_slurm_dispatch_falls_back_to_local_without_sbatch_when_opted_in(
+    tmp_path, monkeypatch,
+):
+    repo = _setup_slurm(tmp_path)
+    monkeypatch.setenv("ARI_SLURM_PARTITION", "sx40")
+    monkeypatch.setenv("ARI_PHASE1_ALLOW_FALLBACK", "1")
+    with patch.object(S, "_has_bin", lambda n: False):
         res = S._run_reproduce_slurm(repo, repo / "reproduce.log", timeout=10)
     # _run_reproduce_local was used → result has no partition key.
     assert "partition" not in res
 
 
-def test_slurm_dispatch_falls_back_when_partition_unresolved(tmp_path, monkeypatch):
+def test_slurm_dispatch_raises_loudly_when_partition_unresolved(tmp_path, monkeypatch):
     repo = _setup_slurm(tmp_path, with_partition=False)
     monkeypatch.delenv("ARI_SLURM_PARTITION", raising=False)
     monkeypatch.delenv("SLURM_PARTITION", raising=False)
+    monkeypatch.delenv("ARI_PHASE1_ALLOW_FALLBACK", raising=False)
+    with patch.object(S, "_has_bin", lambda n: n == "sbatch"):
+        with pytest.raises(RuntimeError, match="no partition could be resolved"):
+            S._run_reproduce_slurm(repo, repo / "reproduce.log", timeout=10)
+
+
+def test_slurm_dispatch_falls_back_when_partition_unresolved_and_opted_in(
+    tmp_path, monkeypatch,
+):
+    repo = _setup_slurm(tmp_path, with_partition=False)
+    monkeypatch.delenv("ARI_SLURM_PARTITION", raising=False)
+    monkeypatch.delenv("SLURM_PARTITION", raising=False)
+    monkeypatch.setenv("ARI_PHASE1_ALLOW_FALLBACK", "1")
     with patch.object(S, "_has_bin", lambda n: n == "sbatch"):
         res = S._run_reproduce_slurm(repo, repo / "reproduce.log", timeout=10)
     # No partition → fell back to local.
@@ -466,7 +490,26 @@ def test_S11_complex_profile_all_args_emitted(tmp_path, monkeypatch):
     assert "--account=projX" in cmd
 
 
-def test_gpu_flags_all_dropped_when_cluster_has_no_gres(tmp_path, monkeypatch):
+def test_gpu_request_raises_loudly_when_cluster_has_no_gres(tmp_path, monkeypatch):
+    """Default behaviour: requesting GPUs on a GRES-less cluster MUST
+    fail loud at submit time rather than silently downgrading to CPU.
+    A 36 h queue wait followed by an all-CPU run is the worst possible
+    failure mode; surface the contradiction immediately.
+    """
+    repo = _setup_slurm(tmp_path)
+    _patch_slurm_has_gres(monkeypatch, False)
+    monkeypatch.delenv("ARI_SLURM_ALLOW_NO_GRES", raising=False)
+    with patch.object(S, "_has_bin", lambda n: n == "sbatch"):
+        with pytest.raises(RuntimeError, match="GPU resources requested.*no GRES"):
+            S._run_reproduce_slurm(
+                repo, repo / "reproduce.log", timeout=600,
+                gpus_per_task=1, gpus_per_node=4, gpu_type="v100",
+            )
+
+
+def test_gpu_flags_dropped_when_cluster_has_no_gres_and_opted_in(
+    tmp_path, monkeypatch,
+):
     """T15 / S13 (v0.7.2 real-SLURM smoke finding): GRES-less cluster —
     ALL GPU-related flags (``--gres``, ``--gpus-per-task``,
     ``--gpus-per-node``) must be dropped, not just ``--gres``. Modern
@@ -475,10 +518,15 @@ def test_gpu_flags_all_dropped_when_cluster_has_no_gres(tmp_path, monkeypatch):
     physical GPUs are visible on the host. The agent prompt's CLUSTER
     SHAPE block still surfaces the visible GPUs via nvidia-smi, so the
     replicator can use them at runtime without going through SLURM.
+
+    This silent-drop behaviour is now opt-in via
+    ``ARI_SLURM_ALLOW_NO_GRES=1``; the default is to fail loud (see the
+    test above).
     """
     repo = _setup_slurm(tmp_path)
     captured: dict = {}
     _patch_slurm_has_gres(monkeypatch, False)
+    monkeypatch.setenv("ARI_SLURM_ALLOW_NO_GRES", "1")
     with patch.object(S, "_has_bin", lambda n: n == "sbatch"):
         with patch.object(S.subprocess, "run", _capture_cmd_call(captured)):
             S._run_reproduce_slurm(
