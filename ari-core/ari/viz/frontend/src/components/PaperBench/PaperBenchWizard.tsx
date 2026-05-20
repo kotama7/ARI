@@ -12,6 +12,7 @@ interface ReproduceConfig {
   time_limit_sec: number;
   iterative_agent: boolean;
   sandbox_kind: string;
+  container_image: string;
   partition: string;
   // execution_profile override (mirrors the rubric's execution_profile)
   nodes: number;
@@ -69,6 +70,7 @@ export function PaperBenchWizard() {
     time_limit_sec: 12 * 3600,
     iterative_agent: false,
     sandbox_kind: 'auto',
+    container_image: '',
     partition: '',
     nodes: 0,
     ntasks: 0,
@@ -250,6 +252,17 @@ export function PaperBenchWizard() {
               <input
                 value={reproduce.partition}
                 onChange={(e) => setReproduce({ ...reproduce, partition: e.target.value })}
+              />
+            </label>
+            <label style={{ flexBasis: '100%' }}>
+              {t('pb_container_image')}
+              <input
+                value={reproduce.container_image}
+                onChange={(e) =>
+                  setReproduce({ ...reproduce, container_image: e.target.value })
+                }
+                style={{ width: '100%' }}
+                placeholder="docker://nvcr.io/nvidia/pytorch:24.05-py3   |   /scratch/img.sif   |   ubuntu:24.04"
               />
             </label>
           </div>

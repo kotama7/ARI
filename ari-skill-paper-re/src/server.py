@@ -182,6 +182,7 @@ async def build_reproduce_sh(
     iterative_agent: bool = False,
     max_steps: int = 0,
     sandbox_kind: str = "auto",
+    container_image: str = "",
     apptainer_image: str = "",
     overwrite: bool = False,
 ) -> dict:
@@ -207,7 +208,15 @@ async def build_reproduce_sh(
             ``time_limit_sec`` constrains).
         sandbox_kind: ``auto`` | ``local`` | ``apptainer`` | ``slurm``;
             see :func:`_compute.make_computer`.
-        apptainer_image: SIF path for ``sandbox_kind=apptainer``.
+        container_image: container image used by the agent rollout. For
+            ``sandbox_kind=apptainer`` this is the SIF path or
+            ``docker://...`` URI. For ``local`` / ``slurm`` the value is
+            ignored (the agent runs on the host filesystem). When empty,
+            the legacy ``apptainer_image`` arg is consulted, then
+            env ``ARI_PHASE1_APPTAINER_IMAGE`` /
+            ``ARI_PHASE1_SINGULARITY_IMAGE``.
+        apptainer_image: deprecated alias of ``container_image``; kept for
+            back-compat with workflow YAMLs that still set it.
         overwrite: when False (default) and ``output_dir/reproduce.sh`` is
             already present, no rollout is performed — returns
             ``populated=False, skipped_reason=...``.
@@ -288,6 +297,10 @@ async def build_reproduce_sh(
             model=chosen_model,
         )
 
+    # container_image (wizard) takes precedence over the deprecated
+    # apptainer_image alias.
+    resolved_image = container_image or apptainer_image or ""
+
     return await run_replicator_agent(
         paper_md_path=str(paper_md),
         output_dir=str(out),
@@ -298,7 +311,7 @@ async def build_reproduce_sh(
         max_steps=int(max_steps) or None,
         completer_config=completer_config,
         sandbox_kind=sandbox_kind,
-        apptainer_image=apptainer_image or None,
+        apptainer_image=resolved_image or None,
     )
 
 
@@ -418,24 +431,42 @@ def _run_reproduce_local(repo_dir: Path, log_path: Path, timeout: int) -> dict:
 
 
 def _run_reproduce_apptainer(
-    repo_dir: Path, log_path: Path, timeout: int, *, runner: str = "apptainer",
+    repo_dir: Path, log_path: Path, timeout: int, *,
+    runner: str = "apptainer", image: str = "",
 ) -> dict:
     """Execute reproduce.sh in an Apptainer/Singularity container.
 
-    Image resolution:
-      1. ``ARI_PHASE1_APPTAINER_IMAGE`` (file:// path or library://, docker://,
-         shub:// URI accepted by ``apptainer exec``).
-      2. Default: ``docker://ubuntu:24.04`` — Apptainer/Singularity can pull
+    Image resolution (priority order):
+      1. Explicit ``image`` arg (wizard ``container_image`` field).
+      2. ``ARI_PHASE1_APPTAINER_IMAGE`` / ``ARI_PHASE1_SINGULARITY_IMAGE``
+         (file:// path or library://, docker://, shub:// URI accepted by
+         ``apptainer exec``).
+      3. Default: ``docker://ubuntu:24.04`` — Apptainer/Singularity can pull
          and execute a docker image directly without a Docker daemon.
 
     Falls back to local if the binary is missing.
     """
     if not _has_bin(runner):
-        log.info("%s not on PATH; falling back to local reproduce", runner)
-        return _run_reproduce_local(repo_dir, log_path, timeout)
-    image = os.environ.get("ARI_PHASE1_APPTAINER_IMAGE") \
-        or os.environ.get("ARI_PHASE1_SINGULARITY_IMAGE") \
+        if os.environ.get("ARI_PHASE1_ALLOW_FALLBACK", "") == "1":
+            log.warning(
+                "%s not on PATH; ARI_PHASE1_ALLOW_FALLBACK=1 → falling back "
+                "to local reproduce",
+                runner,
+            )
+            return _run_reproduce_local(repo_dir, log_path, timeout)
+        raise RuntimeError(
+            f"sandbox_kind={runner!r} requested but {runner!r} is not on "
+            f"PATH. Refusing to silently fall back to local host execution. "
+            f"Either install {runner}, pick a different sandbox_kind, or "
+            f"set ARI_PHASE1_ALLOW_FALLBACK=1 to opt in to the legacy "
+            f"silent-fallback behaviour."
+        )
+    image = (
+        image
+        or os.environ.get("ARI_PHASE1_APPTAINER_IMAGE")
+        or os.environ.get("ARI_PHASE1_SINGULARITY_IMAGE")
         or "docker://ubuntu:24.04"
+    )
     cmd = [
         runner, "exec",
         "--bind", f"{repo_dir}:{repo_dir}",
@@ -641,15 +672,37 @@ def _run_reproduce_slurm(
     partition can be resolved.
     """
     if not _has_bin("sbatch"):
-        log.info("sbatch not on PATH; falling back to local reproduce")
-        return _run_reproduce_local(repo_dir, log_path, timeout)
+        if os.environ.get("ARI_PHASE1_ALLOW_FALLBACK", "") == "1":
+            log.warning(
+                "sbatch not on PATH; ARI_PHASE1_ALLOW_FALLBACK=1 → falling "
+                "back to local reproduce"
+            )
+            return _run_reproduce_local(repo_dir, log_path, timeout)
+        raise RuntimeError(
+            "sandbox_kind=slurm requested but `sbatch` is not on PATH. "
+            "Refusing to silently fall back to local host execution. "
+            "Either install SLURM tooling, pick a different sandbox_kind, "
+            "or set ARI_PHASE1_ALLOW_FALLBACK=1 to opt in to the legacy "
+            "silent-fallback behaviour."
+        )
     resolved_partition = _resolve_partition_for_repo(repo_dir, partition)
     if not resolved_partition:
-        log.warning(
-            "SLURM dispatch requested but no partition resolved "
-            "(arg/env/launch_config.json all empty); falling back to local"
+        if os.environ.get("ARI_PHASE1_ALLOW_FALLBACK", "") == "1":
+            log.warning(
+                "SLURM dispatch requested but no partition resolved "
+                "(arg/env/launch_config.json all empty); "
+                "ARI_PHASE1_ALLOW_FALLBACK=1 → falling back to local"
+            )
+            return _run_reproduce_local(repo_dir, log_path, timeout)
+        raise RuntimeError(
+            "sandbox_kind=slurm requested but no partition could be "
+            "resolved (caller arg, ARI_SLURM_PARTITION env, and "
+            "launch_config.json all empty). Refusing to silently fall back "
+            "to local host execution. Provide a partition via the wizard / "
+            "ARI_SLURM_PARTITION / launch_config.json, or set "
+            "ARI_PHASE1_ALLOW_FALLBACK=1 to opt in to the legacy "
+            "silent-fallback behaviour."
         )
-        return _run_reproduce_local(repo_dir, log_path, timeout)
 
     script = repo_dir / "reproduce.sh"
     if not script.is_file():
@@ -670,23 +723,39 @@ def _run_reproduce_slurm(
     # Gate every GPU-related flag on cluster GRES configuration. Some sites
     # (e.g. the sx40 sandbox partition) expose GPUs without configuring
     # GRES; in that case sbatch rejects ANY ``--gres`` / ``--gpus-*`` flag
-    # with ``Invalid generic resource (gres) specification``. We drop them
-    # ALL — the agent prompt's CLUSTER SHAPE still tells the agent which
-    # physical GPUs are visible via nvidia-smi at runtime.
+    # with ``Invalid generic resource (gres) specification``.
+    #
+    # Default: fail loud. The user asked for GPUs; silently downgrading to
+    # CPU after a 36 h queue wait is far worse than failing fast at submit.
+    # The legacy silent-drop behaviour is opt-in via
+    # ``ARI_SLURM_ALLOW_NO_GRES=1`` for sites where the operator knows the
+    # partition has physical GPUs visible at runtime without GRES.
     effective_gpu_type = gpu_type
     effective_gpus_per_task = int(gpus_per_task or 0)
     effective_gpus_per_node = int(gpus_per_node or 0)
     if (gpu_type or effective_gpus_per_task or effective_gpus_per_node) and not _slurm_has_gres():
-        log.warning(
-            "GPU resources requested (gpu_type=%r, gpus_per_task=%d, "
-            "gpus_per_node=%d) but cluster has no GRES configured; "
-            "omitting --gres / --gpus-per-task / --gpus-per-node flags "
-            "(physical GPU may still be visible via nvidia-smi at runtime).",
-            gpu_type, effective_gpus_per_task, effective_gpus_per_node,
-        )
-        effective_gpu_type = ""
-        effective_gpus_per_task = 0
-        effective_gpus_per_node = 0
+        if os.environ.get("ARI_SLURM_ALLOW_NO_GRES", "") == "1":
+            log.warning(
+                "GPU resources requested (gpu_type=%r, gpus_per_task=%d, "
+                "gpus_per_node=%d) but cluster has no GRES configured; "
+                "ARI_SLURM_ALLOW_NO_GRES=1 → dropping --gres / --gpus-* flags "
+                "(physical GPU may still be visible via nvidia-smi at runtime).",
+                gpu_type, effective_gpus_per_task, effective_gpus_per_node,
+            )
+            effective_gpu_type = ""
+            effective_gpus_per_task = 0
+            effective_gpus_per_node = 0
+        else:
+            raise RuntimeError(
+                f"GPU resources requested "
+                f"(gpu_type={gpu_type!r}, gpus_per_task={effective_gpus_per_task}, "
+                f"gpus_per_node={effective_gpus_per_node}) but this cluster has "
+                f"no GRES configured — sbatch would reject any --gres / --gpus-* "
+                f"flag. Refusing to silently drop GPU flags and run on CPU. "
+                f"Set ARI_SLURM_ALLOW_NO_GRES=1 to opt in to the legacy "
+                f"silent-drop behaviour (only when you know the partition "
+                f"exposes physical GPUs without GRES)."
+            )
 
     n_cpus = int(cpus) if cpus and int(cpus) > 0 else int(os.environ.get("ARI_SLURM_CPUS", "8"))
     wt = walltime or os.environ.get("ARI_SLURM_WALLTIME", "") or _walltime_str(timeout)
@@ -831,12 +900,35 @@ def _run_reproduce_slurm(
     return out
 
 
-def _run_reproduce_docker(repo_dir: Path, log_path: Path, timeout: int) -> dict:
-    """Execute reproduce.sh in a docker sandbox. Falls back to local on docker missing."""
+def _run_reproduce_docker(
+    repo_dir: Path, log_path: Path, timeout: int, *, image: str = "",
+) -> dict:
+    """Execute reproduce.sh in a docker sandbox.
+
+    Image priority: explicit ``image`` arg (from wizard ``container_image``) →
+    env ``ARI_PHASE1_DOCKER_IMAGE`` → hardcoded ``ubuntu:24.04``.
+
+    When the docker daemon is unreachable, raises ``RuntimeError`` (the user
+    explicitly picked ``sandbox_kind=docker`` and a silent fallback to local
+    would defeat the isolation intent). Set ``ARI_PHASE1_ALLOW_FALLBACK=1``
+    to opt back into the legacy silent-fallback-to-local behaviour.
+    """
     if not _docker_works():
-        log.info("docker daemon not usable; falling back to local reproduce")
-        return _run_reproduce_local(repo_dir, log_path, timeout)
-    image = os.environ.get("ARI_PHASE1_DOCKER_IMAGE", "ubuntu:24.04")
+        if os.environ.get("ARI_PHASE1_ALLOW_FALLBACK", "") == "1":
+            log.warning(
+                "docker daemon not usable; ARI_PHASE1_ALLOW_FALLBACK=1 → "
+                "falling back to local reproduce"
+            )
+            return _run_reproduce_local(repo_dir, log_path, timeout)
+        raise RuntimeError(
+            "sandbox_kind=docker requested but docker daemon is not "
+            "reachable (`docker info` failed). Refusing to silently fall "
+            "back to local host execution. Either start the docker daemon, "
+            "pick a different sandbox_kind, or set "
+            "ARI_PHASE1_ALLOW_FALLBACK=1 to opt in to the legacy "
+            "silent-fallback behaviour."
+        )
+    image = image or os.environ.get("ARI_PHASE1_DOCKER_IMAGE", "ubuntu:24.04")
     cmd = [
         "docker", "run", "--rm",
         "-v", f"{repo_dir}:/work",
@@ -870,6 +962,7 @@ async def run_reproduce(
     rubric_path: str,
     repo_dir: str,
     sandbox_kind: str = "",
+    container_image: str = "",
     timeout_global_sec: int = 0,
     partition: str = "",
     cpus: int = 0,
@@ -997,13 +1090,19 @@ async def run_reproduce(
 
     log_path = repo / "reproduce.log"
     if kind == "docker":
-        exec_res = _run_reproduce_docker(repo, log_path, max_runtime)
+        exec_res = _run_reproduce_docker(
+            repo, log_path, max_runtime, image=container_image,
+        )
     elif kind in ("local", ""):
         exec_res = _run_reproduce_local(repo, log_path, max_runtime)
     elif kind == "apptainer":
-        exec_res = _run_reproduce_apptainer(repo, log_path, max_runtime, runner="apptainer")
+        exec_res = _run_reproduce_apptainer(
+            repo, log_path, max_runtime, runner="apptainer", image=container_image,
+        )
     elif kind == "singularity":
-        exec_res = _run_reproduce_apptainer(repo, log_path, max_runtime, runner="singularity")
+        exec_res = _run_reproduce_apptainer(
+            repo, log_path, max_runtime, runner="singularity", image=container_image,
+        )
     elif kind == "slurm":
         exec_res = _run_reproduce_slurm(
             repo, log_path, max_runtime,
