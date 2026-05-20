@@ -94,6 +94,32 @@ async def test_run_reproduce_local_executes_script(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_run_reproduce_tolerates_empty_rubric_path(tmp_path):
+    """Regression: bridge.reproduce_submission drives run_reproduce
+    without a rubric (the caller supplies all hints via explicit args).
+    An empty rubric_path must NOT short-circuit with an error envelope —
+    it should fall through to caller-arg-only execution.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    sh = repo / "reproduce.sh"
+    sh.write_text("#!/bin/bash\necho 'no-rubric path' > out.txt\n")
+    sh.chmod(0o755)
+
+    res = await S.run_reproduce(
+        rubric_path="",
+        repo_dir=str(repo),
+        sandbox_kind="local",
+        timeout_global_sec=30,
+    )
+    assert res["executed"] is True
+    assert res["exit_code"] == 0
+    assert "reproduce.log" in res["artifacts"]
+    # No rubric → no expected_artifacts → nothing should land in "missing".
+    assert res["missing"] == []
+
+
+@pytest.mark.asyncio
 async def test_run_reproduce_missing_script(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

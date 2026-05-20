@@ -114,3 +114,54 @@ def test_judge_submission_is_async_callable():
     test_paperbench_bridge_upstream.py (skipped without OPENAI_API_KEY)."""
     import inspect
     assert inspect.iscoroutinefunction(B.judge_submission)
+
+
+def test_three_stage_adapters_share_calling_style():
+    """Stage 1 (rollout_submission), Stage 2 (reproduce_submission), and
+    Stage 3 (judge_submission) are exposed as keyword-only async callables
+    so a caller can sequence them with explicit field names. This is the
+    public surface the dogfood script and the viz worker consume.
+    """
+    import inspect
+    for fn_name in ("rollout_submission", "reproduce_submission", "judge_submission"):
+        fn = getattr(B, fn_name)
+        assert inspect.iscoroutinefunction(fn), f"{fn_name} must be async"
+        sig = inspect.signature(fn)
+        # All params keyword-only (no positional surprises).
+        kinds = {p.kind for p in sig.parameters.values()}
+        assert kinds == {inspect.Parameter.KEYWORD_ONLY}, (
+            f"{fn_name} parameters must all be keyword-only; got kinds={kinds}"
+        )
+
+
+def test_rollout_submission_signature_includes_container_image_and_sandbox():
+    """Regression for the container_image / sandbox_kind pipeline: the
+    Stage 1 adapter must expose both so a caller can opt into Apptainer
+    isolation (the only Stage 1 sandbox with real container isolation).
+    """
+    import inspect
+    sig = inspect.signature(B.rollout_submission)
+    params = set(sig.parameters)
+    for required in (
+        "paper_md", "work_dir", "agent_model",
+        "container_image", "sandbox_kind",
+        "iterative_agent", "time_limit_sec",
+    ):
+        assert required in params, f"rollout_submission missing {required!r}"
+
+
+def test_reproduce_submission_signature_honors_sandbox_and_slurm_flags():
+    """Regression for the Stage 2 wiring: the adapter must expose
+    container_image plus the SLURM resource flags so a wizard request
+    flows through verbatim.
+    """
+    import inspect
+    sig = inspect.signature(B.reproduce_submission)
+    params = set(sig.parameters)
+    for required in (
+        "submission_dir", "sandbox_kind", "container_image",
+        "time_limit_sec", "partition",
+        "gpus_per_task", "gpu_type", "memory_gb_per_node",
+        "exclusive", "extra_sbatch_args",
+    ):
+        assert required in params, f"reproduce_submission missing {required!r}"
