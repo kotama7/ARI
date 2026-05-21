@@ -478,6 +478,16 @@ def test_env_block_for_slurm_describes_module_load_path():
     # The vendor's misleading line MUST be entirely replaced (we are
     # not on Docker — sudo lie would mislead the agent again).
     assert B._VENDOR_ROOT_ACCESS_LINE not in block
+    # Network claim must be present so the agent doesn't waste cycles
+    # probing connectivity or try to bundle every dep locally.
+    assert "Network" in block
+    assert "pip install" in block
+    assert "git clone" in block
+    # Phase 2 fresh-shell warning is the most subtle failure mode for
+    # HPC dogfood — must be explicit so the agent puts module load /
+    # pip install AT THE TOP of reproduce.sh.
+    assert "FRESH shell" in block
+    assert "reproduce.sh" in block
 
 
 def test_env_block_for_local_host_without_cuda():
@@ -491,6 +501,10 @@ def test_env_block_for_local_host_without_cuda():
     block = B._build_truthful_env_block(env)
     assert "apt-get available" in block
     assert "NOT detected" in block  # nvcc honesty
+    # Even on bare-metal local hosts the network + Phase 2 isolation
+    # notes apply — these are not SLURM-specific.
+    assert "Network" in block
+    assert "FRESH shell" in block
 
 
 def test_env_patch_is_installed_on_vendor_get_instructions():

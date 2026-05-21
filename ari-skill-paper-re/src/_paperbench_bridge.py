@@ -333,6 +333,32 @@ def _build_truthful_env_block(env: dict) -> str:
         "compute nodes; write run artifacts to the working directory "
         "(passed in via the workspace) so they survive node hops."
     )
+    # Network claim: SLURM and local hosts almost always have outbound
+    # HTTPS to PyPI/GitHub/HF/Zenodo. We declare this so the agent
+    # doesn't waste cycles probing connectivity or assume it must
+    # bundle every dependency locally. (Docker is handled in the early
+    # return above so this only fires for slurm/local kinds.)
+    lines.append(
+        "- Network: outbound HTTPS is available — `pip install`, "
+        "`git clone`, `curl`/`wget` to PyPI / GitHub / Hugging Face / "
+        "Zenodo all work. Use these for fetching source code, model "
+        "weights, and (small) datasets. Since `apt-get` is not "
+        "available, prefer pip / source build / `module load` over "
+        "system-package install paths."
+    )
+    # Phase 2 isolation warning — by far the most subtle failure mode
+    # for HPC dogfood runs. The agent's iteration shell is NOT the
+    # shell that will run reproduce.sh at grading time.
+    lines.append(
+        "- Phase 2 isolation: the grader will run "
+        "`bash submission/reproduce.sh` in a FRESH shell on a fresh "
+        "node allocation. Any `module load`, `pip install`, "
+        "environment variables, or directory changes you do during "
+        "your iteration WILL NOT carry over. If you need a `module "
+        "load`, a `pip install`, or any other env setup to make your "
+        "code run, put those lines AT THE TOP of `reproduce.sh` "
+        "itself."
+    )
     return "\n".join(lines)
 
 
