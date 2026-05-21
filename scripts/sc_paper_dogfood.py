@@ -332,19 +332,6 @@ def main() -> int:
                     help="Stage 1: switch to PaperBench's IterativeAgent "
                          "variant (paper §5.3): no submit-tool early "
                          "termination, step-by-step prompting.")
-    ap.add_argument("--module-loads", default="",
-                    help="Comma-separated Lmod module names to pre-load "
-                         "before spawning the agent's subprocess (e.g., "
-                         "`system/ai-l40s,nvhpc`). The bridge runs "
-                         "`bash -lc \"module load $X1 $X2; env -0\"` in a "
-                         "probe subprocess and merges the resulting env "
-                         "diff into the agent's env, so the agent's "
-                         "bash/python tools inherit nvcc / mpicc / hdf5 / "
-                         "etc on PATH from the start. Without this the "
-                         "agent has to discover and `module load` "
-                         "interactively (often fails to — see SC41406 "
-                         "dogfood). Best-effort: silently skipped if "
-                         "module command is unavailable.")
     ap.add_argument("--blacklist-urls", default="",
                     help="Comma-separated URLs/domains the agent must NOT "
                          "fetch during Stage 1 rollout (forbidden URLs / "
@@ -556,10 +543,6 @@ def main() -> int:
             blacklist_urls=[
                 u.strip() for u in (args.blacklist_urls or "").split(",")
                 if u.strip()
-            ] or None,
-            module_loads=[
-                m.strip() for m in (args.module_loads or "").split(",")
-                if m.strip()
             ] or None,
         ))
         print(f"[stage1] populated={rollout_res.get('populated')} "

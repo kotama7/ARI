@@ -683,74 +683,6 @@ _install_multilang_example_patch()
 # ─── helpers ──────────────────────────────────────────────────────────────
 
 
-def _probe_module_load_env(modules: list[str]) -> dict[str, str] | None:
-    """Run ``bash -lc "module load $X1 $X2 ...; env -0"`` and return
-    the post-load env as a dict (or None on hard failure).
-
-    Best-effort: if the host has no module command, no MODULEPATH, or
-    any module load fails, returns None and logs a warning. The caller
-    is expected to fall back to vanilla env in that case rather than
-    abort the rollout.
-
-    Why a probe subprocess rather than calling ``module`` from Python:
-    Lmod/Environment Modules mutate shell state via shell functions
-    that source ``modulecmd`` output — there is no Python API guaranteed
-    to be installed. Spawning ``bash -lc`` and reading the post-load
-    env is the most portable + reliable mechanism.
-
-    ``env -0`` (null-terminated) avoids ambiguity for env vars
-    containing newlines (e.g., LS_COLORS).
-    """
-    import subprocess
-
-    if not modules:
-        return None
-    module_cmd = " && ".join(f"module load {m}" for m in modules)
-    probe = f"{module_cmd} && env -0"
-    try:
-        result = subprocess.run(
-            ["bash", "-lc", probe],
-            capture_output=True, timeout=60, check=False,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired) as e:
-        log.warning("module_loads probe: subprocess failed (%s); "
-                    "falling back to vanilla env", e)
-        return None
-    if result.returncode != 0:
-        stderr = result.stderr.decode("utf-8", errors="replace")[:500]
-        log.warning("module_loads probe: `module load %s` failed "
-                    "(rc=%d): %s; falling back to vanilla env",
-                    " ".join(modules), result.returncode, stderr)
-        return None
-    out = result.stdout
-    if not out:
-        log.warning("module_loads probe: empty env output; "
-                    "falling back to vanilla env")
-        return None
-    # Parse null-terminated KEY=VALUE pairs.
-    env_after: dict[str, str] = {}
-    for entry in out.split(b"\0"):
-        if not entry:
-            continue
-        try:
-            text = entry.decode("utf-8", errors="replace")
-        except Exception:
-            continue
-        eq = text.find("=")
-        if eq <= 0:
-            continue
-        env_after[text[:eq]] = text[eq + 1:]
-    # Return only the DIFF from the current process's env (so callers
-    # do not get every unrelated var like SHELL/USER overridden).
-    diff = {
-        k: v for k, v in env_after.items()
-        if os.environ.get(k) != v
-    }
-    log.info("module_loads probe: `module load %s` mutated %d env keys",
-             " ".join(modules), len(diff))
-    return diff
-
-
 def task_node_from_dict(d: dict) -> TaskNode:
     """Construct an upstream TaskNode from our PaperBench-format dict."""
     return TaskNode(
@@ -1048,7 +980,6 @@ async def rollout_submission(
     run_id: str | None = None,
     forbid_host_filesystem: bool = False,
     blacklist_urls: list[str] | None = None,
-    module_loads: list[str] | None = None,
 ) -> dict:
     """PaperBench Stage 1 — drive a BasicAgent / IterativeAgent rollout
     that writes a ``reproduce.sh`` (plus supporting code) into ``work_dir``.
@@ -1098,21 +1029,6 @@ async def rollout_submission(
     This is best-effort — a determined agent can still encode URLs
     obliquely; running with sandbox_kind=apptainer and no_network
     is the only hard guarantee.
-
-    ``module_loads`` (default None): list of Lmod module names to load
-    BEFORE spawning the agent's subprocess (e.g.,
-    ``["system/ai-l40s", "nvhpc"]``). The bridge runs
-    ``bash -lc "module load $X1 $X2 ...; env -0"`` in a probe
-    subprocess, captures the resulting env, and merges the diff into
-    the agent's env. The agent's bash/python tools then inherit
-    nvcc / mpicc / hdf5 / etc on PATH from the start — removing the
-    "agent forgets to module load and writes Python proxy" failure
-    mode observed on the SC41406 dogfood (v2: 48/49 bash calls used
-    python3 because nvcc was not on PATH at iteration time, even
-    though the env-truth prompt told the agent it could be loaded).
-    Best-effort: if ``module`` is not on PATH or any load fails, the
-    probe falls back to vanilla env and emits a warning — does NOT
-    abort the rollout.
 
     Returns the standard ``build_reproduce_sh`` envelope
     (``{populated, output_dir, files, expected_artifacts,
@@ -1175,31 +1091,6 @@ async def rollout_submission(
                 merged_env[k] = v
         if env:
             merged_env.update(env)
-
-    # module_loads: run `bash -lc "module load $X1 $X2; env -0"` in a
-    # probe subprocess on the host, capture the resulting env, and
-    # merge the diff into the agent's env. Best-effort — failures
-    # (module binary missing, module name unknown, etc.) warn and
-    # continue with vanilla env so a typo on a non-cluster host does
-    # not abort the rollout.
-    ml_entries = [str(m).strip() for m in (module_loads or []) if str(m).strip()]
-    if ml_entries:
-        ml_env = _probe_module_load_env(ml_entries)
-        if ml_env is not None:
-            if merged_env is None:
-                merged_env = {}
-            # Surface PATH / LD_LIBRARY_PATH / CPATH / MODULEPATH /
-            # LOADEDMODULES / CUDA_HOME / NVHPC_ROOT etc that module
-            # load mutated. Keep explicit ``env`` overrides winning
-            # over module-derived values, but module-derived wins
-            # over agent_env_path defaults so cluster-current
-            # toolchains take priority.
-            already_explicit = set((env or {}).keys())
-            for k, v in ml_env.items():
-                if k not in already_explicit:
-                    merged_env[k] = v
-            log.info("module_loads probe: merged %d env keys from "
-                     "`module load %s`", len(ml_env), " ".join(ml_entries))
 
     # blacklist_urls enforcement: export as env (for downstream tool
     # wrappers) AND prepend a FORBIDDEN URLS section to paper_md so
