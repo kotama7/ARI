@@ -488,6 +488,13 @@ def test_env_block_for_slurm_describes_module_load_path():
     # pip install AT THE TOP of reproduce.sh.
     assert "FRESH shell" in block
     assert "reproduce.sh" in block
+    # Verify-first principle: counters the observed agent bias of
+    # writing CUDA / MPI / numba scaffolding without actually
+    # probing whether the toolchain is reachable in the iteration
+    # shell. Must mention probe + zero-cost experimentation.
+    assert "Verify-first" in block
+    assert "module load" in block  # named example for cluster envs
+    assert "ZERO Code Execution" in block
     # Language-choice counter-priming. The vendor instructions.txt
     # uses a Python (count.py / strawberry) example which strongly
     # primes the agent toward Python regardless of the paper. The
@@ -529,6 +536,12 @@ def test_env_block_for_local_host_without_cuda():
     # bias toward Python isn't kind-dependent.
     assert "Language choice" in block
     assert "native language" in block
+    # Verify-first principle must also fire on local — it counters a
+    # generic agent bias (write code before checking toolchain works)
+    # that is not slurm-specific.
+    assert "Verify-first" in block
+    assert "PROBE" in block
+    assert "ZERO Code Execution" in block
 
 
 def test_blacklist_lift_constants_disagree_with_vendor():

@@ -367,6 +367,29 @@ def _build_truthful_env_block(env: dict) -> str:
     # rubric typically has "GPU kernel verified", "C++17 build",
     # "MPI process count = N", "Fortran subroutine X exists" leaves
     # that Python proxies cannot satisfy.
+    # Verify-first principle — toolchain-agnostic counter to the
+    # observed agent pattern of writing scaffolding (kernel.cu,
+    # build.sh) WITHOUT ever actually compiling or running it. On
+    # SC41406 the agent wrote a CUDA kernel stub + build.sh, ran
+    # build.sh once, hit `nvcc not found` (because it never
+    # `module load nvhpc`-ed in its own iteration shell), and just
+    # documented "requires nvcc/NVHPC" in the README instead of
+    # trying `module load nvhpc` itself. The rubric grades real
+    # execution, not documentation.
+    lines.append(
+        "- Verify-first principle: BEFORE writing toolchain-dependent "
+        "code, PROBE the toolchain in YOUR shell. Use whichever "
+        "discovery mechanism your env supports — `module avail` / "
+        "`module load <name>` on Lmod clusters, `conda activate` / "
+        "`pip list` in conda/venv, `which <bin>` / `pkg-config <name>` "
+        "otherwise. If the probe succeeds, copy the activation "
+        "command(s) to the TOP of reproduce.sh so Phase 2 (the "
+        "grader's fresh shell) inherits the same env. Scaffolding "
+        "(writing source files, build scripts, READMEs) WITHOUT ever "
+        "compiling or running anything earns ZERO Code Execution "
+        "rubric credit — probe aggressively early; iterative shell "
+        "experimentation has zero cost."
+    )
     lines.append(
         "- Language choice: the reproduce.sh example in the standard "
         "instructions uses Python — that is illustration ONLY, not "
