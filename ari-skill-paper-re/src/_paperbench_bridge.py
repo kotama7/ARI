@@ -188,6 +188,203 @@ def _install_orphan_filter_patch() -> None:
 _install_orphan_filter_patch()
 
 
+# ─── vendor patch: env-truth ADDITIONAL NOTES substitution ────────────────
+#
+# Vendor's BasicAgent system prompt
+# (``solvers/basicagent/prompts/templates.py:additional_notes_template``)
+# hardcodes "- You have root access in your environment." This is correct
+# for the upstream PaperBench eval environment (an Ubuntu Docker
+# container with sudo + apt-get + a baked-in CUDA toolkit), but is a LIE
+# on a shared HPC cluster (SLURM-dispatched compute node where the user
+# has no root and the CUDA toolchain is gated behind an Lmod ``module
+# load`` command).
+#
+# On the SC41406 dogfood we observed the cost of this lie: the agent
+# faithfully copied the template's "apt-get install" pattern into its
+# reproduce.sh, hit ``apt-get: command not found`` on first invocation,
+# pivoted to "pip-only CPU" without ever probing ``module avail`` or
+# ``which nvcc`` — leaving the CUDA toolchain undiscovered for the full
+# 30-minute rollout and forfeiting every GPU-related rubric leaf.
+#
+# Fix: monkey-patch vendor ``get_instructions`` at bridge import. The
+# patched version detects the actual env (SLURM vs Docker vs local
+# host) plus the actual availability of ``apt-get``, ``nvcc``,
+# ``module``, ``sudo`` and substitutes a TRUTHFUL ADDITIONAL NOTES
+# section instead of vendor's hardcoded Docker-style notes. No vendor
+# source edits (preserves the ``zero vendor changes`` invariant from
+# v0.7.2 docs). Opt-out via ``ARI_PB_DISABLE_ENV_PATCH=1`` for callers
+# who want the verbatim vendor template (e.g., when reproducing an
+# upstream leaderboard result).
+
+_ENV_PATCH_DISABLE_ENV = "ARI_PB_DISABLE_ENV_PATCH"
+_VENDOR_ROOT_ACCESS_LINE = "- You have root access in your environment."
+
+
+def _detect_runtime_env() -> dict:
+    """Probe the actual runtime environment so the agent prompt can be
+    rewritten with TRUTH instead of vendor's Docker assumption.
+
+    Returns a dict with:
+      - ``kind``: 'slurm' | 'docker' | 'local'
+      - ``has_apt``: bool, ``apt-get`` on PATH
+      - ``has_sudo``: bool, ``sudo`` on PATH (root access surrogate)
+      - ``has_module``: bool, Lmod/environment-modules system is usable
+      - ``module_path``: str or None, current MODULEPATH if module system present
+      - ``nvcc_path``: str or None, ``nvcc`` location (probed via PATH + common
+        HPC SDK install locations)
+      - ``slurm_partition``: str or None, current SLURM partition if any
+    """
+    import shutil
+
+    env_kind = "local"
+    slurm_partition = os.environ.get("SLURM_JOB_PARTITION") or None
+    if os.environ.get("SLURM_JOB_ID") or slurm_partition:
+        env_kind = "slurm"
+    elif Path("/.dockerenv").is_file():
+        env_kind = "docker"
+    else:
+        try:
+            cg = Path("/proc/1/cgroup")
+            if cg.is_file() and "docker" in cg.read_text(errors="replace").lower():
+                env_kind = "docker"
+        except Exception:
+            pass
+
+    nvcc = shutil.which("nvcc")
+    if not nvcc:
+        for cand in (
+            "/opt/nvidia/hpc_sdk/Linux_x86_64/25.7/compilers/bin/nvcc",
+            "/opt/nvidia/hpc_sdk/Linux_x86_64/25.5/compilers/bin/nvcc",
+            "/opt/nvidia/hpc_sdk/Linux_x86_64/25.3/compilers/bin/nvcc",
+            "/usr/local/cuda/bin/nvcc",
+        ):
+            if Path(cand).is_file():
+                nvcc = cand
+                break
+
+    return {
+        "kind": env_kind,
+        "has_apt": shutil.which("apt-get") is not None,
+        "has_sudo": shutil.which("sudo") is not None,
+        "has_module": (
+            shutil.which("module") is not None
+            or bool(os.environ.get("MODULEPATH"))
+        ),
+        "module_path": os.environ.get("MODULEPATH") or None,
+        "nvcc_path": nvcc,
+        "slurm_partition": slurm_partition,
+    }
+
+
+def _build_truthful_env_block(env: dict) -> str:
+    """Compose a replacement for vendor's ``- You have root access in your
+    environment.`` line. Lists the ACTUAL state of the host so the
+    agent doesn't have to guess via trial-and-error.
+    """
+    if env["kind"] == "docker":
+        # Vendor's assumption is correct for Docker; keep the original line
+        # so we don't waste tokens on info the agent already has.
+        return _VENDOR_ROOT_ACCESS_LINE
+
+    # Build a multi-line replacement for non-Docker envs.
+    lines: list[str] = []
+    parts_root: list[str] = []
+    if env["has_sudo"]:
+        parts_root.append("sudo available")
+    if env["has_apt"]:
+        parts_root.append("apt-get available")
+    if not parts_root:
+        parts_root.append("NO root access (no sudo, no apt-get)")
+    lines.append(f"- Host privileges: {', '.join(parts_root)}.")
+
+    if env["kind"] == "slurm":
+        slurm_note = "SHARED HPC cluster (SLURM-dispatched compute node)"
+        if env["slurm_partition"]:
+            slurm_note += f"; current partition={env['slurm_partition']}"
+        lines.append(f"- Environment: {slurm_note}. ")
+
+    if env["has_module"]:
+        lines.append(
+            "- Module system: ENABLED. Discover available compilers and "
+            "runtimes via `module avail`; load with `module load <name>`."
+        )
+
+    if env["nvcc_path"]:
+        nvcc = env["nvcc_path"]
+        if env["has_module"] and "/opt/nvidia/hpc_sdk" in nvcc:
+            lines.append(
+                f"- CUDA toolchain: nvcc available at {nvcc} AFTER "
+                f"`module load nvhpc` (NVIDIA HPC SDK). The `nvcc` binary "
+                f"is NOT on PATH by default; you MUST `module load nvhpc` "
+                f"first to compile CUDA code."
+            )
+        else:
+            lines.append(f"- CUDA toolchain: nvcc available at {nvcc} (already on PATH).")
+    elif env["has_module"]:
+        lines.append(
+            "- CUDA toolchain: NOT on default PATH. Try "
+            "`module avail nvhpc` / `module load nvhpc` to discover."
+        )
+    else:
+        lines.append("- CUDA toolchain: NOT detected on this host.")
+
+    lines.append(
+        "- Shared filesystem note: per-node `/tmp` is NOT shared across "
+        "compute nodes; write run artifacts to the working directory "
+        "(passed in via the workspace) so they survive node hops."
+    )
+    return "\n".join(lines)
+
+
+def _install_env_assumption_patch() -> None:
+    """Monkey-patch vendor ``get_instructions`` to substitute vendor's
+    hardcoded ``- You have root access in your environment.`` line with
+    a TRUTHFUL multi-line block describing the actual runtime env
+    (apt/sudo/module/nvcc state) so the agent doesn't blindly trust the
+    Docker-assumption template. Idempotent. Skipped when
+    ``ARI_PB_DISABLE_ENV_PATCH=1`` is set.
+    """
+    if os.environ.get(_ENV_PATCH_DISABLE_ENV, "") == "1":
+        log.info("vendor patch: env-assumption substitution disabled via %s=1",
+                 _ENV_PATCH_DISABLE_ENV)
+        return
+    try:
+        from paperbench.solvers.basicagent import utils as _v_utils  # type: ignore
+    except Exception as e:
+        log.warning("vendor patch: cannot locate basicagent.utils for env "
+                    "substitution: %s; agent will see vendor's Docker "
+                    "assumption verbatim", e)
+        return
+    if getattr(_v_utils.get_instructions, "_ari_env_patched", False):
+        return
+    original = _v_utils.get_instructions
+
+    async def patched(*args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        out = await original(*args, **kwargs)
+        # Re-detect at call time (env state could change between import and
+        # rollout, e.g., SLURM_JOB_ID materialises only inside sbatch).
+        env = _detect_runtime_env()
+        replacement = _build_truthful_env_block(env)
+        if replacement != _VENDOR_ROOT_ACCESS_LINE and _VENDOR_ROOT_ACCESS_LINE in out:
+            out = out.replace(_VENDOR_ROOT_ACCESS_LINE, replacement)
+            log.info(
+                "vendor patch: substituted env-assumption line with %d-line "
+                "truthful block (kind=%s nvcc=%s has_module=%s has_apt=%s)",
+                replacement.count("\n") + 1,
+                env["kind"], bool(env["nvcc_path"]),
+                env["has_module"], env["has_apt"],
+            )
+        return out
+
+    patched._ari_env_patched = True  # type: ignore[attr-defined]
+    _v_utils.get_instructions = patched
+    log.info("vendor patch: installed env-assumption substitution on "
+             "BasicAgent get_instructions")
+
+
+_install_env_assumption_patch()
+
+
 # ─── helpers ──────────────────────────────────────────────────────────────
 
 

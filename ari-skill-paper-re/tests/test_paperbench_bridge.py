@@ -435,6 +435,75 @@ def test_orphan_filter_patch_is_installed_on_vendor_converter():
     )
 
 
+def test_env_detect_returns_required_keys():
+    env = B._detect_runtime_env()
+    for k in ("kind", "has_apt", "has_sudo", "has_module", "nvcc_path",
+              "slurm_partition", "module_path"):
+        assert k in env, f"missing key {k} in detected env"
+    assert env["kind"] in ("slurm", "docker", "local"), env["kind"]
+
+
+def test_env_block_for_docker_keeps_vendor_line():
+    """In a Docker env vendor's 'You have root access in your environment.'
+    line is correct — patch must NOT alter the line so we don't waste
+    tokens telling the agent things it already knows."""
+    env = {
+        "kind": "docker",
+        "has_apt": True, "has_sudo": True, "has_module": False,
+        "nvcc_path": "/usr/local/cuda/bin/nvcc",
+        "slurm_partition": None, "module_path": None,
+    }
+    assert B._build_truthful_env_block(env) == B._VENDOR_ROOT_ACCESS_LINE
+
+
+def test_env_block_for_slurm_describes_module_load_path():
+    """SLURM HPC cluster: agent must learn that root access is NOT
+    available, module system IS available, and nvcc lives behind a
+    `module load nvhpc` gate. Without this the agent blindly tries
+    `apt-get install nvidia-cuda-toolkit` and gives up."""
+    env = {
+        "kind": "slurm",
+        "has_apt": False, "has_sudo": False, "has_module": True,
+        "nvcc_path": "/opt/nvidia/hpc_sdk/Linux_x86_64/25.7/compilers/bin/nvcc",
+        "slurm_partition": "ai-l40s",
+        "module_path": "/cloud_opt/modulefiles/ai-l40s:...",
+    }
+    block = B._build_truthful_env_block(env)
+    assert "NO root access" in block
+    assert "SLURM" in block or "HPC" in block
+    assert "ai-l40s" in block  # partition surfaced
+    assert "module load nvhpc" in block  # the discovery instruction
+    assert "module avail" in block  # the exploration instruction
+    assert "/opt/nvidia/hpc_sdk" in block  # exact nvcc path
+    # The vendor's misleading line MUST be entirely replaced (we are
+    # not on Docker — sudo lie would mislead the agent again).
+    assert B._VENDOR_ROOT_ACCESS_LINE not in block
+
+
+def test_env_block_for_local_host_without_cuda():
+    """Bare-metal local with no module system and no nvcc: agent must
+    learn nvcc is not detected so it doesn't waste cycles searching."""
+    env = {
+        "kind": "local",
+        "has_apt": True, "has_sudo": False, "has_module": False,
+        "nvcc_path": None, "slurm_partition": None, "module_path": None,
+    }
+    block = B._build_truthful_env_block(env)
+    assert "apt-get available" in block
+    assert "NOT detected" in block  # nvcc honesty
+
+
+def test_env_patch_is_installed_on_vendor_get_instructions():
+    """The vendor get_instructions symbol must be patched at bridge
+    import. Idempotent: importing the bridge twice leaves only one
+    patch layer (verified by the ._ari_env_patched sentinel)."""
+    from paperbench.solvers.basicagent import utils as _v_utils  # type: ignore
+    assert getattr(_v_utils.get_instructions, "_ari_env_patched", False) is True, (
+        "vendor get_instructions not patched; agent will see Docker-style "
+        "root-access claim even on SLURM HPC clusters"
+    )
+
+
 def test_resolve_container_image_alias():
     """``pb-env`` / ``pb-reproducer`` short aliases must resolve to the
     canonical ``image:latest`` tags that ``scripts/build_pb_images.sh``
