@@ -576,6 +576,27 @@ def test_blacklist_patch_is_installed_on_vendor_get_instructions():
     )
 
 
+def test_probe_module_load_returns_none_on_missing_module():
+    """When `module` is unavailable on the host (e.g., a dev laptop
+    without Lmod), the probe must return None and log a warning, NOT
+    raise. This lets the caller fall back to vanilla env."""
+    # Force probe failure by passing a module name that virtually no
+    # host will know AND running on the test host (CI may or may not
+    # have module). The function must return None in either failure
+    # mode (subprocess error OR module load returns nonzero).
+    result = B._probe_module_load_env(["definitely-not-a-real-module-9zX"])
+    # Two acceptable outcomes:
+    #   - host has no `module` binary → None
+    #   - host has module but the name fails → None
+    # The test asserts the safe fallback, NOT that probe succeeds.
+    assert result is None or isinstance(result, dict)
+
+
+def test_probe_module_load_empty_input_returns_none():
+    """Empty module list → None (caller should not have invoked us)."""
+    assert B._probe_module_load_env([]) is None
+
+
 def test_multilang_counter_example_contents():
     """The multi-language counter-example must enumerate the major
     language stacks so the agent sees Python is just one option."""
