@@ -359,6 +359,43 @@ def _build_truthful_env_block(env: dict) -> str:
         "code run, put those lines AT THE TOP of `reproduce.sh` "
         "itself."
     )
+    # Language-choice counter-priming. The standard PaperBench
+    # instructions.txt uses a Python (count.py / strawberry) example
+    # for illustration, which strongly primes the agent toward Python
+    # regardless of the paper. On HPC papers (CUDA / MPI / OpenMP /
+    # Fortran numerical libraries) this is a false positive — the
+    # rubric typically has "GPU kernel verified", "C++17 build",
+    # "MPI process count = N", "Fortran subroutine X exists" leaves
+    # that Python proxies cannot satisfy.
+    lines.append(
+        "- Language choice: the reproduce.sh example in the standard "
+        "instructions uses Python — that is illustration ONLY, not "
+        "prescription. Match the paper's native language stack:\n"
+        "    * HPC GPU compute (CUDA / cuSZ / GPU kernels) → C++/CUDA "
+        "(`module load nvhpc`, then `nvcc -std=c++17 -arch=sm_XX -O3`); "
+        "HIP/ROCm for AMD GPU papers; SYCL for portable.\n"
+        "    * HPC CPU parallel (OpenMP / MPI / vectorisation) → "
+        "C / C++ / Fortran with `mpicc` / `mpic++` / `mpifort` (`module "
+        "load openmpi` or `mpich`) and `-fopenmp`.\n"
+        "    * Numerical libraries (BLAS / LAPACK / FFTW / HDF5 / "
+        "NetCDF) → C / C++ / Fortran linked against the system module "
+        "(`module load fftw` etc); Python wrappers (numpy.linalg / "
+        "h5py / netCDF4) are acceptable when the paper itself uses "
+        "them.\n"
+        "    * ML / deep learning (PyTorch / JAX / TensorFlow / "
+        "diffusion / transformers) → Python with the appropriate "
+        "framework; CUDA kernel custom ops in C++/CUDA when the paper "
+        "ships them.\n"
+        "    * Systems / databases / compilers / kernels → the paper's "
+        "declared language (C / C++ / Rust / Go / OCaml / etc); do "
+        "not re-implement in Python.\n"
+        "    * Web / JS frameworks → JS/TS in Node.js or the declared "
+        "runtime.\n"
+        "  A Python-only proxy of a CUDA/MPI/Fortran paper will lose "
+        "every kernel/build/execution rubric leaf even when the "
+        "algorithm shape is correct. The rubric REWARDS reproducing "
+        "the paper in its native language."
+    )
     return "\n".join(lines)
 
 

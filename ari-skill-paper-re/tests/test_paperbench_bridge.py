@@ -488,6 +488,26 @@ def test_env_block_for_slurm_describes_module_load_path():
     # pip install AT THE TOP of reproduce.sh.
     assert "FRESH shell" in block
     assert "reproduce.sh" in block
+    # Language-choice counter-priming. The vendor instructions.txt
+    # uses a Python (count.py / strawberry) example which strongly
+    # primes the agent toward Python regardless of the paper. The
+    # env block must explicitly tell the agent the example is
+    # illustration only and to MATCH THE PAPER'S NATIVE LANGUAGE.
+    # The block must enumerate the major HPC / ML / systems / web
+    # language tracks so the agent has a concrete reference.
+    assert "Language choice" in block
+    assert "illustration ONLY" in block
+    assert "native language" in block
+    # Specific stacks the env block must enumerate so the agent can
+    # match its choice to the paper's domain.
+    for lang_or_tool in (
+        "C++/CUDA", "HIP", "SYCL",       # GPU compute
+        "OpenMP", "MPI",                  # CPU parallel
+        "Fortran",                        # legacy numerical
+        "PyTorch", "JAX",                 # ML frameworks
+        "Rust", "Go",                     # systems
+    ):
+        assert lang_or_tool in block, f"language addendum missing: {lang_or_tool!r}"
 
 
 def test_env_block_for_local_host_without_cuda():
@@ -505,6 +525,10 @@ def test_env_block_for_local_host_without_cuda():
     # notes apply — these are not SLURM-specific.
     assert "Network" in block
     assert "FRESH shell" in block
+    # Language counter-priming applies on local hosts too — the LLM
+    # bias toward Python isn't kind-dependent.
+    assert "Language choice" in block
+    assert "native language" in block
 
 
 def test_env_patch_is_installed_on_vendor_get_instructions():
