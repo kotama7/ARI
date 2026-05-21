@@ -332,6 +332,18 @@ def main() -> int:
                     help="Stage 1: switch to PaperBench's IterativeAgent "
                          "variant (paper §5.3): no submit-tool early "
                          "termination, step-by-step prompting.")
+    ap.add_argument("--blacklist-urls", default="",
+                    help="Comma-separated URLs/domains the agent must NOT "
+                         "fetch during Stage 1 rollout (forbidden URLs / "
+                         "resources). Plumbed through to "
+                         "bridge.rollout_submission(blacklist_urls=...). "
+                         "Note: ARI lifts the vendor's default paper-codebase "
+                         "blacklist (see bridge `_install_blacklist_lift_patch`); "
+                         "use this flag to ADD specific URLs the agent should "
+                         "still avoid (e.g., a competitor's proprietary "
+                         "dataset, a downstream evaluation server). Example: "
+                         "`--blacklist-urls https://github.com/foo/bar,"
+                         "https://example.com/secret-dataset`.")
     ap.add_argument("--with-reproduction", action="store_true",
                     help="Stage 2: execute the submission's reproduce.sh in "
                          "the chosen sandbox via bridge.reproduce_submission "
@@ -528,6 +540,10 @@ def main() -> int:
             iterative_agent=args.iterative_agent,
             sandbox_kind=args.rollout_sandbox,
             container_image=args.rollout_container_image,
+            blacklist_urls=[
+                u.strip() for u in (args.blacklist_urls or "").split(",")
+                if u.strip()
+            ] or None,
         ))
         print(f"[stage1] populated={rollout_res.get('populated')} "
               f"agent_runtime_sec={rollout_res.get('agent_runtime_sec')} "

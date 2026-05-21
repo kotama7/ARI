@@ -531,6 +531,38 @@ def test_env_block_for_local_host_without_cuda():
     assert "native language" in block
 
 
+def test_blacklist_lift_constants_disagree_with_vendor():
+    """Sanity: the ARI override text must NOT be a substring of the
+    vendor cheating-claim line, otherwise the substitution would
+    loop or no-op."""
+    assert B._ARI_BLACKLIST_OVERRIDE != B._VENDOR_BLACKLIST_LINE
+    # Override must mention the lift mechanism so the agent understands
+    # the override is intentional, not a leak.
+    assert "paper's official codebase" in B._ARI_BLACKLIST_OVERRIDE
+    assert "blacklist_urls" in B._ARI_BLACKLIST_OVERRIDE
+    # Original cheating wording must NOT be in the override.
+    assert "cheating" not in B._ARI_BLACKLIST_OVERRIDE
+
+
+def test_blacklist_patch_is_installed_on_vendor_get_instructions():
+    """The vendor get_instructions symbol must have the blacklist-lift
+    sentinel set at bridge import. Stacks on top of env-assumption
+    patch — both substitutions must fire per call."""
+    from paperbench.solvers.basicagent import utils as _v_utils  # type: ignore
+    fn = _v_utils.get_instructions
+    assert getattr(fn, "_ari_blacklist_lifted", False) is True, (
+        "blacklist lift patch not installed; agent will see vendor's "
+        "cheating claim and self-police away from paper's codebase even "
+        "though ARI's reproduction goal does not require it"
+    )
+    # Both env-assumption and blacklist lift patches must coexist:
+    # the latter wraps the former.
+    assert getattr(fn, "_ari_env_patched", False) is True, (
+        "env-assumption patch sentinel lost when blacklist lift was "
+        "installed; both must be visible on the final wrapper"
+    )
+
+
 def test_env_patch_is_installed_on_vendor_get_instructions():
     """The vendor get_instructions symbol must be patched at bridge
     import. Idempotent: importing the bridge twice leaves only one
