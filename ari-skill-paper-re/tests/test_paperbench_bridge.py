@@ -348,6 +348,93 @@ def test_write_executed_tarball_round_trip(tmp_path):
     assert any(n.endswith("/results/metric.txt") for n in names), names
 
 
+def test_filter_orphan_tool_calls_drops_unmatched():
+    """Regression for the SC41406 vendor bug: when vendor solver loop
+    crashes after appending assistant.tool_calls but before all matching
+    role=tool outputs are added, the next API call sees orphan tool_calls
+    and the Responses API returns BadRequestError. The bridge's
+    _filter_orphan_tool_calls drops the orphans before the converter sees
+    them.
+    """
+    convo = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "tool_calls": [
+            {"id": "A", "function": {"name": "foo", "arguments": "{}"}, "type": "function"},
+            {"id": "B", "function": {"name": "bar", "arguments": "{}"}, "type": "function"},
+        ]},
+        {"role": "tool", "tool_call_id": "A", "content": "A-out"},
+        # B has no matching output → orphan
+        {"role": "user", "content": "continue"},
+    ]
+    filtered = B._filter_orphan_tool_calls(convo)
+    assert len(filtered) == 4
+    asst = filtered[1]
+    assert asst["role"] == "assistant"
+    assert [tc["id"] for tc in asst["tool_calls"]] == ["A"], \
+        "orphan tool_call B must be dropped, matched A kept"
+
+
+def test_filter_orphan_tool_calls_drops_empty_assistant_when_all_orphan():
+    """When every tool_call on an assistant message is orphan AND the
+    message has no text content, drop the entire assistant message to
+    keep the API input compact.
+    """
+    convo = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "tool_calls": [
+            {"id": "X", "function": {"name": "foo", "arguments": "{}"}, "type": "function"},
+        ]},
+        {"role": "user", "content": "next"},
+    ]
+    filtered = B._filter_orphan_tool_calls(convo)
+    # The orphan-only assistant must be dropped entirely.
+    assert all(m.get("role") != "assistant" for m in filtered), filtered
+    assert len(filtered) == 2
+
+
+def test_filter_orphan_tool_calls_keeps_assistant_with_text_after_orphan_strip():
+    """When an assistant message has BOTH text content AND tool_calls,
+    and only the tool_calls are orphan, keep the assistant message
+    (text preserved) but drop the orphan call list.
+    """
+    convo = [
+        {"role": "assistant", "content": "I will call foo",
+         "tool_calls": [{"id": "X", "function": {"name": "foo", "arguments": "{}"}, "type": "function"}]},
+    ]
+    filtered = B._filter_orphan_tool_calls(convo)
+    assert len(filtered) == 1
+    assert filtered[0]["content"] == "I will call foo"
+    assert "tool_calls" not in filtered[0]
+
+
+def test_filter_orphan_tool_calls_idempotent_on_clean_conversation():
+    """Conversations without orphans must pass through unchanged."""
+    convo = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "tool_calls": [
+            {"id": "A", "function": {"name": "foo", "arguments": "{}"}, "type": "function"},
+        ]},
+        {"role": "tool", "tool_call_id": "A", "content": "ok"},
+    ]
+    filtered = B._filter_orphan_tool_calls(convo)
+    assert filtered == convo, "clean conversations must round-trip unchanged"
+
+
+def test_orphan_filter_patch_is_installed_on_vendor_converter():
+    """The patch must be active on the vendor converter symbol so the
+    Responses API call path is protected. Idempotency: importing the
+    bridge twice (re-loading the module) should leave only one patch
+    layer (verified by the ._ari_orphan_patched sentinel)."""
+    from preparedness_turn_completer.oai_responses_turn_completer import (  # type: ignore
+        converters as _v_conv,
+    )
+    fn = _v_conv.convert_conversation_to_response_input
+    assert getattr(fn, "_ari_orphan_patched", False) is True, (
+        "vendor converter not patched; orphan tool_calls will reach the "
+        "Responses API and trigger BadRequestError"
+    )
+
+
 def test_resolve_container_image_alias():
     """``pb-env`` / ``pb-reproducer`` short aliases must resolve to the
     canonical ``image:latest`` tags that ``scripts/build_pb_images.sh``

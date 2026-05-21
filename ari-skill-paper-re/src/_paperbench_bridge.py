@@ -69,6 +69,125 @@ from paperbench.judge.simple import SimpleJudge  # noqa: E402  type: ignore
 log.info("paperbench upstream loaded (sys.path injected by _vendor_path)")
 
 
+# ─── vendor patch: orphan tool_call filter (Responses API) ────────────────
+#
+# Vendor ``BasicAgentSolver._execute_agent`` (solver.py:171-180) appends the
+# assistant message containing N tool_calls to the conversation FIRST and
+# THEN iterates each tool_call to invoke it + append its output. When one
+# of the per-call ``handle_tool_call`` invocations raises (sandbox error,
+# OOM in the tool subprocess, file-system race, etc.), the loop crashes
+# after assistant.tool_calls is committed but before all corresponding
+# ``role=tool`` outputs are appended. The next completer call replays the
+# conversation verbatim, and the OpenAI Responses API rejects it with
+# ``BadRequestError: No tool output found for function call call_XXX``
+# (vendor converters.py:171-176 passes assistant.tool_calls through
+# unchanged).
+#
+# Reproduced twice on the SC41406 BasicAgent dogfood
+# (sandbox=local then sandbox=local-inside-ai-l40s); fixing at the
+# converter layer is the minimum-blast-radius patch because every
+# downstream caller (vendor solver, future ARI orchestrators) benefits
+# without per-call defensive code.
+#
+# We do not edit vendor sources (the
+# ``zero vendor changes`` invariant from the v0.7.2 docs); instead, we
+# monkey-patch the converter symbol at module load. The original is
+# stashed for callers who explicitly opt out via
+# ``ARI_PB_DISABLE_ORPHAN_FILTER=1``.
+
+_ORPHAN_PATCH_DISABLE_ENV = "ARI_PB_DISABLE_ORPHAN_FILTER"
+
+
+def _filter_orphan_tool_calls(conversation: list) -> list:
+    """Drop assistant tool_calls whose call_id has no matching role=tool
+    output anywhere in the conversation.
+
+    Preserves the assistant message itself if it has textual content or
+    surviving tool_calls. Empty assistant messages (no content, no
+    surviving calls) are dropped to keep the API input compact.
+    """
+    matched_ids: set[str] = set()
+    for m in conversation:
+        if not isinstance(m, dict):
+            continue
+        if m.get("role") == "tool":
+            tcid = m.get("tool_call_id")
+            if tcid:
+                matched_ids.add(str(tcid))
+
+    out: list = []
+    n_dropped_calls = 0
+    n_dropped_msgs = 0
+    for m in conversation:
+        if not isinstance(m, dict):
+            out.append(m)
+            continue
+        if m.get("role") == "assistant" and "tool_calls" in m and m["tool_calls"]:
+            kept = [tc for tc in m["tool_calls"] if str(tc.get("id", "")) in matched_ids]
+            n_dropped_calls += len(m["tool_calls"]) - len(kept)
+            if kept:
+                new_m = dict(m)
+                new_m["tool_calls"] = kept
+                out.append(new_m)
+            else:
+                # No surviving tool_calls; keep the assistant message
+                # iff it still has text content.
+                if m.get("content"):
+                    new_m = dict(m)
+                    new_m.pop("tool_calls", None)
+                    out.append(new_m)
+                else:
+                    n_dropped_msgs += 1
+        else:
+            out.append(m)
+    if n_dropped_calls or n_dropped_msgs:
+        log.warning(
+            "vendor patch: filtered %d orphan tool_call(s) and %d empty "
+            "assistant message(s) from Responses API input "
+            "(BasicAgentSolver loop crashed mid-tool-exec; outputs missing)",
+            n_dropped_calls, n_dropped_msgs,
+        )
+    return out
+
+
+def _install_orphan_filter_patch() -> None:
+    """Monkey-patch vendor ``convert_conversation_to_response_input`` to
+    pre-filter orphan tool_calls before the request hits the OpenAI
+    Responses API. Idempotent. Skipped when ``ARI_PB_DISABLE_ORPHAN_FILTER=1``.
+    """
+    if os.environ.get(_ORPHAN_PATCH_DISABLE_ENV, "") == "1":
+        log.info("vendor patch: orphan-tool-call filter disabled via %s=1",
+                 _ORPHAN_PATCH_DISABLE_ENV)
+        return
+    try:
+        from preparedness_turn_completer.oai_responses_turn_completer import (  # type: ignore
+            converters as _v_conv,
+            completer as _v_comp,
+        )
+    except Exception as e:
+        log.warning("vendor patch: cannot locate vendor converter module: %s; "
+                    "Responses API path is unprotected from orphan tool_calls", e)
+        return
+    if getattr(_v_conv.convert_conversation_to_response_input, "_ari_orphan_patched", False):
+        return
+    original = _v_conv.convert_conversation_to_response_input
+
+    def patched(conversation):  # noqa: ANN001
+        return original(_filter_orphan_tool_calls(list(conversation)))
+
+    patched._ari_orphan_patched = True  # type: ignore[attr-defined]
+    _v_conv.convert_conversation_to_response_input = patched
+    # The completer module imports the symbol by name at import time, so
+    # patch that binding too.
+    if hasattr(_v_comp, "convert_conversation_to_response_input"):
+        _v_comp.convert_conversation_to_response_input = patched
+    log.info("vendor patch: installed orphan-tool-call filter on "
+             "Responses API converter")
+
+
+_install_orphan_filter_patch()
+
+
 # ─── helpers ──────────────────────────────────────────────────────────────
 
 
