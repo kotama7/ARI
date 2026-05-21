@@ -566,6 +566,120 @@ def _install_blacklist_lift_patch() -> None:
 _install_blacklist_lift_patch()
 
 
+# ─── vendor patch: multi-language counter-example ─────────────────────────
+#
+# Vendor instructions.txt L39-93 contains a CONCRETE EXAMPLE — counting
+# letter 'r' in "strawberry" via a Python count.py script with a
+# `python3 count.py` reproduce.sh. This is the ONLY concrete example
+# the agent sees. LLMs anchor heavily on concrete examples (much more
+# than on abstract "use any language" advice elsewhere in the prompt),
+# so the strawberry-in-Python example primes the agent toward Python
+# for ALL reproductions, including HPC papers about CUDA / MPI /
+# Fortran where Python would never be the native choice.
+#
+# SC41406 dogfood v2 (job 179341): 49 bash calls, 48 invoke python3
+# despite the env-truth + language-choice prompts saying "Python is
+# illustration only". The bias is rooted in the strawberry example
+# example, not in our env-truth abstract text.
+#
+# Fix: append a COUNTER-EXAMPLE block AFTER vendor's strawberry case,
+# showing the same trivial-reproducer pattern in C++/CUDA, Fortran +
+# OpenMP/MPI, and Rust. The agent now sees that reproduce.sh is
+# fundamentally language-agnostic — the format (bash → invoke
+# native-language binary → produce output.csv) stays the same; only
+# the implementation language changes per paper. Opt-out via
+# ``ARI_PB_DISABLE_MULTILANG_EXAMPLE=1`` for vendor-leaderboard parity.
+
+_MULTILANG_DISABLE_ENV = "ARI_PB_DISABLE_MULTILANG_EXAMPLE"
+_STRAWBERRY_EXAMPLE_END_MARKER = (
+    "the python script for counting"
+)
+_MULTILANG_COUNTER_EXAMPLE = """
+
+OTHER LANGUAGES — same pattern, different stack
+------------------------------------------------
+The strawberry example uses Python because it is the smallest possible
+illustration. The REPRODUCE.SH PATTERN — `bash` script that invokes a
+native-language binary and produces a deterministic output artifact —
+is language-agnostic. Match the paper's native language stack:
+
+# HPC GPU paper (CUDA kernel) — reproduce.sh:
+#   module load nvhpc
+#   nvcc -std=c++17 -arch=sm_89 -O3 count.cu -o count
+#   ./count strawberry > output.csv
+
+# HPC CPU paper (MPI + OpenMP) — reproduce.sh:
+#   module load openmpi
+#   mpicc -fopenmp -O3 count.c -o count
+#   mpirun -np 4 ./count strawberry > output.csv
+
+# Numerical paper (Fortran + BLAS) — reproduce.sh:
+#   module load gcc
+#   gfortran -fopenmp -O3 count.f90 -lopenblas -o count
+#   ./count strawberry > output.csv
+
+# Systems paper (Rust) — reproduce.sh:
+#   cargo build --release
+#   ./target/release/count strawberry > output.csv
+
+# ML paper (PyTorch) — reproduce.sh:
+#   pip install torch
+#   python3 count.py --word strawberry --output output.csv
+
+You are NOT required to use Python. Pick whichever language reproduces
+the paper's actual artifacts (CUDA kernels for GPU papers, MPI
+processes for HPC papers, Rust binaries for systems papers, etc).
+A Python proxy of a CUDA / MPI / Fortran paper will fail the
+"build / execution / kernel verified" rubric leaves even when the
+algorithm shape is correct.
+"""
+
+
+def _install_multilang_example_patch() -> None:
+    """Monkey-patch vendor ``get_instructions`` to APPEND a multi-language
+    counter-example after vendor's strawberry-in-Python case. Idempotent.
+    Stacks on top of the env-assumption + blacklist-lift patches.
+    Skipped when ``ARI_PB_DISABLE_MULTILANG_EXAMPLE=1``.
+    """
+    if os.environ.get(_MULTILANG_DISABLE_ENV, "") == "1":
+        log.info("vendor patch: multi-lang counter-example disabled via %s=1",
+                 _MULTILANG_DISABLE_ENV)
+        return
+    try:
+        from paperbench.solvers.basicagent import utils as _v_utils  # type: ignore
+    except Exception as e:
+        log.warning("vendor patch: cannot locate basicagent.utils for "
+                    "multi-lang counter-example: %s; agent will see only "
+                    "vendor's Python example", e)
+        return
+    if getattr(_v_utils.get_instructions, "_ari_multilang_example", False):
+        return
+    inner = _v_utils.get_instructions
+
+    async def patched(*args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        out = await inner(*args, **kwargs)
+        # Append at end of full instructions (after vendor's strawberry
+        # case + ADDITIONAL NOTES). The counter-example needs to be AFTER
+        # the strawberry example to function as counter-prime, not before.
+        if _STRAWBERRY_EXAMPLE_END_MARKER in out:
+            out = out + _MULTILANG_COUNTER_EXAMPLE
+            log.info("vendor patch: appended multi-language counter-example "
+                     "after strawberry case")
+        return out
+
+    patched._ari_multilang_example = True  # type: ignore[attr-defined]
+    # Preserve prior sentinels.
+    for attr in ("_ari_env_patched", "_ari_blacklist_lifted"):
+        if getattr(inner, attr, False):
+            setattr(patched, attr, True)
+    _v_utils.get_instructions = patched
+    log.info("vendor patch: installed multi-language counter-example on "
+             "BasicAgent get_instructions")
+
+
+_install_multilang_example_patch()
+
+
 # ─── helpers ──────────────────────────────────────────────────────────────
 
 
