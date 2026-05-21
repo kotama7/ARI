@@ -163,15 +163,32 @@ def make_local_pbtask(
     run_group_id: str = "local-group",
     run_dir: str = "",
     runs_dir: str = "",
-    code_only: bool = True,
+    code_only: bool = False,
     target_duration_hr: int | None = None,
 ) -> LocalPBTask:
     """Convenience factory wiring up all the boilerplate fields.
 
-    ``code_only=True`` is the ari default because ari's reproduction phase
-    (``ors_run_reproduce``) is a separate stage in the workflow; the agent
-    only needs to *write* runnable source. PaperBench's full pipeline would
-    *also* execute reproduce.sh inside the same harness, which we skip.
+    ``code_only=False`` is the ari default (since v0.7.4). The vendor
+    full prompt (``instructions.txt:25``) EXPLICITLY requires
+    ``reproduce.sh`` — "Your submitted repository MUST include a script
+    for reproducing the results at ``/home/submission/reproduce.sh``".
+    This is the file ARI's Stage 2 (``server.run_reproduce`` /
+    ``bridge.reproduce_submission``) needs to execute.
+
+    Previously the default was True with the rationale "agent just
+    writes source, ARI's separate ors_run_reproduce executes it" —
+    but the vendor code-only prompt (``code_only_instructions.txt``)
+    does NOT mention ``reproduce.sh`` AND explicitly tells the agent
+    "the code will not be executed during grading", causing the agent
+    to skip writing ``reproduce.sh`` entirely. ARI's Stage 2 then
+    failed with "reproduce.sh missing" — the SC41406 BasicAgent
+    dogfood surfaced this; see CHANGELOG v0.7.4.
+
+    Stage 3 grading scope adapts on the JUDGE call:
+    ``server.grade_with_simplejudge`` auto-enables ``code_only`` when
+    no ``reproduce.log`` is present (commit caae252) — so a
+    rollout-only run still scores correctly against Code Development
+    leaves without requiring this Stage 1 flag to be flipped.
     """
     if not run_dir:
         run_dir = work_dir

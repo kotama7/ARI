@@ -637,7 +637,9 @@ async def run_replicator_agent(
         run_group_id=run_group_id,
         run_dir=str(work),
         runs_dir=str(work.parent),
-        code_only=True,
+        # code_only inherits make_local_pbtask's default (False since
+        # v0.7.4) so the vendor full instructions.txt — which
+        # explicitly requires reproduce.sh — reaches the agent.
         target_duration_hr=int(round(time_limit_sec / 3600)) or None,
     )
 
