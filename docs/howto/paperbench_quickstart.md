@@ -162,6 +162,77 @@ images, first build `pb-env` / `pb-reproducer` via
 `scripts/build_pb_images.sh` then pass
 `--rollout-container-image pb-env --reproduce-container-image pb-reproducer`.
 
+## HPC cluster sbatch wrapper (illustrative)
+
+The ARI bridge does NOT auto-load cluster modules — that is the user's
+responsibility, following standard HPC practice (NERSC / OLCF / LLNL
+all recommend putting `module load` at the TOP of your sbatch script).
+The bridge probes `module avail` at rollout start and surfaces the
+cluster catalog to the agent as DATA; the agent decides which module
+to load. If you want deterministic toolchain availability, pre-load
+the modules in your sbatch wrapper BEFORE invoking ARI — this is the
+canonical HPC pattern.
+
+Example (R-CCS ai-l40s partition — **adjust the module / partition /
+GPU spec for YOUR cluster**):
+
+```bash
+#!/bin/bash
+#SBATCH --partition=ai-l40s
+#SBATCH --gres=gpu:L40S-44GB:1
+#SBATCH --cpus-per-task=8
+#SBATCH --time=08:00:00
+#SBATCH --output=workspace/checkpoints/<ts>_<slug>/sbatch.log
+#SBATCH --export=ALL
+set -eu
+
+# Pre-load the toolchain modules your paper needs. The names below are
+# R-CCS specific — replace with your cluster's equivalents (use
+# `module avail` on a login node to discover the catalog).
+module load system/ai-l40s        # cluster-specific entry module
+module load nvhpc                  # if the paper needs CUDA / nvcc
+# module load openmpi              # if the paper needs MPI
+# module load fftw                 # if the paper needs FFTW
+
+cd /path/to/ARI
+python scripts/sc_paper_dogfood.py \
+    --pdf /path/to/paper.pdf \
+    --rubric-model gpt-5-mini --two-stage \
+    --with-rollout --rollout-model gpt-5-mini \
+        --rollout-time-limit-sec 14400 --rollout-sandbox local \
+    --with-reproduction --reproduce-sandbox local \
+        --reproduce-time-limit-sec 7200 \
+    --judge-dryrun --judge-model gpt-5-mini \
+    --out workspace/checkpoints/<ts>_<slug>
+```
+
+What this gives you:
+
+- The python process inherits the loaded env (PATH includes nvcc, etc).
+- Stage 1's agent subprocess inherits the same env via `Popen` env
+  inheritance → agent's bash tool sees nvcc on PATH from turn 1.
+- Stage 2's `bash submission/reproduce.sh` inherits the same env →
+  reproduce.sh works at grade time even if the agent forgot to
+  `module load` inside reproduce.sh itself.
+
+What this does NOT replace:
+
+- The agent should STILL put `module load <NAME>` at the top of
+  `submission/reproduce.sh` so the script is portable to grading
+  environments (vendor PaperBench eval runs in Docker with no module).
+  The bridge's env-truth notes + paper-kind addendum explicitly
+  instruct the agent to do this in STEP 2.
+
+If you DO NOT pre-load (Pattern A: minimal sbatch with no module load):
+
+- The bridge still works.
+- The agent self-discovers via the `module avail` catalog in the
+  env-truth notes and the paper-kind addendum's runbook STEP 1.
+- Less deterministic — the agent may forget to module load in its
+  iteration shell and produce a Python proxy of a CUDA paper.
+- Use Pattern A for ML / pure-Python papers where toolchain
+  pre-loading is unnecessary.
+
 ## Next steps
 
 - [Rubric schema + venue templates](../reference/rubric_schema.md)

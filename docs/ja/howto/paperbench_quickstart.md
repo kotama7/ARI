@@ -100,7 +100,7 @@ python scripts/sc_paper_dogfood.py \
 詳細は [`rubric_schema.md`](../reference/rubric_schema.md#venue-conditioned-templates)
 を参照。
 
-## 7. (上級) 完全な 3-stage プロトコルを CLI で実行 (v0.7.3)
+## 7. (上級) 完全な 3-stage プロトコルを CLI で実行 (v0.8.0)
 
 dogfood スクリプトは PaperBench の Stage 1 → 2 → 3 を bridge surface
 (`ari-skill-paper-re/src/_paperbench_bridge.py`) 経由で駆動する。
@@ -137,7 +137,7 @@ vendor image を使う場合は先に `scripts/build_pb_images.sh` で
 `--rollout-container-image pb-env --reproduce-container-image pb-reproducer`
 を渡す。
 
-> **fail-loud 前提条件 (v0.7.3)**。
+> **fail-loud 前提条件 (v0.8.0)**。
 > 要求した sandbox / GPU リソースがホストで提供できない場合、エラーで
 > 止まり host CPU に黙ってフォールバックしない:
 > - `ARI_PHASE1_ALLOW_FALLBACK=1` — docker / apptainer / sbatch が
@@ -146,6 +146,54 @@ vendor image を使う場合は先に `scripts/build_pb_images.sh` で
 >   `--gpus-*` フラグを silent drop する legacy 挙動を opt-in
 >
 > 両方デフォルト OFF(actionable エラー発生)。
+
+## HPC クラスタの sbatch ラッパー(例示)
+
+ARI bridge はクラスタの module を自動 load しません — これは user の
+責務(NERSC/OLCF/LLNL すべて「sbatch script 冒頭に `module load` を
+書く」を推奨)。bridge は rollout 開始時に `module avail` を probe して
+クラスタカタログを agent にデータとして渡し、 agent がどれを load するか
+判断します。 確実性が欲しい場合は sbatch wrapper で **事前 load** を:
+
+例(R-CCS ai-l40s — **あなたのクラスタの module / partition / GPU 仕様
+に合わせて調整**):
+
+```bash
+#!/bin/bash
+#SBATCH --partition=ai-l40s
+#SBATCH --gres=gpu:L40S-44GB:1
+#SBATCH --time=08:00:00
+#SBATCH --output=workspace/checkpoints/<ts>_<slug>/sbatch.log
+set -eu
+
+# 必要 toolchain の module を事前 load(クラスタによって名前が異なる、
+# `module avail` で確認)
+module load system/ai-l40s   # クラスタ固有のエントリ module
+module load nvhpc             # paper が CUDA / nvcc を必要なら
+# module load openmpi         # paper が MPI を必要なら
+
+cd /path/to/ARI
+python scripts/sc_paper_dogfood.py \
+    --pdf /path/to/paper.pdf \
+    --rubric-model gpt-5-mini --two-stage \
+    --with-rollout --rollout-model gpt-5-mini \
+        --rollout-time-limit-sec 14400 --rollout-sandbox local \
+    --with-reproduction --reproduce-sandbox local \
+        --reproduce-time-limit-sec 7200 \
+    --judge-dryrun --judge-model gpt-5-mini \
+    --out workspace/checkpoints/<ts>_<slug>
+```
+
+利点:python プロセス → Stage 1 agent subprocess → Stage 2
+`bash submission/reproduce.sh` まで env 継承、nvcc 等が PATH に居続ける。
+
+代替:事前 load しなくても bridge は動作(agent が
+`module avail` カタログから自己発見)、ただし agent が忘れて
+Python proxy で済ます失敗パターン(SC41406 v2 = 0.8%)あり。
+
+agent は **reproduce.sh 冒頭にも** `module load <NAME>` を書くべき
+(vendor PaperBench eval は Docker で module 不在、portability のため)。
+これは bridge の env-truth + paper-kind addendum で agent に明示指示済。
 
 ## 次のステップ
 

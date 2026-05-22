@@ -98,7 +98,7 @@ python scripts/sc_paper_dogfood.py \
 新增 venue 只需 YAML 一个文件 — 详见
 [`rubric_schema.md`](../reference/rubric_schema.md#venue-conditioned-templates)。
 
-## 7. (进阶) 通过 CLI 执行完整 3-stage 协议 (v0.7.3)
+## 7. (进阶) 通过 CLI 执行完整 3-stage 协议 (v0.8.0)
 
 dogfood 脚本通过 bridge surface
 (`ari-skill-paper-re/src/_paperbench_bridge.py`) 驱动 PaperBench 的
@@ -135,7 +135,7 @@ python scripts/sc_paper_dogfood.py \
 `pb-env` / `pb-reproducer`, 然后传入
 `--rollout-container-image pb-env --reproduce-container-image pb-reproducer`。
 
-> **fail-loud 前置条件 (v0.7.3)**。
+> **fail-loud 前置条件 (v0.8.0)**。
 > 当请求的 sandbox / GPU 资源在 host 不可满足时, 直接报错而不会静默
 > 降级到 host CPU:
 > - `ARI_PHASE1_ALLOW_FALLBACK=1` — 当 docker / apptainer / sbatch
@@ -144,6 +144,52 @@ python scripts/sc_paper_dogfood.py \
 >   丢弃 `--gres` / `--gpus-*` 标志
 >
 > 两者默认 OFF (报错并给出可操作的提示)。
+
+## HPC 集群 sbatch 包装脚本(示例)
+
+ARI bridge **不会**自动加载集群 module —— 这是用户的职责
+(NERSC/OLCF/LLNL 都建议把 `module load` 放在 sbatch 脚本顶端)。
+bridge 在 rollout 开始时 probe `module avail` 并把目录作为数据交给
+agent,由 agent 决定要 load 哪个。如需确定性,在 sbatch 包装中
+**事前 load**:
+
+示例(R-CCS ai-l40s — **请根据您的集群 module/partition/GPU 调整**):
+
+```bash
+#!/bin/bash
+#SBATCH --partition=ai-l40s
+#SBATCH --gres=gpu:L40S-44GB:1
+#SBATCH --time=08:00:00
+#SBATCH --output=workspace/checkpoints/<ts>_<slug>/sbatch.log
+set -eu
+
+# 预先加载论文所需的 module(集群命名各异,用 `module avail` 探索)
+module load system/ai-l40s   # 集群特定的入口 module
+module load nvhpc             # 若论文需要 CUDA / nvcc
+# module load openmpi         # 若论文需要 MPI
+
+cd /path/to/ARI
+python scripts/sc_paper_dogfood.py \
+    --pdf /path/to/paper.pdf \
+    --rubric-model gpt-5-mini --two-stage \
+    --with-rollout --rollout-model gpt-5-mini \
+        --rollout-time-limit-sec 14400 --rollout-sandbox local \
+    --with-reproduction --reproduce-sandbox local \
+        --reproduce-time-limit-sec 7200 \
+    --judge-dryrun --judge-model gpt-5-mini \
+    --out workspace/checkpoints/<ts>_<slug>
+```
+
+收益:python 进程 → Stage 1 agent 子进程 → Stage 2
+`bash submission/reproduce.sh` 全程继承 env,nvcc 等始终在 PATH 上。
+
+替代:不预加载 bridge 也能运行(agent 通过 `module avail` 目录自我
+发现),但 agent 可能忘记加载而退化到 Python 代理
+(SC41406 v2 = 0.8%)。
+
+agent **应当在 reproduce.sh 顶部** 也写 `module load <NAME>`
+(vendor PaperBench eval 在 Docker 中没有 module,为可移植性),
+这点 bridge 的 env-truth + paper-kind addendum 已经明确指示。
 
 ## 下一步
 
