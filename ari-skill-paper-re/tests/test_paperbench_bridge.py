@@ -437,10 +437,22 @@ def test_orphan_filter_patch_is_installed_on_vendor_converter():
 
 def test_env_detect_returns_required_keys():
     env = B._detect_runtime_env()
-    for k in ("kind", "has_apt", "has_sudo", "has_module", "nvcc_path",
+    # Since v0.7.5 the env detect dict no longer carries compiler-
+    # specific fields (nvcc_path was removed for cluster-agnosticism;
+    # paper-conditional language guidance flows via the addendum hint
+    # instead — see _build_paper_kind_addendum).
+    for k in ("kind", "has_apt", "has_sudo", "has_module",
               "slurm_partition", "module_path"):
         assert k in env, f"missing key {k} in detected env"
     assert env["kind"] in ("slurm", "docker", "local"), env["kind"]
+    # Regression guard: nvcc-specific keys MUST NOT reappear (would
+    # be a philosophy violation — bridge inspecting/exposing a
+    # specific toolchain).
+    assert "nvcc_path" not in env, (
+        "nvcc_path is a compiler-specific privilege that violates the "
+        "cluster-agnostic bridge philosophy; use `module avail` probe + "
+        "paper-kind addendum instead"
+    )
 
 
 def test_env_block_for_docker_keeps_vendor_line():
@@ -450,21 +462,20 @@ def test_env_block_for_docker_keeps_vendor_line():
     env = {
         "kind": "docker",
         "has_apt": True, "has_sudo": True, "has_module": False,
-        "nvcc_path": "/usr/local/cuda/bin/nvcc",
         "slurm_partition": None, "module_path": None,
     }
     assert B._build_truthful_env_block(env) == B._VENDOR_ROOT_ACCESS_LINE
 
 
 def test_env_block_for_slurm_describes_module_load_path():
-    """SLURM HPC cluster: agent must learn that root access is NOT
-    available, module system IS available, and nvcc lives behind a
-    `module load nvhpc` gate. Without this the agent blindly tries
-    `apt-get install nvidia-cuda-toolkit` and gives up."""
+    """SLURM HPC cluster: agent must learn root access is NOT
+    available, module system IS available, and the cluster catalog
+    is dumped via `module avail` for the agent to inspect. Bridge
+    must NOT name specific compilers (nvcc / mpicc / gcc) — that
+    knowledge belongs in the per-paper addendum, not the env block."""
     env = {
         "kind": "slurm",
         "has_apt": False, "has_sudo": False, "has_module": True,
-        "nvcc_path": "/opt/nvidia/hpc_sdk/Linux_x86_64/25.7/compilers/bin/nvcc",
         "slurm_partition": "ai-l40s",
         "module_path": "/cloud_opt/modulefiles/ai-l40s:...",
     }
@@ -472,9 +483,8 @@ def test_env_block_for_slurm_describes_module_load_path():
     assert "NO root access" in block
     assert "SLURM" in block or "HPC" in block
     assert "ai-l40s" in block  # partition surfaced
-    assert "module load nvhpc" in block  # the discovery instruction
     assert "module avail" in block  # the exploration instruction
-    assert "/opt/nvidia/hpc_sdk" in block  # exact nvcc path
+    assert "module load" in block  # generic load command
     # The vendor's misleading line MUST be entirely replaced (we are
     # not on Docker — sudo lie would mislead the agent again).
     assert B._VENDOR_ROOT_ACCESS_LINE not in block
@@ -517,17 +527,17 @@ def test_env_block_for_slurm_describes_module_load_path():
         assert lang_or_tool in block, f"language addendum missing: {lang_or_tool!r}"
 
 
-def test_env_block_for_local_host_without_cuda():
-    """Bare-metal local with no module system and no nvcc: agent must
-    learn nvcc is not detected so it doesn't waste cycles searching."""
+def test_env_block_for_local_host_without_module():
+    """Bare-metal local with no module system: agent should be told
+    module is unavailable so it doesn't waste tool calls trying."""
     env = {
         "kind": "local",
         "has_apt": True, "has_sudo": False, "has_module": False,
-        "nvcc_path": None, "slurm_partition": None, "module_path": None,
+        "slurm_partition": None, "module_path": None,
     }
     block = B._build_truthful_env_block(env)
     assert "apt-get available" in block
-    assert "NOT detected" in block  # nvcc honesty
+    assert "not detected" in block  # module honesty
     # Even on bare-metal local hosts the network + Phase 2 isolation
     # notes apply — these are not SLURM-specific.
     assert "Network" in block

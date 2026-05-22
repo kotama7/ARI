@@ -250,18 +250,6 @@ def _detect_runtime_env() -> dict:
         except Exception:
             pass
 
-    nvcc = shutil.which("nvcc")
-    if not nvcc:
-        for cand in (
-            "/opt/nvidia/hpc_sdk/Linux_x86_64/25.7/compilers/bin/nvcc",
-            "/opt/nvidia/hpc_sdk/Linux_x86_64/25.5/compilers/bin/nvcc",
-            "/opt/nvidia/hpc_sdk/Linux_x86_64/25.3/compilers/bin/nvcc",
-            "/usr/local/cuda/bin/nvcc",
-        ):
-            if Path(cand).is_file():
-                nvcc = cand
-                break
-
     return {
         "kind": env_kind,
         "has_apt": shutil.which("apt-get") is not None,
@@ -271,9 +259,35 @@ def _detect_runtime_env() -> dict:
             or bool(os.environ.get("MODULEPATH"))
         ),
         "module_path": os.environ.get("MODULEPATH") or None,
-        "nvcc_path": nvcc,
         "slurm_partition": slurm_partition,
     }
+
+
+def _probe_module_avail(max_chars: int = 8000) -> str:
+    """Run ``bash -lc "module avail 2>&1"`` once and return the raw output,
+    capped at ``max_chars`` to keep the prompt budget bounded.
+
+    Cluster-agnostic by design: bridge does NOT decide which modules
+    are interesting. It dumps the entire cluster catalog as data and
+    lets the agent inspect it. On hosts without ``module``, returns
+    empty string and the caller skips the section.
+    """
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["bash", "-lc", "module avail 2>&1"],
+            capture_output=True, timeout=30, check=False,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+        log.warning("module avail probe failed: %s", e)
+        return ""
+    out = (result.stdout or b"") + (result.stderr or b"")
+    text = out.decode("utf-8", errors="replace").strip()
+    if not text:
+        return ""
+    if len(text) > max_chars:
+        text = text[:max_chars] + f"\n... [truncated at {max_chars} chars]"
+    return text
 
 
 def _build_truthful_env_block(env: dict) -> str:
@@ -303,30 +317,34 @@ def _build_truthful_env_block(env: dict) -> str:
             slurm_note += f"; current partition={env['slurm_partition']}"
         lines.append(f"- Environment: {slurm_note}. ")
 
+    # Module system + cluster catalog. We deliberately do NOT name
+    # nvcc, mpicc, gcc, or any specific compiler here — the bridge
+    # MUST stay cluster-agnostic (no hardcoded toolchain knowledge).
+    # Instead we dump the raw `module avail` output as data and let the
+    # agent inspect the cluster catalog to decide which modules apply
+    # to the paper. (CUDA-specific guidance now flows through the
+    # paper-kind addendum, which is paper-conditional rather than
+    # cluster-conditional.)
     if env["has_module"]:
         lines.append(
-            "- Module system: ENABLED. Discover available compilers and "
-            "runtimes via `module avail`; load with `module load <name>`."
+            "- Module system: ENABLED. Use `module avail` to see the "
+            "cluster catalog and `module load <name>` to activate any "
+            "toolchain the paper requires (compilers, MPI, libraries, "
+            "etc). The available-modules list is included below."
         )
-
-    if env["nvcc_path"]:
-        nvcc = env["nvcc_path"]
-        if env["has_module"] and "/opt/nvidia/hpc_sdk" in nvcc:
-            lines.append(
-                f"- CUDA toolchain: nvcc available at {nvcc} AFTER "
-                f"`module load nvhpc` (NVIDIA HPC SDK). The `nvcc` binary "
-                f"is NOT on PATH by default; you MUST `module load nvhpc` "
-                f"first to compile CUDA code."
-            )
-        else:
-            lines.append(f"- CUDA toolchain: nvcc available at {nvcc} (already on PATH).")
-    elif env["has_module"]:
-        lines.append(
-            "- CUDA toolchain: NOT on default PATH. Try "
-            "`module avail nvhpc` / `module load nvhpc` to discover."
-        )
+        avail = _probe_module_avail()
+        if avail:
+            lines.append("")
+            lines.append("Available modules on this host (probed at rollout start):")
+            lines.append("```")
+            lines.append(avail)
+            lines.append("```")
+            lines.append("")
     else:
-        lines.append("- CUDA toolchain: NOT detected on this host.")
+        lines.append(
+            "- Module system: not detected on this host. Use `which "
+            "<binary>` / package-manager status to discover compilers."
+        )
 
     lines.append(
         "- Shared filesystem note: per-node `/tmp` is NOT shared across "
@@ -455,10 +473,9 @@ def _install_env_assumption_patch() -> None:
             out = out.replace(_VENDOR_ROOT_ACCESS_LINE, replacement)
             log.info(
                 "vendor patch: substituted env-assumption line with %d-line "
-                "truthful block (kind=%s nvcc=%s has_module=%s has_apt=%s)",
+                "truthful block (kind=%s has_module=%s has_apt=%s)",
                 replacement.count("\n") + 1,
-                env["kind"], bool(env["nvcc_path"]),
-                env["has_module"], env["has_apt"],
+                env["kind"], env["has_module"], env["has_apt"],
             )
         return out
 
