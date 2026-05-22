@@ -780,19 +780,27 @@ async def _build_paper_kind_addendum(
         return ""
     client = AsyncOpenAI()
     prompt = _PAPER_KIND_CLASSIFIER_PROMPT + (paper_md or "")[:16000]
+    # gpt-5 / o-series models only accept the default temperature (1)
+    # and reject explicit temperature=0. gpt-4* / gpt-3.5 / older
+    # models accept 0 and we'd prefer the determinism. Probe via the
+    # model id to pick the right call signature; on rejection during
+    # the call, fall back to the default-temperature signature.
+    is_default_temp_only = classifier_model.startswith(("gpt-5", "o1-", "o3-", "o4-", "o5-"))
+    chat_kwargs: dict[str, Any] = {
+        "model": classifier_model,
+        "messages": [
+            {"role": "system", "content": "You are a careful "
+                                          "research-paper classifier."},
+            {"role": "user", "content": prompt},
+        ],
+        "response_format": {"type": "json_object"},
+    }
+    if not is_default_temp_only:
+        chat_kwargs["temperature"] = 0
     try:
         # Chat Completions is the simplest single-turn JSON-mode call;
         # Responses API would also work but is overkill for one shot.
-        resp = await client.chat.completions.create(
-            model=classifier_model,
-            messages=[
-                {"role": "system", "content": "You are a careful "
-                                              "research-paper classifier."},
-                {"role": "user", "content": prompt},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0,
-        )
+        resp = await client.chat.completions.create(**chat_kwargs)
         raw = resp.choices[0].message.content or "{}"
         data = json.loads(raw)
     except Exception as e:
