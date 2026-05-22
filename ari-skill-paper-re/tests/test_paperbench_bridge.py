@@ -576,6 +576,54 @@ def test_blacklist_patch_is_installed_on_vendor_get_instructions():
     )
 
 
+def test_paper_kind_addendum_format_cpp_cuda():
+    """For a CUDA paper the addendum must surface the C++/CUDA
+    reproduce.sh skeleton (`nvcc -std=c++17`) so the agent has a
+    concrete template to follow, plus the cautionary past-dogfood
+    data block."""
+    out = B._format_paper_kind_addendum(
+        native="cpp+cuda",
+        rationale="paper mentions GPU kernels, nvcc, sm_*",
+        secondary=["CUDA SDK >= 11", "single-GPU A100"],
+    )
+    assert "native_stack: **cpp+cuda**" in out
+    assert "nvcc -std=c++17" in out  # concrete shape
+    assert "CUDA SDK >= 11" in out  # secondary hint surfaced
+    # Cautionary past-dogfood data must appear so the agent sees the
+    # cost of choosing Python proxy for a CUDA paper.
+    assert "Cautionary note" in out
+    assert "Python-only proxy" in out or "Python proxy" in out
+
+
+def test_paper_kind_addendum_format_unknown_omits_skeleton():
+    """When classifier returns unknown, no language-specific skeleton
+    should be embedded — only the rationale + cautionary block."""
+    out = B._format_paper_kind_addendum(
+        native="unknown",
+        rationale="purely theoretical paper, no implementation language",
+        secondary=[],
+    )
+    assert "native_stack: **unknown**" in out
+    assert "nvcc" not in out  # no CUDA skeleton
+    assert "mpicc" not in out  # no MPI skeleton
+    assert "cargo build" not in out  # no Rust skeleton
+    # Cautionary is still useful even for unknown — the agent still
+    # benefits from learning past dogfood failure modes.
+    assert "Cautionary" in out
+
+
+def test_paper_kind_addendum_covers_major_stacks():
+    """Each major HPC / ML / systems stack must have a reproduce.sh
+    skeleton template so the classifier output is actionable."""
+    for stack in (
+        "cpp+cuda", "cpp+mpi", "cpp+openmp",
+        "fortran+mpi", "fortran+openmp",
+        "python+pytorch", "python+jax", "python+tensorflow", "python+numpy",
+        "rust", "go", "c", "cpp",
+    ):
+        assert stack in B._REPRODUCE_SH_SHAPES, f"missing skeleton for {stack!r}"
+
+
 def test_multilang_counter_example_contents():
     """The multi-language counter-example must enumerate the major
     language stacks so the agent sees Python is just one option."""

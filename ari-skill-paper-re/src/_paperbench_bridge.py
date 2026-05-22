@@ -683,6 +683,225 @@ _install_multilang_example_patch()
 # ─── helpers ──────────────────────────────────────────────────────────────
 
 
+_PAPER_KIND_CLASSIFIER_PROMPT = """\
+You are classifying a research paper to advise an LLM agent on which
+implementation language stack to use for reproducing the paper. Read the
+paper text below and output a STRICT JSON object with these fields:
+
+  {
+    "native_stack": "<one of: cpp+cuda | cpp+mpi | cpp+openmp | "
+                    "fortran+mpi | fortran+openmp | python+pytorch | "
+                    "python+jax | python+tensorflow | python+numpy | "
+                    "rust | go | c | cpp | js | unknown>",
+    "rationale": "<one sentence citing concrete paper evidence>",
+    "secondary_hints": ["<optional extra hints like 'CUDA SDK >= 12', "
+                        "'MPI process count = 64', 'PyTorch nightly'>"]
+  }
+
+Pick "unknown" if the paper has no clear computational stack (e.g., a
+purely theoretical paper or a mathematical proof). Be DECISIVE — pick
+the language stack the paper's AUTHORS would have used to build the
+artifact, not the easiest one for an LLM to write.
+
+Output ONLY the JSON object, no prose, no markdown fences.
+
+--- PAPER (truncated to first 16000 chars) ---
+"""
+
+
+async def _build_paper_kind_addendum(
+    *,
+    paper_md: str,
+    classifier_model: str,
+) -> str:
+    """Run a 1-call LLM classifier on the paper, return the addendum.md
+    text the agent will see (or empty string on classifier failure).
+
+    The addendum is written to vendor's canonical
+    ``/home/paper/addendum.md`` extension point; vendor's
+    instructions.txt:17 already tells the agent to read it. No
+    monkey-patching, no template replacement — pure data injection
+    through a vendor-supported channel.
+
+    The addendum text contains:
+      - the classifier's ``native_stack`` decision + rationale
+      - a recommended reproduce.sh shape for that stack
+      - a brief cautionary note grounded in past dogfood data
+        (SC41406 v1 = 14.45%, v2 = 0.8%, with Python proxy for a CUDA
+        paper — the agent should learn from this)
+
+    ``classifier_model`` reuses the same model id as the agent (so we
+    only pay for one model setup); we send a small completion request
+    and parse the JSON. On failure (rate limit, malformed JSON, no
+    API key) returns empty string and the caller continues without
+    addendum.
+    """
+    import json
+    try:
+        from openai import AsyncOpenAI
+    except Exception as e:
+        log.warning("paper-kind classifier: openai SDK unavailable (%s)", e)
+        return ""
+    # Use OpenAI Responses or Chat depending on model id (mirror the
+    # same model-id heuristic the rollout uses).
+    is_openai_responses = (
+        classifier_model.startswith(("gpt-", "o1-", "o3-", "o4-", "o5-"))
+        and "/" not in classifier_model
+    )
+    if not is_openai_responses:
+        # LiteLLM-routed models — bridge does not yet wire this for the
+        # classifier (LiteLLM completer is async but has more setup
+        # cost; skip for v0.7.5).
+        return ""
+    client = AsyncOpenAI()
+    prompt = _PAPER_KIND_CLASSIFIER_PROMPT + (paper_md or "")[:16000]
+    try:
+        # Chat Completions is the simplest single-turn JSON-mode call;
+        # Responses API would also work but is overkill for one shot.
+        resp = await client.chat.completions.create(
+            model=classifier_model,
+            messages=[
+                {"role": "system", "content": "You are a careful "
+                                              "research-paper classifier."},
+                {"role": "user", "content": prompt},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0,
+        )
+        raw = resp.choices[0].message.content or "{}"
+        data = json.loads(raw)
+    except Exception as e:
+        log.warning("paper-kind classifier LLM call failed: %s", e)
+        return ""
+
+    native = str(data.get("native_stack", "unknown")).strip().lower()
+    rationale = str(data.get("rationale", "")).strip()
+    secondary = data.get("secondary_hints") or []
+    if not isinstance(secondary, list):
+        secondary = []
+    return _format_paper_kind_addendum(
+        native=native, rationale=rationale, secondary=secondary,
+    )
+
+
+_REPRODUCE_SH_SHAPES: dict[str, str] = {
+    "cpp+cuda": (
+        "# Native language: C++/CUDA\n"
+        "module load nvhpc  # (or however your cluster exposes nvcc)\n"
+        "nvcc -std=c++17 -arch=sm_XX -O3 src/*.cu -o reproduce_binary\n"
+        "./reproduce_binary <args> > output.csv\n"
+    ),
+    "cpp+mpi": (
+        "# Native language: C++ with MPI\n"
+        "module load openmpi  # or mpich, depending on cluster\n"
+        "mpic++ -O3 -std=c++17 src/*.cpp -o reproduce_binary\n"
+        "mpirun -np <N> ./reproduce_binary <args> > output.csv\n"
+    ),
+    "cpp+openmp": (
+        "# Native language: C++ with OpenMP\n"
+        "g++ -fopenmp -O3 -std=c++17 src/*.cpp -o reproduce_binary\n"
+        "OMP_NUM_THREADS=<N> ./reproduce_binary <args> > output.csv\n"
+    ),
+    "fortran+mpi": (
+        "# Native language: Fortran with MPI\n"
+        "module load openmpi  # or mpich\n"
+        "mpifort -O3 src/*.f90 -o reproduce_binary\n"
+        "mpirun -np <N> ./reproduce_binary <args> > output.csv\n"
+    ),
+    "fortran+openmp": (
+        "# Native language: Fortran with OpenMP\n"
+        "gfortran -fopenmp -O3 src/*.f90 -o reproduce_binary\n"
+        "OMP_NUM_THREADS=<N> ./reproduce_binary <args> > output.csv\n"
+    ),
+    "python+pytorch": (
+        "# Native language: Python + PyTorch\n"
+        "pip install torch  # match the version table in the paper\n"
+        "python3 train.py <args>\n"
+    ),
+    "python+jax": (
+        "# Native language: Python + JAX\n"
+        "pip install jax jaxlib\n"
+        "python3 main.py <args>\n"
+    ),
+    "python+tensorflow": (
+        "# Native language: Python + TensorFlow\n"
+        "pip install tensorflow\n"
+        "python3 main.py <args>\n"
+    ),
+    "python+numpy": (
+        "# Native language: Python with NumPy / SciPy\n"
+        "pip install numpy scipy\n"
+        "python3 main.py <args>\n"
+    ),
+    "rust": (
+        "# Native language: Rust\n"
+        "cargo build --release\n"
+        "./target/release/reproduce_binary <args> > output.csv\n"
+    ),
+    "go": (
+        "# Native language: Go\n"
+        "go build -o reproduce_binary ./cmd/...\n"
+        "./reproduce_binary <args> > output.csv\n"
+    ),
+    "c": (
+        "# Native language: C\n"
+        "gcc -O3 -std=c17 src/*.c -o reproduce_binary\n"
+        "./reproduce_binary <args> > output.csv\n"
+    ),
+    "cpp": (
+        "# Native language: C++\n"
+        "g++ -O3 -std=c++17 src/*.cpp -o reproduce_binary\n"
+        "./reproduce_binary <args> > output.csv\n"
+    ),
+}
+
+
+def _format_paper_kind_addendum(
+    *, native: str, rationale: str, secondary: list,
+) -> str:
+    """Render the addendum.md text for the agent to consume.
+
+    Includes:
+      - paper-kind classifier verdict + rationale
+      - a recommended reproduce.sh skeleton for that stack
+      - a cautionary block grounded in past SC41406 dogfood data
+    """
+    shape = _REPRODUCE_SH_SHAPES.get(native, "")
+    sec_lines = "\n".join(f"  - {s}" for s in secondary if s) if secondary else ""
+    cautionary = (
+        "## Cautionary note (ARI past-dogfood data)\n\n"
+        "Past ARI dogfood runs on HPC C++/CUDA papers (SC41406, the cuSZ-i\n"
+        "GPU compressor paper) using a Python-only proxy scored:\n\n"
+        "  - SC41406 v1 (4h, Python proxy): ors_score = 14.45%\n"
+        "  - SC41406 v2 (cancelled @ 4h, broken reproduce.sh): ors_score = 0.8%\n"
+        "  - PaperBench BasicAgent leaderboard average: ~3-10%\n\n"
+        "When the paper's native stack is C++/CUDA / MPI / Fortran, a\n"
+        "Python proxy CANNOT satisfy rubric leaves that verify GPU kernel\n"
+        "build, kernel launch grid, MPI process count, native build\n"
+        "system, etc. The rubric REWARDS reproducing the paper in its\n"
+        "native language stack — match it where possible.\n"
+    )
+    parts = [
+        "# Paper-kind hint (auto-generated by ARI bridge)",
+        "",
+        f"native_stack: **{native}**",
+    ]
+    if rationale:
+        parts.append(f"rationale: {rationale}")
+    if sec_lines:
+        parts.append("secondary_hints:")
+        parts.append(sec_lines)
+    if shape:
+        parts.append("")
+        parts.append("## Recommended `reproduce.sh` skeleton\n")
+        parts.append("```bash")
+        parts.append(shape.rstrip())
+        parts.append("```")
+    parts.append("")
+    parts.append(cautionary)
+    return "\n".join(parts) + "\n"
+
+
 def task_node_from_dict(d: dict) -> TaskNode:
     """Construct an upstream TaskNode from our PaperBench-format dict."""
     return TaskNode(
@@ -1122,6 +1341,30 @@ async def rollout_submission(
     paper_md_path = work / "_input_paper.md"
     paper_md_path.write_text(paper_md or "", encoding="utf-8")
 
+    # Paper-kind classifier → addendum.md hint (philosophy-pure: bridge
+    # inspects the paper via 1 LLM call, writes the result to the vendor's
+    # canonical addendum extension point — instructions.txt:17 already
+    # tells the agent to read /home/paper/addendum.md, so this lands in
+    # the prompt path without any vendor template patching). The agent
+    # retains full decision authority; the addendum is informational.
+    # Skipped if disabled via ARI_PB_DISABLE_PAPER_KIND_HINT=1.
+    addendum_path: Path | None = None
+    if (paper_md or "").strip() and not os.environ.get(
+        "ARI_PB_DISABLE_PAPER_KIND_HINT", "") == "1":
+        try:
+            addendum_text = await _build_paper_kind_addendum(
+                paper_md=paper_md or "",
+                classifier_model=agent_model,
+            )
+            if addendum_text:
+                addendum_path = work / "_input_addendum.md"
+                addendum_path.write_text(addendum_text, encoding="utf-8")
+                log.info("paper-kind addendum written: %s (%d chars)",
+                         addendum_path, len(addendum_text))
+        except Exception as e:
+            log.warning("paper-kind classifier failed (%s); rollout "
+                        "proceeds without addendum hint", e)
+
     is_openai_responses = (
         agent_model.startswith(("gpt-", "o1-", "o3-", "o4-", "o5-"))
         and "/" not in agent_model
@@ -1153,6 +1396,7 @@ async def rollout_submission(
 
     return await run_replicator_agent(
         paper_md_path=str(paper_md_path),
+        paper_addendum_md_path=str(addendum_path) if addendum_path else "",
         output_dir=str(work),
         expected_artifacts=list(expected_artifacts or []),
         execution_profile=dict(execution_profile or {}),

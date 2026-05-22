@@ -73,6 +73,7 @@ class LocalPBTask(PBTask):
     )
 
     paper_md_path: str
+    paper_addendum_md_path: str = ""
     rubric_expected_artifacts: list[str] = []
     rubric_execution_profile: dict = {}
     cluster_shape: dict = {}
@@ -106,10 +107,20 @@ class LocalPBTask(PBTask):
             )
         # Workspace layout (all relative to LocalComputer.work_dir):
         #   paper/paper.md         — the paper text the agent will read
+        #   paper/addendum.md      — optional ARI-generated hints (paper-kind
+        #                            classifier output, past-dogfood cautionary
+        #                            data); vendor's instructions.txt:17 cites
+        #                            this file as the canonical "additional
+        #                            context" channel, so we use it as ARI's
+        #                            extension point WITHOUT any vendor patch.
         #   instructions.txt       — the user-facing task brief
         #   submission/            — the agent's working area; agent may also
         #                            write files at the workspace root.
         await computer.upload(paper_path.read_bytes(), "paper/paper.md")
+        if self.paper_addendum_md_path:
+            addendum_path = Path(self.paper_addendum_md_path)
+            if addendum_path.is_file():
+                await computer.upload(addendum_path.read_bytes(), "paper/addendum.md")
         instructions = self.prompt[0].get("content", "")
         if not isinstance(instructions, str) or not instructions:
             raise ValueError("LocalPBTask.prompt[0].content must be a non-empty str")
@@ -155,6 +166,7 @@ def make_local_pbtask(
     paper_md_path: str,
     work_dir: str,
     instructions: str,
+    paper_addendum_md_path: str = "",
     rubric_expected_artifacts: list[str] | None = None,
     rubric_execution_profile: dict | None = None,
     cluster_shape: dict | None = None,
@@ -196,6 +208,7 @@ def make_local_pbtask(
         runs_dir = str(Path(work_dir).parent)
     return LocalPBTask(
         paper_md_path=paper_md_path,
+        paper_addendum_md_path=paper_addendum_md_path,
         rubric_expected_artifacts=list(rubric_expected_artifacts or []),
         rubric_execution_profile=dict(rubric_execution_profile or {}),
         cluster_shape=dict(cluster_shape or {}),

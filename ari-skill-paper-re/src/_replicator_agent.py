@@ -571,6 +571,7 @@ async def run_replicator_agent(
     env: dict[str, str] | None = None,
     paper_id: str = "ari-local",
     run_id: str | None = None,
+    paper_addendum_md_path: str = "",
     run_group_id: str = "ari-local",
 ) -> dict[str, Any]:
     """Run BasicAgent / IterativeAgent against the workspace ``output_dir``.
@@ -627,6 +628,7 @@ async def run_replicator_agent(
     # stub since the conversation prompt is the source of truth.
     task = make_local_pbtask(
         paper_md_path=paper_md_path,
+        paper_addendum_md_path=paper_addendum_md_path,
         work_dir=str(work),
         instructions=_INSTRUCTIONS_TXT_STUB,
         rubric_expected_artifacts=expected_artifacts,
