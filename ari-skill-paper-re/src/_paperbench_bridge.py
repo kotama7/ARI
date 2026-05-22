@@ -412,17 +412,18 @@ def _build_truthful_env_block(env: dict) -> str:
         "- Language choice: the reproduce.sh example in the standard "
         "instructions uses Python — that is illustration ONLY, not "
         "prescription. Match the paper's native language stack:\n"
-        "    * HPC GPU compute (CUDA / cuSZ / GPU kernels) → C++/CUDA "
-        "(`module load nvhpc`, then `nvcc -std=c++17 -arch=sm_XX -O3`); "
-        "HIP/ROCm for AMD GPU papers; SYCL for portable.\n"
+        "    * HPC GPU compute (CUDA / GPU kernels) → C++/CUDA "
+        "(load the cluster's CUDA module via `module load <NAME>`, "
+        "then `nvcc -std=c++17 -arch=sm_XX -O3 ...`); HIP/ROCm for AMD "
+        "GPU papers; SYCL for portable.\n"
         "    * HPC CPU parallel (OpenMP / MPI / vectorisation) → "
-        "C / C++ / Fortran with `mpicc` / `mpic++` / `mpifort` (`module "
-        "load openmpi` or `mpich`) and `-fopenmp`.\n"
+        "C / C++ / Fortran with `mpicc` / `mpic++` / `mpifort` (load "
+        "the cluster's MPI module first) and `-fopenmp`.\n"
         "    * Numerical libraries (BLAS / LAPACK / FFTW / HDF5 / "
-        "NetCDF) → C / C++ / Fortran linked against the system module "
-        "(`module load fftw` etc); Python wrappers (numpy.linalg / "
-        "h5py / netCDF4) are acceptable when the paper itself uses "
-        "them.\n"
+        "NetCDF) → C / C++ / Fortran linked against the system "
+        "module (`module load <library-name>`); Python wrappers "
+        "(numpy.linalg / h5py / netCDF4) are acceptable when the "
+        "paper itself uses them.\n"
         "    * ML / deep learning (PyTorch / JAX / TensorFlow / "
         "diffusion / transformers) → Python with the appropriate "
         "framework; CUDA kernel custom ops in C++/CUDA when the paper "
@@ -621,17 +622,17 @@ native-language binary and produces a deterministic output artifact —
 is language-agnostic. Match the paper's native language stack:
 
 # HPC GPU paper (CUDA kernel) — reproduce.sh:
-#   module load nvhpc
-#   nvcc -std=c++17 -arch=sm_89 -O3 count.cu -o count
+#   module load <cluster's CUDA module>   # see env-truth catalog above
+#   nvcc -std=c++17 -arch=sm_XX -O3 count.cu -o count
 #   ./count strawberry > output.csv
 
 # HPC CPU paper (MPI + OpenMP) — reproduce.sh:
-#   module load openmpi
+#   module load <cluster's MPI module>    # e.g., from `module avail`
 #   mpicc -fopenmp -O3 count.c -o count
 #   mpirun -np 4 ./count strawberry > output.csv
 
 # Numerical paper (Fortran + BLAS) — reproduce.sh:
-#   module load gcc
+#   module load <cluster's Fortran + BLAS modules>
 #   gfortran -fopenmp -O3 count.f90 -lopenblas -o count
 #   ./count strawberry > output.csv
 
@@ -649,6 +650,12 @@ processes for HPC papers, Rust binaries for systems papers, etc).
 A Python proxy of a CUDA / MPI / Fortran paper will fail the
 "build / execution / kernel verified" rubric leaves even when the
 algorithm shape is correct.
+
+When the example shows `module load <...>` with a placeholder, look up
+the actual module name on YOUR cluster via the `Available modules on
+this host` catalog (in env-truth ADDITIONAL NOTES) or `module avail`.
+Cluster module names are not hardcoded into this template because they
+vary across HPC sites.
 """
 
 
@@ -730,6 +737,7 @@ async def _build_paper_kind_addendum(
     *,
     paper_md: str,
     classifier_model: str,
+    env: dict | None = None,
 ) -> str:
     """Run a 1-call LLM classifier on the paper, return the addendum.md
     text the agent will see (or empty string on classifier failure).
@@ -798,19 +806,22 @@ async def _build_paper_kind_addendum(
         secondary = []
     return _format_paper_kind_addendum(
         native=native, rationale=rationale, secondary=secondary,
+        env=env,
     )
 
 
 _REPRODUCE_SH_SHAPES: dict[str, str] = {
+    # Each value is the BUILD + RUN portion only (no activation line —
+    # activation is rendered separately by `_render_activation_block`
+    # based on the host's available mechanisms, so cluster-specific
+    # module names are NOT baked in here).
     "cpp+cuda": (
         "# Native language: C++/CUDA\n"
-        "module load nvhpc  # (or however your cluster exposes nvcc)\n"
         "nvcc -std=c++17 -arch=sm_XX -O3 src/*.cu -o reproduce_binary\n"
         "./reproduce_binary <args> > output.csv\n"
     ),
     "cpp+mpi": (
         "# Native language: C++ with MPI\n"
-        "module load openmpi  # or mpich, depending on cluster\n"
         "mpic++ -O3 -std=c++17 src/*.cpp -o reproduce_binary\n"
         "mpirun -np <N> ./reproduce_binary <args> > output.csv\n"
     ),
@@ -821,7 +832,6 @@ _REPRODUCE_SH_SHAPES: dict[str, str] = {
     ),
     "fortran+mpi": (
         "# Native language: Fortran with MPI\n"
-        "module load openmpi  # or mpich\n"
         "mpifort -O3 src/*.f90 -o reproduce_binary\n"
         "mpirun -np <N> ./reproduce_binary <args> > output.csv\n"
     ),
@@ -873,18 +883,53 @@ _REPRODUCE_SH_SHAPES: dict[str, str] = {
 }
 
 
+def _render_activation_block(env: dict) -> str:
+    """Render a one-line toolchain-activation hint based on the host's
+    available mechanisms. Bridge does NOT name specific compilers,
+    modules, or packages — only the MECHANISM (Lmod / apt / manual)
+    and a placeholder for the agent to fill in by inspecting the
+    cluster catalog (in env-truth notes) or asking the package manager.
+    """
+    if env.get("has_module"):
+        return (
+            "module load <NAME>  "
+            "# inspect env-truth `module avail` catalog above; "
+            "load the module that provides the build tool you need"
+        )
+    if env.get("has_apt") and env.get("has_sudo"):
+        return (
+            "apt-get install -y <PACKAGE>  "
+            "# discover the right package via `apt search <keyword>`"
+        )
+    return (
+        "# Activate the required toolchain via YOUR install method "
+        "(conda activate, manual SDK install, vendor PATH setup, ...)"
+    )
+
+
 def _format_paper_kind_addendum(
     *, native: str, rationale: str, secondary: list,
+    env: dict | None = None,
 ) -> str:
     """Render the addendum.md text for the agent to consume.
 
     Includes:
       - paper-kind classifier verdict + rationale
-      - a recommended reproduce.sh skeleton for that stack
+      - a recommended reproduce.sh skeleton for that stack (build line
+        only; activation rendered separately based on host env)
+      - an env-conditional activation hint (module / apt / manual)
       - a cautionary block grounded in past SC41406 dogfood data
+
+    The activation block is env-conditional so the runbook STEP 1 does
+    not push `module load X` on a laptop without Lmod, or
+    `apt-get install` on a host without apt. Bridge does NOT name
+    specific compilers / modules / packages — the agent matches the
+    activation mechanism to the classifier-derived toolchain by
+    inspecting the env-truth catalog.
     """
     shape = _REPRODUCE_SH_SHAPES.get(native, "")
     sec_lines = "\n".join(f"  - {s}" for s in secondary if s) if secondary else ""
+    activation = _render_activation_block(env or {})
     cautionary = (
         "## Cautionary note (ARI past-dogfood data)\n\n"
         "Past ARI dogfood runs on HPC C++/CUDA papers (SC41406, the cuSZ-i\n"
@@ -898,6 +943,21 @@ def _format_paper_kind_addendum(
         "system, etc. The rubric REWARDS reproducing the paper in its\n"
         "native language stack — match it where possible.\n"
     )
+    runbook = (
+        "## Recommended first steps (in this order)\n\n"
+        "STEP 1 — Verify the toolchain your code needs is reachable in YOUR\n"
+        "  iteration shell BEFORE writing any reproduction code:\n"
+        f"  ```bash\n  {activation}\n  <BUILD_TOOL> --version  # e.g., nvcc / mpicc / gfortran\n  ```\n"
+        "  If the build tool prints a version: ok. If not: try a different\n"
+        "  module/package name from the catalog, or ask the package manager.\n\n"
+        "STEP 2 — Copy the verified activation line to the TOP of\n"
+        "  `reproduce.sh` so Phase 2 (grader's fresh shell) inherits the\n"
+        "  same env (see Phase 2 isolation note in env-truth above).\n\n"
+        "STEP 3 — Write your reproduction code; compile with the verified\n"
+        "  toolchain; run end-to-end; confirm reproduce.sh exits 0.\n\n"
+        "STEP 4 — PAST FAILURE DATA: SC41406 v2 agent skipped STEP 1,\n"
+        "  scored 0.8%. Don't repeat this — verify before writing.\n"
+    )
     parts = [
         "# Paper-kind hint (auto-generated by ARI bridge)",
         "",
@@ -908,10 +968,14 @@ def _format_paper_kind_addendum(
     if sec_lines:
         parts.append("secondary_hints:")
         parts.append(sec_lines)
+    parts.append("")
+    parts.append(runbook)
     if shape:
         parts.append("")
-        parts.append("## Recommended `reproduce.sh` skeleton\n")
+        parts.append("## Recommended `reproduce.sh` skeleton (build + run)\n")
         parts.append("```bash")
+        parts.append("# Prepend the activation line you verified in STEP 1:")
+        parts.append(f"{activation}")
         parts.append(shape.rstrip())
         parts.append("```")
     parts.append("")
@@ -1372,6 +1436,7 @@ async def rollout_submission(
             addendum_text = await _build_paper_kind_addendum(
                 paper_md=paper_md or "",
                 classifier_model=agent_model,
+                env=_detect_runtime_env(),
             )
             if addendum_text:
                 addendum_path = work / "_input_addendum.md"

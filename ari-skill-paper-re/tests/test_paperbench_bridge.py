@@ -590,33 +590,56 @@ def test_paper_kind_addendum_format_cpp_cuda():
     """For a CUDA paper the addendum must surface the C++/CUDA
     reproduce.sh skeleton (`nvcc -std=c++17`) so the agent has a
     concrete template to follow, plus the cautionary past-dogfood
-    data block."""
+    data block.
+
+    Regression: the skeleton must NOT contain a hardcoded cluster
+    module name (e.g., `nvhpc`) — bridge stays cluster-agnostic by
+    using `module load <NAME>` placeholders that the agent resolves
+    against the env-truth `module avail` catalog.
+    """
     out = B._format_paper_kind_addendum(
         native="cpp+cuda",
         rationale="paper mentions GPU kernels, nvcc, sm_*",
         secondary=["CUDA SDK >= 11", "single-GPU A100"],
+        env={"has_module": True, "has_apt": False, "has_sudo": False},
     )
     assert "native_stack: **cpp+cuda**" in out
-    assert "nvcc -std=c++17" in out  # concrete shape
+    assert "nvcc -std=c++17" in out  # concrete build line
     assert "CUDA SDK >= 11" in out  # secondary hint surfaced
     # Cautionary past-dogfood data must appear so the agent sees the
     # cost of choosing Python proxy for a CUDA paper.
     assert "Cautionary note" in out
     assert "Python-only proxy" in out or "Python proxy" in out
+    # Cluster-agnosticism regression: NO cluster-specific module name.
+    assert "nvhpc" not in out, "cluster-specific module name must not leak"
+    assert "openmpi" not in out
+    assert "module load <NAME>" in out  # placeholder must be present
+    # Runbook STEP 1 must reference the activation mechanism.
+    assert "STEP 1" in out
+    assert "module avail" in out  # discovery path
+    assert "PAST FAILURE DATA" in out  # cautionary in runbook
 
 
 def test_paper_kind_addendum_format_unknown_omits_skeleton():
-    """When classifier returns unknown, no language-specific skeleton
-    should be embedded — only the rationale + cautionary block."""
+    """When classifier returns unknown, the build skeleton SECTION
+    must be omitted (no `_REPRODUCE_SH_SHAPES["unknown"]` entry to
+    inject). Compiler names may still appear in the runbook STEP 1
+    "BUILD_TOOL" example list — that's pedagogical, not a CUDA skeleton.
+    """
     out = B._format_paper_kind_addendum(
         native="unknown",
         rationale="purely theoretical paper, no implementation language",
         secondary=[],
+        env={"has_module": False, "has_apt": False, "has_sudo": False},
     )
     assert "native_stack: **unknown**" in out
-    assert "nvcc" not in out  # no CUDA skeleton
-    assert "mpicc" not in out  # no MPI skeleton
-    assert "cargo build" not in out  # no Rust skeleton
+    # No language-specific BUILD SKELETON section.
+    assert "Recommended `reproduce.sh` skeleton" not in out
+    # No skeleton-specific build commands (these only appear via the
+    # _REPRODUCE_SH_SHAPES dict, which has no "unknown" entry).
+    assert "nvcc -std=c++17" not in out  # the skeleton CUDA build line
+    assert "mpic++ -O3" not in out         # the skeleton MPI build line
+    assert "cargo build --release" not in out  # the skeleton Rust build line
     # Cautionary is still useful even for unknown — the agent still
     # benefits from learning past dogfood failure modes.
     assert "Cautionary" in out
@@ -632,6 +655,55 @@ def test_paper_kind_addendum_covers_major_stacks():
         "rust", "go", "c", "cpp",
     ):
         assert stack in B._REPRODUCE_SH_SHAPES, f"missing skeleton for {stack!r}"
+
+
+def test_reproduce_shape_skeletons_have_no_hardcoded_module_names():
+    """Regression guard for the cluster-agnostic invariant: skeleton
+    templates must NOT name specific cluster modules (nvhpc, openmpi,
+    mpich, fftw, gcc, etc) because those vary across HPC sites. The
+    activation line is rendered separately by _render_activation_block
+    and uses a `<NAME>` placeholder."""
+    for stack, skeleton in B._REPRODUCE_SH_SHAPES.items():
+        for bad_name in ("nvhpc", "module load nvhpc", "module load openmpi",
+                         "module load mpich", "module load fftw",
+                         "module load gcc"):
+            assert bad_name not in skeleton, (
+                f"skeleton for {stack!r} contains hardcoded module name "
+                f"{bad_name!r}; use placeholder instead"
+            )
+
+
+def test_render_activation_block_module_env():
+    """On Lmod-enabled hosts the activation block must instruct
+    `module load <NAME>` (placeholder, never a specific module name)
+    and reference the env-truth catalog as the discovery source."""
+    block = B._render_activation_block({"has_module": True})
+    assert "module load <NAME>" in block
+    assert "module avail" in block
+    # No cluster-specific names allowed.
+    for bad in ("nvhpc", "openmpi", "mpich", "fftw", "gcc/"):
+        assert bad not in block, f"cluster-specific name {bad!r} leaked"
+
+
+def test_render_activation_block_apt_env():
+    """On Docker/root hosts with apt-get, the activation block must
+    instruct `apt-get install -y <PACKAGE>` (placeholder)."""
+    block = B._render_activation_block({
+        "has_module": False, "has_apt": True, "has_sudo": True,
+    })
+    assert "apt-get install -y <PACKAGE>" in block
+    assert "apt search" in block
+
+
+def test_render_activation_block_neither_falls_back_to_manual():
+    """On bare-metal dev hosts the activation block must fall back to
+    `conda activate` / manual install / SDK setup — no module / no apt."""
+    block = B._render_activation_block({
+        "has_module": False, "has_apt": False, "has_sudo": False,
+    })
+    assert "conda activate" in block or "manual" in block.lower()
+    assert "module load" not in block
+    assert "apt-get install" not in block
 
 
 def test_multilang_counter_example_contents():
