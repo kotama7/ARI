@@ -695,6 +695,27 @@ def test_render_activation_block_apt_env():
     assert "apt search" in block
 
 
+def test_probe_module_avail_returns_string_or_empty():
+    """Probe must return either a non-empty catalog string or empty
+    (never raise). Hosts without module return empty so the caller
+    skips the section."""
+    out = B._probe_module_avail()
+    assert isinstance(out, str)
+
+
+def test_probe_module_avail_silences_spider_unsupported_marker():
+    """Pre-Lmod Environment Modules returns
+    ``ERROR: Invalid command 'spider'`` which would otherwise leak
+    into the agent prompt. Verify the marker is filtered: if probe
+    returns content, it must NOT contain the error string."""
+    out = B._probe_module_avail()
+    if out:
+        assert "Invalid command 'spider'" not in out, (
+            "spider-unsupported error leaked into probe output"
+        )
+        assert "Unrecognized subcommand 'spider'" not in out
+
+
 def test_render_activation_block_neither_falls_back_to_manual():
     """On bare-metal dev hosts the activation block must fall back to
     `conda activate` / manual install / SDK setup — no module / no apt."""

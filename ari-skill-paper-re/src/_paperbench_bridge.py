@@ -263,28 +263,77 @@ def _detect_runtime_env() -> dict:
     }
 
 
-def _probe_module_avail(max_chars: int = 8000) -> str:
-    """Run ``bash -lc "module avail 2>&1"`` once and return the raw output,
-    capped at ``max_chars`` to keep the prompt budget bounded.
+def _probe_module_avail(max_chars: int = 12000) -> str:
+    """Run ``module spider`` AND ``module avail`` and return their
+    combined raw output, capped at ``max_chars`` to keep the prompt
+    budget bounded.
 
-    Cluster-agnostic by design: bridge does NOT decide which modules
-    are interesting. It dumps the entire cluster catalog as data and
-    lets the agent inspect it. On hosts without ``module``, returns
-    empty string and the caller skips the section.
+    Why both:
+
+      - ``module avail`` lists modules visible at the current
+        MODULEPATH. On 2-step-entry clusters (R-CCS, LUMI, TGCC, ...)
+        this only shows the entry modules (``system/ai-l40s``,
+        ``LUMI/24.03``, etc) — the actual compilers (nvhpc, openmpi,
+        cuda) are hidden behind those entries until the entry is
+        loaded.
+      - ``module spider`` (Lmod standard, read-only) RECURSIVELY
+        enumerates EVERY module discoverable across all known
+        modulepaths INCLUDING child catalogs behind entry modules.
+        Same philosophy as ``module avail`` (read-only inspection,
+        no state mutation, no bridge-side compiler knowledge) but
+        better data for the agent.
+
+    Cluster-agnostic: bridge does NOT name specific modules. It just
+    runs two standard Lmod verbs and dumps their output as data; the
+    agent inspects the catalog and decides what to load. Older
+    Environment Modules (pre-Lmod) lack ``spider`` — its failure is
+    silently absorbed and the ``avail`` portion still appears.
+
+    SC41406 v3-A2 surfaced this requirement: the agent ran
+    ``module avail`` correctly, saw only ``system/ai-l40s`` (the entry
+    module), tried ``module load ai-l40s`` (wrong — missed the
+    ``system/`` prefix), failed, and pivoted to Python proxy. With
+    ``module spider`` included the agent would see ``nvhpc/25.7`` etc
+    as discoverable behind the entry, enabling correct ``module
+    load system/ai-l40s && module load nvhpc`` chain.
     """
     import subprocess
-    try:
-        result = subprocess.run(
-            ["bash", "-lc", "module avail 2>&1"],
-            capture_output=True, timeout=30, check=False,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired) as e:
-        log.warning("module avail probe failed: %s", e)
+
+    def _run_module(cmd: str) -> str:
+        try:
+            r = subprocess.run(
+                ["bash", "-lc", cmd],
+                capture_output=True, timeout=60, check=False,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+            log.warning("module probe failed (%s): %s", cmd, e)
+            return ""
+        out = (r.stdout or b"") + (r.stderr or b"")
+        return out.decode("utf-8", errors="replace").strip()
+
+    spider = _run_module("module spider 2>&1")
+    avail = _run_module("module avail 2>&1")
+    # Old Environment Modules (pre-Lmod) returns "Invalid command 'spider'"
+    # — treat that as "spider unsupported" and skip the section so the
+    # agent prompt doesn't carry a misleading error message.
+    spider_unsupported_markers = (
+        "Invalid command 'spider'",
+        "Unrecognized subcommand 'spider'",
+        "spider: command not found",
+    )
+    if any(m in spider for m in spider_unsupported_markers):
+        spider = ""
+    parts: list[str] = []
+    if spider:
+        parts.append("=== `module spider` (recursive enumeration; "
+                     "shows child catalogs behind entry modules on "
+                     "2-step-entry clusters) ===\n" + spider)
+    if avail:
+        parts.append("=== `module avail` (modules at current MODULEPATH) ===\n"
+                     + avail)
+    if not parts:
         return ""
-    out = (result.stdout or b"") + (result.stderr or b"")
-    text = out.decode("utf-8", errors="replace").strip()
-    if not text:
-        return ""
+    text = "\n\n".join(parts)
     if len(text) > max_chars:
         text = text[:max_chars] + f"\n... [truncated at {max_chars} chars]"
     return text
@@ -1427,6 +1476,39 @@ async def rollout_submission(
 
     work = Path(work_dir).resolve()
     work.mkdir(parents=True, exist_ok=True)
+
+    # GIT isolation: prevent the agent's bash tool from accidentally
+    # `git commit`-ing into the outer ARI repo when its iteration shell
+    # ends up there (observed in SC41406 v3-A2 — agent did
+    # `cd submission/submission && git ... && cd -`, then a later
+    # `git status` / `git add .` from the parent dir captured the
+    # outer-repo WIP and committed it under a misleading message).
+    #
+    # Mechanism: GIT_CEILING_DIRECTORIES is a standard git env var that
+    # tells `.git` discovery to STOP walking up the directory tree at
+    # the listed paths. Setting it to the ARI repo root prevents git
+    # from finding ARI/.git when the agent operates from any subdir of
+    # ARI — but the agent's OWN submission/.git (inside the workspace,
+    # found bottom-up first) still works for its own commits. We
+    # detect the outer repo by walking up from work_dir looking for
+    # the closest .git that is NOT inside work_dir itself; that's the
+    # repo we want to gate.
+    if merged_env is None:
+        merged_env = {}
+    if "GIT_CEILING_DIRECTORIES" not in merged_env:
+        outer_repo_root: Path | None = None
+        probe = work.parent
+        while probe != probe.parent:
+            if (probe / ".git").exists():
+                outer_repo_root = probe
+                break
+            probe = probe.parent
+        if outer_repo_root is not None:
+            merged_env["GIT_CEILING_DIRECTORIES"] = str(outer_repo_root)
+            log.info("git isolation: set GIT_CEILING_DIRECTORIES=%s to "
+                     "prevent agent from committing into the outer repo",
+                     outer_repo_root)
+
     paper_md_path = work / "_input_paper.md"
     paper_md_path.write_text(paper_md or "", encoding="utf-8")
 
