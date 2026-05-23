@@ -617,7 +617,15 @@ def test_paper_kind_addendum_format_cpp_cuda():
     # Runbook STEP 1 must reference the activation mechanism.
     assert "STEP 1" in out
     assert "module avail" in out  # discovery path
-    assert "PAST FAILURE DATA" in out  # cautionary in runbook
+    # STEP 4 must be present, MANDATORY-flagged, with concrete final
+    # check + git clean caveat + past failure data table. This is the
+    # imperative reinforcement of vendor instructions.txt L25/L27
+    # which use weaker verbs ("very important", "advised").
+    assert "STEP 4" in out
+    assert "MANDATORY" in out
+    assert "bash reproduce.sh" in out
+    assert "git clean -fd" in out
+    assert "Code Execution and Result Analysis" in out  # rubric impact
 
 
 def test_paper_kind_addendum_format_unknown_omits_skeleton():
