@@ -135,10 +135,13 @@ async def chain(args: argparse.Namespace) -> int:
     )
     elapsed3 = time.time() - t3
     agg = aggregate_graded_tree(graded)
+    leaves = agg.get("leaf_grades") or []
+    n_leaves = len(leaves)
+    n_passed = sum(1 for lg in leaves if lg.get("passed_runs", 0) >= 1)
     print(f"[stage3] elapsed_sec={elapsed3:.1f} "
           f"ors_score={agg['ors_score']:.4f} "
           f"raw_score={agg['raw_score']:.4f} "
-          f"leaves_passed={agg['leaves_passed']}/{agg['num_leaves']}")
+          f"leaves_passed={n_passed}/{n_leaves}")
 
     envelope = {
         "workspace": str(workspace),
@@ -152,8 +155,9 @@ async def chain(args: argparse.Namespace) -> int:
             "judge_model": args.judge_model,
             "ors_score": agg["ors_score"],
             "raw_score": agg["raw_score"],
-            "leaves_passed": agg["leaves_passed"],
-            "num_leaves": agg["num_leaves"],
+            "leaves_passed": n_passed,
+            "num_leaves": n_leaves,
+            "leaf_grades": agg.get("leaf_grades") or [],
             "graded": _to_dict(graded),
         },
     }
