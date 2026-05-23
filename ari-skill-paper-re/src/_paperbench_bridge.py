@@ -758,8 +758,9 @@ _install_multilang_example_patch()
 
 _PAPER_KIND_CLASSIFIER_PROMPT = """\
 You are classifying a research paper to advise an LLM agent on which
-implementation language stack to use for reproducing the paper. Read the
-paper text below and output a STRICT JSON object with these fields:
+implementation language stack to use AND which datasets to acquire when
+reproducing the paper. Read the paper text below and output a STRICT
+JSON object with these fields:
 
   {
     "native_stack": "<one of: cpp+cuda | cpp+mpi | cpp+openmp | "
@@ -768,13 +769,31 @@ paper text below and output a STRICT JSON object with these fields:
                     "rust | go | c | cpp | js | unknown>",
     "rationale": "<one sentence citing concrete paper evidence>",
     "secondary_hints": ["<optional extra hints like 'CUDA SDK >= 12', "
-                        "'MPI process count = 64', 'PyTorch nightly'>"]
+                        "'MPI process count = 64', 'PyTorch nightly'>"],
+    "datasets": [
+      {
+        "name": "<dataset name as cited in the paper, e.g., 'Miranda'>",
+        "domain": "<short description: 'hydrodynamics simulation', "
+                  "'ImageNet image classification', etc>",
+        "url_hint": "<a search hint the agent can use to find it, e.g., "
+                    "'SDRBench Zenodo Miranda', 'HuggingFace squad', "
+                    "'github.com/foo/dataset-bar' — leave empty string "
+                    "if the paper gives no acquisition pointer>"
+      }
+    ]
   }
 
-Pick "unknown" if the paper has no clear computational stack (e.g., a
-purely theoretical paper or a mathematical proof). Be DECISIVE — pick
-the language stack the paper's AUTHORS would have used to build the
-artifact, not the easiest one for an LLM to write.
+For native_stack pick "unknown" if the paper has no clear computational
+stack (e.g., a purely theoretical paper or a mathematical proof). Be
+DECISIVE — pick the language stack the paper's AUTHORS would have used
+to build the artifact, not the easiest one for an LLM to write.
+
+For datasets, list ALL benchmark datasets the paper evaluates on
+(typically named in "Datasets" / "Benchmarks" / "Evaluation Setup"
+sections, or in evaluation tables). If the paper uses no external
+dataset (e.g., theoretical only / synthetic), return an empty list.
+url_hint should be a search hint, not a literal URL — the agent will
+use `web_search` / `wget` / `huggingface-cli` to fetch.
 
 Output ONLY the JSON object, no prose, no markdown fences.
 
@@ -861,9 +880,23 @@ async def _build_paper_kind_addendum(
     secondary = data.get("secondary_hints") or []
     if not isinstance(secondary, list):
         secondary = []
+    datasets = data.get("datasets") or []
+    if not isinstance(datasets, list):
+        datasets = []
+    # Defensive: ensure each dataset entry is a dict with the expected
+    # keys (LLM may emit malformed entries). Drop anything else.
+    sanitized: list[dict] = []
+    for d in datasets:
+        if not isinstance(d, dict):
+            continue
+        sanitized.append({
+            "name": str(d.get("name", "")).strip(),
+            "domain": str(d.get("domain", "")).strip(),
+            "url_hint": str(d.get("url_hint", "")).strip(),
+        })
     return _format_paper_kind_addendum(
         native=native, rationale=rationale, secondary=secondary,
-        env=env,
+        env=env, datasets=sanitized,
     )
 
 
@@ -964,9 +997,14 @@ def _render_activation_block(env: dict) -> str:
     )
 
 
+_ARI_AGENT_ONLY_MARKER = (
+    "<!-- ARI bridge: agent-only addendum; do NOT pass to judge_addendum -->"
+)
+
+
 def _format_paper_kind_addendum(
     *, native: str, rationale: str, secondary: list,
-    env: dict | None = None,
+    env: dict | None = None, datasets: list | None = None,
 ) -> str:
     """Render the addendum.md text for the agent to consume.
 
@@ -975,6 +1013,7 @@ def _format_paper_kind_addendum(
       - a recommended reproduce.sh skeleton for that stack (build line
         only; activation rendered separately based on host env)
       - an env-conditional activation hint (module / apt / manual)
+      - a per-paper dataset acquisition table + STEP 1.5 in the runbook
       - a cautionary block grounded in past SC41406 dogfood data
 
     The activation block is env-conditional so the runbook STEP 1 does
@@ -1000,6 +1039,47 @@ def _format_paper_kind_addendum(
         "system, etc. The rubric REWARDS reproducing the paper in its\n"
         "native language stack — match it where possible.\n"
     )
+    # Dataset acquisition: list paper-cited datasets and tell the agent
+    # to fetch them (web_search → wget / huggingface-cli / git clone).
+    # When the classifier returns an empty datasets list (synthetic-only
+    # or theoretical paper), the STEP 1.5 block is omitted entirely.
+    ds_list = [d for d in (datasets or []) if d.get("name")]
+    ds_block = ""
+    if ds_list:
+        rows = "\n".join(
+            f"  - **{d['name']}**" +
+            (f" — {d['domain']}" if d.get("domain") else "") +
+            (f"  (search hint: `{d['url_hint']}`)" if d.get("url_hint") else "")
+            for d in ds_list
+        )
+        ds_block = (
+            "STEP 1.5 — Acquire the paper's evaluation datasets BEFORE\n"
+            "  writing reproduce.sh. Paper-cited datasets:\n"
+            f"{rows}\n\n"
+            "  Acquisition tactics, in order:\n"
+            "    1. Use the search hint above with the `web_search` tool\n"
+            "       to locate the canonical download URL (SDRBench Zenodo\n"
+            "       record, HuggingFace Hub repo, dataset's GitHub release).\n"
+            "    2. Fetch via `wget` / `curl` / `huggingface-cli download` /\n"
+            "       `git clone` into `submission/data/`. Network is\n"
+            "       available — see env-truth Network claim.\n"
+            "    3. Commit checksums (`sha256sum data/<file> > data/CHECKSUMS`)\n"
+            "       so the grader can verify acquisition. Do NOT commit the\n"
+            "       data blobs themselves if they exceed 1GB (vendor\n"
+            "       instructions.txt L23).\n"
+            "    4. If acquisition truly fails (404, paywall, gated), document\n"
+            "       the attempt in `submission/data/NOTES.md` and fall back to\n"
+            "       synthetic data — but record that this caps the Result\n"
+            "       Analysis rubric score because the numbers cannot match\n"
+            "       the paper's tables.\n\n"
+            "  PAST DOGFOOD DATA: SC41406 v1-v4 agents skipped this STEP\n"
+            "  entirely (0 wget / curl / huggingface-cli attempts, 0\n"
+            "  web_search invocations across 16 hours of agent time).\n"
+            "  Result: every Result Analysis rubric leaf scored 0 because\n"
+            "  the synthetic-data outputs never matched the paper's\n"
+            "  numbers. Don't repeat this; the rubric REWARDS real-data\n"
+            "  evaluations.\n\n"
+        )
     runbook = (
         "## Recommended first steps (in this order)\n\n"
         "STEP 1 — Verify the toolchain your code needs is reachable in YOUR\n"
@@ -1007,6 +1087,7 @@ def _format_paper_kind_addendum(
         f"  ```bash\n  {activation}\n  <BUILD_TOOL> --version  # e.g., nvcc / mpicc / gfortran\n  ```\n"
         "  If the build tool prints a version: ok. If not: try a different\n"
         "  module/package name from the catalog, or ask the package manager.\n\n"
+        f"{ds_block}"
         "STEP 2 — Copy the verified activation line to the TOP of\n"
         "  `reproduce.sh` so Phase 2 (grader's fresh shell) inherits the\n"
         "  same env (see Phase 2 isolation note in env-truth above).\n\n"
@@ -1045,6 +1126,18 @@ def _format_paper_kind_addendum(
         "  how good your source tree looks.\n"
     )
     parts = [
+        # AGENT-ONLY MARKER: this file is consumed by the Stage 1 agent
+        # via the vendor instructions.txt:17 reference to
+        # `/home/paper/addendum.md`. It MUST NOT be passed to the
+        # Stage 3 SimpleJudge as `judge_addendum=` — past-dogfood
+        # data and runbook strings would bias the grader's scoring
+        # (the addendum cites prior scores and explicit failure
+        # modes, which are inappropriate for the judge to see).
+        # bridge.judge_submission's `judge_addendum` param defaults
+        # to None and ARI's dogfood scripts never set it; the
+        # _ARI_AGENT_ONLY_MARKER regression test enforces this.
+        _ARI_AGENT_ONLY_MARKER,
+        "",
         "# Paper-kind hint (auto-generated by ARI bridge)",
         "",
         f"native_stack: **{native}**",
@@ -1263,6 +1356,25 @@ async def judge_submission(
     ``submission_dir``. This wrapper writes ``paper_md`` to a temp file and,
     if the caller provided an inline ``reproduce_log`` string, persists it
     into ``submission_dir/reproduce.log`` so the judge can find it.
+
+    .. important::
+       ``addendum`` and ``judge_addendum`` are vendor concepts (vendor
+       ``simple.py:113`` joins both into ``self.joined_addendum`` which
+       is then injected into the judge's prompt). They are intended for
+       paper-specific scientific clarifications the original author may
+       have added, NOT for ARI's auto-generated paper-kind hint.
+
+       **ARI INVARIANT**: never pass the agent-facing addendum produced
+       by ``_format_paper_kind_addendum`` (and lives at
+       ``paper/addendum.md`` for the Stage 1 agent only) into either of
+       these params. That file contains past-dogfood scores +
+       failure-mode tables intended to nudge the agent — exposing it to
+       the judge would bias grading. The string
+       ``_ARI_AGENT_ONLY_MARKER`` at the top of every bridge-generated
+       addendum serves as a guard: callers SHOULD reject inputs that
+       contain this marker; the
+       ``test_bridge_generated_addendum_carries_agent_only_marker`` test
+       enforces the bridge side of the contract.
 
     ``paper_audit_mode``: when True, the vendor's
     ``TASK_CATEGORY_QUESTIONS`` (which asks about a submission's code /

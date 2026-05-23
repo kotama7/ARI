@@ -628,6 +628,76 @@ def test_paper_kind_addendum_format_cpp_cuda():
     assert "Code Execution and Result Analysis" in out  # rubric impact
 
 
+def test_paper_kind_addendum_lists_paper_datasets_with_search_hint():
+    """When the classifier returns paper-cited datasets, the addendum
+    must include a STEP 1.5 dataset-acquisition block listing each
+    dataset by name + domain + url_hint, plus the tactic list (web_search →
+    wget / huggingface-cli / git clone), plus the past-dogfood note
+    that no SC41406 agent attempted dataset download.
+    """
+    out = B._format_paper_kind_addendum(
+        native="cpp+cuda",
+        rationale="GPU compression paper",
+        secondary=[],
+        env={"has_module": True, "has_apt": False, "has_sudo": False},
+        datasets=[
+            {"name": "Miranda", "domain": "hydrodynamics simulation",
+             "url_hint": "SDRBench Zenodo Miranda"},
+            {"name": "Nyx", "domain": "cosmological hydrodynamics",
+             "url_hint": "SDRBench Zenodo Nyx"},
+        ],
+    )
+    assert "STEP 1.5" in out
+    assert "Miranda" in out
+    assert "hydrodynamics simulation" in out
+    assert "SDRBench Zenodo Miranda" in out  # search hint surfaced
+    assert "Nyx" in out
+    # Acquisition tactics must mention all major channels.
+    assert "web_search" in out
+    assert "wget" in out
+    assert "huggingface-cli" in out or "huggingface" in out
+    assert "git clone" in out
+    # CHECKSUMS guidance for graders' verification.
+    assert "sha256sum" in out
+    # PAST DOGFOOD DATA — explain the cost of skipping dataset download.
+    assert "PAST DOGFOOD DATA" in out
+    assert "Result Analysis" in out  # rubric impact named
+
+
+def test_paper_kind_addendum_omits_dataset_block_when_no_datasets():
+    """Theoretical-only / synthetic papers: empty datasets list →
+    no STEP 1.5 block, no false alarms about missing data."""
+    out = B._format_paper_kind_addendum(
+        native="python+numpy",
+        rationale="numerical experiments on synthetic fields",
+        secondary=[],
+        env={"has_module": False, "has_apt": True, "has_sudo": True},
+        datasets=[],
+    )
+    assert "STEP 1.5" not in out
+    assert "PAST DOGFOOD DATA" not in out  # only in the dataset block
+
+
+def test_paper_kind_addendum_carries_agent_only_marker():
+    """The addendum is generated for the Stage 1 agent (via
+    paper/addendum.md) and MUST NOT be reused as Stage 3
+    judge_addendum (would bias grading with past-dogfood scores +
+    runbook nudges). The bridge-generated addendum always carries
+    a marker so callers can defensively reject it from the judge
+    path."""
+    out = B._format_paper_kind_addendum(
+        native="cpp+cuda",
+        rationale="GPU paper",
+        secondary=[],
+        env={"has_module": True, "has_apt": False, "has_sudo": False},
+    )
+    assert B._ARI_AGENT_ONLY_MARKER in out
+    # The marker must be in the very first lines so file readers /
+    # diff tools surface it immediately.
+    head = "\n".join(out.split("\n")[:5])
+    assert B._ARI_AGENT_ONLY_MARKER in head
+
+
 def test_paper_kind_addendum_format_unknown_omits_skeleton():
     """When classifier returns unknown, the build skeleton SECTION
     must be omitted (no `_REPRODUCE_SH_SHAPES["unknown"]` entry to
