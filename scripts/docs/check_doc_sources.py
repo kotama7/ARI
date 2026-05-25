@@ -47,11 +47,9 @@ VALID_ROLES = {
 
 # Live docs that legitimately have no `sources` -- §3 "配置ルール / 免除リスト".
 # Paths are repo-root relative, posix style.  Plus everything under _archive/.
+# (The reorg planning docs were removed in the [plan-deletion] commit.)
 EXEMPT_FILES = {
     "docs/README.md",
-    "docs/リファクタリング計画書.md",
-    "docs/ソース対応機構設計書.md",
-    "docs/最終統合計画書.md",
 }
 # matched as a path segment so translations (docs/ja/_archive/...) are covered too
 EXEMPT_DIR_SEGMENTS = ("_archive",)
