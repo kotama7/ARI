@@ -67,6 +67,7 @@ from paperbench.solvers.basicagent.completer import (
     BasicAgentTurnCompleterConfig,
     OpenAIResponsesTurnCompleterConfig,
 )
+from openai.types.responses.web_search_tool_param import WebSearchToolParam
 from paperbench.solvers.basicagent.utils import (
     get_instructions as _vendor_get_instructions,
 )
@@ -648,8 +649,22 @@ async def run_replicator_agent(
     if completer_config is None:
         # Default to upstream OpenAI Responses; users wire LiteLLM via the
         # litellm-backed BasicAgent completer config (Phase 4).
+        #
+        # Register the `web_search_preview` hosted tool, matching vendor's
+        # default completer (solver.py:26-28). Without it the model's tool
+        # list is bash/read_file_chunk/submit only — the agent cannot search
+        # the web, so dataset-URL discovery is structurally blocked and the
+        # agent fabricates URLs (v3-A7/A8: web_search invoked 0 times,
+        # guessed zenodo/HF paths → 404/401 → synthetic fallback). Opt out
+        # with ARI_PB_DISABLE_WEB_SEARCH=1 (e.g. air-gapped reproduction).
+        _tools = (
+            []
+            if os.environ.get("ARI_PB_DISABLE_WEB_SEARCH", "") == "1"
+            else [WebSearchToolParam(type="web_search_preview")]
+        )
         completer_config = OpenAIResponsesTurnCompleterConfig(
             model=os.environ.get("ARI_MODEL_REPLICATOR") or "gpt-5-mini",
+            tools=_tools,
         )
 
     solver = AriPBSolver(
