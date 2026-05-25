@@ -1,3 +1,12 @@
+---
+sources:
+  - path: ari-skill-hpc
+    role: implementation
+  - path: containers
+    role: config
+last_verified: 2026-05-25
+---
+
 # HPC セットアップガイド
 
 このガイドは ARI を SLURM クラスタで動かす方法、Apptainer /

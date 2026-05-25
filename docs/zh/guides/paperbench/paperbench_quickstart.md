@@ -1,3 +1,14 @@
+---
+sources:
+  - path: scripts/sc_paper_dogfood.py
+    role: doc
+  - path: ari-skill-paper-re
+    role: implementation
+  - path: ari-skill-replicate
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # PaperBench 快速入门
 
 5 分钟内完成「导入外部论文 → 查看 PaperBench 审计分数」全流程。
@@ -38,7 +49,7 @@ curl -X POST http://localhost:8765/api/paperbench/papers/import \
 
 1. **论文** — 确认选择。
 2. **评分单** — 生成器模型 (默认 `gemini-2.5-pro`, two_stage 开)。
-   参见[评分单 schema](../reference/rubric_schema.md)。
+   参见[评分单 schema](../../reference/rubric_schema.md)。
 3. **再现** — 再现模型与时间预算。展开「执行配置覆盖」即可手动覆盖
    SLURM 分配标志 (`--nodes`, `--gpus-per-task`, `--exclusive`, ...)。
    评分单已自带 `execution_profile` 时字段会预填。
@@ -69,7 +80,7 @@ make -C report audit-report \
   AUDIT_LANGS="en ja zh"
 ```
 
-Python API: [`report/scripts/paperbench_report.py`](../../../report/scripts/paperbench_report.py)。
+Python API: [`report/scripts/paperbench_report.py`](../../../../report/scripts/paperbench_report.py)。
 
 ## 6. (进阶) 按 venue 切换 rubric 范式
 
@@ -96,7 +107,7 @@ python scripts/sc_paper_dogfood.py \
 输出的 `rubric.json` 将拥有正好对应 `sc.yaml` 中 `top_level_axes` 的六个
 直接子节点, 叶子句式由「实现执行 X」切换为「X 在论文或 AD 中是否可识别」。
 新增 venue 只需 YAML 一个文件 — 详见
-[`rubric_schema.md`](../reference/rubric_schema.md#venue-conditioned-templates)。
+[`rubric_schema.md`](../../reference/rubric_schema.md#venue-conditioned-templates)。
 
 ## 7. (进阶) 通过 CLI 执行完整 3-stage 协议 (v0.8.0)
 
@@ -193,10 +204,10 @@ agent **应当在 reproduce.sh 顶部** 也写 `module load <NAME>`
 
 ## 下一步
 
-- [Rubric schema 与 venue 模板](../reference/rubric_schema.md)
-- [执行配置参考](../reference/execution_profile.md)
+- [Rubric schema 与 venue 模板](../../reference/rubric_schema.md)
+- [执行配置参考](../../reference/execution_profile.md)
 - [多节点搭建](multi_node_setup.md)
 - [计算节点安全约定](compute_node_safety.md)
 - [故障排查](paperbench_troubleshooting.md)
-- [PaperBench bridge API](../reference/api_paperbench.md)
-- [环境变量](../reference/environment_variables.md)
+- [PaperBench bridge API](../../reference/api_paperbench.md)
+- [环境变量](../../reference/environment_variables.md)

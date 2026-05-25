@@ -1,3 +1,10 @@
+---
+sources:
+  - path: ari-core/ari/viz/api_paperbench.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # PaperBench GUI 指南
 
 仪表盘 **📚 PaperBench** 侧栏入口下:
@@ -92,7 +99,7 @@ rubric 已有 `execution_profile`,字段会预填;否则从 0/"" 开始。
 | nodelist | str | `--nodelist` |
 | extra_sbatch_args | str (空格分隔) | pass-through |
 
-完整语义见 [执行配置参考](../reference/execution_profile.md)。
+完整语义见 [执行配置参考](../../reference/execution_profile.md)。
 
 ### Step 4 — 判分配置
 
@@ -123,7 +130,7 @@ curl http://localhost:8765/api/paperbench/run/<job_id>
 - **负向控制结果**
 - **报告下载** — en/ja/zh × pdf/html/md (`POST /run/<id>/report`)
 
-## v0.7.3 更新
+## v0.8.0 更新
 
 - **Step 3 Reproduce: 新增 `container_image` 字段** — 接受 SIF 路径 /
   `docker://` URI / `image:tag` / 短别名 `pb-env` / `pb-reproducer`
@@ -144,5 +151,5 @@ curl http://localhost:8765/api/paperbench/run/<job_id>
 
 - [论文导入](paper_import.md)
 - [快速入门](paperbench_quickstart.md)
-- [执行配置参考](../reference/execution_profile.md)
-- [API 参考](../reference/api_paperbench.md)
+- [执行配置参考](../../reference/execution_profile.md)
+- [API 参考](../../reference/api_paperbench.md)

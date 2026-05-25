@@ -1,3 +1,14 @@
+---
+sources:
+  - path: ari-core/config/workflow.yaml
+    role: config
+  - path: ari-core/ari/config/__init__.py
+    role: implementation
+  - path: ari-core/ari/configs
+    role: config
+last_verified: 2026-05-25
+---
+
 # 設定リファレンス
 
 ## workflow.yaml（正規の開発者設定）
@@ -13,7 +24,7 @@ llm:
   model: gpt-5.2           # モデル識別子
   base_url: ""             # OpenAI の場合は空、Ollama/vLLM の場合は設定
 
-author_name: "Artificial Research Intelligence"
+author_name: "Autonomous Research Infrastructure"
 
 resources:
   cpus: 48                 # 再現性実験のデフォルト CPU 数
@@ -471,6 +482,119 @@ export ARI_EXECUTOR=slurm    # 各ノードを SLURM ジョブとして投入
 ```
 
 または `workflow.yaml` の `bfts:` セクションでデフォルト値を設定できます（バージョンがサポートしている場合）。
+
+---
+
+## BFTS の評価層 (設定で切替可能)
+
+BFTS の評価は 4 層から構成され、それぞれを `default.yaml`
+(またはユーザー YAML) から独立に選択できます。各デフォルト値は
+従来の挙動を再現するため、未編集の config は no-op です。
+
+```yaml
+bfts:
+  frontier_score: scientific_plus_diversity   # フォールバック選択時のスコア戦略
+  depth_penalty_lambda: 0.05                  # frontier_score=depth_penalized 用
+  ucb_c: 0.5                                  # frontier_score=ucb_like 用
+  select_prompt: orchestrator/bfts_select               # select_next_node の LLM プロンプト
+  expand_select_prompt: orchestrator/bfts_expand_select # select_best_to_expand の LLM プロンプト
+
+evaluator:
+  composite: harmonic_mean   # 各軸スコアを _scientific_score に集約する式
+  axis_mode: dynamic         # judge LLM に渡す軸セット
+  custom_axes: []            # axis_mode=custom のときだけ参照
+  axis_weights: { ... }      # 既存。軸ごとの重み上書き
+```
+
+### Layer A — `evaluator.composite`
+
+各軸スコアを集約して `_scientific_score` を作る式を選びます
+(`ari/evaluator/llm_evaluator.py`)。`_scientific_score` はノードの
+ランキング、lineage decision、レポートのベスト選定すべての
+基準値です。
+
+| 値 | 挙動 |
+|---|---|
+| `harmonic_mean`（デフォルト） | 重み付き調和平均。1 つでも弱い軸があると強く減点。従来の挙動。 |
+| `arithmetic_mean` | 重み付き算術平均。軸同士が線形にトレードする寛容な式。 |
+| `weighted_min` | 最も低い軸の値を返すボトルネック式。重みは「軸を参加させるか否か」のゲートとして働き、スコアの倍率にはなりません。 |
+| `geometric_mean` | 重み付き幾何平均。調和と算術の中間で、弱い軸を程々に罰します。 |
+
+### Layer B — `bfts.frontier_score`
+
+LLM 選択が失敗したときの**決定論的**フォールバックスコア
+(`ari/orchestrator/bfts.py` の `_select_fallback`) の戦略です。
+LLM 選択そのものはこの設定の影響を受けません。
+
+| 値 | 計算式 |
+|---|---|
+| `scientific_plus_diversity`（デフォルト） | `_scientific_score + diversity_bonus` |
+| `scientific_only` | `_scientific_score`（diversity の同点処理なし） |
+| `depth_penalized` | `_scientific_score + diversity_bonus − λ·depth` (`λ = bfts.depth_penalty_lambda`) |
+| `ucb_like` | `_scientific_score + diversity_bonus + c · √(log N / (visits + 1))` (`c = bfts.ucb_c`、`visits` は当該ノードの展開回数、`N = total_visits + frontier_size`) |
+
+`depth_penalty_lambda = 0.0` は `depth_penalized` を、`ucb_c = 0.0` は
+`ucb_like` を、それぞれデフォルト戦略に縮退させます。
+
+### Layer C — `evaluator.axis_mode`
+
+judge LLM に提示する軸セットを切り替えます。
+
+| 値 | 軸の出どころ |
+|---|---|
+| `dynamic`（デフォルト） | 汎用 5 軸フロア + 有効な rubric (`ARI_RUBRIC`) 由来 + `idea.json` のプランから抽出されたキーワード軸。`idea.json` の mtime 変化で自動再構築。 |
+| `legacy` | 5 軸固定 (`measurement_validity`, `comparative_rigor`, `novelty`, `reproducibility`, `clarity_of_contribution`)。rubric / plan は読みません。 |
+| `custom` | `evaluator.custom_axes` を額面通り使用。 |
+
+`custom_axes` は `{name, description, weight}` のリストです。
+`description` は judge LLM への入力として使われるため、軸の意味が
+判別できる文を書いてください。
+
+```yaml
+evaluator:
+  axis_mode: custom
+  custom_axes:
+    - name: speedup
+      description: "Wall-clock speedup vs. baseline (1.0 = no change)."
+      weight: 0.5
+    - name: accuracy
+      description: "Numerical accuracy preserved within tolerance."
+      weight: 0.5
+```
+
+`axis_mode=custom` のとき、`axis_weights` の既定キー名は
+自動では custom 軸に置換されません。`axis_weights` で重みを上書き
+したい場合は、新しい軸名で再記述してください。
+
+### Layer D — `bfts.select_prompt` / `bfts.expand_select_prompt`
+
+`FilesystemPromptLoader` のキー (拡張子なし、`ari-core/ari/prompts/`
+からの相対パス) を指定します。デフォルトは同梱のテンプレートです。
+
+ユーザー定義テンプレートには、BFTS の formatter が使う
+placeholder を必ず含めてください:
+
+- `select_prompt`: `{experiment_goal}`, `{memory_context}`, `{candidates}` — LLM は 0-based の整数インデックスのみ返答。
+- `expand_select_prompt`: `{experiment_goal}`, `{candidates}` — 同上。
+
+指定キーのファイルが存在しない場合、`FilesystemPromptLoader` は
+fail-fast で例外を投げます (黙ったフォールバックはしません)。
+
+### 簡単なレシピ
+
+- **寛容な評価 + UCB 探索:**
+  ```yaml
+  evaluator: { composite: arithmetic_mean }
+  bfts: { frontier_score: ucb_like, ucb_c: 1.0 }
+  ```
+- **ボトルネック評価 (どの軸もよくないと publish しない):**
+  ```yaml
+  evaluator: { composite: weighted_min }
+  ```
+- **judge を 5 軸固定に戻す (レガシー再現):**
+  ```yaml
+  evaluator: { axis_mode: legacy }
+  ```
 
 ---
 

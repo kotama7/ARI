@@ -1,0 +1,117 @@
+---
+sources:
+  - path: ari-core/ari/public
+    role: implementation
+  - path: ari-core/tests/test_public_api_boundary.py
+    role: test
+last_verified: 2026-05-25
+---
+
+# `ari.public` — 面向技能的稳定 API
+
+`ari.public` 是 `ari-skill-*` 包**唯一**可以依赖的模块接口。其外部的所有内容均为内部实现，可能在不通知的情况下发生变更。该包是对应 `ari.<module>` 私有实现之上的薄重导出层，使核心可以自由重构，同时保持面向技能的合约不变。它在 v0.7.1（v0.7+ 重构的第 4 阶段）中引入，并由 `ari-core/tests/test_public_api_boundary.py` 强制执行。
+
+## 子模块
+
+| 子模块 | 重导出内容 | 使用它的技能 |
+|---|---|---|
+| `ari.public.config_schema` | Pydantic 配置模型（`ARIConfig`、`LLMConfig` 等） | 需要类型化设置的调用方 |
+| `ari.public.container` | 容器运行时辅助函数（`ContainerConfig`、`run_in_container` 等） | `ari-skill-coding`（测试） |
+| `ari.public.cost_tracker` | LLM 成本记录（`bootstrap_skill`、`record` 等） | `ari-skill-plot`（LLM 调用成本） |
+| `ari.public.llm` | `LLMClient`（带成本集成的 LiteLLM 封装） | 偏好使用 ARI 封装的调用方 |
+| `ari.public.paths` | `PathManager`（检查点路径解析器） | 需要作用域路径的调用方 |
+
+## `ari.public.config_schema`
+
+从 `ari.config` 重导出 Pydantic 模型：
+
+```python
+from ari.public.config_schema import (
+    ARIConfig,
+    BFTSConfig,
+    CheckpointConfig,
+    EvaluatorConfig,
+    LLMConfig,
+    LoggingConfig,
+    SkillConfig,
+)
+
+cfg = ARIConfig.model_validate(yaml.safe_load(open("ari.yaml")))
+```
+
+导出的名称与 `ari/config.py` 符号一一对应；当前字段结构请参阅该文件。来源：`ari-core/ari/public/config_schema.py`。
+
+## `ari.public.container`
+
+从 `ari.container` 重导出容器运行时：
+
+| 符号 | 用途 |
+|---|---|
+| `ContainerConfig` | 数据类：`mode`、`image`、`bind_paths`、`gpu` 等 |
+| `detect_runtime()` | 基于 `which` 查找返回 `"singularity"` / `"apptainer"` / `"docker"` / `"none"` |
+| `config_from_env()` | 从 `ARI_CONTAINER_*` 环境变量构建 `ContainerConfig`（未设置时返回 `None`） |
+| `pull_image(cfg)` | 拉取 / 构建 `cfg` 引用的镜像 |
+| `run_in_container(cfg, cmd, ...)` | 在容器内运行进程，返回退出码 + 捕获的流 |
+| `run_shell_in_container(cfg, script, ...)` | 同上，但接受 bash 脚本字符串 |
+| `list_images()` | 当前运行时中可用镜像的清单 |
+| `get_container_info()` | 包含运行时 + 镜像健康状态的诊断字典 |
+
+来源：`ari-core/ari/container.py` → `ari-core/ari/public/container.py`。
+
+## `ari.public.cost_tracker`
+
+从 `ari.cost_tracker` 重导出 LLM 成本追踪器：
+
+| 符号 | 用途 |
+|---|---|
+| `CostTracker` | 写入 `cost_log.jsonl` 的聚合器实例 |
+| `CallRecord` | 每次调用的数据类（`model`、`prompt_tokens`、`completion_tokens`、`cost_usd`、`metadata`） |
+| `init(log_dir)` | 初始化以 `log_dir` 为根目录的全局追踪器 |
+| `init_from_env()` | 自动使用 `ARI_CHECKPOINT_DIR` 进行初始化（大多数调用方使用此方式） |
+| `bootstrap_skill(skill_name, phase=None)` | 技能便捷封装 — 初始化并标记每条记录 |
+| `record(**kwargs)` | 追加手动 `CallRecord`（不通过 LiteLLM 回调时使用） |
+| `set_default_metadata(**kwargs)` | 为后续所有记录附加额外元数据标签 |
+| `get()` | 获取当前追踪器（或 `None`） |
+
+技能通常只需在启动时调用 `bootstrap_skill`；其余由 LiteLLM 回调处理。来源：`ari-core/ari/cost_tracker.py` → `ari-core/ari/public/cost_tracker.py`。
+
+## `ari.public.llm`
+
+从 `ari.llm.client` 重导出 `LLMClient`：
+
+```python
+from ari.public.llm import LLMClient
+
+client = LLMClient(model="ollama/qwen3:32b")
+resp = await client.complete([{"role": "user", "content": "..."}])
+```
+
+请优先使用此方式而非直接调用 LiteLLM — `LLMClient` 会透传 ARI 的成本追踪器和元数据标签。来源：`ari-core/ari/llm/client.py` → `ari-core/ari/public/llm.py`。
+
+## `ari.public.paths`
+
+从 `ari.paths` 重导出 `PathManager`：
+
+```python
+from ari.public.paths import PathManager
+
+paths = PathManager.from_env()        # honours ARI_CHECKPOINT_DIR
+nodes_json = paths.checkpoint / "nodes_tree.json"
+```
+
+`PathManager` 是核心解析器 — 技能中绝不要直接读取 `ARI_CHECKPOINT_DIR`。来源：`ari-core/ari/paths.py` → `ari-core/ari/public/paths.py`。
+
+## 稳定性保证
+
+- **MAJOR（SemVer）** — 符号、签名和行为可能发生破坏性变更。
+- **MINOR** — 新增符号；现有符号以向后兼容的方式扩展（允许新增可选 kwargs）。
+- **PATCH** — 仅修复 bug。
+
+通过 `from ari import <X>` 直接导入（而非 `from ari.public import <X>`）会绕过此合约 — 技能作者应对照 `ari/public/__init__.py` 检查其导入，并将内部导入边界移至公共层。
+
+## 另请参阅
+
+- `ari-core/ari/public/__init__.py` — 包含规范子模块列表的模块级文档字符串。
+- `docs/extension_guide.md` — 如何编写仅依赖 `ari.public` 的新技能。
+- `CONTRIBUTING.md::Software-engineering discipline §3` — 公共 API 规则（技能只能访问 `ari.public.*`）。
+- `docs/refactor_audit.md`（§4）— 第 4 阶段的历史清单。

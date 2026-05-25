@@ -1,3 +1,12 @@
+---
+sources:
+  - path: ari-core/ari/registry
+    role: implementation
+  - path: scripts/registry
+    role: doc
+last_verified: 2026-05-25
+---
+
 # ari-registry — v0.7.0+
 
 キュレート済み EAR バンドル用の最小 HTTP レジストリ。`ari ear publish` のデフォルトバックエンド、および `ari clone` の `ari://` resolver として動作します。

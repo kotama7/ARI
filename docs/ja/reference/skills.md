@@ -1,3 +1,20 @@
+---
+sources:
+  - path: ari-skill-hpc/src/server.py
+    role: implementation
+  - path: ari-skill-hpc/mcp.json
+    role: config
+  - path: ari-skill-coding/src/server.py
+    role: implementation
+  - path: ari-skill-coding/mcp.json
+    role: config
+  - path: ari-skill-paper-re/src/server.py
+    role: implementation
+  - path: ari-skill-paper-re/mcp.json
+    role: config
+last_verified: 2026-05-25
+---
+
 # MCP Skills リファレンス
 
 Skills は ARI エージェントにツールを提供する MCP サーバーです。ツールは可能な限り決定論的であり、LLM を使用するツールは明示的に注記されています。**全 14 skill**（デフォルト 13、追加 1）。v0.7.0 で PaperBench 形式の再現性フロー用に `ari-skill-replicate` が追加されました。

@@ -1,3 +1,12 @@
+---
+sources:
+  - path: ari-skill-hpc
+    role: implementation
+  - path: containers
+    role: config
+last_verified: 2026-05-25
+---
+
 # HPC 配置指南
 
 本指南涵盖在 SLURM 集群上运行 ARI、在 Apptainer / Singularity /

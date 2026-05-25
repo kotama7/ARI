@@ -1,3 +1,16 @@
+---
+sources:
+  - path: ari-core/ari/public
+    role: implementation
+  - path: ari-core/ari/prompts
+    role: prompt
+  - path: ari-core/ari/configs
+    role: config
+  - path: ari-core/config/workflow.yaml
+    role: config
+last_verified: 2026-05-25
+---
+
 # 扩展指南
 
 本文档描述了如何为新的用例、领域和功能扩展 ARI。

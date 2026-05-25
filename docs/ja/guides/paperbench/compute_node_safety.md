@@ -1,3 +1,12 @@
+---
+sources:
+  - path: ari-skill-paper-re/src/prompts/replicator.md
+    role: prompt
+  - path: ari-skill-paper-re/src/_replicator_agent.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # 計算ノード安全規約 (L1–L7)
 
 `reproduce.sh` は SLURM allocation 内の compute node で実行され、
@@ -136,5 +145,5 @@ grep -E 'timeout' repro_sandbox/reproduce.sh
 ## 関連
 
 - [マルチノード設定](multi_node_setup.md)
-- [実行プロファイル仕様](../reference/execution_profile.md)
+- [実行プロファイル仕様](../../reference/execution_profile.md)
 - [トラブルシューティング](paperbench_troubleshooting.md)

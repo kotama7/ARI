@@ -80,34 +80,35 @@ release gate checks it against the tree (`docs/release_policy.md` §4).
 
 | Document | en | ja | zh |
 |---|:--:|:--:|:--:|
-| getting-started/quickstart | [✓](getting-started/quickstart.md) | [✓](ja/quickstart.md) | [✓](zh/quickstart.md) |
-| concepts/PHILOSOPHY | [✓](concepts/PHILOSOPHY.md) | [✓](ja/PHILOSOPHY.md) | [✓](zh/PHILOSOPHY.md) |
-| concepts/architecture | [✓](concepts/architecture.md) | [✓](ja/architecture.md) | [✓](zh/architecture.md) |
-| guides/hpc_setup | [✓](guides/hpc_setup.md) | [✓](ja/hpc_setup.md) | [✓](zh/hpc_setup.md) |
-| guides/extension_guide | [✓](guides/extension_guide.md) | [✓](ja/extension_guide.md) | [✓](zh/extension_guide.md) |
-| guides/experiment_file | [✓](guides/experiment_file.md) | [✓](ja/experiment_file.md) | [✓](zh/experiment_file.md) |
-| guides/migration | [✓](guides/migration.md) | ✗ | ✗ |
-| guides/testing | [✓](guides/testing.md) | ✗ | ✗ |
-| guides/troubleshooting | [✓](guides/troubleshooting.md) | ✗ | ✗ |
-| guides/paperbench/paperbench_quickstart | [✓](guides/paperbench/paperbench_quickstart.md) | [✓](ja/howto/paperbench_quickstart.md) | [✓](zh/howto/paperbench_quickstart.md) |
-| guides/paperbench/paperbench_gui | [✓](guides/paperbench/paperbench_gui.md) | [✓](ja/howto/paperbench_gui.md) | [✓](zh/howto/paperbench_gui.md) |
-| guides/paperbench/paper_import | [✓](guides/paperbench/paper_import.md) | [✓](ja/howto/paper_import.md) | [✓](zh/howto/paper_import.md) |
-| guides/paperbench/multi_node_setup | [✓](guides/paperbench/multi_node_setup.md) | [✓](ja/howto/multi_node_setup.md) | [✓](zh/howto/multi_node_setup.md) |
-| guides/paperbench/compute_node_safety | [✓](guides/paperbench/compute_node_safety.md) | [✓](ja/howto/compute_node_safety.md) | [✓](zh/howto/compute_node_safety.md) |
-| guides/paperbench/paperbench_troubleshooting | [✓](guides/paperbench/paperbench_troubleshooting.md) | [✓](ja/howto/paperbench_troubleshooting.md) | [✓](zh/howto/paperbench_troubleshooting.md) |
-| reference/cli_reference | [✓](reference/cli_reference.md) | [✓](ja/cli_reference.md) | [✓](zh/cli_reference.md) |
-| reference/configuration | [✓](reference/configuration.md) | [✓](ja/configuration.md) | [✓](zh/configuration.md) |
-| reference/skills | [✓](reference/skills.md) | [✓](ja/skills.md) | [✓](zh/skills.md) |
-| reference/registry | [✓](reference/registry.md) | [✓](ja/registry.md) | [✓](zh/registry.md) |
-| reference/mcp_tools | [✓](reference/mcp_tools.md) | ✗ | ✗ |
-| reference/environment_variables | [✓](reference/environment_variables.md) | ✗ | ✗ |
-| reference/file_formats | [✓](reference/file_formats.md) | ✗ | ✗ |
-| reference/public_api | [✓](reference/public_api.md) | ✗ | ✗ |
-| reference/rest_api | [✓](reference/rest_api.md) | ✗ | ✗ |
+| getting-started/quickstart | [✓](getting-started/quickstart.md) | [✓](ja/getting-started/quickstart.md) | [✓](zh/getting-started/quickstart.md) |
+| concepts/PHILOSOPHY | [✓](concepts/PHILOSOPHY.md) | [✓](ja/concepts/PHILOSOPHY.md) | [✓](zh/concepts/PHILOSOPHY.md) |
+| concepts/architecture | [✓](concepts/architecture.md) | [✓](ja/concepts/architecture.md) | [✓](zh/concepts/architecture.md) |
+| guides/hpc_setup | [✓](guides/hpc_setup.md) | [✓](ja/guides/hpc_setup.md) | [✓](zh/guides/hpc_setup.md) |
+| guides/extension_guide | [✓](guides/extension_guide.md) | [✓](ja/guides/extension_guide.md) | [✓](zh/guides/extension_guide.md) |
+| guides/experiment_file | [✓](guides/experiment_file.md) | [✓](ja/guides/experiment_file.md) | [✓](zh/guides/experiment_file.md) |
+| guides/migration | [✓](guides/migration.md) | [✓](ja/guides/migration.md) | [✓](zh/guides/migration.md) |
+| guides/testing | [✓](guides/testing.md) | [✓](ja/guides/testing.md) | [✓](zh/guides/testing.md) |
+| guides/troubleshooting | [✓](guides/troubleshooting.md) | [✓](ja/guides/troubleshooting.md) | [✓](zh/guides/troubleshooting.md) |
+| guides/paperbench/paperbench_quickstart | [✓](guides/paperbench/paperbench_quickstart.md) | [✓](ja/guides/paperbench/paperbench_quickstart.md) | [✓](zh/guides/paperbench/paperbench_quickstart.md) |
+| guides/paperbench/paperbench_gui | [✓](guides/paperbench/paperbench_gui.md) | [✓](ja/guides/paperbench/paperbench_gui.md) | [✓](zh/guides/paperbench/paperbench_gui.md) |
+| guides/paperbench/paper_import | [✓](guides/paperbench/paper_import.md) | [✓](ja/guides/paperbench/paper_import.md) | [✓](zh/guides/paperbench/paper_import.md) |
+| guides/paperbench/multi_node_setup | [✓](guides/paperbench/multi_node_setup.md) | [✓](ja/guides/paperbench/multi_node_setup.md) | [✓](zh/guides/paperbench/multi_node_setup.md) |
+| guides/paperbench/compute_node_safety | [✓](guides/paperbench/compute_node_safety.md) | [✓](ja/guides/paperbench/compute_node_safety.md) | [✓](zh/guides/paperbench/compute_node_safety.md) |
+| guides/paperbench/paperbench_troubleshooting | [✓](guides/paperbench/paperbench_troubleshooting.md) | [✓](ja/guides/paperbench/paperbench_troubleshooting.md) | [✓](zh/guides/paperbench/paperbench_troubleshooting.md) |
+| reference/cli_reference | [✓](reference/cli_reference.md) | [✓](ja/reference/cli_reference.md) | [✓](zh/reference/cli_reference.md) |
+| reference/configuration | [✓](reference/configuration.md) | [✓](ja/reference/configuration.md) | [✓](zh/reference/configuration.md) |
+| reference/skills | [✓](reference/skills.md) | [✓](ja/reference/skills.md) | [✓](zh/reference/skills.md) |
+| reference/registry | [✓](reference/registry.md) | [✓](ja/reference/registry.md) | [✓](zh/reference/registry.md) |
+| reference/mcp_tools | [✓](reference/mcp_tools.md) | [✓](ja/reference/mcp_tools.md) | [✓](zh/reference/mcp_tools.md) |
+| reference/environment_variables | [✓](reference/environment_variables.md) | [✓](ja/reference/environment_variables.md) | [✓](zh/reference/environment_variables.md) |
+| reference/file_formats | [✓](reference/file_formats.md) | [✓](ja/reference/file_formats.md) | [✓](zh/reference/file_formats.md) |
+| reference/public_api | [✓](reference/public_api.md) | [✓](ja/reference/public_api.md) | [✓](zh/reference/public_api.md) |
+| reference/rest_api | [✓](reference/rest_api.md) | [✓](ja/reference/rest_api.md) | [✓](zh/reference/rest_api.md) |
 | reference/execution_profile | [✓](reference/execution_profile.md) | [✓](ja/reference/execution_profile.md) | [✓](zh/reference/execution_profile.md) |
 | reference/rubric_schema | [✓](reference/rubric_schema.md) | [✓](ja/reference/rubric_schema.md) | [✓](zh/reference/rubric_schema.md) |
 | reference/api_paperbench | [✓](reference/api_paperbench.md) | [✓](ja/reference/api_paperbench.md) | [✓](zh/reference/api_paperbench.md) |
-| about/release_policy | [✓](about/release_policy.md) | ✗ | ✗ |
+| about/release_policy | [✓](about/release_policy.md) | [✓](ja/about/release_policy.md) | [✓](zh/about/release_policy.md) |
+| _archive/refactor_audit | [✓](_archive/refactor_audit.md) | [✓](ja/_archive/refactor_audit.md) | [✓](zh/_archive/refactor_audit.md) |
 
 ## Source traceability
 

@@ -1,3 +1,10 @@
+---
+sources:
+  - path: ari-core/ari/viz/api_paperbench.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # 外部論文の取り込み
 
 論文レジストリ (`~/.ari/paper_registry/`、`ARI_PAPER_REGISTRY_DIR`
@@ -137,4 +144,4 @@ curl -X POST http://localhost:8765/api/paperbench/papers/<paper_id>/metadata \
 ## 関連
 
 - [PaperBench GUI ガイド](paperbench_gui.md)
-- [API リファレンス](../reference/api_paperbench.md)
+- [API リファレンス](../../reference/api_paperbench.md)

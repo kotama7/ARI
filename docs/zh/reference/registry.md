@@ -1,3 +1,12 @@
+---
+sources:
+  - path: ari-core/ari/registry
+    role: implementation
+  - path: scripts/registry
+    role: doc
+last_verified: 2026-05-25
+---
+
 # ari-registry — v0.7.0+
 
 托管策展过的 EAR bundle 的最小 HTTP registry。是 `ari ear publish` 的默认后端，也是 `ari clone` 中 `ari://` 解析器的目标。

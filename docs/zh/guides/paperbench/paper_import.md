@@ -1,3 +1,10 @@
+---
+sources:
+  - path: ari-core/ari/viz/api_paperbench.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # 导入外部论文
 
 论文注册表 (`~/.ari/paper_registry/`,可用 `ARI_PAPER_REGISTRY_DIR`
@@ -133,4 +140,4 @@ curl -X POST http://localhost:8765/api/paperbench/papers/<paper_id>/metadata \
 ## 相关
 
 - [PaperBench GUI 指南](paperbench_gui.md)
-- [API 参考](../reference/api_paperbench.md)
+- [API 参考](../../reference/api_paperbench.md)

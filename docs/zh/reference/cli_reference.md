@@ -1,6 +1,17 @@
+---
+sources:
+  - path: ari-core/ari/cli
+    role: implementation
+  - path: ari-core/ari/memory_cli.py
+    role: implementation
+  - path: ari-core/ari/cli_ear.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # ARI CLI 参考
 
-ARI 命令行操作的完整参考。CLI 为基于终端的工作流提供与 [Web 仪表盘](quickstart.md)相同的功能。
+ARI 命令行操作的完整参考。CLI 为基于终端的工作流提供与 [Web 仪表盘](../getting-started/quickstart.md)相同的功能。
 
 ---
 
@@ -176,7 +187,7 @@ ari viz ./checkpoints/ --port 8765
 ari viz ./checkpoints/20260328_matrix_opt/ --port 9878
 ```
 
-在浏览器中打开 `http://localhost:<port>`。仪表盘的使用方法请参阅 [快速入门指南](quickstart.md)。
+在浏览器中打开 `http://localhost:<port>`。仪表盘的使用方法请参阅 [快速入门指南](../getting-started/quickstart.md)。
 
 ---
 

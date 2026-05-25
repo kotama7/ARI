@@ -1,3 +1,12 @@
+---
+sources:
+  - path: ari-core/ari/pipeline/experiment_md.py
+    role: implementation
+  - path: ari-skill-evaluator
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # experiment.md の書き方
 
 `experiment.md` は ARI に何を実行させるかを記述する Markdown ファイル

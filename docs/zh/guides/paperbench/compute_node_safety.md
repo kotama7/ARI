@@ -1,3 +1,12 @@
+---
+sources:
+  - path: ari-skill-paper-re/src/prompts/replicator.md
+    role: prompt
+  - path: ari-skill-paper-re/src/_replicator_agent.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # 计算节点安全约定 (L1–L7)
 
 `reproduce.sh` 在 SLURM allocation 内一个全新的计算节点上运行,
@@ -130,5 +139,5 @@ grep -E 'timeout' repro_sandbox/reproduce.sh
 ## 相关
 
 - [多节点搭建](multi_node_setup.md)
-- [执行配置参考](../reference/execution_profile.md)
+- [执行配置参考](../../reference/execution_profile.md)
 - [故障排查](paperbench_troubleshooting.md)

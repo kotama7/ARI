@@ -1,3 +1,22 @@
+---
+sources:
+  - path: ari-core/ari/orchestrator
+    role: implementation
+  - path: ari-core/ari/agent/loop.py
+    role: implementation
+  - path: ari-core/ari/pipeline
+    role: implementation
+  - path: ari-core/ari/evaluator/llm_evaluator.py
+    role: implementation
+  - path: ari-core/ari/memory/letta_client.py
+    role: implementation
+  - path: ari-core/ari/paths.py
+    role: implementation
+  - path: ari-core/config/workflow.yaml
+    role: config
+last_verified: 2026-05-25
+---
+
 # ARI 架构
 
 ## ARI 做什么
@@ -377,12 +396,12 @@ API 密钥 **绝不** 存储在 `settings.json` 中。它们从 `.env` 文件
 
 | 模块 | 描述 |
 |------|------|
-| `ari/orchestrator/bfts.py` | 最佳优先树搜索 — 节点扩展、选择、剪枝；按 `_scientific_score` 排名 |
+| `ari/orchestrator/bfts.py` | 最佳优先树搜索 — 节点扩展、选择、剪枝；回退排名策略可通过 `BFTSConfig.frontier_score` (`scientific_plus_diversity` / `scientific_only` / `depth_penalized` / `ucb_like`) **配置** — 详见 [Configuration → BFTS 评估层](../reference/configuration.md#bfts-评估层-可通过配置切换) |
 | `ari/orchestrator/node.py` | Node 数据类 — id、parent_id、depth、label、metrics、artifacts、memory |
 | `ari/agent/loop.py` | ReAct 智能体循环 — 每个节点的 LLM + 工具调用；自动轮询 SLURM 作业；注入祖先记忆 |
 | `ari/agent/workflow.py` | WorkflowHints — 从实验文本自动提取（工具序列、指标关键词、分区） |
 | `ari/pipeline.py` | Post-BFTS 流水线驱动器 — 模板解析、阶段执行、输出连接 |
-| `ari/evaluator/llm_evaluator.py` | 指标提取 + 同行评审评分（`scientific_score`、`comparison_found`） |
+| `ari/evaluator/llm_evaluator.py` | 指标提取 + 同行评审评分（`scientific_score`、`comparison_found`）。合成公式 (`harmonic_mean` / `arithmetic_mean` / `weighted_min` / `geometric_mean`) 与轴集 (`legacy` / `dynamic` / `custom`) 可通过 `EvaluatorConfig` **配置** — 详见 [Configuration → BFTS 评估层](../reference/configuration.md#bfts-评估层-可通过配置切换) |
 | `ari/memory/file_client.py` | 基于文件的记忆客户端（祖先链作用域） |
 | `ari/mcp/client.py` | 异步 MCP 客户端 — 线程安全，为并行执行创建新的事件循环 |
 | `ari/llm/client.py` | 通过 litellm 进行 LLM 路由（Ollama、OpenAI、Anthropic、任何 OpenAI 兼容接口） |
@@ -517,7 +536,7 @@ full_paper.tex 注入 \codeavailability{} \codedigest{} \coderef{}
 
 ### `ari registry`（可选自托管）
 
-`ari/registry/` 中的极简 FastAPI 服务。SQLite token store，`${ARI_REGISTRY_DATA}/artifacts/<id>/{bundle.tar.gz, manifest.lock, meta.json}` 内容寻址存储。可见性单调可升 `staged` → `unlisted` / `public`（降级被拒）。部署方式：uvicorn (laptop)、docker-compose (production)、Apptainer (HPC)。详见 [docs/registry.md](registry.md)。
+`ari/registry/` 中的极简 FastAPI 服务。SQLite token store，`${ARI_REGISTRY_DATA}/artifacts/<id>/{bundle.tar.gz, manifest.lock, meta.json}` 内容寻址存储。可见性单调可升 `staged` → `unlisted` / `public`（降级被拒）。部署方式：uvicorn (laptop)、docker-compose (production)、Apptainer (HPC)。详见 [docs/registry.md](../reference/registry.md)。
 
 ### 可复现性沙箱补强
 

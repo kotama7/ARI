@@ -1,3 +1,14 @@
+---
+sources:
+  - path: scripts/sc_paper_dogfood.py
+    role: doc
+  - path: ari-skill-paper-re
+    role: implementation
+  - path: ari-skill-replicate
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # PaperBench クイックスタート
 
 外部論文の登録から PaperBench audit スコア表示までを 5 分で通すチュートリアル。
@@ -38,7 +49,7 @@ curl -X POST http://localhost:8765/api/paperbench/papers/import \
 
 1. **論文選択**。
 2. **ルーブリック** — 生成モデル (既定 `gemini-2.5-pro`、two_stage on)。
-   [ルーブリック仕様](../reference/rubric_schema.md) 参照。
+   [ルーブリック仕様](../../reference/rubric_schema.md) 参照。
 3. **再現** — 再現モデルと時間上限。「実行プロファイル上書き」を展開すると
    SLURM 配置 (`--nodes`, `--gpus-per-task`, `--exclusive`, …) を上書き
    可能。ルーブリックに `execution_profile` がある場合は自動入力される。
@@ -69,7 +80,7 @@ make -C report audit-report \
   AUDIT_LANGS="en ja zh"
 ```
 
-Python API は [`report/scripts/paperbench_report.py`](../../../report/scripts/paperbench_report.py)。
+Python API は [`report/scripts/paperbench_report.py`](../../../../report/scripts/paperbench_report.py)。
 
 ## 6. (応用) venue 別のルブリック枠組み切り替え
 
@@ -97,7 +108,7 @@ python scripts/sc_paper_dogfood.py \
 出力 `rubric.json` は `sc.yaml` の `top_level_axes` に対応した 6 個の直下
 ノードを持ち、葉の文体は「実装が X を行う」から「X は paper または AD で
 特定可能か」に切り替わる。新 venue 追加は YAML 1 ファイルで完結する —
-詳細は [`rubric_schema.md`](../reference/rubric_schema.md#venue-conditioned-templates)
+詳細は [`rubric_schema.md`](../../reference/rubric_schema.md#venue-conditioned-templates)
 を参照。
 
 ## 7. (上級) 完全な 3-stage プロトコルを CLI で実行 (v0.8.0)
@@ -197,10 +208,10 @@ agent は **reproduce.sh 冒頭にも** `module load <NAME>` を書くべき
 
 ## 次のステップ
 
-- [ルブリックスキーマ + venue テンプレート](../reference/rubric_schema.md)
-- [実行プロファイル仕様](../reference/execution_profile.md)
+- [ルブリックスキーマ + venue テンプレート](../../reference/rubric_schema.md)
+- [実行プロファイル仕様](../../reference/execution_profile.md)
 - [マルチノード設定](multi_node_setup.md)
 - [計算ノード安全規約](compute_node_safety.md)
 - [トラブルシューティング](paperbench_troubleshooting.md)
-- [PaperBench bridge API](../reference/api_paperbench.md)
-- [環境変数](../reference/environment_variables.md)
+- [PaperBench bridge API](../../reference/api_paperbench.md)
+- [環境変数](../../reference/environment_variables.md)

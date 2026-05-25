@@ -1,3 +1,14 @@
+---
+sources:
+  - path: ari-core/config/workflow.yaml
+    role: config
+  - path: ari-core/ari/config/__init__.py
+    role: implementation
+  - path: ari-core/ari/configs
+    role: config
+last_verified: 2026-05-25
+---
+
 # 配置参考
 
 ## workflow.yaml（权威开发者配置）
@@ -13,7 +24,7 @@ llm:
   model: gpt-5.2           # Model identifier
   base_url: ""             # Leave empty for OpenAI; set for Ollama/vLLM
 
-author_name: "Artificial Research Intelligence"
+author_name: "Autonomous Research Infrastructure"
 
 resources:
   cpus: 48                 # Default CPU count for reproducibility experiments
@@ -463,6 +474,114 @@ export ARI_EXECUTOR=slurm    # Submit each node as a SLURM job
 ```
 
 或在 `workflow.yaml` 的 `bfts:` 部分设置默认值（如果您的版本支持）。
+
+---
+
+## BFTS 评估层 (可通过配置切换)
+
+BFTS 评估由 4 层组成，每层可在 `default.yaml`（或自定义 YAML）中
+独立选择。默认值保留原有行为，未修改的 config 等同于 no-op。
+
+```yaml
+bfts:
+  frontier_score: scientific_plus_diversity   # 回退选择器对前沿节点的排名策略
+  depth_penalty_lambda: 0.05                  # 供 frontier_score=depth_penalized 使用
+  ucb_c: 0.5                                  # 供 frontier_score=ucb_like 使用
+  select_prompt: orchestrator/bfts_select               # select_next_node 的 LLM prompt
+  expand_select_prompt: orchestrator/bfts_expand_select # select_best_to_expand 的 LLM prompt
+
+evaluator:
+  composite: harmonic_mean   # 将各轴分数合成 _scientific_score 的公式
+  axis_mode: dynamic         # 提交给 judge LLM 的轴集合
+  custom_axes: []            # 仅在 axis_mode=custom 时使用
+  axis_weights: { ... }      # 现有；每轴权重覆盖
+```
+
+### Layer A — `evaluator.composite`
+
+选择把每轴分数压缩成节点上 `_scientific_score` 的公式
+（见 `ari/evaluator/llm_evaluator.py`）。`_scientific_score`
+驱动排名、lineage decision 和最终报告 best-of 选择。
+
+| 值 | 行为 |
+|---|---|
+| `harmonic_mean`（默认） | 加权调和平均。单个弱轴会被强烈惩罚，复刻原有行为。 |
+| `arithmetic_mean` | 加权算术平均。各轴线性互补，较宽容。 |
+| `weighted_min` | 返回最低轴值的瓶颈式。权重作为「该轴是否参与」的门，不缩放分数。 |
+| `geometric_mean` | 加权几何平均，介于调和与算术之间。 |
+
+### Layer B — `bfts.frontier_score`
+
+LLM 选择器无法选中候选时，BFTS **确定性**回退评分
+（`ari/orchestrator/bfts.py` 的 `_select_fallback`）所用的策略。
+LLM 选择器本身不受此设置影响。
+
+| 值 | 计算式 |
+|---|---|
+| `scientific_plus_diversity`（默认） | `_scientific_score + diversity_bonus` |
+| `scientific_only` | `_scientific_score`（无 diversity tiebreaker） |
+| `depth_penalized` | `_scientific_score + diversity_bonus − λ·depth`（`λ = bfts.depth_penalty_lambda`） |
+| `ucb_like` | `_scientific_score + diversity_bonus + c · √(log N / (visits + 1))`（`c = bfts.ucb_c`，`visits` 为该节点已展开次数，`N = total_visits + frontier_size`） |
+
+`depth_penalty_lambda = 0.0` 会让 `depth_penalized` 退化为默认策略；
+`ucb_c = 0.0` 会让 `ucb_like` 退化为默认策略。
+
+### Layer C — `evaluator.axis_mode`
+
+决定向 judge LLM 提交的轴集合。
+
+| 值 | 轴来源 |
+|---|---|
+| `dynamic`（默认） | 通用 5 轴 floor + 有效 rubric (`ARI_RUBRIC`) 派生 + `idea.json` 中的 plan-keyword 轴。当 `idea.json` mtime 变化时自动刷新。 |
+| `legacy` | 固定的 5 轴 (`measurement_validity`, `comparative_rigor`, `novelty`, `reproducibility`, `clarity_of_contribution`)。不读 rubric / plan。 |
+| `custom` | 原样使用 `evaluator.custom_axes`。 |
+
+`custom_axes` 是 `{name, description, weight}` 的列表。`description`
+会发送给 judge LLM，请写明该轴的含义：
+
+```yaml
+evaluator:
+  axis_mode: custom
+  custom_axes:
+    - name: speedup
+      description: "Wall-clock speedup vs. baseline (1.0 = no change)."
+      weight: 0.5
+    - name: accuracy
+      description: "Numerical accuracy preserved within tolerance."
+      weight: 0.5
+```
+
+当 `axis_mode=custom` 时，`axis_weights` 中的既有键名不会自动转换为
+自定义轴名。若要从 YAML weights 表覆盖权重，请用新轴名重新写入。
+
+### Layer D — `bfts.select_prompt` / `bfts.expand_select_prompt`
+
+两者均为 `FilesystemPromptLoader` 键（相对 `ari-core/ari/prompts/`，
+不含 `.md` 扩展名）。默认指向项目内置模板。
+
+用户自定义模板必须声明 BFTS formatter 使用的占位符：
+
+- `select_prompt`：`{experiment_goal}`、`{memory_context}`、`{candidates}` — LLM 必须仅返回一个 0-based 整数索引。
+- `expand_select_prompt`：`{experiment_goal}`、`{candidates}` — 返回格式相同。
+
+若键所指向的文件不存在，`FilesystemPromptLoader` 会立即抛出异常
+（fail-fast，无静默回退）。
+
+### 快速食谱
+
+- **宽松评分 + UCB 探索:**
+  ```yaml
+  evaluator: { composite: arithmetic_mean }
+  bfts: { frontier_score: ucb_like, ucb_c: 1.0 }
+  ```
+- **瓶颈评分（仅在每个轴都好时才发布）:**
+  ```yaml
+  evaluator: { composite: weighted_min }
+  ```
+- **judge 固定为 5 轴（复刻 legacy）:**
+  ```yaml
+  evaluator: { axis_mode: legacy }
+  ```
 
 ---
 

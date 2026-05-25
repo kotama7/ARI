@@ -1,6 +1,17 @@
+---
+sources:
+  - path: ari-core/ari/cli
+    role: implementation
+  - path: ari-core/ari/memory_cli.py
+    role: implementation
+  - path: ari-core/ari/cli_ear.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # ARI CLI リファレンス
 
-ARI のコマンドライン操作の完全なリファレンスです。CLI は [Web ダッシュボード](quickstart.md)と同等の機能をターミナルベースのワークフロー向けに提供します。
+ARI のコマンドライン操作の完全なリファレンスです。CLI は [Web ダッシュボード](../getting-started/quickstart.md)と同等の機能をターミナルベースのワークフロー向けに提供します。
 
 ---
 
@@ -198,7 +209,7 @@ ari viz ./checkpoints/ --port 8765
 ari viz ./checkpoints/20260328_matrix_opt/ --port 9878
 ```
 
-ブラウザで `http://localhost:<port>` を開いてください。ダッシュボードの使い方は[クイックスタートガイド](quickstart.md)を参照してください。
+ブラウザで `http://localhost:<port>` を開いてください。ダッシュボードの使い方は[クイックスタートガイド](../getting-started/quickstart.md)を参照してください。
 
 ---
 

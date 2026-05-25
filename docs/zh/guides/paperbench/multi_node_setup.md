@@ -1,3 +1,10 @@
+---
+sources:
+  - path: ari-skill-paper-re/src/server.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # PaperBench 多节点搭建
 
 ARI 默认提供单节点沙箱 (local / apptainer / docker)。要添加多节点
@@ -84,6 +91,6 @@ R-CCS Cloud Jupyter 通过 web notebook 暴露 SLURM allocation。ARI run
 
 ## 相关
 
-- [执行配置参考](../reference/execution_profile.md)
+- [执行配置参考](../../reference/execution_profile.md)
 - [计算节点安全约定](compute_node_safety.md)
 - [`hpc_setup.md`](../hpc_setup.md) — ARI HPC 配置基础

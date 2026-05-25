@@ -1,3 +1,10 @@
+---
+sources:
+  - path: ari-core/ari/viz/api_paperbench.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # PaperBench GUI ガイド
 
 ダッシュボードの **📚 PaperBench** サイドバーから:
@@ -92,7 +99,7 @@ authors / year / license を自動入力する。
 | nodelist | str | `--nodelist` |
 | extra_sbatch_args | str (空白区切り) | pass-through |
 
-詳細セマンティクスは [実行プロファイル仕様](../reference/execution_profile.md) 参照。
+詳細セマンティクスは [実行プロファイル仕様](../../reference/execution_profile.md) 参照。
 
 ### Step 4 — 採点設定
 
@@ -124,7 +131,7 @@ curl http://localhost:8765/api/paperbench/run/<job_id>
 - **ネガティブコントロール結果**
 - **レポートダウンロード** — en/ja/zh × pdf/html/md (`POST /run/<id>/report`)
 
-## v0.7.3 アップデート
+## v0.8.0 アップデート
 
 - **Step 3 Reproduce: `container_image` フィールド追加** — SIF パス /
   `docker://` URI / `image:tag` / 短縮エイリアス `pb-env` /
@@ -144,5 +151,5 @@ curl http://localhost:8765/api/paperbench/run/<job_id>
 
 - [論文取り込み](paper_import.md)
 - [クイックスタート](paperbench_quickstart.md)
-- [実行プロファイル仕様](../reference/execution_profile.md)
-- [API リファレンス](../reference/api_paperbench.md)
+- [実行プロファイル仕様](../../reference/execution_profile.md)
+- [API リファレンス](../../reference/api_paperbench.md)

@@ -1,3 +1,14 @@
+---
+sources:
+  - path: ari-skill-replicate/schemas/replication_rubric.schema.json
+    role: schema
+  - path: ari-skill-replicate/src/generator.py
+    role: implementation
+  - path: ari-skill-replicate/src/rubric_template.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # 评分单 Schema 参考
 
 正本: `ari-skill-replicate/schemas/replication_rubric.schema.json`

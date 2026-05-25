@@ -1,3 +1,20 @@
+---
+sources:
+  - path: ari-skill-hpc/src/server.py
+    role: implementation
+  - path: ari-skill-hpc/mcp.json
+    role: config
+  - path: ari-skill-coding/src/server.py
+    role: implementation
+  - path: ari-skill-coding/mcp.json
+    role: config
+  - path: ari-skill-paper-re/src/server.py
+    role: implementation
+  - path: ari-skill-paper-re/mcp.json
+    role: config
+last_verified: 2026-05-25
+---
+
 # MCP 技能参考
 
 技能是为 ARI 智能体提供工具的 MCP 服务器。工具尽可能保持确定性；使用 LLM 的工具会明确标注。**共 14 个技能**（13 个默认，1 个附加）。v0.7.0 新增 `ari-skill-replicate`，用于 PaperBench 形式的可复现性流程。

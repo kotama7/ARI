@@ -1,3 +1,12 @@
+---
+sources:
+  - path: ari-skill-paper-re
+    role: implementation
+  - path: ari-skill-replicate
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # PaperBench トラブルシューティング
 
 頻出する障害モードとその対処。 監査実行パイプラインは
@@ -162,7 +171,7 @@ python -m report.scripts.paperbench_report paper \
 ja/zh ミラーは XeLaTeX + Noto CJK font 必須。 `report/setup_fonts.sh`
 実行と `fc-list | grep -i 'noto.*cjk'` で確認。
 
-## v0.7.3 アップデート: sandbox / GPU エラー
+## v0.8.0 アップデート: sandbox / GPU エラー
 
 ### Q. `RuntimeError: sandbox_kind=docker requested but docker daemon is not reachable`
 
@@ -185,17 +194,17 @@ fallback を opt-in する: `export ARI_PHASE1_ALLOW_FALLBACK=1`。
 
 ### Q. agent が Stage 1 を動かしたが Stage 3 で全 leaf が 0 点
 
-2 つの原因 (v0.7.3 で両方対処済み):
+2 つの原因 (v0.8.0 で両方対処済み):
 
 1. **`reproduce.log` 不在** — Stage 2 がスキップされ vendor SimpleJudge
    の safeguard 「`reproduce.sh` failed to modify or create any files.
-   All result analysis tasks will be graded as 0」 が発火。v0.7.3 で
+   All result analysis tasks will be graded as 0」 が発火。v0.8.0 で
    judge が `code_only=True` を自動有効化し rubric を Code Development
    葉のみに pruning する。
 2. **`paper_audit_mode` が誤って ON** — paper-audit mode は論文自体を
    採点。`code_only` と排他で、両方 True なら bridge が `ValueError`。
 
-## v0.7.3: HF_TOKEN / agent.env
+## v0.8.0: HF_TOKEN / agent.env
 
 ### Q. 論文が gated dataset / model のため HF_TOKEN が必要
 
@@ -210,7 +219,7 @@ paper 別 credentials は `~/.ari/agent.env` に `KEY=VALUE` 形式で配置 —
 bridge が `agent_env_path=None` 時に auto-discover。 `ARI_AGENT_ENV_PATH`
 で path 上書き可。
 
-## v0.7.3: salvage retries + executed-submission tarball
+## v0.8.0: salvage retries + executed-submission tarball
 
 `bridge.reproduce_submission(salvage_retries=N, retry_threshold_sec=60)`
 で early-failure (exit≠0 かつ elapsed<threshold) 時に Python 3.11 + venv
@@ -226,6 +235,6 @@ attempts 跨いで honor。
 - [クイックスタート](paperbench_quickstart.md)
 - [マルチノード設定](multi_node_setup.md)
 - [計算ノード安全規約](compute_node_safety.md)
-- [実行プロファイル仕様](../reference/execution_profile.md)
-- [PaperBench API + bridge contract](../reference/api_paperbench.md)
-- [環境変数](../reference/environment_variables.md)
+- [実行プロファイル仕様](../../reference/execution_profile.md)
+- [PaperBench API + bridge contract](../../reference/api_paperbench.md)
+- [環境変数](../../reference/environment_variables.md)

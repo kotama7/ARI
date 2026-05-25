@@ -53,7 +53,8 @@ EXEMPT_FILES = {
     "docs/ソース対応機構設計書.md",
     "docs/最終統合計画書.md",
 }
-EXEMPT_DIR_PREFIXES = ("docs/_archive/",)
+# matched as a path segment so translations (docs/ja/_archive/...) are covered too
+EXEMPT_DIR_SEGMENTS = ("_archive",)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -65,7 +66,8 @@ def is_translation(rel: str) -> bool:
 def is_exempt(rel: str) -> bool:
     if rel in EXEMPT_FILES:
         return True
-    return any(rel.startswith(p) for p in EXEMPT_DIR_PREFIXES)
+    parts = rel.split("/")
+    return any(seg in parts for seg in EXEMPT_DIR_SEGMENTS)
 
 
 def split_front_matter(text: str):
