@@ -668,6 +668,12 @@ def test_paper_kind_addendum_lists_paper_datasets_with_search_hint():
     assert "wget" in out
     assert "huggingface-cli" in out or "huggingface" in out
     assert "git clone" in out
+    # Registry-first guidance: find the official download/registry PAGE,
+    # do NOT fabricate file URLs (v3-A7 agent guessed zenodo/HF URLs that
+    # 404/401'd). Must tell the agent to confirm with a HEAD before use.
+    assert "registry" in out.lower() or "official download" in out.lower()
+    assert "fabricate" in out.lower() or "guess" in out.lower()
+    assert "curl -sI" in out or "HTTP 200" in out
     # CHECKSUMS guidance for graders' verification.
     assert "sha256sum" in out
     # WHY THIS MATTERS — explain the cost of skipping dataset download,
