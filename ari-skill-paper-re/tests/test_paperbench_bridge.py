@@ -618,22 +618,33 @@ def test_paper_kind_addendum_format_cpp_cuda():
     assert "STEP 1" in out
     assert "module avail" in out  # discovery path
     # STEP 4 must be present, MANDATORY-flagged, with concrete final
-    # check + git clean caveat + past failure data table. This is the
-    # imperative reinforcement of vendor instructions.txt L25/L27
-    # which use weaker verbs ("very important", "advised").
+    # check + git clean caveat. This is the imperative reinforcement
+    # of vendor instructions.txt L25/L27 which use weaker verbs
+    # ("very important", "advised"). It must enforce ALL THREE of:
+    # git-clean + reproduce.sh exit 0 + impl-complete (the last is
+    # the anti-early-submit guard).
     assert "STEP 4" in out
     assert "MANDATORY" in out
     assert "bash reproduce.sh" in out
+    assert "git status --porcelain" in out  # git-clean guard
     assert "git clean -fd" in out
-    assert "Code Execution and Result Analysis" in out  # rubric impact
+    # Anti-early-submit guard: agent must not submit a thin scaffold.
+    assert "thin scaffold" in out or "scaffold" in out
+    # Anti-philosophy-leak regression: addendum must NOT carry
+    # paper-specific dogfood score tables (e.g., "SC41406 v1 14.45%").
+    # Past commit e780fa5 added such a table; commit (this fix)
+    # removed it. The rule itself stands on its own without per-paper
+    # dogfood numbers.
+    assert "SC41406" not in out
+    assert "14.45%" not in out
 
 
 def test_paper_kind_addendum_lists_paper_datasets_with_search_hint():
     """When the classifier returns paper-cited datasets, the addendum
     must include a STEP 1.5 dataset-acquisition block listing each
     dataset by name + domain + url_hint, plus the tactic list (web_search →
-    wget / huggingface-cli / git clone), plus the past-dogfood note
-    that no SC41406 agent attempted dataset download.
+    wget / huggingface-cli / git clone), plus a paper-agnostic note on
+    why skipping dataset download zeros the Result Analysis leaves.
     """
     out = B._format_paper_kind_addendum(
         native="cpp+cuda",
@@ -659,8 +670,10 @@ def test_paper_kind_addendum_lists_paper_datasets_with_search_hint():
     assert "git clone" in out
     # CHECKSUMS guidance for graders' verification.
     assert "sha256sum" in out
-    # PAST DOGFOOD DATA — explain the cost of skipping dataset download.
-    assert "PAST DOGFOOD DATA" in out
+    # WHY THIS MATTERS — explain the cost of skipping dataset download,
+    # paper-agnostically (no per-paper dogfood names/scores).
+    assert "WHY THIS MATTERS" in out
+    assert "SC41406" not in out  # no paper-specific leak in dataset block
     assert "Result Analysis" in out  # rubric impact named
 
 
@@ -675,7 +688,7 @@ def test_paper_kind_addendum_omits_dataset_block_when_no_datasets():
         datasets=[],
     )
     assert "STEP 1.5" not in out
-    assert "PAST DOGFOOD DATA" not in out  # only in the dataset block
+    assert "WHY THIS MATTERS" not in out  # only in the dataset block
 
 
 def test_paper_kind_addendum_carries_agent_only_marker():

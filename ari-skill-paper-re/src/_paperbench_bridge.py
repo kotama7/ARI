@@ -1014,7 +1014,7 @@ def _format_paper_kind_addendum(
         only; activation rendered separately based on host env)
       - an env-conditional activation hint (module / apt / manual)
       - a per-paper dataset acquisition table + STEP 1.5 in the runbook
-      - a cautionary block grounded in past SC41406 dogfood data
+      - a cautionary block on native-stack vs. proxy reproduction
 
     The activation block is env-conditional so the runbook STEP 1 does
     not push `module load X` on a laptop without Lmod, or
@@ -1027,17 +1027,14 @@ def _format_paper_kind_addendum(
     sec_lines = "\n".join(f"  - {s}" for s in secondary if s) if secondary else ""
     activation = _render_activation_block(env or {})
     cautionary = (
-        "## Cautionary note (ARI past-dogfood data)\n\n"
-        "Past ARI dogfood runs on HPC C++/CUDA papers (SC41406, the cuSZ-i\n"
-        "GPU compressor paper) using a Python-only proxy scored:\n\n"
-        "  - SC41406 v1 (4h, Python proxy): ors_score = 14.45%\n"
-        "  - SC41406 v2 (cancelled @ 4h, broken reproduce.sh): ors_score = 0.8%\n"
-        "  - PaperBench BasicAgent leaderboard average: ~3-10%\n\n"
+        "## Cautionary note (native-stack reproduction)\n\n"
         "When the paper's native stack is C++/CUDA / MPI / Fortran, a\n"
-        "Python proxy CANNOT satisfy rubric leaves that verify GPU kernel\n"
-        "build, kernel launch grid, MPI process count, native build\n"
-        "system, etc. The rubric REWARDS reproducing the paper in its\n"
-        "native language stack — match it where possible.\n"
+        "Python-only proxy CANNOT satisfy rubric leaves that verify GPU\n"
+        "kernel build, kernel launch grid, MPI process count, native\n"
+        "build system, etc. The rubric REWARDS reproducing the paper in\n"
+        "its native language stack — match it where possible. A proxy\n"
+        "reimplementation in a different language scores a small fraction\n"
+        "of what a faithful native build earns.\n"
     )
     # Dataset acquisition: list paper-cited datasets and tell the agent
     # to fetch them (web_search → wget / huggingface-cli / git clone).
@@ -1072,13 +1069,12 @@ def _format_paper_kind_addendum(
             "       synthetic data — but record that this caps the Result\n"
             "       Analysis rubric score because the numbers cannot match\n"
             "       the paper's tables.\n\n"
-            "  PAST DOGFOOD DATA: SC41406 v1-v4 agents skipped this STEP\n"
-            "  entirely (0 wget / curl / huggingface-cli attempts, 0\n"
-            "  web_search invocations across 16 hours of agent time).\n"
-            "  Result: every Result Analysis rubric leaf scored 0 because\n"
-            "  the synthetic-data outputs never matched the paper's\n"
-            "  numbers. Don't repeat this; the rubric REWARDS real-data\n"
-            "  evaluations.\n\n"
+            "  WHY THIS MATTERS: if you skip dataset acquisition and fall\n"
+            "  back to synthetic data, every Result Analysis rubric leaf\n"
+            "  that compares against the paper's reported numbers scores\n"
+            "  0 — synthetic outputs never match the paper's tables. The\n"
+            "  rubric REWARDS real-data evaluations; fetch the real\n"
+            "  datasets whenever they are publicly reachable.\n\n"
         )
     runbook = (
         "## Recommended first steps (in this order)\n\n"
@@ -1093,37 +1089,31 @@ def _format_paper_kind_addendum(
         "  same env (see Phase 2 isolation note in env-truth above).\n\n"
         "STEP 3 — Write your reproduction code; compile with the verified\n"
         "  toolchain; run end-to-end; confirm reproduce.sh exits 0.\n\n"
-        "STEP 4 — MANDATORY FINAL CHECK (do NOT skip — past dogfood agents did):\n"
+        "STEP 4 — MANDATORY FINAL CHECK before calling submit. Run this\n"
+        "  sequence in `submission/` and verify ALL THREE conditions:\n"
         "  ```bash\n"
-        "  cd submission && bash reproduce.sh && echo '[ok] reproduce.sh exits 0'\n"
+        "  cd submission\n"
+        "  git status --porcelain   # MUST print nothing (no untracked / modified)\n"
+        "  bash reproduce.sh        # MUST exit 0\n"
+        "  echo '[ok] reproduce.sh exits 0'\n"
         "  ```\n"
-        "  If '[ok]' prints, you are done — CALL THE SUBMIT TOOL TO EXIT.\n"
-        "  Otherwise, FIX reproduce.sh AND commit every file it references\n"
-        "  BEFORE calling submit. The grader runs `git clean -fd` first —\n"
-        "  untracked files DO NOT survive (vendor instructions.txt L84).\n\n"
+        "  Call submit ONLY when all three hold:\n"
+        "    (a) `git status --porcelain` produced empty output — every file\n"
+        "        referenced by reproduce.sh is committed. The grader runs\n"
+        "        `git clean -fd` first, so untracked files DO NOT survive\n"
+        "        (vendor instructions.txt L84).\n"
+        "    (b) reproduce.sh exited 0.\n"
+        "    (c) You have implemented the paper's core artifact as\n"
+        "        completely as the time budget allows. Do NOT submit a\n"
+        "        thin scaffold just because it exits 0 — the rubric\n"
+        "        rewards real reproduction of the paper's claims, not\n"
+        "        a script that prints \"hello\".\n\n"
         "  TOOL NAME CLARIFICATION: vendor templates.py refers to this as\n"
         "  \"end_task\" but the actual tool in your tool list is named\n"
         "  **`submit`**. Call it as `submit(end_message=\"reproduce.sh\n"
-        "  passed; finalized\")`. Do NOT just write text saying \"I'm\n"
-        "  finished\" — the vendor solver loop only exits when you call\n"
-        "  the submit tool (see solver.py:176-177). Past dogfood agents\n"
-        "  (v3-A4) hit a DEFAULT_CONTINUE_MESSAGE loop because they\n"
-        "  wrote completion text but never called submit; the agent\n"
-        "  stalled until the 4h hard kill. Avoid this — call submit\n"
-        "  the moment reproduce.sh exits 0.\n\n"
-        "  Why this STEP is MANDATORY (reinforcement of vendor\n"
-        "  instructions.txt L25/L27 which use the weaker verbs 'very\n"
-        "  important' and 'advised'):\n"
-        "    - SC41406 v1 (4h Python proxy, reproduce.sh ran ok):  14.45%\n"
-        "    - SC41406 v2 (4h, reproduce.sh exit_code=1, type bug):  0.8%\n"
-        "    - SC41406 v3-A2 (4h, reproduce.sh exit_code=1):         2.0%\n"
-        "    - SC41406 v3-A3 (4h, reproduce.sh exit_code=2, FILE\n"
-        "      NOT FOUND — agent referenced src/reproduce.py but never\n"
-        "      committed it):                                        4.5%\n"
-        "  Every reproduce.sh failure cost ~10pp of ors_score. The\n"
-        "  rubric's Code Execution and Result Analysis leaves ALL go to\n"
-        "  zero when reproduce.sh errors at grade time, regardless of\n"
-        "  how good your source tree looks.\n"
+        "  passed; git clean; impl complete\")`. Do NOT just write text\n"
+        "  saying \"I'm finished\" — the vendor solver loop only exits\n"
+        "  when you call the submit tool (see solver.py:176-177).\n"
     )
     parts = [
         # AGENT-ONLY MARKER: this file is consumed by the Stage 1 agent
