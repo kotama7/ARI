@@ -25,7 +25,7 @@ Plain Markdown with a single load-bearing convention: a
 `Metrics: <token>, <token>, ...` line that the deterministic helper
 `parse_metric_from_experiment_md`
 (`ari-core/ari/pipeline/experiment_md.py:31`) extracts as the fallback
-`primary_metric`.  See `docs/experiment_file.md` for the full guide.
+`primary_metric`.  See `docs/guides/experiment_file.md` for the full guide.
 
 After `generate_ideas` runs, the pipeline appends an idempotent block
 delimited by:
@@ -261,9 +261,9 @@ into the published paper.
 
 ## See also
 
-- `docs/architecture.md` (Checkpoint Directory Layout) — narrative
+- `docs/concepts/architecture.md` (Checkpoint Directory Layout) — narrative
   view of the same files.
 - `ari-core/ari/schemas/` — formal JSON Schemas for `node_report` and
   the publish manifest.
 - `ari-core/ari/pipeline/yaml_loader.py` — workflow.yaml parser.
-- `docs/experiment_file.md` — long-form `experiment.md` guide.
+- `docs/guides/experiment_file.md` — long-form `experiment.md` guide.

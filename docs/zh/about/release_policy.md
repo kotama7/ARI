@@ -95,7 +95,7 @@ ARI 遵循 [语义化版本 2.0](https://semver.org/spec/v2.0.0.html)。
 - **MINOR** 版本保持前向兼容：在上一个 minor 版本上生成的检查点
   必须在新的 minor 版本上继续可用。
 - **MAJOR** 版本可能需要一次性迁移步骤。迁移步骤记录于
-  `docs/howto/migration.md`，通过 `ari migrate ...` 执行。
+  `docs/guides/migration.md`，通过 `ari migrate ...` 执行。
 - Skill 独立版本控制。处于 `0.7.x` 的 skill 应能与任意 `0.7.y` 的
   `ari-core` 兼容（同一 minor 内兼容）。跨 minor 版本时，需协调发布。
 
@@ -103,5 +103,5 @@ ARI 遵循 [语义化版本 2.0](https://semver.org/spec/v2.0.0.html)。
 
 - `CHANGELOG.md` —— 各版本发布说明。
 - `CONTRIBUTING.md::Deprecation process` —— 完整弃用计划。
-- `docs/howto/migration.md` —— 各版本迁移方案。
+- `docs/guides/migration.md` —— 各版本迁移方案。
 - `docs/reference/public_api.md` —— 本策略所保护的公共表面。

@@ -179,6 +179,6 @@ reason).
 
 ## See also
 
-- `docs/architecture.md` — viz package overview.
+- `docs/concepts/architecture.md` — viz package overview.
 - `ari-core/ari/viz/__init__.py` — module-level docstring with the
   current sub-module map.

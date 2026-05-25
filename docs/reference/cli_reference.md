@@ -613,7 +613,7 @@ ari registry token issue alice
 | Artifact id | `sha256(bundle.tar.gz)[:16]` (content-addressed) |
 | Storage | `${ARI_REGISTRY_DATA}/artifacts/<id>/{bundle.tar.gz, manifest.lock, meta.json}` |
 
-Deploy modes (see [docs/registry.md](registry.md) for full details):
+Deploy modes (see [docs/reference/registry.md](registry.md) for full details):
 
 - `scripts/registry/start_local.sh` — uvicorn + sqlite, single-process. Laptop / dev.
 - `scripts/registry/docker-compose.yml` — nginx + uvicorn + sqlite-on-volume. Production.

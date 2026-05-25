@@ -80,7 +80,7 @@ LLM 可以修改的基线脚本。仅当基准启动协议不寻常时有用。
 `experiment.md` 是 **plan**；**venue** 在
 `ari-core/config/reviewer_rubrics/<id>.yaml`，由 `ARI_RUBRIC` 环境
 变量选取。Rubric 同时提供 BFTS 评分维度与已发布评审标准。详见
-`docs/architecture.md#plan--venue-contract-v070`。
+`docs/concepts/architecture.md#plan--venue-contract-v070`。
 
 ### VirSci 自动追加块（v0.6）
 
@@ -124,7 +124,7 @@ LLM 可以修改的基线脚本。仅当基准启动协议不寻常时有用。
 再现性流程（`ari-skill-replicate` + `ari-skill-paper-re`）不需要
 `experiment.md` 中新增字段。改在检查点目录累积新 artifact
 （`ors_rubric.json`、`ors_grade.json`、`repro_sandbox/`）。详见
-`docs/architecture.md#publication-lifecycle-v070`。
+`docs/concepts/architecture.md#publication-lifecycle-v070`。
 
 ## `experiment.md` 的存放位置
 
@@ -138,6 +138,6 @@ ARI 按以下顺序查找：
 
 ## 参见
 
-- `docs/architecture.md#plan--venue-contract-v070` — 完整两文件契约
-- `docs/architecture.md#publication-lifecycle-v070` — `experiment.md` 周边产物
-- `docs/skills.md` — 各 skill 消费 `experiment.md` 的哪些章节
+- `docs/concepts/architecture.md#plan--venue-contract-v070` — 完整两文件契约
+- `docs/concepts/architecture.md#publication-lifecycle-v070` — `experiment.md` 周边产物
+- `docs/reference/skills.md` — 各 skill 消费 `experiment.md` 的哪些章节

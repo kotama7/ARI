@@ -591,7 +591,7 @@ ari registry token issue alice
 | Artifact id | `sha256(bundle.tar.gz)[:16]` のコンテンツアドレス |
 | ストレージ | `${ARI_REGISTRY_DATA}/artifacts/<id>/{bundle.tar.gz, manifest.lock, meta.json}` |
 
-デプロイモード (詳細は [docs/registry.md](registry.md)):
+デプロイモード (詳細は [docs/reference/registry.md](registry.md)):
 
 - `scripts/registry/start_local.sh` — uvicorn + sqlite、シングルプロセス。Laptop / dev。
 - `scripts/registry/docker-compose.yml` — nginx + uvicorn + sqlite-on-volume。Production。

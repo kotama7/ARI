@@ -198,7 +198,7 @@ Letta サービスと通信します。3 つのデプロイパス:
 
 ## 関連
 
-- `docs/configuration.md` — ARI が尊重する全 env var
-- `docs/architecture.md` — ランタイム・メモリ・レイヤ構造
+- `docs/reference/configuration.md` — ARI が尊重する全 env var
+- `docs/concepts/architecture.md` — ランタイム・メモリ・レイヤ構造
 - `ari-skill-hpc/README.md` — SLURM ツールリファレンス（local + SSH）
 - `ari-skill-memory/README.md` — バックエンド選択 + Letta デプロイレシピ

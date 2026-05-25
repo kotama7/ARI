@@ -90,7 +90,7 @@ benchmark's launch protocol is unusual.
 `ARI_RUBRIC` environment variable.  The rubric supplies the dimensions
 the BFTS judge scores against and the criteria the published review
 uses — switching `ARI_RUBRIC` changes both at once.  See
-`docs/architecture.md#plan--venue-contract-v070` for the full
+`docs/concepts/architecture.md#plan--venue-contract-v070` for the full
 two-file contract.
 
 ### Auto-appended VirSci block (v0.6)
@@ -139,7 +139,7 @@ The reproducibility flow (`ari-skill-replicate` + `ari-skill-paper-re`)
 does not require new fields in `experiment.md` itself — instead, the
 checkpoint accumulates artefacts beside it (`ors_rubric.json`,
 `ors_grade.json`, `repro_sandbox/`).  See
-`docs/architecture.md#publication-lifecycle-v070` for the full
+`docs/concepts/architecture.md#publication-lifecycle-v070` for the full
 artefact list.
 
 ## Where to put `experiment.md`
@@ -155,9 +155,9 @@ refactor scoped every input file to the checkpoint.
 
 ## See also
 
-- `docs/architecture.md#plan--venue-contract-v070` — full two-file
+- `docs/concepts/architecture.md#plan--venue-contract-v070` — full two-file
   contract.
-- `docs/architecture.md#publication-lifecycle-v070` — what ARI emits
+- `docs/concepts/architecture.md#publication-lifecycle-v070` — what ARI emits
   alongside `experiment.md`.
-- `docs/skills.md` — which skills consume which experiment-file
+- `docs/reference/skills.md` — which skills consume which experiment-file
   sections.

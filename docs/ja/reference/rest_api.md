@@ -177,6 +177,6 @@ JSON HTTP API を公開しています。エンドポイントは `viz/routes.py
 
 ## 関連ドキュメント
 
-- `docs/architecture.md` — viz パッケージの概要。
+- `docs/concepts/architecture.md` — viz パッケージの概要。
 - `ari-core/ari/viz/__init__.py` — 現在のサブモジュールマップを含む
   モジュールレベルの docstring。

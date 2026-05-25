@@ -94,7 +94,7 @@ SemVer 目的での**パブリックサーフェス**:
 - **MINOR** リリースは前方互換です: 直前のマイナーで生成したチェックポイントは
   新しいマイナーでも動作し続ける必要があります。
 - **MAJOR** リリースでは 1 回限りのマイグレーションステップが必要になる場合があります。
-  マイグレーションは `docs/howto/migration.md` に記載されており、
+  マイグレーションは `docs/guides/migration.md` に記載されており、
   `ari migrate ...` で実行します。
 - スキルは独立してバージョン管理されます。`0.7.x` のスキルは
   `ari-core` の任意の `0.7.y` と動作するはずです (マイナー内での互換性)。
@@ -104,5 +104,5 @@ SemVer 目的での**パブリックサーフェス**:
 
 - `CHANGELOG.md` — リリースごとのノート。
 - `CONTRIBUTING.md::Deprecation process` — 非推奨化の全プログラム。
-- `docs/howto/migration.md` — バージョンごとのマイグレーションレシピ。
+- `docs/guides/migration.md` — バージョンごとのマイグレーションレシピ。
 - `docs/reference/public_api.md` — このポリシーが保護するサーフェス。

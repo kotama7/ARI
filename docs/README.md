@@ -76,7 +76,7 @@ snapshots.
 ## Translation parity
 
 ✓ links to the translation; ✗ marks a gap. The matrix is authoritative — a
-release gate checks it against the tree (`docs/release_policy.md` §4).
+release gate checks it against the tree (`docs/about/release_policy.md` §4).
 
 | Document | en | ja | zh |
 |---|:--:|:--:|:--:|

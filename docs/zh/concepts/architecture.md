@@ -375,7 +375,7 @@ checkpoints/{run_id}/
 ARI 不再维护全局配置目录。所有设置文件和代理记忆都存储在活动检查点目录下，
 因此每个实验拥有独立状态。v0.5.0 已经移除全局 `$HOME/.ari/` 目录；
 仅存的几个文件系统回退会发出 `DeprecationWarning`，并在 v1.0 中彻底移除
-（详见 `docs/refactor_audit.md` 与 `docs/howto/migration.md`）:
+（详见 `docs/_archive/refactor_audit.md` 与 `docs/guides/migration.md`）:
 
 ```
 checkpoints/{run_id}/
@@ -536,7 +536,7 @@ full_paper.tex 注入 \codeavailability{} \codedigest{} \coderef{}
 
 ### `ari registry`（可选自托管）
 
-`ari/registry/` 中的极简 FastAPI 服务。SQLite token store，`${ARI_REGISTRY_DATA}/artifacts/<id>/{bundle.tar.gz, manifest.lock, meta.json}` 内容寻址存储。可见性单调可升 `staged` → `unlisted` / `public`（降级被拒）。部署方式：uvicorn (laptop)、docker-compose (production)、Apptainer (HPC)。详见 [docs/registry.md](../reference/registry.md)。
+`ari/registry/` 中的极简 FastAPI 服务。SQLite token store，`${ARI_REGISTRY_DATA}/artifacts/<id>/{bundle.tar.gz, manifest.lock, meta.json}` 内容寻址存储。可见性单调可升 `staged` → `unlisted` / `public`（降级被拒）。部署方式：uvicorn (laptop)、docker-compose (production)、Apptainer (HPC)。详见 [docs/reference/registry.md](../reference/registry.md)。
 
 ### 可复现性沙箱补强
 

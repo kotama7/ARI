@@ -17,7 +17,7 @@ last_verified: 2026-05-25
 
 ## クイックスタート
 
-> **メモ:** v0.5.0 でグローバル `$HOME/.ari/` ディレクトリは廃止されました。レジストリ関連のパスは `ARI_REGISTRY_DATA` `ARI_REGISTRIES_FILE` env var、もしくはアクティブなチェックポイント（`$ARI_CHECKPOINT_DIR/.ari/registries.yaml`）配下にスコープされます。詳細は `docs/refactor_audit.md` と `docs/howto/migration.md`。レガシーフォールバックは v1.0 で削除されます。
+> **メモ:** v0.5.0 でグローバル `$HOME/.ari/` ディレクトリは廃止されました。レジストリ関連のパスは `ARI_REGISTRY_DATA` `ARI_REGISTRIES_FILE` env var、もしくはアクティブなチェックポイント（`$ARI_CHECKPOINT_DIR/.ari/registries.yaml`）配下にスコープされます。詳細は `docs/_archive/refactor_audit.md` と `docs/guides/migration.md`。レガシーフォールバックは v1.0 で削除されます。
 
 ```bash
 # 1. サーバ依存をインストール（デフォルト install には含めず slim を保つ）

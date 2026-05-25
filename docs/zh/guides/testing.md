@@ -137,5 +137,5 @@ def ckpt(tmp_path, monkeypatch):
 ## 参见
 
 - `pytest.ini` —— 仓库范围的配置。
-- `docs/architecture.md` —— 运行时架构（有助于选择正确的测试层）。
+- `docs/concepts/architecture.md` —— 运行时架构（有助于选择正确的测试层）。
 - `docs/reference/public_api.md` —— 边界测试依此检查导入。

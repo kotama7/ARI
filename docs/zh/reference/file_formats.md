@@ -17,7 +17,7 @@ last_verified: 2026-05-25
 
 ## `experiment.md`
 
-纯 Markdown 文件，有一个关键约定：一行 `Metrics: <token>, <token>, ...`，由确定性辅助函数 `parse_metric_from_experiment_md`（`ari-core/ari/pipeline/experiment_md.py:31`）提取为回退 `primary_metric`。完整指南请参见 `docs/experiment_file.md`。
+纯 Markdown 文件，有一个关键约定：一行 `Metrics: <token>, <token>, ...`，由确定性辅助函数 `parse_metric_from_experiment_md`（`ari-core/ari/pipeline/experiment_md.py:31`）提取为回退 `primary_metric`。完整指南请参见 `docs/guides/experiment_file.md`。
 
 `generate_ideas` 运行后，流水线会附加一个幂等块，以下列方式分隔：
 
@@ -235,7 +235,7 @@ ear_published/
 
 ## 另请参阅
 
-- `docs/architecture.md`（检查点目录布局）— 相同文件的叙述视图。
+- `docs/concepts/architecture.md`（检查点目录布局）— 相同文件的叙述视图。
 - `ari-core/ari/schemas/` — `node_report` 和发布 manifest 的正式 JSON Schema。
 - `ari-core/ari/pipeline/yaml_loader.py` — workflow.yaml 解析器。
-- `docs/experiment_file.md` — 详细的 `experiment.md` 指南。
+- `docs/guides/experiment_file.md` — 详细的 `experiment.md` 指南。

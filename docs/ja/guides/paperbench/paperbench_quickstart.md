@@ -20,7 +20,7 @@ last_verified: 2026-05-25
 - `.env` に LLM プロバイダ鍵が設定されている (`OPENAI_API_KEY` /
   `GEMINI_API_KEY` など)。
 - SLURM ディスパッチを使う場合: `sbatch` が PATH 上にあり、
-  [`docs/howto/multi_node_setup.md`](multi_node_setup.md) を準備済み。
+  [`docs/guides/paperbench/multi_node_setup.md`](multi_node_setup.md) を準備済み。
 
 ## 1. 論文を取り込む
 

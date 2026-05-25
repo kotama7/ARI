@@ -238,7 +238,7 @@ helpers only.
 
 ## See also
 
-- `docs/skills.md` — narrative description of each skill (responsibility, env vars, examples).
+- `docs/reference/skills.md` — narrative description of each skill (responsibility, env vars, examples).
 - `docs/reference/environment_variables.md` — env-var-by-env-var reference.
 - The `mcp.json` in each skill for the canonical tool name list.
 - `@mcp.tool()` / `@server.list_tools()` in each skill's `src/server.py`

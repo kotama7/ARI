@@ -168,5 +168,5 @@ are bounded and documented.
   re-implementing retrieval.
 
 Operationally, Letta is a dependency you run locally (Docker / Singularity
-/ pip) or on Letta Cloud. See `docs/configuration.md` and the
+/ pip) or on Letta Cloud. See `docs/reference/configuration.md` and the
 `ari memory` CLI for setup.

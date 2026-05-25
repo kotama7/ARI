@@ -62,7 +62,7 @@ ARI 围绕一个原则设计：**用 Markdown 描述目标 — 其余的交给 A
   `evaluator.composite` ／ `evaluator.axis_mode` ／
   `bfts.frontier_score` ／ `bfts.select_prompt` 与
   `bfts.expand_select_prompt`。默认值与既有行为完全一致；详情见
-  `docs/zh/configuration.md` 的「BFTS 评估层」一节。
+  `docs/zh/reference/configuration.md` 的「BFTS 评估层」一节。
 - **新增 7 套审稿评分准则（reviewer rubric）** — `aer`、`ahr`、`apsr`、
   `econometrica`、`philreview`、`pmla`、`qje` 已随仓库一同分发于
   `ari-core/config/reviewer_rubrics/`。
@@ -174,7 +174,7 @@ ari run experiment.md                 # 运行实验
 ari run experiment.md --profile hpc   # 使用 SLURM 集群
 ```
 
-完整的仪表板演练请参阅 **[docs/zh/quickstart.md](docs/zh/getting-started/quickstart.md)**，CLI 命令请参阅 **[docs/zh/cli_reference.md](docs/zh/reference/cli_reference.md)**。
+完整的仪表板演练请参阅 **[docs/zh/getting-started/quickstart.md](docs/zh/getting-started/quickstart.md)**，CLI 命令请参阅 **[docs/zh/reference/cli_reference.md](docs/zh/reference/cli_reference.md)**。
 
 ---
 
@@ -341,7 +341,7 @@ v0.6.0 移除了两个技能：`ari-skill-figure-router` 被合并进 `ari-skill
 | P2 | 尽可能确定性 | MCP 工具默认是确定性的；使用 LLM 的工具明确标注。*v0.6.0 起 `ari-skill-memory` 采用 Letta 嵌入检索，此规则对该技能放宽。* |
 | P3 | 多目标指标 | 没有硬编码的标量评分 |
 | P4 | 依赖注入 | 切换实验 = 仅编辑 `.md` |
-| P5 | 可复现性优先 | 论文用规格而非集群名称描述硬件。*Letta 后端下 BFTS 轨迹可能在重新运行时不同，但数值结果仍可复现。* 详见 `docs/PHILOSOPHY.md`。 |
+| P5 | 可复现性优先 | 论文用规格而非集群名称描述硬件。*Letta 后端下 BFTS 轨迹可能在重新运行时不同，但数值结果仍可复现。* 详见 `docs/concepts/PHILOSOPHY.md`。 |
 
 ---
 

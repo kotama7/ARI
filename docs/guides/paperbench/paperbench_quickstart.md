@@ -21,7 +21,7 @@ PaperBench audit score.
 - An LLM provider configured in `.env` (e.g. `OPENAI_API_KEY` or
   `GEMINI_API_KEY`).
 - For SLURM dispatch: `sbatch` on PATH plus
-  [`docs/howto/multi_node_setup.md`](multi_node_setup.md).
+  [`docs/guides/paperbench/multi_node_setup.md`](multi_node_setup.md).
 
 ## 1. Import a paper
 

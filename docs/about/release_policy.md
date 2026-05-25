@@ -102,7 +102,7 @@ When cutting a release:
 - A **MINOR** release is forward-compatible: a checkpoint produced
   on the previous minor must keep working on the new minor.
 - A **MAJOR** release may require a one-shot migration step.  The
-  migration is documented in `docs/howto/migration.md` and run via
+  migration is documented in `docs/guides/migration.md` and run via
   `ari migrate ...`.
 - Skills are versioned independently.  A skill at `0.7.x` should
   work with `ari-core` at any `0.7.y` (compatibility within a
@@ -112,6 +112,6 @@ When cutting a release:
 
 - `CHANGELOG.md` — per-release notes.
 - `CONTRIBUTING.md::Deprecation process` — full deprecation programme.
-- `docs/howto/migration.md` — per-version migration recipes.
+- `docs/guides/migration.md` — per-version migration recipes.
 - `docs/reference/public_api.md` — the surface this policy
   protects.

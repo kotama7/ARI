@@ -138,5 +138,5 @@ def ckpt(tmp_path, monkeypatch):
 ## 関連
 
 - `pytest.ini` — リポジトリ全体の設定。
-- `docs/architecture.md` — ランタイムアーキテクチャ (適切なテストレイヤーを選ぶ際に役立ちます)。
+- `docs/concepts/architecture.md` — ランタイムアーキテクチャ (適切なテストレイヤーを選ぶ際に役立ちます)。
 - `docs/reference/public_api.md` — 境界テストはこのサーフェスに対してインポートを確認します。

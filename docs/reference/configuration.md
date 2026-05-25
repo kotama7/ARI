@@ -340,7 +340,7 @@ v0.6.0 replaces the deterministic JSONL memory store with
 `ari setup` auto-detects the best mode; you can force one via
 `ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA`. Start/stop/health/backup/restore
 are handled by the `ari memory` subcommand — see
-`docs/cli_reference.md`.
+`docs/reference/cli_reference.md`.
 
 One-shot migration for a v0.5.x checkpoint:
 
@@ -666,7 +666,7 @@ backend: ari-registry        # ari-registry|gh|zenodo|s3|local-tarball (CLI --ba
 The legacy v0.6.0 paths (`code/<node_id>/**`, `data/raw_metrics.json`,
 `logs/**`, `reproducibility/**`) are no longer produced by `generate_ear`
 and should be removed from older `publish.yaml` files. See
-`docs/skills.md` for the full new layout description.
+`docs/reference/skills.md` for the full new layout description.
 
 ### Built-in deny patterns
 

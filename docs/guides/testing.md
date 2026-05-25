@@ -144,7 +144,7 @@ log` and survives subsequent rewrites of the fix.
 ## See also
 
 - `pytest.ini` — repo-wide config.
-- `docs/architecture.md` — runtime architecture (helps when picking
+- `docs/concepts/architecture.md` — runtime architecture (helps when picking
   the right test layer).
 - `docs/reference/public_api.md` — boundary tests check imports
   against this surface.

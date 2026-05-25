@@ -13,7 +13,7 @@ ARI honours roughly 90 environment variables, drawn together here for
 convenience.  Most have sensible defaults; the **Required?** column
 flags the ones a fresh checkout cannot operate without.
 
-`docs/configuration.md` walks the same surface as a tutorial; this
+`docs/reference/configuration.md` walks the same surface as a tutorial; this
 page is the alphabetical lookup.
 
 > v0.5.0 removed the global `$HOME/.ari/` directory.  Where this
@@ -228,7 +228,7 @@ page is the alphabetical lookup.
 
 ## See also
 
-- `docs/configuration.md` — narrative tour of the same env vars,
+- `docs/reference/configuration.md` — narrative tour of the same env vars,
   grouped by use case.
 - `ari-core/ari/config.py` — Pydantic settings model that consumes
   most of the `ARI_*` group.

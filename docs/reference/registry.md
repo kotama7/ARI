@@ -25,7 +25,7 @@ permanence.
 > registry path is now scoped to either an explicit env var
 > (`ARI_REGISTRY_DATA`, `ARI_REGISTRIES_FILE`) or to the active
 > checkpoint (`$ARI_CHECKPOINT_DIR/.ari/registries.yaml`).  See
-> `docs/refactor_audit.md` and `docs/howto/migration.md` for the
+> `docs/_archive/refactor_audit.md` and `docs/guides/migration.md` for the
 > migration recipe; the legacy fallback is removed in v1.0.
 
 ```bash

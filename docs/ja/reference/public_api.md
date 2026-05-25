@@ -130,8 +130,8 @@ nodes_json = paths.checkpoint / "nodes_tree.json"
 
 - `ari-core/ari/public/__init__.py` — 標準的なサブモジュール一覧を含む
   モジュールレベルの docstring。
-- `docs/extension_guide.md` — `ari.public` のみに依存する新しいスキルの
+- `docs/guides/extension_guide.md` — `ari.public` のみに依存する新しいスキルの
   書き方。
 - `CONTRIBUTING.md::Software-engineering discipline §3` — パブリック API
   ルール（スキルは `ari.public.*` のみを参照可能）。
-- `docs/refactor_audit.md`（§4）— 過去の Phase 4 インベントリ。
+- `docs/_archive/refactor_audit.md`（§4）— 過去の Phase 4 インベントリ。

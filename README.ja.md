@@ -62,7 +62,7 @@ ARI は一つの原則に基づいて設計されています：**ゴールを M
 - **設定可能な BFTS 評価レイヤ** — `evaluator.composite` ／
   `evaluator.axis_mode` ／ `bfts.frontier_score` ／ `bfts.select_prompt` ／
   `bfts.expand_select_prompt` を `default.yaml` で切替可能。既定値は
-  従来挙動と完全一致。詳細は `docs/ja/configuration.md` の
+  従来挙動と完全一致。詳細は `docs/ja/reference/configuration.md` の
   「BFTS 評価レイヤ」節を参照。
 - **新規 reviewer rubric を 7 種同梱** — `aer` ／ `ahr` ／ `apsr` ／
   `econometrica` ／ `philreview` ／ `pmla` ／ `qje` を
@@ -175,7 +175,7 @@ ari run experiment.md                 # 実験を実行
 ari run experiment.md --profile hpc   # SLURM クラスタで実行
 ```
 
-ダッシュボードの詳細は **[docs/ja/quickstart.md](docs/ja/getting-started/quickstart.md)** を、CLI コマンドは **[docs/ja/cli_reference.md](docs/ja/reference/cli_reference.md)** を参照してください。
+ダッシュボードの詳細は **[docs/ja/getting-started/quickstart.md](docs/ja/getting-started/quickstart.md)** を、CLI コマンドは **[docs/ja/reference/cli_reference.md](docs/ja/reference/cli_reference.md)** を参照してください。
 
 ---
 
@@ -342,7 +342,7 @@ v0.6.0 では 2 つのスキルを廃止しました。`ari-skill-figure-router`
 | P2 | 可能な限り決定論的 | MCP ツールはデフォルトで決定論的、LLM 使用ツールは明示的に注釈。*v0.6.0 で `ari-skill-memory` のみ緩和 — Letta の埋め込み検索を使用* |
 | P3 | 多目的メトリクス | ハードコードされたスカラースコアなし |
 | P4 | 依存性注入 | 実験の切り替え = `.md` の編集のみ |
-| P5 | 再現性ファースト | 論文ではクラスタ名ではなくスペックでハードウェアを記述。*Letta バックエンドでは BFTS 探索順が再実行時に変わり得るが、数値結果は再現可能。* `docs/PHILOSOPHY.md` 参照 |
+| P5 | 再現性ファースト | 論文ではクラスタ名ではなくスペックでハードウェアを記述。*Letta バックエンドでは BFTS 探索順が再実行時に変わり得るが、数値結果は再現可能。* `docs/concepts/PHILOSOPHY.md` 参照 |
 
 ---
 

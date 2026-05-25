@@ -20,7 +20,7 @@ last_verified: 2026-05-25
 - `.env` 中配置了 LLM 提供方密钥 (例如 `OPENAI_API_KEY` /
   `GEMINI_API_KEY`)。
 - 如需 SLURM 调度: `sbatch` 在 PATH 上,且参照
-  [`docs/howto/multi_node_setup.md`](multi_node_setup.md) 完成集群准备。
+  [`docs/guides/paperbench/multi_node_setup.md`](multi_node_setup.md) 完成集群准备。
 
 ## 1. 导入论文
 

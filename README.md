@@ -59,7 +59,7 @@ The system scales across five axes:
 - **Configurable BFTS evaluation layers** — `evaluator.composite`,
   `evaluator.axis_mode`, `bfts.frontier_score`, `bfts.select_prompt`,
   `bfts.expand_select_prompt`. Defaults reproduce the prior behaviour
-  exactly; see `docs/configuration.md` § BFTS Evaluation Layers.
+  exactly; see `docs/reference/configuration.md` § BFTS Evaluation Layers.
 - **Seven new reviewer rubrics** — `aer`, `ahr`, `apsr`, `econometrica`,
   `philreview`, `pmla`, `qje` ship under `ari-core/config/reviewer_rubrics/`.
 - **Step 4 reproduction-package generator — RETRACTED.** The earlier
@@ -170,7 +170,7 @@ ari run experiment.md                 # run experiment
 ari run experiment.md --profile hpc   # with SLURM cluster
 ```
 
-See **[docs/quickstart.md](docs/getting-started/quickstart.md)** for the full dashboard walkthrough and **[docs/cli_reference.md](docs/reference/cli_reference.md)** for CLI commands.
+See **[docs/getting-started/quickstart.md](docs/getting-started/quickstart.md)** for the full dashboard walkthrough and **[docs/reference/cli_reference.md](docs/reference/cli_reference.md)** for CLI commands.
 
 ---
 
@@ -337,7 +337,7 @@ In v0.6.0 two skills were retired: `ari-skill-figure-router` was folded into `ar
 | P2 | Deterministic where possible | MCP tools are deterministic by default; LLM-using tools are explicitly annotated. *Relaxed for `ari-skill-memory` in v0.6.0 — Letta-backed retrieval is embedding-based.* |
 | P3 | Multi-objective metrics | No hardcoded scalar score |
 | P4 | Dependency injection | Switching experiments = editing `.md` only |
-| P5 | Reproducibility-first | Papers describe hardware by specs, not cluster names. *BFTS trajectory may diverge across re-runs when memory is Letta-backed; numerical results remain reproducible.* See `docs/PHILOSOPHY.md`. |
+| P5 | Reproducibility-first | Papers describe hardware by specs, not cluster names. *BFTS trajectory may diverge across re-runs when memory is Letta-backed; numerical results remain reproducible.* See `docs/concepts/PHILOSOPHY.md`. |
 
 ---
 

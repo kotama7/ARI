@@ -562,7 +562,7 @@ ari registry token issue alice
 | Artifact id | `sha256(bundle.tar.gz)[:16]`，内容寻址 |
 | 存储 | `${ARI_REGISTRY_DATA}/artifacts/<id>/{bundle.tar.gz, manifest.lock, meta.json}` |
 
-部署模式（详见 [docs/registry.md](registry.md)）：
+部署模式（详见 [docs/reference/registry.md](registry.md)）：
 
 - `scripts/registry/start_local.sh` — uvicorn + sqlite，单进程。Laptop / dev。
 - `scripts/registry/docker-compose.yml` — nginx + uvicorn + sqlite-on-volume。Production。

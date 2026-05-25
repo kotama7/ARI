@@ -36,7 +36,7 @@ guide walks the upgrade paths.
 ### Recipe
 
 1. **Stand up a Letta service.**  Pick one of the deployment paths
-   from `docs/hpc_setup.md#6-letta-memory-backend-deployment`:
+   from `docs/guides/hpc_setup.md#6-letta-memory-backend-deployment`:
    Apptainer SIF, docker-compose, or pip.
 2. **Set the required env vars.**
    ```bash
@@ -142,7 +142,7 @@ guide walks the upgrade paths.
 ## v0.8 → v1.0 (future)
 
 The deprecation programme (`CONTRIBUTING.md::Deprecation process`,
-`docs/release_policy.md`) schedules:
+`docs/about/release_policy.md`) schedules:
 
 - Removal of every `$HOME/.ari/...` filesystem fallback (currently
   emitting `DeprecationWarning`).
@@ -155,9 +155,9 @@ hard error pointing to this guide.
 
 ## See also
 
-- `docs/refactor_audit.md` — current state of the migration debt.
+- `docs/_archive/refactor_audit.md` — current state of the migration debt.
 - `CHANGELOG.md` — per-release notes.
 - `ari memory migrate --help` — CLI options for the v0.5 → v0.6
   migrator.
-- `docs/howto/troubleshooting.md` — what to do when migration
+- `docs/guides/troubleshooting.md` — what to do when migration
   fails.

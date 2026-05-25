@@ -342,7 +342,7 @@ v0.7.0 引入的 PaperBench 形式 **自动 rubric 生成与审计**。读取论
 
 ## ari-skill-memory
 
-祖先作用域的节点记忆（v0.6.0 起由 [Letta](https://docs.letta.com) 支持）。防止跨分支污染，ReAct 轨迹也存放在同一个 Letta 代理中。**LLM：△**（基于嵌入的检索。P2 放宽详见 `docs/PHILOSOPHY.md`）。
+祖先作用域的节点记忆（v0.6.0 起由 [Letta](https://docs.letta.com) 支持）。防止跨分支污染，ReAct 轨迹也存放在同一个 Letta 代理中。**LLM：△**（基于嵌入的检索。P2 放宽详见 `docs/concepts/PHILOSOPHY.md`）。
 
 ### 工具
 

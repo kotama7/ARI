@@ -109,7 +109,7 @@ the wrong endpoint.
 ```bash
 curl -fsS http://127.0.0.1:8283/healthz   # Should return 200
 
-# If it fails, restart per docs/hpc_setup.md#6
+# If it fails, restart per docs/guides/hpc_setup.md#6
 docker compose -f containers/letta/docker-compose.yml up -d
 # or
 apptainer run containers/letta.sif &
@@ -251,4 +251,4 @@ connect.
   decisions (v0.7+).
 - `docs/reference/file_formats.md` — what every file in a
   checkpoint means.
-- `docs/refactor_audit.md` — known migration debt.
+- `docs/_archive/refactor_audit.md` — known migration debt.

@@ -11,7 +11,7 @@ last_verified: 2026-05-25
 
 ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有合理的默认值；**Required?** 列标记了全新检出时不可缺少的变量。
 
-`docs/configuration.md` 以教程形式介绍相同内容；本页为按字母顺序排列的查阅参考。
+`docs/reference/configuration.md` 以教程形式介绍相同内容；本页为按字母顺序排列的查阅参考。
 
 > v0.5.0 删除了全局 `$HOME/.ari/` 目录。本参考中标注"必须设置"的变量，其旧版回退会发出 `DeprecationWarning`，并在 v1.0 中移除。
 
@@ -223,6 +223,6 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 
 ## 另请参阅
 
-- `docs/configuration.md` — 按用途分组的相同环境变量叙述导览。
+- `docs/reference/configuration.md` — 按用途分组的相同环境变量叙述导览。
 - `ari-core/ari/config.py` — 使用大部分 `ARI_*` 变量的 Pydantic 设置模型。
 - 每个技能的 `README.md` — 该技能特有的环境变量。

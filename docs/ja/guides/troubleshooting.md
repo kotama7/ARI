@@ -105,7 +105,7 @@ OpenMPI を明示的にリンク)。制約を事前に宣言するために expe
 ```bash
 curl -fsS http://127.0.0.1:8283/healthz   # Should return 200
 
-# If it fails, restart per docs/hpc_setup.md#6
+# If it fails, restart per docs/guides/hpc_setup.md#6
 docker compose -f containers/letta/docker-compose.yml up -d
 # or
 apptainer run containers/letta.sif &
@@ -242,4 +242,4 @@ ari viz --port 8000
 - `$ARI_CHECKPOINT_DIR/cost_log.jsonl` — LLM コストの履歴。
 - `$ARI_CHECKPOINT_DIR/lineage_decisions.jsonl` — 停滞判断の記録 (v0.7+)。
 - `docs/reference/file_formats.md` — チェックポイント内の各ファイルの意味。
-- `docs/refactor_audit.md` — 既知のマイグレーション負債。
+- `docs/_archive/refactor_audit.md` — 既知のマイグレーション負債。

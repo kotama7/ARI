@@ -441,8 +441,8 @@ ARI no longer maintains a global config directory.  Every settings file and
 agent memory store lives under the active checkpoint, so each experiment
 gets its own isolated state.  v0.5.0 removed the global `$HOME/.ari/`
 directory; the few remaining filesystem fallbacks emit a
-`DeprecationWarning` and disappear in v1.0 (see `docs/refactor_audit.md`
-and `docs/howto/migration.md`):
+`DeprecationWarning` and disappear in v1.0 (see `docs/_archive/refactor_audit.md`
+and `docs/guides/migration.md`):
 
 ```
 checkpoints/{run_id}/
@@ -579,7 +579,7 @@ content-addressed artefact storage at
 `${ARI_REGISTRY_DATA}/artifacts/<id>/{bundle.tar.gz, manifest.lock,
 meta.json}`. Visibility is monotone: `staged` → `unlisted` / `public`
 (demotion rejected). Deploy via uvicorn (laptop), docker-compose
-(production), or Apptainer (HPC). See [docs/registry.md](../reference/registry.md).
+(production), or Apptainer (HPC). See [docs/reference/registry.md](../reference/registry.md).
 
 ### Reproducibility sandbox extras
 

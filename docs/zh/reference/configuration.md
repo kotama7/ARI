@@ -325,7 +325,7 @@ v0.6.0 用 [Letta](https://docs.letta.com) 替换了原本的确定性 JSONL 记
 
 `ari setup` 自动检测最佳模式。也可通过 `ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA`
 强制指定。start/stop/health/backup/restore 由 `ari memory` 子命令处理 —
-详情见 `docs/zh/cli_reference.md`。
+详情见 `docs/zh/reference/cli_reference.md`。
 
 一次性迁移 v0.5.x 检查点：
 

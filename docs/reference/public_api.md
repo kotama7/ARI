@@ -131,8 +131,8 @@ internal-import boundaries through the public layer.
 
 - `ari-core/ari/public/__init__.py` — module-level docstring with
   the canonical sub-module list.
-- `docs/extension_guide.md` — how to write a new skill that depends
+- `docs/guides/extension_guide.md` — how to write a new skill that depends
   only on `ari.public`.
 - `CONTRIBUTING.md::Software-engineering discipline §3` — public-API
   rule (skills only see `ari.public.*`).
-- `docs/refactor_audit.md` (§4) — historical Phase 4 inventory.
+- `docs/_archive/refactor_audit.md` (§4) — historical Phase 4 inventory.

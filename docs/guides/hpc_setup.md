@@ -103,7 +103,7 @@ done
 export SLURM_DEFAULT_PARTITION=your_partition
 export SLURM_DEFAULT_WORK_DIR=/path/to/ari/
 
-# Optional: choose a specific reviewer rubric (see docs/architecture.md).
+# Optional: choose a specific reviewer rubric (see docs/concepts/architecture.md).
 export ARI_RUBRIC=neurips2025
 
 cd /path/to/ari/ari-core
@@ -198,7 +198,7 @@ Letta agent — see `ari-skill-memory/README.md` for the deletion path.
 
 ## See also
 
-- `docs/configuration.md` — every environment variable ARI honours
-- `docs/architecture.md` — runtime architecture, memory layout, layered structure
+- `docs/reference/configuration.md` — every environment variable ARI honours
+- `docs/concepts/architecture.md` — runtime architecture, memory layout, layered structure
 - `ari-skill-hpc/README.md` — SLURM tool reference (local + SSH modes)
 - `ari-skill-memory/README.md` — backend selection + Letta deployment recipe

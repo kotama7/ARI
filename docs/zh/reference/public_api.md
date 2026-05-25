@@ -112,6 +112,6 @@ nodes_json = paths.checkpoint / "nodes_tree.json"
 ## 另请参阅
 
 - `ari-core/ari/public/__init__.py` — 包含规范子模块列表的模块级文档字符串。
-- `docs/extension_guide.md` — 如何编写仅依赖 `ari.public` 的新技能。
+- `docs/guides/extension_guide.md` — 如何编写仅依赖 `ari.public` 的新技能。
 - `CONTRIBUTING.md::Software-engineering discipline §3` — 公共 API 规则（技能只能访问 `ari.public.*`）。
-- `docs/refactor_audit.md`（§4）— 第 4 阶段的历史清单。
+- `docs/_archive/refactor_audit.md`（§4）— 第 4 阶段的历史清单。

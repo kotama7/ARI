@@ -194,7 +194,7 @@ ari run experiment.md     # 直接使用宿主 python
 
 ## 参见
 
-- `docs/configuration.md` — ARI 遵循的所有 env var
-- `docs/architecture.md` — 运行时架构、记忆布局、分层结构
+- `docs/reference/configuration.md` — ARI 遵循的所有 env var
+- `docs/concepts/architecture.md` — 运行时架构、记忆布局、分层结构
 - `ari-skill-hpc/README.md` — SLURM 工具参考（local + SSH 模式）
 - `ari-skill-memory/README.md` — 后端选择 + Letta 部署方案

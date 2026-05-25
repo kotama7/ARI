@@ -237,7 +237,7 @@ sbatch / パーティションが欠落している場合、ローカル CPU へ
 
 ## 関連ドキュメント
 
-- `docs/skills.md` — 各スキルのナラティブな説明（責務、環境変数、例）。
+- `docs/reference/skills.md` — 各スキルのナラティブな説明（責務、環境変数、例）。
 - `docs/reference/environment_variables.md` — 環境変数ごとのリファレンス。
 - 各スキルの `mcp.json` — 標準的なツール名一覧。
 - 各スキルの `src/server.py` の `@mcp.tool()` / `@server.list_tools()` — 標準的な引数シグネチャ。
