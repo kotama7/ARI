@@ -59,7 +59,7 @@ pytest tests/test_slurm_remote.py         # SSH-required
 
 ## See also
 
-- [`docs/hpc_setup.md`](../docs/hpc_setup.md) — full cluster setup
+- [`docs/guides/hpc_setup.md`](../docs/guides/hpc_setup.md) — full cluster setup
 - [`ari-skill-coding`](../ari-skill-coding/README.md) — host-side
   Singularity wrapping for user code
 - `docs/reference/mcp_tools.md` — argument signatures.

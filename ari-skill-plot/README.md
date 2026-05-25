@@ -81,6 +81,6 @@ There are no automated tests yet — see "Test gap" above.
 
 ## See also
 
-- `docs/skills.md` — high-level summary in the master skill index.
+- `docs/reference/skills.md` — high-level summary in the master skill index.
 - `ari-skill-vlm/README.md` — VLM-side figure review (different concern).
 - `ari-core/ari/cost_tracker.py` — cost accounting hook.

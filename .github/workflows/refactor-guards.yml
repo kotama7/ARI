@@ -59,7 +59,7 @@ jobs:
             --ignore=ari-core/tests/test_ollama_gpu.py \
             --ignore=ari-core/tests/test_dashboard_html.py
           if [ -d "$HOME/.ari" ]; then
-            echo "::error::Tests created $HOME/.ari/ — see docs/refactor_audit.md"
+            echo "::error::Tests created $HOME/.ari/ — see docs/_archive/refactor_audit.md"
             ls -la "$HOME/.ari" || true
             exit 1
           fi

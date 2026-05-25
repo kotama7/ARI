@@ -9,6 +9,6 @@ Public symbols:
 - ``LLMClient`` — synchronous and async completion + tool calling.
 
 See also:
-- ``docs/configuration.md`` (LLM-related env vars).
+- ``docs/reference/configuration.md`` (LLM-related env vars).
 - ``ari-core/ari/cost_tracker.py`` (cost accounting hooked via litellm callback).
 """

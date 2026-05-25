@@ -57,7 +57,7 @@ recursion.
 This skill currently has **no automated tests**.  A minimal smoke
 test (MCP handshake + mocked `ari run` subprocess) is the
 recommended next step.  Track this as part of the skill's future
-work — `docs/howto/testing.md` describes the pattern to follow.
+work — `docs/guides/testing.md` describes the pattern to follow.
 
 ## Development
 
@@ -68,6 +68,6 @@ curl -X POST http://localhost:9890/api/run -d '{...}'
 
 ## See also
 
-- `docs/skills.md#ari-skill-orchestrator` — high-level summary.
+- `docs/reference/skills.md#ari-skill-orchestrator` — high-level summary.
 - `docs/reference/mcp_tools.md` — argument signatures.
 - `docs/reference/environment_variables.md` — env var table.
