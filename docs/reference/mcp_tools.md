@@ -1,9 +1,26 @@
+---
+sources:
+  - path: ari-skill-hpc/mcp.json
+    role: config
+  - path: ari-skill-hpc/src/server.py
+    role: implementation
+  - path: ari-skill-coding/mcp.json
+    role: config
+  - path: ari-skill-coding/src/server.py
+    role: implementation
+  - path: ari-skill-paper-re/mcp.json
+    role: config
+  - path: ari-skill-paper-re/src/server.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # MCP Tools Reference
 
 ARI ships 14 MCP servers (one per `ari-skill-*` package).  This page
 is a flat catalogue of every tool the agent can call.  The deep dive
 for each skill lives in its own `README.md`; the section
-[skills.md](../skills.md) groups them by responsibility.
+[skills.md](skills.md) groups them by responsibility.
 
 `mcp.json` (next to each skill's `pyproject.toml`) is the source of
 truth for tool *names*; the function decorated with `@mcp.tool()` (or
@@ -112,13 +129,13 @@ The skill explicitly declares "no LLM calls" in its design doc — see
 | `run_reproduce` | Stage 2 — execute `reproduce.sh` in a `local` / `docker` / `apptainer` / `singularity` / `slurm` sandbox | ✗ |
 | `grade_with_simplejudge` | Stage 3 — LLM grades the executed submission against the rubric leaves | ✓ |
 
-### v0.7.3 new fields (Stage 1)
+### v0.8.0 new fields (Stage 1)
 
 | Tool | New args |
 |---|---|
 | `build_reproduce_sh` | `container_image` (replaces / supersedes legacy `apptainer_image`; both accepted for back-compat) |
 
-### v0.7.3 new fields (Stage 2)
+### v0.8.0 new fields (Stage 2)
 
 | Tool | New args |
 |---|---|
@@ -134,7 +151,7 @@ Mixing typed (`gpu_type` / `--gres=gpu:TYPE:N`) with untyped
 (`--gpus-per-task`) GPU requests is automatically canonicalised to
 the typed form — SLURM 24.05 rejects the mixed form.
 
-### v0.7.3 new fields (Stage 3)
+### v0.8.0 new fields (Stage 3)
 
 | Tool | New args |
 |---|---|

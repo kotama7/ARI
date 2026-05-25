@@ -1,3 +1,14 @@
+---
+sources:
+  - path: ari-core/ari/viz/routes.py
+    role: implementation
+  - path: ari-core/ari/viz/api_paperbench.py
+    role: implementation
+  - path: ari-core/ari/viz/api_experiment.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # REST API Reference
 
 The viz dashboard server (`ari viz` → `ari-core/ari/viz/server.py`)

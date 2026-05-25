@@ -1,3 +1,14 @@
+---
+sources:
+  - path: ari-core/ari/paths.py
+    role: implementation
+  - path: ari-core/ari/cost_tracker.py
+    role: implementation
+  - path: ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # Troubleshooting
 
 Common runtime failures and their fixes.  Each section gives the

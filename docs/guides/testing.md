@@ -1,3 +1,12 @@
+---
+sources:
+  - path: ari-core/tests
+    role: test
+  - path: pytest.ini
+    role: config
+last_verified: 2026-05-25
+---
+
 # How to Test ARI Code
 
 This guide covers the testing conventions for `ari-core` and the

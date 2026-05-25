@@ -1,3 +1,12 @@
+---
+sources:
+  - path: ari-core/ari/config/__init__.py
+    role: implementation
+  - path: ari-core/ari/paths.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # Environment Variable Reference
 
 ARI honours roughly 90 environment variables, drawn together here for

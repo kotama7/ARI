@@ -1,3 +1,14 @@
+---
+sources:
+  - path: ari-core/ari/evaluator/llm_evaluator.py
+    role: implementation
+  - path: ari-core/ari/orchestrator/bfts.py
+    role: implementation
+  - path: ari-skill-memory
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # ARI Design Philosophy
 
 ## Why ARI Exists

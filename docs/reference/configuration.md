@@ -1,3 +1,14 @@
+---
+sources:
+  - path: ari-core/config/workflow.yaml
+    role: config
+  - path: ari-core/ari/config/__init__.py
+    role: implementation
+  - path: ari-core/ari/configs
+    role: config
+last_verified: 2026-05-25
+---
+
 # Configuration Reference
 
 ## workflow.yaml (Canonical Developer Config)
@@ -13,7 +24,7 @@ llm:
   model: gpt-5.2           # Model identifier
   base_url: ""             # Leave empty for OpenAI; set for Ollama/vLLM
 
-author_name: "Artificial Research Intelligence"
+author_name: "Autonomous Research Infrastructure"
 
 resources:
   cpus: 48                 # Default CPU count for reproducibility experiments
@@ -271,7 +282,8 @@ skills:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `ARI_MAX_NODES` | Maximum BFTS nodes to explore | `50` |
+| `ARI_MAX_NODES` | Maximum BFTS nodes to explore (hard cap; pruning predicate input) | `50` |
+| `ARI_MAX_DEPTH` | Hard cap on BFTS tree depth (activated in v0.7.2) | `5` |
 | `ARI_PARALLEL` | Concurrent node execution | `1` |
 | `ARI_EXECUTOR` | Execution backend: `local`, `slurm`, `pbs`, `lsf` | `local` |
 | `ARI_SLURM_PARTITION` | SLURM partition name | (none) |
@@ -482,11 +494,142 @@ Control BFTS behavior via environment variables:
 
 ```bash
 export ARI_MAX_NODES=12      # Explore up to 12 nodes (small run)
+export ARI_MAX_DEPTH=5       # Hard depth cap (v0.7.2: now actually enforced)
 export ARI_PARALLEL=4        # Run 4 nodes concurrently
 export ARI_EXECUTOR=slurm    # Submit each node as a SLURM job
 ```
 
-Or set defaults in `workflow.yaml` `bfts:` section (if supported by your version).
+`BFTSConfig` (defined in `ari/config/__init__.py`) exposes the full set of
+knobs:
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `max_depth` | 5 | Hard cap on depth (`ARI_MAX_DEPTH`). Activated in v0.7.2 (B-2). |
+| `max_total_nodes` | 50 | Hard cap on node count (`ARI_MAX_NODES`). |
+| `max_react_steps` | 80 | Per-node ReAct iteration cap. |
+| `timeout_per_node` | 7200 | Per-node wall-time budget (s). |
+| `max_parallel_nodes` | 4 | Worker concurrency. |
+| `max_expansions_per_node` | 4 | New in v0.7.2 (B-6). After N expansions of the same frontier node, BFTS retires it. |
+| `label_saturation_threshold` | 2 | New in v0.7.2 (L-6). When ≥ N children of one parent share a label, the next expand prompt flags the label as saturated. |
+
+The pre-audit `max_retries_per_node` field has been **removed** in v0.7.2
+(B-3 / B-10) — ARI never retries; failed nodes produce DEBUG children
+instead. YAML configs that still set `max_retries_per_node` are ignored
+silently (Pydantic `extra='ignore'`).
+
+---
+
+## BFTS Evaluation Layers (configurable)
+
+The BFTS pipeline has four evaluation layers, each independently selectable
+through `default.yaml` (or a custom YAML). Defaults reproduce the
+pre-existing behaviour, so an unmodified config is a no-op.
+
+```yaml
+bfts:
+  frontier_score: scientific_plus_diversity   # how the fallback selector ranks frontier nodes
+  depth_penalty_lambda: 0.05                  # used by frontier_score=depth_penalized
+  ucb_c: 0.5                                  # used by frontier_score=ucb_like
+  select_prompt: orchestrator/bfts_select               # LLM prompt for select_next_node
+  expand_select_prompt: orchestrator/bfts_expand_select # LLM prompt for select_best_to_expand
+
+evaluator:
+  composite: harmonic_mean   # formula used to collapse per-axis scores → _scientific_score
+  axis_mode: dynamic         # which axis set to send to the judge LLM
+  custom_axes: []            # consulted only when axis_mode=custom
+  axis_weights: { ... }      # unchanged; per-axis weight overrides
+```
+
+### Layer A — `evaluator.composite`
+
+Selects the formula used to collapse the per-axis judge scores into the
+scalar `_scientific_score` stored on each node (see
+`ari/evaluator/llm_evaluator.py`). The composite is also what drives
+ranking, lineage decisions, and report best-of selection.
+
+| Value | Behaviour |
+|-------|-----------|
+| `harmonic_mean` (default) | Weighted harmonic mean. Heavily penalises any single weak axis — reproduces the pre-audit behaviour. |
+| `arithmetic_mean` | Weighted arithmetic mean. Axes trade linearly; permissive. |
+| `weighted_min` | Returns the lowest axis (bottleneck view). Weights gate which axes participate; they do not scale the score. |
+| `geometric_mean` | Weighted geometric mean — between harmonic and arithmetic in how harshly it punishes weak axes. |
+
+### Layer B — `bfts.frontier_score`
+
+Strategy used by BFTS's **deterministic** fallback when the LLM selector
+cannot pick a candidate (`_select_fallback` in
+`ari/orchestrator/bfts.py`). The LLM selector itself is unchanged.
+
+| Value | Score expression |
+|-------|------------------|
+| `scientific_plus_diversity` (default) | `_scientific_score + diversity_bonus` |
+| `scientific_only` | `_scientific_score` (no diversity tiebreaker) |
+| `depth_penalized` | `_scientific_score + diversity_bonus − λ·depth`, where `λ = bfts.depth_penalty_lambda` |
+| `ucb_like` | `_scientific_score + diversity_bonus + c · √(log N / (visits + 1))`, where `c = bfts.ucb_c`, `visits` is the number of times the node has been expanded, and `N = total_visits + frontier_size` |
+
+`depth_penalty_lambda = 0.0` reduces `depth_penalized` to the default
+strategy; `ucb_c = 0.0` reduces `ucb_like` to the default strategy.
+
+### Layer C — `evaluator.axis_mode`
+
+Decides which axis set the judge LLM is asked to score against.
+
+| Value | Source of axes |
+|-------|----------------|
+| `dynamic` (default) | Generic 5-axis floor + axes derived from the active rubric (`ARI_RUBRIC`) + plan-keyword axes lifted from `idea.json`. Refreshes automatically when `idea.json` changes mtime. |
+| `legacy` | The fixed 5-axis canonical set (`measurement_validity`, `comparative_rigor`, `novelty`, `reproducibility`, `clarity_of_contribution`). No rubric / plan input. |
+| `custom` | Uses `evaluator.custom_axes` verbatim. |
+
+`custom_axes` is a list of `{name, description, weight}` records; the
+`description` is sent to the judge LLM so it knows what each axis means:
+
+```yaml
+evaluator:
+  axis_mode: custom
+  custom_axes:
+    - name: speedup
+      description: "Wall-clock speedup vs. baseline (1.0 = no change)."
+      weight: 0.5
+    - name: accuracy
+      description: "Numerical accuracy preserved within tolerance."
+      weight: 0.5
+```
+
+When `axis_mode=custom`, the names listed under `axis_weights` are *not*
+automatically translated to the custom axis set — duplicate the new
+names there if you want to override the per-axis weight from the YAML
+weights table.
+
+### Layer D — `bfts.select_prompt` / `bfts.expand_select_prompt`
+
+Each value is a [`FilesystemPromptLoader`](../../ari-core/ari/prompts/_loader.py)
+key (path relative to `ari-core/ari/prompts/`, without `.md`). The
+defaults point at the shipped templates.
+
+A user-supplied template must declare the same placeholders the BFTS
+formatter uses:
+
+- `select_prompt`: `{experiment_goal}`, `{memory_context}`, `{candidates}` — the LLM must reply with a single 0-based integer index.
+- `expand_select_prompt`: `{experiment_goal}`, `{candidates}` — same reply format.
+
+When the file at the configured key is missing, `FilesystemPromptLoader`
+raises immediately (fail-fast); there is no silent fallback.
+
+### Quick recipes
+
+- **Permissive scoring + UCB exploration:**
+  ```yaml
+  evaluator: { composite: arithmetic_mean }
+  bfts: { frontier_score: ucb_like, ucb_c: 1.0 }
+  ```
+- **Bottleneck scoring (publish only when *every* axis is good):**
+  ```yaml
+  evaluator: { composite: weighted_min }
+  ```
+- **Pin the judge to the canonical 5 axes (legacy reproduction):**
+  ```yaml
+  evaluator: { axis_mode: legacy }
+  ```
 
 ---
 

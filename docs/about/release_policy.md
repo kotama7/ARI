@@ -1,3 +1,14 @@
+---
+sources:
+  - path: CHANGELOG.md
+    role: doc
+  - path: CONTRIBUTING.md
+    role: doc
+  - path: ari-core/pyproject.toml
+    role: config
+last_verified: 2026-05-25
+---
+
 # Release & Versioning Policy
 
 ## SemVer interpretation

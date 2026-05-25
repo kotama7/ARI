@@ -1,3 +1,10 @@
+---
+sources:
+  - path: ari-skill-paper-re/src/server.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # Multi-node setup for PaperBench
 
 ARI ships single-node sandbox dispatch out of the box (local /
@@ -90,7 +97,7 @@ names — your cluster's `module avail` is authoritative.
 
 ## See also
 
-- [Execution profile reference](../reference/execution_profile.md)
+- [Execution profile reference](../../reference/execution_profile.md)
 - [Compute-node safety conventions](compute_node_safety.md)
 - [`hpc_setup.md`](../hpc_setup.md) for the underlying ARI HPC
   configuration.

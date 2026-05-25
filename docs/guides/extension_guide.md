@@ -1,3 +1,16 @@
+---
+sources:
+  - path: ari-core/ari/public
+    role: implementation
+  - path: ari-core/ari/prompts
+    role: prompt
+  - path: ari-core/ari/configs
+    role: config
+  - path: ari-core/config/workflow.yaml
+    role: config
+last_verified: 2026-05-25
+---
+
 # Extension Guide
 
 This document describes how to extend ARI for new use cases, domains, and capabilities.

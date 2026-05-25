@@ -1,3 +1,10 @@
+---
+sources:
+  - path: ari-core/ari/viz/api_paperbench.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # PaperBench GUI guide
 
 The dashboard exposes PaperBench at the **📚 PaperBench** sidebar entry.
@@ -48,8 +55,8 @@ The license badge under the input mirrors the server's
   strings.
 
 Auto-fetch of arXiv metadata + PDF (FR-PI-2 in
-[`PLAN_GUI_PAPERBENCH.md`](../../ari-core/PLAN_GUI_PAPERBENCH.md))
-remains a v0.7.3 follow-up.
+[`PLAN_GUI_PAPERBENCH.md`](../../../ari-core/PLAN_GUI_PAPERBENCH.md))
+remains a v0.8.0 follow-up.
 
 ## Run wizard (`/paperbench/run`)
 
@@ -73,7 +80,7 @@ Top form:
 - **Model** — replicator agent model (default `gpt-5-mini`).
 - **Time limit** — seconds; default 12 h (PaperBench paper §5.2).
 - **Sandbox** — `auto` / `slurm` / `local` / `apptainer` / `docker`.
-- **Container image** (v0.7.3) — SIF path, `docker://` / `library://`
+- **Container image** (v0.8.0) — SIF path, `docker://` / `library://`
   URI, `image:tag`, or short alias `pb-env` / `pb-reproducer` (resolves
   to vendor `image:latest` tags built by
   `scripts/build_pb_images.sh`). Required for `sandbox=docker` /
@@ -103,10 +110,10 @@ at 0/"".
 | nodelist | str | `--nodelist` |
 | extra_sbatch_args | str (space-sep) | pass-through |
 
-See [Execution profile reference](../reference/execution_profile.md)
+See [Execution profile reference](../../reference/execution_profile.md)
 for full semantics.
 
-**Fail-loud preconditions (v0.7.3).** When the requested sandbox /
+**Fail-loud preconditions (v0.8.0).** When the requested sandbox /
 GPU resource is unavailable on the host, the launch raises an error
 rather than silently downgrading to local CPU:
 
@@ -118,14 +125,14 @@ rather than silently downgrading to local CPU:
 Set `ARI_PHASE1_ALLOW_FALLBACK=1` (sandbox missing) or
 `ARI_SLURM_ALLOW_NO_GRES=1` (GPU GRES) in `.env` to opt back into
 legacy silent-fallback behaviour. See
-[environment variables](../reference/environment_variables.md#paperbench-reproduction-phase-stage-2).
+[environment variables](../../reference/environment_variables.md#paperbench-reproduction-phase-stage-2).
 
 ### Step 4 — Judge config
 
 - **Model** — `gpt-5-mini` (default), `claude-haiku-4-5-20251001`.
 - **n_runs** — 1 (PaperBench paper §4.1).
 - **Skip negative control** — leave off; it's a cheap sanity check.
-- **Code-only** (v0.7.3, auto) — when Stage 2 was skipped (no
+- **Code-only** (v0.8.0, auto) — when Stage 2 was skipped (no
   `reproduce.log` present), `grade_with_simplejudge` auto-enables
   `code_only` so the rubric is pruned to Code Development leaves
   only. Mirrors vendor `paperbench/grade.py:109-112`; prevents
@@ -158,5 +165,5 @@ curl http://localhost:8765/api/paperbench/run/<job_id>/results
 
 - [Paper import](paper_import.md)
 - [Quickstart](paperbench_quickstart.md)
-- [Execution profile reference](../reference/execution_profile.md)
-- [API reference](../reference/api_paperbench.md)
+- [Execution profile reference](../../reference/execution_profile.md)
+- [API reference](../../reference/api_paperbench.md)

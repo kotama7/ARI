@@ -1,3 +1,12 @@
+---
+sources:
+  - path: ari-core/ari/public
+    role: implementation
+  - path: ari-core/tests/test_public_api_boundary.py
+    role: test
+last_verified: 2026-05-25
+---
+
 # `ari.public` — Stable API for skills
 
 `ari.public` is the **only** module surface that `ari-skill-*`

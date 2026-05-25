@@ -1,6 +1,17 @@
+---
+sources:
+  - path: ari-core/ari/cli
+    role: implementation
+  - path: ari-core/ari/memory_cli.py
+    role: implementation
+  - path: ari-core/ari/cli_ear.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # ARI CLI Reference
 
-Complete reference for ARI command-line operations. The CLI provides the same functionality as the [web dashboard](quickstart.md) for terminal-based workflows.
+Complete reference for ARI command-line operations. The CLI provides the same functionality as the [web dashboard](../getting-started/quickstart.md) for terminal-based workflows.
 
 ---
 
@@ -177,7 +188,7 @@ ari viz ./checkpoints/ --port 8765
 ari viz ./checkpoints/20260328_matrix_opt/ --port 9878
 ```
 
-Open `http://localhost:<port>` in your browser. See the [QuickStart Guide](quickstart.md) for dashboard usage.
+Open `http://localhost:<port>` in your browser. See the [QuickStart Guide](../getting-started/quickstart.md) for dashboard usage.
 
 ---
 

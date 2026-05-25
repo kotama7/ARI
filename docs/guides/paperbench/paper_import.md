@@ -1,3 +1,10 @@
+---
+sources:
+  - path: ari-core/ari/viz/api_paperbench.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # Importing external papers
 
 The paper registry (`~/.ari/paper_registry/`) holds external papers the
@@ -137,4 +144,4 @@ curl -X POST http://localhost:8765/api/paperbench/papers/<paper_id>/metadata \
 ## See also
 
 - [PaperBench GUI guide](paperbench_gui.md)
-- [API reference](../reference/api_paperbench.md)
+- [API reference](../../reference/api_paperbench.md)

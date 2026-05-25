@@ -1,3 +1,12 @@
+---
+sources:
+  - path: ari-core/ari/migrations/v05_to_v07
+    role: implementation
+  - path: ari-core/ari/memory_cli.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # Migration Guide
 
 ARI's checkpoint format has evolved through three releases.  This

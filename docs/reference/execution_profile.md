@@ -1,3 +1,12 @@
+---
+sources:
+  - path: ari-skill-replicate/schemas/replication_rubric.schema.json
+    role: schema
+  - path: ari-skill-paper-re/src/server.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # `execution_profile` reference
 
 The `execution_profile` object sits under `reproduce_contract` in every
@@ -131,8 +140,8 @@ allocation falls back to the partition default.
 
 ## See also
 
-- [PaperBench quickstart](../howto/paperbench_quickstart.md)
-- [Multi-node setup](../howto/multi_node_setup.md)
-- [Compute-node safety conventions](../howto/compute_node_safety.md)
+- [PaperBench quickstart](../guides/paperbench/paperbench_quickstart.md)
+- [Multi-node setup](../guides/paperbench/multi_node_setup.md)
+- [Compute-node safety conventions](../guides/paperbench/compute_node_safety.md)
 - Skill source: `ari-skill-paper-re/src/server.py:run_reproduce`
 - Schema: `ari-skill-replicate/schemas/replication_rubric.schema.json`

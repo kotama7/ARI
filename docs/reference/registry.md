@@ -1,3 +1,12 @@
+---
+sources:
+  - path: ari-core/ari/registry
+    role: implementation
+  - path: scripts/registry
+    role: doc
+last_verified: 2026-05-25
+---
+
 # ari-registry — v0.7.0+
 
 A minimal HTTP registry for curated EAR bundles. Acts as the default

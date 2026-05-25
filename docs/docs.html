@@ -73,15 +73,15 @@
   <a class="nav-item" href="#publish"><span id="t-nav-publish">Publish &amp; Clone (v0.7.0)</span></a>
   <a class="nav-item" href="#ors-repro"><span id="t-nav-ors-repro">Reproducibility (PaperBench)</span></a>
   <div class="nav-group">PaperBench (v0.7.2)</div>
-  <a class="nav-item" href="howto/paperbench_quickstart.md"><span id="t-nav-pb-quick">Quickstart</span></a>
-  <a class="nav-item" href="howto/paper_import.md"><span id="t-nav-pb-import">Paper Import</span></a>
-  <a class="nav-item" href="howto/paperbench_gui.md"><span id="t-nav-pb-gui">GUI Guide</span></a>
+  <a class="nav-item" href="guides/paperbench/paperbench_quickstart.md"><span id="t-nav-pb-quick">Quickstart</span></a>
+  <a class="nav-item" href="guides/paperbench/paper_import.md"><span id="t-nav-pb-import">Paper Import</span></a>
+  <a class="nav-item" href="guides/paperbench/paperbench_gui.md"><span id="t-nav-pb-gui">GUI Guide</span></a>
   <a class="nav-item" href="reference/execution_profile.md"><span id="t-nav-pb-exec">execution_profile</span></a>
   <a class="nav-item" href="reference/rubric_schema.md"><span id="t-nav-pb-rubric">Rubric Schema</span></a>
   <a class="nav-item" href="reference/api_paperbench.md"><span id="t-nav-pb-api">API Reference</span></a>
-  <a class="nav-item" href="howto/multi_node_setup.md"><span id="t-nav-pb-multi">Multi-node Setup</span></a>
-  <a class="nav-item" href="howto/compute_node_safety.md"><span id="t-nav-pb-safety">Compute-Node Safety</span></a>
-  <a class="nav-item" href="howto/paperbench_troubleshooting.md"><span id="t-nav-pb-trouble">Troubleshooting</span></a>
+  <a class="nav-item" href="guides/paperbench/multi_node_setup.md"><span id="t-nav-pb-multi">Multi-node Setup</span></a>
+  <a class="nav-item" href="guides/paperbench/compute_node_safety.md"><span id="t-nav-pb-safety">Compute-Node Safety</span></a>
+  <a class="nav-item" href="guides/paperbench/paperbench_troubleshooting.md"><span id="t-nav-pb-trouble">Troubleshooting</span></a>
   <div class="nav-group">Paper-Audit (v0.7.2)</div>
   <a class="nav-item" href="#paper-audit"><span id="t-nav-audit-overview">Audit Overview</span></a>
   <a class="nav-item" href="reference/rubric_schema.md#venue-conditioned-templates"><span id="t-nav-audit-venue">Venue Templates</span></a>
@@ -453,7 +453,7 @@ export ARI_SLURM_PARTITION=your_partition  <span class="cm"># SLURM only</span>
     <li><span id="t-publish-li-publish"><code>ari ear publish &lt;ckpt&gt; --backend ari-registry|local-tarball|gh|zenodo</code> &mdash; always starts at <code>visibility=staged</code> (FR-P5).</span></li>
     <li><span id="t-publish-li-promote"><code>ari ear promote &lt;ckpt&gt; --target public|unlisted</code> &mdash; visibility moves up only.</span></li>
     <li><span id="t-publish-li-clone"><code>ari clone &lt;ref&gt; --expect-sha256 &lt;hex&gt;</code> &mdash; reader-side fetch + verify. Resolvers: <code>file://</code>, <code>https://</code>, <code>ari://&lt;id&gt;</code>, <code>gh:&lt;u&gt;/&lt;r&gt;</code>, <code>doi:&lt;doi&gt;</code>. <strong>No code execution.</strong></span></li>
-    <li><span id="t-publish-li-registry"><code>ari registry serve</code> &mdash; optional self-hosted FastAPI registry with sqlite-backed bearer tokens, content-addressed artefact storage, and three deploy modes (local uvicorn, docker-compose, Apptainer). See <a href="registry.md">docs/registry.md</a>.</span></li>
+    <li><span id="t-publish-li-registry"><code>ari registry serve</code> &mdash; optional self-hosted FastAPI registry with sqlite-backed bearer tokens, content-addressed artefact storage, and three deploy modes (local uvicorn, docker-compose, Apptainer). See <a href="reference/registry.md">docs/registry.md</a>.</span></li>
   </ul>
 
   <!-- REPRODUCIBILITY (v0.7.0) -->

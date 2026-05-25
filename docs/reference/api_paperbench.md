@@ -1,3 +1,14 @@
+---
+sources:
+  - path: ari-core/ari/viz/api_paperbench.py
+    role: implementation
+  - path: ari-skill-paper-re/src/_paperbench_bridge.py
+    role: implementation
+  - path: ari-skill-paper-re/src/server.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # PaperBench API reference
 
 All endpoints are served by the ARI viz server (`ari viz` /
@@ -221,8 +232,8 @@ is set):
 
 ## See also
 
-- [PaperBench GUI guide](../howto/paperbench_gui.md)
-- [PaperBench quickstart](../howto/paperbench_quickstart.md)
+- [PaperBench GUI guide](../guides/paperbench/paperbench_gui.md)
+- [PaperBench quickstart](../guides/paperbench/paperbench_quickstart.md)
 - [Environment variables](environment_variables.md)
 - [MCP tool reference](mcp_tools.md)
 - [Execution profile reference](execution_profile.md)

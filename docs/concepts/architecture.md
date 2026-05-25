@@ -1,3 +1,22 @@
+---
+sources:
+  - path: ari-core/ari/orchestrator
+    role: implementation
+  - path: ari-core/ari/agent/loop.py
+    role: implementation
+  - path: ari-core/ari/pipeline
+    role: implementation
+  - path: ari-core/ari/evaluator/llm_evaluator.py
+    role: implementation
+  - path: ari-core/ari/memory/letta_client.py
+    role: implementation
+  - path: ari-core/ari/paths.py
+    role: implementation
+  - path: ari-core/config/workflow.yaml
+    role: config
+last_verified: 2026-05-25
+---
+
 # ARI Architecture
 
 ## What ARI Does
@@ -445,7 +464,7 @@ environment variables injected at launch.
 
 | Module | Description |
 |--------|-------------|
-| `ari/orchestrator/bfts.py` | Branch-and-Frontier Tree Search — node expansion, selection, pruning; ranks by `_scientific_score` |
+| `ari/orchestrator/bfts.py` | Branch-and-Frontier Tree Search — node expansion, selection, depth/sterile/total pruning, expansion-count tracking; fallback ranking strategy is **configurable** via `BFTSConfig.frontier_score` (`scientific_plus_diversity` / `scientific_only` / `depth_penalized` / `ucb_like`) — see [Configuration → BFTS Evaluation Layers](../reference/configuration.md#bfts-evaluation-layers-configurable) |
 | `ari/orchestrator/node.py` | Node dataclass — id, parent_id, depth, label, metrics, artifacts, memory |
 | `ari/orchestrator/node_report/` | Per-node self-report builder + legacy reconstruction (split into a package in v0.7.1) |
 | `ari/orchestrator/lineage_decision.py` | Lineage-decision LLM hook (BFTS rewind / branch / continue) |
@@ -455,7 +474,7 @@ environment variables injected at launch.
 | `ari/agent/workflow.py` | WorkflowHints — auto-extracted from experiment text (tool sequence, metric keyword, partition) |
 | `ari/agent/react_driver.py` | Pipeline-driven ReAct entry-point used by paper-pipeline stages |
 | `ari/pipeline/` | Post-BFTS pipeline driver, split into `experiment_md`, `yaml_loader`, `stage_control`, `context_builder`, `stage_runner`, `orchestrator` (Phase 3C, v0.7.1) |
-| `ari/evaluator/llm_evaluator.py` | Metric extraction + peer-review scoring (`scientific_score`, `comparison_found`); selected via `ari.protocols.Evaluator` injection |
+| `ari/evaluator/llm_evaluator.py` | Metric extraction + peer-review scoring (`scientific_score`, `comparison_found`); selected via `ari.protocols.Evaluator` injection. Composite formula (`harmonic_mean` / `arithmetic_mean` / `weighted_min` / `geometric_mean`) and axis set (`legacy` / `dynamic` / `custom`) are **configurable** via `EvaluatorConfig` — see [Configuration → BFTS Evaluation Layers](../reference/configuration.md#bfts-evaluation-layers-configurable) |
 | `ari/memory/letta_client.py` | `LettaMemoryClient` — ReAct-trace persistence backed by the `ari_react_*` Letta collection |
 | `ari/memory/file_client.py` | Deprecated v0.5.x file-backed client; kept only for `ari memory migrate --react` |
 | `ari/memory/auto_migrate.py` | First-launch v0.5.x JSONL → Letta importer (legacy shim wraps `migrations/v05_to_v07/memory.py`) |
@@ -560,7 +579,7 @@ content-addressed artefact storage at
 `${ARI_REGISTRY_DATA}/artifacts/<id>/{bundle.tar.gz, manifest.lock,
 meta.json}`. Visibility is monotone: `staged` → `unlisted` / `public`
 (demotion rejected). Deploy via uvicorn (laptop), docker-compose
-(production), or Apptainer (HPC). See [docs/registry.md](registry.md).
+(production), or Apptainer (HPC). See [docs/registry.md](../reference/registry.md).
 
 ### Reproducibility sandbox extras
 
@@ -619,12 +638,14 @@ def bfts(experiment, config):
 ```
 
 Key properties:
-- **Single-child expansion**: `expand()` generates exactly one child per call with rich context (sibling scores, ancestor chain, tree diversity metrics, existing children) to avoid duplicates
-- **Persistent frontier**: completed nodes stay in frontier after expansion, available for re-expansion with `_touched_this_round` / `_failed_this_round` tracking
-- **Diversity bonus**: `+0.05` for underrepresented labels (last 20 runs tracked) encourages exploration variety
+- **Single-child expansion**: `expand()` generates exactly one child per call with rich context (sibling scores, ancestor chain, tree diversity metrics, existing children) to avoid duplicates. The prompt also surfaces the current depth/`max_depth` and the remaining node budget so the planner can pace itself (v0.7.2, I-4).
+- **Persistent frontier**: completed nodes stay in frontier after expansion, available for re-expansion with `_touched_this_round` / `_failed_this_round` tracking. A frontier node is **retired** when either (Rule A) its child outscores it on `_scientific_score`, or (Rule B) it has been expanded `max_expansions_per_node` times (v0.7.2, B-6).
+- **`should_prune` predicate**: hard cutoffs only — `current_total >= max_total_nodes` (B-1), `depth >= max_depth` (B-2, previously dead config), or `metrics._sterile is True` (B-4). LLM judgement happens elsewhere.
+- **Diversity bonus**: `+0.05` for underrepresented labels (last 20 runs tracked) when `my_count * 2 ≤ max_count` (I-2); applied in *both* selector fallbacks (I-3 / L-3) and in `select_next_node` LLM prompts.
 - **Score calibration**: evaluator injects recent score history into prompts to prevent score collapse (all scores clustering around the same value)
-- **No retry**: failed nodes produce `debug` children via `expand()`, not re-executions
-- **Strict budget**: `len(all_nodes) < max_total_nodes` prevents overshoot
+- **No retry**: failed nodes produce `debug` children via `expand()`, not re-executions. ARI does not maintain a `retry_count` field for selection purposes (B-3).
+- **Strict budget**: `len(all_nodes) < max_total_nodes` prevents overshoot. The live count is the single source of truth — there is no separate `BFTS.total_nodes` counter (B-1).
+- **`record_run` after completion**: the run-loop calls `bfts.record_run(result)` after `future.result()` returns (success or failure), so the diversity bonus reflects nodes that actually executed (I-7).
 - **`generate_ideas` called once**: suppressed after root node to prevent looping
 
 ### Node Labels

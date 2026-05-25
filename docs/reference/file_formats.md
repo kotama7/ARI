@@ -1,3 +1,14 @@
+---
+sources:
+  - path: ari-core/ari/schemas
+    role: schema
+  - path: ari-core/ari/paths.py
+    role: implementation
+  - path: ari-core/ari/checkpoint.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # File Formats Reference
 
 Every ARI checkpoint is a self-describing directory.  This page

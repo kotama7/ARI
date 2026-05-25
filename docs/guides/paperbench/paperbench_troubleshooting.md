@@ -1,3 +1,12 @@
+---
+sources:
+  - path: ari-skill-paper-re
+    role: implementation
+  - path: ari-skill-replicate
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # PaperBench troubleshooting
 
 Common failure modes and their fixes. The audit run pipeline is
@@ -167,7 +176,7 @@ The ja/zh mirrors require XeLaTeX + Noto CJK fonts. Run
 `report/setup_fonts.sh` and verify with
 `fc-list | grep -i 'noto.*cjk'`.
 
-## Reproduction sandbox / GPU errors (v0.7.3)
+## Reproduction sandbox / GPU errors (v0.8.0)
 
 ### Q. `RuntimeError: sandbox_kind=docker requested but docker daemon is not reachable`
 
@@ -201,7 +210,7 @@ export ARI_SLURM_ALLOW_NO_GRES=1
 
 ### Q. `sbatch: error: --gpus-per-task ... used without either --gpus or -n/--ntasks is not allowed`
 
-This message shouldn't surface in v0.7.3 — the bridge auto-pairs
+This message shouldn't surface in v0.8.0 — the bridge auto-pairs
 `--gpus-per-task` with `--ntasks 1` when the caller didn't supply
 `ntasks` or `--gpus`. If you see it, the request is being routed
 through a non-bridge path or an older `server.py`.
@@ -209,7 +218,7 @@ through a non-bridge path or an older `server.py`.
 ### Q. `sbatch: error: Invalid GRES specification (with and without type identification)`
 
 Same era as above — caused by emitting both `--gres=gpu:TYPE:N` AND
-`--gpus-per-task N`. Modern SLURM rejects the mixed form. v0.7.3
+`--gpus-per-task N`. Modern SLURM rejects the mixed form. v0.8.0
 canonicalises to typed-only when `gpu_type` is set (untyped
 `--gpus-per-task` / `--gpus-per-node` are dropped). If you still see
 it on a fresh checkout, re-run the affected paper-re tests:
@@ -220,10 +229,10 @@ pytest ari-skill-paper-re/tests/test_run_reproduce_slurm.py -k gpu_type
 
 ### Q. Stage 1 agent had no web search
 
-Pre-v0.7.3, the bridge / `build_reproduce_sh` constructed a fresh
+Pre-v0.8.0, the bridge / `build_reproduce_sh` constructed a fresh
 `OpenAIResponsesTurnCompleterConfig(model=...)` without `tools=`, which
 silently dropped the vendor `BasicAgentSolver` default of
-`[WebSearchToolParam(type="web_search_preview")]`. v0.7.3 explicitly
+`[WebSearchToolParam(type="web_search_preview")]`. v0.8.0 explicitly
 forwards the tool. If your model doesn't surface web results at all,
 check:
 
@@ -234,7 +243,7 @@ check:
   retains web search (it only strips PythonTool / SearchFile per
   vendor `solver.py:88-95`).
 
-## Hugging Face / agent.env credentials (v0.7.3)
+## Hugging Face / agent.env credentials (v0.8.0)
 
 ### Q. Paper needs `HF_TOKEN` for gated dataset / model
 
@@ -254,12 +263,12 @@ auto-discovers this path when `agent_env_path=None`. Override with
 
 ### Q. Agent runs Stage 1 but Stage 3 grades all leaves 0
 
-Two distinct causes (v0.7.3 addresses both):
+Two distinct causes (v0.8.0 addresses both):
 
 1. **No `reproduce.log` in submission** — Stage 2 was skipped, so the
    vendor SimpleJudge safeguard "`reproduce.sh` failed to modify or
    create any files. All result analysis tasks will be graded as 0"
-   fires. v0.7.3 auto-enables `code_only=True` on the judge call in
+   fires. v0.8.0 auto-enables `code_only=True` on the judge call in
    this case (rubric is pruned to Code Development leaves only via
    vendor `paperbench/rubric/tasks.py:338`).
 2. **`paper_audit_mode` accidentally on** — paper-audit mode flips
@@ -267,7 +276,7 @@ Two distinct causes (v0.7.3 addresses both):
    submission. Mutually exclusive with `code_only`; the bridge
    raises `ValueError` if both are True.
 
-## Salvage retries + executed-submission tarballs (v0.7.3)
+## Salvage retries + executed-submission tarballs (v0.8.0)
 
 ### Q. Reproduce.sh fails fast on missing Python 3.11 / missing venv
 
@@ -289,8 +298,8 @@ with `tarball_dir=...` or disable via `capture_tarball=False`.
 ## See also
 
 - [Quickstart](paperbench_quickstart.md)
-- [PaperBench API + bridge contract](../reference/api_paperbench.md)
-- [Environment variables](../reference/environment_variables.md)
+- [PaperBench API + bridge contract](../../reference/api_paperbench.md)
+- [Environment variables](../../reference/environment_variables.md)
 - [Multi-node setup](multi_node_setup.md)
 - [Compute-node safety](compute_node_safety.md)
-- [Execution profile reference](../reference/execution_profile.md)
+- [Execution profile reference](../../reference/execution_profile.md)

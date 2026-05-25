@@ -330,7 +330,7 @@ so it only fires on EAR-off runs (paper-only reproduction).
 
 **v0.7.2 HPC additions.** Both `build_reproduce_sh` and `run_reproduce`
 consume the optional `reproduce_contract.execution_profile` block
-([reference](reference/execution_profile.md)):
+([reference](execution_profile.md)):
 
 - The agent prompt receives an `EXECUTION PROFILE` JSON block + a live
   `CLUSTER SHAPE` snapshot from `SLURM_JOB_NUM_NODES` / `SLURM_NTASKS`
@@ -528,7 +528,7 @@ flow is now available for the rubric generator. Shipped templates:
 `generic` (back-compat), `sc` (HPC paper-audit, 6 axes), `neurips`
 (ML reproducibility, 6 axes), `nature` (wet-lab, 5 axes). `paper_audit`
 mode requires `two_stage=True`. See
-[`docs/reference/rubric_schema.md`](reference/rubric_schema.md#venue-conditioned-templates)
+[`docs/reference/rubric_schema.md`](rubric_schema.md#venue-conditioned-templates)
 for the YAML schema.
 
 #### `audit_rubric(rubric_path, paper_path, paper_text, auditor_model="")`
@@ -552,7 +552,7 @@ The skeleton + subtree prompts now instruct the generator to populate
 `reproduce_contract.execution_profile` when the paper specifies parallel
 execution properties (MPI rank counts, GPU type, exclusivity, memory,
 NUMA bindings). Schema:
-[`docs/reference/execution_profile.md`](reference/execution_profile.md).
+[`docs/reference/execution_profile.md`](execution_profile.md).
 The field is optional and backward-compatible — single-CPU papers leave
 it absent.
 

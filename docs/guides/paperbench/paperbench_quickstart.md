@@ -1,3 +1,14 @@
+---
+sources:
+  - path: scripts/sc_paper_dogfood.py
+    role: doc
+  - path: ari-skill-paper-re
+    role: implementation
+  - path: ari-skill-replicate
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # PaperBench quickstart
 
 A 5-minute walkthrough from importing an external paper to viewing its
@@ -40,7 +51,7 @@ From the registry page, tick one or more papers and click
 
 1. **Papers** — verify your selection.
 2. **Rubric** — pick the generator model (default `gemini-2.5-pro`,
-   two-stage on). See [Rubric schema](../reference/execution_profile.md).
+   two-stage on). See [Rubric schema](../../reference/execution_profile.md).
 3. **Reproduce** — choose the replicator model + time budget +
    sandbox kind (`auto` / `local` / `apptainer` / `docker` / `slurm`) +
    `container_image` (SIF path, `docker://` URI, or short alias
@@ -94,7 +105,7 @@ make -C report audit-report \
   AUDIT_LANGS="en ja zh"
 ```
 
-See [`report/scripts/paperbench_report.py`](../../report/scripts/paperbench_report.py)
+See [`report/scripts/paperbench_report.py`](../../../report/scripts/paperbench_report.py)
 for the Python API.
 
 ## 6. (Advanced) Switch rubric framing by venue
@@ -125,7 +136,7 @@ The output `rubric.json` will have exactly six direct children
 matching `sc.yaml`'s `top_level_axes`, with leaves phrased as
 `"X is identifiable in the paper or AD"` instead of `"the
 implementation does X"`. Adding a new venue is a YAML-only change —
-see [`rubric_schema.md`](../reference/rubric_schema.md#venue-conditioned-templates).
+see [`rubric_schema.md`](../../reference/rubric_schema.md#venue-conditioned-templates).
 
 ## 7. (Advanced) Full 3-stage protocol via CLI
 
@@ -235,10 +246,10 @@ If you DO NOT pre-load (Pattern A: minimal sbatch with no module load):
 
 ## Next steps
 
-- [Rubric schema + venue templates](../reference/rubric_schema.md)
-- [Execution profile reference](../reference/execution_profile.md)
+- [Rubric schema + venue templates](../../reference/rubric_schema.md)
+- [Execution profile reference](../../reference/execution_profile.md)
 - [Multi-node setup](multi_node_setup.md)
 - [Compute-node safety conventions](compute_node_safety.md)
 - [Troubleshooting](paperbench_troubleshooting.md)
-- [PaperBench bridge API](../reference/api_paperbench.md)
-- [Environment variables](../reference/environment_variables.md)
+- [PaperBench bridge API](../../reference/api_paperbench.md)
+- [Environment variables](../../reference/environment_variables.md)

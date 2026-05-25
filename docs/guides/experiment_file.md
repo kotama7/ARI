@@ -1,3 +1,12 @@
+---
+sources:
+  - path: ari-core/ari/pipeline/experiment_md.py
+    role: implementation
+  - path: ari-skill-evaluator
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # Writing Experiment Files
 
 Experiment files (`experiment.md`) describe what ARI should do.  They

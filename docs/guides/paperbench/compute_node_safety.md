@@ -1,3 +1,12 @@
+---
+sources:
+  - path: ari-skill-paper-re/src/prompts/replicator.md
+    role: prompt
+  - path: ari-skill-paper-re/src/_replicator_agent.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # Compute-node safety conventions (L1–L7)
 
 `reproduce.sh` runs on a fresh compute node inside the SLURM allocation,
@@ -137,5 +146,5 @@ grep -E 'timeout' repro_sandbox/reproduce.sh
 ## See also
 
 - [Multi-node setup](multi_node_setup.md)
-- [Execution profile reference](../reference/execution_profile.md)
+- [Execution profile reference](../../reference/execution_profile.md)
 - [Troubleshooting](paperbench_troubleshooting.md)

@@ -1,15 +1,15 @@
 <div align="center">
   <img src="docs/logo.png" alt="ARI Logo" width="200"/>
 
-  # ARI — Artificial Research Intelligence
+  # ARI — Autonomous Research Infrastructure
 
   **A universal research automation system. Laptop to supercomputer. Local models to cloud APIs. Novice to expert. Computation to physical world.**
 
-  [![Tests](https://img.shields.io/badge/tests-2200%2B-brightgreen)](./ari-core)
-  [![Version](https://img.shields.io/badge/version-v0.7.3-orange)](https://github.com/kotama7/ARI/releases)
+  [![Tests](https://img.shields.io/badge/tests-2200%2B-brightgreen)](ari-core)
+  [![Version](https://img.shields.io/badge/version-v0.8.0-orange)](https://github.com/kotama7/ARI/releases)
   [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
   [![MCP](https://img.shields.io/badge/protocol-MCP-purple)](https://modelcontextprotocol.io)
-  [![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
+  [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
   [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/SbMzNtYkq)
 
   **Languages:** **English** · [日本語](README.ja.md) · [中文](README.zh.md)
@@ -36,6 +36,37 @@ The system scales across five axes:
 | **Experiment spec** | 3-line `.md` | Detailed SLURM scripts + rules |
 | **Domain** | Computational benchmarks | Physical world (robotics, sensors, lab) |
 | **Expertise** | Novice (goal only) | Expert (full parameter control) |
+
+---
+
+## What's new in v0.8.0 (2026-05-21)
+
+- **PaperBench 3-stage bridge contract** — `rollout_submission` →
+  `reproduce_submission` → `judge_submission` exposes vendor PaperBench's
+  full Agent Rollout → Reproduction → Grading protocol behind a single
+  surface. Drives the dogfood CLI via
+  `scripts/sc_paper_dogfood.py --with-rollout / --with-reproduction`.
+- **`container_image` end-to-end** — one field flows wizard → API worker →
+  MCP tool → sandbox runner, with `pb-env` / `pb-reproducer` aliases
+  resolved by `scripts/build_pb_images.sh`.
+- **Fail-loud preconditions** — sandbox / GPU mismatches now raise
+  actionable `RuntimeError`s by default (four silent-downgrade sites
+  fixed); legacy fallbacks behind `ARI_PHASE1_ALLOW_FALLBACK=1` and
+  `ARI_SLURM_ALLOW_NO_GRES=1`.
+- **PaperBench env-truth** — Stage 1 prompts now probe-before-scaffold,
+  counter-prime the language choice, and inject a host-truthful
+  `ADDITIONAL NOTES` block (binaries / GPU / network / Phase-2 isolation).
+- **Configurable BFTS evaluation layers** — `evaluator.composite`,
+  `evaluator.axis_mode`, `bfts.frontier_score`, `bfts.select_prompt`,
+  `bfts.expand_select_prompt`. Defaults reproduce the prior behaviour
+  exactly; see `docs/configuration.md` § BFTS Evaluation Layers.
+- **Seven new reviewer rubrics** — `aer`, `ahr`, `apsr`, `econometrica`,
+  `philreview`, `pmla`, `qje` ship under `ari-core/config/reviewer_rubrics/`.
+- **Step 4 reproduction-package generator — RETRACTED.** The earlier
+  audit score of 0.857 on the SC24 paper is retracted; the legitimate
+  path is the bridge contract above.
+
+See [CHANGELOG.md](CHANGELOG.md#v080--paperbench-env-truth--bridge-contract--bfts-configurable-evaluation-2026-05-21) for the full release notes.
 
 ---
 
@@ -127,9 +158,10 @@ bash setup.sh
 ollama pull qwen3:8b                          # free, local
 export ARI_BACKEND=openai OPENAI_API_KEY=sk-… # or cloud API
 
-# 3. Launch the dashboard
-ari viz ./checkpoints/ --port 8765
+# 3. Launch all services (Letta + ari-registry + GUI on :8765)
+./start.sh
 # Open http://localhost:8765 → use the Experiment Wizard to create and launch experiments
+# Tear down with: ./shutdown.sh
 ```
 
 Or run directly from the CLI:
@@ -138,7 +170,7 @@ ari run experiment.md                 # run experiment
 ari run experiment.md --profile hpc   # with SLURM cluster
 ```
 
-See **[docs/quickstart.md](docs/quickstart.md)** for the full dashboard walkthrough and **[docs/cli_reference.md](docs/cli_reference.md)** for CLI commands.
+See **[docs/quickstart.md](docs/getting-started/quickstart.md)** for the full dashboard walkthrough and **[docs/cli_reference.md](docs/reference/cli_reference.md)** for CLI commands.
 
 ---
 
@@ -177,7 +209,10 @@ gmx mdrun -v -deffnm simulation -ntmpi 32
 A 10-page React/TypeScript SPA for visual experiment management. Launch with:
 
 ```bash
-ari viz ./checkpoints/ --port 8765   # http://localhost:8765
+./start.sh             # Letta + ari-registry + GUI on http://localhost:8765
+./start.sh gui         # (re)start only the GUI
+./start.sh status      # show which services are up
+./shutdown.sh          # stop everything (reaps apptainer orphans too)
 ```
 
 | Page | Features |
@@ -327,5 +362,5 @@ ARI autonomously designed, implemented, ran, and wrote up an end-to-end study of
 
 ## License
 
-MIT. See [LICENSE](./LICENSE).
+MIT. See [LICENSE](LICENSE).
 
