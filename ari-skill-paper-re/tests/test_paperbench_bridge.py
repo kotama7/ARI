@@ -617,6 +617,15 @@ def test_paper_kind_addendum_format_cpp_cuda():
     # Runbook STEP 1 must reference the activation mechanism.
     assert "STEP 1" in out
     assert "module avail" in out  # discovery path
+    # STEP 2 must require the FULL module chain in reproduce.sh (Phase 2
+    # isolation): v3-A8 agent loaded entry+tier-2 in its iteration shell
+    # but wrote only the entry module into reproduce.sh, so nvcc was
+    # absent at grade time. The runbook must say copy EVERY activation
+    # command (entry AND tier-2), not a single line.
+    assert "STEP 2" in out
+    assert "FULL chain" in out or "EVERY activation" in out
+    assert "TIER-2" in out or "tier-2 module" in out
+    assert "entry-module load alone" in out or "does NOT add the tool" in out
     # STEP 4 must be present, MANDATORY-flagged, with concrete final
     # check + git clean caveat. This is the imperative reinforcement
     # of vendor instructions.txt L25/L27 which use weaker verbs
@@ -673,7 +682,13 @@ def test_paper_kind_addendum_lists_paper_datasets_with_search_hint():
     # 404/401'd). Must tell the agent to confirm with a HEAD before use.
     assert "registry" in out.lower() or "official download" in out.lower()
     assert "fabricate" in out.lower() or "guess" in out.lower()
-    assert "curl -sI" in out or "HTTP 200" in out
+    assert "curl -sI" in out  # HEAD-confirm before download (curl -sIL ⊇ curl -sI)
+    # Concrete search→fetch-index→parse-links workflow so the agent does
+    # not give up after one web_search and fall back to a guessed URL
+    # (v3-A8: web_search 1x, never reached the official registry).
+    assert "official data" in out.lower()  # search query framing
+    assert "grep -oE" in out  # extract real file links from the page
+    assert "do NOT skip to synthetic" in out  # persist, don't bail to synthetic
     # CHECKSUMS guidance for graders' verification.
     assert "sha256sum" in out
     # WHY THIS MATTERS — explain the cost of skipping dataset download,
