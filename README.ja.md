@@ -175,7 +175,7 @@ ari run experiment.md                 # 実験を実行
 ari run experiment.md --profile hpc   # SLURM クラスタで実行
 ```
 
-ダッシュボードの詳細は **[docs/ja/quickstart.md](docs/ja/quickstart.md)** を、CLI コマンドは **[docs/ja/cli_reference.md](docs/ja/cli_reference.md)** を参照してください。
+ダッシュボードの詳細は **[docs/ja/quickstart.md](docs/ja/getting-started/quickstart.md)** を、CLI コマンドは **[docs/ja/cli_reference.md](docs/ja/reference/cli_reference.md)** を参照してください。
 
 ---
 

@@ -174,7 +174,7 @@ ari run experiment.md                 # 运行实验
 ari run experiment.md --profile hpc   # 使用 SLURM 集群
 ```
 
-完整的仪表板演练请参阅 **[docs/zh/quickstart.md](docs/zh/quickstart.md)**，CLI 命令请参阅 **[docs/zh/cli_reference.md](docs/zh/cli_reference.md)**。
+完整的仪表板演练请参阅 **[docs/zh/quickstart.md](docs/zh/getting-started/quickstart.md)**，CLI 命令请参阅 **[docs/zh/cli_reference.md](docs/zh/reference/cli_reference.md)**。
 
 ---
 
