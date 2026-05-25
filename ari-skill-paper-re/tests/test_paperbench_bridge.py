@@ -875,6 +875,32 @@ def test_expand_modulepath_tier2_reveals_hidden_modules_read_only():
         "tier-2 expansion must be read-only (no module load)"
 
 
+def test_expand_modulepath_tier2_shared_dir_lists_all_entries_with_conflict_note():
+    """Regression for v3-A7 failure: a tier-2 dir (NVIDIA HPC SDK) is
+    shared by several `system/<gpu>` entries. Attributing it to a single
+    arbitrary entry misled the agent into loading multiple conflicting
+    entries (which unloaded everything). The output must list ALL entries
+    that reach the shared dir AND warn they are mutually exclusive."""
+    avail = "---- /cloud_opt/misc/modulefiles ----\nsystem/a100  system/ai-l40s\n"
+
+    def fake_run(cmd: str) -> str:
+        # Both entries prepend the SAME shared hpc_sdk MODULEPATH.
+        if cmd.startswith("module show system/a100") or cmd.startswith("module show system/ai-l40s"):
+            return "x:\nprepend-path\tMODULEPATH /opt/nvidia/hpc_sdk/modulefiles\n"
+        if "MODULEPATH=/opt/nvidia/hpc_sdk/modulefiles" in cmd and "module avail" in cmd:
+            return "---- /opt/nvidia/hpc_sdk/modulefiles ----\nnvhpc/25.7\n"
+        return ""
+
+    out = B._expand_modulepath_tier2(fake_run, avail)
+    assert "nvhpc/25.7" in out
+    # Both reaching entries listed, not just the first.
+    assert "system/a100" in out and "system/ai-l40s" in out
+    # Mutual-exclusion guidance present so the agent loads only ONE.
+    assert "MUTUALLY EXCLUSIVE" in out or "load exactly\n  ONE" in out or "load exactly ONE" in out
+    # The shared dir is enumerated only once (not duplicated per entry).
+    assert out.count("/opt/nvidia/hpc_sdk/modulefiles ----") == 1
+
+
 def test_expand_modulepath_tier2_matches_module_use_and_append_styles():
     """Portability across Tcl clusters: entry modules switch MODULEPATH
     via `prepend-path`, `append-path`, OR `module use` — all three must

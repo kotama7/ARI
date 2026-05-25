@@ -301,10 +301,17 @@ def _expand_modulepath_tier2(run_module, avail_output: str,
     MODULEPATH, so a dir not already on MODULEPATH lists nothing. Setting
     ``MODULEPATH=<dir>`` for the one command lists exactly that dir.
 
-    Each revealed MODULEPATH dir is enumerated once (deduped). Dirs that
-    do not exist on the probing host (e.g. tier-2 modulefiles mounted
-    only on compute nodes) yield empty listings and are silently
-    dropped, so this degrades gracefully when run off-node.
+    Each revealed MODULEPATH dir is enumerated once. A dir is often shared
+    by several entry modules (e.g. every ``system/<gpu>`` entry prepends
+    the same NVIDIA HPC SDK modulefiles path). We therefore record ALL
+    entries that expose each dir and present them together with an
+    explicit "load ONE of these (they are mutually exclusive)" note —
+    attributing a shared dir to a single arbitrary entry mislead a past
+    dogfood agent into loading several conflicting entries, which (via the
+    modulefiles' ``conflict`` directive) unloaded everything and left the
+    toolchain unreachable. Dirs absent on the probing host (tier-2
+    modulefiles mounted only on compute nodes) yield empty listings and
+    are dropped, so this degrades gracefully when run off-node.
     """
     import re
     import shlex
@@ -320,34 +327,49 @@ def _expand_modulepath_tier2(run_module, avail_output: str,
         r"module\s+use\s+(?:--\S+\s+)?(\S+)",
     )
     entries = _parse_module_names(avail_output)[:max_entries]
-    seen_dirs: set[str] = set()
-    sections: list[str] = []
+    # Pass 1 (read-only `module show`): map each revealed MODULEPATH dir to
+    # the ordered list of entry modules that expose it.
+    dir_to_entries: dict[str, list[str]] = {}
+    dir_order: list[str] = []
     for ent in entries:
         show = run_module(f"module show {ent} 2>&1")
         if not show:
             continue
-        mps: list[str] = []
         for pat in _modulepath_patterns:
-            mps.extend(m.group(1) for m in re.finditer(pat, show))
-        for mp in mps:
-            if mp in seen_dirs:
-                continue
-            seen_dirs.add(mp)
-            listing = run_module(
-                f"export MODULEPATH={shlex.quote(mp)}; module avail 2>&1"
+            for m in re.finditer(pat, show):
+                mp = m.group(1)
+                if mp not in dir_to_entries:
+                    dir_to_entries[mp] = []
+                    dir_order.append(mp)
+                if ent not in dir_to_entries[mp]:
+                    dir_to_entries[mp].append(ent)
+    # Pass 2 (read-only MODULEPATH-override `module avail`): enumerate each
+    # dir once, listing every entry that reaches it.
+    sections: list[str] = []
+    for mp in dir_order:
+        listing = run_module(
+            f"export MODULEPATH={shlex.quote(mp)}; module avail 2>&1"
+        )
+        # Keep only listings that name at least one real module
+        # (a non-header, non-separator line).
+        has_module = any(
+            ln.strip() and not ln.strip().startswith("/")
+            and set(ln.strip()) > set("- ")
+            for ln in listing.splitlines()
+        )
+        if not (listing and has_module):
+            continue
+        ents = dir_to_entries[mp]
+        if len(ents) == 1:
+            head = f"--- behind `module load {ents[0]}` (MODULEPATH {mp}) ---"
+        else:
+            head = (
+                f"--- behind `module load <ONE of: {', '.join(ents)}>` "
+                f"— these entry modules are MUTUALLY EXCLUSIVE, load exactly "
+                f"ONE (the one matching your allocated hardware/partition); "
+                f"loading several unloads them all (MODULEPATH {mp}) ---"
             )
-            # Keep only listings that name at least one real module
-            # (a non-header, non-separator line).
-            has_module = any(
-                ln.strip() and not ln.strip().startswith("/")
-                and set(ln.strip()) > set("- ")
-                for ln in listing.splitlines()
-            )
-            if listing and has_module:
-                sections.append(
-                    f"--- behind `module load {ent}` (MODULEPATH {mp}) ---\n"
-                    + listing
-                )
+        sections.append(head + "\n" + listing)
     if not sections:
         return ""
     return (
