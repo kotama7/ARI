@@ -606,10 +606,19 @@ def test_paper_kind_addendum_format_cpp_cuda():
     assert "native_stack: **cpp+cuda**" in out
     assert "nvcc -std=c++17" in out  # concrete build line
     assert "CUDA SDK >= 11" in out  # secondary hint surfaced
-    # Cautionary past-dogfood data must appear so the agent sees the
-    # cost of choosing Python proxy for a CUDA paper.
+    # For a non-Python native stack the cautionary note must be
+    # IMPERATIVE (no "where possible" soft out) and must neutralise the
+    # vendor Python toy example, which otherwise primes a Python proxy
+    # (v3-A9: agent declared "minimal Python-based reproduction" for a
+    # CUDA paper).
     assert "Cautionary note" in out
-    assert "Python-only proxy" in out or "Python proxy" in out
+    assert "You MUST implement" in out
+    # The old soft-out phrasing ("match it where possible") must be gone;
+    # the note now explicitly negates it ("This is NOT 'where possible'").
+    assert "match it where possible" not in out
+    assert "it is required" in out  # imperative
+    assert "count.py" in out  # toy example explicitly neutralised
+    assert "IGNORE THE LANGUAGE OF THE VENDOR TOY EXAMPLE" in out
     # Cluster-agnosticism regression: NO cluster-specific module name.
     assert "nvhpc" not in out, "cluster-specific module name must not leak"
     assert "openmpi" not in out
@@ -689,6 +698,11 @@ def test_paper_kind_addendum_lists_paper_datasets_with_search_hint():
     assert "official data" in out.lower()  # search query framing
     assert "grep -oE" in out  # extract real file links from the page
     assert "do NOT skip to synthetic" in out  # persist, don't bail to synthetic
+    # reproduce.sh must carry the EXACT confirmed URL and be tested from a
+    # clean state (v3-A9: agent got real data once but wrote a 404 URL into
+    # reproduce.sh → grader got no data).
+    assert "EXACT confirmed URL" in out
+    assert "rm -rf data && bash reproduce.sh" in out
     # CHECKSUMS guidance for graders' verification.
     assert "sha256sum" in out
     # WHY THIS MATTERS — explain the cost of skipping dataset download,
@@ -696,6 +710,21 @@ def test_paper_kind_addendum_lists_paper_datasets_with_search_hint():
     assert "WHY THIS MATTERS" in out
     assert "SC41406" not in out  # no paper-specific leak in dataset block
     assert "Result Analysis" in out  # rubric impact named
+
+
+def test_cautionary_note_soft_for_python_native_stack():
+    """Generality: for a python+* paper, Python IS correct — the
+    cautionary note must NOT issue the imperative 'you MUST implement in
+    <native>' nor neutralise the toy example (nothing to override)."""
+    out = B._format_paper_kind_addendum(
+        native="python+pytorch",
+        rationale="deep learning training paper",
+        secondary=[],
+        env={"has_module": False, "has_apt": True, "has_sudo": True},
+    )
+    assert "Cautionary note" in out
+    assert "You MUST implement" not in out  # no imperative for python paper
+    assert "IGNORE THE LANGUAGE OF THE VENDOR TOY EXAMPLE" not in out
 
 
 def test_paper_kind_addendum_omits_dataset_block_when_no_datasets():

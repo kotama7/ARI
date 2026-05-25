@@ -1187,16 +1187,39 @@ def _format_paper_kind_addendum(
     shape = _REPRODUCE_SH_SHAPES.get(native, "")
     sec_lines = "\n".join(f"  - {s}" for s in secondary if s) if secondary else ""
     activation = _render_activation_block(env or {})
-    cautionary = (
-        "## Cautionary note (native-stack reproduction)\n\n"
-        "When the paper's native stack is C++/CUDA / MPI / Fortran, a\n"
-        "Python-only proxy CANNOT satisfy rubric leaves that verify GPU\n"
-        "kernel build, kernel launch grid, MPI process count, native\n"
-        "build system, etc. The rubric REWARDS reproducing the paper in\n"
-        "its native language stack — match it where possible. A proxy\n"
-        "reimplementation in a different language scores a small fraction\n"
-        "of what a faithful native build earns.\n"
-    )
+    _native_l = (native or "").lower()
+    _native_known = bool(_native_l) and _native_l != "unknown"
+    if _native_known and not _native_l.startswith("python"):
+        # Native stack is non-Python (CUDA / MPI / Fortran / ...). Make the
+        # language requirement IMPERATIVE and neutralise the vendor toy
+        # example, whose Python `count.py` otherwise primes the agent to
+        # write a Python proxy (observed: agent declared "minimal
+        # Python-based reproduction" despite native_stack being CUDA).
+        cautionary = (
+            "## Cautionary note — IMPLEMENT IN THE NATIVE STACK (mandatory)\n\n"
+            f"This paper's native stack is **{native}**. You MUST implement\n"
+            "the core artifact in that stack. A Python (or other-language)\n"
+            "proxy earns ONLY Code Development credit; EVERY Code Execution\n"
+            "and Result Analysis leaf that checks the native build, GPU\n"
+            "kernels, kernel launch grid, MPI process count, or\n"
+            "native-produced numbers scores 0. This is NOT 'where possible'\n"
+            "— for this paper it is required.\n\n"
+            "IGNORE THE LANGUAGE OF THE VENDOR TOY EXAMPLE: the\n"
+            "strawberry / `count.py` Python script in the standard\n"
+            "instructions illustrates submission FORMAT only. It does NOT\n"
+            "mean 'write Python'. Do not infer a Python implementation from\n"
+            "it. (You MAY use Python for glue / I/O — e.g. h5py to load a\n"
+            f"dataset — but the compute kernels themselves must be {native}.)\n"
+        )
+    else:
+        # Python-native or unknown stack: a soft note (Python is correct
+        # for python+* papers; nothing to override).
+        cautionary = (
+            "## Cautionary note (native-stack reproduction)\n\n"
+            "Match the paper's native language stack — a proxy\n"
+            "reimplementation in a different language scores a small\n"
+            "fraction of what a faithful native build earns.\n"
+        )
     # Dataset acquisition: list paper-cited datasets and tell the agent
     # to fetch them (web_search → wget / huggingface-cli / git clone).
     # When the classifier returns an empty datasets list (synthetic-only
@@ -1233,7 +1256,14 @@ def _format_paper_kind_addendum(
             "    2. Fetch the confirmed URL via `wget` / `curl` /\n"
             "       `huggingface-cli download` / `git clone` into\n"
             "       `submission/data/`. Network is available — see env-truth\n"
-            "       Network claim.\n"
+            "       Network claim. Put the EXACT confirmed URL (the one your\n"
+            "       `curl -sIL` returned 200 for) into reproduce.sh — NOT a\n"
+            "       simplified or guessed variant. Then TEST reproducibility\n"
+            "       from a clean state: `rm -rf data && bash reproduce.sh`\n"
+            "       and confirm the file re-downloads at full size. The\n"
+            "       grader runs reproduce.sh in a fresh shell; a URL that\n"
+            "       worked once interactively but 404s in reproduce.sh means\n"
+            "       the grader gets no real data (→ 0 Result Analysis).\n"
             "    3. Commit checksums (`sha256sum data/<file> > data/CHECKSUMS`)\n"
             "       so the grader can verify acquisition. Do NOT commit the\n"
             "       data blobs themselves if they exceed 1GB (vendor\n"
