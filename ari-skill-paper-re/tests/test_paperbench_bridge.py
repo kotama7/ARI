@@ -691,6 +691,21 @@ def test_paper_kind_addendum_omits_dataset_block_when_no_datasets():
     assert "WHY THIS MATTERS" not in out  # only in the dataset block
 
 
+def test_classifier_paper_window_reaches_evaluation_section():
+    """Regression for the empty-datasets bug (v3-A6): the classifier is
+    fed a truncated prefix of the paper. Dataset names live in the
+    Evaluation section — e.g. SC41406's six datasets (JHTDB / Miranda /
+    Nyx / QMCPACK / RTM / S3D) first appear at char ~34000-48000, well
+    past the old 16000-char window — so the classifier returned an empty
+    datasets list and STEP 1.5 never fired. The window must reach far
+    enough into the paper to cover a typical evaluation section.
+    """
+    assert B._CLASSIFIER_PAPER_MAX_CHARS >= 50000, (
+        "classifier paper window must reach the evaluation section where "
+        "datasets are introduced (SC41406 datasets start at char ~34000)"
+    )
+
+
 def test_paper_kind_addendum_carries_agent_only_marker():
     """The addendum is generated for the Stage 1 agent (via
     paper/addendum.md) and MUST NOT be reused as Stage 3

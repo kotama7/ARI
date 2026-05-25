@@ -797,8 +797,17 @@ use `web_search` / `wget` / `huggingface-cli` to fetch.
 
 Output ONLY the JSON object, no prose, no markdown fences.
 
---- PAPER (truncated to first 16000 chars) ---
+--- PAPER (may be truncated) ---
 """
+
+# Char budget for the paper text fed to the classifier. Must be large
+# enough to reach the Evaluation/Experiments section: native_stack is
+# decidable from the intro/method (early), but the dataset list lives in
+# the evaluation tables (often past char ~30k). 16k truncation silently
+# starved dataset extraction — every paper that introduces its datasets
+# late returned an empty list. 60k covers the evaluation section of a
+# typical single paper while keeping the one classifier call cheap.
+_CLASSIFIER_PAPER_MAX_CHARS = 60000
 
 
 async def _build_paper_kind_addendum(
@@ -847,7 +856,7 @@ async def _build_paper_kind_addendum(
         # cost; skip for v0.7.5).
         return ""
     client = AsyncOpenAI()
-    prompt = _PAPER_KIND_CLASSIFIER_PROMPT + (paper_md or "")[:16000]
+    prompt = _PAPER_KIND_CLASSIFIER_PROMPT + (paper_md or "")[:_CLASSIFIER_PAPER_MAX_CHARS]
     # gpt-5 / o-series models only accept the default temperature (1)
     # and reject explicit temperature=0. gpt-4* / gpt-3.5 / older
     # models accept 0 and we'd prefer the determinism. Probe via the
