@@ -822,6 +822,91 @@ def test_probe_module_avail_silences_spider_unsupported_marker():
         assert "Unrecognized subcommand 'spider'" not in out
 
 
+def test_parse_module_names_keeps_namespaced_skips_builtins():
+    """Only namespaced (``ns/name``) entries are MODULEPATH-switch
+    candidates; path headers, separators and bare builtins are dropped."""
+    avail = (
+        "------------------------ /usr/share/Modules/modulefiles ------------------------\n"
+        "dot  module-git  module-info  modules  null  use.own\n"
+        "------------------------- /cloud_opt/misc/modulefiles --------------------------\n"
+        "system/a100  system/ai-l40s <L>  system/qc-a100  mpi/mpich-x86_64\n"
+    )
+    names = B._parse_module_names(avail)
+    assert "system/ai-l40s" in names  # <L> marker stripped
+    assert "system/a100" in names
+    assert "mpi/mpich-x86_64" in names
+    assert "dot" not in names and "null" not in names  # builtins skipped
+    assert all("/" in n for n in names)
+
+
+def test_expand_modulepath_tier2_reveals_hidden_modules_read_only():
+    """Tcl 2-tier breakthrough: `module show <entry>` exposes the
+    MODULEPATH it would prepend; `module avail <dir>` lists tier-2.
+    The expansion must use ONLY `module show` / `module avail` — never
+    `module load` (read-only philosophy)."""
+    avail = (
+        "---- /cloud_opt/misc/modulefiles ----\n"
+        "system/ai-l40s\n"
+    )
+    calls: list[str] = []
+
+    def fake_run(cmd: str) -> str:
+        calls.append(cmd)
+        if cmd.startswith("module show system/ai-l40s"):
+            return (
+                "/cloud_opt/misc/modulefiles/system/ai-l40s:\n"
+                "conflict\tsystem\n"
+                "prepend-path\tMODULEPATH /opt/nvidia/hpc_sdk/modulefiles\n"
+            )
+        # Enumeration overrides MODULEPATH (read-only) rather than passing
+        # the dir as a filter arg.
+        if "MODULEPATH=/opt/nvidia/hpc_sdk/modulefiles" in cmd and "module avail" in cmd:
+            return (
+                "---- /opt/nvidia/hpc_sdk/modulefiles ----\n"
+                "nvhpc/25.7  nvhpc-byo-compiler/25.7\n"
+            )
+        return ""
+
+    out = B._expand_modulepath_tier2(fake_run, avail)
+    assert "nvhpc/25.7" in out  # tier-2 module surfaced
+    assert "module load system/ai-l40s" in out  # tells agent the entry
+    # Read-only invariant: NO `module load` was ever issued.
+    assert not any("module load" in c for c in calls), \
+        "tier-2 expansion must be read-only (no module load)"
+
+
+def test_expand_modulepath_tier2_matches_module_use_and_append_styles():
+    """Portability across Tcl clusters: entry modules switch MODULEPATH
+    via `prepend-path`, `append-path`, OR `module use` — all three must
+    be recognised, not just R-CCS's `prepend-path` style."""
+    for directive, dir_ in (
+        ("append-path\tMODULEPATH /opt/compilers/modulefiles", "/opt/compilers/modulefiles"),
+        ("module use --append /opt/compilers/modulefiles", "/opt/compilers/modulefiles"),
+        ("module use /opt/compilers/modulefiles", "/opt/compilers/modulefiles"),
+    ):
+        def fake_run(cmd, _d=directive, _dir=dir_):
+            if cmd.startswith("module show"):
+                return f"/x/compiler/gcc:\n{_d}\n"
+            if f"MODULEPATH={_dir}" in cmd and "module avail" in cmd:
+                return f"---- {_dir} ----\ngcc/13.2  gcc/12.3\n"
+            return ""
+        out = B._expand_modulepath_tier2(fake_run, "---- /x ----\ncompiler/gcc\n")
+        assert "gcc/13.2" in out, f"directive not recognised: {directive!r}"
+
+
+def test_expand_modulepath_tier2_empty_when_flat():
+    """Flat clusters / laptops: entries reveal no MODULEPATH prepend, or
+    the revealed dir is empty (off-node) → expansion returns ""."""
+    avail = "---- /usr/share/modulefiles ----\nmpi/mpich-x86_64\n"
+
+    def fake_run(cmd: str) -> str:
+        if cmd.startswith("module show"):
+            return "mpi/mpich-x86_64:\nprepend-path\tPATH /usr/lib64/mpich/bin\n"
+        return ""  # no MODULEPATH prepend, nothing to expand
+
+    assert B._expand_modulepath_tier2(fake_run, avail) == ""
+
+
 def test_render_activation_block_neither_falls_back_to_manual():
     """On bare-metal dev hosts the activation block must fall back to
     `conda activate` / manual install / SDK setup — no module / no apt."""

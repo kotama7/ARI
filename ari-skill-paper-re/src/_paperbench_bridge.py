@@ -263,6 +263,100 @@ def _detect_runtime_env() -> dict:
     }
 
 
+def _parse_module_names(avail_output: str) -> list[str]:
+    """Extract namespaced module names (those containing ``/``, e.g.
+    ``system/ai-l40s``, ``mpi/mpich-x86_64``) from ``module avail``
+    output. Path headers (``--- /some/dir ---``) and bare builtins
+    (``dot``, ``null``, ``modules``) are skipped — only namespaced
+    entries are candidate MODULEPATH-switch entry modules. Order is
+    preserved, duplicates removed.
+    """
+    names: list[str] = []
+    seen: set[str] = set()
+    for raw in avail_output.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("/") or set(line) <= set("- "):
+            continue  # path header or separator rule
+        for tok in line.split():
+            # strip trailing markers: (default), <L>, trailing slash
+            name = tok.split("(")[0].rstrip("/").strip()
+            if "/" in name and name not in seen:
+                seen.add(name)
+                names.append(name)
+    return names
+
+
+def _expand_modulepath_tier2(run_module, avail_output: str,
+                             max_entries: int = 40) -> str:
+    """Read-only tier-2 expansion for Tcl Environment Modules (no Lmod
+    ``spider``). For each namespaced entry module in ``avail_output``,
+    run ``module show`` (read-only — never ``module load``) to find any
+    ``prepend-path MODULEPATH <dir>`` it would add, then list that dir by
+    OVERRIDING ``MODULEPATH`` for a single ``module avail`` (read-only env
+    scope, still no ``module load``). Returns a catalog section, or "" when
+    nothing is hidden behind entry modules (flat clusters / laptops).
+
+    Note: ``module avail <dir>`` cannot be used to enumerate ``<dir>`` —
+    classic Tcl Modules treats the argument as a FILTER over the active
+    MODULEPATH, so a dir not already on MODULEPATH lists nothing. Setting
+    ``MODULEPATH=<dir>`` for the one command lists exactly that dir.
+
+    Each revealed MODULEPATH dir is enumerated once (deduped). Dirs that
+    do not exist on the probing host (e.g. tier-2 modulefiles mounted
+    only on compute nodes) yield empty listings and are silently
+    dropped, so this degrades gracefully when run off-node.
+    """
+    import re
+    import shlex
+
+    # A hierarchical entry module switches MODULEPATH in one of three
+    # portable ways across Tcl Environment Modules deployments:
+    #   prepend-path MODULEPATH <dir>   (most common)
+    #   append-path  MODULEPATH <dir>
+    #   module use [--append] <dir>     (sugar that also edits MODULEPATH)
+    # Match all three so the breakthrough is not tied to R-CCS's style.
+    _modulepath_patterns = (
+        r"(?:prepend|append)-path\s+(?:--\S+\s+)?MODULEPATH\s+(\S+)",
+        r"module\s+use\s+(?:--\S+\s+)?(\S+)",
+    )
+    entries = _parse_module_names(avail_output)[:max_entries]
+    seen_dirs: set[str] = set()
+    sections: list[str] = []
+    for ent in entries:
+        show = run_module(f"module show {ent} 2>&1")
+        if not show:
+            continue
+        mps: list[str] = []
+        for pat in _modulepath_patterns:
+            mps.extend(m.group(1) for m in re.finditer(pat, show))
+        for mp in mps:
+            if mp in seen_dirs:
+                continue
+            seen_dirs.add(mp)
+            listing = run_module(
+                f"export MODULEPATH={shlex.quote(mp)}; module avail 2>&1"
+            )
+            # Keep only listings that name at least one real module
+            # (a non-header, non-separator line).
+            has_module = any(
+                ln.strip() and not ln.strip().startswith("/")
+                and set(ln.strip()) > set("- ")
+                for ln in listing.splitlines()
+            )
+            if listing and has_module:
+                sections.append(
+                    f"--- behind `module load {ent}` (MODULEPATH {mp}) ---\n"
+                    + listing
+                )
+    if not sections:
+        return ""
+    return (
+        "=== tier-2 modules behind entry modules (revealed read-only via "
+        "`module show`; to use, `module load <entry>` THEN `module load "
+        "<tier-2 name>`) ===\n" + "\n\n".join(sections)
+    )
+
+
 def _probe_module_avail(max_chars: int = 12000) -> str:
     """Run ``module spider`` AND ``module avail`` and return their
     combined raw output, capped at ``max_chars`` to keep the prompt
@@ -282,27 +376,55 @@ def _probe_module_avail(max_chars: int = 12000) -> str:
         Same philosophy as ``module avail`` (read-only inspection,
         no state mutation, no bridge-side compiler knowledge) but
         better data for the agent.
+      - When ``module spider`` is unsupported (classic Tcl Environment
+        Modules, e.g. R-CCS), we recover the same tier-2 visibility
+        WITHOUT loading anything: ``module show <entry>`` (read-only)
+        reveals the ``prepend-path MODULEPATH <dir>`` an entry module
+        would add, and ``module avail <dir>`` lists what lives there.
+        This is the Tcl equivalent of Lmod's read-only ``spider`` — no
+        ``module load``, no state mutation, no bridge-side compiler
+        knowledge.
 
     Cluster-agnostic: bridge does NOT name specific modules. It just
-    runs two standard Lmod verbs and dumps their output as data; the
-    agent inspects the catalog and decides what to load. Older
-    Environment Modules (pre-Lmod) lack ``spider`` — its failure is
-    silently absorbed and the ``avail`` portion still appears.
+    runs standard read-only module verbs and dumps their output as
+    data; the agent inspects the catalog and decides what to load.
 
-    SC41406 v3-A2 surfaced this requirement: the agent ran
+    SC41406 v3-A2/v3-A6 surfaced this requirement: the agent ran
     ``module avail`` correctly, saw only ``system/ai-l40s`` (the entry
-    module), tried ``module load ai-l40s`` (wrong — missed the
-    ``system/`` prefix), failed, and pivoted to Python proxy. With
-    ``module spider`` included the agent would see ``nvhpc/25.7`` etc
-    as discoverable behind the entry, enabling correct ``module
-    load system/ai-l40s && module load nvhpc`` chain.
+    module), but stopped there — it loaded the entry and expected nvcc
+    on PATH, not realising the entry only switches MODULEPATH and a
+    SECOND ``module load nvhpc`` is needed. Surfacing tier-2 lets the
+    agent write the correct ``module load system/ai-l40s && module
+    load nvhpc`` chain.
     """
     import subprocess
+    import shlex
+
+    # Tier-2 expansion may issue many `module show` / `module avail`
+    # calls. Re-sourcing the full login profile (`bash -lc`) on each is
+    # multi-second on some clusters (measured 2.5s/call on R-CCS). Detect
+    # the module system's lightweight init once and `source` only that on
+    # subsequent calls (~0.05s/call); fall back to a login shell if the
+    # init script can't be located.
+    _prelude = ""
+    _bash_flag = "-lc"
+    try:
+        _r = subprocess.run(
+            ["bash", "-lc", 'printf %s "$MODULESHOME"'],
+            capture_output=True, timeout=30, check=False,
+        )
+        _home = (_r.stdout or b"").decode("utf-8", errors="replace").strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        _home = ""
+    _init = os.path.join(_home, "init", "bash") if _home else ""
+    if _init and os.path.isfile(_init):
+        _prelude = f"source {shlex.quote(_init)} 2>/dev/null; "
+        _bash_flag = "-c"
 
     def _run_module(cmd: str) -> str:
         try:
             r = subprocess.run(
-                ["bash", "-lc", cmd],
+                ["bash", _bash_flag, _prelude + cmd],
                 capture_output=True, timeout=60, check=False,
             )
         except (FileNotFoundError, subprocess.TimeoutExpired) as e:
@@ -331,6 +453,14 @@ def _probe_module_avail(max_chars: int = 12000) -> str:
     if avail:
         parts.append("=== `module avail` (modules at current MODULEPATH) ===\n"
                      + avail)
+    # Tcl Environment Modules has no `spider`. Recover tier-2 visibility
+    # read-only: for each namespaced entry module, `module show` reveals
+    # the MODULEPATH it would prepend; `module avail <dir>` lists modules
+    # there. No `module load`, no mutation.
+    if not spider:
+        tier2 = _expand_modulepath_tier2(_run_module, avail)
+        if tier2:
+            parts.append(tier2)
     if not parts:
         return ""
     text = "\n\n".join(parts)
