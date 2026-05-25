@@ -92,6 +92,10 @@ When cutting a release:
      returns zero.
    - Every documented env var maps to a real source reference.
    - Every documented MCP tool exists in the skill's `mcp.json`.
+   - `python scripts/docs/check_doc_sources.py --require-all` exits 0
+     (every live doc's declared `sources:` paths exist).
+   - `python scripts/docs/check_doc_links.py` exits 0
+     (no broken intra-docs links or HTML hrefs).
 5. Tag: `git tag v0.X.Y && git push origin v0.X.Y`.
 6. Open a release on GitHub with the changelog excerpt.
 7. Publish bundles: `ari ear publish` for any artefacts that need to
