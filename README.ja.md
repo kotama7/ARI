@@ -78,14 +78,14 @@ ARI は一つの原則に基づいて設計されています：**ゴールを M
 ## 動作を見る
 
 <p align="center">
-  <video src="https://github.com/kotama7/ARI/raw/main/docs/movie/ja/ari_dashboard_demo.mp4" controls width="720" muted playsinline>
+  <video src="https://github.com/kotama7/ARI/raw/main/docs/assets/movie/ja/ari_dashboard_demo.mp4" controls width="720" muted playsinline>
     お使いのブラウザはインライン動画再生に対応していません。<a href="docs/movie/ja/ari_dashboard_demo.mp4">こちらからダウンロード</a>してください。
   </video>
 </p>
 
-🎬 **ダッシュボードのデモ動画** — ARI Web ダッシュボードの完全ウォークスルー。[English](docs/movie/en/ari_dashboard_demo.mp4) · [中文](docs/movie/zh/ari_dashboard_demo.mp4) も利用可能。
+🎬 **ダッシュボードのデモ動画** — ARI Web ダッシュボードの完全ウォークスルー。[English](docs/assets/movie/en/ari_dashboard_demo.mp4) · [中文](docs/assets/movie/zh/ari_dashboard_demo.mp4) も利用可能。
 
-📄 **[サンプル成果物 (PDF)](docs/sample_paper.pdf)** — ARI が完全自律で生成した実物の論文。図表・引用・再現性検証レポートを含みます。主な数値は [実証された結果](#実証された結果) を参照してください。
+📄 **[サンプル成果物 (PDF)](docs/assets/sample_paper.pdf)** — ARI が完全自律で生成した実物の論文。図表・引用・再現性検証レポートを含みます。主な数値は [実証された結果](#実証された結果) を参照してください。
 
 <details>
 <summary><b>📖 クリックで論文を展開（全 11 ページをスクロールで閲覧）</b></summary>
@@ -348,7 +348,7 @@ v0.6.0 では 2 つのスキルを廃止しました。`ari-skill-figure-router`
 
 ## 実証された結果
 
-ARI はマルチコア CPU 上の **CSR SpMM**（スパース行列と密行列の積）について、設計・実装・実行・論文執筆までを完全自律で end-to-end に行いました。手法・アルゴリズム・図表・参考文献を含む完全な論文は [`docs/sample_paper.pdf`](docs/sample_paper.pdf) で公開されています。
+ARI はマルチコア CPU 上の **CSR SpMM**（スパース行列と密行列の積）について、設計・実装・実行・論文執筆までを完全自律で end-to-end に行いました。手法・アルゴリズム・図表・参考文献を含む完全な論文は [`docs/sample_paper.pdf`](docs/assets/sample_paper.pdf) で公開されています。
 
 > **Stoch-Loopline: Burstiness- and Tail-Latency-Aware Loopline Modeling for Robust Multi-Core CPU CSR SpMM Scaling**
 

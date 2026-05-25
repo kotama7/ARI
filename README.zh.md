@@ -77,14 +77,14 @@ ARI 围绕一个原则设计：**用 Markdown 描述目标 — 其余的交给 A
 ## 实际效果
 
 <p align="center">
-  <video src="https://github.com/kotama7/ARI/raw/main/docs/movie/zh/ari_dashboard_demo.mp4" controls width="720" muted playsinline>
+  <video src="https://github.com/kotama7/ARI/raw/main/docs/assets/movie/zh/ari_dashboard_demo.mp4" controls width="720" muted playsinline>
     您的浏览器不支持内联视频。<a href="docs/movie/zh/ari_dashboard_demo.mp4">点击此处下载演示</a>。
   </video>
 </p>
 
-🎬 **仪表板演示视频** — ARI Web 仪表板的完整演示。也提供 [English](docs/movie/en/ari_dashboard_demo.mp4) · [日本語](docs/movie/ja/ari_dashboard_demo.mp4)。
+🎬 **仪表板演示视频** — ARI Web 仪表板的完整演示。也提供 [English](docs/assets/movie/en/ari_dashboard_demo.mp4) · [日本語](docs/assets/movie/ja/ari_dashboard_demo.mp4)。
 
-📄 **[示例输出论文 (PDF)](docs/sample_paper.pdf)** — 由 ARI 完全自主生成的真实论文，包含图表、引用和可复现性验证报告。主要数据请参阅[已验证的结果](#已验证的结果)。
+📄 **[示例输出论文 (PDF)](docs/assets/sample_paper.pdf)** — 由 ARI 完全自主生成的真实论文，包含图表、引用和可复现性验证报告。主要数据请参阅[已验证的结果](#已验证的结果)。
 
 <details>
 <summary><b>📖 点击展开论文（滚动浏览全部 11 页）</b></summary>
@@ -347,7 +347,7 @@ v0.6.0 移除了两个技能：`ari-skill-figure-router` 被合并进 `ari-skill
 
 ## 已验证的结果
 
-ARI 在多核 CPU 上对 **CSR SpMM**（稀疏矩阵与稠密矩阵乘积）进行了端到端的自主研究，包括设计、实现、运行和论文撰写。完整论文（含方法、算法、图表和参考文献）可在 [`docs/sample_paper.pdf`](docs/sample_paper.pdf) 中查看。
+ARI 在多核 CPU 上对 **CSR SpMM**（稀疏矩阵与稠密矩阵乘积）进行了端到端的自主研究，包括设计、实现、运行和论文撰写。完整论文（含方法、算法、图表和参考文献）可在 [`docs/sample_paper.pdf`](docs/assets/sample_paper.pdf) 中查看。
 
 > **Stoch-Loopline: Burstiness- and Tail-Latency-Aware Loopline Modeling for Robust Multi-Core CPU CSR SpMM Scaling**
 

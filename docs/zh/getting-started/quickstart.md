@@ -19,8 +19,8 @@ last_verified: 2026-05-25
 
 > **安装前先预览**
 >
-> - 🎬 **仪表板演示视频** — [`movie/zh/ari_dashboard_demo.mp4`](../../movie/zh/ari_dashboard_demo.mp4) 完整展示 Web UI 的实际操作。
-> - 📄 **示例输出论文** — [`sample_paper.pdf`](../../sample_paper.pdf) 是 ARI 实际运行生成的论文，包含图表、引用和可复现性验证报告。
+> - 🎬 **仪表板演示视频** — [`movie/zh/ari_dashboard_demo.mp4`](../../assets/movie/zh/ari_dashboard_demo.mp4) 完整展示 Web UI 的实际操作。
+> - 📄 **示例输出论文** — [`sample_paper.pdf`](../../assets/sample_paper.pdf) 是 ARI 实际运行生成的论文，包含图表、引用和可复现性验证报告。
 
 ---
 
@@ -130,7 +130,7 @@ export ANTHROPIC_API_KEY=sk-ant-...  # 从 https://console.anthropic.com/ 获取
 
 你将看到 ARI 主界面：
 
-![ARI 主页](../../images/zh/dashboard_home.png)
+![ARI 主页](../../assets/images/zh/dashboard_home.png)
 
 左侧边栏提供了所有仪表盘页面的导航：
 
@@ -153,7 +153,7 @@ export ANTHROPIC_API_KEY=sk-ant-...  # 从 https://console.anthropic.com/ 获取
 
 点击侧边栏中的 **"New Experiment"**（或主页上的蓝色 **"New Experiment"** 按钮）。
 
-![实验向导](../../images/zh/dashboard_wizard.png)
+![实验向导](../../assets/images/zh/dashboard_wizard.png)
 
 向导将引导你完成 4 个步骤：
 
@@ -218,7 +218,7 @@ AI 会提出澄清性问题，并自动生成实验文件。
 
 启动后，**Monitor** 页面会显示实时进度：
 
-![监控页面](../../images/zh/dashboard_monitor.png)
+![监控页面](../../assets/images/zh/dashboard_monitor.png)
 
 - **管线阶段** 显示在顶部（Idea → BFTS → Paper → Review）
 - **节点树** 以颜色编码显示实验进度
@@ -228,7 +228,7 @@ AI 会提出澄清性问题，并自动生成实验文件。
 
 点击侧边栏中的 **Tree** 查看完整的交互式实验树：
 
-![树视图](../../images/zh/dashboard_tree.png)
+![树视图](../../assets/images/zh/dashboard_tree.png)
 
 - **绿色** 节点 = 成功
 - **红色** 节点 = 失败
@@ -250,7 +250,7 @@ AI 会提出澄清性问题，并自动生成实验文件。
 
 实验完成后，前往 **Results** 页面：
 
-![结果页面](../../images/zh/dashboard_results.png)
+![结果页面](../../assets/images/zh/dashboard_results.png)
 
 在这里你可以：
 
@@ -279,7 +279,7 @@ AI 会提出澄清性问题，并自动生成实验文件。
 
 打开 **Settings** 页面自定义 ARI：
 
-![设置页面](../../images/zh/dashboard_settings.png)
+![设置页面](../../assets/images/zh/dashboard_settings.png)
 
 ### 仪表盘语言
 
@@ -325,13 +325,13 @@ AI 会提出澄清性问题，并自动生成实验文件。
 
 ### Ideas 页面
 
-![Ideas 页面](../../images/zh/dashboard_ideas.png)
+![Ideas 页面](../../assets/images/zh/dashboard_ideas.png)
 
 查看 VirSci 生成的研究假说，包含新颖性和可行性评分。可查看实验配置、研究目标和 BFTS 节点评估。
 
 ### Workflow 编辑器
 
-![Workflow 页面](../../images/zh/dashboard_workflow.png)
+![Workflow 页面](../../assets/images/zh/dashboard_workflow.png)
 
 BFTS 后管线的 React Flow 可视化 DAG 编辑器。可拖动节点、绘制连线、启用/禁用阶段并分配技能。泳道布局区分 BFTS 和 Paper 阶段。更改将保存为 `workflow.yaml`。
 
