@@ -31,6 +31,9 @@ snapshots.
 
 - [Philosophy](concepts/PHILOSOPHY.md)
 - [Architecture](concepts/architecture.md)
+- [BFTS algorithm](concepts/bfts.md)
+- [Memory architecture](concepts/memory.md)
+- [Publication lifecycle](concepts/publication-lifecycle.md)
 
 ### Guides — *How-to*
 
@@ -83,6 +86,9 @@ release gate checks it against the tree (`docs/about/release_policy.md` §4).
 | getting-started/quickstart | [✓](getting-started/quickstart.md) | [✓](ja/getting-started/quickstart.md) | [✓](zh/getting-started/quickstart.md) |
 | concepts/PHILOSOPHY | [✓](concepts/PHILOSOPHY.md) | [✓](ja/concepts/PHILOSOPHY.md) | [✓](zh/concepts/PHILOSOPHY.md) |
 | concepts/architecture | [✓](concepts/architecture.md) | [✓](ja/concepts/architecture.md) | [✓](zh/concepts/architecture.md) |
+| concepts/bfts | [✓](concepts/bfts.md) | [✓](ja/concepts/bfts.md) | [✓](zh/concepts/bfts.md) |
+| concepts/memory | [✓](concepts/memory.md) | [✓](ja/concepts/memory.md) | [✓](zh/concepts/memory.md) |
+| concepts/publication-lifecycle | [✓](concepts/publication-lifecycle.md) | [✓](ja/concepts/publication-lifecycle.md) | [✓](zh/concepts/publication-lifecycle.md) |
 | guides/hpc_setup | [✓](guides/hpc_setup.md) | [✓](ja/guides/hpc_setup.md) | [✓](zh/guides/hpc_setup.md) |
 | guides/extension_guide | [✓](guides/extension_guide.md) | [✓](ja/guides/extension_guide.md) | [✓](zh/guides/extension_guide.md) |
 | guides/experiment_file | [✓](guides/experiment_file.md) | [✓](ja/guides/experiment_file.md) | [✓](zh/guides/experiment_file.md) |

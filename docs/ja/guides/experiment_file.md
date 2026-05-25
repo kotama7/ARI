@@ -134,7 +134,7 @@ LLM ジャッジが `continue` / `switch_to_idea` / `fanout` /
 `experiment.md` 自体への新フィールドを必要としません。代わりに
 チェックポイントに artefact が蓄積されます（`ors_rubric.json`、
 `ors_grade.json`、`repro_sandbox/`）。詳細は
-`docs/concepts/architecture.md#publication-lifecycle-v070`。
+`docs/concepts/publication-lifecycle.md#publication-lifecycle-v070`。
 
 ## `experiment.md` の配置場所
 
@@ -149,5 +149,5 @@ ARI は次の順序で探します:
 ## 関連
 
 - `docs/concepts/architecture.md#plan--venue-contract-v070` — 完全な 2 ファイル契約
-- `docs/concepts/architecture.md#publication-lifecycle-v070` — `experiment.md` 周辺の出力
+- `docs/concepts/publication-lifecycle.md#publication-lifecycle-v070` — `experiment.md` 周辺の出力
 - `docs/reference/skills.md` — どのスキルが `experiment.md` のどのセクションを消費するか

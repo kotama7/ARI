@@ -139,7 +139,7 @@ The reproducibility flow (`ari-skill-replicate` + `ari-skill-paper-re`)
 does not require new fields in `experiment.md` itself — instead, the
 checkpoint accumulates artefacts beside it (`ors_rubric.json`,
 `ors_grade.json`, `repro_sandbox/`).  See
-`docs/concepts/architecture.md#publication-lifecycle-v070` for the full
+`docs/concepts/publication-lifecycle.md#publication-lifecycle-v070` for the full
 artefact list.
 
 ## Where to put `experiment.md`
@@ -157,7 +157,7 @@ refactor scoped every input file to the checkpoint.
 
 - `docs/concepts/architecture.md#plan--venue-contract-v070` — full two-file
   contract.
-- `docs/concepts/architecture.md#publication-lifecycle-v070` — what ARI emits
+- `docs/concepts/publication-lifecycle.md#publication-lifecycle-v070` — what ARI emits
   alongside `experiment.md`.
 - `docs/reference/skills.md` — which skills consume which experiment-file
   sections.
