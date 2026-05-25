@@ -1,3 +1,20 @@
+---
+sources:
+  - path: ari-skill-hpc/src/server.py
+    role: implementation
+  - path: ari-skill-hpc/mcp.json
+    role: config
+  - path: ari-skill-coding/src/server.py
+    role: implementation
+  - path: ari-skill-coding/mcp.json
+    role: config
+  - path: ari-skill-paper-re/src/server.py
+    role: implementation
+  - path: ari-skill-paper-re/mcp.json
+    role: config
+last_verified: 2026-05-25
+---
+
 # MCP Skills Reference
 
 Skills are MCP servers that provide tools to the ARI agent. Tools are deterministic where possible; LLM-using tools are explicitly annotated. **14 skills total** (13 default, 1 additional) — `ari-skill-replicate` was added in v0.7.0 for the PaperBench-format reproducibility flow.
