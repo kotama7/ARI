@@ -537,6 +537,8 @@ export ARI_BACKEND=ollama ARI_MODEL=qwen3:8b
 
 ## Next Steps
 
+- **Understand what just happened:** [Your first experiment, end to end](first_experiment_tutorial.md) walks the full goal → search → paper → reproduce pipeline and explains why each stage exists.
+- **Hit a snag?** The [FAQ](faq.md) covers the common first-run questions, and the [Glossary](../reference/glossary.md) defines every recurring term.
 - **CLI usage:** See [CLI Reference](../reference/cli_reference.md) for command-line operations
 - **Experiment files:** See [Writing Experiment Files](../guides/experiment_file.md) for advanced syntax
 - **HPC clusters:** See [HPC Setup Guide](../guides/hpc_setup.md) for SLURM configuration

@@ -537,6 +537,8 @@ export ARI_BACKEND=ollama ARI_MODEL=qwen3:8b
 
 ## 下一步
 
+- **理解刚刚发生了什么：** [你的第一个实验：端到端](first_experiment_tutorial.md) 走完从目标 → 搜索 → 论文 → 复现的完整流水线，并解释每个阶段为何存在。
+- **遇到问题？** [FAQ](faq.md) 涵盖首次运行的常见问题，[术语表](../reference/glossary.md) 定义所有高频术语。
 - **CLI 用法：** 参阅 [CLI 参考](../reference/cli_reference.md) 了解命令行操作
 - **实验文件：** 参阅 [编写实验文件](../guides/experiment_file.md) 了解高级语法
 - **HPC 集群：** 参阅 [HPC 设置指南](../guides/hpc_setup.md) 了解 SLURM 配置

@@ -25,7 +25,10 @@ snapshots.
 
 ### Getting started — *Tutorial*
 
+- [Overview & learning path](getting-started/index.md)
 - [Quickstart](getting-started/quickstart.md)
+- [Your first experiment, end to end](getting-started/first_experiment_tutorial.md)
+- [FAQ](getting-started/faq.md)
 
 ### Concepts — *Explanation*
 
@@ -67,6 +70,7 @@ snapshots.
 - [Execution profile](reference/execution_profile.md)
 - [Rubric schema](reference/rubric_schema.md)
 - [PaperBench API](reference/api_paperbench.md)
+- [Glossary](reference/glossary.md)
 
 ### About
 
@@ -83,7 +87,10 @@ release gate checks it against the tree (`docs/about/release_policy.md` §4).
 
 | Document | en | ja | zh |
 |---|:--:|:--:|:--:|
+| getting-started/index | [✓](getting-started/index.md) | [✓](ja/getting-started/index.md) | [✓](zh/getting-started/index.md) |
 | getting-started/quickstart | [✓](getting-started/quickstart.md) | [✓](ja/getting-started/quickstart.md) | [✓](zh/getting-started/quickstart.md) |
+| getting-started/first_experiment_tutorial | [✓](getting-started/first_experiment_tutorial.md) | [✓](ja/getting-started/first_experiment_tutorial.md) | [✓](zh/getting-started/first_experiment_tutorial.md) |
+| getting-started/faq | [✓](getting-started/faq.md) | [✓](ja/getting-started/faq.md) | [✓](zh/getting-started/faq.md) |
 | concepts/PHILOSOPHY | [✓](concepts/PHILOSOPHY.md) | [✓](ja/concepts/PHILOSOPHY.md) | [✓](zh/concepts/PHILOSOPHY.md) |
 | concepts/architecture | [✓](concepts/architecture.md) | [✓](ja/concepts/architecture.md) | [✓](zh/concepts/architecture.md) |
 | concepts/bfts | [✓](concepts/bfts.md) | [✓](ja/concepts/bfts.md) | [✓](zh/concepts/bfts.md) |
@@ -113,6 +120,7 @@ release gate checks it against the tree (`docs/about/release_policy.md` §4).
 | reference/execution_profile | [✓](reference/execution_profile.md) | [✓](ja/reference/execution_profile.md) | [✓](zh/reference/execution_profile.md) |
 | reference/rubric_schema | [✓](reference/rubric_schema.md) | [✓](ja/reference/rubric_schema.md) | [✓](zh/reference/rubric_schema.md) |
 | reference/api_paperbench | [✓](reference/api_paperbench.md) | [✓](ja/reference/api_paperbench.md) | [✓](zh/reference/api_paperbench.md) |
+| reference/glossary | [✓](reference/glossary.md) | [✓](ja/reference/glossary.md) | [✓](zh/reference/glossary.md) |
 | about/release_policy | [✓](about/release_policy.md) | [✓](ja/about/release_policy.md) | [✓](zh/about/release_policy.md) |
 | _archive/refactor_audit | [✓](_archive/refactor_audit.md) | [✓](ja/_archive/refactor_audit.md) | [✓](zh/_archive/refactor_audit.md) |
 

@@ -537,6 +537,8 @@ export ARI_BACKEND=ollama ARI_MODEL=qwen3:8b
 
 ## 次のステップ
 
+- **今起きたことを理解する:** [はじめての実験を最後まで](first_experiment_tutorial.md) は、ゴール → 探索 → 論文 → 再現 のパイプライン全体を辿り、各ステージが存在する理由を説明します。
+- **つまずいたら:** [FAQ](faq.md) が初回実行でよくある質問を、[用語集](../reference/glossary.md) が頻出用語を解説します。
 - **CLI の使い方:** コマンドライン操作については [CLI リファレンス](../reference/cli_reference.md) を参照
 - **実験ファイル:** 高度な記法については [実験ファイルの書き方](../guides/experiment_file.md) を参照
 - **HPC クラスター:** SLURM の設定については [HPC セットアップガイド](../guides/hpc_setup.md) を参照
