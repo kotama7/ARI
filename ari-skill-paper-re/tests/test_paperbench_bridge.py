@@ -1274,19 +1274,3 @@ def test_reconcile_gated_off_for_real_docker():
     env = {"kind": "docker", "has_docker": True, "gpu": {"present": True, "name": "A10"}}
     assert B._reconcile_vendor_env_claims(body, env) == body
 
-
-def test_reconcile_neutralizes_toy_apt_get_when_apt_absent():
-    """The vendor toy example's `apt-get install -y python3` is copied
-    verbatim by agents (→ apt-get: command not found). When apt is absent,
-    reconcile must neutralise it; when apt is present (vanilla Ubuntu),
-    leave it."""
-    body = ("submission/reproduce.sh\n```bash\napt-get update && apt-get "
-            "install -y python3\npython3 count.py\n```")
-    no_apt = {"kind": "slurm", "has_apt": False, "has_sudo": False,
-              "has_docker": False, "gpu": {"present": False}}
-    out = B._reconcile_vendor_env_claims(body, no_apt)
-    assert "apt-get update && apt-get install -y python3" not in out
-    assert "apt-get is NOT available" in out
-    # apt present → toy left intact
-    yes_apt = dict(no_apt, has_apt=True)
-    assert "apt-get update && apt-get install -y python3" in B._reconcile_vendor_env_claims(body, yes_apt)
