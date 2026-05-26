@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # Troubleshooting
@@ -252,3 +252,7 @@ connect.
 - `docs/reference/file_formats.md` — what every file in a
   checkpoint means.
 - `docs/_archive/refactor_audit.md` — known migration debt.
+
+## See also
+
+[FAQ](../getting-started/faq.md) · [Quickstart](../getting-started/quickstart.md) · [PaperBench troubleshooting](paperbench/paperbench_troubleshooting.md)

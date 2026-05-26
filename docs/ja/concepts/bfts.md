@@ -88,3 +88,7 @@ def bfts(experiment, config):
 | *(カスタム)* | 未知のラベルは `other` に丸められ、`raw_label` が原文を保持する |
 
 ---
+
+## 関連
+
+[アーキテクチャ](architecture.md) · [メモリアーキテクチャ](memory.md) · [設定 → BFTS の評価層](../reference/configuration.md#bfts-evaluation-layers-configurable) · [用語集](../reference/glossary.md)

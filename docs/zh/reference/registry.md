@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: scripts/registry
     role: doc
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # ari-registry — v0.7.0+
@@ -95,3 +95,7 @@ ari registry token list             # 列出谁有访问权限
 ## 永久性
 
 即便 registry 停止，**bundle 仍可验证**，因为 SHA-256 digest 已经烧录进论文的 `\codedigest{...}` 宏。把 bundle 迁到任意其它主机（S3、Zenodo、gh release）后，`ari clone file://...` 仍能依据 manifest 完成校验。
+
+## 另请参阅
+
+[出版生命周期](../concepts/publication-lifecycle.md) · [配置](configuration.md) · [PaperBench API](api_paperbench.md)

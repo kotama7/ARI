@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # 故障排查
@@ -236,3 +236,7 @@ ari viz --port 8000
   决策（v0.7+）。
 - `docs/reference/file_formats.md` —— 检查点中每个文件的含义。
 - `docs/_archive/refactor_audit.md` —— 已知的迁移债务。
+
+## 另请参阅
+
+[FAQ](../getting-started/faq.md) · [快速入门](../getting-started/quickstart.md) · [PaperBench 故障排查](paperbench/paperbench_troubleshooting.md)

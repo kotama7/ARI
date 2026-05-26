@@ -51,3 +51,7 @@ flowchart LR
 **可移植性**：每个检查点都携带 `memory_backup.jsonl.gz` 快照，在 `ari resume` 时若目标 Letta 为空将自动恢复 ── 让 `cp -r checkpoints/foo /elsewhere/` + `ari resume` 持续可用。
 
 ---
+
+## 另请参阅
+
+[架构](architecture.md) · [BFTS 算法](bfts.md) · [术语表](../reference/glossary.md)

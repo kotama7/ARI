@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # トラブルシューティング
@@ -243,3 +243,7 @@ ari viz --port 8000
 - `$ARI_CHECKPOINT_DIR/lineage_decisions.jsonl` — 停滞判断の記録 (v0.7+)。
 - `docs/reference/file_formats.md` — チェックポイント内の各ファイルの意味。
 - `docs/_archive/refactor_audit.md` — 既知のマイグレーション負債。
+
+## 関連
+
+[FAQ](../getting-started/faq.md) · [クイックスタート](../getting-started/quickstart.md) · [PaperBench トラブルシューティング](paperbench/paperbench_troubleshooting.md)

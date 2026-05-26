@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: scripts/registry
     role: doc
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # ari-registry — v0.7.0+
@@ -132,3 +132,7 @@ If the registry stops, **bundles can still be verified** because the
 SHA-256 digest is baked into the paper's `\codedigest{...}` macro. Move
 the bundle to any other host (S3, Zenodo, gh release) and `ari clone
 file://...` against the manifest still validates correctly.
+
+## See also
+
+[Publication lifecycle](../concepts/publication-lifecycle.md) · [Configuration](configuration.md) · [PaperBench API](api_paperbench.md)

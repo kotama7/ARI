@@ -89,3 +89,7 @@ Key properties:
 | *(custom)* | Unknown labels fall back to `other`; `raw_label` preserves the original string |
 
 ---
+
+## See also
+
+[Architecture](architecture.md) · [Memory architecture](memory.md) · [Configuration → BFTS Evaluation Layers](../reference/configuration.md#bfts-evaluation-layers-configurable) · [Glossary](../reference/glossary.md)

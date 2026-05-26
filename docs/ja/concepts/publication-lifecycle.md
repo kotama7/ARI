@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-skill-paper
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # 公開ライフサイクル (v0.7.0)
@@ -54,3 +54,7 @@ full_paper.tex に \codeavailability{} \codedigest{} \coderef{}
 - **Git shim** (`ari/agent/shims/git.sh`) — 再現性サンドボックスに `PATH=<sandbox>/.shims:<orig_path>` で組み込まれます。論文の `code_availability_ref` に一致する URL の `git clone` だけをインターセプトし、それ以外は本物の git に素通し。すべての clone 試行を `<sandbox>/repro_clone_log.jsonl` に記録します。`ARI_REPRO_CLONE_POLICY=passthrough|deny|warn` で動作切替。
 
 ---
+
+## 関連
+
+[アーキテクチャ](architecture.md) · [レジストリ](../reference/registry.md) · [ルーブリックスキーマ](../reference/rubric_schema.md) · [PaperBench クイックスタート](../guides/paperbench/paperbench_quickstart.md)

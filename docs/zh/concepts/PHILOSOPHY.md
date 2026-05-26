@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-skill-memory
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # ARI 设计哲学
@@ -140,3 +140,7 @@ ARI 明确不以以下为设计目标：
 ## 推论：可复现性是第一性原则
 
 ARI 的智能体系统提示包含一条通用科学原则：*确保你的实验是可复现的*。这不是领域规则 — 它同样适用于化学、HPC 和机器学习。智能体自主决定需要捕获什么信息。论文审稿人随后独立评估论文是否可复现，从而形成闭环，不依赖任何硬编码的标准。
+
+## 另请参阅
+
+[架构](architecture.md) · [BFTS 算法](bfts.md)

@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-skill-paper
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # Publication Lifecycle (v0.7.0)
@@ -81,3 +81,7 @@ meta.json}`. Visibility is monotone: `staged` → `unlisted` / `public`
   `ARI_REPRO_CLONE_POLICY=passthrough|deny|warn`.
 
 ---
+
+## See also
+
+[Architecture](architecture.md) · [Registry](../reference/registry.md) · [Rubric schema](../reference/rubric_schema.md) · [PaperBench quickstart](../guides/paperbench/paperbench_quickstart.md)

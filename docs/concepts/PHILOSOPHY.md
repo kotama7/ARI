@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-skill-memory
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # ARI Design Philosophy
@@ -170,3 +170,7 @@ are bounded and documented.
 Operationally, Letta is a dependency you run locally (Docker / Singularity
 / pip) or on Letta Cloud. See `docs/reference/configuration.md` and the
 `ari memory` CLI for setup.
+
+## See also
+
+[Architecture](architecture.md) · [BFTS algorithm](bfts.md)

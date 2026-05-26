@@ -87,3 +87,7 @@ def bfts(experiment, config):
 | *(自定义)* | 未知标签会归并为 `other`，`raw_label` 保留原始字符串 |
 
 ---
+
+## 另请参阅
+
+[架构](architecture.md) · [记忆架构](memory.md) · [配置 → BFTS 评估层](../reference/configuration.md#bfts-evaluation-layers-configurable) · [术语表](../reference/glossary.md)

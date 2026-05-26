@@ -77,3 +77,7 @@ siblings; Letta self-edit is disabled by default for the same reason.
 `cp -r checkpoints/foo /elsewhere/` + `ari resume` working.
 
 ---
+
+## See also
+
+[Architecture](architecture.md) · [BFTS algorithm](bfts.md) · [Glossary](../reference/glossary.md)

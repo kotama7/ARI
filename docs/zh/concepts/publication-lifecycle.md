@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-skill-paper
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # 发布生命周期 (v0.7.0)
@@ -54,3 +54,7 @@ full_paper.tex 注入 \codeavailability{} \codedigest{} \coderef{}
 - **Git shim** (`ari/agent/shims/git.sh`) — 通过 `PATH=<sandbox>/.shims:<orig_path>` 接入可复现性沙箱。仅拦截与论文 `code_availability_ref` 匹配的 `git clone` URL；其余命令透传给真实 git。所有 clone 尝试记录到 `<sandbox>/repro_clone_log.jsonl`。可通过 `ARI_REPRO_CLONE_POLICY=passthrough|deny|warn` 切换行为。
 
 ---
+
+## 另请参阅
+
+[架构](architecture.md) · [注册表](../reference/registry.md) · [评分准则模式](../reference/rubric_schema.md) · [PaperBench 快速开始](../guides/paperbench/paperbench_quickstart.md)

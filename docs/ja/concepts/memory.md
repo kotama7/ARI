@@ -52,3 +52,7 @@ flowchart LR
 **ポータビリティ**: 各チェックポイントは `memory_backup.jsonl.gz` スナップショットを携行し、`ari resume` 時に対象 Letta が空であれば自動 restore されます。これにより `cp -r checkpoints/foo /elsewhere/` + `ari resume` が動き続けます。
 
 ---
+
+## 関連
+
+[アーキテクチャ](architecture.md) · [BFTS アルゴリズム](bfts.md) · [用語集](../reference/glossary.md)

@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: scripts/registry
     role: doc
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # ari-registry — v0.7.0+
@@ -95,3 +95,7 @@ ari registry token list             # 誰がアクセス可能か一覧
 ## 恒久性
 
 レジストリが停止しても、**バンドルの検証は継続可能** です。SHA-256 digest が論文の `\codedigest{...}` マクロに焼き付けられているからです。バンドルを別ホスト（S3、Zenodo、gh release など）に移しても、`ari clone file://...` で manifest と照合すれば正しく検証できます。
+
+## 関連
+
+[出版ライフサイクル](../concepts/publication-lifecycle.md) · [設定](configuration.md) · [PaperBench API](api_paperbench.md)
