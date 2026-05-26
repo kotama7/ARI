@@ -75,7 +75,9 @@ snapshots.
 
 ### About
 
+- [About index](about/index.md)
 - [Release policy](about/release_policy.md)
+- [Compatibility & support](about/compatibility.md)
 
 ### Archive
 
@@ -123,7 +125,9 @@ release gate checks it against the tree (`docs/about/release_policy.md` §4).
 | reference/rubric_schema | [✓](reference/rubric_schema.md) | [✓](ja/reference/rubric_schema.md) | [✓](zh/reference/rubric_schema.md) |
 | reference/api_paperbench | [✓](reference/api_paperbench.md) | [✓](ja/reference/api_paperbench.md) | [✓](zh/reference/api_paperbench.md) |
 | reference/glossary | [✓](reference/glossary.md) | [✓](ja/reference/glossary.md) | [✓](zh/reference/glossary.md) |
+| about/index | [✓](about/index.md) | [✓](ja/about/index.md) | [✓](zh/about/index.md) |
 | about/release_policy | [✓](about/release_policy.md) | [✓](ja/about/release_policy.md) | [✓](zh/about/release_policy.md) |
+| about/compatibility | [✓](about/compatibility.md) | [✓](ja/about/compatibility.md) | [✓](zh/about/compatibility.md) |
 | _archive/refactor_audit | [✓](_archive/refactor_audit.md) | [✓](ja/_archive/refactor_audit.md) | [✓](zh/_archive/refactor_audit.md) |
 
 ## Source traceability
