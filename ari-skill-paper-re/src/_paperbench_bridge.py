@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
 import tempfile
 import uuid
@@ -642,6 +643,180 @@ def _build_truthful_env_block(env: dict) -> str:
     return "\n".join(lines)
 
 
+async def _run_on_computer(computer, cmd: str):
+    """Run ``cmd`` INSIDE the agent's actual execution environment via the
+    vendor ComputerInterface (not the solver host). Returns
+    ``(exit_code|None, output_str)``; (None, "") on failure."""
+    try:
+        r = await computer.send_shell_command(cmd)
+        return r.exit_code, r.unicode_output_best_effort
+    except Exception as e:  # noqa: BLE001
+        log.debug("computer probe failed (%s): %s", cmd[:40], e)
+        return None, ""
+
+
+async def _probe_gpu_on_computer(computer) -> dict:
+    """Multi-stage GPU detection ON the computer. nvidia-smi may be absent
+    from PATH (needs ``module load`` on some clusters) yet a GPU still be
+    present — so a single failed nvidia-smi must NOT be read as 'no GPU'
+    (that would wrongly tell the agent CPU-only and suppress CUDA). Fall
+    back through device files / lspci / SLURM allocation env."""
+    g = {"present": False, "name": "", "compute_cap": "", "sm": "",
+         "count": "", "mem": "", "via": ""}
+    # Stage 1: nvidia-smi (name + compute capability + count + memory)
+    rc, out = await _run_on_computer(
+        computer,
+        "nvidia-smi --query-gpu=name,compute_cap,count,memory.total "
+        "--format=csv,noheader 2>/dev/null")
+    if rc == 0 and out.strip():
+        p = [x.strip() for x in out.strip().splitlines()[0].split(",")]
+        if p and p[0]:
+            g.update(present=True, via="nvidia-smi", name=p[0])
+            if len(p) > 1 and p[1]:
+                g["compute_cap"] = p[1]
+                g["sm"] = p[1].replace(".", "")
+            if len(p) > 2:
+                g["count"] = p[2]
+            if len(p) > 3:
+                g["mem"] = p[3]
+            return g
+    # Stage 2: NVIDIA device files (GPU present even if nvidia-smi absent)
+    rc, out = await _run_on_computer(
+        computer, "ls /dev/nvidia0 >/dev/null 2>&1 && echo PRESENT")
+    if "PRESENT" in out:
+        g.update(present=True, via="/dev/nvidia* (nvidia-smi not on PATH — "
+                 "load the CUDA module, then `nvidia-smi --query-gpu=compute_cap` "
+                 "to get the -arch=sm_XX value)")
+        return g
+    # Stage 3: lspci
+    rc, out = await _run_on_computer(
+        computer, "lspci 2>/dev/null | grep -i nvidia | head -1")
+    if out.strip():
+        g.update(present=True, via="lspci", name=out.strip())
+        return g
+    # Stage 4: SLURM GPU allocation env
+    rc, out = await _run_on_computer(
+        computer,
+        'echo "CVD=${CUDA_VISIBLE_DEVICES}|GRES=${SLURM_JOB_GRES}|'
+        'ORD=${GPU_DEVICE_ORDINAL}"')
+    cvd = ""
+    m = re.search(r"CVD=([^|]*)", out or "")
+    if m:
+        cvd = m.group(1).strip()
+    if (cvd and cvd not in ("", "NoDevFiles")) or "gpu" in (out or "").lower():
+        g.update(present=True, via="SLURM allocation env (CUDA_VISIBLE_DEVICES)")
+    return g
+
+
+async def _probe_env_on_computer(computer):
+    """Detect the runtime env INSIDE the computer (container/node), not the
+    solver host. Correct for docker/apptainer/slurm sandboxes where the
+    solver process and the agent's computer differ. Returns an env dict in
+    the same shape as :func:`_detect_runtime_env` plus a ``gpu`` sub-dict,
+    or ``None`` on failure (caller falls back to host-side detection)."""
+    if computer is None:
+        return None
+    rc, _ = await _run_on_computer(computer, "true")
+    if rc is None:
+        return None  # computer not reachable → fall back to host detection
+    import re as _re  # noqa: F401  (re used below; ensure available)
+    _, apt = await _run_on_computer(computer, "command -v apt-get >/dev/null 2>&1 && echo Y")
+    rc_sudo, _ = await _run_on_computer(computer, "sudo -n true 2>/dev/null")
+    _, dk = await _run_on_computer(computer, "command -v docker >/dev/null 2>&1 && echo Y")
+    _, mod = await _run_on_computer(
+        computer, 'bash -lc "command -v module >/dev/null 2>&1 && echo HASMOD; '
+        'printf MP=%s \\"$MODULEPATH\\"" 2>/dev/null')
+    _, slurm = await _run_on_computer(
+        computer, 'echo "JID=${SLURM_JOB_ID}|PART=${SLURM_JOB_PARTITION}"')
+    _, dockerenv = await _run_on_computer(computer, "test -f /.dockerenv && echo DOCKER")
+    part = ""
+    m = re.search(r"PART=([^|]*)", slurm or "")
+    if m:
+        part = m.group(1).strip()
+    jid = ""
+    m = re.search(r"JID=([^|]*)", slurm or "")
+    if m:
+        jid = m.group(1).strip()
+    mp = ""
+    m = re.search(r"MP=(\S+)", mod or "")
+    if m and m.group(1) not in ("", "MP="):
+        mp = m.group(1).strip()
+    if jid or part:
+        kind = "slurm"
+    elif "DOCKER" in (dockerenv or ""):
+        kind = "docker"
+    else:
+        kind = "local"
+    return {
+        "kind": kind,
+        "has_apt": "Y" in (apt or ""),
+        "has_sudo": rc_sudo == 0,
+        "has_module": "HASMOD" in (mod or "") or bool(mp),
+        "has_docker": "Y" in (dk or ""),
+        "module_path": mp or None,
+        "slurm_partition": part or None,
+        "gpu": await _probe_gpu_on_computer(computer),
+        "_via": "computer",
+    }
+
+
+def _reconcile_vendor_env_claims(out: str, env: dict) -> str:
+    """Rewrite the STATIC vendor instructions.txt body claims (fresh Ubuntu
+    Docker container / NVIDIA A10 / 'container toolkit already installed' /
+    'Docker has been installed') so they match the ACTUAL runtime env. Only
+    applied when the real env is NOT a Docker container (kind != docker) —
+    in vanilla PaperBench Docker grading the vendor body is true and is left
+    untouched. Each substitution no-ops if the anchor text is absent (robust
+    to vendor wording drift)."""
+    if env.get("kind") == "docker":
+        return out
+    gpu = env.get("gpu") or {}
+    if gpu.get("present") and gpu.get("name"):
+        if gpu.get("sm"):
+            gpu_phrase = (
+                f"{gpu['name']} (compute capability {gpu.get('compute_cap','?')} "
+                f"→ build with `nvcc -arch=sm_{gpu['sm']}`; see ADDITIONAL "
+                f"NOTES). The CUDA toolkit is NOT pre-installed — `module "
+                f"load` it (see the module catalog below)")
+        else:
+            gpu_phrase = (
+                f"{gpu['name']} (detected via {gpu.get('via','probe')}; run "
+                f"`nvidia-smi --query-gpu=compute_cap` after loading the CUDA "
+                f"module to get the -arch value). The CUDA toolkit is NOT "
+                f"pre-installed — `module load` it")
+    else:
+        gpu_phrase = ("the GPU described in ADDITIONAL NOTES. The CUDA toolkit "
+                      "is NOT pre-installed — `module load` it if a GPU is present")
+    subs = [
+        (r"copy your\s+submission to a fresh Ubuntu 24\.04 LTS Docker container "
+         r"and run\s+`bash reproduce\.sh`\s+from the submission directory",
+         "run `bash reproduce.sh` in a FRESH SHELL on the same cluster (NOT a "
+         "Docker container; see ADDITIONAL NOTES for the real environment — "
+         "no apt-get, module system enabled), from the submission directory"),
+        (r"The container will have access to an NVIDIA A10 GPU, with the NVIDIA\s+"
+         r"container toolkit already installed\.",
+         f"Your environment provides {gpu_phrase}."),
+        (r"\s*Docker has been installed in your environment, should you wish to "
+         r"use it\.",
+         "" if not env.get("has_docker") else
+         " Docker has been installed in your environment, should you wish to use it."),
+    ]
+    for pat, repl in subs:
+        out = re.sub(pat, repl, out)
+    # Enrich the ADDITIONAL NOTES Compute line with compute-capability / arch.
+    if gpu.get("present") and gpu.get("sm"):
+        out = re.sub(
+            r"- \*\*Compute\*\*:[^\n]*",
+            (f"- **Compute**: {gpu['name']} ×{gpu.get('count','?')}, "
+             f"{gpu.get('mem','?')}, compute capability {gpu.get('compute_cap','?')} "
+             f"→ compile with `nvcc -arch=sm_{gpu['sm']}` (detected via "
+             f"{gpu.get('via','nvidia-smi')}). The CUDA toolkit/nvcc is NOT "
+             f"pre-installed — `module load` the CUDA module shown in the "
+             f"catalog below."),
+            out, count=1)
+    return out
+
+
 def _install_env_assumption_patch() -> None:
     """Monkey-patch vendor ``get_instructions`` to substitute vendor's
     hardcoded ``- You have root access in your environment.`` line with
@@ -667,18 +842,33 @@ def _install_env_assumption_patch() -> None:
 
     async def patched(*args, **kwargs):  # noqa: ANN001, ANN002, ANN003
         out = await original(*args, **kwargs)
-        # Re-detect at call time (env state could change between import and
-        # rollout, e.g., SLURM_JOB_ID materialises only inside sbatch).
-        env = _detect_runtime_env()
+        # Detect the env INSIDE the agent's computer (correct for
+        # docker/apptainer/slurm). Fall back to host-side detection if the
+        # computer can't be probed (preserves prior local-sandbox behaviour).
+        computer = args[0] if args else kwargs.get("computer")
+        env = None
+        if computer is not None:
+            try:
+                env = await _probe_env_on_computer(computer)
+            except Exception as e:  # noqa: BLE001
+                log.warning("vendor patch: computer-side env probe failed "
+                            "(%s); falling back to host detection", e)
+        if env is None:
+            env = _detect_runtime_env()
         replacement = _build_truthful_env_block(env)
         if replacement != _VENDOR_ROOT_ACCESS_LINE and _VENDOR_ROOT_ACCESS_LINE in out:
             out = out.replace(_VENDOR_ROOT_ACCESS_LINE, replacement)
-            log.info(
-                "vendor patch: substituted env-assumption line with %d-line "
-                "truthful block (kind=%s has_module=%s has_apt=%s)",
-                replacement.count("\n") + 1,
-                env["kind"], env["has_module"], env["has_apt"],
-            )
+        # Reconcile the static vendor body env claims (Docker/A10/toolkit/
+        # 7-day) with the detected truth so the agent isn't fed a
+        # contradictory environment description.
+        out = _reconcile_vendor_env_claims(out, env)
+        log.info(
+            "vendor patch: env-truth applied (via=%s kind=%s has_module=%s "
+            "has_apt=%s has_sudo=%s gpu=%s)",
+            env.get("_via", "host"), env.get("kind"), env.get("has_module"),
+            env.get("has_apt"), env.get("has_sudo"),
+            (env.get("gpu") or {}).get("name") or (env.get("gpu") or {}).get("present"),
+        )
         return out
 
     patched._ari_env_patched = True  # type: ignore[attr-defined]

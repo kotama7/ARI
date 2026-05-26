@@ -1183,3 +1183,93 @@ def test_judge_submission_rejects_code_only_with_paper_audit_mode():
             judge_model="test/m",
             paper_audit_mode=True, code_only=True,
         ))
+
+
+# ─── dynamic computer-side env detection (node→GPU→module auto-probe) ───────
+
+class _FakeComputer:
+    """Minimal ComputerInterface stand-in: maps shell commands to canned
+    (exit_code, output) so the async probe pipeline can be tested without a
+    real cluster."""
+    def __init__(self, responses):
+        self._responses = responses  # list of (substr, exit_code, output)
+
+    async def send_shell_command(self, cmd):
+        # Pick the most specific (longest) matching substring so that
+        # e.g. "sudo -n true" wins over a bare "true" liveness probe.
+        best = None
+        for substr, rc, out in self._responses:
+            if substr in cmd and (best is None or len(substr) > len(best[0])):
+                best = (substr, rc, out)
+        if best is not None:
+            return _FakeExecResult(best[1], best[2])
+        return _FakeExecResult(127, "")
+
+
+class _FakeExecResult:
+    def __init__(self, rc, out):
+        self.exit_code = rc
+        self._out = out
+
+    @property
+    def unicode_output_best_effort(self):
+        return self._out
+
+
+def test_probe_gpu_stage1_nvidia_smi_with_compute_cap():
+    """Stage 1: nvidia-smi yields name + compute_cap → sm for -arch."""
+    import asyncio
+    comp = _FakeComputer([
+        ("nvidia-smi --query-gpu=name,compute_cap", 0, "NVIDIA L40S, 8.9, 1, 46068 MiB\n"),
+    ])
+    g = asyncio.run(B._probe_gpu_on_computer(comp))
+    assert g["present"] and g["name"] == "NVIDIA L40S"
+    assert g["compute_cap"] == "8.9" and g["sm"] == "89"
+    assert g["count"] == "1"
+
+
+def test_probe_gpu_fallback_when_nvidia_smi_absent():
+    """Regression: nvidia-smi missing must NOT be read as 'no GPU' (that
+    suppresses CUDA). Device-file fallback must report present."""
+    import asyncio
+    comp = _FakeComputer([
+        ("nvidia-smi", 127, ""),                  # not on PATH
+        ("ls /dev/nvidia0", 0, "PRESENT\n"),      # but device exists
+    ])
+    g = asyncio.run(B._probe_gpu_on_computer(comp))
+    assert g["present"] is True
+    assert "/dev/nvidia" in g["via"]  # surfaced via fallback, not false-negative
+
+
+def test_probe_env_on_computer_sudo_password_required_is_not_available():
+    """has_sudo must reflect USABILITY: `sudo -n true` failing (password
+    required) → has_sudo False, even though the binary exists."""
+    import asyncio
+    comp = _FakeComputer([
+        ("true", 0, ""),
+        ("command -v apt-get", 127, ""),          # no apt
+        ("sudo -n true", 1, "sudo: a password is required\n"),  # unusable
+        ("command -v docker", 127, ""),           # no docker
+        ("command -v module", 0, "HASMOD\nMP=/cloud_opt/x"),
+        ("SLURM_JOB_ID", 0, "JID=123|PART=ai-l40s"),
+        ("/.dockerenv", 1, ""),
+        ("nvidia-smi --query-gpu=name,compute_cap", 0, "NVIDIA L40S, 8.9, 1, 46068 MiB\n"),
+    ])
+    env = asyncio.run(B._probe_env_on_computer(comp))
+    assert env is not None
+    assert env["has_sudo"] is False          # password-required → not usable
+    assert env["has_apt"] is False
+    assert env["kind"] == "slurm"
+    assert env["has_module"] is True
+    assert env["gpu"]["sm"] == "89"
+
+
+def test_reconcile_gated_off_for_real_docker():
+    """In a real Docker container (kind=docker) the vendor body is true →
+    leave it untouched (vanilla PaperBench compatibility)."""
+    body = ("copy your submission to a fresh Ubuntu 24.04 LTS Docker container "
+            "and run `bash reproduce.sh` from the submission directory. The "
+            "container will have access to an NVIDIA A10 GPU, with the NVIDIA "
+            "container toolkit already installed.")
+    env = {"kind": "docker", "has_docker": True, "gpu": {"present": True, "name": "A10"}}
+    assert B._reconcile_vendor_env_claims(body, env) == body
