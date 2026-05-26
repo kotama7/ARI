@@ -129,9 +129,19 @@ release gate checks it against the tree (`docs/about/release_policy.md` §4).
 ## Source traceability
 
 Each live doc declares, in YAML front-matter, which source files it documents
-(`sources:` with repo-root-relative paths). Two gate scripts enforce this:
+(`sources:` with repo-root-relative paths) and a `last_verified` date. Three
+gate scripts enforce the contract:
 
 - `scripts/docs/check_doc_sources.py` — every declared source path exists.
 - `scripts/docs/check_doc_links.py` — every intra-docs link / HTML href resolves.
+- `scripts/docs/check_translation_freshness.py` — no `ja`/`zh` translation has
+  a `last_verified` older than its English source (catches *content* drift that
+  the existence-only parity table cannot). Warning-only by default; `--strict`
+  to fail.
+
+**When you change a doc:** update the English file *and* both translations in the
+same change, then set `last_verified` on all three to the edit date. If you
+cannot update a translation immediately, leave its `last_verified` behind so the
+freshness gate flags it as stale rather than letting the drift pass silently.
 
 See the source-mapping design for the schema and rollout.

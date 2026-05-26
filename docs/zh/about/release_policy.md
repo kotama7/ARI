@@ -6,7 +6,7 @@ sources:
     role: doc
   - path: ari-core/pyproject.toml
     role: config
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # 发布与版本策略
@@ -86,6 +86,13 @@ ARI 遵循 [语义化版本 2.0](https://semver.org/spec/v2.0.0.html)。
    - `grep -rn '~/\.ari/' docs/`（排除 `refactor_audit.md`）返回零结果。
    - 每个已记录的环境变量都映射到真实的源码引用。
    - 每个已记录的 MCP 工具都存在于 skill 的 `mcp.json` 中。
+   - `python scripts/docs/check_doc_sources.py --require-all` 退出码为 0
+     （每个 live doc 声明的 `sources:` 路径都存在）。
+   - `python scripts/docs/check_doc_links.py` 退出码为 0
+     （docs 内链接 / HTML href 没有失效）。
+   - `python scripts/docs/check_translation_freshness.py --strict` 退出码为 0
+     （没有 `ja`/`zh` 翻译的 `last_verified` 早于其英文源 —— 参见[源可追溯性](../../README.md#source-traceability)）。
+     不加 `--strict` 时为仅警告的非阻塞报告。
 5. 打标签：`git tag v0.X.Y && git push origin v0.X.Y`。
 6. 在 GitHub 上发布 release，附上 changelog 摘录。
 7. 发布 bundle：`ari ear publish`（针对需要随版本发布的制品）。

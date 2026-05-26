@@ -2,7 +2,7 @@
 sources:
   - path: ari-core/ari/viz/api_paperbench.py
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # PaperBench GUI 指南

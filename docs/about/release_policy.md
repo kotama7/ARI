@@ -6,7 +6,7 @@ sources:
     role: doc
   - path: ari-core/pyproject.toml
     role: config
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # Release & Versioning Policy
@@ -96,6 +96,10 @@ When cutting a release:
      (every live doc's declared `sources:` paths exist).
    - `python scripts/docs/check_doc_links.py` exits 0
      (no broken intra-docs links or HTML hrefs).
+   - `python scripts/docs/check_translation_freshness.py --strict`
+     exits 0 (no `ja`/`zh` translation has a `last_verified` older than
+     its English source — see [Source traceability](../README.md#source-traceability)).
+     Run without `--strict` for a non-blocking warning-only report.
 5. Tag: `git tag v0.X.Y && git push origin v0.X.Y`.
 6. Open a release on GitHub with the changelog excerpt.
 7. Publish bundles: `ari ear publish` for any artefacts that need to

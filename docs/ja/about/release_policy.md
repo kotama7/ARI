@@ -6,7 +6,7 @@ sources:
     role: doc
   - path: ari-core/pyproject.toml
     role: config
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # リリース & バージョニングポリシー
@@ -85,6 +85,13 @@ SemVer 目的での**パブリックサーフェス**:
    - `grep -rn '~/\.ari/' docs/` (`refactor_audit.md` を除く) がゼロを返す。
    - ドキュメント化されたすべての環境変数が実際のソース参照にマップされる。
    - ドキュメント化されたすべての MCP ツールがスキルの `mcp.json` に存在する。
+   - `python scripts/docs/check_doc_sources.py --require-all` が 0 で終了する
+     (すべての live doc の `sources:` パスが実在する)。
+   - `python scripts/docs/check_doc_links.py` が 0 で終了する
+     (docs 内リンク / HTML href が壊れていない)。
+   - `python scripts/docs/check_translation_freshness.py --strict` が 0 で終了する
+     (`ja`/`zh` 翻訳の `last_verified` が英語版より古くない — [ソーストレーサビリティ](../../README.md#source-traceability) 参照)。
+     `--strict` なしなら警告のみの非ブロッキングレポート。
 5. タグ付け: `git tag v0.X.Y && git push origin v0.X.Y`。
 6. GitHub でリリースを作成し、changelog の抜粋を添付する。
 7. バンドルを公開する: 同梱する必要があるアーティファクトに対して `ari ear publish` を実行する。
