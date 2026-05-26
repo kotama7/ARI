@@ -932,6 +932,16 @@ JSON object with these fields:
                     "'github.com/foo/dataset-bar' — leave empty string "
                     "if the paper gives no acquisition pointer>"
       }
+    ],
+    "libraries": [
+      {
+        "name": "<software dependency the artifact needs, e.g., "
+                "'CUDA Toolkit', 'zstd', 'HDF5', 'cuSZ', 'OpenMPI', "
+                "'PyTorch'>",
+        "how": "<acquisition channel: 'module' (HPC module system) | "
+               "'pip' | 'conda' | 'source-build' (clone+compile) | "
+               "'system' (already present) — best guess from the paper>"
+      }
     ]
   }
 
@@ -946,6 +956,12 @@ sections, or in evaluation tables). If the paper uses no external
 dataset (e.g., theoretical only / synthetic), return an empty list.
 url_hint should be a search hint, not a literal URL — the agent will
 use `web_search` / `wget` / `huggingface-cli` to fetch.
+
+For libraries, list the SOFTWARE DEPENDENCIES the paper's artifact needs
+to build and run (compilers, CUDA/MPI, compression/IO libs, the paper's
+own released codebase if any). Pick the most likely acquisition channel
+for each. If the paper is theoretical / pure-synthetic with no real
+dependencies, return an empty list.
 
 Output ONLY the JSON object, no prose, no markdown fences.
 
@@ -1055,9 +1071,20 @@ async def _build_paper_kind_addendum(
             "domain": str(d.get("domain", "")).strip(),
             "url_hint": str(d.get("url_hint", "")).strip(),
         })
+    libraries = data.get("libraries") or []
+    if not isinstance(libraries, list):
+        libraries = []
+    sanitized_libs: list[dict] = []
+    for lib in libraries:
+        if not isinstance(lib, dict):
+            continue
+        sanitized_libs.append({
+            "name": str(lib.get("name", "")).strip(),
+            "how": str(lib.get("how", "")).strip(),
+        })
     return _format_paper_kind_addendum(
         native=native, rationale=rationale, secondary=secondary,
-        env=env, datasets=sanitized,
+        env=env, datasets=sanitized, libraries=sanitized_libs,
     )
 
 
@@ -1166,6 +1193,7 @@ _ARI_AGENT_ONLY_MARKER = (
 def _format_paper_kind_addendum(
     *, native: str, rationale: str, secondary: list,
     env: dict | None = None, datasets: list | None = None,
+    libraries: list | None = None,
 ) -> str:
     """Render the addendum.md text for the agent to consume.
 
@@ -1280,6 +1308,26 @@ def _format_paper_kind_addendum(
             "  rubric REWARDS real-data evaluations; fetch the real\n"
             "  datasets whenever they are publicly reachable.\n\n"
         )
+    # Required-libraries block: the classifier's best guess at the paper's
+    # software dependencies + acquisition channel. Omitted when empty
+    # (theoretical / pure-synthetic papers). These are HINTS — the agent
+    # confirms/augments them; install ALL of them inside reproduce.sh so
+    # the grader's fresh shell can build from scratch.
+    lib_list = [l for l in (libraries or []) if l.get("name")]
+    lib_block = ""
+    if lib_list:
+        rows = "\n".join(
+            f"  - **{l['name']}**" + (f" — via {l['how']}" if l.get("how") else "")
+            for l in lib_list
+        )
+        lib_block = (
+            "STEP 1.4 — Required libraries (paper-cited; confirm + augment):\n"
+            f"{rows}\n"
+            "  Install/load EVERY dependency your code needs INSIDE\n"
+            "  reproduce.sh (module load / pip / conda / source-build), so the\n"
+            "  grader's fresh shell builds from scratch — do not assume any\n"
+            "  are pre-installed beyond what env-truth states.\n\n"
+        )
     runbook = (
         "## Recommended first steps (in this order)\n\n"
         "STEP 1 — Verify the toolchain your code needs is reachable in YOUR\n"
@@ -1287,6 +1335,7 @@ def _format_paper_kind_addendum(
         f"  ```bash\n  {activation}\n  <BUILD_TOOL> --version  # e.g., nvcc / mpicc / gfortran\n  ```\n"
         "  If the build tool prints a version: ok. If not: try a different\n"
         "  module/package name from the catalog, or ask the package manager.\n\n"
+        f"{lib_block}"
         f"{ds_block}"
         "STEP 2 — Copy EVERY activation command you ran in STEP 1 — the\n"
         "  FULL chain, in order — to the TOP of `reproduce.sh`. The grader\n"
@@ -1304,7 +1353,15 @@ def _format_paper_kind_addendum(
         "  FIRST lines of reproduce.sh and checking it succeeds — if it\n"
         "  prints 'not found', your chain is incomplete.\n\n"
         "STEP 3 — Write your reproduction code; compile with the verified\n"
-        "  toolchain; run end-to-end; confirm reproduce.sh exits 0.\n\n"
+        "  toolchain; run end-to-end. reproduce.sh MUST be self-contained\n"
+        "  for FROM-SCRATCH reproduction in a fresh shell: (a) module loads\n"
+        "  (full chain), (b) install ALL deps it needs — `pip install <pkgs>`\n"
+        "  (do NOT use `--user`: it fails inside a venv with 'Can not perform\n"
+        "  a --user install'; plain `pip install` or `pip install --prefix`\n"
+        "  works), conda, or source-build, (c) fetch data, (d) build, (e) run.\n"
+        "  Verify from-scratch by running it in a CLEAN environment, e.g.\n"
+        "  `env -i HOME=$HOME bash -lc 'cd submission && bash reproduce.sh'`\n"
+        "  (approximates the grader's fresh shell) and confirm it exits 0.\n\n"
         "STEP 4 — MANDATORY FINAL CHECK before calling submit. Run this\n"
         "  sequence in `submission/` and verify ALL THREE conditions:\n"
         "  ```bash\n"

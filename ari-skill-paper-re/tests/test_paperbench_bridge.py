@@ -712,6 +712,51 @@ def test_paper_kind_addendum_lists_paper_datasets_with_search_hint():
     assert "Result Analysis" in out  # rubric impact named
 
 
+def test_paper_kind_addendum_lists_required_libraries():
+    """When the classifier returns libraries, the addendum must surface a
+    STEP 1.4 'Required libraries' block (name + acquisition channel) and
+    tell the agent to install ALL deps inside reproduce.sh for
+    from-scratch reproduction."""
+    out = B._format_paper_kind_addendum(
+        native="cpp+cuda", rationale="GPU compressor", secondary=[],
+        env={"has_module": True, "has_apt": False, "has_sudo": False},
+        libraries=[
+            {"name": "CUDA Toolkit", "how": "module"},
+            {"name": "zstd", "how": "source-build"},
+            {"name": "HDF5", "how": "module"},
+        ],
+    )
+    assert "STEP 1.4" in out
+    assert "Required libraries" in out
+    assert "CUDA Toolkit" in out and "zstd" in out and "HDF5" in out
+    assert "via module" in out and "via source-build" in out
+    assert "from scratch" in out  # install all deps in reproduce.sh
+
+
+def test_paper_kind_addendum_omits_library_block_when_empty():
+    """Theoretical / pure-synthetic papers: no libraries → no STEP 1.4."""
+    out = B._format_paper_kind_addendum(
+        native="python+numpy", rationale="theory", secondary=[],
+        env={"has_module": False, "has_apt": True, "has_sudo": True},
+        libraries=[],
+    )
+    assert "STEP 1.4" not in out
+    assert "Required libraries" not in out
+
+
+def test_reproduce_sh_from_scratch_and_pip_user_caveat():
+    """STEP 3 must require from-scratch self-containment (install ALL deps
+    in reproduce.sh) and warn against `pip install --user` (fails in a
+    venv — recurring v3-A5/A6/A9 failure)."""
+    out = B._format_paper_kind_addendum(
+        native="cpp+cuda", rationale="x", secondary=[],
+        env={"has_module": True, "has_apt": False, "has_sudo": False},
+    )
+    assert "FROM-SCRATCH" in out or "from-scratch" in out.lower()
+    assert "do NOT use `--user`" in out
+    assert "env -i" in out  # clean-room verification recipe
+
+
 def test_cautionary_note_soft_for_python_native_stack():
     """Generality: for a python+* paper, Python IS correct — the
     cautionary note must NOT issue the imperative 'you MUST implement in
