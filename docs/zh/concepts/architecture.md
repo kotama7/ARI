@@ -472,7 +472,7 @@ API 密钥 **绝不** 存储在 `settings.json` 中。它们从 `.env` 文件
 
 | 技能 | 工具 | 角色 | LLM? |
 |------|------|------|------|
-| `ari-skill-hpc` | `slurm_submit`、`job_status`、`job_cancel`、`run_bash`、`singularity_build`、`singularity_run`、`singularity_pull`、`singularity_build_fakeroot`、`singularity_run_gpu` | HPC 作业管理 + Singularity 容器 | ✗ |
+| `ari-skill-hpc` | `slurm_submit`、`job_status`、`job_cancel`、`singularity_build`、`singularity_run`、`singularity_pull`、`singularity_build_fakeroot`、`singularity_run_gpu` | HPC 作业管理 + Singularity 容器 | ✗ |
 | `ari-skill-memory` | `add_memory`、`search_memory`、`get_node_memory`、`clear_node_memory`、`get_experiment_context` | 祖先作用域的节点记忆（Letta 后端） | △ |
 | `ari-skill-idea` | `survey`、`generate_ideas` | 文献搜索（Semantic Scholar）+ VirSci 多智能体假设生成 | ✓ |
 | `ari-skill-evaluator` | `make_metric_spec` | 从实验文件提取指标规格 | △ |

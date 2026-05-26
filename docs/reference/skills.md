@@ -12,7 +12,7 @@ sources:
     role: implementation
   - path: ari-skill-paper-re/mcp.json
     role: config
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # MCP Skills Reference
@@ -62,15 +62,6 @@ result = job_status("12345")
 #### `job_cancel(job_id)`
 
 Cancel a running or pending SLURM job.
-
-#### `run_bash(command)`
-
-Run a bash command on the login node.
-
-```python
-result = run_bash("cat /path/to/slurm_job_12345.out")
-# Returns: {"stdout": "...", "exit_code": 0}
-```
 
 #### `singularity_build(definition_file, output_path, partition)`
 
@@ -162,7 +153,7 @@ Supported venues: `neurips` (9 pages), `icpp` (10 pages), `sc` (12 pages), `isc`
 
 Returns the LaTeX template for a venue.
 
-#### `generate_section(section, context, venue="arxiv", refs_json="", nodes_json_path="")`
+#### `generate_section(section, context, venue="arxiv", nodes_json_path="", refs_json="")`
 
 Generate a LaTeX section using LLM. Section types: `introduction`, `related_work`, `method`, `experiment`, `conclusion`.
 
@@ -178,15 +169,15 @@ Validate paper format against venue requirements (page count, etc.).
 
 Review a LaTeX section. Returns strengths, weaknesses, and suggestions.
 
-#### `revise_section(section, latex, feedback)`
+#### `revise_section(section, latex, feedback, context, venue="arxiv")`
 
 Revise a LaTeX section based on review feedback.
 
-#### `write_paper_iterative(experiment_summary, context, nodes_json_path, refs_json, figures_manifest_json, output_dir, max_revisions=2, venue="arxiv")`
+#### `write_paper_iterative(experiment_summary="", context="", nodes_json_path="", refs_json="", figures_manifest_json="", science_data_json="", venue="arxiv", max_revision_rounds=2, author_name="")`
 
 Full paper generation with iterative draft → review → revise loop. Primary pipeline tool.
 
-#### `review_compiled_paper(tex_path, pdf_path, figures_manifest_json, experiment_summary, rubric_id="", vlm_findings_json="", num_reflections=None, num_fs_examples=None)`
+#### `review_compiled_paper(tex_path, pdf_path, figures_manifest_json, experiment_summary, rubric_id="", vlm_findings_json="", num_reflections=None, num_fs_examples=None, num_reviews_ensemble=None)`
 
 Rubric-driven paper review compatible with the **AI Scientist v1/v2** pipeline
 (Nature / arXiv:2408.06292 Appendix A.4). Loads a YAML rubric from
@@ -253,7 +244,7 @@ Returns the list of available rubrics (id, venue, domain, version, SHA256
 hash, path). Used by the viz API `/api/rubrics` and the New Experiment wizard
 dropdown.
 
-#### `inject_code_availability(tex_path, checkpoint_dir)` — v0.7.0
+#### `inject_code_availability(tex_path, ref="", sha256="", doi="", license_id="", checkpoint_dir="")` — v0.7.0
 
 Runs as the `finalize_paper` stage. Auto-loads the curated bundle's
 `ref` / `bundle_sha256` / `doi` from `ear_published/manifest.lock` +
@@ -264,7 +255,7 @@ tools (`ari clone`, third-party readers) recover the bundle without
 trusting the registry — the digest is the trust anchor. Skips silently
 when no curated bundle exists (so v0.6.0 checkpoints keep building).
 
-#### `merge_reviews(review_report_path, vlm_review_path)` — v0.7.0
+#### `merge_reviews(review_report_path, vlm_review_path="")` — v0.7.0
 
 Post-hoc structural merge of `review_report.json` (text reviewer) and
 `vlm_review.json` (VLM figure review). Purely deterministic — no LLM.
@@ -363,7 +354,7 @@ provider works (`gpt-5-mini`, `anthropic/claude-...`, `gemini/...`,
 
 ### Tools
 
-#### `fetch_code_bundle(ref="", sha256="", dest, checkpoint_dir="", overwrite=False)`
+#### `fetch_code_bundle(ref="", sha256="", dest="", checkpoint_dir="", overwrite=False)`
 
 Pre-populates the reproducibility sandbox with a curated EAR bundle
 via `ari.clone` — deterministic, no LLM. Two ways to point at the
@@ -389,7 +380,7 @@ result = fetch_code_bundle(
 # Returns: {"populated": True, "dest": ..., "bundle_sha256": ..., "files": ...}
 ```
 
-#### `build_reproduce_sh(paper_path, paper_text, rubric_path, output_dir, model="", temperature=0.0, timeout_sec=600, overwrite=False)`
+#### `build_reproduce_sh(paper_path="", paper_text="", rubric_path="", output_dir="", model="", time_limit_sec=43200, iterative_agent=False, max_steps=0, sandbox_kind="auto", container_image="", apptainer_image="", overwrite=False)`
 
 **LLM-driven replicator** (v0.7.0+). Sibling of `fetch_code_bundle`:
 both target `repro_sandbox/`. Reads the paper (and the rubric's
@@ -419,7 +410,7 @@ result = build_reproduce_sh(
 #           max_runtime_sec, language, model, prompt_sha256, notes, warnings}
 ```
 
-#### `run_reproduce(rubric_path, repo_dir, sandbox_kind="", timeout_global_sec=0, partition="", cpus=0, walltime="")`
+#### `run_reproduce(rubric_path, repo_dir, sandbox_kind="", container_image="", timeout_global_sec=0, partition="", cpus=0, walltime="", …SLURM flags)`
 
 **Phase 1**. Executes `repo_dir/reproduce.sh` in a sandbox; captures
 `reproduce.log` and lists artefacts; reports any
@@ -452,7 +443,7 @@ result = run_reproduce(
 #           elapsed_sec, sandbox_kind, [partition, cpus, walltime, timed_out]}
 ```
 
-#### `grade_with_simplejudge(rubric_path, repo_dir, paper_path="", paper_text="", judge_model="", n_runs=3, skip_negative_control=False)`
+#### `grade_with_simplejudge(rubric_path, repo_dir, paper_path="", paper_text="", judge_model="", n_runs=0, skip_negative_control=False, code_only=False)`
 
 **Phase 2**. Runs PaperBench `SimpleJudge` over the (post-Phase-1)
 repo + reproduce.log + paper. `n_runs` (default 3) iterations are
@@ -646,7 +637,7 @@ Dual transport: **stdio** (MCP for Claude Desktop / other MCP clients) + **HTTP*
 
 ### Tools
 
-#### `run_experiment(experiment_md, max_nodes=10, model="qwen3:32b", parent_run_id="", recursion_depth=0, max_recursion_depth=0)`
+#### `run_experiment(experiment_md, max_nodes=10, model="", max_recursion_depth=3, parent_run_id="", llm_backend="", llm_api_key="", llm_base_url="", executor="", cpus=0, timeout_minutes=0, retrieval_backend="")`
 
 Launch an ARI experiment asynchronously. Returns `run_id`. When `parent_run_id` is set, the experiment is tracked as a child of the parent (for recursive sub-experiment workflows).
 
@@ -790,7 +781,7 @@ arXiv paper search. Deterministic.
 
 Semantic Scholar API with fallback to arXiv. Deterministic.
 
-#### `search_papers(query, limit=8)`
+#### `search_papers(query, max_results=10)`
 
 Dispatches to the configured retrieval backend (`ARI_RETRIEVAL_BACKEND`):
 - `"semantic_scholar"` (default) — Semantic Scholar API
@@ -811,7 +802,7 @@ Model: `ARI_LLM_MODEL` env > `LLM_MODEL` env > `ollama_chat/qwen3:32b`.
 
 Lists user-uploaded files in the checkpoint directory. Deterministic.
 
-#### `read_uploaded_file(filename, max_chars=8000)`
+#### `read_uploaded_file(filename, max_chars=50000)`
 
 Reads text file content from uploaded files with binary detection. Deterministic.
 
@@ -835,7 +826,7 @@ Execute a source file (auto-detects language from extension). Output is truncate
 
 Run a bash command in the work directory. Output truncation with `truncated` boolean flag in result.
 
-#### `read_file(filepath, offset=0, limit=2000, work_dir="/tmp/ari_work")`
+#### `read_file(path, offset=0, limit=8000, work_dir="/tmp/ari_work")`
 
 Read a text file with paginated access for large files. Returns content, `next_offset` for continuation, and total line count.
 
@@ -891,11 +882,11 @@ Scientific figure generator. Two modes: **deterministic** (`generate_figures`, P
 
 ### Tools
 
-#### `generate_figures(nodes_json_path, output_dir, figure_spec)`
+#### `generate_figures(nodes_json_path, output_dir, figures=None, science_data_path="", vlm_captions=True, experiment_context="")`
 
 Render canonical comparison figures from `nodes_tree.json` into `output_dir`.  Returns a manifest of every emitted figure with its caption and source node ids.  Byte-deterministic for a given matplotlib version.
 
-#### `generate_figures_llm(nodes_json_path, intent, output_dir)`
+#### `generate_figures_llm(nodes_json_path, output_dir, experiment_summary="", context="", n_figures=3, science_data_path="", vlm_feedback="")`
 
 LLM examines the data shape + natural-language `intent`, writes matplotlib code, runs it in the same `_run_plot_code` sandbox, and (optionally) calls a VLM to caption the result.  P2 exception.
 

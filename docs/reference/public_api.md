@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_public_api_boundary.py
     role: test
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # `ari.public` — Stable API for skills
@@ -114,6 +114,31 @@ nodes_json = paths.checkpoint / "nodes_tree.json"
 `PathManager` is the central resolver — never read `ARI_CHECKPOINT_DIR`
 directly from a skill.  Source: `ari-core/ari/paths.py` →
 `ari-core/ari/public/paths.py`.
+
+## Putting it together — a minimal skill
+
+A skill that uses only `ari.public.*`: bootstrap cost tracking, resolve a
+checkpoint-scoped path, and make a cost-tracked LLM call.
+
+```python
+from ari.public import cost_tracker
+from ari.public.paths import PathManager
+from ari.public.llm import LLMClient
+
+# 1. Tag every LLM call this skill makes (reads ARI_CHECKPOINT_DIR).
+cost_tracker.bootstrap_skill("ari-skill-example", phase="bfts")
+
+# 2. Resolve paths through PathManager — never read ARI_CHECKPOINT_DIR directly.
+paths = PathManager.from_env()
+nodes_json = paths.checkpoint / "nodes_tree.json"
+
+# 3. LLM call goes through ARI's wrapper, so the cost is recorded automatically.
+client = LLMClient(model="ollama/qwen3:32b")
+resp = await client.complete([{"role": "user", "content": "Summarise: ..."}])
+```
+
+The call's tokens and USD cost land in the checkpoint's `cost_trace.jsonl`
+tagged with the skill name and phase — no manual `record()` needed.
 
 ## Stability guarantees
 

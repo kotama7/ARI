@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_public_api_boundary.py
     role: test
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # `ari.public` — スキル向け安定 API
@@ -113,6 +113,31 @@ nodes_json = paths.checkpoint / "nodes_tree.json"
 `PathManager` は中央リゾルバです — スキルから `ARI_CHECKPOINT_DIR` を
 直接読み取らないでください。ソース: `ari-core/ari/paths.py` →
 `ari-core/ari/public/paths.py`。
+
+## まとめ — 最小限のスキル
+
+`ari.public.*` だけを使うスキルの例: コスト追跡をブートストラップし、
+チェックポイントスコープのパスを解決し、コスト追跡付きの LLM 呼び出しを行います。
+
+```python
+from ari.public import cost_tracker
+from ari.public.paths import PathManager
+from ari.public.llm import LLMClient
+
+# 1. このスキルが行う全 LLM 呼び出しにタグ付け（ARI_CHECKPOINT_DIR を読む）。
+cost_tracker.bootstrap_skill("ari-skill-example", phase="bfts")
+
+# 2. パスは PathManager 経由で解決 — ARI_CHECKPOINT_DIR を直接読まない。
+paths = PathManager.from_env()
+nodes_json = paths.checkpoint / "nodes_tree.json"
+
+# 3. LLM 呼び出しは ARI のラッパー経由なので、コストは自動的に記録される。
+client = LLMClient(model="ollama/qwen3:32b")
+resp = await client.complete([{"role": "user", "content": "Summarise: ..."}])
+```
+
+呼び出しのトークン数と USD コストは、スキル名とフェーズのタグ付きで
+チェックポイントの `cost_trace.jsonl` に記録されます — 手動の `record()` は不要です。
 
 ## 安定性の保証
 

@@ -43,6 +43,7 @@ snapshots.
 - [HPC setup](guides/hpc_setup.md)
 - [Extension guide](guides/extension_guide.md)
 - [Experiment file](guides/experiment_file.md)
+- [Cookbook](guides/cookbook.md)
 - [Migration](guides/migration.md)
 - [Testing](guides/testing.md)
 - [Troubleshooting](guides/troubleshooting.md)
@@ -99,6 +100,7 @@ release gate checks it against the tree (`docs/about/release_policy.md` §4).
 | guides/hpc_setup | [✓](guides/hpc_setup.md) | [✓](ja/guides/hpc_setup.md) | [✓](zh/guides/hpc_setup.md) |
 | guides/extension_guide | [✓](guides/extension_guide.md) | [✓](ja/guides/extension_guide.md) | [✓](zh/guides/extension_guide.md) |
 | guides/experiment_file | [✓](guides/experiment_file.md) | [✓](ja/guides/experiment_file.md) | [✓](zh/guides/experiment_file.md) |
+| guides/cookbook | [✓](guides/cookbook.md) | [✓](ja/guides/cookbook.md) | [✓](zh/guides/cookbook.md) |
 | guides/migration | [✓](guides/migration.md) | [✓](ja/guides/migration.md) | [✓](zh/guides/migration.md) |
 | guides/testing | [✓](guides/testing.md) | [✓](ja/guides/testing.md) | [✓](zh/guides/testing.md) |
 | guides/troubleshooting | [✓](guides/troubleshooting.md) | [✓](ja/guides/troubleshooting.md) | [✓](zh/guides/troubleshooting.md) |

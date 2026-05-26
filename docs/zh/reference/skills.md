@@ -12,7 +12,7 @@ sources:
     role: implementation
   - path: ari-skill-paper-re/mcp.json
     role: config
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # MCP 技能参考
@@ -62,15 +62,6 @@ result = job_status("12345")
 #### `job_cancel(job_id)`
 
 取消正在运行或等待的 SLURM 作业。
-
-#### `run_bash(command)`
-
-在登录节点上运行只读 bash 命令。
-
-```python
-result = run_bash("cat /path/to/slurm_job_12345.out")
-# Returns: {"stdout": "...", "exit_code": 0}
-```
 
 #### `singularity_build(definition_file, output_path, partition)`
 
@@ -158,7 +149,7 @@ LaTeX 论文生成、编译和审阅（仅限 Post-BFTS）。**LLM：是**。
 
 返回指定场所的 LaTeX 模板。
 
-#### `generate_section(section, context, venue="arxiv", refs_json="", nodes_json_path="")`
+#### `generate_section(section, context, venue="arxiv", nodes_json_path="", refs_json="")`
 
 使用 LLM 生成 LaTeX 章节。章节类型：`introduction`、`related_work`、`method`、`experiment`、`conclusion`。
 
@@ -174,15 +165,15 @@ LaTeX 论文生成、编译和审阅（仅限 Post-BFTS）。**LLM：是**。
 
 审阅 LaTeX 章节。返回优点、缺点和建议。
 
-#### `revise_section(section, latex, feedback)`
+#### `revise_section(section, latex, feedback, context, venue="arxiv")`
 
 根据审阅反馈修改 LaTeX 章节。
 
-#### `write_paper_iterative(experiment_summary, context, nodes_json_path, refs_json, figures_manifest_json, output_dir, max_revisions=2, venue="arxiv")`
+#### `write_paper_iterative(experiment_summary="", context="", nodes_json_path="", refs_json="", figures_manifest_json="", science_data_json="", venue="arxiv", max_revision_rounds=2, author_name="")`
 
 完整论文生成，包含迭代式草稿 -> 审阅 -> 修改循环。主要流水线工具。
 
-#### `review_compiled_paper(tex_path, pdf_path, figures_manifest_json, experiment_summary, rubric_id="", vlm_findings_json="", num_reflections=None, num_fs_examples=None)`
+#### `review_compiled_paper(tex_path, pdf_path, figures_manifest_json, experiment_summary, rubric_id="", vlm_findings_json="", num_reflections=None, num_fs_examples=None, num_reviews_ensemble=None)`
 
 **AI Scientist v1/v2 兼容** 的基于评审规范的论文审阅（遵循 Nature /
 arXiv:2408.06292 附录 A.4）。从 `ari-core/config/reviewer_rubrics/<rubric_id>.yaml`
@@ -228,11 +219,11 @@ Nature Ablation 默认值：
 返回可用 rubric 的列表（id、venue、domain、version、SHA256 hash、path）。
 viz API `/api/rubrics` 和 New Experiment 向导下拉菜单会用到。
 
-#### `inject_code_availability(tex_path, checkpoint_dir)` — v0.7.0
+#### `inject_code_availability(tex_path, ref="", sha256="", doi="", license_id="", checkpoint_dir="")` — v0.7.0
 
 作为 `finalize_paper` 阶段运行。从 `ear_published/manifest.lock` 与 `publish_record.json` 自动加载 `ref` / `bundle_sha256` / `doi`，并将机器可读的 `\codeavailability{}` / `\codedigest{}` / `\coderef{}` 宏与人类可读的 Code Availability 章节注入 `full_paper.tex`。digest 是信任锚点，读者无需信任 registry 即可 `ari clone <ref> --expect-sha256 <baked-digest>` 进行验证。如果未策展 bundle 则静默跳过（保持 v0.6.0 checkpoint 兼容）。
 
-#### `merge_reviews(review_report_path, vlm_review_path)` — v0.7.0
+#### `merge_reviews(review_report_path, vlm_review_path="")` — v0.7.0
 
 将 `review_report.json`（文本评审）与 `vlm_review.json`（VLM 图表评审）做事后结构合并。完全确定性、无 LLM。附加 `vlm_figure_review` 与 `_review_composition` 元数据，使 GUI / CLI 能附带来源标注同时显示两类输出。上游阶段保持独立（与 AI Scientist v2 `perform_review` 契约一致），在此处方完成对账。
 
@@ -280,21 +271,21 @@ PaperBench 以 git submodule 形式同捆于 `ari-skill-paper-re/vendor/paperben
 
 ### 工具
 
-#### `fetch_code_bundle(ref="", sha256="", dest, checkpoint_dir="", overwrite=False)`
+#### `fetch_code_bundle(ref="", sha256="", dest="", checkpoint_dir="", overwrite=False)`
 
 确定性地填充沙箱（无 LLM）。**v0.7.0+**: 传入 `checkpoint_dir` 可从 `{checkpoint_dir}/publish_record.json` 自动读取 ref + sha256（即 `ari ear publish` 写入的文件）。当 `dest/reproduce.sh` 已存在时返回 `populated=False, skipped_reason=...` 并跳过。
 
-#### `build_reproduce_sh(paper_path, paper_text, rubric_path, output_dir, model="", overwrite=False)`
+#### `build_reproduce_sh(paper_path="", paper_text="", rubric_path="", output_dir="", model="", time_limit_sec=43200, iterative_agent=False, max_steps=0, sandbox_kind="auto", container_image="", apptainer_image="", overwrite=False)`
 
 **v0.7.0+ 新增的 LLM 驱动 replicator**。`fetch_code_bundle` 的兄弟工具。读取论文（与 rubric 的 `expected_artifacts`）并将自包含的 `reproduce.sh` + 源文件写入 `output_dir`。通过 LiteLLM 路由，任意供应商可用。当 `output_dir/reproduce.sh` 已存在时跳过。模型：`model` 参数 > `ARI_MODEL_REPLICATE` > `ARI_LLM_MODEL` > `claude-opus-4-7`。
 
-#### `run_reproduce(rubric_path, repo_dir, sandbox_kind="", timeout_global_sec=0, partition="", cpus=0, walltime="")`
+#### `run_reproduce(rubric_path, repo_dir, sandbox_kind="", container_image="", timeout_global_sec=0, partition="", cpus=0, walltime="", …SLURM flags)`
 
 **Phase 1**。在沙箱中执行 `repo_dir/reproduce.sh`，捕获 `reproduce.log` 与产物列表，并对照 rubric envelope 的 `expected_artifacts` 检查缺失项 `missing`。
 
 沙箱优先级（默认 `auto`）：`slurm`（sbatch + `ARI_SLURM_PARTITION` 存在，BFTS 同分区）→ `docker`（守护可用且非 HPC 时）→ `apptainer` → `singularity` → `local`。**SLURM dispatch** 在 v0.7.0 已从 v0.5.0 恢复：使用 `sbatch --wait` 同步执行，并生成 spool relocation 包装器以保护 `$0` 相对 cd。
 
-#### `grade_with_simplejudge(rubric_path, repo_dir, paper_path="", paper_text="", judge_model="", n_runs=3, skip_negative_control=False)`
+#### `grade_with_simplejudge(rubric_path, repo_dir, paper_path="", paper_text="", judge_model="", n_runs=0, skip_negative_control=False, code_only=False)`
 
 **Phase 2**。主评分 completer 通过 LiteLLM 运行 + 直连 OpenAI 的 structured score-parser。`n_runs`（默认 3）次按 PaperBench 加权叶节点聚合取均值，附负样本对照。
 
@@ -380,7 +371,7 @@ v0.7.0 引入的 PaperBench 形式 **自动 rubric 生成与审计**。读取论
 
 ### 工具
 
-#### `run_experiment(experiment_md, max_nodes=10, model="qwen3:32b", parent_run_id="", recursion_depth=0, max_recursion_depth=0)`
+#### `run_experiment(experiment_md, max_nodes=10, model="", max_recursion_depth=3, parent_run_id="", llm_backend="", llm_api_key="", llm_base_url="", executor="", cpus=0, timeout_minutes=0, retrieval_backend="")`
 
 异步启动 ARI 实验。返回 `run_id`。当设置 `parent_run_id` 时，该实验将作为父实验的子项被追踪（用于递归子实验工作流）。
 
@@ -502,7 +493,7 @@ arXiv 论文搜索。确定性。
 
 Semantic Scholar API，回退到 arXiv。确定性。
 
-#### `search_papers(query, limit=8)`
+#### `search_papers(query, max_results=10)`
 
 调度到所配置的检索后端（`ARI_RETRIEVAL_BACKEND`）：
 - `"semantic_scholar"`（默认）— Semantic Scholar API
@@ -523,7 +514,7 @@ AI Scientist v2 风格的迭代式引用收集。LLM 生成搜索查询并在多
 
 列出检查点目录中用户上传的文件。确定性。
 
-#### `read_uploaded_file(filename, max_chars=8000)`
+#### `read_uploaded_file(filename, max_chars=50000)`
 
 从上传文件读取文本内容（带二进制检测）。确定性。
 
@@ -547,7 +538,7 @@ AI Scientist v2 风格的迭代式引用收集。LLM 生成搜索查询并在多
 
 在工作目录中运行 bash 命令。结果中带有 `truncated` 布尔标志的输出截断。
 
-#### `read_file(filepath, offset=0, limit=2000, work_dir="/tmp/ari_work")`
+#### `read_file(path, offset=0, limit=8000, work_dir="/tmp/ari_work")`
 
 针对大文件支持分页读取文本。返回内容、用于继续的 `next_offset` 与总行数。
 
@@ -586,11 +577,11 @@ result = read_file("results.csv", offset=0, limit=100)
 
 ### 工具
 
-#### `generate_figures(nodes_json_path, output_dir, figure_spec)`
+#### `generate_figures(nodes_json_path, output_dir, figures=None, science_data_path="", vlm_captions=True, experiment_context="")`
 
 从 `nodes_tree.json` 渲染规范化对比图到 `output_dir`。返回每个生成图的清单（含 caption 与源节点 id）。给定 matplotlib 版本下字节确定。
 
-#### `generate_figures_llm(nodes_json_path, intent, output_dir)`
+#### `generate_figures_llm(nodes_json_path, output_dir, experiment_summary="", context="", n_figures=3, science_data_path="", vlm_feedback="")`
 
 LLM 检视数据形状与自然语言 `intent`，编写 matplotlib 代码，在与确定性模式相同的 `_run_plot_code` 沙箱中执行，并（可选地）调用 VLM 为生成的图添加 caption。P2 例外。
 

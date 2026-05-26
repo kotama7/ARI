@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/api_experiment.py
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # REST API リファレンス
@@ -27,6 +27,59 @@ JSON HTTP API を公開しています。エンドポイントは `viz/routes.py
 - 特記がない限り、レスポンスボディはすべて JSON。
 - エラーは非 2xx HTTP コードとともに `{"error": "<message>"}` として返されます。
 - CORS プリフライト（`OPTIONS`）は `/api/*` に対して許可されています。
+
+## 動作例
+
+最初に触れることの多いエンドポイントの最小限の `curl` リクエスト/レスポンス例です。
+ダッシュボードが既定ポート `8765` で動いている前提です。
+
+**ライブ状態を読む:**
+
+```bash
+curl http://localhost:8765/state
+```
+
+```json
+{
+  "phase": "bfts",
+  "nodes": { "total": 7, "completed": 5, "running": 2, "failed": 0 },
+  "model": { "provider": "ollama", "model": "qwen3:8b" },
+  "cost": { "usd": 0.0, "tokens": 0 }
+}
+```
+
+**実行を起動する:**
+
+```bash
+curl -X POST http://localhost:8765/api/launch \
+  -H 'Content-Type: application/json' \
+  -d '{"experiment_md": "# Goal\nImprove GFLOP/s of a dense matmul.\n",
+       "profile": "laptop", "provider": "ollama", "model": "qwen3:8b",
+       "max_nodes": 8, "max_depth": 3, "workers": 2}'
+```
+
+```json
+{ "ok": true, "pid": 48213, "checkpoint_path": "workspace/checkpoints/20260526T101500_matmul" }
+```
+
+**チェックポイント一覧:**
+
+```bash
+curl http://localhost:8765/api/checkpoints
+```
+
+```json
+[
+  { "id": "20260526T101500_matmul", "status": "running", "nodes": 7, "review_score": null },
+  { "id": "20260520T090000_sort",   "status": "done",    "nodes": 12, "review_score": 0.71 }
+]
+```
+
+**エラー形式**（任意のエンドポイント、非 2xx）:
+
+```json
+{ "error": "no active checkpoint" }
+```
 
 ## 状態 + ダッシュボード
 

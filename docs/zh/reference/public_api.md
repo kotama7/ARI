@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_public_api_boundary.py
     role: test
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # `ari.public` — 面向技能的稳定 API
@@ -100,6 +100,29 @@ nodes_json = paths.checkpoint / "nodes_tree.json"
 ```
 
 `PathManager` 是核心解析器 — 技能中绝不要直接读取 `ARI_CHECKPOINT_DIR`。来源：`ari-core/ari/paths.py` → `ari-core/ari/public/paths.py`。
+
+## 综合示例 —— 一个最小技能
+
+一个只使用 `ari.public.*` 的技能：引导成本追踪、解析检查点作用域的路径，并发起一次带成本追踪的 LLM 调用。
+
+```python
+from ari.public import cost_tracker
+from ari.public.paths import PathManager
+from ari.public.llm import LLMClient
+
+# 1. 为该技能发起的每次 LLM 调用打标签（读取 ARI_CHECKPOINT_DIR）。
+cost_tracker.bootstrap_skill("ari-skill-example", phase="bfts")
+
+# 2. 通过 PathManager 解析路径 —— 切勿直接读取 ARI_CHECKPOINT_DIR。
+paths = PathManager.from_env()
+nodes_json = paths.checkpoint / "nodes_tree.json"
+
+# 3. LLM 调用走 ARI 的封装，因此成本会被自动记录。
+client = LLMClient(model="ollama/qwen3:32b")
+resp = await client.complete([{"role": "user", "content": "Summarise: ..."}])
+```
+
+该调用的 token 数与美元成本会带着技能名和阶段标签写入检查点的 `cost_trace.jsonl` —— 无需手动调用 `record()`。
 
 ## 稳定性保证
 
