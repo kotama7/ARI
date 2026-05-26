@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-skill-memory
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # メモリアーキテクチャ
@@ -27,6 +27,23 @@ root ──▶ memory["root"]
 
 - `ari_node_<ckpt_hash>` — 上記の祖先スコープメタデータフィルタを持つノードスコープの archival コレクション。
 - `ari_react_<ckpt_hash>` — チェックポイント単位のフラットな ReAct トレース（`LettaMemoryClient`、祖先フィルタなし）。
+
+これら 2 つのコレクションを通る読み書き経路（`HASH` = チェックポイントハッシュ。
+祖先スコープを担保するのは書き込みガードと post-filter です）:
+
+```mermaid
+flowchart LR
+    node["実行中ノード<br/>(= ARI_CURRENT_NODE_ID)"]
+    subgraph letta["チェックポイント単位の Letta エージェント"]
+        nodecol["ari_node_HASH<br/>祖先スコープ archival"]
+        reactcol["ari_react_HASH<br/>フラットな ReAct トレース"]
+    end
+    node -->|"add_memory (CoW: node_id は current と一致必須)"| nodecol
+    node -->|"ReAct ステップ"| reactcol
+    node -->|"search_memory(query, ancestor_ids)"| search["passages.search<br/>embed_query, top_k = max(overfetch, limit*40)"]
+    search --> nodecol
+    search -->|"post-filter: ancestor_ids + ari_checkpoint + kind == node_scope"| result["ランク済み・祖先のみのエントリ"]
+```
 
 エージェントはコアメモリブロック（`persona` + `human` + `ari_context`）に、最初のノードの `generate_ideas` が完了したタイミング（`primary_metric` が確定する時点）で実験目的・主要メトリック・ハードウェア仕様を seed します。スキルは `get_experiment_context()` で検索コストを払わずに読めますが、seed が走るまでは `{}` を返します。
 

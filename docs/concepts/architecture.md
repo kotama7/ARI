@@ -14,7 +14,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # ARI Architecture
@@ -35,6 +35,64 @@ ARI is an end-to-end autonomous research system. Given a plain-text research goa
 10. **Verifies** reproducibility: re-runs the experiment from the paper text alone
 
 No domain knowledge is hardcoded. The same pipeline works for HPC benchmarking, ML hyperparameter tuning, chemistry optimization, or any measurable phenomenon.
+
+---
+
+## Pipeline at a glance
+
+The end-to-end flow — idea generation, the BFTS exploration loop, the
+`workflow.yaml`-driven post-BFTS pipeline (up to 16 stages), and the
+PaperBench-compatible ORS reproducibility check — as one hub diagram. Each
+group links to the section or document that explains it in depth.
+
+```mermaid
+flowchart TB
+    exp["experiment.md<br/>(research goal, 3 lines minimum)"]
+    exp --> survey["survey — prior work"]
+    survey --> ideas["generate_ideas<br/>VirSci → hypothesis + primary_metric"]
+    ideas --> bfts
+
+    subgraph bfts["BFTS — best-first tree search"]
+        direction LR
+        expand["expand (one child)"] --> run["ReAct node run<br/>(real experiment on your hardware)"]
+        run --> eval["LLMEvaluator<br/>_scientific_score"]
+        eval --> expand
+    end
+
+    bfts --> tree["nodes_tree.json"]
+
+    subgraph post["Post-BFTS pipeline (workflow.yaml, up to 16 stages)"]
+        direction TB
+        transform["transform_data → science_data.json"]
+        figures["generate_figures → VLM review"]
+        paper["write_paper → review_paper<br/>(ensemble + Area Chair meta)"]
+        ear["generate_ear → curate → publish (EAR)"]
+        transform --> figures
+        transform --> ear
+        figures --> paper
+        ear --> paper
+    end
+
+    tree --> post
+
+    subgraph ors["ORS reproducibility — PaperBench-compatible, 2 phases"]
+        direction LR
+        rubric["ors_generate_rubric"] --> p1["Phase 1 run_reproduce<br/>slurm / docker / apptainer / local"]
+        p1 --> p2["Phase 2 grade_with_simplejudge<br/>+ negative control"]
+    end
+
+    post --> ors
+```
+
+| Group | What it does | Read more |
+|-------|--------------|-----------|
+| survey / generate_ideas | Literature search + VirSci hypothesis & primary metric | [Full Data Flow](#full-data-flow) |
+| BFTS | Best-first tree search over experiment configurations | [BFTS algorithm](bfts.md) |
+| ReAct node run | Per-node agent loop that runs the real experiment | [Per-Node Prompt Composition](#per-node-prompt-composition) |
+| LLMEvaluator | Peer-review scoring that drives ranking | [Configuration → BFTS Evaluation Layers](../reference/configuration.md#bfts-evaluation-layers-configurable) |
+| Memory | Ancestor-scoped knowledge passed between nodes | [Memory architecture](memory.md) |
+| Post-BFTS pipeline | Data → figures → paper → review → EAR | [Publication lifecycle](publication-lifecycle.md) |
+| ORS reproducibility | Re-runs the paper from scratch and grades it | [PaperBench quickstart](../guides/paperbench/paperbench_quickstart.md) |
 
 ---
 

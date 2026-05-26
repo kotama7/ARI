@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-skill-memory
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # Memory Architecture
@@ -42,6 +42,23 @@ Both layers live in the same per-checkpoint Letta agent:
   ancestor-scope metadata filter above.
 - `ari_react_<ckpt_hash>` — flat per-checkpoint ReAct trace
   (`LettaMemoryClient`, not ancestor-filtered).
+
+The read and write paths through these two collections (`HASH` = checkpoint
+hash; the write guard and the post-filter are what enforce ancestor scope):
+
+```mermaid
+flowchart LR
+    node["Executing node<br/>(= ARI_CURRENT_NODE_ID)"]
+    subgraph letta["Per-checkpoint Letta agent"]
+        nodecol["ari_node_HASH<br/>ancestor-scoped archival"]
+        reactcol["ari_react_HASH<br/>flat ReAct trace"]
+    end
+    node -->|"add_memory (CoW: node_id must == current)"| nodecol
+    node -->|"ReAct steps"| reactcol
+    node -->|"search_memory(query, ancestor_ids)"| search["passages.search<br/>embed_query, top_k = max(overfetch, limit*40)"]
+    search --> nodecol
+    search -->|"post-filter: ancestor_ids + ari_checkpoint + kind == node_scope"| result["ranked, ancestor-only entries"]
+```
 
 The agent also seeds a core-memory block (`persona` + `human` +
 `ari_context`) with experiment goal, primary metric, and hardware spec

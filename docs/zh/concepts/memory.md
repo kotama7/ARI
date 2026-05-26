@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-skill-memory
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # 记忆架构
@@ -27,6 +27,22 @@ root ──▶ memory["root"]
 
 - `ari_node_<ckpt_hash>` — 节点作用域的 archival 集合，使用上述祖先作用域元数据过滤器。
 - `ari_react_<ckpt_hash>` — 每个检查点的扁平 ReAct 轨迹（`LettaMemoryClient`，不做祖先过滤）。
+
+经由这两个集合的读写路径（`HASH` = 检查点哈希；保证祖先作用域的是写入守卫与 post-filter）：
+
+```mermaid
+flowchart LR
+    node["执行中的节点<br/>(= ARI_CURRENT_NODE_ID)"]
+    subgraph letta["每个检查点的 Letta 代理"]
+        nodecol["ari_node_HASH<br/>祖先作用域 archival"]
+        reactcol["ari_react_HASH<br/>扁平 ReAct 轨迹"]
+    end
+    node -->|"add_memory (CoW: node_id 必须 == current)"| nodecol
+    node -->|"ReAct 步骤"| reactcol
+    node -->|"search_memory(query, ancestor_ids)"| search["passages.search<br/>embed_query, top_k = max(overfetch, limit*40)"]
+    search --> nodecol
+    search -->|"post-filter: ancestor_ids + ari_checkpoint + kind == node_scope"| result["已排序、仅祖先的条目"]
+```
 
 代理还会向核心记忆块（`persona` + `human` + `ari_context`）种入实验目标、主要指标和硬件规格 ── 时机为首个节点的 `generate_ideas` 完成时（即 `primary_metric` 被确定的时刻）。技能可通过 `get_experiment_context()` 读取，无需付出搜索成本；在 seed 执行之前调用会返回 `{}`。
 

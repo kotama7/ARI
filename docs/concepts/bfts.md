@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # BFTS Algorithm
@@ -13,6 +13,27 @@ ARI implements true Best-First Tree Search with a two-pool design:
 
 - **`pending`**: nodes ready to run (already expanded from a parent)
 - **`frontier`**: completed nodes not yet expanded
+
+The two pools and the transitions between them (the dotted self-loop is the
+*persistent frontier* — a completed node stays available for re-expansion):
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> pending: root created / expand() adds one child
+    pending --> running: select_next_nodes (≤ ARI_PARALLEL per batch)
+    running --> frontier: completed (success OR failure)
+    frontier --> frontier: persistent — stays re-expandable
+    frontier --> pending: select best (score + diversity bonus) → expand one child
+    frontier --> retired: Rule A (child outscores parent) OR Rule B (max_expansions_per_node reached)
+    pending --> pruned: should_prune (total ≥ max_total_nodes / depth ≥ max_depth / _sterile)
+    retired --> [*]
+    pruned --> [*]
+```
+
+A failed node is **not** retried: it still enters the frontier and is expanded
+into a `debug` child (the `frontier → pending` edge), so recovery happens as a
+new node rather than a re-execution.
 
 ```python
 def bfts(experiment, config):

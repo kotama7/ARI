@@ -2,7 +2,7 @@
 sources:
   - path: ari-core/ari/viz/api_paperbench.py
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-05-26
 ---
 
 # PaperBench GUI guide
@@ -54,8 +54,7 @@ The license badge under the input mirrors the server's
 - ⚠ "License may require review" — anything else, including unknown
   strings.
 
-Auto-fetch of arXiv metadata + PDF (FR-PI-2 in
-[`PLAN_GUI_PAPERBENCH.md`](../../../ari-core/PLAN_GUI_PAPERBENCH.md))
+Auto-fetch of arXiv metadata + PDF (FR-PI-2)
 remains a v0.8.0 follow-up.
 
 ## Run wizard (`/paperbench/run`)
