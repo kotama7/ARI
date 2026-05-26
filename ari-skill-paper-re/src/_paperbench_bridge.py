@@ -801,6 +801,16 @@ def _reconcile_vendor_env_claims(out: str, env: dict) -> str:
          "" if not env.get("has_docker") else
          " Docker has been installed in your environment, should you wish to use it."),
     ]
+    # When apt-get is unavailable, neutralise the toy example's
+    # `apt-get install` line — agents copy this concrete template verbatim
+    # (observed: `apt-get: command not found` in reproduce.log). Leave it
+    # when apt IS available (vanilla Ubuntu).
+    if not env.get("has_apt"):
+        subs.append((
+            r"apt-get update && apt-get install -y python3",
+            "# NOTE: apt-get is NOT available in this environment — install "
+            "deps via `module load` / `pip install` (python3 is already present)",
+        ))
     for pat, repl in subs:
         out = re.sub(pat, repl, out)
     # Enrich the ADDITIONAL NOTES Compute line with compute-capability / arch.
