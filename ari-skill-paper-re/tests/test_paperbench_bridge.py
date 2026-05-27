@@ -1274,3 +1274,45 @@ def test_reconcile_gated_off_for_real_docker():
     env = {"kind": "docker", "has_docker": True, "gpu": {"present": True, "name": "A10"}}
     assert B._reconcile_vendor_env_claims(body, env) == body
 
+
+
+def test_expand_modulepath_tier2_scopes_to_allocated_partition():
+    """Now that the partition is auto-detected, the tier-2 expansion must
+    scope to the allocated entry (system/<partition>) instead of dumping
+    every GPU's stack (A100/H100/MI250/...) — that was prompt noise."""
+    avail = ("---- /cloud_opt/misc/modulefiles ----\n"
+             "system/a100  system/ai-l40s  system/qc-mi250  system/qc-gh200\n")
+
+    def fake_run(cmd):
+        if cmd.startswith("module show system/ai-l40s"):
+            return "x:\nprepend-path\tMODULEPATH /opt/nvidia/hpc_sdk/modulefiles\n"
+        if cmd.startswith("module show "):
+            # other entries also prepend a (different) dir — should be skipped
+            return "x:\nprepend-path\tMODULEPATH /cloud_opt/modulefiles/other\n"
+        if "MODULEPATH=/opt/nvidia/hpc_sdk/modulefiles" in cmd and "module avail" in cmd:
+            return "---- /opt/nvidia/hpc_sdk/modulefiles ----\nnvhpc/25.7\n"
+        if "MODULEPATH=/cloud_opt/modulefiles/other" in cmd and "module avail" in cmd:
+            return "---- other ----\nshould_not_appear/1.0\n"
+        return ""
+
+    out = B._expand_modulepath_tier2(fake_run, avail, partition="ai-l40s")
+    assert "nvhpc/25.7" in out                     # the allocated entry's stack
+    assert "system/ai-l40s" in out
+    assert "should_not_appear" not in out          # other partitions skipped
+    assert "system/a100" not in out and "system/qc-mi250" not in out
+
+
+def test_expand_modulepath_tier2_falls_back_when_partition_unmatched():
+    """If no entry name matches the partition (naming mismatch), keep all
+    entries rather than silently dropping everything."""
+    avail = "---- x ----\nsystem/a100\n"
+
+    def fake_run(cmd):
+        if cmd.startswith("module show system/a100"):
+            return "x:\nprepend-path\tMODULEPATH /opt/nvidia/hpc_sdk/modulefiles\n"
+        if "MODULEPATH=/opt/nvidia/hpc_sdk/modulefiles" in cmd and "module avail" in cmd:
+            return "---- d ----\nnvhpc/25.7\n"
+        return ""
+
+    out = B._expand_modulepath_tier2(fake_run, avail, partition="some-unknown-part")
+    assert "nvhpc/25.7" in out  # fallback: not dropped

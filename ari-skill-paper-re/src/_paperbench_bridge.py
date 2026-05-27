@@ -288,7 +288,8 @@ def _parse_module_names(avail_output: str) -> list[str]:
 
 
 def _expand_modulepath_tier2(run_module, avail_output: str,
-                             max_entries: int = 40) -> str:
+                             max_entries: int = 40,
+                             partition: str | None = None) -> str:
     """Read-only tier-2 expansion for Tcl Environment Modules (no Lmod
     ``spider``). For each namespaced entry module in ``avail_output``,
     run ``module show`` (read-only — never ``module load``) to find any
@@ -328,6 +329,16 @@ def _expand_modulepath_tier2(run_module, avail_output: str,
         r"module\s+use\s+(?:--\S+\s+)?(\S+)",
     )
     entries = _parse_module_names(avail_output)[:max_entries]
+    # Scope to the allocated partition's entry when known. The other
+    # `system/<gpu>` entries (A100/H100/GH200/MI250/...) are irrelevant to a
+    # job allocated on, say, ai-l40s — expanding all of them is noise that
+    # dilutes the prompt. Keep entries whose name contains the partition
+    # token; fall back to all entries if none match (heuristic-safe).
+    if partition:
+        ptok = partition.strip().lower()
+        matched = [e for e in entries if ptok in e.lower()]
+        if matched:
+            entries = matched
     # Pass 1 (read-only `module show`): map each revealed MODULEPATH dir to
     # the ordered list of entry modules that expose it.
     dir_to_entries: dict[str, list[str]] = {}
@@ -380,10 +391,12 @@ def _expand_modulepath_tier2(run_module, avail_output: str,
     )
 
 
-def _probe_module_avail(max_chars: int = 12000) -> str:
+def _probe_module_avail(max_chars: int = 12000,
+                        partition: str | None = None) -> str:
     """Run ``module spider`` AND ``module avail`` and return their
     combined raw output, capped at ``max_chars`` to keep the prompt
-    budget bounded.
+    budget bounded. ``partition`` scopes the tier-2 expansion to the
+    allocated partition's entry module (avoids dumping every GPU's stack).
 
     Why both:
 
@@ -481,7 +494,7 @@ def _probe_module_avail(max_chars: int = 12000) -> str:
     # the MODULEPATH it would prepend; `module avail <dir>` lists modules
     # there. No `module load`, no mutation.
     if not spider:
-        tier2 = _expand_modulepath_tier2(_run_module, avail)
+        tier2 = _expand_modulepath_tier2(_run_module, avail, partition=partition)
         if tier2:
             parts.append(tier2)
     if not parts:
@@ -534,7 +547,7 @@ def _build_truthful_env_block(env: dict) -> str:
             "toolchain the paper requires (compilers, MPI, libraries, "
             "etc). The available-modules list is included below."
         )
-        avail = _probe_module_avail()
+        avail = _probe_module_avail(partition=env.get("slurm_partition"))
         if avail:
             lines.append("")
             lines.append("Available modules on this host (probed at rollout start):")
