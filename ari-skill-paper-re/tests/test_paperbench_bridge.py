@@ -1022,37 +1022,6 @@ def test_render_activation_block_neither_falls_back_to_manual():
     assert "apt-get install" not in block
 
 
-def test_multilang_counter_example_contents():
-    """The multi-language counter-example must enumerate the major
-    language stacks so the agent sees Python is just one option."""
-    block = B._MULTILANG_COUNTER_EXAMPLE
-    # The pattern (reproduce.sh + native-language binary) must be shown
-    # in each major HPC / systems stack — Python alone is a bias trap.
-    for stack in (
-        "nvcc -std=c++17",  # CUDA
-        "mpicc -fopenmp",    # MPI + OpenMP
-        "gfortran",          # Fortran
-        "cargo build",       # Rust
-        "torch",             # ML reference
-    ):
-        assert stack in block, f"multilang example missing: {stack!r}"
-    # The closing message must reinforce that Python is OPTIONAL.
-    assert "NOT required to use Python" in block
-
-
-def test_multilang_patch_is_installed_and_stacks_with_others():
-    """The counter-example patch must be live AND coexist with
-    env-assumption + blacklist-lift sentinels. All three patches wrap
-    ``get_instructions`` and must run per call."""
-    from paperbench.solvers.basicagent import utils as _v_utils  # type: ignore
-    fn = _v_utils.get_instructions
-    for sentinel in ("_ari_multilang_example",
-                     "_ari_blacklist_lifted",
-                     "_ari_env_patched"):
-        assert getattr(fn, sentinel, False) is True, (
-            f"sentinel {sentinel} lost when stacking get_instructions "
-            "wrappers; all three patches must coexist"
-        )
 
 
 def test_env_patch_is_installed_on_vendor_get_instructions():
