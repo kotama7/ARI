@@ -792,11 +792,19 @@ def _reconcile_vendor_env_claims(out: str, env: dict) -> str:
          "" if not env.get("has_docker") else
          " Docker has been installed in your environment, should you wish to use it."),
     ]
-    # NOTE: we deliberately do NOT edit the strawberry toy example's
-    # `apt-get install` line. The toy is a pedagogical FORMAT example for a
-    # different task; injecting an env note into its code block is incoherent
-    # and redundant — the ADDITIONAL NOTES already state authoritatively that
-    # apt-get is unavailable (prefer pip / module / source-build).
+    # The toy example's dependency-install line SWITCHES with the detected
+    # environment: keep vendor's `apt-get install` when apt IS available
+    # (the example is then correct), otherwise show the env-appropriate
+    # mechanism so the concrete example doesn't prime the agent toward an
+    # unavailable apt-get.
+    if not env.get("has_apt"):
+        if env.get("has_module"):
+            toy_dep = ("module load <NAME>   # this environment has no apt-get "
+                       "— use the module system for toolchains (see catalog above)")
+        else:
+            toy_dep = ("python3 -m pip install <pkg>   # this environment has no "
+                       "apt-get — use pip / conda / source-build")
+        subs.append((r"apt-get update && apt-get install -y python3", toy_dep))
     for pat, repl in subs:
         out = re.sub(pat, repl, out)
     # Enrich the ADDITIONAL NOTES Compute line with compute-capability / arch.

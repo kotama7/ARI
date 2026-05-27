@@ -1261,3 +1261,28 @@ def test_expand_modulepath_tier2_falls_back_when_partition_unmatched():
 
     out = B._expand_modulepath_tier2(fake_run, avail, partition="some-unknown-part")
     assert "nvhpc/25.7" in out  # fallback: not dropped
+
+
+def test_reconcile_toy_dep_switches_per_environment():
+    """The toy example's apt-get install line switches with the detected
+    env: kept under apt, → module under a module cluster, → pip otherwise."""
+    body = "```bash\napt-get update && apt-get install -y python3\npython3 count.py\n```"
+    # apt available → vendor line kept (example is correct there)
+    apt_env = {"kind": "docker", "has_apt": True, "has_module": False,
+               "has_docker": True, "gpu": {"present": False}}
+    # docker kind is gated off entirely, so use a local apt env instead:
+    apt_local = {"kind": "local", "has_apt": True, "has_module": False,
+                 "has_docker": False, "gpu": {"present": False}}
+    assert "apt-get update && apt-get install -y python3" in B._reconcile_vendor_env_claims(body, apt_local)
+    # module cluster, no apt → module-way
+    mod_env = {"kind": "slurm", "has_apt": False, "has_module": True,
+               "has_docker": False, "slurm_partition": None, "gpu": {"present": False}}
+    out = B._reconcile_vendor_env_claims(body, mod_env)
+    assert "apt-get update && apt-get install -y python3" not in out
+    assert "module load <NAME>" in out and "no apt-get" in out
+    # no apt, no module → pip-way
+    pip_env = {"kind": "local", "has_apt": False, "has_module": False,
+               "has_docker": False, "gpu": {"present": False}}
+    out2 = B._reconcile_vendor_env_claims(body, pip_env)
+    assert "pip install <pkg>" in out2
+    assert "module load <NAME>" not in out2
