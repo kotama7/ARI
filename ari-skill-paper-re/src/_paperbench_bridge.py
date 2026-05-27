@@ -1739,7 +1739,11 @@ async def judge_submission(
     # and the parse step is small.
     from _litellm_completer import LiteLLMTurnCompleter
 
-    submission_dir = Path(submission_dir)
+    # Inspect the real repo root: if the agent nested its self-contained
+    # repo under submission/ (see _resolve_submission_repo_root), grade THAT
+    # — the workspace-root may hold only an orphaned promote copy of
+    # reproduce.sh without the sources the judge needs to see.
+    submission_dir = _resolve_submission_repo_root(submission_dir)
     submission_dir.mkdir(parents=True, exist_ok=True)
     if reproduce_log:
         log_path = submission_dir / "reproduce.log"
@@ -2100,6 +2104,46 @@ def _resolve_container_image_alias(value: str) -> str:
 # ─── Stage 2: reproduce.sh execution ────────────────────────────────────
 
 
+def _resolve_submission_repo_root(submission_dir: Path | str) -> Path:
+    """Return the directory that actually holds the agent's self-contained
+    repo — i.e. where ``reproduce.sh`` is co-located with the sources it
+    references by relative path (``nvcc src/main.cu``, ``./bin/foo``).
+
+    ARI's rollout workspace (``_replicator_agent._adapt_vendor_paths``)
+    rewrites the vendor ``/home/submission`` path to a *relative*
+    ``submission/``, so an agent whose cwd is the workspace builds its repo
+    under ``<workspace>/submission/``. The rollout's promote step then
+    copies ONLY ``reproduce.sh`` up to the workspace root, orphaning it from
+    its ``src/``; running that orphan (``cd <root> && bash reproduce.sh``)
+    fails with ``src/...: No such file or directory`` even though the agent
+    built and verified a correct, self-contained repo one level down. (This
+    is the v3-A11 0%-execution root cause.)
+
+    Resolution: if a nested ``submission/reproduce.sh`` exists AND that
+    nested dir looks like the committed repo (has ``.git`` or any content
+    besides ``reproduce.sh``), reproduction/grading must run THERE — that is
+    the only directory where reproduce.sh's relative paths resolve. Falls
+    back to ``submission_dir`` unchanged when there is no such nesting (the
+    agent put everything at the root, or a dry-run dir).
+    """
+    p = Path(submission_dir).resolve()
+    nested = p / "submission"
+    if (nested / "reproduce.sh").is_file():
+        try:
+            has_repo_content = (nested / ".git").exists() or any(
+                c.name != "reproduce.sh" for c in nested.iterdir()
+            )
+        except OSError:
+            has_repo_content = False
+        if has_repo_content:
+            log.info(
+                "reproduce/judge: using nested repo root %s (agent built its "
+                "self-contained repo under submission/; the workspace-root "
+                "reproduce.sh is an orphaned promote copy)", nested)
+            return nested
+    return p
+
+
 async def reproduce_submission(
     *,
     submission_dir: Path | str,
@@ -2156,7 +2200,7 @@ async def reproduce_submission(
     from server import run_reproduce  # lazy: server imports this module
 
     container_image = _resolve_container_image_alias(container_image)
-    sub = Path(submission_dir).resolve()
+    sub = _resolve_submission_repo_root(submission_dir)
 
     # Wall-clock budget shared by ALL attempts (initial + salvage
     # retries). Vendor's reproduce.py:timeout is per-attempt, but

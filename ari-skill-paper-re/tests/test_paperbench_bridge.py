@@ -1286,3 +1286,43 @@ def test_reconcile_toy_dep_switches_per_environment():
     out2 = B._reconcile_vendor_env_claims(body, pip_env)
     assert "pip install <pkg>" in out2
     assert "module load <NAME>" not in out2
+
+
+def test_resolve_submission_repo_root_descends_into_nested(tmp_path):
+    """v3-A11 root cause: the agent's self-contained repo lands under
+    <workspace>/submission/ (vendor /home/submission rewritten to relative
+    submission/), while the rollout promote step orphans a reproduce.sh copy
+    at the workspace root WITHOUT its src/. Reproduction/grading must run in
+    the nested repo where reproduce.sh's relative `nvcc src/main.cu` resolves.
+    """
+    work = tmp_path / "submission"          # ARI workspace (== checkpoint/submission)
+    repo = work / "submission"              # agent's real repo (nested)
+    (repo / "src").mkdir(parents=True)
+    (repo / "reproduce.sh").write_text("nvcc -arch=sm_89 src/main.cu -o bin/x\n")
+    (repo / "src" / "main.cu").write_text("__global__ void k(){}\n")
+    (repo / ".git").mkdir()
+    # orphaned promote copy at the workspace root (the bug): reproduce.sh, no src/
+    (work / "reproduce.sh").write_text("nvcc -arch=sm_89 src/main.cu -o bin/x\n")
+
+    resolved = B._resolve_submission_repo_root(work)
+    assert resolved == repo.resolve(), (
+        f"must descend to the nested self-contained repo; got {resolved}")
+    assert (resolved / "src" / "main.cu").is_file()
+
+
+def test_resolve_submission_repo_root_no_nesting_is_identity(tmp_path):
+    """When the agent put reproduce.sh + sources directly at the root (no
+    nested submission/), the dir is used as-is."""
+    work = tmp_path / "submission"
+    (work / "src").mkdir(parents=True)
+    (work / "reproduce.sh").write_text("bash run\n")
+    assert B._resolve_submission_repo_root(work) == work.resolve()
+
+
+def test_resolve_submission_repo_root_ignores_nested_without_reproduce(tmp_path):
+    """A nested submission/ that does NOT contain reproduce.sh is not a repo
+    root — do not descend (avoid false positives)."""
+    work = tmp_path / "submission"
+    (work / "submission").mkdir(parents=True)   # nested dir, but no reproduce.sh
+    (work / "reproduce.sh").write_text("bash run\n")
+    assert B._resolve_submission_repo_root(work) == work.resolve()
