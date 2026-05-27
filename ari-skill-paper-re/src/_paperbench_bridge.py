@@ -984,11 +984,11 @@ JSON object with these fields:
                         "'MPI process count = 64', 'PyTorch nightly'>"],
     "datasets": [
       {
-        "name": "<dataset name as cited in the paper, e.g., 'Miranda'>",
+        "name": "<dataset name as cited in the paper, e.g., 'SQuAD'>",
         "domain": "<short description: 'hydrodynamics simulation', "
                   "'ImageNet image classification', etc>",
         "url_hint": "<a search hint the agent can use to find it, e.g., "
-                    "'SDRBench Zenodo Miranda', 'HuggingFace squad', "
+                    "'image-net.org download', 'HuggingFace squad', "
                     "'github.com/foo/dataset-bar' — leave empty string "
                     "if the paper gives no acquisition pointer>"
       }
@@ -996,7 +996,7 @@ JSON object with these fields:
     "libraries": [
       {
         "name": "<software dependency the artifact needs, e.g., "
-                "'CUDA Toolkit', 'zstd', 'HDF5', 'cuSZ', 'OpenMPI', "
+                "'CUDA Toolkit', 'zstd', 'HDF5', 'Eigen', 'OpenMPI', "
                 "'PyTorch'>",
         "how": "<acquisition channel: 'module' (HPC module system) | "
                "'pip' | 'conda' | 'source-build' (clone+compile) | "
