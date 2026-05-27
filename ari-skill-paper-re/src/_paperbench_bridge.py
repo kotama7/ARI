@@ -813,67 +813,90 @@ def _reconcile_vendor_env_claims(out: str, env: dict) -> str:
     return out
 
 
-def _install_env_assumption_patch() -> None:
-    """Monkey-patch vendor ``get_instructions`` to substitute vendor's
-    hardcoded ``- You have root access in your environment.`` line with
-    a TRUTHFUL multi-line block describing the actual runtime env
-    (apt/sudo/module/nvcc state) so the agent doesn't blindly trust the
-    Docker-assumption template. Idempotent. Skipped when
-    ``ARI_PB_DISABLE_ENV_PATCH=1`` is set.
-    """
-    if os.environ.get(_ENV_PATCH_DISABLE_ENV, "") == "1":
-        log.info("vendor patch: env-assumption substitution disabled via %s=1",
-                 _ENV_PATCH_DISABLE_ENV)
-        return
+# ════════════════════════════════════════════════════════════════════════
+# VENDOR PROMPT REWRITES (single consolidated monkey-patch)
+# ════════════════════════════════════════════════════════════════════════
+# Every ARI edit to the agent's instruction text lives in ONE wrapper around
+# vendor ``get_instructions``. Two independent, individually opt-out-able
+# rewrites are applied per call, in order:
+#
+#   (a) ENV-TRUTH  [opt out: ARI_PB_DISABLE_ENV_PATCH=1]
+#       Detect the REAL runtime environment inside the agent's computer
+#       (GPU/compute-cap, module system, apt/sudo usability, docker, kind),
+#       then (i) replace vendor's false "- You have root access..." line with
+#       a truthful env block and (ii) reconcile the static body claims
+#       (fresh-Ubuntu-Docker / A10 / "toolkit already installed" / Docker-
+#       installed) to match. Fixes a contradictory, partly-false environment
+#       description that misled the agent (assumed CUDA pre-installed → no
+#       module load; A10≠L40S; sudo/apt that don't work).
+#
+#   (b) BLACKLIST LIFT  [opt out: ARI_PB_KEEP_BLACKLIST=1]
+#       Replace vendor's "don't use the paper's codebase (cheating)" line
+#       with an ARI override allowing the paper's own codebase. ARI's goal
+#       is audit-quality reproduction (P-route), not leaderboard rank.
+#
+# NOT here (separate, by design): the orphan-tool-call API-compat patch
+# (different vendor symbol) and the paper-kind addendum (data injection via
+# vendor's own /home/paper/addendum.md channel). No vendor source edits —
+# pure output-string rewriting (preserves the zero-vendor-changes invariant).
+
+def _install_instruction_rewrites() -> None:
+    """Install the single consolidated ``get_instructions`` rewrite wrapper.
+    Idempotent. Each rewrite (env-truth, blacklist-lift) is gated by its own
+    opt-out env var; if both are disabled the wrapper is a no-op pass-through
+    and is still installed (harmless)."""
     try:
         from paperbench.solvers.basicagent import utils as _v_utils  # type: ignore
     except Exception as e:
-        log.warning("vendor patch: cannot locate basicagent.utils for env "
-                    "substitution: %s; agent will see vendor's Docker "
-                    "assumption verbatim", e)
+        log.warning("vendor patch: cannot locate basicagent.utils for "
+                    "instruction rewrites: %s; agent sees vendor text verbatim", e)
         return
-    if getattr(_v_utils.get_instructions, "_ari_env_patched", False):
+    if getattr(_v_utils.get_instructions, "_ari_instr_rewritten", False):
         return
     original = _v_utils.get_instructions
+    env_on = os.environ.get(_ENV_PATCH_DISABLE_ENV, "") != "1"
+    blacklist_on = os.environ.get(_BLACKLIST_PATCH_DISABLE_ENV, "") != "1"
 
     async def patched(*args, **kwargs):  # noqa: ANN001, ANN002, ANN003
         out = await original(*args, **kwargs)
-        # Detect the env INSIDE the agent's computer (correct for
-        # docker/apptainer/slurm). Fall back to host-side detection if the
-        # computer can't be probed (preserves prior local-sandbox behaviour).
-        computer = args[0] if args else kwargs.get("computer")
-        env = None
-        if computer is not None:
-            try:
-                env = await _probe_env_on_computer(computer)
-            except Exception as e:  # noqa: BLE001
-                log.warning("vendor patch: computer-side env probe failed "
-                            "(%s); falling back to host detection", e)
-        if env is None:
-            env = _detect_runtime_env()
-        replacement = _build_truthful_env_block(env)
-        if replacement != _VENDOR_ROOT_ACCESS_LINE and _VENDOR_ROOT_ACCESS_LINE in out:
-            out = out.replace(_VENDOR_ROOT_ACCESS_LINE, replacement)
-        # Reconcile the static vendor body env claims (Docker/A10/toolkit/
-        # 7-day) with the detected truth so the agent isn't fed a
-        # contradictory environment description.
-        out = _reconcile_vendor_env_claims(out, env)
-        log.info(
-            "vendor patch: env-truth applied (via=%s kind=%s has_module=%s "
-            "has_apt=%s has_sudo=%s gpu=%s)",
-            env.get("_via", "host"), env.get("kind"), env.get("has_module"),
-            env.get("has_apt"), env.get("has_sudo"),
-            (env.get("gpu") or {}).get("name") or (env.get("gpu") or {}).get("present"),
-        )
+        # (a) ENV-TRUTH — detect inside the agent's computer (correct for
+        # docker/apptainer/slurm); fall back to host detection if unreachable.
+        if env_on:
+            computer = args[0] if args else kwargs.get("computer")
+            env = None
+            if computer is not None:
+                try:
+                    env = await _probe_env_on_computer(computer)
+                except Exception as e:  # noqa: BLE001
+                    log.warning("vendor patch: computer-side env probe failed "
+                                "(%s); falling back to host detection", e)
+            if env is None:
+                env = _detect_runtime_env()
+            replacement = _build_truthful_env_block(env)
+            if replacement != _VENDOR_ROOT_ACCESS_LINE and _VENDOR_ROOT_ACCESS_LINE in out:
+                out = out.replace(_VENDOR_ROOT_ACCESS_LINE, replacement)
+            out = _reconcile_vendor_env_claims(out, env)
+            log.info(
+                "vendor patch: env-truth applied (via=%s kind=%s has_module=%s "
+                "has_apt=%s has_sudo=%s gpu=%s)",
+                env.get("_via", "host"), env.get("kind"), env.get("has_module"),
+                env.get("has_apt"), env.get("has_sudo"),
+                (env.get("gpu") or {}).get("name") or (env.get("gpu") or {}).get("present"),
+            )
+        # (b) BLACKLIST LIFT — allow the paper's own codebase.
+        if blacklist_on and _VENDOR_BLACKLIST_LINE in out:
+            out = out.replace(_VENDOR_BLACKLIST_LINE, _ARI_BLACKLIST_OVERRIDE)
+            log.info("vendor patch: lifted paper-codebase blacklist")
         return out
 
-    patched._ari_env_patched = True  # type: ignore[attr-defined]
+    patched._ari_instr_rewritten = True  # type: ignore[attr-defined]
     _v_utils.get_instructions = patched
-    log.info("vendor patch: installed env-assumption substitution on "
-             "BasicAgent get_instructions")
+    log.info("vendor patch: installed consolidated instruction rewrites "
+             "(env-truth=%s blacklist-lift=%s)", env_on, blacklist_on)
 
 
-_install_env_assumption_patch()
+# Installed at the bottom of the rewrites section, after the blacklist
+# constants are defined (see below).
 
 
 # ─── vendor patch: blacklist lift (ARI lifts vendor leaderboard rules) ────
@@ -927,48 +950,9 @@ _ARI_BLACKLIST_OVERRIDE = (
 )
 
 
-def _install_blacklist_lift_patch() -> None:
-    """Monkey-patch vendor ``get_instructions`` to replace the
-    cheating-claim sentence with an ARI override allowing the agent
-    to consult the paper's own codebase. Idempotent. Skipped when
-    ``ARI_PB_KEEP_BLACKLIST=1`` is set (for vendor-leaderboard parity).
-    """
-    if os.environ.get(_BLACKLIST_PATCH_DISABLE_ENV, "") == "1":
-        log.info("vendor patch: blacklist lift disabled via %s=1",
-                 _BLACKLIST_PATCH_DISABLE_ENV)
-        return
-    try:
-        from paperbench.solvers.basicagent import utils as _v_utils  # type: ignore
-    except Exception as e:
-        log.warning("vendor patch: cannot locate basicagent.utils for "
-                    "blacklist lift: %s; vendor cheating claim will reach "
-                    "the agent verbatim", e)
-        return
-    if getattr(_v_utils.get_instructions, "_ari_blacklist_lifted", False):
-        return
-    # If env-assumption patch already wrapped get_instructions, our
-    # blacklist wrap stacks on top (both substitutions fire per call).
-    inner = _v_utils.get_instructions
-
-    async def patched(*args, **kwargs):  # noqa: ANN001, ANN002, ANN003
-        out = await inner(*args, **kwargs)
-        if _VENDOR_BLACKLIST_LINE in out:
-            out = out.replace(_VENDOR_BLACKLIST_LINE, _ARI_BLACKLIST_OVERRIDE)
-            log.info("vendor patch: lifted paper-codebase blacklist "
-                     "(agent may consult author's repository)")
-        return out
-
-    patched._ari_blacklist_lifted = True  # type: ignore[attr-defined]
-    # Preserve env-assumption patch sentinel so its idempotency check
-    # still passes.
-    if getattr(inner, "_ari_env_patched", False):
-        patched._ari_env_patched = True  # type: ignore[attr-defined]
-    _v_utils.get_instructions = patched
-    log.info("vendor patch: installed blacklist lift on "
-             "BasicAgent get_instructions")
-
-
-_install_blacklist_lift_patch()
+# Install the consolidated rewrite wrapper now that both the env-truth and
+# blacklist constants above are defined.
+_install_instruction_rewrites()
 
 
 

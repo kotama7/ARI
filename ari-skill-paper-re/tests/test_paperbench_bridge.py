@@ -551,21 +551,14 @@ def test_blacklist_lift_constants_disagree_with_vendor():
 
 
 def test_blacklist_patch_is_installed_on_vendor_get_instructions():
-    """The vendor get_instructions symbol must have the blacklist-lift
-    sentinel set at bridge import. Stacks on top of env-assumption
-    patch — both substitutions must fire per call."""
+    """The vendor get_instructions symbol must carry the consolidated
+    rewrite sentinel at bridge import. Env-truth + blacklist-lift now live
+    in ONE wrapper (both fire per call)."""
     from paperbench.solvers.basicagent import utils as _v_utils  # type: ignore
     fn = _v_utils.get_instructions
-    assert getattr(fn, "_ari_blacklist_lifted", False) is True, (
-        "blacklist lift patch not installed; agent will see vendor's "
-        "cheating claim and self-police away from paper's codebase even "
-        "though ARI's reproduction goal does not require it"
-    )
-    # Both env-assumption and blacklist lift patches must coexist:
-    # the latter wraps the former.
-    assert getattr(fn, "_ari_env_patched", False) is True, (
-        "env-assumption patch sentinel lost when blacklist lift was "
-        "installed; both must be visible on the final wrapper"
+    assert getattr(fn, "_ari_instr_rewritten", False) is True, (
+        "consolidated instruction-rewrite wrapper not installed; agent will "
+        "see vendor's env/cheating claims verbatim"
     )
 
 
@@ -1025,11 +1018,11 @@ def test_render_activation_block_neither_falls_back_to_manual():
 
 
 def test_env_patch_is_installed_on_vendor_get_instructions():
-    """The vendor get_instructions symbol must be patched at bridge
-    import. Idempotent: importing the bridge twice leaves only one
-    patch layer (verified by the ._ari_env_patched sentinel)."""
+    """The vendor get_instructions symbol must carry the consolidated
+    rewrite wrapper at bridge import (single ._ari_instr_rewritten sentinel;
+    env-truth + blacklist-lift in one wrapper)."""
     from paperbench.solvers.basicagent import utils as _v_utils  # type: ignore
-    assert getattr(_v_utils.get_instructions, "_ari_env_patched", False) is True, (
+    assert getattr(_v_utils.get_instructions, "_ari_instr_rewritten", False) is True, (
         "vendor get_instructions not patched; agent will see Docker-style "
         "root-access claim even on SLURM HPC clusters"
     )
