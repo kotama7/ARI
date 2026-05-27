@@ -204,6 +204,42 @@ fallback を opt-in する: `export ARI_PHASE1_ALLOW_FALLBACK=1`。
 2. **`paper_audit_mode` が誤って ON** — paper-audit mode は論文自体を
    採点。`code_only` と排他で、両方 True なら bridge が `ValueError`。
 
+### Q. ソースをコミットしたのに `reproduce.sh` が `src/…: No such file or directory` で失敗する
+
+エージェントがリポジトリを 1 階層深く構築してしまった。ARI のホスト側
+sandbox は workspace を cwd として提示し、vendor の `/home/submission`
+パスを相対 `submission/` に書き換える。そのためプロンプトを literal に
+従ったエージェントは、自己完結リポジトリ (`reproduce.sh` + `src/`) を
+`<workspace>/submission/` 配下に置いてしまう。 post-rollout 処理が
+`reproduce.sh` だけを workspace root へ promote し、ソースから孤立させて
+いた。Stage 2 はその孤立コピーを実行するため build が `src/…` を見つけ
+られず、Code Execution / Result Analysis の全 leaf が 0 点になっていた。
+
+v0.8.0 はこれを自動的に解決する: `reproduce_submission` と
+`judge_submission` は、実リポジトリ (`reproduce.sh` が `.git` / ソースと
+co-located) を保持する nested な `submission/` がある場合そこへ降りる。
+これにより `reproduce.sh` の相対パスは、エージェント自身の
+`cd submission && bash reproduce.sh` チェック時とまったく同様に解決される。
+対応不要; 孤立した top-level コピーは無視される。旧来の失敗が見えるなら
+v0.8.0 上にいるか確認すること。
+
+### Q. エージェントの `apply_patch` / `applypatch` 編集が `command not found` で失敗する
+
+gpt-5 / codex モデルは、ARI / vendor のどのプロンプトも指示していないのに
+`apply_patch <<'PATCH' … PATCH` でファイルを編集しようとする習性がある。
+vendor Docker image は `/bin/apply_patch` をインストールするが、ホスト側の
+`LocalComputer` は image を build しないため、v0.8.0 以前はそうした呼び出し
+が毎回失敗し、エージェントは `cat`-heredoc に fallback する前に tool-call
+budget を浪費していた。
+
+v0.8.0 は vendor のセットアップをミラーする: `LocalComputer` は vendor 自身
+の `apply_patch.py` を包む wrapper を workspace の `bin/` ディレクトリに
+(`apply_patch` と `applypatch` 両方の名前で) 配置し、各エージェントコマンド
+が共有する shell PATH の先頭に prepend する。vendor モジュールが見つから
+ない場合は gracefully に degrade する (PATH 変更なし、heredoc fallback)。
+対応不要; これはホスト sandbox 限定 (Apptainer SIF は既に
+`/bin/apply_patch` を持つ)。
+
 ## v0.8.0: HF_TOKEN / agent.env
 
 ### Q. 論文が gated dataset / model のため HF_TOKEN が必要

@@ -243,6 +243,41 @@ check:
   retains web search (it only strips PythonTool / SearchFile per
   vendor `solver.py:88-95`).
 
+### Q. `reproduce.sh` fails with `src/…: No such file or directory` even though I committed the source
+
+The agent built its repository one directory too deep. ARI's host-side
+sandbox presents the workspace as the cwd and the vendor's
+`/home/submission` path is rewritten to a relative `submission/`, so an
+agent that follows the prompt literally lands its self-contained repo
+(with `reproduce.sh` + `src/`) under `<workspace>/submission/`. A
+post-rollout step had promoted only `reproduce.sh` up to the workspace
+root, orphaning it from its sources; Stage 2 then ran that orphan and the
+build could not find `src/…`, zeroing every Code Execution / Result
+Analysis leaf.
+
+v0.8.0 resolves this automatically: `reproduce_submission` and
+`judge_submission` descend into a nested `submission/` when it holds the
+real repository (`reproduce.sh` co-located with `.git` / sources), so
+`reproduce.sh`'s relative paths resolve exactly as during the agent's own
+`cd submission && bash reproduce.sh` check. No action needed; the orphaned
+top-level copy is ignored. If you see the old failure, confirm you are on
+v0.8.0.
+
+### Q. Agent's `apply_patch` / `applypatch` edits fail with `command not found`
+
+gpt-5 / codex models reflexively edit files via `apply_patch <<'PATCH' …
+PATCH` even though no ARI or vendor prompt instructs it. The vendor Docker
+image installs `/bin/apply_patch`, but the host-side `LocalComputer`
+builds no image, so pre-v0.8.0 every such call failed and the agent burned
+tool-call budget before falling back to `cat`-heredoc.
+
+v0.8.0 mirrors the vendor setup: `LocalComputer` drops a wrapper around the
+vendor's own `apply_patch.py` into a workspace `bin/` dir (under both
+`apply_patch` and `applypatch`) and prepends it to the shell PATH shared by
+every agent command. It degrades gracefully (PATH untouched, heredoc
+fallback) if the vendor module cannot be located. No action needed; this is
+host-sandbox-only (Apptainer SIFs already carry `/bin/apply_patch`).
+
 ## Hugging Face / agent.env credentials (v0.8.0)
 
 ### Q. Paper needs `HF_TOKEN` for gated dataset / model

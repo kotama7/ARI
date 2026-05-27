@@ -1,64 +1,69 @@
 \section{Evaluation (deferred)}\label{chapter:eval}
 
 \textbf{This chapter is intentionally short. The evaluation has not
-been carried out for this snapshot.} The previous draft of this
-report quoted concrete medians and per-leaf scores; on review we
-found those numbers were illustrative examples written during R3a
-drafting, not measurements from a frozen ARI checkpoint, so they
-have been removed. Only artefacts that are real are kept.
+been carried out for this snapshot.} An earlier draft of this report
+quoted concrete medians and per-leaf scores; on review we found those
+numbers were illustrative placeholders, not measurements from a
+frozen ARI checkpoint, and have removed them. Only artefacts grounded
+in code or live infrastructure are kept.
 
 What \emph{is} real:
 
 \begin{itemize}
-  \item The cost-accounting machinery: \texttt{CostTracker}
-        (\code{cost\_tracker.py:77}) attaches per-call dollar costs
-        to every model invocation; \texttt{init} on line~181 wires
-        the tracker to a checkpoint directory; the resulting
-        \texttt{cost\_usd} field is written into
-        \texttt{results.json} at end of run.
+  \item The cost-accounting machinery: a dollar cost is attached to
+        every model invocation and accumulated, per run, into the
+        checkpoint's results record.
   \item The exploration loop terminates via the stagnation detector
         (\cref{sec:exploration:termination}); the empirical
-        frequency at which stagnation rather than $\Tmax$ /
-        $\Cmax$ fires is intended to be reported here once a
-        snapshot exists.
-  \item The PGF figure scripts (\code{shared/figures/scripts/})
-        are seed-pinned; running \code{make figures} regenerates
-        deterministic synthetic placeholders that pass
-        \code{check\_figures}, but those placeholders are
-        \emph{not} cited as evidence in the body.
+        frequency at which stagnation rather than the step / cost
+        budgets ($\Tmax$ / $\Cmax$) fires is intended to be reported
+        here once a snapshot exists.
+  \item Every data figure in this report is a deterministic synthetic
+        placeholder, generated from a fixed seed so the document
+        build is reproducible; none is cited as evidence.
 \end{itemize}
 
 What is \emph{not yet} done:
 
 \begin{itemize}
-  \item Pinning a frozen ARI v0.7.2 checkpoint and extracting
-        \texttt{tree.json} / \texttt{results.json} into
-        \code{shared/figures/data/}. Today the data directory holds
-        only \code{*.meta.yaml} files marked
-        \code{source.synthetic: true}.
+  \item Pinning a frozen ARI v0.7.2 checkpoint and deriving the
+        figures from its real search tree and run aggregates rather
+        than from the synthetic placeholders used today.
   \item Reporting median run cost, per-seed exploration curves, and
-        per-category rubric distributions from real reviews. These
-        will appear here in a follow-up PR that lands the frozen
-        checkpoint and re-derives the aggregates.
-  \item Reporting full-rollout PaperBench-style replication numbers
-        from the \texttt{paper-re} skill on real target papers
-        (sc24-00052 TS-SpGEMM, sc24-00019 cuSZ-i): each requires a
-        12-hour \texttt{BasicAgent} rollout against a real LLM
-        completer, deferred to the operational v0.7.3 pass.
+        per-category rubric distributions from real reviews.
+  \item Reporting full-rollout PaperBench-style replication scores on
+        real target papers (two contrasting Supercomputing~2024
+        submissions, one sparse-linear-algebra and one lossy-compression
+        kernel): each requires a multi-hour replication rollout against
+        a real model, deferred to the operational v0.8.0 pass.
 \end{itemize}
 
 Cross-references from other chapters (e.g.\ in
 \cref{sec:exploration:termination}) point here only to mark where
 the empirical evidence will live, not where it currently lives.
 
-v0.7.2 does record two minor plumbing checks against the new
-\texttt{execution\_profile} pathway: rubric generation against the
-preprints of two contrasting SC24 papers correctly emitted
-\texttt{kind:"mpi"} (with the full reported scale envelope) for a
-multi-rank HPC paper and correctly omitted the field for a
-single-machine paper; and a multi-flag \texttt{sbatch} dispatch
-against a local SLURM partition was accepted by the queue manager
-after the GRES-availability and \texttt{sbatch --help} probes
-dropped two flags the local SLURM version did not support. These
-are operational sanity checks on the plumbing, not measurements
-of the methodology, and are not cited as evidence in the body.
+v0.7.2 does record two minor sanity checks of the
+execution-profile pathway (\cref{sec:paper:paperbench:v072}): rubric
+generation correctly emitted a multi-rank (MPI) execution profile,
+with the paper's reported scale envelope, for an HPC paper and
+omitted it for a single-machine paper; and a multi-flag cluster
+dispatch was accepted by the local scheduler after the runtime
+probes dropped the flags that scheduler did not support. These
+exercise the plumbing, not the methodology, and are not cited as
+evidence.
+
+The operational v0.8.0 pass itself was subsequently exercised on the
+lossy-compression target. It first surfaced two harness defects that had
+been silently denying the agent execution credit: the reproduction stage
+invoked the agent's entry script outside the directory in which the agent
+had assembled its self-contained repository, and the host-resident sandbox
+lacked a file-editing facility that the model expected and the container
+image already provides. With both corrected, a full rollout through all
+three stages produced a compiling, GPU-native reproduction that retrieved
+a real data slice and swept a range of error bounds. The two remaining
+shortfalls were properties of the agent's own behaviour rather than of the
+harness: the agent terminated voluntarily well inside its time budget, and
+it computed a GPU-predicted quality metric that it then omitted from its
+reported results. As with the v0.7.2 checks, this exercises the pipeline
+end to end rather than the methodology, and the single target is not cited
+as quantitative evidence.

@@ -1,57 +1,53 @@
-% translated-from: en/chapters/05_evaluation.tex@408435f6db3270515ca9cc26283d323defb2ba34c89ae8d8e69a7aab7a794752
-% glossary:        5bca8d57a70f021e20c0af79aa06cd21013495c1a8246887ae889cd8a056f5fd
-% model:           claude-opus-4-7
-
 \section{评估(暂缓)}\label{chapter:eval}
 
 \textbf{本章有意保持简短。本快照下未进行实际评估。}本报告的早
 期草稿曾给出具体的中位数与按叶得分;复审后我们发现那些数字是
-R3a 起草期间写下的示例,并非源自冻结的 ARI 检查点的实测,故已
+说明性的占位数,并非源自冻结的 ARI 检查点的实测,故已
 删除。仅保留真实存在的产物。
 
 \emph{已实现}的部分:
 
 \begin{itemize}
-  \item 成本核算机制:\texttt{CostTracker}
-        (\code{cost\_tracker.py:77})为每次模型调用附加美元成
-        本;\texttt{init}(第 181 行)将追踪器接入检查点目录;
-        运行末,\texttt{cost\_usd} 字段被写入 \texttt{results.json}。
+  \item 成本核算机制:每次模型调用都被附加美元成本,并按运行
+        汇总进检查点的结果记录。
   \item 探索循环经停滞检测器
         (\cref{sec:exploration:termination})终止;停滞而非
-        $\Tmax$ / $\Cmax$ 触发的经验频率正是本章拟在快照确定后
-        报告的内容。
-  \item PGF 图脚本(\code{shared/figures/scripts/})已经种子固定。
-        \code{make figures} 会再生成确定性的合成占位图并通过
-        \code{check\_figures},但这些占位图\emph{未}作为正文证
-        据被引用。
+        步数 / 成本预算($\Tmax$ / $\Cmax$)触发的经验频率,正是
+        本章拟在快照确定后报告的内容。
+  \item 本报告中的每幅数据图都是由固定种子生成的确定性合成占位图
+        (以保证文档构建可复现),无一作为证据被引用。
 \end{itemize}
 
 \emph{未实现}的部分:
 
 \begin{itemize}
-  \item 确定 ARI v0.7.2 冻结检查点,并将 \texttt{tree.json} /
-        \texttt{results.json} 抽取至
-        \code{shared/figures/data/}。目前该数据目录仅含
-        \code{*.meta.yaml},每份都标注
-        \code{source.synthetic: true}。
-  \item 报告中位运行成本、按种子的探索曲线、基于真实评审的按类
-        别评分细则分布。这些将由后续 PR 在落入冻结检查点并重新
-        计算聚合后于本章呈现。
-  \item 报告 \texttt{paper-re} 技能针对真实目标论文
-        (sc24-00052 TS-SpGEMM, sc24-00019 cuSZ-i) 的完整 rollout
-        PaperBench 风格再现得分。 每篇需对真实 LLM completer
-        进行 12 小时 \texttt{BasicAgent} rollout, 推迟到操作性
-        v0.7.3 pass。
+  \item 确定 ARI v0.7.2 冻结检查点,并由其真实的搜索树与运行聚合
+        (而非当前的合成占位图)导出图表。
+  \item 报告中位运行成本、按种子的探索曲线、基于真实评审的按类别
+        评分细则分布。
+  \item 报告对真实目标论文(两篇对照性的 Supercomputing~2024 投稿
+        ——一篇稀疏线性代数、一篇有损压缩内核)的完整 PaperBench
+        风格再现得分。 每篇需对真实模型进行数小时的复现 rollout,
+        推迟到操作性 v0.8.0 阶段。
 \end{itemize}
 
 其他章节中的交叉引用(例如 \cref{sec:exploration:termination}
 内的)仅指示经验证据将来安置之处,而非当前所在之处。
 
-v0.7.2 记录了对新 \texttt{execution\_profile} 路径的两项小型
-管道核查:针对两篇对照性 SC24 论文 preprint 的评分单生成正确
-为多 rank HPC 论文发出 \texttt{kind:"mpi"}(携带完整规模包络),
-并对单机论文正确省略该字段;对本地 SLURM 分区的多标志
-\texttt{sbatch} 调度,在 GRES 可用性探测与 \texttt{sbatch --help}
-探测剥离本地 SLURM 版本不支持的两个标志后被队列管理器接受。
-这些是管道层的运行 sanity check 而非方法论度量,正文中未作为
-证据引用。
+v0.7.2 记录了对执行配置路径
+(\cref{sec:paper:paperbench:v072})的两项小型 sanity check:
+评分单生成对 HPC 论文正确发出携带论文报告规模包络的多 rank
+(MPI) 执行配置,并对单机论文省略;且一次多标志集群调度在运行时
+probe 剥离该调度器不支持的标志后被本地调度器接受。这些只是验证
+接线是否打通,而非度量方法论,未作为证据引用。
+
+操作性 v0.8.0 阶段本身随后在 lossy-compression 对象上得到执行。
+它首先暴露了两处一直在悄然剥夺智能体执行得分的框架缺陷:再现阶段
+在智能体组装其自包含仓库的目录之外调用了智能体的入口脚本;以及
+宿主驻留沙箱缺少一项模型所期望、而容器镜像已具备的文件编辑设施。
+在两者均修正后,贯穿全部三个阶段的完整 rollout 生成了可编译的
+GPU 原生再现,它获取了真实数据切片并扫掠了一段误差界范围。其余
+两项不足属于智能体自身的行为而非框架:智能体在时间预算之内远未
+用尽便自行终止,且它计算了一项 GPU 预测的质量指标却将其从报告
+结果中省略。与 v0.7.2 的检查相同,这只是端到端地验证流水线而非
+度量方法论,该单一对象不作为定量证据引用。

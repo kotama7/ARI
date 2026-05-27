@@ -193,6 +193,23 @@ can be chained:
 
 Vendor-fidelity behaviour built into the bridge:
 
+- **submission-root resolution (v0.8.0)** — `reproduce_submission` and
+  `judge_submission` descend into a nested `submission/` when the agent
+  built its self-contained repo there (the workspace presents the
+  vendor's `/home/submission` as a workspace-relative `submission/`, so an
+  agent following the prompt nests one level). Reproduction/grading then
+  run where `reproduce.sh` is co-located with its sources, matching the
+  vendor reproducer's cd-into-submission semantics; an orphaned top-level
+  `reproduce.sh` copy is ignored. This is what stops the
+  `src/…: No such file or directory` build failure that otherwise zeros
+  every Code Execution / Result Analysis leaf.
+- **apply_patch command parity (v0.8.0)** — the host-side `LocalComputer`
+  exposes the vendor's own `apply_patch.py` on PATH (as both `apply_patch`
+  and `applypatch`), mirroring the vendor Docker image's
+  `/bin/apply_patch`. gpt-5 / codex agents reflexively edit files via
+  `apply_patch <<'PATCH' … PATCH`; without this they fail `command not
+  found` and waste tool-call budget. Apptainer SIFs already carry the
+  command, so the shim is host-sandbox-only.
 - **container_image alias resolution** — `pb-env` → `pb-env:latest`,
   `pb-reproducer` → `pb-reproducer:latest` (built by
   `scripts/build_pb_images.sh`). URIs / paths / arbitrary tags pass

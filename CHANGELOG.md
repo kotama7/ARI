@@ -4,7 +4,107 @@ All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PAT
 
 ## Unreleased
 
+(no entries yet)
+
+## v0.8.0 — PaperBench env-truth + bridge contract + BFTS configurable evaluation (2026-05-21)
+
+Major release that promotes the v0.7.3 "Unreleased" PaperBench work to
+a numbered milestone and adds two follow-on streams: (1) **env-truth**
+guardrails (verify-before-scaffold, language-choice counter-priming,
+truthful ADDITIONAL NOTES, Phase-2 isolation + network claims) that
+keep the Stage 1 agent honest about what the host actually provides,
+and (2) **configurable BFTS evaluation layers** (composite formula,
+axis-set source, frontier-score strategy, LLM selection prompts) that
+let users swap any of four BFTS surfaces without forking the orchestrator.
+
+Highlights:
+
+- **PaperBench 3-stage bridge contract** (`rollout_submission` /
+  `reproduce_submission` / `judge_submission`) — the protocol-faithful
+  replacement for the retracted Step 4 reproduction-package generator.
+- **`container_image` end-to-end** from wizard → API worker → MCP tools
+  → sandbox runner, with `pb-env` / `pb-reproducer` aliases.
+- **Fail-loud preconditions** on sandbox / GPU mismatches (four
+  silent-downgrade sites now raise `RuntimeError` by default).
+- **`code_only` Stage 1 ↔ Stage 3 consistency** so the judge stops
+  zero-grading Code Execution / Result Analysis leaves the agent was
+  never asked to attempt.
+- **Env-truth follow-ons**: verify-before-scaffold (Stage 1 probes the
+  host before claiming binaries exist), language-choice counter-prime
+  (LLM is told *not* to default to one language without reason),
+  truthful ADDITIONAL NOTES (Phase-2 isolation + Network claims
+  auto-detected per host), orphan `tool_call` filter on the vendor
+  Responses API converter, Stage 1 default `code_only=False` so the
+  agent actually writes `reproduce.sh`.
+- **Configurable BFTS evaluation layers** in `default.yaml`:
+  `evaluator.composite` (harmonic / arithmetic / weighted_min /
+  geometric), `evaluator.axis_mode` + `evaluator.custom_axes` (dynamic
+  / legacy / custom), `bfts.frontier_score` (scientific_plus_diversity /
+  scientific_only / depth_penalized / ucb_like), and
+  `bfts.select_prompt` + `bfts.expand_select_prompt` keys for the
+  selection LLM. Defaults reproduce the prior behaviour exactly.
+- **Reviewer rubrics**: ships seven journal-/conference-style reviewer
+  rubrics out of the box (`aer.yaml`, `ahr.yaml`, `apsr.yaml`,
+  `econometrica.yaml`, `philreview.yaml`, `pmla.yaml`, `qje.yaml`)
+  under `ari-core/config/reviewer_rubrics/`.
+- **Documentation refresh**: `docs/howto/`, `docs/reference/`,
+  `docs/index.html`, the `docs/i18n/` strings, the report chapters
+  (en/ja/zh), and the three READMEs all updated for the v0.8.0
+  surface.
+
 ### Added
+
+- **PaperBench env-truth guardrails** (post-bridge follow-ons).
+  Five complementary fixes prevent the Stage 1 agent from
+  hallucinating host capabilities in the instruction prompt:
+    - **Verify-first / probe-before-scaffold.** Stage 1's planning
+      prompt now explicitly tells the agent *probe the environment
+      with `which` / `ls` before claiming a binary exists*; the
+      `reproduce.sh` scaffold begins with a `command -v` audit so
+      missing dependencies surface as an early hard failure rather
+      than a mid-run silent fallback.
+    - **Counter-prime language choice (multi-lang).** The vendor
+      Python-default bias is offset by an explicit instruction
+      asking the agent to inspect the paper's repo for the
+      *actually-used* language (R / Julia / C++ / Stata) and to
+      avoid Python-bias when the artefacts are non-Python.
+    - **Truthful ADDITIONAL NOTES with auto-detected env.** The
+      `ADDITIONAL NOTES` block injected into the agent's prompt
+      is now generated per-host from a live probe (binaries
+      present, package managers, GPU, network reachability) rather
+      than from a static template; what the agent reads matches
+      what the host can do.
+    - **Phase-2 isolation + Network claims.** The notes block adds
+      a Network-reachability claim and a Phase 2 isolation contract
+      (network-off / FS-read-only / no-host-mount) consistent with
+      the vendor reproducer container.
+    - **Stage 1 default `code_only=False`.** Promotes
+      `reproduce.sh` from "nice to have" to "agent contract": the
+      default mode now expects the agent to write the script, so
+      Stage 2 has something to execute. Stage 1 code-only mode is
+      still available via explicit opt-in.
+    - **Orphan `tool_call` filter on vendor Responses API
+      converter.** Prevents the converter from emitting a stray
+      `tool_call` without a matching `tool_result`, a pattern that
+      otherwise caused vendor PaperBench's Responses → ChatCompletions
+      adapter to drop the next agent turn.
+
+- **Vendor paper-codebase blacklist lifted to ARI surface + CLI gate
+  hook.** The vendor `paperbench/data/papers/<id>/blacklist.txt`
+  pattern is no longer per-paper-only; the bridge accepts an explicit
+  `blacklist_urls` list, the CLI exposes a gate hook so callers can
+  inject project-level rules, and the rule is enforced via two
+  layers (Markdown `FORBIDDEN URLS / RESOURCES` block + the
+  `ARI_BLACKLIST_URLS` env var read by downstream tool wrappers).
+
+- **Seven journal/conference reviewer rubrics** shipped under
+  `ari-core/config/reviewer_rubrics/`: `aer.yaml` (American Economic
+  Review), `ahr.yaml` (American Historical Review), `apsr.yaml`
+  (American Political Science Review), `econometrica.yaml`,
+  `philreview.yaml` (Philosophical Review), `pmla.yaml` (PMLA),
+  `qje.yaml` (Quarterly Journal of Economics). Selected via
+  `reviewer_rubric: <slug>` in the launch config — same plumbing as
+  the existing `sc`/`neurips`/`nature` rubrics.
 
 - **PaperBench 3-stage bridge contract** in
   `ari-skill-paper-re/src/_paperbench_bridge.py`. Three keyword-only
@@ -169,6 +269,62 @@ All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PAT
   bridge contract (v0.7.3)}` enumerating the eight vendor-faithful
   design choices with vendor source-line citations; PDFs rebuilt
   (EN/JA 13 pages, ZH 14 pages).
+
+### Fixed
+
+- **Operational v0.8.0 dogfood pass (SC41406 cuSZ-i, lossy-compression
+  kernel).** The deferred full-rollout PaperBench pass on a real
+  Supercomputing-2024 target was run (Stage 1→2→3 against `gpt-5-mini` on
+  an R-CCS L40S node) and surfaced + validated four bridge corrections.
+  Mean replication score rose **1.2% → 11.1%** on the same target after
+  the fixes.
+    - **Reproduce / judge now run from the agent's real repository
+      root.** The rollout workspace rewrites the vendor's absolute
+      `/home/submission` to a relative `submission/`, so an agent whose
+      cwd is the workspace builds its self-contained repo under
+      `<workspace>/submission/`. The post-rollout promote step had copied
+      only `reproduce.sh` up to the workspace root, orphaning it from its
+      `src/`; Stage 2 then ran the orphan and every CUDA build failed with
+      `src/…: No such file or directory`, zeroing all Code Execution /
+      Result Analysis leaves. `reproduce_submission` / `judge_submission`
+      now resolve the nested repository root (where `reproduce.sh` is
+      co-located with the sources it references — matching the vendor
+      reproducer's cd-into-submission semantics) and ignore the orphan
+      copy.
+    - **`apply_patch` / `applypatch` provided in the no-container
+      sandbox.** The vendor Docker image installs `/bin/apply_patch`; the
+      host-side `LocalComputer` builds no such image, so a gpt-5/codex
+      agent's reflexive `apply_patch <<'PATCH' … PATCH` edits died with
+      `command not found` and drained tool-call budget before falling back
+      to heredoc. `LocalComputer` now mirrors the vendor setup, exposing
+      the vendor's own `apply_patch.py` on PATH (both command names) for
+      every agent command; degrades gracefully if the vendor module is
+      unimportable.
+    - **Paper-kind classifier prompt de-leaked.** The classifier's
+      example values had seeded the dogfood paper's own names (`cuSZ`,
+      `Miranda`, `SDRBench`), violating the paper-agnostic contract and
+      self-fulfillingly biasing the classifier output. Replaced with
+      neutral cross-domain examples so extractions are genuine
+      paper-reading.
+    - **Toy-example dependency line switches per detected environment.**
+      The vendor toy `reproduce.sh` shows `apt-get install`; on a no-apt
+      module cluster that primed a failing path. The env reconcile now
+      rewrites it to `module load <NAME>` / `pip install` under the
+      detected environment (left verbatim where apt is real; Docker
+      grading untouched).
+- **Documentation + report refresh for the v0.8.0 dogfood pass.** Updated
+  `docs/guides/paperbench/paperbench_troubleshooting.md` (+ ja/zh mirrors)
+  and `docs/reference/api_paperbench.md` (en bridge-contract section; the
+  ja/zh reference files are abbreviated and carry no bridge section) with
+  the nested repository-root resolution and the sandbox-provided
+  `apply_patch` command; `report/{en,ja,zh}/chapters/05_evaluation.tex` records the
+  lossy-compression replication result (real Miranda-slice fetch, native
+  CUDA interpolation kernels on the L40S, PSNR 50–90 dB across an
+  error-bound sweep) and notes two residual agent-behavioural limits —
+  voluntary early submission well inside the time budget, and a
+  compute-then-discard reporting gap in the agent's own code that omitted
+  its GPU-predicted metric — as distinct from the (now-fixed) bridge
+  bugs.
 
 ### Removed
 
