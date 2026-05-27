@@ -38,6 +38,7 @@ def _cfg():
     return (_ARI / "config.py").read_text()
 def _srv():   return (_VIZ / "server.py").read_text()
 def _set():   return (_VIZ / "api_settings.py").read_text()
+def _routes(): return (_VIZ / "routes.py").read_text()
 
 
 def _read_react_sources():
@@ -96,6 +97,90 @@ class TestScopeFieldChain:
 
     def test_api_sets_ari_parallel_env(self):
         assert "ARI_PARALLEL" in _api()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 1b. ALGORITHM SWITCHES: StepScope select → payload → proc_env → config
+# ════════════════════════════════════════════════════════════════════════════
+
+class TestAlgoSwitchChain:
+    """frontier_score / composite / axis_mode pass through the full chain."""
+
+    # React component layer (StepScope dropdowns + WizardPage state)
+    def test_frontier_score_state_in_scope(self):
+        assert "frontierScore" in _step_scope()
+
+    def test_composite_state_in_scope(self):
+        assert "composite" in _step_scope()
+
+    def test_axis_mode_state_in_scope(self):
+        assert "axisMode" in _step_scope()
+
+    def test_algo_defaults_in_wizard_state(self):
+        wp = _wizard_page()
+        assert "scientific_plus_diversity" in wp
+        assert "harmonic_mean" in wp
+        assert "dynamic" in wp
+
+    # Payload layer (StepLaunch → snake_case keys)
+    def test_frontier_score_payload_key(self):
+        assert "frontier_score" in _step_launch()
+
+    def test_composite_payload_key(self):
+        assert "composite" in _step_launch()
+
+    def test_axis_mode_payload_key(self):
+        assert "axis_mode" in _step_launch()
+
+    # API layer (api_experiment reads payload → proc_env)
+    def test_api_reads_frontier_score(self):
+        assert 'data.get("frontier_score")' in _api()
+
+    def test_api_reads_composite(self):
+        assert 'data.get("composite")' in _api()
+
+    def test_api_reads_axis_mode(self):
+        assert 'data.get("axis_mode")' in _api()
+
+    def test_api_sets_frontier_score_env(self):
+        assert "ARI_FRONTIER_SCORE" in _api()
+
+    def test_api_sets_composite_env(self):
+        assert "ARI_COMPOSITE" in _api()
+
+    def test_api_sets_axis_mode_env(self):
+        assert "ARI_AXIS_MODE" in _api()
+
+    # Config layer (env var read into the right field)
+    def test_config_reads_frontier_score(self):
+        assert "ARI_FRONTIER_SCORE" in _cfg()
+
+    def test_config_reads_composite(self):
+        assert "ARI_COMPOSITE" in _cfg()
+
+    def test_config_reads_axis_mode(self):
+        assert "ARI_AXIS_MODE" in _cfg()
+
+    # API layer validates unknown values so launch_config.json never records
+    # a value the run will silently ignore (provenance integrity).
+    def test_api_validates_algo_values(self):
+        api = _api()
+        assert "_ALLOWED_FRONTIER" in api
+        assert "_ALLOWED_COMPOSITE" in api
+        assert "_ALLOWED_AXIS_MODE" in api
+
+    # /state read-back surfaces the algo values for the dashboard.
+    def test_state_surfaces_algo_values(self):
+        routes = _routes()
+        assert '"frontier_score":' in routes
+        assert '"composite":' in routes
+        assert '"axis_mode":' in routes
+
+    def test_monitor_displays_algorithm(self):
+        mon = (_REACT_COMPONENTS / "Monitor" / "MonitorPage.tsx").read_text()
+        assert "cfg.frontier_score" in mon
+        assert "cfg.composite" in mon
+        assert "cfg.axis_mode" in mon
 
 
 # ════════════════════════════════════════════════════════════════════════════

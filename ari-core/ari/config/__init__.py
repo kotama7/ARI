@@ -297,6 +297,37 @@ def apply_bfts_env_overrides(cfg: "ARIConfig") -> None:
     if _t:
         try: cfg.bfts.timeout_per_node = int(_t)
         except ValueError: pass
+    # GUI wizard's frontier-selection strategy choice. Pydantic does not
+    # validate on assignment, so guard against unknown values from env.
+    _fs = os.environ.get("ARI_FRONTIER_SCORE")
+    if _fs in (
+        "scientific_plus_diversity",
+        "scientific_only",
+        "depth_penalized",
+        "ucb_like",
+    ):
+        cfg.bfts.frontier_score = _fs
+
+
+def apply_evaluator_env_overrides(cfg: "ARIConfig") -> None:
+    """Let GUI-injected ARI_COMPOSITE / ARI_AXIS_MODE win over YAML.
+
+    Mirrors apply_bfts_env_overrides for the evaluator's per-experiment knobs.
+    Pydantic does not validate on assignment, so each value is checked against
+    its allowed set before being written. Call this AFTER any profile overrides
+    so the explicit GUI choice wins.
+    """
+    _comp = os.environ.get("ARI_COMPOSITE")
+    if _comp in (
+        "harmonic_mean",
+        "arithmetic_mean",
+        "weighted_min",
+        "geometric_mean",
+    ):
+        cfg.evaluator.composite = _comp
+    _am = os.environ.get("ARI_AXIS_MODE")
+    if _am in ("legacy", "dynamic", "custom"):
+        cfg.evaluator.axis_mode = _am
 
 
 def _apply_llm_env_overrides(cfg: "ARIConfig") -> None:

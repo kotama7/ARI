@@ -201,8 +201,9 @@ def run(
         _apply_profile(cfg, profile)
 
     # GUI-supplied caps (ARI_MAX_NODES etc.) must win over profile defaults.
-    from ari.config import apply_bfts_env_overrides
+    from ari.config import apply_bfts_env_overrides, apply_evaluator_env_overrides
     apply_bfts_env_overrides(cfg)
+    apply_evaluator_env_overrides(cfg)
 
     # ── Container support ───────────────────────────────
     # Read container config from workflow.yaml; if an image is specified and

@@ -20,6 +20,10 @@ interface StepLaunchProps {
   timeout: number;
   workers: number;
   maxRecursionDepth: number;
+  // BFTS/evaluator algorithm switches
+  frontierScore: string;
+  composite: string;
+  axisMode: string;
   // LLM values for launch payload
   llmModel: string;
   llmProvider: string;
@@ -71,6 +75,9 @@ export function StepLaunch({
   timeout,
   workers,
   maxRecursionDepth,
+  frontierScore,
+  composite,
+  axisMode,
   llmModel,
   llmProvider,
   baseUrl,
@@ -122,6 +129,9 @@ export function StepLaunch({
         timeout_min: timeout || null,
         workers: workers || null,
         max_recursion_depth: maxRecursionDepth ?? 3,
+        frontier_score: frontierScore || null,
+        composite: composite || null,
+        axis_mode: axisMode || null,
         llm_model: llmModel,
         llm_provider: llmProvider || 'openai',
         // CLI shim base URL (only meaningful when provider is cli-shim).

@@ -25,6 +25,9 @@ interface ScopeValues {
   maxReact: number;
   timeout: number;
   maxRecursionDepth: number;
+  frontierScore: string;
+  composite: string;
+  axisMode: string;
 }
 
 const STEP_KEYS = ['wiz_step1', 'wiz_step2', 'wiz_step3', 'wiz_step4'] as const;
@@ -53,6 +56,9 @@ export function WizardPage() {
     maxReact: 80,
     timeout: 120,
     maxRecursionDepth: 0,
+    frontierScore: 'scientific_plus_diversity',
+    composite: 'harmonic_mean',
+    axisMode: 'dynamic',
   });
 
   // ---- Step 3: Resources state ----
@@ -291,6 +297,9 @@ export function WizardPage() {
           timeout={scope.timeout}
           workers={scope.workers}
           maxRecursionDepth={scope.maxRecursionDepth}
+          frontierScore={scope.frontierScore}
+          composite={scope.composite}
+          axisMode={scope.axisMode}
           llmModel={effectiveModel}
           llmProvider={llm}
           baseUrl={baseUrl}

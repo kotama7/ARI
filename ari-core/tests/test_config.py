@@ -307,3 +307,69 @@ def test_profile_file_is_findable():
         assert (profiles_dir / f"{name}.yaml").exists(), (
             f"profile {name}.yaml must be discoverable at {profiles_dir}"
         )
+
+
+# ── algorithm-switch env overrides ─────────────────────────────────────
+# GUI wizard exposes frontier_score / composite / axis_mode. They reach the
+# subprocess as ARI_FRONTIER_SCORE / ARI_COMPOSITE / ARI_AXIS_MODE and must
+# override YAML/profile defaults. Pydantic does not validate on assignment,
+# so unknown values must be rejected by a membership guard.
+
+
+def _clear_algo_env(monkeypatch):
+    for v in ("ARI_FRONTIER_SCORE", "ARI_COMPOSITE", "ARI_AXIS_MODE"):
+        monkeypatch.delenv(v, raising=False)
+
+
+def test_frontier_score_env_override(monkeypatch):
+    from ari.config import ARIConfig, apply_bfts_env_overrides
+    _clear_algo_env(monkeypatch)
+    monkeypatch.setenv("ARI_FRONTIER_SCORE", "ucb_like")
+    cfg = ARIConfig()
+    assert cfg.bfts.frontier_score == "scientific_plus_diversity"
+    apply_bfts_env_overrides(cfg)
+    assert cfg.bfts.frontier_score == "ucb_like"
+
+
+def test_frontier_score_env_ignores_invalid(monkeypatch):
+    from ari.config import ARIConfig, apply_bfts_env_overrides
+    _clear_algo_env(monkeypatch)
+    monkeypatch.setenv("ARI_FRONTIER_SCORE", "totally_bogus")
+    cfg = ARIConfig()
+    apply_bfts_env_overrides(cfg)
+    assert cfg.bfts.frontier_score == "scientific_plus_diversity"
+
+
+def test_evaluator_env_overrides(monkeypatch):
+    from ari.config import ARIConfig, apply_evaluator_env_overrides
+    _clear_algo_env(monkeypatch)
+    monkeypatch.setenv("ARI_COMPOSITE", "weighted_min")
+    monkeypatch.setenv("ARI_AXIS_MODE", "legacy")
+    cfg = ARIConfig()
+    assert cfg.evaluator.composite == "harmonic_mean"
+    assert cfg.evaluator.axis_mode == "dynamic"
+    apply_evaluator_env_overrides(cfg)
+    assert cfg.evaluator.composite == "weighted_min"
+    assert cfg.evaluator.axis_mode == "legacy"
+
+
+def test_evaluator_env_ignores_invalid(monkeypatch):
+    from ari.config import ARIConfig, apply_evaluator_env_overrides
+    _clear_algo_env(monkeypatch)
+    monkeypatch.setenv("ARI_COMPOSITE", "nonsense")
+    monkeypatch.setenv("ARI_AXIS_MODE", "nonsense")
+    cfg = ARIConfig()
+    apply_evaluator_env_overrides(cfg)
+    assert cfg.evaluator.composite == "harmonic_mean"
+    assert cfg.evaluator.axis_mode == "dynamic"
+
+
+def test_evaluator_env_preserves_unset(monkeypatch):
+    """Only present env vars override; the other field stays at its default."""
+    from ari.config import ARIConfig, apply_evaluator_env_overrides
+    _clear_algo_env(monkeypatch)
+    monkeypatch.setenv("ARI_COMPOSITE", "geometric_mean")
+    cfg = ARIConfig()
+    apply_evaluator_env_overrides(cfg)
+    assert cfg.evaluator.composite == "geometric_mean"
+    assert cfg.evaluator.axis_mode == "dynamic"  # untouched

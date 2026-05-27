@@ -344,6 +344,34 @@ def _api_launch(body: bytes) -> dict:
             proc_env["ARI_TIMEOUT_NODE"] = str(int(wiz_timeout_min) * 60)
         if wiz_workers is not None:
             proc_env["ARI_PARALLEL"] = str(int(wiz_workers))
+        # BFTS/evaluator algorithm overrides from wizard (Step 2).
+        # Validate against the same allowed sets the config layer enforces
+        # (BFTSConfig.frontier_score / EvaluatorConfig.composite / axis_mode
+        # Literals). Unknown values are dropped here so launch_config.json
+        # records what the run actually uses rather than an ignored value.
+        _ALLOWED_FRONTIER = {
+            "scientific_plus_diversity", "scientific_only",
+            "depth_penalized", "ucb_like",
+        }
+        _ALLOWED_COMPOSITE = {
+            "harmonic_mean", "arithmetic_mean", "weighted_min", "geometric_mean",
+        }
+        _ALLOWED_AXIS_MODE = {"legacy", "dynamic", "custom"}
+        wiz_frontier = data.get("frontier_score")
+        wiz_composite = data.get("composite")
+        wiz_axis_mode = data.get("axis_mode")
+        if wiz_frontier in _ALLOWED_FRONTIER:
+            proc_env["ARI_FRONTIER_SCORE"] = str(wiz_frontier)
+        elif wiz_frontier:
+            log.warning("[launch] ignoring unknown frontier_score=%r", wiz_frontier)
+        if wiz_composite in _ALLOWED_COMPOSITE:
+            proc_env["ARI_COMPOSITE"] = str(wiz_composite)
+        elif wiz_composite:
+            log.warning("[launch] ignoring unknown composite=%r", wiz_composite)
+        if wiz_axis_mode in _ALLOWED_AXIS_MODE:
+            proc_env["ARI_AXIS_MODE"] = str(wiz_axis_mode)
+        elif wiz_axis_mode:
+            log.warning("[launch] ignoring unknown axis_mode=%r", wiz_axis_mode)
         # HPC resource overrides from wizard Step 3
         wiz_hpc_cpus = data.get("hpc_cpus")
         wiz_hpc_mem = data.get("hpc_memory_gb")
@@ -524,6 +552,11 @@ def _api_launch(body: bytes) -> dict:
             "max_react": int(proc_env.get("ARI_MAX_REACT", 80)),
             "timeout_node_s": int(proc_env.get("ARI_TIMEOUT_NODE", 7200)),
             "parallel": int(proc_env.get("ARI_PARALLEL", 4)),
+            "frontier_score": proc_env.get(
+                "ARI_FRONTIER_SCORE", "scientific_plus_diversity"
+            ),
+            "composite": proc_env.get("ARI_COMPOSITE", "harmonic_mean"),
+            "axis_mode": proc_env.get("ARI_AXIS_MODE", "dynamic"),
         }
         if proc_env.get("ARI_SLURM_CPUS"):
             _launch_cfg["hpc_cpus"] = int(proc_env["ARI_SLURM_CPUS"])
