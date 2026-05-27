@@ -1326,3 +1326,38 @@ def test_resolve_submission_repo_root_ignores_nested_without_reproduce(tmp_path)
     (work / "submission").mkdir(parents=True)   # nested dir, but no reproduce.sh
     (work / "reproduce.sh").write_text("bash run\n")
     assert B._resolve_submission_repo_root(work) == work.resolve()
+
+
+def test_localcomputer_installs_apply_patch_command(tmp_path):
+    """ARI's host-side sandbox must expose the vendor apply_patch/applypatch
+    command. gpt-5/codex agents reflexively edit files via
+    `apply_patch <<'PATCH' … PATCH`; the vendor Docker image installs it at
+    /bin/apply_patch but ARI's LocalComputer never builds that image.
+    Regression for SC41406 v3-A11 (7/8 applypatch calls -> command not found,
+    ~11% of tool-call budget wasted). Mirrors vendor Dockerfile.base:83-86.
+    """
+    import asyncio
+    import os as _os
+    from _compute.computer import LocalComputer
+
+    comp = LocalComputer(tmp_path)
+    bindir = comp.work_dir / ".ari_bin"
+    assert (bindir / "apply_patch").is_file(), "apply_patch shim missing"
+    assert (bindir / "applypatch").exists(), "applypatch alias missing"
+    assert _os.access(bindir / "apply_patch", _os.X_OK), "shim not executable"
+    # PATH must be prepended so a BARE `applypatch` resolves from any cwd
+    assert comp.env["PATH"].split(_os.pathsep)[0] == str(bindir)
+
+    # End-to-end with the EXACT invocation form the agent used in v3-A11:
+    patch = (
+        "*** Begin Patch\n"
+        "*** Add File: hello.txt\n"
+        "+hello from apply_patch\n"
+        "*** End Patch\n"
+    )
+    res = asyncio.run(comp.send_shell_command("applypatch <<'PATCH'\n" + patch + "PATCH\n"))
+    created = comp.work_dir / "hello.txt"
+    assert created.is_file(), (
+        f"applypatch did not create the file (rc={res.exit_code}, "
+        f"out={res.unicode_output_best_effort!r})")
+    assert "hello from apply_patch" in created.read_text()
