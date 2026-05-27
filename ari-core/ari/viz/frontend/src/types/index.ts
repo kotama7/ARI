@@ -36,6 +36,7 @@ export interface Settings {
   llm_backend: string;
   llm_api_key: string;
   ollama_host: string;
+  llm_base_url?: string;
   temperature: number;
   semantic_scholar_key: string;
   retrieval_backend: string;

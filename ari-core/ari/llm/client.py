@@ -57,6 +57,11 @@ class LLMClient:
             return model
         if backend == "ollama":
             return f"ollama_chat/{model}"
+        if backend in ("cli-shim", "cli_shim"):
+            # OpenAI-compatible shim (ari.llm.cli_server). Force the openai
+            # route so litellm dials base_url; the shim sees the model after
+            # the prefix (e.g. "claude-cli").
+            return model if model.startswith("openai/") else f"openai/{model}"
         return model
 
     def complete(

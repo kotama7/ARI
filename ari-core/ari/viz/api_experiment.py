@@ -169,6 +169,35 @@ def _api_launch(body: bytes) -> dict:
     if not _first_line_early:
         _first_line_early = "experiment"
     _slug_early = _PM.slugify(_first_line_early)
+    # ``slugify`` strips every char outside [A-Za-z0-9_-]; a purely Japanese /
+    # Chinese / Korean line collapses to an empty slug and the checkpoint dir
+    # would become ``<ts>_`` (no human-readable hint). The CLI entry point
+    # (``cli/run.py``) already covers this case with an LLM-generated English
+    # title, but the GUI launcher pre-creates the dir and pins it via
+    # ``ARI_CHECKPOINT_DIR``, so the CLI fallback never fires. Re-run the same
+    # LLM heuristic here so non-ASCII experiments get a meaningful slug.
+    if not _slug_early:
+        try:
+            from ari.config import auto_config as _auto_cfg_t
+            from ari.llm.client import LLMClient as _LLMC_t
+            _t_cfg = _auto_cfg_t()
+            _t_client = _LLMC_t(_t_cfg.llm)
+            _t_resp = _t_client.complete(
+                [{"role": "user", "content":
+                    "Generate a concise 3-5 word English title (snake_case, "
+                    "no special chars) for this research goal:\n"
+                    f"{_first_line_early}\nReply with ONLY the title."}],
+                max_tokens=20, temperature=0.3,
+            )
+            _t_text = _t_resp.content if hasattr(_t_resp, "content") else str(_t_resp)
+            _llm_name = _t_text.strip().splitlines()[0].strip() if _t_text else ""
+            _slug_early = _PM.slugify(_llm_name)
+            if _slug_early:
+                log.info("[launch] LLM title fallback: %r -> %r", _first_line_early[:60], _slug_early)
+        except Exception as _t_err:
+            log.warning("[launch] LLM title fallback failed: %s", _t_err)
+        if not _slug_early:
+            _slug_early = "experiment"
     ckpt_root = _pm.checkpoints_root
     ckpt_root.mkdir(parents=True, exist_ok=True)
     _run_id_early = f"{_ts_early}_{_slug_early}"
@@ -253,6 +282,13 @@ def _api_launch(body: bytes) -> dict:
                     _real_ollama = saved.get("ollama_host", "").strip() or "http://localhost:11434"
                     proc_env["OLLAMA_HOST"] = _real_ollama
                     proc_env["ARI_LLM_API_BASE"] = _real_ollama
+                elif llm_provider in ("cli-shim", "cli_shim"):
+                    # OpenAI-compatible CLI shim (ari.llm.cli_server, default :8900).
+                    _shim_base = (saved.get("cli_shim_base_url", "")
+                                  or saved.get("llm_base_url", "") or "").strip()
+                    proc_env["ARI_LLM_API_BASE"] = _shim_base or "http://localhost:8900/v1"
+                    # litellm's openai provider requires a key even for a local shim.
+                    proc_env.setdefault("OPENAI_API_KEY", "cli-shim")
                 else:
                     # Non-Ollama backends: explicitly clear base URL so skills
                     # don't fall back to the Ollama default (http://127.0.0.1:11434)
@@ -371,6 +407,13 @@ def _api_launch(body: bytes) -> dict:
         wiz_num_reflections = data.get("num_reflections")
         if wiz_num_reflections is not None:
             proc_env["ARI_NUM_REFLECTIONS"] = str(int(wiz_num_reflections))
+        # Paper writing language (wizard "Language" dropdown). The paper-skill
+        # reads ARI_PAPER_LANGUAGE inside write_paper_iterative to drive the
+        # fill-template and reflection system prompts; absence keeps the
+        # historical English default.
+        wiz_language = data.get("language")
+        if wiz_language:
+            proc_env["ARI_PAPER_LANGUAGE"] = str(wiz_language)
         # Retrieval backend override from wizard/launch request
         wiz_retrieval = data.get("retrieval_backend")
         if wiz_retrieval:
@@ -448,11 +491,23 @@ def _api_launch(body: bytes) -> dict:
                 "openai": "gpt-4o",
                 "anthropic": "claude-sonnet-4-5",
                 "ollama": "qwen3:8b",
+                "cli-shim": "claude-cli",
+                "cli_shim": "claude-cli",
             }
             _default = _provider_defaults.get(_final_backend, "")
             if _default:
                 proc_env["ARI_MODEL"] = _default
                 proc_env["ARI_LLM_MODEL"] = _default
+        # CLI shim: ensure litellm has a local base_url + a (placeholder) key,
+        # covering the wizard path (provider chosen but not in saved settings).
+        if _final_backend in ("cli-shim", "cli_shim"):
+            _wiz_base = (data.get("cli_shim_base_url", "")
+                         or data.get("llm_base_url", "") or "").strip()
+            if _wiz_base:
+                proc_env["ARI_LLM_API_BASE"] = _wiz_base
+            elif not proc_env.get("ARI_LLM_API_BASE"):
+                proc_env["ARI_LLM_API_BASE"] = "http://localhost:8900/v1"
+            proc_env.setdefault("OPENAI_API_KEY", "cli-shim")
         # Save resolved model/provider to state for dashboard display
         _st._launch_llm_model = proc_env.get("ARI_MODEL") or proc_env.get("ARI_LLM_MODEL") or ""
         _st._launch_llm_provider = proc_env.get("ARI_BACKEND") or ""
@@ -494,7 +549,13 @@ def _api_launch(body: bytes) -> dict:
         if proc_env.get("ARI_NUM_REFLECTIONS"):
             _launch_cfg["num_reflections"] = int(proc_env["ARI_NUM_REFLECTIONS"])
         _include_ear = bool(data.get("include_ear", True))
+        _include_review = bool(data.get("include_review", True))
+        _include_reproduce = bool(data.get("include_reproduce", True))
         _launch_cfg["include_ear"] = _include_ear
+        _launch_cfg["include_review"] = _include_review
+        _launch_cfg["include_reproduce"] = _include_reproduce
+        if wiz_language:
+            _launch_cfg["language"] = str(wiz_language)
         # Persist the ORS snapshot verbatim so launch_config.json is the
         # tamper-evident provenance of model choices for this run.
         if isinstance(wiz_ors, dict) and wiz_ors:
@@ -507,33 +568,51 @@ def _api_launch(body: bytes) -> dict:
         _st._last_log_fh = open(log_path, "w")
         (_pre_ckpt / "launch_config.json").write_text(json.dumps(_launch_cfg, indent=2))
         # Copy workflow.yaml into checkpoint dir for reproducibility.
-        # When the wizard's "Include EAR" toggle is OFF (include_ear=False),
-        # disable the EAR stages and strip them from downstream depends_on so
-        # write_paper / finalize_paper still run for this experiment only.
+        # When any of the wizard's phase toggles is OFF, disable the matching
+        # stages and strip them from downstream depends_on so the rest of the
+        # pipeline still runs for this experiment only.
+        # - include_ear=False: skip generate_ear / ear_curate / ear_publish.
+        #   ors_seed_sandbox also goes off because it seeds repro_sandbox/
+        #   from the EAR publish_record; without it, ors_build_reproduce
+        #   drives the LLM Replicator from the paper alone.
+        # - include_review=False: skip rubric-driven text review + the
+        #   post-hoc merge with VLM figure review.
+        # - include_reproduce=False: skip the entire ORS reproduce arc.
         _wf_src = Path(__file__).resolve().parent.parent.parent / "config" / "workflow.yaml"
         _wf_dst = _pre_ckpt / "workflow.yaml"
         if _wf_src.exists():
             try:
-                if _include_ear:
+                _disabled: set[str] = set()
+                if not _include_ear:
+                    _disabled |= {"generate_ear", "ear_curate", "ear_publish", "ors_seed_sandbox"}
+                if not _include_review:
+                    _disabled |= {"review_paper", "merge_reviews"}
+                if not _include_reproduce:
+                    _disabled |= {
+                        "ors_generate_rubric",
+                        "ors_seed_sandbox",
+                        "ors_build_reproduce",
+                        "ors_run_reproduce",
+                        "ors_grade",
+                    }
+                if not _disabled:
                     shutil.copy2(str(_wf_src), str(_wf_dst))
                 else:
-                    import yaml as _yaml_ear
-                    _wf_doc = _yaml_ear.safe_load(_wf_src.read_text())
-                    # ors_seed_sandbox seeds repro_sandbox/ from the EAR
-                    # publish_record. Disabling it forces ors_build_reproduce
-                    # to run the LLM Replicator from the paper alone, which is
-                    # the intended semantics when the user opts out of EAR.
-                    _ear_stages = {"generate_ear", "ear_curate", "ear_publish", "ors_seed_sandbox"}
+                    import yaml as _yaml_ph
+                    _wf_doc = _yaml_ph.safe_load(_wf_src.read_text())
                     for _s in _wf_doc.get("pipeline") or []:
-                        if _s.get("stage") in _ear_stages:
+                        if _s.get("stage") in _disabled:
                             _s["enabled"] = False
                         _dep = _s.get("depends_on")
                         if isinstance(_dep, list):
-                            _s["depends_on"] = [_d for _d in _dep if _d not in _ear_stages]
-                        elif isinstance(_dep, str) and _dep in _ear_stages:
+                            _s["depends_on"] = [_d for _d in _dep if _d not in _disabled]
+                        elif isinstance(_dep, str) and _dep in _disabled:
                             _s["depends_on"] = []
-                    _wf_dst.write_text(_yaml_ear.safe_dump(_wf_doc, sort_keys=False))
-                    log.info("[launch] include_ear=False: EAR stages disabled in checkpoint workflow.yaml")
+                    _wf_dst.write_text(_yaml_ph.safe_dump(_wf_doc, sort_keys=False))
+                    log.info(
+                        "[launch] phase toggles disabled stages: %s",
+                        sorted(_disabled),
+                    )
             except Exception:
                 log.warning("Failed to copy workflow.yaml to checkpoint", exc_info=True)
         # Copy uploaded files from staging/previous checkpoint to new checkpoint

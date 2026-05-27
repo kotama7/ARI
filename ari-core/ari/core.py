@@ -100,7 +100,6 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
     # source (`ari memory migrate --react`).
     from ari.memory.letta_client import LettaMemoryClient
     from ari.orchestrator.bfts import BFTS
-    from ari.orchestrator.scheduler import Scheduler
     from ari.paths import PathManager
 
     if checkpoint_dir is None:
@@ -146,21 +145,53 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
 
     # Evaluator may also use a phase-specific model override (ARI_MODEL_EVAL).
     _eval_model = _os_phase.environ.get("ARI_MODEL_EVAL") or llm._model_name()
-    _axis_weights = getattr(getattr(cfg, "evaluator", None), "axis_weights", None) or None
-    # Phase 3: pass rubric + checkpoint_dir so the evaluator builds dynamic
-    # axes (generic floor + rubric.score_dimensions + plan §-tag keywords)
-    # automatically. Plan-derived axes refresh on every evaluate() call when
-    # idea.json mtime changes — no manual refresh needed. With no rubric
-    # available the evaluator falls back to the generic floor only, which
-    # matches legacy behaviour.
-    _rubric_for_axes = _load_rubric_dict_for_axes()
+    _eval_cfg = getattr(cfg, "evaluator", None)
+    _axis_weights = getattr(_eval_cfg, "axis_weights", None) or None
+    _composite = getattr(_eval_cfg, "composite", "harmonic_mean")
+    _axis_mode = getattr(_eval_cfg, "axis_mode", "dynamic")
+    # Layer C: dispatch on axis_mode.
+    # - legacy: pin to the canonical 5-axis set (AXIS_NAMES); no rubric / plan input.
+    # - custom: build AxisDef list from cfg.evaluator.custom_axes verbatim.
+    # - dynamic (default): existing rubric + idea.json driven build.
+    _eval_extra_kwargs: dict = {}
+    if _axis_mode == "legacy":
+        pass  # no axes / rubric / checkpoint_dir → llm_evaluator picks legacy
+    elif _axis_mode == "custom":
+        from ari.evaluator.dynamic_axes import AxisDef as _AxisDef
+        _custom = getattr(_eval_cfg, "custom_axes", None) or []
+        _eval_extra_kwargs["axes"] = [
+            _AxisDef(
+                name=a.name,
+                description=a.description,
+                source="custom",
+                weight=float(a.weight),
+            )
+            for a in _custom
+        ]
+    else:
+        # dynamic — Phase 3 path (rubric + plan-derived axes).
+        _rubric_for_axes = _load_rubric_dict_for_axes()
+        _eval_extra_kwargs["checkpoint_dir"] = str(checkpoint_dir)
+        _eval_extra_kwargs["rubric"] = _rubric_for_axes
+    # Forward the configured base_url to the judge whenever the evaluator is
+    # pointed at the same local / OpenAI-compatible endpoint as the main client
+    # (ollama, or a shim such as ari.llm.cli_server). A cloud ARI_MODEL_EVAL
+    # override that swaps the model keeps api_base=None so litellm uses the
+    # provider default rather than dialling the local endpoint.
+    _eval_override = _os_phase.environ.get("ARI_MODEL_EVAL")
+    _eval_uses_main_backend = (not _eval_override) or _eval_override == llm._model_name()
+    _eval_api_base = (
+        llm.config.base_url
+        if (llm.config.base_url and _eval_uses_main_backend)
+        else None
+    )
     evaluator = LLMEvaluator(
         model=_eval_model,
-        api_base=llm.config.base_url if llm.config.backend == "ollama" else None,
+        api_base=_eval_api_base,
         metric_spec=metric_spec,
         axis_weights=_axis_weights,
-        checkpoint_dir=str(checkpoint_dir),
-        rubric=_rubric_for_axes,
+        composite=_composite,
+        **_eval_extra_kwargs,
     )
 
     # WorkflowHints: auto-extracted from experiment file
@@ -181,8 +212,7 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
     agent = AgentLoop(llm, memory, mcp, evaluator=evaluator, workflow_hints=wf_hints,
                        max_react_steps=cfg.bfts.max_react_steps,
                        timeout_per_node=cfg.bfts.timeout_per_node)
-    scheduler = Scheduler(cfg.bfts)
-    return llm, memory, mcp, bfts, agent, scheduler, metric_spec
+    return llm, memory, mcp, bfts, agent, metric_spec
 
 
 # ---------------------------------------------------------------------------

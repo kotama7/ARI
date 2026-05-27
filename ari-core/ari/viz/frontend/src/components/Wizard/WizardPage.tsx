@@ -81,8 +81,10 @@ export function WizardPage() {
   const [numReviewsEnsemble, setNumReviewsEnsemble] = useState(1);
   const [numReflections, setNumReflections] = useState(5);
 
-  // ---- EAR (per-experiment opt-out) ----
+  // ---- EAR / paper-review / reproduction (per-experiment opt-out) ----
   const [includeEar, setIncludeEar] = useState(true);
+  const [includeReview, setIncludeReview] = useState(true);
+  const [includeReproduce, setIncludeReproduce] = useState(true);
 
   // ---- ORS (PaperBench-format auto rubric) settings ----
   const [ors, setOrs] = useState<OrsSettings>({ ...ORS_DEFAULTS });
@@ -138,7 +140,8 @@ export function WizardPage() {
             setCustomModel(mdl);
           }
         }
-        if (s.ollama_host) setBaseUrl(s.ollama_host);
+        if (prov === 'cli-shim' && s.llm_base_url) setBaseUrl(s.llm_base_url);
+        else if (s.ollama_host) setBaseUrl(s.ollama_host);
         if (s.slurm_cpus) setHpcCpus(String(s.slurm_cpus));
         if (s.slurm_memory_gb) setHpcMem(String(s.slurm_memory_gb));
         if (s.slurm_walltime) setHpcWall(s.slurm_walltime);
@@ -290,6 +293,7 @@ export function WizardPage() {
           maxRecursionDepth={scope.maxRecursionDepth}
           llmModel={effectiveModel}
           llmProvider={llm}
+          baseUrl={baseUrl}
           hpcCpus={hpcCpus}
           hpcMem={hpcMem}
           hpcGpus={hpcGpus}
@@ -306,6 +310,10 @@ export function WizardPage() {
           numReflections={numReflections}
           includeEar={includeEar}
           setIncludeEar={setIncludeEar}
+          includeReview={includeReview}
+          setIncludeReview={setIncludeReview}
+          includeReproduce={includeReproduce}
+          setIncludeReproduce={setIncludeReproduce}
           ors={ors}
           onBack={() => goToStep(3)}
           onLaunched={handleLaunched}

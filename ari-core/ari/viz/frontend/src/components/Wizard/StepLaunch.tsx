@@ -23,6 +23,7 @@ interface StepLaunchProps {
   // LLM values for launch payload
   llmModel: string;
   llmProvider: string;
+  baseUrl: string;
   // HPC values
   hpcCpus: string;
   hpcMem: string;
@@ -41,9 +42,13 @@ interface StepLaunchProps {
   fewshotMode: 'static' | 'dynamic';
   numReviewsEnsemble: number;
   numReflections: number;
-  // EAR (per-experiment opt-out)
+  // EAR / paper-review / reproduction (per-experiment opt-out)
   includeEar: boolean;
   setIncludeEar: (v: boolean) => void;
+  includeReview: boolean;
+  setIncludeReview: (v: boolean) => void;
+  includeReproduce: boolean;
+  setIncludeReproduce: (v: boolean) => void;
   // ORS (PaperBench-format auto rubric) snapshot
   ors: OrsSettings;
   // Navigation
@@ -68,6 +73,7 @@ export function StepLaunch({
   maxRecursionDepth,
   llmModel,
   llmProvider,
+  baseUrl,
   hpcCpus,
   hpcMem,
   hpcGpus,
@@ -84,6 +90,10 @@ export function StepLaunch({
   numReflections,
   includeEar,
   setIncludeEar,
+  includeReview,
+  setIncludeReview,
+  includeReproduce,
+  setIncludeReproduce,
   ors,
   onBack,
   onLaunched,
@@ -114,6 +124,8 @@ export function StepLaunch({
         max_recursion_depth: maxRecursionDepth ?? 3,
         llm_model: llmModel,
         llm_provider: llmProvider || 'openai',
+        // CLI shim base URL (only meaningful when provider is cli-shim).
+        cli_shim_base_url: llmProvider === 'cli-shim' ? baseUrl : '',
         hpc_cpus: parseInt(hpcCpus) || null,
         hpc_memory_gb: parseInt(hpcMem) || null,
         hpc_gpus: parseInt(hpcGpus) || null,
@@ -130,6 +142,8 @@ export function StepLaunch({
         num_reviews_ensemble: numReviewsEnsemble,
         num_reflections: numReflections,
         include_ear: includeEar,
+        include_review: includeReview,
+        include_reproduce: includeReproduce,
         ors,
       });
 
@@ -249,6 +263,54 @@ export function StepLaunch({
             }}
           >
             {t('wiz_include_ear_help')}
+          </div>
+        </div>
+
+        {/* Include Paper Review */}
+        <div className="form-row" style={{ marginTop: 8 }}>
+          <label htmlFor="wiz-include-review" style={{ cursor: 'pointer' }}>
+            <input
+              id="wiz-include-review"
+              type="checkbox"
+              checked={includeReview}
+              onChange={(e) => setIncludeReview(e.target.checked)}
+              style={{ marginRight: 6 }}
+            />
+            {t('wiz_include_review')}
+          </label>
+          <div
+            style={{
+              fontSize: '.78rem',
+              color: 'var(--muted)',
+              marginTop: 4,
+              lineHeight: 1.4,
+            }}
+          >
+            {t('wiz_include_review_help')}
+          </div>
+        </div>
+
+        {/* Include Reproduction Experiment */}
+        <div className="form-row" style={{ marginTop: 8 }}>
+          <label htmlFor="wiz-include-reproduce" style={{ cursor: 'pointer' }}>
+            <input
+              id="wiz-include-reproduce"
+              type="checkbox"
+              checked={includeReproduce}
+              onChange={(e) => setIncludeReproduce(e.target.checked)}
+              style={{ marginRight: 6 }}
+            />
+            {t('wiz_include_reproduce')}
+          </label>
+          <div
+            style={{
+              fontSize: '.78rem',
+              color: 'var(--muted)',
+              marginTop: 4,
+              lineHeight: 1.4,
+            }}
+          >
+            {t('wiz_include_reproduce_help')}
           </div>
         </div>
 

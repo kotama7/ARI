@@ -26,6 +26,7 @@ const PROVIDER_MODELS: Record<string, string[]> = {
   anthropic: ['claude-opus-4-5', 'claude-sonnet-4-5', 'claude-3-5-haiku-latest'],
   gemini: ['gemini/gemini-2.5-pro', 'gemini/gemini-2.0-flash', 'gemini/gemini-1.5-pro'],
   ollama: ['ollama_chat/llama3.3', 'ollama_chat/qwen3:8b', 'ollama_chat/gemma3:9b', 'ollama_chat/mistral'],
+  'cli-shim': ['claude-cli', 'claude-cli-agent', 'codex-cli', 'codex-cli-agent'],
 };
 
 const PROVIDER_KEY_PLACEHOLDER: Record<string, string> = {
@@ -33,6 +34,7 @@ const PROVIDER_KEY_PLACEHOLDER: Record<string, string> = {
   anthropic: 'sk-ant-...',
   gemini: 'AIza...',
   ollama: '(not required)',
+  'cli-shim': '(not required)',
 };
 
 // ── Memory (Letta) — provider × model picker ────────
@@ -199,7 +201,7 @@ export default function SettingsPage() {
       setModelSelect(r.llm_model || '');
       setTemperature(r.temperature || 1.0);
       setApiKey(r.llm_api_key || '');
-      setBaseUrl(r.ollama_host || '');
+      setBaseUrl(prov === 'cli-shim' ? (r.llm_base_url || '') : (r.ollama_host || ''));
       setSsKey(r.semantic_scholar_key || '');
       setRetrievalBackend(r.retrieval_backend || 'semantic_scholar');
       setSshHost(r.ssh_host || '');
@@ -466,6 +468,7 @@ export default function SettingsPage() {
                 <option value="anthropic">anthropic</option>
                 <option value="gemini">gemini</option>
                 <option value="ollama">ollama</option>
+                <option value="cli-shim">cli-shim (claude/codex)</option>
               </select>
             </div>
 
@@ -526,15 +529,21 @@ export default function SettingsPage() {
               </div>
             )}
 
-            {/* Base URL (ollama only) */}
-            {provider === 'ollama' && (
+            {/* Base URL (ollama / cli-shim) */}
+            {(provider === 'ollama' || provider === 'cli-shim') && (
               <div>
-                <label style={labelStyle}>Base URL (Ollama)</label>
+                <label style={labelStyle}>
+                  {provider === 'cli-shim' ? 'Base URL (CLI Shim)' : 'Base URL (Ollama)'}
+                </label>
                 <input
                   type="text"
                   value={baseUrl}
                   onChange={(e) => setBaseUrl(e.target.value)}
-                  placeholder="http://localhost:11434"
+                  placeholder={
+                    provider === 'cli-shim'
+                      ? 'http://localhost:8900/v1'
+                      : 'http://localhost:11434'
+                  }
                   style={inputStyle}
                 />
               </div>
