@@ -623,36 +623,14 @@ def _build_truthful_env_block(env: dict) -> str:
         "rubric credit — probe aggressively early; iterative shell "
         "experimentation has zero cost."
     )
-    lines.append(
-        "- Language choice: the reproduce.sh example in the standard "
-        "instructions uses Python — that is illustration ONLY, not "
-        "prescription. Match the paper's native language stack:\n"
-        "    * HPC GPU compute (CUDA / GPU kernels) → C++/CUDA "
-        "(load the cluster's CUDA module via `module load <NAME>`, "
-        "then `nvcc -std=c++17 -arch=sm_XX -O3 ...`); HIP/ROCm for AMD "
-        "GPU papers; SYCL for portable.\n"
-        "    * HPC CPU parallel (OpenMP / MPI / vectorisation) → "
-        "C / C++ / Fortran with `mpicc` / `mpic++` / `mpifort` (load "
-        "the cluster's MPI module first) and `-fopenmp`.\n"
-        "    * Numerical libraries (BLAS / LAPACK / FFTW / HDF5 / "
-        "NetCDF) → C / C++ / Fortran linked against the system "
-        "module (`module load <library-name>`); Python wrappers "
-        "(numpy.linalg / h5py / netCDF4) are acceptable when the "
-        "paper itself uses them.\n"
-        "    * ML / deep learning (PyTorch / JAX / TensorFlow / "
-        "diffusion / transformers) → Python with the appropriate "
-        "framework; CUDA kernel custom ops in C++/CUDA when the paper "
-        "ships them.\n"
-        "    * Systems / databases / compilers / kernels → the paper's "
-        "declared language (C / C++ / Rust / Go / OCaml / etc); do "
-        "not re-implement in Python.\n"
-        "    * Web / JS frameworks → JS/TS in Node.js or the declared "
-        "runtime.\n"
-        "  A Python-only proxy of a CUDA/MPI/Fortran paper will lose "
-        "every kernel/build/execution rubric leaf even when the "
-        "algorithm shape is correct. The rubric REWARDS reproducing "
-        "the paper in its native language."
-    )
+    # NOTE: the native-language guidance ("don't write a Python proxy for a
+    # CUDA/MPI/Fortran paper") used to live here as a generic table. It is
+    # now owned by the paper-kind addendum's Cautionary note, which is
+    # paper-specific (knows native_stack) and imperative, and which also
+    # neutralises the vendor toy example's language. Duplicating a generic
+    # table here was redundant prompt noise, so it has been removed — the
+    # env-truth block stays focused on the ENVIRONMENT (privileges, module
+    # catalog, network, Phase-2 isolation), not on language choice.
     return "\n".join(lines)
 
 

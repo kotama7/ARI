@@ -505,26 +505,10 @@ def test_env_block_for_slurm_describes_module_load_path():
     assert "Verify-first" in block
     assert "module load" in block  # named example for cluster envs
     assert "ZERO Code Execution" in block
-    # Language-choice counter-priming. The vendor instructions.txt
-    # uses a Python (count.py / strawberry) example which strongly
-    # primes the agent toward Python regardless of the paper. The
-    # env block must explicitly tell the agent the example is
-    # illustration only and to MATCH THE PAPER'S NATIVE LANGUAGE.
-    # The block must enumerate the major HPC / ML / systems / web
-    # language tracks so the agent has a concrete reference.
-    assert "Language choice" in block
-    assert "illustration ONLY" in block
-    assert "native language" in block
-    # Specific stacks the env block must enumerate so the agent can
-    # match its choice to the paper's domain.
-    for lang_or_tool in (
-        "C++/CUDA", "HIP", "SYCL",       # GPU compute
-        "OpenMP", "MPI",                  # CPU parallel
-        "Fortran",                        # legacy numerical
-        "PyTorch", "JAX",                 # ML frameworks
-        "Rust", "Go",                     # systems
-    ):
-        assert lang_or_tool in block, f"language addendum missing: {lang_or_tool!r}"
+    # Native-language guidance is NOT in the env block anymore — it moved
+    # to the paper-kind addendum's Cautionary note (paper-specific +
+    # imperative). The env block stays focused on the ENVIRONMENT.
+    assert "Language choice" not in block
 
 
 def test_env_block_for_local_host_without_module():
@@ -542,10 +526,9 @@ def test_env_block_for_local_host_without_module():
     # notes apply — these are not SLURM-specific.
     assert "Network" in block
     assert "FRESH shell" in block
-    # Language counter-priming applies on local hosts too — the LLM
-    # bias toward Python isn't kind-dependent.
-    assert "Language choice" in block
-    assert "native language" in block
+    # Native-language guidance moved to the addendum; env block no longer
+    # carries it.
+    assert "Language choice" not in block
     # Verify-first principle must also fire on local — it counters a
     # generic agent bias (write code before checking toolchain works)
     # that is not slurm-specific.
