@@ -30,7 +30,6 @@ Operational and utility scripts for building images, running services, and dev t
 - `letta/` — Letta memory-backend deployment helpers.
   - `README.md` — letta index.
   - `docker-compose.yml` — Letta + Postgres (laptop/workstation).
-  - `letta.sif` — prebuilt Letta Singularity image.
   - `start_pip.sh` — container-less single-user deployment with SQLite.
   - `start_singularity.sh` — Singularity/Apptainer deployment for HPC.
   - `pg-init/` — Postgres init SQL for the Letta store.

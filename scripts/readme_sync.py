@@ -37,12 +37,14 @@ SKIP_NAMES = {
     "site-packages", "dist", "build", ".git", ".github", ".vscode",
     ".claude", ".mypy_cache", ".ruff_cache", ".idea",
 }
-# …or by suffix…
-SKIP_SUFFIXES = (".egg-info",)
+# …or by suffix (covers gitignored runtime artifacts like Apptainer images)…
+SKIP_SUFFIXES = (".egg-info", ".sif")
 # …or by path relative to the repo root (language mirrors / assets / runtime).
 SKIP_RELPATHS = {
     "workspace", "docs/assets", "docs/i18n", "docs/ja", "docs/zh",
     "report/en", "report/ja", "report/zh", "ari-core/ari/viz/static",
+    "report/shared/references.log.yaml",
+    "report/shared/figures/preview",
 }
 
 # Directories listed as a single leaf (kept visible, contents not enumerated).
@@ -56,7 +58,6 @@ NOT_ENUMERATED_RELPATHS = {
     "report/shared/figures/data": "figure data files (not enumerated)",
     "report/shared/figures/dot": "Graphviz figure sources (not enumerated)",
     "report/shared/figures/pgf": "generated PGF figures (not enumerated)",
-    "report/shared/figures/preview": "rendered figure previews (not enumerated)",
     "report/shared/figures/tikz": "TikZ figure sources (not enumerated)",
 }
 

@@ -555,3 +555,27 @@ _env_append_if_absent "# ZENODO_TOKEN="
 _env_append_if_absent "# ZENODO_SANDBOX=false"
 _env_append_if_absent "# ARI_GH_REPO=user/repo"
 _env_append_if_absent "# ARI_GH_MODE=commit          # commit | releases"
+
+# --- BFTS / evaluator configurable layers (v0.8.0) --------------------------
+_env_append_if_absent "# ARI_COMPOSITE=                 # evaluator composite formula override: harmonic|arithmetic|weighted_min|geometric"
+_env_append_if_absent "# ARI_AXIS_MODE=                 # evaluator axis-set source override: dynamic|legacy|custom"
+_env_append_if_absent "# ARI_FRONTIER_SCORE=            # BFTS frontier_score override: scientific_plus_diversity|scientific_only|depth_penalized|ucb_like"
+
+# --- PaperBench classifier / agent toggles (v0.8.0) -------------------------
+_env_append_if_absent "# ARI_PB_DISABLE_PAPER_KIND_HINT=  # set to 1 to suppress the paper-kind / native-stack hint injected by the classifier (dogfood leak guard)"
+_env_append_if_absent "# ARI_PB_DISABLE_WEB_SEARCH=       # set to 1 to disable the rollout agent's web_search_preview tool"
+
+# --- OpenAI-compatible CLI shim backend (v0.8.0) ----------------------------
+_env_append_if_absent "# ARI_CLI_SHIM_PORT=8900          # local OpenAI-compatible CLI shim endpoint port"
+_env_append_if_absent "# ARI_CLI_SHIM_TIMEOUT=600        # per-request timeout (s) for the shim"
+_env_append_if_absent "# ARI_CLI_SHIM_LOG=               # path for CLI shim debug log (default: off)"
+_env_append_if_absent "# ARI_CLI_SHIM_CWD=               # working directory the CLI shim spawns subprocesses in"
+_env_append_if_absent "# ARI_CLI_SHIM_MAX_CONCURRENCY=4  # in-flight subprocess cap for the shim"
+_env_append_if_absent "# ARI_CLI_SHIM_MAX_BUDGET_USD=    # hard budget cap; abort once consumed"
+_env_append_if_absent "# ARI_CLI_SHIM_CLAUDE_BIN=claude  # path / name of the Claude CLI binary"
+_env_append_if_absent "# ARI_CLI_SHIM_CLAUDE_BARE=       # set to 1 to call \`claude\` without the agent harness"
+_env_append_if_absent "# ARI_CLI_SHIM_CLAUDE_AGENT_PERMISSION=  # agent-permission override forwarded to \`claude\`"
+_env_append_if_absent "# ARI_CLI_SHIM_CODEX_BIN=codex    # path / name of the Codex CLI binary"
+
+# --- HPC module-path (R-CCS / system Env Modules) ---------------------------
+_env_append_if_absent "# MODULEPATH=                     # colon-separated module-search path; auto-populated by Env Modules on HPC"

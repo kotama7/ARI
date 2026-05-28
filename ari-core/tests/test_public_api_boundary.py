@@ -85,7 +85,7 @@ _GRANDFATHERED: dict[str, set[int]] = {
     "ari-skill-paper/src/server.py": {18},
     "ari-skill-plot/src/server.py": {34},  # try-block legacy fallback
     "ari-skill-replicate/src/server.py": {25},
-    "ari-skill-transform/src/server.py": {30, 606, 1902, 2252, 2270},
+    "ari-skill-transform/src/server.py": {52, 628, 1924, 2274, 2292},
     "ari-skill-vlm/src/server.py": {15},
     "ari-skill-web/src/server.py": {21},
 }

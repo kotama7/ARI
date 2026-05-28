@@ -10,7 +10,6 @@ Shared assets included by every language build (en/ja/zh) of the report.
 - `notation.tex` — notation macros (gate-registered symbols).
 - `preamble.tex` — common LaTeX preamble.
 - `references.bib` — bibliography (BibTeX).
-- `references.log.yaml` — bibliography fetch/verify log.
 - `appendix/` — verbatim appendix material (prompt snapshots).
   - `README.md` — appendix index.
   - `prompts/` — runtime LLM prompt snapshots, grouped by subsystem.
@@ -38,7 +37,6 @@ Shared assets included by every language build (en/ja/zh) of the report.
   - `data/` — figure data files (not enumerated)
   - `dot/` — Graphviz figure sources (not enumerated)
   - `pgf/` — generated PGF figures (not enumerated)
-  - `preview/` — rendered figure previews (not enumerated)
   - `scripts/` — figure generation scripts (not enumerated).
     - `build_all.py` — regenerate all data-driven figures (`--only Fxx` for one); idempotent for git-diff drift checks.
     - `rubric_dist.py` — F09: rubric score-distribution violin plot (`data/F09_reviews.jsonl` → `pgf/F09_rubric_dist.pgf`).

@@ -10,7 +10,6 @@ Generated and source figures shared across the en/ja/zh report builds.
 - `data/` — figure data files (not enumerated)
 - `dot/` — Graphviz figure sources (not enumerated)
 - `pgf/` — generated PGF figures (not enumerated)
-- `preview/` — rendered figure previews (not enumerated)
 - `scripts/` — figure generation scripts (not enumerated).
   - `build_all.py` — regenerate all data-driven figures (`--only Fxx` for one); idempotent for git-diff drift checks.
   - `rubric_dist.py` — F09: rubric score-distribution violin plot (`data/F09_reviews.jsonl` → `pgf/F09_rubric_dist.pgf`).
