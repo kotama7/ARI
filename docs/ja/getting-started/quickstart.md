@@ -20,7 +20,7 @@ CLI（コマンドライン）での使い方については、[CLI リファレ
 > **インストール前にプレビュー**
 >
 > - 🎬 **ダッシュボードのデモ動画** — [`movie/ja/ari_dashboard_demo.mp4`](../../assets/movie/ja/ari_dashboard_demo.mp4) で Web UI の動作を一通り確認できます。
-> - 📄 **サンプル成果物（論文）** — [`sample_paper.pdf`](../../assets/sample_paper.pdf) は ARI が実際に生成した論文です。図表・引用・再現性検証レポートまで含まれています。
+> - 📄 **サンプル成果物（論文）** — [`sample_paper.pdf`](../../assets/sample_paper.pdf) は ARI が富士通 A64FX/SVE-512 上で生成した 10 ページの論文です（Stratum-Roofline CSR-SpMM 研究）。図表・引用・再現性検証レポートまで含まれています。
 
 ---
 

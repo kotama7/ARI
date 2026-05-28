@@ -37,20 +37,20 @@ _EXPECTED_HASHES: list[tuple[str, str]] = [
         "pipeline/keyword_librarian",
         "c538a34ef8351eb59958b115a6221c2b5db7188521900ed5d913f6d73369e108",
     ),
-    # PC5 — BFTS select-next prompt.
+    # PC5 — BFTS select-next prompt (v0.7.2: drop "low retry" criterion, B-3).
     (
         "orchestrator/bfts_select",
-        "3724d98c3d7c10748d799dfe1d534e4385399f60c4f1823ca588f01ce178b702",
+        "38b1ea409ff58bc0b5342b7fc677b3c64c5374bf35b0d5c9b0594a401fd4b71b",
     ),
     # PC5 — BFTS expand-select prompt.
     (
         "orchestrator/bfts_expand_select",
         "cff71dfe47770d9fdc23c704ca01717030f73b7ecb36f95cb9f1a49624709465",
     ),
-    # PC5 — BFTS expand prompt.
+    # PC5 — BFTS expand prompt (v0.7.2: depth/budget surfaces, I-4 + I-1).
     (
         "orchestrator/bfts_expand",
-        "5bb9cd1ba19910d3eef7ed789451869dd9b256421610bc71138dbfce7deabce9",
+        "af0aba2d5805541d3a0ee5122019661a06c3ce27427c98690751ba487214703f",
     ),
     # PC6 — evaluator extract-metrics prompt (BASE_SYSTEM legacy 5-axis).
     # The .md file ends with a trailing newline; the in-class constant

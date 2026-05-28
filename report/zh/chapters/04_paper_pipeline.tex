@@ -1,7 +1,3 @@
-% translated-from: en/chapters/04_paper_pipeline.tex@e4a959d4405d3a0ff9d71cc2cef14e592a31610d1bd8bee71993349cd5d0c271
-% glossary:        5bca8d57a70f021e20c0af79aa06cd21013495c1a8246887ae889cd8a056f5fd
-% model:           claude-opus-4-7
-
 \section{论文生成流水线}\label{sec:paper}
 
 \subsection{流水线概述}\label{sec:paper:overview}
@@ -10,380 +6,158 @@
   \centering
   \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F06_paper_swimlane.tex}}
   \caption{论文生成泳道:构思、实验、撰写。每条泳道对应一个阶段;
-           由 \texttt{review/refine} 回到 \texttt{draft} 的反向
-           边是唯一的非单调转移 (\cref{sec:paper:loop})。}
+           由 review 回到 draft 的反向边是唯一的非单调转移
+           (\cref{sec:paper:loop})。}
   \label{fig:swim}
 \end{figure}
 
-论文生成流水线是 ARI 的第二棵活动树 (\cref{fig:swim})。一旦探
-索终止,存活谱系交付给 \term{paper 技能} 生成草稿,再交给
-\term{review 技能} 评分。实现是
-\code{ari-core/ari/pipeline/orchestrator.py:131} 的
-\texttt{run\_pipeline} 函数;同文件第 68 行的
-\texttt{build\_scientific\_data} 助手将各节点产物汇集成 paper
-技能所需的输入。
-
-一次运行写出三件持久产物:\texttt{draft.tex}(LaTeX 论文本身)、
-\texttt{review.json}(按叶的评分细则得分及理由)与
-\texttt{rubric.json}(本次运行所用的细则实例,用于动态生成场
-景)。
+探索终止后,存活谱系被交付给论文生成流水线——ARI 的第二棵活动树
+(\cref{fig:swim})。\term{撰写}阶段将谱系汇编为草稿,\term{评审}
+阶段以评分细则对该草稿评分;两者由改稿循环 (\cref{sec:paper:loop})
+耦合。流水线从探索留下的按节点产物中,组装撰写器可依据的证据,并
+持久化三件输出:\LaTeX{} 草稿、带理由的按叶评审,以及本次运行所用
+的评分细则实例(评分细则可能逐论文生成而非预先固定,故保存)。
 
 \subsection{评分细则形式}\label{sec:paper:rubric}
 
 我们将\term{评分细则} $\Rubric$ 建模为有限树,叶节点携带元组
 $(\rubricitem{i},\rubricweight{i},\judgefn{i})$。每个叶 $i$ 含
 类别描述符 $\rubricitem{i}$、非负权重 $\rubricweight{i}$ 满足
-$\sum_i \rubricweight{i}=1$,以及\emph{判官函数}
-$\judgefn{i}:\paper\to[0,1]$,返回分级得分。论文得分即凸组合
+$\sum_i \rubricweight{i}=1$,以及返回分级得分的\emph{判官函数}
+$\judgefn{i}:\paper\to[0,1]$。论文得分即凸组合
 \begin{equation}\label{eq:paperscore}
   \paperscore{\paper} \;=\; \sum_i \rubricweight{i}\,\judgefn{i}(\paper).
 \end{equation}
-此形式与 PaperBench 的细则树共享,ARI 直接通过 vendor 化的
-PaperBench 包(\cref{sec:paper:paperbench})复用之:叶类型
-\texttt{TaskNode} 来自 \texttt{paperbench.rubric.tasks},graded
-leaf 类型 \texttt{GradedTaskNode} 来自
-\texttt{paperbench.judge.graded\_task\_node},加权聚合包络来自
-\code{ari-skill-paper-re/src/\_paperbench\_bridge.py:75} 的
-\texttt{aggregate\_graded\_tree}。
+此树结构评分细则与 PaperBench 共享,ARI 通过 vendor 化的包复用之
+(\cref{sec:paper:paperbench}),使其评分与聚合语义逐字追随上游。
+判官有两族并存:面向定性叶的 LLM 评分器,以及面向具二元或数值
+校验叶的确定性评分器(如「成本是否以美元绝对值报告?」)。两者
+满足同一 \texttt{Evaluator} 接口,因此搜索引擎 (\cref{sec:exploration})
+与论文流水线通过一个接缝将轴归约为标量。
 
-生产中使用两个判官族:LLM 评分器在 ARI 侧由包装 PaperBench 的
-\texttt{SimpleJudge}
-(\code{ari-skill-paper-re/src/\_paperbench\_bridge.py:54}) 实
-现;确定性评分器用于具备二元或数值校验的项目(如「可复现性」、
-「以美元绝对值报告的成本」)。两者均实现 \texttt{Evaluator} 协议
-(\code{ari-core/ari/protocols/evaluator.py:19})。
+评分细则以两种\emph{模式}之一生成。\emph{agent-benchmark} 模式
+按论文的科学贡献分解树,各叶询问候选 submission 的执行输出是否
+再现论文——即原始 PaperBench 范式。\emph{paper-audit} 模式中树的
+顶层子节点是固定的再现性轴集合,各叶评分论文文本自身的描述完整性
+——面向 HPC 再现性审计的范式倒置,问题不再是「智能体能否再现这篇
+论文?」而是「这篇论文是否描述了足够再现所需的信息?」。venue 知识
+(用哪些轴、如何措辞)由逐 venue 模板提供而非焊入引擎,故 ARI 核心
+保持 domain-agnostic (P4),新增 venue 是数据变更而非代码变更。
 
-\subsubsection*{venue 条件化的 rubric 模板}
+将 paper-audit 得分从退化区域——空 submission 把所有 submission 主语
+的叶推向「否」——提升出来,需要把叶的问题改为以\emph{论文}而非
+(缺失的)submission 为主语提问、把论文的图与正文一并喂给判官(使
+具视觉能力的模型可加以利用)、并允许将可选的 Artifact Description /
+Artifact Evaluation 附录作为额外输入。这些调整完全留在 ARI 的包装
+层,vendor 化的判官无改动,从而使跨上游版本的得分保持可比。我们
+有意\emph{不}从论文自身报告值合成再现日志:那会短路 executed-submission
+阶段,以与 leaderboard 运行不可比的方式抬高得分。
 
-rubric 生成器 (\texttt{ari-skill-replicate.generate\_rubric})
-接受可选的 venue 标识符, 由此从
-\code{ari-core/config/paperbench\_rubrics/} 选取 YAML 模板。
-模板的 \texttt{prompt\_overrides} 块经由专用占位符注入到 skeleton
-和 subtree 提示词中。 ARI 核心保持 domain-agnostic (P4 原则),
-venue 知识封闭于 YAML 中。 这与 \texttt{ari-skill-paper} 在 peer
-review 侧已采用的
-\code{ari-core/config/reviewer\_rubrics/} 模式完全同构。
+\subsection{评审/改稿循环}\label{sec:paper:loop}
 
-支援两个模式。 \texttt{agent\_benchmark} 模式下 skeleton 通道按
-论文科学结构分解 (每个主要贡献对应一个直接子节点), 叶子评分
-候选 submission 的 \texttt{reproduce.sh} 输出是否再现了论文 —
-即原始 PaperBench 范式。 \texttt{paper\_audit} 模式下 rubric 根
-的直接子节点是 YAML 的 \texttt{top\_level\_axes} 列声明的
-\emph{固定}审计轴, 叶子不再评分 submission 输出, 而是评分论文
-文本 (以及可选的 Artifact Description / Artifact Evaluation 附
-录) 的描述完整性 — 这是面向 HPC 再现性审计研究的范式倒置, 问
-题不再是 「智能体能否再现这篇论文?」 而是 「这篇论文是否描述
-了足够再现所需的信息?」。 本次发布同捆模板为 \texttt{generic}
-(向后兼容)、 \texttt{sc} (六轴: 环境/数据/执行/图表/扩展性/结
-论)、 \texttt{neurips} (NeurIPS Reproducibility Checklist 轴)、
-\texttt{nature} (wet-lab Reporting Summary 轴)。
-\texttt{paper\_audit} 模式要求 two-stage 生成路径 — 单次 pass
-的提示词无法保证固定轴约束。
-
-\subsubsection*{paper-audit 机制 (v0.7.2)}
-
-为将 \texttt{paper\_audit} 模式的得分从个位数 baseline 提升到
-按上述再现性轴对论文进行判别的区域,组合使用三个正交机制。 全部
-为纯粹的 ARI 包装层,vendor 化的 PaperBench \texttt{SimpleJudge}
-保持无改动;各机制独立可开关,便于消融分析。
-(此前曾存在「Step~4 再现包生成器」作为第四个机制,但其将论文
-自身报告值由 LLM 转写为 \texttt{reproduce.log} 供 judge 评分,
-属于 off-protocol 实现,已被移除。 它短路了 PaperBench 的
-executed-submission 阶段,使 audit score 被人为抬高,与
-leaderboard 数据不再可比。)
-
-\begin{enumerate}
-  \item \emph{多模态 markdown 图像扩展器}
-    (\code{ari-skill-paper-re/src/\_litellm\_completer.py})。
-    论文 PDF 由 \texttt{pymupdf4llm.to\_markdown(write\_images=True)}
-    转换为 markdown,并对每页 PNG 生成
-    \texttt{!\hspace{0pt}[\hspace{0pt}]\hspace{0pt}(path)} 引用。
-    \texttt{async\_completion} 中的扩展器在 LiteLLM 调用前将
-    它们改写为 OpenAI 多模态 content blocks,具备视觉能力的判官
-    (Claude 4.6/4.7, GPT-5, Gemini 2.5) 可在同一 context 中
-    同时看到正文与图表。 vendor \texttt{SimpleJudge} 仍将
-    \texttt{paper\_md} 嵌入为文本 Path;多模态转换发生在 LiteLLM
-    边界,vendor-swap 性得以保留。
-
-  \item \emph{paper-audit 提示词补丁} 位于
-    \code{ari-skill-paper-re/src/\_paperbench\_bridge.py}。 vendor
-    PaperBench 的 \texttt{TASK\_CATEGORY\_QUESTIONS} 在
-    \texttt{Code Development} / \texttt{Code Execution} /
-    \texttt{Result Analysis} 三类下都以 submission 为主语提问
-    (「submission 的代码包含 X 吗?」「\texttt{reproduce.sh}
-    产出了与 Y 相符的证据吗?」)。 在空 submission 的 paper-audit
-    中这些提问结构性地始终收敛到 「否」,即便 concat AD/AE 后
-    mean score 仍卡在 $\sim 0.3$。 call 作用域的 monkey-patch
-    将其换为 paper-audit 风格的提问 (「论文是否以具体形式
-    描述 X?」「论文主张 Y 是否与他处实验证据内在一致?」),
-    退出时恢复原值,因此同进程内的 \texttt{agent\_benchmark}
-    调用不受影响。
-
-  \item \emph{分级输入条件}。 dogfood 脚本
-    \code{scripts/sc\_paper\_dogfood.py} 支持
-    \texttt{-{}-paper-extras AD.pdf AE.pdf} 将额外 PDF concat 到
-    主 \texttt{paper.md},以便在同一 rubric 下分别测量
-    \texttt{paper-only} / \texttt{paper+AD} / \texttt{paper+AD+AE}
-    三种条件下的 score,从而分解各产物层的贡献。
-\end{enumerate}
-
-三个机制的合计效应为超加 (super-additive):合并效果超过各机制
-独立提升之和。 单机制最大提升来自提示词补丁 (机制 2),其次为
-AD/AE concat (机制 3),多模态扩展器 (机制 1) 提供较小但
-paper-agnostic 一致的增益。
-
-\subsubsection*{3-stage bridge contract (v0.7.3)}\label{sec:paper:bridge}
-
-paper-audit 模式针对论文本身,而
-\term{3-stage bridge contract}
-(\code{ari-skill-paper-re/src/\_paperbench\_bridge.py}) 暴露符合
-PaperBench 协议的循环 ---- agent rollout、 reproduction、 grading
----- 作为三个 keyword-only async 可调用项,共享同一调用词汇:
-\code{rollout\_submission(\ldots)}、
-\code{reproduce\_submission(\ldots)}、
-\code{judge\_submission(\ldots)}。 各自包装现有单段 worker
-(Stage~1 \code{\_replicator\_agent.run\_replicator\_agent}、
-Stage~2 \code{server.run\_reproduce}、
-Stage~3 vendor \texttt{SimpleJudge}),因此 bridge 是公共接口而非
-重新实现。 使其 vendor-faithful 的关键设计:
-
-\begin{itemize}
-  \item \emph{container\_image 别名解析} --- 短别名
-    \texttt{pb-env} / \texttt{pb-reproducer} 展开为
-    \code{scripts/build\_pb\_images.sh} 所生成的 canonical
-    \texttt{image:latest} 标签; URI / 路径 / 任意 tag 原样通过,
-    用户镜像兼容性维持。
-  \item \emph{fail-loud 前置条件} --- 当 Stage~2 请求无法满足
-    (缺 docker daemon / apptainer / sbatch / partition / GRES) 时
-    抛出 \texttt{RuntimeError},不会静默降级到 host CPU。两个 opt-in
-    env (\texttt{ARI\_PHASE1\_ALLOW\_FALLBACK=1},
-    \texttt{ARI\_SLURM\_ALLOW\_NO\_GRES=1}) 可回到 legacy 行为。
-  \item \emph{code\_only 一致} --- Stage~1 instruction 默认
-    \texttt{code\_only=True} (agent 仅被要求写代码)。 bridge 的
-    \code{judge\_submission} 接受 \texttt{code\_only} 并镜像
-    vendor \code{paperbench/grade.py:109-112} 的
-    \code{TaskNode.code\_only()} 裁剪。 \texttt{reproduce.log} 不在
-    时自动启用。
-  \item \emph{salvage retries} --- opt-in 类似 vendor 的
-    \code{reproduce\_on\_computer\_with\_salvaging}
-    (\code{paperbench/reproduce.py:252} mirror),
-    对 early-failure 试行用 Python~3.11 venv 前置脚本 wrap。
-    总 wall-clock 预算跨尝试 honor (retry-time 除外)。
-  \item \emph{executed-submission tarball} --- 每次 Stage~2 完成
-    生成 \texttt{submission\_executed\_<UTC>.tar.gz} 以确保
-    可重新评分。 对应 vendor \code{paperbench/reproduce.py:230-244}。
-  \item \emph{host-FS source-removal 防护} ---
-    \texttt{forbid\_host\_filesystem=True} 时拒绝
-    \texttt{sandbox\_kind=local} / \texttt{slurm}, 保障 benchmark
-    公平性。
-  \item \emph{agent.env 注入} --- \texttt{agent\_env\_path}
-    (\texttt{ARI\_AGENT\_ENV\_PATH} 或
-    \texttt{\~{}/.ari/agent.env} 自动发现) 加载论文级凭据到 agent
-    env; 调用进程的 \texttt{HF\_TOKEN} 自动转发 (vendor
-    \code{nano/eval.py:172-179} 模式)。
-  \item \emph{Blacklist URL 强制} ---
-    \texttt{blacklist\_urls} 在 agent instruction prompt 前置
-    \texttt{FORBIDDEN URLS} block 并导出
-    \texttt{ARI\_BLACKLIST\_URLS} env 供下游 tool wrapper 拒绝。
-\end{itemize}
-
-\subsection{review/refine 循环}\label{sec:paper:loop}
-
-改稿循环按反馈 $J(\paper_t)$ 迭代地将 $\paper_t$ 重写为
+改稿循环按评审反馈 $J(\paper_t)$ 迭代地将 $\paper_t$ 重写为
 $\paper_{t+1}$:
 \begin{equation}\label{eq:refine}
   \paper_{t+1} \;=\; \refine\!\bigl(\paper_t, J(\paper_t)\bigr).
 \end{equation}
+当评审者接受草稿——建模为\term{收敛标准}
+$\paperscore{\paper_{t+1}}-\paperscore{\paper_t}<\epsilon$——或达到
+逐节的小幅改稿上限时,循环终止。哪条分支更常触发是一个经验问题,
+待冻结检查点就位后由 \cref{chapter:eval} 回答;此处不做定量主张。
 
-当 $\paperscore{\paper_{t+1}}-\paperscore{\paper_t}<\epsilon$
-连续两轮成立,或达到流水线级三次迭代上限时,循环终止。每条分支
-(收敛 vs.\ 上限)实际触发的频率,是 \cref{chapter:eval} 待冻
-结检查点就位后报告的内容;此处不做定量主张。
+改稿步骤在每条轴上有意非单调:修复清晰度问题可能轻微降低某数值轴。
+这正是 \cref{fig:swim} 中反向边的来源,也是收敛标准定义在聚合得分
+而非逐轴的原因——并配以逐轴下限 (\cref{sec:paper:failures}),以防
+聚合值掩盖单一轴的崩溃。
 
-改稿在每条轴上是有意非单调的:修复清晰度问题可能轻微降低某数值
-轴。这正是 \cref{fig:swim} 中反向边的来源;收敛标准作用于聚合
-得分,而非按轴。
+\subsection{PaperBench 集成}\label{sec:paper:paperbench}
 
-\subsection{paper-re 的 PaperBench 集成}\label{sec:paper:paperbench}
+复现路径\emph{不是}对 PaperBench 的重新实现:上游包被无改动 vendor
+化,使 ARI 逐字追随其任务与评分细则语义,ARI 仅在其周围提供一层薄
+包装。包装将协议忠实的循环公开为三个共享词汇的可组合阶段 (\cref{fig:pb-stages}):
 
-\term{paper-re 技能}(\texttt{ari-skill-paper-re})是 ARI 的
-PaperBench 兼容复现驱动器。集成\emph{不是}重新实现:PaperBench
-被 vendor 化于 \texttt{vendor/paperbench},使 ARI 与上游任务与
-细则语义保持逐字一致(布局要求记于 PaperBench 的
-\texttt{rubric.md \S{}8})。三处集成点值得说明。
+\begin{enumerate}
+  \item \emph{rollout} —— 复现智能体从论文出发走向 submission
+        (代码,以及可选的再现脚本);
+  \item \emph{reproduce} —— 在隔离容器中、于本地机器上或派发到集群
+        执行 submission;
+  \item \emph{grade} —— vendor 化的判官按评分细则树为 submission
+        评分。
+\end{enumerate}
 
-\subsubsection*{1. 求解器子类: \texttt{AriPBSolver}}
+\begin{figure*}[t]
+  \centering
+  \resizebox{\textwidth}{!}{\input{../shared/figures/tikz/F16_paperbench_stages.tex}}
+  \caption{将 PaperBench 复现路径表示为三个可组合阶段。智能体的
+           \emph{rollout} 把论文及其评分细则转化为 submission;
+           \emph{reproduce} 在隔离沙箱中执行该 submission,捕获
+           \texttt{reproduce.log} 及其输出;\emph{grade} 按评分细则树
+           为 submission 评分。ARI 的三阶段 bridge 统筹这些阶段,并把
+           重复运行聚合为单一得分。}
+  \label{fig:pb-stages}
+\end{figure*}
 
-\code{ari-skill-paper-re/src/\_replicator\_agent.py:269} 子类化
-PaperBench 上游的
-\texttt{paperbench.solvers.basic.BasicAgentSolver}。chz 不可变
-配置规则要求子类亦带装饰器,即便未新增字段。ARI 的覆写最少:
+两个设计选择使其忠于基准。其一,评分交由 vendor 化判官,ARI 的适配
+器只整形其输出并把重复运行聚合为单一得分,故升级 PaperBench 是不改
+变叶评分结合方式的 vendor swap——同一包络流入 \cref{eq:paperscore},
+二元叶取 $\judgefn{i}\in\{0,1\}$。其二,包装\emph{fail loud}:当无法
+提供基准公平的运行时(无容器运行时、无调度器、无 GPU 资源登记),
+抛出异常而非静默降级到更弱的宿主,因为静默降级会使所得分数与
+leaderboard 条目不可比。旧的 silent-fallback 行为仅经显式 opt-in
+可用。
 
-\begin{itemize}
-  \item \texttt{\_get\_tools()}:除 submit 外所有工具均被
-        \texttt{\_BoundedOutputTool} 包裹,使 bash / python /
-        file-read / search 输出在流入下次 API 调用前先大小封顶。
-        \texttt{submit} 按名分派、不调用
-        \texttt{execute()},因此原样通过。
-  \item \texttt{\_run\_agent()}:用
-        \texttt{\_bypass\_docker\_sanity\_check} 绕过
-        \texttt{paperbench.solvers.utils.sanity\_check\_docker};
-        将上游硬编码的 \texttt{/home/\{submission,paper\}} 路径
-        改写为 ARI 的工作空间相对布局
-        (\texttt{LocalComputer} cwd = \texttt{repro\_sandbox/}、
-        论文置 \texttt{paper/}、submission 置
-        \texttt{submission/})。提示内容其余从上游
-        \texttt{get\_instructions} / \texttt{get\_system\_message}
-        逐字而来,使 ARI 与上游复现任务框架(7 天预算、「直至
-        复现所有结果不得停止」等)保持一致。
-\end{itemize}
-
-\texttt{AriPBSolver} 还保留上游的
-\texttt{check\_for\_existing\_run},因此部分完成的运行可幂等地
-恢复。
-
-\subsubsection*{2. 细则驱动的产物列表}
-
-vendor PaperBench 不知 ARI 的逐论文细则树,故
-\texttt{AriPBSolver.\_run\_agent} 在
-\texttt{LocalPBTask.rubric\_expected\_artifacts} 非空时,向用户
-指令追加 \texttt{EXPECTED\_ARTIFACTS} 块。该块列出成功的
-\texttt{reproduce.sh} 应产出的路径;否则,grader 的叶主张缺乏对
-应验证的文件提示。细则树本身由
-\code{ari-skill-paper-re/src/\_paperbench\_bridge.py:63}
-(\texttt{task\_node\_from\_dict}) 构建。
-
-\subsubsection*{3. 驱动器: \texttt{run\_replicator\_agent}}
-
-\code{ari-skill-paper-re/src/\_replicator\_agent.py:365} 是异步
-入口。返回标准 \texttt{build\_reproduce\_sh} 包络
-$\{$\texttt{populated},
-\texttt{output\_dir}, \texttt{files},
-\texttt{expected\_artifacts}, \texttt{max\_runtime\_sec},
-\texttt{model}, \texttt{prompt\_sha256}, \texttt{notes},
-\texttt{warnings}$\}$。\texttt{output\_dir} 既是智能体的工作
-空间,也是 ARI 期望 rollout 后找到 \texttt{reproduce.sh} 的
-位置;上游求解器把 \texttt{agent.log} 等簿记写入
-\texttt{run\_dir},我们将其指向工作空间本身,使产物与
-\texttt{reproduce.sh} 同处。
-
-默认 completer 为 \texttt{OpenAIResponsesTurnCompleterConfig},
-模型 \texttt{gpt-5-mini}(可由环境变量
-\texttt{ARI\_MODEL\_REPLICATOR} 覆盖);LiteLLM 路由的替代由
-\texttt{\_litellm\_completer.py} 助手装配。默认时间上限每次运
-行 12 小时;\texttt{sandbox\_kind} 为 \texttt{auto},若提供本
-地 Apptainer 镜像则回退至此。
-
-\subsubsection*{4. 评分与聚合}
-
-复现智能体完成后,评分通过
-\code{ari-skill-paper-re/src/\_paperbench\_bridge.py} 的
-\texttt{judge\_submission} 委派。该函数将 ARI 的
-$($\texttt{paper\_md}, \texttt{submission\_dir},
-\texttt{reproduce\_log}, \texttt{judge\_model}$)$ 元组适配到上
-游 \texttt{SimpleJudge},按 submission 产出
-\texttt{GradedTaskNode} 树。运行间聚合由两个助手处理:
-
-\begin{itemize}
-  \item \texttt{aggregate\_graded\_tree}(第 75 行):将单个
-        \texttt{GradedTaskNode} 通过细则权重 $\rubricweight{i}$
-        汇成加权标量,并附按类别细分。
-  \item \texttt{average\_graded\_runs}(第 91 行附近):取 $n$
-        个 \texttt{GradedTaskNode} 树的逐运行均值,即便智能体
-        多次重跑以降噪,也只报告单一复现得分。
-\end{itemize}
-
-两阶段设计 —— 叶评分用 vendor 的 \texttt{SimpleJudge},形状与
-聚合用 ARI 的适配 —— 意味着升级 PaperBench 上游只是 vendor
-swap(无需改 ARI 代码),而 ARI 完全控制如何把叶得分组合成单
-一数值。同样的包络在叶为二值时按 $\judgefn{i}\in\{0,1\}$ 流入
-\cref{eq:paperscore}。
+第二个关注点是让复现智能体对\emph{宿主机实际提供的能力}保持诚实。
+若放任上游提示词,智能体倾向于 scaffold 出调用宿主机不存在的二进制
+的再现脚本,并不论论文真实语言而默认使用 Python。ARI 通过诱导智能体
+在 scaffold 前先 probe 环境、并注入由可用工具链/GPU/网络可达性的实时
+probe 生成的逐宿主机注记块加以打消——使智能体读到的与宿主机实际能做
+的相一致。
 
 \subsection{领域广度:执行配置契约}\label{sec:paper:paperbench:v072}
 
 \begin{figure}[t]
   \centering
   \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F14_execution_profile.tex}}
-  \caption{\texttt{reproduce\_contract.execution\_profile} 字段从
-           单一 rubric 成果物流入两个消费方:BasicAgent 的 user
-           消息(左侧带,经 \texttt{\_format\_hpc\_appendix})与
-           Phase 2 \texttt{sbatch} 调度器(右侧带,经
-           \texttt{\_run\_reproduce\_slurm})。三个运行时探测把
-           发出的标志集适配到本地 SLURM 部署,因此同一份 rubric
-           可在异构集群上不加修改地忠实调度。}
+  \caption{执行配置契约从单一评分细则产物流入两个消费方:复现智能体
+           的提示词(左)与集群调度器(右)。运行时 probe 使派发的
+           资源请求适配本地调度器,因此一份评分细则在异构集群上无需
+           修改即可忠实运行。}
   \label{fig:execution-profile}
 \end{figure}
 
-PaperBench 上游的 \texttt{BasicAgent} 是按单一 Docker 容器加单一
-GPU 设计的。 为覆盖方法论本质上并行的论文 —— 多 rank MPI 核函数、
-多节点训练、 集群特定的模块环境 —— \texttt{paper-re} 技能为
-每个 \texttt{reproduce\_contract} 增加一个可选
-\texttt{execution\_profile} 字段以扩展评分单契约。 该字段在设计
-上与领域无关:\texttt{kind} 枚举(\texttt{cpu\_single},
-\texttt{gpu\_single}, \texttt{gpu\_multi}, \texttt{mpi},
-\texttt{mpi\_gpu})命名的是并行执行形状而非特定科学领域,兄弟
-字段声明论文的规模包络、 期望的 CSV 聚合方案、 SLURM allocation
-提示。 当评分单生成器判定论文为单机实验时该字段省略,管道退化为
-原 4 标志 \texttt{sbatch} 调用:契约是累加性而非破坏性的。
+PaperBench 上游假定单 GPU 的单容器。为覆盖方法论本质上并行的论文
+——多 rank MPI 内核、多节点训练、集群特定的模块环境——ARI 以可选的
+\term{执行配置} (\cref{fig:execution-profile}) 扩展评分细则。该配置
+domain-agnostic:它命名的是\emph{并行执行形态}(单 CPU、单/多 GPU、
+MPI、MPI+GPU)连同论文的规模包络与调度器提示,而非论文的科学领域。
+当论文为单机时配置省略,流水线退化为原始单节点调用:契约是加法的,
+而非破坏性的。
 
-代理 prompt 在 \texttt{execution\_profile} 非空时通过为 user 消
-息追加三个区块来吸收该契约:配置本体、周围 SLURM allocation 的
-快照(\texttt{SLURM\_JOB\_NUM\_NODES}, \texttt{SLURM\_NTASKS},
-可见 GPU 列表)、以及覆盖共享 FS 路径规范、优先 \texttt{srun}、
-Python 环境激活、模块加载、多节点 fan-out、 \texttt{timeout}
-包装的简短「计算节点执行约定」。 同时一个 regression test 保证
-反向不成立:运行在无关 SLURM allocation 中的 ARI 不应把 SLURM/MPI
-描述泄漏到非 HPC 论文的 prompt。
-
-同样的契约流入 Phase 2 调度器。 除了既有的 partition / time /
-CPU 数标志外,\texttt{paper-re} 现在构造的 \texttt{sbatch} 命令
-携带完整的布局集(nodes, ntasks, ntasks-per-node, nodelist,
-exclude, exclusive)、GPU 集(gpus-per-task, gpus-per-node, GRES
-type)、内存集(per-node, per-CPU)、硬件约束集(constraint,
-NUMA bindings, hint),外加任意 pass-through 标志的逃生口。
-针对异构 SLURM 部署有三个运行时探测护航:共享文件系统警告、 在
-报告无 GRES 的集群上丢弃所有 GPU 相关标志的 GRES 可用性探测,
-以及丢弃版本不兼容标志(如 SLURM 版本仅在 \texttt{srun} 上接受
-的 \texttt{--cpu-bind})的 \texttt{sbatch --help} 探测。 这些联
-合作用意味着同一份评分单可在 GRES 配置的多 V100 集群、 无 GRES
-的沙箱分区、 或单节点工作站上忠实调度,而无需修改评分单本身。
-
-只有 wrapper 层在变化:此扩展贯穿期间 vendored \texttt{paperbench}
-树与 \texttt{ari-core} 包均未改动。 终端用户可见面 —— 与 v0.7.1
-GUI 相同的论文注册表 / 向导 / 结果视图,并在向导的再现步骤增加
-执行配置覆盖面板 —— 参见 \cref{sec:paper:paperbench}。
+配置供给两个消费方 (\cref{fig:execution-profile})。它作为简洁的
+「计算节点执行约定」块——共享文件系统纪律、优先用调度器的启动器而非
+裸 MPI 启动器、环境激活、wall-clock 包裹——附加到智能体提示词,并
+参数化集群派发(节点、GPU、内存与放置请求)。由于各集群接受的调度器
+标志不一致,调度器在运行时 probe 本地调度器并丢弃其不支持的标志。
+如此同一份评分细则在多 GPU 集群、无 GPU 登记的沙箱分区、或单一工作站
+上都能忠实派发。回归测试强制其逆命题:运行于无关集群分配内的 ARI
+绝不可把集群/MPI 特定的文字泄漏进非 HPC 论文的提示词。仅此包装层变化;
+vendor 化的基准与 ARI 核心在该扩展中保持不变。
 
 \subsection{故障模式与护栏}\label{sec:paper:failures}
 
-下述三类故障模式常见到值得命名:
+三种故障模式频繁到值得命名,各自配以结构性——而非仅建议性——的缓解:
 
 \begin{itemize}
-  \item \textbf{LLM-only 支撑}:论文做出谱系中无节点支撑的主
-        张。缓解为静态检查:每项数值或宣称的因果主张必须可经
-        由 \texttt{\textbackslash code\{...\}} 引用追溯到节点
-        产物。
-  \item \textbf{引用幻觉}:论文引用并不存在的工作。缓解结构化
-        进行:禁止 LLM 杜撰引用键,所有 bib 条目须经 Semantic
-        Scholar 校验 (\cref{sec:related})。
-  \item \textbf{改稿漂移}:得分上升但论文连贯性下降。缓解为细
-        则的按轴下限:任一轴跌破 $0.5$ 即终止改稿。
+  \item \textbf{仅 LLM 支撑}:论文断言一项谱系中无任何节点支撑的主张。
+        缓解策略将撰写器约束到预先选定的谱系产物集合,使每项数值或
+        因果主张都可追溯到产生它的节点;草稿无法引用未被生成的证据。
+  \item \textbf{引用幻觉}:论文引用不存在的文献。缓解是结构性的——撰写
+        器不得发明引用键,且每条 bib 条目在被采纳前都对外部索引校验
+        (\cref{sec:related})。
+  \item \textbf{改稿漂移}:聚合得分上升而论文丧失连贯性。缓解是逐轴
+        下限:任一轴跌破阈值即中止改稿,使一轴的提升无法掩盖另一轴的
+        崩溃。
 \end{itemize}
 
-撰稿时的源文件选择由 \code{node\_selection.py:204}
-(\texttt{select\_source\_files\_for\_publication}) 完成;它通
-过枚举主张可依赖的谱系节点,防止 LLM-only 支撑型故障。
-\texttt{load\_selected\_sources}(第 258 行)读取每个
-\texttt{(node\_id, rel\_path)} 对的字节,并尊重可选的
-\texttt{size\_budget},使论文草稿绝不超出 context。
-
-\subsection{复现器的工具输出边界}\label{sec:paper:bounded-tool}
-
-复现智能体可能在单一 bash 会话中运行数小时;其工具输出(长
-stdout、大目录列表)若不处理将主导后续每次提示。ARI 用
-\texttt{\_BoundedOutputTool}
-(\code{ari-skill-paper-re/src/\_replicator\_agent.py:243}) 加以
-界定,该工具包装内部工具的 \texttt{execute()},并经
-\texttt{\_truncate\_tool\_output}(第 218 行)按可配置字节上限
-后处理输出。这就是 PaperBench 上游的自由形式 transcript 与 ARI
-有界、可重放版本的差别;也是多小时 rollout 中提示预算保持可预
-测的原因。
+第一道护栏也限制 context:撰写器仅获得选定谱系产物的字节,且受限于
+大小预算,因此即便长时间运行草稿也保持在模型的 context 窗口之内。

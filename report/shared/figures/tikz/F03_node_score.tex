@@ -10,8 +10,8 @@
   \node[station]                                       (real)   {\figlabel{F3.has_real}};
   \node[station, below=of real]                        (metrics){\figlabel{F3.metrics}};
   \node[station, below=of metrics]                     (depth)  {\figlabel{F3.depth_signal}};
-  \node[station, below=of depth]                       (retry)  {\figlabel{F3.retry}};
-  \node[station, below=of retry]                       (summ)   {\figlabel{F3.summary}};
+  \node[station, below=of depth]                       (label_st){\figlabel{F3.retry}};
+  \node[station, below=of label_st]                    (summ)   {\figlabel{F3.summary}};
   \node[station, fill=ari-pink!22, below=of summ]      (div)    {\figlabel{F3.div}};
 
   % LLM selector (centre) — wider station emph
@@ -34,7 +34,7 @@
   \node[numbered step, above left=0.05cm and -0.2cm of idx.north west]  {3};
 
   % --- edges -----------------------------------------------------
-  \foreach \n in {real,metrics,depth,retry,summ}
+  \foreach \n in {real,metrics,depth,label_st,summ}
     \draw[arrow] (\n.east) -- (sel.west);
   \draw[arrow dashed] (div.east) to[bend right=8] (sel.west);
   \draw[arrow dashed] (prom.south) -- (sel.north);
@@ -46,7 +46,7 @@
 
   % --- background grouping for input column ----------------------
   \begin{scope}[on background layer]
-    \node[stage container, fit=(real)(metrics)(depth)(retry)(summ)(div)] (col) {};
+    \node[stage container, fit=(real)(metrics)(depth)(label_st)(summ)(div)] (col) {};
     \node[stage title, above=4pt of col.north west, anchor=south west] {\figlabel{F3.band.signals}};
   \end{scope}
 \end{tikzpicture}

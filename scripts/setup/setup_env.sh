@@ -402,6 +402,10 @@ _env_append_if_absent "# ARI_PARENT_RUN_ID="
 _env_append_if_absent "# ARI_RETRIEVAL_BACKEND=semantic_scholar"
 _env_append_if_absent "# ARI_EXECUTOR="
 _env_append_if_absent "# ARI_MAX_CHILD_PROCS="
+# ARI_ENV_FILE points to the .env that ari-skill-hpc re-sources on the
+# compute node after sbatch --export=NONE strips the submitter env.
+# Defaults to $ARI_ROOT/.env when unset.
+_env_append_if_absent "# ARI_ENV_FILE="
 
 # --- 6) Container -----------------------------------------------------------
 _env_section "Container"
@@ -455,6 +459,12 @@ _env_append_if_absent "# ARI_SLURM_PARTITION="
 # (silently downgrading a GPU request to CPU after a long queue wait is
 # the worst possible failure mode; surface the contradiction at submit).
 _env_append_if_absent "# ARI_SLURM_ALLOW_NO_GRES="
+# ARI_SBATCH_EXPORT_MODE overrides the sbatch --export argument used by
+# ari-skill-hpc when submitting jobs. Default NONE keeps the submitter's
+# (possibly venv-poisoned) PATH from leaking onto compute nodes; the job
+# script re-sources $ARI_ENV_FILE for API keys. Set to ALL only when you
+# explicitly want the legacy "inherit submitter env" behaviour.
+_env_append_if_absent "# ARI_SBATCH_EXPORT_MODE="
 
 # --- 8) Orchestrator / viz --------------------------------------------------
 _env_section "Orchestrator"
@@ -463,6 +473,10 @@ _env_append_if_absent "# ARI_ORCHESTRATOR_LOGS="
 _env_append_if_absent "# ARI_ORCHESTRATOR_DRY_RUN="
 _env_append_if_absent "# ARI_ORCHESTRATOR_SSE_ONESHOT="
 _env_append_if_absent "# ARI_ORCHESTRATOR_SSE_TIMEOUT="
+# ARI_FORCE_PAPER=1 bypasses the post-BFTS sanity gate that aborts the
+# paper / review stages when no node produced real experimental data.
+# Useful for resuming partial runs intentionally; otherwise leave unset.
+_env_append_if_absent "# ARI_FORCE_PAPER="
 
 # --- 9) LaTeX ---------------------------------------------------------------
 _env_section "LaTeX"
@@ -476,6 +490,10 @@ _env_append_if_absent "# ARI_RUBRIC_DIR="
 _env_append_if_absent "# ARI_STRICT_DYNAMIC="
 _env_append_if_absent "# ARI_NUM_REVIEWS_ENSEMBLE="
 _env_append_if_absent "# ARI_NUM_REFLECTIONS="
+# ARI_PAPER_LANGUAGE selects the output language for paper composition
+# (en / ja / zh). Set automatically by the GUI wizard's Language dropdown
+# (see api_experiment.py); override here to force CLI-launched runs.
+_env_append_if_absent "# ARI_PAPER_LANGUAGE="
 
 # --- 9b) Skill: ari-skill-web ----------------------------------------------
 _env_section "ari-skill-web"

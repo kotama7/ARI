@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# pre-commit — keep per-directory README `## Contents` indexes in sync with the
+# tree. Runs scripts/readme_sync.py --write, then re-stages any *tracked*
+# README.md it changed so the doc sync rides along with this commit.
+#
+# Properties:
+#   - NEVER calls an LLM / network API (readme_sync is pure stdlib). New files
+#     get a `— TODO` placeholder description; this hook only warns about them.
+#   - Only re-stages README.md files that are ALREADY tracked and were modified
+#     by --write. It never adds untracked files, so it won't sweep brand-new
+#     READMEs into an unrelated commit.
+#   - Non-blocking: a doc-tool failure must not stop a commit. CI's
+#     `readme_sync.py --check` (.github/workflows/readme-sync.yml) is the gate.
+#
+# Enabled via `git config core.hooksPath scripts/git-hooks`.
+set -u
+
+root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+script="$root/scripts/readme_sync.py"
+[ -f "$script" ] || exit 0
+command -v python3 >/dev/null 2>&1 || exit 0
+
+if ! out="$(python3 "$script" --write 2>/dev/null)"; then
+  echo "readme_sync: --write failed; committing without doc sync (CI --check will catch drift)." >&2
+  exit 0
+fi
+
+# Re-stage ONLY the READMEs --write actually changed (it prints "updated <path>")
+# AND that are already tracked — so unrelated pre-existing edits and brand-new
+# untracked READMEs are never swept into this commit.
+staged=0
+while IFS= read -r path; do
+  [ -n "$path" ] || continue
+  if git -C "$root" ls-files --error-unmatch -- "$path" >/dev/null 2>&1; then
+    git -C "$root" add -- "$path" && staged=$((staged + 1))
+  fi
+done < <(printf '%s\n' "$out" | sed -n 's/^updated //p')
+[ "$staged" -gt 0 ] && echo "readme_sync: synced $staged tracked README(s) into this commit." >&2
+
+# Non-blocking heads-up if any placeholder description still needs writing.
+if git -C "$root" grep -lI -e '— TODO' -- '*README.md' >/dev/null 2>&1; then
+  echo "readme_sync: NOTE — some READMEs still have '— TODO' descriptions to fill in by hand." >&2
+fi
+
+exit 0

@@ -210,12 +210,48 @@ class SlurmClient:
         except Exception:
             _capture = ""
 
+        # ── env isolation preamble ────────────────────────────────────
+        # sbatch's default --export=ALL propagates the submitter's PATH to
+        # the compute node. When the submitter shell has a venv activated
+        # (e.g. ari-skill-vlm/.venv/bin first in PATH) the same x86_64
+        # interpreter gets used on aarch64 compute nodes and the job dies
+        # with `Exec format error`. We force --export to NONE (override via
+        # ARI_SBATCH_EXPORT_MODE) and re-seed the environment inside the
+        # job script from $ARI_ENV_FILE / $ARI_ROOT/.env so API keys and
+        # ARI configuration still reach the job — but the submitter's PATH
+        # never does.
+        export_mode = (_os.environ.get("ARI_SBATCH_EXPORT_MODE", "").strip() or "NONE")
+        env_file = _os.environ.get("ARI_ENV_FILE", "").strip()
+        if not env_file:
+            _ari_root_env = _os.environ.get("ARI_ROOT", "").strip()
+            if _ari_root_env:
+                env_file = f"{_ari_root_env}/.env"
+        def _shq(s: str) -> str:
+            return "'" + s.replace("'", "'\\''") + "'"
+        _preamble = [
+            f"# ARI: restore a clean env (sbatch --export={export_mode})",
+            "export PATH=/usr/bin:/bin:/usr/local/bin",
+            "unset VIRTUAL_ENV PYTHONHOME PYTHONPATH",
+        ]
+        if env_file:
+            _preamble += [
+                f"ARI_ENV_FILE={_shq(env_file)}",
+                'if [ -f "$ARI_ENV_FILE" ]; then',
+                "    set -a",
+                '    . "$ARI_ENV_FILE"',
+                "    set +a",
+                "fi",
+            ]
+        env_preamble = "\n".join(_preamble)
+
         full_script = (
             "\n".join(header_lines) + "\n"
+            + env_preamble + "\n"
             + _capture + "\n"
             + script + "\n"
         )
 
+        sbatch_cmd = f"sbatch --export={export_mode}"
 
         if self.mode == "local":
             with tempfile.NamedTemporaryFile(
@@ -224,7 +260,7 @@ class SlurmClient:
                 f.write(full_script)
                 tmp_path = f.name
             try:
-                stdout, stderr, rc = await self._run(f"sbatch {tmp_path}")
+                stdout, stderr, rc = await self._run(f"{sbatch_cmd} {tmp_path}")
             finally:
                 os.unlink(tmp_path)
         else:
@@ -232,7 +268,7 @@ class SlurmClient:
             remote_tmp = f"/tmp/mcp_sbatch_{os.getpid()}.sh"
             escaped = full_script.replace("'", "'\\''")
             await self._run(f"printf '%s' '{escaped}' > {remote_tmp}")
-            stdout, stderr, rc = await self._run(f"sbatch {remote_tmp}")
+            stdout, stderr, rc = await self._run(f"{sbatch_cmd} {remote_tmp}")
             await self._run(f"rm -f {remote_tmp}")
 
         if rc != 0:

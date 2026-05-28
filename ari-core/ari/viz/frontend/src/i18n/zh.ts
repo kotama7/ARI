@@ -92,6 +92,12 @@ const zh: Record<string, string> = {
   wiz_include_ear: '包含 EAR (Experiment Artifact Repository)',
   wiz_include_ear_help:
     '与论文一同构建、整理 EAR，并可选发布。关闭后，仅本次实验跳过 generate_ear / ear_curate / ear_publish 阶段。',
+  wiz_include_review: '包含论文评审',
+  wiz_include_review_help:
+    '运行基于 Rubric 的论文评审 (review_paper) 以及与 VLM 图表评审的合并 (merge_reviews)。关闭后，仅本次实验跳过这两个阶段。',
+  wiz_include_reproduce: '包含复现实验',
+  wiz_include_reproduce_help:
+    '运行 ORS 复现流程（自动生成 PaperBench Rubric / 沙箱 seed / Replicator / 执行 reproduce.sh / SimpleJudge 评分）。关闭后，仅本次实验跳过所有 ors_* 阶段。',
   wiz_paper_review_section: '论文评审',
   wiz_rubric: 'Rubric (投稿目标)',
   wiz_fewshot_mode: 'Few-shot 模式',

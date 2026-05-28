@@ -7,8 +7,13 @@ those sit under ``ari/prompts/`` (since Phase PC).
 
 Public symbols:
 - ``LLMClient`` — synchronous and async completion + tool calling.
+- ``resolve_litellm_model`` — single source of truth for litellm provider
+  prefixes (used by both the ReAct client and MCP skills).
 
 See also:
 - ``docs/reference/configuration.md`` (LLM-related env vars).
 - ``ari-core/ari/cost_tracker.py`` (cost accounting hooked via litellm callback).
 """
+from ari.llm.routing import resolve_litellm_model
+
+__all__ = ["resolve_litellm_model"]

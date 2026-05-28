@@ -92,6 +92,12 @@ const en: Record<string, string> = {
   wiz_include_ear: 'Include EAR (Experiment Artifact Repository)',
   wiz_include_ear_help:
     'Build, curate, and (optionally) publish EAR alongside the paper. Off = skip generate_ear / ear_curate / ear_publish stages for this run only.',
+  wiz_include_review: 'Include Paper Review',
+  wiz_include_review_help:
+    'Run rubric-driven paper review (review_paper) and merge with VLM figure review (merge_reviews). Off = skip both stages for this run only.',
+  wiz_include_reproduce: 'Include Reproduction Experiment',
+  wiz_include_reproduce_help:
+    'Run the ORS reproduction arc: auto-generate the PaperBench rubric, seed the sandbox, drive the Replicator, run reproduce.sh, and grade via SimpleJudge. Off = skip every ors_* stage for this run only.',
   wiz_paper_review_section: 'Paper Review',
   wiz_rubric: 'Rubric (venue)',
   wiz_fewshot_mode: 'Few-shot Mode',

@@ -92,6 +92,12 @@ const ja: Record<string, string> = {
   wiz_include_ear: 'EAR (Experiment Artifact Repository) を含める',
   wiz_include_ear_help:
     '論文と一緒に EAR を構築・キュレート・(任意で) 公開します。OFF にすると、この実験に限り generate_ear / ear_curate / ear_publish ステージをスキップします。',
+  wiz_include_review: '論文評価を含める',
+  wiz_include_review_help:
+    'ルーブリック駆動の論文レビュー (review_paper) と VLM 図表レビューとのマージ (merge_reviews) を実行します。OFF にすると、この実験に限り両ステージをスキップします。',
+  wiz_include_reproduce: '再現実験を含める',
+  wiz_include_reproduce_help:
+    'ORS 再現フロー (PaperBench ルーブリック自動生成 / サンドボックス seed / Replicator / reproduce.sh 実行 / SimpleJudge 採点) を実行します。OFF にすると、この実験に限り ors_* ステージをすべてスキップします。',
   wiz_paper_review_section: '論文レビュー',
   wiz_rubric: 'Rubric (投稿先)',
   wiz_fewshot_mode: 'Few-shot モード',

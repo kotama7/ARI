@@ -26,6 +26,28 @@ from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("transform-skill")
 
+
+def _default_llm_model() -> str:
+    """Pick a fallback model that matches the active backend.
+
+    Why this exists: ``nodes_to_science_data`` and similar transforms are
+    invoked from workflow.yaml without an explicit ``llm_model`` argument. The
+    historical default ``gpt-4o-mini`` is an OpenAI-only model name, but when
+    ``ARI_BACKEND=cli-shim`` the ``ari.cost_tracker`` litellm injector
+    auto-fills ``api_base`` with ``ARI_LLM_API_BASE`` for *every* call. The
+    cli-shim then rejects ``gpt-4o-mini`` with
+    ``unknown model 'gpt-4o-mini'; expected one of claude-cli, ...`` and the
+    whole analysis returns an error string that ends up in
+    ``experiment_context.error`` of science_data.json. Falling back to
+    ``claude-cli`` when the backend is cli-shim lines the model up with what
+    the shim actually serves.
+    """
+    backend = (os.environ.get("ARI_BACKEND") or "").strip().lower()
+    if backend in ("cli-shim", "cli_shim"):
+        return "claude-cli"
+    return "gpt-4o-mini"
+
+
 try:
     from ari import cost_tracker as _ari_cost_tracker  # type: ignore
     _ari_cost_tracker.bootstrap_skill("transform")
@@ -592,7 +614,7 @@ async def nodes_to_science_data(
             }
 
     # ── LLM analysis: read top nodes' artifacts and extract scientific context ──
-    model = llm_model or os.environ.get("LLM_MODEL", "gpt-4o-mini")
+    model = llm_model or os.environ.get("LLM_MODEL") or _default_llm_model()
 
     # ── Report-driven path: when reports exist, narrow the LLM input via
     #    filter_nodes(for_synthesis) and pull source bytes via the same

@@ -707,3 +707,96 @@ class TestSkillBootstrap:
             _litellm.completion = orig
             cost_tracker_mod._injector_installed = False
             cost_tracker_mod._DEFAULT_METADATA.clear()
+
+
+# ══════════════════════════════════════════════
+# 7. Upstream cost override (cli-shim forwards claude -p's total_cost_usd)
+#    so synthetic shim models like "claude-cli" book real dollars instead of
+#    falling back to litellm's pricing-table lookup (which returns 0.0).
+# ══════════════════════════════════════════════
+
+class _FakeUsageWithCost(_FakeUsage):
+    def __init__(self, prompt=100, completion=50, cost_usd=None, extra_path="attr"):
+        super().__init__(prompt, completion)
+        # Mimic the three places a litellm Usage object can carry an extra
+        # field, depending on pydantic / litellm version.
+        if extra_path == "attr":
+            self.cost_usd = cost_usd
+        elif extra_path == "model_extra":
+            self.model_extra = {"cost_usd": cost_usd}
+        elif extra_path == "dict":
+            pass  # only available via dict-style access below
+
+
+class _FakeResponseWithCost(_FakeResponse):
+    def __init__(self, *, cost_usd=None, extra_path="attr", model="claude-cli"):
+        self.model = model
+        self.usage = _FakeUsageWithCost(cost_usd=cost_usd, extra_path=extra_path)
+
+
+class TestUpstreamCostOverride:
+    """``cost_usd`` carried on the usage block must take precedence over the
+    price-table estimate; this is the channel the CLI shim uses to surface
+    ``claude -p``'s real ``total_cost_usd``."""
+
+    def _fresh(self, tmp_path):
+        prior = cost_tracker_mod._tracker
+        ct = cost_tracker_mod.init(tmp_path)
+        return ct, prior
+
+    def test_record_uses_explicit_cost_usd(self, tmp_path):
+        """``CostTracker.record(cost_usd=X)`` records X, not the price-table value."""
+        ct, prior = self._fresh(tmp_path)
+        try:
+            ct.record(model="claude-cli", prompt_tokens=1000, completion_tokens=500,
+                      cost_usd=0.075)
+            rec = json.loads((tmp_path / "cost_trace.jsonl").read_text().strip())
+            assert rec["estimated_cost_usd"] == 0.075
+        finally:
+            cost_tracker_mod._tracker = prior
+
+    def test_record_falls_back_to_estimate_when_no_override(self, tmp_path):
+        """No ``cost_usd`` arg → unchanged behavior (price-table estimate)."""
+        ct, prior = self._fresh(tmp_path)
+        try:
+            ct.record(model="claude-cli", prompt_tokens=1000, completion_tokens=500)
+            rec = json.loads((tmp_path / "cost_trace.jsonl").read_text().strip())
+            # "claude-cli" is absent from the pricing table → 0.0
+            assert rec["estimated_cost_usd"] == 0.0
+        finally:
+            cost_tracker_mod._tracker = prior
+
+    def test_handler_picks_up_attr_cost(self, tmp_path):
+        """``usage.cost_usd`` (attribute) flows through the litellm callback."""
+        _, prior = self._fresh(tmp_path)
+        try:
+            kwargs = {"model": "claude-cli"}
+            resp = _FakeResponseWithCost(cost_usd=0.123, extra_path="attr")
+            cost_tracker_mod._litellm_success_handler(kwargs, resp, 0, 0)
+            rec = json.loads((tmp_path / "cost_trace.jsonl").read_text().strip())
+            assert rec["estimated_cost_usd"] == 0.123
+        finally:
+            cost_tracker_mod._tracker = prior
+
+    def test_handler_picks_up_model_extra_cost(self, tmp_path):
+        """Pydantic-v2 ``model_extra`` dict is also consulted."""
+        _, prior = self._fresh(tmp_path)
+        try:
+            kwargs = {"model": "claude-cli"}
+            resp = _FakeResponseWithCost(cost_usd=0.456, extra_path="model_extra")
+            # ensure the attribute path itself is empty
+            assert getattr(resp.usage, "cost_usd", None) is None
+            cost_tracker_mod._litellm_success_handler(kwargs, resp, 0, 0)
+            rec = json.loads((tmp_path / "cost_trace.jsonl").read_text().strip())
+            assert rec["estimated_cost_usd"] == 0.456
+        finally:
+            cost_tracker_mod._tracker = prior
+
+    def test_extract_upstream_cost_returns_none_when_absent(self):
+        """Direct unit: no upstream cost → ``None`` so the tracker estimates."""
+        u = _FakeUsage()
+        assert cost_tracker_mod._extract_upstream_cost(u) is None
+
+    def test_extract_upstream_cost_dict_input(self):
+        """Plain dict usage objects are also supported."""
+        assert cost_tracker_mod._extract_upstream_cost({"cost_usd": 0.01}) == 0.01

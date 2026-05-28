@@ -21,6 +21,11 @@ from ari.viz import api_paperbench as P
 def _isolated_registry(tmp_path, monkeypatch):
     """Redirect the registry dir to a tmp path so tests don't touch ~/."""
     monkeypatch.setenv("ARI_PAPER_REGISTRY_DIR", str(tmp_path / "registry"))
+    # _api_launch_run now spawns api_paperbench_worker threads. Disable that
+    # for the existing pre-wiring tests so they keep asserting the historic
+    # "queued" status; the dedicated worker tests (test_api_paperbench_worker)
+    # explicitly clear this env var to exercise the live pipeline.
+    monkeypatch.setenv("ARI_PAPERBENCH_WORKER_DISABLED", "1")
     # Reset any jobs left over from previous tests
     P._JOBS.clear()
     yield

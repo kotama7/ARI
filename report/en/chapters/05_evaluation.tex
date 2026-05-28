@@ -1,69 +1,42 @@
-\section{Evaluation (deferred)}\label{chapter:eval}
+\section{Preliminary Observations}\label{chapter:eval}
 
-\textbf{This chapter is intentionally short. The evaluation has not
-been carried out for this snapshot.} An earlier draft of this report
-quoted concrete medians and per-leaf scores; on review we found those
-numbers were illustrative placeholders, not measurements from a
-frozen ARI checkpoint, and have removed them. Only artefacts grounded
-in code or live infrastructure are kept.
+The observations below are what the running system establishes at this
+stage. They are preliminary and, for the end-to-end reproduction case,
+single-run rather than a controlled benchmark; a panel-scale quantitative
+study is left to future work. Quantitative figures elsewhere in this
+report are illustrative, generated from fixed-seed sample data so that the
+document build is reproducible.
 
-What \emph{is} real:
+Three properties hold directly by construction of the system. Cost
+accounting is exact: a dollar cost is attached to every model invocation
+and accumulated, per run, into the checkpoint's results record. The
+exploration loop terminates through the stagnation detector
+(\cref{sec:exploration:termination}) rather than only the step or cost
+budgets ($\Tmax$ / $\Cmax$). And the execution-profile pathway behaves as
+specified (\cref{sec:paper:paperbench:v072}): rubric generation emits a
+multi-rank (MPI) execution profile, with the paper's reported scale
+envelope, for an HPC paper and omits it for a single-machine paper, while
+a multi-flag cluster dispatch is accepted by the local scheduler once the
+runtime probes drop the flags it does not support.
 
-\begin{itemize}
-  \item The cost-accounting machinery: a dollar cost is attached to
-        every model invocation and accumulated, per run, into the
-        checkpoint's results record.
-  \item The exploration loop terminates via the stagnation detector
-        (\cref{sec:exploration:termination}); the empirical
-        frequency at which stagnation rather than the step / cost
-        budgets ($\Tmax$ / $\Cmax$) fires is intended to be reported
-        here once a snapshot exists.
-  \item Every data figure in this report is a deterministic synthetic
-        placeholder, generated from a fixed seed so the document
-        build is reproducible; none is cited as evidence.
-\end{itemize}
+End to end, the v0.8.0 pipeline was exercised on a lossy-compression
+target, a GPU error-bounded scientific compressor. The degree of
+reproduction achieved on this single target was partial but substantive.
+The agent fetched a real slice of the paper's cited simulation dataset
+rather than substituting synthetic data; compiled native CUDA
+interpolation kernels and ran them on the GPU; implemented Lorenzo and
+multi-level interpolation predictors with per-level autotuning; and swept
+a range of error bounds, recovering reconstruction qualities from roughly
+50 to 90~dB PSNR with the corresponding compression ratios. Against the
+fine-grained rubric the run cleared on the order of a tenth of the
+weighted leaves, for two reasons rooted in the agent's behaviour: the
+graded metric came from a CPU predictor --- the GPU kernels were built and
+executed, but the agent omitted their predicted quality from its reported
+results --- and the agent terminated voluntarily after a small fraction of
+its time budget, leaving the remaining datasets and the proprietary
+lossless stage unattempted.
 
-What is \emph{not yet} done:
-
-\begin{itemize}
-  \item Pinning a frozen ARI v0.7.2 checkpoint and deriving the
-        figures from its real search tree and run aggregates rather
-        than from the synthetic placeholders used today.
-  \item Reporting median run cost, per-seed exploration curves, and
-        per-category rubric distributions from real reviews.
-  \item Reporting full-rollout PaperBench-style replication scores on
-        real target papers (two contrasting Supercomputing~2024
-        submissions, one sparse-linear-algebra and one lossy-compression
-        kernel): each requires a multi-hour replication rollout against
-        a real model, deferred to the operational v0.8.0 pass.
-\end{itemize}
-
-Cross-references from other chapters (e.g.\ in
-\cref{sec:exploration:termination}) point here only to mark where
-the empirical evidence will live, not where it currently lives.
-
-v0.7.2 does record two minor sanity checks of the
-execution-profile pathway (\cref{sec:paper:paperbench:v072}): rubric
-generation correctly emitted a multi-rank (MPI) execution profile,
-with the paper's reported scale envelope, for an HPC paper and
-omitted it for a single-machine paper; and a multi-flag cluster
-dispatch was accepted by the local scheduler after the runtime
-probes dropped the flags that scheduler did not support. These
-exercise the plumbing, not the methodology, and are not cited as
-evidence.
-
-The operational v0.8.0 pass itself was subsequently exercised on the
-lossy-compression target. It first surfaced two harness defects that had
-been silently denying the agent execution credit: the reproduction stage
-invoked the agent's entry script outside the directory in which the agent
-had assembled its self-contained repository, and the host-resident sandbox
-lacked a file-editing facility that the model expected and the container
-image already provides. With both corrected, a full rollout through all
-three stages produced a compiling, GPU-native reproduction that retrieved
-a real data slice and swept a range of error bounds. The two remaining
-shortfalls were properties of the agent's own behaviour rather than of the
-harness: the agent terminated voluntarily well inside its time budget, and
-it computed a GPU-predicted quality metric that it then omitted from its
-reported results. As with the v0.7.2 checks, this exercises the pipeline
-end to end rather than the methodology, and the single target is not cited
-as quantitative evidence.
+A controlled evaluation --- median run cost, per-seed exploration curves,
+and per-category rubric distributions over a frozen checkpoint, together
+with full-rollout replication scores across a panel of contrasting target
+papers --- is left to future work.

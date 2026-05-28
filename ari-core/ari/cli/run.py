@@ -333,7 +333,7 @@ def run(
         _atexit_bk.register(lambda _p=checkpoint_dir: _safe_backup(_p))
     except Exception:
         pass
-    _, _, mcp, bfts, agent, _, _ = build_runtime(cfg, experiment_text, checkpoint_dir=checkpoint_dir)
+    _, _, mcp, bfts, agent, _ = build_runtime(cfg, experiment_text, checkpoint_dir=checkpoint_dir)
     root = Node(id=f"node_{run_id}_root", parent_id=None, depth=0)
     root.name = f"root: {_raw_name[:100]}"
     all_nodes = [root]
@@ -498,13 +498,13 @@ def resume(
         except Exception as _reerr:
             logging.getLogger(__name__).warning("auto-restore skipped: %s", _reerr)
 
-    _, _, _, bfts, agent, _, _ = build_runtime(cfg, experiment_text, checkpoint_dir=checkpoint_dir)
+    _, _, _, bfts, agent, _ = build_runtime(cfg, experiment_text, checkpoint_dir=checkpoint_dir)
     agent.checkpoint_dir = str(checkpoint_dir)
     from ari.pidfile import pid_context
     with pid_context(checkpoint_dir):
         total = _run_loop(cfg, bfts, agent, pending, all_nodes,
                           experiment_data, checkpoint_dir, run_id, total_processed=completed)
-        _, _, mcp_resume, _, _, _, _ = build_runtime(cfg, experiment_text, checkpoint_dir=checkpoint_dir)
+        _, _, mcp_resume, _, _, _ = build_runtime(cfg, experiment_text, checkpoint_dir=checkpoint_dir)
         console.print(Panel(
             f"[bold green]Resume complete.[/bold green]  +{total - completed} nodes",
             title="Done",

@@ -1,0 +1,211 @@
+# ari
+
+Core engine package for ARI. Each sub-package carries its own `README.md`
+(thin entry point) and an authoritative module docstring in `__init__.py`.
+
+## Contents
+
+- `README.md` — this file.
+- `__init__.py` — package marker.
+- `_deprecation.py` — `DeprecationWarning` helpers for v0.5→v1.0 legacy paths/aliases.
+- `checkpoint.py` — checkpoint JSON I/O (`tree.json` / `nodes_tree.json` / `results.json`).
+- `cli_ear.py` — `ari ear …` curation / publish / promote / status CLI surface.
+- `container.py` — unified container runtime abstraction (Docker / Singularity / bare subprocess).
+- `core.py` — generic ARI runtime builder (zero domain-specific code; `cli` calls into it).
+- `cost_tracker.py` — per-call logs + per-experiment cost summaries.
+- `env_detect.py` — detect schedulers, container runtimes, and HPC resources.
+- `lineage.py` — recursion lineage helpers; walk `parent_run_id` chains for ancestor artifacts.
+- `memory_cli.py` — `ari memory` subcommand (migrate / backup / …).
+- `paths.py` — centralised `PathManager` for directory layout/resolution.
+- `pidfile.py` — `.ari_pid` write/read/cleanup for run-liveness detection.
+- `agent/` — ReAct loop, environment capture, per-stage workflow guidance.
+  - `README.md` — agent index.
+  - `__init__.py` — package module-map docstring.
+  - `guidance.py` — per-stage step-guidance + metrics-validation helpers.
+  - `loop.py` — `AgentLoop` driver + per-node prompt builder.
+  - `message_utils.py` — ReAct-message helpers (`_extract_job_ids`, `_tool_was_called`).
+  - `react_driver.py` — generic ReAct driver for pipeline `react:` stages, with sandbox enforcement.
+  - `run_env.py` — capture/read helper for `_run_env.json`.
+  - `tool_manager.py` — OpenAI tool conversion, dispatch, phase-aware filtering.
+  - `workflow.py` — `WorkflowHints` dataclass injected into `AgentLoop`.
+  - `shims/` — executable `PATH` shims for the reproducibility sandbox.
+    - `README.md` — shims index.
+    - `git.sh` — intercepts only `git clone` of the paper's ref; other git passes through.
+- `cli/` — CLI entry point (thin Typer wrapper; delegates to `ari.core`).
+  - `README.md` — cli index.
+  - `__init__.py` — Typer app entry point.
+  - `__main__.py` — `python -m ari.cli` entry.
+  - `bfts_loop.py` — BFTS run-loop driver + checkpoint persistence.
+  - `commands.py` — misc top-level commands + `_safe_backup`.
+  - `lineage.py` — end-of-phase lineage-decision helpers.
+  - `migrate.py` — `ari migrate` sub-app.
+  - `projects.py` — `ari paper` / `status` / `projects` / `show` commands.
+  - `run.py` — `ari run` / `ari resume` commands.
+- `clone/` — `ari clone`: fetch + verify + extract curated EAR bundles.
+  - `README.md` — clone index.
+  - `__init__.py` — clone orchestration + design constraints.
+  - `resolvers/` — scheme dispatch.
+    - `README.md` — resolvers index.
+    - `__init__.py` — resolver contract + `_RESOLVERS` table.
+    - `ari.py` — `ari://` resolver.
+    - `doi.py` — `doi:` (Zenodo) resolver.
+    - `file.py` — `file://` resolver.
+    - `gh.py` — `gh:` resolver.
+    - `https.py` — `https://`/`http://` resolver.
+- `config/` — Pydantic config models + env-var overrides.
+  - `README.md` — config index.
+  - `__init__.py` — Pydantic config models + env-var overrides.
+  - `finder.py` — workflow / profile YAML discovery.
+- `configs/` — external config tables (Phase PC).
+  - `README.md` — configs index.
+  - `__init__.py` — config-table exports + loader plumbing.
+  - `_loader.py` — `ConfigLoader` Protocol + `FilesystemConfigLoader`.
+  - `defaults.yaml` — backend / model defaults.
+  - `model_prices.yaml` — LLM model price table.
+- `evaluator/` — LLM judge: metric extraction + dynamic axis generation.
+  - `README.md` — evaluator index.
+  - `__init__.py` — public symbols + axis design.
+  - `dynamic_axes.py` — venue/run-specific evaluation-axis derivation.
+  - `llm_evaluator.py` — `LLMEvaluator`: extraction + multi-axis composite scoring.
+- `llm/` — thin LiteLLM wrappers for the agent loop and skills.
+  - `README.md` — llm index.
+  - `__init__.py` — public `LLMClient` + contract.
+  - `cli_server.py` — OpenAI-compatible HTTP shim for agentic CLIs.
+  - `client.py` — `LLMClient`/`LLMMessage`: completion + tool calling + cost recording.
+  - `routing.py` — TODO
+- `mcp/` — MCP client talking to `ari-skill-*` subprocesses.
+  - `README.md` — mcp index.
+  - `__init__.py` — public `MCPClient` + contract.
+  - `client.py` — stdio connection pooling, retry, per-thread asyncio loop.
+- `memory/` — backend abstraction for ancestor-scoped node memory.
+  - `README.md` — memory index.
+  - `__init__.py` — `MemoryClient` protocol, backends, migration map.
+  - `auto_migrate.py` — v0.5.x → v0.6.0 auto-migration on first launch.
+  - `client.py` — abstract `MemoryClient` ABC.
+  - `file_client.py` — `FileMemoryClient` (legacy JSONL).
+  - `letta_client.py` — `LettaMemoryClient` (default).
+  - `local_client.py` — `LocalMemoryClient` (tests).
+- `migrations/` — migration shims for older checkpoint formats.
+  - `README.md` — migrations index.
+  - `__init__.py` — rationale + layout.
+  - `v05_to_v07/` — v0.5 → v0.7 migration helpers.
+    - `README.md` — v05_to_v07 index.
+    - `__init__.py` — subsystem map + deprecation plan.
+    - `legacy_axes.py` — legacy 5-axis evaluator-score fallback.
+    - `memory.py` — v0.5 JSONL → v0.6 Letta migration shim.
+    - `node_reports.py` — `node_report.json` reconstruction from legacy `tree.json`.
+- `orchestrator/` — best-first tree search (BFTS) driving each run.
+  - `README.md` — orchestrator index.
+  - `__init__.py` — package exports + authoritative module-map docstring.
+  - `bfts.py` — `BFTS` loop and stage hooks (expand/select, pruning, frontier retire).
+  - `lineage_decision.py` — LLM lineage action + `lineage_decisions.jsonl` log.
+  - `node.py` — `Node` data model + `NodeStatus` / `NodeLabel` enums.
+  - `node_selection.py` — shared node-selection helpers + publication source-file selection.
+  - `root_idea_selector.py` — run-start LLM root-idea pick + selection log.
+  - `node_report/` — per-node `node_report.json` package.
+    - `README.md` — node_report index.
+    - `__init__.py` — re-exports the builder + legacy shim.
+    - `builder.py` — v0.7+ `node_report.json` builder.
+    - `legacy_reconstruct.py` — v0.5 → v0.7 reconstruct shim.
+- `pipeline/` — generic workflow execution engine driven by `workflow.yaml`.
+  - `README.md` — pipeline index.
+  - `__init__.py` — sub-module map + public re-exports.
+  - `context_builder.py` — best-nodes context + keyword extraction.
+  - `experiment_md.py` — `experiment.md` helpers.
+  - `orchestrator.py` — top-level entry points (`build_scientific_data`, `run_pipeline`).
+  - `stage_control.py` — loop_back / VLM-feedback control.
+  - `stage_runner.py` — stage execution helpers (retry, ReAct, subprocess).
+  - `yaml_loader.py` — workflow/pipeline loaders + `{{var}}` resolution.
+- `prompts/` — external prompt templates (Phase PC).
+  - `README.md` — prompts index.
+  - `__init__.py` — exports + `PromptLoader` plumbing.
+  - `_loader.py` — `PromptLoader` Protocol + `FilesystemPromptLoader`.
+  - `agent/` — agent ReAct system prompt.
+    - `README.md` — agent index.
+    - `system.md` — the agent system prompt.
+  - `evaluator/` — metric extraction & peer review.
+    - `README.md` — evaluator index.
+    - `extract_metrics.md` — numeric metric extraction.
+    - `peer_review.md` — rubric-driven paper review.
+  - `orchestrator/` — BFTS expand/select, lineage & root-idea decisions.
+    - `README.md` — orchestrator index.
+    - `bfts_expand.md` — leaf-expansion prompt.
+    - `bfts_expand_select.md` — combined expand + select prompt.
+    - `bfts_select.md` — next-node selection prompt.
+    - `lineage_decision.md` — continue / switch_to_idea / fanout / terminate.
+    - `root_idea_selector.md` — run-start root-idea pick.
+  - `pipeline/` — pipeline-stage prompts.
+    - `README.md` — pipeline index.
+    - `keyword_librarian.md` — keyword extraction for BFTS-context building.
+  - `viz/` — wizard chat prompts.
+    - `README.md` — viz index.
+    - `wizard_chat_goal.md` — chat that elicits the experiment goal.
+    - `wizard_generate_config.md` — turns the goal into a launch config.
+- `protocols/` — internal Protocols / ABCs for cross-subsystem contracts.
+  - `README.md` — protocols index.
+  - `__init__.py` — currently exposed protocols + roadmap.
+  - `evaluator.py` — `Evaluator` Protocol.
+- `public/` — public API surface for ARI skills (import-only contract).
+  - `README.md` — public index.
+  - `__init__.py` — exported sub-modules + rationale.
+  - `config_schema.py` — re-export of `ari.config` models.
+  - `container.py` — re-export of `ari.container`.
+  - `cost_tracker.py` — re-export of `ari.cost_tracker`.
+  - `llm.py` — re-export of `ari.llm.client.LLMClient`.
+  - `paths.py` — re-export of `ari.paths.PathManager`.
+- `publish/` — `ari ear publish`: package + ship a curated EAR.
+  - `README.md` — publish index.
+  - `__init__.py` — publish flow + artifacts.
+  - `backends/` — publish backend implementations.
+    - `README.md` — backends index.
+    - `__init__.py` — backend contract.
+    - `ari_registry.py` — ari-registry server backend.
+    - `gh.py` — GitHub `gh` CLI backend.
+    - `local_tarball.py` — local-directory backend.
+    - `zenodo.py` — Zenodo REST backend.
+- `registry/` — minimal HTTP registry for curated EAR bundles.
+  - `README.md` — registry index.
+  - `__init__.py` — endpoints + storage-layout docstring.
+  - `app.py` — FastAPI app builder.
+  - `auth.py` — sqlite-backed bearer-token auth.
+  - `cli.py` — `ari registry` serve / token / gc CLI.
+  - `storage.py` — filesystem storage backend.
+- `schemas/` — JSON Schemas shipped with ari-core.
+  - `README.md` — schemas index.
+  - `__init__.py` — `load(name)` loader.
+  - `node_report.schema.json` — per-node report schema.
+  - `publish.schema.json` — publish record / manifest schema.
+- `viz/` — HTTP + WebSocket dashboard server + React frontend.
+  - `README.md` — viz index.
+  - `__init__.py` — package docstring + module map / public symbols.
+  - `api_experiment.py` — launch, run stages, log streaming.
+  - `api_fewshot.py` — reviewer_rubrics/fewshot_examples corpus management.
+  - `api_memory.py` — memory backend health + local Letta start/stop.
+  - `api_ollama.py` — GPU/model detection + Ollama proxy.
+  - `api_orchestrator.py` — sub-experiment registry, launch, listing.
+  - `api_paperbench.py` — PaperBench paper registry + run-wizard endpoints.
+  - `api_paperbench_worker.py` — background worker driving PaperBench skill tools.
+  - `api_publish.py` — publish settings + preview/run endpoints.
+  - `api_settings.py` — env keys, settings, workflow, skills, profiles.
+  - `api_state.py` — checkpoint discovery, tree loading, broadcasting (re-export facade).
+  - `api_tools.py` — chat, config generation, file upload, SSH test.
+  - `api_wizard.py` — consolidated wizard endpoint router.
+  - `api_workflow.py` — React Flow workflow-editor endpoints.
+  - `checkpoint_api.py` — model list, checkpoint list/summary, lineage decisions.
+  - `checkpoint_finder.py` — checkpoint discovery + PID liveness probe.
+  - `checkpoint_lifecycle.py` — checkpoint delete + switch.
+  - `ear.py` — EAR curate/publish/clone REST helpers.
+  - `file_api.py` — per-checkpoint file CRUD + LaTeX compile.
+  - `node_work_api.py` — per-node work-dir filetree/filecontent/memory listing.
+  - `routes.py` — `_Handler` dispatch + access log.
+  - `server.py` — HTTP/WebSocket server and `ari viz` main entry.
+  - `state.py` — shared mutable server state.
+  - `state_sync.py` — node-tree loading + broadcast + filesystem watcher.
+  - `ui_helpers.py` — dashboard rendering helpers.
+  - `websocket.py` — WebSocket handler streaming tree state.
+  - `frontend/` — React + Vite + TypeScript. Served by `ari viz` / `python -m ari.viz.server`
+
+## See also
+
+- **Module overview & key files** → `ari-core/README.md`.
+- **Architecture narrative** → `docs/concepts/architecture.md`.

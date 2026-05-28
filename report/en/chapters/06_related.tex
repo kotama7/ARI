@@ -13,14 +13,14 @@ ML-engineering agents. ARI inherits the BFTS skeleton from AIDE but
 adds (i) an LLM-driven candidate selector (\cref{sec:exploration:node-selection}),
 which avoids fixing a closed-form scalar utility and lets the
 selection prompt weigh \texttt{has\_real\_data}, full
-\texttt{metrics}, depth, retry count, and a soft
+\texttt{metrics}, depth, and a soft
 \texttt{diversity\_bonus} jointly, and
 (ii) the cross-run lineage (\cref{sec:exploration:lineage}) which
 neither AIDE nor MLE-bench formalises.
 
 \subsection{Autonomous research agents}\label{sec:related:autonomous}
 
-The AI~Scientist family \cite{lu2024ai} closes a similar
+The AI~Scientist family \cite{lu2024ai,lu2026towards} closes a similar
 loop end-to-end (idea $\to$ experiment $\to$ paper) but does not
 expose the rubric and refine cycle as a first-class object. VirSci
 \cite{su2024many} simulates several scientist personas and uses

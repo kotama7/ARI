@@ -1,0 +1,80 @@
+id: qje
+version: "2026"
+venue: Quarterly Journal of Economics (QJE)
+domain: Economics
+
+params:
+  num_reflections: 5
+  num_fs_examples: 0
+  num_reviews_ensemble: 1
+  temperature: 0.7
+  score_threshold_decision: 4
+  fewshot_mode: static
+  fewshot_dir: ""
+
+score_dimensions:
+  - name: importance
+    scale: [1, 5]
+    description: >-
+      Importance of the question for economics broadly. QJE prioritises
+      questions that change how the field thinks. 5=field-shaping, 1=narrow.
+  - name: originality
+    scale: [1, 5]
+    description: >-
+      Originality of the idea, data, or framing. QJE rewards genuinely
+      novel contributions over careful incremental work.
+  - name: identification
+    scale: [1, 5]
+    description: >-
+      Credibility of the empirical strategy or theoretical derivation.
+  - name: theory_empirics_integration
+    scale: [1, 5]
+    description: >-
+      Tightness of the link between theoretical mechanism and empirical
+      evidence (or for theory papers, between assumptions and
+      implications).
+  - name: robustness
+    scale: [1, 5]
+    description: Sensitivity of results to specification and sample choices.
+  - name: reproducibility
+    scale: [1, 5]
+    description: >-
+      Compliance with the QJE data and code availability requirements.
+  - name: exposition
+    scale: [1, 5]
+    description: Writing quality and clarity.
+  - name: overall
+    scale: [1, 5]
+    description: Overall recommendation.
+  - name: confidence
+    scale: [1, 5]
+    description: Reviewer confidence.
+
+text_sections:
+  - { name: paper_summary, required: true }
+  - { name: strengths, required: true }
+  - { name: weaknesses, required: true }
+  - { name: identification_assessment, required: true }
+  - { name: required_revisions, required: true }
+  - { name: suggested_revisions, required: false }
+  - { name: questions_for_authors, required: false }
+
+decision:
+  type: categorical
+  options: [accept, minor_revision, major_revision, reject_and_resubmit, reject]
+  threshold_dimension: overall
+  threshold_value: 4
+
+prompt_overrides:
+  system_hint: >-
+    Follow QJE reviewer norms. QJE has very high standards for
+    importance and originality — careful but incremental work is
+    typically rejected even when sound. Weight `importance` and
+    `originality` heavily relative to executional polish. Demand a
+    tight theory-empirics link or, for theory papers, a tight
+    assumptions-implications link.
+  author_hint: >-
+    Write for a QJE audience: foreground why the question matters for
+    economics broadly, make the originality of the contribution
+    explicit early, and link the theoretical mechanism tightly to the
+    empirical evidence. Provide a replication package per QJE policy.

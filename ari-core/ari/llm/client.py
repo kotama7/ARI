@@ -30,6 +30,14 @@ class LLMClient:
         self._node_id: str = ""
         self._phase: str = ""
         self._skill: str = ""
+        self._work_dir: str = ""
+        # Optional MCPClient injected post-construction (see core.py). When
+        # set AND the backend is the cli-shim, complete() forwards a
+        # --mcp-config payload to the shim so Claude can call the same
+        # ari-skill MCP servers directly (instead of relying on the shim's
+        # text-catalog tool protocol, which Claude can ignore — see the
+        # 2026-05-28 hallucinated-fx700 incident).
+        self.mcp_client = None
 
     def set_context(
         self,
@@ -37,32 +45,45 @@ class LLMClient:
         node_id: str | None = None,
         phase: str | None = None,
         skill: str | None = None,
+        work_dir: str | None = None,
     ) -> None:
         """Attach context that will be sent as litellm metadata on every
         subsequent ``complete()`` call. Pass ``None`` to leave a field
-        unchanged; pass ``""`` to explicitly clear it."""
+        unchanged; pass ``""`` to explicitly clear it.
+
+        ``work_dir`` is forwarded to the cli-shim via ``extra_body`` so the
+        Claude subprocess uses the node's real working directory (and so its
+        debug log lands there).
+        """
         if node_id is not None:
             self._node_id = str(node_id)
         if phase is not None:
             self._phase = str(phase)
         if skill is not None:
             self._skill = str(skill)
+        if work_dir is not None:
+            self._work_dir = str(work_dir)
 
     def _model_name(self) -> str:
-        backend = self.config.backend
-        model = self.config.model
-        if backend == "claude" or backend == "anthropic":
-            return f"anthropic/{model}"
-        if backend == "openai":
-            return model
-        if backend == "ollama":
-            return f"ollama_chat/{model}"
-        if backend in ("cli-shim", "cli_shim"):
-            # OpenAI-compatible shim (ari.llm.cli_server). Force the openai
-            # route so litellm dials base_url; the shim sees the model after
-            # the prefix (e.g. "claude-cli").
-            return model if model.startswith("openai/") else f"openai/{model}"
-        return model
+        from ari.llm.routing import resolve_litellm_model
+        return resolve_litellm_model(self.config.model, self.config.backend)
+
+    def _is_cli_shim_target(self) -> bool:
+        """True iff this client routes to ari's cli_server shim.
+
+        Detected by either: backend=='cli-shim', model startswith
+        'claude-cli'/'codex-cli'/'openai/claude-cli'/'openai/codex-cli', or
+        base_url containing ':8900' (the shim's default port).
+        """
+        m = (self.config.model or "").lower()
+        if m.startswith("claude-cli") or m.startswith("codex-cli"):
+            return True
+        if m.startswith("openai/claude-cli") or m.startswith("openai/codex-cli"):
+            return True
+        if (self.config.backend or "").lower() == "cli-shim":
+            return True
+        url = (self.config.base_url or "")
+        return ":8900" in url
 
     def complete(
         self,
@@ -73,6 +94,7 @@ class LLMClient:
         node_id: str | None = None,
         phase: str | None = None,
         skill: str | None = None,
+        work_dir: str | None = None,
     ) -> LLMResponse:
         """Send messages to the LLM and return a response.
 
@@ -93,6 +115,7 @@ class LLMClient:
         _node_id = node_id if node_id is not None else getattr(self, "_node_id", "")
         _phase = phase if phase is not None else getattr(self, "_phase", "")
         _skill = skill if skill is not None else getattr(self, "_skill", "")
+        _work_dir = work_dir if work_dir is not None else getattr(self, "_work_dir", "")
         kwargs: dict = {
             "model": _model,
             "messages": msgs,
@@ -118,6 +141,42 @@ class LLMClient:
         # Disable qwen3 thinking mode (long chain-of-thought causes timeout on CPU inference)
         if "qwen3" in self.config.model.lower():
             kwargs["extra_body"] = {"options": {"think": False}}
+
+        # When the backend is the ari cli-shim, forward (work_dir + MCP
+        # server config) via extra_body so the shim can spawn `claude -p`
+        # with --mcp-config + --strict-mcp-config + --allowedTools mcp__*.
+        # This replaces the shim's text-catalog tool protocol (which the
+        # model can ignore — leading to hallucinated tool calls / results;
+        # see 2026-05-28 incident). The extra_body keys are passed through
+        # by litellm's openai-compatible handler and read by
+        # ari/llm/cli_server.py do_POST.
+        if (
+            tools
+            and self.mcp_client is not None
+            and self._is_cli_shim_target()
+        ):
+            try:
+                mcp_cfg, allowed = self.mcp_client.to_claude_mcp_config(
+                    phase=(_phase or None),
+                )
+            except Exception as _e:  # noqa: BLE001 — never block the LLM call
+                import logging as _l
+                _l.getLogger("ari.llm.client").warning(
+                    "to_claude_mcp_config failed (%s); falling back to text catalog",
+                    _e,
+                )
+                mcp_cfg, allowed = None, None
+            if mcp_cfg and allowed:
+                eb = kwargs.setdefault("extra_body", {})
+                eb["mcp_config"] = mcp_cfg
+                eb["allowed_mcp_tools"] = allowed
+                if _work_dir:
+                    eb["work_dir"] = _work_dir
+        elif _work_dir and self._is_cli_shim_target():
+            # No MCP wiring but still pin cwd so the shim doesn't fall back
+            # to a throwaway tmp dir (which it then rmtrees, deleting any
+            # artifacts the agent wrote).
+            kwargs.setdefault("extra_body", {})["work_dir"] = _work_dir
         response = litellm.completion(timeout=1800, **kwargs)
         choice = response.choices[0]
         message = choice.message

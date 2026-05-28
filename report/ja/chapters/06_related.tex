@@ -1,7 +1,3 @@
-% translated-from: en/chapters/06_related.tex@8f026556abfcacdffc644fd0f52447496dea53aa0c5942a062e763d6180b5998
-% glossary:        5bca8d57a70f021e20c0af79aa06cd21013495c1a8246887ae889cd8a056f5fd
-% model:           claude-opus-4-7
-
 \section{関連研究}\label{sec:related}
 
 ARI を 4 つの先行研究の流れに対して位置付ける。
@@ -15,7 +11,7 @@ MLE-bench 評価器 \cite{chan2024mle} はいまや ML 工学エージェント
 を計測する標準である。ARI は AIDE から BFTS の骨格を継承するが、
 (i) LLM 駆動の候補選択器(\cref{sec:exploration:node-selection})—
 閉形式のスカラー効用を固定せず、選択プロンプトが
-\texttt{has\_real\_data}、metrics 全体、深さ、リトライ回数、
+\texttt{has\_real\_data}、metrics 全体、深さ、
 ソフト \texttt{diversity\_bonus} を一括重み付けできる —、
 および
 (ii) 実行間の系譜(\cref{sec:exploration:lineage})— AIDE も
@@ -23,7 +19,7 @@ MLE-bench も形式化していない — を追加している。
 
 \subsection{自律研究エージェント}\label{sec:related:autonomous}
 
-AI~Scientist ファミリ \cite{lu2024ai} は同様のループ
+AI~Scientist ファミリ \cite{lu2024ai,lu2026towards} は同様のループ
 (idea $\to$ experiment $\to$ paper)をエンドツーエンドで閉じる
 が、ルブリックと改稿サイクルを第一級オブジェクトとして露出させ
 ない。VirSci \cite{su2024many} は複数の科学者ペルソナを模擬し、

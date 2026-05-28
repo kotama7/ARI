@@ -85,23 +85,22 @@ ARI は一つの原則に基づいて設計されています：**ゴールを M
 
 🎬 **ダッシュボードのデモ動画** — ARI Web ダッシュボードの完全ウォークスルー。[English](docs/assets/movie/en/ari_dashboard_demo.mp4) · [中文](docs/assets/movie/zh/ari_dashboard_demo.mp4) も利用可能。
 
-📄 **[サンプル成果物 (PDF)](docs/assets/sample_paper.pdf)** — ARI が完全自律で生成した実物の論文。図表・引用・再現性検証レポートを含みます。主な数値は [実証された結果](#実証された結果) を参照してください。
+📄 **[サンプル成果物 (PDF)](docs/assets/sample_paper.pdf)** — ARI が富士通 A64FX/SVE-512 上で完全自律生成した全 10 ページの論文（Stratum-Roofline CSR-SpMM 研究）。図表・引用・再現性検証レポートを含みます。主な数値は [実証された結果](#実証された結果) を参照してください。
 
 <details>
-<summary><b>📖 クリックで論文を展開（全 11 ページをスクロールで閲覧）</b></summary>
+<summary><b>📖 クリックで論文を展開（全 10 ページをスクロールで閲覧）</b></summary>
 
 <p align="center">
-  <img src="docs/images/sample_paper/page-01.png" alt="サンプル論文 — 1 ページ目" width="720"/>
-  <img src="docs/images/sample_paper/page-02.png" alt="サンプル論文 — 2 ページ目" width="720"/>
-  <img src="docs/images/sample_paper/page-03.png" alt="サンプル論文 — 3 ページ目" width="720"/>
-  <img src="docs/images/sample_paper/page-04.png" alt="サンプル論文 — 4 ページ目" width="720"/>
-  <img src="docs/images/sample_paper/page-05.png" alt="サンプル論文 — 5 ページ目" width="720"/>
-  <img src="docs/images/sample_paper/page-06.png" alt="サンプル論文 — 6 ページ目" width="720"/>
-  <img src="docs/images/sample_paper/page-07.png" alt="サンプル論文 — 7 ページ目" width="720"/>
-  <img src="docs/images/sample_paper/page-08.png" alt="サンプル論文 — 8 ページ目" width="720"/>
-  <img src="docs/images/sample_paper/page-09.png" alt="サンプル論文 — 9 ページ目" width="720"/>
-  <img src="docs/images/sample_paper/page-10.png" alt="サンプル論文 — 10 ページ目" width="720"/>
-  <img src="docs/images/sample_paper/page-11.png" alt="サンプル論文 — 11 ページ目" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-01.png" alt="サンプル論文 — 1 ページ目" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-02.png" alt="サンプル論文 — 2 ページ目" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-03.png" alt="サンプル論文 — 3 ページ目" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-04.png" alt="サンプル論文 — 4 ページ目" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-05.png" alt="サンプル論文 — 5 ページ目" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-06.png" alt="サンプル論文 — 6 ページ目" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-07.png" alt="サンプル論文 — 7 ページ目" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-08.png" alt="サンプル論文 — 8 ページ目" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-09.png" alt="サンプル論文 — 9 ページ目" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-10.png" alt="サンプル論文 — 10 ページ目" width="720"/>
 </p>
 
 </details>
@@ -348,20 +347,21 @@ v0.6.0 では 2 つのスキルを廃止しました。`ari-skill-figure-router`
 
 ## 実証された結果
 
-ARI はマルチコア CPU 上の **CSR SpMM**（スパース行列と密行列の積）について、設計・実装・実行・論文執筆までを完全自律で end-to-end に行いました。手法・アルゴリズム・図表・参考文献を含む完全な論文は [`docs/sample_paper.pdf`](docs/assets/sample_paper.pdf) で公開されています。
+ARI は富士通 A64FX/SVE-512 CPU 上での **CSR-SpMM**（スパース行列と密行列の積）について、設計・実装・実行・論文執筆までを完全自律で end-to-end に行いました。手法・アルゴリズム・図表・参考文献を含む完全な論文は [`docs/assets/sample_paper.pdf`](docs/assets/sample_paper.pdf) で公開されています。
 
-> **Stoch-Loopline: Burstiness- and Tail-Latency-Aware Loopline Modeling for Robust Multi-Core CPU CSR SpMM Scaling**
+> **A Stratum-Roofline CSR-SpMM Implementation for CPUs: Sustaining High Performance Across Variable Right-Hand-Side Widths on A64FX/SVE-512**
 
-| 構成 | GFLOP/s | 実効帯域幅 |
+| 構成 | スループット | 実効帯域幅 |
 |---|---|---|
-| K ブロック化 CSR SpMM（ピークスループット） | 23.82 | 58.30 GB/s |
-| 検証スイープ（ピーク、*N* = 16、32 スレッド） | **26.22** | **65.55 GB/s** |
-| 最大計測帯域幅（ルートスイープ） | 17.17 | **105.18 GB/s** |
-| ソフトウェアプリフェッチによる改善（幅平均） | **+3.53** | **+8.18 GB/s** |
+| プリフェッチ+タイル化カーネル (NB=16, PFD=4) を *N* ∈ {1, 2, 4, 8, 16} で持続 | **57.8–59.9** GFlops/s | — |
+| リファレンスカーネルのピーク (*N* = 128) | 79.995 GFlops/s | **167.5 GB/s** |
+| バンド型 Stratum-Roofline 予測 vs 実測 (*N* = 128) | **81.55** GFlops/s（完全一致） | 135.88 GB/s |
+| 小規模 *N* での頑健性ゲイン (*N* = 1, タイル+プリフェッチ vs リファレンス) | **15.6×** | — |
+| SIMD アブレーションのスローダウン (`-fno-tree-vectorize`, *N* = 128) | **4.18×** (80.33 → 22.0) | — |
 
-**ハードウェア:** `fx700` マルチコア CPU ノード、OpenMP、32 スレッド。合成 CSR 行列は最大 *M* = *K* = 200,000（約 3.2M 非ゼロ要素）、行長分布は uniform と Zipf、密幅 *N* ∈ {4, 8, 16, 32, 64, 128}。
+**ハードウェア:** 富士通 `fx700` 計算ノード（A64FX、SVE-512）、48 OpenMP スレッド、FP32。GCC 8.5.0 で `-O3 -march=armv8.2-a+sve -fopenmp -ffast-math -ftree-vectorize -funroll-loops` を使用。バンド型/歪んだべき乗則の合成 CSR 行列（*M* = *N* = 400,000、nnz = 12.8M）と、コンパクトなスイープ行列（*M* = *K* = 120,000、nnz/行 = 32）。RHS 幅 *N* ∈ {1, 2, 4, 8, 16, 32, 64, 96, 128, 192, 256}、スレッドスイープ *T* ∈ {1, …, 48}、タイル幅スイープ NB ∈ {8, 16, 32}、PFD ∈ {0, 4}。
 
-**ARI が自律的に生み出したもの:** Stoch-Loopline モデル化の枠組み、2 種類の CSR×dense カーネル実装（行並列 gather と rows-in-flight）と明示的なアンロール/ウィンドウつまみ、K ブロック化 / N タイリング + パッキング / scalar / no-AVX のアブレーション、実験スイープ、図表、参考文献、再現性検証 — すべて人間の介入なしに生成されました。
+**ARI が自律的に生み出したもの:** Stratum-Roofline モデル化枠組み（FMA ピーク 1869.66 GFlops/s + HBM 上限 235.42 GB/s + スレッドあたり STREAM-triad 20.91 GB/s のキャリブレーション、4 階層の行ストラタム分解）、4 種類のカーネル実装（`spmm_csr` リファレンス、`spmm_csr_pf` プリフェッチ、`spmm_csr_tiled` NB タイル化、`spmm_novec` SIMD アブレーション）、Algorithm 1（NB タイル化ソフトウェアプリフェッチ CSR-SpMM）、*N* / スレッド / タイル幅 / PFD のスイープ、Xeon Gold 6142 ログインノードでのフォールバック実行、図表、参考文献、再現性検証（5 回繰り返し、4 ランダムシード、最大絶対誤差 0.0、CV ≤ 1.02%）— すべて人間の介入なしに生成されました。
 
 ---
 

@@ -18,7 +18,7 @@
 \figlabeldef{F3.has_real}{has\_real\_data}
 \figlabeldef{F3.metrics}{metrics dict}
 \figlabeldef{F3.depth_signal}{depth}
-\figlabeldef{F3.retry}{retry\_count}
+\figlabeldef{F3.retry}{label}
 \figlabeldef{F3.summary}{eval\_summary}
 \figlabeldef{F3.div}{diversity\_bonus}
 \figlabeldef{F3.selector}{select\_next\_node (LLM)}
@@ -38,6 +38,9 @@
 \figlabeldef{F4.execute}{execute}
 \figlabeldef{F4.parse}{parse}
 \figlabeldef{F4.update}{update}
+\figlabeldef{F4.toolset}{phase-filtered toolset}
+\figlabeldef{F4.memcontext}{memory context}
+\figlabeldef{F4.maxsteps}{MAX\_REACT\_STEPS = 80, MIN\_TOOL\_CALLS = 2}
 
 % F05 — pipeline DAG
 \figlabeldef{F5.idea}{idea}
@@ -103,7 +106,7 @@
 \figlabeldef{F12.band.ari}{ARI adapter}
 \figlabeldef{F12.band.vendor}{vendor (PaperBench)}
 \figlabeldef{F12.band.bridge}{bridge \& aggregation}
-\figlabeldef{F12.subclass}{subclass}
+\figlabeldef{F12.subclass}{adapts}
 \figlabeldef{F12.judged}{graded}
 
 % F13 — checkpoint layout
@@ -141,31 +144,67 @@
 \figlabeldef{F11.append}{append}
 \figlabeldef{F11.continue}{continue}
 
-% F12 — paper-re components
-\figlabeldef{F12.driver}{run\_replicator\_agent}
-\figlabeldef{F12.solver}{AriPBSolver}
-\figlabeldef{F12.bounded}{\_BoundedOutputTool}
-\figlabeldef{F12.adapt}{\_adapt\_vendor\_paths}
-\figlabeldef{F12.basic}{BasicAgentSolver (vendor)}
-\figlabeldef{F12.tasknode}{TaskNode}
-\figlabeldef{F12.simplejudge}{SimpleJudge}
-\figlabeldef{F12.bridge}{paperbench\_bridge}
-\figlabeldef{F12.graded}{GradedTaskNode}
-\figlabeldef{F12.agg}{aggregate\_graded\_tree}
-\figlabeldef{F12.avg}{average\_graded\_runs}
+% F12 — paper-re components (role-level labels; see CLAUDE.md s1)
+\figlabeldef{F12.driver}{replication driver}
+\figlabeldef{F12.solver}{solver adapter}
+\figlabeldef{F12.bounded}{output bounding}
+\figlabeldef{F12.adapt}{path adapter}
+\figlabeldef{F12.basic}{agent solver (vendor)}
+\figlabeldef{F12.tasknode}{rubric leaf (vendor)}
+\figlabeldef{F12.simplejudge}{judge (vendor)}
+\figlabeldef{F12.bridge}{3-stage bridge}
+\figlabeldef{F12.graded}{graded tree}
+\figlabeldef{F12.agg}{aggregate}
+\figlabeldef{F12.avg}{average runs}
 \figlabeldef{F12.rubricjson}{rubric.json}
 \figlabeldef{F12.reproduce}{reproduce.sh}
-% --- F14 execution_profile (v0.7.2) ---
+% --- F14 execution_profile ---
 \figlabeldef{F14.band.prompt}{agent prompt}
-\figlabeldef{F14.band.sbatch}{Phase 2 sbatch}
+\figlabeldef{F14.band.sbatch}{cluster dispatch}
 \figlabeldef{F14.rubric}{rubric.json \texttt{execution\_profile}}
 \figlabeldef{F14.prompt}{user message}
 \figlabeldef{F14.b.profile}{profile JSON}
 \figlabeldef{F14.b.shape}{cluster shape}
 \figlabeldef{F14.b.conventions}{node conv.}
-\figlabeldef{F14.sbatch}{\_run\_reproduce\_slurm}
+\figlabeldef{F14.sbatch}{cluster dispatcher}
 \figlabeldef{F14.probe.fs}{shared-FS}
 \figlabeldef{F14.probe.gres}{GRES}
-\figlabeldef{F14.probe.help}{sbatch --help}
+\figlabeldef{F14.probe.help}{flag probe}
 \figlabeldef{F14.outcome}{compute-node reproduce.sh}
 \figlabeldef{F14.e.profile}{execution\_profile}
+
+
+% ---------------- F15: BFTS state-machine view ----
+\figlabeldef{F15.band.state}{run-loop state $(\Frontier,\Pending,\expandcount,\Hist)$}
+\figlabeldef{F15.frontier}{frontier $\Frontier$}
+\figlabeldef{F15.pending}{pending $\Pending$}
+\figlabeldef{F15.counter}{expansion count $\expandcount(\cdot)$}
+\figlabeldef{F15.history}{label history $\Hist$ (window $\histlen$)}
+\figlabeldef{F15.prune}{$\prunepred(f)$ ?}
+\figlabeldef{F15.expand}{expand $\to$ child}
+\figlabeldef{F15.select_run}{$\selectLLM$ / $\selectFB$}
+\figlabeldef{F15.run_parallel}{parallel ReAct (\texttt{ThreadPoolExecutor})}
+\figlabeldef{F15.sterile}{$\sterilepred$ gate}
+\figlabeldef{F15.retire}{$\retirepred(f, c)$ ?}
+\figlabeldef{F15.pick_best}{$\selectLLM$(best $f\in\Frontier$)}
+\figlabeldef{F15.notprune}{$\neg\prunepred$}
+\figlabeldef{F15.prune_drop}{$\prunepred \Rightarrow$ drop $f$}
+\figlabeldef{F15.append_pending}{append child}
+\figlabeldef{F15.pick_run}{select batch (size $\leq$ max\_parallel)}
+\figlabeldef{F15.append_frontier}{append done node}
+\figlabeldef{F15.retire_drop}{$\retirepred \Rightarrow$ drop $f$}
+\figlabeldef{F15.cnt_bump}{$\expandcount(f)\mathrel{+}{=}1$}
+\figlabeldef{F15.hist_use}{$\divbonus{\cdot}$}
+\figlabeldef{F15.hist_append}{\texttt{record\_run} (after exec)}
+\figlabeldef{F15.lane.inner}{inner expansion sub-loop}
+\figlabeldef{F15.lane.outer}{outer parallel-run loop}
+
+% ---------------- F16: PaperBench three-stage bridge ----
+\figlabeldef{F16.paper}{paper + rubric}
+\figlabeldef{F16.rollout}{rollout}
+\figlabeldef{F16.sub}{submission}
+\figlabeldef{F16.reproduce}{reproduce}
+\figlabeldef{F16.log}{reproduce.log}
+\figlabeldef{F16.grade}{grade}
+\figlabeldef{F16.score}{score}
+\figlabeldef{F16.band}{3-stage bridge}

@@ -145,8 +145,8 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path in ("/logo.png", "/logo"):
             logo_candidates = [
-                _st._ari_root / "docs" / "logo.png",
-                Path(__file__).parent.parent.parent.parent / "docs" / "logo.png",
+                _st._ari_root / "docs" / "assets" / "logo.png",
+                Path(__file__).parent.parent.parent.parent / "docs" / "assets" / "logo.png",
             ]
             for lp in logo_candidates:
                 if lp.exists():

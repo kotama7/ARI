@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -88,6 +89,60 @@ class BFTSConfig(BaseModel):
         description="Maximum BFTS nodes that may execute concurrently. "
                     "Overridden by `ARI_PARALLEL`.",
     )
+    max_expansions_per_node: int = Field(
+        4,
+        description="Maximum times a single frontier node may be re-expanded "
+                    "before BFTS retires it. Higher values let one good "
+                    "parent spawn more siblings; lower values force the "
+                    "search to spread.",
+    )
+    label_saturation_threshold: int = Field(
+        2,
+        description="When ≥ this many children of the SAME parent share a "
+                    "label, expand() flags that label as 'saturated' in the "
+                    "next prompt and asks the planner to pick a different "
+                    "one. Default 2 matches the pre-audit behaviour.",
+    )
+    frontier_score: Literal[
+        "scientific_plus_diversity",
+        "scientific_only",
+        "depth_penalized",
+        "ucb_like",
+    ] = Field(
+        "scientific_plus_diversity",
+        description="Strategy used by BFTS's deterministic fallback when "
+                    "the LLM selector cannot pick a candidate. "
+                    "`scientific_plus_diversity` (default) matches the "
+                    "previous behaviour. `scientific_only` drops the "
+                    "diversity bonus. `depth_penalized` subtracts "
+                    "`depth_penalty_lambda * depth`. `ucb_like` adds a "
+                    "UCB1-style exploration term scaled by `ucb_c`.",
+    )
+    depth_penalty_lambda: float = Field(
+        0.05,
+        description="Per-depth penalty applied when frontier_score="
+                    "`depth_penalized`. Ignored by other strategies.",
+    )
+    ucb_c: float = Field(
+        0.5,
+        description="Exploration coefficient for frontier_score="
+                    "`ucb_like`. The exploration term is "
+                    "`ucb_c * sqrt(log(N) / (visits + 1))`. Ignored by "
+                    "other strategies.",
+    )
+    select_prompt: str = Field(
+        "orchestrator/bfts_select",
+        description="FilesystemPromptLoader key for select_next_node. "
+                    "The .md template must accept {experiment_goal}, "
+                    "{memory_context}, and {candidates} placeholders and "
+                    "must reply with a single 0-based integer index.",
+    )
+    expand_select_prompt: str = Field(
+        "orchestrator/bfts_expand_select",
+        description="FilesystemPromptLoader key for select_best_to_expand. "
+                    "Template must accept {experiment_goal} and "
+                    "{candidates} and reply with a 0-based integer index.",
+    )
 
 
 class CheckpointConfig(BaseModel):
@@ -117,6 +172,22 @@ class LoggingConfig(BaseModel):
     )
 
 
+class CustomAxisSpec(BaseModel):
+    """One user-defined evaluation axis used when EvaluatorConfig.axis_mode=`custom`."""
+
+    name: str = Field(..., description="Axis identifier (snake_case).")
+    description: str = Field(
+        "",
+        description="Short prose describing what the axis measures. Sent to "
+                    "the judge LLM so it knows how to score this axis.",
+    )
+    weight: float = Field(
+        0.2,
+        description="Per-axis weight used by the composite formula. "
+                    "Normalisation is handled by the formula itself.",
+    )
+
+
 class EvaluatorConfig(BaseModel):
     axis_weights: dict[str, float] = Field(
         default_factory=dict,
@@ -124,6 +195,33 @@ class EvaluatorConfig(BaseModel):
                     "Empty → equal weights (0.2 each). Only keys in "
                     "the canonical axis set are honoured; unknown keys "
                     "are silently dropped.",
+    )
+    composite: Literal[
+        "harmonic_mean",
+        "arithmetic_mean",
+        "weighted_min",
+        "geometric_mean",
+    ] = Field(
+        "harmonic_mean",
+        description="Formula used to collapse per-axis scores into the "
+                    "scalar `_scientific_score`. `harmonic_mean` (default) "
+                    "matches the pre-audit behaviour and heavily penalises "
+                    "any weak axis. `arithmetic_mean` is permissive. "
+                    "`weighted_min` returns the lowest axis (bottleneck "
+                    "view). `geometric_mean` is between harmonic and "
+                    "arithmetic.",
+    )
+    axis_mode: Literal["legacy", "dynamic", "custom"] = Field(
+        "dynamic",
+        description="`dynamic` (default) builds axes from the active rubric "
+                    "and idea.json plan keywords. `legacy` pins to the "
+                    "fixed 5-axis canonical set. `custom` uses the "
+                    "`custom_axes` list verbatim.",
+    )
+    custom_axes: list[CustomAxisSpec] = Field(
+        default_factory=list,
+        description="Axis definitions consulted only when "
+                    "axis_mode=`custom`.",
     )
 
 

@@ -1,0 +1,33 @@
+\section{Runtime LLM Prompts}\label{sec:prompts}
+
+This appendix lists the LLM prompts that ARI uses at runtime, reproduced
+verbatim from \texttt{ari-core/ari/prompts/} at v0.8.0. Each listing is
+byte-for-byte identical to the source on disk. Because the exact bytes are
+what reach the model, the prompts are reproduced as-is in every language
+version of this report and are not translated.
+
+\subsection*{Orchestrator}
+
+\PromptListing{orchestrator/bfts_expand.md}{BFTS expansion}{prompt:bfts_expand}
+\PromptListing{orchestrator/bfts_expand_select.md}{BFTS expansion-time selection}{prompt:bfts_expand_select}
+\PromptListing{orchestrator/bfts_select.md}{BFTS selection}{prompt:bfts_select}
+\PromptListing{orchestrator/lineage_decision.md}{Lineage continuation decision}{prompt:lineage_decision}
+\PromptListing{orchestrator/root_idea_selector.md}{Root idea selector}{prompt:root_idea_selector}
+
+\subsection*{Agent loop}
+
+\PromptListing{agent/system.md}{ReAct agent system prompt}{prompt:agent_system}
+
+\subsection*{Evaluator}
+
+\PromptListing{evaluator/peer_review.md}{Peer-review evaluator}{prompt:peer_review}
+\PromptListing{evaluator/extract_metrics.md}{Metric extraction}{prompt:extract_metrics}
+
+\subsection*{Pipeline}
+
+\PromptListing{pipeline/keyword_librarian.md}{Keyword librarian}{prompt:keyword_librarian}
+
+\subsection*{Wizard (Viz)}
+
+\PromptListing{viz/wizard_chat_goal.md}{Wizard goal chat}{prompt:wizard_chat_goal}
+\PromptListing{viz/wizard_generate_config.md}{Wizard config generator}{prompt:wizard_generate_config}

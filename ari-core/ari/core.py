@@ -138,6 +138,13 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
         # coding-skill, so removing hpc-skill does not remove shell access.
         _skills = [s for s in _skills if getattr(s, "name", "") != "hpc-skill"]
     mcp = MCPClient(_skills, disabled_tools=_disabled)
+    # Wire the MCPClient into both LLMClients so cli-shim-targeted calls can
+    # forward (--mcp-config + --allowedTools mcp__*) to the Claude
+    # subprocess. With this, the text-catalog tool protocol is bypassed and
+    # claude can ONLY call ari-skill MCP servers (no native Bash / Write /
+    # Edit on the login node — see the 2026-05-28 hallucinated-fx700 incident).
+    llm.mcp_client = mcp
+    bfts_llm.mcp_client = mcp
     bfts = BFTS(cfg.bfts, bfts_llm)
 
     # MetricSpec: auto-generated from experiment file by evaluator-skill

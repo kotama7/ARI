@@ -1,0 +1,32 @@
+\section{运行时 LLM 提示词}\label{sec:prompts}
+
+本附录列出 ARI 在运行时所用的 LLM 提示词,逐字摘自 v0.8.0 时刻的
+\texttt{ari-core/ari/prompts/}。每段清单与磁盘源码逐字节一致。因为输入
+模型的字节本身决定其行为,提示词不进行翻译,在本报告的各语言版本中均以
+原文原样呈现。
+
+\subsection*{编排器}
+
+\PromptListing{orchestrator/bfts_expand.md}{BFTS 扩展}{prompt:bfts_expand}
+\PromptListing{orchestrator/bfts_expand_select.md}{BFTS 扩展期选择}{prompt:bfts_expand_select}
+\PromptListing{orchestrator/bfts_select.md}{BFTS 选择}{prompt:bfts_select}
+\PromptListing{orchestrator/lineage_decision.md}{谱系续延判断}{prompt:lineage_decision}
+\PromptListing{orchestrator/root_idea_selector.md}{根创意选择}{prompt:root_idea_selector}
+
+\subsection*{智能体循环}
+
+\PromptListing{agent/system.md}{ReAct 智能体系统提示}{prompt:agent_system}
+
+\subsection*{评估器}
+
+\PromptListing{evaluator/peer_review.md}{同行评议评估器}{prompt:peer_review}
+\PromptListing{evaluator/extract_metrics.md}{指标抽取}{prompt:extract_metrics}
+
+\subsection*{流水线}
+
+\PromptListing{pipeline/keyword_librarian.md}{关键词管理员}{prompt:keyword_librarian}
+
+\subsection*{向导(Viz)}
+
+\PromptListing{viz/wizard_chat_goal.md}{向导目标对话}{prompt:wizard_chat_goal}
+\PromptListing{viz/wizard_generate_config.md}{向导配置生成器}{prompt:wizard_generate_config}

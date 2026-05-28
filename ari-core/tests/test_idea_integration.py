@@ -92,7 +92,7 @@ class TestBFTSExpandIdeaContext:
             content='[{"label": "improve", "direction": "Implement hotset cache"}]'
         )
 
-        bfts = BFTS(BFTSConfig(max_depth=3, max_retries_per_node=2, max_total_nodes=10), mock_llm)
+        bfts = BFTS(BFTSConfig(max_depth=3, max_total_nodes=10), mock_llm)
         node = Node(id="n1", parent_id=None, depth=0, has_real_data=True,
                     metrics={"GFlops_per_s": 21.0})
 
@@ -116,7 +116,7 @@ class TestBFTSExpandIdeaContext:
             content='[{"label": "improve", "direction": "Tune params"}]'
         )
 
-        bfts = BFTS(BFTSConfig(max_depth=3, max_retries_per_node=2, max_total_nodes=10), mock_llm)
+        bfts = BFTS(BFTSConfig(max_depth=3, max_total_nodes=10), mock_llm)
         node = Node(id="n1", parent_id=None, depth=0, has_real_data=True)
 
         children = bfts.expand(node, experiment_goal="test")  # no idea_context

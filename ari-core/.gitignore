@@ -24,6 +24,9 @@ slurm-*.out
 logs/
 output*/
 results*/
+# But: PaperBench source ships a `results/` component directory — keep it tracked.
+!ari/viz/frontend/src/components/PaperBench/results/
+!ari/viz/frontend/src/components/PaperBench/results/**
 
 # Editor
 .idea/

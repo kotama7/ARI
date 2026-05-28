@@ -115,7 +115,7 @@
 \figlabeldef{F3.has_real}{has\_real\_data}
 \figlabeldef{F3.metrics}{metrics dict}
 \figlabeldef{F3.depth_signal}{depth}
-\figlabeldef{F3.retry}{retry\_count}
+\figlabeldef{F3.retry}{label}
 \figlabeldef{F3.summary}{eval\_summary}
 \figlabeldef{F3.div}{diversity\_bonus}
 \figlabeldef{F3.selector}{select\_next\_node (LLM)}
@@ -234,7 +234,7 @@
 \figlabeldef{F13.nodereport}{node\_report.json}
 \figlabeldef{F13.band.shared}{run-level files}
 \figlabeldef{F13.band.pernode}{per-node working trees}
-% --- F14 execution_profile (v0.7.2) ---
+% --- F14 execution_profile ---
 \figlabeldef{F14.band.prompt}{agent prompt}
 \figlabeldef{F14.band.sbatch}{Phase 2 sbatch}
 \figlabeldef{F14.rubric}{rubric.json \texttt{execution\_profile}}
@@ -254,3 +254,27 @@
 \centering
 \input{__TIKZ__}
 \end{document}
+
+\figlabeldef{F14.band.state}{run-loop state}
+\figlabeldef{F14.frontier}{frontier F}
+\figlabeldef{F14.pending}{pending P}
+\figlabeldef{F14.counter}{expansion count}
+\figlabeldef{F14.history}{label history}
+\figlabeldef{F14.prune}{prune f?}
+\figlabeldef{F14.expand}{expand -> child}
+\figlabeldef{F14.select_run}{select(LLM/FB)}
+\figlabeldef{F14.run_parallel}{parallel ReAct}
+\figlabeldef{F14.sterile}{sterile?}
+\figlabeldef{F14.retire}{retire f?}
+\figlabeldef{F14.pick_best}{pick best}
+\figlabeldef{F14.notprune}{not pruned}
+\figlabeldef{F14.prune_drop}{drop f}
+\figlabeldef{F14.append_pending}{append child}
+\figlabeldef{F14.pick_run}{select batch}
+\figlabeldef{F14.append_frontier}{append done}
+\figlabeldef{F14.retire_drop}{retire f}
+\figlabeldef{F14.cnt_bump}{bump count}
+\figlabeldef{F14.hist_use}{use history}
+\figlabeldef{F14.hist_append}{append history}
+\figlabeldef{F14.lane.inner}{inner expand loop}
+\figlabeldef{F14.lane.outer}{outer parallel loop}

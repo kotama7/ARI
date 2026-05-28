@@ -185,7 +185,7 @@ def test_template_variables_all_resolve():
         "slurm_partition": wf.get("slurm_partition", "cpu"),
         "keywords": "keyword1 keyword2",
         "experiment_source_file": "/tmp/source.c",
-        "author_name": wf.get("author_name", "Artificial Research Intelligence"),
+        "author_name": wf.get("author_name", "Autonomous Research Infrastructure"),
         "ari_root": "/tmp/ari",
         # vlm_feedback is empty on the first pass; pipeline.py sets it to
         # "" via setdefault so {{vlm_feedback}} resolves to an empty string.

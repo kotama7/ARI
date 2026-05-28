@@ -21,10 +21,10 @@ dial ``base_url``; litellm strips the prefix before calling, so the shim sees
 
 Virtual models (the ``model`` field selects engine + mode)::
 
-    claude-cli            claude -p, tools disabled  -> plain text / JSON
-    claude-cli-agent      claude -p, own tool loop   -> final text only
-    codex-cli             codex exec, read-only      -> plain text / JSON
-    codex-cli-agent       codex exec, full auto      -> final text only
+    claude-cli            claude -p, text + tool_calls -> drives ARI's ReAct loop
+    claude-cli-agent      claude -p, own tool loop     -> final text only
+    codex-cli             codex exec, text + tool_calls-> drives ARI's ReAct loop
+    codex-cli-agent       codex exec, full auto        -> final text only
 
     # append ":<alias>" to pick the underlying model, e.g.
     claude-cli:sonnet     codex-cli-agent:gpt-5-codex
@@ -35,19 +35,28 @@ Endpoints::
     GET  /v1/models             list the virtual models
     GET  /healthz               liveness probe (used by start.sh)
 
+Function calling: the plain modes (``claude-cli`` / ``codex-cli``) accept the
+OpenAI ``tools`` / ``tool_choice`` request fields and return OpenAI
+``tool_calls`` with ``finish_reason="tool_calls"``, so they drive ARI's own
+ReAct tool loop identically to a real OpenAI / Anthropic API key. Because the
+CLIs only emit final text (no native structured tool-use is exposed to the
+caller), the shim injects the tool catalog into the prompt, asks the CLI to
+emit a tool call as a JSON object, and parses that back into OpenAI
+``tool_calls`` (``arguments`` is the JSON-encoded string OpenAI uses). When no
+``tools`` are sent the response is plain text exactly as before (judge / expand
+/ select). The ``-agent`` modes still return only the CLI's final text (the CLI
+runs its *own* tool loop), so they are for whole-task delegation, not ReAct.
+
 IMPORTANT — billing / auth (see also the project docs): the shim shells out to
 the real ``claude`` / ``codex`` binaries, so requests consume tokens against
-whatever auth those CLIs use (subscription login *or* API key). The "agent"
-modes can read/write files and run commands via the CLI's own tool loop; they
-return only the CLI's final text, NOT OpenAI ``tool_calls``, so they cannot
-drive ARI's own ReAct tool loop — use them for whole-task delegation, and use
-the plain modes for judge / expand / select style text generation.
+whatever auth those CLIs use (subscription login *or* API key).
 """
 
 import argparse
 import json
 import logging
 import os
+import re
 import socket
 import subprocess
 import tempfile
@@ -119,30 +128,68 @@ def parse_model(model: str) -> tuple[str, bool, str | None]:
     )
 
 
+def _content_text(content) -> str:
+    """Collapse an OpenAI message ``content`` (str or content-parts) to text."""
+    if isinstance(content, list):
+        return "".join(
+            p.get("text", "") for p in content if isinstance(p, dict)
+        )
+    return str(content or "")
+
+
+def _render_assistant_tool_calls(tool_calls: list[dict]) -> str:
+    """Render prior assistant ``tool_calls`` back into the same JSON protocol
+    the CLI is asked to emit, so the transcript the model sees is consistent
+    with its own earlier actions."""
+    calls = []
+    for tc in tool_calls or []:
+        fn = tc.get("function", {}) or {}
+        raw_args = fn.get("arguments", "")
+        try:
+            args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+        except (json.JSONDecodeError, TypeError):
+            args = raw_args
+        calls.append({"name": fn.get("name", ""), "arguments": args})
+    return json.dumps({"tool_calls": calls}, ensure_ascii=False)
+
+
 def render_prompt(messages: list[dict]) -> tuple[str, str]:
     """Flatten OpenAI ``messages`` into ``(system_text, prompt_text)``.
 
     System messages are concatenated separately so claude can receive them via
     ``--system-prompt``; the remaining turns are rendered as a plain transcript
-    fed to the CLI on stdin.
+    fed to the CLI on stdin. Assistant ``tool_calls`` and ``tool`` results are
+    rendered so a multi-turn ReAct exchange round-trips through the text CLI.
     """
     system_parts: list[str] = []
     turns: list[str] = []
+    # Map a tool_call id -> tool name so tool-result turns can be labelled.
+    id_to_name: dict[str, str] = {}
+    for m in messages or []:
+        for tc in m.get("tool_calls") or []:
+            cid = tc.get("id")
+            name = (tc.get("function", {}) or {}).get("name", "")
+            if cid:
+                id_to_name[cid] = name
     for m in messages or []:
         role = m.get("role", "user")
-        content = m.get("content", "")
-        if isinstance(content, list):
-            # OpenAI content-parts -> concatenate the text parts.
-            content = "".join(
-                p.get("text", "") for p in content if isinstance(p, dict)
-            )
-        content = str(content or "")
+        content = _content_text(m.get("content", ""))
         if role == "system":
             system_parts.append(content)
         elif role == "assistant":
-            turns.append(f"Assistant: {content}")
+            tcs = m.get("tool_calls")
+            if tcs:
+                rendered = _render_assistant_tool_calls(tcs)
+                turns.append(
+                    f"Assistant: {content}\n{rendered}" if content
+                    else f"Assistant: {rendered}"
+                )
+            else:
+                turns.append(f"Assistant: {content}")
         elif role == "tool":
-            turns.append(f"Tool result: {content}")
+            name = id_to_name.get(m.get("tool_call_id", ""), "")
+            label = f"Tool result ({name})" if name else "Tool result"
+            turns.append(f"{label}: {content}")
         else:
             turns.append(f"User: {content}")
     system_text = "\n\n".join(p for p in system_parts if p).strip()
@@ -153,6 +200,144 @@ def render_prompt(messages: list[dict]) -> tuple[str, str]:
     else:
         prompt_text = "\n\n".join(turns).strip()
     return system_text, prompt_text
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Function calling (OpenAI tools <-> text-CLI JSON protocol)
+# ──────────────────────────────────────────────────────────────────────────
+def _render_tool_catalog(tools: list[dict]) -> str:
+    """Render OpenAI ``tools`` into a compact text catalog for the prompt."""
+    lines = ["AVAILABLE TOOLS (call via the JSON protocol below):"]
+    for t in tools or []:
+        fn = t.get("function", t) if isinstance(t, dict) else {}
+        name = fn.get("name", "")
+        if not name:
+            continue
+        desc = (fn.get("description", "") or "").strip()
+        params = fn.get("parameters", {}) or {}
+        lines.append(f"\n- {name}: {desc}".rstrip())
+        lines.append(f"  parameters (JSON Schema): {json.dumps(params, ensure_ascii=False)}")
+    return "\n".join(lines)
+
+
+def _tool_protocol_instructions(tool_choice) -> str:
+    """Instruction block telling the CLI how to emit tool calls as JSON."""
+    forced_name = None
+    if isinstance(tool_choice, dict):
+        forced_name = (tool_choice.get("function") or {}).get("name")
+    must = tool_choice == "required" or forced_name is not None
+    out = [
+        "TOOL-CALL PROTOCOL:",
+        "To call tools, respond with ONLY a single JSON object and NOTHING "
+        "else — no prose, no explanation, no markdown code fences — in exactly "
+        "this shape:",
+        '{"tool_calls": [{"name": "<tool_name>", "arguments": {<args>}}]}',
+        "- `arguments` is a JSON object matching that tool's parameter schema.",
+        "- Include multiple entries to call several tools in one turn.",
+    ]
+    if forced_name:
+        out.append(f"- You MUST call the tool named `{forced_name}` this turn.")
+    elif must:
+        out.append("- You MUST call at least one tool. Do not reply in plain text.")
+    else:
+        out.append(
+            "- If no tool is needed, reply with plain text instead of the JSON object."
+        )
+    return "\n".join(out)
+
+
+def _iter_json_candidates(text: str):
+    """Yield candidate JSON substrings from ``text`` (whole, fenced, first
+    balanced object), most-specific first."""
+    s = (text or "").strip()
+    if not s:
+        return
+    # 1) Fenced code blocks (```json ... ``` or ``` ... ```).
+    for m in re.finditer(r"```(?:json)?\s*(.*?)```", s, re.DOTALL):
+        inner = m.group(1).strip()
+        if inner:
+            yield inner
+    # 2) The whole string.
+    yield s
+    # 3) First balanced {...} object (handles prose around the JSON).
+    start = s.find("{")
+    if start != -1:
+        depth = 0
+        in_str = False
+        esc = False
+        for i in range(start, len(s)):
+            c = s[i]
+            if in_str:
+                if esc:
+                    esc = False
+                elif c == "\\":
+                    esc = True
+                elif c == '"':
+                    in_str = False
+            else:
+                if c == '"':
+                    in_str = True
+                elif c == "{":
+                    depth += 1
+                elif c == "}":
+                    depth -= 1
+                    if depth == 0:
+                        yield s[start:i + 1]
+                        break
+
+
+def _coerce_tool_calls(obj) -> list[dict] | None:
+    """Turn a parsed JSON object into OpenAI ``tool_calls``, or None."""
+    raw: list = []
+    if isinstance(obj, dict) and isinstance(obj.get("tool_calls"), list):
+        raw = obj["tool_calls"]
+    elif isinstance(obj, list):
+        raw = obj
+    elif isinstance(obj, dict) and (obj.get("name") or obj.get("tool")):
+        raw = [obj]
+    else:
+        return None
+    calls: list[dict] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        # Accept {name,arguments}, {tool,arguments}, or nested {function:{...}}.
+        fn = entry.get("function") if isinstance(entry.get("function"), dict) else entry
+        name = fn.get("name") or entry.get("tool") or entry.get("name")
+        if not name:
+            continue
+        args = fn.get("arguments", entry.get("arguments", {}))
+        if isinstance(args, str):
+            # Already a JSON string; keep if it parses, else wrap as-is.
+            try:
+                json.loads(args)
+                args_str = args
+            except (json.JSONDecodeError, TypeError):
+                args_str = json.dumps({"_raw": args}, ensure_ascii=False)
+        else:
+            args_str = json.dumps(args if args is not None else {}, ensure_ascii=False)
+        calls.append({
+            "id": f"call_{uuid.uuid4().hex[:24]}",
+            "type": "function",
+            "function": {"name": str(name), "arguments": args_str},
+        })
+    return calls or None
+
+
+def extract_tool_calls(text: str) -> tuple[list[dict] | None, str]:
+    """Parse a CLI text response into ``(tool_calls, residual_text)``.
+
+    Returns ``(None, text)`` when the response carries no tool-call JSON.
+    """
+    for cand in _iter_json_candidates(text):
+        try:
+            obj = json.loads(cand)
+        except json.JSONDecodeError:
+            continue
+        calls = _coerce_tool_calls(obj)
+        if calls:
+            return calls, ""
+    return None, text
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -171,16 +356,67 @@ def _run(cmd: list[str], stdin_text: str, cwd: str) -> subprocess.CompletedProce
 
 
 def run_claude(
-    system: str, prompt: str, agent: bool, real_model: str | None, cwd: str
+    system: str,
+    prompt: str,
+    agent: bool,
+    real_model: str | None,
+    cwd: str,
+    *,
+    mcp_config: dict | None = None,
+    allowed_mcp_tools: list[str] | None = None,
 ) -> tuple[str, dict]:
-    cmd = [CLAUDE_BIN, "-p", "--output-format", "json"]
+    """Invoke ``claude -p`` and return ``(final_text, usage)``.
+
+    Two operating modes:
+
+    1) **MCP-direct** (preferred for tool-using agent work) — when
+       ``mcp_config`` is supplied, claude is started with
+       ``--mcp-config <tmpfile> --strict-mcp-config --allowedTools "mcp__..."
+       --permission-mode acceptEdits --output-format stream-json
+       --debug-file <cwd>/claude_debug.log``. Claude runs its own tool loop
+       calling ONLY the supplied MCP servers (no native Bash / Write / Edit),
+       and the shim parses the stream-json into ``<cwd>/tool_calls.jsonl`` so
+       the per-turn trace is preserved next to the artifacts the agent
+       writes. This replaces the legacy text-catalog protocol for callers
+       that own MCP servers (i.e. ari-core via LLMClient.mcp_client).
+
+    2) **Plain** — no ``mcp_config``. claude is started with
+       ``--allowedTools ""`` (no native tools, no MCP), used for non-tool
+       phases like select / judge / expand.
+    """
+    mcp_json_file: str | None = None
+    use_mcp = bool(mcp_config and allowed_mcp_tools)
+    debug_log = os.path.join(cwd, "claude_debug.log") if use_mcp else None
+
+    if use_mcp:
+        cmd = [CLAUDE_BIN, "-p", "--output-format", "stream-json", "--verbose"]
+    else:
+        cmd = [CLAUDE_BIN, "-p", "--output-format", "json"]
     if CLAUDE_BARE:
         cmd.append("--bare")
     if real_model:
         cmd += ["--model", real_model]
     if system:
         cmd += ["--system-prompt", system]
-    if agent:
+    if use_mcp:
+        # Materialise the MCP server config as a tmp JSON file in cwd so it
+        # survives for post-mortem inspection alongside tool_calls.jsonl.
+        fh = tempfile.NamedTemporaryFile(
+            "w", suffix=".mcp.json", dir=cwd, delete=False, encoding="utf-8",
+        )
+        try:
+            json.dump(mcp_config, fh)
+        finally:
+            fh.close()
+        mcp_json_file = fh.name
+        cmd += [
+            "--mcp-config", mcp_json_file,
+            "--strict-mcp-config",
+            "--allowedTools", " ".join(allowed_mcp_tools or []),
+            "--permission-mode", CLAUDE_AGENT_PERMISSION,
+            "--debug-file", debug_log,
+        ]
+    elif agent:
         cmd += ["--permission-mode", CLAUDE_AGENT_PERMISSION]
     else:
         # No tools => pure text/JSON generation.
@@ -192,6 +428,13 @@ def run_claude(
         raise RuntimeError(
             f"claude exited {proc.returncode}: {(proc.stderr or proc.stdout)[:500]}"
         )
+
+    if use_mcp:
+        # stream-json: one JSON object per line; the final ``result`` event
+        # carries the assistant's final text + usage + cost. Persist every
+        # event to <cwd>/tool_calls.jsonl for post-hoc audit.
+        return _parse_claude_stream_json(proc.stdout, cwd)
+
     try:
         data = json.loads(proc.stdout)
     except json.JSONDecodeError as e:
@@ -206,11 +449,77 @@ def run_claude(
         + int(u.get("cache_read_input_tokens", 0) or 0)
     )
     completion_tokens = int(u.get("output_tokens", 0) or 0)
+    # claude -p reports the actual subscription / API cost for the call at the
+    # top level; surface it as a non-standard ``cost_usd`` field on the usage
+    # block so ari.cost_tracker can record real dollars (litellm's pricing
+    # table has no entry for the synthetic "claude-cli" model).
+    cost_usd = float(data.get("total_cost_usd", 0.0) or 0.0)
     usage = {
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "total_tokens": prompt_tokens + completion_tokens,
+        "cost_usd": cost_usd,
     }
+    return text, usage
+
+
+def _parse_claude_stream_json(stdout: str, cwd: str) -> tuple[str, dict]:
+    """Parse claude's ``--output-format stream-json`` stdout.
+
+    Behaviour:
+      - Every event is appended verbatim to ``<cwd>/tool_calls.jsonl`` for
+        post-hoc audit (one JSON object per line, claude's native schema).
+      - The trailing ``{"type": "result", ...}`` event carries the final
+        assistant text + token / cost usage; we return those.
+      - If no result event is present (e.g. claude crashed mid-stream), the
+        last assistant text seen is returned with zero usage.
+    """
+    text = ""
+    usage = {
+        "prompt_tokens": 0, "completion_tokens": 0,
+        "total_tokens": 0, "cost_usd": 0.0,
+    }
+    audit_path = os.path.join(cwd, "tool_calls.jsonl")
+    # Open append so multi-turn runs (resume) accumulate rather than truncate.
+    audit_fh = open(audit_path, "a", encoding="utf-8")
+    try:
+        for line in (stdout or "").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                # Pass through non-JSON garbage so a stderr/stdout race is
+                # still inspectable in the audit file.
+                audit_fh.write(line + "\n")
+                continue
+            audit_fh.write(json.dumps(ev, ensure_ascii=False) + "\n")
+            if ev.get("type") == "result":
+                text = ev.get("result", "") or text
+                u = ev.get("usage", {}) or {}
+                prompt_tokens = (
+                    int(u.get("input_tokens", 0) or 0)
+                    + int(u.get("cache_creation_input_tokens", 0) or 0)
+                    + int(u.get("cache_read_input_tokens", 0) or 0)
+                )
+                usage = {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": int(u.get("output_tokens", 0) or 0),
+                    "total_tokens": (
+                        prompt_tokens + int(u.get("output_tokens", 0) or 0)
+                    ),
+                    "cost_usd": float(ev.get("total_cost_usd", 0.0) or 0.0),
+                }
+            elif ev.get("type") == "assistant":
+                # Capture the latest assistant text as a fallback if the
+                # result event is missing.
+                msg = ev.get("message") or {}
+                for block in msg.get("content", []) or []:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        text = block.get("text", text) or text
+    finally:
+        audit_fh.close()
     return text, usage
 
 
@@ -263,6 +572,7 @@ def run_codex(
 
 def _parse_codex_usage(stdout: str) -> dict:
     prompt_tokens = completion_tokens = 0
+    cost_usd = 0.0
     for line in (stdout or "").splitlines():
         line = line.strip()
         if not line:
@@ -280,43 +590,129 @@ def _parse_codex_usage(stdout: str) -> dict:
             completion_tokens = int(
                 tu.get("output_tokens", completion_tokens) or completion_tokens
             )
+        # Forward-compatible: pick up cost if a future codex version reports it.
+        for key in ("total_cost_usd", "cost_usd"):
+            for src in (ev, info):
+                if isinstance(src, dict) and src.get(key) is not None:
+                    try:
+                        cost_usd = float(src[key])
+                    except (TypeError, ValueError):
+                        pass
     return {
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "total_tokens": prompt_tokens + completion_tokens,
+        "cost_usd": cost_usd,
     }
 
 
-def complete(model: str, messages: list[dict]) -> tuple[str, dict]:
-    """Run the selected CLI and return ``(text, usage)``."""
+def complete(
+    model: str,
+    messages: list[dict],
+    tools: list[dict] | None = None,
+    tool_choice=None,
+    *,
+    mcp_config: dict | None = None,
+    allowed_mcp_tools: list[str] | None = None,
+    work_dir: str | None = None,
+) -> tuple[str, list[dict] | None, dict]:
+    """Run the selected CLI and return ``(text, tool_calls, usage)``.
+
+    Tool plumbing has two paths:
+
+    - **MCP-direct** (when ``mcp_config`` + ``allowed_mcp_tools`` are
+      supplied, claude engine only): claude spawns the supplied MCP servers
+      itself and runs its own internal tool loop. The text-catalog hack is
+      bypassed entirely; the final assistant text is returned, and any
+      ``emit_results``-style tool call the caller still wants is expected
+      to come through MCP (not parsed out of text).
+
+    - **Text-catalog** (legacy, retained for codex and for callers that
+      don't own MCP servers): tool catalog + JSON protocol are injected
+      into the system prompt and the CLI's text reply is parsed back into
+      OpenAI ``tool_calls`` — making the shim drive ARI's ReAct loop
+      exactly like a real OpenAI / Anthropic backend.
+
+    ``tool_choice == "none"`` disables tool calling (plain text reply).
+
+    When ``work_dir`` is supplied it is used as the subprocess cwd (and is
+    NOT rmtree'd on exit), so the agent's debug log / artifacts land in the
+    caller's node directory. Without it, behaviour is preserved: ``SHIM_CWD``
+    is used if set, else a throwaway temp dir that is removed on completion.
+    """
     engine, agent, real_model = parse_model(model)
     system, prompt = render_prompt(messages)
+
+    use_mcp = bool(mcp_config and allowed_mcp_tools and engine == "claude")
+    # text-catalog still applies for: (a) codex engine, (b) claude without
+    # mcp_config, (c) the legacy plain claude-cli mode when caller has tools
+    # but no MCP wiring. claude-cli-agent without mcp_config keeps existing
+    # behaviour (runs its OWN bash/edit — preserved for back-compat).
+    use_text_catalog = (
+        bool(tools) and not agent and not use_mcp and tool_choice != "none"
+    )
+    if use_text_catalog:
+        catalog = _render_tool_catalog(tools)
+        instr = _tool_protocol_instructions(tool_choice)
+        tool_block = f"{catalog}\n\n{instr}"
+        system = f"{system}\n\n{tool_block}".strip() if system else tool_block
+
     if not prompt and not system:
         raise ShimError("no prompt content in messages")
 
-    # Resolve the working directory (throwaway temp dir unless configured).
+    # Resolve the working directory. Priority: explicit per-request work_dir
+    # > server-wide SHIM_CWD > throwaway tmp dir. Per-request cwd is NOT
+    # cleaned up — its whole point is to persist agent artifacts.
     tmp_cwd = None
-    cwd = SHIM_CWD
+    cwd = work_dir or SHIM_CWD
     if not cwd:
         tmp_cwd = tempfile.mkdtemp(prefix="ari-cli-shim-")
         cwd = tmp_cwd
+    else:
+        os.makedirs(cwd, exist_ok=True)
+        if use_mcp:
+            log.info(
+                "shim MCP-direct cwd=%s tools=%d debug=%s/claude_debug.log",
+                cwd, len(allowed_mcp_tools or []), cwd,
+            )
     with _slots:
         try:
             if engine == "claude":
-                return run_claude(system, prompt, agent, real_model, cwd)
-            return run_codex(system, prompt, agent, real_model, cwd)
+                text, usage = run_claude(
+                    system, prompt, agent, real_model, cwd,
+                    mcp_config=mcp_config if use_mcp else None,
+                    allowed_mcp_tools=allowed_mcp_tools if use_mcp else None,
+                )
+            else:
+                text, usage = run_codex(system, prompt, agent, real_model, cwd)
         finally:
             if tmp_cwd:
-                # Leave agent artifacts only if the caller pinned a cwd; the
-                # throwaway dir is removed best-effort.
+                # Throwaway dir only — caller didn't pin work_dir.
                 import shutil
                 shutil.rmtree(tmp_cwd, ignore_errors=True)
+
+    tool_calls = None
+    if use_text_catalog:
+        tool_calls, residual = extract_tool_calls(text)
+        if tool_calls is not None:
+            text = residual  # OpenAI sends content=null alongside tool_calls
+    # MCP-direct: claude's internal loop handles tool calls itself; the
+    # outer caller sees only the final text. tool_calls stays None.
+    return text, tool_calls, usage
 
 
 # ──────────────────────────────────────────────────────────────────────────
 # OpenAI response envelopes
 # ──────────────────────────────────────────────────────────────────────────
-def _completion_envelope(model: str, text: str, usage: dict) -> dict:
+def _completion_envelope(
+    model: str, text: str, usage: dict, tool_calls: list[dict] | None = None
+) -> dict:
+    message: dict = {"role": "assistant", "content": text or None}
+    finish = "stop"
+    if tool_calls:
+        message["tool_calls"] = tool_calls
+        message["content"] = text or None
+        finish = "tool_calls"
     return {
         "id": f"chatcmpl-{uuid.uuid4().hex}",
         "object": "chat.completion",
@@ -325,8 +721,8 @@ def _completion_envelope(model: str, text: str, usage: dict) -> dict:
         "choices": [
             {
                 "index": 0,
-                "message": {"role": "assistant", "content": text},
-                "finish_reason": "stop",
+                "message": message,
+                "finish_reason": finish,
             }
         ],
         "usage": usage,
@@ -402,10 +798,26 @@ class _Handler(BaseHTTPRequestHandler):
 
         model = req.get("model", "")
         messages = req.get("messages", [])
+        tools = req.get("tools")
+        tool_choice = req.get("tool_choice")
         stream = bool(req.get("stream", False))
+        # litellm's openai-compatible handler passes ``extra_body`` fields as
+        # top-level keys on the request body. Accept either form so other
+        # clients that DO nest under ``extra_body`` also work.
+        eb = req.get("extra_body") or {}
+        mcp_config = req.get("mcp_config") or eb.get("mcp_config")
+        allowed_mcp_tools = (
+            req.get("allowed_mcp_tools") or eb.get("allowed_mcp_tools")
+        )
+        work_dir = req.get("work_dir") or eb.get("work_dir")
 
         try:
-            text, usage = complete(model, messages)
+            text, tool_calls, usage = complete(
+                model, messages, tools, tool_choice,
+                mcp_config=mcp_config,
+                allowed_mcp_tools=allowed_mcp_tools,
+                work_dir=work_dir,
+            )
         except ShimError as e:
             self._send_error(400, str(e))
             return
@@ -418,12 +830,33 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         if not stream:
-            self._send_json(200, _completion_envelope(model, text, usage))
+            self._send_json(
+                200, _completion_envelope(model, text, usage, tool_calls)
+            )
             return
 
         # Single-chunk SSE: clients that require stream=true still work; we
         # don't get token-level streaming from the JSON output format.
         cid = f"chatcmpl-{uuid.uuid4().hex}"
+        if tool_calls:
+            # OpenAI streams tool_calls as deltas carrying an ``index``.
+            first_delta: dict = {
+                "role": "assistant",
+                "content": text or None,
+                "tool_calls": [
+                    {
+                        "index": i,
+                        "id": tc["id"],
+                        "type": tc["type"],
+                        "function": tc["function"],
+                    }
+                    for i, tc in enumerate(tool_calls)
+                ],
+            }
+            finish = "tool_calls"
+        else:
+            first_delta = {"role": "assistant", "content": text}
+            finish = "stop"
         # SSE body has no Content-Length; under HTTP/1.1 the client would
         # block waiting for more data. Delimit the body by EOF: close the
         # connection after the final event.
@@ -434,8 +867,8 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Connection", "close")
         self.end_headers()
         for piece in (
-            _chunk(model, cid, {"role": "assistant", "content": text}, None),
-            _chunk(model, cid, {}, "stop"),
+            _chunk(model, cid, first_delta, None),
+            _chunk(model, cid, {}, finish),
             "data: [DONE]\n\n",
         ):
             self.wfile.write(piece.encode("utf-8"))

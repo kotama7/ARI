@@ -32,10 +32,10 @@ PY   := $(VENV)/bin/python
         pdf-en pdf-ja pdf-zh \
         html-en html-ja html-zh \
         figures tables \
-        check-i18n check-glossary check-code-refs check-bib check-bib-strict \
+        check-i18n check-glossary check-bib check-bib-strict \
         check-tikz check-figures check-figures-render check-toc \
-        translate-changed translate-all pull-pdfs \
-        venv
+        check-prompt-snapshots snapshot-prompts \
+        pull-pdfs venv
 
 all: check-all pdf-all html-all
 
@@ -114,16 +114,13 @@ tables: venv
 	$(PY) $(SCRIPTS)/build_tables.py
 
 # ------------------------------------------------------------------ checks
-check-all: check-i18n check-glossary check-code-refs check-bib check-tikz check-figures check-toc
+check-all: check-i18n check-glossary check-bib check-tikz check-figures check-toc check-prompt-snapshots
 
 check-i18n: venv
 	$(PY) $(SCRIPTS)/check_i18n.py
 
 check-glossary: venv
 	$(PY) $(SCRIPTS)/check_glossary.py
-
-check-code-refs: venv
-	$(PY) $(SCRIPTS)/check_code_refs.py --root $(REPO_ROOT)
 
 check-bib: venv
 	$(PY) $(SCRIPTS)/check_bib.py
@@ -143,14 +140,14 @@ check-figures-render: venv
 check-toc: venv
 	$(PY) $(SCRIPTS)/check_toc_consistency.py
 
-# ------------------------------------------------------------------ translate
-translate-all: venv
-	$(PY) $(SCRIPTS)/translate.py --target ja --all
-	$(PY) $(SCRIPTS)/translate.py --target zh --all
+check-prompt-snapshots: venv
+	$(PY) $(SCRIPTS)/check_prompt_snapshots.py --root $(REPO_ROOT)
 
-translate-changed: venv
-	$(PY) $(SCRIPTS)/translate.py --target ja --changed
-	$(PY) $(SCRIPTS)/translate.py --target zh --changed
+# ------------------------------------------------------------------ snapshot prompts
+# Refresh shared/appendix/prompts/ from ari-core/ari/prompts/**/*.md.
+# Each output file carries a `% snapshot-from: ...@<sha256> @ commit <git>` header.
+snapshot-prompts: venv
+	$(PY) $(SCRIPTS)/snapshot_prompts.py --root $(REPO_ROOT)
 
 # ------------------------------------------------------------------ pdfs of references
 pull-pdfs: venv

@@ -73,7 +73,7 @@ _ALLOWED_EXACT = {"ari.public"}
 # test ensures NEW violations are caught (the lineno-pinned waiver
 # means a moved offender still surfaces).
 _GRANDFATHERED: dict[str, set[int]] = {
-    "ari-skill-coding/src/server.py": {516, 527},
+    "ari-skill-coding/src/server.py": {521, 532},
     "ari-skill-coding/tests/test_server.py": {106},
     "ari-skill-evaluator/src/server.py": {13},
     "ari-skill-hpc/src/slurm.py": {208},

@@ -1,0 +1,88 @@
+id: ahr
+version: "2026"
+venue: American Historical Review (AHR) / Past & Present / J. of Modern History
+domain: History (Humanities)
+
+params:
+  num_reflections: 5
+  num_fs_examples: 0
+  num_reviews_ensemble: 1
+  temperature: 0.75
+  score_threshold_decision: 4
+  fewshot_mode: static
+  fewshot_dir: ""
+
+score_dimensions:
+  - name: originality_of_argument
+    scale: [1, 5]
+    description: >-
+      Novelty and significance of the historical argument or
+      interpretation relative to existing scholarship. 5=substantially
+      revises the field's understanding, 1=adds little to known accounts.
+  - name: source_quality
+    scale: [1, 5]
+    description: >-
+      Breadth, depth, and appropriateness of primary sources (archival,
+      manuscript, oral, material, or printed) for the argument advanced.
+  - name: historiographical_engagement
+    scale: [1, 5]
+    description: >-
+      Engagement with relevant historiography — how well the article
+      situates itself in, and intervenes in, the existing literature.
+  - name: analytical_depth
+    scale: [1, 5]
+    description: >-
+      Quality of interpretive analysis — how the evidence is read,
+      contextualised, and connected to the argument (vs. mere narrative).
+  - name: methodological_transparency
+    scale: [1, 5]
+    description: >-
+      Clarity about source selection, archival access, translation
+      choices, and analytic methods.
+  - name: writing
+    scale: [1, 5]
+    description: >-
+      Prose quality, narrative organisation, and accessibility to the
+      journal's broad historian readership.
+  - name: overall
+    scale: [1, 5]
+    description: Overall recommendation.
+  - name: confidence
+    scale: [1, 5]
+    description: Reviewer confidence in the area and sources.
+
+text_sections:
+  - { name: article_summary, required: true }
+  - { name: argument_assessment, required: true }
+  - { name: source_and_evidence_assessment, required: true }
+  - { name: historiographical_position, required: true }
+  - { name: strengths, required: true }
+  - { name: weaknesses, required: true }
+  - { name: required_revisions, required: true }
+  - { name: suggested_revisions, required: false }
+  - { name: questions_for_author, required: false }
+
+decision:
+  type: categorical
+  options: [accept, minor_revision, major_revision, reject_and_resubmit, reject]
+  threshold_dimension: overall
+  threshold_value: 4
+
+prompt_overrides:
+  system_hint: >-
+    Follow AHR / Past & Present / Journal of Modern History reviewer
+    norms. Historical scholarship is judged on (i) the originality and
+    significance of the argument, (ii) the quality of primary sources
+    deployed, and (iii) engagement with existing historiography — not
+    on hypothesis tests, reproducibility scripts, or statistical
+    significance. Do not impose STEM-style reproducibility criteria;
+    evaluate methodological transparency instead (source selection,
+    archival access, translation choices). Reject calls for
+    "experiments" or "code" — they are inapplicable.
+  author_hint: >-
+    Write for an AHR-style readership: open with the historical
+    question and argument, situate the intervention in the relevant
+    historiography, and ground the analysis in primary sources. Be
+    transparent about archival access, source selection, and
+    translation choices, but do not pretend to STEM-style
+    reproducibility.

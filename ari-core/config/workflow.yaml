@@ -12,7 +12,7 @@ resources:
   cpus: 48
   timeout_minutes: 60
   executor: slurm
-author_name: Artificial Research Intelligence
+author_name: Autonomous Research Infrastructure
 plan_promote: index_only
 lineage_decision:
   mode: stagnation_rule

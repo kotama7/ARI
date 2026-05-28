@@ -1,0 +1,84 @@
+id: pmla
+version: "2026"
+venue: PMLA / Critical Inquiry / New Literary History
+domain: Literary & Cultural Studies (Humanities)
+
+params:
+  num_reflections: 5
+  num_fs_examples: 0
+  num_reviews_ensemble: 1
+  temperature: 0.8
+  score_threshold_decision: 4
+  fewshot_mode: static
+  fewshot_dir: ""
+
+score_dimensions:
+  - name: originality_of_interpretation
+    scale: [1, 5]
+    description: >-
+      Novelty and depth of the critical reading or interpretive claim
+      about the text(s), author, period, or cultural object.
+  - name: theoretical_framing
+    scale: [1, 5]
+    description: >-
+      Sophistication and aptness of the theoretical / critical framework
+      deployed (literary theory, cultural studies, history of ideas).
+  - name: textual_evidence
+    scale: [1, 5]
+    description: >-
+      Quality of close reading and use of primary textual / archival
+      evidence to support the interpretation.
+  - name: scholarly_engagement
+    scale: [1, 5]
+    description: >-
+      Engagement with relevant criticism, scholarship, and
+      historiography of the field.
+  - name: significance
+    scale: [1, 5]
+    description: >-
+      Contribution to the field's ongoing conversation — how far the
+      reading reshapes how the object is understood.
+  - name: writing_and_style
+    scale: [1, 5]
+    description: >-
+      Quality of prose, voice, and rhetorical organisation — the MLA
+      tradition takes writing as a first-class evaluation criterion.
+  - name: overall
+    scale: [1, 5]
+    description: Overall recommendation.
+  - name: confidence
+    scale: [1, 5]
+    description: Reviewer confidence in the period / subfield.
+
+text_sections:
+  - { name: essay_summary, required: true }
+  - { name: argument_reconstruction, required: true }
+  - { name: strengths, required: true }
+  - { name: weaknesses, required: true }
+  - { name: textual_and_evidentiary_assessment, required: true }
+  - { name: required_revisions, required: true }
+  - { name: suggested_revisions, required: false }
+  - { name: questions_for_author, required: false }
+
+decision:
+  type: categorical
+  options: [accept, minor_revision, major_revision, reject_and_resubmit, reject]
+  threshold_dimension: overall
+  threshold_value: 4
+
+prompt_overrides:
+  system_hint: >-
+    Follow PMLA / Critical Inquiry / NLH reviewer norms. Literary and
+    cultural-studies essays are judged on (i) originality of
+    interpretation, (ii) theoretical sophistication, (iii) quality of
+    close reading and textual evidence, and (iv) prose. Do NOT apply
+    STEM evaluation criteria — there are no experiments, hypotheses,
+    reproducibility scripts, or statistical tests to demand. Reviewer
+    style is essayistic: reconstruct the argument fully before
+    critiquing, and treat writing quality as substantive, not cosmetic.
+  author_hint: >-
+    Write in the MLA / Critical Inquiry register: open with the
+    interpretive question and stake, develop the reading through close
+    engagement with the primary text(s), make the theoretical framing
+    explicit, and engage relevant criticism throughout. Prose quality
+    is part of the contribution, not separate from it.
