@@ -1,3 +1,12 @@
+---
+sources:
+  - path: ari-core/ari/public
+    role: implementation
+  - path: ari-core/tests/test_public_api_boundary.py
+    role: test
+last_verified: 2026-05-26
+---
+
 # `ari.public` — Stable API for skills
 
 `ari.public` is the **only** module surface that `ari-skill-*`
@@ -106,6 +115,31 @@ nodes_json = paths.checkpoint / "nodes_tree.json"
 directly from a skill.  Source: `ari-core/ari/paths.py` →
 `ari-core/ari/public/paths.py`.
 
+## Putting it together — a minimal skill
+
+A skill that uses only `ari.public.*`: bootstrap cost tracking, resolve a
+checkpoint-scoped path, and make a cost-tracked LLM call.
+
+```python
+from ari.public import cost_tracker
+from ari.public.paths import PathManager
+from ari.public.llm import LLMClient
+
+# 1. Tag every LLM call this skill makes (reads ARI_CHECKPOINT_DIR).
+cost_tracker.bootstrap_skill("ari-skill-example", phase="bfts")
+
+# 2. Resolve paths through PathManager — never read ARI_CHECKPOINT_DIR directly.
+paths = PathManager.from_env()
+nodes_json = paths.checkpoint / "nodes_tree.json"
+
+# 3. LLM call goes through ARI's wrapper, so the cost is recorded automatically.
+client = LLMClient(model="ollama/qwen3:32b")
+resp = await client.complete([{"role": "user", "content": "Summarise: ..."}])
+```
+
+The call's tokens and USD cost land in the checkpoint's `cost_trace.jsonl`
+tagged with the skill name and phase — no manual `record()` needed.
+
 ## Stability guarantees
 
 - **MAJOR (SemVer)** — symbols, signatures, and behaviour can break.
@@ -122,8 +156,8 @@ internal-import boundaries through the public layer.
 
 - `ari-core/ari/public/__init__.py` — module-level docstring with
   the canonical sub-module list.
-- `docs/extension_guide.md` — how to write a new skill that depends
+- `docs/guides/extension_guide.md` — how to write a new skill that depends
   only on `ari.public`.
 - `CONTRIBUTING.md::Software-engineering discipline §3` — public-API
   rule (skills only see `ari.public.*`).
-- `docs/refactor_audit.md` (§4) — historical Phase 4 inventory.
+- `docs/_archive/refactor_audit.md` (§4) — historical Phase 4 inventory.

@@ -1,0 +1,28 @@
+# Guard: per-directory README `## Contents` indexes stay in sync with the tree.
+#
+# Each in-scope directory's README lists every file/subdir beneath it so that
+# adding or removing a file shows up as a README diff. This job fails if a
+# managed README drifts from the filesystem. Fix locally with:
+#   python scripts/readme_sync.py --write   # regenerate; new files get a TODO to fill by hand
+#
+# Pure-stdlib, no dependencies, no LLM/API. --check compares PATH structure
+# only (not descriptions), so adding a file fails CI until its README lists it.
+
+name: readme-sync
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  contents-in-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Check README Contents indexes are in sync
+        run: python scripts/readme_sync.py --check

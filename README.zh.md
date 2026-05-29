@@ -1,15 +1,15 @@
 <div align="center">
   <img src="docs/logo.png" alt="ARI Logo" width="200"/>
 
-  # ARI — Artificial Research Intelligence
+  # ARI — Autonomous Research Infrastructure
 
   **通用研究自动化系统。从笔记本到超级计算机。从本地模型到云端 API。从新手到专家。从计算实验到物理世界。**
 
-  [![Tests](https://img.shields.io/badge/tests-2200%2B-brightgreen)](./ari-core)
-  [![Version](https://img.shields.io/badge/version-v0.7.3-orange)](https://github.com/kotama7/ARI/releases)
+  [![Tests](https://img.shields.io/badge/tests-2200%2B-brightgreen)](ari-core)
+  [![Version](https://img.shields.io/badge/version-v0.8.0-orange)](https://github.com/kotama7/ARI/releases)
   [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
   [![MCP](https://img.shields.io/badge/protocol-MCP-purple)](https://modelcontextprotocol.io)
-  [![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
+  [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
   [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/SbMzNtYkq)
 
   **语言:** [English](README.md) · [日本語](README.ja.md) · **中文**
@@ -39,33 +39,67 @@ ARI 围绕一个原则设计：**用 Markdown 描述目标 — 其余的交给 A
 
 ---
 
+## v0.8.0 新功能（2026-05-21）
+
+- **PaperBench 三阶段桥接契约** — `rollout_submission` →
+  `reproduce_submission` → `judge_submission` 三个仅关键字异步可调用对象，
+  以统一的调用词汇暴露 PaperBench 上游的
+  Agent Rollout → Reproduction → Grading 协议。可通过
+  `scripts/sc_paper_dogfood.py --with-rollout / --with-reproduction`
+  在自测中驱动。
+- **`container_image` 端到端贯通** — 同一个字段从向导 → API worker →
+  MCP 工具 → 沙盒运行器一路传递；`pb-env` / `pb-reproducer` 短别名
+  通过 `scripts/build_pb_images.sh` 解析为对应的 `image:latest` 标签。
+- **失败时立即报错的前置检查** — 沙盒 / GPU 不匹配的四处原本静默
+  降级到主机 CPU 的位置，现在默认抛出可操作的 `RuntimeError`；
+  兼容回退路径通过 `ARI_PHASE1_ALLOW_FALLBACK=1` 与
+  `ARI_SLURM_ALLOW_NO_GRES=1` 显式启用。
+- **PaperBench env-truth 护栏** — Stage 1 提示加入
+  「先 probe 再 scaffold」「对抗语言选择的 Python 偏置」
+  「按主机实测注入 `ADDITIONAL NOTES`（二进制 / GPU / 网络 / 第二阶段隔离）」
+  等约束。
+- **可配置的 BFTS 评估层** — `default.yaml` 现可在 4 个评估面切换：
+  `evaluator.composite` ／ `evaluator.axis_mode` ／
+  `bfts.frontier_score` ／ `bfts.select_prompt` 与
+  `bfts.expand_select_prompt`。默认值与既有行为完全一致；详情见
+  `docs/zh/reference/configuration.md` 的「BFTS 评估层」一节。
+- **新增 7 套审稿评分准则（reviewer rubric）** — `aer`、`ahr`、`apsr`、
+  `econometrica`、`philreview`、`pmla`、`qje` 已随仓库一同分发于
+  `ari-core/config/reviewer_rubrics/`。
+- **第 4 步「再现包生成器」撤回** — 此前在 SC24 论文上声称的 0.857
+  分被撤回；合规路径是上述桥接契约驱动的真实 Stage 1（代理执行）+
+  Stage 2（容器执行）。
+
+完整发行说明见 [CHANGELOG.md](CHANGELOG.md#v080--paperbench-env-truth--bridge-contract--bfts-configurable-evaluation-2026-05-21)。
+
+---
+
 ## 实际效果
 
 <p align="center">
-  <video src="https://github.com/kotama7/ARI/raw/main/docs/movie/zh/ari_dashboard_demo.mp4" controls width="720" muted playsinline>
+  <video src="https://github.com/kotama7/ARI/raw/main/docs/assets/movie/zh/ari_dashboard_demo.mp4" controls width="720" muted playsinline>
     您的浏览器不支持内联视频。<a href="docs/movie/zh/ari_dashboard_demo.mp4">点击此处下载演示</a>。
   </video>
 </p>
 
-🎬 **仪表板演示视频** — ARI Web 仪表板的完整演示。也提供 [English](docs/movie/en/ari_dashboard_demo.mp4) · [日本語](docs/movie/ja/ari_dashboard_demo.mp4)。
+🎬 **仪表板演示视频** — ARI Web 仪表板的完整演示。也提供 [English](docs/assets/movie/en/ari_dashboard_demo.mp4) · [日本語](docs/assets/movie/ja/ari_dashboard_demo.mp4)。
 
-📄 **[示例输出论文 (PDF)](docs/sample_paper.pdf)** — 由 ARI 完全自主生成的真实论文，包含图表、引用和可复现性验证报告。主要数据请参阅[已验证的结果](#已验证的结果)。
+📄 **[示例输出论文 (PDF)](docs/assets/sample_paper.pdf)** — 由 ARI 在富士通 A64FX/SVE-512 平台上完全自主生成的 10 页真实论文（Stratum-Roofline CSR-SpMM 研究），包含图表、引用和可复现性验证报告。主要数据请参阅[已验证的结果](#已验证的结果)。
 
 <details>
-<summary><b>📖 点击展开论文（滚动浏览全部 11 页）</b></summary>
+<summary><b>📖 点击展开论文（滚动浏览全部 10 页）</b></summary>
 
 <p align="center">
-  <img src="docs/images/sample_paper/page-01.png" alt="示例论文 — 第 1 页" width="720"/>
-  <img src="docs/images/sample_paper/page-02.png" alt="示例论文 — 第 2 页" width="720"/>
-  <img src="docs/images/sample_paper/page-03.png" alt="示例论文 — 第 3 页" width="720"/>
-  <img src="docs/images/sample_paper/page-04.png" alt="示例论文 — 第 4 页" width="720"/>
-  <img src="docs/images/sample_paper/page-05.png" alt="示例论文 — 第 5 页" width="720"/>
-  <img src="docs/images/sample_paper/page-06.png" alt="示例论文 — 第 6 页" width="720"/>
-  <img src="docs/images/sample_paper/page-07.png" alt="示例论文 — 第 7 页" width="720"/>
-  <img src="docs/images/sample_paper/page-08.png" alt="示例论文 — 第 8 页" width="720"/>
-  <img src="docs/images/sample_paper/page-09.png" alt="示例论文 — 第 9 页" width="720"/>
-  <img src="docs/images/sample_paper/page-10.png" alt="示例论文 — 第 10 页" width="720"/>
-  <img src="docs/images/sample_paper/page-11.png" alt="示例论文 — 第 11 页" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-01.png" alt="示例论文 — 第 1 页" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-02.png" alt="示例论文 — 第 2 页" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-03.png" alt="示例论文 — 第 3 页" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-04.png" alt="示例论文 — 第 4 页" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-05.png" alt="示例论文 — 第 5 页" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-06.png" alt="示例论文 — 第 6 页" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-07.png" alt="示例论文 — 第 7 页" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-08.png" alt="示例论文 — 第 8 页" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-09.png" alt="示例论文 — 第 9 页" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-10.png" alt="示例论文 — 第 10 页" width="720"/>
 </p>
 
 </details>
@@ -127,9 +161,10 @@ bash setup.sh
 ollama pull qwen3:8b                          # 免费、本地
 export ARI_BACKEND=openai OPENAI_API_KEY=sk-… # 或云端 API
 
-# 3. 启动仪表板
-ari viz ./checkpoints/ --port 8765
+# 3. 启动所有服务（Letta + ari-registry + GUI 在 :8765）
+./start.sh
 # 打开 http://localhost:8765 → 使用实验向导创建并启动实验
+# 停止：./shutdown.sh
 ```
 
 或直接通过 CLI 运行：
@@ -138,7 +173,7 @@ ari run experiment.md                 # 运行实验
 ari run experiment.md --profile hpc   # 使用 SLURM 集群
 ```
 
-完整的仪表板演练请参阅 **[docs/zh/quickstart.md](docs/zh/quickstart.md)**，CLI 命令请参阅 **[docs/zh/cli_reference.md](docs/zh/cli_reference.md)**。
+完整的仪表板演练请参阅 **[docs/zh/getting-started/quickstart.md](docs/zh/getting-started/quickstart.md)**，CLI 命令请参阅 **[docs/zh/reference/cli_reference.md](docs/zh/reference/cli_reference.md)**。
 
 ---
 
@@ -177,7 +212,10 @@ gmx mdrun -v -deffnm simulation -ntmpi 32
 用于可视化实验管理的 10 页 React/TypeScript SPA。启动方式：
 
 ```bash
-ari viz ./checkpoints/ --port 8765   # http://localhost:8765
+./start.sh             # 在 http://localhost:8765 一并启动 Letta + ari-registry + GUI
+./start.sh gui         # 仅（重新）启动 GUI
+./start.sh status      # 查看正在运行的服务
+./shutdown.sh          # 全部停止（一并回收 apptainer 孤儿进程）
 ```
 
 | 页面 | 功能 |
@@ -302,29 +340,30 @@ v0.6.0 移除了两个技能：`ari-skill-figure-router` 被合并进 `ari-skill
 | P2 | 尽可能确定性 | MCP 工具默认是确定性的；使用 LLM 的工具明确标注。*v0.6.0 起 `ari-skill-memory` 采用 Letta 嵌入检索，此规则对该技能放宽。* |
 | P3 | 多目标指标 | 没有硬编码的标量评分 |
 | P4 | 依赖注入 | 切换实验 = 仅编辑 `.md` |
-| P5 | 可复现性优先 | 论文用规格而非集群名称描述硬件。*Letta 后端下 BFTS 轨迹可能在重新运行时不同，但数值结果仍可复现。* 详见 `docs/PHILOSOPHY.md`。 |
+| P5 | 可复现性优先 | 论文用规格而非集群名称描述硬件。*Letta 后端下 BFTS 轨迹可能在重新运行时不同，但数值结果仍可复现。* 详见 `docs/concepts/PHILOSOPHY.md`。 |
 
 ---
 
 ## 已验证的结果
 
-ARI 在多核 CPU 上对 **CSR SpMM**（稀疏矩阵与稠密矩阵乘积）进行了端到端的自主研究，包括设计、实现、运行和论文撰写。完整论文（含方法、算法、图表和参考文献）可在 [`docs/sample_paper.pdf`](docs/sample_paper.pdf) 中查看。
+ARI 在富士通 A64FX/SVE-512 CPU 上对 **CSR-SpMM**（稀疏矩阵与稠密矩阵乘积）进行了端到端的自主研究，包括设计、实现、运行和论文撰写。完整论文（含方法、算法、图表和参考文献）可在 [`docs/assets/sample_paper.pdf`](docs/assets/sample_paper.pdf) 中查看。
 
-> **Stoch-Loopline: Burstiness- and Tail-Latency-Aware Loopline Modeling for Robust Multi-Core CPU CSR SpMM Scaling**
+> **A Stratum-Roofline CSR-SpMM Implementation for CPUs: Sustaining High Performance Across Variable Right-Hand-Side Widths on A64FX/SVE-512**
 
-| 配置 | GFLOP/s | 有效带宽 |
+| 配置 | 吞吐量 | 有效带宽 |
 |---|---|---|
-| K 分块 CSR SpMM（峰值吞吐量） | 23.82 | 58.30 GB/s |
-| 验证扫描（峰值，*N* = 16，32 线程） | **26.22** | **65.55 GB/s** |
-| 最高测量带宽（root 扫描） | 17.17 | **105.18 GB/s** |
-| 软件预取增益（按宽度平均） | **+3.53** | **+8.18 GB/s** |
+| 预取+平铺核函数 (NB=16, PFD=4) 在 *N* ∈ {1, 2, 4, 8, 16} 上持续达到 | **57.8–59.9** GFlops/s | — |
+| 参考核函数峰值 (*N* = 128) | 79.995 GFlops/s | **167.5 GB/s** |
+| 带状 Stratum-Roofline 预测 vs 实测 (*N* = 128) | **81.55** GFlops/s（完全一致） | 135.88 GB/s |
+| 小 *N* 鲁棒性增益 (*N* = 1，平铺+预取 vs 参考) | **15.6×** | — |
+| SIMD 消融实验减速 (`-fno-tree-vectorize`，*N* = 128) | **4.18×** (80.33 → 22.0) | — |
 
-**硬件:** `fx700` 多核 CPU 节点，OpenMP，32 线程。合成 CSR 矩阵最大规模 *M* = *K* = 200,000（约 3.2M 非零元素），行长分布包含 uniform 与 Zipf，稠密宽度 *N* ∈ {4, 8, 16, 32, 64, 128}。
+**硬件:** 富士通 `fx700` 计算节点（A64FX、SVE-512），48 OpenMP 线程，FP32。GCC 8.5.0，使用 `-O3 -march=armv8.2-a+sve -fopenmp -ffast-math -ftree-vectorize -funroll-loops`。带状/偏斜幂律合成 CSR 矩阵（*M* = *N* = 400,000，nnz = 12.8M），以及紧凑扫描矩阵（*M* = *K* = 120,000，nnz/行 = 32）。RHS 宽度 *N* ∈ {1, 2, 4, 8, 16, 32, 64, 96, 128, 192, 256}，线程扫描 *T* ∈ {1, …, 48}，平铺宽度扫描 NB ∈ {8, 16, 32}，PFD ∈ {0, 4}。
 
-**ARI 自主完成的工作：** Stoch-Loopline 建模框架、两种 CSR×dense 核函数实现（行并行 gather 与 rows-in-flight）以及显式的循环展开/窗口参数、K 分块 / N 平铺 + 打包 / scalar / no-AVX 消融实验、实验扫描、图表、参考文献和可复现性验证 — 全部由 ARI 端到端自主生成，无需人工干预。
+**ARI 自主完成的工作：** Stratum-Roofline 建模框架（FMA 峰值 1869.66 GFlops/s + HBM 上限 235.42 GB/s + 每线程 STREAM-triad 20.91 GB/s 校准、四层行 stratum 分解）、四种核函数实现（`spmm_csr` 参考、`spmm_csr_pf` 预取、`spmm_csr_tiled` NB 平铺、`spmm_novec` SIMD 消融）、Algorithm 1（NB 平铺软件预取 CSR-SpMM）、*N* / 线程 / 平铺宽度 / PFD 扫描、Xeon Gold 6142 登录节点备用运行、图表、参考文献以及可复现性验证（5 次重复、4 个随机种子、最大绝对误差 0.0、CV ≤ 1.02%）— 全部由 ARI 端到端自主生成，无需人工干预。
 
 ---
 
 ## 许可证
 
-MIT。请参阅 [LICENSE](./LICENSE)。
+MIT。请参阅 [LICENSE](LICENSE)。

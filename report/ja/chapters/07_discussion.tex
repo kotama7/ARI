@@ -1,7 +1,3 @@
-% translated-from: en/chapters/07_discussion.tex@515637e411966d1c3d6a89d9d3dc8da2e6a40901bc5e5ea97788942b433cce68
-% glossary:        5bca8d57a70f021e20c0af79aa06cd21013495c1a8246887ae889cd8a056f5fd
-% model:           claude-opus-4-7
-
 \section{議論と限界}\label{sec:discussion}
 
 \subsection{決定性 vs 新規性}\label{sec:discussion:p2}
@@ -19,11 +15,11 @@ P2、決定性原則は本システムの拘束的制約である。P2 を厳密
 
 \subsection{スケーリング限界}\label{sec:discussion:scaling}
 
-BFTS スケジューラの基盤にある単一マシン仮定は最大のスケーリング
-制約である。$\bbranch>10$ の並列拡張を望む実行には別のスケジュ
-ーラが必要である;
-\texttt{ari-core/ari/orchestrator/scheduler.py} の現行スケジュー
-ラは同じ親の拡張を直列化する。マルチホスト拡張には系譜規律 (P4)
+BFTS 実行ループの基盤にある単一マシン仮定は最大のスケーリング
+制約である。$\bbranch>10$ の並列拡張を望む実行には別の並行層が
+必要である。現状は BFTS CLI ループ内の単一の
+\texttt{ThreadPoolExecutor} が唯一のワーカープールである。
+マルチホスト拡張には系譜規律 (P4)
 を、先祖歩行のみではなくマージ操作も扱えるよう拡張する必要があ
 る。
 
@@ -34,21 +30,3 @@ BFTS スケジューラの基盤にある単一マシン仮定は最大のスケ
 採点者出力をキャッシュすることは助けになる;我々はまだこれを出
 荷していない。
 
-\subsection{未解決問題}\label{sec:discussion:open}
-
-\begin{enumerate}
-  \item \textbf{Off-policy 改稿}。現行の改稿サイクルは執筆と同じ
-        モデルを使う。執筆と改稿を分離して別々のモデルを使える
-        ようにすれば、より安価なモデルが粗い構造的書き換えを担
-        当できる。
-  \item \textbf{チェックポイント間のルブリック継承}。子チェック
-        ポイントは既定で親のルブリックを再利用できるべきだが、
-        現状ではルブリックは再生成される。
-  \item \textbf{ツール失敗の復旧}。現状ではツール呼び出しの失敗
-        はノードを \StateFailed{} にマークする。劣化したツール
-        (例えば小さなモデル)で再試行する復旧方策があれば、長
-        裾コストが減る。
-\end{enumerate}
-
-これら 3 件はいずれも対応可能であり、各々 v0.8 までに 1 PR で着
-地できる見込みである。

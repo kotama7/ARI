@@ -439,7 +439,7 @@ def run_pipeline(
         # Reproducibility check reads only the paper — no source_file injection.
         # Providing original source would be "repeat experiment", not "reproduce from paper".
         "experiment_source_file": _os.environ.get("ARI_SOURCE_FILE", ""),
-        "author_name":       "Artificial Research Intelligence",  # default; overridden by workflow.yaml
+        "author_name":       "Autonomous Research Infrastructure",  # default; overridden by workflow.yaml
         "launch_config":     _launch_cfg_for_tpl,
         # Expose all top-level string/int config values for template substitution
         **{k: str(v) for k, v in _wf_cfg.items() if isinstance(v, (str, int, float)) and k not in ("paper_context",)},
@@ -450,6 +450,49 @@ def run_pipeline(
     }
 
     stage_outputs: dict[str, Any] = {}
+
+    # ── BFTS sanity gate ───────────────────────────────────────────────────
+    # If no node produced real (numeric) experimental data, the downstream
+    # paper / review stages will happily compose a "we report no data"
+    # meta-paper that has nothing to do with the user's actual research goal
+    # (observed in run 20260521155637_, where every Slurm job died with
+    # ENOEXEC and the pipeline still generated a 7-page failure-analysis
+    # paper). Abort the post-BFTS pipeline in that case and surface the
+    # failure to the user. Override with ARI_FORCE_PAPER=1 when the operator
+    # explicitly wants a paper anyway.
+    _has_real_data = any(
+        bool(getattr(_n, "has_real_data", False)) and getattr(_n, "metrics", None)
+        for _n in all_nodes
+    )
+    # Fire only when BFTS actually attempted experiments — i.e. at least one
+    # node carries artifacts or metrics. Empty / bare-Node inputs come from
+    # paper-resume entry points or unit tests exercising stage dispatch and
+    # should not trigger the abort.
+    _bfts_attempted = any(
+        getattr(_n, "artifacts", None) or getattr(_n, "metrics", None)
+        for _n in all_nodes
+    )
+    if _bfts_attempted and not _has_real_data and not _os.environ.get("ARI_FORCE_PAPER", "").strip():
+        _abort_msg = (
+            "BFTS produced no real experimental data — every node either "
+            "failed to execute or returned has_real_data=False. Skipping "
+            "paper / review stages to avoid generating an unrelated "
+            "meta-paper from empty inputs. Set ARI_FORCE_PAPER=1 to override."
+        )
+        log.error("[Paper Pipeline] %s", _abort_msg)
+        print(f"[Paper Pipeline] ABORTED: {_abort_msg}", flush=True)
+        try:
+            (checkpoint_dir / "bfts_no_real_data.json").write_text(
+                json.dumps({
+                    "skipped": True,
+                    "reason": "no_real_data",
+                    "message": _abort_msg,
+                    "node_count": len(all_nodes),
+                }, ensure_ascii=False, indent=2)
+            )
+        except Exception:
+            pass
+        return {"_aborted": {"reason": "no_real_data", "message": _abort_msg}}
 
     # Index-based iteration so loop_back_to can rewind the cursor. A
     # per-source-stage counter caps total iterations so a misbehaving VLM

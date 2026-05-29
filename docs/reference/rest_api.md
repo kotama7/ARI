@@ -1,3 +1,14 @@
+---
+sources:
+  - path: ari-core/ari/viz/routes.py
+    role: implementation
+  - path: ari-core/ari/viz/api_paperbench.py
+    role: implementation
+  - path: ari-core/ari/viz/api_experiment.py
+    role: implementation
+last_verified: 2026-05-26
+---
+
 # REST API Reference
 
 The viz dashboard server (`ari viz` → `ari-core/ari/viz/server.py`)
@@ -17,6 +28,59 @@ oauth2-proxy if you want to expose it.
 - All response bodies are JSON unless noted otherwise.
 - Errors come back as `{"error": "<message>"}` with a non-2xx HTTP code.
 - CORS preflight (`OPTIONS`) is permissive on `/api/*`.
+
+## Worked examples
+
+Minimal `curl` request/response pairs for the endpoints you reach for first.
+The examples assume the dashboard is on the default port `8765`.
+
+**Read the live state:**
+
+```bash
+curl http://localhost:8765/state
+```
+
+```json
+{
+  "phase": "bfts",
+  "nodes": { "total": 7, "completed": 5, "running": 2, "failed": 0 },
+  "model": { "provider": "ollama", "model": "qwen3:8b" },
+  "cost": { "usd": 0.0, "tokens": 0 }
+}
+```
+
+**Launch a run:**
+
+```bash
+curl -X POST http://localhost:8765/api/launch \
+  -H 'Content-Type: application/json' \
+  -d '{"experiment_md": "# Goal\nImprove GFLOP/s of a dense matmul.\n",
+       "profile": "laptop", "provider": "ollama", "model": "qwen3:8b",
+       "max_nodes": 8, "max_depth": 3, "workers": 2}'
+```
+
+```json
+{ "ok": true, "pid": 48213, "checkpoint_path": "workspace/checkpoints/20260526T101500_matmul" }
+```
+
+**List checkpoints:**
+
+```bash
+curl http://localhost:8765/api/checkpoints
+```
+
+```json
+[
+  { "id": "20260526T101500_matmul", "status": "running", "nodes": 7, "review_score": null },
+  { "id": "20260520T090000_sort",   "status": "done",    "nodes": 12, "review_score": 0.71 }
+]
+```
+
+**Error shape** (any endpoint, non-2xx):
+
+```json
+{ "error": "no active checkpoint" }
+```
 
 ## State + dashboards
 
@@ -168,6 +232,6 @@ reason).
 
 ## See also
 
-- `docs/architecture.md` — viz package overview.
+- `docs/concepts/architecture.md` — viz package overview.
 - `ari-core/ari/viz/__init__.py` — module-level docstring with the
   current sub-module map.

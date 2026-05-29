@@ -101,7 +101,7 @@ def resolve(
         raise RuntimeError(
             "no ari-registry configured. Set ARI_REGISTRY_URL, "
             "or write registries.yaml in your checkpoint or working "
-            "directory (see docs/registry.md for format). "
+            "directory (see docs/reference/registry.md for format). "
             "Note: ~/.ari/ paths are deprecated and will be removed in v1.0."
         )
 

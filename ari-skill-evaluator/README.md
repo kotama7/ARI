@@ -40,7 +40,7 @@ objective evaluation principle).
 This skill calls an LLM for both extractor synthesis and metric
 parsing.  It is therefore **not** byte-deterministic; reruns may
 produce slightly different extractor code.  See
-`docs/PHILOSOPHY.md#p2-exceptions` for the project's stance on
+`docs/concepts/PHILOSOPHY.md#p2-exceptions` for the project's stance on
 allowed P2 deviations.
 
 ## Tests
@@ -51,6 +51,6 @@ pytest tests/ -q
 
 ## See also
 
-- `docs/skills.md#ari-skill-evaluator` — high-level summary.
+- `docs/reference/skills.md#ari-skill-evaluator` — high-level summary.
 - `docs/reference/mcp_tools.md` — argument signatures.
 - `docs/reference/environment_variables.md` — env-var table.

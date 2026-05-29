@@ -18,7 +18,7 @@
 \figlabeldef{F3.has_real}{has\_real\_data}
 \figlabeldef{F3.metrics}{metrics dict}
 \figlabeldef{F3.depth_signal}{depth}
-\figlabeldef{F3.retry}{retry\_count}
+\figlabeldef{F3.retry}{label}
 \figlabeldef{F3.summary}{eval\_summary}
 \figlabeldef{F3.div}{diversity\_bonus}
 \figlabeldef{F3.selector}{select\_next\_node (LLM)}
@@ -106,7 +106,7 @@
 \figlabeldef{F12.band.ari}{ARI アダプタ}
 \figlabeldef{F12.band.vendor}{vendor (PaperBench)}
 \figlabeldef{F12.band.bridge}{bridge と集約}
-\figlabeldef{F12.subclass}{subclass}
+\figlabeldef{F12.subclass}{適合}
 \figlabeldef{F12.judged}{採点済み}
 
 % F13 — チェックポイント配置
@@ -145,30 +145,66 @@
 \figlabeldef{F11.continue}{継続}
 
 % F12
-\figlabeldef{F12.driver}{run\_replicator\_agent}
-\figlabeldef{F12.solver}{AriPBSolver}
-\figlabeldef{F12.bounded}{\_BoundedOutputTool}
-\figlabeldef{F12.adapt}{\_adapt\_vendor\_paths}
-\figlabeldef{F12.basic}{BasicAgentSolver (vendor)}
-\figlabeldef{F12.tasknode}{TaskNode}
-\figlabeldef{F12.simplejudge}{SimpleJudge}
-\figlabeldef{F12.bridge}{paperbench\_bridge}
-\figlabeldef{F12.graded}{GradedTaskNode}
-\figlabeldef{F12.agg}{aggregate\_graded\_tree}
-\figlabeldef{F12.avg}{average\_graded\_runs}
+\figlabeldef{F12.driver}{複製ドライバ}
+\figlabeldef{F12.solver}{ソルバアダプタ}
+\figlabeldef{F12.bounded}{出力境界}
+\figlabeldef{F12.adapt}{パスアダプタ}
+\figlabeldef{F12.basic}{エージェントソルバ (vendor)}
+\figlabeldef{F12.tasknode}{ルブリック葉 (vendor)}
+\figlabeldef{F12.simplejudge}{判官 (vendor)}
+\figlabeldef{F12.bridge}{3 段ブリッジ}
+\figlabeldef{F12.graded}{採点済み木}
+\figlabeldef{F12.agg}{集約}
+\figlabeldef{F12.avg}{実行平均}
 \figlabeldef{F12.rubricjson}{rubric.json}
 \figlabeldef{F12.reproduce}{reproduce.sh}
-% --- F14 execution_profile (v0.7.2) ---
+% --- F14 execution_profile ---
 \figlabeldef{F14.band.prompt}{エージェント prompt}
-\figlabeldef{F14.band.sbatch}{Phase 2 sbatch}
+\figlabeldef{F14.band.sbatch}{クラスタディスパッチ}
 \figlabeldef{F14.rubric}{rubric.json \texttt{execution\_profile}}
 \figlabeldef{F14.prompt}{user メッセージ}
 \figlabeldef{F14.b.profile}{profile JSON}
 \figlabeldef{F14.b.shape}{クラスタ形状}
 \figlabeldef{F14.b.conventions}{ノード規約}
-\figlabeldef{F14.sbatch}{\_run\_reproduce\_slurm}
+\figlabeldef{F14.sbatch}{クラスタディスパッチャ}
 \figlabeldef{F14.probe.fs}{共有 FS}
 \figlabeldef{F14.probe.gres}{GRES}
-\figlabeldef{F14.probe.help}{sbatch --help}
+\figlabeldef{F14.probe.help}{フラグ probe}
 \figlabeldef{F14.outcome}{計算ノードの reproduce.sh}
 \figlabeldef{F14.e.profile}{execution\_profile}
+
+
+% ---------------- F15: BFTS 状態機械ビュー ----
+\figlabeldef{F15.band.state}{run-loop 状態 $(\Frontier,\Pending,\expandcount,\Hist)$}
+\figlabeldef{F15.frontier}{フロンティア $\Frontier$}
+\figlabeldef{F15.pending}{ペンディング $\Pending$}
+\figlabeldef{F15.counter}{展開回数 $\expandcount(\cdot)$}
+\figlabeldef{F15.history}{ラベル履歴 $\Hist$ (窓 $\histlen$)}
+\figlabeldef{F15.prune}{$\prunepred(f)$ ?}
+\figlabeldef{F15.expand}{expand $\to$ child}
+\figlabeldef{F15.select_run}{$\selectLLM$ / $\selectFB$}
+\figlabeldef{F15.run_parallel}{並列 ReAct (\texttt{ThreadPoolExecutor})}
+\figlabeldef{F15.sterile}{$\sterilepred$ gate}
+\figlabeldef{F15.retire}{$\retirepred(f, c)$ ?}
+\figlabeldef{F15.pick_best}{$\selectLLM$(最良 $f\in\Frontier$)}
+\figlabeldef{F15.notprune}{$\neg\prunepred$}
+\figlabeldef{F15.prune_drop}{$\prunepred \Rightarrow$ $f$ を除去}
+\figlabeldef{F15.append_pending}{子を追加}
+\figlabeldef{F15.pick_run}{バッチ選択 (size $\leq$ max\_parallel)}
+\figlabeldef{F15.append_frontier}{完了ノードを追加}
+\figlabeldef{F15.retire_drop}{$\retirepred \Rightarrow$ $f$ を除去}
+\figlabeldef{F15.cnt_bump}{$\expandcount(f)\mathrel{+}{=}1$}
+\figlabeldef{F15.hist_use}{$\divbonus{\cdot}$}
+\figlabeldef{F15.hist_append}{\texttt{record\_run} (実行後)}
+\figlabeldef{F15.lane.inner}{内部展開サブループ}
+\figlabeldef{F15.lane.outer}{並列実行サブループ}
+
+% ---------------- F16: PaperBench 3 段 bridge ----
+\figlabeldef{F16.paper}{論文+ルブリック}
+\figlabeldef{F16.rollout}{ロールアウト}
+\figlabeldef{F16.sub}{提出物}
+\figlabeldef{F16.reproduce}{再現}
+\figlabeldef{F16.log}{reproduce.log}
+\figlabeldef{F16.grade}{採点}
+\figlabeldef{F16.score}{スコア}
+\figlabeldef{F16.band}{3 段 bridge}

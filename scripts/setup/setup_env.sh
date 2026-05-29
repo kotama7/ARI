@@ -249,6 +249,16 @@ _prompt_secret "ANTHROPIC_API_KEY"       "Anthropic API key"
 _prompt_secret "GOOGLE_API_KEY"          "Google (Gemini) API key"
 _prompt_secret "S2_API_KEY"              "Semantic Scholar API key"
 _env_append_if_absent "# SEMANTIC_SCHOLAR_API_KEY="
+# Hugging Face Hub token — required by vendor PaperBench papers whose
+# Stage 1 rollout needs to ``huggingface-cli login`` (e.g. gated dataset
+# / model downloads). Mirrors vendor ``agent.env`` pattern. Used by
+# rollout_submission(agent_env_path=...) and by paperbench Stage 2
+# reproduce.sh scripts that pip-install gated weights.
+_prompt_secret "HF_TOKEN"                "Hugging Face Hub token (optional; needed for gated papers)"
+# Default path the bridge auto-loads when rollout_submission's
+# ``agent_env_path=None``. Leave blank to use the bundled default
+# (``$HOME/.ari/agent.env``); set explicitly to override.
+_env_append_if_absent "# ARI_AGENT_ENV_PATH="
 
 # --- 2) LLM / backend (defaults) -------------------------------------------
 _env_section "LLM / backend"
@@ -392,6 +402,10 @@ _env_append_if_absent "# ARI_PARENT_RUN_ID="
 _env_append_if_absent "# ARI_RETRIEVAL_BACKEND=semantic_scholar"
 _env_append_if_absent "# ARI_EXECUTOR="
 _env_append_if_absent "# ARI_MAX_CHILD_PROCS="
+# ARI_ENV_FILE points to the .env that ari-skill-hpc re-sources on the
+# compute node after sbatch --export=NONE strips the submitter env.
+# Defaults to $ARI_ROOT/.env when unset.
+_env_append_if_absent "# ARI_ENV_FILE="
 
 # --- 6) Container -----------------------------------------------------------
 _env_section "Container"
@@ -409,6 +423,12 @@ _env_append_if_absent "# ARI_PHASE1_SANDBOX=local"
 _env_append_if_absent "# ARI_PHASE1_APPTAINER_IMAGE="
 _env_append_if_absent "# ARI_PHASE1_SINGULARITY_IMAGE="
 _env_append_if_absent "# ARI_PHASE1_DOCKER_IMAGE=ubuntu:24.04"
+# ARI_PHASE1_ALLOW_FALLBACK=1 opts into the legacy silent-fallback-to-
+# local-host behaviour when sandbox_kind=docker/apptainer/slurm is
+# requested but the corresponding tool (docker daemon / apptainer / sbatch)
+# is missing. Default: fail loud (the user explicitly picked a sandbox;
+# silently running on the host defeats the isolation intent).
+_env_append_if_absent "# ARI_PHASE1_ALLOW_FALLBACK="
 # Override path to the vendored PaperBench source tree if the default
 # (ari-skill-paper-re/vendor/paperbench) is unavailable.
 _env_append_if_absent "# ARI_PAPERBENCH_PATH="
@@ -434,6 +454,17 @@ _env_append_if_absent "# ARI_SLURM_MEM_GB="
 _env_append_if_absent "# ARI_SLURM_GPUS="
 _env_append_if_absent "# ARI_SLURM_WALLTIME=04:00:00"
 _env_append_if_absent "# ARI_SLURM_PARTITION="
+# ARI_SLURM_ALLOW_NO_GRES=1 opts into silently dropping --gres / --gpus-*
+# flags when the cluster has no GRES configured. Default: fail loud
+# (silently downgrading a GPU request to CPU after a long queue wait is
+# the worst possible failure mode; surface the contradiction at submit).
+_env_append_if_absent "# ARI_SLURM_ALLOW_NO_GRES="
+# ARI_SBATCH_EXPORT_MODE overrides the sbatch --export argument used by
+# ari-skill-hpc when submitting jobs. Default NONE keeps the submitter's
+# (possibly venv-poisoned) PATH from leaking onto compute nodes; the job
+# script re-sources $ARI_ENV_FILE for API keys. Set to ALL only when you
+# explicitly want the legacy "inherit submitter env" behaviour.
+_env_append_if_absent "# ARI_SBATCH_EXPORT_MODE="
 
 # --- 8) Orchestrator / viz --------------------------------------------------
 _env_section "Orchestrator"
@@ -442,6 +473,10 @@ _env_append_if_absent "# ARI_ORCHESTRATOR_LOGS="
 _env_append_if_absent "# ARI_ORCHESTRATOR_DRY_RUN="
 _env_append_if_absent "# ARI_ORCHESTRATOR_SSE_ONESHOT="
 _env_append_if_absent "# ARI_ORCHESTRATOR_SSE_TIMEOUT="
+# ARI_FORCE_PAPER=1 bypasses the post-BFTS sanity gate that aborts the
+# paper / review stages when no node produced real experimental data.
+# Useful for resuming partial runs intentionally; otherwise leave unset.
+_env_append_if_absent "# ARI_FORCE_PAPER="
 
 # --- 9) LaTeX ---------------------------------------------------------------
 _env_section "LaTeX"
@@ -455,6 +490,10 @@ _env_append_if_absent "# ARI_RUBRIC_DIR="
 _env_append_if_absent "# ARI_STRICT_DYNAMIC="
 _env_append_if_absent "# ARI_NUM_REVIEWS_ENSEMBLE="
 _env_append_if_absent "# ARI_NUM_REFLECTIONS="
+# ARI_PAPER_LANGUAGE selects the output language for paper composition
+# (en / ja / zh). Set automatically by the GUI wizard's Language dropdown
+# (see api_experiment.py); override here to force CLI-launched runs.
+_env_append_if_absent "# ARI_PAPER_LANGUAGE="
 
 # --- 9b) Skill: ari-skill-web ----------------------------------------------
 _env_section "ari-skill-web"
@@ -468,6 +507,7 @@ _env_append_if_absent "# ARI_ALPHAXIV_ENDPOINT=https://api.alphaxiv.org/mcp/v1"
 # documentation tooling acknowledge them as recognised vars.
 _env_section "ari-skill-paper-re / PaperBench"
 _env_append_if_absent "# ARI_PAPER_REGISTRY_DIR=\$HOME/.ari/paper_registry  # override paper registry root (default: ~/.ari/paper_registry)"
+_env_append_if_absent "# ARI_PAPERBENCH_WORKER_DISABLED=  # set to 1 to suppress the GUI wizard's background pipeline spawn (tests / CI / dry-run debugging)"
 _env_append_if_absent "# SLURM_JOB_NUM_NODES=  # auto-populated by sbatch; surfaced in agent prompt CLUSTER SHAPE"
 _env_append_if_absent "# SLURM_NTASKS=         # auto-populated by sbatch; surfaced in agent prompt CLUSTER SHAPE"
 _env_append_if_absent "# SLURM_PROCID=         # auto-populated by srun; read by mpi_aggregate_skel.py fallback"
@@ -515,3 +555,27 @@ _env_append_if_absent "# ZENODO_TOKEN="
 _env_append_if_absent "# ZENODO_SANDBOX=false"
 _env_append_if_absent "# ARI_GH_REPO=user/repo"
 _env_append_if_absent "# ARI_GH_MODE=commit          # commit | releases"
+
+# --- BFTS / evaluator configurable layers (v0.8.0) --------------------------
+_env_append_if_absent "# ARI_COMPOSITE=                 # evaluator composite formula override: harmonic|arithmetic|weighted_min|geometric"
+_env_append_if_absent "# ARI_AXIS_MODE=                 # evaluator axis-set source override: dynamic|legacy|custom"
+_env_append_if_absent "# ARI_FRONTIER_SCORE=            # BFTS frontier_score override: scientific_plus_diversity|scientific_only|depth_penalized|ucb_like"
+
+# --- PaperBench classifier / agent toggles (v0.8.0) -------------------------
+_env_append_if_absent "# ARI_PB_DISABLE_PAPER_KIND_HINT=  # set to 1 to suppress the paper-kind / native-stack hint injected by the classifier (dogfood leak guard)"
+_env_append_if_absent "# ARI_PB_DISABLE_WEB_SEARCH=       # set to 1 to disable the rollout agent's web_search_preview tool"
+
+# --- OpenAI-compatible CLI shim backend (v0.8.0) ----------------------------
+_env_append_if_absent "# ARI_CLI_SHIM_PORT=8900          # local OpenAI-compatible CLI shim endpoint port"
+_env_append_if_absent "# ARI_CLI_SHIM_TIMEOUT=600        # per-request timeout (s) for the shim"
+_env_append_if_absent "# ARI_CLI_SHIM_LOG=               # path for CLI shim debug log (default: off)"
+_env_append_if_absent "# ARI_CLI_SHIM_CWD=               # working directory the CLI shim spawns subprocesses in"
+_env_append_if_absent "# ARI_CLI_SHIM_MAX_CONCURRENCY=4  # in-flight subprocess cap for the shim"
+_env_append_if_absent "# ARI_CLI_SHIM_MAX_BUDGET_USD=    # hard budget cap; abort once consumed"
+_env_append_if_absent "# ARI_CLI_SHIM_CLAUDE_BIN=claude  # path / name of the Claude CLI binary"
+_env_append_if_absent "# ARI_CLI_SHIM_CLAUDE_BARE=       # set to 1 to call \`claude\` without the agent harness"
+_env_append_if_absent "# ARI_CLI_SHIM_CLAUDE_AGENT_PERMISSION=  # agent-permission override forwarded to \`claude\`"
+_env_append_if_absent "# ARI_CLI_SHIM_CODEX_BIN=codex    # path / name of the Codex CLI binary"
+
+# --- HPC module-path (R-CCS / system Env Modules) ---------------------------
+_env_append_if_absent "# MODULEPATH=                     # colon-separated module-search path; auto-populated by Env Modules on HPC"

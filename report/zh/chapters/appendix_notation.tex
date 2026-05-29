@@ -1,14 +1,8 @@
-% translated-from: en/chapters/appendix_notation.tex@ce5cee04a7f1e3eb8a68674d8e7018746a5a277d779c3dd061a439f83ae2a738
-% glossary:        5bca8d57a70f021e20c0af79aa06cd21013495c1a8246887ae889cd8a056f5fd
-% model:           claude-opus-4-7
-
 \section{记号表}\label{sec:notation}
 
-下表镜像 \code{shared/notation.tex} 中定义的宏。本文使用的每个
-符号都须出现于此;静态检查 (\texttt{check\_notation.py}) 校验
-本文中无未定义符号。
+本附录汇集正文中使用的全部记号及其含义。
 
-\begin{tabularx}{\columnwidth}{@{}lX@{}}
+\begin{longtable}{@{}l p{0.78\linewidth}@{}}
   \toprule
   符号 & 含义 \\
   \midrule
@@ -23,7 +17,7 @@
   $\axes{n}$          & 按轴评估向量 \\
   $\aggregate$        & 轴 $\to$ 标量聚合器 \\
   $\mathrm{div}(n)$   & 多样性奖励 (\cref{eq:diversity}) \\
-  $\_\mathrm{fallback\_score}(n)$ & 确定性回退排序 (\cref{eq:fallback}) \\
+  $\fallbackscore{n}$ & 确定性回退排序 (\cref{eq:fallback}) \\
   $\Tmax,\Cmax$       & 步数 / 成本预算 \\
   $\Rubric$           & 评分细则树 \\
   $\rubricitem{i}$    & 第 $i$ 叶的类别 \\
@@ -35,4 +29,4 @@
   $\ckpt$             & 检查点目录 \\
   $\lineage{n}$       & 终止于 $n$ 的谱系链 \\
   \bottomrule
-\end{tabularx}
+\end{longtable}

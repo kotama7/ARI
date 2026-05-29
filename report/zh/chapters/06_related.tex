@@ -1,7 +1,3 @@
-% translated-from: en/chapters/06_related.tex@8f026556abfcacdffc644fd0f52447496dea53aa0c5942a062e763d6180b5998
-% glossary:        5bca8d57a70f021e20c0af79aa06cd21013495c1a8246887ae889cd8a056f5fd
-% model:           claude-opus-4-7
-
 \section{相关工作}\label{sec:related}
 
 我们将 ARI 与四条先行研究脉络对照定位。
@@ -16,14 +12,14 @@ ARI 沿用 AIDE 的 BFTS 骨架,但增加
 (i) LLM 主导的候选选择器
 (\cref{sec:exploration:node-selection}) —— 不固定闭式标量效
 用,使选择提示可联合权衡 \texttt{has\_real\_data}、整套
-metrics、深度、重试次数与软性 \texttt{diversity\_bonus};
+metrics、深度与软性 \texttt{diversity\_bonus};
 以及 (ii) 跨运行的谱系
 (\cref{sec:exploration:lineage}),AIDE 与 MLE-bench 均未形式
 化此项。
 
 \subsection{自主研究智能体}\label{sec:related:autonomous}
 
-AI~Scientist 系列 \cite{lu2024ai} 端到端闭合类
+AI~Scientist 系列 \cite{lu2024ai,lu2026towards} 端到端闭合类
 似循环(idea $\to$ experiment $\to$ paper),但未将评分细则与
 改稿循环作为一等对象暴露。VirSci \cite{su2024many} 模拟
 多个科学家人格,以共识评分输出;Agent~Laboratory

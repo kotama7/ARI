@@ -278,6 +278,10 @@ function IdeaCardContent({ state }: { state: AppState }) {
         `${cfg.max_nodes || '?'} / ${t('cfg_depth')} ${cfg.max_depth || '?'} / ${t('cfg_parallel')} ${cfg.parallel || '?'}`,
       ],
       [
+        t('cfg_algorithm'),
+        `${cfg.frontier_score || 'scientific_plus_diversity'} / ${cfg.composite || 'harmonic_mean'} / ${cfg.axis_mode || 'dynamic'}`,
+      ],
+      [
         t('cfg_timeout'),
         cfg.timeout_node_s ? `${Math.round(cfg.timeout_node_s / 60)}min/node` : '—',
       ],

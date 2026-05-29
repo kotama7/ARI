@@ -5,7 +5,7 @@
 
 \title{ARI: An Autonomous Research Infrastructure}
 \author{Takanori Kotama}
-\date{Snapshot v0.7.2, 2026-05-17}
+\date{v0.8.0, 2026-05-27}
 
 \begin{document}
 \twocolumn[
@@ -14,15 +14,15 @@
 We describe \textbf{ARI}, an autonomous research infrastructure that
 couples a tree-search-based exploration loop with a paper-generation
 pipeline. The exploration loop is a best-first tree search (BFTS) over
-research-step nodes; expansion uses a ReAct-style agent that issues tool
-calls into a registry of fourteen domain skills. The paper pipeline
+research-step nodes; expansion uses a Reason-and-Act
+(ReAct~\cite{yao2023react})-style agent that issues tool calls into
+a registry of fourteen domain skills. The paper pipeline
 turns the surviving lineage into a draft, then iteratively refines it
 under a hierarchical rubric. Every artefact lives inside a single
 checkpoint directory, which is the unit of reproducibility, lineage, and
-cost accounting. This report formalises the algorithms, describes the
-implementation in source-code terms, presents an evaluation snapshot,
-and discusses the determinism / novelty trade-off that constrains the
-design.
+cost accounting. This report formalises the algorithms and the design
+rationale, reports preliminary observations, and discusses the
+determinism / novelty trade-off that constrains the design.
 \end{abstract}
 \vspace{2ex}
 ]
@@ -35,9 +35,19 @@ design.
 \input{chapters/06_related.tex}
 \input{chapters/07_discussion.tex}
 
+% Single column for the appendix so the verbatim prompt listings wrap
+% inside the full page width (lines are often > 500 chars). \onecolumn is
+% wrapped in \clearpage to make the switch robust across engines — a bare
+% \onecolumn after \appendix is silently ignored under xelatex/ctex and
+% leaves the appendix in two columns.
+\clearpage
+\onecolumn
 \appendix
 \input{chapters/appendix_notation.tex}
+\input{chapters/appendix_prompts.tex}
 
+\clearpage
+\twocolumn
 \printbibliography
 
 \end{document}

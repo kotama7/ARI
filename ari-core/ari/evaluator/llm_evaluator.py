@@ -46,6 +46,32 @@ _DEFAULT_AXIS_WEIGHTS: dict[str, float] = {k: 0.2 for k in AXIS_NAMES}
 _HARMONIC_EPSILON: float = 0.01
 
 
+def _iter_weighted_values(
+    axes: dict[str, float],
+    weights: dict[str, float],
+    axis_names: "tuple[str, ...] | None",
+):
+    """Yield ``(weight, value)`` pairs over the active axis set.
+
+    Shared bookkeeping for every composite formula: name iteration order,
+    weight fallback, value coercion, and clamping to ``[0, 1]``. Pairs
+    with ``weight <= 0`` are dropped.
+    """
+    names = axis_names if axis_names is not None else AXIS_NAMES
+    for name in names:
+        fallback_w = _DEFAULT_AXIS_WEIGHTS.get(name, 1.0 / max(1, len(names)))
+        w = float(weights.get(name, fallback_w))
+        if w <= 0.0:
+            continue
+        raw = axes.get(name, 0.0)
+        try:
+            x = float(raw)
+        except (TypeError, ValueError):
+            x = 0.0
+        x = max(min(x, 1.0), 0.0)
+        yield w, x
+
+
 def weighted_harmonic_mean(
     axes: dict[str, float],
     weights: dict[str, float],
@@ -63,28 +89,85 @@ def weighted_harmonic_mean(
     When Phase 3 dynamic axes are in use, the evaluator passes its own
     ``axis_names`` so the harmonic mean covers the dynamic set.
     """
-    names = axis_names if axis_names is not None else AXIS_NAMES
     total_w = 0.0
     denom = 0.0
-    for name in names:
-        # Default to a small equal weight when neither weights nor the
-        # legacy default mapping covers this name (covers Phase 3 axes
-        # whose weight isn't in _DEFAULT_AXIS_WEIGHTS).
-        fallback_w = _DEFAULT_AXIS_WEIGHTS.get(name, 1.0 / max(1, len(names)))
-        w = float(weights.get(name, fallback_w))
-        if w <= 0.0:
-            continue
-        raw = axes.get(name, 0.0)
-        try:
-            x = float(raw)
-        except (TypeError, ValueError):
-            x = 0.0
-        x = max(min(x, 1.0), 0.0)  # clamp to [0, 1]
+    for w, x in _iter_weighted_values(axes, weights, axis_names):
         total_w += w
         denom += w / max(x, epsilon)
     if total_w <= 0.0 or denom <= 0.0:
         return 0.0
     return total_w / denom
+
+
+def weighted_arithmetic_mean(
+    axes: dict[str, float],
+    weights: dict[str, float],
+    axis_names: "tuple[str, ...] | None" = None,
+) -> float:
+    """Weighted arithmetic mean over the active axis set.
+
+    More permissive than the harmonic mean: weak and strong axes trade
+    linearly. Returns 0.0 when the total weight is zero.
+    """
+    total_w = 0.0
+    num = 0.0
+    for w, x in _iter_weighted_values(axes, weights, axis_names):
+        total_w += w
+        num += w * x
+    if total_w <= 0.0:
+        return 0.0
+    return num / total_w
+
+
+def weighted_min(
+    axes: dict[str, float],
+    weights: dict[str, float],
+    axis_names: "tuple[str, ...] | None" = None,
+) -> float:
+    """Bottleneck composite — returns the minimum axis value.
+
+    Weights gate which axes participate (``weight <= 0`` skips an axis)
+    but do not scale the score, since blending with weights would defeat
+    the "weakest link wins" semantics. Returns 0.0 when no axis qualifies.
+    """
+    vals: list[float] = []
+    for _w, x in _iter_weighted_values(axes, weights, axis_names):
+        vals.append(x)
+    if not vals:
+        return 0.0
+    return min(vals)
+
+
+def weighted_geometric_mean(
+    axes: dict[str, float],
+    weights: dict[str, float],
+    epsilon: float = _HARMONIC_EPSILON,
+    axis_names: "tuple[str, ...] | None" = None,
+) -> float:
+    """Weighted geometric mean — between harmonic and arithmetic in
+    sensitivity to weak axes. Implemented in log-space; ``epsilon`` floors
+    zero axes so the result is finite.
+    """
+    import math
+
+    total_w = 0.0
+    log_sum = 0.0
+    for w, x in _iter_weighted_values(axes, weights, axis_names):
+        total_w += w
+        log_sum += w * math.log(max(x, epsilon))
+    if total_w <= 0.0:
+        return 0.0
+    return math.exp(log_sum / total_w)
+
+
+# Registry consulted by LLMEvaluator to select a composite at construction
+# time. Keep names in sync with EvaluatorConfig.composite (Literal).
+_COMPOSITES: dict[str, "callable"] = {
+    "harmonic_mean": weighted_harmonic_mean,
+    "arithmetic_mean": weighted_arithmetic_mean,
+    "weighted_min": weighted_min,
+    "geometric_mean": weighted_geometric_mean,
+}
 
 
 def _default_scorer(metrics: dict) -> float | None:
@@ -189,10 +272,18 @@ class LLMEvaluator:
         *,
         checkpoint_dir: "str | None" = None,
         rubric: "dict | None" = None,
+        composite: str = "harmonic_mean",
     ) -> None:
         self.model = model
         self.api_base = api_base
         self.metric_spec = metric_spec or MetricSpec()  # default: generic
+        if composite not in _COMPOSITES:
+            raise ValueError(
+                f"Unknown composite formula {composite!r}; "
+                f"valid options: {sorted(_COMPOSITES)}"
+            )
+        self._composite_name = composite
+        self._compose_fn = _COMPOSITES[composite]
         # Constructor-supplied weights act as a config-level fallback; the
         # MetricSpec still wins if it declares its own weights.
         self._ctor_axis_weights: dict[str, float] | None = (
@@ -562,7 +653,7 @@ class LLMEvaluator:
                 axis_scores = legacy_uniform_axis_scores(data, iter_names)
 
             weights = self._resolve_axis_weights()
-            composite = weighted_harmonic_mean(
+            composite = self._compose_fn(
                 axis_scores, weights, axis_names=iter_names
             )
 

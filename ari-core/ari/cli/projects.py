@@ -63,7 +63,7 @@ def paper(
     checkpoint_dir: Path = typer.Argument(..., help="Path to checkpoint directory"),
     experiment: Path | None = typer.Option(None, help="Experiment .md file (auto-detected from checkpoint if omitted)"),
     config: Path | None = typer.Option(None, help="Config YAML (auto-generated if omitted)"),
-    rubric: str | None = typer.Option(None, "--rubric", help="Reviewer rubric id (neurips|iclr|icml|cvpr|acl|sc|chi|usenix_security|osdi|stoc|icra|siggraph|nature|journal_generic|workshop|generic_conference)"),
+    rubric: str | None = typer.Option(None, "--rubric", help="Reviewer rubric id (neurips|iclr|icml|cvpr|acl|sc|chi|usenix_security|osdi|stoc|icra|siggraph|nature|aer|econometrica|qje|apsr|ahr|philreview|pmla|journal_generic|workshop|generic_conference)"),
     fewshot_mode: str | None = typer.Option(None, "--fewshot-mode", help="Few-shot mode: static (default) or dynamic (OpenReview retrieval, Phase 2)"),
     num_reviews_ensemble: int | None = typer.Option(None, "--num-reviews-ensemble", help="Number of independent reviewer agents (default 1 per rubric)"),
     num_reflections: int | None = typer.Option(None, "--num-reflections", help="Reflection rounds (default 5 per rubric)"),
@@ -145,7 +145,7 @@ def paper(
         node_map[node.id] = node
 
     all_nodes = list(node_map.values())
-    _, _, mcp_paper, _, _, _, _ = build_runtime(cfg, experiment_text, checkpoint_dir=checkpoint_dir)
+    _, _, mcp_paper, _, _, _ = build_runtime(cfg, experiment_text, checkpoint_dir=checkpoint_dir)
     console.print(Panel(
         f"[bold green]Running paper pipeline[/bold green]\nCheckpoint: {checkpoint_dir}",
         title="ARI Paper",

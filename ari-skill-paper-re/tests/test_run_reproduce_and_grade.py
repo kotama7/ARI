@@ -94,6 +94,32 @@ async def test_run_reproduce_local_executes_script(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_run_reproduce_tolerates_empty_rubric_path(tmp_path):
+    """Regression: bridge.reproduce_submission drives run_reproduce
+    without a rubric (the caller supplies all hints via explicit args).
+    An empty rubric_path must NOT short-circuit with an error envelope —
+    it should fall through to caller-arg-only execution.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    sh = repo / "reproduce.sh"
+    sh.write_text("#!/bin/bash\necho 'no-rubric path' > out.txt\n")
+    sh.chmod(0o755)
+
+    res = await S.run_reproduce(
+        rubric_path="",
+        repo_dir=str(repo),
+        sandbox_kind="local",
+        timeout_global_sec=30,
+    )
+    assert res["executed"] is True
+    assert res["exit_code"] == 0
+    assert "reproduce.log" in res["artifacts"]
+    # No rubric → no expected_artifacts → nothing should land in "missing".
+    assert res["missing"] == []
+
+
+@pytest.mark.asyncio
 async def test_run_reproduce_missing_script(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -215,14 +241,14 @@ async def test_grade_with_missing_repo_dir_degrades(tmp_path, monkeypatch):
             id="root", requirements="root", weight=1, sub_tasks=(leaf,),
         )
 
-    async def fake_grade_once(pb_taskroot, paper_md, repo_dir, reproduce_log, judge_model):
+    async def fake_grade_once(pb_taskroot, paper_md, repo_dir, reproduce_log, judge_model, code_only=False):
         captured_repo.append(Path(repo_dir))
         # Snapshot existence at call time — caller may clean up the tempdir
         # in a finally block before the assertion runs.
         captured_is_dir.append(Path(repo_dir).is_dir())
         return _fake_graded_root()
 
-    async def fake_negative_control(pb_taskroot, paper_md, judge_model):
+    async def fake_negative_control(pb_taskroot, paper_md, judge_model, code_only=False):
         return {"empty": 0.0, "boilerplate": 0.0, "passed": True}
 
     monkeypatch.setattr(S, "_grade_once", fake_grade_once)
@@ -249,6 +275,90 @@ async def test_grade_with_missing_repo_dir_degrades(tmp_path, monkeypatch):
         f"_grade_once received non-directory: {captured_repo[0]}"
     assert captured_repo[0] != missing_repo, \
         "function should have substituted a tempdir, not used the missing path"
+
+
+@pytest.mark.asyncio
+async def test_grade_auto_enables_code_only_when_no_reproduce_log(tmp_path, monkeypatch):
+    """When repo_dir has no reproduce.log, the MCP tool auto-enables
+    ``code_only`` so the grader's rubric scope matches the Stage 1
+    ``code_only=True`` instruction default. This prevents the
+    self-contradiction where the agent is told to "only write code"
+    but is then penalised for Code Execution / Result Analysis leaves
+    against an empty execution.
+    """
+    from _paperbench_bridge import GradedTaskNode
+
+    rubric_path = _write_rubric(tmp_path, [_leaf("trivial")])
+    repo = tmp_path / "code_only_smoke"
+    repo.mkdir()
+    # reproduce.sh present but reproduce.log absent → auto-enable fires.
+    (repo / "reproduce.sh").write_text("#!/bin/bash\necho ok\n")
+
+    captured_code_only: list[bool] = []
+
+    async def fake_grade_once(pb_taskroot, paper_md, repo_dir, reproduce_log, judge_model, code_only=False):
+        captured_code_only.append(bool(code_only))
+        leaf = GradedTaskNode(
+            score=1.0, valid_score=True, explanation="",
+            id="leaf", requirements="trivial", weight=1, sub_tasks=(),
+            task_category="Code Development",
+        )
+        return GradedTaskNode(
+            score=1.0, valid_score=True, explanation="",
+            id="root", requirements="root", weight=1, sub_tasks=(leaf,),
+        )
+
+    monkeypatch.setattr(S, "_grade_once", fake_grade_once)
+
+    res = await S.grade_with_simplejudge(
+        rubric_path=str(rubric_path), repo_dir=str(repo),
+        paper_text="paper", judge_model="test/m", n_runs=1,
+        skip_negative_control=True,
+    )
+    assert res["code_only"] is True, (
+        "auto-enable did not fire — expected code_only=True when no "
+        "reproduce.log present"
+    )
+    assert captured_code_only and all(captured_code_only), captured_code_only
+
+
+@pytest.mark.asyncio
+async def test_grade_keeps_code_only_false_when_reproduce_log_present(tmp_path, monkeypatch):
+    """When reproduce.log IS present, the auto-enable must NOT fire —
+    the run had a real Stage 2 execution, the agent's instruction
+    matches the full rubric, full rubric grading is correct.
+    """
+    from _paperbench_bridge import GradedTaskNode
+
+    rubric_path = _write_rubric(tmp_path, [_leaf("trivial")])
+    repo = tmp_path / "full_rubric_smoke"
+    repo.mkdir()
+    (repo / "reproduce.sh").write_text("#!/bin/bash\necho ok\n")
+    (repo / "reproduce.log").write_text("ok\n")
+
+    captured_code_only: list[bool] = []
+
+    async def fake_grade_once(pb_taskroot, paper_md, repo_dir, reproduce_log, judge_model, code_only=False):
+        captured_code_only.append(bool(code_only))
+        leaf = GradedTaskNode(
+            score=1.0, valid_score=True, explanation="",
+            id="leaf", requirements="trivial", weight=1, sub_tasks=(),
+            task_category="Code Development",
+        )
+        return GradedTaskNode(
+            score=1.0, valid_score=True, explanation="",
+            id="root", requirements="root", weight=1, sub_tasks=(leaf,),
+        )
+
+    monkeypatch.setattr(S, "_grade_once", fake_grade_once)
+
+    res = await S.grade_with_simplejudge(
+        rubric_path=str(rubric_path), repo_dir=str(repo),
+        paper_text="paper", judge_model="test/m", n_runs=1,
+        skip_negative_control=True,
+    )
+    assert res["code_only"] is False
+    assert captured_code_only and not any(captured_code_only), captured_code_only
 
 
 @pytest.mark.asyncio

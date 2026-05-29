@@ -57,6 +57,7 @@ def _api_models() -> dict:
             {"id": "anthropic", "name": "Anthropic (Claude)", "models": ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"]},
             {"id": "gemini",    "name": "Google Gemini", "models": ["gemini/gemini-2.5-pro", "gemini/gemini-2.0-flash", "gemini/gemini-1.5-pro"]},
             {"id": "ollama",    "name": "Ollama (Local)", "models": ["ollama_chat/llama3.3", "ollama_chat/qwen3:8b", "ollama_chat/gemma3:9b", "ollama_chat/mistral"]},
+            {"id": "cli-shim",  "name": "CLI Shim (claude/codex)", "models": ["claude-cli", "claude-cli-agent", "codex-cli", "codex-cli-agent"]},
         ]
     }
 

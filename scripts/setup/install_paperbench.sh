@@ -75,8 +75,14 @@ if [ ! -d "$PB_PROJECT" ]; then
 fi
 
 # 2) Resolve installer.
+# Match install_deps.sh: uv needs `--system` AFTER `install` (not after `pip`)
+# when no virtualenv is active.
+UV_SYSTEM_FLAG=()
 if command -v uv &>/dev/null; then
   INSTALLER="uv pip"
+  if [ -z "${VIRTUAL_ENV:-}" ] && [ -z "${CONDA_PREFIX:-}" ]; then
+    UV_SYSTEM_FLAG=(--system)
+  fi
 else
   INSTALLER="${PIP:-pip}"
 fi
@@ -97,7 +103,7 @@ fi
 
 for pkg_dir in "${PB_PKGS[@]}"; do
   pkg_name="$(basename "$pkg_dir")"
-  if run_with_ants "PaperBench: $pkg_name" $INSTALLER install -e "$pkg_dir" --quiet; then
+  if run_with_ants "PaperBench: $pkg_name" $INSTALLER install "${UV_SYSTEM_FLAG[@]}" -e "$pkg_dir" --quiet; then
     ok "$pkg_name installed"
   else
     fail "$pkg_name install failed — aborting"

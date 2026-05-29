@@ -75,6 +75,54 @@ def _resolve_dest(dest: str, work_dir: Path) -> Path:
 # ─── LocalComputer ───────────────────────────────────────────────────────
 
 
+def _install_apply_patch_command(work_dir: Path, env: dict[str, str]) -> Path | None:
+    """Expose an ``apply_patch`` / ``applypatch`` command on PATH, mirroring the
+    vendor's ``Dockerfile.base`` (``COPY apply_patch.py`` → ``/bin/apply_patch``
+    wrapper). gpt-5 / codex agents reflexively edit files via
+    ``apply_patch <<'PATCH' … PATCH`` even with no such instruction in any
+    prompt; the vendor's Docker image provides the command, but ARI's host-side
+    :class:`LocalComputer` never builds that image, so each such call dies with
+    ``command not found`` and the agent burns tool-call budget before falling
+    back to ``cat``-heredoc (observed in SC41406 v3-A11: 7/8 applypatch calls
+    failed). Reuse the vendor's own ``apply_patch.py`` (reads the patch from
+    stdin) so behaviour matches the container exactly. Returns the bin dir to
+    prepend to PATH, or ``None`` if the vendor module is not importable (caller
+    leaves PATH untouched and the agent's cat-heredoc fallback still works).
+    """
+    import importlib.util
+    import sys
+
+    try:
+        spec = importlib.util.find_spec("paperbench.solvers.apply_patch")
+        ap_py = spec.origin if spec and spec.origin else None
+    except Exception:  # noqa: BLE001
+        ap_py = None
+    if not ap_py or not Path(ap_py).is_file():
+        return None
+    bindir = work_dir / ".ari_bin"
+    try:
+        bindir.mkdir(parents=True, exist_ok=True)
+        wrapper = bindir / "apply_patch"
+        wrapper.write_text(
+            "#!/usr/bin/env bash\n"
+            f"exec {shlex.quote(sys.executable)} {shlex.quote(ap_py)} \"$@\"\n"
+        )
+        wrapper.chmod(0o755)
+        # codex/gpt-5 sometimes emit the concatenated name ``applypatch``.
+        alias = bindir / "applypatch"
+        if alias.exists() or alias.is_symlink():
+            alias.unlink()
+        try:
+            alias.symlink_to(wrapper.name)
+        except OSError:
+            alias.write_text(wrapper.read_text())
+            alias.chmod(0o755)
+    except OSError as e:  # noqa: BLE001
+        log.warning("could not install apply_patch shim in %s: %s", bindir, e)
+        return None
+    return bindir
+
+
 class LocalComputer(ComputerInterface):
     """Run shell commands as plain subprocesses in a persistent host directory.
 
@@ -98,6 +146,12 @@ class LocalComputer(ComputerInterface):
         self.work_dir = Path(work_dir).resolve()
         self.work_dir.mkdir(parents=True, exist_ok=True)
         self.env = {**os.environ, **(env or {})}
+        # Provide the vendor's apply_patch command on PATH (the Docker image
+        # installs it at /bin/apply_patch; this host-side sandbox does not).
+        _ap_bin = _install_apply_patch_command(self.work_dir, self.env)
+        if _ap_bin is not None:
+            self.env["PATH"] = f"{_ap_bin}{os.pathsep}{self.env.get('PATH', '')}"
+            log.info("LocalComputer: apply_patch/applypatch on PATH via %s", _ap_bin)
         self.timeout_sec = timeout_sec
         self._stopped = False
 
@@ -265,6 +319,18 @@ def make_computer(
         kind = "apptainer" if image else "local"
 
     if kind in ("local", "slurm"):
+        if kind == "slurm":
+            log.warning(
+                "Stage 1 (agent rollout) with sandbox_kind=%r executes on the "
+                "host filesystem — there is NO container isolation. The "
+                "agent's bash/python tools run as plain subprocesses against "
+                "%s. This is intentional (per-command sbatch is not viable at "
+                "ReAct cadence; the assumption is that ari itself is already "
+                "running inside an sbatch allocation), but if you expected the "
+                "agent to be sandboxed inside %r, pass sandbox_kind=apptainer "
+                "with container_image=<SIF or docker://… URI> instead.",
+                kind, str(work_dir), kind,
+            )
         return LocalComputer(work_dir, env=env, timeout_sec=timeout_sec)
     if kind in ("apptainer", "singularity"):
         if not image:

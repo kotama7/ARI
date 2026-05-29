@@ -18,8 +18,14 @@ class NodeStatus(str, Enum):
 class NodeLabel(str, Enum):
     """Label indicating the exploration purpose of each node.
 
-    Automatically assigned by LLM during BFTS expand() based on the parent node state.
-    loop.py injects a system prompt corresponding to the label.
+    Automatically assigned by LLM during BFTS expand() based on the parent
+    node state. loop.py injects a system prompt corresponding to the label.
+
+    The five canonical labels (DRAFT / IMPROVE / DEBUG / ABLATION /
+    VALIDATION) capture the bulk of useful next steps. ``NodeLabel.OTHER``
+    is the catch-all for LLM-proposed custom labels (e.g. ``replication``,
+    ``generalization``) — the verbatim string is preserved in
+    :attr:`Node.raw_label` so downstream consumers can still surface it.
     """
     DRAFT      = "draft"       # New implementation / first attempt
     IMPROVE    = "improve"     # Improve parent node results

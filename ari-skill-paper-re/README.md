@@ -58,7 +58,7 @@ produced by `ari-skill-transform`, it turns "does the paper
 reproduce?" into a tractable pipeline that can be re-run on any
 host that can clone the bundle.
 
-See `docs/architecture.md#publication-lifecycle-v070` for the
+See `docs/concepts/publication-lifecycle.md#publication-lifecycle-v070` for the
 publication / verification lifecycle and
 `ari-skill-replicate/README.md` for the upstream rubric generator.
 
@@ -83,7 +83,7 @@ LLM-heavy and sandbox-bound; runs are not byte-deterministic.
 
 ## See also
 
-- `docs/skills.md#ari-skill-paper-re` — high-level summary.
-- `docs/architecture.md#publication-lifecycle-v070` — publication /
+- `docs/reference/skills.md#ari-skill-paper-re` — high-level summary.
+- `docs/concepts/publication-lifecycle.md#publication-lifecycle-v070` — publication /
   verification lifecycle.
 - `ari-skill-replicate/README.md` — rubric generator.

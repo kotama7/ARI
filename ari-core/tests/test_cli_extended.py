@@ -72,7 +72,7 @@ def test_cli_run_with_minimal_md(tmp_path):
 
     with mock.patch("ari.cli.build_runtime") as mock_rt, \
          mock.patch("ari.cli._run_loop", return_value=0):
-        mock_rt.return_value = (None, None, None, mock.MagicMock(), mock.MagicMock(), None, None)
+        mock_rt.return_value = (None, None, None, mock.MagicMock(), mock.MagicMock(), None)
         result = runner.invoke(app, ["run", str(exp), "--config", str(cfg)])
     assert result.exit_code == 0
 
@@ -101,7 +101,7 @@ def test_checkpoint_name_from_research_goal(tmp_path):
 
     with mock.patch("ari.cli.build_runtime") as mock_rt, \
          mock.patch("ari.cli._run_loop", side_effect=fake_run_loop):
-        mock_rt.return_value = (None, None, None, mock.MagicMock(), mock.MagicMock(), None, None)
+        mock_rt.return_value = (None, None, None, mock.MagicMock(), mock.MagicMock(), None)
         result = runner.invoke(app, ["run", str(exp), "--config", str(cfg)])
 
     # run_id must be timestamp_slug format; content may come from LLM or fallback
@@ -134,7 +134,7 @@ def test_checkpoint_name_not_generic_heading(tmp_path):
 
     with mock.patch("ari.cli.build_runtime") as mock_rt, \
          mock.patch("ari.cli._run_loop", side_effect=fake_run_loop):
-        mock_rt.return_value = (None, None, None, mock.MagicMock(), mock.MagicMock(), None, None)
+        mock_rt.return_value = (None, None, None, mock.MagicMock(), mock.MagicMock(), None)
         runner.invoke(app, ["run", str(exp), "--config", str(cfg)])
 
     run_id = captured.get("run_id", "")
@@ -172,7 +172,7 @@ def test_checkpoint_slug_allows_long_descriptive_name(tmp_path):
          mock.patch("ari.llm.client.LLMClient") as mock_llm:
         # Force the fallback path (LLM title generation raises → use first content line)
         mock_llm.side_effect = RuntimeError("no LLM in tests")
-        mock_rt.return_value = (None, None, None, mock.MagicMock(), mock.MagicMock(), None, None)
+        mock_rt.return_value = (None, None, None, mock.MagicMock(), mock.MagicMock(), None)
         runner.invoke(app, ["run", str(exp), "--config", str(cfg)])
 
     rid = captured.get("run_id", "")

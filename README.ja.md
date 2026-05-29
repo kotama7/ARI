@@ -1,15 +1,15 @@
 <div align="center">
   <img src="docs/logo.png" alt="ARI Logo" width="200"/>
 
-  # ARI — Artificial Research Intelligence
+  # ARI — Autonomous Research Infrastructure
 
   **ユニバーサルな研究自動化システム。ノートPCからスーパーコンピュータまで。ローカルモデルからクラウドAPIまで。初学者から熟練研究者まで。計算実験から物理世界まで。**
 
-  [![Tests](https://img.shields.io/badge/tests-2200%2B-brightgreen)](./ari-core)
-  [![Version](https://img.shields.io/badge/version-v0.7.3-orange)](https://github.com/kotama7/ARI/releases)
+  [![Tests](https://img.shields.io/badge/tests-2200%2B-brightgreen)](ari-core)
+  [![Version](https://img.shields.io/badge/version-v0.8.0-orange)](https://github.com/kotama7/ARI/releases)
   [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
   [![MCP](https://img.shields.io/badge/protocol-MCP-purple)](https://modelcontextprotocol.io)
-  [![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
+  [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
   [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/SbMzNtYkq)
 
   **言語:** [English](README.md) · **日本語** · [中文](README.zh.md)
@@ -39,33 +39,68 @@ ARI は一つの原則に基づいて設計されています：**ゴールを M
 
 ---
 
+## v0.8.0 の新機能（2026-05-21）
+
+- **PaperBench 3 段階ブリッジ契約** — `rollout_submission` →
+  `reproduce_submission` → `judge_submission` の 3 つの非同期コーラブルが
+  PaperBench 公式の Agent Rollout → Reproduction → Grading プロトコルを
+  単一の呼び出し語彙で公開する。
+  `scripts/sc_paper_dogfood.py --with-rollout / --with-reproduction`
+  でドッグフードに使用可能。
+- **`container_image` のエンドツーエンド配線** — ウィザード → API ワーカー →
+  MCP ツール → サンドボックスランナーまで同じ 1 フィールドが流れる。
+  `pb-env` / `pb-reproducer` の短縮エイリアスは
+  `scripts/build_pb_images.sh` でビルドされる `image:latest` タグに解決。
+- **fail-loud な事前条件チェック** — サンドボックス / GPU の不整合は
+  既定で `RuntimeError` を送出（従来サイレントに CPU 実行へ降格していた
+  4 箇所を修正）。互換挙動は `ARI_PHASE1_ALLOW_FALLBACK=1` と
+  `ARI_SLURM_ALLOW_NO_GRES=1` でオプトイン可能。
+- **PaperBench env-truth ガードレール** — Stage 1 のプロンプトに
+  「scaffold 前にホストを probe する」「言語選択を Python 偏重から
+  打ち消す」「ホスト実機を反映した `ADDITIONAL NOTES`（バイナリ / GPU /
+  ネットワーク / Phase 2 隔離）を注入する」を追加。
+- **設定可能な BFTS 評価レイヤ** — `evaluator.composite` ／
+  `evaluator.axis_mode` ／ `bfts.frontier_score` ／ `bfts.select_prompt` ／
+  `bfts.expand_select_prompt` を `default.yaml` で切替可能。既定値は
+  従来挙動と完全一致。詳細は `docs/ja/reference/configuration.md` の
+  「BFTS 評価レイヤ」節を参照。
+- **新規 reviewer rubric を 7 種同梱** — `aer` ／ `ahr` ／ `apsr` ／
+  `econometrica` ／ `philreview` ／ `pmla` ／ `qje` を
+  `ari-core/config/reviewer_rubrics/` に追加。
+- **Step 4 「再現パッケージ生成器」は撤回** — SC24 論文に対する
+  従来主張のスコア 0.857 は撤回。正当な経路は上記のブリッジ契約による
+  Stage 1（実エージェント）+ Stage 2（実コンテナ実行）。
+
+リリースノート全文は [CHANGELOG.md](CHANGELOG.md#v080--paperbench-env-truth--bridge-contract--bfts-configurable-evaluation-2026-05-21) を参照してください。
+
+---
+
 ## 動作を見る
 
 <p align="center">
-  <video src="https://github.com/kotama7/ARI/raw/main/docs/movie/ja/ari_dashboard_demo.mp4" controls width="720" muted playsinline>
+  <video src="https://github.com/kotama7/ARI/raw/main/docs/assets/movie/ja/ari_dashboard_demo.mp4" controls width="720" muted playsinline>
     お使いのブラウザはインライン動画再生に対応していません。<a href="docs/movie/ja/ari_dashboard_demo.mp4">こちらからダウンロード</a>してください。
   </video>
 </p>
 
-🎬 **ダッシュボードのデモ動画** — ARI Web ダッシュボードの完全ウォークスルー。[English](docs/movie/en/ari_dashboard_demo.mp4) · [中文](docs/movie/zh/ari_dashboard_demo.mp4) も利用可能。
+🎬 **ダッシュボードのデモ動画** — ARI Web ダッシュボードの完全ウォークスルー。[English](docs/assets/movie/en/ari_dashboard_demo.mp4) · [中文](docs/assets/movie/zh/ari_dashboard_demo.mp4) も利用可能。
 
-📄 **[サンプル成果物 (PDF)](docs/sample_paper.pdf)** — ARI が完全自律で生成した実物の論文。図表・引用・再現性検証レポートを含みます。主な数値は [実証された結果](#実証された結果) を参照してください。
+📄 **[サンプル成果物 (PDF)](docs/assets/sample_paper.pdf)** — ARI が富士通 A64FX/SVE-512 上で完全自律生成した全 10 ページの論文（Stratum-Roofline CSR-SpMM 研究）。図表・引用・再現性検証レポートを含みます。主な数値は [実証された結果](#実証された結果) を参照してください。
 
 <details>
-<summary><b>📖 クリックで論文を展開（全 11 ページをスクロールで閲覧）</b></summary>
+<summary><b>📖 クリックで論文を展開（全 10 ページをスクロールで閲覧）</b></summary>
 
 <p align="center">
-  <img src="docs/images/sample_paper/page-01.png" alt="サンプル論文 — 1 ページ目" width="720"/>
-  <img src="docs/images/sample_paper/page-02.png" alt="サンプル論文 — 2 ページ目" width="720"/>
-  <img src="docs/images/sample_paper/page-03.png" alt="サンプル論文 — 3 ページ目" width="720"/>
-  <img src="docs/images/sample_paper/page-04.png" alt="サンプル論文 — 4 ページ目" width="720"/>
-  <img src="docs/images/sample_paper/page-05.png" alt="サンプル論文 — 5 ページ目" width="720"/>
-  <img src="docs/images/sample_paper/page-06.png" alt="サンプル論文 — 6 ページ目" width="720"/>
-  <img src="docs/images/sample_paper/page-07.png" alt="サンプル論文 — 7 ページ目" width="720"/>
-  <img src="docs/images/sample_paper/page-08.png" alt="サンプル論文 — 8 ページ目" width="720"/>
-  <img src="docs/images/sample_paper/page-09.png" alt="サンプル論文 — 9 ページ目" width="720"/>
-  <img src="docs/images/sample_paper/page-10.png" alt="サンプル論文 — 10 ページ目" width="720"/>
-  <img src="docs/images/sample_paper/page-11.png" alt="サンプル論文 — 11 ページ目" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-01.png" alt="サンプル論文 — 1 ページ目" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-02.png" alt="サンプル論文 — 2 ページ目" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-03.png" alt="サンプル論文 — 3 ページ目" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-04.png" alt="サンプル論文 — 4 ページ目" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-05.png" alt="サンプル論文 — 5 ページ目" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-06.png" alt="サンプル論文 — 6 ページ目" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-07.png" alt="サンプル論文 — 7 ページ目" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-08.png" alt="サンプル論文 — 8 ページ目" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-09.png" alt="サンプル論文 — 9 ページ目" width="720"/>
+  <img src="docs/assets/images/sample_paper/page-10.png" alt="サンプル論文 — 10 ページ目" width="720"/>
 </p>
 
 </details>
@@ -127,9 +162,10 @@ bash setup.sh
 ollama pull qwen3:8b                          # 無料・ローカル
 export ARI_BACKEND=openai OPENAI_API_KEY=sk-… # またはクラウド API
 
-# 3. ダッシュボードを起動
-ari viz ./checkpoints/ --port 8765
+# 3. すべてのサービスを起動（Letta + ari-registry + GUI を :8765 で）
+./start.sh
 # http://localhost:8765 を開く → 実験ウィザードで実験を作成・起動
+# 停止: ./shutdown.sh
 ```
 
 CLI から直接実行することもできます：
@@ -138,7 +174,7 @@ ari run experiment.md                 # 実験を実行
 ari run experiment.md --profile hpc   # SLURM クラスタで実行
 ```
 
-ダッシュボードの詳細は **[docs/ja/quickstart.md](docs/ja/quickstart.md)** を、CLI コマンドは **[docs/ja/cli_reference.md](docs/ja/cli_reference.md)** を参照してください。
+ダッシュボードの詳細は **[docs/ja/getting-started/quickstart.md](docs/ja/getting-started/quickstart.md)** を、CLI コマンドは **[docs/ja/reference/cli_reference.md](docs/ja/reference/cli_reference.md)** を参照してください。
 
 ---
 
@@ -177,7 +213,10 @@ gmx mdrun -v -deffnm simulation -ntmpi 32
 ビジュアルな実験管理のための 10 ページ構成 React/TypeScript SPA。起動方法：
 
 ```bash
-ari viz ./checkpoints/ --port 8765   # http://localhost:8765
+./start.sh             # Letta + ari-registry + GUI を http://localhost:8765 で一括起動
+./start.sh gui         # GUI のみを (再)起動
+./start.sh status      # 起動中サービスの確認
+./shutdown.sh          # 全停止（apptainer の孤児プロセスも回収）
 ```
 
 | ページ | 機能 |
@@ -302,29 +341,30 @@ v0.6.0 では 2 つのスキルを廃止しました。`ari-skill-figure-router`
 | P2 | 可能な限り決定論的 | MCP ツールはデフォルトで決定論的、LLM 使用ツールは明示的に注釈。*v0.6.0 で `ari-skill-memory` のみ緩和 — Letta の埋め込み検索を使用* |
 | P3 | 多目的メトリクス | ハードコードされたスカラースコアなし |
 | P4 | 依存性注入 | 実験の切り替え = `.md` の編集のみ |
-| P5 | 再現性ファースト | 論文ではクラスタ名ではなくスペックでハードウェアを記述。*Letta バックエンドでは BFTS 探索順が再実行時に変わり得るが、数値結果は再現可能。* `docs/PHILOSOPHY.md` 参照 |
+| P5 | 再現性ファースト | 論文ではクラスタ名ではなくスペックでハードウェアを記述。*Letta バックエンドでは BFTS 探索順が再実行時に変わり得るが、数値結果は再現可能。* `docs/concepts/PHILOSOPHY.md` 参照 |
 
 ---
 
 ## 実証された結果
 
-ARI はマルチコア CPU 上の **CSR SpMM**（スパース行列と密行列の積）について、設計・実装・実行・論文執筆までを完全自律で end-to-end に行いました。手法・アルゴリズム・図表・参考文献を含む完全な論文は [`docs/sample_paper.pdf`](docs/sample_paper.pdf) で公開されています。
+ARI は富士通 A64FX/SVE-512 CPU 上での **CSR-SpMM**（スパース行列と密行列の積）について、設計・実装・実行・論文執筆までを完全自律で end-to-end に行いました。手法・アルゴリズム・図表・参考文献を含む完全な論文は [`docs/assets/sample_paper.pdf`](docs/assets/sample_paper.pdf) で公開されています。
 
-> **Stoch-Loopline: Burstiness- and Tail-Latency-Aware Loopline Modeling for Robust Multi-Core CPU CSR SpMM Scaling**
+> **A Stratum-Roofline CSR-SpMM Implementation for CPUs: Sustaining High Performance Across Variable Right-Hand-Side Widths on A64FX/SVE-512**
 
-| 構成 | GFLOP/s | 実効帯域幅 |
+| 構成 | スループット | 実効帯域幅 |
 |---|---|---|
-| K ブロック化 CSR SpMM（ピークスループット） | 23.82 | 58.30 GB/s |
-| 検証スイープ（ピーク、*N* = 16、32 スレッド） | **26.22** | **65.55 GB/s** |
-| 最大計測帯域幅（ルートスイープ） | 17.17 | **105.18 GB/s** |
-| ソフトウェアプリフェッチによる改善（幅平均） | **+3.53** | **+8.18 GB/s** |
+| プリフェッチ+タイル化カーネル (NB=16, PFD=4) を *N* ∈ {1, 2, 4, 8, 16} で持続 | **57.8–59.9** GFlops/s | — |
+| リファレンスカーネルのピーク (*N* = 128) | 79.995 GFlops/s | **167.5 GB/s** |
+| バンド型 Stratum-Roofline 予測 vs 実測 (*N* = 128) | **81.55** GFlops/s（完全一致） | 135.88 GB/s |
+| 小規模 *N* での頑健性ゲイン (*N* = 1, タイル+プリフェッチ vs リファレンス) | **15.6×** | — |
+| SIMD アブレーションのスローダウン (`-fno-tree-vectorize`, *N* = 128) | **4.18×** (80.33 → 22.0) | — |
 
-**ハードウェア:** `fx700` マルチコア CPU ノード、OpenMP、32 スレッド。合成 CSR 行列は最大 *M* = *K* = 200,000（約 3.2M 非ゼロ要素）、行長分布は uniform と Zipf、密幅 *N* ∈ {4, 8, 16, 32, 64, 128}。
+**ハードウェア:** 富士通 `fx700` 計算ノード（A64FX、SVE-512）、48 OpenMP スレッド、FP32。GCC 8.5.0 で `-O3 -march=armv8.2-a+sve -fopenmp -ffast-math -ftree-vectorize -funroll-loops` を使用。バンド型/歪んだべき乗則の合成 CSR 行列（*M* = *N* = 400,000、nnz = 12.8M）と、コンパクトなスイープ行列（*M* = *K* = 120,000、nnz/行 = 32）。RHS 幅 *N* ∈ {1, 2, 4, 8, 16, 32, 64, 96, 128, 192, 256}、スレッドスイープ *T* ∈ {1, …, 48}、タイル幅スイープ NB ∈ {8, 16, 32}、PFD ∈ {0, 4}。
 
-**ARI が自律的に生み出したもの:** Stoch-Loopline モデル化の枠組み、2 種類の CSR×dense カーネル実装（行並列 gather と rows-in-flight）と明示的なアンロール/ウィンドウつまみ、K ブロック化 / N タイリング + パッキング / scalar / no-AVX のアブレーション、実験スイープ、図表、参考文献、再現性検証 — すべて人間の介入なしに生成されました。
+**ARI が自律的に生み出したもの:** Stratum-Roofline モデル化枠組み（FMA ピーク 1869.66 GFlops/s + HBM 上限 235.42 GB/s + スレッドあたり STREAM-triad 20.91 GB/s のキャリブレーション、4 階層の行ストラタム分解）、4 種類のカーネル実装（`spmm_csr` リファレンス、`spmm_csr_pf` プリフェッチ、`spmm_csr_tiled` NB タイル化、`spmm_novec` SIMD アブレーション）、Algorithm 1（NB タイル化ソフトウェアプリフェッチ CSR-SpMM）、*N* / スレッド / タイル幅 / PFD のスイープ、Xeon Gold 6142 ログインノードでのフォールバック実行、図表、参考文献、再現性検証（5 回繰り返し、4 ランダムシード、最大絶対誤差 0.0、CV ≤ 1.02%）— すべて人間の介入なしに生成されました。
 
 ---
 
 ## ライセンス
 
-MIT。[LICENSE](./LICENSE) を参照してください。
+MIT。[LICENSE](LICENSE) を参照してください。

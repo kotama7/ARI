@@ -1,0 +1,85 @@
+id: philreview
+version: "2026"
+venue: Philosophical Review / Mind / Noûs / J. of Philosophy
+domain: Philosophy (Humanities)
+
+params:
+  num_reflections: 5
+  num_fs_examples: 0
+  num_reviews_ensemble: 1
+  temperature: 0.75
+  score_threshold_decision: 4
+  fewshot_mode: static
+  fewshot_dir: ""
+
+score_dimensions:
+  - name: originality_of_argument
+    scale: [1, 5]
+    description: >-
+      Novelty of the philosophical thesis or argumentative move relative
+      to existing literature.
+  - name: argumentative_rigor
+    scale: [1, 5]
+    description: >-
+      Logical structure of the argument — validity, premise support,
+      and treatment of obvious objections. 5=tight and well defended,
+      1=fallacious or under-argued.
+  - name: literature_engagement
+    scale: [1, 5]
+    description: >-
+      Engagement with relevant philosophical literature and prior
+      positions; awareness of standard objections and responses.
+  - name: significance
+    scale: [1, 5]
+    description: >-
+      Importance of the conclusion for ongoing philosophical debates.
+  - name: clarity
+    scale: [1, 5]
+    description: >-
+      Clarity of exposition — terms defined, distinctions drawn, prose
+      readable to a non-specialist philosopher.
+  - name: scope_and_focus
+    scale: [1, 5]
+    description: >-
+      Whether the paper's scope is appropriately focused for a journal
+      article (vs. sprawling into multiple papers' worth of material).
+  - name: overall
+    scale: [1, 5]
+    description: Overall recommendation.
+  - name: confidence
+    scale: [1, 5]
+    description: Reviewer confidence in the subfield.
+
+text_sections:
+  - { name: paper_summary, required: true }
+  - { name: argument_reconstruction, required: true }
+  - { name: strengths, required: true }
+  - { name: objections, required: true }
+  - { name: weaknesses, required: true }
+  - { name: required_revisions, required: true }
+  - { name: suggested_revisions, required: false }
+  - { name: questions_for_author, required: false }
+
+decision:
+  type: categorical
+  options: [accept, minor_revision, major_revision, reject_and_resubmit, reject]
+  threshold_dimension: overall
+  threshold_value: 4
+
+prompt_overrides:
+  system_hint: >-
+    Follow Philosophical Review / Mind / Noûs reviewer norms.
+    Philosophical articles are evaluated on (i) originality and
+    significance of the thesis, (ii) rigor of the argument, and (iii)
+    engagement with the relevant literature — not on empirical
+    reproducibility. Begin by reconstructing the author's argument
+    charitably in argument_reconstruction before raising objections.
+    Distinguish substantive philosophical objections from mere
+    presentational suggestions. Do not demand experiments, code, or
+    statistical analysis — they are inapplicable.
+  author_hint: >-
+    Write for a philosophy journal: state the thesis and main argument
+    clearly in the introduction, anticipate and address the most
+    obvious objections, and engage explicitly with the standard
+    positions in the literature. Keep scope focused on a single
+    defensible thesis rather than a sprawling research programme.

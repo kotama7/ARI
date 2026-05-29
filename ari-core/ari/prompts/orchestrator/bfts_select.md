@@ -10,7 +10,6 @@ Candidates:
 
 Selection criteria:
 - Nodes with has_real_data=True and strong metrics are high-value
-- Prefer unexplored directions (low retry) over already-tried paths
 - Consider all metrics holistically (multi-objective)
 - Deeper nodes with excellent results are worth continuing
 - A small diversity_bonus is awarded to underrepresented exploration types; treat it as a soft tiebreaker, not a primary signal

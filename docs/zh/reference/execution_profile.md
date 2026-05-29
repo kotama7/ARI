@@ -1,3 +1,12 @@
+---
+sources:
+  - path: ari-skill-replicate/schemas/replication_rubric.schema.json
+    role: schema
+  - path: ari-skill-paper-re/src/server.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # `execution_profile` 参考
 
 PaperBench 评分单 (`ari-skill-replicate/schemas/replication_rubric.schema.json`,
@@ -127,8 +136,8 @@ sbatch --wait \
 
 ## 相关
 
-- [PaperBench 快速入门](../howto/paperbench_quickstart.md)
-- [多节点搭建](../howto/multi_node_setup.md)
-- [计算节点安全约定](../howto/compute_node_safety.md)
+- [PaperBench 快速入门](../guides/paperbench/paperbench_quickstart.md)
+- [多节点搭建](../guides/paperbench/multi_node_setup.md)
+- [计算节点安全约定](../guides/paperbench/compute_node_safety.md)
 - 实现: `ari-skill-paper-re/src/server.py:run_reproduce`
 - Schema: `ari-skill-replicate/schemas/replication_rubric.schema.json`

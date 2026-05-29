@@ -16,12 +16,20 @@ from typing import Optional
 
 
 # ── Fail-safe: process sandbox ──────────────────────────
-_MAX_CHILD_PROCS = int(os.environ.get("ARI_MAX_CHILD_PROCS", "1024"))
+# RLIMIT_NPROC is per real-uid, not per process: capping the child also counts
+# every existing task of the same user, so a 1024 cap fires fork EAGAIN as soon
+# as the user already has >1024 threads anywhere (VSCode, Letta, BFTS workers,
+# …). Only honor the cap when the operator explicitly opts in via
+# ARI_MAX_CHILD_PROCS.
+_MAX_CHILD_PROCS_ENV = os.environ.get("ARI_MAX_CHILD_PROCS", "").strip()
+_MAX_CHILD_PROCS: int | None = int(_MAX_CHILD_PROCS_ENV) if _MAX_CHILD_PROCS_ENV else None
 
 
 def _sandbox_preexec() -> None:
-    """Pre-exec hook: new process group + RLIMIT_NPROC cap."""
+    """Pre-exec hook: new process group (and optional RLIMIT_NPROC cap)."""
     os.setsid()
+    if _MAX_CHILD_PROCS is None:
+        return
     try:
         import resource
         _soft, hard = resource.getrlimit(resource.RLIMIT_NPROC)

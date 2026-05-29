@@ -1,4 +1,4 @@
-"""ari.orchestrator — BFTS exploration, scheduling, and lineage decisions.
+"""ari.orchestrator — BFTS exploration and lineage decisions.
 
 The orchestrator owns the breadth-first tree search that drives each
 ARI run.  It picks which leaf to expand next, runs the LLM judge that
@@ -7,8 +7,8 @@ decision LLM when composite scores stagnate.
 
 Modules:
 - ``node`` / ``node_selection`` — node data model + leaf selector.
-- ``bfts`` — main BFTS loop and stage hooks.
-- ``scheduler`` — bounded concurrency + retry policy.
+- ``bfts`` — main BFTS loop and stage hooks (expansion tracking, depth /
+  sterile / total pruning, frontier retire policy).
 - ``lineage_decision`` — LLM judge for ``continue`` / ``switch_to_idea``
   / ``fanout`` / ``terminate`` (v0.7.0).
 - ``root_idea_selector`` — picks the seed idea from ``idea.json``.
