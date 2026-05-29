@@ -8,6 +8,9 @@ interface ScopeValues {
   maxReact: number;
   timeout: number;
   maxRecursionDepth: number;
+  frontierScore: string;
+  composite: string;
+  axisMode: string;
 }
 
 interface ScopePreset {
@@ -62,9 +65,13 @@ export function StepScope({
         workers: c.workers,
         timeout: c.timeout,
         maxRecursionDepth: c.maxRecursionDepth,
+        // Algorithm choices are independent of the budget preset — preserve them.
+        frontierScore: scope.frontierScore,
+        composite: scope.composite,
+        axisMode: scope.axisMode,
       });
     },
-    [setScopeVal, setScope],
+    [setScopeVal, setScope, scope.frontierScore, scope.composite, scope.axisMode],
   );
 
   // Initialize with Standard preset if values are default
@@ -77,6 +84,10 @@ export function StepScope({
 
   const handleFieldChange = (field: keyof ScopeValues, value: number) => {
     setIsManual(true);
+    setScope({ ...scope, [field]: value });
+  };
+
+  const handleAlgoChange = (field: keyof ScopeValues, value: string) => {
     setScope({ ...scope, [field]: value });
   };
 
@@ -195,6 +206,67 @@ export function StepScope({
                 )
               }
             />
+          </div>
+        </div>
+
+        {/* Algorithm switches */}
+        <div
+          style={{
+            marginTop: 16,
+            paddingTop: 12,
+            borderTop: '1px solid var(--border)',
+          }}
+        >
+          <div
+            style={{
+              fontSize: '.8rem',
+              fontWeight: 600,
+              color: 'var(--muted)',
+              marginBottom: 8,
+            }}
+          >
+            {t('wiz_algo_title')}
+          </div>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <div className="form-row" style={{ flex: 1, minWidth: 200 }}>
+              <label>{t('wiz_frontier_score')}</label>
+              <select
+                value={scope.frontierScore}
+                style={{ width: '100%' }}
+                onChange={(e) => handleAlgoChange('frontierScore', e.target.value)}
+              >
+                <option value="scientific_plus_diversity">
+                  {t('wiz_fs_scientific_plus_diversity')}
+                </option>
+                <option value="scientific_only">{t('wiz_fs_scientific_only')}</option>
+                <option value="depth_penalized">{t('wiz_fs_depth_penalized')}</option>
+                <option value="ucb_like">{t('wiz_fs_ucb_like')}</option>
+              </select>
+            </div>
+            <div className="form-row" style={{ flex: 1, minWidth: 200 }}>
+              <label>{t('wiz_composite')}</label>
+              <select
+                value={scope.composite}
+                style={{ width: '100%' }}
+                onChange={(e) => handleAlgoChange('composite', e.target.value)}
+              >
+                <option value="harmonic_mean">{t('wiz_comp_harmonic_mean')}</option>
+                <option value="arithmetic_mean">{t('wiz_comp_arithmetic_mean')}</option>
+                <option value="weighted_min">{t('wiz_comp_weighted_min')}</option>
+                <option value="geometric_mean">{t('wiz_comp_geometric_mean')}</option>
+              </select>
+            </div>
+            <div className="form-row" style={{ flex: 1, minWidth: 200 }}>
+              <label>{t('wiz_axis_mode')}</label>
+              <select
+                value={scope.axisMode}
+                style={{ width: '100%' }}
+                onChange={(e) => handleAlgoChange('axisMode', e.target.value)}
+              >
+                <option value="dynamic">{t('wiz_axis_dynamic')}</option>
+                <option value="legacy">{t('wiz_axis_legacy')}</option>
+              </select>
+            </div>
           </div>
         </div>
 

@@ -18,16 +18,21 @@ _READ_FILE_LIMIT = 8000
 
 # ── Fail-safe: process sandbox ──────────────────────────
 # Prevent fork bombs and ensure cleanup of all child processes on timeout.
-# The limit caps the number of user processes that can exist while the
-# child is running.  It is intentionally generous (legitimate scientific
-# workloads rarely exceed a few hundred), but low enough to stop runaway
-# recursive spawns like the 70k-process incident.
-_MAX_CHILD_PROCS = int(os.environ.get("ARI_MAX_CHILD_PROCS", "1024"))
+# RLIMIT_NPROC is enforced per real-uid (kernel counts every task of the
+# user, not just descendants of this process), so a fixed 1024 cap fires
+# fork EAGAIN as soon as the user already has > 1024 threads anywhere —
+# e.g. gcc->ld->collect2 during ``gcc x.c -o x && ./x`` dies with
+# exit 254 on a workstation that has VSCode / multiple shells running.
+# Opt in via ARI_MAX_CHILD_PROCS instead; default is no extra cap.
+_MAX_CHILD_PROCS_ENV = os.environ.get("ARI_MAX_CHILD_PROCS", "").strip()
+_MAX_CHILD_PROCS: int | None = int(_MAX_CHILD_PROCS_ENV) if _MAX_CHILD_PROCS_ENV else None
 
 
 def _sandbox_preexec() -> None:
-    """Pre-exec hook: new process group + RLIMIT_NPROC cap."""
+    """Pre-exec hook: new process group (and optional RLIMIT_NPROC cap)."""
     os.setsid()
+    if _MAX_CHILD_PROCS is None:
+        return
     try:
         import resource
         _soft, hard = resource.getrlimit(resource.RLIMIT_NPROC)

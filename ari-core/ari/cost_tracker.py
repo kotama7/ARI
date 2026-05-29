@@ -1,7 +1,7 @@
 """Cost tracker for ARI — writes per-call logs and per-experiment summaries."""
 
 from __future__ import annotations
-import json, threading, time
+import json, os, threading, time
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Optional
@@ -120,8 +120,17 @@ class CostTracker:
                node_id: str = "", phase: str = "", skill: str = "",
                component: str | None = None, op: str | None = None,
                backend: str | None = None, embedding_tokens: int = 0,
-               latency_ms: float | None = None) -> None:
-        cost = _estimate_cost(model, prompt_tokens, completion_tokens)
+               latency_ms: float | None = None,
+               cost_usd: float | None = None) -> None:
+        # Trust an authoritative upstream cost when provided (e.g. the CLI shim
+        # forwards claude -p's ``total_cost_usd``). litellm's pricing table has
+        # no entry for synthetic shim models like "claude-cli", so without this
+        # path the call would otherwise be booked at $0.
+        cost = (
+            float(cost_usd)
+            if cost_usd is not None
+            else _estimate_cost(model, prompt_tokens, completion_tokens)
+        )
         rec = CallRecord(
             timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             node_id=node_id, phase=phase, skill=skill, model=model,
@@ -190,9 +199,14 @@ def init(log_dir: str | Path) -> CostTracker:
     resolved = Path(log_dir).resolve()
     if _tracker is not None and _tracker._dir.resolve() == resolved:
         _install_litellm_callback()
+        _install_litellm_metadata_injector()
         return _tracker
     _tracker = CostTracker(log_dir)
     _install_litellm_callback()
+    # Apply ARI's model/api_base routing to every litellm call in this
+    # process (orchestrator side), mirroring what bootstrap_skill already
+    # does inside each MCP skill subprocess.
+    _install_litellm_metadata_injector()
     return _tracker
 
 
@@ -236,10 +250,51 @@ def set_default_metadata(**kwargs: str) -> None:
 _injector_installed = False
 
 
+def _apply_ari_routing(kwargs: dict) -> None:
+    """Normalise a litellm-call kwargs in place so synthetic-shim models
+    (``claude-cli``, ``codex-cli``) reach the shim correctly.
+
+    Two concerns, both single-point so skills don't have to duplicate them:
+
+    * **Provider prefix.** A bare ``model="claude-cli"`` makes litellm raise
+      ``LLM Provider NOT provided`` because no built-in routing table covers
+      that name. :func:`ari.llm.routing.resolve_litellm_model` applies the
+      same prefix rules the agent ReAct client uses.
+    * **Base URL.** With ``ARI_BACKEND=cli-shim``, fill in ``api_base`` from
+      ``ARI_LLM_API_BASE`` (default :8900) when the caller didn't supply one
+      — otherwise the request would hit ``api.openai.com``.
+
+    Real OpenAI / Anthropic / Ollama backends are untouched.
+    """
+    try:
+        from ari.llm.routing import resolve_litellm_model
+    except ImportError:
+        return
+    backend = os.environ.get("ARI_BACKEND", "")
+    model = kwargs.get("model")
+    if model:
+        resolved = resolve_litellm_model(model, backend=backend)
+        if resolved != model:
+            kwargs["model"] = resolved
+    if backend in ("cli-shim", "cli_shim") and "api_base" not in kwargs:
+        base = os.environ.get("ARI_LLM_API_BASE")
+        if base:
+            kwargs["api_base"] = base
+            kwargs.setdefault(
+                "api_key", os.environ.get("OPENAI_API_KEY") or "cli-shim"
+            )
+
+
 def _install_litellm_metadata_injector() -> None:
-    """Wrap ``litellm.completion`` / ``litellm.acompletion`` so the defaults
-    from :func:`set_default_metadata` get merged into the caller's
-    ``metadata=`` kwarg. Idempotent."""
+    """Wrap ``litellm.completion`` / ``litellm.acompletion`` to apply ARI's
+    process-wide conventions:
+
+    1. merge defaults from :func:`set_default_metadata` into ``metadata=``,
+    2. normalise ``model`` (and fill ``api_base`` for cli-shim) so every
+       call from any skill / module routes correctly.
+
+    Idempotent; safe to call from multiple init paths.
+    """
     global _injector_installed
     if _injector_installed:
         return
@@ -259,10 +314,12 @@ def _install_litellm_metadata_injector() -> None:
 
     def _completion(*args, **kwargs):
         kwargs["metadata"] = _merge(kwargs.get("metadata"))
+        _apply_ari_routing(kwargs)
         return _orig_completion(*args, **kwargs)
 
     async def _acompletion(*args, **kwargs):
         kwargs["metadata"] = _merge(kwargs.get("metadata"))
+        _apply_ari_routing(kwargs)
         return await _orig_acompletion(*args, **kwargs)
 
     _litellm.completion = _completion
@@ -301,6 +358,51 @@ def get() -> Optional[CostTracker]:
 # including those from MCP skill servers (paper-skill, plot-skill, etc.)
 # which call litellm directly without going through ari.llm.client.
 
+def _extract_upstream_cost(usage) -> float | None:
+    """Read an upstream-reported ``cost_usd`` from a litellm Usage object.
+
+    litellm's ``Usage`` pydantic model may expose extra fields as attributes,
+    on ``model_extra``, or only in the raw dict — depending on version — so
+    we try the common access paths in order. Returns ``None`` when no
+    authoritative cost is available; the caller falls back to the price-table
+    estimate.
+    """
+    if usage is None:
+        return None
+    candidates = ("cost_usd", "x_ari_cost_usd")
+    for attr in candidates:
+        v = getattr(usage, attr, None)
+        if v is not None:
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                pass
+    extra = getattr(usage, "model_extra", None)
+    if isinstance(extra, dict):
+        for key in candidates:
+            if extra.get(key) is not None:
+                try:
+                    return float(extra[key])
+                except (TypeError, ValueError):
+                    pass
+    d = getattr(usage, "__dict__", None)
+    if isinstance(d, dict):
+        for key in candidates:
+            if d.get(key) is not None:
+                try:
+                    return float(d[key])
+                except (TypeError, ValueError):
+                    pass
+    if isinstance(usage, dict):
+        for key in candidates:
+            if usage.get(key) is not None:
+                try:
+                    return float(usage[key])
+                except (TypeError, ValueError):
+                    pass
+    return None
+
+
 def _litellm_success_handler(kwargs, response_obj, start_time, end_time):
     """litellm success_callback: log every LLM call to cost_tracker."""
     if _tracker is None:
@@ -328,6 +430,7 @@ def _litellm_success_handler(kwargs, response_obj, start_time, end_time):
             phase=metadata.get("phase", "") or "",
             skill=metadata.get("skill", "") or "",
             node_id=metadata.get("node_id", "") or "",
+            cost_usd=_extract_upstream_cost(usage),
         )
     except Exception:
         pass  # Never break the LLM call due to tracking errors

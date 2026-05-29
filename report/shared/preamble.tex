@@ -1,6 +1,13 @@
 % shared/preamble.tex — common preamble for en/ja/zh main.tex
 % Engine-aware (lualatex for en/ja, xelatex for zh).
 
+% Load silence first so warning filters set later in this preamble
+% apply to packages that print warnings during their own loading
+% (notably luatexja, which warns about a microtype patch).
+\usepackage{silence}
+\WarningFilter{luatexja}{LuaTeX-ja}
+\WarningFilter{biblatex}{Using fall-back bibtex backend}
+
 \usepackage{ifluatex}
 \usepackage{ifxetex}
 
@@ -13,14 +20,17 @@
 \usepackage{lmodern}
 \usepackage{microtype}
 \usepackage{seqsplit}          % \seqsplit{} for long identifiers
-% Globally tolerate slightly looser line breaks. The two-column layout makes
-% strict \fussy break long file:line identifiers; \sloppy lets TeX add stretch
-% rather than emit Overfull \hbox warnings.
-\sloppy
-\setlength{\emergencystretch}{6em}
-% \code{...}: like \texttt{...} but the content is broken char-by-char so
-% file:line citations don't blow past the column edge.
-\providecommand{\code}[1]{\texttt{\seqsplit{#1}}}
+% Strict line-breaking. We deliberately do NOT use \sloppy globally:
+% \sloppy with a large \emergencystretch suppresses Overfull warnings
+% AND silently lets text protrude into the margin. We want TeX to keep
+% reporting overfull boxes so we can fix the wording / use \code{}
+% wrapping. A small \emergencystretch is fine — it just gives the
+% line-breaker a little room to find a clean break on the last pass.
+\setlength{\emergencystretch}{1em}
+% \code{} renders an identifier in monospace with break-anywhere splits
+% via seqsplit. Declared robust so it survives moving arguments
+% (\caption{}, \section{}).
+\DeclareRobustCommand{\code}[1]{\texttt{\seqsplit{#1}}}
 
 % ----------------------------------------------------------------- CJK fonts
 % Loaded only when the engine is lualatex/xelatex AND a CJK-capable font set
@@ -88,6 +98,52 @@
 \usepackage{tabularx}
 \usepackage{caption}
 \captionsetup{font=small,labelfont=bf}
+
+% Suppress Underfull \hbox / \vbox log noise only — Overfull warnings
+% (text in the margin) MUST stay visible. \emergencystretch is set above
+% to a modest 1em, deliberately small so TeX still flags real overfulls.
+\hbadness=10000
+\vbadness=10000
+
+% ----------------------------------------------------------------- Unicode-aware monospace (lualatex/xelatex only)
+% The default T1-encoded \texttt / \Verbatim font is `lmtt` which lacks
+% several characters that occur verbatim in our snapshot prompts (U+2014
+% em-dash, U+2013 en-dash, U+2192 →). Under lualatex / xelatex we have
+% fontspec available; force the mono font to the OpenType Latin Modern Mono
+% which carries the full Unicode range. This eliminates "Missing character"
+% log noise from the prompts appendix without changing the snapshot bytes.
+\ifdefined\directlua
+  \usepackage{fontspec}
+  \IfFontExistsTF{Latin Modern Mono}{%
+    \setmonofont{Latin Modern Mono}[AutoFakeBold=2]%
+  }{}
+\else\ifdefined\XeTeXversion
+  \usepackage{fontspec}
+  \IfFontExistsTF{Latin Modern Mono}{%
+    \setmonofont{Latin Modern Mono}[AutoFakeBold=2]%
+  }{}
+\fi\fi
+
+% Warning filters: defined at the top of this preamble (silence is
+% loaded there) so they cover packages that emit warnings during
+% their own initialisation (luatexja, biblatex).
+
+% ----------------------------------------------------------------- verbatim (for Appendix prompt listings)
+% fvextra (not base fancyvrb) is what implements real line wrapping:
+% `breaklines`, `breakanywhere`, `breaksymbol`. Loading only fancyvrb
+% silently ignores those keys and the long prompt lines run off the page.
+\usepackage{fvextra}
+% \PromptListing{<file>}{<caption>}{<label>}: verbatim-include a snapshot
+% prompt from shared/appendix/prompts/. The first 3 lines (snapshot header)
+% are skipped — the reader sees only the prompt text. breakanywhere lets a
+% line wrap even inside a long unspaced token (e.g. a 500-char JSON line).
+\fvset{fontsize=\footnotesize, frame=single, framesep=4pt,
+       breaklines=true, breakanywhere=true, breaksymbolleft={},
+       breaksymbolright={}, numbers=none}
+\newcommand{\PromptListing}[3]{%
+  \subsection{#2}\label{#3}%
+  \VerbatimInput[firstline=4]{../shared/appendix/prompts/#1}%
+}
 
 % ----------------------------------------------------------------- color (Okabe-Ito)
 \usepackage{xcolor}
@@ -165,6 +221,19 @@
   swim lane label/.style={font=\bfseries\footnotesize, anchor=north west},
   group/.style={draw=ari-skyblue!50, very thick, rounded corners=4pt, inner sep=10pt},
   group strong/.style={draw=ari-blue, very thick, rounded corners=4pt, inner sep=10pt, fill=ari-skyblue!8},
+  % BFTS state-machine (F15) node styles — kept in sync with style.tikzstyles.
+  pool/.style={rectangle, rounded corners=2pt, draw=ari-blue, line width=1pt,
+               fill=ari-skyblue!28, minimum width=3.2cm, minimum height=0.8cm,
+               text width=3.0cm, align=center},
+  stage/.style={rectangle, rounded corners=2pt, draw=ari-black, line width=0.7pt,
+                fill=white, minimum width=4.2cm, minimum height=0.85cm,
+                text width=4.0cm, align=center},
+  guard/.style={diamond, aspect=2.6, draw=ari-orange, line width=0.8pt,
+                fill=ari-yellow!22, minimum width=3.0cm, minimum height=1.05cm,
+                text width=2.6cm, align=center, inner sep=0pt, font=\footnotesize},
+  drop/.style={rectangle, rounded corners=1pt, draw=ari-vermilion, dashed,
+               fill=white, minimum width=3.4cm, minimum height=0.65cm,
+               text width=3.2cm, align=center, font=\scriptsize, text=ari-vermilion},
 }
 
 % ----------------------------------------------------------------- biblatex
@@ -172,8 +241,18 @@
 % so we expose a fallback hook (\AriBibBackend) that can be set to `bibtex` at
 % build time via `lualatex "\def\AriBibBackend{bibtex}\input{main}"` if needed.
 \providecommand{\AriBibBackend}{biber}
-\usepackage[backend=\AriBibBackend,style=numeric-comp,sorting=nyt,maxnames=6]{biblatex}
+% sorting=none -> references are numbered in order of first citation, so the
+% in-text [n] markers run sequentially instead of in author-alphabetical order.
+\usepackage[backend=\AriBibBackend,style=numeric-comp,sorting=none,maxnames=6]{biblatex}
 \addbibresource{../shared/references.bib}
+
+% ----------------------------------------------------------------- algorithm pseudocode
+% Loaded BEFORE hyperref so the float counter is registered correctly.
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+% Algorithmic dialect tweaks: short keywords + no end-line.
+\algrenewcommand\algorithmicrequire{\textbf{Input:}}
+\algrenewcommand\algorithmicensure{\textbf{Output:}}
 
 % ----------------------------------------------------------------- hyperref last
 \usepackage[colorlinks=true,linkcolor=ari-blue,citecolor=ari-blue,urlcolor=ari-vermilion]{hyperref}

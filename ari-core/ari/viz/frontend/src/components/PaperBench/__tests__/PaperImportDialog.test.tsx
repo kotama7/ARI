@@ -27,6 +27,78 @@ describe('PaperImportDialog (PLAN_GUI §8 acceptance: license warning)', () => {
     expect(screen.queryByText(/^✅ Permissive license/i)).not.toBeInTheDocument();
   });
 
+  it('uploads the selected PDF to /api/upload and forwards pdf_path on import', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/api/upload') {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            ok: true,
+            path: '/tmp/staging/uploads/SC41406.2024.00019.pdf',
+            filename: 'SC41406.2024.00019.pdf',
+          }),
+        } as Response);
+      }
+      if (url === '/api/paperbench/papers/import') {
+        const body = JSON.parse(String(init?.body ?? '{}'));
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            paper_id: body.source,
+            license: body.license,
+            permissive: true,
+            modifiable: true,
+            redistributable: true,
+            usable: true,
+            note: '',
+          }),
+        } as Response);
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) } as Response);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<PaperImportDialog />);
+    fireEvent.change(screen.getByLabelText(/Source type/i), {
+      target: { value: 'upload' },
+    });
+
+    const file = new File(['%PDF-1.7\n…'], 'SC41406.2024.00019.pdf', {
+      type: 'application/pdf',
+    });
+    const fileInput = screen.getByLabelText(/PDF file/i) as HTMLInputElement;
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    // Filename appears in the dialog and source defaults to the stem
+    expect(screen.getByText(/SC41406\.2024\.00019\.pdf/)).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue('SC41406.2024.00019'),
+    ).toBeInTheDocument();
+
+    // Title is required by the form; fill it.
+    fireEvent.change(screen.getByLabelText(/^Title$/i), {
+      target: { value: 'SC paper external import' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Save to registry/i }));
+
+    await waitFor(() => {
+      const uploadCall = fetchMock.mock.calls.find((c) => c[0] === '/api/upload');
+      expect(uploadCall).toBeDefined();
+      // Multipart upload — body is a FormData instance, not a JSON string.
+      expect(uploadCall![1]?.body).toBeInstanceOf(FormData);
+    });
+    await waitFor(() => {
+      const importCall = fetchMock.mock.calls.find(
+        (c) => c[0] === '/api/paperbench/papers/import',
+      );
+      expect(importCall).toBeDefined();
+      const body = JSON.parse(String(importCall![1]?.body ?? '{}'));
+      expect(body.source_type).toBe('upload');
+      expect(body.pdf_path).toBe('/tmp/staging/uploads/SC41406.2024.00019.pdf');
+      expect(body.title).toBe('SC paper external import');
+    });
+  });
+
   it('shows the "Fetch metadata" button when source_type=arxiv and posts to /api/paperbench/arxiv/<id>', async () => {
     const mockResponse = {
       arxiv_id: '2404.14193',

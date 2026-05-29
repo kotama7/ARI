@@ -1,10 +1,15 @@
 bfts:
   max_depth: 5
+  max_expansions_per_node: 4
   max_parallel_nodes: 4
-  max_retries_per_node: 3
   max_total_nodes: 50
   score_threshold: 0.3
   timeout_per_node: 7200
+  frontier_score: scientific_plus_diversity
+  depth_penalty_lambda: 0.05
+  ucb_c: 0.5
+  select_prompt: orchestrator/bfts_select
+  expand_select_prompt: orchestrator/bfts_expand_select
 checkpoint:
   dir: ./checkpoints/{run_id}/
   trigger: per_node_completion
@@ -15,6 +20,9 @@ evaluator:
     novelty: 0.2
     reproducibility: 0.2
     clarity_of_contribution: 0.2
+  composite: harmonic_mean
+  axis_mode: dynamic
+  custom_axes: []
 hpc:
   account: ''
   max_nodes: 4

@@ -95,38 +95,3 @@ prompt_overrides:
     performs (e.g., "The implementation partitions input into 8x8x8
     chunks") — that style is for agent_benchmark mode and is rejected
     here.
-
-  reproduce_plan_hint: |
-    For SC (HPC) papers, the reproduce_plan.md MUST cover (one section
-    per experiment):
-
-      - Hardware: cluster name, node count, CPU/GPU model, interconnect
-                  type, NIC link rate
-      - Software stack: compiler + version, MPI implementation + version,
-                        CUDA / driver version, math libraries
-      - SLURM allocation: partition, nodes, ntasks, ntasks-per-node,
-                          gpus-per-task / gres, exclusive flag, time limit
-      - Module loads: explicit `module load` commands, env vars
-                      (LD_LIBRARY_PATH, PATH, OMP_NUM_THREADS, etc.)
-      - Build commands: cmake / make flags, configure options,
-                        cross-compile notes when relevant
-      - Run commands: srun / mpirun invocation with rank/topology binding,
-                      input file paths, scale-down knobs
-      - Scale variants: explicit instructions for reducing to single-node
-                        execution when the full cluster is not available
-                        (use this for the `small_scale_reproducible`
-                        category)
-
-    The install_commands.txt MUST be reconstructable into a runnable
-    bash script (cite AD section for each block).
-
-    The verification_code.py MUST include checks for: speedup values,
-    throughput values (in physical units like GB/s or GFLOP/s),
-    strong/weak scaling efficiency, error/accuracy metrics (RRMSE,
-    PSNR, compression ratio).
-
-    Use these venue-specific Reproducibility category labels in
-    addition to the global ones:
-      - `requires_HPC_allocation` — only runs at >=N nodes per paper
-      - `requires_proprietary_data` — proprietary dataset / facility
-                                       module / vendor-specific driver

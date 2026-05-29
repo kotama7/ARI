@@ -78,5 +78,5 @@ pytest tests/ -q
 
 ## See also
 
-- `docs/skills.md#ari-skill-vlm` — high-level summary.
+- `docs/reference/skills.md#ari-skill-vlm` — high-level summary.
 - `docs/reference/mcp_tools.md` — argument signatures.

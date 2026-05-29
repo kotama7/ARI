@@ -1,10 +1,10 @@
 You are expanding a BFTS research tree node.
 
 {goal_line}Parent node id={parent_id_short}, depth={parent_depth}, status={parent_status}
-Parent metrics: {parent_metrics_json}
+{depth_note}{budget_note}Parent metrics: {parent_metrics_json}
 Parent summary: {parent_summary}
 {sci_note}{idea_block}{parent_report_block}
-{siblings_block}{ancestors_block}{existing_block}{diversity_block}Propose exactly ONE child research direction that is the most scientifically valuable next step. The "label" field MUST be exactly one of these five values (all lowercase, no other strings allowed, no synonyms, no inventions): draft, improve, debug, ablation, validation. Base your choice on the experimental context above, not on a fixed template.
+{siblings_block}{ancestors_block}{existing_block}{diversity_block}Propose exactly ONE child research direction that is the most scientifically valuable next step. For the "label" field, strongly prefer one of the canonical labels [draft, improve, debug, ablation, validation]; only invent a custom label (e.g. "replication", "generalization") when none of the five fits meaningfully — the custom string will be preserved as raw_label. Base your choice on the experimental context above, not on a fixed template.
 
 Label selection guidance:
 - 'debug': parent FAILED or has no real data — diagnose and fix it.

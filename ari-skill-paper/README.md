@@ -100,7 +100,7 @@ Reviewer rubrics are YAML files under `ARI_RUBRIC_DIR` (defaults to
 `ari-core/config/reviewer_rubrics/`).  `ARI_RUBRIC` selects the
 active rubric; the same file drives both BFTS scoring and the
 published paper review (see
-`docs/architecture.md#plan--venue-contract-v070`).
+`docs/concepts/architecture.md#plan--venue-contract-v070`).
 
 `ARI_STRICT_DYNAMIC=true` forces dynamic-axis generation even when
 the rubric defines fixed axes.
@@ -119,7 +119,7 @@ the rubric defines fixed axes.
 
 The skill consumes a `paper:` section from the per-checkpoint
 `settings.json` (rubric override, venue default, ensemble size).
-See `docs/configuration.md` for the canonical schema.
+See `docs/reference/configuration.md` for the canonical schema.
 
 ## Tests
 
@@ -143,6 +143,6 @@ pip install -e .
 
 ## See also
 
-- `docs/skills.md#ari-skill-paper` — high-level summary.
+- `docs/reference/skills.md#ari-skill-paper` — high-level summary.
 - `docs/reference/mcp_tools.md` — argument signatures.
 - `ari-skill-vlm` — figure / table review delegate.

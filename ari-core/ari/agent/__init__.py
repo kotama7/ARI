@@ -16,6 +16,6 @@ Modules:
 - ``workflow`` — workflow.yaml stage validation.
 
 See also:
-- ``docs/architecture.md`` (Per-Node Prompt Composition, Pipeline-driven ReAct).
+- ``docs/concepts/architecture.md`` (Per-Node Prompt Composition, Pipeline-driven ReAct).
 - ``git log -- ari-core/ari/agent/`` for the Phase 3D split history.
 """

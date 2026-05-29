@@ -198,7 +198,7 @@ def test_cli_run_with_adopted_run_id_does_not_crash(tmp_path, monkeypatch):
          mock.patch("ari.cli._run_loop", side_effect=_capture), \
          mock.patch("ari.cli.generate_paper_section"):
         mock_rt.return_value = (
-            None, None, None, mock.MagicMock(), mock.MagicMock(), None, None,
+            None, None, None, mock.MagicMock(), mock.MagicMock(), None,
         )
         result = CliRunner().invoke(app, ["run", str(exp), "--config", str(cfg)])
 

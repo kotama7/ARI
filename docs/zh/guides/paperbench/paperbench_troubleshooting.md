@@ -1,0 +1,258 @@
+---
+sources:
+  - path: ari-skill-paper-re
+    role: implementation
+  - path: ari-skill-replicate
+    role: implementation
+last_verified: 2026-05-25
+---
+
+# PaperBench 故障排查
+
+常见失败模式与对策。审计运行流水线为
+`rubric_path → build_reproduce_sh → run_reproduce → grade_with_simplejudge`;
+问题通常属于这 4 阶段之一。
+
+## 评分单生成
+
+### Q. 评分单只有 0 个叶节点
+
+生成器在所有 3 次重试中都无法产生有效 JSON。查看 worklog 中的最后
+失败。常见原因:
+- LLM 速率限制 (几分钟后重试)
+- 论文 PDF 解析为空字符串 — 重新上传,或先用 `pdftotext` 转换
+
+### Q. grader 加载时 `task_category` 错误
+
+grader 拒绝 `"Result Visualization"` 等非 PaperBench 类别。生成器的
+`normalize_rubric_node` 阶段应把这些钳制到 allow-list
+(`Code Development`, `Code Execution`, `Result Analysis`)。如果错误
+依旧,用最新的 `gemini-2.5-pro` 构建重新生成 — 旧模型漂移更多。
+
+## 复现器 (BasicAgent)
+
+### Q. 代理从未写 `reproduce.sh`
+
+12 h rollout 在没有调用 `submit` 的情况下用完了时间。可能原因:
+- 模型输出被截断 (在 `agent.log` 查找 `TOOL OUTPUT TRUNCATED` — 通常
+  良性)
+- 论文文本超过模型 context;尝试小论文或 `iterative_agent=true`
+
+### Q. 代理为 GPU 论文提交了 CPU 代码
+
+rubric 的 `execution_profile.kind` 很可能为空。验证:
+
+```bash
+jq '.reproduce_contract.execution_profile' rubric.json
+```
+
+如果为空,重新生成 rubric (v0.7.2 的 `skeleton.md` prompt 现在指示
+LLM 从论文的实验设置章节填充 `execution_profile`)。
+
+### Q. 代理为 MPI 论文没有使用 `srun`
+
+检查 `agent.log` 中的 user message,确认存在
+`COMPUTE-NODE EXECUTION CONVENTIONS` 区块。如果缺失,呼叫方没有传
+`execution_profile`。验证连接:
+
+```bash
+python -c "
+from ari_skill_paper_re._replicator_agent import _format_hpc_appendix
+print(_format_hpc_appendix(
+    expected_artifacts=['results.csv'],
+    execution_profile={'kind': 'mpi_gpu', 'metric_columns': ['x']},
+    cluster_shape={'SLURM_JOB_NUM_NODES':'4','SLURM_NTASKS':'32','GPU_LIST':'v100'}
+))"
+```
+
+输出必须包含 `srun -n $SLURM_NTASKS`。
+
+## SLURM 调度 (`run_reproduce`)
+
+### Q. `sbatch: error: Invalid GRES gpu:v100:1`
+
+集群未配置 GRES。v0.7.2 通过 `_slurm_has_gres()` 自动剥离 flag — 如果
+你仍看到此错误,你在更旧的构建上,或 `sinfo` 不在 PATH 上。
+解决方法: 让向导的 *执行配置覆盖* 中的 `gpu_type` 留空。
+
+### Q. sbatch 通过了但 `reproduce.sh` 在单节点上运行
+
+`reproduce.sh` 作为第一个 allocated 节点上的一个 rank 启动。代理的
+prompt 指示 `srun -N $SLURM_JOB_NUM_NODES -n $SLURM_NTASKS` fan-out —
+验证脚本实际是否有该行:
+
+```bash
+grep -E 'srun.*-N.*-n' repro_sandbox/reproduce.sh
+```
+
+如果缺失,手动追加或用更强的模型重新生成。
+
+### Q. 计算节点上 `mpirun: command not found`
+
+compute node 环境中没有加载 OpenMPI。要么:
+- 把 `"openmpi/4.1"` (或集群名) 加到 rubric 的 `module_loads`
+- 把脚本切换到 `srun` (PMI 集成的;大多数 SLURM 站点不需要显式
+  OpenMPI 模块也能工作)
+
+### Q. 任务运行但 rank > 0 时 `repo_dir` 文件丢失
+
+`repo_dir` 在节点本地 FS 上。ARI 警告;修复是把 checkpoint 移到共享
+mount (`$HOME`, `/work/...`, `/scratch/...`)。
+
+### Q. `--mem=256G` 超出分区限制
+
+rubric 为你的站点过度指定内存。在向导 Step 3 中覆盖
+(`memory_gb_per_node = <你的限制>`),或直接编辑 rubric JSON 中的
+`execution_profile.memory_gb_per_node`。
+
+## 判分 (`grade_with_simplejudge`)
+
+### Q. `ors_score` 恰好为 `0.0`
+
+grader 找不到 `reproduce.sh` 或任何预期产物。检查:
+
+```bash
+ls repro_sandbox/                  # reproduce.sh 存在?
+jq '.executed, .exit_code' repro_result.json   # 干净运行?
+jq '.missing' repro_result.json    # 缺少 expected_artifacts?
+```
+
+一个常见原因: 代理把 `submission/reproduce.sh` 写到了那儿而非
+workspace root。v0.7+ 自动提升此路径;如果你在更旧的构建上,手动 cp。
+
+### Q. 负向控制没有通过 (boilerplate > 5%)
+
+rubric 的叶节点过于容易满足 — 它们与通用 boilerplate 模式匹配。
+重新审计 rubric,使用更严格的 `task_category="Code Execution"` claim
+要求特定日志输出或产物内容。
+
+## GUI / 向导
+
+### Q. 向导一直显示 "尚未注册任何论文"
+
+检查 `~/.ari/paper_registry/manifest.jsonl` 存在且非空。如果你设置了
+`ARI_PAPER_REGISTRY_DIR`,路径会相应改变。
+
+### Q. 启动按钮一直禁用
+
+Step 1 (Papers) 需要至少选择一篇论文。按钮在 `selected_count >= 1`
+之前保持禁用。
+
+### Q. 成本估算为 `$0`
+
+你在 Step 3 (Reproduce) 中没有设置 `time_limit_sec`。默认 12 h;
+0 让估算的再现 wall-time 项坍塌。
+
+## 报告生成
+
+### Q. `latexmk: command not found`
+
+审计报告 PDF 目标需要 XeLaTeX。安装 `texlive-xetex` (Debian/Ubuntu)
+或 `mactex` (macOS),或跳过 PDF 只发出 `.tex` 源码:
+
+```bash
+python -m report.scripts.paperbench_report paper \
+    --checkpoint <ckpt> --paper-id <id> \
+    --output-root report/audit/<id> \
+    --formats tex   # 跳过 PDF
+```
+
+### Q. ja/zh PDF 中 CJK 字符渲染为方框
+
+ja/zh 镜像需要 XeLaTeX + Noto CJK 字体。运行
+`report/setup_fonts.sh` 并用 `fc-list | grep -i 'noto.*cjk'` 验证。
+
+## v0.8.0 更新: sandbox / GPU 错误
+
+### Q. `RuntimeError: sandbox_kind=docker requested but docker daemon is not reachable`
+
+docker daemon 未启动或不可达。bridge / `run_reproduce` 拒绝静默降级。
+解决方法: 启动 docker、切换到其他 `sandbox_kind`、或 opt-in legacy
+fallback: `export ARI_PHASE1_ALLOW_FALLBACK=1`。同样适用于
+`sandbox_kind=apptainer` 二进制缺失、`sandbox_kind=slurm` sbatch
+缺失 / partition 无法解析。
+
+### Q. `RuntimeError: GPU resources requested ... but cluster has no GRES configured`
+
+集群 SLURM 未配置 GRES, 但 caller 传入 `gpus_per_task` / `gpu_type`。
+bridge 拒绝以避免 "排队 36 h 后全 CPU 执行" 这种最差失败模式。 解决:
+
+1. 修复集群 SLURM 的 GRES 配置
+2. 选择已配置 GRES 的 partition (`sinfo -o '%P %G'`)
+3. opt-in 静默丢弃: `export ARI_SLURM_ALLOW_NO_GRES=1`
+
+### Q. agent 完成 Stage 1, 但 Stage 3 所有 leaf 评分为 0
+
+两种原因 (v0.8.0 都已处理):
+
+1. **`reproduce.log` 不存在** — Stage 2 被跳过, vendor SimpleJudge 的
+   保护 "`reproduce.sh` failed to modify or create any files. All
+   result analysis tasks will be graded as 0" 触发。v0.8.0 在
+   judge 调用上自动启用 `code_only=True`, 将 rubric 裁剪为仅
+   Code Development 叶。
+2. **`paper_audit_mode` 误开** — paper-audit 评分论文本身, 与
+   `code_only` 互斥, 两者同时 True 时 bridge 抛出 `ValueError`。
+
+### Q. 已提交源码但 `reproduce.sh` 仍以 `src/…: No such file or directory` 失败
+
+代理把仓库构建得深了一层。ARI 的宿主侧 sandbox 把 workspace 呈现为 cwd,
+并把 vendor 的 `/home/submission` 路径重写为相对的 `submission/`,因此
+逐字遵循 prompt 的代理会把自包含仓库 (`reproduce.sh` + `src/`) 落到
+`<workspace>/submission/` 下。 post-rollout 步骤只把 `reproduce.sh` 提升
+到 workspace root,使其与源码脱离;Stage 2 随后运行那个孤立副本,build
+找不到 `src/…`,导致 Code Execution / Result Analysis 的每个 leaf 归零。
+
+v0.8.0 自动解决此问题: 当 nested 的 `submission/` 持有真实仓库
+(`reproduce.sh` 与 `.git` / 源码 co-located) 时,`reproduce_submission`
+和 `judge_submission` 会降进去。这样 `reproduce.sh` 的相对路径解析方式
+与代理自己的 `cd submission && bash reproduce.sh` 检查时完全一致。无需
+操作;孤立的 top-level 副本被忽略。若仍看到旧失败,确认你在 v0.8.0 上。
+
+### Q. 代理的 `apply_patch` / `applypatch` 编辑以 `command not found` 失败
+
+gpt-5 / codex 模型即使没有任何 ARI 或 vendor prompt 指示,也会本能地
+通过 `apply_patch <<'PATCH' … PATCH` 编辑文件。vendor Docker image 安装了
+`/bin/apply_patch`,但宿主侧的 `LocalComputer` 不构建任何 image,因此
+v0.8.0 之前每次这样的调用都失败,代理在 fallback 到 `cat`-heredoc 之前
+耗尽 tool-call budget。
+
+v0.8.0 镜像了 vendor 的设置: `LocalComputer` 把包装 vendor 自己
+`apply_patch.py` 的 wrapper 放进 workspace 的 `bin/` 目录 (同时以
+`apply_patch` 和 `applypatch` 两个名字),并把它 prepend 到每个代理命令
+共享的 shell PATH 前面。若找不到 vendor 模块,它会优雅降级 (PATH 不变,
+heredoc fallback)。无需操作;这是宿主 sandbox 专用 (Apptainer SIF 已
+自带 `/bin/apply_patch`)。
+
+## v0.8.0: HF_TOKEN / agent.env
+
+### Q. 论文需要 HF_TOKEN 获取 gated 数据集 / 模型
+
+通过 `setup.sh` 交互式输入注册, 或加入 `.env`:
+
+```
+HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+`bridge.rollout_submission` 会自动从调用进程 env 转发。 论文级别 凭据
+放入 `~/.ari/agent.env` (`KEY=VALUE` 每行一条) — bridge 在
+`agent_env_path=None` 时自动发现。 通过 `ARI_AGENT_ENV_PATH` 覆盖路径。
+
+## v0.8.0: salvage retries + executed-submission tarball
+
+`bridge.reproduce_submission(salvage_retries=N, retry_threshold_sec=60)`
+在 early-failure (exit≠0 且 elapsed<threshold) 时, 使用 Python 3.11
++ venv 前置脚本的 salvage wrapper 重试 N 次。 总 wall-clock 预算跨
+尝试 honor。
+
+每次调用生成 `submission_executed_<UTC>.tar.gz`, 放在 `submission_dir`
+旁。 返回 dict 的 `executed_tarball` 键为绝对路径。 `capture_tarball=False`
+禁用, `tarball_dir=` 覆盖输出位置。
+
+## 相关
+
+- [快速入门](paperbench_quickstart.md)
+- [多节点搭建](multi_node_setup.md)
+- [计算节点安全](compute_node_safety.md)
+- [执行配置参考](../../reference/execution_profile.md)
+- [PaperBench API + bridge contract](../../reference/api_paperbench.md)
+- [环境变量](../../reference/environment_variables.md)

@@ -5,7 +5,7 @@
 \begin{figure*}[t]
   \centering
   \resizebox{0.95\textwidth}{!}{\input{../shared/figures/tikz/F10_full_stack.tex}}
-  \caption{The full ARI stack at v0.7.2. The CLI / SDK entry-points
+  \caption{The full ARI stack at v0.8.0. The CLI / SDK entry-points
            drive a single orchestrator (\texttt{ari-core}); the
            orchestrator owns three engines (BFTS, lineage walker,
            ReAct \texttt{AgentLoop}) and dispatches into the
@@ -16,13 +16,16 @@
   \label{fig:fullstack}
 \end{figure*}
 
-\Cref{fig:fullstack} draws the full ARI stack at v0.7.2. The system
+\Cref{fig:fullstack} draws the full ARI stack at v0.8.0. The system
 splits into one driver and many tool providers. The driver
 (\texttt{ari-core}) owns the orchestrator, the BFTS engine, the
 lineage walker, the agent loop, the checkpoint, the cost tracker,
 and the configuration loader. Each skill is a separate Python
-package shipped as an MCP server with its own \texttt{skill.yaml}
-declaration. The fourteen skills currently in tree are:
+package shipped as a \term{Model Context Protocol} (MCP) server
+with its own \texttt{skill.yaml} declaration. MCP is the
+JSON-RPC-over-stdio interface that Anthropic standardised for
+exposing tool-style capabilities to an LLM agent loop; ARI uses it
+as the universal seam between \texttt{ari-core} and every skill. The fourteen skills currently in tree are:
 \texttt{benchmark}, \texttt{coding}, \texttt{evaluator},
 \texttt{hpc}, \texttt{idea}, \texttt{memory}, \texttt{orchestrator},
 \texttt{paper}, \texttt{paper-re}, \texttt{plot}, \texttt{replicate},
@@ -30,10 +33,9 @@ declaration. The fourteen skills currently in tree are:
 
 The orchestrator dispatches calls but does not perform domain work
 itself. This separation matters because skills can be added or
-swapped without touching the search algorithm: the BFTS code in
-\code{ari-core/ari/orchestrator/bfts.py:114} is unaware of which
-skills participate; everything is mediated by the MCP dispatch
-layer.
+swapped without touching the search algorithm: the BFTS engine is
+unaware of which skills participate; everything is mediated by the
+MCP dispatch layer.
 
 The smaller diagram in \cref{fig:architecture} below is the
 ``operational'' view (control + state outputs) used in the rest of
@@ -71,10 +73,9 @@ non-monotonicity (refining worsens an axis), and the
 \term{convergence criterion} (\cref{sec:paper:loop}) is what bounds
 the back-edge count.
 
-The pipeline runner is \code{ari-core/ari/pipeline/orchestrator.py:131}
-(\texttt{run\_pipeline}); the scientific-data assembler that closes
-the gap between exploration output and paper input is
-\texttt{build\_scientific\_data} on line~68 of the same file.
+The pipeline is driven by a single runner in the orchestrator; a
+scientific-data assembler closes the gap between exploration output
+and paper input, collating the per-node artefacts the writer needs.
 
 \subsection{BFTS control flow}\label{sec:overview:bfts-flow}
 
@@ -106,35 +107,34 @@ files (\texttt{bfts\_select.md},
 \begin{figure*}[t]
   \centering
   \resizebox{0.95\textwidth}{!}{\input{../shared/figures/tikz/F12_paperre_components.tex}}
-  \caption{The \texttt{paper-re} skill's components. The top row is
-           ARI's adapter layer (driver + solver subclass + bounded
-           tool wrapper + path adapter); the middle row is the
-           vendored PaperBench package
-           (\texttt{BasicAgentSolver}, \texttt{TaskNode},
-           \texttt{SimpleJudge}); the bottom row is the bridge that
-           collapses a per-submission \texttt{GradedTaskNode} tree
-           to a single \texttt{rubric.json} score plus an
-           ARI-side \texttt{reproduce.sh}. Detail in
+  \caption{The \texttt{paper-re} skill's components in three layers.
+           The top row is ARI's adapter layer (replication driver,
+           solver adapter, output bounding, path adapter); the middle
+           row is the vendored PaperBench package (agent solver,
+           rubric leaves, judge); the bottom row is the bridge that
+           collapses a per-submission graded tree to a single
+           \texttt{rubric.json} score plus an ARI-side
+           \texttt{reproduce.sh}. Detail in
            \cref{sec:paper:paperbench}.}
   \label{fig:paperre}
 \end{figure*}
 
 \Cref{fig:paperre} is the second-level view of \texttt{paper-re}.
-ARI's contribution at this layer is small but specific: the
-\texttt{AriPBSolver} subclass overrides only \texttt{\_get\_tools}
-(to insert \texttt{\_BoundedOutputTool}) and \texttt{\_run\_agent}
-(to bypass docker sanity-check and adapt vendor paths); everything
-else flows through PaperBench upstream verbatim, which keeps ARI
-aligned with the upstream replication-task framing. Section~4 walks
-the diagram in detail.
+ARI's contribution at this layer is small but specific: a thin
+adapter wraps each agent tool so its output is size-bounded and
+redirects the vendored solver's hard-coded paths to ARI's per-node
+workspace; everything else flows through PaperBench upstream
+verbatim, which keeps ARI aligned with the upstream replication-task
+framing. \Cref{sec:paper:paperbench} develops this integration.
 
 \subsection{Checkpoint scoping and the design principles}\label{sec:overview:principles}
 
 ARI is built around five \term{design principles} (P1--P5). The
 binding one is \textbf{P2: determinism}. Every randomised step
 records its seed; every LLM call records its model identity,
-prompt, and output; every tool call carries a \texttt{cow\_node\_id}
-so its writes land inside the right node's working tree. Re-running
+prompt, and output; every tool call is tagged with its node identity
+(a copy-on-write guard) so its writes land inside the right node's
+working tree. Re-running
 a checkpoint must reproduce the same artefacts byte-for-byte, except
 for fields explicitly marked as wallclock or as model-side
 non-determinism.
@@ -151,19 +151,15 @@ The other principles, in summary:
   \item \textbf{P4 explicit lineage}: every node and every checkpoint
         record their parent, so a derivative experiment can recompute
         only its delta.
-  \item \textbf{P5 cost transparency}: \texttt{cost\_tracker.py}
-        attaches dollar costs to every model call so the user can
-        bound a run.
+  \item \textbf{P5 cost transparency}: the cost tracker attaches
+        dollar costs to every model call so the user can bound a run.
 \end{itemize}
 
-The checkpoint serialiser writes three top-level files. The full
-search tree goes to \texttt{tree.json} via
-\texttt{checkpoint.py:49}; per-node payloads go to
-\texttt{nodes\_tree.json} via \texttt{checkpoint.py:59}; and
-end-of-run aggregates go to \texttt{results.json} via
-\texttt{checkpoint.py:64}. Lineage walks across checkpoints use
-\texttt{lineage.py:126} (\texttt{walk\_ancestor\_ckpts}) to climb
-from a child to its ancestors.
+The checkpoint serialiser writes three top-level files: the full
+search tree to \texttt{tree.json}, per-node payloads to
+\texttt{nodes\_tree.json}, and end-of-run aggregates to
+\texttt{results.json}. Lineage walks across checkpoints climb from
+a child to its ancestors.
 
 \begin{figure}[t]
   \centering

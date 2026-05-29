@@ -4,13 +4,19 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ari-core"
-version = "0.7.3"
-description = "Artificial Research Intelligence - Core Framework"
+version = "0.8.0"
+description = "Autonomous Research Infrastructure - Core Framework"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"
 dependencies = [
     "litellm>=1.0",
+    # litellm.llms.bedrock / sagemaker import botocore at module load to
+    # preload event-stream response shapes; without it every skill subprocess
+    # logs two WARNINGs at startup. We don't actually call Bedrock/SageMaker
+    # — botocore is here purely to silence the noise and to keep the option
+    # open if someone routes a provider through AWS later.
+    "botocore",
     "pydantic>=2.0",
     "typer>=0.12",
     "rich>=13.0",

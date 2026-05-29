@@ -1,7 +1,7 @@
 import asyncio, json, sys, tempfile
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parents[1] / 'src'))
-from server import nodes_to_science_data, _robust_extract_json
+from server import nodes_to_science_data, _robust_extract_json, _default_llm_model
 
 SAMPLE = [
     {'has_real_data': True, 'metrics': {'score': 277573.1}, 'memory': ['config_optimized threads=64'], 'label': 'improve', 'depth': 2, 'node_id': 'abc123', 'id': 'abc123'},
@@ -235,3 +235,133 @@ def test_typed_split_coverage_legacy_run_reports_none():
     assert cov['none'] == 1
     assert cov['results.json'] == 0
     assert cov['llm_evaluator'] == 0
+
+
+# ── _default_llm_model: backend-aware fallback ──────────────────────────────
+# Why: when ARI_BACKEND=cli-shim, the litellm injector auto-fills api_base
+# with the shim's URL for every call (see ari/cost_tracker.py). The historical
+# default "gpt-4o-mini" is then rejected by the shim with
+# "unknown model 'gpt-4o-mini'; expected one of claude-cli, ...", surfacing as
+# experiment_context.error in science_data.json. The fallback must line up
+# with what the shim actually serves.
+
+def test_default_llm_model_openai_when_no_backend(monkeypatch):
+    monkeypatch.delenv('ARI_BACKEND', raising=False)
+    assert _default_llm_model() == 'gpt-4o-mini'
+
+
+def test_default_llm_model_falls_back_to_claude_cli_when_shim(monkeypatch):
+    monkeypatch.setenv('ARI_BACKEND', 'cli-shim')
+    assert _default_llm_model() == 'claude-cli'
+
+
+def test_default_llm_model_tolerates_cli_shim_underscore_variant(monkeypatch):
+    # ari.cost_tracker accepts both spellings ("cli-shim" / "cli_shim"); mirror that.
+    monkeypatch.setenv('ARI_BACKEND', 'cli_shim')
+    assert _default_llm_model() == 'claude-cli'
+
+
+def test_default_llm_model_case_insensitive(monkeypatch):
+    monkeypatch.setenv('ARI_BACKEND', 'CLI-SHIM')
+    assert _default_llm_model() == 'claude-cli'
+
+
+def test_default_llm_model_other_backends_untouched(monkeypatch):
+    # openai / anthropic / ollama keep the OpenAI-name default — those callers
+    # have working litellm routes for gpt-4o-mini (or override via LLM_MODEL).
+    for b in ('openai', 'anthropic', 'ollama', ''):
+        monkeypatch.setenv('ARI_BACKEND', b)
+        assert _default_llm_model() == 'gpt-4o-mini'
+
+
+def test_explicit_llm_model_overrides_default(monkeypatch):
+    # nodes_to_science_data(llm_model="...") must win over the backend-aware
+    # fallback so workflow.yaml / callers can still pin a specific model.
+    monkeypatch.setenv('ARI_BACKEND', 'cli-shim')
+    monkeypatch.delenv('LLM_MODEL', raising=False)
+    # Spy on litellm.acompletion to capture the model that actually reaches it.
+    import server as _srv
+    captured: dict = {}
+
+    class _FakeMsg:
+        content = '{"experiment_context": {"hardware": "test"}}'
+
+    class _FakeChoice:
+        message = _FakeMsg()
+
+    class _FakeResp:
+        choices = [_FakeChoice()]
+
+    async def _fake_acompletion(**kw):
+        captured.update(kw)
+        return _FakeResp()
+
+    monkeypatch.setattr(_srv.litellm, 'acompletion', _fake_acompletion)
+    sample = [{'has_real_data': True, 'metrics': {'x': 1.0},
+               'label': 'draft', 'depth': 0, 'id': 'n1'}]
+    with tempfile.NamedTemporaryFile(suffix='.json', mode='w') as f:
+        json.dump(sample, f); f.flush()
+        _run(nodes_to_science_data(f.name, llm_model='gpt-4o'))
+    assert captured.get('model') == 'gpt-4o'
+
+
+def test_env_llm_model_overrides_default(monkeypatch):
+    # LLM_MODEL env precedes the backend-aware fallback.
+    monkeypatch.setenv('ARI_BACKEND', 'cli-shim')
+    monkeypatch.setenv('LLM_MODEL', 'custom-name')
+    import server as _srv
+    captured: dict = {}
+
+    class _FakeMsg:
+        content = '{"experiment_context": {}}'
+
+    class _FakeChoice:
+        message = _FakeMsg()
+
+    class _FakeResp:
+        choices = [_FakeChoice()]
+
+    async def _fake_acompletion(**kw):
+        captured.update(kw)
+        return _FakeResp()
+
+    monkeypatch.setattr(_srv.litellm, 'acompletion', _fake_acompletion)
+    sample = [{'has_real_data': True, 'metrics': {'x': 1.0},
+               'label': 'draft', 'depth': 0, 'id': 'n1'}]
+    with tempfile.NamedTemporaryFile(suffix='.json', mode='w') as f:
+        json.dump(sample, f); f.flush()
+        _run(nodes_to_science_data(f.name))
+    assert captured.get('model') == 'custom-name'
+
+
+def test_shim_backend_actually_routes_to_claude_cli(monkeypatch):
+    # End-to-end: with ARI_BACKEND=cli-shim and no explicit args, the model
+    # that reaches litellm.acompletion is "claude-cli", NOT "gpt-4o-mini".
+    # This is the regression guard for the 2026-05-28 incident where
+    # workflow.yaml's transform_data stage produced LLM analysis failed:
+    # unknown model 'gpt-4o-mini'.
+    monkeypatch.setenv('ARI_BACKEND', 'cli-shim')
+    monkeypatch.delenv('LLM_MODEL', raising=False)
+    import server as _srv
+    captured: dict = {}
+
+    class _FakeMsg:
+        content = '{"experiment_context": {}}'
+
+    class _FakeChoice:
+        message = _FakeMsg()
+
+    class _FakeResp:
+        choices = [_FakeChoice()]
+
+    async def _fake_acompletion(**kw):
+        captured.update(kw)
+        return _FakeResp()
+
+    monkeypatch.setattr(_srv.litellm, 'acompletion', _fake_acompletion)
+    sample = [{'has_real_data': True, 'metrics': {'x': 1.0},
+               'label': 'draft', 'depth': 0, 'id': 'n1'}]
+    with tempfile.NamedTemporaryFile(suffix='.json', mode='w') as f:
+        json.dump(sample, f); f.flush()
+        _run(nodes_to_science_data(f.name))
+    assert captured.get('model') == 'claude-cli'

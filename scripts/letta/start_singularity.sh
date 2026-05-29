@@ -24,11 +24,18 @@ PGDATA_DIR="${PGDATA_DIR:-$HOME/.ari/letta-pgdata}"
 PIDFILE="${ARI_LETTA_PIDFILE:-$HOME/.ari/letta.pid}"
 LOG_DIR="${ARI_LETTA_LOG_DIR:-$HOME/.ari/letta-logs}"
 # Persistent rw overlay for in-image writes (Postgres socket dir,
-# /app/openapi_*.json, /var/run/redis, ...). Sized only by the host
-# filesystem, unlike --writable-tmpfs which defaults to a few dozen MB
-# and gets exhausted by Letta's openapi schema dump on startup.
-OVERLAY_DIR="${ARI_LETTA_OVERLAY:-$HOME/.ari/letta-overlay}"
-mkdir -p "${PGDATA_DIR}" "${LOG_DIR}" "${OVERLAY_DIR}" "$(dirname "${PIDFILE}")"
+# /app/openapi_*.json, /var/run/redis, ...). We use an ext3 *image*
+# file rather than a host directory because Singularity-CE in setuid
+# mode refuses sandbox-style (directory) overlays for non-root users
+# ("only root user can use sandbox as overlay in setuid mode"). The
+# image is sparse, so the configured size is an upper bound, not an
+# upfront allocation — typical actual usage is a few MB.
+#
+# Replaces the older --writable-tmpfs path, which capped at ~64 MiB
+# and was exhausted by Letta's openapi schema dump on startup.
+OVERLAY_IMG="${ARI_LETTA_OVERLAY:-$HOME/.ari/letta-overlay.img}"
+OVERLAY_SIZE_MIB="${ARI_LETTA_OVERLAY_SIZE_MIB:-1024}"
+mkdir -p "${PGDATA_DIR}" "${LOG_DIR}" "$(dirname "${OVERLAY_IMG}")" "$(dirname "${PIDFILE}")"
 
 # Singularity scrubs most host env vars from the container by default,
 # so the project's .env (which typically holds OPENAI_API_KEY etc.)
@@ -53,6 +60,38 @@ if [[ ! -f "${IMAGE}" ]]; then
   "${RUNTIME}" pull "${IMAGE}" docker://letta/letta:latest
 fi
 
+# Materialize the ext3 overlay image on first launch. If a legacy
+# directory exists at the same path (older revisions of this script
+# defaulted to a directory overlay), refuse to clobber it and let the
+# user clean up explicitly — the contents may include a previous
+# Letta's openapi dump or Redis state.
+if [[ -d "${OVERLAY_IMG}" ]]; then
+  echo "ERROR: ${OVERLAY_IMG} is a directory (legacy sandbox overlay)." >&2
+  echo "  Singularity-CE setuid mode rejects directory overlays for"  >&2
+  echo "  non-root. Remove it (rm -rf '${OVERLAY_IMG}') or point"    >&2
+  echo "  ARI_LETTA_OVERLAY at a new .img path."                      >&2
+  exit 1
+fi
+if [[ ! -f "${OVERLAY_IMG}" ]]; then
+  # --create-dir is critical: the bare ext3 image has every path owned
+  # by root, so when overlayfs copy-ups happen the upper /app inherits
+  # root ownership and Letta (running as the host user under setuid
+  # Singularity) fails to write /app/openapi_*.json with EACCES.
+  # Pre-creating these paths in the overlay upper layer makes them
+  # owned by the host user, while overlayfs still merges in the lower
+  # layer's /app/letta/server/... source from the image.
+  #
+  #   /app       — Letta dumps openapi_*.json into its WORKDIR
+  #   /var/run   — Redis writes its pid/socket here
+  echo "creating ext3 overlay (${OVERLAY_SIZE_MIB} MiB, sparse) → ${OVERLAY_IMG}"
+  "${RUNTIME}" overlay create \
+    --size "${OVERLAY_SIZE_MIB}" \
+    --sparse \
+    --create-dir /app \
+    --create-dir /var/run \
+    "${OVERLAY_IMG}"
+fi
+
 # Idempotent restart: stop any prior `apptainer run` we launched, plus
 # any leftover `apptainer instance` from older versions of this script.
 if [[ -f "${PIDFILE}" ]]; then
@@ -72,36 +111,59 @@ fi
 
 # Apptainer shares the host PID/network namespace, so Postgres and Redis
 # spawned with `&` inside the SIF survive when the apptainer parent
-# dies. They keep listening on 5432/6379 with a stale FUSE mount, which
-# causes opaque "Transport endpoint is not connected" errors on the
-# next pgvector access. Reap any such orphans we own before restarting.
-for port in 5432 6379; do
-  owner="$(ss -ltnp 2>/dev/null | awk -v p=":${port}" '
-    index($4, p) && match($0, /pid=[0-9]+/) {
-      print substr($0, RSTART+4, RLENGTH-4); exit
-    }')"
-  if [[ -n "${owner}" ]] && \
-     [[ "$(ps -o user= -p "${owner}" 2>/dev/null | tr -d ' ')" == "${USER}" ]]; then
-    echo "Reaping orphan internal daemon on :${port} (pid=${owner})"
-    kill "${owner}" 2>/dev/null || true
+# dies (either via this script's SIGTERM above, or via an external
+# crash). They get reparented to PID 1 and keep listening on 5432/6379
+# with a stale FUSE mount, which causes opaque "Transport endpoint is
+# not connected" errors on the next pgvector access.
+#
+# We scan by *process name* (not port) so the reap is robust against:
+#   - `ss -ltnp` declining to attribute a PID to a listener (e.g.
+#     IPv4 :5432 on this host shows up without `pid=`),
+#   - multiple listeners on the same port (IPv4 + IPv6), where the
+#     previous port-based awk-then-exit logic only caught the first.
+# `pgrep -u $USER -x` matches only our processes by exact comm, so
+# foreign-user daemons sharing the host network namespace are left
+# alone.
+reap_orphans() {
+  local name pids pid
+  for name in postgres redis-server; do
+    pids="$(pgrep -u "${USER}" -x "${name}" 2>/dev/null || true)"
+    [[ -z "${pids}" ]] && continue
+    for pid in ${pids}; do
+      echo "Reaping orphan ${name} (pid=${pid})"
+      kill "${pid}" 2>/dev/null || true
+    done
+  done
+  # Give children a chance to checkpoint/exit cleanly, then SIGKILL
+  # whatever is still around so the new container can bind 5432/6379.
+  for _ in 1 2 3 4 5; do
+    pgrep -u "${USER}" -x postgres >/dev/null 2>&1 || \
+      pgrep -u "${USER}" -x redis-server >/dev/null 2>&1 || break
     sleep 1
-    kill -9 "${owner}" 2>/dev/null || true
-  fi
-done
+  done
+  for name in postgres redis-server; do
+    pgrep -u "${USER}" -x "${name}" 2>/dev/null \
+      | xargs -r kill -9 2>/dev/null || true
+  done
+}
+reap_orphans
 
 # --pwd /app: the SIF's OCI CMD is the relative path
 #   "./letta/server/startup.sh"
 # which Docker resolves under WORKDIR=/app. Apptainer inherits the host
 # CWD instead, so we set it explicitly here.
 #
-# --overlay <dir>: persistent host-backed rw overlay for in-image
-# writes (Postgres socket dir, /app/openapi_*.json, /var/run/redis,
-# ...). Replaces --writable-tmpfs because that defaults to ~64MB which
-# Letta's openapi schema dump exhausts on startup. PGDATA is bound
-# separately so it isn't hidden inside the overlay.
+# --overlay <img>: persistent ext3 image overlay for in-image writes
+# (Postgres socket dir, /app/openapi_*.json, /var/run/redis, ...).
+# Image form (not directory) is required because Singularity-CE in
+# setuid mode forbids sandbox overlays for non-root. Sparse image, so
+# the configured size is an upper bound. Replaces --writable-tmpfs,
+# which capped at ~64MB and was exhausted by Letta's openapi schema
+# dump on startup. PGDATA is bound separately so it isn't hidden
+# inside the overlay.
 nohup "${RUNTIME}" run \
   --pwd /app \
-  --overlay "${OVERLAY_DIR}" \
+  --overlay "${OVERLAY_IMG}" \
   --bind "${PGDATA_DIR}:/var/lib/postgresql/data" \
   "${ENV_ARGS[@]}" \
   "${IMAGE}" \

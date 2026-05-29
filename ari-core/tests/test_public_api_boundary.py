@@ -73,7 +73,7 @@ _ALLOWED_EXACT = {"ari.public"}
 # test ensures NEW violations are caught (the lineno-pinned waiver
 # means a moved offender still surfaces).
 _GRANDFATHERED: dict[str, set[int]] = {
-    "ari-skill-coding/src/server.py": {516, 527},
+    "ari-skill-coding/src/server.py": {521, 532},
     "ari-skill-coding/tests/test_server.py": {106},
     "ari-skill-evaluator/src/server.py": {13},
     "ari-skill-hpc/src/slurm.py": {208},
@@ -85,7 +85,7 @@ _GRANDFATHERED: dict[str, set[int]] = {
     "ari-skill-paper/src/server.py": {18},
     "ari-skill-plot/src/server.py": {34},  # try-block legacy fallback
     "ari-skill-replicate/src/server.py": {25},
-    "ari-skill-transform/src/server.py": {30, 606, 1902, 2252, 2270},
+    "ari-skill-transform/src/server.py": {52, 628, 1924, 2274, 2292},
     "ari-skill-vlm/src/server.py": {15},
     "ari-skill-web/src/server.py": {21},
 }

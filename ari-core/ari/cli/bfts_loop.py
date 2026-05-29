@@ -186,7 +186,7 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
             except Exception as exc:
                 logging.getLogger(__name__).warning("select_best_to_expand failed: %s", exc)
                 best = _eligible[0]
-            if bfts.should_prune(best):
+            if bfts.should_prune(best, current_total=len(all_nodes)):
                 # Pruned nodes are removed permanently from the frontier.
                 if best in frontier:
                     frontier.remove(best)
@@ -298,6 +298,7 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                     ancestors=_ancestors,
                     all_run_nodes=list(all_nodes),
                     existing_children=_existing_children,
+                    budget_remaining=cfg.bfts.max_total_nodes - len(all_nodes),
                 )
                 all_nodes.extend(children)
                 pending.extend(children)
@@ -327,11 +328,6 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                 logging.getLogger(__name__).warning("select_next_node failed: %s", exc)
                 node = pending[0]
             pending.remove(node)
-            # Track recently-run labels so the diversity bonus can react.
-            try:
-                bfts.record_run(node)
-            except Exception:
-                pass
             batch.append(node)
 
         console.print(f"\n[bold]Processing {len(batch)} node(s) in parallel...[/bold]")
@@ -513,6 +509,13 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                     logging.getLogger(__name__).warning("Node %s raised exception: %s", node_ref.id, exc)
                     node_ref.mark_failed(error_log=f"exception: {exc}")
                     result = node_ref
+                # I-7: record run AFTER completion so the diversity bonus
+                # reflects what actually ran (success or failure), not what we
+                # intended to run.
+                try:
+                    bfts.record_run(result)
+                except Exception:
+                    pass
                 total_processed += 1
                 color = "green" if result.status == NodeStatus.SUCCESS else "red"
                 metrics_str = f" metrics={dict(list(result.metrics.items())[:2])}" if result.metrics else ""
@@ -528,6 +531,44 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                     # (retrying the same node is not BFTS — it would repeat the same failure)
                     frontier.append(result)
                     console.print(f"    Added failed node to frontier for debug expansion")
+
+                # B-6 Rule A: when the child beat its parent's scientific
+                # score, retire the parent — there is nothing more to gain
+                # from re-expanding a node a child already surpassed.
+                _parent_id_for_retire = getattr(result, "parent_id", None)
+                if _parent_id_for_retire and isinstance(result.metrics, dict):
+                    _child_score = float(result.metrics.get("_scientific_score") or 0.0)
+                    for _fn in list(frontier):
+                        if _fn.id != _parent_id_for_retire:
+                            continue
+                        _parent_score = float(
+                            (_fn.metrics or {}).get("_scientific_score") or 0.0
+                        )
+                        if _child_score > _parent_score:
+                            frontier.remove(_fn)
+                            console.print(
+                                f"    Retired parent {_fn.id[-8:]} from frontier "
+                                f"(child {result.id[-8:]} beat it)"
+                            )
+                        break
+
+                # B-6 Rule B: retire frontier nodes that have already been
+                # expanded ``max_expansions_per_node`` times — spread the
+                # search rather than mining the same parent indefinitely.
+                _max_exp = int(getattr(cfg.bfts, "max_expansions_per_node", 4) or 4)
+                _ec_fn = getattr(bfts, "expansion_count", None)
+                if callable(_ec_fn):
+                    for _fn in list(frontier):
+                        try:
+                            _cnt = int(_ec_fn(_fn.id))
+                        except (TypeError, ValueError):
+                            continue
+                        if _cnt >= _max_exp:
+                            frontier.remove(_fn)
+                            console.print(
+                                f"    Retired {_fn.id[-8:]} from frontier "
+                                f"(reached max_expansions_per_node={_max_exp})"
+                            )
 
                 # Write per-node node_report.json now that the node is fully
                 # marked. This is best-effort: any failure is logged and
@@ -716,6 +757,32 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
 
 
 
+# L-4: cache experiment-file sha256 keyed by (path, mtime_ns) so the
+# per-node checkpoint flush does not re-hash the same .md file on every
+# call. Keyed by path string so different experiment files coexist.
+_EXP_FILE_HASH_CACHE: dict[str, tuple[int, str, int]] = {}
+
+
+def _hash_experiment_file(path: Path) -> tuple[str, int]:
+    """Return ``(sha256_short, byte_len)`` for ``path``, memoised by mtime_ns."""
+    import hashlib as _hl_ck
+    if not path.exists():
+        return "", 0
+    try:
+        mtime_ns = path.stat().st_mtime_ns
+    except OSError:
+        return "", 0
+    key = str(path)
+    cached = _EXP_FILE_HASH_CACHE.get(key)
+    if cached and cached[0] == mtime_ns:
+        return cached[1], cached[2]
+    data = path.read_bytes()
+    sha = _hl_ck.sha256(data).hexdigest()[:16]
+    n = len(data)
+    _EXP_FILE_HASH_CACHE[key] = (mtime_ns, sha, n)
+    return sha, n
+
+
 def _save_checkpoint(checkpoint_dir, run_id, experiment_file, nodes):
     """Build the (tree, nodes_tree, results) payload and write all three files.
 
@@ -723,7 +790,6 @@ def _save_checkpoint(checkpoint_dir, run_id, experiment_file, nodes):
     contract; the actual write is delegated to ``ari.checkpoint`` so
     only one place owns ``json.dumps(..., indent=2)`` (Phase 2 §6-1).
     """
-    import hashlib as _hl_ck
     from ari.checkpoint import (
         save_tree_json as _save_tree,
         save_nodes_tree_json as _save_nodes_tree,
@@ -731,12 +797,7 @@ def _save_checkpoint(checkpoint_dir, run_id, experiment_file, nodes):
     )
     # ── Trace: record experiment file hash in tree.json for post-mortem ──
     _exp_path = Path(experiment_file)
-    _exp_sha = ""
-    _exp_len = 0
-    if _exp_path.exists():
-        _exp_bytes = _exp_path.read_bytes()
-        _exp_sha = _hl_ck.sha256(_exp_bytes).hexdigest()[:16]
-        _exp_len = len(_exp_bytes)
+    _exp_sha, _exp_len = _hash_experiment_file(_exp_path)
     tree = {
         "run_id": run_id, "experiment_file": experiment_file,
         "experiment_file_sha256": _exp_sha,

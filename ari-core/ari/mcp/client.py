@@ -50,7 +50,7 @@ MAX_RETRIES = 3
 RETRY_DELAY = 0.5
 DEFAULT_TOOL_TIMEOUT = 300   # seconds
 # Tools that perform internal LLM calls or heavy processing need longer timeouts
-SLOW_TOOL_TIMEOUT = 600      # seconds
+SLOW_TOOL_TIMEOUT = 3600     # seconds — multi-agent ideation / iterative LLM tools
 # Agent/sandbox tools whose internal budgets are measured in hours. Keep the
 # MCP-level timeout above the tool's own ceiling — otherwise MCP times out
 # mid-rollout, retries, hits any idempotent-skip path inside the tool (e.g.
@@ -418,3 +418,51 @@ class MCPClient:
             except Exception:
                 pass
         self._connections.clear()
+
+    def to_claude_mcp_config(
+        self, phase: str | None = None,
+    ) -> tuple[dict, list[str]]:
+        """Build the ``--mcp-config`` payload + ``--allowedTools`` list for
+        spawning a Claude CLI subprocess against the same ari-skill servers
+        this client manages.
+
+        Returns ``(mcp_config, allowed_tools)``:
+          - ``mcp_config``: ``{"mcpServers": {<skill>: {command, args, env}}}``
+            — claude reads this via ``--mcp-config <file-or-string>``.
+          - ``allowed_tools``: list of fully-qualified MCP tool names
+            (``mcp__<skill>__<tool>``) to pass to ``--allowedTools`` so claude
+            can ONLY call ari skills (no native Bash/Write/Edit).
+
+        ``phase`` filters skills exactly as ``list_tools(phase=...)`` does.
+        Skills are spawned with the same python interpreter + PYTHONPATH the
+        in-process MCPClient uses, so they see ari-core (for cost_tracker).
+        """
+        # Ensure connections + registry are populated (lazy).
+        if self._tools_cache is None:
+            self._build_tools_cache()
+        servers: dict[str, dict] = {}
+        allowed: list[str] = []
+        for skill in self.skills:
+            if _phase_is_disabled(getattr(skill, "phase", "all")):
+                continue
+            if phase is not None and not _phase_matches(
+                getattr(skill, "phase", "all"), phase,
+            ):
+                continue
+            conn = self._connections.get(skill.name)
+            if conn is None:
+                # _build_tools_cache may have skipped a failing skill; skip too.
+                continue
+            params = conn._server_params()
+            servers[skill.name] = {
+                "command": params.command,
+                "args": list(params.args),
+                "env": dict(params.env or {}),
+            }
+            for tool in self._tools_cache or []:
+                if self._tool_registry.get(tool["name"]) != skill.name:
+                    continue
+                if tool["name"] in self.disabled_tools:
+                    continue
+                allowed.append(f"mcp__{skill.name}__{tool['name']}")
+        return {"mcpServers": servers}, allowed

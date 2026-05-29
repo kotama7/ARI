@@ -634,24 +634,31 @@ def _api_launch_run(body: dict) -> dict:
             "estimated_total_cost_usd": round(est["llm_cost_usd"] * len(paper_ids), 2),
         }
 
-    # Persist a job per paper. Background execution is the caller's
-    # responsibility (typically the existing CLI workflow runner); the API
-    # just records intent.
+    # Persist a job per paper and immediately spawn a background worker
+    # that drives the four-stage PaperBench skill pipeline. The worker
+    # (api_paperbench_worker) updates _JOBS in place via _set_job_field /
+    # append_job_log, so the polling endpoint and SSE log stream see
+    # progress without further glue here.
+    from .api_paperbench_worker import start_paperbench_job
+
     job_ids: list[str] = []
     registered = {e["paper_id"] for e in _read_manifest()}
     for pid in paper_ids:
         pid_norm = _normalize_paper_id(str(pid))
         if pid_norm not in registered:
             return {"error": f"paper not in registry: {pid_norm}"}
-        entry = _new_job(
-            paper_id=pid_norm,
-            configs={
-                "rubric": rubric_config,
-                "reproduce": reproduce_config,
-                "judge": judge_config,
-            },
-        )
+        configs = {
+            "rubric": rubric_config,
+            "reproduce": reproduce_config,
+            "judge": judge_config,
+        }
+        entry = _new_job(paper_id=pid_norm, configs=configs)
         job_ids.append(entry["job_id"])
+        start_paperbench_job(
+            entry["job_id"],
+            paper_dir=_papers_dir() / pid_norm,
+            configs=configs,
+        )
     return {
         "dry_run": False,
         "job_ids": job_ids,

@@ -210,4 +210,25 @@
     draw=ari-blue, very thick, rounded corners=4pt,
     inner sep=10pt, fill=ari-skyblue!8,
   },
+
+  % --------------------------- BFTS state-machine (F15) node styles
+  % Centralised here so F15 carries no inline minimum/text width (gate T2).
+  pool/.style={rectangle, rounded corners=2pt, draw=ari-blue,
+               line width=1pt, fill=ari-skyblue!28,
+               minimum width=3.2cm, minimum height=0.8cm,
+               text width=3.0cm, align=center},
+  stage/.style={rectangle, rounded corners=2pt, draw=ari-black,
+                line width=0.7pt, fill=white,
+                minimum width=4.2cm, minimum height=0.85cm,
+                text width=4.0cm, align=center},
+  guard/.style={diamond, aspect=2.6, draw=ari-orange, line width=0.8pt,
+                fill=ari-yellow!22,
+                minimum width=3.0cm, minimum height=1.05cm,
+                text width=2.6cm, align=center, inner sep=0pt,
+                font=\footnotesize},
+  drop/.style={rectangle, rounded corners=1pt, draw=ari-vermilion,
+               dashed, fill=white,
+               minimum width=3.4cm, minimum height=0.65cm,
+               text width=3.2cm, align=center, font=\scriptsize,
+               text=ari-vermilion},
 }

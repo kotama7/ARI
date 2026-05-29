@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
-# start.sh — bring up the three long-running ARI services on this host:
+# start.sh — bring up the four long-running ARI services on this host:
 #
-#   1. Letta server          (memory backend)         :8283
-#   2. ari-registry server   (publish/clone backend)  :8290
-#   3. ARI Viz GUI           (React dashboard)        :8765
+#   1. Letta server          (memory backend)          :8283
+#   2. ari-registry server   (publish/clone backend)   :8290
+#   3. ARI Viz GUI           (React dashboard)          :8765
+#   4. CLI shim server       (claude/codex as OpenAI)   :8900
 #
 # Each service has its own PID + log files under $HOME/.ari/. Every
 # invocation performs a clean restart — any prior instance is killed
 # before the new one is launched.
 #
 # Usage:
-#   ./start.sh              # restart all three
+#   ./start.sh              # restart all four
 #   ./start.sh letta        # restart only the Letta server
 #   ./start.sh registry     # restart only the registry
 #   ./start.sh gui          # restart only the GUI
+#   ./start.sh shim         # restart only the CLI shim
 #   ./start.sh status       # show running services (no restart)
 #   ./start.sh stop         # stop everything started by this script
 set -euo pipefail
@@ -26,9 +28,15 @@ mkdir -p "${ARI_HOME}"
 LETTA_PORT="${LETTA_PORT:-8283}"
 REGISTRY_PORT="${ARI_REGISTRY_PORT:-8290}"
 GUI_PORT="${ARI_GUI_PORT:-8765}"
+SHIM_PORT="${ARI_CLI_SHIM_PORT:-8900}"
 
 GUI_PIDFILE="${ARI_GUI_PIDFILE:-${ARI_HOME}/gui.pid}"
 GUI_LOG="${ARI_GUI_LOG:-${ARI_HOME}/gui.log}"
+
+# CLI shim — note ARI_CLI_SHIM_LOG is the module's log *level* (INFO/DEBUG),
+# so the log *file* path uses a distinct env var.
+SHIM_PIDFILE="${ARI_CLI_SHIM_PIDFILE:-${ARI_HOME}/cli-shim.pid}"
+SHIM_LOG="${ARI_CLI_SHIM_LOGFILE:-${ARI_HOME}/cli-shim.log}"
 
 LETTA_PIDFILE="${ARI_LETTA_PIDFILE:-${ARI_HOME}/letta.pid}"
 REGISTRY_DATA="${ARI_REGISTRY_DATA:-${ARI_HOME}/registry-data}"
@@ -156,19 +164,56 @@ start_gui() {
     _kill_pidfile "GUI" "${GUI_PIDFILE}"
   fi
 
-  if ! command -v ari >/dev/null 2>&1 && ! python -c "import ari.viz.server" 2>/dev/null; then
-    fail "ari.viz.server not importable — did you run setup.sh?"
+  # Prefer the project-local venv's python so pydantic / ari deps are
+  # the version set the lockfile pins (see scripts/setup/install_deps.sh).
+  # Falling through to `python` on PATH used to land on a stale
+  # ~/.local user-site with mismatched pydantic-core.
+  VIZ_PY="${ARI_PY:-${ARI_ROOT}/.venv/bin/python}"
+  [ -x "${VIZ_PY}" ] || VIZ_PY="python"
+
+  if ! "${VIZ_PY}" -c "import ari.viz.server" 2>/dev/null; then
+    fail "ari.viz.server not importable via ${VIZ_PY} — did you run setup.sh?"
     return 1
   fi
 
   info "Starting ARI Viz on :${GUI_PORT}"
-  nohup python -m ari.viz.server --port "${GUI_PORT}" \
+  nohup "${VIZ_PY}" -m ari.viz.server --port "${GUI_PORT}" \
     >>"${GUI_LOG}" 2>&1 &
   echo $! > "${GUI_PIDFILE}"
   disown || true
 
   _wait_until "GUI port" "_port_open ${GUI_PORT}" 30 || return 1
   ok "ARI Viz ready at http://localhost:${GUI_PORT}/  (log=${GUI_LOG})"
+}
+
+# ---------------------------------------------------------------------------
+# CLI shim — `python -m ari.llm.cli_server`. Exposes claude -p / codex exec
+# as an OpenAI-compatible endpoint so ARI can register them as an LLM backend
+# (backend=openai, base_url=http://localhost:${SHIM_PORT}/v1). The server is a
+# passive listener; it only spawns the CLIs when a request arrives.
+# ---------------------------------------------------------------------------
+start_shim() {
+  if [[ -f "${SHIM_PIDFILE}" ]] && _pid_alive "$(cat "${SHIM_PIDFILE}" 2>/dev/null)"; then
+    _kill_pidfile "CLI shim" "${SHIM_PIDFILE}"
+  fi
+
+  SHIM_PY="${ARI_PY:-${ARI_ROOT}/.venv/bin/python}"
+  [ -x "${SHIM_PY}" ] || SHIM_PY="python"
+
+  if ! "${SHIM_PY}" -c "import ari.llm.cli_server" 2>/dev/null; then
+    fail "ari.llm.cli_server not importable via ${SHIM_PY} — did you run setup.sh?"
+    return 1
+  fi
+
+  info "Starting ARI CLI shim on :${SHIM_PORT}"
+  nohup "${SHIM_PY}" -m ari.llm.cli_server --port "${SHIM_PORT}" \
+    >>"${SHIM_LOG}" 2>&1 &
+  echo $! > "${SHIM_PIDFILE}"
+  disown || true
+
+  _wait_until "CLI shim health" \
+    "_http_ok http://localhost:${SHIM_PORT}/healthz" 30 || return 1
+  ok "ARI CLI shim ready at http://localhost:${SHIM_PORT}/v1  (log=${SHIM_LOG})"
 }
 
 # ---------------------------------------------------------------------------
@@ -191,10 +236,17 @@ status() {
   else
     gui_status="${C_RED}down${C_RESET}"
   fi
+  local shim_status
+  if _http_ok "http://localhost:${SHIM_PORT}/healthz"; then
+    shim_status="${C_GREEN}up${C_RESET}"
+  else
+    shim_status="${C_RED}down${C_RESET}"
+  fi
   echo
   echo "  Letta     :${LETTA_PORT}   ${letta_status}"
   echo "  Registry  :${REGISTRY_PORT}   ${registry_status}"
   echo "  GUI       :${GUI_PORT}   ${gui_status}"
+  echo "  CLI shim  :${SHIM_PORT}   ${shim_status}"
   echo
 }
 
@@ -217,6 +269,7 @@ _kill_pidfile() {
 }
 
 stop_all() {
+  _kill_pidfile "CLI shim" "${SHIM_PIDFILE}"
   _kill_pidfile "GUI"      "${GUI_PIDFILE}"
   _kill_pidfile "Registry" "${REGISTRY_PIDFILE}"
   _kill_pidfile "Letta"    "${LETTA_PIDFILE}"
@@ -232,11 +285,13 @@ case "${cmd}" in
     start_letta
     start_registry
     start_gui
+    start_shim
     status
     ;;
   letta)    start_letta;    status ;;
   registry) start_registry; status ;;
   gui)      start_gui;      status ;;
+  shim)     start_shim;     status ;;
   status)   status ;;
   stop)     stop_all ;;
   -h|--help|help)

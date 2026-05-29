@@ -67,3 +67,26 @@
 \newcommand{\E}{\mathbb{E}}
 \newcommand{\Prob}{\mathbb{P}}
 \newcommand{\indicator}[1]{\mathbb{1}\!\left[#1\right]}
+
+% ============================== BFTS run-loop
+% Run-loop state tuple.
+\newcommand{\state}{S}
+% Two-pool state of the run-loop: pending (open, ready to execute) and
+% frontier (completed, eligible for expansion).
+\newcommand{\Pending}{\mathcal{P}}
+\newcommand{\Frontier}{\mathcal{F}}
+% Per-node expansion counter (B-6) and recent-label history window (I-7).
+\newcommand{\expandcount}{e}
+\newcommand{\Hist}{H}
+% Hard pruning predicate (B-1/B-2/B-4) and frontier retire predicate (B-6).
+\newcommand{\prunepred}{\Pi}
+\newcommand{\sterilepred}{\sigma}
+\newcommand{\retirepred}{\rho}
+% Per-parent expansion cap and history window length.
+\newcommand{\maxexp}{E_{\max}}
+\newcommand{\histlen}{W}
+% Selection operators (LLM-driven primary, deterministic fallback).
+\newcommand{\selectLLM}{\mathrm{select}^{\mathrm{LLM}}}
+\newcommand{\selectFB}{\mathrm{select}^{\mathrm{FB}}}
+\newcommand{\fallbackscore}[1]{\mathrm{fb}(#1)}
+\newcommand{\divbonus}[1]{\mathrm{div}(#1)}

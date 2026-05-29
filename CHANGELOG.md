@@ -2,6 +2,381 @@
 
 All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PATCH`.
 
+## Unreleased
+
+(no entries yet)
+
+## v0.8.0 — PaperBench env-truth + bridge contract + BFTS configurable evaluation (2026-05-21)
+
+Major release that promotes the v0.7.3 "Unreleased" PaperBench work to
+a numbered milestone and adds two follow-on streams: (1) **env-truth**
+guardrails (verify-before-scaffold, language-choice counter-priming,
+truthful ADDITIONAL NOTES, Phase-2 isolation + network claims) that
+keep the Stage 1 agent honest about what the host actually provides,
+and (2) **configurable BFTS evaluation layers** (composite formula,
+axis-set source, frontier-score strategy, LLM selection prompts) that
+let users swap any of four BFTS surfaces without forking the orchestrator.
+
+Highlights:
+
+- **PaperBench 3-stage bridge contract** (`rollout_submission` /
+  `reproduce_submission` / `judge_submission`) — the protocol-faithful
+  replacement for the retracted Step 4 reproduction-package generator.
+- **`container_image` end-to-end** from wizard → API worker → MCP tools
+  → sandbox runner, with `pb-env` / `pb-reproducer` aliases.
+- **Fail-loud preconditions** on sandbox / GPU mismatches (four
+  silent-downgrade sites now raise `RuntimeError` by default).
+- **`code_only` Stage 1 ↔ Stage 3 consistency** so the judge stops
+  zero-grading Code Execution / Result Analysis leaves the agent was
+  never asked to attempt.
+- **Env-truth follow-ons**: verify-before-scaffold (Stage 1 probes the
+  host before claiming binaries exist), language-choice counter-prime
+  (LLM is told *not* to default to one language without reason),
+  truthful ADDITIONAL NOTES (Phase-2 isolation + Network claims
+  auto-detected per host), orphan `tool_call` filter on the vendor
+  Responses API converter, Stage 1 default `code_only=False` so the
+  agent actually writes `reproduce.sh`.
+- **Configurable BFTS evaluation layers** in `default.yaml`:
+  `evaluator.composite` (harmonic / arithmetic / weighted_min /
+  geometric), `evaluator.axis_mode` + `evaluator.custom_axes` (dynamic
+  / legacy / custom), `bfts.frontier_score` (scientific_plus_diversity /
+  scientific_only / depth_penalized / ucb_like), and
+  `bfts.select_prompt` + `bfts.expand_select_prompt` keys for the
+  selection LLM. Defaults reproduce the prior behaviour exactly.
+- **Reviewer rubrics**: ships seven journal-/conference-style reviewer
+  rubrics out of the box (`aer.yaml`, `ahr.yaml`, `apsr.yaml`,
+  `econometrica.yaml`, `philreview.yaml`, `pmla.yaml`, `qje.yaml`)
+  under `ari-core/config/reviewer_rubrics/`.
+- **Documentation refresh**: `docs/howto/`, `docs/reference/`,
+  `docs/index.html`, the `docs/i18n/` strings, the report chapters
+  (en/ja/zh), and the three READMEs all updated for the v0.8.0
+  surface.
+
+### Added
+
+- **PaperBench env-truth guardrails** (post-bridge follow-ons).
+  Five complementary fixes prevent the Stage 1 agent from
+  hallucinating host capabilities in the instruction prompt:
+    - **Verify-first / probe-before-scaffold.** Stage 1's planning
+      prompt now explicitly tells the agent *probe the environment
+      with `which` / `ls` before claiming a binary exists*; the
+      `reproduce.sh` scaffold begins with a `command -v` audit so
+      missing dependencies surface as an early hard failure rather
+      than a mid-run silent fallback.
+    - **Counter-prime language choice (multi-lang).** The vendor
+      Python-default bias is offset by an explicit instruction
+      asking the agent to inspect the paper's repo for the
+      *actually-used* language (R / Julia / C++ / Stata) and to
+      avoid Python-bias when the artefacts are non-Python.
+    - **Truthful ADDITIONAL NOTES with auto-detected env.** The
+      `ADDITIONAL NOTES` block injected into the agent's prompt
+      is now generated per-host from a live probe (binaries
+      present, package managers, GPU, network reachability) rather
+      than from a static template; what the agent reads matches
+      what the host can do.
+    - **Phase-2 isolation + Network claims.** The notes block adds
+      a Network-reachability claim and a Phase 2 isolation contract
+      (network-off / FS-read-only / no-host-mount) consistent with
+      the vendor reproducer container.
+    - **Stage 1 default `code_only=False`.** Promotes
+      `reproduce.sh` from "nice to have" to "agent contract": the
+      default mode now expects the agent to write the script, so
+      Stage 2 has something to execute. Stage 1 code-only mode is
+      still available via explicit opt-in.
+    - **Orphan `tool_call` filter on vendor Responses API
+      converter.** Prevents the converter from emitting a stray
+      `tool_call` without a matching `tool_result`, a pattern that
+      otherwise caused vendor PaperBench's Responses → ChatCompletions
+      adapter to drop the next agent turn.
+
+- **Vendor paper-codebase blacklist lifted to ARI surface + CLI gate
+  hook.** The vendor `paperbench/data/papers/<id>/blacklist.txt`
+  pattern is no longer per-paper-only; the bridge accepts an explicit
+  `blacklist_urls` list, the CLI exposes a gate hook so callers can
+  inject project-level rules, and the rule is enforced via two
+  layers (Markdown `FORBIDDEN URLS / RESOURCES` block + the
+  `ARI_BLACKLIST_URLS` env var read by downstream tool wrappers).
+
+- **Seven journal/conference reviewer rubrics** shipped under
+  `ari-core/config/reviewer_rubrics/`: `aer.yaml` (American Economic
+  Review), `ahr.yaml` (American Historical Review), `apsr.yaml`
+  (American Political Science Review), `econometrica.yaml`,
+  `philreview.yaml` (Philosophical Review), `pmla.yaml` (PMLA),
+  `qje.yaml` (Quarterly Journal of Economics). Selected via
+  `reviewer_rubric: <slug>` in the launch config — same plumbing as
+  the existing `sc`/`neurips`/`nature` rubrics.
+
+- **PaperBench 3-stage bridge contract** in
+  `ari-skill-paper-re/src/_paperbench_bridge.py`. Three keyword-only
+  async callables (`rollout_submission` / `reproduce_submission` /
+  `judge_submission`) expose vendor PaperBench's Agent Rollout →
+  Reproduction → Grading protocol with a shared
+  `(paper_md, work_dir-or-submission_dir, model, ...)` calling
+  vocabulary so callers can sequence the three stages without
+  translating between independent argument shapes. Stage 1 wraps
+  the existing `_replicator_agent.run_replicator_agent` (vendor
+  BasicAgent / IterativeAgent), Stage 2 wraps `server.run_reproduce`
+  (host docker / apptainer / slurm / local dispatch), and Stage 3
+  wraps vendor `SimpleJudge` directly. Exposed via the dogfood CLI
+  (`scripts/sc_paper_dogfood.py --with-rollout / --with-reproduction`),
+  mutually exclusive with `--paper-audit-mode`.
+
+- **`container_image` end-to-end pipeline (wizard → API → worker →
+  MCP tool → sandbox runner).** Wizard's Reproduce step gains a
+  `container_image` field (SIF path, `docker://` URI, `image:tag`,
+  or short alias `pb-env` / `pb-reproducer`); `api_paperbench_worker`
+  threads it through both Stage 1 and Stage 2 args; both
+  `build_reproduce_sh` and `run_reproduce` MCP tools accept it;
+  `_run_reproduce_docker` and `_run_reproduce_apptainer` honour the
+  explicit value over the legacy env-var fallback. The vendor
+  `pb-env` / `pb-reproducer` aliases resolve to `image:latest`
+  tags built by the new `scripts/build_pb_images.sh` wrapper around
+  `vendor/.../scripts/build-docker-images.sh`.
+
+- **Fail-loud preconditions for sandbox / GPU mismatches** in
+  `ari-skill-paper-re/src/server.py`. Four sites previously silently
+  downgraded user-requested isolation/resources to host-CPU
+  execution:
+    1. `sandbox_kind=docker` with no docker daemon
+    2. `sandbox_kind=apptainer`/`singularity` with missing binary
+    3. `sandbox_kind=slurm` with missing sbatch or no resolvable
+       partition
+    4. SLURM GPU request with GRES-less cluster
+  All four now raise `RuntimeError` with an actionable message by
+  default. Legacy silent-fallback paths are preserved behind two
+  opt-in env vars (`ARI_PHASE1_ALLOW_FALLBACK=1` and
+  `ARI_SLURM_ALLOW_NO_GRES=1`), both documented in
+  `scripts/setup/setup_env.sh` and covered by the
+  `test_setup_env` regression check. Stage 1 `sandbox_kind=slurm`
+  emits a one-shot WARNING on `LocalComputer` construction making
+  the host-filesystem execution contract explicit.
+
+- **SLURM GPU dispatch correctness fixes** (real-cluster smoke
+  findings on r340 / qc-a100 / ai-l40s):
+    - `--gpus-per-task` now auto-pairs with `--ntasks 1` when
+      neither `ntasks` nor `--gpus` is supplied (SLURM 24.05
+      rejects the lone `--gpus-per-task` form).
+    - Mixing typed and untyped GPU requests is now canonicalised
+      to typed-only when `gpu_type` is set (vendor SLURM 24.05
+      rejects the mixed form with `Invalid GRES specification
+      (with and without type identification)`). Untyped
+      `--gpus-per-task` / `--gpus-per-node` are dropped; only
+      `--gres=gpu:TYPE:N` is emitted.
+
+- **`code_only` consistency between Stage 1 and Stage 3**. ARI's
+  Stage 1 instruction template defaults to `code_only=True` (per
+  `_compute/local_pbtask.py:166-175`), but the Stage 3 judge was
+  previously grading the full rubric, so the vendor SimpleJudge's
+  `reproduce.sh failed to modify or create any files. All result
+  analysis tasks will be graded as 0` safeguard fired on every
+  Code Execution / Result Analysis leaf, penalising the agent for
+  work it was never asked to do. `_paperbench_bridge.judge_submission`
+  now accepts `code_only: bool = False` and applies vendor
+  `TaskNode.code_only()` pruning when True (mirror of
+  `paperbench/grade.py:109-112`). `server.grade_with_simplejudge`
+  auto-enables `code_only` when `repo_dir` has no `reproduce.log`.
+  Mutually exclusive with `paper_audit_mode`.
+
+- **`web_search_preview` tool preservation** in the bridge's
+  `OpenAIResponsesTurnCompleterConfig` construction. Previously,
+  threading the caller's `agent_model` silently dropped the
+  vendor `BasicAgentSolver.completer_config` default
+  `tools=[WebSearchToolParam(type="web_search_preview")]`. Without
+  this, IterativeAgent mode degraded to bash + read-file only
+  (the vendor strips PythonTool / SearchFile in iterative mode
+  per `solver.py:88-95`). Both `_paperbench_bridge.rollout_submission`
+  and `server.build_reproduce_sh` now explicitly pass
+  `tools=[WebSearchToolParam(...)]` to preserve the vendor default.
+
+- **Vendor-fidelity gaps closed in `_paperbench_bridge.py`**:
+    - **(a) Stage 2 salvage retries** —
+      `reproduce_submission(salvage_retries: int = 0,
+      retry_threshold_sec: int = 60)`. Mirrors
+      vendor `paperbench/reproduce.py:252
+      reproduce_on_computer_with_salvaging`: early-failure
+      attempts (exit non-zero AND elapsed < threshold) are retried
+      up to N times with a Python 3.11 venv prelude wrapping the
+      original `reproduce.sh`. The salvage wrapper backs up the
+      original to `reproduce.sh.pre_salvage` and restores it on
+      cleanup. Total wall-clock budget is tracked across attempts
+      (retry-time exclusion, mirror of vendor's `use_real_time_limit`
+      at Stage 1) so a salvage chain never overshoots the user's
+      `time_limit_sec`.
+    - **(b) `submission_executed_<UTC>.tar.gz` capture** —
+      `reproduce_submission(capture_tarball: bool = True,
+      tarball_dir: Path | None = None)`. Per-attempt timestamped
+      tarball alongside the submission dir mirrors vendor
+      `reproduce.py:230-244`. The path is returned as
+      `executed_tarball` in the result dict for downstream
+      provenance / re-grading.
+    - **(h) `agent.env` injection** —
+      `rollout_submission(agent_env_path: Path | None = None)`.
+      Loads a vendor-style `KEY=VALUE` file and merges into the
+      agent's env (explicit `env=` kwarg wins). When unset,
+      auto-discovers `$ARI_AGENT_ENV_PATH` then
+      `~/.ari/agent.env`. The calling process's `HF_TOKEN` is
+      automatically forwarded (mirror of vendor
+      `nano/eval.py:172-179` well-known-credential pattern).
+      `setup.sh` gains a 5th interactive prompt for `HF_TOKEN`
+      and a commented `ARI_AGENT_ENV_PATH` placeholder; the
+      regression test `test_prompts_only_for_critical_keys` is
+      updated accordingly.
+    - **(i) Stage 1 host-FS source-removal guard** —
+      `rollout_submission(forbid_host_filesystem: bool = False)`.
+      When True and the effective `sandbox_kind` resolves to
+      `local` or `slurm` (both run the agent's bash/python
+      directly on the host filesystem with no isolation), the
+      call raises `RuntimeError` with an actionable message
+      pointing at `sandbox_kind=apptainer` + `container_image`.
+      Default False preserves dogfood / dev workflows.
+    - **(g) Blacklist URL enforcement** —
+      `rollout_submission(blacklist_urls: list[str] | None = None)`.
+      Two-layer best-effort enforcement: (1) prepends a
+      `FORBIDDEN URLS / RESOURCES` Markdown section to the agent's
+      paper_md so the LLM's instruction prompt carries the rule,
+      and (2) exports `ARI_BLACKLIST_URLS` env var (newline-joined)
+      so downstream tool wrappers can refuse. Mirrors vendor
+      `data/papers/<id>/blacklist.txt`. Apptainer + `no_network`
+      remains the only hard guarantee; this is the agent-instruction
+      / env-flag layer that lets the wizard / CLI surface the rule
+      without per-paper registry plumbing.
+    - **(e) pb-env / pb-reproducer image plumbing** —
+      `scripts/build_pb_images.sh` (ARI-root wrapper around
+      `vendor/paperbench/project/paperbench/paperbench/scripts/build-docker-images.sh`)
+      with docker-daemon availability checks and actionable error
+      messages; bridge `_resolve_container_image_alias` maps the
+      short aliases `pb-env` / `pb-reproducer` to the canonical
+      `image:latest` tags the build script produces (URIs / paths
+      / arbitrary tags pass through verbatim, so user-supplied
+      images keep working). Both rollout_submission and
+      reproduce_submission resolve `container_image` through this
+      helper.
+
+- **Documentation refresh for v0.7.3 surface**. Updated
+  `docs/howto/paperbench_quickstart.md`, `paperbench_gui.md`,
+  `paperbench_troubleshooting.md` (+ ja/zh mirrors) and
+  `docs/reference/api_paperbench.md`,
+  `docs/reference/environment_variables.md`,
+  `docs/reference/mcp_tools.md` with: container_image wizard
+  field, fail-loud preconditions + opt-in env vars, Stage 1→2→3
+  full CLI flow via the bridge, code_only auto-enable,
+  HF_TOKEN / agent.env auto-discovery, salvage retries,
+  executed-submission tarballs. `docs/index.html` + i18n
+  descriptions refreshed to mention the 3-stage bridge contract
+  (replacing stale `reproduce_plan + verification code + simulated
+  log` text from the retracted Step 4 path). `report/{en,ja,zh}/
+  chapters/04_paper_pipeline.tex` gains a `\subsubsection*{3-stage
+  bridge contract (v0.7.3)}` enumerating the eight vendor-faithful
+  design choices with vendor source-line citations; PDFs rebuilt
+  (EN/JA 13 pages, ZH 14 pages).
+
+### Fixed
+
+- **Operational v0.8.0 dogfood pass (SC41406 cuSZ-i, lossy-compression
+  kernel).** The deferred full-rollout PaperBench pass on a real
+  Supercomputing-2024 target was run (Stage 1→2→3 against `gpt-5-mini` on
+  an R-CCS L40S node) and surfaced + validated four bridge corrections.
+  Mean replication score rose **1.2% → 11.1%** on the same target after
+  the fixes.
+    - **Reproduce / judge now run from the agent's real repository
+      root.** The rollout workspace rewrites the vendor's absolute
+      `/home/submission` to a relative `submission/`, so an agent whose
+      cwd is the workspace builds its self-contained repo under
+      `<workspace>/submission/`. The post-rollout promote step had copied
+      only `reproduce.sh` up to the workspace root, orphaning it from its
+      `src/`; Stage 2 then ran the orphan and every CUDA build failed with
+      `src/…: No such file or directory`, zeroing all Code Execution /
+      Result Analysis leaves. `reproduce_submission` / `judge_submission`
+      now resolve the nested repository root (where `reproduce.sh` is
+      co-located with the sources it references — matching the vendor
+      reproducer's cd-into-submission semantics) and ignore the orphan
+      copy.
+    - **`apply_patch` / `applypatch` provided in the no-container
+      sandbox.** The vendor Docker image installs `/bin/apply_patch`; the
+      host-side `LocalComputer` builds no such image, so a gpt-5/codex
+      agent's reflexive `apply_patch <<'PATCH' … PATCH` edits died with
+      `command not found` and drained tool-call budget before falling back
+      to heredoc. `LocalComputer` now mirrors the vendor setup, exposing
+      the vendor's own `apply_patch.py` on PATH (both command names) for
+      every agent command; degrades gracefully if the vendor module is
+      unimportable.
+    - **Paper-kind classifier prompt de-leaked.** The classifier's
+      example values had seeded the dogfood paper's own names (`cuSZ`,
+      `Miranda`, `SDRBench`), violating the paper-agnostic contract and
+      self-fulfillingly biasing the classifier output. Replaced with
+      neutral cross-domain examples so extractions are genuine
+      paper-reading.
+    - **Toy-example dependency line switches per detected environment.**
+      The vendor toy `reproduce.sh` shows `apt-get install`; on a no-apt
+      module cluster that primed a failing path. The env reconcile now
+      rewrites it to `module load <NAME>` / `pip install` under the
+      detected environment (left verbatim where apt is real; Docker
+      grading untouched).
+- **Documentation + report refresh for the v0.8.0 dogfood pass.** Updated
+  `docs/guides/paperbench/paperbench_troubleshooting.md` (+ ja/zh mirrors)
+  and `docs/reference/api_paperbench.md` (en bridge-contract section; the
+  ja/zh reference files are abbreviated and carry no bridge section) with
+  the nested repository-root resolution and the sandbox-provided
+  `apply_patch` command; `report/{en,ja,zh}/chapters/05_evaluation.tex` records the
+  lossy-compression replication result (real Miranda-slice fetch, native
+  CUDA interpolation kernels on the L40S, PSNR 50–90 dB across an
+  error-bound sweep) and notes two residual agent-behavioural limits —
+  voluntary early submission well inside the time budget, and a
+  compute-then-discard reporting gap in the agent's own code that omitted
+  its GPU-predicted metric — as distinct from the (now-fixed) bridge
+  bugs.
+
+### Removed
+
+- **Step 4 "reproduction-package generator" — RETRACTED as
+  off-protocol** (also documented in the v0.7.2 retraction note
+  below). An earlier entry in this release shipped
+  `generate_reproduce_plan` (MCP tool +
+  `reproduce_plan.py` + `prompts/reproduce_plan.md` +
+  `--with-reproduce-plan` flag in `scripts/sc_paper_dogfood.py` +
+  `prompt_overrides.reproduce_plan_hint` blocks in
+  `paperbench_rubrics/{sc,neurips,nature}.yaml`). It asked an LLM
+  to write a `reproduce.log` whose "observed" values were
+  transcribed verbatim from the paper's own tables/figures and
+  fed that to `SimpleJudge` as the submission, bypassing
+  PaperBench's Stage 2 (executed submission via vendor
+  agent + container runner). The previously-claimed audit score
+  of **0.857** on the SC24 paper is retracted; an empty
+  submission (the protocol-correct input when no reproduction is
+  performed) scores far lower. The entire code path has been
+  removed; the legitimate alternative is the bridge contract
+  above (`rollout_submission → reproduce_submission → judge_submission`)
+  driving a real Stage 1 agent + Stage 2 sandbox execution.
+
+- **`workflow.yaml` `apptainer_image: ''` legacy alias** in the
+  `ors_build_reproduce` stage. Replaced with the unified
+  `container_image: ''` field. Symmetrically added
+  `container_image: ''` to the `ors_run_reproduce` stage so the
+  `ari paper` CLI path matches the wizard / worker dispatch
+  shape. Runtime impact is zero (both stages still pass empty
+  values for env-var fallback), but the YAML now documents the
+  canonical parameter name.
+
+- **Configurable BFTS evaluation layers (4 layers).** `default.yaml`
+  now lets users pick from multiple options at each evaluation surface
+  in the BFTS pipeline. Defaults reproduce the prior behaviour exactly,
+  so unmodified configs are a no-op.
+  - `evaluator.composite` — formula collapsing per-axis judge scores
+    into `_scientific_score`: `harmonic_mean` (default), `arithmetic_mean`,
+    `weighted_min` (bottleneck), or `geometric_mean`.
+  - `evaluator.axis_mode` + `evaluator.custom_axes` — axis set sent
+    to the judge LLM: `dynamic` (default; rubric + plan keywords),
+    `legacy` (the canonical 5-axis set), or `custom` (verbatim list).
+  - `bfts.frontier_score` — deterministic fallback ranking strategy:
+    `scientific_plus_diversity` (default), `scientific_only`,
+    `depth_penalized` (with `bfts.depth_penalty_lambda`), or
+    `ucb_like` (with `bfts.ucb_c`).
+  - `bfts.select_prompt` / `bfts.expand_select_prompt` —
+    `FilesystemPromptLoader` keys for the two LLM selection prompts;
+    user-supplied templates must keep the same placeholder set.
+  - Full reference: `docs/configuration.md` § BFTS Evaluation Layers
+    (mirrored under `docs/ja/` and `docs/zh/`).
+
 ## v0.7.3 — macOS local-dev compat + .env hierarchy alignment (2026-05-18)
 
 Patch release that incorporates the external contributor work from
@@ -103,36 +478,103 @@ be reproducible?"*. Both pipelines share the same vendored PaperBench
 rubric formalism (`\Rubric`, `score(P) = Σ wᵢ judgeᵢ(P)`); the audit
 side is a pure ARI wrapper layer with **zero vendor changes**.
 
-Measured on a public SC24 reproducibility-badge paper with embedded
-AD/AE Appendix: audit score 0.033 (paper-only / vendor prompt /
-text-only) → **0.857** (paper+AD/AE / paper_audit prompt patch /
-multimodal expander / Step 4 reproduction package) on gpt-5-mini.
+### Removed
+
+- **Step 4 "reproduction-package generator" — RETRACTED as off-protocol.**
+  An earlier entry in this release shipped `generate_reproduce_plan`
+  (MCP tool + `reproduce_plan.py` + `prompts/reproduce_plan.md` +
+  `--with-reproduce-plan` flag in `scripts/sc_paper_dogfood.py` +
+  `prompt_overrides.reproduce_plan_hint` blocks in
+  `paperbench_rubrics/{sc,neurips,nature}.yaml`). It asked an LLM to
+  write a `reproduce.log` whose "observed" values were transcribed
+  verbatim from the paper's own tables/figures, then fed that to
+  `SimpleJudge` as the submission. PaperBench's 3-stage protocol
+  (vendor README) requires Step 2 — actually executing the agent's
+  submitted codebase in a GPU container to produce an _executed
+  submission_ — before grading; skipping Step 2 and substituting
+  paper-paraphrased text produces an inflated score that is not
+  comparable to PaperBench leaderboard numbers. The previously-claimed
+  audit score of **0.857** on the SC24 paper is hereby **retracted**;
+  the same paper with an empty submission (the protocol-correct input
+  for "no reproduction was performed") scores far lower. The entire
+  code path has been removed. Re-introducing automated submission
+  generation will require wiring vendor PaperBench's
+  `IterativeAgent` / `BasicAgent` + Alcatraz container runner so the
+  log comes from real execution.
 
 ### Added
 
-- **Step 4 reproduction-package generator** (`ari-skill-replicate`'s new
-  `generate_reproduce_plan` MCP tool / `reproduce_plan.py` module).
-  Implements the HPC PaperBench audit research plan's §5 Step 4: an LLM reads a
-  paper (and optional AD/AE Appendix already concatenated into the text)
-  and writes four artifacts to a target directory —
-  `reproduce_plan.md` (step-by-step reconstruction with per-experiment
-  reproducibility category), `verification_code.py` (consistency-check
-  stubs over the paper's numerical claims), `install_commands.txt`
-  (concrete shell commands extracted from paper / AD / AE), and
-  `reproduce.log` (simulated execution log built from the paper's own
-  reported numbers). Passing the resulting directory as
-  `submission_dir` to `judge_submission` unblocks the structural ceiling
-  where Result Analysis leaves used to always score 0 with an empty
-  submission. ARI core stays domain-agnostic: the bundled prompt has
-  no HPC / ML / wet-lab vocabulary, and a regression test enforces this.
-  Venue-specific guidance lives in
-  `ari-core/config/paperbench_rubrics/<id>.yaml::prompt_overrides.reproduce_plan_hint`
-  (shipped for `sc`, `neurips`, `nature`). `scripts/sc_paper_dogfood.py`
-  gains `--with-reproduce-plan` and `--paper-audit-mode` (auto-enabled
-  when the picked template is paper_audit). Measured LLAMP audit
-  score on official SC24 PDF: 0.033 (baseline) → 0.857 with the full
-  pipeline (paper+AD/AE → multimodal → paper_audit prompt patch →
-  Step 4 reproduction package).
+- **3-stage PaperBench bridge contract** in
+  `ari-skill-paper-re/src/_paperbench_bridge.py`. Adds two new
+  keyword-only async functions —
+  `rollout_submission(*, paper_md, work_dir, agent_model, sandbox_kind,
+  container_image, iterative_agent, time_limit_sec, ...)` (Stage 1,
+  agent rollout that writes reproduce.sh) and
+  `reproduce_submission(*, submission_dir, sandbox_kind, container_image,
+  partition, gpus_per_task, gpu_type, memory_gb_per_node, exclusive,
+  extra_sbatch_args, time_limit_sec)` (Stage 2, executes reproduce.sh
+  in the chosen sandbox and captures reproduce.log) — that mirror the
+  call style of the existing `judge_submission` (Stage 3). All three
+  share the same `(paper_md, work_dir-or-submission_dir, model, ...)`
+  vocabulary so a caller can sequence the protocol-correct PaperBench
+  3-stage pipeline (rollout → reproduce → judge) without translating
+  between independent argument shapes. Internally, Stage 1 calls
+  `_replicator_agent.run_replicator_agent` and Stage 2 calls
+  `server.run_reproduce`; the bridge centralises completer-picking
+  (OpenAI Responses for `gpt-*`/`o[1-5]-*`, LiteLLM otherwise) and
+  adds `executed_submission_dir` / `reproduce_log_path` keys to the
+  Stage 2 return dict so the Stage 3 judge can be chained directly.
+  This is the legitimate counterpart to the retracted Step 4 "fake
+  reproduce.log" generator (above) — the submission fed to the judge
+  comes from REAL agent rollout + REAL reproduce.sh execution.
+  Exposed via `scripts/sc_paper_dogfood.py --with-rollout` /
+  `--with-reproduction` (mutually exclusive with `--paper-audit-mode`
+  by construction). `server.run_reproduce` now tolerates `rubric_path=""`
+  so the bridge wrapper can drive it without a rubric file when the
+  caller supplies all hints via explicit args.
+
+- **`container_image` field end-to-end** (wizard → API → worker →
+  MCP tool → sandbox runner). Adds a unified container image
+  parameter to the PaperBench wizard's Reproduce step
+  (`ari-core/ari/viz/frontend/src/components/PaperBench/PaperBenchWizard.tsx`)
+  with i18n labels for en/ja/zh. Propagates through
+  `api_paperbench_worker.py` (`_build_reproduce_args` accepts both
+  `container_image` and the legacy `apptainer_image` alias;
+  `_run_reproduce_args` reads `container_image`),
+  `server.build_reproduce_sh` (Stage 1; same dual-arg accept), and
+  `server.run_reproduce` + `_run_reproduce_docker` /
+  `_run_reproduce_apptainer` (Stage 2; explicit `image` arg replaces
+  the previous env-var-only path). Image priority: explicit field →
+  env (`ARI_PHASE1_DOCKER_IMAGE` / `ARI_PHASE1_APPTAINER_IMAGE`) →
+  hardcoded fallback (`ubuntu:24.04`). Previously, a user picking
+  `sandbox_kind=docker` or `apptainer` in the wizard always got
+  `ubuntu:24.04` regardless of what they intended; the wizard had no
+  UI for the field, the worker code looked for a key the wizard
+  never populated, and Stage 2 ignored the (always-empty) value.
+  `workflow.yaml` updated symmetrically for the `ari paper` CLI
+  path (`ors_build_reproduce` / `ors_run_reproduce` inputs).
+
+- **Fail-loud preconditions for sandbox / GPU mismatches** in
+  `ari-skill-paper-re/src/server.py`. Four sites previously silently
+  downgraded user-requested isolation/resources to host-CPU execution
+  with only a warning log: (a) `sandbox_kind=docker` with no docker
+  daemon → fell back to local; (b) `sandbox_kind=apptainer` /
+  `singularity` with missing binary → same; (c) `sandbox_kind=slurm`
+  with missing sbatch or no resolvable partition → same; (d) SLURM
+  with GPU request but GRES-less cluster → dropped all
+  `--gres` / `--gpus-per-task` / `--gpus-per-node` flags. All four
+  now raise `RuntimeError` with an actionable message by default
+  (the user explicitly picked the sandbox/GPU; silently running on
+  host-CPU after a long queue wait is the worst possible failure
+  mode). Legacy silent-fallback behaviour preserved behind two
+  opt-in env vars documented in `scripts/setup/setup_env.sh`:
+  `ARI_PHASE1_ALLOW_FALLBACK=1` for the docker/apptainer/sbatch
+  cases, `ARI_SLURM_ALLOW_NO_GRES=1` for the GPU GRES case. Stage 1
+  `sandbox_kind=slurm`/`local` additionally emits a one-shot WARNING
+  at `LocalComputer` construction making the host-filesystem
+  execution contract explicit (the agent's bash/python tools run as
+  plain subprocesses against `work_dir` — pass `sandbox_kind=apptainer`
+  with `container_image=...` for true Stage 1 isolation).
 
 - **Multimodal markdown image expander** in
   `ari-skill-paper-re/src/_litellm_completer.py`. When `paper.md`
@@ -521,6 +963,113 @@ v0.7.1 rubrics validate as v0.7.2 rubrics without modification.
 Existing call sites of `run_reproduce` / `build_reproduce_sh` /
 `run_replicator_agent` continue to work — every new argument defaults
 to `0` / `""` / `False` / `None`.
+
+## v0.7.2 — BFTS audit (2026-05-13, parallel track)
+
+Landed on the same date as the original v0.7.2 paper-audit release
+above; merged in from the `bfts` branch as a separate
+orchestration-layer thread. Headline: **BFTS algorithm audit**.
+Twenty-five orchestration-layer discrepancies between the v0.7.1
+implementation, its prompts, and the
+technical report were grouped under `bfts_audit_plan.md` and resolved in
+a single release. No checkpoint-format change; existing `tree.json`
+files resume cleanly.
+
+### Bug fixes (Phase 1)
+
+- **B-1**: removed the `BFTS.total_nodes` counter that double-bookkept
+  the live `len(all_nodes)` view. `should_prune(node, *, current_total)`
+  now takes the count from the caller — single source of truth.
+- **B-2**: `BFTSConfig.max_depth` was previously dead config. It is now
+  enforced by `should_prune` (`depth ≥ max_depth → prune`) and surfaced
+  to the expand-prompt as `Current depth: D / max_depth M`.
+- **B-3**: dropped the `retry_count` signal from `select_next_node`
+  candidate descriptions and from `bfts_select.md` ("prefer unexplored
+  directions (low retry)" was misleading — ARI never retries).
+- **B-4**: `should_prune` now also retires sterile nodes
+  (`metrics._sterile is True`), aligning the run-loop's existing sterile
+  gate with the pruning predicate.
+- **B-5**: deleted `ari/orchestrator/scheduler.py` and its `Scheduler`
+  callsite in `core.build_runtime`. The asyncio-based class was unused
+  and shadowed the real `ThreadPoolExecutor` path in `bfts_loop`.
+- **B-6**: `BFTSConfig.max_expansions_per_node` (default 4) plus
+  `BFTS.expansion_count(node_id)`. The run-loop now retires frontier
+  nodes when (Rule A) a child beat the parent on `_scientific_score`,
+  or (Rule B) the node has been expanded ≥ `max_expansions_per_node`
+  times.
+- **B-7**: fallback child created when the LLM returns no directions
+  now inherits `memory_snapshot`, `eval_summary`, `original_direction`,
+  and a normalised `name`, matching the regular child-creation path.
+- **B-8**: `select_next_node` candidate one-liners now include
+  `label=...` (the format used by `select_best_to_expand` already).
+- **B-9**: `_extract_directions_json` replaces the legacy
+  `re.search(r"\[.*\]", DOTALL)` greedy pattern. It strips
+  `<think>...</think>` reasoning blocks, scans for balanced brackets,
+  falls back to a lone `{...}`, and finally to the raw string.
+- **B-10**: removed `max_retries_per_node=…` from every test fixture
+  (`test_bfts.py`, `test_bfts_diversity.py`, `test_idea_integration.py`)
+  and the YAML default — the Pydantic field never existed.
+
+### Improvements (Phase 2)
+
+- **I-1**: `bfts_expand.md` switched from "MUST be one of … no
+  inventions" to "strongly prefer one of [draft, improve, debug,
+  ablation, validation]; otherwise the LLM string is preserved in
+  `raw_label`". `NodeLabel.OTHER`'s role is documented in `node.py`.
+- **I-2**: `diversity_bonus` docstring matches the implementation
+  (`my_count * 2 ≤ max_count`, i.e. "at most half as often").
+- **I-3 / L-3**: `BFTS._fallback_score` + `BFTS._select_fallback`
+  unify the LLM-fail-path scoring for `select_next_node` and
+  `select_best_to_expand`. Both now apply the diversity bonus.
+- **I-4**: expand prompt now carries `Current depth: D / max_depth M`
+  (always) and `Remaining node budget: K / max_total_nodes` (when the
+  caller provides `budget_remaining`, which `bfts_loop` always does).
+- **I-5**: `_resolve_pm_and_run_id` helper deduplicates the
+  `ARI_CHECKPOINT_DIR → (PathManager, run_id)` boilerplate previously
+  copy-pasted across `_load_sibling_node_reports` and
+  `_format_parent_report_block`.
+- **I-6**: the string-fallback label inference (used when the LLM
+  returns a plain string instead of JSON) now uses word-boundary
+  regex patterns, so "invalid" no longer trips the VALIDATION branch.
+- **I-7**: `bfts.record_run(result)` is now called **after**
+  `future.result()` returns, so the diversity bonus reflects nodes
+  that actually executed (success or failure) rather than nodes that
+  were merely selected.
+- **I-8**: `BFTS._get_node_report` introduces an mtime-keyed cache
+  for `node_report.json` reads — both sibling listing and the
+  parent-report enrichment path share it.
+- **I-9**: `threading.Lock`-protected mutation of
+  `_recent_label_history`, `_expansion_count`, and `_report_cache`.
+  LLM calls remain **outside** the lock.
+
+### Low-priority cleanups (Phase 3)
+
+- **L-1**: `_make_node_name` applies NFKC normalisation and whitespace
+  collapsing before truncation, so full-width labels and double-space
+  directions produce clean names.
+- **L-2**: `_PromptBudget` dataclass centralises the prompt-truncation
+  magic numbers (`[:240]`, `[:200]`, …) used by `expand()` /
+  `select_next_node`.
+- **L-3**: see I-3 — the same PR delivered both.
+- **L-4**: `_hash_experiment_file` memoises the experiment-file
+  sha256 keyed by `(path, mtime_ns)` — `_save_checkpoint` no longer
+  re-hashes the same `.md` after every node completion.
+- **L-5**: B-5 deleted the `asyncio.get_event_loop()` call site
+  entirely; L-5 is retired.
+- **L-6**: `BFTSConfig.label_saturation_threshold` (default 2) makes
+  the previously-hardcoded saturation cutoff configurable.
+
+### Docs / report
+
+- `docs/architecture.md::BFTS Algorithm` rewritten for v0.7.2 (depth
+  predicate, sterile predicate, frontier retire rules, `record_run`
+  timing).
+- `docs/configuration.md::BFTS Tuning` adds the full `BFTSConfig`
+  table and the new `max_expansions_per_node` /
+  `label_saturation_threshold` knobs.
+- Technical report (`report/en/chapters/03_exploration.tex`) revised
+  for the v0.7.2 formalisation of $\Pi$, $\sigma$, $\rho$, and the
+  retire predicate.
 
 ## v0.7.1 (2026-05-10)
 

@@ -45,7 +45,7 @@ results (the index moves under your feet).  For reproducibility:
   the live APIs.
 
 This is the P5 (reproducibility) principle — see
-`docs/PHILOSOPHY.md`.
+`docs/concepts/PHILOSOPHY.md`.
 
 ## Tests
 
@@ -56,5 +56,5 @@ pytest tests/test_collect_references.py -q  # citation walk
 
 ## See also
 
-- `docs/skills.md#ari-skill-web` — high-level summary.
+- `docs/reference/skills.md#ari-skill-web` — high-level summary.
 - `docs/reference/mcp_tools.md` — argument signatures.

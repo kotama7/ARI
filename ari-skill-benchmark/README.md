@@ -83,5 +83,5 @@ P2 (determinism) compliant: same inputs, same outputs.
 
 ## See also
 
-- `docs/skills.md` — high-level summary in the master skill index.
+- `docs/reference/skills.md` — high-level summary in the master skill index.
 - `docs/reference/mcp_tools.md` — argument signatures.

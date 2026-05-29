@@ -1,0 +1,33 @@
+\section{ランタイムLLMプロンプト}\label{sec:prompts}
+
+本付録は、v0.8.0 時点の \texttt{ari-core/ari/prompts/} から逐語複製した、
+ARI が実行時に使用する LLM プロンプト一覧である。各リストはディスク上の
+ソースとバイト単位で一致している。モデルに渡るバイト列そのものが挙動を
+決めるため、プロンプトは翻訳せず、本レポートの各言語版で同一の原文を
+そのまま掲載する。
+
+\subsection*{オーケストレータ}
+
+\PromptListing{orchestrator/bfts_expand.md}{BFTS 展開}{prompt:bfts_expand}
+\PromptListing{orchestrator/bfts_expand_select.md}{BFTS 展開時選択}{prompt:bfts_expand_select}
+\PromptListing{orchestrator/bfts_select.md}{BFTS 選択}{prompt:bfts_select}
+\PromptListing{orchestrator/lineage_decision.md}{系譜継続判定}{prompt:lineage_decision}
+\PromptListing{orchestrator/root_idea_selector.md}{ルートアイデア選択}{prompt:root_idea_selector}
+
+\subsection*{エージェントループ}
+
+\PromptListing{agent/system.md}{ReAct エージェントシステムプロンプト}{prompt:agent_system}
+
+\subsection*{評価器}
+
+\PromptListing{evaluator/peer_review.md}{ピアレビュー評価器}{prompt:peer_review}
+\PromptListing{evaluator/extract_metrics.md}{メトリクス抽出}{prompt:extract_metrics}
+
+\subsection*{パイプライン}
+
+\PromptListing{pipeline/keyword_librarian.md}{キーワードライブラリアン}{prompt:keyword_librarian}
+
+\subsection*{ウィザード(Viz)}
+
+\PromptListing{viz/wizard_chat_goal.md}{ウィザード目標対話}{prompt:wizard_chat_goal}
+\PromptListing{viz/wizard_generate_config.md}{ウィザード設定生成器}{prompt:wizard_generate_config}

@@ -145,8 +145,8 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path in ("/logo.png", "/logo"):
             logo_candidates = [
-                _st._ari_root / "docs" / "logo.png",
-                Path(__file__).parent.parent.parent.parent / "docs" / "logo.png",
+                _st._ari_root / "docs" / "assets" / "logo.png",
+                Path(__file__).parent.parent.parent.parent / "docs" / "assets" / "logo.png",
             ]
             for lp in logo_candidates:
                 if lp.exists():
@@ -394,6 +394,7 @@ class _Handler(BaseHTTPRequestHandler):
                                 _wf_cfg = _tmp
                                 break
                     _bfts = _wf_cfg.get("bfts", {})
+                    _eval_cfg = _wf_cfg.get("evaluator", {})
                     _hpc  = _wf_cfg.get("hpc", {})
                     saved2 = _api_get_settings()
                     # Merge default.yaml for missing fields
@@ -402,6 +403,7 @@ class _Handler(BaseHTTPRequestHandler):
                     if _default_yaml.exists():
                         _default_cfg = _yaml.safe_load(_default_yaml.read_text()) or {}
                     _default_bfts = _default_cfg.get("bfts", {})
+                    _default_eval = _default_cfg.get("evaluator", {})
                     # Merge default + profile configs for full detail
                     import copy as _copy
                     _merged = _copy.deepcopy(_default_cfg)
@@ -448,6 +450,9 @@ class _Handler(BaseHTTPRequestHandler):
                         "parallel":        _lc_data.get("parallel")  or _bfts.get("parallel",             _default_bfts.get("max_parallel_nodes", None)),
                         "timeout_node_s":  _lc_data.get("timeout_node_s") or _bfts.get("timeout_per_node",    _default_bfts.get("timeout_per_node", None)),
                         "max_react":       _lc_data.get("max_react") or _bfts.get("max_react_steps", _default_bfts.get("max_react_steps", 80)),
+                        "frontier_score":  _lc_data.get("frontier_score") or _bfts.get("frontier_score", _default_bfts.get("frontier_score", "scientific_plus_diversity")),
+                        "composite":       _lc_data.get("composite") or _eval_cfg.get("composite", _default_eval.get("composite", "harmonic_mean")),
+                        "axis_mode":       _lc_data.get("axis_mode") or _eval_cfg.get("axis_mode", _default_eval.get("axis_mode", "dynamic")),
                         "scheduler":       _hpc.get("scheduler", "local"),
                         "partition":       _lc_data.get("partition") or _hpc.get("partition", ""),
                         "cpus":            _lc_data.get("hpc_cpus") or _hpc.get("cpus_per_task", None),

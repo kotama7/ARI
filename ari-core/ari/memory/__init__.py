@@ -4,7 +4,7 @@ Three concrete backends share the ``MemoryClient`` Protocol:
 
 - ``LettaMemoryClient`` (default since v0.6.0) — backed by a per-checkpoint
   Letta agent with embedding-ranked search.  See
-  ``docs/architecture.md`` (Memory Architecture).
+  ``docs/concepts/architecture.md`` (Memory Architecture).
 - ``FileMemoryClient`` (legacy) — JSONL store at
   ``$ARI_CHECKPOINT_DIR/memory_store.jsonl`` for v0.5 compatibility.
 - ``LocalMemoryClient`` — in-memory dict for tests.

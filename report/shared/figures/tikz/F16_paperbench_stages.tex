@@ -1,0 +1,28 @@
+% F16: PaperBench three-stage bridge --- rollout -> reproduce -> grade,
+% with the artefacts that flow between the stages. All node text is routed
+% through \figlabel{} (defined in strings.tex); styles come from
+% style.tikzstyles (loaded by preamble.tex / the standalone wrapper).
+\begin{tikzpicture}[node distance=0.5cm and 0.9cm]
+
+  \node[artifact]                               (paper)   {\figlabel{F16.paper}};
+  \node[block native big, right=of paper]       (rollout) {\figlabel{F16.rollout}};
+  \node[artifact, right=of rollout]             (sub)     {\figlabel{F16.sub}};
+  \node[block native big, right=of sub]         (repro)   {\figlabel{F16.reproduce}};
+  \node[artifact, right=of repro]               (log)     {\figlabel{F16.log}};
+  \node[block native big, right=of log]         (grade)   {\figlabel{F16.grade}};
+  \node[artifact, right=of grade]               (score)   {\figlabel{F16.score}};
+
+  \begin{scope}[on background layer]
+    \node[group strong, fit=(rollout)(repro)(grade)] (band) {};
+  \end{scope}
+  \node[band label, above=4pt of band.north west, anchor=south west]
+        {\figlabel{F16.band}};
+
+  \draw[arrow] (paper)   -- (rollout);
+  \draw[arrow] (rollout) -- (sub);
+  \draw[arrow] (sub)     -- (repro);
+  \draw[arrow] (repro)   -- (log);
+  \draw[arrow] (log)     -- (grade);
+  \draw[arrow] (grade)   -- (score);
+
+\end{tikzpicture}

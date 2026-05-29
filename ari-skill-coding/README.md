@@ -41,7 +41,7 @@ The skill makes no LLM calls.
 When `ARI_CONTAINER_IMAGE` is set, every spawned subprocess is wrapped
 in `singularity exec` (or `apptainer exec`).  See
 `ari-core/ari/container.py` for the resolver and
-`docs/howto/troubleshooting.md` for sandbox failure modes.
+`docs/guides/troubleshooting.md` for sandbox failure modes.
 
 ## Sandbox guarantees
 
@@ -71,6 +71,6 @@ Two test files: `test_server.py` (MCP-level happy path) and
 
 ## See also
 
-- `docs/skills.md#ari-skill-coding` — high-level summary in the master skill index.
+- `docs/reference/skills.md#ari-skill-coding` — high-level summary in the master skill index.
 - `docs/reference/environment_variables.md` — full env-var table.
 - `ari-core/ari/container.py` — container wrapping helpers.

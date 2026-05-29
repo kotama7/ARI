@@ -1,0 +1,89 @@
+id: aer
+version: "2026"
+venue: American Economic Review (AER) / AEJ family
+domain: Economics
+
+params:
+  num_reflections: 5
+  num_fs_examples: 0   # No econ-specific fewshot shipped; CS/ML examples are domain-mismatched.
+  num_reviews_ensemble: 1
+  temperature: 0.7
+  score_threshold_decision: 4
+  fewshot_mode: static
+  fewshot_dir: ""
+
+score_dimensions:
+  - name: contribution
+    scale: [1, 5]
+    description: >-
+      Importance of the question and size of the contribution to economic
+      knowledge. 5=major advance for the field, 1=incremental or narrow.
+  - name: identification
+    scale: [1, 5]
+    description: >-
+      Credibility of the causal / structural identification strategy
+      (RCT, IV, RDD, DiD, structural model). 5=clean and well defended,
+      1=identification not credible or unaddressed.
+  - name: robustness
+    scale: [1, 5]
+    description: >-
+      Sensitivity of results to specification, sample, and assumption
+      changes. 5=results survive thorough robustness checks, 1=fragile.
+  - name: data_quality
+    scale: [1, 5]
+    description: >-
+      Quality of data sources, measurement, and sample construction.
+      5=high-quality primary or well-curated administrative data,
+      1=weak or poorly described data.
+  - name: reproducibility
+    scale: [1, 5]
+    description: >-
+      Compliance with the AEA Data and Code Availability Policy.
+      5=full replication package (data + code + README), 1=non-compliant.
+  - name: exposition
+    scale: [1, 5]
+    description: >-
+      Writing quality, clarity of the economic argument, and figure/table
+      design. 5=clear and well organised, 1=hard to follow.
+  - name: overall
+    scale: [1, 5]
+    description: >-
+      Overall recommendation. 5=strong accept, 4=accept, 3=major revision,
+      2=reject and resubmit, 1=reject.
+  - name: confidence
+    scale: [1, 5]
+    description: Reviewer confidence in the assessment.
+
+text_sections:
+  - { name: paper_summary, required: true }
+  - { name: strengths, required: true }
+  - { name: weaknesses, required: true }
+  - { name: identification_assessment, required: true }
+  - { name: required_revisions, required: true }
+  - { name: suggested_revisions, required: false }
+  - { name: questions_for_authors, required: false }
+  - { name: data_and_code_availability, required: false }
+
+decision:
+  type: categorical
+  options: [accept, minor_revision, major_revision, reject_and_resubmit, reject]
+  threshold_dimension: overall
+  threshold_value: 4
+
+prompt_overrides:
+  system_hint: >-
+    Follow AER / AEJ reviewer norms. AER reviewers focus on (i) economic
+    importance of the research question, (ii) credibility of the
+    identification strategy, and (iii) robustness of results. Cite the
+    paper's identification assumptions explicitly and flag whether they
+    are defended. Treat the AEA Data and Code Availability Policy as a
+    first-class criterion: missing replication packages are a
+    revision-blocking issue. Prefer revision (minor / major) over
+    outright reject when the contribution is salvageable.
+  author_hint: >-
+    Write for an economics audience expecting AEA-style exposition:
+    state the research question and contribution to the literature in
+    the introduction, then describe the identification strategy and its
+    assumptions explicitly before presenting results. Include robustness
+    checks and place data/code availability information per the AEA
+    Data and Code Availability Policy.

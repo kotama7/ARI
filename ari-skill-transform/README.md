@@ -80,7 +80,7 @@ path.
 
 ## See also
 
-- `docs/skills.md` — high-level summary in the master skill index.
-- `docs/architecture.md` (Publication Lifecycle, Plan / Venue contract) — where this skill fits.
+- `docs/reference/skills.md` — high-level summary in the master skill index.
+- `docs/concepts/architecture.md` (Publication Lifecycle, Plan / Venue contract) — where this skill fits.
 - `ari-core/ari/publish/` — the backend implementations called by `publish_ear`.
 - `ari-core/ari/orchestrator/node_report/` — the data this skill consumes.

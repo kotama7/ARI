@@ -726,7 +726,7 @@ class AgentLoop:
                                 )
                                 logger.info("generate_ideas set primary_metric=%s higher_is_better=%s", pm, hib)
                                 # Seed Letta core memory with experiment-level static facts.
-                                # Spec: docs/architecture.md:462-465, docs/skills.md:319-323.
+                                # Spec: docs/concepts/architecture.md:462-465, docs/reference/skills.md:319-323.
                                 # primary_metric is only known after generate_ideas, so we seed
                                 # here rather than at the literal moment of checkpoint creation.
                                 try:

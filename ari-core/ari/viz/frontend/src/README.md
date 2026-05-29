@@ -1,0 +1,114 @@
+# frontend/src
+
+React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages, shared services, and styles.
+
+## Contents
+
+- `README.md` — this file.
+- `App.tsx` — root app, lazy-loads page components and wraps them in `AppProvider`/`Layout`.
+- `main.tsx` — ReactDOM entry point with a top-level error boundary.
+- `vite-env.d.ts` — Vite client type declarations.
+- `components/` — page and UI components, grouped by feature.
+  - `README.md` — components index.
+  - `common/` — reusable presentational UI primitives shared across pages.
+    - `README.md` — common index.
+    - `Badge.tsx` — colored variant label span.
+    - `Button.tsx` — styled button with variant/size props.
+    - `Card.tsx` — bordered content container.
+    - `index.ts` — barrel re-exports.
+    - `StatBox.tsx` — single value + label stat tile.
+    - `StatusBadge.tsx` — maps run status to a colored `Badge`.
+  - `Experiments/` — experiments page (lists experiment/checkpoint runs).
+    - `README.md` — Experiments index.
+    - `ExperimentsPage.tsx` — experiments list view.
+    - `index.ts` — barrel re-export.
+  - `Home/` — home/overview landing page.
+    - `README.md` — Home index.
+    - `HomePage.tsx` — home/overview view.
+    - `index.ts` — barrel re-export.
+  - `Idea/` — idea page (research idea/hypothesis).
+    - `README.md` — Idea index.
+    - `IdeaPage.tsx` — idea view.
+    - `index.ts` — barrel re-export.
+  - `Layout/` — app shell (page frame + nav sidebar).
+    - `README.md` — Layout index.
+    - `index.ts` — barrel re-export.
+    - `Layout.tsx` — outer page frame wrapping the active page.
+    - `Sidebar.tsx` — nav menu + checkpoint switcher.
+  - `Monitor/` — live run progress and resource monitoring.
+    - `README.md` — Monitor index.
+    - `GpuMonitor.tsx` — GPU usage monitor card.
+    - `index.ts` — barrel re-export.
+    - `MonitorPage.tsx` — monitor page container.
+    - `PhaseStepper.tsx` — workflow phase progress bar (idea→bfts→paper→review).
+  - `PaperBench/` — register external papers, import them, launch/inspect PaperBench runs.
+    - `README.md` — PaperBench index.
+    - `index.ts` — barrel re-exports.
+    - `PaperBenchWizard.tsx` — wizard to configure a PaperBench run.
+    - `PaperImportDialog.tsx` — dialog to import a new paper.
+    - `PaperRegistryPage.tsx` — lists registered papers (GET /api/paperbench/papers).
+    - `__tests__/` — component tests for this directory.
+      - `README.md` — __tests__ index.
+      - `PaperBenchWizard.test.tsx` — tests for `PaperBenchWizard.tsx`.
+      - `PaperImportDialog.test.tsx` — tests for `PaperImportDialog.tsx`.
+    - `results/` — rubric-scored results view.
+      - `README.md` — results index.
+      - `ResultsView.tsx` — leaf grades + rubric tree + negative-control display.
+  - `Results/` — final run results and rubric scoring.
+    - `README.md` — Results index.
+    - `index.ts` — barrel re-export.
+    - `ResultsPage.tsx` — results page container.
+    - `RubricTreeVisualization.tsx` — D3 rubric tree with aggregated leaf scores.
+  - `Settings/` — dashboard/run configuration page.
+    - `README.md` — Settings index.
+    - `index.ts` — barrel re-export.
+    - `SettingsPage.tsx` — settings view.
+  - `Tree/` — BFTS tree page (search tree, detail panel, file browser).
+    - `README.md` — Tree index.
+    - `DetailPanel.tsx` — selected-node detail panel (tabs: memory, report, etc.).
+    - `FileExplorer.tsx` — checkpoint/node file tree browser.
+    - `index.ts` — barrel re-export.
+    - `TreePage.tsx` — tree page container.
+    - `TreeVisualization.tsx` — D3 search-tree canvas.
+    - `DetailPanelTabs/` — extracted detail-panel subcomponents.
+      - `README.md` — DetailPanelTabs index.
+      - `MemoryEntryCard.tsx` — renders one memory record (own/inherited/global) as a card.
+  - `Wizard/` — multi-step run-launch wizard.
+    - `README.md` — Wizard index.
+    - `index.ts` — barrel re-export.
+    - `StepGoal.tsx` — research goal / chat step.
+    - `StepLaunch.tsx` — final review + launch step.
+    - `StepResources.tsx` — provider/model and container-image step.
+    - `StepScope.tsx` — search scope (max depth/nodes) step.
+    - `WizardPage.tsx` — wizard container/step orchestration.
+  - `Workflow/` — workflow stages/pipeline page.
+    - `README.md` — Workflow index.
+    - `index.ts` — barrel re-export.
+    - `WorkflowPage.tsx` — workflow view.
+- `context/` — global React context (shared app state).
+  - `README.md` — context index.
+  - `AppContext.tsx` — `AppProvider`/`useAppContext`: shared app state, websocket tree nodes, current page, checkpoints.
+- `hooks/` — custom hooks (data fetch, websocket).
+  - `README.md` — hooks index.
+  - `useApi.ts` — generic async data-fetch hook with loading/error/refetch.
+  - `useWebSocket.ts` — streams real-time tree updates with auto-reconnect.
+- `i18n/` — localization (en/ja/zh) helpers.
+  - `en.ts` — English dictionary.
+  - `index.ts` — i18n entry / language selection.
+  - `ja.ts` — Japanese dictionary.
+  - `zh.ts` — Chinese dictionary.
+- `services/` — typed API and websocket client modules.
+  - `README.md` — services index.
+  - `api.ts` — typed REST client (state, checkpoints, settings, GPU monitor, etc.).
+  - `websocket.ts` — websocket helper stub (connections now handled by `useWebSocket`).
+- `styles/` — global CSS.
+  - `README.md` — styles index.
+  - `components.css` — component styles.
+  - `dashboard.css` — top-level dashboard styles.
+  - `layout.css` — page/layout structure.
+  - `responsive.css` — responsive/media-query overrides.
+  - `tokens.css` — design tokens (colors, spacing).
+  - `widgets.css` — widget-specific styles.
+- `types/` — shared TypeScript type definitions.
+  - `README.md` — types index.
+  - `index.ts` — core types (`TreeNode`, `Checkpoint`, `AppState`, etc.).

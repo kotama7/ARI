@@ -75,7 +75,7 @@ from ari.cli.lineage import (
     _build_idea_ctx_for_expand,
 )
 
-app = typer.Typer(name="ari", help="ARI - Artificial Research Intelligence")
+app = typer.Typer(name="ari", help="ARI - Autonomous Research Infrastructure")
 console = Console()
 
 # `ari memory` subparser.

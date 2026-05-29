@@ -86,7 +86,10 @@ def test_all_venues_load():
     ids = [
         "neurips", "iclr", "icml", "cvpr", "acl", "sc", "chi",
         "usenix_security", "osdi", "stoc", "icra", "siggraph",
-        "nature", "journal_generic", "workshop", "generic_conference",
+        "nature",
+        # Social sciences & humanities
+        "aer", "econometrica", "qje", "apsr", "ahr", "philreview", "pmla",
+        "journal_generic", "workshop", "generic_conference",
     ]
     for rid in ids:
         r = load_rubric(rid)
@@ -106,7 +109,9 @@ def test_list_available_rubrics_returns_all():
     expected = {
         "neurips", "iclr", "icml", "cvpr", "acl", "sc", "chi",
         "usenix_security", "osdi", "stoc", "icra", "siggraph",
-        "nature", "journal_generic", "workshop", "generic_conference",
+        "nature",
+        "aer", "econometrica", "qje", "apsr", "ahr", "philreview", "pmla",
+        "journal_generic", "workshop", "generic_conference",
     }
     assert expected.issubset(ids), f"missing: {expected - ids}"
 

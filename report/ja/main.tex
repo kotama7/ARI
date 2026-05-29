@@ -8,7 +8,7 @@
 
 \title{ARI: 自律型研究基盤}
 \author{樹神 宇徳}
-\date{スナップショット v0.7.2, 2026-05-17}
+\date{v0.8.0, 2026-05-27}
 
 \begin{document}
 \twocolumn[
@@ -17,14 +17,14 @@
 本レポートでは、木探索ベースの探索ループと論文生成パイプラインを
 組み合わせた自律型研究基盤 \textbf{ARI} を述べる。探索ループは
 研究ステップノードに対する最良優先木探索 (BFTS) であり、ノード
-拡張は ReAct 形式のエージェントが14のドメインスキルレジストリに
-ツール呼び出しを発する形で行う。論文生成パイプラインは生き残った
+拡張は Reason-and-Act (ReAct~\cite{yao2023react}) 形式のエージェ
+ントが14のドメインスキルレジストリにツール呼び出しを発する形で
+行う。論文生成パイプラインは生き残った
 系譜から草稿を生成し、階層型ルブリックの下で反復的に改稿する。
 すべての成果物は単一のチェックポイントディレクトリに格納され、
 これが再現性、系譜、コスト計上の単位となる。本レポートは
-アルゴリズムを形式化し、実装をソースコードレベルで記述し、
-評価スナップショットを提示し、設計を制約する決定性と新規性の
-トレードオフを議論する。
+アルゴリズムと設計上の論拠を形式化し、予備的観察を報告し、
+設計を制約する決定性と新規性のトレードオフを議論する。
 \end{abstract}
 \vspace{2ex}
 ]
@@ -37,9 +37,17 @@
 \input{chapters/06_related.tex}
 \input{chapters/07_discussion.tex}
 
+% Single column for the appendix so the verbatim prompt listings wrap
+% inside the full page width. \clearpage makes the \onecolumn switch
+% robust across engines (see en/main.tex for the xelatex/ctex note).
+\clearpage
+\onecolumn
 \appendix
 \input{chapters/appendix_notation.tex}
+\input{chapters/appendix_prompts.tex}
 
+\clearpage
+\twocolumn
 \printbibliography
 
 \end{document}

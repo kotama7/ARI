@@ -1,0 +1,108 @@
+% F15: BFTS state-machine view of one outer iteration.
+% Strict top-down vertical flowchart so the inner expansion sub-loop
+% and the outer parallel-run loop appear as two stacked columns and the
+% reflux back to the top is a single curved arrow on the left margin.
+% Auxiliary state (e, H) is described in the caption rather than drawn
+% on the figure, which kept the previous version cluttered.
+%
+%   [F]
+%    ↓
+%   1 pick best (LLM)
+%    ↓
+%   2 Π(f)?  ── yes →  [drop f from F]
+%    ↓ no
+%   3 expand → child c   (bump e(f))
+%    ↓
+%   [P]
+%    ↓
+%   4 assemble batch: call select_next_node (LLM/FB) once per slot, |B| <= max_parallel
+%    ↓
+%   5 parallel ReAct       (append label(n') → H)
+%    ↓
+%   6 σ(n')?  ── yes →  [clamp scientific score]
+%    ↓
+%   append n' to [F]
+%    ↓
+%   7 ρ(f, n')?  ── yes →  [retire f from F]
+%    ↓ no
+%   (loop back to top)
+%
+% style.tikzstyles is loaded by the preamble (inlined) and by the
+% standalone wrapper; the pool/stage/guard/drop node styles live there
+% (gate T2: no inline minimum/text width in this file).
+\begin{tikzpicture}[
+    >={Stealth[length=6pt,width=6pt]},
+    line cap=round,
+    every node/.style={font=\footnotesize, inner sep=3pt},
+    flow/.style={->, line width=1.0pt, draw=ari-black,
+                 shorten <=2pt, shorten >=2pt},
+    drop edge/.style={->, line width=0.9pt, draw=ari-vermilion, dashed,
+                      shorten <=2pt, shorten >=2pt},
+    reflux/.style={->, line width=1.0pt, draw=ari-blue!70,
+                   shorten <=2pt, shorten >=2pt},
+    elabel/.style={font=\scriptsize, fill=white, inner sep=1pt,
+                   rounded corners=1pt},
+    glabel/.style={font=\scriptsize, fill=white, inner sep=1pt,
+                   rounded corners=1pt, text=ari-vermilion},
+    badge/.style={circle, fill=ari-black, text=white,
+                  font=\bfseries\scriptsize, inner sep=1pt, minimum size=12pt},
+    node distance=0.45cm and 0.6cm,
+  ]
+
+  %% ── INNER LANE: expansion sub-loop ────────────────────────────
+  \node[pool]                              (f_in)   {\figlabel{F15.frontier}};
+  \node[stage, below=of f_in]              (pick)   {\figlabel{F15.pick_best}};
+  \node[guard, below=of pick]              (prune)  {\figlabel{F15.prune}};
+  \node[stage, below=of prune]             (expand) {\figlabel{F15.expand}};
+  \node[pool, below=of expand]             (p_pool) {\figlabel{F15.pending}};
+
+  %% ── OUTER LANE: parallel-run loop ─────────────────────────────
+  \node[stage, below=of p_pool]            (batch)  {\figlabel{F15.select_run}};
+  \node[stage, below=of batch]             (react)  {\figlabel{F15.run_parallel}};
+  \node[guard, below=of react]             (st)     {\figlabel{F15.sterile}};
+  \node[pool, below=of st]                 (f_new)  {\figlabel{F15.append_frontier}};
+  \node[guard, below=of f_new]             (retire) {\figlabel{F15.retire}};
+
+  %% Side branches: drop / clamp / retire bins on the right.
+  \node[drop, right=1.3cm of prune]        (drop1)  {\figlabel{F15.prune_drop}};
+  \node[drop, right=1.3cm of st]           (clamp)  {clamp score; $\sterilepred=1$};
+  \node[drop, right=1.3cm of retire]       (drop2)  {\figlabel{F15.retire_drop}};
+
+  %% Step badges (centered above each main step).
+  \node[badge, above left=-0.05cm and -0.15cm of pick.north west]   {1};
+  \node[badge, above left=-0.05cm and -0.15cm of prune.north west]  {2};
+  \node[badge, above left=-0.05cm and -0.15cm of expand.north west] {3};
+  \node[badge, above left=-0.05cm and -0.15cm of batch.north west]  {4};
+  \node[badge, above left=-0.05cm and -0.15cm of react.north west]  {5};
+  \node[badge, above left=-0.05cm and -0.15cm of st.north west]     {6};
+  \node[badge, above left=-0.05cm and -0.15cm of retire.north west] {7};
+
+  %% Main vertical flow.
+  \draw[flow] (f_in)   -- (pick);
+  \draw[flow] (pick)   -- (prune);
+  \draw[flow] (prune)  -- (expand)
+              node[elabel, midway, left]{\figlabel{F15.notprune}};
+  \draw[flow] (expand) -- (p_pool)
+              node[elabel, midway, left]{$\expandcount(f)\mathrel{+}{=}1$};
+  \draw[flow] (p_pool) -- (batch)
+              node[elabel, midway, left]{\figlabel{F15.pick_run}};
+  \draw[flow] (batch)  -- (react);
+  \draw[flow] (react)  -- (st)
+              node[elabel, midway, left]{\texttt{record\_run}};
+  \draw[flow] (st)     -- (f_new);
+  \draw[flow] (f_new)  -- (retire);
+
+  %% Side-branch drops / clamp.
+  \draw[drop edge] (prune.east)  -- (drop1.west)
+              node[glabel, midway, above]{yes};
+  \draw[drop edge] (st.east)     -- (clamp.west)
+              node[glabel, midway, above]{yes};
+  \draw[drop edge] (retire.east) -- (drop2.west)
+              node[glabel, midway, above]{yes: A or B};
+
+  %% Reflux: retire's "no" arm loops back to the top of the inner lane.
+  \draw[reflux] (retire.west)
+        to[out=180, in=180, looseness=1.8]
+        node[elabel, near start, left]{no $\Rightarrow$ next iter}
+        (f_in.west);
+\end{tikzpicture}

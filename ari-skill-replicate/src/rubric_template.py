@@ -68,11 +68,6 @@ class TopLevelAxis:
 class PromptOverrides:
     system_hint: str = ""           # injected into skeleton/subtree prompts
     leaf_style: str = ""            # injected into subtree prompt only
-    reproduce_plan_hint: str = ""   # injected into the Step 4 reproduce-plan
-                                    # generator prompt (paper → reproduction
-                                    # package); venue-specific reproducibility
-                                    # criteria live here, ARI core stays
-                                    # domain-agnostic.
 
 
 @dataclass
@@ -162,7 +157,6 @@ def _parse_template(data: dict, *, source_path: str) -> PaperBenchRubricTemplate
     overrides = PromptOverrides(
         system_hint=str(po_raw.get("system_hint", "")),
         leaf_style=str(po_raw.get("leaf_style", "")),
-        reproduce_plan_hint=str(po_raw.get("reproduce_plan_hint", "")),
     )
 
     return PaperBenchRubricTemplate(

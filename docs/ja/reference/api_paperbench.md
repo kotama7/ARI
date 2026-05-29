@@ -1,3 +1,14 @@
+---
+sources:
+  - path: ari-core/ari/viz/api_paperbench.py
+    role: implementation
+  - path: ari-skill-paper-re/src/_paperbench_bridge.py
+    role: implementation
+  - path: ari-skill-paper-re/src/server.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # PaperBench API リファレンス
 
 全 endpoint はダッシュボードと同ホスト上の ARI viz サーバ
@@ -209,6 +220,6 @@ viz サーバはダッシュボード endpoint で全 origin (`*`) を許可、 
 
 ## 関連
 
-- [PaperBench GUI ガイド](../howto/paperbench_gui.md)
+- [PaperBench GUI ガイド](../guides/paperbench/paperbench_gui.md)
 - [実行プロファイル仕様](execution_profile.md)
 - ソース: `ari-core/ari/viz/api_paperbench.py`

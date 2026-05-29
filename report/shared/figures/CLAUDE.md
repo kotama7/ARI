@@ -71,3 +71,52 @@ For F8/F9-style data plots:
 - Never invent paper titles or arXiv IDs in figures (legends, citations).
 - Citation labels in figures use the same key as `\cite{...}` in the body — and that key
   must already exist in `shared/references.bib` and be S2-verified.
+
+## Execution plan: update / add / delete a figure
+
+A figure has two parts that must stay in sync, and three language builds that
+must stay at parity:
+
+- **Geometry** — one shared, language-agnostic source
+  (`shared/figures/tikz/Fxx_<slug>.tex`, or matplotlib PGF). It carries **no
+  literal text**: every string is `\figlabel{key}`.
+- **Strings** — `\figlabeldef{key}{...}` in `en/`, `ja/`, `zh/` `strings.tex`,
+  one realisation per language. The **key set must be identical** in all three.
+- **Parity invariants** (gate 6 / `check_i18n.py`): the per-chapter
+  `\begin{figure}` count must match across languages, every `\figlabel{key}`
+  must have a `\figlabeldef` in each language, and every `\cref{fig:slug}`
+  must resolve.
+
+### Update an existing figure (relabel / restructure)
+1. Edit the geometry in `Fxx.tex`, and/or the label text in **all three**
+   `strings.tex` (same keys; translate the values). Relabelling text-only?
+   Touch just the `\figlabeldef` values + caption — leave the geometry alone
+   (lowest-risk path; this is what the F12/F14 de-implementation did).
+2. `make figure FIG=Fxx` → **Read the preview PNG**: overlap, overflow,
+   clipping, a label now wider than its node. Longer replacement text is the
+   usual regression.
+3. Data figure? Regenerate from the frozen data with `make figures`, never by
+   hand.
+4. `make pdf-all`; confirm 0 Overfull / 0 Warning and that page count / layout
+   did not regress; run `check_tikz`, `check_figures`, `check_i18n`.
+5. **Body↔figure consistency**: if the body dropped a concept (e.g. a class
+   name removed under §1), relabel the figure to match. A figure must never
+   show detail the body no longer discusses.
+
+### Add a new figure
+1. Create `Fxx_<slug>.tex` per the TikZ ground rules above (`style.tikzstyles`
+   loaded; `positioning` only; every string via `\figlabel`; ≥3-node trees via
+   graphviz / graphdrawing).
+2. Add the `\figlabeldef{key}{...}` set to **all three** `strings.tex` with
+   identical keys.
+3. Reference it from the chapter — `\begin{figure}…\input{…}…\label{fig:slug}\end{figure}` — in **all three** language chapters, in the same place, so the
+   per-chapter figure count stays equal (gate 6).
+4. `make figure FIG=Fxx` → Read preview; then `make pdf-all`; gates.
+
+### Delete a figure
+1. Remove the `\begin{figure}…\end{figure}` block (and any `\cref{fig:slug}`)
+   from **all three** language chapters — figure-count parity must stay equal.
+2. Remove its `\figlabeldef` keys from **all three** `strings.tex`.
+3. Delete `Fxx.tex` (and any committed `pgf/` / `dot/` output for it).
+4. `grep -rn 'fig:slug\|Fxx' report/` to confirm no dangling reference; then
+   `make pdf-all`; gates.

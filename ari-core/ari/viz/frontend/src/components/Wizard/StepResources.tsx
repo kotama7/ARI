@@ -7,7 +7,15 @@ export const PROVIDER_MODELS: Record<string, string[]> = {
   openai: ['gpt-5.2', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-4o', 'gpt-4o-2024-08-06', 'gpt-4o-mini', 'o3', 'o1-mini'],
   anthropic: ['claude-opus-4-5', 'claude-sonnet-4-5', 'claude-haiku-3-5'],
   ollama: ['qwen3:8b', 'qwen3:32b', 'llama3.3', 'gemma3:27b', 'mistral'],
+  'cli-shim': ['claude-cli', 'claude-cli-agent', 'codex-cli', 'codex-cli-agent'],
   custom: [],
+};
+
+// Default API base URL per provider (used when switching providers). The CLI
+// shim (ari.llm.cli_server) listens on :8900 by default; see start.sh.
+export const PROVIDER_BASE_URL: Record<string, string> = {
+  ollama: 'http://localhost:11434',
+  'cli-shim': 'http://localhost:8900/v1',
 };
 
 type OrsProvider = 'openai' | 'anthropic' | 'google' | 'ollama' | 'custom';
@@ -176,6 +184,13 @@ const RUBRIC_OPTIONS: Array<{ id: string; label: string }> = [
   { id: 'icra', label: 'ICRA / IROS / RSS (Robotics)' },
   { id: 'siggraph', label: 'SIGGRAPH / SIGGRAPH Asia (Graphics)' },
   { id: 'nature', label: 'Nature / Science (Natural & Life Sciences)' },
+  { id: 'aer', label: 'AER / AEJ (Economics)' },
+  { id: 'econometrica', label: 'Econometrica (Econometrics / Theory)' },
+  { id: 'qje', label: 'QJE (Economics)' },
+  { id: 'apsr', label: 'APSR / AJPS / JOP (Political Science)' },
+  { id: 'ahr', label: 'AHR / Past & Present (History)' },
+  { id: 'philreview', label: 'Philosophical Review / Mind / Noûs (Philosophy)' },
+  { id: 'pmla', label: 'PMLA / Critical Inquiry (Literary & Cultural Studies)' },
   { id: 'journal_generic', label: 'Generic Journal (revision-cycle)' },
   { id: 'workshop', label: 'Workshop / Short Paper' },
   { id: 'generic_conference', label: 'Generic Conference' },
@@ -281,8 +296,17 @@ export function StepResources({
       if (models.length > 0) {
         setModel(models[0]);
       }
+      // Point the base URL at the new provider's default so a stale value
+      // (e.g. the Ollama URL) isn't carried over to the CLI shim — but only
+      // when the field still holds a known default, never a user-typed URL.
+      if (PROVIDER_BASE_URL[provider] !== undefined) {
+        const knownDefaults = Object.values(PROVIDER_BASE_URL);
+        if (baseUrl === '' || knownDefaults.includes(baseUrl)) {
+          setBaseUrl(PROVIDER_BASE_URL[provider]);
+        }
+      }
     },
-    [setLlm, setModel],
+    [setLlm, setModel, setBaseUrl, baseUrl],
   );
 
   // Initialize: detect scheduler, load settings, auto-read API key
@@ -630,7 +654,7 @@ export function StepResources({
         <div className="form-row">
           <label>Provider</label>
           <div className="toggle-group">
-            {['openai', 'anthropic', 'ollama', 'custom'].map((p) => (
+            {['openai', 'anthropic', 'ollama', 'cli-shim', 'custom'].map((p) => (
               <div
                 key={p}
                 className={`toggle-btn${llm === p ? ' active' : ''}`}
@@ -642,7 +666,9 @@ export function StepResources({
                     ? 'Anthropic'
                     : p === 'ollama'
                       ? 'Ollama'
-                      : 'Custom'}
+                      : p === 'cli-shim'
+                        ? 'CLI Shim'
+                        : 'Custom'}
               </div>
             ))}
           </div>
@@ -706,14 +732,18 @@ export function StepResources({
           </div>
         )}
 
-        {/* Base URL (ollama / custom) */}
-        {(llm === 'ollama' || llm === 'custom') && (
+        {/* Base URL (ollama / cli-shim / custom) */}
+        {(llm === 'ollama' || llm === 'cli-shim' || llm === 'custom') && (
           <div className="form-row">
             <label>Base URL</label>
             <input
               type="text"
               value={baseUrl}
-              placeholder="http://localhost:11434"
+              placeholder={
+                llm === 'cli-shim'
+                  ? 'http://localhost:8900/v1'
+                  : 'http://localhost:11434'
+              }
               onChange={(e) => setBaseUrl(e.target.value)}
             />
           </div>

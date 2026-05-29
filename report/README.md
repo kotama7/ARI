@@ -2,11 +2,12 @@
 
 This directory holds the **ARI system report** — an arXiv-style technical
 report describing the exploration algorithm and paper-generation pipeline
-of [ARI](../README.md) at the v0.7.x snapshot.
+of [ARI](../README.md) at the v0.8.0 snapshot.
 
 The report is built in three languages (en, ja, zh) and published in two
-formats (PDF, HTML). The English version is the master; ja/zh are
-LLM-translated and validated by a structural gate (`check_i18n.py`).
+formats (PDF, HTML). The English version is the master; ja and zh are
+hand-maintained alongside it and validated by a structural-parity gate
+(`check_i18n.py`).
 
 ## Layout
 
@@ -17,6 +18,7 @@ report/
 ├── .latexmkrc                      # latexmk configuration
 ├── setup_fonts.sh                  # one-off Noto CJK installation
 │
+├── CLAUDE.md                       # LLM-author rules for editing report/
 ├── shared/
 │   ├── preamble.tex                # common LaTeX preamble (engine-aware)
 │   ├── notation.tex                # math symbol macros (Gate 3 source)
@@ -25,7 +27,7 @@ report/
 │   ├── references.log.yaml         # provenance for each entry
 │   ├── references.cache.json       # S2/DOI lookup cache
 │   ├── references_pdf/             # PDF copies of cited papers (gitignored)
-│   ├── code_refs.yaml              # implementation file:line citations (Gate 2)
+│   ├── appendix/prompts/           # snapshotted ari-core prompts (Gate 10)
 │   ├── figures/
 │   │   ├── style.tikzstyles        # TikZ style file
 │   │   ├── CLAUDE.md               # LLM-author rules for figures
@@ -37,14 +39,13 @@ report/
 │   └── tables/                     # auto-generated longtables
 │
 ├── en/main.tex,strings.tex,chapters/*.tex   # master English source
-├── ja/main.tex,strings.tex,chapters/*.tex   # LLM-translated Japanese
-├── zh/main.tex,strings.tex,chapters/*.tex   # LLM-translated Simplified Chinese
+├── ja/main.tex,strings.tex,chapters/*.tex   # hand-maintained Japanese
+├── zh/main.tex,strings.tex,chapters/*.tex   # hand-maintained Simplified Chinese
 │
 ├── scripts/
-│   ├── translate.py                # LLM translation engine (Anthropic SDK)
-│   ├── prompts/translate_*.md      # translation prompts
-│   ├── translation_cache.json      # paragraph-hash cache
-│   ├── check_*.py                  # quality gates (see below)
+│   ├── snapshot_prompts.py         # refresh shared/appendix/prompts/
+│   ├── check_prompt_snapshots.py   # Gate 10 — snapshot bytes match source
+│   ├── check_*.py                  # other quality gates (see below)
 │   ├── render_tikz.py              # standalone TikZ render + bbox overlap test
 │   ├── build_html.sh               # latexml | make4ht driver
 │   ├── inject_langnav.py           # add language switcher to HTML
@@ -85,39 +86,47 @@ make figure FIG=F04_react_loop   # standalone preview of a single TikZ
 | Gate | Script | What it verifies |
 |------|--------|------------------|
 | 1    | `make pdf-all html-all`           | warning-free PDF + HTML × 3 |
-| 2    | `check_code_refs.py`              | every `code_refs.yaml` entry resolves to existing line |
 | 3    | `check_notation.py`               | every body math symbol is defined in `shared/notation.tex` |
 | 4    | `check_bib.py [--strict]`         | bib structural validity + (strict) Semantic Scholar cross-check |
-| 5    | `check_i18n.py`                   | `% translated-from: ...@<hash>` headers match en source |
 | 6    | `check_i18n.py`                   | section / label / cite / equation set parity en/ja/zh |
 | 7    | `check_glossary.py`               | `forbidden_alternatives` from `glossary.yaml` not used |
 | 8    | `check_toc_consistency.py`        | PDF/HTML heading order + count match |
 | 9    | `check_tikz.py`, `check_figures.py` | T1..T9 (raw coords, inline styles, arrow style, etc.) |
+| 10   | `check_prompt_snapshots.py`       | `shared/appendix/prompts/**` bytes equal upstream `ari-core/ari/prompts/**` |
+
+Gate 2 (`check_code_refs.py`) was retired with the file:line citation
+ban (see `CLAUDE.md` §1); gate 5 (`% translated-from:` headers) was
+retired together with the LLM translation pipeline.
 
 Auxiliary:
 
 * `check_logs_for_secrets.py` greps `references.log.yaml` and the cache for
   leaked API keys.
 
-## Translation pipeline
+## Authoring across en/ja/zh
 
-`scripts/translate.py` translates en chapters to ja/zh paragraph-by-paragraph
-under Claude Opus 4.7 (model pinned via `--model`). Each paragraph is
-hashed; if `(paragraph_sha256, glossary_sha256, model)` matches the cache,
-no API call is made. Cache lives at `scripts/translation_cache.json` and is
-committed.
+en is the master. ja and zh are hand-maintained alongside en in the same
+PR: the structural-parity gate (gate 6) checks that the set of sections,
+labels, citations, equations, figures, and tables is identical across the
+three languages, but the prose is written and revised directly per
+language. There is no translator script. See `CLAUDE.md` §3 for the
+authoring rules.
+
+## Appendix prompts (snapshot)
+
+`shared/appendix/prompts/**` is a verbatim byte-for-byte snapshot of
+`ari-core/ari/prompts/**/*.md` at the report's pinned commit. Refresh
+with:
 
 ```bash
-make translate-changed     # incremental
-make translate-all         # full re-run (uses cache)
-python scripts/translate.py --bump-glossary    # invalidate cache after a glossary edit
+make snapshot-prompts          # regenerate snapshots; commit the diff
+make check-prompt-snapshots    # gate 10 — fails if snapshots drift
 ```
 
-The script protects `\cite{}`, `\label{}`, math, comments, and TikZ macros
-behind placeholder tokens before the LLM call, and restores them after.
-A `% translated-from: en/<file>@<sha256>` header is written into every
-ja/zh chapter; gates 5 / 6 enforce that the header matches the current en
-source.
+Each snapshot file carries a `% snapshot-from: <path>@<sha256> @ commit
+<git>` header. Prompts are reproduced in English in every language
+version of the report (gate 6 / `check_i18n.py` excludes the appendix).
+See `CLAUDE.md` §2 for the rationale.
 
 ## Bibliography discipline (anti-hallucination)
 

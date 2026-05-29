@@ -67,6 +67,7 @@ from paperbench.solvers.basicagent.completer import (
     BasicAgentTurnCompleterConfig,
     OpenAIResponsesTurnCompleterConfig,
 )
+from openai.types.responses.web_search_tool_param import WebSearchToolParam
 from paperbench.solvers.basicagent.utils import (
     get_instructions as _vendor_get_instructions,
 )
@@ -571,6 +572,7 @@ async def run_replicator_agent(
     env: dict[str, str] | None = None,
     paper_id: str = "ari-local",
     run_id: str | None = None,
+    paper_addendum_md_path: str = "",
     run_group_id: str = "ari-local",
 ) -> dict[str, Any]:
     """Run BasicAgent / IterativeAgent against the workspace ``output_dir``.
@@ -627,6 +629,7 @@ async def run_replicator_agent(
     # stub since the conversation prompt is the source of truth.
     task = make_local_pbtask(
         paper_md_path=paper_md_path,
+        paper_addendum_md_path=paper_addendum_md_path,
         work_dir=str(work),
         instructions=_INSTRUCTIONS_TXT_STUB,
         rubric_expected_artifacts=expected_artifacts,
@@ -637,15 +640,31 @@ async def run_replicator_agent(
         run_group_id=run_group_id,
         run_dir=str(work),
         runs_dir=str(work.parent),
-        code_only=True,
+        # code_only inherits make_local_pbtask's default (False since
+        # v0.7.4) so the vendor full instructions.txt — which
+        # explicitly requires reproduce.sh — reaches the agent.
         target_duration_hr=int(round(time_limit_sec / 3600)) or None,
     )
 
     if completer_config is None:
         # Default to upstream OpenAI Responses; users wire LiteLLM via the
         # litellm-backed BasicAgent completer config (Phase 4).
+        #
+        # Register the `web_search_preview` hosted tool, matching vendor's
+        # default completer (solver.py:26-28). Without it the model's tool
+        # list is bash/read_file_chunk/submit only — the agent cannot search
+        # the web, so dataset-URL discovery is structurally blocked and the
+        # agent fabricates URLs (v3-A7/A8: web_search invoked 0 times,
+        # guessed zenodo/HF paths → 404/401 → synthetic fallback). Opt out
+        # with ARI_PB_DISABLE_WEB_SEARCH=1 (e.g. air-gapped reproduction).
+        _tools = (
+            []
+            if os.environ.get("ARI_PB_DISABLE_WEB_SEARCH", "") == "1"
+            else [WebSearchToolParam(type="web_search_preview")]
+        )
         completer_config = OpenAIResponsesTurnCompleterConfig(
             model=os.environ.get("ARI_MODEL_REPLICATOR") or "gpt-5-mini",
+            tools=_tools,
         )
 
     solver = AriPBSolver(

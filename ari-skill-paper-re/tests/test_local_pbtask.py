@@ -61,14 +61,37 @@ def test_factory_sets_paperbench_friendly_defaults():
             instructions="Run it.",
             rubric_expected_artifacts=["a.csv", "b.json"],
         )
-    # PaperBench paper §2.6: code_only mode skips the reproduction phase
-    # since ari runs ors_run_reproduce as a separate stage.
-    assert task.judge.code_only is True
+    # Since v0.7.4: code_only defaults to False so vendor instructions.txt
+    # (which EXPLICITLY requires reproduce.sh) reaches the agent. The
+    # previous default of True selected code_only_instructions.txt which
+    # tells the agent "the code will not be executed" and omits the
+    # reproduce.sh requirement — causing ARI's Stage 2 to fail with
+    # "reproduce.sh missing". See make_local_pbtask docstring + CHANGELOG.
+    assert task.judge.code_only is False
     assert task.reproduction.skip_reproduction is True
     assert task.rubric_expected_artifacts == ["a.csv", "b.json"]
     # Real ReproductionConfig / JudgeConfig instances, not stubs
     assert isinstance(task.reproduction, ReproductionConfig)
     assert isinstance(task.judge, JudgeConfig)
+
+
+def test_factory_respects_explicit_code_only_true():
+    """Opt-in: callers that want the vendor Code-Dev prompt
+    (``code_only_instructions.txt``, no reproduce.sh requirement) can
+    still request it explicitly.
+    """
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        paper = td / "paper.md"
+        paper.write_text("Hi.")
+        task = make_local_pbtask(
+            paper_md_path=str(paper),
+            work_dir=str(td / "work"),
+            instructions="Run it.",
+            rubric_expected_artifacts=[],
+            code_only=True,
+        )
+    assert task.judge.code_only is True
 
 
 async def test_setup_uploads_paper_and_instructions_to_workspace():

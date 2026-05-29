@@ -133,6 +133,49 @@ _FORBIDDEN_NOTICE = (
     "do NOT infer or add details not explicitly provided. "
 )
 
+
+# Map ARI_PAPER_LANGUAGE → human-readable name + LaTeX babel/preamble hint.
+# The wizard sends ISO-639-1 codes (en/ja/zh); aliases handle stray full names.
+_LANGUAGE_NAMES = {
+    "en": "English", "english": "English",
+    "ja": "Japanese", "japanese": "Japanese", "jp": "Japanese",
+    "zh": "Chinese", "chinese": "Chinese", "zh-cn": "Chinese",
+}
+
+
+def _paper_language_directive() -> str:
+    """Return a LaTeX-aware language directive for paper system prompts.
+
+    Reads ARI_PAPER_LANGUAGE (wizard "Language" dropdown). Empty / unknown /
+    English values return "" so the prompt stays unchanged (preserves the
+    historical English-only default). Non-English values instruct the LLM to
+    write prose in that language AND add the matching LaTeX babel package so
+    the document actually compiles."""
+    _lang = (os.environ.get("ARI_PAPER_LANGUAGE") or "").strip().lower()
+    if not _lang:
+        return ""
+    _name = _LANGUAGE_NAMES.get(_lang, "")
+    if not _name or _name == "English":
+        return ""
+    if _name == "Japanese":
+        _preamble = (
+            "Include `\\usepackage[whole]{bxcjkjatype}` (or `\\usepackage{CJKutf8}` "
+            "if bxcjkjatype is unavailable) in the preamble and wrap Japanese "
+            "prose in `\\begin{CJK}{UTF8}{min}…\\end{CJK}` when using CJKutf8."
+        )
+    else:  # Chinese
+        _preamble = (
+            "Include `\\usepackage{CJKutf8}` in the preamble and wrap Chinese "
+            "prose in `\\begin{CJK}{UTF8}{gbsn}…\\end{CJK}`."
+        )
+    return (
+        f"\n══ LANGUAGE ══\n"
+        f"Write the entire paper body (abstract, sections, captions) in {_name}. "
+        f"Keep LaTeX commands, math, BibTeX cite keys, figure filenames, and "
+        f"section identifiers in ASCII as usual. {_preamble}\n"
+        f"══ END LANGUAGE ══\n"
+    )
+
 mcp = FastMCP("paper-writing-skill")
 
 
@@ -839,7 +882,7 @@ def _build_latex_template(
     The LLM receives the full template and fills in all sections at once,
     so figure placement and citation context are always visible.
     """
-    _author = author_name.strip() or "Artificial Research Intelligence"
+    _author = author_name.strip() or "Autonomous Research Infrastructure"
     figures = figures or []
 
     # Build BibTeX cite key list for the template
@@ -984,7 +1027,7 @@ async def write_paper_iterative(
     science_data_json: str = "",  # JSON content of science_data.json (loaded by pipeline)
     venue: str = "arxiv",
     max_revision_rounds: int = 2,
-    author_name: str = "",  # config-specified author; defaults to "Artificial Research Intelligence"
+    author_name: str = "",  # config-specified author; defaults to "Autonomous Research Infrastructure"
 ) -> dict:
     """AI Scientist v2-style iterative paper writing agent.
 
@@ -1199,7 +1242,7 @@ async def write_paper_iterative(
         # of the section-by-section approach.
         # ──────────────────────────────────────────────────────────────────────
         venue_info = next((v for v in VENUES if v["id"] == venue), None) or {"id": "arxiv", "name": "arXiv preprint", "pages": 99}
-        _author_display = author_name.strip() if author_name.strip() else "Artificial Research Intelligence"
+        _author_display = author_name.strip() if author_name.strip() else "Autonomous Research Infrastructure"
 
         # Parse figures list for template
         _figs_for_tpl = []
@@ -1326,6 +1369,7 @@ async def write_paper_iterative(
             "\\begin{{thebibliography}}...\\end{{thebibliography}}. "
             "The BibTeX pipeline will generate the bibliography automatically from refs.bib. "
             "Keep the \\bibliographystyle and \\bibliography commands exactly as provided in the template.\n"
+            + _paper_language_directive()
         )
         _user_prompt_a = (
             f"Experiment context:\n{experiment_summary[:48000]}\n\n"
@@ -1463,6 +1507,7 @@ async def write_paper_iterative(
             "Your task is to fix any LaTeX errors or quality issues identified in the reflection. "
             "Do NOT hallucinate results, hardware specs, or citations not present in the experiment data. "
             "Do NOT replace content with stubs. Return the ENTIRE corrected LaTeX document."
+            + _paper_language_directive()
         )
         # msg_history starts with the assembled full paper as 'assistant' turn
         # This mimics v2's approach where reflection LLM knows what it wrote

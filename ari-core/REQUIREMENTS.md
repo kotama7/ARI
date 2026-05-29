@@ -2,7 +2,7 @@
 
 ## Overview
 
-Core framework for Artificial Research Intelligence.
+Core framework for Autonomous Research Infrastructure.
 Accepts an experiment specification Markdown, runs autonomous research via
 BFTS tree search × Agent loop, and outputs a paper section.
 

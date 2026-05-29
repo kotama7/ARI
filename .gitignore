@@ -61,7 +61,12 @@ benchmarks/
 Thumbs.db
 
 # ── Additional experiment/runtime directories ────────────────────
-containers/
+# Container images are large runtime artifacts; ignore the contents but
+# keep the directories documented (their README.md is tracked).
+/containers/*
+!/containers/README.md
+/ari-core/containers/*
+!/ari-core/containers/README.md
 workspace/
 *.sif
 
@@ -113,7 +118,9 @@ ari-core/ari/viz/static/dist/
 
 # ── AI session artifacts ────────────────────────────────────────
 HEARTBEAT.md
+# Runtime memory stores (AI session artifacts), but not the source package.
 memory/
+!ari-core/ari/memory/
 
 # ── External research artifacts (never commit) ─────────────────
 # Local-only PDFs used as test inputs / research plans. References in

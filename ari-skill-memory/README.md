@@ -72,7 +72,7 @@ versions. Stored `text` bytes are CoW-protected (ancestor writes are
 refused; Letta self-edit is disabled by default via
 `ARI_MEMORY_LETTA_DISABLE_SELF_EDIT=true`), so numerical experiment
 results remain reproducible even if BFTS *trajectory* may diverge
-across re-runs. See `docs/PHILOSOPHY.md`.
+across re-runs. See `docs/concepts/PHILOSOPHY.md`.
 
 ## Deployment
 

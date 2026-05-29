@@ -1,7 +1,3 @@
-% translated-from: en/chapters/07_discussion.tex@515637e411966d1c3d6a89d9d3dc8da2e6a40901bc5e5ea97788942b433cce68
-% glossary:        5bca8d57a70f021e20c0af79aa06cd21013495c1a8246887ae889cd8a056f5fd
-% model:           claude-opus-4-7
-
 \section{讨论与局限}\label{sec:discussion}
 
 \subsection{确定性 vs 新颖性}\label{sec:discussion:p2}
@@ -16,28 +12,13 @@ P2,确定性原则,是系统最具约束力者。严格执行 P2 迫使
 
 \subsection{扩展极限}\label{sec:discussion:scaling}
 
-支撑 BFTS 调度器的单机假设是最大的扩展约束。希望并行扩展
-$\bbranch>10$ 的运行需要不同的调度器;
-\texttt{ari-core/ari/orchestrator/scheduler.py} 当前的调度器
-将同父扩展串行化。多机扩展需要将谱系纪律 (P4) 推广至支持合
-并,而不仅是祖先遍历。
+支撑 BFTS 运行循环的单机假设是最大的扩展约束。希望并行扩展
+$\bbranch>10$ 的运行需要不同的并发层;目前 BFTS CLI 循环中的
+单个 \texttt{ThreadPoolExecutor} 是唯一的工作池。多机扩展需要将谱系
+纪律 (P4) 推广至支持合并,而不仅是祖先遍历。
 
 另一约束是 LLM 评分器的成本。经验上,评分器与探索器并列为占主
 导的开销项之一;它在绝对美元上是否位列第二,需待冻结检查点就位
 后由 \cref{chapter:eval} 回答。按 (论文哈希,细则哈希) 缓存评
 分器输出会有所帮助;此特性尚未发布。
 
-\subsection{开放问题}\label{sec:discussion:open}
-
-\begin{enumerate}
-  \item \textbf{Off-policy 改稿}。当前改稿循环与撰稿采用同一
-        模型。解耦撰稿与改稿,使二者可为不同模型,可让较廉价
-        的模型承担粗重的结构性重写。
-  \item \textbf{跨检查点的细则继承}。子检查点应可默认复用其父
-        细则;目前细则被重新生成。
-  \item \textbf{工具失败恢复}。当前一次工具调用失败即将节点标
-        记为 \StateFailed{}。以降级工具(如较小模型)重试的恢
-        复策略可降低长尾成本。
-\end{enumerate}
-
-此三者均可处理;预期每项均为 v0.8 之前一次单 PR 改动可落地。

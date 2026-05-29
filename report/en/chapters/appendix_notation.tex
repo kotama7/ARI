@@ -1,11 +1,9 @@
 \section{Notation Table}\label{sec:notation}
 
-The table below mirrors the macros defined in
-\code{shared/notation.tex}. Every symbol used in the body must
-appear here; a static check (\texttt{check\_notation.py}) verifies
-that no body symbol is undefined.
+This appendix collects every symbol used in the body of the report,
+with its meaning.
 
-\begin{tabularx}{\columnwidth}{@{}lX@{}}
+\begin{longtable}{@{}l p{0.78\linewidth}@{}}
   \toprule
   Symbol & Meaning \\
   \midrule
@@ -16,11 +14,11 @@ that no body symbol is undefined.
   $\parentof{n}$      & parent of $n$ \\
   $\depth{n}$         & depth of $n$ \\
   $\statefn{n}$       & node state $\in\{\StateOpen,\StateEval,\StateDone,\StateFailed\}$ \\
-  $\nodescore{n}$     & scalar reward of $n$ \\
+  $\nodescore{n}$     & scalar reward of $n$ (its \texttt{\_scientific\_score} $\in[0,1]$) \\
   $\axes{n}$          & per-axis evaluation vector \\
   $\aggregate$        & axis $\to$ scalar aggregator \\
   $\mathrm{div}(n)$   & diversity bonus (\cref{eq:diversity}) \\
-  $\_\mathrm{fallback\_score}(n)$ & deterministic fallback ranking (\cref{eq:fallback}) \\
+  $\fallbackscore{n}$ & deterministic fallback ranking (\cref{eq:fallback}) \\
   $\Tmax,\Cmax$       & step / cost budgets \\
   $\Rubric$           & rubric tree \\
   $\rubricitem{i}$    & rubric leaf $i$'s category \\
@@ -32,4 +30,4 @@ that no body symbol is undefined.
   $\ckpt$             & checkpoint directory \\
   $\lineage{n}$       & lineage chain ending at $n$ \\
   \bottomrule
-\end{tabularx}
+\end{longtable}

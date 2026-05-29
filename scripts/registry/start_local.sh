@@ -17,9 +17,18 @@ if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
   exit 0
 fi
 
+# Prefer the project-local venv's `ari` so we don't accidentally run a
+# stale ~/.local/bin/ari (Python 3.9, broken pydantic) or another env's
+# ari that happens to be earlier on PATH. setup.sh creates this venv;
+# fall back to PATH lookup for legacy installs.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ARI_ROOT="${ARI_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+ARI_BIN="${ARI_BIN:-${ARI_ROOT}/.venv/bin/ari}"
+[ -x "${ARI_BIN}" ] || ARI_BIN="ari"
+
 export ARI_REGISTRY_DATA
 echo "starting ari-registry on $ARI_REGISTRY_HOST:$ARI_REGISTRY_PORT (data=$ARI_REGISTRY_DATA)"
-nohup ari registry serve --host "$ARI_REGISTRY_HOST" --port "$ARI_REGISTRY_PORT" \
+nohup "${ARI_BIN}" registry serve --host "$ARI_REGISTRY_HOST" --port "$ARI_REGISTRY_PORT" \
   >>"$LOGFILE" 2>&1 &
 echo $! > "$PIDFILE"
 echo "  pid=$(cat "$PIDFILE")  log=$LOGFILE"

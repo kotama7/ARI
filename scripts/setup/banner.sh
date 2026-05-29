@@ -67,7 +67,7 @@ else
   echo "     ari run experiment.md"
 fi
 echo "     # or: \"$PYTHON\" -m ari.cli run <path-to-experiment.md>"
-echo "     # Format and a copy-pasteable minimal example: docs/experiment_file.md"
+echo "     # Format and a copy-pasteable minimal example: docs/guides/experiment_file.md"
 echo ""
 echo "  $(m next_paper)"
 if [ -x "$ARI_BIN" ]; then

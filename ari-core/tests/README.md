@@ -1,0 +1,106 @@
+# ari-core/tests
+
+Pytest suite for ari-core (`test_*.py`), covering BFTS, the pipeline,
+evaluator, viz API, CLI, and migration paths.
+
+See `docs/guides/testing.md` for how to run & conventions; each `test_*.py`
+targets the like-named module under `ari/`.
+
+## Contents
+
+- `README.md` — this file.
+- `test_agent_smoke.py` — agent smoke test.
+- `test_api_lineage_decisions.py` — lineage-decisions API.
+- `test_api_lineage_e2e.py` — lineage API end-to-end.
+- `test_api_paperbench.py` — PaperBench API.
+- `test_api_paperbench_worker.py` — PaperBench API worker.
+- `test_bfts.py` — BFTS loop.
+- `test_bfts_diversity.py` — BFTS diversity/fanout.
+- `test_bfts_eval_config_integration.py` — BFTS + eval-config integration.
+- `test_bfts_frontier_score.py` — BFTS frontier scoring.
+- `test_bfts_prompt_selection.py` — BFTS prompt selection.
+- `test_child_node_workflow.py` — child-node workflow.
+- `test_child_workdir_inherit.py` — child workdir inheritance.
+- `test_cli.py` — CLI.
+- `test_cli_extended.py` — extended CLI cases.
+- `test_cli_shim_toolcalls.py` — TODO
+- `test_clone.py` — clone behaviour.
+- `test_config.py` — config loading.
+- `test_container.py` — container runtime.
+- `test_cost_tracker.py` — cost tracker.
+- `test_curate.py` — curation.
+- `test_dashboard_html.py` — dashboard HTML.
+- `test_data_flow.py` — data flow.
+- `test_default_provider.py` — default LLM provider.
+- `test_delete_checkpoint_experiments.py` — checkpoint-experiment deletion.
+- `test_disabled_tools_flow.py` — disabled-tools flow.
+- `test_dynamic_axes.py` — dynamic evaluation axes.
+- `test_ear.py` — EAR (experiment/analysis/report).
+- `test_evaluator_axis_mode.py` — evaluator axis mode.
+- `test_evaluator_composite.py` — evaluator composite scoring.
+- `test_event_loop_and_csv.py` — event loop + CSV logging.
+- `test_file_explorer.py` — file explorer.
+- `test_gui_env_propagation.py` — GUI env propagation.
+- `test_gui_errors.py` — GUI error handling.
+- `test_i18n_consistency.py` — i18n consistency.
+- `test_idea_integration.py` — idea integration.
+- `test_include_ear_toggle.py` — include-EAR toggle.
+- `test_integration.py` — integration.
+- `test_laptop_hpc_skill_drop.py` — laptop/HPC skill drop.
+- `test_launch_config.py` — launch config.
+- `test_letta_restart_live.py` — Letta restart (live).
+- `test_letta_start_scripts.py` — Letta start scripts.
+- `test_lineage_and_inherit.py` — lineage + inheritance.
+- `test_lineage_decision.py` — lineage decision.
+- `test_lineage_decision_persistence.py` — lineage-decision persistence.
+- `test_llm.py` — LLM client.
+- `test_llm_evaluator_axes.py` — LLM evaluator axes.
+- `test_llm_routing.py` — TODO
+- `test_max_react_passthrough.py` — max-ReAct passthrough.
+- `test_mcp_cow_concurrency.py` — MCP copy-on-write concurrency.
+- `test_memory.py` — memory backend.
+- `test_model_passthrough.py` — model passthrough.
+- `test_no_user_home_writes.py` — no-user-home-writes guard.
+- `test_node.py` — Node data model.
+- `test_node_report.py` — node_report builder.
+- `test_node_selection.py` — node selection.
+- `test_nodes_to_science_data_shrink.py` — nodes→science-data shrink.
+- `test_ollama_gpu.py` — Ollama GPU.
+- `test_orchestrator.py` — orchestrator.
+- `test_page_requirements.py` — page requirements.
+- `test_paths.py` — path resolution.
+- `test_pidfile.py` — pidfile handling.
+- `test_pipeline_e2e.py` — pipeline end-to-end.
+- `test_pipeline_metric_parsing.py` — pipeline metric parsing.
+- `test_plan_promote.py` — plan promotion.
+- `test_prompt_extraction.py` — prompt extraction.
+- `test_public_api_boundary.py` — public-API boundary.
+- `test_publish_and_registry.py` — publish + registry.
+- `test_publish_yaml_api.py` — publish YAML API.
+- `test_publish_zenodo_gh.py` — publish to Zenodo/GitHub.
+- `test_react_driver.py` — ReAct driver.
+- `test_resolve_node_work_dir.py` — resolve node work dir.
+- `test_retrieval_backend.py` — retrieval backend.
+- `test_root_idea_selector.py` — root-idea selector.
+- `test_run_env.py` — run environment.
+- `test_run_loop.py` — run loop.
+- `test_sandbox_shim.py` — sandbox shim.
+- `test_selection_contract.py` — selection contract.
+- `test_server.py` — viz/API server.
+- `test_settings_propagation.py` — settings propagation.
+- `test_settings_roundtrip.py` — settings roundtrip.
+- `test_setup_env.py` — setup_env.sh behaviour.
+- `test_status_fallback.py` — status fallback.
+- `test_system_prompt_memory.py` — system-prompt memory.
+- `test_trace_log_truncation.py` — trace-log truncation.
+- `test_upload_to_node.py` — upload to compute node.
+- `test_variable_passthrough.py` — variable passthrough.
+- `test_virsci_off.py` — VirSci-off path.
+- `test_viz_fewshot_api.py` — viz few-shot API.
+- `test_viz_memory_api.py` — viz memory API.
+- `test_viz_node_report_api.py` — viz node_report API.
+- `test_viz_repro_synth.py` — viz repro-synth.
+- `test_wizard.py` — wizard.
+- `test_workflow_contract.py` — workflow contract.
+- `test_workflow_editor.py` — workflow editor.
+- `test_workflow_template_resolution.py` — workflow template resolution.

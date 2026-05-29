@@ -28,8 +28,7 @@ This report formalises three contributions:
   \item A \textbf{best-first tree search} over research-step nodes
         whose selection score $\utility{n}$ separates the empirical
         reward, a novelty term, and a depth penalty
-        (\cref{sec:exploration:formalization}). The implementation
-        lives in \code{ari-core/ari/orchestrator/bfts.py:114}.
+        (\cref{sec:exploration:formalization}).
   \item A \textbf{paper-generation pipeline} keyed off a hierarchical
         rubric $\Rubric$ whose leaf judges grade individual claims;
         the system score is $\paperscore{\paper}=\sum_i \rubricweight{i}\,\judgefn{i}(\paper)$
@@ -39,27 +38,27 @@ This report formalises three contributions:
         pipeline fully reproducible: every external state (memory,
         cost ledger, lineage pointers) is written below
         \texttt{\$ARI\_CHECKPOINT\_DIR}, never the user's home
-        directory. This is the operational consequence of the P2
-        determinism principle (\cref{sec:overview:principles}).
+        directory. This is the operational consequence of the
+        \emph{determinism} design principle, one of five that
+        \cref{sec:overview:principles} lays out in full
+        (we refer to it as P2 there and in the rest of the report).
 \end{enumerate}
 
 \subsection{Scope of this report}\label{sec:intro:scope}
 
-We freeze the snapshot at version v0.7.2 of \texttt{ari-core} and the
-fourteen \texttt{ari-skill-*} packages. v0.7.2 introduces no new
-top-level skills; it extends the rubric contract and the SLURM
-dispatch layer of \texttt{ari-skill-replicate} and
-\texttt{ari-skill-paper-re} to cover papers whose methodology is
-fundamentally parallel (\cref{sec:paper:paperbench:v072}).
-Implementation citations name file and line; readers can verify
-them against the repository in the \cref{sec:overview:layout}
-layout map. The numerical results that this version of the report
-would normally place in \cref{chapter:eval} are not yet available
---- the frozen checkpoint that they would draw from has not been
-produced --- and that chapter is therefore marked ``deferred''.
-The snapshot version is part of the title page so that later code
-modifications do not retroactively invalidate any claim the
-report does make.
+This report describes \texttt{ari-core} and the fourteen
+\texttt{ari-skill-*} packages at version v0.8.0, which promotes the
+PaperBench reproduction path to a protocol-faithful three-stage contract
+--- agent rollout, reproduction, and grading --- adds host-truthful
+environment guardrails that stop the rollout agent from assuming
+capabilities the host does not provide, makes the search-evaluation
+layers configurable, and carries out a first operational reproduction
+pass on a real lossy-compression target (\cref{chapter:eval}). The body
+describes the algorithms and data flow at the module level; the verbatim
+LLM prompts the system uses are listed in \cref{sec:prompts}. The
+empirical study is preliminary at this version --- \cref{chapter:eval}
+reports the observations available so far, and a controlled benchmark is
+left to future work.
 
 \subsection{Organisation}\label{sec:intro:organisation}
 
@@ -67,5 +66,5 @@ report does make.
 the fourteen skills, the pipeline DAG, and the design principles.
 \Cref{sec:exploration,sec:paper} are the two technical cores, each
 with its own formal definitions and empirical observations.
-\Cref{chapter:eval} is the evaluation snapshot; \cref{sec:related}
+\Cref{chapter:eval} reports preliminary observations; \cref{sec:related}
 positions the work; \cref{sec:discussion} collects open problems.

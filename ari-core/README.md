@@ -1,6 +1,6 @@
 # ari-core
 
-Core engine for ARI (Artificial Research Intelligence).
+Core engine for ARI (Autonomous Research Infrastructure).
 Implements the autonomous experiment loop using BFTS × ReAct.
 
 ## Overview

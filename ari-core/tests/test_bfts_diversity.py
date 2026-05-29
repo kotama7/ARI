@@ -38,7 +38,7 @@ def mock_memory():
 
 @pytest.fixture
 def bfts(mock_llm):
-    cfg = BFTSConfig(max_depth=4, max_retries_per_node=2, max_total_nodes=20)
+    cfg = BFTSConfig(max_depth=4, max_total_nodes=20)
     return BFTS(cfg, mock_llm)
 
 
@@ -190,9 +190,9 @@ def test_expand_prompt_has_no_hardcoded_label_template(bfts, mock_llm):
     assert "Sibling scores at same depth" in prompt_arg
     assert "Ancestor scores" in prompt_arg
     assert "Parent scientific score" in prompt_arg
-    # Label vocabulary is now constrained to the canonical 5 (no inventions).
+    # Canonical 5 are listed as the preferred vocabulary; inventions allowed.
     assert "draft, improve, debug, ablation, validation" in prompt_arg
-    assert "no inventions" in prompt_arg
+    assert "strongly prefer" in prompt_arg.lower()
 
 
 def test_expand_accepts_invented_label(bfts, mock_llm):

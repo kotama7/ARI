@@ -7,24 +7,21 @@
   \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F06_paper_swimlane.tex}}
   \caption{Paper-generation swim lane: idea, experiment, write. Each
            lane corresponds to a phase; the back edge from
-           \texttt{review/refine} to \texttt{draft} is the only
-           non-monotonic transition (\cref{sec:paper:loop}).}
+           review to draft is the only non-monotonic transition
+           (\cref{sec:paper:loop}).}
   \label{fig:swim}
 \end{figure}
 
-The paper-generation pipeline is the second tree of activity in ARI
-(\cref{fig:swim}). Once exploration terminates, the surviving lineage
-is handed to the \term{paper} skill, which produces a draft, and the
-\term{review} skill, which scores the draft. The implementation is
-\texttt{run\_pipeline} in
-\code{ari-core/ari/pipeline/orchestrator.py:131}, and the
-\texttt{build\_scientific\_data} helper on line~68 of the same file
-collates the per-node artefacts the paper skill needs.
-
-A run produces three persisted artefacts: a \texttt{draft.tex} (the
-LaTeX paper proper), a \texttt{review.json} (per-leaf rubric scores
-and rationale), and a \texttt{rubric.json} (the rubric instance used
-to score this run, useful when the rubric is generated on-the-fly).
+Once exploration terminates, the surviving lineage is handed to the
+paper-generation pipeline, the second tree of activity in ARI
+(\cref{fig:swim}). A \term{write} phase compiles the lineage into a
+draft, and a \term{review} phase scores that draft against a rubric;
+the two are coupled by a refine loop (\cref{sec:paper:loop}). The
+pipeline assembles, from the per-node artefacts left by exploration,
+the evidence the writer is allowed to draw on, and persists three
+outputs: the \LaTeX{} draft, the per-leaf review with its rationale,
+and the rubric instance used to score the run (kept because the
+rubric may be generated per paper rather than fixed in advance).
 
 \subsection{Rubric formalism}\label{sec:paper:rubric}
 
@@ -38,379 +35,181 @@ graded score. The paper score is the convex combination
 \begin{equation}\label{eq:paperscore}
   \paperscore{\paper} \;=\; \sum_i \rubricweight{i}\,\judgefn{i}(\paper).
 \end{equation}
-This formalism is shared with the PaperBench rubric tree, which
-ARI reuses directly through a vendored package (\cref{sec:paper:paperbench}):
-the leaf type \texttt{TaskNode} comes from
-\texttt{paperbench.rubric.tasks}, the graded leaf type
-\texttt{GradedTaskNode} from
-\texttt{paperbench.judge.graded\_task\_node}, and the weighted
-aggregation envelope from
-\texttt{aggregate\_graded\_tree} in
-\code{ari-skill-paper-re/src/\_paperbench\_bridge.py:75}.
+This tree-structured rubric is shared with PaperBench, which ARI
+reuses through a vendored package (\cref{sec:paper:paperbench}) so
+that its grade and aggregation semantics track upstream verbatim.
+Two judge families coexist: an LLM-backed judge for qualitative
+leaves, and a deterministic judge for leaves with a binary or numeric
+verifier (e.g.\ ``is the cost reported in absolute dollars?''). Both
+satisfy the same \texttt{Evaluator} interface, so the search engine
+(\cref{sec:exploration}) and the paper pipeline reduce axes to a
+scalar through one seam.
 
-Two grader families are used in production: an LLM-backed grader,
-implemented for ARI by wrapping PaperBench's \texttt{SimpleJudge}
-(\code{ari-skill-paper-re/src/\_paperbench\_bridge.py:54}); and a
-deterministic grader for items with a binary or numeric verifier
-(e.g.\ ``reproducibility'', ``cost reported in absolute dollars'').
-Both implement the \texttt{Evaluator} protocol
-(\code{ari-core/ari/protocols/evaluator.py:19}).
+A rubric is generated in one of two \emph{modes}. In
+\emph{agent-benchmark} mode the tree decomposes the paper by
+scientific contribution and each leaf asks whether a candidate
+submission's executed output reproduces the paper --- the original
+PaperBench framing. In \emph{paper-audit} mode the tree's top-level
+children are a fixed set of reproducibility axes and each leaf grades
+the descriptive completeness of the paper text itself --- a framing
+inversion aimed at HPC reproducibility audits, where the question is
+not ``can an agent reproduce this paper?'' but ``does this paper
+describe enough to be reproducible?''. Venue knowledge (which axes, how
+they are phrased) is supplied by a per-venue template rather than
+baked into the engine, so ARI core stays domain-agnostic (P4) and a
+new venue is a data change, not a code change.
 
-\subsubsection*{Venue-conditioned rubric templates}
-
-The rubric generator (\texttt{ari-skill-replicate.generate\_rubric})
-accepts an optional venue identifier that selects a YAML template
-from \code{ari-core/config/paperbench\_rubrics/}.  The template's
-\texttt{prompt\_overrides} block is injected into the skeleton and
-subtree prompts via dedicated placeholders; ARI core remains
-domain-agnostic (P4), and venue knowledge is confined to YAML.  This
-mirrors the existing \code{ari-core/config/reviewer\_rubrics/}
-pattern that drives \texttt{ari-skill-paper}'s peer-review path.
-
-Two modes are supported.  In \texttt{agent\_benchmark} mode the
-skeleton pass decomposes the paper by scientific structure (one
-direct child per major contribution) and leaves grade whether a
-candidate submission's \texttt{reproduce.sh} output reproduces the
-paper --- the original PaperBench framing.  In \texttt{paper\_audit}
-mode the rubric root's direct children are a \emph{fixed} set of
-audit axes declared in the YAML's \texttt{top\_level\_axes} list,
-and leaves grade descriptive completeness of the paper text (plus
-optional Artifact Description / Artifact Evaluation appendices)
-rather than submission output --- a framing inversion targeted at
-HPC reproducibility-audit research, where the question is no longer
-``can an agent reproduce this paper?'' but ``does this paper
-describe enough to be reproducible?''.  Templates shipped with the
-current release are \texttt{generic} (back-compat), \texttt{sc}
-(six axes: environment / data / execution / figures / scaling /
-conclusion), \texttt{neurips} (NeurIPS Reproducibility Checklist
-axes), and \texttt{nature} (wet-lab Reporting Summary axes).  The
-\texttt{paper\_audit} mode requires the two-stage generator path
-because a single-pass prompt cannot honour the fixed-axis
-constraint.
-
-\subsubsection*{Paper-audit mechanisms (v0.7.2)}
-
-Four orthogonal mechanisms compose to lift the \texttt{paper\_audit}
-score from a low single-digit baseline to a regime where the rubric
-discriminates papers along the reproducibility axes named above.
-All four are pure ARI wrapper layers --- the vendored PaperBench
-\texttt{SimpleJudge} is unchanged --- and each is independently
-toggleable so the contribution of each mechanism can be ablated.
-
-\begin{enumerate}
-  \item \emph{Multimodal markdown image expander}
-    (\code{ari-skill-paper-re/src/\_litellm\_completer.py}).  The
-    paper PDF is converted to markdown by
-    \texttt{pymupdf4llm.to\_markdown(write\_images=True)} which
-    emits \texttt{!\hspace{0pt}[\hspace{0pt}]\hspace{0pt}(path)}
-    references to per-page PNGs.  An expander in
-    \texttt{async\_completion} rewrites those references into
-    OpenAI multimodal content blocks before the LiteLLM call, so
-    vision-capable judges (Claude 4.6/4.7, GPT-5, Gemini 2.5) see
-    figures alongside text in the same context.  Vendor
-    \texttt{SimpleJudge} is unchanged --- it still embeds
-    \texttt{paper\_md} as a text Path; the multimodal translation
-    happens at the LiteLLM boundary so the vendor-swap property
-    holds.
-
-  \item \emph{Paper-audit prompt patch} in
-    \code{ari-skill-paper-re/src/\_paperbench\_bridge.py}.  Vendor
-    PaperBench's \texttt{TASK\_CATEGORY\_QUESTIONS} ask
-    submission-oriented questions (``does the code contain X?'',
-    ``did \texttt{reproduce.sh} produce evidence matching Y?'') for
-    each of \texttt{Code Development} / \texttt{Code Execution} /
-    \texttt{Result Analysis}.  In paper-audit mode with an empty
-    submission those questions structurally collapse to ``no'',
-    capping the mean score around $0.3$ even when AD/AE are
-    concatenated.  An at-call-scope monkey-patch swaps these for
-    paper-audit-flavoured questions (``does the paper describe X
-    with concrete specificity?'', ``is the paper's claim Y
-    internally consistent with the experimental evidence presented
-    elsewhere?'') and restores the originals on exit, so
-    \texttt{agent\_benchmark} calls in the same process are
-    unaffected.
-
-  \item \emph{Step 4 reproduction-package generator}, exposed as
-    the \texttt{generate\_reproduce\_plan} MCP tool in
-    \code{ari-skill-replicate/src/reproduce\_plan.py}.  An LLM
-    reads the paper (with AD/AE Appendix concatenated when present)
-    and emits four artifacts to a target directory:
-    \texttt{reproduce\_plan.md} (step-by-step reconstruction with
-    per-experiment reproducibility category),
-    \texttt{verification\_code.py} (consistency-check stubs over
-    the paper's numerical claims with tolerances),
-    \texttt{install\_commands.txt} (shell commands extracted from
-    paper / AD / AE), and \texttt{reproduce.log} (a simulated
-    execution log built from the paper's own reported numbers).
-    Passing this directory as \texttt{submission\_dir} to
-    \texttt{judge\_submission} gives \texttt{SimpleJudge}'s
-    \texttt{Result Analysis} branch the evidence it needs to grade
-    against; the bundled prompt is venue-agnostic (a regression
-    test enforces this), and venue-specific reproducibility
-    criteria live in the same YAML templates as the rubric hint.
-
-  \item \emph{Stepwise input conditions}.  The dogfood script
-    \code{scripts/sc\_paper\_dogfood.py} supports
-    \texttt{-{}-paper-extras AD.pdf AE.pdf} which concatenates
-    additional PDFs into the main \texttt{paper.md} so the same
-    rubric can be scored under \texttt{paper-only},
-    \texttt{paper+AD}, \texttt{paper+AD+AE}, and
-    \texttt{paper+AD+AE+metadata} conditions.  This is the input
-    axis required to measure the relative contribution of each
-    artifact layer.
-\end{enumerate}
-
-The four mechanisms compose super-additively: the lift from
-combining all four exceeds the sum of their independent lifts, with
-the largest single-mechanism contribution coming from the
-prompt patch (mechanism 2) and the second from AD/AE concatenation
-(mechanism 4); the multimodal expander (mechanism 1) provides a
-small but consistent paper-agnostic boost.
+Lifting the paper-audit score out of a degenerate regime --- where an
+empty submission drives every submission-oriented leaf to ``no'' ---
+required re-phrasing the leaf questions to interrogate the \emph{paper}
+rather than a (missing) submission, feeding the judge the paper's
+figures alongside its text so vision-capable models can use them, and
+admitting optional artifact-description and artifact-evaluation
+appendices as extra input. These adjustments live entirely in ARI's
+wrapper layer; the vendored judge is untouched, which keeps scores
+comparable across upstream versions. We deliberately do \emph{not}
+synthesise a reproduction log from the paper's own reported numbers:
+doing so would short-circuit the executed-submission stage and inflate
+the score in a way not comparable to leaderboard runs.
 
 \subsection{Review/refine loop}\label{sec:paper:loop}
 
 The refine cycle iteratively rewrites $\paper_t$ to $\paper_{t+1}$
-under feedback $J(\paper_t)$:
+under the review feedback $J(\paper_t)$:
 \begin{equation}\label{eq:refine}
   \paper_{t+1} \;=\; \refine\!\bigl(\paper_t, J(\paper_t)\bigr).
 \end{equation}
+The cycle stops when the reviewer accepts the draft --- modelled as the
+\term{convergence criterion}
+$\paperscore{\paper_{t+1}}-\paperscore{\paper_t}<\epsilon$ --- or when
+a small per-section revision cap is reached. Which branch fires more
+often is an empirical question \cref{chapter:eval} is meant to answer
+once a frozen checkpoint exists; we make no quantitative claim here.
 
-The cycle stops when the \term{convergence criterion}
-$\paperscore{\paper_{t+1}}-\paperscore{\paper_t}<\epsilon$ holds for
-two successive iterations, or when a per-pipeline cap of three
-iterations is reached. The empirical frequency at which each branch
-fires --- convergence vs.\ cap --- is what \cref{chapter:eval} is
-meant to report once a frozen checkpoint is in place; we make no
-quantitative claim here.
-
-The refine step is intentionally non-monotonic per axis: a fix to a
+The refine step is intentionally non-monotonic per axis: fixing a
 clarity issue may slightly degrade a numeric axis. This is the source
-of the back edge in \cref{fig:swim}; the convergence criterion is on
-the aggregate score, not per-axis.
+of the back edge in \cref{fig:swim}, and it is why the convergence
+criterion is defined on the aggregate score rather than per-axis ---
+together with a per-axis floor (\cref{sec:paper:failures}) that
+prevents the aggregate from hiding a collapse on any single axis.
 
-\subsection{PaperBench integration via \texttt{paper-re}}\label{sec:paper:paperbench}
+\subsection{PaperBench integration}\label{sec:paper:paperbench}
 
-The \term{paper-re} skill (\texttt{ari-skill-paper-re}) is ARI's
-PaperBench-compatible replication driver. The integration is
-\emph{not} a re-implementation: PaperBench is shipped vendored at
-\texttt{vendor/paperbench} so that ARI tracks upstream task and
-rubric semantics verbatim (the layout requirement is documented in
-PaperBench's \texttt{rubric.md \S{}8}). Three integration points
-deserve mention.
+The replication path is \emph{not} a re-implementation of PaperBench:
+the upstream package is vendored unchanged so that ARI tracks its task
+and rubric semantics verbatim, and ARI contributes only a thin wrapper
+around it. The wrapper exposes the protocol-faithful loop as three
+composable stages with a shared vocabulary (\cref{fig:pb-stages}):
 
-\subsubsection*{1. Solver subclass: \texttt{AriPBSolver}}
+\begin{enumerate}
+  \item \emph{rollout} --- a replication agent works from the paper
+        towards a submission (code, and optionally a reproduction
+        script);
+  \item \emph{reproduce} --- the submission is executed in an isolated
+        container, on the local machine or dispatched to a cluster;
+  \item \emph{grade} --- the vendored judge scores the submission
+        against the rubric tree.
+\end{enumerate}
 
-\code{ari-skill-paper-re/src/\_replicator\_agent.py:269} subclasses
-PaperBench's upstream
-\texttt{paperbench.solvers.basic.BasicAgentSolver}. The chz
-immutable-config rule requires the decorator on the subclass even
-when no fields are added; ARI's overrides are minimal:
+\begin{figure*}[t]
+  \centering
+  \resizebox{\textwidth}{!}{\input{../shared/figures/tikz/F16_paperbench_stages.tex}}
+  \caption{The PaperBench replication path as three composable stages.
+           The agent \emph{rollout} turns the paper and its rubric into a
+           submission; \emph{reproduce} executes that submission in an
+           isolated sandbox, capturing \texttt{reproduce.log} and its
+           outputs; \emph{grade} scores the submission against the rubric
+           tree. ARI's three-stage bridge orchestrates the stages and
+           aggregates repeated runs into a single score.}
+  \label{fig:pb-stages}
+\end{figure*}
 
-\begin{itemize}
-  \item \texttt{\_get\_tools()}: every non-submit tool is wrapped in
-        \texttt{\_BoundedOutputTool} so that bash / python /
-        file-read / search outputs are size-capped before they flow
-        into the next API call. \texttt{submit} is dispatched by
-        name and never has its \texttt{execute()} invoked, so it is
-        passed through unwrapped.
-  \item \texttt{\_run\_agent()}: bypasses
-        \texttt{paperbench.solvers.utils.sanity\_check\_docker} via
-        \texttt{\_bypass\_docker\_sanity\_check}, and rewrites the
-        upstream hardcoded \texttt{/home/\{submission,paper\}}
-        paths to ARI's workspace-relative layout (\texttt{LocalComputer}
-        cwd = \texttt{repro\_sandbox/}, with paper at
-        \texttt{paper/} and submission at \texttt{submission/}).
-        Prompt content otherwise comes verbatim from upstream's
-        \texttt{get\_instructions} / \texttt{get\_system\_message},
-        keeping ARI aligned with the upstream replication-task
-        framing (7-day budget, ``do not stop until you have
-        replicated all results'', etc.).
-\end{itemize}
+Two design choices keep this faithful to the benchmark. First, grading
+is left to the vendored judge; ARI's adapters only reshape its output
+and aggregate repeated runs into a single score, so upgrading
+PaperBench is a vendor swap with no change to how leaf grades are
+combined --- the same envelope feeds \cref{eq:paperscore}, with
+$\judgefn{i}\in\{0,1\}$ for binary leaves. Second, the wrapper
+\emph{fails loud}: when a benchmark-fair run cannot be served (no
+container runtime, no scheduler, no GPU resource registration) it
+raises rather than silently degrading to a weaker host, because a
+silent downgrade would make the resulting score incomparable to a
+leaderboard entry. Legacy silent-fallback behaviour is available only
+behind an explicit opt-in.
 
-\texttt{AriPBSolver} also retains upstream's
-\texttt{check\_for\_existing\_run} so a partially completed run can
-be resumed idempotently.
-
-\subsubsection*{2. Rubric-driven artefact list}
-
-Vendor PaperBench is unaware of ARI's per-paper rubric tree, so
-\texttt{AriPBSolver.\_run\_agent} appends an
-\texttt{EXPECTED\_ARTIFACTS} block to the user instructions when
-\texttt{LocalPBTask.rubric\_expected\_artifacts} is non-empty. The
-appended block lists the paths a successful \texttt{reproduce.sh}
-must produce; without it, the grader's leaf claims would have no
-hint about which files to verify. The rubric tree itself is
-constructed by
-\code{ari-skill-paper-re/src/\_paperbench\_bridge.py:63}
-(\texttt{task\_node\_from\_dict}).
-
-\subsubsection*{3. Driver: \texttt{run\_replicator\_agent}}
-
-\code{ari-skill-paper-re/src/\_replicator\_agent.py:365} is the
-async entry point. It returns the standard
-\texttt{build\_reproduce\_sh} envelope
-$\{$\texttt{populated},
-\texttt{output\_dir}, \texttt{files},
-\texttt{expected\_artifacts}, \texttt{max\_runtime\_sec},
-\texttt{model}, \texttt{prompt\_sha256}, \texttt{notes},
-\texttt{warnings}$\}$. The \texttt{output\_dir} is both the agent's
-workspace and where ARI expects \texttt{reproduce.sh} after the
-rollout; the upstream solver writes \texttt{agent.log} and other
-bookkeeping into \texttt{run\_dir}, which we point at the workspace
-itself so artefacts live alongside the reproduce script.
-
-The default completer is
-\texttt{OpenAIResponsesTurnCompleterConfig} with model
-\texttt{gpt-5-mini} (overridable via the
-\texttt{ARI\_MODEL\_REPLICATOR} environment variable); LiteLLM-routed
-alternatives are wired through the helpers in
-\texttt{\_litellm\_completer.py}. The default time limit is twelve
-hours per run; \texttt{sandbox\_kind} is \texttt{auto}, falling back
-to a local Apptainer image when one is supplied.
-
-\subsubsection*{4. Grading and aggregation}
-
-After the replication agent completes, grading is delegated through
-\texttt{judge\_submission} in
-\code{ari-skill-paper-re/src/\_paperbench\_bridge.py}. The function
-adapts ARI's
-$($\texttt{paper\_md}, \texttt{submission\_dir},
-\texttt{reproduce\_log}, \texttt{judge\_model}$)$ tuple to upstream
-\texttt{SimpleJudge}, which produces a \texttt{GradedTaskNode}
-tree per submission. Aggregation across runs is then handled by
-two helpers:
-
-\begin{itemize}
-  \item \texttt{aggregate\_graded\_tree} (line~75): collapses one
-        \texttt{GradedTaskNode} into a weighted scalar via the
-        rubric weights $\rubricweight{i}$, plus per-category
-        breakdown.
-  \item \texttt{average\_graded\_runs} (line~91 region): takes
-        the per-run mean over $n$ \texttt{GradedTaskNode} trees, so
-        a single replication score is reported even when the agent
-        was rerun for noise reduction.
-\end{itemize}
-
-The two-stage design --- vendor's \texttt{SimpleJudge} for leaf
-grading, ARI's adapters for shape and aggregation --- means that
-upgrading PaperBench upstream is a vendor swap (no ARI code
-changes), while ARI retains full control of how leaf grades are
-combined into a single number. The same envelope feeds into
-\cref{eq:paperscore} as $\judgefn{i}\in\{0,1\}$ when the leaf is
-binary.
+A second concern is keeping the replication agent honest about what
+the host actually provides. Left to the upstream prompt, an agent
+tends to scaffold a reproduction script that calls binaries the host
+lacks, and to default to Python regardless of the paper's real
+language. ARI counters both by priming the agent to probe the
+environment before it scaffolds, and by injecting a per-host notes
+block --- generated from a live probe of the available toolchain, GPUs,
+and network reachability --- so that what the agent reads matches what
+the host can do.
 
 \subsection{Domain breadth: the execution-profile contract}\label{sec:paper:paperbench:v072}
 
 \begin{figure}[t]
   \centering
   \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F14_execution_profile.tex}}
-  \caption{The \texttt{reproduce\_contract.execution\_profile} field
-           threads from a single rubric artefact into two consumers:
-           the BasicAgent user message (left band, via
-           \texttt{\_format\_hpc\_appendix}) and the Phase 2
-           \texttt{sbatch} dispatcher (right band, via
-           \texttt{\_run\_reproduce\_slurm}). Three runtime probes
-           adapt the dispatched flag set to the local SLURM
-           deployment, so the same rubric dispatches faithfully on
-           heterogeneous clusters without being modified.}
+  \caption{The execution-profile contract threads from a single rubric
+           artefact into two consumers: the replication agent's prompt
+           (left) and the cluster dispatcher (right). Runtime probes
+           adapt the dispatched resource request to the local scheduler,
+           so one rubric runs faithfully on heterogeneous clusters
+           without being modified.}
   \label{fig:execution-profile}
 \end{figure}
 
-The PaperBench upstream \texttt{BasicAgent} is designed for a
-single Docker container with one GPU. To cover papers whose
-methodology is fundamentally parallel --- multi-rank MPI kernels,
-multi-node training, cluster-specific module environments --- the
-\texttt{paper-re} skill extends the rubric contract with an
-optional \texttt{execution\_profile} field on every
-\texttt{reproduce\_contract} (\cref{fig:execution-profile}). The
-field is domain-agnostic by
-design: its \texttt{kind} enum
-(\texttt{cpu\_single}, \texttt{gpu\_single}, \texttt{gpu\_multi},
-\texttt{mpi}, \texttt{mpi\_gpu}) names a parallel-execution shape
-rather than a specific scientific domain, and its sibling fields
-declare a paper's scale envelope, expected CSV aggregation
-schema, and any SLURM allocation hints. When the rubric generator
-judges a paper to be single-machine the field is omitted, and the
-pipeline degenerates to the original four-flag \texttt{sbatch}
-invocation: the contract is additive, not breaking.
+PaperBench upstream assumes a single container with one GPU. To cover
+papers whose methodology is fundamentally parallel --- multi-rank MPI
+kernels, multi-node training, cluster-specific module environments ---
+ARI extends the rubric with an optional \term{execution profile}
+(\cref{fig:execution-profile}). The profile is domain-agnostic: it
+names a \emph{parallel-execution shape} (single-CPU, single- or
+multi-GPU, MPI, MPI+GPU) together with the paper's scale envelope and
+any scheduler hints, rather than anything about the paper's scientific
+field. When a paper is single-machine the profile is omitted and the
+pipeline degenerates to the original single-node invocation: the
+contract is additive, not breaking.
 
-The agent prompt picks up the contract by appending three blocks
-to its user message when \texttt{execution\_profile} is
-non-empty: the profile itself, a snapshot of the surrounding
-SLURM allocation (\texttt{SLURM\_JOB\_NUM\_NODES},
-\texttt{SLURM\_NTASKS}, the visible GPU list), and a short
-``compute-node execution conventions'' rubric covering shared-FS
-path discipline, \texttt{srun}-over-\texttt{mpirun} preference,
-Python environment activation, module loads, multi-node fan-out,
-and \texttt{timeout} wrapping. A regression test ensures the
-inverse never holds: ARI running inside an unrelated SLURM
-allocation must not leak SLURM/MPI prose into the prompt of a
-non-HPC paper.
-
-The same contract feeds the Phase 2 dispatcher. Beyond the
-existing partition / time / cpu-count flags, \texttt{paper-re}
-now constructs \texttt{sbatch} commands carrying the full
-placement set (nodes, ntasks, ntasks-per-node, nodelist, exclude,
-exclusive), GPU set (gpus-per-task, gpus-per-node, GRES type),
-memory set (per-node, per-CPU), and hardware-constraint set
-(constraint, NUMA bindings, hint), plus an escape hatch for
-arbitrary pass-through flags. Three runtime probes guard against
-heterogeneous SLURM deployments: a shared-filesystem warning, a
-GRES-availability probe that drops every GPU-related flag on
-clusters that report no GRES, and an \texttt{sbatch --help} probe
-that drops version-incompatible flags (e.g.\ \texttt{--cpu-bind}
-on SLURM versions that accept it only on \texttt{srun}).
-Together these mean that the same rubric can dispatch faithfully
-on a multi-V100 cluster with GRES, on a sandbox partition without
-GRES, or on a single-node workstation, with no change to the
-rubric itself.
-
-The wrapper layer is the only thing that changes: the vendored
-\texttt{paperbench} tree and the \texttt{ari-core} package are
-unchanged across this expansion. The visible end-user surface ---
-the same paper-registry / wizard / results view as the
-v0.7.1 GUI, with an execution-profile override panel added to
-the wizard's reproduce step --- is described in
-\cref{sec:paper:paperbench}.
+The profile feeds two consumers (\cref{fig:execution-profile}). It is
+appended to the agent's prompt as a compact ``compute-node execution
+conventions'' block --- shared-filesystem discipline, a preference for
+the scheduler's launcher over a bare MPI launcher, environment
+activation, and wall-clock wrapping --- and it parameterises the
+cluster dispatch (node, GPU, memory, and placement requests). Because
+clusters disagree on which scheduler flags they accept, the dispatcher
+probes the local scheduler at run time and drops flags it does not
+support, so the same rubric dispatches faithfully on a multi-GPU
+cluster, on a sandbox partition without GPU registration, or on a
+single workstation. A regression guard enforces the inverse: ARI
+running inside an unrelated cluster allocation must never leak
+cluster- or MPI-specific prose into the prompt for a non-HPC paper.
+Only this wrapper layer changes; the vendored benchmark and ARI core
+are untouched across the extension.
 
 \subsection{Failure modes and guardrails}\label{sec:paper:failures}
 
-Three failure modes are common enough to be named:
+Three failure modes are common enough to be named, each with a
+structural --- not merely advisory --- mitigation:
 
 \begin{itemize}
-  \item \textbf{LLM-only support}: the paper makes a claim that no
-        node in the lineage substantiates. The mitigation is a static
-        check: every numerical or asserted-causal claim must be
-        traceable via a \texttt{\textbackslash code\{...\}} reference
-        to a node artefact.
+  \item \textbf{LLM-only support}: the paper asserts a claim that no
+        node in the lineage substantiates. The mitigation constrains
+        the writer to a pre-selected set of lineage artefacts, so every
+        numerical or causal claim is traceable to a node that produced
+        it; the draft cannot cite evidence that was not generated.
   \item \textbf{Citation hallucination}: the paper cites a non-existent
-        work. The mitigation is structural; we forbid the LLM from
-        inventing citation keys and require all bib entries to be
-        verified against Semantic Scholar (\cref{sec:related}).
-  \item \textbf{Refine drift}: the score climbs but the paper loses
-        coherence. The mitigation is the per-axis floor in the
-        rubric: any axis falling below $0.5$ aborts the refine.
+        work. The mitigation is structural --- the writer may not invent
+        citation keys, and every bibliography entry is verified against
+        an external index before it is admitted (\cref{sec:related}).
+  \item \textbf{Refine drift}: the aggregate score climbs while the
+        paper loses coherence. The mitigation is a per-axis floor: if
+        any axis falls below a threshold the refine is aborted, so a
+        gain on one axis cannot mask a collapse on another.
 \end{itemize}
 
-Source-file selection at draft time uses
-\code{node\_selection.py:204}
-(\texttt{select\_source\_files\_for\_publication}); this is what
-guards against the LLM-only-support failure by enumerating exactly
-which lineage nodes a claim can lean on. The companion
-\texttt{load\_selected\_sources} (line~258) reads bytes for every
-\texttt{(node\_id, rel\_path)} pair and respects an optional
-\texttt{size\_budget} so the paper draft never exceeds context.
-
-\subsection{Tool-output bounding for the replicator}\label{sec:paper:bounded-tool}
-
-The replicator agent can spend hours inside a single bash session;
-its tool outputs (long stdout, large directory listings) would
-otherwise dominate every subsequent prompt. ARI bounds them with
-\texttt{\_BoundedOutputTool}
-(\code{ari-skill-paper-re/src/\_replicator\_agent.py:243}), which
-wraps the inner tool's \texttt{execute()} and post-processes the
-output through \texttt{\_truncate\_tool\_output} (line~218) at a
-configurable byte limit. This is the difference between PaperBench
-upstream's free-form transcript and ARI's bounded, replayable one;
-it is also why the prompt budget remains predictable across
-multi-hour rollouts.
+The first guard also bounds context: the writer is given only the
+bytes of the selected lineage artefacts, under a size budget, so the
+draft stays within the model's context window even for long runs.

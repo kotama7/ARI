@@ -1,0 +1,86 @@
+id: econometrica
+version: "2026"
+venue: Econometrica (Econometric Society)
+domain: Econometrics / Economic Theory
+
+params:
+  num_reflections: 5
+  num_fs_examples: 0
+  num_reviews_ensemble: 1
+  temperature: 0.6   # methodological journal — keep reviews tighter
+  score_threshold_decision: 4
+  fewshot_mode: static
+  fewshot_dir: ""
+
+score_dimensions:
+  - name: methodological_rigor
+    scale: [1, 5]
+    description: >-
+      Mathematical / statistical rigor of proofs, derivations, and
+      assumptions. 5=fully rigorous, 1=major gaps.
+  - name: novelty
+    scale: [1, 5]
+    description: >-
+      Originality of the econometric method, identification result, or
+      theoretical contribution. 5=substantially new, 1=incremental.
+  - name: generality
+    scale: [1, 5]
+    description: >-
+      Breadth of applicability of the result (assumptions are weak and
+      the conclusions cover useful cases). 5=broadly applicable, 1=narrow.
+  - name: significance
+    scale: [1, 5]
+    description: >-
+      Importance of the contribution to economic methodology or theory.
+  - name: empirical_or_simulation_evidence
+    scale: [1, 5]
+    description: >-
+      Quality of accompanying simulation / empirical illustration that
+      validates the method's finite-sample or applied behaviour.
+  - name: reproducibility
+    scale: [1, 5]
+    description: >-
+      Code, data, and proof artefacts are available and runnable
+      (Econometric Society replication policy).
+  - name: exposition
+    scale: [1, 5]
+    description: Clarity of mathematical statements and proofs.
+  - name: overall
+    scale: [1, 5]
+    description: Overall recommendation.
+  - name: confidence
+    scale: [1, 5]
+    description: Reviewer confidence.
+
+text_sections:
+  - { name: paper_summary, required: true }
+  - { name: strengths, required: true }
+  - { name: weaknesses, required: true }
+  - { name: proof_or_assumption_concerns, required: true }
+  - { name: required_revisions, required: true }
+  - { name: suggested_revisions, required: false }
+  - { name: questions_for_authors, required: false }
+
+decision:
+  type: categorical
+  options: [accept, minor_revision, major_revision, reject_and_resubmit, reject]
+  threshold_dimension: overall
+  threshold_value: 4
+
+prompt_overrides:
+  system_hint: >-
+    Follow Econometrica reviewer norms. The journal prioritises
+    mathematically rigorous econometric and theoretical contributions.
+    Check proofs and assumptions carefully and surface any gaps in
+    proof_or_assumption_concerns. Generality (weak assumptions covering
+    useful cases) is rewarded over narrow results. The Econometric
+    Society replication policy requires code/data; flag missing
+    artefacts. Outright rejection is the modal outcome — do not lower
+    the bar to avoid it.
+  author_hint: >-
+    Write for an Econometrica audience: state assumptions precisely,
+    prove main results rigorously (with proofs in an appendix if
+    needed), and discuss how restrictive the assumptions are relative
+    to existing results. Include a simulation or empirical illustration
+    of finite-sample behaviour where applicable, and provide a
+    replication package per the Econometric Society policy.

@@ -1,3 +1,12 @@
+---
+sources:
+  - path: ari-skill-replicate/schemas/replication_rubric.schema.json
+    role: schema
+  - path: ari-skill-paper-re/src/server.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # `execution_profile` 仕様
 
 PaperBench ルーブリック (`ari-skill-replicate/schemas/replication_rubric.schema.json`,
@@ -129,8 +138,8 @@ SLURM 配置はパーティション既定値に戻る。
 
 ## 関連
 
-- [PaperBench クイックスタート](../howto/paperbench_quickstart.md)
-- [マルチノード設定](../howto/multi_node_setup.md)
-- [計算ノード安全規約](../howto/compute_node_safety.md)
+- [PaperBench クイックスタート](../guides/paperbench/paperbench_quickstart.md)
+- [マルチノード設定](../guides/paperbench/multi_node_setup.md)
+- [計算ノード安全規約](../guides/paperbench/compute_node_safety.md)
 - スキル実装: `ari-skill-paper-re/src/server.py:run_reproduce`
 - Schema: `ari-skill-replicate/schemas/replication_rubric.schema.json`

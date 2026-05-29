@@ -15,13 +15,13 @@ checkpoint, not the run, is the contract with downstream users.
 
 \subsection{Scaling limits}\label{sec:discussion:scaling}
 
-The single-machine assumption underlying the BFTS scheduler is the
+The single-machine assumption underlying the BFTS run-loop is the
 biggest scaling constraint. A run that wants to expand
-$\bbranch>10$ in parallel needs a different scheduler; the current
-scheduler at \code{ari-core/ari/orchestrator/scheduler.py} serialises
-expansions of the same parent. A multi-host expansion would require
-extending the lineage discipline (P4) to handle merges, not just
-ancestor walks.
+$\bbranch>10$ in parallel needs a different concurrency layer; today
+a single \texttt{ThreadPoolExecutor} in the BFTS CLI loop is the
+sole worker pool. A
+multi-host expansion would require extending the lineage discipline
+(P4) to handle merges, not just ancestor walks.
 
 A separate constraint is the cost of the LLM grader. Empirically the
 grader is one of the dominant line items in a run, alongside the
@@ -30,21 +30,3 @@ something \cref{chapter:eval} is meant to settle once a frozen
 checkpoint exists. Caching grader outputs by (paper-hash,
 rubric-hash) would help; we have not yet shipped this.
 
-\subsection{Open problems}\label{sec:discussion:open}
-
-\begin{enumerate}
-  \item \textbf{Off-policy refine}. The current refine cycle uses the
-        same model as the writer. Decoupling the two so the writer
-        and the refiner can be different models would let cheaper
-        models do the heavy structural rewrites.
-  \item \textbf{Rubric inheritance across checkpoints}. A child
-        checkpoint should be able to reuse its parent's rubric by
-        default; right now the rubric is regenerated.
-  \item \textbf{Tool-failure recovery}. A failed tool call currently
-        marks the node \StateFailed{}. A recovery policy that retries
-        with a degraded tool (e.g.\ a smaller model) would reduce the
-        long-tail cost.
-\end{enumerate}
-
-These three are tractable; we expect each to be a single-PR change
-landed before v0.8.

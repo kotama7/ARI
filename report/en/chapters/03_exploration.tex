@@ -8,31 +8,161 @@ revision, a code change, a benchmark run, an analysis, etc. A node
 carries
 
 \begin{itemize}
-  \item a discrete state $\statefn{n}\in\{\StateOpen,\StateEval,\StateDone,\StateFailed\}$ (\code{node.py:10}),
-  \item a categorical \term{label} drawn from \texttt{NodeLabel}
-        (\code{node.py:18}),
+  \item a discrete state $\statefn{n}\in\{\StateOpen,\StateEval,\StateDone,\StateFailed\}$,
+  \item a categorical \term{label} drawn from the \texttt{NodeLabel}
+        enumeration,
   \item per-axis evaluation metrics in a freeform dict
         \texttt{node.metrics}, including a distinguished scalar
         $\texttt{\_scientific\_score}\in[0,1]$,
   \item a Boolean \texttt{has\_real\_data} that flags whether the
         node carries actual measurements rather than provisional
         text, and
-  \item bookkeeping fields \texttt{depth} and \texttt{retry\_count}
-        used by the selection prompts.
+  \item the bookkeeping field \texttt{depth} surfaced both in the
+        selection prompts and to the pruning predicate. ARI does not
+        retry failed nodes, so no \texttt{retry\_count} signal is
+        surfaced.
 \end{itemize}
 
 The aggregation of axis-level signals into the scientific score is
-delegated to any implementation of the \texttt{Evaluator} protocol
-(\code{ari-core/ari/protocols/evaluator.py:19}); ARI does not pin a
-fixed linear combination. The protocol is the only seam between BFTS
+delegated to any implementation of the \texttt{Evaluator} protocol;
+ARI does not pin a fixed linear combination. The protocol is the only seam between BFTS
 and downstream rubric evaluation, which keeps the search engine
 agnostic about how axes get reduced to a scalar.
 
-The hard exploration budget is a single constant
-\texttt{config.max\_total\_nodes}, enforced by
-\code{bfts.py:should\_prune} (line~245). Step / cost budgets are
-enforced separately by \texttt{cost\_tracker.py:77} at the call
-site, not inside the BFTS engine.
+\paragraph{Run-loop state.}
+Each iteration of the outer loop transforms the tuple
+\[
+  \state \;=\; (\Frontier,\;\Pending,\;\expandcount,\;\Hist),
+\]
+where $\Frontier\subseteq\Nodes$ holds completed nodes
+(\StateDone{} / \StateFailed{}) eligible for expansion, $\Pending\subseteq\Nodes$
+holds nodes in state \StateOpen{} ready to execute, $\expandcount:\Nodes\to\Naturals$
+counts how many times each frontier node has been expanded, and
+$\Hist=(l_1,\ldots,l_t)$ is the sliding window of recently-executed
+labels (length capped at $\histlen=20$, see~\cref{sec:exploration:diversity}).
+The initial state is $\state_0=(\emptyset,\{n_\mathrm{root}\},\mathbf{0},())$.
+
+\paragraph{Pruning predicate.}
+The hard exploration budget is the predicate
+\begin{multline}\label{eq:prune}
+  \prunepred(n;\,|\Nodes|) \;=\;
+    \indicator{|\Nodes| \geq B_N}
+    \;\lor\;
+    \indicator{\depth{n} \geq B_D}
+    \\\;\lor\;
+    \sterilepred(n),
+\end{multline}
+where $B_N = \texttt{config.max\_total\_nodes}$, $B_D =
+\texttt{config.max\_depth}$, and the \emph{sterile} predicate
+\begin{equation}\label{eq:sterile}
+  \sterilepred(n) \;=\; \indicator{\,|\Delta_n| = 0\,}
+\end{equation}
+(with $\Delta_n$ the set of files added, modified, or deleted by $n$)
+fires when a node finishes its agent loop without writing any new
+artefact relative to its parent. The run loop computes this
+file diff and records the result as a Boolean \texttt{\_sterile} flag
+on the node; \texttt{should\_prune} reads that flag together with the
+two caps. The caller passes the live $|\Nodes|$ each iteration so
+there is exactly one source of truth for the node count.
+Step / cost budgets are enforced separately by the cost tracker at
+the call site, not inside the BFTS engine.
+
+\paragraph{Retire predicate.}
+On top of $\prunepred$, the run-loop applies a softer
+\emph{frontier retire predicate} $\retirepred$ to drop a parent $f$
+from $\Frontier$ once it is no longer the most productive lead:
+\begin{equation}\label{eq:retire}
+  \retirepred(f, c) \;=\;
+    \underbrace{\indicator{\nodescore{c} > \nodescore{f}}}_{\text{Rule A}}
+    \;\lor\;
+    \underbrace{\indicator{\expandcount(f) \geq \maxexp}}_{\text{Rule B}},
+\end{equation}
+with $\maxexp = \texttt{config.max\_expansions\_per\_node}$ (default
+$4$). Rule~A retires $f$ as soon as a child $c$ outscores it; Rule~B
+caps the per-parent budget so the search spreads.
+$\retirepred$ does \emph{not} delete the node — its history stays on
+$\Tree$ — only its eligibility to be re-expanded is revoked.
+
+The full step decomposition of one outer iteration (inner expansion
+sub-loop, parallel ReAct batch, post-execution retire) is shown in
+\cref{fig:bfts-state}; the explicit pseudocode is
+\cref{alg:bfts-run-loop} in \cref{sec:exploration:run-loop}.
+
+\begin{figure}[t]
+  \centering
+  \resizebox{0.85\columnwidth}{!}{\input{../shared/figures/tikz/F15_bfts_state_machine.tex}}
+  \caption{State-machine view of one outer BFTS iteration as a single
+           top-to-bottom flowchart. Steps 1--3 are the inner expansion
+           sub-loop; steps 4--7 are the outer parallel-run loop. Yellow
+           diamonds are the predicate guards ($\prunepred,\sterilepred,\retirepred$);
+           red dashed boxes on the right are the side-effects each
+           predicate triggers (frontier drop / score clamp / retire).
+           Auxiliary state not drawn here: the per-parent expansion
+           counter $\expandcount(\cdot)$ is bumped at step~3 and
+           consulted by $\retirepred$ at step~7, and the label history
+           $\Hist$ (window $\histlen$) is appended at step~5 via
+           \texttt{record\_run} and consulted at step~4 to compute the
+           diversity bonus $\divbonus{\cdot}$.
+           Compare with~\cref{fig:bftsflow}, which shows the same loop
+           as a finer-grained control-flow spine with the LLM prompts
+           drawn in.}
+  \label{fig:bfts-state}
+\end{figure}
+
+\subsection{Run-loop algorithm}\label{sec:exploration:run-loop}
+
+\Cref{alg:bfts-run-loop} writes the iteration as explicit pseudocode.
+The inner \textsc{while} fills empty worker slots one expansion at a
+time (so workers always start running before the next expansion is
+proposed); the outer block then assembles a batch by calling
+\texttt{select\_next\_node} repeatedly --- one node per call --- until
+the batch reaches the worker cap, and executes that batch in parallel;
+the post-execution block (a) records the executed label into $\Hist$
+so the diversity bonus reflects what actually ran, and (b) applies
+$\retirepred$ Rules~A and~B.
+
+\begin{algorithm}[t]
+\small
+\caption{BFTS run-loop (one outer iteration).}
+\label{alg:bfts-run-loop}
+\begin{algorithmic}[1]
+\Require state $\state=(\Frontier,\Pending,\expandcount,\Hist)$;
+         config $(B_N, B_D, \maxexp)$ and worker cap
+         $\texttt{max\_parallel}=\min(\texttt{max\_parallel\_nodes},4)$
+\Ensure  updated state $\state'$
+\State \Comment{--- inner expansion sub-loop ---}
+\While{$\Frontier \neq \emptyset \land |\Pending| < \texttt{max\_parallel} \land |\Nodes| < B_N$}
+  \State $f \gets \selectLLM(\Frontier)$ \Comment{\texttt{select\_best\_to\_expand}}
+  \If{$\prunepred(f;\,|\Nodes|)$}
+    \State $\Frontier \gets \Frontier \setminus \{f\}$;\;\;\textbf{continue}
+  \EndIf
+  \State $c \gets \texttt{expand}(f,\,\texttt{depth\_note},\,\texttt{budget\_note})$
+  \State $\Pending \gets \Pending \cup \{c\}$;\;\;$\expandcount(f) \mathrel{+}{=} 1$
+\EndWhile
+\State \Comment{--- outer parallel-execution batch ---}
+\State $B \gets \emptyset$
+\While{$|B| < \min(\texttt{max\_parallel},\,|\Pending|)$}
+  \State $n \gets \selectLLM(\Pending)$ \Comment{\texttt{select\_next\_node}: one node}
+  \State $\Pending \gets \Pending \setminus \{n\}$;\;\;$B \gets B \cup \{n\}$
+\EndWhile
+\ForAll{$n \in B$ \textbf{in parallel}}
+  \State $n' \gets \mathrm{ReAct}(n)$ \Comment{\texttt{AgentLoop.run}, may fail}
+  \State $\Hist \gets (\Hist \mathbin{\Vert} \mathrm{label}(n'))[\,-\histlen{:}\,]$ \Comment{\texttt{record\_run}}
+  \State $\Frontier \gets \Frontier \cup \{n'\}$
+  \ForAll{$p \in \Frontier : p = \parentof{n'}$} \Comment{Rule A}
+    \If{$\nodescore{n'} > \nodescore{p}$}
+      \State $\Frontier \gets \Frontier \setminus \{p\}$
+    \EndIf
+  \EndFor
+  \ForAll{$p \in \Frontier$} \Comment{Rule B}
+    \If{$\expandcount(p) \geq \maxexp$}
+      \State $\Frontier \gets \Frontier \setminus \{p\}$
+    \EndIf
+  \EndFor
+\EndFor
+\State \Return $\state' = (\Frontier,\Pending,\expandcount,\Hist)$
+\end{algorithmic}
+\end{algorithm}
 
 \subsection{Node selection (LLM-driven)}\label{sec:exploration:node-selection}
 
@@ -47,64 +177,122 @@ site, not inside the BFTS engine.
 \end{figure}
 
 ARI deliberately does \emph{not} reduce node ranking to a closed-form
-scalar utility. Instead, both \texttt{select\_next\_node} (line~167,
-``which node should the next agent step operate on?'') and
-\texttt{select\_best\_to\_expand} (line~258, ``which completed node
-is most worth expanding?'') hand a list of candidate descriptions to
-the LLM and parse a single 0-based index back. The candidate
-description for each node $n$ is a one-liner of the form
-\begin{quote}\small\texttt{[i] id=..., depth=..., retry=..., has\_real\_data=..., metrics=\{...\}, summary=..., diversity\_bonus=+0.05}\end{quote}
-and the prompt that consumes the list lives at
-\texttt{ari/prompts/orchestrator/bfts\_select.md} (selection) and
-\texttt{ari/prompts/orchestrator/bfts\_expand\_select.md} (expansion
-target). The selection criteria the prompt enumerates are:
+scalar utility. Instead, both \texttt{select\_next\_node}
+(``which pending node should the next agent step run?'') and
+\texttt{select\_best\_to\_expand} (``which completed node is most
+worth expanding?'') hand a list of candidate descriptions to the LLM
+and parse back a single 0-based index --- each call selects exactly
+one node. The candidate description for each node $n$ is a one-liner
+of the form
+\begin{quote}\small\texttt{[i] id=..., depth=..., label=..., has\_real\_data=..., metrics=\{...\}, summary=...}\end{quote}
+The run-selection variant (\texttt{select\_next\_node}) additionally
+appends \texttt{diversity\_bonus=+0.05} to the line for any node that
+currently earns the bonus; \texttt{select\_best\_to\_expand} omits it.
+The prompts that consume the list are reproduced verbatim as
+\cref{prompt:bfts_select} (selection) and \cref{prompt:bfts_expand_select}
+(expansion target). The selection criteria the prompt enumerates are:
 nodes with \texttt{has\_real\_data=True} and strong metrics are
-high-value; unexplored directions are preferred over already-tried
-paths; metrics are weighed holistically (multi-objective); deeper
-nodes with excellent results are worth continuing; the
+high-value; metrics are weighed holistically (multi-objective);
+deeper nodes with excellent results are worth continuing; the
 \texttt{diversity\_bonus} is treated as a soft tiebreaker only.
+The \texttt{label} field matches the information shown to
+\texttt{select\_best\_to\_expand}, and there is no spurious
+``low retry'' criterion.
 
 \subsubsection*{Diversity bonus}\label{sec:exploration:diversity}
 
-\texttt{BFTS.diversity\_bonus} (line~142) tracks recent labels in
-\texttt{\_recent\_label\_history} (a sliding window populated by
-\texttt{record\_run}). For a node whose label is \emph{under-}
+The diversity bonus \texttt{BFTS.diversity\_bonus} tracks recent
+labels in \texttt{\_recent\_label\_history} (a sliding window populated
+by \texttt{record\_run}). For a node whose label is \emph{under-}
 represented relative to the most common label in that window, the
 function returns
 \begin{equation}\label{eq:diversity}
-  \mathrm{div}(n) \;=\; \begin{cases}
-    +0.05 & \text{if } \mathrm{count}(\mathrm{label}(n)) \le \tfrac{1}{2}\,\max_\ell \mathrm{count}(\ell),\\
-    0     & \text{otherwise.}
-  \end{cases}
+  \mathrm{div}(n) =
+    \begin{cases}
+      +0.05 & \mathrm{cnt}(n) \le \tfrac{1}{2}\,\mathrm{cnt}_{\max},\\
+      0     & \text{otherwise,}
+    \end{cases}
 \end{equation}
+where $\mathrm{cnt}(n)$ is the number of times $\mathrm{label}(n)$
+occurs in the sliding window and
+$\mathrm{cnt}_{\max}=\max_\ell\mathrm{cnt}(\ell)$.
 The constant $0.05$ is small by design: scientific score still
 dominates ranking, and the bonus only breaks near-ties.
 
 \subsubsection*{LLM fallback}\label{sec:exploration:fallback}
 
 If the LLM returns an unparseable index, \texttt{select\_next\_node}
-falls back to a deterministic ranking
-(\code{bfts.py:237}, \texttt{\_fallback\_score}):
+falls back to a deterministic ranking via the
+\texttt{\_select\_fallback} helper (which ranks candidates by the
+\texttt{\_fallback\_score} expression). The default scoring expression
+is
 \begin{equation}\label{eq:fallback}
-  \_\mathrm{fallback\_score}(n)
-   \;=\; \texttt{\_scientific\_score}(n) \;+\; \mathrm{div}(n).
+  \fallbackscore{n} \;=\; \nodescore{n} + \mathrm{div}(n),
 \end{equation}
-Nodes with \texttt{has\_real\_data=True} are preferred when any are
-available, and the candidate with the highest fallback score is
-returned. This guarantees the loop always makes progress even when
-the LLM call degrades.
+where $\nodescore{n}\equiv\texttt{\_scientific\_score}(n)$ is the
+node's scalar reward (\cref{sec:notation}).
+\texttt{\_select\_fallback} prefers nodes with
+\texttt{has\_real\_data=True} when any are available, then returns the
+candidate with the highest $\fallbackscore{\cdot}$. This guarantees
+the loop always makes progress even when the LLM call degrades.
+
+\subsubsection*{Configurable evaluation layers}\label{sec:exploration:config-layers}
+
+The four evaluation surfaces in \cref{sec:exploration:formalization,sec:exploration:node-selection,sec:exploration:fallback}
+are independently configurable; the defaults reproduce the equations
+above, so an unmodified configuration is a no-op.
+
+\begin{description}
+  \item[\textbf{Composite formula.}]
+        Selected by \code{evaluator.composite}. The reduction
+        $\{a_k\}\!\to\!\texttt{\_scientific\_score}$ is one of:
+        weighted harmonic mean (default), arithmetic mean, bottleneck
+        \code{weighted\_min}, or weighted geometric mean. The
+        harmonic and geometric forms apply a floor $\epsilon=0.01$
+        to a zero-valued axis so the denominator stays finite.
+  \item[\textbf{Frontier-score strategy.}]
+        Selected by \code{bfts.frontier\_score}.
+        \cref{eq:fallback} is the
+        \code{scientific\_plus\_diversity} case. The alternatives
+        are \code{scientific\_only} (drops $\mathrm{div}$);
+        \code{depth\_penalized}, adding
+        $-\lambda\,\depth{n}$ on top of $\mathrm{div}(n)$
+        with $\lambda=$\code{depth\_penalty\_lambda}; and
+        \code{ucb\_like}, adding
+        $c_{\mathrm{ucb}}\sqrt{\log N / (\expandcount(n)+1)}$ on top of
+        $\mathrm{div}(n)$, where $c_{\mathrm{ucb}}=$\code{ucb\_c} and
+        $N = \sum_{n'}\expandcount(n')+|\Frontier|$.
+  \item[\textbf{Axis set.}]
+        Selected by \code{evaluator.axis\_mode}.
+        \texttt{dynamic} (default) builds the axis set from the
+        generic 5-axis floor plus the active rubric and
+        \texttt{idea.json} plan keywords. \texttt{legacy} pins to the
+        5 canonical axes. \texttt{custom} feeds an explicit
+        $\{(\mathrm{name},\mathrm{description},w)\}$ list verbatim
+        through to the judge LLM.
+  \item[\textbf{Selection prompts.}]
+        Set via \code{bfts.select\_prompt} and
+        \code{bfts.expand\_select\_prompt}: a pair of
+        \code{FilesystemPromptLoader} keys lets the user
+        swap in alternative templates for the two
+        $\selectLLM$ calls in \cref{alg:bfts-run-loop} without
+        editing source code. The selection template must accept the
+        placeholders \code{experiment\_goal}, \code{memory\_context},
+        and \code{candidates}; the expansion-target template accepts
+        \code{experiment\_goal} and \code{candidates}.
+\end{description}
 
 \subsection{Expansion (one child per call)}\label{sec:exploration:expansion}
 
-\code{bfts.py:expand} (line~315) generates \emph{exactly one} new
-child per invocation. Callers wanting more children for the same
-parent call \texttt{expand} repeatedly, threading the previously
-created children through the \texttt{existing\_children} argument so
-the LLM can avoid proposing duplicate directions.
+The \texttt{expand} function generates \emph{at most one} new child
+per invocation (no pre-batching). Callers wanting more children for
+the same parent call \texttt{expand} repeatedly, threading the
+previously created children through the \texttt{existing\_children}
+argument so the LLM can avoid proposing duplicate directions.
 
 The label of each new child is decided by the LLM rather than by a
-hardcoded template; the prompt
-(\texttt{ari/prompts/orchestrator/bfts\_expand.md}) is fed:
+hardcoded template; the expansion prompt, reproduced verbatim as
+\cref{prompt:bfts_expand}, is fed:
 
 \begin{itemize}
   \item the parent's status (\texttt{succeeded} /
@@ -112,7 +300,7 @@ hardcoded template; the prompt
         \texttt{\_scientific\_score};
   \item the parent's structured \texttt{node\_report}
         (\texttt{delta\_vs\_parent} / \texttt{concerns} /
-        \texttt{hints}, see \code{node\_report/builder.py}) when
+        \texttt{hints}, produced by the node-report builder) when
         present, so the planner can target specific weaknesses;
   \item sibling scores at the same depth, and ancestor scores from
         root to parent;
@@ -129,27 +317,30 @@ agent loop raises.
 
 \subsection{Pruning and termination}\label{sec:exploration:termination}
 
-\texttt{should\_prune} (line~245) applies only \emph{hard} cutoffs:
-when \texttt{self.total\_nodes >= self.config.max\_total\_nodes},
-further expansion stops. \texttt{depth} is intentionally treated as
-a \emph{soft} signal that flows into the LLM prompt rather than a
-hard cap, so high-quality nodes appearing deep in the tree are not
-discarded mechanically.
+\texttt{should\_prune} implements the pruning predicate $\prunepred$
+(\cref{eq:prune}): total-node cap, depth cap, and the sterile flag.
+The depth check activates the \texttt{max\_depth}
+config field. The frontier retire predicate $\retirepred$
+(\cref{eq:retire}) is applied after each node completes: Rule~A
+retires a parent $f$ once a child's reward $\nodescore{\cdot}$
+surpasses it, and Rule~B retires $f$ once it has been expanded
+$\maxexp$ times. $\retirepred$ does not delete the node — its
+history stays on $\Tree$ — but the frontier pool shrinks so the
+search spreads rather than mining the same parent indefinitely.
 
 The loop terminates when any of:
 
 \begin{itemize}
   \item the global \texttt{max\_total\_nodes} cap is hit;
-  \item the per-call step / cost budgets enforced by
-        \texttt{cost\_tracker.py} run out;
-  \item the \term{stagnation detector}
-        (\code{lineage\_decision.py:334},
-        \texttt{detect\_stagnation}) observes that the running max
-        of \texttt{\_scientific\_score} has not improved over a
-        sliding window;
-  \item a \texttt{LineageDecision}
-        (\code{lineage\_decision.py:149}) explicitly halts the
-        branch.
+  \item \emph{every} frontier node fails $\Pi$ (depth cap, sterile,
+        or budget exhausted) and the pending pool is empty;
+  \item the per-call step / cost budgets enforced by the cost
+        tracker run out;
+  \item the \term{stagnation detector} \texttt{detect\_stagnation}
+        observes that the running max of \texttt{\_scientific\_score}
+        has not improved over a sliding window;
+  \item a \texttt{LineageDecision} from the lineage-decision module
+        explicitly halts the branch (see \cref{prompt:lineage_decision}).
 \end{itemize}
 
 Which of these fires most often is an empirical question that
@@ -160,24 +351,21 @@ is in place; the present report does not claim a distribution.
 
 A lineage is the chain of ancestors of the best node, written into
 the checkpoint as the \texttt{lineage} key in \texttt{tree.json}.
-The \texttt{LineageState} dataclass
-(\code{lineage\_decision.py:64}) captures the running statistics
+The \texttt{LineageState} dataclass captures the running statistics
 that BFTS uses to decide whether to continue, and the cross-checkpoint
-walker \code{lineage.py:126} (\texttt{walk\_ancestor\_ckpts})
-provides parent pointers across runs. Idea pools are inherited via
-\code{lineage.py:157} (\texttt{get\_idea\_pool\_for\_ckpt}), and a
-ranked root-idea selection is recorded by
-\code{root\_idea\_selector.py:39} (\texttt{RootChoice}) so the
-choice is auditable post hoc.
+walker \texttt{walk\_ancestor\_ckpts} provides parent pointers across
+runs. Idea pools are inherited via \texttt{get\_idea\_pool\_for\_ckpt},
+and a ranked root-idea selection is recorded by the
+\texttt{RootChoice} dataclass so the choice is auditable post hoc
+(prompt: \cref{prompt:root_idea_selector}).
 
 Reproducibility hinges on three invariants. (i)~Every randomised
 operation seeds itself from the node identifier. (ii)~Every tool
 call records its arguments and outputs into the node's working tree,
 never the parent's --- this is enforced by the MCP layer's
-\texttt{cow\_node\_id} check. (iii)~The cost ledger
-(\code{cost\_tracker.py:181}, \texttt{init}) attaches a per-node
-dollar amount, so the budget check is deterministic given the same
-prompts.
+\texttt{cow\_node\_id} check. (iii)~The cost ledger attaches a
+per-node dollar amount at \texttt{CostTracker.init}, so the budget
+check is deterministic given the same prompts.
 
 \subsection{ReAct driver}\label{sec:exploration:react}
 
@@ -190,19 +378,18 @@ prompts.
   \label{fig:react}
 \end{figure}
 
-Each node's expansion runs a ReAct-style agent loop
-(\code{ari-core/ari/agent/loop.py:77}, \texttt{class AgentLoop}).
-The maximum step count is \texttt{MAX\_REACT\_STEPS = 80}
-(\code{loop.py:25}); it can be overridden per-instance via the
-\texttt{max\_react\_steps} keyword. A separate guard
-\texttt{MIN\_TOOL\_CALLS = 2} (line~26) prevents trivially short
-trajectories.
+Each node's expansion runs a ReAct-style agent loop in the
+\texttt{AgentLoop} class. The maximum step count is
+\texttt{MAX\_REACT\_STEPS = 80}; it can be overridden per-instance
+via the \texttt{max\_react\_steps} keyword. A separate guard
+\texttt{MIN\_TOOL\_CALLS = 2} prevents trivially short trajectories.
+The agent's system prompt is reproduced verbatim as
+\cref{prompt:agent_system}.
 
 The set of tools available to the agent is filtered per phase by
-\texttt{ari.agent.tool\_manager}; for example, the exploration phase
-masks the paper-writing tools so that BFTS expansion cannot
-short-circuit into a draft. A small set of MCP tools is reserved
-for \texttt{ari-core} itself (memory CoW operations) and is hidden
+the tool manager; for example, the exploration phase masks the
+paper-writing tools so that BFTS expansion cannot short-circuit
+into a draft. A small set of MCP tools is reserved for
+\texttt{ari-core} itself (memory CoW operations) and is hidden
 from the LLM, ensuring that the model cannot set an arbitrary node
-id and bypass the memory skill's copy-on-write check
-(see the docstring of \code{loop.py}).
+id and bypass the memory skill's copy-on-write check.

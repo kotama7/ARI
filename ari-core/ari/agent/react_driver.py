@@ -279,11 +279,17 @@ def run_react(
     tool_calls_count = 0
     status = "max_steps"
 
+    # ``sandbox`` is the node's working directory; forward it to LLMClient
+    # so the cli-shim can pin Claude's cwd there (artifacts + claude_debug.log
+    # land in the node dir, not a throwaway tmp).
+    _work_dir = str(sandbox) if sandbox is not None else None
+
     for step in range(1, max_steps + 1):
         try:
             resp = llm.complete(
                 _build_window(messages), tools=tool_defs, require_tool=False,
                 phase=agent_phase, skill="react_driver",
+                work_dir=_work_dir,
             )
         except Exception as e:
             log.error("react_driver step %d LLM error: %s", step, e)

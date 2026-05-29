@@ -127,9 +127,9 @@ npx tsc --noEmit        # type-check only; CI gate
 npm run build           # full production bundle (outputs to dist/)
 ```
 
-## Design Principles (docs/PHILOSOPHY.md)
+## Design Principles (docs/concepts/PHILOSOPHY.md)
 
-The canonical statement lives in `docs/PHILOSOPHY.md`. The cliff notes:
+The canonical statement lives in `docs/concepts/PHILOSOPHY.md`. The cliff notes:
 
 ### P1 — Generic Core
 
@@ -148,7 +148,7 @@ metric_keyword = hints.metric_keyword   # from experiment.md
 ### P2 — Deterministic Where Possible
 
 MCP skill tools should be deterministic by default. Any tool that calls
-an LLM must be explicitly annotated in `docs/skills.md` (✓ full LLM, △
+an LLM must be explicitly annotated in `docs/reference/skills.md` (✓ full LLM, △
 partial). The BFTS search loop remains deterministic-first:
 `ari-skill-hpc`, `ari-skill-coding`, `ari-skill-benchmark` must not
 call an LLM mid-loop.
@@ -169,7 +169,7 @@ def run_bash(command: str) -> dict:
 **v0.6.0 exception**: `ari-skill-memory` is Letta-backed and uses
 embedding retrieval, so its `search_memory` is not byte-deterministic.
 This is the only skill where P2 is explicitly relaxed (see
-`docs/PHILOSOPHY.md#memory-v060-p2-relaxed-for-one-skill-p5-scoped`).
+`docs/concepts/PHILOSOPHY.md#memory-v060-p2-relaxed-for-one-skill-p5-scoped`).
 Numerical experiment results remain reproducible; only BFTS trajectory
 ordering may drift across re-runs.
 
@@ -234,7 +234,7 @@ artefacts.
    skills:
      - name: your-skill
        path: '{{ari_root}}/ari-skill-yourskill'
-       phase: [paper, reproduce]   # see docs/configuration.md for values
+       phase: [paper, reproduce]   # see docs/reference/configuration.md for values
    ```
 
    Valid phase values: `bfts` (BFTS ReAct), `paper` (paper pipeline),
@@ -291,7 +291,7 @@ itself is driven by `ari.agent.react_driver` — no core code change:
 The sandbox directory is enforced at runtime: `react_driver` rejects
 any tool argument that names an absolute path outside `sandbox` (plus
 an allow-list for input files like `paper_path`). See
-`docs/architecture.md#pipeline-driven-react-react_driver`.
+`docs/concepts/architecture.md#pipeline-driven-react-react_driver`.
 
 ## Testing
 

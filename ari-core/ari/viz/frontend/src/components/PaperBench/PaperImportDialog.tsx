@@ -19,9 +19,9 @@ interface LicenseAssessment {
  * endpoint set so the "✅ usable / ⚠ NOT usable" badge mirrors the
  * server-side determination.
  *
- * This is the v0.7.2 minimum viable surface: arXiv/DOI auto-fetch and
- * PDF upload (FR-PI-2 / FR-PI-3 in PLAN_GUI_PAPERBENCH) remain stubs
- * pending a follow-up frontend PR.
+ * v0.7.4: source_type=upload now uploads the selected PDF via the existing
+ * /api/upload endpoint and forwards the staged path as pdf_path so the
+ * backend (_api_import_paper) materializes it under the registry directory.
  */
 export function PaperImportDialog() {
   const t = useT();
@@ -33,6 +33,9 @@ export function PaperImportDialog() {
   const [venue, setVenue] = useState('');
   const [licenseRaw, setLicenseRaw] = useState('CC BY 4.0');
   const [artifactUrl, setArtifactUrl] = useState('');
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [pdfStagedPath, setPdfStagedPath] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [fetching, setFetching] = useState(false);
   const [fetchInfo, setFetchInfo] = useState<string | null>(null);
@@ -66,12 +69,47 @@ export function PaperImportDialog() {
     }
   };
 
+  const stageUpload = async (file: File): Promise<string> => {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    const r = await fetch('/api/upload', { method: 'POST', body: form });
+    const data: { ok?: boolean; path?: string; error?: string } = await r.json();
+    if (!data.ok || !data.path) {
+      throw new Error(data.error || 'upload failed');
+    }
+    return data.path;
+  };
+
+  const onPickFile = (file: File | null) => {
+    setPdfFile(file);
+    setPdfStagedPath(null);
+    if (file && !source) {
+      // Default the source identifier to the filename stem so the resulting
+      // paper_id is human-readable when the user does not override it.
+      setSource(file.name.replace(/\.pdf$/i, ''));
+    }
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (sourceType === 'upload' && !pdfFile && !pdfStagedPath) {
+      setResult({ error: t('pb_pdf_required') });
+      return;
+    }
     setSubmitting(true);
     setResult(null);
     try {
-      const body = {
+      let pdfPath = pdfStagedPath;
+      if (sourceType === 'upload' && pdfFile && !pdfPath) {
+        setUploading(true);
+        try {
+          pdfPath = await stageUpload(pdfFile);
+          setPdfStagedPath(pdfPath);
+        } finally {
+          setUploading(false);
+        }
+      }
+      const body: Record<string, unknown> = {
         source_type: sourceType,
         source,
         title,
@@ -84,6 +122,7 @@ export function PaperImportDialog() {
         venue,
         artifact_url: artifactUrl,
       };
+      if (pdfPath) body.pdf_path = pdfPath;
       const r = await fetch('/api/paperbench/papers/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -115,6 +154,24 @@ export function PaperImportDialog() {
             <option value="local">Local path</option>
           </select>
         </label>
+        {sourceType === 'upload' && (
+          <label>
+            {t('pb_pdf_file')}
+            <input
+              type="file"
+              accept="application/pdf,.pdf"
+              aria-label={t('pb_pdf_file')}
+              onChange={(e) => onPickFile(e.target.files?.[0] ?? null)}
+            />
+            {pdfFile && (
+              <div style={{ fontSize: 12, marginTop: 4, color: '#333' }}>
+                {pdfStagedPath ? `✓ ${t('pb_uploaded')}: ` : ''}
+                <code>{pdfFile.name}</code>
+                {uploading && <span style={{ marginLeft: 8 }}>{t('pb_uploading')}</span>}
+              </div>
+            )}
+          </label>
+        )}
         <label>
           {t('pb_source_id')}
           <div style={{ display: 'flex', gap: 8 }}>
@@ -177,8 +234,8 @@ export function PaperImportDialog() {
         </label>
 
         <div style={{ display: 'flex', gap: 12 }}>
-          <button type="submit" disabled={submitting}>
-            {submitting ? t('pb_saving') : t('pb_save')}
+          <button type="submit" disabled={submitting || uploading}>
+            {uploading ? t('pb_uploading') : submitting ? t('pb_saving') : t('pb_save')}
           </button>
           <button type="button" onClick={() => (window.location.hash = '/paperbench')}>
             {t('pb_cancel')}

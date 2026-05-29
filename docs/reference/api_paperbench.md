@@ -1,3 +1,14 @@
+---
+sources:
+  - path: ari-core/ari/viz/api_paperbench.py
+    role: implementation
+  - path: ari-skill-paper-re/src/_paperbench_bridge.py
+    role: implementation
+  - path: ari-skill-paper-re/src/server.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # PaperBench API reference
 
 All endpoints are served by the ARI viz server (`ari viz` /
@@ -91,7 +102,9 @@ Enqueue PaperBench runs.
   "reproduce_config": {
     "model": "gpt-5-mini",
     "time_limit_sec": 43200,
+    "iterative_agent": false,
     "sandbox_kind": "slurm",
+    "container_image": "pb-reproducer",
     "partition": "large",
     "nodes": 4,
     "ntasks": 32,
@@ -104,7 +117,7 @@ Enqueue PaperBench runs.
     "cpu_bind": "cores",
     "extra_sbatch_args": ["--account=projX"]
   },
-  "judge_config":     {"model": "gpt-5-mini", "n_runs": 1},
+  "judge_config":     {"model": "gpt-5-mini", "n_runs": 1, "code_only": false},
   "dry_run": false
 }
 ```
@@ -163,8 +176,87 @@ performs no authentication — it is expected to be bound to localhost
 or behind an SSH tunnel. Do **not** expose it on a public interface
 without an upstream reverse proxy.
 
+## Bridge contract (in-process Python surface)
+
+For callers running in-process (orchestrators, dogfood scripts, custom
+pipelines), `ari-skill-paper-re/src/_paperbench_bridge.py` exposes three
+keyword-only async callables matching PaperBench's 3-stage protocol
+(arXiv:2504.01848 §3). All three share the same
+`(paper_md, work_dir-or-submission_dir, model, …)` vocabulary so they
+can be chained:
+
+| Stage | Function | Wraps |
+|---|---|---|
+| 1 — Agent rollout | `rollout_submission(paper_md, work_dir, agent_model, sandbox_kind, container_image, iterative_agent, env, agent_env_path, forbid_host_filesystem, blacklist_urls, time_limit_sec, …)` | `_replicator_agent.run_replicator_agent` (vendor BasicAgent / IterativeAgent) |
+| 2 — Reproduction | `reproduce_submission(submission_dir, sandbox_kind, container_image, partition, gpus_per_task, gpu_type, memory_gb_per_node, exclusive, extra_sbatch_args, capture_tarball, tarball_dir, salvage_retries, retry_threshold_sec, time_limit_sec)` | `server.run_reproduce` (host docker / apptainer / slurm / local dispatch) |
+| 3 — Grading | `judge_submission(paper_md, rubric, submission_dir, reproduce_log, judge_model, paper_audit_mode, code_only, …)` | vendor `SimpleJudge` direct |
+
+Vendor-fidelity behaviour built into the bridge:
+
+- **submission-root resolution (v0.8.0)** — `reproduce_submission` and
+  `judge_submission` descend into a nested `submission/` when the agent
+  built its self-contained repo there (the workspace presents the
+  vendor's `/home/submission` as a workspace-relative `submission/`, so an
+  agent following the prompt nests one level). Reproduction/grading then
+  run where `reproduce.sh` is co-located with its sources, matching the
+  vendor reproducer's cd-into-submission semantics; an orphaned top-level
+  `reproduce.sh` copy is ignored. This is what stops the
+  `src/…: No such file or directory` build failure that otherwise zeros
+  every Code Execution / Result Analysis leaf.
+- **apply_patch command parity (v0.8.0)** — the host-side `LocalComputer`
+  exposes the vendor's own `apply_patch.py` on PATH (as both `apply_patch`
+  and `applypatch`), mirroring the vendor Docker image's
+  `/bin/apply_patch`. gpt-5 / codex agents reflexively edit files via
+  `apply_patch <<'PATCH' … PATCH`; without this they fail `command not
+  found` and waste tool-call budget. Apptainer SIFs already carry the
+  command, so the shim is host-sandbox-only.
+- **container_image alias resolution** — `pb-env` → `pb-env:latest`,
+  `pb-reproducer` → `pb-reproducer:latest` (built by
+  `scripts/build_pb_images.sh`). URIs / paths / arbitrary tags pass
+  through verbatim.
+- **agent.env auto-load** — when `agent_env_path` unset, auto-discovers
+  `$ARI_AGENT_ENV_PATH` then `~/.ari/agent.env`. `HF_TOKEN` from the
+  calling process env is automatically forwarded to the agent.
+- **forbid_host_filesystem** — refuses `sandbox_kind=local/slurm`
+  combinations (host-FS leak surface). Default False preserves
+  development workflows.
+- **blacklist_urls** — prepends a `FORBIDDEN URLS` block to the
+  agent's instruction prompt AND exports `ARI_BLACKLIST_URLS` env var
+  so downstream tool wrappers can refuse.
+- **salvage_retries** — opt-in vendor-style retry on
+  early-failure runs (per
+  `vendor/.../reproduce.py:252 reproduce_on_computer_with_salvaging`).
+  Tracks wall-clock across attempts so the total budget is honoured.
+- **capture_tarball** — writes per-attempt
+  `submission_executed_<UTC>.tar.gz` next to the submission so a run
+  is re-gradable.
+- **code_only** — when True, prunes the rubric to Code Development
+  leaves only (vendor `paperbench/grade.py:109-112`). Auto-enabled
+  when no `reproduce.log` is present so Stage 1-only runs aren't
+  systematically zeroed on Code Execution / Result Analysis leaves.
+- **paper_audit_mode** — patches vendor `TASK_CATEGORY_QUESTIONS` to
+  paper-audit phrasing. Mutually exclusive with `code_only`.
+
+Fail-loud preconditions (RuntimeError unless the matching opt-in env
+is set):
+
+| Condition | Env override |
+|---|---|
+| `sandbox_kind=docker` but daemon unreachable | `ARI_PHASE1_ALLOW_FALLBACK=1` |
+| `sandbox_kind=apptainer/singularity` but binary missing | `ARI_PHASE1_ALLOW_FALLBACK=1` |
+| `sandbox_kind=slurm` but `sbatch` missing or no partition | `ARI_PHASE1_ALLOW_FALLBACK=1` |
+| GPU requested on GRES-less cluster | `ARI_SLURM_ALLOW_NO_GRES=1` |
+
 ## See also
 
-- [PaperBench GUI guide](../howto/paperbench_gui.md)
+- [PaperBench GUI guide](../guides/paperbench/paperbench_gui.md)
+- [PaperBench quickstart](../guides/paperbench/paperbench_quickstart.md)
+- [Environment variables](environment_variables.md)
+- [MCP tool reference](mcp_tools.md)
 - [Execution profile reference](execution_profile.md)
-- Source: `ari-core/ari/viz/api_paperbench.py`
+- Source:
+  `ari-core/ari/viz/api_paperbench.py`
+  /
+  `ari-skill-paper-re/src/_paperbench_bridge.py`
+  /
+  `ari-skill-paper-re/src/server.py`

@@ -1,7 +1,3 @@
-% translated-from: en/chapters/02_system_overview.tex@813ea79b56f223b149ed5dd17e19d3f6c003d13811351b08c3997e483a1a08e3
-% glossary:        5bca8d57a70f021e20c0af79aa06cd21013495c1a8246887ae889cd8a056f5fd
-% model:           claude-opus-4-7
-
 \section{系统概览}\label{sec:overview}
 
 \subsection{完整堆栈}\label{sec:overview:layout}
@@ -9,7 +5,7 @@
 \begin{figure*}[t]
   \centering
   \resizebox{0.95\textwidth}{!}{\input{../shared/figures/tikz/F10_full_stack.tex}}
-  \caption{v0.7.2 时 ARI 的完整堆栈。CLI / SDK 入口驱动单一编排
+  \caption{v0.8.0 时 ARI 的完整堆栈。CLI / SDK 入口驱动单一编排
            器(\texttt{ari-core});编排器拥有三个引擎(BFTS、谱
            系遍历器、ReAct \texttt{AgentLoop}),并经 MCP 层向
            14 技能注册表分派。所有持久化都落在单一检查点目录:
@@ -18,11 +14,14 @@
   \label{fig:fullstack}
 \end{figure*}
 
-\Cref{fig:fullstack} 描绘了 v0.7.2 的 ARI 完整堆栈。系统分为
+\Cref{fig:fullstack} 描绘了 v0.8.0 的 ARI 完整堆栈。系统分为
 一个驱动器与多个工具提供方。驱动器(\texttt{ari-core})拥有
 编排器、BFTS 引擎、谱系遍历器、智能体循环、检查点、成本追踪
-器与配置加载器。每个技能为独立 Python 包,以 MCP 服务器形式
-发布,并附自身 \texttt{skill.yaml} 声明。当前在树的 14 个技
+器与配置加载器。每个技能为独立 Python 包,以\term{模型上下文协议}
+(Model Context Protocol, MCP)服务器形式发布,并附自身
+\texttt{skill.yaml} 声明。MCP 是 Anthropic 标准化的
+JSON-RPC-over-stdio 接口,用于将工具式能力暴露给 LLM 代理循环;
+ARI 以此作为 \texttt{ari-core} 与各技能之间的统一接缝。当前在树的 14 个技
 能:\texttt{benchmark}、\texttt{coding}、
 \texttt{evaluator}、\texttt{hpc}、\texttt{idea}、
 \texttt{memory}、\texttt{orchestrator}、\texttt{paper}、
@@ -30,9 +29,8 @@
 \texttt{transform}、\texttt{vlm}、\texttt{web}。
 
 编排器只负责调用分派,不执行领域工作。这种分离至关重要:技能
-可被增删或替换而不必触动搜索算法 ——
-\code{ari-core/ari/orchestrator/bfts.py:114} 中的 BFTS 代码并
-不知道哪些技能参与运行;一切由 MCP 分派层中介。
+可被增删或替换而不必触动搜索算法 —— BFTS 引擎并不知道哪些技能
+参与运行;一切由 MCP 分派层中介。
 
 \Cref{fig:architecture} 是本报告其余部分使用的「运营视图」
 (控制 + 状态输出);\cref{fig:fullstack} 是「分层视图」(驱
@@ -64,9 +62,8 @@ paper 工位将最佳谱系汇编为草稿;review 工位以评分细则评估草
 可能引入非单调性(改稿可能恶化某一轴),而\term{收敛标准}
 (\cref{sec:paper:loop})则是限定反向边数量的约束。
 
-流水线运行器是 \code{ari-core/ari/pipeline/orchestrator.py:131}
-(\texttt{run\_pipeline});连接探索输出与论文输入的科学数据
-组装器为同文件第 68 行的 \texttt{build\_scientific\_data}。
+流水线由编排器中的单一运行器驱动;科学数据组装器弥合探索输出与
+论文输入之间的间隙,汇集撰写器所需的按节点产物。
 
 \subsection{BFTS 控制流}\label{sec:overview:bfts-flow}
 
@@ -96,30 +93,27 @@ paper 工位将最佳谱系汇编为草稿;review 工位以评分细则评估草
 \begin{figure*}[t]
   \centering
   \resizebox{0.95\textwidth}{!}{\input{../shared/figures/tikz/F12_paperre_components.tex}}
-  \caption{\texttt{paper-re} 技能的组件。顶行为 ARI 的适配层
-           (驱动器 + 求解器子类 + 有界工具包装 + 路径适配器);
-           中行为 vendor 化的 PaperBench 包
-           (\texttt{BasicAgentSolver}、\texttt{TaskNode}、
-           \texttt{SimpleJudge});底行为 bridge,把按 submission
-           的 \texttt{GradedTaskNode} 树折叠成单一
-           \texttt{rubric.json} 得分,加上 ARI 侧的
+  \caption{\texttt{paper-re} 技能的组件,分三层。顶行为 ARI 的适配
+           层(复现驱动器、求解器适配器、输出限界、路径适配器);
+           中行为 vendor 化的 PaperBench 包(智能体求解器、评分细则
+           叶、判官);底行为 bridge,把按 submission 的已评分树折叠
+           成单一 \texttt{rubric.json} 得分,加上 ARI 侧的
            \texttt{reproduce.sh}。详见 \cref{sec:paper:paperbench}。}
   \label{fig:paperre}
 \end{figure*}
 
 \Cref{fig:paperre} 是 \texttt{paper-re} 的第二级视图。在此层
-ARI 的贡献小但具体:\texttt{AriPBSolver} 子类只覆写
-\texttt{\_get\_tools}(为插入 \texttt{\_BoundedOutputTool})与
-\texttt{\_run\_agent}(为绕过 docker sanity-check 与适配
-vendor 路径);其余皆从 PaperBench 上游逐字流过,使 ARI 与上
-游复现任务框架保持一致。第 4 章详细解读该图。
+ARI 的贡献小但具体:一层薄适配器包裹每个智能体工具以限制其输出
+大小,并将 vendor 化求解器的硬编码路径重定向到 ARI 的按节点工作
+空间;其余皆从 PaperBench 上游逐字流过,使 ARI 与上游复现任务
+框架保持一致。该集成在 \cref{sec:paper:paperbench} 中详述。
 
 \subsection{检查点作用域与设计原则}\label{sec:overview:principles}
 
 ARI 围绕五条\term{设计原则} (P1--P5) 构建。最具约束力者为
 \textbf{P2:确定性}。每一步随机化均记录其种子;每次 LLM 调用均
-记录模型身份、提示与输出;每次工具调用都携带
-\texttt{cow\_node\_id} 以确保写入落在所属节点的工作目录内。重
+记录模型身份、提示与输出;每次工具调用都以其节点身份标记
+(写时复制护栏)以确保写入落在所属节点的工作目录内。重
 跑检查点必须再现相同的产物,字节级一致,除非字段被显式标记为
 时钟相关或模型端非确定。
 
@@ -133,17 +127,14 @@ ARI 围绕五条\term{设计原则} (P1--P5) 构建。最具约束力者为
         \texttt{ari-core}。
   \item \textbf{P4 显式谱系}:每个节点与每个检查点均记录其父级,
         派生实验仅须重算其差量。
-  \item \textbf{P5 成本透明}:\texttt{cost\_tracker.py} 为每次
-        模型调用附加美元成本,使运行预算可控。
+  \item \textbf{P5 成本透明}:成本追踪器为每次模型调用附加美元
+        成本,使运行预算可控。
 \end{itemize}
 
-检查点序列化器写出三个顶层文件。完整搜索树经
-\texttt{checkpoint.py:49} 写入 \texttt{tree.json};按节点的载
-荷经 \texttt{checkpoint.py:59} 写入 \texttt{nodes\_tree.json};
-运行末聚合经 \texttt{checkpoint.py:64} 写入
-\texttt{results.json}。跨检查点的谱系遍历调用
-\texttt{lineage.py:126} (\texttt{walk\_ancestor\_ckpts}),由子
-向祖先攀登。
+检查点序列化器写出三个顶层文件:完整搜索树写入
+\texttt{tree.json},按节点的载荷写入
+\texttt{nodes\_tree.json},运行末聚合写入
+\texttt{results.json}。跨检查点的谱系遍历由子向祖先攀登。
 
 \begin{figure}[t]
   \centering

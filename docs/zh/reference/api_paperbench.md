@@ -1,3 +1,14 @@
+---
+sources:
+  - path: ari-core/ari/viz/api_paperbench.py
+    role: implementation
+  - path: ari-skill-paper-re/src/_paperbench_bridge.py
+    role: implementation
+  - path: ari-skill-paper-re/src/server.py
+    role: implementation
+last_verified: 2026-05-25
+---
+
 # PaperBench API 参考
 
 所有 endpoint 由 ARI viz 服务器 (`ari viz` /
@@ -208,6 +219,6 @@ viz 服务器对仪表盘 endpoint 允许所有 origin (`*`),不执行认证 —
 
 ## 相关
 
-- [PaperBench GUI 指南](../howto/paperbench_gui.md)
+- [PaperBench GUI 指南](../guides/paperbench/paperbench_gui.md)
 - [执行配置参考](execution_profile.md)
 - 源码: `ari-core/ari/viz/api_paperbench.py`

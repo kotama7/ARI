@@ -13,7 +13,7 @@ Public symbols:
 - ``MetricSpec`` — typed declaration of a metric to extract.
 
 See also:
-- ``docs/architecture.md`` (Plan / Venue contract).
+- ``docs/concepts/architecture.md`` (Plan / Venue contract).
 - ``git log -- ari-core/ari/evaluator/`` for the Phase PC6 history.
 """
 

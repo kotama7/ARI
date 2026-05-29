@@ -52,5 +52,5 @@ pytest tests/test_virsci.py -q       # VirSci integration
 
 ## See also
 
-- `docs/skills.md#ari-skill-idea` — high-level summary.
+- `docs/reference/skills.md#ari-skill-idea` — high-level summary.
 - `docs/reference/mcp_tools.md` — argument signatures.

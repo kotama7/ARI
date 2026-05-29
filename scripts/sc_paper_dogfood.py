@@ -179,17 +179,26 @@ async def run_judge_dryrun(
     judge_model: str,
     submission_dir: Path | None = None,
     paper_audit_mode: bool = False,
+    code_only: bool = False,
 ) -> None:
     """Pipe the generated rubric into judge_submission.
 
-    When ``submission_dir`` is supplied (e.g. from --with-reproduce-plan
-    Step 4 output), the judge sees a real reproduction package; otherwise
-    an empty tempdir is used and ``Result Analysis`` leaves cannot score.
+    When ``submission_dir`` is supplied (a real PaperBench Step 2
+    executed submission directory), the judge grades against it;
+    otherwise an empty tempdir is used and ``Result Analysis`` leaves
+    cannot score (which is the correct behaviour — empty submission
+    means no reproduction was performed).
 
     ``paper_audit_mode`` swaps the vendor's submission-oriented
     TASK_CATEGORY_QUESTIONS to paper-audit flavors (see
     ``ari-skill-paper-re/src/_paperbench_bridge.py``). Required for
-    paper_audit-mode templates to break the structural ceiling.
+    paper_audit-mode templates so leaves phrased as "X is identifiable
+    in the paper" are graded correctly.
+
+    ``code_only`` prunes the rubric to Code Development leaves only
+    (vendor :meth:`TaskNode.code_only`). Use when Stage 2 was skipped
+    so the grader's scope matches the agent's instructions (Stage 1
+    code_only=True). Mutually exclusive with ``paper_audit_mode``.
     """
     from _paperbench_bridge import judge_submission, task_node_from_dict  # type: ignore
 
@@ -205,6 +214,7 @@ async def run_judge_dryrun(
     try:
         files = sorted(p.name for p in submission_dir.iterdir()) if submission_dir.is_dir() else []
         print(f"[judge] model={judge_model}  paper_audit_mode={paper_audit_mode}  "
+              f"code_only={code_only}  "
               f"submission={submission_dir} (files: {files or '<empty>'})")
         graded = await judge_submission(
             paper_md=paper_text,
@@ -213,6 +223,7 @@ async def run_judge_dryrun(
             reproduce_log="",
             judge_model=judge_model,
             paper_audit_mode=paper_audit_mode,
+            code_only=code_only,
         )
     finally:
         if own_tmp is not None:
@@ -280,18 +291,6 @@ def main() -> int:
                     help="After rubric gen, run judge_submission on an empty submission.")
     ap.add_argument("--judge-model", default=os.environ.get("ARI_MODEL_JUDGE", "gpt-5-mini"),
                     help="LLM model for judge.grade_leaf. Default: gpt-5-mini.")
-    ap.add_argument("--with-reproduce-plan", action="store_true",
-                    help="HPC PaperBench audit research plan §5 Step 4: ask the LLM "
-                         "to generate a reproduction package (reproduce_plan.md "
-                         "/ verification_code.py / install_commands.txt / "
-                         "reproduce.log) from the paper, write it to "
-                         "<out>/submission/, then pass that as submission_dir "
-                         "to judge_submission. Unblocks Result Analysis "
-                         "category leaves that would otherwise score 0 on an "
-                         "empty submission.")
-    ap.add_argument("--reproduce-plan-model", default="",
-                    help="LLM model for the Step 4 generator. Empty = inherit "
-                         "ARI_MODEL_REPRODUCE_PLAN env or ARI_MODEL_REPLICATE.")
     ap.add_argument("--paper-audit-mode", action="store_true",
                     help="Patch vendor SimpleJudge's TASK_CATEGORY_QUESTIONS "
                          "to paper-audit-flavored questions during judge "
@@ -299,7 +298,78 @@ def main() -> int:
                          "Without this, the vendor's submission-oriented "
                          "questions cap the score around 0.3 for paper_audit "
                          "mode templates. Auto-enabled when "
-                         "--rubric-template is a paper_audit template.")
+                         "--rubric-template is a paper_audit template. "
+                         "MUTUALLY EXCLUSIVE with --with-reproduction: paper-"
+                         "audit-mode is for paper-only grading where there is "
+                         "no executed submission to grade against.")
+    # ── PaperBench Stage 1 / Stage 2 (real execution) ──
+    # These drive bridge.rollout_submission / bridge.reproduce_submission.
+    # They are the legitimate counterpart to the deleted (off-protocol)
+    # --with-reproduce-plan flag; the submission_dir grading uses below
+    # comes from real agent rollout + real reproduce.sh execution, NOT
+    # from an LLM transcribing paper numbers.
+    ap.add_argument("--with-rollout", action="store_true",
+                    help="Stage 1: drive a PaperBench-style BasicAgent rollout "
+                         "via bridge.rollout_submission to write reproduce.sh "
+                         "into <out>/submission/. Requires --rollout-model "
+                         "or env ARI_MODEL_REPLICATOR.")
+    ap.add_argument("--rollout-model", default="",
+                    help="LLM for the Stage 1 agent. Empty = inherit "
+                         "ARI_MODEL_REPLICATOR env or fall back to --judge-model.")
+    ap.add_argument("--rollout-time-limit-sec", type=int, default=3600,
+                    help="Wall-clock budget for Stage 1 (default 1 h for "
+                         "dogfood; PaperBench upstream BasicAgent default is "
+                         "12 h, IterativeAgent up to 36 h).")
+    ap.add_argument("--rollout-sandbox", default="local",
+                    help="Stage 1 sandbox_kind: local | apptainer | slurm. "
+                         "Default 'local' (host filesystem). 'slurm' assumes "
+                         "ari is already inside an allocation (host exec, "
+                         "no container — a one-shot warning is emitted).")
+    ap.add_argument("--rollout-container-image", default="",
+                    help="Stage 1 container image (SIF path or docker://... "
+                         "URI). Only used when --rollout-sandbox=apptainer.")
+    ap.add_argument("--iterative-agent", action="store_true",
+                    help="Stage 1: switch to PaperBench's IterativeAgent "
+                         "variant (paper §5.3): no submit-tool early "
+                         "termination, step-by-step prompting.")
+    ap.add_argument("--blacklist-urls", default="",
+                    help="Comma-separated URLs/domains the agent must NOT "
+                         "fetch during Stage 1 rollout (forbidden URLs / "
+                         "resources). Plumbed through to "
+                         "bridge.rollout_submission(blacklist_urls=...). "
+                         "Note: ARI lifts the vendor's default paper-codebase "
+                         "blacklist (see bridge `_install_blacklist_lift_patch`); "
+                         "use this flag to ADD specific URLs the agent should "
+                         "still avoid (e.g., a competitor's proprietary "
+                         "dataset, a downstream evaluation server). Example: "
+                         "`--blacklist-urls https://github.com/foo/bar,"
+                         "https://example.com/secret-dataset`.")
+    ap.add_argument("--with-reproduction", action="store_true",
+                    help="Stage 2: execute the submission's reproduce.sh in "
+                         "the chosen sandbox via bridge.reproduce_submission "
+                         "and feed the executed submission to the judge. "
+                         "Implies --with-rollout if not also passed (cannot "
+                         "execute a non-existent reproduce.sh). MUTUALLY "
+                         "EXCLUSIVE with --paper-audit-mode.")
+    ap.add_argument("--reproduce-sandbox", default="local",
+                    help="Stage 2 sandbox_kind: local | docker | apptainer | "
+                         "singularity | slurm. Default 'local'.")
+    ap.add_argument("--reproduce-container-image", default="",
+                    help="Stage 2 container image. For sandbox=docker an "
+                         "image:tag; for apptainer/singularity an .sif path "
+                         "or docker://... URI. When empty, falls back to "
+                         "ARI_PHASE1_DOCKER_IMAGE / "
+                         "ARI_PHASE1_APPTAINER_IMAGE env or ubuntu:24.04.")
+    ap.add_argument("--reproduce-time-limit-sec", type=int, default=1800,
+                    help="Wall-clock budget for Stage 2 reproduce.sh "
+                         "(default 30 min for dogfood).")
+    ap.add_argument("--reproduce-partition", default="",
+                    help="Stage 2 SLURM partition (only when "
+                         "--reproduce-sandbox=slurm).")
+    ap.add_argument("--reproduce-gpus-per-task", type=int, default=0,
+                    help="Stage 2 SLURM --gpus-per-task (will fail loud at "
+                         "submit if the cluster has no GRES configured; set "
+                         "env ARI_SLURM_ALLOW_NO_GRES=1 to silently drop).")
     ap.add_argument("--out", type=Path, default=Path("/tmp/sc_paper_dogfood"),
                     help="Output dir for rubric.json + paper.txt.")
     args = ap.parse_args()
@@ -396,31 +466,12 @@ def main() -> int:
           f"direct_children={len(direct_children)}  "
           f"top_weights={[int(c.get('weight', 0)) for c in direct_children]}")
 
-    # Step 4 (HPC PaperBench audit research plan §5): LLM-generated reproduction
-    # package. Writes 4 artifacts to <out>/submission/ so the vendor
-    # SimpleJudge's Result Analysis branch has evidence to grade against.
+    # Stage 1 (agent rollout) + Stage 2 (reproduce.sh execution) — the
+    # legitimate PaperBench 3-stage protocol. Without these flags, the
+    # judge below runs against an empty submission, so Result Analysis
+    # category leaves will score 0 — that is the correct behaviour when
+    # nothing was actually reproduced.
     submission_dir: Path | None = None
-    if args.with_reproduce_plan:
-        from reproduce_plan import generate_reproduce_plan_async  # type: ignore
-        submission_dir = out_dir / "submission"
-        print(f"\n[step4] generating reproduction package → {submission_dir}/")
-        rp_res = asyncio.run(generate_reproduce_plan_async(
-            paper_text=paper_text,
-            output_dir=str(submission_dir),
-            model=args.reproduce_plan_model,
-            paperbench_rubric_id=rubric_template_id,
-        ))
-        if "error" in rp_res:
-            print(f"[step4.error] {rp_res['error']}")
-            if rp_res.get("warnings"):
-                for w in rp_res["warnings"]:
-                    print(f"  warn: {w}")
-            return 1
-        print(f"[step4] model={rp_res['model']}  wrote: "
-              f"{', '.join(rp_res['files'])}")
-        if rp_res.get("warnings"):
-            for w in rp_res["warnings"]:
-                print(f"  warn: {w}")
 
     # Detect paper_audit mode from the loaded template (auto-enable the
     # vendor prompt patch when the user picked a paper_audit YAML).
@@ -438,11 +489,124 @@ def main() -> int:
         except Exception as e:
             print(f"[warn] could not auto-detect template mode: {e}")
 
+    # --with-reproduction is for grading an *executed* submission; paper-
+    # audit mode flips the judge's prompt to grade the paper itself. The
+    # two are mutually exclusive — using both would feed an executed
+    # reproduction to a judge asking "is the paper specific enough?",
+    # which is meaningless.
+    if args.with_reproduction and paper_audit_mode:
+        print(
+            "error: --with-reproduction is mutually exclusive with "
+            "--paper-audit-mode (and with paper_audit rubric templates "
+            f"such as {rubric_template_id!r}). Drop one of:\n"
+            "  - --paper-audit-mode (and switch to a non-paper-audit "
+            "rubric template) to grade an executed submission\n"
+            "  - --with-reproduction to grade the paper itself for "
+            "describability",
+            file=sys.stderr,
+        )
+        return 2
+
+    # --with-reproduction needs a populated submission_dir; if the user
+    # did not also pass --with-rollout, we have no reproduce.sh to run.
+    if args.with_reproduction and not args.with_rollout:
+        print(
+            "[hint] --with-reproduction passed without --with-rollout; "
+            "enabling --with-rollout (cannot execute a non-existent "
+            "reproduce.sh)"
+        )
+        args.with_rollout = True
+
+    if args.with_rollout:
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).parent.parent / "ari-skill-paper-re" / "src"))
+        from _paperbench_bridge import rollout_submission  # type: ignore
+        submission_dir = out_dir / "submission"
+        rollout_model = (
+            args.rollout_model
+            or os.environ.get("ARI_MODEL_REPLICATOR")
+            or args.judge_model
+        )
+        print(f"\n[stage1] rollout: model={rollout_model} "
+              f"sandbox={args.rollout_sandbox} "
+              f"image={args.rollout_container_image or '<none>'} "
+              f"time_limit={args.rollout_time_limit_sec}s "
+              f"iterative={args.iterative_agent} → {submission_dir}/")
+        rollout_res = asyncio.run(rollout_submission(
+            paper_md=paper_text,
+            work_dir=submission_dir,
+            agent_model=rollout_model,
+            time_limit_sec=args.rollout_time_limit_sec,
+            iterative_agent=args.iterative_agent,
+            sandbox_kind=args.rollout_sandbox,
+            container_image=args.rollout_container_image,
+            blacklist_urls=[
+                u.strip() for u in (args.blacklist_urls or "").split(",")
+                if u.strip()
+            ] or None,
+        ))
+        print(f"[stage1] populated={rollout_res.get('populated')} "
+              f"agent_runtime_sec={rollout_res.get('agent_runtime_sec')} "
+              f"files={rollout_res.get('files') or []}")
+        for w in rollout_res.get("warnings") or []:
+            print(f"  warn: {w}")
+
+    if args.with_reproduction:
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).parent.parent / "ari-skill-paper-re" / "src"))
+        from _paperbench_bridge import reproduce_submission  # type: ignore
+        assert submission_dir is not None  # set above when --with-rollout
+        print(f"\n[stage2] reproduce: sandbox={args.reproduce_sandbox} "
+              f"image={args.reproduce_container_image or '<none>'} "
+              f"time_limit={args.reproduce_time_limit_sec}s "
+              f"partition={args.reproduce_partition or '<none>'} "
+              f"gpus_per_task={args.reproduce_gpus_per_task} "
+              f"→ {submission_dir}/")
+        try:
+            reproduce_res = asyncio.run(reproduce_submission(
+                submission_dir=submission_dir,
+                sandbox_kind=args.reproduce_sandbox,
+                container_image=args.reproduce_container_image,
+                time_limit_sec=args.reproduce_time_limit_sec,
+                partition=args.reproduce_partition,
+                gpus_per_task=args.reproduce_gpus_per_task,
+            ))
+        except RuntimeError as e:
+            print(f"[stage2.error] {e}", file=sys.stderr)
+            return 1
+        print(f"[stage2] executed={reproduce_res.get('executed')} "
+              f"exit_code={reproduce_res.get('exit_code')} "
+              f"elapsed_sec={reproduce_res.get('elapsed_sec')} "
+              f"log={reproduce_res.get('reproduce_log_path')}")
+
+    # Auto-enable judge code_only when Stage 2 was skipped — the agent
+    # was told to "only write code" (Stage 1 code_only=True is the ARI
+    # default per _compute/local_pbtask.py:166-175), and grading
+    # Code Execution / Result Analysis leaves against an empty
+    # submission would systematically zero them via the vendor's
+    # ``reproduce.sh failed to modify or create any files`` safeguard.
+    # paper_audit_mode and code_only are mutually exclusive (the bridge
+    # asserts) — paper_audit wins when both would apply (the user
+    # explicitly picked a paper_audit template / flag).
+    code_only = (
+        args.with_rollout
+        and not args.with_reproduction
+        and not paper_audit_mode
+    )
+    if code_only:
+        print(
+            "[hint] --with-rollout without --with-reproduction → judge will run "
+            "in code_only mode (rubric pruned to Code Development leaves only) "
+            "to match the Stage 1 'write code, do not execute' instruction. "
+            "Pass --with-reproduction to grade against an executed submission."
+        )
+
     if args.judge_dryrun:
         asyncio.run(run_judge_dryrun(
             envelope, paper_text, args.judge_model,
             submission_dir=submission_dir,
             paper_audit_mode=paper_audit_mode,
+            code_only=code_only,
         ))
 
     print(f"\n[done] artifacts under {out_dir}")

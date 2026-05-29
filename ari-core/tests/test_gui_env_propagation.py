@@ -125,6 +125,8 @@ ENV_VARS_WITH_CONSUMERS: list[tuple[str, str]] = [
     ("ARI_SLURM_GPUS", "SLURM GPU count"),
     ("ARI_SLURM_WALLTIME", "SLURM walltime (config.py resources)"),
     ("ARI_SLURM_PARTITION", "SLURM partition (config.py resources)"),
+    # ── Paper writing language (wizard Language dropdown) ──
+    ("ARI_PAPER_LANGUAGE", "paper-skill write_paper_iterative language directive"),
     # ── Per-phase LLM model overrides (wired Apr 2026) ──
     ("ARI_MODEL_IDEA", "idea-skill LLM model"),
     ("ARI_MODEL_CODING", "AgentLoop (ReAct / coding) LLM model"),
@@ -304,7 +306,7 @@ def test_phase_model_bfts_builds_dedicated_client(monkeypatch, tmp_path):
         _al.return_value = __import__("unittest.mock", fromlist=["mock"]).MagicMock()
         from ari.core import build_runtime
         try:
-            llm, _, _, bfts, _, _, _ = build_runtime(cfg, "goal", checkpoint_dir=tmp_path)
+            llm, _, _, bfts, _, _ = build_runtime(cfg, "goal", checkpoint_dir=tmp_path)
         except Exception:
             # If downstream construction fails, still inspect models from the env
             # resolution logic by re-reading os.environ.
@@ -330,7 +332,7 @@ def test_phase_model_coding_falls_back_to_global(monkeypatch, tmp_path):
         _al.return_value = __import__("unittest.mock", fromlist=["mock"]).MagicMock()
         from ari.core import build_runtime
         try:
-            llm, _, _, bfts, _, _, _ = build_runtime(cfg, "goal", checkpoint_dir=tmp_path)
+            llm, _, _, bfts, _, _ = build_runtime(cfg, "goal", checkpoint_dir=tmp_path)
         except Exception:
             return
     assert llm.config.model == "base-model"

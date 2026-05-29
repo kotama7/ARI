@@ -1,0 +1,82 @@
+# frontend/src/components
+
+Feature-grouped React components — one subdirectory per dashboard page plus shared primitives.
+
+## Contents
+
+- `README.md` — this file.
+- `common/` — reusable presentational UI primitives shared across pages.
+  - `README.md` — common index.
+  - `Badge.tsx` — colored variant label span.
+  - `Button.tsx` — styled button with variant/size props.
+  - `Card.tsx` — bordered content container.
+  - `index.ts` — barrel re-exports.
+  - `StatBox.tsx` — single value + label stat tile.
+  - `StatusBadge.tsx` — maps run status to a colored `Badge`.
+- `Experiments/` — experiments page (lists experiment/checkpoint runs).
+  - `README.md` — Experiments index.
+  - `ExperimentsPage.tsx` — experiments list view.
+  - `index.ts` — barrel re-export.
+- `Home/` — home/overview landing page.
+  - `README.md` — Home index.
+  - `HomePage.tsx` — home/overview view.
+  - `index.ts` — barrel re-export.
+- `Idea/` — idea page (research idea/hypothesis).
+  - `README.md` — Idea index.
+  - `IdeaPage.tsx` — idea view.
+  - `index.ts` — barrel re-export.
+- `Layout/` — app shell (page frame + nav sidebar).
+  - `README.md` — Layout index.
+  - `index.ts` — barrel re-export.
+  - `Layout.tsx` — outer page frame wrapping the active page.
+  - `Sidebar.tsx` — nav menu + checkpoint switcher.
+- `Monitor/` — live run progress and resource monitoring.
+  - `README.md` — Monitor index.
+  - `GpuMonitor.tsx` — GPU usage monitor card.
+  - `index.ts` — barrel re-export.
+  - `MonitorPage.tsx` — monitor page container.
+  - `PhaseStepper.tsx` — workflow phase progress bar (idea→bfts→paper→review).
+- `PaperBench/` — register external papers, import them, launch/inspect PaperBench runs.
+  - `README.md` — PaperBench index.
+  - `index.ts` — barrel re-exports.
+  - `PaperBenchWizard.tsx` — wizard to configure a PaperBench run.
+  - `PaperImportDialog.tsx` — dialog to import a new paper.
+  - `PaperRegistryPage.tsx` — lists registered papers (GET /api/paperbench/papers).
+  - `__tests__/` — component tests for this directory.
+    - `README.md` — __tests__ index.
+    - `PaperBenchWizard.test.tsx` — tests for `PaperBenchWizard.tsx`.
+    - `PaperImportDialog.test.tsx` — tests for `PaperImportDialog.tsx`.
+  - `results/` — rubric-scored results view.
+    - `README.md` — results index.
+    - `ResultsView.tsx` — leaf grades + rubric tree + negative-control display.
+- `Results/` — final run results and rubric scoring.
+  - `README.md` — Results index.
+  - `index.ts` — barrel re-export.
+  - `ResultsPage.tsx` — results page container.
+  - `RubricTreeVisualization.tsx` — D3 rubric tree with aggregated leaf scores.
+- `Settings/` — dashboard/run configuration page.
+  - `README.md` — Settings index.
+  - `index.ts` — barrel re-export.
+  - `SettingsPage.tsx` — settings view.
+- `Tree/` — BFTS tree page (search tree, detail panel, file browser).
+  - `README.md` — Tree index.
+  - `DetailPanel.tsx` — selected-node detail panel (tabs: memory, report, etc.).
+  - `FileExplorer.tsx` — checkpoint/node file tree browser.
+  - `index.ts` — barrel re-export.
+  - `TreePage.tsx` — tree page container.
+  - `TreeVisualization.tsx` — D3 search-tree canvas.
+  - `DetailPanelTabs/` — extracted detail-panel subcomponents.
+    - `README.md` — DetailPanelTabs index.
+    - `MemoryEntryCard.tsx` — renders one memory record (own/inherited/global) as a card.
+- `Wizard/` — multi-step run-launch wizard.
+  - `README.md` — Wizard index.
+  - `index.ts` — barrel re-export.
+  - `StepGoal.tsx` — research goal / chat step.
+  - `StepLaunch.tsx` — final review + launch step.
+  - `StepResources.tsx` — provider/model and container-image step.
+  - `StepScope.tsx` — search scope (max depth/nodes) step.
+  - `WizardPage.tsx` — wizard container/step orchestration.
+- `Workflow/` — workflow stages/pipeline page.
+  - `README.md` — Workflow index.
+  - `index.ts` — barrel re-export.
+  - `WorkflowPage.tsx` — workflow view.
