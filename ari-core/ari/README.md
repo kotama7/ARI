@@ -185,6 +185,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `api_orchestrator.py` — sub-experiment registry, launch, listing.
   - `api_paperbench.py` — PaperBench paper registry + run-wizard endpoints.
   - `api_paperbench_worker.py` — background worker driving PaperBench skill tools.
+  - `api_process.py` — TODO
   - `api_publish.py` — publish settings + preview/run endpoints.
   - `api_settings.py` — env keys, settings, workflow, skills, profiles.
   - `api_state.py` — checkpoint discovery, tree loading, broadcasting (re-export facade).
