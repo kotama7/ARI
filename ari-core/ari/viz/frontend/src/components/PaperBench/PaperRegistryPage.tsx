@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useT } from '../../i18n';
 import { fetchPaperbenchPapers, deletePaperbenchPaper } from '../../services/api';
+import { useApi } from '../../hooks/useApi';
 
 interface PaperEntry {
   paper_id: string;
@@ -31,27 +32,13 @@ interface PaperEntry {
  */
 export function PaperRegistryPage() {
   const t = useT();
-  const [papers, setPapers] = useState<PaperEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Shared data-fetch hook: same loading(init true)/error/refetch semantics the
+  // component previously hand-rolled (mount-only fetch, error = thrown message).
+  const { data: papersResp, loading, error, refetch } = useApi(() => fetchPaperbenchPapers());
+  const papers: PaperEntry[] = papersResp?.papers || [];
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await fetchPaperbenchPapers();
-      setPapers(data.papers || []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  const refresh = refetch;
 
   const toggle = (id: string) => {
     setSelected((prev) => {
