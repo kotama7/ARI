@@ -515,6 +515,8 @@ export function MonitorPage() {
 
     let res: Response | null = null;
     try {
+      // Justified direct-fetch exception (req 02): server-sent log stream read
+      // via res.body.getReader(); not a JSON request, cannot use services/api.ts.
       res = await fetch('/api/logs');
     } catch {
       setLogStatus('error');

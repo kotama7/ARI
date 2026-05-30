@@ -2768,15 +2768,8 @@ function FileViewer(
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch(
-        `/api/checkpoint/${encodeURIComponent(ckptId)}/filecontent?path=${encodeURIComponent(path)}`,
-      );
-      if (!r.ok) {
-        setError(`HTTP ${r.status}`);
-      } else {
-        const j = await r.json();
-        setContent(typeof j.content === 'string' ? j.content : JSON.stringify(j, null, 2));
-      }
+      const j = await fetchCheckpointFilecontent(ckptId, path);
+      setContent(typeof j.content === 'string' ? j.content : JSON.stringify(j, null, 2));
     } catch (e: any) {
       setError(String(e));
     } finally {

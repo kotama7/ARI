@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useT } from '../../../i18n';
+import {
+  fetchPaperbenchRun,
+  fetchPaperbenchRunResults,
+  requestPaperbenchReport,
+} from '../../../services/api';
 
 interface LeafGrade {
   id?: string;
@@ -69,14 +74,14 @@ export function ResultsView() {
     if (!jobId) return;
     const load = async () => {
       try {
-        const s = await fetch(`/api/paperbench/run/${jobId}`).then((r) => r.json());
+        const s = await fetchPaperbenchRun(jobId);
         if (s.error) {
           setError(s.error);
           return;
         }
         setSnap(s);
         if (s.status === 'completed') {
-          const r = await fetch(`/api/paperbench/run/${jobId}/results`).then((rr) => rr.json());
+          const r = await fetchPaperbenchRunResults(jobId);
           if (r.error) setError(r.error);
           else setResults(r);
         }
@@ -103,9 +108,7 @@ export function ResultsView() {
     });
     es.addEventListener('done', () => {
       es.close();
-      void fetch(`/api/paperbench/run/${jobId}`)
-        .then((r) => r.json())
-        .then(setSnap);
+      void fetchPaperbenchRun(jobId).then(setSnap);
     });
     es.onerror = () => es.close();
     return () => es.close();
@@ -116,11 +119,7 @@ export function ResultsView() {
       if (!jobId) return;
       setReportBusy(true);
       try {
-        const r = await fetch(`/api/paperbench/run/${jobId}/report`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ languages, formats }),
-        }).then((rr) => rr.json());
+        const r = await requestPaperbenchReport(jobId, { languages, formats });
         if (r.error) {
           setError(r.error);
         } else {

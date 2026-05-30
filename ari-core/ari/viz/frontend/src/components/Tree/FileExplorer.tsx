@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
+import { fetchCheckpointFiletree, fetchCheckpointFilecontent } from '../../services/api';
 
 // ── Types ──
 
@@ -175,9 +176,7 @@ export function FileExplorer({ checkpointId, nodeId, onClose }: FileExplorerProp
     setError(null);
     setSelectedFile(null);
     setFileContent(null);
-    const qs = nodeId ? `?node_id=${encodeURIComponent(nodeId)}` : '';
-    fetch(`/api/checkpoint/${encodeURIComponent(checkpointId)}/filetree${qs}`)
-      .then((r) => r.json())
+    fetchCheckpointFiletree(checkpointId, nodeId || undefined)
       .then((data) => {
         if (data.error) {
           setError(data.error);
@@ -209,9 +208,7 @@ export function FileExplorer({ checkpointId, nodeId, onClose }: FileExplorerProp
     setSelectedFile(path);
     setFileContent(null);
     setFileLoading(true);
-    const nodeQs = nodeId ? `&node_id=${encodeURIComponent(nodeId)}` : '';
-    fetch(`/api/checkpoint/${encodeURIComponent(checkpointId)}/filecontent?path=${encodeURIComponent(path)}${nodeQs}`)
-      .then((r) => r.json())
+    fetchCheckpointFilecontent(checkpointId, path, nodeId || undefined)
       .then((data) => {
         if (data.error) {
           setFileContent(`Error: ${data.error}`);

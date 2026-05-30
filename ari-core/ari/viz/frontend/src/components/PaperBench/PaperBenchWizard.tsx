@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useT } from '../../i18n';
+import { fetchPaperbenchPapers, estimatePaperbenchCost, runPaperbench } from '../../services/api';
 
 interface RubricConfig {
   model: string;
@@ -100,23 +101,16 @@ export function PaperBenchWizard() {
   );
 
   useEffect(() => {
-    void fetch('/api/paperbench/papers')
-      .then((r) => r.json())
-      .then((d) => setPapers(d.papers || []));
+    void fetchPaperbenchPapers().then((d) => setPapers(d.papers || []));
   }, []);
 
   // Live cost estimate refresh whenever any config changes.
   useEffect(() => {
-    void fetch('/api/paperbench/cost-estimate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        rubric_config: rubric,
-        reproduce_config: reproduce,
-        judge_config: judge,
-      }),
+    void estimatePaperbenchCost({
+      rubric_config: rubric,
+      reproduce_config: reproduce,
+      judge_config: judge,
     })
-      .then((r) => r.json())
       .then(setCostEstimate)
       .catch(() => setCostEstimate(null));
   }, [rubric, reproduce, judge]);
@@ -134,12 +128,7 @@ export function PaperBenchWizard() {
       judge_config: judge,
       dry_run: dryRun,
     };
-    const r = await fetch('/api/paperbench/run', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    setLaunchResult(await r.json());
+    setLaunchResult(await runPaperbench(body));
   };
 
   const stepIdx = STEPS.indexOf(step);

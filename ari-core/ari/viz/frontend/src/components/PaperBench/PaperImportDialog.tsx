@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useT } from '../../i18n';
+import { fetchArxivMetadata, importPaperbenchPaper } from '../../services/api';
 
 interface LicenseAssessment {
   license: string;
@@ -50,9 +51,7 @@ export function PaperImportDialog() {
     setFetching(true);
     setFetchInfo(null);
     try {
-      const r = await fetch(`/api/paperbench/arxiv/${encodeURIComponent(source)}`).then((rr) =>
-        rr.json(),
-      );
+      const r = await fetchArxivMetadata(source);
       if (r.error) {
         setFetchInfo(`✗ ${r.error}`);
       } else {
@@ -72,6 +71,9 @@ export function PaperImportDialog() {
   const stageUpload = async (file: File): Promise<string> => {
     const form = new FormData();
     form.append('file', file, file.name);
+    // Justified direct-fetch exception (req 02): multipart/form-data upload.
+    // services/api.ts `uploadFile` uses a different octet-stream + X-Filename
+    // contract, so it is not a drop-in replacement for this FormData POST.
     const r = await fetch('/api/upload', { method: 'POST', body: form });
     const data: { ok?: boolean; path?: string; error?: string } = await r.json();
     if (!data.ok || !data.path) {
@@ -123,12 +125,8 @@ export function PaperImportDialog() {
         artifact_url: artifactUrl,
       };
       if (pdfPath) body.pdf_path = pdfPath;
-      const r = await fetch('/api/paperbench/papers/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data: LicenseAssessment & { paper_id?: string; error?: string } = await r.json();
+      const data: LicenseAssessment & { paper_id?: string; error?: string } =
+        await importPaperbenchPaper(body);
       setResult(data);
       if (!data.error) {
         // Navigate back to the registry after success.
