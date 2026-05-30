@@ -440,14 +440,22 @@ class TestFrontendIntegration:
         assert "FileExplorer" in src
 
     def test_file_explorer_fetches_filetree(self):
-        """FileExplorer.tsx fetches from /api/checkpoint/.../filetree."""
+        """FileExplorer.tsx fetches the filetree endpoint.
+
+        After the req-02 service consolidation the endpoint URL lives in
+        services/api.ts; the component calls fetchCheckpointFiletree.
+        """
         src = (COMPONENTS_DIR / "Tree" / "FileExplorer.tsx").read_text()
-        assert "/filetree" in src
+        assert "/filetree" in src or "fetchCheckpointFiletree" in src
 
     def test_file_explorer_fetches_filecontent(self):
-        """FileExplorer.tsx fetches from /api/checkpoint/.../filecontent."""
+        """FileExplorer.tsx fetches the filecontent endpoint.
+
+        After the req-02 service consolidation the endpoint URL lives in
+        services/api.ts; the component calls fetchCheckpointFilecontent.
+        """
         src = (COMPONENTS_DIR / "Tree" / "FileExplorer.tsx").read_text()
-        assert "/filecontent" in src
+        assert "/filecontent" in src or "fetchCheckpointFilecontent" in src
 
     def test_file_explorer_has_tree_row(self):
         """FileExplorer.tsx renders TreeRow for directory tree."""
