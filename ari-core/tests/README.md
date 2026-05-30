@@ -14,7 +14,7 @@ targets the like-named module under `ari/`.
 - `test_api_lineage_e2e.py` — lineage API end-to-end.
 - `test_api_paperbench.py` — PaperBench API.
 - `test_api_paperbench_worker.py` — PaperBench API worker.
-- `test_api_process.py` — TODO
+- `test_api_process.py` — process-control service (stop-all + GPU monitor).
 - `test_bfts.py` — BFTS loop.
 - `test_bfts_diversity.py` — BFTS diversity/fanout.
 - `test_bfts_eval_config_integration.py` — BFTS + eval-config integration.
