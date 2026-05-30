@@ -1,0 +1,1161 @@
+import React, { useState } from 'react';
+import { Button } from '../common/Button';
+import { Badge } from '../common/Badge';
+import { fetchCheckpointFilecontent } from '../../services/api';
+import { RubricTreeVisualization } from './RubricTreeVisualization';
+
+/** Attempt to parse a JSON string; return null on failure. */
+function tryParseJson(s: any): any {
+  if (typeof s !== 'string') return s;
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
+}
+
+// ─── ORS chain (PaperBench-aware) renderer ──────────────────────────────
+//
+// Surface the per-stage status produced by the new ORS workflow:
+//   ors_rubric_meta   ← generator metadata (model, leaves, expected_artifacts)
+//   ors_replicator    ← LLM-driven replicator (paper → reproduce.sh)
+//   ors_seed          ← fetch_code_bundle (EAR → repro_sandbox)
+//   ors_phase1        ← run_reproduce (executed/exit_code/missing/sandbox)
+//   ors_grade         ← SimpleJudge result (ors_score, leaf_grades[])
+// Plus the synthesized ``reproducibility_report`` for the headline verdict.
+
+type OrsRenderInput = {
+  repro: any;
+  orsRubric?: Record<string, any>;       // full rubric envelope (with .rubric tree)
+  orsGrade?: Record<string, any>;
+  orsPhase1?: Record<string, any>;
+  orsReplicator?: Record<string, any>;
+  orsSeed?: Record<string, any>;
+  orsRubricMeta?: Record<string, any>;
+  ckptId: string;
+  reproLog: { open: boolean; loading: boolean; content: string | null; path: string | null };
+  onToggleLog: () => void;
+  onRefreshLog: () => void;
+  t: (key: string) => string;
+};
+
+export function renderOrsChain(input: OrsRenderInput): React.ReactNode {
+  const {
+    repro,
+    orsRubric, orsGrade, orsPhase1, orsReplicator, orsSeed, orsRubricMeta,
+    ckptId, reproLog, onToggleLog, onRefreshLog,
+    t,
+  } = input;
+
+  // Headline verdict + score bar pulled from the synthesized report.
+  const reproObj = (typeof repro === 'string' ? tryParseJson(repro) : repro) || {};
+  const verdict = (reproObj.verdict || reproObj.status || reproObj.result || '').toString();
+  const summaryText: string | undefined = reproObj.summary;
+
+  const orsScore: number | undefined = typeof orsGrade?.ors_score === 'number'
+    ? orsGrade.ors_score : undefined;
+  const rawScore: number | undefined = typeof orsGrade?.raw_score === 'number'
+    ? orsGrade.raw_score : undefined;
+  const leafGrades: any[] = Array.isArray(orsGrade?.leaf_grades) ? orsGrade!.leaf_grades : [];
+  const passed = leafGrades.filter((lg) => (lg.passed_runs ?? 0) > 0).length;
+  const total = leafGrades.length;
+
+  const badgeVariant =
+    verdict === 'REPRODUCED' || verdict === 'PASS'
+      ? 'green'
+      : verdict === 'FAILED' || verdict === 'NOT_REPRODUCED'
+        ? 'red'
+        : 'yellow';
+
+  return (
+    <div>
+      {/* Headline */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+        {verdict && <Badge variant={badgeVariant}>{verdict}</Badge>}
+        {orsScore !== undefined && (
+          <div style={{ fontSize: '.95rem', fontWeight: 600 }}>
+            {(orsScore * 100).toFixed(1)}%
+          </div>
+        )}
+        {total > 0 && (
+          <div style={{ fontSize: '.78rem', color: 'var(--muted)' }}>
+            {passed} / {total} {t('ors_leaves_passed_unit')}
+          </div>
+        )}
+      </div>
+      {orsScore !== undefined && (
+        <ScoreBar weighted={orsScore} raw={rawScore} />
+      )}
+      {summaryText && (
+        <div style={{ fontSize: '.85rem', color: 'var(--muted)', marginBottom: 10 }}>
+          {summaryText}
+        </div>
+      )}
+
+      {/* Chain stages */}
+      <div style={{
+        marginBottom: 12, marginTop: 12,
+        fontSize: '.7rem', fontWeight: 700, color: 'var(--blue-light)',
+        textTransform: 'uppercase', letterSpacing: '.04em',
+      }}>
+        {t('ors_chain_title')}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+        <ChainStage
+          label={t('ors_stage_rubric')}
+          state={orsRubricMeta ? 'ok' : 'pending'}
+          detail={orsRubricMeta ? formatRubricStage(orsRubricMeta) : '—'}
+        />
+        <ChainStage
+          label={t('ors_stage_replicator')}
+          state={replicatorState(orsReplicator, orsSeed)}
+          detail={formatReplicatorStage(orsReplicator, orsSeed)}
+        />
+        <ChainStage
+          label={t('ors_stage_phase1')}
+          state={phase1State(orsPhase1)}
+          detail={formatPhase1Stage(orsPhase1)}
+        />
+        <ChainStage
+          label={t('ors_stage_phase2')}
+          state={phase2State(orsGrade)}
+          detail={formatPhase2Stage(orsGrade)}
+        />
+      </div>
+
+      {/* Grading tree (rebuilt from rubric tree + per-leaf grades) */}
+      {orsRubric?.rubric && total > 0 && (
+        <GradingTreeSection
+          rubric={orsRubric.rubric as RubricNode}
+          leafGrades={leafGrades}
+          passed={passed}
+          total={total}
+          t={t}
+        />
+      )}
+      {/* Fallback: flat per-leaf list when rubric tree is unavailable. */}
+      {!orsRubric?.rubric && total > 0 && (
+        <details style={{ marginBottom: 8 }}>
+          <summary style={{
+            cursor: 'pointer', fontSize: '.78rem', color: 'var(--muted)',
+            userSelect: 'none', padding: '4px 0',
+          }}>
+            ▸ {t('ors_leaves_header')} ({passed} ✓ / {total - passed} ✗)
+          </summary>
+          <div style={{
+            marginTop: 6, maxHeight: 360, overflowY: 'auto',
+            border: '1px solid var(--border)', borderRadius: 4,
+          }}>
+            {leafGrades.map((lg, i) => (
+              <LeafGradeRow key={lg.id || i} grade={lg}
+                noExplanationLabel={t('ors_no_explanation')} />
+            ))}
+          </div>
+        </details>
+      )}
+
+      {/* Generation Logs (per-stage view) */}
+      <GenerationLogs
+        ckptId={ckptId}
+        orsRubricMeta={orsRubricMeta}
+        orsRubric={orsRubric}
+        orsReplicator={orsReplicator}
+        orsSeed={orsSeed}
+        orsPhase1={orsPhase1}
+        reproLog={reproLog}
+        onToggleLog={onToggleLog}
+        onRefreshLog={onRefreshLog}
+        t={t}
+      />
+
+      {/* Provenance footer */}
+      <Provenance
+        orsGrade={orsGrade}
+        orsPhase1={orsPhase1}
+        orsReplicator={orsReplicator}
+        orsRubricMeta={orsRubricMeta}
+      />
+    </div>
+  );
+}
+
+// ─── Grading tree section (list/tree view toggle) ────────────────────────
+
+function GradingTreeSection({
+  rubric, leafGrades, passed, total, t,
+}: {
+  rubric: RubricNode;
+  leafGrades: any[];
+  passed: number;
+  total: number;
+  t: (key: string) => string;
+}): React.ReactNode {
+  const [view, setView] = useState<'list' | 'tree'>('list');
+  const gradesById = React.useMemo(() => buildGradeMap(leafGrades), [leafGrades]);
+  const toggleBtn = (mode: 'list' | 'tree', label: string) => (
+    <button
+      type="button"
+      onClick={() => setView(mode)}
+      style={{
+        padding: '2px 10px', fontSize: '.7rem', fontWeight: 600,
+        cursor: 'pointer', border: '1px solid var(--border)',
+        background: view === mode ? 'var(--blue-light, #60a5fa)' : 'transparent',
+        color: view === mode ? '#0b1220' : 'var(--muted)',
+        borderRadius: 4,
+      }}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <details open style={{ marginBottom: 8 }}>
+      <summary
+        style={{
+          cursor: 'pointer', fontSize: '.78rem', color: 'var(--muted)',
+          userSelect: 'none', padding: '4px 0',
+        }}
+      >
+        ▸ {t('ors_tree_header')} ({passed} ✓ / {total - passed} ✗)
+      </summary>
+      <div style={{
+        display: 'flex', gap: 4, marginTop: 4, marginBottom: 4,
+      }}>
+        {toggleBtn('list', t('ors_view_list'))}
+        {toggleBtn('tree', t('ors_view_tree'))}
+      </div>
+      {view === 'list' ? (
+        <div
+          style={{
+            marginTop: 6, maxHeight: 460, overflowY: 'auto',
+            border: '1px solid var(--border)', borderRadius: 4,
+            padding: '4px 0',
+          }}
+        >
+          <RubricTreeNode
+            node={rubric}
+            gradesById={gradesById}
+            depth={0}
+            noExplanationLabel={t('ors_no_explanation')}
+          />
+        </div>
+      ) : (
+        <div
+          style={{
+            marginTop: 6,
+            border: '1px solid var(--border)', borderRadius: 4,
+            overflow: 'hidden',
+          }}
+        >
+          <RubricTreeVisualization
+            node={rubric}
+            gradesById={gradesById}
+            noExplanationLabel={t('ors_no_explanation')}
+          />
+        </div>
+      )}
+    </details>
+  );
+}
+
+// ─── Rubric grading tree (recursive PaperBench TaskNode renderer) ────────
+
+type RubricNode = {
+  id?: string;
+  requirements?: string;
+  weight?: number;
+  task_category?: string;
+  finegrained_task_category?: string;
+  sub_tasks?: RubricNode[];
+};
+
+type LeafGrade = Record<string, any>;
+
+function buildGradeMap(leaves: LeafGrade[]): Map<string, LeafGrade> {
+  const m = new Map<string, LeafGrade>();
+  for (const lg of leaves) {
+    if (lg.id) m.set(String(lg.id), lg);
+  }
+  return m;
+}
+
+/** Recursively aggregate weighted score over the subtree rooted at ``node``. */
+function aggregateScore(
+  node: RubricNode,
+  gradesById: Map<string, LeafGrade>,
+): { score: number | null; passed: number; total: number; valid: boolean } {
+  const children = node.sub_tasks || [];
+  if (children.length === 0) {
+    // Leaf — read directly from the grade map.
+    const g = node.id ? gradesById.get(String(node.id)) : undefined;
+    if (!g) return { score: null, passed: 0, total: 1, valid: false };
+    const mean = typeof g.mean_score === 'number' ? g.mean_score
+      : (g.passed_runs ?? 0) > 0 ? 1 : 0;
+    return {
+      score: mean, passed: mean >= 0.5 ? 1 : 0, total: 1, valid: true,
+    };
+  }
+  // Internal — weighted average of children.
+  let totalWeight = 0;
+  let weightedSum = 0;
+  let passedLeaves = 0;
+  let totalLeaves = 0;
+  let anyValid = false;
+  for (const c of children) {
+    const cw = typeof c.weight === 'number' ? c.weight : 1;
+    const sub = aggregateScore(c, gradesById);
+    if (sub.valid && sub.score !== null) {
+      totalWeight += cw;
+      weightedSum += cw * sub.score;
+      anyValid = true;
+    }
+    passedLeaves += sub.passed;
+    totalLeaves += sub.total;
+  }
+  return {
+    score: anyValid && totalWeight > 0 ? weightedSum / totalWeight : null,
+    passed: passedLeaves,
+    total: totalLeaves,
+    valid: anyValid,
+  };
+}
+
+function RubricTreeNode({
+  node, gradesById, depth, noExplanationLabel,
+}: {
+  node: RubricNode;
+  gradesById: Map<string, LeafGrade>;
+  depth: number;
+  noExplanationLabel: string;
+}): React.ReactNode {
+  const children = node.sub_tasks || [];
+  const isLeaf = children.length === 0;
+  const agg = aggregateScore(node, gradesById);
+  const score = agg.score;
+  const isPassed = score !== null && score >= 0.5;
+  const indent = depth * 16;
+  const grade = isLeaf && node.id ? gradesById.get(String(node.id)) : undefined;
+  const explanation: string = String(grade?.explanation || '');
+
+  // Color cue: green if pass, red if fail, yellow if partial
+  const dotColor =
+    score === null ? 'var(--muted)' :
+    score >= 0.7 ? 'var(--green)' :
+    score >= 0.3 ? 'var(--yellow)' :
+    'var(--red)';
+
+  const summaryRow = (
+    <div
+      style={{
+        display: 'flex', gap: 6, alignItems: 'flex-start',
+        padding: '4px 8px', paddingLeft: 8 + indent,
+        fontSize: '.75rem',
+        listStyle: 'none', userSelect: 'none',
+      }}
+    >
+      <span
+        style={{
+          width: 10, height: 10, borderRadius: '50%',
+          background: dotColor, flexShrink: 0,
+          marginTop: 4,
+        }}
+        title={score !== null ? `score=${score.toFixed(3)}` : 'pending'}
+      />
+      {isLeaf && (
+        <span style={{
+          color: isPassed ? 'var(--green)' : 'var(--red)',
+          fontWeight: 700, minWidth: 12,
+        }}>
+          {isPassed ? '✓' : '✗'}
+        </span>
+      )}
+      {node.task_category && isLeaf && (
+        <span style={{
+          fontSize: '.62rem', color: 'var(--muted)',
+          minWidth: 100, padding: '1px 4px',
+          background: 'var(--surface-2, rgba(0,0,0,0.05))',
+          borderRadius: 3, textAlign: 'center',
+          alignSelf: 'flex-start',
+        }}>
+          {node.task_category}
+        </span>
+      )}
+      <span style={{
+        flex: 1, color: 'var(--text)', wordBreak: 'break-word',
+        fontWeight: !isLeaf && depth === 0 ? 600 : 400,
+      }}>
+        {node.requirements || '(unnamed)'}
+      </span>
+      {!isLeaf && (
+        <span style={{ fontSize: '.7rem', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+          {agg.passed}/{agg.total}
+          {score !== null && ` · ${(score * 100).toFixed(0)}%`}
+        </span>
+      )}
+      {node.weight !== undefined && (
+        <span style={{ fontSize: '.7rem', color: 'var(--muted)' }}>
+          w={node.weight}
+        </span>
+      )}
+    </div>
+  );
+
+  if (isLeaf) {
+    return (
+      <details style={{ borderBottom: '1px solid var(--border)' }}>
+        <summary style={{ cursor: 'pointer', listStyle: 'none' }}>
+          {summaryRow}
+        </summary>
+        <div style={{
+          padding: `4px 8px 8px ${30 + indent}px`,
+          fontSize: '.7rem', color: 'var(--muted)',
+          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+        }}>
+          {explanation || noExplanationLabel}
+        </div>
+      </details>
+    );
+  }
+  return (
+    <details open={depth < 1} style={{ borderBottom: '1px solid var(--border)' }}>
+      <summary style={{ cursor: 'pointer', listStyle: 'none' }}>
+        {summaryRow}
+      </summary>
+      <div>
+        {children.map((c, i) => (
+          <RubricTreeNode
+            key={c.id || i}
+            node={c}
+            gradesById={gradesById}
+            depth={depth + 1}
+            noExplanationLabel={noExplanationLabel}
+          />
+        ))}
+      </div>
+    </details>
+  );
+}
+
+// ─── Stage-by-stage Generation Logs ───────────────────────────────────
+
+function GenerationLogs(
+  { ckptId, orsRubricMeta, orsRubric, orsReplicator, orsSeed, orsPhase1, reproLog, onToggleLog, onRefreshLog, t }:
+  {
+    ckptId: string;
+    orsRubricMeta?: Record<string, any>;
+    orsRubric?: Record<string, any>;
+    orsReplicator?: Record<string, any>;
+    orsSeed?: Record<string, any>;
+    orsPhase1?: Record<string, any>;
+    reproLog: { open: boolean; loading: boolean; content: string | null; path: string | null };
+    onToggleLog: () => void;
+    onRefreshLog: () => void;
+    t: (key: string) => string;
+  },
+): React.ReactNode {
+  return (
+    <details style={{ marginTop: 12, marginBottom: 8 }}>
+      <summary style={{
+        cursor: 'pointer', fontSize: '.78rem',
+        color: 'var(--blue-light)', fontWeight: 700,
+        textTransform: 'uppercase', letterSpacing: '.04em',
+        userSelect: 'none', padding: '4px 0',
+      }}>
+        📜 {t('ors_logs_title')}
+      </summary>
+      <div style={{
+        marginTop: 4, display: 'flex', flexDirection: 'column', gap: 6,
+      }}>
+        {/* ① Rubric generation */}
+        <LogStage
+          label={t('ors_stage_rubric')}
+          summary={
+            orsRubricMeta
+              ? `${orsRubricMeta.model || '?'} · ${orsRubricMeta.leaves_count ?? '?'} leaves`
+              + (orsRubricMeta.target_leaf_count
+                  ? ` · target=${orsRubricMeta.target_leaf_count}` : '')
+              : '—'
+          }
+          warnings={(orsRubricMeta?.warnings as string[]) || []}
+        >
+          {orsRubricMeta && (
+            <KvList
+              items={[
+                ['model', orsRubricMeta.model],
+                ['leaves_count', orsRubricMeta.leaves_count],
+                ['depth', orsRubricMeta.depth],
+                ['target_leaf_count', orsRubricMeta.target_leaf_count],
+                ['auto_computed_target', orsRubricMeta.auto_computed_target],
+                ['paper_sha256', truncSha(orsRubricMeta.paper_sha256)],
+                ['rubric_sha256', truncSha(orsRubricMeta.rubric_sha256)],
+                ['prompt_sha256', truncSha(orsRubricMeta.prompt_sha256)],
+              ]}
+            />
+          )}
+          {orsRubricMeta?.category_breakdown && (
+            <KvList items={
+              Object.entries(orsRubricMeta.category_breakdown as Record<string, any>)
+                .map(([k, v]) => [`category::${k}`, v])
+            } />
+          )}
+          {orsRubric?.reproduce_contract && (
+            <KvList items={[
+              ['expected_artifacts',
+                JSON.stringify(orsRubric.reproduce_contract.expected_artifacts || [])],
+              ['max_runtime_sec', orsRubric.reproduce_contract.max_runtime_sec],
+            ]} />
+          )}
+        </LogStage>
+
+        {/* ② Replicator (or EAR seed) */}
+        <LogStage
+          label={t('ors_stage_replicator')}
+          summary={(() => {
+            if (orsSeed?.populated) {
+              return `EAR-seeded · ${fileCount(orsSeed.files)} files`;
+            }
+            if (orsReplicator?.populated) {
+              return `LLM (${orsReplicator.model || '?'}) · ${fileCount(orsReplicator.files)} files`;
+            }
+            return '—';
+          })()}
+          warnings={(orsReplicator?.warnings as string[]) || []}
+        >
+          {orsSeed?.populated && (
+            <KvList items={[
+              ['mode', 'EAR / curated bundle'],
+              ['files', formatFiles(orsSeed.files)],
+              ['bundle_sha256', truncSha(orsSeed.bundle_sha256)],
+              ['dest', orsSeed.dest],
+            ]} />
+          )}
+          {orsReplicator?.populated && (
+            <>
+              <KvList items={[
+                ['mode', 'LLM (paper → reproduce.sh)'],
+                ['model', orsReplicator.model],
+                ['language', orsReplicator.language],
+                ['max_runtime_sec', orsReplicator.max_runtime_sec],
+                ['files', formatFiles(orsReplicator.files)],
+                ['expected_artifacts',
+                  JSON.stringify(orsReplicator.expected_artifacts || [])],
+                ['prompt_sha256', truncSha(orsReplicator.prompt_sha256)],
+              ]} />
+              {orsReplicator.notes && (
+                <CollapsibleText label="notes" content={String(orsReplicator.notes)} />
+              )}
+            </>
+          )}
+          {orsReplicator?.error && (
+            <KvList items={[['error', String(orsReplicator.error)]]} />
+          )}
+          {/* File viewers — fetch reproduce.sh and any source on demand. */}
+          {(orsReplicator?.populated || orsSeed?.populated) && ckptId && (
+            <FileViewers
+              ckptId={ckptId}
+              files={asFileList(orsReplicator?.files ?? orsSeed?.files)}
+              prefix="repro_sandbox"
+            />
+          )}
+        </LogStage>
+
+        {/* ③ Phase 1 (build/run) — folds the existing reproduce.log toggle */}
+        <LogStage
+          label={t('ors_stage_phase1')}
+          summary={(() => {
+            if (!orsPhase1) return '—';
+            if (!orsPhase1.executed) return orsPhase1.skipped_reason || 'skipped';
+            const sb = orsPhase1.sandbox_kind || '?';
+            const part = orsPhase1.partition ? `:${orsPhase1.partition}` : '';
+            return `${sb}${part} · exit ${orsPhase1.exit_code} `
+              + `· ${typeof orsPhase1.elapsed_sec === 'number' ? orsPhase1.elapsed_sec.toFixed(1) : '?'}s`;
+          })()}
+        >
+          {orsPhase1 && (
+            <KvList items={[
+              ['executed', orsPhase1.executed],
+              ['exit_code', orsPhase1.exit_code],
+              ['sandbox_kind', orsPhase1.sandbox_kind],
+              ['partition', orsPhase1.partition],
+              ['cpus', orsPhase1.cpus],
+              ['walltime', orsPhase1.walltime],
+              ['elapsed_sec', orsPhase1.elapsed_sec],
+              ['missing', JSON.stringify(orsPhase1.missing || [])],
+              ['artifacts', `${(orsPhase1.artifacts || []).length} files`],
+            ]} />
+          )}
+          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+            <Button onClick={onToggleLog} style={{ fontSize: '.7rem', padding: '2px 8px' }}>
+              {reproLog.open ? t('repro_log_hide') : t('repro_log_show')}
+            </Button>
+            {reproLog.open && (
+              <Button
+                onClick={onRefreshLog}
+                style={{ fontSize: '.7rem', padding: '2px 8px' }}
+                disabled={reproLog.loading}
+                title={t('repro_log_refresh')}
+              >
+                {t('repro_log_refresh')}
+              </Button>
+            )}
+          </div>
+          {reproLog.open && (
+            <div style={{
+              border: '1px solid var(--border)', borderRadius: 4,
+              marginTop: 6, maxHeight: 320, overflow: 'auto',
+              background: 'var(--bg)',
+            }}>
+              {reproLog.path && (
+                <div style={{
+                  fontSize: '.66rem', color: 'var(--muted)',
+                  padding: '4px 8px', borderBottom: '1px solid var(--border)',
+                  fontFamily: 'monospace',
+                }}>
+                  {reproLog.path}
+                </div>
+              )}
+              {reproLog.loading ? (
+                <div style={{ padding: 8, fontSize: '.72rem', color: 'var(--muted)' }}>
+                  {t('repro_log_loading')}
+                </div>
+              ) : reproLog.content ? (
+                <pre style={{
+                  margin: 0, padding: '6px 10px',
+                  fontSize: '.68rem', lineHeight: 1.45,
+                  fontFamily: 'monospace',
+                  whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                  color: 'var(--text)',
+                }}>
+                  {reproLog.content}
+                </pre>
+              ) : (
+                <div style={{ padding: 8, fontSize: '.72rem', color: 'var(--muted)' }}>
+                  {t('repro_log_empty')}
+                </div>
+              )}
+            </div>
+          )}
+        </LogStage>
+      </div>
+    </details>
+  );
+}
+
+function LogStage(
+  { label, summary, warnings, children }: {
+    label: string;
+    summary: string;
+    warnings?: string[];
+    children?: React.ReactNode;
+  },
+): React.ReactNode {
+  return (
+    <details style={{
+      border: '1px solid var(--border)', borderRadius: 4,
+      background: 'var(--surface-2, rgba(0,0,0,0.02))',
+    }}>
+      <summary style={{
+        cursor: 'pointer', padding: '6px 10px',
+        fontSize: '.75rem', userSelect: 'none',
+        display: 'flex', gap: 8, alignItems: 'baseline',
+      }}>
+        <span style={{ fontWeight: 600, minWidth: 160 }}>{label}</span>
+        <span style={{ flex: 1, color: 'var(--muted)' }}>{summary}</span>
+        {warnings && warnings.length > 0 && (
+          <span style={{ fontSize: '.7rem', color: 'var(--yellow)' }}>
+            ⚠ {warnings.length}
+          </span>
+        )}
+      </summary>
+      <div style={{ padding: '4px 12px 8px 24px' }}>
+        {children}
+        {warnings && warnings.length > 0 && (
+          <CollapsibleText
+            label="warnings"
+            content={warnings.map((w) => `• ${w}`).join('\n')}
+          />
+        )}
+      </div>
+    </details>
+  );
+}
+
+function KvList({ items }: { items: Array<[string, any]> }): React.ReactNode {
+  const visible = items.filter(([_, v]) => v !== undefined && v !== null && v !== '');
+  if (visible.length === 0) return null;
+  return (
+    <div style={{
+      display: 'grid', gridTemplateColumns: 'auto 1fr',
+      columnGap: 8, rowGap: 2, fontSize: '.7rem',
+      fontFamily: 'monospace', marginTop: 4,
+    }}>
+      {visible.map(([k, v]) => (
+        <React.Fragment key={k}>
+          <span style={{ color: 'var(--muted)' }}>{k}:</span>
+          <span style={{ wordBreak: 'break-all', color: 'var(--text)' }}>{String(v)}</span>
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
+function CollapsibleText({ label, content }: { label: string; content: string }): React.ReactNode {
+  return (
+    <details style={{ marginTop: 6 }}>
+      <summary style={{
+        cursor: 'pointer', fontSize: '.7rem', color: 'var(--muted)',
+        userSelect: 'none',
+      }}>
+        ▸ {label}
+      </summary>
+      <pre style={{
+        margin: '4px 0 0 0', padding: '6px 8px',
+        fontSize: '.68rem', lineHeight: 1.45,
+        fontFamily: 'monospace',
+        whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+        background: 'var(--bg)',
+        border: '1px solid var(--border)', borderRadius: 4,
+        maxHeight: 240, overflow: 'auto',
+      }}>
+        {content}
+      </pre>
+    </details>
+  );
+}
+
+function FileViewers(
+  { ckptId, files, prefix }: { ckptId: string; files: string[]; prefix?: string },
+): React.ReactNode {
+  // Show a "Show <file>" button per file; lazily fetch + cache content.
+  const codeFiles = files.filter((f) =>
+    /\.(sh|py|cpp|c|h|hpp|js|ts|rs|go|java|R|jl|m|tex|md|txt|json|yaml|yml|toml)$/i.test(f)
+  );
+  if (codeFiles.length === 0) return null;
+  return (
+    <div style={{ marginTop: 6 }}>
+      {codeFiles.map((f) => (
+        <FileViewer
+          key={f}
+          ckptId={ckptId}
+          path={prefix ? `${prefix}/${f}` : f}
+          label={f}
+        />
+      ))}
+    </div>
+  );
+}
+
+function FileViewer(
+  { ckptId, path, label }: { ckptId: string; path: string; label: string },
+): React.ReactNode {
+  const [open, setOpen] = useState(false);
+  const [content, setContent] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleToggle = async () => {
+    if (open) { setOpen(false); return; }
+    setOpen(true);
+    if (content !== null) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const j = await fetchCheckpointFilecontent(ckptId, path);
+      setContent(typeof j.content === 'string' ? j.content : JSON.stringify(j, null, 2));
+    } catch (e: any) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ marginTop: 4 }}>
+      <Button
+        onClick={handleToggle}
+        style={{ fontSize: '.7rem', padding: '2px 8px' }}
+      >
+        {open ? `▾ ${label}` : `▸ ${label}`}
+      </Button>
+      {open && (
+        <div style={{
+          marginTop: 4,
+          border: '1px solid var(--border)', borderRadius: 4,
+          maxHeight: 320, overflow: 'auto',
+          background: 'var(--bg)',
+        }}>
+          {loading ? (
+            <div style={{ padding: 8, fontSize: '.7rem', color: 'var(--muted)' }}>
+              loading…
+            </div>
+          ) : error ? (
+            <div style={{ padding: 8, fontSize: '.7rem', color: 'var(--red)' }}>
+              {error}
+            </div>
+          ) : (
+            <pre style={{
+              margin: 0, padding: '6px 10px',
+              fontSize: '.66rem', lineHeight: 1.4,
+              fontFamily: 'monospace',
+              whiteSpace: 'pre', overflow: 'auto',
+              color: 'var(--text)',
+            }}>
+              {content}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function truncSha(s: any): string | undefined {
+  if (typeof s !== 'string' || !s) return undefined;
+  return s.length > 16 ? `${s.slice(0, 16)}…` : s;
+}
+
+// `files` is either a list of paths (replicator) or an int file_count (EAR seed).
+function fileCount(files: unknown): number {
+  if (Array.isArray(files)) return files.length;
+  if (typeof files === 'number' && Number.isFinite(files)) return files;
+  return 0;
+}
+
+function asFileList(files: unknown): string[] {
+  return Array.isArray(files) ? (files as string[]) : [];
+}
+
+function formatFiles(files: unknown): string {
+  if (Array.isArray(files)) return files.join(', ');
+  if (typeof files === 'number' && Number.isFinite(files)) return `${files} files`;
+  return '';
+}
+
+function ScoreBar({ weighted, raw }: { weighted: number; raw?: number }): React.ReactNode {
+  const wpct = Math.max(0, Math.min(1, weighted)) * 100;
+  const rpct = raw !== undefined ? Math.max(0, Math.min(1, raw)) * 100 : null;
+  const fillColor = wpct >= 70 ? 'var(--green)' : wpct >= 30 ? 'var(--yellow)' : 'var(--red)';
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div
+        style={{
+          width: '100%', height: 8, background: 'var(--bg)',
+          border: '1px solid var(--border)', borderRadius: 4, overflow: 'hidden',
+          position: 'relative',
+        }}
+      >
+        <div
+          style={{
+            width: `${wpct}%`, height: '100%',
+            background: fillColor, transition: 'width 0.3s ease',
+          }}
+        />
+        {rpct !== null && (
+          <div
+            style={{
+              position: 'absolute', top: 0, left: `${rpct}%`,
+              width: 2, height: '100%', background: 'var(--text)', opacity: 0.5,
+            }}
+            title={`raw=${(rpct).toFixed(1)}%`}
+          />
+        )}
+      </div>
+      <div style={{ fontSize: '.7rem', color: 'var(--muted)', marginTop: 2 }}>
+        weighted {weighted.toFixed(3)}
+        {raw !== undefined && ` · raw ${raw.toFixed(3)}`}
+      </div>
+    </div>
+  );
+}
+
+type StageState = 'ok' | 'fail' | 'partial' | 'pending' | 'skipped';
+
+function ChainStage(
+  { label, state, detail }: { label: string; state: StageState; detail: React.ReactNode },
+): React.ReactNode {
+  const icon = state === 'ok' ? '✓' : state === 'fail' ? '✗' : state === 'partial' ? '◐' : '·';
+  const color =
+    state === 'ok' ? 'var(--green)' :
+    state === 'fail' ? 'var(--red)' :
+    state === 'partial' ? 'var(--yellow)' :
+    'var(--muted)';
+  return (
+    <div
+      style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '4px 8px',
+        background: 'var(--surface-2, rgba(0,0,0,0.04))',
+        borderRadius: 4,
+      }}
+    >
+      <span
+        style={{
+          width: 18, height: 18, lineHeight: '18px',
+          textAlign: 'center', borderRadius: '50%',
+          background: color, color: 'var(--bg)',
+          fontSize: '.7rem', fontWeight: 700, flexShrink: 0,
+        }}
+      >
+        {icon}
+      </span>
+      <span style={{ fontSize: '.78rem', fontWeight: 600, minWidth: 160 }}>
+        {label}
+      </span>
+      <span style={{ fontSize: '.75rem', color: 'var(--muted)', flex: 1, wordBreak: 'break-word' }}>
+        {detail}
+      </span>
+    </div>
+  );
+}
+
+function formatRubricStage(meta: Record<string, any>): React.ReactNode {
+  const leaves = meta.leaves_count;
+  const model = meta.model;
+  const artifacts = (meta as any).expected_artifacts;
+  const parts: string[] = [];
+  if (typeof leaves === 'number') parts.push(`${leaves} leaves`);
+  if (model) parts.push(String(model));
+  if (Array.isArray(artifacts) && artifacts.length) {
+    parts.push(`${artifacts.length} expected artifacts`);
+  }
+  return parts.join(' · ') || JSON.stringify(meta).slice(0, 120);
+}
+
+function replicatorState(
+  replicator: Record<string, any> | undefined,
+  seed: Record<string, any> | undefined,
+): StageState {
+  if (seed?.populated) return 'ok';            // EAR seed wins
+  if (replicator?.populated) return 'ok';
+  if (replicator?.error) return 'fail';
+  return 'pending';
+}
+
+function formatReplicatorStage(
+  replicator: Record<string, any> | undefined,
+  seed: Record<string, any> | undefined,
+): React.ReactNode {
+  if (seed?.populated) {
+    return `EAR-seeded · ${fileCount(seed.files)} files`
+      + (seed.bundle_sha256 ? ` · ${String(seed.bundle_sha256).slice(0, 12)}…` : '');
+  }
+  if (replicator?.populated) {
+    return `LLM (${replicator.model || '?'}) · ${fileCount(replicator.files)} files`;
+  }
+  if (replicator?.error) return `error: ${String(replicator.error).slice(0, 100)}`;
+  if (replicator?.skipped_reason) return `skipped: ${replicator.skipped_reason}`;
+  return '—';
+}
+
+function phase1State(p1: Record<string, any> | undefined): StageState {
+  if (!p1) return 'pending';
+  if (p1.executed === false) return 'skipped';
+  if (p1.exit_code === 0 && (!p1.missing || p1.missing.length === 0)) return 'ok';
+  if (p1.exit_code === 0) return 'partial';   // ran but artifacts missing
+  return 'fail';
+}
+
+function formatPhase1Stage(p1: Record<string, any> | undefined): React.ReactNode {
+  if (!p1) return '—';
+  if (p1.executed === false) return p1.skipped_reason || 'skipped';
+  const sandbox = p1.sandbox_kind || '?';
+  const partition = p1.partition ? `:${p1.partition}` : '';
+  const exit_ = p1.exit_code !== undefined ? `exit ${p1.exit_code}` : '';
+  const elapsed = typeof p1.elapsed_sec === 'number' ? `${p1.elapsed_sec.toFixed(1)}s` : '';
+  const missing = p1.missing && p1.missing.length ? `${p1.missing.length} missing` : '0 missing';
+  return [`${sandbox}${partition}`, exit_, elapsed, missing].filter(Boolean).join(' · ');
+}
+
+function phase2State(grade: Record<string, any> | undefined): StageState {
+  if (!grade) return 'pending';
+  if (grade.error || grade._parse_error) return 'fail';
+  if (grade.degraded) return 'partial';
+  if (typeof grade.ors_score === 'number') {
+    if (grade.ors_score >= 0.7) return 'ok';
+    if (grade.ors_score >= 0.3) return 'partial';
+    return 'fail';
+  }
+  return 'pending';
+}
+
+function formatPhase2Stage(grade: Record<string, any> | undefined): React.ReactNode {
+  if (!grade) return '—';
+  if (grade.error) return `error: ${String(grade.error).slice(0, 100)}`;
+  const score = typeof grade.ors_score === 'number' ? `${(grade.ors_score * 100).toFixed(1)}%` : '?';
+  const judge = grade.judge_model || '?';
+  const nRuns = grade.n_runs ? `n_runs=${grade.n_runs}` : '';
+  const elapsed = typeof grade.elapsed_sec === 'number' ? `${grade.elapsed_sec.toFixed(1)}s` : '';
+  const degraded = grade.degraded ? '⚠ degraded' : '';
+  return [score, judge, nRuns, elapsed, degraded].filter(Boolean).join(' · ');
+}
+
+function LeafGradeRow({ grade, noExplanationLabel }: {
+  grade: Record<string, any>;
+  noExplanationLabel?: string;
+}): React.ReactNode {
+  const passed = (grade.passed_runs ?? 0) > 0;
+  const cat = grade.task_category || '—';
+  const explanation: string = String(grade.explanation || '');
+  return (
+    <details style={{ borderBottom: '1px solid var(--border)' }}>
+      <summary
+        style={{
+          cursor: 'pointer', padding: '6px 8px', display: 'flex',
+          gap: 8, alignItems: 'flex-start', fontSize: '.75rem',
+          listStyle: 'none', userSelect: 'none',
+        }}
+      >
+        <span style={{
+          color: passed ? 'var(--green)' : 'var(--red)',
+          fontWeight: 700, minWidth: 14,
+        }}>
+          {passed ? '✓' : '✗'}
+        </span>
+        <span style={{
+          fontSize: '.65rem', color: 'var(--muted)',
+          minWidth: 110, padding: '1px 4px',
+          background: 'var(--surface-2, rgba(0,0,0,0.05))',
+          borderRadius: 3, textAlign: 'center',
+          alignSelf: 'flex-start',
+        }}>
+          {cat}
+        </span>
+        <span style={{ flex: 1, color: 'var(--text)', wordBreak: 'break-word' }}>
+          {grade.requirements}
+        </span>
+        {grade.weight !== undefined && (
+          <span style={{ fontSize: '.7rem', color: 'var(--muted)' }}>
+            w={grade.weight}
+          </span>
+        )}
+      </summary>
+      <div
+        style={{
+          padding: '4px 8px 8px 30px',
+          fontSize: '.72rem', color: 'var(--muted)',
+          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+        }}
+      >
+        {explanation || noExplanationLabel || '(no explanation)'}
+      </div>
+    </details>
+  );
+}
+
+function Provenance(
+  { orsGrade, orsPhase1, orsReplicator, orsRubricMeta }:
+  {
+    orsGrade?: Record<string, any>;
+    orsPhase1?: Record<string, any>;
+    orsReplicator?: Record<string, any>;
+    orsRubricMeta?: Record<string, any>;
+  },
+): React.ReactNode {
+  const items: [string, string][] = [];
+  if (orsGrade?.rubric_sha256) {
+    items.push(['rubric_sha256', String(orsGrade.rubric_sha256).slice(0, 16) + '…']);
+  }
+  if (orsRubricMeta?.prompt_sha256) {
+    items.push(['rubric_prompt_sha256', String(orsRubricMeta.prompt_sha256).slice(0, 16) + '…']);
+  }
+  if (orsReplicator?.prompt_sha256) {
+    items.push(['replicator_prompt_sha256', String(orsReplicator.prompt_sha256).slice(0, 16) + '…']);
+  }
+  if (orsPhase1?.partition) {
+    items.push(['partition', String(orsPhase1.partition)]);
+  }
+  if (orsPhase1?.cpus) {
+    items.push(['cpus', String(orsPhase1.cpus)]);
+  }
+  if (orsPhase1?.walltime) {
+    items.push(['walltime', String(orsPhase1.walltime)]);
+  }
+  if (!items.length) return null;
+  return (
+    <div
+      style={{
+        marginTop: 10, paddingTop: 8,
+        borderTop: '1px solid var(--border)',
+        fontSize: '.7rem', color: 'var(--muted)',
+        fontFamily: 'monospace', display: 'grid',
+        gridTemplateColumns: 'auto 1fr', columnGap: 8, rowGap: 2,
+      }}
+    >
+      {items.map(([k, v]) => (
+        <React.Fragment key={k}>
+          <span>{k}:</span>
+          <span style={{ wordBreak: 'break-all' }}>{v}</span>
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
+// ─── Legacy renderer (pre-§4.1 reproducibility_report shape) ───────────
+
+export function renderLegacyRepro({ repro, t }: { repro: any; t: (key: string) => string }): React.ReactNode {
+  const reproObj = (typeof repro === 'string' ? tryParseJson(repro) : repro);
+
+  if (!reproObj || typeof reproObj !== 'object') {
+    return <div style={{ fontSize: '.85rem', color: 'var(--muted)' }}>{String(repro)}</div>;
+  }
+
+  const reproRecord = reproObj as Record<string, any>;
+
+  // Skill-not-found error
+  if (
+    reproRecord.error &&
+    (String(reproRecord.error).indexOf('not found') >= 0 ||
+      String(reproRecord.error).indexOf('Tool') >= 0 ||
+      String(reproRecord.error).indexOf('Available: []') >= 0)
+  ) {
+    return (
+      <>
+        <div style={{ color: 'var(--yellow)', fontSize: '.85rem', padding: 8 }}>
+          {t('repro_skill_unavail')}
+        </div>
+        <details>
+          <summary
+            style={{ fontSize: '.75rem', color: 'var(--muted)', cursor: 'pointer' }}
+          >
+            {t('details')}
+          </summary>
+          <pre style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
+            {reproRecord.error}
+          </pre>
+        </details>
+      </>
+    );
+  }
+
+  const verdict = reproRecord.verdict || reproRecord.status || reproRecord.result || 'unknown';
+  const badgeVariant =
+    verdict === 'REPRODUCED' || verdict === 'PASS' || verdict === 'pass'
+      ? 'green'
+      : verdict === 'FAILED' || verdict === 'FAIL' || verdict === 'fail' || verdict === 'NOT_REPRODUCED'
+        ? 'red'
+        : 'yellow';
+
+  const skip = new Set(['verdict', 'status', 'result', 'summary']);
+
+  return (
+    <>
+      <div style={{ fontSize: '1.1rem', marginBottom: 8 }}>
+        <Badge variant={badgeVariant}>{verdict}</Badge>
+      </div>
+      {reproRecord.summary && (
+        <div style={{ fontSize: '.85rem', color: 'var(--muted)', marginBottom: 8 }}>
+          {reproRecord.summary}
+        </div>
+      )}
+      {Object.keys(reproRecord)
+        .filter((k) => !skip.has(k))
+        .slice(0, 8)
+        .map((k) => (
+          <div key={k} style={{ fontSize: '.8rem', marginTop: 4 }}>
+            <span style={{ color: 'var(--muted)' }}>{k}:</span>{' '}
+            {JSON.stringify(reproRecord[k])}
+          </div>
+        ))}
+    </>
+  );
+}

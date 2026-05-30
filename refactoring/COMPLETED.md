@@ -102,6 +102,37 @@ A requirement file under `refactoring/requirements/` may be deleted only after c
 - Requirement file deleted: yes
 - Completed at: 2026-05-30
 
+## Completed Requirement: 03_frontend_large_component_decomposition.md
+
+- Status: completed (ResultsPage.tsx; remaining 5 components + finer splits moved
+  to follow-up req 15, per 03 §11/§12 which permit incremental multi-PR splits)
+- Summary: Decomposed `components/Results/ResultsPage.tsx` (3177 lines) into the
+  container (`ResultsPage.tsx`, ~1857) plus two sibling files: `resultSections.tsx`
+  (~1161 — all module-scope presentational subcomponents + pure helpers + types
+  that lived below the container) and `PublishYamlEditor.tsx` (~162). Code moved
+  VERBATIM via exact slices; only `export` keywords and minimal import headers
+  added. The container body, the PublishYamlEditor block, and the sections block
+  are each byte-identical to the original modulo export/import lines.
+- PR/Commit: branch `refactoring` (per-requirement local commit)
+- Checks: `npm run typecheck` 0 non-test errors (only the 11 pre-existing
+  `__tests__` jest-dom errors); `npm run build` ✓ (~2.9s); `npm test -- --run`
+  4 passed / 2 failed (pre-existing brittle PaperBench `getByDisplayValue`
+  tests). Independently verified byte-for-byte verbatim of all three moved
+  regions. Adversarial 2-lens review workflow returned behaviorPreserved=true
+  (component identity stable — moved components stay module-scope, imported by
+  reference, not recreated per render; no logic/JSX/default/ordering change).
+- Risks/notes: pre-existing nits left untouched (a local `type RubricNode`
+  structurally mirrors the one in RubricTreeVisualization; `fetchCheckpointFileContent`
+  vs `fetchCheckpointFilecontent` are distinct and both used). The known
+  `activeAbsPath` mid-body state-ordering smell is preserved verbatim (not "fixed").
+  Analysis + safe seams recorded in `refactoring/notes/03_resultspage_decomposition.md`.
+- Follow-up: moved to NEW req `15_frontend_remaining_large_components.md`
+  (Workflow/StepResources/Settings/DetailPanel/Monitor pages; finer split of
+  `resultSections.tsx`; low/medium-risk container seams + `useCheckpointResults`/
+  `useEAR` hooks — coordinate the hooks with `04`).
+- Requirement file deleted: yes
+- Completed at: 2026-05-30
+
 ---
 
 ## Template
