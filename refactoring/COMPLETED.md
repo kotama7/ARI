@@ -63,6 +63,45 @@ A requirement file under `refactoring/requirements/` may be deleted only after c
 - Requirement file deleted: yes
 - Completed at: 2026-05-30
 
+## Completed Requirement: 02_frontend_api_client_consolidation.md
+
+- Status: completed
+- Summary: Moved 14 of 16 component-level raw `fetch` calls into the existing
+  `services/api.ts`. Added lenient PaperBench helpers (`fetchPaperbenchPapers`,
+  `deletePaperbenchPaper`, `estimatePaperbenchCost`, `runPaperbench`,
+  `fetchArxivMetadata`, `importPaperbenchPaper`, `fetchPaperbenchRun`,
+  `fetchPaperbenchRunResults`, `requestPaperbenchReport`) that mirror the
+  components' `fetch().then(r=>r.json())` behavior exactly (these endpoints
+  return 200+{error}, and several call sites have no try/catch, so the helpers
+  deliberately do NOT throw). Added `fetchCheckpointFiletree`; extended
+  `fetchCheckpointFilecontent` with an optional `nodeId`. Updated FileExplorer
+  (filetree, filecontent), PaperRegistryPage (papers, delete), PaperBenchWizard
+  (papers, cost-estimate, run), PaperImportDialog (arxiv, import), ResultsView
+  (run×2, results, report), ResultsPage FileViewer (filecontent). All existing
+  `services/api.ts` exports preserved (additive only).
+- PR/Commit: branch `refactoring` (per-requirement local commit)
+- Checks: `npm run typecheck` — identical to baseline (only the pre-existing
+  `__tests__` jest-dom errors; zero new errors from production changes);
+  `npm run build` — passes (2.8s); `npm test -- --run` — 4 passed / 2 failed,
+  the 2 failures byte-identical to the pre-existing brittle `getByDisplayValue`
+  queries (the PaperBenchWizard test mocks `global.fetch`, which the new helpers
+  still call internally; it fails at `getByDisplayValue('0')` before reaching the
+  launch-POST assertion, so the launch flow is exercised unchanged). No regressions.
+- Risks/known nuances documented: (1) two genuine direct-`fetch` exceptions
+  left with code comments — MonitorPage `/api/logs` (SSE stream via
+  `res.body.getReader()`) and PaperImportDialog `/api/upload` (multipart
+  FormData, distinct from `uploadFile`'s octet-stream contract). (2) Two sites
+  previously checked `res.ok` and showed `HTTP ${status}` (PaperRegistryPage
+  papers, ResultsPage FileViewer); via the helpers the common 200 path is
+  byte-identical, and only the error *text* on a rare hard-HTTP-status failure
+  changes (no component reads a non-2xx body for data). URLs preserved verbatim
+  (encoded params only where the originals encoded them).
+- Follow-up: stronger typing for `any`-typed PaperBench payloads → routed to
+  `06` (viz api schema contract); upload/streaming helper standardization is the
+  req-02 §12 follow-up candidate (no new file needed).
+- Requirement file deleted: yes
+- Completed at: 2026-05-30
+
 ---
 
 ## Template

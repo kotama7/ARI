@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useT } from '../../i18n';
+import { fetchPaperbenchPapers, deletePaperbenchPaper } from '../../services/api';
 
 interface PaperEntry {
   paper_id: string;
@@ -39,9 +40,7 @@ export function PaperRegistryPage() {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch('/api/paperbench/papers');
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const data = await r.json();
+      const data = await fetchPaperbenchPapers();
       setPapers(data.papers || []);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -64,10 +63,7 @@ export function PaperRegistryPage() {
 
   const deletePaper = async (id: string) => {
     if (!confirm(t('pb_confirm_delete'))) return;
-    const r = await fetch(`/api/paperbench/papers/${encodeURIComponent(id)}/delete`, {
-      method: 'POST',
-    });
-    const data = await r.json();
+    const data = await deletePaperbenchPaper(id);
     if (data.deleted) {
       void refresh();
     } else {
