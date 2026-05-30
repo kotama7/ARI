@@ -171,6 +171,44 @@ A requirement file under `refactoring/requirements/` may be deleted only after c
 
 ---
 
+## Completed Requirement: 05_viz_routes_service_extraction.md
+
+- Status: completed (first, lowest-risk slice of routes.py thinning; remaining
+  fat handlers + helpers moved to a follow-up — see Follow-up)
+- Summary: Extracted the experiment process-control concern out of the
+  routes.py dispatch handlers into a new sibling service module
+  ari/viz/api_process.py (consistent with the existing api_*.py layout):
+  _api_gpu_monitor_status() (GET /api/gpu-monitor), _api_gpu_monitor_action()
+  (POST /api/gpu-monitor start/stop), and _api_stop() (POST /api/stop). Logic
+  moved verbatim (signal escalation, poll/sleep timing, report shape, response
+  keys preserved). The three route branches are now thin: parse -> call service
+  -> self._json (GET gpu-monitor keeps its manual no-CORS response to preserve
+  exact wire bytes). routes.py dropped ~154 lines; the now-dead os/subprocess
+  module imports it left were removed (pre-existing unused asyncio/argparse
+  imports left untouched -- not in scope).
+- PR/Commit: branch refactoring (per-requirement local commit)
+- Checks: full pytest ari-core/tests = 2218 passed / 16 skipped / 0 failed
+  (2210 baseline + 8 new). python -m ari.viz.server --help works (the real
+  entrypoint, confirmed). Added tests/test_api_process.py (8 real
+  characterization tests) since the pre-existing /api/stop and gpu-monitor tests
+  re-implement the logic inline and never call the handler. _Handler and
+  _write_access_log re-exports from server.py preserved; dispatch order
+  untouched; 10MB/413 do_POST guard (asserted via inspect.getsource) untouched.
+- Risks/notes: dispatch order is load-bearing (first-match-wins prefix/suffix
+  matches + GET static fall-through) and was NOT reordered. The catalog of all
+  96 routes + dispatch hazards + the deferred-handler plan is in
+  refactoring/notes/05_routes_catalog.md.
+- Follow-up: the larger fat handlers remain for a future pass -- the /state
+  aggregate builder (~447 lines; has a no-ensure_ascii + no-CORS serialization
+  quirk, must not switch to _json), /api/container/pull, the static-serving +
+  access-log helpers, and the SSE scaffolding. Recorded in
+  refactoring/notes/05_routes_catalog.md; route to a new follow-up requirement
+  when picked up. Reducing ari.viz.state globals stays with 07.
+- Requirement file deleted: yes
+- Completed at: 2026-05-30
+
+---
+
 ## Template
 
 Copy this block when recording a completed requirement.
