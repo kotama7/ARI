@@ -157,6 +157,18 @@ export interface ReviewScoreDimension {
   description?: string;
 }
 
+// Documented review verdict. The trailing `| string` is intentional: it keeps
+// the resolved type as plain `string` (so all existing `decision: string`
+// consumers compile unchanged) while documenting the known values for
+// readability/autocomplete. Do NOT remove `| string` — see refactoring req 04.
+export type ReviewDecision =
+  | 'accept'
+  | 'reject'
+  | 'weak_accept'
+  | 'weak_reject'
+  | 'borderline'
+  | string;
+
 export interface ReviewReport {
   abstract_score: number | null;
   body_score: number | null;
@@ -173,7 +185,7 @@ export interface ReviewReport {
   weaknesses?: string;
   questions?: string;
   limitations?: string;
-  decision?: 'accept' | 'reject' | 'weak_accept' | 'weak_reject' | 'borderline' | string;
+  decision?: ReviewDecision;
   confidence?: number | null;
   reflection_trace?: unknown[];
   fewshot_sources?: Array<{ id: string; title?: string; score?: number; license?: string }>;

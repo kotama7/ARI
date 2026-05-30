@@ -133,6 +133,42 @@ A requirement file under `refactoring/requirements/` may be deleted only after c
 - Requirement file deleted: yes
 - Completed at: 2026-05-30
 
+## Completed Requirement: 04_frontend_state_hooks_types_cleanup.md
+
+- Status: completed
+- Summary: A 3-agent audit found (a) `AppContext.tsx` already well-scoped (no
+  over-broad mixed global state — left unchanged to avoid unrequested churn);
+  (b) the `useApi` hook existed with ZERO consumers (dead code); (c)
+  `types/index.ts` has zero `any` (already uses `unknown`). Made two minimal,
+  behavior-preserving changes: adopted `useApi` in `PaperRegistryPage.tsx` (the
+  single clean semantic twin per the audit — `refresh` aliased to `refetch`,
+  `papers` kept `PaperEntry[]`); and extracted `ReviewReport.decision`'s inline
+  union into a documentary `export type ReviewDecision = ... | string` (trailing
+  `| string` kept, so the resolved type stays exactly `string` and all consumers
+  compile unchanged). Details + audit in
+  `refactoring/notes/04_state_hooks_types_cleanup.md`.
+- PR/Commit: branch `refactoring` (per-requirement local commit)
+- Checks: `npm run typecheck` 11 total / 0 non-test (pre-existing `__tests__`
+  jest-dom errors only); `npm run build` exit 0; `npm test -- --run` 4 passed /
+  2 failed (pre-existing brittle PaperBench tests), 0 resolve errors. Adversarial
+  verification confirmed behavior preserved (PaperRegistryPage lens
+  behaviorPreserved=true; types alias confirmed to resolve to `string`).
+- Risks/notes: `ExperimentsPage.tsx` was NOT migrated — the audit flagged it
+  `safeToAdoptSharedHook:false` (it builds a `subById` Record keyed by run_id and
+  deliberately swallows fetch errors with no loading/error UI), so adopting
+  `useApi` there would change observable behavior. Left unchanged. A transient
+  harness output-capture outage mid-session also briefly corrupted
+  `PaperBenchWizard.tsx` with stray imports; detected via vitest and restored to
+  HEAD (it has no req-04 changes), re-verified green. Other deferred (would change
+  behavior): `MonitorPage` (interval polling vs mount-only useApi), `SettingsPage`
+  (multi-source load + save/dirty), `ResultsView` (poll loop), and extracting
+  AppContext's inline poll to a `usePolling` hook — all routed to req 15 / a
+  future `useApi` polling option.
+- Follow-up: MonitorPage/SettingsPage/ResultsView useApi adoption + AppContext
+  poll extraction → req 15 / a future useApi polling option.
+- Requirement file deleted: yes
+- Completed at: 2026-05-30
+
 ---
 
 ## Template
