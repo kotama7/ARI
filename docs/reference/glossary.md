@@ -14,7 +14,11 @@ sources:
     role: implementation
   - path: ari-skill-paper-re
     role: implementation
-last_verified: 2026-05-26
+  - path: ari-core/ari/paths.py
+    role: implementation
+  - path: ari-core/ari/checkpoint.py
+    role: implementation
+last_verified: 2026-05-30
 ---
 
 # Glossary
@@ -142,12 +146,48 @@ primary metric, run once at the root node via `generate_ideas`. See
 
 ## State & publication
 
+**workspace (root)**
+The top-level directory that holds every run's data: `checkpoints/`,
+`experiments/`, `staging/`, and `paper_registry/`. Resolved by
+`PathManager.root` (`ari/paths.py`); the active run is pinned via the
+`ARI_CHECKPOINT_DIR` env var (`PathManager.from_checkpoint_dir` recovers the
+root from a checkpoint path). There is no global `~/.ari` config dir — all
+per-run config (`settings.json`, `memory.json`) lives inside the checkpoint.
+
+**run**
+One experiment execution, identified by a `run_id` (`YYYYMMDDHHMMSS_<slug>`).
+On disk a run spans two sibling trees keyed by that id: the **checkpoint**
+`checkpoints/{run_id}/` (run-level state) and the experiments bucket
+`experiments/{run_id}/` (per-node work dirs). "run" and "checkpoint" are often
+used interchangeably; precisely, the checkpoint is the run's state directory.
+
 **checkpoint**
 The self-contained directory for one run, `{workspace}/checkpoints/{run_id}/`
 where `run_id` is `YYYYMMDDHHMMSS_<slug>`. All state lives here; `PathManager`
 (`ari/paths.py`) is the single source of truth. API keys are never stored here —
-they come from `.env` or the environment. See
-[Architecture → File Structure](../concepts/architecture.md#file-structure).
+they come from `.env` or the environment. Holds `experiment.md`, `meta.json`,
+`launch_config.json`, `tree.json` / `nodes_tree.json` (the serialized node
+tree), `results.json`, `idea.json`, `cost_trace.jsonl` / `cost_summary.json`,
+`settings.json`, `memory.json`, `ari.log`, `.ari_pid`, and `uploads/`. See
+[Architecture → File Structure](../concepts/architecture.md#file-structure) and
+[`refactoring/notes/07_checkpoint_model.md`](../../refactoring/notes/07_checkpoint_model.md)
+for the full layout + the read-path resolvers.
+
+**node work_dir**
+Where a node's files physically live: `{workspace}/experiments/{run_id}/{node_id}/`
+(`PathManager.node_work_dir`) — under `experiments/`, *not* the checkpoint. The
+agent writes scripts/data/binaries here; `node_report.json` is written here on
+completion. A legacy layout placed each node's tree at
+`{checkpoint}/node_*/tree.json` (still read as a fallback by
+`ari.checkpoint.load_nodes_tree`).
+
+**artifact**
+A non-metadata file produced inside a node work_dir. Defined negatively by
+`PathManager.is_meta_file` / `META_FILES`: ARI metadata (`tree.json`, `*.log`,
+`node_report.json`, `*_access.jsonl`, …) is diagnostics, never copied into node
+work_dirs nor surfaced as an artifact. Cross-checkpoint paper artifacts live
+under `paper_registry/papers/<paper_id>/`. Publication-curated artifacts ship in
+the **EAR** bundle.
 
 **EAR (Experiment Artifact Repository)**
 The deterministically-built `ear/` bundle (code, input data, figures, README,
