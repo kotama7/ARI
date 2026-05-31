@@ -39,6 +39,7 @@ targets the like-named module under `ari/`.
 - `test_disabled_tools_flow.py` — disabled-tools flow.
 - `test_dynamic_axes.py` — dynamic evaluation axes.
 - `test_ear.py` — EAR (experiment/analysis/report).
+- `test_env_write_quoting.py` — .env-write quoting guard (api_settings upsert).
 - `test_evaluator_axis_mode.py` — evaluator axis mode.
 - `test_evaluator_composite.py` — evaluator composite scoring.
 - `test_event_loop_and_csv.py` — event loop + CSV logging.

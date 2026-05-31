@@ -297,6 +297,52 @@ A requirement file under `refactoring/requirements/` may be deleted only after c
 
 ---
 
+## Completed Requirement: 08_config_settings_workflow_unification.md
+
+- Status: completed (documentation + ONE trivial behavior-neutral extraction;
+  central loader + broader dedup deferred per §5/§11 — see Follow-up)
+- Summary: Assessment-first. A 3-agent mapping of every config source produced:
+  (1) docs/reference/configuration.md gains a "Configuration Precedence
+  (observed)" section — the TWO precedence chains (runtime/core-CLI: ARI_* env >
+  YAML > pydantic default, via load_config/_apply_*_env_overrides; vs GUI
+  settings: saved settings.json > env > workflow.yaml > default, via
+  _api_get_settings), the env-var hand-off bridge (GUI /api/launch writes ARI_*
+  env + launch_config.json; CLI resolves via env, not by re-parsing
+  launch_config.json), a per-setting table (llm_model runtime/display/settings,
+  provider, language, port=8765, SLURM partition, checkpoint dir), and
+  falsy-vs-missing handling; last_verified -> 2026-05-30. (2)
+  refactoring/notes/08_config_precedence.md — source inventory, the three
+  config-model layers (ari.config typed + finder; ari.configs lookup tables;
+  ari.public.config_schema re-export), the duplication catalog with per-item
+  verdicts, and the central-loader proposal. The ONE trivial+behavior-neutral
+  extraction: the two near-identical .env-write blocks in api_settings.py ->
+  a shared _upsert_env_key(name, value, *, quote) helper; the quote flag
+  PRESERVES each caller's exact output (KEY="v" via _api_save_env_key vs KEY=v
+  via _api_save_settings) — unifying would be a behavior change, so the
+  difference is kept.
+- PR/Commit: branch refactoring (per-requirement local commit)
+- Checks: pytest ari-core/tests = 2229 passed / 16 skipped / 0 failed (2226 prior
+  + 3 new .env-write quoting guards in tests/test_env_write_quoting.py, added
+  BEFORE the extraction per §8). Adversarial verification: behaviorPreserved=true
+  — confirmed the helper is byte-identical to both originals (6-step match, live
+  env var set to the raw unquoted value in both paths, gate ordering preserved),
+  and the 3 guards provably FAIL under a flipped-quote mutation (not vacuous).
+- Risks/notes: no behavior/precedence change; .env/settings.json/start.sh/
+  setup_env.sh semantics unchanged. Precedence documented as observed, locked by
+  the existing config suite (test_config/default_provider/launch_config/
+  settings_*) before the extraction.
+- Follow-up: deferred (each needs guard tests first or is behavior-affecting):
+  central ari.config resolver subsuming the workflow.yaml fallback +
+  launch_config.json chain (8 sites, brittle source-string tests) + profile
+  resolution; migrate viz workflow.yaml discovery to finder helpers; reduce
+  config-related ari.viz.state fields (overlaps req-07 follow-up); re-derive
+  ARI_PAPER_LANGUAGE from launch_config.json on the CLI path (a behavior fix).
+  Recorded in refactoring/notes/08_config_precedence.md §7.
+- Requirement file deleted: yes
+- Completed at: 2026-05-30
+
+---
+
 ## Template
 
 Copy this block when recording a completed requirement.
