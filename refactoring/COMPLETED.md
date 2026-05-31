@@ -209,6 +209,49 @@ A requirement file under `refactoring/requirements/` may be deleted only after c
 
 ---
 
+## Completed Requirement: 06_viz_api_schema_contract.md
+
+- Status: completed (stable-endpoint contracts reconciled; the broad Settings
+  reconcile + generated-types/OpenAPI deferred — see Follow-up)
+- Summary: Reconciled frontend TS types in
+  ari-core/ari/viz/frontend/src/types/index.ts against the backend's ACTUAL
+  output for the four highest-traffic stable endpoints (captured by a 3-agent
+  mapping of the real producers, not assumed shapes). All changes additive or
+  corrective: Checkpoint += optional best_metric?/best_scientific_score?; new
+  CostSummary type; AppState.cost corrected number -> CostSummary? (backend emits
+  the parsed cost_summary.json object, already read via `as any`); AppState +=
+  verified always/conditional optional fields (exit_code?, running?, pid?,
+  llm_model?, phase_flags?, etc.); new ReproReport = string | Record<string,
+  unknown>; CheckpointSummary += id?/path?/ors_*/vlm_review?, reproducibility_report
+  corrected string|null -> ReproReport|null? (backend emits a dict; legacy=string),
+  repro made optional. Documented the contract in docs/reference/rest_api.md
+  (added checkpoint_api.py + api_settings.py sources, bumped last_verified to
+  2026-05-30, added a Typed-contracts table) and added a machine-checkable guard
+  test.
+- PR/Commit: branch refactoring (per-requirement local commit)
+- Checks: pytest ari-core/tests = 2223 passed / 16 skipped / 0 failed (2218 prior
+  + 5 new contract guards in tests/test_api_schema_contract.py); npm run typecheck
+  0 non-test errors; npm run build ok; npm test --run 4 passed / 2 failed
+  (pre-existing brittle PaperBench getByDisplayValue tests). Adversarial 2-lens
+  verification: behaviorPreserved=true AND contractCorrect=true (all findings nit;
+  cost/repro corrections confirmed safe + matching real backend output).
+- Risks/notes: no wire/path/method change — only frontend types + docs + a test.
+  The two type CORRECTIONS (cost, reproducibility_report) target fields already
+  consumed via `as any` / an any-typed render param, so they cannot break a call
+  site. Did NOT flip existing required AppState/CheckpointSummary fields to
+  optional despite conditional presence (read without null-guards across
+  components -> strict-null risk); pinned the contract via the guard test instead.
+- Follow-up: the broad Settings type <-> /api/settings divergence is only
+  partially reconciled (frontend Settings carries ssh_*/model_*/slurm_partitions/
+  language not in backend defaults; backend emits slurm_gpus/mcp_skills/nested
+  ors/letta_deployment* not in the type) — deferred (wide consumer surface,
+  tightening risk). A future generated-types/OpenAPI move (req-06 §12) remains a
+  separate task. Both recorded in refactoring/notes/06_api_schema_contract.md.
+- Requirement file deleted: yes
+- Completed at: 2026-05-30
+
+---
+
 ## Template
 
 Copy this block when recording a completed requirement.

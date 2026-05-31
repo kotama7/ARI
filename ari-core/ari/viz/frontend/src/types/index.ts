@@ -28,6 +28,11 @@ export interface Checkpoint {
   node_count: number;
   review_score: number | null;
   mtime: number;
+  // Always emitted by the backend (`_api_checkpoints`) but never reassigned
+  // from its `null` init — documented here so the contract is explicit.
+  best_metric?: number | null;
+  // Conditional: only present when tree nodes carry metrics._scientific_score.
+  best_scientific_score?: number;
 }
 
 export interface Settings {
@@ -69,6 +74,16 @@ export interface Settings {
   letta_embedding_config: string;
 }
 
+// Shape of {checkpoint}/cost_summary.json, surfaced verbatim as AppState.cost
+// (written by ari/cost_tracker.py::_write_summary).
+export interface CostSummary {
+  total_cost_usd: number;
+  total_tokens: number;
+  call_count: number;
+  by_phase: Record<string, { cost_usd: number; tokens: number }>;
+  by_model: Record<string, { cost_usd: number; tokens: number }>;
+}
+
 export interface AppState {
   nodes: TreeNode[];
   checkpoint_id: string | null;
@@ -88,12 +103,29 @@ export interface AppState {
   experiment_goal: string;
   experiment_context: string;
   experiment_config: Record<string, unknown>;
-  cost: number;
+  // Backend emits the parsed cost_summary.json object here (NOT a number);
+  // optional because it's only present when that file exists. Read via
+  // optional chaining in MonitorPage. Corrected from the prior `number` type.
+  cost?: CostSummary;
   node_count: number;
   ideas: unknown[];
   gap_analysis: string;
   idea_primary_metric: string;
   idea_metric_rationale: string;
+  // ── Always present in the /state payload (set unconditionally by the
+  //    routes.py builder tail), but historically omitted from this type. ──
+  exit_code?: number | null;
+  running?: boolean; // JS-compat alias of is_running
+  pid?: number | null; // JS-compat alias of running_pid
+  llm_model?: string;
+  // ── Conditional (only inside the _ckpt_valid block of the builder). ──
+  phase_flags?: { idea: boolean; bfts: boolean; paper: boolean; review: boolean };
+  experiment_md_path?: string;
+  workflow_yaml?: string;
+  best_nodes?: Array<Record<string, unknown>>;
+  all_metric_keys?: string[];
+  summary_stats?: Record<string, unknown>;
+  typed_split_sources?: string[];
 }
 
 export interface WizardState {
@@ -196,16 +228,37 @@ export interface ReviewReport {
   figure_caption_issues?: string[];
 }
 
+// Reproducibility report: legacy runs stored a string; post-§4.1 runs (and the
+// ORS-synthesized verdict) store a parsed-JSON object. Consumed loosely
+// (renderOrsChain/renderLegacyRepro take `any`), so a permissive union is both
+// correct and safe.
+export type ReproReport = string | Record<string, unknown>;
+
 export interface CheckpointSummary {
+  // Echoed back by _api_checkpoint_summary (the requested id + resolved path).
+  id?: string;
+  path?: string;
   nodes_tree: {
     nodes: TreeNode[];
   };
   paper_tex: string | null;
   has_pdf: boolean;
   review_report: ReviewReport | null;
-  reproducibility_report: string | null;
-  repro: string | null;
+  // Corrected: backend emits the parsed report object (or, for legacy runs, a
+  // string), and only when present — hence optional ReproReport, not string.
+  reproducibility_report?: ReproReport | null;
+  // Vestigial alias kept for back-compat; the backend no longer emits `repro`.
+  repro?: string | null;
   science_data: Record<string, unknown> | null;
   figures_manifest: unknown[] | null;
+  // ORS-chain payloads surfaced alongside the synthesized verdict (PaperBench
+  // runs). Each is the parsed JSON, or a {_parse_error} envelope. Optional.
+  ors_rubric?: unknown;
+  ors_rubric_meta?: unknown;
+  ors_replicator?: unknown;
+  ors_seed?: unknown;
+  ors_phase1?: unknown;
+  ors_grade?: unknown;
+  vlm_review?: unknown;
   error: string | null;
 }
