@@ -6,10 +6,59 @@ sources:
     role: implementation
   - path: ari-core/ari/configs
     role: config
-last_verified: 2026-05-25
+  - path: ari-core/ari/viz/api_settings.py
+    role: implementation
+last_verified: 2026-05-30
 ---
 
 # Configuration Reference
+
+## Configuration Precedence (observed)
+
+ARI configuration enters from several sources. There are **two precedence
+chains** — the value a setting resolves to depends on *who is asking*:
+
+- **Runtime (core/CLI)** — what the agent loop and pipeline actually use.
+  Built by `ari.config.load_config()` (or `auto_config()` when no YAML):
+  **`ARI_*` env var > workflow.yaml/config YAML > Pydantic field default**.
+  Env always wins because the `_apply_*_env_overrides` functions run *last*
+  (after profile merge). `auto_config()` is the no-file fallback (env over
+  hardcoded). Profiles (`--profile laptop|hpc|cloud`) deep-merge between YAML
+  and env.
+- **GUI Settings panel** — what `/api/settings` shows. Built by
+  `_api_get_settings()`: **saved `settings.json` (if truthy) > `ARI_*` env >
+  `workflow.yaml` > hardcoded default**, with a falsy-re-force quirk (a
+  saved-but-empty `llm_model`/`llm_provider` is re-filled from `workflow.yaml`
+  only, dropping the env tier).
+
+The **bridge**: the GUI `/api/launch` does **not** pass choices to the spawned
+CLI as args — it writes them into the subprocess `ARI_*` env **and** snapshots
+them into `{checkpoint}/launch_config.json`. The CLI then resolves via the
+runtime chain above. `launch_config.json` is re-read on disk only by
+`/api/run-stage` and to rehydrate the dashboard display state; it is *not*
+re-parsed by `ari.config`.
+
+| Setting | Winning order (highest first) | Decided in |
+|---------|-------------------------------|-----------|
+| `llm_model` (runtime) | `ARI_MODEL` > `ARI_LLM_MODEL` > YAML `llm.model` > `qwen3:8b` | `config/__init__.py:_apply_llm_env_overrides` |
+| `llm_model` (GUI display) | in-mem `_launch_llm_model` > `launch_config.json` > `settings.json` > `workflow.yaml` > `''` | `viz/routes.py`, `viz/ui_helpers.py` |
+| `llm_model` (Settings merge) | saved `settings.json` (if truthy) > `ARI_LLM_MODEL` > `workflow.yaml` > `''` | `viz/api_settings.py:_api_get_settings` |
+| `llm_provider`/`backend` (runtime) | `ARI_BACKEND` > YAML `llm.backend` > `ollama` | `config/__init__.py:_apply_llm_env_overrides` |
+| paper `language` | `ARI_PAPER_LANGUAGE` env **only** (set by GUI launch; *not* re-derived from `launch_config.json` on a hand-run CLI) | `ari-skill-paper` reads env; `viz/api_experiment.py` sets it |
+| GUI port | `ARI_GUI_PORT` (via `start.sh`) > `--port` (argparse default **8765**) > `state.py` `9886` placeholder | `start.sh`, `viz/server.py:main` |
+| SLURM partition | explicit tool `partition` kwarg (sinfo-validated) > `SLURM_DEFAULT_PARTITION` > sinfo first; the kwarg is chosen from: experiment.md `Partition:` > `ARI_SLURM_PARTITION` > sinfo | `ari-skill-hpc/slurm.py`, `ari/agent/workflow.py` |
+| checkpoint dir | `ARI_CHECKPOINT_DIR` > YAML `checkpoint.dir` > `workspace/checkpoints/{run_id}` | `config/__init__.py:_apply_checkpoint_env_overrides`, `PathManager` |
+
+**Falsy-vs-missing:** the core env-override guards (`if _m:` etc.) treat an
+empty env var as missing (YAML/default kept; `base_url` uses an explicit
+`!= ""`). The GUI merge `{**defaults, **saved}` lets a present-but-empty saved
+key win, then re-forces only `llm_model`/`llm_provider` from `workflow.yaml`.
+
+> ⚠ This precedence is **documented as observed today**, not changed. Per the
+> refactoring rules, the order is locked by tests
+> (`test_config.py`, `test_default_provider.py`, `test_launch_config.py`,
+> `test_settings_*`) before any consolidation. A central config-loader is a
+> proposed follow-up — see `refactoring/notes/08_config_precedence.md`.
 
 ## workflow.yaml (Canonical Developer Config)
 

@@ -74,6 +74,36 @@ def _api_get_env_keys() -> dict:
 
 
 
+def _upsert_env_key(name: str, value: str, *, quote: bool) -> None:
+    """Insert or in-place-replace ``name=value`` in the project .env file.
+
+    Reads ``_st._env_write_path``, replaces the first line whose stripped form
+    starts with ``name=`` (preserving every other line), appends if absent,
+    writes back with a trailing newline, and sets ``os.environ[name]`` live.
+
+    ``quote`` selects the on-disk form: ``True`` -> ``name="value"`` (the form
+    written by the GUI env-key editor), ``False`` -> ``name=value`` (the form
+    written by the settings-save API-key path). The two callers historically
+    differed only by this quoting; the flag preserves each exactly (unifying it
+    would be a behavior change — out of scope for a refactor).
+    """
+    rendered = f'{name}="{value}"' if quote else f"{name}={value}"
+    env_path = _st._env_write_path
+    lines = env_path.read_text().splitlines() if env_path.exists() else []
+    found = False
+    new_lines = []
+    for line in lines:
+        if line.strip().startswith(name + "="):
+            new_lines.append(rendered)
+            found = True
+        else:
+            new_lines.append(line)
+    if not found:
+        new_lines.append(rendered)
+    env_path.write_text("\n".join(new_lines) + "\n")
+    os.environ[name] = value
+
+
 def _api_save_env_key(body: bytes) -> dict:
     """Append or update a key in project .env (ARI root)."""
     data = json.loads(body)
@@ -81,20 +111,7 @@ def _api_save_env_key(body: bytes) -> dict:
     key_value = data.get("value","").strip()
     if not key_name or not key_value:
         return {"ok": False, "error": "key and value required"}
-    env_path = _st._env_write_path
-    lines = env_path.read_text().splitlines() if env_path.exists() else []
-    found = False
-    new_lines = []
-    for line in lines:
-        if line.strip().startswith(key_name + "="):
-            new_lines.append(f'{key_name}="{key_value}"')
-            found = True
-        else:
-            new_lines.append(line)
-    if not found:
-        new_lines.append(f'{key_name}="{key_value}"')
-    env_path.write_text("\n".join(new_lines) + "\n")
-    os.environ[key_name] = key_value
+    _upsert_env_key(key_name, key_value, quote=True)
     return {"ok": True}
 
 
@@ -197,20 +214,9 @@ def _api_save_settings(body: bytes) -> dict:
             "gemini": "GOOGLE_API_KEY",
         }.get(_provider, "")
         if _env_key_name:
-            _env_path = _st._env_write_path
-            _lines = _env_path.read_text().splitlines() if _env_path.exists() else []
-            _found = False
-            _new_lines = []
-            for _line in _lines:
-                if _line.strip().startswith(_env_key_name + "="):
-                    _new_lines.append(f"{_env_key_name}={_raw_key}")
-                    _found = True
-                else:
-                    _new_lines.append(_line)
-            if not _found:
-                _new_lines.append(f"{_env_key_name}={_raw_key}")
-            _env_path.write_text("\n".join(_new_lines) + "\n")
-            os.environ[_env_key_name] = _raw_key
+            # Unquoted form (quote=False) preserves this path's historical
+            # KEY=value spelling, distinct from the env-key editor's KEY="value".
+            _upsert_env_key(_env_key_name, _raw_key, quote=False)
     # Settings are always project-scoped now.  Without an active checkpoint
     # there is nowhere to persist, so refuse the write and prompt the user.
     _active = _st._settings_path
