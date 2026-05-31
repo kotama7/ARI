@@ -252,6 +252,51 @@ A requirement file under `refactoring/requirements/` may be deleted only after c
 
 ---
 
+## Completed Requirement: 07_checkpoint_run_artifact_model.md
+
+- Status: completed (documentation + ONE justified low-risk fix; broader helpers
+  deferred per §5/§11 — see Follow-up)
+- Summary: Assessment-first requirement. A 3-agent mapping of every
+  filesystem-touching module vs the canonical PathManager produced: (1) a
+  concept glossary (project/run/checkpoint/node/work_dir/artifact/log/file/
+  result) mapped to the on-disk layout, folded additively into
+  docs/reference/glossary.md (new terms workspace/run/node work_dir/artifact +
+  expanded checkpoint; last_verified -> 2026-05-30; +paths.py/checkpoint.py
+  sources); (2) refactoring/notes/07_checkpoint_model.md — the full model, the
+  per-module path-assumption catalog, and the divergence analysis. The mapping
+  found one REAL bug (divergence #1): checkpoint_api._api_checkpoints and
+  _api_checkpoint_summary resolved the node tree with inline tree.json/
+  nodes_tree.json probes that OMITTED the legacy node_*/tree.json fallback
+  honored by the canonical ari.checkpoint.load_nodes_tree (and the live
+  WebSocket path), so legacy checkpoints showed node_count=0 in the list/summary
+  cards. Fixed by adding the canonical loader as a fallback (via a
+  monkeypatch-friendly checkpoint_api._load_nodes_tree wrapper) — kept each
+  inline flat-file probe verbatim and consult the loader ONLY when neither flat
+  file exists, so the change is purely additive/symmetric and all corrupt-file
+  corner cases stay byte-identical. No new model, no on-disk format change.
+- PR/Commit: branch refactoring (per-requirement local commit)
+- Checks: pytest ari-core/tests = 2226 passed / 16 skipped / 0 failed (2223 prior
+  + 3 new legacy-tree guards in tests/test_checkpoint_legacy_tree.py).
+  Adversarial 2-lens verification: behaviorPreserved=true AND
+  legacyFixedCorrectly=true (the symmetric rewrite closed the two corrupt-file
+  nits a wholesale replacement would have introduced). Real-environment
+  dashboard smoke is compute-node-gated; the legacy-tree guard stands in on the
+  login node.
+- Risks/notes: existing + legacy checkpoints load unchanged; legacy
+  reconstruction (migrations/v05_to_v07) untouched. The active-checkpoint global
+  (ari.viz.state) was documented but NOT refactored (§11 high-risk).
+- Follow-up: deferred (each touches a legacy variant or destructive path the
+  duplicated code still handles): a checkpoint-discovery facade over
+  checkpoint_finder's 7 search bases; a paper/ artifact-path helper; de-duping
+  the run_id/slug regex + experiments-bucket scans (delete path); reducing the
+  ari.viz.state active-checkpoint coupling (dedicated requirement); additive
+  TreeNode doc-comments; a dedicated checkpoint migration if the format changes.
+  Recorded in refactoring/notes/07_checkpoint_model.md §7.
+- Requirement file deleted: yes
+- Completed at: 2026-05-30
+
+---
+
 ## Template
 
 Copy this block when recording a completed requirement.
