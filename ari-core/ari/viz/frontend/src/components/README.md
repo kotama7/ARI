@@ -35,6 +35,7 @@ Feature-grouped React components — one subdirectory per dashboard page plus sh
   - `GpuMonitor.tsx` — GPU usage monitor card.
   - `index.ts` — barrel re-export.
   - `MonitorPage.tsx` — monitor page container.
+  - `monitorSections.tsx` — metric helper + Experiment-Configuration card (extracted from MonitorPage in req 15).
   - `PhaseStepper.tsx` — workflow phase progress bar (idea→bfts→paper→review).
 - `PaperBench/` — register external papers, import them, launch/inspect PaperBench runs.
   - `README.md` — PaperBench index.
