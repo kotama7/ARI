@@ -544,6 +544,28 @@ A requirement file under `refactoring/requirements/` may be deleted only after c
 
 ---
 
+## Progress: 15_frontend_remaining_large_components.md (PARTIAL — file retained)
+
+req-15 is a multi-PR follow-up (one component per PR, §9). This entry records an
+incremental slice; the requirement file STAYS until all listed components are
+done (or the remainder is moved to a further follow-up).
+
+- 2026-05-30 — **MonitorPage.tsx** decomposed (859 -> 505 lines). Extracted the
+  module-scope presentational/helper layer (the `MetricDisplay` type,
+  `computeBestMetrics` pure helper, and the `IdeaCardContent` Experiment-
+  Configuration card) VERBATIM into a sibling `components/Monitor/monitorSections.tsx`;
+  the container imports `computeBestMetrics` + `IdeaCardContent` from it. Moved
+  code byte-identical (modulo `export` keywords); removed the now-dead
+  ReactNode/AppState/TreeNode/fetchExperimentDetail imports from the container.
+  Checks: typecheck 0 non-test errors; build ok; vitest 4 passed / 2 failed
+  (pre-existing brittle PaperBench tests). PR/commit on branch refactoring.
+- Remaining components (each a future slice): WorkflowPage.tsx (~1720),
+  StepResources.tsx (~1558), SettingsPage.tsx (~1123), DetailPanel.tsx (~938);
+  optional finer split of resultSections.tsx + the low/med-risk ResultsPage
+  container seams (per refactoring/notes/03_resultspage_decomposition.md).
+
+---
+
 ## Template
 
 Copy this block when recording a completed requirement.
