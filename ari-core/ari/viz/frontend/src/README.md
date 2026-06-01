@@ -82,6 +82,7 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `StepGoal.tsx` — research goal / chat step.
     - `StepLaunch.tsx` — final review + launch step.
     - `StepResources.tsx` — provider/model and container-image step.
+    - `stepResourcesSections.tsx` — ORS model tables + OrsModelPicker/FewshotManager (extracted from StepResources in req 15).
     - `StepScope.tsx` — search scope (max depth/nodes) step.
     - `WizardPage.tsx` — wizard container/step orchestration.
   - `Workflow/` — workflow stages/pipeline page.
