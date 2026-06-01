@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../i18n';
 import type { TreeNode } from '../../types';
 import { MemoryEntryCard } from './DetailPanelTabs/MemoryEntryCard';
+import { computeAncestorIds } from './detailPanelHelpers';
 import {
   fetchCheckpointMemory,
   fetchMemoryAccess,
@@ -55,21 +56,10 @@ export function DetailPanel({ node, allNodes, checkpointId, onClose }: DetailPan
   const [memError, setMemError] = useState<string | null>(null);
 
   // Ancestor chain (root → ... → self) computed from parent_id walk
-  const ancestorIds = useMemo<string[]>(() => {
-    if (!node || !allNodes) return node ? [node.id] : [];
-    const byId = new Map<string, TreeNode>();
-    allNodes.forEach((n) => byId.set(n.id, n));
-    const chain: string[] = [];
-    let cur: TreeNode | undefined = byId.get(node.id);
-    const seen = new Set<string>();
-    while (cur && !seen.has(cur.id)) {
-      seen.add(cur.id);
-      chain.unshift(cur.id);
-      const pid = cur.parent_id;
-      cur = pid ? byId.get(pid) : undefined;
-    }
-    return chain;
-  }, [node, allNodes]);
+  const ancestorIds = useMemo<string[]>(
+    () => computeAncestorIds(node, allNodes),
+    [node, allNodes],
+  );
 
   useEffect(() => {
     if (!checkpointId || !node) {
