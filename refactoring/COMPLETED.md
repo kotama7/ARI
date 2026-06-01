@@ -611,10 +611,21 @@ done (or the remainder is moved to a further follow-up).
   Checks: typecheck 0 non-test errors; build ok; vitest 4 passed / 2 failed
   (pre-existing PaperBench). DetailPanel is now a thin container (chrome + derived
   render data + tab dispatch). All 5 components listed in req-15 §2 are DONE.
-- Optional remainder (req-15 §3, NOT done — deferred follow-up): finer split of
-  resultSections.tsx + the low/med-risk ResultsPage container seams
-  (per refactoring/notes/03_resultspage_decomposition.md). These were optional in
-  the requirement, not part of the §2 listed components.
+- 2026-06-01 — **ResultsPage.tsx** optional §3 decomposition STARTED (low-risk
+  seams). The three low-risk pure render blocks were extracted from the container
+  into `resultSections.tsx` as exported render-helper functions, following the
+  existing `renderOrsChain`/`renderLegacyRepro` inline-call pattern (byte-identical
+  bodies, no component-boundary change): `renderContext({ summary, t })`,
+  `renderFigures({ summary })`, and `renderReviewScores({ summary, t })` (its 3
+  container-local helpers decisionVariant/decisionLabel/renderDimension, used only
+  there, nested inside verbatim). ResultsPage 1857 -> 1446 lines. Checks per slice:
+  typecheck 0 non-test errors; build ok; vitest 4 passed / 2 failed (pre-existing).
+- Optional remainder STILL open (req-15 §3 — deferred): the finer DAG split of
+  resultSections.tsx (resultTypes/resultHelpers/resultPrimitives/section files,
+  per notes/03), and the medium-risk (renderRepro + useCheckpointResults hook) and
+  high-risk (renderPaper/PaperWorkspace, renderEAR + useEAR — heavy state coupling)
+  container seams. The high-risk seams need adversarial verification (per the user
+  decision). These were optional in the requirement, not §2 listed components.
 
 ---
 
