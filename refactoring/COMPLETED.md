@@ -598,13 +598,23 @@ done (or the remainder is moved to a further follow-up).
   byte unchanged; effect bodies + dep arrays moved verbatim. Two PRs/commits on
   branch refactoring. Checks: typecheck 0 non-test errors; build ok; vitest
   4 passed / 2 failed (pre-existing PaperBench).
-- Remaining within DetailPanel (NOT done — deliberate, higher-risk follow-up):
-  the 7 inline tab render blocks (overview/trace/code/memory/access/report/raw)
-  still close over derived render data + hook values; splitting them into per-tab
-  subcomponents needs explicit prop contracts (~15-20 props each) and is the piece
-  flagged for adversarial-verification-grade care — left for a reviewed pass, not
-  autonomous. Also optional: finer split of resultSections.tsx + the low/med-risk
-  ResultsPage container seams (per refactoring/notes/03_resultspage_decomposition.md).
+- 2026-06-01 — **DetailPanel.tsx** per-tab decomposition completed (794 -> 425
+  lines; 938 -> 425 over the full req-15 chain). The 5 substantial tab render
+  blocks moved VERBATIM into `components/Tree/DetailPanelTabs/{Trace,Code,Memory,
+  Access,Report}Tab.tsx` with explicit prop contracts; `t` sourced via `useI18n()`
+  inside each (behavior-identical to the container's i18n closure), `node.id`
+  passed as `currentNodeId`. The `activeTab === '...'` visibility guards stay in
+  the container; overview (empty) and raw (trivial) left inline. Behavior-
+  equivalence ADVERSARIALLY VERIFIED: a 6-agent workflow (one skeptic per tab +
+  one for container wiring), each tasked to refute equivalence against the
+  pre-extraction git HEAD — all returned equivalent=true, zero discrepancies.
+  Checks: typecheck 0 non-test errors; build ok; vitest 4 passed / 2 failed
+  (pre-existing PaperBench). DetailPanel is now a thin container (chrome + derived
+  render data + tab dispatch). All 5 components listed in req-15 §2 are DONE.
+- Optional remainder (req-15 §3, NOT done — deferred follow-up): finer split of
+  resultSections.tsx + the low/med-risk ResultsPage container seams
+  (per refactoring/notes/03_resultspage_decomposition.md). These were optional in
+  the requirement, not part of the §2 listed components.
 
 ---
 
