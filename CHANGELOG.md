@@ -6,6 +6,52 @@ All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PAT
 
 (no entries yet)
 
+## v0.8.1 — Structural refactor: frontend decomposition, stable skill contract, internal-boundary docs (2026-06-01)
+
+A **behavior-preserving** refactoring release — the full 15-requirement
+`refactoring/` task-control program, executed and then retired. No runtime
+behavior, API, endpoint, MCP-tool, or rendered-output change: structure only.
+Every moved unit is byte-identical modulo `export`/`import`/prop-sourcing, and
+the high-risk frontend state extractions were adversarially verified by
+multi-agent review (JSX byte-identity, hook/helper fidelity, container wiring).
+
+- **Frontend dashboard decomposition.** The six largest React page components
+  were split into thin containers + extracted presentational subcomponents,
+  data hooks, and pure helpers — no visual or behavioral change:
+  - `ResultsPage.tsx` **3177 → 462** lines — `EarSection` + `useEAR` hook,
+    `PaperWorkspace`, `resultSections`/`resultTypes`/`resultHelpers`, and
+    `renderContext`/`renderFigures`/`renderReviewScores`/`renderRepro`
+    render-helpers.
+  - `DetailPanel.tsx` **938 → 425** — `useDetailPanelData` hook, five per-tab
+    subcomponents (`Trace`/`Code`/`Memory`/`Access`/`Report`Tab), and a pure
+    `computeAncestorIds` helper.
+  - `WorkflowPage`, `StepResources`, `SettingsPage`, `MonitorPage` similarly
+    thinned into sibling section/constant modules.
+- **Stable skill → core contract.** `ari-skill-*` packages now depend only on
+  the stable `ari.public.*` surface (new `ari.public.run_env`); private-core
+  imports were migrated to a public-first `try/except` pattern or explicitly
+  allow-listed. Enforced by a new guard test
+  (`ari-core/tests/test_skill_public_contract.py`).
+- **viz server seams.** Experiment process-control extracted out of
+  `routes.py`; the viz API ⇄ backend schema reconciled and pinned by a contract
+  guard test; legacy node-tree resolution fixed
+  (`tree.json → nodes_tree.json → node_*/tree.json`) so legacy checkpoints
+  render node counts in the list + summary cards; `.env`-write upsert
+  consolidated into one quote-preserving helper (guarded by
+  `test_env_write_quoting.py`).
+- **Documentation.** New
+  [`docs/reference/internal_boundaries.md`](docs/reference/internal_boundaries.md)
+  consolidates the LLM, OS/scheduler/container, and two-engine orchestration
+  boundaries plus their concurrency hazards; durable findings from the refactor
+  audits were folded into `docs/` (glossary, configuration, public_api,
+  rest_api, architecture). The disposable `refactoring/` scaffold was removed in
+  the final cleanup.
+
+Tests: `bash scripts/run_all_tests.sh` green (incl. the new public-contract and
+schema guards); the viz frontend typechecks, builds, and passes `vitest` at the
+prior baseline (the 2 pre-existing brittle PaperBench `getByDisplayValue` tests
+remain the only failures, unchanged).
+
 ## v0.8.0 — PaperBench env-truth + bridge contract + BFTS configurable evaluation (2026-05-21)
 
 Major release that promotes the v0.7.3 "Unreleased" PaperBench work to

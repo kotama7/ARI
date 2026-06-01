@@ -1,12 +1,12 @@
 <div align="center">
-  <img src="docs/logo.png" alt="ARI Logo" width="200"/>
+  <img src="docs/assets/logo.png" alt="ARI Logo" width="200"/>
 
   # ARI — Autonomous Research Infrastructure
 
   **通用研究自动化系统。从笔记本到超级计算机。从本地模型到云端 API。从新手到专家。从计算实验到物理世界。**
 
   [![Tests](https://img.shields.io/badge/tests-2200%2B-brightgreen)](ari-core)
-  [![Version](https://img.shields.io/badge/version-v0.8.0-orange)](https://github.com/kotama7/ARI/releases)
+  [![Version](https://img.shields.io/badge/version-v0.8.1-orange)](https://github.com/kotama7/ARI/releases)
   [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
   [![MCP](https://img.shields.io/badge/protocol-MCP-purple)](https://modelcontextprotocol.io)
   [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -38,6 +38,24 @@ ARI 围绕一个原则设计：**用 Markdown 描述目标 — 其余的交给 A
 | **专业水平** | 新手（仅目标） | 专家（完整参数控制） |
 
 ---
+
+## v0.8.1 新功能（2026-06-01）
+
+**完全保持行为的结构性重构**（完整的 `refactoring/` 程序全部 15 项需求执行完毕，
+脚手架已移除）。运行时行为、API、端点、MCP 工具与渲染输出均无变化。
+
+- **前端仪表盘分解** — 将六个最大的 React 页面拆分为轻量容器＋抽取的子组件／
+  hook／辅助函数（外观不变）。`ResultsPage` 3177 → 462 行，`DetailPanel`
+  938 → 425 行；高风险的 state 抽取经多智能体对抗式验证。
+- **skill → core 稳定契约** — `ari-skill-*` 仅依赖稳定面 `ari.public.*`
+  （新增 `ari.public.run_env`），由守卫测试强制执行。
+- **viz 服务器接缝** — 将实验进程控制从 `routes.py` 抽离，用契约测试固定
+  API ⇄ 后端 schema，修复旧版 node-tree 解析，将 `.env` 写入合并为单一的
+  保留引号的辅助函数。
+- **文档** — 新增 [`docs/reference/internal_boundaries.md`](docs/reference/internal_boundaries.md)
+  （LLM／OS·调度器·容器／双引擎边界及其并发风险）。
+
+完整列表见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## v0.8.0 新功能（2026-05-21）
 
@@ -78,7 +96,7 @@ ARI 围绕一个原则设计：**用 Markdown 描述目标 — 其余的交给 A
 
 <p align="center">
   <video src="https://github.com/kotama7/ARI/raw/main/docs/assets/movie/zh/ari_dashboard_demo.mp4" controls width="720" muted playsinline>
-    您的浏览器不支持内联视频。<a href="docs/movie/zh/ari_dashboard_demo.mp4">点击此处下载演示</a>。
+    您的浏览器不支持内联视频。<a href="docs/assets/movie/zh/ari_dashboard_demo.mp4">点击此处下载演示</a>。
   </video>
 </p>
 
