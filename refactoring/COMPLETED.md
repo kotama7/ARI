@@ -509,6 +509,41 @@ A requirement file under `refactoring/requirements/` may be deleted only after c
 
 ---
 
+## Completed Requirement: 14_migration_and_requirement_deletion.md
+
+- Status: completed (the meta-finalizer; governs all other requirements' lifecycle)
+- Summary: Settled and recorded the migration/deletion policy in the DURABLE doc
+  refactoring/GLOBAL_RULES.md (req-14 deletes itself, so the binding policy must
+  live where it survives). Added three sections: (1) compatibility-wrapper
+  removal policy (wrappers stay until all call sites migrate; removal needs its
+  own requirement; never removed in the introducing PR — lists this sequence's
+  live wrappers: ari.public.* re-exports, the skills' public-first cost_tracker
+  fallback, the checkpoint_api->load_nodes_tree fallback); (2) package-move gate
+  (ari.viz -> top-level ari-gui/ari-api forbidden in early refactoring; only via
+  a dedicated migration requirement after 00/01 + the in-place refactors, with a
+  wrapper plan — no move was performed; everything refactored in place); (3)
+  sequence-completion + final-cleanup policy (remove refactoring/ only once
+  requirements/ is empty, after folding durable notes/ into docs/). Confirmed
+  consistency: README.md execution order matches the canonical 14-item list and
+  the order executed; every prior requirement followed record-in-COMPLETED +
+  same-PR-delete (all 14 carry "Requirement file deleted: yes"). Wrote
+  refactoring/notes/14_migration_policy.md with the consistency check, the state
+  of the sequence, and a consolidated deferred-work ledger across reqs 03-12.
+- PR/Commit: branch refactoring (per-requirement local commit; policy/docs only)
+- Checks: no production code changed. Full suites green from req 09-12
+  (pytest ari-core/tests 2231 passed; run_all_tests.sh 2843 passed).
+- Risks/notes: enforced the "same-PR record + delete" and wrapper/package gates
+  in the durable doc so they outlive the deleted requirement files.
+- Follow-up: ONE requirement remains in requirements/ — 15_frontend_remaining_
+  large_components.md (a req-03 follow-up; was not in the original README order).
+  The refactoring/ directory's final cleanup is therefore NOT yet due; it happens
+  after 15 (and anything it spawns) completes. The full deferred-work backlog
+  (reqs 03-12 follow-ups) is catalogued in refactoring/notes/14_migration_policy.md.
+- Requirement file deleted: yes
+- Completed at: 2026-05-30
+
+---
+
 ## Template
 
 Copy this block when recording a completed requirement.
