@@ -70,6 +70,7 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
   - `Tree/` — BFTS tree page (search tree, detail panel, file browser).
     - `README.md` — Tree index.
     - `DetailPanel.tsx` — selected-node detail panel (tabs: memory, report, etc.).
+    - `detailPanelHelpers.ts` — pure ancestor-chain helper (`computeAncestorIds`) extracted from DetailPanel in req 15.
     - `FileExplorer.tsx` — checkpoint/node file tree browser.
     - `index.ts` — barrel re-export.
     - `TreePage.tsx` — tree page container.

@@ -6,6 +6,7 @@ BFTS tree page — renders the search tree, a per-node detail panel, and a file 
 
 - `README.md` — this file.
 - `DetailPanel.tsx` — selected-node detail panel (tabs: memory, report, etc.).
+- `detailPanelHelpers.ts` — pure ancestor-chain helper (`computeAncestorIds`) extracted from DetailPanel in req 15.
 - `FileExplorer.tsx` — checkpoint/node file tree browser.
 - `index.ts` — barrel re-export.
 - `TreePage.tsx` — tree page container.
