@@ -559,8 +559,21 @@ done (or the remainder is moved to a further follow-up).
   ReactNode/AppState/TreeNode/fetchExperimentDetail imports from the container.
   Checks: typecheck 0 non-test errors; build ok; vitest 4 passed / 2 failed
   (pre-existing brittle PaperBench tests). PR/commit on branch refactoring.
-- Remaining components (each a future slice): WorkflowPage.tsx (~1720),
-  StepResources.tsx (~1558), SettingsPage.tsx (~1123), DetailPanel.tsx (~938);
+- 2026-05-30 — **WorkflowPage.tsx** decomposed (1720 -> 968 lines). Extracted the
+  React Flow node/modal layer (skillColor + SKILL_PALETTE, PhaseNode/ConditionNode/
+  ParallelNode + the nodeTypes map, ConditionModal/SkillDrawer/NodeEditModal/
+  SkillModal, the SkillMcpEntry type, inputStyle) VERBATIM into
+  components/Workflow/workflowNodes.tsx; the container imports skillColor/nodeTypes/
+  the four modals + SkillMcpEntry. Moved code byte-identical (modulo export kw);
+  removed the now-dead reactflow Handle/Position/NodeTypes container imports.
+  Checks: typecheck 0 non-test errors; build ok; vitest 4 passed / 2 failed
+  (pre-existing brittle PaperBench tests). PR/commit on branch refactoring.
+- Remaining components (each a future slice): StepResources.tsx (~1558, has clean
+  module-scope units: inferOrsProvider/OrsModelPicker/FewshotManager),
+  SettingsPage.tsx (~1123) and DetailPanel.tsx (~938) — both MONOLITHS (no
+  module-scope helper/presentational units; their tab/field render blocks close
+  over heavy local state, so they need genuine prop-contract refactoring with
+  behavior verification, NOT a verbatim move — a higher-risk follow-up);
   optional finer split of resultSections.tsx + the low/med-risk ResultsPage
   container seams (per refactoring/notes/03_resultspage_decomposition.md).
 

@@ -87,6 +87,7 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
   - `Workflow/` — workflow stages/pipeline page.
     - `README.md` — Workflow index.
     - `index.ts` — barrel re-export.
+    - `workflowNodes.tsx` — React Flow custom nodes + edit/skill/condition modals (extracted from WorkflowPage in req 15).
     - `WorkflowPage.tsx` — workflow view.
 - `context/` — global React context (shared app state).
   - `README.md` — context index.
