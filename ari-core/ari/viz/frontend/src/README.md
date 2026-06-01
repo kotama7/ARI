@@ -78,7 +78,12 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `useDetailPanelData.ts` — hook owning DetailPanel's memory/access-log/node-report fetch effects; extracted from DetailPanel in req 15.
     - `DetailPanelTabs/` — extracted detail-panel subcomponents.
       - `README.md` — DetailPanelTabs index.
+      - `AccessTab.tsx` — memory access-log tab (write/read events); extracted from DetailPanel in req 15.
+      - `CodeTab.tsx` — code-snippets tab (run_code from trace_log); extracted from DetailPanel in req 15.
       - `MemoryEntryCard.tsx` — renders one memory record (own/inherited/global) as a card.
+      - `MemoryTab.tsx` — memory tab (own/inherited/global entry cards); extracted from DetailPanel in req 15.
+      - `ReportTab.tsx` — node-report tab (node_report.json structured view); extracted from DetailPanel in req 15.
+      - `TraceTab.tsx` — MCP-trace tab (tool pills + colored trace log); extracted from DetailPanel in req 15.
   - `Wizard/` — multi-step run-launch wizard.
     - `README.md` — Wizard index.
     - `index.ts` — barrel re-export.
