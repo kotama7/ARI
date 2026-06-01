@@ -38,7 +38,15 @@ def _read_react_sources():
 
 
 def _settings_page():
-    return (_REACT_COMPONENTS / "Settings" / "SettingsPage.tsx").read_text()
+    # The Settings UI was decomposed (req 15): provider/Letta constants + tables
+    # moved into a sibling settingsConstants.ts. Concatenate the whole Settings
+    # feature dir so these source-contract checks still see the extracted code.
+    # `.ts` (the data/constants) is ordered before `.tsx` (the page) so the
+    # find("PROVIDER_MODELS")-based slices land on the definition, not the import.
+    d = _REACT_COMPONENTS / "Settings"
+    return "\n".join(
+        p.read_text() for p in sorted(d.glob("*.ts")) + sorted(d.glob("*.tsx"))
+    )
 
 
 def _step_resources():

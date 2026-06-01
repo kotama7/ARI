@@ -59,7 +59,11 @@ def _srv():
 def _api_exp(): return (_VIZ / "api_experiment.py").read_text()
 def _api_set(): return (_VIZ / "api_settings.py").read_text()
 def _combined(): return _read_react_sources()
-def _settings_page(): return (_REACT_COMPONENTS / "Settings" / "SettingsPage.tsx").read_text()
+def _settings_page():
+    # Settings UI decomposed (req 15): constants/tables live in settingsConstants.ts.
+    # Read the whole Settings feature dir so source-contract checks see them.
+    d = _REACT_COMPONENTS / "Settings"
+    return "\n".join(p.read_text() for p in sorted(d.glob("*.ts")) + sorted(d.glob("*.tsx")))
 def _step_resources():
     sr = (_REACT_COMPONENTS / "Wizard" / "StepResources.tsx").read_text()
     wp = (_REACT_COMPONENTS / "Wizard" / "WizardPage.tsx").read_text()
