@@ -518,7 +518,10 @@ def _run_bash(command: str, work_dir: str, timeout: int) -> dict:
         # unavailable.
         _ct_cfg = None
         try:
-            from ari.container import config_from_env, run_shell_in_container
+            try:
+                from ari.public.container import config_from_env, run_shell_in_container
+            except ImportError:
+                from ari.container import config_from_env, run_shell_in_container
             _ct_cfg = config_from_env()
         except Exception:
             _ct_cfg = None
@@ -529,7 +532,10 @@ def _run_bash(command: str, work_dir: str, timeout: int) -> dict:
         # container-isolation contract.
         if _ct_cfg is None:
             try:
-                from ari.agent.run_env import capture_env
+                try:
+                    from ari.public.run_env import capture_env
+                except ImportError:
+                    from ari.agent.run_env import capture_env
                 capture_env(work_dir, executor="local")
             except Exception:
                 pass

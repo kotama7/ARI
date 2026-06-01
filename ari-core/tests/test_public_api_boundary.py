@@ -67,27 +67,35 @@ _ALLOWED = ("ari.public",)
 _ALLOWED_EXACT = {"ari.public"}
 
 # File:lineno pairs grandfathered in until the affected skills clean up.
-# Phase 4 migrates ari-skill-coding + ari-skill-plot through
-# ``ari.public.*``; the remaining 10 skills are flagged as "変更不要"
-# in REFACTORING.md §5 and keep their legacy imports for now.  This
-# test ensures NEW violations are caught (the lineno-pinned waiver
+# This test ensures NEW violations are caught (the lineno-pinned waiver
 # means a moved offender still surfaces).
+#
+# req 09 update: the cost_tracker / container / run_env sites were migrated to a
+# public-first import with an ``except ImportError`` fallback to the legacy path.
+# The AST walker still sees the fallback ``from ari import ...`` line, so those
+# lines stay grandfathered (sanctioned compatibility shims, not new violations)
+# at their NEW post-migration line numbers. The genuinely-private internals
+# deferred by req 09 (ari.lineage, ari.clone, ari.publish, ari.orchestrator,
+# ari.memory_cli) also remain grandfathered until a public re-export/protocol is
+# designed for each — see refactoring/notes/09_skill_public_contract.md. The
+# richer test_skill_public_contract.py enforces the same contract but understands
+# the ``except ImportError`` fallback directly.
 _GRANDFATHERED: dict[str, set[int]] = {
-    "ari-skill-coding/src/server.py": {521, 532},
-    "ari-skill-coding/tests/test_server.py": {106},
-    "ari-skill-evaluator/src/server.py": {13},
-    "ari-skill-hpc/src/slurm.py": {208},
-    "ari-skill-idea/src/server.py": {62, 403},
-    "ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py": {156},
-    "ari-skill-memory/tests/test_backup_restore.py": {14},
-    "ari-skill-paper-re/src/server.py": {39, 143},
-    "ari-skill-paper-re/tests/test_fetch_code_bundle.py": {52},
-    "ari-skill-paper/src/server.py": {18},
+    "ari-skill-coding/src/server.py": {524, 538},  # container + run_env fallbacks
+    "ari-skill-coding/tests/test_server.py": {107},
+    "ari-skill-evaluator/src/server.py": {16},  # cost_tracker fallback
+    "ari-skill-hpc/src/slurm.py": {211},  # run_env fallback
+    "ari-skill-idea/src/server.py": {65, 406},  # cost_tracker fallback + ari.lineage (deferred)
+    "ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py": {159},  # cost_tracker fallback
+    "ari-skill-memory/tests/test_backup_restore.py": {14},  # ari.memory_cli (deferred, test-only)
+    "ari-skill-paper-re/src/server.py": {42, 146},  # cost_tracker fallback + ari.clone (deferred)
+    "ari-skill-paper-re/tests/test_fetch_code_bundle.py": {52},  # ari.publish (deferred, test-only)
+    "ari-skill-paper/src/server.py": {21},  # cost_tracker fallback
     "ari-skill-plot/src/server.py": {34},  # try-block legacy fallback
-    "ari-skill-replicate/src/server.py": {25},
-    "ari-skill-transform/src/server.py": {52, 628, 1924, 2274, 2292},
-    "ari-skill-vlm/src/server.py": {15},
-    "ari-skill-web/src/server.py": {21},
+    "ari-skill-replicate/src/server.py": {28},  # cost_tracker fallback
+    "ari-skill-transform/src/server.py": {55, 631, 1927, 2277, 2295},  # cost_tracker fallback + ari.orchestrator/ari.publish (deferred)
+    "ari-skill-vlm/src/server.py": {18},  # cost_tracker fallback
+    "ari-skill-web/src/server.py": {24},  # cost_tracker fallback
 }
 
 
