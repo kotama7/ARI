@@ -82,4 +82,5 @@ Feature-grouped React components — one subdirectory per dashboard page plus sh
 - `Workflow/` — workflow stages/pipeline page.
   - `README.md` — Workflow index.
   - `index.ts` — barrel re-export.
+  - `workflowNodes.tsx` — React Flow custom nodes + edit/skill/condition modals (extracted from WorkflowPage in req 15).
   - `WorkflowPage.tsx` — workflow view.
