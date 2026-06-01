@@ -27,7 +27,10 @@ def _step_resources():
     return sr + "\n" + wp
 def _step_launch():  return (_REACT_COMPONENTS / "Wizard" / "StepLaunch.tsx").read_text()
 def _wizard_page():  return (_REACT_COMPONENTS / "Wizard" / "WizardPage.tsx").read_text()
-def _settings_page(): return (_REACT_COMPONENTS / "Settings" / "SettingsPage.tsx").read_text()
+def _settings_page():
+    # Settings UI decomposed (req 15): constants live in settingsConstants.ts.
+    d = _REACT_COMPONENTS / "Settings"
+    return "\n".join(p.read_text() for p in sorted(d.glob("*.ts")) + sorted(d.glob("*.tsx")))
 def _api():   return (_VIZ / "api_experiment.py").read_text()
 def _cfg():
     # Phase 2 §6-2: ``ari.config`` is now a package; env-var reads live
@@ -177,7 +180,11 @@ class TestAlgoSwitchChain:
         assert '"axis_mode":' in routes
 
     def test_monitor_displays_algorithm(self):
-        mon = (_REACT_COMPONENTS / "Monitor" / "MonitorPage.tsx").read_text()
+        # MonitorPage decomposed (req 15): the Experiment-Configuration card (which
+        # renders cfg.frontier_score/composite/axis_mode) moved into the sibling
+        # monitorSections.tsx. Read the whole Monitor feature dir.
+        _mon_dir = _REACT_COMPONENTS / "Monitor"
+        mon = "\n".join(p.read_text() for p in sorted(_mon_dir.glob("*.tsx")))
         assert "cfg.frontier_score" in mon
         assert "cfg.composite" in mon
         assert "cfg.axis_mode" in mon

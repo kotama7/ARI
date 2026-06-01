@@ -342,11 +342,20 @@ _REACT_SRC = Path(__file__).parent.parent / "ari" / "viz" / "frontend" / "src"
 _REACT_COMPONENTS = _REACT_SRC / "components"
 
 
+def _settings_src() -> str:
+    """Concatenated Settings-feature source (req 15 decomposed the page: provider/
+    Letta constants + tables moved into a sibling settingsConstants.ts). `.ts`
+    (data) is ordered before `.tsx` (page) so find("PROVIDER_MODELS")-based slices
+    land on the definition, not the import."""
+    d = _REACT_COMPONENTS / "Settings"
+    return "\n".join(p.read_text() for p in sorted(d.glob("*.ts")) + sorted(d.glob("*.tsx")))
+
+
 class TestReactSaveSettingsStatic:
     """Static analysis of React SettingsPage to verify model fields are saved."""
 
     def _settings(self):
-        return (_REACT_COMPONENTS / "Settings" / "SettingsPage.tsx").read_text()
+        return _settings_src()
 
     def test_save_settings_includes_llm_model_with_fallback(self):
         """handleSave must use modelSelect with modelCustom fallback."""
@@ -550,7 +559,7 @@ class TestSettingsModelListStatic:
 
     def test_provider_models_dict_has_no_cross_contamination(self):
         """PROVIDER_MODELS in React must not have ollama models under openai, etc."""
-        src = (_REACT_COMPONENTS / "Settings" / "SettingsPage.tsx").read_text()
+        src = _settings_src()
         import re
         m = re.search(r'const PROVIDER_MODELS.*?=\s*\{(.*?)\};', src, re.DOTALL)
         assert m is not None, "PROVIDER_MODELS not found"
@@ -574,7 +583,7 @@ class TestSettingsModelListStatic:
 
     def test_custom_entry_option_in_settings(self):
         """SettingsPage must include __custom__ option in dropdown."""
-        src = (_REACT_COMPONENTS / "Settings" / "SettingsPage.tsx").read_text()
+        src = _settings_src()
         assert "__custom__" in src, \
             "SettingsPage does not include __custom__ option"
 
