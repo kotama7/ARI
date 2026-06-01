@@ -585,12 +585,26 @@ done (or the remainder is moved to a further follow-up).
   no JSX). Container imports them. Byte-identical (modulo export kw). Checks:
   typecheck 0 non-test errors; build ok; vitest 4 passed / 2 failed (pre-existing).
   PR/commit on branch refactoring.
-- Remaining component: DetailPanel.tsx (~938) — a MONOLITH with NO module-scope
-  units; its 14-useState/7-useEffect container and inline tab render blocks close
-  over heavy local state, so it needs genuine prop-contract refactoring with
-  behavior verification, NOT a verbatim move — a higher-risk follow-up;
-  optional finer split of resultSections.tsx + the low/med-risk ResultsPage
-  container seams (per refactoring/notes/03_resultspage_decomposition.md).
+- 2026-06-01 — **DetailPanel.tsx** decomposed (938 -> 794 lines). The monolith
+  has NO module-scope presentational units, so extraction targeted the two
+  behavior-isolatable seams: (1) the pure parent_id ancestor-chain walk moved to
+  `components/Tree/detailPanelHelpers.ts` as `computeAncestorIds` (the useMemo
+  now calls it); (2) the three fetch-effect clusters (checkpoint memory, lazy
+  access-log, lazy node-report + availability probe) plus the ancestor-scoped
+  `visibleMemory` derivation moved into a `components/Tree/useDetailPanelData.ts`
+  hook. The hook is invoked at the EXACT position in the container's hook
+  sequence the inline code occupied (after reset-tab effect, before onMouseDown/
+  resize), so React effect run-order and the §11 fetch/abort timing are byte-for-
+  byte unchanged; effect bodies + dep arrays moved verbatim. Two PRs/commits on
+  branch refactoring. Checks: typecheck 0 non-test errors; build ok; vitest
+  4 passed / 2 failed (pre-existing PaperBench).
+- Remaining within DetailPanel (NOT done — deliberate, higher-risk follow-up):
+  the 7 inline tab render blocks (overview/trace/code/memory/access/report/raw)
+  still close over derived render data + hook values; splitting them into per-tab
+  subcomponents needs explicit prop contracts (~15-20 props each) and is the piece
+  flagged for adversarial-verification-grade care — left for a reviewed pass, not
+  autonomous. Also optional: finer split of resultSections.tsx + the low/med-risk
+  ResultsPage container seams (per refactoring/notes/03_resultspage_decomposition.md).
 
 ---
 
