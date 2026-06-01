@@ -424,6 +424,48 @@ A requirement file under `refactoring/requirements/` may be deleted only after c
 
 ---
 
+## Completed Requirement: 11_llm_backend_boundary.md
+
+- Status: completed (audit/documentation-only; the boundary is already sound and
+  already guard-tested — no code change, and a new guard would be wrong, see below)
+- Summary: A repo-wide audit of LLM/provider usage (refactoring/notes/
+  11_llm_backend_boundary.md) found the boundary is NOT "everything routes
+  through ari.public.llm.LLMClient" — it is a three-part pattern where direct
+  litellm.{completion,acompletion} calls are the SANCTIONED shape: (1) litellm is
+  the provider-abstraction layer; (2) ari.llm.routing.resolve_litellm_model
+  normalises model ids (incl. the CLI-shim prefix); (3) cost_tracker's
+  _install_litellm_metadata_injector monkey-patches litellm process-wide to apply
+  routing + cost metadata at ONE point, installed via bootstrap_skill at every
+  skill import. LLMClient is a convenience wrapper (ReAct path), not a mandatory
+  chokepoint. Classified all usage: LLMClient + cli_server + api_ollama = infra;
+  evaluator/lineage_decision/root_idea_selector/context_builder/api_tools +
+  ~7 skills = acceptable litellm-direct (routed via the injector / own api_base);
+  paper-re vendored PaperBench bridge = intentional, untouched. No call
+  circumvents routing.
+- PR/Commit: branch refactoring (per-requirement local commit; notes-only)
+- Checks: NO production code changed (only the note). The boundary contract is
+  ALREADY comprehensively guard-tested by tests/test_llm_routing.py
+  (resolve_litellm_model rules + _apply_ari_routing cli-shim/openai/anthropic +
+  injector) — re-ran test_llm_routing.py + test_llm.py = 29 passed. LLM behavior
+  is env-sensitive (real backends/credentials/GPU) — representative live calls
+  are compute-node-gated, documented not skipped.
+- Risks/notes: documented the one real fragility — the injector must be installed
+  before the first litellm call for cost capture (skills guarantee via
+  bootstrap_skill; core CLI/pipeline pass api_base themselves so routing is
+  unaffected). No model/routing/prompt/provider behavior changed; cli shim +
+  ollama proxy untouched.
+- Follow-up: DELIBERATELY did NOT add the §12-suggested "domain modules import
+  only ari.public.llm" guard — it would flag the entire sanctioned litellm-direct
+  pattern and pressure an out-of-scope LLMClient rewrite. PROPOSE-ONLY follow-up:
+  route context_builder's one direct litellm call through resolve_litellm_model/
+  LLMClient (behavior-neutral only if resolution proven identical first). The
+  broad "everything via LLMClient" rewrite is explicitly out of scope. Recorded
+  in refactoring/notes/11_llm_backend_boundary.md §6.
+- Requirement file deleted: yes
+- Completed at: 2026-05-30
+
+---
+
 ## Template
 
 Copy this block when recording a completed requirement.
