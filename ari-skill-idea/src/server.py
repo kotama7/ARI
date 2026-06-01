@@ -59,7 +59,10 @@ def _extract_between_json_tags(text: str) -> str:
 mcp = FastMCP("idea-generation-skill")
 
 try:
-    from ari import cost_tracker as _ari_cost_tracker  # type: ignore
+    try:
+        from ari.public import cost_tracker as _ari_cost_tracker  # type: ignore
+    except ImportError:
+        from ari import cost_tracker as _ari_cost_tracker  # type: ignore
     _ari_cost_tracker.bootstrap_skill("idea")
 except Exception:
     pass

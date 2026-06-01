@@ -94,6 +94,7 @@ targets the like-named module under `ari/`.
 - `test_settings_propagation.py` — settings propagation.
 - `test_settings_roundtrip.py` — settings roundtrip.
 - `test_setup_env.py` — setup_env.sh behaviour.
+- `test_skill_public_contract.py` — skills import core via the public contract.
 - `test_status_fallback.py` — status fallback.
 - `test_system_prompt_memory.py` — system-prompt memory.
 - `test_trace_log_truncation.py` — trace-log truncation.

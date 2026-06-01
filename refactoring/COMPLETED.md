@@ -343,6 +343,44 @@ A requirement file under `refactoring/requirements/` may be deleted only after c
 
 ---
 
+## Completed Requirement: 09_core_skill_public_contract.md
+
+- Status: completed (clean public-contract migrations + new re-export + guard
+  test; 4 deeper edges explicitly deferred — see Follow-up)
+- Summary: A 3-agent classification of every ari-skill-*/src import of ari.*
+  (builds on req-01). Migrated all behavior-neutral private edges to the stable
+  contract, keeping internal paths working (compatibility shims, §7):
+  (1) 9 skills' `from ari import cost_tracker` -> the dual pattern
+  `try: from ari.public import cost_tracker except ImportError: from ari import
+  cost_tracker` (the form ari-skill-plot already shipped) — same module object,
+  zero behavior change; (2) ari-skill-coding's `ari.container` (prod + test) ->
+  `ari.public.container`; (3) NEW thin re-export `ari.public.run_env` for
+  `capture_env`/`shell_capture_snippet`, migrating ari-skill-coding + ari-skill-hpc
+  public-first. Added a guard test (ari-core/tests/test_skill_public_contract.py)
+  that fails when a skill's production src imports a private ari.* path (allowing
+  ari.public/protocols/mcp, an `except ImportError` fallback, and a documented
+  deferred allowlist) plus a second test that fails if an allowlist entry rots.
+- PR/Commit: branch refactoring (per-requirement local commit)
+- Checks: bash scripts/run_all_tests.sh = 2843 passed / 0 failed / 26 skipped
+  across all 13 suites (ari-core 2231 incl. 2 new guards; coding 24 incl. the
+  repointed container test; every migrated skill green). Re-run after fixing a
+  mid-edit indentation corruption in replicate/src/server.py (caught by syntax
+  check + re-run, not shipped).
+- Risks/notes: handled a real nuance — ari.public.container's `import *` BINDS
+  run_shell_in_container at import time, so coding's test (which monkeypatched
+  ari.container) would have silently taken the host fallback after the prod
+  import moved; fixed by patching BOTH modules (verified empirically). No skill
+  behavior, import path, or mcp.json changed; internal paths still resolve.
+- Follow-up: deferred edges, each needing interface design or signature-stability
+  confirmation before a public re-export (tracked by the guard allowlist):
+  ari.publish (transform + paper-re), ari.clone (paper-re), ari.lineage (idea,
+  virsci-specific), ari.orchestrator.node_selection (transform — wants a protocol,
+  deepest break). Recorded in refactoring/notes/09_skill_public_contract.md.
+- Requirement file deleted: yes
+- Completed at: 2026-05-30
+
+---
+
 ## Template
 
 Copy this block when recording a completed requirement.

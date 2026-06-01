@@ -153,6 +153,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `cost_tracker.py` — re-export of `ari.cost_tracker`.
   - `llm.py` — re-export of `ari.llm.client.LLMClient`.
   - `paths.py` — re-export of `ari.paths.PathManager`.
+  - `run_env.py` — re-export of `ari.agent.run_env` capture helpers.
 - `publish/` — `ari ear publish`: package + ship a curated EAR.
   - `README.md` — publish index.
   - `__init__.py` — publish flow + artifacts.
