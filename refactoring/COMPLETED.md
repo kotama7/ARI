@@ -381,6 +381,49 @@ A requirement file under `refactoring/requirements/` may be deleted only after c
 
 ---
 
+## Completed Requirement: 10_pipeline_workflow_phase_boundary.md
+
+- Status: completed (documentation-only per §5; all seam proposals deferred to
+  dedicated implementation requirements)
+- Summary: A 3-agent map of the orchestration layer produced
+  refactoring/notes/10_phase_boundary.md documenting: (1) the phase model — ARI
+  runs TWO engines, not one linear pipeline: the BFTS loop (cli/bfts_loop.py:
+  _run_loop, hardcoded; bfts_pipeline[] read only for enabled/disabled flags)
+  and the post-BFTS linear stage loop (pipeline/orchestrator.py:run_pipeline,
+  driving transform/figures/paper/review + ORS reproduction + publish as
+  consecutive pipeline[] stages), bridged by core.py:generate_paper_section;
+  (2) the single-stage state machine (depends_on / skip_if_exists / input
+  resolution / react-vs-subprocess dispatch / output save / loop_back / failure);
+  (3) the concrete side-effect seam candidates (the one direct litellm.completion
+  in context_builder bypassing LLMClient; the subprocess-fork MCP boundary in
+  stage_runner; direct filesystem I/O + env mutation in run_pipeline); (4) the
+  BFTS/ReAct plug points (core.build_runtime construction, the _run_loop
+  delegators, the four BFTS-method engine boundary); (5) the §11 concurrency
+  hazards any seam must preserve (env-at-fork timing, the shared-process
+  ARI_CURRENT_NODE_ID CoW race + cow_node_id serialization, shared tree.json
+  committers — there is NO git worktree); (6) how viz/api_workflow.py drives the
+  DAG; (7) four ranked PROPOSE-ONLY seams (FlowMapping; canonical Stage schema;
+  StageRunner protocol; route context_builder through LLMClient).
+- PR/Commit: branch refactoring (per-requirement local commit; notes-only)
+- Checks: NO production code changed (only the note added). pytest ari-core/tests
+  = 2231 passed / 16 skipped / 0 failed (unchanged from req 09); run_all_tests.sh
+  green at 2843 (req-09 run, nothing changed since). Environment-sensitive phase
+  transitions (real BFTS run, SLURM ORS) are compute-node-gated — documented,
+  not skipped.
+- Risks/notes: documented the concurrent-committer / env-at-fork / shared-tree
+  hazards as hard constraints on any future seam. No workflow.yaml semantics or
+  phase ordering changed.
+- Follow-up: the four seam proposals are each a dedicated implementation
+  requirement (FlowMapping overlaps the req-08 finder migration; Stage schema
+  fixes the editor↔runtime field-loss bug class; StageRunner protocol +
+  LLMClient-for-context_builder must preserve the concurrency hazards);
+  WorkflowPage.tsx decomposition coordinates with req-03/15. Recorded in
+  refactoring/notes/10_phase_boundary.md §9.
+- Requirement file deleted: yes
+- Completed at: 2026-05-30
+
+---
+
 ## Template
 
 Copy this block when recording a completed requirement.
