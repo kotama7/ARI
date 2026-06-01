@@ -576,11 +576,19 @@ done (or the remainder is moved to a further follow-up).
   useCallback import and dropped the now-dead React default import from the
   container. Checks: typecheck 0 non-test errors; build ok; vitest 4 passed /
   2 failed (pre-existing brittle PaperBench tests). PR/commit on branch refactoring.
-- Remaining components: SettingsPage.tsx (~1123) and DetailPanel.tsx (~938) —
-  both MONOLITHS (no module-scope helper/presentational units; their tab/field
-  render blocks close over heavy local state, so they need genuine prop-contract
-  refactoring with behavior verification, NOT a verbatim move — a higher-risk
-  follow-up);
+- 2026-05-30 — **SettingsPage.tsx** decomposed (1123 -> 1053 lines). It is a
+  heavy 38-useState form container, so NO state-bearing UI was extracted; instead
+  the self-contained constants/types/helper block (DEFAULT_PROVIDER, PROVIDER_MODELS,
+  PROVIDER_KEY_PLACEHOLDER, the Letta embedding tables + LettaModelEntry/
+  LettaProviderTable types, CUSTOM_HANDLE_VALUE, and the pure _splitHandle helper)
+  moved VERBATIM into components/Settings/settingsConstants.ts (pure data/logic,
+  no JSX). Container imports them. Byte-identical (modulo export kw). Checks:
+  typecheck 0 non-test errors; build ok; vitest 4 passed / 2 failed (pre-existing).
+  PR/commit on branch refactoring.
+- Remaining component: DetailPanel.tsx (~938) — a MONOLITH with NO module-scope
+  units; its 14-useState/7-useEffect container and inline tab render blocks close
+  over heavy local state, so it needs genuine prop-contract refactoring with
+  behavior verification, NOT a verbatim move — a higher-risk follow-up;
   optional finer split of resultSections.tsx + the low/med-risk ResultsPage
   container seams (per refactoring/notes/03_resultspage_decomposition.md).
 

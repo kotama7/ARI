@@ -65,6 +65,7 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
   - `Settings/` — dashboard/run configuration page.
     - `README.md` — Settings index.
     - `index.ts` — barrel re-export.
+    - `settingsConstants.ts` — provider/Letta model tables + _splitHandle helper (extracted from SettingsPage in req 15).
     - `SettingsPage.tsx` — settings view.
   - `Tree/` — BFTS tree page (search tree, detail panel, file browser).
     - `README.md` — Tree index.
