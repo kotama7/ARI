@@ -544,11 +544,36 @@ A requirement file under `refactoring/requirements/` may be deleted only after c
 
 ---
 
-## Progress: 15_frontend_remaining_large_components.md (PARTIAL — file retained)
+## Completed Requirement: 15_frontend_remaining_large_components.md
 
-req-15 is a multi-PR follow-up (one component per PR, §9). This entry records an
-incremental slice; the requirement file STAYS until all listed components are
-done (or the remainder is moved to a further follow-up).
+- Status: completed (multi-PR; requirement file deleted in this PR).
+- Summary: all five §2 listed components decomposed (MonitorPage, WorkflowPage,
+  StepResources, SettingsPage, DetailPanel), PLUS the optional §3 ResultsPage
+  work taken to completion: the container went **3177 -> 462 lines** (85%
+  reduction over req-03 + req-15) via low-risk render-helper extraction
+  (renderContext/renderFigures/renderReviewScores), a leaf-layer finer split of
+  resultSections.tsx (resultTypes.ts + resultHelpers.ts), the medium-risk
+  renderRepro seam, and the two high-risk state-extraction seams — `EarSection` +
+  `useEAR` hook, and `PaperWorkspace` (renderPaper). DetailPanel similarly went
+  938 -> 425 (helper + useDetailPanelData hook + 5 per-tab subcomponents). Every
+  high-risk seam was ADVERSARIALLY VERIFIED by multi-agent workflows (JSX
+  byte-identity, hook/helper fidelity, container wiring incl. mount-stability and
+  the activeAbsPath hoisting-quirk preservation) — all equivalent, no defects.
+- PR/Commit: a sequence of per-slice commits on branch `refactoring` (see the
+  incremental log below).
+- Checks (every slice): typecheck 0 non-test errors; `vite build` ok; vitest
+  4 passed / 2 failed (pre-existing brittle PaperBench tests). No endpoint, prop,
+  or rendered-output change; moved code byte-identical modulo export/import/
+  prop-sourcing.
+- Follow-up (OPTIONAL, low value — documented, not a blocking requirement): the
+  remaining `resultSections.tsx` DAG layers — `resultPrimitives.tsx`
+  (KvList/CollapsibleText/FileViewer/ScoreBar/ChainStage) and the
+  gradingTree/generationLogs/orsChain section files — are pure cosmetic reorg of
+  an already-extracted presentational module; left as a future tidy-up.
+
+### Incremental slice log
+
+req-15 ran as a multi-PR follow-up (one component/seam per PR, §9). The slices:
 
 - 2026-05-30 — **MonitorPage.tsx** decomposed (859 -> 505 lines). Extracted the
   module-scope presentational/helper layer (the `MetricDisplay` type,
