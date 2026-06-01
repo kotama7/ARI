@@ -113,3 +113,46 @@ route handler -> subprocess directly without service boundary
   its section 9 are satisfied, completion is recorded in `COMPLETED.md`, and
   the deletion happens in the **same PR**.
 - **Do not delete a requirement file for partial completion.**
+
+## Compatibility-wrapper removal policy (binding)
+
+When a refactor introduces a compatibility wrapper (re-export, shim, alias, or a
+public-first `try/except ImportError` fallback) to preserve an old import path or
+endpoint:
+
+- the wrapper **stays** until all known call sites are migrated;
+- removing a wrapper is itself a behavior-sensitive change and requires its
+  **own** requirement file (or an explicit, justified section in a later
+  requirement) with its own checks;
+- wrappers are **never** removed in the same PR that introduces them.
+
+Examples of live wrappers introduced by this refactoring sequence:
+`ari.public.*` re-exports (`container`, `cost_tracker`, `llm`, `paths`,
+`config_schema`, `run_env`) over `ari.<module>` internals; the skills'
+public-first `cost_tracker` fallback (req 09); the `ari.checkpoint.load_nodes_tree`
+fallback in `checkpoint_api` (req 07). Their internal paths must keep working.
+
+## Package-move gate (binding)
+
+A move such as `ari-core/ari/viz` → a top-level `ari-gui` / `ari-api` package:
+
+- is **forbidden** in early refactoring;
+- may be **proposed** only after `00` and `01` are complete and the in-place
+  refactors (`02`–`12`) have reduced the relevant coupling;
+- requires a **new, dedicated migration requirement** that proves the move is
+  low-risk and worth the compatibility cost, including a wrapper plan for old
+  import paths and launch behavior (`start.sh`, `ari viz`).
+
+No package move has been performed; `ari-core/ari/viz` and
+`ari-core/ari/viz/frontend` were refactored **in place** throughout this
+sequence, per the scope-discipline rule above.
+
+## Sequence completion + final cleanup
+
+The recommended execution order is recorded in `README.md`. When
+`requirements/` is empty, the planned sequence is complete; the
+`refactoring/` directory may then be removed in a final cleanup PR recorded in
+`COMPLETED.md` (the `refactoring/notes/` assessments should first be folded into
+`docs/` or per-directory `README.md`s where they carry durable value — see each
+note's header). Until then, the presence of any file under `requirements/` means
+that requirement is unfinished.
