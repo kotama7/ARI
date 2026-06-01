@@ -1,12 +1,12 @@
 <div align="center">
-  <img src="docs/logo.png" alt="ARI Logo" width="200"/>
+  <img src="docs/assets/logo.png" alt="ARI Logo" width="200"/>
 
   # ARI — Autonomous Research Infrastructure
 
   **A universal research automation system. Laptop to supercomputer. Local models to cloud APIs. Novice to expert. Computation to physical world.**
 
   [![Tests](https://img.shields.io/badge/tests-2200%2B-brightgreen)](ari-core)
-  [![Version](https://img.shields.io/badge/version-v0.8.0-orange)](https://github.com/kotama7/ARI/releases)
+  [![Version](https://img.shields.io/badge/version-v0.8.1-orange)](https://github.com/kotama7/ARI/releases)
   [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
   [![MCP](https://img.shields.io/badge/protocol-MCP-purple)](https://modelcontextprotocol.io)
   [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -38,6 +38,25 @@ The system scales across five axes:
 | **Expertise** | Novice (goal only) | Expert (full parameter control) |
 
 ---
+
+## What's new in v0.8.1 (2026-06-01)
+
+A **behavior-preserving structural refactor** (the full `refactoring/` program,
+now retired). No runtime, API, endpoint, MCP-tool, or rendered-output change.
+
+- **Frontend dashboard decomposition** — the six largest React pages were split
+  into thin containers + extracted subcomponents/hooks/helpers (no visual
+  change). `ResultsPage` 3177 → 462 lines, `DetailPanel` 938 → 425; high-risk
+  state extractions were adversarially verified.
+- **Stable skill → core contract** — `ari-skill-*` packages depend only on the
+  `ari.public.*` surface (new `ari.public.run_env`), enforced by a guard test.
+- **viz server seams** — experiment process-control extracted from `routes.py`;
+  API ⇄ backend schema pinned by a contract guard; legacy node-tree resolution
+  fixed; `.env`-write consolidated into one quote-preserving helper.
+- **Docs** — new [`docs/reference/internal_boundaries.md`](docs/reference/internal_boundaries.md)
+  (LLM / OS-scheduler-container / two-engine boundaries + concurrency hazards).
+
+See [CHANGELOG.md](CHANGELOG.md#v081--structural-refactor-frontend-decomposition-stable-skill-contract-internal-boundary-docs-2026-06-01) for the full list.
 
 ## What's new in v0.8.0 (2026-05-21)
 
@@ -74,7 +93,7 @@ See [CHANGELOG.md](CHANGELOG.md#v080--paperbench-env-truth--bridge-contract--bft
 
 <p align="center">
   <video src="https://github.com/kotama7/ARI/raw/main/docs/assets/movie/en/ari_dashboard_demo.mp4" controls width="720" muted playsinline>
-    Your browser does not support inline video. <a href="docs/movie/en/ari_dashboard_demo.mp4">Download the demo</a>.
+    Your browser does not support inline video. <a href="docs/assets/movie/en/ari_dashboard_demo.mp4">Download the demo</a>.
   </video>
 </p>
 

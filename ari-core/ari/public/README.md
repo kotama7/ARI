@@ -13,6 +13,7 @@ core can refactor freely while the contract stays put.
 - `cost_tracker.py` — re-export of `ari.cost_tracker`.
 - `llm.py` — re-export of `ari.llm.client.LLMClient`.
 - `paths.py` — re-export of `ari.paths.PathManager`.
+- `run_env.py` — re-export of `ari.agent.run_env` capture helpers.
 
 ## See also
 

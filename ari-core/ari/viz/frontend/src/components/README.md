@@ -35,6 +35,7 @@ Feature-grouped React components — one subdirectory per dashboard page plus sh
   - `GpuMonitor.tsx` — GPU usage monitor card.
   - `index.ts` — barrel re-export.
   - `MonitorPage.tsx` — monitor page container.
+  - `monitorSections.tsx` — metric helper + Experiment-Configuration card (extracted from MonitorPage in req 15).
   - `PhaseStepper.tsx` — workflow phase progress bar (idea→bfts→paper→review).
 - `PaperBench/` — register external papers, import them, launch/inspect PaperBench runs.
   - `README.md` — PaperBench index.
@@ -51,32 +52,49 @@ Feature-grouped React components — one subdirectory per dashboard page plus sh
     - `ResultsView.tsx` — leaf grades + rubric tree + negative-control display.
 - `Results/` — final run results and rubric scoring.
   - `README.md` — Results index.
+  - `EarSection.tsx` — Experiment Artifact Repository section (curate/publish/publish.yaml editor); extracted from ResultsPage renderEAR in req 15.
   - `index.ts` — barrel re-export.
-  - `ResultsPage.tsx` — results page container.
+  - `PaperWorkspace.tsx` — Overleaf-like paper editor (file tree + PDF/editor views + compile log); extracted from ResultsPage renderPaper in req 15.
+  - `PublishYamlEditor.tsx` — per-checkpoint publish.yaml (EAR allowlist) editor; extracted from ResultsPage in req 03.
+  - `resultHelpers.ts` — pure helpers + string formatters (tryParseJson, buildGradeMap, aggregateScore, format*Stage, etc.); extracted from resultSections in req 15.
+  - `resultSections.tsx` — presentational subcomponents and pure helpers for the results page; extracted from ResultsPage in req 03.
+  - `ResultsPage.tsx` — results page container (state, data loading, layout).
+  - `resultTypes.ts` — Results-page shared types (OrsRenderInput, RubricNode, LeafGrade, StageState); extracted from resultSections in req 15.
   - `RubricTreeVisualization.tsx` — D3 rubric tree with aggregated leaf scores.
+  - `useEAR.ts` — hook owning EarSection's curate/publish/publish.yaml-editor action state; extracted from ResultsPage in req 15.
 - `Settings/` — dashboard/run configuration page.
   - `README.md` — Settings index.
   - `index.ts` — barrel re-export.
+  - `settingsConstants.ts` — provider/Letta model tables + _splitHandle helper (extracted from SettingsPage in req 15).
   - `SettingsPage.tsx` — settings view.
 - `Tree/` — BFTS tree page (search tree, detail panel, file browser).
   - `README.md` — Tree index.
   - `DetailPanel.tsx` — selected-node detail panel (tabs: memory, report, etc.).
+  - `detailPanelHelpers.ts` — pure ancestor-chain helper (`computeAncestorIds`) extracted from DetailPanel in req 15.
   - `FileExplorer.tsx` — checkpoint/node file tree browser.
   - `index.ts` — barrel re-export.
   - `TreePage.tsx` — tree page container.
   - `TreeVisualization.tsx` — D3 search-tree canvas.
+  - `useDetailPanelData.ts` — hook owning DetailPanel's memory/access-log/node-report fetch effects; extracted from DetailPanel in req 15.
   - `DetailPanelTabs/` — extracted detail-panel subcomponents.
     - `README.md` — DetailPanelTabs index.
+    - `AccessTab.tsx` — memory access-log tab (write/read events); extracted from DetailPanel in req 15.
+    - `CodeTab.tsx` — code-snippets tab (run_code from trace_log); extracted from DetailPanel in req 15.
     - `MemoryEntryCard.tsx` — renders one memory record (own/inherited/global) as a card.
+    - `MemoryTab.tsx` — memory tab (own/inherited/global entry cards); extracted from DetailPanel in req 15.
+    - `ReportTab.tsx` — node-report tab (node_report.json structured view); extracted from DetailPanel in req 15.
+    - `TraceTab.tsx` — MCP-trace tab (tool pills + colored trace log); extracted from DetailPanel in req 15.
 - `Wizard/` — multi-step run-launch wizard.
   - `README.md` — Wizard index.
   - `index.ts` — barrel re-export.
   - `StepGoal.tsx` — research goal / chat step.
   - `StepLaunch.tsx` — final review + launch step.
   - `StepResources.tsx` — provider/model and container-image step.
+  - `stepResourcesSections.tsx` — ORS model tables + OrsModelPicker/FewshotManager (extracted from StepResources in req 15).
   - `StepScope.tsx` — search scope (max depth/nodes) step.
   - `WizardPage.tsx` — wizard container/step orchestration.
 - `Workflow/` — workflow stages/pipeline page.
   - `README.md` — Workflow index.
   - `index.ts` — barrel re-export.
+  - `workflowNodes.tsx` — React Flow custom nodes + edit/skill/condition modals (extracted from WorkflowPage in req 15).
   - `WorkflowPage.tsx` — workflow view.

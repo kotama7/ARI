@@ -153,7 +153,10 @@ class LettaBackend(MemoryBackend):
         self, *, op: str, latency_ms: float, embedding_tokens: int = 0
     ) -> None:
         try:
-            from ari import cost_tracker  # type: ignore[import]
+            try:
+                from ari.public import cost_tracker  # type: ignore[import]
+            except ImportError:
+                from ari import cost_tracker  # type: ignore[import]
             cost_tracker.record(
                 model="", prompt_tokens=0, completion_tokens=0,
                 node_id=current_node_id(),

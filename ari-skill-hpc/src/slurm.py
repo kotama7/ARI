@@ -205,7 +205,10 @@ class SlurmClient:
         # compute node so it reflects WHERE the job ran (not where ari runs).
         # node_report.py later picks this up and exposes it on node_report.json.
         try:
-            from ari.agent.run_env import shell_capture_snippet
+            try:
+                from ari.public.run_env import shell_capture_snippet
+            except ImportError:
+                from ari.agent.run_env import shell_capture_snippet
             _capture = shell_capture_snippet(executor="slurm")
         except Exception:
             _capture = ""

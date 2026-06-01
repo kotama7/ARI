@@ -6,4 +6,5 @@ Settings page — dashboard/run configuration view.
 
 - `README.md` — this file.
 - `index.ts` — barrel re-export.
+- `settingsConstants.ts` — provider/Letta model tables + _splitHandle helper (extracted from SettingsPage in req 15).
 - `SettingsPage.tsx` — settings view.

@@ -8,4 +8,5 @@ Monitor page — live run progress and resource monitoring.
 - `GpuMonitor.tsx` — GPU usage monitor card.
 - `index.ts` — barrel re-export.
 - `MonitorPage.tsx` — monitor page container.
+- `monitorSections.tsx` — metric helper + Experiment-Configuration card (extracted from MonitorPage in req 15).
 - `PhaseStepper.tsx` — workflow phase progress bar (idea→bfts→paper→review).

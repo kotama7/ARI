@@ -22,7 +22,10 @@ log = logging.getLogger(__name__)
 mcp = FastMCP("replicate-skill")
 
 try:  # cost-tracker bootstrap, harmless if absent
-    from ari import cost_tracker as _ari_cost_tracker  # type: ignore
+    try:
+        from ari.public import cost_tracker as _ari_cost_tracker  # type: ignore
+    except ImportError:
+        from ari import cost_tracker as _ari_cost_tracker  # type: ignore
 
     _ari_cost_tracker.bootstrap_skill("replicate")
 except Exception:

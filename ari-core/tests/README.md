@@ -14,11 +14,14 @@ targets the like-named module under `ari/`.
 - `test_api_lineage_e2e.py` — lineage API end-to-end.
 - `test_api_paperbench.py` — PaperBench API.
 - `test_api_paperbench_worker.py` — PaperBench API worker.
+- `test_api_process.py` — process-control service (stop-all + GPU monitor).
+- `test_api_schema_contract.py` — stable viz endpoint response-shape contracts.
 - `test_bfts.py` — BFTS loop.
 - `test_bfts_diversity.py` — BFTS diversity/fanout.
 - `test_bfts_eval_config_integration.py` — BFTS + eval-config integration.
 - `test_bfts_frontier_score.py` — BFTS frontier scoring.
 - `test_bfts_prompt_selection.py` — BFTS prompt selection.
+- `test_checkpoint_legacy_tree.py` — legacy node_*/tree.json resolution in list/summary.
 - `test_child_node_workflow.py` — child-node workflow.
 - `test_child_workdir_inherit.py` — child workdir inheritance.
 - `test_cli.py` — CLI.
@@ -36,6 +39,7 @@ targets the like-named module under `ari/`.
 - `test_disabled_tools_flow.py` — disabled-tools flow.
 - `test_dynamic_axes.py` — dynamic evaluation axes.
 - `test_ear.py` — EAR (experiment/analysis/report).
+- `test_env_write_quoting.py` — .env-write quoting guard (api_settings upsert).
 - `test_evaluator_axis_mode.py` — evaluator axis mode.
 - `test_evaluator_composite.py` — evaluator composite scoring.
 - `test_event_loop_and_csv.py` — event loop + CSV logging.
@@ -90,6 +94,7 @@ targets the like-named module under `ari/`.
 - `test_settings_propagation.py` — settings propagation.
 - `test_settings_roundtrip.py` — settings roundtrip.
 - `test_setup_env.py` — setup_env.sh behaviour.
+- `test_skill_public_contract.py` — skills import core via the public contract.
 - `test_status_fallback.py` — status fallback.
 - `test_system_prompt_memory.py` — system-prompt memory.
 - `test_trace_log_truncation.py` — trace-log truncation.

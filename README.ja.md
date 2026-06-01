@@ -1,12 +1,12 @@
 <div align="center">
-  <img src="docs/logo.png" alt="ARI Logo" width="200"/>
+  <img src="docs/assets/logo.png" alt="ARI Logo" width="200"/>
 
   # ARI — Autonomous Research Infrastructure
 
   **ユニバーサルな研究自動化システム。ノートPCからスーパーコンピュータまで。ローカルモデルからクラウドAPIまで。初学者から熟練研究者まで。計算実験から物理世界まで。**
 
   [![Tests](https://img.shields.io/badge/tests-2200%2B-brightgreen)](ari-core)
-  [![Version](https://img.shields.io/badge/version-v0.8.0-orange)](https://github.com/kotama7/ARI/releases)
+  [![Version](https://img.shields.io/badge/version-v0.8.1-orange)](https://github.com/kotama7/ARI/releases)
   [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
   [![MCP](https://img.shields.io/badge/protocol-MCP-purple)](https://modelcontextprotocol.io)
   [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -38,6 +38,26 @@ ARI は一つの原則に基づいて設計されています：**ゴールを M
 | **習熟度** | 初学者（ゴールのみ） | 熟練者（全パラメータ制御） |
 
 ---
+
+## v0.8.1 の新機能（2026-06-01）
+
+**挙動を完全に保存する構造リファクタリング**（`refactoring/` プログラムの
+全 15 要件を完遂し、足場を撤去）。ランタイム挙動・API・エンドポイント・
+MCP ツール・描画出力のいずれも変更なし。
+
+- **フロントエンドダッシュボードの分解** — 最大の 6 つの React ページを薄い
+  コンテナ＋抽出したサブコンポーネント／フック／ヘルパーに分割（見た目は不変）。
+  `ResultsPage` 3177 → 462 行、`DetailPanel` 938 → 425 行。高リスクな state 抽出は
+  多エージェントによる敵対的検証済み。
+- **skill → core の安定契約** — `ari-skill-*` は安定面 `ari.public.*`
+  （新規 `ari.public.run_env`）のみに依存。ガードテストで強制。
+- **viz サーバの seam** — 実験プロセス制御を `routes.py` から分離、API ⇄ バックエンドの
+  スキーマを契約テストで固定、レガシー node-tree 解決を修正、`.env` 書き込みを
+  クォート保存型の単一ヘルパーに統合。
+- **ドキュメント** — 新規 [`docs/reference/internal_boundaries.md`](docs/reference/internal_boundaries.md)
+  （LLM／OS・スケジューラ・コンテナ／2 エンジン境界と並行性ハザード）。
+
+全項目は [CHANGELOG.md](CHANGELOG.md) を参照。
 
 ## v0.8.0 の新機能（2026-05-21）
 
@@ -79,7 +99,7 @@ ARI は一つの原則に基づいて設計されています：**ゴールを M
 
 <p align="center">
   <video src="https://github.com/kotama7/ARI/raw/main/docs/assets/movie/ja/ari_dashboard_demo.mp4" controls width="720" muted playsinline>
-    お使いのブラウザはインライン動画再生に対応していません。<a href="docs/movie/ja/ari_dashboard_demo.mp4">こちらからダウンロード</a>してください。
+    お使いのブラウザはインライン動画再生に対応していません。<a href="docs/assets/movie/ja/ari_dashboard_demo.mp4">こちらからダウンロード</a>してください。
   </video>
 </p>
 

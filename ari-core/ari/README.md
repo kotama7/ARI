@@ -153,6 +153,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `cost_tracker.py` — re-export of `ari.cost_tracker`.
   - `llm.py` — re-export of `ari.llm.client.LLMClient`.
   - `paths.py` — re-export of `ari.paths.PathManager`.
+  - `run_env.py` — re-export of `ari.agent.run_env` capture helpers.
 - `publish/` — `ari ear publish`: package + ship a curated EAR.
   - `README.md` — publish index.
   - `__init__.py` — publish flow + artifacts.
@@ -185,6 +186,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `api_orchestrator.py` — sub-experiment registry, launch, listing.
   - `api_paperbench.py` — PaperBench paper registry + run-wizard endpoints.
   - `api_paperbench_worker.py` — background worker driving PaperBench skill tools.
+  - `api_process.py` — experiment process control: stop-all + GPU-monitor start/stop/status.
   - `api_publish.py` — publish settings + preview/run endpoints.
   - `api_settings.py` — env keys, settings, workflow, skills, profiles.
   - `api_state.py` — checkpoint discovery, tree loading, broadcasting (re-export facade).
