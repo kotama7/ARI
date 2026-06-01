@@ -632,16 +632,26 @@ done (or the remainder is moved to a further follow-up).
   per slice: typecheck 0 non-test errors; build ok; vitest 4 passed / 2 failed
   (pre-existing). ResultsPage container is now 1327 lines (from 1857 at phase
   start; 3177 originally before req-03).
-- Optional remainder STILL open (req-15 §3 — deferred, HIGH risk): the two
-  state-heavy container seams `renderPaper` (PaperWorkspace: ~12 state vars +
-  editor/upload/compile handlers, uploadRef, Ctrl+S keydown effect, the
-  activeAbsPath mid-body hoisting quirk) and `renderEAR` + a `useEAR` hook (13
-  state vars; the duplicated curate-EAR block). These share state with the
-  container's loadResults/loadFiles data effects, so they need a deliberate
-  hook-vs-stateful-child design + adversarial verification (per the user decision)
-  — NOT verbatim moves. Also still-optional: the resultPrimitives/section-file
-  layer of the DAG (KvList/CollapsibleText/FileViewer/ScoreBar/ChainStage + the
-  gradingTree/generationLogs/orsChain section files) — pure cosmetic reorg.
+- 2026-06-01 — **ResultsPage.tsx** high-risk EAR seam DONE. `renderEAR` →
+  `components/Results/EarSection.tsx` (verbatim JSX body) + its 14 self-contained
+  action-state vars (curate/publish + publish.yaml-editor) → `useEAR.ts` hook.
+  `ear`/`earLoading`/`selectedId`/`setEar`/`t` are props; EarSection renders
+  UNCONDITIONALLY where `renderEAR()` was called, so it stays mounted across
+  `ear` transitions and action-state persistence is byte-for-byte unchanged.
+  Behavior-equivalence ADVERSARIALLY VERIFIED (3 skeptics: JSX byte-identity /
+  useEAR state fidelity / container wiring incl. mount-stability) — all
+  equivalent, no defects. ResultsPage 1327 -> 922 lines. typecheck 0 non-test
+  errors; build ok; vitest 4 passed / 2 pre-existing.
+- Optional remainder STILL open (req-15 §3 — deferred): the LAST high-risk seam
+  `renderPaper` (~277 lines: paperView/editor/file-tree/compile state, uploadRef,
+  Ctrl+S keydown effect, the activeAbsPath mid-body hoisting quirk, + the
+  renderTreeNodes/buildFileTree/fileIcon/fmtSize helper chain). Unlike EAR, its
+  state is ENTANGLED with the container's loadResults/loadFiles/openFile data
+  effects, so the safe approach is a verbatim render-helper function (state stays
+  in the container; effects + quirk untouched) with a prop bundle — NOT a hook.
+  Needs adversarial verification. Also still-optional cosmetic: the
+  resultPrimitives/section-file layer of the DAG (KvList/CollapsibleText/
+  FileViewer/ScoreBar/ChainStage + gradingTree/generationLogs/orsChain files).
 
 ---
 
