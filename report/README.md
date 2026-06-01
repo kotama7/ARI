@@ -2,7 +2,10 @@
 
 This directory holds the **ARI system report** — an arXiv-style technical
 report describing the exploration algorithm and paper-generation pipeline
-of [ARI](../README.md) at the v0.8.0 snapshot.
+of [ARI](../README.md). This is the **v0.8.1 edition**; the evaluation it
+reports was captured at the **v0.8.0 dogfood snapshot** (v0.8.1 is a
+behavior-preserving structural refactor that does not change the system the
+report describes — see [CHANGELOG.md](../CHANGELOG.md)).
 
 The report is built in three languages (en, ja, zh) and published in two
 formats (PDF, HTML). The English version is the master; ja and zh are

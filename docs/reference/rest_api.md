@@ -6,7 +6,11 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/api_experiment.py
     role: implementation
-last_verified: 2026-05-26
+  - path: ari-core/ari/viz/checkpoint_api.py
+    role: implementation
+  - path: ari-core/ari/viz/api_settings.py
+    role: implementation
+last_verified: 2026-05-30
 ---
 
 # REST API Reference
@@ -28,6 +32,25 @@ oauth2-proxy if you want to expose it.
 - All response bodies are JSON unless noted otherwise.
 - Errors come back as `{"error": "<message>"}` with a non-2xx HTTP code.
 - CORS preflight (`OPTIONS`) is permissive on `/api/*`.
+
+## Typed contracts (stable endpoints)
+
+The highest-traffic GET endpoints have their response shape mirrored by a
+frontend TypeScript type in `ari-core/ari/viz/frontend/src/types/index.ts` and
+guarded by `ari-core/tests/test_api_schema_contract.py` (asserts the
+always-present keys as a **subset** — extra/optional fields are allowed, so the
+contract is additive). Verified 2026-05-30.
+
+| Endpoint | Producer | Frontend type | Always-present keys |
+|---|---|---|---|
+| `GET /state` | `routes.py` `/state` builder | `AppState` | `running_pid`, `is_running`, `exit_code`, `running`, `pid`, `status_label` (the rest are checkpoint-gated → optional in the type). `cost` is the parsed `cost_summary.json` **object** (`CostSummary`), not a number. |
+| `GET /api/settings` | `api_settings._api_get_settings` | `Settings` | the full defaults dict (`llm_model`, `llm_provider`, `ollama_host`, `temperature`, … , nested `ors`); arbitrary saved keys also pass through (`{**defaults, **saved}`). |
+| `GET /api/checkpoints` | `checkpoint_api._api_checkpoints` | `Checkpoint[]` | `id`, `path`, `status`, `node_count`, `review_score`, `best_metric` (always `null`), `mtime`; `best_scientific_score` is conditional. |
+| `GET /api/checkpoint/<id>/summary` | `checkpoint_api._api_checkpoint_summary` | `CheckpointSummary` | `id`, `path` (or `{error:"not found"}`); all report bodies are conditional. `reproducibility_report` is a parsed **object** (legacy runs: string), not always a string. |
+
+Contracts are **permissive**: new optional fields may be added without breaking
+consumers; existing fields are never removed during a migration (see the
+refactoring global rules).
 
 ## Worked examples
 

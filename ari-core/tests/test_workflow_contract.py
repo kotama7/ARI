@@ -42,8 +42,16 @@ def _read_ts_types():
 
 
 def _read_workflow_page():
-    """Read the WorkflowPage React component."""
-    return _WORKFLOW_PAGE.read_text()
+    """Read the WorkflowPage React component.
+
+    The Workflow page was decomposed (req 15): the React-Flow custom nodes and
+    the condition/skill/node-edit modals (incl. the condition-type <option>s and
+    the skillColor/SKILL_PALETTE helper) moved into a sibling workflowNodes.tsx.
+    Concatenate the whole Workflow feature dir so the source-contract checks see
+    the extracted code as well as the container.
+    """
+    d = _WORKFLOW_PAGE.parent
+    return "\n".join(p.read_text() for p in sorted(d.glob("*.tsx")))
 
 
 def _extract_interface(ts_source: str, name: str) -> str:

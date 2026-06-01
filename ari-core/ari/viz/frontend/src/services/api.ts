@@ -643,8 +643,22 @@ export async function fetchCheckpointFileContent(
 export async function fetchCheckpointFilecontent(
   id: string,
   path: string,
+  nodeId?: string,
 ): Promise<{ name?: string; content?: string; error?: string }> {
-  return get(`/api/checkpoint/${encodeURIComponent(id)}/filecontent?path=${encodeURIComponent(path)}`);
+  const nq = nodeId ? `&node_id=${encodeURIComponent(nodeId)}` : '';
+  return get(
+    `/api/checkpoint/${encodeURIComponent(id)}/filecontent?path=${encodeURIComponent(path)}${nq}`,
+  );
+}
+
+// File tree for a checkpoint (or a node's work_dir when nodeId is set). Returns
+// 200 + {error} for application errors; callers read data.error/data.tree.
+export async function fetchCheckpointFiletree(
+  id: string,
+  nodeId?: string,
+): Promise<{ tree?: any[]; error?: string }> {
+  const qs = nodeId ? `?node_id=${encodeURIComponent(nodeId)}` : '';
+  return get(`/api/checkpoint/${encodeURIComponent(id)}/filetree${qs}`);
 }
 
 export async function saveCheckpointFile(
@@ -760,5 +774,90 @@ export async function launchSubExperiment(data: {
   inherit_idea_index?: number;
 }): Promise<{ ok: boolean; run_id?: string; pid?: number; error?: string }> {
   return post('/api/sub-experiments/launch', data);
+}
+
+// ── PaperBench ─────────────────────────────────
+// These endpoints return 200 + {error} for application errors (routes.py
+// _json defaults to status=200). Several PaperBench call sites read the
+// response body unconditionally and have no try/catch, so these helpers
+// deliberately do NOT throw on non-2xx — they mirror the components' existing
+// `fetch(...).then(r => r.json())` behavior exactly. URLs match the original
+// call sites verbatim (encoded params only where the components encoded them).
+
+async function pbGet<T = any>(path: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`);
+  return res.json() as Promise<T>;
+}
+
+async function pbPost<T = any>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body ?? {}),
+  });
+  return res.json() as Promise<T>;
+}
+
+// papers is typed as any[] because each consumer applies its own richer local
+// row type (e.g. PaperRegistryPage.PaperEntry); matches the prior untyped read.
+export async function fetchPaperbenchPapers(): Promise<{
+  papers?: any[];
+  error?: string;
+}> {
+  return pbGet('/api/paperbench/papers');
+}
+
+export async function deletePaperbenchPaper(
+  id: string,
+): Promise<{ deleted?: boolean; error?: string; reason?: string }> {
+  // Original call sent no body and no Content-Type header — preserved exactly.
+  const res = await fetch(`/api/paperbench/papers/${encodeURIComponent(id)}/delete`, {
+    method: 'POST',
+  });
+  return res.json();
+}
+
+export async function estimatePaperbenchCost(body: {
+  rubric_config: unknown;
+  reproduce_config: unknown;
+  judge_config: unknown;
+}): Promise<any> {
+  return pbPost('/api/paperbench/cost-estimate', body);
+}
+
+export async function runPaperbench(
+  body: unknown,
+): Promise<{ job_ids?: string[]; error?: string }> {
+  return pbPost('/api/paperbench/run', body);
+}
+
+export async function fetchArxivMetadata(source: string): Promise<{
+  title?: string;
+  authors?: string[];
+  year?: number | string;
+  license?: string;
+  error?: string;
+}> {
+  return pbGet(`/api/paperbench/arxiv/${encodeURIComponent(source)}`);
+}
+
+export async function importPaperbenchPaper(body: Record<string, unknown>): Promise<any> {
+  return pbPost('/api/paperbench/papers/import', body);
+}
+
+// jobId is NOT URL-encoded here to match the original call sites verbatim.
+export async function fetchPaperbenchRun(jobId: string): Promise<any> {
+  return pbGet(`/api/paperbench/run/${jobId}`);
+}
+
+export async function fetchPaperbenchRunResults(jobId: string): Promise<any> {
+  return pbGet(`/api/paperbench/run/${jobId}/results`);
+}
+
+export async function requestPaperbenchReport(
+  jobId: string,
+  body: { languages: string[]; formats: string[] },
+): Promise<{ download_urls?: Record<string, string>; error?: string }> {
+  return pbPost(`/api/paperbench/run/${jobId}/report`, body);
 }
 

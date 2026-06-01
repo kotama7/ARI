@@ -1,15 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
 import type { TreeNode } from '../../types';
-import { MemoryEntryCard } from './DetailPanelTabs/MemoryEntryCard';
-import {
-  fetchCheckpointMemory,
-  fetchMemoryAccess,
-  fetchNodeReport,
-  type MemoryEntry,
-  type MemoryAccessResponse,
-  type NodeReport,
-} from '../../services/api';
+import { useDetailPanelData } from './useDetailPanelData';
+import { TraceTab } from './DetailPanelTabs/TraceTab';
+import { CodeTab } from './DetailPanelTabs/CodeTab';
+import { MemoryTab } from './DetailPanelTabs/MemoryTab';
+import { AccessTab } from './DetailPanelTabs/AccessTab';
+import { ReportTab } from './DetailPanelTabs/ReportTab';
 
 // ── Colour constants (same as original dashboard.js) ──
 
@@ -48,158 +45,21 @@ export function DetailPanel({ node, allNodes, checkpointId, onClose }: DetailPan
     setActiveTab('overview');
   }, [node?.id]);
 
-  // ── Memory data ──
-  const [memEntries, setMemEntries] = useState<MemoryEntry[] | null>(null);
-  const [globalEntries, setGlobalEntries] = useState<MemoryEntry[]>([]);
-  const [memLoading, setMemLoading] = useState(false);
-  const [memError, setMemError] = useState<string | null>(null);
-
-  // Ancestor chain (root → ... → self) computed from parent_id walk
-  const ancestorIds = useMemo<string[]>(() => {
-    if (!node || !allNodes) return node ? [node.id] : [];
-    const byId = new Map<string, TreeNode>();
-    allNodes.forEach((n) => byId.set(n.id, n));
-    const chain: string[] = [];
-    let cur: TreeNode | undefined = byId.get(node.id);
-    const seen = new Set<string>();
-    while (cur && !seen.has(cur.id)) {
-      seen.add(cur.id);
-      chain.unshift(cur.id);
-      const pid = cur.parent_id;
-      cur = pid ? byId.get(pid) : undefined;
-    }
-    return chain;
-  }, [node, allNodes]);
-
-  useEffect(() => {
-    if (!checkpointId || !node) {
-      setMemEntries(null);
-      return;
-    }
-    let aborted = false;
-    setMemLoading(true);
-    setMemError(null);
-    fetchCheckpointMemory(checkpointId)
-      .then((r) => {
-        if (aborted) return;
-        if (r.error) {
-          setMemError(r.error);
-          setMemEntries([]);
-          setGlobalEntries([]);
-        } else {
-          setMemEntries(r.entries || []);
-          setGlobalEntries(r.global || []);
-        }
-      })
-      .catch((e) => {
-        if (aborted) return;
-        setMemError(String(e));
-        setMemEntries([]);
-      })
-      .finally(() => {
-        if (!aborted) setMemLoading(false);
-      });
-    return () => {
-      aborted = true;
-    };
-  }, [checkpointId, node?.id]);
-
-  const visibleMemory = useMemo(() => {
-    if (!memEntries || !node) return [] as MemoryEntry[];
-    const allowed = new Set(ancestorIds);
-    return memEntries.filter((e) => allowed.has(e.node_id));
-  }, [memEntries, node, ancestorIds]);
-
-  // ── Access log data (lazy: fetched only when the Access tab is opened) ──
-  const [accessData, setAccessData] = useState<MemoryAccessResponse | null>(null);
-  const [accessLoading, setAccessLoading] = useState(false);
-  const [accessError, setAccessError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (activeTab !== 'access' || !checkpointId || !node) {
-      return;
-    }
-    let aborted = false;
-    setAccessLoading(true);
-    setAccessError(null);
-    fetchMemoryAccess(checkpointId, node.id)
-      .then((r) => {
-        if (aborted) return;
-        if (r.error) setAccessError(r.error);
-        setAccessData(r);
-      })
-      .catch((e) => {
-        if (aborted) return;
-        setAccessError(String(e));
-        setAccessData(null);
-      })
-      .finally(() => {
-        if (!aborted) setAccessLoading(false);
-      });
-    return () => {
-      aborted = true;
-    };
-  }, [activeTab, checkpointId, node?.id]);
-
-  // ── Node report data (lazy: fetched only when the Report tab is opened) ──
-  const [reportData, setReportData] = useState<NodeReport | null>(null);
-  const [reportError, setReportError] = useState<string | null>(null);
-  const [reportLoading, setReportLoading] = useState(false);
-  const [reportAvailable, setReportAvailable] = useState<boolean | null>(null);
-
-  // Probe once per node-id whether a report exists, so we can show/hide the
-  // tab without forcing the user to click it. We hit the same endpoint —
-  // tiny payload — and remember the answer.
-  useEffect(() => {
-    if (!checkpointId || !node) {
-      setReportAvailable(null);
-      setReportData(null);
-      return;
-    }
-    let aborted = false;
-    fetchNodeReport(checkpointId, node.id)
-      .then((r) => {
-        if (aborted) return;
-        if (r.error || !r.report) {
-          setReportAvailable(false);
-          setReportData(null);
-        } else {
-          setReportAvailable(true);
-          setReportData(r.report);
-        }
-      })
-      .catch(() => {
-        if (!aborted) setReportAvailable(false);
-      });
-    return () => {
-      aborted = true;
-    };
-  }, [checkpointId, node?.id]);
-
-  useEffect(() => {
-    if (activeTab !== 'report' || !checkpointId || !node) {
-      return;
-    }
-    if (reportData) return; // already loaded by the availability probe.
-    let aborted = false;
-    setReportLoading(true);
-    setReportError(null);
-    fetchNodeReport(checkpointId, node.id)
-      .then((r) => {
-        if (aborted) return;
-        if (r.error) setReportError(r.error);
-        else if (r.report) setReportData(r.report);
-      })
-      .catch((e) => {
-        if (!aborted) setReportError(String(e));
-      })
-      .finally(() => {
-        if (!aborted) setReportLoading(false);
-      });
-    return () => {
-      aborted = true;
-    };
-  }, [activeTab, checkpointId, node?.id, reportData]);
+  // Per-node data loading (memory / access-log / node-report) lives in a hook.
+  const {
+    ancestorIds,
+    visibleMemory,
+    globalEntries,
+    memLoading,
+    memError,
+    accessData,
+    accessLoading,
+    accessError,
+    reportData,
+    reportError,
+    reportLoading,
+    reportAvailable,
+  } = useDetailPanelData(checkpointId, node, allNodes, activeTab);
 
   // ── Resize drag handlers ──
 
@@ -509,415 +369,42 @@ export function DetailPanel({ node, allNodes, checkpointId, onClose }: DetailPan
 
           {/* MCP Trace tab */}
           {activeTab === 'trace' && traceLog.length > 0 && (
-            <div>
-              {/* Tool pills */}
-              <div style={{ marginBottom: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                {toolNames.map((tn) => (
-                  <span
-                    key={tn}
-                    style={{
-                      fontSize: '.7rem',
-                      padding: '1px 7px',
-                      borderRadius: 6,
-                      background: 'rgba(59,130,246,.15)',
-                      color: '#60a5fa',
-                    }}
-                  >
-                    {tn}
-                  </span>
-                ))}
-              </div>
-              <pre
-                className="code"
-                style={{
-                  maxHeight: 300,
-                  overflow: 'auto',
-                  fontSize: '.7rem',
-                  lineHeight: 1.4,
-                }}
-              >
-                {traceLog.map((entry, i) => {
-                  const s =
-                    typeof entry === 'string' ? entry : JSON.stringify(entry, null, 2);
-                  const lineCol = s.startsWith('→') || s.startsWith('->')
-                    ? '#60a5fa'
-                    : s.startsWith('  ←') || s.startsWith('  <-')
-                      ? '#86efac'
-                      : 'inherit';
-                  return (
-                    <span key={i} style={{ color: lineCol }}>
-                      {s}{'\n'}
-                    </span>
-                  );
-                })}
-              </pre>
-            </div>
+            <TraceTab traceLog={traceLog} toolNames={toolNames} />
           )}
 
           {/* Code tab */}
           {activeTab === 'code' && codeSnippets.length > 0 && (
-            <div>
-              {codeSnippets.map((c, i) => (
-                <React.Fragment key={i}>
-                  <div
-                    style={{
-                      fontSize: '.72rem',
-                      color: 'var(--muted)',
-                      margin: '6px 0 2px',
-                    }}
-                  >
-                    --- Snippet {i + 1} / {codeSnippets.length} ---
-                  </div>
-                  <pre
-                    className="code"
-                    style={{
-                      maxHeight: 400,
-                      overflow: 'auto',
-                      fontSize: '.72rem',
-                      lineHeight: 1.5,
-                      marginBottom: 8,
-                    }}
-                  >
-                    {c}
-                  </pre>
-                </React.Fragment>
-              ))}
-            </div>
+            <CodeTab codeSnippets={codeSnippets} />
           )}
 
           {/* Memory tab */}
           {activeTab === 'memory' && (
-            <div>
-              {memLoading && (
-                <div style={{ fontSize: '.72rem', color: 'var(--muted)' }}>
-                  Loading memory…
-                </div>
-              )}
-              {memError && (
-                <div style={{ fontSize: '.72rem', color: 'var(--red)' }}>
-                  {memError}
-                </div>
-              )}
-              {!memLoading &&
-                !memError &&
-                visibleMemory.length === 0 &&
-                globalEntries.length === 0 && (
-                  <div style={{ fontSize: '.75rem', color: 'var(--muted)' }}>
-                    {t('memory_empty')}
-                  </div>
-                )}
-              {!memLoading && visibleMemory.length > 0 && (
-                <div
-                  style={{
-                    fontSize: '.72rem',
-                    color: 'var(--muted)',
-                    marginBottom: 6,
-                  }}
-                >
-                  <span className="badge badge-blue" style={{ marginRight: 4 }}>
-                    {t('memory_own')}
-                  </span>
-                  <span className="badge badge-muted">
-                    {t('memory_inherited')}
-                  </span>
-                </div>
-              )}
-              {globalEntries.length > 0 && (
-                <div style={{ marginBottom: 8 }}>
-                  <div
-                    style={{
-                      fontSize: '.7rem',
-                      color: 'var(--muted)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '.04em',
-                      margin: '8px 0 4px',
-                    }}
-                  >
-                    {t('memory_global_header')} ({globalEntries.length})
-                  </div>
-                  {globalEntries.map((e, i) => (
-                    <MemoryEntryCard
-                      key={`g-${i}`}
-                      entry={e}
-                      variant="global"
-                      labels={{
-                        fromNode: t('memory_from_node'),
-                        sourceMcp: t('memory_source_mcp'),
-                        sourceFile: t('memory_source_file'),
-                        sourceGlobal: t('memory_source_global'),
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
-              {visibleMemory.map((e, i) => {
-                const own = e.node_id === node.id;
-                const depthIdx = ancestorIds.indexOf(e.node_id);
-                return (
-                  <MemoryEntryCard
-                    key={i}
-                    entry={e}
-                    variant={own ? 'own' : 'inherited'}
-                    ancestorIndex={depthIdx}
-                    labels={{
-                      fromNode: t('memory_from_node'),
-                      sourceMcp: t('memory_source_mcp'),
-                      sourceFile: t('memory_source_file'),
-                      sourceGlobal: t('memory_source_global'),
-                    }}
-                  />
-                );
-              })}
-            </div>
+            <MemoryTab
+              memLoading={memLoading}
+              memError={memError}
+              visibleMemory={visibleMemory}
+              globalEntries={globalEntries}
+              ancestorIds={ancestorIds}
+              currentNodeId={node.id}
+            />
           )}
 
           {/* Access log tab */}
           {activeTab === 'access' && (
-            <div>
-              {accessLoading && (
-                <div style={{ fontSize: '.72rem', color: 'var(--muted)' }}>
-                  Loading access log…
-                </div>
-              )}
-              {accessError && (
-                <div style={{ fontSize: '.72rem', color: 'var(--red)' }}>
-                  {accessError}
-                </div>
-              )}
-              {!accessLoading &&
-                !accessError &&
-                accessData &&
-                accessData.writes.length === 0 &&
-                accessData.reads.length === 0 && (
-                  <div style={{ fontSize: '.75rem', color: 'var(--muted)' }}>
-                    {t('memory_access_empty')}
-                  </div>
-                )}
-              {accessData && (accessData.writes.length > 0 || accessData.reads.length > 0) && (
-                <div style={{ fontSize: '.72rem', color: 'var(--muted)', marginBottom: 6 }}>
-                  <span className="badge badge-blue" style={{ marginRight: 4 }}>
-                    {t('memory_access_writes')}: {accessData.writes.length}
-                  </span>
-                  <span className="badge badge-muted">
-                    {t('memory_access_reads')}: {accessData.reads.length}
-                  </span>
-                </div>
-              )}
-              {accessData && accessData.writes.length > 0 && (
-                <div style={{ marginBottom: 8 }}>
-                  <div
-                    style={{
-                      fontSize: '.7rem',
-                      color: 'var(--muted)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '.04em',
-                      margin: '8px 0 4px',
-                    }}
-                  >
-                    {t('memory_access_writes')} ({accessData.writes.length})
-                  </div>
-                  {accessData.writes.map((ev, i) => (
-                    <div
-                      key={`w-${i}`}
-                      style={{
-                        borderLeft: '3px solid #60a5fa',
-                        background: 'rgba(59,130,246,.06)',
-                        padding: '6px 8px',
-                        margin: '4px 0',
-                        borderRadius: 3,
-                        fontSize: '.72rem',
-                      }}
-                    >
-                      <div style={{ color: 'var(--muted)', marginBottom: 3 }}>
-                        {ev.ts
-                          ? new Date(Number(ev.ts) * 1000).toLocaleString()
-                          : ''}
-                      </div>
-                      {ev.text_preview && (
-                        <div
-                          style={{
-                            whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-word',
-                            maxHeight: 120,
-                            overflow: 'auto',
-                          }}
-                        >
-                          {ev.text_preview}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-              {accessData && accessData.reads.length > 0 && (
-                <div>
-                  <div
-                    style={{
-                      fontSize: '.7rem',
-                      color: 'var(--muted)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '.04em',
-                      margin: '8px 0 4px',
-                    }}
-                  >
-                    {t('memory_access_reads')} ({accessData.reads.length})
-                  </div>
-                  {accessData.reads.map((ev, i) => (
-                    <div
-                      key={`r-${i}`}
-                      style={{
-                        borderLeft: '3px solid #86efac',
-                        background: 'rgba(134,239,172,.06)',
-                        padding: '6px 8px',
-                        margin: '4px 0',
-                        borderRadius: 3,
-                        fontSize: '.72rem',
-                      }}
-                    >
-                      <div
-                        style={{
-                          color: 'var(--muted)',
-                          marginBottom: 3,
-                          display: 'flex',
-                          gap: 6,
-                          flexWrap: 'wrap',
-                        }}
-                      >
-                        {ev.ts && (
-                          <span>{new Date(Number(ev.ts) * 1000).toLocaleString()}</span>
-                        )}
-                        {ev.results && (
-                          <span>
-                            {t('memory_access_hits')}: {ev.results.length}
-                          </span>
-                        )}
-                      </div>
-                      {ev.query && (
-                        <div
-                          style={{
-                            fontFamily: 'monospace',
-                            whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-word',
-                          }}
-                        >
-                          {t('memory_access_query')}: {ev.query}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <AccessTab
+              accessLoading={accessLoading}
+              accessError={accessError}
+              accessData={accessData}
+            />
           )}
 
           {/* Report tab — node_report.json structured view (v0.7.0). */}
           {activeTab === 'report' && (
-            <div style={{ fontSize: '.78rem' }}>
-              {reportLoading && <div style={{ color: 'var(--muted)' }}>Loading…</div>}
-              {reportError && (
-                <div style={{ color: 'var(--danger, #ef4444)' }}>{reportError}</div>
-              )}
-              {reportData && (
-                <div>
-                  {reportData.delta_vs_parent && (
-                    <div style={{ marginBottom: 8 }}>
-                      <div style={{ color: 'var(--muted)', marginBottom: 2 }}>
-                        {t('report_delta_vs_parent')}
-                      </div>
-                      <div>{reportData.delta_vs_parent}</div>
-                    </div>
-                  )}
-                  {reportData.self_assessment?.headline && (
-                    <div style={{ marginBottom: 8 }}>
-                      <div style={{ color: 'var(--muted)', marginBottom: 2 }}>
-                        {t('report_headline')}
-                      </div>
-                      <div>{reportData.self_assessment.headline}</div>
-                    </div>
-                  )}
-                  {(reportData.self_assessment?.concerns ?? []).length > 0 && (
-                    <div style={{ marginBottom: 8 }}>
-                      <div style={{ color: '#f59e0b', marginBottom: 2 }}>
-                        ⚠ {t('report_concerns')}
-                      </div>
-                      <ul style={{ margin: 0, paddingLeft: 18 }}>
-                        {reportData.self_assessment!.concerns!.map((c, i) => (
-                          <li key={i}>{c}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {(reportData.next_steps_hints ?? []).length > 0 && (
-                    <div style={{ marginBottom: 8 }}>
-                      <div style={{ color: 'var(--muted)', marginBottom: 2 }}>
-                        {t('report_next_steps')}
-                      </div>
-                      <ul style={{ margin: 0, paddingLeft: 18 }}>
-                        {reportData.next_steps_hints!.map((h, i) => (
-                          <li key={i}>{h}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  <div style={{ marginBottom: 8 }}>
-                    <div style={{ color: 'var(--muted)', marginBottom: 2 }}>
-                      {t('report_files_changed')}
-                    </div>
-                    <div style={{ fontSize: '.72rem' }}>
-                      {reportData.files_changed.added.length > 0 && (
-                        <div>
-                          <span style={{ color: '#10b981' }}>+ added:</span>{' '}
-                          {reportData.files_changed.added.map((e) => e.path).join(', ')}
-                        </div>
-                      )}
-                      {reportData.files_changed.modified.length > 0 && (
-                        <div>
-                          <span style={{ color: '#3b82f6' }}>~ modified:</span>{' '}
-                          {reportData.files_changed.modified.map((e) => e.path).join(', ')}
-                        </div>
-                      )}
-                      {reportData.files_changed.deleted.length > 0 && (
-                        <div>
-                          <span style={{ color: '#ef4444' }}>− deleted:</span>{' '}
-                          {reportData.files_changed.deleted.join(', ')}
-                        </div>
-                      )}
-                      {reportData.files_changed.added.length === 0 &&
-                        reportData.files_changed.modified.length === 0 &&
-                        reportData.files_changed.deleted.length === 0 && (
-                          <div style={{ color: 'var(--muted)' }}>
-                            {t('report_no_changes')}
-                          </div>
-                        )}
-                    </div>
-                  </div>
-                  {(reportData.build_command || reportData.run_command) && (
-                    <div style={{ marginBottom: 8 }}>
-                      <div style={{ color: 'var(--muted)', marginBottom: 2 }}>
-                        {t('report_commands')}
-                      </div>
-                      <pre
-                        className="code"
-                        style={{
-                          fontSize: '.7rem',
-                          padding: 6,
-                          maxHeight: 120,
-                          overflow: 'auto',
-                        }}
-                      >
-                        {reportData.build_command ? reportData.build_command + '\n' : ''}
-                        {reportData.run_command || ''}
-                      </pre>
-                    </div>
-                  )}
-                  {reportData.migration_source === 'auto' && (
-                    <div style={{ color: '#f59e0b', fontSize: '.7rem' }}>
-                      ⚠ {t('report_migrated_auto')}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            <ReportTab
+              reportLoading={reportLoading}
+              reportError={reportError}
+              reportData={reportData}
+            />
           )}
 
           {/* Raw JSON tab */}

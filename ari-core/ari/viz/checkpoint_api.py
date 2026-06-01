@@ -42,6 +42,17 @@ def _synth_repro_report_from_ors(*args, **kwargs):  # noqa: D401
     return _as._synth_repro_report_from_ors(*args, **kwargs)
 
 
+def _load_nodes_tree(checkpoint_dir):
+    """Resolve a checkpoint's node tree via the canonical loader.
+
+    Lazily imports ``ari.checkpoint.load_nodes_tree`` (the single resolver that
+    also honors the legacy ``node_*/tree.json`` layout, used by the live
+    WebSocket path) so the checkpoint list/summary cards agree with it.
+    """
+    from ari.checkpoint import load_nodes_tree as _load
+    return _load(checkpoint_dir)
+
+
 
 
 # ──────────────────────────────────────────────
@@ -117,36 +128,49 @@ def _api_checkpoints() -> list:
                     elif _is_active:
                         info["status"] = "stopped"
                     # else: leave "unknown" for tree.json to refine
-                # Phase 2: Refine status from tree.json node data
+                # Phase 2: Refine status from tree.json node data.
+                # The flat tree.json/nodes_tree.json probe is kept verbatim (incl.
+                # the st_size>0 guard and errors="replace") so its corrupt-file
+                # corner cases stay byte-identical; we ADD the canonical
+                # ari.checkpoint.load_nodes_tree fallback only when NEITHER flat
+                # file is present, so the legacy `node_*/tree.json` layout is now
+                # honored here too — it used to render node_count=0 in this list
+                # (req 07, divergence #1). Symmetric with _api_checkpoint_summary.
                 nt = d / "nodes_tree.json"
                 tf = d / "tree.json"
                 if tf.exists() and tf.stat().st_size > 0:
                     nt = tf
+                tree = None
                 if nt.exists() and nt.stat().st_size > 0:
                     try:
                         tree = json.loads(nt.read_text(encoding="utf-8", errors="replace"))
-                        nodes = tree.get("nodes", [])
-                        info["node_count"] = len(nodes)
-                        statuses = {n.get("status") for n in nodes}
-                        # Only refine status when process-based checks left it "unknown"
-                        if nodes and info["status"] not in ("running", "stopped"):
-                            if "running" in statuses:
-                                # Tree says running but no live process → orphaned
-                                info["status"] = "stopped"
-                            else:
-                                info["status"] = "completed"
-                        # Fallback score from scientific_score if no review
-                        if nodes:
-                            sci_scores = [
-                                n.get("metrics", {}).get("_scientific_score")
-                                for n in nodes
-                                if n.get("metrics", {}).get("_scientific_score") is not None
-                            ]
-                            if sci_scores:
-                                info["best_scientific_score"] = round(max(sci_scores), 2)
                     except Exception:
                         log.debug("checkpoint node parsing error: %s", d.name, exc_info=True)
-                        pass
+                        tree = None
+                elif not tf.exists() and not (d / "nodes_tree.json").exists():
+                    # No flat tree files — fall back to the legacy node_*/tree.json
+                    # layout via the canonical loader (matches the live path).
+                    tree = _load_nodes_tree(d)
+                if isinstance(tree, dict):
+                    nodes = tree.get("nodes", [])
+                    info["node_count"] = len(nodes)
+                    statuses = {n.get("status") for n in nodes}
+                    # Only refine status when process-based checks left it "unknown"
+                    if nodes and info["status"] not in ("running", "stopped"):
+                        if "running" in statuses:
+                            # Tree says running but no live process → orphaned
+                            info["status"] = "stopped"
+                        else:
+                            info["status"] = "completed"
+                    # Fallback score from scientific_score if no review
+                    if nodes:
+                        sci_scores = [
+                            n.get("metrics", {}).get("_scientific_score")
+                            for n in nodes
+                            if n.get("metrics", {}).get("_scientific_score") is not None
+                        ]
+                        if sci_scores:
+                            info["best_scientific_score"] = round(max(sci_scores), 2)
                 rr = d / "review_report.json"
                 if rr.exists() and rr.stat().st_size > 0:
                     try:
@@ -220,7 +244,12 @@ def _api_checkpoint_summary(ckpt_id: str) -> dict:
                 except Exception:
                     pass
 
-    # Load tree data (prefer tree.json, fallback to nodes_tree.json)
+    # Load tree data (prefer tree.json, fallback to nodes_tree.json). The flat
+    # files are read directly so a parse failure still surfaces a {_parse_error}
+    # envelope to the renderer. When NEITHER flat file is present, fall back to
+    # the canonical loader so the legacy `node_*/tree.json` layout is honored
+    # here too (req 07, divergence #1) — matching the live WebSocket path.
+    _tree_loaded = False
     for _tree_fname in ("tree.json", "nodes_tree.json"):
         _tp = d / _tree_fname
         if _tp.exists() and _tp.stat().st_size > 0:
@@ -228,7 +257,12 @@ def _api_checkpoint_summary(ckpt_id: str) -> dict:
                 result["nodes_tree"] = json.loads(_tp.read_text(encoding="utf-8", errors="replace"))
             except Exception as e:
                 result["nodes_tree"] = {"_parse_error": str(e)}
+            _tree_loaded = True
             break
+    if not _tree_loaded:
+        _legacy_tree = _load_nodes_tree(d)
+        if _legacy_tree is not None:
+            result["nodes_tree"] = _legacy_tree
 
     for fname in ("review_report.json", "science_data.json",
                   "figures_manifest.json", "vlm_review.json"):
