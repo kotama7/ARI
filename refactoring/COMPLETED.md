@@ -620,12 +620,28 @@ done (or the remainder is moved to a further follow-up).
   container-local helpers decisionVariant/decisionLabel/renderDimension, used only
   there, nested inside verbatim). ResultsPage 1857 -> 1446 lines. Checks per slice:
   typecheck 0 non-test errors; build ok; vitest 4 passed / 2 failed (pre-existing).
-- Optional remainder STILL open (req-15 §3 — deferred): the finer DAG split of
-  resultSections.tsx (resultTypes/resultHelpers/resultPrimitives/section files,
-  per notes/03), and the medium-risk (renderRepro + useCheckpointResults hook) and
-  high-risk (renderPaper/PaperWorkspace, renderEAR + useEAR — heavy state coupling)
-  container seams. The high-risk seams need adversarial verification (per the user
-  decision). These were optional in the requirement, not §2 listed components.
+- 2026-06-01 — **ResultsPage.tsx** medium-risk seam + resultSections leaf split.
+  (a) Leaf-layer finer split (per notes/03 DAG): byte-exact verbatim slices moved
+  the shared types → `resultTypes.ts` (OrsRenderInput/RubricNode/LeafGrade/
+  StageState) and the pure helpers/string-formatters → `resultHelpers.ts`
+  (tryParseJson, buildGradeMap, aggregateScore, truncSha, fileCount, asFileList,
+  formatFiles, format*Stage, *State); resultSections.tsx imports them back
+  (1601 -> 1417). (b) `renderRepro` extracted to resultSections.tsx as
+  `renderRepro({...})` — body verbatim, the closed-over repro-log state + setter/
+  loader/summary/selectedId/t threaded as params. ResultsPage 1446 -> 1327. Checks
+  per slice: typecheck 0 non-test errors; build ok; vitest 4 passed / 2 failed
+  (pre-existing). ResultsPage container is now 1327 lines (from 1857 at phase
+  start; 3177 originally before req-03).
+- Optional remainder STILL open (req-15 §3 — deferred, HIGH risk): the two
+  state-heavy container seams `renderPaper` (PaperWorkspace: ~12 state vars +
+  editor/upload/compile handlers, uploadRef, Ctrl+S keydown effect, the
+  activeAbsPath mid-body hoisting quirk) and `renderEAR` + a `useEAR` hook (13
+  state vars; the duplicated curate-EAR block). These share state with the
+  container's loadResults/loadFiles data effects, so they need a deliberate
+  hook-vs-stateful-child design + adversarial verification (per the user decision)
+  — NOT verbatim moves. Also still-optional: the resultPrimitives/section-file
+  layer of the DAG (KvList/CollapsibleText/FileViewer/ScoreBar/ChainStage + the
+  gradingTree/generationLogs/orsChain section files) — pure cosmetic reorg.
 
 ---
 
