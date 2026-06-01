@@ -59,8 +59,10 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `README.md` — Results index.
     - `index.ts` — barrel re-export.
     - `PublishYamlEditor.tsx` — per-checkpoint publish.yaml (EAR allowlist) editor; extracted from ResultsPage in req 03.
+    - `resultHelpers.ts` — pure helpers + string formatters (tryParseJson, buildGradeMap, aggregateScore, format*Stage, etc.); extracted from resultSections in req 15.
     - `resultSections.tsx` — presentational subcomponents and pure helpers for the results page; extracted from ResultsPage in req 03.
     - `ResultsPage.tsx` — results page container (state, data loading, layout).
+    - `resultTypes.ts` — Results-page shared types (OrsRenderInput, RubricNode, LeafGrade, StageState); extracted from resultSections in req 15.
     - `RubricTreeVisualization.tsx` — D3 rubric tree with aggregated leaf scores.
   - `Settings/` — dashboard/run configuration page.
     - `README.md` — Settings index.
