@@ -70,6 +70,7 @@ Feature-grouped React components — one subdirectory per dashboard page plus sh
   - `index.ts` — barrel re-export.
   - `TreePage.tsx` — tree page container.
   - `TreeVisualization.tsx` — D3 search-tree canvas.
+  - `useDetailPanelData.ts` — hook owning DetailPanel's memory/access-log/node-report fetch effects; extracted from DetailPanel in req 15.
   - `DetailPanelTabs/` — extracted detail-panel subcomponents.
     - `README.md` — DetailPanelTabs index.
     - `MemoryEntryCard.tsx` — renders one memory record (own/inherited/global) as a card.
