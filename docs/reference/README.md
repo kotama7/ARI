@@ -13,6 +13,7 @@ file formats, and terminology.
 - `execution_profile.md` — `execution_profile` reference: the object under `reproduce_contract`.
 - `file_formats.md` — File Formats Reference: the self-describing ARI checkpoint directory.
 - `glossary.md` — Glossary: short definitions of terms recurring across the docs.
+- `internal_boundaries.md` — Internal boundaries: the LLM, OS/scheduler/container, and two-engine orchestration boundaries + their concurrency hazards.
 - `mcp_tools.md` — MCP Tools Reference: the MCP servers ARI ships (one per skill package).
 - `public_api.md` — `ari.public`: the only stable module surface for `ari-skill-*` packages.
 - `registry.md` — ari-registry (v0.7.0+): the minimal HTTP registry for curated EAR bundles.

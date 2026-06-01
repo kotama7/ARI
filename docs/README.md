@@ -67,6 +67,7 @@ snapshots.
 - [Environment variables](reference/environment_variables.md)
 - [File formats](reference/file_formats.md)
 - [Public API](reference/public_api.md)
+- [Internal boundaries](reference/internal_boundaries.md)
 - [REST API](reference/rest_api.md)
 - [Execution profile](reference/execution_profile.md)
 - [Rubric schema](reference/rubric_schema.md)
@@ -120,6 +121,7 @@ release gate checks it against the tree (`docs/about/release_policy.md` §4).
 | reference/environment_variables | [✓](reference/environment_variables.md) | [✓](ja/reference/environment_variables.md) | [✓](zh/reference/environment_variables.md) |
 | reference/file_formats | [✓](reference/file_formats.md) | [✓](ja/reference/file_formats.md) | [✓](zh/reference/file_formats.md) |
 | reference/public_api | [✓](reference/public_api.md) | [✓](ja/reference/public_api.md) | [✓](zh/reference/public_api.md) |
+| reference/internal_boundaries | [✓](reference/internal_boundaries.md) | — | — |
 | reference/rest_api | [✓](reference/rest_api.md) | [✓](ja/reference/rest_api.md) | [✓](zh/reference/rest_api.md) |
 | reference/execution_profile | [✓](reference/execution_profile.md) | [✓](ja/reference/execution_profile.md) | [✓](zh/reference/execution_profile.md) |
 | reference/rubric_schema | [✓](reference/rubric_schema.md) | [✓](ja/reference/rubric_schema.md) | [✓](zh/reference/rubric_schema.md) |
