@@ -466,6 +466,49 @@ A requirement file under `refactoring/requirements/` may be deleted only after c
 
 ---
 
+## Completed Requirement: 12_hpc_container_subprocess_boundary.md
+
+- Status: completed (audit/documentation-only; all execution-backend seams
+  deferred per §5/§11 — no code change)
+- Summary: A 3-agent audit (core/viz/skills+scripts) of every subprocess / SLURM
+  / container / SSH side effect -> refactoring/notes/12_exec_boundary.md. Found
+  the sanctioned boundary is sound: ari/container.py (the dedicated exec module
+  with _sandbox_preexec setsid + group teardown; re-exported as
+  ari.public.container), env_detect.py (read-only scheduler/runtime probes),
+  mcp/client.py (MCP SDK stdio spawn), and ari-skill-hpc SlurmClient (canonical
+  SLURM). Problematic sites identified (duplication, not bad execution):
+  viz/api_memory start/stop-local re-deriving container runtime dispatch;
+  ari-skill-paper-re re-implementing sbatch + apptainer-exec that SlurmClient /
+  ari.public.container already own (with a real --export ALL vs clean-env
+  divergence + a missing setsid/killpg on the local fallback);
+  ari-skill-orchestrator detached child not process-group-reaped; gh.py
+  clone/publish git shell-outs. Documented the ari.viz.state global
+  process-handle coupling (_last_proc/_running_procs/_gpu_monitor_proc; gpu-monitor
+  now in api_process.py per req-05) and 4 ranked PROPOSE-ONLY seams (probe runner;
+  api_memory -> container facet; paper-re -> SlurmClient; managed-process Runner
+  owning the handle registry) with the cwd/env/signal/orphan/start.sh-shutdown
+  hazards each must preserve.
+- PR/Commit: branch refactoring (per-requirement local commit; notes-only)
+- Checks: NO production code changed (only the note). pytest ari-core/tests =
+  2231 passed / 0 failed; run_all_tests.sh = 2843 passed / 0 failed (unchanged);
+  re-ran test_container + test_run_env = 56 passed. ENVIRONMENT CAVEAT (§8/§11):
+  the real validation (start.sh / start.sh gui / status / shutdown.sh + an actual
+  container/SLURM op) is compute-node-gated and was NOT run on this login node —
+  per §8 that is fine for a no-code-change documentation deliverable, but any
+  future seam implementation MUST be verified on a real compute node before merge.
+- Risks/notes: did not touch scripts/, containers/, HPC behavior, or the
+  ari.viz.state handle store (§3 out of scope; §11 high-risk). Documented the
+  orphan/status/shutdown nexus as a hard constraint.
+- Follow-up: the 4 seams as dedicated requirements (api_memory->container facet =
+  smallest win; paper-re->SlurmClient fixes the --export divergence; managed-proc
+  Runner = the §12 headline, real-node verify mandatory, coordinates with the
+  req-07 active-checkpoint-global follow-up). Recorded in
+  refactoring/notes/12_exec_boundary.md §6.
+- Requirement file deleted: yes
+- Completed at: 2026-05-30
+
+---
+
 ## Template
 
 Copy this block when recording a completed requirement.
