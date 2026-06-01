@@ -52,6 +52,7 @@ Feature-grouped React components — one subdirectory per dashboard page plus sh
     - `ResultsView.tsx` — leaf grades + rubric tree + negative-control display.
 - `Results/` — final run results and rubric scoring.
   - `README.md` — Results index.
+  - `EarSection.tsx` — Experiment Artifact Repository section (curate/publish/publish.yaml editor); extracted from ResultsPage renderEAR in req 15.
   - `index.ts` — barrel re-export.
   - `PublishYamlEditor.tsx` — per-checkpoint publish.yaml (EAR allowlist) editor; extracted from ResultsPage in req 03.
   - `resultHelpers.ts` — pure helpers + string formatters (tryParseJson, buildGradeMap, aggregateScore, format*Stage, etc.); extracted from resultSections in req 15.
@@ -59,6 +60,7 @@ Feature-grouped React components — one subdirectory per dashboard page plus sh
   - `ResultsPage.tsx` — results page container (state, data loading, layout).
   - `resultTypes.ts` — Results-page shared types (OrsRenderInput, RubricNode, LeafGrade, StageState); extracted from resultSections in req 15.
   - `RubricTreeVisualization.tsx` — D3 rubric tree with aggregated leaf scores.
+  - `useEAR.ts` — hook owning EarSection's curate/publish/publish.yaml-editor action state; extracted from ResultsPage in req 15.
 - `Settings/` — dashboard/run configuration page.
   - `README.md` — Settings index.
   - `index.ts` — barrel re-export.
