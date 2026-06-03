@@ -189,6 +189,7 @@ class InMemoryBackend(MemoryBackend):
         by_node: dict[str, list[dict]] = {nid: [] for nid in node_ids}
         for e in entries:
             by_node[e["node_id"]].append({
+                "entry_id": e["id"],
                 "text": e["text"],
                 "metadata": e["metadata"],
                 "ts": e["ts"],
