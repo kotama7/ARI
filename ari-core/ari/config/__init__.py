@@ -348,6 +348,22 @@ def load_config(path: str) -> ARIConfig:
     return cfg
 
 
+def consolidation_enabled() -> bool:
+    """Whether node-end typed-memory consolidation + verified-context are active.
+
+    Default ON: real runs populate the typed research-memory store and ground
+    paper claims on it (validated live: the node-end hook writes provenanced
+    experiment_result entries). Set ``ARI_MEMORY_CONSOLIDATE`` to
+    ``0``/``false``/``no``/``off`` to disable. Single source of truth so the
+    BFTS node-end hook and the paper-pipeline verified-context builder stay in
+    sync.
+    """
+    v = os.environ.get("ARI_MEMORY_CONSOLIDATE")
+    if v is None:
+        return True
+    return v.strip().lower() not in ("0", "false", "no", "off")
+
+
 def _apply_checkpoint_env_overrides(cfg: "ARIConfig") -> None:
     """Let ARI_CHECKPOINT_DIR override checkpoint.dir from YAML.
 

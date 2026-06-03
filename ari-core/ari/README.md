@@ -115,7 +115,16 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `orchestrator.py` — top-level entry points (`build_scientific_data`, `run_pipeline`).
   - `stage_control.py` — loop_back / VLM-feedback control.
   - `stage_runner.py` — stage execution helpers (retry, ReAct, subprocess).
+  - `verified_context.py` — artifact-grounded verified context for write_paper (best node's root→best lineage → `verified_context.json`; `render_grounded_block`). Exposed via `ari.public.verified_context`.
   - `yaml_loader.py` — workflow/pipeline loaders + `{{var}}` resolution.
+  - `claim_gate/` — deterministic `claim_evidence_hard_gate` (Story2Proposal Phase B). See its `README.md`.
+    - `README.md` — claim_gate index.
+    - `__init__.py` — package init; re-exports `run_hard_gate`.
+    - `gate.py` — `run_hard_gate` orchestration (all checks → report + `should_block`).
+    - `latex.py` — deterministic LaTeX section + numeric-token parsing (coverage fallback; mirrors ari-skill-paper/src/claim_links.py).
+    - `numeric.py` — formula registry + `recompute` + `within_tolerance` (Phase B2; mirrored in ari-skill-transform/src/claims.py).
+    - `policy.py` — `claim_gate_policy` loader (defaults → arg → `claim_gate_policy.json` → env `ARI_CLAIM_GATE_MODE`).
+    - `resolve.py` — operand/evidence resolution against `tree.json` / `results.json` / `node_report.json`.
 - `prompts/` — external prompt templates (Phase PC).
   - `README.md` — prompts index.
   - `__init__.py` — exports + `PromptLoader` plumbing.
@@ -148,12 +157,14 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `public/` — public API surface for ARI skills (import-only contract).
   - `README.md` — public index.
   - `__init__.py` — exported sub-modules + rationale.
+  - `claim_gate.py` — re-export of `ari.pipeline.claim_gate.run_hard_gate` (Story2Proposal hard gate; used by ari-skill-evaluator).
   - `config_schema.py` — re-export of `ari.config` models.
   - `container.py` — re-export of `ari.container`.
   - `cost_tracker.py` — re-export of `ari.cost_tracker`.
   - `llm.py` — re-export of `ari.llm.client.LLMClient`.
   - `paths.py` — re-export of `ari.paths.PathManager`.
   - `run_env.py` — re-export of `ari.agent.run_env` capture helpers.
+  - `verified_context.py` — re-export of `ari.pipeline.verified_context` (`render_grounded_block` / `write_verified_context`; used by ari-skill-paper).
 - `publish/` — `ari ear publish`: package + ship a curated EAR.
   - `README.md` — publish index.
   - `__init__.py` — publish flow + artifacts.

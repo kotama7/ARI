@@ -642,14 +642,14 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                         "node_report: failed to write for %s: %s", result.id, _nre
                     )
 
-                # Phase 3 (opt-in): populate typed research-memory from the
-                # node_report just written. Gated by ARI_MEMORY_CONSOLIDATE so
-                # default production behavior is unchanged — the typed store
-                # feeds the verifiable / paper-context layer (search_research_memory,
-                # get_verified_context), NOT Phase 0 working-context injection,
-                # which keeps using result_summary. Best-effort: never breaks
-                # the loop. CoW is routed via cow_node_id=result.id.
-                if os.environ.get("ARI_MEMORY_CONSOLIDATE") == "1":
+                # Phase 3: populate typed research-memory from the node_report
+                # just written. Default ON (config.consolidation_enabled); the
+                # typed store feeds the verifiable / paper-context layer
+                # (search_research_memory, get_verified_context), NOT Phase 0
+                # working-context injection, which keeps using result_summary.
+                # Best-effort: never breaks the loop. CoW via cow_node_id=result.id.
+                from ari.config import consolidation_enabled as _cons_on
+                if _cons_on():
                     try:
                         _cwd = Path(
                             getattr(result, "work_dir", "")
