@@ -9,6 +9,7 @@ and owns the EAR publication lifecycle (curate / publish / promote).
 
 - `README.md` — this file.
 - `__init__.py` — empty package marker.
+- `claims.py` — TODO
 - `curate.py` — deterministic (P1/P2) EAR curator producing `ear_published/` + `manifest.lock`.
 - `server.py` — MCP entry point (`nodes_to_science_data`, `generate_ear`, `curate_ear`, `publish_ear`).
 - `licenses/` — bundled license texts used when curating EAR bundles.
@@ -18,6 +19,8 @@ and owns the EAR publication lifecycle (curate / publish / promote).
   - `cc-by-4.0.txt` — CC-BY-4.0 license body.
   - `gpl-3.0.txt` — GPL-3.0 license body.
   - `mit.txt` — MIT license body.
+- `schemas/` — TODO
+  - `science_data_claims.schema.json` — TODO
 
 ## See also
 

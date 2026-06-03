@@ -10,6 +10,7 @@ copy-on-write, backup/restore, and Letta backend behaviour.
 - `fake_letta.py` — Letta test double.
 - `test_access_log.py` — access auditing.
 - `test_ancestor_scope.py` — ancestor branch-scoping guarantees.
+- `test_archival_pagination.py` — TODO
 - `test_backup_restore.py` — backup/restore.
 - `test_checkpoint_isolation.py` — checkpoint isolation guarantees.
 - `test_consolidation.py` — TODO
