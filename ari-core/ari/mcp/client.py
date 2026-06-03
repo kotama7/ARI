@@ -260,6 +260,7 @@ class MCPClient:
         # ari-skill-memory/src/server.py.
         "add_experiment_result", "add_failure_case", "add_procedure_memory",
         "add_reflection", "add_reproducibility_event",
+        "consolidate_node_memory",
     })
 
     def __init__(self, skills: list[SkillConfig], disabled_tools: list[str] | None = None) -> None:

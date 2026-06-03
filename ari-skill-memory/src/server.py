@@ -20,7 +20,7 @@ if sys.version_info < (3, 14):
 from mcp.server.fastmcp import FastMCP
 
 from ari_skill_memory import audit as _audit
-from ari_skill_memory import context_builder, retriever, writer
+from ari_skill_memory import consolidation, context_builder, retriever, writer
 from ari_skill_memory.backends import get_backend
 
 log = logging.getLogger(__name__)
@@ -181,6 +181,31 @@ def audit_memory(experiments_root: str, run_id: str | None = None) -> dict:
     """Verify recorded provenance (sha256) against disk for a checkpoint."""
     results = _audit.audit_checkpoint(experiments_root, run_id)
     return {"summary": _audit.summarize(results), "results": results}
+
+
+@mcp.tool()
+def consolidate_node_memory(
+    node_id: str,
+    node_report: dict,
+    work_dir: str,
+    run_id: str | None = None,
+) -> dict:
+    """Derive + write typed memory from a node_report at node end (CoW: self).
+
+    Runs the pure consolidation logic server-side and writes the resulting
+    experiment_result / failure_case / reflection entries via the typed
+    writer. Caller is the ari-core node-end hook.
+    """
+    specs = consolidation.consolidate_from_node_report(
+        node_report, work_dir, run_id=run_id
+    )
+    results = consolidation.write_consolidated(_backend(), node_id, specs)
+    return {
+        "written": [
+            {"kind": s["kind"], "ok": r.get("ok", False), "id": r.get("id")}
+            for s, r in zip(specs, results)
+        ]
+    }
 
 
 @mcp.tool()

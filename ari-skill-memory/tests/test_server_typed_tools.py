@@ -28,6 +28,7 @@ _TYPED_TOOLS = [
     "search_research_memory",
     "get_verified_context",
     "audit_memory",
+    "consolidate_node_memory",
 ]
 
 
@@ -55,3 +56,18 @@ def test_search_research_memory_kind_filter(ckpt_env):
     texts = [r["text"] for r in res["results"]]
     assert any("link failure" in t for t in texts)
     assert all("result on partA" not in t for t in texts)
+
+
+def test_consolidate_node_memory_writes_typed(ckpt_env):
+    report = {
+        "node_id": "nX", "status": "success",
+        "metrics": {"GB_per_s": 842.1},
+        "self_assessment": {"headline": "tile=32 best throughput"},
+        "files_changed": {}, "artifacts": [], "next_steps_hints": ["try K=64"],
+    }
+    out = server.consolidate_node_memory("nX", report, str(ckpt_env), run_id="r")
+    kinds = {w["kind"] for w in out["written"]}
+    assert "experiment_result" in kinds and "reflection" in kinds
+    assert all(w["ok"] for w in out["written"])
+    got = server.get_verified_context(["nX"])
+    assert any("tile=32" in c["text"] for c in got["usable_for_claims"] + got["claims"])
