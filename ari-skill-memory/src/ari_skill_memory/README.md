@@ -10,6 +10,7 @@ both the FastMCP server (`src/server.py`) and ari-core's viz layer.
 - `access_log.py` — access auditing shared across backends.
 - `audit.py` — TODO
 - `config.py` — config loading shared across backends.
+- `consolidation.py` — TODO
 - `context_builder.py` — TODO
 - `provenance.py` — TODO
 - `retriever.py` — TODO

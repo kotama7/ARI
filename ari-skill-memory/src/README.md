@@ -15,6 +15,7 @@ tree, backed by Letta. Holds the FastMCP server plus the importable
   - `access_log.py` — access auditing shared across backends.
   - `audit.py` — TODO
   - `config.py` — config loading shared across backends.
+  - `consolidation.py` — TODO
   - `context_builder.py` — TODO
   - `provenance.py` — TODO
   - `retriever.py` — TODO

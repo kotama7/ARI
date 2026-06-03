@@ -12,6 +12,7 @@ copy-on-write, backup/restore, and Letta backend behaviour.
 - `test_ancestor_scope.py` — ancestor branch-scoping guarantees.
 - `test_backup_restore.py` — backup/restore.
 - `test_checkpoint_isolation.py` — checkpoint isolation guarantees.
+- `test_consolidation.py` — TODO
 - `test_cow.py` — copy-on-write branch-scoping guarantees.
 - `test_global_tools_removed.py` — removed global-tools guard.
 - `test_letta_embedding_compat.py` — Letta backend embedding compatibility.
