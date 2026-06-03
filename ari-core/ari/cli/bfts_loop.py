@@ -642,6 +642,37 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                         "node_report: failed to write for %s: %s", result.id, _nre
                     )
 
+                # Phase 3 (opt-in): populate typed research-memory from the
+                # node_report just written. Gated by ARI_MEMORY_CONSOLIDATE so
+                # default production behavior is unchanged — the typed store
+                # feeds the verifiable / paper-context layer (search_research_memory,
+                # get_verified_context), NOT Phase 0 working-context injection,
+                # which keeps using result_summary. Best-effort: never breaks
+                # the loop. CoW is routed via cow_node_id=result.id.
+                if os.environ.get("ARI_MEMORY_CONSOLIDATE") == "1":
+                    try:
+                        _cwd = Path(
+                            getattr(result, "work_dir", "")
+                            or _pm.node_work_dir(run_id, result.id)
+                        )
+                        _nr_path = _cwd / "node_report.json"
+                        _nr = json.loads(_nr_path.read_text()) if _nr_path.exists() else None
+                        if _nr and getattr(agent, "mcp", None) is not None:
+                            agent.mcp.call_tool(
+                                "consolidate_node_memory",
+                                {
+                                    "node_id": result.id,
+                                    "node_report": _nr,
+                                    "work_dir": str(_cwd),
+                                    "run_id": run_id,
+                                },
+                                cow_node_id=result.id,
+                            )
+                    except Exception as _ce:
+                        logging.getLogger(__name__).warning(
+                            "consolidate_node_memory failed for %s: %s", result.id, _ce
+                        )
+
                 # Save checkpoint after each node completes (not just after batch)
                 # This ensures progress is preserved if SIGTERM interrupts mid-batch
                 _save_tree_incremental(
