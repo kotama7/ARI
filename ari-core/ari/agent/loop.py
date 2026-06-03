@@ -66,6 +66,152 @@ _MEMORY_RULES_PER_NODE = """
 _MEMORY_RULES_GLOBAL = ""
 
 
+def _mcp_payload(raw: object) -> dict:
+    """Unwrap ``MCPClient.call_tool``'s ``{"result": "<json>"}`` envelope into a dict.
+
+    ``call_tool`` returns ``{"result": "<serialized tool output>"}`` (and may
+    return a bare dict or JSON string in tests/fakes). Returns ``{}`` on any
+    shape we cannot decode so callers can treat "no data" uniformly.
+    """
+    import json as _jp
+    v: object = raw
+    if isinstance(v, dict) and isinstance(v.get("result"), str):
+        try:
+            v = _jp.loads(v["result"])
+        except Exception:
+            return {}
+    if isinstance(v, str):
+        try:
+            v = _jp.loads(v)
+        except Exception:
+            return {}
+    return v if isinstance(v, dict) else {}
+
+
+# Working-context injection caps (PLAN_memory_inheritance.md §8 token budget).
+# Tunable: validated depth-4 chains injected ~7.5 KB with uncapped core fields
+# (verbose primary_metric / metric_rationale). Caps keep per-node memory bounded.
+_CORE_FIELD_CAP = 400        # per experiment-core field (1a)
+_ANCESTOR_SUMMARY_CAP = 600  # per ancestor conclusion (1b)
+_SUPPLEMENT_CAP = 400        # per detail-supplement entry (2)
+
+
+def _cap(s: str, n: int) -> str:
+    """Truncate to n chars with an ellipsis marker when cut."""
+    s = s.strip()
+    return s if len(s) <= n else s[:n] + " …[truncated]"
+
+
+def build_working_context_messages(
+    call_tool,
+    *,
+    depth: int,
+    ancestor_ids: list[str],
+    eval_summary: str | None,
+    experiment_goal: str | None,
+) -> list[dict]:
+    """Build the deterministic Tier 1/2 working-context messages for a node.
+
+    See ``PLAN_memory_inheritance.md`` §4-5 (Phase 0). Replaces the prior
+    one-shot semantic pre-seed (which truncated up to 5 joined entries to an
+    aggregate 800 chars and never injected the experiment core). Parent *code*
+    already inherits via work_dir copy and parent *report* via the BFTS planner;
+    this injects the bounded, always-relevant working set:
+
+      (1a) experiment core   — applies to every node, previously NOT injected.
+      (1b) ancestor core     — each ancestor's conclusions (``result_summary``),
+                               deterministic + full (no aggregate truncation).
+      (2)  detail supplement — a small per-entry-capped semantic recall, deduped
+                               against (1b).
+
+    ``call_tool(name, args) -> dict`` is ``MCPClient.call_tool``. Read-only:
+    never writes memory. Returns a (possibly empty) list of
+    ``{"role": "user", "content": ...}`` messages to append to the node prompt.
+    """
+    out: list[dict] = []
+
+    # (1a) Experiment core — stable experiment-level facts (metric, hardware …).
+    try:
+        ctx = _mcp_payload(call_tool("get_experiment_context", {}))
+        ctx_lines = [
+            f"  {k}: {_cap(str(ctx.get(k)), _CORE_FIELD_CAP)}"
+            for k in ("primary_metric", "higher_is_better", "metric_rationale", "hardware_spec")
+            if ctx.get(k) not in (None, "", {}, [])
+        ]
+        if ctx_lines:
+            out.append({
+                "role": "user",
+                "content": "[Experiment context (stable across all nodes):]\n" + "\n".join(ctx_lines),
+            })
+    except Exception as e:  # pragma: no cover - defensive
+        logger.debug("experiment-core injection failed: %s", e)
+
+    if not (depth > 0 and ancestor_ids):
+        return out
+
+    # (1b) Ancestor core — deterministic, full handoff of each ancestor's
+    # conclusions. Fetched per-ancestor via get_node_memory (read-only, scoped)
+    # and filtered to result_summary entries; bounded by tree depth so injected
+    # whole. Order follows ancestor_ids (root → parent).
+    tier1_keys: set[str] = set()
+    summaries: list[str] = []
+    for aid in ancestor_ids:
+        try:
+            nm = _mcp_payload(call_tool("get_node_memory", {"node_id": aid}))
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("get_node_memory(%s) failed: %s", aid, e)
+            continue
+        for ent in nm.get("entries", []) or []:
+            md = ent.get("metadata", {}) or {}
+            if md.get("type") != "result_summary":
+                continue
+            txt = (ent.get("text") or "").strip()
+            if not txt:
+                continue
+            key = txt[:120]
+            if key in tier1_keys:
+                continue
+            tier1_keys.add(key)
+            summaries.append(_cap(txt, _ANCESTOR_SUMMARY_CAP))  # per-entry cap, NOT an aggregate cut
+    if summaries:
+        out.append({
+            "role": "user",
+            "content": (
+                f"[Established conclusions from ancestor nodes ({len(summaries)}):]\n"
+                + "\n".join(f"- {s}" for s in summaries)
+            ),
+        })
+
+    # (2) Detail supplement — small semantic recall of ancestor detail beyond the
+    # conclusions, per-entry capped and deduped against Tier 1(b). Replaces the
+    # prior aggregate [:800] dump. eval_summary is used only as the search query.
+    try:
+        query = (eval_summary or experiment_goal or "experiment result")[:200]
+        supp_raw = _mcp_payload(call_tool("search_memory", {
+            "query": query,
+            "ancestor_ids": ancestor_ids,
+            "limit": 5,
+        }))
+        supp: list[str] = []
+        for ent in supp_raw.get("results", []) or []:
+            txt = (ent.get("text") or "").strip()
+            if not txt or txt[:120] in tier1_keys:
+                continue
+            supp.append(_cap(txt, _SUPPLEMENT_CAP))  # per-entry cap
+        if supp:
+            out.append({
+                "role": "user",
+                "content": (
+                    f"[Related prior findings from ancestors ({len(supp)}):]\n"
+                    + "\n".join(f"- {s}" for s in supp)
+                ),
+            })
+    except Exception as e:  # pragma: no cover - defensive
+        logger.debug("ancestor-detail supplement failed: %s", e)
+
+    return out
+
+
 # Phase 3D — message-history helpers extracted to
 # ``ari.agent.message_utils``.  Re-imported under the same names so
 # any caller (incl. the Phase-0 smoke tests) that did
@@ -330,34 +476,21 @@ class AgentLoop:
             {"role": "user", "content": user_content},
         ]
 
-        # For child nodes: inject parent memory via search_memory
-        # (ancestor_ids is now serialized correctly, so search_memory works)
-        if node.depth > 0:
-            if node.ancestor_ids:
-                try:
-                    # Use node's own goal as query so retrieved memories are relevant
-                    _mem_query = (node.eval_summary or self.experiment_goal or "experiment result")[:200]
-                    mem_result = self.mcp.call_tool("search_memory", {
-                        "query": _mem_query,
-                        "ancestor_ids": node.ancestor_ids,
-                        "limit": 5,
-                    })
-                    if isinstance(mem_result, str):
-                        import json as _j; mem_result = _j.loads(mem_result)
-                    prior_entries = mem_result.get("results", []) if isinstance(mem_result, dict) else []
-                    if prior_entries:
-                        knowledge_summary = "\n".join(
-                            e.get("text", "") for e in prior_entries if e.get("text")
-                        )
-                        messages.append({
-                            "role": "user",
-                            "content": (
-                                f"[Prior knowledge from ancestor nodes ({len(prior_entries)} entries):]\n"
-                                f"{knowledge_summary[:800]}\n"
-                            ),
-                        })
-                except Exception as _e:
-                    logger.debug("search_memory failed: %s", _e)
+        # ── Tier 1/2 working-context injection (deterministic, loop-orchestrated) ──
+        # PLAN_memory_inheritance.md §4-5 (Phase 0). Replaces the prior one-shot
+        # semantic pre-seed (aggregate [:800] dump; experiment core never injected).
+        # Read-only; never writes memory. Logic lives in build_working_context_messages
+        # (module-level, unit-tested) so it stays mockable and side-effect free.
+        # goal_text (from the experiment dict, above) is the reliable in-scope goal;
+        # the legacy `self.experiment_goal` attribute is never assigned in this class
+        # (the old call sites only survived via short-circuit eval + try/except).
+        messages.extend(build_working_context_messages(
+            self.mcp.call_tool,
+            depth=node.depth,
+            ancestor_ids=node.ancestor_ids or [],
+            eval_summary=node.eval_summary,
+            experiment_goal=goal_text,
+        ))
 
         # Inject long-term (cross-experiment) memory if the tool is available
         if "search_global_memory" in tool_names:
