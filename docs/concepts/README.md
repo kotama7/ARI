@@ -11,3 +11,4 @@ behind the autonomous research system.
 - `memory.md` — Memory Architecture: how each node reads from its ancestor chain.
 - `PHILOSOPHY.md` — ARI Design Philosophy: the rationale behind ARI's approach to research automation.
 - `publication-lifecycle.md` — Publication Lifecycle (v0.7.0): how the EAR flow evolved from whole-checkpoint drops.
+- `verifiable_research_memory.md` — TODO
