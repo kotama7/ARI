@@ -253,7 +253,14 @@ class MCPClient:
     # pooled memory-skill MCP server. The (set_current_node, write)
     # pair must be atomic across all parallel nodes that share this
     # MCPClient — see ``call_tool(cow_node_id=...)`` below.
-    _COW_TOOLS: frozenset = frozenset({"add_memory", "clear_node_memory"})
+    _COW_TOOLS: frozenset = frozenset({
+        "add_memory", "clear_node_memory",
+        # Typed write tools (Phase 1) — all delegate to backend.add_memory,
+        # which enforces node_id == $ARI_CURRENT_NODE_ID. Keep in sync with
+        # ari-skill-memory/src/server.py.
+        "add_experiment_result", "add_failure_case", "add_procedure_memory",
+        "add_reflection", "add_reproducibility_event",
+    })
 
     def __init__(self, skills: list[SkillConfig], disabled_tools: list[str] | None = None) -> None:
         import threading as _t
