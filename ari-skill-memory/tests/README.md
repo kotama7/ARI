@@ -20,4 +20,7 @@ copy-on-write, backup/restore, and Letta backend behaviour.
 - `test_llm_config_removed.py` — removed LLM-config guard.
 - `test_memory.py` — core memory behaviour.
 - `test_react.py` — ReAct behaviour.
+- `test_research_memory_phase1.py` — TODO
+- `test_research_memory_typed.py` — TODO
 - `test_search_fallback.py` — search fallback behaviour.
+- `test_verified_context.py` — TODO

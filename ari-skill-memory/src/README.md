@@ -13,7 +13,13 @@ tree, backed by Letta. Holds the FastMCP server plus the importable
   - `README.md` — ari_skill_memory index.
   - `__init__.py` — public surface (`get_backend`, `MemoryBackend`) & layout (module docstring is authoritative).
   - `access_log.py` — access auditing shared across backends.
+  - `audit.py` — TODO
   - `config.py` — config loading shared across backends.
+  - `context_builder.py` — TODO
+  - `provenance.py` — TODO
+  - `retriever.py` — TODO
+  - `schemas.py` — TODO
+  - `writer.py` — TODO
   - `backends/` — backend implementations behind the `get_backend()` factory.
     - `README.md` — backends index.
     - `__init__.py` — the `get_backend()` factory + `MemoryBackend` selection (module docstring is authoritative).

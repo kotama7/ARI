@@ -85,7 +85,7 @@ class TestSubmitLocal:
             result = await client.submit(
                 script="echo hello",
                 job_name="test_job",
-                partition="fx700",
+                partition="partA",
             )
 
         assert result["status"] == "error"
@@ -133,16 +133,16 @@ class TestSubmitLocal:
             result = await client.submit(
                 script=script_with_partition,
                 job_name="test_job",
-                partition="fx700",
+                partition="partA",
             )
 
         assert result["job_id"] == "77777"
-        # The final script must have exactly ONE --partition line, and it must be fx700
+        # The final script must have exactly ONE --partition line, and it must be partA
         if captured_script:
             import re
             partitions = re.findall(r"#SBATCH\s+--partition=(\S+)", captured_script)
             assert len(partitions) == 1, f"Expected 1 partition directive, got {len(partitions)}: {partitions}"
-            assert partitions[0] == "fx700", f"Expected fx700, got {partitions[0]}"
+            assert partitions[0] == "partA", f"Expected partA, got {partitions[0]}"
 
     @pytest.mark.asyncio
     async def test_submit_no_empty_partition_when_env_unset(self, client: SlurmClient) -> None:
@@ -172,16 +172,16 @@ class TestSubmitLocal:
              patch("subprocess.run", return_value=mock_sinfo), \
              patch.dict("os.environ", {"SLURM_VALID_PARTITIONS": "", "SLURM_DEFAULT_PARTITION": ""}, clear=False):
             result = await client.submit(
-                script="#!/bin/bash\n#SBATCH --partition=fx700\necho hi",
+                script="#!/bin/bash\n#SBATCH --partition=partA\necho hi",
                 job_name="test",
-                partition="fx700",
+                partition="partA",
             )
 
         assert result["status"] == "submitted"
         if captured_script:
             assert "#SBATCH --partition=\n" not in captured_script, \
                 "Script must NOT contain empty --partition= directive"
-            assert "#SBATCH --partition=fx700" in captured_script
+            assert "#SBATCH --partition=partA" in captured_script
 
 
 class TestStatusLocal:
