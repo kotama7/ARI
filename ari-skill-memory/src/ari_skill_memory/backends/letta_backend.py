@@ -417,6 +417,7 @@ class LettaBackend(MemoryBackend):
             nid = md.get("node_id", "")
             if nid in by_node:
                 by_node[nid].append({
+                    "entry_id": e.get("id"),
                     "text": e.get("text", ""),
                     "metadata": md.get("ari_metadata", {}) or {},
                     "ts": md.get("ts", 0),
