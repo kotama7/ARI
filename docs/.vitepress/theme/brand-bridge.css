@@ -1,0 +1,34 @@
+/* brand-bridge.css — alias VitePress theme variables onto the shared ARI brand
+ * tokens (tokens.css), so the VitePress docs and the bespoke landing consume
+ * ONE brand source with no drift. No raw hex/rgba here — only var() references
+ * to tokens.css (the single color source). */
+@import '../../tokens.css';
+
+:root {
+  --vp-c-brand-1: var(--blue-light);
+  --vp-c-brand-2: var(--blue);
+  --vp-c-brand-3: var(--blue);
+  --vp-c-brand-soft: var(--blue-glow);
+
+  --vp-c-bg: var(--dark);
+  --vp-c-bg-alt: var(--surface);
+  --vp-c-bg-soft: var(--surface);
+  --vp-c-bg-elv: var(--surface2);
+  --vp-c-divider: var(--border);
+  --vp-c-border: var(--border);
+
+  --vp-c-text-1: var(--text);
+  --vp-c-text-2: var(--text-soft);
+  --vp-c-text-3: var(--muted);
+
+  --vp-button-brand-bg: var(--blue);
+  --vp-button-brand-hover-bg: var(--blue-light);
+  --vp-home-hero-name-color: var(--accent);
+}
+
+.dark {
+  --vp-c-bg: var(--dark);
+  --vp-c-bg-alt: var(--surface);
+  --vp-c-bg-soft: var(--surface);
+  --vp-c-bg-elv: var(--surface2);
+}

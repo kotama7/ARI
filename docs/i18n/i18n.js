@@ -24,10 +24,25 @@
     if(!d) return;
     for(var k in d) { var el = document.getElementById('t-'+k); if(el) el.innerHTML = d[k]; }
     kickAutoplayVideos();
+    // Keep <html lang> and <title> in sync with the active language (SEO / a11y).
+    try { document.documentElement.lang = l; } catch(e) {}
+    if (d['page-title']) { try { document.title = d['page-title']; } catch(e) {} }
+    // Language buttons: active state via class (no inline color) + aria-pressed.
+    // Report cards (P6): highlight the PDF that matches the active language.
     ['en','ja','zh'].forEach(function(x) {
       var b = document.getElementById('btn-'+x);
-      if(b) b.style.background = x===l ? '#2563eb' : 'rgba(255,255,255,0.08)';
+      if(b) {
+        if (x === l) { b.classList.add('is-active'); } else { b.classList.remove('is-active'); }
+        b.setAttribute('aria-pressed', x === l ? 'true' : 'false');
+      }
+      var c = document.getElementById('report-card-'+x);
+      if(c) { if (x === l) { c.classList.add('is-default'); } else { c.classList.remove('is-default'); } }
     });
+    // Cross-surface bridge (L3): deep-link the landing "Docs" links to the
+    // matching VitePress locale so language continues across /  ↔  /docs/.
+    var docHref = l === 'ja' ? 'docs/ja/' : l === 'zh' ? 'docs/zh/' : 'docs/';
+    var dls = document.querySelectorAll('.js-docs-link');
+    for (var di = 0; di < dls.length; di++) { dls[di].setAttribute('href', docHref); }
     try { localStorage.setItem('ari-lang', l); } catch(e) {}
   };
 

@@ -1,0 +1,15 @@
+{
+  "name": "ari-docs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "VitePress build for the ARI documentation surface (/ARI/docs/). The bespoke landing (index.html) is assembled at the site root separately — see .github/workflows/pages.yml.",
+  "scripts": {
+    "docs:dev": "vitepress dev",
+    "docs:build": "vitepress build",
+    "docs:preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.4"
+  }
+}

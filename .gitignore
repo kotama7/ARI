@@ -129,3 +129,9 @@ memory/
 # files; ignore them here so they cannot be accidentally staged.
 /HPC_PaperBench_Final_Proposal_for_Professors.pdf
 /SC41406.2024.*.pdf
+
+# GitHub Pages L3 build artifacts (assembled in CI — see .github/workflows/pages.yml)
+/_site/
+docs/node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
