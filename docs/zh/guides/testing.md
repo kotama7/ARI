@@ -4,7 +4,11 @@ sources:
     role: test
   - path: pytest.ini
     role: config
-last_verified: 2026-05-25
+  - path: scripts/docs
+    role: test
+  - path: .github/workflows
+    role: config
+last_verified: 2026-06-04
 ---
 
 # 如何测试 ARI 代码
@@ -111,7 +115,9 @@ def ckpt(tmp_path, monkeypatch):
 
 ## PR 时的测试内容
 
-`refactor-guards` GitHub Actions 工作流运行：
+多个 GitHub Actions 工作流为每个面向 `main` 的 PR 设关。
+
+**测试** — `refactor-guards` 工作流运行：
 
 - `pytest ari-core/tests -q`
 - `pytest ari-skill-coding/tests -q`
@@ -121,6 +127,26 @@ def ckpt(tmp_path, monkeypatch):
 它还运行 `tests/test_no_user_home_writes.py` 和
 `tests/test_public_api_boundary.py`（Phase 4，确保 skill 仅从
 `ari.public.*` 导入）。
+
+**文档与结构** — 三个工作流保持文档集同步：
+
+- `readme-sync` — 每个目录的 `## Contents` 索引都列出其下的文件
+  (`scripts/readme_sync.py --check`)。
+- `docs-sync` — 全树不变量，全部为硬关卡：声明的 `sources:` 路径存在
+  (`check_doc_sources.py`)、`docs/i18n/{en,ja,zh}.js` 的键集一致
+  (`check_i18n_js.py`)、根 `README.{md,ja,zh}` 的标题结构一致
+  (`check_readme_parity.py`)、`report/{en,ja,zh}` 在结构上并行
+  (`report/scripts/check_i18n.py`，Gate 6)。翻译新鲜度
+  (`check_translation_freshness.py`) 与 docs 内链接 (`check_doc_links.py`)
+  作为 advisory（非阻塞）步骤运行。
+- `docs-change-coupling` — 基于差分：`report/{en,ja,zh}` 的语言配对文件
+  （章节、`strings.tex`、`main.tex`）在一种语言中被编辑时，必须在同一 PR 中
+  镜像到其他两种语言 (`check_report_cochange.py`，硬关卡)；并且当 doc 的
+  `sources:` 中列出的源发生变更时，应当更新该 doc 的 `last_verified`
+  (`check_ref_coupling.py`，advisory)。
+
+任何 doc 关卡都可从仓库根目录本地运行，例如
+`python scripts/docs/check_i18n_js.py`。
 
 ## 编写回归测试
 

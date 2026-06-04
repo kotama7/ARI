@@ -36,6 +36,7 @@ snapshots.
 - [Architecture](concepts/architecture.md)
 - [BFTS algorithm](concepts/bfts.md)
 - [Memory architecture](concepts/memory.md)
+- [Verifiable research memory](concepts/verifiable_research_memory.md)
 - [Publication lifecycle](concepts/publication-lifecycle.md)
 
 ### Guides — *How-to*
@@ -99,6 +100,7 @@ release gate checks it against the tree (`docs/about/release_policy.md` §4).
 | concepts/architecture | [✓](concepts/architecture.md) | [✓](ja/concepts/architecture.md) | [✓](zh/concepts/architecture.md) |
 | concepts/bfts | [✓](concepts/bfts.md) | [✓](ja/concepts/bfts.md) | [✓](zh/concepts/bfts.md) |
 | concepts/memory | [✓](concepts/memory.md) | [✓](ja/concepts/memory.md) | [✓](zh/concepts/memory.md) |
+| concepts/verifiable_research_memory | [✓](concepts/verifiable_research_memory.md) | [✓](ja/concepts/verifiable_research_memory.md) | [✓](zh/concepts/verifiable_research_memory.md) |
 | concepts/publication-lifecycle | [✓](concepts/publication-lifecycle.md) | [✓](ja/concepts/publication-lifecycle.md) | [✓](zh/concepts/publication-lifecycle.md) |
 | guides/hpc_setup | [✓](guides/hpc_setup.md) | [✓](ja/guides/hpc_setup.md) | [✓](zh/guides/hpc_setup.md) |
 | guides/extension_guide | [✓](guides/extension_guide.md) | [✓](ja/guides/extension_guide.md) | [✓](zh/guides/extension_guide.md) |
@@ -135,8 +137,8 @@ release gate checks it against the tree (`docs/about/release_policy.md` §4).
 ## Source traceability
 
 Each live doc declares, in YAML front-matter, which source files it documents
-(`sources:` with repo-root-relative paths) and a `last_verified` date. Three
-gate scripts enforce the contract:
+(`sources:` with repo-root-relative paths) and a `last_verified` date. A family
+of gate scripts under `scripts/docs/` enforces the contract:
 
 - `scripts/docs/check_doc_sources.py` — every declared source path exists.
 - `scripts/docs/check_doc_links.py` — every intra-docs link / HTML href resolves.
@@ -144,6 +146,22 @@ gate scripts enforce the contract:
   a `last_verified` older than its English source (catches *content* drift that
   the existence-only parity table cannot). Warning-only by default; `--strict`
   to fail.
+- `scripts/docs/check_i18n_js.py` — `docs/i18n/{en,ja,zh}.js` declare one
+  identical key set (the website language switcher).
+- `scripts/docs/check_readme_parity.py` — the root `README.{md,ja,zh}` share
+  one Markdown heading shape (fence-aware).
+- `scripts/docs/check_ref_coupling.py` — the *reverse* of `check_doc_sources`:
+  when a referenced source changes in a PR, the doc that declares it in
+  `sources:` should bump `last_verified` (diff-based, advisory).
+- `scripts/docs/check_report_cochange.py` — a `report/{en,ja,zh}`
+  language-paired file edited in one language is mirrored in the other two in
+  the same PR (diff-based).
+
+These run in CI via `.github/workflows/docs-sync.yml` (full-tree invariants)
+and `.github/workflows/docs-change-coupling.yml` (diff-based). `check_doc_sources`,
+`check_i18n_js`, `check_readme_parity`, the report Gate 6, and
+`check_report_cochange` are hard gates; freshness, links, and reference coupling
+are advisory. See [How to Test ARI Code](guides/testing.md#what-gets-tested-at-pr-time).
 
 **When you change a doc:** update the English file *and* both translations in the
 same change, then set `last_verified` on all three to the edit date. If you

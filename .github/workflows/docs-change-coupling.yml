@@ -1,0 +1,58 @@
+# Documentation change-coupling gates — diff-based, on every PR to main.
+#
+# These checks compare the branch against its merge-base with the target branch,
+# so they need full history (fetch-depth: 0) — same pattern as
+# refactor-guards.yml. They enforce that things which must change *together*
+# actually do:
+#
+# Hard gate (fail the PR):
+#   * check_report_cochange.py — a report/{en,ja,zh} language-paired file
+#     (chapters/*.tex, strings.tex, main.tex) edited in one language must be
+#     mirrored in the other two in the SAME PR (report/CLAUDE.md §3). Generated
+#     artifacts (main.pdf, main-blx.bib) and shared/ files never trigger it.
+#
+# Advisory (reported but NON-blocking via continue-on-error):
+#   * check_ref_coupling.py — when a source listed in a doc's `sources:`
+#     front-matter changes, that doc's `last_verified` should be bumped in the
+#     same PR. The reverse of check_doc_sources.py's forward check. Warn-only
+#     for now; promote with --strict once the habit is established.
+
+name: docs-change-coupling
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  change-coupling:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install PyYAML
+        run: python -m pip install --upgrade pip pyyaml
+
+      # ── hard gate ───────────────────────────────────────────────────────
+      # base.sha is the PR's base-branch tip recorded on the event payload: it
+      # is immutable for this run and always reachable in the fetched history
+      # (a parent of the checked-out merge commit). Preferred over the
+      # `origin/<base_ref>` pattern in refactor-guards.yml, which resolves a
+      # remote-tracking ref that can move if the base branch advances mid-run.
+      # The checker fails CLOSED if this ref ever fails to resolve.
+      - name: Report tri-language co-change
+        run: |
+          python scripts/docs/check_report_cochange.py \
+            --base-ref "${{ github.event.pull_request.base.sha }}"
+
+      # ── advisory (non-blocking) ─────────────────────────────────────────
+      - name: Source → doc reference coupling (advisory)
+        continue-on-error: true
+        run: |
+          python scripts/docs/check_ref_coupling.py \
+            --base-ref "${{ github.event.pull_request.base.sha }}"

@@ -131,8 +131,6 @@ hand-maintained alongside each other in the same PR.
 
 ## 4. Snapshot discipline
 
-The report is **pinned to `ari-core` v0.7.x**.
-
 - Frozen evaluation data under `shared/figures/data/` is paired with a
   `*.meta.yaml` recording `source.checkpoint_id` and the payload SHA-256.
   Bumping data requires bumping `checkpoint_id` and noting it in the PR.
@@ -140,14 +138,13 @@ The report is **pinned to `ari-core` v0.7.x**.
 - If `ari-core` evolves so a chapter's claim no longer holds, update the
   chapter and refresh the relevant snapshot in the same PR — never let the
   report drift silently.
-- **Verify version-specific counts/claims against the pinned tag, not the
-  HEAD checkout.** Before "correcting" a number, confirm it against
-  `git ls-tree v0.7.2` / `git show v0.7.2:...`. Example: the report says
-  *fourteen* skills; that is correct for `v0.7.2`
-  (`git ls-tree -d --name-only v0.7.2 | grep ari-skill-` → 14), even
-  though HEAD now has 15 (`ari-skill-review` was added later). "Fixing"
-  it to 15 would introduce an error. The frozen snapshot, not HEAD, is
-  ground truth.
+- **Verify version-specific counts and claims against the data the chapter
+  actually reports, not the current tree.** Before "correcting" a number,
+  confirm it against the frozen evaluation data and the run that produced it
+  (recorded via `source.checkpoint_id`); a value that looks wrong against
+  `HEAD` may be correct for the run the chapter reports. Do not silently
+  "fix" a figure or count to match `HEAD` — the snapshot a claim cites is
+  the ground truth for that claim.
 
 ## 5. Bibliography
 

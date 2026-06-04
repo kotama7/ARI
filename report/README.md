@@ -118,7 +118,7 @@ authoring rules.
 ## Appendix prompts (snapshot)
 
 `shared/appendix/prompts/**` is a verbatim byte-for-byte snapshot of
-`ari-core/ari/prompts/**/*.md` at the report's pinned commit. Refresh
+`ari-core/ari/prompts/**/*.md` at the commit recorded in each snapshot's header. Refresh
 with:
 
 ```bash
@@ -166,11 +166,6 @@ The report uses [Noto CJK fonts](https://github.com/notofonts/noto-cjk)
 `./setup_fonts.sh` once per machine to install them.
 
 ## Frozen snapshot
-
-This report is pinned to `ari-core` v0.7.x. Implementation citations
-(`code_refs.yaml`) name file *and* line numbers; `check_code_refs.py`
-enforces a ±3 line drift tolerance so light refactors are forgiven, but
-significant moves trigger a regeneration.
 
 Frozen evaluation data lives under `shared/figures/data/`, each accompanied
 by a `*.meta.yaml` recording the source checkpoint and SHA-256 of the
