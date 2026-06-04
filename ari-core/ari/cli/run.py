@@ -314,6 +314,23 @@ def run(
     checkpoint_dir = Path(cfg.checkpoint.dir.replace("{run_id}", run_id))
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     (checkpoint_dir / "uploads").mkdir(exist_ok=True)
+    # Reproducibility caveat: when web search is opted into for BFTS
+    # exploration (ARI_BFTS_ALLOW_WEB / bfts.allow_web), live web results are
+    # time-varying, so the search trajectory is no longer guaranteed
+    # reproducible (P5). Record a durable marker + warn. Default-off = no-op.
+    if getattr(cfg.bfts, "allow_web", False):
+        from ari.orchestrator.web_provenance import write_provenance
+        write_provenance(checkpoint_dir)
+        logging.getLogger(__name__).warning(
+            "[cli.run] Web search ENABLED during BFTS exploration "
+            "(ARI_BFTS_ALLOW_WEB / bfts.allow_web): search trajectory is NOT "
+            "guaranteed reproducible. Recorded bfts_web_provenance.json."
+        )
+        console.print(
+            "[yellow]⚠ Web search enabled during BFTS exploration — the search "
+            "trajectory is NOT guaranteed reproducible "
+            "(recorded in bfts_web_provenance.json).[/yellow]"
+        )
     # auto-migrate v0.5.x sources on first launch.
     try:
         from ari.memory.auto_migrate import maybe_auto_migrate

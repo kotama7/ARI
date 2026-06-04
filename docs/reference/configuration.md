@@ -8,7 +8,7 @@ sources:
     role: config
   - path: ari-core/ari/viz/api_settings.py
     role: implementation
-last_verified: 2026-05-30
+last_verified: 2026-06-04
 ---
 
 # Configuration Reference
@@ -560,6 +560,7 @@ knobs:
 | `max_parallel_nodes` | 4 | Worker concurrency. |
 | `max_expansions_per_node` | 4 | New in v0.7.2 (B-6). After N expansions of the same frontier node, BFTS retires it. |
 | `label_saturation_threshold` | 2 | New in v0.7.2 (L-6). When ≥ N children of one parent share a label, the next expand prompt flags the label as saturated. |
+| `allow_web` | false | Opt-in: expose `web-skill` to the node agent **during exploration** (`ARI_BFTS_ALLOW_WEB`). Default-off keeps the search loop reproducible (P5); when on, ARI records `bfts_web_provenance.json` flagging the trajectory non-reproducible. `idea-skill`'s `survey` already does a bounded literature lookup regardless. |
 
 The pre-audit `max_retries_per_node` field has been **removed** in v0.7.2
 (B-3 / B-10) — ARI never retries; failed nodes produce DEBUG children

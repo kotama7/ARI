@@ -75,6 +75,24 @@ export function renderOrsChain(input: OrsRenderInput): React.ReactNode {
         </div>
       )}
 
+      {/* BFTS web-search trajectory caveat: the paper's numbers may be
+          reproducible, but the search trajectory that produced them is not. */}
+      {(reproObj.bfts_web_search as { enabled?: boolean } | undefined)?.enabled && (
+        <div
+          style={{
+            fontSize: '.8rem',
+            background: 'rgba(234,179,8,.10)',
+            border: '1px solid rgba(234,179,8,.35)',
+            borderRadius: 6,
+            padding: '8px 10px',
+            marginBottom: 10,
+            color: 'var(--text)',
+          }}
+        >
+          ⚠ {t('repro_bfts_web_caveat')}
+        </div>
+      )}
+
       {/* Chain stages */}
       <div style={{
         marginBottom: 12, marginTop: 12,

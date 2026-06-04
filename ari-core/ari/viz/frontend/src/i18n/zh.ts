@@ -207,6 +207,8 @@ const zh: Record<string, string> = {
   repro_log_empty: '尚无运行日志 (可重复性检查仍在运行或未开始)',
   repro_log_loading: '正在加载日志…',
   ors_chain_title: 'ORS 流水线',
+  repro_bfts_web_caveat:
+    'BFTS 探索期间启用了联网搜索 —— 搜索轨迹不保证可复现(上方论文数值仍可能可复现)。',
   ors_tree_header: '评分树',
   ors_view_list: '列表',
   ors_view_tree: '树形',
@@ -291,6 +293,9 @@ const zh: Record<string, string> = {
   wiz_axis_mode: '评估轴模式',
   wiz_axis_dynamic: '动态(默认)',
   wiz_axis_legacy: '传统(固定5轴)',
+  wiz_allow_web: '探索期间联网搜索',
+  wiz_allow_web_hint:
+    '允许节点智能体在搜索过程中联网检索(arXiv / Semantic Scholar / 网页)。关闭(默认)可保持搜索循环可复现;开启会记录一个不可复现轨迹标记。无论如何,文献调研在生成想法时都会执行一次。',
   wiz_depth_label: '深度 / 预算',
   wiz_quick: '快速探索',
   wiz_deep: '深度调研',

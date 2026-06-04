@@ -28,6 +28,7 @@ interface ScopeValues {
   frontierScore: string;
   composite: string;
   axisMode: string;
+  allowWeb: boolean;
 }
 
 const STEP_KEYS = ['wiz_step1', 'wiz_step2', 'wiz_step3', 'wiz_step4'] as const;
@@ -59,6 +60,7 @@ export function WizardPage() {
     frontierScore: 'scientific_plus_diversity',
     composite: 'harmonic_mean',
     axisMode: 'dynamic',
+    allowWeb: false,
   });
 
   // ---- Step 3: Resources state ----
@@ -300,6 +302,7 @@ export function WizardPage() {
           frontierScore={scope.frontierScore}
           composite={scope.composite}
           axisMode={scope.axisMode}
+          allowWeb={scope.allowWeb}
           llmModel={effectiveModel}
           llmProvider={llm}
           baseUrl={baseUrl}

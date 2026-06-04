@@ -206,6 +206,8 @@ const en: Record<string, string> = {
   repro_log_empty: 'No run log yet (reproducibility check still running or not started)',
   repro_log_loading: 'Loading log…',
   ors_chain_title: 'ORS chain',
+  repro_bfts_web_caveat:
+    'Web search was enabled during BFTS exploration — the search trajectory is not guaranteed reproducible (the paper numbers above may still be).',
   ors_tree_header: 'Grading tree',
   ors_view_list: 'List',
   ors_view_tree: 'Tree',
@@ -291,6 +293,9 @@ const en: Record<string, string> = {
   wiz_axis_mode: 'Evaluation Axes',
   wiz_axis_dynamic: 'Dynamic (default)',
   wiz_axis_legacy: 'Legacy (fixed 5-axis)',
+  wiz_allow_web: 'Web search during exploration',
+  wiz_allow_web_hint:
+    'Let the node agent search the web (arXiv / Semantic Scholar / pages) mid-search. Off (default) keeps the search loop reproducible; on records a non-reproducible-trajectory marker. Literature is still surveyed once at idea time regardless.',
   wiz_depth_label: 'Depth / Budget',
   wiz_quick: 'Quick Exploration',
   wiz_deep: 'Deep Investigation',

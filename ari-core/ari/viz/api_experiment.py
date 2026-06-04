@@ -344,6 +344,11 @@ def _api_launch(body: bytes) -> dict:
             proc_env["ARI_TIMEOUT_NODE"] = str(int(wiz_timeout_min) * 60)
         if wiz_workers is not None:
             proc_env["ARI_PARALLEL"] = str(int(wiz_workers))
+        # Opt-in web search during BFTS exploration (default off keeps the
+        # search loop reproducible). Recorded so launch_config reflects it.
+        wiz_allow_web = data.get("allow_web")
+        if wiz_allow_web is not None:
+            proc_env["ARI_BFTS_ALLOW_WEB"] = "1" if wiz_allow_web else "0"
         # BFTS/evaluator algorithm overrides from wizard (Step 2).
         # Validate against the same allowed sets the config layer enforces
         # (BFTSConfig.frontier_score / EvaluatorConfig.composite / axis_mode
@@ -557,6 +562,8 @@ def _api_launch(body: bytes) -> dict:
             ),
             "composite": proc_env.get("ARI_COMPOSITE", "harmonic_mean"),
             "axis_mode": proc_env.get("ARI_AXIS_MODE", "dynamic"),
+            "allow_web": proc_env.get("ARI_BFTS_ALLOW_WEB", "").strip().lower()
+            in ("1", "true", "yes", "on"),
         }
         if proc_env.get("ARI_SLURM_CPUS"):
             _launch_cfg["hpc_cpus"] = int(proc_env["ARI_SLURM_CPUS"])

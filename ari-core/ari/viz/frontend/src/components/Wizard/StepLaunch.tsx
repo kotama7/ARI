@@ -24,6 +24,7 @@ interface StepLaunchProps {
   frontierScore: string;
   composite: string;
   axisMode: string;
+  allowWeb: boolean;
   // LLM values for launch payload
   llmModel: string;
   llmProvider: string;
@@ -78,6 +79,7 @@ export function StepLaunch({
   frontierScore,
   composite,
   axisMode,
+  allowWeb,
   llmModel,
   llmProvider,
   baseUrl,
@@ -132,6 +134,7 @@ export function StepLaunch({
         frontier_score: frontierScore || null,
         composite: composite || null,
         axis_mode: axisMode || null,
+        allow_web: allowWeb,
         llm_model: llmModel,
         llm_provider: llmProvider || 'openai',
         // CLI shim base URL (only meaningful when provider is cli-shim).

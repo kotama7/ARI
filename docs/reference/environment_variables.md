@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-06-04
 ---
 
 # Environment Variable Reference
@@ -61,6 +61,7 @@ page is the alphabetical lookup.
 | `ARI_MAX_REACT` | ReAct iteration cap per node | (workflow-controlled) |
 | `ARI_PARALLEL` | Concurrent node executors | `1` |
 | `ARI_TIMEOUT_NODE` | Per-node wall-time cap (seconds) | (none) |
+| `ARI_BFTS_ALLOW_WEB` | Opt-in: expose `web-skill` (web_search / fetch_url / arXiv / Semantic Scholar) to the BFTS node agent **during exploration**. Default-off keeps the search loop reproducible (P5); when on, ARI records a non-reproducible-trajectory marker (`bfts_web_provenance.json`). `idea-skill`'s `survey` already does a bounded literature lookup regardless. `1`/`true`/`yes`/`on` to enable | `false` |
 | `ARI_RECURSION_DEPTH` | Current depth in nested ARI runs (auto-set) | (auto) |
 | `ARI_MAX_RECURSION_DEPTH` | Cap for orchestrator recursion | `3` |
 | `ARI_PARENT_RUN_ID` | Parent run id during recursion (auto-set) | (auto) |

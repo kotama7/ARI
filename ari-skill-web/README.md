@@ -33,6 +33,18 @@ output into the checkpoint when reproducibility matters (P5).
 `survey` from `ari-skill-idea` aggregates results, it picks the
 backend declared in `ARI_RETRIEVAL_BACKEND`.
 
+## Phase availability
+
+This skill is gated to the `paper` and `reproduce` phases (see
+`config/workflow.yaml`), so it is **not** exposed during BFTS node
+exploration by default — that keeps the search trajectory reproducible
+(P5), since live search results are time-varying. To opt in (e.g. to let
+the experiment agent track the latest literature mid-search), set
+`ARI_BFTS_ALLOW_WEB=1` (or `bfts.allow_web: true`). When enabled, ARI
+records a non-reproducible-trajectory marker (`bfts_web_provenance.json`)
+in the checkpoint. Note: `ari-skill-idea`'s `survey` already provides a
+bounded prior-work lookup at idea time regardless of this flag.
+
 ## Determinism caveat
 
 DuckDuckGo, arXiv, and Semantic Scholar all return time-varying
