@@ -1,0 +1,12 @@
+# IMPORTANT (GitHub Pages project-page limitation): crawlers fetch robots.txt
+# only from the ORIGIN root — https://kotama7.github.io/robots.txt — which is
+# owned by a separate user-page repo this project cannot control. This file is
+# served at https://kotama7.github.io/ARI/robots.txt (a sub-path) and is
+# therefore IGNORED by crawlers, including the Sitemap: line below. It is kept
+# as human-facing self-documentation only. Crawl control is effectively
+# default-allow; the sitemap is submitted directly via Search Console.
+User-agent: *
+Allow: /
+
+Sitemap: https://kotama7.github.io/ARI/sitemap.xml
+Sitemap: https://kotama7.github.io/ARI/docs/sitemap.xml

@@ -53,6 +53,25 @@ def _resolve(target: str, from_file: Path) -> Path:
     return (from_file.parent / target).resolve()
 
 
+def _exists_cleanurl(p: Path) -> bool:
+    """Resolve like a static host + VitePress clean URLs.
+
+    A landing link into the VitePress docs is extensionless (``docs/concepts/
+    PHILOSOPHY``); it resolves at deploy to the built ``.html`` and corresponds
+    to a markdown source. Accept the link if the path exists OR its VitePress
+    source / built page does."""
+    if p.exists():
+        return True
+    if p.suffix == "":
+        if p.with_suffix(".md").exists():
+            return True
+        if (p / "index.md").exists():
+            return True
+        if p.with_suffix(".html").exists():
+            return True
+    return False
+
+
 def check_markdown(findings: list) -> None:
     for md in sorted(DOCS.rglob("*.md")):
         text = md.read_text(encoding="utf-8")
@@ -68,20 +87,35 @@ def check_markdown(findings: list) -> None:
                 })
 
 
-def check_html(findings: list) -> None:
-    for name in ("index.html", "docs.html"):
-        html = DOCS / name
-        if not html.exists():
+# docs/report/ holds the imported report HTML build (P8); its dense intra-report
+# relative links are governed by the report build, not this gate. node_modules/
+# and .vitepress/ (dist + cache) are VitePress build/dependency artifacts, not
+# hand-authored source HTML.
+HTML_EXCLUDE_DIRS = ("report", "node_modules", ".vitepress")
+
+
+def _html_files() -> list[Path]:
+    out = []
+    for html in sorted(DOCS.rglob("*.html")):
+        rel = html.relative_to(DOCS).as_posix()
+        if any(seg in rel.split("/")[:-1] for seg in HTML_EXCLUDE_DIRS):
             continue
+        out.append(html)
+    return out
+
+
+def check_html(findings: list) -> None:
+    for html in _html_files():
         text = html.read_text(encoding="utf-8")
+        rel = html.relative_to(REPO_ROOT).as_posix()
         for m in HTML_REF.finditer(text):
             target = _clean_target(m.group(1))
             if target is None:
                 continue
             resolved = _resolve(target, html)
-            if not resolved.exists():
+            if not _exists_cleanurl(resolved):
                 findings.append({
-                    "file": f"docs/{name}",
+                    "file": rel,
                     "target": target,
                 })
 
@@ -90,10 +124,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     parser.add_argument("--md-only", action="store_true", help="skip HTML href checks")
+    parser.add_argument("--html-only", action="store_true", help="skip markdown link checks")
     args = parser.parse_args(argv)
 
     findings: list[dict] = []
-    check_markdown(findings)
+    if not args.html_only:
+        check_markdown(findings)
     if not args.md_only:
         check_html(findings)
 

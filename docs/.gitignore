@@ -1,0 +1,5 @@
+# VitePress build artifacts (the deployed _site is assembled in CI — see
+# .github/workflows/pages.yml). node_modules is restored via `npm ci`.
+node_modules/
+.vitepress/dist/
+.vitepress/cache/

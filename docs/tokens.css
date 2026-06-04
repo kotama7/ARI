@@ -1,0 +1,36 @@
+/* tokens.css — the single source of brand/design color tokens.
+ *
+ * Shared by BOTH surfaces without leaking component CSS:
+ *   - the bespoke landing + (legacy) docs styles in site.css consume these;
+ *   - the VitePress docs theme aliases its --vp-c-* vars onto these via
+ *     .vitepress/theme/brand-bridge.css.
+ * Raw hex/rgba color literals live ONLY here (and inside SVG asset files).
+ * Keeping the tokens in their own file lets VitePress share the brand without
+ * pulling in landing/docs component rules (code/table/callout) that would
+ * collide with the VitePress theme.
+ */
+:root {
+  /* — brand — */
+  --blue:#2563eb; --blue-light:#3b82f6; --blue-glow:rgba(37,99,235,0.3);
+  --purple:#a855f7; --purple-soft:#d8b4fe;
+
+  /* — surfaces — */
+  --dark:#030712; --dark-2:#070d1c; --bg:#030712;
+  --surface:#0f172a; --surface2:#1e293b; --surface-blue:#0f1f3d;
+  --border:#1e293b;
+  --white:#ffffff; --black:#000000;
+
+  /* — text — */
+  --text:#f1f5f9; --text-soft:#cbd5e1; --text-soft2:#e2e8f0;
+  --muted:#94a3b8; --muted-2:#64748b; --comment:#475569;
+  --accent:#93c5fd; --accent2:#bfdbfe;
+
+  /* — gradient stops — */
+  --grad-a:#60a5fa; --grad-b:#a78bfa;
+
+  /* — status / signal — */
+  --ok:#10b981; --ok-soft:#86efac;
+  --warn:#f59e0b; --warn-soft:#fdba74; --warn-2:#ffc107;
+  --danger:#ef4444; --danger-soft:#f87171;
+  --discord:#5865F2;
+}
