@@ -1,3 +1,14 @@
+---
+sources:
+  - path: ari-skill-memory
+    role: implementation
+  - path: ari-core/ari/pipeline/verified_context.py
+    role: implementation
+  - path: ari-core/ari/config
+    role: config
+last_verified: 2026-06-04
+---
+
 # ARI Verifiable Research Memory
 
 How ARI's memory is structured so that experiment results, failures, and

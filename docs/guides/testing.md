@@ -4,7 +4,11 @@ sources:
     role: test
   - path: pytest.ini
     role: config
-last_verified: 2026-05-25
+  - path: scripts/docs
+    role: test
+  - path: .github/workflows
+    role: config
+last_verified: 2026-06-04
 ---
 
 # How to Test ARI Code
@@ -118,7 +122,9 @@ must scope to the test.
 
 ## What gets tested at PR time
 
-A `refactor-guards` GitHub Actions workflow runs:
+Several GitHub Actions workflows gate every PR to `main`.
+
+**Tests** — the `refactor-guards` workflow runs:
 
 - `pytest ari-core/tests -q`
 - `pytest ari-skill-coding/tests -q`
@@ -128,6 +134,26 @@ A `refactor-guards` GitHub Actions workflow runs:
 It also runs `tests/test_no_user_home_writes.py` and
 `tests/test_public_api_boundary.py` (Phase 4, ensures skills only
 import from `ari.public.*`).
+
+**Docs & structure** — three workflows keep the documentation set in sync:
+
+- `readme-sync` — every directory's `## Contents` index lists the files
+  beneath it (`scripts/readme_sync.py --check`).
+- `docs-sync` — full-tree invariants, all hard gates: declared `sources:`
+  paths resolve (`check_doc_sources.py`), `docs/i18n/{en,ja,zh}.js` share one
+  key set (`check_i18n_js.py`), the root `README.{md,ja,zh}` share one heading
+  shape (`check_readme_parity.py`), and `report/{en,ja,zh}` are structurally
+  parallel (`report/scripts/check_i18n.py`, Gate 6). Translation freshness
+  (`check_translation_freshness.py`) and intra-doc links (`check_doc_links.py`)
+  run as advisory, non-blocking steps.
+- `docs-change-coupling` — diff-based: a `report/{en,ja,zh}` language-paired
+  file (chapter, `strings.tex`, `main.tex`) edited in one language must be
+  mirrored in the other two in the same PR (`check_report_cochange.py`, hard);
+  and when a source listed in a doc's `sources:` changes, that doc's
+  `last_verified` should be bumped (`check_ref_coupling.py`, advisory).
+
+Run any doc gate locally from the repo root, e.g.
+`python scripts/docs/check_i18n_js.py`.
 
 ## Writing a regression test
 
