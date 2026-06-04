@@ -11,6 +11,7 @@ interface ScopeValues {
   frontierScore: string;
   composite: string;
   axisMode: string;
+  allowWeb: boolean;
 }
 
 interface ScopePreset {
@@ -69,9 +70,17 @@ export function StepScope({
         frontierScore: scope.frontierScore,
         composite: scope.composite,
         axisMode: scope.axisMode,
+        allowWeb: scope.allowWeb,
       });
     },
-    [setScopeVal, setScope, scope.frontierScore, scope.composite, scope.axisMode],
+    [
+      setScopeVal,
+      setScope,
+      scope.frontierScore,
+      scope.composite,
+      scope.axisMode,
+      scope.allowWeb,
+    ],
   );
 
   // Initialize with Standard preset if values are default
@@ -266,6 +275,29 @@ export function StepScope({
                 <option value="dynamic">{t('wiz_axis_dynamic')}</option>
                 <option value="legacy">{t('wiz_axis_legacy')}</option>
               </select>
+            </div>
+          </div>
+
+          {/* Web search during exploration (opt-in; breaks trajectory reproducibility) */}
+          <div className="form-row" style={{ marginTop: 12 }}>
+            <label
+              style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+            >
+              <input
+                type="checkbox"
+                checked={scope.allowWeb}
+                // Base CSS stretches `input` to width:100%; keep the box its
+                // natural size so it sits next to the label (cf. the
+                // `.wf-stage-card input[type=checkbox]` reset).
+                style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+                onChange={(e) =>
+                  setScope({ ...scope, allowWeb: e.target.checked })
+                }
+              />
+              <span>{t('wiz_allow_web')}</span>
+            </label>
+            <div style={{ color: 'var(--muted)', fontSize: '.78rem', marginTop: 4 }}>
+              {t('wiz_allow_web_hint')}
             </div>
           </div>
         </div>

@@ -82,6 +82,7 @@ pipeline:
 - **Loose coupling**: Stages share data only via `outputs` declarations and `{{stages.*}}` templates.
 - **Composability**: Reorder, disable, or add stages entirely in `workflow.yaml`.
 - **Reproducibility principle**: Paper generation describes hardware via technical specs (architecture, core count, compiler version), not deployment identifiers.
+- **Web access is phase-gated**: `web-skill` is exposed only in the `paper`/`reproduce` phases so the BFTS search loop stays reproducible (live search results are time-varying). `idea-skill`'s `survey` covers the one bounded literature lookup needed at idea time. Opt into web search *during* exploration with `ARI_BFTS_ALLOW_WEB=1` (or `bfts.allow_web: true`); ARI then records a non-reproducible-trajectory marker (`bfts_web_provenance.json`).
 
 ## LLM Exceptions to P2
 

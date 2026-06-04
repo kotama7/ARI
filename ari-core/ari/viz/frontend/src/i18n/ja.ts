@@ -206,6 +206,8 @@ const ja: Record<string, string> = {
   repro_log_empty: '実行ログがまだありません (再現性チェックが実行中または未実行)',
   repro_log_loading: 'ログを読み込み中…',
   ors_chain_title: 'ORS チェーン',
+  repro_bfts_web_caveat:
+    'BFTS探索中にWeb検索が有効化されていました。探索trajectoryの再現は保証されません(上記の論文数値は再現可能な場合があります)。',
   ors_tree_header: '採点木',
   ors_view_list: 'リスト',
   ors_view_tree: 'ツリー',
@@ -291,6 +293,9 @@ const ja: Record<string, string> = {
   wiz_axis_mode: '評価軸モード',
   wiz_axis_dynamic: '動的(既定)',
   wiz_axis_legacy: 'レガシー(固定5軸)',
+  wiz_allow_web: '探索中のWeb検索',
+  wiz_allow_web_hint:
+    'ノードエージェントが探索中にWeb(arXiv / Semantic Scholar / ページ取得)を検索できるようにします。OFF(既定)なら探索ループは再現的、ONにすると非再現trajectoryのマーカーを記録します。なお文献調査はアイデア生成時に一度は必ず実施されます。',
   wiz_depth_label: '深さ / 予算',
   wiz_quick: 'クイック探索',
   wiz_deep: '詳細調査',

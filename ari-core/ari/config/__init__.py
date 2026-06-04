@@ -143,6 +143,19 @@ class BFTSConfig(BaseModel):
                     "Template must accept {experiment_goal} and "
                     "{candidates} and reply with a 0-based integer index.",
     )
+    allow_web: bool = Field(
+        False,
+        description="Opt-in: expose web-skill (web_search / fetch_url / "
+                    "search_arxiv / search_semantic_scholar) to the BFTS node "
+                    "agent during exploration. Default False keeps the search "
+                    "loop reproducible (P5) — live web results are "
+                    "time-varying. When True, ARI records a "
+                    "non-reproducible-trajectory marker "
+                    "(`bfts_web_provenance.json`). Overridden by "
+                    "`ARI_BFTS_ALLOW_WEB` (1/true/yes/on). Note: idea-skill's "
+                    "`survey` already provides a bounded literature lookup "
+                    "during bfts regardless of this flag.",
+    )
 
 
 class CheckpointConfig(BaseModel):
@@ -340,11 +353,13 @@ def load_config(path: str) -> ARIConfig:
         _merge_bfts_disabled_tools(cfg, raw)
         _apply_llm_env_overrides(cfg)
         _apply_checkpoint_env_overrides(cfg)
+        _apply_web_phase_for_bfts(cfg)
         return cfg
     cfg = ARIConfig(**{k: v for k, v in raw.items() if k in ARIConfig.model_fields})
     _merge_bfts_disabled_tools(cfg, raw)
     _apply_llm_env_overrides(cfg)
     _apply_checkpoint_env_overrides(cfg)
+    _apply_web_phase_for_bfts(cfg)
     return cfg
 
 
@@ -384,6 +399,33 @@ def _apply_checkpoint_env_overrides(cfg: "ARIConfig") -> None:
         cfg.logging.dir = _ckpt
 
 
+# Infrastructure skill name (workflow.yaml `skills[].name`) carrying the
+# general-purpose web tools. Default-gated to the paper/reproduce phases.
+_WEB_SKILL_NAME = "web-skill"
+
+
+def _apply_web_phase_for_bfts(cfg: "ARIConfig") -> None:
+    """When ``bfts.allow_web`` is set, expose web-skill during the bfts phase.
+
+    Appends ``"bfts"`` to the web-skill's ``phase`` so the existing phase
+    filter (``ari.mcp.client._phase_matches``) hands its tools to the BFTS node
+    agent. Idempotent and default-off: a reproducible run leaves the web-skill
+    phase ([paper, reproduce]) untouched. Safe to call from both ``load_config``
+    (YAML value) and ``apply_bfts_env_overrides`` (env value).
+    """
+    if not getattr(cfg.bfts, "allow_web", False):
+        return
+    for skill in cfg.skills:
+        if getattr(skill, "name", "") != _WEB_SKILL_NAME:
+            continue
+        phases = skill.phase
+        phases = [phases] if isinstance(phases, str) else list(phases)
+        if "bfts" not in phases and "all" not in phases:
+            phases.append("bfts")
+            skill.phase = phases  # Pydantic does not validate on assignment.
+        return
+
+
 def apply_bfts_env_overrides(cfg: "ARIConfig") -> None:
     """Let GUI-injected ARI_MAX_NODES/DEPTH/REACT/PARALLEL/TIMEOUT_NODE win over YAML.
 
@@ -421,6 +463,12 @@ def apply_bfts_env_overrides(cfg: "ARIConfig") -> None:
         "ucb_like",
     ):
         cfg.bfts.frontier_score = _fs
+    # Opt-in web search during BFTS exploration. Env wins over YAML; an
+    # explicit falsy value disables it even when workflow.yaml set it on.
+    _w = os.environ.get("ARI_BFTS_ALLOW_WEB")
+    if _w is not None:
+        cfg.bfts.allow_web = _w.strip().lower() in ("1", "true", "yes", "on")
+    _apply_web_phase_for_bfts(cfg)
 
 
 def apply_evaluator_env_overrides(cfg: "ARIConfig") -> None:

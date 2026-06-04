@@ -17,6 +17,7 @@ targets the like-named module under `ari/`.
 - `test_api_process.py` — process-control service (stop-all + GPU monitor).
 - `test_api_schema_contract.py` — stable viz endpoint response-shape contracts.
 - `test_bfts.py` — BFTS loop.
+- `test_bfts_allow_web.py` — `bfts.allow_web` / `ARI_BFTS_ALLOW_WEB` toggle: web-skill phase gating in/out of bfts + the `bfts_web_provenance.json` marker roundtrip.
 - `test_bfts_diversity.py` — BFTS diversity/fanout.
 - `test_bfts_eval_config_integration.py` — BFTS + eval-config integration.
 - `test_bfts_frontier_score.py` — BFTS frontier scoring.
@@ -24,6 +25,7 @@ targets the like-named module under `ari/`.
 - `test_checkpoint_legacy_tree.py` — legacy node_*/tree.json resolution in list/summary.
 - `test_child_node_workflow.py` — child-node workflow.
 - `test_child_workdir_inherit.py` — child workdir inheritance.
+- `test_claim_evidence_hard_gate.py` — Story2Proposal Phase B deterministic gate: recompute, mismatch, operand resolution, coverage, blocking semantics.
 - `test_cli.py` — CLI.
 - `test_cli_extended.py` — extended CLI cases.
 - `test_cli_shim_toolcalls.py` — TODO
@@ -76,6 +78,7 @@ targets the like-named module under `ari/`.
 - `test_pidfile.py` — pidfile handling.
 - `test_pipeline_e2e.py` — pipeline end-to-end.
 - `test_pipeline_metric_parsing.py` — pipeline metric parsing.
+- `test_pipeline_verified_context.py` — verified-context building blocks (best-node selection, lineage scoping, grounded-block renderer).
 - `test_plan_promote.py` — plan promotion.
 - `test_prompt_extraction.py` — prompt extraction.
 - `test_public_api_boundary.py` — public-API boundary.
@@ -100,6 +103,7 @@ targets the like-named module under `ari/`.
 - `test_trace_log_truncation.py` — trace-log truncation.
 - `test_upload_to_node.py` — upload to compute node.
 - `test_variable_passthrough.py` — variable passthrough.
+- `test_verified_context_wiring.py` — orchestrator gating of verified_context.json on `ARI_MEMORY_CONSOLIDATE` (off→skip / on→build / build-failure→pipeline survives).
 - `test_virsci_off.py` — VirSci-off path.
 - `test_viz_fewshot_api.py` — viz few-shot API.
 - `test_viz_memory_api.py` — viz memory API.
