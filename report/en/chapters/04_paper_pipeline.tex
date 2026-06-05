@@ -18,10 +18,131 @@ paper-generation pipeline, the second tree of activity in ARI
 draft, and a \term{review} phase scores that draft against a rubric;
 the two are coupled by a refine loop (\cref{sec:paper:loop}). The
 pipeline assembles, from the per-node artefacts left by exploration,
-the evidence the writer is allowed to draw on, and persists three
+the evidence the writer is allowed to draw on
+(\cref{sec:paper:evidence}), and persists three
 outputs: the \LaTeX{} draft, the per-leaf review with its rationale,
 and the rubric instance used to score the run (kept because the
 rubric may be generated per paper rather than fixed in advance).
+
+\subsection{Evidence assembly}\label{sec:paper:evidence}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F17_evidence_assembly.tex}}
+  \caption{Evidence assembly. The deterministic assembler turns the best
+           node's lineage into a \emph{single} selection that feeds
+           \emph{two} consumers --- the writer's lineage evidence and the
+           published artefact bundle --- from the same selected bytes. The
+           per-node self-report (content hashes, success self-assessment,
+           literal build/run commands, captured hardware) grounds the
+           selection, so each contributing file is chosen by recorded
+           metadata; on a path collision the deepest occurrence wins, and a
+           chain deletion removes the file.}
+  \label{fig:evidence}
+\end{figure}
+
+Between the two trees sits a deterministic \term{evidence assembler}
+(\cref{fig:evidence}).
+It decides which of the lineage's per-node artefacts the writer may
+draw on and reshapes them into a single science-facing record. The
+design keeps this seam auditable --- which node a claim traces to is a
+function of recorded metadata, not of a language model's judgement ---
+so that the guardrails of \cref{sec:paper:failures} have something
+concrete to enforce.
+
+Selection is role-specific: one node may contribute differently to
+three consumers, and a single predicate family decides each. A node
+enters the \emph{synthesis} set if it carries real measurements (or the
+evaluator certified its run a success); it enters the \emph{code} set if
+it introduced or modified a source file relative to its parent; and it
+enters the \emph{narrative} set if its step succeeded. A node that
+merely explored a dead end is admitted to none. Each criterion is a
+pure predicate over recorded metadata, so the same inputs always select
+the same contributing set.
+
+Source files are gathered by overlaying, in depth order, the files each
+contributing node touched along the ancestor chain $\lineage{\bestnode}$
+of the best node $\bestnode$. Because a child node executes inside a copy
+of its parent's working tree, one relative path may occur at several
+depths; the deepest occurrence wins, and a deletion along the chain
+removes the file --- so the reconstructed set matches the best node's
+actual working tree. This selection then feeds \emph{two} consumers from
+the same bytes: the writer's lineage evidence and the published artefact
+bundle, so the lineage code the paper describes is the code that is
+released. Selection is chain-only --- a node off the best lineage is not
+published even when its measurements are reported by the synthesis set,
+and is logged for provenance --- and, as a fidelity aid for pseudocode,
+the writer is additionally shown the raw source of the top-scoring nodes,
+which is not itself the published set.
+
+The assembler reads code, parameters, and measurements \emph{directly}
+from each node's working tree rather than from a summary. Where an
+experiment declared a typed result, the record separates \term{input
+parameters} (configuration knobs --- problem size, thread count, seeds)
+from \term{measured outputs} (throughput, accuracy, latency) and from
+derived quantities (efficiencies, model-predicted ceilings). The
+separation is not cosmetic: per-key extrema reported across
+configurations are reduced deterministically and \emph{only} over
+measured keys,
+\begin{equation}\label{eq:reduction}
+  \mathrm{best}(m)\;=\;\operatorname*{red}_{c\,\in\,\Evidence} c[m],
+  \qquad m \notin \Inputs,
+\end{equation}
+where $\operatorname*{red}$ is a maximum or a minimum according to the
+metric's declared direction, $\Evidence$ is the set of contributing
+configurations, and $\Inputs$ is the set of declared input keys held out
+of every reduction. Holding the inputs out is what stops a large input
+magnitude --- a problem size of several million nonzeros, say --- from
+being read as a headline result. The language model is confined to the
+one task that genuinely needs it: turning verbatim source and logs into
+prose and pseudocode and narrating methodology. It never supplies the
+numbers.
+
+Grounding all of this is a per-node structured self-report written when
+a node completes (\texttt{node\_report.json} in the checkpoint). It
+records, by content hash, which files the node added or modified
+relative to its parent; the node's own success self-assessment together
+with the concerns the evaluator flagged; the literal build and run
+commands; and the hardware the measurement ran on. The hashes make the
+source selection reproducible and let the released bundle carry a
+reproduction script built from the recorded commands; the captured
+hardware lets the paper's environment section be written from fact
+rather than left as ``not recorded''.
+
+\begin{algorithm}[t]
+\small
+\caption{Evidence assembly (exploration $\to$ writer input).}
+\label{alg:evidence-assembly}
+\begin{algorithmic}[1]
+\Require lineage nodes $\Nodes$ with per-node reports; metric-direction map
+\Ensure  science record $\Evidence$: typed configurations, per-key
+         extrema, methodology narrative
+\State $\bestnode \gets \operatorname*{arg\,max}_{n \in \Nodes}\, \nodescore{n}$
+       \Comment{ties: validated, then deeper}
+\State $L \gets \lineage{\bestnode}$ \Comment{root-to-best ancestor chain}
+\State $\mathcal{C} \gets \{\, n \in L : \textsc{Contributes}(n) \,\}$
+       \Comment{role predicate (code)}
+\State $F \gets \emptyset$ \Comment{relative path $\mapsto$ (node, depth)}
+\ForAll{$n \in L$ in depth order}
+  \ForAll{path $p$ added/modified by $n \in \mathcal{C}$}
+    \If{$p \notin F \lor \depth{n} \geq \depth{F[p]}$}
+      \State $F[p] \gets (n, \depth{n})$ \Comment{deepest wins}
+    \EndIf
+  \EndFor
+  \ForAll{path $p$ deleted by $n$}
+    \State remove $p$ from $F$ \Comment{deletion overlays it away}
+  \EndFor
+\EndFor
+\State load the bytes of every $p \in F$ verbatim, under a size budget
+\ForAll{measured key $m \notin \Inputs$}
+  \State $\mathrm{best}(m) \gets \operatorname*{red}_{c} c[m]$
+         \Comment{\cref{eq:reduction}; deterministic}
+\EndFor
+\State $\textsc{Narrate}(F)$
+       \Comment{LLM: verbatim source/logs $\to$ prose, pseudocode}
+\State \Return $\Evidence$
+\end{algorithmic}
+\end{algorithm}
 
 \subsection{Rubric formalism}\label{sec:paper:rubric}
 
@@ -191,7 +312,7 @@ are untouched across the extension.
 
 \subsection{Failure modes and guardrails}\label{sec:paper:failures}
 
-Three failure modes are common enough to be named, each with a
+Four failure modes are common enough to be named, each with a
 structural --- not merely advisory --- mitigation:
 
 \begin{itemize}
@@ -208,8 +329,18 @@ structural --- not merely advisory --- mitigation:
         paper loses coherence. The mitigation is a per-axis floor: if
         any axis falls below a threshold the refine is aborted, so a
         gain on one axis cannot mask a collapse on another.
+  \item \textbf{Number drift}: a reported quantity does not match the
+        recorded result it summarises. Because every numeric claim names
+        the node and measurement it rests on (\cref{sec:paper:evidence}),
+        each is re-derived deterministically from the recorded results and
+        compared within a tolerance; a value that fails to match the
+        recomputed result is flagged. By default the gate reports such a
+        mismatch without blocking; under a stricter audit policy an
+        unresolved mismatch in the final check rejects the draft rather
+        than publishing it.
 \end{itemize}
 
-The first guard also bounds context: the writer is given only the
-bytes of the selected lineage artefacts, under a size budget, so the
-draft stays within the model's context window even for long runs.
+The first guard also bounds context: the writer is given the selected
+lineage artefacts and the top-scoring nodes' source, under a size
+budget, so the draft stays within the model's context window even for
+long runs.

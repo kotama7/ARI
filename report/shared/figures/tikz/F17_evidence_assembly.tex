@@ -1,0 +1,27 @@
+% F17: evidence assembly — the deterministic assembler turns the best
+% node's lineage into ONE selection that feeds TWO consumers (the writer's
+% evidence and the published artefact bundle) with byte-identical content;
+% the per-node structured self-report grounds that selection.
+% style.tikzstyles is loaded by shared/preamble.tex / standalone wrapper.
+\begin{tikzpicture}[node distance=1.5cm and 1.7cm]
+
+  % --- input: the lineage sits at the top ----------------------------
+  \node[artifact wide]                              (lineage) {\figlabel{F17.lineage}};
+
+  % --- central single selection --------------------------------------
+  \node[block emph big, below=of lineage]           (select)  {\figlabel{F17.select}};
+
+  % --- substrate that grounds the selection --------------------------
+  \node[block native, left=of select]               (reports) {\figlabel{F17.reports}};
+
+  % --- two consumers fork below --------------------------------------
+  \node[block native big, below left=1.6cm and 0.4cm of select]  (writer) {\figlabel{F17.writer}};
+  \node[block native big, below right=1.6cm and 0.4cm of select] (bundle) {\figlabel{F17.bundle}};
+
+  % --- edges ----------------------------------------------------------
+  \draw[arrow]        (lineage) -- (select);
+  \draw[arrow dashed] (reports) -- node[edge label] {\figlabel{F17.grounds}} (select);
+  \draw[arrow]        (select)  -- node[edge label] {\figlabel{F17.same}} (writer);
+  \draw[arrow]        (select)  -- node[edge label] {\figlabel{F17.same}} (bundle);
+
+\end{tikzpicture}
