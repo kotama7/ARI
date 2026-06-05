@@ -1,0 +1,235 @@
+"""Tests for claim-id post-processing (Story2Proposal Phase A2).
+
+Pure unit tests over LaTeX strings + science_data dicts. No LLM, no disk.
+"""
+from __future__ import annotations
+
+from src.claim_links import (
+    build_section_map,
+    section_at,
+    find_anchors,
+    extract_numeric_mentions,
+    link_paper_claims,
+    normalize_sentence,
+    span_hash,
+)
+
+
+SCIENCE_DATA = {
+    "claims": [
+        {
+            "id": "C1", "text": "absolute", "section": "results", "status": "draft",
+            "numeric_assertions": [{"id": "NC1", "metric": "GFlops", "value": 150.0, "formula": "identity"}],
+        },
+        {
+            "id": "C2", "text": "comparison", "section": "results", "status": "draft",
+            "numeric_assertions": [{"id": "NC2", "metric": "GFlops", "value": 50.0, "formula": "relative_increase_percent"}],
+        },
+    ],
+}
+
+FIG_MANIFEST = {
+    "figures": {"fig_1": "/x/fig_1.pdf"},
+    "latex_snippets": {"fig_1": "\\begin{figure}\\includegraphics{fig_1.pdf}\\caption{c}\\label{fig:1}\\end{figure}"},
+}
+
+
+def test_section_map_abstract_and_sections():
+    tex = (
+        "\\begin{abstract}\n"
+        "We achieve a lot.\n"
+        "\\end{abstract}\n"
+        "\\section{Introduction}\n"
+        "Intro text.\n"
+        "\\section{Results}\n"
+        "Result text.\n"
+    )
+    smap = build_section_map(tex)
+    assert section_at(smap, 2) == "abstract"
+    assert section_at(smap, 5) == "introduction"
+    assert section_at(smap, 7) == "results"
+
+
+def test_appendix_sections_canonicalize_to_appendix():
+    tex = "\\section{Results}\nA\n\\appendix\n\\section{Extra Proofs}\nB\n"
+    smap = build_section_map(tex)
+    assert section_at(smap, 2) == "results"
+    assert section_at(smap, 5) == "appendix"
+
+
+def test_find_anchors():
+    tex = "x\n% CLAIM:C1:NC1\nThe result is 150 GFlops.\n"
+    anchors = find_anchors(tex)
+    assert len(anchors) == 1
+    assert anchors[0]["claim_id"] == "C1"
+    assert anchors[0]["numeric_id"] == "NC1"
+    assert anchors[0]["line"] == 2
+
+
+def test_numeric_classification_result_claim_percent():
+    tex = "\\section{Results}\nWe improve throughput by 50\\%.\n"
+    smap = build_section_map(tex)
+    mentions = extract_numeric_mentions(tex, smap)
+    m = [x for x in mentions if x["value"] == 50.0][0]
+    assert m["type"] == "result_claim"
+    assert m["requires_assertion"] is True
+    assert m["section"] == "results"
+
+
+def test_numeric_classification_citation_year_and_setting():
+    tex = "\\section{Results}\nWe ran 10 trials in 2024.\n"
+    smap = build_section_map(tex)
+    mentions = extract_numeric_mentions(tex, smap)
+    by_val = {m["value"]: m for m in mentions}
+    assert by_val[10.0]["type"] == "experimental_setting"
+    assert by_val[10.0]["requires_assertion"] is False
+    assert by_val[2024.0]["type"] == "citation_year"
+    assert by_val[2024.0]["requires_assertion"] is False
+
+
+def test_cite_and_ref_digits_are_not_scanned():
+    tex = "\\section{Results}\nAs shown~\\cite{smith2024} in Figure~\\ref{fig:1}.\n"
+    smap = build_section_map(tex)
+    mentions = extract_numeric_mentions(tex, smap)
+    # The 2024 inside \cite{} and the 1 inside \ref{} must be stripped.
+    assert mentions == []
+
+
+def test_perf_unit_gflops_is_result_claim():
+    tex = "\\section{Results}\nThe kernel sustains 150 GFlop/s.\n"
+    smap = build_section_map(tex)
+    mentions = extract_numeric_mentions(tex, smap)
+    m = [x for x in mentions if x["value"] == 150.0][0]
+    assert m["type"] == "result_claim"
+
+
+def test_link_resolves_anchors_against_science_data():
+    tex = (
+        "\\section{Results}\n"
+        "% CLAIM:C1:NC1\n"
+        "The kernel sustains 150 GFlop/s.\n"
+        "% CLAIM:C2:NC2\n"
+        "This improves throughput by 50\\% over the baseline.\n"
+    )
+    out = link_paper_claims(tex, SCIENCE_DATA, FIG_MANIFEST)
+    links = {l["anchor"]: l for l in out["paper_claim_links"]}
+    assert "CLAIM:C1:NC1" in links
+    assert links["CLAIM:C1:NC1"]["resolved"] is True
+    assert links["CLAIM:C2:NC2"]["resolved"] is True
+    assert links["CLAIM:C1:NC1"]["section"] == "results"
+    assert out["unresolved_anchors"] == []
+    assert out["counts"]["resolved_anchors"] == 2
+
+
+def test_link_flags_unresolved_anchor():
+    tex = "\\section{Results}\n% CLAIM:C9:NC9\nGhost claim of 99\\%.\n"
+    out = link_paper_claims(tex, SCIENCE_DATA, FIG_MANIFEST)
+    assert len(out["unresolved_anchors"]) == 1
+    assert out["unresolved_anchors"][0]["claim_id"] == "C9"
+
+
+def test_uncovered_numeric_candidate_detected():
+    # A result_claim number in results with NO anchor -> coverage candidate.
+    tex = "\\section{Results}\nUnregistered speedup of 31\\% appears here.\n"
+    out = link_paper_claims(tex, SCIENCE_DATA, FIG_MANIFEST)
+    vals = [c["value"] for c in out["uncovered_numeric_candidates"]]
+    assert 31.0 in vals
+
+
+def test_figure_late_bind_records_manifest_id():
+    tex = (
+        "\\section{Results}\n"
+        "% CLAIM:C1:NC1\n"
+        "Figure~\\ref{fig:1} shows the kernel sustains 150 GFlop/s.\n"
+    )
+    out = link_paper_claims(tex, SCIENCE_DATA, FIG_MANIFEST)
+    link = [l for l in out["paper_claim_links"] if l["anchor"] == "CLAIM:C1:NC1"][0]
+    assert "fig_1" in link["figures"]
+    assert "fig_1" in out["figure_refs"]
+
+
+def test_span_hash_stable_under_whitespace_and_anchor():
+    a = "% CLAIM:C1:NC1\nThe   kernel sustains 150 GFlop/s.\n"
+    b = "The kernel sustains 150 GFlop/s."
+    assert span_hash(a.split("\n")[1]) == span_hash(b)
+
+
+def test_writer_assertion_inline_declaration_parsed():
+    """Story2Proposal (c): inline forward declaration on the anchor line is parsed
+    into a verifiable assertion; config_id resolves to node_id."""
+    sd = {"_config_nodes": {
+        "cfg1": {"node_id": "nA", "environment": {}, "metrics": ["GFlops/s"]},
+        "cfg2": {"node_id": "nB", "environment": {}, "metrics": ["GFlops/s"]},
+    }}
+    tex = ("\\section{Results}\n"
+           "% CLAIM:C7:NC7 metric=GFlops/s formula=relative_increase_percent baseline=cfg2 proposed=cfg1\n"
+           "We improve throughput by 50\\%.\n")
+    out = link_paper_claims(tex, sd, None)
+    wa = {a["id"]: a for a in out["writer_assertions"]}
+    assert "NC7" in wa
+    assert wa["NC7"]["formula"] == "relative_increase_percent"
+    assert wa["NC7"]["operands"]["baseline"]["node_id"] == "nB"
+    assert wa["NC7"]["operands"]["proposed"]["node_id"] == "nA"
+    # anchor counts as resolved via the writer declaration (not in science_data)
+    link = [l for l in out["paper_claim_links"] if l["anchor"] == "CLAIM:C7:NC7"][0]
+    assert link["resolved"] is True
+    assert out["counts"]["writer_assertions"] == 1
+
+
+def test_writer_assertion_cross_metric_override():
+    """cfgN:metric form supports a ratio of two metrics of one config (attainment)."""
+    sd = {"_config_nodes": {"cfg1": {"node_id": "nA", "environment": {}, "metrics": ["GFlops/s", "ceil"]}}}
+    tex = ("\\section{Results}\n"
+           "% CLAIM:C8:NC8 formula=ratio_percent baseline=cfg1:ceil proposed=cfg1:GFlops/s\n"
+           "Attainment is 72\\%.\n")
+    out = link_paper_claims(tex, sd, None)
+    wa = {a["id"]: a for a in out["writer_assertions"]}["NC8"]
+    assert wa["operands"]["baseline"]["metric_path"] == "ceil"
+    assert wa["operands"]["proposed"]["metric_path"] == "GFlops/s"
+    assert wa["operands"]["proposed"]["node_id"] == "nA"
+
+
+def test_classify_latex_math_wrapped_units():
+    """Numbers wrapped in $...$ / ~ / \\times must still be classified by their unit
+    so settings (48 threads) and results (6.04 GFlop/s, 4.18x) are not 'ambiguous'."""
+    tex = ("\\section{Results}\n"
+           "At $48$ threads this rises to $6.04$~GFlop/s.\n"
+           "At $K=128$ the build is $4.18\\times$ slower.\n")
+    smap = build_section_map(tex)
+    by = {m["value"]: m for m in extract_numeric_mentions(tex, smap)}
+    assert by[48.0]["type"] == "experimental_setting"      # 48 threads
+    assert by[6.04]["type"] == "result_claim"              # 6.04 GFlop/s
+    assert by[4.18]["type"] == "result_claim"              # 4.18x speedup
+    assert by[128.0]["type"] != "result_claim"             # K=128 is not a result
+
+
+def test_writer_assertion_unescapes_latex_underscores():
+    """The LLM writes LaTeX-escaped underscores in the comment (metric=banded\\_single,
+    formula=ratio\\_percent); the parser must unescape so they resolve/match."""
+    sd = {"_config_nodes": {"cfg1": {"node_id": "nA", "environment": {},
+                                     "metrics": ["banded_single_GFlops_per_s", "banded_strat_peak_GFlops_per_s"]}}}
+    tex = ("\\section{Results}\n"
+           "% CLAIM:C8:NC8 formula=ratio\\_percent baseline=cfg1:banded\\_strat\\_peak\\_GFlops\\_per\\_s "
+           "proposed=cfg1:banded\\_single\\_GFlops\\_per\\_s\n"
+           "Attainment is 3.6\\%.\n")
+    out = link_paper_claims(tex, sd, None)
+    wa = {a["id"]: a for a in out["writer_assertions"]}["NC8"]
+    assert wa["formula"] == "ratio_percent"  # unescaped -> matches registry
+    assert wa["operands"]["baseline"]["metric_path"] == "banded_strat_peak_GFlops_per_s"
+    assert wa["operands"]["proposed"]["metric_path"] == "banded_single_GFlops_per_s"
+    assert not wa.get("unresolved_config_refs")
+
+
+def test_writer_assertion_unresolved_config_ref():
+    """A declaration referencing an unknown config is not silently accepted."""
+    sd = {"_config_nodes": {"cfg1": {"node_id": "nA", "environment": {}, "metrics": ["x"]}}}
+    tex = "\\section{Results}\n% CLAIM:C9:NC9 metric=x formula=identity value=cfg9\nVal 5.\n"
+    out = link_paper_claims(tex, sd, None)
+    wa = {a["id"]: a for a in out["writer_assertions"]}["NC9"]
+    assert wa.get("unresolved_config_refs") == ["cfg9"]
+    link = [l for l in out["paper_claim_links"] if l["anchor"] == "CLAIM:C9:NC9"][0]
+    assert link["resolved"] is False  # unresolved operand => not resolved
+
+
+def test_normalize_drops_latex_commands():
+    assert normalize_sentence("\\textbf{The} kernel~\\cite{x} runs.") == "the kernel runs."

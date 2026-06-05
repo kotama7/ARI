@@ -100,6 +100,7 @@ targets the like-named module under `ari/`.
 - `test_skill_public_contract.py` — skills import core via the public contract.
 - `test_status_fallback.py` — status fallback.
 - `test_system_prompt_memory.py` — system-prompt memory.
+- `test_tool_timeout_tier.py` — MCP `_resolve_tool_timeout` tiering: LLM/compile paper stages (incl. `paper_refine`, `compile_paper`) get the slow timeout, plain tools the 300s default (regression guard for the paper_refine shim-congestion timeout).
 - `test_trace_log_truncation.py` — trace-log truncation.
 - `test_upload_to_node.py` — upload to compute node.
 - `test_variable_passthrough.py` — variable passthrough.

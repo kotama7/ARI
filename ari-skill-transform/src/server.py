@@ -955,6 +955,78 @@ async def nodes_to_science_data(
     }
     if implementation_overview is not None:
         out["implementation_overview"] = implementation_overview
+
+    # ── Research Contract substrate: candidate claims[] / numeric_assertions[] ──
+    # Story2Proposal integration Phase A. Deterministically derived from the
+    # executed-node evidence (results.json measurements/scores or node metrics);
+    # operands carry real node_id + metric_path. figures[] start empty and are
+    # late-bound by the paper post-processor. Claim prose is a templated seed the
+    # writer rewrites while preserving % CLAIM anchors; the hard gate re-verifies
+    # the numbers. Failure here must never break science_data generation.
+    try:
+        from claims import build_science_claims as _build_claims  # type: ignore
+    except Exception:  # pragma: no cover - import shape varies by entrypoint
+        try:
+            from src.claims import build_science_claims as _build_claims  # type: ignore
+        except Exception:
+            _build_claims = None  # type: ignore
+    if _build_claims is not None:
+        try:
+            # Per-node execution environment from node_report (executor / CPU /
+            # arch) — universal provenance, no cluster/domain knowledge. Lets the
+            # claim generator tag operands and (under same_environment intent)
+            # avoid cross-host comparisons.
+            _node_env: dict = {}
+            for _nid, _rep in (reports or {}).items():
+                _ci = _rep.get("cpu_info") or {}
+                _node_env[_nid] = {
+                    "executor": _rep.get("executor", ""),
+                    "cpu_model": _ci.get("model", ""),
+                    "arch": _ci.get("arch", ""),
+                }
+            # Injected research intent (P4): "any" (default) | "same_environment".
+            _cmp_scope = os.environ.get("ARI_COMPARISON_SCOPE", "").strip() or "any"
+            _contract = _build_claims(
+                good_nodes, typed_results, primary_metric, _hib,
+                node_env=_node_env, comparison_scope=_cmp_scope,
+            )
+            out["claims"] = _contract.get("claims", [])
+            out["numeric_assertions"] = _contract.get("numeric_assertions", [])
+            # Tag each science-facing configuration with a stable handle
+            # (config_id) + its execution environment, and build a resolution map
+            # so the writer can DECLARE assertions referencing configs (forward
+            # declaration, Story2Proposal (c)) and the hard gate can resolve
+            # config_id -> node_id without exposing node_id in the paper-facing
+            # configuration. ranked[i] is built from good_nodes[i] (same order).
+            _config_nodes: dict = {}
+            for _i, _n in enumerate(good_nodes):
+                if _i >= len(ranked):
+                    break
+                _nid = _n.get("id") or _n.get("node_id") or ""
+                _cid = f"cfg{_i + 1}"
+                ranked[_i]["config_id"] = _cid
+                if _nid in _node_env:
+                    ranked[_i]["environment"] = _node_env[_nid]
+                # Carry metric VALUES (not just keys): the writer must pick the
+                # metric_key whose recorded value equals the number it states, so
+                # it has to SEE the values to declare operands correctly.
+                _metric_vals = {
+                    k: v for k, v in (_n.get("metrics") or {}).items()
+                    if isinstance(v, (int, float)) and not isinstance(v, bool)
+                    and not str(k).startswith("_")
+                }
+                _config_nodes[_cid] = {
+                    "node_id": _nid,
+                    "environment": _node_env.get(_nid, {}),
+                    "metrics": _metric_vals,
+                }
+            # Internal (underscore) — resolution map for the writer's forward
+            # declarations; not part of the paper-facing science surface.
+            out["_config_nodes"] = _config_nodes
+        except Exception as _claim_exc:  # pragma: no cover - defensive
+            out["claims"] = []
+            out["numeric_assertions"] = []
+            out["_claims_error"] = str(_claim_exc)
     return out
 
 

@@ -208,9 +208,17 @@ def select_source_files_for_publication(
 ) -> SourceSelection:
     """Decide which (node_id, rel_path) pairs land in the published code/.
 
-    File-I/O free; consults only node + node_report metadata. The deepest
-    node "wins" on duplicate rel_paths, which mirrors how a child work_dir
-    naturally overlays its parent in the BFTS physical-copy data flow.
+    File-I/O free; consults only node + node_report metadata. Walks the best
+    node's ancestor chain in depth order and overlays each node's
+    ``files_changed``: a deeper node's added/modified file wins on a path
+    collision, and a deeper node's *deletion* removes an ancestor's file.
+    Together this reconstructs the best node's actual work_dir, mirroring how
+    a child runs inside a physical copy of its parent's tree.
+
+    Publication is chain-only: nodes off the best node's lineage are never
+    published even if their results are reported by the all-nodes synthesis
+    set. Such off-chain contributing nodes are recorded in
+    ``excluded_nodes`` so that asymmetry is auditable rather than silent.
 
     Falls back to enumerating the *best* node's own files_changed if the
     chain has no contributing nodes (or the best report itself is missing).
@@ -220,32 +228,54 @@ def select_source_files_for_publication(
         chain, reports, "for_code",
         always_include_node_ids={best_node_id},
     )
-    excluded = collect_excluded(
+    excluded = list(collect_excluded(
         chain, reports, "for_code",
         always_include_node_ids={best_node_id},
-    )
+    ))
 
-    # rel_path -> (node_id, depth) — later (deeper) wins.
+    # rel_path -> (node_id, depth). Deletions are applied from the *full*
+    # chain (a delete-only node carries no added/modified and so is filtered
+    # out of `contributing`); added/modified only from contributing nodes.
+    contributing_ids = {n.get("id") for n in contributing}
     selection: dict[str, tuple[str, int]] = {}
-    for node in contributing:
+    for node in chain:  # root -> best, ascending depth
         nid = node.get("id")
         report = reports.get(nid)
         if not report:
             continue
         depth = int(node.get("depth", 0) or 0)
         fc = report.get("files_changed") or {}
-        for entry in (fc.get("added") or []) + (fc.get("modified") or []):
-            rel = entry.get("path") if isinstance(entry, dict) else None
-            if not rel:
-                continue
-            existing = selection.get(rel)
-            if existing is None or depth >= existing[1]:
-                selection[rel] = (nid, depth)
+        if nid in contributing_ids:
+            for entry in (fc.get("added") or []) + (fc.get("modified") or []):
+                rel = entry.get("path") if isinstance(entry, dict) else None
+                if not rel:
+                    continue
+                existing = selection.get(rel)
+                if existing is None or depth >= existing[1]:
+                    selection[rel] = (nid, depth)
+        # A deletion at this depth overlays away any shallower contribution.
+        for entry in (fc.get("deleted") or []):
+            rel = entry.get("path") if isinstance(entry, dict) else entry
+            if rel:
+                selection.pop(rel, None)
 
     files = tuple(sorted(
         ((nid, rel) for rel, (nid, _depth) in selection.items()),
         key=lambda x: x[1],
     ))
+
+    # FR-NS: record off-chain nodes that would contribute code but lie
+    # outside the published lineage, so _provenance.json::excluded_nodes
+    # surfaces the chain-only/all-nodes asymmetry.
+    chain_ids = {n.get("id") for n in chain}
+    off_chain = [n for n in nodes if n.get("id") not in chain_ids]
+    for n in filter_nodes(off_chain, reports, "for_code"):
+        excluded.append({
+            "node_id": n.get("id"),
+            "criterion": "for_code",
+            "reason": "off the best-node lineage; results may be reported "
+                      "but source is not part of the published chain",
+        })
 
     return SourceSelection(
         files=files,

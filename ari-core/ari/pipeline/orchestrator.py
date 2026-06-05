@@ -128,6 +128,30 @@ def build_scientific_data(nodes_json_path: str) -> dict:
         "count": len(science_nodes),
     }
 
+
+def _copy_stage_output_if_distinct(src: Path, dst: Path) -> None:
+    """Copy a tool-written binary output into the stage's declared output path,
+    but only when it is genuinely a different file.
+
+    A tool (e.g. compile_paper for the render_paper stage) writes its file in place
+    and returns an ABSOLUTE pdf_path, while the declared stage output may be RELATIVE
+    (render_paper's ``{{checkpoint_dir}}/full_paper.pdf`` when the run was given a
+    relative checkpoint path). Comparing the raw strings then treats the in-place
+    write as a copy-onto-itself and ``shutil.copy2`` raises ``SameFileError`` —
+    marking the stage FAILED even though the compile succeeded. Compare RESOLVED
+    paths and tolerate the same-file case so an in-place compile is never a failure.
+    """
+    src = Path(src)
+    dst = Path(dst)
+    if src.resolve() == dst.resolve():
+        return
+    import shutil as _shu
+    try:
+        _shu.copy2(str(src), str(dst))
+    except _shu.SameFileError:
+        pass
+
+
 def run_pipeline(
     stages: list[dict],
     all_nodes,
@@ -272,6 +296,24 @@ def run_pipeline(
     except Exception as _e:
         log.error("CRITICAL: Failed to save nodes_tree.json: %s — paper pipeline stages may fail", _e)
         nodes_json_path = ""
+
+    # Artifact-grounded verified context for write_paper (verifiable-memory layer).
+    # Default ON (config.consolidation_enabled — same switch that populates the typed
+    # store this reads). With it disabled the store is empty / not built, no
+    # verified_context.json is written, and write_paper injects nothing. Best-effort;
+    # never fails the pipeline. This writes an ARTIFACT (not a stage) so it does NOT
+    # affect the stage/tool resolution order.
+    from ari.config import consolidation_enabled as _cons_on
+    if _cons_on():
+        try:
+            from ari.pipeline.verified_context import write_verified_context as _wvc
+            _vc = _wvc(checkpoint_dir, all_nodes)
+            log.info(
+                "pipeline: verified_context.json built (usable_for_claims=%d)",
+                len(_vc.get("usable_for_claims", []) or []),
+            )
+        except Exception as _vce:
+            log.warning("pipeline: verified_context build failed: %s", _vce)
 
     # Convert topic slug (e.g. "My_Research_Topic_v2") -> search query ("My Research Topic v2")
     _raw_topic = experiment_data.get("topic", "")
@@ -704,6 +746,14 @@ def run_pipeline(
 
             if primary_file:
                 out_path = Path(primary_file)
+                # Ensure the output's parent dir exists. Stages may declare an output
+                # in a subdir (e.g. evaluation/claim_evidence_hard_gate_draft.json);
+                # the orchestrator must not assume the tool created it (it may not, or
+                # may run after this write). Safe + idempotent.
+                try:
+                    out_path.parent.mkdir(parents=True, exist_ok=True)
+                except Exception:
+                    pass
                 if primary_file.endswith(".tex"):
                     latex = (result.get("latex", "") if isinstance(result, dict) else "") or ""
                     # Fallback: unwrap nested result dict if latex is empty
@@ -739,11 +789,10 @@ def run_pipeline(
                     # only write JSON if the output_file doesn't already exist as a real file
                     _pdf_path = result.get("pdf_path", "") if isinstance(result, dict) else ""
                     if _pdf_path and Path(_pdf_path).exists() and Path(_pdf_path).stat().st_size > 1024:
-                        # Tool wrote the file — just log it
-                        out_path_real = Path(_pdf_path)
-                        if str(out_path_real) != str(out_path):
-                            import shutil as _shu
-                            _shu.copy2(str(out_path_real), str(out_path))
+                        # Tool wrote the file itself; copy into the declared output only if
+                        # it is genuinely a different file (resolves the absolute-vs-relative
+                        # SameFileError that wrongly marked render_paper FAILED).
+                        _copy_stage_output_if_distinct(Path(_pdf_path), out_path)
                         log.info("Stage [%s]: wrote %s", stage_name, out_path)
                     elif out_path.suffix in (".pdf", ".png", ".jpg") and out_path.exists() and out_path.stat().st_size > 1024:
                         log.info("Stage [%s]: output already at %s", stage_name, out_path)

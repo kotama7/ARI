@@ -93,7 +93,7 @@ _GRANDFATHERED: dict[str, set[int]] = {
     "ari-skill-paper/src/server.py": {21},  # cost_tracker fallback
     "ari-skill-plot/src/server.py": {34},  # try-block legacy fallback
     "ari-skill-replicate/src/server.py": {28},  # cost_tracker fallback
-    "ari-skill-transform/src/server.py": {55, 631, 1927, 2277, 2295},  # cost_tracker fallback + ari.orchestrator/ari.publish (deferred)
+    "ari-skill-transform/src/server.py": {55, 631, 1999, 2349, 2367},  # cost_tracker fallback + ari.orchestrator/ari.publish (deferred; lines shifted by the Story2Proposal claims + forward-declaration config_nodes blocks)
     "ari-skill-vlm/src/server.py": {18},  # cost_tracker fallback
     "ari-skill-web/src/server.py": {24},  # cost_tracker fallback
 }

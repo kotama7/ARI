@@ -323,6 +323,23 @@ _env_append_if_absent "# ARI_MODEL_ROOT_SELECT="
 # experiment launch — users do not normally override it.
 _env_append_if_absent "# ARI_RECURSION_DEPTH="
 
+# --- 2c) Story2Proposal contract gate / verified context --------------------
+# ARI_CLAIM_GATE_MODE overrides claim_gate_policy.mode for the deterministic
+# claim_evidence_hard_gate: off (never block) | warn (MVP, report-only) |
+# strict (evaluation; blocks the final gate on blocking errors).
+_env_append_if_absent "# ARI_CLAIM_GATE_MODE=warn"
+# Typed-memory consolidation + the artifact-grounded verified_context.json build
+# that write_paper consumes are ON BY DEFAULT (v0.8.x). Set
+# ARI_MEMORY_CONSOLIDATE=0 (or false/no/off) to disable and keep the legacy
+# paper-generation behavior (no typed store, no grounded claims).
+_env_append_if_absent "# ARI_MEMORY_CONSOLIDATE=0  # uncomment to disable (default on)"
+# ARI_COMPARISON_SCOPE is the injected research intent for cross-environment
+# numeric comparisons: any (default; cross-env comparison kept as a transparency
+# warning, for cross-architecture studies) | same_environment (cross-env
+# comparison becomes a blocking error, for single-architecture optimization
+# studies). Honored by the claim generator (ari-skill-transform) and the gate.
+_env_append_if_absent "# ARI_COMPARISON_SCOPE=any"
+
 # --- 3) VLM review ----------------------------------------------------------
 _env_section "VLM review"
 _env_append_if_absent "# VLM_MODEL=openai/gpt-4o"
@@ -560,6 +577,7 @@ _env_append_if_absent "# ARI_GH_MODE=commit          # commit | releases"
 _env_append_if_absent "# ARI_COMPOSITE=                 # evaluator composite formula override: harmonic|arithmetic|weighted_min|geometric"
 _env_append_if_absent "# ARI_AXIS_MODE=                 # evaluator axis-set source override: dynamic|legacy|custom"
 _env_append_if_absent "# ARI_FRONTIER_SCORE=            # BFTS frontier_score override: scientific_plus_diversity|scientific_only|depth_penalized|ucb_like"
+_env_append_if_absent "# ARI_BFTS_ALLOW_WEB=            # opt-in web search during BFTS exploration: 1|true|yes|on (env wins over workflow.yaml; default off)"
 
 # --- PaperBench classifier / agent toggles (v0.8.0) -------------------------
 _env_append_if_absent "# ARI_PB_DISABLE_PAPER_KIND_HINT=  # set to 1 to suppress the paper-kind / native-stack hint injected by the classifier (dogfood leak guard)"

@@ -15,7 +15,75 @@ from src.server import (
     generate_section,
     get_template,
     list_venues,
+    paper_refine,
 )
+
+
+def _mock_resp(content: str):
+    r = MagicMock()
+    r.choices = [MagicMock()]
+    r.choices[0].message.content = content
+    return r
+
+
+# --- paper_refine: S2P refiner = global role, DIFF (find/replace) output ---
+
+@pytest.mark.asyncio
+async def test_paper_refine_applies_targeted_diff_edits(tmp_path):
+    tex = ("\\section{Results}\n% CLAIM:C1:NC1\n"
+           "We achieve a speedup of 2x here.\n\\end{document}\n")
+    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    import json as _j
+    edits = '```json\n[{"find": "We achieve a speedup of 2x here.", "replace": "We achieve a speedup of 2.5x here."}]\n```'
+    revs = _j.dumps([{"section": "results", "instruction": "correct the speedup"}])
+    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, return_value=_mock_resp(edits)):
+        out = await paper_refine(tex_path=str(p), suggested_revisions_json=revs)
+    assert out["refined"] is True
+    assert out["applied_revisions"] == 1
+    assert "2.5x" in out["latex"]
+    assert "% CLAIM:C1:NC1" in out["latex"]          # untouched anchor preserved
+
+
+@pytest.mark.asyncio
+async def test_paper_refine_skips_nonunique_find(tmp_path):
+    tex = "\\section{R}\n% CLAIM:C1:NC1\nThe value is X. The value is X.\n"
+    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    edits = '[{"find":"The value is X.","replace":"The value is Y."}]'  # occurs twice
+    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, return_value=_mock_resp(edits)):
+        out = await paper_refine(tex_path=str(p), suggested_revisions_json='[{"instruction":"x"}]')
+    assert out["refined"] is False            # ambiguous find -> never guessed
+    assert out["applied_revisions"] == 0
+    assert out["latex"] == tex                # unchanged
+
+
+@pytest.mark.asyncio
+async def test_paper_refine_rejects_anchor_dropping_edit(tmp_path):
+    tex = "\\section{R}\nFoo % CLAIM:C1:NC1 bar baz.\n"
+    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    edits = '[{"find":"Foo % CLAIM:C1:NC1 bar baz.","replace":"Foo bar baz revised."}]'  # drops anchor
+    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, return_value=_mock_resp(edits)):
+        out = await paper_refine(tex_path=str(p), suggested_revisions_json='[{"instruction":"x"}]')
+    assert out["refined"] is False
+    assert "% CLAIM:C1:NC1" in out["latex"]   # anchor never dropped
+
+
+@pytest.mark.asyncio
+async def test_paper_refine_uses_diff_not_full_rewrite(tmp_path):
+    """Guard the S2P-faithful design: bounded diff output, not whole-document regen."""
+    tex = "\\section{R}\n% CLAIM:C1:NC1\nText here.\n"
+    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    captured: dict = {}
+
+    async def _cap(**kw):
+        captured.update(kw)
+        return _mock_resp("[]")
+
+    with patch("src.server.litellm.acompletion", side_effect=_cap):
+        await paper_refine(tex_path=str(p), suggested_revisions_json='[{"instruction":"x"}]')
+    sysmsg = next(m for m in captured["messages"] if m["role"] == "system")["content"]
+    assert "JSON array" in sysmsg
+    assert "Do NOT rewrite the whole document" in sysmsg
+    assert captured["max_tokens"] <= 8192     # bounded => no full-document regeneration
 
 
 # --- list_venues ---

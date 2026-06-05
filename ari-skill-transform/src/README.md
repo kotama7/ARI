@@ -9,9 +9,9 @@ and owns the EAR publication lifecycle (curate / publish / promote).
 
 - `README.md` — this file.
 - `__init__.py` — empty package marker.
-- `claims.py` — TODO
+- `claims.py` — deterministic Research Contract claim generator (Story2Proposal Phase A): builds `claims[]` / `numeric_assertions[]` with real node_id + metric_path operands; formula registry mirrored in ari-core's claim_gate.
 - `curate.py` — deterministic (P1/P2) EAR curator producing `ear_published/` + `manifest.lock`.
-- `server.py` — MCP entry point (`nodes_to_science_data`, `generate_ear`, `curate_ear`, `publish_ear`).
+- `server.py` — MCP entry point (`nodes_to_science_data` — also emits `claims[]`/`numeric_assertions[]` — `generate_ear`, `curate_ear`, `publish_ear`).
 - `licenses/` — bundled license texts used when curating EAR bundles.
   - `README.md` — licenses index.
   - `apache-2.0.txt` — Apache-2.0 license body.
@@ -19,8 +19,8 @@ and owns the EAR publication lifecycle (curate / publish / promote).
   - `cc-by-4.0.txt` — CC-BY-4.0 license body.
   - `gpl-3.0.txt` — GPL-3.0 license body.
   - `mit.txt` — MIT license body.
-- `schemas/` — TODO
-  - `science_data_claims.schema.json` — TODO
+- `schemas/` — JSON Schemas for transform outputs.
+  - `science_data_claims.schema.json` — JSON Schema (draft-07) for the `claims[]` / `numeric_assertions[]` Research Contract layer added to science_data.json.
 
 ## See also
 

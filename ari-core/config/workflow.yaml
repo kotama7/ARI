@@ -22,6 +22,26 @@ lineage_decision:
   rate_limit_per_run: 5
 root_idea_selection:
   enabled: true
+# Story2Proposal Phase B3: claim_evidence_hard_gate policy. Consumed by the claim
+# stages below (enabled by default in warn mode). mode controls blocking (off never
+# blocks; warn = default report-only; strict = blocks the FINAL gate on blocking
+# errors). env ARI_CLAIM_GATE_MODE overrides mode at runtime.
+claim_gate_policy:
+  mode: warn
+  # Injected research intent (env ARI_COMPARISON_SCOPE overrides): any (default;
+  # cross-environment comparison = transparency warning, for cross-architecture
+  # studies) | same_environment (cross-env comparison = blocking error, for
+  # single-architecture optimization studies).
+  comparison_scope: any
+  numeric_coverage:
+    target_sections:
+      strict: [abstract, results, conclusion]
+      warn: [introduction, discussion, limitations]
+      excluded: [related_work, references, appendix, equations]
+  numeric_match:
+    default_tolerance: {absolute: 0.0, relative: 0.02}
+  blocking:
+    block_on: [numeric_mismatch, operand_unresolved, missing_evidence]
 bfts_pipeline:
 - stage: generate_idea
   skill: idea-skill
@@ -171,6 +191,12 @@ pipeline:
     figures_manifest_json: '{{checkpoint_dir}}/figures_manifest.json'
     refs_json: '{{checkpoint_dir}}/related_refs.json'
     science_data_json: '{{checkpoint_dir}}/science_data.json'
+    # Verified context is passed as a PATH and read inside write_paper_iterative.
+    # Deliberately NOT in load_inputs: keeping it out of the stage's loaded-content
+    # set means the write_paper stage-config / dependency resolution is unchanged,
+    # so the (separately-wired) claim stages' topology is not perturbed. Absent
+    # file (ARI_MEMORY_CONSOLIDATE off) => write_paper injects nothing.
+    verified_context_json: '{{checkpoint_dir}}/verified_context.json'
   load_inputs:
   - figures_manifest_json
   - refs_json
@@ -179,6 +205,209 @@ pipeline:
     file: '{{checkpoint_dir}}/full_paper.tex'
     bib_file: '{{checkpoint_dir}}/refs.bib'
   skip_if_exists: '{{checkpoint_dir}}/full_paper.tex'
+# ─────────────────────────────────────────────────────────────────────────────
+# Story2Proposal contract-governed generation loop (Phases A2/B/D/E).
+# The topology below is back-ported from the validated checkpoint run: the stages
+# are in dependency order (link_draft -> gate_draft -> review -> semantic -> merge
+# -> refine -> render -> link_final -> semantic_post -> gate_final -> finalize),
+# finalize_paper depends on the FINAL hard gate (blocking contract wired), and
+# merge_reviews receives the hard-gate + semantic-review paths. The S2P stages are
+# ENABLED BY DEFAULT in warn mode (claim_gate_policy.mode: warn) — the loop runs on
+# every paper build but the gate only reports (never blocks). The orchestrator runs
+# stages in file order with no topological sort, so this dependency order is what
+# keeps the loop correct. To make the final gate BLOCKING (skip finalize on numeric
+# mismatch / uncovered numbers), set claim_gate_policy.mode: strict or
+# ARI_CLAIM_GATE_MODE=strict. To opt a single stage out, set its enabled: false.
+# ─────────────────────────────────────────────────────────────────────────────
+- stage: link_paper_claims_draft
+  skill: paper-skill
+  tool: link_paper_claims
+  description: 'S2P Phase A2: reconcile % CLAIM:Cx:NCx anchors -> paper_claim_links.json.'
+  depends_on:
+  - write_paper
+  enabled: true
+  phase: paper
+  inputs:
+    tex_path: '{{checkpoint_dir}}/full_paper.tex'
+    science_data_json: '{{checkpoint_dir}}/science_data.json'
+    figures_manifest_json: '{{checkpoint_dir}}/figures_manifest.json'
+  load_inputs:
+  - science_data_json
+  - figures_manifest_json
+  outputs:
+    file: '{{checkpoint_dir}}/paper_claim_links.json'
+- stage: claim_evidence_hard_gate_draft
+  skill: evaluator-skill
+  tool: claim_evidence_hard_gate
+  description: 'S2P Phase B: deterministic claim/evidence hard gate (draft, non-blocking).'
+  depends_on:
+  - link_paper_claims_draft
+  - transform_data
+  enabled: true
+  phase: paper
+  inputs:
+    checkpoint_dir: '{{checkpoint_dir}}'
+    paper_path: '{{checkpoint_dir}}/full_paper.tex'
+    science_data_json: '{{checkpoint_dir}}/science_data.json'
+    paper_claim_links_path: '{{checkpoint_dir}}/paper_claim_links.json'
+    figures_manifest_json: '{{checkpoint_dir}}/figures_manifest.json'
+    policy: '{{claim_gate_policy}}'
+    phase: draft
+  load_inputs:
+  - science_data_json
+  - figures_manifest_json
+  outputs:
+    file: '{{checkpoint_dir}}/evaluation/claim_evidence_hard_gate_draft.json'
+- stage: review_paper
+  skill: paper-skill
+  tool: review_compiled_paper
+  description: 'Rubric-driven paper review (AI Scientist v1/v2-compatible, NeurIPS
+    form + reflection). Runs N independent reviewers via the ensemble path; when N>1,
+    also runs the Area Chair meta-review to aggregate divergent scores. N=1 is a single
+    reviewer. Reviewer independence contract: this stage evaluates paper text only
+    (no VLM findings, no experiment brief, no figures manifest) to match AI Scientist
+    v2''s perform_review. VLM review runs independently (vlm_review_figures) and is
+    combined post-hoc by merge_reviews. rubric_id, fewshot_mode, num_reflections,
+    num_reviews_ensemble are read from environment variables: ARI_RUBRIC, ARI_FEWSHOT_MODE,
+    ARI_NUM_REFLECTIONS, ARI_NUM_REVIEWS_ENSEMBLE.'
+  depends_on:
+  - write_paper
+  enabled: true
+  phase: paper
+  inputs:
+    tex_path: '{{checkpoint_dir}}/full_paper.tex'
+    pdf_path: '{{checkpoint_dir}}/full_paper.pdf'
+  outputs:
+    file: '{{checkpoint_dir}}/review_report.json'
+- stage: evidence_grounded_semantic_review
+  skill: evaluator-skill
+  tool: evidence_grounded_semantic_review
+  description: 'S2P Phase D: non-blocking evidence-grounded semantic review.'
+  depends_on:
+  - claim_evidence_hard_gate_draft
+  enabled: true
+  phase: paper
+  inputs:
+    checkpoint_dir: '{{checkpoint_dir}}'
+    paper_path: '{{checkpoint_dir}}/full_paper.tex'
+    science_data_json: '{{checkpoint_dir}}/science_data.json'
+    hard_gate_path: '{{checkpoint_dir}}/evaluation/claim_evidence_hard_gate_draft.json'
+    paper_claim_links_path: '{{checkpoint_dir}}/paper_claim_links.json'
+    phase: initial
+  load_inputs:
+  - science_data_json
+  outputs:
+    file: '{{checkpoint_dir}}/evaluation/evidence_grounded_semantic_review.json'
+- stage: merge_reviews
+  skill: paper-skill
+  tool: merge_reviews
+  description: Post-hoc merge of the independent text reviewer output (review_report.json)
+    with the independent VLM figure review (vlm_review.json). Purely structural merge
+    — no LLM call. Attaches vlm_figure_review and _review_composition metadata to
+    review_report.json so downstream consumers (GUI, CLI) can see both outputs with
+    clear source attribution. Also threads the evidence-grounded reviews (hard gate +
+    semantic review) so the merged report separates independent vs evidence-grounded
+    review categories (S2P Phase E).
+  depends_on:
+  - review_paper
+  - vlm_review_figures
+  enabled: true
+  phase: paper
+  inputs:
+    review_report_path: '{{checkpoint_dir}}/review_report.json'
+    vlm_review_path: '{{checkpoint_dir}}/vlm_review.json'
+    hard_gate_path: '{{checkpoint_dir}}/evaluation/claim_evidence_hard_gate_draft.json'
+    semantic_review_path: '{{checkpoint_dir}}/evaluation/evidence_grounded_semantic_review.json'
+  outputs:
+    file: '{{checkpoint_dir}}/review_merge_log.json'
+- stage: paper_refine
+  skill: paper-skill
+  tool: paper_refine
+  description: 'S2P Phase E: apply suggested_revisions, preserving % CLAIM anchors.'
+  depends_on:
+  - merge_reviews
+  enabled: true
+  phase: paper
+  inputs:
+    tex_path: '{{checkpoint_dir}}/full_paper.tex'
+    merged_review_path: '{{checkpoint_dir}}/review_merge_log.json'
+    semantic_review_path: '{{checkpoint_dir}}/evaluation/evidence_grounded_semantic_review.json'
+  outputs:
+    file: '{{checkpoint_dir}}/full_paper.tex'
+- stage: render_paper
+  skill: paper-skill
+  tool: compile_paper
+  description: 'S2P renderer (A_rend, eq.6 M=A_rend(M'',C)): recompile the refined
+    full_paper.tex -> full_paper.pdf so the delivered PDF reflects paper_refine (the
+    prior PDF came from write_paper, pre-refine). Non-blocking — nothing depends on
+    it, and a LaTeX failure leaves the previous PDF rather than breaking the finalize
+    chain (the .tex remains the gate/finalize source of truth).'
+  depends_on:
+  - paper_refine
+  enabled: true
+  phase: paper
+  inputs:
+    tex_dir: '{{checkpoint_dir}}'
+    main_file: full_paper.tex
+  outputs:
+    file: '{{checkpoint_dir}}/full_paper.pdf'
+- stage: link_paper_claims_final
+  skill: paper-skill
+  tool: link_paper_claims
+  description: 'S2P Phase A2: re-run claim-id post-processing on the refined paper.'
+  depends_on:
+  - paper_refine
+  enabled: true
+  phase: paper
+  inputs:
+    tex_path: '{{checkpoint_dir}}/full_paper.tex'
+    science_data_json: '{{checkpoint_dir}}/science_data.json'
+    figures_manifest_json: '{{checkpoint_dir}}/figures_manifest.json'
+  load_inputs:
+  - science_data_json
+  - figures_manifest_json
+  outputs:
+    file: '{{checkpoint_dir}}/paper_claim_links_final.json'
+- stage: evidence_grounded_semantic_review_post_refine
+  skill: evaluator-skill
+  tool: evidence_grounded_semantic_review
+  description: 'S2P Phase E: re-run semantic review on the refined paper (score_delta).'
+  depends_on:
+  - paper_refine
+  enabled: true
+  phase: paper
+  inputs:
+    checkpoint_dir: '{{checkpoint_dir}}'
+    paper_path: '{{checkpoint_dir}}/full_paper.tex'
+    science_data_json: '{{checkpoint_dir}}/science_data.json'
+    hard_gate_path: '{{checkpoint_dir}}/evaluation/claim_evidence_hard_gate_draft.json'
+    paper_claim_links_path: '{{checkpoint_dir}}/paper_claim_links_final.json'
+    phase: post_refine
+  load_inputs:
+  - science_data_json
+  outputs:
+    file: '{{checkpoint_dir}}/evaluation/evidence_grounded_semantic_review_post_refine.json'
+- stage: claim_evidence_hard_gate_final
+  skill: evaluator-skill
+  tool: claim_evidence_hard_gate
+  description: 'S2P Phase B: deterministic hard gate (FINAL, refined paper; blocks finalize in strict mode).'
+  depends_on:
+  - link_paper_claims_final
+  enabled: true
+  phase: paper
+  inputs:
+    checkpoint_dir: '{{checkpoint_dir}}'
+    paper_path: '{{checkpoint_dir}}/full_paper.tex'
+    science_data_json: '{{checkpoint_dir}}/science_data.json'
+    paper_claim_links_path: '{{checkpoint_dir}}/paper_claim_links_final.json'
+    figures_manifest_json: '{{checkpoint_dir}}/figures_manifest.json'
+    policy: '{{claim_gate_policy}}'
+    phase: final
+  load_inputs:
+  - science_data_json
+  - figures_manifest_json
+  outputs:
+    file: '{{checkpoint_dir}}/evaluation/claim_evidence_hard_gate_final.json'
 - stage: ear_publish
   description: Package the curated EAR into a local tarball + publish_record.json
     so the ORS sandbox can fetch it via fetch_code_bundle. Default backend is local-tarball
@@ -209,6 +438,7 @@ pipeline:
   - write_paper
   - ear_curate
   - ear_publish
+  - claim_evidence_hard_gate_final
   enabled: true
   phase: paper
   inputs:
@@ -216,45 +446,6 @@ pipeline:
     checkpoint_dir: '{{checkpoint_dir}}'
   outputs:
     file: '{{checkpoint_dir}}/finalize_paper.json'
-- stage: review_paper
-  skill: paper-skill
-  tool: review_compiled_paper
-  description: 'Rubric-driven paper review (AI Scientist v1/v2-compatible, NeurIPS
-    form + reflection). Runs N independent reviewers via the ensemble path; when N>1,
-    also runs the Area Chair meta-review to aggregate divergent scores. N=1 is a single
-    reviewer. Reviewer independence contract: this stage evaluates paper text only
-    (no VLM findings, no experiment brief, no figures manifest) to match AI Scientist
-    v2''s perform_review. VLM review runs independently (vlm_review_figures) and is
-    combined post-hoc by merge_reviews. rubric_id, fewshot_mode, num_reflections,
-    num_reviews_ensemble are read from environment variables: ARI_RUBRIC, ARI_FEWSHOT_MODE,
-    ARI_NUM_REFLECTIONS, ARI_NUM_REVIEWS_ENSEMBLE.'
-  depends_on:
-  - write_paper
-  enabled: true
-  phase: paper
-  inputs:
-    tex_path: '{{checkpoint_dir}}/full_paper.tex'
-    pdf_path: '{{checkpoint_dir}}/full_paper.pdf'
-  outputs:
-    file: '{{checkpoint_dir}}/review_report.json'
-- stage: merge_reviews
-  skill: paper-skill
-  tool: merge_reviews
-  description: Post-hoc merge of the independent text reviewer output (review_report.json)
-    with the independent VLM figure review (vlm_review.json). Purely structural merge
-    — no LLM call. Attaches vlm_figure_review and _review_composition metadata to
-    review_report.json so downstream consumers (GUI, CLI) can see both outputs with
-    clear source attribution.
-  depends_on:
-  - review_paper
-  - vlm_review_figures
-  enabled: true
-  phase: paper
-  inputs:
-    review_report_path: '{{checkpoint_dir}}/review_report.json'
-    vlm_review_path: '{{checkpoint_dir}}/vlm_review.json'
-  outputs:
-    file: '{{checkpoint_dir}}/review_merge_log.json'
 - stage: ors_generate_rubric
   skill: replicate-skill
   tool: generate_rubric
