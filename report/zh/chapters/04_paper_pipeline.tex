@@ -14,9 +14,103 @@
 探索终止后,存活谱系被交付给论文生成流水线——ARI 的第二棵活动树
 (\cref{fig:swim})。\term{撰写}阶段将谱系汇编为草稿,\term{评审}
 阶段以评分细则对该草稿评分;两者由改稿循环 (\cref{sec:paper:loop})
-耦合。流水线从探索留下的按节点产物中,组装撰写器可依据的证据,并
-持久化三件输出:\LaTeX{} 草稿、带理由的按叶评审,以及本次运行所用
-的评分细则实例(评分细则可能逐论文生成而非预先固定,故保存)。
+耦合。流水线从探索留下的按节点产物中,组装撰写器可依据的证据
+(\cref{sec:paper:evidence}),并持久化三件输出:\LaTeX{} 草稿、带
+理由的按叶评审,以及本次运行所用的评分细则实例(评分细则可能逐论
+文生成而非预先固定,故保存)。
+
+\subsection{证据组装}\label{sec:paper:evidence}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F17_evidence_assembly.tex}}
+  \caption{证据组装。确定性组装器把最佳节点的谱系变为\emph{一次}选择,
+           该选择以相同的选定字节供给\emph{两个}消费者——撰写器的谱系
+           证据与已发布产物束。节点自评报告(内容哈希、成功自评、逐字构建/
+           运行命令、所捕获硬件)为选择奠基,故每个贡献文件都由已记录
+           元数据选出;路径冲突时最深的出现胜出,链上的删除则移除该文件。}
+  \label{fig:evidence}
+\end{figure}
+
+两棵树之间坐落着一个确定性的\term{证据组装器}
+(\cref{fig:evidence})。它决定谱系的按节
+点产物中撰写器可依据者,并将其重塑为单一的面向科学的记录。该设计
+使这道接缝可审计——某一主张可追溯到哪个节点,是已记录元数据的函
+数,而非语言模型的判断——从而使 \cref{sec:paper:failures} 的护栏
+有具体之物可强制执行。
+
+选别按角色进行:一个节点可以不同方式贡献给三个消费者,由单一谓词
+族判定各自。节点在携带真实测量(或评估器认定其运行成功)时进入
+\emph{合成}集合;在相对于父节点新增或修改了源文件时进入\emph{代
+码}集合;在其步骤成功时进入\emph{叙事}集合。仅探索了死胡同的节点
+不进入任何集合。每条准则都是已记录元数据上的纯谓词,故相同输入总
+是选出相同的贡献集合。
+
+源文件的收集方式是:沿最佳节点 $\bestnode$ 的祖先链
+$\lineage{\bestnode}$,按深度顺序叠覆每个贡献节点触及的文件。由于子
+节点在父节点工作树的副本内执行,一条相对路径可能出现于多个深度;
+最深的出现胜出,链上的删除则移除该文件——于是重建集合与最佳节点的
+实际工作树一致。该选择以相同字节供给\emph{两个}消费者:撰写器的谱系
+证据与已发布产物束,因此论文据其描述的谱系代码即为所发布的代码。
+选择为链上专属——最佳谱系之外的节点即便其测量被合成集合报告也不发布,
+并记入 provenance——此外为伪代码忠实性,撰写器还另获最高分节点的
+原始源码,但其本身并非发布集合。
+
+组装器直接从每个节点的工作树读取代码、参数与测量值,而非读取摘要。
+当实验声明了带类型的结果时,记录将\term{输入参数}(问题规模、线程
+数、随机种子等配置旋钮)与\term{测量输出}(吞吐、精度、延迟)及派
+生量(效率、模型预测上限)分离。此分离并非装饰:跨构型报告的按键
+极值被确定性地、且\emph{仅}在测量键上归约,
+\begin{equation}\label{eq:reduction}
+  \mathrm{best}(m)\;=\;\operatorname*{red}_{c\,\in\,\Evidence} c[m],
+  \qquad m \notin \Inputs,
+\end{equation}
+其中 $\operatorname*{red}$ 按该指标声明的方向取最大或最小,
+$\Evidence$ 为贡献构型的集合,$\Inputs$ 为从一切归约中剔除的已声明
+输入键集合。剔除输入正是防止把巨大的输入规模——比如数百万非零元
+的问题规模——误读为主结果。语言模型被限定于真正需要它的唯一任务:
+将逐字源码与日志转化为散文与伪代码,并叙述方法论。它从不提供数值。
+
+支撑这一切的是节点完成时写出的结构化自评报告(检查点内的
+\texttt{node\_report.json})。它以内容哈希记录:该节点相对父节点新
+增或修改了哪些文件;节点自身的成功自评连同评估器标记的关切;逐字
+的构建与运行命令;以及测量所运行的硬件。哈希使源选择可复现,并使
+已发布产物束能携带由所记录命令构建的复现脚本;所捕获的硬件让论文
+的环境章节能够基于事实撰写,而非留作“未记录”。
+
+\begin{algorithm}[t]
+\small
+\caption{证据组装(探索 $\to$ 撰写器输入)。}
+\label{alg:evidence-assembly}
+\begin{algorithmic}[1]
+\Require 带按节点报告的谱系节点 $\Nodes$;指标方向映射
+\Ensure  科学记录 $\Evidence$:带类型构型、按键极值、方法论叙事
+\State $\bestnode \gets \operatorname*{arg\,max}_{n \in \Nodes}\, \nodescore{n}$
+       \Comment{同分: 已验证, 其次更深}
+\State $L \gets \lineage{\bestnode}$ \Comment{根到最佳的祖先链}
+\State $\mathcal{C} \gets \{\, n \in L : \textsc{Contributes}(n) \,\}$
+       \Comment{角色谓词(代码)}
+\State $F \gets \emptyset$ \Comment{相对路径 $\mapsto$ (节点, 深度)}
+\ForAll{$n \in L$ 按深度顺序}
+  \ForAll{$n \in \mathcal{C}$ 新增/修改的路径 $p$}
+    \If{$p \notin F \lor \depth{n} \geq \depth{F[p]}$}
+      \State $F[p] \gets (n, \depth{n})$ \Comment{最深胜出}
+    \EndIf
+  \EndFor
+  \ForAll{$n$ 删除的路径 $p$}
+    \State 从 $F$ 移除 $p$ \Comment{删除以叠覆移除}
+  \EndFor
+\EndFor
+\State 在尺寸预算下逐字读取每个 $p \in F$ 的字节
+\ForAll{测量键 $m \notin \Inputs$}
+  \State $\mathrm{best}(m) \gets \operatorname*{red}_{c} c[m]$
+         \Comment{\cref{eq:reduction};确定性}
+\EndFor
+\State $\textsc{Narrate}(F)$
+       \Comment{LLM: 逐字源码/日志 $\to$ 散文、伪代码}
+\State \Return $\Evidence$
+\end{algorithmic}
+\end{algorithm}
 
 \subsection{评分细则形式}\label{sec:paper:rubric}
 
@@ -145,7 +239,7 @@ vendor 化的基准与 ARI 核心在该扩展中保持不变。
 
 \subsection{故障模式与护栏}\label{sec:paper:failures}
 
-三种故障模式频繁到值得命名,各自配以结构性——而非仅建议性——的缓解:
+四种故障模式频繁到值得命名,各自配以结构性——而非仅建议性——的缓解:
 
 \begin{itemize}
   \item \textbf{仅 LLM 支撑}:论文断言一项谱系中无任何节点支撑的主张。
@@ -157,7 +251,13 @@ vendor 化的基准与 ARI 核心在该扩展中保持不变。
   \item \textbf{改稿漂移}:聚合得分上升而论文丧失连贯性。缓解是逐轴
         下限:任一轴跌破阈值即中止改稿,使一轴的提升无法掩盖另一轴的
         崩溃。
+  \item \textbf{数值漂移}:报告的量与其所概括的已记录结果不一致。由于
+        每项数值主张都指明其所依据的节点与测量值
+        (\cref{sec:paper:evidence}),每项都从已记录结果确定性地重新推导
+        并在容差内比对;与重新计算值不一致的值会被标记。默认情况下闸门仅
+        报告此类不一致而不阻断;仅在更严格的审计策略下,最终检查中未消解的
+        不一致才会被拒绝而非发表。
 \end{itemize}
 
-第一道护栏也限制 context:撰写器仅获得选定谱系产物的字节,且受限于
-大小预算,因此即便长时间运行草稿也保持在模型的 context 窗口之内。
+第一道护栏也限制 context:撰写器获得选定谱系产物与最高分节点的源码,
+且受限于大小预算,因此即便长时间运行草稿也保持在模型的 context 窗口之内。
