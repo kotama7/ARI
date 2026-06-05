@@ -34,6 +34,19 @@ PaperBench \cite{starace2025paperbench} 是与我们 \texttt{paper-re}
 叶的分级与聚合权重 (\cref{eq:paperscore}),并扩展以按轴下限作
 为改稿护栏 (\cref{sec:paper:failures})。
 
+Story2Proposal \cite{qian2026story2proposal} 通过一份持久的共享契约
+——章节结构、视觉 artifact 的注册表以及全文档级的校验规则——来统辖
+结构化的稿件生成,由 writer、refiner 与 renderer 智能体在一个以推理
+验证、数据保真度与视觉一致性评分的 generate--evaluate--adapt 循环下
+协同。它将实验证据作为给定输入,统辖证据的写作方式,而不执行实验。
+ARI 将这一契约治理生成原则及其评估轴整合进一个以执行为基础
+(execution-grounded)的流水线 (\cref{sec:paper:evidence}):契约通过为
+结构化实验记录补充引用稳定的节点、结果与图表标识符的 claim 与 numeric
+assertion 来实现;数据保真度成为从已记录结果重新推导每个报告数值的确
+定性 claim--evidence 闸门;推理与视觉一致性成为不阻断独立稿件评审的
+evidence-grounded 评审。由于 ARI 执行实验而非将证据作为输入接收,它把
+这一稿件级契约扩展到以执行为基础的溯源(provenance)。
+
 \subsection{基础}\label{sec:related:foundations}
 
 智能体循环遵循 ReAct 模式 \cite{yao2023react};改稿循
