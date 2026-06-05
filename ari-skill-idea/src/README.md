@@ -10,6 +10,8 @@ package is imported as `src`.
 - `README.md` — this file.
 - `__init__.py` — empty package marker.
 - `server.py` — MCP entry point (`survey`, `make_metric_spec`, `generate_ideas`); wraps the vendored VirSci core under `vendor/virsci/`.
+- `snapshot.py` — TODO
+- `virsci_runtime.py` — TODO
 
 ## See also
 

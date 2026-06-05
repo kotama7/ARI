@@ -38,6 +38,24 @@ formalism. We adopt the same per-leaf grade and aggregate weight
 (\cref{eq:paperscore}) but extend it with a per-axis floor used as a
 refine guard (\cref{sec:paper:failures}).
 
+Story2Proposal \cite{qian2026story2proposal} governs structured manuscript
+generation through a persistent shared contract --- section structure, a
+registry of visual artifacts, and document-wide validation rules --- with
+writer, refiner, and renderer agents coordinating under a
+generate--evaluate--adapt loop scored on reasoning verification, data
+fidelity, and visual coherence. It takes the experimental evidence as given and
+governs how that evidence is written up; it does not execute experiments. ARI
+integrates that contract-governed-generation principle and its evaluation axes
+into an execution-grounded pipeline (\cref{sec:paper:evidence}): the contract is
+realised by extending the structured experiment record with claims and numeric
+assertions that reference stable node, result, and figure identifiers; data
+fidelity becomes the deterministic claim--evidence gate that re-derives each
+reported number from the recorded results; and reasoning and visual coherence
+become a non-blocking evidence-grounded review that leaves the independent
+manuscript review intact. Because ARI executes the experiments rather than
+receiving the evidence as input, it extends this manuscript-level contract to
+execution-grounded provenance.
+
 \subsection{Foundations}\label{sec:related:foundations}
 
 The agent loop follows the ReAct pattern \cite{yao2023react};

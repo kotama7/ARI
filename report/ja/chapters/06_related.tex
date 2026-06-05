@@ -37,6 +37,22 @@ PaperBench \cite{starace2025paperbench} は我々の \texttt{paper-re}
 (\cref{eq:paperscore})を採用するが、改稿ガードとして使う軸ごと
 の下限で拡張している (\cref{sec:paper:failures})。
 
+Story2Proposal \cite{qian2026story2proposal} は、永続的な共有コント
+ラクト——セクション構造、図表 artifact のレジストリ、文書全体の検証
+規則——を通じて構造化された原稿生成を統治し、writer・refiner・
+renderer エージェントが、推論検証・データ忠実性・視覚的整合性で採点
+される generate--evaluate--adapt ループの下で協調する。実験エビデンス
+を与件として受け取り、その書き上げ方を統治するもので、実験自体は実行
+しない。ARI はこの contract-governed generation の原理と評価軸を
+execution-grounded なパイプラインへ統合する (\cref{sec:paper:evidence}):
+コントラクトは、構造化実験記録を、安定なノード・結果・図表識別子を参照
+する claim と numeric assertion で拡張して実現し;データ忠実性は、各報告
+値を記録済み結果から再導出する決定論的な claim--evidence ゲートとなり;
+推論と視覚的整合性は、独立した原稿査読を損なわない非ブロッキングの
+evidence-grounded review となる。ARI はエビデンスを与件として受け取るの
+ではなく実験を実行するため、この原稿レベルのコントラクトを
+execution-grounded な provenance へ拡張する。
+
 \subsection{基礎}\label{sec:related:foundations}
 
 エージェントループは ReAct パターン \cite{yao2023react} に従う;
