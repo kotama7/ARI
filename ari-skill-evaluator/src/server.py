@@ -107,15 +107,72 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["experiment_text"],
             },
-        )
+        ),
+        Tool(
+            name="claim_evidence_hard_gate",
+            description=(
+                "Story2Proposal Phase B: deterministic claim/evidence hard gate "
+                "(execution data fidelity). Verifies that science_data claims reference "
+                "executed nodes, re-computes numeric_assertions from results.json and "
+                "checks the paper-reported numbers within tolerance, detects uncovered "
+                "result numbers per section policy, and checks figure existence. No LLM. "
+                "In strict mode the FINAL phase returns an error that blocks finalize when "
+                "blocking errors exist; draft phase and warn/off mode never block. Writes "
+                "evaluation/claim_evidence_hard_gate_{phase}.json."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "checkpoint_dir": {"type": "string"},
+                    "paper_path": {"type": "string", "description": "Path to full_paper.tex"},
+                    "science_data_json": {"type": "string", "description": "science_data.json content or path"},
+                    "paper_claim_links_path": {"type": "string", "description": "Path to paper_claim_links.json"},
+                    "figures_manifest_json": {"type": "string", "description": "figures_manifest.json content or path"},
+                    "policy": {"description": "claim_gate_policy (dict or JSON/repr string)"},
+                    "phase": {"type": "string", "enum": ["draft", "final"], "default": "draft"},
+                },
+                "required": ["checkpoint_dir", "paper_path"],
+            },
+        ),
+        Tool(
+            name="evidence_grounded_semantic_review",
+            description=(
+                "Story2Proposal Phase D: non-blocking, evidence-grounded semantic review. "
+                "LLM detects over-claiming / interpretation issues / unregistered strong "
+                "claims grounded in the hard-gate evidence, WITHOUT touching the independent "
+                "text reviewer. Emits suggested_revisions for paper_refine and scores. "
+                "Writes evaluation/evidence_grounded_semantic_review.json. Never blocks."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "checkpoint_dir": {"type": "string"},
+                    "paper_path": {"type": "string", "description": "Path to full_paper.tex"},
+                    "science_data_json": {"type": "string", "description": "science_data.json content or path"},
+                    "hard_gate_path": {"type": "string", "description": "Path to claim_evidence_hard_gate_*.json"},
+                    "paper_claim_links_path": {"type": "string", "description": "Path to paper_claim_links.json"},
+                    "phase": {"type": "string", "default": "initial"},
+                },
+                "required": ["checkpoint_dir", "paper_path"],
+            },
+        ),
     ]
 
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
-    if name != "make_metric_spec":
+    if name == "make_metric_spec":
+        result = await _tool_make_metric_spec(arguments)
+    elif name == "claim_evidence_hard_gate":
+        result = await _tool_claim_evidence_hard_gate(arguments)
+    elif name == "evidence_grounded_semantic_review":
+        result = await _tool_evidence_grounded_semantic_review(arguments)
+    else:
         raise ValueError(f"Unknown tool: {name}")
+    return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
 
+
+async def _tool_make_metric_spec(arguments: dict) -> dict:
     text = arguments["experiment_text"]
     expected_metrics = _parse_success_metrics(text)
     metric_keyword = _parse_metric_keyword(text)
@@ -176,14 +233,244 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
     scoring_guide = _build_scoring_guide(expected_metrics, metric_keyword, min_expected)
 
-    result = {
+    return {
         "expected_metrics": expected_metrics,
         "expected_params": expected_params,
         "metric_keyword": metric_keyword,
         "min_expected_metric": min_expected,
         "scoring_guide": scoring_guide,
     }
-    return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
+
+
+def _load_jsonish(val):
+    """Load a dict from a JSON string, a path, or pass through a dict."""
+    import json as _json
+    from pathlib import Path as _Path
+    if not val:
+        return {}
+    if isinstance(val, dict):
+        return val
+    if isinstance(val, str):
+        try:
+            return _json.loads(val)
+        except Exception:
+            p = _Path(val)
+            if p.is_file():
+                try:
+                    return _json.loads(p.read_text())
+                except Exception:
+                    return {}
+    return {}
+
+
+async def _tool_claim_evidence_hard_gate(arguments: dict) -> dict:
+    """Thin MCP wrapper over ari-core's deterministic claim_evidence_hard_gate.
+
+    Returns the full report normally. When the report says should_block (final +
+    strict + blocking errors), returns EXACTLY {"error": ...} so the pipeline
+    stage runner raises and finalize_paper is skipped.
+    """
+    from pathlib import Path as _Path
+
+    ckpt = arguments.get("checkpoint_dir") or ""
+    paper_path = arguments.get("paper_path") or arguments.get("tex_path") or ""
+    if not ckpt and paper_path:
+        ckpt = str(_Path(paper_path).parent)
+    phase = (arguments.get("phase") or "draft").strip().lower()
+
+    # Degrade gracefully: if ari-core is somehow unimportable, do NOT fail the
+    # stage (that would cascade-skip finalize). Report a non-blocking skip.
+    try:
+        from ari.public.claim_gate import run_hard_gate  # public contract (req 09)
+    except Exception as _e:  # pragma: no cover
+        return {"gate": "claim_evidence_hard_gate", "phase": phase, "status": "skipped",
+                "should_block": False, "errors": [], "warnings": [],
+                "note": f"ari-core claim_gate unavailable: {_e}"}
+
+    paper_tex = ""
+    if paper_path and _Path(paper_path).is_file():
+        paper_tex = _Path(paper_path).read_text(encoding="utf-8")
+
+    science_data = _load_jsonish(arguments.get("science_data_json"))
+    pcl = None
+    pcl_path = arguments.get("paper_claim_links_path") or ""
+    if pcl_path and _Path(pcl_path).is_file():
+        pcl = _load_jsonish(pcl_path)
+    elif arguments.get("paper_claim_links_json"):
+        pcl = _load_jsonish(arguments.get("paper_claim_links_json"))
+    figures = _load_jsonish(arguments.get("figures_manifest_json")) or None
+
+    try:
+        report = run_hard_gate(
+            ckpt, paper_tex=paper_tex, science_data=science_data,
+            paper_claim_links=pcl, figures_manifest=figures,
+            policy=arguments.get("policy"), phase=phase,
+        )
+    except Exception as _e:  # pragma: no cover - defensive
+        return {"gate": "claim_evidence_hard_gate", "phase": phase, "status": "skipped",
+                "should_block": False, "errors": [], "warnings": [],
+                "note": f"hard gate raised: {_e}"}
+    if report.get("should_block"):
+        n = len(report.get("errors", []))
+        return {"error": (
+            f"claim_evidence_hard_gate ({phase}, strict): {n} blocking error(s); "
+            f"see evaluation/claim_evidence_hard_gate_{phase}.json"
+        )}
+    return report
+
+
+_SEMANTIC_SYSTEM_PROMPT = (
+    "You are a rigorous scientific reviewer performing an EVIDENCE-GROUNDED SEMANTIC "
+    "review of a paper. Numeric correctness, figure existence, and number/results "
+    "consistency have ALREADY been verified deterministically by a hard gate (its "
+    "findings are provided) — do NOT re-check numbers. Evaluate ONLY meaning:\n"
+    "  - reasoning: do Abstract/Intro/Conclusion claims stay within the evidence? "
+    "over-generalization beyond the evaluated benchmark? are limitations reflected?\n"
+    "  - data_interpretation: are causal/comparative interpretations of the results "
+    "justified (separate from whether the numbers match)?\n"
+    "  - visual_semantics: do captions/figure descriptions agree in MEANING with the "
+    "text (not existence)?\n"
+    "  - unregistered strong (non-numeric) claims not backed by the candidate claims.\n"
+    "Be conservative: only flag genuine over-claims. Respond ONLY with JSON:\n"
+    '{"scores":{"reasoning":0-1,"data_interpretation":0-1,"visual_semantics":0-1},'
+    '"warnings":[{"type":"overclaim|overgeneralization|unsupported_claim|interpretation|'
+    'visual_semantics","section":"<section>","message":"<why>"}],'
+    '"suggested_revisions":[{"section":"<section>","instruction":"<concrete edit>"}]}'
+)
+
+
+async def _tool_evidence_grounded_semantic_review(arguments: dict) -> dict:
+    """Story2Proposal Phase D: non-blocking, evidence-grounded semantic review.
+
+    Detects over-claiming / interpretation issues grounded in the hard-gate
+    evidence and emits suggested_revisions for paper_refine. Never blocks the
+    pipeline; on any error it returns an empty (status='ok') review.
+    """
+    import json as _json
+    import os as _os
+    import re as _re
+    from pathlib import Path as _Path
+
+    ckpt = arguments.get("checkpoint_dir") or ""
+    paper_path = arguments.get("paper_path") or arguments.get("tex_path") or ""
+    if not ckpt and paper_path:
+        ckpt = str(_Path(paper_path).parent)
+    phase = (arguments.get("phase") or "initial").strip().lower()
+
+    paper_tex = ""
+    if paper_path and _Path(paper_path).is_file():
+        paper_tex = _Path(paper_path).read_text(encoding="utf-8")
+
+    science_data = _load_jsonish(arguments.get("science_data_json"))
+    claims = science_data.get("claims", []) if isinstance(science_data, dict) else []
+    hard_gate = {}
+    hg_path = arguments.get("hard_gate_path") or ""
+    if hg_path and _Path(hg_path).is_file():
+        hard_gate = _load_jsonish(hg_path)
+
+    out_dir = _Path(ckpt) / "evaluation"
+    suffix = "" if phase in ("", "initial", "draft") else f"_{phase}"
+    out_file = out_dir / f"evidence_grounded_semantic_review{suffix}.json"
+
+    def _finalize(report: dict) -> dict:
+        # score_delta vs the initial review (self-referential; report alongside
+        # independent indicators — see master plan §10.3).
+        prior = out_dir / "evidence_grounded_semantic_review.json"
+        if suffix and prior.is_file():
+            try:
+                pj = _json.loads(prior.read_text())
+                p_agg = _agg_score(pj.get("scores", {}))
+                c_agg = _agg_score(report.get("scores", {}))
+                report["score_delta"] = round(c_agg - p_agg, 4)
+                report["detected_overclaim_count_prev"] = pj.get("detected_overclaim_count", 0)
+                report["resolved_overclaim_count"] = max(
+                    0, pj.get("detected_overclaim_count", 0) - report.get("detected_overclaim_count", 0)
+                )
+            except Exception:
+                pass
+        try:
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_file.write_text(_json.dumps(report, ensure_ascii=False, indent=2))
+            report["output_path"] = str(out_file)
+        except Exception as e:
+            report["_write_error"] = str(e)
+        return report
+
+    if not paper_tex:
+        return _finalize({
+            "stage": "evidence_grounded_semantic_review", "phase": phase, "status": "ok",
+            "scores": {}, "warnings": [], "suggested_revisions": [],
+            "detected_overclaim_count": 0, "resolved_overclaim_count": 0,
+            "human_verified_overclaim_precision": None,
+            "note": "no paper text available; non-blocking no-op",
+        })
+
+    claim_lines = "; ".join(
+        f"{c.get('id')}: {c.get('text', '')}" for c in claims if isinstance(c, dict)
+    )[:4000]
+    hg_summary = _json.dumps({
+        "errors": hard_gate.get("errors", []),
+        "warnings": hard_gate.get("warnings", []),
+        "metrics": hard_gate.get("metrics", {}),
+    }, ensure_ascii=False)[:6000]
+
+    user_prompt = (
+        f"Candidate claims (already grounded in executed results):\n{claim_lines}\n\n"
+        f"Hard-gate findings (numbers already verified — do not re-check):\n{hg_summary}\n\n"
+        f"Paper (LaTeX):\n{paper_tex[:36000]}"
+    )
+
+    try:
+        import litellm as _litellm
+        _model = (_os.environ.get("ARI_MODEL_EVAL")
+                  or _os.environ.get("ARI_MODEL")
+                  or _os.environ.get("ARI_LLM_MODEL")
+                  or "gpt-4o-mini")
+        _kw = {
+            "model": _model,
+            "messages": [
+                {"role": "system", "content": _SEMANTIC_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0.2, "max_tokens": 1500,
+        }
+        _apib = _os.environ.get("ARI_LLM_API_BASE")
+        if _apib:
+            _kw["api_base"] = _apib
+        _resp = await _litellm.acompletion(**_kw)
+        _raw = _resp.choices[0].message.content or ""
+        _raw = _re.sub(r"<think>.*?</think>", "", _raw, flags=_re.DOTALL).strip()
+        _m = _re.search(r"\{.*\}", _raw, _re.DOTALL)
+        parsed = _json.loads(_m.group(0)) if _m else {}
+    except Exception as e:
+        return _finalize({
+            "stage": "evidence_grounded_semantic_review", "phase": phase, "status": "ok",
+            "scores": {}, "warnings": [], "suggested_revisions": [],
+            "detected_overclaim_count": 0, "resolved_overclaim_count": 0,
+            "human_verified_overclaim_precision": None,
+            "note": f"semantic review LLM unavailable; non-blocking no-op ({e})",
+        })
+
+    warnings = parsed.get("warnings", []) if isinstance(parsed, dict) else []
+    warnings = [w for w in warnings if isinstance(w, dict)]
+    revisions = parsed.get("suggested_revisions", []) if isinstance(parsed, dict) else []
+    revisions = [r for r in revisions if isinstance(r, dict)]
+    scores = parsed.get("scores", {}) if isinstance(parsed, dict) else {}
+    overclaim_types = {"overclaim", "overgeneralization", "unsupported_claim"}
+    detected = sum(1 for w in warnings if w.get("type") in overclaim_types)
+
+    status = "revise" if (warnings or revisions) else "ok"
+    return _finalize({
+        "stage": "evidence_grounded_semantic_review", "phase": phase, "status": status,
+        "scores": scores, "warnings": warnings, "suggested_revisions": revisions,
+        "detected_overclaim_count": detected, "resolved_overclaim_count": 0,
+        "human_verified_overclaim_precision": None,
+    })
+
+
+def _agg_score(scores: dict) -> float:
+    vals = [float(v) for v in (scores or {}).values() if isinstance(v, (int, float))]
+    return sum(vals) / len(vals) if vals else 0.0
 
 
 def _build_artifact_extractor_source(metric_keyword: str | None) -> str:

@@ -542,12 +542,14 @@ class TestTemplateResolution:
 
 class TestFullPaperPipeline:
     """End-to-end: run the real pipeline with mocked MCP calls.
-    Verifies all 7 stages execute, outputs are written, and config propagates."""
+    Verifies every enabled stage executes in order, outputs are written, and config
+    propagates (the S2P contract loop is enabled by default in warn mode)."""
 
     def test_all_stages_execute_with_correct_model(
         self, tmp_path, fake_nodes, clean_env
     ):
-        """Full pipeline must call all 7 stages with the correct LLM model."""
+        """Full pipeline must call every enabled stage's tool, in order, with the
+        correct LLM model."""
         from ari.pipeline import load_pipeline, run_pipeline
 
         cfg_file = Path(__file__).parent.parent / "config" / "workflow.yaml"
@@ -581,6 +583,25 @@ class TestFullPaperPipeline:
                 return {"overall_score": 7, "abstract_score": 8, "body_score": 6}
             elif tool == "merge_reviews":
                 return {"ok": True, "has_vlm_review": True}
+            elif tool == "link_paper_claims":
+                # S2P Phase A2 (draft + final) — JSON output, no LLM in mock
+                return {"paper_claim_links": [], "numeric_mentions": [],
+                        "writer_assertions": [], "figure_refs": [],
+                        "unresolved_anchors": [], "counts": {}}
+            elif tool == "claim_evidence_hard_gate":
+                # S2P Phase B (draft + final). warn mode → never blocks.
+                return {"gate": "claim_evidence_hard_gate", "status": "warn",
+                        "should_block": False, "errors": [], "warnings": [], "metrics": {}}
+            elif tool == "evidence_grounded_semantic_review":
+                # S2P Phase D (initial + post_refine) — non-blocking.
+                return {"stage": "evidence_grounded_semantic_review", "status": "ok",
+                        "scores": {}, "warnings": [], "suggested_revisions": []}
+            elif tool == "paper_refine":
+                # S2P Phase E — .tex output, so the result MUST carry latex.
+                return {"latex": "\\documentclass{article}\n\\begin{document}\nRefined\n\\end{document}"}
+            elif tool == "compile_paper":
+                # S2P renderer (render_paper) — non-blocking recompile.
+                return {"success": True, "pdf_path": "", "log": "mock compile"}
             elif tool == "generate_rubric":
                 return {"rubric_path": str(tmp_path / "ors_rubric.json"),
                         "rubric_sha256": "0" * 64,
@@ -647,23 +668,38 @@ class TestFullPaperPipeline:
         # so publish_record.json (i.e. the bundle ref) is on disk when the
         # injector reads it. ear_publish is therefore reordered ahead of
         # inject_code_availability.
+        # S2P enabled by default (warn mode): the canonical pipeline now runs the
+        # full contract-governed loop in dependency order — link/gate(draft) →
+        # review + semantic → merge → refine → render → link/semantic/gate(final) →
+        # finalize. link_paper_claims, claim_evidence_hard_gate, and
+        # evidence_grounded_semantic_review each appear twice (draft + final). The
+        # gate is warn (never blocks finalize); set ARI_CLAIM_GATE_MODE=strict to
+        # make the final gate blocking.
         expected_tools = [
-            "collect_references_iterative",
-            "nodes_to_science_data",
+            "collect_references_iterative",      # search_related_work
+            "nodes_to_science_data",             # transform_data
             "generate_ear",
-            "curate_ear",                    # v0.7.0
+            "curate_ear",                        # v0.7.0 ear_curate
             "generate_figures_llm",
-            "review_figures_all",
+            "review_figures_all",                # vlm_review_figures
             "write_paper_iterative",
-            "publish_ear",                   # v0.7.0 reordered ahead of inject_code_availability
-            "inject_code_availability",      # v0.7.0
-            "review_compiled_paper",
-            "merge_reviews",  # v0.6.0+: post-hoc merge of text + VLM reviews
-            "generate_rubric",               # ORS Phase: auto-rubric
-            "fetch_code_bundle",             # ORS X: seed sandbox from EAR (no-op if none)
-            "build_reproduce_sh",            # ORS Phase: replicator (paper → reproduce.sh)
-            "run_reproduce",                 # ORS Phase 1
-            "grade_with_simplejudge",        # ORS Phase 2
+            "link_paper_claims",                 # S2P A2 draft
+            "claim_evidence_hard_gate",          # S2P B draft (warn)
+            "review_compiled_paper",             # review_paper (independent)
+            "evidence_grounded_semantic_review", # S2P D initial
+            "merge_reviews",                     # independent vs evidence-grounded split
+            "paper_refine",                      # S2P E (anchor-preserving diff)
+            "compile_paper",                     # S2P renderer (render_paper)
+            "link_paper_claims",                 # S2P A2 final (refined paper)
+            "evidence_grounded_semantic_review", # S2P D post_refine (score_delta)
+            "claim_evidence_hard_gate",          # S2P B final (warn; strict→blocks)
+            "publish_ear",                       # v0.7.0 reordered ahead of inject_code_availability
+            "inject_code_availability",          # finalize (depends on final hard gate)
+            "generate_rubric",                   # ORS Phase: auto-rubric
+            "fetch_code_bundle",                 # ORS X: seed sandbox from EAR (no-op if none)
+            "build_reproduce_sh",                # ORS Phase: replicator (paper → reproduce.sh)
+            "run_reproduce",                     # ORS Phase 1
+            "grade_with_simplejudge",            # ORS Phase 2
         ]
         assert tool_calls == expected_tools, \
             f"Expected all pipeline MCP calls in order, got {tool_calls}"
@@ -927,3 +963,48 @@ class TestBftsToPaperTransition:
         block = content[max(0, idx - 200):idx]
         assert "log.error" in block, \
             "nodes_tree.json write failure must use log.error, not log.warning"
+
+
+# ══════════════════════════════════════════════
+# render_paper / binary-output in-place copy (regression)
+# ══════════════════════════════════════════════
+
+def test_inplace_binary_output_not_recopied(tmp_path):
+    """render_paper's compile_paper writes the PDF in place and returns an ABSOLUTE
+    pdf_path, while the declared stage output is RELATIVE
+    (``{{checkpoint_dir}}/full_paper.pdf`` when the run got a relative checkpoint
+    path). A raw string compare treated this as a copy-onto-itself and
+    ``shutil.copy2`` raised ``SameFileError`` — marking render_paper FAILED even
+    though the compile succeeded. The helper must compare resolved paths and be a
+    no-op for the same file (no exception)."""
+    from ari.pipeline.orchestrator import _copy_stage_output_if_distinct
+
+    ckpt = tmp_path / "ckpt"
+    ckpt.mkdir()
+    pdf = ckpt / "full_paper.pdf"
+    pdf.write_bytes(b"%PDF-1.5 in-place compiled\n" + b"x" * 2048)
+    before = pdf.read_bytes()
+
+    abs_src = pdf.resolve()                 # tool returns absolute pdf_path
+    rel_dst = Path(os.path.relpath(pdf))    # declared output is relative -> same file
+
+    assert str(abs_src) != str(rel_dst)     # the raw-string compare that used to fail
+    _copy_stage_output_if_distinct(abs_src, rel_dst)  # must NOT raise
+
+    assert pdf.read_bytes() == before       # file intact, untouched
+
+
+def test_distinct_binary_output_is_copied(tmp_path):
+    """When the tool genuinely wrote elsewhere, the helper copies into the declared
+    output (the non-no-op path stays working)."""
+    from ari.pipeline.orchestrator import _copy_stage_output_if_distinct
+
+    src = tmp_path / "work" / "out.pdf"
+    src.parent.mkdir()
+    src.write_bytes(b"%PDF payload\n" + b"y" * 2048)
+    dst = tmp_path / "ckpt" / "full_paper.pdf"
+    dst.parent.mkdir()
+
+    _copy_stage_output_if_distinct(src, dst)
+
+    assert dst.exists() and dst.read_bytes() == src.read_bytes()

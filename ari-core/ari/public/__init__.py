@@ -19,4 +19,9 @@ Currently exported sub-modules:
 - :mod:`ari.public.run_env`       — run-environment capture helpers
   (``capture_env`` / ``shell_capture_snippet``) used by
   ari-skill-coding and ari-skill-hpc.
+- :mod:`ari.public.claim_gate`    — ``run_hard_gate`` (Story2Proposal
+  deterministic claim_evidence_hard_gate) used by ari-skill-evaluator.
+- :mod:`ari.public.verified_context` — ``render_grounded_block`` /
+  ``write_verified_context`` (artifact-grounded paper claims) used by
+  ari-skill-paper.
 """

@@ -200,6 +200,56 @@ def test_select_source_files_handles_missing_best() -> None:
     assert sel.files == ()
 
 
+def test_select_source_files_honors_chain_deletion() -> None:
+    """A file added by an ancestor but deleted by a descendant on the chain
+    must NOT be published — the deletion overlays the ancestor's file away,
+    matching the best node's actual work_dir."""
+    nodes = [
+        _node("root", depth=0),
+        _node("best", parent="root", depth=1),
+    ]
+    reports = {
+        "root": _report(files_added=["kernel.cpp", "util.h"]),
+        "best": {
+            "schema_version": 1,
+            "files_changed": {
+                "added": [],
+                "modified": [{"path": "kernel.cpp",
+                              "sha256_before": "a", "sha256_after": "b"}],
+                "deleted": ["util.h"],
+                "inherited_unchanged": [],
+            },
+            "self_assessment": {"succeeded": True, "headline": "", "concerns": []},
+            "migration_source": "fresh",
+        },
+    }
+    sel = select_source_files_for_publication(nodes, reports, "best")
+    pubs = {rel for _nid, rel in sel.files}
+    assert "kernel.cpp" in pubs       # modified by best -> kept (best's version)
+    assert "util.h" not in pubs       # deleted by best -> dropped
+
+
+def test_select_source_files_records_off_chain_contributors() -> None:
+    """Publication is chain-only: an off-chain (sibling) node that contributes
+    code is not published, but is recorded in excluded_nodes so the asymmetry
+    with the all-nodes synthesis set is auditable."""
+    nodes = [
+        _node("root", depth=0),
+        _node("best", parent="root", depth=1),
+        _node("sibling", parent="root", depth=1),
+    ]
+    reports = {
+        "root": _report(files_added=["base.cpp"]),
+        "best": _report(files_added=["best_kernel.cpp"]),
+        "sibling": _report(files_added=["ablation.cpp"]),
+    }
+    sel = select_source_files_for_publication(nodes, reports, "best")
+    pubs = {rel for _nid, rel in sel.files}
+    assert {"base.cpp", "best_kernel.cpp"} <= pubs
+    assert "ablation.cpp" not in pubs                       # off-chain, not published
+    assert "sibling" in {e["node_id"] for e in sel.excluded_nodes}
+
+
 # ── build_parent_chain ──────────────────────────────────────────────────
 
 def test_build_parent_chain_root_to_best() -> None:
