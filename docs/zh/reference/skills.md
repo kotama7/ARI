@@ -108,6 +108,45 @@ result = survey("OpenMP compiler optimization HPC benchmarks")
 
 模型：`ARI_LLM_MODEL` 环境变量 > `LLM_MODEL` 环境变量 > `ollama_chat/qwen3:32b`。
 
+#### VirSci-live (vendor-wrap) — 可选的真实引擎
+
+`generate_ideas` 在同一份想法契约背后有两个可互换的引擎。默认（**reimpl**，行为不变）
+运行轻量级的再实现讨论循环。可选（**real_wrap**）则改为运行 VirSci 的*真实*机制 ——
+来自同捆且**未改动**的 `vendor/virsci` 的 `Platform.select_coauthors`（freshness 团队组建）
++ `Team.generate_idea`（多智能体讨论）—— 并以一份**实时**的 Semantic Scholar 快照
+（语料 + SPECTER2 余弦检索索引 + 作者画像 + 合著者图）为基底。
+
+- **默认关闭** = 行为与之前逐字节一致。启用方式：环境变量 `ARI_IDEA_VIRSCI_REAL=1`、
+  CLI 标志 `--virsci-live`，或 GUI 实验向导的 "VirSci live" 开关（Scope/Resources 步骤；
+  持久化到 `launch_config.json`）。
+- **安全降级。** 当依赖缺失（`virsci` pip extra 不存在）或发生任何运行时错误时，
+  技能回退到 reimpl 循环。两条路径的 `idea.json` 契约完全一致。
+- **路径报告。** `idea.json` 记录 `virsci_integration_status`：vendor 引擎运行时为
+  `"real_wrap"`，使用 reimpl 循环时为（附带原因的）`"reimpl: …"`。
+- **LLM：** 讨论遵循按 phase 的 Idea 模型（`ARI_MODEL_IDEA`）；引擎调用经由 litellm 路由，
+  因此 ARI 的 cost tracker 会捕获它们。
+- **范围：** 单一实时快照 —— 无 era 拆分 / 无 paper-parity（这些是 VirSci 回溯式基准的产物，
+  不在范围内）。freshness/diversity 来自 S2 作者画像 + 合著者图。
+- **依赖：** `virsci` pip extra（faiss-cpu、transformers、torch、loguru、sqlalchemy）；
+  SPECTER2 权重在运行时获取；需要 `SEMANTIC_SCHOLAR_API_KEY` / `S2_API_KEY`
+  （用于 `embedding.specter_v2`）以及一个 OpenAI 兼容的 LLM 端点（ARI CLI 垫片）。
+
+环境变量（仅开关为必需，其余可调 —— 见
+[环境变量](environment_variables.md)）：
+
+| 变量 | 默认值 | 用途 |
+|---|---|---|
+| `ARI_IDEA_VIRSCI_REAL` | 未设置 (off) | 切换 real vendor-wrap 路径 |
+| `ARI_IDEA_VIRSCI_K` | `7` | 讨论轮数（vendor `group_max_discuss_iteration`） |
+| `ARI_IDEA_VIRSCI_TEAM_SIZE` | `3` | 团队最大成员数（vendor `max_teammember`） |
+| `ARI_IDEA_VIRSCI_N_AUTHORS` | `16` | `select_coauthors` 的作者池 |
+| `ARI_IDEA_VIRSCI_N_PAPERS` | `800` | SPECTER2 检索语料规模 |
+| `ARI_IDEA_VIRSCI_MAX_TEAMS` | `n_ideas` | 投入 `generate_idea` 的团队数上限 |
+| `ARI_IDEA_VIRSCI_SPECTER2_MODEL` | `allenai/specter2_base` | 本地查询嵌入器 |
+
+`ari run` 上的 CLI 标志：`--virsci-live` / `--no-virsci-live`、`--virsci-k`、
+`--virsci-team-size`、`--virsci-n-authors`、`--virsci-n-papers`。
+
 ---
 
 ## ari-skill-evaluator

@@ -347,6 +347,8 @@ In v0.6.0 two skills were retired: `ari-skill-figure-router` was folded into `ar
 
 ✗ = no LLM, △ = LLM used in some tools only, ✓ = primary tools use LLM.
 
+> **Optional VirSci-live engine.** `ari-skill-idea` can optionally run VirSci's real multi-agent mechanism (freshness team formation + multi-agent deliberation) on a live Semantic Scholar snapshot instead of the lightweight re-implemented loop. Opt in with `ARI_IDEA_VIRSCI_REAL=1` (or `ari run … --virsci-live`, or the experiment-wizard toggle); default OFF leaves behaviour unchanged, and it degrades to the re-impl loop if deps are missing.
+
 ### Design Principles
 
 | # | Principle | Meaning |

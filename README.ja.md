@@ -353,6 +353,8 @@ v0.6.0 では 2 つのスキルを廃止しました。`ari-skill-figure-router`
 
 ✗ = LLM 不使用、△ = 一部ツールで LLM 使用、✓ = 主要ツールが LLM 使用。
 
+> **オプションの VirSci-live エンジン。** `ari-skill-idea` は、軽量な再実装ループの代わりに、VirSci 本来のマルチエージェント機構（freshness なチーム編成＋マルチエージェント討議）をライブの Semantic Scholar スナップショット上で実行することもできます。`ARI_IDEA_VIRSCI_REAL=1`（または `ari run … --virsci-live`、実験ウィザードのトグル）でオプトイン。デフォルトは OFF で挙動は不変、依存パッケージが無い場合は再実装ループへフォールバックします。
+
 ### 設計原則
 
 | # | 原則 | 意味 |

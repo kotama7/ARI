@@ -52,6 +52,24 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 | `LLM_MODEL` | スキル横断フォールバック（`ari-skill-transform`、`ari-skill-plot` が使用） | (なし) |
 | `LLM_API_BASE` | `LLM_MODEL` 用 API ベース | (なし) |
 
+### Idea スキル — VirSci-live
+
+`generate_ideas` のオプトイン vendor ラップ経路。デフォルト無効では現在の動作
+（軽量な再実装ディスカッションループ）を維持します。有効にすると `generate_ideas` は
+ライブの Semantic Scholar スナップショット上で VirSci の本物のマルチエージェント機構を
+実行します。依存欠落 / 任意のランタイムエラー時は再実装ループにデグレードします。
+ディスカッション LLM は `ARI_MODEL_IDEA` に従います。
+
+| 変数 | 用途 | デフォルト |
+|---|---|---|
+| `ARI_IDEA_VIRSCI_REAL` | 本物の vendor ラップ経路の切り替え（`1`/true）。未設定 ⇒ 現在の再実装動作 | (未設定 / 無効) |
+| `ARI_IDEA_VIRSCI_K` | ディスカッションのターン数（vendor `group_max_discuss_iteration`） | `7` |
+| `ARI_IDEA_VIRSCI_TEAM_SIZE` | チームメンバー数の上限（vendor `max_teammember`） | `3` |
+| `ARI_IDEA_VIRSCI_N_AUTHORS` | `select_coauthors` の著者プールサイズ | `16` |
+| `ARI_IDEA_VIRSCI_N_PAPERS` | SPECTER2 検索コーパスサイズ | `800` |
+| `ARI_IDEA_VIRSCI_MAX_TEAMS` | `generate_idea` に通すチーム数の上限 | `=n_ideas` |
+| `ARI_IDEA_VIRSCI_SPECTER2_MODEL` | ローカルのクエリ埋め込みモデル | `allenai/specter2_base` |
+
 ### BFTS 探索
 
 | 変数 | 用途 | デフォルト |

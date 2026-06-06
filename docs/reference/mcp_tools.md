@@ -82,6 +82,14 @@ in `src/server.py`.
 | `survey` | arXiv + Semantic Scholar search; pure HTTP | ✗ |
 | `generate_ideas` | LLM generates ranked idea candidates from survey + context | ✓ |
 
+`generate_ideas` has two engines behind one stable output contract.
+The default is the lightweight re-implemented discussion loop; the
+opt-in real VirSci vendor-wrap engine (`ARI_IDEA_VIRSCI_REAL=1`) runs
+VirSci's actual multi-agent mechanism on a live Semantic Scholar
+snapshot, degrading to the re-impl loop on missing deps / any runtime
+error. The `idea.json` contract is identical either way; the path taken
+is reported in `virsci_integration_status` (`real_wrap` vs `reimpl: ...`).
+
 ## ari-skill-memory — ancestor-scoped node memory
 
 | Tool | Purpose | LLM |

@@ -52,6 +52,24 @@ page is the alphabetical lookup.
 | `LLM_MODEL` | Cross-skill fallback (used by `ari-skill-transform`, `ari-skill-plot`) | (none) |
 | `LLM_API_BASE` | API base for `LLM_MODEL` | (none) |
 
+### Idea skill — VirSci-live
+
+Opt-in vendor-wrap path for `generate_ideas`. Default-off keeps current
+behaviour (the lightweight re-implemented discussion loop). When on, `generate_ideas`
+runs VirSci's real multi-agent mechanism on a live Semantic Scholar snapshot; on
+missing deps / any runtime error it degrades to the re-impl loop. The deliberation
+LLM follows `ARI_MODEL_IDEA`.
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `ARI_IDEA_VIRSCI_REAL` | Toggle the real vendor-wrap path (`1`/true). Unset ⇒ current re-impl behaviour | (unset / off) |
+| `ARI_IDEA_VIRSCI_K` | Discussion turns (vendor `group_max_discuss_iteration`) | `7` |
+| `ARI_IDEA_VIRSCI_TEAM_SIZE` | Max team members (vendor `max_teammember`) | `3` |
+| `ARI_IDEA_VIRSCI_N_AUTHORS` | Author pool size for `select_coauthors` | `16` |
+| `ARI_IDEA_VIRSCI_N_PAPERS` | SPECTER2 retrieval corpus size | `800` |
+| `ARI_IDEA_VIRSCI_MAX_TEAMS` | Cap on teams driven through `generate_idea` | `=n_ideas` |
+| `ARI_IDEA_VIRSCI_SPECTER2_MODEL` | Local query embedder | `allenai/specter2_base` |
+
 ### BFTS exploration
 
 | Variable | Purpose | Default |

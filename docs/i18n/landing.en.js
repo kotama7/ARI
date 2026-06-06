@@ -104,7 +104,7 @@ Object.assign(window.LANGS.en, {
   'qs-label': 'Quick Start',
   'qs-title': 'Running in minutes.',
   'qs-note': 'ARI will survey related papers, run experiments, generate figures, write a complete paper, and verify reproducibility independently — automatically. A unique LLM-generated title is assigned to each experiment project.',
-  'virsci-desc': 'A multi-agent scientific deliberation system. Multiple AI personas with different research backgrounds debate a hypothesis, producing richer and more diverse research ideas than single-agent generation. Integrated into ARI\'s idea generation stage.',
+  'virsci-desc': 'A multi-agent scientific deliberation system. Multiple AI personas with different research backgrounds debate a hypothesis, producing richer and more diverse research ideas than single-agent generation. Integrated into ARI\'s idea generation stage. ARI can now optionally run VirSci\'s real multi-agent engine on a live Semantic Scholar snapshot (opt-in vendor-wrap), not just the integrated approach.',
   'quickstart-label': 'Quick Start',
   'comm-label': 'Community',
   'comm-title': 'Built together.',
