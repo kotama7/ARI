@@ -29,6 +29,12 @@ interface ScopeValues {
   composite: string;
   axisMode: string;
   allowWeb: boolean;
+  // VirSci-live (idea skill vendor-wrap)
+  virSciReal: boolean;
+  virSciK: number;
+  virSciTeamSize: number;
+  virSciNAuthors: number;
+  virSciNPapers: number;
 }
 
 const STEP_KEYS = ['wiz_step1', 'wiz_step2', 'wiz_step3', 'wiz_step4'] as const;
@@ -61,6 +67,11 @@ export function WizardPage() {
     composite: 'harmonic_mean',
     axisMode: 'dynamic',
     allowWeb: false,
+    virSciReal: false,
+    virSciK: 7,
+    virSciTeamSize: 3,
+    virSciNAuthors: 16,
+    virSciNPapers: 800,
   });
 
   // ---- Step 3: Resources state ----
@@ -303,6 +314,11 @@ export function WizardPage() {
           composite={scope.composite}
           axisMode={scope.axisMode}
           allowWeb={scope.allowWeb}
+          virSciReal={scope.virSciReal}
+          virSciK={scope.virSciK}
+          virSciTeamSize={scope.virSciTeamSize}
+          virSciNAuthors={scope.virSciNAuthors}
+          virSciNPapers={scope.virSciNPapers}
           llmModel={effectiveModel}
           llmProvider={llm}
           baseUrl={baseUrl}

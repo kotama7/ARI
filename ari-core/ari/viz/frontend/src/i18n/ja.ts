@@ -296,6 +296,13 @@ const ja: Record<string, string> = {
   wiz_allow_web: '探索中のWeb検索',
   wiz_allow_web_hint:
     'ノードエージェントが探索中にWeb(arXiv / Semantic Scholar / ページ取得)を検索できるようにします。OFF(既定)なら探索ループは再現的、ONにすると非再現trajectoryのマーカーを記録します。なお文献調査はアイデア生成時に一度は必ず実施されます。',
+  wiz_virsci_live: 'VirSci ライブ(実マルチエージェント着想)',
+  wiz_virsci_live_hint:
+    'VirSci の本物の多エージェント討議エンジン(select_coauthors + generate_idea)を、Semantic Scholar のライブスナップショット上で実行します(簡易再実装の代わり)。OFF(既定)なら現行挙動のまま。討議に使う LLM はフェーズ別の Idea モデル設定に従います。',
+  wiz_virsci_k: '討議ターン数 (K)',
+  wiz_virsci_team_size: 'チーム人数',
+  wiz_virsci_n_authors: '著者プール',
+  wiz_virsci_n_papers: 'コーパス論文数',
   wiz_depth_label: '深さ / 予算',
   wiz_quick: 'クイック探索',
   wiz_deep: '詳細調査',

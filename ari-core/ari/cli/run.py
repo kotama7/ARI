@@ -170,6 +170,14 @@ def run(
     experiment: Path = typer.Argument(..., help="Path to experiment .md file (only required input)"),
     config: Path | None = typer.Option(None, help="Config YAML (auto-generated if omitted)"),
     profile: str | None = typer.Option(None, help="Environment profile: laptop, hpc, cloud"),
+    virsci_live: bool = typer.Option(
+        False, "--virsci-live/--no-virsci-live",
+        help="Idea skill: run VirSci's real multi-agent engine on a live Semantic Scholar snapshot (vendor-wrap). Sets ARI_IDEA_VIRSCI_REAL.",
+    ),
+    virsci_k: int | None = typer.Option(None, "--virsci-k", help="VirSci-live: discussion turns (group_max_discuss_iteration, default 7)."),
+    virsci_team_size: int | None = typer.Option(None, "--virsci-team-size", help="VirSci-live: max team members per team (default 3)."),
+    virsci_n_authors: int | None = typer.Option(None, "--virsci-n-authors", help="VirSci-live: author pool size for select_coauthors (default 16)."),
+    virsci_n_papers: int | None = typer.Option(None, "--virsci-n-papers", help="VirSci-live: SPECTER2 retrieval corpus size (default 800)."),
 ) -> None:
     """Run an experiment. Only the .md file is required."""
     from ari.orchestrator.node import Node
@@ -186,6 +194,20 @@ def run(
             err=True,
         )
         raise typer.Exit(1)
+
+    # VirSci-live (idea skill vendor-wrap): set the ARI_IDEA_VIRSCI_* contract.
+    # The idea skill reads these via os.getenv and mcp/client.py propagates env
+    # to the skill subprocess. Mirrors projects.py's ARI_RUBRIC handling.
+    if virsci_live:
+        os.environ["ARI_IDEA_VIRSCI_REAL"] = "1"
+    if virsci_k is not None:
+        os.environ["ARI_IDEA_VIRSCI_K"] = str(virsci_k)
+    if virsci_team_size is not None:
+        os.environ["ARI_IDEA_VIRSCI_TEAM_SIZE"] = str(virsci_team_size)
+    if virsci_n_authors is not None:
+        os.environ["ARI_IDEA_VIRSCI_N_AUTHORS"] = str(virsci_n_authors)
+    if virsci_n_papers is not None:
+        os.environ["ARI_IDEA_VIRSCI_N_PAPERS"] = str(virsci_n_papers)
 
     experiment_text = experiment.read_text()
     # ── Trace: log experiment file as read from disk ────────────────

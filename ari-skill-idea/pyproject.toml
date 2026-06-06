@@ -7,6 +7,19 @@ dependencies = ["mcp>=1.0", "litellm>=1.0", "arxiv>=2.0", "semanticscholar>=0.8"
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "pytest-asyncio>=0.21"]
+# VirSci-live (vendor-wrap) extra — enables the ARI_IDEA_VIRSCI_REAL path
+# (PLAN_virsci_live_wrap / REQUIREMENTS.md §VirSci-live). When absent, the
+# skill silently degrades to the re-implemented discussion loop. SPECTER2
+# weights (allenai/specter2_base) are fetched at runtime, not pinned here.
+# loguru + sqlalchemy are transitive needs of the vendored agentscope import
+# chain (the auto-stubber only covers the unused optional backends).
+virsci = [
+  "faiss-cpu>=1.7",
+  "transformers>=4.30",
+  "torch>=2.0",
+  "loguru>=0.7",
+  "sqlalchemy>=2.0",
+]
 
 [build-system]
 requires = ["hatchling"]

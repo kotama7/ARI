@@ -97,10 +97,22 @@ def _api_run_stage(body: bytes) -> dict:
             ("fewshot_mode", "ARI_FEWSHOT_MODE"),
             ("num_reviews_ensemble", "ARI_NUM_REVIEWS_ENSEMBLE"),
             ("num_reflections", "ARI_NUM_REFLECTIONS"),
+            # VirSci-live (idea skill vendor-wrap) numeric knobs — restore so a
+            # GUI re-run reproduces the operator's launch-time choice instead of
+            # silently degrading to the re-impl loop (these are write-only at
+            # launch without this).
+            ("vir_sci_k", "ARI_IDEA_VIRSCI_K"),
+            ("vir_sci_team_size", "ARI_IDEA_VIRSCI_TEAM_SIZE"),
+            ("vir_sci_n_authors", "ARI_IDEA_VIRSCI_N_AUTHORS"),
+            ("vir_sci_n_papers", "ARI_IDEA_VIRSCI_N_PAPERS"),
         ):
             _v = _lc.get(_lc_key)
             if _v not in (None, "") and not proc_env.get(_env_key):
                 proc_env[_env_key] = str(_v)
+        # VirSci-live toggle is a bool in launch_config; map to explicit '1'/'0'
+        # (the skill's _env_flag treats '0'/'false' as off).
+        if "vir_sci_real" in _lc and not proc_env.get("ARI_IDEA_VIRSCI_REAL"):
+            proc_env["ARI_IDEA_VIRSCI_REAL"] = "1" if _lc["vir_sci_real"] else "0"
         # Partition auto-detect for HPC
         if not proc_env.get("ARI_SLURM_PARTITION"):
             _part = _lc.get("partition", "")
@@ -349,6 +361,22 @@ def _api_launch(body: bytes) -> dict:
         wiz_allow_web = data.get("allow_web")
         if wiz_allow_web is not None:
             proc_env["ARI_BFTS_ALLOW_WEB"] = "1" if wiz_allow_web else "0"
+        # VirSci-live (idea skill vendor-wrap) from wizard Step 2. Sets the
+        # ARI_IDEA_VIRSCI_* contract the idea skill reads via os.getenv;
+        # mcp/client.py propagates env to the skill subprocess. The discussion
+        # LLM itself stays selectable via the existing per-phase ARI_MODEL_IDEA.
+        wiz_virsci_real = data.get("vir_sci_real")
+        if wiz_virsci_real is not None:
+            proc_env["ARI_IDEA_VIRSCI_REAL"] = "1" if wiz_virsci_real else "0"
+        for _vk, _ek in (
+            ("vir_sci_k", "ARI_IDEA_VIRSCI_K"),
+            ("vir_sci_team_size", "ARI_IDEA_VIRSCI_TEAM_SIZE"),
+            ("vir_sci_n_authors", "ARI_IDEA_VIRSCI_N_AUTHORS"),
+            ("vir_sci_n_papers", "ARI_IDEA_VIRSCI_N_PAPERS"),
+        ):
+            _vv = data.get(_vk)
+            if _vv is not None:
+                proc_env[_ek] = str(int(_vv))
         # BFTS/evaluator algorithm overrides from wizard (Step 2).
         # Validate against the same allowed sets the config layer enforces
         # (BFTSConfig.frontier_score / EvaluatorConfig.composite / axis_mode
@@ -588,6 +616,18 @@ def _api_launch(body: bytes) -> dict:
             _launch_cfg["num_reviews_ensemble"] = int(proc_env["ARI_NUM_REVIEWS_ENSEMBLE"])
         if proc_env.get("ARI_NUM_REFLECTIONS"):
             _launch_cfg["num_reflections"] = int(proc_env["ARI_NUM_REFLECTIONS"])
+        # VirSci-live (idea skill vendor-wrap) selections — persisted so GUI
+        # re-runs / replays reproduce the operator's choice.
+        if "ARI_IDEA_VIRSCI_REAL" in proc_env:
+            _launch_cfg["vir_sci_real"] = proc_env["ARI_IDEA_VIRSCI_REAL"].strip().lower() in ("1", "true", "yes", "on")
+        for _ek, _ck in (
+            ("ARI_IDEA_VIRSCI_K", "vir_sci_k"),
+            ("ARI_IDEA_VIRSCI_TEAM_SIZE", "vir_sci_team_size"),
+            ("ARI_IDEA_VIRSCI_N_AUTHORS", "vir_sci_n_authors"),
+            ("ARI_IDEA_VIRSCI_N_PAPERS", "vir_sci_n_papers"),
+        ):
+            if proc_env.get(_ek):
+                _launch_cfg[_ck] = int(proc_env[_ek])
         _include_ear = bool(data.get("include_ear", True))
         _include_review = bool(data.get("include_review", True))
         _include_reproduce = bool(data.get("include_reproduce", True))

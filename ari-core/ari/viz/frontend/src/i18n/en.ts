@@ -296,6 +296,13 @@ const en: Record<string, string> = {
   wiz_allow_web: 'Web search during exploration',
   wiz_allow_web_hint:
     'Let the node agent search the web (arXiv / Semantic Scholar / pages) mid-search. Off (default) keeps the search loop reproducible; on records a non-reproducible-trajectory marker. Literature is still surveyed once at idea time regardless.',
+  wiz_virsci_live: 'VirSci live (real multi-agent ideation)',
+  wiz_virsci_live_hint:
+    "Run VirSci's real multi-agent discussion engine (select_coauthors + generate_idea) on a live Semantic Scholar snapshot, instead of the lightweight re-implementation. Off (default) keeps current behaviour. The discussion LLM follows the per-phase Idea model setting.",
+  wiz_virsci_k: 'Discussion turns (K)',
+  wiz_virsci_team_size: 'Team size',
+  wiz_virsci_n_authors: 'Author pool',
+  wiz_virsci_n_papers: 'Corpus papers',
   wiz_depth_label: 'Depth / Budget',
   wiz_quick: 'Quick Exploration',
   wiz_deep: 'Deep Investigation',

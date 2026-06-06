@@ -296,6 +296,13 @@ const zh: Record<string, string> = {
   wiz_allow_web: '探索期间联网搜索',
   wiz_allow_web_hint:
     '允许节点智能体在搜索过程中联网检索(arXiv / Semantic Scholar / 网页)。关闭(默认)可保持搜索循环可复现;开启会记录一个不可复现轨迹标记。无论如何,文献调研在生成想法时都会执行一次。',
+  wiz_virsci_live: 'VirSci 实时(真实多智能体构思)',
+  wiz_virsci_live_hint:
+    '在 Semantic Scholar 实时快照上运行 VirSci 真实的多智能体讨论引擎(select_coauthors + generate_idea),而非轻量级重实现。关闭(默认)保持当前行为。讨论所用 LLM 沿用各阶段的 Idea 模型设置。',
+  wiz_virsci_k: '讨论轮数 (K)',
+  wiz_virsci_team_size: '团队人数',
+  wiz_virsci_n_authors: '作者池',
+  wiz_virsci_n_papers: '语料论文数',
   wiz_depth_label: '深度 / 预算',
   wiz_quick: '快速探索',
   wiz_deep: '深度调研',
