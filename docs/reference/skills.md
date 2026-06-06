@@ -108,6 +108,52 @@ Generate research hypotheses using VirSci multi-agent LLM deliberation. Multiple
 
 Model: `ARI_LLM_MODEL` env > `LLM_MODEL` env > `ollama_chat/qwen3:32b`.
 
+#### VirSci-live (vendor-wrap) — opt-in real engine
+
+`generate_ideas` has two interchangeable engines behind the same idea contract.
+The default (**reimpl**, behaviour unchanged) runs the lightweight re-implemented
+discussion loop. The opt-in (**real_wrap**) instead runs VirSci's *actual*
+mechanism — `Platform.select_coauthors` (freshness team formation) +
+`Team.generate_idea` (multi-agent deliberation) from the vendored, **unedited**
+`vendor/virsci` — grounded on a **live** Semantic Scholar snapshot (corpus +
+SPECTER2 cosine retrieval index + author profiles + co-author graph).
+
+- **Default OFF** = behaviour byte-identical to before. Enable with env
+  `ARI_IDEA_VIRSCI_REAL=1`, the CLI flag `--virsci-live`, or the GUI experiment
+  wizard "VirSci live" toggle (Scope/Resources step; persisted to
+  `launch_config.json`).
+- **Degrades safely.** On missing deps (`virsci` pip extra absent) or any runtime
+  error, the skill falls back to the reimpl loop. The `idea.json` contract is
+  identical either way.
+- **Path reporting.** `idea.json` carries `virsci_integration_status`:
+  `"real_wrap"` when the vendor engine ran, or `"reimpl: …"` (with the reason)
+  when the reimpl loop was used.
+- **LLM:** deliberation follows the per-phase Idea model (`ARI_MODEL_IDEA`);
+  engine calls route through litellm so ARI's cost tracker captures them.
+- **Scope:** a single live snapshot — no era-split / no paper-parity (those are
+  VirSci's retrospective-benchmark artifacts, out of scope). freshness/diversity
+  come from the S2 author profiles + co-author graph.
+- **Deps:** the `virsci` pip extra (faiss-cpu, transformers, torch, loguru,
+  sqlalchemy); SPECTER2 weights are fetched at runtime; needs
+  `SEMANTIC_SCHOLAR_API_KEY` / `S2_API_KEY` (for `embedding.specter_v2`) and an
+  OpenAI-compatible LLM endpoint (the ARI CLI shim).
+
+Env knobs (only the toggle is required; the rest are tunable — see
+[Environment Variables](environment_variables.md)):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ARI_IDEA_VIRSCI_REAL` | unset (off) | toggle the real vendor-wrap path |
+| `ARI_IDEA_VIRSCI_K` | `7` | discussion turns (vendor `group_max_discuss_iteration`) |
+| `ARI_IDEA_VIRSCI_TEAM_SIZE` | `3` | max team members (vendor `max_teammember`) |
+| `ARI_IDEA_VIRSCI_N_AUTHORS` | `16` | author pool for `select_coauthors` |
+| `ARI_IDEA_VIRSCI_N_PAPERS` | `800` | SPECTER2 retrieval corpus size |
+| `ARI_IDEA_VIRSCI_MAX_TEAMS` | `n_ideas` | cap on teams driven through `generate_idea` |
+| `ARI_IDEA_VIRSCI_SPECTER2_MODEL` | `allenai/specter2_base` | local query embedder |
+
+CLI flags on `ari run`: `--virsci-live` / `--no-virsci-live`, `--virsci-k`,
+`--virsci-team-size`, `--virsci-n-authors`, `--virsci-n-papers`.
+
 ---
 
 ## ari-skill-evaluator

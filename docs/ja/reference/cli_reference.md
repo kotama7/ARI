@@ -62,7 +62,10 @@ auto レポートのノードを採用)。復元できないフィールド (`or
 実験 Markdown ファイルから新しい実験を実行します。
 
 ```bash
-ari run <experiment.md> [--config <config.yaml>] [--profile <profile>]
+ari run <experiment.md> [--config <config.yaml>] [--profile <profile>] \
+                        [--virsci-live/--no-virsci-live] \
+                        [--virsci-k N] [--virsci-team-size N] \
+                        [--virsci-n-authors N] [--virsci-n-papers N]
 ```
 
 | 引数 | 必須 | 説明 |
@@ -70,6 +73,18 @@ ari run <experiment.md> [--config <config.yaml>] [--profile <profile>]
 | `experiment.md` | はい | 実験 Markdown ファイルへのパス |
 | `--config` | いいえ | カスタム設定 YAML（省略時は自動生成） |
 | `--profile` | いいえ | 環境プロファイル: `laptop`、`hpc`、または `cloud` |
+| `--virsci-live` / `--no-virsci-live` | いいえ | アイデアスキル: 再実装の議論ループの代わりに、ライブの Semantic Scholar スナップショット上で VirSci 本物のマルチエージェントエンジン（vendor-wrap）を実行。`ARI_IDEA_VIRSCI_REAL` を設定。既定 OFF。 |
+| `--virsci-k` | いいえ | VirSci-live の議論ターン数（vendor `group_max_discuss_iteration`）。`ARI_IDEA_VIRSCI_K` を設定。既定 7。 |
+| `--virsci-team-size` | いいえ | VirSci-live のチームあたり最大メンバー数。`ARI_IDEA_VIRSCI_TEAM_SIZE` を設定。既定 3。 |
+| `--virsci-n-authors` | いいえ | VirSci-live の `select_coauthors` 用著者プールサイズ。`ARI_IDEA_VIRSCI_N_AUTHORS` を設定。既定 16。 |
+| `--virsci-n-papers` | いいえ | VirSci-live の SPECTER2 検索コーパスサイズ。`ARI_IDEA_VIRSCI_N_PAPERS` を設定。既定 800。 |
+
+これらのフラグは、アイデアスキルが読み込む `ARI_IDEA_VIRSCI_*` 環境変数の契約を
+設定します（下記 [アイデア生成 (VirSci-live)](#アイデア生成-virsci-live) 参照）。
+`--virsci-live` が ON のとき、仮説生成はライブの Semantic Scholar スナップショット
+上で VirSci 本物の `select_coauthors` + `generate_idea` メカニズムを実行します。
+依存が無い場合や実行時エラーが発生した場合は、`idea.json` の契約が同一のまま
+再実装ループへ degrade します。
 
 **使用例：**
 
@@ -85,6 +100,9 @@ ari run experiment.md --config ari-core/config/workflow.yaml
 
 # 環境変数でオーバーライド
 ARI_MAX_NODES=10 ARI_PARALLEL=2 ari run experiment.md
+
+# アイデア生成に VirSci 本物のマルチエージェントエンジンを使用（vendor-wrap）
+ari run experiment.md --virsci-live --virsci-k 7 --virsci-team-size 3
 ```
 
 **実行される処理：**
@@ -461,6 +479,27 @@ ari skills-list [--config <config.yaml>]
 | `ARI_MODEL_IDEA` | アイデア生成 |
 | `ARI_MODEL_BFTS` | BFTS 実験 |
 | `ARI_MODEL_PAPER` | 論文執筆 |
+
+### アイデア生成 (VirSci-live)
+
+アイデア生成のオプトイン vendor-wrap 経路。`ARI_IDEA_VIRSCI_REAL` が ON の
+とき、アイデアスキルはライブの Semantic Scholar スナップショット上で VirSci
+本物のマルチエージェント機構（`select_coauthors` + `generate_idea`）を実行
+します。既定の OFF では挙動は変わりません。`ari run` の `--virsci-live` /
+`--virsci-k` / `--virsci-team-size` / `--virsci-n-authors` / `--virsci-n-papers`
+フラグがこれらの変数を設定します。議論 LLM はフェーズごとの `ARI_MODEL_IDEA`
+モデルに従います。`virsci` pip extra が必要で、無い場合や実行時エラー時は
+`idea.json` の契約が同一のまま再実装ループへ degrade します。
+
+| 変数 | 説明 | デフォルト |
+|------|------|-----------|
+| `ARI_IDEA_VIRSCI_REAL` | real vendor-wrap 経路の切り替え | (未設定/OFF) |
+| `ARI_IDEA_VIRSCI_K` | 議論ターン数（vendor `group_max_discuss_iteration`） | 7 |
+| `ARI_IDEA_VIRSCI_TEAM_SIZE` | 最大チームメンバー数（vendor `max_teammember`） | 3 |
+| `ARI_IDEA_VIRSCI_N_AUTHORS` | `select_coauthors` 用著者プール | 16 |
+| `ARI_IDEA_VIRSCI_N_PAPERS` | SPECTER2 検索コーパスサイズ | 800 |
+| `ARI_IDEA_VIRSCI_MAX_TEAMS` | `generate_idea` に通すチーム数の上限 | =`n_ideas` |
+| `ARI_IDEA_VIRSCI_SPECTER2_MODEL` | ローカルのクエリ埋め込みモデル | `allenai/specter2_base` |
 
 ### .env ファイル
 

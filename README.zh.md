@@ -350,6 +350,8 @@ v0.6.0 移除了两个技能：`ari-skill-figure-router` 被合并进 `ari-skill
 
 ✗ = 不使用 LLM，△ = 仅部分工具使用 LLM，✓ = 主要工具使用 LLM。
 
+> **可选的 VirSci-live 引擎。** `ari-skill-idea` 可以选择在实时的 Semantic Scholar 快照上运行 VirSci 原生的多智能体机制（freshness 团队组建 + 多智能体研讨），以替代轻量级的重实现回路。通过 `ARI_IDEA_VIRSCI_REAL=1`（或 `ari run … --virsci-live`、实验向导的开关）启用；默认关闭时行为不变，缺少依赖时会降级回退到重实现回路。
+
 ### 设计原则
 
 | # | 原则 | 含义 |

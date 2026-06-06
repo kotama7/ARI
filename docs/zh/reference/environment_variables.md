@@ -47,6 +47,23 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 | `LLM_MODEL` | 跨技能回退（`ari-skill-transform`、`ari-skill-plot` 使用） | （无） |
 | `LLM_API_BASE` | `LLM_MODEL` 的 API base | （无） |
 
+### Idea 技能 — VirSci-live
+
+`generate_ideas` 的可选 vendor 封装路径。默认关闭时保持当前行为（轻量级的重新实现
+讨论循环）。开启后，`generate_ideas` 会在实时 Semantic Scholar 快照上运行 VirSci
+真实的多智能体机制；缺少依赖 / 出现任何运行时错误时会降级到重新实现循环。讨论 LLM
+遵循 `ARI_MODEL_IDEA`。
+
+| 变量 | 用途 | 默认值 |
+|---|---|---|
+| `ARI_IDEA_VIRSCI_REAL` | 切换真实的 vendor 封装路径（`1`/true）。未设置 ⇒ 当前的重新实现行为 | （未设置 / 关闭） |
+| `ARI_IDEA_VIRSCI_K` | 讨论轮数（vendor `group_max_discuss_iteration`） | `7` |
+| `ARI_IDEA_VIRSCI_TEAM_SIZE` | 团队成员数上限（vendor `max_teammember`） | `3` |
+| `ARI_IDEA_VIRSCI_N_AUTHORS` | `select_coauthors` 的作者池大小 | `16` |
+| `ARI_IDEA_VIRSCI_N_PAPERS` | SPECTER2 检索语料库大小 | `800` |
+| `ARI_IDEA_VIRSCI_MAX_TEAMS` | 通过 `generate_idea` 的团队数上限 | `=n_ideas` |
+| `ARI_IDEA_VIRSCI_SPECTER2_MODEL` | 本地查询嵌入模型 | `allenai/specter2_base` |
+
 ### BFTS 探索
 
 | 变量 | 用途 | 默认值 |

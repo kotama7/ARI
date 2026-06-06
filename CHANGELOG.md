@@ -4,7 +4,50 @@ All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PAT
 
 ## Unreleased
 
-(no entries yet)
+- **VirSci-live (vendor-wrap) idea engine** in `ari-skill-idea`. An
+  opt-in idea-generation path that, when ON, runs VirSci's REAL
+  multi-agent mechanism — `Platform.select_coauthors` (freshness team
+  formation) + `Team.generate_idea` (multi-agent deliberation) from the
+  vendored, UNEDITED `vendor/virsci` — grounded on a LIVE Semantic
+  Scholar snapshot (corpus + SPECTER2 cosine retrieval index + author
+  profiles + co-author graph), in place of the lightweight re-implemented
+  discussion loop. **Default OFF** = behaviour unchanged; on missing deps
+  or any runtime error the skill DEGRADES back to the re-impl loop. The
+  `idea.json` contract is identical either way; the path taken is
+  reported in `idea.json` `virsci_integration_status`
+  (`real_wrap` vs `reimpl: ...`). A single live snapshot only — no
+  era-split / no paper-parity (those are VirSci's retrospective-benchmark
+  artifacts, deliberately out of scope); freshness/diversity come from
+  the S2 author profiles + co-author graph, and the LLM-selected metric
+  is unchanged.
+  - **Enable** via `ARI_IDEA_VIRSCI_REAL=1`, the CLI `--virsci-live`
+    flag (`ari run`), or the GUI experiment-wizard "VirSci live" toggle.
+  - **Env contract** (only the toggle is required; the rest are tunable,
+    defaults in parentheses): `ARI_IDEA_VIRSCI_REAL` (unset/off) toggle
+    the real vendor-wrap path; `ARI_IDEA_VIRSCI_K` (7) discussion turns
+    (vendor `group_max_discuss_iteration`); `ARI_IDEA_VIRSCI_TEAM_SIZE`
+    (3) max team members (vendor `max_teammember`);
+    `ARI_IDEA_VIRSCI_N_AUTHORS` (16) author pool for `select_coauthors`;
+    `ARI_IDEA_VIRSCI_N_PAPERS` (800) SPECTER2 retrieval corpus size;
+    `ARI_IDEA_VIRSCI_MAX_TEAMS` (= `n_ideas`) cap on teams driven through
+    `generate_idea`; `ARI_IDEA_VIRSCI_SPECTER2_MODEL`
+    (`allenai/specter2_base`) local query embedder.
+  - **CLI** (`ari run`): `--virsci-live` / `--no-virsci-live`,
+    `--virsci-k`, `--virsci-team-size`, `--virsci-n-authors`,
+    `--virsci-n-papers`.
+  - **GUI**: experiment-wizard "VirSci live" toggle + numeric fields on
+    the Scope/Resources step; the choice is persisted to
+    `launch_config.json` and restored on GUI re-run.
+  - **LLM**: the deliberation LLM follows the existing per-phase Idea
+    model (`ARI_MODEL_IDEA`); engine calls route through litellm so
+    ARI's cost_tracker captures them.
+  - **Deps**: a new `virsci` pip extra (`faiss-cpu`, `transformers`,
+    `torch`, `loguru`, `sqlalchemy`); SPECTER2 weights are fetched at
+    runtime; needs `SEMANTIC_SCHOLAR_API_KEY` / `S2_API_KEY` (for
+    `embedding.specter_v2`) and an OpenAI-compatible LLM endpoint (the
+    ARI CLI shim). When the extra is absent the skill degrades to
+    re-impl. Canonical spec: `ari-skill-idea/REQUIREMENTS.md`
+    (§VirSci-live).
 
 ## v0.8.1 — Structural refactor: frontend decomposition, stable skill contract, internal-boundary docs (2026-06-01)
 
