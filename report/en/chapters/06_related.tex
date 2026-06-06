@@ -24,7 +24,13 @@ The AI~Scientist family \cite{lu2024ai,lu2026towards} closes a similar
 loop end-to-end (idea $\to$ experiment $\to$ paper) but does not
 expose the rubric and refine cycle as a first-class object. VirSci
 \cite{su2024many} simulates several scientist personas and uses
-their consensus to score outputs; Agent~Laboratory
+their consensus to score outputs; ARI can drive VirSci's original
+deliberation engine directly and unmodified --- its freshness-based
+\texttt{select\_coauthors} team formation and multi-agent
+\texttt{generate\_idea} loop --- over a live Semantic~Scholar snapshot,
+so that the multi-agent mechanism it builds on is the published one
+executed against current literature rather than a paraphrase of it.
+Agent~Laboratory
 \cite{schmidgall2025agent} treats the agent as a collaborator
 rather than a driver. ARI differs in two operational respects:
 \textbf{everything lives in a checkpoint} (P1 / P4), and the rubric
