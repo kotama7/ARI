@@ -22,7 +22,11 @@ metrics、深度与软性 \texttt{diversity\_bonus};
 AI~Scientist 系列 \cite{lu2024ai,lu2026towards} 端到端闭合类
 似循环(idea $\to$ experiment $\to$ paper),但未将评分细则与
 改稿循环作为一等对象暴露。VirSci \cite{su2024many} 模拟
-多个科学家人格,以共识评分输出;Agent~Laboratory
+多个科学家人格,以共识评分输出;ARI 可直接且不加修改地驱动
+VirSci 原始的协商引擎——其基于新鲜度的 \texttt{select\_coauthors}
+团队组建与多智能体 \texttt{generate\_idea} 循环——并令其运行于实时
+的 Semantic~Scholar 快照之上,从而使其所依托的多智能体机制乃是已发表
+者本身在当前文献上的执行,而非对它的转述。Agent~Laboratory
 \cite{schmidgall2025agent} 将智能体视为协作者而非驱动
 者。ARI 在两点运维上有别:\textbf{一切都驻留在检查点中}
 (P1 / P4),且评分细则即探索与撰写之间的契约。
