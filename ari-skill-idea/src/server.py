@@ -92,6 +92,58 @@ def _api_base() -> str | None:
 def _s2_api_key() -> str:
     return os.environ.get("SEMANTIC_SCHOLAR_API_KEY", "") or os.environ.get("S2_API_KEY", "")
 
+# ── VirSci-live (vendor-wrap) env contract ────────────────────────────────────
+# The setting surface is env-only (ARI_IDEA_VIRSCI_*); GUI and CLI just set
+# these (see ari-core run.py / api_experiment.py), and mcp/client.py propagates
+# them to this subprocess via env={**os.environ}. Unset → current behaviour.
+
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    try:
+        return max(1, int(raw))
+    except (TypeError, ValueError):
+        return default
+
+def _virsci_real() -> bool:
+    return _env_flag("ARI_IDEA_VIRSCI_REAL")
+
+def _virsci_k() -> int:
+    return _env_int("ARI_IDEA_VIRSCI_K", 7)            # group_max_discuss_iteration
+
+def _virsci_team_size() -> int:
+    return _env_int("ARI_IDEA_VIRSCI_TEAM_SIZE", 3)    # max_teammember
+
+def _virsci_n_authors() -> int:
+    return _env_int("ARI_IDEA_VIRSCI_N_AUTHORS", 16)   # select_coauthors pool
+
+def _virsci_n_papers() -> int:
+    return _env_int("ARI_IDEA_VIRSCI_N_PAPERS", 800)   # SPECTER2 corpus size
+
+def _virsci_max_teams() -> int | None:
+    raw = os.environ.get("ARI_IDEA_VIRSCI_MAX_TEAMS", "").strip()
+    return int(raw) if raw.isdigit() else None
+
+def _virsci_specter2_model() -> str:
+    return os.environ.get("ARI_IDEA_VIRSCI_SPECTER2_MODEL", "").strip() or "allenai/specter2_base"
+
+def _checkpoint_dir() -> Path:
+    """Output root for the frozen snapshot + run logs.
+
+    Prefers ARI_CHECKPOINT_DIR (set by the harness); otherwise materialises
+    under workspace/checkpoints/<ts>_<slug> per the repo output convention.
+    """
+    ckpt = os.environ.get("ARI_CHECKPOINT_DIR")
+    if ckpt:
+        return Path(ckpt)
+    import time as _time
+    ts = _time.strftime("%Y%m%d_%H%M%S")
+    root = Path(os.environ.get("ARI_WORKSPACE", "workspace")) / "checkpoints" / f"{ts}_idea_virsci"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
 S2_BASE = "https://api.semanticscholar.org/graph/v1"
 S2_FIELDS = "title,abstract,year,citationCount,authors"
 
@@ -274,6 +326,58 @@ async def _virsci_discussion_loop(
         "virsci_prompts_used": _VIRSCI_PROMPTS_AVAILABLE,
     }
 
+# ── VirSci-live (vendor-wrap) real path ───────────────────────────────────────
+
+async def _run_real_virsci(topic: str, n_ideas: int, ancestor_block: str = "") -> tuple[list[dict], dict]:
+    """Run VirSci's real select_coauthors + generate_idea on an S2 snapshot.
+
+    Returns ``(raw_ideas, meta)`` shaped like ``_virsci_discussion_loop`` output
+    so the downstream 9-key contract mapping is identical. Raises on missing
+    deps / runtime errors so ``generate_ideas`` can degrade to the re-impl loop.
+    ``ancestor_block`` (lineage context) is forwarded so the real path stays
+    aware of prior research directions, matching the re-impl loop.
+    """
+    from snapshot import build_snapshot  # heavy deps imported lazily
+    import virsci_runtime
+
+    out_dir = _checkpoint_dir()
+    n_authors = _virsci_n_authors()
+    n_papers = _virsci_n_papers()
+
+    snap = await asyncio.to_thread(build_snapshot, topic, out_dir, n_authors, n_papers)
+    result = await asyncio.to_thread(
+        virsci_runtime.run_virsci_live,
+        topic,
+        snap,
+        model=_model(),            # reuse server's LLM-config helpers (no re-import)
+        api_base=_api_base(),
+        n_ideas=n_ideas,
+        k=_virsci_k(),
+        team_size=_virsci_team_size(),
+        n_authors=n_authors,
+        max_teams=_virsci_max_teams(),
+        ancestor_block=ancestor_block,
+        log_dir=str(out_dir / "virsci_logs"),
+        specter2_model=_virsci_specter2_model(),
+    )
+
+    raw_ideas: list[dict] = []
+    for idea in result.get("ideas", []):
+        nov = idea["novelty_score"]
+        feas = idea["feasibility_score"]
+        raw_ideas.append({
+            "title":             idea["title"],
+            "description":       idea["description"],
+            "novelty":           f"Novelty score: {round(nov * 10, 1)}",
+            "feasibility":       f"Feasibility score: {round(feas * 10, 1)}",
+            "experiment_plan":   idea["experiment_plan"],
+            "novelty_score":     nov,
+            "feasibility_score": feas,
+            "clarity_score":     idea["clarity_score"],
+        })
+    return raw_ideas, result
+
+
 # ── MCP Tools ─────────────────────────────────────────────────────────────────
 
 @mcp.tool()
@@ -425,18 +529,33 @@ async def generate_ideas(
         temperature=0.3,
     )
 
-    # Run n_ideas parallel VirSci-style discussions
-    tasks = [
-        _virsci_discussion_loop(
-            topic=f"{topic} [variant {i+1}/{n_ideas}]",
-            paper_reference=paper_reference,
-            n_agents=n_agents,
-            max_rounds=max(1, max_discussion_rounds),
-            ancestor_block=ancestor_block,
-        )
-        for i in range(n_ideas)
-    ]
-    raw_ideas = await asyncio.gather(*tasks)
+    # Idea generation: real vendor-wrap path (ARI_IDEA_VIRSCI_REAL) runs the
+    # actual VirSci select_coauthors + generate_idea on an S2 snapshot; on any
+    # failure (missing deps, runtime error, empty output) it degrades to the
+    # current re-implemented discussion loop so behaviour never regresses.
+    real_meta: dict | None = None
+    raw_ideas: list[dict] | None = None
+    if _virsci_real():
+        try:
+            raw_ideas, real_meta = await _run_real_virsci(topic, n_ideas, ancestor_block)
+            if not raw_ideas:
+                raw_ideas, real_meta = None, None  # empty → fall through
+        except Exception as e:  # never block ideation on the real path
+            print(f"[idea] VirSci real path failed, degrading to re-impl: {e}",
+                  file=sys.stderr)
+            raw_ideas, real_meta = None, None
+    if raw_ideas is None:
+        tasks = [
+            _virsci_discussion_loop(
+                topic=f"{topic} [variant {i+1}/{n_ideas}]",
+                paper_reference=paper_reference,
+                n_agents=n_agents,
+                max_rounds=max(1, max_discussion_rounds),
+                ancestor_block=ancestor_block,
+            )
+            for i in range(n_ideas)
+        ]
+        raw_ideas = list(await asyncio.gather(*tasks))
 
     # Sort by novelty score (VirSci: novelty*2 + feasibility + clarity)
     raw_ideas.sort(
@@ -478,11 +597,14 @@ async def generate_ideas(
             "overall_score":   overall,
         })
 
-    virsci_status = (
-        "VirSci prompts loaded from vendor/virsci submodule"
-        if _VIRSCI_PROMPTS_AVAILABLE
-        else "VirSci submodule unavailable — using inline fallback prompts"
-    )
+    if real_meta is not None:
+        virsci_status = "real_wrap"
+    else:
+        virsci_status = (
+            "reimpl: VirSci prompts loaded from vendor/virsci submodule"
+            if _VIRSCI_PROMPTS_AVAILABLE
+            else "reimpl: VirSci submodule unavailable — using inline fallback prompts"
+        )
 
     # Phase 2.5: when the child checkpoint already has an idea.json with a
     # pinned idea (written by ``_api_launch_sub_experiment`` after
@@ -533,9 +655,9 @@ async def generate_ideas(
         "primary_metric":    metric_data.get("primary_metric", ""),
         "higher_is_better":  metric_data.get("higher_is_better", True),
         "metric_rationale":  metric_data.get("metric_rationale", ""),
-        "papers_analyzed":   len(all_papers),
-        "n_agents":          n_agents,
-        "discussion_rounds": max_discussion_rounds,
+        "papers_analyzed":   (real_meta["papers_indexed"] if real_meta else len(all_papers)),
+        "n_agents":          (real_meta["n_agents"] if real_meta else n_agents),
+        "discussion_rounds": (real_meta["discussion_rounds"] if real_meta else max_discussion_rounds),
         "virsci_integration_status": virsci_status,
     }
     if pinned_metadata:

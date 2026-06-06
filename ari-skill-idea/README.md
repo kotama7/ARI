@@ -23,6 +23,10 @@ ideas are frozen, so the search loop itself remains deterministic.
 | `ARI_LLM_MODEL` | ARI cross-skill LLM | used when `ARI_MODEL_IDEA` is unset |
 | `LLM_MODEL` | Skill-shared fallback | used when both above are unset |
 | `ARI_LLM_API_BASE` | LiteLLM API base override | LiteLLM default |
+| `ARI_IDEA_VIRSCI_REAL` | Run VirSci's real engine (vendor-wrap) instead of the re-impl loop | unset (off) |
+| `ARI_IDEA_VIRSCI_K` / `_TEAM_SIZE` / `_N_AUTHORS` / `_N_PAPERS` | VirSci-live knobs | 7 / 3 / 16 / 800 |
+
+See `REQUIREMENTS.md` (§VirSci-live) for the full `ARI_IDEA_VIRSCI_*` contract.
 
 ## VirSci integration
 
