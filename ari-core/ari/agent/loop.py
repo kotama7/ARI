@@ -330,6 +330,14 @@ class AgentLoop:
             import os as _os_early
             _os_early.environ["ARI_WORK_DIR"] = _work_dir_early
             _os_early.makedirs(_work_dir_early, exist_ok=True)  # idempotent safety net
+        # Expose the checkpoint dir to skill subprocesses (same pre-fork timing as
+        # ARI_WORK_DIR) so make_metric_spec/survey can read the idea-stage
+        # primary_metric (evaluation_criteria.json/idea.json) and the frozen VirSci
+        # snapshot instead of re-deriving from the seed line / re-querying S2.
+        _ckpt_early = getattr(self, "checkpoint_dir", None)
+        if _ckpt_early:
+            import os as _os_ckpt
+            _os_ckpt.environ["ARI_CHECKPOINT_DIR"] = str(_ckpt_early)
         tools = self._available_tools_openai(suppress=getattr(self, "_suppress_tools", set()), phase="bfts")
         tool_names = [t["function"]["name"] for t in tools] if tools else []
         tool_desc = ", ".join(tool_names) if tool_names else "none"
@@ -456,15 +464,17 @@ class AgentLoop:
                 f"{_workflow_hint}"
             )
         else:
-            first_tool = (self.hints.tool_sequence or ["survey"])[0]
+            first_tool = (self.hints.tool_sequence or ["generate_ideas"])[0]
             user_content = (
                 f"Experiment goal:\n{goal_text}\n"
                 f"Node: {node.id} depth={node.depth}\n\n"
                 f"START NOW: call {first_tool}() immediately. "
                 f"Do NOT output any text or plan — your first response must be a {first_tool}() tool call.\n\n"
-                "IMPORTANT: After make_metric_spec, call survey() to search related literature. "
-                "The survey results will be used to generate citations in the paper. "
-                "Without survey, the paper will have no references."
+                "WORKFLOW ORDER: (1) generate_ideas() sets the research direction and "
+                "primary_metric; (2) make_metric_spec() derives the success metrics from "
+                "that primary_metric (NOT from a guessed list); (3) survey() gathers related "
+                "literature. The survey results are used to generate citations — without "
+                "survey, the paper will have no references."
             )
 
         # NOTE: Planner plan text injection has been removed
@@ -944,8 +954,10 @@ class AgentLoop:
                                         f"Selected idea: {_best.get('title', 'Untitled')}\n"
                                         f"Description: {_best.get('description', '')[:2000]}\n"
                                         f"{_plan_block}\n\n"
-                                        f"Implement THIS idea. Follow the experiment plan above — "
-                                        f"address EVERY section, not just §1."
+                                        f"NEXT: call make_metric_spec() (it derives the success metrics "
+                                        f"from this idea's primary_metric), then survey(), THEN implement "
+                                        f"THIS idea. Follow the experiment plan above — address EVERY "
+                                        f"section, not just §1."
                                     )
                                     logger.info(
                                         "[loop.run] idea_injection: title=%r len=%d",

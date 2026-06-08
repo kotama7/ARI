@@ -26,6 +26,8 @@ targets the like-named module under `ari/`.
 - `test_child_node_workflow.py` — child-node workflow.
 - `test_child_workdir_inherit.py` — child workdir inheritance.
 - `test_claim_evidence_hard_gate.py` — Story2Proposal Phase B deterministic gate: recompute, mismatch, operand resolution, coverage, blocking semantics.
+- `test_claim_gate_contract.py` — TODO
+- `test_claim_gate_invariants.py` — TODO
 - `test_cli.py` — CLI.
 - `test_cli_extended.py` — extended CLI cases.
 - `test_cli_shim_toolcalls.py` — TODO

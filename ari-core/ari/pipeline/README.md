@@ -19,7 +19,10 @@ re-exported from the package root.
 - `claim_gate/` — deterministic `claim_evidence_hard_gate` (Story2Proposal Phase B). See its `README.md`.
   - `README.md` — claim_gate index.
   - `__init__.py` — package init; re-exports `run_hard_gate`.
+  - `contract.py` — TODO
+  - `formula_eval.py` — TODO
   - `gate.py` — `run_hard_gate` orchestration (all checks → report + `should_block`).
+  - `invariants.py` — TODO
   - `latex.py` — deterministic LaTeX section + numeric-token parsing (coverage fallback; mirrors ari-skill-paper/src/claim_links.py).
   - `numeric.py` — formula registry + `recompute` + `within_tolerance` (Phase B2; mirrored in ari-skill-transform/src/claims.py).
   - `policy.py` — `claim_gate_policy` loader (defaults → arg → `claim_gate_policy.json` → env `ARI_CLAIM_GATE_MODE`).

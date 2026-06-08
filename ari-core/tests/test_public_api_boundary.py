@@ -85,7 +85,7 @@ _GRANDFATHERED: dict[str, set[int]] = {
     "ari-skill-coding/tests/test_server.py": {107},
     "ari-skill-evaluator/src/server.py": {16},  # cost_tracker fallback
     "ari-skill-hpc/src/slurm.py": {211},  # run_env fallback
-    "ari-skill-idea/src/server.py": {65, 406},  # cost_tracker fallback + ari.lineage (deferred)
+    "ari-skill-idea/src/server.py": {65, 574},  # cost_tracker fallback + ari.lineage (deferred; line shifted by the survey snapshot-reuse helper)
     "ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py": {159},  # cost_tracker fallback
     "ari-skill-memory/tests/test_backup_restore.py": {14},  # ari.memory_cli (deferred, test-only)
     "ari-skill-paper-re/src/server.py": {42, 146},  # cost_tracker fallback + ari.clone (deferred)
@@ -93,7 +93,7 @@ _GRANDFATHERED: dict[str, set[int]] = {
     "ari-skill-paper/src/server.py": {21},  # cost_tracker fallback
     "ari-skill-plot/src/server.py": {34},  # try-block legacy fallback
     "ari-skill-replicate/src/server.py": {28},  # cost_tracker fallback
-    "ari-skill-transform/src/server.py": {55, 631, 1999, 2349, 2367},  # cost_tracker fallback + ari.orchestrator/ari.publish (deferred; lines shifted by the Story2Proposal claims + forward-declaration config_nodes blocks)
+    "ari-skill-transform/src/server.py": {55, 631, 2021, 2371, 2389},  # cost_tracker fallback + ari.orchestrator/ari.publish (deferred; lines shifted by the Story2Proposal claims + forward-declaration config_nodes + metric-correctness anomaly-annotation blocks)
     "ari-skill-vlm/src/server.py": {18},  # cost_tracker fallback
     "ari-skill-web/src/server.py": {24},  # cost_tracker fallback
 }

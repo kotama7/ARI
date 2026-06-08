@@ -1,10 +1,21 @@
 """Public re-export of the deterministic claim_evidence_hard_gate.
 
-Skills (ari-skill-evaluator) call ``run_hard_gate`` from here so they reach the
-ari-core implementation through the stable public contract (req 09) rather than
-the private ``ari.pipeline.claim_gate`` path. Story2Proposal Phase B.
+Skills (ari-skill-evaluator, ari-skill-transform) call into the gate through this
+stable public contract (req 09) rather than the private
+``ari.pipeline.claim_gate`` path. Story2Proposal Phase B + metric-correctness
+contract (Phase 1-4):
+  - ``run_hard_gate`` — the gate entry point.
+  - ``classify_concept`` / ``CONCEPT_INVARIANTS`` / ``scan_science_data`` — the
+    domain-general concept->invariant registry, re-exported so the transform and
+    evaluator skills reuse the SAME universal-invariant logic the gate blocks on
+    (single source of truth — no duplicated domain math).
 """
 
 from ari.pipeline.claim_gate import run_hard_gate  # noqa: F401
+from ari.pipeline.claim_gate.invariants import (  # noqa: F401
+    CONCEPT_INVARIANTS,
+    classify_concept,
+    scan_science_data,
+)
 
-__all__ = ["run_hard_gate"]
+__all__ = ["run_hard_gate", "classify_concept", "scan_science_data", "CONCEPT_INVARIANTS"]

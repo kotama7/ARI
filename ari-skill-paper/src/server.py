@@ -1130,6 +1130,10 @@ async def write_paper_iterative(
                         "  scores       — derived ratios (efficiency, speedup).\n"
                         "  metrics      — back-compat flat union; prefer the typed "
                         "fields above when they are populated.\n"
+                        "  _anomalous_metrics — names flagged as physically-impossible "
+                        "/ invalid by the correctness gate (e.g. a normalized value > 1). "
+                        "NEVER quote these as results: they are unsound and the final "
+                        "paper is blocked if they appear.\n"
                         "Entries:\n"
                         + "\n".join(_cfg_parts)
                     )

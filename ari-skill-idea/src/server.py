@@ -391,10 +391,59 @@ async def _run_real_virsci(
 # ── MCP Tools ─────────────────────────────────────────────────────────────────
 
 @mcp.tool()
-def survey(topic: str, max_papers: int = 8) -> dict:
-    """Survey prior work via Semantic Scholar API (live retrieval, no LLM).
+def _load_virsci_snapshot_papers(max_papers: int) -> list[dict]:
+    """Reuse the frozen VirSci snapshot corpus from the idea stage.
 
-    Replaces VirSci's paper_search() with ARI's Semantic Scholar integration.
+    The idea stage already surveyed this run's topic and froze the corpus under
+    ``<checkpoint>/virsci_snapshot/papers/<i>.txt`` (``repr`` of
+    ``{title, abstract, year, citation}``, relevance-ordered). Reading it here lets
+    a per-node ``survey()`` reuse that work instead of issuing a redundant live S2
+    re-query. Returns ``[]`` when no frozen snapshot exists (then survey falls back
+    to live S2). Checkpoint dir comes from ``ARI_CHECKPOINT_DIR`` (set by the loop).
+    """
+    import os as _os
+    import ast as _ast
+    from pathlib import Path as _Path
+    ckpt = _os.environ.get("ARI_CHECKPOINT_DIR", "")
+    if not ckpt:
+        return []
+    pdir = _Path(ckpt) / "virsci_snapshot" / "papers"
+    if not pdir.is_dir():
+        return []
+    files = sorted(
+        pdir.glob("*.txt"),
+        key=lambda p: int(p.stem) if p.stem.isdigit() else (1 << 30),
+    )
+    out: list[dict] = []
+    for f in files:
+        try:
+            rec = _ast.literal_eval(f.read_text())
+        except Exception:
+            continue
+        if not isinstance(rec, dict):
+            continue
+        title = (rec.get("title") or "").strip()
+        if not title:
+            continue
+        out.append({
+            "title": title,
+            "abstract": (rec.get("abstract") or "")[:1000],
+            "year": rec.get("year"),
+            "citationCount": rec.get("citation", rec.get("citationCount", 0)),
+            "paperId": "",
+            "url": "",
+        })
+        if len(out) >= max_papers:
+            break
+    return out
+
+
+def survey(topic: str, max_papers: int = 8) -> dict:
+    """Survey prior work, reusing the idea-stage VirSci snapshot when available.
+
+    Prefers the frozen ``virsci_snapshot`` corpus (already retrieved by the idea
+    stage for this run's topic); falls back to a live Semantic Scholar query only
+    when no snapshot is present. No LLM.
 
     Args:
         topic:      Research topic / query
@@ -404,6 +453,11 @@ def survey(topic: str, max_papers: int = 8) -> dict:
         papers: list of {title, abstract, year, citationCount, url}
     """
     max_papers = min(max_papers, 15)
+    # Reuse the frozen VirSci snapshot corpus when present (avoids a redundant live
+    # S2 re-query — the idea stage already surveyed this topic).
+    snapshot_papers = _load_virsci_snapshot_papers(max_papers)
+    if snapshot_papers:
+        return {"papers": snapshot_papers}
     raw = _s2_search(topic, limit=max_papers)
 
     if not raw:
