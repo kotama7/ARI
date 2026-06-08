@@ -2,12 +2,12 @@
 
 | | |
 |---|---|
-| **Status** | **Proposed — both build blockers resolved in design (§4a, zero ari-core change); implementation gated only on the real-env spike (§7.1)** |
-| **Date** | 2026-06-08 (rev. 2026-06-09 — §4a blocker resolutions added) |
-| **Scope** | Design only. No runtime/code change. Implementation is gated on the spike in §7. |
+| **Status** | **Proposed — both build blockers resolved in design (§4a); real-env spike CLEARED on R-CCS fx700/A64FX (§7.2). Ready for a Stage A.0 PR carrying 3 spike-found provisions (arch-correct uv, managed aarch64 python, stdout sanitizer).** |
+| **Date** | 2026-06-08 (rev. 2026-06-09 — §4a blocker resolutions + §7.2 spike result) |
+| **Scope** | Design only. No runtime/code change. The §7.1 launch spike has been run on real hardware (§7.2); implementation follows in a separate Stage A.0 PR. |
 | **Supersedes / relates to** | `docs/concepts/PHILOSOPHY.md` (P1–P5), the VirSci-live vendor-wrap precedent (`ARI_IDEA_VIRSCI_REAL`), `ari-skill-web` (live-API wrapping), `ari-skill-orchestrator` (ARI-as-MCP-server) |
 
-> **概要 (Japanese TL;DR)** — ARI を生命科学特化の ToolUniverse 一本より広く、かつ再現性ファーストのまま拡張するための統合設計。適合形は **単一の in-tree stdio ブローカースキル `ari-skill-tool-registry`**（Compact 5 ツール・digest 固定・人手キュレーション catalog・カセット再現層を EAR へ・段階導入 A→B→C・transport は stdio 一本）。当初の敵対的レビューが見つけた 2 つの BLOCKER（実在しない `ARI_PHASE` 依存／reproduce サンドボックスがカセットを見られない）は、**結合した単一の受け渡しミス**であり、**両方とも ari-core 変更ゼロで解決済み**（§4a）— reproduce はスキルを経由せず、vendor 済みカセットを `reproduce.sh` が読む形にすれば phase 信号は不要になる。残るゲートは**実機 spike のみ**（§7.1）。本 RFC は設計・根拠・解決・spike ゲートを記録するもの。
+> **概要 (Japanese TL;DR)** — ARI を生命科学特化の ToolUniverse 一本より広く、かつ再現性ファーストのまま拡張するための統合設計。適合形は **単一の in-tree stdio ブローカースキル `ari-skill-tool-registry`**（Compact 5 ツール・digest 固定・人手キュレーション catalog・カセット再現層を EAR へ・段階導入 A→B→C・transport は stdio 一本）。当初の敵対的レビューが見つけた 2 つの BLOCKER（実在しない `ARI_PHASE` 依存／reproduce サンドボックスがカセットを見られない）は、**結合した単一の受け渡しミス**であり、**両方とも ari-core 変更ゼロで解決済み**（§4a）— reproduce はスキルを経由せず、vendor 済みカセットを `reproduce.sh` が読む形にすれば phase 信号は不要になる。**実機 spike も実施済み**（§7.2、R-CCS fx700/A64FX）— 起動/stdio/オフライン経路は**オンライン・オフライン両方で成功**したが、3つの実機固有の前提（arch 正しい uv／管理 aarch64 python／stdout サニタイザ）が必要と判明し Stage A.0 の要件に追加。本 RFC は設計・根拠・解決・spike 結果を記録するもの。
 
 ---
 
@@ -64,6 +64,8 @@ Why 5-and-data, not N registered tools: ARI snapshots the tool list **per phase 
 
 **Security**: digest-pin-only (OCI `@sha256`/`mcpb fileSha256`; for `uvx`/`npx` an extra wheel/tarball sha256 — see §6 caveat on transitive deps); runtime allowlist (`ARI_TOOL_REGISTRY_ALLOW`, default `uvx`); curation is the human supply-chain gate; **default-OFF** master flag `ARI_TOOL_REGISTRY_LIVE` so a mis-gate degrades to a pure catalog+replay reader that can never execute third-party code.
 
+**Launch robustness (spike-validated, §7.2)**: when spawning a child server the broker must (a) select a `uv`/runtime binary matching the **node architecture** (a shared x86 `uv` `Exec format error`s on the A64FX/aarch64 fx700 nodes), (b) launch in a **clean interpreter context** — clear `VIRTUAL_ENV`/`CONDA_PREFIX` and set `UV_PYTHON_PREFERENCE=only-managed` so an arch-correct CPython is used, never an inherited x86 venv, and (c) **sanitize the child's stdout** to forward only JSON-RPC lines (some launchers, e.g. `mcp-science`, print a non-JSON preamble that corrupts the MCP stdio stream).
+
 **Staging** (the key design move — strengths sequenced, ari-core kept clean as long as possible):
 
 | Stage | Deliverable | ari-core change |
@@ -100,8 +102,8 @@ A skeptical review against ARI's actual implementation originally returned **fla
 - **BLOCKER 2 (resolved) — the reproduce sandbox cannot see the skill or the cassettes.** ARI's reproduce phase runs a self-contained `reproduce.sh` inside an **isolated** sandbox that binds only `repo_dir` (`ari-skill-paper-re/src/server.py`); it has no ari-core, no MCP skill graph, no broker, and no cassettes unless explicitly vendored in.
   - **Resolution (§4a)**: vendor frozen cassettes through the existing curate→publish→clone chain — an explicit `ear/publish.yaml` include rule lands `tool_registry_cassettes/**` + `CATALOG.lock` + a dependency-free `.ari_lib/replay.sh` in `repro_sandbox/`, and the generated `reproduce.sh` reads them as on-disk fixtures (fail-loud on miss), no skill/MCP/network. **Zero ari-core change.** Hard precondition: an explicit `publish.yaml` is required — the default omits the cassette tree and would ship a bundle **silently without cassettes**.
 
-Remaining **must-fix** items before the Stage A.0 PR (the real-env spike is the gate; the rest are Stage-A/B build items):
-- **Real-env launch is unproven**: `docker` is unusable inside SLURM on R-CCS; `uvx` cold-spawn pulls from PyPI (network) — contradicts the offline/pinned posture. Requires a compute-node spike (§7).
+Remaining **must-fix** items before the Stage A.0 PR (the real-env spike is now cleared — §7.2; the rest are Stage-A/B build items):
+- **Real-env launch** *(spike-cleared, §7.2)*: launch/stdio/offline **works on fx700/A64FX online and offline**, but only with three provisions Stage A.0 must carry — (1) an **arch-correct `uv`** (the shared `~/.local/bin/uv` is x86-only and `Exec format error`s on aarch64), (2) a **uv-managed aarch64 CPython** (`UV_PYTHON_PREFERENCE=only-managed` + cleared `VIRTUAL_ENV`), and (3) a **stdout sanitizer** in the broker (the `mcp-science` launcher prints a non-JSON preamble to stdout). `docker` is indeed absent (use `singularity`); fx700 has PyPI network but the offline-cache path is validated.
 - **Long-job timeout**: `invoke()` of a submit-style upstream must return the handle in **well under `DEFAULT_TOOL_TIMEOUT` (300s)** or ari-core's outer timeout kills the child.
 - **Dependency closure**: a top-level wheel sha256 does **not** pin `uvx`/`npx` transitive deps — ship a `uv.lock`/vendored wheels or replay is not byte-stable.
 - **Credential surface**: the child inherits the full `os.environ` (every key), not just its declared `key_env` — minimise the child env.
@@ -112,10 +114,20 @@ Remaining **must-fix** items before the Stage A.0 PR (the real-env spike is the 
 
 ## 7. Decision & next steps (ordered)
 
-1. **Real-env spike first (実機検証必須).** On an actual R-CCS **compute** node (not login/fake): confirm `uvx` is on PATH; confirm a pinned `uvx --from mcp-science==<v> mcp-science python-code-execution` launches and is stdio-reachable from inside a skill subprocess with **no network** (pre-warmed uv cache); confirm `docker` availability under SLURM. If `uvx` is unavailable, the mcp.science route collapses and this RFC is revised.
+1. ~~Real-env spike first (実機検証必須)~~ — **done (§7.2):** ran on a real `fx700`/A64FX node; the launch/stdio/offline pattern passed online **and** offline for both a light and a heavy server. Surfaced 3 provisions now folded into Stage A.0 (arch-correct uv, managed aarch64 python, stdout sanitizer).
 2. ~~Resolve the two blockers in the design~~ — **done (§4a):** both resolved with **zero ari-core change** (drop the phase signal; vendor cassettes via the existing curate→clone chain into the sandbox). The staging table's "ari-core change: zero" for Stage A/B is confirmed, not changed.
-3. **Stage A.0 implementation PR** (separate, after 1–2): one `uvx` server + 5 tool stubs + the verified `cost_tracker` bootstrap, modelled on `ari-skill-web` + the VirSci-live precedent, default-OFF, reviewable as one small PR.
+3. **Stage A.0 implementation PR** (separate, next): one pinned `uvx` server + 5 tool stubs + the verified `cost_tracker` bootstrap, modelled on `ari-skill-web` + the VirSci-live precedent, default-OFF, **carrying the 3 spike provisions** (per-arch uv selection, `only-managed` aarch64 python with cleared `VIRTUAL_ENV`, broker stdout sanitizer), reviewable as one small PR.
 4. Restate scope honestly in all user-facing text: "broader than ToolUniverse (materials/physics + registry breadth)"; **HPC via the existing `ari-skill-hpc`**, Globus deferred and demand-gated.
+
+## 7.2 Spike result (2026-06-09, R-CCS `fx700` / A64FX, aarch64) — GATE CLEARED
+
+The §7.1 spike ran on a real `fx700` compute node via `srun`, launching a pinned `uvx mcp-science <server>` over stdio **exactly as ari-core's `MCPClient` launches skills** (`mcp.client.stdio.stdio_client` + `StdioServerParameters`), then completing `initialize` + `list_tools`. **All four cases passed — online *and* offline (cache-only), for both the light `timer` and the heavy `python-code-execution` (numpy/scipy/matplotlib/plotly/kaleido) server** (warm/offline handshake ≈3–6 s). The pattern is viable on ARI's demonstrated platform — **but only after three arch/robustness provisions, each of which was a real failure first** (a worked example of "path resolves ≠ binary runs"):
+
+1. **Arch-correct `uv`.** The user's shared `~/.local/bin/uv` is an **x86_64** binary → `cannot execute binary file: Exec format error` on aarch64, even though `command -v uvx` *resolves* (shared `/home`). Stage A.0 must select/provision a `uv` matching each node's arch.
+2. **uv-managed aarch64 CPython.** An active x86 `VIRTUAL_ENV` (the session's `ari-skill-vlm/.venv`) made `uv` try that interpreter → `Exec format error (os error 8)`. The broker must launch children with `VIRTUAL_ENV`/`CONDA_PREFIX` cleared and `UV_PYTHON_PREFERENCE=only-managed` so uv uses a downloaded aarch64 CPython.
+3. **stdout sanitizer (new broker responsibility).** The `mcp-science` launcher prints a non-JSON `Running command: […]` line to **stdout**, corrupting the MCP JSON-RPC stream (the server itself processed `ListTools`/`CallTool` fine). The broker must forward **only JSON-RPC lines** from a child's stdout — a general robustness requirement for heterogeneous third-party stdio servers, now added to §4.
+
+Secondary, design-relevant findings: **fx700 nodes have PyPI network** (not air-gapped), yet the **offline-from-prewarmed-cache path is independently validated**, so the reproducibility posture (no network at spawn) holds; **no `docker`, `singularity` present** (confirms the no-docker assumption); a `uv` cache pre-warmed on the **x86 login node does not transfer to aarch64** (pre-warm must be arch-matched, or done inside the SLURM job); a heavy first cold-spawn (≈190 MiB of wheels) stays within `DEFAULT_TOOL_TIMEOUT = 300 s` but **pre-warm is recommended**. Full logs + harness: `workspace/checkpoints/20260609_*_toolregistry_spike/` (gitignored).
 
 ## 8. Sources
 
