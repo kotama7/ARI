@@ -27,7 +27,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ari.pipeline.claim_gate import latex, numeric, policy as _pol, resolve
+from ari.pipeline.claim_gate import contract, invariants, latex, numeric, policy as _pol, resolve
 
 
 def _flatten_numeric_assertions(science_data: dict) -> list[dict]:
@@ -322,9 +322,29 @@ def run_hard_gate(
                          "message": f"anchor {ua.get('anchor')} references unknown id",
                          **{k: ua[k] for k in ("claim_id", "numeric_id", "line") if k in ua}})
 
+    # ── universal metric invariants (concept->invariant registry) ────────
+    # Deterministic and domain-general: flags physically-impossible metric values
+    # (e.g. a normalized metric > 1) in the configurations that feed the paper.
+    # Pure math — no roofline/HPC knowledge. See invariants.py.
+    invariant_violations = invariants.scan_science_data(science_data)
+    errors.extend(invariant_violations)
+
+    # ── declared metric_contract enforcement (correctness / provenance /
+    # declared invariants / regime / owned recompute). Domain-general: evaluates
+    # only DECLARED expressions over measured metrics. No-op for legacy runs that
+    # carry no metric_contract. See contract.py.
+    contract_violations = contract.check_contract(science_data)
+    errors.extend(contract_violations)
+
     status = "failed" if errors else ("warn" if warnings else "passed")
-    should_block = (phase == "final" and pmode == "strict"
-                    and any(e.get("type") in block_types for e in errors))
+    always_block = _pol.always_block_on(pol)
+    should_block = (
+        phase == "final" and (
+            (pmode == "strict" and any(e.get("type") in block_types for e in errors))
+            # Objective-falsehood findings block at final regardless of warn/strict.
+            or any(e.get("type") in always_block for e in errors)
+        )
+    )
 
     report = {
         "gate": "claim_evidence_hard_gate",
@@ -347,6 +367,8 @@ def run_hard_gate(
             "targeted_result_claims": targeted_result_claims,
             "numeric_coverage_rate": (covered / targeted_result_claims) if targeted_result_claims else 1.0,
             "uncovered_numeric_count": uncovered_count,
+            "invariant_violation_count": len(invariant_violations),
+            "contract_violation_count": len(contract_violations),
         },
     }
 

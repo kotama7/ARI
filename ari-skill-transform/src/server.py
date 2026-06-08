@@ -956,6 +956,28 @@ async def nodes_to_science_data(
     if implementation_overview is not None:
         out["implementation_overview"] = implementation_overview
 
+    # ── Metric-correctness Phase 4: annotate physically-impossible metric values
+    # (e.g. a normalized metric > 1) using the SAME universal invariant registry
+    # the hard gate blocks on (ari-core, single source of truth — no duplicated
+    # domain logic). The paper writer is told to avoid `_anomalous_metrics`; the
+    # gate independently blocks the final paper if such a value survives. Safe /
+    # additive; never breaks science_data generation.
+    try:
+        from ari.public.claim_gate import scan_science_data as _scan_invariants  # type: ignore
+        _anoms = _scan_invariants(out)
+        if _anoms:
+            out["_anomalies"] = _anoms
+            _by_cfg: dict = {}
+            for _a in _anoms:
+                _by_cfg.setdefault(str(_a.get("config_id")), []).append(_a.get("metric"))
+            for _c in ranked:
+                _cid = str(_c.get("config_id") or _c.get("label") or _c.get("node_id")
+                           or _c.get("rank") or "?")
+                if _cid in _by_cfg:
+                    _c["_anomalous_metrics"] = sorted(set(_by_cfg[_cid]))
+    except Exception:
+        pass
+
     # ── Research Contract substrate: candidate claims[] / numeric_assertions[] ──
     # Story2Proposal integration Phase A. Deterministically derived from the
     # executed-node evidence (results.json measurements/scores or node metrics);

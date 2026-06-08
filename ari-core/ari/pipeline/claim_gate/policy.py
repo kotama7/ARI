@@ -37,7 +37,22 @@ DEFAULT_POLICY: dict = {
         },
     },
     "numeric_match": {"default_tolerance": {"absolute": 0.0, "relative": 0.02}},
-    "blocking": {"block_on": ["numeric_mismatch", "operand_unresolved", "missing_evidence"]},
+    "blocking": {
+        "block_on": ["numeric_mismatch", "operand_unresolved", "missing_evidence"],
+        # Objective-falsehood findings: physically/logically impossible or
+        # unverifiable results. Unlike block_on (which only blocks under strict),
+        # these block the FINAL paper regardless of warn/strict — they are
+        # deterministically false / unsound, not subjective review.
+        #   invariant_violation     — a universal or declared invariant is false
+        #   correctness_failed       — declared kernel-correctness check failed
+        #   correctness_uncovered    — correctness required but not emitted
+        #   placeholder_denominator  — a required ceiling is a constant, not measured
+        #   recompute_mismatch       — reported metric not reproducible from raw inputs
+        "always_block_on": [
+            "invariant_violation", "correctness_failed", "correctness_uncovered",
+            "placeholder_denominator", "recompute_mismatch",
+        ],
+    },
 }
 
 
@@ -112,3 +127,9 @@ def default_tolerance(policy: dict) -> dict:
 
 def block_on(policy: dict) -> set:
     return set((policy.get("blocking", {}) or {}).get("block_on", []) or [])
+
+
+def always_block_on(policy: dict) -> set:
+    """Finding types that block the FINAL paper regardless of warn/strict mode
+    (objective falsehoods, e.g. invariant_violation)."""
+    return set((policy.get("blocking", {}) or {}).get("always_block_on", []) or [])

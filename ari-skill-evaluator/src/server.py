@@ -93,9 +93,11 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="make_metric_spec",
             description=(
-                "Receives experiment file text and generates MetricSpec (expected_metrics,"
-                "metric_keyword, scoring_guide, min_expected_metric) and returns it."
-                "No LLM. Deterministic template-based."
+                "Generates a MetricSpec (expected_metrics, metric_keyword, scoring_guide, "
+                "min_expected_metric). Prefers the idea-stage canonical primary_metric "
+                "(from primary_metric arg, or evaluation_criteria.json/idea.json via "
+                "ARI_CHECKPOINT_DIR) and structures it via LLM; falls back to deterministic "
+                "parsing of the experiment.md seed metrics line when no primary_metric exists."
             ),
             inputSchema={
                 "type": "object",
@@ -103,7 +105,19 @@ async def list_tools() -> list[Tool]:
                     "experiment_text": {
                         "type": "string",
                         "description": "Full text of the experiment file (.md)",
-                    }
+                    },
+                    "primary_metric": {
+                        "type": "string",
+                        "description": (
+                            "Optional idea-stage canonical primary_metric. When set "
+                            "(or resolvable from evaluation_criteria.json/idea.json via "
+                            "ARI_CHECKPOINT_DIR) it overrides the experiment.md seed line."
+                        ),
+                    },
+                    "checkpoint_dir": {
+                        "type": "string",
+                        "description": "Optional checkpoint dir to read primary_metric from.",
+                    },
                 },
                 "required": ["experiment_text"],
             },
@@ -172,6 +186,76 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
 
 
+_METRIC_EXTRACT_SYS = (
+    "You are a research evaluation expert. "
+    "Given an experiment description, identify: "
+    "(1) the primary numeric metric to maximize/minimize (one short name, e.g. GFLOP_per_s), "
+    "(2) whether higher is better, "
+    "(3) the list of MEASURED metric names the experiment should report (outputs only — throughput, accuracy, latency, etc.), "
+    "(4) the list of INPUT parameter names the experiment runs on (matrix size, thread count, seed, etc. — these are knobs, NOT measurements). "
+    "Strictly disjoint: a name appears in measurements OR params, never both. "
+    "Respond ONLY with JSON: "
+    '{"metric_keyword":"<name>","higher_is_better":true,'
+    '"expected_metrics":["<m1>","<m2>"],"expected_params":["<p1>","<p2>"]}'
+)
+
+
+async def _llm_extract_metric_spec(description: str) -> dict:
+    """LLM-extract ``{metric_keyword, higher_is_better, expected_metrics, expected_params}``
+    from a free-text description. Returns ``{}`` on any failure so callers fall back."""
+    try:
+        import litellm as _litellm, os as _os, json as _json, re as _re
+        _model = (_os.environ.get("ARI_MODEL_EVAL")
+                  or _os.environ.get("ARI_MODEL")
+                  or _os.environ.get("ARI_LLM_MODEL")
+                  or "gpt-4o-mini")
+        _resp = await _litellm.acompletion(
+            model=_model,
+            messages=[
+                {"role": "system", "content": _METRIC_EXTRACT_SYS},
+                {"role": "user", "content": "Experiment description:\n" + (description or "")[:2000]},
+            ],
+            temperature=0.0,
+            max_tokens=300,
+        )
+        _raw = _resp.choices[0].message.content or ""
+        _m = _re.search(r"\{.*\}", _raw, _re.DOTALL)
+        if _m:
+            return _json.loads(_m.group(0))
+    except Exception:
+        pass  # Fall through; caller keeps its existing values.
+    return {}
+
+
+def _load_primary_metric_from_checkpoint(checkpoint_dir: str | None = None) -> str:
+    """Resolve the idea-stage canonical ``primary_metric`` for the running node.
+
+    Prefers ``evaluation_criteria.json`` (orchestrator-written), then ``idea.json``
+    (written by generate_ideas). The checkpoint dir is taken from the explicit arg
+    or the ``ARI_CHECKPOINT_DIR`` env injected by the agent loop before the MCP
+    fork. Returns ``""`` when unavailable (e.g. the root node before generate_ideas).
+    """
+    import os as _os
+    from pathlib import Path as _Path
+    ckpt = checkpoint_dir or _os.environ.get("ARI_CHECKPOINT_DIR", "")
+    if not ckpt:
+        return ""
+    for _fn in ("evaluation_criteria.json", "idea.json"):
+        _p = _Path(ckpt) / _fn
+        if not _p.is_file():
+            continue
+        try:
+            _d = json.loads(_p.read_text())
+        except Exception:
+            continue
+        pm = _d.get("primary_metric") or ""
+        if not pm and isinstance(_d.get("ideas"), list) and _d["ideas"]:
+            pm = (_d["ideas"][0] or {}).get("primary_metric", "")
+        if isinstance(pm, str) and pm.strip():
+            return pm.strip()
+    return ""
+
+
 async def _tool_make_metric_spec(arguments: dict) -> dict:
     text = arguments["experiment_text"]
     expected_metrics = _parse_success_metrics(text)
@@ -185,53 +269,61 @@ async def _tool_make_metric_spec(arguments: dict) -> dict:
     # them because experiment.md has no consistent "## Parameters" header.
     expected_params: list[str] = []
 
-    # If the experiment file does not specify metrics, delegate to LLM
+    # The experiment.md ``Metrics:`` line is a HUMAN SEED placeholder written
+    # before idea generation (often throughput-only, e.g. "GB/s, GFlops/s").
+    # When the idea stage has produced a canonical ``primary_metric``, it is the
+    # authoritative success criterion and OVERRIDES the seed — this is what keeps
+    # every node on one metric definition instead of each re-inventing its own.
+    # The seed regex remains the fallback (e.g. the root node, before
+    # generate_ideas has run and no idea.json exists yet).
+    primary_metric = (arguments.get("primary_metric") or "").strip() \
+        or _load_primary_metric_from_checkpoint(arguments.get("checkpoint_dir"))
+    if primary_metric:
+        _spec = await _llm_extract_metric_spec(primary_metric)
+        if _spec.get("metric_keyword"):
+            metric_keyword = _spec["metric_keyword"]
+        if _spec.get("expected_metrics"):
+            expected_metrics = _spec["expected_metrics"]
+        _ep = _spec.get("expected_params", [])
+        if isinstance(_ep, list) and _ep:
+            expected_params = [str(p) for p in _ep if p]
+
+    # If neither the primary_metric nor the experiment file yielded metrics,
+    # delegate to the LLM on the raw experiment text.
     if not expected_metrics or not metric_keyword:
-        try:
-            import litellm as _litellm, os as _os
-            _model = (_os.environ.get("ARI_MODEL_EVAL")
-                      or _os.environ.get("ARI_MODEL")
-                      or _os.environ.get("ARI_LLM_MODEL")
-                      or "gpt-4o-mini")
-            _resp = await _litellm.acompletion(
-                model=_model,
-                messages=[{
-                    "role": "system",
-                    "content": (
-                        "You are a research evaluation expert. "
-                        "Given an experiment description, identify: "
-                        "(1) the primary numeric metric to maximize/minimize (one short name, e.g. GFLOP_per_s), "
-                        "(2) whether higher is better, "
-                        "(3) the list of MEASURED metric names the experiment should report (outputs only — throughput, accuracy, latency, etc.), "
-                        "(4) the list of INPUT parameter names the experiment runs on (matrix size, thread count, seed, etc. — these are knobs, NOT measurements). "
-                        "Strictly disjoint: a name appears in measurements OR params, never both. "
-                        "Respond ONLY with JSON: "
-                        '{{"metric_keyword":"<name>","higher_is_better":true,'
-                        '"expected_metrics":["<m1>","<m2>"],"expected_params":["<p1>","<p2>"]}}'
-                    ),
-                }, {
-                    "role": "user",
-                    "content": "Experiment description:\n" + text[:2000]
-                }],
-                temperature=0.0,
-                max_tokens=300,
-            )
-            import json as _json, re as _re
-            _raw = _resp.choices[0].message.content or ""
-            _m = _re.search(r"\{.*\}", _raw, _re.DOTALL)
-            if _m:
-                _parsed = _json.loads(_m.group(0))
-                if not metric_keyword:
-                    metric_keyword = _parsed.get("metric_keyword", "")
-                if not expected_metrics:
-                    expected_metrics = _parsed.get("expected_metrics", [])
-                _ep = _parsed.get("expected_params", [])
-                if isinstance(_ep, list):
-                    expected_params = [str(p) for p in _ep if p]
-        except Exception as _e:
-            pass  # Fall through to empty defaults
+        _spec = await _llm_extract_metric_spec(text)
+        if not metric_keyword:
+            metric_keyword = _spec.get("metric_keyword", "")
+        if not expected_metrics:
+            expected_metrics = _spec.get("expected_metrics", [])
+        _ep = _spec.get("expected_params", [])
+        if not expected_params and isinstance(_ep, list):
+            expected_params = [str(p) for p in _ep if p]
 
     scoring_guide = _build_scoring_guide(expected_metrics, metric_keyword, min_expected)
+
+    # Metric-correctness contract scaffold: classify the metric's mathematical
+    # concept and attach its universal invariant DETERMINISTICALLY, reusing the
+    # hard gate's registry (single source of truth — no domain knowledge here).
+    # The implementing agent fills formula/correctness/required_measured (which
+    # are experiment-specific); the gate enforces whatever ends up declared. When
+    # the concept is unrecognized the scaffold is omitted (legacy behaviour).
+    metric_contract = None
+    try:
+        from ari.public.claim_gate import classify_concept as _classify, CONCEPT_INVARIANTS as _CINV
+        _concept = _classify(primary_metric or "") or _classify(metric_keyword or "")
+        if _concept:
+            metric_contract = {
+                "key": metric_keyword or "",
+                "concept": _concept,
+                "invariants": [f"value {op} {rhs:g}" for op, rhs in _CINV.get(_concept, [])],
+                # TO BE FILLED BY THE IMPLEMENTING AGENT for a rigorous claim:
+                "formula": "",            # recompute 'value' from raw MEASURED operands
+                "correctness": {},        # {"expr": "max_abs_err < 1e-4", "requires": ["max_abs_err"]}
+                "required_measured": [],  # operand names that must be measured (no placeholder ceiling)
+            }
+    except Exception:
+        metric_contract = None
 
     return {
         "expected_metrics": expected_metrics,
@@ -239,6 +331,7 @@ async def _tool_make_metric_spec(arguments: dict) -> dict:
         "metric_keyword": metric_keyword,
         "min_expected_metric": min_expected,
         "scoring_guide": scoring_guide,
+        "metric_contract": metric_contract,
     }
 
 
@@ -266,9 +359,11 @@ def _load_jsonish(val):
 async def _tool_claim_evidence_hard_gate(arguments: dict) -> dict:
     """Thin MCP wrapper over ari-core's deterministic claim_evidence_hard_gate.
 
-    Returns the full report normally. When the report says should_block (final +
-    strict + blocking errors), returns EXACTLY {"error": ...} so the pipeline
-    stage runner raises and finalize_paper is skipped.
+    Returns the full report normally. When the report says should_block — at the
+    FINAL phase, either a strict-mode block_on error OR an always_block_on
+    objective-falsehood (invariant_violation / correctness_failed / placeholder_
+    denominator / ...) regardless of warn/strict — returns EXACTLY {"error": ...}
+    so the pipeline stage runner raises and finalize_paper is skipped.
     """
     from pathlib import Path as _Path
 
@@ -313,7 +408,7 @@ async def _tool_claim_evidence_hard_gate(arguments: dict) -> dict:
     if report.get("should_block"):
         n = len(report.get("errors", []))
         return {"error": (
-            f"claim_evidence_hard_gate ({phase}, strict): {n} blocking error(s); "
+            f"claim_evidence_hard_gate ({phase}): {n} blocking error(s); "
             f"see evaluation/claim_evidence_hard_gate_{phase}.json"
         )}
     return report
