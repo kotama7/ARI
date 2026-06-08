@@ -328,7 +328,12 @@ async def _virsci_discussion_loop(
 
 # ── VirSci-live (vendor-wrap) real path ───────────────────────────────────────
 
-async def _run_real_virsci(topic: str, n_ideas: int, ancestor_block: str = "") -> tuple[list[dict], dict]:
+async def _run_real_virsci(
+    topic: str,
+    n_ideas: int,
+    ancestor_block: str = "",
+    seed_papers: list[dict] | None = None,
+) -> tuple[list[dict], dict]:
     """Run VirSci's real select_coauthors + generate_idea on an S2 snapshot.
 
     Returns ``(raw_ideas, meta)`` shaped like ``_virsci_discussion_loop`` output
@@ -336,6 +341,9 @@ async def _run_real_virsci(topic: str, n_ideas: int, ancestor_block: str = "") -
     deps / runtime errors so ``generate_ideas`` can degrade to the re-impl loop.
     ``ancestor_block`` (lineage context) is forwarded so the real path stays
     aware of prior research directions, matching the re-impl loop.
+    ``seed_papers`` (the already-fetched survey papers) is passed to
+    ``build_snapshot`` as a fallback corpus so a throttled/empty topic search
+    can still ground on the vetted paperIds in hand instead of raising.
     """
     from snapshot import build_snapshot  # heavy deps imported lazily
     import virsci_runtime
@@ -344,7 +352,9 @@ async def _run_real_virsci(topic: str, n_ideas: int, ancestor_block: str = "") -
     n_authors = _virsci_n_authors()
     n_papers = _virsci_n_papers()
 
-    snap = await asyncio.to_thread(build_snapshot, topic, out_dir, n_authors, n_papers)
+    snap = await asyncio.to_thread(
+        build_snapshot, topic, out_dir, n_authors, n_papers, seed_papers=seed_papers
+    )
     result = await asyncio.to_thread(
         virsci_runtime.run_virsci_live,
         topic,
@@ -537,7 +547,9 @@ async def generate_ideas(
     raw_ideas: list[dict] | None = None
     if _virsci_real():
         try:
-            raw_ideas, real_meta = await _run_real_virsci(topic, n_ideas, ancestor_block)
+            raw_ideas, real_meta = await _run_real_virsci(
+                topic, n_ideas, ancestor_block, seed_papers=all_papers
+            )
             if not raw_ideas:
                 raw_ideas, real_meta = None, None  # empty → fall through
         except Exception as e:  # never block ideation on the real path

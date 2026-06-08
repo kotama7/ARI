@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import time
@@ -43,6 +44,8 @@ S2_BASE = "https://api.semanticscholar.org/graph/v1"
 _CORPUS_FIELDS = "title,abstract,year,citationCount,authors,embedding.specter_v2"
 _AUTHOR_PAPER_FIELDS = "title,abstract,year"
 
+log = logging.getLogger(__name__)
+
 
 def _s2_api_key() -> str:
     return os.environ.get("SEMANTIC_SCHOLAR_API_KEY", "") or os.environ.get("S2_API_KEY", "")
@@ -57,6 +60,7 @@ def _s2_get(path: str, params: dict, *, timeout: int = 20, retries: int = 4) -> 
     """GET an S2 endpoint with exponential backoff on 429/5xx."""
     url = f"{S2_BASE}/{path.lstrip('/')}"
     delay = 1.0
+    last_err = ""
     for attempt in range(retries):
         try:
             r = requests.get(url, params=params, headers=_s2_headers(), timeout=timeout)
@@ -64,8 +68,16 @@ def _s2_get(path: str, params: dict, *, timeout: int = 20, retries: int = 4) -> 
                 raise requests.HTTPError(f"status {r.status_code}")
             r.raise_for_status()
             return r.json()
-        except Exception:
+        except Exception as e:
+            last_err = str(e)
             if attempt == retries - 1:
+                # Surface the failure instead of swallowing it silently: a 429
+                # rate-limit here is exactly what produced an ungrounded 0-paper
+                # snapshot, and a silent None left no trace in the logs.
+                log.warning(
+                    "S2 GET %s failed after %d attempt(s) (%s); returning None",
+                    path, retries, last_err,
+                )
                 return None
             time.sleep(delay)
             delay = min(delay * 2, 16.0)
@@ -172,6 +184,40 @@ def _fetch_corpus(topic: str, n_papers: int) -> list[dict]:
     return papers
 
 
+def _fetch_corpus_by_ids(paper_ids: list[str]) -> list[dict]:
+    """Fetch full corpus records for known paperIds via ``/paper/batch``.
+
+    Fallback for when the topic ``/paper/search`` returns nothing (e.g. a 429
+    rate-limit or a sparse query): the already-vetted survey paperIds are
+    fetched directly with the same corpus fields (incl. ``embedding.specter_v2``
+    and ``authors``). ``/paper/batch`` is keyed by id so it is both more
+    targeted and less likely to be throttled than relevance search.
+    """
+    ids = [pid for pid in paper_ids if pid]
+    if not ids:
+        return []
+    out: list[dict] = []
+    seen: set[str] = set()
+    for i in range(0, len(ids), 500):  # /paper/batch accepts ≤500 ids/call
+        data = _s2_post(
+            "paper/batch",
+            {"ids": ids[i:i + 500]},
+            {"fields": _CORPUS_FIELDS},
+        )
+        if not data:
+            continue
+        for p in data:  # batch returns a list aligned to ids; null for misses
+            if not p:
+                continue
+            pid = p.get("paperId")
+            if pid and pid in seen:
+                continue
+            if pid:
+                seen.add(pid)
+            out.append(p)
+    return out
+
+
 def _build_adjacency(authors: list[dict]) -> np.ndarray:
     """Symmetric int co-author matrix with +1 Laplacian smoothing.
 
@@ -253,6 +299,7 @@ def build_snapshot(
     n_papers: int = 800,
     *,
     force: bool = False,
+    seed_papers: list[dict] | None = None,
 ) -> Snapshot:
     """Build (or reuse) a frozen S2 snapshot under ``<out_dir>/virsci_snapshot/``.
 
@@ -266,7 +313,10 @@ def build_snapshot(
     if manifest_path.exists() and not force:
         try:
             man = json.loads(manifest_path.read_text())
-            if man.get("sha") == sig:
+            # Only reuse a NON-EMPTY frozen snapshot. A cached manifest with
+            # n_papers==0 is a poisoned cache from a throttled/failed build —
+            # reusing it would silently serve an ungrounded snapshot forever.
+            if man.get("sha") == sig and int(man.get("n_papers", 0) or 0) > 0:
                 return _load_snapshot(base, man)
         except Exception:
             pass  # corrupt cache → rebuild
@@ -276,6 +326,31 @@ def build_snapshot(
     (base / "papers").mkdir(exist_ok=True)
 
     corpus_raw = _fetch_corpus(topic, n_papers)
+    used_seed = False
+    if not corpus_raw and seed_papers:
+        # Topic /paper/search came back empty (e.g. 429 rate-limit / sparse
+        # query). Fall back to the already-vetted survey paperIds via
+        # /paper/batch so the snapshot can still be grounded on real papers
+        # (with authors + embeddings) instead of degrading to an ungrounded run.
+        seed_ids = [p.get("paperId") for p in seed_papers if isinstance(p, dict)]
+        corpus_raw = _fetch_corpus_by_ids(seed_ids)
+        if corpus_raw:
+            used_seed = True
+            log.info(
+                "snapshot: topic search empty; grounded on %d seed paper(s) via /paper/batch",
+                len(corpus_raw),
+            )
+    if not corpus_raw:
+        # Empty fetch (S2 429 rate-limit / network failure / no search hits) and
+        # no usable seed papers. Do NOT proceed to write a "successful" 0-paper
+        # manifest with placeholder authors — that silently runs VirSci fully
+        # ungrounded and records it as a real_wrap success. Raise so the caller
+        # (generate_ideas) degrades to the re-impl loop honestly and visibly.
+        raise RuntimeError(
+            f"S2 corpus fetch returned 0 papers for topic={topic!r} "
+            f"(likely 429 rate-limit / network failure / no search hits); "
+            f"refusing to build an ungrounded VirSci snapshot."
+        )
 
     # split corpus into indexed (has specter_v2) + full paper_dicts
     indexed_corpus: list[dict] = []
@@ -335,6 +410,7 @@ def build_snapshot(
         "specter2_dim": specter2_dim,
         "indexed_papers": len(indexed_corpus),
         "has_api_key": bool(_s2_api_key()),
+        "seed_fallback": used_seed,
     }
     manifest_path.write_text(json.dumps(manifest, indent=2))
 

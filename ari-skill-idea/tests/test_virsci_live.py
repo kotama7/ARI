@@ -112,6 +112,20 @@ def _fake_s2_get(path, params, **kwargs):
     return None
 
 
+def _fake_s2_batch(path, json_body, params, **kwargs):
+    # /paper/batch returns a LIST aligned to ids (null for misses).
+    if path == "paper/batch":
+        return [
+            {
+                "paperId": "seed1", "title": "Seed paper one", "year": 2024,
+                "citationCount": 3, "abstract": "Vetted survey paper.",
+                "authors": [{"authorId": "sa1", "name": "Dave"}],
+                "embedding": {"model": "specter_v2", "vector": [0.2, 0.1, 0.4, 0.3]},
+            },
+        ]
+    return None
+
+
 class TestSnapshot:
     def test_build_snapshot(self, tmp_path, monkeypatch):
         monkeypatch.setattr(snap_mod, "_s2_get", _fake_s2_get)
@@ -147,6 +161,72 @@ class TestSnapshot:
         adj = np.loadtxt(str(snap.adjacency_path), dtype=int)
         assert adj.shape == (2, 2)
         assert (adj.sum(axis=1) > 0).all()
+
+    def test_empty_corpus_raises(self, tmp_path, monkeypatch):
+        # Bug fix: an empty S2 fetch (e.g. HTTP 429 rate-limit) must NOT silently
+        # produce an ungrounded 0-paper snapshot with placeholder authors — it
+        # must raise so generate_ideas degrades to the re-impl loop honestly.
+        monkeypatch.setattr(snap_mod, "_s2_get", lambda *a, **k: None)
+        with pytest.raises(RuntimeError, match="0 papers"):
+            snap_mod.build_snapshot("unreachable topic", tmp_path, n_authors=3, n_papers=10)
+        # and no half-written "successful" manifest is left behind
+        assert not (tmp_path / "virsci_snapshot" / "snapshot_manifest.json").exists()
+
+    def test_seed_fallback_when_search_empty(self, tmp_path, monkeypatch):
+        # When the topic /paper/search returns nothing (e.g. 429 rate-limit),
+        # build_snapshot falls back to the vetted survey paperIds via
+        # /paper/batch so the snapshot stays grounded on real papers (with
+        # authors + embeddings) instead of raising / running ungrounded.
+        monkeypatch.setattr(snap_mod, "_s2_get", lambda *a, **k: None)   # search empty
+        monkeypatch.setattr(snap_mod, "_s2_post", _fake_s2_batch)
+        seed = [{"paperId": "seed1"}, {"paperId": "seed2"}]
+        snap = snap_mod.build_snapshot(
+            "throttled topic", tmp_path, n_authors=2, n_papers=10, seed_papers=seed,
+        )
+        assert len(snap.paper_dicts) == 1 and len(snap.corpus) == 1
+        man = json.loads((tmp_path / "virsci_snapshot" / "snapshot_manifest.json").read_text())
+        assert man["seed_fallback"] is True and man["n_papers"] == 1
+
+    def test_seed_fallback_skipped_when_search_succeeds(self, tmp_path, monkeypatch):
+        # Normal path: topic search returns papers → seed fallback NOT used.
+        post_calls = {"n": 0}
+
+        def counting_post(*a, **k):
+            post_calls["n"] += 1
+            return None
+
+        monkeypatch.setattr(snap_mod, "_s2_get", _fake_s2_get)
+        monkeypatch.setattr(snap_mod, "_s2_post", counting_post)
+        snap = snap_mod.build_snapshot(
+            "topic", tmp_path, n_authors=3, n_papers=10,
+            seed_papers=[{"paperId": "seedX"}],
+        )
+        assert len(snap.corpus) == 2          # from the search corpus, not seed
+        assert post_calls["n"] == 0           # /paper/batch never called
+        man = json.loads((tmp_path / "virsci_snapshot" / "snapshot_manifest.json").read_text())
+        assert man["seed_fallback"] is False
+
+    def test_empty_corpus_raises_without_seed(self, tmp_path, monkeypatch):
+        # Empty search AND no seed papers → still raises (honest degrade).
+        monkeypatch.setattr(snap_mod, "_s2_get", lambda *a, **k: None)
+        monkeypatch.setattr(snap_mod, "_s2_post", lambda *a, **k: None)
+        with pytest.raises(RuntimeError, match="0 papers"):
+            snap_mod.build_snapshot("x", tmp_path, n_authors=2, n_papers=10, seed_papers=[])
+
+    def test_empty_cached_snapshot_not_reused(self, tmp_path, monkeypatch):
+        # A previously-frozen 0-paper manifest (poisoned cache from a throttled
+        # build) must not be reused as a valid snapshot: the next build retries.
+        base = tmp_path / "virsci_snapshot"
+        base.mkdir(parents=True)
+        sig = snap_mod._manifest_signature("topic z", 3, 10)
+        (base / "snapshot_manifest.json").write_text(json.dumps({
+            "topic": "topic z", "sha": sig, "n_authors": 3, "n_papers": 0,
+            "s2_query": "topic z", "specter2_dim": 768, "indexed_papers": 0,
+            "has_api_key": True,
+        }))
+        monkeypatch.setattr(snap_mod, "_s2_get", _fake_s2_get)
+        snap = snap_mod.build_snapshot("topic z", tmp_path, n_authors=3, n_papers=10)
+        assert snap.n_papers > 0 and len(snap.corpus) == 2
 
     def test_snapshot_cache_reuse(self, tmp_path, monkeypatch):
         calls = {"n": 0}
@@ -277,7 +357,7 @@ class TestServerRealPath:
     async def test_real_wrap_contract(self, monkeypatch):
         monkeypatch.setenv("ARI_IDEA_VIRSCI_REAL", "1")
         monkeypatch.delenv("ARI_CHECKPOINT_DIR", raising=False)
-        async def fake_real(topic, n_ideas, ancestor_block=""):
+        async def fake_real(topic, n_ideas, ancestor_block="", seed_papers=None):
             return list(_REAL_IDEAS), dict(_REAL_META)
         with patch("server._run_real_virsci", side_effect=fake_real), \
              patch("server._llm", new_callable=AsyncMock) as mock_llm, \
@@ -308,7 +388,7 @@ class TestServerRealPath:
     async def test_degrades_to_reimpl_on_failure(self, monkeypatch):
         monkeypatch.setenv("ARI_IDEA_VIRSCI_REAL", "1")
         monkeypatch.delenv("ARI_CHECKPOINT_DIR", raising=False)
-        async def boom(topic, n_ideas, ancestor_block=""):
+        async def boom(topic, n_ideas, ancestor_block="", seed_papers=None):
             raise RuntimeError("snapshot build failed")
         idea_json = json.dumps({
             "Title": "Fallback Idea", "Idea": "x", "Experiment": "y",
