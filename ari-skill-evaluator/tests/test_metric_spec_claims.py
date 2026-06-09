@@ -14,9 +14,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from src.server import (  # noqa: E402
     _CLAIMS_EXTRACT_SYS,
+    _CONTRACT_FLAGS_SYS,
     _llm_extract_claims,
+    _llm_extract_contract_flags,
     _normalize_claims,
     _load_idea_claims_source,
+    _load_idea_plan_text,
+    _resolve_contract_flags,
     _resolve_falsifiable_claims,
     _tool_make_metric_spec,
 )
@@ -171,3 +175,106 @@ def test_resolve_routes_to_llm_on_plan_fallback(tmp_path, monkeypatch):
     out = asyncio.run(_resolve_falsifiable_claims(str(tmp_path)))
     assert "M improves throughput" in called.get("plan", "")
     assert out == [{"claim": "from_llm", "required_evidence": ["e1"]}]
+
+
+# ── idea-owned requirement flags (G): resolution + extraction ─────────────────
+
+_FALSE_FLAGS = {"correctness_required": False, "ceiling_must_be_measured": False}
+
+
+def test_resolve_contract_flags_structured_is_false(tmp_path):
+    idea = {"ideas": [{"falsifiable_claims": [{"claim": "x", "required_evidence": ["a"]}]}]}
+    (tmp_path / "idea.json").write_text(json.dumps(idea))
+    assert asyncio.run(_resolve_contract_flags(str(tmp_path))) == _FALSE_FLAGS
+
+
+def test_resolve_contract_flags_absent_is_false(tmp_path):
+    assert asyncio.run(_resolve_contract_flags(str(tmp_path))) == _FALSE_FLAGS
+
+
+def test_resolve_contract_flags_routes_to_llm(tmp_path, monkeypatch):
+    async def _spy(_plan):
+        return {"correctness_required": True, "ceiling_must_be_measured": True}
+    monkeypatch.setattr("src.server._llm_extract_contract_flags", _spy)
+    (tmp_path / "idea.json").write_text(json.dumps(
+        {"ideas": [{"experiment_plan": "kernel computes CSR SpMM, roofline-normalized"}]}))
+    assert asyncio.run(_resolve_contract_flags(str(tmp_path))) == \
+        {"correctness_required": True, "ceiling_must_be_measured": True}
+
+
+def test_load_idea_plan_text_reads_regardless_of_claims(tmp_path):
+    idea = {"ideas": [{"falsifiable_claims": [{"claim": "x", "required_evidence": ["a"]}],
+                       "experiment_plan": "the kernel computes X, roofline-normalized"}]}
+    (tmp_path / "idea.json").write_text(json.dumps(idea))
+    assert "roofline-normalized" in _load_idea_plan_text(str(tmp_path))
+
+
+def test_resolve_contract_flags_works_on_structured_path(tmp_path, monkeypatch):
+    # finding-3 regression: an idea with BOTH structured claims AND a plan must STILL
+    # resolve the flags (the structured short-circuit previously disabled them).
+    async def _spy(_plan):
+        return {"correctness_required": True, "ceiling_must_be_measured": True}
+    monkeypatch.setattr("src.server._llm_extract_contract_flags", _spy)
+    idea = {"ideas": [{"falsifiable_claims": [{"claim": "x", "required_evidence": ["a"]}],
+                       "experiment_plan": "the kernel computes X"}]}
+    (tmp_path / "idea.json").write_text(json.dumps(idea))
+    assert asyncio.run(_resolve_contract_flags(str(tmp_path))) == \
+        {"correctness_required": True, "ceiling_must_be_measured": True}
+
+
+def test_contract_flags_prompt_is_domain_neutral():
+    sys_l = _CONTRACT_FLAGS_SYS.lower()
+    for banned in ("roofline", "gflop", "flop/s", "bandwidth", "cache", "dram", "stream"):
+        assert banned not in sys_l, banned
+
+
+def test_llm_extract_contract_flags_parses(monkeypatch):
+    async def _fake(**_kw):
+        return _Resp('verdict: {"correctness_required": true, "ceiling_must_be_measured": false}')
+    monkeypatch.setattr("litellm.acompletion", _fake)
+    assert asyncio.run(_llm_extract_contract_flags("plan")) == \
+        {"correctness_required": True, "ceiling_must_be_measured": False}
+
+
+def test_llm_extract_contract_flags_degrades(monkeypatch):
+    async def _boom(**_kw):
+        raise RuntimeError("api down")
+    monkeypatch.setattr("litellm.acompletion", _boom)
+    assert asyncio.run(_llm_extract_contract_flags("plan")) == _FALSE_FLAGS
+
+
+def test_make_metric_spec_sets_idea_owned_flags(tmp_path, monkeypatch):
+    async def _flags(_ck):
+        return {"correctness_required": True, "ceiling_must_be_measured": True}
+    async def _no_claims(_ck):
+        return []
+    async def _fake_metric(_desc):
+        return {}
+    monkeypatch.setattr("src.server._resolve_contract_flags", _flags)
+    monkeypatch.setattr("src.server._resolve_falsifiable_claims", _no_claims)
+    monkeypatch.setattr("src.server._llm_extract_metric_spec", _fake_metric)
+    monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+    spec = asyncio.run(_tool_make_metric_spec(
+        {"experiment_text": "Metrics: GFLOP_per_s\n", "checkpoint_dir": str(tmp_path)}))
+    mc = spec["metric_contract"]
+    assert mc is not None
+    assert mc["correctness_required"] is True and mc["ceiling_must_be_measured"] is True
+
+
+def test_make_metric_spec_no_flags_when_idea_says_false(tmp_path, monkeypatch):
+    async def _flags(_ck):
+        return {"correctness_required": False, "ceiling_must_be_measured": False}
+    async def _no_claims(_ck):
+        return []
+    async def _fake_metric(_desc):
+        return {}
+    monkeypatch.setattr("src.server._resolve_contract_flags", _flags)
+    monkeypatch.setattr("src.server._resolve_falsifiable_claims", _no_claims)
+    monkeypatch.setattr("src.server._llm_extract_metric_spec", _fake_metric)
+    monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+    spec = asyncio.run(_tool_make_metric_spec(
+        {"experiment_text": "Metrics: GFLOP_per_s\n", "checkpoint_dir": str(tmp_path)}))
+    mc = spec["metric_contract"]
+    if mc is not None:  # theory-safe: flags not stamped when the idea says false
+        assert "correctness_required" not in mc
+        assert "ceiling_must_be_measured" not in mc

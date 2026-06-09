@@ -220,6 +220,113 @@ def test_gate_blocks_claim_evidence_missing_in_warn_at_final(tmp_path):
     assert any(e["type"] == "claim_evidence_missing" for e in rep["errors"])
 
 
+# ── idea-owned requirement flags (G): provenance-presence enforcement ──────────
+# The idea owns the REQUIREMENT; the agent satisfies it by emitting TAGGED evidence
+# (a measured ceiling, a correctness residual). Presence-only & run-level: an honest
+# run is never blocked, only a placeholder / no-check 骨抜き is. No agent-declared
+# name is involved, so there is no cross-party naming over-block.
+
+def test_ceiling_must_be_measured_blocks_with_no_measured_evidence():
+    sd = _sd({"key": "rnorm", "ceiling_must_be_measured": True},
+             [{"config_id": "c", "measurements": {"rnorm": 0.5},
+               "_provenance": {"rnorm": "declared"}}])  # nothing microbench/benchmark
+    assert [f["type"] for f in contract.check_contract(sd)] == ["ceiling_unmeasured"]
+
+
+def test_ceiling_must_be_measured_satisfied_by_measured_evidence():
+    # honest run: a measured (microbench) ceiling operand exists -> NOT blocked.
+    sd = _sd({"key": "rnorm", "ceiling_must_be_measured": True},
+             [{"config_id": "c", "measurements": {"rnorm": 0.5, "peak_bw": 400.0},
+               "_provenance": {"peak_bw": "microbench"}}])
+    assert contract.check_contract(sd) == []
+
+
+def test_correctness_required_blocks_with_no_correctness_evidence():
+    sd = _sd({"key": "m", "correctness_required": True},
+             [{"config_id": "c", "measurements": {"m": 0.5, "gflops": 1000.0},
+               "_provenance": {"gflops": "microbench"}}])  # measured, but no correctness tag
+    fs = contract.check_contract(sd)
+    assert [f["type"] for f in fs] == ["correctness_uncovered"]
+    assert fs[0]["config_id"] == "*"
+
+
+def test_correctness_required_satisfied_by_correctness_tag():
+    sd = _sd({"key": "m", "correctness_required": True},
+             [{"config_id": "c", "measurements": {"m": 0.5, "max_abs_err": 1e-7},
+               "_provenance": {"max_abs_err": "correctness"}}])
+    assert contract.check_contract(sd) == []
+
+
+def test_requirement_flags_absent_is_noop():
+    sd = _sd({"key": "m"}, [{"config_id": "c", "measurements": {"m": 0.5}}])
+    assert contract.check_contract(sd) == []
+
+
+def test_requirement_flags_run_level_evidence_in_any_config():
+    # evidence in ANY config satisfies the run-level requirement (no per-config block).
+    sd = _sd({"key": "rnorm", "ceiling_must_be_measured": True, "correctness_required": True},
+             [{"config_id": "c1", "measurements": {"rnorm": 0.5, "peak": 400.0},
+               "_provenance": {"peak": "benchmark"}},
+              {"config_id": "c2", "measurements": {"err": 1e-8},
+               "_provenance": {"err": "reference"}}])
+    assert contract.check_contract(sd) == []
+
+
+def test_requirement_flags_domain_neutral_ml():
+    # ML: idea requires correctness, the run emitted no correctness residual at all.
+    sd = _sd({"key": "val_acc", "correctness_required": True},
+             [{"config_id": "c", "measurements": {"val_acc": 0.9}}])  # no _provenance
+    assert [f["type"] for f in contract.check_contract(sd)] == ["correctness_uncovered"]
+
+
+def test_requirement_flags_tolerate_provenance_synonyms():
+    # an honest run that PARAPHRASES the tag (STREAM benchmark / verified vs reference)
+    # must NOT be over-blocked — recognition is root-token, not exact-set membership.
+    sd = _sd({"key": "rnorm", "ceiling_must_be_measured": True, "correctness_required": True},
+             [{"config_id": "c", "measurements": {"rnorm": 0.8, "peak": 400.0, "err": 1e-8},
+               "_provenance": {"peak": "STREAM benchmark", "err": "verified vs reference"}}])
+    assert contract.check_contract(sd) == []
+
+
+def test_requirement_flags_block_unrelated_provenance():
+    # a tag that is clearly NOT a measured/verification source still blocks.
+    sd = _sd({"key": "rnorm", "ceiling_must_be_measured": True},
+             [{"config_id": "c", "measurements": {"rnorm": 0.8, "x": 1.0},
+               "_provenance": {"x": "hardcoded constant"}}])
+    assert [f["type"] for f in contract.check_contract(sd)] == ["ceiling_unmeasured"]
+
+
+def test_baseline_tag_is_ceiling_not_correctness():
+    # "baseline" is a measured-ceiling method, NOT a correctness tag: a perf-only run
+    # tagging "baseline" SATISFIES the ceiling but must STILL be correctness_uncovered.
+    sd = _sd({"key": "rnorm", "ceiling_must_be_measured": True, "correctness_required": True},
+             [{"config_id": "c", "measurements": {"rnorm": 0.8, "base_peak": 400.0},
+               "_provenance": {"base_peak": "baseline run"}}])
+    assert [f["type"] for f in contract.check_contract(sd)] == ["correctness_uncovered"]
+
+
+def test_integrity_tags_do_not_discharge_correctness():
+    # checkpoint / checksum / sanity_check must NOT satisfy correctness_required
+    # (the bare "check" root was removed to stop the substring collision).
+    for tag in ("checkpoint", "checksum", "sanity_check", "model_checkpoint", "estimated"):
+        sd = _sd({"key": "m", "correctness_required": True},
+                 [{"config_id": "c", "measurements": {"m": 0.5, "x": 1.0},
+                   "_provenance": {"x": tag}}])
+        assert [f["type"] for f in contract.check_contract(sd)] == ["correctness_uncovered"], tag
+
+
+def test_gate_blocks_ceiling_unmeasured_in_warn_at_final(tmp_path):
+    ckpt = tmp_path / "checkpoints" / "run3"
+    ckpt.mkdir(parents=True)
+    (ckpt / "tree.json").write_text(json.dumps({"nodes": []}))
+    sd = _sd({"key": "rnorm", "ceiling_must_be_measured": True},
+             [{"config_id": "c", "measurements": {"rnorm": 0.5}}])
+    rep = run_hard_gate(ckpt, paper_tex="", science_data=sd, policy={"mode": "warn"},
+                        phase="final", write=False)
+    assert rep["should_block"] is True
+    assert any(e["type"] == "ceiling_unmeasured" for e in rep["errors"])
+
+
 def test_gate_blocks_contract_violation_in_warn_at_final(tmp_path):
     ckpt = tmp_path / "checkpoints" / "run1"
     ckpt.mkdir(parents=True)

@@ -39,14 +39,16 @@ def build_contract_obligation(contract: "dict | None") -> str:
         "valid (not merely plausible), when you implement and run the experiment you MUST:",
         "  1. CORRECTNESS — compare your production output against an INDEPENDENT reference "
         "(a naive/known-correct implementation, an established baseline, or an analytic check) "
-        "on the SAME problem sizes your headline numbers use, and write the residual "
-        "(e.g. max_abs_err) into results.json measurements.",
+        "on the SAME problem sizes your headline numbers use, write the residual "
+        "(e.g. max_abs_err) into your emit_results measurements (an unverified output is "
+        "BLOCKED at finalize) and tag its provenance per item 3.",
         "  2. MEASURED CEILING — if the metric is normalized against a ceiling (a peak, a "
         "theoretical bound, or a baseline), MEASURE that ceiling empirically (a microbenchmark "
         "or a baseline run). NEVER hardcode a placeholder constant as the denominator.",
-        "  3. PROVENANCE — tag each measured ceiling in results.json with "
-        '"_provenance": {"<metric_name>": "microbench"} (or "benchmark"), so the gate can '
-        "confirm it was measured rather than assumed.",
+        "  3. PROVENANCE — pass a `provenance` map to the emit_results tool tagging each "
+        'measured ceiling {"<operand>": "microbench"} (or "benchmark") and your correctness '
+        'residual {"<residual>": "correctness"} (or "reference"), so the gate can confirm a '
+        "measured ceiling / a correctness check was actually run rather than assumed.",
         f"  4. DECLARE — fill the metric_contract: 'formula' (how '{key}' is recomputed from "
         'the raw measured operands), \'correctness\' {"expr": "<residual> < <tol>", "requires": '
         '["<residual>"]}, and \'required_measured\' (the operand names that must be measured).',
