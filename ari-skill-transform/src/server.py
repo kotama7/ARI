@@ -438,7 +438,6 @@ def _resolve_best_node_for_synthesis(nodes: list[dict]) -> str:
     return real[0].get("id", "")
 
 
-@mcp.tool()
 def _load_run_metric_contract(nodes_json_path: str) -> "dict | None":
     """Load the run-level metric_contract make_metric_spec persisted next to
     tree.json (idea-derived: concept invariants, correctness, required_measured,
@@ -457,6 +456,7 @@ def _load_run_metric_contract(nodes_json_path: str) -> "dict | None":
     return None
 
 
+@mcp.tool()
 async def nodes_to_science_data(
     nodes_json_path: str,
     llm_model: str = "",
