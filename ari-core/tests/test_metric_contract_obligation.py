@@ -47,3 +47,34 @@ def test_obligation_works_for_ml_concept():
     )
     assert "CORRECTNESS" in obl and "val_accuracy_fraction" in obl
     assert "roofline" not in obl.lower() and "gflop" not in obl.lower()
+
+
+def test_obligation_surfaces_declared_claims():
+    # When the idea declared falsifiable claims, the obligation lists each claim AND
+    # the measurement names the agent must emit — so a claimed mechanism cannot ship
+    # unmeasured (the names are surfaced top-down for the agent to emit).
+    obl = build_contract_obligation({
+        "key": "tput", "concept": "bounded",
+        "claims": [{"claim": "page-shaping helps reach-limited regimes",
+                    "required_evidence": ["thp_on_tput", "thp_off_tput"]}],
+    })
+    assert "5. CLAIMS" in obl
+    assert "page-shaping helps reach-limited regimes" in obl
+    assert "thp_on_tput" in obl and "thp_off_tput" in obl
+    assert "BLOCKED" in obl
+
+
+def test_claims_obligation_is_domain_neutral():
+    obl = build_contract_obligation({
+        "key": "val_acc",
+        "claims": [{"claim": "method beats baseline", "required_evidence": ["ours_acc", "base_acc"]}],
+    }).lower()
+    for banned in ("roofline", "gflop", "bandwidth", "cache", "dram", "stream"):
+        assert banned not in obl, banned
+
+
+def test_no_claims_means_no_claims_section():
+    obl = build_contract_obligation(
+        {"key": "m", "concept": "normalized", "invariants": ["value <= 1"]}
+    )
+    assert "5. CLAIMS" not in obl

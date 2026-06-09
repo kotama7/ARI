@@ -439,6 +439,24 @@ def _resolve_best_node_for_synthesis(nodes: list[dict]) -> str:
 
 
 @mcp.tool()
+def _load_run_metric_contract(nodes_json_path: str) -> "dict | None":
+    """Load the run-level metric_contract make_metric_spec persisted next to
+    tree.json (idea-derived: concept invariants, correctness, required_measured,
+    falsifiable claims). ``None`` when absent (legacy run) or unreadable, so the
+    gate's declared-contract checks are a clean no-op.
+    """
+    try:
+        from pathlib import Path as _P_mc
+        _mc_path = _P_mc(nodes_json_path).expanduser().resolve().parent / "metric_contract.json"
+        if _mc_path.is_file():
+            _mc_obj = json.loads(_mc_path.read_text())
+            if isinstance(_mc_obj, dict) and _mc_obj:
+                return _mc_obj
+    except Exception:
+        pass
+    return None
+
+
 async def nodes_to_science_data(
     nodes_json_path: str,
     llm_model: str = "",
@@ -961,6 +979,18 @@ async def nodes_to_science_data(
     }
     if implementation_overview is not None:
         out["implementation_overview"] = implementation_overview
+
+    # ── Declared metric-correctness contract (Phases 2-4 + plan-fidelity claims) ──
+    # make_metric_spec persisted the run-level metric_contract (idea-derived: concept
+    # invariants, correctness, required_measured, and falsifiable claims) next to
+    # tree.json. Graft it onto science_data so the hard gate enforces the DECLARED
+    # contract (not just the universal invariant registry) -- without this the
+    # correctness / required_measured / recompute / claim_evidence_missing checks are
+    # inert. Read BEFORE the invariant scan so declared bound invariants are scanned
+    # too. Best-effort; absent on legacy runs => the gate's contract checks no-op.
+    _mc = _load_run_metric_contract(nodes_json_path)
+    if _mc is not None:
+        out["metric_contract"] = _mc
 
     # ── Metric-correctness Phase 4: annotate physically-impossible metric values
     # (e.g. a normalized metric > 1) using the SAME universal invariant registry

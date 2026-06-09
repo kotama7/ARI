@@ -48,9 +48,10 @@ DEFAULT_POLICY: dict = {
         #   correctness_uncovered    — correctness required but not emitted
         #   placeholder_denominator  — a required ceiling is a constant, not measured
         #   recompute_mismatch       — reported metric not reproducible from raw inputs
+        #   claim_evidence_missing   — a declared falsifiable claim has no supporting measurement
         "always_block_on": [
             "invariant_violation", "correctness_failed", "correctness_uncovered",
-            "placeholder_denominator", "recompute_mismatch",
+            "placeholder_denominator", "recompute_mismatch", "claim_evidence_missing",
         ],
     },
 }

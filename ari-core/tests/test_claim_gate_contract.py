@@ -140,6 +140,86 @@ def test_regime_select_binds_ceiling_for_invariant():
 
 # ── gate integration: contract violations block at final regardless of mode ──
 
+# ── plan-fidelity: claim_evidence_missing (F) ────────────────────────────────
+
+def test_claim_wholly_unsupported_is_flagged():
+    # The idea declares a falsifiable claim but the run emitted NONE of its
+    # required_evidence -> the mechanism is claimed but never measured (the D5
+    # claim_implementation骨抜き). Run-level: union over all configs.
+    sd = _sd(
+        {"key": "tput", "claims": [
+            {"claim": "page-shaping controller helps reach-limited regimes",
+             "required_evidence": ["thp_on_tput", "thp_off_tput"]}]},
+        [{"config_id": "c1", "measurements": {"tput": 100.0, "k": 4.0}},
+         {"config_id": "c2", "measurements": {"tput": 120.0, "k": 8.0}}],
+    )
+    fs = contract.check_contract(sd)
+    assert [f["type"] for f in fs] == ["claim_evidence_missing"]
+    assert fs[0]["missing"] == ["thp_on_tput", "thp_off_tput"]
+
+
+def test_claim_with_any_evidence_present_is_not_blocked():
+    # High precision: if ANY of the claim's evidence is present, the blocking check
+    # stays silent — partial/weak support is the advisory review layer's job, not a
+    # hard block (avoids pipeline-wide over-blocking on cross-party naming mismatch).
+    sd = _sd(
+        {"key": "tput", "claims": [
+            {"claim": "huge pages help reach-limited regimes",
+             "required_evidence": ["thp_on_tput", "thp_off_tput"]}]},
+        [{"config_id": "c1", "measurements": {"thp_on_tput": 100.0}}],  # only one present
+    )
+    assert contract.check_contract(sd) == []
+
+
+def test_claim_negative_result_is_allowed():
+    # Both measurements present, outcome unfavourable (on < off): NOT blocked — the
+    # gate requires the evidence to judge the claim, not that the claim be confirmed.
+    sd = _sd(
+        {"key": "tput", "claims": [
+            {"claim": "X improves throughput", "required_evidence": ["x_on", "x_off"]}]},
+        [{"config_id": "c", "measurements": {"x_on": 90.0, "x_off": 100.0}}],
+    )
+    assert contract.check_contract(sd) == []
+
+
+def test_claim_coverage_is_domain_neutral_ml():
+    # Same machinery, an ML claim with NO supporting run at all — domain-neutral.
+    sd = _sd(
+        {"key": "val_acc", "claims": [
+            {"claim": "method M raises validation accuracy",
+             "required_evidence": ["m_on_val_acc", "m_off_val_acc"]}]},
+        [{"config_id": "c", "measurements": {"throughput": 1000.0}}],  # unrelated metric only
+    )
+    assert [f["type"] for f in contract.check_contract(sd)] == ["claim_evidence_missing"]
+
+
+def test_claim_without_required_evidence_is_noop():
+    sd = _sd({"key": "t", "claims": [{"claim": "vague", "required_evidence": []}]},
+             [{"config_id": "c", "measurements": {"t": 1.0}}])
+    assert contract.check_contract(sd) == []
+
+
+def test_no_claims_is_noop():
+    sd = _sd({"key": "t"}, [{"config_id": "c", "measurements": {"t": 1.0}}])
+    assert contract.check_contract(sd) == []
+
+
+def test_gate_blocks_claim_evidence_missing_in_warn_at_final(tmp_path):
+    ckpt = tmp_path / "checkpoints" / "run2"
+    ckpt.mkdir(parents=True)
+    (ckpt / "tree.json").write_text(json.dumps({"nodes": []}))
+    sd = _sd(
+        {"key": "tput", "claims": [
+            {"claim": "page-shaping controller improves width robustness",
+             "required_evidence": ["psc_on_tput", "psc_off_tput"]}]},
+        [{"config_id": "c", "measurements": {"tput": 100.0}}],
+    )
+    rep = run_hard_gate(ckpt, paper_tex="", science_data=sd, policy={"mode": "warn"},
+                        phase="final", write=False)
+    assert rep["should_block"] is True
+    assert any(e["type"] == "claim_evidence_missing" for e in rep["errors"])
+
+
 def test_gate_blocks_contract_violation_in_warn_at_final(tmp_path):
     ckpt = tmp_path / "checkpoints" / "run1"
     ckpt.mkdir(parents=True)

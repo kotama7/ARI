@@ -256,6 +256,118 @@ def _load_primary_metric_from_checkpoint(checkpoint_dir: str | None = None) -> s
     return ""
 
 
+# ── plan-fidelity: the idea's falsifiable claims -> metric_contract.claims ──────
+# Domain-neutral. The idea OWNS its claims (so the implementing agent cannot drop a
+# claim to dodge the gate); the producer obligation surfaces the required_evidence
+# names for the agent to emit. The gate (contract.check_contract) blocks a claim
+# whose evidence is wholly absent (claim_evidence_missing).
+_CLAIMS_EXTRACT_SYS = (
+    "You extract FALSIFIABLE CLAIMS from an experiment plan for a verification gate. "
+    "A falsifiable claim is a specific, testable assertion the experiment promises to "
+    "evaluate — a mechanism helps, a method beats a baseline, a property holds under a "
+    "condition. For EACH claim, give required_evidence: the MEASUREMENT NAMES that MUST "
+    "appear in results.json for the claim to be EVALUABLE AT ALL, regardless of whether the "
+    "outcome confirms or refutes it (e.g. an 'X improves throughput' claim requires the "
+    "throughput measured WITH and WITHOUT X). Use concise snake_case names the implementation "
+    "should emit. Do NOT turn an aspirational target into a claim ('1.5x speedup' is an "
+    "outcome, not evidence) unless it names a measurement. Domain-neutral: HPC, ML, theory. "
+    "Respond ONLY with JSON: "
+    '{"claims":[{"claim":"<assertion>","required_evidence":["<name1>","<name2>"]}]}'
+)
+
+
+def _normalize_claims(raw) -> list:
+    """Coerce declared/extracted claims to ``[{claim:str, required_evidence:[str]}]``.
+
+    Drops malformed entries and claims with no required_evidence (nothing checkable).
+    """
+    items = raw.get("claims") if isinstance(raw, dict) else raw
+    if not isinstance(items, list):
+        return []
+    out: list = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        claim = str(it.get("claim") or "").strip()
+        ev = [str(e).strip() for e in (it.get("required_evidence") or []) if str(e or "").strip()]
+        if claim and ev:
+            out.append({"claim": claim[:300], "required_evidence": ev})
+    return out[:12]
+
+
+def _load_idea_claims_source(checkpoint_dir: str | None = None):
+    """Return ``(structured_claims_or_None, plan_text)`` from the idea checkpoint.
+
+    Prefers a structured ``falsifiable_claims`` on the selected idea; otherwise returns
+    the experiment_plan prose for LLM extraction. Reads the same files as
+    ``_load_primary_metric_from_checkpoint``.
+    """
+    import os as _os
+    from pathlib import Path as _Path
+    ckpt = checkpoint_dir or _os.environ.get("ARI_CHECKPOINT_DIR", "")
+    if not ckpt:
+        return None, ""
+    for _fn in ("evaluation_criteria.json", "idea.json"):
+        _p = _Path(ckpt) / _fn
+        if not _p.is_file():
+            continue
+        try:
+            _d = json.loads(_p.read_text())
+        except Exception:
+            continue
+        best = _d
+        if isinstance(_d.get("ideas"), list) and _d["ideas"]:
+            best = _d["ideas"][0] or {}
+        fc = best.get("falsifiable_claims") or _d.get("falsifiable_claims")
+        if isinstance(fc, list) and fc:
+            return fc, ""
+        plan = best.get("experiment_plan") or _d.get("experiment_plan") or ""
+        if isinstance(plan, str) and plan.strip():
+            return None, plan
+    return None, ""
+
+
+async def _llm_extract_claims(plan_text: str) -> list:
+    """LLM-extract falsifiable claims + required_evidence names from plan prose."""
+    try:
+        import litellm as _litellm, os as _os, json as _json, re as _re
+        _model = (_os.environ.get("ARI_MODEL_EVAL")
+                  or _os.environ.get("ARI_MODEL")
+                  or _os.environ.get("ARI_LLM_MODEL")
+                  or "gpt-4o-mini")
+        _resp = await _litellm.acompletion(
+            model=_model,
+            messages=[
+                {"role": "system", "content": _CLAIMS_EXTRACT_SYS},
+                {"role": "user", "content": "Experiment plan:\n" + (plan_text or "")[:6000]},
+            ],
+            temperature=0.0,
+            max_tokens=600,
+        )
+        _raw = _resp.choices[0].message.content or ""
+        _m = _re.search(r"\{.*\}", _raw, _re.DOTALL)
+        if _m:
+            return _normalize_claims(_json.loads(_m.group(0)))
+    except Exception:
+        pass
+    return []
+
+
+async def _resolve_falsifiable_claims(checkpoint_dir: str | None = None) -> list:
+    """Resolve the idea's falsifiable claims for the plan-fidelity contract.
+
+    Structured ``falsifiable_claims`` (idea-owned) take precedence; else the
+    experiment_plan prose is LLM-extracted. ``[]`` when unavailable (legacy / no idea),
+    so the coverage check is a no-op.
+    """
+    structured, plan = _load_idea_claims_source(checkpoint_dir)
+    if structured:
+        return _normalize_claims(structured)
+    if plan:
+        return await _llm_extract_claims(plan)
+    return []
+
+
 async def _tool_make_metric_spec(arguments: dict) -> dict:
     text = arguments["experiment_text"]
     expected_metrics = _parse_success_metrics(text)
@@ -324,6 +436,42 @@ async def _tool_make_metric_spec(arguments: dict) -> dict:
             }
     except Exception:
         metric_contract = None
+
+    # F: plan-fidelity — attach the idea's falsifiable claims so the gate can block a
+    # declared-but-untested claim (claim_evidence_missing). Idea-owned, so the agent
+    # cannot remove a claim to dodge the check; the producer obligation surfaces the
+    # required_evidence names. Decoupled from concept-classification: claims are
+    # enforced whenever the idea declares them, even for a non-normalized metric.
+    try:
+        _claims = await _resolve_falsifiable_claims(arguments.get("checkpoint_dir"))
+    except Exception:
+        _claims = []
+    if _claims:
+        if not isinstance(metric_contract, dict):
+            metric_contract = {"key": metric_keyword or "", "claims": _claims}
+        else:
+            metric_contract["claims"] = _claims
+    elif isinstance(metric_contract, dict):
+        metric_contract.setdefault("claims", [])
+
+    # Persist the run-level contract next to idea.json/tree.json so the paper
+    # pipeline (nodes_to_science_data) can graft it onto science_data.json for the
+    # hard gate. Without this the DECLARED contract (claims / correctness /
+    # required_measured / recompute / declared invariants) never reaches the gate --
+    # only the universal invariant registry does. Best-effort; idempotent (the
+    # contract is idea-derived), written to the same checkpoint idea.json was read
+    # from. Never break the spec on a write failure.
+    if isinstance(metric_contract, dict) and metric_contract:
+        try:
+            import os as _os_mc
+            from pathlib import Path as _P_mc
+            _ck_mc = (arguments.get("checkpoint_dir")
+                      or _os_mc.environ.get("ARI_CHECKPOINT_DIR", "") or "").strip()
+            if _ck_mc and _P_mc(_ck_mc).is_dir():
+                (_P_mc(_ck_mc) / "metric_contract.json").write_text(
+                    json.dumps(metric_contract, ensure_ascii=False, indent=2))
+        except Exception:
+            pass
 
     return {
         "expected_metrics": expected_metrics,
