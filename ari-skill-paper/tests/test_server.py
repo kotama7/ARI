@@ -86,6 +86,89 @@ async def test_paper_refine_uses_diff_not_full_rewrite(tmp_path):
     assert captured["max_tokens"] <= 8192     # bounded => no full-document regeneration
 
 
+@pytest.mark.asyncio
+async def test_paper_refine_applies_deterministic_substitution(tmp_path):
+    # (b) an explicit `replace "X" with "Y"` review instruction is applied
+    # DETERMINISTICALLY even when the LLM returns NO edits — the prior single pass
+    # left such concrete overclaim fixes (e.g. the title) in place.
+    import json as _j
+    tex = ('\\title{Roofline/Loopline Validation}\n% CLAIM:C1:NC1\n'
+           'We report results.\n\\end{document}\n')
+    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    revs = _j.dumps([{"section": "title",
+        "instruction": 'Soften it, e.g. replace "Roofline/Loopline Validation" with "Roofline/Loopline Context".'}])
+    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, return_value=_mock_resp("[]")):
+        out = await paper_refine(tex_path=str(p), suggested_revisions_json=revs)
+    assert out["refined"] is True
+    assert "Roofline/Loopline Context" in out["latex"]
+    assert "Roofline/Loopline Validation" not in out["latex"]
+    assert out["deterministic_substitutions"] == 1
+    assert out["unaddressed_substitutions"] == []
+    assert "% CLAIM:C1:NC1" in out["latex"]          # anchor preserved
+
+
+@pytest.mark.asyncio
+async def test_paper_refine_reports_unaddressed_nonunique_substitution(tmp_path):
+    # an explicit replacement whose OLD (a phrase) is NON-UNIQUE is never guessed; it
+    # is REPORTED under unaddressed_substitutions rather than silently dropped.
+    import json as _j
+    tex = ("\\section{R}\n% CLAIM:C1:NC1\n"
+           "The method is robust here. The method is robust there.\n\\end{document}\n")
+    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    revs = _j.dumps([{"instruction": 'replace "method is robust" with "method shows limited sensitivity"'}])
+    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, return_value=_mock_resp("[]")):
+        out = await paper_refine(tex_path=str(p), suggested_revisions_json=revs)
+    assert out["refined"] is False                    # non-unique phrase never guessed
+    assert any(u["old"] == "method is robust" for u in out["unaddressed_substitutions"])
+
+
+@pytest.mark.asyncio
+async def test_paper_refine_expand_substitution_not_falsely_unaddressed(tmp_path):
+    # regression (review finding): an EXPAND edit (OLD substring of NEW, e.g.
+    # "Roofline Validation" -> "Roofline Validation Context") lands but must NOT be
+    # reported unaddressed -- verify keys on the apply outcome, not `old in refined`.
+    import json as _j
+    tex = ("\\title{Roofline Validation}\n% CLAIM:C1:NC1\nText.\n\\end{document}\n")
+    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    revs = _j.dumps([{"instruction": 'replace "Roofline Validation" with "Roofline Validation Context"'}])
+    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, return_value=_mock_resp("[]")):
+        out = await paper_refine(tex_path=str(p), suggested_revisions_json=revs)
+    assert out["refined"] is True
+    assert "Roofline Validation Context" in out["latex"]
+    assert out["deterministic_substitutions"] == 1
+    assert out["unaddressed_substitutions"] == []     # applied, not falsely flagged
+
+
+@pytest.mark.asyncio
+async def test_paper_refine_bare_word_substitution_routed_to_llm(tmp_path):
+    # review finding: a single-word OLD (no whitespace) could be globally unique by
+    # accident and rewritten in the wrong span -> it is NOT a deterministic sub.
+    import json as _j
+    tex = ("\\title{Validation}\n% CLAIM:C2:NC2\nT.\n\\end{document}\n")
+    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    revs = _j.dumps([{"instruction": 'replace "Validation" with "Context"'}])
+    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, return_value=_mock_resp("[]")):
+        out = await paper_refine(tex_path=str(p), suggested_revisions_json=revs)
+    assert out["deterministic_substitutions"] == 0    # bare word not auto-applied
+
+
+@pytest.mark.asyncio
+async def test_paper_refine_multipass_applies_across_passes(tmp_path):
+    # (b) the bounded loop gives the LLM multiple passes: an edit the 2nd pass produces
+    # (after the 1st changed the doc) is still applied — the old single pass missed it.
+    tex = ("\\section{R}\n% CLAIM:C1:NC1\nAlpha. Beta.\n\\end{document}\n")
+    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    resp = [_mock_resp('[{"find":"Alpha.","replace":"Alpha-edited."}]'),
+            _mock_resp('[{"find":"Beta.","replace":"Beta-edited."}]'),
+            _mock_resp("[]")]
+    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, side_effect=resp):
+        out = await paper_refine(tex_path=str(p), suggested_revisions_json='[{"instruction":"x"}]')
+    assert out["refined"] is True
+    assert "Alpha-edited." in out["latex"] and "Beta-edited." in out["latex"]
+    assert out["applied_revisions"] == 2
+    assert out["refine_passes"] == 2
+
+
 # --- list_venues ---
 
 @pytest.mark.asyncio
