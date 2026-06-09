@@ -15,12 +15,14 @@ Contract schema (all expressions are restricted-AST, see formula_eval):
     "invariants": ["value <= 1", "model_sec <= sec"],         # D/E: boolean exprs, False => violation
     "correctness": {"expr": "max_abs_err < 1e-4", "requires": ["max_abs_err"]},     # A
     "required_measured": ["dram_peak_bw", "cache_bw", "ceiling_byK"],               # B provenance
+    "claims": [{"claim": "huge pages help reach-limited regimes",                   # F plan-fidelity
+                "required_evidence": ["thp_on_tput", "thp_off_tput"]}],
     "tolerance": {"absolute": 0.0, "relative": 0.02},
   }
 
 Finding types (all added to policy.always_block_on): invariant_violation,
 correctness_failed, correctness_uncovered, placeholder_denominator,
-recompute_mismatch. Provenance is read from ``config["_provenance"]``
+recompute_mismatch, claim_evidence_missing. Provenance is read from ``config["_provenance"]``
 (name -> "microbench"|"benchmark"|"declared"|"constant"); a required_measured
 operand must be microbench/benchmark, never declared/constant.
 """
@@ -172,6 +174,37 @@ def check_contract(science_data: dict) -> list[dict]:
                     "message": (f"reported '{key}'={reported} for config '{cid}' is not reproducible "
                                 f"from the declared formula '{formula}' (recomputed "
                                 f"{round(float(recomputed), 6)})"),
+                })
+
+    # F: plan-fidelity — declared falsifiable claims must be EVALUABLE from the
+    # emitted data. A claim the idea promised (e.g. "mechanism M helps regime R")
+    # whose required_evidence measurements are WHOLLY ABSENT across the run is an
+    # untested claim — the experiment produced no data to evaluate it (the
+    # claim_implementation骨抜き failure: a mechanism is claimed but never measured).
+    # Run-level: union of measured metric names over every configuration. Presence-
+    # only — a NEGATIVE result is fine (the measurements exist, the outcome is just
+    # unfavourable); only ZERO supporting evidence blocks. High-precision: a claim
+    # with ANY of its declared evidence present is NOT blocked here (the advisory
+    # review layer handles partial/weak support). Names are coordinated top-down
+    # via the producer obligation, like ``required_measured``.
+    claims = [c for c in (mc.get("claims") or []) if isinstance(c, dict)]
+    if claims:
+        present: set[str] = set()
+        for _cid, cfg in _iter_configs(science_data):
+            present.update(_flatten_metrics(cfg).keys())
+        for idx, c in enumerate(claims):
+            req = [n for n in (c.get("required_evidence") or []) if isinstance(n, str) and n.strip()]
+            if not req:
+                continue
+            if not any(n in present for n in req):
+                findings.append({
+                    "type": "claim_evidence_missing",
+                    "claim": str(c.get("claim") or f"claim[{idx}]"),
+                    "missing": req,
+                    "message": (f"the idea declares the falsifiable claim "
+                                f"\"{str(c.get('claim') or '')[:160]}\" but the run emitted NONE of the "
+                                f"measurement(s) {req} needed to evaluate it — the claimed result/"
+                                f"mechanism is unsupported by any evidence (declared but never tested)"),
                 })
 
     return findings

@@ -33,7 +33,7 @@ def build_contract_obligation(contract: "dict | None") -> str:
     concept = str(contract.get("concept") or "bounded")
     invs = [str(i) for i in (contract.get("invariants") or []) if i]
     inv_clause = f" with invariant(s) [{'; '.join(invs)}]" if invs else ""
-    return "\n".join([
+    lines = [
         f"METRIC-CORRECTNESS CONTRACT (required for a publishable claim of '{key}'):",
         f"'{key}' is a {concept} metric{inv_clause}. For the claim to be scientifically "
         "valid (not merely plausible), when you implement and run the experiment you MUST:",
@@ -50,7 +50,27 @@ def build_contract_obligation(contract: "dict | None") -> str:
         f"  4. DECLARE — fill the metric_contract: 'formula' (how '{key}' is recomputed from "
         'the raw measured operands), \'correctness\' {"expr": "<residual> < <tol>", "requires": '
         '["<residual>"]}, and \'required_measured\' (the operand names that must be measured).',
+    ]
+    # F: plan-fidelity — when the idea declared falsifiable claims, the agent must
+    # EMIT the named measurement(s) that make each claim evaluable, or it is blocked.
+    # This is what stops a declared mechanism being claimed but never measured. The
+    # names come from the idea (top-down), surfaced here so the agent emits them.
+    claims = [c for c in (contract.get("claims") or []) if isinstance(c, dict)]
+    if claims:
+        lines.append(
+            "  5. CLAIMS — your plan declares the falsifiable claim(s) below. For EACH, emit into "
+            "results.json the NAMED measurement(s) that let the claim be EVALUATED. A claim with "
+            "NO supporting measurement is BLOCKED at finalize (a positive OR a negative outcome is "
+            "fine — what is mandatory is the evidence to judge it; do not claim a mechanism you "
+            "did not measure):")
+        for c in claims:
+            ev = [str(e) for e in (c.get("required_evidence") or []) if e]
+            ctext = str(c.get("claim") or "")[:140]
+            lines.append(
+                f"     - \"{ctext}\" -> emit measurement(s) named: [{', '.join(ev)}]" if ev
+                else f"     - \"{ctext}\"")
+    lines.append(
         "Choose the reference and the ceiling measurement appropriate to YOUR domain. A claim "
-        "whose ceiling is a hardcoded placeholder, or whose output is unverified, is BLOCKED at "
-        "finalize.",
-    ])
+        "whose ceiling is a hardcoded placeholder, whose output is unverified, or that has no "
+        "supporting measurement, is BLOCKED at finalize.")
+    return "\n".join(lines)
