@@ -24,6 +24,7 @@ from ari.orchestrator.lineage_decision import (
     build_lineage_state,
     decide_lineage_action,
     detect_stagnation,
+    deterministic_stagnation_pivot,
 )
 
 
@@ -47,6 +48,57 @@ def _state(**overrides) -> LineageState:
     )
     base.update(overrides)
     return LineageState(**base)
+
+
+# ---------------------------------------------------------------------------
+# deterministic_stagnation_pivot — "on stagnation, use the next idea"
+# ---------------------------------------------------------------------------
+
+
+def test_pivot_picks_strongest_unused_alternative():
+    d = deterministic_stagnation_pivot(_state())
+    assert d is not None
+    assert d.action == "switch_to_idea"
+    assert d.target_idea_index == 1          # score 0.7 > 0.65
+    assert d.disable_generate_ideas is True   # child runs the pinned idea
+
+
+def test_pivot_skips_already_used_alternatives():
+    d = deterministic_stagnation_pivot(_state(), used_indexes={1})
+    assert d is not None and d.target_idea_index == 2   # next-best unused
+
+
+def test_pivot_tie_break_prefers_lower_index():
+    s = _state(alternatives=[
+        {"index": 2, "title": "B", "overall_score": 0.75},
+        {"index": 1, "title": "A", "overall_score": 0.75},
+    ])
+    assert deterministic_stagnation_pivot(s).target_idea_index == 1
+
+
+def test_pivot_defers_when_all_used():
+    assert deterministic_stagnation_pivot(_state(), used_indexes={1, 2}) is None
+
+
+def test_pivot_defers_when_no_budget():
+    assert deterministic_stagnation_pivot(_state(budget_remaining=0)) is None
+
+
+def test_pivot_defers_at_recursion_limit():
+    assert deterministic_stagnation_pivot(_state(recursion_depth=3, max_recursion_depth=3)) is None
+
+
+def test_pivot_defers_when_no_alternatives():
+    assert deterministic_stagnation_pivot(_state(alternatives=[])) is None
+
+
+def test_pivot_handles_missing_scores():
+    s = _state(alternatives=[
+        {"index": 1, "title": "A"},                 # no overall_score
+        {"index": 2, "title": "B", "overall_score": 0.3},
+    ])
+    # the scored alternative wins over the unscored (-inf) one
+    assert deterministic_stagnation_pivot(s).target_idea_index == 2
 
 
 # ---------------------------------------------------------------------------
