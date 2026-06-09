@@ -146,6 +146,10 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
     _lineage_stop_requested = False
     _lineage_actions_taken = 0
     _lineage_rate_limit = int(_lineage_cfg.get("rate_limit_per_run", 5) or 5)
+    # lineage decisions: runner-up idea indexes already pivoted to, so the
+    # deterministic stagnation pivot moves to a FRESH alternative each time
+    # rather than re-trying the same one.
+    _lineage_used_indexes: set = set()
     _lineage_min_nodes = int(_lineage_cfg.get("min_nodes_before_decision", 3) or 3)
     _lineage_window = int(_lineage_cfg.get("stagnation_window", 5) or 5)
     _lineage_threshold = float(_lineage_cfg.get("stagnation_threshold", 0.02) or 0.02)
@@ -693,6 +697,7 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                             build_lineage_state,
                             decide_lineage_action,
                             detect_stagnation,
+                            deterministic_stagnation_pivot,
                         )
                         # Pull current composite scores for stagnation check.
                         _composites = []
@@ -702,14 +707,12 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                             )
                             if isinstance(_s, (int, float)):
                                 _composites.append(float(_s))
-                        _should_call = (
-                            _lineage_mode == "every_node"
-                            or detect_stagnation(
-                                _composites,
-                                window=_lineage_window,
-                                threshold=_lineage_threshold,
-                            )
+                        _stagnated = detect_stagnation(
+                            _composites,
+                            window=_lineage_window,
+                            threshold=_lineage_threshold,
                         )
+                        _should_call = (_lineage_mode == "every_node" or _stagnated)
                         if _should_call:
                             _idea_data_l = json.loads(_idea_json_path.read_text())
                             _budget_left = (
@@ -731,9 +734,21 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                                 recursion_depth=_rec_depth,
                                 max_recursion_depth=_max_rec,
                             )
-                            _decision = _asyncio_l.run(
-                                decide_lineage_action(_state)
-                            )
+                            # lineage decisions: on CONFIRMED stagnation, pivot
+                            # deterministically to the strongest unused runner-up
+                            # idea (agreed policy: use the 2nd idea to break a
+                            # plateau) — the judge's "prefer continue" bias tends
+                            # to let runner-ups die. Defer continue-vs-terminate to
+                            # the LLM judge only when no eligible alternative remains.
+                            _decision = None
+                            if _stagnated:
+                                _decision = deterministic_stagnation_pivot(
+                                    _state, _lineage_used_indexes
+                                )
+                            if _decision is None:
+                                _decision = _asyncio_l.run(
+                                    decide_lineage_action(_state)
+                                )
                             _LINEAGE_LOG.info(
                                 "lineage decision (%s): action=%s rationale=%s",
                                 _lineage_mode, _decision.action,
@@ -767,6 +782,11 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                                 )
                             if _decision.action != "continue":
                                 _lineage_actions_taken += 1
+                            # Remember the runner-up we pivoted to, so the next
+                            # stagnation pivot moves to a fresh alternative.
+                            if (_decision.action in ("switch_to_idea", "fanout")
+                                    and isinstance(_decision.target_idea_index, int)):
+                                _lineage_used_indexes.add(_decision.target_idea_index)
                             if _stop:
                                 _lineage_stop_requested = True
                     except Exception as _le:
