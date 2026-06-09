@@ -509,6 +509,42 @@ def _apply_llm_env_overrides(cfg: "ARIConfig") -> None:
         cfg.llm.base_url = _u
 
 
+def export_resolved_config_to_skill_env(cfg: "ARIConfig") -> None:
+    """Bridge the RESOLVED main config to the env vars skill SUBPROCESSES read.
+
+    The main agent loop reads ``cfg.llm`` directly, but skill subprocesses read their
+    LLM / SLURM config from environment variables (the idea skill's ``ARI_LLM_MODEL``,
+    the HPC skill's ``ARI_SLURM_PARTITION``). The GUI launcher injects those vars; a
+    bare ``ari run`` did NOT, so a skill silently fell back to its OWN default (the
+    idea skill -> ``ollama_chat/qwen3:32b`` against a dead Ollama; the HPC skill ->
+    sinfo's first partition, e.g. partA/aarch64) even though the run was configured
+    for, say, gpt-5.2 on partB. This bridges cfg -> env so the CLI configures skills
+    the same way the GUI does.
+
+    ``setdefault`` => an explicitly-set env var still wins (the user/GUI override is
+    never clobbered); this only fills the gap a bare CLI left empty.
+    """
+    if getattr(cfg.llm, "model", None):
+        os.environ.setdefault("ARI_LLM_MODEL", str(cfg.llm.model))
+    if getattr(cfg.llm, "backend", None):
+        os.environ.setdefault("ARI_BACKEND", str(cfg.llm.backend))
+    if getattr(cfg.llm, "base_url", None):
+        os.environ.setdefault("ARI_LLM_API_BASE", str(cfg.llm.base_url))
+    # SLURM partition: export only a CONCRETE choice (not "auto"/empty), so the HPC
+    # skill uses it instead of auto-detecting sinfo's first partition. Look in the
+    # resources dict (ARI_SLURM_PARTITION-sourced) then the profile's hpc section.
+    _part = ""
+    _res = getattr(cfg, "resources", None)
+    if isinstance(_res, dict):
+        _part = str(_res.get("partition") or "").strip()
+    if not _part:
+        _hpc = getattr(cfg, "hpc", None)
+        if isinstance(_hpc, dict):
+            _part = str(_hpc.get("partition") or "").strip()
+    if _part and _part.lower() != "auto":
+        os.environ.setdefault("ARI_SLURM_PARTITION", _part)
+
+
 def _merge_bfts_disabled_tools(cfg: "ARIConfig", raw: dict) -> None:
     """Auto-disable MCP tools whose bfts_pipeline stage is disabled.
 
