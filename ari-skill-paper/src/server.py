@@ -2397,12 +2397,23 @@ async def paper_refine(
     """Apply suggested revisions to the paper while PRESERVING ``% CLAIM:Cx:NCx``
     anchors (Story2Proposal generate-evaluate-adapt loop).
 
+    Apply strategy (strengthened so the review's edits actually LAND — a single LLM
+    pass previously left explicit overclaim fixes, e.g. the title, in place):
+      1. DETERMINISTIC explicit substitutions: each ``replace "X" with "Y"`` the review
+         specifies is applied directly (unique-only, anchor-safe), so the concrete
+         edits cannot be silently dropped by the LLM.
+      2. BOUNDED multi-pass LLM find/replace for the remaining qualifying requests:
+         up to 3 passes on the progressively-edited doc until a pass adds no new safe
+         edit. ``refine_passes`` reports how many ran.
+      3. VERIFY (mechanical): any explicit substitution whose OLD span still occurs is
+         reported under ``unaddressed_substitutions`` for the post-refine review.
+
     Non-destructive contract:
       - With no actionable revisions, the paper is returned unchanged.
-      - Every ``% CLAIM`` anchor present in the draft MUST survive: after the LLM
-        edit the anchors are verified; on loss the edit is retried once and, if
-        still lost, the original paper is kept (refined=False) rather than drop
-        anchors. The anchors must live until the final hard gate.
+      - Every ``% CLAIM`` anchor present in the draft MUST survive: _apply_edits rejects
+        anchor-dropping edits per pass and the loop stops before any such pass; on net
+        anchor loss the original paper is kept (refined=False). The anchors must live
+        until the final hard gate.
 
     The refined LaTeX is returned under ``latex`` (the pipeline writes it to the
     stage output, overwriting full_paper.tex); the draft is preserved alongside
@@ -2491,12 +2502,33 @@ async def paper_refine(
         "5. Output ONLY a JSON array in ```json ... ``` fences (no prose, no full document).\n"
         + _paper_language_directive()
     )
-    user_prompt = (
-        f"Revision requests:\n{revisions_text}\n\n"
-        f"Return targeted find/replace edits for this document:\n\n```latex\n{original}\n```"
+    _ANCHOR_RE = _re.compile(r"%\s*CLAIM:C\w+:NC\w+")
+
+    # (b) The semantic review usually specifies an EXPLICIT replacement (e.g. replace
+    # "Roofline/Loopline Validation" with "... Context"). Extract those quoted OLD->NEW
+    # pairs so they can be applied DETERMINISTICALLY first -- the concrete review edits
+    # then cannot be silently missed by the LLM (the prior single pass left the title /
+    # abstract overclaims in place). Straight/curly quotes; OLD must be >=4 chars.
+    _SUB_RE = _re.compile(
+        r"replace\s+[\"'“”‘’](.+?)[\"'“”‘’]"
+        r"\s+with\s+[\"'“”‘’](.+?)[\"'“”‘’]",
+        _re.IGNORECASE | _re.DOTALL,
     )
 
-    _ANCHOR_RE = _re.compile(r"%\s*CLAIM:C\w+:NC\w+")
+    def _extract_substitutions() -> list:
+        subs: list = []
+        for r in revisions:
+            instr = r.get("instruction") or r.get("fix") or r.get("suggestion") or ""
+            for _m in _SUB_RE.finditer(instr):
+                old, new = _m.group(1).strip(), _m.group(2).strip()
+                # OLD must be a multi-token PHRASE (contains whitespace): a bare generic
+                # word could be globally unique by accident and get rewritten in the
+                # WRONG span. Single-word fixes are routed to the LLM pass instead (its
+                # prompt carries the section label for context).
+                if (old and old != new and len(old) >= 4 and any(c.isspace() for c in old)
+                        and (old, new) not in subs):
+                    subs.append((old, new))
+        return subs
 
     def _extract_edits(raw: str) -> list:
         s = (raw or "").strip()
@@ -2535,12 +2567,18 @@ async def paper_refine(
             applied += 1
         return doc, applied, skipped
 
-    async def _run_edit() -> list:
+    async def _run_edit(cur_doc: str, pass_idx: int = 0) -> list:
+        _user = (
+            f"Revision requests:\n{revisions_text}\n\n"
+            + ("NOTE: some requests may ALREADY be reflected in the document below — "
+               "apply ONLY the ones not yet addressed.\n\n" if pass_idx > 0 else "")
+            + f"Return targeted find/replace edits for this document:\n\n```latex\n{cur_doc}\n```"
+        )
         _kw = {
             "model": _get_model(),
             "messages": [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
+                {"role": "user", "content": _user},
             ],
             "temperature": 0.4, "max_tokens": 8192, "timeout": 1800,
         }
@@ -2554,21 +2592,61 @@ async def paper_refine(
         return _extract_edits(_raw)
 
     warnings: list[str] = []
-    try:
-        edits = await _run_edit()
-    except Exception as _e:
-        edits = []
-        warnings.append(f"refine LLM call failed: {_e}")
-    refined, applied, skipped = _apply_edits(original, edits)
-    if skipped:
-        warnings.append(f"skipped {len(skipped)} unsafe/non-unique edit(s): {skipped[:3]}")
+    doc = original
+    applied_total = 0
 
-    # Safety net: untouched spans keep their anchors; _apply_edits already rejects
-    # anchor-dropping edits, so this should hold — verify and revert if not.
+    # (b1) DETERMINISTIC explicit substitutions first — the review's concrete
+    # "replace X with Y" edits are applied directly (anchor-safe, unique-only) so they
+    # cannot be missed by the LLM. This is what fixes the title/abstract overclaim the
+    # prior single pass left in place.
+    det_subs = _extract_substitutions()
+    applied_subs: set = set()
+    for _old, _new in det_subs:
+        if doc.count(_old) == 1 and set(_ANCHOR_RE.findall(_old)).issubset(set(_ANCHOR_RE.findall(_new))):
+            doc = doc.replace(_old, _new, 1)
+            applied_total += 1
+            applied_subs.add((_old, _new))
+
+    # (b2) BOUNDED multi-pass LLM loop for the remaining (qualifying / fuzzy) requests.
+    # The prior single pass under-applied; iterate up to MAX_PASSES on the progressively
+    # edited doc until a pass yields no new safe edit, stopping before any pass that
+    # would drop a % CLAIM anchor.
+    MAX_PASSES = 3
+    passes = 0
+    for _pass in range(MAX_PASSES):
+        try:
+            edits = await _run_edit(doc, _pass)
+        except Exception as _e:
+            warnings.append(f"refine LLM pass {_pass + 1} failed: {_e}")
+            break
+        new_doc, applied, skipped = _apply_edits(doc, edits)
+        if skipped:
+            warnings.append(f"pass {_pass + 1}: skipped {len(skipped)} unsafe/non-unique edit(s): {skipped[:2]}")
+        if applied == 0:
+            break
+        if not orig_anchors.issubset({a["anchor"] for a in _find_anchors(new_doc)}):
+            warnings.append(f"pass {_pass + 1}: edits would drop a % CLAIM anchor; kept prior text")
+            break
+        doc = new_doc
+        applied_total += applied
+        passes += 1
+
+    refined = doc
+
+    # (b3) VERIFY which explicit substitutions actually landed (mechanical, no LLM):
+    # those NOT in applied_subs were skipped (non-unique / absent). Keyed on the b1
+    # apply outcome, NOT on `_old in refined` -- an expand edit ("X" -> "X Context")
+    # leaves OLD present yet was applied, so a presence test would falsely flag it.
+    unaddressed = [{"old": _o, "new": _n} for _o, _n in det_subs if (_o, _n) not in applied_subs]
+    if unaddressed:
+        warnings.append(
+            f"{len(unaddressed)} explicit replacement(s) not applied (find not unique/absent): "
+            + ", ".join(f"{u['old'][:40]!r}" for u in unaddressed[:3]))
+
     final_anchors = {a["anchor"] for a in _find_anchors(refined)}
     anchors_ok = orig_anchors.issubset(final_anchors)
 
-    if applied == 0 or not anchors_ok:
+    if applied_total == 0 or not anchors_ok:
         if not anchors_ok:
             warnings.append(f"anchors lost {sorted(orig_anchors - final_anchors)}; reverting to draft")
         try:
@@ -2578,7 +2656,9 @@ async def paper_refine(
         return {
             "latex": original, "refined": False, "anchors_preserved": True,
             "applied_revisions": 0, "anchor_count": len(orig_anchors), "warnings": warnings,
-            "note": ("no safe edits applied; paper unchanged" if applied == 0
+            "refine_passes": passes, "deterministic_substitutions": len(applied_subs),
+            "unaddressed_substitutions": unaddressed,
+            "note": ("no safe edits applied; paper unchanged" if applied_total == 0
                      else "edits dropped anchors; reverted to draft"),
         }
 
@@ -2592,9 +2672,12 @@ async def paper_refine(
 
     return {
         "latex": refined, "refined": True, "anchors_preserved": True,
-        "applied_revisions": applied, "anchor_count": len(orig_anchors),
-        "warnings": warnings,
-        "note": "targeted find/replace edits (S2P refiner: global role, diff output); PDF recompile is a follow-up",
+        "applied_revisions": applied_total, "anchor_count": len(orig_anchors),
+        "warnings": warnings, "refine_passes": passes,
+        "deterministic_substitutions": len(applied_subs),
+        "unaddressed_substitutions": unaddressed,
+        "note": ("deterministic explicit replacements + bounded multi-pass find/replace "
+                 "(S2P refiner: global role, diff output); PDF recompile is a follow-up"),
     }
 
 
