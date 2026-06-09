@@ -9,7 +9,19 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
-from server import _load_run_metric_contract  # noqa: E402
+from server import _load_run_metric_contract, mcp  # noqa: E402
+
+
+def test_nodes_to_science_data_is_a_registered_mcp_tool():
+    # regression: adding _load_run_metric_contract directly BEFORE the @mcp.tool()
+    # decorator once STOLE the decorator, dropping nodes_to_science_data from the
+    # skill's tool list (the paper pipeline's transform_data stage then failed with
+    # "Tool 'nodes_to_science_data' not found", cascading to no science_data -> the
+    # hard gate never ran). The helper must NOT be a tool; the entrypoint MUST be.
+    import asyncio
+    names = [t.name for t in asyncio.run(mcp.list_tools())]
+    assert "nodes_to_science_data" in names
+    assert "_load_run_metric_contract" not in names
 
 
 def test_load_run_metric_contract_reads_sibling(tmp_path):
