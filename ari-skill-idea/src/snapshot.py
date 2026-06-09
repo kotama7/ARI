@@ -154,21 +154,40 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:40] or "topic"
 
 
+def _condense_query(topic: str) -> str:
+    """Reduce a free-text experiment description to a short KEYWORD query for S2.
+
+    ``/paper/search`` is a keyword endpoint: passing the whole multi-sentence
+    description (incl. a ``Metrics: ...`` tail) returns 0 hits even with a valid API
+    key, which silently degraded the VirSci snapshot to an ungrounded re-impl run.
+    Take the first clause (before ``;`` / ``.`` / ``Metrics:``), drop parentheticals,
+    and keep the leading keywords. Empty -> a short prefix of the original.
+    """
+    import re as _re
+    t = topic.split("Metrics:")[0]
+    t = _re.split(r"[.;:\n]", t, 1)[0]          # first clause only
+    t = _re.sub(r"\([^)]*\)", " ", t)            # drop parentheticals e.g. "(SpMM)"
+    words = _re.findall(r"[A-Za-z][A-Za-z0-9+\-]*", t)
+    return " ".join(words[:10]) or (topic.strip()[:80])
+
+
 def _fetch_corpus(topic: str, n_papers: int) -> list[dict]:
     """Fetch up to ``n_papers`` topic papers with SPECTER2 vectors.
 
     Uses paginated ``/paper/search`` (≤100/page, offset≤1000), requesting the
     embedding inline. Papers without ``embedding.specter_v2`` are still returned
-    (kept for keyword fallback, excluded from the index downstream).
+    (kept for keyword fallback, excluded from the index downstream). The free-text
+    topic is condensed to a keyword query first (a full description returns 0 hits).
     """
     papers: list[dict] = []
     seen: set[str] = set()
     page = 100
+    query = _condense_query(topic)
     for offset in range(0, min(n_papers, 1000), page):
         limit = min(page, n_papers - offset)
         data = _s2_get(
             "paper/search",
-            {"query": topic, "offset": offset, "limit": limit, "fields": _CORPUS_FIELDS},
+            {"query": query, "offset": offset, "limit": limit, "fields": _CORPUS_FIELDS},
         )
         if not data:
             break
