@@ -92,6 +92,9 @@ def _mcp_payload(raw: object) -> dict:
 # Tunable: validated depth-4 chains injected ~7.5 KB with uncapped core fields
 # (verbose primary_metric / metric_rationale). Caps keep per-node memory bounded.
 _CORE_FIELD_CAP = 400        # per experiment-core field (1a)
+_IDEA_FIELD_CAP = 1500       # selected_idea (design intent) — larger than a scalar
+                             # core field: it carries the planned mechanism + target
+                             # workloads that descendant nodes must inherit.
 _ANCESTOR_SUMMARY_CAP = 600  # per ancestor conclusion (1b)
 _SUPPLEMENT_CAP = 400        # per detail-supplement entry (2)
 
@@ -138,6 +141,15 @@ def build_working_context_messages(
             for k in ("primary_metric", "higher_is_better", "metric_rationale", "hardware_spec")
             if ctx.get(k) not in (None, "", {}, [])
         ]
+        # The selected research idea + plan is the run-level design intent seeded
+        # into core memory at the root. Injecting it for EVERY node (not just the
+        # root, which alone re-runs generate_ideas) lets a DESCENDANT inherit the
+        # planned mechanism and target workloads robustly — instead of only via
+        # the inherited source file, which it might never open. Top-down from the
+        # common ancestor (root), so it does NOT leak across sibling branches.
+        _idea = ctx.get("selected_idea")
+        if _idea:
+            ctx_lines.append(f"  selected_idea: {_cap(str(_idea), _IDEA_FIELD_CAP)}")
         if ctx_lines:
             out.append({
                 "role": "user",
@@ -879,6 +891,22 @@ class AgentLoop:
                                     if _ckpt:
                                         _exp_md = Path(_ckpt) / "experiment.md"
                                         _goal = _exp_md.read_text(errors="ignore") if _exp_md.exists() else ""
+                                        # Compact selected-idea summary (title + description +
+                                        # plan §-titles) seeded into core memory so EVERY node —
+                                        # including descendants that never re-run generate_ideas —
+                                        # inherits the design intent (planned mechanism, target
+                                        # workloads), not just the metric. Run-level invariant.
+                                        _best_idea = (idea_data.get("ideas") or [{}])[0] if isinstance(idea_data, dict) else {}
+                                        _idea_summary = f"{_best_idea.get('title','')}: {(_best_idea.get('description','') or '')[:400]}"
+                                        try:
+                                            from ari.pipeline import _extract_plan_sections as _eps_seed
+                                            _secs_seed = _eps_seed(_best_idea.get("experiment_plan", "") or "")
+                                            if _secs_seed:
+                                                _idea_summary += " | Plan: " + "; ".join(
+                                                    f"{_t} {_ti}" for _t, _ti, _ in _secs_seed
+                                                )
+                                        except Exception:
+                                            pass
                                         _gmb(checkpoint_dir=Path(_ckpt)).seed_core_memory(
                                             persona="",
                                             human="",
@@ -888,6 +916,7 @@ class AgentLoop:
                                                 "higher_is_better": hib,
                                                 "metric_rationale": mr,
                                                 "hardware_spec": _es(),
+                                                "selected_idea": _idea_summary,
                                             },
                                         )
                                         logger.info("seeded core memory (pm=%s)", pm)
@@ -1010,6 +1039,21 @@ class AgentLoop:
                                 "ARI self-determined MetricSpec: keyword=%s expected=%s params=%s",
                                 kw, expected, expected_params
                             )
+                            # Producer obligation: when the metric is concept-classified
+                            # (make_metric_spec emitted a metric_contract scaffold), tell the
+                            # agent — in DOMAIN-NEUTRAL terms — to verify correctness, MEASURE
+                            # (never hardcode) any ceiling, emit provenance, and fill the
+                            # contract. The agent fulfils this domain-appropriately; the gate
+                            # enforces whatever ends up declared. No-op for unclassified metrics.
+                            _mc = spec_data.get("metric_contract") if isinstance(spec_data, dict) else None
+                            if _mc:
+                                try:
+                                    from ari.agent.metric_contract import build_contract_obligation
+                                    _obl = build_contract_obligation(_mc)
+                                    if _obl:
+                                        messages.append({"role": "user", "content": _obl})
+                                except Exception as _oe:
+                                    logger.debug("contract obligation injection failed: %s", _oe)
                         except Exception as _e:
                             logger.warning("make_metric_spec result parse failed: %s", _e)
 

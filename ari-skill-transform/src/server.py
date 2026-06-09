@@ -561,6 +561,12 @@ async def nodes_to_science_data(
                 cfg["predictions"] = dict(rj["predictions"])
             if isinstance(rj.get("scores"), dict):
                 cfg["scores"] = dict(rj["scores"])
+            # Metric-correctness contract: carry the agent-emitted measurement
+            # provenance ({metric_name: "microbench"|"benchmark"|...}) so the hard
+            # gate can confirm a contract's required ceilings were MEASURED, not
+            # a hardcoded placeholder. Domain-neutral: just a pass-through field.
+            if isinstance(rj.get("_provenance"), dict):
+                cfg["_provenance"] = dict(rj["_provenance"])
             cfg["_typed_schema_version"] = rj.get("schema_version", "")
             cfg["_typed_source"] = "results.json"
         else:

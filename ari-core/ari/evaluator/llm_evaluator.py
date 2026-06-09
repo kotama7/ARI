@@ -663,6 +663,32 @@ class LLMEvaluator:
             extracted_metrics["_axis_scores"] = axis_scores
             if comparison_found:
                 extracted_metrics["_comparison_found"] = 1.0
+            # AUTHORITATIVE measurements: the node's results.json is the ground
+            # truth the experiment emitted. The LLM extraction above reads only
+            # the TRUNCATED artifacts (str(artifacts)[:2000]) and can miss values
+            # that ARE in results.json — leaving node.metrics (and the inherited
+            # result_summary) empty even though the run produced real numbers.
+            # Merge results.json measurements directly; they take precedence
+            # (structured output > LLM re-read of truncated text) and count as
+            # real data. Domain-neutral: a plain numeric pass-through.
+            _rj_has_real = False
+            try:
+                import os as _os_rj
+                from pathlib import Path as _Path_rj
+                _wd = _os_rj.environ.get("ARI_WORK_DIR", "")
+                if _wd:
+                    _rj_path = _Path_rj(_wd) / "results.json"
+                    if _rj_path.is_file():
+                        _rj_meas = (json.loads(_rj_path.read_text()) or {}).get("measurements")
+                        if isinstance(_rj_meas, dict):
+                            for _k, _v in _rj_meas.items():
+                                if isinstance(_k, str) and isinstance(_v, (int, float)) and not isinstance(_v, bool):
+                                    extracted_metrics[_k] = float(_v)
+                                    measurements_dict[_k] = float(_v)
+                                    _rj_has_real = True
+            except Exception:
+                pass
+
             # Typed views — present iff the LLM honoured the new contract.
             # Stored under reserved underscore keys so they don't collide
             # with experiment-named metrics. Downstream consumers that
@@ -679,7 +705,7 @@ class LLMEvaluator:
 
             return {
                 "reason": str(data.get("reason", "")),
-                "has_real_data": bool(data.get("has_real_data", False)),
+                "has_real_data": bool(data.get("has_real_data", False)) or _rj_has_real,
                 "scientific_score": composite,
                 "axis_scores": axis_scores,
                 "axis_rationales": data.get("axis_rationales", {}) or {},

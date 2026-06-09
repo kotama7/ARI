@@ -67,6 +67,7 @@ targets the like-named module under `ari/`.
 - `test_max_react_passthrough.py` — max-ReAct passthrough.
 - `test_mcp_cow_concurrency.py` — MCP copy-on-write concurrency.
 - `test_memory.py` — memory backend.
+- `test_metric_contract_obligation.py` — TODO
 - `test_model_passthrough.py` — model passthrough.
 - `test_no_user_home_writes.py` — no-user-home-writes guard.
 - `test_node.py` — Node data model.
