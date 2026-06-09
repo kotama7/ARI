@@ -17,14 +17,22 @@ Contract schema (all expressions are restricted-AST, see formula_eval):
     "required_measured": ["dram_peak_bw", "cache_bw", "ceiling_byK"],               # B provenance
     "claims": [{"claim": "huge pages help reach-limited regimes",                   # F plan-fidelity
                 "required_evidence": ["thp_on_tput", "thp_off_tput"]}],
+    "correctness_required": true,     # G idea-owned: a correctness residual MUST be emitted (tagged)
+    "ceiling_must_be_measured": true, # G idea-owned: a measured-provenance ceiling MUST be emitted
     "tolerance": {"absolute": 0.0, "relative": 0.02},
   }
 
-Finding types (all added to policy.always_block_on): invariant_violation,
-correctness_failed, correctness_uncovered, placeholder_denominator,
-recompute_mismatch, claim_evidence_missing. Provenance is read from ``config["_provenance"]``
-(name -> "microbench"|"benchmark"|"declared"|"constant"); a required_measured
-operand must be microbench/benchmark, never declared/constant.
+The G flags are IDEA-OWNED (the agent cannot drop them) but satisfied by EVIDENCE,
+not by an agent-declared name: the agent emits a tagged measurement
+(_provenance "microbench"/"benchmark" for a ceiling, "correctness"/"reference" for a
+residual) and the gate keys on that tag's PRESENCE run-level -- so an honest run is
+never blocked and only a placeholder/no-check 骨抜き is. Finding types (all added to
+policy.always_block_on): invariant_violation, correctness_failed,
+correctness_uncovered, placeholder_denominator, recompute_mismatch,
+claim_evidence_missing, ceiling_unmeasured. Provenance is read from
+``config["_provenance"]`` (name -> "microbench"|"benchmark"|"correctness"|"declared"|
+"constant"); a required_measured operand must be microbench/benchmark, never
+declared/constant.
 """
 
 from __future__ import annotations
@@ -34,6 +42,21 @@ from typing import Any, Iterator
 from ari.pipeline.claim_gate import formula_eval, numeric
 
 _MEASURED_SOURCES = {"microbench", "benchmark", "measurement", "measured"}
+# Root tokens for TOLERANT provenance recognition in the idea-owned requirement-flag
+# checks (G). Exact-set membership over-blocks an HONEST run that paraphrases the tag
+# (e.g. "verified" instead of "correctness", "stream" instead of "microbench"), so the
+# flag checks match a SUBSTRING root instead. Domain-neutral: the gate only checks the
+# tag looks like a measured/verification source, never what the number means. (The
+# stricter per-operand placeholder_denominator check keeps exact _MEASURED_SOURCES.)
+# "baseline" is a measured-ceiling method (the obligation calls "a baseline run" a way
+# to MEASURE a normalization ceiling), so it lives in the MEASURED roots -- NOT in the
+# correctness roots, where it would wrongly discharge correctness_required for a
+# perf-only run. "check" was dropped: as a bare 5-char token it substring-matched
+# clearly-non-correctness values the pipeline emits (checkpoint / checksum /
+# sanity_check). The remaining correctness roots are unambiguous verification words.
+_MEASURED_ROOTS = ("bench", "measur", "empiric", "stream", "baseline")
+_CORRECTNESS_ROOTS = ("correct", "verif", "referenc", "valid", "gold", "truth",
+                      "oracle", "ground_truth")
 
 
 def _flatten_metrics(config: dict) -> dict:
@@ -68,6 +91,25 @@ def _flatten_metrics(config: dict) -> dict:
 def _provenance(config: dict) -> dict:
     prov = config.get("_provenance")
     return prov if isinstance(prov, dict) else {}
+
+
+def _has_provenance_root(science_data: dict, roots: tuple) -> bool:
+    """True if ANY configuration tags ANY operand with a provenance value whose text
+    contains one of *roots*.
+
+    Run-level evidence presence: this is how the idea-owned requirement flags are
+    satisfied -- the agent emits a tagged measurement (a measured ceiling, a
+    correctness residual) into results.json, which flows to ``config["_provenance"]``.
+    Substring/root matching is deliberately TOLERANT so an honest run that paraphrases
+    the tag is not over-blocked. Presence-only (the accepted boundary): the gate checks
+    the tag looks like a measured/verification source, not that the number is truthful.
+    """
+    for _cid, cfg in _iter_configs(science_data):
+        for v in _provenance(cfg).values():
+            text = str(v).strip().lower()
+            if text and any(root in text for root in roots):
+                return True
+    return False
 
 
 def _iter_configs(science_data: dict) -> Iterator[tuple[str, dict]]:
@@ -206,5 +248,33 @@ def check_contract(science_data: dict) -> list[dict]:
                                 f"measurement(s) {req} needed to evaluate it — the claimed result/"
                                 f"mechanism is unsupported by any evidence (declared but never tested)"),
                 })
+
+    # G: idea-owned requirement flags. The IDEA decides WHETHER a measured ceiling /
+    # a correctness check is required (domain-aware: a theory result / analytic-constant
+    # normalization sets neither). The AGENT satisfies the requirement by emitting the
+    # corresponding _provenance EVIDENCE (a microbench/benchmark-tagged ceiling, a
+    # correctness/reference-tagged residual) into results.json -- which already flows to
+    # config["_provenance"]. The gate keys on evidence PRESENCE, run-level, so:
+    #   * an honest run that measured a ceiling / verified correctness is NEVER blocked
+    #     (the tag is present) -- no cross-party naming, no universal over-block;
+    #   * a run that emitted NO such evidence (a placeholder denominator / no correctness
+    #     check at all -- the D1/D2/D3 骨抜き) IS blocked. The agent cannot drop the
+    #     requirement (idea-owned); it can only satisfy it by producing the evidence.
+    if mc.get("ceiling_must_be_measured") and not _has_provenance_root(science_data, _MEASURED_ROOTS):
+        findings.append({
+            "type": "ceiling_unmeasured", "config_id": "*",
+            "message": ("the idea requires this normalized metric's denominator to be "
+                        "empirically measured (ceiling_must_be_measured) but no configuration "
+                        "emitted any measured (microbench/benchmark) operand — the normalization "
+                        "rests on an unmeasured placeholder ceiling"),
+        })
+    if mc.get("correctness_required") and not _has_provenance_root(science_data, _CORRECTNESS_ROOTS):
+        findings.append({
+            "type": "correctness_uncovered", "config_id": "*", "missing": ["correctness"],
+            "message": ("the idea requires a correctness check for this metric "
+                        "(correctness_required) but no configuration emitted a correctness/reference "
+                        "residual (no operand tagged correctness/reference/validation in _provenance) "
+                        "— the production output is unverified against any independent reference"),
+        })
 
     return findings

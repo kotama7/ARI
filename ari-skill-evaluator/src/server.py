@@ -368,6 +368,97 @@ async def _resolve_falsifiable_claims(checkpoint_dir: str | None = None) -> list
     return []
 
 
+# ── idea-owned requirement flags (G) ──────────────────────────────────────────
+# The IDEA (not the agent, not the metric NAME) decides WHETHER a correctness check
+# / a measured ceiling is required. Both default FALSE so a missed extraction never
+# forces a check a domain cannot satisfy (a theory result sets neither; a metric
+# normalized by an analytic constant like a Carnot/Shannon limit sets
+# ceiling_must_be_measured=false because that denominator is not microbenchmarkable).
+# The gate enforces these via the _provenance EVIDENCE already flowing from
+# results.json (a measured-ceiling tag / a correctness tag), so the agent satisfies
+# them by emitting evidence -- NO cross-party naming and NO universal over-block.
+_CONTRACT_FLAGS_SYS = (
+    "You analyze an experiment plan and decide two yes/no properties for a "
+    "verification gate. Be CONSERVATIVE: answer false unless clearly true.\n"
+    "1. correctness_required: does the experiment COMPUTE an output with a definable "
+    "correct answer that must be verified against an INDEPENDENT reference (a numerical "
+    "residual, an exact match, an analytic check)? true for a kernel/algorithm/model "
+    "that computes outputs; false for purely observational/measurement studies or "
+    "theoretical/analytical results that produce no verifiable computed output.\n"
+    "2. ceiling_must_be_measured: is the primary metric normalized/divided by a ceiling "
+    "that is EMPIRICALLY MEASURABLE (a hardware peak, an achievable rate, a baseline run)? "
+    "true ONLY when the denominator can and should be measured; FALSE "
+    "when the metric is not normalized at all, OR is normalized by a THEORETICAL/analytic "
+    "constant (a Carnot limit, a Shannon bound, log N) that cannot be microbenchmarked.\n"
+    "Domain-neutral (HPC, ML, theory). Respond ONLY with JSON: "
+    '{"correctness_required": false, "ceiling_must_be_measured": false}'
+)
+
+
+async def _llm_extract_contract_flags(plan_text: str) -> dict:
+    try:
+        import litellm as _litellm, os as _os, json as _json, re as _re
+        _model = (_os.environ.get("ARI_MODEL_EVAL")
+                  or _os.environ.get("ARI_MODEL")
+                  or _os.environ.get("ARI_LLM_MODEL")
+                  or "gpt-4o-mini")
+        _resp = await _litellm.acompletion(
+            model=_model,
+            messages=[
+                {"role": "system", "content": _CONTRACT_FLAGS_SYS},
+                {"role": "user", "content": "Experiment plan:\n" + (plan_text or "")[:6000]},
+            ],
+            temperature=0.0,
+            max_tokens=60,
+        )
+        _raw = _resp.choices[0].message.content or ""
+        _m = _re.search(r"\{.*\}", _raw, _re.DOTALL)
+        if _m:
+            _o = _json.loads(_m.group(0)) or {}
+            return {"correctness_required": bool(_o.get("correctness_required")),
+                    "ceiling_must_be_measured": bool(_o.get("ceiling_must_be_measured"))}
+    except Exception:
+        pass
+    return {"correctness_required": False, "ceiling_must_be_measured": False}
+
+
+def _load_idea_plan_text(checkpoint_dir: str | None = None) -> str:
+    """Load the selected idea's experiment_plan prose, INDEPENDENT of whether the idea
+    also carries structured falsifiable_claims. (``_load_idea_claims_source`` short-
+    circuits on structured claims and returns no plan, which would silently disable the
+    flag resolver on the structured path.) ``""`` when unavailable."""
+    import os as _os
+    from pathlib import Path as _Path
+    ckpt = checkpoint_dir or _os.environ.get("ARI_CHECKPOINT_DIR", "")
+    if not ckpt:
+        return ""
+    for _fn in ("evaluation_criteria.json", "idea.json"):
+        _p = _Path(ckpt) / _fn
+        if not _p.is_file():
+            continue
+        try:
+            _d = json.loads(_p.read_text())
+        except Exception:
+            continue
+        best = _d
+        if isinstance(_d.get("ideas"), list) and _d["ideas"]:
+            best = _d["ideas"][0] or {}
+        plan = best.get("experiment_plan") or _d.get("experiment_plan") or ""
+        if isinstance(plan, str) and plan.strip():
+            return plan
+    return ""
+
+
+async def _resolve_contract_flags(checkpoint_dir: str | None = None) -> dict:
+    """Resolve the idea-owned requirement flags from the experiment_plan, INDEPENDENT
+    of whether the idea also carries structured falsifiable_claims. Default both False,
+    so the gate never forces a check a domain (a theory result) cannot satisfy."""
+    plan = _load_idea_plan_text(checkpoint_dir)
+    if plan:
+        return await _llm_extract_contract_flags(plan)
+    return {"correctness_required": False, "ceiling_must_be_measured": False}
+
+
 async def _tool_make_metric_spec(arguments: dict) -> dict:
     text = arguments["experiment_text"]
     expected_metrics = _parse_success_metrics(text)
@@ -453,6 +544,24 @@ async def _tool_make_metric_spec(arguments: dict) -> dict:
             metric_contract["claims"] = _claims
     elif isinstance(metric_contract, dict):
         metric_contract.setdefault("claims", [])
+
+    # G: idea-owned requirement flags (correctness_required / ceiling_must_be_measured).
+    # The idea decides WHETHER each check is required; the agent satisfies it by emitting
+    # the corresponding _provenance EVIDENCE (a measured-ceiling tag / a correctness tag),
+    # which already flows results.json -> config._provenance -> gate. Both default false
+    # (theory-safe). The agent cannot drop a requirement, and because the gate keys on
+    # evidence PRESENCE (not an agent-declared name) there is no universal over-block.
+    try:
+        _flags = await _resolve_contract_flags(arguments.get("checkpoint_dir"))
+    except Exception:
+        _flags = {}
+    if _flags.get("correctness_required") or _flags.get("ceiling_must_be_measured"):
+        if not isinstance(metric_contract, dict):
+            metric_contract = {"key": metric_keyword or ""}
+        if _flags.get("correctness_required"):
+            metric_contract["correctness_required"] = True
+        if _flags.get("ceiling_must_be_measured"):
+            metric_contract["ceiling_must_be_measured"] = True
 
     # Persist the run-level contract next to idea.json/tree.json so the paper
     # pipeline (nodes_to_science_data) can graft it onto science_data.json for the

@@ -240,6 +240,65 @@ def test_emit_results_writes_typed_payload(work_dir):
     assert payload["scores"]["_scientific_score"] == 0.37
 
 
+def test_emit_results_writes_provenance(work_dir):
+    # The sanctioned reporter must carry _provenance so the hard gate can confirm a
+    # measured ceiling / a correctness check (idea-owned requirement flags).
+    import json as _json
+    r = _emit_results(
+        params={}, measurements={"rnorm": 0.8, "peak_bw": 400.0, "max_abs_err": 1e-7},
+        predictions={}, scores={},
+        provenance={"peak_bw": "microbench", "max_abs_err": "correctness"},
+        file="results.json", work_dir=work_dir,
+    )
+    payload = _json.loads(Path(r["path"]).read_text())
+    assert payload["_provenance"] == {"peak_bw": "microbench", "max_abs_err": "correctness"}
+
+
+def test_emit_results_omits_empty_provenance(work_dir):
+    # legacy/theory runs (no provenance) are unaffected — the key is absent.
+    import json as _json
+    r = _emit_results(
+        params={}, measurements={"y": 1.0}, predictions={}, scores={},
+        file="r.json", work_dir=work_dir,
+    )
+    assert "_provenance" not in _json.loads(Path(r["path"]).read_text())
+
+
+def test_emit_results_provenance_roundtrip_to_gate(work_dir):
+    # finding-5 regression: drive the REAL emit_results writer (NOT a hand-built
+    # _provenance dict) through the transform-style read into the hard gate, so the
+    # "honest run -> PASS" property is exercised on the sanctioned producer path.
+    import json as _json
+    contract = pytest.importorskip("ari.pipeline.claim_gate.contract")
+    mc = {"key": "rnorm", "ceiling_must_be_measured": True, "correctness_required": True}
+
+    def _cfg_from(path):
+        rj = _json.loads(Path(path).read_text())
+        cfg = {"config_id": "n", "measurements": rj.get("measurements", {})}
+        if isinstance(rj.get("_provenance"), dict):  # exactly transform server.py ~586
+            cfg["_provenance"] = dict(rj["_provenance"])
+        return cfg
+
+    # honest: emit measurements + provenance tags via the sanctioned tool -> PASS
+    r = _emit_results(
+        params={}, measurements={"rnorm": 0.8, "peak_bw": 400.0, "max_abs_err": 1e-7},
+        predictions={}, scores={},
+        provenance={"peak_bw": "microbench", "max_abs_err": "correctness"},
+        file="results.json", work_dir=work_dir,
+    )
+    assert contract.check_contract(
+        {"metric_contract": mc, "configurations": [_cfg_from(r["path"])]}) == []
+
+    # dodge: same numbers, NO provenance -> the idea-owned flags BLOCK
+    r2 = _emit_results(
+        params={}, measurements={"rnorm": 0.8, "peak_bw": 400.0, "max_abs_err": 1e-7},
+        predictions={}, scores={}, file="r2.json", work_dir=work_dir,
+    )
+    types = sorted({f["type"] for f in contract.check_contract(
+        {"metric_contract": mc, "configurations": [_cfg_from(r2["path"])]})})
+    assert types == ["ceiling_unmeasured", "correctness_uncovered"]
+
+
 def test_emit_results_overwrites_existing(work_dir):
     import json as _json
     _emit_results(

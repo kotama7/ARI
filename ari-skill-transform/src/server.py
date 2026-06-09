@@ -539,6 +539,29 @@ async def nodes_to_science_data(
             return {}
         return data if isinstance(data, dict) else {}
 
+    def _node_provenance_union(nid: str) -> dict:
+        """Union the _provenance maps across EVERY results*.json variant in the node
+        dir. emit_results documents non-default file names ("results_seed42.json"), so
+        the idea-owned requirement-flag evidence (a measured-ceiling / correctness tag)
+        must surface to the gate regardless of which variant carried it. The canonical
+        results.json wins on conflict (it sorts first). Best-effort."""
+        out: dict = {}
+        if not nid:
+            return out
+        for base in (_workspace / "experiments" / _run_id / nid,
+                     _workspace / "experiments" / nid):
+            if not base.is_dir():
+                continue
+            for p in sorted(base.glob("results*.json")):
+                try:
+                    d = json.loads(p.read_text())
+                except Exception:
+                    continue
+                if isinstance(d, dict) and isinstance(d.get("_provenance"), dict):
+                    for k, v in d["_provenance"].items():
+                        out.setdefault(str(k), v)
+        return out
+
     # Map node_id → typed payload (only stores entries that exist on disk).
     typed_results: dict[str, dict] = {}
     for n in good_nodes:
@@ -580,11 +603,14 @@ async def nodes_to_science_data(
             if isinstance(rj.get("scores"), dict):
                 cfg["scores"] = dict(rj["scores"])
             # Metric-correctness contract: carry the agent-emitted measurement
-            # provenance ({metric_name: "microbench"|"benchmark"|...}) so the hard
-            # gate can confirm a contract's required ceilings were MEASURED, not
-            # a hardcoded placeholder. Domain-neutral: just a pass-through field.
-            if isinstance(rj.get("_provenance"), dict):
-                cfg["_provenance"] = dict(rj["_provenance"])
+            # provenance ({metric_name: "microbench"|"benchmark"|"correctness"|...}) so
+            # the hard gate can confirm a contract's required ceilings were MEASURED and
+            # a correctness check was run, not assumed. Union across results*.json
+            # variants so a non-default emit_results filename still surfaces evidence.
+            # Domain-neutral: just a pass-through field.
+            _prov_union = _node_provenance_union(nid)
+            if _prov_union:
+                cfg["_provenance"] = _prov_union
             cfg["_typed_schema_version"] = rj.get("schema_version", "")
             cfg["_typed_source"] = "results.json"
         else:

@@ -269,6 +269,20 @@ async def list_tools() -> list[Tool]:
                         ),
                         "additionalProperties": True,
                     },
+                    "provenance": {
+                        "type": "object",
+                        "description": (
+                            "Optional {operand_name: source} tags recording HOW a "
+                            "value was obtained, written verbatim as the '_provenance' "
+                            "key for the verification gate. Use \"microbench\" or "
+                            "\"benchmark\" for an empirically MEASURED ceiling/peak "
+                            "(so a normalized metric is not flagged as resting on a "
+                            "placeholder), and \"correctness\" (or \"reference\") for a "
+                            "residual computed against an INDEPENDENT reference (so the "
+                            "output is not flagged as unverified). Best-effort/optional."
+                        ),
+                        "additionalProperties": True,
+                    },
                     "file": {
                         "type": "string",
                         "description": "Output file name (default: results.json)",
@@ -352,6 +366,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             measurements=arguments.get("measurements") or {},
             predictions=arguments.get("predictions") or {},
             scores=arguments.get("scores") or {},
+            provenance=arguments.get("provenance") or {},
             file=arguments.get("file") or "results.json",
             work_dir=_resolve_work_dir(arguments.get("work_dir")),
         )
@@ -413,6 +428,7 @@ def _emit_results(
     scores: dict,
     file: str,
     work_dir: str,
+    provenance: dict | None = None,
 ) -> dict:
     """Write a typed results.json separating params from measurements.
 
@@ -433,6 +449,13 @@ def _emit_results(
         "predictions":  _coerce_jsonable_dict(predictions),
         "scores":       _coerce_jsonable_dict(scores),
     }
+    # _provenance carries {operand: source} tags (microbench/benchmark for a measured
+    # ceiling, correctness/reference for a verification residual). Written verbatim
+    # so transform -> science_data -> the hard gate can confirm a measured ceiling /
+    # a correctness check was actually run. Best-effort; omitted when empty.
+    _prov = _coerce_jsonable_dict(provenance or {})
+    if _prov:
+        payload["_provenance"] = _prov
     try:
         out_path.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
