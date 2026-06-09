@@ -100,6 +100,34 @@ def test_experiment_core_skipped_when_unseeded():
     assert msgs == []
 
 
+def test_selected_idea_inherited_by_descendant():
+    # The selected idea + plan is a run-level design intent seeded at the root; a
+    # DESCENDANT (which never re-runs generate_ideas) must still inherit it via
+    # the experiment core, so it sees the planned mechanism / target workloads —
+    # not only the metric.
+    call = _fake_call_tool(ctx={
+        "primary_metric": "GB/s",
+        "selected_idea": "ReachWalk SpMM | Plan: §4 Page Shaping Controller (PSC); §7 real matrices",
+    })
+    msgs = build_working_context_messages(
+        call, depth=2, ancestor_ids=["root", "p1"], eval_summary="q", experiment_goal="g",
+    )
+    core = next(m["content"] for m in msgs if "Experiment context" in m["content"])
+    assert "selected_idea:" in core
+    assert "Page Shaping Controller (PSC)" in core and "real matrices" in core
+
+
+def test_selected_idea_uses_larger_cap_than_scalar_fields():
+    # selected_idea carries the plan, so it gets a larger per-field cap (1500)
+    # than the 400-char scalar core fields.
+    call = _fake_call_tool(ctx={"selected_idea": "I" * 2000})
+    msgs = build_working_context_messages(
+        call, depth=0, ancestor_ids=[], eval_summary=None, experiment_goal="g",
+    )
+    c = msgs[0]["content"]
+    assert "I" * 1500 in c and "I" * 1501 not in c   # idea-field cap, not the 400 scalar cap
+
+
 # ── (1b) ancestor core (deterministic, full, scoped) ─────────────────────
 
 def _rs(text):  # a result_summary entry

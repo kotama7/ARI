@@ -11,6 +11,7 @@ MCP skills.
 - `guidance.py` — per-stage step-guidance + metrics-validation helpers.
 - `loop.py` — `AgentLoop` driver + per-node prompt builder.
 - `message_utils.py` — ReAct-message helpers (`_extract_job_ids`, `_tool_was_called`).
+- `metric_contract.py` — TODO
 - `react_driver.py` — generic ReAct driver for pipeline `react:` stages, with sandbox enforcement.
 - `run_env.py` — capture/read helper for `_run_env.json`.
 - `tool_manager.py` — OpenAI tool conversion, dispatch, phase-aware filtering.
