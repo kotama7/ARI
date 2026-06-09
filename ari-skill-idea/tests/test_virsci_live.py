@@ -405,3 +405,27 @@ class TestServerRealPath:
             )
         assert result["virsci_integration_status"].startswith("reimpl")
         assert len(result["ideas"]) >= 1
+
+
+# ── 9. _condense_query: S2 keyword query from a free-text description ──────────
+
+def test_condense_query_reduces_description_to_keywords():
+    # regression: passing the whole experiment description as the S2 /paper/search
+    # query returns 0 hits (even with a valid key), silently degrading VirSci-real to
+    # an ungrounded re-impl run. The query must be condensed to leading keywords.
+    from snapshot import _condense_query
+    topic = ("High-performance CSR-format sparse-dense matrix multiplication (SpMM) on "
+             "CPUs with performance stable across varying RHS width; build and validate "
+             "a roofline model. Metrics: GB/s, GFlops/s.")
+    q = _condense_query(topic)
+    assert "Metrics" not in q and "GFlops" not in q   # the metrics tail is dropped
+    assert "SpMM" not in q                            # parenthetical dropped
+    assert "build and validate" not in q              # second clause dropped
+    assert len(q.split()) <= 10
+    assert "matrix" in q and "multiplication" in q    # core keywords kept
+
+
+def test_condense_query_empty_and_short():
+    from snapshot import _condense_query
+    assert _condense_query("") == ""
+    assert _condense_query("sparse matrix multiplication") == "sparse matrix multiplication"
