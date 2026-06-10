@@ -211,3 +211,53 @@ def test_supplement_per_entry_capped_at_400():
     )
     c = next(m["content"] for m in msgs if "Related prior findings" in m["content"])
     assert "Z" * 400 in c and "Z" * 401 not in c
+
+
+# ── (1c) metric-contract obligation: every node sees the run-level contract ──
+
+def _write_contract(tmp_path):
+    (tmp_path / "metric_contract.json").write_text(json.dumps({
+        "key": "tput", "correctness_required": True,
+        "claims": [{"claim": "page-shaping helps reach-limited regimes",
+                    "required_evidence": ["thp_on_tput", "thp_off_tput"]}],
+    }))
+
+
+def test_contract_obligation_injected_for_descendant(tmp_path, monkeypatch):
+    # regression (real partA run): the obligation was injected ONLY into the node
+    # that called make_metric_spec (the root) — the descendant that actually
+    # executed never saw the claims/evidence names/correctness requirement, and
+    # the final gate then blocked the paper for evidence the executing node was
+    # never told to produce. Every node must get the persisted contract.
+    _write_contract(tmp_path)
+    monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+    msgs = build_working_context_messages(
+        _fake_call_tool(node_memory={}),
+        depth=1, ancestor_ids=["p1"], eval_summary="q", experiment_goal="g",
+    )
+    obl = [m for m in msgs if "METRIC-CORRECTNESS CONTRACT" in m["content"]]
+    assert len(obl) == 1
+    c = obl[0]["content"]
+    assert "thp_on_tput" in c and "thp_off_tput" in c      # evidence names surfaced
+    assert "page-shaping helps reach-limited regimes" in c  # the claim itself
+    assert "CORRECTNESS" in c                               # the required check
+
+
+def test_contract_obligation_noop_without_file(tmp_path, monkeypatch):
+    # root at context-build time (file not yet written) / legacy runs: clean no-op.
+    monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+    msgs = build_working_context_messages(
+        _fake_call_tool(node_memory={}),
+        depth=1, ancestor_ids=["p1"], eval_summary="q", experiment_goal="g",
+    )
+    assert not any("METRIC-CORRECTNESS CONTRACT" in m["content"] for m in msgs)
+
+
+def test_contract_obligation_noop_without_env(tmp_path, monkeypatch):
+    _write_contract(tmp_path)
+    monkeypatch.delenv("ARI_CHECKPOINT_DIR", raising=False)
+    msgs = build_working_context_messages(
+        _fake_call_tool(node_memory={}),
+        depth=0, ancestor_ids=[], eval_summary=None, experiment_goal=None,
+    )
+    assert not any("METRIC-CORRECTNESS CONTRACT" in m["content"] for m in msgs)

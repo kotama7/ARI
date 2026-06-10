@@ -158,6 +158,36 @@ def build_working_context_messages(
     except Exception as e:  # pragma: no cover - defensive
         logger.debug("experiment-core injection failed: %s", e)
 
+    # (1c) Metric-correctness contract obligation — run-level, idea-owned. The
+    # obligation was previously injected ONLY into the node that called
+    # make_metric_spec (the root), so the DESCENDANTS that do the bulk of the
+    # execution ran BLIND to the declared claims / evidence names / correctness
+    # requirement — and the final gate then (correctly) blocked the paper for
+    # evidence the executing node was never told to produce. Read the persisted
+    # run-level contract (written by make_metric_spec next to idea.json) and put
+    # the obligation in EVERY node's context. No-op for the root (the file does
+    # not exist yet at root context-build time; the make_metric_spec result
+    # handler injects it there mid-loop), so there is no double injection.
+    try:
+        import os as _os_mc
+        from pathlib import Path as _P_mc
+        _ck_mc = _os_mc.environ.get("ARI_CHECKPOINT_DIR", "")
+        _mc_path = _P_mc(_ck_mc) / "metric_contract.json" if _ck_mc else None
+        if _mc_path is not None and _mc_path.is_file():
+            import json as _json_mc
+            _mc_obj = _json_mc.loads(_mc_path.read_text())
+            if isinstance(_mc_obj, dict) and _mc_obj:
+                from ari.agent.metric_contract import build_contract_obligation
+                _obl = build_contract_obligation(_mc_obj)
+                if _obl:
+                    out.append({"role": "user", "content": _obl})
+                    logger.info(
+                        "contract obligation injected into node context (claims=%d)",
+                        len(_mc_obj.get("claims") or []),
+                    )
+    except Exception as e:  # pragma: no cover - defensive
+        logger.debug("contract-obligation injection failed: %s", e)
+
     if not (depth > 0 and ancestor_ids):
         return out
 
@@ -1052,6 +1082,10 @@ class AgentLoop:
                                     _obl = build_contract_obligation(_mc)
                                     if _obl:
                                         messages.append({"role": "user", "content": _obl})
+                                        logger.info(
+                                            "contract obligation injected after make_metric_spec (claims=%d)",
+                                            len(_mc.get("claims") or []) if isinstance(_mc, dict) else 0,
+                                        )
                                 except Exception as _oe:
                                     logger.debug("contract obligation injection failed: %s", _oe)
                         except Exception as _e:
