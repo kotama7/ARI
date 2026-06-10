@@ -154,21 +154,64 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:40] or "topic"
 
 
+# Domain-neutral filler: English stop-words + generic research adjectives/verbs that
+# add no signal to an S2 keyword search. We DROP these and keep whatever technical
+# terms remain (no HPC/domain vocabulary is baked in here).
+_QUERY_STOP = frozenset({
+    "the", "a", "an", "of", "to", "on", "in", "and", "or", "for", "with", "using",
+    "via", "that", "this", "across", "under", "over", "both", "such", "as", "at",
+    "by", "is", "are", "be", "we", "our", "its", "their", "than", "from", "into",
+    "high", "performance", "high-performance", "robust", "robustness", "varying",
+    "stable", "stability", "large", "small", "build", "building", "validate",
+    "validation", "measured", "measure", "reach", "target", "model", "based",
+    "general", "novel", "efficient", "fast", "new", "study", "approach", "method",
+    "propose", "proposed", "design", "improve", "improved", "scalable", "across",
+})
+
+
 def _condense_query(topic: str) -> str:
     """Reduce a free-text experiment description to a short KEYWORD query for S2.
 
-    ``/paper/search`` is a keyword endpoint: passing the whole multi-sentence
-    description (incl. a ``Metrics: ...`` tail) returns 0 hits even with a valid API
-    key, which silently degraded the VirSci snapshot to an ungrounded re-impl run.
-    Take the first clause (before ``;`` / ``.`` / ``Metrics:``), drop parentheticals,
-    and keep the leading keywords. Empty -> a short prefix of the original.
+    ``/paper/search`` is a keyword (relevance-ranked) endpoint: passing the whole
+    multi-sentence description (incl. a ``Metrics: ...`` tail) returns 0 hits even
+    with a valid API key, which silently degraded the VirSci snapshot to an
+    ungrounded re-impl run. Extract content keywords from the WHOLE topic (not just
+    the first clause -- the good terms like "memory bandwidth" often sit in a later
+    clause), drop parentheticals + filler/stop-words, dedupe, and keep the first ~8.
+    Empty -> a short prefix of the original.
     """
     import re as _re
-    t = topic.split("Metrics:")[0]
-    t = _re.split(r"[.;:\n]", t, 1)[0]          # first clause only
+    t = topic.split("Metrics:")[0].lower()
     t = _re.sub(r"\([^)]*\)", " ", t)            # drop parentheticals e.g. "(SpMM)"
-    words = _re.findall(r"[A-Za-z][A-Za-z0-9+\-]*", t)
-    return " ".join(words[:10]) or (topic.strip()[:80])
+    kws: list[str] = []
+    seen: set[str] = set()
+    for w in _re.findall(r"[a-z][a-z0-9+\-]*", t):
+        if len(w) <= 2 or w in _QUERY_STOP or w in seen:
+            continue
+        seen.add(w)
+        kws.append(w)
+    return " ".join(kws[:8]) or (topic.strip()[:60])
+
+
+def _candidate_queries(topic: str) -> list[str]:
+    """Progressively relaxed keyword queries for ``/paper/search``.
+
+    S2's search effectively ANDs terms: ONE rare token (an experiment-specific
+    abbreviation like "rhs") zeroes the whole query even though the rest would
+    match thousands of papers. So probe the condensed keyword list first in full,
+    then keep dropping trailing keywords until something hits (down to 2 terms).
+    """
+    kws = _condense_query(topic).split()
+    out: list[str] = []
+    n = len(kws)
+    while n >= 2:
+        q = " ".join(kws[:n])
+        if q not in out:
+            out.append(q)
+        n -= 2 if n > 4 else 1
+    if not out and kws:
+        out.append(" ".join(kws))
+    return out
 
 
 def _fetch_corpus(topic: str, n_papers: int) -> list[dict]:
@@ -177,13 +220,45 @@ def _fetch_corpus(topic: str, n_papers: int) -> list[dict]:
     Uses paginated ``/paper/search`` (≤100/page, offset≤1000), requesting the
     embedding inline. Papers without ``embedding.specter_v2`` are still returned
     (kept for keyword fallback, excluded from the index downstream). The free-text
-    topic is condensed to a keyword query first (a full description returns 0 hits).
+    topic is condensed to a keyword query first (a full description returns 0
+    hits), and the query is progressively RELAXED until it returns papers -- a
+    grounded broader corpus beats an empty exact one (which silently degraded the
+    run to the ungrounded re-impl loop).
     """
     papers: list[dict] = []
     seen: set[str] = set()
     page = 100
-    query = _condense_query(topic)
-    for offset in range(0, min(n_papers, 1000), page):
+
+    # Probe relaxed candidates; the first page that returns data picks the query
+    # (and is consumed below, so the probe costs no extra request).
+    query = None
+    first = None
+    for cand in _candidate_queries(topic):
+        first = _s2_get(
+            "paper/search",
+            {"query": cand, "offset": 0, "limit": min(page, n_papers),
+             "fields": _CORPUS_FIELDS},
+        )
+        if first and (first.get("data") or []):
+            query = cand
+            log.info("snapshot: corpus query %r -> total=%s", cand, first.get("total"))
+            break
+        log.info("snapshot: corpus query %r -> 0 hits; relaxing", cand)
+    if query is None or not first:
+        return []
+
+    def _take(batch: list) -> None:
+        for p in batch:
+            pid = p.get("paperId")
+            if not pid or pid in seen:
+                continue
+            seen.add(pid)
+            papers.append(p)
+
+    _take(first.get("data") or [])
+    if not first.get("next"):
+        return papers
+    for offset in range(page, min(n_papers, 1000), page):
         limit = min(page, n_papers - offset)
         data = _s2_get(
             "paper/search",
@@ -191,13 +266,7 @@ def _fetch_corpus(topic: str, n_papers: int) -> list[dict]:
         )
         if not data:
             break
-        batch = data.get("data") or []
-        for p in batch:
-            pid = p.get("paperId")
-            if not pid or pid in seen:
-                continue
-            seen.add(pid)
-            papers.append(p)
+        _take(data.get("data") or [])
         if not data.get("next"):
             break
     return papers
