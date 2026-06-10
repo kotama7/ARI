@@ -188,9 +188,22 @@ def build_working_context_messages(
             import json as _json_mc
             _mc_obj = _json_mc.loads(_mc_path.read_text())
             if isinstance(_mc_obj, dict) and _mc_obj:
-                from ari.agent.metric_contract import build_contract_obligation
+                from ari.agent.metric_contract import (
+                    build_contract_obligation,
+                    build_coverage_status,
+                    collect_run_measurement_names,
+                )
                 _obl = build_contract_obligation(_mc_obj)
                 if _obl:
+                    # Run-level claim coverage: tell THIS node what siblings already
+                    # evidenced (names only — no sibling conclusions leak) and which
+                    # claims still need a dedicated experiment, so a multi-node tree
+                    # divides the claims instead of re-running the headline ten times.
+                    # Appended INTO the obligation message so the window pin keeps it.
+                    _covst = build_coverage_status(
+                        _mc_obj, collect_run_measurement_names(_ck_mc))
+                    if _covst:
+                        _obl = _obl + "\n\n" + _covst
                     out.append({"role": "user", "content": _obl})
                     logger.info(
                         "contract obligation injected into node context (claims=%d)",

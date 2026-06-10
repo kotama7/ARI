@@ -97,6 +97,45 @@ def test_emission_nudge_noop_cases():
     assert build_emission_nudge(["w"], 0) == ""
 
 
+# ── run-level claim coverage: divide claims across the tree ─────────────────────
+
+def test_coverage_status_partitions_and_prioritizes():
+    from ari.agent.metric_contract import build_coverage_status
+    mc = {"claims": [
+        {"claim": "A helps", "required_evidence": ["a_on", "a_off"]},
+        {"claim": "B scales", "required_evidence": ["b_curve"]},
+        {"claim": "C robust", "required_evidence": ["c_x", "c_y"]},
+    ]}
+    s = build_coverage_status(mc, {"a_on", "unrelated"})   # claim A covered (R1)
+    assert "1/3 covered" in s
+    assert "STILL UNCOVERED" in s
+    assert "B scales" in s and "b_curve" in s              # uncovered named with evidence
+    assert "A helps" not in s.split("STILL UNCOVERED")[1]  # covered one not re-listed
+
+
+def test_coverage_status_all_covered_and_noop():
+    from ari.agent.metric_contract import build_coverage_status
+    mc = {"claims": [{"claim": "A", "required_evidence": ["a"]}]}
+    assert "1/1 covered" in build_coverage_status(mc, {"a"})
+    assert build_coverage_status({"claims": []}, set()) == ""
+    assert build_coverage_status(None, {"a"}) == ""
+
+
+def test_collect_run_measurement_names_unions_nodes(tmp_path):
+    import json
+    from ari.agent.metric_contract import collect_run_measurement_names
+    # layout: <ws>/checkpoints/<rid> + <ws>/experiments/<rid>/node_*/results*.json
+    ws = tmp_path
+    ck = ws / "checkpoints" / "run1"; ck.mkdir(parents=True)
+    n1 = ws / "experiments" / "run1" / "node_a"; n1.mkdir(parents=True)
+    n2 = ws / "experiments" / "run1" / "node_b"; n2.mkdir(parents=True)
+    (n1 / "results.json").write_text(json.dumps({"measurements": {"a_on": 1.0}}))
+    (n2 / "results_seed2.json").write_text(json.dumps({"measurements": {"b_curve": 2.0}}))
+    names = collect_run_measurement_names(str(ck))
+    assert names == {"a_on", "b_curve"}                    # union across nodes + variants
+    assert collect_run_measurement_names(str(ws / "checkpoints" / "nope")) == set()
+
+
 def test_obligation_matches_pinned_window_marker():
     # The react context window pins run-level invariant USER messages by marker;
     # if the obligation's first line is reworded without updating the marker, the

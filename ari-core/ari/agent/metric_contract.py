@@ -19,6 +19,73 @@ the harness states the obligation generally, the agent satisfies it specifically
 from __future__ import annotations
 
 
+def collect_run_measurement_names(checkpoint_dir: str) -> set:
+    """Union of measurement names emitted SO FAR by any node of this run.
+
+    Names only — no values, no conclusions — so sibling-branch fault containment is
+    preserved; this is run-level COORDINATION metadata (like the contract itself),
+    used to tell a new node which declared claims still lack evidence anywhere in
+    the run. Reads experiments/<run_id>/node_*/results*.json next to the checkpoint
+    (same layout the transform's provenance union uses). Best-effort: {} on any miss.
+    """
+    names: set = set()
+    try:
+        from pathlib import Path
+        import json as _json
+        ckpt = Path(checkpoint_dir).expanduser().resolve()
+        workspace = ckpt.parent.parent if ckpt.parent.name == "checkpoints" else ckpt.parent
+        exp = workspace / "experiments" / ckpt.name
+        if exp.is_dir():
+            for p in exp.glob("node_*/results*.json"):
+                try:
+                    d = _json.loads(p.read_text())
+                except Exception:
+                    continue
+                m = d.get("measurements")
+                if isinstance(m, dict):
+                    names.update(k for k in m.keys() if isinstance(k, str))
+    except Exception:
+        pass
+    return names
+
+
+def build_coverage_status(contract: "dict | None", covered_names: set) -> str:
+    """Run-level claim-coverage block appended to the per-node obligation.
+
+    Without this, every node saw the SAME 12 claims with no idea what siblings had
+    already evidenced — and a real 10-node run produced 10 variations of the headline
+    experiment while the declared mechanism claims got zero dedicated experiments
+    (nothing in the tree's search rewards or even mentions uncovered claims). Tells
+    the node which claims are already covered run-wide and asks it to PRIORITIZE one
+    or two still-uncovered ones it can feasibly measure. ``""`` when no claims.
+    """
+    if not isinstance(contract, dict):
+        return ""
+    claims = [c for c in (contract.get("claims") or []) if isinstance(c, dict)]
+    if not claims:
+        return ""
+    cov = covered_names or set()
+    covered, uncovered = [], []
+    for c in claims:
+        req = [n for n in (c.get("required_evidence") or []) if isinstance(n, str) and n.strip()]
+        (covered if (req and any(n in cov for n in req)) else uncovered).append(c)
+    lines = [
+        f"RUN-LEVEL CLAIM COVERAGE (across all nodes so far): {len(covered)}/{len(claims)} covered."
+    ]
+    if uncovered:
+        lines.append(
+            "STILL UNCOVERED — pick ONE or TWO you can feasibly measure IN THIS NODE and design "
+            "your experiment to produce their evidence (EXACT names; a negative result is fine):")
+        for c in uncovered[:6]:
+            ev = [str(e) for e in (c.get("required_evidence") or []) if e][:4]
+            lines.append(f"  - \"{str(c.get('claim') or '')[:90]}\" -> [{', '.join(ev)}]")
+        if len(uncovered) > 6:
+            lines.append(f"  (+{len(uncovered) - 6} more uncovered)")
+    else:
+        lines.append("All declared claims have at least one supporting measurement somewhere in the run.")
+    return "\n".join(lines)
+
+
 def build_emission_nudge(warnings: list, steps_left: int) -> str:
     """Continuation nudge for the agent after emit_results returns contract warnings.
 
