@@ -113,6 +113,18 @@ def test_coverage_status_partitions_and_prioritizes():
     assert "A helps" not in s.split("STILL UNCOVERED")[1]  # covered one not re-listed
 
 
+def test_coverage_status_majority_rule_for_steering():
+    # P2b: steering "covered" needs >= half the names (the gate's R1 any-name rule
+    # is unchanged). One accidental shared name out of four must NOT stop every
+    # node from ever running the claim's experiment.
+    from ari.agent.metric_contract import build_coverage_status
+    mc = {"claims": [
+        {"claim": "M2 lowers translation misses",
+         "required_evidence": ["tlb_misses_m2", "tlb_misses_m0", "tput_m2", "tput_m0"]}]}
+    assert "0/1 covered" in build_coverage_status(mc, {"tput_m0"})            # 1/4 -> uncovered
+    assert "1/1 covered" in build_coverage_status(mc, {"tput_m0", "tput_m2"})  # 2/4 -> covered
+
+
 def test_coverage_status_all_covered_and_noop():
     from ari.agent.metric_contract import build_coverage_status
     mc = {"claims": [{"claim": "A", "required_evidence": ["a"]}]}

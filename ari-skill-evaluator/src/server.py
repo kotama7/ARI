@@ -269,19 +269,38 @@ _CLAIMS_EXTRACT_SYS = (
     "evaluate — a mechanism helps, a method beats a baseline, a property holds under a "
     "condition. For EACH claim, give required_evidence: the MEASUREMENT NAMES that MUST "
     "appear in results.json for the claim to be EVALUABLE AT ALL, regardless of whether the "
-    "outcome confirms or refutes it (e.g. an 'X improves throughput' claim requires the "
-    "throughput measured WITH and WITHOUT X). Use concise snake_case names the implementation "
-    "should emit. Do NOT turn an aspirational target into a claim ('1.5x speedup' is an "
+    "outcome confirms or refutes it (a claim that X improves some metric requires that metric "
+    "measured both WITH and WITHOUT X). Use concise snake_case names the implementation "
+    "should emit. Naming rules: every evidence name must be DISTINCTIVE and self-describing "
+    "(fold the condition into the name, like <metric>_with_<mechanism>); NEVER use a bare "
+    "generic token (k, n, seed, threads, matrix_id, mode_id, config) as a standalone evidence "
+    "name — the gate treats a claim as covered when ANY listed name is present, so a generic "
+    "name falsely satisfies it. Feasibility: require only evidence "
+    "measurable with standard USERSPACE tooling on the platform the plan states; do not "
+    "require privileged hardware counters unless the plan itself provides a method for them. "
+    "Do NOT turn an aspirational numeric target into a claim (a target is an "
     "outcome, not evidence) unless it names a measurement. Domain-neutral: HPC, ML, theory. "
     "Respond ONLY with JSON: "
     '{"claims":[{"claim":"<assertion>","required_evidence":["<name1>","<name2>"]}]}'
 )
 
 
+# Generic experiment tokens that must never stand alone as claim evidence: the gate
+# treats a claim as covered when ANY listed name is present (R1), so a name like
+# "k" that every run emits would falsely satisfy an unrelated mechanism claim.
+# Domain-neutral (input knobs / bookkeeping ids, not science).
+_GENERIC_EVIDENCE = frozenset({
+    "k", "n", "m", "x", "y", "id", "seed", "threads", "config", "mode", "iter",
+    "step", "size", "width", "count", "matrix_id", "mode_id", "config_id",
+    "node_id", "run_id", "iteration",
+})
+
+
 def _normalize_claims(raw) -> list:
     """Coerce declared/extracted claims to ``[{claim:str, required_evidence:[str]}]``.
 
-    Drops malformed entries and claims with no required_evidence (nothing checkable).
+    Drops malformed entries, BARE-GENERIC evidence names (R1 false-coverage guard),
+    and claims left with no required_evidence (nothing checkable).
     """
     items = raw.get("claims") if isinstance(raw, dict) else raw
     if not isinstance(items, list):
@@ -292,6 +311,7 @@ def _normalize_claims(raw) -> list:
             continue
         claim = str(it.get("claim") or "").strip()
         ev = [str(e).strip() for e in (it.get("required_evidence") or []) if str(e or "").strip()]
+        ev = [e for e in ev if e.lower() not in _GENERIC_EVIDENCE and len(e) > 2]
         if claim and ev:
             out.append({"claim": claim[:300], "required_evidence": ev})
     return out[:12]
