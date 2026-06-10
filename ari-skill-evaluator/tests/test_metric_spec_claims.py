@@ -150,6 +150,21 @@ def test_llm_extract_claims_parses_wrapped_json(monkeypatch):
     assert out == [{"claim": "A helps", "required_evidence": ["a_on", "a_off"]}]
 
 
+def test_llm_extract_claims_token_budget_is_generous(monkeypatch):
+    # regression: max_tokens=600 TRUNCATED the claims JSON mid-array on a real run
+    # (finish_reason=length, ~8KB needed for 12 claims), the JSONDecodeError was
+    # swallowed, and the contract silently carried claims=[] -- the plan-fidelity
+    # gate never armed. Pin a generous floor.
+    captured = {}
+
+    async def _cap(**kw):
+        captured.update(kw)
+        return _Resp('{"claims":[]}')
+    monkeypatch.setattr("litellm.acompletion", _cap)
+    asyncio.run(_llm_extract_claims("plan"))
+    assert captured["max_tokens"] >= 2048
+
+
 def test_llm_extract_claims_degrades_on_bad_response(monkeypatch):
     async def _no_json(**_kw):
         return _Resp("no json here at all")

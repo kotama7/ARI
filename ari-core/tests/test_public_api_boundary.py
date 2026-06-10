@@ -83,7 +83,7 @@ _ALLOWED_EXACT = {"ari.public"}
 _GRANDFATHERED: dict[str, set[int]] = {
     "ari-skill-coding/src/server.py": {547, 561},  # container + run_env fallbacks (deferred; lines shifted by the emit_results provenance field)
     "ari-skill-coding/tests/test_server.py": {107},
-    "ari-skill-evaluator/src/server.py": {16},  # cost_tracker fallback
+    "ari-skill-evaluator/src/server.py": {18},  # cost_tracker fallback (shifted by the logging import + module logger)
     "ari-skill-hpc/src/slurm.py": {211},  # run_env fallback
     "ari-skill-idea/src/server.py": {65, 574},  # cost_tracker fallback + ari.lineage (deferred; line shifted by the survey snapshot-reuse helper)
     "ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py": {159},  # cost_tracker fallback

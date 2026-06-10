@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import json
 from mcp.server import Server
 from mcp.types import TextContent, Tool
 
 server = Server("evaluator-skill")
+_logger = logging.getLogger("evaluator-skill")
 
 try:
     try:
@@ -328,7 +330,14 @@ def _load_idea_claims_source(checkpoint_dir: str | None = None):
 
 
 async def _llm_extract_claims(plan_text: str) -> list:
-    """LLM-extract falsifiable claims + required_evidence names from plan prose."""
+    """LLM-extract falsifiable claims + required_evidence names from plan prose.
+
+    max_tokens must be GENEROUS: a 10-12 claim JSON runs ~8KB, and a reasoning
+    model spends part of the budget thinking. 600 truncated the JSON mid-array
+    (finish_reason=length) on a real run, the JSONDecodeError was swallowed, and
+    the contract silently carried claims=[] -- the plan-fidelity gate never armed.
+    Parse failures are logged (not silently dropped) so this stays diagnosable.
+    """
     try:
         import litellm as _litellm, os as _os, json as _json, re as _re
         _model = (_os.environ.get("ARI_MODEL_EVAL")
@@ -342,14 +351,23 @@ async def _llm_extract_claims(plan_text: str) -> list:
                 {"role": "user", "content": "Experiment plan:\n" + (plan_text or "")[:6000]},
             ],
             temperature=0.0,
-            max_tokens=600,
+            max_tokens=4096,
         )
-        _raw = _resp.choices[0].message.content or ""
-        _m = _re.search(r"\{.*\}", _raw, _re.DOTALL)
-        if _m:
-            return _normalize_claims(_json.loads(_m.group(0)))
-    except Exception:
-        pass
+        _choice = _resp.choices[0]
+        _raw = _choice.message.content or ""
+        try:
+            _m = _re.search(r"\{.*\}", _raw, _re.DOTALL)
+            if _m:
+                return _normalize_claims(_json.loads(_m.group(0)))
+            _logger.warning(
+                "claims extraction: no JSON in response (finish_reason=%s, len=%d)",
+                getattr(_choice, "finish_reason", "?"), len(_raw))
+        except Exception as _pe:
+            _logger.warning(
+                "claims extraction: JSON parse failed (%s; finish_reason=%s, len=%d)",
+                _pe, getattr(_choice, "finish_reason", "?"), len(_raw))
+    except Exception as _e:
+        _logger.warning("claims extraction: LLM call failed: %s", _e)
     return []
 
 
