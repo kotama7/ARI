@@ -164,8 +164,10 @@ def check_emission(contract: dict, measurements: dict, provenance: dict) -> list
                 f"claims: {len(uncovered)} declared claim(s) have NO supporting measurement in "
                 f"this emission ({lines}{' …' if len(uncovered) > 6 else ''}) — the gate matches "
                 "measurement names EXACTLY: re-emit your evidence UNDER THESE EXACT NAMES (rename "
-                "your own keys if they measure the same thing; a negative result is fine) or the "
-                "paper will be BLOCKED at finalize (claim_evidence_missing).")
+                "your own keys ONLY where they genuinely measure the same thing; a negative result "
+                "is fine). PARTIAL coverage helps — each claim you cover here is one fewer block; "
+                "claims you truly did not measure are expected to be covered by OTHER nodes, so "
+                "leave them uncovered rather than fabricate.")
     return warnings
 
 
