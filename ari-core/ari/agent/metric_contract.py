@@ -35,8 +35,30 @@ def collect_run_measurement_names(checkpoint_dir: str) -> set:
         ckpt = Path(checkpoint_dir).expanduser().resolve()
         workspace = ckpt.parent.parent if ckpt.parent.name == "checkpoints" else ckpt.parent
         exp = workspace / "experiments" / ckpt.name
+
+        # Align the steering view with the GATE's view: the gate unions evidence
+        # only over nodes with has_real_data, so coverage must not count a node the
+        # evaluator judged broken/dataless — otherwise a faulty branch's mere
+        # measurement NAMES would tell siblings "already covered", suppressing the
+        # independent re-measurement that branch fault-containment exists to keep.
+        # Unknown/absent tree.json (root, early run) -> no filter (count all),
+        # which errs toward optimism only before any evaluation exists.
+        eligible: "set | None" = None
+        tree = ckpt / "tree.json"
+        if tree.is_file():
+            try:
+                tnodes = (_json.loads(tree.read_text()) or {}).get("nodes") or []
+                ids = {str(n.get("id")) for n in tnodes if isinstance(n, dict)}
+                if ids:
+                    eligible = {str(n.get("id")) for n in tnodes
+                                if isinstance(n, dict) and n.get("has_real_data")}
+            except Exception:
+                eligible = None
+
         if exp.is_dir():
             for p in exp.glob("node_*/results*.json"):
+                if eligible is not None and p.parent.name not in eligible:
+                    continue
                 try:
                     d = _json.loads(p.read_text())
                 except Exception:
