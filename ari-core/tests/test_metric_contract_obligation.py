@@ -136,6 +136,26 @@ def test_collect_run_measurement_names_unions_nodes(tmp_path):
     assert collect_run_measurement_names(str(ws / "checkpoints" / "nope")) == set()
 
 
+def test_collect_run_measurement_names_excludes_failed_nodes(tmp_path):
+    # independence guard: a node the evaluator judged broken (has_real_data=False)
+    # must NOT mark claims "covered" for its siblings — the gate will not count its
+    # evidence either, and steering optimism would suppress the independent
+    # re-measurement that branch fault-containment exists to preserve.
+    import json
+    from ari.agent.metric_contract import collect_run_measurement_names
+    ws = tmp_path
+    ck = ws / "checkpoints" / "run2"; ck.mkdir(parents=True)
+    good = ws / "experiments" / "run2" / "node_good"; good.mkdir(parents=True)
+    bad = ws / "experiments" / "run2" / "node_bad"; bad.mkdir(parents=True)
+    (good / "results.json").write_text(json.dumps({"measurements": {"a_on": 1.0}}))
+    (bad / "results.json").write_text(json.dumps({"measurements": {"b_curve": 9.9}}))
+    (ck / "tree.json").write_text(json.dumps({"nodes": [
+        {"id": "node_good", "has_real_data": True},
+        {"id": "node_bad", "has_real_data": False},   # evaluated broken
+    ]}))
+    assert collect_run_measurement_names(str(ck)) == {"a_on"}   # bad node excluded
+
+
 def test_obligation_matches_pinned_window_marker():
     # The react context window pins run-level invariant USER messages by marker;
     # if the obligation's first line is reworded without updating the marker, the
