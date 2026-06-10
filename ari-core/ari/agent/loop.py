@@ -58,8 +58,14 @@ def __getattr__(name: str):  # PEP 562 — keep ``SYSTEM_PROMPT`` source-compati
     raise AttributeError(name)
 
 _MEMORY_RULES_PER_NODE = """
-- When available, save decisive intermediate findings with `add_memory(node_id=\"{node_id}\", text=..., metadata=...)` — concrete numbers, failed approaches with root cause, design decisions. Skip chatter and verbose logs.
-- Use `search_memory(query=..., ancestor_ids=[...], limit=5)` if you need to recall what ancestor nodes already established before repeating work."""
+- MEMORY: your descendants automatically inherit ONLY this node's final result_summary; \
+everything else is lost to them unless you save it. At decision points call \
+`add_memory(node_id=\"{node_id}\", text=..., metadata={{\"type\": \"finding\"}})` — a measured \
+number that settles a question, a failed approach WITH its root cause, a design choice and why. \
+One line each; skip chatter (the raw step log is auto-saved but unstructured and NOT inherited).
+- The injected context shows ancestor CONCLUSIONS only. Before re-deriving or re-measuring \
+anything an ancestor likely did, call `search_memory(query=..., ancestor_ids=[...], limit=5)` \
+to pull their details instead of repeating the work."""
 
 # Global memory tools were removed in v0.6.0 — this block is kept empty
 # so the existing call-site conditional can stay.
