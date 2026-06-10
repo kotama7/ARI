@@ -273,6 +273,19 @@ def test_injected_messages_match_pinned_window_markers(tmp_path, monkeypatch):
     assert "[Experiment context" in kinds           # the experiment/idea context too
 
 
+def test_memory_rules_state_inheritance_consequence():
+    # The per-node memory rules must tell the agent WHAT IS LOST without an explicit
+    # add_memory (descendants inherit only the result_summary) — a bare "you can save
+    # things" produced ZERO active memory use on real runs; consequence-tied phrasing
+    # is the same principle that made the contract obligation effective.
+    from ari.agent.loop import _MEMORY_RULES_PER_NODE
+    t = _MEMORY_RULES_PER_NODE.format(node_id="n1")
+    assert "result_summary" in t          # names what IS auto-inherited
+    assert "add_memory" in t and "search_memory" in t
+    assert "n1" in t                      # node_id formatted in
+    assert "root cause" in t              # concrete save triggers
+
+
 def test_contract_obligation_noop_without_env(tmp_path, monkeypatch):
     _write_contract(tmp_path)
     monkeypatch.delenv("ARI_CHECKPOINT_DIR", raising=False)
