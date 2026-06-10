@@ -110,6 +110,51 @@ _SUPPLEMENT_CAP = 400        # per detail-supplement entry (2)
 _PINNED_USER_MARKERS = ("METRIC-CORRECTNESS CONTRACT", "[Experiment context")
 
 
+def repair_tool_message_order(msgs: list) -> list:
+    """Make every assistant-with-tool_calls be followed by its COMPLETE, CONTIGUOUS
+    block of tool responses (the API contract).
+
+    Two real failure shapes this repairs (defense-in-depth behind the injection
+    deferral): a non-tool message interleaved between an assistant's tool responses
+    is MOVED to after the block; an assistant whose responses are not all present
+    (e.g. a window cut) is DROPPED together with its orphaned responses instead of
+    being sent broken ("tool_call_ids did not have response messages" killed the
+    root node on 3 of 5 real runs). Order is otherwise preserved.
+    """
+    out: list = []
+    i, n = 0, len(msgs)
+    while i < n:
+        m = msgs[i]
+        if m.get("role") == "assistant" and m.get("tool_calls"):
+            need = {tc.get("id") for tc in m["tool_calls"]}
+            block: list = []
+            displaced: list = []
+            j = i + 1
+            while j < n and need:
+                mj = msgs[j]
+                if mj.get("role") == "tool" and mj.get("tool_call_id") in need:
+                    block.append(mj)
+                    need.discard(mj["tool_call_id"])
+                elif mj.get("role") == "assistant":
+                    break  # responses cannot legally appear past the next assistant
+                else:
+                    displaced.append(mj)
+                j += 1
+            if need:
+                # incomplete pairing -> drop the assistant + its partial responses;
+                # keep the innocent displaced messages in order.
+                out.extend(displaced)
+            else:
+                out.append(m)
+                out.extend(block)
+                out.extend(displaced)
+            i = j
+        else:
+            out.append(m)
+            i += 1
+    return out
+
+
 def _cap(s: str, n: int) -> str:
     """Truncate to n chars with an ellipsis marker when cut."""
     s = s.strip()
@@ -726,6 +771,7 @@ class AgentLoop:
                         result[i] = {**result[i], "content": c[:200] + "\n...[compressed]...\n" + c[-200:]}
                 return result
             window = _build_safe_window(messages)
+            window = repair_tool_message_order(window)
             # Validate message ordering before sending to LLM
             _prev_was_tc = False
             _pending_tc_ids: set = set()
@@ -796,6 +842,14 @@ class AgentLoop:
                     for tc in response.tool_calls
                 }
                 executed_names: list[str] = []
+                # Handler-driven USER injections (idea summary, contract obligation,
+                # emission nudge) must NOT be appended inside this loop: with an
+                # assistant that batched 2+ tool_calls, a user message would land
+                # BETWEEN its tool responses, which the API rejects ("tool_call_ids
+                # did not have response messages") — this killed the ROOT node on
+                # 3 of 5 real runs, right after make_metric_spec. Collect here,
+                # extend after the loop (i.e. after the contiguous tool block).
+                _deferred_user_msgs: list = []
                 for r in results:
                     rc = json.dumps(r["result"], ensure_ascii=False)
                     _FULL_LOG_TOOLS = {"generate_ideas", "survey", "make_metric_spec"}
@@ -1064,7 +1118,7 @@ class AgentLoop:
                                         "[loop.run] idea_injection: title=%r len=%d",
                                         _best.get('title', ''), len(_idea_msg),
                                     )
-                                    messages.append({"role": "user", "content": _idea_msg})
+                                    _deferred_user_msgs.append({"role": "user", "content": _idea_msg})
                                     self._idea_injected = True
                                     self._idea_context = _idea_msg
                                     logger.info("Injected best idea into conversation: %s", _best.get('title', '')[:80])
@@ -1123,7 +1177,7 @@ class AgentLoop:
                                     from ari.agent.metric_contract import build_contract_obligation
                                     _obl = build_contract_obligation(_mc)
                                     if _obl:
-                                        messages.append({"role": "user", "content": _obl})
+                                        _deferred_user_msgs.append({"role": "user", "content": _obl})
                                         logger.info(
                                             "contract obligation injected after make_metric_spec (claims=%d)",
                                             len(_mc.get("claims") or []) if isinstance(_mc, dict) else 0,
@@ -1153,7 +1207,7 @@ class AgentLoop:
                                 from ari.agent.metric_contract import build_emission_nudge
                                 _nudge = build_emission_nudge(_cw, _left)
                                 if _nudge:
-                                    messages.append({"role": "user", "content": _nudge})
+                                    _deferred_user_msgs.append({"role": "user", "content": _nudge})
                                 logger.info(
                                     "emit_results returned %d contract warning(s); continuation nudged (%d steps left)",
                                     len(_cw), _left)
@@ -1229,6 +1283,9 @@ class AgentLoop:
                                 })
                         except Exception:
                             pass
+
+                if _deferred_user_msgs:
+                    messages.extend(_deferred_user_msgs)
 
                 tools_called += len(results)
                 last = executed_names[-1] if executed_names else ""

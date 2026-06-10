@@ -64,6 +64,7 @@ targets the like-named module under `ari/`.
 - `test_llm.py` — LLM client.
 - `test_llm_evaluator_axes.py` — LLM evaluator axes.
 - `test_llm_routing.py` — TODO
+- `test_loop_message_order.py` — TODO
 - `test_max_react_passthrough.py` — max-ReAct passthrough.
 - `test_mcp_cow_concurrency.py` — MCP copy-on-write concurrency.
 - `test_memory.py` — memory backend.
