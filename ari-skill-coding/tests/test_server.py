@@ -299,6 +299,48 @@ def test_emit_results_provenance_roundtrip_to_gate(work_dir):
     assert types == ["ceiling_unmeasured", "correctness_uncovered"]
 
 
+def test_emit_results_warns_when_contract_evidence_dropped(work_dir, tmp_path, monkeypatch):
+    # regression (real partA run): the agent VERIFIED its kernel but emitted only
+    # throughput -- the paper then blocked at finalize for a check that had passed.
+    # emit_results must surface the gate's presence checks AT EMISSION TIME so the
+    # agent can immediately re-emit with the evidence it already has.
+    import json as _json
+    pytest.importorskip("ari.public.claim_gate")
+    (tmp_path / "metric_contract.json").write_text(_json.dumps({
+        "key": "GFLOP_per_s", "correctness_required": True,
+        "claims": [{"claim": "selector improves worst-case",
+                    "required_evidence": ["worst_case_on", "worst_case_off"]}]}))
+    monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+    r = _emit_results(
+        params={}, measurements={"GFlops_per_s": 40.5}, predictions={}, scores={},
+        provenance={"GFlops_per_s": "benchmark"},
+        file="results.json", work_dir=work_dir,
+    )
+    assert r["status"] == "written"                      # the write itself is untouched
+    warns = r.get("contract_warnings") or []
+    assert any("correctness_required" in w for w in warns)
+    assert any("worst_case_on" in w for w in warns)      # names the missing evidence
+
+
+def test_emit_results_no_warnings_when_compliant_or_no_contract(work_dir, tmp_path, monkeypatch):
+    import json as _json
+    pytest.importorskip("ari.public.claim_gate")
+    # no contract -> no key
+    monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+    r0 = _emit_results(params={}, measurements={"y": 1.0}, predictions={}, scores={},
+                       file="r0.json", work_dir=work_dir)
+    assert "contract_warnings" not in r0
+    # compliant emission -> no key
+    (tmp_path / "metric_contract.json").write_text(_json.dumps({
+        "key": "m", "correctness_required": True}))
+    r1 = _emit_results(
+        params={}, measurements={"m": 0.5, "max_abs_err": 0.0}, predictions={}, scores={},
+        provenance={"max_abs_err": "correctness"},
+        file="r1.json", work_dir=work_dir,
+    )
+    assert "contract_warnings" not in r1
+
+
 def test_emit_results_overwrites_existing(work_dir):
     import json as _json
     _emit_results(

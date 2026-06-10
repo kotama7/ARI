@@ -81,7 +81,7 @@ _ALLOWED_EXACT = {"ari.public"}
 # richer test_skill_public_contract.py enforces the same contract but understands
 # the ``except ImportError`` fallback directly.
 _GRANDFATHERED: dict[str, set[int]] = {
-    "ari-skill-coding/src/server.py": {547, 561},  # container + run_env fallbacks (deferred; lines shifted by the emit_results provenance field)
+    "ari-skill-coding/src/server.py": {569, 583},  # container + run_env fallbacks (deferred; lines shifted by the emit_results provenance field + point-of-emission contract feedback)
     "ari-skill-coding/tests/test_server.py": {107},
     "ari-skill-evaluator/src/server.py": {18},  # cost_tracker fallback (shifted by the logging import + module logger)
     "ari-skill-hpc/src/slurm.py": {211},  # run_env fallback

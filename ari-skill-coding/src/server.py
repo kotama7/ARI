@@ -466,7 +466,7 @@ def _emit_results(
             "error": f"emit_results: write failed: {e}",
             "path": str(out_path),
         }
-    return {
+    result = {
         "path": str(out_path),
         "schema_version": _RESULTS_SCHEMA_VERSION,
         "params_keys":       list(payload["params"].keys()),
@@ -475,6 +475,28 @@ def _emit_results(
         "scores_keys":       list(payload["scores"].keys()),
         "status": "written",
     }
+    # Point-of-emission contract feedback: mirror the FINAL gate's presence checks
+    # against the run-level metric_contract NOW, while the agent can still re-emit
+    # (this file is overwritten on re-call). Observed failure this closes: an agent
+    # VERIFIED its kernel (the correctness columns sat in its own results.csv) yet
+    # emitted only throughput -- the paper then blocked at finalize for a check that
+    # had passed, with no chance to fix it. Advisory only: the write above already
+    # happened and is never altered; absent contract / absent ari-core => silent.
+    try:
+        import os as _os_ce
+        _ck_ce = _os_ce.environ.get("ARI_CHECKPOINT_DIR", "").strip()
+        _mc_p = Path(_ck_ce) / "metric_contract.json" if _ck_ce else None
+        if _mc_p is not None and _mc_p.is_file():
+            _mc = json.loads(_mc_p.read_text())
+            if isinstance(_mc, dict) and _mc:
+                from ari.public.claim_gate import check_emission as _check_emission
+                _warns = _check_emission(_mc, payload["measurements"],
+                                         payload.get("_provenance") or {})
+                if _warns:
+                    result["contract_warnings"] = _warns
+    except Exception:
+        pass
+    return result
 
 
 def _format_run_result(stdout: str, stderr: str, returncode: int) -> dict:
