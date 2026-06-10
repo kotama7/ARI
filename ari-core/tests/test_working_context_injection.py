@@ -253,6 +253,26 @@ def test_contract_obligation_noop_without_file(tmp_path, monkeypatch):
     assert not any("METRIC-CORRECTNESS CONTRACT" in m["content"] for m in msgs)
 
 
+def test_injected_messages_match_pinned_window_markers(tmp_path, monkeypatch):
+    # The react window keeps only system+first-user+pinned+tail; run-level invariant
+    # user messages (experiment/idea context, the contract obligation) are pinned BY
+    # MARKER — assert the builders' output actually matches the markers, so a header
+    # rename cannot silently un-pin them (they then vanish mid-node, the real-run bug).
+    from ari.agent.loop import _PINNED_USER_MARKERS
+    _write_contract(tmp_path)
+    monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+    msgs = build_working_context_messages(
+        _fake_call_tool(ctx={"primary_metric": "GFLOP_per_s"}, node_memory={}),
+        depth=1, ancestor_ids=["p1"], eval_summary="q", experiment_goal="g",
+    )
+    pinned = [m for m in msgs
+              if any(mk in str(m.get("content", ""))[:120] for mk in _PINNED_USER_MARKERS)]
+    kinds = {mk for m in pinned for mk in _PINNED_USER_MARKERS
+             if mk in str(m.get("content", ""))[:120]}
+    assert "METRIC-CORRECTNESS CONTRACT" in kinds   # the obligation is pin-matched
+    assert "[Experiment context" in kinds           # the experiment/idea context too
+
+
 def test_contract_obligation_noop_without_env(tmp_path, monkeypatch):
     _write_contract(tmp_path)
     monkeypatch.delenv("ARI_CHECKPOINT_DIR", raising=False)
