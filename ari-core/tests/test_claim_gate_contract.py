@@ -220,6 +220,38 @@ def test_gate_blocks_claim_evidence_missing_in_warn_at_final(tmp_path):
     assert any(e["type"] == "claim_evidence_missing" for e in rep["errors"])
 
 
+# ── check_emission: point-of-emission producer feedback ─────────────────────────
+# Mirrors the gate's presence checks at emit_results time so an agent that did the
+# work but DROPPED the evidence in its final emit (a real partA run verified its
+# kernel yet emitted only throughput) is told immediately, while it can re-emit.
+
+def test_check_emission_warns_on_dropped_correctness():
+    mc = {"key": "GFLOP_per_s", "correctness_required": True,
+          "claims": [{"claim": "X improves Y", "required_evidence": ["x_on", "x_off"]}]}
+    warns = contract.check_emission(
+        mc, {"GFlops_per_s": 40.5, "GB_per_s": 92.5}, {"GFlops_per_s": "benchmark"})
+    joined = " ".join(warns)
+    assert any("correctness_required" in w for w in warns)
+    assert any("claims:" in w for w in warns)
+    assert "x_on" in joined                              # tells the agent the names
+    assert "BLOCKED" in joined                           # and the consequence
+
+
+def test_check_emission_quiet_when_compliant():
+    mc = {"key": "m", "correctness_required": True, "ceiling_must_be_measured": True,
+          "claims": [{"claim": "c", "required_evidence": ["x_on", "x_off"]}]}
+    warns = contract.check_emission(
+        mc,
+        {"m": 0.5, "max_abs_err": 0.0, "peak": 400.0, "x_on": 1.0},
+        {"max_abs_err": "correctness", "peak": "microbench"})
+    assert warns == []                                   # R1: any claim evidence suffices
+
+
+def test_check_emission_noop_without_contract():
+    assert contract.check_emission({}, {"m": 1.0}, {}) == []
+    assert contract.check_emission(None, {"m": 1.0}, {}) == []
+
+
 # ── idea-owned requirement flags (G): provenance-presence enforcement ──────────
 # The idea owns the REQUIREMENT; the agent satisfies it by emitting TAGGED evidence
 # (a measured ceiling, a correctness residual). Presence-only & run-level: an honest

@@ -112,6 +112,62 @@ def _has_provenance_root(science_data: dict, roots: tuple) -> bool:
     return False
 
 
+def _any_root(values, roots: tuple) -> bool:
+    for v in values:
+        text = str(v).strip().lower()
+        if text and any(root in text for root in roots):
+            return True
+    return False
+
+
+def check_emission(contract: dict, measurements: dict, provenance: dict) -> list:
+    """Point-of-emission contract feedback for the PRODUCER (emit_results).
+
+    The final gate runs long after the node is gone; an agent that did the work but
+    DROPPED the evidence in its final emit (observed on a real run: the kernel was
+    verified correct -- correctness columns sat in its own results.csv -- yet
+    emit_results carried only throughput, so the paper was blocked for a check that
+    HAD passed) gets no chance to fix it. This mirrors the gate's presence checks at
+    the moment the agent reports, returning human-readable WARNINGS the tool result
+    surfaces so the agent can immediately re-emit (emit_results overwrites by
+    design). Advisory only -- the emission itself is never blocked or altered.
+    Domain-neutral: evaluates only the DECLARED contract.
+    """
+    warnings: list = []
+    if not isinstance(contract, dict) or not contract:
+        return warnings
+    meas = measurements if isinstance(measurements, dict) else {}
+    prov = provenance if isinstance(provenance, dict) else {}
+
+    if contract.get("correctness_required") and not _any_root(prov.values(), _CORRECTNESS_ROOTS):
+        warnings.append(
+            "correctness_required: no measurement is tagged as correctness evidence — if you "
+            "verified against an independent reference, RE-EMIT including the residual (e.g. "
+            'max_abs_err) in measurements with provenance {"<residual>": "correctness"}; '
+            "otherwise the paper will be BLOCKED at finalize (correctness_uncovered).")
+    if contract.get("ceiling_must_be_measured") and not _any_root(prov.values(), _MEASURED_ROOTS):
+        warnings.append(
+            "ceiling_must_be_measured: no measurement carries a measured (microbench/benchmark) "
+            "provenance tag — tag your empirically measured ceiling/peak or the paper will be "
+            "BLOCKED at finalize (ceiling_unmeasured).")
+    claims = [c for c in (contract.get("claims") or []) if isinstance(c, dict)]
+    if claims:
+        present = set(meas.keys())
+        uncovered = []
+        for c in claims:
+            req = [n for n in (c.get("required_evidence") or []) if isinstance(n, str) and n.strip()]
+            if req and not any(n in present for n in req):
+                uncovered.append((str(c.get("claim") or "")[:80], req[:4]))
+        if uncovered:
+            lines = "; ".join(f"{cl!r} needs one of {ev}" for cl, ev in uncovered[:3])
+            warnings.append(
+                f"claims: {len(uncovered)} declared claim(s) have NO supporting measurement in "
+                f"this emission ({lines}{' …' if len(uncovered) > 3 else ''}) — emit the named "
+                "evidence (a negative result is fine) or the paper will be BLOCKED at finalize "
+                "(claim_evidence_missing).")
+    return warnings
+
+
 def _iter_configs(science_data: dict) -> Iterator[tuple[str, dict]]:
     for cfg in science_data.get("configurations", []) or []:
         if isinstance(cfg, dict):
