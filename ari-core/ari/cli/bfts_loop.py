@@ -186,7 +186,19 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                 # next outer iteration retry with a fresh round.
                 break
             try:
-                best = bfts.select_best_to_expand(_eligible, experiment_data["goal"], agent.memory)
+                # P3: append run-level claim coverage to the selection goal so the
+                # (already cross-branch) scheduler can prefer a node whose next
+                # experiment evidences a STILL-UNCOVERED claim — without it a real
+                # 10-node run produced ten variations of the headline experiment.
+                # Node reasoning context is untouched (scheduler-only signal).
+                _goal_for_select = experiment_data["goal"]
+                try:
+                    from ari.agent.metric_contract import build_expand_coverage_hint
+                    _goal_for_select = _goal_for_select + build_expand_coverage_hint(
+                        str(checkpoint_dir))
+                except Exception:
+                    pass
+                best = bfts.select_best_to_expand(_eligible, _goal_for_select, agent.memory)
             except Exception as exc:
                 logging.getLogger(__name__).warning("select_best_to_expand failed: %s", exc)
                 best = _eligible[0]

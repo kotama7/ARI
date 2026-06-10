@@ -114,6 +114,36 @@ def build_coverage_status(contract: "dict | None", covered_names: set) -> str:
     return "\n".join(lines)
 
 
+def build_expand_coverage_hint(checkpoint_dir: str) -> str:
+    """Coverage hint appended to the EXPANSION-SELECTION goal text (P3).
+
+    The expansion selector already sees every branch's score/metrics/summary (it is
+    inherently a cross-branch scheduler), but nothing told it which declared claims
+    remain unevidenced -- so it optimized the headline metric and a real 10-node run
+    produced ten variations of the same experiment. This appends the run-level
+    coverage block (gate-aligned, majority-rule) so "covers a still-uncovered claim"
+    can inform WHICH node to expand. ``""`` when no contract / no claims / error,
+    so legacy behaviour is untouched.
+    """
+    try:
+        from pathlib import Path
+        import json as _json
+        p = Path(checkpoint_dir) / "metric_contract.json"
+        if not p.is_file():
+            return ""
+        mc = _json.loads(p.read_text())
+        if not isinstance(mc, dict) or not (mc.get("claims") or []):
+            return ""
+        st = build_coverage_status(mc, collect_run_measurement_names(str(checkpoint_dir)))
+        if not st:
+            return ""
+        return (
+            "\n\n[Run-level claim coverage — prefer expanding a node whose next "
+            "experiment can evidence a STILL-UNCOVERED claim]\n" + st)
+    except Exception:
+        return ""
+
+
 def build_emission_nudge(warnings: list, steps_left: int) -> str:
     """Continuation nudge for the agent after emit_results returns contract warnings.
 

@@ -148,6 +148,25 @@ def test_collect_run_measurement_names_unions_nodes(tmp_path):
     assert collect_run_measurement_names(str(ws / "checkpoints" / "nope")) == set()
 
 
+def test_expand_coverage_hint_lists_uncovered_for_scheduler(tmp_path):
+    # P3: the expansion-selection goal gains the run-level coverage block so the
+    # scheduler can prefer nodes that evidence STILL-UNCOVERED claims.
+    import json
+    from ari.agent.metric_contract import build_expand_coverage_hint
+    ws = tmp_path
+    ck = ws / "checkpoints" / "run3"; ck.mkdir(parents=True)
+    (ck / "metric_contract.json").write_text(json.dumps({"key": "t", "claims": [
+        {"claim": "A helps", "required_evidence": ["a_with_mech", "a_without_mech"]}]}))
+    h = build_expand_coverage_hint(str(ck))
+    assert "claim coverage" in h and "STILL UNCOVERED" in h
+    assert "a_with_mech" in h
+    # no contract / no claims -> empty (legacy behaviour untouched)
+    ck2 = ws / "checkpoints" / "run4"; ck2.mkdir(parents=True)
+    assert build_expand_coverage_hint(str(ck2)) == ""
+    (ck2 / "metric_contract.json").write_text(json.dumps({"key": "t", "claims": []}))
+    assert build_expand_coverage_hint(str(ck2)) == ""
+
+
 def test_collect_run_measurement_names_excludes_failed_nodes(tmp_path):
     # independence guard: a node the evaluator judged broken (has_real_data=False)
     # must NOT mark claims "covered" for its siblings — the gate will not count its
