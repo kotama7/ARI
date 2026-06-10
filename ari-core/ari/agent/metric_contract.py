@@ -90,7 +90,13 @@ def build_coverage_status(contract: "dict | None", covered_names: set) -> str:
     covered, uncovered = [], []
     for c in claims:
         req = [n for n in (c.get("required_evidence") or []) if isinstance(n, str) and n.strip()]
-        (covered if (req and any(n in cov for n in req)) else uncovered).append(c)
+        # STEERING uses a MAJORITY rule (>= half the names present), stricter than
+        # the gate's R1 any-name rule: R1 exists to avoid over-BLOCKING, but for
+        # steering an accidentally-shared single name (e.g. a generic token) would
+        # mark a claim "covered" and stop any node from ever running its experiment.
+        # Erring uncovered here only costs a possibly-redundant measurement.
+        hits = sum(1 for n in req if n in cov)
+        (covered if (req and hits >= max(1, (len(req) + 1) // 2)) else uncovered).append(c)
     lines = [
         f"RUN-LEVEL CLAIM COVERAGE (across all nodes so far): {len(covered)}/{len(claims)} covered."
     ]

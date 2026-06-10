@@ -44,17 +44,37 @@ def test_normalize_claims_coerces_and_drops_malformed():
         {"claim": "no evidence", "required_evidence": []},   # dropped (nothing checkable)
         {"required_evidence": ["x"]},                         # dropped (no claim text)
         "garbage",                                            # dropped
-        {"claim": "B", "required_evidence": ["b1", " "]},     # blank evidence stripped
+        {"claim": "B", "required_evidence": ["b_metric", " "]},  # blank evidence stripped
     ]}
     assert _normalize_claims(raw) == [
         {"claim": "A helps", "required_evidence": ["a_on", "a_off"]},
-        {"claim": "B", "required_evidence": ["b1"]},
+        {"claim": "B", "required_evidence": ["b_metric"]},
     ]
 
 
+def test_normalize_claims_drops_bare_generic_evidence_names():
+    # R1 false-coverage guard (P2a): a claim whose evidence list contains generic
+    # tokens (k / matrix_id / mode_id ...) would be "covered" by ANY run that emits
+    # such a name; generics are stripped, and a claim left with none is dropped.
+    raw = {"claims": [
+        {"claim": "M1 reduces branch misses vs M0",
+         "required_evidence": ["mode_id", "branch_misses_per_kilo_instr", "matrix_id", "k"]},
+        {"claim": "only generics", "required_evidence": ["k", "mode_id"]},
+    ]}
+    out = _normalize_claims(raw)
+    assert out == [{"claim": "M1 reduces branch misses vs M0",
+                    "required_evidence": ["branch_misses_per_kilo_instr"]}]
+
+
+def test_claims_extract_prompt_demands_distinctive_userspace_names():
+    s = _CLAIMS_EXTRACT_SYS
+    assert "DISTINCTIVE" in s and "generic" in s          # naming rule stated
+    assert "USERSPACE" in s and "privileged" in s         # feasibility rule stated
+
+
 def test_normalize_claims_accepts_bare_list_and_empties():
-    assert _normalize_claims([{"claim": "C", "required_evidence": ["c"]}]) == \
-        [{"claim": "C", "required_evidence": ["c"]}]
+    assert _normalize_claims([{"claim": "C", "required_evidence": ["c_val"]}]) == \
+        [{"claim": "C", "required_evidence": ["c_val"]}]
     assert _normalize_claims({}) == []
     assert _normalize_claims(None) == []
     assert _normalize_claims({"claims": "nope"}) == []
@@ -134,10 +154,13 @@ def test_make_metric_spec_persists_contract_file(tmp_path, monkeypatch):
 def test_claims_extract_prompt_is_domain_neutral():
     # HARD CONSTRAINT: the extraction prompt itself must not leak domain vocabulary
     # (it shapes the required_evidence names the gate then keys on). Mirrors the
-    # obligation domain-neutrality guard, but for the EXTRACTOR prompt.
+    # obligation domain-neutrality guard, but for the EXTRACTOR prompt. "speedup" /
+    # "throughput" were perf-flavoured examples removed on user instruction — a
+    # seeded example self-fulfillingly biases the extracted evidence names.
     sys_l = _CLAIMS_EXTRACT_SYS.lower()
     for banned in ("roofline", "gflop", "flop/s", "bandwidth", "cache", "dram",
-                   "stream", "arithmetic intensity"):
+                   "stream", "arithmetic intensity", "speedup", "throughput",
+                   "latency", "1.5x"):
         assert banned not in sys_l, banned
 
 
