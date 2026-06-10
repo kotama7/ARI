@@ -429,3 +429,40 @@ def test_condense_query_empty_and_short():
     from snapshot import _condense_query
     assert _condense_query("") == ""
     assert _condense_query("sparse matrix multiplication") == "sparse matrix multiplication"
+
+
+def test_candidate_queries_progressively_relax():
+    # regression: S2 effectively ANDs terms, so ONE rare token (e.g. "rhs") zeroes
+    # the whole query. _fetch_corpus probes progressively shorter keyword prefixes
+    # until one hits; the candidates must shrink monotonically down to 2 terms.
+    from snapshot import _candidate_queries
+    topic = ("High-performance CSR SpMM on CPUs robust to varying RHS width; build "
+             "performance model using compute peak, memory bandwidth, and loopline.")
+    cands = _candidate_queries(topic)
+    assert len(cands) >= 3
+    lens = [len(q.split()) for q in cands]
+    assert lens == sorted(lens, reverse=True)         # strictly relaxing
+    assert lens[-1] == 2                              # down to a 2-term floor
+    for q in cands[1:]:
+        assert cands[0].startswith(q.split()[0])      # prefixes of the same kw list
+
+
+def test_fetch_corpus_relaxes_until_hits(monkeypatch):
+    # offline: first (full) query returns no data; a relaxed one returns papers ->
+    # the fetch must ground on the relaxed query instead of returning [].
+    import snapshot as snap_mod
+    calls = []
+
+    def _fake_get(path, params, **kw):
+        calls.append(params["query"])
+        if len(calls) < 3:
+            return {"total": 0, "data": []}           # first two candidates: 0 hits
+        return {"total": 2, "data": [
+            {"paperId": "p1", "title": "A"}, {"paperId": "p2", "title": "B"}]}
+
+    monkeypatch.setattr(snap_mod, "_s2_get", _fake_get)
+    papers = snap_mod._fetch_corpus(
+        "High-performance CSR SpMM on CPUs robust to varying RHS width; build "
+        "performance model using compute peak, memory bandwidth, and loopline.", 10)
+    assert len(papers) == 2                           # grounded on the relaxed query
+    assert len(calls) >= 3                            # probed multiple candidates
