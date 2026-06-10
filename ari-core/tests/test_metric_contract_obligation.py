@@ -78,3 +78,29 @@ def test_no_claims_means_no_claims_section():
         {"key": "m", "concept": "normalized", "invariants": ["value <= 1"]}
     )
     assert "5. CLAIMS" not in obl
+
+
+# ── build_emission_nudge: continuation after contract warnings ────────────────
+
+def test_emission_nudge_contains_warnings_and_steps():
+    from ari.agent.metric_contract import build_emission_nudge
+    n = build_emission_nudge(["correctness_required: no measurement is tagged ..."], 66)
+    assert "correctness_required" in n
+    assert "66" in n
+    assert "emit_results again" in n          # tells the agent it can re-emit
+    assert "BLOCK" in n                       # and the consequence
+
+
+def test_emission_nudge_noop_cases():
+    from ari.agent.metric_contract import build_emission_nudge
+    assert build_emission_nudge([], 50) == ""
+    assert build_emission_nudge(["w"], 0) == ""
+
+
+def test_obligation_matches_pinned_window_marker():
+    # The react context window pins run-level invariant USER messages by marker;
+    # if the obligation's first line is reworded without updating the marker, the
+    # obligation silently vanishes mid-node again (the real-run failure mode).
+    from ari.agent.loop import _PINNED_USER_MARKERS
+    obl = build_contract_obligation({"key": "m", "concept": "normalized"})
+    assert any(mk in obl[:120] for mk in _PINNED_USER_MARKERS)

@@ -98,6 +98,11 @@ _IDEA_FIELD_CAP = 1500       # selected_idea (design intent) — larger than a s
 _ANCESTOR_SUMMARY_CAP = 600  # per ancestor conclusion (1b)
 _SUPPLEMENT_CAP = 400        # per detail-supplement entry (2)
 
+# Run-level invariant USER messages that must survive the react context window
+# (matched against the message head). The obligation marker is the first line
+# build_contract_obligation emits; the context marker is the (1a) header above.
+_PINNED_USER_MARKERS = ("METRIC-CORRECTNESS CONTRACT", "[Experiment context")
+
 
 def _cap(s: str, n: int) -> str:
     """Truncate to n chars with an ellipsis marker when cut."""
@@ -583,6 +588,7 @@ class AgentLoop:
         tools_called = 0
         exec_called = False          # whether run_bash / run_code has been called
         tool_outputs: list[str] = []
+        contract_pending = False     # last emit_results carried contract_warnings
 
         for step in range(self.max_react_steps):
             job_ids = _extract_job_ids(messages, self.hints.job_id_key)
@@ -597,7 +603,14 @@ class AgentLoop:
                 job_done = (exec_called and bool(job_ids)) and bool(tool_outputs)
             else:
                 job_done = exec_called and bool(tool_outputs)
-            force_finish = (job_done and step >= 5) or (step >= self.max_react_steps - 3 and can_finish)
+            # contract_hold: the last emit_results reported UNMET contract obligations
+            # and real budget remains -- do NOT force-finish yet (observed: the agent
+            # was tool-stripped right after its first job, leaving 66/80 steps unused
+            # and the contract warnings unactionable). Bounded: the hold expires 10
+            # steps before the cap, so the anti-doom-loop backstop is preserved.
+            contract_hold = contract_pending and step < self.max_react_steps - 10
+            force_finish = (job_done and step >= 5 and not contract_hold) or (
+                step >= self.max_react_steps - 3 and can_finish)
 
             active = self._active_tools(tools, messages, job_ids, exec_called, force_finish)
             # force_finish overrides active: allow JSON output without requiring tool call
@@ -653,6 +666,16 @@ class AgentLoop:
                                 nm = msgs[j]
                                 if nm.get("role") == "tool" and nm.get("tool_call_id") in tc_ids:
                                     pinned.append(nm)
+                    # Run-level invariant USER messages (the metric-contract obligation,
+                    # the experiment/idea context) must SURVIVE windowing: they sit
+                    # outside head (msgs[:2]) and outside the tail once the
+                    # conversation grows, so they silently vanished mid-node — the
+                    # agent then reported results with no memory of the contract it
+                    # had been implementing (observed on a real run). Both are small
+                    # (content-capped at build time).
+                    elif m.get("role") == "user" and any(
+                            mk in str(m.get("content", ""))[:120] for mk in _PINNED_USER_MARKERS):
+                        pinned.append(m)
                 # Expand tail: if it starts with a tool message, include preceding assistant
                 tail = list(msgs[-keep_tail:])
                 if tail and tail[0].get("role") == "tool":
@@ -1090,6 +1113,35 @@ class AgentLoop:
                                     logger.debug("contract obligation injection failed: %s", _oe)
                         except Exception as _e:
                             logger.warning("make_metric_spec result parse failed: %s", _e)
+
+                    # emit_results: surface point-of-emission contract feedback as an
+                    # ACTIONABLE turn. The tool result alone was not enough on a real
+                    # run -- the node force-finished right after its first job, so the
+                    # warnings arrived with no steps to act on them. Track the pending
+                    # state (holds force_finish above) and nudge the agent to run the
+                    # missing measurement(s) and re-emit while budget remains.
+                    if r["name"] == "emit_results":
+                        try:
+                            _er = r["result"]
+                            if isinstance(_er, str):
+                                _er = json.loads(_er)
+                            if isinstance(_er, dict) and "result" in _er and isinstance(_er["result"], str):
+                                _er = json.loads(_er["result"])
+                            _cw = (_er or {}).get("contract_warnings") or []
+                            if _cw:
+                                contract_pending = True
+                                _left = self.max_react_steps - step - 1
+                                from ari.agent.metric_contract import build_emission_nudge
+                                _nudge = build_emission_nudge(_cw, _left)
+                                if _nudge:
+                                    messages.append({"role": "user", "content": _nudge})
+                                logger.info(
+                                    "emit_results returned %d contract warning(s); continuation nudged (%d steps left)",
+                                    len(_cw), _left)
+                            else:
+                                contract_pending = False
+                        except Exception as _e:
+                            logger.debug("emit_results contract-warning handling failed: %s", _e)
 
                     # If job_status COMPLETED contains stdout,
                     # treat as having read experiment output and set exec_called = True

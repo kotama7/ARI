@@ -19,6 +19,27 @@ the harness states the obligation generally, the agent satisfies it specifically
 from __future__ import annotations
 
 
+def build_emission_nudge(warnings: list, steps_left: int) -> str:
+    """Continuation nudge for the agent after emit_results returns contract warnings.
+
+    Observed on a real run: the agent emitted once, the tool result carried the
+    contract warnings -- and the node ended anyway (the harness force-finishes after
+    the first completed job, and nothing told the agent it could continue). This text
+    is injected by the loop WITH the force-finish hold, so the agent both knows what
+    is missing and has the steps to act. Domain-neutral; "" when nothing to say.
+    """
+    if not warnings or steps_left <= 0:
+        return ""
+    lines = "\n".join(f"  - {str(w)}" for w in list(warnings)[:4])
+    return (
+        "CONTRACT FEEDBACK on your emit_results — the run-level metric contract is NOT yet satisfied:\n"
+        + lines
+        + f"\nYou have ~{steps_left} steps remaining. If the missing measurement(s) are feasible here, "
+        "run them NOW and call emit_results again (it overwrites the previous file). Conclude only if "
+        "they are infeasible in this node; unmet items will BLOCK the paper at finalize."
+    )
+
+
 def build_contract_obligation(contract: "dict | None") -> str:
     """Return the domain-neutral obligation text for a contract-bearing metric.
 
