@@ -82,10 +82,12 @@ def build_contract_obligation(contract: "dict | None") -> str:
     if claims:
         lines.append(
             "  5. CLAIMS — your plan declares the falsifiable claim(s) below. For EACH, emit into "
-            "results.json the NAMED measurement(s) that let the claim be EVALUATED. A claim with "
-            "NO supporting measurement is BLOCKED at finalize (a positive OR a negative outcome is "
-            "fine — what is mandatory is the evidence to judge it; do not claim a mechanism you "
-            "did not measure):")
+            "results.json the NAMED measurement(s) that let the claim be EVALUATED, using the "
+            "EXACT names listed (the gate matches names exactly — measurements under your own "
+            "naming will NOT count; rename rather than invent). A claim with NO supporting "
+            "measurement is BLOCKED at finalize (a positive OR a negative outcome is fine — what "
+            "is mandatory is the evidence to judge it; do not claim a mechanism you did not "
+            "measure):")
         for c in claims:
             ev = [str(e) for e in (c.get("required_evidence") or []) if e]
             ctext = str(c.get("claim") or "")[:140]
