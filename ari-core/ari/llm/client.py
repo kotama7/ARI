@@ -36,7 +36,7 @@ class LLMClient:
         # --mcp-config payload to the shim so Claude can call the same
         # ari-skill MCP servers directly (instead of relying on the shim's
         # text-catalog tool protocol, which Claude can ignore — see the
-        # 2026-05-28 hallucinated-partA incident).
+        # 2026-05-28 hallucinated-environment incident).
         self.mcp_client = None
 
     def set_context(
