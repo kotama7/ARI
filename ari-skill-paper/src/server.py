@@ -117,7 +117,7 @@ SECTION_PROMPTS = {
         "CRITICAL: Output ONLY the plain title text. "
         "Do NOT output any LaTeX commands (no \\section, no \\begin, no \\textbf, no \\title). "
         "Do NOT output quotes, newlines, or any other text beyond the title itself. "
-        "Example good output: Compiler Flag Optimization for Stencil Benchmarks on 64-Core AMD cpuY"
+        "Example good output: Compiler Flag Optimization for Stencil Benchmarks on a 64-Core CPU"
     ),
 }
 
