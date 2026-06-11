@@ -118,6 +118,24 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
     # very first ReAct loop is still running.
     _flush_tree_progress(force=True)
 
+    # P2c: one-time best-effort platform-capability probe BEFORE the root node
+    # runs make_metric_spec, so the claims extractor can avoid declaring evidence
+    # that depends on tools the compute partition verifiably lacks (real case:
+    # perf is not installed on partA compute nodes, making PMU-based claims
+    # permanently unsatisfiable). The tool itself caches, times out, and degrades
+    # to "skipped" — a failure here changes nothing downstream.
+    import os as _os_probe
+    if _os_probe.environ.get("ARI_SLURM_PARTITION", "").strip():
+        try:
+            _probe_res = agent.mcp.call_tool(
+                "probe_platform_capabilities",
+                {"checkpoint_dir": str(checkpoint_dir)},
+            )
+            logging.getLogger(__name__).info(
+                "platform capability probe: %s", str(_probe_res)[:200])
+        except Exception as _pe:
+            logging.getLogger(__name__).debug("capability probe skipped: %s", _pe)
+
     # frontier: completed nodes not yet expanded (true BFTS: expand on demand)
     frontier: list = []
 

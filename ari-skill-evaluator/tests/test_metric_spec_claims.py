@@ -200,11 +200,50 @@ def test_llm_extract_claims_degrades_on_bad_response(monkeypatch):
     assert asyncio.run(_llm_extract_claims("plan")) == []
 
 
+# ── platform-capability note (P2c) ───────────────────────────────────────────
+
+def test_load_platform_note_lists_unavailable_tools(tmp_path):
+    from src.server import _load_platform_note
+    (tmp_path / "platform_capabilities.json").write_text(json.dumps({
+        "partition": "partA", "arch": "aarch64",
+        "available": {"perf": False, "numactl": True}}))
+    note = _load_platform_note(str(tmp_path))
+    assert "UNAVAILABLE tools: perf" in note
+    assert "numactl" in note                       # available listed too
+    assert "partA" in note and "aarch64" in note   # provenance of the fact
+    assert "Do NOT require" in note                # the instruction
+
+
+def test_load_platform_note_absent_is_empty(tmp_path):
+    from src.server import _load_platform_note
+    assert _load_platform_note(str(tmp_path)) == ""      # no probe data
+    assert _load_platform_note("") == ""
+
+
+def test_claims_extraction_receives_platform_note(tmp_path, monkeypatch):
+    # the note must reach the extraction LLM call's user content (claims are then
+    # constrained to platform-measurable evidence).
+    captured = {}
+
+    async def _cap(**kw):
+        captured.update(kw)
+        return _Resp('{"claims":[]}')
+    monkeypatch.setattr("litellm.acompletion", _cap)
+    (tmp_path / "platform_capabilities.json").write_text(json.dumps({
+        "partition": "partA", "available": {"perf": False}}))
+    (tmp_path / "idea.json").write_text(json.dumps(
+        {"ideas": [{"experiment_plan": "measure things and compare modes"}]}))
+    asyncio.run(_resolve_falsifiable_claims(str(tmp_path)))
+    user = next(m["content"] for m in captured["messages"] if m["role"] == "user")
+    assert "UNAVAILABLE tools: perf" in user
+    assert "Experiment plan:" in user
+
+
 def test_resolve_routes_to_llm_on_plan_fallback(tmp_path, monkeypatch):
     # structured absent + plan present => _resolve must route through extraction.
     called = {}
 
-    async def _spy(plan):
+    async def _spy(plan, platform_note=""):
         called["plan"] = plan
         return [{"claim": "from_llm", "required_evidence": ["e1"]}]
     monkeypatch.setattr("src.server._llm_extract_claims", _spy)

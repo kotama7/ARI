@@ -6,6 +6,7 @@ Pytest suite for the HPC skill (SLURM + Singularity).
 
 - `README.md` — this file.
 - `conftest.py` — shared fixtures.
+- `test_capability_probe.py` — TODO
 - `test_singularity.py` — Singularity build/run.
 - `test_slurm_local.py` — SLURM submit/status/cancel in local mode.
 - `test_slurm_remote.py` — SLURM submit/status/cancel in SSH-remote mode.

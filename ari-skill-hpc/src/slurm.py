@@ -434,3 +434,93 @@ class SlurmClient:
         if self._ssh_client is not None:
             self._ssh_client.close()
             self._ssh_client = None
+
+
+# ── platform capability probe (P2c of PLAN_claims_fulfillment_final) ──────────
+#
+# The claims extractor declared evidence requiring tools the compute platform
+# does not have (verified: `perf` is not installed on partA compute nodes), so
+# those claims were permanently unsatisfiable and blocked finalize forever.
+# This probe runs `command -v` for a small tool list ON the compute partition,
+# caches the result next to the checkpoint, and the evaluator passes it to the
+# claims extraction as a verified capability note. Platform tooling knowledge
+# lives HERE (the HPC skill) — the harness/gate stay science-domain-free.
+
+_DEFAULT_PROBE_TOOLS = "perf,numactl,papi_avail,likwid-perfctr,valgrind"
+
+
+def _parse_capability_output(text: str) -> dict:
+    """Parse ``tool=yes|no`` lines (+ optional ``arch=...``) from the probe job."""
+    out: dict = {"available": {}}
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if line.startswith("arch="):
+            out["arch"] = line.split("=", 1)[1]
+        elif "=" in line:
+            k, v = line.split("=", 1)
+            if v in ("yes", "no"):
+                out["available"][k] = (v == "yes")
+    return out
+
+
+async def probe_platform_capabilities(
+    checkpoint_dir: str,
+    partition: str = "",
+    tools: str = "",
+    timeout_s: int = 120,
+) -> dict:
+    """Probe tool availability on the compute partition; cache to the checkpoint.
+
+    Best-effort by design: any failure (no partition, srun missing, queue wait
+    beyond ``timeout_s``) returns ``{"status": "skipped", ...}`` and writes
+    nothing, leaving claims extraction unconstrained (current behaviour). A
+    cached ``platform_capabilities.json`` is returned without re-probing.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    ckpt = _Path(checkpoint_dir).expanduser()
+    out_path = ckpt / "platform_capabilities.json"
+    if out_path.is_file():
+        try:
+            return {"status": "cached", **_json.loads(out_path.read_text())}
+        except Exception:
+            pass  # corrupt cache -> re-probe
+
+    part = (partition or os.environ.get("ARI_SLURM_PARTITION", "")).strip()
+    if not part:
+        return {"status": "skipped", "reason": "no partition configured"}
+    tool_list = [t.strip() for t in (tools or os.environ.get(
+        "ARI_PROBE_TOOLS", _DEFAULT_PROBE_TOOLS)).split(",") if t.strip()]
+    if not tool_list:
+        return {"status": "skipped", "reason": "no tools to probe"}
+
+    checks = "; ".join(
+        f'(command -v {t} >/dev/null 2>&1 && echo "{t}=yes" || echo "{t}=no")'
+        for t in tool_list
+    )
+    script = f'echo "arch=$(uname -m)"; {checks}'
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "srun", "-p", part, "-N", "1", "-n", "1", "-t", "00:01:30",
+            "bash", "-c", script,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
+    except (asyncio.TimeoutError, FileNotFoundError, OSError) as e:
+        try:
+            proc.kill()  # type: ignore[possibly-undefined]
+        except Exception:
+            pass
+        return {"status": "skipped", "reason": f"probe failed: {e!r}"}
+
+    parsed = _parse_capability_output(stdout.decode(errors="replace"))
+    if not parsed.get("available"):
+        return {"status": "skipped", "reason": "probe produced no capability lines"}
+    record = {"partition": part, **parsed}
+    try:
+        ckpt.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(_json.dumps(record, ensure_ascii=False, indent=2))
+    except Exception as e:
+        return {"status": "unsaved", "reason": str(e), **record}
+    return {"status": "probed", **record}
