@@ -224,7 +224,7 @@ def _write_contract(tmp_path):
 
 
 def test_contract_obligation_injected_for_descendant(tmp_path, monkeypatch):
-    # regression (real partA run): the obligation was injected ONLY into the node
+    # regression (real run): the obligation was injected ONLY into the node
     # that called make_metric_spec (the root) — the descendant that actually
     # executed never saw the claims/evidence names/correctness requirement, and
     # the final gate then blocked the paper for evidence the executing node was
@@ -246,7 +246,7 @@ def test_contract_obligation_injected_for_descendant(tmp_path, monkeypatch):
 def test_platform_note_rides_pinned_obligation(tmp_path, monkeypatch):
     # P2c last hop: the probe facts must reach the NODE (not just the claims
     # extractor) — otherwise the agent follows the plan into a missing tool
-    # (e.g. perf on partA) and burns react steps on `command not found`.
+    # and burns react steps on `command not found`.
     _write_contract(tmp_path)
     (tmp_path / "platform_capabilities.json").write_text(json.dumps({
         "partition": "partA", "arch": "aarch64",

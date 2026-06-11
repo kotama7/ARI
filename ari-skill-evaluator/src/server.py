@@ -354,8 +354,8 @@ def _load_platform_note(checkpoint_dir: str | None = None) -> str:
 
     Reads ``{checkpoint}/platform_capabilities.json`` (written by the HPC skill's
     probe, which ran ``command -v`` ON the compute partition). Real case this
-    prevents: the plan promised PMU-counter evidence, but ``perf`` is not even
-    installed on partA compute nodes — the resulting claims were permanently
+    prevents: the plan promised PMU-counter evidence, but the profiler was not
+    installed on the compute partition — the resulting claims were permanently
     unsatisfiable and blocked finalize forever. ``""`` when no probe data (claims
     extraction is then unconstrained, the prior behaviour). Data, not knowledge:
     the note only relays what the probe MEASURED.

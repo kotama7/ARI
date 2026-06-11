@@ -300,7 +300,7 @@ def test_emit_results_provenance_roundtrip_to_gate(work_dir):
 
 
 def test_emit_results_warns_when_contract_evidence_dropped(work_dir, tmp_path, monkeypatch):
-    # regression (real partA run): the agent VERIFIED its kernel but emitted only
+    # regression (real run): the agent VERIFIED its kernel but emitted only
     # throughput -- the paper then blocked at finalize for a check that had passed.
     # emit_results must surface the gate's presence checks AT EMISSION TIME so the
     # agent can immediately re-emit with the evidence it already has.

@@ -258,14 +258,14 @@ def build_working_context_messages(
                     try:
                         _cap_p = _P_mc(_ck_mc) / "platform_capabilities.json"
                         if _cap_p.is_file():
-                            _cap = _json_mc.loads(_cap_p.read_text())
+                            _capdata = _json_mc.loads(_cap_p.read_text())
                             _missing = sorted(
-                                t for t, ok in (_cap.get("available") or {}).items()
+                                t for t, ok in (_capdata.get("available") or {}).items()
                                 if not ok)
                             if _missing:
                                 _obl += (
                                     "\n\nPLATFORM NOTE (verified by probe on "
-                                    f"partition {_cap.get('partition', '?')}): the "
+                                    f"partition {_capdata.get('partition', '?')}): the "
                                     "following tools are NOT available on the compute "
                                     f"nodes: {', '.join(_missing)}. Do not attempt "
                                     "them; use measurements your own code computes.")

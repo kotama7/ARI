@@ -439,7 +439,7 @@ class SlurmClient:
 # ── platform capability probe (P2c of PLAN_claims_fulfillment_final) ──────────
 #
 # The claims extractor declared evidence requiring tools the compute platform
-# does not have (verified: `perf` is not installed on partA compute nodes), so
+# does not have (verified on a real cluster: the assumed profiler was absent on the compute partition), so
 # those claims were permanently unsatisfiable and blocked finalize forever.
 # This probe runs `command -v` for a small tool list ON the compute partition,
 # caches the result next to the checkpoint, and the evaluator passes it to the

@@ -1,7 +1,7 @@
 """Platform capability probe (P2c of PLAN_claims_fulfillment_final).
 
 Deterministic parts only — the srun path needs a real cluster (verified manually:
-the probe's exact check found perf absent on partA). Covers output parsing, the
+the probe's exact check found an assumed profiler absent on a real partition). Covers output parsing, the
 cache short-circuit, and the graceful skip paths.
 """
 import asyncio
