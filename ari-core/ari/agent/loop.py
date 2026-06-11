@@ -249,6 +249,28 @@ def build_working_context_messages(
                         _mc_obj, collect_run_measurement_names(_ck_mc))
                     if _covst:
                         _obl = _obl + "\n\n" + _covst
+                    # Platform-capability facts (probed on the compute partition,
+                    # P2c). Without this the contract was platform-safe but the
+                    # AGENT was not told: the plan still says e.g. "measure MPKI
+                    # via perf", so the node would attempt the missing tool and
+                    # burn react steps discovering `command not found`. Data only
+                    # (relays the probe's measurements); rides the pinned message.
+                    try:
+                        _cap_p = _P_mc(_ck_mc) / "platform_capabilities.json"
+                        if _cap_p.is_file():
+                            _cap = _json_mc.loads(_cap_p.read_text())
+                            _missing = sorted(
+                                t for t, ok in (_cap.get("available") or {}).items()
+                                if not ok)
+                            if _missing:
+                                _obl += (
+                                    "\n\nPLATFORM NOTE (verified by probe on "
+                                    f"partition {_cap.get('partition', '?')}): the "
+                                    "following tools are NOT available on the compute "
+                                    f"nodes: {', '.join(_missing)}. Do not attempt "
+                                    "them; use measurements your own code computes.")
+                    except Exception:
+                        pass
                     out.append({"role": "user", "content": _obl})
                     logger.info(
                         "contract obligation injected into node context (claims=%d)",
