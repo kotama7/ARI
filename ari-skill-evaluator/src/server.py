@@ -349,7 +349,50 @@ def _load_idea_claims_source(checkpoint_dir: str | None = None):
     return None, ""
 
 
-async def _llm_extract_claims(plan_text: str) -> list:
+def _load_platform_note(checkpoint_dir: str | None = None) -> str:
+    """Verified platform-capability note for the claims extractor (P2c).
+
+    Reads ``{checkpoint}/platform_capabilities.json`` (written by the HPC skill's
+    probe, which ran ``command -v`` ON the compute partition). Real case this
+    prevents: the plan promised PMU-counter evidence, but ``perf`` is not even
+    installed on partA compute nodes — the resulting claims were permanently
+    unsatisfiable and blocked finalize forever. ``""`` when no probe data (claims
+    extraction is then unconstrained, the prior behaviour). Data, not knowledge:
+    the note only relays what the probe MEASURED.
+    """
+    import os as _os
+    from pathlib import Path as _Path
+    ckpt = checkpoint_dir or _os.environ.get("ARI_CHECKPOINT_DIR", "")
+    if not ckpt:
+        return ""
+    p = _Path(ckpt) / "platform_capabilities.json"
+    if not p.is_file():
+        return ""
+    try:
+        d = json.loads(p.read_text())
+        avail = d.get("available") or {}
+        missing = sorted(t for t, ok in avail.items() if not ok)
+        present = sorted(t for t, ok in avail.items() if ok)
+        if not avail:
+            return ""
+        parts = [f"PLATFORM CAPABILITIES (verified by probe on partition "
+                 f"{d.get('partition', '?')}, arch={d.get('arch', '?')}):"]
+        if missing:
+            parts.append(f"UNAVAILABLE tools: {', '.join(missing)}.")
+        if present:
+            parts.append(f"available tools: {', '.join(present)}.")
+        parts.append(
+            "Do NOT require evidence that depends on an UNAVAILABLE tool; prefer "
+            "evidence the experiment's own code can compute (timers, counts, sizes, "
+            "residuals, derived rates). If a claim's evidence cannot be obtained OR "
+            "re-expressed with the available tooling, OMIT that claim entirely — an "
+            "unmeasurable-by-construction claim would block the run forever.")
+        return " ".join(parts)
+    except Exception:
+        return ""
+
+
+async def _llm_extract_claims(plan_text: str, platform_note: str = "") -> list:
     """LLM-extract falsifiable claims + required_evidence names from plan prose.
 
     max_tokens must be GENEROUS: a 10-12 claim JSON runs ~8KB, and a reasoning
@@ -368,7 +411,9 @@ async def _llm_extract_claims(plan_text: str) -> list:
             model=_model,
             messages=[
                 {"role": "system", "content": _CLAIMS_EXTRACT_SYS},
-                {"role": "user", "content": "Experiment plan:\n" + (plan_text or "")[:6000]},
+                {"role": "user", "content":
+                    (platform_note + "\n\n" if platform_note else "")
+                    + "Experiment plan:\n" + (plan_text or "")[:6000]},
             ],
             temperature=0.0,
             max_tokens=4096,
@@ -402,7 +447,8 @@ async def _resolve_falsifiable_claims(checkpoint_dir: str | None = None) -> list
     if structured:
         return _normalize_claims(structured)
     if plan:
-        return await _llm_extract_claims(plan)
+        return await _llm_extract_claims(
+            plan, platform_note=_load_platform_note(checkpoint_dir))
     return []
 
 
