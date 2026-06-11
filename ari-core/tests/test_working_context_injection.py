@@ -243,6 +243,25 @@ def test_contract_obligation_injected_for_descendant(tmp_path, monkeypatch):
     assert "CORRECTNESS" in c                               # the required check
 
 
+def test_platform_note_rides_pinned_obligation(tmp_path, monkeypatch):
+    # P2c last hop: the probe facts must reach the NODE (not just the claims
+    # extractor) — otherwise the agent follows the plan into a missing tool
+    # (e.g. perf on partA) and burns react steps on `command not found`.
+    _write_contract(tmp_path)
+    (tmp_path / "platform_capabilities.json").write_text(json.dumps({
+        "partition": "partA", "arch": "aarch64",
+        "available": {"perf": False, "numactl": True}}))
+    monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+    msgs = build_working_context_messages(
+        _fake_call_tool(node_memory={}),
+        depth=1, ancestor_ids=["p1"], eval_summary="q", experiment_goal="g",
+    )
+    obl = next(m["content"] for m in msgs if "METRIC-CORRECTNESS CONTRACT" in m["content"])
+    assert "PLATFORM NOTE" in obl
+    assert "perf" in obl and "partA" in obl          # the verified fact
+    assert "numactl" not in obl.split("PLATFORM NOTE")[1]  # only MISSING tools listed
+
+
 def test_contract_obligation_noop_without_file(tmp_path, monkeypatch):
     # root at context-build time (file not yet written) / legacy runs: clean no-op.
     monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
