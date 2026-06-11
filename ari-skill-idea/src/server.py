@@ -519,6 +519,38 @@ def survey(topic: str, max_papers: int = 8) -> dict:
 
 
 @mcp.tool()
+def _platform_constraint_note() -> str:
+    """Verified platform-capability constraint folded into the idea topic (P2c).
+
+    Reads ``{ARI_CHECKPOINT_DIR}/platform_capabilities.json`` written by the HPC
+    skill's run-start probe. Without this, plans were generated platform-blind
+    (e.g. promising profiler-counter measurements on a partition whose probe shows
+    the profiler is absent) and had to be corrected downstream. Returns ``""``
+    when no probe data exists, keeping legacy behaviour. Relays measured facts
+    only — no hardware knowledge lives here.
+    """
+    try:
+        import json as _json
+        from pathlib import Path as _Path
+        ckpt = os.environ.get("ARI_CHECKPOINT_DIR", "")
+        if not ckpt:
+            return ""
+        p = _Path(ckpt) / "platform_capabilities.json"
+        if not p.is_file():
+            return ""
+        d = _json.loads(p.read_text())
+        missing = sorted(t for t, ok in (d.get("available") or {}).items() if not ok)
+        if not missing:
+            return ""
+        return (
+            "\n\n[Platform constraint, verified by probe on the execution "
+            f"platform: the following tools are NOT available: {', '.join(missing)}. "
+            "Plan ONLY measurements obtainable with available tooling or computable "
+            "by the experiment's own code.]")
+    except Exception:
+        return ""
+
+
 async def generate_ideas(
     topic: str,
     papers: list,
@@ -552,6 +584,15 @@ async def generate_ideas(
     n_ideas  = max(1, min(5, n_ideas))
     n_agents = max(2, min(4, n_agents))
     max_discussion_rounds = max(0, min(3, max_discussion_rounds))
+
+    # Platform-capability constraint (P2c, idea layer): the run-start probe has
+    # already measured tool availability ON the execution platform by the time
+    # ideas are generated. Folding the verified facts into the TOPIC makes every
+    # downstream prompt (re-impl loop AND the vendored VirSci engine, which both
+    # consume the topic string) plan only measurements the platform can take —
+    # fixing feasibility at the SOURCE instead of re-expressing claims later.
+    # Data, not knowledge: relays only what the probe measured; "" when no probe.
+    topic = topic + _platform_constraint_note()
 
     # Build reference text for VirSci prompts
     all_papers: list[dict] = list(papers)

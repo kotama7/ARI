@@ -466,3 +466,49 @@ def test_fetch_corpus_relaxes_until_hits(monkeypatch):
         "performance model using compute peak, memory bandwidth, and loopline.", 10)
     assert len(papers) == 2                           # grounded on the relaxed query
     assert len(calls) >= 3                            # probed multiple candidates
+
+
+# ── 10. platform-constraint note folded into the idea topic (P2c idea layer) ──
+
+def test_platform_constraint_note_from_probe(tmp_path, monkeypatch):
+    import json as _json
+    monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+    (tmp_path / "platform_capabilities.json").write_text(_json.dumps(
+        {"partition": "partA", "available": {"perf": False, "numactl": True}}))
+    note = server._platform_constraint_note()
+    assert "NOT available: perf" in note
+    assert "numactl" not in note.split("NOT available")[1].split(".")[0] + "."
+    # no probe data -> empty (legacy behaviour)
+    monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path / "nope"))
+    assert server._platform_constraint_note() == ""
+
+
+def test_generate_ideas_topic_carries_platform_constraint(tmp_path, monkeypatch):
+    # The constraint must reach the idea-generation prompts (topic is the shared
+    # channel for both the re-impl loop and the vendored engine).
+    import json as _json
+    monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+    monkeypatch.delenv("ARI_IDEA_VIRSCI_REAL", raising=False)
+    (tmp_path / "platform_capabilities.json").write_text(_json.dumps(
+        {"partition": "partA", "available": {"perf": False}}))
+    captured = []
+
+    async def _fake_llm(system, user, temperature=0.7):
+        captured.append(user)
+        return _IDEA_JSON_MIN
+
+    monkeypatch.setattr(server, "_llm", _fake_llm)
+    monkeypatch.setattr(server, "_s2_search", lambda *a, **k: [])
+    import asyncio as _aio
+    _aio.run(server.generate_ideas(
+        topic="t", papers=[{"title": "P", "abstract": "A", "year": 2020}],
+        n_ideas=1, n_agents=2, max_discussion_rounds=0))
+    assert any("NOT available: perf" in u for u in captured)
+
+
+_IDEA_JSON_MIN = (
+    '{"gap_analysis":"g","ideas":[{"title":"T","description":"d","novelty":"n",'
+    '"feasibility":"f","experiment_plan":"p","novelty_score":0.5,'
+    '"feasibility_score":0.5,"overall_score":0.5}],'
+    '"primary_metric":"m","higher_is_better":true,"metric_rationale":"r"}'
+)
