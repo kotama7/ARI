@@ -222,7 +222,7 @@ def test_gate_blocks_claim_evidence_missing_in_warn_at_final(tmp_path):
 
 # ── check_emission: point-of-emission producer feedback ─────────────────────────
 # Mirrors the gate's presence checks at emit_results time so an agent that did the
-# work but DROPPED the evidence in its final emit (a real partA run verified its
+# work but DROPPED the evidence in its final emit (a real run verified its
 # kernel yet emitted only throughput) is told immediately, while it can re-emit.
 
 def test_check_emission_warns_on_dropped_correctness():

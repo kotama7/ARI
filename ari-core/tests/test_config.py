@@ -403,13 +403,13 @@ def test_export_config_bridges_llm_and_partition():
     with _isolated_bridge_env() as os:
         cfg = ARIConfig(
             llm=LLMConfig(model="gpt-5.2", backend="openai", base_url="http://localhost:8900/v1"),
-            resources={"partition": "partB"},
+            resources={"partition": "alpha"},
         )
         export_resolved_config_to_skill_env(cfg)
         assert os.environ["ARI_LLM_MODEL"] == "gpt-5.2"       # idea skill no longer -> ollama
         assert os.environ["ARI_BACKEND"] == "openai"
         assert os.environ["ARI_LLM_API_BASE"] == "http://localhost:8900/v1"
-        assert os.environ["ARI_SLURM_PARTITION"] == "partB"   # hpc skill no longer -> sinfo[0]
+        assert os.environ["ARI_SLURM_PARTITION"] == "alpha"   # hpc skill no longer -> sinfo[0]
 
 
 def test_export_config_setdefault_respects_explicit_env():
@@ -417,10 +417,10 @@ def test_export_config_setdefault_respects_explicit_env():
     with _isolated_bridge_env() as os:
         os.environ["ARI_LLM_MODEL"] = "explicit-model"  # user/GUI override present
         cfg = ARIConfig(llm=LLMConfig(model="gpt-5.2", backend="openai"),
-                        resources={"partition": "partB"})
+                        resources={"partition": "alpha"})
         export_resolved_config_to_skill_env(cfg)
         assert os.environ["ARI_LLM_MODEL"] == "explicit-model"  # explicit wins (setdefault)
-        assert os.environ["ARI_SLURM_PARTITION"] == "partB"     # filled from cfg
+        assert os.environ["ARI_SLURM_PARTITION"] == "alpha"     # filled from cfg
 
 
 def test_export_config_skips_auto_partition():

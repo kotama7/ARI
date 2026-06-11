@@ -517,8 +517,8 @@ def export_resolved_config_to_skill_env(cfg: "ARIConfig") -> None:
     the HPC skill's ``ARI_SLURM_PARTITION``). The GUI launcher injects those vars; a
     bare ``ari run`` did NOT, so a skill silently fell back to its OWN default (the
     idea skill -> ``ollama_chat/qwen3:32b`` against a dead Ollama; the HPC skill ->
-    sinfo's first partition, e.g. partA/aarch64) even though the run was configured
-    for, say, gpt-5.2 on partB. This bridges cfg -> env so the CLI configures skills
+    sinfo's first partition, possibly the wrong architecture) even though the run
+    was configured for a specific model and partition. This bridges cfg -> env so the CLI configures skills
     the same way the GUI does.
 
     ``setdefault`` => an explicitly-set env var still wins (the user/GUI override is
