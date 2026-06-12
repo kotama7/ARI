@@ -6,7 +6,11 @@ sources:
     role: implementation
   - path: ari-core/ari/checkpoint.py
     role: implementation
-last_verified: 2026-05-25
+  - path: ari-core/ari/pipeline/verified_context.py
+    role: implementation
+  - path: ari-core/ari/pipeline/claim_gate
+    role: implementation
+last_verified: 2026-06-10
 ---
 
 # File Formats Reference
@@ -167,6 +171,144 @@ Final aggregated results emitted at run completion.
   }
 }
 ```
+
+Per-node `results*.json` files written by `ari-skill-coding.emit_results`
+may also carry an optional `_provenance` key — an `{operand: source}`
+map tagging where each reported value came from (`microbench` /
+`benchmark` for a measured ceiling, `correctness` / `reference` for a
+verification residual, `declared` / `constant` otherwise). The key is
+omitted when empty. The claim-evidence hard gate reads it (via
+`science_data.json` → `configurations[]._provenance`) to confirm a
+measured ceiling or a correctness check was actually run.
+
+## `science_data.json`
+
+Paper-facing science surface built by
+`ari-skill-transform.nodes_to_science_data` from the executed-node
+evidence. Beyond `configurations[]` / `experiment_context` /
+`summary_stats`, it carries the Research Contract substrate the
+claim-evidence hard gate verifies:
+
+| Key | Meaning |
+|---|---|
+| `claims` | Candidate claims deterministically derived from node evidence; each anchors to real `node_id` + `metric_path`. Prose is a templated seed the paper writer rewrites while preserving `% CLAIM:Cx:NCx` anchors. |
+| `numeric_assertions` | Operand/formula records the hard gate re-derives and compares against the paper-reported number within tolerance. |
+| `metric_contract` | The idea-owned metric-correctness contract grafted from `metric_contract.json` (see below), so the gate enforces the *declared* contract, not just the universal invariant registry. |
+
+`_config_nodes`, `_anomalies`, and `_anomalous_metrics` are internal
+(underscore-prefixed) annotations and are not part of the paper-facing
+surface.
+
+## `metric_contract.json`
+
+The idea-owned metric-correctness contract emitted by
+`make_metric_spec` (ari-skill-evaluator) and written to
+`{checkpoint}/metric_contract.json` next to `idea.json` / `tree.json`,
+so `nodes_to_science_data` can graft it onto `science_data.json`. All
+expressions are restricted-AST (see
+`ari-core/ari/pipeline/claim_gate/formula_eval.py`).
+
+```json
+{
+  "key": "<metric the paper reports>",
+  "formula": "geomean(gflops_byK / ceiling_byK)",
+  "ceiling_select": "cache_bw if effective_bw > dram_peak_bw else dram_peak_bw",
+  "invariants": ["value <= 1", "model_sec <= sec"],
+  "correctness": {"expr": "max_abs_err < 1e-4", "requires": ["max_abs_err"]},
+  "required_measured": ["dram_peak_bw", "cache_bw", "ceiling_byK"],
+  "claims": [{"claim": "...", "required_evidence": ["thp_on_tput", "thp_off_tput"]}],
+  "correctness_required": true,
+  "ceiling_must_be_measured": true,
+  "tolerance": {"absolute": 0.0, "relative": 0.02}
+}
+```
+
+`correctness_required` / `ceiling_must_be_measured` are idea-owned flags
+the agent cannot drop; they are satisfied by an EVIDENCE tag in
+`results.json._provenance` (a measured-source ceiling, a
+correctness-source residual), never by an agent-declared name. Source:
+`ari-core/ari/pipeline/claim_gate/contract.py`.
+
+The file is **mint-once**: it is immutable after the first claims-bearing
+mint. A later `make_metric_spec` call returns the persisted contract
+verbatim (the response carries `contract_frozen: true`) instead of
+re-extracting — LLM naming is not referentially stable, so a mid-run
+regeneration would mint a new evidence vocabulary and hide evidence already
+emitted under the old names from the exact-match gate. Scaffold-only
+contracts (no `claims`) do not freeze.
+
+## `verified_context.json`
+
+Artifact-grounded claims scoped to the best node's root→best lineage,
+written by `ari-core/ari/pipeline/verified_context.py` so the
+`write_paper` stage can ground its quantitative claims in verified,
+artifact-backed (ideally reproduced) results. Written **only** when the
+typed research-memory store has at least one grounded claim — an empty
+store leaves no file and the paper stage behaves exactly as before.
+
+```json
+{
+  "best_node_id": "...",
+  "lineage": ["<root_id>", "...", "<best_id>"],
+  "claims": [...],
+  "limitations": [...],
+  "usable_for_claims": [
+    {"text": "...", "repro_status": "rerun_passed" | "unverified",
+     "artifact_refs": [{"path": "...", "sha256": "..."}]}
+  ]
+}
+```
+
+## `paper_claim_links.json`
+
+Deterministic reconciliation (no LLM) of the paper's `% CLAIM:Cx:NCx`
+anchors against the `science_data.json` claim registry, produced by
+`ari-skill-paper.link_paper_claims` after `write_paper` (draft) and
+again after `paper_refine` (final).
+
+| Key | Meaning |
+|---|---|
+| `paper_claim_links` | Anchor-keyed records (`claim_id` / `numeric_id` / `section` / `span_hash` / `line_range` / figures). The **anchor** is the stable key that survives refine/render; `span_hash` detects sentence changes. |
+| `numeric_mentions` | Every numeric token in the paper, classified (`result_claim` / `experimental_setting` / `citation_year` / `figure_table_ref` / `ambiguous`) with section attribution and a `requires_assertion` flag. |
+| `figure_refs` | Figure ids actually referenced in the paper (figure binding is recorded here; `science_data.json` is never mutated). |
+| `unresolved_anchors` / `uncovered_numeric_candidates` | Diagnostics the hard gate consumes. |
+
+## `evaluation/claim_evidence_hard_gate_{draft,final}.json`
+
+The deterministic claim/evidence hard gate report written by
+`ari-skill-evaluator.claim_evidence_hard_gate` (one per `phase`:
+`draft`, then `final`). It verifies claim existence, numeric recompute,
+numeric coverage, figure existence, and the declared `metric_contract` —
+it checks transcription/derivation consistency between the paper and the
+recorded results, **not** the truthfulness of the results themselves.
+
+```json
+{
+  "gate": "claim_evidence_hard_gate",
+  "phase": "final",
+  "policy": "strict" | "warn",
+  "status": "...",
+  "should_block": true,
+  "errors": [...],
+  "warnings": [...],
+  "metrics": {"total_claims": 0, "grounded_claims": 0, ...}
+}
+```
+
+The MCP wrapper turns `should_block` (set only at `phase: final` under
+strict policy, or on objective-falsehood findings) into a hard pipeline
+failure so finalize is skipped. Source:
+`ari-core/ari/pipeline/claim_gate/gate.py`.
+
+## `evaluation/evidence_grounded_semantic_review.json`
+
+Non-blocking, evidence-grounded semantic review written by
+`ari-skill-evaluator.evidence_grounded_semantic_review`. It detects
+over-claiming / interpretation issues grounded in the hard-gate evidence
+and emits `suggested_revisions` for `paper_refine`. Never blocks the
+pipeline; on any error it returns an empty (`status: "ok"`) review. The
+post-refine pass writes the
+`evidence_grounded_semantic_review_post_refine.json` variant alongside it.
 
 ## `lineage_decisions.jsonl` (v0.7.0)
 

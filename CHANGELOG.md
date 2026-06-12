@@ -4,6 +4,79 @@ All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PAT
 
 ## Unreleased
 
+- **Semantic-review → refiner chain closed.** `merge_reviews` now
+  forwards EVERY semantic-review warning to `paper_refine` as an
+  advisory revision entry — previously warnings were only counted,
+  never sent, so the refine pass could not reduce them. And
+  `resolved_overclaim_count` is now the RAW previous−current delta
+  (negative = the count GREW after refine); the old value was clamped
+  to 0, hiding regressions.
+
+- **`paper_refine` math safety.** The whole-document underscore
+  escaping now skips math verbatim — `\( … \)`, `\[ … \]`, and math
+  environments (`equation`/`align`/`gather`/…) are left untouched.
+  Previously, whenever any edit landed, inline math such as `\(k_p\)`
+  was corrupted into a literal-underscore form.
+
+- **Claim-gate numeric parsing understands scientific notation.** The
+  numeric-mention scanner (mirrored in
+  `ari-skill-paper/src/claim_links.py` and ari-core
+  `claim_gate/latex.py`) now parses mantissa × 10^exp forms
+  (`x`/`\times`/`\cdot`) and attached e-notation (incl.
+  sentence-final), keeps digit-bearing tokens, and treats `\(` / `\)`
+  as math delimiters for unit detection — eliminating false
+  `numeric_mismatch` findings on values like `4.44 x 10^-16` and on
+  values whose unit follows a math delimiter. Overflow-safe: huge
+  exponents are skipped instead of crashing the gate.
+
+- **Writer-declaration robustness (parser-side normalization).**
+  Instruction-only fixes proved unreliable across real runs, so the
+  declaration parser now normalizes what the writer emits: formula
+  synonyms (`value`/`raw`/`abs`/…) normalize to the registry name, an
+  `operands=` label prefix before bare `k=v` tokens is stripped, and
+  anchors that all share ONE id (e.g. every line `% CLAIM:Cw:NCw`)
+  are disambiguated per line so each declaration is verified
+  independently.
+
+- **Mint-once metric-correctness contract.** `make_metric_spec` now
+  returns the persisted claims-bearing
+  `{checkpoint}/metric_contract.json` VERBATIM (the response carries
+  `contract_frozen: true`) instead of re-extracting — LLM naming is
+  not referentially stable, and a mid-run regeneration changed the
+  evidence vocabulary, hiding sibling evidence from the exact-match
+  gate. Per-node spec fields (scoring guide etc.) are still computed
+  per call; scaffold-only contracts (no claims) do not freeze.
+
+- **`check_emission` suggestion-only naming hints.** When an
+  uncovered claim's required evidence name lines up lexically with an
+  emitted key, the advisory warning adds "your 'X' looks like
+  required 'Y' — verify before renaming". Vocabulary-free string
+  geometry only (no domain synonym table), with a digit-conflict veto
+  (fp32 evidence is never suggested for an fp64 requirement); nothing
+  is auto-bound, and the gate never consumes the hint.
+
+- **Lineage chaining** — a new BFTS capability. Claims whose evidence
+  is COMPUTED from existing measurements (parameter fitting, held-out
+  validation, model-based selection) used to be structurally
+  unreachable: children expanded from data-less parents re-ran probes
+  instead. Now (a) the expansion-selection hint names the node
+  holding the most contract evidence and recommends expanding IT for
+  computed-evidence claims (children inherit the parent's working
+  directory), and (b) a node whose inherited `work_dir` already
+  contains lineage measurements gets an INHERITED DATA note in its
+  pinned obligation, listing the files and contract names present
+  with the instruction to compute from them and emit under exact
+  contract names. Names/files only — values and sibling conclusions
+  never flow (fault containment preserved). New helper
+  `collect_node_measurement_names` gives per-node attribution of
+  emitted measurement names.
+
+- **Platform-aware idea generation.** Verified platform-capability
+  constraints (from the run-start probe cache) are folded into the
+  idea-generation topic, so plans avoid measurements the platform
+  cannot provide. (A private helper briefly exposed as an MCP tool
+  was unexposed.)
+
 - **VirSci-live (vendor-wrap) idea engine** in `ari-skill-idea`. An
   opt-in idea-generation path that, when ON, runs VirSci's REAL
   multi-agent mechanism — `Platform.select_coauthors` (freshness team

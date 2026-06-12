@@ -2,9 +2,11 @@
 sources:
   - path: ari-core/ari/orchestrator/bfts.py
     role: implementation
+  - path: ari-core/ari/agent/metric_contract.py
+    role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-05-26
+last_verified: 2026-06-12
 ---
 
 # BFTS Algorithm
@@ -71,11 +73,45 @@ Key properties:
 - **Persistent frontier**: completed nodes stay in frontier after expansion, available for re-expansion with `_touched_this_round` / `_failed_this_round` tracking. A frontier node is **retired** when either (Rule A) its child outscores it on `_scientific_score`, or (Rule B) it has been expanded `max_expansions_per_node` times (v0.7.2, B-6).
 - **`should_prune` predicate**: hard cutoffs only — `current_total >= max_total_nodes` (B-1), `depth >= max_depth` (B-2, previously dead config), or `metrics._sterile is True` (B-4). LLM judgement happens elsewhere.
 - **Diversity bonus**: `+0.05` for underrepresented labels (last 20 runs tracked) when `my_count * 2 ≤ max_count` (I-2); applied in *both* selector fallbacks (I-3 / L-3) and in `select_next_node` LLM prompts.
+- **Coverage-aware expansion selection**: when the run carries a claims-bearing metric contract, the goal text passed to `select_best_to_expand` additionally carries a run-level claim-coverage block plus a **LINEAGE** hint (see *Lineage Chaining* below), so "evidences a still-uncovered claim" can inform *which* node to expand — the scheduler-only signal; node reasoning context is untouched.
 - **Score calibration**: evaluator injects recent score history into prompts to prevent score collapse (all scores clustering around the same value)
 - **No retry**: failed nodes produce `debug` children via `expand()`, not re-executions. ARI does not maintain a `retry_count` field for selection purposes (B-3).
 - **Strict budget**: `len(all_nodes) < max_total_nodes` prevents overshoot. The live count is the single source of truth — there is no separate `BFTS.total_nodes` counter (B-1).
 - **`record_run` after completion**: the run-loop calls `bfts.record_run(result)` after `future.result()` returns (success or failure), so the diversity bonus reflects nodes that actually executed (I-7).
 - **`generate_ideas` called once**: suppressed after root node to prevent looping
+
+### Lineage Chaining
+
+Some declared claims cannot be evidenced by a fresh probe: their evidence is
+**computed** from measurements that already exist (parameter fitting, held-out
+validation, model-based selection). Under purely score-driven expansion these
+claims were structurally unreachable — a child expanded from a data-less parent
+had no inputs to compute from and, observed on a real run, regressed to
+re-running the same single probe. The enabling mechanism is **parent → child
+`work_dir` inheritance**: each child starts from a copy of its parent's working
+directory (code, configs, and `results*.json` measurement files inherit; output
+artifacts such as logs and result CSVs are blacklisted), so expanding the right
+parent puts the input files directly in front of the child. Two steering
+signals exploit this (`ari/agent/metric_contract.py`):
+
+- **LINEAGE hint (selector side)**: the run-level claim-coverage block appended
+  to the expansion-selection goal names the node holding the most
+  contract-evidence measurement names so far (≥ 2 required) and recommends
+  expanding *that* node for uncovered computed-evidence claims — the child then
+  reads the inherited files instead of re-measuring
+  (`build_expand_coverage_hint`).
+- **INHERITED DATA note (node side)**: a node whose inherited `work_dir`
+  already contains lineage measurements gets a note in its pinned contract
+  obligation listing the files and the contract evidence names present, with
+  the instruction to compute from them and emit under the EXACT contract names
+  — not to re-run the underlying experiments (`build_inherited_data_note`).
+
+Both signals carry **names and file names only**: measurement values and
+sibling conclusions never flow, so the branch fault containment the tree relies
+on is preserved. Per-node attribution comes from
+`collect_node_measurement_names`, which (once `tree.json` exists) counts only
+nodes the evaluator marked `has_real_data` — the steering view stays aligned
+with the claim gate's evidence view.
 
 ### Node Labels
 
