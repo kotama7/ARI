@@ -1,28 +1,52 @@
-% F16: PaperBench three-stage bridge --- rollout -> reproduce -> grade,
-% with the artefacts that flow between the stages. All node text is routed
-% through \figlabel{} (defined in strings.tex); the shared
-% style.tikzstyles is loaded by preamble.tex / the standalone wrapper.
-\begin{tikzpicture}[node distance=0.5cm and 0.9cm]
+% F16: ARI's three-stage PaperBench bridge, with the GRADE stage opened up to
+% show what makes the benchmark conceptual rather than procedural: the vendored
+% judge scores the submission against a WEIGHTED RUBRIC TREE, and the paper
+% score is the weight-aggregated roll-up s = sum_i w_i g_i (eq:paperscore).
+% rollout and reproduce are the thin stages that produce the submission and the
+% log the judge reads. Stage containers follow the paper-style workflow idiom
+% (cf. F05/F06). style.tikzstyles is loaded by preamble.tex / standalone wrapper.
+\begin{tikzpicture}[node distance=0.9cm and 1.5cm]
 
-  \node[artifact]                               (paper)   {\figlabel{F16.paper}};
-  \node[block native big, right=of paper]       (rollout) {\figlabel{F16.rollout}};
-  \node[artifact, right=of rollout]             (sub)     {\figlabel{F16.sub}};
-  \node[block native big, right=of sub]         (repro)   {\figlabel{F16.reproduce}};
-  \node[artifact, right=of repro]               (log)     {\figlabel{F16.log}};
-  \node[block native big, right=of log]         (grade)   {\figlabel{F16.grade}};
-  \node[artifact, right=of grade]               (score)   {\figlabel{F16.score}};
-
+  % ---------- stage 1: rollout ----------------------------------------
+  \node[station]                       (paper) {\figlabel{F16.paper}};
+  \node[station, below=of paper]       (subm)  {\figlabel{F16.submission}};
+  \draw[arrow] (paper) -- (subm);
   \begin{scope}[on background layer]
-    \node[group strong, fit=(rollout)(repro)(grade)] (band) {};
+    \node[stage container, fit=(paper)(subm)] (s1) {};
   \end{scope}
-  \node[band label, above=4pt of band.north west, anchor=south west]
-        {\figlabel{F16.band}};
+  \node[numbered step] (n1) at (s1.north west) {1};
+  \node[stage title, right=2pt of n1] {\figlabel{F16.rollout}};
 
-  \draw[arrow] (paper)   -- (rollout);
-  \draw[arrow] (rollout) -- (sub);
-  \draw[arrow] (sub)     -- (repro);
-  \draw[arrow] (repro)   -- (log);
-  \draw[arrow] (log)     -- (grade);
-  \draw[arrow] (grade)   -- (score);
+  % ---------- stage 2: reproduce --------------------------------------
+  \node[station, right=2.6cm of paper] (sandbox) {\figlabel{F16.sandbox}};
+  \node[artifact medium, below=of sandbox] (log) {\figlabel{F16.log}};
+  \draw[arrow] (sandbox) -- (log);
+  \begin{scope}[on background layer]
+    \node[stage container, fit=(sandbox)(log)] (s2) {};
+  \end{scope}
+  \node[numbered step] (n2) at (s2.north west) {2};
+  \node[stage title, right=2pt of n2] {\figlabel{F16.reproduce}};
+
+  % ---------- stage 3: grade = weighted rubric tree -------------------
+  \node[block emph wide, right=5.5cm of sandbox] (score) {\figlabel{F16.score}};
+  \node[station emph, below left=1.3cm and 0.15cm of score] (l1) {\figlabel{F16.pass}};
+  \node[station emph, below=1.3cm of score]                 (l2) {\figlabel{F16.pass}};
+  \node[drop,         below right=1.3cm and 0.15cm of score] (l3) {\figlabel{F16.fail}};
+  \node[block vendor, below=1.0cm of l2] (judge) {\figlabel{F16.judge}};
+  \draw[arrow] (score) -- node[edge label] {\figlabel{F16.weight}} (l1);
+  \draw[arrow] (score) -- node[edge label] {\figlabel{F16.weight}} (l2);
+  \draw[arrow] (score) -- node[edge label] {\figlabel{F16.weight}} (l3);
+  \draw[arrow dashed] (judge) -- (l1);
+  \draw[arrow dashed] (judge) -- node[edge label] {\figlabel{F16.grades}} (l2);
+  \draw[arrow dashed] (judge) -- (l3);
+  \begin{scope}[on background layer]
+    \node[stage container vendor, fit=(score)(l1)(l3)(judge)] (s3) {};
+  \end{scope}
+  \node[numbered step] (n3) at (s3.north west) {3};
+  \node[stage title, right=2pt of n3] {\figlabel{F16.grade}};
+
+  % ---------- inter-stage bridge --------------------------------------
+  \draw[big arrow] (s1.east) -- (s2.west);
+  \draw[big arrow] (s2.east) -- (s3.west);
 
 \end{tikzpicture}

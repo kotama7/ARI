@@ -5,7 +5,7 @@
 \begin{figure*}[t]
   \centering
   \resizebox{0.95\textwidth}{!}{\input{../shared/figures/tikz/F10_full_stack.tex}}
-  \caption{The full ARI stack at v0.8.0. The CLI / SDK entry-points
+  \caption{The full ARI stack at v0.9.0. The CLI / SDK entry-points
            drive a single orchestrator (\texttt{ari-core}); the
            orchestrator owns three engines (BFTS, lineage walker,
            ReAct \texttt{AgentLoop}) and dispatches into the
@@ -16,7 +16,7 @@
   \label{fig:fullstack}
 \end{figure*}
 
-\Cref{fig:fullstack} draws the full ARI stack at v0.8.0. The system
+\Cref{fig:fullstack} draws the full ARI stack at v0.9.0. The system
 splits into one driver and many tool providers. The driver
 (\texttt{ari-core}) owns the orchestrator, the BFTS engine, the
 lineage walker, the agent loop, the checkpoint, the cost tracker,

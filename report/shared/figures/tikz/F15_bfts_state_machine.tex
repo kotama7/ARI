@@ -65,7 +65,7 @@
 
   %% Side branches: drop / clamp / retire bins on the right.
   \node[drop, right=1.3cm of prune]        (drop1)  {\figlabel{F15.prune_drop}};
-  \node[drop, right=1.3cm of st]           (clamp)  {clamp score; $\sterilepred=1$};
+  \node[drop, right=1.3cm of st]           (clamp)  {\figlabel{F15.clamp}};
   \node[drop, right=1.3cm of retire]       (drop2)  {\figlabel{F15.retire_drop}};
 
   %% Step badges (centered above each main step).
@@ -88,21 +88,21 @@
               node[elabel, midway, left]{\figlabel{F15.pick_run}};
   \draw[flow] (batch)  -- (react);
   \draw[flow] (react)  -- (st)
-              node[elabel, midway, left]{\texttt{record\_run}};
+              node[elabel, midway, left]{\figlabel{F15.hist_append}};
   \draw[flow] (st)     -- (f_new);
   \draw[flow] (f_new)  -- (retire);
 
   %% Side-branch drops / clamp.
   \draw[drop edge] (prune.east)  -- (drop1.west)
-              node[glabel, midway, above]{yes};
+              node[glabel, midway, above]{\figlabel{F15.yes}};
   \draw[drop edge] (st.east)     -- (clamp.west)
-              node[glabel, midway, above]{yes};
+              node[glabel, midway, above]{\figlabel{F15.yes}};
   \draw[drop edge] (retire.east) -- (drop2.west)
-              node[glabel, midway, above]{yes: A or B};
+              node[glabel, midway, above]{\figlabel{F15.yes_ab}};
 
   %% Reflux: retire's "no" arm loops back to the top of the inner lane.
   \draw[reflux] (retire.west)
         to[out=180, in=180, looseness=1.8]
-        node[elabel, near start, left]{no $\Rightarrow$ next iter}
+        node[elabel, near start, left]{\figlabel{F15.no_next}}
         (f_in.west);
 \end{tikzpicture}

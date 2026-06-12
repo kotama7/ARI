@@ -198,16 +198,25 @@
 \figlabeldef{F15.hist_append}{\texttt{record\_run} (実行後)}
 \figlabeldef{F15.lane.inner}{内部展開サブループ}
 \figlabeldef{F15.lane.outer}{並列実行サブループ}
+\figlabeldef{F15.clamp}{スコアをクランプ; $\sterilepred=1$}
+\figlabeldef{F15.yes}{はい}
+\figlabeldef{F15.yes_ab}{はい: A または B}
+\figlabeldef{F15.no_next}{いいえ $\Rightarrow$ 次反復}
 
-% ---------------- F16: PaperBench 3 段 bridge ----
-\figlabeldef{F16.paper}{論文+ルブリック}
+% ---------------- F16: PaperBench 3 段 bridge(重み付きルブリック木採点)----
 \figlabeldef{F16.rollout}{ロールアウト}
-\figlabeldef{F16.sub}{提出物}
 \figlabeldef{F16.reproduce}{再現}
-\figlabeldef{F16.log}{reproduce.log}
 \figlabeldef{F16.grade}{採点}
-\figlabeldef{F16.score}{スコア}
-\figlabeldef{F16.band}{3 段 bridge}
+\figlabeldef{F16.paper}{論文+ルブリック}
+\figlabeldef{F16.submission}{提出物\\code $\cdot$ reproduce.sh}
+\figlabeldef{F16.sandbox}{隔離サンドボックス}
+\figlabeldef{F16.log}{再現ログ\\+ 出力}
+\figlabeldef{F16.score}{論文スコア\\$s=\sum_i w_i\,g_i$}
+\figlabeldef{F16.weight}{$w_i$}
+\figlabeldef{F16.pass}{$g{=}1$}
+\figlabeldef{F16.fail}{$g{=}0$}
+\figlabeldef{F16.judge}{vendor 採点器}
+\figlabeldef{F16.grades}{葉を採点}
 
 % ---------------- F17: 証拠の組み立て(1 つの選定、2 つの消費者) ----
 \figlabeldef{F17.lineage}{最良ノード\\+ 系譜連鎖}
@@ -217,3 +226,44 @@
 \figlabeldef{F17.bundle}{公開バンドル\\(逐語バイト)}
 \figlabeldef{F17.grounds}{基盤}
 \figlabeldef{F17.same}{同一バイト}
+
+% ---------------- F18: 研究メモリ(証拠への型付きインデックス)----
+\figlabeldef{F18.report}{node\_report.json\\(真実の源)}
+\figlabeldef{F18.consolidate}{統合\\(決定的)}
+\figlabeldef{F18.store}{型付き研究メモリ\\祖先限定 $\cdot$ CoW}
+\figlabeldef{F18.kinds}{結果 $\cdot$ 失敗 $\cdot$\\省察 $\cdot$ 再現イベント}
+\figlabeldef{F18.artifacts}{成果物\\ログ $\cdot$ 出力 $\cdot$ ソース}
+\figlabeldef{F18.refs}{内容ハッシュ参照}
+\figlabeldef{F18.repro}{再現イベント\\(追記のみ)}
+\figlabeldef{F18.fold}{畳み込み $\to$ 最新}
+\figlabeldef{F18.workctx}{作業文脈\\(各ノード開始時)}
+\figlabeldef{F18.vctx}{検証済み文脈\\(論文主張)}
+\figlabeldef{F18.usable}{$\mathrm{usable}(\mu)$}
+\figlabeldef{F18.forexpl}{探索向け}
+\figlabeldef{F18.forpaper}{論文向け}
+
+% ---------------- F19: VirSci 文献基盤づけ着想生成 ----
+\figlabeldef{F19.snap}{Semantic Scholar スナップショット}
+\figlabeldef{F19.corpus}{コーパス + SPECTER2\\検索インデックス}
+\figlabeldef{F19.coauthorg}{共著者グラフ\\(新しさ順)}
+\figlabeldef{F19.team}{科学者チーム}
+\figlabeldef{F19.pa}{A}
+\figlabeldef{F19.pb}{B}
+\figlabeldef{F19.pc}{C}
+\figlabeldef{F19.delib}{$K$ ラウンド討議\\提案 $\cdot$ 批評 $\cdot$ 収束}
+\figlabeldef{F19.select}{select\_coauthors\\(新しさ)}
+\figlabeldef{F19.ground}{検索による基盤づけ}
+\figlabeldef{F19.idea}{idea.json\\仮説 $\cdot$ 指標 $\cdot$ 計画}
+
+% ---------------- F20: Story2Proposal 主張--証拠契約 ----
+\figlabeldef{F20.manu}{原稿}
+\figlabeldef{F20.cnum}{数値主張}
+\figlabeldef{F20.cfig}{図主張}
+\figlabeldef{F20.evid}{記録済み証拠}
+\figlabeldef{F20.result}{結果\\(node $\cdot$ result id)}
+\figlabeldef{F20.figart}{図成果物}
+\figlabeldef{F20.bind}{束縛(安定 id)}
+\figlabeldef{F20.gate}{主張--証拠ゲート\\(決定的・LLM なし)}
+\figlabeldef{F20.derive}{数値を再導出\\許容範囲内}
+\figlabeldef{F20.verdict}{合格 / 阻止(厳格)}
+\figlabeldef{F20.axes}{データ忠実性 $\cdot$\\推論 $\cdot$ 視覚}

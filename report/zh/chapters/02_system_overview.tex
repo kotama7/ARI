@@ -5,7 +5,7 @@
 \begin{figure*}[t]
   \centering
   \resizebox{0.95\textwidth}{!}{\input{../shared/figures/tikz/F10_full_stack.tex}}
-  \caption{v0.8.0 时 ARI 的完整堆栈。CLI / SDK 入口驱动单一编排
+  \caption{v0.9.0 时 ARI 的完整堆栈。CLI / SDK 入口驱动单一编排
            器(\texttt{ari-core});编排器拥有三个引擎(BFTS、谱
            系遍历器、ReAct \texttt{AgentLoop}),并经 MCP 层向
            14 技能注册表分派。所有持久化都落在单一检查点目录:
@@ -14,7 +14,7 @@
   \label{fig:fullstack}
 \end{figure*}
 
-\Cref{fig:fullstack} 描绘了 v0.8.0 的 ARI 完整堆栈。系统分为
+\Cref{fig:fullstack} 描绘了 v0.9.0 的 ARI 完整堆栈。系统分为
 一个驱动器与多个工具提供方。驱动器(\texttt{ari-core})拥有
 编排器、BFTS 引擎、谱系遍历器、智能体循环、检查点、成本追踪
 器与配置加载器。每个技能为独立 Python 包,以\term{模型上下文协议}

@@ -1,0 +1,41 @@
+% F20: ARI's execution-grounded realisation of the Story2Proposal contract.
+% The contract is a BINDING between manuscript claims (numeric assertions and
+% figure references) and the RECORDED EVIDENCE produced by executed experiments
+% (results and figure artefacts), keyed by stable node/result/figure ids. A
+% deterministic claim--evidence gate re-derives each reported number from that
+% evidence within tolerance (the data-fidelity axis, blocking); reasoning and
+% visual coherence are the non-blocking axes. This is a structural binding, not
+% a flow. style.tikzstyles is loaded by preamble.tex / the standalone wrapper.
+\begin{tikzpicture}[node distance=1.1cm and 3.0cm]
+
+  % --- manuscript claims (left) --------------------------------------
+  \node[block]                 (cnum) {\figlabel{F20.cnum}};
+  \node[block, below=of cnum]  (cfig) {\figlabel{F20.cfig}};
+
+  % --- recorded evidence (right) -------------------------------------
+  \node[block native, right=of cnum]      (result) {\figlabel{F20.result}};
+  \node[block native, below=of result]    (figart) {\figlabel{F20.figart}};
+
+  % --- the binding (the contract) ------------------------------------
+  \draw[arrow] (cnum) -- node[edge label] {\figlabel{F20.bind}} (result);
+  \draw[arrow] (cfig) -- node[edge label] {\figlabel{F20.bind}} (figart);
+
+  % --- group boundaries ----------------------------------------------
+  \begin{scope}[on background layer]
+    \node[group strong, fit=(cnum)(cfig)] (manu) {};
+    \node[group, fit=(result)(figart)]    (evid) {};
+  \end{scope}
+  \node[band label, above=2pt of manu.north west, anchor=south west] {\figlabel{F20.manu}};
+  \node[band label, above=2pt of evid.north west, anchor=south west] {\figlabel{F20.evid}};
+
+  % --- deterministic gate verifies the binding -----------------------
+  \node[block emph big, below right=2.4cm and 1.5cm of cfig] (gate)    {\figlabel{F20.gate}};
+  \node[block, below=of gate]                                 (verdict) {\figlabel{F20.verdict}};
+  \draw[arrow] (cfig)   -- (gate);
+  \draw[arrow] (figart) -- (gate);
+  \draw[arrow] (gate)   -- node[edge label] {\figlabel{F20.derive}} (verdict);
+
+  % --- the three evaluation axes (legend) ----------------------------
+  \node[block aux, below=0.5cm of verdict] (axes) {\figlabel{F20.axes}};
+
+\end{tikzpicture}

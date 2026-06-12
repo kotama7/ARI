@@ -62,7 +62,7 @@
   station emph/.style={station, fill=ari-skyblue!25, line width=1pt},
   station emph wide/.style={station emph, minimum width=3.0cm, text width=2.8cm},
   station emph big/.style={station emph, minimum width=3.4cm, text width=3.2cm, minimum height=1.0cm},
-  big arrow/.style={-{Stealth[length=8pt,width=8pt]}, line width=1.5pt, draw=ari-black},
+  big arrow/.style={-{Stealth[length=8pt,width=8pt]}, line width=1.5pt, draw=ari-black, shorten <=2pt, shorten >=2pt},
   decision/.style={diamond, draw, aspect=2, minimum width=2.6cm,
                    minimum height=1.0cm, text width=2.0cm,
                    align=center, inner sep=1pt},
@@ -82,6 +82,11 @@
   swim lane label/.style={font=\bfseries\footnotesize, anchor=north west},
   group/.style={draw=ari-skyblue!50, very thick, rounded corners=4pt, inner sep=10pt},
   group strong/.style={draw=ari-blue, very thick, rounded corners=4pt, inner sep=10pt, fill=ari-skyblue!8},
+  % BFTS state-machine (F15) node styles (mirrored from style.tikzstyles).
+  pool/.style={rectangle, rounded corners=2pt, draw=ari-blue, line width=1pt, fill=ari-skyblue!28, minimum width=3.2cm, minimum height=0.8cm, text width=3.0cm, align=center},
+  stage/.style={rectangle, rounded corners=2pt, draw=ari-black, line width=0.7pt, fill=white, minimum width=4.2cm, minimum height=0.85cm, text width=4.0cm, align=center},
+  guard/.style={diamond, aspect=2.6, draw=ari-orange, line width=0.8pt, fill=ari-yellow!22, minimum width=3.0cm, minimum height=1.05cm, text width=2.6cm, align=center, inner sep=0pt, font=\footnotesize},
+  drop/.style={rectangle, rounded corners=1pt, draw=ari-vermilion, dashed, fill=white, minimum width=3.4cm, minimum height=0.65cm, text width=3.2cm, align=center, font=\scriptsize, text=ari-vermilion},
 }
 
 % pdf metadata-free, no page numbers
@@ -248,6 +253,20 @@
 \figlabeldef{F14.probe.help}{sbatch --help}
 \figlabeldef{F14.outcome}{compute-node reproduce.sh}
 \figlabeldef{F14.e.profile}{execution\_profile}
+% --- F16 PaperBench 3-stage bridge with weighted rubric-tree grading ---
+\figlabeldef{F16.rollout}{rollout}
+\figlabeldef{F16.reproduce}{reproduce}
+\figlabeldef{F16.grade}{grade}
+\figlabeldef{F16.paper}{paper + rubric}
+\figlabeldef{F16.submission}{submission\\code $\cdot$ reproduce.sh}
+\figlabeldef{F16.sandbox}{isolated sandbox}
+\figlabeldef{F16.log}{reproduction log\\+ outputs}
+\figlabeldef{F16.score}{paper score\\$s=\sum_i w_i\,g_i$}
+\figlabeldef{F16.weight}{$w_i$}
+\figlabeldef{F16.pass}{$g{=}1$}
+\figlabeldef{F16.fail}{$g{=}0$}
+\figlabeldef{F16.judge}{vendored judge}
+\figlabeldef{F16.grades}{grades leaves}
 % --- F17 evidence assembly ---
 \figlabeldef{F17.lineage}{best node\\+ lineage chain}
 \figlabeldef{F17.select}{role selection\\(deepest wins)}
@@ -256,33 +275,73 @@
 \figlabeldef{F17.bundle}{published bundle\\(verbatim bytes)}
 \figlabeldef{F17.grounds}{grounds}
 \figlabeldef{F17.same}{same bytes}
+% --- F18 research memory (typed index over evidence) ---
+\figlabeldef{F18.report}{node\_report.json\\(source of truth)}
+\figlabeldef{F18.consolidate}{consolidate\\(deterministic)}
+\figlabeldef{F18.store}{typed research memory\\ancestor-scoped $\cdot$ CoW}
+\figlabeldef{F18.kinds}{result $\cdot$ failure $\cdot$\\reflection $\cdot$ repro-event}
+\figlabeldef{F18.artifacts}{artefacts\\logs $\cdot$ outputs $\cdot$ source}
+\figlabeldef{F18.refs}{content-hash refs}
+\figlabeldef{F18.repro}{reproduction events\\(append-only)}
+\figlabeldef{F18.fold}{fold $\to$ latest}
+\figlabeldef{F18.workctx}{working context\\(every node start)}
+\figlabeldef{F18.vctx}{verified context\\(paper claims)}
+\figlabeldef{F18.usable}{$\mathrm{usable}(\mu)$}
+\figlabeldef{F18.forexpl}{for exploration}
+\figlabeldef{F18.forpaper}{for the paper}
+% --- F19 VirSci literature-grounded idea generation ---
+\figlabeldef{F19.snap}{Semantic Scholar snapshot}
+\figlabeldef{F19.corpus}{corpus + SPECTER2\\retrieval index}
+\figlabeldef{F19.coauthorg}{co-author graph\\(freshness-ranked)}
+\figlabeldef{F19.team}{scientist team}
+\figlabeldef{F19.pa}{A}
+\figlabeldef{F19.pb}{B}
+\figlabeldef{F19.pc}{C}
+\figlabeldef{F19.delib}{$K$-round deliberation\\propose $\cdot$ critique $\cdot$ converge}
+\figlabeldef{F19.select}{select\_coauthors\\(freshness)}
+\figlabeldef{F19.ground}{retrieval grounding}
+\figlabeldef{F19.idea}{idea.json\\hypothesis $\cdot$ metric $\cdot$ plan}
+% --- F20 Story2Proposal claim--evidence contract ---
+\figlabeldef{F20.manu}{manuscript}
+\figlabeldef{F20.cnum}{numeric claim}
+\figlabeldef{F20.cfig}{figure claim}
+\figlabeldef{F20.evid}{recorded evidence}
+\figlabeldef{F20.result}{result\\(node $\cdot$ result id)}
+\figlabeldef{F20.figart}{figure artefact}
+\figlabeldef{F20.bind}{binds (stable id)}
+\figlabeldef{F20.gate}{claim--evidence gate\\(deterministic, no LLM)}
+\figlabeldef{F20.derive}{re-derive number\\within tolerance}
+\figlabeldef{F20.verdict}{pass / block (strict)}
+\figlabeldef{F20.axes}{data-fidelity $\cdot$\\reasoning $\cdot$ visual}
 \providecommand{\term}[1]{\textit{#1}}
+
+% Notation macros used by F15 labels (mirrored from shared/notation.tex).
+\providecommand{\expandcount}{e}
+\providecommand{\sterilepred}{\sigma}
+
+% F15 BFTS state-machine: simplified English preview labels (the real build
+% uses the math-rich versions from en/ja/zh strings.tex).
+\figlabeldef{F15.frontier}{frontier F}
+\figlabeldef{F15.pending}{pending P}
+\figlabeldef{F15.prune}{prune f?}
+\figlabeldef{F15.expand}{expand -> child}
+\figlabeldef{F15.select_run}{select(LLM/FB)}
+\figlabeldef{F15.run_parallel}{parallel ReAct}
+\figlabeldef{F15.sterile}{sterile?}
+\figlabeldef{F15.retire}{retire f?}
+\figlabeldef{F15.pick_best}{pick best}
+\figlabeldef{F15.notprune}{not pruned}
+\figlabeldef{F15.prune_drop}{drop f}
+\figlabeldef{F15.pick_run}{select batch}
+\figlabeldef{F15.append_frontier}{append done}
+\figlabeldef{F15.retire_drop}{retire f}
+\figlabeldef{F15.hist_append}{record\_run}
+\figlabeldef{F15.clamp}{clamp score; $\sterilepred=1$}
+\figlabeldef{F15.yes}{yes}
+\figlabeldef{F15.yes_ab}{yes: A or B}
+\figlabeldef{F15.no_next}{no $\Rightarrow$ next iter}
 
 \begin{document}
 \centering
 \input{__TIKZ__}
 \end{document}
-
-\figlabeldef{F14.band.state}{run-loop state}
-\figlabeldef{F14.frontier}{frontier F}
-\figlabeldef{F14.pending}{pending P}
-\figlabeldef{F14.counter}{expansion count}
-\figlabeldef{F14.history}{label history}
-\figlabeldef{F14.prune}{prune f?}
-\figlabeldef{F14.expand}{expand -> child}
-\figlabeldef{F14.select_run}{select(LLM/FB)}
-\figlabeldef{F14.run_parallel}{parallel ReAct}
-\figlabeldef{F14.sterile}{sterile?}
-\figlabeldef{F14.retire}{retire f?}
-\figlabeldef{F14.pick_best}{pick best}
-\figlabeldef{F14.notprune}{not pruned}
-\figlabeldef{F14.prune_drop}{drop f}
-\figlabeldef{F14.append_pending}{append child}
-\figlabeldef{F14.pick_run}{select batch}
-\figlabeldef{F14.append_frontier}{append done}
-\figlabeldef{F14.retire_drop}{retire f}
-\figlabeldef{F14.cnt_bump}{bump count}
-\figlabeldef{F14.hist_use}{use history}
-\figlabeldef{F14.hist_append}{append history}
-\figlabeldef{F14.lane.inner}{inner expand loop}
-\figlabeldef{F14.lane.outer}{outer parallel loop}
