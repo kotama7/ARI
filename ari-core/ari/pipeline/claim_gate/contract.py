@@ -37,6 +37,8 @@ declared/constant.
 
 from __future__ import annotations
 
+import re
+
 from typing import Any, Iterator
 
 from ari.pipeline.claim_gate import formula_eval, numeric
@@ -120,6 +122,69 @@ def _any_root(values, roots: tuple) -> bool:
     return False
 
 
+def _lex_tokens(name: str) -> set:
+    """Vocabulary-free lexical tokens: lowercase, split on non-alphanumerics,
+    strip a trailing plural 's' from longer alpha tokens. Digit-bearing tokens
+    (fp32, l2) are kept whole — they are version/size discriminators. Purely
+    morphological — NO domain synonym table (a gflops<->flops_per_second
+    pairing is deliberately out of scope; semantic bridging belongs to the
+    agent, not to this code)."""
+    out = set()
+    for t in re.split(r"[^a-zA-Z0-9]+", str(name).lower()):
+        if not t or t.isdigit():
+            continue
+        if t.isalpha() and len(t) > 3 and t.endswith("s"):
+            t = t[:-1]
+        out.add(t)
+    return out
+
+
+def _lex_token_eq(a: str, b: str) -> bool:
+    """Equal, prefix-of (shorter >= 3 chars: sec~seconds), or shared prefix >= 5
+    (permuted~permutation). String geometry only."""
+    if a == b:
+        return True
+    short, long_ = (a, b) if len(a) <= len(b) else (b, a)
+    if len(short) >= 3 and long_.startswith(short):
+        return True
+    n = 0
+    for x, y in zip(a, b):
+        if x != y:
+            break
+        n += 1
+    return n >= 5
+
+
+def _lex_score(required: str, emitted: str) -> "tuple[float, int] | None":
+    """Conservative suggestion-only similarity score, or None when below the
+    floor: >= 3 non-trivial matched tokens AND >= 3/4 of the smaller token set
+    matched (filler tokens like "with" on one side must not defeat a clear
+    correspondence). Digit-bearing tokens (fp32, l2) that conflict on BOTH
+    sides veto the pair — fp32 evidence must never be suggested for an fp64
+    requirement. Used ONLY to rank hints inside an advisory warning — never to
+    auto-bind, never in the gate."""
+    def _nt(toks):
+        return {t for t in toks if len(t) >= 3 or any(ch.isdigit() for ch in t)}
+    tr, te = _nt(_lex_tokens(required)), _nt(_lex_tokens(emitted))
+    if len(tr) < 3 or len(te) < 3:
+        return None
+    small, big = (tr, te) if len(tr) <= len(te) else (te, tr)
+    matched = sum(1 for s in small if any(_lex_token_eq(s, b) for b in big))
+    if matched < 3 or matched * 4 < len(small) * 3:
+        return None
+    def _digit_orphans(side, other):
+        return {t for t in side
+                if any(ch.isdigit() for ch in t)
+                and not any(_lex_token_eq(t, o) for o in other)}
+    if _digit_orphans(tr, te) and _digit_orphans(te, tr):
+        return None
+    return (matched / len(small), matched)
+
+
+def _lex_similar(required: str, emitted: str) -> bool:
+    return _lex_score(required, emitted) is not None
+
+
 def check_emission(contract: dict, measurements: dict, provenance: dict) -> list:
     """Point-of-emission contract feedback for the PRODUCER (emit_results).
 
@@ -168,6 +233,35 @@ def check_emission(contract: dict, measurements: dict, provenance: dict) -> list
                 "is fine). PARTIAL coverage helps — each claim you cover here is one fewer block; "
                 "claims you truly did not measure are expected to be covered by OTHER nodes, so "
                 "leave them uncovered rather than fabricate.")
+            # Suggestion-only lexical hints: an emitted key whose tokens line up
+            # with a required name is probably the same measurement under the
+            # agent's own spelling (observed live: 3 claims measured but emitted
+            # as zero_init_*/tlb_stress_* vs required c_init_*/b_tlb_*). The
+            # agent confirms and re-emits; nothing is auto-bound and the gate
+            # never sees this logic.
+            all_req = {n for c2 in claims for n in (c2.get("required_evidence") or [])
+                       if isinstance(n, str)}
+            hints = []
+            for _cl, req in uncovered:
+                for rname in req:
+                    best = None
+                    for ename in sorted(present):
+                        if ename in all_req:
+                            continue
+                        sc = _lex_score(rname, ename)
+                        if sc is not None and (best is None or sc > best[0]):
+                            best = (sc, ename)
+                    if best is not None:
+                        hints.append(f"your '{best[1]}' looks like required '{rname}'")
+                    if len(hints) >= 4:
+                        break
+                if len(hints) >= 4:
+                    break
+            if hints:
+                warnings.append(
+                    "POSSIBLE name matches (verify the meaning before renaming — do NOT "
+                    "rename if they measure different things): " + "; ".join(hints) +
+                    ". If a match is genuine, re-emit that value under the required name.")
     return warnings
 
 

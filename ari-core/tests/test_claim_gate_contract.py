@@ -373,3 +373,48 @@ def test_gate_blocks_contract_violation_in_warn_at_final(tmp_path):
                         phase="final", write=False)
     assert rep["metrics"]["contract_violation_count"] >= 2  # placeholder + correctness_uncovered
     assert rep["should_block"] is True
+
+
+# --- suggestion-only lexical hints in check_emission (stage 2) ---
+
+def _hint_contract():
+    return {"claims": [
+        {"claim": "fused C init beats memset-then-accumulate",
+         "required_evidence": ["c_init_time_seconds_with_memset_then_accumulate",
+                               "c_init_time_seconds_with_fused_zero_plus_accumulate"]},
+    ]}
+
+
+def test_emission_hint_suggests_lexical_near_miss():
+    from ari.pipeline.claim_gate.contract import check_emission
+    # the real V4 shape: same measurement emitted under the agent's own spelling
+    ws = check_emission(_hint_contract(),
+                        {"zero_init_time_sec_memset_then_accumulate": 0.0123}, {})
+    joined = " ".join(ws)
+    assert "POSSIBLE name matches" in joined
+    assert "zero_init_time_sec_memset_then_accumulate" in joined
+    assert "c_init_time_seconds_with_memset_then_accumulate" in joined
+    # advisory only: the uncovered-claims warning itself must still be present
+    assert any("declared claim(s) have NO supporting measurement" in w for w in ws)
+
+
+def test_emission_hint_silent_for_unrelated_names():
+    from ari.pipeline.claim_gate.contract import check_emission
+    ws = check_emission(_hint_contract(),
+                        {"stream_triad_dram_bandwidth_gbps": 700.0}, {})
+    assert not any("POSSIBLE name matches" in w for w in ws)
+
+
+def test_emission_hint_short_generic_key_never_suggested():
+    from ari.pipeline.claim_gate.contract import check_emission
+    # a 2-token generic key must not clear the conservative threshold
+    ws = check_emission(_hint_contract(), {"time_seconds": 1.0}, {})
+    assert not any("POSSIBLE name matches" in w for w in ws)
+
+
+def test_emission_hint_absent_when_claim_exactly_covered():
+    from ari.pipeline.claim_gate.contract import check_emission
+    ws = check_emission(_hint_contract(),
+                        {"c_init_time_seconds_with_memset_then_accumulate": 0.01}, {})
+    assert not any("POSSIBLE name matches" in w for w in ws)
+    assert not any("declared claim(s)" in w for w in ws)

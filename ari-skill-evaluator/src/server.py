@@ -589,6 +589,36 @@ async def _tool_make_metric_spec(arguments: dict) -> dict:
 
     scoring_guide = _build_scoring_guide(expected_metrics, metric_keyword, min_expected)
 
+    # MINT-ONCE: the run-level contract is a frozen promise. Re-extraction mints
+    # a NEW evidence vocabulary on every call (LLM naming is not referentially
+    # stable), and a mid-run regeneration silently hides sibling evidence emitted
+    # under the previous names from the exact-match gate — observed on a real
+    # run: the contract was regenerated 3x and 3 of 6 "missing" claims had in
+    # fact been measured under earlier names. When a persisted contract with
+    # claims already exists, return it VERBATIM (per-node spec fields above stay
+    # per-call); a re-call becomes a harmless re-read of the obligations.
+    try:
+        import os as _os_fz
+        from pathlib import Path as _P_fz
+        _ck_fz = (arguments.get("checkpoint_dir")
+                  or _os_fz.environ.get("ARI_CHECKPOINT_DIR", "") or "").strip()
+        if _ck_fz:
+            _fz_p = _P_fz(_ck_fz) / "metric_contract.json"
+            if _fz_p.is_file():
+                _persisted = json.loads(_fz_p.read_text())
+                if isinstance(_persisted, dict) and _persisted.get("claims"):
+                    return {
+                        "expected_metrics": expected_metrics,
+                        "expected_params": expected_params,
+                        "metric_keyword": metric_keyword,
+                        "min_expected_metric": min_expected,
+                        "scoring_guide": scoring_guide,
+                        "metric_contract": _persisted,
+                        "contract_frozen": True,
+                    }
+    except Exception:
+        pass
+
     # Metric-correctness contract scaffold: classify the metric's mathematical
     # concept and attach its universal invariant DETERMINISTICALLY, reusing the
     # hard gate's registry (single source of truth — no domain knowledge here).
@@ -651,9 +681,11 @@ async def _tool_make_metric_spec(arguments: dict) -> dict:
     # pipeline (nodes_to_science_data) can graft it onto science_data.json for the
     # hard gate. Without this the DECLARED contract (claims / correctness /
     # required_measured / recompute / declared invariants) never reaches the gate --
-    # only the universal invariant registry does. Best-effort; idempotent (the
-    # contract is idea-derived), written to the same checkpoint idea.json was read
-    # from. Never break the spec on a write failure.
+    # only the universal invariant registry does. Best-effort; FIRST MINT ONLY
+    # (when a claims-bearing contract is already persisted, the freeze block
+    # above returns it before reaching here — LLM re-extraction is NOT
+    # referentially stable, so regeneration would change the evidence
+    # vocabulary mid-run). Never break the spec on a write failure.
     if isinstance(metric_contract, dict) and metric_contract:
         try:
             import os as _os_mc
