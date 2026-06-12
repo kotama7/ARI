@@ -20,7 +20,7 @@ last_verified: 2026-06-10
 > **安装前先预览**
 >
 > - 🎬 **仪表板演示视频** — [`movie/zh/ari_dashboard_demo.mp4`](../../assets/movie/zh/ari_dashboard_demo.mp4) 完整展示 Web UI 的实际操作。
-> - 📄 **示例输出论文** — [`sample_paper.pdf`](../../assets/sample_paper.pdf) 是 ARI 在aarch64/SVE HPC 上实际运行生成的 10 页论文（Stratum-Roofline CSR-SpMM 研究），包含图表、引用和可复现性验证报告。
+> - 📄 **示例输出论文** — [`sample_paper.pdf`](../../assets/sample_paper.pdf) 是 ARI 在 aarch64 (SVE) HPC 上实际运行生成的 8 页论文（store-policy 选择＋loopline 引导模型的 CSR SpMM 研究、全部论断经 gate 验证），包含图表与引用。
 
 ---
 

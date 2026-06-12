@@ -72,7 +72,7 @@ Object.assign(window.LANGS.zh, {
   'nav-inspired': '先行研究',
   'demo-label': '演示',
   'demo-title': '看 ARI 实际运行。',
-  'demo-sub': '观看 ARI Web 仪表板的实时演示，然后下载由 ARI 端到端自动生成的示例论文（aarch64/SVE HPC 上的 Stratum-Roofline CSR-SpMM 研究，全 10 页）。',
+  'demo-sub': '观看 ARI Web 仪表板的实时演示，然后下载由 ARI 端到端自动生成的示例论文（aarch64 (SVE) HPC 上的 CSR SpMM 研究（store-policy 选择＋loopline 引导模型、全部论断经 gate 验证），全 8 页）。',
   'demo-paper-btn': '📄 下载示例论文',
   'demo-start-btn': '开始使用 ↓',
   'dashboard-see-demo': '▶ <a href="#demo">完整演示请见上方 Demo 部分</a>',

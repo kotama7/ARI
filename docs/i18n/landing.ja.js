@@ -72,7 +72,7 @@ Object.assign(window.LANGS.ja, {
   'nav-inspired': '先行研究',
   'demo-label': 'デモ',
   'demo-title': 'ARI の動作を見る。',
-  'demo-sub': 'ARI の Web ダッシュボードのライブ操作デモを見て、ARI が end-to-end で生成したサンプル論文（aarch64/SVE HPC 上の Stratum-Roofline CSR-SpMM 研究、全 10 ページ）をダウンロードしてください。',
+  'demo-sub': 'ARI の Web ダッシュボードのライブ操作デモを見て、ARI が end-to-end で生成したサンプル論文（aarch64 (SVE) HPC 上の CSR SpMM 研究（store-policy 選択＋loopline 誘導モデル、全主張 gate 検証済み）、全 8 ページ）をダウンロードしてください。',
   'demo-paper-btn': '📄 サンプル論文をダウンロード',
   'demo-start-btn': 'はじめる ↓',
   'dashboard-see-demo': '▶ <a href="#demo">ライブ操作デモは Demo セクション ↑ をご覧ください</a>',
