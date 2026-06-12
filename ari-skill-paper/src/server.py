@@ -763,6 +763,12 @@ def _build_bib_content(refs_json: str) -> tuple:
     return "\n\n".join(entries), key_list
 
 
+_MATH_ENV_NAMES = frozenset({
+    'equation', 'align', 'eqnarray', 'displaymath', 'math', 'gather',
+    'multline', 'alignat', 'flalign', 'split', 'aligned', 'gathered', 'cases',
+})
+
+
 def _escape_text_underscores(text: str) -> str:
     """Escape bare underscores in LaTeX text mode. Skips command args and math."""
     import re as _re_esc
@@ -792,6 +798,18 @@ def _escape_text_underscores(text: str) -> str:
                 else:
                     result.append(text[i]); i += 1
                 continue
+            # \begin{<math env>} ... \end{<math env>}: skip the body verbatim
+            # (same math contract; subscripts there were corrupted the same way).
+            if cmd_name == 'begin' and i < len(text) and text[i] == '{':
+                _m_env = _re_esc.match(r'\{([A-Za-z]+\*?)\}', text[i:])
+                if _m_env and _m_env.group(1).rstrip('*') in _MATH_ENV_NAMES:
+                    _closer = '\\end{' + _m_env.group(1) + '}'
+                    _end = text.find(_closer, i + _m_env.end())
+                    if _end >= 0:
+                        result.append(text[i:_end + len(_closer)])
+                        i = _end + len(_closer)
+                        continue
+                # not a math env (or unclosed): generic arg protection below
             # For label/ref/cite/eqref: include the {} arg without escaping
             if cmd_name in ('label', 'ref', 'eqref', 'cite', 'pageref', 'autoref',
                             'hyperref', 'nameref', 'vref', 'cref', 'Cref',

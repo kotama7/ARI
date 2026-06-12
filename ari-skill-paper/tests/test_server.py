@@ -587,3 +587,26 @@ def test_escape_underscores_unclosed_paren_math_falls_back():
     # unclosed \( is broken LaTeX anyway; must not crash or eat text
     out = esc(r"oops \(k_p never closes")
     assert "k\\_p" in out and out.startswith("oops \\(")
+
+
+def test_escape_underscores_skips_math_environment_bodies():
+    from src.server import _escape_text_underscores as esc
+    s = "\\begin{equation}\nx_i = y_j\n\\end{equation}"
+    assert esc(s) == s
+    # starred variants too
+    s2 = "\\begin{align*}\na_1 &= b_2\n\\end{align*}"
+    assert esc(s2) == s2
+    # text around the environment is still escaped
+    assert esc("run_log\n" + s) == "run\\_log\n" + s
+
+
+def test_escape_underscores_non_math_environment_still_escaped():
+    from src.server import _escape_text_underscores as esc
+    out = esc("\\begin{itemize}\n\\item a_b\n\\end{itemize}")
+    assert "a\\_b" in out                      # prose env bodies keep escaping
+
+
+def test_escape_underscores_unclosed_math_environment_falls_back():
+    from src.server import _escape_text_underscores as esc
+    out = esc("\\begin{equation}\nx_i never closes")
+    assert "x\\_i" in out and out.startswith("\\begin{equation}")
