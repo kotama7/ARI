@@ -781,6 +781,17 @@ def _escape_text_underscores(text: str) -> str:
             # If command name is empty and next char is _ ^ $ # etc, it's already escaped — pass through
             if not cmd_name and i < len(text) and text[i] in '_^$#&%~|':
                 result.append(text[i]); i += 1; continue
+            # \( ... \) and \[ ... \] math: skip verbatim (only $...$ was
+            # recognized before, so \(k_p\) in plain prose got corrupted to
+            # \(k\_p\) — literal underscore instead of a subscript).
+            if not cmd_name and i < len(text) and text[i] in '([':
+                closer = '\\)' if text[i] == '(' else '\\]'
+                end = text.find(closer, i + 1)
+                if end >= 0:
+                    result.append(text[i:end + 2]); i = end + 2
+                else:
+                    result.append(text[i]); i += 1
+                continue
             # For label/ref/cite/eqref: include the {} arg without escaping
             if cmd_name in ('label', 'ref', 'eqref', 'cite', 'pageref', 'autoref',
                             'hyperref', 'nameref', 'vref', 'cref', 'Cref',

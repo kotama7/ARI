@@ -560,3 +560,30 @@ async def test_merge_reviews_warning_entries_collected_by_paper_refine(tmp_path)
     sent = mocked.call_args.kwargs.get("messages") or mocked.call_args.args[0]
     joined = " ".join(str(m) for m in sent)
     assert "Qualify the headline claim" in joined
+
+
+# --- _escape_text_underscores: \(...\) / \[...\] math must survive ---
+
+def test_escape_underscores_skips_inline_paren_math():
+    from src.server import _escape_text_underscores as esc
+    # the run-replay corruption case: subscript in plain prose math
+    assert esc(r"blocking factor \(k_p\) here") == r"blocking factor \(k_p\) here"
+    # text-mode underscores around the math span are still escaped
+    assert esc(r"see run_log and \(k_p\)") == r"see run\_log and \(k_p\)"
+
+
+def test_escape_underscores_skips_display_bracket_math():
+    from src.server import _escape_text_underscores as esc
+    assert esc(r"\[x_i = y_j\]") == r"\[x_i = y_j\]"
+
+
+def test_escape_underscores_dollar_math_unchanged():
+    from src.server import _escape_text_underscores as esc
+    assert esc(r"$k_p$ and a_b") == r"$k_p$ and a\_b"
+
+
+def test_escape_underscores_unclosed_paren_math_falls_back():
+    from src.server import _escape_text_underscores as esc
+    # unclosed \( is broken LaTeX anyway; must not crash or eat text
+    out = esc(r"oops \(k_p never closes")
+    assert "k\\_p" in out and out.startswith("oops \\(")
