@@ -25,11 +25,25 @@ loop end-to-end (idea $\to$ experiment $\to$ paper) but does not
 expose the rubric and refine cycle as a first-class object. VirSci
 \cite{su2024many} simulates several scientist personas and uses
 their consensus to score outputs; ARI can drive VirSci's original
-deliberation engine directly and unmodified --- its freshness-based
+deliberation engine directly and unmodified (\cref{fig:virsci}) --- its
+freshness-based
 \texttt{select\_coauthors} team formation and multi-agent
 \texttt{generate\_idea} loop --- over a live Semantic~Scholar snapshot,
 so that the multi-agent mechanism it builds on is the published one
 executed against current literature rather than a paraphrase of it.
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F19_virsci.tex}}
+  \caption{VirSci-style idea generation as ARI drives it. A frozen
+           Semantic~Scholar snapshot --- a corpus with a SPECTER2
+           retrieval index and a freshness-ranked co-author graph --- is
+           the substrate from which \texttt{select\_coauthors} forms a
+           heterogeneous scientist team. The team then runs a $K$-round
+           deliberation grounded by retrieval against the snapshot,
+           converging on \texttt{idea.json}.}
+  \label{fig:virsci}
+\end{figure}
 Agent~Laboratory
 \cite{schmidgall2025agent} treats the agent as a collaborator
 rather than a driver. ARI differs in two operational respects:

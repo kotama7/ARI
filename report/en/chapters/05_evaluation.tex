@@ -36,6 +36,35 @@ results --- and the agent terminated voluntarily after a small fraction of
 its time budget, leaving the remaining datasets and the proprietary
 lossless stage unattempted.
 
+On the generation side, one end-to-end result is already demonstrated
+and inspectable: the released sample paper, an eight-page study
+produced autonomously by a real run. It studies compressed sparse row
+(CSR) sparse-dense matrix multiplication (SpMM), selecting a store
+policy across right-hand-side (RHS) widths under the guidance of a
+performance model (the paper's ``loopline'' model) fitted from the
+run's own measurements. In that run, all twelve declared falsifiable
+claims carried machine-verified experiment evidence --- the final
+claim--evidence gate (\cref{sec:paper:contract}) reported zero errors
+--- and the computed-evidence chain behind the selection (parameter
+fitting, then held-out validation, then model-based selection)
+executed through lineage-chained nodes
+(\cref{sec:exploration:lineage-chaining}) rather than collapsing into
+repeated probes. Correctness was validated against an independent
+dense single-precision (FP32) reference, with a maximum absolute
+error of $6.79\times10^{-6}$, and the post-refine semantic review
+reports zero remaining overclaims (five detected, five resolved).
+
+We read this result narrowly. Its value is the \emph{verified}
+property --- every quantitative claim in the released paper is bound
+to a recorded artefact and passed the deterministic gate --- not any
+headline number the paper reports; and the paper itself hedges
+explicitly wherever a statement outruns its artefact grounding. A
+single verified run demonstrates that the contract, gate, and lineage
+machinery of
+\cref{sec:exploration:lineage-chaining,sec:paper:contract} compose
+end to end; it does not establish a distribution, which is exactly
+the controlled study deferred below.
+
 A controlled evaluation --- median run cost, per-seed exploration curves,
 and per-category rubric distributions over a frozen checkpoint, together
 with full-rollout replication scores across a panel of contrasting target

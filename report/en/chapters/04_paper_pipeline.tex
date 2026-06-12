@@ -50,6 +50,21 @@ function of recorded metadata, not of a language model's judgement ---
 so that the guardrails of \cref{sec:paper:failures} have something
 concrete to enforce.
 
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F20_claim_evidence.tex}}
+  \caption{An execution-grounded realisation of the Story2Proposal
+           claim--evidence contract. Manuscript claims --- numeric
+           assertions and figure references --- are bound by stable
+           node, result, and figure identifiers to the recorded evidence
+           produced by executed experiments. A deterministic
+           claim--evidence gate (no language model) re-derives each
+           reported number from that evidence within a tolerance; this
+           data-fidelity axis blocks in strict mode, while the reasoning
+           and visual-coherence axes are non-blocking.}
+  \label{fig:claim-evidence}
+\end{figure}
+
 Selection is role-specific: one node may contribute differently to
 three consumers, and a single predicate family decides each. A node
 enters the \emph{synthesis} set if it carries real measurements (or the
@@ -237,11 +252,13 @@ composable stages with a shared vocabulary (\cref{fig:pb-stages}):
   \resizebox{\textwidth}{!}{\input{../shared/figures/tikz/F16_paperbench_stages.tex}}
   \caption{The PaperBench replication path as three composable stages.
            The agent \emph{rollout} turns the paper and its rubric into a
-           submission; \emph{reproduce} executes that submission in an
-           isolated sandbox, capturing \texttt{reproduce.log} and its
-           outputs; \emph{grade} scores the submission against the rubric
-           tree. ARI's three-stage bridge orchestrates the stages and
-           aggregates repeated runs into a single score.}
+           submission (code and a reproduction script); \emph{reproduce}
+           executes that submission in an isolated sandbox, capturing the
+           reproduction log and its outputs; \emph{grade} scores the
+           submission against the \emph{weighted rubric tree}, where the
+           vendored judge assigns each leaf a grade $g\in\{0,1\}$ and the
+           paper score is the weight-aggregated roll-up
+           $s=\sum_i w_i g_i$ (\cref{eq:paperscore}).}
   \label{fig:pb-stages}
 \end{figure*}
 
@@ -320,7 +337,13 @@ structural --- not merely advisory --- mitigation:
         node in the lineage substantiates. The mitigation constrains
         the writer to a pre-selected set of lineage artefacts, so every
         numerical or causal claim is traceable to a node that produced
-        it; the draft cannot cite evidence that was not generated.
+        it; the draft cannot cite evidence that was not generated. The
+        companion constraint is on the memory side: the verified context
+        (\cref{sec:exploration:memory}) admits a result as a quantitative
+        claim only when it is artefact-grounded and has not failed a
+        reproduction attempt (\cref{eq:usable}), so a reproduced result is
+        preferred and an unsupported reflection cannot become a headline
+        number.
   \item \textbf{Citation hallucination}: the paper cites a non-existent
         work. The mitigation is structural --- the writer may not invent
         citation keys, and every bibliography entry is verified against
@@ -332,8 +355,9 @@ structural --- not merely advisory --- mitigation:
   \item \textbf{Number drift}: a reported quantity does not match the
         recorded result it summarises. Because every numeric claim names
         the node and measurement it rests on (\cref{sec:paper:evidence}),
-        each is re-derived deterministically from the recorded results and
-        compared within a tolerance; a value that fails to match the
+        a deterministic claim--evidence gate re-derives each from the
+        recorded results and compares it within a tolerance
+        (\cref{fig:claim-evidence}); a value that fails to match the
         recomputed result is flagged. By default the gate reports such a
         mismatch without blocking; under a stricter audit policy an
         unresolved mismatch in the final check rejects the draft rather
@@ -344,3 +368,51 @@ The first guard also bounds context: the writer is given the selected
 lineage artefacts and the top-scoring nodes' source, under a size
 budget, so the draft stays within the model's context window even for
 long runs.
+
+\subsection{Metric-contract and gate hardening}\label{sec:paper:contract}
+
+The number-drift guard above presupposes a stable vocabulary binding
+claims to evidence. ARI makes that vocabulary explicit as a
+\term{metric contract}: a run-level declaration of the falsifiable
+claims the eventual paper must support, each naming the exact
+measurement names that count as evidence for it. Nodes emit
+measurements under those names during exploration --- the same names
+also steer expansion (\cref{sec:exploration:lineage-chaining}) --- and
+the deterministic gate of \cref{fig:claim-evidence} matches claims to
+evidence by exact name. Experience with real runs hardened four
+points of this seam, each a structural rule rather than a prompt fix:
+
+\begin{itemize}
+  \item \textbf{The contract is minted once.} Once a claims-bearing
+        contract has been persisted, every later call returns the
+        persisted contract verbatim instead of regenerating it. A
+        language model's naming is not referentially stable --- asked
+        twice, it names the same quantity differently --- and in a real
+        run a mid-run regeneration silently renamed the evidence
+        vocabulary, hiding measurements that sibling nodes had already
+        emitted from the exact-match gate.
+  \item \textbf{Parsing meets the writer where it is.} The gate's
+        numeric verification parses scientific notation and treats
+        math delimiters as unit boundaries when extracting a
+        value--unit pair, and writer declaration quirks that recur in
+        practice --- synonymous formula names for the same derivation,
+        claim identifiers written with a label prefix, one in-text
+        anchor identifier (the marker that binds a reported number to
+        its recorded result) shared by several mentions --- are
+        normalised at parse time rather than reported as mismatches,
+        so the gate's verdicts measure the paper's numbers, not its
+        surface syntax.
+  \item \textbf{Review findings reach the refiner whole.} Every
+        warning raised by the semantic review --- a complementary
+        language-model pass that flags overclaims and unsupported
+        causal language --- is forwarded to the refine step
+        (\cref{sec:paper:loop}), not a truncated subset, and the
+        post-refine resolved count is a raw delta between the two
+        passes, so a refine that introduces new findings shows up as a
+        regression rather than being clamped away.
+  \item \textbf{Blocking stays reserved for objective falsehoods.} A
+        reported number that contradicts recorded evidence blocks the
+        final check; the subjective findings of the semantic review
+        are advisory by design, steering the refiner without ever
+        gating publication on a matter of judgement.
+\end{itemize}

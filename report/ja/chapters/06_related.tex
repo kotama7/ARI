@@ -24,11 +24,27 @@ AI~Scientist ファミリ \cite{lu2024ai,lu2026towards} は同様のループ
 が、ルブリックと改稿サイクルを第一級オブジェクトとして露出させ
 ない。VirSci \cite{su2024many} は複数の科学者ペルソナを模擬し、
 彼らの合意で出力を採点する;ARI は VirSci の元の熟議エンジン
+(\cref{fig:virsci})
 ——鮮度に基づく \texttt{select\_coauthors} のチーム編成と多エージェ
 ントの \texttt{generate\_idea} ループ——を無改変のまま直接実行で
 き、それをライブな Semantic~Scholar スナップショット上で動かす;こ
 れにより、依拠する多エージェント機構は言い換えではなく、実際に公刊
-されたものを現在の文献に対して実行したものとなる。Agent~Laboratory
+されたものを現在の文献に対して実行したものとなる。
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F19_virsci.tex}}
+  \caption{ARI が駆動する VirSci 流の着想生成。凍結された
+           Semantic~Scholar スナップショット——SPECTER2 検索
+           インデックスを備えたコーパスと、鮮度順の共著者グラフ——が
+           基盤となり、そこから \texttt{select\_coauthors} が不均質な
+           科学者チームを編成する。チームはスナップショットに対する
+           検索で基盤づけられた $K$ ラウンドの討議を行い、
+           \texttt{idea.json} へ収束する。}
+  \label{fig:virsci}
+\end{figure}
+
+Agent~Laboratory
 \cite{schmidgall2025agent} はエージェントを駆動者ではなく協働者
 として扱う。ARI は二点の運用面で異なる:\textbf{すべてがチェッ
 クポイントの中で生きる}(P1 / P4)、そしてルブリックが探索と執
