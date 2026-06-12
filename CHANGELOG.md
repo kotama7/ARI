@@ -2,7 +2,7 @@
 
 All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PATCH`.
 
-## Unreleased
+## v0.9.0 — Verified claims end-to-end: S2P gate + mint-once contract + lineage chaining + VirSci-live (2026-06-12)
 
 - **Sample paper replaced with a gate-verified study.**
   `docs/assets/sample_paper.pdf` is now the 8-page CSR SpMM paper
