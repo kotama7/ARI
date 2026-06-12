@@ -36,12 +36,16 @@
   % --- edges ---------------------------------------------------------
   \foreach \s in {idea,code,eval,rev,paper,replic}
     \draw[arrow] (orch.south) -- (\s.north);
-  \draw[arrow] (orch.south) to[bend right=14] (memory.north);
-  \draw[arrow] (orch.south) to[bend right=10] (web.north);
+  % memory/web sit one row below the skills, each directly under a skill box;
+  % approaching from the node's TOP would pierce the skill above it, so the
+  % dispatch arrows enter from the band-gap SIDE instead (render_tikz T10
+  % flags the top-approach as an arrow-through-node crossing).
+  \draw[arrow] (orch.south) to[out=255, in=0]   (memory.east);
+  \draw[arrow] (orch.south) to[out=285, in=180] (web.west);
 
   \draw[arrow dashed] (memory.south) -- (ckpt.north);
   \draw[arrow dashed] (eval.south)   to[bend right=10] (tree.north);
-  \draw[arrow dashed] (rev.south)    to[bend right=12] (tree.north);
+  \draw[arrow dashed] (rev.south)    to[bend left=18] (tree.north);
   \draw[arrow dashed] (paper.south)  to[bend right=18] (results.north);
   \draw[arrow dashed] (replic.south) to[bend right=22] (results.north);
 \end{tikzpicture}

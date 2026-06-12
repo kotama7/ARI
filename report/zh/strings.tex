@@ -198,16 +198,25 @@
 \figlabeldef{F15.hist_append}{\texttt{record\_run} (执行后)}
 \figlabeldef{F15.lane.inner}{内层扩展子循环}
 \figlabeldef{F15.lane.outer}{外层并行执行循环}
+\figlabeldef{F15.clamp}{钳制分数; $\sterilepred=1$}
+\figlabeldef{F15.yes}{是}
+\figlabeldef{F15.yes_ab}{是: A 或 B}
+\figlabeldef{F15.no_next}{否 $\Rightarrow$ 下次迭代}
 
-% ---------------- F16: PaperBench 三阶段 bridge ----
-\figlabeldef{F16.paper}{论文+评分细则}
+% ---------------- F16: PaperBench 三阶段 bridge(加权评分细则树评分)----
 \figlabeldef{F16.rollout}{rollout}
-\figlabeldef{F16.sub}{提交物}
 \figlabeldef{F16.reproduce}{再现}
-\figlabeldef{F16.log}{reproduce.log}
 \figlabeldef{F16.grade}{评分}
-\figlabeldef{F16.score}{得分}
-\figlabeldef{F16.band}{三阶段 bridge}
+\figlabeldef{F16.paper}{论文+评分细则}
+\figlabeldef{F16.submission}{提交物\\code $\cdot$ reproduce.sh}
+\figlabeldef{F16.sandbox}{隔离沙箱}
+\figlabeldef{F16.log}{再现日志\\+ 输出}
+\figlabeldef{F16.score}{论文得分\\$s=\sum_i w_i\,g_i$}
+\figlabeldef{F16.weight}{$w_i$}
+\figlabeldef{F16.pass}{$g{=}1$}
+\figlabeldef{F16.fail}{$g{=}0$}
+\figlabeldef{F16.judge}{vendor 评分器}
+\figlabeldef{F16.grades}{对叶子评分}
 
 % ---------------- F17: 证据组装(一次选择、两个消费者) ----
 \figlabeldef{F17.lineage}{最佳节点\\+ 谱系链}
@@ -217,3 +226,44 @@
 \figlabeldef{F17.bundle}{发布产物束\\(逐字字节)}
 \figlabeldef{F17.grounds}{基底}
 \figlabeldef{F17.same}{相同字节}
+
+% ---------------- F18: 研究记忆(对证据的带类型索引)----
+\figlabeldef{F18.report}{node\_report.json\\(真值来源)}
+\figlabeldef{F18.consolidate}{整合\\(确定性)}
+\figlabeldef{F18.store}{带类型研究记忆\\祖先限定 $\cdot$ CoW}
+\figlabeldef{F18.kinds}{结果 $\cdot$ 失败 $\cdot$\\反思 $\cdot$ 复现事件}
+\figlabeldef{F18.artifacts}{产物\\日志 $\cdot$ 输出 $\cdot$ 源码}
+\figlabeldef{F18.refs}{内容哈希引用}
+\figlabeldef{F18.repro}{复现事件\\(仅追加)}
+\figlabeldef{F18.fold}{折叠 $\to$ 最新}
+\figlabeldef{F18.workctx}{工作上下文\\(每个节点起始)}
+\figlabeldef{F18.vctx}{已验证上下文\\(论文主张)}
+\figlabeldef{F18.usable}{$\mathrm{usable}(\mu)$}
+\figlabeldef{F18.forexpl}{供探索}
+\figlabeldef{F18.forpaper}{供论文}
+
+% ---------------- F19: VirSci 文献奠基的想法生成 ----
+\figlabeldef{F19.snap}{Semantic Scholar 快照}
+\figlabeldef{F19.corpus}{语料 + SPECTER2\\检索索引}
+\figlabeldef{F19.coauthorg}{合著者图\\(按新鲜度排序)}
+\figlabeldef{F19.team}{科学家团队}
+\figlabeldef{F19.pa}{A}
+\figlabeldef{F19.pb}{B}
+\figlabeldef{F19.pc}{C}
+\figlabeldef{F19.delib}{$K$ 轮研讨\\提议 $\cdot$ 批评 $\cdot$ 收敛}
+\figlabeldef{F19.select}{select\_coauthors\\(新鲜度)}
+\figlabeldef{F19.ground}{检索奠基}
+\figlabeldef{F19.idea}{idea.json\\假设 $\cdot$ 指标 $\cdot$ 计划}
+
+% ---------------- F20: Story2Proposal 主张--证据契约 ----
+\figlabeldef{F20.manu}{稿件}
+\figlabeldef{F20.cnum}{数值主张}
+\figlabeldef{F20.cfig}{图主张}
+\figlabeldef{F20.evid}{已记录证据}
+\figlabeldef{F20.result}{结果\\(node $\cdot$ result id)}
+\figlabeldef{F20.figart}{图产物}
+\figlabeldef{F20.bind}{绑定(稳定 id)}
+\figlabeldef{F20.gate}{主张--证据闸门\\(确定性、无 LLM)}
+\figlabeldef{F20.derive}{重新推导数值\\在容差内}
+\figlabeldef{F20.verdict}{通过 / 阻断(严格)}
+\figlabeldef{F20.axes}{数据保真 $\cdot$\\推理 $\cdot$ 视觉}

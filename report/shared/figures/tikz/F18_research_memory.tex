@@ -1,0 +1,34 @@
+% F18: verifiable research memory as a TYPED INDEX OVER EVIDENCE (not a flow).
+% The store holds typed records that point, by content hash, at the artefacts
+% that ground them; reproduction outcomes are appended and folded to a latest
+% status; an admissibility predicate usable(mu) gates which records may become
+% paper claims, so the SAME store yields two projections: a working context for
+% exploration and a verified context for the paper.
+% style.tikzstyles is loaded by shared/preamble.tex / the standalone wrapper.
+\begin{tikzpicture}[node distance=1.5cm and 2.2cm]
+
+  % --- source of truth feeding the store -----------------------------
+  \node[artifact wide]                          (report) {\figlabel{F18.report}};
+  \node[block emph big, below=1.3cm of report]  (store)  {\figlabel{F18.store}};
+
+  % --- what the records index, and what they accrete -----------------
+  \node[block native big, left=of store]        (artifacts) {\figlabel{F18.artifacts}};
+  \node[block native big, right=of store]       (repro)     {\figlabel{F18.repro}};
+  % record vocabulary: a legend in the empty space under the artefacts
+  \node[block aux, below=1.3cm of artifacts]    (kinds)     {\figlabel{F18.kinds}};
+
+  % --- two projections of the SAME store -----------------------------
+  \node[block native big, below=2.4cm of store]              (workctx) {\figlabel{F18.workctx}};
+  \node[guard, below right=1.4cm and 1.7cm of store]         (usable)  {\figlabel{F18.usable}};
+  \node[block emph big, below=1.1cm of usable]               (vctx)    {\figlabel{F18.vctx}};
+
+  % --- edges ----------------------------------------------------------
+  \draw[arrow]        (report) -- node[edge label] {\figlabel{F18.consolidate}} (store);
+  \draw[arrow dashed] (store)  -- node[edge label] {\figlabel{F18.refs}}        (artifacts);
+  \draw[arrow]        (repro)  -- node[edge label] {\figlabel{F18.fold}}        (store);
+  \draw[arrow dashed] (store)  -- (kinds);
+  \draw[arrow]        (store)  -- node[edge label] {\figlabel{F18.forexpl}} (workctx);
+  \draw[arrow]        (store)  -- (usable);
+  \draw[arrow]        (usable) -- node[edge label] {\figlabel{F18.forpaper}} (vctx);
+
+\end{tikzpicture}

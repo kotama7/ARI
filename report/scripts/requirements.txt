@@ -5,6 +5,7 @@ numpy>=2.2,<3
 pandas>=2.2,<3
 networkx>=3.4,<4
 pygraphviz>=1.14
+dot2tex>=2.11,<3        # F02/F07 tree/rubric: graphviz dot -> TikZ (needs system `dot`)
 pyyaml>=6.0
 requests>=2.31
 python-dotenv>=1.0

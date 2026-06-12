@@ -40,7 +40,11 @@ ARI 旨在填补此空缺。我们假定用户提供研究问题与算力预算;
 \subsection{本报告的范围}\label{sec:intro:scope}
 
 本报告描述 \texttt{ari-core} 与十四个 \texttt{ari-skill-*}
-包的 v0.8.0 版本。v0.8.0 将 PaperBench 的再现路径提升为协议忠实的
+包的 v0.9.0 版本。v0.9.0 在 v0.8.x 的基础上加入了论断的端到端验证
+--- 首次铸造即冻结的 idea 持有指标契约、强制执行它的确定性
+claim-evidence 闸门,以及面向计算型证据的谱系串联
+(\cref{sec:exploration:lineage-chaining}, \cref{sec:paper:contract})。
+v0.8.x 将 PaperBench 的再现路径提升为协议忠实的
 三阶段契约 —— 智能体 rollout、再现与评分 —— 增设了阻止 rollout
 智能体臆断宿主未提供能力的宿主真实环境护栏,使搜索评估层可配置,
 并对一个真实的非可逆压缩对象实施了首次操作性再现阶段

@@ -47,8 +47,12 @@ This report formalises three contributions:
 \subsection{Scope of this report}\label{sec:intro:scope}
 
 This report describes \texttt{ari-core} and the fourteen
-\texttt{ari-skill-*} packages at version v0.8.0, which promotes the
-PaperBench reproduction path to a protocol-faithful three-stage contract
+\texttt{ari-skill-*} packages at version v0.9.0, which adds end-to-end
+claim verification --- an idea-owned metric contract frozen at first
+mint and enforced by a deterministic claim-evidence gate, with lineage
+chaining for computed evidence (\cref{sec:exploration:lineage-chaining},
+\cref{sec:paper:contract}) --- on top of the v0.8.x foundations: it
+promotes the PaperBench reproduction path to a protocol-faithful three-stage contract
 --- agent rollout, reproduction, and grading --- adds host-truthful
 environment guardrails that stop the rollout agent from assuming
 capabilities the host does not provide, makes the search-evaluation

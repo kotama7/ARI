@@ -114,6 +114,7 @@
   },
   big arrow/.style={
     -{Stealth[length=8pt,width=8pt]}, line width=1.5pt, draw=ari-black,
+    shorten <=2pt, shorten >=2pt,
   },
   % Layered colour-coding: native ARI code, vendor (third-party), and
   % external entry points. These let multi-layer diagrams (F10 / F12)

@@ -45,7 +45,9 @@ def _write_tikz_via_dot2tex() -> None:
         return
     TIKZ.parent.mkdir(parents=True, exist_ok=True)
     body = subprocess.check_output(
-        ["dot2tex", "--figonly", "--crop", "-tmath", str(DOT)],
+        # texmode=verbatim (not -tmath): plain upright label text. -tmath put
+        # every label in math mode, italicising the node ids (N0, r=0.50).
+        ["dot2tex", "--figonly", "--crop", "--texmode=verbatim", str(DOT)],
         text=True,
     )
     TIKZ.write_text(AUTOGEN_HEADER + body, encoding="utf-8")

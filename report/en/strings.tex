@@ -198,16 +198,25 @@
 \figlabeldef{F15.hist_append}{\texttt{record\_run} (after exec)}
 \figlabeldef{F15.lane.inner}{inner expansion sub-loop}
 \figlabeldef{F15.lane.outer}{outer parallel-run loop}
+\figlabeldef{F15.clamp}{clamp score; $\sterilepred=1$}
+\figlabeldef{F15.yes}{yes}
+\figlabeldef{F15.yes_ab}{yes: A or B}
+\figlabeldef{F15.no_next}{no $\Rightarrow$ next iter}
 
-% ---------------- F16: PaperBench three-stage bridge ----
-\figlabeldef{F16.paper}{paper + rubric}
+% ---------------- F16: PaperBench 3-stage bridge with weighted rubric-tree grading ----
 \figlabeldef{F16.rollout}{rollout}
-\figlabeldef{F16.sub}{submission}
 \figlabeldef{F16.reproduce}{reproduce}
-\figlabeldef{F16.log}{reproduce.log}
 \figlabeldef{F16.grade}{grade}
-\figlabeldef{F16.score}{score}
-\figlabeldef{F16.band}{3-stage bridge}
+\figlabeldef{F16.paper}{paper + rubric}
+\figlabeldef{F16.submission}{submission\\code $\cdot$ reproduce.sh}
+\figlabeldef{F16.sandbox}{isolated sandbox}
+\figlabeldef{F16.log}{reproduction log\\+ outputs}
+\figlabeldef{F16.score}{paper score\\$s=\sum_i w_i\,g_i$}
+\figlabeldef{F16.weight}{$w_i$}
+\figlabeldef{F16.pass}{$g{=}1$}
+\figlabeldef{F16.fail}{$g{=}0$}
+\figlabeldef{F16.judge}{vendored judge}
+\figlabeldef{F16.grades}{grades leaves}
 
 % ---------------- F17: evidence assembly (one selection, two consumers) ----
 \figlabeldef{F17.lineage}{best node\\+ lineage chain}
@@ -217,3 +226,44 @@
 \figlabeldef{F17.bundle}{published bundle\\(verbatim bytes)}
 \figlabeldef{F17.grounds}{grounds}
 \figlabeldef{F17.same}{same bytes}
+
+% ---------------- F18: research memory (typed index over evidence) ----
+\figlabeldef{F18.report}{node\_report.json\\(source of truth)}
+\figlabeldef{F18.consolidate}{consolidate\\(deterministic)}
+\figlabeldef{F18.store}{typed research memory\\ancestor-scoped $\cdot$ CoW}
+\figlabeldef{F18.kinds}{result $\cdot$ failure $\cdot$\\reflection $\cdot$ repro-event}
+\figlabeldef{F18.artifacts}{artefacts\\logs $\cdot$ outputs $\cdot$ source}
+\figlabeldef{F18.refs}{content-hash refs}
+\figlabeldef{F18.repro}{reproduction events\\(append-only)}
+\figlabeldef{F18.fold}{fold $\to$ latest}
+\figlabeldef{F18.workctx}{working context\\(every node start)}
+\figlabeldef{F18.vctx}{verified context\\(paper claims)}
+\figlabeldef{F18.usable}{$\mathrm{usable}(\mu)$}
+\figlabeldef{F18.forexpl}{for exploration}
+\figlabeldef{F18.forpaper}{for the paper}
+
+% ---------------- F19: VirSci literature-grounded idea generation ----
+\figlabeldef{F19.snap}{Semantic Scholar snapshot}
+\figlabeldef{F19.corpus}{corpus + SPECTER2\\retrieval index}
+\figlabeldef{F19.coauthorg}{co-author graph\\(freshness-ranked)}
+\figlabeldef{F19.team}{scientist team}
+\figlabeldef{F19.pa}{A}
+\figlabeldef{F19.pb}{B}
+\figlabeldef{F19.pc}{C}
+\figlabeldef{F19.delib}{$K$-round deliberation\\propose $\cdot$ critique $\cdot$ converge}
+\figlabeldef{F19.select}{select\_coauthors\\(freshness)}
+\figlabeldef{F19.ground}{retrieval grounding}
+\figlabeldef{F19.idea}{idea.json\\hypothesis $\cdot$ metric $\cdot$ plan}
+
+% ---------------- F20: Story2Proposal claim--evidence contract ----
+\figlabeldef{F20.manu}{manuscript}
+\figlabeldef{F20.cnum}{numeric claim}
+\figlabeldef{F20.cfig}{figure claim}
+\figlabeldef{F20.evid}{recorded evidence}
+\figlabeldef{F20.result}{result\\(node $\cdot$ result id)}
+\figlabeldef{F20.figart}{figure artefact}
+\figlabeldef{F20.bind}{binds (stable id)}
+\figlabeldef{F20.gate}{claim--evidence gate\\(deterministic, no LLM)}
+\figlabeldef{F20.derive}{re-derive number\\within tolerance}
+\figlabeldef{F20.verdict}{pass / block (strict)}
+\figlabeldef{F20.axes}{data-fidelity $\cdot$\\reasoning $\cdot$ visual}

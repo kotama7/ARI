@@ -32,6 +32,14 @@ NAME_RE = re.compile(r"^[FT]\d{2}_[a-z0-9_]+$")
 LABEL_RE = re.compile(r"\\label\{(?:fig|tab):([a-z0-9_]+)\}")
 DIRECT_TEXT_RE = re.compile(r"\\node[^{]*\{([^{}\\]+)\}")
 DATA_DRIVEN_PREFIX = ("F02", "F07", "F08", "F09")
+# Matches the boolean flag `synthetic: true` (not `raw_source: synthetic`).
+SYNTHETIC_RE = re.compile(r"^\s*synthetic:\s*true\b", re.MULTILINE)
+# Data-driven figures whose meta declares synthetic data are tolerated ONLY if
+# listed here — an explicit, reviewed acknowledgement that the figure is
+# illustrative (and should carry an in-figure "illustrative" marker). Any new
+# synthetic figure, or one that regresses from real to synthetic data, fails
+# R8 until it is consciously added, instead of shipping silently as if real.
+SYNTHETIC_ALLOWLIST = {"F02", "F07", "F08", "F09"}
 
 
 def _r5_naming() -> list[str]:
@@ -69,18 +77,36 @@ def _r6_figlabel() -> list[str]:
     return errors
 
 
-def _r8_meta() -> list[str]:
-    errors = []
+def _r8_meta() -> tuple[list[str], list[str]]:
+    """R8 — data-driven figures must carry a meta.yaml, and any meta that
+    declares `synthetic: true` must be explicitly allowlisted (so synthetic
+    data cannot silently ship as if it were empirical). Returns (errors, notes)."""
+    errors: list[str] = []
+    notes: list[str] = []
     if not DATA_DIR.exists():
-        return errors
-    expected = {f"{prefix}_*" for prefix in DATA_DRIVEN_PREFIX}
+        return errors, notes
     seen = {p.stem.split(".")[0] for p in DATA_DIR.iterdir() if p.is_file()}
     for prefix in DATA_DRIVEN_PREFIX:
         matches = [s for s in seen if s.startswith(prefix)]
-        meta_present = any((DATA_DIR / f"{m}.meta.yaml").exists() for m in matches)
-        if matches and not meta_present:
+        metas = [DATA_DIR / f"{m}.meta.yaml" for m in matches
+                 if (DATA_DIR / f"{m}.meta.yaml").exists()]
+        if matches and not metas:
             errors.append(f"R8 data-driven {prefix}_* lacks .meta.yaml")
-    return errors
+            continue
+        for meta in metas:
+            if not SYNTHETIC_RE.search(meta.read_text(encoding="utf-8")):
+                continue
+            if prefix in SYNTHETIC_ALLOWLIST:
+                notes.append(
+                    f"R8 {meta.name}: synthetic/illustrative data "
+                    f"(allowlisted; replace with a real checkpoint before external citation)"
+                )
+            else:
+                errors.append(
+                    f"R8 {meta.name} declares `synthetic: true` but {prefix} is not "
+                    f"in SYNTHETIC_ALLOWLIST — supply real data or consciously allowlist it"
+                )
+    return errors, notes
 
 
 def _render_all() -> list[str]:
@@ -104,12 +130,17 @@ def main() -> int:
     args = ap.parse_args()
 
     errors: list[str] = []
+    notes: list[str] = []
     errors.extend(_r5_naming())
     errors.extend(_r6_figlabel())
-    errors.extend(_r8_meta())
+    r8_errors, r8_notes = _r8_meta()
+    errors.extend(r8_errors)
+    notes.extend(r8_notes)
     if args.render_all:
         errors.extend(_render_all())
 
+    for n in notes:
+        print(f"[check_figures] note: {n}")
     if errors:
         print(f"[check_figures] {len(errors)} issue(s):")
         for e in errors:
