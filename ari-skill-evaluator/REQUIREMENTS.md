@@ -34,7 +34,9 @@ recorded results), NOT the truthfulness of the recorded results (that is ORS).
 the hard gate): over-claiming, over-generalization, interpretation validity,
 unregistered strong (non-numeric) claims. Emits `suggested_revisions` for
 `paper_refine` and per-axis `scores`. On rerun (`phase=post_refine`) computes
-`score_delta` and `resolved_overclaim_count` vs the initial review.
+`score_delta` and `resolved_overclaim_count` vs the initial review
+(`resolved_overclaim_count` is the raw `prev - current` delta; negative means
+the detected count increased after refine — a regression, not clamped to 0).
 `human_verified_overclaim_precision` is left `null` (human spot-check, master
 §10.3). Writes `evaluation/evidence_grounded_semantic_review[_post_refine].json`.
 On any LLM/parse failure it returns a non-blocking no-op. Does **not** modify

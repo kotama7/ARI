@@ -106,3 +106,53 @@ def test_semantic_review_noop_when_paper_missing(tmp_path):
     assert out["human_verified_overclaim_precision"] is None
     # report is written to evaluation/
     assert (ckpt / "evaluation" / "evidence_grounded_semantic_review.json").is_file()
+
+
+def test_semantic_review_post_refine_delta_unclamped(tmp_path, monkeypatch):
+    """A post-refine count INCREASE must surface as a negative resolved count
+    (the old max(0, ...) clamp reported it as 0, hiding the regression)."""
+    ckpt = tmp_path
+    (ckpt / "evaluation").mkdir()
+    (ckpt / "evaluation" / "evidence_grounded_semantic_review.json").write_text(
+        json.dumps({
+            "scores": {"reasoning": 0.6},
+            "detected_overclaim_count": 2,
+        })
+    )
+    paper = ckpt / "full_paper.tex"
+    paper.write_text("\\section{Results}\nOur kernel is the fastest possible.\n")
+
+    llm_json = json.dumps({
+        "scores": {"reasoning": 0.6},
+        "warnings": [
+            {"type": "overclaim", "section": "results", "message": "claim a"},
+            {"type": "overgeneralization", "section": "results", "message": "claim b"},
+            {"type": "unsupported_claim", "section": "results", "message": "claim c"},
+        ],
+        "suggested_revisions": [],
+    })
+
+    class _Msg:
+        content = llm_json
+
+    class _Choice:
+        message = _Msg()
+
+    class _Resp:
+        choices = [_Choice()]
+
+    import litellm
+
+    async def fake_acompletion(**kwargs):
+        return _Resp()
+
+    monkeypatch.setattr(litellm, "acompletion", fake_acompletion)
+
+    out = asyncio.run(_tool_evidence_grounded_semantic_review({
+        "checkpoint_dir": str(ckpt),
+        "paper_path": str(paper),
+        "phase": "post_refine",
+    }))
+    assert out["detected_overclaim_count"] == 3
+    assert out["detected_overclaim_count_prev"] == 2
+    assert out["resolved_overclaim_count"] == -1   # regression visible, not clamped

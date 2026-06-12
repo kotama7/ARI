@@ -819,8 +819,11 @@ async def _tool_evidence_grounded_semantic_review(arguments: dict) -> dict:
                 c_agg = _agg_score(report.get("scores", {}))
                 report["score_delta"] = round(c_agg - p_agg, 4)
                 report["detected_overclaim_count_prev"] = pj.get("detected_overclaim_count", 0)
-                report["resolved_overclaim_count"] = max(
-                    0, pj.get("detected_overclaim_count", 0) - report.get("detected_overclaim_count", 0)
+                # RAW delta — negative means the count INCREASED after refine
+                # (a regression the old max(0, ...) clamp silently hid).
+                report["resolved_overclaim_count"] = (
+                    pj.get("detected_overclaim_count", 0)
+                    - report.get("detected_overclaim_count", 0)
                 )
             except Exception:
                 pass
