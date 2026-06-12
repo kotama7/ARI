@@ -48,6 +48,82 @@ All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PAT
     ARI CLI shim). When the extra is absent the skill degrades to
     re-impl. Canonical spec: `ari-skill-idea/REQUIREMENTS.md`
     (§VirSci-live).
+  - **Fail-loud snapshot grounding.** `build_snapshot` (`snapshot.py`)
+    now raises on a 0-paper corpus so a throttled / empty Semantic
+    Scholar fetch degrades visibly to the re-impl loop instead of
+    silently writing a "successful" ungrounded `real_wrap`; it never
+    reuses a cached `n_papers==0` manifest (a poisoned cache from a
+    prior failed build), and it recovers an empty / throttled (`429`)
+    topic search via a `/paper/batch` seed corpus, recorded as
+    `seed_fallback` in `snapshot_manifest.json`.
+
+- **Verifiable research-memory layer** (`ari-skill-memory`). A typed,
+  sha256-provenanced, ancestor-scoped memory derived from
+  `node_report.json`. Nine new MCP tools — `add_experiment_result`,
+  `add_failure_case`, `add_procedure_memory`, `add_reflection`,
+  `add_reproducibility_event`, `search_research_memory`,
+  `get_verified_context`, `audit_memory`, `consolidate_node_memory`.
+  Node-end typed consolidation + paper verified-context are now
+  **DEFAULT-ON** (env `ARI_MEMORY_CONSOLIDATE`; `0`/`false`/`no`/`off`
+  to disable), flipping the prior opt-in default. A deterministic
+  per-ancestor working context is injected at node start (replacing the
+  old 800-char one-shot semantic pre-seed), and a best-lineage
+  `verified_context.json` grounds the paper's quantitative claims.
+  `archival_list` is paginated (removes the 200-passage ceiling), the
+  standalone auditor re-hashes referenced artifacts, and
+  ancestor-inheritance reads are logged to `memory_access.jsonl`.
+
+- **Story2Proposal (S2P) claim-evidence loop** wired into the paper
+  pipeline, default-on in `warn` (report-only) mode. Adds a top-level
+  `claim_gate_policy` block in `workflow.yaml` + env
+  `ARI_CLAIM_GATE_MODE` (`off`/`warn`/`strict`) and
+  `ARI_COMPARISON_SCOPE` (`any`/`same_environment`). Four new MCP tools
+  — `claim_evidence_hard_gate`, `evidence_grounded_semantic_review`
+  (`ari-skill-evaluator`), `link_paper_claims`, `paper_refine`
+  (`ari-skill-paper`). `claims[]` / `numeric_assertions[]` are grafted
+  onto `science_data.json`; the paper tail (`ear_publish` → `finalize`)
+  is replaced by the full dependency-ordered generate-evaluate-adapt
+  loop, and `finalize_paper` now depends on the FINAL hard gate. New
+  `ari.public.claim_gate` / `ari.public.verified_context` re-exports.
+
+- **Idea-owned metric-correctness contract** that BLOCKS the final
+  paper on objectively-false / unverified / unmeasured-mechanism claims
+  even in `warn` mode. A declared `metric_contract` is built and
+  persisted to `{checkpoint}/metric_contract.json` by `make_metric_spec`,
+  grafted onto `science_data.metric_contract` by
+  `nodes_to_science_data`, and enforced by the deterministic hard gate.
+  The finding types `placeholder_denominator`, `recompute_mismatch`,
+  `invariant_violation`, `correctness_failed` / `correctness_uncovered`,
+  `claim_evidence_missing`, and `ceiling_unmeasured` — plus a
+  universal-invariant registry — are now in `always_block_on`.
+  `emit_results` gains an optional `provenance` arg (→ `_provenance`);
+  `configurations[*]._provenance` / `results.json` `_provenance` are
+  unioned; and a new `evaluation_criteria.falsifiable_claims` idea field
+  feeds the gate.
+
+- **Exploration + lineage.** Opt-in live web search during BFTS via
+  `bfts.allow_web` (env `ARI_BFTS_ALLOW_WEB`) — default-off keeps the
+  trajectory reproducible; when on, ARI writes
+  `bfts_web_provenance.json` (`trajectory_reproducible=false`) and
+  surfaces a caveat. Lineage stagnation now DETERMINISTICALLY pivots
+  (`switch_to_idea`) to the strongest unused runner-up idea, deferring
+  to the LLM judge only when budget / recursion is exhausted or no
+  unused alternative remains. The selected idea is seeded into root core
+  memory + injected into every node's working context; the LLM
+  evaluator merges `results.json` measurements directly (sets
+  `has_real_data`).
+
+- **Paper output quality.** `generate_figures_llm` (`ari-skill-plot`)
+  now mandates layout quality in its prompt (`fig.tight_layout()`,
+  `savefig(bbox_inches='tight')`, legend OUTSIDE the axes, rotated long
+  tick labels — overlapping / truncated figures are REJECTED) and
+  comparability (no juxtaposing values on different scales without an
+  axis or annotation); instruction-only. `paper_refine`
+  (`ari-skill-paper`) now applies suggested revisions in three steps —
+  deterministic quoted substitutions, then a bounded 3-pass LLM
+  find/replace loop, then a mechanical verify — and returns the new
+  `refine_passes`, `deterministic_substitutions`, and
+  `unaddressed_substitutions` fields.
 
 ## v0.8.1 — Structural refactor: frontend decomposition, stable skill contract, internal-boundary docs (2026-06-01)
 
@@ -2053,7 +2129,7 @@ memory file lives under the active checkpoint.
 - `<details>` collapsible scrollable sample paper preview (11 PNG pages).
 - *Demonstrated Results* table updated to match the actual sample paper
   (CSR SpMM / *Stoch-Loopline*: 26.22 GFLOP/s, 105.18 GB/s, +3.53 GFLOP/s
-  prefetch gain on the `fx700` node) — replaces stale stencil-benchmark
+  prefetch gain on the aarch64 compute node) — replaces stale stencil-benchmark
   numbers.
 - Test count badge bumped from `60 passed` to `1200+`.
 

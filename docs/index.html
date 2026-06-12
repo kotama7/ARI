@@ -70,7 +70,7 @@
   <div class="container text-center">
     <p class="section-label"><span id="t-demo-label">Demo</span></p>
     <h2 class="section-title"><span id="t-demo-title">See ARI in action.</span></h2>
-    <p class="section-sub demo-sub"><span id="t-demo-sub">Watch a live walkthrough of the ARI web dashboard, then download the sample paper that ARI generated end-to-end — a 10-page Stratum-Roofline CSR-SpMM study on Fujitsu A64FX/SVE-512.</span></p>
+    <p class="section-sub demo-sub"><span id="t-demo-sub">Watch a live walkthrough of the ARI web dashboard, then download the sample paper that ARI generated end-to-end — a 10-page Stratum-Roofline CSR-SpMM study on aarch64/SVE HPC.</span></p>
 
     <!-- Dashboard demo video (language-aware: innerHTML swapped by i18n) -->
     <div id="t-dashboard-video" class="demo-video-wrap">
@@ -164,7 +164,7 @@
       <div class="card">
         <div class="card-icon">🧠</div>
         <h3 class="card-title">MemGPT</h3>
-        <p class="card-desc"><span id="t-memgpt-desc">Hierarchical memory + tool-mediated paging that lets an LLM agent operate as if it had unbounded context. The MemGPT paper became <a href="https://docs.letta.com" target="_blank">Letta</a>, which v0.6.0 adopted as ARI's memory backend — replacing the v0.5.x JSONL store with ancestor-scoped archival memory and a portable per-checkpoint snapshot.</span></p>
+        <p class="card-desc"><span id="t-memgpt-desc">Hierarchical memory + tool-mediated paging that lets an LLM agent operate as if it had unbounded context. The MemGPT paper became <a href="https://docs.letta.com" target="_blank">Letta</a>, which v0.6.0 adopted as ARI's memory backend — replacing the v0.5.x JSONL store with ancestor-scoped archival memory and a portable per-checkpoint snapshot. On top of Letta, ARI adds a verifiable research-memory layer: each node report is consolidated into typed, sha256-provenanced records — experiment results, failures, and reflections — that ground the paper's claims, with deterministic ancestor working-context injected at every node.</span></p>
         <a href="https://arxiv.org/abs/2310.08560" target="_blank" class="card-link">arxiv.org/abs/2310.08560 →</a>
       </div>
 
