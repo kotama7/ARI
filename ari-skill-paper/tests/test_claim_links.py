@@ -274,3 +274,71 @@ def test_writer_bare_operands_unchanged():
     out = _parse_writer_assertions(tex, cfg)
     a = out["NC2"]
     assert set(a["operands"]) == {"baseline", "proposed"}
+
+
+# --- scientific-notation extraction (false numeric_mismatch fix) ---
+
+def test_mentions_latex_scientific_notation():
+    from src.claim_links import extract_numeric_mentions, build_section_map
+    tex = r"The FP64 maximum absolute error is \(4.440892098500626\times 10^{-16}\)."
+    ms = extract_numeric_mentions(tex, build_section_map(tex))
+    sci = [m for m in ms if m["value"] < 1e-10]
+    assert len(sci) == 1
+    assert abs(sci[0]["value"] - 4.440892098500626e-16) < 1e-22
+    # the exponent must be consumed, not split into junk 10 / 16 mentions
+    assert sorted(m["value"] for m in ms) == [sci[0]["value"]]
+    # a sci-notation literal is a reported quantity -> binder must prefer it
+    assert sci[0]["type"] == "result_claim"
+
+
+def test_mentions_e_notation_and_cdot():
+    from src.claim_links import extract_numeric_mentions, build_section_map
+    tex = "tolerance 1.2e-6 and \\(3.5\\cdot 10^{4}\\) ops"
+    vals = sorted(m["value"] for m in extract_numeric_mentions(tex, build_section_map(tex)))
+    assert any(abs(v - 1.2e-6) < 1e-12 for v in vals)
+    assert any(abs(v - 3.5e4) < 1e-6 for v in vals)
+
+
+def test_mentions_speedup_x_not_exponent():
+    from src.claim_links import extract_numeric_mentions, build_section_map
+    tex = r"We observe a \(4.18\times\) speedup over 10 runs."
+    ms = extract_numeric_mentions(tex, build_section_map(tex))
+    vals = sorted(m["value"] for m in ms)
+    assert vals == [4.18, 10.0]      # 4.18 stays 4.18; "10" is a separate token
+
+
+def test_mentions_huge_exponent_no_crash_no_nonfinite():
+    # quad-precision max etc.: must neither raise OverflowError (which made the
+    # whole gate fail OPEN upstream) nor emit non-finite JSON-poisoning values.
+    from src.claim_links import extract_numeric_mentions, build_section_map
+    tex = r"quad-precision max is \(1.19\times 10^{4932}\), and 1e999 too; speed 95.2"
+    ms = extract_numeric_mentions(tex, build_section_map(tex))
+    assert all(m["value"] == m["value"] and abs(m["value"]) != float("inf") for m in ms)
+    assert any(abs(m["value"] - 95.2) < 1e-9 for m in ms)   # rest of line still scanned
+
+
+def test_mentions_sentence_final_e_notation():
+    from src.claim_links import extract_numeric_mentions, build_section_map
+    ms = extract_numeric_mentions("the error is 4.4e-16.", build_section_map(""))
+    assert any(abs(m["value"] - 4.4e-16) < 1e-22 for m in ms)
+
+
+def test_mentions_e_notation_setting_stays_setting():
+    # e-notation must NOT be force-classified result_claim: settings keep their
+    # _classify verdict, so they never outrank the true claimed value in the
+    # anchor binder nor demand assertion coverage.
+    from src.claim_links import extract_numeric_mentions, build_section_map
+    ms = extract_numeric_mentions("we train for 1e4 iterations", build_section_map(""))
+    m = next(m for m in ms if m["value"] == 1e4)
+    assert m["type"] == "experimental_setting"
+
+
+def test_mentions_paren_math_unit_detected():
+    # \(734.8\) GB/s: the \) used to sit between number and unit, defeating
+    # unit detection — the binder then picked an unrelated number (e.g. a CPU
+    # model number) in the same sentence.
+    from src.claim_links import extract_numeric_mentions, build_section_map
+    ms = extract_numeric_mentions(r"bandwidth is \(734.803418\) GB/s here",
+                                  build_section_map(""))
+    m = next(m for m in ms if abs(m["value"] - 734.803418) < 1e-6)
+    assert m["type"] == "result_claim"

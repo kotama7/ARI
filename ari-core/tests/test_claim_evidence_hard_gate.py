@@ -302,3 +302,23 @@ def test_coverage_credits_resolved_operand_value(tmp_path):
 def test_numeric_within_tolerance():
     assert numeric.within_tolerance(50.4, 50.0, {"absolute": 0.0, "relative": 0.02}) is True
     assert numeric.within_tolerance(99.0, 50.0, {"absolute": 0.0, "relative": 0.02}) is False
+
+
+# --- scientific-notation extraction (mirrors claim_links; false-mismatch fix) ---
+
+def test_latex_mentions_scientific_notation():
+    from ari.pipeline.claim_gate.latex import extract_numeric_mentions
+    tex = r"The FP64 maximum absolute error is \(4.440892098500626\times 10^{-16}\)."
+    ms = extract_numeric_mentions(tex)
+    sci = [m for m in ms if m["value"] < 1e-10]
+    assert len(sci) == 1 and abs(sci[0]["value"] - 4.440892098500626e-16) < 1e-22
+    assert sorted(m["value"] for m in ms) == [sci[0]["value"]]   # no junk 10/16 split
+    assert sci[0]["type"] == "result_claim"
+
+
+def test_latex_mentions_e_notation_and_speedup_x():
+    from ari.pipeline.claim_gate.latex import extract_numeric_mentions
+    ms = extract_numeric_mentions("tolerance 1.2e-6 holds")
+    assert any(abs(m["value"] - 1.2e-6) < 1e-12 for m in ms)
+    ms2 = extract_numeric_mentions(r"a \(4.18\times\) speedup over 10 runs")
+    assert sorted(m["value"] for m in ms2) == [4.18, 10.0]

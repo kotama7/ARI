@@ -14,7 +14,18 @@ import re
 
 ANCHOR_RE = re.compile(r"%\s*CLAIM:(C\w+):(NC\w+)")
 
-_NUMBER_RE = re.compile(r"(?<![\w.])(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s*(%?)")
+# Mantissa + optional exponent. Without the exponent branch, scientific
+# notation (``4.44\times 10^{-16}``, ``1.2e-6``) was read as its bare mantissa
+# (and the 10/16 matched as separate junk mentions), so every such paper value
+# failed recompute as a false numeric_mismatch. NOTE: _strip_for_scan rewrites
+# ``\times`` to `` x `` before scanning, so the multiplication sign here is
+# x/× (plus \cdot, which survives the strip); requiring the ``10^{...}`` tail
+# keeps plain speedup notation (``4.18 x``) out of this branch.
+_NUMBER_RE = re.compile(
+    r"(?<![\w.])(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?"
+    r"(?:[eE]([+-]?\d+)(?!\w|\.\d)|\s*(?:x|×|\\times|\\cdot)\s*10\^\{?([+-]?\d+)\}?)?"
+    r"\s*(%?)"
+)
 
 _STRIP_REGIONS = [
     re.compile(r"\\cite[a-zA-Z]*\s*(?:\[[^\]]*\])?\{[^}]*\}"),
@@ -105,6 +116,10 @@ def _strip_for_scan(line: str) -> str:
     # "$4.18\\times$" would otherwise leave settings/results as "ambiguous".
     s = re.sub(r"\\times\b", " x ", s)
     s = re.sub(r"\\[,;:!> ]", " ", s)
+    # \( \) are math delimiters exactly like $ — leaving them in place put a
+    # ")" between "\(734.8\)" and its "GB/s", defeating unit detection and the
+    # anchor binder (which then picked an unrelated number in the sentence).
+    s = s.replace("\\(", " ").replace("\\)", " ")
     return s.replace("~", " ").replace("$", " ")
 
 
@@ -144,7 +159,9 @@ def extract_numeric_mentions(tex: str, section_map: "list[str] | None" = None) -
     for i, raw in enumerate(tex.split("\n"), start=1):
         line = _strip_for_scan(raw)
         for m in _NUMBER_RE.finditer(line):
-            int_part, frac, pct = m.group(1), m.group(2) or "", m.group(3) or ""
+            int_part, frac = m.group(1), m.group(2) or ""
+            exp = m.group(3) or m.group(4) or ""
+            pct = m.group(5) or ""
             num_str = int_part + frac
             has_pct = pct == "%"
             before = line[max(0, m.start() - 24):m.start()]
@@ -152,8 +169,22 @@ def extract_numeric_mentions(tex: str, section_map: "list[str] | None" = None) -
             mtype, requires = _classify(num_str, has_pct, before, after)
             try:
                 value = float(num_str.replace(",", ""))
-            except ValueError:
+                if exp:
+                    value *= 10.0 ** int(exp)
+            except (ValueError, OverflowError):
                 continue
+            if value in (float("inf"), float("-inf")):
+                # 10^{4932}-style constants: a non-finite mention would poison
+                # the JSON report and (pre-guard) an uncaught OverflowError made
+                # the whole gate fail OPEN via the callers' defensive catches.
+                continue
+            if m.group(4):
+                # \times/\cdot 10^{exp} literals classified as result_claim
+                # before this branch existed too (the stripped " x " matched the
+                # speedup unit) — keep that, or the anchor binder starts picking
+                # some other number in the sentence. e-notation keeps _classify's
+                # verdict so settings ("1e4 iterations") stay settings.
+                mtype, requires = "result_claim", True
             mentions.append({
                 "value": value, "unit": "%" if has_pct else "",
                 "type": mtype, "requires_assertion": requires,
