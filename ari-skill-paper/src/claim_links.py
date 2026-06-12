@@ -329,7 +329,12 @@ def _parse_writer_assertions(tex: str, config_nodes: dict) -> dict:
     for i, line in enumerate(tex.split("\n"), start=1):
         for m in ANCHOR_RE.finditer(line):
             cid, nid = m.group(1), m.group(2)
-            toks = {k: _unescape_latex(v) for k, v in _DECL_RE.findall(line[m.end():])}
+            # Writers label the operand tokens (``operands=value=cfg4``) despite
+            # being told they are bare k=v; the greedy token regex then swallows
+            # the role into the label and the whole assertion ships unverified.
+            # Strip the label when it directly prefixes another k=v token.
+            tail = re.sub(r"\boperands?=(?=[A-Za-z_]+=)", "", line[m.end():])
+            toks = {k: _unescape_latex(v) for k, v in _DECL_RE.findall(tail)}
             metric = toks.get("metric", "")
             formula = toks.get("formula")
             formula = _FORMULA_ALIASES.get(formula, formula)
