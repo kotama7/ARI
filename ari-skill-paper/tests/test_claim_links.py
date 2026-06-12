@@ -342,3 +342,53 @@ def test_mentions_paren_math_unit_detected():
                                   build_section_map(""))
     m = next(m for m in ms if abs(m["value"] - 734.803418) < 1e-6)
     assert m["type"] == "result_claim"
+
+
+# --- duplicate-ID anchors (writer stamped every line with the same ID) ---
+
+def _dup_id_tex():
+    return ("\\section{Results}\n"
+            "Throughput is 100 GFLOP/s.\n"
+            "% CLAIM:Cw:NCw metric=tput_a formula=value <operands> value=cfg1\n"
+            "Bandwidth is 200 GB/s.\n"
+            "% CLAIM:Cw:NCw metric=tput_b formula=value value=cfg2\n"
+            "Latency is 3 ms.\n"
+            "% CLAIM:Cw:NCw metric=lat_c formula=value value=cfg1\n")
+
+
+def _dup_id_sd():
+    return {"_config_nodes": {"cfg1": {"node_id": "n1", "environment": {}},
+                              "cfg2": {"node_id": "n2", "environment": {}}}}
+
+
+def test_duplicate_anchor_ids_yield_independent_assertions():
+    from src.claim_links import _parse_writer_assertions
+    out = _parse_writer_assertions(_dup_id_tex(), _dup_id_sd()["_config_nodes"])
+    assert len(out) == 3                      # was 1 (last-wins collapse)
+    metrics = sorted(a["metric"] for a in out.values())
+    assert metrics == ["lat_c", "tput_a", "tput_b"]
+    assert all(a["operands"].get("value") for a in out.values())
+    # the literal <operands> placeholder copied from the template is harmless
+    ids = sorted(out.keys())
+    assert ids[0] == "NCw" and all(i.startswith("NCw@L") for i in ids[1:])
+
+
+def test_duplicate_anchor_ids_yield_per_line_links():
+    from src.claim_links import link_paper_claims
+    pcl = link_paper_claims(_dup_id_tex(), _dup_id_sd(), None)
+    links = pcl["paper_claim_links"]
+    assert len(links) == 3                    # was 1 (anchor-string dedup)
+    assert all(l["resolved"] for l in links)
+    # link numeric_id matches the assertion id per line (gate pairing intact)
+    a_ids = {a["id"] for a in pcl["writer_assertions"]}
+    assert {l["numeric_id"] for l in links} == a_ids
+    assert pcl["counts"]["writer_assertions"] == 3
+
+
+def test_reference_only_repeated_anchor_still_dedups():
+    from src.claim_links import link_paper_claims
+    tex = ("A result. % CLAIM:C1:NC1\n"
+           "Restated later. % CLAIM:C1:NC1\n")
+    sd = {"claims": [{"id": "C1", "numeric_assertions": [{"id": "NC1"}]}]}
+    pcl = link_paper_claims(tex, sd, None)
+    assert len(pcl["paper_claim_links"]) == 1  # legacy dedup preserved

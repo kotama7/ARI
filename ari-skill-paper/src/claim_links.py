@@ -388,6 +388,15 @@ def _parse_writer_assertions(tex: str, config_nodes: dict) -> dict:
                                       "config_id": cfg_id, "environment": cn.get("environment", {})}
                 else:
                     unresolved_refs.append(ref)
+            if nid in out:
+                # Writers sometimes stamp EVERY anchor with the same ID
+                # (observed live: 16x "% CLAIM:Cw:NCw ..." — no numbering), and
+                # keyed by ID they collapsed into one verified assertion.
+                # Disambiguate per line so each declaration is verified
+                # independently; link_paper_claims assigns the same synthetic
+                # id to the anchor on that line, so the gate's per-id pairing
+                # (assertion <-> link <-> sentence mentions) stays coherent.
+                nid = f"{nid}@L{i}"
             rec = {"id": nid, "claim_id": cid, "metric": metric, "formula": formula,
                    "operands": operands, "line": i, "source": "writer_declared"}
             if unresolved_refs:
@@ -409,22 +418,27 @@ def link_paper_claims(tex: str, science_data: dict, figures_manifest: Any = None
     links: list[dict] = []
     unresolved: list[dict] = []
     seen_anchor_keys: set[str] = set()
+    # Declarations are identified by LINE (duplicate-ID writers); reference-only
+    # anchors keep the legacy ID-keyed dedup/lookup.
+    wa_by_line = {rec.get("line"): rec for rec in writer_assertions.values()}
 
     for a in anchors:
         key = a["anchor"]
-        if key in seen_anchor_keys:
+        _wa_line = wa_by_line.get(a["line"])
+        dedup_key = f"{key}@L{a['line']}" if _wa_line is not None else key
+        if dedup_key in seen_anchor_keys:
             continue
-        seen_anchor_keys.add(key)
+        seen_anchor_keys.add(dedup_key)
         cid, nid = a["claim_id"], a["numeric_id"]
         sentence, line_range = _sentence_for_anchor(lines, a["line"])
-        _wa = writer_assertions.get(nid)
+        _wa = _wa_line if _wa_line is not None else writer_assertions.get(nid)
         _declared_ok = bool(_wa and _wa.get("operands") and not _wa.get("unresolved_config_refs"))
         # Resolved if it references a pre-generated assertion OR the writer made a
         # valid inline forward declaration (operands resolved to real nodes).
         resolved = (cid in claims_by_id and (nid in numeric_by_id or nid == "NC0")) or _declared_ok
         rec = {
             "claim_id": cid,
-            "numeric_id": nid,
+            "numeric_id": (_wa_line.get("id") if _wa_line is not None else nid),
             "section": section_at(section_map, line_range[0]),
             "anchor": key,
             "span_hash": span_hash(sentence),
