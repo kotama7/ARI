@@ -194,3 +194,81 @@ def test_obligation_matches_pinned_window_marker():
     from ari.agent.loop import _PINNED_USER_MARKERS
     obl = build_contract_obligation({"key": "m", "concept": "normalized"})
     assert any(mk in obl[:120] for mk in _PINNED_USER_MARKERS)
+
+
+# --- lineage chaining (parent-selection hint + child inherited-data note) ---
+
+def _lineage_ckpt(tmp_path, per_node, claims, has_real=None):
+    """Build checkpoint + experiments layout: per_node = {node: {name: val}}."""
+    import json
+    ws = tmp_path / "ws"
+    ckpt = ws / "checkpoints" / "run1"
+    exp = ws / "experiments" / "run1"
+    ckpt.mkdir(parents=True)
+    (ckpt / "metric_contract.json").write_text(json.dumps({"key": "m", "claims": claims}))
+    nodes = []
+    for nid, meas in per_node.items():
+        d = exp / nid
+        d.mkdir(parents=True)
+        (d / "results.json").write_text(json.dumps({"measurements": meas}))
+        nodes.append({"id": nid,
+                      "has_real_data": True if has_real is None else has_real.get(nid, True)})
+    (ckpt / "tree.json").write_text(json.dumps({"nodes": nodes}))
+    return ckpt
+
+
+def test_collect_node_measurement_names_attributes_per_node(tmp_path):
+    from ari.agent.metric_contract import (collect_node_measurement_names,
+                                           collect_run_measurement_names)
+    ckpt = _lineage_ckpt(tmp_path,
+                         {"node_a": {"alpha_t": 1, "beta_t": 2}, "node_b": {"gamma_t": 3}},
+                         claims=[{"claim": "x", "required_evidence": ["alpha_t"]}])
+    per = collect_node_measurement_names(str(ckpt))
+    assert per["node_a"] == {"alpha_t", "beta_t"} and per["node_b"] == {"gamma_t"}
+    # run-level union unchanged (regression guard for the refactor)
+    assert collect_run_measurement_names(str(ckpt)) == {"alpha_t", "beta_t", "gamma_t"}
+
+
+def test_expand_hint_names_data_richest_node_for_uncovered_claims(tmp_path):
+    from ari.agent.metric_contract import build_expand_coverage_hint
+    claims = [
+        {"claim": "probe basics", "required_evidence": ["alpha_t", "beta_t"]},
+        {"claim": "fit parameters from existing probes",
+         "required_evidence": ["theta_fit_value", "theta_fit_residual"]},
+    ]
+    ckpt = _lineage_ckpt(tmp_path,
+                         {"node_rich": {"alpha_t": 1, "beta_t": 2},
+                          "node_poor": {"unrelated": 9}}, claims)
+    hint = build_expand_coverage_hint(str(ckpt))
+    assert "STILL UNCOVERED" in hint                  # fit claim lacks evidence
+    assert "LINEAGE" in hint and "node_rich" in hint  # parent-selection signal
+    assert "INHERIT" in hint
+
+
+def test_expand_hint_no_lineage_when_all_covered_or_no_holdings(tmp_path):
+    from ari.agent.metric_contract import build_expand_coverage_hint
+    claims = [{"claim": "probe", "required_evidence": ["alpha_t", "beta_t"]}]
+    ckpt = _lineage_ckpt(tmp_path, {"node_a": {"alpha_t": 1, "beta_t": 2}}, claims)
+    hint = build_expand_coverage_hint(str(ckpt))
+    assert "LINEAGE" not in hint                      # nothing uncovered -> no signal
+
+
+def test_inherited_data_note_lists_files_and_contract_names(tmp_path):
+    import json
+    from ari.agent.metric_contract import build_inherited_data_note
+    wd = tmp_path / "wd"; wd.mkdir()
+    (wd / "results.json").write_text(json.dumps(
+        {"measurements": {"alpha_t": 1.0, "beta_t": 2.0, "own_extra": 3.0}}))
+    contract = {"claims": [{"claim": "c", "required_evidence": ["alpha_t", "theta_fit_value"]}]}
+    note = build_inherited_data_note(contract, str(wd))
+    assert "INHERITED DATA" in note and "results.json" in note
+    assert "alpha_t" in note                          # contract hit listed
+    assert "do NOT re-run" in note
+
+
+def test_inherited_data_note_silent_without_data_or_claims(tmp_path):
+    from ari.agent.metric_contract import build_inherited_data_note
+    wd = tmp_path / "empty"; wd.mkdir()
+    assert build_inherited_data_note({"claims": [{"claim": "c"}]}, str(wd)) == ""
+    assert build_inherited_data_note({}, str(wd)) == ""
+    assert build_inherited_data_note({"claims": [{"claim": "c"}]}, str(tmp_path / "nope")) == ""

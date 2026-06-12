@@ -168,6 +168,7 @@ def build_working_context_messages(
     ancestor_ids: list[str],
     eval_summary: str | None,
     experiment_goal: str | None,
+    work_dir: str = "",
 ) -> list[dict]:
     """Build the deterministic Tier 1/2 working-context messages for a node.
 
@@ -236,6 +237,7 @@ def build_working_context_messages(
                 from ari.agent.metric_contract import (
                     build_contract_obligation,
                     build_coverage_status,
+                    build_inherited_data_note,
                     collect_run_measurement_names,
                 )
                 _obl = build_contract_obligation(_mc_obj)
@@ -249,6 +251,14 @@ def build_working_context_messages(
                         _mc_obj, collect_run_measurement_names(_ck_mc))
                     if _covst:
                         _obl = _obl + "\n\n" + _covst
+                    # Lineage chaining (child side): a node whose inherited work_dir
+                    # already holds lineage measurements is told so, with the
+                    # contract names present — claims computed FROM existing data
+                    # (fits, validations, selections) become a visible local option
+                    # instead of regressing to a fresh probe. Names/files only.
+                    _inh = build_inherited_data_note(_mc_obj, work_dir)
+                    if _inh:
+                        _obl = _obl + "\n\n" + _inh
                     # Platform-capability facts (probed on the compute partition,
                     # P2c). Without this the contract was platform-safe but the
                     # AGENT was not told: the plan still says e.g. "measure MPKI
@@ -633,6 +643,7 @@ class AgentLoop:
             ancestor_ids=node.ancestor_ids or [],
             eval_summary=node.eval_summary,
             experiment_goal=goal_text,
+            work_dir=work_dir,
         ))
 
         # Inject long-term (cross-experiment) memory if the tool is available

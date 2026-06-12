@@ -19,16 +19,15 @@ the harness states the obligation generally, the agent satisfies it specifically
 from __future__ import annotations
 
 
-def collect_run_measurement_names(checkpoint_dir: str) -> set:
-    """Union of measurement names emitted SO FAR by any node of this run.
+def collect_node_measurement_names(checkpoint_dir: str) -> dict:
+    """Per-node measurement names emitted SO FAR: {node_dir_name: set(names)}.
 
     Names only — no values, no conclusions — so sibling-branch fault containment is
-    preserved; this is run-level COORDINATION metadata (like the contract itself),
-    used to tell a new node which declared claims still lack evidence anywhere in
-    the run. Reads experiments/<run_id>/node_*/results*.json next to the checkpoint
+    preserved; this is run-level COORDINATION metadata (like the contract itself).
+    Reads experiments/<run_id>/node_*/results*.json next to the checkpoint
     (same layout the transform's provenance union uses). Best-effort: {} on any miss.
     """
-    names: set = set()
+    per_node: dict = {}
     try:
         from pathlib import Path
         import json as _json
@@ -65,9 +64,21 @@ def collect_run_measurement_names(checkpoint_dir: str) -> set:
                     continue
                 m = d.get("measurements")
                 if isinstance(m, dict):
-                    names.update(k for k in m.keys() if isinstance(k, str))
+                    per_node.setdefault(p.parent.name, set()).update(
+                        k for k in m.keys() if isinstance(k, str))
     except Exception:
         pass
+    return per_node
+
+
+def collect_run_measurement_names(checkpoint_dir: str) -> set:
+    """Union of measurement names emitted SO FAR by any node of this run.
+
+    See ``collect_node_measurement_names`` (single traversal; this is its union).
+    """
+    names: set = set()
+    for v in collect_node_measurement_names(checkpoint_dir).values():
+        names.update(v)
     return names
 
 
@@ -134,12 +145,93 @@ def build_expand_coverage_hint(checkpoint_dir: str) -> str:
         mc = _json.loads(p.read_text())
         if not isinstance(mc, dict) or not (mc.get("claims") or []):
             return ""
-        st = build_coverage_status(mc, collect_run_measurement_names(str(checkpoint_dir)))
+        per_node = collect_node_measurement_names(str(checkpoint_dir))
+        covered: set = set()
+        for v in per_node.values():
+            covered.update(v)
+        st = build_coverage_status(mc, covered)
         if not st:
             return ""
+        # Lineage chaining (parent side): some claims are COMPUTED from existing
+        # measurements (parameter fitting, held-out validation, model-based
+        # selection) rather than measured fresh. Children inherit their parent's
+        # working directory, so the right parent for such a claim is the node
+        # already holding the inputs — on a real run, fit-directed children
+        # expanded from data-less parents regressed to re-running single probes
+        # five times in a row. Point the selector at the data-richest lineage.
+        lineage = ""
+        try:
+            req = {n for c in (mc.get("claims") or []) if isinstance(c, dict)
+                   for n in (c.get("required_evidence") or []) if isinstance(n, str)}
+            holdings = sorted(((len(v & req), nid) for nid, v in per_node.items()),
+                              reverse=True)
+            if holdings and holdings[0][0] >= 2 and "STILL UNCOVERED" in st:
+                k, nid = holdings[0]
+                lineage = (
+                    f"\nLINEAGE: children INHERIT their parent's working directory. "
+                    f"Node '{nid}' holds the most contract evidence so far "
+                    f"({k} contract measurement names in its results files). For "
+                    "uncovered claims whose evidence is COMPUTED from existing "
+                    "measurements (parameter fitting, held-out validation, "
+                    "model-based selection), prefer expanding THAT node so the "
+                    "child reads the inherited files instead of re-measuring.")
+        except Exception:
+            lineage = ""
         return (
             "\n\n[Run-level claim coverage — prefer expanding a node whose next "
-            "experiment can evidence a STILL-UNCOVERED claim]\n" + st)
+            "experiment can evidence a STILL-UNCOVERED claim]\n" + st + lineage)
+    except Exception:
+        return ""
+
+
+def build_inherited_data_note(contract: "dict | None", work_dir: str) -> str:
+    """Lineage chaining (child side): which measurements the node's INHERITED
+    working directory already contains.
+
+    Children inherit the parent's work_dir verbatim, but nothing told them so:
+    on a real run, nodes directed to fit/validate over existing measurements
+    regressed to re-running a fresh single probe five separate times — "compute
+    from the data you already have" was never a visible option. Lists names and
+    file names only (the node reads the files itself; no values are relayed).
+    ``""`` when there is no contract, no claims, or no inherited measurements.
+    """
+    try:
+        from pathlib import Path
+        import json as _json
+        if not isinstance(contract, dict) or not (contract.get("claims") or []):
+            return ""
+        wd = Path(work_dir or "")
+        if not wd.is_dir():
+            return ""
+        files: list = []
+        names: set = set()
+        for p in sorted(wd.glob("results*.json")):
+            try:
+                d = _json.loads(p.read_text())
+            except Exception:
+                continue
+            m = d.get("measurements")
+            if isinstance(m, dict) and m:
+                files.append(p.name)
+                names.update(k for k in m.keys() if isinstance(k, str))
+        if not files or not names:
+            return ""
+        req = {n for c in (contract.get("claims") or []) if isinstance(c, dict)
+               for n in (c.get("required_evidence") or []) if isinstance(n, str)}
+        hits = sorted(names & req)
+        lines = [
+            "INHERITED DATA: your working directory already contains measurement "
+            f"files from your parent lineage: {', '.join(files[:6])} "
+            f"({len(names)} measurement names" +
+            (f"; {len(hits)} are contract evidence names, e.g. "
+             f"[{', '.join(hits[:5])}]" if hits else "") + ").",
+            "For uncovered claims whose evidence is COMPUTED from existing "
+            "measurements (parameter fitting, held-out validation, model-based "
+            "selection), READ these files as your input and emit the computed "
+            "evidence under the EXACT contract names — do NOT re-run the "
+            "underlying experiments.",
+        ]
+        return "\n".join(lines)
     except Exception:
         return ""
 
