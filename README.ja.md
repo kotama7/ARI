@@ -6,7 +6,7 @@
   **ユニバーサルな研究自動化システム。ノートPCからスーパーコンピュータまで。ローカルモデルからクラウドAPIまで。初学者から熟練研究者まで。計算実験から物理世界まで。**
 
   [![Tests](https://img.shields.io/badge/tests-2200%2B-brightgreen)](ari-core)
-  [![Version](https://img.shields.io/badge/version-v0.8.1-orange)](https://github.com/kotama7/ARI/releases)
+  [![Version](https://img.shields.io/badge/version-v0.9.0-orange)](https://github.com/kotama7/ARI/releases)
   [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
   [![MCP](https://img.shields.io/badge/protocol-MCP-purple)](https://modelcontextprotocol.io)
   [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -38,6 +38,32 @@ ARI は一つの原則に基づいて設計されています：**ゴールを M
 | **習熟度** | 初学者（ゴールのみ） | 熟練者（全パラメータ制御） |
 
 ---
+
+## v0.9.0 の新機能（2026-06-12）
+
+**主張の end-to-end 検証。** このリリースの主題: 論文は、その全ての主張が
+run 自身の成果物に対して機械検証可能なときにのみ出荷されます。
+
+- **Story2Proposal claim-evidence ループ＋idea 所有のメトリック契約** — idea が
+  反証可能な claims と必要証拠名を宣言し、決定論的 hard gate が「証拠の無い
+  宣言済み claim」「再計算と一致しない数値」を finalize 前に BLOCK。block は
+  客観的虚偽に限定し、主観的レビュー所見は advisory に留めます。
+- **Mint-once 契約と頑健なパース** — 契約語彙は初回鋳造で凍結（LLM 再抽出は
+  参照安定でない）。gate は科学記法と数式区切りの単位を解釈し、writer の宣言
+  癖は指示でなくパース時正規化で吸収します。
+- **系譜連鎖** — 既存測定から*計算される*証拠（モデルフィット・held-out 検証・
+  モデル選択）の claims を、作業ディレクトリ継承による親→子ノード連鎖で実行。
+- **届く review フィードバック** — semantic review の全警告が `paper_refine` に
+  到達し、post-refine の解消数は生のデルタで記録。refiner の全文エスケープは
+  数式に触れません。
+- **VirSci-live idea エンジン（opt-in）** — 実 VirSci のマルチエージェント機構を
+  ライブ Semantic Scholar スナップショット上で実行。run 開始時の能力 probe に
+  基づく platform-aware な idea 生成も導入。
+- **gate 検証済みサンプル論文** — [`docs/assets/sample_paper.pdf`](docs/assets/sample_paper.pdf)
+  は宣言 12 claims 全てが検証済み証拠を持ち、refine 後の過大主張ゼロの研究に
+  なりました。[実証された結果](#実証された結果) を参照。
+
+完全な一覧は [CHANGELOG.md](CHANGELOG.md) を参照してください。
 
 ## v0.8.1 の新機能（2026-06-01）
 

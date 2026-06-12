@@ -6,7 +6,7 @@
   **通用研究自动化系统。从笔记本到超级计算机。从本地模型到云端 API。从新手到专家。从计算实验到物理世界。**
 
   [![Tests](https://img.shields.io/badge/tests-2200%2B-brightgreen)](ari-core)
-  [![Version](https://img.shields.io/badge/version-v0.8.1-orange)](https://github.com/kotama7/ARI/releases)
+  [![Version](https://img.shields.io/badge/version-v0.9.0-orange)](https://github.com/kotama7/ARI/releases)
   [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
   [![MCP](https://img.shields.io/badge/protocol-MCP-purple)](https://modelcontextprotocol.io)
   [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -38,6 +38,29 @@ ARI 围绕一个原则设计：**用 Markdown 描述目标 — 其余的交给 A
 | **专业水平** | 新手（仅目标） | 专家（完整参数控制） |
 
 ---
+
+## v0.9.0 新功能（2026-06-12）
+
+**论断的端到端验证。** 本版本主题：只有当论文的全部论断都能对照 run 自身的
+成果物进行机器验证时，论文才会发布。
+
+- **Story2Proposal claim-evidence 循环＋idea 持有的指标契约** — idea 声明可证伪
+  claims 及所需证据名；确定性 hard gate 在 finalize 前 BLOCK「无证据的已声明
+  claim」与「无法复算的数字」。block 仅限客观谬误；主观评审所见保持 advisory。
+- **Mint-once 契约与稳健解析** — 契约词汇在首次铸造时冻结（LLM 重抽取不具引用
+  稳定性）；gate 能解析科学计数法与数学定界符旁的单位；writer 声明怪癖在解析时
+  归一化。
+- **谱系串联** — 由既有测量*计算*得出证据的 claims（模型拟合、留出验证、基于
+  模型的选型）经由继承工作目录的父→子节点链执行。
+- **真正落地的评审反馈** — semantic review 的所有警告都送达 `paper_refine`；
+  post-refine 的解决计数为原始差值；refiner 的全文转义不再触碰数学公式。
+- **VirSci-live idea 引擎（可选）** — 在实时 Semantic Scholar 快照上运行真实
+  VirSci 多智能体机制；并引入基于运行启动探针的 platform-aware idea 生成。
+- **经 gate 验证的示例论文** — [`docs/assets/sample_paper.pdf`](docs/assets/sample_paper.pdf)
+  现为 12 条声明 claims 全部具备已验证证据、refine 后零过度声明的研究。
+  参见[已验证的结果](#已验证的结果)。
+
+完整列表见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## v0.8.1 新功能（2026-06-01）
 

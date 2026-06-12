@@ -6,7 +6,7 @@
   **A universal research automation system. Laptop to supercomputer. Local models to cloud APIs. Novice to expert. Computation to physical world.**
 
   [![Tests](https://img.shields.io/badge/tests-2200%2B-brightgreen)](ari-core)
-  [![Version](https://img.shields.io/badge/version-v0.8.1-orange)](https://github.com/kotama7/ARI/releases)
+  [![Version](https://img.shields.io/badge/version-v0.9.0-orange)](https://github.com/kotama7/ARI/releases)
   [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
   [![MCP](https://img.shields.io/badge/protocol-MCP-purple)](https://modelcontextprotocol.io)
   [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -38,6 +38,35 @@ The system scales across five axes:
 | **Expertise** | Novice (goal only) | Expert (full parameter control) |
 
 ---
+
+## What's new in v0.9.0 (2026-06-12)
+
+**Verified claims, end to end.** The release theme: a paper ships only when
+every claim it makes is machine-verifiable against the run's own artifacts.
+
+- **Story2Proposal claim-evidence loop + idea-owned metric contract** — ideas
+  declare falsifiable claims with required evidence names; a deterministic
+  hard gate BLOCKS finalize while declared claims lack experiment evidence or
+  stated numbers fail recompute. Blocking is reserved for objective
+  falsehoods; subjective review findings stay advisory.
+- **Mint-once contract & robust parsing** — the contract vocabulary freezes at
+  first mint (LLM re-extraction is not referentially stable); the gate parses
+  scientific notation and math-delimited units; writer declaration quirks are
+  normalized at parse time instead of trusted to instructions.
+- **Lineage chaining** — claims whose evidence is *computed* from existing
+  measurements (model fitting, held-out validation, model-based selection)
+  now run as parent→child node chains over inherited working directories.
+- **Review feedback that lands** — every semantic-review warning reaches
+  `paper_refine`; the post-refine resolved count is a raw delta, and the
+  refiner's whole-document escaping no longer touches math.
+- **VirSci-live idea engine (opt-in)** — the real multi-agent VirSci mechanism
+  on a live Semantic Scholar snapshot, with platform-aware idea generation
+  fed by a run-start capability probe.
+- **Gate-verified sample paper** — [`docs/assets/sample_paper.pdf`](docs/assets/sample_paper.pdf)
+  is now a study in which all 12 declared claims carried verified evidence
+  and zero overclaims remained after refine. See [Demonstrated Results](#demonstrated-results).
+
+See [CHANGELOG.md](CHANGELOG.md) for the full list.
 
 ## What's new in v0.8.1 (2026-06-01)
 
