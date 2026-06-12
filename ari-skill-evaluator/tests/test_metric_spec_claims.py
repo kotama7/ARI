@@ -355,3 +355,53 @@ def test_make_metric_spec_no_flags_when_idea_says_false(tmp_path, monkeypatch):
     if mc is not None:  # theory-safe: flags not stamped when the idea says false
         assert "correctness_required" not in mc
         assert "ceiling_must_be_measured" not in mc
+
+
+def test_make_metric_spec_mint_once_returns_persisted_contract(tmp_path, monkeypatch):
+    # FREEZE: a persisted claims-bearing contract must be returned VERBATIM on
+    # re-calls — no re-extraction (LLM naming is not referentially stable; a
+    # real run regenerated the vocabulary 3x and hid sibling evidence from the
+    # exact-match gate).
+    async def _fake_extract(_desc):
+        return {}
+    monkeypatch.setattr("src.server._llm_extract_metric_spec", _fake_extract)
+
+    persisted = {"key": "GFLOP_per_s",
+                 "claims": [{"claim": "first-mint claim",
+                             "required_evidence": ["alpha_time_seconds"]}]}
+    (tmp_path / "metric_contract.json").write_text(json.dumps(persisted))
+    # an idea with DIFFERENT claims must NOT win over the frozen contract
+    idea = {"ideas": [{"falsifiable_claims": [
+        {"claim": "regenerated claim", "required_evidence": ["beta_time_sec"]}]}]}
+    (tmp_path / "idea.json").write_text(json.dumps(idea))
+
+    async def _must_not_run(_ck):
+        raise AssertionError("claims re-extraction ran despite a frozen contract")
+    monkeypatch.setattr("src.server._resolve_falsifiable_claims", _must_not_run)
+
+    monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+    before = (tmp_path / "metric_contract.json").read_text()
+    spec = asyncio.run(_tool_make_metric_spec(
+        {"experiment_text": "Metrics: GFLOP_per_s\n", "checkpoint_dir": str(tmp_path)}))
+    assert spec["contract_frozen"] is True
+    assert spec["metric_contract"] == persisted
+    assert (tmp_path / "metric_contract.json").read_text() == before  # not overwritten
+    # per-node spec role still served (scoring guide is built per call)
+    assert spec["scoring_guide"]
+
+
+def test_make_metric_spec_empty_claims_contract_does_not_freeze(tmp_path, monkeypatch):
+    # A persisted contract WITHOUT claims (e.g. scaffold-only) must not freeze:
+    # the first claims-bearing mint is still allowed to happen.
+    async def _fake_extract(_desc):
+        return {}
+    monkeypatch.setattr("src.server._llm_extract_metric_spec", _fake_extract)
+    (tmp_path / "metric_contract.json").write_text(json.dumps({"key": "x", "claims": []}))
+    idea = {"ideas": [{"falsifiable_claims": [
+        {"claim": "real claim", "required_evidence": ["gamma_count"]}]}]}
+    (tmp_path / "idea.json").write_text(json.dumps(idea))
+    monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+    spec = asyncio.run(_tool_make_metric_spec(
+        {"experiment_text": "Metrics: GFLOP_per_s\n", "checkpoint_dir": str(tmp_path)}))
+    assert spec.get("contract_frozen") is not True
+    assert spec["metric_contract"]["claims"][0]["claim"] == "real claim"
