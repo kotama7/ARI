@@ -233,3 +233,19 @@ def test_writer_assertion_unresolved_config_ref():
 
 def test_normalize_drops_latex_commands():
     assert normalize_sentence("\\textbf{The} kernel~\\cite{x} runs.") == "the kernel runs."
+
+
+def test_writer_formula_synonyms_normalize_to_identity():
+    # regression (real run): 15 anchors declared `formula=value` (meaning identity);
+    # the registry lookup returned no roles and all 15 paper numbers shipped
+    # UNVERIFIED (operand_unresolved) — unrepairable downstream because anchor
+    # lines are edit-forbidden in refine. Synonyms must normalize at parse time.
+    from src.claim_links import _parse_writer_assertions
+    tex = ("% CLAIM:C7:NC7 metric=achieved\\_gflops formula=value operands:value=cfg1\n"
+           "Some sentence. % CLAIM:C7:NC7\n")
+    cfg = {"cfg1": {"node_id": "node_x", "environment": {}}}
+    out = _parse_writer_assertions(tex, cfg)
+    rec = out["NC7"]
+    assert rec["formula"] == "identity"                      # synonym normalized
+    assert rec["operands"]["value"]["node_id"] == "node_x"   # operand resolved
+    assert rec["operands"]["value"]["metric_path"] == "achieved_gflops"

@@ -293,6 +293,16 @@ def _index_claims(science_data: dict) -> tuple[dict[str, dict], dict[str, dict]]
 
 _DECL_RE = re.compile(r"([A-Za-z_]+)=([^\s]+)")
 _VALID_ROLES = ("value", "baseline", "proposed")
+# Writer-LLM formula synonyms -> registry names. A real run declared 15 anchors
+# with ``formula=value`` (meaning an absolute value, i.e. identity); the registry
+# lookup then returned no required roles and ALL 15 paper numbers shipped
+# unverified (operand_unresolved) -- and the refine loop cannot repair them
+# because anchor lines are edit-forbidden. Normalize at parse time so natural
+# synonyms verify instead of dead-ending.
+_FORMULA_ALIASES = {
+    "value": "identity", "absolute": "identity", "raw": "identity",
+    "abs": "identity", "direct": "identity", "reported": "identity",
+}
 
 
 def _unescape_latex(s: str) -> str:
@@ -322,6 +332,7 @@ def _parse_writer_assertions(tex: str, config_nodes: dict) -> dict:
             toks = {k: _unescape_latex(v) for k, v in _DECL_RE.findall(line[m.end():])}
             metric = toks.get("metric", "")
             formula = toks.get("formula")
+            formula = _FORMULA_ALIASES.get(formula, formula)
             if not formula:
                 continue  # references a pre-generated assertion; no inline declaration
             operands: dict = {}
