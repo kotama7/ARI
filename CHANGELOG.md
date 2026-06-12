@@ -4,6 +4,18 @@ All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PAT
 
 ## Unreleased
 
+- **Sample paper replaced with a gate-verified study.**
+  `docs/assets/sample_paper.pdf` is now the 8-page CSR SpMM paper
+  (store-policy selection across RHS widths + a loopline-guided
+  performance model) produced by a run in which ALL declared
+  falsifiable claims (12/12) carried machine-verified experiment
+  evidence, the computed-evidence chain (model fitting -> held-out
+  validation -> model-based selection) was executed via lineage-chained
+  tree nodes, and the post-refine semantic review reports zero
+  remaining overclaims. Prose hardware references are spec-level only
+  (ISA/thread counts); page renders and all README/landing/quickstart
+  descriptions updated to match (8 pages).
+
 - **Semantic-review → refiner chain closed.** `merge_reviews` now
   forwards EVERY semantic-review warning to `paper_refine` as an
   advisory revision entry — previously warnings were only counted,

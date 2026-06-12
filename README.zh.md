@@ -102,7 +102,7 @@ ARI 围绕一个原则设计：**用 Markdown 描述目标 — 其余的交给 A
 
 🎬 **仪表板演示视频** — ARI Web 仪表板的完整演示。也提供 [English](docs/assets/movie/en/ari_dashboard_demo.mp4) · [日本語](docs/assets/movie/ja/ari_dashboard_demo.mp4)。
 
-📄 **[示例输出论文 (PDF)](docs/assets/sample_paper.pdf)** — 由 ARI 在aarch64/SVE HPC 平台上完全自主生成的 10 页真实论文（Stratum-Roofline CSR-SpMM 研究），包含图表、引用和可复现性验证报告。主要数据请参阅[已验证的结果](#已验证的结果)。
+📄 **[示例输出论文 (PDF)](docs/assets/sample_paper.pdf)** — 由 ARI 在 aarch64 (SVE) HPC 平台上完全自主生成的 8 页真实论文（跨 RHS 宽度的 store-policy 选择与 loopline 引导性能模型的 CSR SpMM 研究）。**所有论断在发布前均经 claim-evidence gate 机器验证**。参见[已验证的结果](#已验证的结果)。
 
 <details>
 <summary><b>📖 点击展开论文（滚动浏览全部 10 页）</b></summary>
@@ -116,8 +116,6 @@ ARI 围绕一个原则设计：**用 Markdown 描述目标 — 其余的交给 A
   <img src="docs/assets/images/sample_paper/page-06.png" alt="示例论文 — 第 6 页" width="720"/>
   <img src="docs/assets/images/sample_paper/page-07.png" alt="示例论文 — 第 7 页" width="720"/>
   <img src="docs/assets/images/sample_paper/page-08.png" alt="示例论文 — 第 8 页" width="720"/>
-  <img src="docs/assets/images/sample_paper/page-09.png" alt="示例论文 — 第 9 页" width="720"/>
-  <img src="docs/assets/images/sample_paper/page-10.png" alt="示例论文 — 第 10 页" width="720"/>
 </p>
 
 </details>
@@ -366,21 +364,35 @@ v0.6.0 移除了两个技能：`ari-skill-figure-router` 被合并进 `ari-skill
 
 ## 已验证的结果
 
-ARI 在aarch64/SVE HPC CPU 上对 **CSR-SpMM**（稀疏矩阵与稠密矩阵乘积）进行了端到端的自主研究，包括设计、实现、运行和论文撰写。完整论文（含方法、算法、图表和参考文献）可在 [`docs/assets/sample_paper.pdf`](docs/assets/sample_paper.pdf) 中查看。
+ARI 在 aarch64 (SVE) HPC 平台上对 **CSR SpMM**（稀疏矩阵×稠密矩阵乘积）进行了端到端的自主研究：设计、实现、运行与论文撰写。完整论文见 [`docs/assets/sample_paper.pdf`](docs/assets/sample_paper.pdf)。
 
-> **A Stratum-Roofline CSR-SpMM Implementation for CPUs: Sustaining High Performance Across Variable Right-Hand-Side Widths on aarch64/SVE HPC**
+> **CSR Sparse-Dense Matrix Multiplication on CPUs with RHS-Width Robustness and a Loopline-Guided Performance Model**
 
-| 配置 | 吞吐量 | 有效带宽 |
-|---|---|---|
-| 预取+平铺核函数 (NB=16, PFD=4) 在 *N* ∈ {1, 2, 4, 8, 16} 上持续达到 | **57.8–59.9** GFlops/s | — |
-| 参考核函数峰值 (*N* = 128) | 79.995 GFlops/s | **167.5 GB/s** |
-| 带状 Stratum-Roofline 预测 vs 实测 (*N* = 128) | **81.55** GFlops/s（完全一致） | 135.88 GB/s |
-| 小 *N* 鲁棒性增益 (*N* = 1，平铺+预取 vs 参考) | **15.6×** | — |
-| SIMD 消融实验减速 (`-fno-tree-vectorize`，*N* = 128) | **4.18×** (80.33 → 22.0) | — |
+这篇论文的特别之处不在于某个亮眼数字，而在于一个性质：**它的每一条论断都在发布前通过了确定性的 claim-evidence gate**。
 
-**硬件:** aarch64/SVE HPC 计算节点，48 OpenMP 线程，FP32。GCC 8.5.0，使用 `-O3 -march=armv8.2-a+sve -fopenmp -ffast-math -ftree-vectorize -funroll-loops`。带状/偏斜幂律合成 CSR 矩阵（*M* = *N* = 400,000，nnz = 12.8M），以及紧凑扫描矩阵（*M* = *K* = 120,000，nnz/行 = 32）。RHS 宽度 *N* ∈ {1, 2, 4, 8, 16, 32, 64, 96, 128, 192, 256}，线程扫描 *T* ∈ {1, …, 48}，平铺宽度扫描 NB ∈ {8, 16, 32}，PFD ∈ {0, 4}。
+| 已验证的性质 | 结果 |
+|---|---|
+| 具有实验证据的已声明可证伪 claims | **12 / 12**（gate 错误 0） |
+| 与独立 dense FP32 参考实现的正确性 | 最大绝对误差 **6.79×10⁻⁶** |
+| 计算型证据链（模型拟合 → held-out 验证 → 模型选择） | 经谱系链节点执行 |
+| review→refine 后残留的过度声明 | **0**（检出 5 → 解决 5） |
+| 无 artifact 依据的数字 | 在正文中显式 hedge |
 
-**ARI 自主完成的工作：** Stratum-Roofline 建模框架（FMA 峰值 1869.66 GFlops/s + HBM 上限 235.42 GB/s + 每线程 STREAM-triad 20.91 GB/s 校准、四层行 stratum 分解）、四种核函数实现（`spmm_csr` 参考、`spmm_csr_pf` 预取、`spmm_csr_tiled` NB 平铺、`spmm_novec` SIMD 消融）、Algorithm 1（NB 平铺软件预取 CSR-SpMM）、*N* / 线程 / 平铺宽度 / PFD 扫描、Xeon Gold 6142 登录节点备用运行、图表、参考文献以及可复现性验证（5 次重复、4 个随机种子、最大绝对误差 0.0、CV ≤ 1.02%）— 全部由 ARI 端到端自主生成，无需人工干预。
+**硬件:** aarch64 (SVE) HPC 计算节点（48 OpenMP 线程、FP32），另用一台 x86_64 节点做 ablation。硬件仅以规格描述，绝不使用集群名称（Philosophy P5）。
+
+**ARI 自主产出:** 带 store-policy 选择器的 CSR SpMM 内核（按 RHS 宽度在 regular/non-temporal store 间切换）、对照 dense 参考的正确性验证、微基准探针（内存带宽、compute-rate inflation/deflation）、经父→子谱系链执行的 loopline 引导模型拟合与 held-out 验证、图表、参考文献，以及机器校验的 claim-evidence 审计 — 全程无人工干预。
+
+---
+
+## Star History
+
+<a href="https://www.star-history.com/#kotama7/ARI&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=kotama7/ARI&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=kotama7/ARI&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=kotama7/ARI&type=Date" />
+ </picture>
+</a>
 
 ---
 

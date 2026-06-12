@@ -125,7 +125,7 @@ Object.assign(window.LANGS.en, {
   'hero-btn-demo': '▶ Watch Demo',
   'demo-label': 'Demo',
   'demo-title': 'See ARI in action.',
-  'demo-sub': 'Watch a live walkthrough of the ARI web dashboard, then download the sample paper that ARI generated end-to-end — a 10-page Stratum-Roofline CSR-SpMM study on aarch64/SVE HPC.',
+  'demo-sub': 'Watch a live walkthrough of the ARI web dashboard, then download the sample paper that ARI generated end-to-end — an 8-page, gate-verified CSR SpMM study (store-policy selection + loopline-guided model) on aarch64 (SVE) HPC.',
   'demo-paper-btn': '📄 Download sample paper',
   'demo-start-btn': 'Get started ↓',
   'dashboard-see-demo': '▶ <a href="#demo">See the live walkthrough in the Demo section ↑</a>',
