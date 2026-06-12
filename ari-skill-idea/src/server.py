@@ -518,7 +518,6 @@ def survey(topic: str, max_papers: int = 8) -> dict:
     return {"papers": papers[:max_papers]}
 
 
-@mcp.tool()
 def _platform_constraint_note() -> str:
     """Verified platform-capability constraint folded into the idea topic (P2c).
 
