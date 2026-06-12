@@ -18,7 +18,13 @@ sources:
     role: implementation
   - path: ari-core/ari/checkpoint.py
     role: implementation
-last_verified: 2026-05-30
+  - path: ari-core/ari/pipeline/claim_gate
+    role: implementation
+  - path: ari-core/ari/pipeline/verified_context.py
+    role: implementation
+  - path: ari-skill-memory
+    role: implementation
+last_verified: 2026-06-10
 ---
 
 # Glossary
@@ -70,6 +76,21 @@ The hard-cutoff predicate in BFTS: prune when `current_total ≥ max_total_nodes
 `depth ≥ max_depth`, or `_sterile is True`. No LLM judgement enters here. See
 [BFTS algorithm](../concepts/bfts.md).
 
+**computed-evidence claim**
+A contract claim whose required evidence must be *computed from* existing
+measurements (parameter fitting, held-out validation, model-based selection)
+rather than probed directly. Reachable only by expanding the node that already
+holds the source measurements — see **lineage chaining**.
+
+**lineage chaining**
+The BFTS mechanism that makes computed-evidence claims reachable: the
+expansion-selection hint names the node holding the most contract evidence and
+recommends expanding *it* (children inherit the parent's `work_dir`), and a
+child whose inherited `work_dir` already contains lineage measurements gets an
+INHERITED DATA note in its pinned obligation listing the files and contract
+names present. Only names and files flow — values and sibling conclusions
+never do, preserving fault containment. See [BFTS algorithm](../concepts/bfts.md).
+
 ## Evaluation
 
 **scientific_score / `_scientific_score`**
@@ -105,9 +126,32 @@ A scoring specification. ARI uses the word in two contexts: a **reviewer rubric*
 [Rubric schema](rubric_schema.md).
 
 **lineage decision**
-When composite scores stagnate, a BFTS hook asks the LLM to pick
-`continue` / `switch_to_idea` / `fanout` / `terminate`. See
+When composite scores stagnate, a BFTS hook FIRST deterministically pivots
+(`switch_to_idea`) to the strongest *unused* runner-up idea, so a runner-up is
+actually tried instead of dying unused. The LLM judge (which also chooses among
+`continue` / `switch_to_idea` / `fanout` / `terminate`) is consulted only as a
+fallback — when the budget is exhausted, the recursion limit is reached, or no
+unused alternative remains. See
 [Architecture → Plan / Venue contract](../concepts/architecture.md#plan--venue-contract-v070).
+
+**claim-evidence gate**
+A deterministic, no-LLM gate (`claim_evidence_hard_gate`) that re-derives each
+reported paper number from recorded results within tolerance and checks numeric
+coverage / operand resolution / figure existence. Default-on in `warn`
+(report-only) mode; set `claim_gate_policy.mode: strict` (or
+`ARI_CLAIM_GATE_MODE=strict`) to block finalize on blocking errors. A
+`comparison_scope` of `any` (default) treats a cross-environment comparison as a
+transparency warning, while `same_environment` makes it a blocking error. See
+[Configuration](configuration.md).
+
+**mint-once (contract freeze)**
+The rule that the run-level `metric_contract.json` is written once: after the
+first claims-bearing mint, `make_metric_spec` returns the persisted contract
+verbatim (`contract_frozen: true`) instead of re-extracting. LLM naming is not
+referentially stable, so a mid-run regeneration would change the evidence
+vocabulary and hide already-emitted evidence from the exact-match gate.
+Scaffold-only contracts (no `claims`) do not freeze. See
+[File formats](file_formats.md#metric_contractjson).
 
 ## Memory
 
@@ -126,6 +170,15 @@ The memory backend (formerly MemGPT) used since v0.6.0. Each checkpoint gets a
 dedicated agent holding two collections: `ari_node_<hash>` (ancestor-scoped
 archival) and `ari_react_<hash>` (flat ReAct trace). See
 [Memory architecture](../concepts/memory.md).
+
+**verified context / verifiable research memory**
+A typed, sha256-provenanced layer built on top of Letta. At node end,
+`node_report.json` is consolidated into typed, provenanced records
+(`experiment_result` / `failure_case` / `reflection`); the paper pipeline then
+derives an artifact-grounded `verified_context.json` (scoped to the best node's
+root→best lineage) to ground paper claims on what was actually measured.
+Default-on via `ARI_MEMORY_CONSOLIDATE`. See
+[Verifiable research memory](../concepts/verifiable_research_memory.md).
 
 ## Agent & skills
 

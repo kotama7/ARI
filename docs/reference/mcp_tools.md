@@ -12,7 +12,7 @@ sources:
     role: config
   - path: ari-skill-paper-re/src/server.py
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-06-10
 ---
 
 # MCP Tools Reference
@@ -48,14 +48,16 @@ an LLM and therefore are not byte-deterministic.
 | `write_code` | Write a file into the node work_dir | ✗ |
 | `run_code` | Execute a script with timeout + capture | ✗ |
 | `run_bash` | Ad-hoc bash command | ✗ |
-| `emit_results` | Emit `metrics` + `has_real_data` for the evaluator | ✗ |
+| `emit_results` | Emit `metrics` + `has_real_data` for the evaluator (optional `provenance` arg → written verbatim as the `_provenance` key tagging how each value was measured, for the claim-evidence gate). The response's `contract_warnings` may include suggestion-only "POSSIBLE name matches" hints when an emitted key lexically resembles a required evidence name — advisory only: nothing is auto-bound and the gate never consumes them | ✗ |
 | `read_file` | Read a file the agent wrote earlier | ✗ |
 
 ## ari-skill-evaluator — LLM metric extraction
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
-| `make_metric_spec` | LLM extracts metric definitions from `experiment.md` | ✓ |
+| `make_metric_spec` | LLM extracts metric definitions from `experiment.md`; also emits a run-level `metric_contract` → `{checkpoint}/metric_contract.json`. Mint-once: when a persisted claims-bearing contract already exists, the call returns it verbatim with `contract_frozen: true` instead of re-extracting (per-node spec fields like the scoring guide stay per-call) | ✓ |
+| `claim_evidence_hard_gate` | Deterministic claim/evidence hard gate (execution data fidelity); strict mode blocks finalize on the final phase | ✗ |
+| `evidence_grounded_semantic_review` | Non-blocking, evidence-grounded semantic review; emits `suggested_revisions` for `paper_refine` | ✓ |
 | (internal) `evaluate` | Score node artefacts against the spec | ✓ |
 
 ## ari-skill-hpc — SLURM + Singularity
@@ -92,12 +94,26 @@ is reported in `virsci_integration_status` (`real_wrap` vs `reimpl: ...`).
 
 ## ari-skill-memory — ancestor-scoped node memory
 
+This skill uses FastMCP `@mcp.tool()` decorators in `src/server.py`; its
+static `mcp.json` is stale (it lists only the four node-scope tools) but
+every decorated function below **is** exposed at runtime.
+
 | Tool | Purpose | LLM |
 |---|---|:---:|
 | `add_memory` | Append an entry to the current node's memory | ✗ |
 | `search_memory` | Embedding-ranked search across the current node + ancestors | ✗ (server-side embedding) |
 | `get_node_memory` | All entries for the current node | ✗ |
 | `clear_node_memory` | Drop the current node's entries (CoW; ancestors untouched) | ✗ |
+| `get_experiment_context` | Stable, experiment-level facts from Letta core memory | ✗ |
+| `add_experiment_result` | Record a typed experiment_result (CoW: self node only) | ✗ |
+| `add_failure_case` | Record a typed failure_case (CoW: self node only) | ✗ |
+| `add_procedure_memory` | Record a reusable procedure (CoW: self node only) | ✗ |
+| `add_reflection` | Record a reflection (CoW: self node only; not usable for paper claims) | ✗ |
+| `add_reproducibility_event` | Append an append-only reproducibility status event (CoW: self node only) | ✗ |
+| `search_research_memory` | Ancestor-scoped typed search, filtered by kind / artifact presence | ✗ |
+| `get_verified_context` | Artifact-grounded, reproducibility-aware context for paper / figure use | ✗ |
+| `audit_memory` | Verify recorded provenance (sha256) against disk for a checkpoint | ✗ |
+| `consolidate_node_memory` | Derive + write typed memory from a node_report at node end (CoW: self) | ✗ |
 
 The skill explicitly declares "no LLM calls" in its design doc — see
 `ari-skill-memory/README.md`.
@@ -124,6 +140,8 @@ The skill explicitly declares "no LLM calls" in its design doc — see
 | `revise_section` | LLM rewrite using review feedback | ✓ |
 | `write_paper_iterative` | Drive the generate / review / revise loop end-to-end | ✓ |
 | `review_compiled_paper` | Final-pass review on compiled PDF (delegates to VLM for figures) | ✓ |
+| `link_paper_claims` | Reconcile `% CLAIM:Cx:NCx` anchors against science_data claims, build `paper_claim_links` (deterministic) | ✗ |
+| `paper_refine` | Apply suggested revisions while preserving `% CLAIM:Cx:NCx` anchors (deterministic subs + bounded LLM find/replace) | ✓ |
 | `list_rubrics` | Available reviewer rubrics |  ✗ |
 | `inject_code_availability` | v0.7.0 — append a `\codedigest{...}` block to the paper | ✗ |
 | `merge_reviews` | v0.7.0 — combine rubric review + VLM review JSON | ✗ |
