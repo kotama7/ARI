@@ -436,7 +436,8 @@ class SlurmClient:
             self._ssh_client = None
 
 
-# ── platform capability probe (P2c of PLAN_claims_fulfillment_final) ──────────
+# ── platform capability probe (probe -> contract -> idea chain; see ──────────
+# docs/concepts/bfts.md and docs/reference/mcp_tools.md)
 #
 # The claims extractor declared evidence requiring tools the compute platform
 # does not have (verified on a real cluster: the assumed profiler was absent on the compute partition), so
