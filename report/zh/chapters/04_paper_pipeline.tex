@@ -39,6 +39,18 @@
 数,而非语言模型的判断——从而使 \cref{sec:paper:failures} 的护栏
 有具体之物可强制执行。
 
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F20_claim_evidence.tex}}
+  \caption{Story2Proposal 主张--证据契约的执行奠基
+           (execution-grounded)实现。稿件主张——数值断言与图引用——
+           通过稳定的节点、结果与图标识符,被绑定到已执行实验所产生
+           的已记录证据。确定性的主张--证据闸门(无语言模型)在容差内
+           从该证据重新推导每个报告数值;此数据保真轴在严格模式下
+           阻断,而推理与视觉一致性轴不阻断。}
+  \label{fig:claim-evidence}
+\end{figure}
+
 选别按角色进行:一个节点可以不同方式贡献给三个消费者,由单一谓词
 族判定各自。节点在携带真实测量(或评估器认定其运行成功)时进入
 \emph{合成}集合;在相对于父节点新增或修改了源文件时进入\emph{代
@@ -183,11 +195,12 @@ $\paperscore{\paper_{t+1}}-\paperscore{\paper_t}<\epsilon$——或达到
   \centering
   \resizebox{\textwidth}{!}{\input{../shared/figures/tikz/F16_paperbench_stages.tex}}
   \caption{将 PaperBench 复现路径表示为三个可组合阶段。智能体的
-           \emph{rollout} 把论文及其评分细则转化为 submission;
-           \emph{reproduce} 在隔离沙箱中执行该 submission,捕获
-           \texttt{reproduce.log} 及其输出;\emph{grade} 按评分细则树
-           为 submission 评分。ARI 的三阶段 bridge 统筹这些阶段,并把
-           重复运行聚合为单一得分。}
+           \emph{rollout} 把论文及其评分细则转化为 submission(代码与
+           再现脚本);\emph{reproduce} 在隔离沙箱中执行该 submission,
+           捕获再现日志及其输出;\emph{grade} 按\emph{加权评分细则树}
+           为 submission 评分,其中 vendor 评分器为每个叶子给出评分
+           $g\in\{0,1\}$,论文得分是按权重聚合的汇总
+           $s=\sum_i w_i g_i$(\cref{eq:paperscore})。}
   \label{fig:pb-stages}
 \end{figure*}
 
@@ -245,6 +258,10 @@ vendor 化的基准与 ARI 核心在该扩展中保持不变。
   \item \textbf{仅 LLM 支撑}:论文断言一项谱系中无任何节点支撑的主张。
         缓解策略将撰写器约束到预先选定的谱系产物集合,使每项数值或
         因果主张都可追溯到产生它的节点;草稿无法引用未被生成的证据。
+        对应的约束在记忆一侧:已验证上下文
+        (\cref{sec:exploration:memory})仅当结果由产物支撑且未在复现
+        尝试中失败时,才将其许可为定量主张(\cref{eq:usable}),因此
+        可复现的结果被优先,而无支撑的反思无法成为标题数字。
   \item \textbf{引用幻觉}:论文引用不存在的文献。缓解是结构性的——撰写
         器不得发明引用键,且每条 bib 条目在被采纳前都对外部索引校验
         (\cref{sec:related})。
@@ -253,11 +270,45 @@ vendor 化的基准与 ARI 核心在该扩展中保持不变。
         崩溃。
   \item \textbf{数值漂移}:报告的量与其所概括的已记录结果不一致。由于
         每项数值主张都指明其所依据的节点与测量值
-        (\cref{sec:paper:evidence}),每项都从已记录结果确定性地重新推导
-        并在容差内比对;与重新计算值不一致的值会被标记。默认情况下闸门仅
+        (\cref{sec:paper:evidence}),确定性的主张--证据闸门将每项从已
+        记录结果重新推导并在容差内比对
+        (\cref{fig:claim-evidence});与重新计算值不一致的值会被标记。默认情况下闸门仅
         报告此类不一致而不阻断;仅在更严格的审计策略下,最终检查中未消解的
         不一致才会被拒绝而非发表。
 \end{itemize}
 
 第一道护栏也限制 context:撰写器获得选定谱系产物与最高分节点的源码,
 且受限于大小预算,因此即便长时间运行草稿也保持在模型的 context 窗口之内。
+
+\subsection{指标契约与闸门加固}\label{sec:paper:contract}
+
+上述数值漂移护栏预设了一套把主张绑定到证据的稳定词汇。ARI 把该
+词汇显式化为\term{指标契约}:一份运行级声明,列出最终论文必须支
+撑的可证伪主张,每条主张点名可充当其证据的确切测量名。探索期间
+节点以这些名称发出测量——同一批名称也用于引导扩展
+(\cref{sec:exploration:lineage-chaining})——而 \cref{fig:claim-evidence}
+的确定性闸门按名称精确匹配主张与证据。真实运行的经验把这道接缝
+收紧为四条结构性规则,而非提示词修补:
+
+\begin{itemize}
+  \item \textbf{契约只铸造一次。}携带主张的契约一经持久化,后续
+        每次调用都逐字返回已持久化的契约,而不再重新生成。语言模
+        型的命名不具备指称稳定性——同一个量问两次会得到不同的名
+        字——一次真实运行中,运行中途的重新生成曾悄然改换证据词
+        汇,使兄弟节点已发出的测量在精确匹配的闸门面前隐形。
+  \item \textbf{解析迁就撰写器的实际写法。}闸门的数值核验解析科
+        学计数法,并在提取数值--单位对时把数学定界符当作单位边
+        界;实践中反复出现的撰写器声明癖性——同一推导的公式同义
+        名、带标签前缀书写的主张标识符、被多处提及共享的文内锚点
+        标识符(把所报告数值绑定到其记录结果的标记)——在解析时被
+        归一化,而不是上报为不一致,使闸门的裁决度量论文的数字,
+        而非其表面句法。
+  \item \textbf{评审发现完整抵达改稿器。}语义评审——一个互补的语
+        言模型通道,标记过度主张与缺乏支撑的因果措辞——提出的每条
+        警告都被转发给改稿步骤(\cref{sec:paper:loop}),而非截断
+        的子集;且改稿后的「已消解」计数是两轮之间的原始差值,因
+        此引入新发现的改稿会显示为回归,而不是被钳制掉。
+  \item \textbf{阻断只保留给客观谬误。}与记录证据相矛盾的报告数
+        值会阻断最终检查;语义评审的主观性发现按设计仅具建议性,
+        引导改稿器,但从不让发表在判断性问题上被闸门拦下。
+\end{itemize}

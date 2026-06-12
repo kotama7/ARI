@@ -367,6 +367,61 @@ never the parent's --- this is enforced by the MCP layer's
 per-node dollar amount at \texttt{CostTracker.init}, so the budget
 check is deterministic given the same prompts.
 
+\paragraph{Offline by default.}
+Reproducibility also dictates what the search loop is allowed to read.
+By default a node's agent loop runs \emph{offline}: the web-access skill
+is phase-gated to the paper-writing and replication stages, so a node
+cannot consult time-varying live search results during the search itself,
+and the per-node trajectory therefore does not depend on the state of the
+web on the day it ran. Literature lookup still happens, but earlier and
+out of band --- a bounded survey performed at idea time, before the
+search begins. A run that genuinely needs live information can opt in
+(\code{bfts.allow\_web}) to expose web access to the node agent during
+exploration; when it does, the run writes a non-reproducible-trajectory
+marker into its checkpoint, so a later reproduction is never silently
+treated as exact. The determinism contract stays honest either way: the
+default run is byte-reproducible, and a run that trades reproducibility
+for live information records that trade in its own provenance.
+
+\subsection{Lineage chaining for computed evidence}\label{sec:exploration:lineage-chaining}
+
+Not every claim a run sets out to support is measured fresh. Some
+evidence is \emph{computed} from measurements that already exist --- a
+parameter fit over earlier probes, a held-out validation of that fit, a
+model-based selection among configurations. Such claims turned out to be
+structurally unreachable by independent tree nodes: in a real run,
+children directed at fitting or validation but expanded from a parent
+that carried no measurements regressed to re-running single probes,
+because ``compute from the data you already have'' was never a visible
+option --- the child had no data, and nothing told the selector which
+node did.
+
+The mechanism that closes this gap uses only the parent$\to$child
+working-directory inheritance the tree already has (a child executes
+inside a copy of its parent's working tree;
+\cref{sec:paper:evidence} relies on the same fact), as one hint per
+side of the expansion. On the parent side, the expansion-target
+selection prompt (\cref{sec:exploration:node-selection}) is extended
+with a coverage hint that names the node whose working tree holds the
+most \term{contract-evidence names} --- measurement names required by
+the run's declared metric contract, the set of falsifiable claims the
+eventual paper must evidence (\cref{sec:paper:contract} defines it in
+full) --- so a fit-or-validate child is preferentially expanded from
+the node that already holds its inputs. On the child side, a child
+whose inherited directory contains lineage measurement files is told,
+at start, which files are present and which exact contract names they
+contain, and is instructed to compute the derived evidence from those
+files rather than re-run the underlying experiments.
+
+Only names cross node boundaries: file names and measurement names,
+never values and never a sibling's conclusions. The hints are
+run-level coordination metadata of the same kind as the contract
+itself, so the branch isolation of \cref{sec:exploration:memory} is
+preserved --- a faulty branch's numbers still cannot leak into a
+sibling's reasoning --- while the computed-evidence chain
+(fit, then validate, then select) can execute along a single lineage
+instead of collapsing back into repeated probes.
+
 \subsection{ReAct driver}\label{sec:exploration:react}
 
 \begin{figure}[t]
@@ -393,3 +448,111 @@ into a draft. A small set of MCP tools is reserved for
 \texttt{ari-core} itself (memory CoW operations) and is hidden
 from the LLM, ensuring that the model cannot set an arbitrary node
 id and bypass the memory skill's copy-on-write check.
+
+\subsection{Research memory}\label{sec:exploration:memory}
+
+Nodes do not run in isolation: each one inherits what its ancestors
+established and, in turn, leaves a record for its descendants and for the
+paper writer. ARI keeps this record in a per-run \term{research memory}
+governed by two requirements a free-form log does not meet. First,
+\emph{branch isolation}: a node may read only the memory of its own
+ancestors, never that of a sibling or an unrelated checkpoint, so two
+parallel leads cannot contaminate each other --- the same ancestor-scope
+predicate that defines a lineage in \cref{sec:exploration:lineage}.
+Second, \emph{groundability}: because the memory ultimately feeds a
+paper, an entry must be able to point at the evidence behind a result
+rather than merely restate the result, so a claim can be traced back to
+the artefact that supports it.
+
+\subsubsection*{Memory as an index over evidence}
+
+The single source of truth for what a node produced is its structured
+self-report --- the \texttt{node\_report.json} written when the node
+completes (\cref{sec:paper:evidence} details its fields). A memory entry
+does not copy those fields. It carries a short searchable text, a
+\term{kind}, a pointer back to the originating node report, and
+content-hash references to the specific artefacts --- logs, source files,
+output files --- a result rests on. A memory entry is thus an \emph{index
+into evidence}, not the evidence itself: the artefacts it cites can be
+re-hashed at any time to confirm they still exist and still match, an
+integrity check that classifies every reference as verified, missing, or
+mismatched. The \term{kind} is drawn from a fixed vocabulary ---
+observation, experiment result, failure case, procedure, reflection,
+artefact summary, paper claim, and reproducibility event --- so a reader
+can ask for exactly the records it needs: the failures along a branch,
+say, or only the results that are backed by artefacts.
+
+\subsubsection*{Consolidation at node end}
+
+When a node completes, a deterministic \term{consolidation} step reads
+its node report and emits typed entries: an experiment-result entry, with
+provenance references to the artefacts it measured, for a node that
+produced measurements; a failure-case entry for one that failed. The step
+invokes no language model, so the same node report always consolidates to
+the same entries --- consolidation is a pure function of recorded state,
+and re-running a checkpoint reproduces the memory it produced. It is a
+loop hook, not an agent action: the search agent is never asked to ``save
+to memory'', and in practice the agent does not reach for the recall
+tools on its own. The memory reads the loop depends on are performed by
+the loop itself, deterministically --- which is what lets the memory
+carry provenance without putting a non-deterministic retrieval on the
+critical path (\cref{sec:discussion:p2}).
+
+\begin{figure}[t]
+  \centering
+  \resizebox{0.92\columnwidth}{!}{\input{../shared/figures/tikz/F18_research_memory.tex}}
+  \caption{Verifiable research memory. A deterministic consolidation of
+           each node's \texttt{node\_report.json} --- the source of truth
+           --- populates a \emph{typed} store that \emph{indexes}
+           artefacts (logs, outputs, source) by content hash. Reproduction
+           events are appended and folded down to a latest status, and an
+           admissibility predicate $\mathrm{usable}(\mu)$ (\cref{eq:usable})
+           gates which records reach the verified context. The same store
+           yields two readers: the \emph{working context} injected at the
+           next node's start (the inheritance path of exploration) and the
+           \emph{verified context} that grounds the paper's quantitative
+           claims (\cref{sec:paper:evidence}). Ungrounded reflection may
+           steer exploration but never the paper body.}
+  \label{fig:research-memory}
+\end{figure}
+
+\subsubsection*{Two readers: working and verified context}
+
+The store feeds two consumers (\cref{fig:research-memory}), and the
+distinction between them is the heart of the design. At the \emph{start}
+of every node the loop injects a \term{working context}: the experiment's
+fixed core --- goal, target metric, hardware --- together with the
+conclusions its ancestors recorded. A child therefore begins from what
+its lineage has already established, deterministically and scoped to its
+own branch, rather than from an aggregate text dump. At \emph{paper} time
+the pipeline builds a \term{verified context} from the best node's
+lineage: it folds each result's reproducibility events down to a latest
+status and ranks entries so that reproduced results outrank
+merely-artefact-grounded ones, which in turn outrank ungrounded
+reflection. An entry $\mu$ is \emph{admissible} as a quantitative paper
+claim only when it is artefact-grounded and not contradicted by a
+reproduction attempt:
+\begin{equation}\label{eq:usable}
+  \mathrm{usable}(\mu) \;=\;
+    \mathrm{grounded}(\mu)\;\wedge\;
+    \bigl(\mathrm{repro}(\mu)\neq\mathrm{failed}\bigr).
+\end{equation}
+Ungrounded reflection can still steer the search through the working
+context, but \cref{eq:usable} holds it out of the paper body: the
+writer's quantitative claims rest only on admissible, reproduced-first
+entries. This is the memory-side counterpart of the evidence assembler
+(\cref{sec:paper:evidence}); where the assembler decides which artefact
+\emph{bytes} the writer may read, the verified context decides which
+\emph{results} are allowed to become claims.
+
+\subsubsection*{Reproducibility as an appended event}
+
+Because past entries are byte-stable --- a node writes only under its own
+identifier and existing entries are never edited in place --- a result's
+reproducibility status is not patched when the result is later re-run.
+Instead the re-run \emph{appends} a reproducibility-event entry, and any
+reader folds the events for a target down to their latest state. A result
+that fails to reproduce is thereby demoted out of the claim set of
+\cref{eq:usable} --- and can be reported honestly as a limitation ---
+without rewriting the history that recorded it as promising in the first
+place.

@@ -2,16 +2,29 @@
 
 \subsection{Determinism vs novelty}\label{sec:discussion:p2}
 
-P2, the determinism principle, is the binding constraint of the
-system. Strictly enforcing P2 forces \term{ari-skill-memory} to
-declare ``no LLM calls'' --- it must score its retrievals by a
-deterministic keyword function rather than an embedding model whose
-output depends on a remote service. The trade-off is that retrieval
-quality is bounded by what keyword scoring can recover.
+P2, the determinism principle, is the binding constraint of the system.
+It does not forbid the research memory (\cref{sec:exploration:memory})
+from using an embedding model --- it constrains \emph{where} that
+non-determinism is permitted to influence a run. The memory subsystem
+makes no generative language-model calls, but its archival search ranks
+by embedding similarity, whose result depends on a remote service and is
+not byte-reproducible. P2 is honoured by keeping that surface off the
+reproducible path: the memory reads the search loop actually depends on
+--- the working context injected at each node and the verified context
+that grounds the paper --- are deterministic, ancestor-scoped folds of
+the per-node reports, not embedding-ranked retrievals. Semantic search
+stays available as an optional recall aid, but the loop never pulls it,
+so a re-run reproduces the same trajectory regardless of how the
+embedding service happens to rank a query.
 
-This is not an accident: every reproducibility win comes at the cost
-of a closed door for non-determinism. We accept the cost because the
-checkpoint, not the run, is the contract with downstream users.
+The cost is a hard line between two kinds of memory read. Anything that
+must be reproducible is computed by a deterministic function of recorded
+artefacts; anything that rides on embedding similarity is advisory only
+and may not, by itself, ground a paper claim. This is not an accident of
+implementation but the same bargain made everywhere in the system: every
+reproducibility win comes at the cost of a closed door for
+non-determinism. We accept the cost because the checkpoint, not the run,
+is the contract with downstream users.
 
 \subsection{Scaling limits}\label{sec:discussion:scaling}
 
