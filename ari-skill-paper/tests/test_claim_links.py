@@ -249,3 +249,28 @@ def test_writer_formula_synonyms_normalize_to_identity():
     assert rec["formula"] == "identity"                      # synonym normalized
     assert rec["operands"]["value"]["node_id"] == "node_x"   # operand resolved
     assert rec["operands"]["value"]["metric_path"] == "achieved_gflops"
+
+
+def test_writer_operands_label_prefix_stripped():
+    # a real run declared all 15 anchors as `formula=value operands=value=cfgN`;
+    # the labelled token swallowed the role and every number shipped unverified.
+    from src.claim_links import _parse_writer_assertions
+    cfg = {"cfg4": {"node_id": "node_x", "environment": {}}}
+    tex = ("Text.\n"
+           "% CLAIM:Cw1:NCw1 metric=spmm\\_max\\_abs\\_error\\_vs\\_reference\\_fp32 "
+           "formula=value operands=value=cfg4\n")
+    out = _parse_writer_assertions(tex, cfg)
+    a = out["NCw1"]
+    assert a["formula"] == "identity"                      # alias still applied
+    assert a["operands"]["value"]["config_id"] == "cfg4"   # label stripped, role parsed
+    assert a["operands"]["value"]["metric_path"] == "spmm_max_abs_error_vs_reference_fp32"
+
+
+def test_writer_bare_operands_unchanged():
+    from src.claim_links import _parse_writer_assertions
+    cfg = {"cfg1": {"node_id": "n1", "environment": {}},
+           "cfg2": {"node_id": "n2", "environment": {}}}
+    tex = "% CLAIM:C2:NC2 metric=GFlops formula=relative_increase_percent baseline=cfg2 proposed=cfg1\n"
+    out = _parse_writer_assertions(tex, cfg)
+    a = out["NC2"]
+    assert set(a["operands"]) == {"baseline", "proposed"}
