@@ -15,6 +15,7 @@ from src.server import (
     generate_section,
     get_template,
     list_venues,
+    merge_reviews,
     paper_refine,
 )
 
@@ -477,3 +478,85 @@ async def test_review_compiled_paper_arg_beats_env(tmp_path, monkeypatch):
         tex_path=str(tex), rubric_id="neurips", num_reviews_ensemble=2,
     )
     assert out.get("n") == 2, f"arg=2 must win over env=5, got n={out.get('n')}"
+
+
+# --- merge_reviews: semantic warnings must reach the refiner ---
+
+def _write_merge_inputs(tmp_path, semantic: dict):
+    import json as _j
+    rr = tmp_path / "review_report.json"
+    rr.write_text(_j.dumps({"scores": {}}))
+    sem = tmp_path / "semantic_review.json"
+    sem.write_text(_j.dumps(semantic))
+    return rr, sem
+
+
+@pytest.mark.asyncio
+async def test_merge_reviews_forwards_warnings_as_advisory_revisions(tmp_path):
+    rr, sem = _write_merge_inputs(tmp_path, {
+        "status": "ok",
+        "warnings": [
+            {"type": "overclaim", "section": "abstract",
+             "message": "The robustness wording reads broader than the tested scope."},
+            {"type": "interpretation", "section": "results",
+             "message": "The mechanism is asserted but not directly measured."},
+        ],
+        "suggested_revisions": [
+            {"section": "abstract",
+             "instruction": 'replace "robust" with "stable under the tested ablation"'},
+        ],
+    })
+    out = await merge_reviews(review_report_path=str(rr), semantic_review_path=str(sem))
+    revs = out["suggested_revisions"]
+    from_warnings = [r for r in revs if r.get("source") == "semantic_warning"]
+    assert len(from_warnings) == 2, "every counted warning must become a revision entry"
+    assert {r["warning_type"] for r in from_warnings} == {"overclaim", "interpretation"}
+    # paper_refine._collect harvests entries via their `instruction` key
+    assert all(r.get("instruction") for r in from_warnings)
+    assert from_warnings[0]["instruction"].startswith("The robustness wording")
+    # the original explicit revision is still first (deterministic path priority)
+    assert revs[0]["instruction"].startswith('replace "robust"')
+
+
+@pytest.mark.asyncio
+async def test_merge_reviews_warning_identical_to_revision_not_duplicated(tmp_path):
+    instr = "Scope the conclusion to the tested configurations."
+    rr, sem = _write_merge_inputs(tmp_path, {
+        "status": "ok",
+        "warnings": [{"type": "overgeneralization", "section": "conclusion",
+                      "message": instr}],
+        "suggested_revisions": [{"section": "conclusion", "instruction": instr}],
+    })
+    out = await merge_reviews(review_report_path=str(rr), semantic_review_path=str(sem))
+    matching = [r for r in out["suggested_revisions"]
+                if (r.get("instruction") or "").strip() == instr]
+    assert len(matching) == 1, "exact-duplicate warning text must not be re-added"
+
+
+@pytest.mark.asyncio
+async def test_merge_reviews_warning_entries_collected_by_paper_refine(tmp_path):
+    rr, sem = _write_merge_inputs(tmp_path, {
+        "status": "ok",
+        "warnings": [{"type": "overclaim", "section": "abstract",
+                      "message": "Qualify the headline claim to the tested setup."}],
+        "suggested_revisions": [],
+    })
+    out = await merge_reviews(review_report_path=str(rr), semantic_review_path=str(sem))
+    merged = tmp_path / "review_merge_log.json"
+    import json as _j
+    merged.write_text(_j.dumps(out))
+
+    tex = "\\section{Abstract}\n% CLAIM:C1:NC1\nOur kernel is fast.\n\\end{document}\n"
+    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    edits = ('```json\n[{"find": "Our kernel is fast.", '
+             '"replace": "Our kernel is fast in the tested setup."}]\n```')
+    with patch("src.server.litellm.acompletion", new_callable=AsyncMock,
+               return_value=_mock_resp(edits)) as mocked:
+        ref = await paper_refine(tex_path=str(p), merged_review_path=str(merged))
+    assert ref["refined"] is True, (
+        "a warning-only review must still drive a refine pass (was: no-op)"
+    )
+    # the warning text reached the refiner prompt
+    sent = mocked.call_args.kwargs.get("messages") or mocked.call_args.args[0]
+    joined = " ".join(str(m) for m in sent)
+    assert "Qualify the headline claim" in joined

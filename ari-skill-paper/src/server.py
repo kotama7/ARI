@@ -2281,6 +2281,28 @@ async def merge_reviews(
         suggested_revisions.extend(
             r for r in (semantic.get("suggested_revisions") or []) if isinstance(r, dict)
         )
+        # `detected_overclaim_count` counts the review's `warnings`, but the
+        # refiner only consumes revision entries — a warning without a parallel
+        # suggested_revision would never reach paper_refine and the count could
+        # never decrease. Forward every warning as an advisory revision entry.
+        _seen_instr = {
+            (r.get("instruction") or "").strip()
+            for r in suggested_revisions
+            if isinstance(r, dict)
+        }
+        for w in semantic.get("warnings") or []:
+            if not isinstance(w, dict):
+                continue
+            msg = str(w.get("message") or "").strip()
+            if not msg or msg in _seen_instr:
+                continue
+            _seen_instr.add(msg)
+            suggested_revisions.append({
+                "section": w.get("section", ""),
+                "instruction": msg,
+                "source": "semantic_warning",
+                "warning_type": w.get("type", ""),
+            })
     if isinstance(hard_gate, dict):
         suggested_revisions.extend(_hard_gate_revisions(hard_gate))
 
