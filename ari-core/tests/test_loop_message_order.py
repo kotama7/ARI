@@ -1,4 +1,5 @@
-"""Tool-message protocol ordering (P1 of PLAN_claims_fulfillment_final).
+"""Tool-message protocol ordering (deferred user injections + window repair;
+see docs/concepts/publication-lifecycle.md).
 
 The API requires every assistant tool_calls message to be followed by its complete,
 contiguous block of tool responses. On 3 of 5 real runs the ROOT node died with

@@ -73,6 +73,15 @@ refine 後の論文で再度実行)、hard gate と semantic review の双方を
 
 ループの誠実さは 4 つの堅牢化が end-to-end で支えます:
 
+- **block は客観的虚偽に限定。** gate の always-block 層には決定論的に
+  検査できる所見だけが入ります（run 自身のデータと矛盾する数値、
+  不変条件違反、run 内のどこにも証拠が無い宣言済み claim）。主観的
+  所見 — LLM semantic review の overclaim / interpretation 警告 — は
+  設計上 advisory に留めます。LLM の判定は再現可能でないため、論文に
+  対する拒否権を持たせてはならないからです。主観的所見への対処は上記
+  review→refine ループで行い、post-refine review の生の解消数デルタで
+  「強制でなく計測」します。
+
 - **レビューフィードバックは確実に届く。** `merge_reviews` は semantic review の
   すべての warning を advisory な revision エントリとして `paper_refine` に転送します
   (対応する suggested revision を持たない warning は refiner に届かず、件数が

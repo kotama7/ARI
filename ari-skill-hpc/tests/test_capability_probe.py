@@ -1,4 +1,5 @@
-"""Platform capability probe (P2c of PLAN_claims_fulfillment_final).
+"""Platform capability probe (probe -> contract -> idea chain; see
+docs/concepts/bfts.md).
 
 Deterministic parts only — the srun path needs a real cluster (verified manually:
 the probe's exact check found an assumed profiler absent on a real partition). Covers output parsing, the

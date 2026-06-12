@@ -79,6 +79,17 @@ operands, missing evidence).
 
 Four robustness behaviours keep the loop honest end-to-end:
 
+- **Blocking is reserved for objective falsehoods.** The gate's
+  always-block tier contains only findings that are deterministically
+  checkable (a number the run's own data contradicts, an invariant
+  violation, a declared claim with no evidence anywhere in the run).
+  Subjective findings — the LLM semantic review's overclaim and
+  interpretation warnings — stay advisory by design: an LLM verdict is
+  not reproducible across runs, so it must never be able to veto a
+  paper. The remedy for subjective findings is the review→refine loop
+  above, measured (not enforced) via the post-refine review's raw
+  resolved-count delta.
+
 - **Review feedback actually lands.** `merge_reviews` forwards every
   semantic-review warning to `paper_refine` as an advisory revision
   entry (a warning without a parallel suggested revision would never
