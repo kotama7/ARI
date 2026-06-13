@@ -13,7 +13,7 @@ benchmark, and the panel-scale study they call for is deferred
 report are illustrative, generated from fixed-seed sample data so
 that the document build is reproducible.
 
-\subsection{End-to-end generation: a gate-verified sample paper}\label{sec:eval:sample}
+\subsection{Case study: a gate-verified sample paper}\label{sec:eval:sample}
 
 One end-to-end result is demonstrated and inspectable: the released
 sample paper, an eight-page study produced autonomously by a real
@@ -21,43 +21,103 @@ run. It studies compressed sparse row (CSR) sparse-dense matrix
 multiplication (SpMM), selecting a store policy across
 right-hand-side (RHS) widths under the guidance of a performance
 model (the paper's ``loopline'' model) fitted from the run's own
-measurements. Four observations make the run an existence proof for
-the verification machinery this report describes.
+measurements. We trace this run end to end (\cref{fig:case-study})
+because it is an existence proof for the verification machinery this
+report describes.
 
-First, all twelve falsifiable claims declared in the run's metric
-contract --- minted once at idea time and returned verbatim for the
-rest of the run (\cref{sec:paper:contract}) --- carried
-machine-verified experiment evidence: the final claim--evidence gate
-reported zero errors, so no number in the released paper outran what
-the gate could re-derive from recorded results. Second, the
-computed-evidence chain behind the paper's central selection ---
-parameter fitting, then held-out validation of the fit, then
-model-based selection among configurations --- executed through
-lineage-chained nodes (\cref{sec:exploration:lineage-chaining})
-rather than collapsing into repeated probes, so the failure mode
-that mechanism was introduced to close did not recur. Third,
-correctness was validated within the run against an independent
-dense single-precision (FP32) reference, with a maximum absolute
-error of $6.79\times10^{-6}$. Fourth, the semantic review flagged
-five overclaims in the draft; after the refine pass all five were
-resolved and none remained --- and because the resolved count is a
-raw before/after delta (\cref{sec:paper:contract}), a refine that
-had introduced new overclaims would have surfaced as a regression.
+\paragraph{Claim structure.}
+The run's metric contract --- minted once at idea time and returned
+verbatim for the rest of the run (\cref{sec:paper:contract}) ---
+declared twelve falsifiable claims. Nine are \emph{independent
+probes} that a single node measures directly: correctness against a
+dense reference, the store-policy comparison, an irregular-gather and
+a locality-destruction probe, a page-footprint (translation
+lookaside buffer, TLB) stress probe, a compute-rate probe, and
+bandwidth microbenchmarks. The remaining three form a
+\emph{computed-evidence chain} --- fit the performance model's
+parameters, cross-validate the fit on held-out probe measurements,
+then select a configuration from the fitted model --- where each
+claim consumes the output of the previous one rather than measuring
+something fresh.
 
-We read this result narrowly. Its value is the \emph{verified}
-property --- every quantitative claim in the released paper is bound
-to a recorded artefact and passed the deterministic gate --- not any
-headline number the paper reports; the paper itself hedges
-explicitly wherever a statement outruns its artefact grounding. The
-property is worth stating because earlier autonomous pipelines lack
-it: in the closest published predecessor, hallucination control is
-prompt-level, the automated review of a finished draft is advisory
-rather than blocking, generated papers were observed to hallucinate
-experimental details, and the authors list automatic verification of
-reported results as future work~\cite{lu2024ai}. A single verified
-run demonstrates that the contract, lineage chaining, gate, and
-review--refine loop compose end to end; it does not establish a
-distribution, which is exactly the controlled study deferred below.
+\paragraph{Lineage closure.}
+That chain is the case this run exists to demonstrate. A computed
+claim cannot be evidenced by a node that has no inputs, and three
+earlier runs confirmed the failure mode: nodes directed to fit the
+model from sibling probes re-ran a single probe instead and the
+chain claims stayed uncovered. Here the chain closed because a child
+node inherited its parent probe node's working directory and computed
+the fit, the cross-validation, and the selection from the inherited
+measurements --- lineage chaining
+(\cref{sec:exploration:lineage-chaining}) made ``compute from the
+data you already hold'' the locally available move. The final
+claim--evidence gate then found all twelve claims grounded and
+reported zero errors, so the paper was finalised.
+
+\paragraph{What the gate verified, and what the paper hedged.}
+The result's value is the \emph{verified} property, not any headline
+number: every quantitative claim the released paper asserts is bound
+to a recorded artefact and re-derived by the deterministic gate, and
+the paper hedges explicitly wherever a statement would outrun its
+artefact grounding (\cref{tab:case-study}). The paper restricts its
+strong quantitative claims to the correctness metric --- a maximum
+absolute single-precision (FP32) error of $6.79\times10^{-6}$ against
+an independent dense reference --- and presents the store-policy
+crossover, the bandwidth ceilings, and the model's numerical
+predictions as methodology rather than grounded outcomes. This
+honest scoping is the gate's effect, reinforced by the semantic
+review: that review flagged five overclaims in the draft and the
+refine pass resolved all five, with the resolved count recorded as a
+raw before/after delta (\cref{sec:paper:contract}) so that a refine
+introducing new overclaims would surface as a regression.
+
+\begin{table}[t]
+  \centering
+  \small
+  \begin{tabularx}{\columnwidth}{@{}p{0.30\columnwidth}X@{}}
+    \toprule
+    \textbf{Reported as grounded} & Correctness: max absolute FP32 error
+      $6.79\times10^{-6}$ versus an independent dense reference; all
+      twelve declared claims carry emitted evidence; the
+      computed-evidence chain executed. \\
+    \addlinespace
+    \textbf{Explicitly hedged} & Store-policy crossover values,
+      double-precision error, measured bandwidth ceilings, and the
+      performance model's numerical predictions --- stated as
+      methodology and marked not artefact-grounded in this revision. \\
+    \bottomrule
+  \end{tabularx}
+  \caption{The released sample paper asserts only gate-grounded numbers
+    and hedges the rest in its own text --- the deterministic gate and
+    the review--refine loop scoping the paper to what the run can
+    support.}
+  \label{tab:case-study}
+\end{table}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F21_case_study.tex}}
+  \caption{The case-study run as a worked example of the
+    claim--evidence contract. Twelve declared claims split into nine
+    independent probes and a three-claim computed chain; the chain is
+    closed by lineage --- a child node inherits its parent probe
+    node's working directory and computes the fit, cross-validation,
+    and selection from the inherited measurements --- after which the
+    deterministic gate finds every claim grounded and the paper is
+    finalised.}
+  \label{fig:case-study}
+\end{figure}
+
+We read this result narrowly. The property is worth stating because
+earlier autonomous pipelines lack it: in the closest published
+predecessor, hallucination control is prompt-level, the automated
+review of a finished draft is advisory rather than blocking,
+generated papers were observed to hallucinate experimental details,
+and the authors list automatic verification of reported results as
+future work~\cite{lu2024ai}. A single verified run demonstrates that
+the contract, lineage chaining, gate, and review--refine loop compose
+end to end; it does not establish a distribution, which is exactly
+the controlled study deferred below.
 
 \subsection{Properties holding by construction}\label{sec:eval:construction}
 
