@@ -225,10 +225,12 @@ def run(
     # GUI-supplied caps (ARI_MAX_NODES etc.) must win over profile defaults.
     from ari.config import (
         apply_bfts_env_overrides, apply_evaluator_env_overrides,
+        apply_handoff_env_overrides,
         export_resolved_config_to_skill_env,
     )
     apply_bfts_env_overrides(cfg)
     apply_evaluator_env_overrides(cfg)
+    apply_handoff_env_overrides(cfg)
     # Bridge the resolved config (model / backend / base_url / partition) to the env
     # vars skill subprocesses read, so a bare CLI run configures skills like the GUI
     # does — without this the idea skill fell back to Ollama and the HPC skill to
