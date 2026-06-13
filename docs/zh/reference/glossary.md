@@ -14,7 +14,13 @@ sources:
     role: implementation
   - path: ari-skill-paper-re
     role: implementation
-last_verified: 2026-05-26
+  - path: ari-core/ari/pipeline/claim_gate
+    role: implementation
+  - path: ari-core/ari/pipeline/verified_context.py
+    role: implementation
+  - path: ari-skill-memory
+    role: implementation
+last_verified: 2026-06-10
 ---
 
 # 术语表
@@ -90,9 +96,19 @@ BFTS 中的硬性截断谓词：当 `current_total ≥ max_total_nodes`、
 [Rubric 模式](rubric_schema.md)。
 
 **lineage decision (谱系决策)**
-当复合分数停滞时，一个 BFTS 钩子会请求 LLM 选择
-`continue` / `switch_to_idea` / `fanout` / `terminate`。参见
+当复合分数停滞时，一个 BFTS 钩子会*首先*以确定性方式，通过 `switch_to_idea`
+转向最强的*未使用*次优想法 —— 这样次优想法会被真正尝试，而不是未经使用便被搁置。
+LLM 评判器（它从 `continue` / `switch_to_idea` / `fanout` / `terminate` 中选择）
+仅作为回退被征询 —— 当预算耗尽、达到递归上限，或没有剩余的未使用备选时。参见
 [架构 → Plan / Venue 契约](../concepts/architecture.md#plan--venue-contract-v070)。
+
+**claim-evidence gate (主张-证据门)**
+一个确定性的、不使用 LLM 的门（`claim_evidence_hard_gate`）。它在容差范围内从记录的结果
+重新推导论文中报告的每个数字，并检查数值覆盖率 / 操作数解析 / 图表存在性。默认在 `warn`
+（仅报告）模式下启用；设置 `claim_gate_policy.mode: strict`（或
+`ARI_CLAIM_GATE_MODE=strict`）即可在出现阻断性错误时阻止 finalize。当 `comparison_scope`
+为 `any`（默认）时，跨环境比较被视为透明性警告；为 `same_environment` 时，它会成为阻断性
+错误。参见 [配置](configuration.md)。
 
 ## 内存
 
@@ -108,6 +124,13 @@ BFTS 中的硬性截断谓词：当 `current_total ≥ max_total_nodes`、
 **Letta**
 自 v0.6.0 起使用的内存后端（前身为 MemGPT）。每个检查点都获得一个专属的代理，持有两个集合：`ari_node_<hash>`（祖先范围的归档）和 `ari_react_<hash>`（扁平 ReAct 轨迹）。参见
 [内存架构](../concepts/memory.md)。
+
+**verified context / verifiable research memory (已验证上下文 / 可验证研究内存)**
+构建于 Letta 之上的一个带类型、带 sha256 来源的层。在节点结束时，`node_report.json` 会被
+整合为带类型、带来源的记录（`experiment_result` / `failure_case` / `reflection`）；随后
+论文流水线据此推导出一个以产物为依据的 `verified_context.json`（范围限定为最佳节点的
+root→best 谱系），从而将论文主张接地到实际测量到的内容上。通过 `ARI_MEMORY_CONSOLIDATE`
+默认启用。参见 [可验证研究内存](../concepts/verifiable_research_memory.md)。
 
 ## 代理与技能
 

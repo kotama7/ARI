@@ -12,6 +12,8 @@ Modules:
 - ``lineage_decision`` — LLM judge for ``continue`` / ``switch_to_idea``
   / ``fanout`` / ``terminate`` (v0.7.0).
 - ``root_idea_selector`` — picks the seed idea from ``idea.json``.
+- ``web_provenance`` — read/write the ``bfts_web_provenance.json`` marker that
+  records web search being opted into during exploration (P5 trajectory caveat).
 - ``node_report/`` — per-node report builder and v0.5 legacy
   reconstruct path (split in Phase 3E).
 

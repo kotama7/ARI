@@ -61,7 +61,10 @@ def _write_tikz() -> None:
         return
     TIKZ.parent.mkdir(parents=True, exist_ok=True)
     body = subprocess.check_output(
-        ["dot2tex", "--figonly", "--crop", "-tmath", str(DOT)],
+        # texmode=verbatim (not -tmath): plain upright label text. -tmath put
+        # every label in math mode, which italicised words and dropped the
+        # inter-word space in "PaperBench rubric" (-> "PaperBenchrubric").
+        ["dot2tex", "--figonly", "--crop", "--texmode=verbatim", str(DOT)],
         text=True,
     )
     TIKZ.write_text(AUTOGEN_HEADER + body, encoding="utf-8")

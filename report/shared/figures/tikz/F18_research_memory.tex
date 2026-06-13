@@ -1,0 +1,47 @@
+% F18: verifiable research memory as a TYPED INDEX OVER EVIDENCE (not a flow).
+% Left column: the per-node evidence (node_report.json as the source of
+% truth; append-only reproduction events). Middle column: a deterministic,
+% LLM-free consolidation step populates the typed store, which references
+% the grounding artefacts by content hash. Right column: the SAME store is
+% read two ways --- a working context injected at every node start (the
+% exploration path) and, behind the admissibility predicate usable(mu), a
+% verified context that may ground paper claims. The single accent edge is
+% the gate's admission into the verified context.
+% House layout/styles come from _style.tex below; the legacy baseline
+% style.tikzstyles is loaded by shared/preamble.tex / the standalone wrapper.
+% _style.tex is resolved from the BUILD cwd: report/<lang>/ for the main
+% documents (../shared/...), report/ for the figure renderer (shared/...).
+\IfFileExists{../shared/figures/tikz/_style.tex}%
+  {\input{../shared/figures/tikz/_style.tex}}%
+  {\input{shared/figures/tikz/_style.tex}}%
+\begin{tikzpicture}[aricanvas]
+
+  % --- column 1: per-node evidence ------------------------------------
+  \node[ariboxwide, fill=phaseexp]                    (report) {\figlabel{F18.report}};
+  \node[ariboxwide, fill=phasegate, below=of report]  (repro)  {\figlabel{F18.repro}};
+  \node[ariphase, above=0.35cm of report] (h1) {\figlabel{F18.head.evidence}};
+  \pic at ([xshift=-2.5mm]h1.west) {ariglyph flask};
+
+  % --- column 2: deterministic consolidation into the typed store ------
+  \node[ariboxwide, right=of repro]        (store) {\figlabel{F18.store}};
+  \node[aribox exp, above=of store]        (cons)  {\figlabel{F18.consolidate}};
+  \node[ariboxwide, below=1.4cm of store]  (arts)  {\figlabel{F18.artifacts}};
+  \node[ariphase, above=0.35cm of cons] (h2) {\figlabel{F18.head.store}};
+
+  % --- column 3: two readers of the SAME store -------------------------
+  \node[ariboxwide, fill=phaseexp, right=of store]     (workctx) {\figlabel{F18.workctx}};
+  \node[aribox gate, below=of workctx]                 (usable)  {\figlabel{F18.usable}};
+  \node[ariboxwide, fill=phasepaper, below=of usable]  (vctx)    {\figlabel{F18.vctx}};
+  \node[ariphase, above=0.35cm of workctx] (h3) {\figlabel{F18.head.readers}};
+  \pic at ([xshift=-2.5mm]h3.west) {ariglyph gate};
+
+  % --- edges ------------------------------------------------------------
+  \draw[ariarrow] (report) -- (cons);
+  \draw[ariarrow] (cons)   -- (store);
+  \draw[ariarrow] (repro)  -- node[arinote, below=3pt] {\figlabel{F18.fold}} (store);
+  \draw[ariarrow muted] (store) -- node[arinote] {\figlabel{F18.refs}} (arts);
+  \draw[ariarrow] (store)  -- (workctx);
+  \draw[arielbow vh] ([xshift=11mm]store.south) to (usable.west);
+  \draw[ariarrow accent] (usable) -- (vctx);
+
+\end{tikzpicture}

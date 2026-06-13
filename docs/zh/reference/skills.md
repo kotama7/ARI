@@ -12,7 +12,7 @@ sources:
     role: implementation
   - path: ari-skill-paper-re/mcp.json
     role: config
-last_verified: 2026-05-26
+last_verified: 2026-06-10
 ---
 
 # MCP 技能参考
@@ -108,6 +108,51 @@ result = survey("OpenMP compiler optimization HPC benchmarks")
 
 模型：`ARI_LLM_MODEL` 环境变量 > `LLM_MODEL` 环境变量 > `ollama_chat/qwen3:32b`。
 
+#### VirSci-live (vendor-wrap) — 可选的真实引擎
+
+`generate_ideas` 在同一份想法契约背后有两个可互换的引擎。默认（**reimpl**，行为不变）
+运行轻量级的再实现讨论循环。可选（**real_wrap**）则改为运行 VirSci 的*真实*机制 ——
+来自同捆且**未改动**的 `vendor/virsci` 的 `Platform.select_coauthors`（freshness 团队组建）
++ `Team.generate_idea`（多智能体讨论）—— 并以一份**实时**的 Semantic Scholar 快照
+（语料 + SPECTER2 余弦检索索引 + 作者画像 + 合著者图）为基底。
+
+- **默认关闭** = 行为与之前逐字节一致。启用方式：环境变量 `ARI_IDEA_VIRSCI_REAL=1`、
+  CLI 标志 `--virsci-live`，或 GUI 实验向导的 "VirSci live" 开关（Scope/Resources 步骤；
+  持久化到 `launch_config.json`）。
+- **安全降级。** 当依赖缺失（`virsci` pip extra 不存在）或发生任何运行时错误时，
+  技能回退到 reimpl 循环。两条路径的 `idea.json` 契约完全一致。此外，实时快照构建现在会
+  **在空的 / 0 篇论文的 S2 拉取时显式失败**（429 限流、网络故障或无搜索命中）：与其静默写入一份
+  带占位作者的「成功」0 篇清单——那会让 VirSci 在完全无接地的情况下运行却被记为 `real_wrap` 成功
+  ——它会抛出异常，使 `generate_ideas` **可见地** 降级到 reimpl 循环。`n_papers == 0` 的已缓存清单
+  被视为被污染的缓存，绝不复用（会重建）。当主题 `/paper/search` 被限流（S2 429）但 survey 已经
+  审定过 paperId 时，构建会通过 `/paper/batch`（按 id 检索，更有针对性且更不易被限流）拉取一份种子
+  语料来恢复，并将其记录到 `virsci_snapshot/snapshot_manifest.json` 的 `seed_fallback` 字段。
+- **路径报告。** `idea.json` 记录 `virsci_integration_status`：vendor 引擎运行时为
+  `"real_wrap"`，使用 reimpl 循环时为（附带原因的）`"reimpl: …"`。
+- **LLM：** 讨论遵循按 phase 的 Idea 模型（`ARI_MODEL_IDEA`）；引擎调用经由 litellm 路由，
+  因此 ARI 的 cost tracker 会捕获它们。
+- **范围：** 单一实时快照 —— 无 era 拆分 / 无 paper-parity（这些是 VirSci 回溯式基准的产物，
+  不在范围内）。freshness/diversity 来自 S2 作者画像 + 合著者图。
+- **依赖：** `virsci` pip extra（faiss-cpu、transformers、torch、loguru、sqlalchemy）；
+  SPECTER2 权重在运行时获取；需要 `SEMANTIC_SCHOLAR_API_KEY` / `S2_API_KEY`
+  （用于 `embedding.specter_v2`）以及一个 OpenAI 兼容的 LLM 端点（ARI CLI 垫片）。
+
+环境变量（仅开关为必需，其余可调 —— 见
+[环境变量](environment_variables.md)）：
+
+| 变量 | 默认值 | 用途 |
+|---|---|---|
+| `ARI_IDEA_VIRSCI_REAL` | 未设置 (off) | 切换 real vendor-wrap 路径 |
+| `ARI_IDEA_VIRSCI_K` | `7` | 讨论轮数（vendor `group_max_discuss_iteration`） |
+| `ARI_IDEA_VIRSCI_TEAM_SIZE` | `3` | 团队最大成员数（vendor `max_teammember`） |
+| `ARI_IDEA_VIRSCI_N_AUTHORS` | `16` | `select_coauthors` 的作者池 |
+| `ARI_IDEA_VIRSCI_N_PAPERS` | `800` | SPECTER2 检索语料规模 |
+| `ARI_IDEA_VIRSCI_MAX_TEAMS` | `n_ideas` | 投入 `generate_idea` 的团队数上限 |
+| `ARI_IDEA_VIRSCI_SPECTER2_MODEL` | `allenai/specter2_base` | 本地查询嵌入器 |
+
+`ari run` 上的 CLI 标志：`--virsci-live` / `--no-virsci-live`、`--virsci-k`、
+`--virsci-team-size`、`--virsci-n-authors`、`--virsci-n-papers`。
+
 ---
 
 ## ari-skill-evaluator
@@ -129,7 +174,22 @@ result = make_metric_spec(open("experiment.md").read())
 # }
 ```
 
+`make_metric_spec` 还会从想法的 `primary_metric`、其结构化的 `falsifiable_claims`，以及
+`correctness_required` / `ceiling_must_be_measured` 要求标志，构建一份 **想法所有的 run 级
+`metric_contract`**，并持久化到 `{checkpoint}/metric_contract.json`（位于 `idea.json` / `tree.json`
+旁边）。该契约由想法所有，因此智能体无法删除某个 claim 或要求来规避检查；它由
+`transform-skill::nodes_to_science_data` 读回并 graft 到 `science_data.metric_contract`，再由确定性的
+硬门强制执行。
+
 模型（回退）：`ARI_MODEL` 环境变量 > `gpt-4o-mini`。
+
+#### `claim_evidence_hard_gate(checkpoint_dir, paper_path, science_data_json="", paper_claim_links_path="", figures_manifest_json="", policy=None, phase="draft")`
+
+确定性的声明/证据硬门（执行数据保真度）。**无 LLM**。验证 science_data 声明所引用的节点确已执行，从 `results.json` 重新计算 `numeric_assertions` 并在容差内核对论文报告的数值，按章节策略检测未覆盖的结果数值，并检查图表是否存在。它是 ari-core `run_hard_gate`（`ari.public.claim_gate`）之上的 MCP 薄包装。在 strict 模式下，当存在阻塞性错误时 `final` 阶段返回 `{"error": ...}`，使阶段运行器抛出异常并跳过 `finalize_paper`；`draft` 阶段以及 warn/off 模式从不阻塞。写出 `evaluation/claim_evidence_hard_gate_{phase}.json`。
+
+#### `evidence_grounded_semantic_review(checkpoint_dir, paper_path, science_data_json="", hard_gate_path="", paper_claim_links_path="", phase="initial")`
+
+非阻塞的、以证据为基础的语义评审。**LLM：是**。LLM 基于硬门证据检测过度声明 / 解释性问题 / 未注册的强声明，而**不**触碰独立的文本审稿人；它不重新核对数值。输出供 `paper_refine` 消费的 `suggested_revisions` 以及评分。写出 `evaluation/evidence_grounded_semantic_review.json`。从不阻塞。
 
 ---
 
@@ -226,6 +286,23 @@ viz API `/api/rubrics` 和 New Experiment 向导下拉菜单会用到。
 #### `merge_reviews(review_report_path, vlm_review_path="")` — v0.7.0
 
 将 `review_report.json`（文本评审）与 `vlm_review.json`（VLM 图表评审）做事后结构合并。完全确定性、无 LLM。附加 `vlm_figure_review` 与 `_review_composition` 元数据，使 GUI / CLI 能附带来源标注同时显示两类输出。上游阶段保持独立（与 AI Scientist v2 `perform_review` 契约一致），在此处方完成对账。
+
+#### `link_paper_claims(tex_path="", science_data_json="", figures_manifest_json="", output_path="")` — v0.9.0
+
+将 `% CLAIM:Cx:NCx` 锚点与 science_data 声明对账，并构建供 claim 硬门消费的
+`paper_claim_links.json`（anchors / writer_assertions / numeric_mentions /
+figure_refs / unresolved_anchors / uncovered_numeric_candidates）。**确定性、无 LLM**。
+transform 阶段的 `science_data.json` 从不被改动；图表绑定记录在此。在 `write_paper`（草稿）之后运行一次，
+并在 `paper_refine`（终稿）之后再运行一次。失败时降级为一份合法的空结果（绝不仅输出 error），
+因此它不会级联跳过 finalize 链。
+
+#### `paper_refine(tex_path="", suggested_revisions_json="", merged_review_path="", semantic_review_path="", venue="arxiv")` — v0.9.0
+
+保留锚点的修订流程，应用（来自 `evidence_grounded_semantic_review` / 合并评审的）
+`suggested_revisions`。**LLM：是**。显式的 `replace "X" with "Y"` 替换先确定性地应用，
+随后由有界的多趟 LLM 查找/替换处理其余部分；草稿中存在的每一个 `% CLAIM` 锚点都必须存活
+（丢弃锚点的编辑会被拒绝，且当锚点净损失时保留原始论文）。数学安全的下划线转义会跳过
+`\( … \)` / `\[ … \]` 与数学环境。精修后的 LaTeX 在 `latex` 下返回（草稿保留为 `full_paper.draft.tex`）。
 
 ##### Few-shot 语料库管理
 
@@ -359,6 +436,50 @@ v0.7.0 引入的 PaperBench 形式 **自动 rubric 生成与审计**。读取论
 
 返回 Letta 核心记忆中种入的稳定事实（`experiment_goal`、`primary_metric`、`hardware_spec` 等）。种入仅在首个节点的 `generate_ideas` 完成时（即 `primary_metric` 被确定的时刻）执行一次，在此之前调用会返回 `{}`。之后可安全反复调用（带 60 秒进程内缓存）。
 
+#### 类型化的可验证研究记忆工具
+
+类型化条目（Phase 1）携带结构化来源信息，使论文 / 图表阶段能够将声明接地到可复现的产物上。
+调用方是 loop/pipeline 钩子，而非 LLM 拉取。每个写入工具都受 **Copy-on-Write 保护**：`node_id`
+必须等于 `$ARI_CURRENT_NODE_ID`（ari-core MCPClient 通过 `_set_current_node` 桥接路由写入），
+因此子节点无法改动祖先的条目。
+
+#### `add_experiment_result(node_id, text, metric_ptr=None, artifact_refs=None, node_report_ref=None)`
+
+记录一条类型化的 `experiment_result`（CoW：仅自身节点）。
+
+#### `add_failure_case(node_id, text, artifact_refs=None, node_report_ref=None)`
+
+记录一条类型化的 `failure_case`（CoW：仅自身节点）。
+
+#### `add_procedure_memory(node_id, text, node_report_ref=None)`
+
+记录一条可复用的流程（CoW：仅自身节点）。
+
+#### `add_reflection(node_id, text, confidence=None, node_report_ref=None)`
+
+记录一条反思（CoW：仅自身节点）。不可用于论文声明。
+
+#### `add_reproducibility_event(node_id, target_memory_id, status, artifact_refs=None, text=None)`
+
+针对一条已有条目追加一个仅追加的可复现性状态事件（CoW：仅自身节点）。
+
+#### `search_research_memory(query, ancestor_ids, kinds=None, require_artifacts=False, limit=5)`
+
+祖先作用域的类型化搜索，按 `kind` / 产物有无过滤。兄弟与子节点永远不会返回。
+
+#### `get_verified_context(ancestor_ids, purpose="paper", limit=None)`
+
+供论文 / 图表使用的、产物支撑且可复现性感知的上下文。
+
+#### `audit_memory(experiments_root, run_id=None)`
+
+将记录的来源（sha256）与检查点磁盘上的内容核对验证。返回 `{summary, results}`。
+
+#### `consolidate_node_memory(node_id, node_report, work_dir, run_id=None)`
+
+在节点结束时通过类型化写入器从 `node_report` 导出并写入类型化记忆（`experiment_result` /
+`failure_case` / `reflection`）（CoW：仅自身节点）。调用方是 ari-core 的节点结束钩子。
+
 存储：每个检查点拥有一个 Letta 代理（两个集合 `ari_node_*` 与 `ari_react_*`）。可移植快照位于 `{ARI_CHECKPOINT_DIR}/memory_backup.jsonl.gz`，写/读遥测位于 `{ARI_CHECKPOINT_DIR}/memory_access.jsonl`。v0.5.x 的 JSONL 存储（检查点级 `memory_store.jsonl` 以及曾经位于 `$HOME/.ari/` 下的遗留全局 JSONL）已在 v0.5.0 移除；使用 `ari memory migrate --react` 迁移。跨实验“全局记忆”已弃用。
 
 ---
@@ -415,6 +536,8 @@ configurations[*]:
                                                         C: _params_dict)
   metrics                                            ← 兼容性 flat union
   _typed_source: "results.json" | "llm_evaluator" | (无)
+  _provenance  ← 该节点 results*.json 各变体中
+                  emit_results 的 _provenance 的并集（存在时）
 per_key_summary  (输入参数键 & 「_…」保留键被排除)
 summary_stats    { count, primary_metric, direction,
                    primary_metric_best, primary_metric_n,
@@ -427,6 +550,11 @@ experiment_context, implementation_overview, report_driven
 1. `experiments/{run_id}/{node_id}/results.json` — 由 `coding-skill::emit_results` 写入（D 契约）
 2. `node.metrics::_params_dict` / `_measurements_dict` — LLM evaluator 在 `MetricSpec.expected_params` 设置下输出（C 契约）
 3. 旧路径：`parameters: {}`，扁平 `metrics` 容纳所有内容
+
+它还会读回 `{checkpoint}/metric_contract.json`（由 `evaluator-skill::make_metric_spec` 写在 `tree.json`
+旁边）并将其 graft 到 `science_data.metric_contract`，以便确定性的硬门强制执行声明的契约（claims /
+correctness / `required_measured` / 声明的 invariant）——若没有此 graft，声明的契约就是 inert 的，
+只有 universal invariant 注册表能到达硬门。
 
 **鲁棒性**：LLM 响应解析器剥离 `<think>` 块和 ` ```json ` 围栏，然后从每个候选 `{` 走匹配大括号，按长度降序尝试 `json.loads`。可以救援 `{...} prose {...}` 类型的形状。失败时将原始响应保存到 `{checkpoint_dir}/science_data.debug.txt` 以便事后审计。
 
@@ -464,6 +592,12 @@ experiment_context, implementation_overview, report_driven
 `ari.publish.publish` 的 MCP 薄包装。从 `ear_published/` 构建可复现 tarball（条目排序、mtime/uid/gid 归一化），交由后端（`ari-registry` / `gh` / `zenodo` / `local-tarball`）发布，并将 `publish_record.json` 写入 checkpoint 根目录。首发布始终为 `visibility=staged`（FR-P5）；只有 `auto_promote=true` 且可复现性检查通过时才能晋升为 public。
 
 `ARI_PUBLISH_DRYRUN=1` 强制 dry-run（CI 安全开关）。
+
+#### `promote_ear(checkpoint_dir, target="public")` — v0.7.0
+
+将先前已发布的 EAR 产物晋升到更宽的可见性层级。`ari.publish.promote` 的 MCP 薄包装。
+**确定性、无 LLM**。返回 `{ref, visibility, promoted_at, promote_failed_at}`（或在
+`PublishError` 时返回 `{error, kind}`）。
 
 #### LICENSE 模板 — v0.7.0
 
@@ -549,6 +683,12 @@ result = read_file("results.csv", offset=0, limit=100)
 
 工作目录：`work_dir` 参数 > `ARI_WORK_DIR` 环境变量 > `/tmp/ari_work`。
 
+#### `emit_results(params, measurements, predictions={}, scores={}, provenance={}, file="results.json", work_dir="/tmp/ari_work")`
+
+写出一份将输入参数与测量输出分离的类型化 `results.json`，使下游（`transform → science_data`、论文撰写、summary stats）不会把「测量到的量」与「运行所用的条件」混淆，避免 best-of 归约把输入尺寸（`nnz`、`M`、`K`、`threads`）误选为真实指标（如 `GFlops_per_s`）。`params` 与 `measurements` 必须 disjoint。
+
+可选的 `provenance` 参数是一个 `{operand: source}` 映射，会被原样写入 `results.json` 的 `_provenance` 键，由 claim/指标正确性门消费。当某个操作数的值是经验**测量**得到的上限/峰值时，标注 `"microbench"` 或 `"benchmark"`（以免归一化指标被判定为依赖占位值）；当它是相对于**独立**参考计算出的残差时，标注 `"correctness"` 或 `"reference"`（以免输出被判定为未经验证）。尽力而为，为空时完全省略。
+
 ---
 
 ## ari-skill-benchmark
@@ -584,6 +724,8 @@ result = read_file("results.csv", offset=0, limit=100)
 #### `generate_figures_llm(nodes_json_path, output_dir, experiment_summary="", context="", n_figures=3, science_data_path="", vlm_feedback="")`
 
 LLM 检视数据形状与自然语言 `intent`，编写 matplotlib 代码，在与确定性模式相同的 `_run_plot_code` 沙箱中执行，并（可选地）调用 VLM 为生成的图添加 caption。P2 例外。
+
+`kind="plot"` 的系统提示现在会强制一条 **LAYOUT** 规则（调用 `fig.tight_layout()` 并以 `bbox_inches='tight'` 保存、把图例放在坐标轴之外、旋转过长的刻度标签；文字重叠或被截断的图会被 **REJECTED**）以及一条 **COMPARABILITY** 规则（不要在没有明确坐标轴或注释的情况下，把不同尺度/不同区间测得的值并置）。这些是给编写图表的 LLM 的提示级指引，不会新增机械式门。
 
 ### 环境变量
 

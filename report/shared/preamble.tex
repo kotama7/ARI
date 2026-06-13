@@ -96,6 +96,7 @@
 \usepackage{longtable}
 \usepackage{array}
 \usepackage{tabularx}
+\usepackage{pdfpages}
 \usepackage{caption}
 \captionsetup{font=small,labelfont=bf}
 
@@ -253,6 +254,19 @@
 % Algorithmic dialect tweaks: short keywords + no end-line.
 \algrenewcommand\algorithmicrequire{\textbf{Input:}}
 \algrenewcommand\algorithmicensure{\textbf{Output:}}
+% The ALG@line counter resets to 1 in every algorithmic environment, so the
+% hyperref PDF destinations it generates (ALG@line.1, ALG@line.2, ...) collide
+% across algorithms and the pdf backend warns about duplicate destinations.
+% Prefix the hyperref anchor key (theH...) with the enclosing algorithm float
+% number so each destination is globally unique. Visible line numbers are
+% emitted separately via \arabic{ALG@line} and are unaffected; we override only
+% the PDF-destination expansion that hyperref consumes (\theHALG@line), defined
+% lazily at begin-document so it wins over hyperref's auto fallback.
+\makeatletter
+\AtBeginDocument{%
+  \def\theHALG@line{\thealgorithm.\arabic{ALG@line}}%
+}
+\makeatother
 
 % ----------------------------------------------------------------- hyperref last
 \usepackage[colorlinks=true,linkcolor=ari-blue,citecolor=ari-blue,urlcolor=ari-vermilion]{hyperref}

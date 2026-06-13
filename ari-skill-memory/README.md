@@ -39,6 +39,26 @@ fallback (SQLite pip path).
 | `clear_node_memory(node_id)` | Debug-only per-node clear (same CoW rule as write). |
 | `get_experiment_context()` | Stable facts from Letta core memory — goal, primary metric, hardware, etc. |
 
+### Typed verifiable-research-memory tools
+
+The artifact-grounded / reproducibility-aware layer (`writer.py`,
+`retriever.py`, `context_builder.py`, `consolidation.py`, `audit.py`,
+`provenance.py`, `schemas.py`) feeding v0.9.0's verified-claims gate. Write
+tools are CoW-guarded (`node_id` must equal `$ARI_CURRENT_NODE_ID`); callers
+are loop/pipeline hooks, not LLM pulls.
+
+| Tool | Description |
+|------|-------------|
+| `add_experiment_result(node_id, text, metric_ptr, artifact_refs, node_report_ref)` | Record a typed `experiment_result` entry. |
+| `add_failure_case(node_id, text, artifact_refs, node_report_ref)` | Record a typed `failure_case` (a limitation, not a claim). |
+| `add_procedure_memory(node_id, text, node_report_ref)` | Record a reusable `procedure`. |
+| `add_reflection(node_id, text, confidence, node_report_ref)` | Record a `reflection` — not usable for paper claims. |
+| `add_reproducibility_event(node_id, target_memory_id, status, artifact_refs, text)` | Append-only repro status event; never mutates the target. |
+| `search_research_memory(query, ancestor_ids, kinds, require_artifacts, limit)` | Ancestor-scoped typed search, filtered by kind / artifact presence. |
+| `get_verified_context(ancestor_ids, purpose, limit)` | Artifact-grounded, repro-aware context for paper/figure use. Returns `usable_for_claims` = grounded and not `rerun_failed`. |
+| `audit_memory(experiments_root, run_id)` | Verify recorded provenance (sha256) against disk for a checkpoint. |
+| `consolidate_node_memory(node_id, node_report, work_dir, run_id)` | Derive + write typed memory from a `node_report` at node end (CoW: self). |
+
 ## Library API
 
 The backend is also importable in-process by `ari-core` (viz, pipeline):
@@ -105,8 +125,13 @@ ari memory compact-access [--checkpoint ...]
 
 ```bash
 PYTHONPATH=src:tests pytest -q
-# 24 passed — ancestor scope, CoW, access log, ReAct trace, backup/restore, isolation, score contract
 ```
+
+Coverage spans ancestor scope, CoW, access log, ReAct trace, backup/restore,
+isolation, and score contract, plus the typed research-memory layer
+(`test_research_memory_phase1`, `test_research_memory_typed`,
+`test_consolidation`, `test_verified_context`, `test_archival_pagination`,
+`test_server_typed_tools`).
 
 Unit tests run against `InMemoryBackend` (and a `FakeLettaClient` for
 `LettaBackend`-specific paths); no running Letta server required.

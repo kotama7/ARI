@@ -4,51 +4,147 @@ ARI を 4 つの先行研究の流れに対して位置付ける。
 
 \subsection{コードのための木探索}\label{sec:related:treesearch}
 
-AIDE \cite{jiang2025aide} は ML 工学を計画・コード・デバッグ状態
-上の木探索として形式化する;AlphaCode \cite{li2022competition}
-は競技プログラミングに対する大規模生成・濾過の規範的参照であり;
-MLE-bench 評価器 \cite{chan2024mle} はいまや ML 工学エージェント
-を計測する標準である。ARI は AIDE から BFTS の骨格を継承するが、
-(i) LLM 駆動の候補選択器(\cref{sec:exploration:node-selection})—
-閉形式のスカラー効用を固定せず、選択プロンプトが
-\texttt{has\_real\_data}、metrics 全体、深さ、
-ソフト \texttt{diversity\_bonus} を一括重み付けできる —、
-および
-(ii) 実行間の系譜(\cref{sec:exploration:lineage})— AIDE も
-MLE-bench も形式化していない — を追加している。
+AIDE \cite{jiang2025aide} は機械学習工学をコード最適化として捉える
+——解はステートレスな目的関数で採点されるスクリプトであり——、試行錯誤
+を、draft・debug・improve の辺で結ばれたスクリプトの木上の探索として
+形式化する。MLE-bench \cite{chan2024mle}——実際のメダル閾値に対して採点
+される 75 件のオフライン Kaggle コンペティション——において、この
+scaffold は支配的である:同一モデルが、2 つの汎用 scaffold の下では
+0.8\% と 4.4\% のコンペでメダルを獲得するのに対し、AIDE の下では 8.7\%
+のコンペでメダルを獲得する。したがって scaffold の設計が、素のモデル
+能力を上回る。ARI は解の木の骨格を継承するが、AIDE のハードコードされた
+貪欲方策——AIDE の著者自身が局所最適のリスクとして指摘している——を、
+LLM 駆動の選択器(\cref{sec:exploration:node-selection})で置き換える。
+この選択器は \texttt{has\_real\_data}、metrics 全体、深さ、ソフトな
+\texttt{diversity\_bonus} を一括で重み付けし、さらに
+\cref{sec:exploration:lineage} の実行間系譜を追加する。また、両研究が
+目的関数をタスクとともに受け取る——MLE-bench の著者が認めるように、実際の
+研究は「明確な問題設定さえ持たないかもしれない」——のに対し、ARI は自ら
+それを鋳造する:metric contract(\cref{sec:paper:contract})が、何を
+エビデンスとして数えるかを探索に先立って宣言する。
+
+AlphaCode \cite{li2022competition} は generate-and-filter の規範的な
+成果である:1 問あたり最大で数百万のプログラムをサンプリングし、タスク
+付属の example test で濾過し、最大で 10 件の提出にクラスタリングして、
+10 件の模擬 Codeforces コンテストにわたり平均で参加者の上位 54.3\% に
+到達する。このレシピは、安価でタスクが供給する検証器を前提とする;
+ARI の候補は、与えられた検証器なしにクラスタ資源上で実行される実験で
+あるため、広さは小さなフロンティアの best-first な舵取りに、安価な濾過は
+実行自身のエビデンスに対する決定論的チェックに、それぞれ取って代わられる。
 
 \subsection{自律研究エージェント}\label{sec:related:autonomous}
 
-AI~Scientist ファミリ \cite{lu2024ai,lu2026towards} は同様のループ
-(idea $\to$ experiment $\to$ paper)をエンドツーエンドで閉じる
-が、ルブリックと改稿サイクルを第一級オブジェクトとして露出させ
-ない。VirSci \cite{su2024many} は複数の科学者ペルソナを模擬し、
-彼らの合意で出力を採点する;Agent~Laboratory
-\cite{schmidgall2025agent} はエージェントを駆動者ではなく協働者
-として扱う。ARI は二点の運用面で異なる:\textbf{すべてがチェッ
-クポイントの中で生きる}(P1 / P4)、そしてルブリックが探索と執
-筆の間の契約である。
+AI~Scientist ファミリ \cite{lu2024ai,lu2026towards} は、同様のループ
+(idea $\to$ experiment $\to$ paper)を、報告では 1 論文あたり \$15 未満の
+コストでエンドツーエンドに閉じ、実際の学会投稿に対して人間に近い均衡精度
+を持つ自動査読器を備える。しかしその査読器は\emph{助言的}である——完成
+した PDF をランク付けするものであり、ハルシネーション制御はプロンプト
+レベルにとどまる——、そして著者らは、ハルシネートされたハードウェア、
+捏造された ablation 表、改善として語られた負の結果を列挙したうえで、結果
+の自動検証を将来課題として挙げている。ARI はその対偶である:実験は
+idea あたり 1 本の線形軌跡ではなく BFTS の下で枝分かれし、metric は最初の
+鋳造時に凍結される実行レベルの artefact であり(\cref{sec:paper:contract})、
+そして検証はブロックする——何を公刊してよいかを決めるのは、査読器の
+スコアではなく決定論的な claim--evidence ゲートである
+(\cref{sec:paper:failures})。
+
+Agent~Laboratory \cite{schmidgall2025agent} はエージェントを駆動者では
+なく協働者として扱う:人間が与える研究着想を必要とし、計画への遵守度を
+採点する LLM 報酬モデルの下で平坦な 2 プログラムのプールを変異させ、
+論文を模擬査読器でゲートする。その最も示唆的な結果は負のものである:
+それらの査読器は、10 点満点で人間の査読者を 2.3 点過大評価する——これは、
+全体論的な LLM-judge によるゲートが不十分である理由の、最も明確な
+定量化である。したがって ARI の意味論的レビューは舵取りはするが決して
+ブロックせず、ブロックは決定論的ゲートに留保され、すべてのノードは
+過渡的なプールではなくチェックポイントスコープの木の中に永続する。
+
+VirSci \cite{su2024many} は、これらのシステムが最も希薄に扱う段階を
+カバーする:研究コミュニティのデジタルツインに基盤づけられた科学者
+チームであり、その多エージェントの熟議は、現代研究との整合性と現代研究
+への潜在的インパクトにおいて、単一エージェントのベースラインをそれぞれ
+13.8\% と 44.1\% 改善する。それは embedding 近接性の新規性プロキシで
+採点される abstract で止まり、その著者らはより厳密な下流検証を求めて
+いる。ARI はこの分業の両半分を引き受ける:VirSci の元の熟議エンジンを
+直接かつ無改変で駆動し(\cref{fig:virsci})——鮮度に基づく
+\texttt{select\_coauthors} のチーム編成と多エージェントの
+\texttt{generate\_idea} ループ——、それをライブな Semantic~Scholar
+スナップショット上で動かすため、依拠する機構は、現在の文献に対して
+実行された、公刊済みのそのものとなる;そして繰り延べられた検証を下流で
+供給し、そこでは claim--evidence ゲートの下の実行済みエビデンスが、
+プロキシの新規性スコアを置き換える。
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F19_virsci.tex}}
+  \caption{ARI が駆動する VirSci 流の着想生成。
+           \texttt{select\_coauthors} が、凍結された Semantic~Scholar
+           スナップショット(SPECTER2 検索インデックスを備えたコーパスと、
+           鮮度順の共著者グラフ)から不均質な科学者チームを編成する;
+           チームはスナップショットに対する検索で基盤づけられた $K$
+           ラウンドの熟議を行い、実行開始時の能力プローブが、プラット
+           フォームの計測された制約を熟議トピックへ畳み込むため、収束した
+           \texttt{idea.json} は、プラットフォームが実際に計測できる
+           測定だけを約束する。}
+  \label{fig:virsci}
+\end{figure}
 
 \subsection{論文評価}\label{sec:related:eval}
 
-PaperBench \cite{starace2025paperbench} は我々の \texttt{paper-re}
-統合に最も近い類例である;それはルブリック・アズ・ツリー形式の
-先駆者であった。我々は同じ葉ごとの採点と集約重み
-(\cref{eq:paperscore})を採用するが、改稿ガードとして使う軸ごと
-の下限で拡張している (\cref{sec:paper:failures})。
+PaperBench \cite{starace2025paperbench} は、rubric-as-tree 形式の
+先駆者である:その 20 件の対象論文の各々が、著者が共同開発した
+ルブリック——合計で 8{,}316 の採点可能な葉——を備え、その葉ごとの採点は
+pass/fail で、重み付き平均によって集約される。また、ハードコードされた
+結果が複製を装えないように、クリーンスタートの再現フェーズを設ける。
+ARI はこのベンチマークを無改変でベンダリングし(\cref{sec:paper:paperbench})、
+同じ葉ごとの採点と集約重み(\cref{eq:paperscore})を採用したうえで、
+改稿ガードとして使う軸ごとの下限を追加する(\cref{sec:paper:failures})。
+その実行ギャップ——最強のエージェントがコード開発で 43.3\% を得る一方、
+実行では 4.5\%、結果の一致ではゼロである——は、事後に採点するのではなく
+検証を生成の内側へ移す動機づけとなる;そして手作りのルブリック(原著者と
+ともに 1 論文あたり数週間)は、自動ルブリック構築を将来課題として残す。
+ARI が選ぶのはこの枝である:ルブリックは論文ごとに生成されるため
+(\cref{sec:paper:rubric})、手作りルブリックの再現と leaderboard 比較
+可能なスコアは、設計上スコープ外である。
+
+Story2Proposal \cite{qian2026story2proposal} は、永続的な共有
+コントラクト——セクション構造、視覚的 artifact のレジストリ、文書全体の
+検証規則——を通じて構造化された原稿生成を統治し、writer・refiner・
+renderer エージェントが、推論検証・データ忠実性・視覚的整合性で採点される
+generate--evaluate--adapt ループの下で協調する。その利得は 4 つの LLM
+バックボーンにわたって保持されるが、エビデンスは与件として受け取られ、
+その failure-mode 分析は、原稿が「あまり厳密でない推論を含みながら構造的
+には妥当でありうる」ことを認めている:コントラクトは構造を縛るが、
+証拠としての妥当性は縛らない。ARI はこの原理とその評価軸を、実行に基盤
+づけられたパイプラインへと持ち込む(\cref{sec:paper:evidence}):
+コントラクトは、安定なノード・結果・図表の識別子を参照する claim と
+numeric assertion で実験記録を拡張する;データ忠実性は、各報告値を記録済み
+結果から再導出する決定論的ゲートとなる;推論と視覚的整合性は、独立した
+原稿査読に並ぶ非ブロッキングの evidence-grounded review となる。実験自体
+を実行することで、ARI は原稿レベルのコントラクトを execution-grounded な
+provenance へと拡張する。
 
 \subsection{基礎}\label{sec:related:foundations}
 
-エージェントループは ReAct パターン \cite{yao2023react} に従う;
-改稿サイクルは Self-Refine \cite{madaan2023self} と Reflexion
-\cite{shinn2023reflexion} の系譜にある;\emph{思考}ステップで
-LLM に逐次的なスクラッチパッドを与えるという選択は
-Chain-of-Thought \cite{wei2022chain} の系譜にある。これらの参照
-のいずれもチェックポイントスコープの状態を提案していない;それ
-が ARI の貢献である。
+ノードごとのエージェントループ(\cref{sec:exploration:react})は
+Reason-and-Act(ReAct)パターン \cite{yao2023react} に従う。その正確な
+発見はトレードオフである:思考を基盤づけられた行動と交互に行うことは、
+ハルシネーションを急峻に削減する一方で、推論誤りの率を上昇させる。改稿
+サイクルは Self-Refine \cite{madaan2023self} と Reflexion
+\cite{shinn2023reflexion} に由来し、それぞれ ARI が真剣に受け止める注意点
+を伴う:Self-Refine の利得はモデルが自らの誤りを検出できない場面では消失
+し、Reflexion の ablation は、改善を駆動するのが記憶だけではなく基盤
+づけられた評価であることを示す。したがって ARI は、事実に関する事柄に
+ついてモデルが自分自身を採点することを決して許さない:改稿は、writer の
+外側で計算されるルブリックスコアとゲート判定によって舵取りされ、結果が
+定量的な claim となるのは、それが artefact に基盤づけられたときに限られる
+(\cref{sec:exploration:memory})。\emph{思考}におけるスクラッチパッドは
+chain-of-thought プロンプティング \cite{wei2022chain} に由来し、その利得は
+モデル規模に伴って創発的であると報告される——その著者らはモデルが推論する
+とは決して主張していない。これらのいずれも、単一の軌跡を超える状態を
+提案していない;実行を再現可能にするチェックポイントスコープの状態こそ、
+ARI の貢献である。
 
-初期の草稿は別の ML 研究エージェントベンチマークも引用していた
-が、いずれの候補ソースも我々の検証規則
-(\cref{sec:paper:failures})を通らないことが明らかになった時点
-で、その参照を取り除いた;関連研究の網羅性は S2 で検証可能なエ
-ントリのみに保つ。
+初期の草稿はさらに別の研究エージェントベンチマークを引用していたが、
+\cref{sec:paper:failures} の文献検証規則を通る候補ソースが存在しないことが
+判明した時点で、その参照を取り除いた。したがってここでの網羅性は、
+Semantic~Scholar インデックスに対して検証されたエントリに限定されている。

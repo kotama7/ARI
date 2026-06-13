@@ -14,7 +14,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-05-26
+last_verified: 2026-06-10
 ---
 
 # ARI Architecture
@@ -41,9 +41,10 @@ No domain knowledge is hardcoded. The same pipeline works for HPC benchmarking, 
 ## Pipeline at a glance
 
 The end-to-end flow — idea generation, the BFTS exploration loop, the
-`workflow.yaml`-driven post-BFTS pipeline (up to 16 stages), and the
-PaperBench-compatible ORS reproducibility check — as one hub diagram. Each
-group links to the section or document that explains it in depth.
+`workflow.yaml`-driven post-BFTS pipeline (write_paper now followed by a
+default Story2Proposal claim-evidence tail), and the PaperBench-compatible
+ORS reproducibility check — as one hub diagram. Each group links to the
+section or document that explains it in depth.
 
 ```mermaid
 flowchart TB
@@ -61,16 +62,18 @@ flowchart TB
 
     bfts --> tree["nodes_tree.json"]
 
-    subgraph post["Post-BFTS pipeline (workflow.yaml, up to 16 stages)"]
+    subgraph post["Post-BFTS pipeline (workflow.yaml)"]
         direction TB
         transform["transform_data → science_data.json"]
         figures["generate_figures → VLM review"]
         paper["write_paper → review_paper<br/>(ensemble + Area Chair meta)"]
+        claimtail["claim-evidence tail (Story2Proposal):<br/>link_paper_claims → claim_evidence_hard_gate<br/>→ evidence_grounded_semantic_review → merge_reviews<br/>→ paper_refine → render_paper → finalize_paper"]
         ear["generate_ear → curate → publish (EAR)"]
         transform --> figures
         transform --> ear
         figures --> paper
         ear --> paper
+        paper --> claimtail
     end
 
     tree --> post
@@ -199,6 +202,17 @@ BFTS root node created
     comparison_found: bool             ← compared against existing methods?
   }
   _scientific_score stored in metrics → drives BFTS ranking
+  AUTHORITATIVE measurements: the node's results.json (under ARI_WORK_DIR)
+    is the ground truth. Its `measurements` are merged in directly and take
+    PRECEDENCE over the LLM's extraction from the truncated artifact text
+    (str(artifacts)[:2000]); any numeric value present there also sets
+    has_real_data=True. This recovers real numbers the truncated re-read
+    would have missed.
+  metric_contract producer obligation: when make_metric_spec emitted a
+    metric_contract scaffold (concept-classified metric), the agent receives a
+    domain-neutral obligation at make_metric_spec time — verify correctness,
+    MEASURE (never hardcode) any ceiling, emit provenance, fill the contract —
+    which the FINAL claim-evidence hard gate later enforces.
     │
     ▼
 BFTS expand() (ari/orchestrator/bfts.py)
@@ -313,7 +327,34 @@ nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
     paper_context = experiment_context + best_nodes_metrics
     Iterative section writing: draft → LLM review → revise (max 2 rounds)
     BibTeX citations from Semantic Scholar results
+    write_paper also reads verified_context.json (built by
+      ari/pipeline/verified_context.py — artifact-grounded claims scoped to
+      the best node's root→best lineage) to ground its quantitative claims.
     Output: full_paper.tex, refs.bib
+
+  Story2Proposal claim-evidence tail  [now default, after write_paper]
+    write_paper is followed by a deterministic claim/evidence chain
+    (S2P). The default topology is:
+      link_paper_claims_draft       (reconcile %CLAIM anchors → paper_claim_links.json)
+        → claim_evidence_hard_gate_draft   (draft hard gate, non-blocking)
+        → review_paper              (text-only review — Stage 6 below)
+        → evidence_grounded_semantic_review
+        → merge_reviews             (Stage 10 below; threads gate + semantic review)
+        → paper_refine              (apply suggested_revisions, preserve %CLAIM anchors)
+        → render_paper              (recompile refined .tex → PDF; non-blocking)
+        → link_paper_claims_final
+        → evidence_grounded_semantic_review_post_refine
+        → claim_evidence_hard_gate_final   (FINAL gate; blocks finalize in strict mode)
+        → finalize_paper            (Stage 8 below)
+    Governed by the top-level claim_gate_policy block in workflow.yaml
+      (mode: warn by default — the FINAL gate is non-blocking; mode: strict
+      blocks finalize_paper on the FINAL gate). Resolution precedence ends at
+      env ARI_CLAIM_GATE_MODE (off | warn | strict) and ARI_COMPARISON_SCOPE.
+    The heavy gate logic lives in the new ari/pipeline/claim_gate/ package
+      (contract / gate / policy / numeric / latex / invariants / resolve);
+      the evaluator-skill exposes thin MCP tools (claim_evidence_hard_gate,
+      evidence_grounded_semantic_review) that call into it. Deep gate
+      semantics live in publication-lifecycle.md.
 
   Stage 6: review_paper  (ari-skill-paper)  [after stage 5]
     Rubric-driven review. Runs N independent reviewer agents (N from
@@ -611,13 +652,19 @@ generate_ideas (idea-skill)
         │   The judge LLM scores every BFTS node against this set.
         │
         └─ lineage decision (default stagnation_rule):
-            BFTS hook calls decide_lineage_action when composite scores
-            stay flat; the LLM picks continue / switch_to_idea / fanout
-            / terminate. Switch and fanout reuse the Phase 2.5
-            synthetic-seed launch path; the child's idea.json is
-            pre-seeded with the chosen alternative pinned (`_pinned:
-            True`), and the child's generate_ideas appends its new
-            ideas after the pinned one without overwriting.
+            On CONFIRMED stagnation (composite scores stay flat) the BFTS
+            hook FIRST calls deterministic_stagnation_pivot() — it
+            switches (switch_to_idea) to the strongest UNUSED runner-up
+            idea (tie-break: lower index) and sets
+            disable_generate_ideas=True. The LLM judge
+            decide_lineage_action (continue / switch_to_idea / fanout /
+            terminate) is only the FALLBACK, reached when the pivot
+            returns None: budget exhausted, at the recursion limit, or no
+            unused alternative remains. Switch and fanout reuse the
+            Phase 2.5 synthetic-seed launch path; the child's idea.json
+            is pre-seeded with the chosen alternative pinned (`_pinned:
+            True`), and the child's generate_ideas appends its new ideas
+            after the pinned one without overwriting.
 ```
 
 `ARI_RUBRIC` selects which venue file is read. Switching it changes the
@@ -821,14 +868,18 @@ Node: {node.id} depth={node.depth}
 START NOW: call {first_tool}() immediately. Do NOT output any text or
 plan — your first response must be a {first_tool}() tool call.
 
-IMPORTANT: After make_metric_spec, call survey() to search related
-literature. The survey results will be used to generate citations in
-the paper. Without survey, the paper will have no references.
+WORKFLOW ORDER: (1) generate_ideas() sets the research direction and
+primary_metric; (2) make_metric_spec() derives the success metrics from
+that primary_metric (NOT from a guessed list); (3) survey() gathers related
+literature. The survey results are used to generate citations — without
+survey, the paper will have no references.
 ```
 
-`first_tool` is `WorkflowHints.tool_sequence[0]`, which `enrich_hints_from_mcp`
-defaults to `make_metric_spec` → `survey` → `generate_ideas` → executor
-when the corresponding skills are present.
+`first_tool` is `WorkflowHints.tool_sequence[0]`, which now defaults to
+`generate_ideas`; `enrich_hints_from_mcp` orders the setup tools
+`generate_ideas` → `make_metric_spec` → `survey` → executor when the
+corresponding skills are present (the idea's `primary_metric` is the success
+criterion, so `make_metric_spec` must follow it rather than guess a list).
 
 ### User message #1 — child node (`node.depth > 0`)
 
@@ -867,38 +918,39 @@ verbatim. The child only sees the generic label task; the proposed
 direction reaches the agent indirectly via the prior-knowledge memory
 search below.
 
-### User message #2 — prior knowledge (children only)
+### User message #2 — working-context injection (every node)
 
-`loop.py:522-549`. When `node.depth > 0` and `node.ancestor_ids` is
-non-empty, the loop calls:
+The old inline child-only `search_memory` dump (a single
+`[Prior knowledge from ancestor nodes …]` message truncated to an aggregate
+800 chars) has been **replaced** by the module-level
+`build_working_context_messages()` (`loop.py:108-224`), called from
+`AgentLoop.run` for **every** node. It is read-only — it never writes memory —
+and assembles up to three bounded tiers:
 
-```python
-search_memory(
-    query        = (node.eval_summary or self.experiment_goal or "experiment result")[:200],
-    ancestor_ids = node.ancestor_ids,
-    limit        = 5,
-)
-```
-
-then appends a single user message:
-
-```
-[Prior knowledge from ancestor nodes (N entries):]
-{join(entry.text for entry in results)[:800]}
-```
-
-Three caps are hard-coded:
-
-| Cap | Value | Where |
-|-----|-------|-------|
-| query length | 200 chars | L528 |
-| number of entries | 5 | L532 |
-| concatenated content | 800 chars | L545 |
+- **Tier 1a — experiment core (every node).** Calls
+  `get_experiment_context` and injects an
+  `[Experiment context (stable across all nodes):]` block carrying
+  `primary_metric`, `higher_is_better`, `metric_rationale`, `hardware_spec`
+  **plus** a `selected_idea` summary. This applies to the root and to every
+  descendant, so a node that never re-runs `generate_ideas` still inherits the
+  design intent (planned mechanism + target workloads), not just the metric.
+- **Tier 1b — ancestor core (children only).** For each ancestor it calls
+  `get_node_memory(node_id=aid)` and keeps only the entries with
+  `metadata.type == "result_summary"`, emitting an
+  `[Established conclusions from ancestor nodes (N):]` block. This is a
+  deterministic, full per-ancestor handoff: each conclusion is capped
+  **per-entry** (not an aggregate cut), and bounded by tree depth so it is
+  injected whole. Order follows `ancestor_ids` (root → parent).
+- **Tier 2 — detail supplement (children only).** A small per-entry-capped
+  semantic recall via `search_memory(query=…, ancestor_ids=…, limit=5)`,
+  deduped against Tier 1b, surfaced as
+  `[Related prior findings from ancestors (N):]`. `eval_summary` is used only
+  as the search query (capped to ~200 chars).
 
 Failures (memory backend down, malformed result) are swallowed at
 `logger.debug` level so the node still runs.
 
-The legacy `search_global_memory` injection block (L551-574) is dead
+The legacy `search_global_memory` injection block (`loop.py:517-540`) is dead
 code in v0.6.0; the global-memory tool was removed (`CHANGELOG.md`
 v0.6.0 §3) and the conditional never fires.
 
@@ -906,29 +958,35 @@ v0.6.0 §3) and the conditional never fires.
 
 | Item | Limit | Code |
 |------|-------|------|
-| `goal_text` | 1500 chars | `loop.py:469-474` |
-| Survey-result memory entry | first 5 papers, 200-char abstract each | `loop.py:830-833` |
-| Prior-knowledge query | 200 chars | `loop.py:528` |
-| Prior-knowledge entries | top 5 by Letta `passages.search` embedding rank | `loop.py:532` (see Memory Architecture) |
-| Prior-knowledge concatenation | 800 chars | `loop.py:545` |
+| `goal_text` | 1500 chars | `loop.py:434-438` |
+| Survey-result memory entry | first 5 papers, 200-char abstract each | `loop.py:794-799` |
+| Tier 1a — experiment-core field | `_CORE_FIELD_CAP = 400` chars per field | `loop.py:94` |
+| Tier 1a — `selected_idea` summary | `_IDEA_FIELD_CAP = 1500` chars | `loop.py:95` |
+| Tier 1b — per-ancestor `result_summary` | `_ANCESTOR_SUMMARY_CAP = 600` chars per entry (not an aggregate cut) | `loop.py:98` |
+| Tier 2 — supplement query | 200 chars | `loop.py:201` |
+| Tier 2 — supplement entries | top 5 by Letta `passages.search` embedding rank | `loop.py:202-206` (see Memory Architecture) |
+| Tier 2 — per-supplement entry | `_SUPPLEMENT_CAP = 400` chars per entry | `loop.py:99` |
 
 ### Information that is intentionally **not** injected
 
 The following are reachable but never auto-added to the prompt; the
 agent must call the relevant tool itself if it wants them:
 
-- **`get_experiment_context()` payload** (`experiment_goal`,
-  `primary_metric`, `hardware_spec`, `metric_rationale`,
-  `higher_is_better`). Seeded after the first `generate_ideas` call;
-  available via the MCP tool but not pasted into any prompt block.
-- **`node.eval_summary` direction text for children**. Persisted on the
-  Node object and visible to BFTS expansion / evaluation, but absent
-  from the child agent's user prompt.
+- **`node.eval_summary` direction text verbatim for children**. Persisted on
+  the Node object and visible to BFTS expansion / evaluation, but never pasted
+  verbatim into the child agent's user prompt. (It *is* read as the Tier-2
+  supplement `search_memory` query — see "User message #2" — but only as a
+  query, not surfaced as text.)
 - **`memory_snapshot`**. Carried into the child Node from the parent
   but not consumed by the prompt builder; reserved for future use.
 - **Sibling node metrics**. Visible to `BFTS.expand` when proposing the
   child (so the *expander LLM* sees them), but not to the *executing
   agent* of that child.
+
+Note that the `get_experiment_context()` payload (`primary_metric`,
+`higher_is_better`, `metric_rationale`, `hardware_spec`) is **no longer** in
+this list — it is now auto-injected for every node as Tier 1a of the
+working-context injection above.
 
 ### CoW bridge — keeping the memory skill in sync
 

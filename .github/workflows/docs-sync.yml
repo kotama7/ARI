@@ -1,0 +1,91 @@
+# Documentation sync gates — full-tree invariants on every PR to main.
+#
+# Companion to readme-sync.yml (per-directory `## Contents` indexes). These
+# checks compare the *content* of the doc/report trees that must stay in sync:
+#
+# Hard gates (fail the PR; all green at time of authoring):
+#   * check_doc_sources.py    — every doc's declared `sources:` paths resolve
+#                               (the forward half of the reference invariant).
+#   * check_i18n_js.py        — landing.{en,ja,zh}.js / docs.{en,ja,zh}.js each
+#                               declare identical key sets (per-surface parity).
+#   * check_site_i18n.py      — HTML-site i18n integrity: surface parity (reuses
+#                               check_i18n_js), no orphan t-ids (every id="t-…"
+#                               resolves to a dict key), en→ja/zh co-change, and
+#                               version single-source (version.json == report
+#                               \date, no hard-coded footer version).
+#   * check_doc_links.py --html-only — every href/src in docs/*.html resolves.
+#   * check_readme_parity.py  — root README.{md,ja,zh} share one heading shape.
+#   * report/check_i18n.py    — report/{en,ja,zh} are structurally parallel
+#                               (Gate 6: section/label/cite/eq/fig/tab parity).
+#
+# Advisory (reported but NON-blocking via continue-on-error — these have
+# pre-existing, documented-intentional findings in the *markdown tree* owned by
+# the docs-expansion effort, NOT by the homepage redesign, so they warn for now
+# and can be promoted once that backlog is cleared):
+#   * check_translation_freshness.py — docs/ja|zh `last_verified` not behind en.
+#   * check_doc_links.py             — intra-docs (markdown) links resolve.
+#
+# Pure-stdlib checks; PyYAML is the only dependency (front-matter parsing). To
+# reproduce locally: run each script from the repo root (see scripts/docs/).
+
+name: docs-sync
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  docs-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # check_site_i18n co-change needs the merge base
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install PyYAML
+        run: python -m pip install --upgrade pip pyyaml
+
+      # ── hard gates ──────────────────────────────────────────────────────
+      - name: Declared source references resolve
+        run: python scripts/docs/check_doc_sources.py
+      - name: i18n JS key parity (landing / docs surfaces)
+        run: python scripts/docs/check_i18n_js.py
+      - name: HTML-site i18n integrity (orphan t-ids / co-change / version)
+        run: python scripts/docs/check_site_i18n.py
+      - name: HTML link integrity (index.html / docs.html)
+        run: python scripts/docs/check_doc_links.py --html-only
+      - name: Root README heading parity (en/ja/zh)
+        run: python scripts/docs/check_readme_parity.py
+      - name: Report tri-language structural parity (Gate 6)
+        run: python report/scripts/check_i18n.py
+
+      # ── advisory (non-blocking; pre-existing markdown-tree findings) ─────
+      - name: Translation freshness (advisory)
+        continue-on-error: true
+        run: python scripts/docs/check_translation_freshness.py
+      - name: Markdown link integrity (advisory)
+        continue-on-error: true
+        run: python scripts/docs/check_doc_links.py
+
+  # Hard gate: the VitePress docs build must succeed (L3). A broken build is
+  # caught at PR time before it can break the build-type Pages deploy
+  # (.github/workflows/pages.yml). Mirrors the deploy build step.
+  vitepress-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+      - name: Report PDFs in sync with source
+        run: bash scripts/docs/sync_report_pdf.sh --check
+      - name: Install docs deps
+        run: npm ci --prefix docs
+      - name: Build VitePress docs
+        run: npm run --prefix docs docs:build

@@ -173,6 +173,52 @@ class LineageDecision:
         }
 
 
+def deterministic_stagnation_pivot(
+    state: "LineageState",
+    used_indexes: "set[int] | None" = None,
+) -> "LineageDecision | None":
+    """On CONFIRMED stagnation, switch to the strongest UNUSED alternative idea.
+
+    Encodes the agreed policy — *when the active idea stagnates, try the next
+    idea to break the plateau* — DETERMINISTICALLY, so a runner-up is actually
+    tried instead of dying unused. The LLM judge prompt biases toward
+    ``continue`` / ``terminate`` (least-disruptive), which tends to let
+    runner-ups die; this picks the pivot for it when one is warranted.
+
+    Returns ``None`` (defer continue-vs-terminate to the LLM judge) when no
+    eligible alternative remains: budget exhausted, at the recursion limit, or
+    every alternative has already been used. Caller must only invoke this when
+    stagnation was actually detected (not in unconditional ``every_node`` mode).
+    """
+    used = used_indexes or set()
+    if state.budget_remaining <= 0:
+        return None
+    if state.recursion_depth >= state.max_recursion_depth:
+        return None
+    candidates = [
+        a for a in (state.alternatives or [])
+        if isinstance(a.get("index"), int) and a["index"] not in used
+    ]
+    if not candidates:
+        return None
+
+    def _score(a: dict) -> float:
+        s = a.get("overall_score")
+        return float(s) if isinstance(s, (int, float)) else float("-inf")
+
+    best = max(candidates, key=lambda a: (_score(a), -a["index"]))
+    return LineageDecision(
+        action="switch_to_idea",
+        target_idea_index=int(best["index"]),
+        disable_generate_ideas=True,
+        rationale=(
+            f"stagnation pivot (deterministic): switch to strongest unused "
+            f"alternative ideas[{best['index']}] "
+            f"'{(best.get('title') or '')[:60]}' (score={best.get('overall_score')})"
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Parsing / validation
 # ---------------------------------------------------------------------------

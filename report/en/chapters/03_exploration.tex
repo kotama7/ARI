@@ -1,5 +1,29 @@
 \section{Exploration Algorithm}\label{sec:exploration}
 
+The exploration phase is the experimental core of a run: given a
+selected idea and the metric contract it owns --- the run-level
+declaration of falsifiable claims, each naming the exact measurement
+names that count as its evidence (\cref{sec:paper:contract}) ---
+exploration must turn a bounded node budget into measurements that
+make those claims evaluable. ARI organises the phase as a best-first
+tree search (BFTS) over research steps. The skeleton descends from
+AIDE, which framed LLM-driven engineering as search over a tree of
+candidate solutions under a hard-coded draft/debug/improve policy and
+a single scalar objective \cite{jiang2025aide}; ARI replaces the
+policy with LLM-driven selection backed by deterministic fallbacks
+(\cref{sec:exploration:node-selection}), steers expansion with
+contract-derived coverage and lineage hints
+(\cref{sec:exploration:expansion,sec:exploration:lineage-chaining})
+--- a structural answer to the local-optima plateau reported for
+greedy single-objective policies \cite{jiang2025aide} --- and
+executes each node as a guarded Reason-and-Act (ReAct) agent whose
+obligations and feedback come from the same contract
+(\cref{sec:exploration:react}). The closing subsections cover the
+substrate the search runs on: the platform probe
+(\cref{sec:exploration:platform-probe}), the research memory
+(\cref{sec:exploration:memory}), and the ideation stage that seeds
+the root (\cref{sec:exploration:ideation}).
+
 \subsection{Formalisation}\label{sec:exploration:formalization}
 
 The exploration loop maintains a tree $\Tree=(\Nodes, E)$ in which
@@ -23,9 +47,23 @@ carries
         surfaced.
 \end{itemize}
 
-The aggregation of axis-level signals into the scientific score is
-delegated to any implementation of the \texttt{Evaluator} protocol;
-ARI does not pin a fixed linear combination. The protocol is the only seam between BFTS
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F02_tree.tex}}
+  \caption{A small BFTS exploration tree (synthetic, illustrative).
+           Columns are search depths; each box is one node with its
+           scalar reward $\nodescore{\cdot}$. Accented edges trace the
+           best node's lineage back to the root --- the chain the
+           paper phase consumes (\cref{sec:paper:evidence}); dashed
+           edges mark a low-score branch the selection policy stops
+           picking, whose history stays on the tree.}
+  \label{fig:tree}
+\end{figure}
+
+\Cref{fig:tree} shows a small tree of this kind. The aggregation of
+axis-level signals into the scientific score is delegated to any
+implementation of the \texttt{Evaluator} protocol; ARI does not pin a
+fixed linear combination. The protocol is the only seam between BFTS
 and downstream rubric evaluation, which keeps the search engine
 agnostic about how axes get reduced to a scalar.
 
@@ -111,7 +149,9 @@ sub-loop, parallel ReAct batch, post-execution retire) is shown in
 
 \subsection{Run-loop algorithm}\label{sec:exploration:run-loop}
 
-\Cref{alg:bfts-run-loop} writes the iteration as explicit pseudocode.
+\Cref{alg:bfts-run-loop} writes the iteration as explicit pseudocode;
+\cref{fig:bftsflow} renders the same step as a control-flow spine
+with the prompt files drawn in.
 The inner \textsc{while} fills empty worker slots one expansion at a
 time (so workers always start running before the next expansion is
 proposed); the outer block then assembles a batch by calling
@@ -177,13 +217,15 @@ $\retirepred$ Rules~A and~B.
 \end{figure}
 
 ARI deliberately does \emph{not} reduce node ranking to a closed-form
-scalar utility. Instead, both \texttt{select\_next\_node}
+scalar utility --- the design choice that most separates its BFTS from
+AIDE's hard-coded greedy policy \cite{jiang2025aide}. Instead, both
+\texttt{select\_next\_node}
 (``which pending node should the next agent step run?'') and
 \texttt{select\_best\_to\_expand} (``which completed node is most
 worth expanding?'') hand a list of candidate descriptions to the LLM
 and parse back a single 0-based index --- each call selects exactly
-one node. The candidate description for each node $n$ is a one-liner
-of the form
+one node. The candidate description for each node $n$
+(\cref{fig:nodescore}) is a one-liner of the form
 \begin{quote}\small\texttt{[i] id=..., depth=..., label=..., has\_real\_data=..., metrics=\{...\}, summary=...}\end{quote}
 The run-selection variant (\texttt{select\_next\_node}) additionally
 appends \texttt{diversity\_bonus=+0.05} to the line for any node that
@@ -315,18 +357,41 @@ for execution (\cref{sec:exploration:react}), and transitions to
 \StateDone{} when all axes are populated or to \StateFailed{} if the
 agent loop raises.
 
+\paragraph{Coverage steering.}
+The expansion-target selector is inherently a cross-branch scheduler
+--- it sees every branch's score, metrics, and summary --- but score
+alone said nothing about the run's declared claims, and in one real
+run a ten-node tree produced ten variations of the same headline
+experiment while the declared mechanism claims received no dedicated
+experiment. The goal text handed to \texttt{select\_best\_to\_expand}
+is therefore augmented with a run-level \term{claim-coverage} block
+derived from the metric contract: which declared claims already have
+supporting measurements somewhere in the run and which remain
+uncovered, so that ``covers a still-uncovered claim'' can inform
+\emph{which} node to expand. The measurement names a claim requires
+are its \term{contract-evidence names}. Coverage is computed
+conservatively on two counts: a claim is covered only when a
+\emph{majority} of its required names have been emitted ---
+deliberately stricter than the final gate's any-name rule, since for
+steering one accidentally shared generic name would suppress the
+dedicated experiment forever, whereas erring uncovered merely risks a
+redundant measurement --- and only nodes the evaluator credited with
+real data contribute, aligned with the gate, so a faulty branch's
+mere measurement \emph{names} cannot tell siblings ``already
+covered.'' The same status, recomputed per node, also reaches each
+executing agent (\cref{sec:exploration:react}); the companion hints
+that chain \emph{computed} evidence along a single lineage are the
+subject of \cref{sec:exploration:lineage-chaining}.
+
 \subsection{Pruning and termination}\label{sec:exploration:termination}
 
 \texttt{should\_prune} implements the pruning predicate $\prunepred$
-(\cref{eq:prune}): total-node cap, depth cap, and the sterile flag.
-The depth check activates the \texttt{max\_depth}
-config field. The frontier retire predicate $\retirepred$
-(\cref{eq:retire}) is applied after each node completes: Rule~A
-retires a parent $f$ once a child's reward $\nodescore{\cdot}$
-surpasses it, and Rule~B retires $f$ once it has been expanded
-$\maxexp$ times. $\retirepred$ does not delete the node — its
-history stays on $\Tree$ — but the frontier pool shrinks so the
-search spreads rather than mining the same parent indefinitely.
+(\cref{eq:prune}): total-node cap, depth cap (the \texttt{max\_depth}
+config field), and the sterile flag. The frontier retire predicate
+$\retirepred$ (\cref{eq:retire}) is applied after each node
+completes; it does not delete the node — its history stays on $\Tree$
+— but the frontier pool shrinks so the search spreads rather than
+mining the same parent indefinitely.
 
 The loop terminates when any of:
 
@@ -346,6 +411,110 @@ The loop terminates when any of:
 Which of these fires most often is an empirical question that
 \cref{chapter:eval} is meant to answer once a frozen checkpoint
 is in place; the present report does not claim a distribution.
+
+\subsection{ReAct driver}\label{sec:exploration:react}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F04_react_loop.tex}}
+  \caption{The ReAct loop. Solid edges are the main cycle; the
+           dashed back edge represents an early-exit when the
+           observation already closes the open question.}
+  \label{fig:react}
+\end{figure}
+
+Each node's expansion runs a ReAct agent loop \cite{yao2023react} in
+the \texttt{AgentLoop} class
+(\cref{fig:react}): the model reasons over its accumulated context,
+issues tool calls, observes the structured results, and repeats. The
+maximum step count is \texttt{MAX\_REACT\_STEPS = 80}; it can be
+overridden per-instance via the \texttt{max\_react\_steps} keyword. A
+separate guard \texttt{MIN\_TOOL\_CALLS = 2} prevents trivially short
+trajectories. The agent's system prompt is reproduced verbatim as
+\cref{prompt:agent_system}.
+
+The set of tools available to the agent is filtered per phase by
+the tool manager; for example, the exploration phase masks the
+paper-writing tools so that BFTS expansion cannot short-circuit
+into a draft. A small set of MCP tools is reserved for
+\texttt{ari-core} itself (memory CoW operations) and is hidden
+from the LLM, ensuring that the model cannot set an arbitrary node
+id and bypass the memory skill's copy-on-write check.
+
+\subsubsection*{Obligations at node start}
+
+A node does not begin from a blank prompt. Before the first model
+call, the loop injects deterministic context: the \term{working
+context} of \cref{sec:exploration:memory} --- the experiment's fixed
+core plus its ancestors' conclusions --- and, once the run's metric
+contract exists, a \term{contract obligation} message stating, in
+domain-neutral terms, what the node must do for an eventual claim to
+be scientifically valid rather than merely plausible: verify
+correctness against an independent reference on the problem sizes the
+headline numbers use, recording the residual as a measurement;
+\emph{measure} --- never hardcode --- any ceiling used as a
+normalisation denominator; tag the provenance of each ceiling and
+correctness check so the gate can confirm they were run; declare how
+the headline metric is recomputed from its raw operands; and emit,
+under the \emph{exact} declared names, the measurements that make
+each declared claim evaluable --- a negative outcome is acceptable,
+an unevidenced claim is not. The text carries no domain knowledge;
+the agent fulfils each duty as its domain calls for (a microbenchmark
+for a throughput ceiling, a baseline run for an accuracy ceiling, an
+analytic check for a numerical method).
+
+Three run-level annexes ride the same message: the node's
+claim-coverage status (\cref{sec:exploration:expansion}), which asks
+it to prioritise one or two still-uncovered claims it can feasibly
+measure; the inherited-data note of
+\cref{sec:exploration:lineage-chaining}; and the platform note of
+\cref{sec:exploration:platform-probe}. These run-level invariants are
+\emph{pinned}: the sliding context window always retains them ---
+together with the survey, idea-generation, and metric-spec tool
+results --- while older turns fall away. At the root, where the
+contract does not yet exist at context-build time, the obligation is
+injected mid-loop by the handler of the contract-minting tool call,
+so no node runs blind to the declared claims and none receives the
+obligation twice.
+
+\subsubsection*{Emission feedback}
+
+Measurements leave a node through a single structured emission tool
+(\texttt{emit\_results}), which writes the node's results file,
+validates it against the metric contract, and returns \term{contract
+warnings} naming any required evidence still missing. Early runs
+exposed a failure shape at exactly this point: the warnings arrived
+inside a tool result, the harness force-finished the node right after
+its first completed job, and the unmet obligations were left with no
+steps in which to act --- one observed node ended with 66 of its 80
+steps unused. The loop therefore turns point-of-emission feedback
+into an actionable turn: when an emission carries contract warnings,
+it injects a continuation nudge --- the missing measurements, the
+steps remaining, and the instruction to run them now and re-emit (a
+re-emission overwrites) or to conclude only if they are infeasible in
+this node --- and places the node in a \term{contract hold} that
+suppresses the force-finish guard described next. The hold expires
+ten steps before the step cap, preserving the anti-doom-loop
+backstop, and a warning-free emission clears it.
+
+\subsubsection*{Force-finish guards}
+
+The loop guards both ends of a trajectory. Against premature success
+claims, a node may not finish before \texttt{MIN\_TOOL\_CALLS} tool
+calls, and --- whenever its toolset contains an execution tool ---
+not before it has executed something and read the output. Against the
+repetitive-loop failure mode documented for ReAct agents (the
+original study attributes a large share of reasoning failures to
+re-issued, near-identical actions \cite{yao2023react}), the loop
+\term{force-finishes}: once the node has a completed job whose output
+was read, at least five steps have elapsed, and no contract hold is
+active --- or in the final three steps before the cap once the
+minimum guards are met --- the tool-call requirement is dropped, so
+the model's next output must be its final structured report.
+Repetition is also damped at the tool level (the idea-generation tool
+is suppressed after its first successful call), and injected user
+messages are deferred to message-block boundaries so the replayed
+conversation never splits a tool call from its responses.
 
 \subsection{Lineage and reproducibility}\label{sec:exploration:lineage}
 
@@ -367,29 +536,263 @@ never the parent's --- this is enforced by the MCP layer's
 per-node dollar amount at \texttt{CostTracker.init}, so the budget
 check is deterministic given the same prompts.
 
-\subsection{ReAct driver}\label{sec:exploration:react}
+\paragraph{Offline by default.}
+Reproducibility also dictates what the search loop is allowed to read.
+By default a node's agent loop runs \emph{offline}: the web-access skill
+is phase-gated to the paper-writing and replication stages, so a node
+cannot consult time-varying live search results during the search itself,
+and the per-node trajectory therefore does not depend on the state of the
+web on the day it ran. Literature lookup still happens, but earlier and
+out of band --- a bounded survey performed at idea time, before the
+search begins (\cref{sec:exploration:ideation}). A run that genuinely
+needs live information can opt in
+(\code{bfts.allow\_web}) to expose web access to the node agent during
+exploration; when it does, the run writes a non-reproducible-trajectory
+marker into its checkpoint, so a later reproduction is never silently
+treated as exact. The determinism contract stays honest either way: the
+default run is byte-reproducible, and a run that trades reproducibility
+for live information records that trade in its own provenance.
+
+\subsection{Lineage chaining for computed evidence}\label{sec:exploration:lineage-chaining}
+
+Not every claim a run sets out to support is measured fresh. Some
+evidence is \emph{computed} from measurements that already exist --- a
+parameter fit over earlier probes, a held-out validation of that fit, a
+model-based selection among configurations. Such claims turned out to be
+structurally unreachable by independent tree nodes: in a real run,
+children directed at fitting or validation but expanded from a parent
+that carried no measurements regressed to re-running single probes,
+because ``compute from the data you already have'' was never a visible
+option --- the child had no data, and nothing told the selector which
+node did.
+
+The mechanism that closes this gap uses only the parent$\to$child
+working-directory inheritance the tree already has (a child executes
+inside a copy of its parent's working tree;
+\cref{sec:paper:evidence} relies on the same fact), as one hint per
+side of the expansion. On the parent side, the claim-coverage block
+appended to the expansion-selection goal
+(\cref{sec:exploration:expansion}) gains a lineage hint that names
+the node whose working tree holds the most contract-evidence names,
+so a fit-or-validate child is preferentially expanded from the node
+that already holds its inputs. On the child side, a child
+whose inherited directory contains lineage measurement files is told,
+at start (the inherited-data note of \cref{sec:exploration:react}),
+which files are present and which exact contract names they
+contain, and is instructed to compute the derived evidence from those
+files rather than re-run the underlying experiments.
+
+Only names cross node boundaries: file names and measurement names,
+never values and never a sibling's conclusions. The hints are
+run-level coordination metadata of the same kind as the contract
+itself, so the branch isolation of \cref{sec:exploration:memory} is
+preserved --- a faulty branch's numbers still cannot leak into a
+sibling's reasoning --- while the computed-evidence chain
+(fit, then validate, then select) can execute along a single lineage
+instead of collapsing back into repeated probes.
+
+\subsection{Platform probe}\label{sec:exploration:platform-probe}
+
+A research plan can be wrong about its platform before it is ever
+wrong about its science. In one real run the declared claims required
+hardware-counter profiles, and the assumed profiler was verifiably
+absent from the compute partition the experiments ran on: those
+claims were permanently unsatisfiable, and the final gate ---
+correctly --- blocked the paper for evidence no node could ever
+produce. Platform feasibility must therefore be \emph{measured}, not
+assumed --- and measured once, before anything downstream commits to
+a measurement vocabulary.
+
+When the run is configured with a batch partition, run start issues a
+one-shot \term{platform probe}: a short scheduler job, executed on
+the compute partition itself, that checks by name the availability of
+a small configurable list of measurement tools (profilers,
+hardware-counter utilities, and similar) and records the machine
+architecture. The result is cached as a checkpoint artefact
+(\texttt{platform\_capabilities.json}) and not re-probed within the
+run. The probe is best-effort by design: no partition configured, a
+missing scheduler, or a queue wait beyond its timeout all degrade to
+a recorded skip that writes nothing --- a probe failure leaves every
+consumer unconstrained and changes nothing downstream.
+
+The probed facts are then relayed --- as data, never as built-in
+hardware knowledge --- at the three layers where a platform-blind
+plan would otherwise arise. At \emph{idea} time they are folded into
+the research topic, so the ideation stage
+(\cref{sec:exploration:ideation}) plans only measurements the
+platform can take: feasibility is fixed at the source rather than
+patched downstream. At \emph{contract} time the claims extractor that
+derives the metric contract from the selected idea's plan receives
+them as a verified capability note, so the contract never declares
+evidence that depends on absent tooling --- doubly important because
+the contract is minted once and then frozen
+(\cref{sec:paper:contract}). At \emph{node} time the pinned
+obligation message (\cref{sec:exploration:react}) carries a platform
+note listing the verifiably absent tools, so the executing agent does
+not spend its ReAct steps discovering missing commands the hard way.
+Knowledge of \emph{which} tools are worth probing lives in the HPC
+skill's configurable list; the core orchestrator and the gate stay
+domain-free and merely relay what was measured.
+
+\subsection{Research memory}\label{sec:exploration:memory}
+
+Nodes do not run in isolation: each one inherits what its ancestors
+established and, in turn, leaves a record for its descendants and for the
+paper writer. ARI keeps this record in a per-run \term{research memory}
+governed by two requirements a free-form log does not meet. First,
+\emph{branch isolation}: a node may read only the memory of its own
+ancestors, never that of a sibling or an unrelated checkpoint, so two
+parallel leads cannot contaminate each other --- the same ancestor-scope
+predicate that defines a lineage in \cref{sec:exploration:lineage}.
+Second, \emph{groundability}: because the memory ultimately feeds a
+paper, an entry must be able to point at the evidence behind a result
+rather than merely restate the result, so a claim can be traced back to
+the artefact that supports it.
+
+\subsubsection*{Memory as an index over evidence}
+
+The single source of truth for what a node produced is its structured
+self-report --- the \texttt{node\_report.json} written when the node
+completes (\cref{sec:paper:evidence} details its fields). A memory entry
+does not copy those fields. It carries a short searchable text, a
+\term{kind}, a pointer back to the originating node report, and
+content-hash references to the specific artefacts --- logs, source files,
+output files --- a result rests on. A memory entry is thus an \emph{index
+into evidence}, not the evidence itself: the artefacts it cites can be
+re-hashed at any time to confirm they still exist and still match, an
+integrity check that classifies every reference as verified, missing, or
+mismatched. The \term{kind} is drawn from a fixed vocabulary ---
+observation, experiment result, failure case, procedure, reflection,
+artefact summary, paper claim, and reproducibility event --- so a reader
+can ask for exactly the records it needs: the failures along a branch,
+say, or only the results that are backed by artefacts.
+
+\subsubsection*{Consolidation at node end}
+
+When a node completes, a deterministic \term{consolidation} step reads
+its node report and emits typed entries: an experiment-result entry, with
+provenance references to the artefacts it measured, for a node that
+produced measurements; a failure-case entry for one that failed. The step
+invokes no language model, so the same node report always consolidates to
+the same entries --- consolidation is a pure function of recorded state,
+and re-running a checkpoint reproduces the memory it produced. It is a
+loop hook, not an agent action: the search agent is never asked to ``save
+to memory'', and in practice the agent does not reach for the recall
+tools on its own. The memory reads the loop depends on are performed by
+the loop itself, deterministically --- which is what lets the memory
+carry provenance without putting a non-deterministic retrieval on the
+critical path (\cref{sec:discussion:p2}).
 
 \begin{figure}[t]
   \centering
-  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F04_react_loop.tex}}
-  \caption{The ReAct loop. Solid edges are the main cycle; the
-           dashed back edge represents an early-exit when the
-           observation already closes the open question.}
-  \label{fig:react}
+  \resizebox{0.92\columnwidth}{!}{\input{../shared/figures/tikz/F18_research_memory.tex}}
+  \caption{Verifiable research memory. A deterministic consolidation of
+           each node's \texttt{node\_report.json} --- the source of truth
+           --- populates a \emph{typed} store that \emph{indexes}
+           artefacts (logs, outputs, source) by content hash. Reproduction
+           events are appended and folded down to a latest status, and an
+           admissibility predicate $\mathrm{usable}(\mu)$ (\cref{eq:usable})
+           gates which records reach the verified context. The same store
+           yields two readers: the \emph{working context} injected at the
+           next node's start (the inheritance path of exploration) and the
+           \emph{verified context} that grounds the paper's quantitative
+           claims (\cref{sec:paper:evidence}). Ungrounded reflection may
+           steer exploration but never the paper body.}
+  \label{fig:research-memory}
 \end{figure}
 
-Each node's expansion runs a ReAct-style agent loop in the
-\texttt{AgentLoop} class. The maximum step count is
-\texttt{MAX\_REACT\_STEPS = 80}; it can be overridden per-instance
-via the \texttt{max\_react\_steps} keyword. A separate guard
-\texttt{MIN\_TOOL\_CALLS = 2} prevents trivially short trajectories.
-The agent's system prompt is reproduced verbatim as
-\cref{prompt:agent_system}.
+\subsubsection*{Two readers: working and verified context}
 
-The set of tools available to the agent is filtered per phase by
-the tool manager; for example, the exploration phase masks the
-paper-writing tools so that BFTS expansion cannot short-circuit
-into a draft. A small set of MCP tools is reserved for
-\texttt{ari-core} itself (memory CoW operations) and is hidden
-from the LLM, ensuring that the model cannot set an arbitrary node
-id and bypass the memory skill's copy-on-write check.
+The store feeds two consumers (\cref{fig:research-memory}), and the
+distinction between them is the heart of the design. At the \emph{start}
+of every node the loop injects a \term{working context}: the experiment's
+fixed core --- goal, target metric, hardware --- together with the
+conclusions its ancestors recorded. A child therefore begins from what
+its lineage has already established, deterministically and scoped to its
+own branch, rather than from an aggregate text dump. At \emph{paper} time
+the pipeline builds a \term{verified context} from the best node's
+lineage: it folds each result's reproducibility events down to a latest
+status and ranks entries so that reproduced results outrank
+merely-artefact-grounded ones, which in turn outrank ungrounded
+reflection. An entry $\mu$ is \emph{admissible} as a quantitative paper
+claim only when it is artefact-grounded and not contradicted by a
+reproduction attempt:
+\begin{equation}\label{eq:usable}
+  \mathrm{usable}(\mu) \;=\;
+    \mathrm{grounded}(\mu)\;\wedge\;
+    \bigl(\mathrm{repro}(\mu)\neq\mathrm{failed}\bigr).
+\end{equation}
+Ungrounded reflection can still steer the search through the working
+context, but \cref{eq:usable} holds it out of the paper body: the
+writer's quantitative claims rest only on admissible, reproduced-first
+entries. This is the memory-side counterpart of the evidence assembler
+(\cref{sec:paper:evidence}); where the assembler decides which artefact
+\emph{bytes} the writer may read, the verified context decides which
+\emph{results} are allowed to become claims.
+
+\subsubsection*{Reproducibility as an appended event}
+
+Because past entries are byte-stable --- a node writes only under its own
+identifier and existing entries are never edited in place --- a result's
+reproducibility status is not patched when the result is later re-run.
+Instead the re-run \emph{appends} a reproducibility-event entry, and any
+reader folds the events for a target down to their latest state. A result
+that fails to reproduce is thereby demoted out of the claim set of
+\cref{eq:usable} --- and can be reported honestly as a limitation ---
+without rewriting the history that recorded it as promising in the first
+place.
+
+\subsection{Ideation: seeding the root}\label{sec:exploration:ideation}
+
+The tree's root node does not begin with code; it begins by deciding
+what to investigate. The root's agent runs the idea stage: a bounded
+literature survey followed by multi-agent idea generation, converging
+on a selected idea (\texttt{idea.json} in the checkpoint) whose plan
+yields the run's metric contract (\cref{sec:paper:contract}). Because
+the survey happens here, at idea time, the search itself can stay
+offline (\cref{sec:exploration:lineage}): the survey retrieves live
+literature from Semantic~Scholar --- keyword search enriched by a
+two-hop traversal of the citation graph --- and the deliberation then
+works over the retrieved abstracts.
+
+Ideation is deliberately multi-agent. Single-agent,
+archive-conditioned brainstorming is known to collapse onto a narrow
+idea distribution --- the AI~Scientist reports that its idea
+generation ``often results in very similar ideas across different
+runs and even models'' \cite{lu2024ai} --- whereas VirSci
+\cite{su2024many} simulates a scientist team (collaborator selection,
+round-table discussion, idea generation, novelty voting) and reports
+that the multi-agent system improves on a single-agent executive by,
+on average, $+13.8\%$ in alignment with and $+44.1\%$ in potential
+impact on contemporary research.
+
+ARI wraps VirSci at two fidelities. The default path re-implements
+VirSci's discussion flow inside the idea skill, using the vendored
+VirSci prompt templates directly where available, with retrieval
+re-based on the live survey and model calls routed through ARI's LLM
+layer; candidate ideas carry VirSci-style self-assessments (novelty,
+feasibility, clarity) and are ranked by a novelty-weighted sum. An
+opt-in \term{VirSci-live} mode instead drives the vendored VirSci
+engine itself, unmodified (\cref{fig:virsci}): a frozen
+Semantic-Scholar-derived snapshot --- a paper corpus with a SPECTER2
+retrieval index and a freshness-ranked co-author graph --- is
+materialised under the checkpoint, VirSci's own
+\texttt{select\_coauthors} forms a scientist team over that graph,
+and its $K$-round \texttt{generate\_idea} deliberation produces the
+candidates. The multi-agent mechanism ARI builds on is thus the
+published one, executed against current literature rather than
+paraphrased; freezing the snapshot keeps the deliberation substrate
+reproducible, and the live path degrades on any failure to the
+re-implemented loop, so enabling it never regresses a run.
+
+Two run-level facts are folded into the deliberation on both paths.
+The platform constraints verified by the probe
+(\cref{sec:exploration:platform-probe}) are appended to the research
+topic, so every prompt that consumes the topic plans only
+measurements the platform can take; and on a derivative run the
+ancestor checkpoints' idea pool (\cref{sec:exploration:lineage}) is
+injected read-only, so the team refines, extends, or explicitly
+pivots from what the lineage already proposed instead of re-deriving
+it. The ranked selection among the candidates is recorded for
+post-hoc audit (\cref{sec:exploration:lineage}), keeping the run's
+starting point as traceable as every later expansion.

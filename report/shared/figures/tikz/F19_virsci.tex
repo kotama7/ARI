@@ -1,0 +1,70 @@
+% F19: VirSci-live vendor-wrap ideation, drawn as phase-grouped columns.
+% Substrate (white, left): a frozen Semantic Scholar snapshot — a freshness-
+% ranked co-author graph plus a corpus with a SPECTER2 retrieval index.
+% Ideation (lavender, middle): select_coauthors forms a heterogeneous
+% scientist team (personas A/B/C) that runs the vendored K-round deliberation
+% loop (propose / critique / converge), grounded by retrieval against the
+% same snapshot, and converges on idea.json (white artifact, right).
+% Platform-aware ideation: a run-start capability probe of the execution
+% platform (peach) folds its measured constraints into the deliberation
+% topic — the single accent edge — so the converged plan only promises
+% measurements the platform can actually take.
+% style.tikzstyles is loaded by shared/preamble.tex / the standalone wrapper.
+% The ari* house styles live in _style.tex and are resolved from the build
+% cwd: <lang>/ for the main documents (which \input this figure as
+% ../shared/figures/tikz/F19_virsci.tex) or report/ for the preview renderer.
+\IfFileExists{../shared/figures/tikz/_style.tex}%
+  {\input{../shared/figures/tikz/_style}}%
+  {\input{shared/figures/tikz/_style}}%
+\begin{tikzpicture}[aricanvas,
+    % persona chip — an aribadge outlined in ink on the ideation fill
+    % (colour-only derivation; every size stays in _style.tex)
+    aripersona/.style={aribadge, draw=ariink, fill=phaseidea, text=ariink}]
+
+  % ---- substrate column, upper group: frozen literature snapshot ----------
+  \node[ariphase] (hsnap) {\figlabel{F19.snap}};
+  \pic at ([xshift=-2.5mm]hsnap.west) {ariglyph doc};
+  \node[ariboxwide, below=0.35cm of hsnap] (cog)    {\figlabel{F19.coauthorg}};
+  \node[ariboxwide, below=of cog]          (corpus) {\figlabel{F19.corpus}};
+
+  % ---- substrate column, lower group: probed execution platform -----------
+  \node[ariphase, below=0.7cm of corpus] (hplat) {\figlabel{F19.platform}};
+  \pic at ([xshift=-2.5mm]hplat.west) {ariglyph flask};
+  \node[ariboxwide, fill=phaseexp, below=0.35cm of hplat] (probe)
+        {\figlabel{F19.probe}};
+
+  % ---- ideation column: team formation + deliberation loop ----------------
+  \node[ariboxwide, fill=phaseidea, right=of cog] (sel) {\figlabel{F19.select}};
+  \node[ariphase, above=0.35cm of sel] (hteam) {\figlabel{F19.team}};
+  \pic at ([xshift=-2.5mm]hteam.west) {ariglyph bulb};
+  \node[aripersona, below=0.6cm of sel] (pb) {\figlabel{F19.pb}};
+  \node[aripersona, left=0.35cm of pb]  (pa) {\figlabel{F19.pa}};
+  \node[aripersona, right=0.35cm of pb] (pc) {\figlabel{F19.pc}};
+  \node[arinote, below=0.18cm of pb] (rounds) {\figlabel{F19.rounds}};
+  \node[ariboxwide, fill=phaseidea, below=0.18cm of rounds] (delib)
+        {\figlabel{F19.delib}};
+  \node[ariloop, fit=(pa)(pc)(rounds)(delib)] (loop) {};
+  \pic at ([xshift=4mm]pc.east) {ariglyph loop};
+
+  % ---- converged artifact --------------------------------------------------
+  \node[ariboxwide, right=of delib] (idea) {\figlabel{F19.idea}};
+
+  % ---- primary flow: 1 form team, 2 deliberate, 3 converge ----------------
+  \draw[ariarrow] (cog) -- (sel);
+  \draw[ariarrow] (sel) -- (pb);
+  \draw[ariarrow] (delib) -- (idea);
+  \node[aribadge] at (sel.north west)   {1};
+  \node[aribadge] at (delib.north west) {2};
+  \node[aribadge] at (idea.north west)  {3};
+
+  % retrieval grounding against the same snapshot (secondary flow)
+  \draw[ariarrow muted] (corpus.east) to[out=0, in=180]
+        node[arinote, above=1pt, pos=0.4] {\figlabel{F19.ground}} (delib.west);
+
+  % probed platform constraints fold into the idea topic (the accent edge)
+  \draw[arielbow, draw=accent] (probe.east) to (delib.south);
+  \node[arinote, above=1pt]
+        at ($(probe.east)!0.5!(probe.east -| delib.south)$)
+        {\figlabel{F19.fold}};
+
+\end{tikzpicture}

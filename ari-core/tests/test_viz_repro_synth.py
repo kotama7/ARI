@@ -68,6 +68,26 @@ def test_high_score_is_reproduced(tmp_path):
     assert out["passed_leaves"] == 18
     assert out["total_leaves"] == 20
     assert out["ors_score"] == 0.85
+
+
+# ── BFTS web-search trajectory caveat ───────────────────────────────────
+
+def test_bfts_web_caveat_surfaced_when_marker_present(tmp_path):
+    from ari.orchestrator.web_provenance import write_provenance
+    _write(tmp_path, "ors_grade.json", _grade(0.85, leaves=20, passed=18))
+    write_provenance(tmp_path)
+    out = _synth_repro_report_from_ors(tmp_path)
+    # The paper's numbers can still be REPRODUCED while the search trajectory
+    # that produced them is flagged non-reproducible.
+    assert out["verdict"] == "REPRODUCED"
+    assert out["bfts_web_search"]["enabled"] is True
+    assert out["bfts_web_search"]["trajectory_reproducible"] is False
+
+
+def test_no_bfts_web_caveat_without_marker(tmp_path):
+    _write(tmp_path, "ors_grade.json", _grade(0.85, leaves=20, passed=18))
+    out = _synth_repro_report_from_ors(tmp_path)
+    assert "bfts_web_search" not in out
     assert "18/20" in out["summary"]
 
 

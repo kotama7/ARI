@@ -1,51 +1,63 @@
-% F06: paper-generation swim lane — paper-style three-lane workflow.
-% Lanes are coloured stage containers; numbered step markers sit to the
-% left of each station; the orange refine back-edge is on top.
+% F06: paper-generation pipeline — house-style phase-grouped columns.
+% The three lifecycle phases run left-to-right as top-down stacks: ideation
+% (brainstorm -> refine idea), experimentation (BFTS -> replicate), and
+% writing (draft <-> review/refine). Columns cascade one row per phase so
+% each handoff leaves the bottom of one column and enters the top of the
+% next at the same height. The draft/review pair sits inside a dashed loop
+% enclosure; the refine back-edge is the figure's single accent edge (the
+% only non-monotonic transition). Step badges 1-6 give the macro order.
 % style.tikzstyles is loaded by shared/preamble.tex / standalone wrapper.
-\begin{tikzpicture}[node distance=1.0cm and 1.6cm]
+% The ari* house styles come from _style.tex, which resolves relative to
+% the BUILD cwd: the en/ja/zh main documents \input this figure as
+% ../shared/figures/tikz/... with cwd report/<lang>/, the standalone
+% renderer runs with cwd report/, and a compile from this directory
+% falls back to the bare sibling name.
+\InputIfFileExists{../shared/figures/tikz/_style}{}{%
+  \InputIfFileExists{shared/figures/tikz/_style}{}{%
+    \input{_style}%
+  }%
+}%
+\begin{tikzpicture}[aricanvas]
 
-  % --- six stations laid out in a 3-row grid -------------------------
-  \node[station]                                       (i1)  {\figlabel{F6.brainstorm}};
-  \node[station, right=2.6cm of i1]                    (i2)  {\figlabel{F6.refine_idea}};
+  % --- ideation column ------------------------------------------------
+  \node[aribox idea]                  (i1) {\figlabel{F6.brainstorm}};
+  \node[aribox idea, below=of i1]     (i2) {\figlabel{F6.refine_idea}};
+  \node[ariphase, above=0.35cm of i1] (h1) {\figlabel{F6.lane.idea}};
+  \pic at ([xshift=-2.5mm]h1.west) {ariglyph bulb};
 
-  \node[station emph, below=1.4cm of i1]               (e1)  {\figlabel{F6.bfts}};
-  \node[station, right=2.6cm of e1]                    (e2)  {\figlabel{F6.replicate}};
+  % --- experimentation column (entered at the ideation exit row) -------
+  \node[aribox exp, right=of i2]      (e1) {\figlabel{F6.bfts}};
+  \node[aribox exp, below=of e1]      (e2) {\figlabel{F6.replicate}};
+  \node[ariphase, above=0.35cm of e1] (h2) {\figlabel{F6.lane.experiment}};
+  \pic at ([xshift=-2.5mm]h2.west) {ariglyph flask};
 
-  \node[station, below=1.4cm of e1]                    (w1)  {\figlabel{F6.draft}};
-  \node[station emph, right=2.6cm of w1]               (w2)  {\figlabel{F6.review_refine}};
+  % --- writing column (heading clears the loop enclosure below) --------
+  \node[aribox paper, right=of e2]    (w1) {\figlabel{F6.draft}};
+  \node[aribox paper, below=of w1]    (w2) {\figlabel{F6.review_refine}};
+  \node[ariphase, above=0.6cm of w1]  (h3) {\figlabel{F6.lane.write}};
+  \pic at ([xshift=-2.5mm]h3.west) {ariglyph doc};
 
-  % --- numbered step markers, perched on the upper-left corner of each
-  % station (PaperBench-style badge), so they never overlap any arrow.
-  \node[numbered step, above left=0.05cm and -0.2cm of i1.north west] {1};
-  \node[numbered step, above left=0.05cm and -0.2cm of i2.north west] {2};
-  \node[numbered step, above left=0.05cm and -0.2cm of e1.north west] {3};
-  \node[numbered step, above left=0.05cm and -0.2cm of e2.north west] {4};
-  \node[numbered step, above left=0.05cm and -0.2cm of w1.north west] {5};
-  \node[numbered step, above left=0.05cm and -0.2cm of w2.north west] {6};
+  % --- macro-flow step badges (instead of edge labels) ------------------
+  \node[aribadge] at (i1.north west) {1};
+  \node[aribadge] at (i2.north west) {2};
+  \node[aribadge] at (e1.north west) {3};
+  \node[aribadge] at (e2.north west) {4};
+  \node[aribadge] at (w1.north west) {5};
+  \node[aribadge] at (w2.north west) {6};
 
-  % --- intra-lane forward arrows (thick, paper-style) ----------------
-  \draw[big arrow] (i1) -- (i2);
-  \draw[big arrow] (e1) -- (e2);
-  \draw[big arrow] (w1) -- (w2);
+  % --- in-column flow + phase handoffs ----------------------------------
+  % (the cascade puts each handoff on a single shared row, so the
+  % column-to-column edge is a short straight horizontal, not a diagonal)
+  \draw[ariarrow]  (i1) -- (i2);
+  \draw[ariarrow]  (i2) -- (e1);
+  \draw[ariarrow]  (e1) -- (e2);
+  \draw[ariarrow]  (e2) -- (w1);
+  \draw[ariarrow]  (w1) -- (w2);
 
-  % --- inter-lane forward arrows: short straight verticals ----------
-  \draw[big arrow] (i2.south) -- (e2.north);
-  \draw[big arrow] (e2.south) -- (w2.north);
-
-  % --- refine back-edge (orange, on top, label in middle) ----------
-  \draw[big arrow, draw=ari-vermilion] (w2.south) to[bend left=35]
-       node[edge label, fill=ari-orange!15, font=\sffamily\bfseries\footnotesize, midway]
-       {\figlabel{F6.refine}}
-       (w1.south);
-
-  % --- lane backgrounds (in background layer) ----------------------
-  \begin{scope}[on background layer]
-    \node[stage container, fit=(i1)(i2), inner sep=10pt]   (laneI) {};
-    \node[stage container, fit=(e1)(e2), inner sep=10pt]   (laneE) {};
-    \node[stage container, fit=(w1)(w2), inner sep=10pt]   (laneW) {};
-  \end{scope}
-  % lane labels OUTSIDE on the right, after the lanes are drawn (top layer)
-  \node[stage title, right=4pt of laneI.east, anchor=west] {\figlabel{F6.lane.idea}};
-  \node[stage title, right=4pt of laneE.east, anchor=west] {\figlabel{F6.lane.experiment}};
-  \node[stage title, right=4pt of laneW.east, anchor=west] {\figlabel{F6.lane.write}};
+  % --- refine loop: dashed enclosure + the single accent back-edge ------
+  \node[ariloop, fit=(w1)(w2)] (refloop) {};
+  \draw[ariarrow accent, rounded corners=5pt]
+    (w2.east) -- ([xshift=6mm]w2.east) -- ([xshift=6mm]w1.east) -- (w1.east);
+  \node[arinote, below=2mm of refloop.south] (rn) {\figlabel{F6.refine}};
+  \pic at ([xshift=-2.5mm]rn.west) {ariglyph loop};
 \end{tikzpicture}

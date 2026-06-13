@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/cli_ear.py
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-06-10
 ---
 
 # ARI CLI 参考
@@ -42,7 +42,10 @@ ARI 命令行操作的完整参考。CLI 为基于终端的工作流提供与 [W
 从实验 Markdown 文件运行新实验。
 
 ```bash
-ari run <experiment.md> [--config <config.yaml>] [--profile <profile>]
+ari run <experiment.md> [--config <config.yaml>] [--profile <profile>] \
+                        [--virsci-live/--no-virsci-live] \
+                        [--virsci-k N] [--virsci-team-size N] \
+                        [--virsci-n-authors N] [--virsci-n-papers N]
 ```
 
 | 参数 | 是否必需 | 描述 |
@@ -50,6 +53,17 @@ ari run <experiment.md> [--config <config.yaml>] [--profile <profile>]
 | `experiment.md` | 是 | 实验 Markdown 文件的路径 |
 | `--config` | 否 | 自定义配置 YAML（省略则自动生成） |
 | `--profile` | 否 | 环境配置文件：`laptop`、`hpc` 或 `cloud` |
+| `--virsci-live` / `--no-virsci-live` | 否 | 创意技能：在实时 Semantic Scholar 快照上运行 VirSci 真正的多智能体引擎（vendor-wrap），而非重新实现的讨论循环。设置 `ARI_IDEA_VIRSCI_REAL`。默认关闭。 |
+| `--virsci-k` | 否 | VirSci-live 讨论轮数（vendor `group_max_discuss_iteration`）。设置 `ARI_IDEA_VIRSCI_K`。默认 7。 |
+| `--virsci-team-size` | 否 | VirSci-live 每个团队最大成员数。设置 `ARI_IDEA_VIRSCI_TEAM_SIZE`。默认 3。 |
+| `--virsci-n-authors` | 否 | VirSci-live 用于 `select_coauthors` 的作者池大小。设置 `ARI_IDEA_VIRSCI_N_AUTHORS`。默认 16。 |
+| `--virsci-n-papers` | 否 | VirSci-live SPECTER2 检索语料库大小。设置 `ARI_IDEA_VIRSCI_N_PAPERS`。默认 800。 |
+
+这些标志设置创意技能读取的 `ARI_IDEA_VIRSCI_*` 环境变量契约（见下方
+[创意生成 (VirSci-live)](#创意生成-virsci-live)）。当 `--virsci-live` 开启时，
+假说生成会在实时 Semantic Scholar 快照上运行 VirSci 真正的 `select_coauthors`
++ `generate_idea` 机制；当依赖缺失或发生任何运行时错误时，将以完全相同的
+`idea.json` 契约降级到重新实现的循环。
 
 **示例：**
 
@@ -65,6 +79,9 @@ ari run experiment.md --config ari-core/config/workflow.yaml
 
 # 使用环境变量覆盖
 ARI_MAX_NODES=10 ARI_PARALLEL=2 ari run experiment.md
+
+# 在创意生成中使用 VirSci 真正的多智能体引擎（vendor-wrap）
+ari run experiment.md --virsci-live --virsci-k 7 --virsci-team-size 3
 ```
 
 **运行流程：**
@@ -435,6 +452,26 @@ ari skills-list [--config <config.yaml>]
 | `ARI_MODEL_IDEA` | 创意生成 |
 | `ARI_MODEL_BFTS` | BFTS 实验 |
 | `ARI_MODEL_PAPER` | 论文撰写 |
+
+### 创意生成 (VirSci-live)
+
+创意生成的可选 vendor-wrap 路径。当 `ARI_IDEA_VIRSCI_REAL` 开启时，创意技能
+会在实时 Semantic Scholar 快照上运行 VirSci 真正的多智能体机制
+（`select_coauthors` + `generate_idea`）；默认关闭则行为不变。`ari run` 的
+`--virsci-live` / `--virsci-k` / `--virsci-team-size` / `--virsci-n-authors`
+/ `--virsci-n-papers` 标志会设置这些变量。议论 LLM 遵循按阶段的
+`ARI_MODEL_IDEA` 模型。需要 `virsci` pip extra；缺失或发生任何运行时错误时，
+技能会以完全相同的 `idea.json` 契约降级到重新实现的循环。
+
+| 变量 | 描述 | 默认值 |
+|------|------|--------|
+| `ARI_IDEA_VIRSCI_REAL` | 切换 real vendor-wrap 路径 | (未设置/关闭) |
+| `ARI_IDEA_VIRSCI_K` | 讨论轮数（vendor `group_max_discuss_iteration`） | 7 |
+| `ARI_IDEA_VIRSCI_TEAM_SIZE` | 最大团队成员数（vendor `max_teammember`） | 3 |
+| `ARI_IDEA_VIRSCI_N_AUTHORS` | `select_coauthors` 的作者池 | 16 |
+| `ARI_IDEA_VIRSCI_N_PAPERS` | SPECTER2 检索语料库大小 | 800 |
+| `ARI_IDEA_VIRSCI_MAX_TEAMS` | 经 `generate_idea` 驱动的团队数上限 | =`n_ideas` |
+| `ARI_IDEA_VIRSCI_SPECTER2_MODEL` | 本地查询嵌入器 | `allenai/specter2_base` |
 
 ### .env 文件
 

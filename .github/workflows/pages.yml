@@ -1,9 +1,24 @@
 name: Deploy GitHub Pages
 
+# Build-type deploy (L3): the docs surface is built with VitePress and the
+# bespoke landing is assembled at the site root into a single artifact.
+#
+#   _site/                       → uploaded to Pages
+#    ├ index.html, tokens.css, site.css, version.json, sitemap.xml, robots.txt
+#    ├ assets/  i18n/            → bespoke landing (root /ARI/)
+#    ├ docs/                     → VitePress dist (/ARI/docs/, en + ja + zh)
+#    ├ docs.html                → noindex redirect stub for old bookmarks
+#    └ .nojekyll
+#
+# ROLLBACK to the previous build-less passthrough: replace the whole `build`
+# job with a single `actions/upload-pages-artifact@v3` of `path: docs/` (and
+# drop the Node steps). The bespoke landing assets are plain static files, so
+# the landing keeps working even if the VitePress build is reverted.
+
 on:
   push:
     branches: [main]
-    paths: ['docs/**', 'README.md']
+    paths: ['docs/**', 'report/**', 'README.md']
   workflow_dispatch:
 
 permissions:
@@ -16,16 +31,34 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+      - name: Sync report PDFs into the deploy tree
+        run: bash scripts/docs/sync_report_pdf.sh
+      - name: Install docs deps
+        run: npm ci --prefix docs
+      - name: Build VitePress docs
+        run: npm run --prefix docs docs:build
+      - name: Assemble _site (bespoke landing at root + VitePress at /docs/)
+        run: bash scripts/docs/assemble_site.sh
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
   deploy:
+    needs: build
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: docs/
       - id: deployment
         uses: actions/deploy-pages@v4

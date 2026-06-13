@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/configs
     role: config
-last_verified: 2026-05-25
+last_verified: 2026-06-10
 ---
 
 # 設定リファレンス
@@ -470,6 +470,60 @@ root_idea_selection:
 で記録され、`idea.json` の `_root_choice` にも provenance として
 保存されます。子 (recursion) は `_inherited_from` または `_root_choice`
 を検出して再選択を skip します。
+
+## Claim Gate Policy (v0.7.0+)
+
+`claim_gate_policy` は claim–evidence hard gate（Story2Proposal Phase
+B3）を制御するトップレベルブロックです。gate ステージは毎回の論文
+ビルドで実行され `{{claim_gate_policy}}` で配線されます。ブロックは
+`ari-core/ari/pipeline/claim_gate/policy.py` が読み込みます。
+
+```yaml
+claim_gate_policy:
+  mode: warn                  # off | warn | strict
+  comparison_scope: any       # any | same_environment
+  numeric_coverage:
+    target_sections:
+      strict: [abstract, results, conclusion]
+      warn: [introduction, discussion, limitations]
+      excluded: [related_work, references, appendix, equations]
+  numeric_match:
+    default_tolerance: {absolute: 0.0, relative: 0.02}
+  blocking:
+    block_on: [numeric_mismatch, operand_unresolved, missing_evidence]
+```
+
+`mode` がブロッキングを制御します（環境変数 `ARI_CLAIM_GATE_MODE` で
+上書き）:
+
+| Mode | 動作 |
+|---|---|
+| `off` | 決してブロックしない。 |
+| `warn`（既定） | エラー/警告を報告するが `finalize_paper` をブロックしない。 |
+| `strict` | `block_on` エラーが存在すると**最終** gate がブロックし（`finalize_paper` を skip）、strict セクション内の未カバーの結果数値もブロッキングになる。draft gate は決してブロックしない。 |
+
+`comparison_scope` は注入される研究意図です（環境変数
+`ARI_COMPARISON_SCOPE` で上書き）:
+
+| Scope | クロス環境比較 |
+|---|---|
+| `any`（既定） | 透明性のための**警告**。クロス環境比較自体が貢献となるクロスアーキテクチャ研究向け。 |
+| `same_environment` | **ブロッキング**エラー。単一アーキテクチャの最適化研究向け。 |
+
+`numeric_coverage.target_sections` は、gate の重大度ごとに数値クレームを
+検査する論文セクション（`strict`/`warn`）と無視するセクション
+（`excluded`）を列挙します。`numeric_match.default_tolerance` は、
+クレームごとの tolerance が無い場合に適用される照合許容差です
+（`absolute: 0.0`、`relative: 0.02`＝2%）。`blocking.block_on` は
+`strict` で最終 gate をブロックする finding type のリストです:
+`numeric_mismatch`、`operand_unresolved`、`missing_evidence`。
+
+> 別系統の**客観的虚偽**の finding type
+> （`invariant_violation`、`correctness_failed`、`correctness_uncovered`、
+> `placeholder_denominator`、`recompute_mismatch`、`claim_evidence_missing`、
+> `ceiling_unmeasured`）は `mode` に**かかわらず**最終論文をブロックします。
+> これらの既定値は `policy.py` の `blocking.always_block_on` にあり、
+> `workflow.yaml` には設定されていません。
 
 ## BFTS チューニング
 
