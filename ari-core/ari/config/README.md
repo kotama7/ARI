@@ -8,6 +8,7 @@ their env-var overrides (`ARI_BACKEND`, `ARI_MODEL`, …).
 - `README.md` — this file.
 - `__init__.py` — Pydantic config models + env-var overrides.
 - `finder.py` — workflow / profile YAML discovery.
+- `Plan.md` — G1 HandoffConfig＋env override の実装計画（handoff study）.
 
 ## See also
 

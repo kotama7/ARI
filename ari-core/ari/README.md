@@ -24,6 +24,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `guidance.py` — per-stage step-guidance + metrics-validation helpers.
   - `loop.py` — `AgentLoop` driver + per-node prompt builder.
   - `message_utils.py` — ReAct-message helpers (`_extract_job_ids`, `_tool_was_called`).
+  - `Plan.md` — B1 memory gate / B3 契約凍結 / G4 agent 面注入の実装計画（handoff study）.
   - `react_driver.py` — generic ReAct driver for pipeline `react:` stages, with sandbox enforcement.
   - `run_env.py` — capture/read helper for `_run_env.json`.
   - `tool_manager.py` — OpenAI tool conversion, dispatch, phase-aware filtering.
@@ -39,6 +40,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `commands.py` — misc top-level commands + `_safe_backup`.
   - `lineage.py` — end-of-phase lineage-decision helpers.
   - `migrate.py` — `ari migrate` sub-app.
+  - `Plan.md` — G5 copy / G7 sterile / G12 timeout・overflow の実装計画（handoff study）.
   - `projects.py` — `ari paper` / `status` / `projects` / `show` commands.
   - `run.py` — `ari run` / `ari resume` commands.
 - `clone/` — `ari clone`: fetch + verify + extract curated EAR bundles.
@@ -56,6 +58,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `README.md` — config index.
   - `__init__.py` — Pydantic config models + env-var overrides.
   - `finder.py` — workflow / profile YAML discovery.
+  - `Plan.md` — G1 HandoffConfig＋env override の実装計画（handoff study）.
 - `configs/` — external config tables (Phase PC).
   - `README.md` — configs index.
   - `__init__.py` — config-table exports + loader plumbing.
@@ -67,11 +70,13 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `__init__.py` — public symbols + axis design.
   - `dynamic_axes.py` — venue/run-specific evaluation-axis derivation.
   - `llm_evaluator.py` — `LLMEvaluator`: extraction + multi-axis composite scoring.
+  - `Plan.md` — B2 deterministic evaluator＋測定器ユニットの実装計画（handoff study）.
 - `llm/` — thin LiteLLM wrappers for the agent loop and skills.
   - `README.md` — llm index.
   - `__init__.py` — public `LLMClient` + contract.
   - `cli_server.py` — OpenAI-compatible HTTP shim for agentic CLIs.
   - `client.py` — `LLMClient`/`LLMMessage`: completion + tool calling + cost recording.
+  - `Plan.md` — ローカルモデル決定性（seed/digest/thinking）の実装計画（handoff study）.
   - `routing.py` — TODO
 - `mcp/` — MCP client talking to `ari-skill-*` subprocesses.
   - `README.md` — mcp index.
@@ -101,6 +106,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `lineage_decision.py` — LLM lineage action + `lineage_decisions.jsonl` log.
   - `node.py` — `Node` data model + `NodeStatus` / `NodeLabel` enums.
   - `node_selection.py` — shared node-selection helpers + publication source-file selection.
+  - `Plan.md` — G3 node_summary_view / G9a deterministic selector の実装計画（handoff study）.
   - `root_idea_selector.py` — run-start LLM root-idea pick + selection log.
   - `node_report/` — per-node `node_report.json` package.
     - `README.md` — node_report index.
