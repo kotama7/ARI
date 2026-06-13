@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_public_api_boundary.py
     role: test
-last_verified: 2026-05-26
+last_verified: 2026-06-10
 ---
 
 # `ari.public` — スキル向け安定 API
@@ -25,6 +25,8 @@ last_verified: 2026-05-26
 | `ari.public.cost_tracker` | LLM コスト記録（`bootstrap_skill`、`record` など） | `ari-skill-plot`（LLM 呼び出しコスト） |
 | `ari.public.llm` | `LLMClient`（コスト統合付き LiteLLM ラッパー） | ARI のラッパーを使いたい呼び出し元 |
 | `ari.public.paths` | `PathManager`（チェックポイントパスリゾルバ） | スコープ付きパスが必要な呼び出し元 |
+| `ari.public.claim_gate` | 決定論的な主張-証拠ハードゲート（`run_hard_gate`）＋ 概念→不変条件レジストリ（`classify_concept`、`scan_science_data`、`CONCEPT_INVARIANTS`） | `ari-skill-evaluator`、`ari-skill-transform` |
+| `ari.public.verified_context` | 検証済みコンテキストヘルパー（`render_grounded_block`、`write_verified_context`、`build_verified_context`） | `ari-skill-paper` |
 
 ## `ari.public.config_schema`
 
@@ -113,6 +115,49 @@ nodes_json = paths.checkpoint / "nodes_tree.json"
 `PathManager` は中央リゾルバです — スキルから `ARI_CHECKPOINT_DIR` を
 直接読み取らないでください。ソース: `ari-core/ari/paths.py` →
 `ari-core/ari/public/paths.py`。
+
+## `ari.public.claim_gate`
+
+`ari.pipeline.claim_gate` から決定論的な主張-証拠ハードゲートと、その
+概念→不変条件レジストリを再エクスポートします:
+
+| シンボル | 用途 |
+|---|---|
+| `run_hard_gate` | ゲートのエントリポイント — 証拠が決定論的チェックに合格しない主張をブロックする |
+| `classify_concept` | 概念をその普遍的不変条件のファミリにマッピングする |
+| `scan_science_data` | 登録された不変条件に照らしてサイエンスデータをスキャンする |
+| `CONCEPT_INVARIANTS` | ドメイン一般の概念→不変条件レジストリ（単一の信頼できる情報源） |
+
+```python
+from ari.public.claim_gate import run_hard_gate
+```
+
+`ari-skill-evaluator` と `ari-skill-transform` は、プライベートな
+`ari.pipeline.claim_gate` パスではなく、この安定したパブリックサーフェス
+経由でゲートに到達します。これにより両スキルは、ゲートがブロックに使うのと
+**同じ**普遍的不変条件ロジックを再利用できます — ドメイン計算の重複は
+ありません。ソース: `ari-core/ari/pipeline/claim_gate/` →
+`ari-core/ari/public/claim_gate.py`。
+
+## `ari.public.verified_context`
+
+`ari.pipeline.verified_context` から検証済みコンテキストヘルパーを
+再エクスポートします:
+
+| シンボル | 用途 |
+|---|---|
+| `render_grounded_block` | グラウンディングされた（引用に裏付けられた）コンテキストブロックをレンダリングする |
+| `write_verified_context` | アーティファクトを構築する呼び出し元向けに検証済みコンテキストのアーティファクトを書き出す |
+| `build_verified_context` | 検証済みコンテキストの構造を構築する |
+
+```python
+from ari.public.verified_context import render_grounded_block
+```
+
+`ari-skill-paper` は、プライベートな `ari.pipeline.verified_context` パス
+ではなく、この安定したパブリックサーフェス経由でこれらのヘルパーに
+到達します。ソース: `ari-core/ari/pipeline/verified_context.py` →
+`ari-core/ari/public/verified_context.py`。
 
 ## まとめ — 最小限のスキル
 

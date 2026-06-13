@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-skill-evaluator
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-06-10
 ---
 
 # experiment.md の書き方
@@ -111,11 +111,19 @@ env var で選択します。ルブリックは BFTS 判定軸と公開レビュ
 
 ### lineage 決定の記録（v0.7）
 
-`stagnation_rule` が BFTS 複合スコア軌跡を監視し、停滞を検知すると
-LLM ジャッジが `continue` / `switch_to_idea` / `fanout` /
-`terminate` のいずれかを選択。決定は
+`stagnation_rule` が BFTS 複合スコア軌跡を監視します。停滞が
+CONFIRMED になると、ARI はまず **決定論的に** `idea.json` 内で
+最も有望な **未使用** の次点アイデアへピボットします
+（`switch_to_idea`、同点時はインデックスの小さい方を選択、
+`disable_generate_ideas` を付与）。これにより次点アイデアが
+未使用のまま捨てられず、実際に試行されます。LLM ジャッジ
+（`continue` / `switch_to_idea` / `fanout` / `terminate`）は、
+決定論的ピボットが使えない場合（予算枯渇、再帰上限到達、未使用の
+代替案が残っていない）の **フォールバック** としてのみ参照されます。
+決定は（発火 1 件につき 1 レコード）
 `{ckpt}/lineage_decisions.jsonl` に追記されます。`experiment.md`
-への手動編集は不要です。
+への手動編集は不要です — 代替アイデアのカタログは `idea.json` に
+あり、lineage の探索は `meta.json:parent_run_id` を辿ります。
 
 ### サブ実験の継承（v0.7）
 

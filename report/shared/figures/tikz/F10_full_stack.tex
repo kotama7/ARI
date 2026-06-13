@@ -1,87 +1,99 @@
-% F10: ARI full-stack architecture — single column, 4 skill groups stacked
-%       so the role bands never overlap.
-% style.tikzstyles is loaded by shared/preamble.tex / standalone wrapper.
-\begin{tikzpicture}[node distance=0.6cm and 0.6cm]
+% F10: ARI full stack — chapter 2 anchor figure.
+%   Layer 1  entry points (CLI / SDK, viz HTTP API)
+%   Layer 2  ari-core orchestrator (hub)
+%   Layer 3  engine layer: BFTS engine + ReAct AgentLoop (the per-node
+%            iteration loop) with the lineage walker consulted beside it
+%   Layer 4  MCP dispatch (skill registry) fanning out to the four
+%            phase-grouped skill columns (generation / evaluation /
+%            writing & replication / infrastructure-I-O)
+%   Layer 5  checkpoint persistence (tree.json, results.json,
+%            checkpoint dir, cost tracker)
+% Badges 1/2/3 number the macro flow: launch -> tree search -> skill dispatch.
+%
+% Baseline style.tikzstyles is loaded by shared/preamble.tex / the standalone
+% wrapper; the ari* house styles come from _style.tex, resolved from the build
+% cwd: the en/ja/zh main documents compile with cwd report/<lang>/ (figures
+% are \input as ../shared/figures/tikz/<fig>.tex), `make figure` renders with
+% cwd report/, and a manual compile may run inside tikz/ itself.
+\InputIfFileExists{../shared/figures/tikz/_style.tex}{}{%
+  \InputIfFileExists{shared/figures/tikz/_style.tex}{}{%
+    \InputIfFileExists{_style.tex}{}{}}}%
+\begin{tikzpicture}[aricanvas]
 
-  % --- top row: external entry points -------------------------------
-  \node[block external]                                  (cli)    {\figlabel{F10.cli}};
-  \node[block external, right=1.2cm of cli]              (web)    {\figlabel{F10.viz}};
+  % ---- layer 1: entry points ------------------------------------------
+  \node[aribox]                                    (cli)  {\figlabel{F10.cli}};
+  \node[aribox, right=3.4cm of cli]                (viz)  {\figlabel{F10.viz}};
 
-  % --- driver --------------------------------------------------------
-  \node[block native big, below=1.2cm of cli, xshift=2.0cm] (orch) {\figlabel{F10.orchestrator}};
+  % ---- layer 2: orchestrator hub ---------------------------------------
+  \node[ariboxwide, below=0.9cm of cli, xshift=3.0cm]
+                                                   (orch) {\figlabel{F10.orchestrator}};
 
-  % --- engines row (under orchestrator) ------------------------------
-  \node[block lane native, below=1.4cm of orch]          (bfts)   {\figlabel{F10.bfts}};
-  \node[block lane native, left=1.0cm of bfts]           (lin)    {\figlabel{F10.lineage}};
-  \node[block lane native, right=1.0cm of bfts]          (loop)   {\figlabel{F10.agentloop}};
+  % ---- layer 3: engine layer (the iteration loop) -----------------------
+  \node[aribox exp, below=1.0cm of orch]           (bfts) {\figlabel{F10.bfts}};
+  \node[aribox exp, right=1.0cm of bfts]           (agent){\figlabel{F10.agentloop}};
+  \node[aribox exp, left=1.0cm of bfts]            (lin)  {\figlabel{F10.lineage}};
+  \node[ariloop, fit=(bfts)(agent)]                (iter) {};
+  \pic at ([xshift=3mm]iter.east) {ariglyph loop};
 
-  % --- MCP layer ----------------------------------------------------
-  \node[mcp band, below=1.5cm of bfts]                   (mcp)    {\figlabel{F10.mcp}};
+  % ---- layer 4: MCP dispatch hub ----------------------------------------
+  \node[ariboxwide, below=1.5cm of bfts]           (mcp)  {\figlabel{F10.mcp}};
 
-  % --- generation row -----------------------------------------------
-  \node[block lane native, below=2.0cm of mcp.south west, anchor=north west, xshift=0.5cm]
-                                                         (gen1)   {\figlabel{F10.s.idea}};
-  \node[block lane native, right=of gen1]                (gen2)   {\figlabel{F10.s.coding}};
+  % ---- skill registry: phase-grouped columns ----------------------------
+  % writing & replication column (directly under the dispatch hub)
+  \node[aribox paper, below=1.8cm of mcp]          (spaper)   {\figlabel{F10.s.paper}};
+  \node[aribox paper, below=of spaper]             (srepl)    {\figlabel{F10.s.replicate}};
+  \node[aribox paper, below=of srepl]              (spaperre) {\figlabel{F10.s.paperre}};
+  % evaluation column
+  \node[aribox gate, left=of spaper]               (seval)    {\figlabel{F10.s.eval}};
+  \node[aribox gate, below=of seval]               (sreview)  {\figlabel{F10.s.review}};
+  % generation column
+  \node[aribox idea, left=of seval]                (sidea)    {\figlabel{F10.s.idea}};
+  \node[aribox exp, below=of sidea]                (scoding)  {\figlabel{F10.s.coding}};
+  % infrastructure / I-O group (two adjacent stacks, shared heading)
+  \node[aribox, right=of spaper]                   (sbench)   {\figlabel{F10.s.bench}};
+  \node[aribox, below=of sbench]                   (shpc)     {\figlabel{F10.s.hpc}};
+  \node[aribox, below=of shpc]                     (splot)    {\figlabel{F10.s.plot}};
+  \node[aribox, below=of splot]                    (smem)     {\figlabel{F10.s.memory}};
+  \node[aribox, right=0.5cm of sbench]             (strans)   {\figlabel{F10.s.transform}};
+  \node[aribox, below=of strans]                   (svlm)     {\figlabel{F10.s.vlm}};
+  \node[aribox, below=of svlm]                     (sweb)     {\figlabel{F10.s.web}};
 
-  % --- evaluation row (right of generation, same y) ----------------
-  \node[block lane native, right=2.5cm of gen2]          (ev1)    {\figlabel{F10.s.eval}};
-  \node[block lane native, right=of ev1]                 (ev2)    {\figlabel{F10.s.review}};
+  % ---- phase headings over the skill columns -----------------------------
+  \node[ariphase, above=0.35cm of sidea]               (hgen)   {\figlabel{F10.band.gen}};
+  \node[ariphase, above=0.35cm of seval]               (heval)  {\figlabel{F10.band.eval}};
+  \node[ariphase, above=0.35cm of spaper]              (hwrite) {\figlabel{F10.band.write}};
+  \node[ariphase, above=0.35cm of sbench, xshift=1.55cm] (hinfra) {\figlabel{F10.band.infra}};
+  \pic at ([xshift=-2.5mm]hgen.west)   {ariglyph bulb};
+  \pic at ([xshift=-2.5mm]heval.west)  {ariglyph gate};
+  \pic at ([xshift=-2.5mm]hwrite.west) {ariglyph doc};
 
-  % --- writing & replication row -----------------------------------
-  \node[block lane native, right=2.5cm of ev2]           (wr1)    {\figlabel{F10.s.paper}};
-  \node[block lane native, right=of wr1]                 (wr2)    {\figlabel{F10.s.paperre}};
-  \node[block lane native, right=of wr2]                 (wr3)    {\figlabel{F10.s.replicate}};
+  % ---- layer 5: checkpoint persistence -----------------------------------
+  \node[aribox, below=0.9cm of smem]               (ckpt) {\figlabel{F10.ckpt}};
+  \node[aribox] (tree) at (scoding |- ckpt)               {\figlabel{F10.tree}};
+  \node[aribox] (res)  at (spaperre |- ckpt)              {\figlabel{F10.results}};
+  \node[aribox] (cost) at (sweb |- ckpt)                  {\figlabel{F10.cost}};
 
-  % --- infrastructure / I-O row (separate row below) ---------------
-  \node[block lane native, below=2.5cm of gen1]          (in1)    {\figlabel{F10.s.memory}};
-  \node[block lane native, right=of in1]                 (in2)    {\figlabel{F10.s.bench}};
-  \node[block lane native, right=of in2]                 (in3)    {\figlabel{F10.s.hpc}};
-  \node[block lane native, right=of in3]                 (in4)    {\figlabel{F10.s.plot}};
-  \node[block lane native, right=of in4]                 (in5)    {\figlabel{F10.s.transform}};
-  \node[block lane native, right=of in5]                 (in6)    {\figlabel{F10.s.vlm}};
-  \node[block lane native, right=of in6]                 (in7)    {\figlabel{F10.s.web}};
+  % ---- macro-flow step badges ---------------------------------------------
+  \node[aribadge] at (orch.north west) {1};
+  \node[aribadge] at (iter.north west) {2};
+  \node[aribadge] at (mcp.north west)  {3};
 
-  % --- persistence row (bottom) -------------------------------------
-  \node[artifact, below=2.0cm of in2]                    (cost)   {\figlabel{F10.cost}};
-  \node[artifact, right=of cost]                         (ckpt)   {\figlabel{F10.ckpt}};
-  \node[artifact, right=of ckpt]                         (tree)   {\figlabel{F10.tree}};
-  \node[artifact, right=of tree]                         (res)    {\figlabel{F10.results}};
+  % ---- primary flow ---------------------------------------------------------
+  \draw[arielbow vh] (cli) to (orch.west);
+  \draw[arielbow vh] (viz) to (orch.east);
+  \draw[ariarrow] (orch) -- (bfts);
+  \draw[ariarrow] (bfts) -- (agent);
+  \draw[ariarrow] (bfts) -- (mcp);
+  \draw[arielbow] (mcp.west)  to (hgen.north);
+  \draw[arielbow] (mcp.west)  to (heval.north);
+  \draw[ariarrow] (mcp.south) -- (hwrite.north);
+  \draw[arielbow] (mcp.east)  to (hinfra.north);
 
-  % --- group bands (one per role, with labels OUTSIDE each band) ----
-  \begin{scope}[on background layer]
-    \node[group, fit=(gen1)(gen2)]                       (gG)     {};
-    \node[group, fit=(ev1)(ev2)]                         (gE)     {};
-    \node[group, fit=(wr1)(wr2)(wr3)]                    (gW)     {};
-    \node[group, fit=(in1)(in2)(in3)(in4)(in5)(in6)(in7)] (gI)    {};
-  \end{scope}
-  % labels above their bands, anchored to the band's top-left, with vertical clearance
-  \node[band label, above=4pt of gG.north west, anchor=south west] {\figlabel{F10.band.gen}};
-  \node[band label, above=4pt of gE.north west, anchor=south west] {\figlabel{F10.band.eval}};
-  \node[band label, above=4pt of gW.north west, anchor=south west] {\figlabel{F10.band.write}};
-  \node[band label, above=4pt of gI.north west, anchor=south west] {\figlabel{F10.band.infra}};
-
-  % --- edges --------------------------------------------------------
-  \draw[arrow] (cli) -- (orch.north west);
-  \draw[arrow] (web) -- (orch.north east);
-
-  \draw[arrow] (orch.south) -- (bfts.north);
-  \draw[arrow dashed] (bfts.west) -- (lin.east);
-  \draw[arrow dashed] (bfts.east) -- (loop.west);
-
-  \draw[arrow] (bfts.south) -- (mcp.north);
-  \draw[arrow dashed] (lin.south) to[bend right=15] (mcp.north west);
-  \draw[arrow dashed] (loop.south) to[bend left=15] (mcp.north east);
-
-  % MCP -> each skill group head (one arrow per row to reduce clutter)
-  \draw[arrow] (mcp.south) to[bend right=10] (gen1.north);
-  \draw[arrow] (mcp.south) -- (ev1.north);
-  \draw[arrow] (mcp.south) to[bend left=10] (wr1.north);
-  \draw[arrow dashed] (mcp.south) to[bend right=25] (in1.north);
-
-  % skills -> persistence
-  \draw[arrow dashed] (in1.south) -- (cost.north);
-  \draw[arrow dashed] (in1.south) to[bend right=8] (ckpt.north);
-  \draw[arrow dashed] (gen2.south) to[bend right=15] (tree.north);
-  \draw[arrow dashed] (wr2.south) to[bend left=10] (res.north);
+  % ---- secondary flows: lineage lookup, artifact persistence ---------------
+  \draw[ariarrow muted] (bfts) -- (lin);
+  \draw[ariarrow muted] (scoding)  -- (tree);
+  \draw[ariarrow muted] (spaperre) -- (res);
+  \draw[ariarrow muted] (smem)     -- (ckpt);
+  \draw[ariarrow muted, rounded corners=5pt] (smem.east) -| (cost);
 
 \end{tikzpicture}

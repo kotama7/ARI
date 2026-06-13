@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Landing-surface sitemap (served at https://kotama7.github.io/ARI/sitemap.xml).
+     The /docs/ documentation has its own VitePress-generated sitemap at
+     https://kotama7.github.io/ARI/docs/sitemap.xml (per-locale URLs + hreflang);
+     submit both in Search Console. The old /docs.html is a noindex redirect
+     stub (assembled in CI) and is intentionally omitted. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://kotama7.github.io/ARI/</loc></url>
+  <url><loc>https://kotama7.github.io/ARI/assets/report/en.pdf</loc></url>
+  <url><loc>https://kotama7.github.io/ARI/assets/report/ja.pdf</loc></url>
+  <url><loc>https://kotama7.github.io/ARI/assets/report/zh.pdf</loc></url>
+</urlset>

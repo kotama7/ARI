@@ -63,7 +63,14 @@ _VERY_SLOW_TOOLS = frozenset({
     "grade_with_simplejudge",    # Phase 2 judge, n_runs × minutes
 })
 _SLOW_TOOLS = frozenset({"generate_ideas", "write_paper_iterative", "review_compiled_paper",
-                          "collect_references_iterative", "reproduce_from_paper"})
+                          "collect_references_iterative", "reproduce_from_paper",
+                          # paper_refine does an internal LLM call (S2P refiner); without
+                          # this it inherited the 300s default and timed out under CLI-shim
+                          # congestion while write_paper (already slow-tiered) did not.
+                          "paper_refine",
+                          # compile_paper (render_paper / A_rend) runs pdflatex×3 + bibtex
+                          # (each up to 120s) — the 4-pass sequence can exceed 300s.
+                          "compile_paper"})
 
 
 def _resolve_tool_timeout(tool_name: str, args: dict) -> int:
@@ -253,7 +260,15 @@ class MCPClient:
     # pooled memory-skill MCP server. The (set_current_node, write)
     # pair must be atomic across all parallel nodes that share this
     # MCPClient — see ``call_tool(cow_node_id=...)`` below.
-    _COW_TOOLS: frozenset = frozenset({"add_memory", "clear_node_memory"})
+    _COW_TOOLS: frozenset = frozenset({
+        "add_memory", "clear_node_memory",
+        # Typed write tools (Phase 1) — all delegate to backend.add_memory,
+        # which enforces node_id == $ARI_CURRENT_NODE_ID. Keep in sync with
+        # ari-skill-memory/src/server.py.
+        "add_experiment_result", "add_failure_case", "add_procedure_memory",
+        "add_reflection", "add_reproducibility_event",
+        "consolidate_node_memory",
+    })
 
     def __init__(self, skills: list[SkillConfig], disabled_tools: list[str] | None = None) -> None:
         import threading as _t

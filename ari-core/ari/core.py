@@ -142,7 +142,7 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
     # forward (--mcp-config + --allowedTools mcp__*) to the Claude
     # subprocess. With this, the text-catalog tool protocol is bypassed and
     # claude can ONLY call ari-skill MCP servers (no native Bash / Write /
-    # Edit on the login node — see the 2026-05-28 hallucinated-fx700 incident).
+    # Edit on the login node — see the 2026-05-28 hallucinated-environment incident).
     llm.mcp_client = mcp
     bfts_llm.mcp_client = mcp
     bfts = BFTS(cfg.bfts, bfts_llm)

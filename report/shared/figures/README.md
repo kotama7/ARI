@@ -17,5 +17,5 @@ Generated and source figures shared across the en/ja/zh report builds.
   - `standalone.tex.tmpl` — auto-generated LaTeX wrapper for stand-alone TikZ rendering (article class).
   - `style.mplstyle` — pinned matplotlib PGF style (Okabe-Ito palette, fonts owned by the LaTeX preamble).
   - `tree_curve.py` — F08: best-reward vs exploration-step curve per seed (`data/F08_curve.csv` → `pgf/F08_curve.pgf`).
-  - `tree_render.py` — F02: example BFTS tree from frozen `data/F02_tree.json` → `dot/` + TikZ.
+  - `tree_render.py` — F02: example BFTS tree from frozen `data/F02_tree.json` → `dot/` only (the TikZ realisation `tikz/F02_tree.tex` is hand-maintained in the `_style.tex` house language).
 - `tikz/` — TikZ figure sources (not enumerated)

@@ -118,6 +118,24 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
     # very first ReAct loop is still running.
     _flush_tree_progress(force=True)
 
+    # P2c: one-time best-effort platform-capability probe BEFORE the root node
+    # runs make_metric_spec, so the claims extractor can avoid declaring evidence
+    # that depends on tools the compute partition verifiably lacks (real case:
+    # a profiler was verified absent on the target compute partition, making
+    # PMU-based claims permanently unsatisfiable). The tool itself caches, times out, and degrades
+    # to "skipped" — a failure here changes nothing downstream.
+    import os as _os_probe
+    if _os_probe.environ.get("ARI_SLURM_PARTITION", "").strip():
+        try:
+            _probe_res = agent.mcp.call_tool(
+                "probe_platform_capabilities",
+                {"checkpoint_dir": str(checkpoint_dir)},
+            )
+            logging.getLogger(__name__).info(
+                "platform capability probe: %s", str(_probe_res)[:200])
+        except Exception as _pe:
+            logging.getLogger(__name__).debug("capability probe skipped: %s", _pe)
+
     # frontier: completed nodes not yet expanded (true BFTS: expand on demand)
     frontier: list = []
 
@@ -146,6 +164,10 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
     _lineage_stop_requested = False
     _lineage_actions_taken = 0
     _lineage_rate_limit = int(_lineage_cfg.get("rate_limit_per_run", 5) or 5)
+    # lineage decisions: runner-up idea indexes already pivoted to, so the
+    # deterministic stagnation pivot moves to a FRESH alternative each time
+    # rather than re-trying the same one.
+    _lineage_used_indexes: set = set()
     _lineage_min_nodes = int(_lineage_cfg.get("min_nodes_before_decision", 3) or 3)
     _lineage_window = int(_lineage_cfg.get("stagnation_window", 5) or 5)
     _lineage_threshold = float(_lineage_cfg.get("stagnation_threshold", 0.02) or 0.02)
@@ -182,7 +204,19 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                 # next outer iteration retry with a fresh round.
                 break
             try:
-                best = bfts.select_best_to_expand(_eligible, experiment_data["goal"], agent.memory)
+                # P3: append run-level claim coverage to the selection goal so the
+                # (already cross-branch) scheduler can prefer a node whose next
+                # experiment evidences a STILL-UNCOVERED claim — without it a real
+                # 10-node run produced ten variations of the headline experiment.
+                # Node reasoning context is untouched (scheduler-only signal).
+                _goal_for_select = experiment_data["goal"]
+                try:
+                    from ari.agent.metric_contract import build_expand_coverage_hint
+                    _goal_for_select = _goal_for_select + build_expand_coverage_hint(
+                        str(checkpoint_dir))
+                except Exception:
+                    pass
+                best = bfts.select_best_to_expand(_eligible, _goal_for_select, agent.memory)
             except Exception as exc:
                 logging.getLogger(__name__).warning("select_best_to_expand failed: %s", exc)
                 best = _eligible[0]
@@ -642,6 +676,37 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                         "node_report: failed to write for %s: %s", result.id, _nre
                     )
 
+                # Phase 3: populate typed research-memory from the node_report
+                # just written. Default ON (config.consolidation_enabled); the
+                # typed store feeds the verifiable / paper-context layer
+                # (search_research_memory, get_verified_context), NOT Phase 0
+                # working-context injection, which keeps using result_summary.
+                # Best-effort: never breaks the loop. CoW via cow_node_id=result.id.
+                from ari.config import consolidation_enabled as _cons_on
+                if _cons_on():
+                    try:
+                        _cwd = Path(
+                            getattr(result, "work_dir", "")
+                            or _pm.node_work_dir(run_id, result.id)
+                        )
+                        _nr_path = _cwd / "node_report.json"
+                        _nr = json.loads(_nr_path.read_text()) if _nr_path.exists() else None
+                        if _nr and getattr(agent, "mcp", None) is not None:
+                            agent.mcp.call_tool(
+                                "consolidate_node_memory",
+                                {
+                                    "node_id": result.id,
+                                    "node_report": _nr,
+                                    "work_dir": str(_cwd),
+                                    "run_id": run_id,
+                                },
+                                cow_node_id=result.id,
+                            )
+                    except Exception as _ce:
+                        logging.getLogger(__name__).warning(
+                            "consolidate_node_memory failed for %s: %s", result.id, _ce
+                        )
+
                 # Save checkpoint after each node completes (not just after batch)
                 # This ensures progress is preserved if SIGTERM interrupts mid-batch
                 _save_tree_incremental(
@@ -662,6 +727,7 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                             build_lineage_state,
                             decide_lineage_action,
                             detect_stagnation,
+                            deterministic_stagnation_pivot,
                         )
                         # Pull current composite scores for stagnation check.
                         _composites = []
@@ -671,14 +737,12 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                             )
                             if isinstance(_s, (int, float)):
                                 _composites.append(float(_s))
-                        _should_call = (
-                            _lineage_mode == "every_node"
-                            or detect_stagnation(
-                                _composites,
-                                window=_lineage_window,
-                                threshold=_lineage_threshold,
-                            )
+                        _stagnated = detect_stagnation(
+                            _composites,
+                            window=_lineage_window,
+                            threshold=_lineage_threshold,
                         )
+                        _should_call = (_lineage_mode == "every_node" or _stagnated)
                         if _should_call:
                             _idea_data_l = json.loads(_idea_json_path.read_text())
                             _budget_left = (
@@ -700,9 +764,21 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                                 recursion_depth=_rec_depth,
                                 max_recursion_depth=_max_rec,
                             )
-                            _decision = _asyncio_l.run(
-                                decide_lineage_action(_state)
-                            )
+                            # lineage decisions: on CONFIRMED stagnation, pivot
+                            # deterministically to the strongest unused runner-up
+                            # idea (agreed policy: use the 2nd idea to break a
+                            # plateau) — the judge's "prefer continue" bias tends
+                            # to let runner-ups die. Defer continue-vs-terminate to
+                            # the LLM judge only when no eligible alternative remains.
+                            _decision = None
+                            if _stagnated:
+                                _decision = deterministic_stagnation_pivot(
+                                    _state, _lineage_used_indexes
+                                )
+                            if _decision is None:
+                                _decision = _asyncio_l.run(
+                                    decide_lineage_action(_state)
+                                )
                             _LINEAGE_LOG.info(
                                 "lineage decision (%s): action=%s rationale=%s",
                                 _lineage_mode, _decision.action,
@@ -736,6 +812,11 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                                 )
                             if _decision.action != "continue":
                                 _lineage_actions_taken += 1
+                            # Remember the runner-up we pivoted to, so the next
+                            # stagnation pivot moves to a fresh alternative.
+                            if (_decision.action in ("switch_to_idea", "fanout")
+                                    and isinstance(_decision.target_idea_index, int)):
+                                _lineage_used_indexes.add(_decision.target_idea_index)
                             if _stop:
                                 _lineage_stop_requested = True
                     except Exception as _le:

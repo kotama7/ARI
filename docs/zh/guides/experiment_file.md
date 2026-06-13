@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-skill-evaluator
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-06-10
 ---
 
 # 编写 experiment.md
@@ -103,10 +103,16 @@ LLM 可以修改的基线脚本。仅当基准启动协议不寻常时有用。
 
 ### 谱系决策记录（v0.7）
 
-`stagnation_rule` 监视 BFTS 复合评分轨迹，触发后由 LLM 评判选取
-`continue` / `switch_to_idea` / `fanout` / `terminate` 之一，决策
-追加到 `{ckpt}/lineage_decisions.jsonl`。无需手动编辑
-`experiment.md`。
+`stagnation_rule` 监视 BFTS 复合评分轨迹。一旦停滞被 CONFIRMED，
+ARI 首先 **确定性地** 转向 `idea.json` 中最强的 **未使用** 候补
+想法（`switch_to_idea`，并列时取较小索引，并附带
+`disable_generate_ideas`）——从而让候补想法真正得到尝试，而非
+未经使用就被丢弃。LLM 评判（`continue` / `switch_to_idea` /
+`fanout` / `terminate`）仅在无可用确定性转向时（预算耗尽、达到
+递归上限、或没有剩余的未使用候补）作为 **回退** 被咨询。决策
+（每次触发一条记录）追加到 `{ckpt}/lineage_decisions.jsonl`。
+无需手动编辑 `experiment.md`——候补想法目录位于 `idea.json`，
+谱系遍历读取 `meta.json:parent_run_id`。
 
 ### 子实验继承（v0.7）
 

@@ -1,8 +1,10 @@
 """Tests for ari-core configuration loading."""
 
+import contextlib
 import tempfile
 from pathlib import Path
 
+import pytest
 import yaml
 
 from ari.config import (
@@ -13,6 +15,21 @@ from ari.config import (
     auto_config,
     load_config,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_llm_env(monkeypatch):
+    """Keep config tests order-independent.
+
+    ``load_config`` bridges ``cfg.llm`` into ``os.environ`` (``setdefault`` of
+    ``ARI_LLM_MODEL`` / ``ARI_BACKEND``) and also re-reads
+    ``ARI_MODEL`` / ``ARI_LLM_MODEL`` / ``ARI_BACKEND`` to let those env vars
+    override the YAML. A prior test that loaded any config therefore leaks its
+    model/backend into a later one, so clear them before each test (tests that
+    exercise the override set their own value afterwards).
+    """
+    for _v in ("ARI_MODEL", "ARI_LLM_MODEL", "ARI_BACKEND", "ARI_LLM_API_BASE"):
+        monkeypatch.delenv(_v, raising=False)
 
 
 def test_default_config():
@@ -373,3 +390,59 @@ def test_evaluator_env_preserves_unset(monkeypatch):
     apply_evaluator_env_overrides(cfg)
     assert cfg.evaluator.composite == "geometric_mean"
     assert cfg.evaluator.axis_mode == "dynamic"  # untouched
+
+
+# ── export_resolved_config_to_skill_env: cfg -> env bridge for skill subprocesses ──
+
+@contextlib.contextmanager
+def _isolated_bridge_env():
+    """Snapshot+restore the bridge env vars so the bridge's os.environ.setdefault
+    NEVER leaks into other tests (the export writes real env vars; monkeypatch.delenv
+    would not undo them)."""
+    import os
+    _vars = ("ARI_LLM_MODEL", "ARI_BACKEND", "ARI_LLM_API_BASE", "ARI_SLURM_PARTITION")
+    saved = {v: os.environ.get(v) for v in _vars}
+    for v in _vars:
+        os.environ.pop(v, None)
+    try:
+        yield os
+    finally:
+        for v, val in saved.items():
+            if val is None:
+                os.environ.pop(v, None)
+            else:
+                os.environ[v] = val
+
+
+def test_export_config_bridges_llm_and_partition():
+    from ari.config import ARIConfig, LLMConfig, export_resolved_config_to_skill_env
+    with _isolated_bridge_env() as os:
+        cfg = ARIConfig(
+            llm=LLMConfig(model="gpt-5.2", backend="openai", base_url="http://localhost:8900/v1"),
+            resources={"partition": "alpha"},
+        )
+        export_resolved_config_to_skill_env(cfg)
+        assert os.environ["ARI_LLM_MODEL"] == "gpt-5.2"       # idea skill no longer -> ollama
+        assert os.environ["ARI_BACKEND"] == "openai"
+        assert os.environ["ARI_LLM_API_BASE"] == "http://localhost:8900/v1"
+        assert os.environ["ARI_SLURM_PARTITION"] == "alpha"   # hpc skill no longer -> sinfo[0]
+
+
+def test_export_config_setdefault_respects_explicit_env():
+    from ari.config import ARIConfig, LLMConfig, export_resolved_config_to_skill_env
+    with _isolated_bridge_env() as os:
+        os.environ["ARI_LLM_MODEL"] = "explicit-model"  # user/GUI override present
+        cfg = ARIConfig(llm=LLMConfig(model="gpt-5.2", backend="openai"),
+                        resources={"partition": "alpha"})
+        export_resolved_config_to_skill_env(cfg)
+        assert os.environ["ARI_LLM_MODEL"] == "explicit-model"  # explicit wins (setdefault)
+        assert os.environ["ARI_SLURM_PARTITION"] == "alpha"     # filled from cfg
+
+
+def test_export_config_skips_auto_partition():
+    from ari.config import ARIConfig, LLMConfig, export_resolved_config_to_skill_env
+    with _isolated_bridge_env() as os:
+        cfg = ARIConfig(llm=LLMConfig(model="m", backend="openai"),
+                        resources={"partition": "auto"})
+        export_resolved_config_to_skill_env(cfg)
+        assert "ARI_SLURM_PARTITION" not in os.environ   # "auto" => let the skill auto-detect

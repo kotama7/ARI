@@ -4,7 +4,11 @@ sources:
     role: test
   - path: pytest.ini
     role: config
-last_verified: 2026-05-25
+  - path: scripts/docs
+    role: test
+  - path: .github/workflows
+    role: config
+last_verified: 2026-06-04
 ---
 
 # ARI コードのテスト方法
@@ -113,7 +117,9 @@ def ckpt(tmp_path, monkeypatch):
 
 ## PR 時にテストされる内容
 
-`refactor-guards` GitHub Actions ワークフローが実行するもの:
+`main` への各 PR を複数の GitHub Actions ワークフローがゲートします。
+
+**テスト** — `refactor-guards` ワークフローが実行するもの:
 
 - `pytest ari-core/tests -q`
 - `pytest ari-skill-coding/tests -q`
@@ -123,6 +129,26 @@ def ckpt(tmp_path, monkeypatch):
 また `tests/test_no_user_home_writes.py` と
 `tests/test_public_api_boundary.py` (フェーズ 4、スキルが `ari.public.*` からのみ
 インポートしていることを保証) も実行します。
+
+**ドキュメント・構造** — 3 つのワークフローがドキュメント群の同期を保ちます:
+
+- `readme-sync` — 各ディレクトリの `## Contents` 索引が配下のファイルを
+  列挙していること (`scripts/readme_sync.py --check`)。
+- `docs-sync` — 全ツリー不変条件、すべてハードゲート: 宣言された `sources:`
+  パスが実在すること (`check_doc_sources.py`)、`docs/i18n/{en,ja,zh}.js` の
+  キー集合が一致すること (`check_i18n_js.py`)、ルート `README.{md,ja,zh}` の
+  見出し構造が一致すること (`check_readme_parity.py`)、`report/{en,ja,zh}` が
+  構造的に並行であること (`report/scripts/check_i18n.py`、Gate 6)。翻訳鮮度
+  (`check_translation_freshness.py`) と docs 内リンク (`check_doc_links.py`) は
+  advisory (非ブロッキング) ステップとして実行します。
+- `docs-change-coupling` — 差分ベース: `report/{en,ja,zh}` の言語ペアファイル
+  (章・`strings.tex`・`main.tex`) を 1 言語で編集したら、同じ PR で他 2 言語にも
+  反映すること (`check_report_cochange.py`、ハード)。また doc の `sources:` に
+  挙げたソースが変更されたら、その doc の `last_verified` を更新すべきこと
+  (`check_ref_coupling.py`、advisory)。
+
+各 doc ゲートはリポジトリルートからローカル実行できます。例:
+`python scripts/docs/check_i18n_js.py`。
 
 ## 回帰テストの書き方
 

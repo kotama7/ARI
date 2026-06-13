@@ -286,6 +286,12 @@ _env_append_if_absent "# ARI_MODEL_RUBRIC_AUDIT="
 _env_append_if_absent "# ARI_MODEL_REPLICATE="
 _env_append_if_absent "# ARI_MODEL_REPLICATOR="
 _env_append_if_absent "# ARI_MODEL_JUDGE="
+# VirSci-live ideation knobs (ari-skill-idea, used only when the real
+# vendor-wrap path is enabled). MAX_TEAMS caps the number of co-author
+# teams formed; SPECTER2_MODEL overrides the retrieval embedding model
+# (default allenai/specter2_base).
+_env_append_if_absent "# ARI_IDEA_VIRSCI_MAX_TEAMS="
+_env_append_if_absent "# ARI_IDEA_VIRSCI_SPECTER2_MODEL="
 # Rubric generator knobs (consumed by ari-skill-replicate). All three fall
 # back to defaults baked into the generator when unset; the GUI wizard can
 # write these per-run.
@@ -322,6 +328,23 @@ _env_append_if_absent "# ARI_MODEL_ROOT_SELECT="
 # the configured max. Set automatically by api_orchestrator at sub-
 # experiment launch — users do not normally override it.
 _env_append_if_absent "# ARI_RECURSION_DEPTH="
+
+# --- 2c) Story2Proposal contract gate / verified context --------------------
+# ARI_CLAIM_GATE_MODE overrides claim_gate_policy.mode for the deterministic
+# claim_evidence_hard_gate: off (never block) | warn (MVP, report-only) |
+# strict (evaluation; blocks the final gate on blocking errors).
+_env_append_if_absent "# ARI_CLAIM_GATE_MODE=warn"
+# Typed-memory consolidation + the artifact-grounded verified_context.json build
+# that write_paper consumes are ON BY DEFAULT (v0.8.x). Set
+# ARI_MEMORY_CONSOLIDATE=0 (or false/no/off) to disable and keep the legacy
+# paper-generation behavior (no typed store, no grounded claims).
+_env_append_if_absent "# ARI_MEMORY_CONSOLIDATE=0  # uncomment to disable (default on)"
+# ARI_COMPARISON_SCOPE is the injected research intent for cross-environment
+# numeric comparisons: any (default; cross-env comparison kept as a transparency
+# warning, for cross-architecture studies) | same_environment (cross-env
+# comparison becomes a blocking error, for single-architecture optimization
+# studies). Honored by the claim generator (ari-skill-transform) and the gate.
+_env_append_if_absent "# ARI_COMPARISON_SCOPE=any"
 
 # --- 3) VLM review ----------------------------------------------------------
 _env_section "VLM review"
@@ -454,6 +477,10 @@ _env_append_if_absent "# ARI_SLURM_MEM_GB="
 _env_append_if_absent "# ARI_SLURM_GPUS="
 _env_append_if_absent "# ARI_SLURM_WALLTIME=04:00:00"
 _env_append_if_absent "# ARI_SLURM_PARTITION="
+# Comma-separated tool names the compute-node capability probe checks for
+# (default: perf,numactl,papi_avail,likwid-perfctr,valgrind). Lets claims
+# avoid evidence that depends on tooling the target partition lacks.
+_env_append_if_absent "# ARI_PROBE_TOOLS="
 # ARI_SLURM_ALLOW_NO_GRES=1 opts into silently dropping --gres / --gpus-*
 # flags when the cluster has no GRES configured. Default: fail loud
 # (silently downgrading a GPU request to CPU after a long queue wait is
@@ -560,6 +587,7 @@ _env_append_if_absent "# ARI_GH_MODE=commit          # commit | releases"
 _env_append_if_absent "# ARI_COMPOSITE=                 # evaluator composite formula override: harmonic|arithmetic|weighted_min|geometric"
 _env_append_if_absent "# ARI_AXIS_MODE=                 # evaluator axis-set source override: dynamic|legacy|custom"
 _env_append_if_absent "# ARI_FRONTIER_SCORE=            # BFTS frontier_score override: scientific_plus_diversity|scientific_only|depth_penalized|ucb_like"
+_env_append_if_absent "# ARI_BFTS_ALLOW_WEB=            # opt-in web search during BFTS exploration: 1|true|yes|on (env wins over workflow.yaml; default off)"
 
 # --- PaperBench classifier / agent toggles (v0.8.0) -------------------------
 _env_append_if_absent "# ARI_PB_DISABLE_PAPER_KIND_HINT=  # set to 1 to suppress the paper-kind / native-stack hint injected by the classifier (dogfood leak guard)"

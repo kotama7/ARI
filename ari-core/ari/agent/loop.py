@@ -58,12 +58,301 @@ def __getattr__(name: str):  # PEP 562 — keep ``SYSTEM_PROMPT`` source-compati
     raise AttributeError(name)
 
 _MEMORY_RULES_PER_NODE = """
-- When available, save decisive intermediate findings with `add_memory(node_id=\"{node_id}\", text=..., metadata=...)` — concrete numbers, failed approaches with root cause, design decisions. Skip chatter and verbose logs.
-- Use `search_memory(query=..., ancestor_ids=[...], limit=5)` if you need to recall what ancestor nodes already established before repeating work."""
+- MEMORY: your descendants automatically inherit ONLY this node's final result_summary; \
+everything else is lost to them unless you save it. At decision points call \
+`add_memory(node_id=\"{node_id}\", text=..., metadata={{\"type\": \"finding\"}})` — a measured \
+number that settles a question, a failed approach WITH its root cause, a design choice and why. \
+One line each; skip chatter (the raw step log is auto-saved but unstructured and NOT inherited).
+- The injected context shows ancestor CONCLUSIONS only. Before re-deriving or re-measuring \
+anything an ancestor likely did, call `search_memory(query=..., ancestor_ids=[...], limit=5)` \
+to pull their details instead of repeating the work."""
 
 # Global memory tools were removed in v0.6.0 — this block is kept empty
 # so the existing call-site conditional can stay.
 _MEMORY_RULES_GLOBAL = ""
+
+
+def _mcp_payload(raw: object) -> dict:
+    """Unwrap ``MCPClient.call_tool``'s ``{"result": "<json>"}`` envelope into a dict.
+
+    ``call_tool`` returns ``{"result": "<serialized tool output>"}`` (and may
+    return a bare dict or JSON string in tests/fakes). Returns ``{}`` on any
+    shape we cannot decode so callers can treat "no data" uniformly.
+    """
+    import json as _jp
+    v: object = raw
+    if isinstance(v, dict) and isinstance(v.get("result"), str):
+        try:
+            v = _jp.loads(v["result"])
+        except Exception:
+            return {}
+    if isinstance(v, str):
+        try:
+            v = _jp.loads(v)
+        except Exception:
+            return {}
+    return v if isinstance(v, dict) else {}
+
+
+# Working-context injection caps (PLAN_memory_inheritance.md §8 token budget).
+# Tunable: validated depth-4 chains injected ~7.5 KB with uncapped core fields
+# (verbose primary_metric / metric_rationale). Caps keep per-node memory bounded.
+_CORE_FIELD_CAP = 400        # per experiment-core field (1a)
+_IDEA_FIELD_CAP = 1500       # selected_idea (design intent) — larger than a scalar
+                             # core field: it carries the planned mechanism + target
+                             # workloads that descendant nodes must inherit.
+_ANCESTOR_SUMMARY_CAP = 600  # per ancestor conclusion (1b)
+_SUPPLEMENT_CAP = 400        # per detail-supplement entry (2)
+
+# Run-level invariant USER messages that must survive the react context window
+# (matched against the message head). The obligation marker is the first line
+# build_contract_obligation emits; the context marker is the (1a) header above.
+_PINNED_USER_MARKERS = ("METRIC-CORRECTNESS CONTRACT", "[Experiment context")
+
+
+def repair_tool_message_order(msgs: list) -> list:
+    """Make every assistant-with-tool_calls be followed by its COMPLETE, CONTIGUOUS
+    block of tool responses (the API contract).
+
+    Two real failure shapes this repairs (defense-in-depth behind the injection
+    deferral): a non-tool message interleaved between an assistant's tool responses
+    is MOVED to after the block; an assistant whose responses are not all present
+    (e.g. a window cut) is DROPPED together with its orphaned responses instead of
+    being sent broken ("tool_call_ids did not have response messages" killed the
+    root node on 3 of 5 real runs). Order is otherwise preserved.
+    """
+    out: list = []
+    i, n = 0, len(msgs)
+    while i < n:
+        m = msgs[i]
+        if m.get("role") == "assistant" and m.get("tool_calls"):
+            need = {tc.get("id") for tc in m["tool_calls"]}
+            block: list = []
+            displaced: list = []
+            j = i + 1
+            while j < n and need:
+                mj = msgs[j]
+                if mj.get("role") == "tool" and mj.get("tool_call_id") in need:
+                    block.append(mj)
+                    need.discard(mj["tool_call_id"])
+                elif mj.get("role") == "assistant":
+                    break  # responses cannot legally appear past the next assistant
+                else:
+                    displaced.append(mj)
+                j += 1
+            if need:
+                # incomplete pairing -> drop the assistant + its partial responses;
+                # keep the innocent displaced messages in order.
+                out.extend(displaced)
+            else:
+                out.append(m)
+                out.extend(block)
+                out.extend(displaced)
+            i = j
+        else:
+            out.append(m)
+            i += 1
+    return out
+
+
+def _cap(s: str, n: int) -> str:
+    """Truncate to n chars with an ellipsis marker when cut."""
+    s = s.strip()
+    return s if len(s) <= n else s[:n] + " …[truncated]"
+
+
+def build_working_context_messages(
+    call_tool,
+    *,
+    depth: int,
+    ancestor_ids: list[str],
+    eval_summary: str | None,
+    experiment_goal: str | None,
+    work_dir: str = "",
+) -> list[dict]:
+    """Build the deterministic Tier 1/2 working-context messages for a node.
+
+    See ``PLAN_memory_inheritance.md`` §4-5 (Phase 0). Replaces the prior
+    one-shot semantic pre-seed (which truncated up to 5 joined entries to an
+    aggregate 800 chars and never injected the experiment core). Parent *code*
+    already inherits via work_dir copy and parent *report* via the BFTS planner;
+    this injects the bounded, always-relevant working set:
+
+      (1a) experiment core   — applies to every node, previously NOT injected.
+      (1b) ancestor core     — each ancestor's conclusions (``result_summary``),
+                               deterministic + full (no aggregate truncation).
+      (2)  detail supplement — a small per-entry-capped semantic recall, deduped
+                               against (1b).
+
+    ``call_tool(name, args) -> dict`` is ``MCPClient.call_tool``. Read-only:
+    never writes memory. Returns a (possibly empty) list of
+    ``{"role": "user", "content": ...}`` messages to append to the node prompt.
+    """
+    out: list[dict] = []
+
+    # (1a) Experiment core — stable experiment-level facts (metric, hardware …).
+    try:
+        ctx = _mcp_payload(call_tool("get_experiment_context", {}))
+        ctx_lines = [
+            f"  {k}: {_cap(str(ctx.get(k)), _CORE_FIELD_CAP)}"
+            for k in ("primary_metric", "higher_is_better", "metric_rationale", "hardware_spec")
+            if ctx.get(k) not in (None, "", {}, [])
+        ]
+        # The selected research idea + plan is the run-level design intent seeded
+        # into core memory at the root. Injecting it for EVERY node (not just the
+        # root, which alone re-runs generate_ideas) lets a DESCENDANT inherit the
+        # planned mechanism and target workloads robustly — instead of only via
+        # the inherited source file, which it might never open. Top-down from the
+        # common ancestor (root), so it does NOT leak across sibling branches.
+        _idea = ctx.get("selected_idea")
+        if _idea:
+            ctx_lines.append(f"  selected_idea: {_cap(str(_idea), _IDEA_FIELD_CAP)}")
+        if ctx_lines:
+            out.append({
+                "role": "user",
+                "content": "[Experiment context (stable across all nodes):]\n" + "\n".join(ctx_lines),
+            })
+    except Exception as e:  # pragma: no cover - defensive
+        logger.debug("experiment-core injection failed: %s", e)
+
+    # (1c) Metric-correctness contract obligation — run-level, idea-owned. The
+    # obligation was previously injected ONLY into the node that called
+    # make_metric_spec (the root), so the DESCENDANTS that do the bulk of the
+    # execution ran BLIND to the declared claims / evidence names / correctness
+    # requirement — and the final gate then (correctly) blocked the paper for
+    # evidence the executing node was never told to produce. Read the persisted
+    # run-level contract (written by make_metric_spec next to idea.json) and put
+    # the obligation in EVERY node's context. No-op for the root (the file does
+    # not exist yet at root context-build time; the make_metric_spec result
+    # handler injects it there mid-loop), so there is no double injection.
+    try:
+        import os as _os_mc
+        from pathlib import Path as _P_mc
+        _ck_mc = _os_mc.environ.get("ARI_CHECKPOINT_DIR", "")
+        _mc_path = _P_mc(_ck_mc) / "metric_contract.json" if _ck_mc else None
+        if _mc_path is not None and _mc_path.is_file():
+            import json as _json_mc
+            _mc_obj = _json_mc.loads(_mc_path.read_text())
+            if isinstance(_mc_obj, dict) and _mc_obj:
+                from ari.agent.metric_contract import (
+                    build_contract_obligation,
+                    build_coverage_status,
+                    build_inherited_data_note,
+                    collect_run_measurement_names,
+                )
+                _obl = build_contract_obligation(_mc_obj)
+                if _obl:
+                    # Run-level claim coverage: tell THIS node what siblings already
+                    # evidenced (names only — no sibling conclusions leak) and which
+                    # claims still need a dedicated experiment, so a multi-node tree
+                    # divides the claims instead of re-running the headline ten times.
+                    # Appended INTO the obligation message so the window pin keeps it.
+                    _covst = build_coverage_status(
+                        _mc_obj, collect_run_measurement_names(_ck_mc))
+                    if _covst:
+                        _obl = _obl + "\n\n" + _covst
+                    # Lineage chaining (child side): a node whose inherited work_dir
+                    # already holds lineage measurements is told so, with the
+                    # contract names present — claims computed FROM existing data
+                    # (fits, validations, selections) become a visible local option
+                    # instead of regressing to a fresh probe. Names/files only.
+                    _inh = build_inherited_data_note(_mc_obj, work_dir)
+                    if _inh:
+                        _obl = _obl + "\n\n" + _inh
+                    # Platform-capability facts (probed on the compute partition,
+                    # P2c). Without this the contract was platform-safe but the
+                    # AGENT was not told: the plan still says e.g. "measure MPKI
+                    # via perf", so the node would attempt the missing tool and
+                    # burn react steps discovering `command not found`. Data only
+                    # (relays the probe's measurements); rides the pinned message.
+                    try:
+                        _cap_p = _P_mc(_ck_mc) / "platform_capabilities.json"
+                        if _cap_p.is_file():
+                            _capdata = _json_mc.loads(_cap_p.read_text())
+                            _missing = sorted(
+                                t for t, ok in (_capdata.get("available") or {}).items()
+                                if not ok)
+                            if _missing:
+                                _obl += (
+                                    "\n\nPLATFORM NOTE (verified by probe on "
+                                    f"partition {_capdata.get('partition', '?')}): the "
+                                    "following tools are NOT available on the compute "
+                                    f"nodes: {', '.join(_missing)}. Do not attempt "
+                                    "them; use measurements your own code computes.")
+                    except Exception:
+                        pass
+                    out.append({"role": "user", "content": _obl})
+                    logger.info(
+                        "contract obligation injected into node context (claims=%d)",
+                        len(_mc_obj.get("claims") or []),
+                    )
+    except Exception as e:  # pragma: no cover - defensive
+        logger.debug("contract-obligation injection failed: %s", e)
+
+    if not (depth > 0 and ancestor_ids):
+        return out
+
+    # (1b) Ancestor core — deterministic, full handoff of each ancestor's
+    # conclusions. Fetched per-ancestor via get_node_memory (read-only, scoped)
+    # and filtered to result_summary entries; bounded by tree depth so injected
+    # whole. Order follows ancestor_ids (root → parent).
+    tier1_keys: set[str] = set()
+    summaries: list[str] = []
+    for aid in ancestor_ids:
+        try:
+            nm = _mcp_payload(call_tool("get_node_memory", {"node_id": aid}))
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("get_node_memory(%s) failed: %s", aid, e)
+            continue
+        for ent in nm.get("entries", []) or []:
+            md = ent.get("metadata", {}) or {}
+            if md.get("type") != "result_summary":
+                continue
+            txt = (ent.get("text") or "").strip()
+            if not txt:
+                continue
+            key = txt[:120]
+            if key in tier1_keys:
+                continue
+            tier1_keys.add(key)
+            summaries.append(_cap(txt, _ANCESTOR_SUMMARY_CAP))  # per-entry cap, NOT an aggregate cut
+    if summaries:
+        out.append({
+            "role": "user",
+            "content": (
+                f"[Established conclusions from ancestor nodes ({len(summaries)}):]\n"
+                + "\n".join(f"- {s}" for s in summaries)
+            ),
+        })
+
+    # (2) Detail supplement — small semantic recall of ancestor detail beyond the
+    # conclusions, per-entry capped and deduped against Tier 1(b). Replaces the
+    # prior aggregate [:800] dump. eval_summary is used only as the search query.
+    try:
+        query = (eval_summary or experiment_goal or "experiment result")[:200]
+        supp_raw = _mcp_payload(call_tool("search_memory", {
+            "query": query,
+            "ancestor_ids": ancestor_ids,
+            "limit": 5,
+        }))
+        supp: list[str] = []
+        for ent in supp_raw.get("results", []) or []:
+            txt = (ent.get("text") or "").strip()
+            if not txt or txt[:120] in tier1_keys:
+                continue
+            supp.append(_cap(txt, _SUPPLEMENT_CAP))  # per-entry cap
+        if supp:
+            out.append({
+                "role": "user",
+                "content": (
+                    f"[Related prior findings from ancestors ({len(supp)}):]\n"
+                    + "\n".join(f"- {s}" for s in supp)
+                ),
+            })
+    except Exception as e:  # pragma: no cover - defensive
+        logger.debug("ancestor-detail supplement failed: %s", e)
+
+    return out
 
 
 # Phase 3D — message-history helpers extracted to
@@ -184,6 +473,14 @@ class AgentLoop:
             import os as _os_early
             _os_early.environ["ARI_WORK_DIR"] = _work_dir_early
             _os_early.makedirs(_work_dir_early, exist_ok=True)  # idempotent safety net
+        # Expose the checkpoint dir to skill subprocesses (same pre-fork timing as
+        # ARI_WORK_DIR) so make_metric_spec/survey can read the idea-stage
+        # primary_metric (evaluation_criteria.json/idea.json) and the frozen VirSci
+        # snapshot instead of re-deriving from the seed line / re-querying S2.
+        _ckpt_early = getattr(self, "checkpoint_dir", None)
+        if _ckpt_early:
+            import os as _os_ckpt
+            _os_ckpt.environ["ARI_CHECKPOINT_DIR"] = str(_ckpt_early)
         tools = self._available_tools_openai(suppress=getattr(self, "_suppress_tools", set()), phase="bfts")
         tool_names = [t["function"]["name"] for t in tools] if tools else []
         tool_desc = ", ".join(tool_names) if tool_names else "none"
@@ -310,15 +607,17 @@ class AgentLoop:
                 f"{_workflow_hint}"
             )
         else:
-            first_tool = (self.hints.tool_sequence or ["survey"])[0]
+            first_tool = (self.hints.tool_sequence or ["generate_ideas"])[0]
             user_content = (
                 f"Experiment goal:\n{goal_text}\n"
                 f"Node: {node.id} depth={node.depth}\n\n"
                 f"START NOW: call {first_tool}() immediately. "
                 f"Do NOT output any text or plan — your first response must be a {first_tool}() tool call.\n\n"
-                "IMPORTANT: After make_metric_spec, call survey() to search related literature. "
-                "The survey results will be used to generate citations in the paper. "
-                "Without survey, the paper will have no references."
+                "WORKFLOW ORDER: (1) generate_ideas() sets the research direction and "
+                "primary_metric; (2) make_metric_spec() derives the success metrics from "
+                "that primary_metric (NOT from a guessed list); (3) survey() gathers related "
+                "literature. The survey results are used to generate citations — without "
+                "survey, the paper will have no references."
             )
 
         # NOTE: Planner plan text injection has been removed
@@ -330,34 +629,22 @@ class AgentLoop:
             {"role": "user", "content": user_content},
         ]
 
-        # For child nodes: inject parent memory via search_memory
-        # (ancestor_ids is now serialized correctly, so search_memory works)
-        if node.depth > 0:
-            if node.ancestor_ids:
-                try:
-                    # Use node's own goal as query so retrieved memories are relevant
-                    _mem_query = (node.eval_summary or self.experiment_goal or "experiment result")[:200]
-                    mem_result = self.mcp.call_tool("search_memory", {
-                        "query": _mem_query,
-                        "ancestor_ids": node.ancestor_ids,
-                        "limit": 5,
-                    })
-                    if isinstance(mem_result, str):
-                        import json as _j; mem_result = _j.loads(mem_result)
-                    prior_entries = mem_result.get("results", []) if isinstance(mem_result, dict) else []
-                    if prior_entries:
-                        knowledge_summary = "\n".join(
-                            e.get("text", "") for e in prior_entries if e.get("text")
-                        )
-                        messages.append({
-                            "role": "user",
-                            "content": (
-                                f"[Prior knowledge from ancestor nodes ({len(prior_entries)} entries):]\n"
-                                f"{knowledge_summary[:800]}\n"
-                            ),
-                        })
-                except Exception as _e:
-                    logger.debug("search_memory failed: %s", _e)
+        # ── Tier 1/2 working-context injection (deterministic, loop-orchestrated) ──
+        # PLAN_memory_inheritance.md §4-5 (Phase 0). Replaces the prior one-shot
+        # semantic pre-seed (aggregate [:800] dump; experiment core never injected).
+        # Read-only; never writes memory. Logic lives in build_working_context_messages
+        # (module-level, unit-tested) so it stays mockable and side-effect free.
+        # goal_text (from the experiment dict, above) is the reliable in-scope goal;
+        # the legacy `self.experiment_goal` attribute is never assigned in this class
+        # (the old call sites only survived via short-circuit eval + try/except).
+        messages.extend(build_working_context_messages(
+            self.mcp.call_tool,
+            depth=node.depth,
+            ancestor_ids=node.ancestor_ids or [],
+            eval_summary=node.eval_summary,
+            experiment_goal=goal_text,
+            work_dir=work_dir,
+        ))
 
         # Inject long-term (cross-experiment) memory if the tool is available
         if "search_global_memory" in tool_names:
@@ -398,6 +685,7 @@ class AgentLoop:
         tools_called = 0
         exec_called = False          # whether run_bash / run_code has been called
         tool_outputs: list[str] = []
+        contract_pending = False     # last emit_results carried contract_warnings
 
         for step in range(self.max_react_steps):
             job_ids = _extract_job_ids(messages, self.hints.job_id_key)
@@ -412,7 +700,14 @@ class AgentLoop:
                 job_done = (exec_called and bool(job_ids)) and bool(tool_outputs)
             else:
                 job_done = exec_called and bool(tool_outputs)
-            force_finish = (job_done and step >= 5) or (step >= self.max_react_steps - 3 and can_finish)
+            # contract_hold: the last emit_results reported UNMET contract obligations
+            # and real budget remains -- do NOT force-finish yet (observed: the agent
+            # was tool-stripped right after its first job, leaving 66/80 steps unused
+            # and the contract warnings unactionable). Bounded: the hold expires 10
+            # steps before the cap, so the anti-doom-loop backstop is preserved.
+            contract_hold = contract_pending and step < self.max_react_steps - 10
+            force_finish = (job_done and step >= 5 and not contract_hold) or (
+                step >= self.max_react_steps - 3 and can_finish)
 
             active = self._active_tools(tools, messages, job_ids, exec_called, force_finish)
             # force_finish overrides active: allow JSON output without requiring tool call
@@ -468,6 +763,16 @@ class AgentLoop:
                                 nm = msgs[j]
                                 if nm.get("role") == "tool" and nm.get("tool_call_id") in tc_ids:
                                     pinned.append(nm)
+                    # Run-level invariant USER messages (the metric-contract obligation,
+                    # the experiment/idea context) must SURVIVE windowing: they sit
+                    # outside head (msgs[:2]) and outside the tail once the
+                    # conversation grows, so they silently vanished mid-node — the
+                    # agent then reported results with no memory of the contract it
+                    # had been implementing (observed on a real run). Both are small
+                    # (content-capped at build time).
+                    elif m.get("role") == "user" and any(
+                            mk in str(m.get("content", ""))[:120] for mk in _PINNED_USER_MARKERS):
+                        pinned.append(m)
                 # Expand tail: if it starts with a tool message, include preceding assistant
                 tail = list(msgs[-keep_tail:])
                 if tail and tail[0].get("role") == "tool":
@@ -499,6 +804,7 @@ class AgentLoop:
                         result[i] = {**result[i], "content": c[:200] + "\n...[compressed]...\n" + c[-200:]}
                 return result
             window = _build_safe_window(messages)
+            window = repair_tool_message_order(window)
             # Validate message ordering before sending to LLM
             _prev_was_tc = False
             _pending_tc_ids: set = set()
@@ -569,6 +875,14 @@ class AgentLoop:
                     for tc in response.tool_calls
                 }
                 executed_names: list[str] = []
+                # Handler-driven USER injections (idea summary, contract obligation,
+                # emission nudge) must NOT be appended inside this loop: with an
+                # assistant that batched 2+ tool_calls, a user message would land
+                # BETWEEN its tool responses, which the API rejects ("tool_call_ids
+                # did not have response messages") — this killed the ROOT node on
+                # 3 of 5 real runs, right after make_metric_spec. Collect here,
+                # extend after the loop (i.e. after the contiguous tool block).
+                _deferred_user_msgs: list = []
                 for r in results:
                     rc = json.dumps(r["result"], ensure_ascii=False)
                     _FULL_LOG_TOOLS = {"generate_ideas", "survey", "make_metric_spec"}
@@ -736,6 +1050,22 @@ class AgentLoop:
                                     if _ckpt:
                                         _exp_md = Path(_ckpt) / "experiment.md"
                                         _goal = _exp_md.read_text(errors="ignore") if _exp_md.exists() else ""
+                                        # Compact selected-idea summary (title + description +
+                                        # plan §-titles) seeded into core memory so EVERY node —
+                                        # including descendants that never re-run generate_ideas —
+                                        # inherits the design intent (planned mechanism, target
+                                        # workloads), not just the metric. Run-level invariant.
+                                        _best_idea = (idea_data.get("ideas") or [{}])[0] if isinstance(idea_data, dict) else {}
+                                        _idea_summary = f"{_best_idea.get('title','')}: {(_best_idea.get('description','') or '')[:400]}"
+                                        try:
+                                            from ari.pipeline import _extract_plan_sections as _eps_seed
+                                            _secs_seed = _eps_seed(_best_idea.get("experiment_plan", "") or "")
+                                            if _secs_seed:
+                                                _idea_summary += " | Plan: " + "; ".join(
+                                                    f"{_t} {_ti}" for _t, _ti, _ in _secs_seed
+                                                )
+                                        except Exception:
+                                            pass
                                         _gmb(checkpoint_dir=Path(_ckpt)).seed_core_memory(
                                             persona="",
                                             human="",
@@ -745,6 +1075,7 @@ class AgentLoop:
                                                 "higher_is_better": hib,
                                                 "metric_rationale": mr,
                                                 "hardware_spec": _es(),
+                                                "selected_idea": _idea_summary,
                                             },
                                         )
                                         logger.info("seeded core memory (pm=%s)", pm)
@@ -811,14 +1142,16 @@ class AgentLoop:
                                         f"Selected idea: {_best.get('title', 'Untitled')}\n"
                                         f"Description: {_best.get('description', '')[:2000]}\n"
                                         f"{_plan_block}\n\n"
-                                        f"Implement THIS idea. Follow the experiment plan above — "
-                                        f"address EVERY section, not just §1."
+                                        f"NEXT: call make_metric_spec() (it derives the success metrics "
+                                        f"from this idea's primary_metric), then survey(), THEN implement "
+                                        f"THIS idea. Follow the experiment plan above — address EVERY "
+                                        f"section, not just §1."
                                     )
                                     logger.info(
                                         "[loop.run] idea_injection: title=%r len=%d",
                                         _best.get('title', ''), len(_idea_msg),
                                     )
-                                    messages.append({"role": "user", "content": _idea_msg})
+                                    _deferred_user_msgs.append({"role": "user", "content": _idea_msg})
                                     self._idea_injected = True
                                     self._idea_context = _idea_msg
                                     logger.info("Injected best idea into conversation: %s", _best.get('title', '')[:80])
@@ -865,8 +1198,56 @@ class AgentLoop:
                                 "ARI self-determined MetricSpec: keyword=%s expected=%s params=%s",
                                 kw, expected, expected_params
                             )
+                            # Producer obligation: when the metric is concept-classified
+                            # (make_metric_spec emitted a metric_contract scaffold), tell the
+                            # agent — in DOMAIN-NEUTRAL terms — to verify correctness, MEASURE
+                            # (never hardcode) any ceiling, emit provenance, and fill the
+                            # contract. The agent fulfils this domain-appropriately; the gate
+                            # enforces whatever ends up declared. No-op for unclassified metrics.
+                            _mc = spec_data.get("metric_contract") if isinstance(spec_data, dict) else None
+                            if _mc:
+                                try:
+                                    from ari.agent.metric_contract import build_contract_obligation
+                                    _obl = build_contract_obligation(_mc)
+                                    if _obl:
+                                        _deferred_user_msgs.append({"role": "user", "content": _obl})
+                                        logger.info(
+                                            "contract obligation injected after make_metric_spec (claims=%d)",
+                                            len(_mc.get("claims") or []) if isinstance(_mc, dict) else 0,
+                                        )
+                                except Exception as _oe:
+                                    logger.debug("contract obligation injection failed: %s", _oe)
                         except Exception as _e:
                             logger.warning("make_metric_spec result parse failed: %s", _e)
+
+                    # emit_results: surface point-of-emission contract feedback as an
+                    # ACTIONABLE turn. The tool result alone was not enough on a real
+                    # run -- the node force-finished right after its first job, so the
+                    # warnings arrived with no steps to act on them. Track the pending
+                    # state (holds force_finish above) and nudge the agent to run the
+                    # missing measurement(s) and re-emit while budget remains.
+                    if r["name"] == "emit_results":
+                        try:
+                            _er = r["result"]
+                            if isinstance(_er, str):
+                                _er = json.loads(_er)
+                            if isinstance(_er, dict) and "result" in _er and isinstance(_er["result"], str):
+                                _er = json.loads(_er["result"])
+                            _cw = (_er or {}).get("contract_warnings") or []
+                            if _cw:
+                                contract_pending = True
+                                _left = self.max_react_steps - step - 1
+                                from ari.agent.metric_contract import build_emission_nudge
+                                _nudge = build_emission_nudge(_cw, _left)
+                                if _nudge:
+                                    _deferred_user_msgs.append({"role": "user", "content": _nudge})
+                                logger.info(
+                                    "emit_results returned %d contract warning(s); continuation nudged (%d steps left)",
+                                    len(_cw), _left)
+                            else:
+                                contract_pending = False
+                        except Exception as _e:
+                            logger.debug("emit_results contract-warning handling failed: %s", _e)
 
                     # If job_status COMPLETED contains stdout,
                     # treat as having read experiment output and set exec_called = True
@@ -935,6 +1316,9 @@ class AgentLoop:
                                 })
                         except Exception:
                             pass
+
+                if _deferred_user_msgs:
+                    messages.extend(_deferred_user_msgs)
 
                 tools_called += len(results)
                 last = executed_names[-1] if executed_names else ""

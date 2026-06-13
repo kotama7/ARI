@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-05-26
+last_verified: 2026-06-10
 ---
 
 # BFTS 算法

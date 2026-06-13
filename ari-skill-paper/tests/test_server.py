@@ -15,7 +15,159 @@ from src.server import (
     generate_section,
     get_template,
     list_venues,
+    merge_reviews,
+    paper_refine,
 )
+
+
+def _mock_resp(content: str):
+    r = MagicMock()
+    r.choices = [MagicMock()]
+    r.choices[0].message.content = content
+    return r
+
+
+# --- paper_refine: S2P refiner = global role, DIFF (find/replace) output ---
+
+@pytest.mark.asyncio
+async def test_paper_refine_applies_targeted_diff_edits(tmp_path):
+    tex = ("\\section{Results}\n% CLAIM:C1:NC1\n"
+           "We achieve a speedup of 2x here.\n\\end{document}\n")
+    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    import json as _j
+    edits = '```json\n[{"find": "We achieve a speedup of 2x here.", "replace": "We achieve a speedup of 2.5x here."}]\n```'
+    revs = _j.dumps([{"section": "results", "instruction": "correct the speedup"}])
+    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, return_value=_mock_resp(edits)):
+        out = await paper_refine(tex_path=str(p), suggested_revisions_json=revs)
+    assert out["refined"] is True
+    assert out["applied_revisions"] == 1
+    assert "2.5x" in out["latex"]
+    assert "% CLAIM:C1:NC1" in out["latex"]          # untouched anchor preserved
+
+
+@pytest.mark.asyncio
+async def test_paper_refine_skips_nonunique_find(tmp_path):
+    tex = "\\section{R}\n% CLAIM:C1:NC1\nThe value is X. The value is X.\n"
+    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    edits = '[{"find":"The value is X.","replace":"The value is Y."}]'  # occurs twice
+    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, return_value=_mock_resp(edits)):
+        out = await paper_refine(tex_path=str(p), suggested_revisions_json='[{"instruction":"x"}]')
+    assert out["refined"] is False            # ambiguous find -> never guessed
+    assert out["applied_revisions"] == 0
+    assert out["latex"] == tex                # unchanged
+
+
+@pytest.mark.asyncio
+async def test_paper_refine_rejects_anchor_dropping_edit(tmp_path):
+    tex = "\\section{R}\nFoo % CLAIM:C1:NC1 bar baz.\n"
+    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    edits = '[{"find":"Foo % CLAIM:C1:NC1 bar baz.","replace":"Foo bar baz revised."}]'  # drops anchor
+    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, return_value=_mock_resp(edits)):
+        out = await paper_refine(tex_path=str(p), suggested_revisions_json='[{"instruction":"x"}]')
+    assert out["refined"] is False
+    assert "% CLAIM:C1:NC1" in out["latex"]   # anchor never dropped
+
+
+@pytest.mark.asyncio
+async def test_paper_refine_uses_diff_not_full_rewrite(tmp_path):
+    """Guard the S2P-faithful design: bounded diff output, not whole-document regen."""
+    tex = "\\section{R}\n% CLAIM:C1:NC1\nText here.\n"
+    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    captured: dict = {}
+
+    async def _cap(**kw):
+        captured.update(kw)
+        return _mock_resp("[]")
+
+    with patch("src.server.litellm.acompletion", side_effect=_cap):
+        await paper_refine(tex_path=str(p), suggested_revisions_json='[{"instruction":"x"}]')
+    sysmsg = next(m for m in captured["messages"] if m["role"] == "system")["content"]
+    assert "JSON array" in sysmsg
+    assert "Do NOT rewrite the whole document" in sysmsg
+    assert captured["max_tokens"] <= 8192     # bounded => no full-document regeneration
+
+
+@pytest.mark.asyncio
+async def test_paper_refine_applies_deterministic_substitution(tmp_path):
+    # (b) an explicit `replace "X" with "Y"` review instruction is applied
+    # DETERMINISTICALLY even when the LLM returns NO edits — the prior single pass
+    # left such concrete overclaim fixes (e.g. the title) in place.
+    import json as _j
+    tex = ('\\title{Roofline/Loopline Validation}\n% CLAIM:C1:NC1\n'
+           'We report results.\n\\end{document}\n')
+    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    revs = _j.dumps([{"section": "title",
+        "instruction": 'Soften it, e.g. replace "Roofline/Loopline Validation" with "Roofline/Loopline Context".'}])
+    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, return_value=_mock_resp("[]")):
+        out = await paper_refine(tex_path=str(p), suggested_revisions_json=revs)
+    assert out["refined"] is True
+    assert "Roofline/Loopline Context" in out["latex"]
+    assert "Roofline/Loopline Validation" not in out["latex"]
+    assert out["deterministic_substitutions"] == 1
+    assert out["unaddressed_substitutions"] == []
+    assert "% CLAIM:C1:NC1" in out["latex"]          # anchor preserved
+
+
+@pytest.mark.asyncio
+async def test_paper_refine_reports_unaddressed_nonunique_substitution(tmp_path):
+    # an explicit replacement whose OLD (a phrase) is NON-UNIQUE is never guessed; it
+    # is REPORTED under unaddressed_substitutions rather than silently dropped.
+    import json as _j
+    tex = ("\\section{R}\n% CLAIM:C1:NC1\n"
+           "The method is robust here. The method is robust there.\n\\end{document}\n")
+    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    revs = _j.dumps([{"instruction": 'replace "method is robust" with "method shows limited sensitivity"'}])
+    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, return_value=_mock_resp("[]")):
+        out = await paper_refine(tex_path=str(p), suggested_revisions_json=revs)
+    assert out["refined"] is False                    # non-unique phrase never guessed
+    assert any(u["old"] == "method is robust" for u in out["unaddressed_substitutions"])
+
+
+@pytest.mark.asyncio
+async def test_paper_refine_expand_substitution_not_falsely_unaddressed(tmp_path):
+    # regression (review finding): an EXPAND edit (OLD substring of NEW, e.g.
+    # "Roofline Validation" -> "Roofline Validation Context") lands but must NOT be
+    # reported unaddressed -- verify keys on the apply outcome, not `old in refined`.
+    import json as _j
+    tex = ("\\title{Roofline Validation}\n% CLAIM:C1:NC1\nText.\n\\end{document}\n")
+    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    revs = _j.dumps([{"instruction": 'replace "Roofline Validation" with "Roofline Validation Context"'}])
+    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, return_value=_mock_resp("[]")):
+        out = await paper_refine(tex_path=str(p), suggested_revisions_json=revs)
+    assert out["refined"] is True
+    assert "Roofline Validation Context" in out["latex"]
+    assert out["deterministic_substitutions"] == 1
+    assert out["unaddressed_substitutions"] == []     # applied, not falsely flagged
+
+
+@pytest.mark.asyncio
+async def test_paper_refine_bare_word_substitution_routed_to_llm(tmp_path):
+    # review finding: a single-word OLD (no whitespace) could be globally unique by
+    # accident and rewritten in the wrong span -> it is NOT a deterministic sub.
+    import json as _j
+    tex = ("\\title{Validation}\n% CLAIM:C2:NC2\nT.\n\\end{document}\n")
+    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    revs = _j.dumps([{"instruction": 'replace "Validation" with "Context"'}])
+    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, return_value=_mock_resp("[]")):
+        out = await paper_refine(tex_path=str(p), suggested_revisions_json=revs)
+    assert out["deterministic_substitutions"] == 0    # bare word not auto-applied
+
+
+@pytest.mark.asyncio
+async def test_paper_refine_multipass_applies_across_passes(tmp_path):
+    # (b) the bounded loop gives the LLM multiple passes: an edit the 2nd pass produces
+    # (after the 1st changed the doc) is still applied — the old single pass missed it.
+    tex = ("\\section{R}\n% CLAIM:C1:NC1\nAlpha. Beta.\n\\end{document}\n")
+    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    resp = [_mock_resp('[{"find":"Alpha.","replace":"Alpha-edited."}]'),
+            _mock_resp('[{"find":"Beta.","replace":"Beta-edited."}]'),
+            _mock_resp("[]")]
+    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, side_effect=resp):
+        out = await paper_refine(tex_path=str(p), suggested_revisions_json='[{"instruction":"x"}]')
+    assert out["refined"] is True
+    assert "Alpha-edited." in out["latex"] and "Beta-edited." in out["latex"]
+    assert out["applied_revisions"] == 2
+    assert out["refine_passes"] == 2
 
 
 # --- list_venues ---
@@ -326,3 +478,135 @@ async def test_review_compiled_paper_arg_beats_env(tmp_path, monkeypatch):
         tex_path=str(tex), rubric_id="neurips", num_reviews_ensemble=2,
     )
     assert out.get("n") == 2, f"arg=2 must win over env=5, got n={out.get('n')}"
+
+
+# --- merge_reviews: semantic warnings must reach the refiner ---
+
+def _write_merge_inputs(tmp_path, semantic: dict):
+    import json as _j
+    rr = tmp_path / "review_report.json"
+    rr.write_text(_j.dumps({"scores": {}}))
+    sem = tmp_path / "semantic_review.json"
+    sem.write_text(_j.dumps(semantic))
+    return rr, sem
+
+
+@pytest.mark.asyncio
+async def test_merge_reviews_forwards_warnings_as_advisory_revisions(tmp_path):
+    rr, sem = _write_merge_inputs(tmp_path, {
+        "status": "ok",
+        "warnings": [
+            {"type": "overclaim", "section": "abstract",
+             "message": "The robustness wording reads broader than the tested scope."},
+            {"type": "interpretation", "section": "results",
+             "message": "The mechanism is asserted but not directly measured."},
+        ],
+        "suggested_revisions": [
+            {"section": "abstract",
+             "instruction": 'replace "robust" with "stable under the tested ablation"'},
+        ],
+    })
+    out = await merge_reviews(review_report_path=str(rr), semantic_review_path=str(sem))
+    revs = out["suggested_revisions"]
+    from_warnings = [r for r in revs if r.get("source") == "semantic_warning"]
+    assert len(from_warnings) == 2, "every counted warning must become a revision entry"
+    assert {r["warning_type"] for r in from_warnings} == {"overclaim", "interpretation"}
+    # paper_refine._collect harvests entries via their `instruction` key
+    assert all(r.get("instruction") for r in from_warnings)
+    assert from_warnings[0]["instruction"].startswith("The robustness wording")
+    # the original explicit revision is still first (deterministic path priority)
+    assert revs[0]["instruction"].startswith('replace "robust"')
+
+
+@pytest.mark.asyncio
+async def test_merge_reviews_warning_identical_to_revision_not_duplicated(tmp_path):
+    instr = "Scope the conclusion to the tested configurations."
+    rr, sem = _write_merge_inputs(tmp_path, {
+        "status": "ok",
+        "warnings": [{"type": "overgeneralization", "section": "conclusion",
+                      "message": instr}],
+        "suggested_revisions": [{"section": "conclusion", "instruction": instr}],
+    })
+    out = await merge_reviews(review_report_path=str(rr), semantic_review_path=str(sem))
+    matching = [r for r in out["suggested_revisions"]
+                if (r.get("instruction") or "").strip() == instr]
+    assert len(matching) == 1, "exact-duplicate warning text must not be re-added"
+
+
+@pytest.mark.asyncio
+async def test_merge_reviews_warning_entries_collected_by_paper_refine(tmp_path):
+    rr, sem = _write_merge_inputs(tmp_path, {
+        "status": "ok",
+        "warnings": [{"type": "overclaim", "section": "abstract",
+                      "message": "Qualify the headline claim to the tested setup."}],
+        "suggested_revisions": [],
+    })
+    out = await merge_reviews(review_report_path=str(rr), semantic_review_path=str(sem))
+    merged = tmp_path / "review_merge_log.json"
+    import json as _j
+    merged.write_text(_j.dumps(out))
+
+    tex = "\\section{Abstract}\n% CLAIM:C1:NC1\nOur kernel is fast.\n\\end{document}\n"
+    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    edits = ('```json\n[{"find": "Our kernel is fast.", '
+             '"replace": "Our kernel is fast in the tested setup."}]\n```')
+    with patch("src.server.litellm.acompletion", new_callable=AsyncMock,
+               return_value=_mock_resp(edits)) as mocked:
+        ref = await paper_refine(tex_path=str(p), merged_review_path=str(merged))
+    assert ref["refined"] is True, (
+        "a warning-only review must still drive a refine pass (was: no-op)"
+    )
+    # the warning text reached the refiner prompt
+    sent = mocked.call_args.kwargs.get("messages") or mocked.call_args.args[0]
+    joined = " ".join(str(m) for m in sent)
+    assert "Qualify the headline claim" in joined
+
+
+# --- _escape_text_underscores: \(...\) / \[...\] math must survive ---
+
+def test_escape_underscores_skips_inline_paren_math():
+    from src.server import _escape_text_underscores as esc
+    # the run-replay corruption case: subscript in plain prose math
+    assert esc(r"blocking factor \(k_p\) here") == r"blocking factor \(k_p\) here"
+    # text-mode underscores around the math span are still escaped
+    assert esc(r"see run_log and \(k_p\)") == r"see run\_log and \(k_p\)"
+
+
+def test_escape_underscores_skips_display_bracket_math():
+    from src.server import _escape_text_underscores as esc
+    assert esc(r"\[x_i = y_j\]") == r"\[x_i = y_j\]"
+
+
+def test_escape_underscores_dollar_math_unchanged():
+    from src.server import _escape_text_underscores as esc
+    assert esc(r"$k_p$ and a_b") == r"$k_p$ and a\_b"
+
+
+def test_escape_underscores_unclosed_paren_math_falls_back():
+    from src.server import _escape_text_underscores as esc
+    # unclosed \( is broken LaTeX anyway; must not crash or eat text
+    out = esc(r"oops \(k_p never closes")
+    assert "k\\_p" in out and out.startswith("oops \\(")
+
+
+def test_escape_underscores_skips_math_environment_bodies():
+    from src.server import _escape_text_underscores as esc
+    s = "\\begin{equation}\nx_i = y_j\n\\end{equation}"
+    assert esc(s) == s
+    # starred variants too
+    s2 = "\\begin{align*}\na_1 &= b_2\n\\end{align*}"
+    assert esc(s2) == s2
+    # text around the environment is still escaped
+    assert esc("run_log\n" + s) == "run\\_log\n" + s
+
+
+def test_escape_underscores_non_math_environment_still_escaped():
+    from src.server import _escape_text_underscores as esc
+    out = esc("\\begin{itemize}\n\\item a_b\n\\end{itemize}")
+    assert "a\\_b" in out                      # prose env bodies keep escaping
+
+
+def test_escape_underscores_unclosed_math_environment_falls_back():
+    from src.server import _escape_text_underscores as esc
+    out = esc("\\begin{equation}\nx_i never closes")
+    assert "x\\_i" in out and out.startswith("\\begin{equation}")

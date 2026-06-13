@@ -12,6 +12,8 @@
     "revise_section",
     "write_paper_iterative",
     "review_compiled_paper",
+    "link_paper_claims",
+    "paper_refine",
     "list_rubrics"
   ],
   "runtime": "python",

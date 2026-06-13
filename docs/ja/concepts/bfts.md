@@ -2,9 +2,11 @@
 sources:
   - path: ari-core/ari/orchestrator/bfts.py
     role: implementation
+  - path: ari-core/ari/agent/metric_contract.py
+    role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-05-26
+last_verified: 2026-06-12
 ---
 
 # BFTS アルゴリズム
@@ -70,11 +72,21 @@ def bfts(experiment, config):
 - **永続フロンティア**: 完了ノードは展開後もフロンティアに残り、`_touched_this_round` / `_failed_this_round` を追跡しつつ再展開可能。フロンティアノードは、(ルール A) 子が `_scientific_score` で親を上回るか、(ルール B) `max_expansions_per_node` 回展開済みになると **退役 (retire)** する（v0.7.2, B-6）。
 - **`should_prune` 述語**: 硬い打ち切りのみ — `current_total >= max_total_nodes`（B-1）、`depth >= max_depth`（B-2、以前は死んでいた設定）、`metrics._sterile is True`（B-4）。LLM 判断はここには混ぜない。
 - **多様性ボーナス**: 過少表現のラベルに `+0.05`（直近 20 実行を追跡）— `my_count * 2 ≤ max_count` のとき（I-2）。両方のセレクタフォールバック（I-3 / L-3）と `select_next_node` の LLM プロンプトの双方で適用。
+- **カバレッジを考慮した展開選択**: ランが claims 付き metric contract を持つ場合、`select_best_to_expand` に渡されるゴールテキストにラン全体のクレームカバレッジブロックと **LINEAGE** ヒントが付加され（下記「リネージ連鎖」参照）、「まだ証拠のないクレームを立証できるか」が*どの*ノードを展開するかの判断に反映される — スケジューラ限定のシグナルであり、ノードの推論コンテキストには触れない。
 - **スコア較正**: 評価器はスコア崩壊（全スコアが同一値付近に集まる）を防ぐため、直近のスコア履歴をプロンプトに注入する。
 - **リトライなし**: 失敗ノードは `expand()` を通じて `debug` 子ノードを生成し、再実行はしない。選択用の `retry_count` フィールドは保持しない（B-3）。
 - **厳密な予算**: `len(all_nodes) < max_total_nodes` で超過を防止。ライブカウントが唯一の真実源であり、別個の `BFTS.total_nodes` カウンタは存在しない（B-1）。
 - **完了後の `record_run`**: 実行ループは `future.result()` が返った後（成功・失敗を問わず）に `bfts.record_run(result)` を呼ぶため、多様性ボーナスは実際に実行されたノードを反映する（I-7）。
 - **`generate_ideas` は一度だけ呼出**: ルートノード以降はループ防止のため抑制。
+
+### リネージ連鎖（Lineage Chaining）
+
+宣言されたクレームの中には、新規のプローブでは立証できないものがある: 証拠が既存の測定値から**計算**されるもの（パラメータフィッティング、ホールドアウト検証、モデルベース選択）である。スコア駆動の展開だけでは、こうしたクレームは構造的に到達不能だった — データを持たない親から展開された子には計算の入力がなく、実ランでは同じ単発プローブの再実行への退行が観測された。これを可能にする機構が**親 → 子の `work_dir` 継承**である: 子ノードは親の作業ディレクトリのコピーから開始する（コード・設定・`results*.json` 測定ファイルは継承され、ログや結果 CSV などの出力アーティファクトはブラックリストで除外される）ため、適切な親を展開すれば入力ファイルが子の手元に揃う。これを利用する誘導シグナルが 2 つある（`ari/agent/metric_contract.py`）:
+
+- **LINEAGE ヒント（セレクタ側）**: 展開選択のゴールに付加されるラン全体のクレームカバレッジブロックが、これまでに最も多くの contract 証拠測定名を保持するノード（2 個以上が条件）を名指しし、計算型証拠の未カバークレームについては*そのノード*の展開を推奨する — 子は再測定の代わりに継承ファイルを読む（`build_expand_coverage_hint`）。
+- **INHERITED DATA ノート（ノード側）**: 継承した `work_dir` に既にリネージ測定が含まれるノードは、ピン留めされた contract obligation に、存在するファイル名と contract 証拠名を列挙したノートを受け取る。指示は「それらを入力として計算し、EXACT な contract 名で emit せよ — 元の実験を再実行するな」（`build_inherited_data_note`）。
+
+両シグナルが運ぶのは**名前とファイル名のみ**: 測定値や兄弟ノードの結論は決して流れず、木が依拠する分岐の障害封じ込めは保たれる。ノード別の帰属は `collect_node_measurement_names` が行い、（`tree.json` が存在するようになった後は）評価器が `has_real_data` と判定したノードだけを数える — 誘導側の見え方は claim gate の証拠の見え方と整合する。
 
 ### ノードラベル
 

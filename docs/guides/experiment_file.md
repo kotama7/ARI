@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-skill-evaluator
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-06-10
 ---
 
 # Writing Experiment Files
@@ -115,12 +115,19 @@ between `BEGIN`/`END` markers is owned by the auto-append helper.
 
 ### Lineage-decision recording (v0.7)
 
-`stagnation_rule` watches the BFTS composite-score trajectory.  Once
-it fires, the LLM judge picks one of `continue` / `switch_to_idea` /
-`fanout` / `terminate` and the decision is appended (one record per
-fired decision) to `{ckpt}/lineage_decisions.jsonl`.  No manual edits
-to `experiment.md` are required — the catalog of alternative ideas
-sits in `idea.json`, and the lineage walk reads `meta.json:parent_run_id`.
+`stagnation_rule` watches the BFTS composite-score trajectory.  On
+CONFIRMED stagnation ARI first pivots **deterministically** to the
+strongest **unused** runner-up idea from `idea.json`
+(`switch_to_idea`, tie-broken toward the lower index, with
+`disable_generate_ideas`) — so a runner-up is actually tried instead
+of dying unused.  The LLM judge (`continue` / `switch_to_idea` /
+`fanout` / `terminate`) is consulted only as a **fallback** when no
+deterministic pivot is available (budget exhausted, recursion limit
+reached, or no unused alternative remains).  The decision is appended
+(one record per fired decision) to `{ckpt}/lineage_decisions.jsonl`.
+No manual edits to `experiment.md` are required — the catalog of
+alternative ideas sits in `idea.json`, and the lineage walk reads
+`meta.json:parent_run_id`.
 
 ### Sub-experiment inheritance (v0.7)
 

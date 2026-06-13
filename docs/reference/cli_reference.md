@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/cli_ear.py
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-06-10
 ---
 
 # ARI CLI Reference
@@ -42,7 +42,10 @@ Complete reference for ARI command-line operations. The CLI provides the same fu
 Run a new experiment from an experiment Markdown file.
 
 ```bash
-ari run <experiment.md> [--config <config.yaml>] [--profile <profile>]
+ari run <experiment.md> [--config <config.yaml>] [--profile <profile>] \
+                        [--virsci-live/--no-virsci-live] \
+                        [--virsci-k N] [--virsci-team-size N] \
+                        [--virsci-n-authors N] [--virsci-n-papers N]
 ```
 
 | Argument | Required | Description |
@@ -50,6 +53,18 @@ ari run <experiment.md> [--config <config.yaml>] [--profile <profile>]
 | `experiment.md` | Yes | Path to experiment Markdown file |
 | `--config` | No | Custom config YAML (auto-generated if omitted) |
 | `--profile` | No | Environment profile: `laptop`, `hpc`, or `cloud` |
+| `--virsci-live` / `--no-virsci-live` | No | Idea skill: run VirSci's real multi-agent engine on a live Semantic Scholar snapshot (vendor-wrap) instead of the re-implemented discussion loop. Sets `ARI_IDEA_VIRSCI_REAL`. Default off. |
+| `--virsci-k` | No | VirSci-live discussion turns (vendor `group_max_discuss_iteration`). Sets `ARI_IDEA_VIRSCI_K`. Default 7. |
+| `--virsci-team-size` | No | VirSci-live max team members per team. Sets `ARI_IDEA_VIRSCI_TEAM_SIZE`. Default 3. |
+| `--virsci-n-authors` | No | VirSci-live author pool size for `select_coauthors`. Sets `ARI_IDEA_VIRSCI_N_AUTHORS`. Default 16. |
+| `--virsci-n-papers` | No | VirSci-live SPECTER2 retrieval corpus size. Sets `ARI_IDEA_VIRSCI_N_PAPERS`. Default 800. |
+
+These flags set the `ARI_IDEA_VIRSCI_*` env contract that the idea skill reads
+(see [Idea Generation (VirSci-live)](#idea-generation-virsci-live) below). When
+`--virsci-live` is on, hypothesis generation runs VirSci's real
+`select_coauthors` + `generate_idea` mechanism grounded on a live Semantic
+Scholar snapshot; on missing deps or any runtime error it degrades to the
+re-implemented loop with an identical `idea.json` contract.
 
 **Examples:**
 
@@ -65,6 +80,9 @@ ari run experiment.md --config ari-core/config/workflow.yaml
 
 # With environment variable overrides
 ARI_MAX_NODES=10 ARI_PARALLEL=2 ari run experiment.md
+
+# Use VirSci's real multi-agent engine for idea generation (vendor-wrap)
+ari run experiment.md --virsci-live --virsci-k 7 --virsci-team-size 3
 ```
 
 **What happens:**
@@ -458,6 +476,28 @@ ari skills-list [--config <config.yaml>]
 | `ARI_MODEL_IDEA` | Idea generation |
 | `ARI_MODEL_BFTS` | BFTS experiments |
 | `ARI_MODEL_PAPER` | Paper writing |
+
+### Idea Generation (VirSci-live)
+
+Opt-in vendor-wrap path for idea generation. When `ARI_IDEA_VIRSCI_REAL` is
+on, the idea skill runs VirSci's real multi-agent mechanism
+(`select_coauthors` + `generate_idea`) on a live Semantic Scholar snapshot;
+default off keeps behaviour unchanged. The `ari run` flags
+`--virsci-live` / `--virsci-k` / `--virsci-team-size` / `--virsci-n-authors`
+/ `--virsci-n-papers` set these variables. The deliberation LLM follows the
+per-phase `ARI_MODEL_IDEA` model. Requires the `virsci` pip extra; when absent
+or on any runtime error the skill degrades to the re-implemented loop with an
+identical `idea.json` contract.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ARI_IDEA_VIRSCI_REAL` | Toggle the real vendor-wrap path | (unset/off) |
+| `ARI_IDEA_VIRSCI_K` | Discussion turns (vendor `group_max_discuss_iteration`) | 7 |
+| `ARI_IDEA_VIRSCI_TEAM_SIZE` | Max team members (vendor `max_teammember`) | 3 |
+| `ARI_IDEA_VIRSCI_N_AUTHORS` | Author pool for `select_coauthors` | 16 |
+| `ARI_IDEA_VIRSCI_N_PAPERS` | SPECTER2 retrieval corpus size | 800 |
+| `ARI_IDEA_VIRSCI_MAX_TEAMS` | Cap on teams driven through `generate_idea` | =`n_ideas` |
+| `ARI_IDEA_VIRSCI_SPECTER2_MODEL` | Local query embedder | `allenai/specter2_base` |
 
 ### .env File
 

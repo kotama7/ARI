@@ -3,30 +3,68 @@
 \subsection{Determinism vs novelty}\label{sec:discussion:p2}
 
 P2, the determinism principle, is the binding constraint of the
-system. Strictly enforcing P2 forces \term{ari-skill-memory} to
-declare ``no LLM calls'' --- it must score its retrievals by a
-deterministic keyword function rather than an embedding model whose
-output depends on a remote service. The trade-off is that retrieval
-quality is bounded by what keyword scoring can recover.
-
-This is not an accident: every reproducibility win comes at the cost
-of a closed door for non-determinism. We accept the cost because the
+system. It constrains not whether the research memory
+(\cref{sec:exploration:memory}) may use an embedding model but
+\emph{where} the resulting non-determinism may act: the memory makes
+no generative language-model calls, and its embedding-ranked archival
+search --- dependent on a remote service, hence not byte-reproducible
+--- stays off the reproducible path as an optional recall aid the loop
+never pulls, unable by itself to ground a paper claim. The memory
+reads the loop does depend on --- the working context injected at each node, the
+verified context that grounds the paper --- are deterministic,
+ancestor-scoped folds of per-node reports. Every reproducibility win
+closes such a door to non-determinism; we accept the cost because the
 checkpoint, not the run, is the contract with downstream users.
+
+\subsection{Instruction-following at structural seams}\label{sec:discussion:seams}
+
+The recurring lesson of v0.9.0 is that instruction-following degrades
+at structural seams --- an index to parse, a name to reuse, a number
+to declare --- and that the durable remedy is parser-side absorption,
+not prompting. An unparseable selection index falls back to a
+deterministic ranking (\cref{sec:exploration:fallback}); a model asked
+twice names the same quantity differently, so the metric contract is
+minted once and replayed verbatim; the writer's recurring
+numeric-declaration quirks are normalised at parse time
+(\cref{sec:paper:contract}). The catalogue of absorbed quirks is
+reactive, grown from real runs, so an unanticipated variant first surfaces as a gate
+mismatch --- conservatively so: it is flagged, an unresolved mismatch
+blocks the final check, and nothing is silently accepted.
+
+The same discipline fixes what may block. The gate certifies that
+every quantitative claim matches a recorded artefact, while the
+semantic review's subjective findings steer the refiner
+(\cref{sec:paper:loop}) but never gate publication --- unlike the
+wholly post-hoc review of \cite{lu2024ai} --- because a subjective
+verdict on the blocking path would be an unauditable veto. A verified
+paper can therefore still be a dull one.
 
 \subsection{Scaling limits}\label{sec:discussion:scaling}
 
 The single-machine assumption underlying the BFTS run-loop is the
-biggest scaling constraint. A run that wants to expand
-$\bbranch>10$ in parallel needs a different concurrency layer; today
-a single \texttt{ThreadPoolExecutor} in the BFTS CLI loop is the
-sole worker pool. A
-multi-host expansion would require extending the lineage discipline
-(P4) to handle merges, not just ancestor walks.
+biggest scaling constraint: a single \texttt{ThreadPoolExecutor}
+(\cref{sec:exploration:run-loop}) is the sole worker pool, capped at
+four workers. Multi-host expansion would require extending the
+explicit-lineage discipline (P4; \cref{sec:overview:principles}) to
+merges, not just ancestor walks --- the same gap that bounds computed
+evidence, whose chains (\cref{sec:exploration:lineage-chaining}) are
+scheduled today by name hints along a single lineage rather than by an
+explicit scheduler over the evidence dependency graph. A separate
+constraint is the LLM grader, empirically a dominant cost item
+alongside the explorer; caching its output by (paper-hash,
+rubric-hash) would help and has not yet shipped.
 
-A separate constraint is the cost of the LLM grader. Empirically the
-grader is one of the dominant line items in a run, alongside the
-explorer; whether it is the second-largest in absolute dollars is
-something \cref{chapter:eval} is meant to settle once a frozen
-checkpoint exists. Caching grader outputs by (paper-hash,
-rubric-hash) would help; we have not yet shipped this.
+\subsection{Outlook}\label{sec:discussion:outlook}
 
+The widest gap is evaluation breadth: \cref{chapter:eval} rests on one
+reproduction exercise (run on the then-current v0.8.0 pipeline) and
+one verified generated paper --- evidence that the machinery composes,
+not a distribution. Future work is threefold: a controlled study over
+a frozen checkpoint and a panel of contrasting target papers, in the
+protocol spirit of \cite{chan2024mle,starace2025paperbench};
+variance-aware aggregation over repeated rollouts and grader passes in
+place of single-scalar roll-ups, the judges themselves being noisy;
+and broader domains --- widening the evidence kinds the contract can
+name beyond scalar measurements, as the execution-profile contract
+(\cref{sec:paper:paperbench:v072}) widened the computations ARI can
+host, toward fields whose primary evidence is not a single metric.

@@ -35,6 +35,18 @@ STYLE = REPORT_ROOT / "shared" / "figures" / "style.tikzstyles"
 # --- IoU threshold for bbox overlap detection
 IOU_THRESHOLD = 0.05
 
+# --- T10 arrow-vs-node crossing detection (advisory) ---------------------
+# The T8 IoU gate only sees *text* boxes, so an arrow stroked straight through
+# a node passes every check. T10 reconstructs edge geometry from the figure's
+# vector content (PDF -> SVG) and flags edges whose interior passes through an
+# unrelated node's label. It is heuristic and ADVISORY: it prints a "please
+# eyeball this" warning and never fails the build (no automated check can
+# replace visual review of routing — it only points the eye at the suspects).
+T10_INSET = 0.25          # fraction inset into a label box that counts as "through"
+T10_OWN_MARGIN = 34.0     # an edge ends at a node BORDER but the label is at the CENTRE
+T10_MIN_EDGE_DIAG = 22.0  # ignore short strokes (arrowheads, decorations)
+T10_STEP = 4.0            # densify polylines to this spacing before testing
+
 
 def _bbox_iou(a, b) -> float:
     ax0, ay0, ax1, ay1 = a
@@ -67,6 +79,136 @@ def _bboxes_from_pdf(pdf: Path) -> list[tuple[float, float, float, float]]:
         except (KeyError, ValueError):
             continue
     return boxes
+
+
+def _t10_tf(spec: str):
+    """Parse an SVG transform (matrix/translate/scale) to a 6-tuple affine."""
+    spec = spec.strip()
+    m = re.match(r"matrix\(([^)]+)\)", spec)
+    if m:
+        v = [float(x) for x in re.split(r"[,\s]+", m.group(1).strip())]
+        return tuple(v[:6])
+    m = re.match(r"translate\(([^)]+)\)", spec)
+    if m:
+        v = [float(x) for x in re.split(r"[,\s]+", m.group(1).strip())]
+        return (1, 0, 0, 1, v[0], v[1] if len(v) > 1 else 0)
+    m = re.match(r"scale\(([^)]+)\)", spec)
+    if m:
+        v = [float(x) for x in re.split(r"[,\s]+", m.group(1).strip())]
+        sy = v[1] if len(v) > 1 else v[0]
+        return (v[0], 0, 0, sy, 0, 0)
+    return (1, 0, 0, 1, 0, 0)
+
+
+def _t10_compose(M, N):
+    a, b, c, d, e, f = M
+    a2, b2, c2, d2, e2, f2 = N
+    return (a * a2 + c * b2, b * a2 + d * b2, a * c2 + c * d2,
+            b * c2 + d * d2, a * e2 + c * f2 + e, b * e2 + d * f2 + f)
+
+
+def _t10_apply(M, x, y):
+    a, b, c, d, e, f = M
+    return (a * x + c * y + e, b * x + d * y + f)
+
+
+def _t10_geometry(pdf: Path):
+    """Reconstruct (label_boxes, edge_polylines) from the PDF's vector content,
+    all in one (SVG page) coordinate space. Returns ([], []) on any failure."""
+    if shutil.which("pdftocairo") is None:
+        return [], []
+    with tempfile.TemporaryDirectory() as td:
+        svg = Path(td) / "fig.svg"
+        try:
+            subprocess.run(["pdftocairo", "-svg", str(pdf), str(svg)],
+                           check=True, capture_output=True)
+            root = ET.fromstring(svg.read_text(encoding="utf-8"))
+        except (subprocess.CalledProcessError, ET.ParseError, OSError):
+            return [], []
+
+    glyphs: list[tuple[float, float]] = []
+    paths: list[tuple[list, bool]] = []
+
+    def walk(el, ctm):
+        tf = el.get("transform")
+        if tf:
+            ctm = _t10_compose(ctm, _t10_tf(tf))
+        tag = el.tag.split("}")[-1]
+        if tag == "use":
+            try:
+                glyphs.append(_t10_apply(ctm, float(el.get("x", 0)), float(el.get("y", 0))))
+            except ValueError:
+                pass
+        elif tag == "path":
+            ns = [float(n) for n in re.findall(r"-?\d+\.?\d*", el.get("d", ""))]
+            pts = [_t10_apply(ctm, ns[i], ns[i + 1]) for i in range(0, len(ns) - 1, 2)]
+            if len(pts) >= 2:
+                paths.append((pts, ("Z" in el.get("d", "") or "z" in el.get("d", ""))))
+        for ch in el:
+            walk(ch, ctm)
+
+    walk(root, (1, 0, 0, 1, 0, 0))
+
+    # cluster glyph anchors into per-row label boxes
+    boxes = []
+    cur = None
+    for x, y in sorted(glyphs, key=lambda p: (round(p[1], 0), p[0])):
+        if cur and abs(y - cur[2]) < 3 and x - cur[1] < 14:
+            cur[1] = x; cur[2] = y
+        else:
+            if cur:
+                boxes.append((cur[0] - 2, cur[3] - 9.0, cur[1] + 5, cur[3] + 3))
+            cur = [x, x, y, y]
+    if cur:
+        boxes.append((cur[0] - 2, cur[3] - 9.0, cur[1] + 5, cur[3] + 3))
+
+    # open, page-space, non-trivial paths are candidate edges
+    edges = []
+    for pts, closed in paths:
+        if closed:
+            continue
+        xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
+        if ((max(xs) - min(xs)) ** 2 + (max(ys) - min(ys)) ** 2) ** 0.5 < T10_MIN_EDGE_DIAG:
+            continue
+        edges.append(pts)
+    return boxes, edges
+
+
+def _arrow_node_crossings(pdf: Path) -> int:
+    """Count edges that appear to pass through an unrelated node's label."""
+    boxes, edges = _t10_geometry(pdf)
+    if not boxes or not edges:
+        return 0
+
+    def densify(poly):
+        out = []
+        for (x0, y0), (x1, y1) in zip(poly, poly[1:]):
+            d = ((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5
+            m = max(1, int(d // T10_STEP))
+            out.extend((x0 + (x1 - x0) * t / m, y0 + (y1 - y0) * t / m) for t in range(m + 1))
+        return out or poly
+
+    def in_expanded(p, box, mgn):
+        return box[0] - mgn < p[0] < box[2] + mgn and box[1] - mgn < p[1] < box[3] + mgn
+
+    def deep_inside(p, box):
+        mx = (box[2] - box[0]) * T10_INSET; my = (box[3] - box[1]) * T10_INSET
+        return box[0] + mx < p[0] < box[2] - mx and box[1] + my < p[1] < box[3] - my
+
+    flagged = set()
+    for ei, poly0 in enumerate(edges):
+        poly = densify(poly0)
+        a, b = poly[0], poly[-1]
+        n = len(poly)
+        own = {bi for bi, box in enumerate(boxes)
+               if in_expanded(a, box, T10_OWN_MARGIN) or in_expanded(b, box, T10_OWN_MARGIN)}
+        for k, p in enumerate(poly):
+            if k < n * 0.12 or k > n * 0.88:
+                continue
+            for bi, box in enumerate(boxes):
+                if bi not in own and deep_inside(p, box):
+                    flagged.add((ei, bi))
+    return len({ei for ei, _ in flagged})
 
 
 def _render_one(tikz_path: Path) -> int:
@@ -136,6 +278,12 @@ def _render_one(tikz_path: Path) -> int:
         if overlaps:
             print(f"[render_tikz] T8 {len(overlaps)} bbox overlap(s) > {IOU_THRESHOLD} for {name} "
                   f"(check {target_png})")
+
+        # T10 — arrow-vs-node crossing (ADVISORY: warns, never fails the build)
+        crossings = _arrow_node_crossings(target_pdf)
+        if crossings:
+            print(f"[render_tikz] T10 (advisory) {crossings} edge(s) in {name} may pass through "
+                  f"an unrelated node — eyeball routing in {target_png}")
 
         if bad or overlaps:
             return 1

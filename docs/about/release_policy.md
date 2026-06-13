@@ -6,7 +6,7 @@ sources:
     role: doc
   - path: ari-core/pyproject.toml
     role: config
-last_verified: 2026-05-26
+last_verified: 2026-06-04
 ---
 
 # Release & Versioning Policy
@@ -86,7 +86,8 @@ When cutting a release:
    **Removed** / **Security**.
 2. Bump the version in `ari-core/pyproject.toml` and each
    `ari-skill-*/pyproject.toml`.
-3. Run the full test suite + the refactor-guards CI workflow.
+3. Run the full test suite + the `refactor-guards`, `docs-sync`, and
+   `docs-change-coupling` CI workflows.
 4. Run the docs gate:
    - `grep -rn '~/\.ari/' docs/` excluding `refactor_audit.md`
      returns zero.
@@ -100,6 +101,10 @@ When cutting a release:
      exits 0 (no `ja`/`zh` translation has a `last_verified` older than
      its English source — see [Source traceability](../README.md#source-traceability)).
      Run without `--strict` for a non-blocking warning-only report.
+   - `python scripts/docs/check_i18n_js.py` exits 0 (the three
+     `docs/i18n/*.js` declare one identical key set).
+   - `python scripts/docs/check_readme_parity.py` exits 0 (the root
+     `README.{md,ja,zh}` share one Markdown heading shape).
 5. Tag: `git tag v0.X.Y && git push origin v0.X.Y`.
 6. Open a release on GitHub with the changelog excerpt.
 7. Publish bundles: `ari ear publish` for any artefacts that need to

@@ -75,8 +75,10 @@ outputs at 2–3 KB per node.
 pytest tests/ -q
 ```
 
-Two test files cover the science-data extraction and the EAR curate
-path.
+The test files cover the science-data extraction, the Research
+Contract claim layer (`test_claims.py`), and the
+`metric_contract`→`science_data`→hard-gate seam
+(`test_metric_contract_seam.py`).
 
 ## See also
 

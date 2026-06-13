@@ -91,3 +91,42 @@ Used by the viz dashboard and migration CLI (not exposed via MCP):
   `react_get_all` — ReAct-trace surface consumed by
   `ari.memory.letta_client.LettaMemoryClient`.
 - `health()` — ping Letta and report latency.
+
+## Verifiable research-memory layer
+
+A typed, artifact-grounded index built **on top of** the node-scope store
+(concept: `docs/concepts/verifiable_research_memory.md`). `node_report.json`
+is the source of truth; these records carry a `node_report_ref` pointer + a
+searchable `text`, never copies of node_report fields.
+
+- `schemas.py` — `ResearchMemory` / `ArtifactRef`; `MemoryKind`
+  (observation, experiment_result, failure_case, procedure, reflection,
+  artifact_summary, paper_claim, reproducibility_event); `ReproStatus`.
+  `to_metadata()` promotes `mem_kind` to a top-level facet for filtering.
+- `provenance.py` — `sha256_of`, `normalize_artifact_path`,
+  `refs_from_node_report` (reuses `files_changed` sha256; `compute_missing`
+  hashes artifacts for an index baseline), `load_node_report`.
+- `audit.py` — `audit_node_report` / `audit_checkpoint`: re-hash referenced
+  artifacts → `verified | missing | mismatch | unhashed`. CLI:
+  `python -m ari_skill_memory.audit <experiments_root> [run_id]`.
+- `writer.py` — typed writes (`add_experiment_result` / `add_failure_case` /
+  `add_procedure_memory` / `add_reflection` / `add_reproducibility_event`),
+  CoW-guarded; stamp `type` + `mem_kind`.
+- `retriever.py` — `search_research_memory(kinds, require_artifacts)`,
+  `ancestor_typed_memory` (deterministic, ancestor-scoped, full),
+  `fold_reproducibility` (append-only events → latest status per target).
+- `consolidation.py` — `consolidate_from_node_report` (pure: node_report →
+  typed specs) + `write_consolidated`.
+- `context_builder.py` — `build_verified_context`: rerun_passed > grounded >
+  ungrounded; `usable_for_claims` = grounded & not rerun_failed.
+
+MCP tools (called by ari-core loop/pipeline hooks, never an LLM pull):
+`add_experiment_result`, `add_failure_case`, `add_procedure_memory`,
+`add_reflection`, `add_reproducibility_event`, `search_research_memory`,
+`get_verified_context`, `audit_memory`, `consolidate_node_memory` — the five
+write tools are CoW-routed (in `MCPClient._COW_TOOLS`).
+
+Invariants: same ancestor-scope predicate as `search_memory`; append-only
+state; `archival_list` pages via cursor (the >200-passage ceiling no longer
+truncates client-side filters). Gated by `ari.config.consolidation_enabled`
+(`ARI_MEMORY_CONSOLIDATE`, default ON).

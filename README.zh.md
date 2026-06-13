@@ -6,7 +6,7 @@
   **通用研究自动化系统。从笔记本到超级计算机。从本地模型到云端 API。从新手到专家。从计算实验到物理世界。**
 
   [![Tests](https://img.shields.io/badge/tests-2200%2B-brightgreen)](ari-core)
-  [![Version](https://img.shields.io/badge/version-v0.8.1-orange)](https://github.com/kotama7/ARI/releases)
+  [![Version](https://img.shields.io/badge/version-v0.9.0-orange)](https://github.com/kotama7/ARI/releases)
   [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
   [![MCP](https://img.shields.io/badge/protocol-MCP-purple)](https://modelcontextprotocol.io)
   [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -38,6 +38,29 @@ ARI 围绕一个原则设计：**用 Markdown 描述目标 — 其余的交给 A
 | **专业水平** | 新手（仅目标） | 专家（完整参数控制） |
 
 ---
+
+## v0.9.0 新功能（2026-06-12）
+
+**论断的端到端验证。** 本版本主题：只有当论文的全部论断都能对照 run 自身的
+成果物进行机器验证时，论文才会发布。
+
+- **Story2Proposal claim-evidence 循环＋idea 持有的指标契约** — idea 声明可证伪
+  claims 及所需证据名；确定性 hard gate 在 finalize 前 BLOCK「无证据的已声明
+  claim」与「无法复算的数字」。block 仅限客观谬误；主观评审所见保持 advisory。
+- **Mint-once 契约与稳健解析** — 契约词汇在首次铸造时冻结（LLM 重抽取不具引用
+  稳定性）；gate 能解析科学计数法与数学定界符旁的单位；writer 声明怪癖在解析时
+  归一化。
+- **谱系串联** — 由既有测量*计算*得出证据的 claims（模型拟合、留出验证、基于
+  模型的选型）经由继承工作目录的父→子节点链执行。
+- **真正落地的评审反馈** — semantic review 的所有警告都送达 `paper_refine`；
+  post-refine 的解决计数为原始差值；refiner 的全文转义不再触碰数学公式。
+- **VirSci-live idea 引擎（可选）** — 在实时 Semantic Scholar 快照上运行真实
+  VirSci 多智能体机制；并引入基于运行启动探针的 platform-aware idea 生成。
+- **经 gate 验证的示例论文** — [`docs/assets/sample_paper.pdf`](docs/assets/sample_paper.pdf)
+  现为 12 条声明 claims 全部具备已验证证据、refine 后零过度声明的研究。
+  参见[已验证的结果](#已验证的结果)。
+
+完整列表见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## v0.8.1 新功能（2026-06-01）
 
@@ -102,7 +125,7 @@ ARI 围绕一个原则设计：**用 Markdown 描述目标 — 其余的交给 A
 
 🎬 **仪表板演示视频** — ARI Web 仪表板的完整演示。也提供 [English](docs/assets/movie/en/ari_dashboard_demo.mp4) · [日本語](docs/assets/movie/ja/ari_dashboard_demo.mp4)。
 
-📄 **[示例输出论文 (PDF)](docs/assets/sample_paper.pdf)** — 由 ARI 在富士通 A64FX/SVE-512 平台上完全自主生成的 10 页真实论文（Stratum-Roofline CSR-SpMM 研究），包含图表、引用和可复现性验证报告。主要数据请参阅[已验证的结果](#已验证的结果)。
+📄 **[示例输出论文 (PDF)](docs/assets/sample_paper.pdf)** — 由 ARI 在 aarch64 (SVE) HPC 平台上完全自主生成的 8 页真实论文（跨 RHS 宽度的 store-policy 选择与 loopline 引导性能模型的 CSR SpMM 研究）。**所有论断在发布前均经 claim-evidence gate 机器验证**。参见[已验证的结果](#已验证的结果)。
 
 <details>
 <summary><b>📖 点击展开论文（滚动浏览全部 10 页）</b></summary>
@@ -116,8 +139,6 @@ ARI 围绕一个原则设计：**用 Markdown 描述目标 — 其余的交给 A
   <img src="docs/assets/images/sample_paper/page-06.png" alt="示例论文 — 第 6 页" width="720"/>
   <img src="docs/assets/images/sample_paper/page-07.png" alt="示例论文 — 第 7 页" width="720"/>
   <img src="docs/assets/images/sample_paper/page-08.png" alt="示例论文 — 第 8 页" width="720"/>
-  <img src="docs/assets/images/sample_paper/page-09.png" alt="示例论文 — 第 9 页" width="720"/>
-  <img src="docs/assets/images/sample_paper/page-10.png" alt="示例论文 — 第 10 页" width="720"/>
 </p>
 
 </details>
@@ -141,7 +162,7 @@ experiment.md  ──►  ARI Core  ──►  结果 + 论文 + 可复现性报
 1. **你描述目标。** 编写一个实验文件。ARI 读取它，生成假设，运行实验，并报告结果。
 2. **在假设空间上的 BFTS。** 最佳优先树搜索（BFTS）引导探索 — 由证据驱动，而非穷举。
 3. **确定性工具，推理 LLM。** MCP 技能是纯函数。LLM 进行推理；技能执行操作。
-4. **从论文到证明。** ARI 撰写论文，*并且* 通过可复现性检查验证自己的主张。
+4. **从论文到证明。** ARI 撰写论文，*并且* 对自己的主张进行双重验证：一个确定性的主张-证据/指标正确性门控会从记录的结果中重新推导每一个报告的数值，并阻断客观上错误或未经验证的指标，*并且* 一个独立的可复现性检查会重新运行实验。
 
 ---
 
@@ -338,7 +359,7 @@ v0.6.0 移除了两个技能：`ari-skill-figure-router` 被合并进 `ari-skill
 | `ari-skill-evaluator` | 从实验文件中提取指标 | △ | ✓ |
 | `ari-skill-idea` | arXiv 调研 + VirSci 假设生成 | ✓ | ✓ |
 | `ari-skill-web` | DuckDuckGo、arXiv、Semantic Scholar / AlphaXiv、迭代引用收集、上传文件访问 | △ | ✓ |
-| `ari-skill-memory` | 祖先作用域的节点内存（v0.6.0 起由 Letta 支持） | △ | ✓ |
+| `ari-skill-memory` | 祖先作用域的节点内存 + 带类型、带产物溯源的可验证研究记忆（由 Letta 支持） | △ | ✓ |
 | `ari-skill-transform` | BFTS 树 → 面向科学的数据 + EAR 生成 | ✓ | ✓ |
 | `ari-skill-plot` | 统一图表生成（按图选择 matplotlib 绘图或 SVG 图，支持 VLM 循环） | ✓ | ✓ |
 | `ari-skill-paper` | LaTeX 写作 + BibTeX + 规范驱动评审（单审稿 或 N 人集成 + Area Chair 元评审） | ✓ | ✓ |
@@ -349,6 +370,8 @@ v0.6.0 移除了两个技能：`ari-skill-figure-router` 被合并进 `ari-skill
 | `ari-skill-orchestrator` | 将 ARI 作为 MCP 服务器暴露、递归子实验、stdio+HTTP 双传输 | ✗ | — |
 
 ✗ = 不使用 LLM，△ = 仅部分工具使用 LLM，✓ = 主要工具使用 LLM。
+
+> **可选的 VirSci-live 引擎。** `ari-skill-idea` 可以选择在实时的 Semantic Scholar 快照上运行 VirSci 原生的多智能体机制（freshness 团队组建 + 多智能体研讨），以替代轻量级的重实现回路。通过 `ARI_IDEA_VIRSCI_REAL=1`（或 `ari run … --virsci-live`、实验向导的开关）启用；默认关闭时行为不变，缺少依赖时会降级回退到重实现回路。
 
 ### 设计原则
 
@@ -364,21 +387,35 @@ v0.6.0 移除了两个技能：`ari-skill-figure-router` 被合并进 `ari-skill
 
 ## 已验证的结果
 
-ARI 在富士通 A64FX/SVE-512 CPU 上对 **CSR-SpMM**（稀疏矩阵与稠密矩阵乘积）进行了端到端的自主研究，包括设计、实现、运行和论文撰写。完整论文（含方法、算法、图表和参考文献）可在 [`docs/assets/sample_paper.pdf`](docs/assets/sample_paper.pdf) 中查看。
+ARI 在 aarch64 (SVE) HPC 平台上对 **CSR SpMM**（稀疏矩阵×稠密矩阵乘积）进行了端到端的自主研究：设计、实现、运行与论文撰写。完整论文见 [`docs/assets/sample_paper.pdf`](docs/assets/sample_paper.pdf)。
 
-> **A Stratum-Roofline CSR-SpMM Implementation for CPUs: Sustaining High Performance Across Variable Right-Hand-Side Widths on A64FX/SVE-512**
+> **CSR Sparse-Dense Matrix Multiplication on CPUs with RHS-Width Robustness and a Loopline-Guided Performance Model**
 
-| 配置 | 吞吐量 | 有效带宽 |
-|---|---|---|
-| 预取+平铺核函数 (NB=16, PFD=4) 在 *N* ∈ {1, 2, 4, 8, 16} 上持续达到 | **57.8–59.9** GFlops/s | — |
-| 参考核函数峰值 (*N* = 128) | 79.995 GFlops/s | **167.5 GB/s** |
-| 带状 Stratum-Roofline 预测 vs 实测 (*N* = 128) | **81.55** GFlops/s（完全一致） | 135.88 GB/s |
-| 小 *N* 鲁棒性增益 (*N* = 1，平铺+预取 vs 参考) | **15.6×** | — |
-| SIMD 消融实验减速 (`-fno-tree-vectorize`，*N* = 128) | **4.18×** (80.33 → 22.0) | — |
+这篇论文的特别之处不在于某个亮眼数字，而在于一个性质：**它的每一条论断都在发布前通过了确定性的 claim-evidence gate**。
 
-**硬件:** 富士通 `fx700` 计算节点（A64FX、SVE-512），48 OpenMP 线程，FP32。GCC 8.5.0，使用 `-O3 -march=armv8.2-a+sve -fopenmp -ffast-math -ftree-vectorize -funroll-loops`。带状/偏斜幂律合成 CSR 矩阵（*M* = *N* = 400,000，nnz = 12.8M），以及紧凑扫描矩阵（*M* = *K* = 120,000，nnz/行 = 32）。RHS 宽度 *N* ∈ {1, 2, 4, 8, 16, 32, 64, 96, 128, 192, 256}，线程扫描 *T* ∈ {1, …, 48}，平铺宽度扫描 NB ∈ {8, 16, 32}，PFD ∈ {0, 4}。
+| 已验证的性质 | 结果 |
+|---|---|
+| 具有实验证据的已声明可证伪 claims | **12 / 12**（gate 错误 0） |
+| 与独立 dense FP32 参考实现的正确性 | 最大绝对误差 **6.79×10⁻⁶** |
+| 计算型证据链（模型拟合 → held-out 验证 → 模型选择） | 经谱系链节点执行 |
+| review→refine 后残留的过度声明 | **0**（检出 5 → 解决 5） |
+| 无 artifact 依据的数字 | 在正文中显式 hedge |
 
-**ARI 自主完成的工作：** Stratum-Roofline 建模框架（FMA 峰值 1869.66 GFlops/s + HBM 上限 235.42 GB/s + 每线程 STREAM-triad 20.91 GB/s 校准、四层行 stratum 分解）、四种核函数实现（`spmm_csr` 参考、`spmm_csr_pf` 预取、`spmm_csr_tiled` NB 平铺、`spmm_novec` SIMD 消融）、Algorithm 1（NB 平铺软件预取 CSR-SpMM）、*N* / 线程 / 平铺宽度 / PFD 扫描、Xeon Gold 6142 登录节点备用运行、图表、参考文献以及可复现性验证（5 次重复、4 个随机种子、最大绝对误差 0.0、CV ≤ 1.02%）— 全部由 ARI 端到端自主生成，无需人工干预。
+**硬件:** aarch64 (SVE) HPC 计算节点（48 OpenMP 线程、FP32），另用一台 x86_64 节点做 ablation。硬件仅以规格描述，绝不使用集群名称（Philosophy P5）。
+
+**ARI 自主产出:** 带 store-policy 选择器的 CSR SpMM 内核（按 RHS 宽度在 regular/non-temporal store 间切换）、对照 dense 参考的正确性验证、微基准探针（内存带宽、compute-rate inflation/deflation）、经父→子谱系链执行的 loopline 引导模型拟合与 held-out 验证、图表、参考文献，以及机器校验的 claim-evidence 审计 — 全程无人工干预。
+
+---
+
+## Star History
+
+<a href="https://www.star-history.com/#kotama7/ARI&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=kotama7/ARI&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=kotama7/ARI&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=kotama7/ARI&type=Date" />
+ </picture>
+</a>
 
 ---
 

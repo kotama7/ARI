@@ -24,6 +24,13 @@ interface StepLaunchProps {
   frontierScore: string;
   composite: string;
   axisMode: string;
+  allowWeb: boolean;
+  // VirSci-live (idea skill vendor-wrap)
+  virSciReal: boolean;
+  virSciK: number;
+  virSciTeamSize: number;
+  virSciNAuthors: number;
+  virSciNPapers: number;
   // LLM values for launch payload
   llmModel: string;
   llmProvider: string;
@@ -78,6 +85,12 @@ export function StepLaunch({
   frontierScore,
   composite,
   axisMode,
+  allowWeb,
+  virSciReal,
+  virSciK,
+  virSciTeamSize,
+  virSciNAuthors,
+  virSciNPapers,
   llmModel,
   llmProvider,
   baseUrl,
@@ -132,6 +145,12 @@ export function StepLaunch({
         frontier_score: frontierScore || null,
         composite: composite || null,
         axis_mode: axisMode || null,
+        allow_web: allowWeb,
+        vir_sci_real: virSciReal,
+        vir_sci_k: virSciK || null,
+        vir_sci_team_size: virSciTeamSize || null,
+        vir_sci_n_authors: virSciNAuthors || null,
+        vir_sci_n_papers: virSciNPapers || null,
         llm_model: llmModel,
         llm_provider: llmProvider || 'openai',
         // CLI shim base URL (only meaningful when provider is cli-shim).

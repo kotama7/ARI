@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-06-10
 ---
 
 # Environment Variable Reference
@@ -52,6 +52,24 @@ page is the alphabetical lookup.
 | `LLM_MODEL` | Cross-skill fallback (used by `ari-skill-transform`, `ari-skill-plot`) | (none) |
 | `LLM_API_BASE` | API base for `LLM_MODEL` | (none) |
 
+### Idea skill — VirSci-live
+
+Opt-in vendor-wrap path for `generate_ideas`. Default-off keeps current
+behaviour (the lightweight re-implemented discussion loop). When on, `generate_ideas`
+runs VirSci's real multi-agent mechanism on a live Semantic Scholar snapshot; on
+missing deps / any runtime error it degrades to the re-impl loop. The deliberation
+LLM follows `ARI_MODEL_IDEA`.
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `ARI_IDEA_VIRSCI_REAL` | Toggle the real vendor-wrap path (`1`/true). Unset ⇒ current re-impl behaviour | (unset / off) |
+| `ARI_IDEA_VIRSCI_K` | Discussion turns (vendor `group_max_discuss_iteration`) | `7` |
+| `ARI_IDEA_VIRSCI_TEAM_SIZE` | Max team members (vendor `max_teammember`) | `3` |
+| `ARI_IDEA_VIRSCI_N_AUTHORS` | Author pool size for `select_coauthors` | `16` |
+| `ARI_IDEA_VIRSCI_N_PAPERS` | SPECTER2 retrieval corpus size | `800` |
+| `ARI_IDEA_VIRSCI_MAX_TEAMS` | Cap on teams driven through `generate_idea` | `=n_ideas` |
+| `ARI_IDEA_VIRSCI_SPECTER2_MODEL` | Local query embedder | `allenai/specter2_base` |
+
 ### BFTS exploration
 
 | Variable | Purpose | Default |
@@ -61,6 +79,7 @@ page is the alphabetical lookup.
 | `ARI_MAX_REACT` | ReAct iteration cap per node | (workflow-controlled) |
 | `ARI_PARALLEL` | Concurrent node executors | `1` |
 | `ARI_TIMEOUT_NODE` | Per-node wall-time cap (seconds) | (none) |
+| `ARI_BFTS_ALLOW_WEB` | Opt-in: expose `web-skill` (web_search / fetch_url / arXiv / Semantic Scholar) to the BFTS node agent **during exploration**. Default-off keeps the search loop reproducible (P5); when on, ARI records a non-reproducible-trajectory marker (`bfts_web_provenance.json`). `idea-skill`'s `survey` already does a bounded literature lookup regardless. `1`/`true`/`yes`/`on` to enable | `false` |
 | `ARI_RECURSION_DEPTH` | Current depth in nested ARI runs (auto-set) | (auto) |
 | `ARI_MAX_RECURSION_DEPTH` | Cap for orchestrator recursion | `3` |
 | `ARI_PARENT_RUN_ID` | Parent run id during recursion (auto-set) | (auto) |
@@ -86,6 +105,7 @@ page is the alphabetical lookup.
 | `ARI_MEMORY_BACKEND` | `letta` (default) or `in_memory` (no Letta required; ephemeral RAM-only backend for local smoke tests) |
 | `ARI_MEMORY_AUTO_RESTORE` | Auto-restore from `memory_backup.jsonl.gz` on resume |
 | `ARI_MEMORY_ACCESS_LOG` | Path to `memory_access.jsonl` |
+| `ARI_MEMORY_CONSOLIDATE` | Typed-memory consolidation + artifact-grounded `verified_context.json` for paper claims. **Default ON**; set `0`/`false`/`no`/`off` to disable |
 | `ARI_CURRENT_NODE_ID` | Set by the agent loop; skills read it but never set it |
 | `ARI_LETTA_VENV` | Virtualenv path for the bundled Letta server |
 
@@ -99,6 +119,13 @@ page is the alphabetical lookup.
 | `ARI_NUM_REFLECTIONS` | Reflection rounds in `review_compiled_paper` |
 | `ARI_NUM_REVIEWS_ENSEMBLE` | Ensemble size for rubric review |
 | `ARI_JUDGE_N_RUNS` | SimpleJudge re-run count for `grade_with_simplejudge` |
+
+### Claim-evidence gate
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `ARI_CLAIM_GATE_MODE` | Claim-evidence / metric-correctness gate evaluation switch. `off` never blocks; `warn` reports errors/warnings but never blocks finalize; `strict` blocks the final gate when blocking errors exist | `warn` (`off` / `warn` / `strict`) |
+| `ARI_COMPARISON_SCOPE` | Governs whether a cross-environment comparison is treated as a transparency warning (`any`) or a blocking error (`same_environment`, for single-architecture optimization studies) | `any` (`any` / `same_environment`) |
 
 ### Rubric auto-generation (v0.7.0)
 

@@ -433,5 +433,20 @@ def _synth_repro_report_from_ors(d: Path) -> dict | None:
         out["phase1_executed"] = bool(phase1.get("executed", False))
         if phase1.get("missing"):
             out["phase1_missing_artifacts"] = phase1["missing"]
+    # Surface the BFTS web-search trajectory caveat when web search was opted
+    # into during exploration (bfts_web_provenance.json). The paper's numbers
+    # may still be reproducible (ORS verifies that), but the search trajectory
+    # that produced them is not — readers need both signals.
+    try:
+        from ari.orchestrator.web_provenance import read_provenance as _read_wp
+        _wp = _read_wp(d)
+        if _wp.get("web_search_enabled_during_bfts"):
+            out["bfts_web_search"] = {
+                "enabled": True,
+                "trajectory_reproducible": False,
+                "note": _wp.get("note", ""),
+            }
+    except Exception:
+        log.debug("bfts web provenance read skipped", exc_info=True)
     return out
 

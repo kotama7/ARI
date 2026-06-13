@@ -142,6 +142,27 @@ class InMemoryBackend(MemoryBackend):
                  if e["node_id"] == node_id),
                 key=lambda e: e["ts"],
             )
+        # Observability: the deterministic ancestor-inheritance read (used by
+        # build_working_context_messages) was previously UNLOGGED, so
+        # memory_access showed ~0 reads even though descendants do inherit. Log it
+        # like search_memory. Defensive: logging must never break the read.
+        try:
+            self._access.write(
+                build_read_event(
+                    node_id=current_node_id(),
+                    collection="node_scope",
+                    query="inherit:get_node_memory",
+                    ancestor_ids=[node_id],
+                    limit=len(entries),
+                    results=[
+                        {"src_node_id": node_id, "entry_id": e["id"],
+                         "type": (e.get("metadata") or {}).get("type")}
+                        for e in entries
+                    ],
+                )
+            )
+        except Exception:
+            pass
         return {"entries": [
             {"text": e["text"], "metadata": e["metadata"], "ts": e["ts"]}
             for e in entries
@@ -189,10 +210,28 @@ class InMemoryBackend(MemoryBackend):
         by_node: dict[str, list[dict]] = {nid: [] for nid in node_ids}
         for e in entries:
             by_node[e["node_id"]].append({
+                "entry_id": e["id"],
                 "text": e["text"],
                 "metadata": e["metadata"],
                 "ts": e["ts"],
             })
+        # Observability: log the (otherwise unlogged) bulk inheritance read.
+        try:
+            self._access.write(
+                build_read_event(
+                    node_id=current_node_id(),
+                    collection="node_scope",
+                    query="inherit:bulk_get_node_memory",
+                    ancestor_ids=list(node_ids),
+                    limit=len(entries),
+                    results=[
+                        {"src_node_id": nid, "count": len(by_node[nid])}
+                        for nid in node_ids
+                    ],
+                )
+            )
+        except Exception:
+            pass
         return {"by_node": by_node}
 
     def purge_checkpoint(self) -> dict:

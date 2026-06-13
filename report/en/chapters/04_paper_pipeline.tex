@@ -5,23 +5,310 @@
 \begin{figure}[t]
   \centering
   \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F06_paper_swimlane.tex}}
-  \caption{Paper-generation swim lane: idea, experiment, write. Each
-           lane corresponds to a phase; the back edge from
-           review to draft is the only non-monotonic transition
+  \caption{The paper-generation lifecycle as phase-grouped columns:
+           idea, experiment, write (steps 1--6). The dashed enclosure
+           marks the review/refine pair; its back edge is the only
+           non-monotonic transition in the lifecycle
            (\cref{sec:paper:loop}).}
   \label{fig:swim}
 \end{figure}
 
 Once exploration terminates, the surviving lineage is handed to the
-paper-generation pipeline, the second tree of activity in ARI
-(\cref{fig:swim}). A \term{write} phase compiles the lineage into a
-draft, and a \term{review} phase scores that draft against a rubric;
-the two are coupled by a refine loop (\cref{sec:paper:loop}). The
-pipeline assembles, from the per-node artefacts left by exploration,
-the evidence the writer is allowed to draw on, and persists three
-outputs: the \LaTeX{} draft, the per-leaf review with its rationale,
-and the rubric instance used to score the run (kept because the
-rubric may be generated per paper rather than fixed in advance).
+paper-generation pipeline, the second half of a run (\cref{fig:swim};
+\cref{fig:pipeline} places it in the run-level stage DAG). A
+\term{write} phase compiles the lineage into a draft, and a
+\term{review} phase scores that draft against a rubric; the two are
+coupled by a refine loop (\cref{sec:paper:loop}). The pipeline
+persists three outputs: the \LaTeX{} draft, the per-leaf review with
+its rationale, and the rubric instance used to score the run (kept
+because the rubric may be generated per paper rather than fixed in
+advance).
+
+The organising principle of the pipeline is that every quantitative
+statement in the draft must be traceable to something exploration
+actually produced. Two mechanisms carry that principle. A
+deterministic \term{evidence assembler} (\cref{sec:paper:evidence})
+fixes \emph{which} artefacts the writer may draw on, as a pure
+function of recorded metadata. A \term{claim--evidence contract}
+(\cref{sec:paper:contract}) fixes \emph{what} the paper must say
+about them: the falsifiable claims declared at idea time, the
+measurement names that count as evidence for each, and a
+deterministic gate that re-derives every reported number from the
+recorded results before the paper can ship. The remaining sections
+--- the rubric formalism (\cref{sec:paper:rubric}), the review/refine
+loop (\cref{sec:paper:loop}), and the PaperBench replication path
+(\cref{sec:paper:paperbench,sec:paper:paperbench:v072}) --- build on
+these two.
+
+\subsection{Evidence assembly}\label{sec:paper:evidence}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F17_evidence_assembly.tex}}
+  \caption{Evidence assembly. The deterministic assembler walks the best
+           node's lineage and, grounded by each node's structured
+           self-report (content hashes, success self-assessment, literal
+           build/run commands, captured hardware), makes \emph{one}
+           role-specific selection that feeds \emph{two} consumers with
+           byte-identical content: the writer's lineage evidence and the
+           published artefact bundle. Each contributing file is chosen by
+           recorded metadata; on a path collision the deepest occurrence
+           wins, and a chain deletion removes the file.}
+  \label{fig:evidence}
+\end{figure}
+
+Between exploration and writing sits the evidence assembler
+(\cref{fig:evidence}). It decides which of the lineage's per-node
+artefacts the writer may draw on and reshapes them into a single
+science-facing record. The design keeps this seam auditable --- which
+node a claim traces to is a function of recorded metadata, not of a
+language model's judgement --- so that the contract of
+\cref{sec:paper:contract} and the guardrails of
+\cref{sec:paper:failures} have something concrete to enforce.
+
+Selection is role-specific: one node may contribute differently to
+three consumers, and a single predicate family decides each. A node
+enters the \emph{synthesis} set if it carries real measurements (or the
+evaluator certified its run a success); it enters the \emph{code} set if
+it introduced or modified a source file relative to its parent; and it
+enters the \emph{narrative} set if its step succeeded. A node that
+merely explored a dead end is admitted to none. Each criterion is a
+pure predicate over recorded metadata, so the same inputs always select
+the same contributing set.
+
+Source files are gathered by overlaying, in depth order, the files each
+contributing node touched along the ancestor chain $\lineage{\bestnode}$
+of the best node $\bestnode$. Because a child node executes inside a copy
+of its parent's working tree, one relative path may occur at several
+depths; the deepest occurrence wins, and a deletion along the chain
+removes the file --- so the reconstructed set matches the best node's
+actual working tree. This selection then feeds \emph{two} consumers from
+the same bytes: the writer's lineage evidence and the published artefact
+bundle, so the lineage code the paper describes is the code that is
+released. Selection is chain-only --- a node off the best lineage is not
+published even when its measurements are reported by the synthesis set,
+and is logged for provenance --- and, as a fidelity aid for pseudocode,
+the writer is additionally shown the raw source of the top-scoring nodes,
+which is not itself the published set.
+
+The assembler reads code, parameters, and measurements \emph{directly}
+from each node's working tree rather than from a summary. Where an
+experiment declared a typed result, the record separates \term{input
+parameters} (configuration knobs --- problem size, thread count, seeds)
+from \term{measured outputs} (throughput, accuracy, latency) and from
+derived quantities (efficiencies, model-predicted ceilings). The
+separation is not cosmetic: per-key extrema reported across
+configurations are reduced deterministically and \emph{only} over
+measured keys,
+\begin{equation}\label{eq:reduction}
+  \mathrm{best}(m)\;=\;\operatorname*{red}_{c\,\in\,\Evidence} c[m],
+  \qquad m \notin \Inputs,
+\end{equation}
+where $\operatorname*{red}$ is a maximum or a minimum according to the
+metric's declared direction, $\Evidence$ is the set of contributing
+configurations, and $\Inputs$ is the set of declared input keys held out
+of every reduction. Holding the inputs out is what stops a large input
+magnitude --- a problem size of several million nonzeros, say --- from
+being read as a headline result. The language model is confined to the
+one task that genuinely needs it: turning verbatim source and logs into
+prose and pseudocode and narrating methodology. It never supplies the
+numbers.
+
+Grounding all of this is a per-node structured self-report written when
+a node completes (\texttt{node\_report.json} in the checkpoint). It
+records, by content hash, which files the node added or modified
+relative to its parent; the node's own success self-assessment together
+with the concerns the evaluator flagged; the literal build and run
+commands; and the hardware the measurement ran on. The hashes make the
+source selection reproducible and let the released bundle carry a
+reproduction script built from the recorded commands; the captured
+hardware lets the paper's environment section be written from fact
+rather than left as ``not recorded''.
+
+\begin{algorithm}[t]
+\small
+\caption{Evidence assembly (exploration $\to$ writer input).}
+\label{alg:evidence-assembly}
+\begin{algorithmic}[1]
+\Require lineage nodes $\Nodes$ with per-node reports; metric-direction map
+\Ensure  science record $\Evidence$: typed configurations, per-key
+         extrema, methodology narrative
+\State $\bestnode \gets \operatorname*{arg\,max}_{n \in \Nodes}\, \nodescore{n}$
+       \Comment{ties: validated, then deeper}
+\State $L \gets \lineage{\bestnode}$ \Comment{root-to-best ancestor chain}
+\State $\mathcal{C} \gets \{\, n \in L : \textsc{Contributes}(n) \,\}$
+       \Comment{role predicate (code)}
+\State $F \gets \emptyset$ \Comment{relative path $\mapsto$ (node, depth)}
+\ForAll{$n \in L$ in depth order}
+  \ForAll{path $p$ added/modified by $n \in \mathcal{C}$}
+    \If{$p \notin F \lor \depth{n} \geq \depth{F[p]}$}
+      \State $F[p] \gets (n, \depth{n})$ \Comment{deepest wins}
+    \EndIf
+  \EndFor
+  \ForAll{path $p$ deleted by $n$}
+    \State remove $p$ from $F$ \Comment{deletion overlays it away}
+  \EndFor
+\EndFor
+\State load the bytes of every $p \in F$ verbatim, under a size budget
+\ForAll{measured key $m \notin \Inputs$}
+  \State $\mathrm{best}(m) \gets \operatorname*{red}_{c} c[m]$
+         \Comment{\cref{eq:reduction}; deterministic}
+\EndFor
+\State $\textsc{Narrate}(F)$
+       \Comment{LLM: verbatim source/logs $\to$ prose, pseudocode}
+\State \Return $\Evidence$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{The claim--evidence contract}\label{sec:paper:contract}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F20_claim_evidence.tex}}
+  \caption{ARI's execution-grounded realisation of the Story2Proposal
+           claim--evidence contract \cite{qian2026story2proposal}.
+           (1)~The run-level metric contract declares falsifiable claims
+           and the exact measurement names that count as evidence; once a
+           claims-bearing contract is persisted it is reused verbatim.
+           (2)~Exploration nodes emit measurements under those names; an
+           advisory point-of-emission check flags still-uncovered claims
+           and offers suggestion-only name hints for re-emission ---
+           nothing is auto-bound. (3)~Manuscript claims --- numeric
+           assertions and figure references --- bind to the recorded
+           evidence by stable node, result, and figure identifiers.
+           (4)~A deterministic claim--evidence gate (no language model)
+           re-derives each reported number from that evidence within a
+           tolerance; the data-fidelity axis blocks in strict mode, while
+           the reasoning and visual-coherence axes are advisory.}
+  \label{fig:claim-evidence}
+\end{figure}
+
+The pipeline's centrepiece is the \term{metric contract}: a run-level
+declaration of the falsifiable claims the eventual paper must support,
+each naming the exact measurement names that count as evidence for it
+(\cref{fig:claim-evidence}). The claims are owned by the selected
+idea, so the implementing agent cannot drop an inconvenient one;
+the contract is persisted in the checkpoint at idea time and threads
+through the entire run. During exploration, nodes emit measurements
+under the contract's names; the same names steer expansion toward
+still-uncovered claims and seed the lineage chaining of
+\cref{sec:exploration:lineage-chaining}, so evidence that is
+\emph{computed} from earlier measurements can be produced along a
+single lineage. During writing, the deterministic gate described
+below matches claims to evidence by exact name. A positive or a
+negative outcome both satisfy a claim; what the contract makes
+mandatory is the evidence to judge it.
+
+The design descends from Story2Proposal
+\cite{qian2026story2proposal}, which converts a finished ``research
+story'' --- a narrative plus its experimental evidence --- into a
+manuscript by threading a persistent contract through a fixed
+pipeline of architect, writer, refiner, and renderer agents. Its
+shared contract registers the manuscript's visual artefacts under
+canonical labels, binds them to section-level obligations, and
+carries document-wide validation rules; evaluation agents for
+reasoning verification, data fidelity, and visual coherence observe
+intermediate artefacts and update the contract during generation, and
+the renderer closes with deterministic structural validation. What
+that contract guarantees is structural and visual integrity ---
+unique labels, resolvable cross-references, narrative--visual
+alignment --- and its authors are explicit about the boundary: the
+framework ``enforces structural and visual obligations rather than
+generating missing scientific evidence,'' and a manuscript can remain
+``structurally valid while containing less rigorous reasoning''
+\cite{qian2026story2proposal}.
+
+ARI keeps the contract idea and the three evaluation axes but
+re-grounds the contract in execution. The declared object is not the
+manuscript's visual structure; it is the run's evidentiary
+obligations, declared before any experiment runs and bound to
+measurements that executed experiments actually emitted. Data
+fidelity is correspondingly re-implemented: instead of a
+language-model evaluation agent, a deterministic gate re-derives
+every reported number from the recorded evidence, and this axis
+blocks in strict mode while reasoning and visual coherence remain
+advisory. Story2Proposal validates how given evidence is written up;
+ARI also controls how the evidence comes to exist, which is what
+makes a blocking check sound.
+
+Concretely, the writer emits an in-text anchor alongside each
+reported number: a comment-line declaration naming the claim the
+number supports, the metric, the derivation formula, and the operand
+configurations it was computed from. A deterministic linker
+reconciles anchors against the assembled science record, and the
+gate then recomputes each declared number from the recorded
+measurements using the named formula and compares it within a
+declared tolerance (a small relative tolerance by default). The
+declaration is forward-only --- no reverse search guesses what a
+number might mean --- so a wrong declaration fails as a mismatch
+rather than being silently repaired. Emission is also checked at the
+point of production: when a node emits results, the presence checks
+the final gate will later run are mirrored immediately, while the
+node can still re-emit; the warnings name still-uncovered claims and
+may carry conservative, suggestion-only lexical hints toward the
+required names. Nothing is auto-bound, and the gate itself never
+consults the hint logic.
+
+Experience with real runs hardened four points of this seam, each a
+structural rule rather than a prompt fix:
+
+\begin{itemize}
+  \item \textbf{The contract is minted once.} Once a claims-bearing
+        contract has been persisted, every later call returns the
+        persisted contract verbatim instead of regenerating it; a
+        re-derivation request becomes a harmless re-read of the
+        obligations. A language model's naming is not referentially
+        stable --- asked twice, it names the same quantity differently
+        --- and in a real run a mid-run regeneration silently renamed
+        the evidence vocabulary, hiding measurements that sibling
+        nodes had already emitted from the exact-match gate: claims
+        reported as missing evidence had in fact been measured under
+        the earlier names.
+  \item \textbf{Parsing meets the writer where it is.} The gate's
+        numeric verification parses scientific notation in both its
+        common forms (exponent suffixes and
+        $m \times 10^{k}$ literals) as a single value, and normalises
+        math delimiters and spacing macros away so that a number and
+        its unit are adjacent when a value--unit pair is extracted.
+        Writer declaration quirks that recur in practice ---
+        synonymous formula names for the same derivation, operand
+        references written with a redundant labelling prefix, metric
+        names carrying \LaTeX{} escapes, one anchor identifier shared
+        by several mentions (disambiguated per mention) --- are
+        normalised at parse time rather than reported as mismatches.
+        The rationale is twofold: the gate's verdicts should measure
+        the paper's numbers, not its surface syntax; and because
+        anchor lines may not be edited during refine, a declaration
+        that dead-ends at parse time could never be repaired
+        downstream.
+  \item \textbf{Review findings reach the refiner whole.} Every
+        warning raised by the semantic review --- a complementary
+        language-model pass that flags overclaims and unsupported
+        causal language --- is forwarded to the refine step
+        (\cref{sec:paper:loop}) as an advisory revision entry, not a
+        truncated subset; a warning without a forwarded entry would
+        never reach the refiner, and its count could never decrease.
+        The post-refine resolved count is a raw delta between the two
+        review passes, so a refine that introduces new findings shows
+        up as a negative delta --- a regression --- rather than being
+        clamped away.
+  \item \textbf{Blocking stays reserved for objective falsehoods.}
+        Gate findings come in two tiers. Policy-gated findings --- a
+        reported number that fails recomputation, an operand that
+        cannot be resolved, a numeric assertion whose cited evidence
+        is absent --- block the final check under the strict policy
+        and are reported without blocking otherwise. Objective
+        falsehoods --- a violated universal or declared invariant, a
+        failed or missing declared correctness check, a placeholder
+        constant where a measured ceiling is required, a metric that
+        cannot be recomputed from its own raw operands, a declared
+        claim with no supporting measurement anywhere in the run ---
+        block the final check under \emph{any} policy, because each
+        is deterministically false or unsound. The subjective
+        findings of the semantic review are advisory by design,
+        steering the refiner without ever gating publication on a
+        matter of judgement.
+\end{itemize}
 
 \subsection{Rubric formalism}\label{sec:paper:rubric}
 
@@ -35,13 +322,15 @@ graded score. The paper score is the convex combination
 \begin{equation}\label{eq:paperscore}
   \paperscore{\paper} \;=\; \sum_i \rubricweight{i}\,\judgefn{i}(\paper).
 \end{equation}
-This tree-structured rubric is shared with PaperBench, which ARI
-reuses through a vendored package (\cref{sec:paper:paperbench}) so
-that its grade and aggregation semantics track upstream verbatim.
-Two judge families coexist: an LLM-backed judge for qualitative
-leaves, and a deterministic judge for leaves with a binary or numeric
-verifier (e.g.\ ``is the cost reported in absolute dollars?''). Both
-satisfy the same \texttt{Evaluator} interface, so the search engine
+This tree-structured rubric is shared with PaperBench
+\cite{starace2025paperbench}, where binary leaf grades propagate up
+the tree as weighted averages; ARI reuses the upstream package through
+a vendored copy (\cref{sec:paper:paperbench}) so that its grade and
+aggregation semantics track upstream verbatim. Two judge families
+coexist: an LLM-backed judge for qualitative leaves, and a
+deterministic judge for leaves with a binary or numeric verifier
+(e.g.\ ``is the cost reported in absolute dollars?''). Both satisfy
+the same evaluator interface, so the search engine
 (\cref{sec:exploration}) and the paper pipeline reduce axes to a
 scalar through one seam.
 
@@ -84,7 +373,16 @@ The cycle stops when the reviewer accepts the draft --- modelled as the
 $\paperscore{\paper_{t+1}}-\paperscore{\paper_t}<\epsilon$ --- or when
 a small per-section revision cap is reached. Which branch fires more
 often is an empirical question \cref{chapter:eval} is meant to answer
-once a frozen checkpoint exists; we make no quantitative claim here.
+at panel scale; we make no quantitative claim here.
+
+The feedback $J(\paper_t)$ is a merged revision stream with its
+sources kept distinct: the independent venue review (the rubric
+instance of \cref{sec:paper:rubric}), the evidence-grounded semantic
+review forwarded whole (\cref{sec:paper:contract}), and mechanical
+revision entries derived from gate findings. The merge is structural
+--- no language model synthesises the streams --- so the refiner sees
+each finding in its original terms, and the independence of the venue
+review is preserved alongside the evidence-grounded checks.
 
 The refine step is intentionally non-monotonic per axis: fixing a
 clarity issue may slightly degrade a numeric axis. This is the source
@@ -95,11 +393,12 @@ prevents the aggregate from hiding a collapse on any single axis.
 
 \subsection{PaperBench integration}\label{sec:paper:paperbench}
 
-The replication path is \emph{not} a re-implementation of PaperBench:
-the upstream package is vendored unchanged so that ARI tracks its task
-and rubric semantics verbatim, and ARI contributes only a thin wrapper
-around it. The wrapper exposes the protocol-faithful loop as three
-composable stages with a shared vocabulary (\cref{fig:pb-stages}):
+The replication path is \emph{not} a re-implementation of PaperBench
+\cite{starace2025paperbench}: the upstream package is vendored
+unchanged so that ARI tracks its task and rubric semantics verbatim,
+and ARI contributes only a thin wrapper around it. The wrapper exposes
+the protocol-faithful loop as three composable stages with a shared
+vocabulary (\cref{fig:pb-stages}):
 
 \begin{enumerate}
   \item \emph{rollout} --- a replication agent works from the paper
@@ -116,11 +415,13 @@ composable stages with a shared vocabulary (\cref{fig:pb-stages}):
   \resizebox{\textwidth}{!}{\input{../shared/figures/tikz/F16_paperbench_stages.tex}}
   \caption{The PaperBench replication path as three composable stages.
            The agent \emph{rollout} turns the paper and its rubric into a
-           submission; \emph{reproduce} executes that submission in an
-           isolated sandbox, capturing \texttt{reproduce.log} and its
-           outputs; \emph{grade} scores the submission against the rubric
-           tree. ARI's three-stage bridge orchestrates the stages and
-           aggregates repeated runs into a single score.}
+           submission (code and a reproduction script); \emph{reproduce}
+           executes that submission in an isolated sandbox, capturing the
+           reproduction log and its outputs; \emph{grade} scores the
+           submission against the \emph{weighted rubric tree}, where the
+           vendored judge assigns each leaf a grade $g\in\{0,1\}$ and the
+           paper score is the weight-aggregated roll-up
+           $s=\sum_i w_i g_i$ (\cref{eq:paperscore}).}
   \label{fig:pb-stages}
 \end{figure*}
 
@@ -191,15 +492,25 @@ are untouched across the extension.
 
 \subsection{Failure modes and guardrails}\label{sec:paper:failures}
 
-Three failure modes are common enough to be named, each with a
-structural --- not merely advisory --- mitigation:
+Four failure modes are common enough to be named. None is
+hypothetical: the closest published predecessor documents generated
+drafts that misreport the experimental hardware and hallucinate
+entire result tables despite prompt-level instructions to use only
+real results \cite{lu2024ai}. ARI's position is that each failure
+mode needs a structural --- not merely advisory --- mitigation:
 
 \begin{itemize}
   \item \textbf{LLM-only support}: the paper asserts a claim that no
         node in the lineage substantiates. The mitigation constrains
         the writer to a pre-selected set of lineage artefacts, so every
         numerical or causal claim is traceable to a node that produced
-        it; the draft cannot cite evidence that was not generated.
+        it; the draft cannot cite evidence that was not generated. The
+        companion constraint is on the memory side: the verified context
+        (\cref{sec:exploration:memory}) admits a result as a quantitative
+        claim only when it is artefact-grounded and has not failed a
+        reproduction attempt (\cref{eq:usable}), so a reproduced result is
+        preferred and an unsupported reflection cannot become a headline
+        number.
   \item \textbf{Citation hallucination}: the paper cites a non-existent
         work. The mitigation is structural --- the writer may not invent
         citation keys, and every bibliography entry is verified against
@@ -208,8 +519,19 @@ structural --- not merely advisory --- mitigation:
         paper loses coherence. The mitigation is a per-axis floor: if
         any axis falls below a threshold the refine is aborted, so a
         gain on one axis cannot mask a collapse on another.
+  \item \textbf{Number drift}: a reported quantity does not match the
+        recorded result it summarises. Because every numeric claim
+        names the node and measurement it rests on
+        (\cref{sec:paper:contract}), the deterministic claim--evidence
+        gate re-derives each from the recorded results and compares it
+        within a tolerance (\cref{fig:claim-evidence}); a value that
+        fails to match the recomputed result is flagged, and the
+        two-tier blocking policy of \cref{sec:paper:contract} decides
+        whether the finding rejects the draft at the final check or is
+        reported for repair.
 \end{itemize}
 
-The first guard also bounds context: the writer is given only the
-bytes of the selected lineage artefacts, under a size budget, so the
-draft stays within the model's context window even for long runs.
+The first guard also bounds context: the writer is given the selected
+lineage artefacts and the top-scoring nodes' source, under a size
+budget, so the draft stays within the model's context window even for
+long runs.

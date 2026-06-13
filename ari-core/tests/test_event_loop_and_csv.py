@@ -131,7 +131,7 @@ class TestStepBudgetHints:
         """SLURM workflow post_survey_hint must mention step budget."""
         from ari.agent.workflow import from_experiment_text
 
-        hints = from_experiment_text("Use SLURM partition fx700\n")
+        hints = from_experiment_text("Use SLURM partition partA\n")
         assert "STEP BUDGET" in hints.post_survey_hint
         assert "job_status()" in hints.post_survey_hint
         assert "sleep" in hints.post_survey_hint

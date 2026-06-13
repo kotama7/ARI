@@ -72,7 +72,10 @@ def _build_post_survey_hint(use_slurm: bool = False, extra_tools: str = "",
     (slurm_submit today, another backend tomorrow) without hardcoding.
     """
     if has_idea_gen:
-        idea_line = "First, call generate_ideas() once to propose novel research directions based on the survey results.\nThen implement and run the experiment for the best idea:\n"
+        # generate_ideas now runs up-front (before make_metric_spec/survey), so by
+        # the time survey completes the research direction + primary_metric are
+        # already set — go straight to implementing the selected idea.
+        idea_line = "generate_ideas() has already set the research direction. Now implement and run the experiment for the selected idea:\n"
     else:
         idea_line = "Implement and run the experiment:\n"
 
@@ -140,9 +143,14 @@ def enrich_hints_from_mcp(hints: WorkflowHints, mcp_tools: list[dict], *, hpc_en
         hints.slurm_partition = ""
         hints.slurm_max_cpus = 0
 
-    # Build tool_sequence from actual available tools (preserve recommended order)
+    # Build tool_sequence from actual available tools (preserve recommended order).
+    # generate_ideas runs FIRST: the idea's primary_metric is the success
+    # criterion, so make_metric_spec must follow it (otherwise make_metric_spec
+    # has no primary_metric yet and falls back to the experiment.md seed line).
+    # survey stays last among setup tools — it is the pivot into the
+    # implementation phase (see guidance.py / _build_post_survey_hint).
     _PREFERRED_ORDER = [
-        "make_metric_spec", "survey", "generate_ideas",
+        "generate_ideas", "make_metric_spec", "survey",
         "run_bash", "slurm_submit", "job_status",
     ]
     available_names = {t["name"] for t in mcp_tools}
@@ -212,9 +220,9 @@ def from_experiment_text(experiment_text: str, *, hpc_enabled: bool = True) -> W
 
     # Default tool sequence — will be refined by enrich_hints_from_mcp()
     if hpc_enabled:
-        hints.tool_sequence = ["make_metric_spec", "survey", "generate_ideas", "run_bash", "slurm_submit", "job_status"]
+        hints.tool_sequence = ["generate_ideas", "make_metric_spec", "survey", "run_bash", "slurm_submit", "job_status"]
     else:
-        hints.tool_sequence = ["make_metric_spec", "survey", "generate_ideas", "run_bash"]
+        hints.tool_sequence = ["generate_ideas", "make_metric_spec", "survey", "run_bash"]
     hints.post_survey_hint = _build_post_survey_hint(use_slurm=False)
 
     # SLURM workflow detection — triggered either by HPC/cluster keywords in

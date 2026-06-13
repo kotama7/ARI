@@ -50,9 +50,14 @@ VALID_ROLES = {
 # (The reorg planning docs were removed in the [plan-deletion] commit.)
 EXEMPT_FILES = {
     "docs/README.md",
+    # VitePress locale home pages (navigation indexes, not sourced docs).
+    "docs/index.md",
+    "docs/ja/index.md",
+    "docs/zh/index.md",
 }
-# matched as a path segment so translations (docs/ja/_archive/...) are covered too
-EXEMPT_DIR_SEGMENTS = ("_archive",)
+# matched as a path segment so translations (docs/ja/_archive/...) are covered too.
+# node_modules / .vitepress are VitePress dependency / build artifacts.
+EXEMPT_DIR_SEGMENTS = ("_archive", "node_modules", ".vitepress")
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 

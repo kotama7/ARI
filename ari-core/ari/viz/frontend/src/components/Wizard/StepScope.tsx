@@ -11,6 +11,12 @@ interface ScopeValues {
   frontierScore: string;
   composite: string;
   axisMode: string;
+  allowWeb: boolean;
+  virSciReal: boolean;
+  virSciK: number;
+  virSciTeamSize: number;
+  virSciNAuthors: number;
+  virSciNPapers: number;
 }
 
 interface ScopePreset {
@@ -69,9 +75,28 @@ export function StepScope({
         frontierScore: scope.frontierScore,
         composite: scope.composite,
         axisMode: scope.axisMode,
+        allowWeb: scope.allowWeb,
+        // VirSci-live choices are independent of the budget preset — preserve.
+        virSciReal: scope.virSciReal,
+        virSciK: scope.virSciK,
+        virSciTeamSize: scope.virSciTeamSize,
+        virSciNAuthors: scope.virSciNAuthors,
+        virSciNPapers: scope.virSciNPapers,
       });
     },
-    [setScopeVal, setScope, scope.frontierScore, scope.composite, scope.axisMode],
+    [
+      setScopeVal,
+      setScope,
+      scope.frontierScore,
+      scope.composite,
+      scope.axisMode,
+      scope.allowWeb,
+      scope.virSciReal,
+      scope.virSciK,
+      scope.virSciTeamSize,
+      scope.virSciNAuthors,
+      scope.virSciNPapers,
+    ],
   );
 
   // Initialize with Standard preset if values are default
@@ -267,6 +292,105 @@ export function StepScope({
                 <option value="legacy">{t('wiz_axis_legacy')}</option>
               </select>
             </div>
+          </div>
+
+          {/* Web search during exploration (opt-in; breaks trajectory reproducibility) */}
+          <div className="form-row" style={{ marginTop: 12 }}>
+            <label
+              style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+            >
+              <input
+                type="checkbox"
+                checked={scope.allowWeb}
+                // Base CSS stretches `input` to width:100%; keep the box its
+                // natural size so it sits next to the label (cf. the
+                // `.wf-stage-card input[type=checkbox]` reset).
+                style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+                onChange={(e) =>
+                  setScope({ ...scope, allowWeb: e.target.checked })
+                }
+              />
+              <span>{t('wiz_allow_web')}</span>
+            </label>
+            <div style={{ color: 'var(--muted)', fontSize: '.78rem', marginTop: 4 }}>
+              {t('wiz_allow_web_hint')}
+            </div>
+          </div>
+
+          {/* VirSci-live: run VirSci's real multi-agent engine on a live
+              Semantic Scholar snapshot (idea skill vendor-wrap). */}
+          <div className="form-row" style={{ marginTop: 12 }}>
+            <label
+              style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+            >
+              <input
+                type="checkbox"
+                checked={scope.virSciReal}
+                style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+                onChange={(e) =>
+                  setScope({ ...scope, virSciReal: e.target.checked })
+                }
+              />
+              <span>{t('wiz_virsci_live')}</span>
+            </label>
+            <div style={{ color: 'var(--muted)', fontSize: '.78rem', marginTop: 4 }}>
+              {t('wiz_virsci_live_hint')}
+            </div>
+            {scope.virSciReal && (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: 8,
+                  marginTop: 8,
+                }}
+              >
+                <label style={{ fontSize: '.78rem' }}>
+                  {t('wiz_virsci_k')}
+                  <input
+                    type="number"
+                    min={1}
+                    value={scope.virSciK}
+                    onChange={(e) =>
+                      setScope({ ...scope, virSciK: Number(e.target.value) })
+                    }
+                  />
+                </label>
+                <label style={{ fontSize: '.78rem' }}>
+                  {t('wiz_virsci_team_size')}
+                  <input
+                    type="number"
+                    min={1}
+                    value={scope.virSciTeamSize}
+                    onChange={(e) =>
+                      setScope({ ...scope, virSciTeamSize: Number(e.target.value) })
+                    }
+                  />
+                </label>
+                <label style={{ fontSize: '.78rem' }}>
+                  {t('wiz_virsci_n_authors')}
+                  <input
+                    type="number"
+                    min={2}
+                    value={scope.virSciNAuthors}
+                    onChange={(e) =>
+                      setScope({ ...scope, virSciNAuthors: Number(e.target.value) })
+                    }
+                  />
+                </label>
+                <label style={{ fontSize: '.78rem' }}>
+                  {t('wiz_virsci_n_papers')}
+                  <input
+                    type="number"
+                    min={1}
+                    value={scope.virSciNPapers}
+                    onChange={(e) =>
+                      setScope({ ...scope, virSciNPapers: Number(e.target.value) })
+                    }
+                  />
+                </label>
+              </div>
+            )}
           </div>
         </div>
 

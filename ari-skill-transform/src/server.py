@@ -438,6 +438,24 @@ def _resolve_best_node_for_synthesis(nodes: list[dict]) -> str:
     return real[0].get("id", "")
 
 
+def _load_run_metric_contract(nodes_json_path: str) -> "dict | None":
+    """Load the run-level metric_contract make_metric_spec persisted next to
+    tree.json (idea-derived: concept invariants, correctness, required_measured,
+    falsifiable claims). ``None`` when absent (legacy run) or unreadable, so the
+    gate's declared-contract checks are a clean no-op.
+    """
+    try:
+        from pathlib import Path as _P_mc
+        _mc_path = _P_mc(nodes_json_path).expanduser().resolve().parent / "metric_contract.json"
+        if _mc_path.is_file():
+            _mc_obj = json.loads(_mc_path.read_text())
+            if isinstance(_mc_obj, dict) and _mc_obj:
+                return _mc_obj
+    except Exception:
+        pass
+    return None
+
+
 @mcp.tool()
 async def nodes_to_science_data(
     nodes_json_path: str,
@@ -521,6 +539,29 @@ async def nodes_to_science_data(
             return {}
         return data if isinstance(data, dict) else {}
 
+    def _node_provenance_union(nid: str) -> dict:
+        """Union the _provenance maps across EVERY results*.json variant in the node
+        dir. emit_results documents non-default file names ("results_seed42.json"), so
+        the idea-owned requirement-flag evidence (a measured-ceiling / correctness tag)
+        must surface to the gate regardless of which variant carried it. The canonical
+        results.json wins on conflict (it sorts first). Best-effort."""
+        out: dict = {}
+        if not nid:
+            return out
+        for base in (_workspace / "experiments" / _run_id / nid,
+                     _workspace / "experiments" / nid):
+            if not base.is_dir():
+                continue
+            for p in sorted(base.glob("results*.json")):
+                try:
+                    d = json.loads(p.read_text())
+                except Exception:
+                    continue
+                if isinstance(d, dict) and isinstance(d.get("_provenance"), dict):
+                    for k, v in d["_provenance"].items():
+                        out.setdefault(str(k), v)
+        return out
+
     # Map node_id → typed payload (only stores entries that exist on disk).
     typed_results: dict[str, dict] = {}
     for n in good_nodes:
@@ -561,6 +602,15 @@ async def nodes_to_science_data(
                 cfg["predictions"] = dict(rj["predictions"])
             if isinstance(rj.get("scores"), dict):
                 cfg["scores"] = dict(rj["scores"])
+            # Metric-correctness contract: carry the agent-emitted measurement
+            # provenance ({metric_name: "microbench"|"benchmark"|"correctness"|...}) so
+            # the hard gate can confirm a contract's required ceilings were MEASURED and
+            # a correctness check was run, not assumed. Union across results*.json
+            # variants so a non-default emit_results filename still surfaces evidence.
+            # Domain-neutral: just a pass-through field.
+            _prov_union = _node_provenance_union(nid)
+            if _prov_union:
+                cfg["_provenance"] = _prov_union
             cfg["_typed_schema_version"] = rj.get("schema_version", "")
             cfg["_typed_source"] = "results.json"
         else:
@@ -955,6 +1005,112 @@ async def nodes_to_science_data(
     }
     if implementation_overview is not None:
         out["implementation_overview"] = implementation_overview
+
+    # ── Declared metric-correctness contract (Phases 2-4 + plan-fidelity claims) ──
+    # make_metric_spec persisted the run-level metric_contract (idea-derived: concept
+    # invariants, correctness, required_measured, and falsifiable claims) next to
+    # tree.json. Graft it onto science_data so the hard gate enforces the DECLARED
+    # contract (not just the universal invariant registry) -- without this the
+    # correctness / required_measured / recompute / claim_evidence_missing checks are
+    # inert. Read BEFORE the invariant scan so declared bound invariants are scanned
+    # too. Best-effort; absent on legacy runs => the gate's contract checks no-op.
+    _mc = _load_run_metric_contract(nodes_json_path)
+    if _mc is not None:
+        out["metric_contract"] = _mc
+
+    # ── Metric-correctness Phase 4: annotate physically-impossible metric values
+    # (e.g. a normalized metric > 1) using the SAME universal invariant registry
+    # the hard gate blocks on (ari-core, single source of truth — no duplicated
+    # domain logic). The paper writer is told to avoid `_anomalous_metrics`; the
+    # gate independently blocks the final paper if such a value survives. Safe /
+    # additive; never breaks science_data generation.
+    try:
+        from ari.public.claim_gate import scan_science_data as _scan_invariants  # type: ignore
+        _anoms = _scan_invariants(out)
+        if _anoms:
+            out["_anomalies"] = _anoms
+            _by_cfg: dict = {}
+            for _a in _anoms:
+                _by_cfg.setdefault(str(_a.get("config_id")), []).append(_a.get("metric"))
+            for _c in ranked:
+                _cid = str(_c.get("config_id") or _c.get("label") or _c.get("node_id")
+                           or _c.get("rank") or "?")
+                if _cid in _by_cfg:
+                    _c["_anomalous_metrics"] = sorted(set(_by_cfg[_cid]))
+    except Exception:
+        pass
+
+    # ── Research Contract substrate: candidate claims[] / numeric_assertions[] ──
+    # Story2Proposal integration Phase A. Deterministically derived from the
+    # executed-node evidence (results.json measurements/scores or node metrics);
+    # operands carry real node_id + metric_path. figures[] start empty and are
+    # late-bound by the paper post-processor. Claim prose is a templated seed the
+    # writer rewrites while preserving % CLAIM anchors; the hard gate re-verifies
+    # the numbers. Failure here must never break science_data generation.
+    try:
+        from claims import build_science_claims as _build_claims  # type: ignore
+    except Exception:  # pragma: no cover - import shape varies by entrypoint
+        try:
+            from src.claims import build_science_claims as _build_claims  # type: ignore
+        except Exception:
+            _build_claims = None  # type: ignore
+    if _build_claims is not None:
+        try:
+            # Per-node execution environment from node_report (executor / CPU /
+            # arch) — universal provenance, no cluster/domain knowledge. Lets the
+            # claim generator tag operands and (under same_environment intent)
+            # avoid cross-host comparisons.
+            _node_env: dict = {}
+            for _nid, _rep in (reports or {}).items():
+                _ci = _rep.get("cpu_info") or {}
+                _node_env[_nid] = {
+                    "executor": _rep.get("executor", ""),
+                    "cpu_model": _ci.get("model", ""),
+                    "arch": _ci.get("arch", ""),
+                }
+            # Injected research intent (P4): "any" (default) | "same_environment".
+            _cmp_scope = os.environ.get("ARI_COMPARISON_SCOPE", "").strip() or "any"
+            _contract = _build_claims(
+                good_nodes, typed_results, primary_metric, _hib,
+                node_env=_node_env, comparison_scope=_cmp_scope,
+            )
+            out["claims"] = _contract.get("claims", [])
+            out["numeric_assertions"] = _contract.get("numeric_assertions", [])
+            # Tag each science-facing configuration with a stable handle
+            # (config_id) + its execution environment, and build a resolution map
+            # so the writer can DECLARE assertions referencing configs (forward
+            # declaration, Story2Proposal (c)) and the hard gate can resolve
+            # config_id -> node_id without exposing node_id in the paper-facing
+            # configuration. ranked[i] is built from good_nodes[i] (same order).
+            _config_nodes: dict = {}
+            for _i, _n in enumerate(good_nodes):
+                if _i >= len(ranked):
+                    break
+                _nid = _n.get("id") or _n.get("node_id") or ""
+                _cid = f"cfg{_i + 1}"
+                ranked[_i]["config_id"] = _cid
+                if _nid in _node_env:
+                    ranked[_i]["environment"] = _node_env[_nid]
+                # Carry metric VALUES (not just keys): the writer must pick the
+                # metric_key whose recorded value equals the number it states, so
+                # it has to SEE the values to declare operands correctly.
+                _metric_vals = {
+                    k: v for k, v in (_n.get("metrics") or {}).items()
+                    if isinstance(v, (int, float)) and not isinstance(v, bool)
+                    and not str(k).startswith("_")
+                }
+                _config_nodes[_cid] = {
+                    "node_id": _nid,
+                    "environment": _node_env.get(_nid, {}),
+                    "metrics": _metric_vals,
+                }
+            # Internal (underscore) — resolution map for the writer's forward
+            # declarations; not part of the paper-facing science surface.
+            out["_config_nodes"] = _config_nodes
+        except Exception as _claim_exc:  # pragma: no cover - defensive
+            out["claims"] = []
+            out["numeric_assertions"] = []
+            out["_claims_error"] = str(_claim_exc)
     return out
 
 

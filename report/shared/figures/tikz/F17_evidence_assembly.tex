@@ -1,0 +1,47 @@
+% F17: evidence assembly — a deterministic assembler walks the best node's
+% lineage chain and, grounded by each node's structured self-report, makes
+% ONE role-specific selection (on a path collision the deepest occurrence
+% wins) that feeds TWO consumers with byte-identical content: the writer's
+% lineage evidence and the published artefact bundle.
+%
+% Baseline styles: style.tikzstyles is loaded by shared/preamble.tex / the
+% standalone wrapper. The ari* house styles come from _style.tex, resolved
+% from the build cwd: the en/ja/zh builds input figures from the language
+% dir as ../shared/figures/tikz/<fig>, the preview renderer runs from
+% report/, and a TEXINPUTS-based build finds the bare name.
+\InputIfFileExists{../shared/figures/tikz/_style.tex}{}{%
+  \InputIfFileExists{shared/figures/tikz/_style.tex}{}{%
+    \input{_style.tex}}}%
+\begin{tikzpicture}[aricanvas]
+
+  % --- exploration column: lineage chain + per-node self-reports ---------
+  \node[ariphase]                       (h1) {\figlabel{F17.head.src}};
+  \pic at ([xshift=-2.5mm]h1.west) {ariglyph flask};
+  \node[aribox exp, below=0.35cm of h1] (a1) {\figlabel{F17.lineage}};
+  \node[aribox exp, below=of a1]        (a2) {\figlabel{F17.reports}};
+
+  % --- assembler column: ONE deterministic role-specific selection -------
+  \node[aribox gate, right=of a1]       (b1) {\figlabel{F17.select}};
+  \node[ariphase] (h2) at (b1 |- h1)         {\figlabel{F17.head.asm}};
+  \pic at ([xshift=-2.5mm]h2.west) {ariglyph gate};
+
+  % --- consumer column: two consumers of the same selected bytes ---------
+  \node[aribox paper, right=of b1]      (c1) {\figlabel{F17.writer}};
+  \node[aribox paper, below=of c1]      (c2) {\figlabel{F17.bundle}};
+  \node[ariphase] (h3) at (c1 |- h1)         {\figlabel{F17.head.out}};
+  \pic at ([xshift=-2.5mm]h3.west) {ariglyph doc};
+
+  % --- flows --------------------------------------------------------------
+  % The lineage drives the selection; the self-report grounds it (secondary
+  % flow), so each contributing file is chosen by recorded metadata.
+  \draw[ariarrow] (a1) -- (b1);
+  \draw[ariarrow muted, rounded corners=5pt] (a2.east) -| (b1.south)
+        node[arinote, pos=0.22, above] {\figlabel{F17.grounds}};
+  % The single selection fans out at mid-gap to BOTH consumers.
+  \coordinate (fork) at ($(b1.east)!0.5!(c1.west)$);
+  \draw[ariarrow] (b1) -- (c1);
+  \draw[ariarrow, rounded corners=5pt]
+        (b1.east) -| (fork |- c2.west) -- (c2.west);
+  \node[arinote] at ($(c1.south)!0.5!(c2.north)$) {\figlabel{F17.same}};
+
+\end{tikzpicture}
