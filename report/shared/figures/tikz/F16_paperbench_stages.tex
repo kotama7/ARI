@@ -1,52 +1,56 @@
-% F16: ARI's three-stage PaperBench bridge, with the GRADE stage opened up to
-% show what makes the benchmark conceptual rather than procedural: the vendored
-% judge scores the submission against a WEIGHTED RUBRIC TREE, and the paper
-% score is the weight-aggregated roll-up s = sum_i w_i g_i (eq:paperscore).
-% rollout and reproduce are the thin stages that produce the submission and the
-% log the judge reads. Stage containers follow the paper-style workflow idiom
-% (cf. F05/F06). style.tikzstyles is loaded by preamble.tex / standalone wrapper.
-\begin{tikzpicture}[node distance=0.9cm and 1.5cm]
+% F16: the PaperBench replication path as three composable stages, laid out
+% as a left-to-right staircase: (1) ROLLOUT turns the paper + rubric into a
+% submission (code, reproduce.sh); (2) REPRODUCE executes that submission in
+% an isolated sandbox, capturing the reproduction log and outputs; (3) GRADE
+% opens up into the weighted rubric tree — the vendored judge assigns each
+% leaf a binary grade g (dashed flow), and the paper score is the
+% weight-aggregated roll-up s = sum_i w_i g_i (eq:paperscore). Pale-green
+% fill marks verdicts (granted leaves, final score); the failed leaf stays
+% unfilled; peach marks execution; artifacts and the vendored judge are
+% white. House design language comes from _style.tex below; the legacy
+% baseline style.tikzstyles is loaded by shared/preamble.tex / the
+% standalone wrapper and is not used here.
+%
+% _style.tex resolves from the build cwd: the en/ja/zh documents \input this
+% figure as ../shared/figures/tikz/<fig>.tex (cwd = language dir), the
+% render harness compiles from the report root, and the bare name covers
+% compiling next to the file itself.
+\IfFileExists{../shared/figures/tikz/_style.tex}%
+  {\input{../shared/figures/tikz/_style.tex}}%
+  {\IfFileExists{shared/figures/tikz/_style.tex}%
+    {\input{shared/figures/tikz/_style.tex}}%
+    {\input{_style.tex}}}%
+\begin{tikzpicture}[aricanvas]
 
-  % ---------- stage 1: rollout ----------------------------------------
-  \node[station]                       (paper) {\figlabel{F16.paper}};
-  \node[station, below=of paper]       (subm)  {\figlabel{F16.submission}};
-  \draw[arrow] (paper) -- (subm);
-  \begin{scope}[on background layer]
-    \node[stage container, fit=(paper)(subm)] (s1) {};
-  \end{scope}
-  \node[numbered step] (n1) at (s1.north west) {1};
-  \node[stage title, right=2pt of n1] {\figlabel{F16.rollout}};
+  % ---------- stage 1: rollout — paper + rubric in, submission out ------
+  \node[ariphase]                              (h1)    {\figlabel{F16.rollout}};
+  \node[aribadge] at ([xshift=-3.5mm]h1.west)          {1};
+  \node[aribox, below=0.35cm of h1]            (paper) {\figlabel{F16.paper}};
+  \node[ariboxwide, fill=phaseexp, below=of paper] (subm) {\figlabel{F16.submission}};
+  \draw[ariarrow] (paper) -- (subm);
 
-  % ---------- stage 2: reproduce --------------------------------------
-  \node[station, right=2.6cm of paper] (sandbox) {\figlabel{F16.sandbox}};
-  \node[artifact medium, below=of sandbox] (log) {\figlabel{F16.log}};
-  \draw[arrow] (sandbox) -- (log);
-  \begin{scope}[on background layer]
-    \node[stage container, fit=(sandbox)(log)] (s2) {};
-  \end{scope}
-  \node[numbered step] (n2) at (s2.north west) {2};
-  \node[stage title, right=2pt of n2] {\figlabel{F16.reproduce}};
+  % ---------- stage 2: reproduce — sandboxed execution of the submission
+  \node[aribox exp, right=of subm]             (sandbox) {\figlabel{F16.sandbox}};
+  \node[ariphase, above=0.35cm of sandbox]     (h2)      {\figlabel{F16.reproduce}};
+  \node[aribadge] at ([xshift=-3.5mm]h2.west)            {2};
+  \node[aribox, below=of sandbox]              (log)     {\figlabel{F16.log}};
+  \draw[ariarrow] (subm) -- (sandbox);
+  \draw[ariarrow] (sandbox) -- (log);
 
-  % ---------- stage 3: grade = weighted rubric tree -------------------
-  \node[block emph wide, right=5.5cm of sandbox] (score) {\figlabel{F16.score}};
-  \node[station emph, below left=1.3cm and 0.15cm of score] (l1) {\figlabel{F16.pass}};
-  \node[station emph, below=1.3cm of score]                 (l2) {\figlabel{F16.pass}};
-  \node[drop,         below right=1.3cm and 0.15cm of score] (l3) {\figlabel{F16.fail}};
-  \node[block vendor, below=1.0cm of l2] (judge) {\figlabel{F16.judge}};
-  \draw[arrow] (score) -- node[edge label] {\figlabel{F16.weight}} (l1);
-  \draw[arrow] (score) -- node[edge label] {\figlabel{F16.weight}} (l2);
-  \draw[arrow] (score) -- node[edge label] {\figlabel{F16.weight}} (l3);
-  \draw[arrow dashed] (judge) -- (l1);
-  \draw[arrow dashed] (judge) -- node[edge label] {\figlabel{F16.grades}} (l2);
-  \draw[arrow dashed] (judge) -- (l3);
-  \begin{scope}[on background layer]
-    \node[stage container vendor, fit=(score)(l1)(l3)(judge)] (s3) {};
-  \end{scope}
-  \node[numbered step] (n3) at (s3.north west) {3};
-  \node[stage title, right=2pt of n3] {\figlabel{F16.grade}};
-
-  % ---------- inter-stage bridge --------------------------------------
-  \draw[big arrow] (s1.east) -- (s2.west);
-  \draw[big arrow] (s2.east) -- (s3.west);
+  % ---------- stage 3: grade — judge grades leaves, weights roll up -----
+  \node[aribox, right=of log]                  (judge) {\figlabel{F16.judge}};
+  \node[ariphase, above=0.35cm of judge]       (h3)    {\figlabel{F16.grade}};
+  \node[aribadge] at ([xshift=-3.5mm]h3.west)          {3};
+  \node[aribox gate, below=0.9cm of judge]     (l2)    {\figlabel{F16.pass}};
+  \node[aribox gate, left=0.3cm of l2]         (l1)    {\figlabel{F16.pass}};
+  \node[aribox, right=0.3cm of l2]             (l3)    {\figlabel{F16.fail}};
+  \node[ariboxwide, fill=phasegate, below=0.9cm of l2] (score) {\figlabel{F16.score}};
+  \draw[ariarrow] (log) -- (judge);
+  \draw[ariarrow muted] (judge) -- (l1);
+  \draw[ariarrow muted] (judge) -- node[arinote] {\figlabel{F16.grades}} (l2);
+  \draw[ariarrow muted] (judge) -- (l3);
+  \draw[ariarrow] (l1) -- (score);
+  \draw[ariarrow] (l2) -- (score);
+  \draw[ariarrow] (l3) -- node[arinote] {\figlabel{F16.weight}} (score);
 
 \end{tikzpicture}

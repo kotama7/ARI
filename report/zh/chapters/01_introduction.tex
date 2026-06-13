@@ -2,61 +2,97 @@
 
 \subsection{动机}\label{sec:intro:motivation}
 
-机器学习及相邻领域的研究流程具有共同骨架:构思研究构想、设计并执
-行实验、分析结果、撰写论文,然后迭代。其中每一步对大语言模型而言
-都日益可行,但将它们串接为单一自主循环至今仍是一个未解的工程问
-题。最接近此目标的已发表系统 --- AIDE、AI~Scientist 系列、VirSci
-与 PaperBench 评估器 --- 各自仅覆盖其中一两个轴向,其余仍依赖人
-工介入。
+机器学习及相邻计算领域的研究流程具有共同骨架:构思研究构想、设计
+并执行实验、分析结果、撰写论文,然后迭代。其中每一步对大语言模型
+(LLM)而言都日益可行,如今已发表的系统也已将该循环的大段环节自
+动化。AI~Scientist \cite{lu2024ai,lu2026towards} 闭合了从构想到论
+文的完整循环,并以自动审稿器为结果打分;Agent~Laboratory
+\cite{schmidgall2025agent} 在 LLM 评判的闸门下执行人类提供的构想;
+AIDE \cite{jiang2025aide} 将工程内循环建模为对候选解的树搜索,
+MLE-bench \cite{chan2024mle} 发现在相同模型条件下该范式胜过通用脚
+手架;VirSci \cite{su2024many} 表明多智能体的协商比单一智能体产生
+更新颖的研究构想,但止步于摘要;Story2Proposal
+\cite{qian2026story2proposal} 在持久的结构契约下,将已完成的实验证
+据转化为手稿;而 PaperBench \cite{starace2025paperbench} 则事后衡
+量智能体复现已发表论文的忠实程度。
 
-ARI 旨在填补此空缺。我们假定用户提供研究问题与算力预算;系统返
-回可发表的论文、支撑每项主张的实验代码,以及完整的执行审计轨
-迹。该审计轨迹不可妥协:搜索树的每一个节点、每一次工具调用、每
-一次模型调用,以及每一美元的 API 花费,均记录于单一的\term{检查
-点目录}之中(\cite{jiang2025aide} 采用了类似的纪律)。检查点
-是可复现性的单位。
+这些系统都未曾将所生成论文所\emph{陈述}的内容与其实验所\emph{产
+出}的结果之间的关系作为强制约束。验证若存在,也仅是建议性的:
+AI~Scientist 的审稿器为成稿打分,而幻觉控制仍停留在提示词层面
+--- 其作者记录了误报的硬件,以及被当作改进呈现的实则恶化的指标,
+并将“对所报告结果进行更深入的自动验证”列为关键的未来工作
+\cite{lu2024ai};Agent~Laboratory 的模拟审稿器在十分制上把人类审
+稿评分高估了 2.3 分 \cite{schmidgall2025agent};而 PaperBench 的核
+心发现是一道执行鸿沟 --- 智能体因撰写代码获得了可观的分数,却几
+乎无法因执行代码并匹配论文结果而得分 \cite{starace2025paperbench}。
+
+ARI 的存在正是为了弥合这道鸿沟。用户提供研究问题与算力预算;系统
+返回可发表的论文、支撑每项主张的实验代码,以及完整的审计轨迹:搜
+索树的每一个节点、每一次工具调用、每一次模型调用,以及每一美元的
+API 花费,均记录于单一的\term{检查点目录}之中 --- 它是可复现性的
+单位。
+
+\subsection{以验证过的主张作为发布条件}\label{sec:intro:verified}
+
+ARI 的标志性主线贯穿整条流水线。在构想阶段,运行会铸造一份\term{指标契约}:
+即最终论文必须支撑的可证伪主张,每一项都指明可作为证据
+的确切测量名称。该契约一经铸造便冻结,因为 LLM 的命名无法在重新生
+成后存续(\cref{sec:paper:contract})。在探索期间,节点以这些名称
+发出测量值,这些名称引导扩展朝向尚未覆盖的主张,而\term{谱系串联}
+则让\emph{由}早期测量\emph{计算而来}的证据 --- 一次拟合、其留出验
+证、一次基于模型的选择 --- 沿单一谱系执行,而不必退化为反复的探测
+(\cref{sec:exploration:lineage-chaining})。在撰写阶段,每一处数值
+提及都绑定到它所依据的节点与测量,而一道确定性的 claim-evidence
+闸门 --- 回路中没有任何语言模型 --- 会从记录的结果重新推导每一个
+所报告的数字。客观的虚假陈述在最终闸门处阻止发布;而互补的语义审
+查所给出的主观判断仅为精炼循环提供建议。
 
 \subsection{贡献}\label{sec:intro:contrib}
 
-本报告对以下三项贡献加以形式化:
+本报告对以下四项贡献加以形式化:
 
 \begin{enumerate}
-  \item 在研究步节点上的\textbf{最佳优先树搜索},其选择评分
-        $\utility{n}$ 将经验奖励、新颖性项与深度惩罚分离开来
-        (\cref{sec:exploration:formalization})。
+  \item 由\textbf{确定性 claim-evidence 闸门}强制执行的\textbf{
+        idea 持有指标契约}(\cref{sec:paper:contract}):验证作为
+        流水线的一项结构性属性,而非审稿器对其输出的意见。
+  \item 在研究步节点上的\textbf{最佳优先树搜索}(BFTS)
+        (\cref{sec:exploration:formalization}),其选择与扩展由
+        LLM 在结构化候选描述上驱动,并配有确定性的回退排序
+        (\cref{sec:exploration:node-selection})。
   \item 由层次化评分细则 $\Rubric$ 驱动的\textbf{论文生成流水线};
         其叶判官对各项主张进行评分,系统评分为
         $\paperscore{\paper}=\sum_i \rubricweight{i}\,\judgefn{i}(\paper)$
-        (\cref{sec:paper:rubric})。PaperBench 复现器作为工具调
-        用集成 (\cref{sec:paper:paperbench})。
-  \item \textbf{检查点作用域}纪律,使流水线完全可复现:每一项外
-        部状态(记忆、成本账本、谱系指针)都写入
-        \texttt{\$ARI\_CHECKPOINT\_DIR} 之下,绝不进入用户主目
-        录。这是\emph{确定性}设计原则的运维落地
-        (\cref{sec:overview:principles} 完整列出五项原则;本报告
-        中将该原则称为 P2)。
+        (\cref{sec:paper:rubric})。PaperBench 复现器作为工具调用
+        集成(\cref{sec:paper:paperbench})。
+  \item \textbf{检查点作用域}纪律:每一项外部状态(记忆、成本账
+        本、谱系指针)都写入 \texttt{\$ARI\_CHECKPOINT\_DIR} 之下,
+        绝不进入用户主目录。这是\emph{确定性}设计原则的运维落地,
+        而该原则正是 \cref{sec:overview:principles} 完整列出的五项
+        之一(我们在该处及本报告余下部分将其称为 P2)。
 \end{enumerate}
 
 \subsection{本报告的范围}\label{sec:intro:scope}
 
-本报告描述 \texttt{ari-core} 与十四个 \texttt{ari-skill-*}
-包的 v0.9.0 版本。v0.9.0 在 v0.8.x 的基础上加入了论断的端到端验证
---- 首次铸造即冻结的 idea 持有指标契约、强制执行它的确定性
-claim-evidence 闸门,以及面向计算型证据的谱系串联
-(\cref{sec:exploration:lineage-chaining}, \cref{sec:paper:contract})。
-v0.8.x 将 PaperBench 的再现路径提升为协议忠实的
-三阶段契约 —— 智能体 rollout、再现与评分 —— 增设了阻止 rollout
-智能体臆断宿主未提供能力的宿主真实环境护栏,使搜索评估层可配置,
-并对一个真实的非可逆压缩对象实施了首次操作性再现阶段
-(\cref{chapter:eval})。本文以模块层级描述算法与数
-据流;系统所用的 LLM 提示词逐字载录于
-\cref{sec:prompts}。本版本的经验研究尚属初步 —— \cref{chapter:eval}
-报告迄今可得的观察,受控基准留待今后工作。
+本报告描述 \texttt{ari-core} 与十四个 \texttt{ari-skill-*} 包的
+v0.9.0 版本,其主题是端到端的主张验证:\cref{sec:paper:contract}
+中一次铸造即冻结的契约与闸门加固;谱系串联
+(\cref{sec:exploration:lineage-chaining});一条可选启用的构思路
+径,它在实时文献快照上原封不动地驱动已发表的 VirSci 协商引擎
+(\cref{sec:related:autonomous});平台感知的构思,将探测到的平台能
+力事实折入构想生成,从而使计划不能承诺执行平台并不提供的测量;以
+及一篇已发布的、其自身经过闸门验证的样例论文,其所声明的全部十二
+项可证伪主张均携带经机器验证的证据(\cref{chapter:eval})。这些新
+增内容建立在 v0.8.x 的基础之上 --- 协议忠实的三阶段 PaperBench 再
+现契约(智能体 rollout、再现、评分)、宿主真实的环境护栏,以及可配
+置的搜索-评估层;\cref{chapter:eval} 中报告的针对某个非可逆压缩对
+象的操作性再现阶段,运行于当时的 v0.8.0 流水线。正文以模块层级描
+述算法与数据流;系统所用的 LLM 提示词逐字载录于 \cref{sec:prompts}。
+本版本的经验研究尚属初步,受控基准留待今后工作。
 
 \subsection{结构}\label{sec:intro:organisation}
 
-\Cref{sec:overview} 自顶向下概述 ARI:编排器、十四个技能、流水
-线 DAG 与设计原则。\Cref{sec:exploration,sec:paper} 是两个技术
-核心,各自含形式化定义与经验观察。\Cref{chapter:eval} 报告初步观察;
-\cref{sec:related} 定位本工作于先行研究中;
-\cref{sec:discussion} 汇集开放问题。
+\Cref{sec:overview} 自顶向下概述 ARI:编排器、十四个技能、流水线
+DAG 与设计原则。\Cref{sec:exploration,sec:paper} 是两个技术核心,
+各自含有其形式化定义;\cref{sec:intro:verified} 的主张验证主线在二
+者间展开。\Cref{chapter:eval} 报告初步观察;\cref{sec:related} 定
+位本工作;\cref{sec:discussion} 汇集开放问题。

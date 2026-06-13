@@ -2,42 +2,91 @@
 
 \subsection{Motivation}\label{sec:intro:motivation}
 
-Research workflows in machine learning and adjacent fields share a
-common skeleton: brainstorm a research idea, design and run an
-experiment, analyse the result, write a paper, and iterate. Each step
-is increasingly tractable for large language models, but stitching
-them into a single autonomous loop has, so far, been an open
-engineering problem. The published systems that come closest --- AIDE,
-the AI~Scientist family, VirSci, and PaperBench evaluators --- each
-fix one or two of these axes while leaving the others manual.
+Research workflows in machine learning and adjacent computational
+fields share a common skeleton: brainstorm a research idea, design
+and run an experiment, analyse the result, write a paper, and
+iterate. Each step is increasingly tractable for large language
+models (LLMs), and published systems now automate substantial spans
+of this loop. The AI~Scientist \cite{lu2024ai,lu2026towards} closes
+the full idea-to-paper cycle and scores the result with an automated
+reviewer; Agent~Laboratory \cite{schmidgall2025agent} executes a
+human-provided idea under LLM-judged gates; AIDE \cite{jiang2025aide}
+casts the engineering inner loop as tree search over candidate
+solutions, the formulation MLE-bench \cite{chan2024mle} found to
+dominate general-purpose scaffolds given the same model; VirSci
+\cite{su2024many} shows that multi-agent deliberation produces more
+novel research ideas than a single agent, stopping at the abstract;
+Story2Proposal \cite{qian2026story2proposal} converts finished
+experimental evidence into a manuscript under a persistent
+structural contract; and PaperBench \cite{starace2025paperbench}
+measures, post hoc, how faithfully an agent replicates a published
+paper.
 
-ARI exists to fill that gap. We assume the user supplies a research
-question and a compute budget; the system returns a publishable paper,
-the experimental code that backs every claim, and a complete audit
-trail of how it got there. The audit trail is non-negotiable: every
-node of the search tree, every tool call, every model invocation, and
-every dollar of API spend is recorded inside a single \term{checkpoint
-directory} (\cite{jiang2025aide} adopt a similar discipline). The
-checkpoint is the unit of reproducibility.
+What none of these systems makes binding is the relation between
+what the generated paper \emph{says} and what its experiments
+\emph{produced}. Verification, where present, is advisory: the
+AI~Scientist's reviewer scores finished drafts while hallucination
+control stays at the prompt level --- its authors document
+misreported hardware and a worsened metric presented as an
+improvement, and name ``a more in-depth automatic verification of
+the reported results'' as key future work \cite{lu2024ai};
+Agent~Laboratory's simulated reviewers overestimate human reviewer
+scores by 2.3 points on a ten-point scale \cite{schmidgall2025agent};
+and PaperBench's central finding is an execution gap --- agents earn
+substantial credit for written code, almost none for executing it
+and matching the paper's results \cite{starace2025paperbench}.
+
+ARI exists to close this gap. The user supplies a research question
+and a compute budget; the system returns a publishable paper, the
+experimental code behind every claim, and a complete audit trail:
+every node of the search tree, every tool call, every model
+invocation, and every dollar of API spend is recorded inside a
+single \term{checkpoint directory}, the unit of reproducibility.
+
+\subsection{Verified claims as a release condition}\label{sec:intro:verified}
+
+ARI's distinguishing thread runs through the whole pipeline. At idea
+time the run mints a \term{metric contract}: the falsifiable claims
+the eventual paper must support, each naming the exact measurement
+names that count as evidence. The contract is minted once and frozen,
+because LLM naming does not survive regeneration
+(\cref{sec:paper:contract}). During exploration, nodes emit
+measurements under those names, the names steer expansion toward
+uncovered claims, and \term{lineage chaining} lets evidence
+\emph{computed} from earlier measurements --- a fit, its held-out
+validation, a model-based selection --- execute along one lineage
+instead of regressing to repeated probes
+(\cref{sec:exploration:lineage-chaining}). At writing time, every
+numeric mention is bound to the node and measurement it rests on,
+and a deterministic claim--evidence gate --- no language model in
+the loop --- re-derives each reported number from the recorded
+results. Objective falsehoods block release at the final gate; the
+subjective findings of a complementary semantic review only advise
+the refine loop.
 
 \subsection{Contributions}\label{sec:intro:contrib}
 
-This report formalises three contributions:
+This report formalises four contributions:
 
 \begin{enumerate}
-  \item A \textbf{best-first tree search} over research-step nodes
-        whose selection score $\utility{n}$ separates the empirical
-        reward, a novelty term, and a depth penalty
-        (\cref{sec:exploration:formalization}).
+  \item An \textbf{idea-owned metric contract} enforced by a
+        \textbf{deterministic claim--evidence gate}
+        (\cref{sec:paper:contract}): verification as a structural
+        property of the pipeline, not a reviewer's opinion of its
+        output.
+  \item A \textbf{best-first tree search} (BFTS) over research-step
+        nodes (\cref{sec:exploration:formalization}) whose selection
+        and expansion are LLM-driven over structured candidate
+        descriptions, with a deterministic fallback ranking
+        (\cref{sec:exploration:node-selection}).
   \item A \textbf{paper-generation pipeline} keyed off a hierarchical
         rubric $\Rubric$ whose leaf judges grade individual claims;
         the system score is $\paperscore{\paper}=\sum_i \rubricweight{i}\,\judgefn{i}(\paper)$
         (\cref{sec:paper:rubric}). The PaperBench replicator is
         integrated as a tool call (\cref{sec:paper:paperbench}).
-  \item A \textbf{checkpoint scoping} discipline that makes the
-        pipeline fully reproducible: every external state (memory,
-        cost ledger, lineage pointers) is written below
-        \texttt{\$ARI\_CHECKPOINT\_DIR}, never the user's home
+  \item A \textbf{checkpoint scoping} discipline: every external
+        state (memory, cost ledger, lineage pointers) is written
+        below \texttt{\$ARI\_CHECKPOINT\_DIR}, never the user's home
         directory. This is the operational consequence of the
         \emph{determinism} design principle, one of five that
         \cref{sec:overview:principles} lays out in full
@@ -47,28 +96,35 @@ This report formalises three contributions:
 \subsection{Scope of this report}\label{sec:intro:scope}
 
 This report describes \texttt{ari-core} and the fourteen
-\texttt{ari-skill-*} packages at version v0.9.0, which adds end-to-end
-claim verification --- an idea-owned metric contract frozen at first
-mint and enforced by a deterministic claim-evidence gate, with lineage
-chaining for computed evidence (\cref{sec:exploration:lineage-chaining},
-\cref{sec:paper:contract}) --- on top of the v0.8.x foundations: it
-promotes the PaperBench reproduction path to a protocol-faithful three-stage contract
---- agent rollout, reproduction, and grading --- adds host-truthful
-environment guardrails that stop the rollout agent from assuming
-capabilities the host does not provide, makes the search-evaluation
-layers configurable, and carries out a first operational reproduction
-pass on a real lossy-compression target (\cref{chapter:eval}). The body
-describes the algorithms and data flow at the module level; the verbatim
-LLM prompts the system uses are listed in \cref{sec:prompts}. The
-empirical study is preliminary at this version --- \cref{chapter:eval}
-reports the observations available so far, and a controlled benchmark is
-left to future work.
+\texttt{ari-skill-*} packages at version v0.9.0, whose theme is
+end-to-end claim verification: the mint-once contract and gate
+hardening of \cref{sec:paper:contract}; lineage chaining
+(\cref{sec:exploration:lineage-chaining}); an opt-in ideation path
+that drives the published VirSci deliberation engine unmodified over
+a live literature snapshot (\cref{sec:related:autonomous});
+platform-aware ideation, folding probed platform-capability facts
+into idea generation so a plan cannot promise measurements the
+execution platform does not provide; and a released sample paper
+that is itself gate-verified, all twelve of its declared falsifiable
+claims carrying machine-verified evidence (\cref{chapter:eval}).
+These additions build on the v0.8.x foundations --- the
+protocol-faithful three-stage PaperBench reproduction contract
+(agent rollout, reproduction, grading), host-truthful environment
+guardrails, and configurable search-evaluation layers; the
+operational reproduction pass on a lossy-compression target reported
+in \cref{chapter:eval} ran on the then-current v0.8.0 pipeline. The
+body describes the algorithms and data flow at the module level; the
+verbatim LLM prompts the system uses are listed in
+\cref{sec:prompts}. The empirical study is preliminary at this
+version, and a controlled benchmark is left to future work.
 
 \subsection{Organisation}\label{sec:intro:organisation}
 
 \Cref{sec:overview} gives a top-down view of ARI: the orchestrator,
 the fourteen skills, the pipeline DAG, and the design principles.
 \Cref{sec:exploration,sec:paper} are the two technical cores, each
-with its own formal definitions and empirical observations.
-\Cref{chapter:eval} reports preliminary observations; \cref{sec:related}
-positions the work; \cref{sec:discussion} collects open problems.
+with its own formal definitions; the claim-verification thread of
+\cref{sec:intro:verified} is developed across both.
+\Cref{chapter:eval} reports preliminary observations;
+\cref{sec:related} positions the work; \cref{sec:discussion}
+collects open problems.

@@ -1,51 +1,59 @@
-% F01: ARI architecture — operational view, role-grouped, vertical layout
-%       so the whole figure fits inside one column without truncation.
+% F01: ARI architecture — operational view in the ARI house design language
+% (_style.tex). The orchestrator (top, shared infrastructure, white) fans out
+% over two dispatch buses into the skill registry, grouped into three
+% lifecycle columns (generation / evaluation / writing; fill encodes phase)
+% plus the support skills (memory, web; white). Dashed muted edges are state:
+% each producing group persists into the checkpoint artefacts on the bottom
+% row. No accent edge: this figure has no single emphasized transition.
 % style.tikzstyles is loaded by shared/preamble.tex / standalone wrapper.
-\begin{tikzpicture}[node distance=0.6cm and 0.6cm]
+% _style.tex resolves from the build cwd: language builds compile in
+% en|ja|zh (../shared/...), the standalone renderer in the repo report
+% root (shared/...); same-directory compilation is the last fallback.
+\InputIfFileExists{../shared/figures/tikz/_style.tex}{}{%
+  \InputIfFileExists{shared/figures/tikz/_style.tex}{}{%
+    \input{_style.tex}}}
+\begin{tikzpicture}[aricanvas]
 
-  % --- driver (top) ---------------------------------------------------
-  \node[block emph wide]                                    (orch)   {\figlabel{F1.orchestrator}};
+  % ---- three phase columns: heading + glyph, then a tight stack --------
+  \node[ariphase]                         (hgen)   {\figlabel{F1.band.gen}};
+  \pic at ([xshift=-2.5mm]hgen.west) {ariglyph bulb};
+  \node[aribox idea, below=0.35cm of hgen] (idea)   {\figlabel{F1.idea}};
+  \node[aribox exp,  below=of idea]        (code)   {\figlabel{F1.coding}};
 
-  % --- 6 domain skills, two rows × three columns ----------------------
-  \node[block lane, below left=1.7cm and 2.0cm of orch]    (idea)   {\figlabel{F1.idea}};
-  \node[block lane, right=of idea]                          (code)   {\figlabel{F1.coding}};
-  \node[block lane, right=1.6cm of code]                    (eval)   {\figlabel{F1.evaluator}};
-  \node[block lane, right=of eval]                          (rev)    {\figlabel{F1.review}};
-  \node[block lane, right=1.6cm of rev]                     (paper)  {\figlabel{F1.paper}};
-  \node[block lane, right=of paper]                         (replic) {\figlabel{F1.replicate}};
+  \node[aribox gate, right=of idea]        (eva)    {\figlabel{F1.evaluator}};
+  \node[ariphase, above=0.35cm of eva]     (heval)  {\figlabel{F1.band.eval}};
+  \pic at ([xshift=-2.5mm]heval.west) {ariglyph gate};
+  \node[aribox gate, below=of eva]         (rev)    {\figlabel{F1.review}};
 
-  % --- support row (memory + web) ------------------------------------
-  \node[block lane, below=1.4cm of code]                    (memory) {\figlabel{F1.memory}};
-  \node[block lane, below=1.4cm of rev]                     (web)    {\figlabel{F1.web}};
+  \node[aribox paper, right=of eva]        (paper)  {\figlabel{F1.paper}};
+  \node[ariphase, above=0.35cm of paper]   (hwrite) {\figlabel{F1.band.write}};
+  \pic at ([xshift=-2.5mm]hwrite.west) {ariglyph doc};
+  \node[aribox paper, below=of paper]      (replic) {\figlabel{F1.replicate}};
 
-  % --- artefacts -----------------------------------------------------
-  \node[artifact, below=1.4cm of memory]                    (ckpt)   {\figlabel{F1.checkpoint}};
-  \node[artifact, right=of ckpt]                            (tree)   {\figlabel{F1.tree_json}};
-  \node[artifact, right=of tree]                            (results) {\figlabel{F1.results_json}};
+  % ---- the driver: orchestrator above the columns ----------------------
+  \node[ariboxwide, above=0.8cm of heval]  (orch)   {\figlabel{F1.orchestrator}};
 
-  % --- group bands ---------------------------------------------------
-  \begin{scope}[on background layer]
-    \node[group, fit=(idea)(code)]                          (gen)    {};
-    \node[group, fit=(eval)(rev)]                           (evl)    {};
-    \node[group, fit=(paper)(replic)]                       (wrt)    {};
-    \node[band label, above=0.05cm of gen.north west, anchor=south west] {\figlabel{F1.band.gen}};
-    \node[band label, above=0.05cm of evl.north west, anchor=south west] {\figlabel{F1.band.eval}};
-    \node[band label, above=0.05cm of wrt.north west, anchor=south west] {\figlabel{F1.band.write}};
-  \end{scope}
+  % ---- support skills (no lifecycle phase: white) -----------------------
+  \node[aribox, below=1.0cm of code]       (memory) {\figlabel{F1.memory}};
+  \node[aribox] (web) at (memory -| orch.east)      {\figlabel{F1.web}};
 
-  % --- edges ---------------------------------------------------------
-  \foreach \s in {idea,code,eval,rev,paper,replic}
-    \draw[arrow] (orch.south) -- (\s.north);
-  % memory/web sit one row below the skills, each directly under a skill box;
-  % approaching from the node's TOP would pierce the skill above it, so the
-  % dispatch arrows enter from the band-gap SIDE instead (render_tikz T10
-  % flags the top-approach as an arrow-through-node crossing).
-  \draw[arrow] (orch.south) to[out=255, in=0]   (memory.east);
-  \draw[arrow] (orch.south) to[out=285, in=180] (web.west);
+  % ---- persisted artefacts (bottom row, white) --------------------------
+  \node[aribox, below=1.0cm of memory]     (ckpt)    {\figlabel{F1.checkpoint}};
+  \node[aribox] (tree)    at (ckpt -| rev)          {\figlabel{F1.tree_json}};
+  \node[aribox] (results) at (ckpt -| replic)       {\figlabel{F1.results_json}};
 
-  \draw[arrow dashed] (memory.south) -- (ckpt.north);
-  \draw[arrow dashed] (eval.south)   to[bend right=10] (tree.north);
-  \draw[arrow dashed] (rev.south)    to[bend left=18] (tree.north);
-  \draw[arrow dashed] (paper.south)  to[bend right=18] (results.north);
-  \draw[arrow dashed] (replic.south) to[bend right=22] (results.north);
+  % ---- control: two dispatch buses dropping from the orchestrator's
+  %      bottom corners through the inter-column gaps; short branches
+  %      enter the head of each skill group and the support skills --------
+  \draw[arielbow vh] (orch.south west) to (idea.east);
+  \draw[arielbow vh] (orch.south west) to (eva.west);
+  \draw[arielbow vh] (orch.south west) to (memory.east);
+  \draw[arielbow vh] (orch.south east) to (paper.west);
+  \draw[ariarrow]    (orch.south east) -- (web.north);
+
+  % ---- state: each producing group persists into the checkpoint ---------
+  \draw[ariarrow muted] (memory) -- (ckpt);
+  \draw[ariarrow muted] (rev)    -- (tree);
+  \draw[ariarrow muted] (replic) -- (results);
+
 \end{tikzpicture}

@@ -1,0 +1,119 @@
+% shared/figures/tikz/_style.tex — ARI house design language for system figures.
+% ---------------------------------------------------------------------------
+% \input this file at the TOP of a figure source, BEFORE \begin{tikzpicture}.
+% It only DEFINES colors / \tikzset styles / pics — it typesets nothing — so
+% it is safe to \input from several figures in the same document and safe to
+% load in any engine (pdflatex / lualatex / xelatex): xcolor + TikZ core only,
+% no fontspec, no external icon packages (glyphs below are stroke-drawn pics).
+%
+% Relationship to the legacy styles: the baseline block/arrow/group styles in
+% style.tikzstyles is loaded by shared/preamble.tex / the standalone wrapper;
+% this file ADDS the refined house language (flat pastel phase fills, thin-ink
+% rounded boxes, dashed loop enclosures, elbow handoffs) and never redefines a
+% baseline style name. New-style figures should use ONLY the ari* styles.
+%
+% inline-width: vendor-coloured override — gate-T2 marker: this is a shared
+% STYLE file. minimum width / minimum height / text width are centralised
+% here (exactly as in style.tikzstyles) and must NOT be re-specified inline
+% in figure sources.
+
+% --------------------------------------------------------------- palette
+% Flat pastels on white. FILL ENCODES PHASE (which lifecycle phase owns the
+% box); outlines, arrows, headings and body text are a single soft near-black
+% ink; gray is reserved for loop enclosures, notes and secondary flows;
+% `accent` is the only saturated color and is rationed to at most ONE
+% semantic role per figure (e.g. the blocking verdict edge).
+\definecolor{phaseidea}{HTML}{DBE5F6}%   lavender-blue — ideation / planning
+\definecolor{phaseexp}{HTML}{FBE3C9}%    peach         — experimentation / execution
+\definecolor{phasepaper}{HTML}{E9E9E9}%  light gray    — writing / publication
+\definecolor{phasegate}{HTML}{D9EDDC}%   pale green    — gates / evaluation / verdicts
+\definecolor{accent}{HTML}{D55E00}%      vermilion     — the ONE emphasis color (Okabe-Ito)
+\definecolor{ariink}{HTML}{3C3C3C}%      soft near-black — outlines, arrows, headings
+\definecolor{arimuted}{HTML}{8A8A8A}%    mid gray      — loop enclosures, notes, dashes
+
+% --------------------------------------------------------------- styles
+\tikzset{
+  % Canvas rhythm — put on the picture itself: \begin{tikzpicture}[aricanvas].
+  % Tight gaps INSIDE a phase column (0.5cm vertical), generous whitespace
+  % BETWEEN phase columns (1.6cm horizontal): the phase-grouped-column layout.
+  aricanvas/.style={node distance=0.5cm and 1.6cm,
+                    line cap=round, line join=round},
+  % ----- boxes: rounded rectangle, thin ink outline, flat pastel fill ------
+  % Default fill is white; phase membership is declared with the fill, either
+  % via the shorthands below or explicitly: \node[aribox, fill=phaseexp] ...
+  aribox/.style={rectangle, rounded corners=3pt, draw=ariink,
+                 line width=0.6pt, fill=white,
+                 minimum width=2.6cm, minimum height=0.8cm, text width=2.4cm,
+                 align=center, inner sep=3pt, font=\sffamily\footnotesize,
+                 text=ariink},
+  ariboxwide/.style={aribox, minimum width=3.6cm, text width=3.4cm},
+  aribox idea/.style={aribox, fill=phaseidea},
+  aribox exp/.style={aribox, fill=phaseexp},
+  aribox paper/.style={aribox, fill=phasepaper},
+  aribox gate/.style={aribox, fill=phasegate},
+  % ----- phase heading: bold sans ink text above each column ---------------
+  ariphase/.style={font=\bfseries\sffamily\small, text=ariink,
+                   align=center, inner sep=2pt},
+  % ----- loop enclosure: dashed gray rounded rectangle, fit-positioned -----
+  %   \node[ariloop, fit=(a)(b)] (loop) {};
+  ariloop/.style={rectangle, draw=arimuted, dashed, line width=0.7pt,
+                  rounded corners=7pt, inner sep=8pt},
+  % ----- arrows -------------------------------------------------------------
+  % ariarrow        primary flow (short, solid, ink)
+  % ariarrow muted  secondary / data / observation flow (dashed gray)
+  % ariarrow accent the rationed emphasis edge (solid vermilion)
+  % arifeedback     long outer feedback path (dotted gray, rounded routing)
+  ariarrow/.style={-{Stealth[length=5pt,width=4pt]}, draw=ariink,
+                   line width=0.7pt, shorten <=2.5pt, shorten >=2.5pt},
+  ariarrow muted/.style={ariarrow, draw=arimuted, dashed},
+  ariarrow accent/.style={ariarrow, draw=accent},
+  arifeedback/.style={ariarrow, draw=arimuted, densely dotted,
+                      rounded corners=7pt},
+  % ----- elbow handoff between phase columns --------------------------------
+  % Used with `to`: \draw[arielbow] (lastA) to (firstB);
+  % arielbow    goes horizontal first, then vertical  (-|)
+  % arielbow vh goes vertical first, then horizontal  (|-)
+  arielbow/.style={ariarrow, rounded corners=5pt,
+                   to path={-| (\tikztotarget) \tikztonodes}},
+  arielbow vh/.style={ariarrow, rounded corners=5pt,
+                      to path={|- (\tikztotarget) \tikztonodes}},
+  % ----- small annotation / sparse edge label --------------------------------
+  arinote/.style={font=\sffamily\scriptsize, text=arimuted, align=center,
+                  fill=white, inner sep=1.5pt, rounded corners=1pt},
+  % ----- numbered step badge (replaces edge labels for flow ordering) -------
+  aribadge/.style={circle, fill=ariink, text=white, inner sep=1pt,
+                   minimum size=11pt, font=\bfseries\sffamily\scriptsize},
+  % ----- stroke-drawn heading glyphs (no icon packages) ----------------------
+  % ~3mm tall, designed to sit left of an ariphase heading:
+  %   \node[ariphase] (h) {\figlabel{Fxx.head.idea}};
+  %   \pic at ([xshift=-2.5mm]h.west) {ariglyph bulb};
+  ariglyph bulb/.pic={% ideation (lightbulb)
+    \draw[ariink, line width=0.6pt] (0,0.45mm) circle [radius=0.95mm];
+    \draw[ariink, line width=0.6pt] (-0.45mm,-0.85mm) -- (0.45mm,-0.85mm);
+    \draw[ariink, line width=0.6pt] (-0.32mm,-1.3mm) -- (0.32mm,-1.3mm);
+  },
+  ariglyph flask/.pic={% experimentation (Erlenmeyer flask)
+    \draw[ariink, line width=0.6pt]
+      (-0.35mm,1.55mm) -- (-0.35mm,0.25mm) -- (-1.15mm,-1.45mm)
+        -- (1.15mm,-1.45mm) -- (0.35mm,0.25mm) -- (0.35mm,1.55mm);
+    \draw[ariink, line width=0.6pt] (-0.65mm,1.55mm) -- (0.65mm,1.55mm);
+  },
+  ariglyph doc/.pic={% writing / publication (page with dog-ear)
+    \draw[ariink, line width=0.6pt]
+      (-1.05mm,1.5mm) -- (-1.05mm,-1.5mm) -- (1.05mm,-1.5mm)
+        -- (1.05mm,0.65mm) -- (0.2mm,1.5mm) -- cycle;
+    \draw[ariink, line width=0.6pt] (-0.55mm,0.1mm) -- (0.55mm,0.1mm);
+    \draw[ariink, line width=0.6pt] (-0.55mm,-0.6mm) -- (0.55mm,-0.6mm);
+  },
+  ariglyph gate/.pic={% gate / evaluation (check in circle)
+    \draw[ariink, line width=0.6pt] (0,0) circle [radius=1.4mm];
+    \draw[ariink, line width=0.6pt]
+      (-0.65mm,0.05mm) -- (-0.15mm,-0.55mm) -- (0.75mm,0.6mm);
+  },
+  ariglyph loop/.pic={% iteration marker, sits inside an ariloop enclosure
+    \draw[ariink, line width=0.6pt, -{Stealth[length=1.5pt,width=1.4pt]}]
+      (115:1.2mm) arc[start angle=115, end angle=-50, radius=1.2mm];
+    \draw[ariink, line width=0.6pt, -{Stealth[length=1.5pt,width=1.4pt]}]
+      (-65:1.2mm) arc[start angle=-65, end angle=-230, radius=1.2mm];
+  },
+}%

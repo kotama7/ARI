@@ -1,41 +1,76 @@
 % F20: ARI's execution-grounded realisation of the Story2Proposal contract.
-% The contract is a BINDING between manuscript claims (numeric assertions and
-% figure references) and the RECORDED EVIDENCE produced by executed experiments
-% (results and figure artefacts), keyed by stable node/result/figure ids. A
-% deterministic claim--evidence gate re-derives each reported number from that
-% evidence within tolerance (the data-fidelity axis, blocking); reasoning and
-% visual coherence are the non-blocking axes. This is a structural binding, not
-% a flow. style.tikzstyles is loaded by preamble.tex / the standalone wrapper.
-\begin{tikzpicture}[node distance=1.1cm and 3.0cm]
+% A run-level METRIC CONTRACT declares the falsifiable claims the eventual
+% paper must support, each naming the exact measurement names that count as
+% evidence. The contract is minted once and reused verbatim thereafter (a
+% mid-run regeneration would silently rename the evidence vocabulary).
+% Exploration nodes emit measurements under those names; an advisory
+% point-of-emission check warns about uncovered claims and surfaces
+% suggestion-only lexical name hints so the agent can re-emit under the
+% required names (nothing is auto-bound; the gate never sees this logic).
+% Manuscript claims --- numeric assertions and figure references --- are
+% bound by stable node/result/figure ids to the recorded evidence, and a
+% deterministic claim--evidence gate (no LLM) re-derives each reported
+% number within tolerance: the data-fidelity axis blocks in strict mode,
+% the reasoning and visual-coherence axes are advisory.
+% style.tikzstyles is loaded by preamble.tex / the standalone wrapper; the
+% ari* house styles come from _style.tex (resolved from the build cwd:
+% report/<lang>/ for the language builds, report/ for the figure scripts,
+% the figure's own directory otherwise).
+\IfFileExists{../shared/figures/tikz/_style.tex}%
+  {\input{../shared/figures/tikz/_style.tex}}%
+  {\IfFileExists{shared/figures/tikz/_style.tex}%
+    {\input{shared/figures/tikz/_style.tex}}%
+    {\input{_style.tex}}}%
+\begin{tikzpicture}[aricanvas]
 
-  % --- manuscript claims (left) --------------------------------------
-  \node[block]                 (cnum) {\figlabel{F20.cnum}};
-  \node[block, below=of cnum]  (cfig) {\figlabel{F20.cfig}};
+  % --- column 1: the metric contract (planning) -----------------------
+  \node[aribox idea]                  (k1) {\figlabel{F20.contract}};
+  \node[aribox idea, below=of k1]     (k2) {\figlabel{F20.names}};
+  \node[arinote, below=0.2cm of k2]   (mint) {\figlabel{F20.mint}};
+  \node[ariphase, above=0.35cm of k1] (h1) {\figlabel{F20.head.contract}};
+  \pic at ([xshift=-2.5mm]h1.west) {ariglyph bulb};
+  \node[aribadge] at (k1.north west) {1};
 
-  % --- recorded evidence (right) -------------------------------------
-  \node[block native, right=of cnum]      (result) {\figlabel{F20.result}};
-  \node[block native, below=of result]    (figart) {\figlabel{F20.figart}};
+  % --- column 2: exploration emits evidence (re-emit loop) ------------
+  \node[aribox exp, right=of k1]      (e1) {\figlabel{F20.emit}};
+  \node[aribox exp, below=of e1]      (e2) {\figlabel{F20.check}};
+  \node[ariphase, above=0.35cm of e1] (h2) {\figlabel{F20.head.explore}};
+  \pic at ([xshift=-2.5mm]h2.west) {ariglyph flask};
+  \node[aribadge] at (e1.north west) {2};
+  \node[ariloop, fit=(e1)(e2)]        (loop) {};
+  \node[arinote, below=0.15cm of loop] (hints) {\figlabel{F20.hints}};
+  \pic at ([xshift=-2.5mm]hints.west) {ariglyph loop};
 
-  % --- the binding (the contract) ------------------------------------
-  \draw[arrow] (cnum) -- node[edge label] {\figlabel{F20.bind}} (result);
-  \draw[arrow] (cfig) -- node[edge label] {\figlabel{F20.bind}} (figart);
+  % --- column 3: the recorded evidence (shared artefacts) -------------
+  \node[aribox, right=of e1]          (r1) {\figlabel{F20.result}};
+  \node[aribox, below=of r1]          (r2) {\figlabel{F20.figart}};
+  \node[ariphase, above=0.35cm of r1] (h3) {\figlabel{F20.evid}};
 
-  % --- group boundaries ----------------------------------------------
-  \begin{scope}[on background layer]
-    \node[group strong, fit=(cnum)(cfig)] (manu) {};
-    \node[group, fit=(result)(figart)]    (evid) {};
-  \end{scope}
-  \node[band label, above=2pt of manu.north west, anchor=south west] {\figlabel{F20.manu}};
-  \node[band label, above=2pt of evid.north west, anchor=south west] {\figlabel{F20.evid}};
+  % --- column 4: manuscript claims (writing) ---------------------------
+  \node[aribox paper, right=of r1]    (m1) {\figlabel{F20.cnum}};
+  \node[aribox paper, below=of m1]    (m2) {\figlabel{F20.cfig}};
+  \node[ariphase, above=0.35cm of m1] (h4) {\figlabel{F20.manu}};
+  \pic at ([xshift=-2.5mm]h4.west) {ariglyph doc};
+  \node[aribadge] at (m1.north west) {3};
 
-  % --- deterministic gate verifies the binding -----------------------
-  \node[block emph big, below right=2.4cm and 1.5cm of cfig] (gate)    {\figlabel{F20.gate}};
-  \node[block, below=of gate]                                 (verdict) {\figlabel{F20.verdict}};
-  \draw[arrow] (cfig)   -- (gate);
-  \draw[arrow] (figart) -- (gate);
-  \draw[arrow] (gate)   -- node[edge label] {\figlabel{F20.derive}} (verdict);
+  % --- primary flow: contract -> emission -> recorded evidence --------
+  \draw[ariarrow] (k1) -- (k2);
+  \draw[ariarrow] (k1) -- (e1);
+  \draw[ariarrow] (e1) -- (e2);
+  \draw[ariarrow] (e1) -- (r1);
 
-  % --- the three evaluation axes (legend) ----------------------------
-  \node[block aux, below=0.5cm of verdict] (axes) {\figlabel{F20.axes}};
+  % --- the binding: claims hold stable ids into the evidence ----------
+  \draw[ariarrow muted] (m1) -- (r1);
+  \draw[ariarrow muted] (m2) -- (r2);
+  \node[arinote] at ([xshift=0.8cm, yshift=-0.65cm]r1.east) {\figlabel{F20.bind}};
+
+  % --- deterministic gate verifies the binding -------------------------
+  \node[ariboxwide, fill=phasegate, below=0.9cm of m2] (g) {\figlabel{F20.gate}};
+  \node[aribox gate, below=0.9cm of g] (v) {\figlabel{F20.verdict}};
+  \node[arinote, below=0.2cm of v]     (axes) {\figlabel{F20.axes}};
+  \node[aribadge] at (g.north west) {4};
+  \draw[ariarrow] (m2) -- (g);
+  \draw[arielbow vh] (r2) to (g);
+  \draw[ariarrow accent] (g) -- node[arinote, left=2pt] {\figlabel{F20.derive}} (v);
 
 \end{tikzpicture}

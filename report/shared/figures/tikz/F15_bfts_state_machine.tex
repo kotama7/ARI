@@ -1,108 +1,88 @@
-% F15: BFTS state-machine view of one outer iteration.
-% Strict top-down vertical flowchart so the inner expansion sub-loop
-% and the outer parallel-run loop appear as two stacked columns and the
-% reflux back to the top is a single curved arrow on the left margin.
-% Auxiliary state (e, H) is described in the caption rather than drawn
-% on the figure, which kept the previous version cluttered.
-%
-%   [F]
-%    ↓
-%   1 pick best (LLM)
-%    ↓
-%   2 Π(f)?  ── yes →  [drop f from F]
-%    ↓ no
-%   3 expand → child c   (bump e(f))
-%    ↓
-%   [P]
-%    ↓
-%   4 assemble batch: call select_next_node (LLM/FB) once per slot, |B| <= max_parallel
-%    ↓
-%   5 parallel ReAct       (append label(n') → H)
-%    ↓
-%   6 σ(n')?  ── yes →  [clamp scientific score]
-%    ↓
-%   append n' to [F]
-%    ↓
-%   7 ρ(f, n')?  ── yes →  [retire f from F]
-%    ↓ no
-%   (loop back to top)
+% F15: BFTS state-machine view of one outer run-loop iteration, set in the
+% ARI house design language (_style.tex). Single top-down spine; the two
+% iteration scopes are dashed ariloop enclosures — the inner expansion
+% sub-loop (steps 1-3) and the outer parallel-run loop (steps 4-7) —
+% joined through the white state pools they communicate over (frontier
+% F at the top, pending P between them). Pale-green boxes are the
+% predicate gates (Pi, sigma, rho); the vermilion edges (the single
+% accent role of this figure) are the side effects fired when a gate
+% predicate evaluates true; the dotted gray margin path is the reflux
+% into the next outer iteration. Auxiliary state (e, H) stays in the
+% caption, exactly as before; per-edge state-bump annotations were
+% folded into the caption to keep annotation density low.
 %
 % style.tikzstyles is loaded by the preamble (inlined) and by the
-% standalone wrapper; the pool/stage/guard/drop node styles live there
-% (gate T2: no inline minimum/text width in this file).
-\begin{tikzpicture}[
-    >={Stealth[length=6pt,width=6pt]},
-    line cap=round,
-    every node/.style={font=\footnotesize, inner sep=3pt},
-    flow/.style={->, line width=1.0pt, draw=ari-black,
-                 shorten <=2pt, shorten >=2pt},
-    drop edge/.style={->, line width=0.9pt, draw=ari-vermilion, dashed,
-                      shorten <=2pt, shorten >=2pt},
-    reflux/.style={->, line width=1.0pt, draw=ari-blue!70,
-                   shorten <=2pt, shorten >=2pt},
-    elabel/.style={font=\scriptsize, fill=white, inner sep=1pt,
-                   rounded corners=1pt},
-    glabel/.style={font=\scriptsize, fill=white, inner sep=1pt,
-                   rounded corners=1pt, text=ari-vermilion},
-    badge/.style={circle, fill=ari-black, text=white,
-                  font=\bfseries\scriptsize, inner sep=1pt, minimum size=12pt},
-    node distance=0.45cm and 0.6cm,
-  ]
+% standalone wrapper; the refined ari* styles used below come from
+% _style.tex in this directory (gate T2: all widths live in the style
+% files, never inline).
+%
+% The build cwd differs per entry point, so resolve _style.tex from each
+% known prefix: report/<lang>/ (the language PDFs \input figures as
+% ../shared/figures/tikz/<fig>.tex), report/ (make figure / render_tikz),
+% the repo root, then this directory itself (direct cwd or TEXINPUTS).
+\InputIfFileExists{../shared/figures/tikz/_style.tex}{}{%
+  \InputIfFileExists{shared/figures/tikz/_style.tex}{}{%
+    \InputIfFileExists{report/shared/figures/tikz/_style.tex}{}{%
+      \InputIfFileExists{_style.tex}{}{%
+        \errmessage{F15: cannot locate figures/tikz/_style.tex}}}}}
+\begin{tikzpicture}[aricanvas]
+  %% Heading: the state tuple the run loop mutates.
+  \node[ariphase] (hd) {\figlabel{F15.band.state}};
+  \pic at ([xshift=-2.5mm]hd.west) {ariglyph flask};
 
-  %% ── INNER LANE: expansion sub-loop ────────────────────────────
-  \node[pool]                              (f_in)   {\figlabel{F15.frontier}};
-  \node[stage, below=of f_in]              (pick)   {\figlabel{F15.pick_best}};
-  \node[guard, below=of pick]              (prune)  {\figlabel{F15.prune}};
-  \node[stage, below=of prune]             (expand) {\figlabel{F15.expand}};
-  \node[pool, below=of expand]             (p_pool) {\figlabel{F15.pending}};
+  %% Spine. White boxes are shared state pools, peach boxes the
+  %% experimentation-phase steps, pale-green boxes the predicate gates.
+  \node[aribox, below=0.4cm of hd]                    (frontier) {\figlabel{F15.frontier}};
+  \node[ariboxwide, fill=phaseexp, below=0.9cm of frontier] (pick) {\figlabel{F15.pick_best}};
+  \node[aribox gate, below=of pick]                   (prune)    {\figlabel{F15.prune}};
+  \node[aribox exp, below=of prune]                   (expand)   {\figlabel{F15.expand}};
+  \node[aribox, below=0.8cm of expand]                (pending)  {\figlabel{F15.pending}};
+  \node[ariboxwide, fill=phaseexp, below=0.9cm of pending]  (batch) {\figlabel{F15.select_run}};
+  \node[ariboxwide, fill=phaseexp, below=of batch]    (react)    {\figlabel{F15.run_parallel}};
+  \node[aribox gate, below=of react]                  (sterile)  {\figlabel{F15.sterile}};
+  \node[aribox, below=of sterile]                     (append)   {\figlabel{F15.append_frontier}};
+  \node[aribox gate, below=of append]                 (retire)   {\figlabel{F15.retire}};
 
-  %% ── OUTER LANE: parallel-run loop ─────────────────────────────
-  \node[stage, below=of p_pool]            (batch)  {\figlabel{F15.select_run}};
-  \node[stage, below=of batch]             (react)  {\figlabel{F15.run_parallel}};
-  \node[guard, below=of react]             (st)     {\figlabel{F15.sterile}};
-  \node[pool, below=of st]                 (f_new)  {\figlabel{F15.append_frontier}};
-  \node[guard, below=of f_new]             (retire) {\figlabel{F15.retire}};
+  %% Gate side effects (fire when the predicate is true).
+  \node[aribox, right=of prune]   (dropf) {\figlabel{F15.prune_drop}};
+  \node[aribox, right=of sterile] (clamp) {\figlabel{F15.clamp}};
+  \node[aribox, right=of retire]  (dropr) {\figlabel{F15.retire_drop}};
 
-  %% Side branches: drop / clamp / retire bins on the right.
-  \node[drop, right=1.3cm of prune]        (drop1)  {\figlabel{F15.prune_drop}};
-  \node[drop, right=1.3cm of st]           (clamp)  {\figlabel{F15.clamp}};
-  \node[drop, right=1.3cm of retire]       (drop2)  {\figlabel{F15.retire_drop}};
+  %% Loop enclosures: inner expansion sub-loop / outer parallel-run loop.
+  \node[ariloop, fit=(pick)(prune)(expand)]                  (loopin)  {};
+  \node[ariloop, fit=(batch)(react)(sterile)(append)(retire)] (loopout) {};
+  \node[arinote, anchor=south west] at ([xshift=6mm]loopin.north)  (ttlin)  {\figlabel{F15.lane.inner}};
+  \node[arinote, anchor=south west] at ([xshift=6mm]loopout.north) (ttlout) {\figlabel{F15.lane.outer}};
+  \pic at ([xshift=-2.5mm]ttlin.west)  {ariglyph loop};
+  \pic at ([xshift=-2.5mm]ttlout.west) {ariglyph loop};
 
-  %% Step badges (centered above each main step).
-  \node[badge, above left=-0.05cm and -0.15cm of pick.north west]   {1};
-  \node[badge, above left=-0.05cm and -0.15cm of prune.north west]  {2};
-  \node[badge, above left=-0.05cm and -0.15cm of expand.north west] {3};
-  \node[badge, above left=-0.05cm and -0.15cm of batch.north west]  {4};
-  \node[badge, above left=-0.05cm and -0.15cm of react.north west]  {5};
-  \node[badge, above left=-0.05cm and -0.15cm of st.north west]     {6};
-  \node[badge, above left=-0.05cm and -0.15cm of retire.north west] {7};
+  %% Step badges 1..7 (macro flow order; replaces edge labels).
+  \node[aribadge] at (pick.north west)    {1};
+  \node[aribadge] at (prune.north west)   {2};
+  \node[aribadge] at (expand.north west)  {3};
+  \node[aribadge] at (batch.north west)   {4};
+  \node[aribadge] at (react.north west)   {5};
+  \node[aribadge] at (sterile.north west) {6};
+  \node[aribadge] at (retire.north west)  {7};
 
-  %% Main vertical flow.
-  \draw[flow] (f_in)   -- (pick);
-  \draw[flow] (pick)   -- (prune);
-  \draw[flow] (prune)  -- (expand)
-              node[elabel, midway, left]{\figlabel{F15.notprune}};
-  \draw[flow] (expand) -- (p_pool)
-              node[elabel, midway, left]{$\expandcount(f)\mathrel{+}{=}1$};
-  \draw[flow] (p_pool) -- (batch)
-              node[elabel, midway, left]{\figlabel{F15.pick_run}};
-  \draw[flow] (batch)  -- (react);
-  \draw[flow] (react)  -- (st)
-              node[elabel, midway, left]{\figlabel{F15.hist_append}};
-  \draw[flow] (st)     -- (f_new);
-  \draw[flow] (f_new)  -- (retire);
+  %% Main top-down flow.
+  \draw[ariarrow] (frontier) -- (pick);
+  \draw[ariarrow] (pick)     -- (prune);
+  \draw[ariarrow] (prune)    -- (expand);
+  \draw[ariarrow] (expand)   -- (pending);
+  \draw[ariarrow] (pending)  -- (batch);
+  \draw[ariarrow] (batch)    -- (react);
+  \draw[ariarrow] (react)    -- (sterile);
+  \draw[ariarrow] (sterile)  -- (append);
+  \draw[ariarrow] (append)   -- (retire);
 
-  %% Side-branch drops / clamp.
-  \draw[drop edge] (prune.east)  -- (drop1.west)
-              node[glabel, midway, above]{\figlabel{F15.yes}};
-  \draw[drop edge] (st.east)     -- (clamp.west)
-              node[glabel, midway, above]{\figlabel{F15.yes}};
-  \draw[drop edge] (retire.east) -- (drop2.west)
-              node[glabel, midway, above]{\figlabel{F15.yes_ab}};
+  %% Gate-fired side effects: the one accent role in this figure.
+  \draw[ariarrow accent] (prune)   -- (dropf);
+  \draw[ariarrow accent] (sterile) -- (clamp);
+  \draw[ariarrow accent] (retire)  -- node[arinote, above] {\figlabel{F15.yes_ab}} (dropr);
 
-  %% Reflux: retire's "no" arm loops back to the top of the inner lane.
-  \draw[reflux] (retire.west)
-        to[out=180, in=180, looseness=1.8]
-        node[elabel, near start, left]{\figlabel{F15.no_next}}
-        (f_in.west);
+  %% Reflux: retire's "no" arm starts the next outer iteration.
+  \draw[arifeedback] (retire.west) -- ([xshift=-1.6cm]retire.west)
+                     |- (frontier.west);
+  \node[arinote] at ([xshift=-1.6cm]pending.west) {\figlabel{F15.no_next}};
 \end{tikzpicture}
