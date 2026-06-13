@@ -30,6 +30,8 @@ Shared assets included by every language build (en/ja/zh) of the report.
     - `viz/` — viz prompt snapshots (auto-generated): `wizard_chat_goal.md`, `wizard_generate_config.md`.
       - `wizard_chat_goal.md` — wizard chat goal prompt.
       - `wizard_generate_config.md` — wizard config-generation prompt.
+- `assets/` — binary assets embedded into the report build.
+  - `sample_paper.pdf` — the autonomously generated sample paper, bound in full into the appendix (`\includepdf`, "The Generated Sample Paper").
 - `figures/` — shared figure sources, previews, and generation scripts.
   - `README.md` — figures index.
   - `CLAUDE.md` — figure-authoring contract.
