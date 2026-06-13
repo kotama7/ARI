@@ -14,6 +14,23 @@
 \figlabeldef{F1.tree_json}{tree.json}
 \figlabeldef{F1.results_json}{results.json}
 
+% F02 — BFTS exploration tree (depth-column snapshot; English labels shared
+% across all three language editions: node ids and scores are language-neutral)
+\figlabeldef{F02.head.d0}{depth 0}
+\figlabeldef{F02.head.d1}{depth 1}
+\figlabeldef{F02.head.d2}{depth 2}
+\figlabeldef{F02.head.d3}{depth 3}
+\figlabeldef{F02.n0}{N0\\$r{=}0.50$}
+\figlabeldef{F02.n1}{N1\\$r{=}0.62$}
+\figlabeldef{F02.n2}{N2\\$r{=}0.48$}
+\figlabeldef{F02.n3}{N3\\$r{=}0.71$}
+\figlabeldef{F02.n4}{N4\\$r{=}0.66$}
+\figlabeldef{F02.n5}{N5\\$r{=}0.40$}
+\figlabeldef{F02.n6}{N6\\$r{=}0.74$}
+\figlabeldef{F02.note.best}{best node $\to$ paper}
+\figlabeldef{F02.note.low}{low-score branch}
+\figlabeldef{F02.note.synthetic}{illustrative example}
+
 % F03 — LLM 选择信号
 \figlabeldef{F3.has_real}{has\_real\_data}
 \figlabeldef{F3.metrics}{metrics dict}
@@ -143,6 +160,9 @@
 \figlabeldef{F11.fail}{LLM 失败}
 \figlabeldef{F11.append}{追加}
 \figlabeldef{F11.continue}{继续}
+% v0.9.0 谱系链提示（技术名称，三个语言版本共用英文标签）
+\figlabeldef{F11.hint.coverage}{coverage hint}
+\figlabeldef{F11.hint.lineage}{lineage hint}
 
 % F12
 \figlabeldef{F12.driver}{复现驱动器}
@@ -226,44 +246,66 @@
 \figlabeldef{F17.bundle}{发布产物束\\(逐字字节)}
 \figlabeldef{F17.grounds}{基底}
 \figlabeldef{F17.same}{相同字节}
+% F17 phase-column headings (English in all editions; shared geometry)
+\figlabeldef{F17.head.src}{exploration outputs}
+\figlabeldef{F17.head.asm}{deterministic assembler}
+\figlabeldef{F17.head.out}{two consumers}
 
 % ---------------- F18: 研究记忆(对证据的带类型索引)----
-\figlabeldef{F18.report}{node\_report.json\\(真值来源)}
-\figlabeldef{F18.consolidate}{整合\\(确定性)}
-\figlabeldef{F18.store}{带类型研究记忆\\祖先限定 $\cdot$ CoW}
-\figlabeldef{F18.kinds}{结果 $\cdot$ 失败 $\cdot$\\反思 $\cdot$ 复现事件}
-\figlabeldef{F18.artifacts}{产物\\日志 $\cdot$ 输出 $\cdot$ 源码}
-\figlabeldef{F18.refs}{内容哈希引用}
-\figlabeldef{F18.repro}{复现事件\\(仅追加)}
-\figlabeldef{F18.fold}{折叠 $\to$ 最新}
-\figlabeldef{F18.workctx}{工作上下文\\(每个节点起始)}
-\figlabeldef{F18.vctx}{已验证上下文\\(论文主张)}
+% 新式样图 (ari* 风格语言): 标签在三个语言版本间共享英文。
+\figlabeldef{F18.head.evidence}{Evidence}
+\figlabeldef{F18.head.store}{Typed store}
+\figlabeldef{F18.head.readers}{Two readers}
+\figlabeldef{F18.report}{node\_report.json\\(source of truth)}
+\figlabeldef{F18.repro}{reproduction events\\(append-only)}
+\figlabeldef{F18.consolidate}{consolidate\\(deterministic)}
+\figlabeldef{F18.store}{typed research memory\\ancestor-scoped $\cdot$ CoW}
+\figlabeldef{F18.artifacts}{artefacts\\logs $\cdot$ outputs $\cdot$ source}
+\figlabeldef{F18.refs}{content-hash\\refs}
+\figlabeldef{F18.fold}{fold $\to$ latest}
+\figlabeldef{F18.workctx}{working context\\(every node start)}
 \figlabeldef{F18.usable}{$\mathrm{usable}(\mu)$}
-\figlabeldef{F18.forexpl}{供探索}
-\figlabeldef{F18.forpaper}{供论文}
+\figlabeldef{F18.vctx}{verified context\\(paper claims)}
 
-% ---------------- F19: VirSci 文献奠基的想法生成 ----
-\figlabeldef{F19.snap}{Semantic Scholar 快照}
-\figlabeldef{F19.corpus}{语料 + SPECTER2\\检索索引}
-\figlabeldef{F19.coauthorg}{合著者图\\(按新鲜度排序)}
-\figlabeldef{F19.team}{科学家团队}
+% ---------------- F19: VirSci literature-grounded, platform-aware ideation ----
+% v0.9.0 mechanism shown: platform-aware ideation (run-start capability
+% probe folds measured constraints into the deliberation topic).
+% English labels, shared verbatim across the three editions.
+\figlabeldef{F19.snap}{Semantic Scholar snapshot}
+\figlabeldef{F19.corpus}{corpus + SPECTER2\\retrieval index}
+\figlabeldef{F19.coauthorg}{co-author graph\\(freshness-ranked)}
+\figlabeldef{F19.team}{scientist team}
 \figlabeldef{F19.pa}{A}
 \figlabeldef{F19.pb}{B}
 \figlabeldef{F19.pc}{C}
-\figlabeldef{F19.delib}{$K$ 轮研讨\\提议 $\cdot$ 批评 $\cdot$ 收敛}
-\figlabeldef{F19.select}{select\_coauthors\\(新鲜度)}
-\figlabeldef{F19.ground}{检索奠基}
-\figlabeldef{F19.idea}{idea.json\\假设 $\cdot$ 指标 $\cdot$ 计划}
+\figlabeldef{F19.rounds}{propose $\cdot$ critique $\cdot$ converge}
+\figlabeldef{F19.delib}{$K$-round deliberation}
+\figlabeldef{F19.select}{select\_coauthors\\(freshness)}
+\figlabeldef{F19.ground}{retrieval\\grounding}
+\figlabeldef{F19.idea}{idea.json\\hypothesis $\cdot$ metric $\cdot$ plan}
+\figlabeldef{F19.platform}{execution platform}
+\figlabeldef{F19.probe}{capability probe\\(run start)}
+\figlabeldef{F19.fold}{constraints fold into topic}
 
-% ---------------- F20: Story2Proposal 主张--证据契约 ----
-\figlabeldef{F20.manu}{稿件}
-\figlabeldef{F20.cnum}{数值主张}
-\figlabeldef{F20.cfig}{图主张}
-\figlabeldef{F20.evid}{已记录证据}
-\figlabeldef{F20.result}{结果\\(node $\cdot$ result id)}
-\figlabeldef{F20.figart}{图产物}
-\figlabeldef{F20.bind}{绑定(稳定 id)}
-\figlabeldef{F20.gate}{主张--证据闸门\\(确定性、无 LLM)}
-\figlabeldef{F20.derive}{重新推导数值\\在容差内}
-\figlabeldef{F20.verdict}{通过 / 阻断(严格)}
-\figlabeldef{F20.axes}{数据保真 $\cdot$\\推理 $\cdot$ 视觉}
+% ---------------- F20: Story2Proposal claim--evidence contract ----
+% v0.9.0 mechanisms shown: mint-once contract, suggestion-only emission
+% hints. English labels, shared verbatim across the three editions.
+\figlabeldef{F20.head.contract}{Contract}
+\figlabeldef{F20.contract}{metric contract}
+\figlabeldef{F20.names}{evidence names\\(exact match)}
+\figlabeldef{F20.mint}{minted once;\\reused verbatim}
+\figlabeldef{F20.head.explore}{Exploration}
+\figlabeldef{F20.emit}{nodes emit\\measurements}
+\figlabeldef{F20.check}{emission check\\(advisory)}
+\figlabeldef{F20.hints}{suggestion hints:\\re-emit exact names}
+\figlabeldef{F20.evid}{Recorded evidence}
+\figlabeldef{F20.result}{result\\(node $\cdot$ result id)}
+\figlabeldef{F20.figart}{figure artefact}
+\figlabeldef{F20.manu}{Manuscript}
+\figlabeldef{F20.cnum}{numeric claim}
+\figlabeldef{F20.cfig}{figure claim}
+\figlabeldef{F20.bind}{binds (stable id)}
+\figlabeldef{F20.gate}{claim--evidence gate\\(deterministic, no LLM)}
+\figlabeldef{F20.derive}{re-derive number\\within tolerance}
+\figlabeldef{F20.verdict}{pass / block (strict)}
+\figlabeldef{F20.axes}{data-fidelity: blocking;\\reasoning $\cdot$ visual: advisory}
