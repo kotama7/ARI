@@ -4,6 +4,7 @@ import contextlib
 import tempfile
 from pathlib import Path
 
+import pytest
 import yaml
 
 from ari.config import (
@@ -14,6 +15,21 @@ from ari.config import (
     auto_config,
     load_config,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_llm_env(monkeypatch):
+    """Keep config tests order-independent.
+
+    ``load_config`` bridges ``cfg.llm`` into ``os.environ`` (``setdefault`` of
+    ``ARI_LLM_MODEL`` / ``ARI_BACKEND``) and also re-reads
+    ``ARI_MODEL`` / ``ARI_LLM_MODEL`` / ``ARI_BACKEND`` to let those env vars
+    override the YAML. A prior test that loaded any config therefore leaks its
+    model/backend into a later one, so clear them before each test (tests that
+    exercise the override set their own value afterwards).
+    """
+    for _v in ("ARI_MODEL", "ARI_LLM_MODEL", "ARI_BACKEND", "ARI_LLM_API_BASE"):
+        monkeypatch.delenv(_v, raising=False)
 
 
 def test_default_config():
