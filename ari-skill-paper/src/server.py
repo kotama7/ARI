@@ -117,7 +117,7 @@ SECTION_PROMPTS = {
         "CRITICAL: Output ONLY the plain title text. "
         "Do NOT output any LaTeX commands (no \\section, no \\begin, no \\textbf, no \\title). "
         "Do NOT output quotes, newlines, or any other text beyond the title itself. "
-        "Example good output: Compiler Flag Optimization for Stencil Benchmarks on 64-Core AMD EPYC"
+        "Example good output: Compiler Flag Optimization for Stencil Benchmarks on a 64-Core CPU"
     ),
 }
 
@@ -763,6 +763,12 @@ def _build_bib_content(refs_json: str) -> tuple:
     return "\n\n".join(entries), key_list
 
 
+_MATH_ENV_NAMES = frozenset({
+    'equation', 'align', 'eqnarray', 'displaymath', 'math', 'gather',
+    'multline', 'alignat', 'flalign', 'split', 'aligned', 'gathered', 'cases',
+})
+
+
 def _escape_text_underscores(text: str) -> str:
     """Escape bare underscores in LaTeX text mode. Skips command args and math."""
     import re as _re_esc
@@ -781,6 +787,29 @@ def _escape_text_underscores(text: str) -> str:
             # If command name is empty and next char is _ ^ $ # etc, it's already escaped — pass through
             if not cmd_name and i < len(text) and text[i] in '_^$#&%~|':
                 result.append(text[i]); i += 1; continue
+            # \( ... \) and \[ ... \] math: skip verbatim (only $...$ was
+            # recognized before, so \(k_p\) in plain prose got corrupted to
+            # \(k\_p\) — literal underscore instead of a subscript).
+            if not cmd_name and i < len(text) and text[i] in '([':
+                closer = '\\)' if text[i] == '(' else '\\]'
+                end = text.find(closer, i + 1)
+                if end >= 0:
+                    result.append(text[i:end + 2]); i = end + 2
+                else:
+                    result.append(text[i]); i += 1
+                continue
+            # \begin{<math env>} ... \end{<math env>}: skip the body verbatim
+            # (same math contract; subscripts there were corrupted the same way).
+            if cmd_name == 'begin' and i < len(text) and text[i] == '{':
+                _m_env = _re_esc.match(r'\{([A-Za-z]+\*?)\}', text[i:])
+                if _m_env and _m_env.group(1).rstrip('*') in _MATH_ENV_NAMES:
+                    _closer = '\\end{' + _m_env.group(1) + '}'
+                    _end = text.find(_closer, i + _m_env.end())
+                    if _end >= 0:
+                        result.append(text[i:_end + len(_closer)])
+                        i = _end + len(_closer)
+                        continue
+                # not a math env (or unclosed): generic arg protection below
             # For label/ref/cite/eqref: include the {} arg without escaping
             if cmd_name in ('label', 'ref', 'eqref', 'cite', 'pageref', 'autoref',
                             'hyperref', 'nameref', 'vref', 'cref', 'Cref',
@@ -1028,6 +1057,7 @@ async def write_paper_iterative(
     refs_json: str = "",
     figures_manifest_json: str = "",  # JSON content of figures manifest (loaded by pipeline)
     science_data_json: str = "",  # JSON content of science_data.json (loaded by pipeline)
+    verified_context_json: str = "",  # PATH to verified_context.json (read HERE, not via load_inputs)
     venue: str = "arxiv",
     max_revision_rounds: int = 2,
     author_name: str = "",  # config-specified author; defaults to "Autonomous Research Infrastructure"
@@ -1129,6 +1159,10 @@ async def write_paper_iterative(
                         "  scores       — derived ratios (efficiency, speedup).\n"
                         "  metrics      — back-compat flat union; prefer the typed "
                         "fields above when they are populated.\n"
+                        "  _anomalous_metrics — names flagged as physically-impossible "
+                        "/ invalid by the correctness gate (e.g. a normalized value > 1). "
+                        "NEVER quote these as results: they are unsound and the final "
+                        "paper is blocked if they appear.\n"
                         "Entries:\n"
                         + "\n".join(_cfg_parts)
                     )
@@ -1178,6 +1212,89 @@ async def write_paper_iterative(
                             "matches the structure of this code):\n"
                             + "\n\n".join(_src_parts)
                         )
+
+                # 4. Research Contract claims registry (Story2Proposal Phase A2).
+                # Surface candidate claims so the writer references them by id and
+                # anchors each numeric result with % CLAIM:Cx:NCx. Values are
+                # deterministic and re-verified by the hard gate.
+                _claims = _sd.get("claims", []) if isinstance(_sd, dict) else []
+                if _claims:
+                    _cl_parts = []
+                    for _cl in _claims[:20]:
+                        if not isinstance(_cl, dict):
+                            continue
+                        _nas = _cl.get("numeric_assertions", []) or []
+                        _na_str = "; ".join(
+                            f"{_na.get('id')}: {_na.get('metric')}="
+                            f"{_na.get('value')}{_na.get('unit', '')} ({_na.get('formula')})"
+                            for _na in _nas if isinstance(_na, dict)
+                        )
+                        _cl_parts.append(
+                            f"- {_cl.get('id')} [{_cl.get('section', 'results')}]: "
+                            f"{_cl.get('text', '')}"
+                            + (f"\n    numeric_assertions: {_na_str}" if _na_str else "")
+                        )
+                    if _cl_parts:
+                        experiment_summary += (
+                            "\n\nRESEARCH CONTRACT — CANDIDATE CLAIMS (reference these by id; "
+                            "when you state one of these numeric results in the text, put a "
+                            "LaTeX comment anchor `% CLAIM:Cx:NCx` on the line immediately "
+                            "before that sentence, using the claim id Cx and numeric assertion "
+                            "id NCx shown below. Only anchor numeric RESULT claims, not years, "
+                            "figure/table indices, or experimental settings. Keep the reported "
+                            "numbers consistent with the values below — they are re-verified "
+                            "deterministically against the executed results):\n"
+                            + "\n".join(_cl_parts)
+                        )
+
+                # Forward-declaration table (Story2Proposal (c)): stable config
+                # handles the writer can reference to DECLARE every result number
+                # it states, so the hard gate verifies the derivation forward.
+                _cfg_nodes = _sd.get("_config_nodes", {}) if isinstance(_sd, dict) else {}
+                if _cfg_nodes:
+                    def _fmt_mets(_m):
+                        if isinstance(_m, dict):
+                            return ", ".join(f"{k}={round(v, 4)}" for k, v in list(_m.items())[:26])
+                        return ", ".join((_m or [])[:26])  # back-compat (keys only)
+                    _cfg_lines = []
+                    for _cfgid, _cn in list(_cfg_nodes.items())[:20]:
+                        _envd = _cn.get("environment", {}) or {}
+                        _envs = f"{_envd.get('cpu_model', '?')}/{_envd.get('executor', '?')}"
+                        _cfg_lines.append(f"  {_cfgid} [env {_envs}]: {_fmt_mets(_cn.get('metrics'))}")
+                    experiment_summary += (
+                        "\n\nFORWARD-DECLARATION — CONFIG HANDLES (metric_key=recorded_value). For "
+                        "EVERY numeric RESULT you state in the paper, DECLARE its derivation on the "
+                        "LaTeX comment line immediately before the sentence:\n"
+                        "  % CLAIM:Cx:NCx metric=<metric_key> formula=<formula> <operands>\n"
+                        "COMPLETE example (an absolute value reported as-is): "
+                        "`% CLAIM:C3:NC3 metric=GB_per_s formula=identity value=cfg1`. "
+                        "formula MUST be one of the allowed names below, exactly as spelled "
+                        "(never invent e.g. formula=value); operands are bare k=v tokens with "
+                        "NO label prefix.\n"
+                        "operands: `value=cfgN` (formula=identity, an absolute value); or "
+                        "`baseline=cfgN proposed=cfgM` (a comparison of the SAME metric across "
+                        "configs); or `baseline=cfgN:metricA proposed=cfgN:metricB` (a ratio of "
+                        "TWO metrics of one config). "
+                        "Allowed formulas (EXACT meaning — pick the one whose result equals your "
+                        "number): identity=value; relative_gain=proposed/baseline (a higher-is-better "
+                        "value reported as N times a smaller baseline: baseline=cfg:<baseline> "
+                        "proposed=cfg:<better>); relative_speedup=baseline/proposed (a lower-is-better "
+                        "value, the baseline being N times the proposed); relative_increase_percent="
+                        "(proposed-baseline)/baseline*100; relative_reduction_percent="
+                        "(baseline-proposed)/baseline*100; relative_improvement_percent="
+                        "(baseline-proposed)/baseline*100; absolute_difference=proposed-baseline; "
+                        "ratio_percent=proposed/baseline*100. Use EXACT metric_key + cfg id from the table. "
+                        "CRITICAL: the gate RE-COMPUTES your declaration from the recorded values "
+                        "below, so the metric_key(s) you pick MUST be the one(s) whose recorded value "
+                        "equals the number you write. If no metric_key matches a number, do NOT state "
+                        "that number. Declare EVERY result number you write — not only the headline, but "
+                        "also baseline/reference values you cite for comparison and secondary metrics — "
+                        "leaving none ungrounded (a number repeated in the abstract/conclusion that you "
+                        "already declared in the body needs no second anchor). Do not compare across "
+                        "different execution environments unless the study is explicitly cross-architecture. "
+                        "Configs (each lists metric_key=value):\n"
+                        + "\n".join(_cfg_lines)
+                    )
             except Exception as _e_sd:
                 log.warning("Failed to extract science_data context: %s", _e_sd)
 
@@ -1342,6 +1459,29 @@ async def write_paper_iterative(
             except Exception as _er:
                 log.warning("Refs context failed: %s", _er)
 
+        # Verified context (artifact-grounded claims). Read the PATH directly so
+        # this does NOT touch the write_paper stage's load_inputs / dep resolution
+        # (the verified_context wiring must not perturb the claim-stage topology).
+        _grounded_block = ""
+        if verified_context_json:
+            try:
+                import json as _json_vc
+                from pathlib import Path as _Path_vc
+                _vc_data = None
+                _vp = _Path_vc(verified_context_json)
+                if _vp.is_file():
+                    _vc_data = _json_vc.loads(_vp.read_text())
+                elif verified_context_json.lstrip().startswith("{"):
+                    _vc_data = _json_vc.loads(verified_context_json)
+                if isinstance(_vc_data, dict):
+                    try:
+                        from ari.public.verified_context import render_grounded_block as _rgb
+                        _grounded_block = _rgb(_vc_data)
+                    except Exception as _e_rgb:
+                        log.warning("render_grounded_block unavailable: %s", _e_rgb)
+            except Exception as _e_vc:
+                log.warning("verified_context read failed: %s", _e_vc)
+
         # Single LLM call to fill the entire template
         _system_prompt_a = (
             f"You are an expert academic writer. Fill in ALL the FILL_*_START ... FILL_*_END "
@@ -1372,7 +1512,18 @@ async def write_paper_iterative(
             "\\begin{{thebibliography}}...\\end{{thebibliography}}. "
             "The BibTeX pipeline will generate the bibliography automatically from refs.bib. "
             "Keep the \\bibliographystyle and \\bibliography commands exactly as provided in the template.\n"
+            "10. RESEARCH CONTRACT — FORWARD DECLARATION: for EVERY numeric RESULT you state, "
+            "add a LaTeX comment line immediately BEFORE that sentence. If it matches a "
+            "pre-generated candidate claim, use `% CLAIM:Cx:NCx`. Otherwise DECLARE it via "
+            "`% CLAIM:Cw:NCw metric=<key> formula=<formula> <operands>` using the config "
+            "handles + formulas in 'FORWARD-DECLARATION — CONFIG HANDLES' (operands: value=cfgN, "
+            "or baseline=cfgN proposed=cfgM, or baseline=cfgN:metricA proposed=cfgN:metricB for "
+            "a ratio). Pick fresh ids Cw/NCw (e.g. C7/NC7) not already used. Each declared number "
+            "is re-derived from the executed data and must match within tolerance, so only state "
+            "result numbers you can declare. Do NOT anchor non-result numbers (years, figure/table "
+            "indices, experimental settings). The `% CLAIM` comments MUST remain in the source.\n"
             + _paper_language_directive()
+            + _grounded_block
         )
         _user_prompt_a = (
             f"Experiment context:\n{experiment_summary[:48000]}\n\n"
@@ -2057,34 +2208,52 @@ async def review_compiled_paper(
 
 
 
+def _hard_gate_revisions(hard_gate: dict) -> list[dict]:
+    """Turn blocking hard-gate errors into concrete refine instructions."""
+    out: list[dict] = []
+    for e in (hard_gate.get("errors") or []):
+        t = e.get("type")
+        sec = e.get("section", "")
+        if t == "numeric_mismatch":
+            out.append({"section": sec or "results", "source": "hard_gate",
+                        "instruction": (
+                            f"Correct the reported number {e.get('reported')} so it matches the "
+                            f"value re-computed from the executed results ({e.get('recomputed')}), "
+                            f"or remove the unsupported claim.")})
+        elif t == "uncovered_numeric":
+            out.append({"section": sec, "source": "hard_gate",
+                        "instruction": (
+                            f"The number {e.get('value')} in {sec} is an unregistered result claim. "
+                            f"Either support it with executed evidence or remove/soften it.")})
+        elif t in ("missing_evidence", "operand_unresolved"):
+            out.append({"section": sec, "source": "hard_gate",
+                        "instruction": f"Resolve unsupported claim: {e.get('message', '')}"})
+    return out
+
+
 @mcp.tool()
 async def merge_reviews(
     review_report_path: str,
     vlm_review_path: str = "",
+    hard_gate_path: str = "",
+    semantic_review_path: str = "",
 ) -> dict:
-    """Merge independent text reviewer output with VLM figure review.
+    """Merge reviews into independent vs evidence-grounded categories
+    (Story2Proposal Phase E).
 
-    Reviewer independence contract:
-      - review_compiled_paper (text reviewer) evaluates the paper text only,
-        matching AI Scientist v2's perform_review (no VLM findings in prompt).
+    Reviewer independence contract (UNCHANGED):
+      - review_compiled_paper (text reviewer) evaluates the paper text only.
       - vlm_review_figures (VLM reviewer) evaluates figure images independently.
-      - This stage combines both outputs into review_report.json with clear
-        source attribution, so downstream consumers can see which findings
-        came from which reviewer.
+      - Both stay under ``independent_reviews``; they are NOT modified.
 
-    The combination is purely structural (no LLM call): the VLM output is
-    attached under `vlm_figure_review` and a `_review_composition` metadata
-    block documents the provenance. Text-review fields are NOT modified.
+    Evidence-grounded reviews (claim_evidence_hard_gate + evidence_grounded_
+    semantic_review) are reported SEPARATELY under ``evidence_grounded_reviews``.
+    The structural in-place VLM attach to review_report.json is preserved for
+    back-compat. A unified ``suggested_revisions`` list (semantic review +
+    hard-gate-derived edits) is emitted for paper_refine.
 
-    Args:
-        review_report_path: Path to review_report.json produced by
-            review_compiled_paper. Will be updated in place.
-        vlm_review_path: Path to vlm_review.json produced by vlm-skill's
-            review_figure stage. Optional — if missing or empty, a
-            placeholder is written and the merge is treated as no-op.
-
-    Returns:
-        Dict with ok flag, paths, and a summary of what was merged.
+    No LLM call. Args beyond review_report_path are optional (back-compatible
+    with the v0.6.0 two-arg signature).
     """
     import json as _json
     from pathlib import Path as _Path
@@ -2098,16 +2267,22 @@ async def merge_reviews(
     except Exception as e:
         return {"error": f"failed to parse review_report: {e}"}
 
-    vlm_data = None
-    vlm_err = None
-    if vlm_review_path:
-        vp = _Path(vlm_review_path)
-        if vp.exists():
+    def _load(p):
+        if not p:
+            return None, None
+        fp = _Path(p)
+        if fp.exists():
             try:
-                vlm_data = _json.loads(vp.read_text())
+                return _json.loads(fp.read_text()), None
             except Exception as e:
-                vlm_err = str(e)
+                return None, str(e)
+        return None, None
 
+    vlm_data, vlm_err = _load(vlm_review_path)
+    hard_gate, _ = _load(hard_gate_path)
+    semantic, _ = _load(semantic_review_path)
+
+    # ── back-compat: attach VLM to review_report.json in place ──
     report["vlm_figure_review"] = vlm_data
     report["_review_composition"] = {
         "text_reviewer": {
@@ -2127,17 +2302,438 @@ async def merge_reviews(
             "are unchanged; VLM output attached under vlm_figure_review"
         ),
     }
-
     rr_path.write_text(_json.dumps(report, indent=2, ensure_ascii=False))
+
+    # ── separated review log (Story2Proposal Phase E) ──
+    suggested_revisions: list[dict] = []
+    if isinstance(semantic, dict):
+        suggested_revisions.extend(
+            r for r in (semantic.get("suggested_revisions") or []) if isinstance(r, dict)
+        )
+        # `detected_overclaim_count` counts the review's `warnings`, but the
+        # refiner only consumes revision entries — a warning without a parallel
+        # suggested_revision would never reach paper_refine and the count could
+        # never decrease. Forward every warning as an advisory revision entry.
+        _seen_instr = {
+            (r.get("instruction") or "").strip()
+            for r in suggested_revisions
+            if isinstance(r, dict)
+        }
+        for w in semantic.get("warnings") or []:
+            if not isinstance(w, dict):
+                continue
+            msg = str(w.get("message") or "").strip()
+            if not msg or msg in _seen_instr:
+                continue
+            _seen_instr.add(msg)
+            suggested_revisions.append({
+                "section": w.get("section", ""),
+                "instruction": msg,
+                "source": "semantic_warning",
+                "warning_type": w.get("type", ""),
+            })
+    if isinstance(hard_gate, dict):
+        suggested_revisions.extend(_hard_gate_revisions(hard_gate))
+
     return {
+        "stage": "merge_reviews",
         "ok": True,
         "review_report_path": str(rr_path),
-        "vlm_review_path": vlm_review_path,
         "has_vlm_review": vlm_data is not None,
-        "text_review_top_keys": [
-            k for k in report
-            if k not in ("vlm_figure_review", "_review_composition")
-        ],
+        "independent_reviews": {
+            "venue_review": str(rr_path),
+            "vlm_figure_review": vlm_review_path or None,
+            "has_vlm_review": vlm_data is not None,
+        },
+        "evidence_grounded_reviews": {
+            "claim_evidence_hard_gate": hard_gate_path or None,
+            "claim_evidence_hard_gate_status": (hard_gate or {}).get("status"),
+            "evidence_grounded_semantic_review": semantic_review_path or None,
+            "evidence_grounded_semantic_review_status": (semantic or {}).get("status"),
+        },
+        "suggested_revisions": suggested_revisions,
+        "merge_policy": (
+            "independent_reviews preserve reviewer independence; evidence_grounded_"
+            "reviews are reported separately; both feed paper_refine but stay distinct."
+        ),
+    }
+
+
+def _import_claim_links():
+    """Import the claim_links helper, tolerating both entrypoint shapes."""
+    try:
+        import claim_links as _cl  # type: ignore
+    except Exception:  # pragma: no cover
+        from src import claim_links as _cl  # type: ignore
+    return _cl
+
+
+@mcp.tool()
+async def link_paper_claims(
+    tex_path: str = "",
+    science_data_json: str = "",
+    figures_manifest_json: str = "",
+    output_path: str = "",
+) -> dict:
+    """Reconcile ``% CLAIM:Cx:NCx`` anchors against science_data claims and build
+    paper_claim_links (Story2Proposal Phase A2 post-processing).
+
+    Deterministic, no LLM. Returns paper_claim_links / numeric_mentions /
+    figure_refs / unresolved_anchors / uncovered_numeric_candidates. The
+    transform-stage science_data.json is NEVER mutated; figure binding is
+    recorded here. Run after write_paper (draft) and again after paper_refine
+    (final). Degrades to a valid empty result on failure (never error-only) so
+    it cannot cascade-skip the finalize chain.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    def _empty(note: str) -> dict:
+        return {
+            "stage": "link_paper_claims", "paper_claim_links": [], "numeric_mentions": [],
+            "figure_refs": [], "unresolved_anchors": [], "uncovered_numeric_candidates": [],
+            "counts": {}, "note": note,
+        }
+
+    try:
+        _cl = _import_claim_links()
+    except Exception as _e:  # pragma: no cover
+        return _empty(f"claim_links unavailable: {_e}")
+
+    tex = ""
+    if tex_path:
+        p = _Path(tex_path)
+        if p.is_file():
+            tex = p.read_text(encoding="utf-8")
+        elif tex_path.lstrip().startswith("\\"):
+            tex = tex_path
+    if not tex:
+        return _empty(f"paper tex not found: {tex_path}")
+
+    def _load_jsonish(val):
+        if not val:
+            return {}
+        if isinstance(val, dict):
+            return val
+        try:
+            return _json.loads(val)
+        except Exception:
+            sp = _Path(val)
+            if sp.is_file():
+                try:
+                    return _json.loads(sp.read_text())
+                except Exception:
+                    return {}
+        return {}
+
+    sd = _load_jsonish(science_data_json)
+    fm = _load_jsonish(figures_manifest_json) or None
+    try:
+        result = _cl.link_paper_claims(tex, sd if isinstance(sd, dict) else {}, fm)
+    except Exception as _e:  # pragma: no cover - defensive
+        return _empty(f"link_paper_claims failed: {_e}")
+
+    if output_path:
+        try:
+            _Path(output_path).write_text(_json.dumps(result, indent=2, ensure_ascii=False))
+            result["output_path"] = output_path
+        except Exception as _e:
+            result["_write_error"] = str(_e)
+    return result
+
+
+@mcp.tool()
+async def paper_refine(
+    tex_path: str = "",
+    suggested_revisions_json: str = "",
+    merged_review_path: str = "",
+    semantic_review_path: str = "",
+    venue: str = "arxiv",
+) -> dict:
+    """Apply suggested revisions to the paper while PRESERVING ``% CLAIM:Cx:NCx``
+    anchors (Story2Proposal generate-evaluate-adapt loop).
+
+    Apply strategy (strengthened so the review's edits actually LAND — a single LLM
+    pass previously left explicit overclaim fixes, e.g. the title, in place):
+      1. DETERMINISTIC explicit substitutions: each ``replace "X" with "Y"`` the review
+         specifies is applied directly (unique-only, anchor-safe), so the concrete
+         edits cannot be silently dropped by the LLM.
+      2. BOUNDED multi-pass LLM find/replace for the remaining qualifying requests:
+         up to 3 passes on the progressively-edited doc until a pass adds no new safe
+         edit. ``refine_passes`` reports how many ran.
+      3. VERIFY (mechanical): any explicit substitution whose OLD span still occurs is
+         reported under ``unaddressed_substitutions`` for the post-refine review.
+
+    Non-destructive contract:
+      - With no actionable revisions, the paper is returned unchanged.
+      - Every ``% CLAIM`` anchor present in the draft MUST survive: _apply_edits rejects
+        anchor-dropping edits per pass and the loop stops before any such pass; on net
+        anchor loss the original paper is kept (refined=False). The anchors must live
+        until the final hard gate.
+
+    The refined LaTeX is returned under ``latex`` (the pipeline writes it to the
+    stage output, overwriting full_paper.tex); the draft is preserved alongside
+    as full_paper.draft.tex. PDF recompilation is a documented follow-up (the
+    .tex is the living artifact the hard gate and finalize consume).
+    """
+    import json as _json
+    import re as _re
+    from pathlib import Path as _Path
+
+    def _find_anchors(text: str) -> list:
+        try:
+            return _import_claim_links().find_anchors(text)
+        except Exception:  # pragma: no cover - defensive fallback
+            return [{"anchor": f"CLAIM:{m.group(1)}:{m.group(2)}"}
+                    for m in _re.finditer(r"%\s*CLAIM:(C\w+):(NC\w+)", text)]
+
+    p = _Path(tex_path)
+    if not p.is_file():
+        return {"error": f"paper tex not found: {tex_path}", "latex": "", "refined": False}
+    original = p.read_text(encoding="utf-8")
+
+    revisions: list[dict] = []
+
+    def _collect(obj):
+        if isinstance(obj, list):
+            for it in obj:
+                _collect(it)
+        elif isinstance(obj, dict):
+            if obj.get("instruction") or obj.get("fix") or obj.get("suggestion"):
+                revisions.append(obj)
+            for key in ("suggested_revisions", "revisions"):
+                if isinstance(obj.get(key), list):
+                    _collect(obj[key])
+
+    if suggested_revisions_json:
+        try:
+            _collect(_json.loads(suggested_revisions_json) if isinstance(suggested_revisions_json, str) else suggested_revisions_json)
+        except Exception:
+            pass
+    for _path in (semantic_review_path, merged_review_path):
+        if _path and _Path(_path).is_file():
+            try:
+                _collect(_json.loads(_Path(_path).read_text()))
+            except Exception:
+                pass
+
+    orig_anchors = {a["anchor"] for a in _find_anchors(original)}
+
+    if not revisions:
+        return {
+            "latex": original, "refined": False, "anchors_preserved": True,
+            "applied_revisions": 0, "anchor_count": len(orig_anchors),
+            "note": "no actionable suggested_revisions; paper returned unchanged",
+        }
+
+    _rev_lines = []
+    for r in revisions[:40]:
+        sec = r.get("section", "")
+        instr = r.get("instruction") or r.get("fix") or r.get("suggestion") or ""
+        if instr:
+            _rev_lines.append(f"- [{sec}] {instr}" if sec else f"- {instr}")
+    revisions_text = "\n".join(_rev_lines)
+
+    # S2P refiner role (eq. 5: (M',C)=A_ref({D_i},C)) is GLOBAL coherence over the
+    # whole manuscript — but it is a BOUNDED task (compress redundancy, harmonize
+    # terminology, reconcile visuals, apply the requests), NOT a full rewrite. So
+    # the model sees the whole paper (global context) yet returns only TARGETED
+    # find/replace edits. This keeps generation volume ~= the changed spans instead
+    # of regenerating the entire document, which (with the slow CLI shim) timed out.
+    system_prompt = (
+        "You are an expert academic editor performing GLOBAL coherence refinement of a "
+        "LaTeX paper: improve cross-section consistency, compress redundancy, harmonize "
+        "terminology, reconcile visual references, and address the reviewer revision "
+        "requests. Do NOT rewrite the whole document. Return a JSON array of TARGETED "
+        "edits. Each edit is an object {\"find\": <span copied VERBATIM from the "
+        "document, long enough to occur exactly once>, \"replace\": <the revised span>}. "
+        "Hard constraints:\n"
+        "1. `find` MUST be copied character-for-character from the document (including "
+        "LaTeX) and must be UNIQUE in it.\n"
+        "2. If a span you edit contains a `% CLAIM:Cx:NCx` comment, keep that comment "
+        "VERBATIM in `replace`. Never drop a `% CLAIM` anchor.\n"
+        "3. Do NOT edit \\section headers, \\begin{figure}..\\end{figure}, \\label, "
+        "\\includegraphics, \\cite, \\bibliographystyle, or \\bibliography.\n"
+        "4. Make MINIMAL edits — only what the requests / coherence require.\n"
+        "5. Output ONLY a JSON array in ```json ... ``` fences (no prose, no full document).\n"
+        + _paper_language_directive()
+    )
+    _ANCHOR_RE = _re.compile(r"%\s*CLAIM:C\w+:NC\w+")
+
+    # (b) The semantic review usually specifies an EXPLICIT replacement (e.g. replace
+    # "Roofline/Loopline Validation" with "... Context"). Extract those quoted OLD->NEW
+    # pairs so they can be applied DETERMINISTICALLY first -- the concrete review edits
+    # then cannot be silently missed by the LLM (the prior single pass left the title /
+    # abstract overclaims in place). Straight/curly quotes; OLD must be >=4 chars.
+    _SUB_RE = _re.compile(
+        r"replace\s+[\"'“”‘’](.+?)[\"'“”‘’]"
+        r"\s+with\s+[\"'“”‘’](.+?)[\"'“”‘’]",
+        _re.IGNORECASE | _re.DOTALL,
+    )
+
+    def _extract_substitutions() -> list:
+        subs: list = []
+        for r in revisions:
+            instr = r.get("instruction") or r.get("fix") or r.get("suggestion") or ""
+            for _m in _SUB_RE.finditer(instr):
+                old, new = _m.group(1).strip(), _m.group(2).strip()
+                # OLD must be a multi-token PHRASE (contains whitespace): a bare generic
+                # word could be globally unique by accident and get rewritten in the
+                # WRONG span. Single-word fixes are routed to the LLM pass instead (its
+                # prompt carries the section label for context).
+                if (old and old != new and len(old) >= 4 and any(c.isspace() for c in old)
+                        and (old, new) not in subs):
+                    subs.append((old, new))
+        return subs
+
+    def _extract_edits(raw: str) -> list:
+        s = (raw or "").strip()
+        _m = _re.search(r"```(?:json)?\s*(.+?)```", s, _re.DOTALL)
+        if _m:
+            s = _m.group(1).strip()
+        _a, _b = s.find("["), s.rfind("]")
+        if _a != -1 and _b > _a:
+            s = s[_a:_b + 1]
+        try:
+            data = _json.loads(s)
+        except Exception:
+            return []
+        return data if isinstance(data, list) else []
+
+    def _apply_edits(doc: str, edits: list) -> tuple:
+        applied = 0
+        skipped: list[str] = []
+        for e in edits:
+            if not isinstance(e, dict):
+                continue
+            find = e.get("find") or ""
+            repl = e.get("replace")
+            if not find or repl is None:
+                skipped.append("empty find/replace")
+                continue
+            n = doc.count(find)
+            if n != 1:  # not found, or ambiguous -> never guess
+                skipped.append(f"find not unique (n={n}): {find[:50]!r}")
+                continue
+            # anchor safety: every % CLAIM anchor inside the replaced span must survive
+            if not set(_ANCHOR_RE.findall(find)).issubset(set(_ANCHOR_RE.findall(repl))):
+                skipped.append(f"edit would drop a % CLAIM anchor: {find[:50]!r}")
+                continue
+            doc = doc.replace(find, repl, 1)
+            applied += 1
+        return doc, applied, skipped
+
+    async def _run_edit(cur_doc: str, pass_idx: int = 0) -> list:
+        _user = (
+            f"Revision requests:\n{revisions_text}\n\n"
+            + ("NOTE: some requests may ALREADY be reflected in the document below — "
+               "apply ONLY the ones not yet addressed.\n\n" if pass_idx > 0 else "")
+            + f"Return targeted find/replace edits for this document:\n\n```latex\n{cur_doc}\n```"
+        )
+        _kw = {
+            "model": _get_model(),
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": _user},
+            ],
+            "temperature": 0.4, "max_tokens": 8192, "timeout": 1800,
+        }
+        _ab = _get_api_base()
+        if _ab:
+            _kw["api_base"] = _ab
+        _resp = await litellm.acompletion(**_kw)
+        _raw = _resp.choices[0].message.content or ""
+        if "</think>" in _raw:
+            _raw = _raw.split("</think>")[-1]
+        return _extract_edits(_raw)
+
+    warnings: list[str] = []
+    doc = original
+    applied_total = 0
+
+    # (b1) DETERMINISTIC explicit substitutions first — the review's concrete
+    # "replace X with Y" edits are applied directly (anchor-safe, unique-only) so they
+    # cannot be missed by the LLM. This is what fixes the title/abstract overclaim the
+    # prior single pass left in place.
+    det_subs = _extract_substitutions()
+    applied_subs: set = set()
+    for _old, _new in det_subs:
+        if doc.count(_old) == 1 and set(_ANCHOR_RE.findall(_old)).issubset(set(_ANCHOR_RE.findall(_new))):
+            doc = doc.replace(_old, _new, 1)
+            applied_total += 1
+            applied_subs.add((_old, _new))
+
+    # (b2) BOUNDED multi-pass LLM loop for the remaining (qualifying / fuzzy) requests.
+    # The prior single pass under-applied; iterate up to MAX_PASSES on the progressively
+    # edited doc until a pass yields no new safe edit, stopping before any pass that
+    # would drop a % CLAIM anchor.
+    MAX_PASSES = 3
+    passes = 0
+    for _pass in range(MAX_PASSES):
+        try:
+            edits = await _run_edit(doc, _pass)
+        except Exception as _e:
+            warnings.append(f"refine LLM pass {_pass + 1} failed: {_e}")
+            break
+        new_doc, applied, skipped = _apply_edits(doc, edits)
+        if skipped:
+            warnings.append(f"pass {_pass + 1}: skipped {len(skipped)} unsafe/non-unique edit(s): {skipped[:2]}")
+        if applied == 0:
+            break
+        if not orig_anchors.issubset({a["anchor"] for a in _find_anchors(new_doc)}):
+            warnings.append(f"pass {_pass + 1}: edits would drop a % CLAIM anchor; kept prior text")
+            break
+        doc = new_doc
+        applied_total += applied
+        passes += 1
+
+    refined = doc
+
+    # (b3) VERIFY which explicit substitutions actually landed (mechanical, no LLM):
+    # those NOT in applied_subs were skipped (non-unique / absent). Keyed on the b1
+    # apply outcome, NOT on `_old in refined` -- an expand edit ("X" -> "X Context")
+    # leaves OLD present yet was applied, so a presence test would falsely flag it.
+    unaddressed = [{"old": _o, "new": _n} for _o, _n in det_subs if (_o, _n) not in applied_subs]
+    if unaddressed:
+        warnings.append(
+            f"{len(unaddressed)} explicit replacement(s) not applied (find not unique/absent): "
+            + ", ".join(f"{u['old'][:40]!r}" for u in unaddressed[:3]))
+
+    final_anchors = {a["anchor"] for a in _find_anchors(refined)}
+    anchors_ok = orig_anchors.issubset(final_anchors)
+
+    if applied_total == 0 or not anchors_ok:
+        if not anchors_ok:
+            warnings.append(f"anchors lost {sorted(orig_anchors - final_anchors)}; reverting to draft")
+        try:
+            (_Path(tex_path).parent / "full_paper.draft.tex").write_text(original)
+        except Exception:
+            pass
+        return {
+            "latex": original, "refined": False, "anchors_preserved": True,
+            "applied_revisions": 0, "anchor_count": len(orig_anchors), "warnings": warnings,
+            "refine_passes": passes, "deterministic_substitutions": len(applied_subs),
+            "unaddressed_substitutions": unaddressed,
+            "note": ("no safe edits applied; paper unchanged" if applied_total == 0
+                     else "edits dropped anchors; reverted to draft"),
+        }
+
+    refined = _escape_text_underscores(refined)
+    if "\\end{document}" not in refined:
+        refined = refined.rstrip() + "\n\\end{document}\n"
+    try:
+        (_Path(tex_path).parent / "full_paper.draft.tex").write_text(original)
+    except Exception as _e:
+        warnings.append(f"failed to save draft copy: {_e}")
+
+    return {
+        "latex": refined, "refined": True, "anchors_preserved": True,
+        "applied_revisions": applied_total, "anchor_count": len(orig_anchors),
+        "warnings": warnings, "refine_passes": passes,
+        "deterministic_substitutions": len(applied_subs),
+        "unaddressed_substitutions": unaddressed,
+        "note": ("deterministic explicit replacements + bounded multi-pass find/replace "
+                 "(S2P refiner: global role, diff output); PDF recompile is a follow-up"),
     }
 
 

@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-skill-memory
     role: implementation
-last_verified: 2026-05-26
+last_verified: 2026-06-10
 ---
 
 # Memory Architecture

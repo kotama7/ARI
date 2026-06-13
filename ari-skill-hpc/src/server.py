@@ -10,6 +10,7 @@ from mcp.types import TextContent, Tool
 
 from src.slurm import SlurmClient, RemoteConfig
 from src import singularity
+from src import slurm
 
 server = Server("hpc-skill")
 
@@ -155,6 +156,26 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="probe_platform_capabilities",
+            description=(
+                "Probe tool availability (command -v) ON the compute partition and "
+                "cache the result to {checkpoint_dir}/platform_capabilities.json. "
+                "Best-effort: any failure (no partition, queue wait, srun missing) "
+                "is reported as skipped and writes nothing. The claims extractor "
+                "uses the cached note to avoid declaring evidence that depends on "
+                "tools the platform verifiably lacks."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "checkpoint_dir": {"type": "string", "description": "Run checkpoint dir (cache location)"},
+                    "partition": {"type": "string", "description": "SLURM partition (default: ARI_SLURM_PARTITION)"},
+                    "tools": {"type": "string", "description": "Comma-separated tool names (default: ARI_PROBE_TOOLS)"},
+                },
+                "required": ["checkpoint_dir"],
+            },
+        ),
+        Tool(
             name="singularity_pull",
             description="Pull a Singularity/Apptainer image from Docker Hub or Sylabs Cloud via SLURM",
             inputSchema={
@@ -241,6 +262,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             result = await client.status(job_id=arguments["job_id"])
         elif name == "job_cancel":
             result = await client.cancel(job_id=arguments["job_id"])
+        elif name == "probe_platform_capabilities":
+            result = await slurm.probe_platform_capabilities(
+                checkpoint_dir=arguments["checkpoint_dir"],
+                partition=arguments.get("partition", ""),
+                tools=arguments.get("tools", ""),
+            )
         elif name == "singularity_build":
             result = await singularity.build(client, arguments)
         elif name == "singularity_run":

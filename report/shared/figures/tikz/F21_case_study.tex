@@ -1,0 +1,47 @@
+% F21: the gate-verified sample paper as a worked example of the contract.
+% The run-level metric contract declares twelve falsifiable claims: nine are
+% INDEPENDENT PROBES (correctness, store policy, gather/locality, page
+% footprint, bandwidth) that a node measures directly, and three form a
+% COMPUTED-EVIDENCE CHAIN (fit the performance-model parameters, cross-validate
+% the fit on held-out probes, then select a configuration from the fitted
+% model). The chain is reachable only by LINEAGE CLOSURE: a child node inherits
+% its parent probe node's working directory and computes the chain evidence
+% from the inherited measurements instead of re-running probes. The
+% deterministic claim--evidence gate then finds every claim grounded (zero
+% errors) and the paper is finalised.
+% style.tikzstyles is loaded by preamble.tex / the standalone wrapper; the
+% ari* house styles come from _style.tex (resolved from the build cwd:
+% report/<lang>/ for the language builds, report/ for the figure scripts,
+% the figure's own directory otherwise).
+\IfFileExists{../shared/figures/tikz/_style.tex}%
+  {\input{../shared/figures/tikz/_style.tex}}%
+  {\IfFileExists{shared/figures/tikz/_style.tex}%
+    {\input{shared/figures/tikz/_style.tex}}%
+    {\input{_style.tex}}}%
+\begin{tikzpicture}[aricanvas]
+
+  % --- column 1: the declared claims (planning) -----------------------
+  \node[ariboxwide, fill=phaseidea]        (claims) {\figlabel{F21.claims}};
+  \node[ariphase, above=0.4cm of claims]   (h1)     {\figlabel{F21.head.claims}};
+  \pic at ([xshift=-2.5mm]h1.west) {ariglyph bulb};
+
+  % --- column 2: lineage closure of the computed chain (execution) ----
+  \node[aribox exp, right=of claims]       (parent) {\figlabel{F21.parent}};
+  \node[aribox exp, below=of parent]       (child)  {\figlabel{F21.child}};
+  \node[arinote, below=0.2cm of child]     (closes) {\figlabel{F21.closes}};
+  \node[ariphase, above=0.4cm of parent]   (h2)     {\figlabel{F21.head.lineage}};
+  \pic at ([xshift=-2.5mm]h2.west) {ariglyph flask};
+  \draw[ariarrow muted] (parent) -- node[arinote] {\figlabel{F21.inherit}} (child);
+
+  % --- column 3: the claim--evidence gate (verdict) -------------------
+  \node[aribox gate, right=of parent]      (verdict) {\figlabel{F21.verdict}};
+  \node[aribox gate, below=of verdict]     (final)   {\figlabel{F21.finalize}};
+  \node[ariphase, above=0.4cm of verdict]  (h3)      {\figlabel{F21.head.gate}};
+  \pic at ([xshift=-2.5mm]h3.west) {ariglyph gate};
+  \draw[ariarrow] (verdict) -- (final);
+
+  % --- adjacent handoffs only: claims -> lineage -> gate --------------
+  \draw[arielbow vh] (claims.east) to (parent.west);
+  \draw[arielbow]    (child.east)  to (verdict.west);
+
+\end{tikzpicture}

@@ -31,6 +31,21 @@ def _func_args(src: str, name: str) -> list[str]:
             return [a.arg for a in node.args.args]
     return []
 
+
+def _is_fastmcp_tool(src: str, name: str) -> bool:
+    """A FastMCP-style tool: a top-level `def {name}(...)` decorated with
+    @mcp.tool() (paper-skill, transform-skill, ...)."""
+    return f"def {name}(" in src or f"async def {name}(" in src
+
+
+def _registers_lowlevel_tool(src: str, name: str) -> bool:
+    """A low-level MCP Server tool (mcp.server.Server): registered via
+    ``Tool(name="...")`` in list_tools and dispatched through a single
+    ``call_tool(name, arguments: dict)`` handler (evaluator-skill). Such tools
+    accept arbitrary keys (validated by inputSchema), so there is no
+    top-level ``def {name}(`` to string-match."""
+    return f'name="{name}"' in src or f"name='{name}'" in src
+
 def _is_async(src: str, name: str) -> bool:
     for node in ast.walk(_parse(src)):
         if isinstance(node, ast.AsyncFunctionDef) and node.name == name:
@@ -145,7 +160,9 @@ def test_all_workflow_tools_exist():
             continue
         src = (skill_paths[skill] / "src/server.py").read_text()
         for tool in _stage_tool_names(stage):
-            if f"def {tool}(" not in src and f"async def {tool}(" not in src:
+            # Accept both server patterns: FastMCP `def {tool}(` and the
+            # low-level Server `Tool(name="{tool}")` dispatch registration.
+            if not (_is_fastmcp_tool(src, tool) or _registers_lowlevel_tool(src, tool)):
                 errors.append(f'{stage["stage"]}: tool "{tool}" not in {skill}')
     assert not errors, "\n".join(errors)
 
@@ -165,6 +182,12 @@ def test_workflow_tool_params_match():
         if not tool:
             continue
         src = (skill_paths[stage["skill"]] / "src/server.py").read_text()
+        # Low-level MCP Server tools dispatch through a single `arguments: dict`
+        # handler and accept arbitrary keys (validated by their inputSchema at
+        # runtime), so the named-parameter check only applies to FastMCP-style
+        # `def {tool}(...)` functions.
+        if not _is_fastmcp_tool(src, tool):
+            continue
         args = _func_args(src, tool)
         for k in stage.get("inputs", {}):
             if k not in args:
@@ -285,7 +308,7 @@ def test_paper_write_paper_calls_only_defined_functions():
     allow = {"json", "Path", "next", "str", "int", "list", "dict", "set",
               "isinstance", "len", "range", "enumerate", "print", "hasattr",
               "getattr", "type", "bool", "float", "open", "Exception", "sorted",
-              "any", "all", "min", "max", "zip", "filter", "map", "vars", "dir"}
+              "any", "all", "min", "max", "zip", "filter", "map", "vars", "dir", "round"}
     real_undef = [u for u in undef if u not in allow]
     assert not real_undef, f"write_paper_iterative calls undefined: {real_undef}"
 

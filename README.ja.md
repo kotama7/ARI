@@ -6,7 +6,7 @@
   **ユニバーサルな研究自動化システム。ノートPCからスーパーコンピュータまで。ローカルモデルからクラウドAPIまで。初学者から熟練研究者まで。計算実験から物理世界まで。**
 
   [![Tests](https://img.shields.io/badge/tests-2200%2B-brightgreen)](ari-core)
-  [![Version](https://img.shields.io/badge/version-v0.8.1-orange)](https://github.com/kotama7/ARI/releases)
+  [![Version](https://img.shields.io/badge/version-v0.9.0-orange)](https://github.com/kotama7/ARI/releases)
   [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
   [![MCP](https://img.shields.io/badge/protocol-MCP-purple)](https://modelcontextprotocol.io)
   [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -38,6 +38,32 @@ ARI は一つの原則に基づいて設計されています：**ゴールを M
 | **習熟度** | 初学者（ゴールのみ） | 熟練者（全パラメータ制御） |
 
 ---
+
+## v0.9.0 の新機能（2026-06-12）
+
+**主張の end-to-end 検証。** このリリースの主題: 論文は、その全ての主張が
+run 自身の成果物に対して機械検証可能なときにのみ出荷されます。
+
+- **Story2Proposal claim-evidence ループ＋idea 所有のメトリック契約** — idea が
+  反証可能な claims と必要証拠名を宣言し、決定論的 hard gate が「証拠の無い
+  宣言済み claim」「再計算と一致しない数値」を finalize 前に BLOCK。block は
+  客観的虚偽に限定し、主観的レビュー所見は advisory に留めます。
+- **Mint-once 契約と頑健なパース** — 契約語彙は初回鋳造で凍結（LLM 再抽出は
+  参照安定でない）。gate は科学記法と数式区切りの単位を解釈し、writer の宣言
+  癖は指示でなくパース時正規化で吸収します。
+- **系譜連鎖** — 既存測定から*計算される*証拠（モデルフィット・held-out 検証・
+  モデル選択）の claims を、作業ディレクトリ継承による親→子ノード連鎖で実行。
+- **届く review フィードバック** — semantic review の全警告が `paper_refine` に
+  到達し、post-refine の解消数は生のデルタで記録。refiner の全文エスケープは
+  数式に触れません。
+- **VirSci-live idea エンジン（opt-in）** — 実 VirSci のマルチエージェント機構を
+  ライブ Semantic Scholar スナップショット上で実行。run 開始時の能力 probe に
+  基づく platform-aware な idea 生成も導入。
+- **gate 検証済みサンプル論文** — [`docs/assets/sample_paper.pdf`](docs/assets/sample_paper.pdf)
+  は宣言 12 claims 全てが検証済み証拠を持ち、refine 後の過大主張ゼロの研究に
+  なりました。[実証された結果](#実証された結果) を参照。
+
+完全な一覧は [CHANGELOG.md](CHANGELOG.md) を参照してください。
 
 ## v0.8.1 の新機能（2026-06-01）
 
@@ -105,7 +131,7 @@ MCP ツール・描画出力のいずれも変更なし。
 
 🎬 **ダッシュボードのデモ動画** — ARI Web ダッシュボードの完全ウォークスルー。[English](docs/assets/movie/en/ari_dashboard_demo.mp4) · [中文](docs/assets/movie/zh/ari_dashboard_demo.mp4) も利用可能。
 
-📄 **[サンプル成果物 (PDF)](docs/assets/sample_paper.pdf)** — ARI が富士通 A64FX/SVE-512 上で完全自律生成した全 10 ページの論文（Stratum-Roofline CSR-SpMM 研究）。図表・引用・再現性検証レポートを含みます。主な数値は [実証された結果](#実証された結果) を参照してください。
+📄 **[サンプル成果物 (PDF)](docs/assets/sample_paper.pdf)** — ARI が aarch64 (SVE) HPC 上で完全自律生成した全 8 ページの論文（RHS 幅にわたる store-policy 選択と loopline 誘導性能モデルの CSR SpMM 研究）。**全ての主張が公開前に claim-evidence gate で機械検証**されています。[実証された結果](#実証された結果) を参照。
 
 <details>
 <summary><b>📖 クリックで論文を展開（全 10 ページをスクロールで閲覧）</b></summary>
@@ -119,8 +145,6 @@ MCP ツール・描画出力のいずれも変更なし。
   <img src="docs/assets/images/sample_paper/page-06.png" alt="サンプル論文 — 6 ページ目" width="720"/>
   <img src="docs/assets/images/sample_paper/page-07.png" alt="サンプル論文 — 7 ページ目" width="720"/>
   <img src="docs/assets/images/sample_paper/page-08.png" alt="サンプル論文 — 8 ページ目" width="720"/>
-  <img src="docs/assets/images/sample_paper/page-09.png" alt="サンプル論文 — 9 ページ目" width="720"/>
-  <img src="docs/assets/images/sample_paper/page-10.png" alt="サンプル論文 — 10 ページ目" width="720"/>
 </p>
 
 </details>
@@ -144,7 +168,7 @@ experiment.md  ──►  ARI Core  ──►  結果 + 論文 + 再現性レポ
 1. **ゴールを記述する。** 実験ファイルを書きます。ARI がそれを読み、仮説を生成し、実験を実行し、結果を報告します。
 2. **仮説空間を BFTS で探索。** 最良優先木探索（BFTS）が探索を導きます — 全探索ではなく、エビデンス駆動です。
 3. **決定論的ツール、推論する LLM。** MCP スキルは純粋関数です。LLM が推論し、スキルが実行します。
-4. **論文から証明まで。** ARI は論文を執筆し、*さらに* 再現性チェックで自身の主張を検証します。
+4. **論文から証明まで。** ARI は論文を執筆し、*さらに* 自身の主張を二重に検証します。決定論的な主張-エビデンス/メトリクス正当性ゲートが、報告されたすべての数値を記録済みの結果から再導出し、客観的に誤った、または未検証のメトリクスをブロックします。*加えて* 独立した再現性チェックが実験を再実行します。
 
 ---
 
@@ -341,7 +365,7 @@ v0.6.0 では 2 つのスキルを廃止しました。`ari-skill-figure-router`
 | `ari-skill-evaluator` | 実験ファイルからのメトリクス抽出 | △ | ✓ |
 | `ari-skill-idea` | arXiv サーベイ + VirSci 仮説生成 | ✓ | ✓ |
 | `ari-skill-web` | DuckDuckGo, arXiv, Semantic Scholar / AlphaXiv, 反復引用収集, アップロードファイルアクセス | △ | ✓ |
-| `ari-skill-memory` | 祖先スコープのノードメモリ（v0.6.0 以降は Letta バックエンド） | △ | ✓ |
+| `ari-skill-memory` | 祖先スコープのノードメモリ + 型付き・アーティファクト来歴付きの検証可能リサーチメモリ（Letta バックエンド） | △ | ✓ |
 | `ari-skill-transform` | BFTS ツリー → 科学向けデータ + EAR 生成 | ✓ | ✓ |
 | `ari-skill-plot` | 統合図生成（matplotlib プロット + SVG 図を図単位で切り替え、VLM ループ対応） | ✓ | ✓ |
 | `ari-skill-paper` | LaTeX 執筆 + BibTeX + ルーブリック駆動レビュー（単一 or N 名アンサンブル + Area Chair メタ） | ✓ | ✓ |
@@ -352,6 +376,8 @@ v0.6.0 では 2 つのスキルを廃止しました。`ari-skill-figure-router`
 | `ari-skill-orchestrator` | ARI を MCP サーバとして公開、再帰的サブ実験、stdio+HTTP デュアル転送 | ✗ | — |
 
 ✗ = LLM 不使用、△ = 一部ツールで LLM 使用、✓ = 主要ツールが LLM 使用。
+
+> **オプションの VirSci-live エンジン。** `ari-skill-idea` は、軽量な再実装ループの代わりに、VirSci 本来のマルチエージェント機構（freshness なチーム編成＋マルチエージェント討議）をライブの Semantic Scholar スナップショット上で実行することもできます。`ARI_IDEA_VIRSCI_REAL=1`（または `ari run … --virsci-live`、実験ウィザードのトグル）でオプトイン。デフォルトは OFF で挙動は不変、依存パッケージが無い場合は再実装ループへフォールバックします。
 
 ### 設計原則
 
@@ -367,21 +393,46 @@ v0.6.0 では 2 つのスキルを廃止しました。`ari-skill-figure-router`
 
 ## 実証された結果
 
-ARI は富士通 A64FX/SVE-512 CPU 上での **CSR-SpMM**（スパース行列と密行列の積）について、設計・実装・実行・論文執筆までを完全自律で end-to-end に行いました。手法・アルゴリズム・図表・参考文献を含む完全な論文は [`docs/assets/sample_paper.pdf`](docs/assets/sample_paper.pdf) で公開されています。
+ARI は aarch64 (SVE) HPC プラットフォーム上での **CSR SpMM**（スパース行列×密行列積）について、設計・実装・実行・論文執筆までを完全自律で end-to-end に行いました。完全な論文は [`docs/assets/sample_paper.pdf`](docs/assets/sample_paper.pdf) で公開されています。
 
-> **A Stratum-Roofline CSR-SpMM Implementation for CPUs: Sustaining High Performance Across Variable Right-Hand-Side Widths on A64FX/SVE-512**
+> **CSR Sparse-Dense Matrix Multiplication on CPUs with RHS-Width Robustness and a Loopline-Guided Performance Model**
 
-| 構成 | スループット | 実効帯域幅 |
-|---|---|---|
+この論文の特徴は派手な数値ではなく、**全ての主張が公開前に決定論的な claim-evidence gate を通過した**という性質にあります。
+
+| 検証された性質 | 結果 |
+|---|---|
+| 実験証拠を持つ宣言済み反証可能 claims | **12 / 12**（gate エラー 0） |
+| 独立な dense FP32 参照実装との正確性 | 最大絶対誤差 **6.79×10⁻⁶** |
+| 計算型証拠の連鎖（モデルフィット → held-out 検証 → モデル選択） | 系譜連鎖ノードで実行 |
+| review→refine 後の過大主張 | **0**（検出 5 → 解消 5） |
+| artifact 根拠の無い数値 | 本文中で明示的に hedge |
+
+**ハードウェア:** aarch64 (SVE) HPC 計算ノード（48 OpenMP スレッド、FP32）、ablation 用に x86_64 ノードを併用。ハードウェアはスペックで記述し、クラスタ名は使いません（Philosophy P5）。
+
+**ARI が自律的に生み出したもの:** store-policy セレクタ付き CSR SpMM カーネル（RHS 幅に応じた regular/non-temporal store 切替）、dense 参照との正確性検証、マイクロベンチ probe 群（メモリ帯域・compute-rate inflation/deflation）、親→子ノードの系譜連鎖で実行された loopline 誘導モデルのフィットと held-out 検証、図表、参考文献、そして機械検証された claim-evidence 監査 — すべて人間の介入なしに生成されました。
+
+---|---|---|
 | プリフェッチ+タイル化カーネル (NB=16, PFD=4) を *N* ∈ {1, 2, 4, 8, 16} で持続 | **57.8–59.9** GFlops/s | — |
 | リファレンスカーネルのピーク (*N* = 128) | 79.995 GFlops/s | **167.5 GB/s** |
 | バンド型 Stratum-Roofline 予測 vs 実測 (*N* = 128) | **81.55** GFlops/s（完全一致） | 135.88 GB/s |
 | 小規模 *N* での頑健性ゲイン (*N* = 1, タイル+プリフェッチ vs リファレンス) | **15.6×** | — |
 | SIMD アブレーションのスローダウン (`-fno-tree-vectorize`, *N* = 128) | **4.18×** (80.33 → 22.0) | — |
 
-**ハードウェア:** 富士通 `fx700` 計算ノード（A64FX、SVE-512）、48 OpenMP スレッド、FP32。GCC 8.5.0 で `-O3 -march=armv8.2-a+sve -fopenmp -ffast-math -ftree-vectorize -funroll-loops` を使用。バンド型/歪んだべき乗則の合成 CSR 行列（*M* = *N* = 400,000、nnz = 12.8M）と、コンパクトなスイープ行列（*M* = *K* = 120,000、nnz/行 = 32）。RHS 幅 *N* ∈ {1, 2, 4, 8, 16, 32, 64, 96, 128, 192, 256}、スレッドスイープ *T* ∈ {1, …, 48}、タイル幅スイープ NB ∈ {8, 16, 32}、PFD ∈ {0, 4}。
+**ハードウェア:** aarch64/SVE HPC 計算ノード、48 OpenMP スレッド、FP32。GCC 8.5.0 で `-O3 -march=armv8.2-a+sve -fopenmp -ffast-math -ftree-vectorize -funroll-loops` を使用。バンド型/歪んだべき乗則の合成 CSR 行列（*M* = *N* = 400,000、nnz = 12.8M）と、コンパクトなスイープ行列（*M* = *K* = 120,000、nnz/行 = 32）。RHS 幅 *N* ∈ {1, 2, 4, 8, 16, 32, 64, 96, 128, 192, 256}、スレッドスイープ *T* ∈ {1, …, 48}、タイル幅スイープ NB ∈ {8, 16, 32}、PFD ∈ {0, 4}。
 
 **ARI が自律的に生み出したもの:** Stratum-Roofline モデル化枠組み（FMA ピーク 1869.66 GFlops/s + HBM 上限 235.42 GB/s + スレッドあたり STREAM-triad 20.91 GB/s のキャリブレーション、4 階層の行ストラタム分解）、4 種類のカーネル実装（`spmm_csr` リファレンス、`spmm_csr_pf` プリフェッチ、`spmm_csr_tiled` NB タイル化、`spmm_novec` SIMD アブレーション）、Algorithm 1（NB タイル化ソフトウェアプリフェッチ CSR-SpMM）、*N* / スレッド / タイル幅 / PFD のスイープ、Xeon Gold 6142 ログインノードでのフォールバック実行、図表、参考文献、再現性検証（5 回繰り返し、4 ランダムシード、最大絶対誤差 0.0、CV ≤ 1.02%）— すべて人間の介入なしに生成されました。
+
+---
+
+## Star History
+
+<a href="https://www.star-history.com/#kotama7/ARI&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=kotama7/ARI&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=kotama7/ARI&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=kotama7/ARI&type=Date" />
+ </picture>
+</a>
 
 ---
 

@@ -240,6 +240,107 @@ def test_emit_results_writes_typed_payload(work_dir):
     assert payload["scores"]["_scientific_score"] == 0.37
 
 
+def test_emit_results_writes_provenance(work_dir):
+    # The sanctioned reporter must carry _provenance so the hard gate can confirm a
+    # measured ceiling / a correctness check (idea-owned requirement flags).
+    import json as _json
+    r = _emit_results(
+        params={}, measurements={"rnorm": 0.8, "peak_bw": 400.0, "max_abs_err": 1e-7},
+        predictions={}, scores={},
+        provenance={"peak_bw": "microbench", "max_abs_err": "correctness"},
+        file="results.json", work_dir=work_dir,
+    )
+    payload = _json.loads(Path(r["path"]).read_text())
+    assert payload["_provenance"] == {"peak_bw": "microbench", "max_abs_err": "correctness"}
+
+
+def test_emit_results_omits_empty_provenance(work_dir):
+    # legacy/theory runs (no provenance) are unaffected — the key is absent.
+    import json as _json
+    r = _emit_results(
+        params={}, measurements={"y": 1.0}, predictions={}, scores={},
+        file="r.json", work_dir=work_dir,
+    )
+    assert "_provenance" not in _json.loads(Path(r["path"]).read_text())
+
+
+def test_emit_results_provenance_roundtrip_to_gate(work_dir):
+    # finding-5 regression: drive the REAL emit_results writer (NOT a hand-built
+    # _provenance dict) through the transform-style read into the hard gate, so the
+    # "honest run -> PASS" property is exercised on the sanctioned producer path.
+    import json as _json
+    contract = pytest.importorskip("ari.pipeline.claim_gate.contract")
+    mc = {"key": "rnorm", "ceiling_must_be_measured": True, "correctness_required": True}
+
+    def _cfg_from(path):
+        rj = _json.loads(Path(path).read_text())
+        cfg = {"config_id": "n", "measurements": rj.get("measurements", {})}
+        if isinstance(rj.get("_provenance"), dict):  # exactly transform server.py ~586
+            cfg["_provenance"] = dict(rj["_provenance"])
+        return cfg
+
+    # honest: emit measurements + provenance tags via the sanctioned tool -> PASS
+    r = _emit_results(
+        params={}, measurements={"rnorm": 0.8, "peak_bw": 400.0, "max_abs_err": 1e-7},
+        predictions={}, scores={},
+        provenance={"peak_bw": "microbench", "max_abs_err": "correctness"},
+        file="results.json", work_dir=work_dir,
+    )
+    assert contract.check_contract(
+        {"metric_contract": mc, "configurations": [_cfg_from(r["path"])]}) == []
+
+    # dodge: same numbers, NO provenance -> the idea-owned flags BLOCK
+    r2 = _emit_results(
+        params={}, measurements={"rnorm": 0.8, "peak_bw": 400.0, "max_abs_err": 1e-7},
+        predictions={}, scores={}, file="r2.json", work_dir=work_dir,
+    )
+    types = sorted({f["type"] for f in contract.check_contract(
+        {"metric_contract": mc, "configurations": [_cfg_from(r2["path"])]})})
+    assert types == ["ceiling_unmeasured", "correctness_uncovered"]
+
+
+def test_emit_results_warns_when_contract_evidence_dropped(work_dir, tmp_path, monkeypatch):
+    # regression (real run): the agent VERIFIED its kernel but emitted only
+    # throughput -- the paper then blocked at finalize for a check that had passed.
+    # emit_results must surface the gate's presence checks AT EMISSION TIME so the
+    # agent can immediately re-emit with the evidence it already has.
+    import json as _json
+    pytest.importorskip("ari.public.claim_gate")
+    (tmp_path / "metric_contract.json").write_text(_json.dumps({
+        "key": "GFLOP_per_s", "correctness_required": True,
+        "claims": [{"claim": "selector improves worst-case",
+                    "required_evidence": ["worst_case_on", "worst_case_off"]}]}))
+    monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+    r = _emit_results(
+        params={}, measurements={"GFlops_per_s": 40.5}, predictions={}, scores={},
+        provenance={"GFlops_per_s": "benchmark"},
+        file="results.json", work_dir=work_dir,
+    )
+    assert r["status"] == "written"                      # the write itself is untouched
+    warns = r.get("contract_warnings") or []
+    assert any("correctness_required" in w for w in warns)
+    assert any("worst_case_on" in w for w in warns)      # names the missing evidence
+
+
+def test_emit_results_no_warnings_when_compliant_or_no_contract(work_dir, tmp_path, monkeypatch):
+    import json as _json
+    pytest.importorskip("ari.public.claim_gate")
+    # no contract -> no key
+    monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+    r0 = _emit_results(params={}, measurements={"y": 1.0}, predictions={}, scores={},
+                       file="r0.json", work_dir=work_dir)
+    assert "contract_warnings" not in r0
+    # compliant emission -> no key
+    (tmp_path / "metric_contract.json").write_text(_json.dumps({
+        "key": "m", "correctness_required": True}))
+    r1 = _emit_results(
+        params={}, measurements={"m": 0.5, "max_abs_err": 0.0}, predictions={}, scores={},
+        provenance={"max_abs_err": "correctness"},
+        file="r1.json", work_dir=work_dir,
+    )
+    assert "contract_warnings" not in r1
+
+
 def test_emit_results_overwrites_existing(work_dir):
     import json as _json
     _emit_results(

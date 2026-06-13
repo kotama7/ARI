@@ -1,0 +1,137 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/science_data_claims.schema.json",
+  "title": "ARI science_data.json — Research Contract claim layer",
+  "description": "Story2Proposal integration Phase A. The claims[] / numeric_assertions[] layer added on top of science_data.json (produced by ari-skill-transform's nodes_to_science_data). claims ground on the deterministic part of science_data (results.json measurements/scores or node metrics) and carry real node_id + metric_path operands. supported_by.figures starts empty and is late-bound by the paper post-processor (paper_claim_links). The deterministic hard gate (ari-core) re-verifies numeric_assertions.",
+  "type": "object",
+  "properties": {
+    "claims": {
+      "type": "array",
+      "items": {"$ref": "#/definitions/claim"}
+    },
+    "_config_nodes": {
+      "type": "object",
+      "description": "Internal (underscore) resolution map for Story2Proposal (c) forward declaration: stable config handle (cfgN) -> {node_id, environment, metrics[]}. Lets the writer DECLARE assertions referencing configs (% CLAIM:Cx:NCx metric=.. formula=.. baseline=cfgN proposed=cfgM) and lets the hard gate resolve cfgN -> node_id WITHOUT exposing node_id in the paper-facing configurations. Not part of the paper-facing science surface.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "node_id": {"type": "string"},
+          "environment": {"type": "object"},
+          "metrics": {"type": ["object", "array"], "description": "metric_key -> recorded value (so the writer can pick the key whose value matches its stated number); a key-only array is accepted for back-compat."}
+        }
+      }
+    },
+    "numeric_assertions": {
+      "type": "array",
+      "description": "Flattened view of every claim's numeric_assertions, each with a claim_id back-reference, so the hard gate can iterate a flat list.",
+      "items": {
+        "allOf": [
+          {"$ref": "#/definitions/numeric_assertion"},
+          {
+            "type": "object",
+            "required": ["claim_id"],
+            "properties": {"claim_id": {"type": "string"}}
+          }
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "operand": {
+      "type": "object",
+      "required": ["node_id", "metric_path"],
+      "properties": {
+        "node_id": {"type": "string", "description": "Real tree.json / node_report.json node id."},
+        "metric_path": {
+          "type": "string",
+          "description": "Dot-path resolved against results.json (measurements.* / scores.* / params.*) or node metrics (metrics.*)."
+        },
+        "environment": {
+          "type": "object",
+          "description": "Execution-environment provenance of this operand's node (from node_report). Transparency for cross-environment comparisons.",
+          "properties": {
+            "executor": {"type": "string"},
+            "cpu_model": {"type": "string"},
+            "arch": {"type": "string"}
+          }
+        }
+      }
+    },
+    "numeric_assertion": {
+      "type": "object",
+      "required": ["id", "metric", "value", "formula", "operands", "tolerance"],
+      "properties": {
+        "id": {"type": "string", "description": "Stable id (NCx). Used in the % CLAIM:Cx:NCx anchor."},
+        "text_span": {"type": "string"},
+        "metric": {"type": "string"},
+        "value": {"type": ["number", "null"]},
+        "unit": {"type": "string"},
+        "formula": {
+          "type": "string",
+          "enum": [
+            "identity",
+            "relative_speedup",
+            "relative_gain",
+            "relative_improvement_percent",
+            "relative_increase_percent",
+            "relative_reduction_percent",
+            "ratio_percent",
+            "absolute_difference"
+          ],
+          "description": "Mirrored in ari-core/ari/pipeline/claim_gate/numeric.py (keep in sync)."
+        },
+        "operands": {
+          "type": "object",
+          "description": "Role -> operand. identity uses {value}; comparison formulas use {baseline, proposed}.",
+          "additionalProperties": {"$ref": "#/definitions/operand"}
+        },
+        "cross_environment": {
+          "type": "boolean",
+          "description": "True iff the comparison operands span different execution environments (provenance flag; the hard gate's environment_mismatch severity is intent-driven via comparison_scope)."
+        },
+        "aggregation": {
+          "type": "object",
+          "description": "MVP: recorded only. True trial aggregation requires per-trial raw values (future scope).",
+          "properties": {
+            "statistic": {"type": "string"},
+            "trials": {"type": ["integer", "null"]}
+          }
+        },
+        "tolerance": {
+          "type": "object",
+          "properties": {
+            "absolute": {"type": "number"},
+            "relative": {"type": "number"}
+          }
+        }
+      }
+    },
+    "claim": {
+      "type": "object",
+      "required": ["id", "text", "status", "supported_by"],
+      "properties": {
+        "id": {"type": "string", "description": "Stable id (Cx). Used in the % CLAIM:Cx:NCx anchor."},
+        "text": {"type": "string", "description": "Templated seed prose; finalized by the paper writer."},
+        "section": {"type": "string"},
+        "status": {
+          "type": "string",
+          "enum": ["draft", "supported", "unsupported", "rejected"]
+        },
+        "supported_by": {
+          "type": "object",
+          "properties": {
+            "nodes": {"type": "array", "items": {"type": "string"}, "description": "Real node ids."},
+            "results": {"type": "array", "items": {"$ref": "#/definitions/operand"}},
+            "figures": {"type": "array", "items": {"type": "string"}, "description": "figures_manifest figure ids; empty at draft, late-bound by paper post-processor."},
+            "artifacts": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "numeric_assertions": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/numeric_assertion"}
+        },
+        "risk": {"type": "string"}
+      }
+    }
+  }
+}

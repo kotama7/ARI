@@ -269,6 +269,20 @@ async def list_tools() -> list[Tool]:
                         ),
                         "additionalProperties": True,
                     },
+                    "provenance": {
+                        "type": "object",
+                        "description": (
+                            "Optional {operand_name: source} tags recording HOW a "
+                            "value was obtained, written verbatim as the '_provenance' "
+                            "key for the verification gate. Use \"microbench\" or "
+                            "\"benchmark\" for an empirically MEASURED ceiling/peak "
+                            "(so a normalized metric is not flagged as resting on a "
+                            "placeholder), and \"correctness\" (or \"reference\") for a "
+                            "residual computed against an INDEPENDENT reference (so the "
+                            "output is not flagged as unverified). Best-effort/optional."
+                        ),
+                        "additionalProperties": True,
+                    },
                     "file": {
                         "type": "string",
                         "description": "Output file name (default: results.json)",
@@ -352,6 +366,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             measurements=arguments.get("measurements") or {},
             predictions=arguments.get("predictions") or {},
             scores=arguments.get("scores") or {},
+            provenance=arguments.get("provenance") or {},
             file=arguments.get("file") or "results.json",
             work_dir=_resolve_work_dir(arguments.get("work_dir")),
         )
@@ -413,6 +428,7 @@ def _emit_results(
     scores: dict,
     file: str,
     work_dir: str,
+    provenance: dict | None = None,
 ) -> dict:
     """Write a typed results.json separating params from measurements.
 
@@ -433,6 +449,13 @@ def _emit_results(
         "predictions":  _coerce_jsonable_dict(predictions),
         "scores":       _coerce_jsonable_dict(scores),
     }
+    # _provenance carries {operand: source} tags (microbench/benchmark for a measured
+    # ceiling, correctness/reference for a verification residual). Written verbatim
+    # so transform -> science_data -> the hard gate can confirm a measured ceiling /
+    # a correctness check was actually run. Best-effort; omitted when empty.
+    _prov = _coerce_jsonable_dict(provenance or {})
+    if _prov:
+        payload["_provenance"] = _prov
     try:
         out_path.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
@@ -443,7 +466,7 @@ def _emit_results(
             "error": f"emit_results: write failed: {e}",
             "path": str(out_path),
         }
-    return {
+    result = {
         "path": str(out_path),
         "schema_version": _RESULTS_SCHEMA_VERSION,
         "params_keys":       list(payload["params"].keys()),
@@ -452,6 +475,28 @@ def _emit_results(
         "scores_keys":       list(payload["scores"].keys()),
         "status": "written",
     }
+    # Point-of-emission contract feedback: mirror the FINAL gate's presence checks
+    # against the run-level metric_contract NOW, while the agent can still re-emit
+    # (this file is overwritten on re-call). Observed failure this closes: an agent
+    # VERIFIED its kernel (the correctness columns sat in its own results.csv) yet
+    # emitted only throughput -- the paper then blocked at finalize for a check that
+    # had passed, with no chance to fix it. Advisory only: the write above already
+    # happened and is never altered; absent contract / absent ari-core => silent.
+    try:
+        import os as _os_ce
+        _ck_ce = _os_ce.environ.get("ARI_CHECKPOINT_DIR", "").strip()
+        _mc_p = Path(_ck_ce) / "metric_contract.json" if _ck_ce else None
+        if _mc_p is not None and _mc_p.is_file():
+            _mc = json.loads(_mc_p.read_text())
+            if isinstance(_mc, dict) and _mc:
+                from ari.public.claim_gate import check_emission as _check_emission
+                _warns = _check_emission(_mc, payload["measurements"],
+                                         payload.get("_provenance") or {})
+                if _warns:
+                    result["contract_warnings"] = _warns
+    except Exception:
+        pass
+    return result
 
 
 def _format_run_result(stdout: str, stderr: str, returncode: int) -> dict:

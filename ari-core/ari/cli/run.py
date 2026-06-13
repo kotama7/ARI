@@ -170,6 +170,14 @@ def run(
     experiment: Path = typer.Argument(..., help="Path to experiment .md file (only required input)"),
     config: Path | None = typer.Option(None, help="Config YAML (auto-generated if omitted)"),
     profile: str | None = typer.Option(None, help="Environment profile: laptop, hpc, cloud"),
+    virsci_live: bool = typer.Option(
+        False, "--virsci-live/--no-virsci-live",
+        help="Idea skill: run VirSci's real multi-agent engine on a live Semantic Scholar snapshot (vendor-wrap). Sets ARI_IDEA_VIRSCI_REAL.",
+    ),
+    virsci_k: int | None = typer.Option(None, "--virsci-k", help="VirSci-live: discussion turns (group_max_discuss_iteration, default 7)."),
+    virsci_team_size: int | None = typer.Option(None, "--virsci-team-size", help="VirSci-live: max team members per team (default 3)."),
+    virsci_n_authors: int | None = typer.Option(None, "--virsci-n-authors", help="VirSci-live: author pool size for select_coauthors (default 16)."),
+    virsci_n_papers: int | None = typer.Option(None, "--virsci-n-papers", help="VirSci-live: SPECTER2 retrieval corpus size (default 800)."),
 ) -> None:
     """Run an experiment. Only the .md file is required."""
     from ari.orchestrator.node import Node
@@ -187,6 +195,20 @@ def run(
         )
         raise typer.Exit(1)
 
+    # VirSci-live (idea skill vendor-wrap): set the ARI_IDEA_VIRSCI_* contract.
+    # The idea skill reads these via os.getenv and mcp/client.py propagates env
+    # to the skill subprocess. Mirrors projects.py's ARI_RUBRIC handling.
+    if virsci_live:
+        os.environ["ARI_IDEA_VIRSCI_REAL"] = "1"
+    if virsci_k is not None:
+        os.environ["ARI_IDEA_VIRSCI_K"] = str(virsci_k)
+    if virsci_team_size is not None:
+        os.environ["ARI_IDEA_VIRSCI_TEAM_SIZE"] = str(virsci_team_size)
+    if virsci_n_authors is not None:
+        os.environ["ARI_IDEA_VIRSCI_N_AUTHORS"] = str(virsci_n_authors)
+    if virsci_n_papers is not None:
+        os.environ["ARI_IDEA_VIRSCI_N_PAPERS"] = str(virsci_n_papers)
+
     experiment_text = experiment.read_text()
     # ── Trace: log experiment file as read from disk ────────────────
     _exp_hash = _hl_run.sha256(experiment_text.encode()).hexdigest()[:16]
@@ -201,9 +223,17 @@ def run(
         _apply_profile(cfg, profile)
 
     # GUI-supplied caps (ARI_MAX_NODES etc.) must win over profile defaults.
-    from ari.config import apply_bfts_env_overrides, apply_evaluator_env_overrides
+    from ari.config import (
+        apply_bfts_env_overrides, apply_evaluator_env_overrides,
+        export_resolved_config_to_skill_env,
+    )
     apply_bfts_env_overrides(cfg)
     apply_evaluator_env_overrides(cfg)
+    # Bridge the resolved config (model / backend / base_url / partition) to the env
+    # vars skill subprocesses read, so a bare CLI run configures skills like the GUI
+    # does — without this the idea skill fell back to Ollama and the HPC skill to
+    # sinfo's first partition. Runs AFTER overrides so env-supplied values still win.
+    export_resolved_config_to_skill_env(cfg)
 
     # ── Container support ───────────────────────────────
     # Read container config from workflow.yaml; if an image is specified and
@@ -314,6 +344,23 @@ def run(
     checkpoint_dir = Path(cfg.checkpoint.dir.replace("{run_id}", run_id))
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     (checkpoint_dir / "uploads").mkdir(exist_ok=True)
+    # Reproducibility caveat: when web search is opted into for BFTS
+    # exploration (ARI_BFTS_ALLOW_WEB / bfts.allow_web), live web results are
+    # time-varying, so the search trajectory is no longer guaranteed
+    # reproducible (P5). Record a durable marker + warn. Default-off = no-op.
+    if getattr(cfg.bfts, "allow_web", False):
+        from ari.orchestrator.web_provenance import write_provenance
+        write_provenance(checkpoint_dir)
+        logging.getLogger(__name__).warning(
+            "[cli.run] Web search ENABLED during BFTS exploration "
+            "(ARI_BFTS_ALLOW_WEB / bfts.allow_web): search trajectory is NOT "
+            "guaranteed reproducible. Recorded bfts_web_provenance.json."
+        )
+        console.print(
+            "[yellow]⚠ Web search enabled during BFTS exploration — the search "
+            "trajectory is NOT guaranteed reproducible "
+            "(recorded in bfts_web_provenance.json).[/yellow]"
+        )
     # auto-migrate v0.5.x sources on first launch.
     try:
         from ari.memory.auto_migrate import maybe_auto_migrate

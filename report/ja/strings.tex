@@ -14,6 +14,23 @@
 \figlabeldef{F1.tree_json}{tree.json}
 \figlabeldef{F1.results_json}{results.json}
 
+% F02 — BFTS exploration tree (depth-column snapshot; English labels shared
+% across all three language editions: node ids and scores are language-neutral)
+\figlabeldef{F02.head.d0}{depth 0}
+\figlabeldef{F02.head.d1}{depth 1}
+\figlabeldef{F02.head.d2}{depth 2}
+\figlabeldef{F02.head.d3}{depth 3}
+\figlabeldef{F02.n0}{N0\\$r{=}0.50$}
+\figlabeldef{F02.n1}{N1\\$r{=}0.62$}
+\figlabeldef{F02.n2}{N2\\$r{=}0.48$}
+\figlabeldef{F02.n3}{N3\\$r{=}0.71$}
+\figlabeldef{F02.n4}{N4\\$r{=}0.66$}
+\figlabeldef{F02.n5}{N5\\$r{=}0.40$}
+\figlabeldef{F02.n6}{N6\\$r{=}0.74$}
+\figlabeldef{F02.note.best}{best node $\to$ paper}
+\figlabeldef{F02.note.low}{low-score branch}
+\figlabeldef{F02.note.synthetic}{illustrative example}
+
 % F03 — LLM 選択シグナル
 \figlabeldef{F3.has_real}{has\_real\_data}
 \figlabeldef{F3.metrics}{metrics dict}
@@ -143,6 +160,9 @@
 \figlabeldef{F11.fail}{LLM 失敗}
 \figlabeldef{F11.append}{追加}
 \figlabeldef{F11.continue}{継続}
+% v0.9.0 系譜連鎖ヒント（技術名のため英語ラベルを 3 言語で共有）
+\figlabeldef{F11.hint.coverage}{coverage hint}
+\figlabeldef{F11.hint.lineage}{lineage hint}
 
 % F12
 \figlabeldef{F12.driver}{複製ドライバ}
@@ -198,13 +218,104 @@
 \figlabeldef{F15.hist_append}{\texttt{record\_run} (実行後)}
 \figlabeldef{F15.lane.inner}{内部展開サブループ}
 \figlabeldef{F15.lane.outer}{並列実行サブループ}
+\figlabeldef{F15.clamp}{スコアをクランプ; $\sterilepred=1$}
+\figlabeldef{F15.yes}{はい}
+\figlabeldef{F15.yes_ab}{はい: A または B}
+\figlabeldef{F15.no_next}{いいえ $\Rightarrow$ 次反復}
 
-% ---------------- F16: PaperBench 3 段 bridge ----
-\figlabeldef{F16.paper}{論文+ルブリック}
+% ---------------- F16: PaperBench 3 段 bridge(重み付きルブリック木採点)----
 \figlabeldef{F16.rollout}{ロールアウト}
-\figlabeldef{F16.sub}{提出物}
 \figlabeldef{F16.reproduce}{再現}
-\figlabeldef{F16.log}{reproduce.log}
 \figlabeldef{F16.grade}{採点}
-\figlabeldef{F16.score}{スコア}
-\figlabeldef{F16.band}{3 段 bridge}
+\figlabeldef{F16.paper}{論文+ルブリック}
+\figlabeldef{F16.submission}{提出物\\code $\cdot$ reproduce.sh}
+\figlabeldef{F16.sandbox}{隔離サンドボックス}
+\figlabeldef{F16.log}{再現ログ\\+ 出力}
+\figlabeldef{F16.score}{論文スコア\\$s=\sum_i w_i\,g_i$}
+\figlabeldef{F16.weight}{$w_i$}
+\figlabeldef{F16.pass}{$g{=}1$}
+\figlabeldef{F16.fail}{$g{=}0$}
+\figlabeldef{F16.judge}{vendor 採点器}
+\figlabeldef{F16.grades}{葉を採点}
+
+% ---------------- F17: 証拠の組み立て(1 つの選定、2 つの消費者) ----
+\figlabeldef{F17.lineage}{最良ノード\\+ 系譜連鎖}
+\figlabeldef{F17.select}{役割別選別\\(最深が勝つ)}
+\figlabeldef{F17.reports}{ノード\\自己レポート}
+\figlabeldef{F17.writer}{執筆器の証拠\\(型付き構成)}
+\figlabeldef{F17.bundle}{公開バンドル\\(逐語バイト)}
+\figlabeldef{F17.grounds}{基盤}
+\figlabeldef{F17.same}{同一バイト}
+% F17 phase-column headings (English in all editions; shared geometry)
+\figlabeldef{F17.head.src}{exploration outputs}
+\figlabeldef{F17.head.asm}{deterministic assembler}
+\figlabeldef{F17.head.out}{two consumers}
+
+% ---------------- F18: 研究メモリ(証拠への型付きインデックス)----
+% 新様式図 (ari* ハウス言語): ラベルは 3 言語版で英語を共有する。
+\figlabeldef{F18.head.evidence}{Evidence}
+\figlabeldef{F18.head.store}{Typed store}
+\figlabeldef{F18.head.readers}{Two readers}
+\figlabeldef{F18.report}{node\_report.json\\(source of truth)}
+\figlabeldef{F18.repro}{reproduction events\\(append-only)}
+\figlabeldef{F18.consolidate}{consolidate\\(deterministic)}
+\figlabeldef{F18.store}{typed research memory\\ancestor-scoped $\cdot$ CoW}
+\figlabeldef{F18.artifacts}{artefacts\\logs $\cdot$ outputs $\cdot$ source}
+\figlabeldef{F18.refs}{content-hash\\refs}
+\figlabeldef{F18.fold}{fold $\to$ latest}
+\figlabeldef{F18.workctx}{working context\\(every node start)}
+\figlabeldef{F18.usable}{$\mathrm{usable}(\mu)$}
+\figlabeldef{F18.vctx}{verified context\\(paper claims)}
+
+% ---------------- F19: VirSci literature-grounded, platform-aware ideation ----
+% v0.9.0 mechanism shown: platform-aware ideation (run-start capability
+% probe folds measured constraints into the deliberation topic).
+% English labels, shared verbatim across the three editions.
+\figlabeldef{F19.snap}{Semantic Scholar snapshot}
+\figlabeldef{F19.corpus}{corpus + SPECTER2\\retrieval index}
+\figlabeldef{F19.coauthorg}{co-author graph\\(freshness-ranked)}
+\figlabeldef{F19.team}{scientist team}
+\figlabeldef{F19.pa}{A}
+\figlabeldef{F19.pb}{B}
+\figlabeldef{F19.pc}{C}
+\figlabeldef{F19.rounds}{propose $\cdot$ critique $\cdot$ converge}
+\figlabeldef{F19.delib}{$K$-round deliberation}
+\figlabeldef{F19.select}{select\_coauthors\\(freshness)}
+\figlabeldef{F19.ground}{retrieval\\grounding}
+\figlabeldef{F19.idea}{idea.json\\hypothesis $\cdot$ metric $\cdot$ plan}
+\figlabeldef{F19.platform}{execution platform}
+\figlabeldef{F19.probe}{capability probe\\(run start)}
+\figlabeldef{F19.fold}{constraints fold into topic}
+
+% ---------------- F20: Story2Proposal claim--evidence contract ----
+% v0.9.0 mechanisms shown: mint-once contract, suggestion-only emission
+% hints. English labels, shared verbatim across the three editions.
+\figlabeldef{F20.head.contract}{Contract}
+\figlabeldef{F20.contract}{metric contract}
+\figlabeldef{F20.names}{evidence names\\(exact match)}
+\figlabeldef{F20.mint}{minted once;\\reused verbatim}
+\figlabeldef{F20.head.explore}{Exploration}
+\figlabeldef{F20.emit}{nodes emit\\measurements}
+\figlabeldef{F20.check}{emission check\\(advisory)}
+\figlabeldef{F20.hints}{suggestion hints:\\re-emit exact names}
+\figlabeldef{F20.evid}{Recorded evidence}
+\figlabeldef{F20.result}{result\\(node $\cdot$ result id)}
+\figlabeldef{F20.figart}{figure artefact}
+\figlabeldef{F20.manu}{Manuscript}
+\figlabeldef{F20.cnum}{numeric claim}
+\figlabeldef{F20.cfig}{figure claim}
+\figlabeldef{F20.bind}{binds (stable id)}
+\figlabeldef{F20.gate}{claim--evidence gate\\(deterministic, no LLM)}
+\figlabeldef{F20.derive}{re-derive number\\within tolerance}
+\figlabeldef{F20.verdict}{pass / block (strict)}
+\figlabeldef{F20.axes}{data-fidelity: blocking;\\reasoning $\cdot$ visual: advisory}
+\figlabeldef{F21.head.claims}{宣言された主張}
+\figlabeldef{F21.claims}{反証可能な主張 12 件\\probe 9 件 + 計算連鎖 3 件}
+\figlabeldef{F21.head.lineage}{系譜の閉包}
+\figlabeldef{F21.parent}{probe ノード\\測定を発行}
+\figlabeldef{F21.child}{子ノード\\フィット・検証・選択}
+\figlabeldef{F21.inherit}{作業ディレクトリを継承}
+\figlabeldef{F21.closes}{主張 10--12 を閉じる}
+\figlabeldef{F21.head.gate}{主張--証拠ゲート}
+\figlabeldef{F21.verdict}{12/12 grounded\\0 errors}
+\figlabeldef{F21.finalize}{最終化}

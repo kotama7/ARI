@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/api_experiment.py
     role: implementation
-last_verified: 2026-05-26
+last_verified: 2026-06-10
 ---
 
 # REST API 参考

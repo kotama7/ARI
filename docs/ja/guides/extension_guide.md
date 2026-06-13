@@ -8,7 +8,7 @@ sources:
     role: config
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-05-25
+last_verified: 2026-06-10
 ---
 
 # 拡張ガイド

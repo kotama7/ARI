@@ -6,7 +6,7 @@ sources:
     role: doc
   - path: ari-core/pyproject.toml
     role: config
-last_verified: 2026-05-26
+last_verified: 2026-06-04
 ---
 
 # リリース & バージョニングポリシー
@@ -80,7 +80,8 @@ SemVer 目的での**パブリックサーフェス**:
    **Removed** / **Security** に分類してまとめる。
 2. `ari-core/pyproject.toml` と各
    `ari-skill-*/pyproject.toml` のバージョンをバンプする。
-3. フルテストスイートと refactor-guards CI ワークフローを実行する。
+3. フルテストスイートと `refactor-guards`・`docs-sync`・`docs-change-coupling`
+   CI ワークフローを実行する。
 4. ドキュメントゲートを実行する:
    - `grep -rn '~/\.ari/' docs/` (`refactor_audit.md` を除く) がゼロを返す。
    - ドキュメント化されたすべての環境変数が実際のソース参照にマップされる。
@@ -91,6 +92,10 @@ SemVer 目的での**パブリックサーフェス**:
      (docs 内リンク / HTML href が壊れていない)。
    - `python scripts/docs/check_translation_freshness.py --strict` が 0 で終了する
      (`ja`/`zh` 翻訳の `last_verified` が英語版より古くない — [ソーストレーサビリティ](../../README.md#source-traceability) 参照)。
+   - `python scripts/docs/check_i18n_js.py` が 0 で終了する
+     (3 つの `docs/i18n/*.js` のキー集合が一致する)。
+   - `python scripts/docs/check_readme_parity.py` が 0 で終了する
+     (ルート `README.{md,ja,zh}` の見出し構造が一致する)。
      `--strict` なしなら警告のみの非ブロッキングレポート。
 5. タグ付け: `git tag v0.X.Y && git push origin v0.X.Y`。
 6. GitHub でリリースを作成し、changelog の抜粋を添付する。

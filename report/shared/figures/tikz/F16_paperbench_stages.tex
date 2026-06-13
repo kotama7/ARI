@@ -1,28 +1,56 @@
-% F16: PaperBench three-stage bridge --- rollout -> reproduce -> grade,
-% with the artefacts that flow between the stages. All node text is routed
-% through \figlabel{} (defined in strings.tex); styles come from
-% style.tikzstyles (loaded by preamble.tex / the standalone wrapper).
-\begin{tikzpicture}[node distance=0.5cm and 0.9cm]
+% F16: the PaperBench replication path as three composable stages, laid out
+% as a left-to-right staircase: (1) ROLLOUT turns the paper + rubric into a
+% submission (code, reproduce.sh); (2) REPRODUCE executes that submission in
+% an isolated sandbox, capturing the reproduction log and outputs; (3) GRADE
+% opens up into the weighted rubric tree — the vendored judge assigns each
+% leaf a binary grade g (dashed flow), and the paper score is the
+% weight-aggregated roll-up s = sum_i w_i g_i (eq:paperscore). Pale-green
+% fill marks verdicts (granted leaves, final score); the failed leaf stays
+% unfilled; peach marks execution; artifacts and the vendored judge are
+% white. House design language comes from _style.tex below; the legacy
+% baseline style.tikzstyles is loaded by shared/preamble.tex / the
+% standalone wrapper and is not used here.
+%
+% _style.tex resolves from the build cwd: the en/ja/zh documents \input this
+% figure as ../shared/figures/tikz/<fig>.tex (cwd = language dir), the
+% render harness compiles from the report root, and the bare name covers
+% compiling next to the file itself.
+\IfFileExists{../shared/figures/tikz/_style.tex}%
+  {\input{../shared/figures/tikz/_style.tex}}%
+  {\IfFileExists{shared/figures/tikz/_style.tex}%
+    {\input{shared/figures/tikz/_style.tex}}%
+    {\input{_style.tex}}}%
+\begin{tikzpicture}[aricanvas]
 
-  \node[artifact]                               (paper)   {\figlabel{F16.paper}};
-  \node[block native big, right=of paper]       (rollout) {\figlabel{F16.rollout}};
-  \node[artifact, right=of rollout]             (sub)     {\figlabel{F16.sub}};
-  \node[block native big, right=of sub]         (repro)   {\figlabel{F16.reproduce}};
-  \node[artifact, right=of repro]               (log)     {\figlabel{F16.log}};
-  \node[block native big, right=of log]         (grade)   {\figlabel{F16.grade}};
-  \node[artifact, right=of grade]               (score)   {\figlabel{F16.score}};
+  % ---------- stage 1: rollout — paper + rubric in, submission out ------
+  \node[ariphase]                              (h1)    {\figlabel{F16.rollout}};
+  \node[aribadge] at ([xshift=-3.5mm]h1.west)          {1};
+  \node[aribox, below=0.35cm of h1]            (paper) {\figlabel{F16.paper}};
+  \node[ariboxwide, fill=phaseexp, below=of paper] (subm) {\figlabel{F16.submission}};
+  \draw[ariarrow] (paper) -- (subm);
 
-  \begin{scope}[on background layer]
-    \node[group strong, fit=(rollout)(repro)(grade)] (band) {};
-  \end{scope}
-  \node[band label, above=4pt of band.north west, anchor=south west]
-        {\figlabel{F16.band}};
+  % ---------- stage 2: reproduce — sandboxed execution of the submission
+  \node[aribox exp, right=of subm]             (sandbox) {\figlabel{F16.sandbox}};
+  \node[ariphase, above=0.35cm of sandbox]     (h2)      {\figlabel{F16.reproduce}};
+  \node[aribadge] at ([xshift=-3.5mm]h2.west)            {2};
+  \node[aribox, below=of sandbox]              (log)     {\figlabel{F16.log}};
+  \draw[ariarrow] (subm) -- (sandbox);
+  \draw[ariarrow] (sandbox) -- (log);
 
-  \draw[arrow] (paper)   -- (rollout);
-  \draw[arrow] (rollout) -- (sub);
-  \draw[arrow] (sub)     -- (repro);
-  \draw[arrow] (repro)   -- (log);
-  \draw[arrow] (log)     -- (grade);
-  \draw[arrow] (grade)   -- (score);
+  % ---------- stage 3: grade — judge grades leaves, weights roll up -----
+  \node[aribox, right=of log]                  (judge) {\figlabel{F16.judge}};
+  \node[ariphase, above=0.35cm of judge]       (h3)    {\figlabel{F16.grade}};
+  \node[aribadge] at ([xshift=-3.5mm]h3.west)          {3};
+  \node[aribox gate, below=0.9cm of judge]     (l2)    {\figlabel{F16.pass}};
+  \node[aribox gate, left=0.3cm of l2]         (l1)    {\figlabel{F16.pass}};
+  \node[aribox, right=0.3cm of l2]             (l3)    {\figlabel{F16.fail}};
+  \node[ariboxwide, fill=phasegate, below=0.9cm of l2] (score) {\figlabel{F16.score}};
+  \draw[ariarrow] (log) -- (judge);
+  \draw[ariarrow muted] (judge) -- (l1);
+  \draw[ariarrow muted] (judge) -- node[arinote] {\figlabel{F16.grades}} (l2);
+  \draw[ariarrow muted] (judge) -- (l3);
+  \draw[ariarrow] (l1) -- (score);
+  \draw[ariarrow] (l2) -- (score);
+  \draw[ariarrow] (l3) -- node[arinote] {\figlabel{F16.weight}} (score);
 
 \end{tikzpicture}

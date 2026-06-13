@@ -14,6 +14,23 @@
 \figlabeldef{F1.tree_json}{tree.json}
 \figlabeldef{F1.results_json}{results.json}
 
+% F02 — BFTS exploration tree (depth-column snapshot; English labels shared
+% across all three language editions: node ids and scores are language-neutral)
+\figlabeldef{F02.head.d0}{depth 0}
+\figlabeldef{F02.head.d1}{depth 1}
+\figlabeldef{F02.head.d2}{depth 2}
+\figlabeldef{F02.head.d3}{depth 3}
+\figlabeldef{F02.n0}{N0\\$r{=}0.50$}
+\figlabeldef{F02.n1}{N1\\$r{=}0.62$}
+\figlabeldef{F02.n2}{N2\\$r{=}0.48$}
+\figlabeldef{F02.n3}{N3\\$r{=}0.71$}
+\figlabeldef{F02.n4}{N4\\$r{=}0.66$}
+\figlabeldef{F02.n5}{N5\\$r{=}0.40$}
+\figlabeldef{F02.n6}{N6\\$r{=}0.74$}
+\figlabeldef{F02.note.best}{best node $\to$ paper}
+\figlabeldef{F02.note.low}{low-score branch}
+\figlabeldef{F02.note.synthetic}{illustrative example}
+
 % F03 — LLM selection signals
 \figlabeldef{F3.has_real}{has\_real\_data}
 \figlabeldef{F3.metrics}{metrics dict}
@@ -143,6 +160,10 @@
 \figlabeldef{F11.fail}{LLM fail}
 \figlabeldef{F11.append}{append}
 \figlabeldef{F11.continue}{continue}
+% v0.9.0 lineage chaining (technical hint names; English labels shared
+% across all three language editions)
+\figlabeldef{F11.hint.coverage}{coverage hint}
+\figlabeldef{F11.hint.lineage}{lineage hint}
 
 % F12 — paper-re components (role-level labels; see CLAUDE.md s1)
 \figlabeldef{F12.driver}{replication driver}
@@ -198,13 +219,105 @@
 \figlabeldef{F15.hist_append}{\texttt{record\_run} (after exec)}
 \figlabeldef{F15.lane.inner}{inner expansion sub-loop}
 \figlabeldef{F15.lane.outer}{outer parallel-run loop}
+\figlabeldef{F15.clamp}{clamp score; $\sterilepred=1$}
+\figlabeldef{F15.yes}{yes}
+\figlabeldef{F15.yes_ab}{yes: A or B}
+\figlabeldef{F15.no_next}{no $\Rightarrow$ next iter}
 
-% ---------------- F16: PaperBench three-stage bridge ----
-\figlabeldef{F16.paper}{paper + rubric}
+% ---------------- F16: PaperBench 3-stage bridge with weighted rubric-tree grading ----
 \figlabeldef{F16.rollout}{rollout}
-\figlabeldef{F16.sub}{submission}
 \figlabeldef{F16.reproduce}{reproduce}
-\figlabeldef{F16.log}{reproduce.log}
 \figlabeldef{F16.grade}{grade}
-\figlabeldef{F16.score}{score}
-\figlabeldef{F16.band}{3-stage bridge}
+\figlabeldef{F16.paper}{paper + rubric}
+\figlabeldef{F16.submission}{submission\\code $\cdot$ reproduce.sh}
+\figlabeldef{F16.sandbox}{isolated sandbox}
+\figlabeldef{F16.log}{reproduction log\\+ outputs}
+\figlabeldef{F16.score}{paper score\\$s=\sum_i w_i\,g_i$}
+\figlabeldef{F16.weight}{$w_i$}
+\figlabeldef{F16.pass}{$g{=}1$}
+\figlabeldef{F16.fail}{$g{=}0$}
+\figlabeldef{F16.judge}{vendored judge}
+\figlabeldef{F16.grades}{grades leaves}
+
+% ---------------- F17: evidence assembly (one selection, two consumers) ----
+\figlabeldef{F17.lineage}{best node\\+ lineage chain}
+\figlabeldef{F17.select}{role selection\\(deepest wins)}
+\figlabeldef{F17.reports}{per-node\\self-report}
+\figlabeldef{F17.writer}{writer evidence\\(typed configs)}
+\figlabeldef{F17.bundle}{published bundle\\(verbatim bytes)}
+\figlabeldef{F17.grounds}{grounds}
+\figlabeldef{F17.same}{same bytes}
+% F17 phase-column headings (English in all editions; shared geometry)
+\figlabeldef{F17.head.src}{exploration outputs}
+\figlabeldef{F17.head.asm}{deterministic assembler}
+\figlabeldef{F17.head.out}{two consumers}
+
+% ---------------- F18: research memory (typed index over evidence) ----
+% New-style figure (ari* house language): English labels shared verbatim
+% by all three language editions.
+\figlabeldef{F18.head.evidence}{Evidence}
+\figlabeldef{F18.head.store}{Typed store}
+\figlabeldef{F18.head.readers}{Two readers}
+\figlabeldef{F18.report}{node\_report.json\\(source of truth)}
+\figlabeldef{F18.repro}{reproduction events\\(append-only)}
+\figlabeldef{F18.consolidate}{consolidate\\(deterministic)}
+\figlabeldef{F18.store}{typed research memory\\ancestor-scoped $\cdot$ CoW}
+\figlabeldef{F18.artifacts}{artefacts\\logs $\cdot$ outputs $\cdot$ source}
+\figlabeldef{F18.refs}{content-hash\\refs}
+\figlabeldef{F18.fold}{fold $\to$ latest}
+\figlabeldef{F18.workctx}{working context\\(every node start)}
+\figlabeldef{F18.usable}{$\mathrm{usable}(\mu)$}
+\figlabeldef{F18.vctx}{verified context\\(paper claims)}
+
+% ---------------- F19: VirSci literature-grounded, platform-aware ideation ----
+% v0.9.0 mechanism shown: platform-aware ideation (run-start capability
+% probe folds measured constraints into the deliberation topic).
+% English labels, shared verbatim across the three editions.
+\figlabeldef{F19.snap}{Semantic Scholar snapshot}
+\figlabeldef{F19.corpus}{corpus + SPECTER2\\retrieval index}
+\figlabeldef{F19.coauthorg}{co-author graph\\(freshness-ranked)}
+\figlabeldef{F19.team}{scientist team}
+\figlabeldef{F19.pa}{A}
+\figlabeldef{F19.pb}{B}
+\figlabeldef{F19.pc}{C}
+\figlabeldef{F19.rounds}{propose $\cdot$ critique $\cdot$ converge}
+\figlabeldef{F19.delib}{$K$-round deliberation}
+\figlabeldef{F19.select}{select\_coauthors\\(freshness)}
+\figlabeldef{F19.ground}{retrieval\\grounding}
+\figlabeldef{F19.idea}{idea.json\\hypothesis $\cdot$ metric $\cdot$ plan}
+\figlabeldef{F19.platform}{execution platform}
+\figlabeldef{F19.probe}{capability probe\\(run start)}
+\figlabeldef{F19.fold}{constraints fold into topic}
+
+% ---------------- F20: Story2Proposal claim--evidence contract ----
+% v0.9.0 mechanisms shown: mint-once contract, suggestion-only emission
+% hints. English labels, shared verbatim across the three editions.
+\figlabeldef{F20.head.contract}{Contract}
+\figlabeldef{F20.contract}{metric contract}
+\figlabeldef{F20.names}{evidence names\\(exact match)}
+\figlabeldef{F20.mint}{minted once;\\reused verbatim}
+\figlabeldef{F20.head.explore}{Exploration}
+\figlabeldef{F20.emit}{nodes emit\\measurements}
+\figlabeldef{F20.check}{emission check\\(advisory)}
+\figlabeldef{F20.hints}{suggestion hints:\\re-emit exact names}
+\figlabeldef{F20.evid}{Recorded evidence}
+\figlabeldef{F20.result}{result\\(node $\cdot$ result id)}
+\figlabeldef{F20.figart}{figure artefact}
+\figlabeldef{F20.manu}{Manuscript}
+\figlabeldef{F20.cnum}{numeric claim}
+\figlabeldef{F20.cfig}{figure claim}
+\figlabeldef{F20.bind}{binds (stable id)}
+\figlabeldef{F20.gate}{claim--evidence gate\\(deterministic, no LLM)}
+\figlabeldef{F20.derive}{re-derive number\\within tolerance}
+\figlabeldef{F20.verdict}{pass / block (strict)}
+\figlabeldef{F20.axes}{data-fidelity: blocking;\\reasoning $\cdot$ visual: advisory}
+\figlabeldef{F21.head.claims}{Declared claims}
+\figlabeldef{F21.claims}{12 falsifiable claims\\9 probes + 3 computed chain}
+\figlabeldef{F21.head.lineage}{Lineage closure}
+\figlabeldef{F21.parent}{probe node\\emits measurements}
+\figlabeldef{F21.child}{child node\\fits, validates, selects}
+\figlabeldef{F21.inherit}{inherits work dir}
+\figlabeldef{F21.closes}{closes claims 10--12}
+\figlabeldef{F21.head.gate}{Claim--evidence gate}
+\figlabeldef{F21.verdict}{12/12 grounded\\0 errors}
+\figlabeldef{F21.finalize}{finalize}

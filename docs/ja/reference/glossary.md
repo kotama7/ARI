@@ -14,7 +14,13 @@ sources:
     role: implementation
   - path: ari-skill-paper-re
     role: implementation
-last_verified: 2026-05-26
+  - path: ari-core/ari/pipeline/claim_gate
+    role: implementation
+  - path: ari-core/ari/pipeline/verified_context.py
+    role: implementation
+  - path: ari-skill-memory
+    role: implementation
+last_verified: 2026-06-10
 ---
 
 # 用語集
@@ -64,6 +70,21 @@ BFTS の硬い打ち切り述語: `current_total ≥ max_total_nodes`、
 `depth ≥ max_depth`、または `_sterile is True` のときに剪定します。
 ここに LLM の判断は入りません。[BFTS アルゴリズム](../concepts/bfts.md)を参照。
 
+**computed-evidence claim（計算由来エビデンスのクレーム）**
+要求エビデンスを直接の測定ではなく、既存の測定値から *計算して* 得る必要がある
+契約クレーム（パラメータフィッティング、ホールドアウト検証、モデルベース選択など）。
+元の測定値をすでに保持しているノードを展開することでのみ到達できます —
+**lineage chaining** を参照。
+
+**lineage chaining（系統チェイニング）**
+computed-evidence claim を到達可能にする BFTS の仕組み: 展開選択ヒントが契約
+エビデンスを最も多く保持するノードを名指しし、*そのノード* の展開を推奨します
+（子は親の `work_dir` を継承します）。また、継承した `work_dir` に系統の測定値が
+すでに存在する子ノードには、存在するファイルと契約名を列挙した INHERITED DATA
+ノートが固定義務（pinned obligation）に付きます。流れるのは名前とファイルのみで、
+値や兄弟ノードの結論は決して流れません（fault containment を維持）。
+[BFTS アルゴリズム](../concepts/bfts.md)を参照。
+
 ## 評価
 
 **scientific_score / `_scientific_score`**
@@ -96,9 +117,29 @@ BFTS の硬い打ち切り述語: `current_total ≥ max_total_nodes`、
 [ルーブリックスキーマ](rubric_schema.md)を参照。
 
 **lineage decision（系統判断）**
-合成スコアが停滞したとき、BFTS のフックが LLM に
-`continue` / `switch_to_idea` / `fanout` / `terminate` を選ばせます。
+合成スコアが停滞したとき、BFTS のフックはまず決定論的に、最も有望な *未使用* の次点
+アイデアへ `switch_to_idea` で方向転換します — 次点アイデアを未使用のまま死蔵させず、
+実際に試させるためです。LLM ジャッジ（`continue` / `switch_to_idea` / `fanout` /
+`terminate` のいずれかを選びます）は、フォールバックとしてのみ参照されます — 予算が
+枯渇したとき、再帰上限に達したとき、または未使用の代替が残っていないときです。
 [アーキテクチャ → Plan / Venue 契約](../concepts/architecture.md#plan--venue-contract-v070)を参照。
+
+**claim-evidence gate（主張・根拠ゲート）**
+決定論的で LLM を使わないゲート（`claim_evidence_hard_gate`）。論文で報告された各数値を
+記録済みの結果から許容誤差内で再導出し、数値カバレッジ・オペランド解決・図の存在を
+チェックします。既定では `warn`（報告のみ）モードで有効です。ブロッキングエラーで
+finalize を止めるには `claim_gate_policy.mode: strict`（または
+`ARI_CLAIM_GATE_MODE=strict`）を設定します。`comparison_scope` が `any`（既定）の場合、
+環境をまたいだ比較は透明性のための警告として扱われ、`same_environment` の場合は
+ブロッキングエラーになります。[設定](configuration.md)を参照。
+
+**mint-once（契約凍結）**
+実行レベルの `metric_contract.json` は一度だけ書き込まれるというルール: claims を
+含む契約が最初に永続化された後、`make_metric_spec` は再抽出せず、永続化された契約を
+そのまま返します（`contract_frozen: true`）。LLM の命名は参照的に安定しないため、
+実行途中の再生成はエビデンス語彙を変えてしまい、すでに出力済みのエビデンスが
+完全一致ゲートから見えなくなります。scaffold のみ（`claims` なし）の契約は凍結
+されません。[ファイル形式](file_formats.md#metric_contractjson)を参照。
 
 ## メモリ
 
@@ -117,6 +158,14 @@ v0.6.0 以降で使われているメモリバックエンド（旧 MemGPT）。
 エージェントが割り当てられ、2 つのコレクションを保持します: `ari_node_<hash>`（祖先スコープの
 アーカイブ）と `ari_react_<hash>`（フラットな ReAct トレース）。
 [メモリアーキテクチャ](../concepts/memory.md)を参照。
+
+**verified context / verifiable research memory（検証済みコンテキスト / 検証可能な研究メモリ）**
+Letta の上に構築される、型付きで sha256 来歴付きのレイヤー。ノード終了時に
+`node_report.json` が型付き・来歴付きのレコード（`experiment_result` / `failure_case` /
+`reflection`）へ統合されます。続いて論文パイプラインが、成果物に裏付けられた
+`verified_context.json`（ベストノードの root→best 系統にスコープされる）を導出し、
+実際に測定された内容に論文の主張を接地させます。`ARI_MEMORY_CONSOLIDATE` により既定で
+有効です。[検証可能な研究メモリ](../concepts/verifiable_research_memory.md)を参照。
 
 ## エージェントとスキル
 

@@ -24,6 +24,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `guidance.py` — per-stage step-guidance + metrics-validation helpers.
   - `loop.py` — `AgentLoop` driver + per-node prompt builder.
   - `message_utils.py` — ReAct-message helpers (`_extract_job_ids`, `_tool_was_called`).
+  - `metric_contract.py` — producer/agent half of the metric-correctness contract (mirrors `pipeline.claim_gate`): domain-neutral obligation text (`build_contract_obligation`), run-level claim-coverage + lineage-chaining steering (`build_coverage_status`, `build_expand_coverage_hint`, `build_inherited_data_note`, `collect_node_measurement_names`), and the post-emit continuation nudge (`build_emission_nudge`).
   - `react_driver.py` — generic ReAct driver for pipeline `react:` stages, with sandbox enforcement.
   - `run_env.py` — capture/read helper for `_run_env.json`.
   - `tool_manager.py` — OpenAI tool conversion, dispatch, phase-aware filtering.
@@ -72,7 +73,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `__init__.py` — public `LLMClient` + contract.
   - `cli_server.py` — OpenAI-compatible HTTP shim for agentic CLIs.
   - `client.py` — `LLMClient`/`LLMMessage`: completion + tool calling + cost recording.
-  - `routing.py` — TODO
+  - `routing.py` — `resolve_litellm_model`: single source of truth for litellm provider-prefix rules so every caller routes a `(model, backend)` to the same id.
 - `mcp/` — MCP client talking to `ari-skill-*` subprocesses.
   - `README.md` — mcp index.
   - `__init__.py` — public `MCPClient` + contract.
@@ -102,6 +103,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `node.py` — `Node` data model + `NodeStatus` / `NodeLabel` enums.
   - `node_selection.py` — shared node-selection helpers + publication source-file selection.
   - `root_idea_selector.py` — run-start LLM root-idea pick + selection log.
+  - `web_provenance.py` — read/write `bfts_web_provenance.json`, the marker recording that web search was opted into during BFTS exploration (flags the trajectory non-reproducible, P5).
   - `node_report/` — per-node `node_report.json` package.
     - `README.md` — node_report index.
     - `__init__.py` — re-exports the builder + legacy shim.
@@ -115,7 +117,19 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `orchestrator.py` — top-level entry points (`build_scientific_data`, `run_pipeline`).
   - `stage_control.py` — loop_back / VLM-feedback control.
   - `stage_runner.py` — stage execution helpers (retry, ReAct, subprocess).
+  - `verified_context.py` — artifact-grounded verified context for write_paper (best node's root→best lineage → `verified_context.json`; `render_grounded_block`). Exposed via `ari.public.verified_context`.
   - `yaml_loader.py` — workflow/pipeline loaders + `{{var}}` resolution.
+  - `claim_gate/` — deterministic `claim_evidence_hard_gate` (Story2Proposal Phase B). See its `README.md`.
+    - `README.md` — claim_gate index.
+    - `__init__.py` — package init; re-exports `run_hard_gate`.
+    - `contract.py` — `check_contract` enforces a config's DECLARED `metric_contract` (provenance/placeholder, declared invariants, correctness, formula recompute, plan-fidelity claims, idea-owned ceiling/correctness flags → findings); `check_emission` mirrors the presence checks as producer-side advisory warnings.
+    - `formula_eval.py` — `safe_eval` whitelisted-AST evaluator for declared metric-contract expressions (arithmetic/comparisons/conditionals/reducers over bound scalars+lists; None on anything unsupported, never `eval`).
+    - `gate.py` — `run_hard_gate` orchestration (all checks → report + `should_block`).
+    - `invariants.py` — universal-math invariant registry + `classify_concept` (name→concept) and `scan_science_data` emitting `invariant_violation` findings (declared bounds + name-inferred normalized<=1 / probability[0,1]; no domain knowledge).
+    - `latex.py` — deterministic LaTeX section + numeric-token parsing (coverage fallback; mirrors ari-skill-paper/src/claim_links.py).
+    - `numeric.py` — formula registry + `recompute` + `within_tolerance` (Phase B2; mirrored in ari-skill-transform/src/claims.py).
+    - `policy.py` — `claim_gate_policy` loader (defaults → arg → `claim_gate_policy.json` → env `ARI_CLAIM_GATE_MODE`).
+    - `resolve.py` — operand/evidence resolution against `tree.json` / `results.json` / `node_report.json`.
 - `prompts/` — external prompt templates (Phase PC).
   - `README.md` — prompts index.
   - `__init__.py` — exports + `PromptLoader` plumbing.
@@ -148,12 +162,14 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `public/` — public API surface for ARI skills (import-only contract).
   - `README.md` — public index.
   - `__init__.py` — exported sub-modules + rationale.
+  - `claim_gate.py` — re-exports five symbols from `ari.pipeline.claim_gate`: `run_hard_gate` (→ ari-skill-evaluator), `check_emission` (→ ari-skill-coding), `scan_science_data` (→ ari-skill-transform), plus `classify_concept` / `CONCEPT_INVARIANTS` (shared concept→invariant registry).
   - `config_schema.py` — re-export of `ari.config` models.
   - `container.py` — re-export of `ari.container`.
   - `cost_tracker.py` — re-export of `ari.cost_tracker`.
   - `llm.py` — re-export of `ari.llm.client.LLMClient`.
   - `paths.py` — re-export of `ari.paths.PathManager`.
   - `run_env.py` — re-export of `ari.agent.run_env` capture helpers.
+  - `verified_context.py` — re-export of `ari.pipeline.verified_context` (`render_grounded_block` / `write_verified_context`; used by ari-skill-paper).
 - `publish/` — `ari ear publish`: package + ship a curated EAR.
   - `README.md` — publish index.
   - `__init__.py` — publish flow + artifacts.

@@ -1,35 +1,55 @@
-% F04: ReAct loop — Think / Act / Observe / Reflect with numbered stages,
-%       paper-style typography.
+% F04: per-node ReAct driver loop — Think / Act / Observe / Reflect as a
+%      2x2 ring of experimentation-phase boxes inside a dashed loop
+%      enclosure; white shared-infrastructure inputs (memory context,
+%      phase-filtered toolset) feed the ring from above; numbered step
+%      badges replace edge labels; the single accent edge is the dashed
+%      early-exit back edge (observation already closes the open question).
 % style.tikzstyles is loaded by shared/preamble.tex / standalone wrapper.
-\begin{tikzpicture}[node distance=2.0cm and 2.5cm]
+% The ari* house styles live in _style.tex (same directory). \input resolves
+% from the build cwd, so try the language-build path (cwd report/<lang>/),
+% then the repo-root path (cwd report/, used by the preview renderer), then
+% the same-directory fallback (standalone wrappers compiled beside the file).
+\IfFileExists{../shared/figures/tikz/_style.tex}%
+  {\input{../shared/figures/tikz/_style.tex}}%
+  {\IfFileExists{shared/figures/tikz/_style.tex}%
+    {\input{shared/figures/tikz/_style.tex}}%
+    {\input{_style.tex}}}%
+\begin{tikzpicture}[aricanvas]
 
-  \node[state init]                            (think) {\figlabel{react.think}};
-  \node[state, right=of think]                 (act)   {\figlabel{react.act}};
-  \node[state, below=of act]                   (obs)   {\figlabel{react.observe}};
-  \node[state final, below=of think]           (refl)  {\figlabel{react.reflect}};
+  % --- the four ReAct stages: a ring owned by the experimentation phase ---
+  \node[aribox exp]                            (think) {\figlabel{react.think}};
+  \node[aribox exp, right=of think]            (act)   {\figlabel{react.act}};
+  \node[aribox exp, below=1.15cm of act]       (obs)   {\figlabel{react.observe}};
+  \node[aribox exp, below=1.15cm of think]     (refl)  {\figlabel{react.reflect}};
 
-  % numbered step badges, perched on each state's upper-left corner
-  \node[numbered step, above left=0.05cm and -0.15cm of think.north west] {1};
-  \node[numbered step, above left=0.05cm and -0.15cm of act.north west]   {2};
-  \node[numbered step, above left=0.05cm and -0.15cm of obs.north west]   {3};
-  \node[numbered step, above left=0.05cm and -0.15cm of refl.north west]  {4};
+  % numbered step badges on the outer corners (flow order, no edge labels)
+  \node[aribadge] at (think.north west) {1};
+  \node[aribadge] at (act.north east)   {2};
+  \node[aribadge] at (obs.south east)   {3};
+  \node[aribadge] at (refl.south west)  {4};
 
-  % external annotations (yellow = memory, orange = phase-filtered tools)
-  \node[station, fill=ari-orange!22, draw=ari-vermilion,
-        above=0.6cm of act]                    (tools) {\figlabel{F4.toolset}};
-  \node[station, fill=ari-yellow!30, draw=ari-orange,
-        left=0.6cm of think]                   (mem)   {\figlabel{F4.memcontext}};
+  % dashed enclosure marks the per-node iteration loop
+  \node[ariloop, fit=(think)(act)(obs)(refl)] (loop) {};
 
-  % --- big arrows (paper-style) ---
-  \draw[big arrow] (think) -- (act)   node[edge label, font=\sffamily\footnotesize]{\figlabel{F4.tool_call}};
-  \draw[big arrow] (act)   -- (obs)   node[edge label, font=\sffamily\footnotesize]{\figlabel{F4.execute}};
-  \draw[big arrow] (obs)   -- (refl)  node[edge label, font=\sffamily\footnotesize]{\figlabel{F4.parse}};
-  \draw[big arrow] (refl)  -- (think) node[edge label, font=\sffamily\footnotesize]{\figlabel{F4.update}};
-  \draw[arrow dashed] (obs) to[bend left=18] (think);
+  % --- shared infrastructure feeding the loop (white = outside any phase) ---
+  \node[aribox, above=0.85cm of think]         (mem)   {\figlabel{F4.memcontext}};
+  \node[aribox, above=0.85cm of act]           (tools) {\figlabel{F4.toolset}};
 
-  \draw[arrow dashed] (tools.south) -- (act.north);
-  \draw[arrow dashed] (mem.east)    -- (think.west);
+  % --- main cycle (solid ink) ---
+  \draw[ariarrow] (think) -- (act);
+  \draw[ariarrow] (act)   -- (obs);
+  \draw[ariarrow] (obs)   -- (refl);
+  \draw[ariarrow] (refl)  -- (think);
 
-  % budget annotation
-  \node[stage title, below=0.3cm of refl] {\figlabel{F4.maxsteps}};
+  % the one accent edge: dashed early-exit back edge across the ring
+  \draw[ariarrow accent, dashed] (obs.north west) to[bend left=12] (think.south east);
+
+  % secondary inputs into the loop
+  \draw[ariarrow muted] (mem)   -- (think);
+  \draw[ariarrow muted] (tools) -- (act);
+
+  % loop budget note, with the iteration glyph beside the enclosure
+  \node[arinote, below=0.3cm of loop] (budget) {\figlabel{F4.maxsteps}};
+  \pic at ([xshift=-3.2mm]budget.west) {ariglyph loop};
+
 \end{tikzpicture}

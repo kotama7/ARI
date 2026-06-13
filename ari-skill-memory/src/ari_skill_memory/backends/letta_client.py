@@ -250,11 +250,40 @@ class _SdkLettaAdapter:
         order_by: str | None = None, order: str | None = None,
         limit: int | None = None,
     ) -> list[dict]:
-        fetch_limit = max(self.cfg.letta_overfetch, (limit or 0) * 10, 200)
-        page = self._letta.agents.passages.list(
-            agent_id=agent_id, limit=fetch_limit,
-        )
-        rows = self._rows_from_page(page)
+        # Page through ALL passages via cursor so the client-side filter sees
+        # the whole archival pool, not just the first page. Previously a single
+        # `passages.list(limit=200)` silently truncated checkpoints with >200
+        # passages (PLAN §3.5 / Phase 4). `limit` here caps the FILTERED result,
+        # not the fetch — so it is applied after the full sweep below.
+        page_size = max(self.cfg.letta_overfetch, 200)
+        _HARD_CAP = 20000  # backstop against an unbounded / looping cursor
+        rows: list[dict] = []
+        seen: set = set()
+        after: str | None = None
+        while len(rows) < _HARD_CAP:
+            kwargs: dict = {"agent_id": agent_id, "limit": page_size}
+            if after is not None:
+                kwargs["after"] = after
+            try:
+                page = self._letta.agents.passages.list(**kwargs)
+            except TypeError:
+                # SDK without cursor pagination — fall back to a single page.
+                page = self._letta.agents.passages.list(agent_id=agent_id, limit=page_size)
+                for r in self._rows_from_page(page):
+                    if r["id"] not in seen:
+                        seen.add(r["id"]); rows.append(r)
+                break
+            page_rows = self._rows_from_page(page)
+            fresh = [r for r in page_rows if r["id"] not in seen]
+            if not fresh:
+                break  # empty page or a looping cursor → done
+            for r in fresh:
+                seen.add(r["id"]); rows.append(r)
+            if len(page_rows) < page_size:
+                break  # last page
+            after = page_rows[-1].get("id")
+            if not after:
+                break
         rows = [r for r in rows if r["metadata"].get("collection") == collection]
         if filter:
             rows = [r for r in rows if _match(r["metadata"], filter)]

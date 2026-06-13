@@ -17,6 +17,7 @@ targets the like-named module under `ari/`.
 - `test_api_process.py` — process-control service (stop-all + GPU monitor).
 - `test_api_schema_contract.py` — stable viz endpoint response-shape contracts.
 - `test_bfts.py` — BFTS loop.
+- `test_bfts_allow_web.py` — `bfts.allow_web` / `ARI_BFTS_ALLOW_WEB` toggle: web-skill phase gating in/out of bfts + the `bfts_web_provenance.json` marker roundtrip.
 - `test_bfts_diversity.py` — BFTS diversity/fanout.
 - `test_bfts_eval_config_integration.py` — BFTS + eval-config integration.
 - `test_bfts_frontier_score.py` — BFTS frontier scoring.
@@ -24,9 +25,12 @@ targets the like-named module under `ari/`.
 - `test_checkpoint_legacy_tree.py` — legacy node_*/tree.json resolution in list/summary.
 - `test_child_node_workflow.py` — child-node workflow.
 - `test_child_workdir_inherit.py` — child workdir inheritance.
+- `test_claim_evidence_hard_gate.py` — Story2Proposal Phase B deterministic gate: recompute, mismatch, operand resolution, coverage, blocking semantics.
+- `test_claim_gate_contract.py` — declared-contract enforcement: `safe_eval` formula evaluator, `contract.check_contract`/`check_emission` (recompute mismatch, claim-evidence coverage, provenance/ceiling/correctness requirement flags, lexical near-miss hints) + gate blocking at final.
+- `test_claim_gate_invariants.py` — concept→invariant registry (`classify_concept`, `CONCEPT_INVARIANTS`, `scan_science_data`): universal-math bounds (normalized≤1, probability in [0,1]) fire domain-neutrally, leave unbounded metrics alone, and block at final via `run_hard_gate`.
 - `test_cli.py` — CLI.
 - `test_cli_extended.py` — extended CLI cases.
-- `test_cli_shim_toolcalls.py` — TODO
+- `test_cli_shim_toolcalls.py` — CLI shim (`ari.llm.cli_server`) function-calling: `extract_tool_calls`/`render_prompt`/`complete` turn text-only `claude -p`/`codex exec` into OpenAI `tool_calls`, plus cost passthrough and MCP-direct mode vs. text-catalog fallback.
 - `test_clone.py` — clone behaviour.
 - `test_config.py` — config loading.
 - `test_container.py` — container runtime.
@@ -59,10 +63,12 @@ targets the like-named module under `ari/`.
 - `test_lineage_decision_persistence.py` — lineage-decision persistence.
 - `test_llm.py` — LLM client.
 - `test_llm_evaluator_axes.py` — LLM evaluator axes.
-- `test_llm_routing.py` — TODO
+- `test_llm_routing.py` — single-source litellm provider-prefix routing: `resolve_litellm_model` prefix-by-backend (idempotent, env fallback) + `cost_tracker._apply_ari_routing`/metadata injector so a skill's bare `litellm.completion` reaches the shim.
+- `test_loop_message_order.py` — `loop.repair_tool_message_order` defense-in-depth: restores contiguous tool-response blocks, moves interleaved user injections past them, and drops orphaned assistant/partial pairings the API would reject.
 - `test_max_react_passthrough.py` — max-ReAct passthrough.
 - `test_mcp_cow_concurrency.py` — MCP copy-on-write concurrency.
 - `test_memory.py` — memory backend.
+- `test_metric_contract_obligation.py` — `ari.agent.metric_contract` producer obligation: domain-neutral `build_contract_obligation`/`build_emission_nudge`, run-level claim coverage (`build_coverage_status`, `collect_run_measurement_names`), and lineage chaining (`collect_node_measurement_names`, `build_expand_coverage_hint`, `build_inherited_data_note`).
 - `test_model_passthrough.py` — model passthrough.
 - `test_no_user_home_writes.py` — no-user-home-writes guard.
 - `test_node.py` — Node data model.
@@ -76,6 +82,7 @@ targets the like-named module under `ari/`.
 - `test_pidfile.py` — pidfile handling.
 - `test_pipeline_e2e.py` — pipeline end-to-end.
 - `test_pipeline_metric_parsing.py` — pipeline metric parsing.
+- `test_pipeline_verified_context.py` — verified-context building blocks (best-node selection, lineage scoping, grounded-block renderer).
 - `test_plan_promote.py` — plan promotion.
 - `test_prompt_extraction.py` — prompt extraction.
 - `test_public_api_boundary.py` — public-API boundary.
@@ -97,9 +104,11 @@ targets the like-named module under `ari/`.
 - `test_skill_public_contract.py` — skills import core via the public contract.
 - `test_status_fallback.py` — status fallback.
 - `test_system_prompt_memory.py` — system-prompt memory.
+- `test_tool_timeout_tier.py` — MCP `_resolve_tool_timeout` tiering: LLM/compile paper stages (incl. `paper_refine`, `compile_paper`) get the slow timeout, plain tools the 300s default (regression guard for the paper_refine shim-congestion timeout).
 - `test_trace_log_truncation.py` — trace-log truncation.
 - `test_upload_to_node.py` — upload to compute node.
 - `test_variable_passthrough.py` — variable passthrough.
+- `test_verified_context_wiring.py` — orchestrator gating of verified_context.json on `ARI_MEMORY_CONSOLIDATE` (off→skip / on→build / build-failure→pipeline survives).
 - `test_virsci_off.py` — VirSci-off path.
 - `test_viz_fewshot_api.py` — viz few-shot API.
 - `test_viz_memory_api.py` — viz memory API.
@@ -109,3 +118,4 @@ targets the like-named module under `ari/`.
 - `test_workflow_contract.py` — workflow contract.
 - `test_workflow_editor.py` — workflow editor.
 - `test_workflow_template_resolution.py` — workflow template resolution.
+- `test_working_context_injection.py` — `loop.build_working_context_messages` Tier-1/2 injection: experiment core + selected idea, deterministic per-entry-capped ancestor conclusions, deduped semantic supplement, persisted metric-contract obligation (with platform note) for every node, and pinned-window marker matching.

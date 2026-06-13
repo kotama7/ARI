@@ -143,6 +143,19 @@ class BFTSConfig(BaseModel):
                     "Template must accept {experiment_goal} and "
                     "{candidates} and reply with a 0-based integer index.",
     )
+    allow_web: bool = Field(
+        False,
+        description="Opt-in: expose web-skill (web_search / fetch_url / "
+                    "search_arxiv / search_semantic_scholar) to the BFTS node "
+                    "agent during exploration. Default False keeps the search "
+                    "loop reproducible (P5) — live web results are "
+                    "time-varying. When True, ARI records a "
+                    "non-reproducible-trajectory marker "
+                    "(`bfts_web_provenance.json`). Overridden by "
+                    "`ARI_BFTS_ALLOW_WEB` (1/true/yes/on). Note: idea-skill's "
+                    "`survey` already provides a bounded literature lookup "
+                    "during bfts regardless of this flag.",
+    )
 
 
 class CheckpointConfig(BaseModel):
@@ -340,12 +353,30 @@ def load_config(path: str) -> ARIConfig:
         _merge_bfts_disabled_tools(cfg, raw)
         _apply_llm_env_overrides(cfg)
         _apply_checkpoint_env_overrides(cfg)
+        _apply_web_phase_for_bfts(cfg)
         return cfg
     cfg = ARIConfig(**{k: v for k, v in raw.items() if k in ARIConfig.model_fields})
     _merge_bfts_disabled_tools(cfg, raw)
     _apply_llm_env_overrides(cfg)
     _apply_checkpoint_env_overrides(cfg)
+    _apply_web_phase_for_bfts(cfg)
     return cfg
+
+
+def consolidation_enabled() -> bool:
+    """Whether node-end typed-memory consolidation + verified-context are active.
+
+    Default ON: real runs populate the typed research-memory store and ground
+    paper claims on it (validated live: the node-end hook writes provenanced
+    experiment_result entries). Set ``ARI_MEMORY_CONSOLIDATE`` to
+    ``0``/``false``/``no``/``off`` to disable. Single source of truth so the
+    BFTS node-end hook and the paper-pipeline verified-context builder stay in
+    sync.
+    """
+    v = os.environ.get("ARI_MEMORY_CONSOLIDATE")
+    if v is None:
+        return True
+    return v.strip().lower() not in ("0", "false", "no", "off")
 
 
 def _apply_checkpoint_env_overrides(cfg: "ARIConfig") -> None:
@@ -366,6 +397,33 @@ def _apply_checkpoint_env_overrides(cfg: "ARIConfig") -> None:
         cfg.logging.dir = _log
     elif _ckpt:
         cfg.logging.dir = _ckpt
+
+
+# Infrastructure skill name (workflow.yaml `skills[].name`) carrying the
+# general-purpose web tools. Default-gated to the paper/reproduce phases.
+_WEB_SKILL_NAME = "web-skill"
+
+
+def _apply_web_phase_for_bfts(cfg: "ARIConfig") -> None:
+    """When ``bfts.allow_web`` is set, expose web-skill during the bfts phase.
+
+    Appends ``"bfts"`` to the web-skill's ``phase`` so the existing phase
+    filter (``ari.mcp.client._phase_matches``) hands its tools to the BFTS node
+    agent. Idempotent and default-off: a reproducible run leaves the web-skill
+    phase ([paper, reproduce]) untouched. Safe to call from both ``load_config``
+    (YAML value) and ``apply_bfts_env_overrides`` (env value).
+    """
+    if not getattr(cfg.bfts, "allow_web", False):
+        return
+    for skill in cfg.skills:
+        if getattr(skill, "name", "") != _WEB_SKILL_NAME:
+            continue
+        phases = skill.phase
+        phases = [phases] if isinstance(phases, str) else list(phases)
+        if "bfts" not in phases and "all" not in phases:
+            phases.append("bfts")
+            skill.phase = phases  # Pydantic does not validate on assignment.
+        return
 
 
 def apply_bfts_env_overrides(cfg: "ARIConfig") -> None:
@@ -405,6 +463,12 @@ def apply_bfts_env_overrides(cfg: "ARIConfig") -> None:
         "ucb_like",
     ):
         cfg.bfts.frontier_score = _fs
+    # Opt-in web search during BFTS exploration. Env wins over YAML; an
+    # explicit falsy value disables it even when workflow.yaml set it on.
+    _w = os.environ.get("ARI_BFTS_ALLOW_WEB")
+    if _w is not None:
+        cfg.bfts.allow_web = _w.strip().lower() in ("1", "true", "yes", "on")
+    _apply_web_phase_for_bfts(cfg)
 
 
 def apply_evaluator_env_overrides(cfg: "ARIConfig") -> None:
@@ -443,6 +507,42 @@ def _apply_llm_env_overrides(cfg: "ARIConfig") -> None:
     _u = os.environ.get("ARI_LLM_API_BASE")
     if _u is not None and _u != "":
         cfg.llm.base_url = _u
+
+
+def export_resolved_config_to_skill_env(cfg: "ARIConfig") -> None:
+    """Bridge the RESOLVED main config to the env vars skill SUBPROCESSES read.
+
+    The main agent loop reads ``cfg.llm`` directly, but skill subprocesses read their
+    LLM / SLURM config from environment variables (the idea skill's ``ARI_LLM_MODEL``,
+    the HPC skill's ``ARI_SLURM_PARTITION``). The GUI launcher injects those vars; a
+    bare ``ari run`` did NOT, so a skill silently fell back to its OWN default (the
+    idea skill -> ``ollama_chat/qwen3:32b`` against a dead Ollama; the HPC skill ->
+    sinfo's first partition, possibly the wrong architecture) even though the run
+    was configured for a specific model and partition. This bridges cfg -> env so the CLI configures skills
+    the same way the GUI does.
+
+    ``setdefault`` => an explicitly-set env var still wins (the user/GUI override is
+    never clobbered); this only fills the gap a bare CLI left empty.
+    """
+    if getattr(cfg.llm, "model", None):
+        os.environ.setdefault("ARI_LLM_MODEL", str(cfg.llm.model))
+    if getattr(cfg.llm, "backend", None):
+        os.environ.setdefault("ARI_BACKEND", str(cfg.llm.backend))
+    if getattr(cfg.llm, "base_url", None):
+        os.environ.setdefault("ARI_LLM_API_BASE", str(cfg.llm.base_url))
+    # SLURM partition: export only a CONCRETE choice (not "auto"/empty), so the HPC
+    # skill uses it instead of auto-detecting sinfo's first partition. Look in the
+    # resources dict (ARI_SLURM_PARTITION-sourced) then the profile's hpc section.
+    _part = ""
+    _res = getattr(cfg, "resources", None)
+    if isinstance(_res, dict):
+        _part = str(_res.get("partition") or "").strip()
+    if not _part:
+        _hpc = getattr(cfg, "hpc", None)
+        if isinstance(_hpc, dict):
+            _part = str(_hpc.get("partition") or "").strip()
+    if _part and _part.lower() != "auto":
+        os.environ.setdefault("ARI_SLURM_PARTITION", _part)
 
 
 def _merge_bfts_disabled_tools(cfg: "ARIConfig", raw: dict) -> None:

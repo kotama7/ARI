@@ -4,44 +4,132 @@
 
 \subsection{面向代码的树搜索}\label{sec:related:treesearch}
 
-AIDE \cite{jiang2025aide} 将 ML 工程形式化为在计划/代码/调试
-状态上的树搜索;AlphaCode \cite{li2022competition} 是大规模
-生成与过滤在竞赛编程上的范例;MLE-bench 评估器
-\cite{chan2024mle} 现已成为衡量 ML 工程智能体的标准。
-ARI 沿用 AIDE 的 BFTS 骨架,但增加
-(i) LLM 主导的候选选择器
-(\cref{sec:exploration:node-selection}) —— 不固定闭式标量效
-用,使选择提示可联合权衡 \texttt{has\_real\_data}、整套
-metrics、深度与软性 \texttt{diversity\_bonus};
-以及 (ii) 跨运行的谱系
-(\cref{sec:exploration:lineage}),AIDE 与 MLE-bench 均未形式
-化此项。
+AIDE \cite{jiang2025aide} 将机器学习工程形式化为代码优化
+——一个解就是一段由无状态目标函数评分的脚本——并把试错过程
+铸成对一棵脚本树的搜索,树的边由起草、调试与改进相连。在
+MLE-bench \cite{chan2024mle} 上(75 项离线 Kaggle 竞赛,按
+真实奖牌门槛评分),这一脚手架占据主导:同一模型在 AIDE 下
+于 8.7\% 的竞赛中赢得奖牌,而在两种通用脚手架下分别仅为
+0.8\% 与 4.4\%,可见脚手架设计的分量胜过模型本身的原始能力。
+ARI 继承了解树的骨架,但将 AIDE 那条被其作者本人标记为局部
+最优风险的硬编码贪心策略,替换为一个 LLM 主导的选择器
+(\cref{sec:exploration:node-selection})——它联合权衡
+\texttt{has\_real\_data}、整套 \texttt{metrics}、深度以及一个
+软性的 \texttt{diversity\_bonus}——并加上
+\cref{sec:exploration:lineage} 的跨运行谱系。而当两份工作都
+随任务一并领受其目标时——MLE-bench 的作者也承认,真实研究
+``甚至可能并没有一个清晰的问题陈述''——ARI 自行铸造目标:
+指标契约(\cref{sec:paper:contract})在搜索开始之前就声明了
+何者方能算作证据。
+
+AlphaCode \cite{li2022competition} 是生成-过滤范式的经典成果:
+每道题采样多达数百万段程序,在题目给出的示例测试上过滤,并
+聚类到至多十份提交,在十场模拟 Codeforces 竞赛中达到平均排名
+位于参赛者前 54.3\%。该配方预设了一个廉价的、由任务提供的
+验证器;而一个 ARI 候选乃是在集群资源上执行的一次实验,并无
+现成的验证器,因此广度让位于对一个小前沿的最佳优先引导,廉价
+过滤也让位于针对该运行自身证据的确定性检查。
 
 \subsection{自主研究智能体}\label{sec:related:autonomous}
 
-AI~Scientist 系列 \cite{lu2024ai,lu2026towards} 端到端闭合类
-似循环(idea $\to$ experiment $\to$ paper),但未将评分细则与
-改稿循环作为一等对象暴露。VirSci \cite{su2024many} 模拟
-多个科学家人格,以共识评分输出;Agent~Laboratory
-\cite{schmidgall2025agent} 将智能体视为协作者而非驱动
-者。ARI 在两点运维上有别:\textbf{一切都驻留在检查点中}
-(P1 / P4),且评分细则即探索与撰写之间的契约。
+AI~Scientist 系列 \cite{lu2024ai,lu2026towards} 端到端地闭合了
+一个类似的循环(idea $\to$ experiment $\to$ paper),据报告每篇
+论文的成本低于若干美元,并配有一个在真实会议投稿上达到近乎人类
+平衡准确率的自动评审。但该评审是\emph{建议性}的——它对成品 PDF
+排序,而幻觉控制停留在提示词层面——其作者在罗列了被臆造的硬件、
+被捏造的消融表,以及一个被叙述为改进的负面结果之后,将结果的
+自动验证列为未来工作。ARI 是其逆否命题:实验在 BFTS 下分叉,而
+非每个想法只有一条线性轨迹;指标是一份在首次铸造时即冻结的
+运行级工件(\cref{sec:paper:contract});且验证会阻断——决定
+何者可被发表的,是一道确定性的 claim--evidence 闸门,而非一个
+评审分数(\cref{sec:paper:failures})。
+
+Agent~Laboratory \cite{schmidgall2025agent} 将智能体视为协作者
+而非驱动者:它要求人类提供一个研究想法,在一个 LLM 奖励模型
+(对计划遵循度评分)之下变异一个扁平的双程序池,并以模拟评审
+来把守论文。它最具启发性的结果是负面的:那些评审在十分制上
+比人类评审高估了 2.3 分——这是对何以整体式 LLM-as-judge 把守
+并不充分的最清晰量化。因此 ARI 的语义评审只引导而绝不阻断,
+阻断被保留给确定性闸门;并且每个节点都持久存于一棵检查点作用域
+的树中,而非一个瞬时的池里。
+
+VirSci \cite{su2024many} 覆盖了这些系统处理得最为单薄的阶段:
+一支以某研究社群的数字孪生为根基的科学家团队,其多智能体研讨
+在与当代研究的契合度和潜在影响力上,较单智能体基线分别提升了
+13.8\% 与 44.1\%。它止步于一份由基于嵌入邻近度的新颖性代理指标
+评分的摘要,其作者也呼吁更严格的下游验证。ARI 取下了这一分工的
+两半:它直接且不加修改地驱动 VirSci 原始的研讨引擎
+(\cref{fig:virsci})——基于新鲜度的 \texttt{select\_coauthors}
+团队组建,以及多智能体的 \texttt{generate\_idea} 循环——运行于
+一份实时的 Semantic~Scholar 快照之上,从而其所依托的机制乃是
+已发表者本身在当前文献上的执行;同时它在下游补上那被推迟的验证,
+在那里,claim--evidence 闸门下的已执行证据取代了代理式的新颖性
+评分。
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F19_virsci.tex}}
+  \caption{ARI 所驱动的 VirSci 式想法生成。
+           \texttt{select\_coauthors} 从一份冻结的 Semantic~Scholar
+           快照(带 SPECTER2 检索索引的语料,以及按新鲜度排序的
+           合著者图)组建一支异质的科学家团队;团队进行以对该快照
+           的检索为奠基的 $K$ 轮研讨,而一次运行开始时的能力探测把
+           平台被测得的约束折入研讨主题,使得收敛后的
+           \texttt{idea.json} 只承诺平台能够进行的测量。}
+  \label{fig:virsci}
+\end{figure}
 
 \subsection{论文评估}\label{sec:related:eval}
 
-PaperBench \cite{starace2025paperbench} 是与我们 \texttt{paper-re}
-集成最接近的对应物;它开创了评分细则即树的形式。我们沿用其按
-叶的分级与聚合权重 (\cref{eq:paperscore}),并扩展以按轴下限作
-为改稿护栏 (\cref{sec:paper:failures})。
+PaperBench \cite{starace2025paperbench} 开创了评分细则即树的
+形式:其 20 篇目标论文各自携带一份与作者共同开发的评分细则
+——共计 8,316 个可评分的叶子节点——其叶级评分为通过/不通过,
+并按加权平均聚合,且设有一个洁净起始的复现阶段,以使硬编码的
+结果无法冒充复制。ARI 原样引入该基准
+(\cref{sec:paper:paperbench}),采用相同的按叶分级与聚合权重
+(\cref{eq:paperscore}),并加上一个用作改稿护栏的按轴下限
+(\cref{sec:paper:failures})。它揭示的执行鸿沟——最强的智能体
+在代码开发上得分 43.3\%,但在执行上仅 4.5\%,在匹配结果上为零
+——正促使将验证移入生成之内,而非事后评分;且其手工搭建的
+评分细则(每篇论文耗时数周,并需原作者参与)将自动化评分细则
+构建留作未来工作,而这正是 ARI 所取的分支:评分细则按论文逐一
+生成(\cref{sec:paper:rubric}),因此手工评分细则的复现与可与
+排行榜相比较的分数,在设计上即不在范围之内。
+
+Story2Proposal \cite{qian2026story2proposal} 通过一份持久的
+共享契约——章节结构、视觉工件的注册表、全文档级的校验规则——
+来统辖结构化的稿件生成,由 writer、refiner 与 renderer 智能体
+在一个以推理验证、数据保真度与视觉一致性评分的
+generate--evaluate--adapt 循环下协同。其增益在四种 LLM 主干上
+均成立,但证据被作为给定输入接收,而其失效模式分析也承认一份
+稿件可以``在结构上有效,同时所含推理却不够严谨'':该契约约束的
+是结构,而非证据上的有效性。ARI 将这一原则及其各评估轴带入
+一个以执行为基础(execution-grounded)的流水线
+(\cref{sec:paper:evidence}):契约为实验记录补充引用稳定的
+节点、结果与图表标识符的 claim 与 numeric assertion;数据保真度
+成为从已记录结果重新推导每个报告数值的确定性闸门;推理与视觉
+一致性成为独立稿件评审之外一道不阻断的、以证据为根基的评审。
+由于 ARI 亲自执行实验,它把这份稿件级契约扩展到了以执行为基础
+的溯源(provenance)。
 
 \subsection{基础}\label{sec:related:foundations}
 
-智能体循环遵循 ReAct 模式 \cite{yao2023react};改稿循
-环源自 Self-Refine \cite{madaan2023self} 与 Reflexion
-\cite{shinn2023reflexion};在 \emph{思考} 步给 LLM 一份逐步
-草稿板的设计源自 Chain-of-Thought \cite{wei2022chain}。
-这些参考文献均未提议检查点作用域的状态,这是 ARI 的贡献。
+每节点的智能体循环(\cref{sec:exploration:react})遵循
+推理-行动(Reason-and-Act,ReAct)模式 \cite{yao2023react},其
+确切发现是一种权衡:将思考与有根据的行动交替进行,在显著削减
+幻觉的同时抬高了推理错误率。改稿循环承自 Self-Refine
+\cite{madaan2023self} 与 Reflexion \cite{shinn2023reflexion},
+二者各带一条 ARI 认真对待的告诫:Self-Refine 的增益在模型无法
+察觉自身错误之处便会消失,而 Reflexion 的消融实验表明,驱动其
+改进的是有根据的评估——而非记忆本身。因此 ARI 绝不让模型在事实
+问题上为自己评分:改稿由评分细则分数与闸门裁决引导,二者均在
+撰写者之外计算,而一项结果唯有在以工件为根基时才成为定量 claim
+(\cref{sec:exploration:memory})。\emph{思考} 步中的草稿板承自
+思维链(chain-of-thought)提示 \cite{wei2022chain},其增益被
+报告为随模型规模而涌现——其作者从未声称模型在进行推理。这些工作
+无一提出超出单条轨迹的状态;那使一次运行可复现的检查点作用域状态,
+是 ARI 的贡献。
 
-早期草稿曾另引一份 ML 研究智能体基准,但当候选来源均无法通过我
-们的校验规则 (\cref{sec:paper:failures}) 时,我们将该引用从相关
-工作中移除;此节仅保留可经 S2 校验的条目。
+早期草稿曾另引一份研究智能体基准,但当没有候选来源能通过
+\cref{sec:paper:failures} 的参考文献校验规则时,该引用被移除,
+因此此处的覆盖被限定为可经 Semantic~Scholar 索引校验的条目。

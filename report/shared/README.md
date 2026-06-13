@@ -30,6 +30,8 @@ Shared assets included by every language build (en/ja/zh) of the report.
     - `viz/` — viz prompt snapshots (auto-generated): `wizard_chat_goal.md`, `wizard_generate_config.md`.
       - `wizard_chat_goal.md` — wizard chat goal prompt.
       - `wizard_generate_config.md` — wizard config-generation prompt.
+- `assets/` — binary assets embedded into the report build.
+  - `sample_paper.pdf` — the autonomously generated sample paper, bound in full into the appendix (`\includepdf`, "The Generated Sample Paper").
 - `figures/` — shared figure sources, previews, and generation scripts.
   - `README.md` — figures index.
   - `CLAUDE.md` — figure-authoring contract.
@@ -44,6 +46,6 @@ Shared assets included by every language build (en/ja/zh) of the report.
     - `standalone.tex.tmpl` — auto-generated LaTeX wrapper for stand-alone TikZ rendering (article class).
     - `style.mplstyle` — pinned matplotlib PGF style (Okabe-Ito palette, fonts owned by the LaTeX preamble).
     - `tree_curve.py` — F08: best-reward vs exploration-step curve per seed (`data/F08_curve.csv` → `pgf/F08_curve.pgf`).
-    - `tree_render.py` — F02: example BFTS tree from frozen `data/F02_tree.json` → `dot/` + TikZ.
+    - `tree_render.py` — F02: example BFTS tree from frozen `data/F02_tree.json` → `dot/` only (the TikZ realisation `tikz/F02_tree.tex` is hand-maintained in the `_style.tex` house language).
   - `tikz/` — TikZ figure sources (not enumerated)
 - `references_pdf/` — This directory holds local copies of papers cited in `../references.bib`
