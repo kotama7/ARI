@@ -286,6 +286,12 @@ _env_append_if_absent "# ARI_MODEL_RUBRIC_AUDIT="
 _env_append_if_absent "# ARI_MODEL_REPLICATE="
 _env_append_if_absent "# ARI_MODEL_REPLICATOR="
 _env_append_if_absent "# ARI_MODEL_JUDGE="
+# VirSci-live ideation knobs (ari-skill-idea, used only when the real
+# vendor-wrap path is enabled). MAX_TEAMS caps the number of co-author
+# teams formed; SPECTER2_MODEL overrides the retrieval embedding model
+# (default allenai/specter2_base).
+_env_append_if_absent "# ARI_IDEA_VIRSCI_MAX_TEAMS="
+_env_append_if_absent "# ARI_IDEA_VIRSCI_SPECTER2_MODEL="
 # Rubric generator knobs (consumed by ari-skill-replicate). All three fall
 # back to defaults baked into the generator when unset; the GUI wizard can
 # write these per-run.
@@ -471,6 +477,10 @@ _env_append_if_absent "# ARI_SLURM_MEM_GB="
 _env_append_if_absent "# ARI_SLURM_GPUS="
 _env_append_if_absent "# ARI_SLURM_WALLTIME=04:00:00"
 _env_append_if_absent "# ARI_SLURM_PARTITION="
+# Comma-separated tool names the compute-node capability probe checks for
+# (default: perf,numactl,papi_avail,likwid-perfctr,valgrind). Lets claims
+# avoid evidence that depends on tooling the target partition lacks.
+_env_append_if_absent "# ARI_PROBE_TOOLS="
 # ARI_SLURM_ALLOW_NO_GRES=1 opts into silently dropping --gres / --gpus-*
 # flags when the cluster has no GRES configured. Default: fail loud
 # (silently downgrading a GPU request to CPU after a long queue wait is

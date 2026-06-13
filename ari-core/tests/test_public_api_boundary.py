@@ -85,7 +85,7 @@ _GRANDFATHERED: dict[str, set[int]] = {
     "ari-skill-coding/tests/test_server.py": {107},
     "ari-skill-evaluator/src/server.py": {18},  # cost_tracker fallback (shifted by the logging import + module logger)
     "ari-skill-hpc/src/slurm.py": {211},  # run_env fallback
-    "ari-skill-idea/src/server.py": {65, 574},  # cost_tracker fallback + ari.lineage (deferred; line shifted by the survey snapshot-reuse helper)
+    "ari-skill-idea/src/server.py": {65, 614},  # cost_tracker fallback + ari.lineage (deferred; line shifted by the platform-constraint topic fold into generate_ideas)
     "ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py": {159},  # cost_tracker fallback
     "ari-skill-memory/tests/test_backup_restore.py": {14},  # ari.memory_cli (deferred, test-only)
     "ari-skill-paper-re/src/server.py": {42, 146},  # cost_tracker fallback + ari.clone (deferred)
