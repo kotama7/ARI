@@ -1,71 +1,120 @@
 \section{Preliminary Observations}\label{chapter:eval}
 
-The observations below are what the running system establishes at this
-stage. They are preliminary and, for the end-to-end reproduction case,
-single-run rather than a controlled benchmark; a panel-scale quantitative
-study is left to future work. Quantitative figures elsewhere in this
-report are illustrative, generated from fixed-seed sample data so that the
-document build is reproducible.
+This chapter reports what the running system establishes at v0.9.0.
+The evidence is of three kinds: an end-to-end generation run whose
+released paper passed every verification gate
+(\cref{sec:eval:sample}); properties that hold by construction and
+are confirmed in operation (\cref{sec:eval:construction}); and an
+earlier reproduction exercise carried out on the then-current v0.8.0
+pipeline (\cref{sec:eval:repro}). All of it is preliminary: the
+end-to-end observations are single runs rather than a controlled
+benchmark, and the panel-scale study they call for is deferred
+(\cref{sec:eval:limits}). Quantitative figures elsewhere in this
+report are illustrative, generated from fixed-seed sample data so
+that the document build is reproducible.
 
-Three properties hold directly by construction of the system. Cost
-accounting is exact: a dollar cost is attached to every model invocation
-and accumulated, per run, into the checkpoint's results record. The
-exploration loop terminates through the stagnation detector
-(\cref{sec:exploration:termination}) rather than only the step or cost
-budgets ($\Tmax$ / $\Cmax$). And the execution-profile pathway behaves as
-specified (\cref{sec:paper:paperbench:v072}): rubric generation emits a
-multi-rank (MPI) execution profile, with the paper's reported scale
-envelope, for an HPC paper and omits it for a single-machine paper, while
-a multi-flag cluster dispatch is accepted by the local scheduler once the
-runtime probes drop the flags it does not support.
+\subsection{End-to-end generation: a gate-verified sample paper}\label{sec:eval:sample}
 
-End to end, the then-current v0.8.0 pipeline was exercised on a lossy-compression
-target, a GPU error-bounded scientific compressor. The degree of
-reproduction achieved on this single target was partial but substantive.
-The agent fetched a real slice of the paper's cited simulation dataset
-rather than substituting synthetic data; compiled native CUDA
-interpolation kernels and ran them on the GPU; implemented Lorenzo and
-multi-level interpolation predictors with per-level autotuning; and swept
-a range of error bounds, recovering reconstruction qualities from roughly
-50 to 90~dB PSNR with the corresponding compression ratios. Against the
-fine-grained rubric the run cleared on the order of a tenth of the
-weighted leaves, for two reasons rooted in the agent's behaviour: the
-graded metric came from a CPU predictor --- the GPU kernels were built and
-executed, but the agent omitted their predicted quality from its reported
-results --- and the agent terminated voluntarily after a small fraction of
-its time budget, leaving the remaining datasets and the proprietary
-lossless stage unattempted.
+One end-to-end result is demonstrated and inspectable: the released
+sample paper, an eight-page study produced autonomously by a real
+run. It studies compressed sparse row (CSR) sparse-dense matrix
+multiplication (SpMM), selecting a store policy across
+right-hand-side (RHS) widths under the guidance of a performance
+model (the paper's ``loopline'' model) fitted from the run's own
+measurements. Four observations make the run an existence proof for
+the verification machinery this report describes.
 
-On the generation side, one end-to-end result is already demonstrated
-and inspectable: the released sample paper, an eight-page study
-produced autonomously by a real run. It studies compressed sparse row
-(CSR) sparse-dense matrix multiplication (SpMM), selecting a store
-policy across right-hand-side (RHS) widths under the guidance of a
-performance model (the paper's ``loopline'' model) fitted from the
-run's own measurements. In that run, all twelve declared falsifiable
-claims carried machine-verified experiment evidence --- the final
-claim--evidence gate (\cref{sec:paper:contract}) reported zero errors
---- and the computed-evidence chain behind the selection (parameter
-fitting, then held-out validation, then model-based selection)
-executed through lineage-chained nodes
-(\cref{sec:exploration:lineage-chaining}) rather than collapsing into
-repeated probes. Correctness was validated against an independent
+First, all twelve falsifiable claims declared in the run's metric
+contract --- minted once at idea time and returned verbatim for the
+rest of the run (\cref{sec:paper:contract}) --- carried
+machine-verified experiment evidence: the final claim--evidence gate
+reported zero errors, so no number in the released paper outran what
+the gate could re-derive from recorded results. Second, the
+computed-evidence chain behind the paper's central selection ---
+parameter fitting, then held-out validation of the fit, then
+model-based selection among configurations --- executed through
+lineage-chained nodes (\cref{sec:exploration:lineage-chaining})
+rather than collapsing into repeated probes, so the failure mode
+that mechanism was introduced to close did not recur. Third,
+correctness was validated within the run against an independent
 dense single-precision (FP32) reference, with a maximum absolute
-error of $6.79\times10^{-6}$, and the post-refine semantic review
-reports zero remaining overclaims (five detected, five resolved).
+error of $6.79\times10^{-6}$. Fourth, the semantic review flagged
+five overclaims in the draft; after the refine pass all five were
+resolved and none remained --- and because the resolved count is a
+raw before/after delta (\cref{sec:paper:contract}), a refine that
+had introduced new overclaims would have surfaced as a regression.
 
 We read this result narrowly. Its value is the \emph{verified}
 property --- every quantitative claim in the released paper is bound
 to a recorded artefact and passed the deterministic gate --- not any
-headline number the paper reports; and the paper itself hedges
-explicitly wherever a statement outruns its artefact grounding. A
-single verified run demonstrates that the contract, gate, and lineage
-machinery of
-\cref{sec:exploration:lineage-chaining,sec:paper:contract} compose
-end to end; it does not establish a distribution, which is exactly
-the controlled study deferred below.
+headline number the paper reports; the paper itself hedges
+explicitly wherever a statement outruns its artefact grounding. The
+property is worth stating because earlier autonomous pipelines lack
+it: in the closest published predecessor, hallucination control is
+prompt-level, the automated review of a finished draft is advisory
+rather than blocking, generated papers were observed to hallucinate
+experimental details, and the authors list automatic verification of
+reported results as future work~\cite{lu2024ai}. A single verified
+run demonstrates that the contract, lineage chaining, gate, and
+review--refine loop compose end to end; it does not establish a
+distribution, which is exactly the controlled study deferred below.
 
-A controlled evaluation --- median run cost, per-seed exploration curves,
-and per-category rubric distributions over a frozen checkpoint, together
-with full-rollout replication scores across a panel of contrasting target
-papers --- is left to future work.
+\subsection{Properties holding by construction}\label{sec:eval:construction}
+
+Three further properties hold by construction and are confirmed in
+operation. Cost accounting is exact: a dollar cost is attached to
+every model invocation and accumulated, per run, into the
+checkpoint's results record. Exploration termination is not
+budget-only: the stagnation detector
+(\cref{sec:exploration:termination}) provides a content-based exit
+and has been observed to fire before the step and cost budgets
+($\Tmax$ / $\Cmax$) are exhausted. And the execution-profile pathway
+behaves as specified (\cref{sec:paper:paperbench:v072}): rubric
+generation emits a multi-rank Message Passing Interface (MPI)
+execution profile, with the paper's reported scale envelope, for a
+high-performance-computing (HPC) paper and omits it for a
+single-machine paper, while a multi-flag cluster dispatch is
+accepted by the local scheduler once the runtime probes drop the
+flags it does not support.
+
+\subsection{An earlier reproduction exercise (v0.8.0)}\label{sec:eval:repro}
+
+The system's first operational end-to-end exercise predates v0.9.0:
+the then-current v0.8.0 pipeline was run against a published
+lossy-compression target, a GPU error-bounded scientific compressor,
+through the reproduction path of \cref{sec:paper:paperbench}. The
+degree of reproduction achieved on this single target was partial
+but substantive. The agent fetched a real slice of the paper's cited
+simulation dataset rather than substituting synthetic data; compiled
+native CUDA interpolation kernels and ran them on the GPU;
+implemented Lorenzo and multi-level interpolation predictors with
+per-level autotuning; and swept a range of error bounds, recovering
+reconstruction qualities from roughly 50 to 90~dB peak
+signal-to-noise ratio (PSNR) with the corresponding compression
+ratios. Against the fine-grained rubric the run cleared on the order
+of a tenth of the weighted leaves, for two reasons rooted in the
+agent's behaviour rather than the pipeline's: the graded metric came
+from a CPU predictor --- the GPU kernels were built and executed,
+but the agent omitted their predicted quality from its reported
+results --- and the agent terminated voluntarily after a small
+fraction of its time budget, leaving the remaining datasets and the
+proprietary lossless stage unattempted. Both behaviours match
+failure modes documented for replication agents at large, where most
+models end runs early claiming completion and score far higher on
+writing code than on executing it and matching the paper's
+results~\cite{starace2025paperbench}. The exercise predates the
+verification machinery of \cref{sec:eval:sample} and is reported
+unchanged, as the historical baseline.
+
+\subsection{Limitations}\label{sec:eval:limits}
+
+The evaluation remains preliminary. Neither result above is a
+controlled benchmark: the generation run is a single trajectory, and
+the reproduction exercise covers a single target paper. A controlled
+evaluation --- median run cost, per-seed exploration curves, and
+per-category rubric distributions over a frozen checkpoint, together
+with full-rollout replication scores across a panel of contrasting
+target papers --- is left to future work. The same study should
+settle the empirical questions this report leaves open, such as
+which termination cause (\cref{sec:exploration:termination}) fires
+most often in practice.

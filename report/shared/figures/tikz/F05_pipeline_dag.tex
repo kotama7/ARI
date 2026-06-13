@@ -1,47 +1,53 @@
-% F05: pipeline DAG — paper-style workflow with numbered stages.
-% Inspired by PaperBench Fig 1 (Starace+ 2025): four numbered stages,
-% coloured containers with labels above, persisted artefacts below each
-% station, and a single emphasised refine back-edge.
+% F05: pipeline DAG — the four-station paper pipeline in the ARI house
+% design language (_style.tex): flat pastel phase fills, aribadge step
+% numbers (PaperBench grammar), dashed muted artefact edges, and ONE
+% accent back-edge (refine), the figure's single saturated element.
 % style.tikzstyles is loaded by shared/preamble.tex / standalone wrapper.
-\begin{tikzpicture}[node distance=0.8cm and 1.2cm]
+% _style.tex resolves from the build cwd: language builds compile in
+% en|ja|zh (../shared/...), the standalone renderer in the repo report
+% root (shared/...); same-directory compilation is the last fallback.
+\InputIfFileExists{../shared/figures/tikz/_style.tex}{}{%
+  \InputIfFileExists{shared/figures/tikz/_style.tex}{}{%
+    \input{_style.tex}}}
+\begin{tikzpicture}[aricanvas]
 
-  % --- four stations, evenly spaced -----------------------------------
-  \node[station]                                 (idea)  {\figlabel{F5.idea}};
-  \node[station emph, right=2.6cm of idea]       (expl)  {\figlabel{F5.exploration}};
-  \node[station, right=2.6cm of expl]            (paper) {\figlabel{F5.paper}};
-  \node[station, right=2.6cm of paper]           (rev)   {\figlabel{F5.review}};
+  % ---- stage row: four stations, fill encodes the owning phase --------
+  \node[aribox idea]                          (idea)   {\figlabel{F5.idea}};
+  \node[aribox exp,   right=0.7cm of idea]    (expl)   {\figlabel{F5.exploration}};
+  \node[aribox paper, right=of expl]          (paper)  {\figlabel{F5.paper}};
+  \node[aribox gate,  right=0.7cm of paper]   (rev)    {\figlabel{F5.review}};
 
-  % --- numbered step markers (above-left of each station) ------------
-  \node[numbered step, above left=0.05cm and -0.2cm of idea.north west] {1};
-  \node[numbered step, above left=0.05cm and -0.2cm of expl.north west] {2};
-  \node[numbered step, above left=0.05cm and -0.2cm of paper.north west] {3};
-  \node[numbered step, above left=0.05cm and -0.2cm of rev.north west] {4};
+  % ---- macro-flow step badges (instead of edge labels) ----------------
+  \node[aribadge] at (idea.north west)  {1};
+  \node[aribadge] at (expl.north west)  {2};
+  \node[aribadge] at (paper.north west) {3};
+  \node[aribadge] at (rev.north west)   {4};
 
-  % --- artefacts, one per station, below ----------------------------
-  \node[artifact, below=1.4cm of expl]           (tree)  {\figlabel{F5.tree_json}};
-  \node[artifact, below=1.4cm of paper]          (draft) {\figlabel{F5.draft}};
-  \node[artifact, below=1.4cm of rev]            (rubric){\figlabel{F5.rubric}};
+  % ---- band headings: search vs write & review ------------------------
+  \node[ariphase, anchor=south west] (hsearch)
+        at ([yshift=8mm]idea.north west) {\figlabel{F5.band.search}};
+  \pic at ([xshift=-2.5mm]hsearch.west) {ariglyph bulb};
+  \node[ariphase, anchor=south west] (hwrite)
+        at ([yshift=8mm]paper.north west) {\figlabel{F5.band.write}};
+  \pic at ([xshift=-2.5mm]hwrite.west) {ariglyph doc};
 
-  % --- thick forward arrows -----------------------------------------
-  \draw[big arrow] (idea)  -- (expl);
-  \draw[big arrow] (expl)  -- (paper);
-  \draw[big arrow] (paper) -- (rev);
+  % ---- persisted artefacts, one per producing station -----------------
+  \node[aribox, below=0.9cm of expl]  (tree)   {\figlabel{F5.tree_json}};
+  \node[aribox, below=0.9cm of paper] (draft)  {\figlabel{F5.draft}};
+  \node[aribox, below=0.9cm of rev]   (rubric) {\figlabel{F5.rubric}};
 
-  % --- station → artefact (state) ----------------------------------
-  \draw[arrow dashed] (expl)  -- (tree);
-  \draw[arrow dashed] (paper) -- (draft);
-  \draw[arrow dashed] (rev)   -- (rubric);
+  % ---- primary flow ----------------------------------------------------
+  \draw[ariarrow] (idea)  -- (expl);
+  \draw[ariarrow] (expl)  -- (paper);
+  \draw[ariarrow] (paper) -- (rev);
 
-  % --- refine back-edge (curved, orange, on top) ------------------
-  \draw[big arrow, draw=ari-vermilion] (rev.north) to[bend right=42]
-        node[edge label, fill=ari-orange!15, font=\sffamily\bfseries\footnotesize]{\figlabel{F5.refine}}
-        (paper.north);
+  % ---- station -> persisted artefact (state) ---------------------------
+  \draw[ariarrow muted] (expl)  -- (tree);
+  \draw[ariarrow muted] (paper) -- (draft);
+  \draw[ariarrow muted] (rev)   -- (rubric);
 
-  % --- group bands (search vs write&review), in background --------
-  \begin{scope}[on background layer]
-    \node[stage container, fit=(idea)(expl)] (g1) {};
-    \node[stage container, fit=(paper)(rev)] (g2) {};
-    \node[stage title, above=4pt of g1.north west, anchor=south west] {\figlabel{F5.band.search}};
-    \node[stage title, above=4pt of g2.north west, anchor=south west] {\figlabel{F5.band.write}};
-  \end{scope}
+  % ---- refine back-edge: the one accent element ------------------------
+  \draw[ariarrow accent] (rev.north) to[bend right=30]
+        node[arinote, pos=0.5] {\figlabel{F5.refine}} (paper.north);
+
 \end{tikzpicture}

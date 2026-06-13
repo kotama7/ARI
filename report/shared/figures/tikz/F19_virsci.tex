@@ -1,44 +1,70 @@
-% F19: VirSci-style idea generation as a STRUCTURE, not a flow. A frozen
-% Semantic Scholar snapshot (corpus + retrieval index + a freshness-ranked
-% co-author graph) is the substrate from which select_coauthors forms a
-% heterogeneous scientist team; the team runs a K-round deliberation grounded
-% by retrieval against the same snapshot, converging on an idea.
+% F19: VirSci-live vendor-wrap ideation, drawn as phase-grouped columns.
+% Substrate (white, left): a frozen Semantic Scholar snapshot — a freshness-
+% ranked co-author graph plus a corpus with a SPECTER2 retrieval index.
+% Ideation (lavender, middle): select_coauthors forms a heterogeneous
+% scientist team (personas A/B/C) that runs the vendored K-round deliberation
+% loop (propose / critique / converge), grounded by retrieval against the
+% same snapshot, and converges on idea.json (white artifact, right).
+% Platform-aware ideation: a run-start capability probe of the execution
+% platform (peach) folds its measured constraints into the deliberation
+% topic — the single accent edge — so the converged plan only promises
+% measurements the platform can actually take.
 % style.tikzstyles is loaded by shared/preamble.tex / the standalone wrapper.
-\begin{tikzpicture}[node distance=1.3cm and 1.6cm]
+% The ari* house styles live in _style.tex and are resolved from the build
+% cwd: <lang>/ for the main documents (which \input this figure as
+% ../shared/figures/tikz/F19_virsci.tex) or report/ for the preview renderer.
+\IfFileExists{../shared/figures/tikz/_style.tex}%
+  {\input{../shared/figures/tikz/_style}}%
+  {\input{shared/figures/tikz/_style}}%
+\begin{tikzpicture}[aricanvas,
+    % persona chip — an aribadge outlined in ink on the ideation fill
+    % (colour-only derivation; every size stays in _style.tex)
+    aripersona/.style={aribadge, draw=ariink, fill=phaseidea, text=ariink}]
 
-  % --- snapshot substrate (left): corpus + a small co-author graph ---
-  \node[block native]                              (corpus) {\figlabel{F19.corpus}};
-  \node[state, below=1.1cm of corpus]              (au1) {};
-  \node[state, below left=1.0cm and 0.7cm of au1]  (au2) {};
-  \node[state, below right=1.0cm and 0.7cm of au1] (au3) {};
-  \node[band label, below=0.45cm of au2, anchor=north] (cog) {\figlabel{F19.coauthorg}};
-  % undirected co-author edges
-  \draw[thick, draw=ari-blue] (au1) -- (au2);
-  \draw[thick, draw=ari-blue] (au1) -- (au3);
-  \draw[thick, draw=ari-blue] (au2) -- (au3);
+  % ---- substrate column, upper group: frozen literature snapshot ----------
+  \node[ariphase] (hsnap) {\figlabel{F19.snap}};
+  \pic at ([xshift=-2.5mm]hsnap.west) {ariglyph doc};
+  \node[ariboxwide, below=0.35cm of hsnap] (cog)    {\figlabel{F19.coauthorg}};
+  \node[ariboxwide, below=of cog]          (corpus) {\figlabel{F19.corpus}};
 
-  % --- scientist team + deliberation (right) -------------------------
-  \node[state init, right=6.0cm of corpus]   (pa)    {\figlabel{F19.pa}};
-  \node[state init, below=0.7cm of pa]       (pb)    {\figlabel{F19.pb}};
-  \node[state init, below=0.7cm of pb]       (pc)    {\figlabel{F19.pc}};
-  \node[block emph big, right=of pb]         (delib) {\figlabel{F19.delib}};
-  \node[artifact wide, below=1.4cm of delib] (idea)  {\figlabel{F19.idea}};
+  % ---- substrate column, lower group: probed execution platform -----------
+  \node[ariphase, below=0.7cm of corpus] (hplat) {\figlabel{F19.platform}};
+  \pic at ([xshift=-2.5mm]hplat.west) {ariglyph flask};
+  \node[ariboxwide, fill=phaseexp, below=0.35cm of hplat] (probe)
+        {\figlabel{F19.probe}};
 
-  % --- group boundaries ----------------------------------------------
-  \begin{scope}[on background layer]
-    \node[group strong, fit=(corpus)(au1)(au2)(au3)(cog)] (snap) {};
-    \node[group, fit=(pa)(pc)(delib)] (team) {};
-  \end{scope}
-  \node[band label, above=2pt of snap.north west, anchor=south west] {\figlabel{F19.snap}};
-  \node[band label, above=2pt of team.north west, anchor=south west] {\figlabel{F19.team}};
+  % ---- ideation column: team formation + deliberation loop ----------------
+  \node[ariboxwide, fill=phaseidea, right=of cog] (sel) {\figlabel{F19.select}};
+  \node[ariphase, above=0.35cm of sel] (hteam) {\figlabel{F19.team}};
+  \pic at ([xshift=-2.5mm]hteam.west) {ariglyph bulb};
+  \node[aripersona, below=0.6cm of sel] (pb) {\figlabel{F19.pb}};
+  \node[aripersona, left=0.35cm of pb]  (pa) {\figlabel{F19.pa}};
+  \node[aripersona, right=0.35cm of pb] (pc) {\figlabel{F19.pc}};
+  \node[arinote, below=0.18cm of pb] (rounds) {\figlabel{F19.rounds}};
+  \node[ariboxwide, fill=phaseidea, below=0.18cm of rounds] (delib)
+        {\figlabel{F19.delib}};
+  \node[ariloop, fit=(pa)(pc)(rounds)(delib)] (loop) {};
+  \pic at ([xshift=4mm]pc.east) {ariglyph loop};
 
-  % --- edges ----------------------------------------------------------
-  \draw[big arrow] (snap.east) -- node[edge label] {\figlabel{F19.select}} (team.west);
-  \draw[arrow dashed] (corpus.east) to[bend left=38]
-        node[edge label] {\figlabel{F19.ground}} (delib.north);
-  \draw[arrow] (pa) -- (delib);
-  \draw[arrow] (pb) -- (delib);
-  \draw[arrow] (pc) -- (delib);
-  \draw[arrow] (delib) -- (idea);
+  % ---- converged artifact --------------------------------------------------
+  \node[ariboxwide, right=of delib] (idea) {\figlabel{F19.idea}};
+
+  % ---- primary flow: 1 form team, 2 deliberate, 3 converge ----------------
+  \draw[ariarrow] (cog) -- (sel);
+  \draw[ariarrow] (sel) -- (pb);
+  \draw[ariarrow] (delib) -- (idea);
+  \node[aribadge] at (sel.north west)   {1};
+  \node[aribadge] at (delib.north west) {2};
+  \node[aribadge] at (idea.north west)  {3};
+
+  % retrieval grounding against the same snapshot (secondary flow)
+  \draw[ariarrow muted] (corpus.east) to[out=0, in=180]
+        node[arinote, above=1pt, pos=0.4] {\figlabel{F19.ground}} (delib.west);
+
+  % probed platform constraints fold into the idea topic (the accent edge)
+  \draw[arielbow, draw=accent] (probe.east) to (delib.south);
+  \node[arinote, above=1pt]
+        at ($(probe.east)!0.5!(probe.east -| delib.south)$)
+        {\figlabel{F19.fold}};
 
 \end{tikzpicture}

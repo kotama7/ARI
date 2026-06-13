@@ -1,66 +1,77 @@
-% F11: BFTS control flow — paper-style numbered workflow.
-% Five numbered stages: (1) frontier, (2) LLM-driven select, (3) parse-or-fall back,
-% (4) expand into a child, (5) prune-or-continue. The fall-back side path is
-% drawn below the main spine; back-edges (append, continue) are vermilion.
-% style.tikzstyles is loaded by shared/preamble.tex / standalone wrapper.
-\begin{tikzpicture}[node distance=1.2cm and 1.4cm]
+% F11: BFTS control flow — house design language (ari* styles, see _style.tex).
+% One BFTS step, left to right: (1) frontier -> (2) LLM-driven selection ->
+% (3) parse gate -> (4) LLM-driven expansion -> new child node -> (5) prune
+% gate. Solid ink edges are control flow; dashed gray edges are context
+% inputs: the two prompt files above the LLM stations, and below the spine
+% the deterministic fallback (fallback score incl. diversity bonus, taken
+% when the parse gate rejects the LLM index), the v0.9.0 lineage-chaining
+% hints (coverage hint into expansion-target selection on the parent side,
+% lineage hint into the new child on the child side), and the stagnation
+% detector feeding the prune gate. The single vermilion back edge appends
+% the child to the frontier; the dotted margin path is the continue loop
+% back to the next iteration.
+% style.tikzstyles is loaded by shared/preamble.tex / the standalone wrapper;
+% the ari* house styles load from _style.tex (path resolved from build cwd:
+% language builds run in <lang>/, figure previews run in the report root).
+\InputIfFileExists{../shared/figures/tikz/_style.tex}{}{%
+  \InputIfFileExists{shared/figures/tikz/_style.tex}{}{%
+    \InputIfFileExists{_style.tex}{}{%
+      \errmessage{F11: shared/figures/tikz/_style.tex not found}}}}%
+\begin{tikzpicture}[aricanvas]
 
-  % --- main spine: five stations, evenly spaced --------------------
-  \node[station]                                       (front) {\figlabel{F11.frontier}};
-  \node[station emph wide, right=2.0cm of front]       (sel)   {\figlabel{F11.select}};
-  \node[decision wide, right=2.0cm of sel]             (dec)   {\figlabel{F11.parse}};
-  \node[station emph, right=2.0cm of dec]              (exp)   {\figlabel{F11.expand}};
-  \node[decision wide, right=2.0cm of exp]             (prune) {\figlabel{F11.prune}};
+  % --- spine: one BFTS step, five numbered stations plus the child ------
+  \node[aribox]                                    (front) {\figlabel{F11.frontier}};
+  \node[ariboxwide, fill=phaseexp, right=of front] (sel)   {\figlabel{F11.select}};
+  \node[aribox gate, right=of sel]                 (dec)   {\figlabel{F11.parse}};
+  \node[aribox exp, right=of dec]                  (exp)   {\figlabel{F11.expand}};
+  \node[aribox, right=of exp]                      (child) {\figlabel{F11.child}};
+  \node[aribox gate, right=of child]               (prune) {\figlabel{F11.prune}};
 
-  % --- numbered step markers (five stages) -------------------------
-  \node[numbered step, above left=0.05cm and -0.2cm of front.north west] {1};
-  \node[numbered step, above left=0.05cm and -0.2cm of sel.north west]   {2};
-  \node[numbered step, above left=0.05cm and -0.2cm of dec.north west]   {3};
-  \node[numbered step, above left=0.05cm and -0.2cm of exp.north west]   {4};
-  \node[numbered step, above left=0.05cm and -0.2cm of prune.north west] {5};
+  % --- numbered step badges (PaperBench grammar; no edge-order labels) --
+  \node[aribadge] at (front.north west) {1};
+  \node[aribadge] at (sel.north west)   {2};
+  \node[aribadge] at (dec.north west)   {3};
+  \node[aribadge] at (exp.north west)   {4};
+  \node[aribadge] at (prune.north west) {5};
 
-  % --- prompts above the LLM-driven stations ----------------------
-  \node[station, fill=ari-yellow!30, draw=ari-orange,
-        above=0.7cm of sel]                            (psel)  {\figlabel{F11.prompt.select}};
-  \node[station, fill=ari-yellow!30, draw=ari-orange,
-        above=0.7cm of exp]                            (pexp)  {\figlabel{F11.prompt.expand}};
+  % --- prompt files above the two LLM-driven stations -------------------
+  \node[aribox, above=0.7cm of sel] (psel) {\figlabel{F11.prompt.select}};
+  \node[aribox, above=0.7cm of exp] (pexp) {\figlabel{F11.prompt.expand}};
 
-  % --- side path: deterministic fall-back below the decision ------
-  \node[station, dashed, draw=ari-vermilion,
-        below=1.4cm of dec]                            (fb)    {\figlabel{F11.fallback}};
-  \node[station, fill=ari-pink!22, below=of fb]        (div)   {\figlabel{F11.diversity}};
+  % --- context row below the spine ---------------------------------------
+  \node[ariboxwide, below=0.7cm of dec] (fb)
+        {\figlabel{F11.fallback}\\+ \figlabel{F11.diversity}};
+  \node[aribox, below=0.7cm of exp]   (cov)  {\figlabel{F11.hint.coverage}};
+  \node[aribox, below=0.7cm of child] (lin)  {\figlabel{F11.hint.lineage}};
+  \node[aribox, below=0.7cm of prune] (stag) {\figlabel{F11.stagnation}};
 
-  % --- expansion outputs below the expand station -----------------
-  \node[artifact, below=1.4cm of exp]                  (child) {\figlabel{F11.child}};
+  % --- primary control flow ----------------------------------------------
+  \draw[ariarrow] (front) -- (sel);
+  \draw[ariarrow] (sel)   -- (dec);
+  \draw[ariarrow] (dec)   -- (exp)
+        node[arinote, midway, above=1.5pt] {\figlabel{F11.ok}};
+  \draw[ariarrow] (exp)   -- (child);
+  \draw[ariarrow] (child) -- (prune);
 
-  % --- stagnation auxiliary input to prune ------------------------
-  \node[station, dashed, below=1.4cm of prune]         (stag)  {\figlabel{F11.stagnation}};
+  % --- deterministic fallback branch (parse failure) ---------------------
+  \draw[ariarrow] (dec.south) -- (fb.north)
+        node[arinote, midway, right=2pt] {\figlabel{F11.fail}};
+  \draw[arielbow vh] (fb.east) to ([yshift=-2.5mm]exp.west);
 
-  % --- main forward arrows ---------------------------------------
-  \draw[big arrow] (front) -- (sel);
-  \draw[big arrow] (sel)   -- (dec);
-  \draw[big arrow] (dec)   -- (exp)
-       node[edge label, midway, font=\sffamily\footnotesize]{\figlabel{F11.ok}};
-  \draw[big arrow] (exp)   -- (prune);
+  % --- context inputs (dashed): prompts, lineage-chaining hints, stagnation
+  \draw[ariarrow muted] (psel) -- (sel);
+  \draw[ariarrow muted] (pexp) -- (exp);
+  \draw[ariarrow muted] (cov)  -- (exp);
+  \draw[ariarrow muted] (lin)  -- (child);
+  \draw[ariarrow muted] (stag) -- (prune);
 
-  % --- prompt hooks ---------------------------------------------
-  \draw[arrow dashed] (psel) -- (sel);
-  \draw[arrow dashed] (pexp) -- (exp);
-
-  % --- fall-back side path -------------------------------------
-  \draw[big arrow, draw=ari-vermilion] (dec.south) -- (fb.north)
-       node[edge label, font=\sffamily\footnotesize]{\figlabel{F11.fail}};
-  \draw[arrow dashed] (div.north) -- (fb.south);
-  \draw[big arrow, draw=ari-vermilion] (fb.east) to[bend right=12] (exp.south west);
-
-  % --- expand → child + back-edges -----------------------------
-  \draw[big arrow] (exp) -- (child);
-  \draw[big arrow, draw=ari-vermilion] (child.south) to[out=-90, in=-90, looseness=1.0]
-       node[edge label, font=\sffamily\footnotesize, pos=0.3]{\figlabel{F11.append}}
-       (front.south);
-
-  \draw[arrow dashed] (stag.north) -- (prune.south);
-  \draw[big arrow, draw=ari-vermilion] (prune.north) to[bend right=22]
-       node[edge label, font=\sffamily\footnotesize]{\figlabel{F11.continue}}
-       (exp.north east);
+  % --- back edges: append (the one accent edge) over the top, continue
+  %     along the bottom margin to the next iteration ----------------------
+  \draw[ariarrow accent, rounded corners=7pt]
+        (child.north) -- ([yshift=20mm]child.north) -| (front.north);
+  \node[arinote] at ([yshift=20mm]dec.north) {\figlabel{F11.append}};
+  \draw[arifeedback]
+        (prune.east) -- ([xshift=7mm]prune.east)
+        |- ([yshift=-8mm]lin.south) -| (front.south);
+  \node[arinote] at ([yshift=-8mm]cov.south) {\figlabel{F11.continue}};
 \end{tikzpicture}

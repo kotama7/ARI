@@ -117,6 +117,20 @@
 \figlabeldef{F1.band.gen}{generation}
 \figlabeldef{F1.band.eval}{evaluation}
 \figlabeldef{F1.band.write}{writing}
+\figlabeldef{F02.head.d0}{depth 0}
+\figlabeldef{F02.head.d1}{depth 1}
+\figlabeldef{F02.head.d2}{depth 2}
+\figlabeldef{F02.head.d3}{depth 3}
+\figlabeldef{F02.n0}{N0\\$r{=}0.50$}
+\figlabeldef{F02.n1}{N1\\$r{=}0.62$}
+\figlabeldef{F02.n2}{N2\\$r{=}0.48$}
+\figlabeldef{F02.n3}{N3\\$r{=}0.71$}
+\figlabeldef{F02.n4}{N4\\$r{=}0.66$}
+\figlabeldef{F02.n5}{N5\\$r{=}0.40$}
+\figlabeldef{F02.n6}{N6\\$r{=}0.74$}
+\figlabeldef{F02.note.best}{best node $\to$ paper}
+\figlabeldef{F02.note.low}{low-score branch}
+\figlabeldef{F02.note.synthetic}{illustrative example}
 \figlabeldef{F3.has_real}{has\_real\_data}
 \figlabeldef{F3.metrics}{metrics dict}
 \figlabeldef{F3.depth_signal}{depth}
@@ -205,6 +219,8 @@
 \figlabeldef{F11.fail}{LLM fail}
 \figlabeldef{F11.append}{append}
 \figlabeldef{F11.continue}{continue}
+\figlabeldef{F11.hint.coverage}{coverage hint}
+\figlabeldef{F11.hint.lineage}{lineage hint}
 \figlabeldef{F12.driver}{run\_replicator\_agent}
 \figlabeldef{F12.solver}{AriPBSolver}
 \figlabeldef{F12.bounded}{\_BoundedOutputTool}
@@ -275,21 +291,24 @@
 \figlabeldef{F17.bundle}{published bundle\\(verbatim bytes)}
 \figlabeldef{F17.grounds}{grounds}
 \figlabeldef{F17.same}{same bytes}
+\figlabeldef{F17.head.src}{exploration outputs}
+\figlabeldef{F17.head.asm}{deterministic assembler}
+\figlabeldef{F17.head.out}{two consumers}
 % --- F18 research memory (typed index over evidence) ---
+\figlabeldef{F18.head.evidence}{Evidence}
+\figlabeldef{F18.head.store}{Typed store}
+\figlabeldef{F18.head.readers}{Two readers}
 \figlabeldef{F18.report}{node\_report.json\\(source of truth)}
+\figlabeldef{F18.repro}{reproduction events\\(append-only)}
 \figlabeldef{F18.consolidate}{consolidate\\(deterministic)}
 \figlabeldef{F18.store}{typed research memory\\ancestor-scoped $\cdot$ CoW}
-\figlabeldef{F18.kinds}{result $\cdot$ failure $\cdot$\\reflection $\cdot$ repro-event}
 \figlabeldef{F18.artifacts}{artefacts\\logs $\cdot$ outputs $\cdot$ source}
-\figlabeldef{F18.refs}{content-hash refs}
-\figlabeldef{F18.repro}{reproduction events\\(append-only)}
+\figlabeldef{F18.refs}{content-hash\\refs}
 \figlabeldef{F18.fold}{fold $\to$ latest}
 \figlabeldef{F18.workctx}{working context\\(every node start)}
-\figlabeldef{F18.vctx}{verified context\\(paper claims)}
 \figlabeldef{F18.usable}{$\mathrm{usable}(\mu)$}
-\figlabeldef{F18.forexpl}{for exploration}
-\figlabeldef{F18.forpaper}{for the paper}
-% --- F19 VirSci literature-grounded idea generation ---
+\figlabeldef{F18.vctx}{verified context\\(paper claims)}
+% --- F19 VirSci literature-grounded, platform-aware ideation ---
 \figlabeldef{F19.snap}{Semantic Scholar snapshot}
 \figlabeldef{F19.corpus}{corpus + SPECTER2\\retrieval index}
 \figlabeldef{F19.coauthorg}{co-author graph\\(freshness-ranked)}
@@ -297,22 +316,34 @@
 \figlabeldef{F19.pa}{A}
 \figlabeldef{F19.pb}{B}
 \figlabeldef{F19.pc}{C}
-\figlabeldef{F19.delib}{$K$-round deliberation\\propose $\cdot$ critique $\cdot$ converge}
+\figlabeldef{F19.rounds}{propose $\cdot$ critique $\cdot$ converge}
+\figlabeldef{F19.delib}{$K$-round deliberation}
 \figlabeldef{F19.select}{select\_coauthors\\(freshness)}
-\figlabeldef{F19.ground}{retrieval grounding}
+\figlabeldef{F19.ground}{retrieval\\grounding}
 \figlabeldef{F19.idea}{idea.json\\hypothesis $\cdot$ metric $\cdot$ plan}
+\figlabeldef{F19.platform}{execution platform}
+\figlabeldef{F19.probe}{capability probe\\(run start)}
+\figlabeldef{F19.fold}{constraints fold into topic}
 % --- F20 Story2Proposal claim--evidence contract ---
-\figlabeldef{F20.manu}{manuscript}
-\figlabeldef{F20.cnum}{numeric claim}
-\figlabeldef{F20.cfig}{figure claim}
-\figlabeldef{F20.evid}{recorded evidence}
+\figlabeldef{F20.head.contract}{Contract}
+\figlabeldef{F20.contract}{metric contract}
+\figlabeldef{F20.names}{evidence names\\(exact match)}
+\figlabeldef{F20.mint}{minted once;\\reused verbatim}
+\figlabeldef{F20.head.explore}{Exploration}
+\figlabeldef{F20.emit}{nodes emit\\measurements}
+\figlabeldef{F20.check}{emission check\\(advisory)}
+\figlabeldef{F20.hints}{suggestion hints:\\re-emit exact names}
+\figlabeldef{F20.evid}{Recorded evidence}
 \figlabeldef{F20.result}{result\\(node $\cdot$ result id)}
 \figlabeldef{F20.figart}{figure artefact}
+\figlabeldef{F20.manu}{Manuscript}
+\figlabeldef{F20.cnum}{numeric claim}
+\figlabeldef{F20.cfig}{figure claim}
 \figlabeldef{F20.bind}{binds (stable id)}
 \figlabeldef{F20.gate}{claim--evidence gate\\(deterministic, no LLM)}
 \figlabeldef{F20.derive}{re-derive number\\within tolerance}
 \figlabeldef{F20.verdict}{pass / block (strict)}
-\figlabeldef{F20.axes}{data-fidelity $\cdot$\\reasoning $\cdot$ visual}
+\figlabeldef{F20.axes}{data-fidelity: blocking;\\reasoning $\cdot$ visual: advisory}
 \providecommand{\term}[1]{\textit{#1}}
 
 % Notation macros used by F15 labels (mirrored from shared/notation.tex).
@@ -340,6 +371,9 @@
 \figlabeldef{F15.yes}{yes}
 \figlabeldef{F15.yes_ab}{yes: A or B}
 \figlabeldef{F15.no_next}{no $\Rightarrow$ next iter}
+\figlabeldef{F15.band.state}{run-loop state (F, P, e, H)}
+\figlabeldef{F15.lane.inner}{inner expansion sub-loop}
+\figlabeldef{F15.lane.outer}{outer parallel-run loop}
 
 \begin{document}
 \centering
