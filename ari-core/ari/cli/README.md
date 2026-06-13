@@ -12,6 +12,7 @@ construction logic is delegated to `ari.core`.
 - `commands.py` — misc top-level commands + `_safe_backup`.
 - `lineage.py` — end-of-phase lineage-decision helpers.
 - `migrate.py` — `ari migrate` sub-app.
+- `Plan.md` — G5 copy / G7 sterile / G12 timeout・overflow の実装計画（handoff study）.
 - `projects.py` — `ari paper` / `status` / `projects` / `show` commands.
 - `run.py` — `ari run` / `ari resume` commands.
 

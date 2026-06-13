@@ -12,6 +12,7 @@ MCP skills.
 - `loop.py` — `AgentLoop` driver + per-node prompt builder.
 - `message_utils.py` — ReAct-message helpers (`_extract_job_ids`, `_tool_was_called`).
 - `metric_contract.py` — producer/agent half of the metric-correctness contract (mirrors `pipeline.claim_gate`): domain-neutral obligation text (`build_contract_obligation`), run-level claim-coverage + lineage-chaining steering (`build_coverage_status`, `build_expand_coverage_hint`, `build_inherited_data_note`, `collect_node_measurement_names`), and the post-emit continuation nudge (`build_emission_nudge`).
+- `Plan.md` — B1 memory gate / B3 契約凍結 / G4 agent 面注入の実装計画（handoff study）.
 - `react_driver.py` — generic ReAct driver for pipeline `react:` stages, with sandbox enforcement.
 - `run_env.py` — capture/read helper for `_run_env.json`.
 - `tool_manager.py` — OpenAI tool conversion, dispatch, phase-aware filtering.

@@ -18,6 +18,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `memory_cli.py` — `ari memory` subcommand (migrate / backup / …).
 - `paths.py` — centralised `PathManager` for directory layout/resolution.
 - `pidfile.py` — `.ari_pid` write/read/cleanup for run-liveness detection.
+- `Plan.md` — root ファイル横断（core.py evaluator dispatch / cost_tracker.py provenance）の実装計画（handoff study）.
 - `agent/` — ReAct loop, environment capture, per-stage workflow guidance.
   - `README.md` — agent index.
   - `__init__.py` — package module-map docstring.
@@ -25,6 +26,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `loop.py` — `AgentLoop` driver + per-node prompt builder.
   - `message_utils.py` — ReAct-message helpers (`_extract_job_ids`, `_tool_was_called`).
   - `metric_contract.py` — producer/agent half of the metric-correctness contract (mirrors `pipeline.claim_gate`): domain-neutral obligation text (`build_contract_obligation`), run-level claim-coverage + lineage-chaining steering (`build_coverage_status`, `build_expand_coverage_hint`, `build_inherited_data_note`, `collect_node_measurement_names`), and the post-emit continuation nudge (`build_emission_nudge`).
+  - `Plan.md` — B1 memory gate / B3 契約凍結 / G4 agent 面注入の実装計画（handoff study）.
   - `react_driver.py` — generic ReAct driver for pipeline `react:` stages, with sandbox enforcement.
   - `run_env.py` — capture/read helper for `_run_env.json`.
   - `tool_manager.py` — OpenAI tool conversion, dispatch, phase-aware filtering.
@@ -40,6 +42,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `commands.py` — misc top-level commands + `_safe_backup`.
   - `lineage.py` — end-of-phase lineage-decision helpers.
   - `migrate.py` — `ari migrate` sub-app.
+  - `Plan.md` — G5 copy / G7 sterile / G12 timeout・overflow の実装計画（handoff study）.
   - `projects.py` — `ari paper` / `status` / `projects` / `show` commands.
   - `run.py` — `ari run` / `ari resume` commands.
 - `clone/` — `ari clone`: fetch + verify + extract curated EAR bundles.
@@ -57,6 +60,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `README.md` — config index.
   - `__init__.py` — Pydantic config models + env-var overrides.
   - `finder.py` — workflow / profile YAML discovery.
+  - `Plan.md` — G1 HandoffConfig＋env override の実装計画（handoff study）.
 - `configs/` — external config tables (Phase PC).
   - `README.md` — configs index.
   - `__init__.py` — config-table exports + loader plumbing.
@@ -68,11 +72,13 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `__init__.py` — public symbols + axis design.
   - `dynamic_axes.py` — venue/run-specific evaluation-axis derivation.
   - `llm_evaluator.py` — `LLMEvaluator`: extraction + multi-axis composite scoring.
+  - `Plan.md` — B2 deterministic evaluator＋測定器ユニットの実装計画（handoff study）.
 - `llm/` — thin LiteLLM wrappers for the agent loop and skills.
   - `README.md` — llm index.
   - `__init__.py` — public `LLMClient` + contract.
   - `cli_server.py` — OpenAI-compatible HTTP shim for agentic CLIs.
   - `client.py` — `LLMClient`/`LLMMessage`: completion + tool calling + cost recording.
+  - `Plan.md` — ローカルモデル決定性（seed/digest/thinking）の実装計画（handoff study）.
   - `routing.py` — `resolve_litellm_model`: single source of truth for litellm provider-prefix rules so every caller routes a `(model, backend)` to the same id.
 - `mcp/` — MCP client talking to `ari-skill-*` subprocesses.
   - `README.md` — mcp index.
@@ -102,6 +108,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `lineage_decision.py` — LLM lineage action + `lineage_decisions.jsonl` log.
   - `node.py` — `Node` data model + `NodeStatus` / `NodeLabel` enums.
   - `node_selection.py` — shared node-selection helpers + publication source-file selection.
+  - `Plan.md` — G3 node_summary_view / G9a deterministic selector の実装計画（handoff study）.
   - `root_idea_selector.py` — run-start LLM root-idea pick + selection log.
   - `web_provenance.py` — read/write `bfts_web_provenance.json`, the marker recording that web search was opted into during BFTS exploration (flags the trajectory non-reproducible, P5).
   - `node_report/` — per-node `node_report.json` package.

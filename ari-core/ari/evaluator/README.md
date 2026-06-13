@@ -10,6 +10,7 @@ orchestrator consumes.
 - `__init__.py` — public symbols + axis design.
 - `dynamic_axes.py` — venue/run-specific evaluation-axis derivation.
 - `llm_evaluator.py` — `LLMEvaluator`: extraction + multi-axis composite scoring.
+- `Plan.md` — B2 deterministic evaluator＋測定器ユニットの実装計画（handoff study）.
 
 ## See also
 

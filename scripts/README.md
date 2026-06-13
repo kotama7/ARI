@@ -7,6 +7,7 @@ Operational and utility scripts for building images, running services, and dev t
 - `README.md` — this file.
 - `build_pb_images.sh` — build the vendor PaperBench Docker images (`pb-env`, `pb-reproducer`).
 - `gpu_ollama_monitor.sh` — monitor the SLURM GPU node running Ollama and re-tunnel it.
+- `Plan.md` — ハーネス・run/analyze・scrub・cost ゲートの実装計画（handoff study）.
 - `readme_sync.py` — sync per-directory README `## Contents` indexes with the tree (`--check` gates drift, `--write` regenerates; no LLM/API).
 - `run_all_tests.sh` — run each skill's pytest suite in its own process.
 - `run_ollama_gpu.sh` — start Ollama on a SLURM GPU node and tunnel it to the login node.
