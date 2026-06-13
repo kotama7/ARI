@@ -18,6 +18,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `memory_cli.py` — `ari memory` subcommand (migrate / backup / …).
 - `paths.py` — centralised `PathManager` for directory layout/resolution.
 - `pidfile.py` — `.ari_pid` write/read/cleanup for run-liveness detection.
+- `Plan.md` — root ファイル横断（core.py evaluator dispatch / cost_tracker.py provenance）の実装計画（handoff study）.
 - `agent/` — ReAct loop, environment capture, per-stage workflow guidance.
   - `README.md` — agent index.
   - `__init__.py` — package module-map docstring.
