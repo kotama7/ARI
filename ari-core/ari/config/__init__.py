@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class LLMConfig(BaseModel):
@@ -238,6 +238,108 @@ class EvaluatorConfig(BaseModel):
     )
 
 
+class HandoffConfig(BaseModel):
+    """What a BFTS child inherits from its parent (handoff study).
+
+    Default ``mode="disabled"`` preserves current ARI behaviour (parent
+    work_dir copy + existing planner-side report block + ancestor memory ON,
+    no new agent-prompt injection). The study selects a named arm via
+    ``ARI_HANDOFF_MODE``; the ``_resolve_mode`` validator then fixes the
+    per-channel switches below from the mode. Individual switches may be
+    overridden afterwards for ablation via ``apply_handoff_env_overrides``.
+    See ari-core/PREREG_handoff_study.md and ari-core/ari/config/Plan.md.
+    """
+
+    mode: Literal[
+        "disabled",
+        "code_only",
+        "summary_only",
+        "code_plus_summary",
+        "code_plus_full_log",
+        "code_plus_truncated_log",
+        "rolling_summary",
+        "failure_only_summary",
+    ] = Field(
+        "disabled",
+        description="Handoff arm. `disabled` = current ARI behaviour (no "
+                    "study manipulation). Overridden by `ARI_HANDOFF_MODE`.",
+    )
+    copy_workdir: bool = Field(
+        True,
+        description="Inherit parent code artifacts via work_dir copy "
+                    "(the artifact channel). `ARI_HANDOFF_COPY_WORKDIR`.",
+    )
+    inject_agent_block: bool = Field(
+        False,
+        description="Inject the structured node summary into the child "
+                    "agent's first user message (agent-face summary channel). "
+                    "`ARI_HANDOFF_AGENT_BLOCK`.",
+    )
+    inject_planner_block: bool = Field(
+        True,
+        description="Keep the existing node_report block in the BFTS "
+                    "planner/expand prompt. `ARI_HANDOFF_PLANNER_BLOCK`.",
+    )
+    log_mode: Literal["none", "full", "truncated", "masked"] = Field(
+        "none",
+        description="Parent run-log delivered into the child prompt "
+                    "(the log channel). `ARI_HANDOFF_LOG_MODE`.",
+    )
+    log_truncate_chars: int = Field(
+        4000,
+        description="Tail length kept when log_mode=`truncated`.",
+    )
+    summary_form: Literal["extractive", "rolling", "failure_only"] = Field(
+        "extractive",
+        description="Form of the structured summary when inject_agent_block "
+                    "is on. `ARI_HANDOFF_SUMMARY_FORM`.",
+    )
+    summary_fields_enabled: list[str] = Field(
+        default_factory=lambda: [
+            "delta_vs_parent", "changed_files", "concerns",
+            "next_steps", "known_failures", "key_metrics",
+        ],
+        description="Operational-state fields included in the summary. The "
+                    "RQ-B field ablation removes one at a time via "
+                    "`ARI_HANDOFF_SUMMARY_FIELDS` (comma-separated).",
+    )
+    memory_off: bool = Field(
+        False,
+        description="Gate ALL ancestor/run-level memory injection "
+                    "(Tier-1a/1b/1c/2 + window pin) so an arm receives no "
+                    "operational state beyond the explicit handoff channels. "
+                    "Required for clean code_only/summary_only. "
+                    "`ARI_HANDOFF_MEMORY_OFF`.",
+    )
+
+    # Canonical mode -> channel resolution. memory_off is True for every
+    # experimental arm so the de-facto memory channel cannot leak (B1); the
+    # planner block is also off for study arms so the agent-face channel is
+    # the only summary surface under test.
+    _MODE_SPEC = {
+        "code_only":               ("copy", False, "none",      "extractive"),
+        "summary_only":            ("nocopy", True, "none",      "extractive"),
+        "code_plus_summary":       ("copy", True,  "none",      "extractive"),
+        "code_plus_full_log":      ("copy", False, "full",      "extractive"),
+        "code_plus_truncated_log": ("copy", False, "truncated", "extractive"),
+        "rolling_summary":         ("copy", True,  "none",      "rolling"),
+        "failure_only_summary":    ("copy", True,  "none",      "failure_only"),
+    }
+
+    @model_validator(mode="after")
+    def _resolve_mode(self) -> "HandoffConfig":
+        if self.mode == "disabled":
+            return self  # passthrough: current ARI behaviour
+        copy, agent, log, form = self._MODE_SPEC[self.mode]
+        self.copy_workdir = (copy == "copy")
+        self.inject_agent_block = agent
+        self.log_mode = log
+        self.summary_form = form
+        self.inject_planner_block = False
+        self.memory_off = True
+        return self
+
+
 class ARIConfig(BaseModel):
     llm: LLMConfig = Field(
         default_factory=LLMConfig,
@@ -259,6 +361,12 @@ class ARIConfig(BaseModel):
     bfts: BFTSConfig = Field(
         default_factory=BFTSConfig,
         description="BFTS exploration limits.",
+    )
+    handoff: HandoffConfig = Field(
+        default_factory=HandoffConfig,
+        description="What a BFTS child inherits from its parent (handoff "
+                    "study). Default `disabled` preserves current behaviour; "
+                    "set `ARI_HANDOFF_MODE` to select an arm.",
     )
     checkpoint: CheckpointConfig = Field(
         default_factory=CheckpointConfig,
@@ -490,6 +598,47 @@ def apply_evaluator_env_overrides(cfg: "ARIConfig") -> None:
     _am = os.environ.get("ARI_AXIS_MODE")
     if _am in ("legacy", "dynamic", "custom"):
         cfg.evaluator.axis_mode = _am
+
+
+def apply_handoff_env_overrides(cfg: "ARIConfig") -> None:
+    """Let `ARI_HANDOFF_*` env vars select the handoff arm and per-channel ablations.
+
+    Mirrors apply_bfts_env_overrides. `ARI_HANDOFF_MODE` rebuilds HandoffConfig
+    so the mode->channel resolution runs; individual `ARI_HANDOFF_*` switches
+    then override single channels for ablation (RQ-B field drop, sensitivity).
+    Call AFTER profile overrides so the explicit choice wins.
+    See ari-core/PREREG_handoff_study.md.
+    """
+    _valid_modes = {
+        "disabled", "code_only", "summary_only", "code_plus_summary",
+        "code_plus_full_log", "code_plus_truncated_log",
+        "rolling_summary", "failure_only_summary",
+    }
+    _m = os.environ.get("ARI_HANDOFF_MODE")
+    if _m in _valid_modes:
+        cfg.handoff = HandoffConfig(mode=_m)  # re-resolves channels from mode
+
+    def _envbool(name: str, current: bool) -> bool:
+        v = os.environ.get(name)
+        if v is None:
+            return current
+        return v.strip().lower() in ("1", "true", "yes", "on")
+
+    cfg.handoff.copy_workdir = _envbool("ARI_HANDOFF_COPY_WORKDIR", cfg.handoff.copy_workdir)
+    cfg.handoff.inject_agent_block = _envbool("ARI_HANDOFF_AGENT_BLOCK", cfg.handoff.inject_agent_block)
+    cfg.handoff.inject_planner_block = _envbool("ARI_HANDOFF_PLANNER_BLOCK", cfg.handoff.inject_planner_block)
+    cfg.handoff.memory_off = _envbool("ARI_HANDOFF_MEMORY_OFF", cfg.handoff.memory_off)
+    _lm = os.environ.get("ARI_HANDOFF_LOG_MODE")
+    if _lm in ("none", "full", "truncated", "masked"):
+        cfg.handoff.log_mode = _lm
+    _sf = os.environ.get("ARI_HANDOFF_SUMMARY_FORM")
+    if _sf in ("extractive", "rolling", "failure_only"):
+        cfg.handoff.summary_form = _sf
+    _fields = os.environ.get("ARI_HANDOFF_SUMMARY_FIELDS")
+    if _fields:
+        cfg.handoff.summary_fields_enabled = [
+            f.strip() for f in _fields.split(",") if f.strip()
+        ]
 
 
 def _apply_llm_env_overrides(cfg: "ARIConfig") -> None:
