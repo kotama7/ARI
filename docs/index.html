@@ -6,7 +6,7 @@
   <title>ARI — Autonomous Research Infrastructure</title>
   <meta name="description" content="Describe your goal in plain text — ARI runs the experiments, writes the paper, and verifies the results autonomously. From laptop to supercomputer, from idea to verified paper."/>
   <link rel="canonical" href="https://kotama7.github.io/ARI/"/>
-  <meta name="theme-color" content="#030712"/>
+  <meta name="theme-color" content="#04060c"/>
   <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon.png"/>
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png"/>
   <meta property="og:type" content="website"/>
@@ -21,7 +21,7 @@
   <meta name="twitter:image" content="https://kotama7.github.io/ARI/assets/og-image.png"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"/>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=Instrument+Serif:ital@0;1&amp;display=swap"/>
   <link rel="stylesheet" href="tokens.css"/>
   <link rel="stylesheet" href="site.css"/>
 </head>
@@ -49,61 +49,106 @@
 </nav>
 
 <!-- HERO -->
-<div class="hero" id="main">
-  <img class="logo" src="assets/logo.png" alt="ARI" width="320" height="219"/>
-  <p class="hero-eyebrow"><span id="t-hero-eyebrow">Autonomous Research Infrastructure</span></p>
-  <h1><span id="t-hero-title">Research, automated end-to-end.</span></h1>
-  <p class="hero-sub"><span id="t-hero-sub">Describe your goal in plain text. ARI runs the experiments, writes the paper, and verifies the results — entirely on its own. Currently supports digital computation experiments (HPC, ML, systems).</span></p>
-  <div class="hero-cta">
-    <a href="#quickstart" class="btn-hero btn-hero-primary"><span id="t-hero-btn-start">Get Started</span></a>
-    <a href="#demo" class="btn-hero btn-hero-secondary"><span id="t-hero-btn-demo">▶ Watch Demo</span></a>
-    <a href="#philosophy" class="btn-hero btn-hero-secondary"><span id="t-hero-btn-learn">Learn More</span></a>
+<header class="hero" id="main">
+  <div class="hero-grid">
+    <div class="hero-copy">
+      <img class="logo" src="assets/logo.png" alt="ARI" width="320" height="219"/>
+      <p class="hero-eyebrow"><span id="t-hero-eyebrow">Autonomous Research Infrastructure</span></p>
+      <h1><span id="t-hero-title">Research, automated end-to-end.</span></h1>
+      <p class="hero-sub"><span id="t-hero-sub">Describe your goal in plain text. ARI runs the experiments, writes the paper, and verifies the results — entirely on its own. Currently supports digital computation experiments (HPC, ML, systems).</span></p>
+      <div class="hero-cta">
+        <a href="#quickstart" class="btn-hero btn-hero-primary"><span id="t-hero-btn-start">Get Started</span></a>
+        <a href="#demo" class="btn-hero btn-hero-secondary"><span id="t-hero-btn-demo">Watch Demo</span></a>
+        <a href="#philosophy" class="hero-more"><span id="t-hero-btn-learn">Learn More</span></a>
+      </div>
+    </div>
+    <div class="hero-side" aria-hidden="true">
+      <!-- decorative replay of one `ari run`; numbers echo the FIG. animations
+           and the sample paper below — keep them consistent, never invent. -->
+      <div class="term-window hero-term">
+        <div class="term-bar"><span class="win-file">ari — run</span></div>
+        <div class="term-body">
+          <p class="term-line"><span class="term-prompt">$</span>ari run experiment.md</p>
+          <p class="term-line"><span class="term-tag">survey</span>arXiv + Semantic Scholar <span class="term-ok">✓</span></p>
+          <p class="term-line"><span class="term-tag">ideate</span>VirSci panel · best_score 0.78</p>
+          <p class="term-line"><span class="term-tag">bfts</span>n1 IMPROVE → 0.68 <span class="term-ok">✓</span> · 4 parallel</p>
+          <p class="term-line"><span class="term-tag">paper</span>paper.pdf · 8 pages · figures <span class="term-ok">✓</span></p>
+          <p class="term-line"><span class="term-tag">verify</span>independent re-run · <span class="term-ok">REPRODUCED ✓</span></p>
+          <p class="term-line"><span class="term-prompt">$</span><span class="caret"></span></p>
+        </div>
+      </div>
+    </div>
   </div>
   <div class="hero-scroll">
     <span id="t-hero-scroll">Scroll</span>
-    <svg width="16" height="24" viewBox="0 0 16 24" fill="none" class="scroll-arrow"><path d="M8 4v16M2 14l6 6 6-6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <svg width="16" height="24" viewBox="0 0 16 24" fill="none" class="scroll-arrow" aria-hidden="true"><path d="M8 4v16M2 14l6 6 6-6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </div>
-</div>
+</header>
 
 <!-- DEMO -->
 <section class="demo" id="demo">
   <div class="container text-center">
-    <p class="section-label"><span id="t-demo-label">Demo</span></p>
-    <h2 class="section-title"><span id="t-demo-title">See ARI in action.</span></h2>
-    <p class="section-sub demo-sub"><span id="t-demo-sub">Watch a live walkthrough of the ARI web dashboard, then download the sample paper that ARI generated end-to-end — an 8-page, gate-verified CSR SpMM study (store-policy selection + loopline-guided model) on aarch64 (SVE) HPC.</span></p>
+    <div class="sec-head is-center" data-reveal>
+      <p class="sec-meta"><span class="sec-idx" aria-hidden="true">01</span><span class="section-label"><span id="t-demo-label">Demo</span></span></p>
+      <h2 class="section-title"><span id="t-demo-title">See ARI in action.</span></h2>
+      <p class="section-sub demo-sub"><span id="t-demo-sub">Watch a live walkthrough of the ARI web dashboard, then download the sample paper that ARI generated end-to-end — an 8-page, gate-verified CSR SpMM study (store-policy selection + loopline-guided model) on aarch64 (SVE) HPC.</span></p>
+    </div>
 
     <!-- Dashboard demo video (language-aware: innerHTML swapped by i18n) -->
-    <div id="t-dashboard-video" class="demo-video-wrap">
+    <div id="t-dashboard-video" class="demo-video-wrap plate" data-reveal>
       <video autoplay muted loop playsinline controls preload="auto" class="demo-video">
         <source src="assets/movie/en/ari_dashboard_demo.mp4" type="video/mp4">
       </video>
     </div>
-    <p class="demo-watch"><span id="t-dashboard-watch">▶ Live walkthrough of the ARI dashboard (auto-loop)</span></p>
+    <p class="demo-watch"><span id="t-dashboard-watch">Live walkthrough of the ARI dashboard (auto-loop)</span></p>
 
-    <div class="btn-row">
-      <a href="assets/sample_paper.pdf" target="_blank" class="btn-base btn-soft"><span id="t-demo-paper-btn">📄 Download sample paper</span></a>
+    <div class="btn-row" data-reveal>
+      <a href="assets/sample_paper.pdf" target="_blank" class="btn-base btn-outline"><span id="t-demo-paper-btn">Download sample paper</span></a>
       <a href="#quickstart" class="btn-base btn-solid"><span id="t-demo-start-btn">Get started ↓</span></a>
     </div>
 
+    <!-- Sample paper viewer — the 8-page gate-verified study ARI produced
+         end-to-end, pre-rendered as PNGs (assets/images/sample_paper/),
+         exactly mirroring assets/sample_paper.pdf. -->
+    <div class="term-window paper-window" data-reveal>
+      <div class="term-bar">
+        <span class="win-file">sample_paper.pdf — 8 pages</span>
+        <a class="bar-link" href="assets/sample_paper.pdf" target="_blank">PDF →</a>
+      </div>
+      <div class="paper-pages" tabindex="0" role="region" aria-labelledby="t-sample-pages-note">
+        <img class="paper-page" src="assets/images/sample_paper/page-01.png" alt="ARI-generated sample paper, page 1" width="935" height="1210"/>
+        <img class="paper-page" src="assets/images/sample_paper/page-02.png" alt="ARI-generated sample paper, page 2" width="935" height="1210" loading="lazy" decoding="async"/>
+        <img class="paper-page" src="assets/images/sample_paper/page-03.png" alt="ARI-generated sample paper, page 3" width="935" height="1210" loading="lazy" decoding="async"/>
+        <img class="paper-page" src="assets/images/sample_paper/page-04.png" alt="ARI-generated sample paper, page 4" width="935" height="1210" loading="lazy" decoding="async"/>
+        <img class="paper-page" src="assets/images/sample_paper/page-05.png" alt="ARI-generated sample paper, page 5" width="935" height="1210" loading="lazy" decoding="async"/>
+        <img class="paper-page" src="assets/images/sample_paper/page-06.png" alt="ARI-generated sample paper, page 6" width="935" height="1210" loading="lazy" decoding="async"/>
+        <img class="paper-page" src="assets/images/sample_paper/page-07.png" alt="ARI-generated sample paper, page 7" width="935" height="1210" loading="lazy" decoding="async"/>
+        <img class="paper-page" src="assets/images/sample_paper/page-08.png" alt="ARI-generated sample paper, page 8" width="935" height="1210" loading="lazy" decoding="async"/>
+      </div>
+    </div>
+    <p class="paper-note"><span id="t-sample-pages-note">The complete 8-page sample paper, exactly as ARI generated and verified it — scroll to read, or download the PDF above.</span></p>
+
     <!-- ARI System Report — per-language PDFs surfaced from report/{en,ja,zh} (P6).
          The card matching the active site language is marked .is-default by i18n.js. -->
-    <h3 class="demo-inline-title"><span id="t-report-title">📘 Read the ARI System Report</span></h3>
-    <p class="demo-inline-sub"><span id="t-report-sub">The full arXiv-style technical report behind ARI — maintained in three languages.</span></p>
-    <div class="report-grid">
-      <div class="report-card" id="report-card-en">
-        <div class="report-lang"><span id="t-report-cta-en">English</span></div>
-        <h4>ARI System Report</h4>
-        <a href="assets/report/en.pdf" target="_blank">PDF →</a>
-      </div>
-      <div class="report-card" id="report-card-ja">
-        <div class="report-lang"><span id="t-report-cta-ja">Japanese</span></div>
-        <h4>ARI System Report</h4>
-        <a href="assets/report/ja.pdf" target="_blank">PDF →</a>
-      </div>
-      <div class="report-card" id="report-card-zh">
-        <div class="report-lang"><span id="t-report-cta-zh">Chinese</span></div>
-        <h4>ARI System Report</h4>
-        <a href="assets/report/zh.pdf" target="_blank">PDF →</a>
+    <div class="paper-sheet" data-reveal>
+      <h3 class="demo-inline-title"><span id="t-report-title">Read the ARI System Report</span></h3>
+      <p class="demo-inline-sub"><span id="t-report-sub">The full arXiv-style technical report behind ARI — maintained in three languages.</span></p>
+      <div class="report-grid">
+        <div class="report-card" id="report-card-en">
+          <div class="report-lang"><span id="t-report-cta-en">English</span></div>
+          <h4>ARI System Report</h4>
+          <a href="assets/report/en.pdf" target="_blank">PDF →</a>
+        </div>
+        <div class="report-card" id="report-card-ja">
+          <div class="report-lang"><span id="t-report-cta-ja">Japanese</span></div>
+          <h4>ARI System Report</h4>
+          <a href="assets/report/ja.pdf" target="_blank">PDF →</a>
+        </div>
+        <div class="report-card" id="report-card-zh">
+          <div class="report-lang"><span id="t-report-cta-zh">Chinese</span></div>
+          <h4>ARI System Report</h4>
+          <a href="assets/report/zh.pdf" target="_blank">PDF →</a>
+        </div>
       </div>
     </div>
   </div>
@@ -112,12 +157,14 @@
 <!-- PHILOSOPHY -->
 <section class="philosophy" id="philosophy">
   <div class="container">
-    <p class="section-label"><span id="t-phi-label">Philosophy</span></p>
-    <h2 class="section-title"><span id="t-phi-title">Research should be for everyone.</span></h2>
-    <div class="phil-quote">
+    <div class="sec-head" data-reveal>
+      <p class="sec-meta"><span class="sec-idx" aria-hidden="true">02</span><span class="section-label"><span id="t-phi-label">Philosophy</span></span></p>
+      <h2 class="section-title"><span id="t-phi-title">Research should be for everyone.</span></h2>
+    </div>
+    <div class="phil-quote" data-reveal>
       <span id="t-phi-quote">"The gap between 'I have an idea' and 'I have a result'<br/>should be measured in hours — not months."</span>
     </div>
-    <div class="phil-body">
+    <div class="phil-body" data-reveal>
       <p><span id="t-phi-p1">Today, running experiments, reviewing prior work, writing papers, and verifying findings each require separate expertise and enormous time. ARI removes those barriers.</span></p>
       <p><span id="t-phi-p2">Whether you are a student with a laptop and a free local AI, or a researcher with access to a supercomputer and the latest cloud models — ARI works the same way. You describe the goal. ARI does the rest.</span></p>
       <p><span id="t-phi-p3">Computation is only the beginning. ARI is architecturally designed to grow beyond software — into robotics, sensors, and laboratory equipment. This is not yet implemented, but the plugin architecture exists precisely for this purpose.</span></p>
@@ -125,103 +172,118 @@
   </div>
 </section>
 
-<!-- INSPIRED BY / PRIOR WORK -->
+<!-- INSPIRED BY / PRIOR WORK — a reference ledger -->
 <section id="inspired" class="inspired">
-  <div class="wrap-900">
-    <p class="section-label text-center mb-8"><span id="t-inspired-label">Inspired By · Prior Work</span></p>
-    <h2 class="section-title text-center"><span id="t-inspired-title">Standing on the shoulders of giants.</span></h2>
-    <p class="section-sub text-center mx-auto mb-48"><span id="t-inspired-sub">ARI was built on lessons from these pioneering works.</span></p>
-    <div class="card-grid">
+  <div class="container">
+    <div class="sec-head" data-reveal>
+      <p class="sec-meta"><span class="sec-idx" aria-hidden="true">03</span><span class="section-label"><span id="t-inspired-label">Inspired By · Prior Work</span></span></p>
+      <h2 class="section-title"><span id="t-inspired-title">Standing on the shoulders of giants.</span></h2>
+      <p class="section-sub"><span id="t-inspired-sub">ARI was built on lessons from these pioneering works.</span></p>
+    </div>
+    <div class="card-grid" data-reveal>
 
       <div class="card">
-        <div class="card-icon">🧪</div>
+        <div class="card-ref" aria-hidden="true">[1]</div>
         <h3 class="card-title">The AI Scientist v2</h3>
         <p class="card-desc"><span id="t-ais-desc">Sakana AI's fully autonomous scientific research system — from idea generation to peer-review-ready papers. A foundational reference for ARI's end-to-end pipeline design.</span></p>
         <a href="https://arxiv.org/abs/2504.08066" target="_blank" class="card-link">arxiv.org/abs/2504.08066 →</a>
       </div>
 
       <div class="card">
-        <div class="card-icon">⚡</div>
+        <div class="card-ref" aria-hidden="true">[2]</div>
         <h3 class="card-title">HPC-AutoResearch</h3>
         <p class="card-desc"><span id="t-hpc-desc">An LLM-driven framework for automated HPC performance optimization. Demonstrated autonomous compiler flag and thread-count tuning on real supercomputer workloads — a direct predecessor to ARI's search engine.</span></p>
         <a href="https://www.researchgate.net/publication/403797672_HPC-AutoResearch_Adapting_Autonomous_Research_Systems_for_HPC_through_Split-Phase_Execution" target="_blank" class="card-link">researchgate.net/publication/403797672 →</a>
       </div>
 
       <div class="card">
-        <div class="card-icon">🧬</div>
+        <div class="card-ref" aria-hidden="true">[3]</div>
         <h3 class="card-title">VirSci</h3>
         <p class="card-desc"><span id="t-virsci-desc">A multi-agent scientific deliberation system. Multiple AI personas with different research backgrounds debate a hypothesis, producing richer and more diverse research ideas than single-agent generation. Integrated into ARI's idea generation stage. ARI can now optionally run VirSci's real multi-agent engine on a live Semantic Scholar snapshot (opt-in vendor-wrap), not just the integrated approach.</span></p>
         <a href="https://arxiv.org/abs/2410.09403" target="_blank" class="card-link">arxiv.org/abs/2410.09403 →</a>
       </div>
 
       <div class="card">
-        <div class="card-icon">📋</div>
+        <div class="card-ref" aria-hidden="true">[4]</div>
         <h3 class="card-title">PaperBench</h3>
         <p class="card-desc"><span id="t-paperbench-desc">OpenAI's benchmark for evaluating whether AI agents can reproduce frontier ML papers from scratch. Each paper is decomposed into a fine-grained TaskNode rubric scored by an LLM judge ("SimpleJudge"). v0.7.0 vendors PaperBench under <code>ari-skill-paper-re/vendor/paperbench</code> as the deterministic core of ARI's reproducibility check (ORS Phase 2). v0.7.2 adds <strong>paper-audit mode</strong>: the same rubric machinery inverted to audit whether a paper itself describes enough to be reproducible — venue-conditioned templates (sc / neurips / nature), multimodal figure inspection, and a paper_audit prompt patch that breaks the structural ceiling on Result Analysis leaves. v0.8.0 ships the <strong>3-stage bridge contract</strong> (<code>rollout_submission</code> / <code>reproduce_submission</code> / <code>judge_submission</code>) honouring vendor protocol with <code>container_image</code> end-to-end plumbing, fail-loud sandbox/GPU preconditions, salvage retries, executed-submission tarballs, code_only Stage 1↔3 consistency, <code>agent.env</code> injection, host-FS source-removal guard, and <strong>env-truth</strong> guardrails (probe-before-scaffold, language-choice counter-prime, host-truthful ADDITIONAL NOTES with auto-detected binaries / GPU / network / Phase-2 isolation).</span></p>
         <a href="https://arxiv.org/abs/2504.01848" target="_blank" class="card-link">arxiv.org/abs/2504.01848 →</a>
       </div>
 
       <div class="card">
-        <div class="card-icon">🧠</div>
+        <div class="card-ref" aria-hidden="true">[5]</div>
         <h3 class="card-title">MemGPT</h3>
         <p class="card-desc"><span id="t-memgpt-desc">Hierarchical memory + tool-mediated paging that lets an LLM agent operate as if it had unbounded context. The MemGPT paper became <a href="https://docs.letta.com" target="_blank">Letta</a>, which v0.6.0 adopted as ARI's memory backend — replacing the v0.5.x JSONL store with ancestor-scoped archival memory and a portable per-checkpoint snapshot. On top of Letta, ARI adds a verifiable research-memory layer: each node report is consolidated into typed, sha256-provenanced records — experiment results, failures, and reflections — that ground the paper's claims, with deterministic ancestor working-context injected at every node.</span></p>
         <a href="https://arxiv.org/abs/2310.08560" target="_blank" class="card-link">arxiv.org/abs/2310.08560 →</a>
       </div>
 
+      <div class="card">
+        <div class="card-ref" aria-hidden="true">[6]</div>
+        <h3 class="card-title">Story2Proposal</h3>
+        <p class="card-desc"><span id="t-s2p-desc">A scaffold for structured scientific paper writing: a shared contract governs what each section may claim, evaluated through a generate–evaluate–adapt loop over reasoning verification, data fidelity, and visual coherence. ARI maps this principle onto its execution-grounded pipeline as the default-on claim-evidence loop — papers declare machine-checkable claims and numeric assertions grounded in executed results, re-verified by a deterministic hard gate before the paper is finalized.</span></p>
+        <a href="https://arxiv.org/abs/2603.27065" target="_blank" class="card-link">arxiv.org/abs/2603.27065 →</a>
+      </div>
+
     </div>
   </div>
 </section>
+
+<!-- HOW IT WORKS -->
 <section class="how" id="how">
   <div class="container">
-    <p class="section-label"><span id="t-how-label">How It Works</span></p>
-    <h2 class="section-title"><span id="t-how-title">One file. Full pipeline.</span></h2>
-    <p class="section-sub"><span id="t-how-sub">Write a short description of what you want to optimize. ARI takes it from there — automatically, without any human intervention.</span></p>
-    <div class="steps">
+    <div class="sec-head" data-reveal>
+      <p class="sec-meta"><span class="sec-idx" aria-hidden="true">04</span><span class="section-label"><span id="t-how-label">How It Works</span></span></p>
+      <h2 class="section-title"><span id="t-how-title">One file. Full pipeline.</span></h2>
+      <p class="section-sub"><span id="t-how-sub">Write a short description of what you want to optimize. ARI takes it from there — automatically, without any human intervention.</span></p>
+    </div>
+    <div class="steps" data-reveal>
       <div class="step">
-        <div class="step-num">📝</div>
+        <span class="step-no" aria-hidden="true">01</span>
         <h3><span id="t-step1-title">Describe</span></h3>
         <p><span id="t-step1-body">Write your research goal in plain Markdown. Even 3 lines is enough.</span></p>
       </div>
       <div class="step">
-        <div class="step-num">🔍</div>
+        <span class="step-no" aria-hidden="true">02</span>
         <h3><span id="t-step2-title">Survey</span></h3>
         <p><span id="t-step2-body">ARI searches arXiv and Semantic Scholar, then VirSci multi-agent deliberation — multiple AI personas with different research backgrounds — debates the results to produce diverse, well-grounded ideas.</span></p>
       </div>
-      <div class="step">
-        <div class="step-num">⚗️</div>
+      <div class="step is-core">
+        <span class="step-no" aria-hidden="true">03</span>
+        <span class="step-core">BFTS</span>
         <h3><span id="t-step3-title">Experiment</span></h3>
         <p><span id="t-step3-body">Best-First Tree Search (BFTS) with five node types — DRAFT, IMPROVE, DEBUG, ABLATION, VALIDATION — explores the hypothesis space in parallel. The LLM selects which frontier node to expand next based on peer-review scores, not heuristics. Failed nodes generate debug children, not retries. All generated code is captured per node.</span></p>
       </div>
       <div class="step">
-        <div class="step-num">📄</div>
+        <span class="step-no" aria-hidden="true">04</span>
         <h3><span id="t-step4-title">Write</span></h3>
         <p><span id="t-step4-body">A complete academic paper with figures and citations is generated automatically.</span></p>
       </div>
       <div class="step">
-        <div class="step-num">🔬</div>
+        <span class="step-no" aria-hidden="true">05</span>
         <h3><span id="t-step5-title">Analyze</span></h3>
         <p><span id="t-step5-body">ARI traverses the full experiment tree — root, improvements, ablations, and validation runs — and uses an LLM to extract methodology, setup, and key findings directly from raw artifacts. Nothing is hardcoded.</span></p>
       </div>
       <div class="step">
-        <div class="step-num">✅</div>
+        <span class="step-no" aria-hidden="true">06</span>
         <h3><span id="t-step6-title">Verify</span></h3>
         <p><span id="t-step6-body">A separate AI agent independently reconstructs and re-runs the experiment from the paper text alone — no original code shared.</span></p>
       </div>
     </div>
 
     <!-- Algorithm animations (§8). Each is built by its JS module from the
-         i18n dict; reduced-motion renders a single static final frame. -->
-    <div class="anim-block" id="anim-pipeline" data-anim="pipeline"></div>
+         i18n dict; reduced-motion renders a single static final frame. The
+         FIG. numbering is generated by a CSS counter on .anim-block. -->
+    <div class="anim-block" id="anim-pipeline" data-anim="pipeline" data-reveal></div>
     <!-- Step 3 (Experiment) visualised: BFTS best-first tree search (Pa1). -->
-    <div class="anim-block" id="anim-bfts" data-anim="bfts"></div>
+    <div class="anim-block" id="anim-bfts" data-anim="bfts" data-reveal></div>
     <!-- ReAct loop inside a single BFTS node. -->
-    <div class="anim-block algo-anim" id="anim-react" data-anim="react"></div>
+    <div class="anim-block algo-anim" id="anim-react" data-anim="react" data-reveal></div>
     <!-- VirSci multi-agent deliberation (step 2, Survey). -->
-    <div class="anim-block algo-anim" id="anim-virsci" data-anim="virsci"></div>
+    <div class="anim-block algo-anim" id="anim-virsci" data-anim="virsci" data-reveal></div>
 
     <!-- GUI Dashboard highlight -->
-    <div class="dashboard-highlight">
-      <div class="dash-icon">🖥️</div>
+    <div class="dashboard-highlight" data-reveal>
+      <div class="dash-code" aria-hidden="true">ari viz</div>
       <h3><span id="t-dashboard-title">Web Dashboard — Real-time Control</span></h3>
       <p class="dashboard-desc">
         <span id="t-dashboard-desc">A 10-page React/TypeScript SPA dashboard (built with Vite) with an Overleaf-like LaTeX editor,
@@ -233,19 +295,19 @@
         Component-based architecture with separate modules for each page. All output is isolated per project.</span>
       </p>
 
-      <p class="dashboard-see"><span id="t-dashboard-see-demo">▶ <a href="#demo">See the live walkthrough in the Demo section ↑</a></span></p>
+      <p class="dashboard-see"><span id="t-dashboard-see-demo"><a href="#demo">See the live walkthrough in the Demo section ↑</a></span></p>
 
       <div class="pill-row">
-        <span class="pill"><span id="t-dashboard-p1">🏠 Home Dashboard</span></span>
-        <span class="pill"><span id="t-dashboard-p2">📋 Experiments</span></span>
-        <span class="pill"><span id="t-dashboard-p3">📡 Monitor + D3 Tree</span></span>
-        <span class="pill"><span id="t-dashboard-p4">🌳 Tree + Code Viewer</span></span>
-        <span class="pill"><span id="t-dashboard-p5">📊 Results + LaTeX Editor</span></span>
-        <span class="pill"><span id="t-dashboard-p6">✨ Experiment Wizard</span></span>
-        <span class="pill"><span id="t-dashboard-p7">💡 VirSci Ideas</span></span>
-        <span class="pill"><span id="t-dashboard-p8">🔄 React Flow Workflow</span></span>
-        <span class="pill"><span id="t-dashboard-p9">⚙️ Settings + Container</span></span>
-        <span class="pill"><span id="t-dashboard-p10">🔬 Sub-Experiments</span></span>
+        <span class="pill"><span id="t-dashboard-p1">[home] Home Dashboard</span></span>
+        <span class="pill"><span id="t-dashboard-p2">[exp] Experiments</span></span>
+        <span class="pill"><span id="t-dashboard-p3">[monitor] Monitor + D3 Tree</span></span>
+        <span class="pill"><span id="t-dashboard-p4">[tree] Tree + Code Viewer</span></span>
+        <span class="pill"><span id="t-dashboard-p5">[results] Results + LaTeX Editor</span></span>
+        <span class="pill"><span id="t-dashboard-p6">[wizard] Experiment Wizard</span></span>
+        <span class="pill"><span id="t-dashboard-p7">[ideas] VirSci Ideas</span></span>
+        <span class="pill"><span id="t-dashboard-p8">[flow] React Flow Workflow</span></span>
+        <span class="pill"><span id="t-dashboard-p9">[config] Settings + Container</span></span>
+        <span class="pill"><span id="t-dashboard-p10">[sub] Sub-Experiments</span></span>
       </div>
       <div class="mono-box">
         ari viz ./checkpoints/my_run/ --port 8765
@@ -257,36 +319,38 @@
 <!-- UNIVERSAL -->
 <section class="universal" id="universal">
   <div class="container">
-    <p class="section-label"><span id="t-universal-label2">Universal</span></p>
-    <h2 class="section-title"><span id="t-universal-title">Works everywhere. For everyone.</span></h2>
-    <p class="section-sub"><span id="t-universal-sub">ARI is not built for one environment or one type of user. It scales across five dimensions.</span></p>
-    <div class="axis-grid">
+    <div class="sec-head" data-reveal>
+      <p class="sec-meta"><span class="sec-idx" aria-hidden="true">05</span><span class="section-label"><span id="t-universal-label2">Universal</span></span></p>
+      <h2 class="section-title"><span id="t-universal-title">Works everywhere. For everyone.</span></h2>
+      <p class="section-sub"><span id="t-universal-sub">ARI is not built for one environment or one type of user. It scales across five dimensions.</span></p>
+    </div>
+    <div class="axis-grid" data-reveal>
       <div class="axis-card">
-        <div class="axis-icon">💻</div>
+        <div class="axis-code" aria-hidden="true">ENV</div>
         <h3><span id="t-u1-title">Any Computer</span></h3>
         <p><span id="t-u1-body">Environment profiles (laptop / hpc / cloud) auto-detect your scheduler (SLURM, PBS, LSF, SGE, Kubernetes) and configure parallelism, memory, and container runtime automatically.</span></p>
         <div class="axis-range"><span id="t-u1-range">Laptop → Supercomputer</span></div>
       </div>
       <div class="axis-card">
-        <div class="axis-icon">🧠</div>
+        <div class="axis-code" aria-hidden="true">LLM</div>
         <h3><span id="t-u2-title">Any AI Model</span></h3>
         <p><span id="t-u2-body">Free local models (Ollama) or commercial APIs (Claude, GPT, Gemini) via litellm. Per-experiment model selection in the dashboard wizard — Ollama models support free-form name entry.</span></p>
         <div class="axis-range"><span id="t-u2-range">Free Local → Cloud API</span></div>
       </div>
       <div class="axis-card">
-        <div class="axis-icon">📋</div>
+        <div class="axis-code" aria-hidden="true">USR</div>
         <h3><span id="t-u3-title">Any Expertise Level</span></h3>
         <p><span id="t-u3-body">Write 3 lines as a beginner, or 200 lines with precise technical controls as an expert.</span></p>
         <div class="axis-range"><span id="t-u3-range">Novice → Expert</span></div>
       </div>
       <div class="axis-card">
-        <div class="axis-icon">🌍</div>
+        <div class="axis-code" aria-hidden="true">DOM</div>
         <h3><span id="t-u4-title">Any Domain</span></h3>
         <p><span id="t-u4-body">Add new capabilities as plug-in modules. No changes to the core system needed.</span></p>
         <div class="axis-range"><span id="t-u4-range">Software → Physical World</span></div>
       </div>
       <div class="axis-card">
-        <div class="axis-icon">📐</div>
+        <div class="axis-code" aria-hidden="true">FMT</div>
         <h3><span id="t-u5-title">Any Format</span></h3>
         <p><span id="t-u5-body">Papers can target arXiv, NeurIPS, ICPP, SC, ISC, ACM, or any custom venue template.</span></p>
         <div class="axis-range"><span id="t-u5-range">Preprint → Top Conference</span></div>
@@ -295,34 +359,33 @@
   </div>
 </section>
 
-<!-- RESULTS -->
-
-
 <!-- FUTURE / PHYSICAL WORLD -->
 <section class="future">
   <div class="container">
-    <p class="section-label"><span id="t-vision-label">Vision</span></p>
-    <h2 class="section-title"><span id="t-vision-title">Beyond software.</span></h2>
-    <p class="section-sub"><span id="t-vision-sub">The current version automates digital computation experiments. Physical world integration is on the roadmap — not yet implemented.</span></p>
-    <div class="future-grid">
+    <div class="sec-head" data-reveal>
+      <p class="sec-meta"><span class="sec-idx" aria-hidden="true">06</span><span class="section-label"><span id="t-vision-label">Vision</span></span></p>
+      <h2 class="section-title"><span id="t-vision-title">Beyond software.</span></h2>
+      <p class="section-sub"><span id="t-vision-sub">The current version automates digital computation experiments. Physical world integration is on the roadmap — not yet implemented.</span></p>
+    </div>
+    <div class="future-grid" data-reveal>
       <div class="future-card">
-        <div class="future-tag"><span id="t-v1-tag">✅ Available Now</span></div>
-        <h3>⚙️ <span id="t-v1-title">Computational Research</span></h3>
+        <div class="future-tag"><span id="t-v1-tag">Available Now</span></div>
+        <h3><span id="t-v1-title">Computational Research</span></h3>
         <p><span id="t-v1-body">Compiler tuning, algorithm benchmarking, ML hyperparameters, systems performance.</span></p>
       </div>
       <div class="future-card">
-        <div class="future-tag"><span id="t-v2-tag">🔜 Coming Soon</span></div>
-        <h3>🦾 <span id="t-v2-title">Robotics</span></h3>
+        <div class="future-tag"><span id="t-v2-tag">Coming Soon</span></div>
+        <h3><span id="t-v2-title">Robotics</span></h3>
         <p><span id="t-v2-body">Robot arm trajectories, motion planning parameters, control system tuning via ROS2.</span></p>
       </div>
       <div class="future-card">
-        <div class="future-tag"><span id="t-v3-tag">📅 Planned</span></div>
-        <h3>🧪 <span id="t-v3-title">Laboratory Automation</span> <span class="roadmap-flag"><span id="t-roadmap-label">(roadmap)</span></span></h3>
+        <div class="future-tag"><span id="t-v3-tag">Planned</span></div>
+        <h3><span id="t-v3-title">Laboratory Automation</span> <span class="roadmap-flag"><span id="t-roadmap-label">(roadmap)</span></span></h3>
         <p><span id="t-v3-body">Liquid handlers, plate readers, reaction conditions — planned, not yet implemented.</span></p>
       </div>
       <div class="future-card">
-        <div class="future-tag"><span id="t-v4-tag">🌟 Vision</span></div>
-        <h3>🌍 <span id="t-v4-title">Any Physical System</span> <span class="roadmap-flag"><span id="t-roadmap-label2">(roadmap)</span></span></h3>
+        <div class="future-tag"><span id="t-v4-tag">Vision</span></div>
+        <h3><span id="t-v4-title">Any Physical System</span> <span class="roadmap-flag"><span id="t-roadmap-label2">(roadmap)</span></span></h3>
         <p><span id="t-v4-body">If it has a goal and a parameter space, ARI can explore it. The same system, infinite domains.</span></p>
       </div>
     </div>
@@ -332,11 +395,15 @@
 <!-- QUICK START -->
 <section class="qs" id="quickstart">
   <div class="container">
-    <p class="section-label"><span id="t-qs-label">Quick Start</span></p>
-    <h2 class="section-title"><span id="t-qs-title">Running in minutes.</span></h2>
+    <div class="sec-head" data-reveal>
+      <p class="sec-meta"><span class="sec-idx" aria-hidden="true">07</span><span class="section-label"><span id="t-qs-label">Quick Start</span></span></p>
+      <h2 class="section-title"><span id="t-qs-title">Running in minutes.</span></h2>
+    </div>
     <div class="qs-grid">
-      <div>
-        <pre><span class="comment"><span id="t-qs-c1"># 1. Clone the repository</span></span>
+      <div data-reveal>
+        <div class="term-window">
+          <div class="term-bar"><span class="win-file">bash — setup</span></div>
+          <pre><span class="comment"><span id="t-qs-c1"># 1. Clone the repository</span></span>
 git clone https://github.com/kotama7/ARI
 cd ARI
 
@@ -355,16 +422,20 @@ export ANTHROPIC_API_KEY=sk-...
 ari run experiment.md
 
 <span class="comment"><span id="t-qs-c7"># 5. Launch the web dashboard</span></span>
-ari viz ./checkpoints/my_run/  <span class="comment"># → http://localhost:8765</span>
+<span class="comment"># → http://localhost:8765</span>
+ari viz ./checkpoints/my_run/
 
 <span class="comment"><span id="t-qs-c8"># Other useful commands</span></span>
 ari projects          <span class="comment"><span id="t-qs-c9"># list all runs</span></span>
 ari resume ./ckpt/    <span class="comment"><span id="t-qs-c10"># resume interrupted run</span></span>
 ari settings          <span class="comment"><span id="t-qs-c11"># view/modify config</span></span></pre>
+        </div>
       </div>
-      <div>
+      <div data-reveal>
         <p class="qs-exp-intro"><span id="t-qs-exp-intro">The simplest experiment file looks like this:</span></p>
-        <pre><span class="comment"><span id="t-qs-exp-c1"># experiment.md — free-form text is fine</span></span>
+        <div class="term-window">
+          <div class="term-bar"><span class="win-file">experiment.md</span></div>
+          <pre><span class="comment"><span id="t-qs-exp-c1"># experiment.md — free-form text is fine</span></span>
 <span class="comment"><span id="t-qs-exp-c2"># Headings are optional; ARI reads any format.</span></span>
 
 Maximize performance of matrix
@@ -380,11 +451,12 @@ Primary score
 
 ## Constraints
 - Describe your environment here</pre>
+        </div>
         <p class="qs-note"><span id="t-qs-note">ARI will survey related papers, run experiments, generate figures, write a complete paper, and verify reproducibility independently — automatically. A unique LLM-generated title is assigned to each experiment project.</span></p>
         <div class="btn-row mt-24">
           <a href="docs/getting-started/quickstart" class="btn-base btn-solid"><span id="t-qs-btn-guide">Full Setup Guide</span></a>
-          <a href="docs/guides/paperbench/paperbench_quickstart" class="btn-base btn-purple"><span id="t-qs-btn-paperbench">📚 PaperBench Quickstart (v0.8.0)</span></a>
-          <a href="assets/sample_paper.pdf" target="_blank" class="btn-base btn-outline-accent"><span id="t-qs-btn-sample">📄 Sample Paper (PDF)</span></a>
+          <a href="docs/guides/paperbench/paperbench_quickstart" class="btn-base btn-outline"><span id="t-qs-btn-paperbench">PaperBench Quickstart (v0.8.0)</span></a>
+          <a href="assets/sample_paper.pdf" target="_blank" class="btn-base btn-outline"><span id="t-qs-btn-sample">Sample Paper (PDF)</span></a>
           <a href="https://github.com/kotama7/ARI" class="btn-base btn-outline"><span id="t-qs-btn-github">View on GitHub →</span></a>
         </div>
       </div>
@@ -394,28 +466,30 @@ Primary score
 
 <!-- COMMUNITY -->
 <section class="community">
-  <div class="container text-center max-w-860">
-    <p class="section-label"><span id="t-comm-label">Community</span></p>
-    <h2 class="section-title"><span id="t-comm-title">Built together.</span></h2>
-    <p class="section-sub mb-48"><span id="t-comm-sub">ARI is open source and welcomes contributions of all kinds — new skills, pipeline ideas, bug reports, and more.</span></p>
-    <div class="comm-grid">
+  <div class="container text-center max-w-860 mx-auto">
+    <div class="sec-head is-center" data-reveal>
+      <p class="sec-meta"><span class="sec-idx" aria-hidden="true">08</span><span class="section-label"><span id="t-comm-label">Community</span></span></p>
+      <h2 class="section-title"><span id="t-comm-title">Built together.</span></h2>
+      <p class="section-sub"><span id="t-comm-sub">ARI is open source and welcomes contributions of all kinds — new skills, pipeline ideas, bug reports, and more.</span></p>
+    </div>
+    <div class="comm-grid" data-reveal>
       <div class="axis-card is-compact">
-        <div class="card-icon-lg">🔌</div>
+        <div class="comm-code" aria-hidden="true">[skill]</div>
         <h3><span id="t-comm-c1-title">Add a Skill</span></h3>
         <p><span id="t-comm-c1-body">Have a domain ARI doesn't cover yet? Wrap it as an MCP skill and submit a PR. Any benchmark, any tool.</span></p>
       </div>
       <div class="axis-card is-compact">
-        <div class="card-icon-lg">🔄</div>
+        <div class="comm-code" aria-hidden="true">[flow]</div>
         <h3><span id="t-comm-c2-title">Propose a Flow</span></h3>
         <p><span id="t-comm-c2-body">Have an idea for a new research pipeline or workflow step? Open a discussion and shape ARI's direction.</span></p>
       </div>
       <div class="axis-card is-compact">
-        <div class="card-icon-lg">🐛</div>
+        <div class="comm-code" aria-hidden="true">[fix]</div>
         <h3><span id="t-comm-c3-title">Report & Fix</span></h3>
         <p><span id="t-comm-c3-body">Found a bug or a rough edge? Issues and PRs are always welcome. No contribution is too small.</span></p>
       </div>
     </div>
-    <div class="btn-row mt-40">
+    <div class="btn-row mt-40" data-reveal>
       <a href="https://github.com/kotama7/ARI" target="_blank" class="btn-primary">
         <span id="t-comm-btn1">View on GitHub →</span>
       </a>
@@ -423,7 +497,7 @@ Primary score
         <span id="t-comm-btn2">Join the Discussion →</span>
       </a>
       <a href="https://discord.gg/SbMzNtYkq" target="_blank" class="btn-discord">
-        💬 Discord →
+        Discord →
       </a>
     </div>
   </div>
@@ -460,6 +534,22 @@ Primary score
   n.addEventListener('click', function(e){
     if(e.target.closest('a')){ n.classList.remove('is-open'); t.setAttribute('aria-expanded','false'); }
   });
+})();
+/* Scroll-reveal: arms [data-reveal] fade-ups only when JS + IO + motion are
+   all available, so content is never hidden without them (build-less). */
+(function(){
+  try{
+    if(window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if(!('IntersectionObserver' in window)) return;
+    document.documentElement.classList.add('reveal-armed');
+    var io=new IntersectionObserver(function(es){
+      es.forEach(function(e){
+        if(e.isIntersecting){ e.target.classList.add('is-vis'); io.unobserve(e.target); }
+      });
+    },{threshold:.12,rootMargin:'0px 0px -8% 0px'});
+    var els=document.querySelectorAll('[data-reveal]');
+    for(var i=0;i<els.length;i++) io.observe(els[i]);
+  }catch(e){}
 })();
 </script>
 <script src="i18n/landing.en.js"></script>

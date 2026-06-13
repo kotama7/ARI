@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
-last_verified: 2026-06-04
+last_verified: 2026-06-10
 ---
 
 # Environment Variable Reference
@@ -119,6 +119,13 @@ LLM follows `ARI_MODEL_IDEA`.
 | `ARI_NUM_REFLECTIONS` | Reflection rounds in `review_compiled_paper` |
 | `ARI_NUM_REVIEWS_ENSEMBLE` | Ensemble size for rubric review |
 | `ARI_JUDGE_N_RUNS` | SimpleJudge re-run count for `grade_with_simplejudge` |
+
+### Claim-evidence gate
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `ARI_CLAIM_GATE_MODE` | Claim-evidence / metric-correctness gate evaluation switch. `off` never blocks; `warn` reports errors/warnings but never blocks finalize; `strict` blocks the final gate when blocking errors exist | `warn` (`off` / `warn` / `strict`) |
+| `ARI_COMPARISON_SCOPE` | Governs whether a cross-environment comparison is treated as a transparency warning (`any`) or a blocking error (`same_environment`, for single-architecture optimization studies) | `any` (`any` / `same_environment`) |
 
 ### Rubric auto-generation (v0.7.0)
 

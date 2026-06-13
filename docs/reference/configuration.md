@@ -8,7 +8,7 @@ sources:
     role: config
   - path: ari-core/ari/viz/api_settings.py
     role: implementation
-last_verified: 2026-06-04
+last_verified: 2026-06-10
 ---
 
 # Configuration Reference
@@ -536,6 +536,59 @@ The decision is logged to `lineage_decisions.jsonl` as
 `{trigger: "root_idea_selection", action: "root_swap" | "root_keep"}`
 and persisted in `idea.json` as `_root_choice`. Children (recursion)
 detect either marker and skip re-selection.
+
+## Claim Gate Policy (v0.7.0+)
+
+`claim_gate_policy` is the top-level block that governs the
+claim–evidence hard gate (Story2Proposal Phase B3). The gate stages run
+on every paper build and are wired with `{{claim_gate_policy}}`; the
+block is loaded by `ari-core/ari/pipeline/claim_gate/policy.py`.
+
+```yaml
+claim_gate_policy:
+  mode: warn                  # off | warn | strict
+  comparison_scope: any       # any | same_environment
+  numeric_coverage:
+    target_sections:
+      strict: [abstract, results, conclusion]
+      warn: [introduction, discussion, limitations]
+      excluded: [related_work, references, appendix, equations]
+  numeric_match:
+    default_tolerance: {absolute: 0.0, relative: 0.02}
+  blocking:
+    block_on: [numeric_mismatch, operand_unresolved, missing_evidence]
+```
+
+`mode` controls blocking (env `ARI_CLAIM_GATE_MODE` overrides it):
+
+| Mode | Behaviour |
+|---|---|
+| `off` | Never blocks. |
+| `warn` (default) | Reports errors/warnings but never blocks `finalize_paper`. |
+| `strict` | The **final** gate blocks (`finalize_paper` is skipped) when a `block_on` error exists, and uncovered result numbers in the strict sections become blocking. The draft gate never blocks. |
+
+`comparison_scope` is the injected research intent (env
+`ARI_COMPARISON_SCOPE` overrides it):
+
+| Scope | Cross-environment comparison |
+|---|---|
+| `any` (default) | Transparency **warning** — correct for cross-architecture studies where the cross-host comparison is the contribution. |
+| `same_environment` | **Blocking** error — correct for single-architecture optimization studies. |
+
+`numeric_coverage.target_sections` lists, per gate severity, which paper
+sections are checked for numeric claims (`strict`/`warn`) and which are
+ignored (`excluded`). `numeric_match.default_tolerance` is the
+match tolerance applied when a claim carries no per-claim tolerance:
+`absolute: 0.0`, `relative: 0.02` (2%). `blocking.block_on` is the list
+of finding types that block the final gate under `strict`:
+`numeric_mismatch`, `operand_unresolved`, `missing_evidence`.
+
+> A separate set of **objective-falsehood** finding types
+> (`invariant_violation`, `correctness_failed`, `correctness_uncovered`,
+> `placeholder_denominator`, `recompute_mismatch`, `claim_evidence_missing`,
+> `ceiling_unmeasured`) blocks the final paper **regardless** of
+> `mode`. These defaults live in `policy.py`'s `blocking.always_block_on`
+> and are not set in `workflow.yaml`.
 
 ## BFTS Tuning
 

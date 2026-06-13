@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-06-10
 ---
 
 # 環境変数リファレンス
@@ -79,6 +79,7 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 | `ARI_MAX_REACT` | ノードごとの ReAct 反復上限 | (workflow 制御) |
 | `ARI_PARALLEL` | 並行ノード実行数 | `1` |
 | `ARI_TIMEOUT_NODE` | ノードごとのウォールタイム上限（秒） | (なし) |
+| `ARI_BFTS_ALLOW_WEB` | オプトイン：BFTS ノードエージェントに**探索中**の `web-skill`（web_search / fetch_url / arXiv / Semantic Scholar）を公開。デフォルト無効では探索ループの再現性（P5）を維持；有効にすると ARI は非再現トラジェクトリのマーカ（`bfts_web_provenance.json`）を記録します。`idea-skill` の `survey` は、これとは無関係に常に範囲限定の文献検索を行います。`1`/`true`/`yes`/`on` で有効化 | `false` |
 | `ARI_RECURSION_DEPTH` | ネストされた ARI 実行の現在深さ（自動設定） | (自動) |
 | `ARI_MAX_RECURSION_DEPTH` | orchestrator 再帰の上限 | `3` |
 | `ARI_PARENT_RUN_ID` | 再帰時の親 run ID（自動設定） | (自動) |
@@ -104,6 +105,7 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 | `ARI_MEMORY_BACKEND` | `letta`（デフォルト）または `in_memory`（Letta 不要；ローカルスモークテスト用の一時 RAM バックエンド） |
 | `ARI_MEMORY_AUTO_RESTORE` | resume 時に `memory_backup.jsonl.gz` から自動復元 |
 | `ARI_MEMORY_ACCESS_LOG` | `memory_access.jsonl` へのパス |
+| `ARI_MEMORY_CONSOLIDATE` | 型付きメモリの統合 + 論文クレーム向けのアーティファクト裏付け済み `verified_context.json`。**デフォルト有効**；`0`/`false`/`no`/`off` で無効化 |
 | `ARI_CURRENT_NODE_ID` | エージェントループが設定；スキルは読み取るのみで設定しない |
 | `ARI_LETTA_VENV` | バンドル済み Letta サーバの仮想環境パス |
 
@@ -117,6 +119,13 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 | `ARI_NUM_REFLECTIONS` | `review_compiled_paper` のリフレクションラウンド数 |
 | `ARI_NUM_REVIEWS_ENSEMBLE` | ルーブリック査読のアンサンブルサイズ |
 | `ARI_JUDGE_N_RUNS` | `grade_with_simplejudge` の SimpleJudge 再実行数 |
+
+### クレーム–エビデンスゲート
+
+| 変数 | 用途 | デフォルト |
+|---|---|---|
+| `ARI_CLAIM_GATE_MODE` | クレーム–エビデンス / 指標正当性ゲートの評価スイッチ。`off` は決してブロックしない；`warn` はエラー / 警告を報告するが finalize をブロックしない；`strict` はブロッキングエラーがある場合に最終ゲートをブロック | `warn`（`off` / `warn` / `strict`） |
+| `ARI_COMPARISON_SCOPE` | クロス環境比較を透明性警告として扱うか（`any`）、ブロッキングエラーとして扱うか（`same_environment`、単一アーキテクチャ最適化研究向け）を制御 | `any`（`any` / `same_environment`） |
 
 ### ルーブリック自動生成 (v0.7.0)
 

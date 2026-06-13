@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-05-26
+last_verified: 2026-06-10
 ---
 
 # 你的第一个实验，端到端
@@ -46,10 +46,11 @@ ari run experiment.md
 
 第一个节点按顺序完成立项工作：
 
-1. **`make_metric_spec`** —— 从你的目标中钉定主要指标（这里是 GFLOP/s，越高越好）。
-2. **`survey`** —— 搜索文献，使最终的论文能够引用真实的参考文献。
-3. **`generate_ideas`** —— 一场 VirSci 多代理审议就该问题展开辩论并写出
-   `idea.json`：一个假说、主要指标，以及一份实验计划。它在整个运行中只运行**一次**。
+1. **`generate_ideas`** —— 一场 VirSci 多代理审议就该问题展开辩论并写出
+   `idea.json`：一个假说、主要指标，以及一份实验计划。它在整个运行中只运行**一次**，
+   并**设定**主要指标（这里是 GFLOP/s）及其方向（越高越好）。
+2. **`make_metric_spec`** —— *从*该 idea 的 `primary_metric` 导出具体的成功指标（而非凭空猜测）。
+3. **`survey`** —— 搜索文献，使最终的论文能够引用真实的参考文献。
 
 打开 **Ideas** 页面阅读它的提议。
 
@@ -86,6 +87,8 @@ Overview、Trace（每一次工具调用）、Code 和 Output 标签页。
 3. **write_paper** 起草 LaTeX、修订它，并从调研结果中拉取 BibTeX → `full_paper.tex` / `.pdf`。
 4. **review_paper** 针对所选的 venue rubric 运行一个或多个评审代理（当评审多于一个时，会有一个 Area Chair 元评审进行汇总）。
 5. **generate_ear** 组装可复现性包 `ear/`（代码、输入数据、图表、`reproduce.sh`、LICENSE —— 但不含实验输出）。
+
+默认情况下，管线现在还会运行一个 **claim-evidence 验证回路**：一个确定性硬门重新推导所报告的数值，一个不阻断的 evidence-grounded 语义评审依据这些证据检查行文，随后一次保持锚点的修订与重新渲染闭合该回路。它默认以仅报告的（**warn**）模式运行 —— 它会暴露发现，但除非你设置 `ARI_CLAIM_GATE_MODE=strict`（或 `claim_gate_policy.mode: strict`），否则不会阻断 finalize。详情参见[发表生命周期](../concepts/publication-lifecycle.md)。
 
 在 **Results** 页面上阅读全部内容：类 Overleaf 的编辑器、评审分数，以及 EAR 浏览器。
 

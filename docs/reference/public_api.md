@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_public_api_boundary.py
     role: test
-last_verified: 2026-05-26
+last_verified: 2026-06-10
 ---
 
 # `ari.public` — Stable API for skills
@@ -26,6 +26,8 @@ by `ari-core/tests/test_public_api_boundary.py`.
 | `ari.public.cost_tracker` | LLM cost recording (`bootstrap_skill`, `record`, ...) | `ari-skill-plot` (LLM call cost) |
 | `ari.public.llm` | `LLMClient` (LiteLLM wrapper with cost integration) | callers that prefer ARI's wrapper |
 | `ari.public.paths` | `PathManager` (checkpoint path resolver) | callers that need scoped paths |
+| `ari.public.claim_gate` | Deterministic claim-evidence hard gate (`run_hard_gate`) + concept→invariant registry (`classify_concept`, `scan_science_data`, `CONCEPT_INVARIANTS`) | `ari-skill-evaluator`, `ari-skill-transform` |
+| `ari.public.verified_context` | Verified-context helpers (`render_grounded_block`, `write_verified_context`, `build_verified_context`) | `ari-skill-paper` |
 
 ## `ari.public.config_schema`
 
@@ -114,6 +116,49 @@ nodes_json = paths.checkpoint / "nodes_tree.json"
 `PathManager` is the central resolver — never read `ARI_CHECKPOINT_DIR`
 directly from a skill.  Source: `ari-core/ari/paths.py` →
 `ari-core/ari/public/paths.py`.
+
+## `ari.public.claim_gate`
+
+Re-exports the deterministic claim-evidence hard gate and its
+concept→invariant registry from `ari.pipeline.claim_gate`:
+
+| Symbol | Purpose |
+|---|---|
+| `run_hard_gate` | The gate entry point — blocks claims whose evidence fails the deterministic checks |
+| `classify_concept` | Maps a concept to its universal-invariant family |
+| `scan_science_data` | Scans science data against the registered invariants |
+| `CONCEPT_INVARIANTS` | The domain-general concept→invariant registry (single source of truth) |
+
+```python
+from ari.public.claim_gate import run_hard_gate
+```
+
+`ari-skill-evaluator` and `ari-skill-transform` reach the gate through
+this stable public surface rather than the private
+`ari.pipeline.claim_gate` path, so both skills reuse the *same*
+universal-invariant logic the gate blocks on — no duplicated domain
+math.  Source: `ari-core/ari/pipeline/claim_gate/` →
+`ari-core/ari/public/claim_gate.py`.
+
+## `ari.public.verified_context`
+
+Re-exports the verified-context helpers from
+`ari.pipeline.verified_context`:
+
+| Symbol | Purpose |
+|---|---|
+| `render_grounded_block` | Renders a grounded (citation-backed) block of context |
+| `write_verified_context` | Writes the verified-context artifact for callers that build it |
+| `build_verified_context` | Builds the verified-context structure |
+
+```python
+from ari.public.verified_context import render_grounded_block
+```
+
+`ari-skill-paper` reaches these helpers through the stable public
+surface rather than the private `ari.pipeline.verified_context` path.
+Source: `ari-core/ari/pipeline/verified_context.py` →
+`ari-core/ari/public/verified_context.py`.
 
 ## Putting it together — a minimal skill
 

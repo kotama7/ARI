@@ -11,7 +11,7 @@ and owns the EAR publication lifecycle (curate / publish / promote).
 - `__init__.py` — empty package marker.
 - `claims.py` — deterministic Research Contract claim generator (Story2Proposal Phase A): builds `claims[]` / `numeric_assertions[]` with real node_id + metric_path operands; formula registry mirrored in ari-core's claim_gate.
 - `curate.py` — deterministic (P1/P2) EAR curator producing `ear_published/` + `manifest.lock`.
-- `server.py` — MCP entry point (`nodes_to_science_data` — also emits `claims[]`/`numeric_assertions[]` — `generate_ear`, `curate_ear`, `publish_ear`).
+- `server.py` — MCP entry point (`nodes_to_science_data` — also emits `claims[]`/`numeric_assertions[]` — `generate_ear`, `curate_ear`, `publish_ear`, `promote_ear`).
 - `licenses/` — bundled license texts used when curating EAR bundles.
   - `README.md` — licenses index.
   - `apache-2.0.txt` — Apache-2.0 license body.

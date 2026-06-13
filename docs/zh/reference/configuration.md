@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/configs
     role: config
-last_verified: 2026-05-25
+last_verified: 2026-06-10
 ---
 
 # 配置参考
@@ -462,6 +462,58 @@ root_idea_selection:
 决定记录到 `lineage_decisions.jsonl`（`trigger: "root_idea_selection"`），
 并在 `idea.json` 中以 `_root_choice` 持久化。子（recursion）检测到
 `_inherited_from` / `_root_choice` 即跳过重选。
+
+## Claim Gate Policy (v0.7.0+)
+
+`claim_gate_policy` 是控制 claim–evidence hard gate（Story2Proposal
+Phase B3）的顶层配置块。gate 阶段在每次论文构建时运行，通过
+`{{claim_gate_policy}}` 配线；该块由
+`ari-core/ari/pipeline/claim_gate/policy.py` 加载。
+
+```yaml
+claim_gate_policy:
+  mode: warn                  # off | warn | strict
+  comparison_scope: any       # any | same_environment
+  numeric_coverage:
+    target_sections:
+      strict: [abstract, results, conclusion]
+      warn: [introduction, discussion, limitations]
+      excluded: [related_work, references, appendix, equations]
+  numeric_match:
+    default_tolerance: {absolute: 0.0, relative: 0.02}
+  blocking:
+    block_on: [numeric_mismatch, operand_unresolved, missing_evidence]
+```
+
+`mode` 控制阻断行为（环境变量 `ARI_CLAIM_GATE_MODE` 可覆盖）：
+
+| Mode | 行为 |
+|---|---|
+| `off` | 从不阻断。 |
+| `warn`（默认） | 报告错误/警告，但不阻断 `finalize_paper`。 |
+| `strict` | 存在 `block_on` 错误时**最终** gate 阻断（跳过 `finalize_paper`），strict 节中未覆盖的结果数值也会变为阻断项。draft gate 从不阻断。 |
+
+`comparison_scope` 是注入的研究意图（环境变量 `ARI_COMPARISON_SCOPE`
+可覆盖）：
+
+| Scope | 跨环境比较 |
+|---|---|
+| `any`（默认） | 透明性**警告**——适用于以跨主机比较本身为贡献的跨架构研究。 |
+| `same_environment` | **阻断**错误——适用于单一架构的优化研究。 |
+
+`numeric_coverage.target_sections` 按 gate 严重级别列出需检查数值论断的
+论文章节（`strict`/`warn`）以及忽略的章节（`excluded`）。
+`numeric_match.default_tolerance` 是在论断未携带单独 tolerance 时应用的
+匹配容差（`absolute: 0.0`、`relative: 0.02`＝2%）。`blocking.block_on`
+是在 `strict` 下阻断最终 gate 的 finding type 列表：
+`numeric_mismatch`、`operand_unresolved`、`missing_evidence`。
+
+> 另一组**客观虚假**的 finding type
+> （`invariant_violation`、`correctness_failed`、`correctness_uncovered`、
+> `placeholder_denominator`、`recompute_mismatch`、`claim_evidence_missing`、
+> `ceiling_unmeasured`）**无论** `mode` 为何都会阻断最终论文。
+> 这些默认值位于 `policy.py` 的 `blocking.always_block_on`，
+> 不在 `workflow.yaml` 中设置。
 
 ## BFTS 调优
 

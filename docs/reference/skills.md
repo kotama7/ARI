@@ -12,7 +12,7 @@ sources:
     role: implementation
   - path: ari-skill-paper-re/mcp.json
     role: config
-last_verified: 2026-05-26
+last_verified: 2026-06-10
 ---
 
 # MCP Skills Reference
@@ -124,7 +124,16 @@ SPECTER2 cosine retrieval index + author profiles + co-author graph).
   `launch_config.json`).
 - **Degrades safely.** On missing deps (`virsci` pip extra absent) or any runtime
   error, the skill falls back to the reimpl loop. The `idea.json` contract is
-  identical either way.
+  identical either way. Beyond that, the live-snapshot build now **fails loud on an
+  empty / 0-paper S2 fetch** (a 429 rate-limit, network failure, or no search hits):
+  rather than silently writing a "successful" 0-paper manifest with placeholder
+  authors — which would run VirSci fully ungrounded yet record it as a `real_wrap`
+  success — it raises so `generate_ideas` degrades **visibly** to the reimpl loop. A
+  cached manifest with `n_papers == 0` is treated as a poisoned cache and never reused
+  (it is rebuilt). When the topic `/paper/search` is throttled (S2 429) but the survey
+  already vetted paper ids, the build recovers by fetching a seed corpus through
+  `/paper/batch` (keyed by id, so more targeted and less likely to be throttled),
+  recorded as `seed_fallback` in `virsci_snapshot/snapshot_manifest.json`.
 - **Path reporting.** `idea.json` carries `virsci_integration_status`:
   `"real_wrap"` when the vendor engine ran, or `"reimpl: …"` (with the reason)
   when the reimpl loop was used.
@@ -179,7 +188,17 @@ result = make_metric_spec(open("experiment.md").read())
 
 `expected_metrics` and `expected_params` are strictly disjoint by contract — a name appears in one or the other, never both. The LLM-fallback path is the only one that fills `expected_params` (the regex path covers the experiment.md-format quick path, which has no consistent "## Parameters" header to mine). `loop.py` threads `expected_params` into `MetricSpec` so the LLM evaluator emits a typed `params` / `measurements` split on each node, which `transform-skill::nodes_to_science_data` then propagates to `configurations[*].parameters` (C contract — see also the D contract via `coding-skill::emit_results`).
 
+`make_metric_spec` also builds an **idea-owned run-level `metric_contract`** from the idea's `primary_metric`, its structured `falsifiable_claims`, and the `correctness_required` / `ceiling_must_be_measured` requirement flags. It persists this to `{checkpoint}/metric_contract.json` (next to `idea.json` / `tree.json`). The contract is idea-owned so an agent cannot drop a claim or requirement to dodge the check; it is read back by `transform-skill::nodes_to_science_data` (grafted onto `science_data.metric_contract`) and enforced by the deterministic hard gate.
+
 Model (fallback): `ARI_MODEL` env > `gpt-4o-mini`.
+
+#### `claim_evidence_hard_gate(checkpoint_dir, paper_path, science_data_json="", paper_claim_links_path="", figures_manifest_json="", policy=None, phase="draft")`
+
+Deterministic claim/evidence hard gate (execution data fidelity). **No LLM**. Verifies that science_data claims reference executed nodes, re-computes `numeric_assertions` from `results.json` and checks the paper-reported numbers within tolerance, detects uncovered result numbers per section policy, and checks figure existence. Thin MCP wrapper over ari-core's `run_hard_gate` (`ari.public.claim_gate`). In strict mode the `final` phase returns `{"error": ...}` when blocking errors exist so the stage runner raises and `finalize_paper` is skipped; the `draft` phase and warn/off mode never block. Writes `evaluation/claim_evidence_hard_gate_{phase}.json`.
+
+#### `evidence_grounded_semantic_review(checkpoint_dir, paper_path, science_data_json="", hard_gate_path="", paper_claim_links_path="", phase="initial")`
+
+Non-blocking, evidence-grounded semantic review. **LLM: Yes**. The LLM detects over-claiming / interpretation issues / unregistered strong claims grounded in the hard-gate evidence, WITHOUT touching the independent text reviewer; it does not re-check numbers. Emits `suggested_revisions` consumed by `paper_refine` plus scores. Writes `evaluation/evidence_grounded_semantic_review.json`. Never blocks.
 
 ---
 
@@ -309,6 +328,28 @@ Attaches `vlm_figure_review` and `_review_composition` metadata so the
 GUI / CLI can show both outputs with clear source attribution. The
 upstream stages stay independent (matching AI Scientist v2's
 `perform_review` contract) and are reconciled here.
+
+#### `link_paper_claims(tex_path="", science_data_json="", figures_manifest_json="", output_path="")` — v0.9.0
+
+Reconciles `% CLAIM:Cx:NCx` anchors against science_data claims and builds
+`paper_claim_links.json` (anchors / writer_assertions / numeric_mentions /
+figure_refs / unresolved_anchors / uncovered_numeric_candidates) consumed by
+the claim hard gate. **Deterministic, no LLM**. The transform-stage
+`science_data.json` is never mutated; figure binding is recorded here. Run after
+`write_paper` (draft) and again after `paper_refine` (final). Degrades to a
+valid empty result on failure (never error-only) so it cannot cascade-skip the
+finalize chain.
+
+#### `paper_refine(tex_path="", suggested_revisions_json="", merged_review_path="", semantic_review_path="", venue="arxiv")` — v0.9.0
+
+Anchor-preserving revision pass that applies `suggested_revisions` (from
+`evidence_grounded_semantic_review` / the merged review). **LLM: Yes**. Explicit
+`replace "X" with "Y"` substitutions are applied deterministically first, then a
+bounded multi-pass LLM find/replace handles the remainder; every `% CLAIM`
+anchor present in the draft must survive (anchor-dropping edits are rejected and
+on net anchor loss the original paper is kept). Math-safe underscore escaping
+skips `\( … \)` / `\[ … \]` and math environments. The refined LaTeX is returned
+under `latex` (the draft is preserved as `full_paper.draft.tex`).
 
 ##### Few-shot corpus management
 
@@ -664,6 +705,56 @@ node's `generate_ideas` completes (the moment `primary_metric` is
 determined); safe to call repeatedly (60 s in-process cache). Returns
 `{}` until that seed runs.
 
+#### Typed verifiable-research-memory tools
+
+Typed entries (Phase 1) carry structured provenance so the paper / figure
+stages can ground claims on reproducible artifacts. Callers are loop/pipeline
+hooks, not LLM pulls. Every write tool is **Copy-on-Write guarded**: `node_id`
+must equal `$ARI_CURRENT_NODE_ID` (the ari-core MCPClient routes the write
+through the `_set_current_node` bridge), so a child cannot mutate an ancestor's
+entries.
+
+#### `add_experiment_result(node_id, text, metric_ptr=None, artifact_refs=None, node_report_ref=None)`
+
+Record a typed `experiment_result` (CoW: self node only).
+
+#### `add_failure_case(node_id, text, artifact_refs=None, node_report_ref=None)`
+
+Record a typed `failure_case` (CoW: self node only).
+
+#### `add_procedure_memory(node_id, text, node_report_ref=None)`
+
+Record a reusable procedure (CoW: self node only).
+
+#### `add_reflection(node_id, text, confidence=None, node_report_ref=None)`
+
+Record a reflection (CoW: self node only). Not usable for paper claims.
+
+#### `add_reproducibility_event(node_id, target_memory_id, status, artifact_refs=None, text=None)`
+
+Append an append-only reproducibility status event against an existing entry
+(CoW: self node only).
+
+#### `search_research_memory(query, ancestor_ids, kinds=None, require_artifacts=False, limit=5)`
+
+Ancestor-scoped typed search, filtered by `kind` / artifact presence. Siblings
+and children are never returned.
+
+#### `get_verified_context(ancestor_ids, purpose="paper", limit=None)`
+
+Artifact-grounded, reproducibility-aware context for paper / figure use.
+
+#### `audit_memory(experiments_root, run_id=None)`
+
+Verify recorded provenance (sha256) against disk for a checkpoint. Returns
+`{summary, results}`.
+
+#### `consolidate_node_memory(node_id, node_report, work_dir, run_id=None)`
+
+Derive and write typed memory (`experiment_result` / `failure_case` /
+`reflection`) from a `node_report` at node end via the typed writer (CoW: self
+node only). Caller is the ari-core node-end hook.
+
 Storage: per-checkpoint Letta agent with two archival collections
 (`ari_node_*`, `ari_react_*`). A snapshot at
 `{ARI_CHECKPOINT_DIR}/memory_backup.jsonl.gz` keeps checkpoints
@@ -726,6 +817,10 @@ configurations[*]:
   metrics                                           ← back-compat flat union
   _typed_source: "results.json" | "llm_evaluator" | (absent)
   _typed_schema_version
+  _provenance                                       ← union of emit_results
+                                                       _provenance across the
+                                                       node's results*.json
+                                                       variants (when present)
 per_key_summary:                                    ← input-param keys & "_…" keys
                                                        are excluded
 summary_stats:
@@ -745,6 +840,8 @@ report_driven                                       ← true when node_report.js
 1. `experiments/{run_id}/{node_id}/results.json` — written by `coding-skill::emit_results` (D contract). Authoritative because the experiment script declared its own contract.
 2. `node.metrics::_params_dict` and `_measurements_dict` — emitted by the LLM evaluator from artifact text when `MetricSpec.expected_params` is set (C contract).
 3. Legacy: `parameters: {}` and the flat `metrics` dict carries everything as a single ambiguous bag.
+
+It also reads back `{checkpoint}/metric_contract.json` (written by `evaluator-skill::make_metric_spec`, next to `tree.json`) and grafts it onto `science_data.metric_contract` so the deterministic hard gate enforces the declared contract (claims / correctness / `required_measured` / declared invariants) — without this graft the declared contract is inert and only the universal invariant registry reaches the gate.
 
 **Robustness**: the LLM response parser strips `<think>…</think>` blocks and `` ```json `` fences, then walks balanced braces from each candidate `{` (handles `{...} prose {...}` shapes that the legacy greedy `\{.*\}` regex would have collapsed). On any parse failure the raw response is saved to `{checkpoint_dir}/science_data.debug.txt` for post-hoc audit.
 
@@ -795,6 +892,13 @@ root. Always starts at `visibility=staged` regardless of the argument
 reproducibility check is required to promote to `public`.
 
 `ARI_PUBLISH_DRYRUN=1` forces dry-run mode for CI safety.
+
+#### `promote_ear(checkpoint_dir, target="public")` — v0.7.0
+
+Promotes a previously-published EAR artefact to a wider visibility tier.
+Thin MCP wrapper around `ari.publish.promote`. **Deterministic, no LLM**.
+Returns `{ref, visibility, promoted_at, promote_failed_at}` (or
+`{error, kind}` on a `PublishError`).
 
 #### License templates — v0.7.0
 
@@ -883,7 +987,7 @@ result = read_file("results.csv", offset=0, limit=100)
 
 Work directory: `work_dir` arg > `ARI_WORK_DIR` env > `/tmp/ari_work`.
 
-#### `emit_results(params, measurements, predictions={}, scores={}, file="results.json", work_dir="/tmp/ari_work")`
+#### `emit_results(params, measurements, predictions={}, scores={}, provenance={}, file="results.json", work_dir="/tmp/ari_work")`
 
 Write a typed `results.json` separating input parameters from measured outputs. Call this once at the **end** of an experiment run so downstream stages (`transform → science_data`, paper writing, summary stats) can tell apart "what we measured" from "what we ran on" — a best-of reduction never accidentally picks an input size (e.g. `nnz`, `M`, `K`, `threads`) over a real metric (e.g. `GFlops_per_s`).
 
@@ -897,6 +1001,8 @@ emit_results(
 ```
 
 The file uses schema `1.0` and is overwritten on repeat calls; pass a different `file` name to keep multiple result variants. `params` and `measurements` must be disjoint — do NOT include input parameters in `measurements` and do NOT include measured outputs in `params`. Non-JSON-serializable values (e.g. `pathlib.Path`) are str-coerced rather than raising. `file` is normalised to `Path(file).name` so a malicious agent cannot escape `work_dir` via `../../...`.
+
+The optional `provenance` arg is an `{operand: source}` map written verbatim into `results.json` as the `_provenance` key and consumed by the claim/metric-correctness gate. Tag an operand `"microbench"` or `"benchmark"` when its value is an empirically **MEASURED** ceiling/peak (so a normalized metric is not flagged as resting on a placeholder), and `"correctness"` or `"reference"` when it is a residual computed against an **independent** reference (so the output is not flagged as unverified). Best-effort; omitted entirely when empty.
 
 The downstream `transform-skill::nodes_to_science_data` populates `configurations[*].parameters` from this file when present (D contract). When `emit_results` is not called, the LLM evaluator's typed split (C contract — see `ari-skill-evaluator::make_metric_spec` below) supplies the same information from artifact analysis.
 
@@ -935,6 +1041,8 @@ Render canonical comparison figures from `nodes_tree.json` into `output_dir`.  R
 #### `generate_figures_llm(nodes_json_path, output_dir, experiment_summary="", context="", n_figures=3, science_data_path="", vlm_feedback="")`
 
 LLM examines the data shape + natural-language `intent`, writes matplotlib code, runs it in the same `_run_plot_code` sandbox, and (optionally) calls a VLM to caption the result.  P2 exception.
+
+The `kind="plot"` system prompt now enforces a **LAYOUT** rule (call `fig.tight_layout()` and save with `bbox_inches='tight'`, put the legend outside the axes, rotate long tick labels; a figure with overlapping or truncated text is **REJECTED**) and a **COMPARABILITY** rule (do not juxtapose values measured on different scales/regimes without a clear axis or annotation). These are prompt-level guidance to the figure-writing LLM — no new mechanical gate is added.
 
 ### Environment variables
 
