@@ -58,7 +58,6 @@ an LLM and therefore are not byte-deterministic.
 | `make_metric_spec` | LLM extracts metric definitions from `experiment.md`; also emits a run-level `metric_contract` → `{checkpoint}/metric_contract.json`. Mint-once: when a persisted claims-bearing contract already exists, the call returns it verbatim with `contract_frozen: true` instead of re-extracting (per-node spec fields like the scoring guide stay per-call) | ✓ |
 | `claim_evidence_hard_gate` | Deterministic claim/evidence hard gate (execution data fidelity); strict mode blocks finalize on the final phase | ✗ |
 | `evidence_grounded_semantic_review` | Non-blocking, evidence-grounded semantic review; emits `suggested_revisions` for `paper_refine` | ✓ |
-| (internal) `evaluate` | Score node artefacts against the spec | ✓ |
 
 ## ari-skill-hpc — SLURM + Singularity
 

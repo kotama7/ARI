@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-05-26
+last_verified: 2026-06-10
 ---
 
 # Your First Experiment, End to End
@@ -56,13 +56,14 @@ Everything below lands there.
 
 The first node does the framing work, in order:
 
-1. **`make_metric_spec`** — pins the primary metric (here, GFLOP/s, higher is
-   better) from your goal.
-2. **`survey`** — searches the literature so the eventual paper can cite real
-   references.
-3. **`generate_ideas`** — a VirSci multi-agent deliberation debates the question
+1. **`generate_ideas`** — a VirSci multi-agent deliberation debates the question
    and writes `idea.json`: a hypothesis, the primary metric, and an experiment
-   plan. This runs **once** for the whole run.
+   plan. This runs **once** for the whole run and **sets** the primary metric
+   (here, GFLOP/s) and its direction (higher is better).
+2. **`make_metric_spec`** — derives concrete success metrics *from* that idea's
+   `primary_metric` (not a free guess).
+3. **`survey`** — searches the literature so the eventual paper can cite real
+   references.
 
 Open the **Ideas** page to read what it proposed.
 
@@ -110,6 +111,14 @@ paper (see [Publication lifecycle](../concepts/publication-lifecycle.md)):
    rubric (an Area Chair meta-review aggregates when there is more than one).
 5. **generate_ear** assembles the reproducibility bundle `ear/` (code, input
    data, figures, `reproduce.sh`, LICENSE — but not experiment outputs).
+
+By default the pipeline now also runs a **claim-evidence verification loop**: a
+deterministic hard gate re-derives the reported numbers, a non-blocking
+evidence-grounded semantic review checks the prose against that evidence, then an
+anchor-preserving refine and re-render close the loop. It runs in report-only
+(**warn**) mode by default — it surfaces findings but does not block finalize
+unless you set `ARI_CLAIM_GATE_MODE=strict` (or `claim_gate_policy.mode: strict`).
+See [Publication lifecycle](../concepts/publication-lifecycle.md) for the details.
 
 Read it all on the **Results** page: the Overleaf-like editor, the review score,
 and the EAR browser.

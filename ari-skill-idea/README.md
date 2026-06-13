@@ -2,8 +2,8 @@
 
 MCP skill for literature survey and idea generation.
 
-**Design Principle P2:** `survey` is deterministic (arXiv + Semantic
-Scholar HTTP APIs only).  `generate_ideas` calls an LLM and is a P2
+**Design Principle P2:** `survey` is deterministic over Semantic Scholar
+(+ frozen VirSci snapshot).  `generate_ideas` calls an LLM and is a P2
 exception — but only in the pre-BFTS phase; once BFTS starts the
 ideas are frozen, so the search loop itself remains deterministic.
 
@@ -11,8 +11,7 @@ ideas are frozen, so the search loop itself remains deterministic.
 
 | Tool | Description | LLM |
 |---|---|:---:|
-| `survey` | Prior-work search via arXiv + Semantic Scholar | ✗ |
-| `make_metric_spec` | Build a `MetricSpec` from `experiment.md` | ✗ |
+| `survey` | Prior-work search, deterministic over Semantic Scholar (+ frozen VirSci snapshot) | ✗ |
 | `generate_ideas` | Generate ranked research-idea candidates | ✓ |
 
 ## Environment variables
@@ -30,15 +29,21 @@ See `REQUIREMENTS.md` (§VirSci-live) for the full `ARI_IDEA_VIRSCI_*` contract.
 
 ## VirSci integration
 
-The skill bundles a vendored copy of VirSci (a 2-hop Semantic Scholar
-citation-graph helper) under `vendor/virsci/`.  VirSci injects
-ancestor titles into the agent's prompts and powers the
-`alternatives_considered` block when the parent run had multiple
-ideas.
+The skill bundles a vendored copy of VirSci (a multi-agent
+idea-generation engine) under `vendor/virsci/`.  `generate_ideas`
+runs a re-implemented discussion loop (`_virsci_discussion_loop`) by
+default; setting `ARI_IDEA_VIRSCI_REAL` switches to the opt-in
+vendor-wrap REAL path, which runs VirSci's own `select_coauthors` +
+`generate_idea` on a frozen Semantic Scholar snapshot.  Lineage
+(ancestor) context is injected into either path via an
+`ancestor_block` string built by `format_ancestor_pool_for_virsci` /
+`get_idea_pool_for_ckpt`; the vendor templates stay unmodified.  (The
+2-hop citation traversal is in `survey()` via `_s2_citations`,
+separate from VirSci.)
 
 VirSci is licensed under its upstream terms; see
-`vendor/virsci/LICENSE`.  The integration was added in the v0.4.x
-series — see `CHANGELOG.md` for the per-release notes.
+`vendor/virsci/LICENSE`.  See `REQUIREMENTS.md` (§VirSci-live) for the
+vendor-wrap contract.
 
 ## P2 exception
 

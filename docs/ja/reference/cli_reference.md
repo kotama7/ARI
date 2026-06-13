@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/cli_ear.py
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-06-10
 ---
 
 # ARI CLI リファレンス

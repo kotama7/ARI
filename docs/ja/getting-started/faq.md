@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/config/default.yaml
     role: config
-last_verified: 2026-05-26
+last_verified: 2026-06-10
 ---
 
 # FAQ

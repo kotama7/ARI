@@ -6,7 +6,7 @@ sources:
     role: doc
   - path: ari-core/ari/cli
     role: implementation
-last_verified: 2026-05-26
+last_verified: 2026-06-10
 ---
 
 # ARI をはじめよう

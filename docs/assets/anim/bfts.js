@@ -66,10 +66,14 @@
   NODES.forEach(function (n) {
     if (n.parent) {
       var p = POS[n.parent];
-      var ln = el('line', {
+      var attrs = {
         x1: p.x, y1: p.y, x2: n.x, y2: n.y,
         class: 'anim-edge' + (n.edge === 'dashed' ? ' is-dashed' : '')
-      });
+      };
+      // solid edges draw in from the parent via CSS dashoffset; dashed DEBUG
+      // edges keep their pattern (pathLength would rescale the dash units)
+      if (n.edge !== 'dashed') attrs.pathLength = 1;
+      var ln = el('line', attrs);
       edgeEls[n.id] = ln; gEdges.appendChild(ln);
     }
     var g = el('g', { class: 'anim-node' });

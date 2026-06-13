@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-core/ari/memory_cli.py
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-06-10
 ---
 
 # Migration Guide
@@ -82,9 +82,13 @@ guide walks the upgrade paths.
   `ari-registry` server (in addition to local-tarball / Zenodo /
   GitHub release).
 - **Lineage decisions.**  `stagnation_rule` watches the BFTS
-  composite score; when it fires, an LLM picks `continue` /
-  `switch_to_idea` / `fanout` / `terminate`.  Decisions are
-  appended to `lineage_decisions.jsonl`.
+  composite score.  On CONFIRMED stagnation ARI first pivots
+  **deterministically** to the strongest **unused** runner-up idea
+  (`switch_to_idea`); the LLM judge (`continue` / `switch_to_idea` /
+  `fanout` / `terminate`) is consulted only as a **fallback** when no
+  deterministic pivot is available (budget exhausted, recursion limit
+  reached, or no unused alternative remains).  Decisions are appended
+  to `lineage_decisions.jsonl`.
 - **work_dir blacklist.**  Child node `work_dir` no longer inherits
   result files (`results.csv`, `slurm-*.out`, ...).  Existing
   checkpoints keep working but child runs that relied on inheritance

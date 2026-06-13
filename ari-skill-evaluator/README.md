@@ -1,31 +1,35 @@
 # ari-skill-evaluator
 
-MCP skill for experiment result evaluation and metric extraction.
+MCP skill for metric-spec generation and claim/evidence verification.
 
-**Role: data extractor, not a judge.**  Returns
-`(metrics, has_real_data, extractor_code)` so the orchestrator can
-score nodes — it does not produce a scalar score itself (P3 multi-
+**Role: spec + verifier, not a judge.**  It mints the per-run metric
+spec and verifies that the paper's claims are grounded in executed
+evidence — it does not produce a scalar quality score itself (P3 multi-
 objective evaluation principle).
 
-## Metric extraction flow
+## Flow
 
-1. The agent calls `make_artifact_extractor(metric_spec)` with the
-   experiment's expected metric keyword (e.g. `GFlops/s`).
-2. The skill asks an LLM to write a small Python function that pulls
-   that metric out of the node's stdout / log / CSV.
-3. `evaluate(node_dir, expected_metrics)` runs the extractor against
-   the artefacts and returns `metrics` plus `has_real_data` (true
-   when the values look like real measurements rather than fabricated
-   numbers).
-4. The orchestrator combines this with rubric-driven dynamic axes to
-   compute the BFTS composite score.
+1. The agent calls `make_metric_spec(experiment_text)` to derive the
+   `MetricSpec` (expected_metrics, metric_keyword, scoring_guide,
+   min_expected_metric). It prefers the idea-stage canonical
+   `primary_metric` and falls back to deterministic parsing of the
+   experiment file. On first mint it also attaches a metric-correctness
+   contract (concept invariants + the idea's falsifiable claims) and
+   persists it to `metric_contract.json`; the contract is **mint-once**
+   (frozen on first persist) so the evidence vocabulary stays stable
+   across the run.
+2. Around the paper build, `claim_evidence_hard_gate` (deterministic,
+   no LLM) verifies claim/number consistency against executed evidence.
+3. `evidence_grounded_semantic_review` (LLM, non-blocking) flags
+   over-claiming / mis-interpretation beyond the evidence.
 
 ## Tools
 
 | Tool | Description | LLM |
 |---|---|:---:|
-| `evaluate` | Score a node's artefacts against the metric spec | ✓ |
-| `make_artifact_extractor` | Generate a Python extractor for a metric keyword | ✓ |
+| `make_metric_spec` | Mint the `MetricSpec` + mint-once metric-correctness contract from the experiment/idea | ✓ |
+| `claim_evidence_hard_gate` | Deterministic claim-evidence HARD GATE (thin wrapper over ari-core's gate); in strict mode the final phase BLOCKS `finalize_paper` | ✗ |
+| `evidence_grounded_semantic_review` | Non-blocking advisory review of over-claiming / interpretation | ✓ |
 
 ## Environment variables
 
@@ -37,11 +41,11 @@ objective evaluation principle).
 
 ## P2 exception
 
-This skill calls an LLM for both extractor synthesis and metric
-parsing.  It is therefore **not** byte-deterministic; reruns may
-produce slightly different extractor code.  See
-`docs/concepts/PHILOSOPHY.md#p2-exceptions` for the project's stance on
-allowed P2 deviations.
+`make_metric_spec` and `evidence_grounded_semantic_review` call an LLM,
+so they are **not** byte-deterministic; reruns may produce slightly
+different specs/reviews. `claim_evidence_hard_gate` uses no LLM and is
+deterministic. See `docs/concepts/PHILOSOPHY.md#p2-exceptions` for the
+project's stance on allowed P2 deviations.
 
 ## Tests
 

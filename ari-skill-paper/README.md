@@ -4,7 +4,7 @@ MCP skill for **AI Scientist v2-style iterative paper generation**.
 
 ## Design
 
-Implements `write_paper_iterative`: a loop that generates → reviews → revises each section.  
+Implements `write_paper_iterative`: it fills the whole venue template in a single LLM call, then runs `max_revision_rounds` whole-document reflection rounds (compile + fix).  
 Accepts figures from `generate_figures` stage and embeds them with `\includegraphics`.
 
 ## LLM Exception
@@ -23,16 +23,13 @@ Writes a full LaTeX paper from experiment results.
 - `figures_manifest_json` — JSON string from `figures_manifest.json`
 - `nodes_json_path` — path to `nodes_tree.json`
 - `venue` — `arxiv` / `neurips` / `icml`
-- `max_revision_rounds` — per-section revision rounds (default: 2)
+- `max_revision_rounds` — whole-document reflection rounds (default: 2)
 
-**Sections order (generation):**  
-`experiment → related_work → method → introduction → conclusion → abstract → title`
-
-**Sections order (assembly in paper):**  
-`introduction → related_work → method → experiment → conclusion`
+**Section layout:**  
+The section layout is defined by the venue template (`FILL_*_START`/`FILL_*_END` blocks) and filled in one pass; there is no per-section generation order.
 
 **Figure embedding:**  
-Figures from `figures_manifest_json` are injected into the context for experiment, method, and introduction sections. The LLM embeds them with `\includegraphics[width=0.8\linewidth]{path}`.
+Figures from `figures_manifest_json` are injected into the template context. The LLM embeds them with `\includegraphics[width=0.85\linewidth]{path}`.
 
 **Output:** `full_paper.tex` + `refs.bib`
 
@@ -56,14 +53,16 @@ This prevents cluster names, organization names, and job IDs from appearing in t
 
 ## BibTeX
 
-Citations use `@misc` format (appropriate for arXiv preprints):
+`_build_bib_content` uses the authoritative Semantic Scholar BibTeX when a
+reference carries `bibtex` + `cite_key`; otherwise it synthesizes an
+`@article` entry from the metadata:
 
 ```bibtex
-@misc{key2024,
+@article{key2024,
   author = {...},
   title  = {...},
   year   = {2024},
-  note   = {arXiv preprint}
+  note   = {...}
 }
 ```
 
@@ -71,14 +70,16 @@ Citations use `@misc` format (appropriate for arXiv preprints):
 
 | Tool | Purpose |
 |---|---|
-| `list_venues` | Available LaTeX venues (`acm` / `neurips` / `sc` / `icpp` / `arxiv`) |
+| `list_venues` | Available LaTeX venues (`acm` / `neurips` / `sc` / `icpp` / `isc` / `arxiv`) |
 | `get_template` | Fetch the LaTeX template for a venue |
 | `generate_section` | LLM writes one section |
 | `compile_paper` | `pdflatex` compile |
 | `check_format` | LaTeX format validation |
 | `review_section` | LLM rubric review of one section |
 | `revise_section` | LLM rewrite from review feedback |
-| `write_paper_iterative` | End-to-end generate / review / revise loop |
+| `write_paper_iterative` | One-pass template fill + whole-document reflection rounds |
+| `link_paper_claims` | Build `paper_claim_links.json` (anchors / writer_assertions / numeric_mentions consumed by the claim hard gate) |
+| `paper_refine` | Anchor-preserving revision pass with math-safe underscore escaping |
 | `review_compiled_paper` | Final-pass review on the compiled PDF (delegates VLM-side checks to `ari-skill-vlm`) |
 | `list_rubrics` | Reviewer rubric catalogue |
 | `inject_code_availability` | v0.7.0 — append the `\codedigest{...}` block |
@@ -86,13 +87,15 @@ Citations use `@misc` format (appropriate for arXiv preprints):
 
 ## Venue templates
 
-`templates/` ships:
+`templates/` ships one subdirectory per venue, each holding `main.tex` +
+`refs.bib`. `get_template(venue)` reads `templates/<venue>/`:
 
-- `acm.tex`
-- `neurips.tex`
-- `sc.tex`
-- `icpp.tex`
-- `arxiv.tex`
+- `acm/`
+- `arxiv/`
+- `icpp/`
+- `isc/`
+- `neurips/`
+- `sc/`
 
 ## Rubric system (v0.6+)
 

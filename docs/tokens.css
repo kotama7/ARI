@@ -33,4 +33,24 @@
   --warn:#f59e0b; --warn-soft:#fdba74; --warn-2:#ffc107;
   --danger:#ef4444; --danger-soft:#f87171;
   --discord:#5865F2;
+
+  /* — landing v2 (instrument-editorial) — consumed by site.css only; the
+     VitePress bridge keeps reading the original tokens above. */
+  --ink:#04060c; --ink-2:#070b16;
+  --cyan:#22d3ee; --cyan-soft:#67e8f9; --cyan-deep:#0e7490;
+  --cyan-glow:rgba(34,211,238,.16); --cyan-wash:rgba(34,211,238,.08);
+  --cyan-line:rgba(34,211,238,.38);
+  --hair:rgba(148,163,184,.16); --hair-soft:rgba(148,163,184,.09);
+  --grid-line:rgba(100,116,139,.07);
+  --wash-1:rgba(255,255,255,.03); --wash-2:rgba(255,255,255,.06); --wash-3:rgba(255,255,255,.12);
+  --blue-wash:rgba(37,99,235,.12); --blue-wash-2:rgba(37,99,235,.25);
+  --blue-line:rgba(59,130,246,.35); --blue-ring:rgba(37,99,235,.18);
+  --halo-cyan:rgba(34,211,238,.07); --halo-blue:rgba(37,99,235,.11);
+  --shadow-soft:rgba(2,6,16,.45); --shadow-deep:rgba(2,6,16,.7);
+  --panel-wash:rgba(15,23,42,.55); --scrim:rgba(3,7,18,.88);
+  --paper:#edf1f8; --paper-2:#dfe6f2; --paper-ink:#0b1220; --paper-muted:#3f4c63;
+  --paper-line:rgba(11,18,32,.14); --paper-wash:rgba(11,18,32,.05);
+  --term-bg:#05080f;
+  --purple-wash:rgba(168,85,247,.16); --purple-line:rgba(168,85,247,.45);
+  --danger-wash:rgba(239,68,68,.12); --ok-wash:rgba(16,185,129,.12);
 }

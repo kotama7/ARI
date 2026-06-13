@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_public_api_boundary.py
     role: test
-last_verified: 2026-05-26
+last_verified: 2026-06-10
 ---
 
 # `ari.public` — 面向技能的稳定 API
@@ -20,6 +20,8 @@ last_verified: 2026-05-26
 | `ari.public.cost_tracker` | LLM 成本记录（`bootstrap_skill`、`record` 等） | `ari-skill-plot`（LLM 调用成本） |
 | `ari.public.llm` | `LLMClient`（带成本集成的 LiteLLM 封装） | 偏好使用 ARI 封装的调用方 |
 | `ari.public.paths` | `PathManager`（检查点路径解析器） | 需要作用域路径的调用方 |
+| `ari.public.claim_gate` | 确定性主张-证据硬门控（`run_hard_gate`）＋ 概念→不变量注册表（`classify_concept`、`scan_science_data`、`CONCEPT_INVARIANTS`） | `ari-skill-evaluator`、`ari-skill-transform` |
+| `ari.public.verified_context` | 已验证上下文辅助函数（`render_grounded_block`、`write_verified_context`、`build_verified_context`） | `ari-skill-paper` |
 
 ## `ari.public.config_schema`
 
@@ -100,6 +102,39 @@ nodes_json = paths.checkpoint / "nodes_tree.json"
 ```
 
 `PathManager` 是核心解析器 — 技能中绝不要直接读取 `ARI_CHECKPOINT_DIR`。来源：`ari-core/ari/paths.py` → `ari-core/ari/public/paths.py`。
+
+## `ari.public.claim_gate`
+
+从 `ari.pipeline.claim_gate` 重导出确定性主张-证据硬门控及其概念→不变量注册表：
+
+| 符号 | 用途 |
+|---|---|
+| `run_hard_gate` | 门控入口点 —— 阻止其证据未通过确定性检查的主张 |
+| `classify_concept` | 将概念映射到其通用不变量族 |
+| `scan_science_data` | 对照已注册的不变量扫描科学数据 |
+| `CONCEPT_INVARIANTS` | 领域通用的概念→不变量注册表（单一可信来源） |
+
+```python
+from ari.public.claim_gate import run_hard_gate
+```
+
+`ari-skill-evaluator` 和 `ari-skill-transform` 通过这个稳定的公共接口到达门控，而非私有的 `ari.pipeline.claim_gate` 路径，因此两个技能复用门控所阻断的**同一套**通用不变量逻辑 —— 不存在重复的领域计算。来源：`ari-core/ari/pipeline/claim_gate/` → `ari-core/ari/public/claim_gate.py`。
+
+## `ari.public.verified_context`
+
+从 `ari.pipeline.verified_context` 重导出已验证上下文辅助函数：
+
+| 符号 | 用途 |
+|---|---|
+| `render_grounded_block` | 渲染一个有依据的（由引用支撑的）上下文块 |
+| `write_verified_context` | 为构建该制品的调用方写出已验证上下文制品 |
+| `build_verified_context` | 构建已验证上下文结构 |
+
+```python
+from ari.public.verified_context import render_grounded_block
+```
+
+`ari-skill-paper` 通过这个稳定的公共接口到达这些辅助函数，而非私有的 `ari.pipeline.verified_context` 路径。来源：`ari-core/ari/pipeline/verified_context.py` → `ari-core/ari/public/verified_context.py`。
 
 ## 综合示例 —— 一个最小技能
 
