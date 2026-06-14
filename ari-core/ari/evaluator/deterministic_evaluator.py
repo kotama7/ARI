@@ -68,9 +68,19 @@ def _default_measure(work_dir: str) -> dict:
 
     Importing lazily so the evaluator/dispatch are usable before the kernel
     harness lands. Raises a clear error if the harness is not yet installed.
+
+    Problem size and the OpenMP thread budget are study parameters (frozen
+    defaults, env-overridable). They MUST sit where parallelism actually pays
+    off: on a many-core node a tiny matrix makes even a perfect kernel ~1x
+    (parallel overhead dominates), which would collapse the study's dynamic
+    range. Validated on a compute node — n=20000/k=64/16 threads gives a naive
+    1x baseline room to reach ~12x, so the TARGET (4x) is reachable and
+    handoff effects are measurable.
     """
     from ari.evaluator.spmm_harness import measure_node
-    return measure_node(work_dir)
+    n = int(os.environ.get("ARI_SPMM_N", "20000"))
+    k = int(os.environ.get("ARI_SPMM_K", "64"))
+    return measure_node(work_dir, n=n, k=k)
 
 
 class DeterministicEvaluator:

@@ -40,6 +40,11 @@ load balance, …). Do NOT change the signature.
   runs both on several seeded matrix families, and reports
   **best valid geomean speedup** = geomean over families of (baseline_time /
   your_time).
+- The kernel is timed on a **large** matrix with a **fixed OpenMP thread budget**
+  (the baseline is single-threaded). So the speedup comes from parallelising
+  across rows (and good memory locality / vectorisation) — a serial kernel scores
+  ~1x. The provided `selftest` uses the same size and thread count, so its
+  reported speedup is a good predictor of your score.
 - **Valid** requires: compiles, runs, and is correct on every required family.
   Correctness is checked per output element against an fp64 reference with a
   row-length-scaled tolerance (FP reduction reorderings are allowed; dropping
