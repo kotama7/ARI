@@ -415,7 +415,12 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                     if _fnmatch.fnmatch(name, pat) or _fnmatch.fnmatch(rel_path, pat):
                         return True
                 return False
+            _ho = getattr(agent, "handoff", None)
             for _n in batch:
+                # G5: artifact channel — skip parent->child code inheritance when
+                # this handoff arm disables copy_workdir (e.g. summary_only).
+                if _ho is not None and not getattr(_ho, "copy_workdir", True):
+                    continue
                 _pid = getattr(_n, "parent_id", None)
                 if not _pid:
                     continue

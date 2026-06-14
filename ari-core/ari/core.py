@@ -218,7 +218,8 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
 
     agent = AgentLoop(llm, memory, mcp, evaluator=evaluator, workflow_hints=wf_hints,
                        max_react_steps=cfg.bfts.max_react_steps,
-                       timeout_per_node=cfg.bfts.timeout_per_node)
+                       timeout_per_node=cfg.bfts.timeout_per_node,
+                       handoff=getattr(cfg, "handoff", None))
     return llm, memory, mcp, bfts, agent, metric_spec
 
 
