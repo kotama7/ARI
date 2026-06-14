@@ -68,6 +68,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `__init__.py` — public symbols + axis design.
   - `deterministic_evaluator.py` — `DeterministicEvaluator`: non-LLM judge owning the SpMM measurement; writes `metrics._scientific_score` to drive BFTS selection (handoff study B2). Selected via `ARI_EVALUATOR=deterministic`.
   - `dynamic_axes.py` — venue/run-specific evaluation-axis derivation.
+  - `handoff_stats.py` — run-level analysis statistics for the handoff study (Stage 4 core): geomean, run-cluster bootstrap CI, TOST equivalence (RQ1 parity), Holm correction, per-arm summary. Pure; consumed by `scripts/analyze_handoff_ablation.py`.
   - `llm_evaluator.py` — `LLMEvaluator`: extraction + multi-axis composite scoring.
   - `spmm_harness.py` — SpMM measurement core (handoff study B2b): fp64 reference oracle, per-element correctness bound (eps model), seeded matrix families, geomean aggregation (`measure_node`). Pure parts login-tested; compile/run/timing runner is compute-node only.
   - `spmm_kernels/` — C kernel fixtures for the handoff-study SpMM measurement (B2b). The frozen
