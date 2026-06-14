@@ -69,14 +69,7 @@ def _default_measure(work_dir: str) -> dict:
     Importing lazily so the evaluator/dispatch are usable before the kernel
     harness lands. Raises a clear error if the harness is not yet installed.
     """
-    try:
-        from ari_handoff_study.spmm.measure import measure_node  # type: ignore
-    except Exception as e:  # pragma: no cover - harness not yet present (B2b)
-        raise RuntimeError(
-            "SpMM harness not installed (ari-core/handoff_study/spmm). "
-            "DeterministicEvaluator needs the kernel measurement harness (B2b). "
-            f"underlying import error: {e}"
-        )
+    from ari.evaluator.spmm_harness import measure_node
     return measure_node(work_dir)
 
 

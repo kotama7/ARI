@@ -106,6 +106,7 @@ targets the like-named module under `ari/`.
 - `test_settings_roundtrip.py` — settings roundtrip.
 - `test_setup_env.py` — setup_env.sh behaviour.
 - `test_skill_public_contract.py` — skills import core via the public contract.
+- `test_spmm_harness.py` — SpMM harness core (handoff study B2b): reference oracle, eps-bound accept/reject knife-edge, seeded matrix determinism, measure_node aggregation with an injected runner.
 - `test_status_fallback.py` — status fallback.
 - `test_system_prompt_memory.py` — system-prompt memory.
 - `test_tool_timeout_tier.py` — MCP `_resolve_tool_timeout` tiering: LLM/compile paper stages (incl. `paper_refine`, `compile_paper`) get the slow timeout, plain tools the 300s default (regression guard for the paper_refine shim-congestion timeout).
