@@ -75,6 +75,7 @@ targets the like-named module under `ari/`.
 - `test_node.py` — Node data model.
 - `test_node_report.py` — node_report builder.
 - `test_node_selection.py` — node selection.
+- `test_node_summary_view.py` — node_summary_view field ablation / known_failures derivation / failure_only form / machine-info leak guard (handoff study G3).
 - `test_nodes_to_science_data_shrink.py` — nodes→science-data shrink.
 - `test_ollama_gpu.py` — Ollama GPU.
 - `test_orchestrator.py` — orchestrator.
