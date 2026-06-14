@@ -11,6 +11,7 @@ orchestrator consumes.
 - `deterministic_evaluator.py` — `DeterministicEvaluator`: non-LLM judge owning the SpMM measurement; writes `metrics._scientific_score` to drive BFTS selection (handoff study B2). Selected via `ARI_EVALUATOR=deterministic`.
 - `dynamic_axes.py` — venue/run-specific evaluation-axis derivation.
 - `llm_evaluator.py` — `LLMEvaluator`: extraction + multi-axis composite scoring.
+- `spmm_harness.py` — SpMM measurement core (handoff study B2b): fp64 reference oracle, per-element correctness bound (eps model), seeded matrix families, geomean aggregation (`measure_node`). Pure parts login-tested; compile/run/timing runner is compute-node only.
 
 ## See also
 
