@@ -34,6 +34,10 @@ _FIXED = {
     "ARI_FREEZE_CONTRACT": "1",
     "ARI_EVALUATOR": "deterministic",
     "ARI_BFTS_DETERMINISTIC": "1",
+    # Self-contained, deterministic memory: the study controls memory via the
+    # handoff mode (arms set memory_off); the backend must not depend on an
+    # external Letta service, so pin the process-local in_memory backend.
+    "ARI_MEMORY_BACKEND": "in_memory",
 }
 
 
