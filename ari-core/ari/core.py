@@ -192,14 +192,21 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
         if (llm.config.base_url and _eval_uses_main_backend)
         else None
     )
-    evaluator = LLMEvaluator(
-        model=_eval_model,
-        api_base=_eval_api_base,
-        metric_spec=metric_spec,
-        axis_weights=_axis_weights,
-        composite=_composite,
-        **_eval_extra_kwargs,
-    )
+    # Evaluator dispatch (handoff study B2). ARI_EVALUATOR=deterministic swaps the
+    # LLM judge for a fixed, non-LLM evaluator that owns the measurement (PREREG:
+    # LLM judge excluded from the main metric). Default keeps LLMEvaluator.
+    if _os_phase.environ.get("ARI_EVALUATOR", "").strip().lower() == "deterministic":
+        from ari.evaluator.deterministic_evaluator import DeterministicEvaluator
+        evaluator = DeterministicEvaluator()
+    else:
+        evaluator = LLMEvaluator(
+            model=_eval_model,
+            api_base=_eval_api_base,
+            metric_spec=metric_spec,
+            axis_weights=_axis_weights,
+            composite=_composite,
+            **_eval_extra_kwargs,
+        )
 
     # WorkflowHints: auto-extracted from experiment file
     hpc_enabled = cfg.resources.get("hpc_enabled", True)
