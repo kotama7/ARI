@@ -443,6 +443,13 @@ class BFTS:
         if len(candidates) == 1:
             return candidates[0]
 
+        # G9a (handoff study): controlled deterministic selection. Bypass the
+        # stochastic LLM selector and rank by the deterministic frontier scorer
+        # so the handoff arm is the only varying factor (PREREG §7.1). Requires a
+        # populated metrics["_scientific_score"] (deterministic evaluator, B2).
+        if getattr(self.config, "deterministic_selector", False):
+            return self._select_fallback(candidates)
+
         memories = memory.search(experiment_goal, limit=5)
         memory_context = (
             json.dumps(memories, ensure_ascii=False) if memories else "No relevant memories."
@@ -533,6 +540,11 @@ class BFTS:
             raise ValueError("No frontier nodes to select from")
         if len(frontier) == 1:
             return frontier[0]
+
+        # G9a (handoff study): deterministic expansion selection (see
+        # select_next_node) — skip the LLM, rank by the frontier scorer.
+        if getattr(self.config, "deterministic_selector", False):
+            return self._select_fallback(frontier)
 
         candidate_descriptions = []
         for i, node in enumerate(frontier):

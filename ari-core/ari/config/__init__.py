@@ -138,6 +138,16 @@ class BFTSConfig(BaseModel):
                     "`ucb_c * sqrt(log(N) / (visits + 1))`. Ignored by "
                     "other strategies.",
     )
+    deterministic_selector: bool = Field(
+        False,
+        description="Handoff study (G9a): bypass the stochastic LLM node "
+                    "selector and rank candidates purely by the deterministic "
+                    "frontier scorer (`frontier_score`), so node selection is "
+                    "reproducible and the handoff arm is the only varying "
+                    "factor (PREREG §7.1). Requires a populated "
+                    "`_scientific_score` (deterministic evaluator). Overridden "
+                    "by `ARI_BFTS_DETERMINISTIC`.",
+    )
     select_prompt: str = Field(
         "orchestrator/bfts_select",
         description="FilesystemPromptLoader key for select_next_node. "
@@ -579,6 +589,10 @@ def apply_bfts_env_overrides(cfg: "ARIConfig") -> None:
         "ucb_like",
     ):
         cfg.bfts.frontier_score = _fs
+    # Handoff study (G9a): force deterministic node selection.
+    _ds = os.environ.get("ARI_BFTS_DETERMINISTIC")
+    if _ds is not None:
+        cfg.bfts.deterministic_selector = _ds.strip().lower() in ("1", "true", "yes", "on")
     # Opt-in web search during BFTS exploration. Env wins over YAML; an
     # explicit falsy value disables it even when workflow.yaml set it on.
     _w = os.environ.get("ARI_BFTS_ALLOW_WEB")
