@@ -38,6 +38,9 @@ _FIXED = {
     # handoff mode (arms set memory_off); the backend must not depend on an
     # external Letta service, so pin the process-local in_memory backend.
     "ARI_MEMORY_BACKEND": "in_memory",
+    # The study analyses BFTS node speedups, not papers — skip the 24-stage
+    # paper pipeline that otherwise dominates per-run wall-clock.
+    "ARI_SKIP_PAPER": "1",
 }
 
 

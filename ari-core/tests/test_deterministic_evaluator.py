@@ -28,6 +28,14 @@ def test_scientific_score_prereg_target():
     assert scientific_score(None, 4.0) == 0.0
 
 
+def test_scientific_score_default_target_is_parallel_ceiling():
+    # Default TARGET = 16 (the OpenMP thread budget) so the score spans the
+    # achievable range instead of saturating at a low 4x bar.
+    assert scientific_score(16.0) == 1.0
+    assert abs(scientific_score(8.0) - 0.5) < 1e-9       # mid-range, not capped
+    assert abs(scientific_score(4.0) - 0.25) < 1e-9      # was 1.0 under old 4x
+
+
 def test_gamma():
     assert gamma(10, 2 ** -53) > 0.0
     assert math.isinf(gamma(2, 1.0))  # k*u >= 1 -> vacuous bound
@@ -62,7 +70,7 @@ def test_score_compile_fail_is_invalid():
 
 def test_evaluate_sync_injected_and_graceful_on_error():
     ok = {"compile_ok": True, "families": {"u": {"speedup": 4.0, "valid": True}}}
-    ev = DeterministicEvaluator(measure_fn=lambda wd: ok)
+    ev = DeterministicEvaluator(measure_fn=lambda wd: ok, target_speedup=4.0)
     assert ev.evaluate_sync("g", [], "s")["metrics"]["_scientific_score"] == 1.0
 
     def boom(_wd):

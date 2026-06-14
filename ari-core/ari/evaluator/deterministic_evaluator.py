@@ -40,12 +40,17 @@ def geomean(values: list[float]) -> float:
     return math.exp(sum(math.log(v) for v in vals) / len(vals))
 
 
-def scientific_score(geomean_speedup: float | None, target: float = 4.0) -> float:
+def scientific_score(geomean_speedup: float | None, target: float = 16.0) -> float:
     """Map a (>=0) geomean speedup to [0, 1] for BFTS selection.
 
-    PREREG: ``s = min(geomean_speedup / TARGET, 1.0)`` with TARGET=4.0x. Keeping
-    the score in [0, 1] keeps it commensurable with the diversity bonus the
-    deterministic frontier scorer adds (``ari/orchestrator/bfts.py``).
+    ``s = min(geomean_speedup / TARGET, 1.0)``. TARGET is the parallel ceiling
+    (the OpenMP thread budget, default 16): a kernel at ideal linear scaling
+    scores ~1.0 and a serial kernel ~1/16, so the score spans the achievable
+    range instead of saturating at 1.0 the moment a kernel crosses a low bar
+    (the original 4x saturated immediately — basic `omp parallel for` already
+    reaches ~15x — which collapsed BFTS's preference among good kernels).
+    Keeping the score in [0, 1] keeps it commensurable with the diversity bonus
+    the deterministic frontier scorer adds (``ari/orchestrator/bfts.py``).
     """
     if not geomean_speedup or geomean_speedup <= 0.0 or target <= 0.0:
         return 0.0
@@ -74,8 +79,8 @@ def _default_measure(work_dir: str) -> dict:
     off: on a many-core node a tiny matrix makes even a perfect kernel ~1x
     (parallel overhead dominates), which would collapse the study's dynamic
     range. Validated on a compute node — n=20000/k=64/16 threads gives a naive
-    1x baseline room to reach ~12x, so the TARGET (4x) is reachable and
-    handoff effects are measurable.
+    1x baseline room to reach ~12-15x, spanning the TARGET (16x, the thread
+    budget) so the normalized score discriminates among good kernels.
     """
     from ari.evaluator.spmm_harness import measure_node
     n = int(os.environ.get("ARI_SPMM_N", "20000"))
@@ -100,9 +105,9 @@ class DeterministicEvaluator:
     ) -> None:
         if target_speedup is None:
             try:
-                target_speedup = float(os.environ.get("ARI_SPMM_TARGET", "4.0"))
+                target_speedup = float(os.environ.get("ARI_SPMM_TARGET", "16.0"))
             except ValueError:
-                target_speedup = 4.0
+                target_speedup = 16.0
         self.target = target_speedup
         self._measure_fn = measure_fn
         # Present so callers that introspect metric_spec (node_report builder)
