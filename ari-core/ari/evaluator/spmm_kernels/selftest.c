@@ -20,7 +20,16 @@
 #include <stdlib.h>
 #include <math.h>
 #include <time.h>
+#include <omp.h>
 #include "spmm_kernel.h"
+
+/* Read an int from the environment (study parameter), with a default. */
+static int env_int(const char *name, int dflt) {
+    const char *v = getenv(name);
+    if (!v || !*v) return dflt;
+    int x = atoi(v);
+    return x > 0 ? x : dflt;
+}
 
 #define C_EPS 8.0
 static const double FP64_U = 1.1102230246251565e-16; /* 2^-53 */
@@ -53,9 +62,17 @@ static void spmm_ref(int n, int m, int k,
 }
 
 int main(void) {
-    const int n = 4000, m = 4000, k = 32;
-    const double density = 0.01;
-    const int warmup = 2, reps = 5;
+    /* Mirror the evaluator's study parameters so the local number tracks the
+     * official one: same matrix size and OpenMP thread budget. The evaluator
+     * uses a large matrix on a fixed thread count BECAUSE a tiny matrix on all
+     * cores measures ~1x even for a perfect kernel (parallel overhead). */
+    const int n = env_int("ARI_SPMM_N", 20000);
+    const int m = n;
+    const int k = env_int("ARI_SPMM_K", 64);
+    const int threads = env_int("ARI_SPMM_THREADS", 16);
+    const double density = 0.02;
+    const int warmup = 1, reps = 3;
+    omp_set_num_threads(threads);
     srand(12345u);
 
     /* ---- build a reproducible uniform random CSR (A) ---- */
@@ -156,8 +173,8 @@ int main(void) {
     }
 
     double speedup = (tc > 0.0) ? (tb / tc) : 0.0;
-    printf("problem: n=%d m=%d k=%d nnz=%ld (uniform, density=%.3f)\n",
-           n, m, k, nnz, density);
+    printf("problem: n=%d m=%d k=%d nnz=%ld density=%.3f  omp_threads=%d\n",
+           n, m, k, nnz, density, threads);
     printf("candidate_sec=%.5f  baseline_ref_sec=%.5f  speedup~%.2fx\n",
            tc, tb, speedup);
     printf("correct=%s  max_rel=%.3e%s\n",

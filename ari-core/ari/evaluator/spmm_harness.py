@@ -201,8 +201,17 @@ def _default_run_kernel(kind: str, work_dir: str, A, X, warmup: int, reps: int):
             Acsr.indices.astype(np.int32).tofile(fh)
             Acsr.data.astype(np.float64).tofile(fh)
             Xc.tofile(fh)
+        # Fix the OpenMP thread budget so the speedup is reproducible and lands
+        # where parallelism pays off. Without this, libgomp defaults to ALL
+        # cores (e.g. 192) which, on the study's matrices, is pure overhead —
+        # even a perfect kernel measures ~1x. The baseline is single-threaded
+        # (no pragmas), so this only caps the candidate's parallelism; both are
+        # still compiled identically. Study default 16 (validated sweet spot;
+        # 32+ saturates memory bandwidth), overridable via ARI_SPMM_THREADS.
+        run_env = dict(_os.environ)
+        run_env["OMP_NUM_THREADS"] = _os.environ.get("ARI_SPMM_THREADS", "16")
         rp = _sub.run([exe, prob, outf, str(int(warmup)), str(int(reps))],
-                      capture_output=True, text=True, timeout=900)
+                      capture_output=True, text=True, timeout=900, env=run_env)
         if rp.returncode != 0:
             raise RuntimeError(f"run failed ({kind}): {rp.stderr.strip()[-600:]}")
         median = None
