@@ -75,6 +75,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
     - `README.md` — spmm_kernels index.
     - `baseline_spmm.c` — FROZEN 1x reference CSR SpMM (naive, single-thread); the speedup denominator.
     - `candidate_spmm.c` — agent-edited `spmm()` template (seeded identical to baseline); copied per node into the work_dir.
+    - `experiment.md` — the SpMM optimization task handed to the agent (goal + `spmm()` contract + the deterministic-evaluator judging rules); the experiment file for the pilot/MVP runs.
     - `Makefile` — manual build (the Python runner compiles directly with identical flags for baseline/candidate).
     - `Plan.md` — B2b compile/run/timing runner plan (deps + deletion requirement).
     - `spmm_kernel.h` — the `spmm()` contract the candidate must keep.
