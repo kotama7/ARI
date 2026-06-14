@@ -375,6 +375,7 @@ class AgentLoop:
         workflow_hints: WorkflowHints | None = None,
         max_react_steps: int = MAX_REACT_STEPS,
         timeout_per_node: int = 7200,
+        handoff: object | None = None,
     ) -> None:
         self.llm = llm
         self.memory = memory
@@ -384,6 +385,10 @@ class AgentLoop:
         self.hints = workflow_hints or WorkflowHints()
         self.max_react_steps = max_react_steps
         self.timeout_per_node = timeout_per_node
+        # Handoff study: per-arm control of what a BFTS child inherits
+        # (HandoffConfig). None preserves current behaviour. Read by the
+        # agent-face / memory gates here and by cli/bfts_loop.py (copy channel).
+        self.handoff = handoff
         self._idea_injected = False
         self._idea_context = ""
 
