@@ -120,3 +120,48 @@ def test_default_runner_baseline_compiles_and_is_correct():
 
 def test_families_constant():
     assert "uniform" in FAMILIES and len(FAMILIES) == 6
+
+
+def test_seed_work_dir_seeds_scaffolding_and_preserves_candidate(tmp_path):
+    """seed_work_dir gives a node the frozen harness so the agent can build, and
+    is idempotent: frozen files are restored, an edited candidate is kept."""
+    import os
+    from ari.evaluator.spmm_harness import seed_work_dir, _FROZEN_FIXTURES
+    wd = str(tmp_path / "node")
+    written = seed_work_dir(wd)
+    for f in (*_FROZEN_FIXTURES, "candidate_spmm.c"):
+        assert os.path.isfile(os.path.join(wd, f)), f"missing seeded {f}"
+        assert f in written
+    # An agent edit to the candidate survives a re-seed (child keeps its work).
+    cand = os.path.join(wd, "candidate_spmm.c")
+    with open(cand, "a") as fh:
+        fh.write("\n/* agent-edit */\n")
+    # A tampered frozen harness is restored to the canonical version.
+    main_c = os.path.join(wd, "spmm_main.c")
+    with open(main_c, "w") as fh:
+        fh.write("/* tampered */\n")
+    seed_work_dir(wd)
+    assert "/* agent-edit */" in open(cand).read()      # candidate preserved
+    assert "tampered" not in open(main_c).read()         # harness restored
+    assert "median_sec" in open(main_c).read()
+
+
+def test_seed_work_dir_built_candidate_is_correct():
+    """Login smoke: the seeded scaffolding compiles (the agent's `make candidate`
+    path) and the seeded naive candidate is itself a correct, valid baseline."""
+    import os
+    import shutil
+    import tempfile
+    from ari.evaluator.spmm_harness import seed_work_dir, _default_run_kernel
+    if shutil.which(os.environ.get("ARI_SPMM_CC", "cc")) is None:
+        pytest.skip("no C compiler available")
+    wd = tempfile.mkdtemp(prefix="seed_smoke_")
+    seed_work_dir(wd)
+    A = gen_matrix("uniform", 32, density=0.1, seed=1)
+    X = np.random.default_rng(2).standard_normal((32, 3))
+    try:
+        _t, Y = _default_run_kernel("candidate", wd, A, X, warmup=0, reps=2)
+    except RuntimeError as e:
+        pytest.skip(f"compile/run unavailable on this host: {e}")
+    ok, mr = is_correct(Y, reference_spmm(A, X), A, X)
+    assert ok, f"seeded naive candidate incorrect (max_rel={mr})"

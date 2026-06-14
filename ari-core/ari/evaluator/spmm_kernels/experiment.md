@@ -7,8 +7,17 @@ there is no LLM judge.
 
 ## What you produce
 
-Write a single C file named **`candidate_spmm.c`** in your working directory that
-defines exactly this function (signature from `spmm_kernel.h`):
+Your working directory is **already seeded** with the scaffolding — list it and
+you will find:
+
+- `candidate_spmm.c` — the file you edit (starts as a correct naive triple loop).
+- `spmm_kernel.h` — the `spmm()` contract (do not change the signature).
+- `spmm_main.c` — the FROZEN timing/I-O harness (do not edit).
+- `baseline_spmm.c` — the FROZEN naive baseline (the speedup denominator).
+- `Makefile` — `make candidate` builds your kernel against the frozen harness.
+
+**Edit `candidate_spmm.c`** so that it defines exactly this function (signature
+from `spmm_kernel.h`):
 
 ```c
 void spmm(int n, int m, int k,
@@ -17,8 +26,8 @@ void spmm(int n, int m, int k,
 ```
 
 `indptr/indices/values` are the CSR arrays of `A`; `X` is row-major `m×k`; write
-the row-major `n×k` result into `Y`. Start from the naive triple loop and improve
-it (OpenMP scheduling, row-length bucketing, blocking, SIMD, prefetch, locality,
+the row-major `n×k` result into `Y`. Improve the seeded naive triple loop
+(OpenMP scheduling, row-length bucketing, blocking, SIMD, prefetch, locality,
 load balance, …). Do NOT change the signature.
 
 ## How you are judged (fixed, deterministic — do not try to game it)
@@ -39,5 +48,11 @@ load balance, …). Do NOT change the signature.
 
 ## Notes
 - You do not need to write your own timing or I/O — just the `spmm()` function.
-- You may test-compile locally (`cc -O3 -fopenmp`), but the evaluator's
+- **Verify it builds before finishing**: run `make candidate` in your working
+  directory (it compiles `candidate_spmm.c` against the frozen harness with
+  `-O3 -fopenmp`). A clean build means the evaluator can measure it. Do NOT add
+  your own `main()` or `#include "spmm_main.c"` — the harness already provides
+  `main()`; just keep the `spmm()` function.
+- The evaluator generates the matrices and the problem input, so a full local
+  *run* is not needed (and not possible without its data) — the evaluator's
   measurement is authoritative.

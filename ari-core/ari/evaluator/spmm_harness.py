@@ -112,6 +112,52 @@ def is_correct(Y_cand: np.ndarray, Y_ref: np.ndarray, A: sp.csr_matrix,
     return ok, max_rel
 
 
+# Frozen scaffolding every node work_dir needs so the AGENT can compile-test its
+# candidate exactly as the evaluator does. The evaluator still measures against
+# its OWN package copies (see _default_run_kernel below), so seeding a node a
+# local copy of the harness cannot game the score.
+_FROZEN_FIXTURES: tuple[str, ...] = (
+    "spmm_kernel.h", "spmm_main.c", "baseline_spmm.c", "Makefile",
+)
+
+
+def kernels_dir() -> str:
+    """Absolute path to the packaged SpMM kernel fixtures."""
+    import os as _os
+    return _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "spmm_kernels")
+
+
+def seed_work_dir(work_dir: str) -> list[str]:
+    """Seed *work_dir* with the frozen SpMM scaffolding + a starter candidate.
+
+    Without this the agent has no ``spmm_kernel.h`` / ``spmm_main.c`` to compile
+    against and flails (writes its own broken ``main()``), so every node fails.
+
+    The frozen files (header, timing harness, baseline, Makefile) are always
+    (re)written from the package fixtures so a node always builds against the
+    canonical harness — even if a parent left a modified copy. ``candidate_spmm.c``
+    is written ONLY when absent, so a code-inheriting child keeps its parent's
+    candidate. Idempotent; returns the basenames written.
+    """
+    import os as _os
+    import shutil as _sh
+    src_dir = kernels_dir()
+    _os.makedirs(work_dir, exist_ok=True)
+    written: list[str] = []
+    for name in _FROZEN_FIXTURES:
+        src = _os.path.join(src_dir, name)
+        if _os.path.isfile(src):
+            _sh.copy2(src, _os.path.join(work_dir, name))
+            written.append(name)
+    cand_dst = _os.path.join(work_dir, "candidate_spmm.c")
+    if not _os.path.exists(cand_dst):
+        cand_src = _os.path.join(src_dir, "candidate_spmm.c")
+        if _os.path.isfile(cand_src):
+            _sh.copy2(cand_src, cand_dst)
+            written.append("candidate_spmm.c")
+    return written
+
+
 def _default_run_kernel(kind: str, work_dir: str, A, X, warmup: int, reps: int):
     """Compile + run + time a SpMM kernel; return (median_seconds, Y).
 
