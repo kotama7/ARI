@@ -35,6 +35,9 @@ benchmarks/
 *.f90
 *.def
 *.sbatch
+# Handoff study (B2b): the SpMM kernel fixtures are tracked source, not
+# user-created experiment files — re-include them despite the *.c rule above.
+!ari-core/ari/evaluator/spmm_kernels/*.c
 
 # Dynamic YAML/scripts generated per-experiment
 *_paper.yaml

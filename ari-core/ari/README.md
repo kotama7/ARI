@@ -70,6 +70,14 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `dynamic_axes.py` — venue/run-specific evaluation-axis derivation.
   - `llm_evaluator.py` — `LLMEvaluator`: extraction + multi-axis composite scoring.
   - `spmm_harness.py` — SpMM measurement core (handoff study B2b): fp64 reference oracle, per-element correctness bound (eps model), seeded matrix families, geomean aggregation (`measure_node`). Pure parts login-tested; compile/run/timing runner is compute-node only.
+  - `spmm_kernels/` — C kernel fixtures for the handoff-study SpMM measurement (B2b). The frozen
+    - `README.md` — spmm_kernels index.
+    - `baseline_spmm.c` — FROZEN 1x reference CSR SpMM (naive, single-thread); the speedup denominator.
+    - `candidate_spmm.c` — agent-edited `spmm()` template (seeded identical to baseline); copied per node into the work_dir.
+    - `Makefile` — manual build (the Python runner compiles directly with identical flags for baseline/candidate).
+    - `Plan.md` — B2b compile/run/timing runner plan (deps + deletion requirement).
+    - `spmm_kernel.h` — the `spmm()` contract the candidate must keep.
+    - `spmm_main.c` — FROZEN timing + binary-I/O harness (warmup/reps/median); agent must not edit.
 - `llm/` — thin LiteLLM wrappers for the agent loop and skills.
   - `README.md` — llm index.
   - `__init__.py` — public `LLMClient` + contract.

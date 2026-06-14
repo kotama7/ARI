@@ -72,7 +72,10 @@ def test_evaluate_sync_injected_and_graceful_on_error():
     assert bad["metrics"]["_scientific_score"] == 0.0 and not bad["valid"]
 
 
-def test_default_measure_absent_is_graceful():
+def test_default_measure_without_candidate_is_graceful(monkeypatch):
+    # No candidate kernel in work_dir -> measure_node fails the candidate step
+    # and the evaluator returns a graceful invalid (score 0), never raising.
+    monkeypatch.setenv("ARI_WORK_DIR", "/nonexistent_handoff_dir")
     out = DeterministicEvaluator().evaluate_sync("g", [], "s")
     assert out["metrics"]["_scientific_score"] == 0.0
-    assert "harness" in out["reason"].lower()
+    assert out["valid"] is False
