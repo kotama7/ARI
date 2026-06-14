@@ -100,6 +100,9 @@ build/
 experiment.md
 ari-core/experiment.md
 tmp*.md
+# Handoff study (Stage 4): the SpMM task fixture is tracked source, not a runtime
+# experiment.md — re-include it despite the rule above.
+!ari-core/ari/evaluator/spmm_kernels/experiment.md
 GUI_TASK.md
 *_TASK.md
 
