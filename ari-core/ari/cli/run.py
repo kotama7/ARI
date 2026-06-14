@@ -436,12 +436,19 @@ def run(
             _cfg_str = str(config)
         else:
             _cfg_str = str(_pkg_wf) if _pkg_wf.exists() else ""
-        try:
-            generate_paper_section(all_nodes, experiment_data, checkpoint_dir, mcp, _cfg_str)
-        except Exception as _paper_err:
-            console.print(f"[bold red]Paper pipeline failed:[/bold red] {_paper_err}")
-            import traceback
-            traceback.print_exc()
+        # ARI_SKIP_PAPER lets a BFTS-only consumer (e.g. the handoff ablation
+        # sweep, which analyses node speedups, not papers) skip the 24-stage
+        # paper pipeline that otherwise dominates per-run wall-clock. Default
+        # behaviour (paper pipeline runs) is unchanged.
+        if os.environ.get("ARI_SKIP_PAPER", "").lower() in ("1", "true", "yes"):
+            console.print("[dim]Paper pipeline skipped (ARI_SKIP_PAPER set).[/dim]")
+        else:
+            try:
+                generate_paper_section(all_nodes, experiment_data, checkpoint_dir, mcp, _cfg_str)
+            except Exception as _paper_err:
+                console.print(f"[bold red]Paper pipeline failed:[/bold red] {_paper_err}")
+                import traceback
+                traceback.print_exc()
 
 
 
