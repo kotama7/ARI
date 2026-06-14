@@ -18,6 +18,7 @@ targets the like-named module under `ari/`.
 - `test_api_schema_contract.py` — stable viz endpoint response-shape contracts.
 - `test_bfts.py` — BFTS loop.
 - `test_bfts_allow_web.py` — `bfts.allow_web` / `ARI_BFTS_ALLOW_WEB` toggle: web-skill phase gating in/out of bfts + the `bfts_web_provenance.json` marker roundtrip.
+- `test_bfts_deterministic_selector.py` — G9a deterministic selection: both selectors bypass the LLM and rank by the frontier scorer when `deterministic_selector` / `ARI_BFTS_DETERMINISTIC` is set (handoff study).
 - `test_bfts_diversity.py` — BFTS diversity/fanout.
 - `test_bfts_eval_config_integration.py` — BFTS + eval-config integration.
 - `test_bfts_frontier_score.py` — BFTS frontier scoring.
