@@ -243,6 +243,20 @@ def test_contract_obligation_injected_for_descendant(tmp_path, monkeypatch):
     assert "CORRECTNESS" in c                               # the required check
 
 
+def test_contract_obligation_suppressed_when_frozen(tmp_path, monkeypatch):
+    # B3 (handoff study): ARI_FREEZE_CONTRACT exogenizes the metric contract, so
+    # the per-node obligation injection (Tier-1c) must be skipped — the run uses a
+    # fixed/exogenous evaluator instead of the LLM-self-determined contract.
+    _write_contract(tmp_path)
+    monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+    monkeypatch.setenv("ARI_FREEZE_CONTRACT", "1")
+    msgs = build_working_context_messages(
+        _fake_call_tool(node_memory={}),
+        depth=1, ancestor_ids=["p1"], eval_summary="q", experiment_goal="g",
+    )
+    assert not any("METRIC-CORRECTNESS CONTRACT" in m["content"] for m in msgs)
+
+
 def test_platform_note_rides_pinned_obligation(tmp_path, monkeypatch):
     # P2c last hop: the probe facts must reach the NODE (not just the claims
     # extractor) — otherwise the agent follows the plan into a missing tool
