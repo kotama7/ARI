@@ -14,7 +14,9 @@ you will find:
 - `spmm_kernel.h` — the `spmm()` contract (do not change the signature).
 - `spmm_main.c` — the FROZEN timing/I-O harness (do not edit).
 - `baseline_spmm.c` — the FROZEN naive baseline (the speedup denominator).
-- `Makefile` — `make candidate` builds your kernel against the frozen harness.
+- `selftest.c` — a local self-test you can run to check correctness + speedup.
+- `Makefile` — `make candidate` builds your kernel; `make selftest` builds the
+  self-test.
 
 **Edit `candidate_spmm.c`** so that it defines exactly this function (signature
 from `spmm_kernel.h`):
@@ -47,12 +49,18 @@ load balance, …). Do NOT change the signature.
 - You may NOT edit the timing harness or the baseline; only `candidate_spmm.c`.
 
 ## Notes
-- You do not need to write your own timing or I/O — just the `spmm()` function.
-- **Verify it builds before finishing**: run `make candidate` in your working
-  directory (it compiles `candidate_spmm.c` against the frozen harness with
-  `-O3 -fopenmp`). A clean build means the evaluator can measure it. Do NOT add
-  your own `main()` or `#include "spmm_main.c"` — the harness already provides
-  `main()`; just keep the `spmm()` function.
-- The evaluator generates the matrices and the problem input, so a full local
-  *run* is not needed (and not possible without its data) — the evaluator's
-  measurement is authoritative.
+- You do not need to write your own timing, I/O, or test data — just the
+  `spmm()` function. Everything else is provided.
+- **Check your work before finishing** with the provided self-test:
+
+  ```
+  make selftest && ./selftest
+  ```
+
+  It prints `correct=yes/NO`, an estimated `speedup~Nx` vs the naive baseline,
+  and `SELFTEST: PASS` / `FAIL`. Iterate until it says **PASS with a speedup > 1**.
+  Do NOT write your own `main()`, your own problem generator, or
+  `#include "spmm_main.c"` — `selftest.c` already runs and checks your kernel.
+- The evaluator (more matrix families, fresh data it generates itself) is the
+  authoritative score; the self-test is a fast local proxy that uses the same
+  correctness rule, so a local PASS with speedup>1 should score well.
