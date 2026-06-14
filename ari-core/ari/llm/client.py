@@ -129,6 +129,10 @@ class LLMClient:
         # litellm.UnsupportedParamsError
         if not self.config.model.startswith("gpt-5"):
             kwargs["temperature"] = self.config.temperature
+        # Fixed seed for reproducible local-model runs (handoff study). Passed
+        # to litellm/Ollama when set; backends that ignore `seed` are unaffected.
+        if self.config.seed is not None:
+            kwargs["seed"] = self.config.seed
         if tools:
             kwargs["tools"] = tools
             # require_tool=True: always call a tool (exploration phase)
@@ -227,6 +231,8 @@ class LLMClient:
         }
         if not self.config.model.startswith("gpt-5"):
             kwargs["temperature"] = self.config.temperature
+        if self.config.seed is not None:
+            kwargs["seed"] = self.config.seed
         response = litellm.completion(**kwargs)
         for chunk in response:
             delta = chunk.choices[0].delta

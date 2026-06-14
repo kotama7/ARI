@@ -38,6 +38,14 @@ class LLMConfig(BaseModel):
         0.7,
         description="Sampling temperature applied to non-judge LLM calls.",
     )
+    seed: int | None = Field(
+        None,
+        description="Fixed sampling seed forwarded to litellm/Ollama for "
+                    "reproducible local-model runs (handoff study). `None` "
+                    "leaves sampling unseeded (current behaviour). Overridden "
+                    "by `ARI_SEED`. Note: GPU inference is not bit-exact even "
+                    "with a seed; n-runs still absorb residual non-determinism.",
+    )
 
 
 class SkillConfig(BaseModel):
@@ -656,6 +664,13 @@ def _apply_llm_env_overrides(cfg: "ARIConfig") -> None:
     _u = os.environ.get("ARI_LLM_API_BASE")
     if _u is not None and _u != "":
         cfg.llm.base_url = _u
+    # Fixed sampling seed for reproducible local-model runs (handoff study).
+    _seed = os.environ.get("ARI_SEED")
+    if _seed:
+        try:
+            cfg.llm.seed = int(_seed)
+        except ValueError:
+            pass
 
 
 def export_resolved_config_to_skill_env(cfg: "ARIConfig") -> None:
