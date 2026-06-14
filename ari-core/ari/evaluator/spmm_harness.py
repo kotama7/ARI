@@ -117,7 +117,7 @@ def is_correct(Y_cand: np.ndarray, Y_ref: np.ndarray, A: sp.csr_matrix,
 # its OWN package copies (see _default_run_kernel below), so seeding a node a
 # local copy of the harness cannot game the score.
 _FROZEN_FIXTURES: tuple[str, ...] = (
-    "spmm_kernel.h", "spmm_main.c", "baseline_spmm.c", "Makefile",
+    "spmm_kernel.h", "spmm_main.c", "baseline_spmm.c", "Makefile", "selftest.c",
 )
 
 
