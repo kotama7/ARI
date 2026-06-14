@@ -5,11 +5,12 @@ Operational and utility scripts for building images, running services, and dev t
 ## Contents
 
 - `README.md` — this file.
+- `analyze_handoff_ablation.py` — handoff-sweep analyzer (pure, no LLM): reads the driver's `manifest.jsonl`, reduces each run to its best valid geomean speedup, and reports per-arm geomean + run-level bootstrap CI, the PREREG primary TOST equivalence (code_plus_summary vs code_plus_full_log), and Holm-adjusted pairwise TOSTs; writes `analysis.json`.
 - `build_pb_images.sh` — build the vendor PaperBench Docker images (`pb-env`, `pb-reproducer`).
 - `gpu_ollama_monitor.sh` — monitor the SLURM GPU node running Ollama and re-tunnel it.
 - `readme_sync.py` — sync per-directory README `## Contents` indexes with the tree (`--check` gates drift, `--write` regenerates; no LLM/API).
 - `run_all_tests.sh` — run each skill's pytest suite in its own process.
-- `run_handoff_ablation.py` — handoff-study pilot/sweep driver (run on a compute node): sets per-arm env (frozen contract, deterministic evaluator+selector, mode, seed, model) and shells out to `ari run`; `--mode pilot` (qwen3:8b validity floor), `--mode mvp` (3-arm × seeds), `--dry-run`. Bakes in no host/partition.
+- `run_handoff_ablation.py` — handoff-study pilot/sweep driver (run on a compute node): sets per-arm env (frozen contract, deterministic evaluator+selector, in-memory backend, skip-paper, mode, seed, model), shells out to `ari run`, and writes a per-run `manifest.jsonl` (arm/seed/run_dir) under `workspace/checkpoints/<ts>_handoff_<mode>/`; `--mode pilot` (qwen3:8b validity floor), `--mode mvp` (3-arm × seeds), `--dry-run`. Bakes in no host/partition.
 - `run_ollama_gpu.sh` — start Ollama on a SLURM GPU node and tunnel it to the login node.
 - `sc_paper_dogfood.py` — end-to-end dogfood driver: external paper PDF → PaperBench-format rubric generation (+ optional judge dry-run).
 - `sc_paper_stage23_chain.py` — run Stage 2 (reproduce) + Stage 3 (judge) against a completed Stage 1 rollout workspace.

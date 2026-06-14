@@ -18,6 +18,9 @@ Examples (on a compute node, after starting Ollama and exporting OLLAMA_HOST):
 from __future__ import annotations
 
 import argparse
+import datetime as _dt
+import glob
+import json
 import os
 import shutil
 import subprocess
@@ -50,25 +53,51 @@ def _ari_cmd() -> list[str]:
     return [sys.executable, "-m", "ari.cli", "run", str(EXPERIMENT)]
 
 
-def run_one(mode: str, model: str, seed: int, max_nodes: int, dry: bool) -> int:
+def _experiment_dirs() -> set[str]:
+    """Run dirs that hold per-node work_dirs (excludes the ``*_root`` siblings)."""
+    out = set()
+    for p in glob.glob(str(REPO / "experiments" / "*")):
+        if os.path.isdir(p) and not p.endswith("_root"):
+            out.add(p)
+    return out
+
+
+def run_one(arm: str, model: str, seed: int, max_nodes: int, dry: bool) -> tuple[int, str | None]:
+    """Run one (arm, seed). Returns (returncode, run experiment dir or None).
+
+    The run dir is identified by diffing experiments/ before/after — robust
+    because the driver runs sequentially. The caller records it in the manifest
+    so the analyzer can map node speedups back to their arm.
+    """
     overrides = dict(_FIXED)
     overrides.update({
-        "ARI_HANDOFF_MODE": mode,
+        "ARI_HANDOFF_MODE": arm,
         "ARI_SEED": str(seed),
         "ARI_MODEL": model,
         "ARI_MAX_NODES": str(max_nodes),
     })
-    label = f"{mode} | {model} | seed={seed} | N={max_nodes}"
+    label = f"{arm} | {model} | seed={seed} | N={max_nodes}"
     cmd = _ari_cmd()
     if dry:
         print(f"[dry-run] {label}")
         print("  env:", " ".join(f"{k}={v}" for k, v in overrides.items()))
         print("  cmd:", " ".join(cmd), f"(cwd={REPO})")
-        return 0
+        return 0, None
     env = dict(os.environ)
     env.update(overrides)
     print(f"[run] {label}", flush=True)
-    return subprocess.run(cmd, env=env, cwd=str(REPO)).returncode
+    before = _experiment_dirs()
+    rc = subprocess.run(cmd, env=env, cwd=str(REPO)).returncode
+    new = sorted(d for d in (_experiment_dirs() - before) if glob.glob(d + "/node_*"))
+    run_dir = new[-1] if new else None
+    return rc, run_dir
+
+
+def _record(manifest: Path | None, **row) -> None:
+    if manifest is None:
+        return
+    with open(manifest, "a") as fh:
+        fh.write(json.dumps(row) + "\n")
 
 
 def main() -> int:
@@ -78,6 +107,8 @@ def main() -> int:
     ap.add_argument("--large-model", default="qwen3:32b", help="MVP model")
     ap.add_argument("--seeds", type=int, default=1, help="MVP: independent runs per arm")
     ap.add_argument("--max-nodes", type=int, default=10, help="best valid @ N nodes (PREREG N=10)")
+    ap.add_argument("--out-dir", default=None,
+                    help="manifest output dir (default workspace/checkpoints/<ts>_handoff_<mode>)")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
 
@@ -85,17 +116,34 @@ def main() -> int:
         print(f"experiment not found: {EXPERIMENT}", file=sys.stderr)
         return 2
 
+    manifest = None
+    if not a.dry_run:
+        ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+        out_dir = Path(a.out_dir) if a.out_dir else REPO / "workspace" / "checkpoints" / f"{ts}_handoff_{a.mode}"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        manifest = out_dir / "manifest.jsonl"
+        print(f"[driver] manifest -> {manifest}")
+
     rc = 0
     if a.mode == "pilot":
         # qwen3:8b validity-floor pilot: one clean arm, small N (PREREG gate (a)).
-        rc |= run_one("code_plus_summary", a.model, 0, a.max_nodes, a.dry_run)
-        print("\nPilot done. Gate: confirm >0 valid nodes in the checkpoint "
-              "(workspace/checkpoints/<ts>_*); if the model floors at 0, raise "
-              "the small model (e.g. qwen3:14b) per PREREG before the MVP sweep.")
+        r, run_dir = run_one("code_plus_summary", a.model, 0, a.max_nodes, a.dry_run)
+        rc |= r
+        _record(manifest, arm="code_plus_summary", model=a.model, seed=0,
+                max_nodes=a.max_nodes, run_dir=run_dir, rc=r)
+        print("\nPilot done. Gate: confirm >0 valid nodes in the run dir; if the "
+              "model floors at 0, raise the small model (e.g. qwen3:14b) per "
+              "PREREG before the MVP sweep.")
     else:
         for seed in range(a.seeds):
             for arm in ARMS:
-                rc |= run_one(arm, a.large_model, seed, a.max_nodes, a.dry_run)
+                r, run_dir = run_one(arm, a.large_model, seed, a.max_nodes, a.dry_run)
+                rc |= r
+                _record(manifest, arm=arm, model=a.large_model, seed=seed,
+                        max_nodes=a.max_nodes, run_dir=run_dir, rc=r)
+        if manifest:
+            print(f"\nMVP sweep done. Analyze with:\n"
+                  f"  python scripts/analyze_handoff_ablation.py {manifest.parent}")
     return rc
 
 

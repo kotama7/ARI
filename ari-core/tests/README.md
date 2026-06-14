@@ -10,6 +10,7 @@ targets the like-named module under `ari/`.
 
 - `README.md` — this file.
 - `test_agent_smoke.py` — agent smoke test.
+- `test_analyze_handoff.py` — TODO
 - `test_api_lineage_decisions.py` — lineage-decisions API.
 - `test_api_lineage_e2e.py` — lineage API end-to-end.
 - `test_api_paperbench.py` — PaperBench API.
