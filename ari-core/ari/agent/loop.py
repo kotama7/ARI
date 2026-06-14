@@ -714,14 +714,20 @@ class AgentLoop:
         # goal_text (from the experiment dict, above) is the reliable in-scope goal;
         # the legacy `self.experiment_goal` attribute is never assigned in this class
         # (the old call sites only survived via short-circuit eval + try/except).
-        messages.extend(build_working_context_messages(
-            self.mcp.call_tool,
-            depth=node.depth,
-            ancestor_ids=node.ancestor_ids or [],
-            eval_summary=node.eval_summary,
-            experiment_goal=goal_text,
-            work_dir=work_dir,
-        ))
+        # B1 (handoff study): gate the de-facto memory channel (Tier-1a/1b/1c/2)
+        # so code_only / summary_only arms receive no operational state beyond the
+        # explicit handoff channels (G4). None / disabled arms inject as before.
+        _ho = getattr(self, "handoff", None)
+        _mem_off = bool(_ho is not None and getattr(_ho, "memory_off", False))
+        if not _mem_off:
+            messages.extend(build_working_context_messages(
+                self.mcp.call_tool,
+                depth=node.depth,
+                ancestor_ids=node.ancestor_ids or [],
+                eval_summary=node.eval_summary,
+                experiment_goal=goal_text,
+                work_dir=work_dir,
+            ))
 
         # ── G4: agent-face handoff (handoff study) ──────────────────────────
         # Inject the parent's operational summary / execution log into the CHILD
@@ -735,8 +741,10 @@ class AgentLoop:
                 _plog = _load_parent_log(node, work_dir) if _want_log else ""
                 messages.extend(build_handoff_agent_messages(_ho, _prep, _plog))
 
-        # Inject long-term (cross-experiment) memory if the tool is available
-        if "search_global_memory" in tool_names:
+        # Inject long-term (cross-experiment) memory if the tool is available.
+        # B1: also gated by handoff.memory_off (cross-experiment memory is a
+        # memory channel that must be off for clean handoff arms).
+        if "search_global_memory" in tool_names and not _mem_off:
             try:
                 _g_query = (self.experiment_goal or node.eval_summary or "")[:200]
                 g_result = self.mcp.call_tool("search_global_memory", {
