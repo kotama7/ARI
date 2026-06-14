@@ -649,7 +649,18 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                             _added = len(_fc.get("added") or [])
                             _modified = len(_fc.get("modified") or [])
                             _deleted = len(_fc.get("deleted") or [])
-                            if _added + _modified + _deleted == 0:
+                            # G7 (handoff study): in copy-OFF arms the child dir
+                            # starts empty vs a populated parent, so every parent
+                            # file shows as "deleted" — count only the child's own
+                            # writes (added/modified) so "no-op / sterile" means
+                            # the same thing across copy-on and copy-off arms.
+                            _ho_g7 = getattr(agent, "handoff", None)
+                            _copy_on_g7 = (_ho_g7 is None) or getattr(_ho_g7, "copy_workdir", True)
+                            _sterile_g7 = (
+                                (_added + _modified + _deleted) == 0 if _copy_on_g7
+                                else (_added + _modified) == 0
+                            )
+                            if _sterile_g7:
                                 # Sterile — clamp score and mark for BFTS to skip.
                                 if isinstance(result.metrics, dict):
                                     result.metrics["_sterile"] = True
