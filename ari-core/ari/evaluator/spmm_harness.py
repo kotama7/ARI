@@ -112,11 +112,61 @@ def is_correct(Y_cand: np.ndarray, Y_ref: np.ndarray, A: sp.csr_matrix,
     return ok, max_rel
 
 
-def _default_run_kernel(*_a: Any, **_k: Any):  # pragma: no cover - compute node only
-    raise RuntimeError(
-        "SpMM kernel harness compile/run/timing is compute-node only and not "
-        "yet installed (B2b). Inject run_kernel for tests, or run on a compute node."
-    )
+def _default_run_kernel(kind: str, work_dir: str, A, X, warmup: int, reps: int):
+    """Compile + run + time a SpMM kernel; return (median_seconds, Y).
+
+    ``kind="baseline"`` compiles the frozen ``baseline_spmm.c``; ``"candidate"``
+    compiles the agent's ``candidate_spmm.c`` from ``work_dir``. IDENTICAL
+    compiler + flags for both (anti-gaming). Mechanics (compile / run /
+    correctness) are smoke-tested on a login node; TIMING representativeness
+    (W warmup / R reps median, OpenMP scaling) must be validated on a compute
+    node (repo rule), so production runs of the study run on compute nodes.
+    """
+    import os as _os
+    import subprocess as _sub
+    import tempfile as _tmp
+
+    kdir = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "spmm_kernels")
+    main_c = _os.path.join(kdir, "spmm_main.c")
+    kern_c = (_os.path.join(kdir, "baseline_spmm.c") if kind == "baseline"
+              else _os.path.join(work_dir or "", "candidate_spmm.c"))
+    if not _os.path.isfile(kern_c):
+        raise RuntimeError(f"kernel source not found ({kind}): {kern_c}")
+    cc = _os.environ.get("ARI_SPMM_CC", "cc")
+    cflags = _os.environ.get("ARI_SPMM_CFLAGS", "-O3 -fopenmp").split()
+
+    Acsr = sp.csr_matrix(A).astype(np.float64)
+    Acsr.sort_indices()
+    Xc = np.ascontiguousarray(np.asarray(X, dtype=np.float64))
+    n, m = int(Acsr.shape[0]), int(Acsr.shape[1])
+    k = int(Xc.shape[1])
+    nnz = int(Acsr.nnz)
+    with _tmp.TemporaryDirectory() as td:
+        exe = _os.path.join(td, "kernel.exe")
+        compile_cmd = [cc, *cflags, f"-I{kdir}", main_c, kern_c, "-o", exe, "-lm"]
+        cp = _sub.run(compile_cmd, capture_output=True, text=True, timeout=120)
+        if cp.returncode != 0:
+            raise RuntimeError(f"compile failed ({kind}): {cp.stderr.strip()[-600:]}")
+        prob = _os.path.join(td, "problem.bin")
+        outf = _os.path.join(td, "y.bin")
+        with open(prob, "wb") as fh:
+            np.array([n, m, k, nnz], dtype=np.int32).tofile(fh)
+            Acsr.indptr.astype(np.int32).tofile(fh)
+            Acsr.indices.astype(np.int32).tofile(fh)
+            Acsr.data.astype(np.float64).tofile(fh)
+            Xc.tofile(fh)
+        rp = _sub.run([exe, prob, outf, str(int(warmup)), str(int(reps))],
+                      capture_output=True, text=True, timeout=900)
+        if rp.returncode != 0:
+            raise RuntimeError(f"run failed ({kind}): {rp.stderr.strip()[-600:]}")
+        median = None
+        for line in rp.stdout.splitlines():
+            if line.startswith("median_sec="):
+                median = float(line.split("=", 1)[1])
+        if median is None:
+            raise RuntimeError(f"no timing in stdout ({kind}): {rp.stdout[-200:]}")
+        Y = np.fromfile(outf, dtype=np.float64).reshape(n, k)
+    return median, Y
 
 
 def measure_node(
@@ -147,8 +197,10 @@ def measure_node(
         X = np.random.default_rng(seed + 1).standard_normal((A.shape[1], k))
         Y_ref = reference_spmm(A, X)
         try:
-            t_base, _ = run("baseline", work_dir, A, X, warmup, reps)
+            # Candidate first: a missing/broken candidate fails fast without
+            # paying for a baseline compile.
             t_cand, Y_cand = run("candidate", work_dir, A, X, warmup, reps)
+            t_base, _ = run("baseline", work_dir, A, X, warmup, reps)
         except Exception as e:
             compile_ok = False
             reason = f"kernel run failed on {fam}: {e}"

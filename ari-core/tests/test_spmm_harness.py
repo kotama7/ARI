@@ -88,11 +88,34 @@ def test_measure_node_incorrect_candidate_is_invalid():
     assert res["families"]["uniform"]["valid"] is False
 
 
-def test_measure_node_default_runner_raises_compute_node():
+def test_default_runner_missing_candidate_raises():
+    from ari.evaluator.spmm_harness import _default_run_kernel
+    A = gen_matrix("uniform", 16, seed=0)
+    X = np.random.default_rng(0).standard_normal((16, 2))
     with pytest.raises(RuntimeError):
-        # default runner is compute-node only
-        from ari.evaluator.spmm_harness import _default_run_kernel
-        _default_run_kernel("candidate", "/tmp")
+        _default_run_kernel("candidate", "/nonexistent_handoff_dir", A, X, 0, 1)
+
+
+def test_default_runner_baseline_compiles_and_is_correct():
+    """Login smoke: real compile+run of the frozen baseline is correct.
+
+    Skips when no C compiler is available (e.g. minimal CI). TIMING is NOT
+    asserted here — its representativeness is validated on a compute node.
+    """
+    import os
+    import shutil
+    from ari.evaluator.spmm_harness import _default_run_kernel
+    if shutil.which(os.environ.get("ARI_SPMM_CC", "cc")) is None:
+        pytest.skip("no C compiler available")
+    A = gen_matrix("uniform", 32, density=0.1, seed=1)
+    X = np.random.default_rng(2).standard_normal((32, 3))
+    try:
+        t, Y = _default_run_kernel("baseline", "", A, X, warmup=0, reps=2)
+    except RuntimeError as e:
+        pytest.skip(f"compile/run unavailable on this host: {e}")
+    assert t >= 0.0
+    ok, mr = is_correct(Y, reference_spmm(A, X), A, X)
+    assert ok, f"baseline kernel output incorrect (max_rel={mr})"
 
 
 def test_families_constant():
