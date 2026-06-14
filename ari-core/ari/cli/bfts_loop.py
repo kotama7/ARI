@@ -211,9 +211,13 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                 # Node reasoning context is untouched (scheduler-only signal).
                 _goal_for_select = experiment_data["goal"]
                 try:
-                    from ari.agent.metric_contract import build_expand_coverage_hint
-                    _goal_for_select = _goal_for_select + build_expand_coverage_hint(
-                        str(checkpoint_dir))
+                    from ari.agent.metric_contract import (
+                        build_expand_coverage_hint, contract_frozen,
+                    )
+                    # B3: the contract biases WHICH node is expanded; skip when frozen.
+                    if not contract_frozen():
+                        _goal_for_select = _goal_for_select + build_expand_coverage_hint(
+                            str(checkpoint_dir))
                 except Exception:
                     pass
                 best = bfts.select_best_to_expand(_eligible, _goal_for_select, agent.memory)

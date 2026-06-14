@@ -228,9 +228,11 @@ def build_working_context_messages(
     try:
         import os as _os_mc
         from pathlib import Path as _P_mc
+        from ari.agent.metric_contract import contract_frozen as _contract_frozen
         _ck_mc = _os_mc.environ.get("ARI_CHECKPOINT_DIR", "")
         _mc_path = _P_mc(_ck_mc) / "metric_contract.json" if _ck_mc else None
-        if _mc_path is not None and _mc_path.is_file():
+        # B3: skip the per-node contract-obligation injection entirely when frozen.
+        if _mc_path is not None and _mc_path.is_file() and not _contract_frozen():
             import json as _json_mc
             _mc_obj = _json_mc.loads(_mc_path.read_text())
             if isinstance(_mc_obj, dict) and _mc_obj:
@@ -1158,8 +1160,12 @@ class AgentLoop:
                             except Exception as _ij_err:
                                 logger.warning("Failed to inject idea content: %s", _ij_err)
 
-                    # make_metric_spec call: self-determine evaluation criteria
-                    if r["name"] == "make_metric_spec":
+                    # make_metric_spec call: self-determine evaluation criteria.
+                    # B3: skip when the contract is frozen (ARI_FREEZE_CONTRACT) —
+                    # the handoff study uses a fixed exogenous evaluator, so the
+                    # agent must not override the evaluator / emit a per-run contract.
+                    from ari.agent.metric_contract import contract_frozen as _cf
+                    if r["name"] == "make_metric_spec" and not _cf():
                         try:
                             spec_data = json.loads(r["result"]) if isinstance(r["result"], str) else r["result"]
                             if isinstance(spec_data, dict) and "result" in spec_data:
