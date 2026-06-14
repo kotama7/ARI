@@ -8,6 +8,7 @@ orchestrator consumes.
 
 - `README.md` — this file.
 - `__init__.py` — public symbols + axis design.
+- `deterministic_evaluator.py` — `DeterministicEvaluator`: non-LLM judge owning the SpMM measurement; writes `metrics._scientific_score` to drive BFTS selection (handoff study B2). Selected via `ARI_EVALUATOR=deterministic`.
 - `dynamic_axes.py` — venue/run-specific evaluation-axis derivation.
 - `llm_evaluator.py` — `LLMEvaluator`: extraction + multi-axis composite scoring.
 

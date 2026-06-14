@@ -40,6 +40,7 @@ targets the like-named module under `ari/`.
 - `test_data_flow.py` — data flow.
 - `test_default_provider.py` — default LLM provider.
 - `test_delete_checkpoint_experiments.py` — checkpoint-experiment deletion.
+- `test_deterministic_evaluator.py` — deterministic-evaluator scoring-contract tests (geomean / `_scientific_score` normalization / invalid-family rule; handoff study B2).
 - `test_disabled_tools_flow.py` — disabled-tools flow.
 - `test_dynamic_axes.py` — dynamic evaluation axes.
 - `test_ear.py` — EAR (experiment/analysis/report).
