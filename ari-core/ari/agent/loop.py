@@ -357,6 +357,76 @@ def build_working_context_messages(
     return out
 
 
+# ── G4: agent-face handoff injection (handoff study) ──────────────────────────
+# Inject the PARENT's operational summary / execution log into the CHILD agent's
+# prompt, gated by HandoffConfig. Distinct from the planner-side report block.
+# Parent node dir is derived from the child work_dir (experiments/{run}/{id}); the
+# parent's log files are read from there (they are on _OUTPUT_BLACKLIST, so NOT
+# copied into the child — read at source). See ari-core/ari/agent/Plan.md.
+def _load_parent_node_report(node, work_dir: str) -> dict | None:
+    import json as _json
+    from pathlib import Path as _Path
+    pid = getattr(node, "parent_id", None)
+    if not pid or not work_dir:
+        return None
+    try:
+        rp = _Path(work_dir).parent / str(pid) / "node_report.json"
+        if rp.is_file():
+            return _json.loads(rp.read_text())
+    except Exception:
+        return None
+    return None
+
+
+def _load_parent_log(node, work_dir: str, *, limit: int = 200_000) -> str:
+    from pathlib import Path as _Path
+    pid = getattr(node, "parent_id", None)
+    if not pid or not work_dir:
+        return ""
+    pdir = _Path(work_dir).parent / str(pid)
+    if not pdir.is_dir():
+        return ""
+    chunks: list[str] = []
+    for pat in ("run.log", "run_*.log", "slurm-*.out", "stdout.txt", "stderr.txt"):
+        for f in sorted(pdir.glob(pat)):
+            try:
+                chunks.append(f"# {f.name}\n" + f.read_text(errors="replace"))
+            except Exception:
+                pass
+    return ("\n\n".join(chunks))[:limit] if chunks else ""
+
+
+def build_handoff_agent_messages(handoff, parent_report, parent_log) -> list[dict]:
+    """Messages appended to a CHILD's prompt for the agent-face handoff channel.
+
+    ``handoff`` is a HandoffConfig-like object (or None). Returns [] unless the
+    arm requests the summary block (``inject_agent_block``) and/or a log
+    (``log_mode`` in full/truncated). Pure + unit-tested.
+    """
+    out: list[dict] = []
+    if handoff is None:
+        return out
+    if getattr(handoff, "inject_agent_block", False) and parent_report:
+        from ari.orchestrator.node_summary_view import node_summary_view
+        view = node_summary_view(
+            parent_report,
+            fields_enabled=getattr(handoff, "summary_fields_enabled", None),
+            summary_form=getattr(handoff, "summary_form", "extractive"),
+        )
+        if view:
+            out.append({"role": "user",
+                        "content": "[Parent handoff — operational summary]\n" + view})
+    lm = getattr(handoff, "log_mode", "none")
+    if lm in ("full", "truncated") and parent_log:
+        log = parent_log
+        if lm == "truncated":
+            cap = int(getattr(handoff, "log_truncate_chars", 4000) or 4000)
+            log = log[-cap:]
+        out.append({"role": "user",
+                    "content": "[Parent handoff — execution log]\n" + log})
+    return out
+
+
 # Phase 3D — message-history helpers extracted to
 # ``ari.agent.message_utils``.  Re-imported under the same names so
 # any caller (incl. the Phase-0 smoke tests) that did
@@ -652,6 +722,18 @@ class AgentLoop:
             experiment_goal=goal_text,
             work_dir=work_dir,
         ))
+
+        # ── G4: agent-face handoff (handoff study) ──────────────────────────
+        # Inject the parent's operational summary / execution log into the CHILD
+        # prompt when the handoff arm requests it. None / disabled arms add nothing.
+        _ho = getattr(self, "handoff", None)
+        if _ho is not None:
+            _want_summary = bool(getattr(_ho, "inject_agent_block", False))
+            _want_log = getattr(_ho, "log_mode", "none") in ("full", "truncated")
+            if _want_summary or _want_log:
+                _prep = _load_parent_node_report(node, work_dir) if _want_summary else None
+                _plog = _load_parent_log(node, work_dir) if _want_log else ""
+                messages.extend(build_handoff_agent_messages(_ho, _prep, _plog))
 
         # Inject long-term (cross-experiment) memory if the tool is available
         if "search_global_memory" in tool_names:

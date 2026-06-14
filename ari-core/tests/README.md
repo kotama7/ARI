@@ -51,6 +51,7 @@ targets the like-named module under `ari/`.
 - `test_file_explorer.py` — file explorer.
 - `test_gui_env_propagation.py` — GUI env propagation.
 - `test_gui_errors.py` — GUI error handling.
+- `test_handoff_agent_injection.py` — agent-face handoff injection (`build_handoff_agent_messages` + parent report/log loaders): summary / full / truncated arms, no-op arms, child→parent workdir resolution (handoff study G4).
 - `test_i18n_consistency.py` — i18n consistency.
 - `test_idea_integration.py` — idea integration.
 - `test_include_ear_toggle.py` — include-EAR toggle.
