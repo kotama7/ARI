@@ -64,6 +64,10 @@ load balance, …). Do NOT change the signature.
 
   It prints `correct=yes/NO`, an estimated `speedup~Nx` vs the naive baseline,
   and `SELFTEST: PASS` / `FAIL`. Iterate until it says **PASS with a speedup > 1**.
+  **Never finish while it says `SELFTEST: FAIL` — `correct=NO` means your kernel
+  is wrong (e.g. you forgot to zero `Y` before accumulating, or you have a data
+  race) and the evaluator will score it 0.** A correct ~1x kernel beats a fast
+  wrong one. If you cannot fix correctness, revert to the last PASS version.
   Do NOT write your own `main()`, your own problem generator, or
   `#include "spmm_main.c"` — `selftest.c` already runs and checks your kernel.
 - The evaluator (more matrix families, fresh data it generates itself) is the
