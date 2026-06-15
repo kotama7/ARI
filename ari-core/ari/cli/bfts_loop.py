@@ -452,23 +452,27 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                     logging.getLogger(__name__).warning(
                         "Could not inherit parent work_dir %s: %s", _parent_wd, _pe
                     )
-            # Seed the frozen SpMM scaffolding into each node work_dir so the
+            # Seed the frozen kernel scaffolding into each node work_dir so the
             # agent can compile-test its candidate the same way the deterministic
             # evaluator does. Runs AFTER parent inheritance: the frozen harness
             # files overwrite any stale inherited copy, while the starter
             # candidate is only written when absent (so a code-inheriting child
             # keeps its parent's candidate). Gated on the study's deterministic
-            # evaluator so non-study experiments are untouched.
+            # evaluator so non-study experiments are untouched; the task
+            # (ARI_TASK: spmm default | gemm) picks which scaffolding to seed.
             if os.environ.get("ARI_EVALUATOR") == "deterministic":
                 try:
-                    from ari.evaluator.spmm_harness import seed_work_dir as _seed_spmm
+                    if os.environ.get("ARI_TASK", "spmm").lower() == "gemm":
+                        from ari.evaluator.gemm_harness import seed_work_dir as _seed_task
+                    else:
+                        from ari.evaluator.spmm_harness import seed_work_dir as _seed_task
                     for _n in batch:
-                        _seeded = _seed_spmm(_n.work_dir)
+                        _seeded = _seed_task(_n.work_dir)
                         logging.getLogger(__name__).info(
-                            "Seeded SpMM scaffolding into %s: %s", _n.work_dir, _seeded
+                            "Seeded kernel scaffolding into %s: %s", _n.work_dir, _seeded
                         )
                 except Exception as _se:
-                    logging.getLogger(__name__).warning("SpMM seed failed: %s", _se)
+                    logging.getLogger(__name__).warning("kernel seed failed: %s", _se)
             # Inject work_dir into per-node experiment copy
             # Copy provided_files (parsed from .md) into each node's work_dir
             _provided = getattr(agent.hints, "provided_files", []) if hasattr(agent, "hints") else []

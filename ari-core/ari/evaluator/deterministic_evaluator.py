@@ -40,21 +40,28 @@ def geomean(values: list[float]) -> float:
     return math.exp(sum(math.log(v) for v in vals) / len(vals))
 
 
-def scientific_score(geomean_speedup: float | None, target: float = 16.0) -> float:
+def scientific_score(geomean_speedup: float | None, target: float = 16.0,
+                     scale: str = "linear") -> float:
     """Map a (>=0) geomean speedup to [0, 1] for BFTS selection.
 
-    ``s = min(geomean_speedup / TARGET, 1.0)``. TARGET is the parallel ceiling
-    (the OpenMP thread budget, default 16): a kernel at ideal linear scaling
-    scores ~1.0 and a serial kernel ~1/16, so the score spans the achievable
-    range instead of saturating at 1.0 the moment a kernel crosses a low bar
-    (the original 4x saturated immediately — basic `omp parallel for` already
-    reaches ~15x — which collapsed BFTS's preference among good kernels).
-    Keeping the score in [0, 1] keeps it commensurable with the diversity bonus
-    the deterministic frontier scorer adds (``ari/orchestrator/bfts.py``).
+    ``scale="linear"`` (SpMM): ``s = min(g / TARGET, 1.0)`` — TARGET is the
+    parallel ceiling (thread budget, default 16) so the score spans the
+    achievable range instead of saturating at a low bar.
+
+    ``scale="log"`` (GEMM): ``s = min(log(g) / log(TARGET), 1.0)`` — GEMM speedups
+    are MULTIPLICATIVE rungs (naive 1x, cache-order ~tens×, +parallel ~hundreds×),
+    so log spacing keeps the rungs evenly separated; linear would crush the
+    intermediate rungs to ~0 and hide the gradient the handoff acts on. ``g<=1``
+    (no gain over the naive baseline) scores 0.
     """
     if not geomean_speedup or geomean_speedup <= 0.0 or target <= 0.0:
         return 0.0
-    return min(float(geomean_speedup) / float(target), 1.0)
+    g = float(geomean_speedup)
+    if scale == "log":
+        if g <= 1.0 or target <= 1.0:
+            return 0.0
+        return min(math.log(g) / math.log(float(target)), 1.0)
+    return min(g / float(target), 1.0)
 
 
 def gamma(k: int, u: float) -> float:
@@ -82,6 +89,11 @@ def _default_measure(work_dir: str) -> dict:
     1x baseline room to reach ~12-15x, spanning the TARGET (16x, the thread
     budget) so the normalized score discriminates among good kernels.
     """
+    task = os.environ.get("ARI_TASK", "spmm").lower()
+    if task == "gemm":
+        # Dense GEMM (task A): compute-bound, multiplicative optimization rungs.
+        from ari.evaluator.gemm_harness import measure_node as _gemm_measure
+        return _gemm_measure(work_dir)
     from ari.evaluator.spmm_harness import measure_node
     n = int(os.environ.get("ARI_SPMM_N", "20000"))
     k = int(os.environ.get("ARI_SPMM_K", "64"))
@@ -103,11 +115,18 @@ class DeterministicEvaluator:
         measure_fn: Callable[[str], dict] | None = None,
         **_ignored: Any,
     ) -> None:
+        # Task selects the scoring scale + TARGET: GEMM speedups are
+        # multiplicative rungs (log scale, ceiling ~256x), SpMM is linear
+        # (ceiling = thread budget ~16x). Both env-overridable.
+        self.task = os.environ.get("ARI_TASK", "spmm").lower()
+        self.scale = "log" if self.task == "gemm" else "linear"
         if target_speedup is None:
+            _env, _dflt = (("ARI_GEMM_TARGET", 256.0) if self.task == "gemm"
+                           else ("ARI_SPMM_TARGET", 16.0))
             try:
-                target_speedup = float(os.environ.get("ARI_SPMM_TARGET", "16.0"))
+                target_speedup = float(os.environ.get(_env, str(_dflt)))
             except ValueError:
-                target_speedup = 16.0
+                target_speedup = _dflt
         self.target = target_speedup
         self._measure_fn = measure_fn
         # Present so callers that introspect metric_spec (node_report builder)
@@ -128,7 +147,7 @@ class DeterministicEvaluator:
             bool(f.get("valid")) for f in families.values()
         )
         g = geomean([f.get("speedup", 0.0) for f in families.values()]) if all_valid else 0.0
-        s = scientific_score(g, self.target)
+        s = scientific_score(g, self.target, getattr(self, "scale", "linear"))
         metrics: dict[str, Any] = {
             "_scientific_score": s,
             "valid_geomean_speedup": g,
@@ -140,7 +159,7 @@ class DeterministicEvaluator:
             "has_real_data": all_valid,
             "scientific_score": s,
             "valid": all_valid,
-            "reason": str(result.get("reason", "deterministic SpMM evaluation")),
+            "reason": str(result.get("reason", f"deterministic {getattr(self, 'task', 'spmm')} evaluation")),
         }
 
     def evaluate_sync(

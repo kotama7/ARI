@@ -36,6 +36,19 @@ def test_scientific_score_default_target_is_parallel_ceiling():
     assert abs(scientific_score(4.0) - 0.25) < 1e-9      # was 1.0 under old 4x
 
 
+def test_scientific_score_log_scale_spreads_multiplicative_rungs():
+    # GEMM (log scale, TARGET=256): multiplicative rungs map to even spacing;
+    # no gain over the naive baseline (g<=1) scores 0; cap at 1.0.
+    import math
+    assert scientific_score(1.0, 256, "log") == 0.0
+    assert scientific_score(256.0, 256, "log") == 1.0
+    assert scientific_score(500.0, 256, "log") == 1.0   # capped
+    assert abs(scientific_score(16.0, 256, "log") - 0.5) < 1e-9   # sqrt(256)=16
+    # intermediate rung 21x is clearly between 0 and 1 (not crushed like linear)
+    s = scientific_score(21.0, 256, "log")
+    assert 0.4 < s < 0.7
+
+
 def test_gamma():
     assert gamma(10, 2 ** -53) > 0.0
     assert math.isinf(gamma(2, 1.0))  # k*u >= 1 -> vacuous bound

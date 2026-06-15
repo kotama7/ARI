@@ -66,11 +66,21 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `evaluator/` — LLM judge: metric extraction + dynamic axis generation.
   - `README.md` — evaluator index.
   - `__init__.py` — public symbols + axis design.
-  - `deterministic_evaluator.py` — `DeterministicEvaluator`: non-LLM judge owning the SpMM measurement; writes `metrics._scientific_score` to drive BFTS selection (handoff study B2). Selected via `ARI_EVALUATOR=deterministic`.
+  - `deterministic_evaluator.py` — `DeterministicEvaluator`: non-LLM judge owning the kernel measurement; writes `metrics._scientific_score` to drive BFTS selection (handoff study B2). Selected via `ARI_EVALUATOR=deterministic`; task via `ARI_TASK` (spmm default | gemm), which also picks the scoring scale (spmm linear / gemm log).
   - `dynamic_axes.py` — venue/run-specific evaluation-axis derivation.
+  - `gemm_harness.py` — dense GEMM measurement core (task A): fp64 reference oracle, contraction-length correctness bound, fixed shapes, geomean aggregation (`measure_node`). Compute-bound counterpart to SpMM with a multi-rung optimization gradient; pure parts login-tested, compile/run runner compute-node only.
   - `handoff_stats.py` — run-level analysis statistics for the handoff study (Stage 4 core): geomean, run-cluster bootstrap CI, TOST equivalence (RQ1 parity), Holm correction, per-arm summary. Pure; consumed by `scripts/analyze_handoff_ablation.py`.
   - `llm_evaluator.py` — `LLMEvaluator`: extraction + multi-axis composite scoring.
   - `spmm_harness.py` — SpMM measurement core (handoff study B2b): fp64 reference oracle, per-element correctness bound (eps model), seeded matrix families, geomean aggregation (`measure_node`). Pure parts login-tested; compile/run/timing runner is compute-node only.
+  - `gemm_kernels/` — C kernel fixtures for the handoff-study **dense GEMM** task (task A). GEMM is the
+    - `README.md` — gemm_kernels index.
+    - `baseline_gemm.c` — FROZEN 1x reference GEMM (naive ijl, single-thread); the speedup denominator.
+    - `candidate_gemm.c` — agent-edited `gemm()` template (seeded identical to baseline); copied per node into the work_dir.
+    - `experiment.md` — the GEMM optimization task handed to the agent (goal + `gemm()` contract + judging rules; BLAS forbidden).
+    - `gemm_kernel.h` — the `gemm()` contract the candidate must keep.
+    - `gemm_main.c` — FROZEN timing + binary-I/O harness (warmup/reps/median); agent must not edit.
+    - `Makefile` — manual build (`make candidate` / `make selftest`); mirrors the Python runner's identical flags.
+    - `selftest.c` — local developer self-test (`make selftest`): correctness (evaluator eps bound) + estimated speedup vs the naive baseline; seeded for agent iteration, not used for scoring.
   - `spmm_kernels/` — C kernel fixtures for the handoff-study SpMM measurement (B2b). The frozen
     - `README.md` — spmm_kernels index.
     - `baseline_spmm.c` — FROZEN 1x reference CSR SpMM (naive, single-thread); the speedup denominator.
