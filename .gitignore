@@ -38,6 +38,8 @@ benchmarks/
 # Handoff study (B2b): the SpMM kernel fixtures are tracked source, not
 # user-created experiment files — re-include them despite the *.c rule above.
 !ari-core/ari/evaluator/spmm_kernels/*.c
+# Handoff study (task A): GEMM kernel fixtures are likewise tracked source.
+!ari-core/ari/evaluator/gemm_kernels/*.c
 
 # Dynamic YAML/scripts generated per-experiment
 *_paper.yaml
@@ -103,6 +105,7 @@ tmp*.md
 # Handoff study (Stage 4): the SpMM task fixture is tracked source, not a runtime
 # experiment.md — re-include it despite the rule above.
 !ari-core/ari/evaluator/spmm_kernels/experiment.md
+!ari-core/ari/evaluator/gemm_kernels/experiment.md
 GUI_TASK.md
 *_TASK.md
 

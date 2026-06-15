@@ -28,7 +28,14 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-EXPERIMENT = REPO / "ari-core" / "ari" / "evaluator" / "spmm_kernels" / "experiment.md"
+# The deterministic task: spmm (default) or gemm (task A — wide optimization
+# gradient). Each maps to its experiment fixture; the env var ARI_TASK selects
+# the evaluator's measurement + scaffolding + scoring scale.
+_EVAL = REPO / "ari-core" / "ari" / "evaluator"
+EXPERIMENTS = {
+    "spmm": _EVAL / "spmm_kernels" / "experiment.md",
+    "gemm": _EVAL / "gemm_kernels" / "experiment.md",
+}
 # MVP 3-arm contrast (PREREG primary = code_plus_summary vs code_plus_full_log).
 ARMS = ["code_only", "code_plus_summary", "code_plus_full_log"]
 # Per-arm env that pins the study controls (PREREG): frozen contract, deterministic
@@ -47,10 +54,11 @@ _FIXED = {
 }
 
 
-def _ari_cmd() -> list[str]:
+def _ari_cmd(task: str) -> list[str]:
+    exp = str(EXPERIMENTS[task])
     if shutil.which("ari"):
-        return ["ari", "run", str(EXPERIMENT)]
-    return [sys.executable, "-m", "ari.cli", "run", str(EXPERIMENT)]
+        return ["ari", "run", exp]
+    return [sys.executable, "-m", "ari.cli", "run", exp]
 
 
 def _experiment_dirs() -> set[str]:
@@ -62,7 +70,8 @@ def _experiment_dirs() -> set[str]:
     return out
 
 
-def run_one(arm: str, model: str, seed: int, max_nodes: int, dry: bool) -> tuple[int, str | None]:
+def run_one(arm: str, model: str, seed: int, max_nodes: int, dry: bool,
+            task: str = "spmm") -> tuple[int, str | None]:
     """Run one (arm, seed). Returns (returncode, run experiment dir or None).
 
     The run dir is identified by diffing experiments/ before/after — robust
@@ -71,13 +80,14 @@ def run_one(arm: str, model: str, seed: int, max_nodes: int, dry: bool) -> tuple
     """
     overrides = dict(_FIXED)
     overrides.update({
+        "ARI_TASK": task,
         "ARI_HANDOFF_MODE": arm,
         "ARI_SEED": str(seed),
         "ARI_MODEL": model,
         "ARI_MAX_NODES": str(max_nodes),
     })
-    label = f"{arm} | {model} | seed={seed} | N={max_nodes}"
-    cmd = _ari_cmd()
+    label = f"{task} | {arm} | {model} | seed={seed} | N={max_nodes}"
+    cmd = _ari_cmd(task)
     if dry:
         print(f"[dry-run] {label}")
         print("  env:", " ".join(f"{k}={v}" for k, v in overrides.items()))
@@ -107,6 +117,8 @@ def _record(manifest: Path | None, **row) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Handoff-study pilot/sweep driver")
     ap.add_argument("--mode", choices=["pilot", "mvp"], default="pilot")
+    ap.add_argument("--task", choices=["spmm", "gemm"], default="spmm",
+                    help="deterministic task (gemm = task A, wide optimization gradient)")
     ap.add_argument("--model", default="qwen3:8b", help="pilot model (validity floor)")
     ap.add_argument("--large-model", default="qwen3:32b", help="MVP model")
     ap.add_argument("--seeds", type=int, default=1, help="MVP: independent runs per arm")
@@ -116,24 +128,25 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
 
-    if not EXPERIMENT.is_file():
-        print(f"experiment not found: {EXPERIMENT}", file=sys.stderr)
+    exp = EXPERIMENTS[a.task]
+    if not exp.is_file():
+        print(f"experiment not found: {exp}", file=sys.stderr)
         return 2
 
     manifest = None
     if not a.dry_run:
         ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-        out_dir = Path(a.out_dir) if a.out_dir else REPO / "workspace" / "checkpoints" / f"{ts}_handoff_{a.mode}"
+        out_dir = Path(a.out_dir) if a.out_dir else REPO / "workspace" / "checkpoints" / f"{ts}_handoff_{a.task}_{a.mode}"
         out_dir.mkdir(parents=True, exist_ok=True)
         manifest = out_dir / "manifest.jsonl"
-        print(f"[driver] manifest -> {manifest}")
+        print(f"[driver] task={a.task} manifest -> {manifest}")
 
     rc = 0
     if a.mode == "pilot":
-        # qwen3:8b validity-floor pilot: one clean arm, small N (PREREG gate (a)).
-        r, run_dir = run_one("code_plus_summary", a.model, 0, a.max_nodes, a.dry_run)
+        # validity-floor pilot: one clean arm, small N (PREREG gate (a)).
+        r, run_dir = run_one("code_plus_summary", a.model, 0, a.max_nodes, a.dry_run, a.task)
         rc |= r
-        _record(manifest, arm="code_plus_summary", model=a.model, seed=0,
+        _record(manifest, task=a.task, arm="code_plus_summary", model=a.model, seed=0,
                 max_nodes=a.max_nodes, run_dir=run_dir, rc=r)
         print("\nPilot done. Gate: confirm >0 valid nodes in the run dir; if the "
               "model floors at 0, raise the small model (e.g. qwen3:14b) per "
@@ -141,9 +154,9 @@ def main() -> int:
     else:
         for seed in range(a.seeds):
             for arm in ARMS:
-                r, run_dir = run_one(arm, a.large_model, seed, a.max_nodes, a.dry_run)
+                r, run_dir = run_one(arm, a.large_model, seed, a.max_nodes, a.dry_run, a.task)
                 rc |= r
-                _record(manifest, arm=arm, model=a.large_model, seed=seed,
+                _record(manifest, task=a.task, arm=arm, model=a.large_model, seed=seed,
                         max_nodes=a.max_nodes, run_dir=run_dir, rc=r)
         if manifest:
             print(f"\nMVP sweep done. Analyze with:\n"
