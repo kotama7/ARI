@@ -62,14 +62,18 @@ load balance, …). Do NOT change the signature.
   make selftest && ./selftest
   ```
 
-  It prints `correct=yes/NO`, an estimated `speedup~Nx` vs the naive baseline,
-  and `SELFTEST: PASS` / `FAIL`. Iterate until it says **PASS with a speedup > 1**.
+  It tests two sparsity structures (a uniform and a skewed/heavy-tailed matrix),
+  printing per-structure `correct=yes/NO` and `speedup~Nx`, then an overall
+  `SELFTEST: PASS` / `FAIL`. Iterate until it says **PASS with a speedup > 1**.
   **Never finish while it says `SELFTEST: FAIL` — `correct=NO` means your kernel
-  is wrong (e.g. you forgot to zero `Y` before accumulating, or you have a data
-  race) and the evaluator will score it 0.** A correct ~1x kernel beats a fast
-  wrong one. If you cannot fix correctness, revert to the last PASS version.
-  Do NOT write your own `main()`, your own problem generator, or
-  `#include "spmm_main.c"` — `selftest.c` already runs and checks your kernel.
-- The evaluator (more matrix families, fresh data it generates itself) is the
-  authoritative score; the self-test is a fast local proxy that uses the same
-  correctness rule, so a local PASS with speedup>1 should score well.
+  is wrong (e.g. you forgot to zero `Y` before accumulating, you have a data
+  race, or you mishandle very dense rows) and the evaluator will score it 0.**
+  A correct ~1x kernel beats a fast wrong one. If you cannot fix correctness,
+  revert to the last PASS version. Do NOT write your own `main()`, your own
+  problem generator, or `#include "spmm_main.c"` — `selftest.c` already runs and
+  checks your kernel.
+- The evaluator (6 matrix families, fresh data it generates itself) is the
+  authoritative score; the self-test uses the same correctness rule but only two
+  structures, so a local PASS with speedup>1 is a strong — not complete —
+  predictor. Write a kernel that is correct for ANY CSR input, not one tuned to
+  these two cases.
