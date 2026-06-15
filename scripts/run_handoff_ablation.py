@@ -56,6 +56,12 @@ _FIXED = {
 
 def _ari_cmd(task: str) -> list[str]:
     exp = str(EXPERIMENTS[task])
+    # Prefer the project venv's ari entry point over any global `ari` on PATH:
+    # a stale ~/.local/bin/ari can resolve to a different (broken) interpreter
+    # (e.g. a pydantic-core/pydantic version mismatch in user site-packages).
+    venv_ari = REPO / ".venv" / "bin" / "ari"
+    if venv_ari.is_file():
+        return [str(venv_ari), "run", exp]
     if shutil.which("ari"):
         return ["ari", "run", exp]
     return [sys.executable, "-m", "ari.cli", "run", exp]
