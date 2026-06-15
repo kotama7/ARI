@@ -51,7 +51,8 @@ def run_outcome(run_dir: str | None) -> tuple[float, int, int]:
     for rpt in glob(os.path.join(run_dir, "node_*", "node_report.json")):
         n_nodes += 1
         try:
-            d = json.load(open(rpt))
+            with open(rpt) as fh:
+                d = json.load(fh)
         except Exception:
             continue
         m = d.get("metrics") or {}
@@ -117,11 +118,17 @@ def main() -> int:
         print(f"\nPRIMARY: insufficient valid runs (need >=2 each; have "
               f"{len(a)} / {len(b)}) — add seeds.")
 
-    # Secondary pairwise TOSTs (Holm-adjusted) for context.
+    # Secondary pairwise TOSTs (Holm-adjusted) for context. The PREREG primary
+    # contrast is confirmatory and reported UN-adjusted above, so it is excluded
+    # here — including it would both violate the protocol and corrupt the
+    # secondary arms' step-down adjusted p-values.
     arms = sorted(summary)
+    primary_set = frozenset(PRIMARY)
     pairs, pvals = [], []
     for i in range(len(arms)):
         for j in range(i + 1, len(arms)):
+            if frozenset((arms[i], arms[j])) == primary_set:
+                continue  # primary contrast: confirmatory, not Holm-adjusted
             ai = [x for x in summary[arms[i]]["outcomes"] if x > 0]
             aj = [x for x in summary[arms[j]]["outcomes"] if x > 0]
             if len(ai) >= 2 and len(aj) >= 2:

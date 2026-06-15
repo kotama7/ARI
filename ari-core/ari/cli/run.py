@@ -575,10 +575,15 @@ def resume(
             _cfg_str_r = str(config)
         else:
             _cfg_str_r = str(_pkg_wf_r) if _pkg_wf_r.exists() else ""
-        try:
-            generate_paper_section(all_nodes, experiment_data, checkpoint_dir, mcp_resume, _cfg_str_r)
-        except Exception as _paper_err:
-            console.print(f"[bold red]Paper pipeline failed:[/bold red] {_paper_err}")
-            import traceback
-            traceback.print_exc()
+        # Mirror the `run` command: ARI_SKIP_PAPER skips the paper pipeline for
+        # BFTS-only consumers (e.g. the handoff sweep) on resume too.
+        if os.environ.get("ARI_SKIP_PAPER", "").lower() in ("1", "true", "yes"):
+            console.print("[dim]Paper pipeline skipped (ARI_SKIP_PAPER set).[/dim]")
+        else:
+            try:
+                generate_paper_section(all_nodes, experiment_data, checkpoint_dir, mcp_resume, _cfg_str_r)
+            except Exception as _paper_err:
+                console.print(f"[bold red]Paper pipeline failed:[/bold red] {_paper_err}")
+                import traceback
+                traceback.print_exc()
 

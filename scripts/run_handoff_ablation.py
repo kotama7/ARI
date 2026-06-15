@@ -88,8 +88,12 @@ def run_one(arm: str, model: str, seed: int, max_nodes: int, dry: bool) -> tuple
     print(f"[run] {label}", flush=True)
     before = _experiment_dirs()
     rc = subprocess.run(cmd, env=env, cwd=str(REPO)).returncode
-    new = sorted(d for d in (_experiment_dirs() - before) if glob.glob(d + "/node_*"))
-    run_dir = new[-1] if new else None
+    # Record the new run dir even if it produced no nodes (a failed run is a
+    # distinct, auditable outcome — not the same as "no dir created"). Prefer a
+    # node-bearing dir when several appear.
+    new = sorted(_experiment_dirs() - before)
+    node_bearing = [d for d in new if glob.glob(d + "/node_*")]
+    run_dir = (node_bearing or new)[-1] if new else None
     return rc, run_dir
 
 

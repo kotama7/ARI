@@ -44,3 +44,33 @@ def test_run_outcome_no_valid_node_is_zero(tmp_path):
 def test_run_outcome_missing_dir(tmp_path):
     assert ana.run_outcome(None) == (0.0, 0, 0)
     assert ana.run_outcome(str(tmp_path / "nope")) == (0.0, 0, 0)
+
+
+def test_analyzer_excludes_primary_from_holm(tmp_path):
+    """End-to-end: the PREREG primary contrast is reported un-adjusted, and is
+    NOT included in the secondary Holm-adjusted pairwise set."""
+    import json as _json
+    import subprocess
+    import sys
+    arms = {
+        "code_only": [3.0, 3.3],
+        "code_plus_summary": [5.0, 5.2],
+        "code_plus_full_log": [5.0, 5.1],
+    }
+    rows = []
+    for arm, vals in arms.items():
+        for seed, v in enumerate(vals):
+            rd = tmp_path / f"{arm}_{seed}"
+            _node(rd, "a", valid_geomean=v)
+            rows.append({"arm": arm, "seed": seed, "run_dir": str(rd), "rc": 0})
+    (tmp_path / "manifest.jsonl").write_text(
+        "\n".join(_json.dumps(r) for r in rows) + "\n")
+    subprocess.run([sys.executable, str(_SCRIPT), str(tmp_path)],
+                   check=True, capture_output=True)
+    c = _json.loads((tmp_path / "analysis.json").read_text())["contrasts"]
+    # primary present (reported), but NOT Holm-adjusted
+    assert "code_plus_summary_vs_code_plus_full_log" in c
+    assert "holm_p" not in c["code_plus_summary_vs_code_plus_full_log"]
+    # every Holm-adjusted pair is a secondary (code_only) contrast
+    holm_keys = [k for k, v in c.items() if "holm_p" in v]
+    assert holm_keys and all("code_only" in k for k in holm_keys)
