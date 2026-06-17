@@ -63,6 +63,54 @@ def run_outcome(run_dir: str | None) -> tuple[float, int, int]:
     return (best, n_valid, n_nodes)
 
 
+def lineage_stats(run_dir: str | None) -> dict:
+    """Node-level, handoff-SENSITIVE stats from the run's tree.json (lineage).
+
+    The 'best valid @ N' outcome is a max over noisy attempts — insensitive to
+    handoff. Handoff acts on the DISTRIBUTION: whether a child, inheriting a
+    valid parent, improves it (vs breaks it), and the overall success rate /
+    mean node quality. Returns counts to aggregate across runs:
+      n_nodes, n_valid, valid_speedups, child_total (children of a VALID parent),
+      child_improve (child valid & >1.01x parent), child_break (child invalid).
+    """
+    out = {"n_nodes": 0, "n_valid": 0, "valid_speedups": [],
+           "child_total": 0, "child_improve": 0, "child_break": 0}
+    if not run_dir:
+        return out
+    # tree.json lives in the checkpoint dir paired with the experiments run dir
+    ck = run_dir.replace("/experiments/", "/checkpoints/")
+    tree = None
+    for cand in (os.path.join(ck, "tree.json"), os.path.join(run_dir, "tree.json")):
+        if os.path.isfile(cand):
+            try:
+                with open(cand) as fh:
+                    tree = json.load(fh)
+            except Exception:
+                tree = None
+            break
+    if not tree:
+        return out
+    nodes = tree.get("nodes", [])
+    def vg(nd):
+        g = (nd.get("metrics") or {}).get("valid_geomean_speedup")
+        return float(g) if isinstance(g, (int, float)) and g > 0 else 0.0
+    gm = {nd.get("id"): vg(nd) for nd in nodes}
+    for nd in nodes:
+        out["n_nodes"] += 1
+        g = vg(nd)
+        if g > 0:
+            out["n_valid"] += 1
+            out["valid_speedups"].append(g)
+        pg = gm.get(nd.get("parent_id"), 0.0)
+        if pg > 0:  # parent was valid: did the child build on it or break it?
+            out["child_total"] += 1
+            if g > pg * 1.01:
+                out["child_improve"] += 1
+            elif g == 0.0:
+                out["child_break"] += 1
+    return out
+
+
 def load_manifest(path: Path) -> list[dict]:
     mf = path / "manifest.jsonl" if path.is_dir() else path
     if not mf.is_file():
@@ -80,15 +128,22 @@ def main() -> int:
 
     # arm -> list of run records {seed, outcome, n_valid, n_nodes}
     by_arm: dict[str, list[dict]] = {}
+    lin_by_arm: dict[str, dict] = {}
     for r in rows:
         best, nv, nn = run_outcome(r.get("run_dir"))
         by_arm.setdefault(r["arm"], []).append(
             {"seed": r.get("seed"), "outcome": best, "n_valid": nv, "n_nodes": nn}
         )
+        ls = lineage_stats(r.get("run_dir"))
+        agg = lin_by_arm.setdefault(r["arm"], {"n_nodes": 0, "n_valid": 0,
+            "valid_speedups": [], "child_total": 0, "child_improve": 0, "child_break": 0})
+        for k in ("n_nodes", "n_valid", "child_total", "child_improve", "child_break"):
+            agg[k] += ls[k]
+        agg["valid_speedups"].extend(ls["valid_speedups"])
 
     summary: dict[str, dict] = {}
     print(f"\n=== Handoff ablation: {out_dir.name} ===")
-    print(f"{'arm':<22} {'runs':>5} {'valid':>6} {'geomean':>8}  95% CI")
+    print(f"{'arm':<22} {'runs':>5} {'valid':>6} {'geomean':>8}  95% CI   (outcome = best valid @ N)")
     for arm in sorted(by_arm):
         runs = by_arm[arm]
         valid = [x["outcome"] for x in runs if x["outcome"] > 0]
@@ -100,6 +155,26 @@ def main() -> int:
         summary[arm] = s
         print(f"{arm:<22} {len(runs):>5} {len(valid):>6} {s['geomean']:>8.2f}"
               f"  [{s['ci_lo']:.2f}, {s['ci_hi']:.2f}]")
+
+    # Handoff-SENSITIVE distribution stats (node level, from lineage). The
+    # best-valid outcome above is a max over noisy attempts; handoff acts here.
+    print(f"\n{'arm':<22} {'succ%':>6} {'mean_sp':>8} {'child improve/break/tot':>24}")
+    for arm in sorted(lin_by_arm):
+        a = lin_by_arm[arm]
+        vs = a["valid_speedups"]
+        msp = geomean(vs) if vs else float("nan")
+        succ = 100.0 * a["n_valid"] / a["n_nodes"] if a["n_nodes"] else float("nan")
+        ct = a["child_total"]
+        s = summary.setdefault(arm, {})
+        s["node_success_rate"] = succ / 100.0 if a["n_nodes"] else None
+        s["node_mean_geomean"] = msp
+        s["n_nodes"] = a["n_nodes"]
+        s["child_total"] = ct
+        s["child_improve_rate"] = (a["child_improve"] / ct) if ct else None
+        s["child_break_rate"] = (a["child_break"] / ct) if ct else None
+        print(f"{arm:<22} {succ:>5.0f}% {msp:>8.1f}"
+              f"  {a['child_improve']:>3}/{a['child_break']:<3}/{ct:<3}"
+              f"  (imp {100*a['child_improve']/ct if ct else 0:.0f}% / brk {100*a['child_break']/ct if ct else 0:.0f}%)")
 
     # PREREG primary contrast: equivalence (TOST) in log-speedup.
     contrasts = {}
