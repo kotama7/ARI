@@ -40,6 +40,8 @@ benchmarks/
 !ari-core/ari/evaluator/spmm_kernels/*.c
 # Handoff study (task A): GEMM kernel fixtures are likewise tracked source.
 !ari-core/ari/evaluator/gemm_kernels/*.c
+# Handoff study (task B / erfc Goldilocks): erfc fixtures are tracked source.
+!ari-core/ari/evaluator/erfc_kernels/*.c
 
 # Dynamic YAML/scripts generated per-experiment
 *_paper.yaml
@@ -106,6 +108,7 @@ tmp*.md
 # experiment.md — re-include it despite the rule above.
 !ari-core/ari/evaluator/spmm_kernels/experiment.md
 !ari-core/ari/evaluator/gemm_kernels/experiment.md
+!ari-core/ari/evaluator/erfc_kernels/experiment.md
 GUI_TASK.md
 *_TASK.md
 

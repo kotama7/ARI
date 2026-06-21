@@ -94,6 +94,15 @@ def _default_measure(work_dir: str) -> dict:
         # Dense GEMM (task A): compute-bound, multiplicative optimization rungs.
         from ari.evaluator.gemm_harness import measure_node as _gemm_measure
         return _gemm_measure(work_dir)
+    if task == "erfc":
+        # erfc accuracy-coverage (Goldilocks task): score = fraction of hidden
+        # points within tolerance (a long, cumulative, graded ladder).
+        from ari.evaluator.erfc_harness import measure_node as _erfc_measure
+        try:
+            seed = int(os.environ.get("ARI_SEED", "0") or "0")
+        except ValueError:
+            seed = 0
+        return _erfc_measure(work_dir, seed=seed)
     from ari.evaluator.spmm_harness import measure_node
     n = int(os.environ.get("ARI_SPMM_N", "20000"))
     k = int(os.environ.get("ARI_SPMM_K", "64"))
@@ -139,6 +148,25 @@ class DeterministicEvaluator:
         ``result`` shape: ``{"compile_ok": bool, "reason": str,
         "families": {name: {"speedup": float, "valid": bool}, ...}}``.
         """
+        # Score-shaped result (erfc / accuracy-coverage tasks): the score is
+        # already a fraction in [0,1] — no speedup geomean / normalization. Map
+        # it onto valid_geomean_speedup so the whole analyzer (best outcome,
+        # distribution, child-improvement) works unchanged; child-improvement
+        # then means "the child raised the score" — the cumulative-ladder signal.
+        if "score" in result and "families" not in result:
+            compile_ok = bool(result.get("compile_ok", False))
+            s = float(result.get("score") or 0.0)
+            metrics: dict[str, Any] = {"_scientific_score": s, "valid_geomean_speedup": s}
+            for name, frac in (result.get("regions") or {}).items():
+                metrics[f"region_{name}"] = float(frac or 0.0)
+            return {
+                "metrics": metrics,
+                "has_real_data": compile_ok,
+                "scientific_score": s,
+                "valid": compile_ok,
+                "reason": str(result.get("reason", "deterministic erfc evaluation")),
+            }
+
         families = result.get("families") or {}
         compile_ok = bool(result.get("compile_ok", False))
         # PREREG: a node is invalid if it fails to compile OR any required family

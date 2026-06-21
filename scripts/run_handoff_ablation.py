@@ -35,6 +35,7 @@ _EVAL = REPO / "ari-core" / "ari" / "evaluator"
 EXPERIMENTS = {
     "spmm": _EVAL / "spmm_kernels" / "experiment.md",
     "gemm": _EVAL / "gemm_kernels" / "experiment.md",
+    "erfc": _EVAL / "erfc_kernels" / "experiment.md",
 }
 # MVP 3-arm contrast (PREREG primary = code_plus_summary vs code_plus_full_log).
 ARMS = ["code_only", "code_plus_summary", "code_plus_full_log"]
@@ -123,8 +124,8 @@ def _record(manifest: Path | None, **row) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Handoff-study pilot/sweep driver")
     ap.add_argument("--mode", choices=["pilot", "mvp"], default="pilot")
-    ap.add_argument("--task", choices=["spmm", "gemm"], default="spmm",
-                    help="deterministic task (gemm = task A, wide optimization gradient)")
+    ap.add_argument("--task", choices=["spmm", "gemm", "erfc"], default="spmm",
+                    help="deterministic task (gemm = wide opt gradient; erfc = Goldilocks accuracy-coverage)")
     ap.add_argument("--model", default="qwen3:8b", help="pilot model (validity floor)")
     ap.add_argument("--large-model", default="qwen3:32b", help="MVP model")
     ap.add_argument("--seeds", type=int, default=1, help="MVP: independent runs per arm")

@@ -462,8 +462,11 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
             # (ARI_TASK: spmm default | gemm) picks which scaffolding to seed.
             if os.environ.get("ARI_EVALUATOR") == "deterministic":
                 try:
-                    if os.environ.get("ARI_TASK", "spmm").lower() == "gemm":
+                    _task = os.environ.get("ARI_TASK", "spmm").lower()
+                    if _task == "gemm":
                         from ari.evaluator.gemm_harness import seed_work_dir as _seed_task
+                    elif _task == "erfc":
+                        from ari.evaluator.erfc_harness import seed_work_dir as _seed_task
                     else:
                         from ari.evaluator.spmm_harness import seed_work_dir as _seed_task
                     for _n in batch:
