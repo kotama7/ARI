@@ -467,6 +467,8 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                         from ari.evaluator.gemm_harness import seed_work_dir as _seed_task
                     elif _task == "erfc":
                         from ari.evaluator.erfc_harness import seed_work_dir as _seed_task
+                    elif _task == "meshpart":
+                        from ari.evaluator.meshpart_harness import seed_work_dir as _seed_task
                     else:
                         from ari.evaluator.spmm_harness import seed_work_dir as _seed_task
                     for _n in batch:

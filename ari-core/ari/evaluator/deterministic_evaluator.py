@@ -103,6 +103,17 @@ def _default_measure(work_dir: str) -> dict:
         except ValueError:
             seed = 0
         return _erfc_measure(work_dir, seed=seed)
+    if task == "meshpart":
+        # Balanced k-way graph partitioning (Goldilocks task C, combinatorial):
+        # score = bal * q in [0,1] combining edge-cut quality and balance. ANY
+        # partition is a valid scoreable solution (no compile-or-die None), so
+        # mid models produce valid-but-suboptimal partitions children can refine.
+        from ari.evaluator.meshpart_harness import measure_node as _mesh_measure
+        try:
+            seed = int(os.environ.get("ARI_SEED", "0") or "0")
+        except ValueError:
+            seed = 0
+        return _mesh_measure(work_dir, seed=seed)
     from ari.evaluator.spmm_harness import measure_node
     n = int(os.environ.get("ARI_SPMM_N", "20000"))
     k = int(os.environ.get("ARI_SPMM_K", "64"))

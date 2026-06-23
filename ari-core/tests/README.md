@@ -47,6 +47,7 @@ targets the like-named module under `ari/`.
 - `test_dynamic_axes.py` — dynamic evaluation axes.
 - `test_ear.py` — EAR (experiment/analysis/report).
 - `test_env_write_quoting.py` — .env-write quoting guard (api_settings upsert).
+- `test_erfc_harness.py` — TODO
 - `test_evaluator_axis_mode.py` — evaluator axis mode.
 - `test_evaluator_composite.py` — evaluator composite scoring.
 - `test_event_loop_and_csv.py` — event loop + CSV logging.
@@ -74,6 +75,7 @@ targets the like-named module under `ari/`.
 - `test_max_react_passthrough.py` — max-ReAct passthrough.
 - `test_mcp_cow_concurrency.py` — MCP copy-on-write concurrency.
 - `test_memory.py` — memory backend.
+- `test_meshpart_harness.py` — mesh/graph partitioning harness (Goldilocks task C): procedural custom mesh CSR validity + determinism + distinct seeds, combined cut+balance score (incl. anti-gaming: degenerate all-in-one-part → 0, not None), edge_cut/imbalance helpers, measure_node pattern runners, work_dir seeder, evaluator score-shaped contract, and a cc-gated real compile/run gradient (round-robin baseline ~0 → BFS-block partitioner high).
 - `test_metric_contract_obligation.py` — `ari.agent.metric_contract` producer obligation: domain-neutral `build_contract_obligation`/`build_emission_nudge`, run-level claim coverage (`build_coverage_status`, `collect_run_measurement_names`), and lineage chaining (`collect_node_measurement_names`, `build_expand_coverage_hint`, `build_inherited_data_note`).
 - `test_model_passthrough.py` — model passthrough.
 - `test_no_user_home_writes.py` — no-user-home-writes guard.

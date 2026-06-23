@@ -42,6 +42,8 @@ benchmarks/
 !ari-core/ari/evaluator/gemm_kernels/*.c
 # Handoff study (task B / erfc Goldilocks): erfc fixtures are tracked source.
 !ari-core/ari/evaluator/erfc_kernels/*.c
+# Handoff study (task C / meshpart Goldilocks): partitioning fixtures are tracked.
+!ari-core/ari/evaluator/meshpart_kernels/*.c
 
 # Dynamic YAML/scripts generated per-experiment
 *_paper.yaml
@@ -104,11 +106,15 @@ build/
 experiment.md
 ari-core/experiment.md
 tmp*.md
+# Run-environment capture (carries hostname/partition/nodelist — machine info, never track)
+_run_env.json
+*_run_env.json
 # Handoff study (Stage 4): the SpMM task fixture is tracked source, not a runtime
 # experiment.md — re-include it despite the rule above.
 !ari-core/ari/evaluator/spmm_kernels/experiment.md
 !ari-core/ari/evaluator/gemm_kernels/experiment.md
 !ari-core/ari/evaluator/erfc_kernels/experiment.md
+!ari-core/ari/evaluator/meshpart_kernels/experiment.md
 GUI_TASK.md
 *_TASK.md
 
