@@ -34,7 +34,13 @@ from ari.evaluator.handoff_stats import (  # noqa: E402
     geomean, summarize_arm, tost_equivalence, holm_adjust,
 )
 
-PRIMARY = ("code_plus_summary", "code_plus_full_log")
+# Nested-arm primary contrast: does the full log add value ON TOP of the summary?
+# (code+summary  vs  code+summary+full_log). Override via ARI_HANDOFF_PRIMARY="a,b"
+# for the factorial variant (e.g. "code_plus_summary,code_plus_full_log").
+import os as _os
+PRIMARY = tuple(_os.environ.get(
+    "ARI_HANDOFF_PRIMARY",
+    "code_plus_summary,code_plus_summary_plus_full_log").split(","))[:2]
 TOST_MARGIN = math.log(1.05)  # PREREG equivalence band half-width (log units)
 
 

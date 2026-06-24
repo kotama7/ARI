@@ -274,6 +274,7 @@ class HandoffConfig(BaseModel):
         "summary_only",
         "code_plus_summary",
         "code_plus_full_log",
+        "code_plus_summary_plus_full_log",
         "code_plus_truncated_log",
         "rolling_summary",
         "failure_only_summary",
@@ -339,6 +340,10 @@ class HandoffConfig(BaseModel):
         "summary_only":            ("nocopy", True, "none",      "extractive"),
         "code_plus_summary":       ("copy", True,  "none",      "extractive"),
         "code_plus_full_log":      ("copy", False, "full",      "extractive"),
+        # Nested/cumulative arm: code ⊂ code+summary ⊂ code+summary+full_log.
+        # Tests whether the (expensive) full log adds value ON TOP of the (cheap)
+        # summary, rather than summary-vs-log as two separate single channels.
+        "code_plus_summary_plus_full_log": ("copy", True, "full", "extractive"),
         "code_plus_truncated_log": ("copy", False, "truncated", "extractive"),
         "rolling_summary":         ("copy", True,  "none",      "rolling"),
         "failure_only_summary":    ("copy", True,  "none",      "failure_only"),
@@ -633,7 +638,8 @@ def apply_handoff_env_overrides(cfg: "ARIConfig") -> None:
     """
     _valid_modes = {
         "disabled", "code_only", "summary_only", "code_plus_summary",
-        "code_plus_full_log", "code_plus_truncated_log",
+        "code_plus_full_log", "code_plus_summary_plus_full_log",
+        "code_plus_truncated_log",
         "rolling_summary", "failure_only_summary",
     }
     _m = os.environ.get("ARI_HANDOFF_MODE")

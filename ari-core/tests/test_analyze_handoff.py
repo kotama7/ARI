@@ -65,8 +65,13 @@ def test_analyzer_excludes_primary_from_holm(tmp_path):
             rows.append({"arm": arm, "seed": seed, "run_dir": str(rd), "rc": 0})
     (tmp_path / "manifest.jsonl").write_text(
         "\n".join(_json.dumps(r) for r in rows) + "\n")
+    import os as _os
+    # Pin the primary contrast to the pair under test (the default is now the
+    # nested code_plus_summary_plus_full_log arm); this checks the exclusion
+    # MECHANISM independent of which pair is primary.
+    _env = {**_os.environ, "ARI_HANDOFF_PRIMARY": "code_plus_summary,code_plus_full_log"}
     subprocess.run([sys.executable, str(_SCRIPT), str(tmp_path)],
-                   check=True, capture_output=True)
+                   check=True, capture_output=True, env=_env)
     c = _json.loads((tmp_path / "analysis.json").read_text())["contrasts"]
     # primary present (reported), but NOT Holm-adjusted
     assert "code_plus_summary_vs_code_plus_full_log" in c

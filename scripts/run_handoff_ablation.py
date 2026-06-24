@@ -38,8 +38,14 @@ EXPERIMENTS = {
     "erfc": _EVAL / "erfc_kernels" / "experiment.md",
     "meshpart": _EVAL / "meshpart_kernels" / "experiment.md",
 }
-# MVP 3-arm contrast (PREREG primary = code_plus_summary vs code_plus_full_log).
-ARMS = ["code_only", "code_plus_summary", "code_plus_full_log"]
+# MVP 3-arm contrast — NESTED/cumulative: code ⊂ code+summary ⊂ code+summary+full_log.
+# Each arm strictly ADDS one channel, so the primary contrast tests whether the
+# (expensive) full log adds value ON TOP of the (cheap) summary. Override the arm
+# set with ARI_HANDOFF_ARMS (comma-separated) for the factorial variant.
+ARMS = os.environ.get(
+    "ARI_HANDOFF_ARMS",
+    "code_only,code_plus_summary,code_plus_summary_plus_full_log",
+).split(",")
 # Per-arm env that pins the study controls (PREREG): frozen contract, deterministic
 # evaluator + selector. memory_off is implied by each handoff mode's resolution.
 _FIXED = {
