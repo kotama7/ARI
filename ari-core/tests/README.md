@@ -56,6 +56,7 @@ targets the like-named module under `ari/`.
 - `test_gui_env_propagation.py` — GUI env propagation.
 - `test_gui_errors.py` — GUI error handling.
 - `test_handoff_agent_injection.py` — agent-face handoff injection (`build_handoff_agent_messages` + parent report/log loaders): summary / full / truncated arms, no-op arms, child→parent workdir resolution (handoff study G4).
+- `test_handoff_content_fix.py` — handoff channels carry real payload: `node_summary_view` surfaces the actionable `outcome` (self-assessment headline / eval reason, with eval_summary fallback; ablatable), and `_load_parent_log` falls back to the parent's tree.json `trace_log` when no run.log exists so code_plus_full_log is not silently empty (regression guard for the degenerate-channel finding).
 - `test_handoff_stats.py` — analysis stats core (handoff study Stage 4): geomean, bootstrap CI, TOST equivalence/non-equivalence, Holm adjustment, per-arm summary.
 - `test_i18n_consistency.py` — i18n consistency.
 - `test_idea_integration.py` — idea integration.

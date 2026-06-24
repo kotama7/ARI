@@ -384,16 +384,66 @@ def _load_parent_log(node, work_dir: str, *, limit: int = 200_000) -> str:
     if not pid or not work_dir:
         return ""
     pdir = _Path(work_dir).parent / str(pid)
-    if not pdir.is_dir():
-        return ""
     chunks: list[str] = []
-    for pat in ("run.log", "run_*.log", "slurm-*.out", "stdout.txt", "stderr.txt"):
-        for f in sorted(pdir.glob(pat)):
-            try:
-                chunks.append(f"# {f.name}\n" + f.read_text(errors="replace"))
-            except Exception:
-                pass
-    return ("\n\n".join(chunks))[:limit] if chunks else ""
+    if pdir.is_dir():
+        for pat in ("run.log", "run_*.log", "slurm-*.out", "stdout.txt", "stderr.txt"):
+            for f in sorted(pdir.glob(pat)):
+                try:
+                    chunks.append(f"# {f.name}\n" + f.read_text(errors="replace"))
+                except Exception:
+                    pass
+    if chunks:
+        return ("\n\n".join(chunks))[:limit]
+    # Fallback: BFTS / deterministic-study nodes do NOT write run.log files — the
+    # parent's ReAct execution log lives in tree.json's per-node ``trace_log``.
+    # Without this, the code_plus_full_log arm injects nothing (== code_only).
+    # Reconstruct the parent's log from its trace_log so the log channel is real.
+    return _load_parent_trace_log(pid, work_dir, limit=limit)
+
+
+def _find_tree_json(work_dir: str):
+    """Locate the run's tree.json from the checkpoint env or near the work_dir."""
+    import os as _os
+    from pathlib import Path as _Path
+    ck = _os.environ.get("ARI_CHECKPOINT_DIR", "")
+    cands = []
+    if ck:
+        cands.append(_Path(ck) / "tree.json")
+    # work_dir = .../experiments/<run_id>/<node_id>; tree.json may sit beside the
+    # run dir, or under a sibling checkpoints/<run_id>/.
+    try:
+        run_dir = _Path(work_dir).parent
+        cands.append(run_dir / "tree.json")
+        repo = run_dir.parent.parent
+        cands.append(repo / "checkpoints" / run_dir.name / "tree.json")
+    except Exception:
+        pass
+    for c in cands:
+        try:
+            if c and c.is_file():
+                return c
+        except Exception:
+            pass
+    return None
+
+
+def _load_parent_trace_log(pid, work_dir: str, *, limit: int = 200_000) -> str:
+    import json as _json
+    tj = _find_tree_json(work_dir)
+    if not tj:
+        return ""
+    try:
+        data = _json.loads(tj.read_text())
+    except Exception:
+        return ""
+    for n in (data.get("nodes") or []):
+        if str(n.get("id")) == str(pid):
+            tl = n.get("trace_log") or []
+            if tl:
+                return ("# parent trace_log (reconstructed from tree.json)\n"
+                        + "\n".join(str(x) for x in tl))[:limit]
+            break
+    return ""
 
 
 def build_handoff_agent_messages(handoff, parent_report, parent_log) -> list[dict]:

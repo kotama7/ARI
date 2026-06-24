@@ -24,7 +24,13 @@ from __future__ import annotations
 from typing import Any
 
 # Ablatable operational-state fields (RQ-B). Order is the display order.
+# ``outcome`` surfaces the node's self-assessment headline — the one ACTIONABLE,
+# always-populated field (e.g. "edge-cut 327 vs random 3978, imbalance 1.048" /
+# "speedup 60x correct"): the deterministic evaluator fills it, but it was never
+# in this list, so the agent-face summary degenerated to score+filenames. It is
+# operational only (evaluator reason / eval_summary), never machine provenance.
 ALL_FIELDS: tuple[str, ...] = (
+    "outcome",
     "delta_vs_parent",
     "changed_files",
     "concerns",
@@ -130,6 +136,12 @@ def node_summary_view(
         if v:
             parts.append(f"  {lbl}_command: {_cap(v, max_chars)}")
 
+    if "outcome" in enabled:
+        h = ((rep.get("self_assessment") or {}).get("headline") or "").strip()
+        if not h:
+            h = (rep.get("eval_summary") or "").strip()
+        if h:
+            parts.append(f"  outcome: {_cap(h, 400)}")
     if "key_metrics" in enabled:
         km = _key_metrics(rep)
         if km:

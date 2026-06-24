@@ -314,7 +314,7 @@ class HandoffConfig(BaseModel):
     )
     summary_fields_enabled: list[str] = Field(
         default_factory=lambda: [
-            "delta_vs_parent", "changed_files", "concerns",
+            "outcome", "delta_vs_parent", "changed_files", "concerns",
             "next_steps", "known_failures", "key_metrics",
         ],
         description="Operational-state fields included in the summary. The "
