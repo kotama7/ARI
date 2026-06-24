@@ -474,7 +474,8 @@ class AgentLoop:
         self, tool_calls: list[dict], node_id: str | None = None,
     ) -> list[dict]:
         from ari.agent.tool_manager import execute_tool_calls as _et
-        return _et(self.mcp, tool_calls, node_id=node_id)
+        return _et(self.mcp, tool_calls, node_id=node_id,
+                   work_dir=getattr(self, "_node_work_dir", None))
 
     def _active_tools(
         self,
@@ -550,6 +551,12 @@ class AgentLoop:
             import os as _os_early
             _os_early.environ["ARI_WORK_DIR"] = _work_dir_early
             _os_early.makedirs(_work_dir_early, exist_ok=True)  # idempotent safety net
+        # Pin filesystem tool calls to THIS node's work_dir. The MCP coding server
+        # snapshots ARI_WORK_DIR at fork time, so the per-node env set above never
+        # reaches it; without this, a tool call that omits work_dir would write to
+        # the shared /tmp/ari_work and the evaluator (which only reads this node's
+        # dir) would score the inherited parent code. See tool_manager._WORKDIR_TOOLS.
+        self._node_work_dir = _work_dir_early or None
         # Expose the checkpoint dir to skill subprocesses (same pre-fork timing as
         # ARI_WORK_DIR) so make_metric_spec/survey can read the idea-stage
         # primary_metric (evaluation_criteria.json/idea.json) and the frozen VirSci

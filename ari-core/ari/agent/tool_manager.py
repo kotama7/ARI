@@ -28,6 +28,15 @@ from ari.agent.workflow import WorkflowHints
 # id and bypass the memory skill's CoW check.
 _INTERNAL_MCP_TOOLS = frozenset({"_set_current_node"})
 
+# Coding-skill filesystem tools that take a ``work_dir`` argument and, when the
+# model omits it, fall back to a SHARED default (``ARI_WORK_DIR`` snapshotted at
+# MCP fork time, else ``/tmp/ari_work``). In a multi-node BFTS run that default
+# is NOT the node's per-node work_dir, so an omitted ``work_dir`` silently routes
+# the agent's edits to a shared scratch dir that the evaluator never reads — the
+# node is then scored on its inherited (parent) code. We pin these calls to the
+# current node's work_dir whenever the model leaves it unset.
+_WORKDIR_TOOLS = frozenset({"write_code", "run_code", "run_bash", "emit_results", "read_file"})
+
 
 def available_tools_openai(
     mcp: Any,
@@ -58,6 +67,7 @@ def execute_tool_calls(
     mcp: Any,
     tool_calls: list[dict],
     node_id: str | None = None,
+    work_dir: str | None = None,
 ) -> list[dict]:
     """Execute a batch of tool calls and return results.
 
@@ -65,6 +75,11 @@ def execute_tool_calls(
     memory tool, ``cow_node_id`` is forwarded to ``mcp.call_tool`` so
     the ``(_set_current_node, write)`` pair is locked atomically —
     prevents the env-var race when ``max_parallel_nodes > 1``.
+
+    When *work_dir* is provided, filesystem tools (:data:`_WORKDIR_TOOLS`)
+    that the model called WITHOUT a ``work_dir`` argument are pinned to it,
+    so per-node edits land in the node's evaluated dir instead of the shared
+    ``/tmp/ari_work`` fallback (which the evaluator never reads).
     """
     results = []
     for tc in tool_calls:
@@ -74,6 +89,8 @@ def execute_tool_calls(
             args = _json.loads(func.get("arguments", "{}"))
         except _json.JSONDecodeError:
             args = {}
+        if work_dir and name in _WORKDIR_TOOLS and not args.get("work_dir"):
+            args["work_dir"] = work_dir
         if node_id and name in mcp._COW_TOOLS:
             result = mcp.call_tool(name, args, cow_node_id=node_id)
         else:
