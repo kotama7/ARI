@@ -14,9 +14,14 @@ Your working directory is **already seeded** — list it:
 - `meshpart_kernel.h` — the `partition()` contract (do not change the signature).
 - `meshpart_main.c` — the FROZEN driver (do not edit).
 - `baseline_meshpart.c` — the FROZEN poor baseline.
-- `selftest.c` — local self-test (reports your edge-cut and imbalance).
+- `selftest.c` — local self-test (reports your edge-cut and imbalance vs baselines).
 - `selftest_mesh.bin` — a seeded mesh for the self-test.
-- `Makefile` — `make candidate` / `make selftest`.
+- `Makefile` — **`make check`** is your iteration command (see below).
+
+**Edit ONLY `candidate_meshpart.c`.** The evaluator recompiles *that* file against
+its own driver and scores it — so your final algorithm MUST live in
+`candidate_meshpart.c`. Do not create your own `main()`, your own test program, or
+your own toy graph; iterate with `make check` on the provided mesh.
 
 **Edit `candidate_meshpart.c`.** You MAY `#include <stdlib.h>` and `<math.h>`.
 Do NOT use any external partitioning library (METIS, Scotch, …) — implement the
@@ -48,10 +53,14 @@ edge you uncut (while staying balanced) raises the score.
 
 ## Notes
 
-- **Iterate with the self-test**: `make selftest && ./selftest` prints your
-  partition's `edge_cut` and `imbalance` on the seeded mesh (this mesh is NOT the
-  evaluator's hidden mesh, so you cannot hardcode an answer). Lower the cut while
-  keeping imbalance ≤ 1.05.
+- **Iterate with `make check`** (and ONLY `make check`). It recompiles the
+  self-test against your *current* `candidate_meshpart.c` and runs it, so you
+  never test a stale binary. It prints your `edge_cut` and `imbalance`, plus the
+  `random_cut` (the baseline you must beat) and a `good_reference_cut` (a
+  reachable target) on the seeded mesh (NOT the evaluator's hidden mesh, so you
+  cannot hardcode). If your `edge_cut` is not below `random_cut`, your partition
+  is splitting graph-neighbors apart — put adjacent vertices in the SAME part.
+  Lower the cut while keeping imbalance ≤ 1.05.
 - A reasonable recipe: build `k` balanced regions (e.g. BFS/greedy growth from
   spread-out seeds, or recursive bisection), then refine the boundary with
   Kernighan–Lin / Fiduccia–Mattheyses swaps that reduce the cut without breaking
