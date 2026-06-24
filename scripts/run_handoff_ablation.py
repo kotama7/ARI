@@ -137,6 +137,9 @@ def main() -> int:
     ap.add_argument("--model", default="qwen3:8b", help="pilot model (validity floor)")
     ap.add_argument("--large-model", default="qwen3:32b", help="MVP model")
     ap.add_argument("--seeds", type=int, default=1, help="MVP: independent runs per arm")
+    ap.add_argument("--seed-base", type=int, default=0,
+                    help="MVP: first seed (for sharding a sweep across jobs: each "
+                         "shard runs seeds [seed_base, seed_base+seeds))")
     ap.add_argument("--max-nodes", type=int, default=10, help="best valid @ N nodes (PREREG N=10)")
     ap.add_argument("--out-dir", default=None,
                     help="manifest output dir (default workspace/checkpoints/<ts>_handoff_<mode>)")
@@ -167,7 +170,7 @@ def main() -> int:
               "model floors at 0, raise the small model (e.g. qwen3:14b) per "
               "PREREG before the MVP sweep.")
     else:
-        for seed in range(a.seeds):
+        for seed in range(a.seed_base, a.seed_base + a.seeds):
             for arm in ARMS:
                 r, run_dir = run_one(arm, a.large_model, seed, a.max_nodes, a.dry_run, a.task)
                 rc |= r
