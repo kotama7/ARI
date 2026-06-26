@@ -22,9 +22,11 @@ import datetime as _dt
 import glob
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
+from collections import Counter
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -111,13 +113,27 @@ def run_one(arm: str, model: str, seed: int, max_nodes: int, dry: bool,
     env.update(overrides)
     print(f"[run] {label}", flush=True)
     before = _experiment_dirs()
-    rc = subprocess.run(cmd, env=env, cwd=str(REPO)).returncode
-    # Record the new run dir even if it produced no nodes (a failed run is a
-    # distinct, auditable outcome — not the same as "no dir created"). Prefer a
-    # node-bearing dir when several appear.
-    new = sorted(_experiment_dirs() - before)
-    node_bearing = [d for d in new if glob.glob(d + "/node_*")]
-    run_dir = (node_bearing or new)[-1] if new else None
+    # DETERMINISTIC run-dir attribution: capture ARI's output and parse the
+    # experiments/<run_id>/ path it logs for its own node work dirs. The previous
+    # before/after diff of experiments/ is NOT concurrency-safe — with several
+    # shards running at once it mis-attributes a run to a sibling shard's dir
+    # (and the *_int_part name variants compounded it), corrupting the analyzer's
+    # per-run scoring. Parsing this process's own stdout is race-free.
+    proc = subprocess.run(cmd, env=env, cwd=str(REPO), capture_output=True, text=True)
+    rc = proc.returncode
+    out = (proc.stdout or "") + "\n" + (proc.stderr or "")
+    print(out, flush=True)  # keep the run log (no longer live-streamed)
+    run_dir = None
+    hits = re.findall(r'experiments/([0-9]{8,}_[^/\s"\']+)/node_', out)
+    if hits:
+        run_id = Counter(hits).most_common(1)[0][0]
+        cand = str(REPO / "experiments" / run_id)
+        if os.path.isdir(cand):
+            run_dir = cand
+    if run_dir is None:  # fallback (single-run / non-concurrent): before/after diff
+        new = sorted(_experiment_dirs() - before)
+        node_bearing = [d for d in new if glob.glob(d + "/node_*")]
+        run_dir = (node_bearing or new)[-1] if new else None
     return rc, run_dir
 
 
