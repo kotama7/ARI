@@ -797,6 +797,18 @@ class BFTS:
                 label = _infer_label_from_text(str(item), node.has_real_data)
                 direction_text = str(item)
 
+            # Study control (handoff ablation): give EVERY child the same neutral
+            # direction so the planner's varied labels (improve / ablate / draft)
+            # cannot confound a between-arm comparison of the inheritance channel.
+            # Off by default. `ARI_BFTS_UNIFORM_DIRECTION`.
+            import os as _os_ud
+            if _os_ud.environ.get("ARI_BFTS_UNIFORM_DIRECTION", "").strip().lower() in (
+                "1", "true", "yes", "on",
+            ):
+                direction_text = "Improve the inherited solution to achieve a better task score."
+                raw_label_text = "improve"
+                label = NodeLabel.from_str("improve")
+
             child = Node(
                 id=child_id,
                 parent_id=node.id,
