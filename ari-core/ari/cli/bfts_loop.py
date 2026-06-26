@@ -457,10 +457,13 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
             # evaluator does. Runs AFTER parent inheritance: the frozen harness
             # files overwrite any stale inherited copy, while the starter
             # candidate is only written when absent (so a code-inheriting child
-            # keeps its parent's candidate). Gated on the study's deterministic
-            # evaluator so non-study experiments are untouched; the task
-            # (ARI_TASK: spmm default | gemm) picks which scaffolding to seed.
-            if os.environ.get("ARI_EVALUATOR") == "deterministic":
+            # keeps its parent's candidate). Gated on a study TASK being selected
+            # (ARI_TASK in the known set) — independent of the scorer — so the
+            # scaffolding is also seeded under the LLM-as-a-judge scorer ablation;
+            # non-study experiments (no ARI_TASK) are untouched.
+            if os.environ.get("ARI_TASK", "").strip().lower() in {
+                "spmm", "gemm", "erfc", "meshpart",
+            }:
                 try:
                     _task = os.environ.get("ARI_TASK", "spmm").lower()
                     if _task == "gemm":

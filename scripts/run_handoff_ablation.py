@@ -87,12 +87,13 @@ def _experiment_dirs() -> set[str]:
 
 
 def run_one(arm: str, model: str, seed: int, max_nodes: int, dry: bool,
-            task: str = "spmm") -> tuple[int, str | None]:
+            task: str = "spmm", scorer: str = "deterministic") -> tuple[int, str | None]:
     """Run one (arm, seed). Returns (returncode, run experiment dir or None).
 
-    The run dir is identified by diffing experiments/ before/after — robust
-    because the driver runs sequentially. The caller records it in the manifest
-    so the analyzer can map node speedups back to their arm.
+    ``scorer`` selects what drives BFTS node selection: ``deterministic`` (the
+    fixed non-LLM evaluator that owns the task metric) or ``judge`` (the system's
+    LLM-as-a-judge). The scorer is orthogonal to the handoff channel under test;
+    comparing the two is the scorer ablation.
     """
     overrides = dict(_FIXED)
     overrides.update({
@@ -102,7 +103,11 @@ def run_one(arm: str, model: str, seed: int, max_nodes: int, dry: bool,
         "ARI_MODEL": model,
         "ARI_MAX_NODES": str(max_nodes),
     })
-    label = f"{task} | {arm} | {model} | seed={seed} | N={max_nodes}"
+    # Scorer ablation: deterministic evaluator vs LLM-as-a-judge. Task scaffolding
+    # is seeded on ARI_TASK regardless, so the agent still solves meshpart either way.
+    if scorer == "judge":
+        overrides["ARI_EVALUATOR"] = "llm"   # any non-"deterministic" → LLMEvaluator
+    label = f"{task} | {arm} | {model} | seed={seed} | N={max_nodes} | scorer={scorer}"
     cmd = _ari_cmd(task)
     if dry:
         print(f"[dry-run] {label}")
@@ -159,6 +164,9 @@ def main() -> int:
     ap.add_argument("--max-nodes", type=int, default=10, help="best valid @ N nodes (PREREG N=10)")
     ap.add_argument("--out-dir", default=None,
                     help="manifest output dir (default workspace/checkpoints/<ts>_handoff_<mode>)")
+    ap.add_argument("--scorer", choices=["deterministic", "judge"], default="deterministic",
+                    help="what drives BFTS node selection: the fixed deterministic "
+                         "evaluator (default) or the LLM-as-a-judge (scorer ablation)")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
 
@@ -178,20 +186,20 @@ def main() -> int:
     rc = 0
     if a.mode == "pilot":
         # validity-floor pilot: one clean arm, small N (PREREG gate (a)).
-        r, run_dir = run_one("code_plus_summary", a.model, 0, a.max_nodes, a.dry_run, a.task)
+        r, run_dir = run_one("code_plus_summary", a.model, 0, a.max_nodes, a.dry_run, a.task, a.scorer)
         rc |= r
         _record(manifest, task=a.task, arm="code_plus_summary", model=a.model, seed=0,
-                max_nodes=a.max_nodes, run_dir=run_dir, rc=r)
+                max_nodes=a.max_nodes, run_dir=run_dir, rc=r, scorer=a.scorer)
         print("\nPilot done. Gate: confirm >0 valid nodes in the run dir; if the "
               "model floors at 0, raise the small model (e.g. qwen3:14b) per "
               "PREREG before the MVP sweep.")
     else:
         for seed in range(a.seed_base, a.seed_base + a.seeds):
             for arm in ARMS:
-                r, run_dir = run_one(arm, a.large_model, seed, a.max_nodes, a.dry_run, a.task)
+                r, run_dir = run_one(arm, a.large_model, seed, a.max_nodes, a.dry_run, a.task, a.scorer)
                 rc |= r
                 _record(manifest, task=a.task, arm=arm, model=a.large_model, seed=seed,
-                        max_nodes=a.max_nodes, run_dir=run_dir, rc=r)
+                        max_nodes=a.max_nodes, run_dir=run_dir, rc=r, scorer=a.scorer)
         if manifest:
             print(f"\nMVP sweep done. Analyze with:\n"
                   f"  python scripts/analyze_handoff_ablation.py {manifest.parent}")
