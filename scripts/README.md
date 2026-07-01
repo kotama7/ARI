@@ -5,7 +5,11 @@ Operational and utility scripts for building images, running services, and dev t
 ## Contents
 
 - `README.md` — this file.
+- `analyze_references.py` — build the deterministic code/data reference graph (static imports + dynamic string-key/path/MCP/cross-language overlays) seeded from the 053 roots; emits `docs/refactoring/reports/reference_graph.{json,md}` (`--check` gates drift; no LLM/API).
 - `build_pb_images.sh` — build the vendor PaperBench Docker images (`pb-env`, `pb-reproducer`).
+- `check_complexity.py` — source-code size (LOC tiers) + cyclomatic-complexity (ruff `C901`) gate; warning-mode-first with a frozen allowlist (`--json`, `--fail-on-regression`, `--update-baseline`; no LLM/API).
+- `check_import_boundaries.py` — AST import-boundary gate: skills may import core only via `ari.public.*`/`ari.protocols.*` (B1) and core may not import skills except `ari_skill_memory` (B2); warning-mode-first with a frozen allowlist (`--json`, `--fail-on-regression`; no LLM/API).
+- `check_public_api_contracts.py` — snapshot & diff gate for the `ari.public.*` API surface (freezes the 8 re-export submodules; `--update` re-baselines, `--strict` fails on removed symbols; stdlib-only, no LLM/API).
 - `gpu_ollama_monitor.sh` — monitor the SLURM GPU node running Ollama and re-tunnel it.
 - `readme_sync.py` — sync per-directory README `## Contents` indexes with the tree (`--check` gates drift, `--write` regenerates; no LLM/API).
 - `run_all_tests.sh` — run each skill's pytest suite in its own process.
@@ -42,6 +46,14 @@ Operational and utility scripts for building images, running services, and dev t
   - `pg-init/` — Postgres init SQL for the Letta store.
     - `README.md` — pg-init index.
     - `01-vector.sql` — `CREATE EXTENSION IF NOT EXISTS vector` (pgvector).
+- `quality/` — Rule config and frozen allowlists for the top-level `scripts/check_*` source-quality checkers.
+  - `README.md` — quality index.
+  - `_common.py` — shared checker infrastructure (the `Finding` record + §3 JSON schema, allowlist loader, Markdown-table writer, `--base-ref` git-diff resolver) reused by the `scripts/quality/` checkers; stdlib + PyYAML only.
+  - `analyze_references.yaml` — scan-root / prompt-base / data-selector / ignore config for `scripts/analyze_references.py` (subtask 054 reference-graph analyzer).
+  - `check_complexity.allow.yaml` — frozen size/complexity baseline for `check_complexity.py` (41 LOC-tier + 64 over-complexity offenders); regenerate with `--update-baseline`.
+  - `check_complexity.yaml` — thresholds for `check_complexity.py` — LOC tiers (warn>500/review>800/split>1200), ruff `C901` `max-complexity`, test exclusion, and default scan scope.
+  - `check_import_boundaries.allow.yaml` — frozen baseline of known import-boundary edges (the 7 B1 seed edges + the sanctioned core→skill edge).
+  - `check_import_boundaries.yaml` — rule config for `check_import_boundaries.py` (allowed skill→core roots, sanctioned core→skill package, rule toggles).
 - `registry/` — ari-registry service deployment helpers.
   - `README.md` — registry index.
   - `docker-compose.yml` — production stack (nginx + uvicorn + sqlite file volume).
@@ -64,3 +76,7 @@ Operational and utility scripts for building images, running services, and dev t
   - `setup_env.sh` — bootstrap `ARI/.env` with the env vars the program reads.
   - `spinner.sh` — terminal spinner/progress helper.
   - `verify.sh` — post-install verification checks.
+- `tests/` — Unit and smoke tests for the top-level `scripts/` quality checkers
+  - `README.md` — tests index.
+  - `test_analyze_references.py` — unit + smoke + determinism tests for `analyze_references.py` (string-key/MCP fixtures + publish-backend/prompt non-orphan repo smoke).
+  - `test_check_import_boundaries.py` — unit + smoke tests for `check_import_boundaries.py` (B1/B2 fixtures + repo-level seed-edge smoke).
