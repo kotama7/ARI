@@ -1,0 +1,39 @@
+# check_complexity.yaml -- thresholds/config for scripts/check_complexity.py
+# Design: docs/refactoring/009_quality_scripts_plan.md §5.1; baseline:
+# docs/refactoring/reports/001_complexity_baseline.md (subtask 001).
+# stdlib + PyYAML only; no LLM, no network (design principle P2).
+
+# Data-derived LOC tiers (physical `wc -l` lines). Strictly-greater-than bands,
+# matching loc_census.csv: warn>500, review>800, split-required>1200.
+loc_tiers:
+  warn: 500
+  review: 800
+  split_required: 1200
+
+# ruff McCabe (C901) threshold. 15 is the generous starting point recommended by
+# 009 §5.1 / subtask 025 §7.2 (15-20, then ratchet down); freezes 64 functions
+# (37 core-prod + 27 skills) into the baseline on the first run. Selected on the
+# ruff CLI per-invocation -- NO [tool.ruff] block is added to pyproject.toml.
+max_complexity: 15
+
+# Test cohort policy (001 §2 / subtask 025 §7.3): exclude tests by default so the
+# 4 largest core files (all tests -- test_server.py 1844, etc.) do not swamp the
+# production signal. Flip to true to audit test bloat deliberately.
+include_tests: false
+
+python_extensions: [".py"]
+frontend_extensions: [".ts", ".tsx"]
+
+# Pruned during the directory walk (never counted / never handed to ruff).
+exclude_dir_segments:
+  - __pycache__
+  - node_modules
+  - vendor
+  - .venv
+  - .git
+  - dist
+
+# Default scan scope when no --target is given (subtask 025 §7.4 / work item 3).
+# --update-baseline always freezes the comprehensive census scope regardless.
+default_targets:
+  - ari-core/ari
