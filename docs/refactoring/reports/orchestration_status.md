@@ -42,7 +42,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 004 | define_runtime_path_policy | 2 | Low | No | — | DONE | 93d9662* |
 | 005 | consolidate_checkpoint_workspace_experiment_paths | 2 | High | Yes | 004 | TODO | — |
 | 006 | introduce_runtime_path_resolver | 2 | Medium | Yes | 004 | TODO | — |
-| 007 | define_core_interfaces_and_protocols | 3 | Low | No | — | TODO | — |
+| 007 | define_core_interfaces_and_protocols | 3 | Low | No | — | DONE | 93d9662* |
 | 008 | extract_model_backend_interface | 3 | High | Yes | 007 | TODO | — |
 | 009 | extract_evaluator_interface | 3 | Medium | Yes | 007 | TODO | — |
 | 010 | extract_artifact_checkpoint_trace_store | 3 | High | Yes | 007 | TODO | — |
@@ -96,7 +96,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 058 | add_dead_code_checker_to_quality_report | 8 | Low | No | 057 | TODO | — |
 | 059 | inventory_dashboard_frontend_backend_structure | 5 | Low | No | — | DONE | f43d9f1 |
 | 060 | inventory_dashboard_api_contracts | 5 | Low | No | 059 | DONE | dcb0389 |
-| 061 | define_dashboard_dto_and_schema_policy | 5 | Low | No | 059 | TODO | — |
+| 061 | define_dashboard_dto_and_schema_policy | 5 | Low | No | 059 | DONE | 93d9662* |
 | 062 | refactor_dashboard_backend_routes_to_services | 5 | High | Yes | 059 | TODO | — |
 | 063 | refactor_dashboard_frontend_api_client_and_types | 5 | High | Yes | 059 | TODO | — |
 | 064 | refactor_dashboard_state_and_component_boundaries | 5 | High | Yes | 059 | TODO | — |
@@ -212,6 +212,22 @@ leave that to a human per the Document Retirement Policy.)*
   `reports/037_prompt_template_policy.md` (analogizing to inventory subtasks) — I
   DISCARDED it to keep a single canonical policy source. The two 036 open items
   (rubric divergence → 041; unwired replicator.md → 038) stay REVIEW_REQUIRED above.
+- **[007] HIGH — `006` vs 007-index subtask-number divergence (affects Waves 3-8):**
+  `006_target_architecture_plan.md` §3/§4 maps abstractions to subtask numbers
+  DIFFERENTLY than the canonical `007_subtask_index.md`. E.g. `006` §4 says subtask
+  007 = "BaseModelBackend, BaseCostTracker, BaseLogger" and 010 = "BasePipelineStage";
+  the index says 007 = define_core_interfaces, 008 = extract_model_backend, 010 =
+  extract_artifact_checkpoint_trace_store. **The 007 catalog + all my runtime-wave
+  agents follow the canonical 007 INDEX numbering, NOT 006's §3/§4 headers.** Runtime
+  agents for 008-014 must be told this explicitly. Pre-existing 006 doc drift.
+- **[007] Optional protocol stubs NOT added:** 007 §7.3/§13.6 make the 8 behavior-
+  neutral `ari/protocols/*.py` stub modules OPTIONAL. Skipped — each extraction
+  subtask (008-014) adds its own Protocol as it lands (avoids empty scaffolding that
+  008-014 would rewrite). `protocols/__init__.py __all__` unchanged.
+- **[007/061] Minor doc citation drifts (verify-only, not edited):** run_pipeline
+  `def` is at `orchestrator.py:155` (not `:548`, which is the inner while-loop);
+  several line/LOC counts off by 1-2 in 006/007/061. Cosmetic; groundings otherwise
+  hold. Downstream implementers should re-grep, not trust exact line numbers.
 - **LESSON — parallel-write hazard (Phase-8 checkers):** 025/026/029/054 share
   `scripts/quality/_common.py` + `scripts/README.md` + per-dir READMEs. Running them
   in parallel on the shared worktree created contested edits; `readme_sync --write` is
