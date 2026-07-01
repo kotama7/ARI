@@ -17,10 +17,13 @@
 - `pytest ari-core/tests -q` baseline → **2413 passed, 16 skipped** (111s, exit 0). *(clean green)*
 - HEAD at start: `93d9662865fc5e97a1950a7ec19ac06ace32e562`.
 
-## Hard gate
+## Hard gate — ✅ OPEN (all 9 inventories DONE, 2026-07-01)
 
-No **Runtime Code Change = Yes** subtask may start until all **nine inventories**
-are DONE: **001, 002, 020, 036, 045, 053, 059, 060, 067**. (060 and 067 depend on 059.)
+All **nine inventories** are DONE: **001, 002, 020, 036, 045, 053, 059, 060, 067**.
+Central verification: runtime tree unchanged (git clean outside reports/), ruff
+`ari-core` still 661, compileall exit 0, pytest baseline trivially preserved (no
+runtime `.py` touched). Runtime-code-change subtasks are now eligible (per their
+own dependency edges + REVIEW_REQUIRED rulings).
 
 ## Subtask ledger
 
@@ -87,7 +90,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 057 | delete_safe_dead_code_candidates | 2 | High | Yes | 056 | TODO | — |
 | 058 | add_dead_code_checker_to_quality_report | 8 | Low | No | 057 | TODO | — |
 | 059 | inventory_dashboard_frontend_backend_structure | 5 | Low | No | — | DONE | f43d9f1 |
-| 060 | inventory_dashboard_api_contracts | 5 | Low | No | 059 | TODO | — |
+| 060 | inventory_dashboard_api_contracts | 5 | Low | No | 059 | DONE | dcb0389 |
 | 061 | define_dashboard_dto_and_schema_policy | 5 | Low | No | 059 | TODO | — |
 | 062 | refactor_dashboard_backend_routes_to_services | 5 | High | Yes | 059 | TODO | — |
 | 063 | refactor_dashboard_frontend_api_client_and_types | 5 | High | Yes | 059 | TODO | — |
@@ -191,3 +194,9 @@ leave that to a human per the Document Retirement Policy.)*
   read-only report under reports/; tree clean, gates unchanged). 059 unblocked
   060+067 (dispatched). 020 still running. Grounding corrections + REVIEW_REQUIRED
   items from agents recorded above.
+- 2026-07-01: **All 9 inventories DONE** (020→43b143a, 067→4252a79, 060→dcb0389).
+  HARD GATE OPEN. Central verification passed (runtime tree unchanged; ruff 661;
+  compileall 0). Next: Wave 2 = non-runtime checkers/policy/design docs that only
+  add new files (025, 031, 026, 029, 037, 042, 043, 046-052, 061, 065, 066, 068,
+  069, 073, 004, 032, 033, 034, 035, 007, 022, 030) — none gated by the hard gate.
+  Runtime waves (3-8) follow, gated per-subtask by REVIEW_REQUIRED rulings.
