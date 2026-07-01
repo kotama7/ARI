@@ -68,11 +68,11 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 030 | add_viz_api_schema_checker_script | 4 | Low | No | 020 | TODO | — |
 | 031 | add_quality_report_generator | 8 | Low | No | 001 | TODO | — |
 | 032 | add_quality_script_ci_plan | 9 | Low | No | — | DONE | 11cd088 |
-| 033 | add_generated_files_gitignore_policy | 2 | Low | No | — | TODO | — |
+| 033 | add_generated_files_gitignore_policy | 2 | Low | No | — | DONE | 0ad0b19 |
 | 034 | add_contract_snapshot_fixtures | 10 | Low | No | — | TODO | — |
 | 035 | add_refactoring_progress_tracker | 10 | Low | No | — | TODO | — |
 | 036 | inventory_hardcoded_prompts | 7 | Low | No | — | DONE | 9619ebf |
-| 037 | define_prompt_template_policy | 7 | Low | No | 036 | TODO | — |
+| 037 | define_prompt_template_policy | 7 | Low | No | 036 | DONE | 93d9662* |
 | 038 | introduce_prompt_registry_and_loader | 7 | Medium | Yes | 036 | TODO | — |
 | 039 | extract_agent_and_bfts_prompts | 7 | Medium | Yes | 036 | TODO | — |
 | 040 | extract_evaluator_and_llm_judge_prompts | 7 | Medium | Yes | 036 | TODO | — |
@@ -206,6 +206,20 @@ leave that to a human per the Document Retirement Policy.)*
   workflows, so a single `quality-report` job cannot directly aggregate gates hosted
   in a different workflow. 032 §8 records Option A (aggregator re-invokes checkers) vs
   Option B (`workflow_run` trigger) → REVIEW_REQUIRED for subtask 049.
+- **[037] verify-only DONE:** §9 says the deliverable is `subtasks/037_*.md` itself
+  ("the only file written"); it pre-exists (93d9662) and its groundings re-verified
+  against the live tree. The agent mistakenly also created a redundant
+  `reports/037_prompt_template_policy.md` (analogizing to inventory subtasks) — I
+  DISCARDED it to keep a single canonical policy source. The two 036 open items
+  (rubric divergence → 041; unwired replicator.md → 038) stay REVIEW_REQUIRED above.
+- **LESSON — parallel-write hazard (Phase-8 checkers):** 025/026/029/054 share
+  `scripts/quality/_common.py` + `scripts/README.md` + per-dir READMEs. Running them
+  in parallel on the shared worktree created contested edits; `readme_sync --write` is
+  harvest-based (collaborative-safe) but a **final repo-wide `readme_sync --write`
+  reconciliation is required once all Phase-8 checkers land** (fills the `— TODO`
+  README stubs). **For the RUNTIME waves (008-014 touch ari-core/ari/; 062-064 touch
+  viz/) DO NOT run file-overlapping subtasks in parallel on the shared tree** — run
+  them sequentially or with `isolation: worktree`.
 
 ## Run log
 
