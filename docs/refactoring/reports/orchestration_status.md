@@ -60,11 +60,11 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 022 | define_dashboard_dto_and_schema_tests | 4 | Low | No | 020 | TODO | — |
 | 023 | separate_viz_file_io_from_route_handlers | 4 | Medium | Yes | 020 | TODO | — |
 | 024 | refactor_bfts_tree_visualization_adapter | 4 | Medium | Yes | 020 | TODO | — |
-| 025 | add_complexity_checker_script | 8 | Low | No | 001 | TODO | — |
-| 026 | add_import_boundary_checker_script | 8 | Low | No | — | TODO | — |
+| 025 | add_complexity_checker_script | 8 | Low | No | 001 | DONE | 6720ca8 |
+| 026 | add_import_boundary_checker_script | 8 | Low | No | — | DONE | fe34241 |
 | 027 | add_docs_source_sync_checker_script | 8 | Low | No | 003 | TODO | — |
 | 028 | add_directory_policy_checker_script | 8 | Low | No | 003 | TODO | — |
-| 029 | add_public_api_contract_checker_script | 8 | Low | No | — | TODO | — |
+| 029 | add_public_api_contract_checker_script | 8 | Low | No | — | DONE | 5c5c10a |
 | 030 | add_viz_api_schema_checker_script | 4 | Low | No | 020 | TODO | — |
 | 031 | add_quality_report_generator | 8 | Low | No | 001 | TODO | — |
 | 032 | add_quality_script_ci_plan | 9 | Low | No | — | DONE | 11cd088 |
@@ -89,7 +89,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 051 | add_prompt_change_review_workflow | 9 | Low | No | 045 | TODO | — |
 | 052 | add_dependabot_and_actions_policy | 9 | Low | No | 045 | TODO | — |
 | 053 | inventory_reference_roots | 1 | Low | No | — | DONE | b4d7706 |
-| 054 | add_reference_graph_analyzer | 1 | Low | No | 053 | TODO | — |
+| 054 | add_reference_graph_analyzer | 1 | Low | No | 053 | DONE | d73dd9e |
 | 055 | add_dead_code_candidate_checker | 1 | Low | No | 054 | TODO | — |
 | 056 | classify_unused_functions_and_files | 1 | Low | No | 055 | TODO | — |
 | 057 | delete_safe_dead_code_candidates | 2 | High | Yes | 056 | TODO | — |
