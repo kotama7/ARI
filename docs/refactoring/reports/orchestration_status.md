@@ -101,10 +101,10 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 063 | refactor_dashboard_frontend_api_client_and_types | 5 | High | Yes | 059 | TODO | — |
 | 064 | refactor_dashboard_state_and_component_boundaries | 5 | High | Yes | 059 | TODO | — |
 | 065 | add_dashboard_contract_and_schema_tests | 5 | Low | No | 059 | TODO | — |
-| 066 | add_dashboard_build_and_ci_plan | 5 | Low | No | 059 | TODO | — |
+| 066 | add_dashboard_build_and_ci_plan | 5 | Low | No | 059 | DONE | 0000cec |
 | 067 | inventory_dashboard_visible_settings | 6 | Low | No | 059 | DONE | 4252a79 |
 | 068 | define_dashboard_information_architecture | 6 | Low | No | 059 | DONE | 93d9662* |
-| 069 | design_dashboard_progressive_disclosure | 6 | Low | No | 059 | TODO | — |
+| 069 | design_dashboard_progressive_disclosure | 6 | Low | No | 059 | DONE | f878986 |
 | 070 | refactor_dashboard_settings_panel | 6 | High | Yes | 059 | TODO | — |
 | 071 | add_dashboard_developer_mode | 6 | Medium | Yes | 059 | TODO | — |
 | 072 | improve_dashboard_empty_loading_error_states | 6 | Medium | Yes | 059 | TODO | — |
@@ -259,6 +259,13 @@ leave that to a human per the Document Retirement Policy.)*
   read-only report under reports/; tree clean, gates unchanged). 059 unblocked
   060+067 (dispatched). 020 still running. Grounding corrections + REVIEW_REQUIRED
   items from agents recorded above.
+- 2026-07-01: Wave-2 batch 1 (checkers 025/026/029/054 + docs 032/033/037/004) and
+  batch 2 (design docs 007/046/061/066/068/069) DONE. Robust "verify-or-create per §9"
+  instruction adopted after 037 over-produced: agents now read their own §9 "In this
+  subtask" table — verify-only (004/007/037/046/061/068) create nothing; new-artifact
+  (066/069) create one reports/ doc. Minor grounding drifts recorded (066 .gitignore
+  lines 108-110/128 not 113/114; server serve path is static/dist/ not dashboard.html;
+  069 CostSummary :79-86). All committed; tree clean between commits.
 - 2026-07-01: **All 9 inventories DONE** (020→43b143a, 067→4252a79, 060→dcb0389).
   HARD GATE OPEN. Central verification passed (runtime tree unchanged; ruff 661;
   compileall 0). Next: Wave 2 = non-runtime checkers/policy/design docs that only
