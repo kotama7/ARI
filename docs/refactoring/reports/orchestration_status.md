@@ -25,6 +25,11 @@ Central verification: runtime tree unchanged (git clean outside reports/), ruff
 runtime `.py` touched). Runtime-code-change subtasks are now eligible (per their
 own dependency edges + REVIEW_REQUIRED rulings).
 
+**Operating directive (2026-07-01, from repo owner):** run **FULLY AUTONOMOUS** —
+drive Wave 2 AND the runtime waves non-stop; resolve REVIEW_REQUIRED items from the
+planning docs + primary sources where derivable; only stop for genuinely underivable
+ones. Each runtime edit is a scoped, revertable commit. Do NOT push.
+
 ## Subtask ledger
 
 Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
