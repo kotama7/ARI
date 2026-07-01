@@ -39,7 +39,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 001 | measure_complexity_and_dependencies | 1 | Low | No | — | DONE | e0662c7 |
 | 002 | inventory_legacy_obsolete_and_duplicate_code | 1 | Low | No | — | DONE | d286dec |
 | 003 | consolidate_config_configs_sonfigs | 2 | High | Yes | (gate) | TODO | — |
-| 004 | define_runtime_path_policy | 2 | Low | No | — | TODO | — |
+| 004 | define_runtime_path_policy | 2 | Low | No | — | DONE | 93d9662* |
 | 005 | consolidate_checkpoint_workspace_experiment_paths | 2 | High | Yes | 004 | TODO | — |
 | 006 | introduce_runtime_path_resolver | 2 | Medium | Yes | 004 | TODO | — |
 | 007 | define_core_interfaces_and_protocols | 3 | Low | No | — | TODO | — |
@@ -67,7 +67,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 029 | add_public_api_contract_checker_script | 8 | Low | No | — | TODO | — |
 | 030 | add_viz_api_schema_checker_script | 4 | Low | No | 020 | TODO | — |
 | 031 | add_quality_report_generator | 8 | Low | No | 001 | TODO | — |
-| 032 | add_quality_script_ci_plan | 9 | Low | No | — | TODO | — |
+| 032 | add_quality_script_ci_plan | 9 | Low | No | — | DONE | 11cd088 |
 | 033 | add_generated_files_gitignore_policy | 2 | Low | No | — | TODO | — |
 | 034 | add_contract_snapshot_fixtures | 10 | Low | No | — | TODO | — |
 | 035 | add_refactoring_progress_tracker | 10 | Low | No | — | TODO | — |
@@ -189,6 +189,23 @@ leave that to a human per the Document Retirement Policy.)*
   `/api/settings`; only sent to `restartLetta`); and 8 FE-written keys have no backend
   default (`llm_backend, llm_base_url, slurm_partitions, ssh_*`) — survive only via
   `{**defaults, **saved}` passthrough. Routed to 070; do not drop the passthrough.
+- **STRUCTURAL: "verify-only" subtasks (commit marked `*`).** Some define/policy
+  subtasks declare in their own §9 that the deliverable IS the subtask `.md` itself
+  (authored in planning commit `93d9662`). For these the implementer's job is to
+  VERIFY the doc is grounded against the live tree, not to re-create it. **004** is
+  the first confirmed case (deliverable = `subtasks/004_define_runtime_path_policy.md`;
+  verified fully grounded, no drift). Marked DONE with commit `93d9662*` (the `*` =
+  pre-existing deliverable, verified this run — no new artifact commit). Watch for the
+  same pattern in other design subtasks (007/037/046/061/068/069…); each agent reads
+  its §9 and either creates a new reports/ doc or verifies the existing one.
+- **[004] Minor grounding nuance (flagged, not edited):** §6 item 1 lists `cli/run.py:273`
+  as an `ARI_CHECKPOINT_DIR` "bypass" example, but live `:273` is a comment and the
+  adjacent `:280` uses the `PathManager.checkpoint_dir_from_env()` helper (not a
+  bypass). Accurate as a region pointer; imprecise as a bypass example. For 006.
+- **[032] Cross-workflow aggregation gap:** GitHub Actions `needs:` cannot span
+  workflows, so a single `quality-report` job cannot directly aggregate gates hosted
+  in a different workflow. 032 §8 records Option A (aggregator re-invokes checkers) vs
+  Option B (`workflow_run` trigger) → REVIEW_REQUIRED for subtask 049.
 
 ## Run log
 
