@@ -28,7 +28,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 
 | ID | Title | Phase | Risk | Rt | Depends On | Status | Commit |
 |----|-------|-------|------|----|-----------|--------|--------|
-| 001 | measure_complexity_and_dependencies | 1 | Low | No | — | TODO | — |
+| 001 | measure_complexity_and_dependencies | 1 | Low | No | — | DONE | e0662c7 |
 | 002 | inventory_legacy_obsolete_and_duplicate_code | 1 | Low | No | — | DONE | d286dec |
 | 003 | consolidate_config_configs_sonfigs | 2 | High | Yes | (gate) | TODO | — |
 | 004 | define_runtime_path_policy | 2 | Low | No | — | TODO | — |
