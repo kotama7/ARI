@@ -63,7 +63,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 033 | add_generated_files_gitignore_policy | 2 | Low | No | — | TODO | — |
 | 034 | add_contract_snapshot_fixtures | 10 | Low | No | — | TODO | — |
 | 035 | add_refactoring_progress_tracker | 10 | Low | No | — | TODO | — |
-| 036 | inventory_hardcoded_prompts | 7 | Low | No | — | TODO | — |
+| 036 | inventory_hardcoded_prompts | 7 | Low | No | — | DONE | 9619ebf |
 | 037 | define_prompt_template_policy | 7 | Low | No | 036 | TODO | — |
 | 038 | introduce_prompt_registry_and_loader | 7 | Medium | Yes | 036 | TODO | — |
 | 039 | extract_agent_and_bfts_prompts | 7 | Medium | Yes | 036 | TODO | — |
@@ -80,13 +80,13 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 050 | add_docs_sync_workflow | 9 | Low | No | 045 | TODO | — |
 | 051 | add_prompt_change_review_workflow | 9 | Low | No | 045 | TODO | — |
 | 052 | add_dependabot_and_actions_policy | 9 | Low | No | 045 | TODO | — |
-| 053 | inventory_reference_roots | 1 | Low | No | — | TODO | — |
+| 053 | inventory_reference_roots | 1 | Low | No | — | DONE | b4d7706 |
 | 054 | add_reference_graph_analyzer | 1 | Low | No | 053 | TODO | — |
 | 055 | add_dead_code_candidate_checker | 1 | Low | No | 054 | TODO | — |
 | 056 | classify_unused_functions_and_files | 1 | Low | No | 055 | TODO | — |
 | 057 | delete_safe_dead_code_candidates | 2 | High | Yes | 056 | TODO | — |
 | 058 | add_dead_code_checker_to_quality_report | 8 | Low | No | 057 | TODO | — |
-| 059 | inventory_dashboard_frontend_backend_structure | 5 | Low | No | — | TODO | — |
+| 059 | inventory_dashboard_frontend_backend_structure | 5 | Low | No | — | DONE | f43d9f1 |
 | 060 | inventory_dashboard_api_contracts | 5 | Low | No | 059 | TODO | — |
 | 061 | define_dashboard_dto_and_schema_policy | 5 | Low | No | 059 | TODO | — |
 | 062 | refactor_dashboard_backend_routes_to_services | 5 | High | Yes | 059 | TODO | — |
@@ -129,9 +129,36 @@ leave that to a human per the Document Retirement Policy.)*
 - **[045] Two workflow REVIEW_REQUIRED items** for later CI subtasks (046/049/050):
   `pages.yml:21` README.md-only path filter; `refactor-guards.yml:82` uses
   `origin/<base_ref>` (movable mid-run) rather than `github.event.pull_request.base.sha`.
+- **[053] New MCP tool-name collision:** `read_file` is registered by BOTH `coding`
+  and `orchestrator` skills; the flat `_tool_registry` (last-skill-wins, `client.py:283`)
+  silently clobbers. REVIEW_REQUIRED — relevant to subtasks 010/014.
+- **[053] `publish.schema.json:51` enum lists `"s3"`** but there is no `s3` branch in
+  `_load_backend` and no `backends/s3.py` — `"s3"` correctly excluded from the
+  live-by-string allow-list. Enum-vs-impl drift; REVIEW_REQUIRED for subtask 014.
+- **[053] `ARI_MEMORY_BACKEND`** is set (`config/__init__.py:316`) but has no core
+  consumer (core hardcodes `LettaMemoryClient`, `core.py:130`) → dynamic-reference
+  risk, not orphan; note for subtask 013.
+- **[053] Numbering drift:** `013` §8.1/§10 assign `analyze_references.py` to 053;
+  the canonical 007 index assigns it to 054. Report follows 007. REVIEW_REQUIRED.
+- **[036] `replicator.md` appears unwired:** subtask 036 §5.3 and plan `011` §2.3 claim
+  it loads at `ari-skill-paper-re/src/server.py:66`, but that line reads the *paper*
+  file; no runtime `read_text()` of `replicator.md` exists (live prompt comes from
+  vendored `paperbench...templates`). Orphaned/mirror-only → REVIEW_REQUIRED for 038
+  (wire it, keep as explicit mirror, or retire).
+- **[036] `011`-vs-`036` rubric-builder divergence:** `011` §5.x says
+  `rubric.py`/`rubric_template.py` are "not prompt text — leave in place"; subtask
+  036 §8.8 says `MOVE_TO_CONFIGURABLE_PROMPT`. Both recorded; 037/041 must reconcile.
+- **[059] Minor plan-text imprecisions (non-blocking, corrected in report):** parent
+  §2/§5.3 "12 feature folders + common/" → tree has 12 dirs *including* `common`;
+  §7.1 Table-C `Settings/ → api_ollama` example is imprecise (container served inline
+  via `ari.container`; SettingsPage calls neither api_process nor api_ollama).
 
 ## Run log
 
 - 2026-07-01: Orchestrator initialized. Read 000/007/010 + subtask 001. Baseline
-  gates captured (ruff 661, compileall pass). Ledger created. Starting the nine
-  inventories (hard gate).
+  gates captured (ruff 661, compileall pass, pytest 2413 passed / 16 skipped).
+  Ledger created. Starting the nine inventories (hard gate).
+- 2026-07-01: Inventories 001/002/045/053/059/036 DONE and committed (each a
+  read-only report under reports/; tree clean, gates unchanged). 059 unblocked
+  060+067 (dispatched). 020 still running. Grounding corrections + REVIEW_REQUIRED
+  items from agents recorded above.
