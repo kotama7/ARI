@@ -1,0 +1,42 @@
+# ruff_baseline_full.txt — subtask 001 ruff baseline (BROADER cohort: whole repo)
+# command: ruff check . --statistics
+# tool_versions: ruff 0.15.2, Python 3.13.2
+# git_sha: 2a20bd94a06abb6013e2e85be92f978caa916df2
+# generated_utc: 2026-07-01T10:57:42Z
+# NOTE: NEW measurement (adds ari-skill-*, scripts/, report tooling). NOT a re-run of the
+#       ari-core-only 661 number. Downstream (025/031) must NOT read the delta as a regression.
+# ---------------------------------------------------------------------------
+warning: The following rules have been removed and ignoring them has no effect:
+    - UP038
+
+463	F401   	[-] unused-import
+164	F405   	[ ] undefined-local-with-import-star-usage
+147	E402   	[ ] module-import-not-at-top-of-file
+102	E702   	[ ] multiple-statements-on-one-line-semicolon
+ 50	E701   	[ ] multiple-statements-on-one-line-colon
+ 50	F841   	[ ] unused-variable
+ 45	F541   	[*] f-string-missing-placeholders
+ 42	E741   	[ ] ambiguous-variable-name
+ 30	E401   	[*] multiple-imports-on-one-line
+ 24	I001   	[*] unsorted-imports
+ 17	E711   	[ ] none-comparison
+  9	E722   	[ ] bare-except
+  8	E712   	[ ] true-false-comparison
+  8	F811   	[-] redefined-while-unused
+  8	F821   	[ ] undefined-name
+  7	F403   	[ ] undefined-local-with-import-star
+  7	W391   	[*] too-many-newlines-at-end-of-file
+  3	B904   	[ ] raise-without-from-inside-except
+  2	C414   	[*] unnecessary-double-cast-or-process
+  2	E502   	[*] redundant-backslash
+  2	E731   	[ ] lambda-assignment
+  2	PIE810 	[*] multiple-starts-ends-with
+  1	B012   	[ ] jump-statement-in-finally
+  1	E713   	[*] not-in-test
+  1	F822   	[ ] undefined-export
+  1	PERF102	[*] incorrect-dict-iterator
+  1	TID251 	[ ] banned-api
+  1	UP045  	[*] non-pep604-annotation-optional
+  1	W291   	[*] trailing-whitespace
+Found 1199 errors.
+[*] 544 fixable with the `--fix` option (76 hidden fixes can be enabled with the `--unsafe-fixes` option).
