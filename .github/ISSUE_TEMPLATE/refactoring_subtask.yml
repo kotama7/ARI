@@ -1,0 +1,103 @@
+name: Refactoring subtask
+description: Propose or track a refactoring-program work item using the project's classification vocabulary.
+title: "[refactor] "
+labels:
+  - refactoring
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Use this form for refactoring-program work items. Please read
+        [`CONTRIBUTING.md`](../../CONTRIBUTING.md) (Software-engineering
+        discipline) and
+        [`docs/refactoring/012_github_workflow_integration_plan.md`](../../docs/refactoring/012_github_workflow_integration_plan.md)
+        before filing. The word "deprecated" is reserved for external contracts
+        only; use a classification verdict below for internal code.
+  - type: input
+    id: subtask
+    attributes:
+      label: Subtask / area
+      description: The subtask ID (e.g. 048) or the affected area if not yet numbered.
+      placeholder: "048, or ari-core/ari/viz/routes.py"
+    validations:
+      required: true
+  - type: input
+    id: phase
+    attributes:
+      label: Phase
+      description: Refactoring phase, if known.
+      placeholder: "Phase 9 - GitHub Integration"
+    validations:
+      required: false
+  - type: dropdown
+    id: classification
+    attributes:
+      label: Proposed classification
+      description: Single verdict from the master-prompt vocabulary. "deprecated" is not an option.
+      multiple: false
+      options:
+        - KEEP
+        - ADAPT
+        - MERGE
+        - MOVE_TO_LEGACY
+        - DELETE_CANDIDATE
+        - REVIEW_REQUIRED
+    validations:
+      required: true
+  - type: dropdown
+    id: changes-runtime-code
+    attributes:
+      label: Changes runtime code?
+      description: Does executing this subtask edit runtime code (ari package, ari-skill-* servers, or the dashboard frontend)?
+      multiple: false
+      options:
+        - "No"
+        - "Yes"
+    validations:
+      required: true
+  - type: checkboxes
+    id: contract-surfaces
+    attributes:
+      label: Affected contract surfaces
+      description: Check every protected surface this work touches (each pulls in the corresponding review policy).
+      options:
+        - label: CLI `ari`
+        - label: "`ari.public.*` Python API"
+        - label: MCP tool contracts (`ari-skill-*`)
+        - label: Dashboard API (`ari/viz` + `services/api.ts`)
+        - label: Checkpoint / config file formats
+        - label: Prompt templates (`ari/prompts/**`)
+        - label: Docs / README
+    validations:
+      required: false
+  - type: input
+    id: predecessors
+    attributes:
+      label: Predecessor subtasks / dependencies
+      description: Predecessor subtask IDs, consistent with the dependency graph.
+      placeholder: "depends on 045"
+    validations:
+      required: false
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary / rationale
+      description: What is being changed and why.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria / rollback sketch
+      description: How this is verified done, and how it would be rolled back.
+    validations:
+      required: false
+  - type: checkboxes
+    id: attestation
+    attributes:
+      label: Self-attestation
+      options:
+        - label: >-
+            I have read `CONTRIBUTING.md` (Software-engineering discipline) and
+            `docs/refactoring/012_github_workflow_integration_plan.md`.
+          required: true

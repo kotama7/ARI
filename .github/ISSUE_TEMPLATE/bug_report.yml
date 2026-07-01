@@ -1,0 +1,53 @@
+name: Bug report
+description: Report a runtime defect in ARI (ari-core, an ari-skill-* server, or the dashboard).
+title: "[bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Thanks for reporting a bug. For security vulnerabilities, do NOT use this
+        form - report privately via the Security tab (see
+        [`SECURITY.md`](../../SECURITY.md)).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: A clear description of the defect.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Steps or the smallest command sequence that reproduces the defect.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, `ari` version, and profile (cloud vs HPC vs laptop).
+      placeholder: |
+        - OS:
+        - Python:
+        - ari version:
+        - Profile: cloud | hpc | laptop
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant log output. This is automatically formatted as code, so no backticks are needed.
+      render: shell
+    validations:
+      required: false
