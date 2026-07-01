@@ -1,0 +1,64 @@
+# Configuration for scripts/analyze_references.py (subtask 054).
+#
+# Realizes docs/refactoring/013_reference_graph_and_dead_code_plan.md §6/§8.
+# Every path below is repository-relative and resolved against `base_dir`
+# (default: repo root). Deterministic, no LLM, no network (ARI design P2).
+#
+# All keys are optional; the analyzer ships the same values as built-in
+# defaults, so it runs without this file. Provide a trimmed copy (e.g. with
+# `base_dir` pointed at a fixture tree) to sandbox the analyzer in tests.
+
+# Directory roots scanned for Python modules/symbols (static layer, §7.3).
+scan_roots:
+  - ari-core/ari
+
+# Glob (relative to base_dir) matching each skill's `src` directory. Its
+# `server.py` files are scanned for MCP tool handlers (§7.4 item 4).
+include_skills_glob: "ari-skill-*/src"
+
+# Directories that hold `<key>.md` prompt templates reached by string via
+# FilesystemPromptLoader.load(key) (§7.4 item 2). The first base that has a
+# matching `<key>.md` wins for a given `.load("<key>")` call site.
+prompt_bases:
+  - ari-core/ari/prompts
+  - ari-skill-paper-re/src/prompts
+  - ari-skill-replicate/src/prompts
+
+# React API client + the directory of viz route handlers, matched for
+# cross-language HTTP/WS edges (§7.4 item 5).
+frontend_api_client: ari-core/ari/viz/frontend/src/services/api.ts
+viz_route_dir: ari-core/ari/viz
+
+# Repo-specific dynamic.path enumerations for DATA selected by identifier /
+# env var rather than by any `import` (rubrics, profiles, schemas, workflow).
+# Each entry: glob of data files, the module whose selection site is the
+# evidence anchor, and that evidence string (§7.4 item 3). Self-gating: an
+# entry contributes nothing when its glob matches no file under base_dir.
+data_selectors:
+  - glob: "ari-core/config/reviewer_rubrics/*.yaml"
+    from_file: "ari-core/ari/cli/projects.py"
+    evidence: "ari-core/ari/cli/projects.py:81 ARI_RUBRIC (--rubric)"
+  - glob: "ari-core/config/paperbench_rubrics/*.yaml"
+    from_file: "ari-core/ari/cli/projects.py"
+    evidence: "ari-core/ari/cli/projects.py:81 ARI_RUBRIC (--rubric)"
+  - glob: "ari-core/config/profiles/*.yaml"
+    from_file: "ari-core/ari/cli/run.py"
+    evidence: "ari-core/ari/cli/run.py:140 --profile"
+  - glob: "ari-core/config/reviewer_rubrics/fewshot_examples/neurips/*.json"
+    from_file: "ari-core/ari/cli/projects.py"
+    evidence: "ari-core/ari/cli/projects.py:86 ARI_FEWSHOT_MODE"
+  - glob: "ari-core/ari/schemas/*.schema.json"
+    from_file: "ari-core/ari/schemas/__init__.py"
+    evidence: "ari-core/ari/schemas/__init__.py:11 load(name)"
+  - glob: "ari-core/config/workflow.yaml"
+    from_file: "ari-core/ari/cli/run.py"
+    evidence: "ari-core/ari/cli/run.py:91 package workflow.yaml"
+  - glob: "ari-core/ari/configs/*.yaml"
+    from_file: "ari-core/ari/configs/_loader.py"
+    evidence: "ari-core/ari/configs/_loader.py FilesystemConfigLoader"
+
+# Glob patterns (fnmatch over posix relpaths) never scanned or emitted.
+ignore_globs:
+  - "*/__pycache__/*"
+  - "*/node_modules/*"
+  - "*.pyc"
