@@ -414,3 +414,58 @@ rejected.
   call-sites use thin shims.
 - New `~/.ari/` references are blocked by the
   `.github/workflows/refactor-guards.yml` CI guard.
+
+---
+
+## Generated & ignored files
+
+A file is **ignored** (never committed) if and only if it is regenerated
+deterministically from tracked sources or is machine/run-specific. Everything
+else — including "generated-looking" data we deliberately track — stays under
+version control. The rules live in the root `.gitignore` plus one per-directory
+`.gitignore` for `ari-core/`, `docs/`, `report/`, and each `ari-skill-*`
+package.
+
+| Category | Representative patterns | Owned by |
+| --- | --- | --- |
+| Python bytecode / build | `__pycache__/`, `*.py[cod]`, `*.pyo`, `*.pyd`, `*.egg`, `*.egg-info/`, `.eggs/`, `dist/`, `build/` | root + every package |
+| Test / lint caches | `.pytest_cache/`, `.ruff_cache/`, `.coverage`, `htmlcov/` | root + package |
+| Virtualenvs / setup | `.venv/`, `venv/`, `.ari_python` | root + package |
+| Secrets | `.env`, `*.env.local`, `*.key`, `*.pem`, `*.token` | root (single source) |
+| Frontend build | `node_modules/`, `ari-core/ari/viz/frontend/…`, `viz/static/dist/` | root + `ari-core` |
+| Docs (VitePress) build | `docs/node_modules/`, `docs/.vitepress/{dist,cache}/`, `/_site/` | root + `docs` |
+| Report (LaTeX/HTML) build | LaTeX intermediates, generated `main.css/main.html`, `html/{en,ja,zh}/` | `report` |
+| Runtime storage | `checkpoints/`, `workspace/`, `experiments/`, `logs/`, `*.log`, `*.out`, `*.err`, `slurm-*.out`, `memory/` | root |
+| Container images | `*.sif`, `/containers/*`, `/ari-core/containers/*` | root |
+| External/local-only inputs | local-only research PDFs | root |
+
+### Tracked despite looking generated (do NOT ignore)
+
+These carve-outs are encoded as `!`-negations and MUST survive any edit:
+
+- `report/{en,ja,zh}/main.pdf`, `report/shared/assets/*.pdf`,
+  `docs/assets/**` and `docs/public/report/**` shipped PDFs.
+- `ari-core/ari/viz/frontend/package-lock.json`, `docs/package-lock.json`,
+  `requirements.lock`.
+- `ari-core/ari/viz/frontend/src/components/PaperBench/results/**` — a **source**
+  component dir (distinct from runtime `results*/`).
+- `ari-core/ari/memory/**` — the source package, not the runtime `memory/` store.
+- `containers/README.md`, `ari-core/containers/README.md`.
+- All tracked YAML/data under `ari-core/config/`, `ari-core/ari/config/`, and
+  `ari-core/ari/configs/`. (Note: there is **no `sonfigs/`** directory anywhere
+  in the repo — never add a `config*`/`sonfig*` glob to any ignore file, or you
+  would hide tracked rubric/profile/default data.)
+
+### Invariant and conventions
+
+- **No tracked file may be ignored.** `git ls-files -i -c --exclude-standard`
+  must return empty. Before committing a `.gitignore` change, run it — a
+  non-empty result means a rule is too broad; add a negation.
+- **Every `ari-skill-*` package** shares one canonical ~30-line `.gitignore`
+  template (Python + env + logs/runtime + test cache + editor). `ari-skill-vlm`
+  additionally keeps `logs/` and `*.so`.
+- **De-duplication is behaviour-preserving**: removing a duplicate line never
+  changes git's matching outcome. Negations are last-match-wins, so a negation
+  must stay positioned *after* the broad rule it carves out from.
+- Vendored subtrees under `*/vendor/**` own their own `.gitignore` and are out
+  of scope here.
