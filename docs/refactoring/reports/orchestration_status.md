@@ -81,7 +81,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 043 | add_prompt_checker_script | 7 | Low | No | 036 | TODO | — |
 | 044 | add_prompt_version_tracking_to_run_metadata | 7 | Medium | Yes | 036 | TODO | — |
 | 045 | inventory_github_workflows | 9 | Low | No | — | DONE | 8842a5f |
-| 046 | design_quality_ci_integration | 9 | Low | No | 045 | TODO | — |
+| 046 | design_quality_ci_integration | 9 | Low | No | 045 | DONE | 93d9662* |
 | 047 | add_pr_template_quality_checklist | 9 | Low | No | 045 | TODO | — |
 | 048 | add_issue_templates_for_refactoring | 9 | Low | No | 045 | TODO | — |
 | 049 | add_contract_check_workflows | 9 | Low | No | 045 | TODO | — |
@@ -103,7 +103,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 065 | add_dashboard_contract_and_schema_tests | 5 | Low | No | 059 | TODO | — |
 | 066 | add_dashboard_build_and_ci_plan | 5 | Low | No | 059 | TODO | — |
 | 067 | inventory_dashboard_visible_settings | 6 | Low | No | 059 | DONE | 4252a79 |
-| 068 | define_dashboard_information_architecture | 6 | Low | No | 059 | TODO | — |
+| 068 | define_dashboard_information_architecture | 6 | Low | No | 059 | DONE | 93d9662* |
 | 069 | design_dashboard_progressive_disclosure | 6 | Low | No | 059 | TODO | — |
 | 070 | refactor_dashboard_settings_panel | 6 | High | Yes | 059 | TODO | — |
 | 071 | add_dashboard_developer_mode | 6 | Medium | Yes | 059 | TODO | — |
@@ -228,6 +228,19 @@ leave that to a human per the Document Retirement Policy.)*
   `def` is at `orchestrator.py:155` (not `:548`, which is the inner while-loop);
   several line/LOC counts off by 1-2 in 006/007/061. Cosmetic; groundings otherwise
   hold. Downstream implementers should re-grep, not trust exact line numbers.
+- **[046 vs 032] Two overlapping CI-integration plans — RESOLUTION for 049-052:**
+  046 (subtask doc, planning) duplicates ~80% of `reports/032_quality_script_ci_integration.md`
+  (topology, 4-stage table, allow-list, base.sha mandate, --json aggregation). 032 §11.3
+  already said 046 should reference/MERGE into 032. **Decision (autonomous): treat 032
+  as the AUTHORITATIVE CI-wiring plan; 046 is design rationale.** 049-052 agents will be
+  told to follow 032 for actual workflow content. Doc-restructuring (thin-delta 046)
+  deferred to a human (planning-corpus edit). Also: 046 repeats the "14-entry allow-list"
+  miscount (really 13 excludes + 1 include) and assumes a nonexistent subtasks README.
+- **[068] Pre-existing doc-gate reds (NOT mine; for docs/hygiene wave 017/013):** HARD
+  gate `check_doc_links.py --html-only` = GREEN (0 broken). Advisory reds are pre-existing:
+  ~60 broken plain-markdown links in `docs/zh/index.md` + `docs/017`; 2 invalid-role
+  errors in `docs/refactoring/006_target_architecture_plan.md`; readme_sync's 4 frontend/
+  report drifts. None introduced by this program's subtasks.
 - **LESSON — parallel-write hazard (Phase-8 checkers):** 025/026/029/054 share
   `scripts/quality/_common.py` + `scripts/README.md` + per-dir READMEs. Running them
   in parallel on the shared worktree created contested edits; `readme_sync --write` is
