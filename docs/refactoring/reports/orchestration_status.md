@@ -94,7 +94,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 064 | refactor_dashboard_state_and_component_boundaries | 5 | High | Yes | 059 | TODO | — |
 | 065 | add_dashboard_contract_and_schema_tests | 5 | Low | No | 059 | TODO | — |
 | 066 | add_dashboard_build_and_ci_plan | 5 | Low | No | 059 | TODO | — |
-| 067 | inventory_dashboard_visible_settings | 6 | Low | No | 059 | TODO | — |
+| 067 | inventory_dashboard_visible_settings | 6 | Low | No | 059 | DONE | 4252a79 |
 | 068 | define_dashboard_information_architecture | 6 | Low | No | 059 | TODO | — |
 | 069 | design_dashboard_progressive_disclosure | 6 | Low | No | 059 | TODO | — |
 | 070 | refactor_dashboard_settings_panel | 6 | High | Yes | 059 | TODO | — |
@@ -168,6 +168,19 @@ leave that to a human per the Document Retirement Policy.)*
   wrapper), F8 (GET-with-write via `_ensure_paper_dir`), F9 (two divergent traversal
   guards), F10 (restart-losing `_JOBS`), F11 (legacy `~/.ari/publish.yaml`), F12
   (`/api/env-keys` secret readback). `WIZARD_ROUTES` confirmed dead code.
+- **[067] `Settings` type field count = 36, not 35:** subtask 067 §2/§5 and the 059
+  report say 35; `types/index.ts:39-74` has 36 declarations (extra optional
+  `llm_base_url?` at :44). Treat 36 as ground truth for 068/070.
+- **[067] New plaintext-secret persistence:** `semantic_scholar_key` and
+  `letta_api_key` persist to `settings.json` in cleartext (`_api_save_settings:230`);
+  only `llm_api_key`/`api_key` are diverted to `.env`. Routed to 071. REVIEW_REQUIRED.
+- **[067] FE/backend Letta-embedding default mismatch:** FE default
+  `openai/text-embedding-3-small` (`SettingsPage:88`) vs backend `letta-default`
+  (`api_settings.py:164-166`). Routed to 070.
+- **[067] `letta_deployment` declared-but-unpersisted** (select never read/written to
+  `/api/settings`; only sent to `restartLetta`); and 8 FE-written keys have no backend
+  default (`llm_backend, llm_base_url, slurm_partitions, ssh_*`) — survive only via
+  `{**defaults, **saved}` passthrough. Routed to 070; do not drop the passthrough.
 
 ## Run log
 
