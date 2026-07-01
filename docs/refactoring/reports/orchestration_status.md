@@ -14,7 +14,7 @@
 - Python `3.13.2`, ruff `0.15.2`, node `v20.19.5`, npm `10.8.2`; `radon` NOT installed.
 - `ruff check ari-core --statistics` → **661** findings (341 `F401`, 135 `E402`, 358 auto-fixable). *(frozen baseline)*
 - `python -m compileall -q ari-core ari-skill-* scripts` → **exit 0** (pass).
-- `pytest ari-core/tests` baseline → *(see run notes / recorded below)*.
+- `pytest ari-core/tests -q` baseline → **2413 passed, 16 skipped** (111s, exit 0). *(clean green)*
 - HEAD at start: `93d9662865fc5e97a1950a7ec19ac06ace32e562`.
 
 ## Hard gate
@@ -29,7 +29,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | ID | Title | Phase | Risk | Rt | Depends On | Status | Commit |
 |----|-------|-------|------|----|-----------|--------|--------|
 | 001 | measure_complexity_and_dependencies | 1 | Low | No | — | TODO | — |
-| 002 | inventory_legacy_obsolete_and_duplicate_code | 1 | Low | No | — | TODO | — |
+| 002 | inventory_legacy_obsolete_and_duplicate_code | 1 | Low | No | — | DONE | d286dec |
 | 003 | consolidate_config_configs_sonfigs | 2 | High | Yes | (gate) | TODO | — |
 | 004 | define_runtime_path_policy | 2 | Low | No | — | TODO | — |
 | 005 | consolidate_checkpoint_workspace_experiment_paths | 2 | High | Yes | 004 | TODO | — |
@@ -72,7 +72,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 042 | add_prompt_snapshot_tests | 7 | Low | No | 036 | TODO | — |
 | 043 | add_prompt_checker_script | 7 | Low | No | 036 | TODO | — |
 | 044 | add_prompt_version_tracking_to_run_metadata | 7 | Medium | Yes | 036 | TODO | — |
-| 045 | inventory_github_workflows | 9 | Low | No | — | TODO | — |
+| 045 | inventory_github_workflows | 9 | Low | No | — | DONE | 8842a5f |
 | 046 | design_quality_ci_integration | 9 | Low | No | 045 | TODO | — |
 | 047 | add_pr_template_quality_checklist | 9 | Low | No | 045 | TODO | — |
 | 048 | add_issue_templates_for_refactoring | 9 | Low | No | 045 | TODO | — |
@@ -108,7 +108,27 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 doc whose Retirement Condition becomes satisfied — do NOT git rm planning docs;
 leave that to a human per the Document Retirement Policy.)*
 
-- *(none yet)*
+- **[002] Owner-routing drift (non-blocking):** `004_legacy_obsolete_inventory.md`
+  routed the MCP-idiom and ReAct-loop seams to subtask **016**, but the live
+  `007_subtask_index.md` assigns them to **010** (skill consistency) and **011**
+  (BFTS/ReAct split). The 002 report followed the canonical 007 index and recorded
+  the discrepancy. Human ruling optional; live index is authoritative here.
+- **[002/013/017] `ARI_AGENT_ENV_PATH → ~/.ari/agent.env` fallback:** remains
+  `REVIEW_REQUIRED` (docs vs v0.5.0 checkpoint-scoping). Code-path verification
+  deferred to subtasks 013/017 per plan; do not edit docs before verifying against
+  `config/__init__.py`/`paths.py`.
+- **[045] Allow-list count 14 vs 13 (doc drift):** subtask 045 §1/§3/§13 and
+  `012` say the `refactor-guards.yml` `~/.ari` allow-list has **14** entries; the
+  live file has **13** `:!` exclude pathspecs + **1** include pathspec (`ari-core/ari/**.py`).
+  "14" only if the include line is counted. Affects 049 reuse text — doc-owner ruling.
+- **[045] `012` internal numbering vs 007 index:** `012_github_workflow_integration_plan.md`
+  §15/§16 assigns checker ownership (e.g. check_complexity) to subtask 045; the
+  canonical 007 index says 045 = inventory only. Reports follow 007. Also `012` §16
+  is stale ("subtasks/ and reports/ empty" — both now populated). Reconciliation is
+  a 046 / human decision.
+- **[045] Two workflow REVIEW_REQUIRED items** for later CI subtasks (046/049/050):
+  `pages.yml:21` README.md-only path filter; `refactor-guards.yml:82` uses
+  `origin/<base_ref>` (movable mid-run) rather than `github.event.pull_request.base.sha`.
 
 ## Run log
 
