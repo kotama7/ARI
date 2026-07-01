@@ -82,12 +82,12 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 044 | add_prompt_version_tracking_to_run_metadata | 7 | Medium | Yes | 036 | TODO | — |
 | 045 | inventory_github_workflows | 9 | Low | No | — | DONE | 8842a5f |
 | 046 | design_quality_ci_integration | 9 | Low | No | 045 | DONE | 93d9662* |
-| 047 | add_pr_template_quality_checklist | 9 | Low | No | 045 | TODO | — |
-| 048 | add_issue_templates_for_refactoring | 9 | Low | No | 045 | TODO | — |
+| 047 | add_pr_template_quality_checklist | 9 | Low | No | 045 | DONE | 78c9eea |
+| 048 | add_issue_templates_for_refactoring | 9 | Low | No | 045 | DONE | e869a90 |
 | 049 | add_contract_check_workflows | 9 | Low | No | 045 | TODO | — |
 | 050 | add_docs_sync_workflow | 9 | Low | No | 045 | TODO | — |
 | 051 | add_prompt_change_review_workflow | 9 | Low | No | 045 | TODO | — |
-| 052 | add_dependabot_and_actions_policy | 9 | Low | No | 045 | TODO | — |
+| 052 | add_dependabot_and_actions_policy | 9 | Low | No | 045 | DONE | a40ab08 |
 | 053 | inventory_reference_roots | 1 | Low | No | — | DONE | b4d7706 |
 | 054 | add_reference_graph_analyzer | 1 | Low | No | 053 | DONE | d73dd9e |
 | 055 | add_dead_code_candidate_checker | 1 | Low | No | 054 | TODO | — |
@@ -241,6 +241,18 @@ leave that to a human per the Document Retirement Policy.)*
   ~60 broken plain-markdown links in `docs/zh/index.md` + `docs/017`; 2 invalid-role
   errors in `docs/refactoring/006_target_architecture_plan.md`; readme_sync's 4 frontend/
   report drifts. None introduced by this program's subtasks.
+- **[048] Out-of-band repo labels needed (human/gh action):** the issue templates
+  reference labels `refactoring` and `contract-regression` which don't exist as repo
+  labels; GitHub Forms silently drops unknown labels. Create via `gh label create
+  refactoring` / `gh label create contract-regression` (cannot be a tracked file).
+- **[052] Deferred least-privilege `permissions:`** on the 4 read-only workflows
+  (docs-change-coupling, docs-sync, readme-sync, refactor-guards) — skipped this pass
+  to avoid parallel-write conflicts; additive follow-up (pages.yml keeps its elevated
+  perms). Documented in CONTRIBUTING.md P4.
+- **DEFERRED CI subtasks (need checkers to exist first):** 049 (contracts.yml +
+  refactor-guards jobs → needs 026/029/030 + 028/055), 050 (docs-sync.yml append),
+  051 (prompt-change-review.yml → needs 043). Will run after their checkers land, on
+  the "additive CI wired last" principle. NOT started yet.
 - **LESSON — parallel-write hazard (Phase-8 checkers):** 025/026/029/054 share
   `scripts/quality/_common.py` + `scripts/README.md` + per-dir READMEs. Running them
   in parallel on the shared worktree created contested edits; `readme_sync --write` is
