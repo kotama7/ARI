@@ -47,7 +47,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 017 | update_docs_and_examples | 10 | Low | No | — | TODO | — |
 | 018 | add_tests_for_architecture_boundaries | 10 | Low | No | — | TODO | — |
 | 019 | final_quality_report | 11 | Low | No | — (LAST) | TODO | — |
-| 020 | inventory_viz_dashboard_api_contracts | 4 | Low | No | — | TODO | — |
+| 020 | inventory_viz_dashboard_api_contracts | 4 | Low | No | — | DONE | 43b143a |
 | 021 | extract_viz_services_from_routes | 4 | Medium | Yes | 020 | TODO | — |
 | 022 | define_dashboard_dto_and_schema_tests | 4 | Low | No | 020 | TODO | — |
 | 023 | separate_viz_file_io_from_route_handlers | 4 | Medium | Yes | 020 | TODO | — |
@@ -152,6 +152,22 @@ leave that to a human per the Document Retirement Policy.)*
   §2/§5.3 "12 feature folders + common/" → tree has 12 dirs *including* `common`;
   §7.1 Table-C `Settings/ → api_ollama` example is imprecise (container served inline
   via `ari.container`; SettingsPage calls neither api_process nor api_ollama).
+- **[020] F6a — real method mismatch (candidate bug):** the frontend
+  `requestPaperbenchReport` POSTs `/api/paperbench/run/<jid>/report`, but only a GET
+  `/report` branch exists → the POST falls through to the `else` 404. For 021/023 to
+  reconcile (do NOT fix during an inventory). Dashboard-API contract note.
+- **[020] F2 — CORS-omit scaffold correction:** the 020 plan §6.4 lists
+  `routes.py:710/740/815/905/967` as CORS-omit sites, but live source SETS
+  `Access-Control-Allow-Origin: *` there; the genuine omissions are `GET /state`
+  (662) and `GET /api/gpu-monitor` (668-672). Ground truth recorded.
+- **[020] F7 — `_status` smuggling only partially wired:** `POST /api/settings`
+  (`_api_save_settings`) sets `_status:400` but the router never pops it
+  (`routes.py:1036`), so a 400 leaks into the JSON body while HTTP stays 200; 4 other
+  pop-sites call handlers that never set `_status`. REVIEW_REQUIRED for 011/021.
+- **[020] Other findings for later viz waves:** F6b (10 endpoints with no `api.ts`
+  wrapper), F8 (GET-with-write via `_ensure_paper_dir`), F9 (two divergent traversal
+  guards), F10 (restart-losing `_JOBS`), F11 (legacy `~/.ari/publish.yaml`), F12
+  (`/api/env-keys` secret readback). `WIZARD_ROUTES` confirmed dead code.
 
 ## Run log
 
