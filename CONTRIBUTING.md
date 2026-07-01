@@ -469,3 +469,42 @@ These carve-outs are encoded as `!`-negations and MUST survive any edit:
   must stay positioned *after* the broad rule it carves out from.
 - Vendored subtrees under `*/vendor/**` own their own `.gitignore` and are out
   of scope here.
+
+---
+
+## GitHub Actions & Dependencies
+
+Supply-chain automation is configured in `.github/dependabot.yml` (schema v2).
+This section is the written, enforceable policy that owns it. It is
+cross-referenced from `SECURITY.md`.
+
+- **P1 — Ecosystems tracked.** Dependabot tracks exactly three ecosystems:
+  `github-actions` (the workflows under `.github/workflows/`), `pip` (the root
+  `requirements.txt`, `ari-core`, and the 13 skills that ship a
+  `pyproject.toml`), and `npm` (`docs/` and
+  `ari-core/ari/viz/frontend/`). Two things are intentionally **untracked**: the
+  vendored submodule forks (`ari-skill-idea/vendor/virsci`,
+  `ari-skill-paper-re/vendor/paperbench` — pinned external forks whose SHAs must
+  not auto-bump) and `ari-skill-orchestrator`, which ships no `pyproject.toml`.
+  There is no `docker` ecosystem (no in-tree Dockerfiles outside `vendor/`).
+- **P2 — Action version pinning.** First-party `actions/*` are pinned at their
+  **major tag** (`@v4`, `@v5`, …) and Dependabot owns the bumps. SHA-pinning is
+  **recommended but not mandated** today; a full SHA-pin migration of the
+  existing workflows is deferred to a follow-up. Any future **third-party**
+  action MUST be SHA-pinned (none exist today).
+- **P3 — Grouping & cadence.** Updates run on a **weekly** schedule; bumps are
+  **grouped per ecosystem** (one PR for the six actions; minor/patch grouped for
+  pip and npm) to cap PR volume; every Dependabot PR carries the `dependencies`
+  label plus an ecosystem label.
+- **P4 — Least-privilege permissions.** New workflows MUST declare a top-level
+  `permissions:` block scoped to what they need. The four read-only workflows
+  (`docs-change-coupling.yml`, `docs-sync.yml`, `readme-sync.yml`,
+  `refactor-guards.yml`) should gain `permissions: {contents: read}`;
+  `pages.yml` legitimately keeps `pages: write` + `id-token: write` for the
+  Pages deploy and must not be narrowed. (These per-workflow edits are additive
+  and are tracked separately from the Dependabot config landing.)
+- **P5 — Review convention.** A human maintainer reviews and merges every
+  Dependabot PR; CI (`refactor-guards.yml` pytest + the docs/README gates) must
+  pass first. **No auto-merge is enabled.** After a pip bump PR is merged,
+  regenerate `requirements.lock` by hand — it is a resolved lockfile, not a
+  Dependabot-managed manifest, so Dependabot does not update it.
