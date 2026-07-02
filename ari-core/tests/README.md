@@ -112,6 +112,7 @@ targets the like-named module under `ari/`.
 - `test_root_idea_selector.py` — root-idea selector.
 - `test_run_env.py` — run environment.
 - `test_run_loop.py` — run loop.
+- `test_runtime_path_reconciliation_005.py` — TODO
 - `test_sandbox_shim.py` — sandbox shim.
 - `test_selection_contract.py` — selection contract.
 - `test_server.py` — viz/API server.
