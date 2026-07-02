@@ -12,7 +12,7 @@
 ## Baseline (captured before any subtask)
 
 - Python `3.13.2`, ruff `0.15.2`, node `v20.19.5`, npm `10.8.2`; `radon` NOT installed.
-- `ruff check ari-core --statistics` → baseline **661**; **now 660** after 003 removed a dead import (ratchet: may only DECREASE — future subtasks keep it ≤660).
+- `ruff check ari-core --statistics` → baseline **661**; **now 660** after 003 removed a dead import (ratchet: may only DECREASE — future subtasks keep it ≤647).
 - `python -m compileall -q ari-core ari-skill-* scripts` → **exit 0** (pass).
 - `pytest ari-core/tests -q` baseline → **2413 passed, 16 skipped** (111s, exit 0). *(clean green)*
 - HEAD at start: `93d9662865fc5e97a1950a7ec19ac06ace32e562`.
@@ -47,7 +47,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 009 | extract_evaluator_interface | 3 | Medium | Yes | 007 | DONE | 38977a7 |
 | 010 | extract_artifact_checkpoint_trace_store | 3 | High | Yes | 007 | TODO | — |
 | 011 | separate_bfts_strategy_from_react_loop | 3 | High | Yes | 007 | DONE* | 8d67474 |
-| 012 | refactor_pipeline_stage_architecture | 3 | High | Yes | 007 | TODO | — |
+| 012 | refactor_pipeline_stage_architecture | 3 | High | Yes | 007 | DONE | 04c0742 |
 | 013 | refactor_memory_boundary | 3 | High | Yes | 007 | TODO | — |
 | 014 | refactor_registry_and_factory_layer | 3 | High | Yes | 007 | DONE | 6a75eb9 |
 | 015 | refactor_dashboard_viz_api_services | 4 | High | Yes | (gate 020) | TODO | — |
