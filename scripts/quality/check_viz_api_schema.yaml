@@ -1,0 +1,30 @@
+# Config for scripts/check_viz_api_schema.py — the dashboard route <-> api.ts
+# reconciliation checker (subtask 030; design docs/refactoring/009 §5.6, 030 §7).
+#
+# The checker guards the preserved dashboard API contract
+# (docs/refactoring/010_contract_preservation_policy.md §4/§5); it never edits an
+# endpoint. All keys below are overridable so the 015/021 route-registry refactor
+# can retarget extraction without a code change (P2: stdlib + PyYAML only).
+
+# Server-side dispatch source (routes.py holds the entire do_GET/do_POST if/elif
+# chain; the api_*.py modules are just handlers, so routes.py is the route set).
+routes_file: ari-core/ari/viz/routes.py
+
+# The sole consumer: the React typed client.
+client_file: ari-core/ari/viz/frontend/src/services/api.ts
+
+# The four services/api.ts transport helpers -> HTTP method. get/post throw on
+# non-2xx; pbGet/pbPost never throw (the PaperBench regime). Bespoke bare fetch()
+# wrappers (uploadFile, uploadCheckpointFile, deletePaperbenchPaper) are detected
+# separately, method read from the fetch options (default GET).
+client_helpers:
+  get: GET
+  pbGet: GET
+  post: POST
+  pbPost: POST
+
+# Registry-agnostic hook. Today dispatch is a hand-rolled if/elif chain and the
+# only declarative dict (api_wizard.WIZARD_ROUTES) is unused + stale, so this is
+# off. When 015/021 lands a real ROUTES table, flip to true (or point the checker
+# at it) and extraction keeps working without a code edit.
+use_declarative_routes: false
