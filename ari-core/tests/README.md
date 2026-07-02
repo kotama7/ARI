@@ -94,6 +94,7 @@ targets the like-named module under `ari/`.
 - `test_pipeline_verified_context.py` — verified-context building blocks (best-node selection, lineage scoping, grounded-block renderer).
 - `test_plan_promote.py` — plan promotion.
 - `test_prompt_extraction.py` — prompt extraction.
+- `test_prompt_provenance.py` — TODO
 - `test_prompt_snapshots.py` — TODO
 - `test_public_api_boundary.py` — public-API boundary.
 - `test_publish_and_registry.py` — publish + registry.
