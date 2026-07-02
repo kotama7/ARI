@@ -48,7 +48,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 010 | extract_artifact_checkpoint_trace_store | 3 | High | Yes | 007 | TODO | — |
 | 011 | separate_bfts_strategy_from_react_loop | 3 | High | Yes | 007 | DONE* | 8d67474 |
 | 012 | refactor_pipeline_stage_architecture | 3 | High | Yes | 007 | DONE | 04c0742 |
-| 013 | refactor_memory_boundary | 3 | High | Yes | 007 | TODO | — |
+| 013 | refactor_memory_boundary | 3 | High | Yes | 007 | DONE | 144c262 |
 | 014 | refactor_registry_and_factory_layer | 3 | High | Yes | 007 | DONE | 6a75eb9 |
 | 015 | refactor_dashboard_viz_api_services | 4 | High | Yes | (gate 020) | TODO | — |
 | 016 | clean_merge_or_quarantine_legacy_code | 2 | High | Yes | 002 | TODO | — |
