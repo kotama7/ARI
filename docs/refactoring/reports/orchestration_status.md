@@ -51,7 +51,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 013 | refactor_memory_boundary | 3 | High | Yes | 007 | DONE | 144c262 |
 | 014 | refactor_registry_and_factory_layer | 3 | High | Yes | 007 | DONE | 6a75eb9 |
 | 015 | refactor_dashboard_viz_api_services | 4 | High | Yes | (gate 020) | TODO | — |
-| 016 | clean_merge_or_quarantine_legacy_code | 2 | High | Yes | 002 | TODO | — |
+| 016 | clean_merge_or_quarantine_legacy_code | 2 | High | Yes | 002 | DONE* | no-op |
 | 017 | update_docs_and_examples | 10 | Low | No | — | TODO | — |
 | 018 | add_tests_for_architecture_boundaries | 10 | Low | No | — | DONE | 0319dae |
 | 019 | final_quality_report | 11 | Low | No | — (LAST) | TODO | — |
@@ -282,6 +282,16 @@ leave that to a human per the Document Retirement Policy.)*
   EXTRACT (they're dynamic fills of already-externalized templates, tagged
   KEEP_INLINE). Whether to expand scope + extract them is a human/architect call;
   it would need new snapshot fixtures + README reconciliation. Marked DONE per 036.
+- **[016] verified near-no-op (reconciled).** Every 002 duplication candidate is
+  already resolved/owned by landed subtasks: two-pipeline-runners -> 012
+  WorkflowDriver; string dispatchers -> 014; memory edge -> 013; two-ReAct-loops ->
+  011 (AgentLoop decomposition deferred there); workspace roots -> 005; SAFE_DELETE=0
+  -> 057. The _legacy/ mechanism would be occupant-less (011-014 used in-place
+  shims), so it was NOT fabricated. 016's own action — relocate cli/lineage.py ->
+  orchestrator/lineage_actions.py — is BLOCKED by the frozen test_core_viz_direction.py
+  path-allow-list (moving the lazy core->viz import breaks test_no_unexpected_core_to_viz
+  _imports); it unblocks only when 011/012 inverts the viz-launcher edge. Marked DONE*
+  (no code change; full suite re-confirmed 2639 passed via 016's gate).
 - **DEFERRED CI subtasks (need checkers to exist first):** 049 (contracts.yml +
   refactor-guards jobs → needs 026/029/030 + 028/055), 050 (docs-sync.yml append),
   051 (prompt-change-review.yml → needs 043). Will run after their checkers land, on
