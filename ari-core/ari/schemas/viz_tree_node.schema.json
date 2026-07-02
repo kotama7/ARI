@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/viz_tree_node.schema.json",
+  "title": "ARI dashboard TreeNode",
+  "description": "One node of the BFTS/pipeline tree as emitted verbatim inside GET /state (data.nodes) and GET /api/checkpoint/<id>/summary (nodes_tree.nodes). Mirrors frontend/src/types/index.ts TreeNode (lines 3-22). The backend passes raw tree.json/nodes_tree.json node dicts through untransformed, so only 'id' is guaranteed; the frontend fills defaults for the remaining fields. All other keys are therefore optional here (additive-subset policy).",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "id"
+  ],
+  "properties": {
+    "id": {"type": "string"},
+    "parent_id": {"type": ["string", "null"]},
+    "status": {"type": "string"},
+    "label": {"type": "string"},
+    "node_type": {"type": "string"},
+    "depth": {"type": "integer", "minimum": 0},
+    "name": {"type": "string"},
+    "score": {"type": ["number", "null"]},
+    "scientific_score": {"type": ["number", "null"]},
+    "metrics": {"type": ["object", "null"]},
+    "error_log": {"type": ["string", "null"]},
+    "eval_summary": {"type": ["string", "null"]},
+    "hypothesis": {"type": ["string", "null"]},
+    "description": {"type": ["string", "null"]},
+    "trace_log": {"type": ["array", "null"], "items": {"type": "string"}},
+    "created_at": {"type": ["string", "null"]},
+    "completed_at": {"type": ["string", "null"]},
+    "has_real_data": {"type": "boolean"}
+  }
+}
