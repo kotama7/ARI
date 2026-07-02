@@ -43,14 +43,17 @@ def _synth_repro_report_from_ors(*args, **kwargs):  # noqa: D401
 
 
 def _load_nodes_tree(checkpoint_dir):
-    """Resolve a checkpoint's node tree via the canonical loader.
+    """Resolve a checkpoint's node tree via the single tree-view adapter.
 
-    Lazily imports ``ari.checkpoint.load_nodes_tree`` (the single resolver that
-    also honors the legacy ``node_*/tree.json`` layout, used by the live
-    WebSocket path) so the checkpoint list/summary cards agree with it.
+    Subtask 024: delegates to ``viz.tree_view.build_tree_view``, which wraps
+    ``ari.checkpoint.load_nodes_tree`` — the resolver that also honors the legacy
+    ``node_*/tree.json`` layout used by the live WebSocket path — so the
+    checkpoint list/summary cards agree with it. The ``best_scientific_score``
+    derivation is computed by the callers from the returned tree and is
+    unchanged.
     """
-    from ari.checkpoint import load_nodes_tree as _load
-    return _load(checkpoint_dir)
+    from .tree_view import build_tree_view
+    return build_tree_view(checkpoint_dir)
 
 
 
