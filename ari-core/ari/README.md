@@ -134,6 +134,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `README.md` — prompts index.
   - `__init__.py` — exports + `PromptLoader` plumbing.
   - `_loader.py` — `PromptLoader` Protocol + `FilesystemPromptLoader`.
+  - `_provenance.py` — TODO
   - `agent/` — agent ReAct system prompt.
     - `README.md` — agent index.
     - `system.md` — the agent system prompt.
