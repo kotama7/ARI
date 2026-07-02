@@ -1,0 +1,141 @@
+# Prompt-change review — PR-time prompt-integrity gate (subtask 051).
+#
+# Wires ARI's already-existing prompt-integrity assets into CI for the first
+# time. It composes (does not re-implement) three in-tree assets:
+#
+#   * report/scripts/check_prompt_snapshots.py  — "Gate 10": byte + SHA-256
+#     equality between report/shared/appendix/prompts/** and the source
+#     ari-core/ari/prompts/**. Documented in report/CLAUDE.md §2 but, until
+#     now, invoked by NO workflow (a template edit that skipped the appendix
+#     regeneration was silently mergeable).
+#   * ari-core/tests/test_prompt_extraction.py  — the pinned-SHA snapshot test.
+#     It runs today only transitively inside refactor-guards.yml's ~1,545-test
+#     pytest; here it is surfaced as an isolated, prompt-scoped signal.
+#   * scripts/check_prompts.py (subtask 043) — the inline-prompt inventory,
+#     invoked advisory-only and existence-guarded (no hard dependency).
+#
+# Hard gates: the two deterministic byte/hash checks above (zero false-positive
+# risk; already codified in CONTRIBUTING.md §385-399). Advisory: the co-change
+# coupling nudge and the inline-prompt inventory (Stage-1 warning-first, per
+# docs/refactoring/012_github_workflow_integration_plan.md §8).
+#
+# Diff idiom: this workflow uses github.event.pull_request.base.sha (immutable
+# for the run), NOT the origin/<base_ref> merge-base idiom in
+# refactor-guards.yml:82 — rationale in docs-change-coupling.yml:41-47. The five
+# existing workflows are unchanged.
+
+name: prompt-change-review
+
+on:
+  pull_request:
+    branches:
+      - main
+      - refactoring
+    paths:
+      - 'ari-core/ari/prompts/**'
+      - 'ari-skill-*/src/prompts/**'
+      - 'report/shared/appendix/prompts/**'
+      - 'ari-core/tests/test_prompt_extraction.py'
+      - '.github/workflows/prompt-change-review.yml'
+
+jobs:
+  # ── HARD: appendix snapshot integrity + pinned-SHA snapshot test ───────────
+  prompt-snapshots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # Gate 10 — appendix snapshots equal their upstream prompt bytes.
+      # Stdlib-only (argparse/hashlib/re/pathlib); no install needed, so it runs
+      # first and fails fast before the heavier editable install below.
+      - name: Gate 10 — appendix prompt snapshot integrity
+        run: python report/scripts/check_prompt_snapshots.py --root .
+
+      # Minimal install: test_prompt_extraction.py imports only
+      # `ari.prompts.FilesystemPromptLoader` + hashlib, whose import chain is
+      # stdlib-only, so editable ari-core (+ pytest) is enough. Install order
+      # mirrors the proven refactor-guards.yml:39-40 sequence (ari-skill-memory
+      # before ari-core, since ari-core may import ari_skill_memory); the heavy
+      # requirements.txt / scipy stack the full suite needs is not required here.
+      - name: Install ari-core (for the pinned-hash test)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ari-skill-memory
+          pip install -e ari-core
+          pip install pytest
+
+      - name: Pinned SHA-256 prompt snapshot test
+        run: pytest ari-core/tests/test_prompt_extraction.py -q
+
+  # ── ADVISORY (Stage 1, warning-first): co-change coupling + inline inventory
+  prompt-cochange:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install PyYAML
+        run: python -m pip install --upgrade pip pyyaml
+
+      # When a template under ari-core/ari/prompts/**/*.md changed but neither
+      # its paired appendix snapshot nor its _EXPECTED_HASHES SHA row moved in
+      # the same PR, WARN (do not fail). Mirrors the co-change idea of
+      # scripts/docs/check_report_cochange.py, inline in YAML (no new script).
+      - name: Prompt co-change coupling (advisory)
+        continue-on-error: true
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          if ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            echo "::warning::base.sha ${base} not reachable; skipping advisory co-change check."
+            exit 0
+          fi
+          changed="$(git diff --name-only "$base" HEAD)"
+          test_changed=no
+          if printf '%s\n' "$changed" | grep -qx 'ari-core/tests/test_prompt_extraction.py'; then
+            test_changed=yes
+          fi
+          warned=no
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              */README.md) continue ;;
+              ari-core/ari/prompts/*.md) ;;
+              *) continue ;;
+            esac
+            rel="${f#ari-core/ari/prompts/}"
+            snap="report/shared/appendix/prompts/$rel"
+            snap_changed=no
+            if printf '%s\n' "$changed" | grep -qx "$snap"; then
+              snap_changed=yes
+            fi
+            if [ "$snap_changed" = no ] && [ "$test_changed" = no ]; then
+              echo "::warning file=$f::Prompt template '$f' changed but neither its appendix snapshot ($snap) nor the pinned SHA row in ari-core/tests/test_prompt_extraction.py changed in this PR. Regenerate with 'python report/scripts/snapshot_prompts.py', update _EXPECTED_HASHES, and bump prompt_version (CONTRIBUTING.md §385-399)."
+              warned=yes
+            fi
+          done <<EOF
+          $changed
+          EOF
+          if [ "$warned" = no ]; then
+            echo "Prompt co-change check: OK — every changed prompt template also moved its snapshot or SHA row."
+          fi
+
+      # Inline-prompt externalization inventory (subtask 043). Existence-guarded
+      # so this workflow is valid whether or not scripts/check_prompts.py has
+      # landed; advisory (Stage 1) and never blocks.
+      - name: Inline-prompt inventory (advisory, guarded)
+        continue-on-error: true
+        run: |
+          if [ -f scripts/check_prompts.py ]; then
+            python scripts/check_prompts.py --json --output check_prompts.json
+            echo "Inline-prompt inventory complete (advisory); report at check_prompts.json."
+          else
+            echo "scripts/check_prompts.py not present (subtask 043 not landed); skipping inline-prompt inventory."
+          fi
