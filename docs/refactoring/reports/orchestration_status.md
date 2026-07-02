@@ -99,7 +99,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 061 | define_dashboard_dto_and_schema_policy | 5 | Low | No | 059 | DONE | 93d9662* |
 | 062 | refactor_dashboard_backend_routes_to_services | 5 | High | Yes | 059 | DONE* | 6bb10f1 |
 | 063 | refactor_dashboard_frontend_api_client_and_types | 5 | High | Yes | 059 | DONE | 63df6e5 |
-| 064 | refactor_dashboard_state_and_component_boundaries | 5 | High | Yes | 059 | TODO | — |
+| 064 | refactor_dashboard_state_and_component_boundaries | 5 | High | Yes | 059 | DONE* | da6aa4d |
 | 065 | add_dashboard_contract_and_schema_tests | 5 | Low | No | 059 | DONE | 0bca698 |
 | 066 | add_dashboard_build_and_ci_plan | 5 | Low | No | 059 | DONE | 0000cec |
 | 067 | inventory_dashboard_visible_settings | 6 | Low | No | 059 | DONE | 4252a79 |
