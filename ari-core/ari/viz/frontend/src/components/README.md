@@ -72,9 +72,24 @@ Feature-grouped React components — one subdirectory per dashboard page plus sh
   - `README.md` — Settings index.
   - `index.ts` — barrel re-export.
   - `settingsConstants.ts` — provider/Letta model tables + _splitHandle helper (extracted from SettingsPage in req 15).
+  - `SettingsGroup.tsx` — TODO
   - `SettingsPage.tsx` — settings view.
+  - `settingsStyles.ts` — TODO
+  - `settingsTypes.ts` — TODO
   - `__tests__/` — TODO
     - `SettingsContract.test.tsx` — TODO
+    - `SettingsDisclosure.test.tsx` — TODO
+  - `sections/` — TODO
+    - `ContainerSection.tsx` — TODO
+    - `LanguageSection.tsx` — TODO
+    - `LlmBackendSection.tsx` — TODO
+    - `MemorySection.tsx` — TODO
+    - `PaperRetrievalSection.tsx` — TODO
+    - `ProjectManagementSection.tsx` — TODO
+    - `SkillsSection.tsx` — TODO
+    - `SlurmSection.tsx` — TODO
+    - `SshSection.tsx` — TODO
+    - `VlmReviewSection.tsx` — TODO
 - `Tree/` — BFTS tree page (search tree, detail panel, file browser).
   - `README.md` — Tree index.
   - `DetailPanel.tsx` — selected-node detail panel (tabs: memory, report, etc.).
