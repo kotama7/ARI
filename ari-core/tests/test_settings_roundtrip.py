@@ -50,7 +50,7 @@ def _srv():
     its imports.
     """
     parts = []
-    for sib in ("ui_helpers.py", "websocket.py", "routes.py"):
+    for sib in ("ui_helpers.py", "websocket.py", "routes.py", "services/state_service.py"):
         p = _VIZ / sib
         if p.exists():
             parts.append(p.read_text())

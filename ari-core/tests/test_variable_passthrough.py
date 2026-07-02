@@ -41,7 +41,10 @@ def _cfg():
     return (_ARI / "config.py").read_text()
 def _srv():   return (_VIZ / "server.py").read_text()
 def _set():   return (_VIZ / "api_settings.py").read_text()
-def _routes(): return (_VIZ / "routes.py").read_text()
+def _routes(): return ((_VIZ / "routes.py").read_text()
+                       # subtask 062: /state builder (frontier_score/composite/axis_mode)
+                       # relocated to services/state_service.py — location pointer only.
+                       + (_VIZ / "services" / "state_service.py").read_text())
 
 
 def _read_react_sources():
