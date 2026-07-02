@@ -9,6 +9,11 @@ JSON Schemas shipped with ari-core, loaded by basename via
 - `__init__.py` — `load(name)` loader.
 - `node_report.schema.json` — per-node report schema.
 - `publish.schema.json` — publish record / manifest schema.
+- `viz_checkpoint.schema.json` — TODO
+- `viz_checkpoint_summary.schema.json` — TODO
+- `viz_settings.schema.json` — TODO
+- `viz_state.schema.json` — TODO
+- `viz_tree_node.schema.json` — TODO
 
 ## See also
 
