@@ -39,6 +39,7 @@ Entry points: `serve` (programmatic), `main` (`ari viz`).
 - `frontend/` — React + Vite + TypeScript. Served by `ari viz` / `python -m ari.viz.server`
 - `services/` — TODO
   - `__init__.py` — TODO
+  - `file_service.py` — TODO
   - `launch_service.py` — TODO
   - `state_service.py` — TODO
 

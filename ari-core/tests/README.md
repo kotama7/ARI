@@ -132,6 +132,7 @@ targets the like-named module under `ari/`.
 - `test_virsci_off.py` — VirSci-off path.
 - `test_viz_dto_schema.py` — TODO
 - `test_viz_fewshot_api.py` — viz few-shot API.
+- `test_viz_file_service.py` — TODO
 - `test_viz_memory_api.py` — viz memory API.
 - `test_viz_node_report_api.py` — viz node_report API.
 - `test_viz_repro_synth.py` — viz repro-synth.
