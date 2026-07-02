@@ -29,6 +29,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from ari._factory import BaseRegistry
+
 
 class PublishError(RuntimeError):
     pass
@@ -195,24 +197,60 @@ def promote(
     )
 
 
-def _load_backend(name: str):
-    if name == "ari-registry":
-        from .backends import ari_registry as backend
-    elif name == "local-tarball":
-        from .backends import local_tarball as backend
-    elif name == "zenodo":
-        try:
-            from .backends import zenodo as backend
-        except ImportError as e:
-            raise PublishError("zenodo backend not implemented") from e
-    elif name == "gh":
-        try:
-            from .backends import gh as backend
-        except ImportError as e:
-            raise PublishError("gh backend not implemented") from e
-    else:
-        raise PublishError(f"unknown backend: {name}")
+# ── backend registry (subtask 014) ────────────────────────────────────────
+# The four publish backends are unified behind ``ari._factory.BaseRegistry``.
+# They stay **lazily** imported (each loader imports its module only when
+# resolved) so optional-dependency backends (``zenodo`` / ``gh``) still degrade
+# to ``PublishError`` on ``ImportError``. The four backend modules under
+# ``backends/`` are referenced ONLY by these string keys — they are live-by-string
+# and must never be treated as dead code (subtask 053/057 handoff).
+#
+# ``BaseRegistry.keys()`` is the canonical key list; a parity test
+# (``tests/test_factory_registry.py``) asserts it is a subset of the
+# ``publish.schema.json`` backend-name enum and documents the schema-only
+# ``s3`` gap (enum lists ``s3`` but no backend module exists — do NOT add one).
+
+
+def _load_ari_registry_backend():
+    from .backends import ari_registry as backend
     return backend
+
+
+def _load_local_tarball_backend():
+    from .backends import local_tarball as backend
+    return backend
+
+
+def _load_zenodo_backend():
+    try:
+        from .backends import zenodo as backend
+    except ImportError as e:
+        raise PublishError("zenodo backend not implemented") from e
+    return backend
+
+
+def _load_gh_backend():
+    try:
+        from .backends import gh as backend
+    except ImportError as e:
+        raise PublishError("gh backend not implemented") from e
+    return backend
+
+
+_BACKEND_REGISTRY: "BaseRegistry" = BaseRegistry("publish backend", error_cls=PublishError)
+_BACKEND_REGISTRY.register_lazy("ari-registry", _load_ari_registry_backend)
+_BACKEND_REGISTRY.register_lazy("local-tarball", _load_local_tarball_backend)
+_BACKEND_REGISTRY.register_lazy("zenodo", _load_zenodo_backend)
+_BACKEND_REGISTRY.register_lazy("gh", _load_gh_backend)
+
+
+def _load_backend(name: str):
+    """Resolve a publish backend module by string key.
+
+    Thin back-compat wrapper delegating to ``_BACKEND_REGISTRY.resolve`` so the
+    signature and ``PublishError``-on-unknown-key behaviour are unchanged.
+    """
+    return _BACKEND_REGISTRY.resolve(name)
 
 
 __all__ = ["PublishError", "PublishRecord", "publish", "promote"]
