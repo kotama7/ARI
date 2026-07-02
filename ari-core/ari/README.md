@@ -9,6 +9,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `__init__.py` — package marker.
 - `_deprecation.py` — `DeprecationWarning` helpers for v0.5→v1.0 legacy paths/aliases.
 - `_factory.py` — TODO
+- `artifact_store.py` — TODO
 - `checkpoint.py` — checkpoint JSON I/O (`tree.json` / `nodes_tree.json` / `results.json`).
 - `cli_ear.py` — `ari ear …` curation / publish / promote / status CLI surface.
 - `container.py` — unified container runtime abstraction (Docker / Singularity / bare subprocess).
@@ -19,6 +20,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `memory_cli.py` — `ari memory` subcommand (migrate / backup / …).
 - `paths.py` — centralised `PathManager` for directory layout/resolution.
 - `pidfile.py` — `.ari_pid` write/read/cleanup for run-liveness detection.
+- `trace_store.py` — TODO
 - `agent/` — ReAct loop, environment capture, per-stage workflow guidance.
   - `README.md` — agent index.
   - `__init__.py` — package module-map docstring.
@@ -169,6 +171,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `evaluator.py` — `Evaluator` Protocol.
   - `model_backend.py` — TODO
   - `search.py` — TODO
+  - `stores.py` — TODO
 - `public/` — public API surface for ARI skills (import-only contract).
   - `README.md` — public index.
   - `__init__.py` — exported sub-modules + rationale.

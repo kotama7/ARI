@@ -18,6 +18,7 @@ targets the like-named module under `ari/`.
 - `test_api_process.py` — process-control service (stop-all + GPU monitor).
 - `test_api_schema_contract.py` — stable viz endpoint response-shape contracts.
 - `test_architecture_boundary_index.py` — TODO
+- `test_artifact_store.py` — TODO
 - `test_bfts.py` — BFTS loop.
 - `test_bfts_allow_web.py` — `bfts.allow_web` / `ARI_BFTS_ALLOW_WEB` toggle: web-skill phase gating in/out of bfts + the `bfts_web_provenance.json` marker roundtrip.
 - `test_bfts_diversity.py` — BFTS diversity/fanout.
@@ -26,6 +27,7 @@ targets the like-named module under `ari/`.
 - `test_bfts_prompt_builder.py` — TODO
 - `test_bfts_prompt_selection.py` — BFTS prompt selection.
 - `test_checkpoint_legacy_tree.py` — legacy node_*/tree.json resolution in list/summary.
+- `test_checkpoint_store.py` — TODO
 - `test_child_node_workflow.py` — child-node workflow.
 - `test_child_workdir_inherit.py` — child workdir inheritance.
 - `test_claim_evidence_hard_gate.py` — Story2Proposal Phase B deterministic gate: recompute, mismatch, operand resolution, coverage, blocking semantics.
@@ -121,6 +123,7 @@ targets the like-named module under `ari/`.
 - `test_system_prompt_memory.py` — system-prompt memory.
 - `test_tool_timeout_tier.py` — MCP `_resolve_tool_timeout` tiering: LLM/compile paper stages (incl. `paper_refine`, `compile_paper`) get the slow timeout, plain tools the 300s default (regression guard for the paper_refine shim-congestion timeout).
 - `test_trace_log_truncation.py` — trace-log truncation.
+- `test_trace_store.py` — TODO
 - `test_tree_view_adapter.py` — TODO
 - `test_upload_to_node.py` — upload to compute node.
 - `test_variable_passthrough.py` — variable passthrough.
