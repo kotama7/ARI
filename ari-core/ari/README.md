@@ -83,6 +83,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `README.md` — memory index.
   - `__init__.py` — `MemoryClient` protocol, backends, migration map.
   - `auto_migrate.py` — v0.5.x → v0.6.0 auto-migration on first launch.
+  - `backend.py` — TODO
   - `client.py` — abstract `MemoryClient` ABC.
   - `file_client.py` — `FileMemoryClient` (legacy JSONL).
   - `letta_client.py` — `LettaMemoryClient` (default).
