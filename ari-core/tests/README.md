@@ -52,6 +52,7 @@ targets the like-named module under `ari/`.
 - `test_evaluator_axis_mode.py` — evaluator axis mode.
 - `test_evaluator_composite.py` — evaluator composite scoring.
 - `test_evaluator_independence.py` — TODO
+- `test_evaluator_protocol.py` — TODO
 - `test_event_loop_and_csv.py` — event loop + CSV logging.
 - `test_file_explorer.py` — file explorer.
 - `test_gui_env_propagation.py` — GUI env propagation.
