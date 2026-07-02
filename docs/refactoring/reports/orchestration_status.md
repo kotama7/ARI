@@ -79,7 +79,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 041 | extract_pipeline_and_paper_generation_prompts | 7 | Medium | Yes | 036 | TODO | — |
 | 042 | add_prompt_snapshot_tests | 7 | Low | No | 036 | DONE | 2bc2e94 |
 | 043 | add_prompt_checker_script | 7 | Low | No | 036 | DONE | dffefdf |
-| 044 | add_prompt_version_tracking_to_run_metadata | 7 | Medium | Yes | 036 | TODO | — |
+| 044 | add_prompt_version_tracking_to_run_metadata | 7 | Medium | Yes | 036 | DONE | 8f59cf0 |
 | 045 | inventory_github_workflows | 9 | Low | No | — | DONE | 8842a5f |
 | 046 | design_quality_ci_integration | 9 | Low | No | 045 | DONE | 93d9662* |
 | 047 | add_pr_template_quality_checklist | 9 | Low | No | 045 | DONE | 78c9eea |
