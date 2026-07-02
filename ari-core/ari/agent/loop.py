@@ -12,13 +12,16 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ari.agent.workflow import WorkflowHints
 from ari.llm.client import LLMClient, LLMMessage
 from ari.mcp.client import MCPClient
 from ari.memory.client import MemoryClient
 from ari.orchestrator.node import Node
+
+if TYPE_CHECKING:
+    from ari.protocols import Evaluator
 
 logger = logging.getLogger(__name__)
 
@@ -369,7 +372,7 @@ class AgentLoop:
         llm: LLMClient,
         memory: MemoryClient,
         mcp: MCPClient,
-        evaluator: object | None = None,
+        evaluator: Evaluator | None = None,
         workflow_hints: WorkflowHints | None = None,
         max_react_steps: int = MAX_REACT_STEPS,
         timeout_per_node: int = 7200,
