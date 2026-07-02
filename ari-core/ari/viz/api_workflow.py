@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import logging
-from pathlib import Path
 
 from . import state as _st
 
@@ -271,10 +270,10 @@ def flow_to_workflow_yaml(flow_data: dict) -> dict:
 def _api_get_workflow_flow() -> dict:
     """GET /api/workflow/flow — Return current workflow as React Flow JSON."""
     import yaml
+    from ari.config.finder import package_config_root
 
     wf_candidates = [
-        Path(__file__).parent.parent.parent / "config" / "workflow.yaml",
-        Path(__file__).parent.parent.parent.parent / "config" / "workflow.yaml",
+        package_config_root() / "workflow.yaml",
     ]
     if _st._checkpoint_dir:
         wf_candidates.insert(0, _st._checkpoint_dir / "workflow.yaml")
@@ -304,9 +303,9 @@ def _api_save_workflow_flow(body: bytes) -> dict:
     yaml_parts = flow_to_workflow_yaml(flow)
 
     # Locate source workflow
+    from ari.config.finder import package_config_root
     wf_candidates = [
-        Path(__file__).parent.parent.parent / "config" / "workflow.yaml",
-        Path(__file__).parent.parent.parent.parent / "config" / "workflow.yaml",
+        package_config_root() / "workflow.yaml",
     ]
     if _st._checkpoint_dir:
         wf_candidates.insert(0, _st._checkpoint_dir / "workflow.yaml")
@@ -388,9 +387,9 @@ def _api_save_skill_phases(body: bytes) -> dict:
     if not phase_map:
         return {"ok": False, "error": "no valid skill phase entries", "_status": 400}
 
+    from ari.config.finder import package_config_root
     wf_candidates = [
-        Path(__file__).parent.parent.parent / "config" / "workflow.yaml",
-        Path(__file__).parent.parent.parent.parent / "config" / "workflow.yaml",
+        package_config_root() / "workflow.yaml",
     ]
     if _st._checkpoint_dir:
         wf_candidates.insert(0, _st._checkpoint_dir / "workflow.yaml")
@@ -423,9 +422,9 @@ def _api_save_disabled_tools(body: bytes) -> dict:
     if not isinstance(disabled, list):
         return {"ok": False, "error": "missing disabled_tools array", "_status": 400}
 
+    from ari.config.finder import package_config_root
     wf_candidates = [
-        Path(__file__).parent.parent.parent / "config" / "workflow.yaml",
-        Path(__file__).parent.parent.parent.parent / "config" / "workflow.yaml",
+        package_config_root() / "workflow.yaml",
     ]
     if _st._checkpoint_dir:
         wf_candidates.insert(0, _st._checkpoint_dir / "workflow.yaml")
@@ -447,9 +446,8 @@ def _api_get_default_workflow() -> dict:
     """GET /api/workflow/default — Return the default workflow from config/."""
     import yaml
 
-    default_path = Path(__file__).parent.parent.parent / "config" / "workflow.yaml"
-    if not default_path.exists():
-        default_path = Path(__file__).parent.parent.parent.parent / "config" / "workflow.yaml"
+    from ari.config.finder import package_config_root
+    default_path = package_config_root() / "workflow.yaml"
 
     if not default_path.exists():
         return {"ok": False, "error": "default workflow.yaml not found"}

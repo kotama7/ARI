@@ -325,12 +325,12 @@ def run_pipeline(
     # out of the paper while BFTS still sees the full experiment_goal.
     try:
         import yaml as _yaml
+        from ari.config.finder import package_config_root
         _cfg_candidates = [
             Path(config_path) if config_path else None,
             Path(config_path).parent / "workflow.yaml" if config_path else None,
-            # Phase 3C — orchestrator.py is now under ``ari/pipeline/``
-            # so the bundled ``config/`` lives 3 parents up.
-            Path(__file__).resolve().parent.parent.parent / "config" / "workflow.yaml",
+            # Bundled package config, located via the single accessor.
+            package_config_root() / "workflow.yaml",
         ]
         _cfg_path = next((p for p in _cfg_candidates if p and p.exists()), None)
         _wf_cfg = _yaml.safe_load(_cfg_path.read_text()) if _cfg_path else {}

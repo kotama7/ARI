@@ -153,7 +153,8 @@ def paper(
     # Prefer per-checkpoint workflow.yaml (carries launch-time rewrites) over
     # the package source.
     from pathlib import Path as _PL
-    _pkg_wf = _PL(__file__).parent.parent / "config" / "workflow.yaml"
+    from ari.config.finder import package_config_root
+    _pkg_wf = package_config_root() / "workflow.yaml"
     _ckpt_wf = _PL(checkpoint_dir) / "workflow.yaml"
     if _ckpt_wf.exists():
         _cfg_str = str(_ckpt_wf)

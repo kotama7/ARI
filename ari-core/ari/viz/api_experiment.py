@@ -642,7 +642,8 @@ def _api_launch(body: bytes) -> dict:
         # - include_review=False: skip rubric-driven text review + the
         #   post-hoc merge with VLM figure review.
         # - include_reproduce=False: skip the entire ORS reproduce arc.
-        _wf_src = Path(__file__).resolve().parent.parent.parent / "config" / "workflow.yaml"
+        from ari.config.finder import package_config_root
+        _wf_src = package_config_root() / "workflow.yaml"
         _wf_dst = _pre_ckpt / "workflow.yaml"
         if _wf_src.exists():
             try:
