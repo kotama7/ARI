@@ -10,6 +10,10 @@ Currently exposed:
 - :class:`Evaluator`        — evaluator strategy (PC6).
 - :class:`BaseModelBackend` — LLM/model backend strategy (subtask 008);
   satisfied structurally by :class:`ari.llm.client.LLMClient`.
+- :class:`SearchStrategy`   — BFTS ranking/selection strategy (subtask 011);
+  satisfied structurally by :class:`ari.orchestrator.bfts.BFTS`.
+- :class:`NodeExecutor`     — single-node ReAct executor (subtask 011);
+  satisfied structurally by :class:`ari.agent.loop.AgentLoop`.
 - :class:`PromptLoader` (re-exported from :mod:`ari.prompts`).
 - :class:`ConfigLoader` (re-exported from :mod:`ari.configs`).
 
@@ -19,7 +23,15 @@ subsequent phases when their adopters are ready.
 
 from ari.protocols.evaluator import Evaluator  # noqa: F401
 from ari.protocols.model_backend import BaseModelBackend  # noqa: F401
+from ari.protocols.search import NodeExecutor, SearchStrategy  # noqa: F401
 from ari.prompts._loader import PromptLoader  # noqa: F401
 from ari.configs._loader import ConfigLoader  # noqa: F401
 
-__all__ = ["Evaluator", "BaseModelBackend", "PromptLoader", "ConfigLoader"]
+__all__ = [
+    "Evaluator",
+    "BaseModelBackend",
+    "SearchStrategy",
+    "NodeExecutor",
+    "PromptLoader",
+    "ConfigLoader",
+]

@@ -24,6 +24,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from rich.console import Console
 
@@ -35,6 +36,9 @@ from ari.cli.lineage import (
     _mark_parent_terminated,
 )
 from ari.paths import PathManager
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from ari.protocols import NodeExecutor, SearchStrategy
 
 
 log = logging.getLogger(__name__)
@@ -82,8 +86,8 @@ def _save_tree_incremental(
 
 
 
-def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
-              checkpoint_dir, run_id, total_processed=0):
+def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes,
+              experiment_data, checkpoint_dir, run_id, total_processed=0):
     from ari.orchestrator.node import NodeStatus
     max_workers = max(1, min(cfg.bfts.max_parallel_nodes, 4))
 

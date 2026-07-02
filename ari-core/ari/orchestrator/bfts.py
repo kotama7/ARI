@@ -9,32 +9,23 @@ import threading
 import unicodedata
 import uuid
 from collections import Counter
-from dataclasses import dataclass
 
 from ari.config import BFTSConfig
+
+# Prompt-context serialization lives in bfts_prompt_builder (subtask 011 §7-A);
+# _BUDGET is re-imported so ari.orchestrator.bfts._BUDGET keeps resolving. This
+# module imports no ari runtime modules, so it is safe above the logger line.
+from ari.orchestrator.bfts_prompt_builder import (
+    _BUDGET,
+    build_expand_context,
+    build_expand_select_candidate_descriptions,
+    build_select_candidate_descriptions,
+)
 
 logger = logging.getLogger(__name__)
 from ari.llm.client import LLMClient, LLMMessage
 from ari.memory.client import MemoryClient
 from ari.orchestrator.node import Node, NodeLabel
-
-
-# ─────────────────────────────────────────
-# Prompt budget (L-2): centralize the truncation/list limits used to keep
-# expand() / select_next_node() prompts within model context windows.
-# ─────────────────────────────────────────
-@dataclass(frozen=True)
-class _PromptBudget:
-    parent_delta_chars: int = 240
-    parent_concern_chars: int = 200
-    parent_hint_chars: int = 200
-    candidate_summary_select_chars: int = 120
-    candidate_summary_expand_chars: int = 150
-    sibling_direction_chars: int = 160
-    list_top_n: int = 5
-
-
-_BUDGET = _PromptBudget()
 
 
 # ─────────────────────────────────────────
@@ -448,26 +439,10 @@ class BFTS:
             json.dumps(memories, ensure_ascii=False) if memories else "No relevant memories."
         )
 
-        candidate_descriptions = []
-        for i, node in enumerate(candidates):
-            metrics_str = (
-                json.dumps(node.metrics, ensure_ascii=False)
-                if node.metrics else "not_yet_measured"
-            )
-            bonus = self.diversity_bonus(node)
-            bonus_note = f", diversity_bonus=+{bonus:.2f}" if bonus > 0 else ""
-            label_str = (
-                node.label.value if hasattr(node.label, "value") else str(node.label or "?")
-            )
-            desc = (
-                f"[{i}] id={node.id[-8:]}, depth={node.depth}, "
-                f"label={label_str}, "
-                f"has_real_data={node.has_real_data}, "
-                f"metrics={metrics_str}, "
-                f"summary={repr((node.eval_summary or 'none')[: _BUDGET.candidate_summary_select_chars])}"
-                f"{bonus_note}"
-            )
-            candidate_descriptions.append(desc)
+        diversity_bonuses = [self.diversity_bonus(node) for node in candidates]
+        candidate_descriptions = build_select_candidate_descriptions(
+            candidates, diversity_bonuses
+        )
 
         # Phase PC5: see ``ari/prompts/orchestrator/bfts_select.md``.
         # BFTSConfig.select_prompt lets a config swap in an alternative
@@ -542,20 +517,7 @@ class BFTS:
         if len(frontier) == 1:
             return frontier[0]
 
-        candidate_descriptions = []
-        for i, node in enumerate(frontier):
-            metrics_str = (
-                json.dumps(node.metrics, ensure_ascii=False)
-                if node.metrics else "not_yet_measured"
-            )
-            desc = (
-                f"[{i}] id={node.id[-8:]}, depth={node.depth}, "
-                f"label={node.label.value if node.label else 'unknown'}, "
-                f"has_real_data={node.has_real_data}, "
-                f"metrics={metrics_str}, "
-                f"summary={repr((node.eval_summary or 'none')[: _BUDGET.candidate_summary_expand_chars])}"
-            )
-            candidate_descriptions.append(desc)
+        candidate_descriptions = build_expand_select_candidate_descriptions(frontier)
 
         # Phase PC5: see ``ari/prompts/orchestrator/bfts_expand_select.md``.
         from ari.prompts import FilesystemPromptLoader as _PL_bes
@@ -617,165 +579,35 @@ class BFTS:
           - Tree diversity metrics (unique labels seen so far, depth distribution)
           - Already-spawned children of this parent (to avoid duplication)
         """
-        parent_status = "succeeded" if node.has_real_data else "failed/no-real-data"
-        goal_line = f"Experiment goal: {experiment_goal}\n" if experiment_goal else ""
-        sci_score = (node.metrics or {}).get("_scientific_score")
-        sci_note = (
-            f"Parent scientific score: {sci_score:.2f}/1.0\n"
-            if sci_score is not None
-            else "Parent scientific score: not yet evaluated\n"
-        )
-        idea_block = (
-            f"\nResearch direction (from upstream idea generation):\n{idea_context}\n"
-            if idea_context
-            else ""
-        )
-
-        # I-4: depth and budget signals to the planner.
-        depth_note = (
-            f"Current depth: {node.depth} / max_depth {self.config.max_depth} "
-            f"(child will be at depth {node.depth + 1})\n"
-        )
-        budget_note = (
-            f"Remaining node budget: {budget_remaining} / {self.config.max_total_nodes}\n"
-            if budget_remaining is not None
-            else ""
-        )
-
         # ── Parent's node_report (delta_vs_parent / concerns / hints) ──
         # Best-effort: when present, this enriches the prompt with the
         # parent's structured self-assessment so the planner can target
         # specific weaknesses or follow up on concrete next-step hints.
+        # This read + the sibling-report read are the two filesystem inputs;
+        # they stay in BFTS and are handed to the (pure) context builder.
         parent_report_block = _format_parent_report_block(node)
-
-        # ── Sibling scores at same depth ──
-        sibling_lines: list[str] = []
-        for s in siblings or []:
-            if s.id == node.id:
-                continue
-            ss = (s.metrics or {}).get("_scientific_score")
-            sl = s.label.value if hasattr(s.label, "value") else str(s.label or "?")
-            sibling_lines.append(
-                f"  - id={s.id[-8:]} label={sl} score="
-                + (f"{float(ss):.2f}" if ss is not None else "n/a")
-            )
-        siblings_block = (
-            "Sibling scores at same depth:\n" + "\n".join(sibling_lines) + "\n\n"
-            if sibling_lines
-            else "Sibling scores at same depth: (none)\n\n"
-        )
-
-        # ── Ancestor scores (root → parent) ──
-        ancestor_lines: list[str] = []
-        for a in ancestors or []:
-            ass = (a.metrics or {}).get("_scientific_score")
-            al = a.label.value if hasattr(a.label, "value") else str(a.label or "?")
-            ancestor_lines.append(
-                f"  - depth={a.depth} id={a.id[-8:]} label={al} score="
-                + (f"{float(ass):.2f}" if ass is not None else "n/a")
-            )
-        ancestors_block = (
-            "Ancestor scores:\n" + "\n".join(ancestor_lines) + "\n\n"
-            if ancestor_lines
-            else "Ancestor scores: (none)\n\n"
-        )
-
-        # ── Already-spawned children of this parent (avoid duplicating) ──
         sibling_reports = self._load_sibling_node_reports(existing_children or [])
-        sibling_label_counts: Counter = Counter()
-        existing_lines: list[str] = []
-        for c in (existing_children or []):
-            cl = c.label.value if hasattr(c.label, "value") else str(c.label or "?")
-            sibling_label_counts[cl] += 1
-            cdir = (c.eval_summary or "").strip().replace("\n", " ")
-            cstatus = c.status.value if hasattr(c.status, "value") else str(c.status or "?")
-            cscore = (c.metrics or {}).get("_scientific_score")
-            score_part = f" score={float(cscore):.2f}" if isinstance(cscore, (int, float)) else ""
-            line = (
-                f"  - id={c.id[-8:]} label={cl} status={cstatus}{score_part}"
-                f" direction={repr(cdir[: _BUDGET.sibling_direction_chars])}"
-            )
-            rep = sibling_reports.get(c.id)
-            if rep:
-                fc = rep.get("files_changed") or {}
-                added = [e.get("path") for e in (fc.get("added") or [])][: _BUDGET.list_top_n]
-                if added:
-                    line += f" files_added={added}"
-            existing_lines.append(line)
 
-        if existing_lines:
-            label_dist_str = ", ".join(
-                f"{lbl}={cnt}" for lbl, cnt in sorted(sibling_label_counts.items())
-            )
-            # L-6: saturation threshold is now a config knob, default 2.
-            threshold = int(getattr(self.config, "label_saturation_threshold", 2) or 2)
-            saturated = sorted(
-                lbl for lbl, cnt in sibling_label_counts.items() if cnt >= threshold
-            )
-            quota_lines = [
-                f"  label distribution among THIS parent's existing children: "
-                f"{{{label_dist_str}}}"
-            ]
-            if saturated:
-                quota_lines.append(
-                    f"  labels already saturated (≥{threshold} appearances): {saturated} — "
-                    "propose a DIFFERENT label unless you have a strong scientific "
-                    "reason to repeat one of these."
-                )
-            existing_block = (
-                "Already-spawned children of THIS parent (do NOT duplicate these "
-                "directions; propose something complementary):\n"
-                + "\n".join(existing_lines) + "\n"
-                + "\n".join(quota_lines) + "\n\n"
-            )
-        else:
-            existing_block = (
-                "Already-spawned children of THIS parent: "
-                "(none — this is the first child)\n\n"
-            )
-
-        # ── Tree diversity metrics ──
-        seen_labels: list[str] = []
-        depth_counts: dict[int, int] = {}
-        for n in all_run_nodes or []:
-            try:
-                lbl = n.label.value if hasattr(n.label, "value") else str(n.label or "")
-            except Exception:
-                lbl = ""
-            if lbl and lbl not in seen_labels:
-                seen_labels.append(lbl)
-            try:
-                d = int(getattr(n, "depth", 0) or 0)
-            except (TypeError, ValueError):
-                d = 0
-            depth_counts[d] = depth_counts.get(d, 0) + 1
-        diversity_block = (
-            "Tree diversity so far:\n"
-            f"  unique labels observed: {seen_labels if seen_labels else '(none)'}\n"
-            f"  depth distribution: {depth_counts if depth_counts else '(empty)'}\n\n"
+        # Subtask 011 §7-A: pure context serialization lives in the builder.
+        _ctx = build_expand_context(
+            node,
+            self.config,
+            experiment_goal=experiment_goal,
+            idea_context=idea_context,
+            siblings=siblings,
+            ancestors=ancestors,
+            all_run_nodes=all_run_nodes,
+            existing_children=existing_children,
+            budget_remaining=budget_remaining,
+            parent_report_block=parent_report_block,
+            sibling_reports=sibling_reports,
         )
 
         # Phase PC5: see ``ari/prompts/orchestrator/bfts_expand.md``.
         from ari.prompts import FilesystemPromptLoader as _PL_be
         from ari.prompts import record_prompt_use as _record_prompt_use
         _exp_text, _exp_hash = _PL_be().load_versioned("orchestrator/bfts_expand")
-        prompt = _exp_text.format(
-            goal_line=goal_line,
-            parent_id_short=node.id[-8:],
-            parent_depth=node.depth,
-            parent_status=parent_status,
-            depth_note=depth_note,
-            budget_note=budget_note,
-            parent_metrics_json=json.dumps(node.metrics, ensure_ascii=False),
-            parent_summary=node.eval_summary or 'none',
-            sci_note=sci_note,
-            idea_block=idea_block,
-            parent_report_block=parent_report_block,
-            siblings_block=siblings_block,
-            ancestors_block=ancestors_block,
-            existing_block=existing_block,
-            diversity_block=diversity_block,
-        )
+        prompt = _exp_text.format(**_ctx)
         # Subtask 044: prompt provenance (byte-identical rendered output).
         _record_prompt_use(
             "orchestrator/bfts_expand", _exp_hash, rendered_text=prompt,
