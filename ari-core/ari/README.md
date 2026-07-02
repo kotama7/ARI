@@ -159,6 +159,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `README.md` — protocols index.
   - `__init__.py` — currently exposed protocols + roadmap.
   - `evaluator.py` — `Evaluator` Protocol.
+  - `model_backend.py` — TODO
 - `public/` — public API surface for ARI skills (import-only contract).
   - `README.md` — public index.
   - `__init__.py` — exported sub-modules + rationale.
