@@ -1,0 +1,185 @@
+# External-contract regression gates — subtask 049 (add_contract_check_workflows).
+#
+# Design inputs (authoritative): docs/refactoring/reports/032_quality_script_ci_integration.md
+# and docs/refactoring/012_github_workflow_integration_plan.md (§7/§8/§15).
+# This is a NEW, additive workflow; the five existing workflows are untouched.
+#
+# It hosts the external-contract regression gates that protect the surfaces most
+# at risk during a refactor (all confirmed ungated before this subtask):
+#   * public-api          ari.public.* symbol snapshot        scripts/check_public_api_contracts.py (029)
+#   * viz-api-schema       viz routes <-> services/api.ts       scripts/check_viz_api_schema.py       (030)
+#   * mcp-tool-contracts   14 ari-skill-*/src/server.py tools   scripts/snapshot_contracts.py --surface mcp (034)
+#   * quality-report       needs:-gated aggregation reporter    scripts/generate_quality_report.py    (031)
+#
+# Staged-rollout policy (032 §7 / 012 §8): every gate LANDS AT STAGE 1 (advisory).
+# Safe-to-land mechanism (032 §7.6, option a): each checker step carries
+# `continue-on-error: true`, so a finding — or a not-yet-baselined checker — can
+# never turn a green PR red. Promotion to a hard gate (Stage 2/3) is a later,
+# one-line flip (`continue-on-error: false` or a `--strict`/`--fail-on-regression`
+# toggle), never a workflow rewrite. This subtask flips nothing.
+#
+# Determinism (design principle P2): every checker is stdlib+PyYAML only, no LLM,
+# no network — matching the docs gates and ari-skill-memory's "no LLM calls".
+
+name: contracts
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  public-api:
+    # subtask 029 — ari.public.* contract snapshot. Stage 1 (advisory) -> 3.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install PyYAML
+        run: python -m pip install --upgrade pip pyyaml
+      - name: ari.public.* contract snapshot (advisory at Stage 1)
+        continue-on-error: true
+        # Advisory by default: without --strict the checker always exits 0, so it
+        # reports drift vs docs/refactoring/reports/public_api_snapshot.json without
+        # blocking. Promotion = add --strict. Emit the shared JSON envelope to a file
+        # named for the aggregator (generate_quality_report.yaml `check_public_api_contracts`).
+        run: python scripts/check_public_api_contracts.py --json > check_public_api_contracts.json
+      - name: Upload public-api report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-public-api
+          path: check_public_api_contracts.json
+          if-no-files-found: warn
+
+  viz-api-schema:
+    # subtask 030 — viz routes.py + api_*.py <-> frontend/services/api.ts. Stage 1 -> 3.
+    # Pure-Python parse of services/api.ts (no Node / no pnpm needed, per 030).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install PyYAML
+        run: python -m pip install --upgrade pip pyyaml
+      - name: viz API <-> services/api.ts schema (advisory at Stage 1)
+        continue-on-error: true
+        # base.sha is the PR's base-branch tip on the event payload: immutable for
+        # this run and always reachable in the fetched history. Preferred over the
+        # `origin/<base_ref>` pattern in refactor-guards.yml, which resolves a
+        # remote-tracking ref that can move if the base branch advances mid-run
+        # (rationale documented in docs-change-coupling.yml:42-47). NOT preferred:
+        # do not copy the origin/<base_ref> idiom into new jobs.
+        run: |
+          python scripts/check_viz_api_schema.py \
+            --warning-only \
+            --format json --output check_viz_api_schema.json \
+            --base-ref "${{ github.event.pull_request.base.sha }}"
+      - name: Upload viz-api-schema report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-viz-api-schema
+          path: check_viz_api_schema.json
+          if-no-files-found: warn
+
+  mcp-tool-contracts:
+    # MCP tool-schema contract snapshot over the 14 ari-skill-*/src/server.py
+    # servers (tool name / inputSchema / mcp__<skill>__<tool> naming). Stage 1 -> 3.
+    # The `mcp` surface is a pure-AST scan (snapshot_contracts.py never launches a
+    # skill server and imports no ari-core), so this job needs stdlib only.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: MCP tool-schema snapshot verify (advisory at Stage 1)
+        continue-on-error: true
+        run: python scripts/snapshot_contracts.py --surface mcp --check
+
+  quality-report:
+    # subtask 031 — aggregation reporter. Reads the per-job --json artifacts and
+    # renders ONE summary. It NEVER fails the build on checker content (it is a
+    # reporter): --warning-only + continue-on-error guarantee it fails only on its
+    # own execution error.
+    #
+    # Cross-workflow limitation (032 §8): GitHub Actions `needs:`/download-artifact
+    # cannot span workflows, so this job aggregates only the contracts.yml checker
+    # artifacts. The refactor-invariant gates (complexity / import-boundaries /
+    # directory-policy / dead-code) live in refactor-guards.yml and report there;
+    # they show as `unavailable` here (graceful degradation, 031 §7). Folding them
+    # in via `--run-checkers` is 032 §8 option A, deferred to a follow-up.
+    needs: [public-api, viz-api-schema, mcp-tool-contracts]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install PyYAML
+        run: python -m pip install --upgrade pip pyyaml
+      - name: Download per-job checker JSON artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: quality-artifacts
+          merge-multiple: true
+      - name: Aggregate one quality summary (reporter; never blocks)
+        continue-on-error: true
+        run: |
+          python scripts/generate_quality_report.py \
+            --target quality-artifacts \
+            --warning-only \
+            --format markdown --output quality_report.md
+          # Surface the summary in the run's checks UI (native, permission-free).
+          if [ -f quality_report.md ]; then
+            cat quality_report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload aggregated quality report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-report
+          path: quality_report.md
+          if-no-files-found: warn
+      - name: Post/update the PR quality-summary comment (advisory)
+        if: always()
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- ari-quality-report -->';
+            let body = marker + '\n_No quality report was produced this run._';
+            try {
+              body = marker + '\n' + fs.readFileSync('quality_report.md', 'utf8');
+            } catch (e) { /* reporter never fails on missing content */ }
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            if (!issue_number) return;
+            const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
