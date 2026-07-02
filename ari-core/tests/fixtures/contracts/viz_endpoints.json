@@ -1,0 +1,625 @@
+{
+  "_meta": {
+    "ari_core_version": "0.9.0",
+    "generated_by": "scripts/snapshot_contracts.py",
+    "note": "regenerate with scripts/snapshot_contracts.py --surface viz --update",
+    "surface": "viz"
+  },
+  "endpoints": [
+    {
+      "method": "GET",
+      "owner": "routes",
+      "path": "/logo.png"
+    },
+    {
+      "method": "GET",
+      "owner": "routes",
+      "path": "/"
+    },
+    {
+      "method": "GET",
+      "owner": "routes",
+      "path": "/static/<path>"
+    },
+    {
+      "method": "GET",
+      "owner": "routes",
+      "path": "/memory/<node_id>"
+    },
+    {
+      "method": "GET",
+      "owner": "routes",
+      "path": "/state"
+    },
+    {
+      "method": "GET",
+      "owner": "api_process",
+      "path": "/api/gpu-monitor"
+    },
+    {
+      "method": "GET",
+      "owner": "api_ollama",
+      "path": "/api/ollama/<path>"
+    },
+    {
+      "method": "GET",
+      "owner": "routes",
+      "path": "/codefile"
+    },
+    {
+      "method": "GET",
+      "owner": "checkpoint_api",
+      "path": "/api/models"
+    },
+    {
+      "method": "GET",
+      "owner": "routes",
+      "path": "/api/checkpoint/<id>/paper.<ext>"
+    },
+    {
+      "method": "GET",
+      "owner": "api_settings",
+      "path": "/api/env-keys"
+    },
+    {
+      "method": "GET",
+      "owner": "api_ollama",
+      "path": "/api/ollama-resources"
+    },
+    {
+      "method": "GET",
+      "owner": "checkpoint_api",
+      "path": "/api/checkpoints"
+    },
+    {
+      "method": "GET",
+      "owner": "api_settings",
+      "path": "/api/rubrics"
+    },
+    {
+      "method": "GET",
+      "owner": "api_fewshot",
+      "path": "/api/fewshot/<rubric>"
+    },
+    {
+      "method": "GET",
+      "owner": "checkpoint_api",
+      "path": "/api/checkpoint/<id>/summary"
+    },
+    {
+      "method": "GET",
+      "owner": "node_work_api",
+      "path": "/api/checkpoint/<id>/memory"
+    },
+    {
+      "method": "GET",
+      "owner": "api_memory",
+      "path": "/api/checkpoint/<id>/memory_access"
+    },
+    {
+      "method": "GET",
+      "owner": "api_memory",
+      "path": "/api/memory/health"
+    },
+    {
+      "method": "GET",
+      "owner": "api_memory",
+      "path": "/api/memory/detect"
+    },
+    {
+      "method": "GET",
+      "owner": "file_api",
+      "path": "/api/checkpoint/<id>/files"
+    },
+    {
+      "method": "GET",
+      "owner": "file_api",
+      "path": "/api/checkpoint/<id>/file"
+    },
+    {
+      "method": "GET",
+      "owner": "file_api",
+      "path": "/api/checkpoint/<id>/file/raw"
+    },
+    {
+      "method": "GET",
+      "owner": "node_work_api",
+      "path": "/api/checkpoint/<id>/filetree"
+    },
+    {
+      "method": "GET",
+      "owner": "node_work_api",
+      "path": "/api/checkpoint/<id>/filecontent"
+    },
+    {
+      "method": "GET",
+      "owner": "ear",
+      "path": "/api/ear/<rid>/publish-yaml"
+    },
+    {
+      "method": "GET",
+      "owner": "ear",
+      "path": "/api/ear/<rid>"
+    },
+    {
+      "method": "GET",
+      "owner": "ear",
+      "path": "/api/nodes/<rid>/<nid>/report"
+    },
+    {
+      "method": "GET",
+      "owner": "api_settings",
+      "path": "/api/settings"
+    },
+    {
+      "method": "GET",
+      "owner": "api_publish",
+      "path": "/api/publish/settings"
+    },
+    {
+      "method": "GET",
+      "owner": "api_publish",
+      "path": "/api/publish/<rid>/preview"
+    },
+    {
+      "method": "GET",
+      "owner": "api_publish",
+      "path": "/api/publish/<rid>/record"
+    },
+    {
+      "method": "GET",
+      "owner": "api_settings",
+      "path": "/api/profiles"
+    },
+    {
+      "method": "GET",
+      "owner": "routes",
+      "path": "/api/upload"
+    },
+    {
+      "method": "GET",
+      "owner": "ui_helpers",
+      "path": "/api/experiment-detail"
+    },
+    {
+      "method": "GET",
+      "owner": "routes",
+      "path": "/api/active-checkpoint"
+    },
+    {
+      "method": "GET",
+      "owner": "api_settings",
+      "path": "/api/workflow"
+    },
+    {
+      "method": "GET",
+      "owner": "api_settings",
+      "path": "/api/skill/<name>"
+    },
+    {
+      "method": "GET",
+      "owner": "api_settings",
+      "path": "/api/skills"
+    },
+    {
+      "method": "GET",
+      "owner": "ui_helpers",
+      "path": "/api/resource-metrics"
+    },
+    {
+      "method": "GET",
+      "owner": "routes",
+      "path": "/api/container/info"
+    },
+    {
+      "method": "GET",
+      "owner": "routes",
+      "path": "/api/container/images"
+    },
+    {
+      "method": "GET",
+      "owner": "api_workflow",
+      "path": "/api/workflow/default"
+    },
+    {
+      "method": "GET",
+      "owner": "api_workflow",
+      "path": "/api/workflow/flow"
+    },
+    {
+      "method": "GET",
+      "owner": "api_settings",
+      "path": "/api/scheduler/detect"
+    },
+    {
+      "method": "GET",
+      "owner": "api_settings",
+      "path": "/api/slurm/partitions"
+    },
+    {
+      "method": "GET",
+      "owner": "api_experiment",
+      "path": "/api/logs"
+    },
+    {
+      "method": "GET",
+      "owner": "api_orchestrator",
+      "path": "/api/sub-experiments"
+    },
+    {
+      "method": "GET",
+      "owner": "api_orchestrator",
+      "path": "/api/sub-experiments/<rid>"
+    },
+    {
+      "method": "GET",
+      "owner": "checkpoint_api",
+      "path": "/api/lineage-decisions/<ckpt>"
+    },
+    {
+      "method": "GET",
+      "owner": "api_paperbench",
+      "path": "/api/paperbench/papers"
+    },
+    {
+      "method": "GET",
+      "owner": "api_paperbench",
+      "path": "/api/paperbench/arxiv/<id>"
+    },
+    {
+      "method": "GET",
+      "owner": "api_paperbench",
+      "path": "/api/paperbench/papers/<id>/license"
+    },
+    {
+      "method": "GET",
+      "owner": "api_paperbench",
+      "path": "/api/paperbench/run/<jid>/logs"
+    },
+    {
+      "method": "GET",
+      "owner": "api_paperbench",
+      "path": "/api/paperbench/run/<jid>/results"
+    },
+    {
+      "method": "GET",
+      "owner": "api_paperbench",
+      "path": "/api/paperbench/run/<jid>/report"
+    },
+    {
+      "method": "GET",
+      "owner": "api_paperbench",
+      "path": "/api/paperbench/run/<jid>"
+    },
+    {
+      "method": "POST",
+      "owner": "api_settings",
+      "path": "/api/settings"
+    },
+    {
+      "method": "POST",
+      "owner": "api_memory",
+      "path": "/api/memory/start-local"
+    },
+    {
+      "method": "POST",
+      "owner": "api_memory",
+      "path": "/api/memory/stop-local"
+    },
+    {
+      "method": "POST",
+      "owner": "api_memory",
+      "path": "/api/memory/restart"
+    },
+    {
+      "method": "POST",
+      "owner": "api_experiment",
+      "path": "/api/launch"
+    },
+    {
+      "method": "POST",
+      "owner": "api_orchestrator",
+      "path": "/api/sub-experiments/launch"
+    },
+    {
+      "method": "POST",
+      "owner": "api_experiment",
+      "path": "/api/run-stage"
+    },
+    {
+      "method": "POST",
+      "owner": "api_tools",
+      "path": "/api/config/generate"
+    },
+    {
+      "method": "POST",
+      "owner": "api_tools",
+      "path": "/api/chat-goal"
+    },
+    {
+      "method": "POST",
+      "owner": "api_tools",
+      "path": "/api/upload"
+    },
+    {
+      "method": "POST",
+      "owner": "api_tools",
+      "path": "/api/upload/delete"
+    },
+    {
+      "method": "POST",
+      "owner": "api_settings",
+      "path": "/api/env-keys"
+    },
+    {
+      "method": "POST",
+      "owner": "api_tools",
+      "path": "/api/ssh/test"
+    },
+    {
+      "method": "POST",
+      "owner": "checkpoint_lifecycle",
+      "path": "/api/switch-checkpoint"
+    },
+    {
+      "method": "POST",
+      "owner": "ear",
+      "path": "/api/ear/<rid>/curate"
+    },
+    {
+      "method": "POST",
+      "owner": "ear",
+      "path": "/api/ear/<rid>/publish-yaml"
+    },
+    {
+      "method": "POST",
+      "owner": "ear",
+      "path": "/api/ear/clone-verify"
+    },
+    {
+      "method": "POST",
+      "owner": "api_publish",
+      "path": "/api/publish/settings"
+    },
+    {
+      "method": "POST",
+      "owner": "api_publish",
+      "path": "/api/publish/<rid>/promote"
+    },
+    {
+      "method": "POST",
+      "owner": "api_publish",
+      "path": "/api/publish/<rid>"
+    },
+    {
+      "method": "POST",
+      "owner": "api_fewshot",
+      "path": "/api/fewshot/<rid>/sync"
+    },
+    {
+      "method": "POST",
+      "owner": "api_fewshot",
+      "path": "/api/fewshot/<rid>/upload"
+    },
+    {
+      "method": "POST",
+      "owner": "api_fewshot",
+      "path": "/api/fewshot/<rid>/<ex>/delete"
+    },
+    {
+      "method": "POST",
+      "owner": "api_paperbench",
+      "path": "/api/paperbench/papers/import"
+    },
+    {
+      "method": "POST",
+      "owner": "api_paperbench",
+      "path": "/api/paperbench/papers/<id>/delete"
+    },
+    {
+      "method": "POST",
+      "owner": "api_paperbench",
+      "path": "/api/paperbench/papers/<id>/metadata"
+    },
+    {
+      "method": "POST",
+      "owner": "api_paperbench",
+      "path": "/api/paperbench/run"
+    },
+    {
+      "method": "POST",
+      "owner": "api_paperbench",
+      "path": "/api/paperbench/cost-estimate"
+    },
+    {
+      "method": "POST",
+      "owner": "api_ollama",
+      "path": "/api/ollama/<path>"
+    },
+    {
+      "method": "POST",
+      "owner": "api_process",
+      "path": "/api/gpu-monitor"
+    },
+    {
+      "method": "POST",
+      "owner": "api_process",
+      "path": "/api/stop"
+    },
+    {
+      "method": "POST",
+      "owner": "file_api",
+      "path": "/api/checkpoint/file/save"
+    },
+    {
+      "method": "POST",
+      "owner": "file_api",
+      "path": "/api/checkpoint/file/delete"
+    },
+    {
+      "method": "POST",
+      "owner": "file_api",
+      "path": "/api/checkpoint/compile"
+    },
+    {
+      "method": "POST",
+      "owner": "file_api",
+      "path": "/api/checkpoint/<id>/file/upload"
+    },
+    {
+      "method": "POST",
+      "owner": "checkpoint_lifecycle",
+      "path": "/api/delete-checkpoint"
+    },
+    {
+      "method": "POST",
+      "owner": "api_settings",
+      "path": "/api/workflow"
+    },
+    {
+      "method": "POST",
+      "owner": "api_workflow",
+      "path": "/api/workflow/flow"
+    },
+    {
+      "method": "POST",
+      "owner": "api_workflow",
+      "path": "/api/workflow/skills"
+    },
+    {
+      "method": "POST",
+      "owner": "api_workflow",
+      "path": "/api/workflow/disabled-tools"
+    },
+    {
+      "method": "POST",
+      "owner": "routes",
+      "path": "/api/container/pull"
+    }
+  ],
+  "resolvable_path_literals": [
+    "/api/",
+    "/api/active-checkpoint",
+    "/api/chat-goal",
+    "/api/checkpoint/",
+    "/api/checkpoint/compile",
+    "/api/checkpoint/file/delete",
+    "/api/checkpoint/file/save",
+    "/api/checkpoints",
+    "/api/config/generate",
+    "/api/container/images",
+    "/api/container/info",
+    "/api/container/pull",
+    "/api/delete-checkpoint",
+    "/api/ear/",
+    "/api/ear/clone-verify",
+    "/api/env-keys",
+    "/api/experiment-detail",
+    "/api/fewshot/",
+    "/api/gpu-monitor",
+    "/api/launch",
+    "/api/lineage-decisions/",
+    "/api/logs",
+    "/api/memory/detect",
+    "/api/memory/health",
+    "/api/memory/restart",
+    "/api/memory/start-local",
+    "/api/memory/stop-local",
+    "/api/models",
+    "/api/nodes/",
+    "/api/ollama-resources",
+    "/api/ollama/",
+    "/api/paperbench/arxiv/",
+    "/api/paperbench/cost-estimate",
+    "/api/paperbench/papers",
+    "/api/paperbench/papers/",
+    "/api/paperbench/papers/import",
+    "/api/paperbench/run",
+    "/api/paperbench/run/",
+    "/api/profiles",
+    "/api/publish/",
+    "/api/publish/settings",
+    "/api/resource-metrics",
+    "/api/rubrics",
+    "/api/run-stage",
+    "/api/scheduler/detect",
+    "/api/settings",
+    "/api/skill/",
+    "/api/skills",
+    "/api/slurm/partitions",
+    "/api/ssh/test",
+    "/api/stop",
+    "/api/sub-experiments",
+    "/api/sub-experiments/",
+    "/api/sub-experiments/launch",
+    "/api/switch-checkpoint",
+    "/api/upload",
+    "/api/upload/delete",
+    "/api/workflow",
+    "/api/workflow/default",
+    "/api/workflow/disabled-tools",
+    "/api/workflow/flow",
+    "/api/workflow/skills",
+    "/codefile",
+    "/curate",
+    "/delete",
+    "/dist/assets/",
+    "/file/raw",
+    "/file?",
+    "/filecontent",
+    "/license",
+    "/logs",
+    "/logs?",
+    "/memory",
+    "/memory/",
+    "/memory_access",
+    "/metadata",
+    "/preview",
+    "/promote",
+    "/publish-yaml",
+    "/record",
+    "/report",
+    "/report?",
+    "/results",
+    "/settings",
+    "/state",
+    "/static/",
+    "/summary",
+    "/sync",
+    "/upload"
+  ],
+  "response_keys": {
+    "GET /api/checkpoint/<id>/summary": [
+      "id",
+      "nodes_tree",
+      "path"
+    ],
+    "GET /api/checkpoints[]": [
+      "best_metric",
+      "id",
+      "mtime",
+      "node_count",
+      "path",
+      "review_score",
+      "status"
+    ],
+    "GET /api/settings": [
+      "container_mode",
+      "container_pull",
+      "letta_base_url",
+      "letta_embedding_config",
+      "llm_model",
+      "llm_provider",
+      "ollama_host",
+      "ors",
+      "retrieval_backend",
+      "slurm_partition",
+      "slurm_walltime",
+      "temperature",
+      "vlm_review_enabled",
+      "vlm_review_model"
+    ]
+  },
+  "response_keys_source": "ari-core/tests/test_api_schema_contract.py (canonical); mirrored here with additive/subset semantics",
+  "schema_version": 1
+}
