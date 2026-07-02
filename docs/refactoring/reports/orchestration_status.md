@@ -57,7 +57,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 019 | final_quality_report | 11 | Low | No | — (LAST) | TODO | — |
 | 020 | inventory_viz_dashboard_api_contracts | 4 | Low | No | — | DONE | 43b143a |
 | 021 | extract_viz_services_from_routes | 4 | Medium | Yes | 020 | TODO | — |
-| 022 | define_dashboard_dto_and_schema_tests | 4 | Low | No | 020 | TODO | — |
+| 022 | define_dashboard_dto_and_schema_tests | 4 | Low | No | 020 | DONE | 7d6ee50 |
 | 023 | separate_viz_file_io_from_route_handlers | 4 | Medium | Yes | 020 | TODO | — |
 | 024 | refactor_bfts_tree_visualization_adapter | 4 | Medium | Yes | 020 | TODO | — |
 | 025 | add_complexity_checker_script | 8 | Low | No | 001 | DONE | 6720ca8 |
@@ -66,18 +66,18 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 028 | add_directory_policy_checker_script | 8 | Low | No | 003 | TODO | — |
 | 029 | add_public_api_contract_checker_script | 8 | Low | No | — | DONE | 5c5c10a |
 | 030 | add_viz_api_schema_checker_script | 4 | Low | No | 020 | DONE | 7bd5654 |
-| 031 | add_quality_report_generator | 8 | Low | No | 001 | TODO | — |
+| 031 | add_quality_report_generator | 8 | Low | No | 001 | DONE | d7bbd29 |
 | 032 | add_quality_script_ci_plan | 9 | Low | No | — | DONE | 11cd088 |
 | 033 | add_generated_files_gitignore_policy | 2 | Low | No | — | DONE | 0ad0b19 |
-| 034 | add_contract_snapshot_fixtures | 10 | Low | No | — | TODO | — |
-| 035 | add_refactoring_progress_tracker | 10 | Low | No | — | TODO | — |
+| 034 | add_contract_snapshot_fixtures | 10 | Low | No | — | DONE | 7af9e0f |
+| 035 | add_refactoring_progress_tracker | 10 | Low | No | — | DONE | 4be8796 |
 | 036 | inventory_hardcoded_prompts | 7 | Low | No | — | DONE | 9619ebf |
 | 037 | define_prompt_template_policy | 7 | Low | No | 036 | DONE | 93d9662* |
 | 038 | introduce_prompt_registry_and_loader | 7 | Medium | Yes | 036 | TODO | — |
 | 039 | extract_agent_and_bfts_prompts | 7 | Medium | Yes | 036 | TODO | — |
 | 040 | extract_evaluator_and_llm_judge_prompts | 7 | Medium | Yes | 036 | TODO | — |
 | 041 | extract_pipeline_and_paper_generation_prompts | 7 | Medium | Yes | 036 | TODO | — |
-| 042 | add_prompt_snapshot_tests | 7 | Low | No | 036 | TODO | — |
+| 042 | add_prompt_snapshot_tests | 7 | Low | No | 036 | DONE | 2bc2e94 |
 | 043 | add_prompt_checker_script | 7 | Low | No | 036 | DONE | dffefdf |
 | 044 | add_prompt_version_tracking_to_run_metadata | 7 | Medium | Yes | 036 | TODO | — |
 | 045 | inventory_github_workflows | 9 | Low | No | — | DONE | 8842a5f |
@@ -91,7 +91,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 053 | inventory_reference_roots | 1 | Low | No | — | DONE | b4d7706 |
 | 054 | add_reference_graph_analyzer | 1 | Low | No | 053 | DONE | d73dd9e |
 | 055 | add_dead_code_candidate_checker | 1 | Low | No | 054 | DONE | d734d87 |
-| 056 | classify_unused_functions_and_files | 1 | Low | No | 055 | TODO | — |
+| 056 | classify_unused_functions_and_files | 1 | Low | No | 055 | DONE | 48d40a0 |
 | 057 | delete_safe_dead_code_candidates | 2 | High | Yes | 056 | TODO | — |
 | 058 | add_dead_code_checker_to_quality_report | 8 | Low | No | 057 | TODO | — |
 | 059 | inventory_dashboard_frontend_backend_structure | 5 | Low | No | — | DONE | f43d9f1 |
@@ -100,7 +100,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 062 | refactor_dashboard_backend_routes_to_services | 5 | High | Yes | 059 | TODO | — |
 | 063 | refactor_dashboard_frontend_api_client_and_types | 5 | High | Yes | 059 | TODO | — |
 | 064 | refactor_dashboard_state_and_component_boundaries | 5 | High | Yes | 059 | TODO | — |
-| 065 | add_dashboard_contract_and_schema_tests | 5 | Low | No | 059 | TODO | — |
+| 065 | add_dashboard_contract_and_schema_tests | 5 | Low | No | 059 | DONE | 0bca698 |
 | 066 | add_dashboard_build_and_ci_plan | 5 | Low | No | 059 | DONE | 0000cec |
 | 067 | inventory_dashboard_visible_settings | 6 | Low | No | 059 | DONE | 4252a79 |
 | 068 | define_dashboard_information_architecture | 6 | Low | No | 059 | DONE | 93d9662* |
@@ -108,7 +108,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 070 | refactor_dashboard_settings_panel | 6 | High | Yes | 059 | TODO | — |
 | 071 | add_dashboard_developer_mode | 6 | Medium | Yes | 059 | TODO | — |
 | 072 | improve_dashboard_empty_loading_error_states | 6 | Medium | Yes | 059 | TODO | — |
-| 073 | add_dashboard_ux_regression_checks | 6 | Low | No | 059 | TODO | — |
+| 073 | add_dashboard_ux_regression_checks | 6 | Low | No | 059 | DONE | ecabd7c |
 
 ## Blocked / Human-decision notes
 
