@@ -1,0 +1,65 @@
+# check_prompts.yaml -- heuristics/config for scripts/check_prompts.py
+# Design: docs/refactoring/009_quality_scripts_plan.md §5.7; prompt context:
+# docs/refactoring/011_prompt_management_plan.md §2/§3/§5.x; subtask
+# docs/refactoring/subtasks/043_add_prompt_checker_script.md §7.2.
+# stdlib ast + PyYAML only; no LLM, no network (design principle P2).
+#
+# Every key is optional; omitted keys fall back to the script defaults.
+
+# A candidate MUST match at least one role marker (structure, not a bare "You
+# are", subtask §17). Requiring a role opener catches BinOp-split prompts
+# ("You are an expert reviewer for " + venue + body) while rejecting
+# user-message assemblers ("You must produce ..."), tool-schema descriptions,
+# bash templates, and docstrings that merely contain "return JSON" / '{"'.
+# Case-insensitive Python regex.
+role_markers:
+  - '\byou are\b'
+  - "\\byou're\\b"
+  - '\bact as\b'
+  - '\byou (?:will|act|extract|analy[sz]e|evaluate|assess|review|generate|write|judge|decide|identify|classify|summari[sz]e)\b'
+
+# Secondary evidence -- recorded in the report as the `json` / `rubric` marker
+# tags but never sufficient on their own (a role marker is still required).
+json_markers:
+  - '```json'
+  - '\bjson object\b'
+  - '\bjson array\b'
+  - 'respond only with json'
+  - 'respond with a json'
+  - 'return only valid json'
+  - '\breturn json\b'
+  - 'valid json'
+
+rubric_markers:
+  - '\brubric\b'
+  - 'hard constraint'
+  - 'peer review'
+  - '\breviewer\b'
+
+# A candidate fires only when it ALSO spans >= min_lines physical source lines
+# AND is >= min_chars characters (mostly-dynamic builders whose static scaffold
+# is short -- e.g. review_engine.build_system_prompt -- fall below min_chars and
+# are owned by the configurable-prompt subtasks 040/042, not this inventory).
+min_lines: 4
+min_chars: 200
+
+# Default scan scope when no --target is given (subtask §7.4): ari-core/ari plus
+# every ari-skill-*/src. --update-baseline always freezes this comprehensive set.
+default_targets:
+  - ari-core/ari
+scan_all_skill_src: true
+
+# Pruned during the walk (never parsed). `tests` also drops test_*.py by name.
+exclude_dir_segments:
+  - tests
+  - __pycache__
+  - node_modules
+  - vendor
+  - .venv
+  - .git
+  - dist
+
+# Vendored KEEP_INLINE files excluded wholesale (036 §3.5): externalizing them
+# forks upstream. Repo-relative posix paths.
+exclude_files:
+  - ari-skill-paper-re/src/_paperbench_bridge.py
