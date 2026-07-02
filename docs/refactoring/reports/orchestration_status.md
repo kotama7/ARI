@@ -93,7 +93,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 055 | add_dead_code_candidate_checker | 1 | Low | No | 054 | DONE | d734d87 |
 | 056 | classify_unused_functions_and_files | 1 | Low | No | 055 | DONE | 48d40a0 |
 | 057 | delete_safe_dead_code_candidates | 2 | High | Yes | 056 | DONE | 386090f |
-| 058 | add_dead_code_checker_to_quality_report | 8 | Low | No | 057 | TODO | — |
+| 058 | add_dead_code_checker_to_quality_report | 8 | Low | No | 057 | DONE | 2bae2dc |
 | 059 | inventory_dashboard_frontend_backend_structure | 5 | Low | No | — | DONE | f43d9f1 |
 | 060 | inventory_dashboard_api_contracts | 5 | Low | No | 059 | DONE | dcb0389 |
 | 061 | define_dashboard_dto_and_schema_policy | 5 | Low | No | 059 | DONE | 93d9662* |
