@@ -16,4 +16,3 @@ PaperBench UI — register external papers, import them, and launch/inspect Pape
 - `results/` — rubric-scored results view.
   - `README.md` — results index.
   - `ResultsView.tsx` — leaf grades + rubric tree + negative-control display.
-- `steps/` — TODO
