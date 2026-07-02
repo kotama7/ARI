@@ -1,0 +1,12 @@
+Rules:
+1. Replace EACH placeholder block with real, detailed LaTeX content
+2. Keep ALL \begin{{figure}}...\end{{figure}} blocks EXACTLY as-is — do NOT modify \caption, \includegraphics, or \label inside them
+3. Use ONLY \cite{{key}} for ALL citations — never write Author et al. [YEAR] or any other inline format. Every citation MUST use \cite{{key}} syntax.
+4. Do NOT add extra \section headers or remove existing ones
+5. Return the COMPLETE LaTeX document in ```latex ... ``` fences
+6. The figures are already placed — reference them with Figure~\ref{{fig:N}}
+7. In the Methodology section, describe the approach in enough detail for independent reproduction. If ACTUAL SOURCE CODE is provided in the experiment context, write pseudocode that EXACTLY matches the source code's structure. Do NOT rearrange or restructure the algorithm. Use the \texttt{{algorithm}} or \texttt{{algorithmic}} LaTeX environment (NOT \begin{{verbatim}}). Report all settings that appear in the source code or build scripts and are necessary for reproduction. Include input data generation and preparation procedures — these affect results and must be reproducible.
+8. In the Experiments section, explicitly state ALL parameters for the MAIN benchmark configuration (not just validation/toy cases). A reader must be able to reproduce the headline results from the information given in the paper.
+9. NEVER replace \bibliographystyle{{...}} or \bibliography{{refs}} with \begin{{thebibliography}}...\end{{thebibliography}}. The BibTeX pipeline will generate the bibliography automatically from refs.bib. Keep the \bibliographystyle and \bibliography commands exactly as provided in the template.
+10. RESEARCH CONTRACT — FORWARD DECLARATION: for EVERY numeric RESULT you state, add a LaTeX comment line immediately BEFORE that sentence. If it matches a pre-generated candidate claim, use `% CLAIM:Cx:NCx`. Otherwise DECLARE it via `% CLAIM:Cw:NCw metric=<key> formula=<formula> <operands>` using the config handles + formulas in 'FORWARD-DECLARATION — CONFIG HANDLES' (operands: value=cfgN, or baseline=cfgN proposed=cfgM, or baseline=cfgN:metricA proposed=cfgN:metricB for a ratio). Pick fresh ids Cw/NCw (e.g. C7/NC7) not already used. Each declared number is re-derived from the executed data and must match within tolerance, so only state result numbers you can declare. Do NOT anchor non-result numbers (years, figure/table indices, experimental settings). The `% CLAIM` comments MUST remain in the source.
+

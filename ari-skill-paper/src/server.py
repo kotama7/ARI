@@ -63,6 +63,50 @@ VENUES = [
     {"id": "acm", "name": "ACM (general)", "deadline": "Varies", "pages": 10},
 ]
 
+
+# ── skill-local prompt loader (subtask 041) ──────────────────────────────────
+# The paper-generation system prompts are stored as byte-identical ``.md``
+# templates under ``src/prompts/`` and loaded here through a tiny mirror of
+# ari-core's ``FilesystemPromptLoader`` ``load_versioned`` contract. The helper
+# is COPIED (not imported from ari-core) to preserve the one-way
+# ``ari-skill-* -> ari-core`` boundary and keep this MCP package self-contained.
+# Placed AFTER the module imports/VENUES so the grandfathered ``from ari import
+# cost_tracker`` fallback stays on its pinned line (test_public_api_boundary).
+# New stdlib import (``hashlib``) is function-local, matching this module's
+# style. Most templates are loaded RAW (no ``str.format``) because they embed
+# literal LaTeX/JSON braces; ``academic_reviewer`` is the one ``str.format``
+# template (single ``{venue_upper}`` placeholder, no other braces). The dynamic
+# per-call fragments (``_paper_language_directive()``, the verified-context
+# grounded block, the venue prefix) stay in Python — only static bytes move.
+# Deterministic (P2): a package-relative file read — no LLM, no network.
+def _prompt_path(key: str) -> Path:
+    """Absolute path to the skill-local prompt template *key* (``prompts/<key>.md``)."""
+    return Path(__file__).resolve().parent / "prompts" / f"{key}.md"
+
+
+def _load_prompt(key: str) -> str:
+    """Return prompt template *key* byte-identical to the pre-extraction literal.
+
+    The ``.md`` file is stored with a trailing newline (file convention); a
+    single trailing ``\\n`` is trimmed so the loaded string equals the original
+    inline bytes exactly, mirroring ari-core's ``llm_evaluator.py`` discipline.
+    """
+    text = _prompt_path(key).read_text(encoding="utf-8")
+    return text[:-1] if text.endswith("\n") else text
+
+
+def _load_prompt_versioned(key: str) -> tuple[str, str]:
+    """``(rendered_text, sha256[:12])`` for uniform prompt hashing.
+
+    The hash is over the raw on-disk template body (before the trailing-newline
+    trim), matching ari-core's ``load_versioned`` so snapshot/provenance tooling
+    pins the same value. Deterministic; no LLM, no network.
+    """
+    import hashlib
+    raw = _prompt_path(key).read_text(encoding="utf-8")
+    return _load_prompt(key), hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
+
+
 SECTION_PROMPTS = {
     "introduction": (
         "Write a LaTeX introduction section for an academic paper. "
@@ -538,21 +582,7 @@ async def review_section(latex: str, context: str, venue: str = "arxiv") -> dict
     import json, re
 
     model_name = _get_model()
-    system_prompt = (
-        "You are an expert academic reviewer for " + venue.upper() + ".\n"
-        "Review the provided LaTeX section and return ONLY valid JSON with:\n"
-        "  overall: str (1-2 sentences overall assessment)\n"
-        "  strengths: list[str] (up to 3 key strengths)\n"
-        "  weaknesses: list[str] (up to 3 key weaknesses)\n"
-        "  suggestions: list[str] (up to 3 concrete improvement suggestions)\n"
-        "  accept_recommendation: str (one of: strong_accept, accept, weak_accept, reject)\n"
-        "Be concise and technical. No markdown fences.\n"
-        "Reproducibility criterion: flag as weakness any experimental detail that cannot be "
-        "independently reproduced from the description alone — e.g. environment-specific "
-        "identifiers (cluster names, node IDs, organization names, file paths). "
-        "Hardware must be described by architecture and specifications only, "
-        "not by the name of the system or organization that owns it."
-    )
+    system_prompt = _load_prompt("academic_reviewer").format(venue_upper=venue.upper())
     user_prompt = (
         f"Venue: {venue}\nContext: {context[:500]}\n\nLaTeX to review:\n{latex[:3000]}"
     )
@@ -1486,42 +1516,7 @@ async def write_paper_iterative(
         _system_prompt_a = (
             f"You are an expert academic writer. Fill in ALL the FILL_*_START ... FILL_*_END "
             f"placeholder blocks in the provided LaTeX template. Target venue: {venue_info['name']}. "
-            "Rules:\n"
-            "1. Replace EACH placeholder block with real, detailed LaTeX content\n"
-            "2. Keep ALL \\begin{{figure}}...\\end{{figure}} blocks EXACTLY as-is — "
-            "do NOT modify \\caption, \\includegraphics, or \\label inside them\n"
-            "3. Use ONLY \\cite{{key}} for ALL citations — never write Author et al. [YEAR] "
-            "or any other inline format. Every citation MUST use \\cite{{key}} syntax.\n"
-            "4. Do NOT add extra \\section headers or remove existing ones\n"
-            "5. Return the COMPLETE LaTeX document in ```latex ... ``` fences\n"
-            "6. The figures are already placed — reference them with Figure~\\ref{{fig:N}}\n"
-            "7. In the Methodology section, describe the approach in enough detail for independent "
-            "reproduction. If ACTUAL SOURCE CODE is provided in the experiment context, "
-            "write pseudocode that EXACTLY matches the source code's structure. "
-            "Do NOT rearrange or restructure the algorithm. "
-            "Use the \\texttt{{algorithm}} or \\texttt{{algorithmic}} LaTeX environment "
-            "(NOT \\begin{{verbatim}}). "
-            "Report all settings that appear in the source code or build scripts "
-            "and are necessary for reproduction. "
-            "Include input data generation and preparation procedures — these affect results "
-            "and must be reproducible.\n"
-            "8. In the Experiments section, explicitly state ALL parameters for the MAIN "
-            "benchmark configuration (not just validation/toy cases). A reader must be able "
-            "to reproduce the headline results from the information given in the paper.\n"
-            "9. NEVER replace \\bibliographystyle{{...}} or \\bibliography{{refs}} with "
-            "\\begin{{thebibliography}}...\\end{{thebibliography}}. "
-            "The BibTeX pipeline will generate the bibliography automatically from refs.bib. "
-            "Keep the \\bibliographystyle and \\bibliography commands exactly as provided in the template.\n"
-            "10. RESEARCH CONTRACT — FORWARD DECLARATION: for EVERY numeric RESULT you state, "
-            "add a LaTeX comment line immediately BEFORE that sentence. If it matches a "
-            "pre-generated candidate claim, use `% CLAIM:Cx:NCx`. Otherwise DECLARE it via "
-            "`% CLAIM:Cw:NCw metric=<key> formula=<formula> <operands>` using the config "
-            "handles + formulas in 'FORWARD-DECLARATION — CONFIG HANDLES' (operands: value=cfgN, "
-            "or baseline=cfgN proposed=cfgM, or baseline=cfgN:metricA proposed=cfgN:metricB for "
-            "a ratio). Pick fresh ids Cw/NCw (e.g. C7/NC7) not already used. Each declared number "
-            "is re-derived from the executed data and must match within tolerance, so only state "
-            "result numbers you can declare. Do NOT anchor non-result numbers (years, figure/table "
-            "indices, experimental settings). The `% CLAIM` comments MUST remain in the source.\n"
+            + _load_prompt("fill_in_writer")
             + _paper_language_directive()
             + _grounded_block
         )
@@ -1635,7 +1630,7 @@ async def write_paper_iterative(
                     _kw_fig = {
                         "model": _get_model(),
                         "messages": [
-                            {"role": "system", "content": "You are a LaTeX expert. Insert figures inline in the paper."},
+                            {"role": "system", "content": _load_prompt("figure_inserter")},
                             {"role": "user", "content": _fig_inject_prompt + "\n\nPaper:\n```latex\n" + full_latex + "\n```"},
                         ],
                         "temperature": 0.1, "max_tokens": 16384,
@@ -1657,10 +1652,7 @@ async def write_paper_iterative(
         # ─── AI Scientist v2: compile + reflection loop
         # _msg_history starts with the assembled full paper so reflection LLM has context
         _system_prompt = (
-            "You are a scientific paper writer. You have written a LaTeX paper below. "
-            "Your task is to fix any LaTeX errors or quality issues identified in the reflection. "
-            "Do NOT hallucinate results, hardware specs, or citations not present in the experiment data. "
-            "Do NOT replace content with stubs. Return the ENTIRE corrected LaTeX document."
+            _load_prompt("paper_writer")
             + _paper_language_directive()
         )
         # msg_history starts with the assembled full paper as 'assistant' turn
@@ -2541,21 +2533,7 @@ async def paper_refine(
     # find/replace edits. This keeps generation volume ~= the changed spans instead
     # of regenerating the entire document, which (with the slow CLI shim) timed out.
     system_prompt = (
-        "You are an expert academic editor performing GLOBAL coherence refinement of a "
-        "LaTeX paper: improve cross-section consistency, compress redundancy, harmonize "
-        "terminology, reconcile visual references, and address the reviewer revision "
-        "requests. Do NOT rewrite the whole document. Return a JSON array of TARGETED "
-        "edits. Each edit is an object {\"find\": <span copied VERBATIM from the "
-        "document, long enough to occur exactly once>, \"replace\": <the revised span>}. "
-        "Hard constraints:\n"
-        "1. `find` MUST be copied character-for-character from the document (including "
-        "LaTeX) and must be UNIQUE in it.\n"
-        "2. If a span you edit contains a `% CLAIM:Cx:NCx` comment, keep that comment "
-        "VERBATIM in `replace`. Never drop a `% CLAIM` anchor.\n"
-        "3. Do NOT edit \\section headers, \\begin{figure}..\\end{figure}, \\label, "
-        "\\includegraphics, \\cite, \\bibliographystyle, or \\bibliography.\n"
-        "4. Make MINIMAL edits — only what the requests / coherence require.\n"
-        "5. Output ONLY a JSON array in ```json ... ``` fences (no prose, no full document).\n"
+        _load_prompt("global_coherence")
         + _paper_language_directive()
     )
     _ANCHOR_RE = _re.compile(r"%\s*CLAIM:C\w+:NC\w+")
