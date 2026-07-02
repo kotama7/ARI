@@ -75,7 +75,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 037 | define_prompt_template_policy | 7 | Low | No | 036 | DONE | 93d9662* |
 | 038 | introduce_prompt_registry_and_loader | 7 | Medium | Yes | 036 | DONE | ed6171e |
 | 039 | extract_agent_and_bfts_prompts | 7 | Medium | Yes | 036 | DONE* | no-op |
-| 040 | extract_evaluator_and_llm_judge_prompts | 7 | Medium | Yes | 036 | TODO | — |
+| 040 | extract_evaluator_and_llm_judge_prompts | 7 | Medium | Yes | 036 | DONE | 5ce8c75 |
 | 041 | extract_pipeline_and_paper_generation_prompts | 7 | Medium | Yes | 036 | TODO | — |
 | 042 | add_prompt_snapshot_tests | 7 | Low | No | 036 | DONE | 2bc2e94 |
 | 043 | add_prompt_checker_script | 7 | Low | No | 036 | DONE | dffefdf |
