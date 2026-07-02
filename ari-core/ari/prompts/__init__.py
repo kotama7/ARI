@@ -20,3 +20,10 @@ from ari.prompts._provenance import (  # noqa: F401
     load_prompt_trace,
     record_prompt_use,
 )
+
+# Subtask 038: discovery + placeholder-validation catalogue layered over the
+# FilesystemPromptLoader. Additive, internal-only (not part of ``ari.public.*``).
+from ari.prompts.registry import (  # noqa: F401
+    PromptEntry,
+    PromptRegistry,
+)
