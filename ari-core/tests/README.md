@@ -117,6 +117,7 @@ targets the like-named module under `ari/`.
 - `test_system_prompt_memory.py` — system-prompt memory.
 - `test_tool_timeout_tier.py` — MCP `_resolve_tool_timeout` tiering: LLM/compile paper stages (incl. `paper_refine`, `compile_paper`) get the slow timeout, plain tools the 300s default (regression guard for the paper_refine shim-congestion timeout).
 - `test_trace_log_truncation.py` — trace-log truncation.
+- `test_tree_view_adapter.py` — TODO
 - `test_upload_to_node.py` — upload to compute node.
 - `test_variable_passthrough.py` — variable passthrough.
 - `test_verified_context_wiring.py` — orchestrator gating of verified_context.json on `ARI_MEMORY_CONSOLIDATE` (off→skip / on→build / build-failure→pipeline survives).
