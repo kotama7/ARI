@@ -13,6 +13,8 @@ Rule config and frozen allowlists for the top-level `scripts/check_*` source-qua
 - `check_dashboard_ux.yaml` — TODO
 - `check_dead_code.allow.yaml` — frozen `SAFE_DELETE_CANDIDATE` baseline for `check_dead_code.py` (empty at seed; only shrinks as subtask 057 deletes reviewed candidates); regenerate with `--update-baseline`.
 - `check_dead_code.yaml` — classification config for `check_dead_code.py` — graph path, PUBLIC_CONTRACT / dynamic-seam / TEST_ONLY / under-traced-seam path lists, `SAFE_DELETE` eligibility (ruff-corroborated), and the `--check` budget.
+- `check_directory_policy.allow.yaml` — TODO
+- `check_directory_policy.yaml` — TODO
 - `check_import_boundaries.allow.yaml` — frozen baseline of known import-boundary edges (the 7 B1 seed edges + the sanctioned core→skill edge).
 - `check_import_boundaries.yaml` — rule config for `check_import_boundaries.py` (allowed skill→core roots, sanctioned core→skill package, rule toggles).
 - `check_prompts.allow.yaml` — frozen inline-prompt baseline for `check_prompts.py` (23 role-marked candidates seeded from the Subtask 036 census, each tagged with its 036/011 §5.x verdict); regenerate with `--update-baseline`.

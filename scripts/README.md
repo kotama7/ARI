@@ -10,6 +10,9 @@ Operational and utility scripts for building images, running services, and dev t
 - `check_complexity.py` — source-code size (LOC tiers) + cyclomatic-complexity (ruff `C901`) gate; warning-mode-first with a frozen allowlist (`--json`, `--fail-on-regression`, `--update-baseline`; no LLM/API).
 - `check_dashboard_ux.py` — TODO
 - `check_dead_code.py` — dead-code candidate classifier over the 053/054 `reference_graph.json`: labels each node with the 013 §7 vocabulary (`PUBLIC_CONTRACT`/`DYNAMIC_REFERENCE_RISK`/`TEST_ONLY`/`QUARANTINE_CANDIDATE`/`SAFE_DELETE_CANDIDATE`/`REVIEW_REQUIRED`) and emits a ranked `dead_code_candidates.{md,json}`; deletes nothing (056/057 act); ruff-corroborated `SAFE_DELETE`, warning-mode-first `--check`; no LLM/API.
+- `check_directory_policy.py` — TODO
+- `check_docs_source_sync.allow.yaml` — TODO
+- `check_docs_source_sync.py` — TODO
 - `check_import_boundaries.py` — AST import-boundary gate: skills may import core only via `ari.public.*`/`ari.protocols.*` (B1) and core may not import skills except `ari_skill_memory` (B2); warning-mode-first with a frozen allowlist (`--json`, `--fail-on-regression`; no LLM/API).
 - `check_prompts.py` — inline-prompt externalization inventory: AST-scans the runtime tree for role-marked multi-line LLM prompts still hardcoded in `ari-skill-*/src` (against a frozen allowlist seeded from the Subtask 036 census); defers snapshot byte-verification to Gate 10 via `--with-snapshots` (never re-implemented); warning-mode-first (`--json`, `--fail-on-regression`, `--update-baseline`; no LLM/API). `ari-core/ari/agent/loop.py` is the clean negative control.
 - `check_public_api_contracts.py` — snapshot & diff gate for the `ari.public.*` API surface (freezes the 8 re-export submodules; `--update` re-baselines, `--strict` fails on removed symbols; stdlib-only, no LLM/API).
@@ -62,6 +65,8 @@ Operational and utility scripts for building images, running services, and dev t
   - `check_dashboard_ux.yaml` — TODO
   - `check_dead_code.allow.yaml` — frozen `SAFE_DELETE_CANDIDATE` baseline for `check_dead_code.py` (empty at seed; only shrinks as subtask 057 deletes reviewed candidates); regenerate with `--update-baseline`.
   - `check_dead_code.yaml` — classification config for `check_dead_code.py` — graph path, PUBLIC_CONTRACT / dynamic-seam / TEST_ONLY / under-traced-seam path lists, `SAFE_DELETE` eligibility (ruff-corroborated), and the `--check` budget.
+  - `check_directory_policy.allow.yaml` — TODO
+  - `check_directory_policy.yaml` — TODO
   - `check_import_boundaries.allow.yaml` — frozen baseline of known import-boundary edges (the 7 B1 seed edges + the sanctioned core→skill edge).
   - `check_import_boundaries.yaml` — rule config for `check_import_boundaries.py` (allowed skill→core roots, sanctioned core→skill package, rule toggles).
   - `check_prompts.allow.yaml` — frozen inline-prompt baseline for `check_prompts.py` (23 role-marked candidates seeded from the Subtask 036 census, each tagged with its 036/011 §5.x verdict); regenerate with `--update-baseline`.
@@ -96,6 +101,8 @@ Operational and utility scripts for building images, running services, and dev t
   - `test_analyze_references.py` — unit + smoke + determinism tests for `analyze_references.py` (string-key/MCP fixtures + publish-backend/prompt non-orphan repo smoke).
   - `test_check_dashboard_ux.py` — TODO
   - `test_check_dead_code.py` — unit + smoke + determinism tests for `check_dead_code.py` (precedence, hard-downgrade, ruff-gated `SAFE_DELETE` + `--check` ratchet, repo firewall smoke).
+  - `test_check_directory_policy.py` — TODO
+  - `test_check_docs_source_sync.py` — TODO
   - `test_check_import_boundaries.py` — unit + smoke tests for `check_import_boundaries.py` (B1/B2 fixtures + repo-level seed-edge smoke).
   - `test_check_prompts.py` — unit + smoke tests for `check_prompts.py` (synthetic new/allowlisted, user-message negative filter, `agent/loop.py` negative control, census-reproduction + unique-id repo smoke, Gate 10 delegation).
   - `test_check_viz_api_schema.py` — unit + smoke tests for `check_viz_api_schema.py` (normalization + all-four-regime client extraction + server if/elif extraction fixtures + repo reconciliation smoke).
