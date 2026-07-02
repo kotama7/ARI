@@ -15,5 +15,11 @@ See also:
 - ``ari-core/ari/cost_tracker.py`` (cost accounting hooked via litellm callback).
 """
 from ari.llm.routing import resolve_litellm_model
+from ari.llm.client import LLMClient
 
-__all__ = ["resolve_litellm_model"]
+# Naming bridge (subtask 008): LLMClient is the canonical concrete
+# ``ari.protocols.BaseModelBackend`` implementation. ``LiteLLMBackend`` is the
+# target-architecture alias (006 §3); ``LLMClient`` remains the public name.
+LiteLLMBackend = LLMClient
+
+__all__ = ["resolve_litellm_model", "LLMClient", "LiteLLMBackend"]
