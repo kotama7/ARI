@@ -198,10 +198,10 @@ class _Handler(BaseHTTPRequestHandler):
                 if _st._checkpoint_dir is None:
                     entries = []
                 else:
-                    from ari.paths import PathManager as _PM_legacy
+                    from ari.public.paths import PathManager as _PM_legacy
                     _PM_legacy.set_checkpoint_dir_env(_st._checkpoint_dir)
-                    from ari_skill_memory.backends import get_backend
-                    backend = get_backend(checkpoint_dir=_st._checkpoint_dir)
+                    from .internal_adapters import memory_backend
+                    backend = memory_backend(_st._checkpoint_dir)
                     raw = backend.get_node_memory(node_id).get("entries", [])
                     entries = [
                         {"text": e.get("text", ""),
@@ -552,7 +552,7 @@ class _Handler(BaseHTTPRequestHandler):
                     _exit_code = _poll
             # Tier 2: PID file fallback (CLI-spawned or server restarted)
             if _pid_now is None and _ckpt_valid:
-                from ari.pidfile import check_pid as _ck_pid, read_pid as _rd_pid
+                from .internal_adapters import pid_status as _ck_pid, read_pid as _rd_pid
                 if _ck_pid(Path(_st._checkpoint_dir)) == "running":
                     _pid_now = _rd_pid(Path(_st._checkpoint_dir))
             data["running_pid"] = _pid_now
@@ -646,7 +646,7 @@ class _Handler(BaseHTTPRequestHandler):
                         _pid_now = _st._last_proc.pid
                 # PID file fallback
                 if _pid_now is None and _ckpt_valid:
-                    from ari.pidfile import check_pid as _ck_pid2, read_pid as _rd_pid2
+                    from .internal_adapters import pid_status as _ck_pid2, read_pid as _rd_pid2
                     if _ck_pid2(Path(_st._checkpoint_dir)) == "running":
                         _pid_now = _rd_pid2(Path(_st._checkpoint_dir))
                 data["running_pid"] = _pid_now
@@ -878,10 +878,10 @@ class _Handler(BaseHTTPRequestHandler):
         elif self.path == "/api/resource-metrics":
             self._json(_collect_resource_metrics())
         elif self.path == "/api/container/info":
-            from ari.container import get_container_info
+            from ari.public.container import get_container_info
             self._json(get_container_info())
         elif self.path == "/api/container/images":
-            from ari.container import list_images
+            from ari.public.container import list_images
             self._json({"images": list_images()})
         elif self.path == "/api/workflow/default":
             self._json(_api_get_default_workflow())
@@ -1168,7 +1168,7 @@ class _Handler(BaseHTTPRequestHandler):
         elif self.path == "/api/container/pull":
             data_cp = json.loads(body or b'{}')
             try:
-                from ari.container import ContainerConfig, pull_image
+                from ari.public.container import ContainerConfig, pull_image
                 _cp_cfg = ContainerConfig(
                     image=data_cp.get("image", ""),
                     mode=data_cp.get("mode", "auto"),

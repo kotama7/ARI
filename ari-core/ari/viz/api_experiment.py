@@ -50,18 +50,8 @@ def _api_run_stage(body: bytes) -> dict:
             _ari_root / "ari-core" / ".env",
             Path.home() / ".env",
         ]
-        for env_path in _env_candidates:
-            if env_path.exists():
-                try:
-                    for line in env_path.read_text().splitlines():
-                        line = line.strip()
-                        if line and not line.startswith("#") and "=" in line:
-                            k, _, v = line.partition("=")
-                            k, v = k.strip(), v.strip().strip("'\"")
-                            if k and v and (k not in proc_env or not proc_env[k]):
-                                proc_env[k] = v
-                except Exception:
-                    pass
+        from .services.launch_service import load_dotenv_files
+        load_dotenv_files(proc_env, _env_candidates, strip_quotes=True, swallow_errors=True)
         # Inject API key from settings if not already in env
         from .api_settings import _api_get_settings
         saved = _api_get_settings()
@@ -256,14 +246,8 @@ def _api_launch(body: bytes) -> dict:
         ]
         if _st._checkpoint_dir:
             _env_candidates.insert(0, _st._checkpoint_dir / ".env")
-        for env_path in _env_candidates:
-            if env_path.exists():
-                for line in env_path.read_text().splitlines():
-                    if "=" in line and not line.startswith("#"):
-                        k, v = line.split("=", 1)
-                        k = k.strip(); v = v.strip()
-                        if k not in proc_env or not proc_env[k]:
-                            proc_env[k] = v
+        from .services.launch_service import load_dotenv_files
+        load_dotenv_files(proc_env, _env_candidates, strip_quotes=False, swallow_errors=False)
         # Inject model from saved Settings.  Project-scoped only — when the
         # checkpoint has no settings.json the launch falls back to defaults
         # already baked into the CLI / config layer.
