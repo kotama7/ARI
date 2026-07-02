@@ -9,6 +9,7 @@ targets the like-named module under `ari/`.
 ## Contents
 
 - `README.md` — this file.
+- `_arch_boundaries.py` — TODO
 - `test_agent_smoke.py` — agent smoke test.
 - `test_api_lineage_decisions.py` — lineage-decisions API.
 - `test_api_lineage_e2e.py` — lineage API end-to-end.
@@ -16,6 +17,7 @@ targets the like-named module under `ari/`.
 - `test_api_paperbench_worker.py` — PaperBench API worker.
 - `test_api_process.py` — process-control service (stop-all + GPU monitor).
 - `test_api_schema_contract.py` — stable viz endpoint response-shape contracts.
+- `test_architecture_boundary_index.py` — TODO
 - `test_bfts.py` — BFTS loop.
 - `test_bfts_allow_web.py` — `bfts.allow_web` / `ARI_BFTS_ALLOW_WEB` toggle: web-skill phase gating in/out of bfts + the `bfts_web_provenance.json` marker roundtrip.
 - `test_bfts_diversity.py` — BFTS diversity/fanout.
@@ -35,6 +37,8 @@ targets the like-named module under `ari/`.
 - `test_config.py` — config loading.
 - `test_container.py` — container runtime.
 - `test_contract_snapshots.py` — TODO
+- `test_core_does_not_import_skills.py` — TODO
+- `test_core_viz_direction.py` — TODO
 - `test_cost_tracker.py` — cost tracker.
 - `test_curate.py` — curation.
 - `test_dashboard_html.py` — dashboard HTML.
@@ -47,6 +51,7 @@ targets the like-named module under `ari/`.
 - `test_env_write_quoting.py` — .env-write quoting guard (api_settings upsert).
 - `test_evaluator_axis_mode.py` — evaluator axis mode.
 - `test_evaluator_composite.py` — evaluator composite scoring.
+- `test_evaluator_independence.py` — TODO
 - `test_event_loop_and_csv.py` — event loop + CSV logging.
 - `test_file_explorer.py` — file explorer.
 - `test_gui_env_propagation.py` — GUI env propagation.
@@ -70,6 +75,7 @@ targets the like-named module under `ari/`.
 - `test_mcp_cow_concurrency.py` — MCP copy-on-write concurrency.
 - `test_memory.py` — memory backend.
 - `test_metric_contract_obligation.py` — `ari.agent.metric_contract` producer obligation: domain-neutral `build_contract_obligation`/`build_emission_nudge`, run-level claim coverage (`build_coverage_status`, `collect_run_measurement_names`), and lineage chaining (`collect_node_measurement_names`, `build_expand_coverage_hint`, `build_inherited_data_note`).
+- `test_model_backend_independence.py` — TODO
 - `test_model_passthrough.py` — model passthrough.
 - `test_no_user_home_writes.py` — no-user-home-writes guard.
 - `test_node.py` — Node data model.
