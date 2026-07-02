@@ -66,6 +66,18 @@ def save_results_json(checkpoint_dir: str | Path, results: dict) -> None:
     _dump(Path(checkpoint_dir) / "results.json", results)
 
 
+def save_prompt_versions_json(checkpoint_dir: str | Path, versions: dict) -> None:
+    """Write ``{checkpoint_dir}/prompt_versions.json`` (subtask 044).
+
+    Additive run-level prompt-provenance rollup — the human-auditable
+    "which prompt versions did this run use" summary aggregated from
+    ``prompt_trace.jsonl``. Uses the same ``json.dumps(..., indent=2,
+    ensure_ascii=False)`` layout as the other checkpoint writers so JSON
+    formatting stays owned by this module.
+    """
+    _dump(Path(checkpoint_dir) / "prompt_versions.json", versions)
+
+
 # ──────────────────────────────────────────────
 # read helpers
 # ──────────────────────────────────────────────

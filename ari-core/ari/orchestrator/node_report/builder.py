@@ -299,6 +299,8 @@ _INTERNAL_JSON_NAMES = {
     "node_report.json", "tree.json", "nodes_tree.json", "science_data.json",
     "raw_metrics.json", "eval_scores.json", "results.json", "meta.json",
     "launch_config.json", "evaluation_criteria.json",
+    # Prompt-provenance rollup (subtask 044) — ARI internal, not a data output.
+    "prompt_versions.json",
 }
 
 

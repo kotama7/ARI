@@ -473,13 +473,21 @@ class BFTS:
         # BFTSConfig.select_prompt lets a config swap in an alternative
         # template (must accept the same placeholders).
         from ari.prompts import FilesystemPromptLoader as _PL_bs
+        from ari.prompts import record_prompt_use as _record_prompt_use
         _prompt_key = getattr(
             self.config, "select_prompt", "orchestrator/bfts_select"
         )
-        prompt = _PL_bs().load(_prompt_key).format(
+        _sel_text, _sel_hash = _PL_bs().load_versioned(_prompt_key)
+        prompt = _sel_text.format(
             experiment_goal=experiment_goal,
             memory_context=memory_context,
             candidates="\n".join(candidate_descriptions),
+        )
+        # Subtask 044: prompt provenance (byte-identical rendered output).
+        _record_prompt_use(
+            _prompt_key, _sel_hash, rendered_text=prompt,
+            model=getattr(getattr(self.llm, "config", None), "model", "") or "",
+            phase="bfts",
         )
 
         response = self.llm.complete(
@@ -551,14 +559,22 @@ class BFTS:
 
         # Phase PC5: see ``ari/prompts/orchestrator/bfts_expand_select.md``.
         from ari.prompts import FilesystemPromptLoader as _PL_bes
+        from ari.prompts import record_prompt_use as _record_prompt_use
         _expand_key = getattr(
             self.config,
             "expand_select_prompt",
             "orchestrator/bfts_expand_select",
         )
-        prompt = _PL_bes().load(_expand_key).format(
+        _es_text, _es_hash = _PL_bes().load_versioned(_expand_key)
+        prompt = _es_text.format(
             experiment_goal=experiment_goal,
             candidates="\n".join(candidate_descriptions),
+        )
+        # Subtask 044: prompt provenance (byte-identical rendered output).
+        _record_prompt_use(
+            _expand_key, _es_hash, rendered_text=prompt,
+            model=getattr(getattr(self.llm, "config", None), "model", "") or "",
+            phase="bfts",
         )
 
         response = self.llm.complete(
@@ -741,7 +757,9 @@ class BFTS:
 
         # Phase PC5: see ``ari/prompts/orchestrator/bfts_expand.md``.
         from ari.prompts import FilesystemPromptLoader as _PL_be
-        prompt = _PL_be().load("orchestrator/bfts_expand").format(
+        from ari.prompts import record_prompt_use as _record_prompt_use
+        _exp_text, _exp_hash = _PL_be().load_versioned("orchestrator/bfts_expand")
+        prompt = _exp_text.format(
             goal_line=goal_line,
             parent_id_short=node.id[-8:],
             parent_depth=node.depth,
@@ -757,6 +775,12 @@ class BFTS:
             ancestors_block=ancestors_block,
             existing_block=existing_block,
             diversity_block=diversity_block,
+        )
+        # Subtask 044: prompt provenance (byte-identical rendered output).
+        _record_prompt_use(
+            "orchestrator/bfts_expand", _exp_hash, rendered_text=prompt,
+            model=getattr(getattr(self.llm, "config", None), "model", "") or "",
+            node_id=node.id, phase="bfts",
         )
 
         response = self.llm.complete(

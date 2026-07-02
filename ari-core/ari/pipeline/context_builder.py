@@ -114,7 +114,13 @@ def _extract_keywords_from_nodes(nodes_json_path: str, base_topic: str = "") -> 
         # Phase PC2 (PROMPTS_AND_CONFIG.md §3-5): keyword librarian
         # prompt lives in ``ari/prompts/pipeline/keyword_librarian.md``.
         from ari.prompts import FilesystemPromptLoader as _PL_pipe
-        _kw_system = _PL_pipe().load("pipeline/keyword_librarian")
+        from ari.prompts import record_prompt_use as _record_prompt_use
+        _kw_system, _kw_hash = _PL_pipe().load_versioned("pipeline/keyword_librarian")
+        # Subtask 044: prompt provenance (byte-identical system prompt).
+        _record_prompt_use(
+            "pipeline/keyword_librarian", _kw_hash, rendered_text=_kw_system,
+            model=_model, phase="context_builder",
+        )
         _kw: dict = dict(
             model=_model,
             messages=[{

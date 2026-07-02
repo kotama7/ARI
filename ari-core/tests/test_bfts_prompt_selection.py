@@ -39,6 +39,11 @@ def test_select_next_node_uses_configured_prompt_key():
             # Echo the placeholders so .format() succeeds.
             return "goal={experiment_goal} mem={memory_context} cands={candidates}"
 
+        def load_versioned(self, key, version=None):
+            # Subtask 044: BFTS now loads via load_versioned to capture the
+            # template hash; delegate to load so the key is still captured.
+            return self.load(key), "0" * 12
+
     with patch(
         "ari.prompts.FilesystemPromptLoader",
         new=_FakeLoader,
@@ -56,6 +61,11 @@ def test_select_best_to_expand_uses_configured_prompt_key():
         def load(self, key):
             captured.append(key)
             return "goal={experiment_goal} cands={candidates}"
+
+        def load_versioned(self, key, version=None):
+            # Subtask 044: BFTS now loads via load_versioned to capture the
+            # template hash; delegate to load so the key is still captured.
+            return self.load(key), "0" * 12
 
     with patch(
         "ari.prompts.FilesystemPromptLoader",
