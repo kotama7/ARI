@@ -11,6 +11,10 @@ import logging
 import os
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from ari.protocols import NodeExecutor, SearchStrategy
 
 log = logging.getLogger(__name__)
 
@@ -146,7 +150,7 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
     # Edit on the login node — see the 2026-05-28 hallucinated-environment incident).
     llm.mcp_client = mcp
     bfts_llm.mcp_client = mcp
-    bfts = BFTS(cfg.bfts, bfts_llm)
+    bfts: SearchStrategy = BFTS(cfg.bfts, bfts_llm)
 
     # MetricSpec: auto-generated from experiment file by evaluator-skill
     metric_spec = _make_metric_spec()
@@ -217,9 +221,11 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
     if wf_hints.metric_extractor is None and metric_spec and metric_spec.artifact_extractor:
         wf_hints.metric_extractor = metric_spec.artifact_extractor
 
-    agent = AgentLoop(llm, memory, mcp, evaluator=evaluator, workflow_hints=wf_hints,
-                       max_react_steps=cfg.bfts.max_react_steps,
-                       timeout_per_node=cfg.bfts.timeout_per_node)
+    agent: NodeExecutor = AgentLoop(
+        llm, memory, mcp, evaluator=evaluator, workflow_hints=wf_hints,
+        max_react_steps=cfg.bfts.max_react_steps,
+        timeout_per_node=cfg.bfts.timeout_per_node,
+    )
     return llm, memory, mcp, bfts, agent, metric_spec
 
 
