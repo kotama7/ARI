@@ -13,6 +13,12 @@ imported as `src`.
 - `review_engine.py` — rubric-driven review pipeline (score dimensions, reflection loop, few-shot).
 - `rubric.py` — venue-agnostic YAML rubric loader/validator (sha256 for P2 determinism).
 - `server.py` — MCP entry point: `write_paper_iterative` (now injects the claims registry + `% CLAIM` anchor instruction), `link_paper_claims`, `paper_refine` (anchor-preserving), `merge_reviews` (independent vs evidence-grounded split), `review_compiled_paper`, …
+- `prompts/` — TODO
+  - `academic_reviewer.md` — TODO
+  - `figure_inserter.md` — TODO
+  - `fill_in_writer.md` — TODO
+  - `global_coherence.md` — TODO
+  - `paper_writer.md` — TODO
 
 ## See also
 
