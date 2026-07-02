@@ -65,7 +65,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 027 | add_docs_source_sync_checker_script | 8 | Low | No | 003 | TODO | — |
 | 028 | add_directory_policy_checker_script | 8 | Low | No | 003 | TODO | — |
 | 029 | add_public_api_contract_checker_script | 8 | Low | No | — | DONE | 5c5c10a |
-| 030 | add_viz_api_schema_checker_script | 4 | Low | No | 020 | TODO | — |
+| 030 | add_viz_api_schema_checker_script | 4 | Low | No | 020 | DONE | 7bd5654 |
 | 031 | add_quality_report_generator | 8 | Low | No | 001 | TODO | — |
 | 032 | add_quality_script_ci_plan | 9 | Low | No | — | DONE | 11cd088 |
 | 033 | add_generated_files_gitignore_policy | 2 | Low | No | — | DONE | 0ad0b19 |
@@ -78,7 +78,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 040 | extract_evaluator_and_llm_judge_prompts | 7 | Medium | Yes | 036 | TODO | — |
 | 041 | extract_pipeline_and_paper_generation_prompts | 7 | Medium | Yes | 036 | TODO | — |
 | 042 | add_prompt_snapshot_tests | 7 | Low | No | 036 | TODO | — |
-| 043 | add_prompt_checker_script | 7 | Low | No | 036 | TODO | — |
+| 043 | add_prompt_checker_script | 7 | Low | No | 036 | DONE | dffefdf |
 | 044 | add_prompt_version_tracking_to_run_metadata | 7 | Medium | Yes | 036 | TODO | — |
 | 045 | inventory_github_workflows | 9 | Low | No | — | DONE | 8842a5f |
 | 046 | design_quality_ci_integration | 9 | Low | No | 045 | DONE | 93d9662* |
@@ -90,7 +90,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 052 | add_dependabot_and_actions_policy | 9 | Low | No | 045 | DONE | a40ab08 |
 | 053 | inventory_reference_roots | 1 | Low | No | — | DONE | b4d7706 |
 | 054 | add_reference_graph_analyzer | 1 | Low | No | 053 | DONE | d73dd9e |
-| 055 | add_dead_code_candidate_checker | 1 | Low | No | 054 | TODO | — |
+| 055 | add_dead_code_candidate_checker | 1 | Low | No | 054 | DONE | d734d87 |
 | 056 | classify_unused_functions_and_files | 1 | Low | No | 055 | TODO | — |
 | 057 | delete_safe_dead_code_candidates | 2 | High | Yes | 056 | TODO | — |
 | 058 | add_dead_code_checker_to_quality_report | 8 | Low | No | 057 | TODO | — |
@@ -249,6 +249,19 @@ leave that to a human per the Document Retirement Policy.)*
   (docs-change-coupling, docs-sync, readme-sync, refactor-guards) — skipped this pass
   to avoid parallel-write conflicts; additive follow-up (pages.yml keeps its elevated
   perms). Documented in CONTRIBUTING.md P4.
+- **[055] CRITICAL de-risking — `SAFE_DELETE_CANDIDATE = 0`:** the dead-code checker,
+  applying the 013 §7 hard-downgrade firewall over the (intentionally sparse) 054
+  graph, finds **zero** safe-delete candidates (345 REVIEW_REQUIRED under-traced-seam,
+  125 DYNAMIC, 192 PUBLIC_CONTRACT, 1324 LIVE). ⇒ subtask **057** (delete safe dead
+  code, the only High-risk DELETE in the chain) will delete NOTHING — it becomes a
+  documented no-op. 056 (classify) consumes this. Big risk reduction for Wave 3.
+- **[043] killed mid-self-review but files were complete:** 043 was user-stopped during
+  its final self-check; all 4 files were already written and verified correct by the
+  orchestrator (runs --json exit 0, 11-in-40 tests pass, ruff-clean). Committed dffefdf.
+- **ULTRACODE ON (2026-07-01):** remaining waves (esp. the 27 runtime subtasks) will be
+  driven via the Workflow tool with adversarial verification, per the owner's ultracode
+  directive. Runtime subtasks run sequentially / worktree-isolated (never parallel on
+  shared runtime files) with full `pytest ari-core/tests` after each.
 - **DEFERRED CI subtasks (need checkers to exist first):** 049 (contracts.yml +
   refactor-guards jobs → needs 026/029/030 + 028/055), 050 (docs-sync.yml append),
   051 (prompt-change-review.yml → needs 043). Will run after their checkers land, on
