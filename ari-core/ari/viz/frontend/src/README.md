@@ -137,7 +137,10 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
 - `hooks/` — custom hooks (data fetch, websocket).
   - `README.md` — hooks index.
   - `useApi.ts` — generic async data-fetch hook with loading/error/refetch.
+  - `useDevMode.ts` — TODO
   - `useWebSocket.ts` — streams real-time tree updates with auto-reconnect.
+  - `__tests__/` — TODO
+    - `useDevMode.test.tsx` — TODO
 - `i18n/` — localization (en/ja/zh) helpers.
   - `en.ts` — English dictionary.
   - `index.ts` — i18n entry / language selection.
