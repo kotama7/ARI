@@ -56,7 +56,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 018 | add_tests_for_architecture_boundaries | 10 | Low | No | — | DONE | 0319dae |
 | 019 | final_quality_report | 11 | Low | No | — (LAST) | TODO | — |
 | 020 | inventory_viz_dashboard_api_contracts | 4 | Low | No | — | DONE | 43b143a |
-| 021 | extract_viz_services_from_routes | 4 | Medium | Yes | 020 | TODO | — |
+| 021 | extract_viz_services_from_routes | 4 | Medium | Yes | 020 | DONE* | baf2add |
 | 022 | define_dashboard_dto_and_schema_tests | 4 | Low | No | 020 | DONE | 7d6ee50 |
 | 023 | separate_viz_file_io_from_route_handlers | 4 | Medium | Yes | 020 | TODO | — |
 | 024 | refactor_bfts_tree_visualization_adapter | 4 | Medium | Yes | 020 | DONE | b2071cd |
