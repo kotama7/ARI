@@ -260,7 +260,17 @@ class LLMEvaluator:
             text = text[:-1]
         return text
 
+    @staticmethod
+    def _load_base_system_hash() -> str:
+        # Subtask 044: capture the ``sha256[:12]`` of the raw template body
+        # (before the trailing-newline trim) so provenance uses the same hash
+        # ``load_versioned`` / the snapshot test compute. Never renders or
+        # calls an LLM.
+        from ari.prompts import FilesystemPromptLoader
+        return FilesystemPromptLoader().load_versioned("evaluator/extract_metrics")[1]
+
     BASE_SYSTEM = _load_base_system.__func__()  # type: ignore[func-returns-value]
+    BASE_SYSTEM_HASH = _load_base_system_hash.__func__()  # type: ignore[func-returns-value]
 
     def __init__(
         self,
@@ -402,6 +412,11 @@ class LLMEvaluator:
         spec_section = self.metric_spec.to_prompt_section()
         weights = self._resolve_axis_weights()
 
+        # Subtask 044: emit prompt provenance for whichever evaluator template
+        # this call renders. Byte-identical output — ``load_versioned`` returns
+        # the same text ``load`` did; only the surrounding Python changed.
+        from ari.prompts import record_prompt_use as _record_prompt_use
+
         if self._dynamic_axes:
             # Phase 3 path: replace the BASE_SYSTEM's hard-coded 5-axis block
             # with the dynamic axes. PC6 lifts the surrounding prose into
@@ -410,7 +425,8 @@ class LLMEvaluator:
             # is no longer duplicated between code and the prompt file.
             from ari.evaluator.dynamic_axes import axes_to_prompt_section
             from ari.prompts import FilesystemPromptLoader as _PL_pr
-            base = _PL_pr().load("evaluator/peer_review").format(
+            _pr_text, _pr_hash = _PL_pr().load_versioned("evaluator/peer_review")
+            base = _pr_text.format(
                 axes_block=axes_to_prompt_section(self._dynamic_axes),
             )
             # peer_review.md persists with a trailing newline; the legacy
@@ -427,21 +443,33 @@ class LLMEvaluator:
             )
             head = base + "\n\n" + weights_line
             if spec_section.strip() == "Experiment type: generic experiment":
-                return head
-            return head + f"\n\nDomain context:\n{spec_section}"
+                system = head
+            else:
+                system = head + f"\n\nDomain context:\n{spec_section}"
+            _record_prompt_use(
+                "evaluator/peer_review", _pr_hash, rendered_text=system,
+                model=self.model, phase="evaluation",
+            )
+            return system
 
         weights_line = (
             "Axis weights (for your reference — the composite is a weighted harmonic mean):\n"
             + ", ".join(f"{k}={weights.get(k, 0.0):.2f}" for k in AXIS_NAMES)
         )
         if spec_section.strip() == "Experiment type: generic experiment":
-            return self.BASE_SYSTEM + "\n\n" + weights_line
-        return (
-            self.BASE_SYSTEM
-            + "\n\n"
-            + weights_line
-            + f"\n\nDomain context:\n{spec_section}"
+            system = self.BASE_SYSTEM + "\n\n" + weights_line
+        else:
+            system = (
+                self.BASE_SYSTEM
+                + "\n\n"
+                + weights_line
+                + f"\n\nDomain context:\n{spec_section}"
+            )
+        _record_prompt_use(
+            "evaluator/extract_metrics", self.BASE_SYSTEM_HASH, rendered_text=system,
+            model=self.model, phase="evaluation",
         )
+        return system
 
     def _build_score_context(self) -> str:
         """Render the score-distribution context block for the user prompt.

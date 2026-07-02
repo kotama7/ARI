@@ -908,4 +908,14 @@ def _save_checkpoint(checkpoint_dir, run_id, experiment_file, nodes):
                   for n in nodes},
     }
     _save_results(checkpoint_dir, results)
+    # Subtask 044: emit the run-level prompt-version rollup from the per-call
+    # prompt_trace.jsonl (additive artifact). Best-effort — a rollup failure
+    # must never fail the run; a run with no managed-prompt calls simply has
+    # no trace and writes an empty rollup.
+    try:
+        from ari.prompts import build_prompt_versions_rollup as _build_pv
+        from ari.checkpoint import save_prompt_versions_json as _save_pv
+        _save_pv(checkpoint_dir, _build_pv(checkpoint_dir))
+    except Exception:
+        log.debug("prompt_versions rollup write failed", exc_info=True)
 

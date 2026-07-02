@@ -19,6 +19,8 @@ only layout new runs write today)::
     │       ├── idea.json
     │       ├── cost_trace.jsonl
     │       ├── cost_summary.json
+    │       ├── prompt_trace.jsonl   # per-call prompt-provenance trace (044)
+    │       ├── prompt_versions.json # run-level prompt-version rollup (044)
     │       ├── ari.log
     │       ├── uploads/           # user-uploaded files
     │       └── ...
@@ -66,6 +68,7 @@ _RUN_FILE_BUCKETS: tuple[str, ...] = ("checkpoints", "artifacts", "traces", "rep
 _TRACE_FILES: frozenset[str] = frozenset({
     "cost_trace.jsonl",
     "cost_summary.json",
+    "prompt_trace.jsonl",
     "viz_access.jsonl",
     "memory_access.jsonl",
     "memory_access.summary.json",
@@ -386,6 +389,11 @@ class PathManager:
         "idea.json",
         "cost_trace.jsonl",
         "cost_summary.json",
+        # Prompt-provenance artifacts (subtask 044): per-call JSONL trace +
+        # run-level rollup, written at the checkpoint root like cost_trace.
+        # Additive metadata — never copied into node work dirs.
+        "prompt_trace.jsonl",
+        "prompt_versions.json",
         "workflow.yaml",
         "ari.log",
         ".ari_pid",

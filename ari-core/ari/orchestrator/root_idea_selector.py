@@ -58,9 +58,13 @@ def _default_model() -> str:
 # in ``ari/prompts/orchestrator/root_idea_selector.md``.
 
 
-def _load_system_prompt() -> str:
+def _load_system_prompt_versioned() -> tuple[str, str]:
     from ari.prompts import FilesystemPromptLoader
-    return FilesystemPromptLoader().load("orchestrator/root_idea_selector")
+    return FilesystemPromptLoader().load_versioned("orchestrator/root_idea_selector")
+
+
+def _load_system_prompt() -> str:
+    return _load_system_prompt_versioned()[0]
 
 
 def __getattr__(name: str):  # PEP 562 — preserve ``_SYSTEM_PROMPT`` API.
@@ -149,10 +153,12 @@ async def select_root_idea(
         user_lines.append(f"\nNotes: {notes[:300]}")
     user = "\n".join(user_lines)
 
+    _sys_text, _sys_hash = _load_system_prompt_versioned()
+    _resolved_model = model or _default_model()
     kwargs: dict[str, Any] = {
-        "model": model or _default_model(),
+        "model": _resolved_model,
         "messages": [
-            {"role": "system", "content": _load_system_prompt()},
+            {"role": "system", "content": _sys_text},
             {"role": "user", "content": user},
         ],
         "temperature": temperature,
@@ -162,6 +168,12 @@ async def select_root_idea(
             "skill": "root_idea_selector",
         },
     }
+    # Subtask 044: prompt provenance (byte-identical system prompt).
+    from ari.prompts import record_prompt_use as _record_prompt_use
+    _record_prompt_use(
+        "orchestrator/root_idea_selector", _sys_hash, rendered_text=_sys_text,
+        model=_resolved_model, phase="root_idea_selection",
+    )
     if api_base:
         kwargs["api_base"] = api_base
 
