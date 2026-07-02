@@ -41,6 +41,9 @@ checkers:
     module_or_path: scripts/check_prompts.py
     weight: 1.0
     required: false
+  # Subtask 058: the aggregator renders a dedicated dead-code section from this
+  # checker's JSON — per-classification counts (013 §7 vocabulary) plus a
+  # before/after delta vs docs/refactoring/reports/dead_code_baseline.json.
   - name: check_dead_code
     module_or_path: scripts/check_dead_code.py
     weight: 1.0

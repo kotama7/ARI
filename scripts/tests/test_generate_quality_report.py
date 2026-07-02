@@ -333,5 +333,207 @@ def test_finding_attribution_prefers_longest_area():
     assert by["ari-core/ari"]["finding_count"] == 0
 
 
+# ── dead-code section (subtask 058) ──────────────────────────────────────────
+
+
+def _dc_finding(classification, fid, *, file="ari-core/ari/x.py"):
+    """A check_dead_code finding: classification is carried on `classification`."""
+    return {
+        "id": fid,
+        "classification": classification,
+        "kind": "py.symbol",
+        "file": file,
+        "symbol": fid,
+        "loc": 3,
+        "reachable_from": [],
+        "edges_in": [],
+        "evidence": [],
+        "rationale": "demo",
+        "reason": "",
+        "allowlisted": False,
+    }
+
+
+def _dc_envelope(findings, *, summary=None):
+    return {
+        "checker": "check_dead_code",
+        "version": 1,
+        "target": "ari-core/ari",
+        "summary": summary or {},
+        "findings": findings,
+    }
+
+
+def _dc_baseline_file(tmp_path, by_classification):
+    p = tmp_path / "dc_base.json"
+    p.write_text(json.dumps({"by_classification": by_classification}), encoding="utf-8")
+    return p
+
+
+def test_dead_code_counts_delta_and_json_roundtrip(tmp_path):
+    td = tmp_path / "jsons"
+    td.mkdir()
+    findings = [
+        _dc_finding("REVIEW_REQUIRED", "r1"),
+        _dc_finding("REVIEW_REQUIRED", "r2"),
+        _dc_finding("DYNAMIC_REFERENCE_RISK", "d1"),
+        _dc_finding("PUBLIC_CONTRACT", "p1"),
+        _dc_finding("TEST_ONLY", "t1"),
+    ]
+    (td / "check_dead_code.json").write_text(
+        json.dumps(_dc_envelope(findings, summary={"safe_delete_new": 0})),
+        encoding="utf-8",
+    )
+    base = _dc_baseline_file(
+        tmp_path,
+        {
+            "SAFE_DELETE_CANDIDATE": 2,
+            "QUARANTINE_CANDIDATE": 0,
+            "TEST_ONLY": 1,
+            "DOCS_ONLY": 0,
+            "DYNAMIC_REFERENCE_RISK": 1,
+            "PUBLIC_CONTRACT": 1,
+            "REVIEW_REQUIRED": 2,
+            "LIVE": 100,
+        },
+    )
+    cfg = _write_config(tmp_path, [{"name": "check_dead_code", "module_or_path": "x"}])
+    out = tmp_path / "r.json"
+    code = _run(
+        ["--config", str(cfg), "--target", str(td),
+         "--dead-code-baseline", str(base), "--json", "--output", str(out)]
+    )
+    assert code == 0
+    dc = json.loads(out.read_text(encoding="utf-8"))["dead_code"]
+    assert dc["status"] == "ok"
+    # findings group into the seven 013 §7 buckets (LIVE is not a candidate bucket).
+    assert dc["by_classification"] == {
+        "SAFE_DELETE_CANDIDATE": 0,
+        "QUARANTINE_CANDIDATE": 0,
+        "TEST_ONLY": 1,
+        "DOCS_ONLY": 0,
+        "DYNAMIC_REFERENCE_RISK": 1,
+        "PUBLIC_CONTRACT": 1,
+        "REVIEW_REQUIRED": 2,
+    }
+    # delta = current - baseline, per classification.
+    assert dc["delta"]["SAFE_DELETE_CANDIDATE"] == -2
+    assert dc["delta"]["DYNAMIC_REFERENCE_RISK"] == 0
+    assert dc["delta"]["TEST_ONLY"] == 0
+    assert dc["delta"]["REVIEW_REQUIRED"] == 0
+    assert dc["baseline"].endswith("dc_base.json")
+    assert dc["baseline_available"] is True
+    assert dc["safe_delete_new"] == 0
+
+
+def test_dead_code_section_absent_checker_is_unavailable(tmp_path):
+    td = tmp_path / "jsons"
+    td.mkdir()  # no check_dead_code.json present
+    cfg = _write_config(tmp_path, [{"name": "check_dead_code", "module_or_path": "x"}])
+    out = tmp_path / "r.json"
+    code = _run(["--config", str(cfg), "--target", str(td), "--json", "--output", str(out)])
+    assert code == 0
+    dc = json.loads(out.read_text(encoding="utf-8"))["dead_code"]
+    assert dc["status"] == "unavailable"
+    assert dc["by_classification"]["SAFE_DELETE_CANDIDATE"] == 0
+    # no delta is computed when the checker did not produce counts.
+    assert dc["delta"] == {}
+
+
+def test_dead_code_section_malformed_json_is_error(tmp_path):
+    td = tmp_path / "jsons"
+    td.mkdir()
+    (td / "check_dead_code.json").write_text("{not json", encoding="utf-8")
+    cfg = _write_config(tmp_path, [{"name": "check_dead_code", "module_or_path": "x"}])
+    out = tmp_path / "r.json"
+    code = _run(["--config", str(cfg), "--target", str(td), "--json", "--output", str(out)])
+    assert code == 0  # graceful: never raises
+    dc = json.loads(out.read_text(encoding="utf-8"))["dead_code"]
+    assert dc["status"] == "error"
+    assert dc["by_classification"]["SAFE_DELETE_CANDIDATE"] == 0
+    assert dc["delta"] == {}
+
+
+def test_dead_code_not_configured_still_renders(tmp_path):
+    # zero checkers => dead-code section still present as unavailable (never crashes).
+    cfg = _write_config(tmp_path, [])
+    out = tmp_path / "r.json"
+    assert _run(["--config", str(cfg), "--json", "--output", str(out)]) == 0
+    dc = json.loads(out.read_text(encoding="utf-8"))["dead_code"]
+    assert dc["status"] == "unavailable"
+    assert dc["by_classification"] == {
+        "SAFE_DELETE_CANDIDATE": 0,
+        "QUARANTINE_CANDIDATE": 0,
+        "TEST_ONLY": 0,
+        "DOCS_ONLY": 0,
+        "DYNAMIC_REFERENCE_RISK": 0,
+        "PUBLIC_CONTRACT": 0,
+        "REVIEW_REQUIRED": 0,
+    }
+
+
+def test_dead_code_markdown_renders_seven_buckets(tmp_path):
+    td = tmp_path / "jsons"
+    td.mkdir()
+    (td / "check_dead_code.json").write_text(
+        json.dumps(_dc_envelope([_dc_finding("PUBLIC_CONTRACT", "p1")])),
+        encoding="utf-8",
+    )
+    base = _dc_baseline_file(tmp_path, {"PUBLIC_CONTRACT": 1})
+    cfg = _write_config(tmp_path, [{"name": "check_dead_code", "module_or_path": "x"}])
+    out = tmp_path / "r.md"
+    code = _run(
+        ["--config", str(cfg), "--target", str(td), "--dead-code-baseline", str(base),
+         "--format", "markdown", "--output", str(out)]
+    )
+    assert code == 0
+    text = out.read_text(encoding="utf-8")
+    assert "## Dead code" in text
+    assert "Δ vs baseline" in text  # delta column present when a baseline is loaded
+    for cls in (
+        "SAFE_DELETE_CANDIDATE", "QUARANTINE_CANDIDATE", "TEST_ONLY", "DOCS_ONLY",
+        "DYNAMIC_REFERENCE_RISK", "PUBLIC_CONTRACT", "REVIEW_REQUIRED",
+    ):
+        assert cls in text
+
+
+def test_dead_code_baseline_accepts_raw_report(tmp_path):
+    # A raw `check_dead_code --format json` report (has "summary") is a valid
+    # baseline input too, not only the compact by_classification snapshot.
+    td = tmp_path / "jsons"
+    td.mkdir()
+    (td / "check_dead_code.json").write_text(
+        json.dumps(_dc_envelope([_dc_finding("REVIEW_REQUIRED", "r1")])),
+        encoding="utf-8",
+    )
+    raw_base = tmp_path / "raw_base.json"
+    raw_base.write_text(
+        json.dumps(_dc_envelope([], summary={"REVIEW_REQUIRED": 3, "LIVE": 10})),
+        encoding="utf-8",
+    )
+    cfg = _write_config(tmp_path, [{"name": "check_dead_code", "module_or_path": "x"}])
+    out = tmp_path / "r.json"
+    assert _run(
+        ["--config", str(cfg), "--target", str(td), "--dead-code-baseline",
+         str(raw_base), "--json", "--output", str(out)]
+    ) == 0
+    dc = json.loads(out.read_text(encoding="utf-8"))["dead_code"]
+    assert dc["by_classification"]["REVIEW_REQUIRED"] == 1
+    assert dc["delta"]["REVIEW_REQUIRED"] == -2  # 1 - 3
+
+
+def test_dead_code_default_baseline_snapshot_is_wellformed():
+    # The committed frozen snapshot loads and carries the seven §7 buckets + LIVE.
+    counts, rel = mod.load_dead_code_baseline(None)
+    assert counts is not None
+    assert rel.endswith("dead_code_baseline.json")
+    assert counts["SAFE_DELETE_CANDIDATE"] == 0
+    for cls in (
+        "SAFE_DELETE_CANDIDATE", "QUARANTINE_CANDIDATE", "TEST_ONLY", "DOCS_ONLY",
+        "DYNAMIC_REFERENCE_RISK", "PUBLIC_CONTRACT", "REVIEW_REQUIRED", "LIVE",
+    ):
+        assert cls in counts
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))

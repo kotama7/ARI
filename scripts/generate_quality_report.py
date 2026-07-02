@@ -56,6 +56,26 @@ REPORT_VERSION = 1
 SUPPORTED_INPUT_VERSIONS = {1}
 DEFAULT_TIMEOUT = 180
 
+# ── dead-code section (subtask 058) ──────────────────────────────────────────
+# Fold scripts/check_dead_code.py's 013 §7 classification counts into the roll-up
+# and compute a before/after delta vs a frozen pre-057 snapshot so subtask 057's
+# deletion is auditable (013 §9 step 5 / §6.3; subtask 058 §7.2/§7.3). The seven
+# buckets are the 013 §7 vocabulary; LIVE is the checker's internal live class and
+# is not a candidate bucket, so it is excluded here (recorded in the baseline).
+DEAD_CODE_CHECKER = "check_dead_code"
+DEAD_CODE_CLASSES = (
+    "SAFE_DELETE_CANDIDATE",
+    "QUARANTINE_CANDIDATE",
+    "TEST_ONLY",
+    "DOCS_ONLY",
+    "DYNAMIC_REFERENCE_RISK",
+    "PUBLIC_CONTRACT",
+    "REVIEW_REQUIRED",
+)
+DEFAULT_DEAD_CODE_BASELINE = (
+    REPO_ROOT / "docs" / "refactoring" / "reports" / "dead_code_baseline.json"
+)
+
 
 def _import_common():
     """Load ``scripts/quality/_common.py`` without a package (avoids E402).
@@ -344,6 +364,102 @@ def _baseline_ids(baseline: Any) -> set[tuple[str, str]]:
     return ids
 
 
+# ── dead-code rollup (subtask 058) ────────────────────────────────────────────
+
+
+def _dead_code_baseline_counts(payload: Any) -> dict[str, int]:
+    """Per-classification counts from a frozen snapshot or a raw checker report.
+
+    Accepts either the compact ``docs/refactoring/reports/dead_code_baseline.json``
+    snapshot (a ``by_classification`` mapping) or, for robustness, a raw
+    ``check_dead_code --format json`` report (whose ``summary`` carries the same
+    per-classification counts).
+    """
+    if not isinstance(payload, dict):
+        return {}
+    src = payload.get("by_classification")
+    if not isinstance(src, dict):
+        src = payload.get("summary")
+    if not isinstance(src, dict):
+        return {}
+    counts: dict[str, int] = {}
+    for cls, val in src.items():
+        # bool is an int subclass in Python; exclude it explicitly.
+        if isinstance(val, bool) or not isinstance(val, int):
+            continue
+        counts[str(cls)] = val
+    return counts
+
+
+def load_dead_code_baseline(
+    path_str: str | None,
+) -> tuple[dict[str, int] | None, str | None]:
+    """Load the frozen pre-057 dead-code snapshot (058 §7.3).
+
+    A missing/unreadable snapshot degrades to ``(None, None)`` so the dead-code
+    section still renders (without a delta). Never raises.
+    """
+    path = Path(path_str) if path_str else DEFAULT_DEAD_CODE_BASELINE
+    if not path.exists():
+        return None, None
+    try:
+        payload = _read_json(path)
+    except (OSError, json.JSONDecodeError) as exc:
+        sys.stderr.write(
+            f"generate_quality_report: dead-code baseline unreadable ({exc}); "
+            "proceeding without a delta\n"
+        )
+        return None, None
+    counts = _dead_code_baseline_counts(payload)
+    return counts, _rel_finding_path(REPO_ROOT, str(path)) or str(path)
+
+
+def build_dead_code(
+    results: list[CheckerResult],
+    baseline_counts: dict[str, int] | None,
+    baseline_path: str | None,
+) -> dict[str, Any]:
+    """Fold check_dead_code's classification counts + a before/after delta.
+
+    Groups the checker's ``findings[]`` by their ``classification`` field into
+    the seven 013 §7 buckets and computes ``delta = current - baseline`` per
+    class (058 §7.2). Renders even when the checker is absent / unparseable
+    (all-zero counts, ``status: unavailable``/``error``) so the dead-code
+    section never crashes the aggregator (031 graceful-degradation policy).
+    """
+    result = next((r for r in results if r.name == DEAD_CODE_CHECKER), None)
+    by_class = {c: 0 for c in DEAD_CODE_CLASSES}
+    if result is None:
+        status, reason = "unavailable", "check_dead_code not configured"
+    else:
+        status, reason = result.status, result.reason
+        if status == "ok":
+            for f in result.findings:
+                cls = str(f.get("classification", ""))
+                if cls in by_class:
+                    by_class[cls] += 1
+    # Headline: SAFE_DELETE candidates still awaiting deletion (013 §6.2).
+    safe_delete_new = by_class["SAFE_DELETE_CANDIDATE"]
+    if result is not None and isinstance(result.summary.get("safe_delete_new"), int):
+        safe_delete_new = int(result.summary["safe_delete_new"])
+
+    delta: dict[str, int] = {}
+    if status == "ok" and baseline_counts is not None:
+        delta = {
+            c: by_class[c] - int(baseline_counts.get(c, 0)) for c in DEAD_CODE_CLASSES
+        }
+
+    return {
+        "status": status,
+        "reason": reason,
+        "by_classification": by_class,
+        "baseline": baseline_path,
+        "baseline_available": baseline_counts is not None,
+        "delta": delta,
+        "safe_delete_new": safe_delete_new,
+    }
+
+
 def merge(
     results: list[CheckerResult],
     areas: list[dict[str, Any]],
@@ -351,6 +467,7 @@ def merge(
     baseline_path: str | None,
     generated_at: str,
     repo_root: Path,
+    dead_code: dict[str, Any],
 ) -> dict[str, Any]:
     have_baseline = baseline is not None
     base_ids = _baseline_ids(baseline)
@@ -406,6 +523,7 @@ def merge(
         "repo_root": str(repo_root),
         "checkers": checkers_json,
         "areas": areas,
+        "dead_code": dead_code,
         "totals": {
             "checkers_run": run,
             "checkers_unavailable": unavailable,
@@ -421,6 +539,40 @@ def merge(
 
 def render_json(model: dict[str, Any]) -> str:
     return json.dumps(model, indent=2, ensure_ascii=False)
+
+
+def _dead_code_markdown(dc: dict[str, Any]) -> list[str]:
+    """Render the dead-code subsection (058 §7.2): seven 013 §7 buckets + delta."""
+    if not dc:
+        return []
+    lines = ["", "## Dead code", ""]
+    lines.append(
+        f"- Source: {DEAD_CODE_CHECKER} (status: {dc.get('status', 'unavailable')})"
+    )
+    if dc.get("reason"):
+        lines.append(f"- Note: {str(dc['reason'])[:80]}")
+    lines.append(f"- Baseline: {dc.get('baseline') or '(none)'}")
+    lines.append(
+        f"- Safe-to-delete surviving human review: {dc.get('safe_delete_new', 0)}"
+    )
+    lines.append("")
+    by_class = dc.get("by_classification") or {}
+    delta = dc.get("delta") or {}
+    has_delta = bool(delta)
+    header = (
+        ["classification", "count", "Δ vs baseline"]
+        if has_delta
+        else ["classification", "count"]
+    )
+    rows: list[list[str]] = []
+    for c in DEAD_CODE_CLASSES:
+        count = int(by_class.get(c, 0))
+        if has_delta:
+            rows.append([c, str(count), f"{int(delta.get(c, 0)):+d}"])
+        else:
+            rows.append([c, str(count)])
+    lines.append(_common.render_markdown_table(header, rows))
+    return lines
 
 
 def render_markdown(model: dict[str, Any]) -> str:
@@ -455,6 +607,8 @@ def render_markdown(model: dict[str, Any]) -> str:
     lines += ["", "## Areas", ""]
     arows = [[a["area"], str(a["loc"]), str(a["finding_count"])] for a in model["areas"]]
     lines.append(_common.render_markdown_table(["area", "LOC", "findings"], arows))
+
+    lines += _dead_code_markdown(model.get("dead_code") or {})
 
     nf = model["regression"]["new_findings"]
     if nf:
@@ -497,6 +651,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="invoke each configured checker (subprocess) instead of --target")
     p.add_argument("--baseline", default=None,
                    help="previous JSON roll-up to diff against for regression deltas")
+    p.add_argument("--dead-code-baseline", default=None,
+                   help="frozen pre-057 dead-code snapshot for the before/after "
+                        f"delta (default: {DEFAULT_DEAD_CODE_BASELINE})")
     p.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT,
                    help=f"per-checker subprocess timeout, seconds (default {DEFAULT_TIMEOUT})")
     p.add_argument("--warning-only", action="store_true",
@@ -533,13 +690,17 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(2)
 
     baseline, baseline_path = _load_baseline(args.baseline)
+    dc_baseline, dc_baseline_path = load_dead_code_baseline(args.dead_code_baseline)
     generated_at = datetime.datetime.now(datetime.timezone.utc).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
 
     results = collect(cfg.checkers, target, args.run_checkers, args.timeout)
     areas = compute_areas(REPO_ROOT, cfg.areas, results)
-    model = merge(results, areas, baseline, baseline_path, generated_at, REPO_ROOT)
+    dead_code = build_dead_code(results, dc_baseline, dc_baseline_path)
+    model = merge(
+        results, areas, baseline, baseline_path, generated_at, REPO_ROOT, dead_code
+    )
 
     out_format = "json" if args.json else args.format
     text = render_json(model) if out_format == "json" else render_markdown(model)
