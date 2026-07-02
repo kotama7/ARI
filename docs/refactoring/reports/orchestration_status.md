@@ -105,7 +105,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 067 | inventory_dashboard_visible_settings | 6 | Low | No | 059 | DONE | 4252a79 |
 | 068 | define_dashboard_information_architecture | 6 | Low | No | 059 | DONE | 93d9662* |
 | 069 | design_dashboard_progressive_disclosure | 6 | Low | No | 059 | DONE | f878986 |
-| 070 | refactor_dashboard_settings_panel | 6 | High | Yes | 059 | TODO | — |
+| 070 | refactor_dashboard_settings_panel | 6 | High | Yes | 059 | DONE* | 57afcbb |
 | 071 | add_dashboard_developer_mode | 6 | Medium | Yes | 059 | TODO | — |
 | 072 | improve_dashboard_empty_loading_error_states | 6 | Medium | Yes | 059 | TODO | — |
 | 073 | add_dashboard_ux_regression_checks | 6 | Low | No | 059 | DONE | ecabd7c |
