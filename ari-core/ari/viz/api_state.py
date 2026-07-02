@@ -27,6 +27,8 @@ from .checkpoint_finder import (  # noqa: F401
     _resolve_checkpoint_dir,
 )
 
+from .tree_view import build_tree_view  # noqa: F401,E402
+
 from .state_sync import (  # noqa: F401
     _load_nodes_tree,
     _broadcast,

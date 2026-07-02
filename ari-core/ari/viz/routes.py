@@ -245,22 +245,16 @@ class _Handler(BaseHTTPRequestHandler):
                 data["has_review"] = (d / "review_report.json").exists()
                 # Detect current running phase
                 import glob as _glob
-                _nt_path = d / "tree.json"
-                if not _nt_path.exists() or _nt_path.stat().st_size == 0:
-                    _nt_path = d / "nodes_tree.json"
-                _nt = json.loads(_nt_path.read_text()) if (_nt_path.exists() and _nt_path.stat().st_size > 0) else {}
-                _nodes = _nt.get("nodes", _nt) if isinstance(_nt, dict) else _nt
-                _has_nodes = bool(_nodes and len(_nodes) > 0)
-                # Fallback: also check tree.json nodes if nodes_tree.json missing
-                if not _has_nodes and isinstance(data, dict) and "nodes" in data:
-                    _tree_nodes = data.get("nodes", [])
-                    if _tree_nodes:
-                        _has_nodes = True
-                        data["node_count"] = len(_tree_nodes)
-                    else:
-                        data["node_count"] = 0
-                else:
-                    data["node_count"] = len(_nodes) if _nodes else 0
+                # node_count is derived from the already-loaded tree (``data`` ==
+                # _load_nodes_tree(), i.e. the same tree emitted over the WS and in
+                # this /state payload). Subtask 024 §8.4 / §13.2: /state no longer
+                # re-reads tree.json/nodes_tree.json a second time to recount — the
+                # precedence + legacy ``node_*/tree.json`` fallback already live in
+                # ari.checkpoint.load_nodes_tree via the viz.tree_view adapter that
+                # produced ``data``, so the value is identical to before for empty,
+                # nodes-present, and legacy layouts.
+                _tree_nodes = data.get("nodes", []) if isinstance(data, dict) else []
+                data["node_count"] = len(_tree_nodes) if _tree_nodes else 0
                 _has_idea  = (d/"idea.json").exists() or (d/"science_data.json").exists()
                 _has_code  = bool(_glob.glob(str(d/"**/*.py"), recursive=True) + _glob.glob(str(d/"**/*.f90"), recursive=True))
                 _has_eval  = any((d/n).exists() for n in ["evaluation.json","eval_results.json","results.json"])
