@@ -1,0 +1,62 @@
+# Config for scripts/generate_quality_report.py — the quality-report aggregator
+# (subtask 031; design docs/refactoring/009_quality_scripts_plan.md §5.11).
+#
+# The aggregator DETECTS NOTHING itself: it merges the §3 JSON envelope
+# ({checker, version, target, summary, findings}) emitted by the sibling
+# scripts/quality/* checkers into one Markdown + JSON roll-up. Every checker is
+# `required: false` so a checker that does not exist yet (or fails / emits bad
+# JSON / an unsupported schema version) is reported `unavailable`/`error` and the
+# run continues — a valid report is produced even from zero checkers (graceful
+# degradation, 031 §7). stdlib + PyYAML only (P2: no LLM, no network).
+#
+# Each entry:
+#   name           stable checker id — matches the `checker` field the script
+#                  emits and, in --target mode, the `<name>.json` filename read.
+#   module_or_path repo-relative path invoked under --run-checkers.
+#   argv           extra args passed before the JSON flag (optional).
+#   json_flag      flag(s) that make the checker emit JSON on stdout
+#                  (default ["--format", "json"]; some checkers use ["--json"]).
+#   weight         advisory roll-up weight (recorded, unused today).
+#   required       always false in this plan — absence is expected, never fatal.
+
+checkers:
+  - name: check_complexity
+    module_or_path: scripts/check_complexity.py
+    weight: 1.0
+    required: false
+  - name: check_import_boundaries
+    module_or_path: scripts/check_import_boundaries.py
+    weight: 1.0
+    required: false
+  - name: check_public_api_contracts
+    module_or_path: scripts/check_public_api_contracts.py
+    json_flag: ["--json"]  # this checker exposes --json, not --format json
+    weight: 1.0
+    required: false
+  - name: check_viz_api_schema
+    module_or_path: scripts/check_viz_api_schema.py
+    weight: 1.0
+    required: false
+  - name: check_prompts
+    module_or_path: scripts/check_prompts.py
+    weight: 1.0
+    required: false
+  - name: check_dead_code
+    module_or_path: scripts/check_dead_code.py
+    weight: 1.0
+    required: false
+  # Subtask 028: not yet implemented — expected to report as `unavailable`.
+  - name: check_directory_policy
+    module_or_path: scripts/check_directory_policy.py
+    weight: 1.0
+    required: false
+
+# Optional per-area LOC override. When omitted (the default) the aggregator
+# auto-discovers areas = each immediate subdir of ari-core/ari plus every
+# ari-skill-*/src, counting *.py newlines (excluding __pycache__/node_modules),
+# which reproduces docs/refactoring/reports/001_complexity_baseline.md
+# (viz 8131, public 148, core 30277, skills-src 25495). To restrict, list
+# repo-relative directory paths, e.g.:
+# areas:
+#   - ari-core/ari/viz
+#   - ari-core/ari/public
