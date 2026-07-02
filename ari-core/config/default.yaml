@@ -11,7 +11,7 @@ bfts:
   select_prompt: orchestrator/bfts_select
   expand_select_prompt: orchestrator/bfts_expand_select
 checkpoint:
-  dir: ./checkpoints/{run_id}/
+  dir: ./workspace/checkpoints/{run_id}/
   trigger: per_node_completion
 evaluator:
   axis_weights:
@@ -36,7 +36,7 @@ llm:
   model: claude-haiku-4-5
   temperature: 0.7
 logging:
-  dir: ./checkpoints/{run_id}/
+  dir: ./workspace/checkpoints/{run_id}/
   format: json
   level: INFO
   output: file+stdout
