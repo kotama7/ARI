@@ -23,6 +23,8 @@ from dataclasses import dataclass, field
 
 import litellm
 
+from ari._factory import BaseRegistry
+
 logger = logging.getLogger(__name__)
 
 
@@ -161,13 +163,22 @@ def weighted_geometric_mean(
 
 
 # Registry consulted by LLMEvaluator to select a composite at construction
-# time. Keep names in sync with EvaluatorConfig.composite (Literal).
-_COMPOSITES: dict[str, "callable"] = {
-    "harmonic_mean": weighted_harmonic_mean,
-    "arithmetic_mean": weighted_arithmetic_mean,
-    "weighted_min": weighted_min,
-    "geometric_mean": weighted_geometric_mean,
-}
+# time (subtask 014: unified behind ``ari._factory.BaseRegistry``). Keep names
+# in sync with EvaluatorConfig.composite (Literal) — guarded by
+# ``tests/test_factory_registry.py`` and ``tests/test_evaluator_composite.py``.
+# The composite value *is* the callable, so each is registered eagerly and
+# ``resolve`` returns the function object unchanged (identity-preserving).
+_COMPOSITE_REGISTRY: "BaseRegistry" = BaseRegistry("evaluator.composite")
+_COMPOSITE_REGISTRY.register("harmonic_mean", weighted_harmonic_mean)
+_COMPOSITE_REGISTRY.register("arithmetic_mean", weighted_arithmetic_mean)
+_COMPOSITE_REGISTRY.register("weighted_min", weighted_min)
+_COMPOSITE_REGISTRY.register("geometric_mean", weighted_geometric_mean)
+
+# Back-compat alias: a plain ``dict[str, callable]`` snapshot of the registry,
+# preserved verbatim for callers/tests that import ``_COMPOSITES`` directly
+# (``test_evaluator_composite``, ``test_bfts_eval_config_integration``). The
+# registry is the single source of truth; this alias is derived from it.
+_COMPOSITES: dict[str, "callable"] = _COMPOSITE_REGISTRY.as_dict()
 
 
 def _default_scorer(metrics: dict) -> float | None:
@@ -287,13 +298,13 @@ class LLMEvaluator:
         self.model = model
         self.api_base = api_base
         self.metric_spec = metric_spec or MetricSpec()  # default: generic
-        if composite not in _COMPOSITES:
+        if composite not in _COMPOSITE_REGISTRY:
             raise ValueError(
                 f"Unknown composite formula {composite!r}; "
-                f"valid options: {sorted(_COMPOSITES)}"
+                f"valid options: {sorted(_COMPOSITE_REGISTRY.keys())}"
             )
         self._composite_name = composite
-        self._compose_fn = _COMPOSITES[composite]
+        self._compose_fn = _COMPOSITE_REGISTRY.resolve(composite)
         # Constructor-supplied weights act as a config-level fallback; the
         # MetricSpec still wins if it declares its own weights.
         self._ctor_axis_weights: dict[str, float] | None = (
