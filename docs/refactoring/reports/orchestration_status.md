@@ -12,7 +12,7 @@
 ## Baseline (captured before any subtask)
 
 - Python `3.13.2`, ruff `0.15.2`, node `v20.19.5`, npm `10.8.2`; `radon` NOT installed.
-- `ruff check ari-core --statistics` → baseline **661**; **now 660** after 003 removed a dead import (ratchet: may only DECREASE — future subtasks keep it ≤647).
+- `ruff check ari-core --statistics` → baseline **661**; **now 660** after 003 removed a dead import (ratchet: may only DECREASE — future subtasks keep it ≤635).
 - `python -m compileall -q ari-core ari-skill-* scripts` → **exit 0** (pass).
 - `pytest ari-core/tests -q` baseline → **2413 passed, 16 skipped** (111s, exit 0). *(clean green)*
 - HEAD at start: `93d9662865fc5e97a1950a7ec19ac06ace32e562`.
@@ -58,7 +58,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 020 | inventory_viz_dashboard_api_contracts | 4 | Low | No | — | DONE | 43b143a |
 | 021 | extract_viz_services_from_routes | 4 | Medium | Yes | 020 | DONE* | baf2add |
 | 022 | define_dashboard_dto_and_schema_tests | 4 | Low | No | 020 | DONE | 7d6ee50 |
-| 023 | separate_viz_file_io_from_route_handlers | 4 | Medium | Yes | 020 | TODO | — |
+| 023 | separate_viz_file_io_from_route_handlers | 4 | Medium | Yes | 020 | DONE* | 56b379d |
 | 024 | refactor_bfts_tree_visualization_adapter | 4 | Medium | Yes | 020 | DONE | b2071cd |
 | 025 | add_complexity_checker_script | 8 | Low | No | 001 | DONE | 6720ca8 |
 | 026 | add_import_boundary_checker_script | 8 | Low | No | — | DONE | fe34241 |
