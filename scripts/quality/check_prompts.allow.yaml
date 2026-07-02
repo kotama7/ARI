@@ -10,20 +10,9 @@
 # Do NOT hand-edit findings away -- tune scripts/quality/check_prompts.yaml.
 version: 1
 known:
-- id: ari-skill-evaluator/src/server.py::_METRIC_EXTRACT_SYS
-  file: ari-skill-evaluator/src/server.py
-  line: 192
-  name: _METRIC_EXTRACT_SYS
-  lines: 10
-  chars: 675
-  markers:
-  - role
-  - json
-  verdict: REVIEW_REQUIRED
-  prompt_id: skill.evaluator.metric_extract
 - id: ari-skill-evaluator/src/server.py::_CLAIMS_EXTRACT_SYS
   file: ari-skill-evaluator/src/server.py
-  line: 267
+  line: 292
   name: _CLAIMS_EXTRACT_SYS
   lines: 18
   chars: 1428
@@ -33,7 +22,7 @@ known:
   verdict: REVIEW_REQUIRED
 - id: ari-skill-evaluator/src/server.py::_CONTRACT_FLAGS_SYS
   file: ari-skill-evaluator/src/server.py
-  line: 465
+  line: 490
   name: _CONTRACT_FLAGS_SYS
   lines: 14
   chars: 1061
@@ -41,18 +30,6 @@ known:
   - role
   - json
   verdict: REVIEW_REQUIRED
-- id: ari-skill-evaluator/src/server.py::_SEMANTIC_SYSTEM_PROMPT
-  file: ari-skill-evaluator/src/server.py
-  line: 791
-  name: _SEMANTIC_SYSTEM_PROMPT
-  lines: 16
-  chars: 1150
-  markers:
-  - role
-  - json
-  - rubric
-  verdict: EXTRACT_TEMPLATE
-  prompt_id: skill.evaluator.semantic_system
 - id: ari-skill-paper/src/review_engine.py::system
   file: ari-skill-paper/src/review_engine.py
   line: 443
@@ -67,28 +44,16 @@ known:
   prompt_id: skill.paper.area_chair
 - id: ari-skill-paper/src/server.py::SECTION_PROMPTS
   file: ari-skill-paper/src/server.py
-  line: 73
+  line: 117
   name: SECTION_PROMPTS
   lines: 6
   chars: 434
   markers:
   - role
   verdict: REVIEW_REQUIRED
-- id: ari-skill-paper/src/server.py#L542
+- id: ari-skill-paper/src/server.py#L652
   file: ari-skill-paper/src/server.py
-  line: 542
-  name: system_prompt
-  lines: 13
-  chars: 815
-  markers:
-  - role
-  - json
-  - rubric
-  verdict: EXTRACT_TEMPLATE
-  prompt_id: skill.paper.academic_reviewer
-- id: ari-skill-paper/src/server.py#L622
-  file: ari-skill-paper/src/server.py
-  line: 622
+  line: 652
   name: system_prompt
   lines: 6
   chars: 326
@@ -96,10 +61,9 @@ known:
   - role
   - rubric
   verdict: REVIEW_REQUIRED
-  prompt_id: skill.paper.title_reviser
-- id: ari-skill-paper/src/server.py#L631
+- id: ari-skill-paper/src/server.py#L661
   file: ari-skill-paper/src/server.py
-  line: 631
+  line: 661
   name: system_prompt
   lines: 5
   chars: 280
@@ -107,10 +71,9 @@ known:
   - role
   - rubric
   verdict: REVIEW_REQUIRED
-  prompt_id: skill.paper.abstract_reviser
-- id: ari-skill-paper/src/server.py#L639
+- id: ari-skill-paper/src/server.py#L669
   file: ari-skill-paper/src/server.py
-  line: 639
+  line: 669
   name: system_prompt
   lines: 5
   chars: 240
@@ -118,48 +81,15 @@ known:
   - role
   - rubric
   verdict: REVIEW_REQUIRED
-  prompt_id: skill.paper.section_reviser
-- id: ari-skill-paper/src/server.py#L1265
+- id: ari-skill-paper/src/server.py#L1295
   file: ari-skill-paper/src/server.py
-  line: 1265
+  line: 1295
   name: null
   lines: 32
   chars: 2086
   markers:
   - role
   verdict: REVIEW_REQUIRED
-- id: ari-skill-paper/src/server.py::_system_prompt_a
-  file: ari-skill-paper/src/server.py
-  line: 1487
-  name: _system_prompt_a
-  lines: 40
-  chars: 2644
-  markers:
-  - role
-  verdict: EXTRACT_TEMPLATE
-  prompt_id: skill.paper.fill_in_writer
-- id: ari-skill-paper/src/server.py::_system_prompt
-  file: ari-skill-paper/src/server.py
-  line: 1660
-  name: _system_prompt
-  lines: 5
-  chars: 332
-  markers:
-  - role
-  verdict: EXTRACT_TEMPLATE
-  prompt_id: skill.paper.paper_writer
-- id: ari-skill-paper/src/server.py#L2544
-  file: ari-skill-paper/src/server.py
-  line: 2544
-  name: system_prompt
-  lines: 16
-  chars: 1007
-  markers:
-  - role
-  - json
-  - rubric
-  verdict: EXTRACT_TEMPLATE
-  prompt_id: skill.paper.global_coherence
 - id: ari-skill-plot/src/server.py::resp
   file: ari-skill-plot/src/server.py
   line: 90

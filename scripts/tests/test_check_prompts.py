@@ -32,13 +32,14 @@ CHECKER = SCRIPTS_DIR / "check_prompts.py"
 
 # High-value 036 targets the inventory slice must reproduce (file, line).
 # NOTE: the evaluator ``_METRIC_EXTRACT_SYS`` / ``_SEMANTIC_SYSTEM_PROMPT`` rows
-# were EXTRACTED to ``ari-skill-evaluator/src/prompts/*.md`` by subtask 040, so
-# they are no longer inline and are intentionally absent here (the census slice
-# shrinks as 039/040/041 externalize prompts).
+# were EXTRACTED to ``ari-skill-evaluator/src/prompts/*.md`` by subtask 040, and
+# the three paper rows (``academic_reviewer`` :542, ``fill_in_writer`` :1487,
+# ``global_coherence`` :2544) were EXTRACTED to ``ari-skill-paper/src/prompts/*.md``
+# by subtask 041 — all now loaded via a skill-local loader, no longer inline, so
+# they are intentionally absent here (the census slice shrinks as 039/040/041
+# externalize prompts). The remaining rows are inline prompts owned by sibling
+# subtasks (plot/vlm/transform/web).
 CENSUS_TARGETS = {
-    ("ari-skill-paper/src/server.py", 542),       # academic_reviewer
-    ("ari-skill-paper/src/server.py", 1487),      # fill_in_writer
-    ("ari-skill-paper/src/server.py", 2544),      # global_coherence
     ("ari-skill-plot/src/server.py", 560),        # viz_expert
     ("ari-skill-vlm/src/server.py", 97),          # figure_reviewer
     ("ari-skill-transform/src/server.py", 834),   # node_report_analyst
