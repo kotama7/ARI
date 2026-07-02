@@ -45,7 +45,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 007 | define_core_interfaces_and_protocols | 3 | Low | No | — | DONE | 93d9662* |
 | 008 | extract_model_backend_interface | 3 | High | Yes | 007 | DONE | a045649 |
 | 009 | extract_evaluator_interface | 3 | Medium | Yes | 007 | DONE | 38977a7 |
-| 010 | extract_artifact_checkpoint_trace_store | 3 | High | Yes | 007 | TODO | — |
+| 010 | extract_artifact_checkpoint_trace_store | 3 | High | Yes | 007 | DONE* | 4fbe6b0 |
 | 011 | separate_bfts_strategy_from_react_loop | 3 | High | Yes | 007 | DONE* | 8d67474 |
 | 012 | refactor_pipeline_stage_architecture | 3 | High | Yes | 007 | DONE | 04c0742 |
 | 013 | refactor_memory_boundary | 3 | High | Yes | 007 | DONE | 144c262 |
