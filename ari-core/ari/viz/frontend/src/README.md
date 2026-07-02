@@ -70,6 +70,12 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `resultTypes.ts` — Results-page shared types (OrsRenderInput, RubricNode, LeafGrade, StageState); extracted from resultSections in req 15.
     - `RubricTreeVisualization.tsx` — D3 rubric tree with aggregated leaf scores.
     - `useEAR.ts` — hook owning EarSection's curate/publish/publish.yaml-editor action state; extracted from ResultsPage in req 15.
+    - `sections/` — TODO
+      - `ContextSection.tsx` — TODO
+      - `FiguresSection.tsx` — TODO
+      - `OrsChainSection.tsx` — TODO
+      - `ReproSection.tsx` — TODO
+      - `ReviewScoresSection.tsx` — TODO
   - `Settings/` — dashboard/run configuration page.
     - `README.md` — Settings index.
     - `index.ts` — barrel re-export.
@@ -106,7 +112,9 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
   - `Workflow/` — workflow stages/pipeline page.
     - `README.md` — Workflow index.
     - `index.ts` — barrel re-export.
+    - `workflowModals.tsx` — TODO
     - `workflowNodes.tsx` — React Flow custom nodes + edit/skill/condition modals (extracted from WorkflowPage in req 15).
+    - `workflowNodeTypes.tsx` — TODO
     - `WorkflowPage.tsx` — workflow view.
 - `context/` — global React context (shared app state).
   - `README.md` — context index.
