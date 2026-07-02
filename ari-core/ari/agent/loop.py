@@ -1060,7 +1060,7 @@ class AgentLoop:
                                 # primary_metric is only known after generate_ideas, so we seed
                                 # here rather than at the literal moment of checkpoint creation.
                                 try:
-                                    from ari_skill_memory.backends import get_backend as _gmb
+                                    from ari.memory import get_backend as _gmb
                                     from ari.env_detect import get_environment_summary as _es
                                     _ckpt = getattr(self, "checkpoint_dir", None)
                                     if _ckpt:

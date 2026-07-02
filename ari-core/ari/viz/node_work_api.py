@@ -190,7 +190,7 @@ def _api_checkpoint_memory(ckpt_id: str) -> dict:
     try:
         from ari.paths import PathManager as _PM_mem
         _PM_mem.set_checkpoint_dir_env(d)
-        from ari_skill_memory.backends import get_backend
+        from ari.memory import get_backend
         backend = get_backend(checkpoint_dir=d)
         # node-scope entries
         for nid, lst in backend.list_all_nodes().get("by_node", {}).items():

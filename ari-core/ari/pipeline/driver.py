@@ -154,7 +154,7 @@ class WorkflowDriver:
         nodes_json_path = str(checkpoint_dir / "nodes_tree.json")
         try:
             try:
-                from ari_skill_memory.backends import get_backend as _get_mem_backend
+                from ari.memory import get_backend as _get_mem_backend
                 _mem_backend = _get_mem_backend(checkpoint_dir=checkpoint_dir)
             except Exception as _mbe:
                 log.warning("pipeline: memory backend unavailable: %s", _mbe)

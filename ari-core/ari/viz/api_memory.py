@@ -37,7 +37,7 @@ def _api_memory_health(checkpoint_dir: "Path | None") -> dict:
     try:
         from ari.paths import PathManager
         PathManager.set_checkpoint_dir_env(checkpoint_dir)
-        from ari_skill_memory.backends import get_backend
+        from ari.memory import get_backend
         backend = get_backend(checkpoint_dir=checkpoint_dir)
         h = backend.health()
         return {
