@@ -73,7 +73,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 035 | add_refactoring_progress_tracker | 10 | Low | No | — | DONE | 4be8796 |
 | 036 | inventory_hardcoded_prompts | 7 | Low | No | — | DONE | 9619ebf |
 | 037 | define_prompt_template_policy | 7 | Low | No | 036 | DONE | 93d9662* |
-| 038 | introduce_prompt_registry_and_loader | 7 | Medium | Yes | 036 | TODO | — |
+| 038 | introduce_prompt_registry_and_loader | 7 | Medium | Yes | 036 | DONE | ed6171e |
 | 039 | extract_agent_and_bfts_prompts | 7 | Medium | Yes | 036 | TODO | — |
 | 040 | extract_evaluator_and_llm_judge_prompts | 7 | Medium | Yes | 036 | TODO | — |
 | 041 | extract_pipeline_and_paper_generation_prompts | 7 | Medium | Yes | 036 | TODO | — |
