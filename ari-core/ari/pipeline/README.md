@@ -10,10 +10,13 @@ re-exported from the package root.
 - `README.md` — this file.
 - `__init__.py` — sub-module map + public re-exports.
 - `context_builder.py` — best-nodes context + keyword extraction.
+- `driver.py` — TODO
 - `experiment_md.py` — `experiment.md` helpers.
 - `orchestrator.py` — top-level entry points (`build_scientific_data`, `run_pipeline`).
+- `stage_context.py` — TODO
 - `stage_control.py` — loop_back / VLM-feedback control.
 - `stage_runner.py` — stage execution helpers (retry, ReAct, subprocess).
+- `stages.py` — TODO
 - `verified_context.py` — artifact-grounded verified context for write_paper (best node's root→best lineage → `verified_context.json`; `render_grounded_block`). Exposed via `ari.public.verified_context`.
 - `yaml_loader.py` — workflow/pipeline loaders + `{{var}}` resolution.
 - `claim_gate/` — deterministic `claim_evidence_hard_gate` (Story2Proposal Phase B). See its `README.md`.
