@@ -54,6 +54,7 @@ targets the like-named module under `ari/`.
 - `test_evaluator_independence.py` — TODO
 - `test_evaluator_protocol.py` — TODO
 - `test_event_loop_and_csv.py` — event loop + CSV logging.
+- `test_factory_registry.py` — TODO
 - `test_file_explorer.py` — file explorer.
 - `test_gui_env_propagation.py` — GUI env propagation.
 - `test_gui_errors.py` — GUI error handling.
