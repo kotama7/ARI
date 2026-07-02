@@ -8,8 +8,11 @@ Operational and utility scripts for building images, running services, and dev t
 - `analyze_references.py` — build the deterministic code/data reference graph (static imports + dynamic string-key/path/MCP/cross-language overlays) seeded from the 053 roots; emits `docs/refactoring/reports/reference_graph.{json,md}` (`--check` gates drift; no LLM/API).
 - `build_pb_images.sh` — build the vendor PaperBench Docker images (`pb-env`, `pb-reproducer`).
 - `check_complexity.py` — source-code size (LOC tiers) + cyclomatic-complexity (ruff `C901`) gate; warning-mode-first with a frozen allowlist (`--json`, `--fail-on-regression`, `--update-baseline`; no LLM/API).
+- `check_dead_code.py` — dead-code candidate classifier over the 053/054 `reference_graph.json`: labels each node with the 013 §7 vocabulary (`PUBLIC_CONTRACT`/`DYNAMIC_REFERENCE_RISK`/`TEST_ONLY`/`QUARANTINE_CANDIDATE`/`SAFE_DELETE_CANDIDATE`/`REVIEW_REQUIRED`) and emits a ranked `dead_code_candidates.{md,json}`; deletes nothing (056/057 act); ruff-corroborated `SAFE_DELETE`, warning-mode-first `--check`; no LLM/API.
 - `check_import_boundaries.py` — AST import-boundary gate: skills may import core only via `ari.public.*`/`ari.protocols.*` (B1) and core may not import skills except `ari_skill_memory` (B2); warning-mode-first with a frozen allowlist (`--json`, `--fail-on-regression`; no LLM/API).
+- `check_prompts.py` — inline-prompt externalization inventory: AST-scans the runtime tree for role-marked multi-line LLM prompts still hardcoded in `ari-skill-*/src` (against a frozen allowlist seeded from the Subtask 036 census); defers snapshot byte-verification to Gate 10 via `--with-snapshots` (never re-implemented); warning-mode-first (`--json`, `--fail-on-regression`, `--update-baseline`; no LLM/API). `ari-core/ari/agent/loop.py` is the clean negative control.
 - `check_public_api_contracts.py` — snapshot & diff gate for the `ari.public.*` API surface (freezes the 8 re-export submodules; `--update` re-baselines, `--strict` fails on removed symbols; stdlib-only, no LLM/API).
+- `check_viz_api_schema.py` — reconcile the dashboard routes (`viz/routes.py`) with their sole consumer `frontend/src/services/api.ts`; reports client-only (broken calls) + server-only (candidate unused) endpoints via static dispatch simulation; warning-mode-first with a frozen allowlist (`--json`, `--fail-on-regression`; no LLM/API/node).
 - `gpu_ollama_monitor.sh` — monitor the SLURM GPU node running Ollama and re-tunnel it.
 - `readme_sync.py` — sync per-directory README `## Contents` indexes with the tree (`--check` gates drift, `--write` regenerates; no LLM/API).
 - `run_all_tests.sh` — run each skill's pytest suite in its own process.
@@ -52,8 +55,14 @@ Operational and utility scripts for building images, running services, and dev t
   - `analyze_references.yaml` — scan-root / prompt-base / data-selector / ignore config for `scripts/analyze_references.py` (subtask 054 reference-graph analyzer).
   - `check_complexity.allow.yaml` — frozen size/complexity baseline for `check_complexity.py` (41 LOC-tier + 64 over-complexity offenders); regenerate with `--update-baseline`.
   - `check_complexity.yaml` — thresholds for `check_complexity.py` — LOC tiers (warn>500/review>800/split>1200), ruff `C901` `max-complexity`, test exclusion, and default scan scope.
+  - `check_dead_code.allow.yaml` — frozen `SAFE_DELETE_CANDIDATE` baseline for `check_dead_code.py` (empty at seed; only shrinks as subtask 057 deletes reviewed candidates); regenerate with `--update-baseline`.
+  - `check_dead_code.yaml` — classification config for `check_dead_code.py` — graph path, PUBLIC_CONTRACT / dynamic-seam / TEST_ONLY / under-traced-seam path lists, `SAFE_DELETE` eligibility (ruff-corroborated), and the `--check` budget.
   - `check_import_boundaries.allow.yaml` — frozen baseline of known import-boundary edges (the 7 B1 seed edges + the sanctioned core→skill edge).
   - `check_import_boundaries.yaml` — rule config for `check_import_boundaries.py` (allowed skill→core roots, sanctioned core→skill package, rule toggles).
+  - `check_prompts.allow.yaml` — frozen inline-prompt baseline for `check_prompts.py` (23 role-marked candidates seeded from the Subtask 036 census, each tagged with its 036/011 §5.x verdict); regenerate with `--update-baseline`.
+  - `check_prompts.yaml` — heuristics for `check_prompts.py` — role/JSON/rubric markers, min-lines/min-chars thresholds, default scan scope, and vendored `KEEP_INLINE` excludes.
+  - `check_viz_api_schema.allow.yaml` — frozen baseline for `check_viz_api_schema.py` (1 known client-only F6a drift + 20 legitimately server-only routes: static/SSE/direct-URL/proxy/no-FE-consumer).
+  - `check_viz_api_schema.yaml` — config for `check_viz_api_schema.py` (routes.py + api.ts targets, the four get/post/pbGet/pbPost helper→method map, declarative-route toggle).
 - `registry/` — ari-registry service deployment helpers.
   - `README.md` — registry index.
   - `docker-compose.yml` — production stack (nginx + uvicorn + sqlite file volume).
@@ -79,4 +88,7 @@ Operational and utility scripts for building images, running services, and dev t
 - `tests/` — Unit and smoke tests for the top-level `scripts/` quality checkers
   - `README.md` — tests index.
   - `test_analyze_references.py` — unit + smoke + determinism tests for `analyze_references.py` (string-key/MCP fixtures + publish-backend/prompt non-orphan repo smoke).
+  - `test_check_dead_code.py` — unit + smoke + determinism tests for `check_dead_code.py` (precedence, hard-downgrade, ruff-gated `SAFE_DELETE` + `--check` ratchet, repo firewall smoke).
   - `test_check_import_boundaries.py` — unit + smoke tests for `check_import_boundaries.py` (B1/B2 fixtures + repo-level seed-edge smoke).
+  - `test_check_prompts.py` — unit + smoke tests for `check_prompts.py` (synthetic new/allowlisted, user-message negative filter, `agent/loop.py` negative control, census-reproduction + unique-id repo smoke, Gate 10 delegation).
+  - `test_check_viz_api_schema.py` — unit + smoke tests for `check_viz_api_schema.py` (normalization + all-four-regime client extraction + server if/elif extraction fixtures + repo reconciliation smoke).
