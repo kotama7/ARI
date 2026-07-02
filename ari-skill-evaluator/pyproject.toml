@@ -8,5 +8,15 @@ version = "1.0.0"
 requires-python = ">=3.11"
 dependencies = ["mcp>=1.0"]
 
+[tool.setuptools]
+# Ship the skill-local prompt templates (src/prompts/*.md, subtask 040) in the
+# wheel/sdist. The standard runtime path is an editable install (setup.sh
+# `pip install -e`), which resolves these files via `Path(__file__).parent`;
+# these keys additionally include them in a built distribution.
+include-package-data = true
+
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"*" = ["prompts/*.md"]

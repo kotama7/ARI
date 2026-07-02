@@ -31,9 +31,11 @@ REPO_ROOT = SCRIPTS_DIR.parent
 CHECKER = SCRIPTS_DIR / "check_prompts.py"
 
 # High-value 036 targets the inventory slice must reproduce (file, line).
+# NOTE: the evaluator ``_METRIC_EXTRACT_SYS`` / ``_SEMANTIC_SYSTEM_PROMPT`` rows
+# were EXTRACTED to ``ari-skill-evaluator/src/prompts/*.md`` by subtask 040, so
+# they are no longer inline and are intentionally absent here (the census slice
+# shrinks as 039/040/041 externalize prompts).
 CENSUS_TARGETS = {
-    ("ari-skill-evaluator/src/server.py", 192),   # _METRIC_EXTRACT_SYS
-    ("ari-skill-evaluator/src/server.py", 791),   # _SEMANTIC_SYSTEM_PROMPT
     ("ari-skill-paper/src/server.py", 542),       # academic_reviewer
     ("ari-skill-paper/src/server.py", 1487),      # fill_in_writer
     ("ari-skill-paper/src/server.py", 2544),      # global_coherence

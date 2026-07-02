@@ -21,6 +21,45 @@ except Exception:
     pass
 
 
+# ── skill-local prompt loader (subtask 040) ──────────────────────────────────
+# The evaluator/LLM-judge system prompts are stored as byte-identical ``.md``
+# templates under ``src/prompts/`` and loaded here through a tiny mirror of
+# ari-core's ``FilesystemPromptLoader`` ``load_versioned`` contract. The helper
+# is COPIED (not imported from ari-core) to preserve the one-way
+# ``ari-skill-* -> ari-core`` boundary and keep this MCP package self-contained.
+# Imports stay function-local (matching this module's style and avoiding E402,
+# and keeping the cost-tracker fallback import at its pinned line). Raw load (no
+# ``str.format``) since every template embeds literal JSON-schema braces.
+# Deterministic (P2): a package-relative file read — no LLM, no network.
+def _prompt_path(key: str):
+    """Absolute path to the skill-local prompt template *key* (``prompts/<key>.md``)."""
+    from pathlib import Path
+    return Path(__file__).resolve().parent / "prompts" / f"{key}.md"
+
+
+def _load_prompt(key: str) -> str:
+    """Return prompt template *key* byte-identical to the pre-extraction constant.
+
+    The ``.md`` file is stored with a trailing newline (file convention); a
+    single trailing ``\\n`` is trimmed so the rendered string equals the original
+    string constant exactly, mirroring ari-core ``llm_evaluator.py``.
+    """
+    text = _prompt_path(key).read_text(encoding="utf-8")
+    return text[:-1] if text.endswith("\n") else text
+
+
+def _load_prompt_versioned(key: str) -> tuple[str, str]:
+    """``(rendered_text, sha256[:12])`` for uniform prompt hashing.
+
+    The hash is over the raw on-disk template body (before the trailing-newline
+    trim), matching ari-core's ``load_versioned`` so snapshot tests and future
+    run-provenance pin the same value. Deterministic; no LLM, no network.
+    """
+    import hashlib
+    raw = _prompt_path(key).read_text(encoding="utf-8")
+    return _load_prompt(key), hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
+
+
 def _parse_success_metrics(text: str) -> list[str]:
     """Extract metric names from the experiment file (deterministic).
     Supports:
@@ -188,20 +227,6 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
 
 
-_METRIC_EXTRACT_SYS = (
-    "You are a research evaluation expert. "
-    "Given an experiment description, identify: "
-    "(1) the primary numeric metric to maximize/minimize (one short name, e.g. GFLOP_per_s), "
-    "(2) whether higher is better, "
-    "(3) the list of MEASURED metric names the experiment should report (outputs only — throughput, accuracy, latency, etc.), "
-    "(4) the list of INPUT parameter names the experiment runs on (matrix size, thread count, seed, etc. — these are knobs, NOT measurements). "
-    "Strictly disjoint: a name appears in measurements OR params, never both. "
-    "Respond ONLY with JSON: "
-    '{"metric_keyword":"<name>","higher_is_better":true,'
-    '"expected_metrics":["<m1>","<m2>"],"expected_params":["<p1>","<p2>"]}'
-)
-
-
 async def _llm_extract_metric_spec(description: str) -> dict:
     """LLM-extract ``{metric_keyword, higher_is_better, expected_metrics, expected_params}``
     from a free-text description. Returns ``{}`` on any failure so callers fall back."""
@@ -214,7 +239,7 @@ async def _llm_extract_metric_spec(description: str) -> dict:
         _resp = await _litellm.acompletion(
             model=_model,
             messages=[
-                {"role": "system", "content": _METRIC_EXTRACT_SYS},
+                {"role": "system", "content": _load_prompt("metric_extract_sys")},
                 {"role": "user", "content": "Experiment description:\n" + (description or "")[:2000]},
             ],
             temperature=0.0,
@@ -787,26 +812,6 @@ async def _tool_claim_evidence_hard_gate(arguments: dict) -> dict:
     return report
 
 
-_SEMANTIC_SYSTEM_PROMPT = (
-    "You are a rigorous scientific reviewer performing an EVIDENCE-GROUNDED SEMANTIC "
-    "review of a paper. Numeric correctness, figure existence, and number/results "
-    "consistency have ALREADY been verified deterministically by a hard gate (its "
-    "findings are provided) — do NOT re-check numbers. Evaluate ONLY meaning:\n"
-    "  - reasoning: do Abstract/Intro/Conclusion claims stay within the evidence? "
-    "over-generalization beyond the evaluated benchmark? are limitations reflected?\n"
-    "  - data_interpretation: are causal/comparative interpretations of the results "
-    "justified (separate from whether the numbers match)?\n"
-    "  - visual_semantics: do captions/figure descriptions agree in MEANING with the "
-    "text (not existence)?\n"
-    "  - unregistered strong (non-numeric) claims not backed by the candidate claims.\n"
-    "Be conservative: only flag genuine over-claims. Respond ONLY with JSON:\n"
-    '{"scores":{"reasoning":0-1,"data_interpretation":0-1,"visual_semantics":0-1},'
-    '"warnings":[{"type":"overclaim|overgeneralization|unsupported_claim|interpretation|'
-    'visual_semantics","section":"<section>","message":"<why>"}],'
-    '"suggested_revisions":[{"section":"<section>","instruction":"<concrete edit>"}]}'
-)
-
-
 async def _tool_evidence_grounded_semantic_review(arguments: dict) -> dict:
     """Story2Proposal Phase D: non-blocking, evidence-grounded semantic review.
 
@@ -900,7 +905,7 @@ async def _tool_evidence_grounded_semantic_review(arguments: dict) -> dict:
         _kw = {
             "model": _model,
             "messages": [
-                {"role": "system", "content": _SEMANTIC_SYSTEM_PROMPT},
+                {"role": "system", "content": _load_prompt("semantic_review_sys")},
                 {"role": "user", "content": user_prompt},
             ],
             "temperature": 0.2, "max_tokens": 1500,
