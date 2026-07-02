@@ -50,7 +50,6 @@ Feature-grouped React components — one subdirectory per dashboard page plus sh
   - `results/` — rubric-scored results view.
     - `README.md` — results index.
     - `ResultsView.tsx` — leaf grades + rubric tree + negative-control display.
-  - `steps/` — TODO
 - `Results/` — final run results and rubric scoring.
   - `README.md` — Results index.
   - `EarSection.tsx` — Experiment Artifact Repository section (curate/publish/publish.yaml editor); extracted from ResultsPage renderEAR in req 15.

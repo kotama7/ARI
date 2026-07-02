@@ -49,4 +49,3 @@ Shared assets included by every language build (en/ja/zh) of the report.
     - `tree_render.py` — F02: example BFTS tree from frozen `data/F02_tree.json` → `dot/` only (the TikZ realisation `tikz/F02_tree.tex` is hand-maintained in the `_style.tex` house language).
   - `tikz/` — TikZ figure sources (not enumerated)
 - `references_pdf/` — This directory holds local copies of papers cited in `../references.bib`
-- `tables/` — TODO
