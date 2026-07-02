@@ -65,3 +65,16 @@ from ari.pipeline.orchestrator import (  # noqa: F401,E402
     build_scientific_data,
     run_pipeline,
 )
+
+# Subtask 012 — stage abstraction + workflow driver. Additive re-exports; the
+# functional surface above is preserved (the driver delegates to the same
+# ``_run_stage_subprocess`` / ``_run_react_stage`` package-surface names).
+from ari.pipeline.stage_context import StageContext  # noqa: F401,E402
+from ari.pipeline.stages import (  # noqa: F401,E402
+    BasePipelineStage,
+    OutputSink,
+    ReActStage,
+    SubprocessMCPStage,
+    make_stage,
+)
+from ari.pipeline.driver import WorkflowDriver  # noqa: F401,E402
