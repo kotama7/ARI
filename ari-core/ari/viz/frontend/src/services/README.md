@@ -7,3 +7,6 @@ Client modules for talking to the `ari.viz` backend.
 - `README.md` — this file.
 - `api.ts` — typed REST client (state, checkpoints, settings, GPU monitor, etc.).
 - `websocket.ts` — websocket helper stub (connections now handled by `useWebSocket`).
+- `__tests__/` — TODO
+  - `api.test.tsx` — TODO
+  - `schema.test.tsx` — TODO

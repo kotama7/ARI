@@ -8,6 +8,9 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
 - `App.tsx` — root app, lazy-loads page components and wraps them in `AppProvider`/`Layout`.
 - `main.tsx` — ReactDOM entry point with a top-level error boundary.
 - `vite-env.d.ts` — Vite client type declarations.
+- `__tests__/` — TODO
+  - `devModeAndDangerousOps.test.tsx` — TODO
+  - `routeNavParity.test.tsx` — TODO
 - `components/` — page and UI components, grouped by feature.
   - `README.md` — components index.
   - `common/` — reusable presentational UI primitives shared across pages.
@@ -55,6 +58,7 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `results/` — rubric-scored results view.
       - `README.md` — results index.
       - `ResultsView.tsx` — leaf grades + rubric tree + negative-control display.
+    - `steps/` — TODO
   - `Results/` — final run results and rubric scoring.
     - `README.md` — Results index.
     - `EarSection.tsx` — Experiment Artifact Repository section (curate/publish/publish.yaml editor); extracted from ResultsPage renderEAR in req 15.
@@ -72,6 +76,8 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `index.ts` — barrel re-export.
     - `settingsConstants.ts` — provider/Letta model tables + _splitHandle helper (extracted from SettingsPage in req 15).
     - `SettingsPage.tsx` — settings view.
+    - `__tests__/` — TODO
+      - `SettingsContract.test.tsx` — TODO
   - `Tree/` — BFTS tree page (search tree, detail panel, file browser).
     - `README.md` — Tree index.
     - `DetailPanel.tsx` — selected-node detail panel (tabs: memory, report, etc.).
@@ -115,10 +121,15 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
   - `index.ts` — i18n entry / language selection.
   - `ja.ts` — Japanese dictionary.
   - `zh.ts` — Chinese dictionary.
+  - `__tests__/` — TODO
+    - `parity.test.tsx` — TODO
 - `services/` — typed API and websocket client modules.
   - `README.md` — services index.
   - `api.ts` — typed REST client (state, checkpoints, settings, GPU monitor, etc.).
   - `websocket.ts` — websocket helper stub (connections now handled by `useWebSocket`).
+  - `__tests__/` — TODO
+    - `api.test.tsx` — TODO
+    - `schema.test.tsx` — TODO
 - `styles/` — global CSS.
   - `README.md` — styles index.
   - `components.css` — component styles.

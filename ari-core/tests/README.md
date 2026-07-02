@@ -34,6 +34,7 @@ targets the like-named module under `ari/`.
 - `test_clone.py` — clone behaviour.
 - `test_config.py` — config loading.
 - `test_container.py` — container runtime.
+- `test_contract_snapshots.py` — TODO
 - `test_cost_tracker.py` — cost tracker.
 - `test_curate.py` — curation.
 - `test_dashboard_html.py` — dashboard HTML.
@@ -85,6 +86,7 @@ targets the like-named module under `ari/`.
 - `test_pipeline_verified_context.py` — verified-context building blocks (best-node selection, lineage scoping, grounded-block renderer).
 - `test_plan_promote.py` — plan promotion.
 - `test_prompt_extraction.py` — prompt extraction.
+- `test_prompt_snapshots.py` — TODO
 - `test_public_api_boundary.py` — public-API boundary.
 - `test_publish_and_registry.py` — publish + registry.
 - `test_publish_yaml_api.py` — publish YAML API.
@@ -110,6 +112,7 @@ targets the like-named module under `ari/`.
 - `test_variable_passthrough.py` — variable passthrough.
 - `test_verified_context_wiring.py` — orchestrator gating of verified_context.json on `ARI_MEMORY_CONSOLIDATE` (off→skip / on→build / build-failure→pipeline survives).
 - `test_virsci_off.py` — VirSci-off path.
+- `test_viz_dto_schema.py` — TODO
 - `test_viz_fewshot_api.py` — viz few-shot API.
 - `test_viz_memory_api.py` — viz memory API.
 - `test_viz_node_report_api.py` — viz node_report API.
@@ -119,3 +122,33 @@ targets the like-named module under `ari/`.
 - `test_workflow_editor.py` — workflow editor.
 - `test_workflow_template_resolution.py` — workflow template resolution.
 - `test_working_context_injection.py` — `loop.build_working_context_messages` Tier-1/2 injection: experiment core + selected idea, deterministic per-entry-capped ancestor conclusions, deduped semantic supplement, persisted metric-contract obligation (with platform note) for every node, and pinned-window marker matching.
+- `fixtures/` — test fixtures (not enumerated)
+- `snapshots/` — TODO
+  - `prompts/` — TODO
+    - `agent/` — TODO
+      - `system.md` — TODO
+      - `system.rendered.txt` — TODO
+    - `evaluator/` — TODO
+      - `extract_metrics.md` — TODO
+      - `extract_metrics.rendered.txt` — TODO
+      - `peer_review.md` — TODO
+      - `peer_review.rendered.txt` — TODO
+    - `orchestrator/` — TODO
+      - `bfts_expand.md` — TODO
+      - `bfts_expand.rendered.txt` — TODO
+      - `bfts_expand_select.md` — TODO
+      - `bfts_expand_select.rendered.txt` — TODO
+      - `bfts_select.md` — TODO
+      - `bfts_select.rendered.txt` — TODO
+      - `lineage_decision.md` — TODO
+      - `lineage_decision.rendered.txt` — TODO
+      - `root_idea_selector.md` — TODO
+      - `root_idea_selector.rendered.txt` — TODO
+    - `pipeline/` — TODO
+      - `keyword_librarian.md` — TODO
+      - `keyword_librarian.rendered.txt` — TODO
+    - `viz/` — TODO
+      - `wizard_chat_goal.md` — TODO
+      - `wizard_chat_goal.rendered.txt` — TODO
+      - `wizard_generate_config.md` — TODO
+      - `wizard_generate_config.rendered.txt` — TODO
