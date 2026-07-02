@@ -53,7 +53,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 015 | refactor_dashboard_viz_api_services | 4 | High | Yes | (gate 020) | TODO | — |
 | 016 | clean_merge_or_quarantine_legacy_code | 2 | High | Yes | 002 | TODO | — |
 | 017 | update_docs_and_examples | 10 | Low | No | — | TODO | — |
-| 018 | add_tests_for_architecture_boundaries | 10 | Low | No | — | TODO | — |
+| 018 | add_tests_for_architecture_boundaries | 10 | Low | No | — | DONE | 0319dae |
 | 019 | final_quality_report | 11 | Low | No | — (LAST) | TODO | — |
 | 020 | inventory_viz_dashboard_api_contracts | 4 | Low | No | — | DONE | 43b143a |
 | 021 | extract_viz_services_from_routes | 4 | Medium | Yes | 020 | TODO | — |
