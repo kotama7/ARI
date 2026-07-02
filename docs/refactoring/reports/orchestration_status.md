@@ -262,6 +262,16 @@ leave that to a human per the Document Retirement Policy.)*
   driven via the Workflow tool with adversarial verification, per the owner's ultracode
   directive. Runtime subtasks run sequentially / worktree-isolated (never parallel on
   shared runtime files) with full `pytest ari-core/tests` after each.
+- **INCIDENT (2026-07-02) — concurrent runtime agents corrupted the tree; recovered.**
+  A user-stopped 010 agent kept running (the stop didn't terminate it), re-applied
+  its work after I reverted it, and raced the 044 agent on `checkpoint.py`/`paths.py`.
+  Both were incomplete-to-attribute (overlapping edits). Recovery: `git reset --hard`
+  to the 006-DONE HEAD (9244a78) + `git clean -fd` → clean green 43/73 (compileall 0,
+  ruff 661). 010's + 044's uncommitted work discarded; both to be redone.
+  **HARD RULE going forward: run runtime-code agents STRICTLY ONE AT A TIME** — never
+  launch a second runtime agent until the previous is confirmed DONE (completion
+  notification, not a stop) and committed. Verify no active agent (TaskList) before
+  each launch. Non-overlapping non-runtime doc/report agents may still parallelize.
 - **DEFERRED CI subtasks (need checkers to exist first):** 049 (contracts.yml +
   refactor-guards jobs → needs 026/029/030 + 028/055), 050 (docs-sync.yml append),
   051 (prompt-change-review.yml → needs 043). Will run after their checkers land, on
