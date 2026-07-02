@@ -226,6 +226,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `server.py` — HTTP/WebSocket server and `ari viz` main entry.
   - `state.py` — shared mutable server state.
   - `state_sync.py` — node-tree loading + broadcast + filesystem watcher.
+  - `tree_view.py` — TODO
   - `ui_helpers.py` — dashboard rendering helpers.
   - `websocket.py` — WebSocket handler streaming tree state.
   - `frontend/` — React + Vite + TypeScript. Served by `ari viz` / `python -m ari.viz.server`
