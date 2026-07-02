@@ -74,7 +74,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 036 | inventory_hardcoded_prompts | 7 | Low | No | — | DONE | 9619ebf |
 | 037 | define_prompt_template_policy | 7 | Low | No | 036 | DONE | 93d9662* |
 | 038 | introduce_prompt_registry_and_loader | 7 | Medium | Yes | 036 | DONE | ed6171e |
-| 039 | extract_agent_and_bfts_prompts | 7 | Medium | Yes | 036 | TODO | — |
+| 039 | extract_agent_and_bfts_prompts | 7 | Medium | Yes | 036 | DONE* | no-op |
 | 040 | extract_evaluator_and_llm_judge_prompts | 7 | Medium | Yes | 036 | TODO | — |
 | 041 | extract_pipeline_and_paper_generation_prompts | 7 | Medium | Yes | 036 | TODO | — |
 | 042 | add_prompt_snapshot_tests | 7 | Low | No | 036 | DONE | 2bc2e94 |
@@ -272,6 +272,16 @@ leave that to a human per the Document Retirement Policy.)*
   launch a second runtime agent until the previous is confirmed DONE (completion
   notification, not a stop) and committed. Verify no active agent (TaskList) before
   each launch. Non-overlapping non-runtime doc/report agents may still parallelize.
+- **[039] verified NO-OP (already externalized).** Per the authoritative 036
+  inventory, the 4 agent/BFTS templates (agent/system, orchestrator/bfts_*) are
+  already externalized + byte-pinned (test_prompt_extraction hashes green); 036 §7
+  routes ZERO inline strings to 039, and 039 §8.1 makes 036 the tiebreaker. Agent
+  did NOT fabricate extractions. DIVERGENCE (REVIEW_REQUIRED): 039's plan text
+  speculatively lists inner prose/scaffolding (loop.py _MEMORY_RULES_PER_NODE,
+  user_content, bfts expand() scaffolds) that 036 deliberately did NOT sanction as
+  EXTRACT (they're dynamic fills of already-externalized templates, tagged
+  KEEP_INLINE). Whether to expand scope + extract them is a human/architect call;
+  it would need new snapshot fixtures + README reconciliation. Marked DONE per 036.
 - **DEFERRED CI subtasks (need checkers to exist first):** 049 (contracts.yml +
   refactor-guards jobs → needs 026/029/030 + 028/055), 050 (docs-sync.yml append),
   051 (prompt-change-review.yml → needs 043). Will run after their checkers land, on
