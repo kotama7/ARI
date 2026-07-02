@@ -2,13 +2,16 @@
 
 Subtask 021 §7.3: viz handlers/services should depend on ``ari.public.*`` where a
 public entry exists (``ari.public.paths``, ``ari.public.container``,
-``ari.public.cost_tracker``, ``ari.public.run_env``). For the two internal
-touchpoints that have **no** public equivalent yet — ``ari.pidfile`` and
-``ari_skill_memory.backends`` — this module is the single, auditable place the
-coupling lives, so a future public-API subtask can promote them in one spot.
+``ari.public.cost_tracker``, ``ari.public.run_env``). The one remaining internal
+touchpoint with **no** public equivalent yet — ``ari.pidfile`` — lives here so a
+future public-API subtask can promote it in one spot.
 
-REVIEW_REQUIRED: promote ``ari.pidfile`` (pid liveness) and
-``ari_skill_memory.backends.get_backend`` to ``ari.public.*``.
+Memory backend access is **not** an internal reach anymore: it is funnelled
+through ``ari.memory.get_backend`` (subtask 013, the sole sanctioned core→skill
+edge, confined to ``ari/memory/**``). ``memory_backend`` below simply forwards
+to that funnel so viz never imports the skill package directly.
+
+REVIEW_REQUIRED: promote ``ari.pidfile`` (pid liveness) to ``ari.public.*``.
 
 Imports are performed lazily inside each wrapper so a broken/absent optional
 dependency surfaces at call time exactly as the former in-handler imports did,
@@ -40,8 +43,9 @@ def read_pid(checkpoint_dir):
 def memory_backend(checkpoint_dir):
     """Return the memory backend for *checkpoint_dir*.
 
-    REVIEW_REQUIRED: promote ``ari_skill_memory.backends.get_backend`` to
-    ``ari.public.*`` (the sanctioned core→skill edge, 010 §8 Contract B).
+    Forwards to ``ari.memory.get_backend`` — the sole sanctioned core→skill
+    memory funnel (subtask 013). viz code reaches the skill backend through this
+    wrapper (or ``ari.memory`` directly) rather than importing the skill.
     """
-    from ari_skill_memory.backends import get_backend
+    from ari.memory import get_backend
     return get_backend(checkpoint_dir=checkpoint_dir)

@@ -71,10 +71,11 @@ def build_verified_context(
     lineage = [n for n in lineage if n]
     try:
         if backend is None:
-            from ari_skill_memory.backends import get_backend
+            from ari.memory import get_backend
             backend = get_backend(checkpoint_dir)
-        from ari_skill_memory import context_builder as _cb
-        ctx = _cb.build_verified_context(backend, lineage, purpose="paper")
+        # Alias to avoid shadowing this module's own build_verified_context.
+        from ari.memory import build_verified_context as _build_vc
+        ctx = _build_vc(backend, lineage, purpose="paper")
     except Exception:
         return {**empty, "best_node_id": getattr(best, "id", None), "lineage": lineage}
     return {"best_node_id": getattr(best, "id", ""), "lineage": lineage, **ctx}

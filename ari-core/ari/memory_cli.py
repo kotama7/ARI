@@ -46,7 +46,7 @@ def _resolve_ckpt(path: "str | Path | None", scan: bool = False) -> Path:
 def _get_backend(checkpoint_dir: Path):
     from ari.paths import PathManager
     PathManager.set_checkpoint_dir_env(checkpoint_dir)
-    from ari_skill_memory.backends import get_backend
+    from ari.memory import get_backend
     return get_backend(checkpoint_dir=checkpoint_dir)
 
 

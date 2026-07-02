@@ -537,7 +537,7 @@ def resume(
         try:
             from ari.memory_cli import _do_restore, _backup_path
             if _backup_path(checkpoint_dir).exists():
-                from ari_skill_memory.backends import get_backend
+                from ari.memory import get_backend
                 PathManager.set_checkpoint_dir_env(checkpoint_dir)
                 _b = get_backend(checkpoint_dir=checkpoint_dir)
                 if not _b.list_all_nodes().get("by_node") and not _b.list_react_entries():
