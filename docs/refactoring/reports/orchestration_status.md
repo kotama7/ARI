@@ -12,7 +12,7 @@
 ## Baseline (captured before any subtask)
 
 - Python `3.13.2`, ruff `0.15.2`, node `v20.19.5`, npm `10.8.2`; `radon` NOT installed.
-- `ruff check ari-core --statistics` → **661** findings (341 `F401`, 135 `E402`, 358 auto-fixable). *(frozen baseline)*
+- `ruff check ari-core --statistics` → baseline **661**; **now 660** after 003 removed a dead import (ratchet: may only DECREASE — future subtasks keep it ≤660).
 - `python -m compileall -q ari-core ari-skill-* scripts` → **exit 0** (pass).
 - `pytest ari-core/tests -q` baseline → **2413 passed, 16 skipped** (111s, exit 0). *(clean green)*
 - HEAD at start: `93d9662865fc5e97a1950a7ec19ac06ace32e562`.
@@ -38,7 +38,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 |----|-------|-------|------|----|-----------|--------|--------|
 | 001 | measure_complexity_and_dependencies | 1 | Low | No | — | DONE | e0662c7 |
 | 002 | inventory_legacy_obsolete_and_duplicate_code | 1 | Low | No | — | DONE | d286dec |
-| 003 | consolidate_config_configs_sonfigs | 2 | High | Yes | (gate) | TODO | — |
+| 003 | consolidate_config_configs_sonfigs | 2 | High | Yes | (gate) | DONE* | 617678e |
 | 004 | define_runtime_path_policy | 2 | Low | No | — | DONE | 93d9662* |
 | 005 | consolidate_checkpoint_workspace_experiment_paths | 2 | High | Yes | 004 | TODO | — |
 | 006 | introduce_runtime_path_resolver | 2 | Medium | Yes | 004 | DONE | 2c8edd5 |
