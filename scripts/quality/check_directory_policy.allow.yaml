@@ -1,0 +1,20 @@
+# Frozen allowlist / baseline for scripts/check_directory_policy.py (subtask 028).
+#
+# Each `known` entry is a finding `id` that predates this gate; allowlisted findings
+# report as `known` and never trip --fail-on-regression / --strict, keeping any
+# historical debt out of a future ratchet (009 plan §6, warning-mode-first).
+#
+# It is EMPTY at seed: the current tree is clean for every rule (verified 2026-07-02):
+#   * Rule A — the three canonical config-trio dirs exist with their markers/kind;
+#     no config-family collision under a scan parent; no `sonfigs/` directory
+#     anywhere (find -iname '*sonfig*' matches only a doc filename, never a dir).
+#   * Rule B — the only top-level storage-family dirs are `checkpoints/` and
+#     `workspace/`, both in storage_allowlist (config), so neither becomes a finding.
+#   * Rule C — `git ls-files | grep -c node_modules` -> 0; no .venv/dist/build/
+#     __pycache__/.egg-info/*.pyc is tracked. The rule is a pure forward guard.
+#
+# Finding-id shapes (for future entries): `trio-missing:<path>`,
+# `trio-kind:<path>`, `trio-marker:<path>::<file>`, `config-collision:<path>`,
+# `banned-dir:<path>`, `storage:<name>`, `artifact:<path>`.
+
+known: []
