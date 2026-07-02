@@ -62,8 +62,8 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 024 | refactor_bfts_tree_visualization_adapter | 4 | Medium | Yes | 020 | DONE | b2071cd |
 | 025 | add_complexity_checker_script | 8 | Low | No | 001 | DONE | 6720ca8 |
 | 026 | add_import_boundary_checker_script | 8 | Low | No | — | DONE | fe34241 |
-| 027 | add_docs_source_sync_checker_script | 8 | Low | No | 003 | TODO | — |
-| 028 | add_directory_policy_checker_script | 8 | Low | No | 003 | TODO | — |
+| 027 | add_docs_source_sync_checker_script | 8 | Low | No | 003 | DONE | d1902af |
+| 028 | add_directory_policy_checker_script | 8 | Low | No | 003 | DONE | 9180503 |
 | 029 | add_public_api_contract_checker_script | 8 | Low | No | — | DONE | 5c5c10a |
 | 030 | add_viz_api_schema_checker_script | 4 | Low | No | 020 | DONE | 7bd5654 |
 | 031 | add_quality_report_generator | 8 | Low | No | 001 | DONE | d7bbd29 |
@@ -85,8 +85,8 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 047 | add_pr_template_quality_checklist | 9 | Low | No | 045 | DONE | 78c9eea |
 | 048 | add_issue_templates_for_refactoring | 9 | Low | No | 045 | DONE | e869a90 |
 | 049 | add_contract_check_workflows | 9 | Low | No | 045 | TODO | — |
-| 050 | add_docs_sync_workflow | 9 | Low | No | 045 | TODO | — |
-| 051 | add_prompt_change_review_workflow | 9 | Low | No | 045 | TODO | — |
+| 050 | add_docs_sync_workflow | 9 | Low | No | 045 | DONE | ae7bea1 |
+| 051 | add_prompt_change_review_workflow | 9 | Low | No | 045 | DONE | 7b9b198 |
 | 052 | add_dependabot_and_actions_policy | 9 | Low | No | 045 | DONE | a40ab08 |
 | 053 | inventory_reference_roots | 1 | Low | No | — | DONE | b4d7706 |
 | 054 | add_reference_graph_analyzer | 1 | Low | No | 053 | DONE | d73dd9e |
