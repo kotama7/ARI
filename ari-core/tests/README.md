@@ -23,6 +23,7 @@ targets the like-named module under `ari/`.
 - `test_bfts_diversity.py` — BFTS diversity/fanout.
 - `test_bfts_eval_config_integration.py` — BFTS + eval-config integration.
 - `test_bfts_frontier_score.py` — BFTS frontier scoring.
+- `test_bfts_prompt_builder.py` — TODO
 - `test_bfts_prompt_selection.py` — BFTS prompt selection.
 - `test_checkpoint_legacy_tree.py` — legacy node_*/tree.json resolution in list/summary.
 - `test_child_node_workflow.py` — child-node workflow.

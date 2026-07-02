@@ -100,6 +100,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `README.md` — orchestrator index.
   - `__init__.py` — package exports + authoritative module-map docstring.
   - `bfts.py` — `BFTS` loop and stage hooks (expand/select, pruning, frontier retire).
+  - `bfts_prompt_builder.py` — TODO
   - `lineage_decision.py` — LLM lineage action + `lineage_decisions.jsonl` log.
   - `node.py` — `Node` data model + `NodeStatus` / `NodeLabel` enums.
   - `node_selection.py` — shared node-selection helpers + publication source-file selection.
@@ -163,6 +164,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `__init__.py` — currently exposed protocols + roadmap.
   - `evaluator.py` — `Evaluator` Protocol.
   - `model_backend.py` — TODO
+  - `search.py` — TODO
 - `public/` — public API surface for ARI skills (import-only contract).
   - `README.md` — public index.
   - `__init__.py` — exported sub-modules + rationale.
