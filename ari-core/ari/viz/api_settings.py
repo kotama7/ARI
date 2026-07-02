@@ -122,9 +122,9 @@ def _api_get_settings() -> dict:
     _wf_model = ""
     try:
         import yaml as _yaml
+        from ari.config.finder import package_config_root
         for _wf_path in [
-            Path(__file__).parent.parent.parent / "config" / "workflow.yaml",
-            Path(__file__).parent.parent.parent.parent / "config" / "workflow.yaml",
+            package_config_root() / "workflow.yaml",
         ]:
             if _wf_path.exists():
                 _wf = _yaml.safe_load(_wf_path.read_text()) or {}
@@ -235,9 +235,9 @@ def _api_save_settings(body: bytes) -> dict:
 def _api_get_workflow() -> dict:
     """Return workflow.yaml as JSON with MCP tool metadata."""
     import yaml
+    from ari.config.finder import package_config_root
     wf_candidates = [
-        Path(__file__).parent.parent.parent / "config" / "workflow.yaml",
-        Path(__file__).parent.parent.parent.parent / "config" / "workflow.yaml",
+        package_config_root() / "workflow.yaml",
     ]
     if _st._checkpoint_dir:
         wf_candidates.insert(0, _st._checkpoint_dir / "workflow.yaml")

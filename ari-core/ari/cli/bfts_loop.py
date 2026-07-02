@@ -94,7 +94,8 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
         from pathlib import Path as _P_bfts
         _wf_path = _P_bfts(checkpoint_dir) / "workflow.yaml"
         if not _wf_path.exists():
-            _wf_path = _P_bfts(__file__).parent.parent / "config" / "workflow.yaml"
+            from ari.config.finder import package_config_root
+            _wf_path = package_config_root() / "workflow.yaml"
         if _wf_path.exists():
             _wf_data = _yaml_bfts.safe_load(_wf_path.read_text()) or {}
             for _s in _wf_data.get("bfts_pipeline") or []:
@@ -237,9 +238,8 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                         # idea.json was inherited (parent already chose).
                         try:
                             import yaml as _yaml_root
-                            _wf_path = (
-                                Path(__file__).resolve().parent.parent.parent / "config" / "workflow.yaml"
-                            )
+                            from ari.config.finder import package_config_root
+                            _wf_path = package_config_root() / "workflow.yaml"
                             _wf_for_root = (
                                 _yaml_root.safe_load(_wf_path.read_text())
                                 if _wf_path.exists() else {}

@@ -367,7 +367,8 @@ class _Handler(BaseHTTPRequestHandler):
                     _wf_cfg = {}
                     # Determine which profile YAML to load:
                     # launch_config.profile > launch_config.json > default
-                    _config_root = Path(__file__).parent.parent.parent / "config"
+                    from ari.config.finder import package_config_root
+                    _config_root = package_config_root()
                     _lc_profile = ""
                     if _st._launch_config:
                         _lc_profile = _st._launch_config.get("profile", "")
@@ -603,7 +604,8 @@ class _Handler(BaseHTTPRequestHandler):
                     _lm = _lm or _s3.get("llm_model", "")
                     _lp = _lp or _s3.get("llm_provider", "")
                     # Load BFTS/HPC settings from profile-aware config
-                    _config_root_fb = Path(__file__).parent.parent.parent / "config"
+                    from ari.config.finder import package_config_root
+                    _config_root_fb = package_config_root()
                     _lc_profile_fb = _lc_fb.get("profile", "")
                     _wf_cfg_fb = {}
                     _fb_candidates = []
