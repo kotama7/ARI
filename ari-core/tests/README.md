@@ -93,6 +93,7 @@ targets the like-named module under `ari/`.
 - `test_pidfile.py` — pidfile handling.
 - `test_pipeline_e2e.py` — pipeline end-to-end.
 - `test_pipeline_metric_parsing.py` — pipeline metric parsing.
+- `test_pipeline_stage_architecture.py` — TODO
 - `test_pipeline_verified_context.py` — verified-context building blocks (best-node selection, lineage scoping, grounded-block renderer).
 - `test_plan_promote.py` — plan promotion.
 - `test_prompt_extraction.py` — prompt extraction.
