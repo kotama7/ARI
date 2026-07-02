@@ -84,7 +84,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 046 | design_quality_ci_integration | 9 | Low | No | 045 | DONE | 93d9662* |
 | 047 | add_pr_template_quality_checklist | 9 | Low | No | 045 | DONE | 78c9eea |
 | 048 | add_issue_templates_for_refactoring | 9 | Low | No | 045 | DONE | e869a90 |
-| 049 | add_contract_check_workflows | 9 | Low | No | 045 | TODO | — |
+| 049 | add_contract_check_workflows | 9 | Low | No | 045 | DONE | 89aef2f |
 | 050 | add_docs_sync_workflow | 9 | Low | No | 045 | DONE | ae7bea1 |
 | 051 | add_prompt_change_review_workflow | 9 | Low | No | 045 | DONE | 7b9b198 |
 | 052 | add_dependabot_and_actions_policy | 9 | Low | No | 045 | DONE | a40ab08 |
