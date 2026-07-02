@@ -159,6 +159,11 @@ const zh: Record<string, string> = {
   settings_lang: '界面语言',
   btn_save: '\u{1F4BE} 保存设置',
   btn_test_llm: '\u{1F50C} 测试 LLM 连接',
+  // Settings progressive-disclosure group headers (070/069 sensitivity tiers)
+  settings_group_essentials: '基本设置',
+  settings_group_project: '项目',
+  settings_group_infrastructure: '基础设施',
+  settings_group_diagnostics: '诊断与危险操作',
   // Dynamic
   loading: '加载中…',
   no_data: '暂无数据',

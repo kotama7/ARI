@@ -158,6 +158,11 @@ const en: Record<string, string> = {
   settings_memory_deployment_pip: 'Local (pip)',
   btn_save: '\u{1F4BE} Save Settings',
   btn_test_llm: '\u{1F50C} Test LLM Connection',
+  // Settings progressive-disclosure group headers (070/069 sensitivity tiers)
+  settings_group_essentials: 'Essentials',
+  settings_group_project: 'Project',
+  settings_group_infrastructure: 'Infrastructure',
+  settings_group_diagnostics: 'Diagnostics & Danger Zone',
   // Dynamic JS strings
   loading: 'Loading…',
   no_data: 'No data available',
