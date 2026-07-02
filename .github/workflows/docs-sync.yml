@@ -27,6 +27,21 @@
 #
 # Pure-stdlib checks; PyYAML is the only dependency (front-matter parsing). To
 # reproduce locally: run each script from the repo root (see scripts/docs/).
+#
+# Subtask 050 additions (all additive; no existing gate's behavior changed):
+#   * The docs/refactoring/** planning tree is exempted from check_doc_sources.py's
+#     coverage scan (EXEMPT_DIR_SEGMENTS "refactoring", set in the checker itself),
+#     so a future --require-all promotion stays safe (§7.1 Option A). The default
+#     invocation below is byte-identical to before.
+#   * The two advisory steps carry their advisory->hard promotion triggers inline
+#     (owned by subtask 017); see §7.2 notes at those steps.
+#   * check_docs_source_sync.py (subtask 027) is intentionally NOT wired here: 027
+#     is a DELETE_CANDIDATE, redundant with check_doc_sources.py (forward) +
+#     check_ref_coupling.py (reverse), so no advisory step is added (§7.3).
+#   * REVIEW_REQUIRED (not changed here): pages.yml path filter names README.md
+#     only, not README.ja.md / README.zh.md, so a push editing only a translated
+#     README would not trigger a Pages rebuild. Left for a maintainer to confirm
+#     intent before any pages.yml change (§7.4).
 
 name: docs-sync
 
@@ -50,6 +65,10 @@ jobs:
         run: python -m pip install --upgrade pip pyyaml
 
       # ── hard gates ──────────────────────────────────────────────────────
+      # Default (coverage-not-enforced) mode: byte-identical to before. Do NOT
+      # add --require-all until every non-exempt live doc declares `sources:`
+      # front-matter; the docs/refactoring/** planning tree is already exempt
+      # (§7.1 Option A -- exemption lives in scripts/docs/check_doc_sources.py).
       - name: Declared source references resolve
         run: python scripts/docs/check_doc_sources.py
       - name: i18n JS key parity (landing / docs surfaces)
@@ -64,6 +83,13 @@ jobs:
         run: python report/scripts/check_i18n.py
 
       # ── advisory (non-blocking; pre-existing markdown-tree findings) ─────
+      # Promotion trigger (§7.2): both steps below are advisory ONLY because of
+      # documented markdown-tree drift owned by subtask 017 (the missing
+      # docs/_archive/refactor_audit.md links in docs/README.md, and the
+      # docs-expansion `last_verified` backlog). After subtask 017 clears that
+      # drift -- verify locally that each script exits 0 -- promote it to a hard
+      # gate by deleting its `continue-on-error: true`. Do NOT promote in subtask
+      # 050: flipping now would fail every open PR against the drift.
       - name: Translation freshness (advisory)
         continue-on-error: true
         run: python scripts/docs/check_translation_freshness.py
