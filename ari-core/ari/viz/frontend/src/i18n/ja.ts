@@ -158,6 +158,11 @@ const ja: Record<string, string> = {
   settings_memory_deployment_pip: 'ローカル (pip)',
   btn_save: '\u{1F4BE} 設定を保存',
   btn_test_llm: '\u{1F50C} LLM 接続テスト',
+  // Settings progressive-disclosure group headers (070/069 sensitivity tiers)
+  settings_group_essentials: '基本設定',
+  settings_group_project: 'プロジェクト',
+  settings_group_infrastructure: 'インフラ',
+  settings_group_diagnostics: '診断・危険操作',
   // Dynamic JS strings
   loading: '読み込み中…',
   no_data: 'データなし',

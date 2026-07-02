@@ -1,4 +1,3 @@
-import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { useAppContext } from '../../context/AppContext';
@@ -12,30 +11,41 @@ import {
   testSSH as apiTestSSH,
   generateConfig,
   fetchContainerInfo,
-  restartLetta,
 } from '../../services/api';
 import type { Checkpoint } from '../../types';
-import { Card } from '../common';
 import {
   DEFAULT_PROVIDER,
   PROVIDER_MODELS,
-  PROVIDER_KEY_PLACEHOLDER,
   LETTA_EMBEDDING_BY_PROVIDER,
-  LETTA_EMBED_PROVIDERS,
   CUSTOM_HANDLE_VALUE,
   _splitHandle,
 } from './settingsConstants';
+import type { SkillInfo, LettaDeployment } from './settingsTypes';
+import { SettingsGroup } from './SettingsGroup';
+import { LanguageSection } from './sections/LanguageSection';
+import { LlmBackendSection } from './sections/LlmBackendSection';
+import { PaperRetrievalSection } from './sections/PaperRetrievalSection';
+import { VlmReviewSection } from './sections/VlmReviewSection';
+import { MemorySection } from './sections/MemorySection';
+import { SlurmSection } from './sections/SlurmSection';
+import { ContainerSection } from './sections/ContainerSection';
+import { SkillsSection } from './sections/SkillsSection';
+import { SshSection } from './sections/SshSection';
+import { ProjectManagementSection } from './sections/ProjectManagementSection';
 
-// ── Skill row type ───────────────────────────────────
-
-interface SkillInfo {
-  name: string;
-  display_name: string;
-  description: string;
-  requires_env?: string[];
-}
-
-// ── Component ────────────────────────────────────────
+// ── Orchestrator ─────────────────────────────────────
+//
+// This container owns ALL load/save orchestration and every piece of local
+// state; the `sections/*` components are presentational (props-lifting design,
+// subtask 070 §7/§17) so the save payload cannot drift. Progressive disclosure
+// (069) is applied by grouping the ten <Card> sections into sensitivity tiers
+// via <SettingsGroup>, which collapses tiers with CSS only — it never unmounts
+// a card — so the frozen SettingsContract (TEN cards + the 24-key POST) holds.
+//
+// NOTE: the per-phase model fields (model_idea/bfts/coding/eval/paper/review)
+// and vlm_review_enabled/max_iter/threshold declared on the `Settings` type are
+// INTENTIONALLY not edited here — they live in Wizard/StepResources.tsx. Do not
+// add them to this panel or to handleSave's 24-key object.
 
 export default function SettingsPage() {
   const { t, setLanguage, currentLang } = useI18n();
@@ -94,9 +104,7 @@ export default function SettingsPage() {
   // _detect_deployment(); the other three force a specific path so the
   // user can override the detector when e.g. docker is on PATH but the
   // daemon socket isn't reachable.
-  const [lettaDeployment, setLettaDeployment] = useState<
-    'auto' | 'docker' | 'singularity' | 'pip'
-  >('auto');
+  const [lettaDeployment, setLettaDeployment] = useState<LettaDeployment>('auto');
   // Restart UX: single-flight state; status text + last result.
   const [lettaRestarting, setLettaRestarting] = useState(false);
   const [lettaRestartMsg, setLettaRestartMsg] = useState('');
@@ -332,25 +340,6 @@ export default function SettingsPage() {
 
   const activeId = appState?.checkpoint_id || '';
 
-  // ── Shared input style ─────────────────
-
-  const inputStyle: CSSProperties = {
-    padding: '6px 10px',
-    borderRadius: '6px',
-    border: '1px solid var(--border)',
-    background: 'var(--card)',
-    color: 'var(--text)',
-    fontSize: '.85rem',
-    width: '100%',
-  };
-
-  const labelStyle: CSSProperties = {
-    fontSize: '.82rem',
-    color: 'var(--muted)',
-    marginBottom: '4px',
-    display: 'block',
-  };
-
   return (
     <div>
       <h2 style={{ marginTop: 0 }}>{t('settings_title')}</h2>
@@ -365,676 +354,116 @@ export default function SettingsPage() {
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        {/* ── Language ──────────────────────── */}
-        <Card title={t('settings_lang_section')}>
-          <label style={labelStyle}>{t('settings_lang')}</label>
-          <select
-            value={lang}
-            onChange={(e) => handleLangChange(e.target.value)}
-            style={inputStyle}
-          >
-            <option value="en">English</option>
-            <option value="ja">{'日本語'}</option>
-            <option value="zh">{'中文'}</option>
-          </select>
-        </Card>
-
-        {/* ── LLM Backend ──────────────────── */}
-        <Card title={t('settings_llm')}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            {/* Provider */}
-            <div>
-              <label style={labelStyle}>{t('s_provider')}</label>
-              <select
-                value={provider}
-                onChange={(e) => handleProviderChange(e.target.value)}
-                style={inputStyle}
-              >
-                <option value="openai">openai</option>
-                <option value="anthropic">anthropic</option>
-                <option value="gemini">gemini</option>
-                <option value="ollama">ollama</option>
-                <option value="cli-shim">cli-shim (claude/codex)</option>
-              </select>
-            </div>
-
-            {/* Model dropdown */}
-            <div>
-              <label style={labelStyle}>{t('s_model')}</label>
-              <select
-                value={modelSelect}
-                onChange={(e) => handleModelSelectChange(e.target.value)}
-                style={inputStyle}
-              >
-                {currentModels.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-                <option value="__custom__">{t('custom_entry')}</option>
-              </select>
-            </div>
-
-            {/* Custom model input */}
-            <div>
-              <label style={labelStyle}>{t('settings_default_model')}</label>
-              <input
-                type="text"
-                value={modelCustom}
-                onChange={(e) => setModelCustom(e.target.value)}
-                placeholder={t('model_custom_placeholder')}
-                style={inputStyle}
-              />
-            </div>
-
-            {/* Temperature */}
-            <div>
-              <label style={labelStyle}>{t('s_temperature')}</label>
-              <input
-                type="number"
-                step="0.1"
-                min="0"
-                max="2"
-                value={temperature}
-                onChange={(e) => setTemperature(parseFloat(e.target.value) || 1.0)}
-                style={inputStyle}
-              />
-            </div>
-
-            {/* API Key (hidden for ollama) */}
-            {provider !== 'ollama' && (
-              <div>
-                <label style={labelStyle}>API Key</label>
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder={PROVIDER_KEY_PLACEHOLDER[provider] || 'api key'}
-                  style={inputStyle}
-                />
-              </div>
-            )}
-
-            {/* Base URL (ollama / cli-shim) */}
-            {(provider === 'ollama' || provider === 'cli-shim') && (
-              <div>
-                <label style={labelStyle}>
-                  {provider === 'cli-shim' ? 'Base URL (CLI Shim)' : 'Base URL (Ollama)'}
-                </label>
-                <input
-                  type="text"
-                  value={baseUrl}
-                  onChange={(e) => setBaseUrl(e.target.value)}
-                  placeholder={
-                    provider === 'cli-shim'
-                      ? 'http://localhost:8900/v1'
-                      : 'http://localhost:11434'
-                  }
-                  style={inputStyle}
-                />
-              </div>
-            )}
-          </div>
-        </Card>
-
-        {/* ── Paper Retrieval ──────────────── */}
-        <Card title={t('settings_paper')}>
-          <label style={labelStyle}>Paper Retrieval Backend</label>
-          <div style={{ display: 'flex', gap: '16px', marginBottom: '12px' }}>
-            {([
-              ['semantic_scholar', 'Semantic Scholar'],
-              ['alphaxiv', 'AlphaXiv'],
-              ['both', 'Both (parallel)'],
-            ] as const).map(([val, label]) => (
-              <label key={val} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '.85rem', cursor: 'pointer' }}>
-                <input
-                  type="radio"
-                  name="retrieval_backend"
-                  value={val}
-                  checked={retrievalBackend === val}
-                  onChange={() => setRetrievalBackend(val)}
-                />
-                {label}
-              </label>
-            ))}
-          </div>
-          <label style={labelStyle}>Semantic Scholar API Key</label>
-          <input
-            type="password"
-            value={ssKey}
-            onChange={(e) => setSsKey(e.target.value)}
-            placeholder="(optional)"
-            style={inputStyle}
+        {/* ── Tier 1: Essentials (Primary — always open) ── */}
+        <SettingsGroup title={t('settings_group_essentials')} defaultOpen>
+          <LanguageSection t={t} lang={lang} onLangChange={handleLangChange} />
+          <LlmBackendSection
+            t={t}
+            provider={provider}
+            onProviderChange={handleProviderChange}
+            modelSelect={modelSelect}
+            onModelSelectChange={handleModelSelectChange}
+            modelCustom={modelCustom}
+            setModelCustom={setModelCustom}
+            temperature={temperature}
+            setTemperature={setTemperature}
+            apiKey={apiKey}
+            setApiKey={setApiKey}
+            baseUrl={baseUrl}
+            setBaseUrl={setBaseUrl}
+            currentModels={currentModels}
           />
-        </Card>
+        </SettingsGroup>
 
-        {/* ── VLM Figure Review ─────────────── */}
-        <Card title="VLM Figure Review">
-          <label style={labelStyle}>VLM Model</label>
-          <select
-            value={vlmReviewModel}
-            onChange={(e) => setVlmReviewModel(e.target.value)}
-            style={inputStyle}
-          >
-            {(PROVIDER_MODELS[provider] || PROVIDER_MODELS[DEFAULT_PROVIDER]).map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
-        </Card>
+        {/* ── Tier 2: Project (Secondary) ── */}
+        <SettingsGroup title={t('settings_group_project')} defaultOpen>
+          <PaperRetrievalSection
+            t={t}
+            retrievalBackend={retrievalBackend}
+            setRetrievalBackend={setRetrievalBackend}
+            ssKey={ssKey}
+            setSsKey={setSsKey}
+          />
+          <VlmReviewSection
+            provider={provider}
+            vlmReviewModel={vlmReviewModel}
+            setVlmReviewModel={setVlmReviewModel}
+          />
+        </SettingsGroup>
 
-        {/* ── Memory (Letta) ─────────────────── */}
-        <Card title={t('settings_memory')}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={labelStyle}>{t('settings_memory_base_url')}</label>
-              <input
-                type="text"
-                value={lettaBaseUrl}
-                onChange={(e) => setLettaBaseUrl(e.target.value)}
-                placeholder="http://localhost:8283"
-                style={inputStyle}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>{t('settings_memory_api_key')}</label>
-              <input
-                type="password"
-                value={lettaApiKey}
-                onChange={(e) => setLettaApiKey(e.target.value)}
-                placeholder="(optional)"
-                style={inputStyle}
-              />
-            </div>
+        {/* ── Tier 3: Infrastructure (Advanced — collapsed by default) ── */}
+        <SettingsGroup title={t('settings_group_infrastructure')} defaultOpen={false}>
+          <MemorySection
+            t={t}
+            lettaBaseUrl={lettaBaseUrl}
+            setLettaBaseUrl={setLettaBaseUrl}
+            lettaApiKey={lettaApiKey}
+            setLettaApiKey={setLettaApiKey}
+            lettaEmbedProvider={lettaEmbedProvider}
+            setLettaEmbedProvider={setLettaEmbedProvider}
+            lettaEmbedModel={lettaEmbedModel}
+            setLettaEmbedModel={setLettaEmbedModel}
+            lettaEmbedCustom={lettaEmbedCustom}
+            setLettaEmbedCustom={setLettaEmbedCustom}
+            lettaDeployment={lettaDeployment}
+            setLettaDeployment={setLettaDeployment}
+            lettaRestarting={lettaRestarting}
+            setLettaRestarting={setLettaRestarting}
+            lettaRestartMsg={lettaRestartMsg}
+            setLettaRestartMsg={setLettaRestartMsg}
+          />
+          <SlurmSection
+            t={t}
+            partitions={partitions}
+            selectedPartitions={selectedPartitions}
+            setSelectedPartitions={setSelectedPartitions}
+            onDetect={handleDetectPartitions}
+            cpus={cpus}
+            setCpus={setCpus}
+            memGb={memGb}
+            setMemGb={setMemGb}
+            walltime={walltime}
+            setWalltime={setWalltime}
+          />
+          <ContainerSection
+            containerMode={containerMode}
+            setContainerMode={setContainerMode}
+            containerPull={containerPull}
+            setContainerPull={setContainerPull}
+            containerImage={containerImage}
+            setContainerImage={setContainerImage}
+            containerRuntime={containerRuntime}
+            containerVersion={containerVersion}
+            onDetectRuntime={handleDetectRuntime}
+          />
+          <SshSection
+            t={t}
+            sshHost={sshHost}
+            setSshHost={setSshHost}
+            sshPort={sshPort}
+            setSshPort={setSshPort}
+            sshUser={sshUser}
+            setSshUser={setSshUser}
+            sshPath={sshPath}
+            setSshPath={setSshPath}
+            sshKeyPath={sshKeyPath}
+            setSshKeyPath={setSshKeyPath}
+            sshStatus={sshStatus}
+            onTestSSH={handleTestSSH}
+          />
+        </SettingsGroup>
 
-            {/* Embedding — provider + model two-stage picker */}
-            <div>
-              <label style={labelStyle}>
-                {t('settings_memory_embedding_provider')}
-              </label>
-              <select
-                value={lettaEmbedProvider}
-                onChange={(e) => {
-                  const p = e.target.value;
-                  setLettaEmbedProvider(p);
-                  if (p !== CUSTOM_HANDLE_VALUE) {
-                    const first = LETTA_EMBEDDING_BY_PROVIDER[p]?.[0];
-                    if (first) setLettaEmbedModel(first.handle);
-                  }
-                }}
-                style={inputStyle}
-              >
-                {LETTA_EMBED_PROVIDERS.map((p) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-                <option value={CUSTOM_HANDLE_VALUE}>{t('custom_entry')}</option>
-              </select>
-            </div>
-            <div>
-              <label style={labelStyle}>
-                {t('settings_memory_embedding_model')}
-              </label>
-              {lettaEmbedProvider !== CUSTOM_HANDLE_VALUE ? (
-                <select
-                  value={lettaEmbedModel}
-                  onChange={(e) => setLettaEmbedModel(e.target.value)}
-                  style={inputStyle}
-                >
-                  {(LETTA_EMBEDDING_BY_PROVIDER[lettaEmbedProvider] || []).map((m) => (
-                    <option key={m.handle} value={m.handle}>
-                      {m.label || m.handle}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  value={lettaEmbedCustom}
-                  onChange={(e) => setLettaEmbedCustom(e.target.value)}
-                  placeholder="provider/model"
-                  style={inputStyle}
-                />
-              )}
-            </div>
+        {/* ── Tier 4: Diagnostics & Danger Zone (collapsed; visually distinct) ── */}
+        <SettingsGroup title={t('settings_group_diagnostics')} defaultOpen={false} danger>
+          <SkillsSection t={t} skills={skills} />
+          <ProjectManagementSection
+            checkpoints={checkpoints}
+            activeId={activeId}
+            onDelete={handleDeleteProject}
+          />
+        </SettingsGroup>
 
-          </div>
-
-          {/* Letta-free warning (now keyed off the new provider state) */}
-          {lettaEmbedProvider === 'letta' && (
-            <div
-              style={{
-                marginTop: '10px',
-                fontSize: '.78rem',
-                color: 'var(--red)',
-                background: 'rgba(239,68,68,.08)',
-                border: '1px solid rgba(239,68,68,.3)',
-                padding: '8px 10px',
-                borderRadius: '6px',
-              }}
-            >
-              {t('settings_memory_letta_free_warning')}
-            </div>
-          )}
-
-          {/* Restart Letta — long-lived daemon doesn't reload env, so
-              changes to provider keys / handles need a server restart
-              to take effect. The button calls /api/memory/restart which
-              runs stop_local + start_local. */}
-          <div
-            style={{
-              marginTop: '12px',
-              display: 'flex',
-              gap: '8px',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-            }}
-          >
-            <label style={{ fontSize: '.8rem', color: 'var(--muted)' }}>
-              {t('settings_memory_deployment')}
-            </label>
-            <select
-              value={lettaDeployment}
-              onChange={(e) =>
-                setLettaDeployment(
-                  e.target.value as 'auto' | 'docker' | 'singularity' | 'pip',
-                )
-              }
-              disabled={lettaRestarting}
-              style={{ ...inputStyle, width: 'auto', minWidth: '160px' }}
-            >
-              <option value="auto">{t('settings_memory_deployment_auto')}</option>
-              <option value="docker">Docker</option>
-              <option value="singularity">Singularity</option>
-              <option value="pip">{t('settings_memory_deployment_pip')}</option>
-            </select>
-            <button
-              className="btn btn-outline btn-sm"
-              disabled={lettaRestarting}
-              onClick={async () => {
-                if (!confirm(t('settings_memory_restart_confirm'))) return;
-                setLettaRestarting(true);
-                setLettaRestartMsg(t('settings_memory_restart_running'));
-                try {
-                  const r = await restartLetta(lettaDeployment);
-                  setLettaRestartMsg(
-                    r.ok
-                      ? `✓ ${t('settings_memory_restart_ok')}${
-                          r.start?.path ? ` (${r.start.path})` : ''
-                        }`
-                      : `✗ ${r.start?.error || r.error || 'failed'}`
-                  );
-                } catch (e) {
-                  setLettaRestartMsg(`✗ ${String(e)}`);
-                } finally {
-                  setLettaRestarting(false);
-                }
-                setTimeout(() => setLettaRestartMsg(''), 8000);
-              }}
-            >
-              {lettaRestarting ? t('settings_memory_restart_running') : t('settings_memory_restart')}
-            </button>
-            {lettaRestartMsg && (
-              <span
-                className={lettaRestartMsg.startsWith('✓') ? 'badge badge-green' : ''}
-                style={
-                  lettaRestartMsg.startsWith('✗')
-                    ? { color: 'var(--red)', fontSize: '.8rem' }
-                    : { fontSize: '.8rem' }
-                }
-              >
-                {lettaRestartMsg}
-              </span>
-            )}
-          </div>
-
-          <div style={{ marginTop: '8px', fontSize: '.78rem', color: 'var(--muted)' }}>
-            {t('settings_memory_note')}
-          </div>
-          <div style={{ marginTop: '4px', fontSize: '.78rem', color: 'var(--muted)' }}>
-            {t('settings_memory_key_note')}
-          </div>
-        </Card>
-
-        {/* ── SLURM / HPC ─────────────────── */}
-        <Card title={t('settings_slurm')}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            {/* Partition multi-select */}
-            <div style={{ gridColumn: '1 / -1' }}>
-              <label style={labelStyle}>
-                {t('s_partition')}
-                <button
-                  className="btn btn-outline btn-sm"
-                  style={{ marginLeft: '8px' }}
-                  onClick={handleDetectPartitions}
-                >
-                  Detect
-                </button>
-              </label>
-              {partitions.length > 0 ? (
-                <select
-                  multiple
-                  value={selectedPartitions}
-                  onChange={(e) => {
-                    const opts = Array.from(e.target.selectedOptions).map((o) => o.value);
-                    setSelectedPartitions(opts);
-                  }}
-                  style={{ ...inputStyle, height: '100px' }}
-                >
-                  {partitions.map((p) => (
-                    <option key={p.name} value={p.name}>
-                      {p.name} ({p.nodes} nodes, {p.cpus} cpus)
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <div style={{ fontSize: '.78rem', color: 'var(--muted)' }}>
-                  {selectedPartitions.length > 0
-                    ? selectedPartitions.join(', ')
-                    : 'Click Detect to discover partitions'}
-                </div>
-              )}
-            </div>
-
-            {/* CPUs */}
-            <div>
-              <label style={labelStyle}>{t('s_cpus')}</label>
-              <input
-                type="number"
-                value={cpus}
-                onChange={(e) => setCpus(parseInt(e.target.value) || 8)}
-                style={inputStyle}
-              />
-            </div>
-
-            {/* Memory */}
-            <div>
-              <label style={labelStyle}>Memory (GB)</label>
-              <input
-                type="number"
-                value={memGb}
-                onChange={(e) => setMemGb(parseInt(e.target.value) || 32)}
-                style={inputStyle}
-              />
-            </div>
-
-            {/* Walltime */}
-            <div>
-              <label style={labelStyle}>{t('s_walltime')}</label>
-              <input
-                type="text"
-                value={walltime}
-                onChange={(e) => setWalltime(e.target.value)}
-                style={inputStyle}
-              />
-            </div>
-          </div>
-        </Card>
-
-        {/* ── Container ────────────────────── */}
-        <Card title="Container">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={labelStyle}>Mode</label>
-              <select
-                value={containerMode}
-                onChange={(e) => setContainerMode(e.target.value)}
-                style={inputStyle}
-              >
-                <option value="auto">Auto</option>
-                <option value="docker">Docker</option>
-                <option value="singularity">Singularity</option>
-                <option value="apptainer">Apptainer</option>
-                <option value="none">None</option>
-              </select>
-            </div>
-            <div>
-              <label style={labelStyle}>Pull Policy</label>
-              <select
-                value={containerPull}
-                onChange={(e) => setContainerPull(e.target.value)}
-                style={inputStyle}
-              >
-                <option value="always">Always</option>
-                <option value="on_start">On Start</option>
-                <option value="never">Never</option>
-              </select>
-            </div>
-            <div style={{ gridColumn: '1 / -1' }}>
-              <label style={labelStyle}>Image</label>
-              <input
-                type="text"
-                value={containerImage}
-                onChange={(e) => setContainerImage(e.target.value)}
-                placeholder="ghcr.io/kotama7/ari:latest"
-                style={inputStyle}
-              />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
-              <button className="btn btn-outline btn-sm" onClick={handleDetectRuntime}>
-                Detect Runtime
-              </button>
-              {containerRuntime && (
-                <span
-                  className={containerRuntime !== 'none' ? 'badge badge-green' : 'badge'}
-                  style={{ fontSize: '.75rem' }}
-                >
-                  {containerRuntime}
-                  {containerRuntime !== 'none' ? ' \u2713' : ''}
-                  {containerVersion ? ` (${containerVersion})` : ''}
-                </span>
-              )}
-            </div>
-          </div>
-        </Card>
-
-        {/* ── Available Skills ─────────────── */}
-        <Card title={t('settings_skills')}>
-          {skills.length > 0 ? (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--border)', fontSize: '.82rem' }}>
-                    {t('skill_label')}
-                  </th>
-                  <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--border)', fontSize: '.82rem' }}>
-                    {t('skill_display_name')}
-                  </th>
-                  <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--border)', fontSize: '.82rem' }}>
-                    Description
-                  </th>
-                  <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--border)', fontSize: '.82rem' }}>
-                    Env
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {skills.map((s) => (
-                  <tr key={s.name}>
-                    <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
-                      <code style={{ fontSize: '.78rem' }}>{s.name}</code>
-                    </td>
-                    <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)', fontSize: '.85rem' }}>
-                      {s.display_name}
-                    </td>
-                    <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)', fontSize: '.8rem', color: 'var(--muted)' }}>
-                      {s.description}
-                    </td>
-                    <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
-                      {s.requires_env && s.requires_env.length ? (
-                        s.requires_env.join(', ')
-                      ) : (
-                        <span className="badge badge-green" style={{ fontSize: '.7rem' }}>
-                          any
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>No skill.yaml found</div>
-          )}
-        </Card>
-
-        {/* ── SSH Remote Host ──────────────── */}
-        <Card title={t('settings_ssh')}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={labelStyle}>Host</label>
-              <input
-                type="text"
-                value={sshHost}
-                onChange={(e) => setSshHost(e.target.value)}
-                style={inputStyle}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>Port</label>
-              <input
-                type="number"
-                value={sshPort}
-                onChange={(e) => setSshPort(parseInt(e.target.value) || 22)}
-                style={inputStyle}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>{t('ssh_username')}</label>
-              <input
-                type="text"
-                value={sshUser}
-                onChange={(e) => setSshUser(e.target.value)}
-                style={inputStyle}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>Remote ARI Path</label>
-              <input
-                type="text"
-                value={sshPath}
-                onChange={(e) => setSshPath(e.target.value)}
-                style={inputStyle}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>SSH Key Path</label>
-              <input
-                type="text"
-                value={sshKeyPath}
-                onChange={(e) => setSshKeyPath(e.target.value)}
-                style={inputStyle}
-              />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-              <button className="btn btn-outline btn-sm" onClick={handleTestSSH}>
-                Test SSH
-              </button>
-            </div>
-          </div>
-          {sshStatus && (
-            <div style={{ marginTop: '8px', fontSize: '.82rem' }}>
-              <span
-                className={sshStatus.startsWith('✓') ? 'badge badge-green' : ''}
-                style={sshStatus.startsWith('✗') ? { color: 'var(--red)' } : undefined}
-              >
-                {sshStatus}
-              </span>
-            </div>
-          )}
-        </Card>
-
-        {/* ── Project Management ───────────── */}
-        <Card title="Project Management">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {checkpoints.length > 0 ? (
-              checkpoints.map((c) => {
-                const isActive = c.id === activeId;
-                const isRunning = c.status === 'running';
-                const borderColor = isActive ? 'var(--primary)' : 'var(--border)';
-                return (
-                  <div
-                    key={c.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      padding: '10px 14px',
-                      background: 'var(--card)',
-                      border: `1px solid ${borderColor}`,
-                      borderRadius: '8px',
-                    }}
-                  >
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        title={c.id}
-                        style={{
-                          fontSize: '.85rem',
-                          fontWeight: 600,
-                          color: 'var(--text)',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          maxWidth: '360px',
-                        }}
-                      >
-                        {c.id}
-                      </div>
-                      <div style={{ fontSize: '.75rem', color: 'var(--muted)', marginTop: '2px' }}>
-                        {c.node_count} nodes {'·'}{' '}
-                        {new Date(c.mtime * 1000).toLocaleString()}
-                      </div>
-                      <div style={{ marginTop: '4px', display: 'flex', gap: '6px' }}>
-                        {isRunning && (
-                          <span
-                            style={{
-                              background: 'rgba(16,185,129,.2)',
-                              color: '#10b981',
-                              borderRadius: '12px',
-                              padding: '2px 8px',
-                              fontSize: '.72rem',
-                              fontWeight: 700,
-                            }}
-                          >
-                            {'●'} Running
-                          </span>
-                        )}
-                        {isActive && (
-                          <span
-                            style={{
-                              background: 'rgba(59,130,246,.2)',
-                              color: '#3b82f6',
-                              borderRadius: '12px',
-                              padding: '2px 8px',
-                              fontSize: '.72rem',
-                              fontWeight: 700,
-                            }}
-                          >
-                            Active
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      className="btn btn-sm"
-                      style={{
-                        background: 'rgba(239,68,68,.15)',
-                        color: '#ef4444',
-                        border: '1px solid rgba(239,68,68,.3)',
-                        whiteSpace: 'nowrap',
-                      }}
-                      onClick={() => handleDeleteProject(c.id, c.path)}
-                    >
-                      {'🗑'} Delete
-                    </button>
-                  </div>
-                );
-              })
-            ) : (
-              <span style={{ color: 'var(--muted)' }}>No projects found.</span>
-            )}
-          </div>
-        </Card>
-
-        {/* ── Action buttons ───────────────── */}
+        {/* ── Action buttons (always visible) ── */}
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button className="btn btn-primary" onClick={handleSave}>
             {t('btn_save')}
