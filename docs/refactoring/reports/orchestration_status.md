@@ -41,7 +41,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 003 | consolidate_config_configs_sonfigs | 2 | High | Yes | (gate) | TODO | — |
 | 004 | define_runtime_path_policy | 2 | Low | No | — | DONE | 93d9662* |
 | 005 | consolidate_checkpoint_workspace_experiment_paths | 2 | High | Yes | 004 | TODO | — |
-| 006 | introduce_runtime_path_resolver | 2 | Medium | Yes | 004 | TODO | — |
+| 006 | introduce_runtime_path_resolver | 2 | Medium | Yes | 004 | DONE | 2c8edd5 |
 | 007 | define_core_interfaces_and_protocols | 3 | Low | No | — | DONE | 93d9662* |
 | 008 | extract_model_backend_interface | 3 | High | Yes | 007 | DONE | a045649 |
 | 009 | extract_evaluator_interface | 3 | Medium | Yes | 007 | DONE | 38977a7 |
