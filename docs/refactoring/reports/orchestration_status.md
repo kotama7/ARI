@@ -50,7 +50,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 012 | refactor_pipeline_stage_architecture | 3 | High | Yes | 007 | DONE | 04c0742 |
 | 013 | refactor_memory_boundary | 3 | High | Yes | 007 | DONE | 144c262 |
 | 014 | refactor_registry_and_factory_layer | 3 | High | Yes | 007 | DONE | 6a75eb9 |
-| 015 | refactor_dashboard_viz_api_services | 4 | High | Yes | (gate 020) | TODO | — |
+| 015 | refactor_dashboard_viz_api_services | 4 | High | Yes | (gate 020) | DONE* | no-op |
 | 016 | clean_merge_or_quarantine_legacy_code | 2 | High | Yes | 002 | DONE* | no-op |
 | 017 | update_docs_and_examples | 10 | Low | No | — | TODO | — |
 | 018 | add_tests_for_architecture_boundaries | 10 | Low | No | — | DONE | 0319dae |
@@ -292,6 +292,18 @@ leave that to a human per the Document Retirement Policy.)*
   path-allow-list (moving the lazy core->viz import breaks test_no_unexpected_core_to_viz
   _imports); it unblocks only when 011/012 inverts the viz-launcher edge. Marked DONE*
   (no code change; full suite re-confirmed 2639 passed via 016's gate).
+- **[015] verified near-no-op (fully subsumed).** The Phase-4 viz-service umbrella:
+  every contract-safe extraction already landed — /state->StateService (062),
+  file-I/O->FileService (023), tree-viz->tree_view (024), .env->launch_service +
+  adapter boundary (021), memory->ari.memory (013), DTO tests (022). Remaining items
+  are contract-affecting and DEFERRED (blocked by frozen gates): route-registry
+  dispatch (test_contract_snapshots viz-route-literals pins routes.py self.path
+  literals -> a table drops ~90 golden literals), {ok}/{error}+_status envelope
+  unification (live wire contract, needs coordinated 063 FE change), CORS drift at
+  /state + /api/gpu-monitor. WIZARD_ROUTES dead-code stays until the registry lands.
+  No code change; suite re-confirmed 2656 passed. **DASHBOARD-BACKEND NOTE:** the
+  route-registry + envelope unification are a coherent future subtask that must
+  RE-BASELINE test_contract_snapshots + the FE envelope handling together.
 - **DEFERRED CI subtasks (need checkers to exist first):** 049 (contracts.yml +
   refactor-guards jobs → needs 026/029/030 + 028/055), 050 (docs-sync.yml append),
   051 (prompt-change-review.yml → needs 043). Will run after their checkers land, on
