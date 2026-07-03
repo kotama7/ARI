@@ -12,7 +12,7 @@
 ## Baseline (captured before any subtask)
 
 - Python `3.13.2`, ruff `0.15.2`, node `v20.19.5`, npm `10.8.2`; `radon` NOT installed.
-- `ruff check ari-core --statistics` → baseline **661**; **now 660** after 003 removed a dead import (ratchet: may only DECREASE — future subtasks keep it ≤635).
+- `ruff check ari-core --statistics` → baseline **661**; **now 660** after 003 removed a dead import (ratchet: may only DECREASE — future subtasks keep it ≤634 (now 634)).
 - `python -m compileall -q ari-core ari-skill-* scripts` → **exit 0** (pass).
 - `pytest ari-core/tests -q` baseline → **2413 passed, 16 skipped** (111s, exit 0). *(clean green)*
 - HEAD at start: `93d9662865fc5e97a1950a7ec19ac06ace32e562`.
@@ -304,6 +304,17 @@ leave that to a human per the Document Retirement Policy.)*
   No code change; suite re-confirmed 2656 passed. **DASHBOARD-BACKEND NOTE:** the
   route-registry + envelope unification are a coherent future subtask that must
   RE-BASELINE test_contract_snapshots + the FE envelope handling together.
+- **LESSON — frontend refactors broke Python source-inspection guards (found in the
+  final full-suite run, fixed in c33bb66).** 063/064/070/071/072 moved frontend
+  literals that Python tests (test_settings_roundtrip/default_provider/variable_
+  passthrough/wizard/model_passthrough) grep for. Each FE agent was told 'frontend-
+  only, don't run the Python suite', so their npm typecheck/vitest gates never saw
+  it -> 16 failures surfaced only in the final aggregate run. Fixed as location-
+  pointers (anchor on `function handleSave` not 070's comment; rglob into sections/;
+  read 063's split api/ modules; assert IdeaPage's i18n empty key) with NO assertion
+  weakened. **RULE for future FE refactors: also run the ari-core Python tests that
+  source-inspect the frontend** (grep tests/ for REACT_SRC/rglob('*.tsx')). Full
+  suite green after fix: 2656 passed / 2 xfailed / 0 failed.
 - **DEFERRED CI subtasks (need checkers to exist first):** 049 (contracts.yml +
   refactor-guards jobs → needs 026/029/030 + 028/055), 050 (docs-sync.yml append),
   051 (prompt-change-review.yml → needs 043). Will run after their checkers land, on
