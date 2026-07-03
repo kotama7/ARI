@@ -52,7 +52,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 014 | refactor_registry_and_factory_layer | 3 | High | Yes | 007 | DONE | 6a75eb9 |
 | 015 | refactor_dashboard_viz_api_services | 4 | High | Yes | (gate 020) | DONE* | no-op |
 | 016 | clean_merge_or_quarantine_legacy_code | 2 | High | Yes | 002 | DONE* | no-op |
-| 017 | update_docs_and_examples | 10 | Low | No | — | TODO | — |
+| 017 | update_docs_and_examples | 10 | Low | No | — | DONE | 4de8dae |
 | 018 | add_tests_for_architecture_boundaries | 10 | Low | No | — | DONE | 0319dae |
 | 019 | final_quality_report | 11 | Low | No | — (LAST) | TODO | — |
 | 020 | inventory_viz_dashboard_api_contracts | 4 | Low | No | — | DONE | 43b143a |
