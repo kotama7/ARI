@@ -9,9 +9,9 @@ sources:
   - path: ari-core/ari
     role: implementation
   - path: ari-core/config
-    role: data
+    role: config
   - path: scripts/docs
-    role: tooling
+    role: test
 ---
 
 # 006 — Target Architecture Plan (class-based)

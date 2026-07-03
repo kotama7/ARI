@@ -2,8 +2,7 @@
 
 This directory is organized along the [Diátaxis](https://diataxis.fr/) framework:
 **Tutorial** (getting started), **Explanation** (concepts), **How-to** (guides),
-and **Reference**. Plus `about/` for project meta and `_archive/` for historical
-snapshots.
+and **Reference**. Plus `about/` for project meta.
 
 > 🌐 **Languages:** English (this page) · 日本語 · 中文 — per-document
 > availability and links are in the [Translation parity](#translation-parity)
@@ -17,7 +16,7 @@ snapshots.
 
 | Rule | Detail |
 |---|---|
-| Directories | Diátaxis 4 categories + `about` + `_archive` (+ optional `assets`) |
+| Directories | Diátaxis 4 categories + `about` (+ optional `assets`) |
 | File names | **snake_case, stem preserved** (`hpc_setup.md` etc. keep their name) |
 | `howto/` → `guides/` | renamed to match Diátaxis "how-to = guide" |
 
@@ -81,10 +80,6 @@ snapshots.
 - [Release policy](about/release_policy.md)
 - [Compatibility & support](about/compatibility.md)
 
-### Archive
-
-- [Refactor audit](_archive/refactor_audit.md) — historical snapshot (not a live doc)
-
 ## Translation parity
 
 ✓ links to the translation; ✗ marks a gap. The matrix is authoritative — a
@@ -132,7 +127,6 @@ release gate checks it against the tree (`docs/about/release_policy.md` §4).
 | about/index | [✓](about/index.md) | [✓](ja/about/index.md) | [✓](zh/about/index.md) |
 | about/release_policy | [✓](about/release_policy.md) | [✓](ja/about/release_policy.md) | [✓](zh/about/release_policy.md) |
 | about/compatibility | [✓](about/compatibility.md) | [✓](ja/about/compatibility.md) | [✓](zh/about/compatibility.md) |
-| _archive/refactor_audit | [✓](_archive/refactor_audit.md) | [✓](ja/_archive/refactor_audit.md) | [✓](zh/_archive/refactor_audit.md) |
 
 ## Homepage static site
 
