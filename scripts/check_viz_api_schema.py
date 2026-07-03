@@ -503,7 +503,16 @@ def _line_of(text: str, idx: int) -> int:
 
 
 def extract_client_calls(client_path: Path, helpers: dict[str, str]) -> list[ClientCall]:
+    # ``services/api.ts`` was split (subtask 063) into a re-export barrel + a
+    # ``services/api/`` subpackage (client.ts transport + per-domain modules).
+    # Read the barrel AND every module so the wrapper call sites are visible;
+    # falls back to the single file for a pre-split tree.
     text = client_path.read_text(encoding="utf-8")
+    api_dir = client_path.parent / "api"
+    if api_dir.is_dir():
+        for mod in sorted(api_dir.rglob("*.ts")):
+            if "__tests__" not in mod.parts:
+                text += "\n" + mod.read_text(encoding="utf-8")
     calls: list[ClientCall] = []
     seen: set[tuple[str, str, int]] = set()
 
