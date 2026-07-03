@@ -63,12 +63,31 @@ def _settings_page():
     # Settings UI decomposed (req 15): constants/tables live in settingsConstants.ts.
     # Read the whole Settings feature dir so source-contract checks see them.
     d = _REACT_COMPONENTS / "Settings"
-    return "\n".join(p.read_text() for p in sorted(d.glob("*.ts")) + sorted(d.glob("*.tsx")))
+    # Settings further decomposed (subtask 070) into sections/*.tsx; recurse so the
+    # source-contract checks still see the extracted section components, but skip
+    # __tests__/ so a test-file literal never trivially satisfies an assertion.
+    files = [p for p in sorted(d.rglob("*.ts")) + sorted(d.rglob("*.tsx"))
+             if "__tests__" not in p.parts]
+    return "\n".join(p.read_text() for p in files)
 def _step_resources():
     sr = (_REACT_COMPONENTS / "Wizard" / "StepResources.tsx").read_text()
     wp = (_REACT_COMPONENTS / "Wizard" / "WizardPage.tsx").read_text()
     return sr + "\n" + wp
 def _step_launch(): return (_REACT_COMPONENTS / "Wizard" / "StepLaunch.tsx").read_text()
+def _api_services():
+    # services/api.ts was split (subtask 063) into a re-export barrel + a
+    # services/api/ subpackage (client.ts transport + per-domain modules);
+    # concatenate the barrel + every module so the saveSettings/POST/JSON impl
+    # (now in services/api/settings.ts + client.ts) is still visible.
+    d = _REACT_SRC / "services"
+    parts = []
+    barrel = d / "api.ts"
+    if barrel.exists():
+        parts.append(barrel.read_text())
+    api_dir = d / "api"
+    if api_dir.is_dir():
+        parts += [p.read_text() for p in sorted(api_dir.rglob("*.ts"))]
+    return "\n".join(parts)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -116,47 +135,47 @@ class TestSettingsSavePayload:
 
     def test_handleSave_sends_provider(self):
         src = _settings_page()
-        fn_idx = src.find("handleSave")
+        fn_idx = src.find("function handleSave")
         assert fn_idx >= 0, "handleSave not found"
         body = src[fn_idx:fn_idx + 1500]
         assert "llm_backend" in body or "provider" in body, "handleSave must send provider"
 
     def test_handleSave_sends_llm_model(self):
         src = _settings_page()
-        fn_idx = src.find("handleSave")
+        fn_idx = src.find("function handleSave")
         body = src[fn_idx:fn_idx + 1500]
         assert "llm_model" in body, "handleSave must send llm_model"
 
     def test_handleSave_sends_api_key(self):
         src = _settings_page()
-        fn_idx = src.find("handleSave")
+        fn_idx = src.find("function handleSave")
         body = src[fn_idx:fn_idx + 1500]
         assert "api_key" in body or "llm_api_key" in body, "handleSave must send api_key"
 
     def test_handleSave_sends_base_url(self):
         src = _settings_page()
-        fn_idx = src.find("handleSave")
+        fn_idx = src.find("function handleSave")
         body = src[fn_idx:fn_idx + 1500]
         assert "base_url" in body or "baseUrl" in body, "handleSave must send base URL"
 
     def test_api_service_posts_settings(self):
-        api_src = (_REACT_SRC / "services" / "api.ts").read_text()
-        assert "saveSettings" in api_src, "api.ts must have saveSettings function"
+        api_src = _api_services()
+        assert "saveSettings" in api_src, "api service must have saveSettings function"
         assert "/api/settings" in api_src, "saveSettings must POST to /api/settings"
 
     def test_api_service_uses_post_method(self):
-        api_src = (_REACT_SRC / "services" / "api.ts").read_text()
+        api_src = _api_services()
         assert "POST" in api_src, "API service must use POST method"
 
     def test_api_service_sends_json(self):
-        api_src = (_REACT_SRC / "services" / "api.ts").read_text()
+        api_src = _api_services()
         assert "JSON.stringify" in api_src or "application/json" in api_src, \
             "API service must send JSON body"
 
     def test_handleSave_uses_model_select_with_fallback(self):
         """handleSave must use modelSelect with modelCustom fallback."""
         src = _settings_page()
-        fn_idx = src.find("handleSave")
+        fn_idx = src.find("function handleSave")
         body = src[fn_idx:fn_idx + 1500]
         assert "modelSelect" in body, \
             "handleSave must read from modelSelect dropdown"
@@ -396,7 +415,7 @@ class TestSlurmSettingsRoundtrip:
     def test_savesettings_sends_slurm_defaults(self):
         """handleSave must include slurm_* in POST body."""
         src = _settings_page()
-        fn_idx = src.find("handleSave")
+        fn_idx = src.find("function handleSave")
         body = src[fn_idx:fn_idx + 1800]
         assert "slurm_cpus" in body, "handleSave must send slurm_cpus"
         assert "slurm_memory_gb" in body, "handleSave must send slurm_memory_gb"
@@ -554,7 +573,7 @@ class TestLettaMemorySettings:
         """handleSave must include all letta_* keys in the POST body —
         otherwise the GUI silently fails to persist them."""
         src = _settings_page()
-        fn_idx = src.find("handleSave")
+        fn_idx = src.find("function handleSave")
         body = src[fn_idx:fn_idx + 2500]
         for key in self.LETTA_KEYS:
             assert key in body, f"handleSave must POST: {key}"

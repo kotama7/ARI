@@ -44,9 +44,11 @@ def _settings_page():
     # `.ts` (the data/constants) is ordered before `.tsx` (the page) so the
     # find("PROVIDER_MODELS")-based slices land on the definition, not the import.
     d = _REACT_COMPONENTS / "Settings"
-    return "\n".join(
-        p.read_text() for p in sorted(d.glob("*.ts")) + sorted(d.glob("*.tsx"))
-    )
+    # Settings further decomposed (subtask 070) into sections/*.tsx; recurse (skip
+    # __tests__/) so these source-contract checks still see the extracted code.
+    files = [p for p in sorted(d.rglob("*.ts")) + sorted(d.rglob("*.tsx"))
+             if "__tests__" not in p.parts]
+    return "\n".join(p.read_text() for p in files)
 
 
 def _step_resources():
@@ -578,7 +580,7 @@ class TestSaveSettingsCollectsProvider:
 
     def test_handleSave_sends_provider(self):
         src = _settings_page()
-        fn_idx = src.find("handleSave")
+        fn_idx = src.find("function handleSave")
         assert fn_idx >= 0
         body = src[fn_idx:fn_idx + 500]
         assert "llm_backend" in body or "provider" in body, \
@@ -586,7 +588,7 @@ class TestSaveSettingsCollectsProvider:
 
     def test_handleSave_sends_llm_model(self):
         src = _settings_page()
-        fn_idx = src.find("handleSave")
+        fn_idx = src.find("function handleSave")
         assert fn_idx >= 0
         body = src[fn_idx:fn_idx + 500]
         assert "llm_model" in body, "handleSave must send llm_model key"
@@ -594,7 +596,7 @@ class TestSaveSettingsCollectsProvider:
     def test_handleSave_prefers_model_select_over_custom(self):
         """handleSave must prefer modelSelect (dropdown) over modelCustom."""
         src = _settings_page()
-        fn_idx = src.find("handleSave")
+        fn_idx = src.find("function handleSave")
         assert fn_idx >= 0
         body = src[fn_idx:fn_idx + 500]
         assert "modelSelect" in body, \
