@@ -1,4 +1,5 @@
 import { Button } from '../common/Button';
+import { useDevMode } from '../../hooks/useDevMode';
 import type { PublishYamlData } from '../../services/api';
 
 // ─── publish.yaml editor (per-checkpoint EAR allowlist) ───
@@ -31,7 +32,12 @@ export function PublishYamlEditor({
   setText,
   onSaved,
 }: PublishYamlEditorProps) {
+  const { devMode } = useDevMode();
   if (!runId) return null;
+  // Raw-YAML editing is developer-only (071): when Developer Mode is off the
+  // Raw toggle is hidden and the panel stays in the guided form view even if a
+  // stale `mode === 'raw'` is passed in.
+  const rawMode = mode === 'raw' && devMode;
   const d: PublishYamlData = data || {};
   const includeArr: string[] = Array.isArray(d.include) ? d.include : [];
   const excludeArr: string[] = Array.isArray(d.exclude) ? d.exclude : [];
@@ -53,18 +59,20 @@ export function PublishYamlEditor({
         <div style={{ display: 'flex', gap: 6 }}>
           <Button
             size="sm"
-            variant={mode === 'form' ? 'primary' : 'outline'}
+            variant={!rawMode ? 'primary' : 'outline'}
             onClick={() => setMode('form')}
           >
             {t('py_editor_form')}
           </Button>
-          <Button
-            size="sm"
-            variant={mode === 'raw' ? 'primary' : 'outline'}
-            onClick={() => setMode('raw')}
-          >
-            {t('py_editor_raw')}
-          </Button>
+          {devMode && (
+            <Button
+              size="sm"
+              variant={rawMode ? 'primary' : 'outline'}
+              onClick={() => setMode('raw')}
+            >
+              {t('py_editor_raw')}
+            </Button>
+          )}
         </div>
       </div>
       {!exists && (
@@ -72,7 +80,7 @@ export function PublishYamlEditor({
           {t('py_editor_new_hint')}
         </div>
       )}
-      {mode === 'form' ? (
+      {!rawMode ? (
         <div style={{ display: 'grid', gap: 8, fontSize: '.82rem' }}>
           <label>
             <div style={{ marginBottom: 2 }}>
