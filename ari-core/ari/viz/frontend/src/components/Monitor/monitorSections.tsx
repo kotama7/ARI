@@ -6,6 +6,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
+import { useDevMode } from '../../hooks/useDevMode';
 import { fetchExperimentDetail } from '../../services/api';
 import type { AppState, TreeNode } from '../../types';
 
@@ -66,6 +67,7 @@ export function computeBestMetrics(nodes: TreeNode[]): { displays: MetricDisplay
 
 export function IdeaCardContent({ state }: { state: AppState }) {
   const { t } = useI18n();
+  const { devMode } = useDevMode();
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailConfig, setDetailConfig] = useState('');
 
@@ -333,10 +335,13 @@ export function IdeaCardContent({ state }: { state: AppState }) {
     );
   }
 
+  // The raw experiment-context JSON dump is a developer-only fallback (071):
+  // only surface it when Developer Mode is on. Formatted detail (detailConfig /
+  // mdContent) stays visible to everyone.
   const detailText =
     detailConfig ||
     mdContent ||
-    JSON.stringify(ctx, null, 2) ||
+    (devMode ? JSON.stringify(ctx, null, 2) : '') ||
     '(no detail)';
 
   return (

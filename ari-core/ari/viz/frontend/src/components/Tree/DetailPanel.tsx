@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
+import { useDevMode } from '../../hooks/useDevMode';
 import type { TreeNode } from '../../types';
 import { useDetailPanelData } from './useDetailPanelData';
 import { TraceTab } from './DetailPanelTabs/TraceTab';
@@ -33,6 +34,7 @@ interface DetailPanelProps {
 
 export function DetailPanel({ node, allNodes, checkpointId, onClose }: DetailPanelProps) {
   const { t } = useI18n();
+  const { devMode } = useDevMode();
   const [width, setWidth] = useState(320);
   const [activeTab, setActiveTab] = useState<TabName>('overview');
   const panelRef = useRef<HTMLDivElement>(null);
@@ -44,6 +46,12 @@ export function DetailPanel({ node, allNodes, checkpointId, onClose }: DetailPan
   useEffect(() => {
     setActiveTab('overview');
   }, [node?.id]);
+
+  // If Developer Mode is switched OFF while the (dev-only) Raw tab is active,
+  // fall back to Overview so the panel never renders blank (071 §11 edge case).
+  useEffect(() => {
+    if (!devMode && activeTab === 'raw') setActiveTab('overview');
+  }, [devMode, activeTab]);
 
   // Per-node data loading (memory / access-log / node-report) lives in a hook.
   const {
@@ -361,7 +369,8 @@ export function DetailPanel({ node, allNodes, checkpointId, onClose }: DetailPan
             {tabBtn('access', `📒 ${t('memory_access_tab')}`)}
             {/* Report tab — hidden when no node_report.json exists for this node. */}
             {reportAvailable && tabBtn('report', `📝 ${t('report_tab')}`)}
-            {tabBtn('raw', '{ } Raw')}
+            {/* Raw JSON dump — developer-only (071); hidden by default. */}
+            {devMode && tabBtn('raw', '{ } Raw')}
           </div>
 
           {/* Overview tab (empty content area, matches original) */}
@@ -407,8 +416,8 @@ export function DetailPanel({ node, allNodes, checkpointId, onClose }: DetailPan
             />
           )}
 
-          {/* Raw JSON tab */}
-          {activeTab === 'raw' && (
+          {/* Raw JSON tab — developer-only content (071). */}
+          {devMode && activeTab === 'raw' && (
             <div>
               <pre
                 className="code"

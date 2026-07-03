@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
+import { useDevMode } from '../../hooks/useDevMode';
 import { useAppContext } from '../../context/AppContext';
 import {
   fetchSettings,
@@ -49,6 +50,7 @@ import { ProjectManagementSection } from './sections/ProjectManagementSection';
 
 export default function SettingsPage() {
   const { t, setLanguage, currentLang } = useI18n();
+  const { devMode, setDevMode } = useDevMode();
   const { state: appState, refreshCheckpoints } = useAppContext();
 
   // LLM
@@ -357,6 +359,32 @@ export default function SettingsPage() {
         {/* ── Tier 1: Essentials (Primary — always open) ── */}
         <SettingsGroup title={t('settings_group_essentials')} defaultOpen>
           <LanguageSection t={t} lang={lang} onLangChange={handleLangChange} />
+          {/* Developer Mode toggle (071). Client-only; persisted in
+              localStorage['ari_dev_mode'] via useDevMode — NOT part of the
+              24-key /api/settings POST. Rendered as a plain row (no .card-title
+              / .settings-group-header) so the SettingsContract (10 cards) and
+              SettingsDisclosure (4 groups) invariants are untouched. */}
+          <div
+            className="dev-mode-toggle"
+            style={{ padding: '4px 2px', display: 'flex', flexDirection: 'column', gap: 2 }}
+          >
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                role="switch"
+                aria-checked={devMode}
+                checked={devMode}
+                onChange={(e) => setDevMode(e.target.checked)}
+              />
+              <span style={{ fontWeight: 600 }}>{t('settings_devmode_label')}</span>
+              <span className="badge badge-muted" style={{ fontSize: '.68rem' }}>
+                {t('dev_only_badge')}
+              </span>
+            </label>
+            <div style={{ fontSize: '.75rem', color: 'var(--muted)' }}>
+              {t('settings_devmode_help')}
+            </div>
+          </div>
           <LlmBackendSection
             t={t}
             provider={provider}
