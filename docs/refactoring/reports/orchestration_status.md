@@ -107,7 +107,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 069 | design_dashboard_progressive_disclosure | 6 | Low | No | 059 | DONE | f878986 |
 | 070 | refactor_dashboard_settings_panel | 6 | High | Yes | 059 | DONE* | 57afcbb |
 | 071 | add_dashboard_developer_mode | 6 | Medium | Yes | 059 | DONE | 69684fa |
-| 072 | improve_dashboard_empty_loading_error_states | 6 | Medium | Yes | 059 | TODO | — |
+| 072 | improve_dashboard_empty_loading_error_states | 6 | Medium | Yes | 059 | DONE* | b438653 |
 | 073 | add_dashboard_ux_regression_checks | 6 | Low | No | 059 | DONE | ecabd7c |
 
 ## Blocked / Human-decision notes
