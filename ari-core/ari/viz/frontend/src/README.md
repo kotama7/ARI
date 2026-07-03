@@ -18,9 +18,14 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `Badge.tsx` — colored variant label span.
     - `Button.tsx` — styled button with variant/size props.
     - `Card.tsx` — bordered content container.
+    - `EmptyState.tsx` — TODO
+    - `ErrorState.tsx` — TODO
     - `index.ts` — barrel re-exports.
+    - `LoadingState.tsx` — TODO
     - `StatBox.tsx` — single value + label stat tile.
     - `StatusBadge.tsx` — maps run status to a colored `Badge`.
+    - `__tests__/` — TODO
+      - `StateComponents.test.tsx` — TODO
   - `Experiments/` — experiments page (lists experiment/checkpoint runs).
     - `README.md` — Experiments index.
     - `ExperimentsPage.tsx` — experiments list view.
@@ -137,10 +142,10 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
 - `hooks/` — custom hooks (data fetch, websocket).
   - `README.md` — hooks index.
   - `useApi.ts` — generic async data-fetch hook with loading/error/refetch.
-  - `useDevMode.ts` — TODO
+  - `useDevMode.ts` — persisted developer-mode flag (localStorage `ari_dev_mode`, default OFF) with same-tab + cross-tab sync; gates raw/debug/dangerous UI surfaces.
   - `useWebSocket.ts` — streams real-time tree updates with auto-reconnect.
-  - `__tests__/` — TODO
-    - `useDevMode.test.tsx` — TODO
+  - `__tests__/` — hook unit tests.
+    - `useDevMode.test.tsx` — default-OFF, persistence, and cross-instance sync for `useDevMode`.
 - `i18n/` — localization (en/ja/zh) helpers.
   - `en.ts` — English dictionary.
   - `index.ts` — i18n entry / language selection.
