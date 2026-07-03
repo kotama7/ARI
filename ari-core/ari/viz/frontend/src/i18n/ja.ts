@@ -168,6 +168,16 @@ const ja: Record<string, string> = {
   no_data: 'データなし',
   select_exp: '上から実験を選択してください',
   error_prefix: 'エラー: ',
+  // Empty / Loading / Error state kit (072)
+  loading_file: 'ファイルを読み込み中…',
+  loading_ear: 'EAR を読み込み中…',
+  launching: '起動中…',
+  load_failed: '読み込みに失敗しました',
+  home_no_experiments: '実験がまだありません',
+  experiments_empty: '実験が見つかりません',
+  results_empty: 'このチェックポイントに結果データが見つかりません',
+  idea_virsci_empty:
+    'VirSci の仮説がありません。VirSci の検討がまだ実行されていないか、idea.json が空の可能性があります。',
   nodes_explored: '探索ノード数',
   best_metric: 'ベストスコア',
   node_tree: 'ノードツリー',

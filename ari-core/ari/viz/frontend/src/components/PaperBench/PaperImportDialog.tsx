@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useT } from '../../i18n';
 import { fetchArxivMetadata, importPaperbenchPaper } from '../../services/api';
+import { ErrorState } from '../common';
 
 interface LicenseAssessment {
   license: string;
@@ -240,11 +241,17 @@ export function PaperImportDialog() {
           </button>
         </div>
 
-        {result?.error && (
-          <div style={{ color: '#d33', padding: 12, background: '#fee' }}>{result.error}</div>
-        )}
+        {result?.error && <ErrorState message={result.error} />}
         {result?.paper_id && !result.error && (
-          <div style={{ color: '#080', padding: 12, background: '#efe' }}>
+          <div
+            style={{
+              color: 'var(--green)',
+              padding: 12,
+              borderRadius: 8,
+              background: 'rgba(34,197,94,.1)',
+              border: '1px solid rgba(34,197,94,.25)',
+            }}
+          >
             ✓ {t('pb_saved')}: {result.paper_id}
           </div>
         )}

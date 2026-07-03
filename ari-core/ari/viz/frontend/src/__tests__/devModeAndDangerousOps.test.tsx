@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
 import type { TreeNode } from '../types';
+import { LoadingState, EmptyState, ErrorState } from '../components/common';
 
 const originalFetch = globalThis.fetch;
 
@@ -150,8 +151,26 @@ describe('dashboard UX invariants pending sibling refactors (Tier-2)', () => {
     'Settings/DetailPanel tabs expose role=tab / role=tabpanel / aria-selected [enable with 068/069/070]',
   );
 
-  // Un-skip when 072 lands the empty/loading/error state kit.
-  it.todo(
-    'renders skeleton/empty/error states via a shared <ErrorBanner>/state kit [enable with 072]',
-  );
+  // Converted from it.todo: 072 landed the shared empty/loading/error state kit
+  // (components/common/{LoadingState,EmptyState,ErrorState}). This asserts the
+  // three surfaces render and that ErrorState's Retry is wired (it consumes a
+  // plain string from EITHER api error regime — get/post throw or pbGet/pbPost
+  // {error} — without unifying them). Explicit labels keep it locale-independent.
+  it('renders loading/empty/error states via the shared common/ state kit (072)', () => {
+    cleanup();
+    const onRetry = vi.fn();
+    const { container } = render(
+      <div>
+        <LoadingState label="__kit_loading__" />
+        <EmptyState icon="📭" message="__kit_empty__" />
+        <ErrorState message="__kit_error__" onRetry={onRetry} retryLabel="__kit_retry__" />
+      </div>,
+    );
+    expect(container.querySelector('.spinner')).not.toBeNull();
+    expect(screen.queryByText('__kit_loading__')).not.toBeNull();
+    expect(screen.queryByText('__kit_empty__')).not.toBeNull();
+    expect(screen.queryByText('__kit_error__')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '__kit_retry__' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
 });

@@ -17,6 +17,7 @@ import type {
 } from '../../services/api';
 import type { CheckpointSummary } from '../../types';
 import { Button } from '../common/Button';
+import { LoadingState, EmptyState, ErrorState } from '../common';
 import { EarSection } from './EarSection';
 import { renderPaper } from './PaperWorkspace';
 import { renderContext, renderFigures, renderReviewScores, renderRepro } from './resultSections';
@@ -380,24 +381,14 @@ export function ResultsPage() {
 
       {/* Content */}
       <div>
-        {loading && (
-          <div style={{ color: 'var(--muted)' }}>
-            <span className="spinner" /> {t('loading')}
-          </div>
-        )}
+        {loading && <LoadingState inline />}
 
         {error && (
-          <div style={{ color: 'var(--red)' }}>
-            {t('error_prefix')}
-            {error}
-          </div>
+          <ErrorState message={`${t('error_prefix')}${error}`} />
         )}
 
         {!loading && !error && !selectedId && (
-          <div className="empty-state">
-            <div className="empty-icon">{'📊'}</div>
-            <p>{t('select_exp')}</p>
-          </div>
+          <EmptyState icon={'📊'} message={t('select_exp')} />
         )}
 
         {!loading && !error && summary && (
@@ -448,10 +439,7 @@ export function ResultsPage() {
                 if (figs && typeof figs === 'object') return Object.keys(figs).length > 0;
                 return false;
               })() && (
-                <div className="empty-state">
-                  <div className="empty-icon">{'📊'}</div>
-                  <p>No results data found in this checkpoint</p>
-                </div>
+                <EmptyState icon={'📊'} message={t('results_empty')} />
               )}
           </>
         )}
