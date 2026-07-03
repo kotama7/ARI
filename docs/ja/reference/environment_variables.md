@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-07-03
 ---
 
 # 環境変数リファレンス
@@ -208,7 +208,7 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | 呼び出し元が `0` を渡したときのデフォルト Stage 1 エージェントロールアウト時間予算。 |
 | `ARI_REPLICATOR_ITERATIVE` | `1` ⇒ Stage 1 ロールアウトのデフォルトを IterativeAgent バリアントに変更。 |
 | `ARI_REPLICATOR_MAX_STEPS` | デフォルト Stage 1 ステップ上限。 |
-| `ARI_AGENT_ENV_PATH` | `bridge.rollout_submission` が `agent_env_path` 引数未指定時に自動ロードする vendor スタイルの `agent.env` ファイル（1行1 `KEY=VALUE`）のデフォルトパス。これも空の場合は `~/.ari/agent.env` にフォールバック。Stage 1 エージェントへ論文固有の認証情報（例: `HF_TOKEN`）を渡すために使用。 |
+| `ARI_AGENT_ENV_PATH` | `bridge.rollout_submission` が `agent_env_path` 引数未指定時に自動ロードする vendor スタイルの `agent.env` ファイル（1行1 `KEY=VALUE`）のデフォルトパス。これも空の場合は `~/.ari/agent.env` にフォールバック。この vendored な PaperBench-replicate の認証情報探索（`ari-skill-paper-re/src/_paperbench_bridge.py`）は、v0.5.0 で削除された ARI 独自の `$HOME/.ari/` 実行ストレージとは別物であり、フォールバックは現在も有効です。Stage 1 エージェントへ論文固有の認証情報（例: `HF_TOKEN`）を渡すために使用。 |
 | `HF_TOKEN` | Hugging Face Hub トークン。呼び出しプロセスに設定されている場合、`bridge.rollout_submission` がエージェントの環境に自動で転送（vendor `nano/eval.py:172-179` の well-known-credential パターン）。Stage 1 ロールアウトで `huggingface-cli login` を呼び出す PaperBench 論文では必須。 |
 | `ARI_JUDGE_N_RUNS` | ウィザード / 呼び出し元が `0` を渡したときの SimpleJudge 呼び出しのデフォルト `n_runs`。PaperBench 論文 §4.1 のシングルパスデフォルトは 1。 |
 | `ARI_MODEL_JUDGE` | デフォルトジャッジモデル ID（LiteLLM ルーティング）。 |
