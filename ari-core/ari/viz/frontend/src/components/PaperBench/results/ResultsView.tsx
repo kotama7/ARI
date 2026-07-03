@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useT } from '../../../i18n';
+import { ErrorState } from '../../common';
 import {
   fetchPaperbenchRun,
   fetchPaperbenchRunResults,
@@ -145,7 +146,7 @@ export function ResultsView() {
   if (error) {
     return (
       <div style={{ padding: 28 }}>
-        <div style={{ color: '#d33', padding: 12, background: '#fee' }}>{error}</div>
+        <ErrorState message={error} />
       </div>
     );
   }

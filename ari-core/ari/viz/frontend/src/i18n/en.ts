@@ -168,6 +168,16 @@ const en: Record<string, string> = {
   no_data: 'No data available',
   select_exp: 'Select an experiment above',
   error_prefix: 'Error: ',
+  // Empty / Loading / Error state kit (072)
+  loading_file: 'Loading file…',
+  loading_ear: 'Loading EAR…',
+  launching: 'Launching…',
+  load_failed: 'Failed to load',
+  home_no_experiments: 'No experiments yet',
+  experiments_empty: 'No experiments found',
+  results_empty: 'No results data found in this checkpoint',
+  idea_virsci_empty:
+    'No VirSci hypotheses available. VirSci deliberation may not have run yet, or idea.json is empty.',
   nodes_explored: 'Nodes Explored',
   best_metric: 'Best Metric',
   node_tree: 'Node Tree',

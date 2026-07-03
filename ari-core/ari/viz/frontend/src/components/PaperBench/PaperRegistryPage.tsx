@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useT } from '../../i18n';
 import { fetchPaperbenchPapers, deletePaperbenchPaper } from '../../services/api';
 import { useApi } from '../../hooks/useApi';
+import { LoadingState, EmptyState, ErrorState } from '../common';
 
 interface PaperEntry {
   paper_id: string;
@@ -76,16 +77,15 @@ export function PaperRegistryPage() {
         <button onClick={() => void refresh()}>{t('pb_refresh')}</button>
       </div>
 
-      {loading && <div>{t('pb_loading')}</div>}
+      {loading && <LoadingState inline label={t('pb_loading')} />}
       {error && (
-        <div style={{ color: '#d33', padding: 12, background: '#fee' }}>
-          {t('pb_load_error')}: {error}
-        </div>
+        <ErrorState
+          message={`${t('pb_load_error')}: ${error}`}
+          onRetry={refetch}
+        />
       )}
       {!loading && !error && papers.length === 0 && (
-        <div style={{ color: '#666', padding: 28, textAlign: 'center' }}>
-          {t('pb_no_papers')}
-        </div>
+        <EmptyState message={t('pb_no_papers')} />
       )}
 
       {papers.length > 0 && (
