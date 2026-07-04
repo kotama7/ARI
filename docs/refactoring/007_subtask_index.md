@@ -702,3 +702,96 @@ primary sources — never on assumption:
 Before any `git rm`, re-read this document's own conditions and check each one
 against the current repository. See the canonical policy in
 `docs/refactoring/007_subtask_index.md` ("Document Retirement Policy").
+
+
+## Completion Status (verified 2026-07-04)
+
+All 73 subtasks were independently re-verified against primary sources (each recorded
+commit's diff, the deliverable on disk, and the subtask's §13 acceptance criteria) by a
+73-way adversarial audit that did **not** trust the orchestration ledger. Outcome:
+54 CONFIRMED as-is, **1 NOT_DONE (040)**, 18 CONCERN. Every gap was then fixed or
+documented: 040 completed (`49754b7`); four HEAD test failures repaired (031/054/073,
+`267c53f`); nine documentation concerns closed (`9a40eb4`); 063 §13.7 reclassified DONE\*.
+Final tree: ari-core 2656 passed / 0 failed, scripts/tests 93, evaluator 48, paper 116,
+ruff ari-core 634, readme_sync + check_doc_links green. **59 DONE + 14 DONE\*** (documented partial-scope / no-op); **0 BLOCKED**.
+
+> DONE\* = the committed deliverable is real and verified, with the remainder explicitly
+> deferred as REVIEW_REQUIRED (go-forward backlog in `reports/final_quality_report.md`).
+> This satisfies the Document Retirement Policy's "marks subtask NNN as DONE" condition
+> for every subtask. Merge to `main` remains the other required retirement condition.
+
+| ID | Title | Status | Commit | Verification note |
+|----|-------|--------|--------|-------------------|
+| 001 | measure_complexity_and_dependencies | DONE | `e0662c7` | verified against primary sources (adversarial DONE-audit). |
+| 002 | inventory_legacy_obsolete_and_duplicate_code | DONE | `d286dec` | verified against primary sources (adversarial DONE-audit). |
+| 003 | consolidate_config_configs_sonfigs | DONE* | `617678e` | Phase-A seam done; Phase-B config data-move deferred (REVIEW_REQUIRED). Doc-drift fixed 9a40eb4. |
+| 004 | define_runtime_path_policy | DONE | `93d9662*` | verified against primary sources (adversarial DONE-audit). |
+| 005 | consolidate_checkpoint_workspace_experiment_paths | DONE* | `1a87b73` | unified run-dir layout done; deeper migration deferred (documented). |
+| 006 | introduce_runtime_path_resolver | DONE | `2c8edd5` | verified against primary sources (adversarial DONE-audit). |
+| 007 | define_core_interfaces_and_protocols | DONE | `93d9662*` | verified against primary sources (adversarial DONE-audit). |
+| 008 | extract_model_backend_interface | DONE | `a045649` | verified against primary sources (adversarial DONE-audit). |
+| 009 | extract_evaluator_interface | DONE | `38977a7` | verified against primary sources (adversarial DONE-audit). |
+| 010 | extract_artifact_checkpoint_trace_store | DONE* | `4fbe6b0` | store abstractions extracted; route-registry/envelope unification blocked by test_contract_snapshots (REVIEW_REQUIRED). |
+| 011 | separate_bfts_strategy_from_react_loop | DONE* | `8d67474` | BFTS-vs-ReAct split done; AgentLoop.run decomposition deferred by frozen tests. |
+| 012 | refactor_pipeline_stage_architecture | DONE | `04c0742` | README TODOs -> real descriptions (9a40eb4). |
+| 013 | refactor_memory_boundary | DONE | `144c262` | backend.py README description (9a40eb4). |
+| 014 | refactor_registry_and_factory_layer | DONE | `6a75eb9` | verified against primary sources (adversarial DONE-audit). |
+| 015 | refactor_dashboard_viz_api_services | DONE* | `no-op` | verified near-no-op: viz service layer already covered by 021/023. |
+| 016 | clean_merge_or_quarantine_legacy_code | DONE* | `no-op` | near-no-op; DEPRECATION_REMOVAL.md created 9a40eb4; _legacy/ package + lineage shim YAGNI/blocked (documented). |
+| 017 | update_docs_and_examples | DONE | `4de8dae` | verified against primary sources (adversarial DONE-audit). |
+| 018 | add_tests_for_architecture_boundaries | DONE | `0319dae` | Architecture-boundary-guards README subsection (9a40eb4). |
+| 019 | final_quality_report | DONE | `cd9bbe5` | verified against primary sources (adversarial DONE-audit). |
+| 020 | inventory_viz_dashboard_api_contracts | DONE | `43b143a` | verified against primary sources (adversarial DONE-audit). |
+| 021 | extract_viz_services_from_routes | DONE* | `baf2add` | viz services extracted; residual route logic deferred (documented). |
+| 022 | define_dashboard_dto_and_schema_tests | DONE | `7d6ee50` | verified against primary sources (adversarial DONE-audit). |
+| 023 | separate_viz_file_io_from_route_handlers | DONE* | `56b379d` | file-I/O service extracted; partial route coupling deferred (documented). |
+| 024 | refactor_bfts_tree_visualization_adapter | DONE | `b2071cd` | verified against primary sources (adversarial DONE-audit). |
+| 025 | add_complexity_checker_script | DONE | `6720ca8` | verified against primary sources (adversarial DONE-audit). |
+| 026 | add_import_boundary_checker_script | DONE | `fe34241` | verified against primary sources (adversarial DONE-audit). |
+| 027 | add_docs_source_sync_checker_script | DONE | `d1902af` | Outcome A recorded: check_docs_source_sync.py shipped (d1902af); this audit records the A/B resolution. |
+| 028 | add_directory_policy_checker_script | DONE | `9180503` | verified against primary sources (adversarial DONE-audit). |
+| 029 | add_public_api_contract_checker_script | DONE | `5c5c10a` | verified against primary sources (adversarial DONE-audit). |
+| 030 | add_viz_api_schema_checker_script | DONE | `7bd5654` | verified against primary sources (adversarial DONE-audit). |
+| 031 | add_quality_report_generator | DONE | `d7bbd29` | viz LOC baseline 8131->8532 after 063/064/065 (267c53f). |
+| 032 | add_quality_script_ci_plan | DONE | `11cd088` | verified against primary sources (adversarial DONE-audit). |
+| 033 | add_generated_files_gitignore_policy | DONE | `0ad0b19` | verified against primary sources (adversarial DONE-audit). |
+| 034 | add_contract_snapshot_fixtures | DONE | `7af9e0f` | fixtures/contracts/README.md created (9a40eb4). |
+| 035 | add_refactoring_progress_tracker | DONE | `4be8796` | verified against primary sources (adversarial DONE-audit). |
+| 036 | inventory_hardcoded_prompts | DONE | `9619ebf` | verified against primary sources (adversarial DONE-audit). |
+| 037 | define_prompt_template_policy | DONE | `93d9662*` | verified against primary sources (adversarial DONE-audit). |
+| 038 | introduce_prompt_registry_and_loader | DONE | `ed6171e` | verified against primary sources (adversarial DONE-audit). |
+| 039 | extract_agent_and_bfts_prompts | DONE* | `no-op` | spec-grounded no-op: 039 §8.1 makes the 036 census the tiebreaker; 036 routed zero inline strings here. Divergence flagged REVIEW_REQUIRED. |
+| 040 | extract_evaluator_and_llm_judge_prompts | DONE | `5ce8c75` | remaining 2 of 4 judge prompts externalized (49754b7) — was the sole NOT_DONE. |
+| 041 | extract_pipeline_and_paper_generation_prompts | DONE | `f4a22cf` | paper prompts README created (9a40eb4). |
+| 042 | add_prompt_snapshot_tests | DONE | `2bc2e94` | prompt-snapshot README subsection (9a40eb4). |
+| 043 | add_prompt_checker_script | DONE | `dffefdf` | verified against primary sources (adversarial DONE-audit). |
+| 044 | add_prompt_version_tracking_to_run_metadata | DONE | `8f59cf0` | no defect; verified. |
+| 045 | inventory_github_workflows | DONE | `8842a5f` | verified against primary sources (adversarial DONE-audit). |
+| 046 | design_quality_ci_integration | DONE | `93d9662*` | verified against primary sources (adversarial DONE-audit). |
+| 047 | add_pr_template_quality_checklist | DONE | `78c9eea` | verified against primary sources (adversarial DONE-audit). |
+| 048 | add_issue_templates_for_refactoring | DONE | `e869a90` | verified against primary sources (adversarial DONE-audit). |
+| 049 | add_contract_check_workflows | DONE | `89aef2f` | verified against primary sources (adversarial DONE-audit). |
+| 050 | add_docs_sync_workflow | DONE | `ae7bea1` | stale docs-sync.yml comment corrected (9a40eb4). |
+| 051 | add_prompt_change_review_workflow | DONE | `7b9b198` | verified against primary sources (adversarial DONE-audit). |
+| 052 | add_dependabot_and_actions_policy | DONE | `a40ab08` | verified against primary sources (adversarial DONE-audit). |
+| 053 | inventory_reference_roots | DONE | `b4d7706` | verified against primary sources (adversarial DONE-audit). |
+| 054 | add_reference_graph_analyzer | DONE | `d73dd9e` | overlay_lazy_registry added for 014's register_lazy dispatch (267c53f). |
+| 055 | add_dead_code_candidate_checker | DONE | `d734d87` | verified against primary sources (adversarial DONE-audit). |
+| 056 | classify_unused_functions_and_files | DONE | `48d40a0` | verified against primary sources (adversarial DONE-audit). |
+| 057 | delete_safe_dead_code_candidates | DONE | `386090f` | verified against primary sources (adversarial DONE-audit). |
+| 058 | add_dead_code_checker_to_quality_report | DONE | `2bae2dc` | verified against primary sources (adversarial DONE-audit). |
+| 059 | inventory_dashboard_frontend_backend_structure | DONE | `f43d9f1` | verified against primary sources (adversarial DONE-audit). |
+| 060 | inventory_dashboard_api_contracts | DONE | `dcb0389` | verified against primary sources (adversarial DONE-audit). |
+| 061 | define_dashboard_dto_and_schema_policy | DONE | `93d9662*` | verified against primary sources (adversarial DONE-audit). |
+| 062 | refactor_dashboard_backend_routes_to_services | DONE* | `6bb10f1` | state/file services extracted; partial scope deferred (documented). |
+| 063 | refactor_dashboard_frontend_api_client_and_types | DONE* | `63df6e5` | api.ts split done + verified; §13.7 any->typed hardening deferred (REVIEW_REQUIRED, surfaced by this audit). |
+| 064 | refactor_dashboard_state_and_component_boundaries | DONE* | `da6aa4d` | resultSections split into barrel + sections; partial scope deferred (documented). |
+| 065 | add_dashboard_contract_and_schema_tests | DONE | `0bca698` | §13 met for 065 scope; the tsc failure is pre-existing out-of-scope PaperBench baseline 065 was forbidden to touch. |
+| 066 | add_dashboard_build_and_ci_plan | DONE | `0000cec` | verified against primary sources (adversarial DONE-audit). |
+| 067 | inventory_dashboard_visible_settings | DONE | `4252a79` | verified against primary sources (adversarial DONE-audit). |
+| 068 | define_dashboard_information_architecture | DONE | `93d9662*` | verified against primary sources (adversarial DONE-audit). |
+| 069 | design_dashboard_progressive_disclosure | DONE | `f878986` | verified against primary sources (adversarial DONE-audit). |
+| 070 | refactor_dashboard_settings_panel | DONE* | `57afcbb` | 10-section decomposition achieved + disclosed; SettingsPage 506 LOC vs ~250 target (disclosed partial). |
+| 071 | add_dashboard_developer_mode | DONE | `69684fa` | verified against primary sources (adversarial DONE-audit). |
+| 072 | improve_dashboard_empty_loading_error_states | DONE* | `b438653` | empty/loading/error UX added; partial adoption deferred (documented). |
+| 073 | add_dashboard_ux_regression_checks | DONE | `ecabd7c` | seeded allowlist repointed to 063/064 split files (267c53f). |

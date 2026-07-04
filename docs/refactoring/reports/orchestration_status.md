@@ -98,7 +98,7 @@ Legend — Rt = Runtime Code Change (Yes/No). Phase per `007_subtask_index.md`.
 | 060 | inventory_dashboard_api_contracts | 5 | Low | No | 059 | DONE | dcb0389 |
 | 061 | define_dashboard_dto_and_schema_policy | 5 | Low | No | 059 | DONE | 93d9662* |
 | 062 | refactor_dashboard_backend_routes_to_services | 5 | High | Yes | 059 | DONE* | 6bb10f1 |
-| 063 | refactor_dashboard_frontend_api_client_and_types | 5 | High | Yes | 059 | DONE | 63df6e5 |
+| 063 | refactor_dashboard_frontend_api_client_and_types | 5 | High | Yes | 059 | DONE* | 63df6e5 |
 | 064 | refactor_dashboard_state_and_component_boundaries | 5 | High | Yes | 059 | DONE* | da6aa4d |
 | 065 | add_dashboard_contract_and_schema_tests | 5 | Low | No | 059 | DONE | 0bca698 |
 | 066 | add_dashboard_build_and_ci_plan | 5 | Low | No | 059 | DONE | 0000cec |
@@ -329,6 +329,37 @@ leave that to a human per the Document Retirement Policy.)*
   them sequentially or with `isolation: worktree`.
 
 ## Run log
+
+### ✅ POST-COMPLETION DONE-VERIFICATION AUDIT (2026-07-04)
+
+On request, all 73 subtasks were independently re-verified against primary sources
+(commit diff + deliverable on disk + §13 acceptance) by a 73-way adversarial audit that
+did NOT trust this ledger. Result: **54 CONFIRMED, 1 NOT_DONE (040), 18 CONCERN** — i.e.
+a blind 'mark all DONE' would have been wrong. Remediation (all committed):
+
+- **040 (was NOT_DONE) -> DONE** `49754b7`: only 2 of 4 §13.1/§17-mandated evaluator judge
+  prompts had been externalized; the deferral leaned on the 036 census, but 036 self-labels
+  it 'sampled, not fully line-verified' and 040 §6.2/§17 override that. Extracted the
+  remaining 2 (`claims_extract_sys`, `contract_flags_sys`) byte-identically.
+- **4 HEAD test failures (scripts/tests, never in my ari-core-only gate) -> fixed** `267c53f`:
+  054 publish/backends orphaned because **014's later register_lazy refactor** broke 054's
+  if-chain overlay (added overlay_lazy_registry); 031 viz-LOC baseline 8131->8532 after the
+  063/064/065 viz split; 073 seeded allowlist repointed to the 063/064 split files.
+  **LESSON: run scripts/tests as a gate, not just ari-core/tests.**
+- **9 documentation concerns -> closed** `9a40eb4`: README TODOs (012/013), tests/README
+  subsections (018/042), created paper-prompts README (041), contracts fixtures README (034),
+  DEPRECATION_REMOVAL.md (016, was a dangling ref), docs-sync.yml stale comment (050),
+  file_formats/public_api drift (003).
+- **063 reclassified DONE -> DONE\***: §13.7 any->typed hardening was silently dropped; now
+  flagged REVIEW_REQUIRED (go-forward backlog). 027 A/B resolution recorded (Outcome A).
+
+Final verified state: ari-core 2656 passed / 0 failed; scripts/tests 93; evaluator 48;
+paper 116; ruff ari-core 634; readme_sync + check_doc_links green. 007 Completion-Status
+table marks all 73: **59 DONE + 14 DONE\*** (documented partial/no-op); **0 BLOCKED**.
+Retirement still gated on merge-to-main (the docs are KEEP until then).
+
+### Earlier run log
+
 
 ### ✅ PROGRAM COMPLETE (2026-07-03) — all 73 subtasks resolved, 0 BLOCKED
 
