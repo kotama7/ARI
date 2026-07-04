@@ -35,9 +35,20 @@
 #     invocation below is byte-identical to before.
 #   * The two advisory steps carry their advisory->hard promotion triggers inline
 #     (owned by subtask 017); see §7.2 notes at those steps.
-#   * check_docs_source_sync.py (subtask 027) is intentionally NOT wired here: 027
-#     is a DELETE_CANDIDATE, redundant with check_doc_sources.py (forward) +
-#     check_ref_coupling.py (reverse), so no advisory step is added (§7.3).
+#   * check_docs_source_sync.py (subtask 027, Outcome A -- shipped as
+#     scripts/check_docs_source_sync.py in commit d1902af) is the docs<->source
+#     drift guard for the ONE dimension the two hard gates miss: TRUNK-STATE
+#     staleness -- a source whose newest commit already on main is more recent
+#     than the referencing doc's `last_verified`. check_doc_sources.py (forward)
+#     only checks that declared source paths resolve; check_ref_coupling.py
+#     (reverse, PR-diff) only fires on same-PR co-changes, so neither sees drift
+#     that an earlier already-merged PR introduced. The checker fills exactly
+#     that gap. It is NOT currently wired as an active step in this workflow (it
+#     reads `git log` history and is run advisory / out-of-band via its
+#     `--warning-only` default posture); to promote it to an advisory gate here,
+#     add a `continue-on-error: true` step running
+#     `python scripts/check_docs_source_sync.py --warning-only` beside the two
+#     advisory steps below (§7.3).
 #   * REVIEW_REQUIRED (not changed here): pages.yml path filter names README.md
 #     only, not README.ja.md / README.zh.md, so a push editing only a translated
 #     README would not trigger a Pages rebuild. Left for a maintainer to confirm

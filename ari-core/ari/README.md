@@ -85,7 +85,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `README.md` — memory index.
   - `__init__.py` — `MemoryClient` protocol, backends, migration map.
   - `auto_migrate.py` — v0.5.x → v0.6.0 auto-migration on first launch.
-  - `backend.py` — TODO
+  - `backend.py` — sanctioned core→skill funnel: lazy forwards (`get_backend` / `clear_backend_cache` / `build_verified_context`) to the rich `MemoryBackend`.
   - `client.py` — abstract `MemoryClient` ABC.
   - `file_client.py` — `FileMemoryClient` (legacy JSONL).
   - `letta_client.py` — `LettaMemoryClient` (default).
@@ -118,13 +118,13 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `README.md` — pipeline index.
   - `__init__.py` — sub-module map + public re-exports.
   - `context_builder.py` — best-nodes context + keyword extraction.
-  - `driver.py` — TODO
+  - `driver.py` — `WorkflowDriver`: run pre-flight (cost tracker, evaluation_criteria/nodes_tree/verified-context, tpl_vars, BFTS no-real-data sanity gate) + index-based stage-cursor loop with `loop_back_to` rewind.
   - `experiment_md.py` — `experiment.md` helpers.
   - `orchestrator.py` — top-level entry points (`build_scientific_data`, `run_pipeline`).
-  - `stage_context.py` — TODO
+  - `stage_context.py` — `StageContext` dataclass: shared mutable run state (`tpl_vars`, `stage_outputs`) + read-only inputs (checkpoint_dir, config_path, wf_cfg, disabled_stages, best_metrics).
   - `stage_control.py` — loop_back / VLM-feedback control.
   - `stage_runner.py` — stage execution helpers (retry, ReAct, subprocess).
-  - `stages.py` — TODO
+  - `stages.py` — first-class stage objects (`make_stage` → `SubprocessMCPStage`/`ReActStage`): should_skip → resolve_inputs → run → persist_outputs lifecycle + `OutputSink` writer.
   - `verified_context.py` — artifact-grounded verified context for write_paper (best node's root→best lineage → `verified_context.json`; `render_grounded_block`). Exposed via `ari.public.verified_context`.
   - `yaml_loader.py` — workflow/pipeline loaders + `{{var}}` resolution.
   - `claim_gate/` — deterministic `claim_evidence_hard_gate` (Story2Proposal Phase B). See its `README.md`.
