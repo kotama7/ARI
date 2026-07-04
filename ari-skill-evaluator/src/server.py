@@ -288,26 +288,6 @@ def _load_primary_metric_from_checkpoint(checkpoint_dir: str | None = None) -> s
 # claim to dodge the gate); the producer obligation surfaces the required_evidence
 # names for the agent to emit. The gate (contract.check_contract) blocks a claim
 # whose evidence is wholly absent (claim_evidence_missing).
-_CLAIMS_EXTRACT_SYS = (
-    "You extract FALSIFIABLE CLAIMS from an experiment plan for a verification gate. "
-    "A falsifiable claim is a specific, testable assertion the experiment promises to "
-    "evaluate — a mechanism helps, a method beats a baseline, a property holds under a "
-    "condition. For EACH claim, give required_evidence: the MEASUREMENT NAMES that MUST "
-    "appear in results.json for the claim to be EVALUABLE AT ALL, regardless of whether the "
-    "outcome confirms or refutes it (a claim that X improves some metric requires that metric "
-    "measured both WITH and WITHOUT X). Use concise snake_case names the implementation "
-    "should emit. Naming rules: every evidence name must be DISTINCTIVE and self-describing "
-    "(fold the condition into the name, like <metric>_with_<mechanism>); NEVER use a bare "
-    "generic token (k, n, seed, threads, matrix_id, mode_id, config) as a standalone evidence "
-    "name — the gate treats a claim as covered when ANY listed name is present, so a generic "
-    "name falsely satisfies it. Feasibility: require only evidence "
-    "measurable with standard USERSPACE tooling on the platform the plan states; do not "
-    "require privileged hardware counters unless the plan itself provides a method for them. "
-    "Do NOT turn an aspirational numeric target into a claim (a target is an "
-    "outcome, not evidence) unless it names a measurement. Domain-neutral: HPC, ML, theory. "
-    "Respond ONLY with JSON: "
-    '{"claims":[{"claim":"<assertion>","required_evidence":["<name1>","<name2>"]}]}'
-)
 
 
 # Generic experiment tokens that must never stand alone as claim evidence: the gate
@@ -435,7 +415,7 @@ async def _llm_extract_claims(plan_text: str, platform_note: str = "") -> list:
         _resp = await _litellm.acompletion(
             model=_model,
             messages=[
-                {"role": "system", "content": _CLAIMS_EXTRACT_SYS},
+                {"role": "system", "content": _load_prompt("claims_extract_sys")},
                 {"role": "user", "content":
                     (platform_note + "\n\n" if platform_note else "")
                     + "Experiment plan:\n" + (plan_text or "")[:6000]},
@@ -486,22 +466,6 @@ async def _resolve_falsifiable_claims(checkpoint_dir: str | None = None) -> list
 # The gate enforces these via the _provenance EVIDENCE already flowing from
 # results.json (a measured-ceiling tag / a correctness tag), so the agent satisfies
 # them by emitting evidence -- NO cross-party naming and NO universal over-block.
-_CONTRACT_FLAGS_SYS = (
-    "You analyze an experiment plan and decide two yes/no properties for a "
-    "verification gate. Be CONSERVATIVE: answer false unless clearly true.\n"
-    "1. correctness_required: does the experiment COMPUTE an output with a definable "
-    "correct answer that must be verified against an INDEPENDENT reference (a numerical "
-    "residual, an exact match, an analytic check)? true for a kernel/algorithm/model "
-    "that computes outputs; false for purely observational/measurement studies or "
-    "theoretical/analytical results that produce no verifiable computed output.\n"
-    "2. ceiling_must_be_measured: is the primary metric normalized/divided by a ceiling "
-    "that is EMPIRICALLY MEASURABLE (a hardware peak, an achievable rate, a baseline run)? "
-    "true ONLY when the denominator can and should be measured; FALSE "
-    "when the metric is not normalized at all, OR is normalized by a THEORETICAL/analytic "
-    "constant (a Carnot limit, a Shannon bound, log N) that cannot be microbenchmarked.\n"
-    "Domain-neutral (HPC, ML, theory). Respond ONLY with JSON: "
-    '{"correctness_required": false, "ceiling_must_be_measured": false}'
-)
 
 
 async def _llm_extract_contract_flags(plan_text: str) -> dict:
@@ -514,7 +478,7 @@ async def _llm_extract_contract_flags(plan_text: str) -> dict:
         _resp = await _litellm.acompletion(
             model=_model,
             messages=[
-                {"role": "system", "content": _CONTRACT_FLAGS_SYS},
+                {"role": "system", "content": _load_prompt("contract_flags_sys")},
                 {"role": "user", "content": "Experiment plan:\n" + (plan_text or "")[:6000]},
             ],
             temperature=0.0,
