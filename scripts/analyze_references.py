@@ -531,6 +531,55 @@ def _scan_dict_registry(graph: Graph, pf: PyFile, node: ast.Assign) -> None:
             )
 
 
+def overlay_lazy_registry(graph: Graph, files: list[PyFile], dotted_index: dict[str, str]) -> None:
+    """(§7.4-1) ``BaseRegistry.register_lazy("key", loader)`` where the ``loader``
+    function body does ``from .backends import mod`` (subtask 014 unified the former
+    ``if name == "key": import impl`` chains behind this form). Without this, a
+    lazily-registered backend module has no static in-edge and reads as dead."""
+    for pf in files:
+        # loader-function name -> registration key(s) it is wired under
+        keys_by_loader: dict[str, list[str]] = {}
+        for node in ast.walk(pf.tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in ("register_lazy", "register")
+                and len(node.args) >= 2
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+                and isinstance(node.args[1], ast.Name)
+            ):
+                keys_by_loader.setdefault(node.args[1].id, []).append(node.args[0].value)
+        if not keys_by_loader:
+            continue
+        for node in ast.walk(pf.tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if node.name not in keys_by_loader:
+                continue
+            src_sym = symbol_id(pf.rel, node.name)
+            if not graph.has_node(src_sym):
+                continue
+            for inner in ast.walk(node):
+                if not isinstance(inner, ast.ImportFrom):
+                    continue
+                target = (
+                    _resolve_relative(pf, inner.module, inner.level)
+                    if inner.level
+                    else inner.module
+                )
+                if not target:
+                    continue
+                for alias in inner.names:
+                    dst = dotted_index.get(f"{target}.{alias.name}")
+                    if dst:
+                        key = keys_by_loader[node.name][0]
+                        graph.add_edge(
+                            src_sym, dst, "dynamic.string_key",
+                            f"{pf.rel}:{inner.lineno} register_lazy('{key}')",
+                        )
+
+
 def overlay_prompt_loads(graph: Graph, files: list[PyFile], base: Path, cfg: dict) -> None:
     """(§7.4-2) ``.load("key")`` / ``.load_versioned("key")`` -> ``key.md``."""
     prompt_bases = [base / p for p in cfg.get("prompt_bases", [])]
@@ -860,6 +909,7 @@ def build_graph(base: Path, cfg: dict, manifest: dict | None) -> dict:
     dotted_index = register_python_nodes(graph, files)
     add_static_edges(graph, files, dotted_index)
     overlay_string_dispatch(graph, files, dotted_index)
+    overlay_lazy_registry(graph, files, dotted_index)
     overlay_prompt_loads(graph, files, base, cfg)
     overlay_prompt_manifest(graph, base, manifest)
     overlay_data_selectors(graph, base, cfg)

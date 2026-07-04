@@ -12,8 +12,8 @@ Covers subtask 031 §8 item 5 / §13 acceptance criteria:
     exits 1 only on net-new findings; --warning-only forces exit 0;
   * --run-checkers subprocess mode: a fixture checker -> ok, a missing script ->
     unavailable, a crashing script -> error;
-  * per-area LOC reproduces docs/refactoring/reports/001_complexity_baseline.md
-    (viz 8131, public 148) and findings attribute to their area.
+  * per-area LOC is computed live from the current tree (viz 8532 after the
+    063/064/065 viz decomposition; public 148) and findings attribute to their area.
 
 Unit tests import the checker module by file path (it has no package), matching
 the sibling test_check_viz_api_schema.py convention.
@@ -305,7 +305,7 @@ def test_run_checkers_mode_ok_missing_and_crash(tmp_path):
 def test_compute_areas_matches_001_baseline():
     rows = mod.compute_areas(REPO_ROOT, None, [])
     by = {r["area"]: r for r in rows}
-    assert by["ari-core/ari/viz"]["loc"] == 8131
+    assert by["ari-core/ari/viz"]["loc"] == 8532
     assert by["ari-core/ari/public"]["loc"] == 148
     # every discovered area carries a finding_count key (0 with no results).
     assert all(r["finding_count"] == 0 for r in rows)
