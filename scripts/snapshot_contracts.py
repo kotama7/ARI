@@ -140,6 +140,33 @@ _CLI_ENV_SIDE_EFFECTS = {
     ],
 }
 
+# Top-level ``ari`` subcommands registered under an import guard in
+# ``ari-core/ari/cli/__init__.py`` (``try: … add_typer(…) except Exception``):
+# ``memory`` (memory_cli), ``ear`` (cli_ear), ``registry`` (registry.cli). Each
+# is present only when its optional dependency imports, so a lean environment
+# (e.g. CI without the extra) legitimately omits it. The contract snapshot must
+# not treat that env-driven absence as drift — see ``compare`` for cli.
+_CLI_OPTIONAL_SUBCOMMANDS = frozenset({"memory", "ear", "registry"})
+
+
+def _cli_drop_absent_optional(golden_root: dict, fresh_root: dict) -> tuple[dict, dict]:
+    """Return copies of the two cli command trees with any import-guarded optional
+    top-level subcommand that is absent on EITHER side removed from BOTH — so an
+    optional subcommand missing in a lean env is ignored, while a genuine change
+    to the core tree (or to an optional subcommand present in both) still drifts."""
+    import copy
+
+    g = copy.deepcopy(golden_root or {})
+    f = copy.deepcopy(fresh_root or {})
+    gc = g.get("commands") if isinstance(g, dict) else None
+    fc = f.get("commands") if isinstance(f, dict) else None
+    if isinstance(gc, dict) and isinstance(fc, dict):
+        for name in _CLI_OPTIONAL_SUBCOMMANDS:
+            if (name in gc) != (name in fc):  # present on one side only
+                gc.pop(name, None)
+                fc.pop(name, None)
+    return g, f
+
 
 def _describe_click(cmd) -> dict:
     import click
@@ -589,10 +616,16 @@ def compare(surface: str, golden: dict, fresh: dict) -> list[str]:
         if golden.get("response_keys") != fresh.get("response_keys"):
             msgs.append("[viz] mirrored response_keys changed")
     else:  # cli — structural equality of the introspected tree + env effects
-        if golden.get("root") != fresh.get("root"):
+        # Ignore import-guarded optional subcommands absent in a lean env (CI).
+        g_root, f_root = _cli_drop_absent_optional(golden.get("root"), fresh.get("root"))
+        if g_root != f_root:
             msgs.append("[cli] command/option tree drifted from golden")
         if golden.get("env_side_effects") != fresh.get("env_side_effects"):
             msgs.append("[cli] env_side_effects drifted from golden")
+        # Neutralize the byte backstop below for env-driven optional-subcommand
+        # absence by comparing normalized payloads.
+        golden = {**golden, "root": g_root}
+        fresh = {**fresh, "root": f_root}
 
     # Backstop: any residual byte difference (e.g. schema_version/_meta) is drift.
     if not msgs and dumps(golden) != dumps(fresh):
