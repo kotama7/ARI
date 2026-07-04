@@ -169,25 +169,31 @@ def _cli_drop_absent_optional(golden_root: dict, fresh_root: dict) -> tuple[dict
 
 
 def _describe_click(cmd) -> dict:
-    import click
-
+    # Duck-typed, NOT ``isinstance(cmd, click.Group)`` / ``isinstance(param,
+    # click.Argument)``: Typer >= 0.26 vendors its own click (``typer._click``),
+    # so its command/param objects are not instances of the real ``click`` classes
+    # and the isinstance checks silently collapse the whole tree to an empty
+    # ``command``. ``param_type_name`` ('argument'|'option') and a ``.commands``
+    # dict are stable click APIs across both the real and vendored click.
     args: list[str] = []
     opts: list[str] = []
     for param in cmd.params:
-        if isinstance(param, click.Argument):
+        if getattr(param, "param_type_name", None) == "argument":
             args.append(param.name)
         else:
-            opts.extend(param.opts)
-            opts.extend(param.secondary_opts)
+            opts.extend(getattr(param, "opts", []))
+            opts.extend(getattr(param, "secondary_opts", []))
+    subcommands = getattr(cmd, "commands", None)
+    is_group = isinstance(subcommands, dict)
     node: dict = {
-        "type": "group" if isinstance(cmd, click.Group) else "command",
+        "type": "group" if is_group else "command",
         "arguments": args,  # positional order preserved (contract-bearing)
         "options": sorted(set(opts)),
     }
-    if isinstance(cmd, click.Group):
+    if is_group:
         node["commands"] = {
             name: _describe_click(sub)
-            for name, sub in sorted(cmd.commands.items())
+            for name, sub in sorted(subcommands.items())
         }
     return node
 
