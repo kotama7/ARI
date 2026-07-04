@@ -1,5 +1,15 @@
 # Final Quality Report — ARI Refactoring Program
 
+> **⚠ Superseded in part by the 2026-07-04 DONE-verification audit.** After this
+> report was generated, a 73-way adversarial audit re-checked every subtask against
+> primary sources and found **1 NOT_DONE (040) + 18 CONCERN**. All were then fixed
+> or documented: 040 completed (`49754b7`), four `scripts/tests` HEAD failures
+> repaired (031/054/073, `267c53f`), nine doc concerns closed (`9a40eb4`), and 063
+> reclassified DONE→DONE\*. The authoritative post-audit roster is the **Completion
+> Status table in `docs/refactoring/007_subtask_index.md`** (59 DONE + 14 DONE\*,
+> 0 BLOCKED) and the audit entry in `orchestration_status.md`. Figures below that
+> predate the audit (e.g. the DONE/DONE\* split, 040's status) are point-in-time.
+
 > **Artifact of subtask 019** (`docs/refactoring/subtasks/019_final_quality_report.md`),
 > the terminal deliverable of the 73-subtask refactoring program.
 > **REPORT ONLY — no runtime code, prompt, config, workflow, or frontend was
