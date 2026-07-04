@@ -171,3 +171,113 @@ targets the like-named module under `ari/`.
       - `wizard_chat_goal.rendered.txt` — TODO
       - `wizard_generate_config.md` — TODO
       - `wizard_generate_config.rendered.txt` — TODO
+
+## Architecture-boundary guards
+
+These guards (subtask 018) keep the layering in
+`docs/refactoring/003_dependency_boundary_report.md` from silently eroding. That
+report's §16 status table enumerates eleven boundary rules **B1–B11**, and each
+is mapped to a live in-process `pytest` guard — or an explicit `waived:` reason
+for the boundaries that are CI/scripts or frontend concerns (not
+`pytest`-testable in-process) — by `test_architecture_boundary_index.py`, whose
+`_BOUNDARY_GUARDS` dict is the single auditable coverage map:
+
+| Boundary | Rule | Guard |
+| --- | --- | --- |
+| B1 | skill code imports only `ari.public.*` | `test_public_api_boundary.py` |
+| B2 | `ari-core` must not import `ari_skill_*` except the sanctioned `ari_skill_memory` edge | `test_core_does_not_import_skills.py` |
+| B3 | viz routes stay thin (in-process wire-shape contract) | `test_api_schema_contract.py` |
+| B4 | frontend imports DTO/TS types only | *waived* — TS/npm concern (063/065) |
+| B5 | evaluator independent of CLI/viz/file-layout, and routes LLM calls via `LLMClient` | `test_evaluator_independence.py` |
+| B6 | model backend (`ari/llm`) must not depend "up" on viz/evaluator/CLI | `test_model_backend_independence.py` |
+| B7 | no core→viz inversion | `test_core_viz_direction.py` |
+| B8 | storage / runtime-path hygiene | `test_no_user_home_writes.py` |
+| B9 | prompts externalized | `test_prompt_extraction.py` |
+| B10 | scripts = quality/analysis/report only | *waived* — CI concern (026/032/046) |
+| B11 | CI staged warning→regression→strict | *waived* — CI concern (026/032/046) |
+
+`test_all_boundaries_covered` fails if report 003 gains or loses a boundary and
+the map is not updated; `test_named_guard_files_exist` fails if a named guard
+file is renamed or removed. Together they ensure a newly-added boundary can
+never ship silently unguarded and an existing guard can never be quietly
+deleted.
+
+**Shared helper — `_arch_boundaries.py`.** The leading underscore keeps it out
+of pytest collection (`python_files` defaults to `test_*.py`), so it is a
+test-only library, not a test module. It is a standard-library-only (`ast` +
+`pathlib`) AST/text scanner shared by the guard modules instead of each
+re-implementing an `ari.*` import walker. Key helpers: `repo_root()` /
+`core_root()` (locate `ari-core/ari`), `iter_py()` (sorted `*.py` walk),
+`imports()` (every dotted import target with its 1-based line number, via
+`ast.parse`), `ari_imports()` (that list filtered to `ari` / `ari.*` /
+`ari_skill*` targets), `top_package()`, `matches_prefix()`, and
+`in_except_importerror()` (treats an import whose closest preceding line opens an
+`except` handler as a sanctioned compat shim, not a hard edge). Everything here
+only *reads* source files — nothing imports a skill `src/server.py`, the
+single-process hazard documented in the repo-root `pytest.ini`.
+
+**The `xfail`→green ratchet.** A boundary that is *already* achieved is guarded
+by a plain passing assertion (B2, B6, and the general-rule cases of B5 and B7
+pass today). A boundary that is a *known-still-violated* end-state is guarded by
+a test decorated `@pytest.mark.xfail(strict=False, reason=…)` whose `reason`
+names the subtask that will fix it. Two live examples:
+
+- `test_evaluator_does_not_call_litellm_directly` (B5/B6) —
+  `ari/evaluator/llm_evaluator.py` still imports `litellm` directly
+  (`llm_evaluator.py:24`) and calls `litellm.acompletion`, bypassing
+  `LLMClient` / `resolve_litellm_model`; xfailed until subtask 008/009 routes it
+  through the model backend.
+- `test_lineage_does_not_import_viz` (B7) — `ari/cli/lineage.py` still imports
+  `ari.viz.api_orchestrator._api_launch_sub_experiment` (`lineage.py:149`);
+  xfailed until subtask 011/012 inverts the launcher behind an injected hook.
+
+The ratchet only ever tightens. Because the marker is `strict=False`, the day
+the real fix lands the guarded assertion starts passing and the case reports
+**XPASS** (visible via `pytest -rX`) instead of failing — that XPASS is the
+signal to delete the `xfail` marker so the now-achieved boundary is enforced
+going forward. A guard starts life at `xfail`, flips to green when its boundary
+is achieved, and is never loosened back to `xfail` afterward.
+
+## Prompt snapshot tests
+
+`test_prompt_snapshots.py` (subtask 042) pins the on-disk prompt templates so an
+unintended edit to any LLM prompt fails CI. It complements — and does not
+replace — the hand-maintained `sha256` pin in `test_prompt_extraction.py`: that
+module lists prompts explicitly, whereas this one **auto-discovers** every
+`ari/prompts/**/*.md` template (via `package_prompts_root()` /
+`_discover_keys`, excluding `README.md`), so a newly-added or deleted prompt
+that is not re-blessed fails the suite. There are 11 discovered core keys today
+(`agent/system`, `evaluator/*`, `orchestrator/*`, `pipeline/keyword_librarian`,
+`viz/wizard_*`).
+
+Each key is pinned three ways against goldens under `snapshots/prompts/`:
+
+- **Raw template bytes** — `test_prompt_raw_snapshot[key]` compares
+  `Path.read_bytes()` of the live template to `snapshots/prompts/<key>.md`.
+  Comparison is byte-for-byte with no newline translation, so a template that
+  ends without a trailing newline (`pipeline/keyword_librarian.md`) and one that
+  ends with one (`evaluator/extract_metrics.md`) are each preserved exactly.
+- **Rendered bytes** — `test_prompt_rendered_snapshot[key]` pins
+  `template.format(**FIXTURE_KWARGS[key])` (fixture kwargs copied from the real
+  call sites) to `snapshots/prompts/<key>.rendered.txt`. The two JSON-schema
+  orchestrator prompts (`orchestrator/lineage_decision`,
+  `orchestrator/root_idea_selector`) are loaded raw at their call sites and never
+  `.format`-ed, so their `FIXTURE_KWARGS` entry is `None` and their rendered
+  golden equals the raw template.
+- **Placeholder set** — `test_prompt_placeholders[key]` asserts the exact
+  `{field}` set (`string.Formatter().parse`) matches `EXPECTED_FIELDS[key]`, so a
+  renamed or added placeholder is caught even if the surrounding bytes are
+  re-blessed. `test_all_prompts_have_snapshots` additionally enforces a
+  one-to-one match between discovered keys and both golden families.
+
+**Re-bless flow.** Intentional prompt changes regenerate the goldens with the
+`ARI_UPDATE_PROMPT_SNAPSHOTS` env var — when set to `1`, `_assert_snapshot`
+writes the current bytes instead of comparing:
+
+```
+ARI_UPDATE_PROMPT_SNAPSHOTS=1 pytest ari-core/tests/test_prompt_snapshots.py -q
+```
+
+then re-run *without* the flag to confirm green; a clean `git diff` on the
+`snapshots/prompts/` goldens confirms nothing else drifted. New prompts added by
+sibling extraction subtasks should be re-blessed the same way.
