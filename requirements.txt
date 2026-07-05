@@ -14,7 +14,7 @@ pyyaml>=6.0
 paramiko>=3.0
 
 # --- MCP (skill communication) ---------------------------------------------
-mcp>=1.0
+mcp>=1.28.1
 fastmcp
 
 # --- Memory backend (ari-skill-memory default is Letta) --------------------
