@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "ari-skill-evaluator"
 version = "1.0.0"
 requires-python = ">=3.11"
-dependencies = ["mcp>=1.0"]
+dependencies = ["mcp>=1.28.1"]
 
 [tool.setuptools]
 # Ship the skill-local prompt templates (src/prompts/*.md, subtask 040) in the
