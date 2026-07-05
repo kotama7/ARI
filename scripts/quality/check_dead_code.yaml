@@ -16,10 +16,10 @@
 # labels each node with exactly one 013 §7 class.
 
 # Input reference graph produced by 053 (static) + 054 (dynamic overlay).
-graph: docs/refactoring/reports/reference_graph.json
+graph: scripts/quality/baselines/reference_graph.json
 
 # Where the ranked candidate report is written (013 §6.2).
-output: docs/refactoring/reports/dead_code_candidates.md
+output: scripts/quality/baselines/dead_code_candidates.md
 
 # ── Root taxonomy (053 §1/§5; informational + liveness classification) ──────
 # Production roots keep a node LIVE. R9 (tests) and R10 (docs) grant only

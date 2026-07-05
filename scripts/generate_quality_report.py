@@ -73,7 +73,7 @@ DEAD_CODE_CLASSES = (
     "REVIEW_REQUIRED",
 )
 DEFAULT_DEAD_CODE_BASELINE = (
-    REPO_ROOT / "docs" / "refactoring" / "reports" / "dead_code_baseline.json"
+    REPO_ROOT / "scripts" / "quality" / "baselines" / "dead_code_baseline.json"
 )
 
 

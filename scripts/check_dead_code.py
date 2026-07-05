@@ -99,8 +99,8 @@ CLASS_RANK = {
 # Built-in defaults -- every key is overridable via the YAML config so the
 # firewall / seam lists can be tuned without editing this script.
 DEFAULT_CONFIG_VALUES: dict = {
-    "graph": "docs/refactoring/reports/reference_graph.json",
-    "output": "docs/refactoring/reports/dead_code_candidates.md",
+    "graph": "scripts/quality/baselines/reference_graph.json",
+    "output": "scripts/quality/baselines/dead_code_candidates.md",
     "production_roots": ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R11", "R12"],
     "test_roots": ["R9"],
     "docs_roots": ["R10"],

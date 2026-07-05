@@ -76,7 +76,7 @@ DEFAULT_ALLOWLIST = REPO_ROOT / "scripts" / "quality" / "check_prompts.allow.yam
 GATE10 = REPO_ROOT / "report" / "scripts" / "check_prompt_snapshots.py"
 
 # The Subtask 036 machine-readable census that seeds the allowlist verdicts.
-CENSUS_JSON = REPO_ROOT / "docs" / "refactoring" / "reports" / "hardcoded_prompt_inventory.json"
+CENSUS_JSON = REPO_ROOT / "scripts" / "quality" / "baselines" / "hardcoded_prompt_inventory.json"
 
 # Verdict vocabulary carried from 036 / 011 §5.x (used for the allowlist tags).
 VERDICTS = (

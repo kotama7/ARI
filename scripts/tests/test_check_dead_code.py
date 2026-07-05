@@ -32,7 +32,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 import check_dead_code as cdc  # noqa: E402
 
 REPO_ROOT = cdc.REPO_ROOT
-REPO_GRAPH = REPO_ROOT / "docs" / "refactoring" / "reports" / "reference_graph.json"
+REPO_GRAPH = REPO_ROOT / "scripts" / "quality" / "baselines" / "reference_graph.json"
 
 
 def _cfg(**overrides) -> dict:

@@ -54,11 +54,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_DIR = REPO_ROOT / "ari-core" / "ari" / "public"
 DEFAULT_SNAPSHOT = (
-    REPO_ROOT / "docs" / "refactoring" / "reports" / "public_api_snapshot.json"
+    REPO_ROOT / "scripts" / "quality" / "baselines" / "public_api_snapshot.json"
 )
-# TODO(034): coordinate the snapshot fixture location with subtask 034
-# (add_contract_snapshot_fixtures); until it lands the baseline lives beside the
-# other refactoring measurement artifacts under docs/refactoring/reports/.
+# The committed baseline lives beside the other quality baselines under
+# scripts/quality/baselines/ (relocated out of the retired docs/refactoring/ tree).
 
 PACKAGE_NAME = "ari.public"
 SCHEMA_VERSION = 1
@@ -438,7 +437,7 @@ def main(argv: list[str] | None = None) -> int:
         "--snapshot",
         type=Path,
         default=DEFAULT_SNAPSHOT,
-        help="committed baseline snapshot JSON (default under docs/refactoring/reports).",
+        help="committed baseline snapshot JSON (default under scripts/quality/baselines).",
     )
     parser.add_argument(
         "--update",
