@@ -144,12 +144,6 @@ known-offenders:
   - doc: docs/guides/troubleshooting.md
     source: ari-core/ari/paths.py
     note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/refactoring/006_target_architecture_plan.md
-    source: ari-core/ari
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-07-01"
-  - doc: docs/refactoring/006_target_architecture_plan.md
-    source: scripts/docs
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-07-01"
   - doc: docs/reference/api_paperbench.md
     source: ari-core/ari/viz/api_paperbench.py
     note: "baseline 2026-07-02: source 2026-05-29 > last_verified 2026-05-25"
