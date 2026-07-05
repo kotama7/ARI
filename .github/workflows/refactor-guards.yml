@@ -19,11 +19,11 @@ jobs:
   no-home-ari-writes:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - name: Install dependencies
@@ -67,7 +67,7 @@ jobs:
   no-new-home-ari-refs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Detect new ~/.ari references in core
@@ -127,9 +127,9 @@ jobs:
     # contract). Repo-wide scan against a frozen allowlist. Stage 1 (advisory) -> 2.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - name: Install PyYAML
@@ -141,7 +141,7 @@ jobs:
             --warning-only --format json --output check_import_boundaries.json
       - name: Upload import-boundaries report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: quality-import-boundaries
           path: check_import_boundaries.json
@@ -153,9 +153,9 @@ jobs:
     # `sonfigs/` exists anywhere). Cheap repo-wide tree scan. Stage 1 -> 4.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - name: Install PyYAML
@@ -167,7 +167,7 @@ jobs:
             --warning-only --format json --output check_directory_policy.json
       - name: Upload directory-policy report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: quality-directory-policy
           path: check_directory_policy.json
@@ -178,11 +178,11 @@ jobs:
     # PR base. Stage 1 (advisory) -> 4.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - name: Install PyYAML + ruff
@@ -203,7 +203,7 @@ jobs:
             --base-ref "${{ github.event.pull_request.base.sha }}"
       - name: Upload complexity report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: quality-complexity
           path: check_complexity.json
@@ -214,9 +214,9 @@ jobs:
     # Stays advisory; it is the ratchet reference, never a hard gate here. Stage 1.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - name: Install ruff
@@ -231,9 +231,9 @@ jobs:
     # corroborated by ruff F401. Stage 1 (advisory) -> 4.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - name: Install PyYAML + ruff
@@ -250,7 +250,7 @@ jobs:
             --format json --output check_dead_code.json
       - name: Upload dead-code report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: quality-dead-code
           path: check_dead_code.json
