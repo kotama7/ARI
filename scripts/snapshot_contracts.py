@@ -42,7 +42,27 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ARI_CORE = REPO_ROOT / "ari-core"
 FIXTURES_DIR = ARI_CORE / "tests" / "fixtures" / "contracts"
-ARI_CORE_VERSION = "0.9.0"
+
+
+def _read_ari_core_version() -> str:
+    """Single source of truth: ``ari-core/pyproject.toml`` ``[project].version``.
+
+    Derived (not hardcoded) so a version bump in pyproject can never silently
+    lag the ``_meta.ari_core_version`` embedded in the contract goldens.
+    """
+    text = (ARI_CORE / "pyproject.toml").read_text(encoding="utf-8")
+    try:
+        import tomllib
+
+        return tomllib.loads(text)["project"]["version"]
+    except Exception:
+        import re
+
+        m = re.search(r'(?m)^version\s*=\s*"([^"]+)"', text)
+        return m.group(1) if m else "0.0.0"
+
+
+ARI_CORE_VERSION = _read_ari_core_version()
 
 # ari-core is normally editable-installed; make the import robust when run from a
 # checkout where it is not on sys.path yet.

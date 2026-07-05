@@ -29,7 +29,7 @@ Every fixture is a JSON object wrapped in a fixed envelope:
 - `_meta` — provenance block, identical shape across all four surfaces:
   - `generated_by` — always `scripts/snapshot_contracts.py`.
   - `surface` — one of `public` / `cli` / `mcp` / `viz`.
-  - `ari_core_version` — the ari-core version the snapshot was taken against (currently `0.9.0`).
+  - `ari_core_version` — the ari-core version the snapshot was taken against (currently `0.9.1`).
   - `note` — the exact `--surface <x> --update` command that regenerates this file.
 
 The envelope deliberately carries **no timestamps and no commit SHAs**: payloads are emitted with `json.dumps(sort_keys=True, ensure_ascii=False, indent=2)` plus a trailing newline, so every regeneration is byte-stable and any diff is a real contract change (design principle P2, determinism — stdlib only, no LLM, no network).

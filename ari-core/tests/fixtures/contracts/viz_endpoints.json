@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "ari_core_version": "0.9.0",
+    "ari_core_version": "0.9.1",
     "generated_by": "scripts/snapshot_contracts.py",
     "note": "regenerate with scripts/snapshot_contracts.py --surface viz --update",
     "surface": "viz"
