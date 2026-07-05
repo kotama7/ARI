@@ -16,7 +16,7 @@ dependencies = [
     "openai>=1.99.9",
     "tenacity>=9.0.0",
     "litellm>=1.91.0",
-    "pydantic>=2.0",
+    "pydantic>=2.13.4",
     "typing-extensions",
     # pymupdf4llm is used by the dogfood script + the multimodal expander
     # in ``_litellm_completer.py`` (resolves ``![](images/...)`` references
