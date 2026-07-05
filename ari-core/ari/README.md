@@ -38,6 +38,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `__main__.py` — `python -m ari.cli` entry.
   - `bfts_loop.py` — BFTS run-loop driver + checkpoint persistence.
   - `commands.py` — misc top-level commands + `_safe_backup`.
+  - `doctor.py` — `ari doctor` sub-app: environment health checks (`ari doctor claude-code [--live]`).
   - `lineage.py` — end-of-phase lineage-decision helpers.
   - `migrate.py` — `ari migrate` sub-app.
   - `projects.py` — `ari paper` / `status` / `projects` / `show` commands.
@@ -66,7 +67,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `evaluator/` — LLM judge: metric extraction + dynamic axis generation.
   - `README.md` — evaluator index.
   - `__init__.py` — public symbols + axis design.
-  - `deterministic_evaluator.py` — `DeterministicEvaluator`: non-LLM judge owning the kernel measurement; writes `metrics._scientific_score` to drive BFTS selection (handoff study). Selected via `ARI_EVALUATOR=deterministic`; task via `ARI_TASK` (spmm default | gemm | erfc | meshpart), which also picks the scoring (spmm linear-speedup / gemm log-speedup / erfc pass-fraction / meshpart cut+balance objective).
+  - `deterministic_evaluator.py` — `DeterministicEvaluator`: non-LLM judge owning the kernel measurement; writes `metrics._scientific_score` to drive BFTS selection (handoff study). Selected via `ARI_EVALUATOR=deterministic`; task via `ARI_TASK` (spmm default | gemm | erfc | meshpart | stencil), which also picks the scoring (spmm linear-speedup / gemm log-speedup / stencil log-speedup / erfc pass-fraction / meshpart cut+balance objective). Performance kernels (gemm/spmm/stencil) score a speedup; erfc/meshpart store a bounded [0,1] score in the same field for analyzer reuse (it is NOT a speedup — the analyzer reports each on its native axis).
   - `dynamic_axes.py` — venue/run-specific evaluation-axis derivation.
   - `erfc_harness.py` — erfc accuracy-coverage measurement core (task B, the "Goldilocks" task): scipy reference, region-stratified hidden points, score = fraction within rel-tol 1e-9 over a wide domain (`measure_node` returns a score-shaped dict). Long cumulative ladder (center→mid→tail→deeptail) no model one-shots; selftest uses a distinct seed (anti-gaming). Login-testable.
   - `gemm_harness.py` — dense GEMM measurement core (task A): fp64 reference oracle, contraction-length correctness bound, fixed shapes, geomean aggregation (`measure_node`). Compute-bound counterpart to SpMM with a multi-rung optimization gradient; pure parts login-tested, compile/run runner compute-node only.
@@ -74,6 +75,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `llm_evaluator.py` — `LLMEvaluator`: extraction + multi-axis composite scoring.
   - `meshpart_harness.py` — balanced k-way graph-partitioning measurement core (task C, the combinatorial "Goldilocks" task): procedural custom mesh (2-D k-NN graph + long edges → CSR, no memorized answer), recursive-spectral reference cut, score = `bal · q ∈ [0,1]` combining balance and edge-cut quality (`measure_node` returns a score-shaped dict). ANY partition is valid/scoreable (no compile-or-die None) and the optimum is NP-hard, so mid models make valid-but-suboptimal partitions children can refine; selftest mesh uses a distinct seed (anti-gaming). Pure parts login-tested; compile/run runner login-capable too.
   - `spmm_harness.py` — SpMM measurement core (handoff study B2b): fp64 reference oracle, per-element correctness bound (eps model), seeded matrix families, geomean aggregation (`measure_node`). Pure parts login-tested; compile/run/timing runner is compute-node only.
+  - `stencil_harness.py` — 3-D 7-point Jacobi stencil measurement core (task D, a genuine memory-bandwidth-bound performance kernel): fp64 nt-sweep reference oracle, nt-scaled per-element correctness bound, fixed grid shapes (one cube + two anisotropic boxes), geomean-speedup aggregation (`measure_node`). Plain parallelism saturates the bandwidth roofline (the one-shot rung); SIMD + spatial blocking + NUMA first-touch + temporal/time tiling climb above it, leaving headroom above the one-shot rung. Pure parts login-tested; compile/run runner compute-node only.
   - `erfc_kernels/` — C fixtures for the handoff-study **erfc accuracy-coverage** task (task B — the
     - `README.md` — erfc_kernels index.
     - `baseline_erfc.c` — FROZEN poor baseline (tiny-x series only; the low-scoring seed).
@@ -111,12 +113,32 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
     - `selftest.c` — local developer self-test (`make selftest`): runs the candidate on a seeded problem, checks correctness with the evaluator's eps bound, and prints an estimated speedup vs the naive baseline; NOT used for scoring (seeded so the agent can iterate locally).
     - `spmm_kernel.h` — the `spmm()` contract the candidate must keep.
     - `spmm_main.c` — FROZEN timing + binary-I/O harness (warmup/reps/median); agent must not edit.
+  - `stencil_kernels/` — C kernel fixtures for the handoff-study **3-D 7-point Jacobi stencil** task (task D — a genuine memory-bandwidth-bound performance kernel; tests whether the central finding replicates on a true perf kernel).
+    - `README.md` — stencil_kernels index.
+    - `baseline_stencil.c` — FROZEN naive single-thread ping-pong sweep (the speedup denominator).
+    - `candidate_stencil.c` — the ONLY file the agent edits (seeded = correct naive sweep).
+    - `experiment.md` — the task statement shown to the agent (contract, scoring, ladder, self-test).
+    - `Makefile` — `make candidate` / `make baseline` / `make selftest` / `make check` / `make clean`.
+    - `selftest.c` — LOCAL developer self-test (correctness + speedup estimate; `make check`).
+    - `stencil_kernel.h` — the `jacobi()` contract (frozen; signature must not change).
+    - `stencil_main.c` — FROZEN timing + binary-I/O harness (`prog <problem.bin> <out.bin> <warmup> <reps>`).
 - `llm/` — thin LiteLLM wrappers for the agent loop and skills.
   - `README.md` — llm index.
   - `__init__.py` — public `LLMClient` + contract.
   - `cli_server.py` — OpenAI-compatible HTTP shim for agentic CLIs.
   - `client.py` — `LLMClient`/`LLMMessage`: completion + tool calling + cost recording.
   - `routing.py` — `resolve_litellm_model`: single source of truth for litellm provider-prefix rules so every caller routes a `(model, backend)` to the same id.
+  - `claude_code/` — Claude Code as an LLM-API-compatible backend (`backend: claude_code`; bypasses litellm).
+    - `README.md` — claude_code index.
+    - `__init__.py` — public re-exports (`ClaudeCodeProvider`, policy/serializer
+    - `cli_runner.py` — strict_reproducibility runner: one fresh subprocess per
+    - `command.py` — strict-mode `claude -p` argv builder (text vs native
+    - `policy.py` — frozen `ClaudeCodePolicy` + `validate_policy()`: the fail-loud
+    - `provenance.py` — per-call artifact sandbox under
+    - `provider.py` — `ClaudeCodeProvider` orchestrating serialize → run →
+    - `sdk_runner.py` — low_overhead runner: `claude_agent_sdk.query()` per
+    - `serializer.py` — deterministic OpenAI-messages → single-prompt
+    - `validation.py` — ARI-side JSON extraction + jsonschema (Draft 2020-12)
 - `mcp/` — MCP client talking to `ari-skill-*` subprocesses.
   - `README.md` — mcp index.
   - `__init__.py` — public `MCPClient` + contract.

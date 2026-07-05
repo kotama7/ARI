@@ -392,6 +392,7 @@ export default function SettingsPage() {
               >
                 <option value="openai">openai</option>
                 <option value="anthropic">anthropic</option>
+                <option value="claude_code">claude_code (local Claude Code)</option>
                 <option value="gemini">gemini</option>
                 <option value="ollama">ollama</option>
                 <option value="cli-shim">cli-shim (claude/codex)</option>

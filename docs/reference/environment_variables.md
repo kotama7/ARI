@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-07-03
 ---
 
 # Environment Variable Reference
@@ -51,6 +51,22 @@ page is the alphabetical lookup.
 | `ARI_MODEL_RUBRIC_AUDIT` | Model for `ari-skill-replicate.audit_rubric` | falls through |
 | `LLM_MODEL` | Cross-skill fallback (used by `ari-skill-transform`, `ari-skill-plot`) | (none) |
 | `LLM_API_BASE` | API base for `LLM_MODEL` | (none) |
+
+### Claude Code backend (`ARI_CLAUDE_CODE_*`)
+
+Only read when `ARI_BACKEND=claude_code` /
+`llm.backend: claude_code` — see
+[claude_code_provider.md](./claude_code_provider.md).
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `ARI_CLAUDE_CODE_MODE` | `strict_reproducibility` (fresh `claude -p` per call) or `low_overhead` (resident Agent SDK worker, fresh query per request) | `strict_reproducibility` |
+| `ARI_CLAUDE_CODE_MODEL` | Model override, applied only when the resolved backend is `claude_code` | `llm.model` |
+| `ARI_CLAUDE_CODE_MAX_TURNS` | `--max-turns` per call (>1 needs `allow_multi_turn`) | `1` |
+| `ARI_CLAUDE_CODE_TIMEOUT_SEC` | Per-call subprocess/SDK timeout | `300` |
+| `ARI_CLAUDE_CODE_RECORD_PROVENANCE` | Persist per-call artifacts under `{checkpoint}/claude_code/{call_id}/` (`1`/`0`) | `1` |
+| `ARI_CLAUDE_CODE_BIN` | Claude Code binary | `claude` |
+| `ANTHROPIC_AUTH_TOKEN` | Token auth alternative to `ANTHROPIC_API_KEY`; either enables the hermetic `--bare` profile | (none) |
 
 ### Idea skill — VirSci-live
 

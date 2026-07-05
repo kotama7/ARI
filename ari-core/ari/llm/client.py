@@ -21,6 +21,17 @@ class LLMResponse:
     content: str
     tool_calls: list[dict] | None = None
     usage: dict | None = None
+    # Provider-attribution fields (populated by the claude_code backend;
+    # None for litellm-routed backends — existing constructors unaffected).
+    provider: str | None = None
+    model: str | None = None
+    provenance_path: str | None = None
+    raw: dict | str | None = None
+
+    @property
+    def text(self) -> str:
+        """Alias of ``content`` (provider-style naming)."""
+        return self.content
 
 
 class LLMClient:
@@ -38,6 +49,8 @@ class LLMClient:
         # text-catalog tool protocol, which Claude can ignore — see the
         # 2026-05-28 hallucinated-environment incident).
         self.mcp_client = None
+        # Lazily-built ClaudeCodeProvider (backend == "claude_code" only).
+        self._claude_code_provider = None
 
     def set_context(
         self,
@@ -67,6 +80,44 @@ class LLMClient:
     def _model_name(self) -> str:
         from ari.llm.routing import resolve_litellm_model
         return resolve_litellm_model(self.config.model, self.config.backend)
+
+    def _is_claude_code_target(self) -> bool:
+        """True iff this client routes to the Claude Code provider
+        (``ari.llm.claude_code``) instead of litellm."""
+        return (self.config.backend or "").lower().replace("-", "_") == "claude_code"
+
+    def _claude_code_complete(
+        self,
+        msgs: list[dict],
+        tools: list[dict] | None,
+        node_id: str,
+        phase: str,
+        skill: str,
+    ) -> LLMResponse:
+        """Route one completion through ClaudeCodeProvider (no litellm).
+
+        The provider serializes the full message window into a single prompt
+        (history stays ARI-side), runs Claude Code hermetically, records
+        provenance + cost, and returns the same LLMResponse shape. OpenAI
+        tool calling is NOT supported on this backend — fail loud so ReAct
+        phases are pointed at a tool-calling backend instead of silently
+        hallucinating tool results (cf. the text-catalog incident).
+        """
+        from ari.llm.claude_code import ClaudeCodeToolsUnsupportedError
+        from ari.llm.claude_code.provider import ClaudeCodeProvider
+
+        if tools:
+            raise ClaudeCodeToolsUnsupportedError()
+        if getattr(self, "_claude_code_provider", None) is None:
+            self._claude_code_provider = ClaudeCodeProvider.from_llm_config(
+                self.config
+            )
+        return self._claude_code_provider.complete(
+            msgs,
+            node_id=node_id,
+            phase=phase,
+            skill=skill,
+        )
 
     def _is_cli_shim_target(self) -> bool:
         """True iff this client routes to ari's cli_server shim.
@@ -111,11 +162,19 @@ class LLMClient:
                 msgs.append(m)
             else:
                 msgs.append({"role": m.role, "content": m.content})
-        _model = self._model_name()
         _node_id = node_id if node_id is not None else getattr(self, "_node_id", "")
         _phase = phase if phase is not None else getattr(self, "_phase", "")
         _skill = skill if skill is not None else getattr(self, "_skill", "")
         _work_dir = work_dir if work_dir is not None else getattr(self, "_work_dir", "")
+        if self._is_claude_code_target():
+            return self._claude_code_complete(
+                msgs,
+                tools,
+                str(_node_id or ""),
+                str(_phase or ""),
+                str(_skill or ""),
+            )
+        _model = self._model_name()
         kwargs: dict = {
             "model": _model,
             "messages": msgs,
@@ -142,9 +201,45 @@ class LLMClient:
             kwargs["api_key"] = self.config.api_key
         if self.config.base_url:
             kwargs["api_base"] = self.config.base_url
-        # Disable qwen3 thinking mode (long chain-of-thought causes timeout on CPU inference)
+        # Disable qwen3 thinking mode. IMPORTANT: Ollama reads the disable flag at
+        # the TOP LEVEL of the request body (`think: false`), NOT under `options`.
+        # The previous `options.think` was silently IGNORED, so thinking stayed ON:
+        # every call generated a large hidden reasoning trace before its answer
+        # (~10-60x more tokens — measured 123 vs 2 tokens to say "OK"), which was
+        # the dominant per-call latency. Passing it via extra_body["think"] lets
+        # litellm forward it to the top level of the Ollama call.
         if "qwen3" in self.config.model.lower():
-            kwargs["extra_body"] = {"options": {"think": False}}
+            kwargs.setdefault("extra_body", {})["think"] = False
+
+        # Retry transient backend failures (APIConnectionError / timeout / rate
+        # limit) with litellm's built-in exponential backoff. A GPU-hosted Ollama
+        # serving several concurrent BFTS shards intermittently drops connections;
+        # without retries a single blip kills the node — and if it is the ROOT
+        # node (no valid parent), the whole run dies at 1 node, silently biasing
+        # a sweep by run survival rather than by the channel under test. Env-
+        # overridable; 0 disables (restores the old single-shot behaviour).
+        import os as _os
+        try:
+            _nr = int(_os.environ.get("ARI_LLM_NUM_RETRIES", "4"))
+        except ValueError:
+            _nr = 4
+        if _nr > 0:
+            kwargs["num_retries"] = _nr
+
+        # Pin the Ollama context window so the KV cache fits ON-GPU. Ollama loads
+        # a model at ITS OWN default context, and code models ship a huge one
+        # (qwen3-coder defaults to ~256K); that × OLLAMA_NUM_PARALLEL overflows
+        # VRAM and spills the model to CPU — measured 7 tok/s (78% GPU) vs
+        # 224 tok/s (100% GPU) at num_ctx=32768. 32K holds the full_log handoff
+        # injection (~12k tokens) plus the prompt/tools/ReAct history. litellm
+        # maps the `num_ctx` kwarg into options.num_ctx (verified). Ollama-only.
+        if self.config.backend == "ollama":
+            try:
+                _nc = int(_os.environ.get("ARI_LLM_NUM_CTX", "32768"))
+            except ValueError:
+                _nc = 32768
+            if _nc > 0:
+                kwargs["num_ctx"] = _nc
 
         # When the backend is the ari cli-shim, forward (work_dir + MCP
         # server config) via extra_body so the shim can spawn `claude -p`
@@ -223,6 +318,11 @@ class LLMClient:
 
     def stream(self, messages: list[LLMMessage]) -> Iterator[str]:
         """Stream responses from the LLM."""
+        if self._is_claude_code_target():
+            raise NotImplementedError(
+                "backend=claude_code does not support streaming; use "
+                "complete() (each call is a single hermetic Claude Code run)"
+            )
         msgs = [{"role": m.role, "content": m.content} for m in messages]
         kwargs: dict = {
             "model": self._model_name(),

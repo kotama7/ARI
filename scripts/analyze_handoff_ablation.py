@@ -43,6 +43,23 @@ PRIMARY = tuple(_os.environ.get(
     "code_plus_summary,code_plus_summary_plus_full_log").split(","))[:2]
 TOST_MARGIN = math.log(1.05)  # PREREG equivalence band half-width (log units)
 
+# Native scoring AXIS by task. Performance kernels score a speedup RATIO, so the
+# equivalence test runs in the log domain (margin = log(1.05)). The numerical
+# (erfc) and combinatorial (meshpart) tasks score a bounded fraction in [0,1]
+# (stored in the same valid_geomean_speedup field for analyzer reuse, but it is
+# NOT a speedup); log-ratio TOST with a multiplicative margin is statistically
+# wrong for a bounded score that compresses near 1.0, so those run in the LINEAR
+# domain with an absolute margin. We NEVER pool across these non-commensurable
+# axes (a mixed-task manifest is refused below).
+SCORE_TASKS = frozenset({"erfc", "meshpart"})
+SPEEDUP_TASKS = frozenset({"gemm", "spmm", "stencil"})
+SCORE_TOST_MARGIN = float(_os.environ.get("ARI_SCORE_TOST_MARGIN", "0.05"))
+
+
+def _tost_inputs(vals, is_score):
+    """Map outcomes into the TOST domain for the task's native axis."""
+    return list(vals) if is_score else [math.log(v) for v in vals]
+
 
 def run_outcome(run_dir: str | None) -> tuple[float, int, int]:
     """Reduce a run to (best_valid_geomean_speedup, n_valid_nodes, n_nodes).
@@ -132,6 +149,20 @@ def main() -> int:
     rows = load_manifest(target)
     out_dir = target if target.is_dir() else target.parent
 
+    # Task-awareness: pick the native axis + TOST domain, and REFUSE a manifest
+    # that mixes tasks — speedup ratios and bounded [0,1] scores are
+    # non-commensurable across the performance / numerical / combinatorial
+    # regimes, so pooling them (or geomean-ing them together) is meaningless.
+    tasks = sorted({(r.get("task") or "spmm") for r in rows})
+    if len(tasks) > 1:
+        sys.exit(f"manifest mixes tasks {tasks}: scores are non-commensurable "
+                 f"across performance/numerical/combinatorial axes — analyze each "
+                 f"task's sweep separately (the driver writes one --task per manifest).")
+    task = tasks[0]
+    is_score = task in SCORE_TASKS
+    axis_label = "score[0,1]" if is_score else "geomean speedup"
+    tost_margin = SCORE_TOST_MARGIN if is_score else TOST_MARGIN
+
     # arm -> list of run records {seed, outcome, n_valid, n_nodes}
     by_arm: dict[str, list[dict]] = {}
     lin_by_arm: dict[str, dict] = {}
@@ -148,8 +179,8 @@ def main() -> int:
         agg["valid_speedups"].extend(ls["valid_speedups"])
 
     summary: dict[str, dict] = {}
-    print(f"\n=== Handoff ablation: {out_dir.name} ===")
-    print(f"{'arm':<22} {'runs':>5} {'valid':>6} {'geomean':>8}  95% CI   (outcome = best valid @ N)")
+    print(f"\n=== Handoff ablation: {out_dir.name}  (task={task}, axis={axis_label}) ===")
+    print(f"{'arm':<22} {'runs':>5} {'valid':>6} {axis_label:>14}  95% CI   (outcome = best valid @ N)")
     for arm in sorted(by_arm):
         runs = by_arm[arm]
         valid = [x["outcome"] for x in runs if x["outcome"] > 0]
@@ -188,13 +219,15 @@ def main() -> int:
     a = [x for x in summary.get(a_name, {}).get("outcomes", []) if x > 0]
     b = [x for x in summary.get(b_name, {}).get("outcomes", []) if x > 0]
     if len(a) >= 2 and len(b) >= 2:
-        t = tost_equivalence([math.log(v) for v in a], [math.log(v) for v in b],
-                             margin=TOST_MARGIN)
+        t = tost_equivalence(_tost_inputs(a, is_score), _tost_inputs(b, is_score),
+                             margin=tost_margin)
         contrasts[f"{a_name}_vs_{b_name}"] = t
-        print(f"\nPRIMARY (TOST equivalence, margin=log(1.05)): "
+        _mdesc = (f"mean diff={t['mean_diff']:+.4f} (score pts)" if is_score
+                  else f"mean log-diff={t['mean_diff']:+.4f} (geomean ratio={math.exp(t['mean_diff']):.3f}x)")
+        _margd = f"{tost_margin:.4f}" + ("" if is_score else "=log(1.05)")
+        print(f"\nPRIMARY (TOST equivalence, axis={axis_label}, margin={_margd}): "
               f"{a_name} vs {b_name}")
-        print(f"  mean log-diff={t['mean_diff']:+.4f}  equivalent={t['equivalent']}  "
-              f"(geomean ratio={math.exp(t['mean_diff']):.3f}x)")
+        print(f"  {_mdesc}  equivalent={t['equivalent']}")
     else:
         print(f"\nPRIMARY: insufficient valid runs (need >=2 each; have "
               f"{len(a)} / {len(b)}) — add seeds.")
@@ -213,8 +246,8 @@ def main() -> int:
             ai = [x for x in summary[arms[i]]["outcomes"] if x > 0]
             aj = [x for x in summary[arms[j]]["outcomes"] if x > 0]
             if len(ai) >= 2 and len(aj) >= 2:
-                t = tost_equivalence([math.log(v) for v in ai], [math.log(v) for v in aj],
-                                     margin=TOST_MARGIN)
+                t = tost_equivalence(_tost_inputs(ai, is_score), _tost_inputs(aj, is_score),
+                                     margin=tost_margin)
                 pairs.append((arms[i], arms[j], t))
                 pvals.append(max(t["p_lower"], t["p_upper"]))
     if pairs:
@@ -222,11 +255,14 @@ def main() -> int:
         print("\nPairwise (Holm-adjusted TOST p):")
         for (ai, aj, t), p in zip(pairs, adj):
             contrasts[f"{ai}_vs_{aj}"] = {**t, "holm_p": p}
-            print(f"  {ai:<20} vs {aj:<20} ratio={math.exp(t['mean_diff']):.3f}x  holm_p={p:.3f}")
+            _diff = (f"diff={t['mean_diff']:+.4f}" if is_score
+                     else f"ratio={math.exp(t['mean_diff']):.3f}x")
+            print(f"  {ai:<20} vs {aj:<20} {_diff}  holm_p={p:.3f}")
 
     result = {"out_dir": str(out_dir), "n_runs": len(rows),
+              "task": task, "axis": axis_label, "is_score_axis": is_score,
               "arms": summary, "contrasts": contrasts,
-              "tost_margin_log": TOST_MARGIN}
+              "tost_margin": tost_margin, "tost_domain": "linear" if is_score else "log"}
     (out_dir / "analysis.json").write_text(json.dumps(result, indent=2))
     print(f"\nwrote {out_dir / 'analysis.json'}")
     return 0

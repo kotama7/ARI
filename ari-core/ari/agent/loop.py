@@ -378,8 +378,19 @@ def _load_parent_node_report(node, work_dir: str) -> dict | None:
     return None
 
 
-def _load_parent_log(node, work_dir: str, *, limit: int = 200_000) -> str:
+def _load_parent_log(node, work_dir: str, *, limit: int | None = None) -> str:
     from pathlib import Path as _Path
+    # Cap the injected full log to fit the model's context window. The default
+    # 200k chars (~50k tokens) OVERFLOWS a 32k-token model (qwen3:32b), so the
+    # backend silently truncates or errors — corrupting the full_log arm it is
+    # meant to test. 48k chars (~12k tokens) leaves room for the system prompt,
+    # tools, summary and the child's own work. Env-overridable per model context.
+    if limit is None:
+        import os as _os
+        try:
+            limit = int(_os.environ.get("ARI_HANDOFF_LOG_LIMIT", "48000"))
+        except ValueError:
+            limit = 48_000
     pid = getattr(node, "parent_id", None)
     if not pid or not work_dir:
         return ""
@@ -1783,6 +1794,35 @@ class AgentLoop:
             )
             logger.warning("Node %s: forced success after max steps", node.id)
             return node
+
+        # DETERMINISTIC FALLBACK: a node can reach here (the agent never cleanly
+        # ran/emitted within the ReAct budget) while its work_dir STILL HOLDS A
+        # VALID CANDIDATE — every deterministic task seeds a correct baseline, so
+        # the evaluator (which owns compilation + measurement of the work_dir
+        # candidate) can ALWAYS score whatever is present. Without this, such
+        # nodes are recorded failed/None and their often-valid candidate is
+        # DISCARDED — collapsing best-valid to 0 and making capable models look
+        # incapable (verified: qwen2.5-coder / qwen3-coder stencil nodes all held
+        # valid ~1.0x candidates yet were scored None). Deterministic-evaluator
+        # only (LLMEvaluator does no work_dir measurement and has no `task`).
+        if getattr(self.evaluator, "task", None) is not None:
+            try:
+                _ev = self.evaluator.evaluate_sync(
+                    goal=experiment.get("goal", "")[:500] if isinstance(experiment, dict) else str(experiment)[:500],
+                    artifacts=[],
+                    summary="deterministic fallback: scoring the work_dir candidate",
+                    node_id=node.id,
+                    node_label=(node.label.value if hasattr(node.label, "value") else str(node.label)),
+                )
+                if _ev.get("has_real_data"):
+                    node.metrics = _ev.get("metrics", {})
+                    node.has_real_data = True
+                    _r = _ev.get("reason", "") or "deterministic fallback eval"
+                    node.mark_success(artifacts=[{"type": "result", "stdout": _r}], eval_summary=_r)
+                    logger.warning("Node %s: deterministic fallback scored the work_dir candidate (would have failed)", node.id)
+                    return node
+            except Exception as _e:
+                logger.warning("Node %s: deterministic fallback eval failed: %s", node.id, _e)
 
         node.mark_failed(error_log="Max ReAct steps exceeded")
         return node

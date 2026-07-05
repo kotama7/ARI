@@ -7,6 +7,7 @@ file formats, and terminology.
 
 - `README.md` — this file.
 - `api_paperbench.md` — PaperBench API reference: the PaperBench endpoints on the viz server.
+- `claude_code_provider.md` — Claude Code LLM provider (`backend: claude_code`): strict-reproducibility / low-overhead modes, hermetic policy, provenance.
 - `cli_reference.md` — ARI CLI Reference: complete reference for command-line operations.
 - `configuration.md` — Configuration Reference: `workflow.yaml`, the single source of truth for the pipeline.
 - `environment_variables.md` — Environment Variable Reference: the ~90 environment variables ARI honours.

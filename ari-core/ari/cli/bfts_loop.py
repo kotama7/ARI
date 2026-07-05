@@ -462,7 +462,7 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
             # scaffolding is also seeded under the LLM-as-a-judge scorer ablation;
             # non-study experiments (no ARI_TASK) are untouched.
             if os.environ.get("ARI_TASK", "").strip().lower() in {
-                "spmm", "gemm", "erfc", "meshpart",
+                "spmm", "gemm", "erfc", "meshpart", "stencil",
             }:
                 try:
                     _task = os.environ.get("ARI_TASK", "spmm").lower()
@@ -472,6 +472,8 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                         from ari.evaluator.erfc_harness import seed_work_dir as _seed_task
                     elif _task == "meshpart":
                         from ari.evaluator.meshpart_harness import seed_work_dir as _seed_task
+                    elif _task == "stencil":
+                        from ari.evaluator.stencil_harness import seed_work_dir as _seed_task
                     else:
                         from ari.evaluator.spmm_harness import seed_work_dir as _seed_task
                     for _n in batch:

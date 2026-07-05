@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/cli_ear.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-07-03
 ---
 
 # ARI CLI Reference
@@ -34,6 +34,7 @@ Complete reference for ARI command-line operations. The CLI provides the same fu
 | `ari clone <ref>` | Fetch a curated EAR bundle (file/https/ari/gh/doi); verify by digest (v0.7.0) | — |
 | `ari registry <subcmd>` | Self-hosted EAR registry: `serve` / `token issue|revoke|list` (v0.7.0) | — |
 | `ari migrate node-reports <checkpoint>` | Backfill `node_report.json` for legacy (v0.6.0) checkpoints | — |
+| `ari doctor claude-code` | Health-check the `claude_code` LLM backend (binary/policy/flags; `--live` runs one real call) | — |
 
 ---
 
@@ -309,6 +310,22 @@ auto-reconstructed nodes even if the recovered `files_changed` is empty,
 since the diff may have been impossible to recover). Fields that cannot
 be inferred (`original_direction`, `delta_vs_parent`, `next_steps_hints`)
 are nulled.
+
+---
+
+## ari doctor claude-code
+
+Health-checks the `claude_code` LLM backend (see
+[claude_code_provider.md](./claude_code_provider.md)): claude binary +
+version, fail-loud policy validation of the resolved config, the exact
+strict-mode command that would run, and a static flag-support report
+(`--max-turns` / `--system-prompt-file` are hidden-but-supported flags not
+listed by `claude --help`).
+
+```bash
+ari doctor claude-code           # offline checks only
+ari doctor claude-code --live    # + one real hermetic call with schema validation (spends tokens)
+```
 
 ---
 

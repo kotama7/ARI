@@ -61,6 +61,7 @@ snapshots.
 ### Reference
 
 - [CLI reference](reference/cli_reference.md)
+- [Claude Code provider](reference/claude_code_provider.md)
 - [Configuration](reference/configuration.md)
 - [MCP skills](reference/skills.md)
 - [Registry](reference/registry.md)
@@ -115,6 +116,7 @@ release gate checks it against the tree (`docs/about/release_policy.md` §4).
 | guides/paperbench/multi_node_setup | [✓](guides/paperbench/multi_node_setup.md) | [✓](ja/guides/paperbench/multi_node_setup.md) | [✓](zh/guides/paperbench/multi_node_setup.md) |
 | guides/paperbench/compute_node_safety | [✓](guides/paperbench/compute_node_safety.md) | [✓](ja/guides/paperbench/compute_node_safety.md) | [✓](zh/guides/paperbench/compute_node_safety.md) |
 | guides/paperbench/paperbench_troubleshooting | [✓](guides/paperbench/paperbench_troubleshooting.md) | [✓](ja/guides/paperbench/paperbench_troubleshooting.md) | [✓](zh/guides/paperbench/paperbench_troubleshooting.md) |
+| reference/claude_code_provider | [✓](reference/claude_code_provider.md) | [✓](ja/reference/claude_code_provider.md) | [✓](zh/reference/claude_code_provider.md) |
 | reference/cli_reference | [✓](reference/cli_reference.md) | [✓](ja/reference/cli_reference.md) | [✓](zh/reference/cli_reference.md) |
 | reference/configuration | [✓](reference/configuration.md) | [✓](ja/reference/configuration.md) | [✓](zh/reference/configuration.md) |
 | reference/skills | [✓](reference/skills.md) | [✓](ja/reference/skills.md) | [✓](zh/reference/skills.md) |

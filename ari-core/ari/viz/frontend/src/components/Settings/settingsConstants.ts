@@ -9,6 +9,8 @@ export const DEFAULT_PROVIDER = 'openai';
 export const PROVIDER_MODELS: Record<string, string[]> = {
   openai: ['gpt-5.2', 'gpt-4o', 'gpt-4o-mini', 'o3', 'o1-mini'],
   anthropic: ['claude-opus-4-5', 'claude-sonnet-4-5', 'claude-3-5-haiku-latest'],
+  // Local Claude Code as a hermetic LLM API (docs/reference/claude_code_provider.md).
+  claude_code: ['claude-sonnet-5', 'claude-opus-4-8', 'claude-haiku-4-5'],
   gemini: ['gemini/gemini-2.5-pro', 'gemini/gemini-2.0-flash', 'gemini/gemini-1.5-pro'],
   ollama: ['ollama_chat/llama3.3', 'ollama_chat/qwen3:8b', 'ollama_chat/gemma3:9b', 'ollama_chat/mistral'],
   'cli-shim': ['claude-cli', 'claude-cli-agent', 'codex-cli', 'codex-cli-agent'],
@@ -17,6 +19,7 @@ export const PROVIDER_MODELS: Record<string, string[]> = {
 export const PROVIDER_KEY_PLACEHOLDER: Record<string, string> = {
   openai: 'sk-...',
   anthropic: 'sk-ant-...',
+  claude_code: '(optional — OAuth login or ANTHROPIC_API_KEY)',
   gemini: 'AIza...',
   ollama: '(not required)',
   'cli-shim': '(not required)',

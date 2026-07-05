@@ -7,6 +7,8 @@ import { OrsModelPicker, FewshotManager } from './stepResourcesSections';
 export const PROVIDER_MODELS: Record<string, string[]> = {
   openai: ['gpt-5.2', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-4o', 'gpt-4o-2024-08-06', 'gpt-4o-mini', 'o3', 'o1-mini'],
   anthropic: ['claude-opus-4-5', 'claude-sonnet-4-5', 'claude-haiku-3-5'],
+  // Local Claude Code as a hermetic LLM API (docs/reference/claude_code_provider.md).
+  claude_code: ['claude-sonnet-5', 'claude-opus-4-8', 'claude-haiku-4-5'],
   ollama: ['qwen3:8b', 'qwen3:32b', 'llama3.3', 'gemma3:27b', 'mistral'],
   'cli-shim': ['claude-cli', 'claude-cli-agent', 'codex-cli', 'codex-cli-agent'],
   custom: [],
@@ -334,6 +336,9 @@ export function StepResources({
     const keyMap: Record<string, string> = {
       openai: 'OPENAI_API_KEY',
       anthropic: 'ANTHROPIC_API_KEY',
+      // claude_code: a key is OPTIONAL (OAuth login works); when present it
+      // enables the hermetic --bare profile.
+      claude_code: 'ANTHROPIC_API_KEY',
       google: 'GOOGLE_API_KEY',
     };
     try {
@@ -346,7 +351,11 @@ export function StepResources({
         setApiKeyColor('var(--green)');
       } else {
         setApiKeyStatus(
-          llm === 'ollama' ? '' : 'Not found in .env — enter manually',
+          llm === 'ollama'
+            ? ''
+            : llm === 'claude_code'
+              ? 'Optional — Claude Code OAuth login also works'
+              : 'Not found in .env — enter manually',
         );
         setApiKeyColor('var(--muted)');
       }
@@ -606,7 +615,7 @@ export function StepResources({
         <div className="form-row">
           <label>Provider</label>
           <div className="toggle-group">
-            {['openai', 'anthropic', 'ollama', 'cli-shim', 'custom'].map((p) => (
+            {['openai', 'anthropic', 'claude_code', 'ollama', 'cli-shim', 'custom'].map((p) => (
               <div
                 key={p}
                 className={`toggle-btn${llm === p ? ' active' : ''}`}
@@ -616,11 +625,13 @@ export function StepResources({
                   ? 'OpenAI'
                   : p === 'anthropic'
                     ? 'Anthropic'
-                    : p === 'ollama'
-                      ? 'Ollama'
-                      : p === 'cli-shim'
-                        ? 'CLI Shim'
-                        : 'Custom'}
+                    : p === 'claude_code'
+                      ? 'Claude Code'
+                      : p === 'ollama'
+                        ? 'Ollama'
+                        : p === 'cli-shim'
+                          ? 'CLI Shim'
+                          : 'Custom'}
               </div>
             ))}
           </div>

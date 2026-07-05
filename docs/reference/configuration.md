@@ -8,7 +8,7 @@ sources:
     role: config
   - path: ari-core/ari/viz/api_settings.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-07-03
 ---
 
 # Configuration Reference
@@ -423,6 +423,33 @@ llm:
   backend: anthropic
   model: claude-sonnet-4-5
 ```
+
+### Claude Code (claude_code)
+
+Drives a local Claude Code installation as a stateless LLM API (no tools, no
+MCP, no memory, no session reuse). Full reference:
+[claude_code_provider.md](./claude_code_provider.md).
+
+```yaml
+llm:
+  backend: claude_code
+  model: claude-sonnet-5
+  claude_code:
+    mode: strict_reproducibility   # or low_overhead (Agent SDK worker)
+    max_turns: 1
+    timeout_sec: 300
+    record_provenance: true
+    # bare: true                   # default auto: true iff ANTHROPIC_API_KEY/ANTHROPIC_AUTH_TOKEN set
+    # structured_output_transport: prompt   # or native (--json-schema)
+```
+
+Env overrides: `ARI_CLAUDE_CODE_MODE`, `ARI_CLAUDE_CODE_MODEL`,
+`ARI_CLAUDE_CODE_MAX_TURNS`, `ARI_CLAUDE_CODE_TIMEOUT_SEC`,
+`ARI_CLAUDE_CODE_RECORD_PROVENANCE`, `ARI_CLAUDE_CODE_BIN`. Health check:
+`ari doctor claude-code [--live]`. Notes: MCP skills do NOT run through
+Claude Code on this backend — their direct litellm calls route to the plain
+Anthropic API (`ANTHROPIC_API_KEY` required) — and ReAct agent phases need a
+tool-calling backend (the provider fails loudly when `tools=` is passed).
 
 ### Any OpenAI-compatible API (vLLM, LM Studio, etc.)
 

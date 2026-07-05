@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-07-03
 ---
 
 # 环境变量参考
@@ -46,6 +46,21 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 | `ARI_MODEL_RUBRIC_AUDIT` | `ari-skill-replicate.audit_rubric` 使用的模型 | 回退 |
 | `LLM_MODEL` | 跨技能回退（`ari-skill-transform`、`ari-skill-plot` 使用） | （无） |
 | `LLM_API_BASE` | `LLM_MODEL` 的 API base | （无） |
+
+### Claude Code 后端（`ARI_CLAUDE_CODE_*`）
+
+仅在 `ARI_BACKEND=claude_code` / `llm.backend: claude_code` 时读取 —— 参见
+[claude_code_provider.md](./claude_code_provider.md)。
+
+| 变量 | 用途 | 默认值 |
+|---|---|---|
+| `ARI_CLAUDE_CODE_MODE` | `strict_reproducibility`（每次调用启动全新 `claude -p`）或 `low_overhead`（常驻 Agent SDK worker，每个请求全新 query） | `strict_reproducibility` |
+| `ARI_CLAUDE_CODE_MODEL` | 模型覆盖，仅当解析后的后端为 `claude_code` 时生效 | `llm.model` |
+| `ARI_CLAUDE_CODE_MAX_TURNS` | 每次调用的 `--max-turns`（>1 需要 `allow_multi_turn`） | `1` |
+| `ARI_CLAUDE_CODE_TIMEOUT_SEC` | 每次调用的子进程/SDK 超时 | `300` |
+| `ARI_CLAUDE_CODE_RECORD_PROVENANCE` | 将每次调用的工件持久化到 `{checkpoint}/claude_code/{call_id}/`（`1`/`0`） | `1` |
+| `ARI_CLAUDE_CODE_BIN` | Claude Code 可执行文件 | `claude` |
+| `ANTHROPIC_AUTH_TOKEN` | `ANTHROPIC_API_KEY` 的令牌认证替代；二者任一存在即可启用 hermetic 的 `--bare` 配置 | （无） |
 
 ### Idea 技能 — VirSci-live
 

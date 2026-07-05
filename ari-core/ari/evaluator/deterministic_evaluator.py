@@ -114,6 +114,17 @@ def _default_measure(work_dir: str) -> dict:
         except ValueError:
             seed = 0
         return _mesh_measure(work_dir, seed=seed)
+    if task == "stencil":
+        # 3-D 7-point Jacobi stencil (task D): memory-bandwidth-bound performance
+        # kernel. Plain parallelism saturates the roofline (the one-shot rung);
+        # SIMD, spatial blocking, and temporal/time tiling climb above it, so the
+        # score = geomean speedup spans an optimization-quality gradient.
+        from ari.evaluator.stencil_harness import measure_node as _stencil_measure
+        try:
+            seed = int(os.environ.get("ARI_SEED", "0") or "0")
+        except ValueError:
+            seed = 0
+        return _stencil_measure(work_dir, seed=seed)
     from ari.evaluator.spmm_harness import measure_node
     n = int(os.environ.get("ARI_SPMM_N", "20000"))
     k = int(os.environ.get("ARI_SPMM_K", "64"))
@@ -139,10 +150,16 @@ class DeterministicEvaluator:
         # multiplicative rungs (log scale, ceiling ~256x), SpMM is linear
         # (ceiling = thread budget ~16x). Both env-overridable.
         self.task = os.environ.get("ARI_TASK", "spmm").lower()
-        self.scale = "log" if self.task == "gemm" else "linear"
+        # Speedup tasks with multiplicative optimization rungs use a log scale
+        # (GEMM ceiling ~256x; the bandwidth-bound stencil ceiling is lower but
+        # still multiplicative). SpMM is linear (ceiling = thread budget).
+        self.scale = "log" if self.task in ("gemm", "stencil") else "linear"
         if target_speedup is None:
-            _env, _dflt = (("ARI_GEMM_TARGET", 256.0) if self.task == "gemm"
-                           else ("ARI_SPMM_TARGET", 16.0))
+            _TARGETS = {
+                "gemm": ("ARI_GEMM_TARGET", 256.0),
+                "stencil": ("ARI_STENCIL_TARGET", 8.0),
+            }
+            _env, _dflt = _TARGETS.get(self.task, ("ARI_SPMM_TARGET", 16.0))
             try:
                 target_speedup = float(os.environ.get(_env, str(_dflt)))
             except ValueError:

@@ -99,6 +99,13 @@ try:
 except Exception as _e:  # pragma: no cover - import guard
     logging.getLogger(__name__).warning("ari registry subcommand unavailable: %s", _e)
 
+# `ari doctor` subparser (environment health checks, e.g. claude-code).
+try:
+    from ari.cli.doctor import doctor_app as _doctor_app
+    app.add_typer(_doctor_app, name="doctor")
+except Exception as _e:  # pragma: no cover - import guard
+    logging.getLogger(__name__).warning("ari doctor subcommand unavailable: %s", _e)
+
 
 # ── ari migrate ───────────────────────────────────────────────────────
 # v0.7.0: best-effort backfill of node_report.json into legacy checkpoints.

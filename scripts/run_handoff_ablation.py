@@ -39,14 +39,20 @@ EXPERIMENTS = {
     "gemm": _EVAL / "gemm_kernels" / "experiment.md",
     "erfc": _EVAL / "erfc_kernels" / "experiment.md",
     "meshpart": _EVAL / "meshpart_kernels" / "experiment.md",
+    "stencil": _EVAL / "stencil_kernels" / "experiment.md",
 }
-# MVP 3-arm contrast — NESTED/cumulative: code ⊂ code+summary ⊂ code+summary+full_log.
-# Each arm strictly ADDS one channel, so the primary contrast tests whether the
-# (expensive) full log adds value ON TOP of the (cheap) summary. Override the arm
-# set with ARI_HANDOFF_ARMS (comma-separated) for the factorial variant.
+# 2x2 FACTORIAL over {summary on/off} x {full_log on/off}:
+#   code_only          (–summary, –log)   code_plus_summary           (+summary, –log)
+#   code_plus_full_log (–summary, +log)    code_plus_summary_plus_full_log (+summary, +log)
+# The nested chain code ⊂ code+summary ⊂ code+summary+full_log is still present (it
+# is 3 of the 4 cells); adding code_plus_full_log isolates the full_log main effect
+# WITHOUT summary, so the analyzer can attribute the rewrite→refine shift to the log
+# per se (not just "log on top of summary") and estimate the summary×log interaction.
+# The PRIMARY (nested) contrast remains code_plus_summary vs code_plus_summary_plus_full_log.
+# Override with ARI_HANDOFF_ARMS (comma-separated) to run a subset.
 ARMS = os.environ.get(
     "ARI_HANDOFF_ARMS",
-    "code_only,code_plus_summary,code_plus_summary_plus_full_log",
+    "code_only,code_plus_summary,code_plus_full_log,code_plus_summary_plus_full_log",
 ).split(",")
 # Per-arm env that pins the study controls (PREREG): frozen contract, deterministic
 # evaluator + selector. memory_off is implied by each handoff mode's resolution.
@@ -152,9 +158,10 @@ def _record(manifest: Path | None, **row) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Handoff-study pilot/sweep driver")
     ap.add_argument("--mode", choices=["pilot", "mvp"], default="pilot")
-    ap.add_argument("--task", choices=["spmm", "gemm", "erfc", "meshpart"], default="spmm",
-                    help="deterministic task (gemm = wide opt gradient; erfc = Goldilocks accuracy-coverage; "
-                         "meshpart = combinatorial balanced k-way partitioning Goldilocks)")
+    ap.add_argument("--task", choices=["spmm", "gemm", "erfc", "meshpart", "stencil"], default="spmm",
+                    help="deterministic task (gemm = compute-bound perf kernel; spmm = bandwidth-bound perf kernel; "
+                         "stencil = 3-D Jacobi perf kernel with temporal-blocking headroom; "
+                         "erfc = numerical accuracy-coverage; meshpart = combinatorial balanced k-way partitioning)")
     ap.add_argument("--model", default="qwen3:8b", help="pilot model (validity floor)")
     ap.add_argument("--large-model", default="qwen3:32b", help="MVP model")
     ap.add_argument("--seeds", type=int, default=1, help="MVP: independent runs per arm")

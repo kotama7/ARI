@@ -30,6 +30,12 @@ targets the like-named module under `ari/`.
 - `test_claim_evidence_hard_gate.py` — Story2Proposal Phase B deterministic gate: recompute, mismatch, operand resolution, coverage, blocking semantics.
 - `test_claim_gate_contract.py` — declared-contract enforcement: `safe_eval` formula evaluator, `contract.check_contract`/`check_emission` (recompute mismatch, claim-evidence coverage, provenance/ceiling/correctness requirement flags, lexical near-miss hints) + gate blocking at final.
 - `test_claim_gate_invariants.py` — concept→invariant registry (`classify_concept`, `CONCEPT_INVARIANTS`, `scan_science_data`): universal-math bounds (normalized≤1, probability in [0,1]) fire domain-neutrally, leave unbounded metrics alone, and block at final via `run_hard_gate`.
+- `test_claude_code_command.py` — claude_code argv/env builder: isolation flags, native `--json-schema` profile, no session-reuse flags, env allowlist + forced memory-suppression vars.
+- `test_claude_code_policy.py` — claude_code fail-loud policy validator (tools/deny-all/resume/memory/safe-mode/multi-turn rules).
+- `test_claude_code_provenance.py` — per-call provenance sandbox: artifact set, SHA-256 hashes, call-id minting, checkpoint-root resolution.
+- `test_claude_code_provider.py` — claude_code integration with mock runners: LLMClient backend dispatch, strict=subprocess vs low_overhead=SDK, one normalized `LLMResponse`, session ids never reused, schema validation + single repair retry, cost booking, env overrides.
+- `test_claude_code_serializer.py` — deterministic messages→prompt serialization: role order, system folding, schema embedding, repair prompt.
+- `test_claude_code_validation.py` — ARI-side JSON extraction (fences, prose braces before the JSON) + jsonschema validation outcomes.
 - `test_cli.py` — CLI.
 - `test_cli_extended.py` — extended CLI cases.
 - `test_cli_shim_toolcalls.py` — CLI shim (`ari.llm.cli_server`) function-calling: `extract_tool_calls`/`render_prompt`/`complete` turn text-only `claude -p`/`codex exec` into OpenAI `tool_calls`, plus cost passthrough and MCP-direct mode vs. text-catalog fallback.

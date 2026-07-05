@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/cli_ear.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-07-03
 ---
 
 # ARI CLI リファレンス
@@ -34,6 +34,7 @@ ARI のコマンドライン操作の完全なリファレンスです。CLI は
 | `ari clone <ref>` | キュレート済み EAR バンドルを取得 (file/https/ari/gh/doi)、digest 検証 (v0.7.0) | — |
 | `ari registry <subcmd>` | セルフホスト EAR レジストリ: `serve` / `token issue\|revoke\|list` (v0.7.0) | — |
 | `ari migrate node-reports <checkpoint>` | 旧 (v0.6.0) checkpoint に `node_report.json` を補完 | — |
+| `ari doctor claude-code` | `claude_code` LLM バックエンドのヘルスチェック（バイナリ/ポリシー/フラグ。`--live` で実呼び出し 1 回） | — |
 
 ---
 
@@ -306,6 +307,22 @@ ari settings --model gpt-4o
 
 # 複数のオプションを設定
 ari settings --model qwen3:32b --partition gpu --cpus 64 --mem 128
+```
+
+---
+
+## ari doctor claude-code
+
+`claude_code` LLM バックエンドのヘルスチェック
+（[claude_code_provider.md](./claude_code_provider.md) 参照）: claude
+バイナリとバージョン、解決済み設定の fail-loud ポリシー検証、実際に実行
+される strict モードコマンド、静的なフラグサポート報告
+（`--max-turns` / `--system-prompt-file` は `claude --help` に出ない
+hidden-but-supported フラグ）。
+
+```bash
+ari doctor claude-code           # オフラインチェックのみ
+ari doctor claude-code --live    # + schema 検証付き実 hermetic 呼び出し 1 回（トークン消費）
 ```
 
 ---

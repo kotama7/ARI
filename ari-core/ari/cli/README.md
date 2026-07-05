@@ -10,6 +10,7 @@ construction logic is delegated to `ari.core`.
 - `__main__.py` — `python -m ari.cli` entry.
 - `bfts_loop.py` — BFTS run-loop driver + checkpoint persistence.
 - `commands.py` — misc top-level commands + `_safe_backup`.
+- `doctor.py` — `ari doctor` sub-app: environment health checks (`ari doctor claude-code [--live]`).
 - `lineage.py` — end-of-phase lineage-decision helpers.
 - `migrate.py` — `ari migrate` sub-app.
 - `projects.py` — `ari paper` / `status` / `projects` / `show` commands.

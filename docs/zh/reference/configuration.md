@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/configs
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-07-03
 ---
 
 # 配置参考
@@ -359,6 +359,33 @@ llm:
   backend: anthropic
   model: claude-sonnet-4-5
 ```
+
+### Claude Code（claude_code）
+
+将本地安装的 Claude Code 作为无状态 LLM API 使用（不启用工具、MCP、记忆或
+会话复用）。完整参考：
+[claude_code_provider.md](./claude_code_provider.md)。
+
+```yaml
+llm:
+  backend: claude_code
+  model: claude-sonnet-5
+  claude_code:
+    mode: strict_reproducibility   # 或 low_overhead（Agent SDK 常驻 worker）
+    max_turns: 1
+    timeout_sec: 300
+    record_provenance: true
+    # bare: true                   # 默认 auto：仅当设置了 ANTHROPIC_API_KEY/ANTHROPIC_AUTH_TOKEN 时为 true
+    # structured_output_transport: prompt   # 或 native（--json-schema）
+```
+
+环境变量覆盖：`ARI_CLAUDE_CODE_MODE`、`ARI_CLAUDE_CODE_MODEL`、
+`ARI_CLAUDE_CODE_MAX_TURNS`、`ARI_CLAUDE_CODE_TIMEOUT_SEC`、
+`ARI_CLAUDE_CODE_RECORD_PROVENANCE`、`ARI_CLAUDE_CODE_BIN`。健康检查：
+`ari doctor claude-code [--live]`。注意：在此后端下 MCP 技能不经过
+Claude Code —— 其直接的 litellm 调用会路由到普通 Anthropic API（需要
+`ANTHROPIC_API_KEY`）；ReAct 代理阶段需要支持工具调用的后端（传入
+`tools=` 会立即报错）。
 
 ### 任何 OpenAI 兼容 API（vLLM、LM Studio 等）
 

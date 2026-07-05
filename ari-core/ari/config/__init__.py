@@ -11,12 +11,161 @@ import yaml
 from pydantic import BaseModel, Field, model_validator
 
 
+class ClaudeCodeSettings(BaseModel):
+    """Settings for the `claude_code` backend (Claude Code as an LLM API).
+
+    Mapped onto a frozen `ari.llm.claude_code.policy.ClaudeCodePolicy` and
+    fail-loud validated there; these fields only *declare* the policy. See
+    docs/reference/claude_code_provider.md for semantics and rationale.
+    """
+
+    mode: Literal["strict_reproducibility", "low_overhead"] = Field(
+        "strict_reproducibility",
+        description="strict_reproducibility = fresh `claude -p` subprocess "
+                    "per call; low_overhead = resident Agent SDK worker with "
+                    "a fresh query per request (never session resume). "
+                    "Overridden by `ARI_CLAUDE_CODE_MODE`.",
+    )
+    max_turns: int = Field(
+        1,
+        description="--max-turns per call. Values > 1 require "
+                    "allow_multi_turn (policy fail-loud otherwise).",
+    )
+    allow_multi_turn: bool = Field(
+        False,
+        description="Explicit opt-in required for max_turns > 1.",
+    )
+    timeout_sec: int = Field(
+        300,
+        description="Per-call subprocess/SDK timeout in seconds. Overridden "
+                    "by `ARI_CLAUDE_CODE_TIMEOUT_SEC`.",
+    )
+    output_format: Literal["json"] = Field(
+        "json",
+        description="Claude Code --output-format. Only `json` (single "
+                    "result envelope) is supported in LLM API mode.",
+    )
+    hermetic: bool = Field(
+        True,
+        description="strict mode: run the subprocess under an env ALLOWLIST "
+                    "(auth/proxy/locale only) instead of inheriting the full "
+                    "environment. Recorded in env_allowlist.json.",
+    )
+    tools: list[str] = Field(
+        default_factory=list,
+        description="Claude Code tools to enable. Must stay empty in LLM "
+                    "API mode (policy fail-loud).",
+    )
+    disallowed_tools: list[str] = Field(
+        default_factory=lambda: ["*"],
+        description='--disallowedTools deny list; must contain "*".',
+    )
+    disable_auto_memory: bool = Field(
+        True,
+        description="Force CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 on the "
+                    "subprocess (policy requires True).",
+    )
+    disable_prompt_history: bool = Field(
+        True,
+        description="Force CLAUDE_CODE_SKIP_PROMPT_HISTORY=1 on the "
+                    "subprocess (policy requires True).",
+    )
+    bare: bool | None = Field(
+        None,
+        description="--bare (skip hooks/plugins/CLAUDE.md/auto-memory; auth "
+                    "strictly ANTHROPIC_API_KEY). null = auto: true iff "
+                    "ANTHROPIC_API_KEY/ANTHROPIC_AUTH_TOKEN is set (OAuth "
+                    "logins would break under --bare). The auto decision is "
+                    "recorded in provenance as bare_auto_resolved.",
+    )
+    safe_mode: bool = Field(
+        True,
+        description="--safe-mode: all customizations (CLAUDE.md, skills, "
+                    "plugins, hooks, MCP, commands) disabled.",
+    )
+    strict_mcp_config: bool = Field(
+        True,
+        description="--strict-mcp-config with no --mcp-config = no MCP "
+                    "servers at all (policy requires True).",
+    )
+    disable_slash_commands: bool = Field(
+        True, description="--disable-slash-commands (no skills)."
+    )
+    no_chrome: bool = Field(True, description="--no-chrome.")
+    no_session_persistence: bool = Field(
+        True,
+        description="--no-session-persistence: session never written to "
+                    "disk, cannot be resumed (policy requires True).",
+    )
+    permission_mode: str = Field(
+        "plan",
+        description="--permission-mode for tool-less text calls. The native "
+                    "structured-output transport overrides it to `default` "
+                    "per schema call (StructuredOutput tool round-trip).",
+    )
+    setting_sources: list[str] = Field(
+        default_factory=list,
+        description="--setting-sources allowlist (user/project/local). "
+                    "Empty = no settings files are loaded.",
+    )
+    record_provenance: bool = Field(
+        True,
+        description="Persist per-call artifacts under "
+                    "{checkpoint}/claude_code/{call_id}/ (prompt, command, "
+                    "env allowlist, stdout/stderr, hashes, validation). "
+                    "Overridden by `ARI_CLAUDE_CODE_RECORD_PROVENANCE`.",
+    )
+    structured_output_transport: Literal["prompt", "native"] = Field(
+        "prompt",
+        description="How response_schema reaches Claude Code: `prompt` "
+                    "embeds the schema in the prompt (keeps the strictest "
+                    "flag profile); `native` passes --json-schema (needs "
+                    "--allowedTools StructuredOutput, permission-mode "
+                    "default and 2 turns; verified on 2.1.198). ARI-side "
+                    "jsonschema validation runs in BOTH cases.",
+    )
+    schema_repair_retries: int = Field(
+        1,
+        description="Max repair retries after schema-validation failure "
+                    "(capped at 1; same hermetic policy, trace saved).",
+    )
+    home_mode: Literal["auto", "real", "sandbox"] = Field(
+        "auto",
+        description="HOME for the subprocess. sandbox = per-call temp HOME "
+                    "(requires API-key auth); real = keep $HOME; auto = "
+                    "sandbox only when --bare resolved true with a key.",
+    )
+    env_allowlist_extra: list[str] = Field(
+        default_factory=list,
+        description="Extra env var NAMES to pass through in hermetic mode.",
+    )
+    claude_bin: str = Field(
+        "claude",
+        description="Claude Code binary. Overridden by "
+                    "`ARI_CLAUDE_CODE_BIN`.",
+    )
+    compat_drop_flags: list[str] = Field(
+        default_factory=list,
+        description="Flags the operator explicitly allows dropping when the "
+                    "installed Claude Code rejects them (recorded in "
+                    "provenance as unsupported_flags). Without this an "
+                    "unknown option fails loudly — isolation is never "
+                    "weakened silently.",
+    )
+    sdk_fallback_to_cli: bool = Field(
+        False,
+        description="low_overhead only: fall back to the strict CLI runner "
+                    "when claude-agent-sdk is not installed. Default is a "
+                    "loud error.",
+    )
+
+
 class LLMConfig(BaseModel):
     backend: str = Field(
         "ollama",
         description="LLM backend identifier consumed by the agent loop "
-                    "(`ollama`, `openai`, `litellm`, ...). Overridden by "
-                    "the `ARI_BACKEND` environment variable.",
+                    "(`ollama`, `openai`, `claude_code`, `litellm`, ...). "
+                    "Overridden by the `ARI_BACKEND` environment variable.",
     )
     model: str = Field(
         "qwen3:8b",
@@ -45,6 +194,12 @@ class LLMConfig(BaseModel):
                     "leaves sampling unseeded (current behaviour). Overridden "
                     "by `ARI_SEED`. Note: GPU inference is not bit-exact even "
                     "with a seed; n-runs still absorb residual non-determinism.",
+    )
+    claude_code: ClaudeCodeSettings = Field(
+        default_factory=ClaudeCodeSettings,
+        description="Settings for `backend: claude_code` (Claude Code as an "
+                    "LLM-API-compatible provider); ignored by every other "
+                    "backend. See docs/reference/claude_code_provider.md.",
     )
 
 
@@ -691,6 +846,44 @@ def _apply_llm_env_overrides(cfg: "ARIConfig") -> None:
             cfg.llm.seed = int(_seed)
         except ValueError:
             pass
+    _apply_claude_code_env_overrides(cfg)
+
+
+def _apply_claude_code_env_overrides(cfg: "ARIConfig") -> None:
+    """ARI_CLAUDE_CODE_* env overrides for the claude_code backend.
+
+    Value-checked before assignment (Pydantic does not validate on
+    assignment — same rationale as the ARI_HANDOFF_* overrides above).
+    """
+    cc = cfg.llm.claude_code
+    _mode = os.environ.get("ARI_CLAUDE_CODE_MODE")
+    if _mode in ("strict_reproducibility", "low_overhead"):
+        cc.mode = _mode
+    # Model override is claude_code-scoped: only meaningful when the
+    # resolved backend actually is claude_code.
+    _cm = os.environ.get("ARI_CLAUDE_CODE_MODEL")
+    if _cm and (cfg.llm.backend or "").replace("-", "_") == "claude_code":
+        cfg.llm.model = _cm
+    _mt = os.environ.get("ARI_CLAUDE_CODE_MAX_TURNS")
+    if _mt:
+        try:
+            cc.max_turns = int(_mt)
+        except ValueError:
+            pass
+    _ts = os.environ.get("ARI_CLAUDE_CODE_TIMEOUT_SEC")
+    if _ts:
+        try:
+            cc.timeout_sec = int(_ts)
+        except ValueError:
+            pass
+    _rp = os.environ.get("ARI_CLAUDE_CODE_RECORD_PROVENANCE")
+    if _rp in ("0", "false", "False"):
+        cc.record_provenance = False
+    elif _rp in ("1", "true", "True"):
+        cc.record_provenance = True
+    _bin = os.environ.get("ARI_CLAUDE_CODE_BIN")
+    if _bin:
+        cc.claude_bin = _bin
 
 
 def export_resolved_config_to_skill_env(cfg: "ARIConfig") -> None:
@@ -775,7 +968,7 @@ def auto_config() -> ARIConfig:
         _ari_root = Path(__file__).resolve().parents[3]  # ARI/
         _ckpt_dir = str(_ari_root / "workspace" / "checkpoints" / "{run_id}")
     _log_dir = os.environ.get("ARI_LOG_DIR", _ckpt_dir)
-    return ARIConfig(
+    cfg = ARIConfig(
         llm=LLMConfig(
             backend=_backend,
             model=_model,
@@ -806,6 +999,10 @@ def auto_config() -> ARIConfig:
             }.items() if v is not None
         },
     )
+    # ARI_CLAUDE_CODE_* must work on the no-YAML path too (GUI wizard
+    # endpoints build their config via auto_config()).
+    _apply_claude_code_env_overrides(cfg)
+    return cfg
 
 
 # Backward-compatible alias

@@ -71,7 +71,10 @@ def _api_run_stage(body: bytes) -> dict:
         if _api_key and len(_api_key) >= 20 and "test" not in _api_key:
             if _provider == "openai" and not proc_env.get("OPENAI_API_KEY"):
                 proc_env["OPENAI_API_KEY"] = _api_key
-            elif _provider == "anthropic" and not proc_env.get("ANTHROPIC_API_KEY"):
+            elif _provider in ("anthropic", "claude_code", "claude-code") \
+                    and not proc_env.get("ANTHROPIC_API_KEY"):
+                # claude_code: key optional (OAuth works); when present it
+                # enables the provider's hermetic --bare profile.
                 proc_env["ANTHROPIC_API_KEY"] = _api_key
         # Inject LLM model/provider from launch_config or settings
         _lc_path = Path(ckpt) / "launch_config.json"
@@ -286,7 +289,8 @@ def _api_launch(body: bytes) -> dict:
                 if not _is_placeholder:
                     if llm_provider == "openai" and not proc_env.get("OPENAI_API_KEY"):
                         proc_env["OPENAI_API_KEY"] = _api_key
-                    elif llm_provider == "anthropic" and not proc_env.get("ANTHROPIC_API_KEY"):
+                    elif llm_provider in ("anthropic", "claude_code", "claude-code") \
+                            and not proc_env.get("ANTHROPIC_API_KEY"):
                         proc_env["ANTHROPIC_API_KEY"] = _api_key
                 if llm_provider == "ollama":
                     # Pass the real Ollama URL directly — ollama SDK strips path from OLLAMA_HOST
@@ -551,6 +555,8 @@ def _api_launch(body: bytes) -> dict:
             _provider_defaults = {
                 "openai": "gpt-4o",
                 "anthropic": "claude-sonnet-4-5",
+                "claude_code": "claude-sonnet-5",
+                "claude-code": "claude-sonnet-5",
                 "ollama": "qwen3:8b",
                 "cli-shim": "claude-cli",
                 "cli_shim": "claude-cli",

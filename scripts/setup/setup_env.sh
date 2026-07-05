@@ -271,6 +271,21 @@ _env_append_if_absent "# LLM_API_BASE="
 _env_append_if_absent "# OLLAMA_HOST=http://localhost:11434"
 _env_append_if_absent "# OLLAMA_BASE_URL=http://localhost:11434"
 
+# --- 2a) claude_code backend (Claude Code as an LLM API) --------------------
+# Used only when ARI_BACKEND=claude_code. See
+# docs/reference/claude_code_provider.md. MODE is
+# strict_reproducibility (fresh `claude -p` per call) or low_overhead
+# (resident Agent SDK worker, fresh query per request).
+_env_append_if_absent "# ARI_CLAUDE_CODE_MODE=strict_reproducibility"
+_env_append_if_absent "# ARI_CLAUDE_CODE_MODEL="
+_env_append_if_absent "# ARI_CLAUDE_CODE_MAX_TURNS=1"
+_env_append_if_absent "# ARI_CLAUDE_CODE_TIMEOUT_SEC=300"
+_env_append_if_absent "# ARI_CLAUDE_CODE_RECORD_PROVENANCE=1"
+_env_append_if_absent "# ARI_CLAUDE_CODE_BIN=claude"
+# Token auth alternative to ANTHROPIC_API_KEY (e.g. `claude setup-token`);
+# either enables the hermetic --bare profile of the claude_code backend.
+_env_append_if_absent "# ANTHROPIC_AUTH_TOKEN="
+
 # --- 2b) Per-phase LLM model overrides --------------------------------------
 # These win over ARI_MODEL/ARI_LLM_MODEL within their phase. Leave blank to
 # use the global model. The GUI Settings page writes these automatically.

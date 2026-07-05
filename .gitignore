@@ -109,6 +109,8 @@ tmp*.md
 # Run-environment capture (carries hostname/partition/nodelist — machine info, never track)
 _run_env.json
 *_run_env.json
+# Scratch reports / drafts (local working dir, never track)
+report_temp/
 # Handoff study (Stage 4): the SpMM task fixture is tracked source, not a runtime
 # experiment.md — re-include it despite the rule above.
 !ari-core/ari/evaluator/spmm_kernels/experiment.md
@@ -153,3 +155,20 @@ memory/
 docs/node_modules/
 docs/.vitepress/dist/
 docs/.vitepress/cache/
+
+# BFTS agent artifacts that leak to the repo root (agent writes bench/problem/
+# result files in the process cwd instead of its node work_dir). Redundant with
+# the per-node work_dir copies; ignore so they never get committed.
+/problem.json
+/problem.bin
+/results.json
+/run_bench.sh
+/run_benchmark.sh
+/run_candidate.sh
+/run_test.sh
+/benchmark.sh
+/performance_plot.png
+/Makefile
+/out.bin
+/candidate
+/selftest

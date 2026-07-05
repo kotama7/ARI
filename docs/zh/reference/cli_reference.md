@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/cli_ear.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-07-03
 ---
 
 # ARI CLI 参考
@@ -34,6 +34,7 @@ ARI 命令行操作的完整参考。CLI 为基于终端的工作流提供与 [W
 | `ari clone <ref>` | 拉取策展过的 EAR bundle (file/https/ari/gh/doi)，按 digest 校验 (v0.7.0) | — |
 | `ari registry <subcmd>` | 自托管 EAR registry：`serve` / `token issue\|revoke\|list` (v0.7.0) | — |
 | `ari migrate node-reports <checkpoint>` | 为旧 (v0.6.0) checkpoint 补齐 `node_report.json` | — |
+| `ari doctor claude-code` | `claude_code` LLM 后端健康检查（可执行文件/策略/flag；`--live` 执行一次真实调用） | — |
 
 ---
 
@@ -283,6 +284,21 @@ ari settings --model gpt-4o
 
 # 设置多个选项
 ari settings --model qwen3:32b --partition gpu --cpus 64 --mem 128
+```
+
+---
+
+## ari doctor claude-code
+
+`claude_code` LLM 后端健康检查（参见
+[claude_code_provider.md](./claude_code_provider.md)）：claude 可执行
+文件与版本、对解析后配置的 fail-loud 策略校验、将要运行的精确 strict
+模式命令，以及静态 flag 支持报告（`--max-turns` / `--system-prompt-file`
+是 `claude --help` 不列出的隐藏但受支持的 flag）。
+
+```bash
+ari doctor claude-code           # 仅离线检查
+ari doctor claude-code --live    # + 一次带 schema 校验的真实 hermetic 调用（消耗 token）
 ```
 
 ---

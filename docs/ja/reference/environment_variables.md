@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-07-03
 ---
 
 # 環境変数リファレンス
@@ -51,6 +51,21 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 | `ARI_MODEL_RUBRIC_AUDIT` | `ari-skill-replicate.audit_rubric` のモデル | フォールスルー |
 | `LLM_MODEL` | スキル横断フォールバック（`ari-skill-transform`、`ari-skill-plot` が使用） | (なし) |
 | `LLM_API_BASE` | `LLM_MODEL` 用 API ベース | (なし) |
+
+### Claude Code バックエンド（`ARI_CLAUDE_CODE_*`）
+
+`ARI_BACKEND=claude_code` / `llm.backend: claude_code` のときのみ読まれる —
+[claude_code_provider.md](./claude_code_provider.md) 参照。
+
+| 変数 | 目的 | デフォルト |
+|---|---|---|
+| `ARI_CLAUDE_CODE_MODE` | `strict_reproducibility`（呼び出しごとに fresh な `claude -p`）または `low_overhead`（常駐 Agent SDK ワーカー、リクエストごとに fresh query） | `strict_reproducibility` |
+| `ARI_CLAUDE_CODE_MODEL` | モデル上書き。解決後のバックエンドが `claude_code` のときのみ適用 | `llm.model` |
+| `ARI_CLAUDE_CODE_MAX_TURNS` | 呼び出しごとの `--max-turns`（>1 は `allow_multi_turn` が必要） | `1` |
+| `ARI_CLAUDE_CODE_TIMEOUT_SEC` | 呼び出しごとの subprocess/SDK タイムアウト | `300` |
+| `ARI_CLAUDE_CODE_RECORD_PROVENANCE` | 呼び出しごとの成果物を `{checkpoint}/claude_code/{call_id}/` に保存（`1`/`0`） | `1` |
+| `ARI_CLAUDE_CODE_BIN` | Claude Code バイナリ | `claude` |
+| `ANTHROPIC_AUTH_TOKEN` | `ANTHROPIC_API_KEY` の代替トークン認証。どちらかがあれば hermetic な `--bare` プロファイルが有効になる | (なし) |
 
 ### Idea スキル — VirSci-live
 

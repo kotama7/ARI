@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/configs
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-07-03
 ---
 
 # 設定リファレンス
@@ -361,6 +361,34 @@ llm:
   backend: anthropic
   model: claude-sonnet-4-5
 ```
+
+### Claude Code（claude_code）
+
+ローカルの Claude Code をステートレスな LLM API として利用する
+（ツール・MCP・メモリ・セッション再利用は一切なし）。詳細:
+[claude_code_provider.md](./claude_code_provider.md)。
+
+```yaml
+llm:
+  backend: claude_code
+  model: claude-sonnet-5
+  claude_code:
+    mode: strict_reproducibility   # または low_overhead（Agent SDK ワーカー）
+    max_turns: 1
+    timeout_sec: 300
+    record_provenance: true
+    # bare: true                   # 既定は auto: ANTHROPIC_API_KEY/ANTHROPIC_AUTH_TOKEN があるときのみ true
+    # structured_output_transport: prompt   # または native（--json-schema）
+```
+
+環境変数オーバーライド: `ARI_CLAUDE_CODE_MODE`、`ARI_CLAUDE_CODE_MODEL`、
+`ARI_CLAUDE_CODE_MAX_TURNS`、`ARI_CLAUDE_CODE_TIMEOUT_SEC`、
+`ARI_CLAUDE_CODE_RECORD_PROVENANCE`、`ARI_CLAUDE_CODE_BIN`。ヘルスチェック:
+`ari doctor claude-code [--live]`。注意: このバックエンドでも MCP スキルは
+Claude Code を経由しない — スキルの直接 litellm 呼び出しは素の Anthropic API
+（`ANTHROPIC_API_KEY` が必要）にルーティングされる。また ReAct エージェント
+フェーズにはツール呼び出し可能なバックエンドが必要（`tools=` を渡すと
+fail-loud）。
 
 ### 任意の OpenAI 互換 API（vLLM、LM Studio など）
 

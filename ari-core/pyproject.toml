@@ -23,6 +23,9 @@ dependencies = [
     "python-dotenv>=1.0",
     "pyyaml>=6.0",
     "paramiko>=3.0",
+    # claude_code backend: ARI-side validation of response_schema outputs
+    # (ari/llm/claude_code/validation.py).
+    "jsonschema>=4.0",
 ]
 # NOTE: ari-core imports ``ari_skill_memory`` directly (first
 # ari-core→ari-skill-* dependency, introduced in v0.6.0). The skill is
@@ -37,6 +40,11 @@ ari = "ari.cli:app"
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
+]
+# llm.claude_code.mode=low_overhead (resident Agent SDK worker);
+# strict_reproducibility works without this extra.
+claude-code = [
+    "claude-agent-sdk>=0.2",
 ]
 
 [tool.hatch.build.targets.wheel]

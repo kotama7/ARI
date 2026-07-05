@@ -211,6 +211,8 @@ def _api_save_settings(body: bytes) -> dict:
         _env_key_name = {
             "openai": "OPENAI_API_KEY",
             "anthropic": "ANTHROPIC_API_KEY",
+            "claude_code": "ANTHROPIC_API_KEY",
+            "claude-code": "ANTHROPIC_API_KEY",
             "gemini": "GOOGLE_API_KEY",
         }.get(_provider, "")
         if _env_key_name:
