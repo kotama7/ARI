@@ -1,0 +1,194 @@
+# check_prompts.allow.yaml -- frozen inline-prompt baseline (subtask 043).
+# Regenerate: python scripts/check_prompts.py --update-baseline
+# Seeded from the Subtask 036 census (docs/refactoring/reports/hardcoded_prompt_inventory.{md,json}).
+# Each entry is keyed by id '<file>::<name>' (or '<file>#L<line>' when the
+# prompt literal is anonymous). Findings on a known id are reported 'known'
+# and never fail --fail-on-regression; NET-NEW role-marked prompts do.
+# 'verdict' carries the 036/011 §5.x classification (EXTRACT_TEMPLATE,
+# MERGE_DUPLICATE, MOVE_TO_CONFIGURABLE_PROMPT, KEEP_INLINE, REVIEW_REQUIRED);
+# EXTRACT_TEMPLATE entries SHRINK as subtasks 039/040/041 externalize them.
+# Do NOT hand-edit findings away -- tune scripts/quality/check_prompts.yaml.
+version: 1
+known:
+- id: ari-skill-evaluator/src/server.py::_CLAIMS_EXTRACT_SYS
+  file: ari-skill-evaluator/src/server.py
+  line: 292
+  name: _CLAIMS_EXTRACT_SYS
+  lines: 18
+  chars: 1428
+  markers:
+  - role
+  - json
+  verdict: REVIEW_REQUIRED
+- id: ari-skill-evaluator/src/server.py::_CONTRACT_FLAGS_SYS
+  file: ari-skill-evaluator/src/server.py
+  line: 490
+  name: _CONTRACT_FLAGS_SYS
+  lines: 14
+  chars: 1061
+  markers:
+  - role
+  - json
+  verdict: REVIEW_REQUIRED
+- id: ari-skill-paper/src/review_engine.py::system
+  file: ari-skill-paper/src/review_engine.py
+  line: 443
+  name: system
+  lines: 5
+  chars: 278
+  markers:
+  - role
+  - json
+  - rubric
+  verdict: MERGE_DUPLICATE
+  prompt_id: skill.paper.area_chair
+- id: ari-skill-paper/src/server.py::SECTION_PROMPTS
+  file: ari-skill-paper/src/server.py
+  line: 117
+  name: SECTION_PROMPTS
+  lines: 6
+  chars: 434
+  markers:
+  - role
+  verdict: REVIEW_REQUIRED
+- id: ari-skill-paper/src/server.py#L652
+  file: ari-skill-paper/src/server.py
+  line: 652
+  name: system_prompt
+  lines: 6
+  chars: 326
+  markers:
+  - role
+  - rubric
+  verdict: REVIEW_REQUIRED
+- id: ari-skill-paper/src/server.py#L661
+  file: ari-skill-paper/src/server.py
+  line: 661
+  name: system_prompt
+  lines: 5
+  chars: 280
+  markers:
+  - role
+  - rubric
+  verdict: REVIEW_REQUIRED
+- id: ari-skill-paper/src/server.py#L669
+  file: ari-skill-paper/src/server.py
+  line: 669
+  name: system_prompt
+  lines: 5
+  chars: 240
+  markers:
+  - role
+  - rubric
+  verdict: REVIEW_REQUIRED
+- id: ari-skill-paper/src/server.py#L1295
+  file: ari-skill-paper/src/server.py
+  line: 1295
+  name: null
+  lines: 32
+  chars: 2086
+  markers:
+  - role
+  verdict: REVIEW_REQUIRED
+- id: ari-skill-plot/src/server.py::resp
+  file: ari-skill-plot/src/server.py
+  line: 90
+  name: resp
+  lines: 7
+  chars: 329
+  markers:
+  - role
+  verdict: EXTRACT_TEMPLATE
+  prompt_id: skill.plot.caption_writer
+- id: ari-skill-plot/src/server.py::system_prompt
+  file: ari-skill-plot/src/server.py
+  line: 560
+  name: system_prompt
+  lines: 32
+  chars: 2171
+  markers:
+  - role
+  - json
+  verdict: EXTRACT_TEMPLATE
+  prompt_id: skill.plot.viz_expert
+- id: ari-skill-plot/src/server.py::simple_system
+  file: ari-skill-plot/src/server.py
+  line: 663
+  name: simple_system
+  lines: 4
+  chars: 330
+  markers:
+  - role
+  - json
+  verdict: EXTRACT_TEMPLATE
+  prompt_id: skill.plot.matplotlib_emitter
+- id: ari-skill-transform/src/server.py#L834
+  file: ari-skill-transform/src/server.py
+  line: 834
+  name: analysis_prompt
+  lines: 30
+  chars: 1597
+  markers:
+  - role
+  - json
+  - rubric
+  verdict: EXTRACT_TEMPLATE
+  prompt_id: skill.transform.node_report_analyst
+- id: ari-skill-transform/src/server.py#L867
+  file: ari-skill-transform/src/server.py
+  line: 867
+  name: analysis_prompt
+  lines: 34
+  chars: 2183
+  markers:
+  - role
+  - json
+  - rubric
+  verdict: EXTRACT_TEMPLATE
+  prompt_id: skill.transform.tree_analyst
+- id: ari-skill-vlm/src/server.py#L97
+  file: ari-skill-vlm/src/server.py
+  line: 97
+  name: null
+  lines: 9
+  chars: 408
+  markers:
+  - role
+  - json
+  - rubric
+  verdict: EXTRACT_TEMPLATE
+  prompt_id: skill.vlm.figure_reviewer
+- id: ari-skill-vlm/src/server.py#L112
+  file: ari-skill-vlm/src/server.py
+  line: 112
+  name: null
+  lines: 8
+  chars: 411
+  markers:
+  - role
+  - json
+  - rubric
+  verdict: EXTRACT_TEMPLATE
+  prompt_id: skill.vlm.table_reviewer
+- id: ari-skill-web/src/server.py::_QUERY_SYSTEM
+  file: ari-skill-web/src/server.py
+  line: 465
+  name: _QUERY_SYSTEM
+  lines: 15
+  chars: 759
+  markers:
+  - role
+  - json
+  verdict: EXTRACT_TEMPLATE
+  prompt_id: skill.web.query_librarian
+- id: ari-skill-web/src/server.py::_SELECT_SYSTEM
+  file: ari-skill-web/src/server.py
+  line: 483
+  name: _SELECT_SYSTEM
+  lines: 7
+  chars: 309
+  markers:
+  - role
+  - json
+  verdict: EXTRACT_TEMPLATE
+  prompt_id: skill.web.reference_selector

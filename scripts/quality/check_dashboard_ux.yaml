@@ -1,0 +1,55 @@
+# Config for scripts/check_dashboard_ux.py — the dashboard-UX regression checker
+# (subtask 073; design docs/refactoring/014_dashboard_ux_refactoring_plan.md §14,
+# 009_quality_scripts_plan.md §3/§6/§8).
+#
+# The checker GUARDS the preserved React-i18n + dashboard-UX contract
+# (docs/refactoring/010_contract_preservation_policy.md §4/§5/§9-D); it never
+# edits an i18n string, component, route, or endpoint. Every key below is
+# overridable so a 067/070 view-layer refactor can retarget extraction without a
+# code change (P2: stdlib + PyYAML only, no node/npm/pnpm).
+#
+# Paths are resolved relative to --frontend (default
+# ari-core/ari/viz/frontend/src).
+
+# (A) React i18n key-set parity. Unquoted identifier keys (nav_home: 'Home'),
+# NOT the landing-JS quoted-key syntax check_i18n_js.py handles.
+i18n:
+  dir: i18n
+  langs: [en, ja, zh]
+
+# (B) Always-on raw/debug exposure inventory (REVIEW_REQUIRED, warning-first).
+# Each spec: kind + scope (subpath under --frontend; "." = whole tree) + a Python
+# regex. Findings are keyed line-independently as "<kind>::<repo-rel file>" so the
+# baseline survives the 070/071 refactors that move these lines. JSON.stringify is
+# scoped to components/ so benign request-body serialization in services/api.ts is
+# not miscounted as a render dump (api.ts is still covered by env_secret_readback
+# + confirm_bypass).
+raw_patterns:
+  - kind: dangerous_html
+    scope: "."
+    regex: 'dangerouslySetInnerHTML|\.innerHTML\s*='
+  - kind: raw_json_tab
+    scope: "."
+    regex: '\{ \} Raw'
+  - kind: env_secret_readback
+    scope: "."
+    regex: 'getEnvKeys\b|/api/env-keys'
+  - kind: confirm_bypass
+    scope: "."
+    regex: 'confirmed:\s*true'
+  - kind: json_dump
+    scope: components
+    regex: 'JSON\.stringify\('
+
+# (C) Route <-> nav parity (advisory). PAGE_MAP (App.tsx) vs NAV_ITEMS
+# (Sidebar.tsx). hidden_routes are intentionally reachable without a sidebar
+# entry (App.tsx:37/47-56): the paperbench/* sub-routes + the new->wizard alias
+# target.
+route_nav:
+  app_file: App.tsx
+  sidebar_file: components/Layout/Sidebar.tsx
+  hidden_routes:
+    - wizard
+    - paperbench/import
+    - paperbench/run
+    - paperbench/results

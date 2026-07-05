@@ -1,0 +1,72 @@
+# Frozen baseline for scripts/check_viz_api_schema.py (subtask 030).
+#
+# Every id below is a `<METHOD> <canonical-path>` identity that the checker
+# reports today against the real tree. Allowlisted findings are reported as
+# `known` and never trip --fail-on-regression, keeping the historical baseline
+# out of a future ratchet (009 plan §6, warning-mode-first). This file freezes
+# the state proven in sync at authoring time (viz_api_contract_inventory.md /
+# 020 + dashboard_fe_api_contract_inventory.md / 060, verified 2026-07-01).
+#
+# It NEVER authorizes editing an endpoint: a server-only entry is a "candidate
+# unused endpoint", never "deprecated" (that term is reserved for external
+# contracts). Drift is resolved by the owning viz subtask (015/021/023) or by an
+# allowlist edit — not by deleting a route here.
+
+known:
+  # ── client-only (broken call): the one known FE->BE drift, F6a ────────────
+  # services/api.ts requestPaperbenchReport (api.ts:857-861) POSTs /report, but
+  # do_POST has no /report branch (only do_GET matches it, 020 G55). A POST falls
+  # to the do_POST else 404; pbPost does not throw. REVIEW_REQUIRED (020/060 F6a):
+  # verify the intended method before 062/063 touch it. Flagged, not fixed here.
+  - id: "POST /api/paperbench/run/{id}/report"
+    note: "020/060 F6a drift — FE POSTs /report; do_POST has no branch (do_GET G55). REVIEW_REQUIRED."
+
+  # ── server-only, consumed OUTSIDE services/api.ts (not drift) ─────────────
+  # Static assets / SPA page load (browser page/asset requests, not app code).
+  - id: "GET /|/index.html"
+    note: "SPA index (page load), served by _serve_spa_index; not an api.ts call. 020 G2."
+  - id: "GET /logo|/logo.png"
+    note: "logo asset served for <img>; not an api.ts call. 020 G1."
+  - id: "GET /static/{id}"
+    note: "Vite static assets; not an api.ts call. 020 G3."
+  - id: "GET /api/{id}"
+    note: "do_GET else-fallback (routes.py:1020-1026 G57): non-/api -> SPA index, /api -> 404. Not an endpoint."
+  # Direct-URL browser deps (<img>/<a>/<iframe>), not fetch wrappers (060 C.2).
+  - id: "GET /codefile/{id}"
+    note: "consumed via <img>/<a href> (resultSections/EarSection/PaperWorkspace), not api.ts. 020 G8 / 060 C.2."
+  - id: "GET re:^/api/checkpoint/[^/]+/paper\\.(pdf|tex)$"
+    note: "PDF embed/download via <a>/<iframe> (PaperWorkspace), not api.ts. 020 G10 / 060 C.2."
+  # SSE / EventSource streams consumed inline by components, not via api.ts (060 C.1).
+  - id: "GET /api/logs"
+    note: "SSE consumed via MonitorPage fetch stream, not an api.ts wrapper. 020 G46 / 060 C.1."
+  - id: "GET /api/paperbench/run/{id}/logs"
+    note: "SSE consumed via ResultsView EventSource, not an api.ts wrapper. 020 G53 / 060 C.1."
+  # Reverse proxy for external (non-dashboard) Ollama clients.
+  - id: "GET /api/ollama/{id}"
+    note: "ollama reverse proxy for external clients; not called by api.ts. 020 G7."
+  - id: "POST /api/ollama/{id}"
+    note: "ollama reverse proxy for external clients; not called by api.ts. 020 P29."
+
+  # ── server-only with NO frontend consumer at all (020 F6b / 060 F.2) ──────
+  # Flagged REVIEW_REQUIRED/DELETE_CANDIDATE for a later phase; allowlisted here,
+  # never deleted by this checker.
+  - id: "GET /memory/{id}"
+    note: "legacy endpoint, no FE consumer. 020 G4 (MOVE_TO_LEGACY) / 060 F.2."
+  - id: "GET /api/memory/detect"
+    note: "no FE consumer. 020 G20 / 060 F.2."
+  - id: "POST /api/memory/start-local"
+    note: "no FE consumer (SettingsPage uses restart). 020 P2 / 060 F.2."
+  - id: "POST /api/memory/stop-local"
+    note: "no FE consumer (SettingsPage uses restart). 020 P3 / 060 F.2."
+  - id: "GET /api/upload"
+    note: "GET stub returning {error:'use POST'}; not called. 020 G33 (DELETE_CANDIDATE) / 060 F.2."
+  - id: "POST /api/env-keys"
+    note: "GET side wrapped as fetchEnvKeys; POST side not called by api.ts. 020 P12 / 060 F.2."
+  - id: "GET /api/lineage-decisions/{id}"
+    note: "no FE consumer (grep-confirmed). 020 G49 / 060 F.2."
+  - id: "GET /api/paperbench/papers/{id}/license"
+    note: "no FE consumer. 020 G52 / 060 F.2."
+  - id: "POST /api/paperbench/papers/{id}/metadata"
+    note: "no FE consumer. 020 P26 / 060 F.2."
+  - id: "GET /api/paperbench/run/{id}/report"
+    note: "GET report served; FE uses POST (the F6a drift). 020 G55 / 060 F.2."

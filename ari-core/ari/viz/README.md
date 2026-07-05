@@ -27,14 +27,21 @@ Entry points: `serve` (programmatic), `main` (`ari viz`).
 - `checkpoint_lifecycle.py` — checkpoint delete + switch.
 - `ear.py` — EAR curate/publish/clone REST helpers.
 - `file_api.py` — per-checkpoint file CRUD + LaTeX compile.
+- `internal_adapters.py` — TODO
 - `node_work_api.py` — per-node work-dir filetree/filecontent/memory listing.
 - `routes.py` — `_Handler` dispatch + access log.
 - `server.py` — HTTP/WebSocket server and `ari viz` main entry.
 - `state.py` — shared mutable server state.
 - `state_sync.py` — node-tree loading + broadcast + filesystem watcher.
+- `tree_view.py` — TODO
 - `ui_helpers.py` — dashboard rendering helpers.
 - `websocket.py` — WebSocket handler streaming tree state.
 - `frontend/` — React + Vite + TypeScript. Served by `ari viz` / `python -m ari.viz.server`
+- `services/` — TODO
+  - `__init__.py` — TODO
+  - `file_service.py` — TODO
+  - `launch_service.py` — TODO
+  - `state_service.py` — TODO
 
 ## See also
 

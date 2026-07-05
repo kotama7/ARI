@@ -4,7 +4,7 @@ import { useI18n } from '../../i18n';
 import { useAppContext } from '../../context/AppContext';
 import { fetchState, fetchExperimentDetail } from '../../services/api';
 import type { AppState, TreeNode } from '../../types';
-import { Card } from '../common';
+import { Card, EmptyState } from '../common';
 
 // ── label / status color maps ────────────────────────
 
@@ -270,9 +270,7 @@ export default function IdeaPage() {
         {/* VirSci Hypotheses */}
         <Card title="🧪 VirSci Hypotheses">
         {ideas.length === 0 ? (
-          <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>
-            No VirSci hypotheses available. VirSci deliberation may not have run yet, or idea.json is empty.
-          </div>
+          <EmptyState message={t('idea_virsci_empty')} />
         ) : (
             ideas.map((idea, idx) => {
               const scores: ReactNode[] = [];

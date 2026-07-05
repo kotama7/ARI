@@ -5,6 +5,7 @@ import { StatBox } from '../common/StatBox';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
+import { EmptyState } from '../common/EmptyState';
 
 function StatusBadge({ status }: { status: string }) {
   if (status === 'running') return <Badge variant="yellow">{'⏳'} Running</Badge>;
@@ -111,9 +112,10 @@ export function HomePage() {
               </div>
             </div>
           ) : (
-            <div className="empty-state" style={{ padding: 20 }}>
-              <p>No experiments yet</p>
-            </div>
+            <EmptyState
+              message={t('home_no_experiments')}
+              hint={t('home_subtitle')}
+            />
           )}
         </Card>
       </div>

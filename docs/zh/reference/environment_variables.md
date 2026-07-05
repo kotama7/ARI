@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-07-03
 ---
 
 # 环境变量参考
@@ -202,7 +202,7 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | 调用者传入 `0` 时默认的 Stage 1 智能体展开时间预算。 |
 | `ARI_REPLICATOR_ITERATIVE` | `1` ⇒ Stage 1 展开默认使用 IterativeAgent 变体。 |
 | `ARI_REPLICATOR_MAX_STEPS` | 默认 Stage 1 步数上限。 |
-| `ARI_AGENT_ENV_PATH` | vendor 风格 `agent.env` 文件（每行一个 `KEY=VALUE`）的默认路径，当 `bridge.rollout_submission` 的 `agent_env_path` 参数未设置时自动加载。此变量也为空时回退到 `~/.ari/agent.env`。用于向 Stage 1 智能体暴露论文特定凭据（例如 `HF_TOKEN`）。 |
+| `ARI_AGENT_ENV_PATH` | vendor 风格 `agent.env` 文件（每行一个 `KEY=VALUE`）的默认路径，当 `bridge.rollout_submission` 的 `agent_env_path` 参数未设置时自动加载。此变量也为空时回退到 `~/.ari/agent.env`。该 vendored 的 PaperBench-replicate 凭据查找（`ari-skill-paper-re/src/_paperbench_bridge.py`）与 v0.5.0 移除的 ARI 自身 `$HOME/.ari/` 运行存储不同，因此该回退仍然有效。用于向 Stage 1 智能体暴露论文特定凭据（例如 `HF_TOKEN`）。 |
 | `HF_TOKEN` | Hugging Face Hub token。在调用进程中设置时，`bridge.rollout_submission` 会自动将其转发到智能体环境中（vendor `nano/eval.py:172-179` 知名凭据模式）。任何 Stage 1 展开会调用 `huggingface-cli login` 的 PaperBench 论文都需要此 token。 |
 | `ARI_JUDGE_N_RUNS` | 向导 / 调用者传入 `0` 时 SimpleJudge 调用的默认 `n_runs`。PaperBench 论文 §4.1 单次默认值为 1。 |
 | `ARI_MODEL_JUDGE` | 默认 judge 模型 id（LiteLLM 路由）。 |

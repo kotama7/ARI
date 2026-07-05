@@ -9,6 +9,8 @@ prompts are editable without touching Python. Loaded via the package's
 - `README.md` — this file.
 - `__init__.py` — exports + `PromptLoader` plumbing.
 - `_loader.py` — `PromptLoader` Protocol + `FilesystemPromptLoader`.
+- `_provenance.py` — TODO
+- `registry.py` — TODO
 - `agent/` — agent ReAct system prompt.
   - `README.md` — agent index.
   - `system.md` — the agent system prompt.

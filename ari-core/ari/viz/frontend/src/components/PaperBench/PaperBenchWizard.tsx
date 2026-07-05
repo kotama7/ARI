@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useT } from '../../i18n';
 import { fetchPaperbenchPapers, estimatePaperbenchCost, runPaperbench } from '../../services/api';
+import { ErrorState } from '../common';
 
 interface RubricConfig {
   model: string;
@@ -386,8 +387,22 @@ export function PaperBenchWizard() {
             </button>
           </div>
           {launchResult && (
-            <div style={{ marginTop: 12, padding: 10, background: launchResult.error ? '#fee' : '#efe' }}>
-              {launchResult.error || `✓ ${t('pb_jobs_queued')}: ${launchResult.job_ids?.join(', ')}`}
+            <div style={{ marginTop: 12 }}>
+              {launchResult.error ? (
+                <ErrorState message={launchResult.error} />
+              ) : (
+                <div
+                  style={{
+                    padding: 10,
+                    borderRadius: 8,
+                    color: 'var(--green)',
+                    background: 'rgba(34,197,94,.1)',
+                    border: '1px solid rgba(34,197,94,.25)',
+                  }}
+                >
+                  ✓ {t('pb_jobs_queued')}: {launchResult.job_ids?.join(', ')}
+                </div>
+              )}
             </div>
           )}
         </div>

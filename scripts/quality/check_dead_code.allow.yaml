@@ -1,0 +1,10 @@
+# Frozen allowlist / baseline for scripts/check_dead_code.py (subtask 055).
+#
+# Each `known` entry is a SAFE_DELETE_CANDIDATE node id that predates this
+# gate; allowlisted candidates report as `known` and never fail --check.
+# The set only SHRINKS as subtask 057 deletes reviewed candidates; it never
+# grows silently. Regenerate deliberately with --update-baseline.
+#
+# 013 §7 firewall: PUBLIC_CONTRACT / DYNAMIC_REFERENCE_RISK / TEST_ONLY
+# nodes are never SAFE_DELETE, so they never appear here.
+known: []

@@ -1,0 +1,89 @@
+{
+  "_meta": {
+    "ari_core_version": "0.9.1",
+    "generated_by": "scripts/snapshot_contracts.py",
+    "note": "regenerate with scripts/snapshot_contracts.py --surface public --update",
+    "surface": "public"
+  },
+  "schema_version": 1,
+  "symbols": {
+    "ari.public.claim_gate": [
+      "CONCEPT_INVARIANTS",
+      "check_emission",
+      "classify_concept",
+      "run_hard_gate",
+      "scan_science_data"
+    ],
+    "ari.public.config_schema": [
+      "ARIConfig",
+      "BFTSConfig",
+      "CheckpointConfig",
+      "EvaluatorConfig",
+      "LLMConfig",
+      "LoggingConfig",
+      "SkillConfig"
+    ],
+    "ari.public.container": [
+      "ContainerConfig",
+      "Optional",
+      "annotations",
+      "config_from_env",
+      "dataclass",
+      "detect_runtime",
+      "field",
+      "get_container_info",
+      "list_images",
+      "os",
+      "pull_image",
+      "run_in_container",
+      "run_shell_in_container",
+      "shutil",
+      "signal",
+      "subprocess"
+    ],
+    "ari.public.cost_tracker": [
+      "CallRecord",
+      "CostTracker",
+      "Optional",
+      "Path",
+      "annotations",
+      "asdict",
+      "bootstrap_skill",
+      "dataclass",
+      "get",
+      "init",
+      "init_from_env",
+      "json",
+      "os",
+      "record",
+      "set_default_metadata",
+      "threading",
+      "time"
+    ],
+    "ari.public.llm": [
+      "LLMClient"
+    ],
+    "ari.public.paths": [
+      "PathManager"
+    ],
+    "ari.public.run_env": [
+      "Any",
+      "Path",
+      "annotations",
+      "capture_env",
+      "datetime",
+      "json",
+      "os",
+      "re",
+      "read_run_env",
+      "shell_capture_snippet",
+      "subprocess",
+      "timezone"
+    ],
+    "ari.public.verified_context": [
+      "build_verified_context",
+      "render_grounded_block",
+      "write_verified_context"
+    ]
+  }
+}

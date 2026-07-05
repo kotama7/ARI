@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
+import { useDevMode } from '../../hooks/useDevMode';
 import { fetchGpuMonitor, gpuMonitorAction } from '../../services/api';
 
 // ── Component ─────────────────────────────────────
 
 export function GpuMonitor() {
   const { t } = useI18n();
+  const { devMode } = useDevMode();
   const [running, setRunning] = useState(false);
   const [_pid, setPid] = useState<number | null>(null);
   const [_ollamaHost, setOllamaHost] = useState<string>('');
@@ -78,20 +80,25 @@ export function GpuMonitor() {
         >
           {statusText}
         </span>
-        <button
-          onClick={handleStart}
-          style={{
-            fontSize: '.75rem',
-            padding: '3px 10px',
-            background: 'var(--accent)',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 4,
-            cursor: 'pointer',
-          }}
-        >
-          {t('gpu_start')}
-        </button>
+        {/* SLURM auto-resubmit Start — developer-only (071). Continuously
+            submits SLURM jobs; hidden by default so it is not a single confirm
+            away for everyday users. Stop + status stay visible to all. */}
+        {devMode && (
+          <button
+            onClick={handleStart}
+            style={{
+              fontSize: '.75rem',
+              padding: '3px 10px',
+              background: 'var(--accent)',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 4,
+              cursor: 'pointer',
+            }}
+          >
+            {t('gpu_start')}
+          </button>
+        )}
         <button
           onClick={handleStop}
           style={{

@@ -42,7 +42,7 @@ def _viz_server_concat(viz_dir: Path) -> str:
     them so existing source-text checks still find the moved literals.
     """
     parts = []
-    for name in ("ui_helpers.py", "websocket.py", "routes.py", "server.py"):
+    for name in ("ui_helpers.py", "websocket.py", "routes.py", "server.py", "services/state_service.py"):
         p = viz_dir / name
         if p.exists():
             parts.append(p.read_text())

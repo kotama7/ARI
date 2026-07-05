@@ -71,3 +71,12 @@ pre.code{background:var(--bg);border:1px solid var(--border);border-radius:6px;p
 .empty-state{text-align:center;padding:60px 20px;color:var(--muted)}
 .empty-state .empty-icon{font-size:2.5rem;margin-bottom:12px}
 .empty-state p{font-size:.9rem}
+
+/* Loading state (shared LoadingState component, subtask 072) */
+.loading-state{display:flex;align-items:center;justify-content:center;gap:8px;padding:24px;color:var(--muted);font-size:.875rem}
+
+/* Error state (shared ErrorState component, subtask 072).
+ * Token-only colors (never hardcoded hex); mirrors the .empty-state idiom. */
+.error-state{display:flex;align-items:center;gap:8px;padding:12px 14px;border-radius:8px;color:var(--red);background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);font-size:.85rem}
+.error-state-inline{display:inline-flex;padding:4px 0;background:transparent;border:none;border-radius:0}
+.error-state .error-state-msg{flex:1;min-width:0;word-break:break-word}

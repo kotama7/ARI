@@ -34,6 +34,12 @@ _KNOWN_PREFIXES = (
 )
 
 
+# Subtask 014 decision — KEEP as-is (NOT adopted into ``ari._factory``).
+# ``resolve_litellm_model`` *transforms* a model id (adds a provider prefix)
+# rather than *constructing* an object, and it is public-adjacent
+# (re-exported at ``ari.llm.__init__:17`` and called across core + skills).
+# Forcing it into the registry pattern for symmetry is discouraged
+# (subtask 014 §7.2 step 3, §17); the signature and return values are frozen.
 def resolve_litellm_model(model: str, backend: str | None = None) -> str:
     """Apply ARI's provider-prefix rules to a litellm model id.
 

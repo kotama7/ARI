@@ -9,6 +9,7 @@ import { useEAR } from './useEAR';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
+import { LoadingState } from '../common';
 import { PublishYamlEditor } from './PublishYamlEditor';
 import {
   curateEAR,
@@ -48,9 +49,7 @@ export function EarSection({
       return (
         <Card style={{ marginBottom: 16 }}>
           <div className="card-title">{'📦'} Artifact Repository</div>
-          <div style={{ color: 'var(--muted)' }}>
-            <span className="spinner" /> Loading EAR...
-          </div>
+          <LoadingState inline label={t('loading_ear')} />
         </Card>
       );
     }

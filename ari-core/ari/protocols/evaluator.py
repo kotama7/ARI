@@ -24,7 +24,19 @@ class Evaluator(Protocol):
     keyword-driven; the Protocol matches that shape.  An alternative
     implementation may use regex, table lookup, or another LLM —
     callers should treat the return dict as the contract.
+
+    The contract covers the **actual** runtime surface callers rely on
+    (subtask 009): the async :meth:`evaluate`, the synchronous
+    :meth:`evaluate_sync` entry point that :class:`ari.agent.loop.AgentLoop`
+    invokes, and the mutable :attr:`metric_spec` attribute (a
+    ``MetricSpec``; typed ``Any`` here to keep ``ari.protocols`` free of an
+    ``ari.evaluator`` import). ``runtime_checkable`` matches instances
+    structurally, so ``LLMEvaluator`` satisfies this with no subclassing.
     """
+
+    #: Mutable metric specification the evaluator scores against (a
+    #: ``ari.evaluator...MetricSpec``); present on every instance.
+    metric_spec: Any
 
     async def evaluate(
         self,
@@ -36,5 +48,18 @@ class Evaluator(Protocol):
     ) -> dict[str, Any]:
         """Return ``{"score", "reason", "has_real_data",
         "has_paper_section", "metrics", ...}`` for a finished node.
+        """
+        ...
+
+    def evaluate_sync(
+        self,
+        goal: str,
+        artifacts: list[dict],
+        summary: str,
+        node_id: str | None = None,
+        node_label: str | None = None,
+    ) -> dict[str, Any]:
+        """Synchronous counterpart of :meth:`evaluate` (called from
+        ``AgentLoop``); returns the same result dict.
         """
         ...

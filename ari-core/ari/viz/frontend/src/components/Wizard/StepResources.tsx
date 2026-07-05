@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useI18n } from '../../i18n';
+import { useDevMode } from '../../hooks/useDevMode';
 import * as api from '../../services/api';
 import type { ContainerImage } from '../../services/api';
 import { OrsModelPicker, FewshotManager } from './stepResourcesSections';
@@ -225,6 +226,7 @@ export function StepResources({
     }
   }, [isClosedReview, fewshotMode, setFewshotMode]);
   const { t } = useI18n();
+  const { devMode } = useDevMode();
   const [schedulerLabel, setSchedulerLabel] = useState('detecting…');
   const [schedulerClass, setSchedulerClass] = useState('badge badge-blue');
   const [partitions, setPartitions] = useState<DetectedPartition[]>([]);
@@ -295,8 +297,10 @@ export function StepResources({
     // Re-loading them here would clobber the user's manual model selection
     // every time StepResources remounts (e.g. when navigating Launch ↔ Resources).
 
-    // Auto-read API key
-    autoReadApiKey();
+    // Auto-read API key — developer-only (071): never auto-pull secrets from
+    // /api/env-keys on mount unless Developer Mode is on. Manual key entry
+    // stays available to everyone.
+    if (devMode) autoReadApiKey();
 
     // Load container info & images
     api.fetchContainerInfo().then((info) => {
@@ -668,13 +672,17 @@ export function StepResources({
                 style={{ flex: 1 }}
                 onChange={(e) => setApiKey(e.target.value)}
               />
-              <button
-                className="btn btn-outline btn-sm"
-                type="button"
-                onClick={autoReadApiKey}
-              >
-                {'🔑'} Auto-read
-              </button>
+              {/* Env-key secret readback — developer-only (071). Reads real
+                  secrets from /api/env-keys into the field; hidden by default. */}
+              {devMode && (
+                <button
+                  className="btn btn-outline btn-sm"
+                  type="button"
+                  onClick={autoReadApiKey}
+                >
+                  {'🔑'} Auto-read
+                </button>
+              )}
             </div>
             <div
               style={{ fontSize: '.75rem', color: apiKeyColor, marginTop: 3 }}

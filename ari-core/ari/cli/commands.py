@@ -126,7 +126,7 @@ def delete_project(
     # swept later with `ari memory prune-local`.
     try:
         PathManager.set_checkpoint_dir_env(p)
-        from ari_skill_memory.backends import get_backend, clear_backend_cache
+        from ari.memory import get_backend, clear_backend_cache
         clear_backend_cache()
         get_backend(checkpoint_dir=p).purge_checkpoint()
         clear_backend_cache()

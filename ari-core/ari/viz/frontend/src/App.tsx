@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import type { LazyExoticComponent, ComponentType } from 'react';
 import { AppProvider } from './context/AppContext';
 import { Layout } from './components/Layout';
+import { LoadingState } from './components/common';
 import './styles/dashboard.css';
 
 // Lazy-load page components
@@ -73,7 +74,7 @@ function Router() {
       <Suspense
         fallback={
           <div style={{ flex: 1, padding: 28, textAlign: 'center', paddingTop: 80 }}>
-            <div className="spinner" />
+            <LoadingState />
           </div>
         }
       >

@@ -9,6 +9,9 @@ Modules:
 - ``node`` / ``node_selection`` — node data model + leaf selector.
 - ``bfts`` — main BFTS loop and stage hooks (expansion tracking, depth /
   sterile / total pruning, frontier retire policy).
+- ``bfts_prompt_builder`` — pure, deterministic prompt-context serialization
+  extracted from ``bfts`` so the strategy stays ranking/selection-only
+  (subtask 011 §7-A).
 - ``lineage_decision`` — LLM judge for ``continue`` / ``switch_to_idea``
   / ``fanout`` / ``terminate`` (v0.7.0).
 - ``root_idea_selector`` — picks the seed idea from ``idea.json``.

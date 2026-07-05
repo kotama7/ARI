@@ -13,8 +13,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from src.server import (  # noqa: E402
-    _CLAIMS_EXTRACT_SYS,
-    _CONTRACT_FLAGS_SYS,
+    _load_prompt,
     _llm_extract_claims,
     _llm_extract_contract_flags,
     _normalize_claims,
@@ -24,6 +23,12 @@ from src.server import (  # noqa: E402
     _resolve_falsifiable_claims,
     _tool_make_metric_spec,
 )
+
+# Subtask 040: these two judge prompts were externalized to src/prompts/*.md and
+# are now loaded via the skill-local loader; the rendered text is byte-identical
+# to the former inline constants, so the content assertions below are unchanged.
+_CLAIMS_EXTRACT_SYS = _load_prompt("claims_extract_sys")
+_CONTRACT_FLAGS_SYS = _load_prompt("contract_flags_sys")
 
 
 class _Msg:
