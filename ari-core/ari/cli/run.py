@@ -134,10 +134,10 @@ def _setup_logging(cfg_logging, run_id: str) -> None:
 def _apply_profile(cfg, profile_name: str) -> None:
     """Deep-merge an environment profile into the config."""
     import yaml as _yaml
-    # Profiles live at ari-core/config/profiles/. After Phase 3A
-    # ``__file__`` is ``ari-core/ari/cli/__init__.py`` so we walk up
-    # three parents (cli → ari → ari-core) to reach the bundled root.
-    profiles_dir = Path(__file__).resolve().parent.parent.parent / "config" / "profiles"
+    # Profiles live at ari-core/config/profiles/, resolved via the single
+    # package-config accessor so call sites don't hardcode the walk-up depth.
+    from ari.config.finder import package_config_root
+    profiles_dir = package_config_root() / "profiles"
     p = profiles_dir / f"{profile_name}.yaml"
     if not p.exists():
         logging.getLogger(__name__).warning(
@@ -242,7 +242,8 @@ def run(
     # (which inherit os.environ) can wrap run_bash commands in the container.
     try:
         import yaml as _yaml_ct
-        _wf_ct_path = Path(__file__).resolve().parent.parent.parent / "config" / "workflow.yaml"
+        from ari.config.finder import package_config_root
+        _wf_ct_path = package_config_root() / "workflow.yaml"
         _ct_cfg_raw = {}
         if _wf_ct_path.exists():
             _ct_cfg_raw = (_yaml_ct.safe_load(_wf_ct_path.read_text()) or {}).get("container", {})
@@ -397,7 +398,8 @@ def run(
     # because that copy may carry per-launch rewrites (e.g. include_ear=False
     # disabling EAR / ors_seed_sandbox stages) that an unconditional copy from
     # source would silently undo.
-    _wf_src = config if config and config.exists() else (Path(__file__).resolve().parent.parent.parent / "config" / "workflow.yaml")
+    from ari.config.finder import package_config_root
+    _wf_src = config if config and config.exists() else (package_config_root() / "workflow.yaml")
     _wf_dst = checkpoint_dir / "workflow.yaml"
     if _wf_src and Path(_wf_src).exists() and not _wf_dst.exists():
         try:
@@ -426,7 +428,8 @@ def run(
         # stages) actually drive the paper pipeline. Fall back to --config or
         # the package source for direct CLI runs that never wrote a checkpoint
         # copy.
-        _pkg_wf = Path(__file__).resolve().parent.parent.parent / "config" / "workflow.yaml"
+        from ari.config.finder import package_config_root
+        _pkg_wf = package_config_root() / "workflow.yaml"
         _ckpt_wf = checkpoint_dir / "workflow.yaml"
         if _ckpt_wf.exists():
             _cfg_str = str(_ckpt_wf)
@@ -534,7 +537,7 @@ def resume(
         try:
             from ari.memory_cli import _do_restore, _backup_path
             if _backup_path(checkpoint_dir).exists():
-                from ari_skill_memory.backends import get_backend
+                from ari.memory import get_backend
                 PathManager.set_checkpoint_dir_env(checkpoint_dir)
                 _b = get_backend(checkpoint_dir=checkpoint_dir)
                 if not _b.list_all_nodes().get("by_node") and not _b.list_react_entries():
@@ -558,7 +561,8 @@ def resume(
         ))
         # Prefer per-checkpoint workflow.yaml (carries launch-time rewrites)
         # over the package source.
-        _pkg_wf_r = Path(__file__).resolve().parent.parent.parent / "config" / "workflow.yaml"
+        from ari.config.finder import package_config_root
+        _pkg_wf_r = package_config_root() / "workflow.yaml"
         _ckpt_wf_r = checkpoint_dir / "workflow.yaml"
         if _ckpt_wf_r.exists():
             _cfg_str_r = str(_ckpt_wf_r)

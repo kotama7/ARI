@@ -9,6 +9,7 @@ plus v0.5→v0.6 auto-migration.
 - `README.md` — this file.
 - `__init__.py` — `MemoryClient` protocol, backends, migration map.
 - `auto_migrate.py` — v0.5.x → v0.6.0 auto-migration on first launch.
+- `backend.py` — sanctioned core→skill funnel: lazy forwards (`get_backend` / `clear_backend_cache` / `build_verified_context`) to the rich `MemoryBackend`.
 - `client.py` — abstract `MemoryClient` ABC.
 - `file_client.py` — `FileMemoryClient` (legacy JSONL).
 - `letta_client.py` — `LettaMemoryClient` (default).

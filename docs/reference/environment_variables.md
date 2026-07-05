@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-07-03
 ---
 
 # Environment Variable Reference
@@ -208,7 +208,7 @@ LLM follows `ARI_MODEL_IDEA`.
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | Default Stage 1 agent rollout time budget when the caller passes `0`. |
 | `ARI_REPLICATOR_ITERATIVE` | `1` ⇒ default to IterativeAgent variant for Stage 1 rollouts. |
 | `ARI_REPLICATOR_MAX_STEPS` | Default Stage 1 step cap. |
-| `ARI_AGENT_ENV_PATH` | Default path to the vendor-style `agent.env` file (one `KEY=VALUE` per line) that `bridge.rollout_submission` auto-loads when its `agent_env_path` argument is unset. Falls back to `~/.ari/agent.env` when this is also empty. Used to surface per-paper credentials (e.g. `HF_TOKEN`) to the Stage 1 agent. |
+| `ARI_AGENT_ENV_PATH` | Default path to the vendor-style `agent.env` file (one `KEY=VALUE` per line) that `bridge.rollout_submission` auto-loads when its `agent_env_path` argument is unset. Falls back to `~/.ari/agent.env` when this is also empty. This vendored PaperBench-replicate credentials lookup (`ari-skill-paper-re/src/_paperbench_bridge.py`) is distinct from ARI's own `$HOME/.ari/` run storage removed in v0.5.0, so the fallback remains live. Used to surface per-paper credentials (e.g. `HF_TOKEN`) to the Stage 1 agent. |
 | `HF_TOKEN` | Hugging Face Hub token. When set on the calling process, `bridge.rollout_submission` automatically forwards it into the agent's env (vendor `nano/eval.py:172-179` well-known-credential pattern). Required for any PaperBench paper whose Stage 1 rollout invokes `huggingface-cli login`. |
 | `ARI_JUDGE_N_RUNS` | Default `n_runs` for the SimpleJudge call when the wizard / caller passes `0`. PaperBench paper §4.1 single-pass default is 1. |
 | `ARI_MODEL_JUDGE` | Default judge model id (LiteLLM-routed). |

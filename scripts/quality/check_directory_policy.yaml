@@ -1,0 +1,54 @@
+# Config for scripts/check_directory_policy.py — the placement/naming policy gate
+# (subtask 028; design docs/refactoring/009 §5.4, 005_directory_consolidation_plan.md,
+# 000_master_refactoring_plan.md:140 ST-3-1).
+#
+# The checker GUARDS layout; it never moves/renames/merges/deletes the config trio
+# (that is subtask 003). All keys are overridable so subtask 003's landed layout can
+# be re-encoded here without a code edit (P2: stdlib + PyYAML only, no LLM/network).
+
+# Rule A — the three canonical config-trio directories and their expected role.
+# Grounded in the LIVE tree (verified 2026-07-02): config=locator CODE,
+# configs=packaged DATA+loader, top-level config=rubric/profile/workflow DATA.
+# require_kind: "py" -> dir must hold a tracked .py; "data" -> a tracked
+# .yaml/.yml/.json. markers: files that must be present (role grounding).
+config_trio:
+  - path: ari-core/ari/config
+    role: python-locator-code
+    require_kind: py
+    markers: [finder.py, __init__.py]
+  - path: ari-core/ari/configs
+    role: packaged-default-data-and-loader
+    require_kind: data
+    markers: [_loader.py, defaults.yaml, model_prices.yaml]
+  - path: ari-core/config
+    role: rubric-profile-workflow-data
+    require_kind: data
+    markers: [default.yaml, workflow.yaml]
+
+# Legal config-family directory basenames (case-insensitive). A config-family dir
+# under a scan parent that is not one of the three canonical paths is a collision.
+config_family_names: [config, configs]
+
+# Parents (posix; "" == repo root) directly under which a config-family collision
+# could appear — exactly the parents of the three canonical trio directories.
+config_scan_parents: ["", ari-core, ari-core/ari]
+
+# Directory basenames banned ANYWHERE. `sonfigs/` is a phantom: it does NOT exist
+# in the repo (find -iname '*sonfig*' matches only the doc filename
+# 003_consolidate_config_configs_sonfigs.md, never a directory). Rule A keeps it absent.
+banned_dir_globs: [sonfig, sonfigs, "sonfig*"]
+
+# Rule B — storage-family basenames + the known-legal top-level allowlist. A NEW
+# top-level storage-family dir outside the allowlist warns (consolidation is 005).
+storage_family_names:
+  [checkpoint, checkpoints, experiment, experiments, staging, workspace, workspaces, run, runs]
+storage_allowlist: [checkpoints, workspace, experiments, staging]
+
+# Rule C — forbidden TRACKED build artifacts (scanned over `git ls-files`, so the
+# .gitignored on-disk frontend/node_modules/ is invisible and never false-positives).
+forbidden_artifact_dirs: [node_modules, .venv, venv, dist, build, __pycache__]
+forbidden_artifact_dir_suffixes: [.egg-info]
+forbidden_artifact_file_suffixes: [.pyc, .pyo]
+
+# Directory basenames skipped by the filesystem-walk fallback (non-git --target).
+walk_skip_dirs: [.git, __pycache__, node_modules, .venv]

@@ -42,7 +42,7 @@ def _viz_server_concat(viz_dir: Path) -> str:
     them so existing source-text checks still find the moved literals.
     """
     parts = []
-    for name in ("ui_helpers.py", "websocket.py", "routes.py", "server.py"):
+    for name in ("ui_helpers.py", "websocket.py", "routes.py", "server.py", "services/state_service.py"):
         p = viz_dir / name
         if p.exists():
             parts.append(p.read_text())
@@ -1218,8 +1218,12 @@ def test_server_state_has_experiment_md_cleanup():
     but must NOT clear _launch_llm_model/_provider (needed for CONFIG display)."""
     src = _viz_server_concat(_VIZ_DIR)
     import re
-    m = re.search(r'elif self\.path == "/state":.+?_load_nodes_tree', src, re.DOTALL)
-    assert m, "/state handler not found"
+    # subtask 062: the /state builder moved from routes.py's inline
+    # `elif self.path == "/state":` into services/state_service.build_app_state
+    # (added to _viz_server_concat as a location pointer). Same behaviour anchor:
+    # the builder body from its def up to the first _load_nodes_tree() call.
+    m = re.search(r'def build_app_state.+?_load_nodes_tree', src, re.DOTALL)
+    assert m, "/state builder (build_app_state) not found"
     block = m.group(0)
     assert "_last_experiment_md = None" in block, \
         "/state must clear _last_experiment_md when process exits"

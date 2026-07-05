@@ -23,6 +23,8 @@ from dataclasses import dataclass, field
 
 import litellm
 
+from ari._factory import BaseRegistry
+
 logger = logging.getLogger(__name__)
 
 
@@ -161,13 +163,22 @@ def weighted_geometric_mean(
 
 
 # Registry consulted by LLMEvaluator to select a composite at construction
-# time. Keep names in sync with EvaluatorConfig.composite (Literal).
-_COMPOSITES: dict[str, "callable"] = {
-    "harmonic_mean": weighted_harmonic_mean,
-    "arithmetic_mean": weighted_arithmetic_mean,
-    "weighted_min": weighted_min,
-    "geometric_mean": weighted_geometric_mean,
-}
+# time (subtask 014: unified behind ``ari._factory.BaseRegistry``). Keep names
+# in sync with EvaluatorConfig.composite (Literal) — guarded by
+# ``tests/test_factory_registry.py`` and ``tests/test_evaluator_composite.py``.
+# The composite value *is* the callable, so each is registered eagerly and
+# ``resolve`` returns the function object unchanged (identity-preserving).
+_COMPOSITE_REGISTRY: "BaseRegistry" = BaseRegistry("evaluator.composite")
+_COMPOSITE_REGISTRY.register("harmonic_mean", weighted_harmonic_mean)
+_COMPOSITE_REGISTRY.register("arithmetic_mean", weighted_arithmetic_mean)
+_COMPOSITE_REGISTRY.register("weighted_min", weighted_min)
+_COMPOSITE_REGISTRY.register("geometric_mean", weighted_geometric_mean)
+
+# Back-compat alias: a plain ``dict[str, callable]`` snapshot of the registry,
+# preserved verbatim for callers/tests that import ``_COMPOSITES`` directly
+# (``test_evaluator_composite``, ``test_bfts_eval_config_integration``). The
+# registry is the single source of truth; this alias is derived from it.
+_COMPOSITES: dict[str, "callable"] = _COMPOSITE_REGISTRY.as_dict()
 
 
 def _default_scorer(metrics: dict) -> float | None:
@@ -260,7 +271,17 @@ class LLMEvaluator:
             text = text[:-1]
         return text
 
+    @staticmethod
+    def _load_base_system_hash() -> str:
+        # Subtask 044: capture the ``sha256[:12]`` of the raw template body
+        # (before the trailing-newline trim) so provenance uses the same hash
+        # ``load_versioned`` / the snapshot test compute. Never renders or
+        # calls an LLM.
+        from ari.prompts import FilesystemPromptLoader
+        return FilesystemPromptLoader().load_versioned("evaluator/extract_metrics")[1]
+
     BASE_SYSTEM = _load_base_system.__func__()  # type: ignore[func-returns-value]
+    BASE_SYSTEM_HASH = _load_base_system_hash.__func__()  # type: ignore[func-returns-value]
 
     def __init__(
         self,
@@ -277,13 +298,13 @@ class LLMEvaluator:
         self.model = model
         self.api_base = api_base
         self.metric_spec = metric_spec or MetricSpec()  # default: generic
-        if composite not in _COMPOSITES:
+        if composite not in _COMPOSITE_REGISTRY:
             raise ValueError(
                 f"Unknown composite formula {composite!r}; "
-                f"valid options: {sorted(_COMPOSITES)}"
+                f"valid options: {sorted(_COMPOSITE_REGISTRY.keys())}"
             )
         self._composite_name = composite
-        self._compose_fn = _COMPOSITES[composite]
+        self._compose_fn = _COMPOSITE_REGISTRY.resolve(composite)
         # Constructor-supplied weights act as a config-level fallback; the
         # MetricSpec still wins if it declares its own weights.
         self._ctor_axis_weights: dict[str, float] | None = (
@@ -402,6 +423,11 @@ class LLMEvaluator:
         spec_section = self.metric_spec.to_prompt_section()
         weights = self._resolve_axis_weights()
 
+        # Subtask 044: emit prompt provenance for whichever evaluator template
+        # this call renders. Byte-identical output — ``load_versioned`` returns
+        # the same text ``load`` did; only the surrounding Python changed.
+        from ari.prompts import record_prompt_use as _record_prompt_use
+
         if self._dynamic_axes:
             # Phase 3 path: replace the BASE_SYSTEM's hard-coded 5-axis block
             # with the dynamic axes. PC6 lifts the surrounding prose into
@@ -410,7 +436,8 @@ class LLMEvaluator:
             # is no longer duplicated between code and the prompt file.
             from ari.evaluator.dynamic_axes import axes_to_prompt_section
             from ari.prompts import FilesystemPromptLoader as _PL_pr
-            base = _PL_pr().load("evaluator/peer_review").format(
+            _pr_text, _pr_hash = _PL_pr().load_versioned("evaluator/peer_review")
+            base = _pr_text.format(
                 axes_block=axes_to_prompt_section(self._dynamic_axes),
             )
             # peer_review.md persists with a trailing newline; the legacy
@@ -427,21 +454,33 @@ class LLMEvaluator:
             )
             head = base + "\n\n" + weights_line
             if spec_section.strip() == "Experiment type: generic experiment":
-                return head
-            return head + f"\n\nDomain context:\n{spec_section}"
+                system = head
+            else:
+                system = head + f"\n\nDomain context:\n{spec_section}"
+            _record_prompt_use(
+                "evaluator/peer_review", _pr_hash, rendered_text=system,
+                model=self.model, phase="evaluation",
+            )
+            return system
 
         weights_line = (
             "Axis weights (for your reference — the composite is a weighted harmonic mean):\n"
             + ", ".join(f"{k}={weights.get(k, 0.0):.2f}" for k in AXIS_NAMES)
         )
         if spec_section.strip() == "Experiment type: generic experiment":
-            return self.BASE_SYSTEM + "\n\n" + weights_line
-        return (
-            self.BASE_SYSTEM
-            + "\n\n"
-            + weights_line
-            + f"\n\nDomain context:\n{spec_section}"
+            system = self.BASE_SYSTEM + "\n\n" + weights_line
+        else:
+            system = (
+                self.BASE_SYSTEM
+                + "\n\n"
+                + weights_line
+                + f"\n\nDomain context:\n{spec_section}"
+            )
+        _record_prompt_use(
+            "evaluator/extract_metrics", self.BASE_SYSTEM_HASH, rendered_text=system,
+            model=self.model, phase="evaluation",
         )
+        return system
 
     def _build_score_context(self) -> str:
         """Render the score-distribution context block for the user prompt.

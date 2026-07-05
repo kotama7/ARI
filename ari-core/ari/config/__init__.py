@@ -160,10 +160,12 @@ class BFTSConfig(BaseModel):
 
 class CheckpointConfig(BaseModel):
     dir: str = Field(
-        "./checkpoints/{run_id}/",
+        "./workspace/checkpoints/{run_id}/",
         description="Checkpoint root template. `{run_id}` is substituted "
                     "at run start. Overridden by `ARI_CHECKPOINT_DIR` "
-                    "(an explicit env path always wins).",
+                    "(an explicit env path always wins). Roots under "
+                    "`workspace/` per subtask 004 P2 ('workspace/ wins'); the "
+                    "legacy `./checkpoints/{run_id}/` form stays resolvable.",
     )
 
 
@@ -174,9 +176,10 @@ class LoggingConfig(BaseModel):
                     "`ARI_LOG_LEVEL`.",
     )
     dir: str = Field(
-        "./checkpoints/{run_id}/",
+        "./workspace/checkpoints/{run_id}/",
         description="Log directory. Defaults to the active checkpoint "
-                    "(via `ARI_LOG_DIR` or `ARI_CHECKPOINT_DIR`).",
+                    "(via `ARI_LOG_DIR` or `ARI_CHECKPOINT_DIR`). Roots under "
+                    "`workspace/` per subtask 004 P2, matching CheckpointConfig.",
     )
     format: str = Field(
         "json",
@@ -581,15 +584,18 @@ def auto_config() -> ARIConfig:
     _backend = os.environ.get("ARI_BACKEND", "ollama")
     _base_url = os.environ.get("OLLAMA_HOST", "http://localhost:11434") if _backend == "ollama" else os.environ.get("LLM_API_BASE", None)
     # Checkpoint dir: ARI_CHECKPOINT_DIR (explicit) > workspace/checkpoints/{run_id}/
-    # Use PathManager-based workspace path so CLI and GUI share the same location.
-    from ari.paths import PathManager
+    # Subtask 004 P2 reconciliation ("workspace/ wins"): the canonical workspace
+    # root is owned by ``RuntimePathResolver.resolve_workspace_root()`` (subtask
+    # 006) — the single source of truth. Routing through it keeps CLI, GUI, and
+    # auto_config on one location (and honours ARI_ROOT), replacing the previous
+    # hand-rolled ``parents[3] / "workspace"`` arithmetic that duplicated the
+    # policy and disagreed with ``default.yaml``.
+    from ari.paths import PathManager, RuntimePathResolver
     _ckpt_path = PathManager.checkpoint_dir_from_env()
     _ckpt_dir = str(_ckpt_path) if _ckpt_path is not None else ""
     if not _ckpt_dir:
-        # Phase 2 — file moved into a package, so we walk up one extra
-        # parent to reach the repo root (``ARI/``).
-        _ari_root = Path(__file__).resolve().parents[3]  # ARI/
-        _ckpt_dir = str(_ari_root / "workspace" / "checkpoints" / "{run_id}")
+        _ws_root = RuntimePathResolver.resolve_workspace_root()
+        _ckpt_dir = str(_ws_root / "checkpoints" / "{run_id}")
     _log_dir = os.environ.get("ARI_LOG_DIR", _ckpt_dir)
     return ARIConfig(
         llm=LLMConfig(

@@ -8,6 +8,9 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
 - `App.tsx` — root app, lazy-loads page components and wraps them in `AppProvider`/`Layout`.
 - `main.tsx` — ReactDOM entry point with a top-level error boundary.
 - `vite-env.d.ts` — Vite client type declarations.
+- `__tests__/` — TODO
+  - `devModeAndDangerousOps.test.tsx` — TODO
+  - `routeNavParity.test.tsx` — TODO
 - `components/` — page and UI components, grouped by feature.
   - `README.md` — components index.
   - `common/` — reusable presentational UI primitives shared across pages.
@@ -15,9 +18,14 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `Badge.tsx` — colored variant label span.
     - `Button.tsx` — styled button with variant/size props.
     - `Card.tsx` — bordered content container.
+    - `EmptyState.tsx` — TODO
+    - `ErrorState.tsx` — TODO
     - `index.ts` — barrel re-exports.
+    - `LoadingState.tsx` — TODO
     - `StatBox.tsx` — single value + label stat tile.
     - `StatusBadge.tsx` — maps run status to a colored `Badge`.
+    - `__tests__/` — TODO
+      - `StateComponents.test.tsx` — TODO
   - `Experiments/` — experiments page (lists experiment/checkpoint runs).
     - `README.md` — Experiments index.
     - `ExperimentsPage.tsx` — experiments list view.
@@ -67,11 +75,34 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `resultTypes.ts` — Results-page shared types (OrsRenderInput, RubricNode, LeafGrade, StageState); extracted from resultSections in req 15.
     - `RubricTreeVisualization.tsx` — D3 rubric tree with aggregated leaf scores.
     - `useEAR.ts` — hook owning EarSection's curate/publish/publish.yaml-editor action state; extracted from ResultsPage in req 15.
+    - `sections/` — TODO
+      - `ContextSection.tsx` — TODO
+      - `FiguresSection.tsx` — TODO
+      - `OrsChainSection.tsx` — TODO
+      - `ReproSection.tsx` — TODO
+      - `ReviewScoresSection.tsx` — TODO
   - `Settings/` — dashboard/run configuration page.
     - `README.md` — Settings index.
     - `index.ts` — barrel re-export.
     - `settingsConstants.ts` — provider/Letta model tables + _splitHandle helper (extracted from SettingsPage in req 15).
+    - `SettingsGroup.tsx` — TODO
     - `SettingsPage.tsx` — settings view.
+    - `settingsStyles.ts` — TODO
+    - `settingsTypes.ts` — TODO
+    - `__tests__/` — TODO
+      - `SettingsContract.test.tsx` — TODO
+      - `SettingsDisclosure.test.tsx` — TODO
+    - `sections/` — TODO
+      - `ContainerSection.tsx` — TODO
+      - `LanguageSection.tsx` — TODO
+      - `LlmBackendSection.tsx` — TODO
+      - `MemorySection.tsx` — TODO
+      - `PaperRetrievalSection.tsx` — TODO
+      - `ProjectManagementSection.tsx` — TODO
+      - `SkillsSection.tsx` — TODO
+      - `SlurmSection.tsx` — TODO
+      - `SshSection.tsx` — TODO
+      - `VlmReviewSection.tsx` — TODO
   - `Tree/` — BFTS tree page (search tree, detail panel, file browser).
     - `README.md` — Tree index.
     - `DetailPanel.tsx` — selected-node detail panel (tabs: memory, report, etc.).
@@ -101,7 +132,9 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
   - `Workflow/` — workflow stages/pipeline page.
     - `README.md` — Workflow index.
     - `index.ts` — barrel re-export.
+    - `workflowModals.tsx` — TODO
     - `workflowNodes.tsx` — React Flow custom nodes + edit/skill/condition modals (extracted from WorkflowPage in req 15).
+    - `workflowNodeTypes.tsx` — TODO
     - `WorkflowPage.tsx` — workflow view.
 - `context/` — global React context (shared app state).
   - `README.md` — context index.
@@ -109,16 +142,42 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
 - `hooks/` — custom hooks (data fetch, websocket).
   - `README.md` — hooks index.
   - `useApi.ts` — generic async data-fetch hook with loading/error/refetch.
+  - `useDevMode.ts` — persisted developer-mode flag (localStorage `ari_dev_mode`, default OFF) with same-tab + cross-tab sync; gates raw/debug/dangerous UI surfaces.
   - `useWebSocket.ts` — streams real-time tree updates with auto-reconnect.
+  - `__tests__/` — hook unit tests.
+    - `useDevMode.test.tsx` — default-OFF, persistence, and cross-instance sync for `useDevMode`.
 - `i18n/` — localization (en/ja/zh) helpers.
   - `en.ts` — English dictionary.
   - `index.ts` — i18n entry / language selection.
   - `ja.ts` — Japanese dictionary.
   - `zh.ts` — Chinese dictionary.
+  - `__tests__/` — TODO
+    - `parity.test.tsx` — TODO
 - `services/` — typed API and websocket client modules.
   - `README.md` — services index.
   - `api.ts` — typed REST client (state, checkpoints, settings, GPU monitor, etc.).
   - `websocket.ts` — websocket helper stub (connections now handled by `useWebSocket`).
+  - `__tests__/` — TODO
+    - `api.test.tsx` — TODO
+    - `schema.test.tsx` — TODO
+  - `api/` — TODO
+    - `catalog.ts` — TODO
+    - `checkpoints.ts` — TODO
+    - `client.ts` — TODO
+    - `ear.ts` — TODO
+    - `experiment.ts` — TODO
+    - `files.ts` — TODO
+    - `memory.ts` — TODO
+    - `nodeReport.ts` — TODO
+    - `paperbench.ts` — TODO
+    - `publish.ts` — TODO
+    - `resources.ts` — TODO
+    - `settings.ts` — TODO
+    - `ssh.ts` — TODO
+    - `state.ts` — TODO
+    - `subExperiments.ts` — TODO
+    - `wizard.ts` — TODO
+    - `workflow.ts` — TODO
 - `styles/` — global CSS.
   - `README.md` — styles index.
   - `components.css` — component styles.

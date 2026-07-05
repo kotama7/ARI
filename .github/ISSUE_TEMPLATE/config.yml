@@ -1,0 +1,15 @@
+# Issue-template chooser configuration.
+# Forces every new issue through a structured form and routes security
+# reports to the private channel documented in SECURITY.md.
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability (private)
+    url: https://github.com/kotama7/ARI/security/advisories/new
+    about: >-
+      Do NOT open a public issue for security problems. Report privately via the
+      repository Security tab (Report a vulnerability). See SECURITY.md.
+  - name: Question / usage help
+    url: https://kotama7.github.io/ARI/docs/
+    about: >-
+      For usage questions, please read the documentation first before filing an
+      issue.

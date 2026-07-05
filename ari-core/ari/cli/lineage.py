@@ -51,11 +51,9 @@ def _load_lineage_decision_config() -> dict:
     base: dict = {}
     try:
         import yaml as _yaml
-        # __file__ is now ari/cli/lineage.py — go up two parents to reach ari/
-        # so the package-bundled config root resolves to ari-core/config.
-        _ari_root = Path(__file__).resolve().parent.parent
+        from ari.config.finder import package_config_root
         _candidates = [
-            _ari_root.parent / "config" / "workflow.yaml",
+            package_config_root() / "workflow.yaml",
             Path.cwd() / "config" / "workflow.yaml",
         ]
         for p in _candidates:
@@ -72,10 +70,10 @@ def _load_lineage_decision_config() -> dict:
         rid = (os.environ.get("ARI_RUBRIC") or "").strip()
         if rid:
             import yaml as _yaml2
-            _ari_root = Path(__file__).resolve().parent.parent
+            from ari.config.finder import package_config_root
             rubric_path = (
-                _ari_root.parent
-                / "config" / "reviewer_rubrics" / f"{rid}.yaml"
+                package_config_root()
+                / "reviewer_rubrics" / f"{rid}.yaml"
             )
             if rubric_path.exists():
                 rubric_data = _yaml2.safe_load(rubric_path.read_text()) or {}

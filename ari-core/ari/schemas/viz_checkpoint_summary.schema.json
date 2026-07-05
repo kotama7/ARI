@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/viz_checkpoint_summary.schema.json",
+  "title": "ARI dashboard CheckpointSummary (GET /api/checkpoint/<id>/summary)",
+  "description": "Response of GET /api/checkpoint/<id>/summary (checkpoint_api._api_checkpoint_summary, line 195). Mirrors frontend/src/types/index.ts CheckpointSummary (lines 237-264). In the found case the handler echoes 'id' and 'path' unconditionally (line 201) and adds the remaining keys (nodes_tree, paper_tex, has_pdf, review_report, science_data, figures_manifest, reproducibility_report, ors_*, vlm_review) only when the backing file exists — so only 'id'/'path' are 'required' here even though the TS interface (front-end-filled defaults) marks more. NOT-FOUND is the exact sentinel {\"error\": \"not found\"} (pinned by an equality assert in the test, not by this additive schema). 'nodes_tree.nodes[]' reuses viz_tree_node.schema.json.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "id",
+    "path"
+  ],
+  "properties": {
+    "id": {"type": "string"},
+    "path": {"type": "string"},
+    "nodes_tree": {
+      "type": "object",
+      "properties": {
+        "nodes": {"type": "array", "items": {"$ref": "viz_tree_node.schema.json"}}
+      }
+    },
+    "paper_tex": {"type": ["string", "null"]},
+    "has_pdf": {"type": "boolean"},
+    "review_report": {"type": ["object", "null"]},
+    "reproducibility_report": {"type": ["string", "object", "null"]},
+    "repro": {"type": ["string", "null"]},
+    "science_data": {"type": ["object", "null"]},
+    "figures_manifest": {"type": ["array", "null"]},
+    "ors_rubric": {},
+    "ors_rubric_meta": {},
+    "ors_replicator": {},
+    "ors_seed": {},
+    "ors_phase1": {},
+    "ors_grade": {},
+    "vlm_review": {},
+    "error": {"type": ["string", "null"]}
+  }
+}

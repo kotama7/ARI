@@ -1,0 +1,20 @@
+{
+  "note": "Frozen pre-057 dead-code classification snapshot (013 §7 vocabulary). This is the 'before' side of the before/after delta rendered by scripts/generate_quality_report.py (subtask 058, 013 §9 step 5). Subtask 057 deleted nothing (SAFE_DELETE_CANDIDATE=0; see docs/refactoring/reports/057_dead_code_removal.md), so the pre-057 and post-057 counts are identical and every delta is 0.",
+  "subtask": "058",
+  "source": "python scripts/check_dead_code.py --json",
+  "graph": "docs/refactoring/reports/reference_graph.json",
+  "graph_commit": "c12007ceba21afb374664e56b521771aff075039",
+  "graph_generated_at": "2026-07-01T13:39:25.863071+00:00",
+  "captured_at_commit": "39abd016d014ee825ebbde4a7a4f4d4c5b6e8919",
+  "total_nodes": 1990,
+  "by_classification": {
+    "SAFE_DELETE_CANDIDATE": 0,
+    "QUARANTINE_CANDIDATE": 0,
+    "TEST_ONLY": 4,
+    "DOCS_ONLY": 0,
+    "DYNAMIC_REFERENCE_RISK": 125,
+    "PUBLIC_CONTRACT": 192,
+    "REVIEW_REQUIRED": 345,
+    "LIVE": 1324
+  }
+}

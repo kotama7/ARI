@@ -52,10 +52,17 @@ def _api_chat_goal(body: bytes) -> dict:
         # Phase PC8 (PROMPTS_AND_CONFIG.md §3-8): wizard chat-goal
         # system prompt lives in ``ari/prompts/viz/wizard_chat_goal.md``.
         from ari.prompts import FilesystemPromptLoader as _PL_w1
-        system = _PL_w1().load("viz/wizard_chat_goal")
+        from ari.prompts import record_prompt_use as _record_prompt_use
+        system, _w1_hash = _PL_w1().load_versioned("viz/wizard_chat_goal")
         if system.endswith("\n"):
             system = system[:-1]
         full_messages = [{"role": "system", "content": system}] + messages
+        # Subtask 044: prompt provenance (byte-identical system prompt).
+        _record_prompt_use(
+            "viz/wizard_chat_goal", _w1_hash, rendered_text=system,
+            model=model, phase="wizard",
+            checkpoint_dir=getattr(_st, "_checkpoint_dir", None),
+        )
         # Use litellm for unified provider support
         import litellm
         litellm_model = model
@@ -124,11 +131,18 @@ def _api_generate_config(body: bytes) -> dict:
         # generate-config prompt lives in
         # ``ari/prompts/viz/wizard_generate_config.md``.
         from ari.prompts import FilesystemPromptLoader as _PL_w2
-        _wizard_template = _PL_w2().load("viz/wizard_generate_config")
+        from ari.prompts import record_prompt_use as _record_prompt_use
+        _wizard_template, _w2_hash = _PL_w2().load_versioned("viz/wizard_generate_config")
         if _wizard_template.endswith("\n"):
             _wizard_template = _wizard_template[:-1]
         prompt = _wizard_template.format(goal=goal)
         messages = [{"role": "user", "content": prompt}]
+        # Subtask 044: prompt provenance (byte-identical rendered prompt).
+        _record_prompt_use(
+            "viz/wizard_generate_config", _w2_hash, rendered_text=prompt,
+            model=getattr(cfg.llm, "model", "") or "", phase="wizard",
+            checkpoint_dir=getattr(_st, "_checkpoint_dir", None),
+        )
         resp = client.complete(
             messages, require_tool=False,
             phase="wizard", skill="generate_config",

@@ -1,0 +1,156 @@
+# check_dead_code.yaml -- classification config for scripts/check_dead_code.py
+# (subtask 055 -- add_dead_code_candidate_checker).
+#
+# Design: docs/refactoring/013_reference_graph_and_dead_code_plan.md §7 (the
+# precedence table this file parameterizes) / §8.3 (checker role);
+# docs/refactoring/009_quality_scripts_plan.md §3/§5.10/§8 (common contract,
+# scripts/quality/ placement). stdlib + PyYAML + ruff CLI only; no LLM, no
+# network (design principle P2 + 013 §6.4 determinism).
+#
+# Every key below is optional; the checker ships the same values as built-in
+# defaults, so it runs without this file. Point a trimmed copy's `graph` at a
+# fixture to sandbox the classifier in tests.
+#
+# The classifier is a pure consumer of the 053/054 `reference_graph.json`. It
+# NEVER deletes, moves, or quarantines (those are subtasks 057/056); it only
+# labels each node with exactly one 013 §7 class.
+
+# Input reference graph produced by 053 (static) + 054 (dynamic overlay).
+graph: scripts/quality/baselines/reference_graph.json
+
+# Where the ranked candidate report is written (013 §6.2).
+output: scripts/quality/baselines/dead_code_candidates.md
+
+# ── Root taxonomy (053 §1/§5; informational + liveness classification) ──────
+# Production roots keep a node LIVE. R9 (tests) and R10 (docs) grant only
+# TEST_ONLY / DOCS_ONLY liveness and are never production liveness (053 §5).
+production_roots: [R1, R2, R3, R4, R5, R6, R7, R8, R11, R12]
+test_roots: [R9]
+docs_roots: [R10]
+
+# ── 1. PUBLIC_CONTRACT (013 §7 rank 1 -- KEEP, never deletable) ─────────────
+# Node KINDS that are always a contract surface: MCP tool handlers (R4/R5),
+# dashboard routes (R6), and the React API client entry (R8).
+public_contract_kinds: [mcp.tool, route, ts.module]
+# File PREFIXES that are a contract surface regardless of static reachability:
+# the ari.public.* re-export layer (R7), the structural package shell
+# ari/__init__.py, the MCP client bridge, the checkpoint/paths file-format
+# owners, and the EAR registry HTTP surface (R12). These stay PUBLIC_CONTRACT
+# even though several are graph orphans (empty __init__, no static importer).
+public_contract_paths:
+  - ari-core/ari/public/
+  - ari-core/ari/__init__.py
+  - ari-core/ari/mcp/client.py
+  - ari-core/ari/checkpoint.py
+  - ari-core/ari/paths.py
+  - ari-core/ari/registry/app.py
+
+# ── 2. DYNAMIC_REFERENCE_RISK (013 §7 rank 2 -- treated live, never deleted) ─
+# Any node with an inbound dynamic.* / cross_lang.* edge is already caught by
+# `edges_in`; these PREFIXES additionally assert the live-by-string firewall
+# for surfaces the 054 overlay may not have wired an edge to (e.g. skill-local
+# prompt trees) -- 053 §3 allow-list. Never a deletion candidate.
+dynamic_seam_paths:
+  - ari-core/ari/publish/backends/
+  - ari-core/ari/prompts/
+  - ari-skill-paper-re/src/prompts/
+  - ari-skill-replicate/src/prompts/
+  - ari-core/config/reviewer_rubrics/
+  - ari-core/config/paperbench_rubrics/
+  - ari-core/config/profiles/
+  - ari-core/ari/configs/
+  - ari-core/config/workflow.yaml
+
+# ── 3. contract-adjacent REVIEW_REQUIRED (013 §7 rank 3) ────────────────────
+# Entrypoint noise -- the unused `server:main` console scripts (053 §7). These
+# are pyproject declarations, not graph nodes, so they rarely match; listed so
+# a future overlay that emits them lands as REVIEW_REQUIRED, never deletable.
+contract_adjacent_review_ids: []
+
+# ── 4. TEST_ONLY (013 §7 rank 4 -- REVIEW_REQUIRED, never silently deleted) ──
+# File PREFIXES reachable only from R9 tests. `ari/schemas/__init__.py` load()/
+# schema_path() have NO production importer (053 §5: only tests read the .json
+# by direct path). The .json data files themselves stay DYNAMIC (data-selector
+# edge), so only the loader MODULE is TEST_ONLY.
+test_only_paths:
+  - ari-core/ari/schemas/__init__.py
+  - ari-core/tests/
+  - tests/
+
+# ── 5. DOCS_ONLY (013 §7 rank 5) ────────────────────────────────────────────
+docs_only_paths: []
+
+# ── Under-traced seams (analyzer coverage gaps -> REVIEW_REQUIRED, NOT dead) ─
+# The 054 static walk does not follow skill-internal imports (skills are scanned
+# only for @mcp.tool handlers) nor the subprocess-launched cli-shim server, so
+# their helper modules/symbols appear as graph orphans while being live. An
+# orphan under one of these prefixes is REVIEW_REQUIRED with reason
+# `under_traced_seam` and is NEVER promoted to SAFE_DELETE (013 §7 hard
+# downgrade). Shrink this list only as 054's overlay gains skill-internal edges.
+under_traced_seam_paths:
+  - ari-skill-benchmark/src/
+  - ari-skill-coding/src/
+  - ari-skill-evaluator/src/
+  - ari-skill-hpc/src/
+  - ari-skill-idea/src/
+  - ari-skill-memory/src/
+  - ari-skill-orchestrator/src/
+  - ari-skill-paper/src/
+  - ari-skill-paper-re/src/
+  - ari-skill-plot/src/
+  - ari-skill-replicate/src/
+  - ari-skill-transform/src/
+  - ari-skill-vlm/src/
+  - ari-skill-web/src/
+  - ari-core/ari/llm/cli_server.py
+  - ari-core/ari/memory/
+
+# ── 6. QUARANTINE_CANDIDATE (013 §7 rank 6 -- MOVE_TO_LEGACY, subtask 056) ───
+# Orphan, no prod/test/docs edge, but too risky to delete: migration/checkpoint
+# format code, or a large orphan module (blast radius). Relocated (056), never
+# deleted (057).
+quarantine_paths:
+  - ari-core/ari/migrations/
+quarantine_min_loc: 400
+
+# Structural module basenames that are never dead (package/entry shells): an
+# orphan __init__.py / __main__.py is LIVE, never a candidate.
+structural_module_names: ["__init__.py", "__main__.py"]
+
+# ── 7. SAFE_DELETE_CANDIDATE (013 §7 rank 7 -- the ONLY deletable class, 057) ─
+# A node is SAFE_DELETE only if it fails EVERY liveness test AND the classifier
+# is confident the graph's reachability for it is authoritative. Because 054's
+# symbol/skill/subprocess tracing is demonstrably incomplete (a live module such
+# as memory/file_client.py shows as a graph orphan), a bare graph-orphan is NOT
+# sufficient confidence -- per the 013 §7 hard-downgrade rule we require ruff to
+# independently flag the symbol as unused (F401/F811/F841). This ties the
+# genuine SAFE_DELETE set to the "leftover helpers surfaced by ruff" that 013 §7
+# ("Expected shape of results") predicts, and keeps it small and firewall-safe.
+safe_delete:
+  # Roots where the static import graph is authoritative enough to trust an
+  # orphan verdict (core only; skills/subprocess are under-traced seams above).
+  eligible_roots:
+    - ari-core/ari
+  # Small blast radius only.
+  max_loc: 40
+  # Require an independent ruff unused-symbol finding on the same file+name.
+  require_ruff_corroboration: true
+
+# ── ruff corroboration (reuse, do not re-derive -- 013 §8.1 / 055 §7.4) ──────
+# ruff is the authority on unused imports/locals; the 053/054 graph is the
+# authority on cross-module reachability. Findings attach as node `evidence`;
+# they never by themselves promote a node with any inbound edge.
+ruff:
+  targets: [ari-core]
+  codes: [F401, F811, F841]
+
+# ── --check ratchet budget (013 §8.3) ───────────────────────────────────────
+# --check exits 1 only when the count of non-allowlisted SAFE_DELETE_CANDIDATE
+# nodes exceeds this budget (net-new dead code). Warning-mode-first: the default
+# posture is advisory (exit 0); --check is not wired into any workflow here.
+check_budget: 0
+
+# Markdown noise control: cap per-bucket rows in the human report (the JSON
+# report is always complete). Under-traced-seam REVIEW rows are aggregated by
+# file regardless of this cap.
+markdown_row_cap: 200

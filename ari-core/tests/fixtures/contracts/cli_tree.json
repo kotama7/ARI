@@ -1,0 +1,315 @@
+{
+  "_meta": {
+    "ari_core_version": "0.9.1",
+    "generated_by": "scripts/snapshot_contracts.py",
+    "note": "regenerate with scripts/snapshot_contracts.py --surface cli --update",
+    "surface": "cli"
+  },
+  "env_side_effects": {
+    "paper": [
+      "ARI_FEWSHOT_MODE",
+      "ARI_NUM_REFLECTIONS",
+      "ARI_NUM_REVIEWS_ENSEMBLE",
+      "ARI_RUBRIC"
+    ],
+    "run": [
+      "ARI_IDEA_VIRSCI_K",
+      "ARI_IDEA_VIRSCI_N_AUTHORS",
+      "ARI_IDEA_VIRSCI_N_PAPERS",
+      "ARI_IDEA_VIRSCI_REAL",
+      "ARI_IDEA_VIRSCI_TEAM_SIZE"
+    ]
+  },
+  "root": {
+    "arguments": [],
+    "commands": {
+      "clone": {
+        "arguments": [
+          "ref",
+          "dest"
+        ],
+        "options": [
+          "--expect-sha256",
+          "--no-extract",
+          "--registry",
+          "--token"
+        ],
+        "type": "command"
+      },
+      "delete": {
+        "arguments": [
+          "checkpoint"
+        ],
+        "options": [
+          "--checkpoints-dir",
+          "--yes",
+          "-y"
+        ],
+        "type": "command"
+      },
+      "ear": {
+        "arguments": [],
+        "commands": {
+          "curate": {
+            "arguments": [
+              "checkpoint"
+            ],
+            "options": [
+              "--json",
+              "--show-files"
+            ],
+            "type": "command"
+          },
+          "promote": {
+            "arguments": [
+              "checkpoint"
+            ],
+            "options": [
+              "--target"
+            ],
+            "type": "command"
+          },
+          "publish": {
+            "arguments": [
+              "checkpoint"
+            ],
+            "options": [
+              "--backend",
+              "--dry-run",
+              "--visibility"
+            ],
+            "type": "command"
+          },
+          "status": {
+            "arguments": [
+              "checkpoint"
+            ],
+            "options": [],
+            "type": "command"
+          }
+        },
+        "options": [],
+        "type": "group"
+      },
+      "memory": {
+        "arguments": [],
+        "commands": {
+          "backup": {
+            "arguments": [],
+            "options": [
+              "--checkpoint"
+            ],
+            "type": "command"
+          },
+          "compact-access": {
+            "arguments": [],
+            "options": [
+              "--checkpoint"
+            ],
+            "type": "command"
+          },
+          "health": {
+            "arguments": [],
+            "options": [
+              "--checkpoint"
+            ],
+            "type": "command"
+          },
+          "migrate": {
+            "arguments": [],
+            "options": [
+              "--checkpoint",
+              "--dry-run",
+              "--react"
+            ],
+            "type": "command"
+          },
+          "prune-local": {
+            "arguments": [],
+            "options": [
+              "--yes",
+              "-y"
+            ],
+            "type": "command"
+          },
+          "restore": {
+            "arguments": [],
+            "options": [
+              "--checkpoint",
+              "--on-conflict"
+            ],
+            "type": "command"
+          },
+          "start-local": {
+            "arguments": [],
+            "options": [
+              "--path"
+            ],
+            "type": "command"
+          },
+          "stop-local": {
+            "arguments": [],
+            "options": [],
+            "type": "command"
+          }
+        },
+        "options": [],
+        "type": "group"
+      },
+      "migrate": {
+        "arguments": [],
+        "commands": {
+          "node-reports": {
+            "arguments": [
+              "checkpoint"
+            ],
+            "options": [
+              "--overwrite"
+            ],
+            "type": "command"
+          }
+        },
+        "options": [],
+        "type": "group"
+      },
+      "paper": {
+        "arguments": [
+          "checkpoint_dir"
+        ],
+        "options": [
+          "--config",
+          "--experiment",
+          "--fewshot-mode",
+          "--num-reflections",
+          "--num-reviews-ensemble",
+          "--rubric"
+        ],
+        "type": "command"
+      },
+      "projects": {
+        "arguments": [],
+        "options": [
+          "--checkpoints"
+        ],
+        "type": "command"
+      },
+      "registry": {
+        "arguments": [],
+        "commands": {
+          "serve": {
+            "arguments": [],
+            "options": [
+              "--data-dir",
+              "--host",
+              "--port"
+            ],
+            "type": "command"
+          },
+          "token": {
+            "arguments": [],
+            "commands": {
+              "issue": {
+                "arguments": [
+                  "user"
+                ],
+                "options": [],
+                "type": "command"
+              },
+              "list": {
+                "arguments": [],
+                "options": [],
+                "type": "command"
+              },
+              "revoke": {
+                "arguments": [
+                  "token_id"
+                ],
+                "options": [],
+                "type": "command"
+              }
+            },
+            "options": [],
+            "type": "group"
+          }
+        },
+        "options": [],
+        "type": "group"
+      },
+      "resume": {
+        "arguments": [
+          "checkpoint_dir"
+        ],
+        "options": [
+          "--config"
+        ],
+        "type": "command"
+      },
+      "run": {
+        "arguments": [
+          "experiment"
+        ],
+        "options": [
+          "--config",
+          "--no-virsci-live",
+          "--profile",
+          "--virsci-k",
+          "--virsci-live",
+          "--virsci-n-authors",
+          "--virsci-n-papers",
+          "--virsci-team-size"
+        ],
+        "type": "command"
+      },
+      "settings": {
+        "arguments": [],
+        "options": [
+          "--api-key",
+          "--config",
+          "--cpus",
+          "--mem",
+          "--model",
+          "--partition"
+        ],
+        "type": "command"
+      },
+      "show": {
+        "arguments": [
+          "checkpoint"
+        ],
+        "options": [
+          "--checkpoints-dir"
+        ],
+        "type": "command"
+      },
+      "skills-list": {
+        "arguments": [],
+        "options": [
+          "--config"
+        ],
+        "type": "command"
+      },
+      "status": {
+        "arguments": [
+          "checkpoint_dir"
+        ],
+        "options": [],
+        "type": "command"
+      },
+      "viz": {
+        "arguments": [
+          "checkpoint_dir"
+        ],
+        "options": [
+          "--port"
+        ],
+        "type": "command"
+      }
+    },
+    "options": [
+      "--install-completion",
+      "--show-completion"
+    ],
+    "type": "group"
+  },
+  "schema_version": 1
+}

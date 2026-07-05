@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/viz_checkpoint.schema.json",
+  "title": "ARI dashboard Checkpoint (GET /api/checkpoints item)",
+  "description": "One item of the bare list returned by GET /api/checkpoints (api_settings-adjacent checkpoint_api._api_checkpoints, line 78). Mirrors frontend/src/types/index.ts Checkpoint (lines 24-36). Every key in 'required' is initialised unconditionally in the per-directory info dict (checkpoint_api.py:96-97), so it is always present; 'best_metric' is documented as always-null (never reassigned). 'best_scientific_score' is conditional (only when tree nodes carry metrics._scientific_score, checkpoint_api.py:166-173) and is therefore optional.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "id",
+    "path",
+    "status",
+    "node_count",
+    "review_score",
+    "best_metric",
+    "mtime"
+  ],
+  "properties": {
+    "id": {"type": "string"},
+    "path": {"type": "string"},
+    "status": {"type": "string"},
+    "node_count": {"type": "integer", "minimum": 0},
+    "review_score": {"type": ["number", "null"]},
+    "best_metric": {"type": ["number", "null"]},
+    "mtime": {"type": "integer"},
+    "best_scientific_score": {"type": "number"}
+  }
+}

@@ -8,6 +8,8 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `README.md` — this file.
 - `__init__.py` — package marker.
 - `_deprecation.py` — `DeprecationWarning` helpers for v0.5→v1.0 legacy paths/aliases.
+- `_factory.py` — TODO
+- `artifact_store.py` — TODO
 - `checkpoint.py` — checkpoint JSON I/O (`tree.json` / `nodes_tree.json` / `results.json`).
 - `cli_ear.py` — `ari ear …` curation / publish / promote / status CLI surface.
 - `container.py` — unified container runtime abstraction (Docker / Singularity / bare subprocess).
@@ -18,6 +20,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `memory_cli.py` — `ari memory` subcommand (migrate / backup / …).
 - `paths.py` — centralised `PathManager` for directory layout/resolution.
 - `pidfile.py` — `.ari_pid` write/read/cleanup for run-liveness detection.
+- `trace_store.py` — TODO
 - `agent/` — ReAct loop, environment capture, per-stage workflow guidance.
   - `README.md` — agent index.
   - `__init__.py` — package module-map docstring.
@@ -82,6 +85,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `README.md` — memory index.
   - `__init__.py` — `MemoryClient` protocol, backends, migration map.
   - `auto_migrate.py` — v0.5.x → v0.6.0 auto-migration on first launch.
+  - `backend.py` — sanctioned core→skill funnel: lazy forwards (`get_backend` / `clear_backend_cache` / `build_verified_context`) to the rich `MemoryBackend`.
   - `client.py` — abstract `MemoryClient` ABC.
   - `file_client.py` — `FileMemoryClient` (legacy JSONL).
   - `letta_client.py` — `LettaMemoryClient` (default).
@@ -99,6 +103,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `README.md` — orchestrator index.
   - `__init__.py` — package exports + authoritative module-map docstring.
   - `bfts.py` — `BFTS` loop and stage hooks (expand/select, pruning, frontier retire).
+  - `bfts_prompt_builder.py` — TODO
   - `lineage_decision.py` — LLM lineage action + `lineage_decisions.jsonl` log.
   - `node.py` — `Node` data model + `NodeStatus` / `NodeLabel` enums.
   - `node_selection.py` — shared node-selection helpers + publication source-file selection.
@@ -113,10 +118,13 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `README.md` — pipeline index.
   - `__init__.py` — sub-module map + public re-exports.
   - `context_builder.py` — best-nodes context + keyword extraction.
+  - `driver.py` — `WorkflowDriver`: run pre-flight (cost tracker, evaluation_criteria/nodes_tree/verified-context, tpl_vars, BFTS no-real-data sanity gate) + index-based stage-cursor loop with `loop_back_to` rewind.
   - `experiment_md.py` — `experiment.md` helpers.
   - `orchestrator.py` — top-level entry points (`build_scientific_data`, `run_pipeline`).
+  - `stage_context.py` — `StageContext` dataclass: shared mutable run state (`tpl_vars`, `stage_outputs`) + read-only inputs (checkpoint_dir, config_path, wf_cfg, disabled_stages, best_metrics).
   - `stage_control.py` — loop_back / VLM-feedback control.
   - `stage_runner.py` — stage execution helpers (retry, ReAct, subprocess).
+  - `stages.py` — first-class stage objects (`make_stage` → `SubprocessMCPStage`/`ReActStage`): should_skip → resolve_inputs → run → persist_outputs lifecycle + `OutputSink` writer.
   - `verified_context.py` — artifact-grounded verified context for write_paper (best node's root→best lineage → `verified_context.json`; `render_grounded_block`). Exposed via `ari.public.verified_context`.
   - `yaml_loader.py` — workflow/pipeline loaders + `{{var}}` resolution.
   - `claim_gate/` — deterministic `claim_evidence_hard_gate` (Story2Proposal Phase B). See its `README.md`.
@@ -134,6 +142,8 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `README.md` — prompts index.
   - `__init__.py` — exports + `PromptLoader` plumbing.
   - `_loader.py` — `PromptLoader` Protocol + `FilesystemPromptLoader`.
+  - `_provenance.py` — TODO
+  - `registry.py` — TODO
   - `agent/` — agent ReAct system prompt.
     - `README.md` — agent index.
     - `system.md` — the agent system prompt.
@@ -159,6 +169,9 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `README.md` — protocols index.
   - `__init__.py` — currently exposed protocols + roadmap.
   - `evaluator.py` — `Evaluator` Protocol.
+  - `model_backend.py` — TODO
+  - `search.py` — TODO
+  - `stores.py` — TODO
 - `public/` — public API surface for ARI skills (import-only contract).
   - `README.md` — public index.
   - `__init__.py` — exported sub-modules + rationale.
@@ -192,6 +205,11 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `__init__.py` — `load(name)` loader.
   - `node_report.schema.json` — per-node report schema.
   - `publish.schema.json` — publish record / manifest schema.
+  - `viz_checkpoint.schema.json` — TODO
+  - `viz_checkpoint_summary.schema.json` — TODO
+  - `viz_settings.schema.json` — TODO
+  - `viz_state.schema.json` — TODO
+  - `viz_tree_node.schema.json` — TODO
 - `viz/` — HTTP + WebSocket dashboard server + React frontend.
   - `README.md` — viz index.
   - `__init__.py` — package docstring + module map / public symbols.
@@ -214,14 +232,21 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `checkpoint_lifecycle.py` — checkpoint delete + switch.
   - `ear.py` — EAR curate/publish/clone REST helpers.
   - `file_api.py` — per-checkpoint file CRUD + LaTeX compile.
+  - `internal_adapters.py` — TODO
   - `node_work_api.py` — per-node work-dir filetree/filecontent/memory listing.
   - `routes.py` — `_Handler` dispatch + access log.
   - `server.py` — HTTP/WebSocket server and `ari viz` main entry.
   - `state.py` — shared mutable server state.
   - `state_sync.py` — node-tree loading + broadcast + filesystem watcher.
+  - `tree_view.py` — TODO
   - `ui_helpers.py` — dashboard rendering helpers.
   - `websocket.py` — WebSocket handler streaming tree state.
   - `frontend/` — React + Vite + TypeScript. Served by `ari viz` / `python -m ari.viz.server`
+  - `services/` — TODO
+    - `__init__.py` — TODO
+    - `file_service.py` — TODO
+    - `launch_service.py` — TODO
+    - `state_service.py` — TODO
 
 ## See also
 

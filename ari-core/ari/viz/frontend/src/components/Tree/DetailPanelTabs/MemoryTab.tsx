@@ -5,6 +5,7 @@
 // (behavior-identical to the container's closure over the same i18n context).
 
 import { useI18n } from '../../../i18n';
+import { LoadingState, ErrorState } from '../../common';
 import type { MemoryEntry } from '../../../services/api';
 import { MemoryEntryCard } from './MemoryEntryCard';
 
@@ -29,15 +30,11 @@ export function MemoryTab({
   return (
     <div>
       {memLoading && (
-        <div style={{ fontSize: '.72rem', color: 'var(--muted)' }}>
-          Loading memory…
+        <div style={{ fontSize: '.72rem' }}>
+          <LoadingState inline />
         </div>
       )}
-      {memError && (
-        <div style={{ fontSize: '.72rem', color: 'var(--red)' }}>
-          {memError}
-        </div>
-      )}
+      {memError && <ErrorState message={memError} inline />}
       {!memLoading &&
         !memError &&
         visibleMemory.length === 0 &&

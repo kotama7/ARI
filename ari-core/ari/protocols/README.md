@@ -9,6 +9,9 @@ accept these so test stubs and alternatives plug in without subclassing.
 - `README.md` — this file.
 - `__init__.py` — currently exposed protocols + roadmap.
 - `evaluator.py` — `Evaluator` Protocol.
+- `model_backend.py` — TODO
+- `search.py` — TODO
+- `stores.py` — TODO
 
 ## See also
 

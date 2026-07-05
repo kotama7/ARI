@@ -8,34 +8,21 @@ the same names regardless of where each function landed.
 
 from __future__ import annotations
 
-import asyncio
-import json
 import logging
-import os
 import re
-import time
-from datetime import datetime, timezone
 from pathlib import Path
 
-from . import state as _st
+from .services import file_service as _fs
 
 
 log = logging.getLogger(__name__)
 
-# Phase 3B PR-3B-2: module-level constants restored from
-# ``api_state.py``.  Used by the per-node filetree/filecontent walks.
-_BINARY_EXTENSIONS = {
-    ".pyc", ".pyo", ".so", ".o", ".a", ".dll", ".dylib", ".exe",
-    ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".ico",
-    ".zip", ".tar", ".gz", ".bz2", ".xz", ".7z", ".rar",
-    ".bin", ".dat", ".pkl", ".pickle", ".npy", ".npz", ".h5", ".hdf5",
-    ".pt", ".pth", ".ckpt", ".safetensors",
-    ".mp3", ".mp4", ".avi", ".mov", ".wav", ".flac",
-    ".woff", ".woff2", ".ttf", ".otf", ".eot",
-}
-
-_SKIP_DIRS = {"__pycache__", ".git", "node_modules", ".tox", ".mypy_cache",
-              ".pytest_cache", ".ruff_cache", "dist", ".eggs", "*.egg-info"}
+# Subtask 023: the binary-extension and skip-directory sets are now owned by the
+# shared FileService (single source of truth). Aliases preserve the module-local
+# names used by the per-node filetree/filecontent walks and any external
+# reference.
+_BINARY_EXTENSIONS = _fs.BINARY_EXTENSIONS
+_SKIP_DIRS = _fs.SKIP_DIRS
 
 
 # Phase 3B PR-3B-2: bare-name wrappers that defer to ``api_state``
@@ -130,7 +117,7 @@ def _api_checkpoint_filetree(ckpt_id: str, node_id: str = "") -> dict:
                     size = child.stat().st_size
                 except Exception:
                     size = 0
-                is_text = ext not in _BINARY_EXTENSIONS and size < 10_000_000
+                is_text = ext not in _BINARY_EXTENSIONS and size < _fs.MAX_TREE_TEXT
                 entries.append({
                     "name": name,
                     "path": rel,
@@ -156,21 +143,19 @@ def _api_checkpoint_filecontent(ckpt_id: str, filepath: str, node_id: str = "") 
         if nd is None:
             return {"error": f"node work_dir not found for {node_id}"}
         d = nd
-    target = (d / filepath).resolve()
     # Security: must be inside base dir
-    try:
-        target.relative_to(d.resolve())
-    except ValueError:
-        return {"error": "path traversal denied"}
+    target, err = _fs.safe_resolve(d, filepath)
+    if err:
+        return {"error": err}
     if not target.exists() or not target.is_file():
         return {"error": "file not found"}
-    if target.stat().st_size > 5_000_000:
+    if target.stat().st_size > _fs.MAX_TEXT_READ:
         return {"error": "file too large (>5MB)"}
     ext = target.suffix.lower()
     if ext in _BINARY_EXTENSIONS:
         return {"error": "binary file — cannot display"}
     try:
-        content = target.read_text(encoding="utf-8", errors="replace")
+        content = _fs.read_text(target)
     except Exception as e:
         return {"error": str(e)}
     return {"name": filepath, "content": content}
@@ -190,7 +175,7 @@ def _api_checkpoint_memory(ckpt_id: str) -> dict:
     try:
         from ari.paths import PathManager as _PM_mem
         _PM_mem.set_checkpoint_dir_env(d)
-        from ari_skill_memory.backends import get_backend
+        from ari.memory import get_backend
         backend = get_backend(checkpoint_dir=d)
         # node-scope entries
         for nid, lst in backend.list_all_nodes().get("by_node", {}).items():

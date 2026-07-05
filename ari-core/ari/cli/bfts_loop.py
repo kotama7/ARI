@@ -24,6 +24,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from rich.console import Console
 
@@ -35,6 +36,9 @@ from ari.cli.lineage import (
     _mark_parent_terminated,
 )
 from ari.paths import PathManager
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from ari.protocols import NodeExecutor, SearchStrategy
 
 
 log = logging.getLogger(__name__)
@@ -82,8 +86,8 @@ def _save_tree_incremental(
 
 
 
-def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
-              checkpoint_dir, run_id, total_processed=0):
+def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes,
+              experiment_data, checkpoint_dir, run_id, total_processed=0):
     from ari.orchestrator.node import NodeStatus
     max_workers = max(1, min(cfg.bfts.max_parallel_nodes, 4))
 
@@ -94,7 +98,8 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
         from pathlib import Path as _P_bfts
         _wf_path = _P_bfts(checkpoint_dir) / "workflow.yaml"
         if not _wf_path.exists():
-            _wf_path = _P_bfts(__file__).parent.parent / "config" / "workflow.yaml"
+            from ari.config.finder import package_config_root
+            _wf_path = package_config_root() / "workflow.yaml"
         if _wf_path.exists():
             _wf_data = _yaml_bfts.safe_load(_wf_path.read_text()) or {}
             for _s in _wf_data.get("bfts_pipeline") or []:
@@ -237,9 +242,8 @@ def _run_loop(cfg, bfts, agent, pending, all_nodes, experiment_data,
                         # idea.json was inherited (parent already chose).
                         try:
                             import yaml as _yaml_root
-                            _wf_path = (
-                                Path(__file__).resolve().parent.parent.parent / "config" / "workflow.yaml"
-                            )
+                            from ari.config.finder import package_config_root
+                            _wf_path = package_config_root() / "workflow.yaml"
                             _wf_for_root = (
                                 _yaml_root.safe_load(_wf_path.read_text())
                                 if _wf_path.exists() else {}
@@ -908,4 +912,14 @@ def _save_checkpoint(checkpoint_dir, run_id, experiment_file, nodes):
                   for n in nodes},
     }
     _save_results(checkpoint_dir, results)
+    # Subtask 044: emit the run-level prompt-version rollup from the per-call
+    # prompt_trace.jsonl (additive artifact). Best-effort — a rollup failure
+    # must never fail the run; a run with no managed-prompt calls simply has
+    # no trace and writes an empty rollup.
+    try:
+        from ari.prompts import build_prompt_versions_rollup as _build_pv
+        from ari.checkpoint import save_prompt_versions_json as _save_pv
+        _save_pv(checkpoint_dir, _build_pv(checkpoint_dir))
+    except Exception:
+        log.debug("prompt_versions rollup write failed", exc_info=True)
 

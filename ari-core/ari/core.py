@@ -11,6 +11,10 @@ import logging
 import os
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from ari.protocols import NodeExecutor, SearchStrategy
 
 log = logging.getLogger(__name__)
 
@@ -35,7 +39,8 @@ def _load_rubric_dict_for_axes() -> "dict | None":
     generic floor + plan-derived axes only.
     """
     rid = (os.environ.get("ARI_RUBRIC") or "neurips").strip()
-    rubrics_dir = Path(__file__).parent.parent / "config" / "reviewer_rubrics"
+    from ari.config.finder import package_config_root
+    rubrics_dir = package_config_root() / "reviewer_rubrics"
     candidates = [rubrics_dir / f"{rid}.yaml"]
     if rid != "neurips":
         candidates.append(rubrics_dir / "neurips.yaml")  # safe fallback
@@ -145,7 +150,7 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
     # Edit on the login node — see the 2026-05-28 hallucinated-environment incident).
     llm.mcp_client = mcp
     bfts_llm.mcp_client = mcp
-    bfts = BFTS(cfg.bfts, bfts_llm)
+    bfts: SearchStrategy = BFTS(cfg.bfts, bfts_llm)
 
     # MetricSpec: auto-generated from experiment file by evaluator-skill
     metric_spec = _make_metric_spec()
@@ -216,9 +221,11 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
     if wf_hints.metric_extractor is None and metric_spec and metric_spec.artifact_extractor:
         wf_hints.metric_extractor = metric_spec.artifact_extractor
 
-    agent = AgentLoop(llm, memory, mcp, evaluator=evaluator, workflow_hints=wf_hints,
-                       max_react_steps=cfg.bfts.max_react_steps,
-                       timeout_per_node=cfg.bfts.timeout_per_node)
+    agent: NodeExecutor = AgentLoop(
+        llm, memory, mcp, evaluator=evaluator, workflow_hints=wf_hints,
+        max_react_steps=cfg.bfts.max_react_steps,
+        timeout_per_node=cfg.bfts.timeout_per_node,
+    )
     return llm, memory, mcp, bfts, agent, metric_spec
 
 
@@ -249,13 +256,15 @@ def generate_paper_section(
     # rewrites (e.g. include_ear=False disabling EAR / ors_seed_sandbox stages)
     # actually take effect — symmetrical with how the BFTS phase already reads
     # the checkpoint copy at cli.py:478.
+    from ari.config.finder import package_config_root
+    _pkg_cfg_root = package_config_root()
     pipeline_yaml_candidates = [
         Path(checkpoint_dir) / "workflow.yaml",
         Path(checkpoint_dir) / "pipeline.yaml",
         Path(config_path).parent / "workflow.yaml",
         Path(config_path).parent / "pipeline.yaml",
-        Path(__file__).parent.parent / "config" / "workflow.yaml",
-        Path(__file__).parent.parent / "config" / "pipeline.yaml",
+        _pkg_cfg_root / "workflow.yaml",
+        _pkg_cfg_root / "pipeline.yaml",
     ]
     pipeline_yaml = next((p for p in pipeline_yaml_candidates if p.exists()), None)
 

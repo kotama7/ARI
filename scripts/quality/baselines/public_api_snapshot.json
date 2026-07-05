@@ -1,0 +1,158 @@
+{
+  "ari_core_version": "0.9.0",
+  "generated_by": "scripts/check_public_api_contracts.py",
+  "modules": {
+    "ari.public": {
+      "all_is_dynamic": false,
+      "backing": [],
+      "exports": [],
+      "has_all": false,
+      "thin": true
+    },
+    "ari.public.claim_gate": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.pipeline.claim_gate",
+        "ari.pipeline.claim_gate.contract",
+        "ari.pipeline.claim_gate.invariants"
+      ],
+      "exports": [
+        "CONCEPT_INVARIANTS",
+        "check_emission",
+        "classify_concept",
+        "run_hard_gate",
+        "scan_science_data"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.config_schema": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.config"
+      ],
+      "exports": [
+        "ARIConfig",
+        "BFTSConfig",
+        "CheckpointConfig",
+        "EvaluatorConfig",
+        "LLMConfig",
+        "LoggingConfig",
+        "SkillConfig"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.container": {
+      "all_is_dynamic": true,
+      "backing": [
+        "ari.container"
+      ],
+      "exports": [
+        "ContainerConfig",
+        "Optional",
+        "annotations",
+        "config_from_env",
+        "dataclass",
+        "detect_runtime",
+        "field",
+        "get_container_info",
+        "list_images",
+        "os",
+        "pull_image",
+        "run_in_container",
+        "run_shell_in_container",
+        "shutil",
+        "signal",
+        "subprocess"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.cost_tracker": {
+      "all_is_dynamic": true,
+      "backing": [
+        "ari.cost_tracker"
+      ],
+      "exports": [
+        "CallRecord",
+        "CostTracker",
+        "Optional",
+        "Path",
+        "annotations",
+        "asdict",
+        "bootstrap_skill",
+        "dataclass",
+        "get",
+        "init",
+        "init_from_env",
+        "json",
+        "os",
+        "record",
+        "set_default_metadata",
+        "threading",
+        "time"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.llm": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.llm.client"
+      ],
+      "exports": [
+        "LLMClient"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.paths": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.paths"
+      ],
+      "exports": [
+        "PathManager"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.run_env": {
+      "all_is_dynamic": true,
+      "backing": [
+        "ari.agent.run_env"
+      ],
+      "exports": [
+        "Any",
+        "Path",
+        "annotations",
+        "capture_env",
+        "datetime",
+        "json",
+        "os",
+        "re",
+        "read_run_env",
+        "shell_capture_snippet",
+        "subprocess",
+        "timezone"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.verified_context": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.pipeline.verified_context"
+      ],
+      "exports": [
+        "build_verified_context",
+        "render_grounded_block",
+        "write_verified_context"
+      ],
+      "has_all": true,
+      "thin": true
+    }
+  },
+  "schema": 1
+}

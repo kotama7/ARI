@@ -8,16 +8,12 @@ the same names regardless of where each function landed.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
-import re
-import time
-from datetime import datetime, timezone
 from pathlib import Path
 
-from . import state as _st
+from .services import file_service as _fs
 
 
 log = logging.getLogger(__name__)
@@ -27,10 +23,10 @@ log = logging.getLogger(__name__)
 # functions in this file.
 PAPER_DIR_NAME = "paper"
 
-_TEXT_EXTENSIONS = {
-    ".tex", ".bib", ".sty", ".cls", ".bst", ".bbl",
-    ".txt", ".md", ".csv",
-}
+# Subtask 023: the editable-text extension set is now owned by the shared
+# FileService (single source of truth). Alias preserves the module-local name
+# used by ``_api_checkpoint_files`` and any external reference.
+_TEXT_EXTENSIONS = _fs.TEXT_EXTENSIONS
 
 _PAPER_ROOT_ARTEFACTS = (
     "full_paper.tex", "full_paper.pdf", "full_paper.bbl", "refs.bib",
@@ -137,17 +133,15 @@ def _api_checkpoint_file_read(ckpt_id: str, filename: str) -> dict:
     paper, err = _ensure_paper_dir(ckpt_id)
     if err:
         return {"error": err}
-    target = (paper / filename).resolve()
-    try:
-        target.relative_to(paper.resolve())
-    except ValueError:
-        return {"error": "path traversal denied"}
+    target, err = _fs.safe_resolve(paper, filename)
+    if err:
+        return {"error": err}
     if not target.exists() or not target.is_file():
         return {"error": "file not found"}
-    if target.stat().st_size > 5_000_000:
+    if target.stat().st_size > _fs.MAX_TEXT_READ:
         return {"error": "file too large (>5MB)"}
     try:
-        content = target.read_text(encoding="utf-8", errors="replace")
+        content = _fs.read_text(target)
     except Exception as e:
         return {"error": str(e)}
     return {"name": filename, "content": content}
@@ -159,14 +153,12 @@ def _resolve_paper_file(ckpt_id: str, filename: str) -> tuple[Path | None, str |
     paper, err = _ensure_paper_dir(ckpt_id)
     if err:
         return None, err
-    target = (paper / filename).resolve()
-    try:
-        target.relative_to(paper.resolve())
-    except ValueError:
-        return None, "path traversal denied"
+    target, err = _fs.safe_resolve(paper, filename)
+    if err:
+        return None, err
     if not target.exists() or not target.is_file():
         return None, "file not found"
-    if target.stat().st_size > 20_000_000:
+    if target.stat().st_size > _fs.MAX_BINARY_SERVE:
         return None, "file too large (>20MB)"
     return target, None
 
@@ -183,14 +175,12 @@ def _api_checkpoint_file_save(body: bytes) -> dict:
     paper, err = _ensure_paper_dir(ckpt_id)
     if err:
         return {"error": err}
-    target = (paper / filename).resolve()
-    try:
-        target.relative_to(paper.resolve())
-    except ValueError:
-        return {"error": "path traversal denied"}
+    target, err = _fs.safe_resolve(paper, filename)
+    if err:
+        return {"error": err}
     target.parent.mkdir(parents=True, exist_ok=True)
     try:
-        target.write_text(content, encoding="utf-8")
+        _fs.write_text(target, content)
     except Exception as e:
         return {"error": str(e)}
     return {"ok": True, "path": str(target), "size": len(content.encode("utf-8"))}
@@ -205,13 +195,11 @@ def _api_checkpoint_file_upload(ckpt_id: str, filename: str, data: bytes) -> dic
     safe_name = Path(filename).name
     if not safe_name:
         return {"error": "invalid filename"}
-    target = (paper / safe_name).resolve()
+    target, err = _fs.safe_resolve(paper, safe_name)
+    if err:
+        return {"error": err}
     try:
-        target.relative_to(paper.resolve())
-    except ValueError:
-        return {"error": "path traversal denied"}
-    try:
-        target.write_bytes(data)
+        _fs.write_bytes(target, data)
     except Exception as e:
         return {"error": str(e)}
     return {"ok": True, "name": safe_name, "path": str(target), "size": len(data)}
@@ -228,15 +216,13 @@ def _api_checkpoint_file_delete(body: bytes) -> dict:
     paper, err = _ensure_paper_dir(ckpt_id)
     if err:
         return {"error": err}
-    target = (paper / filename).resolve()
-    try:
-        target.relative_to(paper.resolve())
-    except ValueError:
-        return {"error": "path traversal denied"}
+    target, err = _fs.safe_resolve(paper, filename)
+    if err:
+        return {"error": err}
     if not target.exists():
         return {"error": "file not found"}
     try:
-        target.unlink()
+        _fs.delete(target)
     except Exception as e:
         return {"error": str(e)}
     return {"ok": True, "deleted": filename}

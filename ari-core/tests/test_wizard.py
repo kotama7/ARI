@@ -2,6 +2,7 @@
 ARI New Experiment Wizard Tests
 Tests the wizard flow: chat API, launch env injection, profile, phase overrides.
 """
+import re
 import json
 import subprocess
 from pathlib import Path
@@ -41,7 +42,7 @@ def _viz_server_concat(viz_dir: Path) -> str:
     them so existing source-text checks still find the moved literals.
     """
     parts = []
-    for name in ("ui_helpers.py", "websocket.py", "routes.py", "server.py"):
+    for name in ("ui_helpers.py", "websocket.py", "routes.py", "server.py", "services/state_service.py"):
         p = viz_dir / name
         if p.exists():
             parts.append(p.read_text())
@@ -1112,8 +1113,15 @@ class TestVirsciIdeaEndToEnd:
         src = (REACT_COMPONENTS / "Idea" / "IdeaPage.tsx").read_text()
         assert "ideas.length === 0" in src, \
             "IdeaPage must check for empty ideas array"
-        assert "No VirSci" in src or "not have run" in src, \
-            "IdeaPage must show a message when VirSci data is missing"
+        # Subtask 072 moved the hardcoded English placeholder into the shared
+        # EmptyState component + an i18n key (idea_virsci_empty). Assert the empty
+        # branch renders that key, and that the key resolves to a real message.
+        assert "idea_virsci_empty" in src and "EmptyState" in src, \
+            "IdeaPage must show an EmptyState via t('idea_virsci_empty') when data is missing"
+        en = (REACT_SRC / "i18n" / "en.ts").read_text()
+        m = re.search(r"idea_virsci_empty:\s*\n?\s*['\"](.+?)['\"]", en, re.S)
+        assert m and m.group(1).strip(), \
+            "idea_virsci_empty must resolve to a non-empty English message in en.ts"
 
     # ── TypeScript types include idea fields ───────────────────────
 

@@ -10,9 +10,14 @@ Feature-grouped React components — one subdirectory per dashboard page plus sh
   - `Badge.tsx` — colored variant label span.
   - `Button.tsx` — styled button with variant/size props.
   - `Card.tsx` — bordered content container.
+  - `EmptyState.tsx` — TODO
+  - `ErrorState.tsx` — TODO
   - `index.ts` — barrel re-exports.
+  - `LoadingState.tsx` — TODO
   - `StatBox.tsx` — single value + label stat tile.
   - `StatusBadge.tsx` — maps run status to a colored `Badge`.
+  - `__tests__/` — TODO
+    - `StateComponents.test.tsx` — TODO
 - `Experiments/` — experiments page (lists experiment/checkpoint runs).
   - `README.md` — Experiments index.
   - `ExperimentsPage.tsx` — experiments list view.
@@ -62,11 +67,34 @@ Feature-grouped React components — one subdirectory per dashboard page plus sh
   - `resultTypes.ts` — Results-page shared types (OrsRenderInput, RubricNode, LeafGrade, StageState); extracted from resultSections in req 15.
   - `RubricTreeVisualization.tsx` — D3 rubric tree with aggregated leaf scores.
   - `useEAR.ts` — hook owning EarSection's curate/publish/publish.yaml-editor action state; extracted from ResultsPage in req 15.
+  - `sections/` — TODO
+    - `ContextSection.tsx` — TODO
+    - `FiguresSection.tsx` — TODO
+    - `OrsChainSection.tsx` — TODO
+    - `ReproSection.tsx` — TODO
+    - `ReviewScoresSection.tsx` — TODO
 - `Settings/` — dashboard/run configuration page.
   - `README.md` — Settings index.
   - `index.ts` — barrel re-export.
   - `settingsConstants.ts` — provider/Letta model tables + _splitHandle helper (extracted from SettingsPage in req 15).
+  - `SettingsGroup.tsx` — TODO
   - `SettingsPage.tsx` — settings view.
+  - `settingsStyles.ts` — TODO
+  - `settingsTypes.ts` — TODO
+  - `__tests__/` — TODO
+    - `SettingsContract.test.tsx` — TODO
+    - `SettingsDisclosure.test.tsx` — TODO
+  - `sections/` — TODO
+    - `ContainerSection.tsx` — TODO
+    - `LanguageSection.tsx` — TODO
+    - `LlmBackendSection.tsx` — TODO
+    - `MemorySection.tsx` — TODO
+    - `PaperRetrievalSection.tsx` — TODO
+    - `ProjectManagementSection.tsx` — TODO
+    - `SkillsSection.tsx` — TODO
+    - `SlurmSection.tsx` — TODO
+    - `SshSection.tsx` — TODO
+    - `VlmReviewSection.tsx` — TODO
 - `Tree/` — BFTS tree page (search tree, detail panel, file browser).
   - `README.md` — Tree index.
   - `DetailPanel.tsx` — selected-node detail panel (tabs: memory, report, etc.).
@@ -96,5 +124,7 @@ Feature-grouped React components — one subdirectory per dashboard page plus sh
 - `Workflow/` — workflow stages/pipeline page.
   - `README.md` — Workflow index.
   - `index.ts` — barrel re-export.
+  - `workflowModals.tsx` — TODO
   - `workflowNodes.tsx` — React Flow custom nodes + edit/skill/condition modals (extracted from WorkflowPage in req 15).
+  - `workflowNodeTypes.tsx` — TODO
   - `WorkflowPage.tsx` — workflow view.

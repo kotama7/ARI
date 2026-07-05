@@ -12,6 +12,7 @@
 import type React from 'react';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
+import { LoadingState } from '../common';
 import type { CheckpointSummary } from '../../types';
 import type { CheckpointFile } from '../../services/api';
 
@@ -380,8 +381,8 @@ export function renderPaper({
 
             {/* Editor mode: file type determines display */}
             {paperView === 'editor' && fileLoading && (
-              <div style={{ color: 'var(--muted)', padding: 20 }}>
-                <span className="spinner" /> Loading file...
+              <div style={{ padding: 20 }}>
+                <LoadingState inline label={t('loading_file')} />
               </div>
             )}
             {paperView === 'editor' && !fileLoading && activeFile && isImage('.' + (activeFile.split('.').pop()?.toLowerCase() || '')) && (

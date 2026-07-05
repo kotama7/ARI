@@ -21,6 +21,45 @@ except Exception:
     pass
 
 
+# ── skill-local prompt loader (subtask 040) ──────────────────────────────────
+# The evaluator/LLM-judge system prompts are stored as byte-identical ``.md``
+# templates under ``src/prompts/`` and loaded here through a tiny mirror of
+# ari-core's ``FilesystemPromptLoader`` ``load_versioned`` contract. The helper
+# is COPIED (not imported from ari-core) to preserve the one-way
+# ``ari-skill-* -> ari-core`` boundary and keep this MCP package self-contained.
+# Imports stay function-local (matching this module's style and avoiding E402,
+# and keeping the cost-tracker fallback import at its pinned line). Raw load (no
+# ``str.format``) since every template embeds literal JSON-schema braces.
+# Deterministic (P2): a package-relative file read — no LLM, no network.
+def _prompt_path(key: str):
+    """Absolute path to the skill-local prompt template *key* (``prompts/<key>.md``)."""
+    from pathlib import Path
+    return Path(__file__).resolve().parent / "prompts" / f"{key}.md"
+
+
+def _load_prompt(key: str) -> str:
+    """Return prompt template *key* byte-identical to the pre-extraction constant.
+
+    The ``.md`` file is stored with a trailing newline (file convention); a
+    single trailing ``\\n`` is trimmed so the rendered string equals the original
+    string constant exactly, mirroring ari-core ``llm_evaluator.py``.
+    """
+    text = _prompt_path(key).read_text(encoding="utf-8")
+    return text[:-1] if text.endswith("\n") else text
+
+
+def _load_prompt_versioned(key: str) -> tuple[str, str]:
+    """``(rendered_text, sha256[:12])`` for uniform prompt hashing.
+
+    The hash is over the raw on-disk template body (before the trailing-newline
+    trim), matching ari-core's ``load_versioned`` so snapshot tests and future
+    run-provenance pin the same value. Deterministic; no LLM, no network.
+    """
+    import hashlib
+    raw = _prompt_path(key).read_text(encoding="utf-8")
+    return _load_prompt(key), hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
+
+
 def _parse_success_metrics(text: str) -> list[str]:
     """Extract metric names from the experiment file (deterministic).
     Supports:
@@ -188,20 +227,6 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
 
 
-_METRIC_EXTRACT_SYS = (
-    "You are a research evaluation expert. "
-    "Given an experiment description, identify: "
-    "(1) the primary numeric metric to maximize/minimize (one short name, e.g. GFLOP_per_s), "
-    "(2) whether higher is better, "
-    "(3) the list of MEASURED metric names the experiment should report (outputs only — throughput, accuracy, latency, etc.), "
-    "(4) the list of INPUT parameter names the experiment runs on (matrix size, thread count, seed, etc. — these are knobs, NOT measurements). "
-    "Strictly disjoint: a name appears in measurements OR params, never both. "
-    "Respond ONLY with JSON: "
-    '{"metric_keyword":"<name>","higher_is_better":true,'
-    '"expected_metrics":["<m1>","<m2>"],"expected_params":["<p1>","<p2>"]}'
-)
-
-
 async def _llm_extract_metric_spec(description: str) -> dict:
     """LLM-extract ``{metric_keyword, higher_is_better, expected_metrics, expected_params}``
     from a free-text description. Returns ``{}`` on any failure so callers fall back."""
@@ -214,7 +239,7 @@ async def _llm_extract_metric_spec(description: str) -> dict:
         _resp = await _litellm.acompletion(
             model=_model,
             messages=[
-                {"role": "system", "content": _METRIC_EXTRACT_SYS},
+                {"role": "system", "content": _load_prompt("metric_extract_sys")},
                 {"role": "user", "content": "Experiment description:\n" + (description or "")[:2000]},
             ],
             temperature=0.0,
@@ -263,26 +288,6 @@ def _load_primary_metric_from_checkpoint(checkpoint_dir: str | None = None) -> s
 # claim to dodge the gate); the producer obligation surfaces the required_evidence
 # names for the agent to emit. The gate (contract.check_contract) blocks a claim
 # whose evidence is wholly absent (claim_evidence_missing).
-_CLAIMS_EXTRACT_SYS = (
-    "You extract FALSIFIABLE CLAIMS from an experiment plan for a verification gate. "
-    "A falsifiable claim is a specific, testable assertion the experiment promises to "
-    "evaluate — a mechanism helps, a method beats a baseline, a property holds under a "
-    "condition. For EACH claim, give required_evidence: the MEASUREMENT NAMES that MUST "
-    "appear in results.json for the claim to be EVALUABLE AT ALL, regardless of whether the "
-    "outcome confirms or refutes it (a claim that X improves some metric requires that metric "
-    "measured both WITH and WITHOUT X). Use concise snake_case names the implementation "
-    "should emit. Naming rules: every evidence name must be DISTINCTIVE and self-describing "
-    "(fold the condition into the name, like <metric>_with_<mechanism>); NEVER use a bare "
-    "generic token (k, n, seed, threads, matrix_id, mode_id, config) as a standalone evidence "
-    "name — the gate treats a claim as covered when ANY listed name is present, so a generic "
-    "name falsely satisfies it. Feasibility: require only evidence "
-    "measurable with standard USERSPACE tooling on the platform the plan states; do not "
-    "require privileged hardware counters unless the plan itself provides a method for them. "
-    "Do NOT turn an aspirational numeric target into a claim (a target is an "
-    "outcome, not evidence) unless it names a measurement. Domain-neutral: HPC, ML, theory. "
-    "Respond ONLY with JSON: "
-    '{"claims":[{"claim":"<assertion>","required_evidence":["<name1>","<name2>"]}]}'
-)
 
 
 # Generic experiment tokens that must never stand alone as claim evidence: the gate
@@ -410,7 +415,7 @@ async def _llm_extract_claims(plan_text: str, platform_note: str = "") -> list:
         _resp = await _litellm.acompletion(
             model=_model,
             messages=[
-                {"role": "system", "content": _CLAIMS_EXTRACT_SYS},
+                {"role": "system", "content": _load_prompt("claims_extract_sys")},
                 {"role": "user", "content":
                     (platform_note + "\n\n" if platform_note else "")
                     + "Experiment plan:\n" + (plan_text or "")[:6000]},
@@ -461,22 +466,6 @@ async def _resolve_falsifiable_claims(checkpoint_dir: str | None = None) -> list
 # The gate enforces these via the _provenance EVIDENCE already flowing from
 # results.json (a measured-ceiling tag / a correctness tag), so the agent satisfies
 # them by emitting evidence -- NO cross-party naming and NO universal over-block.
-_CONTRACT_FLAGS_SYS = (
-    "You analyze an experiment plan and decide two yes/no properties for a "
-    "verification gate. Be CONSERVATIVE: answer false unless clearly true.\n"
-    "1. correctness_required: does the experiment COMPUTE an output with a definable "
-    "correct answer that must be verified against an INDEPENDENT reference (a numerical "
-    "residual, an exact match, an analytic check)? true for a kernel/algorithm/model "
-    "that computes outputs; false for purely observational/measurement studies or "
-    "theoretical/analytical results that produce no verifiable computed output.\n"
-    "2. ceiling_must_be_measured: is the primary metric normalized/divided by a ceiling "
-    "that is EMPIRICALLY MEASURABLE (a hardware peak, an achievable rate, a baseline run)? "
-    "true ONLY when the denominator can and should be measured; FALSE "
-    "when the metric is not normalized at all, OR is normalized by a THEORETICAL/analytic "
-    "constant (a Carnot limit, a Shannon bound, log N) that cannot be microbenchmarked.\n"
-    "Domain-neutral (HPC, ML, theory). Respond ONLY with JSON: "
-    '{"correctness_required": false, "ceiling_must_be_measured": false}'
-)
 
 
 async def _llm_extract_contract_flags(plan_text: str) -> dict:
@@ -489,7 +478,7 @@ async def _llm_extract_contract_flags(plan_text: str) -> dict:
         _resp = await _litellm.acompletion(
             model=_model,
             messages=[
-                {"role": "system", "content": _CONTRACT_FLAGS_SYS},
+                {"role": "system", "content": _load_prompt("contract_flags_sys")},
                 {"role": "user", "content": "Experiment plan:\n" + (plan_text or "")[:6000]},
             ],
             temperature=0.0,
@@ -787,26 +776,6 @@ async def _tool_claim_evidence_hard_gate(arguments: dict) -> dict:
     return report
 
 
-_SEMANTIC_SYSTEM_PROMPT = (
-    "You are a rigorous scientific reviewer performing an EVIDENCE-GROUNDED SEMANTIC "
-    "review of a paper. Numeric correctness, figure existence, and number/results "
-    "consistency have ALREADY been verified deterministically by a hard gate (its "
-    "findings are provided) — do NOT re-check numbers. Evaluate ONLY meaning:\n"
-    "  - reasoning: do Abstract/Intro/Conclusion claims stay within the evidence? "
-    "over-generalization beyond the evaluated benchmark? are limitations reflected?\n"
-    "  - data_interpretation: are causal/comparative interpretations of the results "
-    "justified (separate from whether the numbers match)?\n"
-    "  - visual_semantics: do captions/figure descriptions agree in MEANING with the "
-    "text (not existence)?\n"
-    "  - unregistered strong (non-numeric) claims not backed by the candidate claims.\n"
-    "Be conservative: only flag genuine over-claims. Respond ONLY with JSON:\n"
-    '{"scores":{"reasoning":0-1,"data_interpretation":0-1,"visual_semantics":0-1},'
-    '"warnings":[{"type":"overclaim|overgeneralization|unsupported_claim|interpretation|'
-    'visual_semantics","section":"<section>","message":"<why>"}],'
-    '"suggested_revisions":[{"section":"<section>","instruction":"<concrete edit>"}]}'
-)
-
-
 async def _tool_evidence_grounded_semantic_review(arguments: dict) -> dict:
     """Story2Proposal Phase D: non-blocking, evidence-grounded semantic review.
 
@@ -900,7 +869,7 @@ async def _tool_evidence_grounded_semantic_review(arguments: dict) -> dict:
         _kw = {
             "model": _model,
             "messages": [
-                {"role": "system", "content": _SEMANTIC_SYSTEM_PROMPT},
+                {"role": "system", "content": _load_prompt("semantic_review_sys")},
                 {"role": "user", "content": user_prompt},
             ],
             "temperature": 0.2, "max_tokens": 1500,

@@ -8,14 +8,20 @@ __pycache__/
 *.pyo
 *.pyd
 .pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 *.egg-info/
+.eggs/
 dist/
 build/
-.env
 *.egg
+# (.env lives once in the Security section below)
 
 # ── Experiment artifacts (NEVER track) ─────────────────────────
-# SLURM job logs & error files
+# SLURM job logs & error files. NOTE: `*.out` is intentionally broad —
+# it covers both SLURM job output and compiled binaries. Keep this single
+# occurrence; do not delete it as a "duplicate".
 logs/
 *.out
 *.err
@@ -83,16 +89,6 @@ ari-core/out_*.csv
 ari-core/experiments/
 ari-core/checkpoints/
 
-# Python bytecode
-__pycache__/
-*.py[cod]
-*.pyo
-*.egg-info/
-*.egg
-.eggs/
-dist/
-build/
-
 # ── Runtime / temp files (generated at runtime, never track) ────
 experiment.md
 ari-core/experiment.md
@@ -112,9 +108,6 @@ venv/
 node_modules/
 ari-core/ari/viz/frontend/node_modules/
 ari-core/ari/viz/static/dist/
-
-# ── Compiled binaries (experiment artifacts) ───────────────────
-*.out
 
 # ── AI session artifacts ────────────────────────────────────────
 HEARTBEAT.md

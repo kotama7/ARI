@@ -12,13 +12,16 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ari.agent.workflow import WorkflowHints
 from ari.llm.client import LLMClient, LLMMessage
 from ari.mcp.client import MCPClient
 from ari.memory.client import MemoryClient
 from ari.orchestrator.node import Node
+
+if TYPE_CHECKING:
+    from ari.protocols import Evaluator
 
 logger = logging.getLogger(__name__)
 
@@ -46,10 +49,15 @@ _FAKE_PATTERNS = [
 _SYSTEM_PROMPT_KEY = "agent/system"
 
 
+def _system_prompt_versioned() -> tuple[str, str]:
+    """Load the agent system prompt template and its ``sha256[:12]`` hash."""
+    from ari.prompts import FilesystemPromptLoader
+    return FilesystemPromptLoader().load_versioned(_SYSTEM_PROMPT_KEY)
+
+
 def _system_prompt_template() -> str:
     """Load the agent system prompt template from disk."""
-    from ari.prompts import FilesystemPromptLoader
-    return FilesystemPromptLoader().load(_SYSTEM_PROMPT_KEY)
+    return _system_prompt_versioned()[0]
 
 
 def __getattr__(name: str):  # PEP 562 — keep ``SYSTEM_PROMPT`` source-compatible.
@@ -369,7 +377,7 @@ class AgentLoop:
         llm: LLMClient,
         memory: MemoryClient,
         mcp: MCPClient,
-        evaluator: object | None = None,
+        evaluator: Evaluator | None = None,
         workflow_hints: WorkflowHints | None = None,
         max_react_steps: int = MAX_REACT_STEPS,
         timeout_per_node: int = 7200,
@@ -551,7 +559,15 @@ class AgentLoop:
             memory_rules += _MEMORY_RULES_PER_NODE.format(node_id=node.id)
         # add_global_memory was removed in v0.6.0 (§3) so the global rules
         # block is always empty — the conditional is kept for future use.
-        system_content = _system_prompt_template().format(tool_desc=tool_desc, memory_rules=memory_rules, extra=extra)
+        _sys_tmpl, _sys_hash = _system_prompt_versioned()
+        system_content = _sys_tmpl.format(tool_desc=tool_desc, memory_rules=memory_rules, extra=extra)
+        # Subtask 044: record which prompt template drove this ReAct call.
+        from ari.prompts import record_prompt_use as _record_prompt_use
+        _record_prompt_use(
+            _SYSTEM_PROMPT_KEY, _sys_hash, rendered_text=system_content,
+            model=getattr(getattr(self.llm, "config", None), "model", "") or "",
+            node_id=node.id, phase="agent",
+        )
         # pass only goal from experiment dict (workflow_hint is injected via post_survey_hint)
         goal_text = experiment.get("goal", "") if isinstance(experiment, dict) else str(experiment)
         # ── Trace: log goal_text before truncation ─────────────────
@@ -1044,7 +1060,7 @@ class AgentLoop:
                                 # primary_metric is only known after generate_ideas, so we seed
                                 # here rather than at the literal moment of checkpoint creation.
                                 try:
-                                    from ari_skill_memory.backends import get_backend as _gmb
+                                    from ari.memory import get_backend as _gmb
                                     from ari.env_detect import get_environment_summary as _es
                                     _ckpt = getattr(self, "checkpoint_dir", None)
                                     if _ckpt:

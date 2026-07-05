@@ -15,6 +15,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useI18n } from '../../i18n';
+import { ErrorState } from '../common';
 import {
   fetchWorkflowFlow,
   saveWorkflowFlow,
@@ -391,7 +392,9 @@ export default function WorkflowPage() {
     return (
       <div>
         <h2>Workflow Editor</h2>
-        <p style={{ color: 'var(--danger)' }}>{error}</p>
+        {/* Was color:'var(--danger)' — an undefined token that rendered non-red
+            (072). ErrorState uses the defined --red token. */}
+        <ErrorState message={error} />
       </div>
     );
   }

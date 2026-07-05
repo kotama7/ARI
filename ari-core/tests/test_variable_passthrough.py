@@ -30,7 +30,11 @@ def _wizard_page():  return (_REACT_COMPONENTS / "Wizard" / "WizardPage.tsx").re
 def _settings_page():
     # Settings UI decomposed (req 15): constants live in settingsConstants.ts.
     d = _REACT_COMPONENTS / "Settings"
-    return "\n".join(p.read_text() for p in sorted(d.glob("*.ts")) + sorted(d.glob("*.tsx")))
+    # Settings further decomposed (subtask 070) into sections/*.tsx; recurse (skip
+    # __tests__/) so source-contract checks still see the extracted section code.
+    files = [p for p in sorted(d.rglob("*.ts")) + sorted(d.rglob("*.tsx"))
+             if "__tests__" not in p.parts]
+    return "\n".join(p.read_text() for p in files)
 def _api():   return (_VIZ / "api_experiment.py").read_text()
 def _cfg():
     # Phase 2 §6-2: ``ari.config`` is now a package; env-var reads live
@@ -41,7 +45,10 @@ def _cfg():
     return (_ARI / "config.py").read_text()
 def _srv():   return (_VIZ / "server.py").read_text()
 def _set():   return (_VIZ / "api_settings.py").read_text()
-def _routes(): return (_VIZ / "routes.py").read_text()
+def _routes(): return ((_VIZ / "routes.py").read_text()
+                       # subtask 062: /state builder (frontier_score/composite/axis_mode)
+                       # relocated to services/state_service.py — location pointer only.
+                       + (_VIZ / "services" / "state_service.py").read_text())
 
 
 def _read_react_sources():
@@ -417,7 +424,7 @@ class TestInvalidFallbacks:
     def test_handleSave_reads_model_select_state(self):
         """handleSave must read modelSelect state, not just modelCustom."""
         src = _settings_page()
-        fn_idx = src.find("handleSave")
+        fn_idx = src.find("function handleSave")
         assert fn_idx >= 0
         body = src[fn_idx:fn_idx + 500]
         assert "modelSelect" in body, \

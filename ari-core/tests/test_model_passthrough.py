@@ -360,7 +360,7 @@ class TestReactSaveSettingsStatic:
     def test_save_settings_includes_llm_model_with_fallback(self):
         """handleSave must use modelSelect with modelCustom fallback."""
         src = self._settings()
-        fn_idx = src.find("handleSave")
+        fn_idx = src.find("function handleSave")
         assert fn_idx >= 0
         body = src[fn_idx:fn_idx + 500]
         assert "modelSelect" in body, "handleSave missing modelSelect"
@@ -369,7 +369,7 @@ class TestReactSaveSettingsStatic:
     def test_save_settings_includes_provider(self):
         """handleSave must save provider (llm_backend) key."""
         src = self._settings()
-        fn_idx = src.find("handleSave")
+        fn_idx = src.find("function handleSave")
         assert fn_idx >= 0
         body = src[fn_idx:fn_idx + 500]
         assert "llm_backend" in body or "provider" in body
