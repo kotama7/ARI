@@ -53,11 +53,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_VERSION = 1
 
 DEFAULT_CONFIG_PATH = REPO_ROOT / "scripts" / "quality" / "analyze_references.yaml"
-DEFAULT_OUTPUT = REPO_ROOT / "docs" / "refactoring" / "reports" / "reference_graph.json"
+DEFAULT_OUTPUT = REPO_ROOT / "scripts" / "quality" / "baselines" / "reference_graph.json"
 # Subtask 053's machine-readable roots manifest (read-only input).
 ROOTS_CANDIDATES = (
-    REPO_ROOT / "docs" / "refactoring" / "reports" / "053_reference_roots.json",
-    REPO_ROOT / "docs" / "refactoring" / "reports" / "reference_roots.json",
+    REPO_ROOT / "scripts" / "quality" / "baselines" / "053_reference_roots.json",
+    REPO_ROOT / "scripts" / "quality" / "baselines" / "reference_roots.json",
 )
 
 # Fallback config when the YAML is absent -- keeps the analyzer self-contained.

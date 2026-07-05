@@ -22,3 +22,11 @@ Rule config and frozen allowlists for the top-level `scripts/check_*` source-qua
 - `check_viz_api_schema.allow.yaml` — frozen baseline for `check_viz_api_schema.py` (1 known client-only F6a drift + 20 legitimately server-only routes: static/SSE/direct-URL/proxy/no-FE-consumer).
 - `check_viz_api_schema.yaml` — config for `check_viz_api_schema.py` (routes.py + api.ts targets, the four get/post/pbGet/pbPost helper→method map, declarative-route toggle).
 - `generate_quality_report.yaml` — TODO
+- `baselines/` — committed quality baselines the checkers consume (relocated out of the retired `docs/refactoring/` tree).
+  - `053_reference_roots.json` — reference-root manifest (R1..R12) seeding `analyze_references` reachability.
+  - `dead_code_baseline.json` — frozen dead-code counts; `generate_quality_report` reports the before/after delta.
+  - `hardcoded_prompt_inventory.json` — prompt census consumed by `check_prompts` (`CENSUS_JSON`).
+  - `hardcoded_prompt_inventory.md` — human-readable companion of the prompt census.
+  - `public_api_snapshot.json` — frozen `ari.public.*` API surface; `check_public_api_contracts` diffs against it.
+  - `reference_graph.json` — the code/data reference graph (`analyze_references` output; `check_dead_code` input).
+  - `reference_graph.md` — human-readable companion of the reference graph.
