@@ -2,6 +2,34 @@
 
 All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PATCH`.
 
+## v0.9.1 — Contract-preserving refactoring program (73 subtasks) + DONE-verification audit (2026-07-05)
+
+- **73-subtask refactoring program, every contract preserved.** ari-core, the 14
+  MCP skills, and the React/TS dashboard were decomposed behind stable seams with
+  no change to the `ari` CLI, `ari.public.*`, MCP tool contracts, dashboard API
+  endpoints/schemas, or checkpoint/config formats. Highlights: `run_pipeline`
+  913→153 LOC (`WorkflowDriver`/stages), `viz/routes.py` 1197→760
+  (`StateService`/`FileService`), `resultSections.tsx` 1590 and `services/api.ts`
+  863 into barrels + split modules, `SettingsPage.tsx` 1049→506 + 10 sections.
+  New seams: `BaseModelBackend`/`Evaluator`/store/`SearchStrategy` protocols,
+  `BaseRegistry` factory, `RuntimePathResolver`, `PromptRegistry` + provenance,
+  memory funnel, developer-mode + empty/loading/error UX.
+- **Quality tooling + CI guards.** 8 checker scripts (complexity, import
+  boundaries, public-API/viz-schema/MCP contracts, dead code, docs↔source sync,
+  directory policy), byte-stable contract snapshots for four surfaces, and the
+  matching GitHub Actions jobs.
+- **Post-completion DONE-verification audit.** A 73-way adversarial re-check
+  against primary sources found 1 NOT_DONE + 18 CONCERN that the progress ledger
+  had marked done; all were fixed or documented (see
+  `docs/refactoring/007_subtask_index.md` — Completion Status: 59 DONE + 14
+  DONE\*, 0 BLOCKED).
+- **Dependency-version-robust contract snapshots.** `snapshot_contracts.py` now
+  duck-types Click/Typer command trees (Typer ≥0.26 vendors its own click, which
+  broke `isinstance`-based introspection) and derives `ari_core_version` from
+  `pyproject.toml` so the goldens can never silently lag the version.
+- **Metrics:** pytest `ari-core/tests` 2413→2656 passed / 0 failed; new
+  `scripts/tests` 93 passed; ruff `ari-core` 661→634.
+
 ## v0.9.0 — Verified claims end-to-end: S2P gate + mint-once contract + lineage chaining + VirSci-live (2026-06-12)
 
 - **Sample paper replaced with a gate-verified study.**
