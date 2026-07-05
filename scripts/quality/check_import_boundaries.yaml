@@ -1,0 +1,33 @@
+# Rule config for scripts/check_import_boundaries.py
+#
+# Design: docs/refactoring/003_dependency_boundary_report.md §3/§4/§15;
+#         docs/refactoring/009_quality_scripts_plan.md §5.2.
+#
+# Every key here is optional; omitted keys fall back to the script defaults.
+# The lists are config-driven precisely so that the B1 ADAPT subtask can widen
+# ari.public.* (e.g. add ari.public.lineage / clone / publish / node_selection)
+# with NO code change to the checker -- the new segments stay under ari.public.
+
+# B1 -- the only import roots an ari-skill-*/src/** module may use to reach core.
+allowed_skill_import_roots:
+  - ari.public
+  - ari.protocols
+
+# B2 -- the sole sanctioned ari-core -> ari_skill_* package (v0.6.0 edge,
+# editable-installed by setup.sh; see ari-core/pyproject.toml lines 27-31).
+sanctioned_core_to_skill:
+  - ari_skill_memory
+
+# Off by default -- flag a skill importing another skill package. No such edge
+# exists today (003 report §3); enable when a cross-skill policy is wanted.
+flag_cross_skill_imports: false
+
+# Off by default (null) -- once the B2 ADAPT subtask funnels the ~13 sanctioned
+# ari_skill_memory sites through ari.memory.MemoryClient, set this to
+# "ari-core/ari/memory" to flag ari_skill_memory imports OUTSIDE that seam.
+restrict_memory_edge_to: null
+
+# Off by default -- flag ari-core/ari/cli/** importing ari.viz.* (catches the
+# core->viz inversion at ari/cli/lineage.py:151). Owned by the B7 pipeline work;
+# symbol-level ari.public.* checks stay out of scope (subtask 029).
+forbid_core_to_viz_from_cli: false

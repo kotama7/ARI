@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
+import { LoadingState, ErrorState } from '../common';
 import { fetchCheckpointFiletree, fetchCheckpointFilecontent } from '../../services/api';
 
 // ── Types ──
@@ -343,7 +344,7 @@ export function FileExplorer({ checkpointId, nodeId, onClose }: FileExplorerProp
           {/* Content */}
           <div style={{ flex: 1, overflow: 'auto', padding: 0 }}>
             {fileLoading ? (
-              <div style={{ padding: 16, color: 'var(--muted)', fontSize: '.8rem' }}>Loading...</div>
+              <div style={{ padding: 16 }}><LoadingState inline /></div>
             ) : (
               <pre style={{
                 margin: 0,
@@ -365,10 +366,10 @@ export function FileExplorer({ checkpointId, nodeId, onClose }: FileExplorerProp
         // Tree view
         <div style={{ flex: 1, overflow: 'auto', padding: '4px 0' }}>
           {loading && (
-            <div style={{ padding: 16, color: 'var(--muted)', fontSize: '.8rem' }}>Loading...</div>
+            <div style={{ padding: 16 }}><LoadingState inline /></div>
           )}
           {error && (
-            <div style={{ padding: 16, color: 'var(--red, #ef4444)', fontSize: '.8rem' }}>{error}</div>
+            <div style={{ padding: 16 }}><ErrorState message={error} inline /></div>
           )}
           {!loading && !error && tree.length === 0 && (
             <div style={{ padding: 16, color: 'var(--muted)', fontSize: '.8rem' }}>

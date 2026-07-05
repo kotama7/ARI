@@ -86,7 +86,7 @@ def _api_delete_checkpoint(body: bytes) -> dict:
         # Letta agent + archival entries bound to this checkpoint are cleaned.
         # Failures are logged but never block the on-disk delete.
         try:
-            from ari_skill_memory.backends import get_backend
+            from ari.memory import get_backend
             backend = get_backend(checkpoint_dir=p)
             backend.purge_checkpoint()
         except Exception as _e:

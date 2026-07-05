@@ -1,0 +1,37 @@
+# Frozen allowlist / baseline for scripts/check_import_boundaries.py
+#
+# Each entry is keyed by the stable identity "<repo-relative file>::<imported
+# module>" (occurrences on multiple lines of the same file share one id).
+# Findings on an allowlisted id are reported as `known` (not `new`) and never
+# fail `--fail-on-regression`, so historical debt stays out of CI while NEW debt
+# is blocked. Shrink this list by editing YAML as each edge is repointed at
+# ari.public.* -- never by editing the checker (subtask 026 §17).
+#
+# Seeded 2026-07-01 from docs/refactoring/003_dependency_boundary_report.md
+# §3/§16. The 7 B1 edges are ADAPTed by the B1 runtime subtasks (010/041); the
+# ari_skill_memory core->skill edge is the sanctioned B2 exception (config-
+# allowed, so it is never a finding -- documented here for completeness).
+
+known:
+  # -- B1: skill -> private ari-core (cross-seam; widen ari.public.* to fix) --
+  - id: "ari-skill-idea/src/server.py::ari.lineage"
+    note: "B1 cross-seam (idea:614). ADAPT: route via a new ari.public.lineage shim."
+  - id: "ari-skill-paper-re/src/server.py::ari.clone"
+    note: "B1 cross-seam (paper-re:146). ADAPT: route via a new ari.public.clone shim."
+  - id: "ari-skill-transform/src/server.py::ari.orchestrator"
+    note: "B1 cross-seam (transform:681,2083). ADAPT: new ari.public.node_selection shim."
+  - id: "ari-skill-transform/src/server.py::ari.publish"
+    note: "B1 cross-seam (transform:2433,2451). ADAPT: new ari.public.publish shim."
+  - id: "ari-skill-coding/src/server.py::ari.container"
+    note: "B1 private fallback (coding:569). Primary is ari.public.container; drop the fallback."
+  - id: "ari-skill-coding/src/server.py::ari.agent.run_env"
+    note: "B1 private fallback (coding:583). Primary is ari.public.run_env; drop the fallback."
+  - id: "ari-skill-hpc/src/slurm.py::ari.agent.run_env"
+    note: "B1 cross-seam (hpc/slurm:211). Public symbol exists: ari.public.run_env.shell_capture_snippet."
+
+  # -- B2: the single sanctioned core->skill edge (documentary) --
+  # ari_skill_memory is allowed by config (sanctioned_core_to_skill), so it is
+  # never emitted as a finding; this entry documents the sanctioned exception
+  # and would cover it if the stricter restrict_memory_edge_to mode is enabled.
+  - id: "ari-core/ari/memory/letta_client.py::ari_skill_memory.backends"
+    note: "Sanctioned core->skill edge (§11). ADAPT: centralize the ~13 sites behind MemoryClient."

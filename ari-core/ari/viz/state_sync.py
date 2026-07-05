@@ -25,16 +25,15 @@ log = logging.getLogger(__name__)
 
 
 def _load_nodes_tree() -> dict | None:
-    """Load the active checkpoint's node tree (Phase 2 §6-1 delegation).
+    """Load the active checkpoint's node tree (subtask 024 delegation).
 
-    Search order, retry-on-mid-write semantics, and the empty-dict
-    rejection rule live in ``ari.checkpoint.load_nodes_tree``; this
-    wrapper only feeds it the active checkpoint dir from ``_st``.
+    The single tree-view source is ``viz.tree_view.build_tree_view``, which
+    wraps ``ari.checkpoint.load_nodes_tree`` (search order, retry-on-mid-write,
+    and the empty-dict rejection rule). This wrapper only feeds it the active
+    checkpoint dir from ``_st`` (``None`` is handled by the adapter).
     """
-    if _st._checkpoint_dir is None:
-        return None
-    from ari.checkpoint import load_nodes_tree as _load
-    return _load(_st._checkpoint_dir)
+    from .tree_view import build_tree_view
+    return build_tree_view(_st._checkpoint_dir)
 
 
 

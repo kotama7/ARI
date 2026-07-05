@@ -378,10 +378,10 @@ def _run_stage_subprocess(tool: str, args: dict, config_path: str, skill_name: s
         "        pass\n"
         "from ari.mcp.client import MCPClient\n"
         "from ari.config import load_config\n"
-        "from pathlib import Path as _P\n"
         "_cfg_path = " + _cfg + "\n"
         "if not _cfg_path:\n"
-        "    _pkg_cfg = _P(__file__).parents[1] / 'config' / 'workflow.yaml'\n"
+        "    from ari.config.finder import package_config_root as _pcr\n"
+        "    _pkg_cfg = _pcr() / 'workflow.yaml'\n"
         "    _cfg_path = str(_pkg_cfg) if _pkg_cfg.exists() else _cfg_path\n"
         "cfg = load_config(_cfg_path)\n"
         + _skill_filter +

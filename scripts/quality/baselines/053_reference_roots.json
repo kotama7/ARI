@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "subtask": "053_inventory_reference_roots",
+  "repo_root": "/home/t-kotama/workplace/ARI",
+  "git_branch": "whole_refactoring",
+  "git_head": "2a20bd9",
+  "ari_core_version": "0.9.0",
+  "verified_date": "2026-07-01",
+  "deterministic": true,
+  "llm_calls": false,
+  "static_roots": [
+    {"id": "R1", "class": "console_script", "anchor": "ari-core/pyproject.toml:34", "value": "ari = \"ari.cli:app\"", "verified": true},
+    {"id": "R2", "class": "cli_app_command_tree", "anchor": "ari-core/ari/cli/__init__.py:78", "verified": true, "commands": ["clone", "run", "resume", "paper", "status", "skills-list", "viz", "projects", "show", "delete", "settings"], "reorder": "cli/__init__.py:148-170"},
+    {"id": "R3", "class": "cli_subtypers_guarded", "anchor": "ari-core/ari/cli/__init__.py:82-100", "verified": true, "groups": {"memory": "ari/memory_cli.py", "ear": "ari/cli_ear.py", "registry": "ari/registry/cli.py", "migrate": "ari/cli/migrate.py"}},
+    {"id": "R4", "class": "mcp_servers", "anchor": "ari-skill-*/src/server.py", "verified": true, "count": 14, "fastmcp": ["benchmark", "idea", "memory", "paper", "paper-re", "plot", "replicate", "transform", "vlm", "web"], "lowlevel_server": ["coding", "evaluator", "hpc", "orchestrator"]},
+    {"id": "R5", "class": "mcp_client_bridge", "anchor": "ari-core/ari/mcp/client.py", "verified": true, "loc": 483, "call_tool": [227, 336], "tool_registry": 283, "to_claude_mcp_config": 437, "qualified_naming": "mcp__<skill>__<tool>"},
+    {"id": "R6", "class": "dashboard_http_ws", "anchor": "ari-core/ari/viz/routes.py", "verified": true, "routes_loc": 1197, "api_modules": ["api_experiment", "api_fewshot", "api_memory", "api_ollama", "api_orchestrator", "api_paperbench", "api_paperbench_worker", "api_process", "api_publish", "api_settings", "api_state", "api_tools", "api_wizard", "api_workflow"], "other": ["websocket.py", "server.py", "state.py", "state_sync.py"]},
+    {"id": "R7", "class": "public_python_api", "anchor": "ari-core/ari/public/", "verified": true, "loc_total": 148, "submodules": ["claim_gate", "config_schema", "container", "cost_tracker", "llm", "paths", "run_env", "verified_context"], "init_docstring_only": true},
+    {"id": "R8", "class": "frontend_entry", "anchor": "ari-core/ari/viz/frontend/src/App.tsx", "verified": true, "api_client": "services/api.ts", "api_client_loc": 863},
+    {"id": "R9", "class": "test_suites", "anchor": "ari-core/tests/", "verified": true, "liveness": "TEST_ONLY", "heaviest": {"test_server.py": 1844, "test_gui_errors.py": 1650, "test_workflow_contract.py": 1606}},
+    {"id": "R10", "class": "documented_commands", "anchor": "README*.md, docs/", "verified": true, "liveness": "DOCS_ONLY", "validator": "scripts/docs/check_doc_sources.py"},
+    {"id": "R11", "class": "ci_scripts", "anchor": ".github/workflows/*", "verified": true, "count": 12, "targets": ["scripts/check_i18n.py", "scripts/readme_sync.py", "scripts/docs/assemble_site.sh", "scripts/docs/check_doc_links.py", "scripts/docs/check_doc_sources.py", "scripts/docs/check_i18n_js.py", "scripts/docs/check_readme_parity.py", "scripts/docs/check_ref_coupling.py", "scripts/docs/check_report_cochange.py", "scripts/docs/check_site_i18n.py", "scripts/docs/check_translation_freshness.py", "scripts/docs/sync_report_pdf.sh"]},
+    {"id": "R12", "class": "registry_ear_http", "anchor": "ari-core/ari/registry/app.py:22", "verified": true, "routes": ["/healthz", "/version", "POST /artifact", "GET /artifact/{id}", "HEAD /artifact/{id}", "/artifact/{id}/manifest.lock", "/artifact/{id}/promote", "DELETE /artifact/{id}"], "served_by": "ari registry serve"}
+  ],
+  "dynamic_seams": [
+    {"id": "D1", "seam": "publish_backends_string_dispatch", "anchor": "ari-core/ari/publish/__init__.py:198", "keys": ["ari-registry", "local-tarball", "zenodo", "gh"], "targets": ["ari-core/ari/publish/backends/ari_registry.py", "ari-core/ari/publish/backends/local_tarball.py", "ari-core/ari/publish/backends/zenodo.py", "ari-core/ari/publish/backends/gh.py"], "classification": "DYNAMIC_REFERENCE_RISK", "static_importers": 0},
+    {"id": "D2", "seam": "evaluator_composites_dict", "anchor": "ari-core/ari/evaluator/llm_evaluator.py:165", "keys": ["harmonic_mean", "arithmetic_mean", "weighted_min", "geometric_mean"], "callables": {"weighted_harmonic_mean": 75, "weighted_arithmetic_mean": 102, "weighted_min": 122, "weighted_geometric_mean": 141}, "classification": "DYNAMIC_REFERENCE_RISK"},
+    {"id": "D3", "seam": "llm_backend_routing", "anchor": "ari-core/ari/llm/routing.py:37", "keys": ["anthropic", "claude", "ollama", "cli-shim", "cli_shim"], "env_coupled": "ARI_BACKEND", "classification": "DYNAMIC_REFERENCE_RISK"},
+    {"id": "D4", "seam": "prompt_config_rubric_schema_path_lookups", "anchors": ["ari-core/ari/prompts/_loader.py:24", "ari-core/ari/configs/_loader.py", "ari-core/ari/config/finder.py", "ari-core/ari/schemas/__init__.py:11"], "classification": "DYNAMIC_REFERENCE_RISK", "prompt_load_sites": {"orchestrator/root_idea_selector": "orchestrator/root_idea_selector.py:63", "orchestrator/lineage_decision": "orchestrator/lineage_decision.py:293", "orchestrator/bfts_expand": "orchestrator/bfts.py:744", "orchestrator/bfts_select": "orchestrator/bfts.py:477", "orchestrator/bfts_expand_select": "orchestrator/bfts.py:557", "pipeline/keyword_librarian": "pipeline/context_builder.py:117", "viz/wizard_chat_goal": "viz/api_tools.py:55", "viz/wizard_generate_config": "viz/api_tools.py:127", "evaluator/extract_metrics": "evaluator/llm_evaluator.py:255", "evaluator/peer_review": "evaluator/llm_evaluator.py:413", "agent/system": "agent/loop.py:46"}},
+    {"id": "D5", "seam": "mcp_tool_dispatch_stdio", "anchor": "ari-core/ari/mcp/client.py:227", "tool_count": 87, "classification": "DYNAMIC_REFERENCE_RISK"},
+    {"id": "D6", "seam": "cross_lang_http_ws_and_env_pairs", "anchors": ["ari-core/ari/viz/frontend/src/services/api.ts", "ari-core/ari/viz/routes.py", "ari-core/ari/viz/websocket.py:27", "ari-core/ari/viz/state_sync.py:45"], "ws_message_type": "update", "api_ts_endpoint_literals": 55, "ari_env_readers": 80, "classification": "DYNAMIC_REFERENCE_RISK"}
+  ],
+  "live_by_string_allow_list": {
+    "total": 51,
+    "publish_backends": ["ari-core/ari/publish/backends/ari_registry.py", "ari-core/ari/publish/backends/local_tarball.py", "ari-core/ari/publish/backends/zenodo.py", "ari-core/ari/publish/backends/gh.py"],
+    "composite_callables": ["evaluator/llm_evaluator.py:75", "evaluator/llm_evaluator.py:102", "evaluator/llm_evaluator.py:122", "evaluator/llm_evaluator.py:141"],
+    "prompt_templates_count": 11,
+    "reviewer_rubrics_count": 23,
+    "paperbench_rubrics": ["config/paperbench_rubrics/generic.yaml", "config/paperbench_rubrics/nature.yaml", "config/paperbench_rubrics/neurips.yaml", "config/paperbench_rubrics/sc.yaml"],
+    "profiles": ["config/profiles/cloud.yaml", "config/profiles/hpc.yaml", "config/profiles/laptop.yaml"],
+    "fewshot_json": ["config/reviewer_rubrics/fewshot_examples/neurips/attention.json", "config/reviewer_rubrics/fewshot_examples/neurips/132_automated_relational.json", "config/reviewer_rubrics/fewshot_examples/neurips/2_carpe_diem.json"],
+    "json_schemas_data": ["ari-core/ari/schemas/node_report.schema.json", "ari-core/ari/schemas/publish.schema.json"],
+    "workflow_yaml": "ari-core/config/workflow.yaml"
+  },
+  "config_triple": {
+    "ari-core/ari/config/": "python_locator_code",
+    "ari-core/ari/configs/": "packaged_default_data_plus_loader",
+    "ari-core/config/": "rubric_profile_workflow_data",
+    "sonfigs": "does not exist",
+    "top_level_pyproject": "does not exist"
+  },
+  "test_only_docs_only": {
+    "TEST_ONLY": {"ari.schemas.load": "ari-core/ari/schemas/__init__.py:11", "ari.schemas.schema_path": "ari-core/ari/schemas/__init__.py:18", "note": "no production importer; only README doc + test filesystem read (tests/test_node_report.py:30)"},
+    "DOCS_ONLY": {"documented_ari_commands": "validated by scripts/docs/check_doc_sources.py"}
+  },
+  "mcp_tools": {
+    "total": 87,
+    "fastmcp": 59,
+    "lowlevel": 28,
+    "by_skill": {
+      "benchmark": ["analyze_results", "plot", "statistical_test"],
+      "coding": ["emit_results", "read_file", "run_bash", "run_code", "write_code"],
+      "evaluator": ["claim_evidence_hard_gate", "evidence_grounded_semantic_review", "make_metric_spec"],
+      "hpc": ["job_cancel", "job_status", "probe_platform_capabilities", "singularity_build", "singularity_build_fakeroot", "singularity_pull", "singularity_run", "singularity_run_gpu", "slurm_submit"],
+      "idea": ["_load_virsci_snapshot_papers"],
+      "memory": ["_set_current_node", "add_experiment_result", "add_failure_case", "add_memory", "add_procedure_memory", "add_reflection", "add_reproducibility_event", "audit_memory", "clear_node_memory", "consolidate_node_memory", "get_experiment_context", "get_node_memory", "get_verified_context", "search_memory", "search_research_memory"],
+      "orchestrator": ["get_ear", "get_paper", "get_status", "get_workflow", "list_children", "list_files", "list_runs", "list_skills", "read_file", "run_experiment", "stop_experiment"],
+      "paper": ["check_format", "compile_paper", "generate_section", "get_template", "inject_code_availability", "link_paper_claims", "list_rubrics", "list_venues", "merge_reviews", "paper_refine", "review_compiled_paper", "review_section", "revise_section", "write_paper_iterative"],
+      "paper-re": ["build_reproduce_sh", "fetch_code_bundle", "grade_with_simplejudge", "run_reproduce"],
+      "plot": ["generate_figures", "generate_figures_llm"],
+      "replicate": ["audit_rubric", "generate_rubric", "suggest_target_leaf_count"],
+      "transform": ["curate_ear", "generate_ear", "nodes_to_science_data", "promote_ear", "publish_ear"],
+      "vlm": ["review_figure", "review_figures_all", "review_table"],
+      "web": ["collect_references_iterative", "fetch_url", "list_uploaded_files", "read_uploaded_file", "search_arxiv", "search_papers", "search_semantic_scholar", "set_retrieval_backend", "web_search"]
+    },
+    "collisions": {"read_file": ["coding", "orchestrator"]}
+  },
+  "negatives": {
+    "core_internal_not_public_root": ["ari-core/ari/core.py:83 build_runtime", "ari-core/ari/core.py:235 generate_paper_section"],
+    "entrypoint_noise_server_main": ["ari-skill-replicate/pyproject.toml:27", "ari-skill-paper-re/pyproject.toml:29"]
+  },
+  "review_required": [
+    {"id": "numbering_053_vs_054", "detail": "013 §8.1(:396)/§10(:498) assign analyze_references.py to 053; 007:100-101 assigns 053=inventory, 054=analyzer. This artifact follows 007."},
+    {"id": "mcp_flat_namespace_collision", "detail": "read_file registered by coding and orchestrator; global _tool_registry last-skill-wins (client.py:283)."},
+    {"id": "publish_schema_s3_unimplemented", "detail": "publish.schema.json:51 enum includes 's3' but _load_backend has no s3 branch and no backends/s3.py; 's3' is NOT a live-by-string target."},
+    {"id": "two_checkpoint_dirs", "detail": "root checkpoints/ vs workspace/checkpoints/; storage-path policy is subtasks 004/005."},
+    {"id": "ari_memory_backend_no_consumer", "detail": "ARI_MEMORY_BACKEND set at config/__init__.py:316 but core hardcodes LettaMemoryClient (core.py:130); DYNAMIC_REFERENCE_RISK not orphan."}
+  ]
+}

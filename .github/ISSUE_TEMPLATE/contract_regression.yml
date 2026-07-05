@@ -1,0 +1,49 @@
+name: Contract regression
+description: Report a break in one of ARI's protected external contract surfaces.
+title: "[contract] "
+labels:
+  - contract-regression
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Use this form when a previously stable external contract changed
+        behaviour or shape. The protected surfaces are documented under
+        [`docs/reference/`](../../docs/reference/) and in
+        [`docs/refactoring/010_contract_preservation_policy.md`](../../docs/refactoring/010_contract_preservation_policy.md).
+  - type: dropdown
+    id: contract
+    attributes:
+      label: Which contract broke?
+      multiple: false
+      options:
+        - CLI `ari`
+        - "`ari.public.*` Python API"
+        - MCP tool contract
+        - Dashboard API endpoint/schema
+        - Checkpoint / output format
+        - Config file format
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit observed
+      description: The ari-core version or commit SHA where the regression appears.
+      placeholder: "ari-core 0.9.0, or a commit SHA"
+    validations:
+      required: true
+  - type: textarea
+    id: expected-actual
+    attributes:
+      label: Expected vs actual
+      description: What the contract used to do, and what it does now.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: The smallest steps or snippet that demonstrate the break.
+    validations:
+      required: true

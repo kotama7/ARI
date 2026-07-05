@@ -360,7 +360,7 @@ stages:
     ...
 ```
 
-Bundled defaults live in `ari-core/ari/configs/workflow.default.yaml`.
+Bundled defaults live in `ari-core/config/workflow.yaml` (the package config root returned by `package_config_root()`).
 
 ## `memory_store.jsonl` / `memory_backup.jsonl.gz`
 

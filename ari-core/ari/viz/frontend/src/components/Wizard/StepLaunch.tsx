@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { useI18n } from '../../i18n';
+import { LoadingState, ErrorState } from '../common';
 import * as api from '../../services/api';
 import type { OrsSettings } from './StepResources';
 
@@ -125,11 +126,7 @@ export function StepLaunch({
   const handleLaunch = async () => {
     if (launching) return;
     setLaunching(true);
-    setLaunchStatus(
-      <span>
-        <span className="spinner" /> Launching...
-      </span>,
-    );
+    setLaunchStatus(<LoadingState inline label={t('launching')} />);
 
     try {
       const r = await api.launchExperiment({
@@ -196,16 +193,12 @@ export function StepLaunch({
           pollNewCheckpoint(20);
         }
       } else {
-        setLaunchStatus(
-          <span style={{ color: 'var(--red)' }}>{r.error}</span>,
-        );
+        setLaunchStatus(<ErrorState message={r.error ?? t('load_failed')} inline />);
         setLaunching(false);
       }
     } catch (e: any) {
       setLaunchStatus(
-        <span style={{ color: 'var(--red)' }}>
-          {e.message || 'Launch failed'}
-        </span>,
+        <ErrorState message={e.message || t('load_failed')} inline />,
       );
       setLaunching(false);
     }

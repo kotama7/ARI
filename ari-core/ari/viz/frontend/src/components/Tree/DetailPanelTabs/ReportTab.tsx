@@ -5,6 +5,7 @@
 // useI18n internally (behavior-identical to the container's i18n closure).
 
 import { useI18n } from '../../../i18n';
+import { LoadingState, ErrorState } from '../../common';
 import type { NodeReport } from '../../../services/api';
 
 interface ReportTabProps {
@@ -17,10 +18,8 @@ export function ReportTab({ reportLoading, reportError, reportData }: ReportTabP
   const { t } = useI18n();
   return (
     <div style={{ fontSize: '.78rem' }}>
-      {reportLoading && <div style={{ color: 'var(--muted)' }}>Loading…</div>}
-      {reportError && (
-        <div style={{ color: 'var(--danger, #ef4444)' }}>{reportError}</div>
-      )}
+      {reportLoading && <LoadingState inline />}
+      {reportError && <ErrorState message={reportError} inline />}
       {reportData && (
         <div>
           {reportData.delta_vs_parent && (

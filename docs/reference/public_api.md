@@ -47,7 +47,7 @@ from ari.public.config_schema import (
 cfg = ARIConfig.model_validate(yaml.safe_load(open("ari.yaml")))
 ```
 
-The exported names track `ari/config.py` symbol-for-symbol; consult
+The exported names track `ari/config/__init__.py` symbol-for-symbol; consult
 that file for current field shapes.  Source:
 `ari-core/ari/public/config_schema.py`.
 

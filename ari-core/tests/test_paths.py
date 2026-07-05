@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ari.paths import PathManager
+from ari.paths import PathManager, RuntimePathResolver
 
 
 # ── basic construction ────────────────────────────────────────────────────
@@ -369,3 +369,217 @@ class TestEnvHelpers:
         # workspace_root is the parent of the outermost checkpoints/ dir.
         assert pm.root == tmp_path.resolve()
         assert pm.checkpoint_dir("run1") == ck.resolve()
+
+
+# ── RuntimePathResolver (subtask 006) ─────────────────────────────────────
+
+
+class TestResolverConstruction:
+    def test_default_root_is_cwd(self):
+        r = RuntimePathResolver()
+        assert r.root == Path(".").resolve()
+
+    def test_custom_root(self, tmp_path):
+        r = RuntimePathResolver(tmp_path)
+        assert r.root == tmp_path.resolve()
+
+    def test_repr(self, tmp_path):
+        r = RuntimePathResolver(tmp_path)
+        assert "RuntimePathResolver" in repr(r)
+        assert str(tmp_path.resolve()) in repr(r)
+
+    def test_runs_root(self, tmp_path):
+        r = RuntimePathResolver(tmp_path)
+        assert r.runs_root == tmp_path.resolve() / "runs"
+
+    def test_run_dir(self, tmp_path):
+        r = RuntimePathResolver(tmp_path)
+        assert r.run_dir("run1") == tmp_path.resolve() / "runs" / "run1"
+
+
+class TestFacadeDelegationParity:
+    """PathManager is a thin facade — its flat-layout return values must be
+    byte-identical to the underlying resolver's."""
+
+    def test_pathmanager_holds_resolver(self, tmp_path):
+        pm = PathManager(tmp_path)
+        assert isinstance(pm.resolver, RuntimePathResolver)
+        assert pm.resolver.root == pm.root
+
+    def test_flat_roots_match_resolver(self, tmp_path):
+        pm = PathManager(tmp_path)
+        r = pm.resolver
+        assert pm.root == r.root
+        assert pm.checkpoints_root == r.checkpoints_root
+        assert pm.experiments_root == r.experiments_root
+        assert pm.staging_root == r.staging_root
+        assert pm.paper_registry_root == r.paper_registry_root
+        assert pm.runs_root == r.runs_root
+
+    def test_flat_per_run_paths_match_resolver(self, tmp_path):
+        pm = PathManager(tmp_path)
+        r = pm.resolver
+        for run_id in ("run1", "20260414_topic"):
+            assert pm.checkpoint_dir(run_id) == r.checkpoint_dir(run_id)
+            assert pm.log_dir(run_id) == r.log_dir(run_id)
+            assert pm.log_file(run_id) == r.log_file(run_id)
+            assert pm.uploads_dir(run_id) == r.uploads_dir(run_id)
+            assert pm.cost_trace(run_id) == r.cost_trace(run_id)
+            assert pm.cost_summary(run_id) == r.cost_summary(run_id)
+            assert pm.idea_file(run_id) == r.idea_file(run_id)
+            assert pm.node_work_dir(run_id, "n1") == r.node_work_dir(run_id, "n1")
+
+    def test_flat_checkpoint_dir_value_unchanged(self, tmp_path):
+        """The single most load-bearing flat path is exactly as before."""
+        pm = PathManager(tmp_path)
+        assert pm.checkpoint_dir("r") == tmp_path.resolve() / "checkpoints" / "r"
+
+
+class TestResolveWorkspaceRoot:
+    """resolve_workspace_root implements 004's 'workspace/ wins' policy."""
+
+    def test_checkpoint_dir_env_wins(self, monkeypatch, tmp_path):
+        ck = tmp_path / "checkpoints" / "run1"
+        ck.mkdir(parents=True)
+        monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(ck))
+        assert RuntimePathResolver.resolve_workspace_root() == tmp_path.resolve()
+
+    def test_explicit_arg_second(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("ARI_CHECKPOINT_DIR", raising=False)
+        assert (
+            RuntimePathResolver.resolve_workspace_root(tmp_path)
+            == tmp_path.resolve()
+        )
+
+    def test_ari_root_env_third(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("ARI_CHECKPOINT_DIR", raising=False)
+        monkeypatch.setenv("ARI_ROOT", str(tmp_path))
+        out = RuntimePathResolver.resolve_workspace_root()
+        assert out == (tmp_path / "workspace").resolve()
+
+    def test_repo_root_workspace_fallback(self, monkeypatch):
+        """Inside the ARI checkout, falls back to {repo_root}/workspace."""
+        monkeypatch.delenv("ARI_CHECKPOINT_DIR", raising=False)
+        monkeypatch.delenv("ARI_ROOT", raising=False)
+        out = RuntimePathResolver.resolve_workspace_root()
+        # This test module lives inside the repo, so repo_root/ari-core exists.
+        assert out.name == "workspace"
+
+
+class TestBucketClassification:
+    @pytest.mark.parametrize("name,bucket", [
+        ("tree.json", "checkpoints"),
+        ("meta.json", "checkpoints"),
+        ("ari.log", "checkpoints"),
+        ("cost_trace.jsonl", "traces"),
+        ("viz_access.jsonl", "traces"),
+        ("memory_access.20260101.jsonl", "traces"),
+        ("node_report.json", "reports"),
+        ("reproducibility_report.json", "reports"),
+        ("ors_novelty.json", "reports"),
+        ("fig_loss.png", "artifacts"),
+        ("full_paper.tex", "artifacts"),
+        ("refs.bib", "artifacts"),
+    ])
+    def test_bucket_for(self, name, bucket):
+        assert RuntimePathResolver.bucket_for(name) == bucket
+
+
+class TestDualLayoutFileResolution:
+    def test_checkpoint_file_flat_when_no_bucket(self, tmp_path):
+        """With no bucketed layout on disk, resolves the flat path."""
+        r = RuntimePathResolver(tmp_path)
+        out = r.checkpoint_file("run1", "tree.json")
+        assert out == tmp_path.resolve() / "checkpoints" / "run1" / "tree.json"
+
+    def test_checkpoint_file_prefers_bucket(self, tmp_path):
+        """Given runs/<id>/checkpoints/tree.json on disk, prefers the bucket."""
+        r = RuntimePathResolver(tmp_path)
+        bucketed = tmp_path / "runs" / "run1" / "checkpoints"
+        bucketed.mkdir(parents=True)
+        (bucketed / "tree.json").write_text("{}")
+        out = r.checkpoint_file("run1", "tree.json")
+        assert out == bucketed / "tree.json"
+        assert out.parent.name == "checkpoints"
+        assert out.parent.parent.name == "run1"
+
+    def test_checkpoint_file_scans_other_buckets(self, tmp_path):
+        """A file placed in a non-primary bucket is still found before flat."""
+        r = RuntimePathResolver(tmp_path)
+        traces = tmp_path / "runs" / "run1" / "traces"
+        traces.mkdir(parents=True)
+        (traces / "cost_trace.jsonl").write_text("")
+        out = r.checkpoint_file("run1", "cost_trace.jsonl")
+        assert out == traces / "cost_trace.jsonl"
+
+    def test_checkpoint_file_via_pathmanager(self, tmp_path):
+        pm = PathManager(tmp_path)
+        # Flat fallback (no bucket) matches the historical flat file path.
+        assert (
+            pm.checkpoint_file("run1", "results.json")
+            == pm.checkpoint_dir("run1") / "results.json"
+        )
+
+
+class TestBucketAccessorsGracefulDegradation:
+    def test_artifacts_dir_falls_back_to_flat(self, tmp_path):
+        r = RuntimePathResolver(tmp_path)
+        assert r.artifacts_dir("run1") == r.checkpoint_dir("run1")
+
+    def test_traces_dir_falls_back_to_flat(self, tmp_path):
+        r = RuntimePathResolver(tmp_path)
+        assert r.traces_dir("run1") == r.checkpoint_dir("run1")
+
+    def test_reports_dir_falls_back_to_flat(self, tmp_path):
+        r = RuntimePathResolver(tmp_path)
+        assert r.reports_dir("run1") == r.checkpoint_dir("run1")
+
+    def test_artifacts_dir_uses_bucket_when_present(self, tmp_path):
+        r = RuntimePathResolver(tmp_path)
+        bucket = tmp_path / "runs" / "run1" / "artifacts"
+        bucket.mkdir(parents=True)
+        assert r.artifacts_dir("run1") == bucket
+
+    def test_workspace_dir_falls_back_to_experiments(self, tmp_path):
+        r = RuntimePathResolver(tmp_path)
+        assert r.workspace_dir("run1", "n1") == r.node_work_dir("run1", "n1")
+
+    def test_workspace_dir_uses_bucket_when_present(self, tmp_path):
+        r = RuntimePathResolver(tmp_path)
+        ws = tmp_path / "runs" / "run1" / "workspace"
+        ws.mkdir(parents=True)
+        assert r.workspace_dir("run1", "n1") == ws / "n1"
+
+    def test_pathmanager_bucket_accessors_delegate(self, tmp_path):
+        pm = PathManager(tmp_path)
+        assert pm.artifacts_dir("r") == pm.resolver.artifacts_dir("r")
+        assert pm.traces_dir("r") == pm.resolver.traces_dir("r")
+        assert pm.reports_dir("r") == pm.resolver.reports_dir("r")
+        assert pm.workspace_dir("r", "n") == pm.resolver.workspace_dir("r", "n")
+        assert pm.run_dir("r") == pm.resolver.run_dir("r")
+
+
+class TestResolverEnvHelpers:
+    def test_checkpoint_dir_from_env_parity(self, monkeypatch, tmp_path):
+        ck = tmp_path / "checkpoints" / "abc"
+        monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(ck))
+        assert (
+            RuntimePathResolver.checkpoint_dir_from_env()
+            == PathManager.checkpoint_dir_from_env()
+        )
+
+    def test_set_checkpoint_dir_env(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("ARI_CHECKPOINT_DIR", raising=False)
+        RuntimePathResolver.set_checkpoint_dir_env(tmp_path / "ck")
+        assert PathManager.checkpoint_dir_from_env() == (tmp_path / "ck")
+
+    def test_from_checkpoint_dir_parity_with_pathmanager(self, tmp_path):
+        ck = tmp_path / "checkpoints" / "run1"
+        ck.mkdir(parents=True)
+        r = RuntimePathResolver.from_checkpoint_dir(ck)
+        pm = PathManager.from_checkpoint_dir(ck)
+        assert r.root == pm.root == tmp_path.resolve()
+
+    def test_from_env_falls_back_to_cwd(self, monkeypatch):
+        monkeypatch.delenv("ARI_CHECKPOINT_DIR", raising=False)
+        assert RuntimePathResolver.from_env().root == Path(".").resolve()

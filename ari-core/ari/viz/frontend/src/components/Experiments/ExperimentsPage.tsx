@@ -9,6 +9,8 @@ import type { SubExperiment } from '../../services/api';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
+import { EmptyState } from '../common/EmptyState';
+import { ErrorState } from '../common/ErrorState';
 
 function StatusBadge({ status }: { status: string }) {
   if (status === 'running') return <Badge variant="yellow">{'⏳'} Running</Badge>;
@@ -25,6 +27,9 @@ export function ExperimentsPage() {
   // lineage provenance — parent run id and inherit_idea_index — for
   // any checkpoint that was auto-spawned by a lineage decision5c decision.
   const [subById, setSubById] = useState<Record<string, SubExperiment>>({});
+  // navError surfaces failures from user-triggered navigation fetches (viewTree)
+  // that previously had no .catch and left the user with no feedback (072 §7.5).
+  const [navError, setNavError] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
     fetchSubExperiments()
@@ -34,6 +39,9 @@ export function ExperimentsPage() {
         for (const s of r.sub_experiments) m[s.run_id] = s;
         setSubById(m);
       })
+      // Intentional graceful degrade (072 §7.5): the lineage provenance column
+      // is optional metadata — on failure it simply renders empty rather than
+      // blocking the checkpoint table. Not a user-triggered action.
       .catch(() => { /* swallow — lineage column degrades to empty */ });
     return () => { alive = false; };
   }, [checkpoints]);
@@ -50,16 +58,21 @@ export function ExperimentsPage() {
   };
 
   const viewTree = (id: string) => {
-    fetchCheckpointSummary(id).then((d) => {
-      // Store tree data for the Tree page to consume
-      if (d.nodes_tree && d.nodes_tree.nodes) {
-        sessionStorage.setItem(
-          'ari_tree_nodes',
-          JSON.stringify(d.nodes_tree.nodes),
-        );
-      }
-      navigateTo('tree');
-    });
+    setNavError(null);
+    fetchCheckpointSummary(id)
+      .then((d) => {
+        // Store tree data for the Tree page to consume
+        if (d.nodes_tree && d.nodes_tree.nodes) {
+          sessionStorage.setItem(
+            'ari_tree_nodes',
+            JSON.stringify(d.nodes_tree.nodes),
+          );
+        }
+        navigateTo('tree');
+      })
+      // Previously had no .catch — a rejected summary fetch left the user with
+      // no feedback (072 §7.5). Surface it as a dismissible inline error.
+      .catch((e: any) => setNavError(e?.message ?? t('load_failed')));
   };
 
   return (
@@ -83,12 +96,19 @@ export function ExperimentsPage() {
         </Button>
       </div>
 
+      {navError && (
+        <div style={{ marginBottom: 16 }}>
+          <ErrorState
+            message={navError}
+            onRetry={() => setNavError(null)}
+            retryLabel={t('ok_label')}
+          />
+        </div>
+      )}
+
       <Card>
         {checkpoints.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-icon">{'🗂️'}</div>
-            <p>No experiments found</p>
-          </div>
+          <EmptyState icon={'🗂️'} message={t('experiments_empty')} />
         ) : (
           <table>
             <thead>

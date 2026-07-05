@@ -46,6 +46,11 @@ execution system:
 - **The dashboard** binds to `127.0.0.1` and is unauthenticated by design. Do
   not expose it directly to a network; put it behind a reverse proxy with
   authentication if you must.
+- **Dependency updates** are automated via Dependabot
+  (`.github/dependabot.yml`); the supply-chain and GitHub Actions policy
+  (version pinning, least-privilege permissions, grouping, review convention) is
+  documented in [`CONTRIBUTING.md`](CONTRIBUTING.md) under "GitHub Actions &
+  Dependencies".
 
 ## Scope
 

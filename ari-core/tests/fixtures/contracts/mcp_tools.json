@@ -1,0 +1,889 @@
+{
+  "_meta": {
+    "ari_core_version": "0.9.1",
+    "generated_by": "scripts/snapshot_contracts.py",
+    "note": "regenerate with scripts/snapshot_contracts.py --surface mcp --update",
+    "surface": "mcp"
+  },
+  "invariants": {
+    "fq_name_pattern": "mcp__<skill>__<tool>",
+    "namespace": "flat_snake_case",
+    "return_envelope": [
+      "error",
+      "result"
+    ]
+  },
+  "known_collisions": {
+    "read_file": [
+      "ari-skill-coding",
+      "ari-skill-orchestrator"
+    ]
+  },
+  "schema_version": 1,
+  "skills": {
+    "ari-skill-benchmark": [
+      {
+        "args": [
+          "metrics",
+          "result_path"
+        ],
+        "idiom": "fastmcp",
+        "name": "analyze_results"
+      },
+      {
+        "args": [
+          "data",
+          "output_path",
+          "plot_type",
+          "title",
+          "xlabel",
+          "ylabel"
+        ],
+        "idiom": "fastmcp",
+        "name": "plot"
+      },
+      {
+        "args": [
+          "data_a",
+          "data_b",
+          "test"
+        ],
+        "idiom": "fastmcp",
+        "name": "statistical_test"
+      }
+    ],
+    "ari-skill-coding": [
+      {
+        "args": [
+          "file",
+          "measurements",
+          "params",
+          "predictions",
+          "provenance",
+          "scores",
+          "work_dir"
+        ],
+        "idiom": "lowlevel",
+        "name": "emit_results"
+      },
+      {
+        "args": [
+          "limit",
+          "offset",
+          "path",
+          "work_dir"
+        ],
+        "idiom": "lowlevel",
+        "name": "read_file"
+      },
+      {
+        "args": [
+          "command",
+          "timeout",
+          "work_dir"
+        ],
+        "idiom": "lowlevel",
+        "name": "run_bash"
+      },
+      {
+        "args": [
+          "filename",
+          "timeout",
+          "work_dir"
+        ],
+        "idiom": "lowlevel",
+        "name": "run_code"
+      },
+      {
+        "args": [
+          "code",
+          "filename",
+          "work_dir"
+        ],
+        "idiom": "lowlevel",
+        "name": "write_code"
+      }
+    ],
+    "ari-skill-evaluator": [
+      {
+        "args": [
+          "checkpoint_dir",
+          "figures_manifest_json",
+          "paper_claim_links_path",
+          "paper_path",
+          "phase",
+          "policy",
+          "science_data_json"
+        ],
+        "idiom": "lowlevel",
+        "name": "claim_evidence_hard_gate"
+      },
+      {
+        "args": [
+          "checkpoint_dir",
+          "hard_gate_path",
+          "paper_claim_links_path",
+          "paper_path",
+          "phase",
+          "science_data_json"
+        ],
+        "idiom": "lowlevel",
+        "name": "evidence_grounded_semantic_review"
+      },
+      {
+        "args": [
+          "checkpoint_dir",
+          "experiment_text",
+          "primary_metric"
+        ],
+        "idiom": "lowlevel",
+        "name": "make_metric_spec"
+      }
+    ],
+    "ari-skill-hpc": [
+      {
+        "args": [
+          "job_id"
+        ],
+        "idiom": "lowlevel",
+        "name": "job_cancel"
+      },
+      {
+        "args": [
+          "job_id"
+        ],
+        "idiom": "lowlevel",
+        "name": "job_status"
+      },
+      {
+        "args": [
+          "checkpoint_dir",
+          "partition",
+          "tools"
+        ],
+        "idiom": "lowlevel",
+        "name": "probe_platform_capabilities"
+      },
+      {
+        "args": [
+          "definition_file",
+          "output_path",
+          "partition"
+        ],
+        "idiom": "lowlevel",
+        "name": "singularity_build"
+      },
+      {
+        "args": [
+          "definition_content",
+          "output_path",
+          "partition",
+          "walltime"
+        ],
+        "idiom": "lowlevel",
+        "name": "singularity_build_fakeroot"
+      },
+      {
+        "args": [
+          "output_path",
+          "partition",
+          "source"
+        ],
+        "idiom": "lowlevel",
+        "name": "singularity_pull"
+      },
+      {
+        "args": [
+          "command",
+          "image_path",
+          "nodes",
+          "partition",
+          "walltime",
+          "work_dir"
+        ],
+        "idiom": "lowlevel",
+        "name": "singularity_run"
+      },
+      {
+        "args": [
+          "bind_paths",
+          "command",
+          "cpus_per_task",
+          "gres",
+          "image_path",
+          "partition",
+          "walltime",
+          "work_dir"
+        ],
+        "idiom": "lowlevel",
+        "name": "singularity_run_gpu"
+      },
+      {
+        "args": [
+          "job_name",
+          "nodes",
+          "partition",
+          "script",
+          "walltime",
+          "work_dir"
+        ],
+        "idiom": "lowlevel",
+        "name": "slurm_submit"
+      }
+    ],
+    "ari-skill-idea": [
+      {
+        "args": [
+          "max_papers"
+        ],
+        "idiom": "fastmcp",
+        "name": "_load_virsci_snapshot_papers"
+      }
+    ],
+    "ari-skill-memory": [
+      {
+        "args": [
+          "node_id"
+        ],
+        "idiom": "fastmcp",
+        "name": "_set_current_node"
+      },
+      {
+        "args": [
+          "artifact_refs",
+          "metric_ptr",
+          "node_id",
+          "node_report_ref",
+          "text"
+        ],
+        "idiom": "fastmcp",
+        "name": "add_experiment_result"
+      },
+      {
+        "args": [
+          "artifact_refs",
+          "node_id",
+          "node_report_ref",
+          "text"
+        ],
+        "idiom": "fastmcp",
+        "name": "add_failure_case"
+      },
+      {
+        "args": [
+          "metadata",
+          "node_id",
+          "text"
+        ],
+        "idiom": "fastmcp",
+        "name": "add_memory"
+      },
+      {
+        "args": [
+          "node_id",
+          "node_report_ref",
+          "text"
+        ],
+        "idiom": "fastmcp",
+        "name": "add_procedure_memory"
+      },
+      {
+        "args": [
+          "confidence",
+          "node_id",
+          "node_report_ref",
+          "text"
+        ],
+        "idiom": "fastmcp",
+        "name": "add_reflection"
+      },
+      {
+        "args": [
+          "artifact_refs",
+          "node_id",
+          "status",
+          "target_memory_id",
+          "text"
+        ],
+        "idiom": "fastmcp",
+        "name": "add_reproducibility_event"
+      },
+      {
+        "args": [
+          "experiments_root",
+          "run_id"
+        ],
+        "idiom": "fastmcp",
+        "name": "audit_memory"
+      },
+      {
+        "args": [
+          "node_id"
+        ],
+        "idiom": "fastmcp",
+        "name": "clear_node_memory"
+      },
+      {
+        "args": [
+          "node_id",
+          "node_report",
+          "run_id",
+          "work_dir"
+        ],
+        "idiom": "fastmcp",
+        "name": "consolidate_node_memory"
+      },
+      {
+        "args": [],
+        "idiom": "fastmcp",
+        "name": "get_experiment_context"
+      },
+      {
+        "args": [
+          "node_id"
+        ],
+        "idiom": "fastmcp",
+        "name": "get_node_memory"
+      },
+      {
+        "args": [
+          "ancestor_ids",
+          "limit",
+          "purpose"
+        ],
+        "idiom": "fastmcp",
+        "name": "get_verified_context"
+      },
+      {
+        "args": [
+          "ancestor_ids",
+          "limit",
+          "query"
+        ],
+        "idiom": "fastmcp",
+        "name": "search_memory"
+      },
+      {
+        "args": [
+          "ancestor_ids",
+          "kinds",
+          "limit",
+          "query",
+          "require_artifacts"
+        ],
+        "idiom": "fastmcp",
+        "name": "search_research_memory"
+      }
+    ],
+    "ari-skill-orchestrator": [
+      {
+        "args": [
+          "run_id"
+        ],
+        "idiom": "lowlevel",
+        "name": "get_ear"
+      },
+      {
+        "args": [
+          "run_id"
+        ],
+        "idiom": "lowlevel",
+        "name": "get_paper"
+      },
+      {
+        "args": [
+          "run_id"
+        ],
+        "idiom": "lowlevel",
+        "name": "get_status"
+      },
+      {
+        "args": [],
+        "idiom": "lowlevel",
+        "name": "get_workflow"
+      },
+      {
+        "args": [
+          "parent_run_id"
+        ],
+        "idiom": "lowlevel",
+        "name": "list_children"
+      },
+      {
+        "args": [
+          "run_id"
+        ],
+        "idiom": "lowlevel",
+        "name": "list_files"
+      },
+      {
+        "args": [],
+        "idiom": "lowlevel",
+        "name": "list_runs"
+      },
+      {
+        "args": [],
+        "idiom": "lowlevel",
+        "name": "list_skills"
+      },
+      {
+        "args": [
+          "filename",
+          "run_id"
+        ],
+        "idiom": "lowlevel",
+        "name": "read_file"
+      },
+      {
+        "args": [
+          "cpus",
+          "executor",
+          "experiment_md",
+          "llm_api_key",
+          "llm_backend",
+          "llm_base_url",
+          "max_nodes",
+          "max_recursion_depth",
+          "model",
+          "parent_run_id",
+          "retrieval_backend",
+          "timeout_minutes"
+        ],
+        "idiom": "lowlevel",
+        "name": "run_experiment"
+      },
+      {
+        "args": [
+          "run_id"
+        ],
+        "idiom": "lowlevel",
+        "name": "stop_experiment"
+      }
+    ],
+    "ari-skill-paper": [
+      {
+        "args": [
+          "pdf_path",
+          "venue"
+        ],
+        "idiom": "fastmcp",
+        "name": "check_format"
+      },
+      {
+        "args": [
+          "main_file",
+          "tex_dir"
+        ],
+        "idiom": "fastmcp",
+        "name": "compile_paper"
+      },
+      {
+        "args": [
+          "context",
+          "nodes_json_path",
+          "refs_json",
+          "section",
+          "venue"
+        ],
+        "idiom": "fastmcp",
+        "name": "generate_section"
+      },
+      {
+        "args": [
+          "venue"
+        ],
+        "idiom": "fastmcp",
+        "name": "get_template"
+      },
+      {
+        "args": [
+          "checkpoint_dir",
+          "doi",
+          "license_id",
+          "ref",
+          "sha256",
+          "tex_path"
+        ],
+        "idiom": "fastmcp",
+        "name": "inject_code_availability"
+      },
+      {
+        "args": [
+          "figures_manifest_json",
+          "output_path",
+          "science_data_json",
+          "tex_path"
+        ],
+        "idiom": "fastmcp",
+        "name": "link_paper_claims"
+      },
+      {
+        "args": [],
+        "idiom": "fastmcp",
+        "name": "list_rubrics"
+      },
+      {
+        "args": [],
+        "idiom": "fastmcp",
+        "name": "list_venues"
+      },
+      {
+        "args": [
+          "hard_gate_path",
+          "review_report_path",
+          "semantic_review_path",
+          "vlm_review_path"
+        ],
+        "idiom": "fastmcp",
+        "name": "merge_reviews"
+      },
+      {
+        "args": [
+          "merged_review_path",
+          "semantic_review_path",
+          "suggested_revisions_json",
+          "tex_path",
+          "venue"
+        ],
+        "idiom": "fastmcp",
+        "name": "paper_refine"
+      },
+      {
+        "args": [
+          "experiment_summary",
+          "figures_manifest_json",
+          "num_fs_examples",
+          "num_reflections",
+          "num_reviews_ensemble",
+          "pdf_path",
+          "rubric_id",
+          "tex_path",
+          "vlm_findings_json"
+        ],
+        "idiom": "fastmcp",
+        "name": "review_compiled_paper"
+      },
+      {
+        "args": [
+          "context",
+          "latex",
+          "venue"
+        ],
+        "idiom": "fastmcp",
+        "name": "review_section"
+      },
+      {
+        "args": [
+          "context",
+          "feedback",
+          "latex",
+          "section",
+          "venue"
+        ],
+        "idiom": "fastmcp",
+        "name": "revise_section"
+      },
+      {
+        "args": [
+          "author_name",
+          "context",
+          "experiment_summary",
+          "figures_manifest_json",
+          "max_revision_rounds",
+          "nodes_json_path",
+          "refs_json",
+          "science_data_json",
+          "venue",
+          "verified_context_json"
+        ],
+        "idiom": "fastmcp",
+        "name": "write_paper_iterative"
+      }
+    ],
+    "ari-skill-paper-re": [
+      {
+        "args": [
+          "apptainer_image",
+          "container_image",
+          "iterative_agent",
+          "max_steps",
+          "model",
+          "output_dir",
+          "overwrite",
+          "paper_path",
+          "paper_text",
+          "rubric_path",
+          "sandbox_kind",
+          "time_limit_sec"
+        ],
+        "idiom": "fastmcp",
+        "name": "build_reproduce_sh"
+      },
+      {
+        "args": [
+          "checkpoint_dir",
+          "dest",
+          "overwrite",
+          "ref",
+          "sha256"
+        ],
+        "idiom": "fastmcp",
+        "name": "fetch_code_bundle"
+      },
+      {
+        "args": [
+          "code_only",
+          "judge_model",
+          "n_runs",
+          "paper_path",
+          "paper_text",
+          "repo_dir",
+          "rubric_path",
+          "skip_negative_control"
+        ],
+        "idiom": "fastmcp",
+        "name": "grade_with_simplejudge"
+      },
+      {
+        "args": [
+          "constraint",
+          "container_image",
+          "cpu_bind",
+          "cpus",
+          "exclude_nodes",
+          "exclusive",
+          "extra_sbatch_args",
+          "gpu_type",
+          "gpus_per_node",
+          "gpus_per_task",
+          "hint",
+          "mem_bind",
+          "memory_gb_per_cpu",
+          "memory_gb_per_node",
+          "nodelist",
+          "nodes",
+          "ntasks",
+          "ntasks_per_node",
+          "partition",
+          "repo_dir",
+          "rubric_path",
+          "sandbox_kind",
+          "timeout_global_sec",
+          "walltime"
+        ],
+        "idiom": "fastmcp",
+        "name": "run_reproduce"
+      }
+    ],
+    "ari-skill-plot": [
+      {
+        "args": [
+          "experiment_context",
+          "figures",
+          "nodes_json_path",
+          "output_dir",
+          "science_data_path",
+          "vlm_captions"
+        ],
+        "idiom": "fastmcp",
+        "name": "generate_figures"
+      },
+      {
+        "args": [
+          "context",
+          "experiment_summary",
+          "n_figures",
+          "nodes_json_path",
+          "output_dir",
+          "science_data_path",
+          "vlm_feedback"
+        ],
+        "idiom": "fastmcp",
+        "name": "generate_figures_llm"
+      }
+    ],
+    "ari-skill-replicate": [
+      {
+        "args": [
+          "auditor_model",
+          "paper_path",
+          "paper_text",
+          "rubric_path"
+        ],
+        "idiom": "fastmcp",
+        "name": "audit_rubric"
+      },
+      {
+        "args": [
+          "model",
+          "output_path",
+          "paper_path",
+          "paper_text",
+          "paperbench_rubric_id",
+          "seed",
+          "target_leaf_count",
+          "temperature",
+          "two_stage"
+        ],
+        "idiom": "fastmcp",
+        "name": "generate_rubric"
+      },
+      {
+        "args": [
+          "paper_path",
+          "paper_text"
+        ],
+        "idiom": "fastmcp",
+        "name": "suggest_target_leaf_count"
+      }
+    ],
+    "ari-skill-transform": [
+      {
+        "args": [
+          "checkpoint_dir"
+        ],
+        "idiom": "fastmcp",
+        "name": "curate_ear"
+      },
+      {
+        "args": [
+          "checkpoint_dir",
+          "llm_base_url",
+          "llm_model"
+        ],
+        "idiom": "fastmcp",
+        "name": "generate_ear"
+      },
+      {
+        "args": [
+          "higher_is_better",
+          "llm_base_url",
+          "llm_model",
+          "nodes_json_path",
+          "primary_metric"
+        ],
+        "idiom": "fastmcp",
+        "name": "nodes_to_science_data"
+      },
+      {
+        "args": [
+          "checkpoint_dir",
+          "target"
+        ],
+        "idiom": "fastmcp",
+        "name": "promote_ear"
+      },
+      {
+        "args": [
+          "backend",
+          "checkpoint_dir",
+          "dry_run",
+          "visibility"
+        ],
+        "idiom": "fastmcp",
+        "name": "publish_ear"
+      }
+    ],
+    "ari-skill-vlm": [
+      {
+        "args": [
+          "context",
+          "criteria",
+          "image_path"
+        ],
+        "idiom": "fastmcp",
+        "name": "review_figure"
+      },
+      {
+        "args": [
+          "context",
+          "criteria",
+          "figures_manifest_path"
+        ],
+        "idiom": "fastmcp",
+        "name": "review_figures_all"
+      },
+      {
+        "args": [
+          "context",
+          "latex_or_path"
+        ],
+        "idiom": "fastmcp",
+        "name": "review_table"
+      }
+    ],
+    "ari-skill-web": [
+      {
+        "args": [
+          "experiment_summary",
+          "keywords",
+          "max_rounds",
+          "min_papers"
+        ],
+        "idiom": "fastmcp",
+        "name": "collect_references_iterative"
+      },
+      {
+        "args": [
+          "max_chars",
+          "url"
+        ],
+        "idiom": "fastmcp",
+        "name": "fetch_url"
+      },
+      {
+        "args": [],
+        "idiom": "fastmcp",
+        "name": "list_uploaded_files"
+      },
+      {
+        "args": [
+          "filename",
+          "max_chars"
+        ],
+        "idiom": "fastmcp",
+        "name": "read_uploaded_file"
+      },
+      {
+        "args": [
+          "max_results",
+          "query"
+        ],
+        "idiom": "fastmcp",
+        "name": "search_arxiv"
+      },
+      {
+        "args": [
+          "max_results",
+          "query"
+        ],
+        "idiom": "fastmcp",
+        "name": "search_papers"
+      },
+      {
+        "args": [
+          "extra_queries",
+          "limit",
+          "query"
+        ],
+        "idiom": "fastmcp",
+        "name": "search_semantic_scholar"
+      },
+      {
+        "args": [
+          "backend"
+        ],
+        "idiom": "fastmcp",
+        "name": "set_retrieval_backend"
+      },
+      {
+        "args": [
+          "n",
+          "query"
+        ],
+        "idiom": "fastmcp",
+        "name": "web_search"
+      }
+    ]
+  }
+}

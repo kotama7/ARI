@@ -1,0 +1,73 @@
+# Frozen baseline for scripts/check_dashboard_ux.py (subtask 073).
+#
+# Every id below is reported as `known` and never trips --fail-on-regression,
+# keeping the historical baseline out of a future ratchet (009 plan §6,
+# warning-mode-first). This file freezes the state verified against the real tree
+# at authoring time (2026-07-01) so the first run is clean-or-warning.
+#
+# It NEVER authorizes editing a surface: a raw/dangerous entry is a
+# "REVIEW_REQUIRED candidate for developer-mode gating" (owned by 070/071), never
+# "deprecated" (that term is reserved for external contracts). Hardening is done
+# by 070 (localStorage developer-mode gate) and 071 (typed confirmations + the
+# api.ts:585 confirmed:true backend audit) — not by editing a component here.
+#
+# ── (A) React i18n key-set parity: NO baseline entries ────────────────────────
+# GROUNDING NOTE (corrects docs 000/014/067 + subtask §1/§2/§6): parsed at
+# key-set granularity, en/ja/zh are IDENTICAL today (407/407/407 keys — 404
+# unquoted + 3 quoted 'experiments.*' keys — zero duplicates, zero missing in any
+# direction). The "444 vs 441 line" delta is wrapped English value continuations
+# + shorter localized comment text — NOT key
+# drift. The docs' "~387/391/391 keys" figure came from a value-delimiter-
+# sensitive probe (^\s*[A-Za-z0-9_]+:\s*') that misses keys whose value is not a
+# same-line single-quoted string. So there is nothing to baseline: the checker
+# reports i18n parity clean today and guards only against FUTURE divergence.
+#
+# ── (B) always-on raw/debug exposure inventory (11 known surfaces) ────────────
+# Line-independent ids "<kind>::<repo-rel file>". Owners in the notes.
+
+known:
+  # dangerouslySetInnerHTML / innerHTML — raw HTML injection surfaces (014 §11).
+  - id: "dangerous_html::ari-core/ari/viz/frontend/src/components/Wizard/StepScope.tsx"
+    note: "StepScope.tsx:137 dangerouslySetInnerHTML (summaryHtml). REVIEW_REQUIRED — 071 sanitize/replace with React nodes."
+  - id: "dangerous_html::ari-core/ari/viz/frontend/src/main.tsx"
+    note: "main.tsx innerHTML error-stack print. REVIEW_REQUIRED — 072 gate full stack behind developer mode."
+
+  # The always-on { } Raw node-JSON tab (014 §10, the only always-on P5 element).
+  - id: "raw_json_tab::ari-core/ari/viz/frontend/src/components/Tree/DetailPanel.tsx"
+    note: "DetailPanel.tsx:364 tab + :417 JSON.stringify(node) dump. 070 developer-mode gate."
+
+  # Env-secret readback — /api/env-keys returns real secrets to the browser.
+  # api.ts:383 getEnvKeys relocated to services/api/settings.ts by the 063 api split.
+  - id: "env_secret_readback::ari-core/ari/viz/frontend/src/services/api/settings.ts"
+    note: "api/settings.ts:17 getEnvKeys -> GET /api/env-keys (was api.ts:383, moved by 063). 070 developer-mode gate; endpoint contract unchanged."
+  - id: "env_secret_readback::ari-core/ari/viz/frontend/src/components/Wizard/StepResources.tsx"
+    note: "StepResources.tsx:301 autoReadApiKey() -> /api/env-keys, already gated behind `if (devMode)` (071 developer-mode gate applied). Known+mitigated surface."
+
+  # Hardcoded confirmation bypass — SLURM auto-resubmit only guard is window.confirm.
+  # api.ts:585 gpuMonitorAction relocated to services/api/resources.ts by the 063 api split.
+  - id: "confirm_bypass::ari-core/ari/viz/frontend/src/services/api/resources.ts"
+    note: "api/resources.ts:29 gpuMonitorAction always sends confirmed:true (was api.ts:585, moved by 063). 071 REVIEW_REQUIRED backend audit."
+
+  # JSON.stringify render dumps in the components/ tree (059/073 §2). The former
+  # single Results/resultSections.tsx dump was split into per-section files by 064.
+  - id: "json_dump::ari-core/ari/viz/frontend/src/components/Results/sections/ContextSection.tsx"
+    note: "raw JSON.stringify render dump (was resultSections.tsx, split by 064). 070 developer-mode gate."
+  - id: "json_dump::ari-core/ari/viz/frontend/src/components/Results/sections/OrsChainSection.tsx"
+    note: "raw JSON.stringify render dump (was resultSections.tsx, split by 064). 070 developer-mode gate."
+  - id: "json_dump::ari-core/ari/viz/frontend/src/components/Results/sections/ReproSection.tsx"
+    note: "raw JSON.stringify render dump (was resultSections.tsx, split by 064). 070 developer-mode gate."
+  - id: "json_dump::ari-core/ari/viz/frontend/src/components/Results/resultHelpers.ts"
+    note: "raw JSON.stringify render dump. 070 developer-mode gate."
+  - id: "json_dump::ari-core/ari/viz/frontend/src/components/Monitor/monitorSections.tsx"
+    note: "raw JSON.stringify render dump. 070 developer-mode gate."
+  - id: "json_dump::ari-core/ari/viz/frontend/src/components/Tree/DetailPanel.tsx"
+    note: "raw JSON.stringify render dump (Raw tab + inline). 070 developer-mode gate."
+  - id: "json_dump::ari-core/ari/viz/frontend/src/components/Tree/DetailPanelTabs/TraceTab.tsx"
+    note: "raw JSON.stringify render dump (MCP trace). 070 developer-mode gate."
+  - id: "json_dump::ari-core/ari/viz/frontend/src/components/Experiments/ExperimentsPage.tsx"
+    note: "raw JSON.stringify render dump. 070 developer-mode gate."
+
+  # ── (C) route <-> nav parity: NO baseline entries ──────────────────────────
+  # Every PAGE_MAP route (App.tsx) has a NAV_ITEMS entry (Sidebar.tsx) or is a
+  # config-declared hidden route (wizard alias target + paperbench/* sub-routes),
+  # so the advisory check is clean today.

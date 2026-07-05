@@ -103,3 +103,155 @@ jobs:
             echo "$ADDED"
             exit 1
           fi
+
+  # ---------------------------------------------------------------------------
+  # Refactor-invariant / boundary gates appended by subtask 049
+  # (add_contract_check_workflows). Authoritative wiring spec:
+  # docs/refactoring/reports/032_quality_script_ci_integration.md §3-§7;
+  # layout in docs/refactoring/012_github_workflow_integration_plan.md §7.3/§15.
+  #
+  # These land here (not in a new workflow) because refactor-guards.yml is the
+  # ONLY workflow also triggered on the `refactoring` branch, so refactoring
+  # branches get these gates before reaching `main`. The two jobs above
+  # (no-home-ari-writes, no-new-home-ari-refs) are unchanged.
+  #
+  # Every gate LANDS AT STAGE 1 (advisory): each checker runs `--warning-only`
+  # and carries `continue-on-error: true`, so a finding can never turn a green
+  # PR red. Promotion to hard (Stage 2/4) is a later one-line flip
+  # (`continue-on-error: false` or `--fail-on-regression`/`--check`), never a
+  # workflow rewrite. Determinism (P2): stdlib+PyYAML(+ruff) only, no LLM/network.
+  # ---------------------------------------------------------------------------
+
+  import-boundaries:
+    # subtask 026 — ari.public.* boundary + core<->skill direction (itself a
+    # contract). Repo-wide scan against a frozen allowlist. Stage 1 (advisory) -> 2.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install PyYAML
+        run: python -m pip install --upgrade pip pyyaml
+      - name: Import-boundary check (advisory at Stage 1)
+        continue-on-error: true
+        run: |
+          python scripts/check_import_boundaries.py \
+            --warning-only --format json --output check_import_boundaries.json
+      - name: Upload import-boundaries report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-import-boundaries
+          path: check_import_boundaries.json
+          if-no-files-found: warn
+
+  directory-policy:
+    # subtask 028 — placement/naming policy over the real config trio
+    # (ari-core/ari/config vs ari-core/ari/configs vs ari-core/config; no
+    # `sonfigs/` exists anywhere). Cheap repo-wide tree scan. Stage 1 -> 4.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install PyYAML
+        run: python -m pip install --upgrade pip pyyaml
+      - name: Directory-policy check (advisory at Stage 1)
+        continue-on-error: true
+        run: |
+          python scripts/check_directory_policy.py \
+            --warning-only --format json --output check_directory_policy.json
+      - name: Upload directory-policy report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-directory-policy
+          path: check_directory_policy.json
+          if-no-files-found: warn
+
+  complexity:
+    # subtask 025 — LOC / cyclomatic (ruff McCabe C901) budget, diff-scoped vs the
+    # PR base. Stage 1 (advisory) -> 4.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install PyYAML + ruff
+        # ruff (McCabe C901) backs the complexity engine; pin to the frozen 0.15.2 baseline.
+        run: python -m pip install --upgrade pip pyyaml ruff==0.15.2
+      - name: Complexity / LOC budget (advisory at Stage 1)
+        continue-on-error: true
+        # base.sha is the PR base tip on the event payload: immutable for this run
+        # and always reachable in the fetched history. Preferred over the
+        # `origin/<base_ref>` idiom in the no-new-home-ari-refs job above (which
+        # resolves a remote-tracking ref that can move mid-run) — rationale in
+        # docs-change-coupling.yml:42-47. That older idiom is "not preferred",
+        # not "deprecated"; new diff-scoped jobs must not copy it.
+        run: |
+          python scripts/check_complexity.py \
+            --warning-only \
+            --format json --output check_complexity.json \
+            --base-ref "${{ github.event.pull_request.base.sha }}"
+      - name: Upload complexity report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-complexity
+          path: check_complexity.json
+          if-no-files-found: warn
+
+  lint:
+    # ruff lint — advisory-only surface (frozen baseline: 661 findings, 341 F401).
+    # Stays advisory; it is the ratchet reference, never a hard gate here. Stage 1.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install ruff
+        run: python -m pip install --upgrade pip ruff==0.15.2
+      - name: ruff check ari-core (advisory)
+        continue-on-error: true
+        run: ruff check ari-core
+
+  dead-code:
+    # subtask 055 — dead-code candidate classifier over the reference graph.
+    # Regenerate the graph fresh from the PR tree (054), then classify (055),
+    # corroborated by ruff F401. Stage 1 (advisory) -> 4.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install PyYAML + ruff
+        run: python -m pip install --upgrade pip pyyaml ruff==0.15.2
+      - name: Build reference graph (advisory)
+        continue-on-error: true
+        run: python scripts/analyze_references.py --output reference_graph.json
+      - name: Dead-code candidates (advisory at Stage 1)
+        continue-on-error: true
+        run: |
+          python scripts/check_dead_code.py \
+            --graph reference_graph.json \
+            --warning-only \
+            --format json --output check_dead_code.json
+      - name: Upload dead-code report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-dead-code
+          path: check_dead_code.json
+          if-no-files-found: warn
