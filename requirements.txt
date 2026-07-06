@@ -33,7 +33,7 @@ seaborn>=0.12
 matplotlib>=3.7
 
 # --- Skill-specific ---------------------------------------------------------
-duckduckgo-search>=6.0
+duckduckgo-search>=8.1.1
 httpx>=0.25
 beautifulsoup4>=4.12
 arxiv>=2.0
