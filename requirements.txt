@@ -9,7 +9,7 @@
 litellm>=1.83.7
 pydantic>=2.13.4
 typer>=0.26.8
-rich>=13.0
+rich>=15.0.0
 pyyaml>=6.0
 paramiko>=5.0.0
 
