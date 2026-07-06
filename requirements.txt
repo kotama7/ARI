@@ -21,7 +21,7 @@ fastmcp
 letta-client>=0.1
 
 # --- Visualization server ---------------------------------------------------
-websockets>=12.0
+websockets>=16.0
 
 # --- PDF handling -----------------------------------------------------------
 pymupdf>=1.24
