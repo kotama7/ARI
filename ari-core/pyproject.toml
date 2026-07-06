@@ -21,7 +21,7 @@ dependencies = [
     "typer>=0.26.8",
     "rich>=13.0",
     "python-dotenv>=1.0",
-    "pyyaml>=6.0",
+    "pyyaml>=6.0.3",
     "paramiko>=5.0.0",
 ]
 # NOTE: ari-core imports ``ari_skill_memory`` directly (first
