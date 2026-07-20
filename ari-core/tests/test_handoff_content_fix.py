@@ -68,6 +68,88 @@ def test_full_log_falls_back_to_tree_trace_log(tmp_path, monkeypatch):
     assert "trace_log" in log and "cut=327" in log and "write_code" in log
 
 
+def test_conclusion_never_rides_the_log_channel_via_trace_log_branch(tmp_path):
+    """THE branch that actually runs in production. Measured on a real study:
+    ``trace_log`` was non-empty on 31/31 nodes, so ``_render_parent_execution_log``
+    takes the trace_log branch essentially always — an earlier guard that lived
+    only in the messages branch was therefore dead code, and orthogonality held
+    only by accident (trace_log is appended at the tool-execution site alone).
+
+    trace_log also feeds the viz tree, so a future "show the node's conclusion in
+    the tree" change is the realistic way the parent's CONCLUSION gets in here —
+    at which point code_plus_full_log becomes a superset of code_plus_summary and
+    the 2x2 factorial stops measuring what it claims. Pin it: no matter how the
+    conclusion reaches the body, it does not reach the child.
+    """
+    from ari.agent.loop import _render_parent_execution_log
+    pdir = tmp_path / "node_parent"
+    pdir.mkdir()
+    finish = json.dumps({
+        "status": "success", "summary": "CONCLUSION_MARKER blocked GEMM ikj",
+        "metrics": {"speedup": 41.5}, "next_steps": ["try AVX-512 intrinsics"],
+    })
+    (pdir / "full_log.json").write_text(json.dumps({
+        # non-empty trace_log -> the LIVE branch; and someone has helpfully
+        # appended the finish JSON to it (the future regression this guards).
+        "trace_log": ["→ write_code(candidate.c)", "← written", f"finish: {finish}"],
+        "messages": [
+            {"role": "assistant", "content": "",
+             "tool_calls": [{"name": "write_code", "arguments": "candidate.c"}]},
+            {"role": "tool", "content": "written"},
+            {"role": "assistant", "_finish": True, "content": finish},
+        ],
+    }))
+    out = _render_parent_execution_log(pdir, 48_000)
+    assert "write_code" in out                       # trajectory still carried
+    assert "CONCLUSION_MARKER" not in out            # conclusion scrubbed
+    assert "next_steps" not in out and "41.5" not in out
+
+
+def test_parent_finish_json_never_rides_the_full_log_handoff(tmp_path):
+    """ARM ORTHOGONALITY (load-bearing for the whole study): the parent's finish
+    JSON is its CONCLUSION and is the payload of the *summary* channel (parent
+    node_report). The *log* channel carries the raw trajectory only. If the
+    conclusion leaked in here, code_plus_full_log would become a superset of
+    code_plus_summary and the four arms would stop separating what they claim to.
+    The finish JSON stays in the saved full_log.json for human/analysis readers.
+    """
+    from ari.agent.loop import _render_parent_execution_log
+    pdir = tmp_path / "node_parent"
+    pdir.mkdir()
+    (pdir / "full_log.json").write_text(json.dumps({
+        # no trace_log -> exercise the messages-reconstruction fallback
+        "messages": [
+            {"role": "system", "content": "you are an agent"},
+            {"role": "user", "content": "the goal"},
+            {"role": "assistant", "content": "",
+             "tool_calls": [{"name": "write_code", "arguments": "candidate.c"}]},
+            {"role": "tool", "content": "written"},
+            {"role": "assistant", "_finish": True, "content": json.dumps({
+                "status": "success", "summary": "CONCLUSION_MARKER blocked GEMM",
+                "metrics": {"speedup": 41.5}, "next_steps": ["try AVX-512"],
+            })},
+        ],
+    }))
+    out = _render_parent_execution_log(pdir, 48_000)
+    assert "write_code" in out and "written" in out       # trajectory IS carried
+    assert "CONCLUSION_MARKER" not in out                  # conclusion is NOT
+    assert "next_steps" not in out and "41.5" not in out
+
+
+def test_finish_json_is_kept_in_the_saved_log():
+    """...but it MUST survive serialization into full_log.json — the record has
+    to show what the agent concluded (and the ``_finish`` tag is what lets the
+    renderer above withhold it)."""
+    from ari.agent.loop import serialize_messages
+    out = serialize_messages([
+        {"role": "assistant", "content": "{\"status\": \"success\"}", "_finish": True},
+        {"role": "assistant", "content": "mid-run"},
+    ])
+    assert out[0]["_finish"] is True
+    assert out[0]["content"] == "{\"status\": \"success\"}"
+    assert "_finish" not in out[1]
+
+
 def test_full_log_empty_when_no_source(tmp_path, monkeypatch):
     from ari.agent.loop import _load_parent_log
     run = tmp_path / "experiments" / "run2"

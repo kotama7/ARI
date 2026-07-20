@@ -47,6 +47,20 @@
         ],
         "type": "command"
       },
+      "doctor": {
+        "arguments": [],
+        "commands": {
+          "claude-code": {
+            "arguments": [],
+            "options": [
+              "--live"
+            ],
+            "type": "command"
+          }
+        },
+        "options": [],
+        "type": "group"
+      },
       "ear": {
         "arguments": [],
         "commands": {

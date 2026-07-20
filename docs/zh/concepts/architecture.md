@@ -215,7 +215,6 @@ BFTS expand() (ari/orchestrator/bfts.py)
       next_steps_hints，≥0.7 → 不暴露）
     - build_command / run_command — 从 work_dir 中的 run_job.sh / Makefile grep
     - artifacts[].role — 按扩展名确定性分类
-    - migration_source ("fresh" 或 "auto")
   PathManager.META_FILES 包含 node_report.json，确保父→子物理 work_dir 复制
   不会让子节点继承父节点的报告。
 

@@ -142,7 +142,11 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
         # agent is not supposed to use HPC at all. run_bash lives in
         # coding-skill, so removing hpc-skill does not remove shell access.
         _skills = [s for s in _skills if getattr(s, "name", "") != "hpc-skill"]
-    mcp = MCPClient(_skills, disabled_tools=_disabled)
+    # Strict tool allowlist via ARI_ALLOWED_TOOLS (comma-separated). When set,
+    # the agent sees ONLY these tools (handoff study pins the minimal HPC set).
+    import os as _os_at
+    _allowed = [t.strip() for t in _os_at.environ.get("ARI_ALLOWED_TOOLS", "").split(",") if t.strip()]
+    mcp = MCPClient(_skills, disabled_tools=_disabled, allowed_tools=_allowed)
     # Wire the MCPClient into both LLMClients so cli-shim-targeted calls can
     # forward (--mcp-config + --allowedTools mcp__*) to the Claude
     # subprocess. With this, the text-catalog tool protocol is bypassed and

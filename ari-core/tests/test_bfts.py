@@ -78,6 +78,30 @@ def test_expand_does_not_set_bfts_counter(bfts, mock_llm):
     assert not hasattr(bfts, "total_nodes")
 
 
+# ── B-6 Rule A: sterile children never retire their parent ───────────
+
+
+def test_child_retires_parent_on_genuine_win():
+    """A non-sterile child that beats the parent retires it (normal B-6 Rule A)."""
+    from ari.cli.bfts_loop import _child_retires_parent
+    assert _child_retires_parent(0.72, 0.66, child_sterile=False) is True
+
+
+def test_sterile_child_never_retires_parent():
+    """A ``_sterile`` child is a verbatim copy — its score win is evaluator
+    noise, so it must NOT retire the parent (else the frontier collapses to a
+    single pruned copy and the search stops after two nodes). Regression for the
+    full-log handoff arms that stalled at 2 nodes."""
+    from ari.cli.bfts_loop import _child_retires_parent
+    # Even with a (noise) higher score, a sterile copy keeps the parent alive.
+    assert _child_retires_parent(41.56, 39.15, child_sterile=True) is False
+
+
+def test_child_does_not_retire_parent_when_not_better():
+    from ari.cli.bfts_loop import _child_retires_parent
+    assert _child_retires_parent(0.60, 0.66, child_sterile=False) is False
+
+
 def test_expansion_count_tracks_expand_calls(bfts, mock_llm):
     """B-6: expansion_count(node_id) grows with each expand() call."""
     mock_llm.complete.return_value = LLMResponse(

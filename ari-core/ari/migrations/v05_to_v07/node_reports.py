@@ -75,5 +75,4 @@ def reconstruct_report_from_legacy(
         "artifacts": artifacts_out,
         "evaluator_reason": evaluator_reason,
         "trace_log_summary": "",
-        "migration_source": "auto",
     }

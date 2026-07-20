@@ -107,35 +107,102 @@ last_verified: 2026-06-10
 | `work_dir` | 每节点工作目录（相对于检查点根目录） |
 | `artifacts` | 节点生成的文件，含 sha256 |
 
+## `full_log.json`
+
+每个节点完成时写入其 `work_dir` 的**完整 ReAct 记录**。与 `node_report.json` 一样位于
+`PathManager.META_FILES` 中，因此**不会被继承**到子节点 work_dir（每个节点写自己的）。
+结构：`{node_id, parent_id, depth, steps, tools[], messages[], trace_log[]}`。
+
+- `tools` — 模型实际获得的 OpenAI function-calling 模式（名称+描述+参数）＝**每个工具的用法**。system 提示词的 `AVAILABLE TOOLS` 行只列名称，用法模式通过 API 的 `tools=` 参数带外传递，因此在此字段可见。
+- `messages` — **完整对话**：system 提示词、注入的 handoff（相关臂中的父 `summary` / `full_log`）、
+  任务，以及所有 user / assistant / tool 轮次（含工具调用名称+参数、工具结果）。这是完整的
+  **输入提示词与输出**，而不仅是工具轨迹。
+- `trace_log` — 便于快速浏览的简洁工具调用轨迹（`→ tool(args)` / `← result`）；`steps` 为其长度。
+
+对不调用工具的模型（如 0.5b 底线）`trace_log` 为空（`steps: 0`），但 `messages` 始终包含所发送的完整提示词。
+
 ## `node_report.json`
 
-在 `mark_success` / `mark_failed` 时写入的每节点自报告。Schema：`ari-core/ari/schemas/node_report.schema.json`。
+在 `mark_success` / `mark_failed` 时写入的每节点自报告。
+Schema：`ari-core/ari/schemas/node_report.schema.json`。
+由 `generate_ear`、`nodes_to_science_data`、`bfts.expand` 读取。
 
-必需键：`schema_version`（常量 `1`）、`node_id`、`label`、`depth`、`status`、`files_changed`、`metrics`、`artifacts`。
+**必需键**：`schema_version`（常量 `1`）、`node_id`、`depth`、`status`、
+`files_changed`、`metrics`、`artifacts`。其余为可选（按下述条件输出）。
+
+### 核心字段（始终存在）
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `schema_version` | int(1) | Schema 版本 |
+| `node_id` | string | 本节点 id |
+| `parent_id` | string \| null | 父节点 id（root 为 `null`） |
+| `ancestor_ids` | string[] | root→父 的链 |
+| `depth` | int | 树深度（root=0） |
+| `status` | string | `success` / `failed` 等 |
+| `started_at` / `completed_at` | string | ISO8601 时间戳 |
+| `files_changed` | object | `{added, modified, deleted, inherited_unchanged}`，各 `{path, sha256}`。相对父的差异（`added+modified+deleted==0` 即 *sterile* / 空操作节点） |
+| `what_was_done` | string | **智能体自身的自然语言自报告**。仅在节点得出结论时填充（无法使用工具的弱模型为空） |
+| `delta_vs_parent` | string | **相对父的确定性、已验证的变化**（`files vs parent: +N/~M/-K; valid_geomean_speedup=X`）——始终为真值锚点 |
+| `metrics` | object | 评估器测量（`valid_geomean_speedup`、`_scientific_score`、`speedup_*`、空操作时 `_sterile:true` 等） |
+| `self_assessment` | object | `{succeeded, headline, concerns}`。`succeeded`=确定性 has_real_data；`headline`+`concerns`=智能体自身的 LLM 自我评审（无则为空）。 |
+| `next_steps_hints` | string[] | 智能体自我评审得出的下一步（LLM self-review）。确定性评分下为唯一来源（无分级维度）；使用 rubric/judge 评分时回退到评估器中段(0.4-0.7)维度理由。智能体未提供时为空。 |
+| `build_command` / `run_command` | string | 运行脚手架（构建/运行命令） |
+| `artifacts` | object[] | 产物 `[{filename, role}]` |
+| `evaluator_reason` | string | 确定性评估器的判定理由 |
+| `trace_log_summary` | string | 执行轨迹摘要 |
+
+### 探索标签（始终记录）
+
+`label` / `raw_label` / `original_direction` **始终被记录**。
+
+曾有 **`ARI_REPORT_MINIMAL=1`** 可将其从记录中抑制，**该标志已被删除**。标签并非装饰，
+它在三处**驱动**搜索：(1) system 提示中的 `NODE ROLE`；(2) 子节点的 `Task:` 行；
+(3) **节点选择**（默认 `scientific_plus_diversity` 下，`diversity_bonus` 为出现过少的标签 +0.05）。
+仅从记录中隐藏会保留其影响、只删除证据 —— 在 handoff 研究中，一次自以为“已关闭标签”的
+4 臂实验里，ABLATION 占比在各臂间仍为 0/1/3/4，而这**无法从 node_report 中发现**。
+
+若要消除标签的影响，应关闭**功能本身**而非隐藏记录：**`ARI_BFTS_NO_LABEL=1`**
+（停止上述三处；所有节点获得相同的中立角色/任务，选择也不参考标签）。此时标签仍会被记录，
+因此读者可以**验证**它确实是惰性的。
+
+| 字段 | 含义 |
+|---|---|
+| `label` | BFTS 探索角色：`draft` / `improve` / `debug` / `ablation` / `validation` / `other`。惰性（不参与打分或选择）。`ARI_BFTS_DETERMINISTIC_LABEL=1` 时从 direction 确定性推导 |
+| `raw_label` | 仅当 `label==other` 时保留（LLM 原始提议标签）；规范五种时为空 |
+| `original_direction` | 父的 expand 分配给该子节点的方向文本 |
+
+### 可选组 2：运行环境溯源（按需填充）
+
+`executor` / `hostname` / `slurm_job_id` / `slurm_partition` / `slurm_nodelist` /
+`cpu_info` / `mem_total_kb` / `compilers` **仅当 run_env 技能实际捕获到非空数据时**
+才输出该键（为空则省略）。不从环境的调度器变量自动捕获，因此技能未使用时机器信息
+完全缺失（不写入交付物），使用时则完整出现。
 
 ```json
 {
   "schema_version": 1,
-  "node_id": "...",
-  "parent_id": "...",
-  "ancestor_ids": ["..."],
-  "label": "improve",
-  "depth": 2,
-  "status": "completed",
-  "started_at": "2026-05-08T11:30:00Z",
-  "completed_at": "2026-05-08T11:42:00Z",
-  "files_changed": {
-    "added":    [{"path": "src/main.cpp", "sha256": "..."}],
-    "modified": [{"path": "Makefile",     "sha256": "..."}],
-    "deleted":  [],
-    "inherited_unchanged": []
-  },
-  "metrics": {"GFlops/s": 312.4},
-  "artifacts": [{"path": "results.csv", "sha256": "..."}]
+  "node_id": "node_a1b2c3d4",
+  "parent_id": "node_...root",
+  "ancestor_ids": ["node_...root"],
+  "depth": 1,
+  "status": "success",
+  "started_at": "2026-07-10T10:34:32Z",
+  "completed_at": "2026-07-10T10:35:24Z",
+  "files_changed": {"added": [], "modified": [{"path": "candidate_gemm.c", "sha256": "..."}], "deleted": [], "inherited_unchanged": []},
+  "what_was_done": "Parallelized the outer loop with OpenMP and reordered to ikj for cache locality.",
+  "delta_vs_parent": "files vs parent: +0/~1/-0; valid_geomean_speedup=1.340",
+  "metrics": {"valid_geomean_speedup": 1.34, "_scientific_score": 0.05, "speedup_512x512x512": 1.33},
+  "self_assessment": {"succeeded": true, "headline": "向量化内层循环，实测约1.2倍。", "concerns": ["仅测试了3种形状"]},
+  "next_steps_hints": [],
+  "build_command": "", "run_command": "CC ?= cc",
+  "artifacts": [{"filename": "result", "role": "unknown"}],
+  "evaluator_reason": "ok", "trace_log_summary": ""
 }
 ```
-
-`generate_ear`、`nodes_to_science_data` 和 `bfts.expand` 会读取此文件。
+（上例是删除 `ARI_REPORT_MINIMAL` 抑制**之前**的输出，故标签组缺失。当前的 node_report **始终**
+包含 `label` / `raw_label` / `original_direction`。机器信息缺失是因为未使用 run_env 技能——该字段
+按需填充，并非被抑制。）
 
 ## `results.json`
 

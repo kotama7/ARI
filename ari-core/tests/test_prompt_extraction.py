@@ -16,11 +16,15 @@ from ari.prompts import FilesystemPromptLoader
 
 # (key, expected sha256 of the on-disk prompt body before the run)
 _EXPECTED_HASHES: list[tuple[str, str]] = [
-    # PC3 — agent system prompt.  Hash captured against the original
-    # ``SYSTEM_PROMPT`` constant immediately before extraction.
+    # PC3 — agent system prompt.  Re-blessed when the final-JSON schema gained the
+    # ``next_steps`` + ``concerns`` self-review fields, again when it gained
+    # the agent-authored ``environment`` note (replaces the framework's old
+    # auto-scraped machine provenance; grounded in tool output), and again when it
+    # gained ``file_notes`` (per-file one-line explanations grafted onto the
+    # node_report ``files_changed`` entries).
     (
         "agent/system",
-        "a50abe13d568c07c6cd25b930d27b48c42179fbe629cdf64ab2d3ed48585cdbf",
+        "560811956de6dc92a9e3ae876a60acddb7f46232d17247e97ebb098082e46380",
     ),
     # PC4 — orchestrator lineage decision prompt.
     (

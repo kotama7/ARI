@@ -121,38 +121,107 @@ BFTS 実行のプランのシードとなります。
 | `work_dir` | ノードごとの作業ディレクトリ（チェックポイントルートからの相対パス） |
 | `artifacts` | ノードが生成したファイル（sha256 付き） |
 
+## `full_log.json`
+
+各ノードの完了時に、そのノードの `work_dir` へ書き込まれる**フルの ReAct 記録**。
+`node_report.json` と同様に `PathManager.META_FILES` に含まれるため、子の work_dir へ
+**継承されません**（各ノードが自分の分を書く）。形式: `{node_id, parent_id, depth, steps, tools[], messages[], trace_log[]}`。
+
+- `tools` — モデルが実際に渡された OpenAI function-calling スキーマ（名前＋説明＋引数）＝**各ツールの使い方**。system プロンプトの `AVAILABLE TOOLS` 行は名前だけで、使い方スキーマは API の `tools=` 引数で別途渡されるため、このフィールドで確認できます。
+- `messages` — **会話の全体**：system プロンプト、注入された handoff（該当アームでは親の
+  `summary` / `full_log`）、タスク、そして全ての user / assistant / tool ターン（tool 呼出の
+  名前＋引数、tool 結果を含む）。**入力プロンプトも出力も全て**入っており、tool トレースだけでは
+  ありません。
+- `trace_log` — 素早く見るための簡潔な tool 呼出トレース（`→ tool(args)` / `← result`）。
+  `steps` はその長さ。
+
+`trace_log` はツールを呼ばないモデル（例: 0.5b 床）では空（`steps: 0`）ですが、`messages`
+には送信された完全なプロンプトが常に入ります。
+
 ## `node_report.json`
 
 `mark_success` / `mark_failed` 時にノードごとに書き込まれる自己レポート。
 スキーマ: `ari-core/ari/schemas/node_report.schema.json`。
+`generate_ear`、`nodes_to_science_data`、`bfts.expand` が参照します。
 
-必須キー: `schema_version`（定数 `1`）、`node_id`、`label`、
-`depth`、`status`、`files_changed`、`metrics`、`artifacts`。
+**必須キー**: `schema_version`（定数 `1`）、`node_id`、`depth`、`status`、
+`files_changed`、`metrics`、`artifacts`。他は任意（下記の条件で出力）。
+
+### コアフィールド（常時）
+
+| フィールド | 型 | 意味 |
+|---|---|---|
+| `schema_version` | int(1) | スキーマ版 |
+| `node_id` | string | このノードのID |
+| `parent_id` | string \| null | 親ノードID（root は `null`） |
+| `ancestor_ids` | string[] | root→親 の系列 |
+| `depth` | int | 木の深さ（root=0） |
+| `status` | string | `success` / `failed` 等 |
+| `started_at` / `completed_at` | string | ISO8601 時刻 |
+| `files_changed` | object | `{added, modified, deleted, inherited_unchanged}`、各 `{path, sha256}`。親比の差分（`added+modified+deleted==0` は sterile ＝ no-op ノード） |
+| `what_was_done` | string | **エージェント自身の自然言語 自己報告**。結論できたノードのみ充填（tool を使えない弱モデルは空） |
+| `delta_vs_parent` | string | **決定論的な親比変化**（`files vs parent: +N/~M/-K; valid_geomean_speedup=X`）。常に真値の anchor |
+| `metrics` | object | 評価器の測定（`valid_geomean_speedup`, `_scientific_score`, `speedup_*`, sterile 時 `_sterile:true` 等） |
+| `self_assessment` | object | `{succeeded, headline, concerns}`。`succeeded`=決定論の has_real_data、`headline`+`concerns`=エージェントの LLM 自己レビュー（無ければ空）。 |
+| `next_steps_hints` | string[] | エージェント自身の自己レビューによる次の一手（LLM self-review）。決定論採点では唯一の供給源（グレード軸が無いため）、rubric/judge 採点時は評価器の中域(0.4-0.7)軸根拠にフォールバック。自己申告が無ければ空。 |
+| `build_command` / `run_command` | string | 運用足場（ビルド/実行コマンド） |
+| `artifacts` | object[] | 生成物 `[{filename, role}]` |
+| `evaluator_reason` | string | 決定論評価器の判定理由 |
+| `trace_log_summary` | string | 軌跡の要約 |
+
+### 探索ラベル（常に記録される）
+
+`label` / `raw_label` / `original_direction` は**常に記録される**。
+
+かつて **`ARI_REPORT_MINIMAL=1`** でこれらを記録から抑制できたが、**このフラグは削除した**。
+ラベルは記録用の飾りではなく、(1) system プロンプトの `NODE ROLE`、(2) 子の `Task:` 行、
+(3) **ノード選択**（既定 `scientific_plus_diversity` の `diversity_bonus` が過少ラベルに +0.05）
+の3経路で探索を**駆動する**。記録からだけ消しても影響は残り、証拠だけが消える —
+実際に handoff study では、ラベルを「off にした」つもりの 4アーム実験で ABLATION 比率が
+アーム間で 0/1/3/4 と偏り続け、node_report からは**発見できなかった**。
+
+ラベルの影響を消したい場合は、記録を隠すのではなく**機能そのものを off** にする：
+**`ARI_BFTS_NO_LABEL=1`**（上記3経路すべてを停止し、全ノードが同一の中立ロール／タスクを受け、
+選択もラベルを参照しない）。この時もラベルは記録され続けるので、読み手は
+「本当に不活性だったか」を**検証できる**。
+
+| フィールド | 意味 |
+|---|---|
+| `label` | BFTS 探索役割 `draft` / `improve` / `debug` / `ablation` / `validation` / `other`。採点・選択には不使用（inert）。`ARI_BFTS_DETERMINISTIC_LABEL=1` で direction から決定論導出 |
+| `raw_label` | `label==other` の時のみ LLM 原提案を保持（正規5種なら空） |
+| `original_direction` | 親の expand がこの子に与えた方向テキスト |
+
+### 任意フィールド②: 実行環境プロベナンス（populate-as-needed）
+
+`executor` / `hostname` / `slurm_job_id` / `slurm_partition` / `slurm_nodelist` /
+`cpu_info` / `mem_total_kb` / `compilers` は **run_env スキルが実際に捕捉した時だけ**
+該当キーを出力する（空なら省略）。ambient scheduler env からの自動捕捉はしないため、
+スキル未使用時は完全に不在（機械情報を deliverable に焼かない）。
 
 ```json
 {
   "schema_version": 1,
-  "node_id": "...",
-  "parent_id": "...",
-  "ancestor_ids": ["..."],
-  "label": "improve",
-  "depth": 2,
-  "status": "completed",
-  "started_at": "2026-05-08T11:30:00Z",
-  "completed_at": "2026-05-08T11:42:00Z",
-  "files_changed": {
-    "added":    [{"path": "src/main.cpp", "sha256": "..."}],
-    "modified": [{"path": "Makefile",     "sha256": "..."}],
-    "deleted":  [],
-    "inherited_unchanged": []
-  },
-  "metrics": {"GFlops/s": 312.4},
-  "artifacts": [{"path": "results.csv", "sha256": "..."}]
+  "node_id": "node_a1b2c3d4",
+  "parent_id": "node_...root",
+  "ancestor_ids": ["node_...root"],
+  "depth": 1,
+  "status": "success",
+  "started_at": "2026-07-10T10:34:32Z",
+  "completed_at": "2026-07-10T10:35:24Z",
+  "files_changed": {"added": [], "modified": [{"path": "candidate_gemm.c", "sha256": "..."}], "deleted": [], "inherited_unchanged": []},
+  "what_was_done": "Parallelized the outer loop with OpenMP and reordered to ikj for cache locality.",
+  "delta_vs_parent": "files vs parent: +0/~1/-0; valid_geomean_speedup=1.340",
+  "metrics": {"valid_geomean_speedup": 1.34, "_scientific_score": 0.05, "speedup_512x512x512": 1.33},
+  "self_assessment": {"succeeded": true, "headline": "内側ループをベクトル化、約1.2倍を計測。", "concerns": ["3形状のみ検証"]},
+  "next_steps_hints": [],
+  "build_command": "", "run_command": "CC ?= cc",
+  "artifacts": [{"filename": "result", "role": "unknown"}],
+  "evaluator_reason": "ok", "trace_log_summary": ""
 }
 ```
-
-`generate_ear`、`nodes_to_science_data`、および `bfts.expand` がこのファイルを
-参照します。
+（上例は `ARI_REPORT_MINIMAL` 抑制の削除**前**の出力なので label 系が不在。現在の node_report は
+`label` / `raw_label` / `original_direction` を**常に**含む。機械情報が不在なのは run_env スキル
+未使用のため＝必要時のみ populate される項目であり、抑制されているわけではない。）
 
 ## `results.json`
 

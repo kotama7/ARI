@@ -47,10 +47,12 @@ targets the like-named module under `ari/`.
 - `test_clone.py` — clone behaviour.
 - `test_config.py` — config loading.
 - `test_container.py` — container runtime.
+- `test_context_budget.py` — asserts the conversation window and tool-output caps are BUDGET-conditional, not unconditional: `context_budget_chars()` = `max(4000, ARI_LLM_NUM_CTX-2048)*3`, and trimming/truncation only fires when the conversation actually exceeds it. Pins the study control that a fixed `keep_tail` silently discarded the parent's early reasoning on every node regardless of size.
 - `test_contract_snapshots.py` — TODO
 - `test_core_does_not_import_skills.py` — TODO
 - `test_core_viz_direction.py` — TODO
 - `test_cost_tracker.py` — cost tracker.
+- `test_cost_tracker_failures.py` — token accounting must cover the calls that FAILED. Only litellm's `success_callback` was registered, so a run that burnt budget on timeouts/retries reported only the calls that came back — under-counting consumption and making a retry storm indistinguishable from a clean run. Pins: a failed call is booked with `status="failed"` and the prompt tokens it actually sent (counted from the request, since a failed call returns no `usage` — booking 0 would record a burnt call as free); provider-supplied partial usage wins over recounting; node/phase survive so per-arm consumption stays attributable; the handler never raises; and a re-init reloading the trace preserves `status` (a lossy reload resurrected failures as successful work).
 - `test_curate.py` — curation.
 - `test_dashboard_html.py` — dashboard HTML.
 - `test_data_flow.py` — data flow.
@@ -60,8 +62,8 @@ targets the like-named module under `ari/`.
 - `test_disabled_tools_flow.py` — disabled-tools flow.
 - `test_dynamic_axes.py` — dynamic evaluation axes.
 - `test_ear.py` — EAR (experiment/analysis/report).
+- `test_edit_lineage.py` — pins the rewrite/refine measure (`scripts/edit_lineage.py`). Tokenizer is not fooled by comment markers inside string/char literals; multi-char operators are single tokens. The measure SEPARATES a refine (>0.85) from a rewrite (<0.6) with the default threshold falling between them — a measure that returned the same number for both would measure nothing. Similarity is symmetric (difflib's greedy ratio is order-dependent, so both directions are averaged). Checkpoint walk pairs children with parents, excludes roots/orphans, splits valid/invalid, and refuses cross-task pairs (mismatched `candidate_*.c`). Structural (tree-sitter) check degrades to a clear note when absent, never a crash.
 - `test_env_write_quoting.py` — .env-write quoting guard (api_settings upsert).
-- `test_erfc_harness.py` — TODO
 - `test_evaluator_axis_mode.py` — evaluator axis mode.
 - `test_evaluator_composite.py` — evaluator composite scoring.
 - `test_evaluator_independence.py` — TODO
@@ -69,16 +71,18 @@ targets the like-named module under `ari/`.
 - `test_event_loop_and_csv.py` — event loop + CSV logging.
 - `test_factory_registry.py` — TODO
 - `test_file_explorer.py` — file explorer.
-- `test_gemm_harness.py` — TODO
+- `test_ground_environment.py` — pins which conversation roles the environment-grounding corpus reads (`tool` and `user`), so agent-authored notes are not deleted as ungrounded. Regression: 4 of 17 notes were wrongly dropped when the corpus omitted a role.
 - `test_gui_env_propagation.py` — GUI env propagation.
 - `test_gui_errors.py` — GUI error handling.
 - `test_handoff_agent_injection.py` — agent-face handoff injection (`build_handoff_agent_messages` + parent report/log loaders): summary / full / truncated arms, no-op arms, child→parent workdir resolution (handoff study G4).
 - `test_handoff_content_fix.py` — handoff channels carry real payload: `node_summary_view` surfaces the actionable `outcome` (self-assessment headline / eval reason, with eval_summary fallback; ablatable), and `_load_parent_log` falls back to the parent's tree.json `trace_log` when no run.log exists so code_plus_full_log is not silently empty (regression guard for the degenerate-channel finding).
 - `test_handoff_stats.py` — analysis stats core (handoff study Stage 4): geomean, bootstrap CI, TOST equivalence/non-equivalence, Holm adjustment, per-arm summary.
+- `test_harness_registry.py` — registry MECHANISM only, against synthetic harnesses built in `tmp_path` — ARI ships no task and the real ones live in an untracked workspace, so this must not load them. Pins: the per-task `[measure_kwargs]` declaration (a uniform `measure_node(work_dir, seed=seed)` type-checks against every harness and silently measures something else), sha256 tamper-refusal, unknown-task raising instead of falling through to a default benchmark, cwd-independent resolution via `RuntimePathResolver`, and that ARI core names no task.
 - `test_i18n_consistency.py` — i18n consistency.
 - `test_idea_integration.py` — idea integration.
 - `test_include_ear_toggle.py` — include-EAR toggle.
 - `test_integration.py` — integration.
+- `test_labels_disabled.py` — pins `ARI_BFTS_NO_LABEL` as a REAL feature switch at all three sites the exploration label steers the search — the system prompt's NODE ROLE, the child's `Task:` line, and `diversity_bonus` in node selection — not a record-only suppression. A flag that hides a live variable from the record deletes the evidence, not the influence.
 - `test_laptop_hpc_skill_drop.py` — laptop/HPC skill drop.
 - `test_launch_config.py` — launch config.
 - `test_letta_restart_live.py` — Letta restart (live).
@@ -93,7 +97,6 @@ targets the like-named module under `ari/`.
 - `test_max_react_passthrough.py` — max-ReAct passthrough.
 - `test_mcp_cow_concurrency.py` — MCP copy-on-write concurrency.
 - `test_memory.py` — memory backend.
-- `test_meshpart_harness.py` — mesh/graph partitioning harness (Goldilocks task C): procedural custom mesh CSR validity + determinism + distinct seeds, combined cut+balance score (incl. anti-gaming: degenerate all-in-one-part → 0, not None), edge_cut/imbalance helpers, measure_node pattern runners, work_dir seeder, evaluator score-shaped contract, and a cc-gated real compile/run gradient (round-robin baseline ~0 → BFS-block partitioner high).
 - `test_metric_contract_obligation.py` — `ari.agent.metric_contract` producer obligation: domain-neutral `build_contract_obligation`/`build_emission_nudge`, run-level claim coverage (`build_coverage_status`, `collect_run_measurement_names`), and lineage chaining (`collect_node_measurement_names`, `build_expand_coverage_hint`, `build_inherited_data_note`).
 - `test_model_backend_independence.py` — TODO
 - `test_model_backend_protocol.py` — TODO
@@ -127,7 +130,9 @@ targets the like-named module under `ari/`.
 - `test_retrieval_backend.py` — retrieval backend.
 - `test_root_idea_selector.py` — root-idea selector.
 - `test_run_env.py` — run environment.
+- `test_run_env_catalog.py` — asserts the run-environment catalog masks host identity (username paths, alternate filesystem mounts, MODULEPATH) before it reaches the agent, so a node reads as a self-contained container rather than a host account.
 - `test_run_loop.py` — run loop.
+- `test_run_provenance.py` — `<checkpoint>/provenance.json` — the record that lets a reader holding only the published workspace + this repo re-check a number: the harness's verified sha256 digests, its workspace-relative origin, target/scale/axis, the ARI commit, and the measurement env the (digest-pinned) harness source reads to build its compile command. Pins the two things that are easy to get wrong: REDACTION (the file ships inside a published artifact, so secret values and absolute paths must never appear, while the keys that determine the measurement must survive), and the round-trip (recompute every digest from the workspace and detect a tampered one). Also pins that the record is META: `_run_loop` copies every non-meta checkpoint-root file into each node, so a non-meta provenance.json handed every node the TARGET it is judged against — a leak only the real `_run_loop` exposed.
 - `test_runtime_path_reconciliation_005.py` — TODO
 - `test_sandbox_shim.py` — sandbox shim.
 - `test_selection_contract.py` — selection contract.
@@ -136,9 +141,9 @@ targets the like-named module under `ari/`.
 - `test_settings_roundtrip.py` — settings roundtrip.
 - `test_setup_env.py` — setup_env.sh behaviour.
 - `test_skill_public_contract.py` — skills import core via the public contract.
-- `test_spmm_harness.py` — SpMM harness core (handoff study B2b): reference oracle, eps-bound accept/reject knife-edge, seeded matrix determinism, measure_node aggregation with an injected runner.
 - `test_status_fallback.py` — status fallback.
 - `test_system_prompt_memory.py` — system-prompt memory.
+- `test_text_toolcall_recovery.py` — recovery of tool calls emitted as plain text by models that do not honour the tool-call protocol; keeps a weak model's turn usable instead of scoring it as a no-op.
 - `test_tool_manager_workdir.py` — tool dispatch pins filesystem tools (`write_code`/`run_bash`/`run_code`/`emit_results`/`read_file`) to the node's work_dir when the model omits `work_dir`, so per-node edits land in the evaluated dir instead of the shared `/tmp/ari_work` fallback (regression guard for the BFTS bug where omitted-work_dir edits were scored on inherited parent code); explicit work_dir is not overridden and memory-tool CoW routing is preserved.
 - `test_tool_timeout_tier.py` — MCP `_resolve_tool_timeout` tiering: LLM/compile paper stages (incl. `paper_refine`, `compile_paper`) get the slow timeout, plain tools the 300s default (regression guard for the paper_refine shim-congestion timeout).
 - `test_trace_log_truncation.py` — trace-log truncation.

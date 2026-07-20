@@ -293,7 +293,6 @@ const zh: Record<string, string> = {
   report_files_changed: '变更文件',
   report_no_changes: '(未新增或修改源文件)',
   report_commands: '构建 / 运行命令',
-  report_migrated_auto: '此报告由 `ari migrate node-reports` 自动重建，部分字段可能不完整。',
   wiz_goal_title: '描述您的研究目标',
   wiz_scope_title: '实验范围',
   wiz_algo_title: '算法',

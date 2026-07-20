@@ -51,9 +51,7 @@ ari migrate node-reports /path/to/checkpoint
 ari migrate node-reports /path/to/checkpoint --overwrite   # 既存レポートも上書き
 ```
 
-再構築されたレポートには `migration_source: "auto"` が付くため、ダウンストリーム
-フィルタはやや保守的に振る舞います (例: `for_code` は files_changed 空でも
-auto レポートのノードを採用)。復元できないフィールド (`original_direction`,
+復元できないフィールド (`original_direction`,
 `delta_vs_parent`, `next_steps_hints`) は null になります。
 
 ---

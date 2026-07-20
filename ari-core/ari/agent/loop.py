@@ -65,6 +65,156 @@ def __getattr__(name: str):  # PEP 562 — keep ``SYSTEM_PROMPT`` source-compati
         return _system_prompt_template()
     raise AttributeError(name)
 
+
+def serialize_messages(messages: Any) -> list[dict]:
+    """JSON-safe snapshot of a ReAct ``messages`` list for full_log.json.
+
+    Keeps role + content (system prompt, injected handoff, task, and every
+    user/assistant/tool turn) plus tool-call names/arguments and tool_call_id, so
+    the per-node record shows the COMPLETE input prompt and output, not just the
+    tool trace. Never raises — best-effort per message.
+    """
+    out: list[dict] = []
+    for m in messages or []:
+        if not isinstance(m, dict):
+            continue
+        rec: dict[str, Any] = {"role": m.get("role", "")}
+        c = m.get("content")
+        if isinstance(c, list):
+            c = " ".join(str(x) for x in c)
+        rec["content"] = "" if c is None else str(c)
+        _tcs = m.get("tool_calls") or []
+        if _tcs:
+            rec["tool_calls"] = [
+                {
+                    "name": (tc.get("function") or {}).get("name", ""),
+                    "arguments": (tc.get("function") or {}).get("arguments", ""),
+                }
+                for tc in _tcs
+                if isinstance(tc, dict)
+            ]
+        if m.get("tool_call_id"):
+            rec["tool_call_id"] = m.get("tool_call_id")
+        # Tag the agent's final finish JSON so readers can find the conclusion and
+        # ``_render_parent_execution_log`` can withhold it from a child's handoff
+        # (the study's full_log arm carries the trajectory; the summary arm — the
+        # parent's node_report — carries the conclusion; they must stay disjoint).
+        if m.get("_finish"):
+            rec["_finish"] = True
+        out.append(rec)
+    return out
+
+
+def _tool_usage_hint(tools: Any, limit: int = 2) -> str:
+    """Build a short "how to call a tool" example from the OpenAI tool schemas.
+
+    When a model replies with TEXT instead of a tool call (or with a malformed
+    call), the nudge shows a concrete example — ``name(arg=<type>, ...)`` for the
+    first couple of available tools — instead of naming/forcing one specific tool.
+    Returns "" if no tools.
+    """
+    _examples: list[str] = []
+    for t in (tools or [])[:limit]:
+        f = (t or {}).get("function", {}) if isinstance(t, dict) else {}
+        name = f.get("name", "")
+        if not name:
+            continue
+        params = f.get("parameters", {}) or {}
+        props = params.get("properties", {}) or {}
+        req = params.get("required") or list(props.keys())[:2]
+        _args = ", ".join(
+            f"{p}=<{(props.get(p, {}) or {}).get('type', 'value')}>" for p in list(req)[:3]
+        )
+        _examples.append(f"{name}({_args})")
+    return "; ".join(_examples)
+
+
+def _coerce_str_list(value: Any, limit: int = 5) -> list[str]:
+    """Normalize a self-reviewed list value (next_steps / concerns) to clean strings.
+
+    Accepts a list (of strings or dicts with a text-ish field), a single string,
+    or None; trims blanks and caps the count. Used for the agent's LLM self-review.
+    """
+    if not value:
+        return []
+    if isinstance(value, str):
+        value = [value]
+    out: list[str] = []
+    for item in value:
+        if isinstance(item, dict):
+            item = (
+                item.get("step") or item.get("concern") or item.get("text")
+                or item.get("hint") or ""
+            )
+        if not item:
+            continue
+        s = str(item).strip()
+        if s:
+            out.append(s)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _ground_environment(env_text: Any, messages: list[dict]) -> str:
+    """Keep the agent's free-form environment note only when it is GROUNDED in
+    evidence this node actually received — anti-fabrication, mirroring the
+    metrics check.
+
+    The agent authors ``environment`` (which compilers / ISA / CPU / GPU it
+    actually used). We verify the hard claims in that text (version numbers, ISA
+    names, model tokens like ``6142`` / ``a64fx`` / ``a100``) appear in this
+    node's evidence. If EVERY hard claim is ungrounded the note is fabricated ->
+    dropped. Pure prose (no hard claim) or partially-grounded text is kept.
+
+    EVIDENCE = tool results + framework-authored USER turns. The user turns matter:
+    the parent handoff is injected as a user message, and it is the parent's REAL
+    tool output rendered — a child that reads the environment out of its parent's
+    log instead of spending a ReAct step re-querying is doing exactly what the
+    handoff exists to enable. Grounding against tool results ALONE made this a
+    ``describe_environment``-call detector rather than a fabrication detector: on a
+    real 40-node study it deleted 4 of 17 notes whose CPU model, thread count and
+    compiler all traced verbatim to the 17,921-char parent handoff. It punished
+    precisely the behaviour the full_log arm measures.
+
+    Deliberately EXCLUDED: ``assistant`` turns (the agent's own text — grounding a
+    claim against the agent's earlier assertion of it is circular) and ``system``
+    (the prompt names ISA examples like "AVX-512", so a note could ground against
+    the instructions rather than the machine). The agent cannot author a user or
+    tool turn, so neither can be poisoned by it.
+    """
+    text = str(env_text or "").strip()
+    if not text:
+        return ""
+    corpus = "\n".join(
+        str(m.get("content") or "")
+        for m in messages
+        if isinstance(m, dict) and m.get("role") in ("tool", "user")
+    ).lower()
+    if not corpus:
+        return ""  # no evidence to ground against -> cannot trust the note
+    import re as _re
+    claims: set[str] = set()
+    for pat in (
+        r"\d+\.\d+(?:\.\d+)?",                        # version numbers
+        r"avx-?512|avx2|avx|sve2?|fma|neon|sse\d?",   # ISA feature names
+        r"\b[a-z]*\d[a-z0-9]+\b",                     # model tokens (6142, a64fx, a100)
+    ):
+        claims.update(t.lower() for t in _re.findall(pat, text.lower()))
+    if not claims:
+        return text  # no verifiable hard claim (pure prose) -> allow
+    # Whole-token match (not substring) so e.g. "12" from "12.9" does NOT
+    # spuriously match inside "avx512" — a claim must stand alone in the corpus.
+    for c in claims:
+        if _re.search(r"(?<![\w.])" + _re.escape(c) + r"(?![\w.])", corpus):
+            return text  # at least one hard claim is grounded -> keep
+    logger.warning(
+        "Node environment note dropped: no hard claim grounded in this node's "
+        "evidence (tool results + injected handoff) — possible fabrication. "
+        "claims=%s", sorted(claims)[:8])
+    return ""
+
+
 _MEMORY_RULES_PER_NODE = """
 - MEMORY: your descendants automatically inherit ONLY this node's final result_summary; \
 everything else is lost to them unless you save it. At decision points call \
@@ -115,7 +265,15 @@ _SUPPLEMENT_CAP = 400        # per detail-supplement entry (2)
 # Run-level invariant USER messages that must survive the react context window
 # (matched against the message head). The obligation marker is the first line
 # build_contract_obligation emits; the context marker is the (1a) header above.
-_PINNED_USER_MARKERS = ("METRIC-CORRECTNESS CONTRACT", "[Experiment context")
+# User messages kept ("pinned") in every ReAct context window so they survive
+# the tail-truncation. The handoff blocks are pinned too (F2): otherwise the
+# study's independent variable (parent summary / execution log, injected at
+# index 2) is evicted once a node grows past ~24 messages.
+_PINNED_USER_MARKERS = (
+    "METRIC-CORRECTNESS CONTRACT",
+    "[Experiment context",
+    "[Parent handoff",
+)
 
 
 def repair_tool_message_order(msgs: list) -> list:
@@ -167,6 +325,65 @@ def _cap(s: str, n: int) -> str:
     """Truncate to n chars with an ellipsis marker when cut."""
     s = s.strip()
     return s if len(s) <= n else s[:n] + " …[truncated]"
+
+
+def labels_disabled() -> bool:
+    """Is the BFTS exploration LABEL feature switched OFF entirely? (``ARI_BFTS_NO_LABEL``)
+
+    Labels (draft / improve / ablation / validation / debug) normally steer the
+    search in THREE places, only one of which is reporting:
+
+      1. the system prompt's ``NODE ROLE`` (per-label instructions — ABLATION says
+         "remove or disable one component", DEBUG says "the parent failed, diagnose
+         it", DRAFT says "implement from scratch");
+      2. the child task line (``Task: <per-label description>``);
+      3. node SELECTION — the default ``scientific_plus_diversity`` frontier score
+         adds ``diversity_bonus``, i.e. +0.05 for nodes whose label is
+         under-represented, so which node gets expanded depends on label history.
+
+    This is the ONLY switch: there is deliberately no way to merely hide labels from
+    the record. An ``ARI_REPORT_MINIMAL`` flag used to do exactly that, and it is how
+    a label confound survived an entire 4-arm study undetected — the label still
+    drove (1)(2)(3) while being INVISIBLE in node_report/tree.json, and the ABLATION
+    share of children ran 0 / 1 / 3 / 4 (monotone in handoff richness), so "the full
+    log shifts rewrite->refine" could not be separated from "the full log makes the
+    planner emit ABLATION, which literally instructs the child to edit". That flag
+    has been REMOVED: a live variable is always recorded, and to remove its
+    influence you turn the feature off here.
+
+    This flag turns the feature OFF at all three sites: every child gets the same
+    neutral role/task, and selection ignores labels.
+    """
+    import os as _os_nl
+    return _os_nl.environ.get("ARI_BFTS_NO_LABEL", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def context_budget_chars() -> int:
+    """Character budget for ONE LLM call.
+
+    The model has a HARD context limit (``ARI_LLM_NUM_CTX``; qwen2.5-coder caps at
+    32768 = n_ctx_train and it CANNOT be raised). ~3 chars/token, reserving room
+    for the response. Single source of truth: every place that considers dropping
+    content to "save context" must ask THIS, so nothing is discarded while the
+    context still has room.
+    """
+    import os as _os
+    try:
+        _nc = int(_os.environ.get("ARI_LLM_NUM_CTX", "32768") or "32768")
+    except ValueError:
+        _nc = 32768
+    return max(4000, _nc - 2048) * 3
+
+
+def conversation_chars(msgs: list) -> int:
+    """Size of a ReAct message list as the context sees it (content + tool calls)."""
+    return sum(
+        len(str(m.get("content") or ""))
+        + sum(len(str(tc)) for tc in (m.get("tool_calls") or []))
+        for m in (msgs or [])
+    )
 
 
 def build_working_context_messages(
@@ -411,13 +628,210 @@ def _load_parent_log(node, work_dir: str, *, limit: int | None = None) -> str:
                     chunks.append(f"# {f.name}\n" + f.read_text(errors="replace"))
                 except Exception:
                     pass
+    # Tail-cap (not head): keep the END of a build+benchmark log, where the final
+    # candidate/metrics live (F7).
     if chunks:
-        return ("\n\n".join(chunks))[:limit]
-    # Fallback: BFTS / deterministic-study nodes do NOT write run.log files — the
-    # parent's ReAct execution log lives in tree.json's per-node ``trace_log``.
-    # Without this, the code_plus_full_log arm injects nothing (== code_only).
-    # Reconstruct the parent's log from its trace_log so the log channel is real.
-    return _load_parent_trace_log(pid, work_dir, limit=limit)
+        return ("\n\n".join(chunks))[-limit:]
+    # PRIMARY source for BFTS / deterministic-study nodes (F1): the parent's own
+    # ``full_log.json`` (written under its node dir at completion) — the REAL
+    # per-node execution record. The old tree.json ``trace_log`` is empty whenever
+    # the model never emits STRUCTURED tool_calls (the norm here), which silently
+    # collapsed the code_plus_full_log arm to code_only.
+    _fl = _render_parent_execution_log(pdir, limit)
+    if _fl:
+        return _fl
+    # Last resort: tree.json trace_log (usually empty for these models).
+    _tl = _load_parent_trace_log(pid, work_dir, limit=limit)
+    if not _tl:
+        logger.warning(
+            "Node %s: full_log handoff resolved an EMPTY parent log (parent %s) — "
+            "the full_log arm degrades to code_only for this node.",
+            getattr(node, "id", "?"), pid,
+        )
+    return _tl
+
+
+def _normalize_text_toolcall(text: str) -> str | None:
+    """Render a tool call that a parent emitted as TEXT JSON in the same arrow
+    form as a real structured call.
+
+    Some models (qwen2.5-coder, gpt-oss) emit ``{"name": ..., "arguments": ...}``
+    as assistant *content* instead of a structured ``tool_calls`` entry. If we
+    echoed that raw JSON back into a child's context (as ``[assistant] {json}``),
+    the child few-shot-imitated the literal template and emitted its own tool
+    calls as TEXT too — never a real structured call — so nothing executed and
+    the failure cascaded down the subtree. Normalising to ``→ name(args)`` gives
+    the child an execution *trace* (which is not mistaken for an output template,
+    verified against nodes that inherited the arrow form and called tools fine)
+    instead of a copy-me tool-call JSON. Returns None for hallucinated finishes
+    (``{"status": ...}``) and other non-tool prose so they are dropped.
+    """
+    import json as _json
+    t = text.strip()
+    if not (t.startswith("{") and t.endswith("}")):
+        return None
+    try:
+        obj = _json.loads(t)
+    except Exception:
+        return None
+    if not isinstance(obj, dict) or "name" not in obj or "arguments" not in obj:
+        return None
+    _args = obj.get("arguments")
+    try:
+        _args = _json.dumps(_args, ensure_ascii=False)
+    except Exception:
+        _args = str(_args)
+    return f"→ {obj.get('name')}({_args})"
+
+
+def _extract_text_toolcall(content: str, tools: "list[dict] | None") -> "dict | None":
+    """Recover a tool call a model emitted as TEXT instead of a structured
+    ``tool_calls`` entry.
+
+    ollama-served models (notably qwen2.5-coder) very frequently return the call
+    as assistant *content* — e.g. ``{"name": "write_code", "arguments": {...}}`` —
+    instead of a structured tool call. The loop's JSON handler only recognises a
+    ``{"status": ...}`` *finish*, so such a text call is neither executed nor
+    treated as a finish: it falls through as a wasted text step. Across a whole
+    study run this makes EVERY ollama node score 0 (the model calls tools, but as
+    text, so nothing ever runs). We parse the first JSON object in the content and,
+    if it names a currently-available tool, synthesise the exact structure a real
+    ``tool_calls`` entry has so the normal execution path runs it.
+
+    Returns None when the content is not a recoverable tool call — prose, a
+    ``{"status": ...}`` finish, or a call to a tool not in ``tools`` — so the
+    existing finish/no-tool handlers deal with it unchanged.
+    """
+    import json as _json
+    import re as _re
+    _valid = {t.get("function", {}).get("name") for t in (tools or [])}
+    _valid.discard(None)
+    if not _valid:
+        return None
+    t = _re.sub(r"<think>.*?</think>", "", content or "", flags=_re.DOTALL).strip()
+    if t.startswith("```"):
+        _l = t.split("\n")[1:]
+        if _l and _l[-1].strip() == "```":
+            _l = _l[:-1]
+        t = "\n".join(_l).strip()
+    _brace = t.find("{")
+    if _brace < 0:
+        return None
+    try:
+        # raw_decode tolerates trailing junk (a second JSON blob, or a
+        # hallucinated "[user] Step N..." continuation) after the first object.
+        obj, _ = _json.JSONDecoder().raw_decode(t[_brace:])
+    except Exception:
+        return None
+    if not isinstance(obj, dict):
+        return None
+    name = obj.get("name")
+    if not isinstance(name, str) or name not in _valid or "arguments" not in obj:
+        return None
+    _args = obj.get("arguments")
+    if not isinstance(_args, str):
+        try:
+            _args = _json.dumps(_args, ensure_ascii=False)
+        except Exception:
+            return None
+    return {"id": "textcall_0", "type": "function",
+            "function": {"name": name, "arguments": _args}}
+
+
+def _render_parent_execution_log(pdir, limit: int) -> str:
+    """Render the parent's execution log from its ``full_log.json`` (F1 source).
+
+    Prefer the parent's ``trace_log`` (clean tool trace) if present; otherwise
+    reconstruct the execution from ``messages`` — the assistant tool calls and
+    tool results AFTER the initial system+goal (which the child already has).
+    Tail-capped to ``limit`` so the recent state survives.
+
+    The reconstruction renders EVERYTHING in the same ``→ tool(args)`` /
+    ``← result`` arrow vocabulary as ``trace_log``. It deliberately does NOT
+    reproduce the raw ``[user]``/``[assistant]`` chat transcript: the ephemeral
+    step-nudge user turns are loop scaffolding (not parent work), and echoing
+    them alongside raw tool-call JSON made children imitate the transcript shape
+    and stop making real structured tool calls (a cascading failure across the
+    full_log arms). See :func:`_normalize_text_toolcall`.
+    """
+    import json as _json
+    fj = pdir / "full_log.json"
+    if not fj.is_file():
+        return ""
+    try:
+        d = _json.loads(fj.read_text())
+    except Exception:
+        return ""
+    # The parent's finish JSON — its CONCLUSION. Collected BEFORE the branch and
+    # scrubbed from the rendered body AFTER it, so the guarantee holds no matter
+    # which branch built the body. It used to live only inside the messages
+    # branch, which measurement showed is dead in practice: ``trace_log`` was
+    # non-empty on 31/31 real nodes, so the trace_log branch runs ~always and the
+    # guard never executed. Orthogonality survived only because trace_log happens
+    # to be appended at the tool-execution site alone — an unasserted accident,
+    # and trace_log is what feeds the viz tree, so any future "show the node's
+    # conclusion in the tree" change would have shipped the conclusion into the
+    # log channel with the guard silently inert.
+    _finish_texts = [
+        str(m.get("content") or "").strip()
+        for m in (d.get("messages") or [])
+        if isinstance(m, dict) and m.get("_finish")
+    ]
+    tl = d.get("trace_log") or []
+    if tl:
+        body = "\n".join(str(x) for x in tl)
+    else:
+        _lines: list[str] = []
+        for m in (d.get("messages") or []):
+            if not isinstance(m, dict):
+                continue
+            _role = m.get("role", "")
+            _c = str(m.get("content") or "").strip()
+            # system + user turns carry no parent "work": system is the shared
+            # preamble, user turns are the goal (child has its own) and the
+            # ephemeral step nudges / error pushbacks. Skip them all — rendering
+            # them as a transcript is exactly what induced child imitation.
+            if _role in ("system", "user"):
+                continue
+            # The parent's finish JSON is its CONCLUSION (metrics, summary,
+            # next_steps) — the payload of the study's *summary* channel (the
+            # parent node_report). This is the *log* channel: it carries the raw
+            # trajectory only. Rendering the conclusion here would make the
+            # full_log arm a superset of the summary arm and collapse the very
+            # contrast the four arms measure. It stays in the saved full_log.json
+            # for human/analysis readers; it just never rides the handoff.
+            if m.get("_finish"):
+                continue
+            if _role == "assistant":
+                _emitted = False
+                for _tc in (m.get("tool_calls") or []):
+                    _lines.append(f"→ {_tc.get('name', '?')}({_tc.get('arguments', '')})")
+                    _emitted = True
+                if not _emitted and _c:
+                    _norm = _normalize_text_toolcall(_c)
+                    if _norm:
+                        _lines.append(_norm)
+            elif _role == "tool":
+                if _c:
+                    _lines.append(f"← {_c}")
+        body = "\n".join(_lines)
+    # BRANCH-INDEPENDENT INVARIANT: the conclusion never rides the log channel.
+    # This is the *summary* channel's payload (the parent's node_report). If it
+    # leaked in here, code_plus_full_log would become a superset of
+    # code_plus_summary and the study's 2x2 factorial would stop separating the
+    # two effects it exists to separate. Scrub the finish blob whole, and any
+    # substantial line of it, whichever branch produced ``body``.
+    for _ft in _finish_texts:
+        if not _ft:
+            continue
+        body = body.replace(_ft, "")
+        body = "\n".join(
+            _ln for _ln in body.splitlines()
+            if not (len(_ln.strip()) > 25 and _ln.strip() in _ft)
+        )
+    if not body.strip():
+        return ""
+    return ("# parent execution log (from full_log.json)\n" + body)[-limit:]
 
 
 def _find_tree_json(work_dir: str):
@@ -603,6 +1017,88 @@ class AgentLoop:
         except Exception:
             pass
 
+    def _forced_max_steps_summary(
+        self, node: Node, messages: list[dict], experiment: dict
+    ) -> tuple[str, list[str], list[str]]:
+        """Self-review a node that ran out of ReAct steps → (summary, next_steps, concerns).
+
+        Option B: when the agent exhausts ``max_react_steps`` (max_iter) without
+        emitting a final summary, force ONE tool-less LLM call whose prompt states
+        the max_iter overflow and asks — from the node's OWN trace — for a concise
+        factual ``what_was_done``, a short self-reviewed ``next_steps`` list, and a
+        short ``concerns`` list. Returns ``("", [], [])`` on any failure (caller
+        treats an empty summary as "no self-report").
+        """
+        # Compact the tail of the trace: role + (tool names) + truncated content.
+        _lines: list[str] = []
+        for _m in messages[-12:]:
+            if not isinstance(_m, dict):
+                continue
+            _role = _m.get("role", "")
+            _content = _m.get("content")
+            if isinstance(_content, list):
+                _content = " ".join(str(_c) for _c in _content)
+            _content = str(_content or "").strip()
+            _tcs = _m.get("tool_calls") or []
+            if _tcs:
+                _names = ", ".join(
+                    tc.get("function", {}).get("name", "?") for tc in _tcs
+                )
+                _lines.append(f"[{_role} → tools: {_names}] {_content[:300]}")
+            elif _content:
+                _lines.append(f"[{_role}] {_content[:400]}")
+        _trace_text = "\n".join(_lines) or "(no usable trace captured)"
+        _goal = experiment.get("goal", "") if isinstance(experiment, dict) else str(experiment)
+
+        _sum_msgs = [
+            {"role": "system", "content": (
+                "You self-review a single node of an autonomous HPC-code-optimization "
+                "agent. IMPORTANT CONTEXT: this node EXCEEDED its ReAct step budget "
+                "(max_iter reached) and stopped BEFORE it could emit a final summary, "
+                "so no self-report exists. From the trace only, produce (1) a concise, "
+                "factual 1-3 sentence summary of what the node ATTEMPTED and what it "
+                "ACCOMPLISHED, (2) a short self-review of what to try NEXT to make "
+                "progress, and (3) a short list of CONCERNS/caveats about the node. "
+                "Do not invent measurements or results not present in the trace. "
+                "State explicitly that the node ran out of its step budget. "
+                'Reply ONLY with JSON: {"summary":"<1-3 sentences>",'
+                '"next_steps":["<concrete next step>", ...],'
+                '"concerns":["<caveat/risk>", ...]}'
+            )},
+            {"role": "user", "content": (
+                f"Goal: {str(_goal)[:400]}\n\n"
+                f"Trace (final steps):\n{_trace_text}\n\n"
+                f"The node consumed all {self.max_react_steps} ReAct steps (max_iter) "
+                "without producing a final summary. Write the JSON self-review now."
+            )},
+        ]
+        _resp = self.llm.complete(
+            _sum_msgs, tools=None, require_tool=False,
+            node_id=node.id, phase="fallback_summary", skill="agent_loop",
+        )
+        _text = (getattr(_resp, "content", "") or "").strip()
+        if not _text:
+            return ("", [], [])
+        # Prefer structured JSON; fall back to using the whole reply as the summary.
+        try:
+            _body = _text
+            if "```" in _body:  # strip a ```json ... ``` fence if present
+                _body = _body.split("```", 2)[1]
+                if _body.lstrip().lower().startswith("json"):
+                    _body = _body.lstrip()[4:]
+            _obj = json.loads(_body[_body.find("{"): _body.rfind("}") + 1])
+            if isinstance(_obj, dict) and (
+                _obj.get("summary") or _obj.get("next_steps") or _obj.get("concerns")
+            ):
+                return (
+                    str(_obj.get("summary", "")).strip(),
+                    _coerce_str_list(_obj.get("next_steps")),
+                    _coerce_str_list(_obj.get("concerns")),
+                )
+        except Exception:
+            pass
+        return (_text, [], [])
+
     def run(self, node: Node, experiment: dict) -> Node:
         node.mark_running()
         # Notify the orchestrator so tree.json picks up the RUNNING state
@@ -637,18 +1133,55 @@ class AgentLoop:
         tools = self._available_tools_openai(suppress=getattr(self, "_suppress_tools", set()), phase="bfts")
         tool_names = [t["function"]["name"] for t in tools] if tools else []
         tool_desc = ", ".join(tool_names) if tool_names else "none"
+        # Capture the full tool schemas (name + description + parameters) the model
+        # is given via function-calling, so full_log.json shows HOW to use each
+        # tool (the AVAILABLE TOOLS prompt line lists names only).
+        node.full_tools = tools or []
         has_exec = any(n in ("run_bash", "run_code") for n in tool_names)
+        # Handoff study (ARI_SKIP_IDEATION=1): pre-seeded work_dir + fixed
+        # deterministic evaluator → no idea / metric-spec / survey / paper phase.
+        import os as _os_ski
+        _skip_ideation = _os_ski.environ.get("ARI_SKIP_IDEATION", "").strip().lower() in (
+            "1", "true", "yes", "on",
+        )
+        _has_scheduler = any(
+            n in ("slurm_submit", "job_status", "job_cancel") for n in tool_names
+        )
 
-        label_hint = node.label.system_hint() if hasattr(node, "label") else ""
+        # SITE 1/3 of the label feature (see ``labels_disabled``): the per-label
+        # NODE ROLE. With labels off, every node gets the SAME neutral role, so no
+        # label-specific instruction ("remove one component" / "the parent failed")
+        # can steer a child — and no arm can be handed a different role mix.
+        if labels_disabled():
+            label_hint = (
+                "Edit and IMPROVE the seeded candidate source file — a correct "
+                "baseline is already provided in the work directory. Do NOT rewrite "
+                "from scratch or change the required function signature."
+            )
+        else:
+            label_hint = node.label.system_hint() if hasattr(node, "label") else ""
+        # F5: under skip_ideation the work_dir is pre-seeded with a correct baseline,
+        # so the DRAFT "implement from scratch" role contradicts the improve task.
+        if _skip_ideation and label_hint and "from scratch" in label_hint.lower():
+            label_hint = (
+                "Edit and IMPROVE the seeded candidate source file — a correct "
+                "baseline is already provided in the work directory. Do NOT rewrite "
+                "from scratch or change the required function signature."
+            )
         # work_dir: per-node experiment directory (passed via experiment dict)
         work_dir = experiment.get("work_dir", "") if isinstance(experiment, dict) else ""
         slurm_partition = experiment.get("slurm_partition", "") if isinstance(experiment, dict) else ""
         slurm_max_cpus = experiment.get("slurm_max_cpus", 0) if isinstance(experiment, dict) else 0
+        # F10: only surface SLURM/scheduler info when a scheduler tool is actually
+        # available. In the study the toolset is local (run_bash only), so a
+        # "SLURM partition: ..." line is misleading (steers a weak model toward
+        # scheduler submission) and needlessly leaks a machine name into the prompt.
         hpc_hint = ""
-        if slurm_partition:
-            hpc_hint += f"\n  - SLURM partition: {slurm_partition}"
-        if slurm_max_cpus:
-            hpc_hint += f"\n  - Max CPUs available: {slurm_max_cpus}"
+        if _has_scheduler:
+            if slurm_partition:
+                hpc_hint += f"\n  - SLURM partition: {slurm_partition}"
+            if slurm_max_cpus:
+                hpc_hint += f"\n  - Max CPUs available: {slurm_max_cpus}"
         # Container environment — tell the LLM it is already inside a container
         # so it does not try to build/pull another image as a setup step.
         import os as _os_ct
@@ -681,7 +1214,9 @@ class AgentLoop:
         _env_body = hpc_hint + container_hint
         work_dir_hint = (
             f"\n\nEXPERIMENT ENVIRONMENT:"
-            f"\n  - Work directory (REQUIRED): {work_dir} — write ALL files here, cd here first"
+            f"\n  - Work directory: /workspace (your container root) — write ALL"
+            f" files here using relative names (e.g. candidate_gemm.c); every"
+            f" tool already runs in /workspace, no cd needed"
             + _provided_hint
             + _env_body
             if work_dir else (
@@ -706,6 +1241,15 @@ class AgentLoop:
         # block is always empty — the conditional is kept for future use.
         _sys_tmpl, _sys_hash = _system_prompt_versioned()
         system_content = _sys_tmpl.format(tool_desc=tool_desc, memory_rules=memory_rules, extra=extra)
+        if _skip_ideation:
+            # Strip general-ARI ideation/pipeline nudges from the SYSTEM prompt at
+            # render time (system.md itself is unchanged, so general ARI keeps them):
+            # these name tools that are disabled here (F9 + the make_metric_spec line).
+            _drop = ("make_metric_spec", "gap_analysis", "generate_hypothesis")
+            system_content = "\n".join(
+                _ln for _ln in system_content.splitlines()
+                if not any(_d in _ln for _d in _drop)
+            )
         # Subtask 044: record which prompt template drove this ReAct call.
         from ari.prompts import record_prompt_use as _record_prompt_use
         _record_prompt_use(
@@ -722,41 +1266,96 @@ class AgentLoop:
             "[loop.run] node=%s goal_text: len=%d sha256=%s first100=%r",
             node.id, len(goal_text), _goal_hash, goal_text[:100],
         )
-        # truncate goal_text to first 1500 chars if too long
-        if len(goal_text) > 1500:
+        # Cap goal_text length (env-configurable). The OLD 1500 default silently
+        # cut the TASK DESCRIPTION mid-way — e.g. meshpart's experiment.md is 3831
+        # chars, so the agent never saw the scoring rubric, the CSR-adjacency data
+        # layout, or the `make check` workflow (all beyond char 1500). Default is
+        # now 8000 (fits every current task); ARI_GOAL_MAX_CHARS=0 disables the cap
+        # entirely (the handoff study pins 0 so the full task always reaches the agent).
+        import os as _os_gm
+        try:
+            _goal_cap = int(_os_gm.environ.get("ARI_GOAL_MAX_CHARS", "8000") or "8000")
+        except ValueError:
+            _goal_cap = 8000
+        if _goal_cap > 0 and len(goal_text) > _goal_cap:
             logger.warning(
-                "[loop.run] goal_text truncated: %d -> 1500 chars", len(goal_text),
+                "[loop.run] goal_text truncated: %d -> %d chars", len(goal_text), _goal_cap,
             )
-            goal_text = goal_text[:1500] + "\n...[truncated]"
-        # Root node vs child node prompt
+            goal_text = goal_text[:_goal_cap] + "\n...[truncated]"
+        # Root node vs child node prompt. ``_skip_ideation`` (handoff study) was
+        # computed above: root nodes get a direct experiment prompt instead of the
+        # research-pipeline boilerplate.
         _is_child = node.depth > 0
         if _is_child:
             # Child node: provide specific task context from BFTS label
-            _label_desc = {
-                "improve":     "Improve performance or accuracy beyond what the parent achieved.",
-                "ablation":    "Ablation study: remove or vary one component from the parent approach.",
-                "validation":  "Validate the parent result under different conditions or parameters.",
-                "debug":       "The parent experiment had issues. Diagnose and fix them.",
-                "draft":       "Try a new implementation approach for the same goal.",
-            }.get(node.label, "Extend or vary the parent experiment.")
+            # SITE 2/3 of the label feature (see ``labels_disabled``): the per-label
+            # task line. These strings are not descriptive — they are ORDERS, and
+            # they pull in opposite directions ("ablation" = edit one component,
+            # "draft" = try a new implementation = rewrite). With labels off, every
+            # child gets the same neutral task.
+            if labels_disabled():
+                _label_desc = (
+                    "Improve the inherited solution to achieve a better task score."
+                )
+            else:
+                _label_desc = {
+                    "improve":     "Improve performance or accuracy beyond what the parent achieved.",
+                    "ablation":    "Ablation study: remove or vary one component from the parent approach.",
+                    "validation":  "Validate the parent result under different conditions or parameters.",
+                    "debug":       "The parent experiment had issues. Diagnose and fix them.",
+                    "draft":       "Try a new implementation approach for the same goal.",
+                }.get(node.label, "Extend or vary the parent experiment.")
             # Reuse post_survey_hint so child nodes follow the same
             # execution workflow as the parent (e.g. slurm_submit when
             # a scheduler is configured, or run_bash for local mode).
             _workflow_hint = ""
-            if self.hints.post_survey_hint:
+            # F4: the generic post_survey_hint says "write the complete implementation
+            # … in run_bash", which reframes the EDIT-a-seeded-file task as write-from-
+            # scratch and steers file authoring to run_bash instead of write_code. Skip
+            # it under skip_ideation — the direct-experiment prompt already states the steps.
+            if self.hints.post_survey_hint and not _skip_ideation:
                 _workflow_hint = f"\n\nWorkflow:\n{self.hints.post_survey_hint}"
+            # Does THIS child actually receive a parent handoff? (identical gate to
+            # the injection site below.) A code_only child injects NEITHER channel,
+            # so it must NOT be told "Prior results are provided below" — nothing
+            # follows it, which made the control read as "code + an unfulfilled
+            # promise of parent results" rather than "code alone". The parent's
+            # CODE is still inherited (work_dir copy) in every arm; only the
+            # results/summary text is arm-gated.
+            _ho_gate = getattr(self, "handoff", None)
+            _will_inject_handoff = _ho_gate is not None and (
+                bool(getattr(_ho_gate, "inject_agent_block", False))
+                or getattr(_ho_gate, "log_mode", "none") in ("full", "truncated")
+            )
             user_content = (
                 f"Experiment goal:\n{goal_text}\n"
-                f"Node: {node.id} depth={node.depth} task={node.label}\n\n"
-                f"Task: {_label_desc}\n"
-                "The parent node already completed the survey and established a research direction. "
-                "Prior results are provided below for context — but they belong to the parent, "
-                "NOT to you.\n\n"
+                # ``task=<label>`` leaks the label even when the description above is
+                # neutral — a model can act on the bare token. Omit it with labels off.
+                + (f"Node: {node.id} depth={node.depth}\n\n"
+                   if labels_disabled() else
+                   f"Node: {node.id} depth={node.depth} task={node.label}\n\n")
+                + f"Task: {_label_desc}\n"
+                + (
+                    (
+                        "The parent node already worked on this experiment. Prior results are "
+                        "provided below for context — but they belong to the parent, NOT to you.\n\n"
+                        if _skip_ideation else
+                        "The parent node already completed the survey and established a research "
+                        "direction. Prior results are provided below for context — but they "
+                        "belong to the parent, NOT to you.\n\n"
+                    ) if _will_inject_handoff else
+                    # No handoff channel (code_only): you inherit the parent's CODE
+                    # but NOT its results — say so, don't promise a block that never
+                    # arrives.
+                    "The parent node already worked on this experiment. You inherit its "
+                    "code, but its results are NOT provided to you.\n\n"
+                ) +
                 "MANDATORY: You must produce NEW artifacts to count as having run an experiment.\n"
                 "  • Inherited files: source code, scripts, configs, compiled binaries.\n"
-                "  • NOT inherited: the parent's results.csv, slurm-*.out, run.log, "
+                "  • NOT inherited: the parent's results.json/results.csv, "
+                "selftest_output.txt (and any *_output.txt), slurm-*.out, run.log, "
                 "metrics.json — those have been deliberately excluded so you cannot "
-                "silently reuse the parent's numbers.\n"
+                "silently reuse the parent's numbers; re-run to get your own.\n"
                 "  • Modify or extend the source code to reflect your `task` label "
                 "(e.g. `improve` must change the kernel; `ablation` must disable a "
                 "component; `validation` must run with different conditions / inputs).\n"
@@ -765,6 +1364,35 @@ class AgentLoop:
                 "parent will be flagged STERILE by BFTS and its score clamped to 0.0 — "
                 "merely reading or quoting the parent's numbers does NOT count as work.\n\n"
                 "Implement and run your specific experiment, then return JSON with measurements."
+                f"{_workflow_hint}"
+            )
+        elif _skip_ideation:
+            # Direct-experiment root (handoff study): no ideation/survey/paper.
+            _workflow_hint = ""
+            # F4: the generic post_survey_hint says "write the complete implementation
+            # … in run_bash", which reframes the EDIT-a-seeded-file task as write-from-
+            # scratch and steers file authoring to run_bash instead of write_code. Skip
+            # it under skip_ideation — the direct-experiment prompt already states the steps.
+            if self.hints.post_survey_hint and not _skip_ideation:
+                _workflow_hint = f"\n\nWorkflow:\n{self.hints.post_survey_hint}"
+            user_content = (
+                f"Experiment goal:\n{goal_text}\n"
+                f"Node: {node.id} depth={node.depth}\n\n"
+                "Your working directory is ALREADY seeded with the scaffolding "
+                "(candidate source, kernel header, frozen harness/baseline, selftest, "
+                "Makefile). Implement the experiment DIRECTLY — there is no idea, "
+                "metric-spec, survey, or paper step, and scoring is a fixed "
+                "deterministic evaluator you cannot game:\n"
+                "  • Edit the candidate source file to improve it (do NOT change the "
+                "function signature; do NOT call a BLAS/LAPACK library).\n"
+                "  • Build and run the self-test / measurement using the Makefile "
+                "targets described in the task above (do NOT assume a target name — "
+                "different tasks use `make selftest` or `make check`).\n"
+                "  • A node that adds/modifies zero files vs its parent is flagged "
+                "STERILE and scored 0.0 — merely reading numbers does NOT count.\n\n"
+                "Do NOT output a plan or any text first — your FIRST response MUST be a "
+                "tool call (edit the file or run a build). When done, return JSON with "
+                "measurements."
                 f"{_workflow_hint}"
             )
         else:
@@ -789,6 +1417,12 @@ class AgentLoop:
             {"role": "system", "content": system_content},
             {"role": "user", "content": user_content},
         ]
+        # Hold a LIVE reference so full_log.json can serialize the complete
+        # conversation (input prompt + injected handoff + every turn) at node
+        # completion. ``messages`` is only appended/extended below (never
+        # reassigned), so this reference reflects the final state. Excluded from
+        # to_dict, so it never reaches tree.json.
+        node.full_messages = messages
 
         # ── Tier 1/2 working-context injection (deterministic, loop-orchestrated) ──
         # PLAN_memory_inheritance.md §4-5 (Phase 0). Replaces the prior one-shot
@@ -930,7 +1564,21 @@ class AgentLoop:
                             out.append(m)
                     return out
 
-                if len(msgs) <= keep_tail + 4:
+                # Same budget the tool-result cap asks — one source of truth, so the
+                # two cannot disagree about when context is actually scarce.
+                _budget_chars = context_budget_chars()
+                _wtot = conversation_chars
+
+                # Send the WHOLE conversation whenever it fits. This used to window
+                # on MESSAGE COUNT (`len(msgs) <= keep_tail + 4`), which fires on
+                # every node past ~24 messages — i.e. always, from mid-node on, for
+                # a 15-step budget (2 + 15*2 = 32 messages). Measured on a real
+                # 40-node study: 237 messages were dropped and 25/40 nodes lost part
+                # of their own history, while the largest conversation used only 45%
+                # of the budget. Dropping an agent's middle for no reason makes it
+                # re-derive what it already tried and burn ReAct steps. Trim only
+                # when the context genuinely cannot hold the conversation.
+                if _wtot(msgs) <= _budget_chars:
                     return _validate_pairs(msgs)
                 head = msgs[:2]
                 pinned = []
@@ -983,6 +1631,20 @@ class AgentLoop:
                     c = result[i].get("content", "")
                     if len(c) > 500:
                         result[i] = {**result[i], "content": c[:200] + "\n...[compressed]...\n" + c[-200:]}
+                # Budget-aware trim (reached only when the conversation genuinely
+                # overflows): a large pinned handoff + a rambling tail can still
+                # exceed the limit, and ollama then context-shifts and may silently
+                # drop the pinned handoff (the study's independent variable). Drop
+                # the OLDEST non-head, non-pinned messages until the window fits, so
+                # head (goal) + pinned (handoff/contract) ALWAYS survive.
+                if _wtot(result) > _budget_chars:
+                    _protect = {id(_m) for _m in head} | {id(_m) for _m in pinned}
+                    while _wtot(result) > _budget_chars:
+                        _di = next((i for i, _m in enumerate(result) if id(_m) not in _protect), None)
+                        if _di is None:
+                            break
+                        result = result[:_di] + result[_di + 1:]
+                    result = _validate_pairs(result)
                 return result
             window = _build_safe_window(messages)
             window = repair_tool_message_order(window)
@@ -1020,6 +1682,23 @@ class AgentLoop:
                 node_id=node.id, phase="react", skill="agent_loop",
             )
 
+            # Recover TEXT-JSON tool calls: some models (notably ollama-served
+            # qwen2.5-coder) emit the call as assistant *content* instead of a
+            # structured tool_calls entry. Route it through the same execution
+            # path so the node makes real progress instead of burning the step as
+            # unrecognised text (which otherwise zeroes out the whole run).
+            if not response.tool_calls and response.content:
+                _rec = _extract_text_toolcall(response.content, effective_tools)
+                if _rec is not None:
+                    _rec["id"] = f"textcall_{step}"
+                    logger.warning(
+                        "Node %s step %d: recovered TEXT-JSON tool call '%s' "
+                        "(emitted as content, not a structured tool_call)",
+                        node.id, step, _rec["function"]["name"],
+                    )
+                    response.tool_calls = [_rec]
+                    response.content = ""
+
             if response.tool_calls:
                 # Reject tool calls outside of active_tools
                 if active is not None:
@@ -1032,9 +1711,11 @@ class AgentLoop:
                                        node.id, bad_name, sorted(allowed))
                         messages.append({"role": "assistant",
                                          "content": f"[attempted {bad_name}]"})
+                        _usage = _tool_usage_hint(active)
                         messages.append({"role": "user", "content": (
-                            f"'{bad_name}' is not available now. "
-                            f"Use one of: {sorted(allowed)}"
+                            f"'{bad_name}' is not available. "
+                            f"Use one of: {sorted(allowed)}."
+                            + (f" Call one like: {_usage}" if _usage else "")
                         )})
                         continue
 
@@ -1109,12 +1790,28 @@ class AgentLoop:
                             f"Tool {r['name']}: {rc[:1000]}",
                             metadata={"node_id": node.id, "step": step},
                         )
-                    # Truncate long tool results to save context window.
-                    # For execution tools, keep head + tail to preserve both
-                    # compilation errors (early) and benchmark results (late).
+                    # Truncate a long tool result ONLY when the conversation cannot
+                    # afford it. This used to cut at a fixed 4000 chars regardless of
+                    # pressure — the same "discards for no reason" shape as the old
+                    # message-count window. MEASURED on the 40-node study: it fired
+                    # 32 times over 28 nodes and threw away 27,232 chars while the
+                    # largest conversation sat at 46% of budget; keeping everything
+                    # would have taken it to 46.8%, with 0 nodes over budget.
+                    # What it destroyed: describe_environment returns ~4,851 chars, so
+                    # 100% of its 26 calls lost the last ~851 — the tail holding the
+                    # module catalog, the toolchain env-var names, and the fact that
+                    # mpicc/mpicxx are BROKEN (command not found). Worse, the head-cut
+                    # landed mid-string inside the compilers dict, so all 26 payloads
+                    # reached the model as UNPARSEABLE JSON.
+                    # The send-time window (_build_safe_window) is the real backstop:
+                    # it trims on genuine overflow and always protects head + pinned.
                     _MAX_TOOL_RESULT = 4000
-                    if len(rc) > _MAX_TOOL_RESULT:
+                    if (len(rc) > _MAX_TOOL_RESULT
+                            and conversation_chars(messages) + len(rc)
+                            > context_budget_chars()):
                         if r["name"] in ("run_bash", "run_code", "slurm_submit"):
+                            # Execution tools: keep head AND tail — compilation errors
+                            # surface early, benchmark numbers late.
                             _head = rc[:1500]
                             _tail = rc[-1500:]
                             rc = _head + f"\n...[truncated {len(rc) - 3000} chars]...\n" + _tail
@@ -1580,17 +2277,11 @@ class AgentLoop:
                 continue
 
             # ---- No tool call → parse JSON output ----
-            # no tool used at step 0 → force prompt (model output a text plan without calling tools)
-            if step == 0:
-                logger.warning("Node %s: step 1 no tool call, forcing: %r",
-                               node.id, (response.content or "")[:80])
-                messages.append({"role": "assistant", "content": response.content or ""})
-                first_tool = (active[0]["function"]["name"] if active else "survey")
-                messages.append({"role": "user", "content": (
-                    f"STOP. Do not write plans. Call {first_tool}() NOW."
-                )})
-                continue
-
+            # NOTE: step 0 is no longer special-cased. It used to force a specific
+            # tool ("Call write_code() NOW"), which biased the agent toward one tool
+            # and read inconsistently vs the later-step nudges. Step 0 now flows
+            # through the SAME generic no-tool-call handling below (which shows a
+            # usage example instead of naming/forcing a tool).
             content = (response.content or "").strip()
             content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
             if content.startswith("```"):
@@ -1634,6 +2325,32 @@ class AgentLoop:
 
                     artifacts = result.get("artifacts", [])
                     summary = result.get("summary", "")
+                    # Capture the agent's own natural-language self-report so the
+                    # handoff summary can carry it (anchored by deterministic metrics).
+                    node.agent_summary = (summary or "")
+                    # Capture the agent's own self-reviewed next steps + concerns
+                    # (LLM self-review) -> node_report.next_steps_hints and
+                    # self_assessment.concerns. Deterministic scoring emits no graded
+                    # axes, so this self-review is the real source for both.
+                    node.agent_next_steps = _coerce_str_list(result.get("next_steps"))
+                    node.agent_concerns = _coerce_str_list(result.get("concerns"))
+                    # The agent's free-form compute-environment note (what it ran
+                    # on / used), kept ONLY when grounded in this node's tool
+                    # outputs (anti-fabrication, like the metrics check). Replaces
+                    # the framework's old auto-scraped machine provenance, so no
+                    # hostname/partition is embedded automatically.
+                    node.agent_environment = _ground_environment(
+                        result.get("environment"), messages)
+                    # The agent's light per-file explanation ({path: note}); the
+                    # node_report builder grafts each note onto its files_changed
+                    # entry. Keep only string notes keyed by string paths.
+                    _fn = result.get("file_notes")
+                    if isinstance(_fn, dict):
+                        node.file_notes = {
+                            str(k): str(v).strip()
+                            for k, v in _fn.items()
+                            if isinstance(k, str) and str(v).strip()
+                        }
                     if self.evaluator is not None:
                         try:
                             eval_result = self.evaluator.evaluate_sync(
@@ -1669,6 +2386,21 @@ class AgentLoop:
                         }, cow_node_id=node.id)
                     except Exception:
                         pass
+                    # Record the agent's FINAL answer in the conversation. Every
+                    # push-back path below appends its assistant turn, but this —
+                    # the winning path — did not, so the saved full_log ended at
+                    # the last tool result and the node's conclusion (metrics,
+                    # summary, next_steps, environment, file_notes) was lost:
+                    # a reader could not tell "agent concluded" from "ran out of
+                    # steps". ``_finish`` marks it so the parent-log renderer can
+                    # keep it OUT of the child's handoff: the study's summary arm
+                    # (parent node_report = the conclusion) and full_log arm (the
+                    # raw trajectory) must stay orthogonal — injecting the finish
+                    # JSON into the log would make full_log ⊇ summary.
+                    messages.append({"role": "assistant", "content": content,
+                                     "_finish": True})
+                    node.react_steps_used = step + 1
+                    node.ended_by = "finish_json"
                     node.mark_success(artifacts=artifacts, eval_summary=summary)
                     return node
 
@@ -1690,11 +2422,13 @@ class AgentLoop:
             messages.append({"role": "assistant", "content": content})
             # if LLM returns a non-tool, non-JSON response, force a tool call
             if not force_finish:
+                _usage = _tool_usage_hint(effective_tools)
                 if not content.strip():
                     messages.append({"role": "user", "content": (
                         f"Step {step+1}/{self.max_react_steps}: Your response was empty. "
                         f"You MUST call a tool NOW. Available tools: "
-                        f"{[t['function']['name'] for t in (effective_tools or [])]}"
+                        f"{[t['function']['name'] for t in (effective_tools or [])]}."
+                        + (f" Call one like: {_usage}" if _usage else "")
                     )})
                     continue
                 # Non-empty text but no tool call and no valid JSON → wasting steps
@@ -1702,8 +2436,10 @@ class AgentLoop:
                     _remaining = self.max_react_steps - step - 1
                     messages.append({"role": "user", "content": (
                         f"Step {step+1}/{self.max_react_steps} ({_remaining} steps remaining): "
-                        f"Do NOT write text plans or explanations — call a tool immediately. "
-                        f"Every text response wastes a step from your limited budget."
+                        f"Do NOT write text plans or explanations — call a tool immediately "
+                        f"(emit a tool/function call, not text)."
+                        + (f" For example: {_usage}." if _usage else "")
+                        + " Every text response wastes a step from your limited budget."
                     )})
                     continue
 
@@ -1765,7 +2501,8 @@ class AgentLoop:
                 messages.append({"role": "user", "content": (
                     f"FINAL STEP {step+1}/{self.max_react_steps}. Reply ONLY with JSON:\n"
                     '{"status":"success","artifacts":[{"type":"result","stdout":"<output>"}],'
-                    '"summary":"<one sentence>"}'
+                    '"summary":"<one sentence>","next_steps":["<what to try next>"],'
+                    '"concerns":["<caveat/risk>"]}'
                 )})
             elif not exec_called and has_exec:
                 messages.append({"role": "user", "content": (
@@ -1775,6 +2512,14 @@ class AgentLoop:
                 messages.append({"role": "user", "content": (
                     f"Step {step+1}/{self.max_react_steps}. Continue or provide final JSON."
                 )})
+
+        # Past the loop => the agent never emitted a finish JSON within its ReAct
+        # budget. Record that here, once, so it holds for EVERY exit below
+        # (forced-success / deterministic-fallback-success / mark_failed): a
+        # ``success`` from those paths is the framework scoring the work_dir, NOT
+        # the agent concluding — a distinction the saved log could not express.
+        node.react_steps_used = self.max_react_steps
+        node.ended_by = "max_steps"
 
         if exec_called and tool_outputs:
             summary = "\n".join(tool_outputs[-3:])
@@ -1804,12 +2549,32 @@ class AgentLoop:
                 }, cow_node_id=node.id)
             except Exception:
                 pass
+            # what_was_done (option B): this path is also a max_iter overflow with no
+            # final self-report — force one LLM call to reconstruct a factual summary
+            # plus a self-reviewed next_steps.
+            try:
+                node.agent_summary, node.agent_next_steps, node.agent_concerns = (
+                    self._forced_max_steps_summary(node, messages, experiment))
+            except Exception as _se:
+                logger.warning("Node %s: forced fallback summary failed: %s", node.id, _se)
             node.mark_success(
                 artifacts=[{"type": "result", "stdout": summary}],
                 eval_summary=summary,
             )
             logger.warning("Node %s: forced success after max steps", node.id)
             return node
+
+        # FORCED FALLBACK SUMMARY (option B): the agent hit its ReAct step budget
+        # (max_iter) WITHOUT emitting a final summary, so ``what_was_done`` would be
+        # empty. Make one forced LLM call — WITH a prompt that states the max_iter
+        # overflow — to reconstruct a factual what_was_done from the trace. Set on
+        # ``node.agent_summary`` so BOTH the deterministic-fallback-success and the
+        # mark_failed paths below carry it. Best-effort: never blocks the pipeline.
+        try:
+            node.agent_summary, node.agent_next_steps, node.agent_concerns = (
+                self._forced_max_steps_summary(node, messages, experiment))
+        except Exception as _se:
+            logger.warning("Node %s: forced fallback summary failed: %s", node.id, _se)
 
         # DETERMINISTIC FALLBACK: a node can reach here (the agent never cleanly
         # ran/emitted within the ReAct budget) while its work_dir STILL HOLDS A
@@ -1837,6 +2602,19 @@ class AgentLoop:
                     node.mark_success(artifacts=[{"type": "result", "stdout": _r}], eval_summary=_r)
                     logger.warning("Node %s: deterministic fallback scored the work_dir candidate (would have failed)", node.id)
                     return node
+                # Ran out of steps AND the candidate is invalid (or did not
+                # compile), but the evaluator still COMPUTED a score (e.g.
+                # valid_geomean_speedup=0.0). Record that score before failing, so
+                # the node reads as "produced an invalid candidate" (0.0) rather
+                # than "produced nothing" (null). This keeps the recording symmetric
+                # with the finish path, which always records the evaluator's metrics
+                # regardless of validity. mark_failed does not touch node.metrics.
+                # (No effect on any current analysis — run_outcome and lineage_stats
+                # both coalesce null and 0.0 to "not valid" — purely record
+                # faithfulness, consistent with react_steps/ended_by.)
+                _ev_metrics = _ev.get("metrics")
+                if isinstance(_ev_metrics, dict) and _ev_metrics:
+                    node.metrics = _ev_metrics
             except Exception as _e:
                 logger.warning("Node %s: deterministic fallback eval failed: %s", node.id, _e)
 

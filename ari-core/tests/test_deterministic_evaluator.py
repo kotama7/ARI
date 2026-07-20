@@ -76,6 +76,36 @@ def test_score_any_invalid_family_zeroes_node():
     assert not out["valid"] and not out["has_real_data"]
 
 
+def test_invalid_candidate_still_carries_computed_metrics():
+    """An INVALID candidate is still SCORED: ``has_real_data`` is False, but
+    ``metrics`` carries the computed ``valid_geomean_speedup: 0.0`` (plus the
+    per-family speedups).
+
+    The max-steps fallback in ari.agent.loop relies on exactly this: it records
+    these metrics before ``mark_failed`` so an exhausted node whose candidate ran
+    but was invalid reads as "produced an invalid candidate" (0.0) rather than
+    "produced nothing" (null) — symmetric with the finish path, which records the
+    evaluator's metrics regardless of validity. If ``metrics`` were dropped for
+    invalid candidates, that fallback would have nothing to record.
+    """
+    out = DeterministicEvaluator(target_speedup=4.0)._score({
+        "compile_ok": True,
+        "families": {"uniform": {"speedup": 9.0, "valid": True},
+                     "banded": {"speedup": 0.0, "valid": False}},
+    })
+    assert out["has_real_data"] is False            # invalid -> not "real data"
+    assert out["metrics"]["valid_geomean_speedup"] == 0.0   # ...but SCORED as 0.0
+    assert out["metrics"]["speedup_uniform"] == 9.0         # per-family kept
+    assert out["metrics"], "metrics must never be empty for a candidate that ran"
+
+
+def test_compile_fail_still_carries_computed_metrics():
+    """Same contract when the candidate did not even compile."""
+    out = DeterministicEvaluator()._score({"compile_ok": False, "families": {}})
+    assert out["valid"] is False and out["has_real_data"] is False
+    assert out["metrics"]["valid_geomean_speedup"] == 0.0
+
+
 def test_score_compile_fail_is_invalid():
     assert DeterministicEvaluator()._score(
         {"compile_ok": False, "families": {}})["valid"] is False

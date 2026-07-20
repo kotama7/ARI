@@ -7,7 +7,6 @@
   "required": [
     "schema_version",
     "node_id",
-    "label",
     "depth",
     "status",
     "files_changed",
@@ -15,22 +14,24 @@
     "artifacts"
   ],
   "properties": {
-    "schema_version": {"const": 1},
-    "node_id": {"type": "string"},
-    "parent_id": {"type": ["string", "null"]},
-    "ancestor_ids": {"type": "array", "items": {"type": "string"}},
+    "schema_version": {"const": 1, "description": "Schema version (always 1)."},
+    "node_id": {"type": "string", "description": "This node's id."},
+    "parent_id": {"type": ["string", "null"], "description": "Parent node id; null for the root."},
+    "ancestor_ids": {"type": "array", "items": {"type": "string"}, "description": "root->parent chain of ancestor node ids."},
     "label": {
       "type": "string",
-      "enum": ["draft", "improve", "debug", "ablation", "validation", "other"]
+      "enum": ["draft", "improve", "debug", "ablation", "validation", "other"],
+      "description": "BFTS exploration role. NOT inert unless ARI_BFTS_NO_LABEL=1: the label drives the system prompt's NODE ROLE, the child's task line, and node SELECTION (diversity_bonus gives +0.05 to under-represented labels under the default scientific_plus_diversity frontier score). ALWAYS recorded — the former ARI_REPORT_MINIMAL suppression was removed because hiding a live variable from the record leaves its influence and deletes the evidence. Derived deterministically from the direction when ARI_BFTS_DETERMINISTIC_LABEL=1."
     },
-    "raw_label": {"type": "string"},
-    "depth": {"type": "integer", "minimum": 0},
-    "status": {"type": "string"},
-    "started_at": {"type": "string"},
-    "completed_at": {"type": "string"},
-    "original_direction": {"type": ["string", "null"]},
+    "raw_label": {"type": "string", "description": "Original LLM-proposed label, kept only when label=='other' (empty for the canonical five). Always recorded."},
+    "depth": {"type": "integer", "minimum": 0, "description": "Tree depth; root is 0."},
+    "status": {"type": "string", "description": "Terminal node status, e.g. 'success' / 'failed'."},
+    "started_at": {"type": "string", "description": "ISO8601 start timestamp."},
+    "completed_at": {"type": "string", "description": "ISO8601 completion timestamp."},
+    "original_direction": {"type": ["string", "null"], "description": "Direction text the parent's expand assigned to this child. Always recorded (the ARI_REPORT_MINIMAL suppression was removed)."},
     "files_changed": {
       "type": "object",
+      "description": "Files this node touched relative to its parent. added+modified+deleted==0 marks a sterile (no-op) node.",
       "required": ["added", "modified", "deleted", "inherited_unchanged"],
       "properties": {
         "added": {
@@ -40,7 +41,8 @@
             "required": ["path", "sha256"],
             "properties": {
               "path": {"type": "string"},
-              "sha256": {"type": "string"}
+              "sha256": {"type": "string"},
+              "note": {"type": "string", "description": "Agent's one-line explanation of what this file is."}
             }
           }
         },
@@ -52,11 +54,22 @@
             "properties": {
               "path": {"type": "string"},
               "sha256_before": {"type": "string"},
-              "sha256_after": {"type": "string"}
+              "sha256_after": {"type": "string"},
+              "note": {"type": "string", "description": "Agent's one-line explanation of what changed."}
             }
           }
         },
-        "deleted": {"type": "array", "items": {"type": "string"}},
+        "deleted": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path"],
+            "properties": {
+              "path": {"type": "string"},
+              "note": {"type": "string", "description": "Agent's one-line explanation of why it was removed."}
+            }
+          }
+        },
         "inherited_unchanged": {
           "type": "array",
           "items": {
@@ -71,22 +84,24 @@
         }
       }
     },
-    "what_was_done": {"type": "string"},
-    "delta_vs_parent": {"type": "string"},
-    "metrics": {"type": "object"},
+    "what_was_done": {"type": "string", "description": "The agent's own natural-language self-report; filled only when the node concluded (empty for weak models that cannot use tools)."},
+    "delta_vs_parent": {"type": "string", "description": "Deterministic, verified change vs parent (files touched + measured valid_geomean_speedup); a ground-truth anchor, always present."},
+    "metrics": {"type": "object", "description": "Deterministic evaluator measurements (valid_geomean_speedup, _scientific_score, speedup_*, _sterile for no-op nodes, ...)."},
     "self_assessment": {
       "type": "object",
+      "description": "The node's self-assessment. `succeeded` is the deterministic has_real_data ground truth (objective). `headline` and `concerns` come from the agent's own LLM self-review (headline = its summary; concerns = its self-flagged caveats), empty when the agent gave none; under a rubric/judge scorer concerns falls back to the evaluator's low (<0.4) axis rationales. The evaluator's terse reason lives in `evaluator_reason`, not here.",
       "properties": {
         "succeeded": {"type": "boolean"},
         "headline": {"type": "string"},
         "concerns": {"type": "array", "items": {"type": "string"}}
       }
     },
-    "next_steps_hints": {"type": "array", "items": {"type": "string"}},
-    "build_command": {"type": "string"},
-    "run_command": {"type": "string"},
+    "next_steps_hints": {"type": "array", "items": {"type": "string"}, "description": "The agent's own self-reviewed next steps (LLM self-review) — what it would try next. Under deterministic scoring (no graded axes) this is the sole source; falls back to the evaluator's mid-range (0.4-0.7) axis rationales when a rubric/judge scorer is used. Empty when the agent volunteered none."},
+    "build_command": {"type": "string", "description": "Build command for the node's artifact (operational scaffold)."},
+    "run_command": {"type": "string", "description": "Run command for the node's artifact (operational scaffold)."},
     "artifacts": {
       "type": "array",
+      "description": "Artifacts the node produced, with role classification.",
       "items": {
         "type": "object",
         "required": ["filename", "role"],
@@ -101,16 +116,16 @@
         }
       }
     },
-    "evaluator_reason": {"type": "string"},
-    "trace_log_summary": {"type": "string"},
-    "migration_source": {"type": "string", "enum": ["fresh", "auto"]},
-    "executor": {"type": "string", "description": "How the node's tool calls executed: 'slurm' (via slurm_submit) | 'local' (run_bash on agent host) | 'singularity' | '' (unknown / no capture)"},
-    "hostname": {"type": "string", "description": "Hostname of the compute resource that produced the metrics (set by ari.agent.run_env from inside the executing process)"},
-    "slurm_job_id": {"type": "string"},
-    "slurm_partition": {"type": "string"},
-    "slurm_nodelist": {"type": "string"},
+    "evaluator_reason": {"type": "string", "description": "The deterministic evaluator's verdict reason."},
+    "trace_log_summary": {"type": "string", "description": "Summary of the node's execution trace."},
+    "executor": {"type": "string", "description": "How the node's tool calls executed: 'slurm' | 'local' | 'singularity'. Run-env provenance, populate-as-needed by ari.agent.run_env; omitted when not captured."},
+    "hostname": {"type": "string", "description": "Compute host that produced the metrics. Populate-as-needed; omitted when not captured (never auto-captured from the ambient env)."},
+    "slurm_job_id": {"type": "string", "description": "SLURM job id (populate-as-needed; omitted when not captured)."},
+    "slurm_partition": {"type": "string", "description": "SLURM partition (populate-as-needed; omitted when not captured)."},
+    "slurm_nodelist": {"type": "string", "description": "SLURM nodelist (populate-as-needed; omitted when not captured)."},
     "cpu_info": {
       "type": "object",
+      "description": "CPU provenance (populate-as-needed; omitted when not captured).",
       "properties": {
         "model": {"type": "string"},
         "threads": {"type": "integer", "minimum": 0},
@@ -119,7 +134,7 @@
         "vendor": {"type": "string"}
       }
     },
-    "mem_total_kb": {"type": "integer", "minimum": 0},
-    "compilers": {"type": "object", "additionalProperties": {"type": "string"}}
+    "mem_total_kb": {"type": "integer", "minimum": 0, "description": "Total memory in KB (populate-as-needed; omitted when not captured)."},
+    "compilers": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Compiler versions (populate-as-needed; omitted when not captured)."}
   }
 }

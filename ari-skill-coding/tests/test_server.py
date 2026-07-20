@@ -6,12 +6,17 @@ from pathlib import Path
 
 import pytest
 
+import json
+
 from src.server import (
+    _CONTAINER_ROOT,
+    _devirtualize,
     _emit_results,
     _read_file,
     _run_bash,
     _run_code,
     _truncate,
+    _virtualize,
     _write_code,
     _RESULTS_SCHEMA_VERSION,
     _STDOUT_LIMIT,
@@ -34,6 +39,143 @@ def test_write_code_nested(work_dir):
     result = _write_code("sub/test.py", "x = 1", work_dir)
     assert result["status"] == "written"
     assert Path(result["path"]).exists()
+
+
+# ── Container path model: each node's work_dir is mounted at /workspace ──
+
+
+def test_virtualize_hides_real_workdir():
+    real = "/scratch/fs0/home/users/somebody/ARI/workspace/experiments/run/node_x"
+    blob = json.dumps({"path": real + "/candidate_gemm.c",
+                       "stdout": f"pwd -> {real}\ncompiled {real}/a.out"})
+    out = _virtualize(blob, real)
+    assert real not in out                              # no absolute host path
+    assert "somebody" not in out                        # no username
+    assert out.count(_CONTAINER_ROOT) >= 2              # replaced everywhere
+
+
+def test_virtualize_leaves_unrelated_paths():
+    real = "/scratch/fs0/home/users/somebody/node_x"
+    s = "error at /usr/include/stdio.h and /opt/tool/lib"
+    assert _virtualize(s, real) == s                    # only the real root is rewritten
+
+
+def test_virtualize_scrubs_all_host_identity(monkeypatch):
+    """A node must read like a container: work_dir, home, username AND hostname
+    are all scrubbed from tool output (e.g. the ls -l owner/group columns that
+    leaked the username, or a hostname printed by uname)."""
+    import src.server as srv
+    monkeypatch.setenv("HOME", "/home/users/alice")
+    monkeypatch.setenv("USER", "alice")
+    monkeypatch.setattr(srv, "_HOST_NAMES", ("gpu-node-7",))
+    real = "/home/users/alice/ARI/workspace/experiments/run/node_x"
+    blob = (f'drwxr-xr-x 2 alice alice 4096 candidate_gemm.c\n'
+            f'built {real}/a.out on gpu-node-7\n'
+            f'toolchain in /home/users/alice/miniconda/bin')
+    out = srv._virtualize(blob, real)
+    assert "alice" not in out              # username (owner/group + home) gone
+    assert "gpu-node-7" not in out         # hostname gone
+    assert real not in out                 # work_dir gone
+    assert "/workspace/a.out" in out       # work_dir -> /workspace
+    assert "user user" in out              # ls -l owner/group columns masked
+    assert "on host" in out                # hostname -> host
+    assert "~/miniconda/bin" in out        # home outside work_dir -> ~
+
+
+def test_devirtualize_maps_container_root_to_real():
+    real = "/scratch/fs0/home/users/somebody/node_x"
+    assert _devirtualize("/workspace/candidate_gemm.c", real) == real + "/candidate_gemm.c"
+    assert _devirtualize("gcc -O3 /workspace/x.c -o /workspace/x", real) == \
+        f"gcc -O3 {real}/x.c -o {real}/x"
+    assert _devirtualize("/workspace", real) == real
+    # a boundary-safe non-match: /workspace_backup must not be rewritten
+    assert _devirtualize("/workspace_backup/x", real) == "/workspace_backup/x"
+    # a plain relative name is untouched
+    assert _devirtualize("candidate_gemm.c", real) == "candidate_gemm.c"
+
+
+def test_run_bash_preserves_significant_whitespace(work_dir):
+    """run_bash output must NOT be whitespace-squeezed (unlike the env catalog's
+    raw dumps). Column position IS meaning here: a gcc ``^~~~`` caret must keep
+    pointing at the offending token, and source echoed via sed/cat must keep its
+    indentation. Measured saving from squeezing run_bash was only ~2% — nowhere
+    near worth corrupting diagnostics."""
+    Path(work_dir, "bad.c").write_text(
+        "void f(void){\n    int x = undefined_symbol;\n}\n")
+    res = _run_bash("gcc -c bad.c -o bad.o 2>&1 || true", work_dir, timeout=30)
+    out = res.get("stdout", "") + res.get("stderr", "")
+    if "undefined_symbol" not in out:
+        pytest.skip("no C compiler in this environment")
+    caret = [ln for ln in out.splitlines() if "^" in ln]
+    assert caret, "gcc emitted no caret diagnostic to check"
+    # the caret line must retain its leading padding (that is what aligns it)
+    assert caret[0].startswith(" "), "caret line lost its leading alignment"
+    # and indented source echoed back keeps its indentation
+    src = _read_file("bad.c", work_dir, 0, 500)
+    assert "\n    int x" in src["content"]
+
+
+def test_describe_environment_ignores_unknown_args():
+    """describe_environment takes NO arguments, and its schema is deliberately
+    permissive (no additionalProperties: False). It is called while the agent is
+    still ignorant of the toolchain, so a weaker model sometimes invents an
+    argument — e.g. a partition name, which it cannot legitimately know since
+    this tool is the only source of those names. A stray key must be silently
+    discarded and the full catalog returned; rejecting it would turn a
+    hallucinated arg into a retry that re-pays the probe."""
+    import asyncio
+    import src.server as srv
+
+    tool = next(t for t in asyncio.run(srv.list_tools())
+                if t.name == "describe_environment")
+    assert tool.inputSchema.get("properties") == {}
+    assert tool.inputSchema.get("required") == []
+    # The permissiveness is the point — do not "harden" this.
+    assert "additionalProperties" not in tool.inputSchema
+
+    srv_calls = []
+    # Don't run a real probe (srun/lscpu): just prove the arg is ignored.
+    _orig = srv._describe_environment
+    srv._describe_environment = lambda: srv_calls.append(1) or {"role": "local"}
+    try:
+        out = asyncio.run(srv.call_tool("describe_environment",
+                                        {"partition": "gpu", "detail": "brief"}))
+    finally:
+        srv._describe_environment = _orig
+    assert srv_calls == [1]                       # called despite the junk args
+    assert '"role": "local"' in out[0].text       # full catalog still returned
+
+
+def test_resolve_work_dir_preserves_workspace_component(tmp_path):
+    """REGRESSION: the real work_dir contains a ``workspace`` path COMPONENT
+    (…/ARI/workspace/experiments/<node>). It must be returned verbatim — a naive
+    substring rewrite corrupted it to a garbage dir, so the agent saw every
+    seeded file as 'not found' and produced ~baseline (1x) results."""
+    from src.server import _resolve_work_dir
+    real = str(tmp_path / "ARI" / "workspace" / "experiments" / "run" / "node_x")
+    assert _resolve_work_dir(real) == real
+    assert Path(real).is_dir()
+
+
+def test_resolve_work_dir_maps_only_leading_virtual_root(tmp_path, monkeypatch):
+    real = str(tmp_path / "node")
+    monkeypatch.setenv("ARI_WORK_DIR", real)
+    from src.server import _resolve_work_dir
+    assert _resolve_work_dir("/workspace") == real          # exact root
+    assert _resolve_work_dir("/workspace/sub") == real + "/sub"  # root prefix
+
+
+def test_container_roundtrip_write_then_report(work_dir):
+    """Mirror the dispatch: devirtualize a /workspace input, write, then
+    virtualize the serialized result — the agent sees only /workspace."""
+    fn_in = "/workspace/candidate_gemm.c"
+    result = _write_code(_devirtualize(fn_in, work_dir), "int main(){}", work_dir)
+    # file really lands in the real work_dir
+    assert Path(work_dir, "candidate_gemm.c").exists()
+    # but the surfaced result is virtual-only
+    surfaced = _virtualize(json.dumps(result), work_dir)
+    assert work_dir not in surfaced
+    assert '"path": "/workspace/candidate_gemm.c"' in surfaced
 
 
 def test_run_code_success(work_dir):

@@ -242,7 +242,6 @@ Per-node self-report (v0.7.0)
       Makefile in the work_dir
     - artifacts[].role — deterministic role classification
       (data_output / log / binary / figure / unknown)
-    - migration_source ("fresh" or "auto")
   PathManager.META_FILES contains node_report.json so the parent → child
   physical work_dir copy never inherits a stale parent report.
 

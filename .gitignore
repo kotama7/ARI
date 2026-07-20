@@ -165,3 +165,29 @@ docs/.vitepress/cache/
 /out.bin
 /candidate
 /selftest
+
+# BFTS agent benchmark artifacts (thread-scaling plots/results the agent writes
+# to the process cwd instead of its node work_dir). Cosmetic; scoring reads the
+# isolated ARI_WORK_DIR candidate. Ignore so they never get committed.
+/analyze_results.py
+/results_thread_*.json
+/gflops_*.png
+/speedup_*.png
+/*_thread_plot.png
+/performance_*.png
+/candidate_gemm.c
+/candidate_spmm.c
+/candidate_stencil.c
+/candidate_meshpart.c
+/gemm_main.c
+/spmm_main.c
+/stencil_main.c
+/*.o
+
+# agent-leaked C sources/objects at repo root (fixtures live in evaluator/*_kernels/)
+/*.c
+/*.h
+/*.o
+/*.exe
+/a.out
+/build/

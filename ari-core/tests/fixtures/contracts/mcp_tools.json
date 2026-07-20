@@ -54,6 +54,11 @@
     ],
     "ari-skill-coding": [
       {
+        "args": [],
+        "idiom": "lowlevel",
+        "name": "describe_environment"
+      },
+      {
         "args": [
           "file",
           "measurements",

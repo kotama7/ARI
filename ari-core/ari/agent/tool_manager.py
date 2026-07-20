@@ -89,7 +89,15 @@ def execute_tool_calls(
             args = _json.loads(func.get("arguments", "{}"))
         except _json.JSONDecodeError:
             args = {}
-        if work_dir and name in _WORKDIR_TOOLS and not args.get("work_dir"):
+        if work_dir and name in _WORKDIR_TOOLS:
+            # The node's real work_dir is authoritative and is mounted at the
+            # virtual container root (``/workspace``) that the agent sees. Always
+            # pin it — whether the model omitted work_dir (would route to the
+            # shared fork-time fallback the evaluator never reads) OR passed the
+            # virtual "/workspace" (the coding server cannot map that back to THIS
+            # node, since its ARI_WORK_DIR is snapshotted at MCP fork time). Any
+            # sub-path the model wanted goes in the filename/path/command args,
+            # which the coding server devirtualizes against this same work_dir.
             args["work_dir"] = work_dir
         if node_id and name in mcp._COW_TOOLS:
             result = mcp.call_tool(name, args, cow_node_id=node_id)

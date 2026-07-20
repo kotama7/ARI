@@ -1205,13 +1205,15 @@ async def write_paper_iterative(
                         + json.dumps(_impl_det, indent=2, ensure_ascii=False)[:4000]
                     )
 
-                # 2b. Hardware/software environment, populated from
-                # node_report.json's executor / hostname / cpu_info / compilers
-                # (captured by ari.agent.run_env at experiment time).
-                # Surfaced separately so the paper has factual hardware
-                # specs to write under "Hardware/software environment"
-                # instead of saying "not recorded".
-                _hw = _sd_ctx.get("hardware", "")
+                # 2b. Hardware/software environment. Source changed: the
+                # framework no longer auto-scrapes host machine info into
+                # node_report (that leaked the hostname/partition). It is now
+                # AGENT-AUTHORED — the agent records the toolchain/hardware it
+                # used in node_report's ``environment`` field (grounded in tool
+                # output). Prefer the aggregated ``hardware`` key when the
+                # science_data step provides it, else the agent ``environment``
+                # note; omit the section (do not fabricate) when neither exists.
+                _hw = _sd_ctx.get("hardware", "") or _sd_ctx.get("environment", "")
                 if _hw:
                     if isinstance(_hw, dict):
                         _hw_text = json.dumps(_hw, indent=2, ensure_ascii=False)

@@ -123,38 +123,117 @@ matches `tree.json` but each node also carries:
 | `work_dir` | Per-node working directory (relative to checkpoint root) |
 | `artifacts` | Files produced by the node, with sha256 |
 
+## `full_log.json`
+
+Per-node full ReAct record, written into each node's `work_dir` at the node's
+completion. Like `node_report.json` it is in `PathManager.META_FILES`, so it is
+**never inherited** into child work dirs — each node writes its own. Shape:
+`{node_id, parent_id, depth, steps, tools[], messages[], trace_log[]}`.
+
+- `tools` — the OpenAI function-calling schemas (name + description + parameters)
+  the model was actually given, i.e. **how to use each tool**. The `AVAILABLE
+  TOOLS` line in the system prompt lists names only; the usage schemas are passed
+  out-of-band via the `tools=` API argument, so this field is where they are visible.
+- `messages` — the **complete conversation**: the system prompt, the injected
+  handoff (parent `summary` / `full_log` for the relevant arms), the task, and
+  every user / assistant / tool turn (with tool-call names + arguments and
+  tool-call results). This is the full **input prompt AND output**, not just the
+  tool trace.
+- `trace_log` — the concise tool-call trace (`→ tool(args)` / `← result`) for
+  quick scanning; `steps` is its length.
+
+`trace_log` is empty (`steps: 0`) for models that never call tools (e.g. the
+0.5b floor), but `messages` always shows the full prompt that was sent.
+
 ## `node_report.json`
 
 Per-node self-report written at `mark_success` / `mark_failed`.
 Schema: `ari-core/ari/schemas/node_report.schema.json`.
+Consumed by `generate_ear`, `nodes_to_science_data`, and `bfts.expand`.
 
-Required keys: `schema_version` (constant `1`), `node_id`, `label`,
-`depth`, `status`, `files_changed`, `metrics`, `artifacts`.
+**Required keys**: `schema_version` (constant `1`), `node_id`, `depth`, `status`,
+`files_changed`, `metrics`, `artifacts`. All others are optional (emitted under the
+conditions below).
+
+### Core fields (always present)
+
+| Field | Type | Meaning |
+|---|---|---|
+| `schema_version` | int(1) | Schema version |
+| `node_id` | string | This node's id |
+| `parent_id` | string \| null | Parent node id (`null` for the root) |
+| `ancestor_ids` | string[] | root→parent chain |
+| `depth` | int | Tree depth (root = 0) |
+| `status` | string | `success` / `failed` / … |
+| `started_at` / `completed_at` | string | ISO8601 timestamps |
+| `files_changed` | object | `{added, modified, deleted, inherited_unchanged}`, each `{path, sha256}`. Diff vs parent (`added+modified+deleted==0` ⇒ *sterile* / no-op node) |
+| `what_was_done` | string | **The agent's own natural-language self-report**. Filled only when the node concluded (empty for weak models that cannot use tools) |
+| `delta_vs_parent` | string | **Deterministic, verified change vs parent** (`files vs parent: +N/~M/-K; valid_geomean_speedup=X`) — always a ground-truth anchor |
+| `metrics` | object | Evaluator measurements (`valid_geomean_speedup`, `_scientific_score`, `speedup_*`, `_sterile:true` for no-op nodes, …) |
+| `self_assessment` | object | `{succeeded, headline, concerns}`. `succeeded` = deterministic has_real_data; `headline` + `concerns` = the agent's own LLM self-review (empty if none). |
+| `next_steps_hints` | string[] | The agent's own self-reviewed next steps (LLM self-review). Sole source under deterministic scoring (no graded axes); falls back to the evaluator's mid-range axis rationales under a rubric/judge scorer. Empty when the agent volunteered none. |
+| `build_command` / `run_command` | string | Operational scaffold (build / run commands) |
+| `artifacts` | object[] | Produced artifacts `[{filename, role}]` |
+| `evaluator_reason` | string | The deterministic evaluator's verdict reason |
+| `trace_log_summary` | string | Summary of the execution trace |
+
+### Exploration labels (always recorded)
+
+`label` / `raw_label` / `original_direction` are **always recorded**.
+
+An **`ARI_REPORT_MINIMAL=1`** flag used to strip them from the record; **it has been
+removed**. The label is not decoration — it *drives* the search in three places:
+(1) the system prompt's `NODE ROLE`, (2) the child's `Task:` line, and (3) node
+**selection** (under the default `scientific_plus_diversity` frontier score,
+`diversity_bonus` adds +0.05 for under-represented labels). Hiding it from the record
+leaves the influence and deletes only the evidence — in the handoff study, a 4-arm run
+that believed labels were "off" still had the ABLATION share skew 0/1/3/4 across arms,
+and that was **undetectable from node_report**.
+
+To remove a label's influence, turn the **feature** off rather than hiding the record:
+**`ARI_BFTS_NO_LABEL=1`** stops all three sites (every node gets the same neutral
+role/task; selection ignores labels). Labels are still recorded then — so a reader can
+**verify** they were inert.
+
+| Field | Meaning |
+|---|---|
+| `label` | BFTS exploration role: `draft` / `improve` / `debug` / `ablation` / `validation` / `other`. Inert (not used by scoring or selection). With `ARI_BFTS_DETERMINISTIC_LABEL=1` it is derived deterministically from the direction |
+| `raw_label` | Kept only when `label==other` (the original LLM-proposed label); empty for the canonical five |
+| `original_direction` | The direction text the parent's expand assigned to this child |
+
+### Optional group 2: run-environment provenance (populate-as-needed)
+
+`executor` / `hostname` / `slurm_job_id` / `slurm_partition` / `slurm_nodelist` /
+`cpu_info` / `mem_total_kb` / `compilers` are emitted **only when the run_env skill
+actually captured non-empty data** (a field is omitted when empty). Nothing is
+fabricated from the ambient scheduler env, so machine info is fully absent when the
+skill is unused (never burned into the deliverable) yet present in full when it is.
 
 ```json
 {
   "schema_version": 1,
-  "node_id": "...",
-  "parent_id": "...",
-  "ancestor_ids": ["..."],
-  "label": "improve",
-  "depth": 2,
-  "status": "completed",
-  "started_at": "2026-05-08T11:30:00Z",
-  "completed_at": "2026-05-08T11:42:00Z",
-  "files_changed": {
-    "added":    [{"path": "src/main.cpp", "sha256": "..."}],
-    "modified": [{"path": "Makefile",     "sha256": "..."}],
-    "deleted":  [],
-    "inherited_unchanged": []
-  },
-  "metrics": {"GFlops/s": 312.4},
-  "artifacts": [{"path": "results.csv", "sha256": "..."}]
+  "node_id": "node_a1b2c3d4",
+  "parent_id": "node_...root",
+  "ancestor_ids": ["node_...root"],
+  "depth": 1,
+  "status": "success",
+  "started_at": "2026-07-10T10:34:32Z",
+  "completed_at": "2026-07-10T10:35:24Z",
+  "files_changed": {"added": [], "modified": [{"path": "candidate_gemm.c", "sha256": "..."}], "deleted": [], "inherited_unchanged": []},
+  "what_was_done": "Parallelized the outer loop with OpenMP and reordered to ikj for cache locality.",
+  "delta_vs_parent": "files vs parent: +0/~1/-0; valid_geomean_speedup=1.340",
+  "metrics": {"valid_geomean_speedup": 1.34, "_scientific_score": 0.05, "speedup_512x512x512": 1.33},
+  "self_assessment": {"succeeded": true, "headline": "Vectorized the inner loop; measured ~1.2x.", "concerns": ["only 3 problem shapes tested"]},
+  "next_steps_hints": [],
+  "build_command": "", "run_command": "CC ?= cc",
+  "artifacts": [{"filename": "result", "role": "unknown"}],
+  "evaluator_reason": "ok", "trace_log_summary": ""
 }
 ```
-
-`generate_ear`, `nodes_to_science_data`, and `bfts.expand` consume
-this file.
+(The example predates the removal of the `ARI_REPORT_MINIMAL` suppression, so it shows
+the label group absent. A current report ALWAYS carries `label` / `raw_label` /
+`original_direction`. Machine info is still absent here because the run_env skill was
+unused — that field is populate-as-needed, not suppressed.)
 
 ## `results.json`
 

@@ -157,7 +157,6 @@ def _make_chain_checkpoint(tmp_path: Path, *, with_uploads: bool = False,
             "artifacts": [],
             "evaluator_reason": delta,
             "trace_log_summary": "",
-            "migration_source": "fresh",
         }
         (wd / "node_report.json").write_text(json.dumps(report, indent=2))
 

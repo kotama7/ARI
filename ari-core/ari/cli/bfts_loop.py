@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -59,6 +60,94 @@ console = Console()
 # Phase 2 §6-1: throttling + JSON layout live in ``ari.checkpoint``;
 # this wrapper just feeds it the (run_id, experiment_file, nodes)
 # triple via ``_save_checkpoint``.
+
+
+def _child_retires_parent(
+    child_score: float, parent_score: float, *, child_sterile: bool
+) -> bool:
+    """B-6 Rule A: whether a completed child should retire its parent from the
+    frontier (parent will never be re-expanded).
+
+    A child retires its parent only when it *genuinely* beat the parent's
+    scientific score. A ``_sterile`` child is a verbatim copy of the parent's
+    candidate (the file-diff gate found no change); its score delta is pure
+    evaluator timing noise, not an improvement. Letting such a copy retire the
+    parent — then pruning the sterile copy itself (``should_prune`` does) —
+    empties the frontier and collapses the search to two nodes. So a sterile
+    child never retires its parent.
+    """
+    return child_score > parent_score and not child_sterile
+
+
+_PROVENANCE_FILENAME = "provenance.json"
+# Key names whose VALUE must never be written to an artifact that gets published.
+_SECRET_KEY = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|CRED", re.I)
+
+
+def _ari_version() -> dict:
+    """The ARI commit the run used. Half of "workspace + repo re-checks a number":
+    the workspace pins the instrument, this pins the framework around it."""
+    import subprocess
+    root = Path(__file__).resolve().parents[3]
+    try:
+        sha = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"],
+                             capture_output=True, text=True, timeout=15)
+        if sha.returncode != 0:
+            return {}
+        dirty = subprocess.run(["git", "-C", str(root), "status", "--porcelain"],
+                               capture_output=True, text=True, timeout=30)
+        return {"git_sha": sha.stdout.strip(),
+                "dirty": bool((dirty.stdout or "").strip())}
+    except Exception:
+        return {}
+
+
+def _measurement_env() -> dict:
+    """The knobs the (digest-pinned) harness source reads to build its compile
+    command and size its problem — ``ARI_*_CC`` / ``ARI_*_CFLAGS`` /
+    ``ARI_*_THREADS`` / ``ARI_SEED`` / study controls / ``OMP_NUM_THREADS``.
+
+    Recording the environment rather than the resolved compile line is what keeps
+    this harness-agnostic: the harness is pinned by sha256, so source + env
+    determines the command, and no harness has to grow a reporting API.
+
+    Two redactions, because this file ships inside a published artifact:
+    secrets are dropped by key name, and absolute paths are dropped by value —
+    a path carries the account and site layout of the machine that ran it and is
+    worthless to a reader re-checking the number elsewhere.
+    """
+    out: dict[str, str] = {}
+    for k, v in sorted(os.environ.items()):
+        if not (k.startswith("ARI_") or k in ("OMP_NUM_THREADS", "CC", "CFLAGS")):
+            continue
+        if _SECRET_KEY.search(k):
+            out[k] = "<redacted:secret>"
+        elif v.startswith("/"):
+            out[k] = "<redacted:path>"
+        else:
+            out[k] = v
+    return out
+
+
+def _write_run_provenance(checkpoint_dir, harness) -> None:
+    """Write ``<checkpoint>/provenance.json``: which instrument, which framework,
+    which knobs. Without it a published number names no scaffolding, and
+    ``uploads/`` shows input bytes without binding them to the scores.
+    """
+    payload = {
+        "schema_version": "1.0",
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "ari": _ari_version(),
+        "harness": harness.provenance(),
+        "env": _measurement_env(),
+    }
+    p = Path(checkpoint_dir) / _PROVENANCE_FILENAME
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    logging.getLogger(__name__).info(
+        "run provenance: harness=%s (%d files pinned), ari=%s",
+        payload["harness"]["task"], len(payload["harness"]["files"]),
+        (payload["ari"].get("git_sha") or "?")[:12])
 
 
 def _save_tree_incremental(
@@ -408,6 +497,15 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
             _OUTPUT_BLACKLIST = (
                 "results.csv", "results_*.csv", "*_results.csv",
                 "result.csv", "metrics.csv",
+                # emit_results' JSON deliverable + the agent's self-test stdout,
+                # both of which carry the parent's NUMBERS (speedup / candidate_sec
+                # / baseline_sec). These must not ride the code channel into a
+                # child (it would hand every arm the parent's results and collapse
+                # the 2x2 factorial). ``results.json`` was previously excluded only
+                # via ``is_meta_file`` — a fragile coupling; ``*_output.txt``
+                # (e.g. ``selftest_output.txt``) was NOT excluded at all and leaked.
+                "results.json", "*_results.json",
+                "selftest_output.txt", "*_output.txt",
                 "run.log", "run_*.log", "*.run.log",
                 "slurm-*.out", "slurm-*.err",
                 "stdout.txt", "stderr.txt", "out.txt", "err.txt",
@@ -437,6 +535,20 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                     for _src in _parent_wd.rglob("*"):
                         if _src.is_dir():
                             continue
+                        # DELIBERATELY the default (checkpoint) scope, NOT "node".
+                        # This is the parent->child COPY, i.e. the study's *code*
+                        # channel, and the child prompt promises: "NOT inherited:
+                        # the parent's results.csv, slurm-*.out, run.log,
+                        # metrics.json — those have been deliberately excluded so
+                        # you cannot silently reuse the parent's numbers." The
+                        # parent's results/logs must reach a child ONLY through the
+                        # controlled summary / full_log channels; letting them ride
+                        # the code channel would hand every arm the parent's numbers
+                        # and collapse the 2x2 factorial.
+                        # (``scope="node"`` is right for the RECORD/DISPLAY sites —
+                        # node_report files_changed/artifacts, the viz file browser —
+                        # where a node's OWN results.json is its deliverable. Opposite
+                        # requirement, same predicate.)
                         if PathManager.is_meta_file(_src.name):
                             continue
                         _rel = _src.relative_to(_parent_wd)
@@ -465,25 +577,63 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
             # (ARI_TASK in the known set) — independent of the scorer — so the
             # scaffolding is also seeded under the LLM-as-a-judge scorer ablation;
             # non-study experiments (no ARI_TASK) are untouched.
-            if os.environ.get("ARI_TASK", "").strip().lower() in {
-                "spmm", "gemm", "erfc", "meshpart", "stencil",
-            }:
+            #
+            # The harness is resolved through the registry (packaged, or
+            # registered under workspace/harnesses/<task>/) rather than a
+            # hardcoded task set: a hardcoded set here would let the evaluator
+            # find an external harness while this silently seeded NOTHING, so the
+            # node would score 0 for lack of scaffolding and read as "the agent
+            # could not optimize". Unknown/tampered tasks raise and are logged
+            # below instead of being skipped in silence.
+            _task = os.environ.get("ARI_TASK", "").strip().lower()
+            if _task:
                 try:
-                    _task = os.environ.get("ARI_TASK", "spmm").lower()
-                    if _task == "gemm":
-                        from ari.evaluator.gemm_harness import seed_work_dir as _seed_task
-                    elif _task == "erfc":
-                        from ari.evaluator.erfc_harness import seed_work_dir as _seed_task
-                    elif _task == "meshpart":
-                        from ari.evaluator.meshpart_harness import seed_work_dir as _seed_task
-                    elif _task == "stencil":
-                        from ari.evaluator.stencil_harness import seed_work_dir as _seed_task
-                    else:
-                        from ari.evaluator.spmm_harness import seed_work_dir as _seed_task
+                    from ari.harness_registry import load as _load_harness
+                    _hmod = _load_harness(_task)
+                    _seed_task = _hmod.seed_work_dir
+                    _seeded_all: set[str] = set()
                     for _n in batch:
                         _seeded = _seed_task(_n.work_dir)
+                        _seeded_all.update(_seeded)
                         logging.getLogger(__name__).info(
                             "Seeded kernel scaffolding into %s: %s", _n.work_dir, _seeded
+                        )
+                    # Provenance: record the experiment's INPUT files (the frozen
+                    # scaffolding each node is seeded with, above) in the run
+                    # checkpoint's uploads/ dir, so the checkpoint self-documents
+                    # its inputs instead of leaving uploads/ empty. Record ONLY the
+                    # basenames seed_work_dir actually delivers (_seeded_all) — NOT
+                    # every file in kernels_dir (which also holds a dev README that
+                    # nodes never receive). That invariant matters: because every
+                    # recorded file is present at each node's work_dir root, the
+                    # guarded uploads->node copy below skips all of them, so this is
+                    # a pure record — the node file view and scores are unchanged.
+                    try:
+                        import shutil as _sh_up0
+                        _src_dir = _hmod.kernels_dir()
+                        _up = Path(checkpoint_dir) / "uploads"
+                        _up.mkdir(parents=True, exist_ok=True)
+                        for _bn in sorted(_seeded_all):
+                            _sp = os.path.join(_src_dir, _bn)
+                            _dp = _up / _bn
+                            if os.path.isfile(_sp) and not _dp.exists():
+                                _sh_up0.copy2(_sp, str(_dp))
+                    except Exception as _ue:
+                        logging.getLogger(__name__).warning(
+                            "uploads provenance copy failed: %s", _ue
+                        )
+                    # Record WHICH instrument produced this run's numbers. Copying
+                    # the input files (above) shows the bytes; it does not bind
+                    # them to the scores, and a reader cannot tell whether the
+                    # copy or the compiled original is what was measured. This
+                    # writes the harness's verified digests plus the environment
+                    # its (digest-pinned) source reads to build the compile
+                    # command — together those determine the measurement.
+                    try:
+                        _write_run_provenance(checkpoint_dir, _hmod)
+                    except Exception as _pe:
+                        logging.getLogger(__name__).warning(
+                            "run provenance record failed: %s", _pe
                         )
                 except Exception as _se:
                     logging.getLogger(__name__).warning("kernel seed failed: %s", _se)
@@ -543,6 +693,16 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                         continue
                     _rel = _uf.relative_to(_uploads_path)
                     for _n in batch:
+                        # If this file is already present at the node's work_dir
+                        # root (study scaffolding delivered by seed_work_dir, now
+                        # also recorded in checkpoint uploads/ for provenance), do
+                        # NOT mirror it into the node — keep the node's file view
+                        # identical to a run without the uploads/ record (no
+                        # agent-visible ./uploads/ duplicate, no confound). Genuine
+                        # user uploads are absent from the work_dir root, so they
+                        # still copy through below unchanged.
+                        if (Path(_n.work_dir) / _rel).exists():
+                            continue
                         for _dst_upload in (
                             Path(_n.work_dir) / _rel,
                             Path(_n.work_dir) / "uploads" / _rel,
@@ -613,16 +773,27 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                 # B-6 Rule A: when the child beat its parent's scientific
                 # score, retire the parent — there is nothing more to gain
                 # from re-expanding a node a child already surpassed.
+                #
+                # EXCEPTION: a ``_sterile`` child is a verbatim copy of the
+                # parent's candidate (no file diff) — its score "win" is pure
+                # evaluator timing noise, not a genuine improvement. Retiring the
+                # parent on such a copy (then pruning the sterile child, which
+                # ``should_prune`` does) empties the frontier and collapses the
+                # search after two nodes. Keep the parent expandable so the arm
+                # still explores its node budget; the copy itself is pruned.
                 _parent_id_for_retire = getattr(result, "parent_id", None)
                 if _parent_id_for_retire and isinstance(result.metrics, dict):
                     _child_score = float(result.metrics.get("_scientific_score") or 0.0)
+                    _child_sterile = result.metrics.get("_sterile") is True
                     for _fn in list(frontier):
                         if _fn.id != _parent_id_for_retire:
                             continue
                         _parent_score = float(
                             (_fn.metrics or {}).get("_scientific_score") or 0.0
                         )
-                        if _child_score > _parent_score:
+                        if _child_retires_parent(
+                            _child_score, _parent_score, child_sterile=_child_sterile
+                        ):
                             frontier.remove(_fn)
                             console.print(
                                 f"    Retired parent {_fn.id[-8:]} from frontier "
@@ -715,10 +886,41 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                                 result.id, _ster_e,
                             )
 
+                    # Hybrid handoff summary: what_was_done = the agent's OWN
+                    # natural-language self-report (its intent/reasoning), and
+                    # delta_vs_parent = the DETERMINISTIC, verified change vs parent
+                    # (files touched + measured speedup) — so the summary carries the
+                    # agent's narrative anchored by ground truth (self-claims can be
+                    # optimistic; the metric is authoritative).
+                    _what_was_done = (getattr(result, "agent_summary", "") or "").strip()[:1000]
+                    _delta_vs_parent = ""
+                    try:
+                        _m = result.metrics if isinstance(result.metrics, dict) else {}
+                        _sp = _m.get("valid_geomean_speedup")
+                        if _parent_wd_for_report is not None:
+                            _fc2 = compute_files_changed(
+                                _parent_wd_for_report,
+                                Path(getattr(result, "work_dir", "") or _pm.node_work_dir(run_id, result.id)),
+                            )
+                            _delta_vs_parent = "files vs parent: +{}/~{}/-{}".format(
+                                len(_fc2.get("added") or []),
+                                len(_fc2.get("modified") or []),
+                                len(_fc2.get("deleted") or []),
+                            )
+                        if isinstance(_sp, (int, float)):
+                            _delta_vs_parent = (
+                                (_delta_vs_parent + "; " if _delta_vs_parent else "")
+                                + "valid_geomean_speedup={:.3f}".format(_sp)
+                            )
+                    except Exception:
+                        pass
+
                     write_node_report(
                         node=result,
                         work_dir=Path(getattr(result, "work_dir", "") or _pm.node_work_dir(run_id, result.id)),
                         parent_work_dir=_parent_wd_for_report,
+                        what_was_done=_what_was_done,
+                        delta_vs_parent=_delta_vs_parent,
                         eval_result={
                             "scientific_score": result.metrics.get("_scientific_score"),
                             "axis_scores": result.metrics.get("_axis_scores", {}),
@@ -726,6 +928,66 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                             "has_real_data": bool(result.has_real_data),
                         } if isinstance(result.metrics, dict) else None,
                     )
+                    # Per-node full ReAct execution log as an openable file
+                    # (full_log.json) written at the node's completion. It holds
+                    # THIS node's own trace_log; it is in PathManager.META_FILES so
+                    # it is never inherited into children via the work_dir copy.
+                    try:
+                        from ari.agent.loop import serialize_messages as _ser_msgs
+                        _fl_wd = Path(
+                            getattr(result, "work_dir", "")
+                            or _pm.node_work_dir(run_id, result.id)
+                        )
+                        _fl_trace = list(getattr(result, "trace_log", []) or [])
+                        _fl_msgs = _ser_msgs(getattr(result, "full_messages", []) or [])
+                        _fl_tools = list(getattr(result, "full_tools", []) or [])
+                        (_fl_wd / "full_log.json").write_text(
+                            json.dumps(
+                                {
+                                    "node_id": getattr(result, "id", ""),
+                                    "parent_id": getattr(result, "parent_id", None),
+                                    "depth": int(getattr(result, "depth", 0) or 0),
+                                    # ReAct iterations the agent actually used, and the
+                                    # budget it had. The old ``steps`` field was
+                                    # ``len(trace_log)`` — TRACE ENTRIES, i.e. 2 per
+                                    # iteration (the call + its result) — so a node that
+                                    # burnt its whole 15-step budget logged "steps: 30"
+                                    # with no max recorded, reading as 30-of-80 (the code
+                                    # default) i.e. "plenty left" on a node that was in
+                                    # fact exhausted. Both counts are kept, named for
+                                    # what they are.
+                                    "react_steps": int(
+                                        getattr(result, "react_steps_used", 0) or 0),
+                                    "max_react_steps": int(
+                                        getattr(agent, "max_react_steps", 0) or 0),
+                                    # "finish_json" = the agent concluded; "max_steps" =
+                                    # it ran out of budget (a ``success`` on such a node
+                                    # is the framework scoring its work_dir, not the
+                                    # agent's own verdict).
+                                    "ended_by": str(getattr(result, "ended_by", "") or ""),
+                                    "trace_entries": len(_fl_trace),
+                                    # Tool schemas (name + description + parameters) the
+                                    # model was given via function-calling — HOW to use
+                                    # each tool (the AVAILABLE TOOLS prompt lists names only).
+                                    "tools": _fl_tools,
+                                    # Full conversation: system prompt + injected
+                                    # handoff (parent summary/full_log) + task + every
+                                    # user/assistant/tool turn, INCLUDING the agent's
+                                    # final finish JSON (tagged ``_finish``; the
+                                    # parent-log renderer drops it so the handoff's
+                                    # full_log arm stays orthogonal to the summary arm).
+                                    "messages": _fl_msgs,
+                                    # Concise tool-call trace (kept for quick scanning).
+                                    "trace_log": _fl_trace,
+                                },
+                                indent=2,
+                                ensure_ascii=False,
+                            )
+                        )
+                    except Exception as _fle:
+                        logging.getLogger(__name__).warning(
+                            "full_log: failed to write for %s: %s", result.id, _fle
+                        )
                 except Exception as _nre:
                     logging.getLogger(__name__).warning(
                         "node_report: failed to write for %s: %s", result.id, _nre

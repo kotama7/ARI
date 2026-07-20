@@ -112,6 +112,51 @@ class Node:
     # verbatim through the lifetime of the node so downstream consumers can
     # see "what we set out to do" even after evaluator overwrites eval_summary.
     original_direction: str | None = None
+    # The agent's own natural-language self-report (the ``summary`` field it
+    # returns when it concludes). Captured so the handoff summary can carry the
+    # agent's narrative of what it did, anchored by deterministic metrics.
+    agent_summary: str = ""
+    # The agent's own self-reviewed next steps (LLM self-review) — what it would
+    # try next to improve this node. Populates node_report ``next_steps_hints``
+    # under deterministic scoring, where the evaluator emits no graded axes.
+    agent_next_steps: list[str] = field(default_factory=list)
+    # The agent's own self-reviewed concerns (LLM self-review) — caveats/risks it
+    # flags about this node. Populates node_report ``self_assessment.concerns``
+    # (the headline there comes from ``agent_summary``); deterministic scoring
+    # emits no graded axes, so this is the real source.
+    agent_concerns: list[str] = field(default_factory=list)
+    # The agent's own free-form note of the compute environment it actually ran
+    # on (compilers, ISA, CPU/GPU it used), authored AFTER querying the real env
+    # (describe_environment / run_bash) and kept only when grounded in this
+    # node's tool outputs (anti-fabrication). Replaces the framework's old
+    # auto-scraped machine provenance in node_report, so no hostname/partition is
+    # embedded automatically; the agent records only what it chose to.
+    agent_environment: str = ""
+    # The agent's own light per-file explanation ({path: note}) from the finish
+    # JSON ``file_notes``. The node_report builder grafts each note onto the
+    # matching files_changed entry (added/modified/deleted), so a reader sees WHAT
+    # each touched file is without opening it. Best-effort; unlisted files carry
+    # no note.
+    file_notes: dict = field(default_factory=dict)
+    # How the ReAct loop ended, and how many iterations it really took.
+    # ``ended_by``: "finish_json" (the agent concluded) | "max_steps" (it ran out
+    # of budget; any resulting ``success`` came from the framework scoring the
+    # work_dir, not from the agent). Surfaced in full_log — without them a reader
+    # cannot tell the two apart, and the old ``steps`` field counted TRACE ENTRIES
+    # (2 per iteration), which read as double the real count.
+    react_steps_used: int = 0
+    ended_by: str = ""
+    # Full ReAct conversation (system prompt + injected handoff + task + every
+    # user/assistant/tool turn) — a live reference set by AgentLoop.run so the
+    # per-node ``full_log.json`` can serialize the COMPLETE input+output record,
+    # not just the tool-call trace_log. Deliberately EXCLUDED from ``to_dict`` so
+    # it never bloats tree.json; it lands only in full_log.json.
+    full_messages: list = field(default_factory=list)
+    # OpenAI-format tool schemas (name + description + parameters) the model was
+    # actually given via the function-calling ``tools=`` argument — i.e. HOW to
+    # use each tool, which the AVAILABLE TOOLS prompt line (names only) omits.
+    # Set by AgentLoop.run for full_log.json; EXCLUDED from to_dict.
+    full_tools: list = field(default_factory=list)
     # Relative pointer (from checkpoint root) to the per-node report file.
     # Optional: present only after `node_report.json` has been written.
     node_report_path: str | None = None
@@ -142,7 +187,7 @@ class Node:
         self.completed_at = datetime.now(timezone.utc).isoformat()
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "id": self.id,
             "parent_id": self.parent_id,
             "depth": self.depth,
@@ -155,12 +200,23 @@ class Node:
             "metrics": self.metrics,
             "has_real_data": self.has_real_data,
             "eval_summary": self.eval_summary,
-            "label": self.label.value,
-            "raw_label": self.raw_label,
             "name": self.name,
             "error_log": self.error_log,
             "ancestor_ids": self.ancestor_ids,
             "trace_log": self.trace_log,
-            "original_direction": self.original_direction,
             "node_report_path": self.node_report_path,
         }
+        # label / raw_label / original_direction are ALWAYS emitted. There used to
+        # be an ``ARI_REPORT_MINIMAL`` switch that stripped them from the record
+        # while the label kept driving the search (the system prompt's NODE ROLE,
+        # the child's task line, and the diversity_bonus in node selection). That
+        # is a record-ONLY suppression: it does not make the variable inert, it
+        # only deletes the evidence — and it is exactly how a label confound
+        # survived a whole 4-arm study invisibly (the ABLATION share of children
+        # ran 0/1/3/4 across arms, unreadable from node_report/tree.json).
+        # To remove a variable's influence, turn the FEATURE off
+        # (``ARI_BFTS_NO_LABEL``); never hide a live one from the record.
+        d["label"] = self.label.value
+        d["raw_label"] = self.raw_label
+        d["original_direction"] = self.original_direction
+        return d

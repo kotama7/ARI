@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import signal
+import socket
 import subprocess
 from pathlib import Path
 
@@ -85,9 +87,89 @@ def _run_sandboxed(
         raise
 
 
+# ── Container path model ─────────────────────────────────────────────
+# Each node's real work_dir is presented to the agent as a fixed virtual
+# container root. The agent — and every saved artifact / handoff log built from
+# tool I/O — therefore only ever sees ``/workspace/...``, never the absolute
+# host path (which carries the username / partition / cluster layout). The real
+# work_dir is authoritative and always supplied by the loop (see
+# ari.agent.tool_manager: it pins the per-node work_dir on every filesystem
+# call), so the mapping below is exact per call and never relies on the
+# fork-time ARI_WORK_DIR snapshot.
+_CONTAINER_ROOT = "/workspace"
+# Filesystem tools that take a ``work_dir`` and operate under the container root.
+_WORKDIR_TOOLS = frozenset(
+    {"write_code", "run_code", "run_bash", "read_file", "emit_results"}
+)
+# ``/workspace`` followed by a path boundary (``/``, whitespace, quote, end) —
+# so ``/workspace_backup`` is left untouched.
+_VROOT_RE = re.compile(re.escape(_CONTAINER_ROOT) + r"(?=/|\s|['\"]|$)")
+
+
+def _devirtualize(s: str, real: str) -> str:
+    """Map the virtual container root in an agent-supplied path or shell command
+    back to the real work_dir before execution."""
+    if not s or _CONTAINER_ROOT not in s:
+        return s
+    return _VROOT_RE.sub(real.rstrip("/"), s)
+
+
+# Host identity captured once at process start — used to scrub tool output so a
+# node reads like a self-contained container, not a host account.
+_HOST_NAMES = tuple(
+    sorted(
+        {h for h in (socket.gethostname(), socket.gethostname().split(".")[0]) if len(h) >= 3},
+        key=len,
+        reverse=True,
+    )
+)
+
+
+def _virtualize(s: str, real: str) -> str:
+    """Scrub host identity from tool OUTPUT so the node looks like a
+    self-contained container. Removes, in order: the real work_dir (raw and
+    symlink-resolved) -> ``/workspace``; the user's ``$HOME`` -> ``~``; the bare
+    username (``ls -l`` owner/group columns, ``whoami``) -> ``user``; and the
+    hostname (``hostname``, ``uname -a``) -> ``host``. No absolute host path,
+    username, or node name reaches the agent or the saved/handoff log."""
+    if not s:
+        return s
+    # 1) work_dir (raw + symlink-resolved), longest first -> /workspace
+    if real:
+        roots = {real.rstrip("/")}
+        try:
+            roots.add(os.path.realpath(real).rstrip("/"))
+        except OSError:
+            pass
+        for r in sorted((x for x in roots if x), key=len, reverse=True):
+            s = s.replace(r, _CONTAINER_ROOT)
+    # 2) home dir -> ~ (paths outside work_dir, e.g. ~/miniconda in a tool error)
+    home = (os.environ.get("HOME") or "").rstrip("/")
+    if home and home != "/":
+        s = s.replace(home, "~")
+    # 3) bare username -> user (word-boundary; owner/group columns, whoami)
+    user = os.environ.get("USER") or ""
+    if len(user) >= 3:
+        s = re.sub(r"\b" + re.escape(user) + r"\b", "user", s)
+    # 4) hostname -> host
+    for h in _HOST_NAMES:
+        s = re.sub(r"\b" + re.escape(h) + r"\b", "host", s)
+    return s
+
+
 def _resolve_work_dir(explicit: str | None) -> str:
-    """Return the effective work directory: explicit arg > ARI_WORK_DIR env > /tmp/ari_work."""
+    """Return the effective work directory: explicit arg > ARI_WORK_DIR env > /tmp/ari_work.
+
+    A virtual ``/workspace`` arg is mapped to the real root — but ONLY when it is
+    the LEADING prefix. The real work_dir legitimately contains a ``workspace``
+    path COMPONENT (e.g. ``…/ARI/workspace/experiments/<run>/<node>``); a naive
+    substring rewrite would corrupt it into a garbage dir (the agent would then
+    see every seeded file as "not found"). Normally the loop already pins the
+    real per-node path, so the mapping below only bites on direct calls."""
     wd = explicit or os.environ.get("ARI_WORK_DIR") or "/tmp/ari_work"
+    if wd == _CONTAINER_ROOT or wd.startswith(_CONTAINER_ROOT + "/"):
+        real_env = (os.environ.get("ARI_WORK_DIR") or "/tmp/ari_work").rstrip("/")
+        wd = real_env + wd[len(_CONTAINER_ROOT):]
     Path(wd).mkdir(parents=True, exist_ok=True)
     return wd
 
@@ -140,8 +222,8 @@ async def list_tools() -> list[Tool]:
                     },
                     "work_dir": {
                         "type": "string",
-                        "description": "Working directory",
-                        "default": "/tmp/ari_work",
+                        "description": "Container root (leave unset — auto-pinned to /workspace).",
+                        "default": "/workspace",
                     },
                 },
                 "required": ["filename", "code"],
@@ -170,8 +252,8 @@ async def list_tools() -> list[Tool]:
                     },
                     "work_dir": {
                         "type": "string",
-                        "description": "Working directory",
-                        "default": "/tmp/ari_work",
+                        "description": "Container root (leave unset — auto-pinned to /workspace).",
+                        "default": "/workspace",
                     },
                     "timeout": {
                         "type": "integer",
@@ -199,8 +281,8 @@ async def list_tools() -> list[Tool]:
                     },
                     "work_dir": {
                         "type": "string",
-                        "description": "Working directory",
-                        "default": "/tmp/ari_work",
+                        "description": "Container root (leave unset — auto-pinned to /workspace).",
+                        "default": "/workspace",
                     },
                     "timeout": {
                         "type": "integer",
@@ -216,11 +298,10 @@ async def list_tools() -> list[Tool]:
             description=(
                 "Write a typed results.json file separating input parameters "
                 "from measurements. Use this at the END of an experiment run "
-                "after collecting numeric outputs — it lets downstream stages "
-                "(transform → science_data, paper writing, summary stats) "
-                "tell apart 'what we measured' from 'what we ran on', so a "
-                "best-of reduction never accidentally picks an input size "
-                "(e.g. nnz, M, K, threads) over a real metric (e.g. GFlops/s). "
+                "after collecting numeric outputs — separating 'what we measured' "
+                "from 'what we ran on' so a best-of reduction never accidentally "
+                "picks an input size (e.g. nnz, M, K, threads) over a real metric "
+                "(e.g. GFlops/s). "
                 "All four dicts may be empty; fields are best-effort. The file "
                 "is overwritten when called repeatedly; pass a different "
                 "'file' name to keep multiple result variants."
@@ -246,7 +327,24 @@ async def list_tools() -> list[Tool]:
                             "reviewer would treat as the experiment's result. "
                             "Examples: GFlops_per_s, GB_per_s, latency_s, "
                             "accuracy. These ARE candidates for the best-of "
-                            "primary metric."
+                            "primary metric. For a SINGLE case, put them here; "
+                            "if you measured MULTIPLE cases, use 'cases' below "
+                            "(this stays a representative/aggregate)."
+                        ),
+                        "additionalProperties": True,
+                    },
+                    "cases": {
+                        "type": "object",
+                        "description": (
+                            "OPTIONAL per-case results when you tested MORE THAN "
+                            "ONE problem size / shape / input. Keyed by a case "
+                            "name you choose (e.g. \"512x512x512\", \"n20000_k64\", "
+                            "\"tall\"), each value an object like "
+                            "{\"params\": {...}, \"measurements\": {...}}. Report "
+                            "EVERY case you measured here — do NOT collapse a "
+                            "multi-shape run into one number. (Report the cases "
+                            "YOU chose to test; the evaluator measures its own "
+                            "independent set and never reads this file.)"
                         ),
                         "additionalProperties": True,
                     },
@@ -290,8 +388,8 @@ async def list_tools() -> list[Tool]:
                     },
                     "work_dir": {
                         "type": "string",
-                        "description": "Working directory",
-                        "default": "/tmp/ari_work",
+                        "description": "Container root (leave unset — auto-pinned to /workspace).",
+                        "default": "/workspace",
                     },
                 },
                 "required": [],
@@ -309,12 +407,12 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "File path (absolute, or relative to work_dir)",
+                        "description": "File path — relative to the container root (e.g. candidate_gemm.c) or /workspace/...",
                     },
                     "work_dir": {
                         "type": "string",
-                        "description": "Working directory",
-                        "default": "/tmp/ari_work",
+                        "description": "Container root (leave unset — auto-pinned to /workspace).",
+                        "default": "/workspace",
                     },
                     "offset": {
                         "type": "integer",
@@ -330,33 +428,86 @@ async def list_tools() -> list[Tool]:
                 "required": ["path"],
             },
         ),
+        Tool(
+            name="describe_environment",
+            description=(
+                "Return this cluster's environment catalog so you don't have to "
+                "discover the toolchain by trial-and-error. PER NODE it lists: "
+                "arch, CPU, GPUs, compilers on PATH, the raw `module avail` "
+                "catalog, and the NAMES of set toolchain env vars (echo the ones "
+                "you need to read their values). On a LOGIN node it reports the "
+                "login node itself (a real build target) plus one entry per "
+                "configured compute partition, if any. On a COMPUTE node it "
+                "reports only this node. Call it FIRST to see which compilers / "
+                "modules / GPUs / MPI you can use before you write or build "
+                "code. No arguments."
+            ),
+            # Deliberately permissive: no ``additionalProperties: False``. This
+            # tool is called while the agent is still ignorant of the toolchain,
+            # so a weaker model sometimes invents an argument (e.g. a partition
+            # name it cannot know — the names are not readable from the env, this
+            # tool IS their only source). The dispatch ignores ``arguments``, so a
+            # stray key is silently discarded and the full catalog still comes
+            # back. Rejecting it instead would turn a hallucinated arg into a
+            # retry, re-paying the probe. Pinned by
+            # test_describe_environment_ignores_unknown_args.
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        ),
     ]
+
+
+def _describe_environment() -> dict:
+    """Node-aware environment catalog (ari.agent.run_env.build_env_catalog).
+
+    login   -> srun-probe each ARI_PROBE_PARTITIONS partition (heterogeneous
+               cluster); compute/local -> this node only. Cluster-agnostic:
+               dumps raw `module avail` / compilers / GPUs and only the NAMES of
+               set toolchain env vars (never values -> no key/username leak).
+    """
+    from ari.public.run_env import build_env_catalog
+    ckpt = os.environ.get("ARI_CHECKPOINT_DIR") or None
+    try:
+        return build_env_catalog(checkpoint_dir=ckpt)
+    except Exception as e:  # never crash the tool call
+        return {"error": f"describe_environment failed: {e}"}
 
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+    # Resolve the real work_dir ONCE per call. Filesystem tools present a virtual
+    # ``/workspace`` root to the agent: agent-supplied paths/commands are mapped
+    # back to the real dir before execution (``_devirtualize``) and the real dir
+    # is scrubbed out of every result (``_virtualize`` on the serialized output).
+    wd = _resolve_work_dir(arguments.get("work_dir")) if name in _WORKDIR_TOOLS else None
     if name == "write_code":
+        # NB: ``code`` is written verbatim — never devirtualized — so the saved
+        # artifact stays host-agnostic (the agent is told to use relative or
+        # /workspace paths in source).
         result = _write_code(
-            filename=arguments["filename"],
+            filename=_devirtualize(arguments["filename"], wd),
             code=arguments["code"],
-            work_dir=_resolve_work_dir(arguments.get("work_dir")),
+            work_dir=wd,
         )
     elif name == "run_code":
         result = _run_code(
-            filename=arguments["filename"],
-            work_dir=_resolve_work_dir(arguments.get("work_dir")),
+            filename=_devirtualize(arguments["filename"], wd),
+            work_dir=wd,
             timeout=arguments.get("timeout", 60),
         )
     elif name == "run_bash":
         result = _run_bash(
-            command=arguments["command"],
-            work_dir=_resolve_work_dir(arguments.get("work_dir")),
+            command=_devirtualize(arguments["command"], wd),
+            work_dir=wd,
             timeout=arguments.get("timeout", 60),
         )
     elif name == "read_file":
         result = _read_file(
-            path=arguments["path"],
-            work_dir=_resolve_work_dir(arguments.get("work_dir")),
+            path=_devirtualize(arguments["path"], wd),
+            work_dir=wd,
             offset=arguments.get("offset", 0),
             limit=arguments.get("limit", _READ_FILE_LIMIT),
         )
@@ -367,13 +518,21 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             predictions=arguments.get("predictions") or {},
             scores=arguments.get("scores") or {},
             provenance=arguments.get("provenance") or {},
+            cases=arguments.get("cases") or {},
             file=arguments.get("file") or "results.json",
-            work_dir=_resolve_work_dir(arguments.get("work_dir")),
+            work_dir=wd,
         )
+    elif name == "describe_environment":
+        # Blocking (srun queue-wait per partition) -> off the event loop.
+        import asyncio as _aio
+        result = await _aio.to_thread(_describe_environment)
     else:
         result = {"error": f"Unknown tool: {name}"}
 
-    return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
+    text = json.dumps(result, ensure_ascii=False)
+    if wd:
+        text = _virtualize(text, wd)
+    return [TextContent(type="text", text=text)]
 
 
 def _write_code(filename: str, code: str, work_dir: str) -> dict:
@@ -429,6 +588,7 @@ def _emit_results(
     file: str,
     work_dir: str,
     provenance: dict | None = None,
+    cases: dict | None = None,
 ) -> dict:
     """Write a typed results.json separating params from measurements.
 
@@ -456,6 +616,13 @@ def _emit_results(
     _prov = _coerce_jsonable_dict(provenance or {})
     if _prov:
         payload["_provenance"] = _prov
+    # Per-case results (multi-shape/size runs). Kept as a case-keyed map so a
+    # multi-shape measurement is never collapsed to one number; omitted when
+    # empty so single-case callers are unchanged. Does NOT affect scoring — the
+    # deterministic evaluator never reads results.json.
+    _cases = _coerce_jsonable_dict(cases or {})
+    if _cases:
+        payload["cases"] = _cases
     try:
         out_path.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
@@ -473,6 +640,7 @@ def _emit_results(
         "measurements_keys": list(payload["measurements"].keys()),
         "predictions_keys":  list(payload["predictions"].keys()),
         "scores_keys":       list(payload["scores"].keys()),
+        "cases_keys":        list(payload.get("cases", {}).keys()),
         "status": "written",
     }
     # Point-of-emission contract feedback: mirror the FINAL gate's presence checks
@@ -563,27 +731,15 @@ def _run_bash(command: str, work_dir: str, timeout: int) -> dict:
         # unavailable.
         _ct_cfg = None
         try:
-            try:
-                from ari.public.container import config_from_env, run_shell_in_container
-            except ImportError:
-                from ari.container import config_from_env, run_shell_in_container
+            from ari.public.container import config_from_env, run_shell_in_container
             _ct_cfg = config_from_env()
         except Exception:
             _ct_cfg = None
-        # Capture local execution env (hostname, cpu_info, …) once per
-        # work_dir so the node_report builder can later record where this
-        # experiment ran. Skip when running in container — host metadata
-        # would be misleading and the host probes would defeat the
-        # container-isolation contract.
-        if _ct_cfg is None:
-            try:
-                try:
-                    from ari.public.run_env import capture_env
-                except ImportError:
-                    from ari.agent.run_env import capture_env
-                capture_env(work_dir, executor="local")
-            except Exception:
-                pass
+        # NOTE: the framework no longer auto-captures host env here. Compute-env
+        # provenance is now AGENT-AUTHORED (the agent queries `describe_environment`
+        # and records what it used in the finish JSON `environment` field), so no
+        # hostname/CPU is scraped automatically into node_report. See
+        # ari.agent.loop._ground_environment / node_report builder.
         if _ct_cfg is not None:
             result = run_shell_in_container(
                 _ct_cfg, command, cwd=work_dir, timeout=timeout,

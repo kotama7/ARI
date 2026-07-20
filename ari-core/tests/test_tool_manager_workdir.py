@@ -41,11 +41,16 @@ def test_all_fs_tools_get_pinned():
         assert mcp.calls[0][1]["work_dir"] == "/exp/run/n1", tool
 
 
-def test_explicit_workdir_is_not_overridden():
+def test_explicit_workdir_is_overridden_to_node_root():
+    # Container model: each node's real work_dir is authoritative and is what the
+    # agent sees mounted at /workspace. An agent-supplied work_dir (e.g. the
+    # virtual "/workspace", or any stray path) must be REPLACED by this node's
+    # real dir — the coding server cannot map "/workspace" back to THIS node
+    # (its ARI_WORK_DIR is fork-time), so the loop pins the real path here.
     mcp = _FakeMCP()
-    execute_tool_calls(mcp, [_tc("run_bash", {"command": "ls", "work_dir": "/custom"})],
+    execute_tool_calls(mcp, [_tc("run_bash", {"command": "ls", "work_dir": "/workspace"})],
                        work_dir="/exp/run/n1")
-    assert mcp.calls[0][1]["work_dir"] == "/custom"
+    assert mcp.calls[0][1]["work_dir"] == "/exp/run/n1"
 
 
 def test_non_fs_tool_not_injected_but_cow_preserved():

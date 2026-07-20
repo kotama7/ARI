@@ -89,46 +89,34 @@ def _default_measure(work_dir: str) -> dict:
     1x baseline room to reach ~12-15x, spanning the TARGET (16x, the thread
     budget) so the normalized score discriminates among good kernels.
     """
-    task = os.environ.get("ARI_TASK", "spmm").lower()
-    if task == "gemm":
-        # Dense GEMM (task A): compute-bound, multiplicative optimization rungs.
-        from ari.evaluator.gemm_harness import measure_node as _gemm_measure
-        return _gemm_measure(work_dir)
-    if task == "erfc":
-        # erfc accuracy-coverage (Goldilocks task): score = fraction of hidden
-        # points within tolerance (a long, cumulative, graded ladder).
-        from ari.evaluator.erfc_harness import measure_node as _erfc_measure
-        try:
-            seed = int(os.environ.get("ARI_SEED", "0") or "0")
-        except ValueError:
-            seed = 0
-        return _erfc_measure(work_dir, seed=seed)
-    if task == "meshpart":
-        # Balanced k-way graph partitioning (Goldilocks task C, combinatorial):
-        # score = bal * q in [0,1] combining edge-cut quality and balance. ANY
-        # partition is a valid scoreable solution (no compile-or-die None), so
-        # mid models produce valid-but-suboptimal partitions children can refine.
-        from ari.evaluator.meshpart_harness import measure_node as _mesh_measure
-        try:
-            seed = int(os.environ.get("ARI_SEED", "0") or "0")
-        except ValueError:
-            seed = 0
-        return _mesh_measure(work_dir, seed=seed)
-    if task == "stencil":
-        # 3-D 7-point Jacobi stencil (task D): memory-bandwidth-bound performance
-        # kernel. Plain parallelism saturates the roofline (the one-shot rung);
-        # SIMD, spatial blocking, and temporal/time tiling climb above it, so the
-        # score = geomean speedup spans an optimization-quality gradient.
-        from ari.evaluator.stencil_harness import measure_node as _stencil_measure
-        try:
-            seed = int(os.environ.get("ARI_SEED", "0") or "0")
-        except ValueError:
-            seed = 0
-        return _stencil_measure(work_dir, seed=seed)
-    from ari.evaluator.spmm_harness import measure_node
-    n = int(os.environ.get("ARI_SPMM_N", "20000"))
-    k = int(os.environ.get("ARI_SPMM_K", "64"))
-    return measure_node(work_dir, n=n, k=k)
+    return _harness().measure(work_dir)
+
+
+def _harness():
+    """Resolve this run's harness via the registry (packaged, or registered in
+    ``workspace/harnesses/<task>/``).
+
+    Replaces a hardcoded ``if task == ...`` chain: adding a task no longer needs
+    an ARI core edit, and a study can pin its own frozen scaffolding next to its
+    results so ``workspace + the ARI repo`` are self-contained.
+
+    UNKNOWN TASKS: the old chain fell through to SpMM, i.e. a typo in ARI_TASK
+    silently scored a DIFFERENT benchmark. The registry raises instead — see
+    ``_resolve_task``.
+    """
+    from ari.harness_registry import load
+    return load(_resolve_task())
+
+
+def _resolve_task() -> str:
+    """The task name, defaulting to ``spmm`` when ARI_TASK is unset.
+
+    Unset -> "spmm" preserves the historical default. But a task that is SET and
+    unknown is an error, not a silent fallback to SpMM: measuring the wrong
+    benchmark and reporting it as the requested one is exactly the failure the
+    registry exists to make impossible.
+    """
+    return os.environ.get("ARI_TASK", "spmm").strip().lower() or "spmm"
 
 
 class DeterministicEvaluator:
@@ -144,31 +132,50 @@ class DeterministicEvaluator:
         *,
         target_speedup: float | None = None,
         measure_fn: Callable[[str], dict] | None = None,
+        scale: str | None = None,
         **_ignored: Any,
     ) -> None:
-        # Task selects the scoring scale + TARGET: GEMM speedups are
-        # multiplicative rungs (log scale, ceiling ~256x), SpMM is linear
-        # (ceiling = thread budget ~16x). Both env-overridable.
-        self.task = os.environ.get("ARI_TASK", "spmm").lower()
-        # Speedup tasks with multiplicative optimization rungs use a log scale
-        # (GEMM ceiling ~256x; the bandwidth-bound stencil ceiling is lower but
-        # still multiplicative). SpMM is linear (ceiling = thread budget).
-        self.scale = "log" if self.task in ("gemm", "stencil") else "linear"
-        if target_speedup is None:
-            _TARGETS = {
-                "gemm": ("ARI_GEMM_TARGET", 256.0),
-                "stencil": ("ARI_STENCIL_TARGET", 8.0),
-            }
-            _env, _dflt = _TARGETS.get(self.task, ("ARI_SPMM_TARGET", 16.0))
-            try:
-                target_speedup = float(os.environ.get(_env, str(_dflt)))
-            except ValueError:
-                target_speedup = _dflt
-        self.target = target_speedup
+        self.task = _resolve_task()
+        # Explicit values win; otherwise the harness DECLARES them (a GEMM speedup
+        # is a multiplicative rung -> log with a ~256x ceiling; SpMM is linear at
+        # the thread budget). Resolved lazily: this class also owns the
+        # task-INDEPENDENT scoring contract, which callers unit-test with an
+        # injected measure_fn and no harness at all.
+        self._target_override = target_speedup
+        self._scale_override = scale
+        self._meta: tuple[float, str] | None = None
         self._measure_fn = measure_fn
         # Present so callers that introspect metric_spec (node_report builder)
         # do not break; the deterministic evaluator does not use it.
         self.metric_spec = None
+
+    def _describe(self) -> tuple[float, str]:
+        """``(target, scale)`` from the registered harness, resolved once.
+
+        Falls back to the historical default when no harness is registered rather
+        than raising. That cannot leak a wrong number into a real score: without a
+        harness nothing can be measured either — ``load()`` raises inside
+        ``evaluate_sync``, which records the reason and scores the node 0 — so
+        these values only ever serve a caller that injects its own ``measure_fn``.
+        """
+        if self._meta is None:
+            from ari.harness_registry import (
+                HarnessIntegrityError,
+                describe,
+            )
+            try:
+                self._meta = describe(self.task)
+            except HarnessIntegrityError:
+                self._meta = (16.0, "linear")
+        return self._meta
+
+    @property
+    def target(self) -> float:
+        return self._describe()[0] if self._target_override is None else self._target_override
+
+    @property
+    def scale(self) -> str:
+        return self._describe()[1] if self._scale_override is None else self._scale_override
 
     def _score(self, result: dict) -> dict:
         """Map a harness measurement dict to the evaluator return contract.
@@ -183,7 +190,10 @@ class DeterministicEvaluator:
         # then means "the child raised the score" — the cumulative-ladder signal.
         if "score" in result and "families" not in result:
             compile_ok = bool(result.get("compile_ok", False))
-            s = float(result.get("score") or 0.0)
+            # Clamp the harness-reported score to the [0,1] contract at the gate
+            # (the module docstring promises [0,1]); a buggy/out-of-range harness
+            # score must not enter BFTS ranking unbounded or negative.
+            s = min(max(float(result.get("score") or 0.0), 0.0), 1.0)
             metrics: dict[str, Any] = {"_scientific_score": s, "valid_geomean_speedup": s}
             for name, frac in (result.get("regions") or {}).items():
                 metrics[f"region_{name}"] = float(frac or 0.0)
@@ -199,8 +209,16 @@ class DeterministicEvaluator:
         compile_ok = bool(result.get("compile_ok", False))
         # PREREG: a node is invalid if it fails to compile OR any required family
         # is invalid. Invalid families are NOT mixed into the geomean as zeros.
+        # A family must be valid AND measurable: a valid family whose speedup is
+        # 0/negative/NaN (sub-resolution or unmeasurable timing) would otherwise
+        # be silently dropped by geomean's positivity filter and the node scored
+        # on the surviving families, biasing it upward. Require every family's
+        # speedup to be finite and > 0 so an unmeasurable family zeros the node.
         all_valid = bool(compile_ok and families) and all(
-            bool(f.get("valid")) for f in families.values()
+            bool(f.get("valid"))
+            and math.isfinite(float(f.get("speedup", 0.0) or 0.0))
+            and float(f.get("speedup", 0.0) or 0.0) > 0.0
+            for f in families.values()
         )
         g = geomean([f.get("speedup", 0.0) for f in families.values()]) if all_valid else 0.0
         s = scientific_score(g, self.target, getattr(self, "scale", "linear"))

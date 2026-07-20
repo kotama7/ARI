@@ -304,10 +304,7 @@ ari migrate node-reports /path/to/checkpoint
 ari migrate node-reports /path/to/checkpoint --overwrite   # also rewrite existing reports
 ```
 
-The reconstructed reports get `migration_source: "auto"` so downstream
-filters can apply slightly more conservative rules (e.g. `for_code` keeps
-auto-reconstructed nodes even if the recovered `files_changed` is empty,
-since the diff may have been impossible to recover). Fields that cannot
+Fields that cannot
 be inferred (`original_direction`, `delta_vs_parent`, `next_steps_hints`)
 are nulled.
 

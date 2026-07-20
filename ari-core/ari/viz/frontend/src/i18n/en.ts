@@ -293,7 +293,6 @@ const en: Record<string, string> = {
   report_files_changed: 'Files changed',
   report_no_changes: '(no source files added or modified)',
   report_commands: 'Build / run commands',
-  report_migrated_auto: 'This report was auto-reconstructed by `ari migrate node-reports`. Some fields may be incomplete.',
   settings_lang: 'Dashboard Language',
   wiz_goal_title: 'Describe your research goal',
   wiz_scope_title: 'Experiment Scope',

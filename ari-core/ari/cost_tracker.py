@@ -73,6 +73,11 @@ class CallRecord:
     backend: str | None = None        # "letta" | None
     embedding_tokens: int = 0
     latency_ms: float | None = None
+    # "ok" | "failed". A call that errored still SENT its prompt, so its tokens
+    # were spent; booking only successes under-reports what a run consumed and
+    # silently hides retry storms. ``error`` carries the exception type name.
+    status: str = "ok"
+    error: str | None = None
 
 class CostTracker:
     """Thread-safe per-experiment cost tracker."""
@@ -100,6 +105,10 @@ class CostTracker:
                         continue
                     try:
                         d = json.loads(line)
+                        # Reconstruct EVERY field. Restoring only a subset means a
+                        # re-init (pipeline after cli) silently rewrites the summary
+                        # from lossy records — and would resurrect failed calls as
+                        # ``status="ok"``, the exact miscount this file now guards.
                         self._records.append(CallRecord(
                             timestamp=d.get("timestamp", ""),
                             node_id=d.get("node_id", ""),
@@ -110,6 +119,13 @@ class CostTracker:
                             completion_tokens=d.get("completion_tokens", 0),
                             total_tokens=d.get("total_tokens", 0),
                             estimated_cost_usd=d.get("estimated_cost_usd", 0.0),
+                            component=d.get("component"),
+                            op=d.get("op"),
+                            backend=d.get("backend"),
+                            embedding_tokens=d.get("embedding_tokens", 0),
+                            latency_ms=d.get("latency_ms"),
+                            status=d.get("status", "ok"),
+                            error=d.get("error"),
                         ))
                     except (json.JSONDecodeError, KeyError):
                         continue
@@ -121,7 +137,8 @@ class CostTracker:
                component: str | None = None, op: str | None = None,
                backend: str | None = None, embedding_tokens: int = 0,
                latency_ms: float | None = None,
-               cost_usd: float | None = None) -> None:
+               cost_usd: float | None = None,
+               status: str = "ok", error: str | None = None) -> None:
         # Trust an authoritative upstream cost when provided (e.g. the CLI shim
         # forwards claude -p's ``total_cost_usd``). litellm's pricing table has
         # no entry for synthetic shim models like "claude-cli", so without this
@@ -139,6 +156,7 @@ class CostTracker:
             estimated_cost_usd=cost,
             component=component, op=op, backend=backend,
             embedding_tokens=embedding_tokens, latency_ms=latency_ms,
+            status=status, error=error,
         )
         with self._lock:
             self._records.append(rec)
@@ -163,10 +181,22 @@ class CostTracker:
             by_model.setdefault(r.model, {"cost_usd": 0.0, "tokens": 0})
             by_model[r.model]["cost_usd"] += r.estimated_cost_usd
             by_model[r.model]["tokens"] += r.total_tokens
+        # Failed calls are counted in the totals — the tokens were spent — but
+        # reported separately as well. Folding them in silently would make a run
+        # that burnt its budget on retries indistinguishable from one that did
+        # the same work cleanly; dropping them would under-report what it cost.
+        failed = [r for r in records if r.status != "ok"]
         summary = {
             "total_cost_usd": round(total_cost, 6),
             "total_tokens": total_tokens,
             "call_count": len(records),
+            "failed_call_count": len(failed),
+            "failed_tokens": sum(r.total_tokens for r in failed),
+            "by_status": {
+                s: {"calls": sum(1 for r in records if r.status == s),
+                    "tokens": sum(r.total_tokens for r in records if r.status == s)}
+                for s in sorted({r.status for r in records})
+            },
             "by_phase": {k: {"cost_usd": round(v["cost_usd"], 6), "tokens": v["tokens"]}
                          for k, v in by_phase.items()},
             "by_model": {k: {"cost_usd": round(v["cost_usd"], 6), "tokens": v["tokens"]}
@@ -436,13 +466,70 @@ def _litellm_success_handler(kwargs, response_obj, start_time, end_time):
         pass  # Never break the LLM call due to tracking errors
 
 
+def _prompt_tokens_from_request(kwargs) -> int:
+    """Tokens the request actually SENT, counted from the messages.
+
+    A failed call has no ``usage`` to read, but the prompt still went over the
+    wire and was still spent. Counting it here is what makes "tokens this run
+    needed" answerable; returning 0 would book a burnt call as free.
+    """
+    try:
+        import litellm
+        return int(litellm.token_counter(
+            model=kwargs.get("model", "") or "",
+            messages=kwargs.get("messages") or [],
+        ) or 0)
+    except Exception:
+        return 0
+
+
+def _litellm_failure_handler(kwargs, response_obj, start_time, end_time):
+    """litellm failure_callback: book the calls that errored.
+
+    Without this the trace holds successes only, so a run that burnt half its
+    budget on timeouts and retries reports the half that happened to return.
+    Recorded with ``status="failed"`` rather than mixed into the successes: the
+    tokens were spent, but nothing was received for them.
+    """
+    if _tracker is None:
+        return
+    try:
+        usage = getattr(response_obj, "usage", None)
+        prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
+        completion_tokens = getattr(usage, "completion_tokens", 0) or 0
+        if prompt_tokens == 0:
+            # The usual case: the provider errored before returning usage.
+            prompt_tokens = _prompt_tokens_from_request(kwargs)
+        model = kwargs.get("model", "") or ""
+        lp = kwargs.get("litellm_params", {}) or {}
+        metadata = (lp.get("metadata") or kwargs.get("metadata") or {})
+        exc = kwargs.get("exception")
+        _tracker.record(
+            model=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            phase=metadata.get("phase", "") or "",
+            skill=metadata.get("skill", "") or "",
+            node_id=metadata.get("node_id", "") or "",
+            status="failed",
+            error=type(exc).__name__ if exc is not None else "unknown",
+        )
+    except Exception:
+        pass  # Never break the LLM call path due to tracking errors
+
+
 def _install_litellm_callback():
-    """Register the global litellm callback (idempotent)."""
+    """Register the global litellm callbacks (idempotent)."""
     try:
         import litellm
         if litellm.success_callback is None:
             litellm.success_callback = []
         if _litellm_success_handler not in litellm.success_callback:
             litellm.success_callback.append(_litellm_success_handler)
+        # Failures are booked too — see _litellm_failure_handler.
+        if litellm.failure_callback is None:
+            litellm.failure_callback = []
+        if _litellm_failure_handler not in litellm.failure_callback:
+            litellm.failure_callback.append(_litellm_failure_handler)
     except ImportError:
         pass

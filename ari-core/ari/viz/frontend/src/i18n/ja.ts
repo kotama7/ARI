@@ -293,7 +293,6 @@ const ja: Record<string, string> = {
   report_files_changed: '変更ファイル',
   report_no_changes: '(ソースファイルの追加・変更なし)',
   report_commands: 'ビルド / 実行コマンド',
-  report_migrated_auto: 'このレポートは `ari migrate node-reports` で自動再構築されたものです。一部フィールドは不完全な可能性があります。',
   settings_lang: 'ダッシュボード言語',
   wiz_goal_title: '研究目標を入力してください',
   wiz_scope_title: '実験スコープ',

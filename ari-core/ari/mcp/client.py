@@ -270,10 +270,33 @@ class MCPClient:
         "consolidate_node_memory",
     })
 
-    def __init__(self, skills: list[SkillConfig], disabled_tools: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        skills: list[SkillConfig],
+        disabled_tools: list[str] | None = None,
+        allowed_tools: list[str] | None = None,
+    ) -> None:
         import threading as _t
         self.skills = skills
         self.disabled_tools: set[str] = set(disabled_tools or [])
+        # Optional strict allowlist: when non-empty, ONLY these tool names are
+        # exposed to the agent (everything else is hidden regardless of which
+        # skills are loaded). Used by the handoff study to pin the agent to a
+        # minimal HPC-coding toolset (write_code/run_code/run_bash/read_file/
+        # emit_results) so the deterministic task is not confounded by memory /
+        # ideation / paper tools.
+        self.allowed_tools: set[str] = set(allowed_tools or [])
+        # Handoff-study memory gate: when memory is off (ARI_HANDOFF_MEMORY_OFF),
+        # suppress ALL memory WRITES too — not just recall/injection. The loop
+        # otherwise records tool traces / result summaries / experiment_result /
+        # reflection into node memory (via the CoW-guarded write tools) even
+        # though recall is off and nothing is ever read back, leaving stray
+        # memory_access.jsonl artifacts in the run checkpoint. Skipping the
+        # writes keeps a memory_off run's memory genuinely empty.
+        import os as _os
+        self._memory_off: bool = (
+            _os.environ.get("ARI_HANDOFF_MEMORY_OFF", "") == "1"
+        )
         self._connections: dict[str, _SkillConnection] = {}
         self._conn_lock = _t.Lock()
         # Serialises (_set_current_node, memory write) pairs across
@@ -303,6 +326,9 @@ class MCPClient:
         # Filter by disabled_tools
         if self.disabled_tools:
             tools = [t for t in tools if t["name"] not in self.disabled_tools]
+        # Strict allowlist (when set): expose ONLY these tools to the agent.
+        if self.allowed_tools:
+            tools = [t for t in tools if t["name"] in self.allowed_tools]
         # Filter by phase. Skill `phase` may be a string or a list; matching is
         # any-of with "all" as wildcard.
         if phase is not None:
@@ -351,6 +377,12 @@ class MCPClient:
         env var (set by ``_set_current_node``) is racy and one node's
         write can be rejected by another node's set.
         """
+        if getattr(self, "_memory_off", False) and tool_name in self._COW_TOOLS:
+            # memory_off run: skip the write (and its _set_current_node pair)
+            # entirely. Return a benign success stub so the framework's
+            # try/except + success paths are unaffected and no node memory is
+            # written. Non-memory tools and memory-on runs are untouched.
+            return {"result": '{"status": "skipped", "reason": "memory_off"}'}
         if cow_node_id and tool_name in self._COW_TOOLS:
             with self._cow_lock:
                 self._call_tool_unlocked(

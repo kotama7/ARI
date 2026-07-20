@@ -104,7 +104,9 @@ def _is_blocklisted(path: Path, *, root: Path) -> bool:
         return True
     if rel.name in _FILES_CHANGED_BLOCKLIST_NAMES:
         return True
-    if PathManager.is_meta_file(rel.name):
+    # node scope: *root* is the node's work_dir (see the caller), so the
+    # agent's results.json / *.log belong in files_changed.
+    if PathManager.is_meta_file(rel.name, scope="node"):
         return True
     for part in rel.parts[:-1]:
         if part in _FILES_CHANGED_BLOCKLIST_DIRS:
@@ -144,7 +146,7 @@ def compute_files_changed(
     """
     added: list[dict] = []
     modified: list[dict] = []
-    deleted: list[str] = []
+    deleted: list[dict] = []
     inherited: list[dict] = []
 
     child_root = Path(child_work_dir)
@@ -184,7 +186,7 @@ def compute_files_changed(
 
     for rel in sorted(parent_files):
         if rel not in child_files:
-            deleted.append(rel)
+            deleted.append({"path": rel})
 
     return {
         "added": added,
@@ -228,13 +230,48 @@ def _looks_like_shebang_or_directive(line: str) -> bool:
         or s.startswith("shopt ")
     ):
         return True
-    # Bare variable assignment, e.g. ``CXX=${CXX:-g++}``, ``CXXFLAGS="..."``.
-    # Without this, lines that merely set up env vars but happen to contain
-    # build keywords like ``g++`` get mis-classified as build_command and
-    # the actual compile + execute lines are skipped (Bug 3b).
-    if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", s):
+    # Bare variable assignment, e.g. ``CXX=${CXX:-g++}``, ``CXXFLAGS="..."``, and
+    # Makefile-style ``CC ?= cc`` / ``CFLAGS := ...`` / ``X += ...``. Without this,
+    # such lines (which merely set env/Make vars) get mis-classified as the build
+    # or run command and the actual command is skipped (Bug 3b / the ``CC ?= cc``
+    # run_command bug).
+    if re.match(r"^[A-Za-z_][A-Za-z0-9_]*\s*[:?+]?=", s):
         return True
     return False
+
+
+def _extract_from_makefile(text: str) -> tuple[str, str]:
+    """Extract (build, run) as ``make <target>`` invocations from a Makefile.
+
+    A Makefile is NOT a shell script: variable assignments (``CC ?= cc``),
+    target headers (``candidate: dep``) and TAB-indented recipes are not
+    standalone commands. We collect the phony/build targets and express build/run
+    as ``make <target>`` — e.g. build ``make candidate``, run ``make check``.
+    """
+    targets: list[str] = []
+    for raw in text.splitlines():
+        if not raw or raw[0] in ("\t", " ", "#"):  # recipe / indented / comment
+            continue
+        # ``name:`` target header, but NOT ``name :=`` (a Make assignment).
+        m = re.match(r"^([A-Za-z_][A-Za-z0-9_.\-]*)\s*:(?!=)", raw)
+        if m:
+            t = m.group(1)
+            if not t.startswith(".") and t not in targets:
+                targets.append(t)
+    if not targets:
+        return ("", "")
+
+    def _pick(prefs: tuple[str, ...]) -> str:
+        for p in prefs:
+            if p in targets:
+                return p
+        return ""
+
+    build_t = _pick(("candidate", "all", "build")) or targets[0]
+    run_t = _pick(("run", "check", "selftest"))
+    build = f"make {build_t}" if build_t else ""
+    run = f"make {run_t}" if run_t else ""
+    return (build, run)
 
 
 def extract_build_run_commands(work_dir: Path) -> tuple[str, str]:
@@ -262,6 +299,17 @@ def extract_build_run_commands(work_dir: Path) -> tuple[str, str]:
     for path in candidates:
         text = _read_text_safe(path)
         if not text:
+            continue
+        # A Makefile is parsed structurally (targets -> ``make <target>``), not
+        # line-by-line: its variable assignments and recipes are not commands.
+        if path.name.lower() in ("makefile", "gnumakefile"):
+            _mb, _mr = _extract_from_makefile(text)
+            if not build and _mb:
+                build = _mb
+            if not run and _mr:
+                run = _mr
+            if build and run:
+                break
             continue
         for raw in text.splitlines():
             line = raw.strip()
@@ -426,12 +474,12 @@ def _artifact_to_record(artifact: Any, work_dir: Path) -> dict | None:
             or ""
         )
         if not name:
-            # Inline result blob with no filename — represent as an unknown
-            # placeholder so downstream code sees something.
-            return {
-                "filename": str(artifact.get("type", "result")),
-                "role": "unknown",
-            }
+            # Inline result blob (e.g. ``{"type":"result","stdout":...}``) — this
+            # is captured stdout, NOT a produced file. Drop it: ``artifacts`` must
+            # list only real on-disk files (the stdout lives in what_was_done /
+            # evaluator_reason). Without this, every node showed a phantom
+            # ``{"filename":"result","role":"unknown"}`` with no backing file.
+            return None
         rec = {
             "filename": name,
             "role": classify_artifact_role(name, work_dir),
@@ -488,7 +536,6 @@ def build_node_report(
     eval_result: dict | None = None,
     delta_vs_parent: str | None = None,
     what_was_done: str | None = None,
-    migration_source: str = "fresh",
 ) -> dict:
     """Construct a node_report dict for *node* by gathering everything we know.
 
@@ -509,10 +556,35 @@ def build_node_report(
     status_value = str(status_value or "")
 
     files_changed = compute_files_changed(parent_work_dir, work_dir)
+    # Attach the agent's own light per-file explanation (finish JSON ``file_notes``)
+    # to each changed entry, matched by path. Best-effort: files the agent did not
+    # note simply carry no ``note`` (the diff itself is authoritative).
+    _file_notes = getattr(node, "file_notes", None) or {}
+    if _file_notes:
+        for _bucket in ("added", "modified", "deleted"):
+            for _entry in files_changed.get(_bucket, []):
+                _note = _file_notes.get(_entry.get("path"))
+                if isinstance(_note, str) and _note.strip():
+                    _entry["note"] = _note.strip()
 
     self_assessment, next_steps = derive_self_assessment_from_evaluator(
         eval_result or {}, node,
     )
+    # Prefer the agent's OWN self-reviewed next steps (LLM self-review). Under the
+    # deterministic scorer the evaluator emits no graded axes, so the axis-derived
+    # ``next_steps`` above is empty; the agent's self-review is the real source.
+    _agent_next = [str(s).strip() for s in (getattr(node, "agent_next_steps", []) or []) if str(s).strip()]
+    if _agent_next:
+        next_steps = _agent_next
+    # self_assessment is the node's OWN assessment (LLM self-review): headline =
+    # the agent's summary; concerns = the agent's self-flagged caveats. ``succeeded``
+    # stays the deterministic has_real_data ground truth (objective, non-gameable).
+    # The evaluator's terse reason ("ok") lives in ``evaluator_reason``, so we do not
+    # duplicate it here as a misleading headline that contradicts succeeded.
+    self_assessment["headline"] = (getattr(node, "agent_summary", "") or "").strip()
+    _agent_concerns = [str(c).strip() for c in (getattr(node, "agent_concerns", []) or []) if str(c).strip()]
+    if _agent_concerns:
+        self_assessment["concerns"] = _agent_concerns
 
     artifacts_in = list(getattr(node, "artifacts", []) or [])
     artifacts_out: list[dict] = []
@@ -521,17 +593,43 @@ def build_node_report(
         if rec is not None:
             artifacts_out.append(rec)
 
-    build_cmd, run_cmd = extract_build_run_commands(work_dir)
-
-    # Run-environment capture: where did this node's tool calls actually run?
-    # Populated by ari.agent.run_env (writes _run_env.json from inside the
-    # executing process — slurm_submit on the compute node, run_bash locally).
-    # Empty dict means no skill captured anything (older runs, dry-run, etc.).
+    # Auto-capture PRODUCED output files from the work_dir. The agent rarely
+    # DECLARES its outputs, so ``artifacts`` was empty even when e.g.
+    # ``selftest_out.txt`` / ``*.csv`` / plots existed on disk. Include only
+    # produced-OUTPUT roles (data_output / log / figure) so scaffolding source
+    # (.c/.h/Makefile/.md -> "unknown"), compiled binaries, ``.o`` build junk,
+    # and ARI-internal JSON (node_report/results/... -> "unknown") are all
+    # excluded. Top-level only (skips the uploads/ subdir); deduped against the
+    # agent-declared list.
+    _declared = {r.get("filename") for r in artifacts_out if isinstance(r, dict)}
     try:
-        from ari.agent.run_env import read_run_env as _read_run_env
-        run_env = _read_run_env(work_dir) or {}
-    except Exception:
-        run_env = {}
+        for _f in sorted(work_dir.iterdir()):
+            if not _f.is_file():
+                continue
+            _nm = _f.name
+            # Skip dot-files and ARI-internal ``_``-prefixed files (e.g.
+            # _run_env.json) as well as declared/meta files. ``scope="node"``:
+            # work_dir is this node's dir, so results.json / *.log here are the
+            # agent's own outputs, not ARI metadata.
+            if (_nm in _declared or _nm.startswith(".") or _nm.startswith("_")
+                    or PathManager.is_meta_file(_nm, scope="node")):
+                continue
+            if classify_artifact_role(_nm, work_dir) not in (
+                "data_output", "log", "figure"):
+                continue
+            _rec = {"filename": _nm,
+                    "role": classify_artifact_role(_nm, work_dir)}
+            try:
+                _rec["size"] = _f.stat().st_size
+                _rec["sha256"] = _sha256_file(_f)
+            except OSError:
+                pass
+            artifacts_out.append(_rec)
+            _declared.add(_nm)
+    except OSError:
+        pass
+
+    build_cmd, run_cmd = extract_build_run_commands(work_dir)
 
     metrics = dict(getattr(node, "metrics", {}) or {})
     if eval_result:
@@ -555,14 +653,10 @@ def build_node_report(
         "node_id": getattr(node, "id", ""),
         "parent_id": getattr(node, "parent_id", None),
         "ancestor_ids": list(getattr(node, "ancestor_ids", []) or []),
-        "label": label_value,
-        "raw_label": getattr(node, "raw_label", "") or "",
         "depth": int(getattr(node, "depth", 0) or 0),
         "status": status_value,
         "started_at": started_at,
         "completed_at": completed_at,
-        "original_direction": getattr(node, "original_direction", None)
-            or (eval_result.get("original_direction") if eval_result else None),
         "files_changed": files_changed,
         "what_was_done": what_was_done or "",
         "delta_vs_parent": delta_vs_parent or "",
@@ -574,18 +668,42 @@ def build_node_report(
         "artifacts": artifacts_out,
         "evaluator_reason": evaluator_reason,
         "trace_log_summary": _trace_log_summary(getattr(node, "trace_log", None)),
-        "migration_source": migration_source,
-        # Compute-resource provenance (PR-resource-capture). Empty when no
-        # tool wrote `_run_env.json` (legacy runs, dry-run, evaluation-only).
-        "executor": run_env.get("executor", "") or "",
-        "hostname": run_env.get("hostname", "") or "",
-        "slurm_job_id": run_env.get("slurm_job_id", "") or "",
-        "slurm_partition": run_env.get("slurm_partition", "") or "",
-        "slurm_nodelist": run_env.get("slurm_nodelist", "") or "",
-        "cpu_info": dict(run_env.get("cpu_info") or {}),
-        "mem_total_kb": int(run_env.get("mem_total_kb") or 0) or 0,
-        "compilers": dict(run_env.get("compilers") or {}),
     }
+    # (1) label / raw_label / original_direction — ALWAYS emitted. An
+    # ``ARI_REPORT_MINIMAL`` switch used to strip these from the report while the
+    # label kept steering the search (NODE ROLE in the system prompt, the child's
+    # task line, and diversity_bonus in node selection). Suppressing a LIVE variable
+    # from the record does not make it inert — it only removes the evidence, which
+    # is how a label confound survived an entire 4-arm study undetected (the
+    # ABLATION share of children ran 0/1/3/4 across arms, invisible in the
+    # deliverable). Remove a variable's influence by turning the FEATURE off
+    # (``ARI_BFTS_NO_LABEL``); never hide a live one.
+    # ONE switch governs the whole label feature. ``ARI_BFTS_NO_LABEL`` already
+    # turns the label OFF at every use site (system-prompt role, child task line,
+    # frontier selection); it now ALSO stops the label from being RECORDED here.
+    # The old warning — "never hide a LIVE variable" — does not apply: under
+    # NO_LABEL the label drives nothing, so it is an inert field, and recording an
+    # inert tag only invited the confusion of "the feature is off yet the label
+    # still shows up". No separate ARI_REPORT_MINIMAL is needed for this.
+    from ari.agent.loop import labels_disabled as _labels_off
+    if _labels_off():
+        report["label"] = ""
+        report["raw_label"] = ""
+        report["original_direction"] = None
+    else:
+        report["label"] = label_value
+        report["raw_label"] = getattr(node, "raw_label", "") or ""
+        report["original_direction"] = getattr(node, "original_direction", None)
+    # (2) Compute-environment provenance — AGENT-AUTHORED, not auto-scraped. The
+    # framework no longer reads _run_env.json and embeds machine info here (that
+    # leaked the hostname/partition into the deliverable). Instead the agent,
+    # having queried the real env via the `describe_environment` tool, records a
+    # free-text note of the toolchain/hardware it used (grounded in tool output,
+    # anti-fabrication — see loop.py `_ground_environment`). So the agent chooses
+    # what to disclose; no hostname/partition is embedded automatically.
+    _env = str(getattr(node, "agent_environment", "") or "").strip()
+    if _env:
+        report["environment"] = _env
     return report
 
 
@@ -597,7 +715,6 @@ def write_node_report(
     eval_result: dict | None = None,
     delta_vs_parent: str | None = None,
     what_was_done: str | None = None,
-    migration_source: str = "fresh",
 ) -> Path:
     """Build and write `node_report.json` into *work_dir*.
 
@@ -616,7 +733,6 @@ def write_node_report(
             eval_result=eval_result,
             delta_vs_parent=delta_vs_parent,
             what_was_done=what_was_done,
-            migration_source=migration_source,
         )
         out_path.write_text(json.dumps(report, indent=2, ensure_ascii=False))
         # Update the node's pointer field if it has one.
@@ -635,12 +751,10 @@ def write_node_report(
                 "node_id": getattr(node, "id", ""),
                 "status": "error",
                 "error": str(exc),
-                "migration_source": migration_source,
                 "files_changed": {"added": [], "modified": [], "deleted": [], "inherited_unchanged": []},
                 "metrics": {},
                 "artifacts": [],
                 "depth": int(getattr(node, "depth", 0) or 0),
-                "label": "other",
             }, indent=2))
         except Exception:
             pass

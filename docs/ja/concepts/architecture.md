@@ -219,7 +219,6 @@ BFTS expand() (ari/orchestrator/bfts.py)
     - build_command / run_command — work_dir 内の run_job.sh / Makefile を grep
     - artifacts[].role — 拡張子から決定論的に分類 (data_output / log / binary /
       figure / unknown)
-    - migration_source ("fresh" or "auto")
   PathManager.META_FILES に node_report.json を追加してあるので、親→子の物理
   work_dir コピーで親レポートを子が継承することはない。
 

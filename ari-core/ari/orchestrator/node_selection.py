@@ -48,10 +48,6 @@ def contributes_code(node: dict, report: dict | None) -> bool:
     """
     if not report:
         return True  # legacy fallback — be conservative.
-    if report.get("migration_source") == "auto":
-        # Auto-reconstructed reports are not trustworthy enough to *exclude*
-        # nodes; treat as conservative-include (FR-NS-FALLBACK-2).
-        return True
     fc = report.get("files_changed") or {}
     return bool(fc.get("added") or fc.get("modified"))
 

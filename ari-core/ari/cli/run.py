@@ -287,6 +287,18 @@ def run(
         # Best-effort raw name for UI labels: strip the leading timestamp.
         _raw_name = _re_t2.sub(r"^\d{14}_", "", _adopted_run_id) or experiment.stem
         _slug = _raw_name
+    elif os.environ.get("ARI_HANDOFF_MODE"):
+        # Handoff study: name the run by TASK + inheritance CHANNEL (arm) + seed so
+        # the run dir says WHAT was inherited (code_only / code_plus_summary / …),
+        # not the goal slug which is identical across all four arms. This also
+        # de-collides same-second run_ids across arms/seeds (each arm/seed differs).
+        _task = os.environ.get("ARI_TASK", "task")
+        _arm = os.environ.get("ARI_HANDOFF_MODE", "arm")
+        _seed = os.environ.get("ARI_SEED", "0")
+        _slug = _re_t2.sub(r"[^A-Za-z0-9]+", "_", f"{_task}_{_arm}_seed{_seed}").strip("_")
+        _raw_name = _slug
+        _ts = _dt.now().strftime("%Y%m%d%H%M%S")
+        run_id = f"{_ts}_{_slug}"
     else:
         # Build name from first meaningful line of the experiment text.
         # No specific format required - heading, plain text, anything works.
@@ -384,7 +396,12 @@ def run(
     except Exception:
         pass
     _, _, mcp, bfts, agent, _ = build_runtime(cfg, experiment_text, checkpoint_dir=checkpoint_dir)
-    root = Node(id=f"node_{run_id}_root", parent_id=None, depth=0)
+    # Short hex id like child nodes (which use ``node_<hex8>``), keeping only the
+    # ``_root`` marker — the old ``node_{run_id}_root`` embedded the full goal
+    # slug, duplicating the parent ``experiments/{run_id}/`` dir and producing a
+    # needlessly long directory name. Root is identified by ``depth == 0`` /
+    # ``parent_id is None``, never by this id string.
+    root = Node(id=f"node_{uuid.uuid4().hex[:8]}_root", parent_id=None, depth=0)
     root.name = f"root: {_raw_name[:100]}"
     all_nodes = [root]
     pending = [root]

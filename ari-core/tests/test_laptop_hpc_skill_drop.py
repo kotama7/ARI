@@ -70,9 +70,10 @@ def test_core_build_runtime_applies_filter(monkeypatch):
     captured = {}
 
     class _StubMCP:
-        def __init__(self, skills, disabled_tools=None):
+        def __init__(self, skills, disabled_tools=None, allowed_tools=None):
             captured["skill_names"] = [getattr(s, "name", "") for s in skills]
             captured["disabled"] = list(disabled_tools or [])
+            captured["allowed"] = list(allowed_tools or [])
 
         def list_tools(self, phase=None):
             return []

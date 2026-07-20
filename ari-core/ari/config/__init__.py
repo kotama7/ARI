@@ -521,6 +521,30 @@ class HandoffConfig(BaseModel):
         return self
 
 
+class EnvProbeConfig(BaseModel):
+    """Node-aware environment probing for multi-node / heterogeneous HPC.
+
+    On a LOGIN node, ARI srun-probes each of ``partitions`` (one node per
+    partition — hardware/toolchain heterogeneity is per-partition) to build a
+    whole-cluster catalog; on a COMPUTE node it probes only the local node.
+    Consumed by ``ari.agent.run_env.build_env_catalog``. The fields are bridged
+    to ``ARI_PROBE_PARTITIONS`` / ``ARI_PROBE_TIMEOUT_S`` (env wins via
+    ``setdefault``) so the env-based prober picks them up under a bare
+    ``ari run``, the same way the GUI launcher injects them.
+    """
+
+    partitions: list[str] = Field(
+        default_factory=list,
+        description="Partitions to srun-probe from a login node (one node "
+                    "each). Overridden by `ARI_PROBE_PARTITIONS` (comma-sep).",
+    )
+    timeout_s: int = Field(
+        120,
+        description="Max seconds to wait in the queue per partition probe "
+                    "before skipping it. Overridden by `ARI_PROBE_TIMEOUT_S`.",
+    )
+
+
 class ARIConfig(BaseModel):
     llm: LLMConfig = Field(
         default_factory=LLMConfig,
@@ -566,6 +590,11 @@ class ARIConfig(BaseModel):
         description="Generic resource defaults (cpus, memory_gb, gpus, "
                     "walltime, partition) used by the HPC skill when a "
                     "stage does not override them.",
+    )
+    env_probe: EnvProbeConfig = Field(
+        default_factory=EnvProbeConfig,
+        description="Node-aware environment probing for multi-node HPC "
+                    "(login: srun-probe each partition; compute: local only).",
     )
     model_config = {"extra": "allow"}  # Accept unknown top-level keys
 
@@ -761,6 +790,15 @@ def apply_bfts_env_overrides(cfg: "ARIConfig") -> None:
     _w = os.environ.get("ARI_BFTS_ALLOW_WEB")
     if _w is not None:
         cfg.bfts.allow_web = _w.strip().lower() in ("1", "true", "yes", "on")
+    # Per-node re-expansion cap. Set high (>= max_total_nodes) to effectively
+    # disable it so one parent can be re-expanded until the run-level budget is
+    # spent (the tree grows toward N instead of stopping at root + cap children).
+    _me = os.environ.get("ARI_BFTS_MAX_EXPANSIONS")
+    if _me is not None:
+        try:
+            cfg.bfts.max_expansions_per_node = int(_me)
+        except ValueError:
+            pass
     _apply_web_phase_for_bfts(cfg)
 
 
@@ -923,6 +961,16 @@ def export_resolved_config_to_skill_env(cfg: "ARIConfig") -> None:
             _part = str(_hpc.get("partition") or "").strip()
     if _part and _part.lower() != "auto":
         os.environ.setdefault("ARI_SLURM_PARTITION", _part)
+    # Node-aware env probe: export the configured partitions + queue-wait
+    # timeout so ``ari.agent.run_env.build_env_catalog`` (env-based) probes the
+    # whole heterogeneous cluster under a bare ``ari run``. setdefault => an
+    # explicit ARI_PROBE_* env still wins.
+    _ep = getattr(cfg, "env_probe", None)
+    if _ep is not None:
+        if getattr(_ep, "partitions", None):
+            os.environ.setdefault(
+                "ARI_PROBE_PARTITIONS", ",".join(str(p) for p in _ep.partitions))
+        os.environ.setdefault("ARI_PROBE_TIMEOUT_S", str(_ep.timeout_s))
 
 
 def _merge_bfts_disabled_tools(cfg: "ARIConfig", raw: dict) -> None:

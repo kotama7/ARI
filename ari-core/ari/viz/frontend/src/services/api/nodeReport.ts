@@ -3,13 +3,16 @@
 import { get } from './client';
 
 export interface NodeReportFilesChanged {
-  added: Array<{ path: string; sha256?: string }>;
+  // `note` is the agent's optional one-line explanation of the file (finish
+  // JSON `file_notes`), grafted on by the node_report builder.
+  added: Array<{ path: string; sha256?: string; note?: string }>;
   modified: Array<{
     path: string;
     sha256_before?: string;
     sha256_after?: string;
+    note?: string;
   }>;
-  deleted: string[];
+  deleted: Array<{ path: string; note?: string }>;
   inherited_unchanged: Array<{ path: string; from_node_id?: string }>;
 }
 
@@ -47,7 +50,6 @@ export interface NodeReport {
   }>;
   evaluator_reason?: string;
   trace_log_summary?: string;
-  migration_source?: 'fresh' | 'auto';
 }
 
 export interface NodeReportResponse {

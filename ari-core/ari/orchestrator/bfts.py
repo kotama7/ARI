@@ -291,7 +291,19 @@ class BFTS:
         - 0.0 otherwise.
 
         This is intentionally soft: scientific_score still dominates ranking.
+
+        SITE 3/3 of the label feature (see ``ari.agent.loop.labels_disabled``). This
+        is the site nobody expects: the default frontier score is
+        ``scientific_plus_diversity``, so WHICH node gets expanded depends on the
+        label history. A study that believed it had "turned labels off" (by a
+        record-suppression flag, since removed) was still having its search steered
+        here. With ``ARI_BFTS_NO_LABEL`` the feature is off, so selection must not
+        consult labels at all: return 0.0 and let ``_scientific_score`` alone rank
+        the frontier.
         """
+        from ari.agent.loop import labels_disabled as _labels_off
+        if _labels_off():
+            return 0.0
         with self._lock:
             history_snapshot = list(self._recent_label_history)
         if not history_snapshot:
@@ -652,6 +664,17 @@ class BFTS:
                 # I-6: regex-based fallback with word boundaries.
                 label = _infer_label_from_text(str(item), node.has_real_data)
                 direction_text = str(item)
+
+            # Study control (handoff ablation): derive the node label DETERMINISTICALLY
+            # from the direction (keyword inference) and DROP any LLM-proposed label, so
+            # no LLM-proposed label enters node_report / tree.json. The direction itself
+            # is unchanged. `ARI_BFTS_DETERMINISTIC_LABEL`.
+            import os as _os_dl
+            if _os_dl.environ.get("ARI_BFTS_DETERMINISTIC_LABEL", "").strip().lower() in (
+                "1", "true", "yes", "on",
+            ):
+                label = _infer_label_from_text(str(direction_text), node.has_real_data)
+                raw_label_text = ""
 
             # Study control (handoff ablation): give EVERY child the same neutral
             # direction so the planner's varied labels (improve / ablate / draft)

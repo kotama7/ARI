@@ -377,7 +377,17 @@ class PathManager:
         which preserves backward compatibility with config.yaml defaults.
     """
 
-    # Files that are ARI metadata — never copied into node work dirs.
+    # Names that are ARI metadata AT THE CHECKPOINT / RUN LEVEL — never copied
+    # into node work dirs.
+    #
+    # NB: this is a BASENAME list, so a name here is also claimed inside a node's
+    # work_dir. For most entries that is what we want (ARI writes node_report.json
+    # / full_log.json straight into the node dir). ``results.json`` is the
+    # exception: ARI writes ``{checkpoint_dir}/results.json`` (checkpoint.py), but
+    # the AGENT is told by the ``emit_results`` tool to write its own
+    # ``results.json`` deliverable inside its node work_dir — and the claim gate
+    # reads it back from there (pipeline/claim_gate/resolve.py). Same basename,
+    # two different directories, opposite meanings. See NODE_VISIBLE_NAMES.
     META_FILES: frozenset[str] = frozenset({
         "experiment.md",
         "launch_config.json",
@@ -394,6 +404,12 @@ class PathManager:
         # Additive metadata — never copied into node work dirs.
         "prompt_trace.jsonl",
         "prompt_versions.json",
+        # Run provenance: which harness (+ verified digests), which ARI commit,
+        # which measurement knobs. MUST be metadata, or the checkpoint->node copy
+        # hands every node the scoring configuration it is being judged by — the
+        # TARGET it must hit, the scale, and the harness's location. A record of
+        # how a node is scored is not an input to that node.
+        "provenance.json",
         "workflow.yaml",
         "ari.log",
         ".ari_pid",
@@ -408,10 +424,27 @@ class PathManager:
         # Per-node self-report. Each child must generate its own; never
         # inherit the parent's via the work_dir physical-copy data path.
         "node_report.json",
+        # Per-node full ReAct execution log, written at the node's completion
+        # (its own trace_log). Like node_report.json, each node writes its own
+        # and it is NEVER inherited into children via the work_dir copy.
+        "full_log.json",
     })
 
     # File extensions that are ARI internal — never copied into node work dirs.
     META_EXTENSIONS: frozenset[str] = frozenset({".log"})
+
+    # Names/extensions that are metadata at the checkpoint level but are a
+    # legitimate AGENT DELIVERABLE inside a node's work_dir. ``scope="node"``
+    # un-claims them.
+    #
+    # Measured on a real 40-node study: the only META-classified basenames that
+    # ever appeared inside a node work_dir were node_report.json (x40) and
+    # full_log.json (x40) — both written by ARI, both must stay hidden — plus
+    # results.json (x17), written by the AGENT via emit_results. No ARI-written
+    # ``.log`` ever landed in a node dir (0 of 40), so a ``.log`` there is the
+    # agent's (e.g. a benchmark log it redirected).
+    NODE_VISIBLE_NAMES: frozenset[str] = frozenset({"results.json"})
+    NODE_VISIBLE_EXTENSIONS: frozenset[str] = frozenset({".log"})
 
     # Filename patterns (regex, full-match) that are ARI metadata.
     # Used in addition to META_FILES for rotated/timestamped variants.
@@ -582,11 +615,35 @@ class PathManager:
     # ── classification helpers ────────────────────────────────────────
 
     @classmethod
-    def is_meta_file(cls, filename: str) -> bool:
-        """Return True if *filename* is ARI metadata (should not be copied to nodes)."""
+    def is_meta_file(cls, filename: str, *, scope: str = "checkpoint") -> bool:
+        """Return True if *filename* is ARI metadata (should not be copied to nodes).
+
+        ``scope`` says WHICH directory the name was seen in, because the check is
+        basename-only and two directories disagree about some names:
+
+        - ``"checkpoint"`` (default): the run/checkpoint dir, where ARI's own
+          ``results.json`` etc. live. Every META name is metadata here.
+        - ``"node"``: a node's work_dir. ARI still owns node_report.json /
+          full_log.json here, but ``results.json`` is the AGENT's deliverable —
+          the ``emit_results`` tool tells it to write exactly that name, and the
+          claim gate reads it back. Treating it as metadata made the agent's own
+          declared results invisible in its record (0 of the 19 nodes that wrote
+          one) AND withheld it from the child's work_dir copy (only 3 of 10
+          children inherited it). Likewise a ``.log`` in a node dir is the
+          agent's benchmark output, not ARI's.
+        """
+        _, ext = os.path.splitext(filename)
+        if scope == "node" and filename in cls.NODE_VISIBLE_NAMES:
+            return False
+        # An EXACT ARI name always wins, even in node scope: ``ari.log`` is ARI's
+        # own log wherever it appears, and node_report.json / full_log.json are
+        # written by ARI straight into the node dir. Only the extension rule is
+        # relaxed below — that is what distinguishes the agent's ``bench.log``
+        # from ARI's ``ari.log``.
         if filename in cls.META_FILES:
             return True
-        _, ext = os.path.splitext(filename)
+        if scope == "node" and ext in cls.NODE_VISIBLE_EXTENSIONS:
+            return False
         if ext in cls.META_EXTENSIONS:
             return True
         return any(p.match(filename) for p in cls._META_PATTERNS)

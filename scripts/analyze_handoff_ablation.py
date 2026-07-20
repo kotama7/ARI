@@ -9,8 +9,14 @@ reports:
 
   * per-arm: success rate (runs with >=1 valid node) + geomean speedup with a
     run-level bootstrap CI;
-  * the PREREG primary contrast (code_plus_summary vs code_plus_full_log) as a
-    log-domain TOST equivalence test (margin = log(1.05));
+  * PRIMARY directional test (the paper's 主検定): the Jonckheere–Terpstra
+    ordered-alternative trend over a pre-specified increasing handoff-richness
+    chain (``ARI_HANDOFF_JT_ORDER``, default the nested chain), rank-based so it
+    is domain-invariant and EVERY run enters (invalid runs score 0);
+  * an EQUIVALENCE (parity) contrast — the nested ``code_plus_summary`` vs
+    ``code_plus_summary_plus_full_log`` (does the full log add value ON TOP of
+    the summary?) — as a native-domain TOST (log margin=log(1.05) for speedups,
+    absolute for [0,1] scores);
   * the other pairwise differences with Holm-adjusted TOST p-values.
 
 Pure analysis (no LLM/API). Writes ``analysis.json`` next to the manifest.
@@ -31,17 +37,27 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "ari-core"))
 
 from ari.evaluator.handoff_stats import (  # noqa: E402
-    geomean, summarize_arm, tost_equivalence, holm_adjust,
+    geomean, summarize_arm, tost_equivalence, holm_adjust, jonckheere_terpstra,
 )
 
-# Nested-arm primary contrast: does the full log add value ON TOP of the summary?
-# (code+summary  vs  code+summary+full_log). Override via ARI_HANDOFF_PRIMARY="a,b"
-# for the factorial variant (e.g. "code_plus_summary,code_plus_full_log").
 import os as _os
+# PRIMARY directional test (paper's 主検定): Jonckheere–Terpstra ordered-
+# alternative over a PRE-SPECIFIED increasing handoff-richness chain. The 2x2
+# factorial has no TOTAL order (code+summary and code+full_log are unordered),
+# so JT runs on the NESTED chain by default; the code+full_log cell is the
+# summary×log interaction, tested by the pairwise contrasts, not the trend.
+# Override the order (must match the amended pre-registration) via
+# ARI_HANDOFF_JT_ORDER="a,b,c[,d]".
+JT_ORDER = tuple(x for x in _os.environ.get(
+    "ARI_HANDOFF_JT_ORDER",
+    "code_only,code_plus_summary,code_plus_summary_plus_full_log").split(",") if x)
+# EQUIVALENCE (parity) contrast: does the full log add value ON TOP of the
+# summary? (code+summary vs code+summary+full_log). Override via
+# ARI_HANDOFF_PRIMARY="a,b".
 PRIMARY = tuple(_os.environ.get(
     "ARI_HANDOFF_PRIMARY",
     "code_plus_summary,code_plus_summary_plus_full_log").split(","))[:2]
-TOST_MARGIN = math.log(1.05)  # PREREG equivalence band half-width (log units)
+TOST_MARGIN = math.log(1.05)  # equivalence band half-width (log units)
 
 # Native scoring AXIS by task. Performance kernels score a speedup RATIO, so the
 # equivalence test runs in the log domain (margin = log(1.05)). The numerical
@@ -51,8 +67,11 @@ TOST_MARGIN = math.log(1.05)  # PREREG equivalence band half-width (log units)
 # wrong for a bounded score that compresses near 1.0, so those run in the LINEAR
 # domain with an absolute margin. We NEVER pool across these non-commensurable
 # axes (a mixed-task manifest is refused below).
-SCORE_TASKS = frozenset({"erfc", "meshpart"})
-SPEEDUP_TASKS = frozenset({"gemm", "spmm", "stencil"})
+# The task's native axis is DECLARED by its harness (harness.toml `axis`), not
+# named here: ARI ships no task, so a list here would silently misclassify any
+# newly registered one — and this is not a label. A score-shaped task read as
+# speedup-shaped gets its equivalence test run in the WRONG DOMAIN (log of a
+# [0,1] score, against a log(1.05) ratio margin).
 SCORE_TOST_MARGIN = float(_os.environ.get("ARI_SCORE_TOST_MARGIN", "0.05"))
 
 
@@ -159,7 +178,8 @@ def main() -> int:
                  f"across performance/numerical/combinatorial axes — analyze each "
                  f"task's sweep separately (the driver writes one --task per manifest).")
     task = tasks[0]
-    is_score = task in SCORE_TASKS
+    from ari.harness_registry import axis as _task_axis
+    is_score = _task_axis(task) == "score"
     axis_label = "score[0,1]" if is_score else "geomean speedup"
     tost_margin = SCORE_TOST_MARGIN if is_score else TOST_MARGIN
 
@@ -213,8 +233,29 @@ def main() -> int:
               f"  {a['child_improve']:>3}/{a['child_break']:<3}/{ct:<3}"
               f"  (imp {100*a['child_improve']/ct if ct else 0:.0f}% / brk {100*a['child_break']/ct if ct else 0:.0f}%)")
 
-    # PREREG primary contrast: equivalence (TOST) in log-speedup.
     contrasts = {}
+
+    # PRIMARY directional test (paper's 主検定): Jonckheere–Terpstra trend over
+    # the pre-specified increasing handoff-richness chain. RANK-based, so it is
+    # run in the native domain unchanged (log vs linear is irrelevant). EVERY run
+    # enters — invalid runs score 0 and rank lowest — so a validity-rate shift is
+    # part of the trend rather than silently dropped.
+    jt_order = [a for a in JT_ORDER if a in summary]
+    jt_groups = [summary[a].get("outcomes", []) for a in jt_order]
+    jt_res = None
+    if len([g for g in jt_groups if g]) >= 2 and sum(len(g) for g in jt_groups) >= 3:
+        jt_res = jonckheere_terpstra(jt_groups, alternative="increasing")
+        contrasts["primary_trend_jt"] = {**jt_res, "order": jt_order}
+        print(f"\nPRIMARY (Jonckheere–Terpstra trend, increasing, axis={axis_label}): "
+              f"{' < '.join(jt_order)}")
+        print(f"  J={jt_res['J']:.1f}  n/arm={jt_res['n_per_group']}  "
+              f"p(perm)={jt_res['p_perm']:.4f}  p(normal)={jt_res['p_normal']:.4f}  "
+              f"(every run counts; invalid=0)")
+    else:
+        print(f"\nPRIMARY (Jonckheere–Terpstra): insufficient data over "
+              f"{jt_order} — need >=2 non-empty ordered arms.")
+
+    # EQUIVALENCE (parity) contrast: TOST in the task's native domain.
     a_name, b_name = PRIMARY
     a = [x for x in summary.get(a_name, {}).get("outcomes", []) if x > 0]
     b = [x for x in summary.get(b_name, {}).get("outcomes", []) if x > 0]
@@ -225,11 +266,11 @@ def main() -> int:
         _mdesc = (f"mean diff={t['mean_diff']:+.4f} (score pts)" if is_score
                   else f"mean log-diff={t['mean_diff']:+.4f} (geomean ratio={math.exp(t['mean_diff']):.3f}x)")
         _margd = f"{tost_margin:.4f}" + ("" if is_score else "=log(1.05)")
-        print(f"\nPRIMARY (TOST equivalence, axis={axis_label}, margin={_margd}): "
+        print(f"\nEQUIVALENCE (TOST parity, axis={axis_label}, margin={_margd}): "
               f"{a_name} vs {b_name}")
         print(f"  {_mdesc}  equivalent={t['equivalent']}")
     else:
-        print(f"\nPRIMARY: insufficient valid runs (need >=2 each; have "
+        print(f"\nEQUIVALENCE (TOST): insufficient valid runs (need >=2 each; have "
               f"{len(a)} / {len(b)}) — add seeds.")
 
     # Secondary pairwise TOSTs (Holm-adjusted) for context. The PREREG primary

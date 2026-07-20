@@ -90,17 +90,14 @@ def _changed_files(rep: dict, max_items: int) -> list[str]:
 
 
 def _key_metrics(rep: dict) -> dict:
-    """Curated, operational-only metric subset (never machine provenance)."""
-    m = rep.get("metrics") or {}
-    out: dict[str, Any] = {}
-    for k in ("valid_geomean_speedup", "_scientific_score", "max_relative_error"):
-        if k in m:
-            out[k] = m[k]
-    # plus any per-family speedup_* entries
-    for k, v in m.items():
-        if str(k).startswith("speedup_"):
-            out[k] = v
-    return out
+    """FULL metric parity with node_report.json: every metric key, verbatim.
+
+    ``node_report.json``'s ``metrics`` carries only the deterministic scoring
+    quantities (``valid_geomean_speedup`` / ``_scientific_score`` / per-family
+    ``speedup_*`` / ``max_relative_error`` …) — NEVER machine provenance — so the
+    whole dict is safe to surface and matching it exactly avoids silently
+    dropping a per-family or auxiliary metric the parent recorded."""
+    return dict(rep.get("metrics") or {})
 
 
 def node_summary_view(
@@ -108,8 +105,8 @@ def node_summary_view(
     *,
     fields_enabled: Any = None,
     summary_form: str = "extractive",
-    max_list: int = 8,
-    max_chars: int = 240,
+    max_list: int = 100000,
+    max_chars: int = 100000,
 ) -> str:
     """Render a parent node's operational summary as bounded text for a child prompt.
 
@@ -124,24 +121,48 @@ def node_summary_view(
         enabled &= {"known_failures", "concerns"}
 
     node_id = str(rep.get("node_id") or "")
-    label = rep.get("label") or rep.get("raw_label") or ""
-    head = f"id={node_id[-8:] if node_id else '?'}"
-    if label:
-        head += f", task={label}"
+    # Show the id EXACTLY as the node is named on disk (minus the ``node_``
+    # prefix) so ``id=23326483_root`` matches ``node_23326483_root`` — the old
+    # ``node_id[-8:]`` chopped a root id to ``483_root``, which matched nothing.
+    _sid = node_id[5:] if node_id.startswith("node_") else node_id
+    head = f"id={_sid or '?'}"
     parts: list[str] = [f"Parent node summary ({head}):"]
 
-    # Operational scaffold (how-to-run): always present, not an ablation target.
+    # The summary matches every node_report.json field verbatim EXCEPT the BFTS
+    # exploration label (``label``/``raw_label``/``original_direction``) — an
+    # LLM-proposed tag that is a study CONFOUND kept OFF (see ``labels_disabled``);
+    # injecting it would re-arm the label channel — and bookkeeping ids/timestamps
+    # (the id is in the header). The ``environment`` field IS carried: it is the
+    # agent-authored toolchain/hardware note (compiler, flags, CPU, threads) and
+    # is REQUIRED for reproducibility of a speedup (hostname/partition are not
+    # auto-embedded — see node_report builder; the agent chooses what to disclose).
+
+    # Operational scaffold (how-to-run) + status + reproducibility env: always present.
+    _status = str(rep.get("status") or "").strip()
+    if _status:
+        parts.append(f"  status: {_status}")
+    _sa = rep.get("self_assessment") or {}
+    if "succeeded" in _sa:
+        parts.append(f"  succeeded: {bool(_sa.get('succeeded'))}")
     for cmd_key, lbl in (("build_command", "build"), ("run_command", "run")):
         v = (rep.get(cmd_key) or "").strip()
         if v:
             parts.append(f"  {lbl}_command: {_cap(v, max_chars)}")
+    _env = str(rep.get("environment") or "").strip()
+    if _env:
+        parts.append(f"  environment: {_cap(_env, max_chars)}")
 
     if "outcome" in enabled:
-        h = ((rep.get("self_assessment") or {}).get("headline") or "").strip()
+        # Prefer the agent's own narrative self-report (what_was_done) — the summary
+        # channel is meant to carry it (F8); fall back to the self_assessment headline,
+        # then the deterministic eval_summary.
+        h = (rep.get("what_was_done") or "").strip()
+        if not h:
+            h = ((rep.get("self_assessment") or {}).get("headline") or "").strip()
         if not h:
             h = (rep.get("eval_summary") or "").strip()
         if h:
-            parts.append(f"  outcome: {_cap(h, 400)}")
+            parts.append(f"  outcome: {_cap(h, max_chars)}")
     if "key_metrics" in enabled:
         km = _key_metrics(rep)
         if km:

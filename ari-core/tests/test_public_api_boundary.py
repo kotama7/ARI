@@ -82,7 +82,7 @@ _ALLOWED_EXACT = {"ari.public"}
 # the ``except ImportError`` fallback directly.
 _GRANDFATHERED: dict[str, set[int]] = {
     "ari-skill-coding/src/server.py": {569, 583},  # container + run_env fallbacks (deferred; lines shifted by the emit_results provenance field + point-of-emission contract feedback)
-    "ari-skill-coding/tests/test_server.py": {107},
+    "ari-skill-coding/tests/test_server.py": {249},  # ari.container patch (line shifted by the container-path + describe_environment + squeeze tests)
     "ari-skill-evaluator/src/server.py": {18},  # cost_tracker fallback (shifted by the logging import + module logger)
     "ari-skill-hpc/src/slurm.py": {211},  # run_env fallback
     "ari-skill-idea/src/server.py": {65, 614},  # cost_tracker fallback + ari.lineage (deferred; line shifted by the platform-constraint topic fold into generate_ideas)

@@ -94,6 +94,13 @@ def cmd_clone(
 
 def _safe_backup(checkpoint_dir: "Path | None") -> None:
     """On-exit backup wrapper — swallow errors so shutdown isn't blocked."""
+    import os as _os
+    if _os.environ.get("ARI_HANDOFF_MEMORY_OFF", "") == "1":
+        # memory_off run: memory writes are gated at the MCP client, so there is
+        # nothing to snapshot but the empty default core_seed. Skip the backup
+        # entirely to keep the run's checkpoint free of memory artifacts. The
+        # manual `ari memory backup` command is unaffected (explicit user intent).
+        return
     try:
         from ari.memory_cli import _do_backup
         _do_backup(Path(checkpoint_dir))

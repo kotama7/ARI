@@ -78,6 +78,19 @@ CODEX_BIN = os.environ.get("ARI_CLI_SHIM_CODEX_BIN", "codex")
 # Pass `claude --bare`: minimal mode (no CLAUDE.md/hooks/auto-memory). Strongly
 # cuts the per-call input-token overhead but forces ANTHROPIC_API_KEY auth.
 CLAUDE_BARE = os.environ.get("ARI_CLI_SHIM_CLAUDE_BARE", "0") == "1"
+# Plain-mode generation via the resident Claude Agent SDK (fresh, stateless
+# query() per request) instead of a cold `claude -p` subprocess. Keeps the
+# subscription auth of non-bare `claude -p` (unlike --bare, which needs an API
+# key) while cutting the per-call CLI cold-start latency roughly in half. Tools
+# are still delivered to the model as the prompt catalog; the SDK runs with no
+# native tools, so the reply is pure text parsed into OpenAI tool_calls exactly
+# as before. Only the plain (non-MCP, non-agent) path is routed through the SDK.
+USE_SDK = os.environ.get("ARI_CLI_SHIM_USE_SDK", "0") == "1"
+# Cap the SDK path's extended-thinking budget. Empty => SDK/model default
+# (Claude Code enables interleaved thinking by default, which adds latency);
+# "0" disables thinking entirely for the fastest per-call turnaround. Only
+# applied on the SDK plain path.
+_MAX_THINKING_TOKENS = os.environ.get("ARI_CLI_SHIM_MAX_THINKING_TOKENS", "").strip()
 # Permission mode for claude-cli-agent (claude --permission-mode ...).
 CLAUDE_AGENT_PERMISSION = os.environ.get(
     "ARI_CLI_SHIM_CLAUDE_AGENT_PERMISSION", "acceptEdits"
@@ -355,6 +368,88 @@ def _run(cmd: list[str], stdin_text: str, cwd: str) -> subprocess.CompletedProce
     )
 
 
+def _run_claude_sdk(
+    system: str, prompt: str, real_model: str | None, cwd: str,
+) -> tuple[str, dict]:
+    """Plain-mode generation via ``claude_agent_sdk.query`` (same contract as the
+    subprocess path: return ``(final_text, usage)``).
+
+    Stateless: a fresh query per request (no session resume), history stays
+    caller-side (ARI re-serializes the full window each call). Runs with NO
+    native tools — the OpenAI ``tools`` catalog is already embedded in ``prompt``
+    by the caller, so the model replies with the text tool-call protocol that
+    ``extract_tool_calls`` parses. Subscription auth is used (the SDK reads the
+    same credentials as non-bare ``claude -p``), so no API key is required.
+    """
+    import asyncio as _aio
+    from dataclasses import fields as _fields, is_dataclass as _isdc
+
+    try:
+        import claude_agent_sdk as _sdk
+    except ImportError as e:  # pragma: no cover - env-specific
+        raise RuntimeError(
+            "ARI_CLI_SHIM_USE_SDK=1 but claude-agent-sdk is not importable: "
+            f"{e}"
+        ) from e
+
+    opts_cls = _sdk.ClaudeAgentOptions
+    _avail = (
+        {f.name for f in _fields(opts_cls)} if _isdc(opts_cls)
+        else set(getattr(opts_cls, "__annotations__", {}))
+    )
+    _wanted = {
+        "max_turns": 1,
+        "allowed_tools": [],
+        "disallowed_tools": ["*"],
+        "permission_mode": "default",
+        "system_prompt": system or None,
+        "model": real_model or None,
+        "cwd": cwd,
+        # Skip CLAUDE.md / project settings for speed + a clean, uncontaminated
+        # prompt (the study agent must not inherit the host's instructions).
+        "setting_sources": [],
+        # Never leave a resumable transcript under the real HOME.
+        "extra_args": {"no-session-persistence": None},
+    }
+    if _MAX_THINKING_TOKENS != "":
+        # 0 disables extended thinking; a positive cap bounds it.
+        _wanted["max_thinking_tokens"] = int(_MAX_THINKING_TOKENS)
+    opts = opts_cls(**{k: v for k, v in _wanted.items() if k in _avail})
+    log.info(
+        "shim SDK query: model=%s cwd=%s stdin=%dB",
+        real_model or "<default>", cwd, len(prompt),
+    )
+    box: dict = {"text": "", "usage": {}}
+
+    async def _collect() -> None:
+        async for ev in _sdk.query(prompt=prompt, options=opts):
+            if type(ev).__name__ != "ResultMessage":
+                continue
+            box["text"] = str(getattr(ev, "result", "") or "")
+            if getattr(ev, "is_error", False):
+                raise RuntimeError(
+                    f"claude SDK reported is_error: {box['text'][:500]}"
+                )
+            u = getattr(ev, "usage", None) or {}
+            pt = (
+                int(u.get("input_tokens", 0) or 0)
+                + int(u.get("cache_creation_input_tokens", 0) or 0)
+                + int(u.get("cache_read_input_tokens", 0) or 0)
+            )
+            ct = int(u.get("output_tokens", 0) or 0)
+            box["usage"] = {
+                "prompt_tokens": pt,
+                "completion_tokens": ct,
+                "total_tokens": pt + ct,
+                "cost_usd": float(getattr(ev, "total_cost_usd", 0.0) or 0.0),
+            }
+
+    # Each HTTP request runs in its own thread with no running loop, so a fresh
+    # asyncio.run per call is safe and gives per-request isolation.
+    _aio.run(_aio.wait_for(_collect(), TIMEOUT))
+    return box["text"], box["usage"]
+
+
 def run_claude(
     system: str,
     prompt: str,
@@ -387,6 +482,12 @@ def run_claude(
     mcp_json_file: str | None = None
     use_mcp = bool(mcp_config and allowed_mcp_tools)
     debug_log = os.path.join(cwd, "claude_debug.log") if use_mcp else None
+
+    # Fast plain path: resident Agent SDK query instead of a cold `claude -p`
+    # subprocess. Only for the text-catalog protocol (no MCP tool loop, no
+    # agent mode) — those still need the CLI's stream-json / permission wiring.
+    if USE_SDK and not use_mcp and not agent:
+        return _run_claude_sdk(system, prompt, real_model, cwd)
 
     if use_mcp:
         cmd = [CLAUDE_BIN, "-p", "--output-format", "stream-json", "--verbose"]

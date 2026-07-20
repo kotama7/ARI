@@ -56,8 +56,6 @@ def _validate_minimal(report: dict) -> None:
     for art in report.get("artifacts", []):
         assert "filename" in art and "role" in art
         assert art["role"] in {"data_output", "log", "binary", "figure", "unknown"}
-    if "migration_source" in report:
-        assert report["migration_source"] in {"fresh", "auto"}
 
 
 # ── helpers ──────────────────────────────────────────────────────────────
@@ -105,7 +103,7 @@ def test_compute_files_changed_four_buckets(tmp_path: Path) -> None:
     added = {e["path"] for e in diff["added"]}
     modified = {e["path"] for e in diff["modified"]}
     inherited = {e["path"] for e in diff["inherited_unchanged"]}
-    deleted = set(diff["deleted"])
+    deleted = {e["path"] for e in diff["deleted"]}
 
     assert added == {"c.py"}
     assert modified == {"b.py"}
@@ -116,6 +114,59 @@ def test_compute_files_changed_four_buckets(tmp_path: Path) -> None:
     mod = diff["modified"][0]
     assert mod["sha256_before"] and mod["sha256_after"]
     assert mod["sha256_before"] != mod["sha256_after"]
+
+
+def test_file_notes_are_grafted_onto_files_changed(tmp_path: Path) -> None:
+    """The agent's finish-JSON ``file_notes`` land on the matching
+    files_changed entry (added/modified/deleted), so a reader knows what each
+    touched file is without opening it. Unlisted files simply carry no note."""
+    from ari.orchestrator.node_report import build_node_report
+
+    parent = tmp_path / "parent"
+    child = tmp_path / "child"
+    _write(parent / "kernel.c", "void k(){}\n")
+    _write(parent / "old.sh", "echo old\n")          # deleted on the child side
+    _write(child / "kernel.c", "void k(){/*fast*/}\n")  # modified
+    _write(child / "notes.csv", "a,b\n1,2\n")          # added, no note supplied
+
+    class _Node:
+        id = "n1"; parent_id = "p"; ancestor_ids: list = []
+        label = "draft"; raw_label = "draft"; depth = 1
+        status = "success"; created_at = ""; completed_at = ""
+        metrics: dict = {}; artifacts: list = []; trace_log = None
+        file_notes = {
+            "kernel.c": "blocked GEMM inner loop",
+            "old.sh": "superseded by the Makefile",
+        }
+
+    rep = build_node_report(node=_Node(), work_dir=child, parent_work_dir=parent,
+                            eval_result=None, delta_vs_parent="", what_was_done="")
+    fc = rep["files_changed"]
+    assert {e["path"]: e.get("note") for e in fc["modified"]} == {
+        "kernel.c": "blocked GEMM inner loop"}
+    assert {e["path"]: e.get("note") for e in fc["deleted"]} == {
+        "old.sh": "superseded by the Makefile"}
+    # added file the agent did not note -> present, but no note key
+    _added = {e["path"]: e for e in fc["added"]}
+    assert "notes.csv" in _added and "note" not in _added["notes.csv"]
+
+
+def test_files_changed_without_file_notes_has_no_note_keys(tmp_path: Path) -> None:
+    """No agent notes (older nodes / agent omitted them) -> entries are unchanged."""
+    from ari.orchestrator.node_report import build_node_report
+
+    child = tmp_path / "child"
+    _write(child / "a.c", "int main(){}\n")
+
+    class _Node:
+        id = "n2"; parent_id = None; ancestor_ids: list = []
+        label = "draft"; raw_label = "draft"; depth = 0
+        status = "success"; created_at = ""; completed_at = ""
+        metrics: dict = {}; artifacts: list = []; trace_log = None
+
+    rep = build_node_report(node=_Node(), work_dir=child, parent_work_dir=None,
+                            eval_result=None, delta_vs_parent="", what_was_done="")
+    assert all("note" not in e for e in rep["files_changed"]["added"])
 
 
 def test_compute_files_changed_skips_blocklist(tmp_path: Path) -> None:
@@ -291,7 +342,6 @@ def test_build_and_write_node_report(tmp_path: Path) -> None:
     # Metrics now include scientific_score and axis_scores after evaluator merge.
     assert report["metrics"].get("_scientific_score") == 0.71
     assert "_axis_scores" in report["metrics"]
-    assert report["migration_source"] == "fresh"
 
 
 # ── T-A6 ────────────────────────────────────────────────────────────────
@@ -353,7 +403,6 @@ def test_reconstruct_report_from_legacy(tmp_path: Path) -> None:
         node_dict=legacy, work_dir=work, parent_work_dir=None,
     )
     _validate_minimal(rep)
-    assert rep["migration_source"] == "auto"
     # evaluator_reason should have stripped the trailing scientific_score tag.
     assert "scientific_score" not in rep["evaluator_reason"]
     assert rep["self_assessment"]["headline"] == "looks ok"

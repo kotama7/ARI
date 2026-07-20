@@ -95,6 +95,9 @@ class TestNodeReportIntegration:
     """End-to-end: capture → node_report includes the new fields."""
 
     def test_node_report_includes_run_env_fields(self, tmp_path):
+        # capture_env still writes _run_env.json, but the builder NO LONGER reads
+        # it — compute-env provenance is now agent-authored (grounded note), and
+        # machine info is never auto-scraped into the deliverable.
         capture_env(tmp_path, executor="slurm",
                     slurm_job_id="42", slurm_partition="sx40")
 
@@ -113,18 +116,23 @@ class TestNodeReportIntegration:
             metrics: dict = {}
             artifacts: list = []
             trace_log = None
+            agent_environment = "Intel Xeon 6142, gcc 11.5.0, AVX-512"
 
         report = build_node_report(
             node=_Node(), work_dir=tmp_path, parent_work_dir=None,
             eval_result=None, delta_vs_parent="", what_was_done="",
         )
-        assert report["executor"] == "slurm"
-        assert report["slurm_job_id"] == "42"
-        assert report["slurm_partition"] == "sx40"
-        assert isinstance(report["cpu_info"], dict)
+        # agent-authored env note IS carried
+        assert report["environment"] == "Intel Xeon 6142, gcc 11.5.0, AVX-512"
+        # machine info is NEVER auto-scraped into node_report (no leak)
+        for _k in ("executor", "hostname", "slurm_job_id", "slurm_partition",
+                   "slurm_nodelist", "cpu_info", "compilers"):
+            assert _k not in report, f"{_k} must not be auto-embedded"
 
     def test_node_report_legacy_run_no_capture(self, tmp_path):
-        """When _run_env.json absent (legacy/dry runs), fields default empty."""
+        """Machine info is NEVER auto-scraped into node_report (no auto-embed at
+        all now); and with no agent-authored ``environment`` note the field is
+        omitted entirely, not emitted as an empty string."""
         from ari.orchestrator.node_report import build_node_report
 
         class _Node:
@@ -145,6 +153,7 @@ class TestNodeReportIntegration:
             node=_Node(), work_dir=tmp_path, parent_work_dir=None,
             eval_result=None, delta_vs_parent="", what_was_done="",
         )
-        assert report["executor"] == ""
-        assert report["hostname"] == ""
-        assert report["cpu_info"] == {}
+        assert "executor" not in report
+        assert "hostname" not in report
+        assert "cpu_info" not in report
+        assert "environment" not in report  # no agent note -> field omitted
