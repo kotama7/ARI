@@ -1,6 +1,6 @@
 """Run-level statistics for the handoff-study analysis (Stage 4 core).
 
-Pure, unit-tested statistics the ``scripts/analyze_handoff_ablation.py`` CLI
+Pure, unit-tested statistics the ``workspace/analyze_handoff_ablation.py`` CLI
 composes. The unit of analysis is the RUN (one BFTS tree -> one scalar primary
 outcome); these functions therefore resample/compare whole runs and NEVER
 lineage-correlated nodes (PREREG §7).
@@ -15,7 +15,7 @@ Two complementary confirmatory tests, matching the paper's design:
     the trend, not silently dropped).
   * EQUIVALENCE (parity): ``tost_equivalence`` for the nested "does the full log
     add value ON TOP of the summary?" contrast. Speedups are ratios, so the
-    caller passes LOG-domain per-run values (margin in log units); bounded
+    caller passes LOG-domain per-run values (margin in log units, SESOI ~log(1.2) — log(1.05) was vacuous at feasible n); bounded
     [0,1] scores are passed in the linear domain with an absolute margin.
 
 See ari-core/ari/evaluator/Plan.md and the pre-registration.

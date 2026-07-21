@@ -1,9 +1,12 @@
-"""Tests for the rewrite-vs-refine measure (scripts/edit_lineage.py).
+"""Tests for the rewrite-vs-refine measure (edit_lineage.py).
 
 This is the instrument behind the paper's central claim. It must (a) tokenize C
 without being fooled by comment-like text inside literals, (b) actually SEPARATE a
 refine from a rewrite — a measure that returns the same number for both measures
 nothing — and (c) pair each child with its parent from a checkpoint on disk.
+
+The study-specific scripts live under ``workspace/`` (gitignored, self-contained
+with the harnesses), with a legacy ``scripts/`` fallback; skip if neither exists.
 """
 
 from __future__ import annotations
@@ -15,10 +18,12 @@ from pathlib import Path
 
 import pytest
 
-_SPEC = importlib.util.spec_from_file_location(
-    "edit_lineage",
-    Path(__file__).resolve().parents[2] / "scripts" / "edit_lineage.py",
-)
+_ROOT = Path(__file__).resolve().parents[2]
+_EL = next((p for p in (_ROOT / "workspace" / "edit_lineage.py",
+                        _ROOT / "scripts" / "edit_lineage.py") if p.is_file()), None)
+if _EL is None:
+    pytest.skip("edit_lineage.py not found (workspace/ or scripts/)", allow_module_level=True)
+_SPEC = importlib.util.spec_from_file_location("edit_lineage", _EL)
 el = importlib.util.module_from_spec(_SPEC)
 # Register before exec: the module defines a dataclass with a ``str | None`` field,
 # and dataclasses resolves annotations via ``sys.modules[cls.__module__]``.

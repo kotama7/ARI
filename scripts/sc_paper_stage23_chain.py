@@ -39,7 +39,7 @@ To dispatch Stage 2 onto a SLURM compute node instead of running on
 the login host, pass:
 
     --reproduce-sandbox slurm \\
-    --reproduce-partition ai-l40s \\
+    --reproduce-partition <partition> \\
     --reproduce-gpus-per-task 1 --reproduce-gpu-type L40S-44GB
 
 Stage 3 always runs locally (LLM API call only — no GPU needed).

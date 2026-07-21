@@ -831,7 +831,7 @@ def _run_reproduce_slurm(
     # SLURM rejects combining typed and untyped GPU requests with
     # `Invalid GRES specification (with and without type identification)`
     # when both ``--gpus-per-task=N`` and ``--gres=gpu:TYPE:N`` are
-    # present (verified on SLURM 24.05/qc-a100). When the caller
+    # present (verified on SLURM 24.05/<partition>). When the caller
     # specified a gpu_type, that is the more specific request → emit
     # only ``--gres=gpu:TYPE:N`` and drop the untyped --gpus-per-task /
     # --gpus-per-node companions. When no gpu_type is given, keep the

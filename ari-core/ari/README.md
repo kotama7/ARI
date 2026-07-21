@@ -73,7 +73,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `__init__.py` — public symbols + axis design.
   - `deterministic_evaluator.py` — `DeterministicEvaluator`: non-LLM judge; writes `metrics._scientific_score` to drive BFTS selection (handoff study). Selected via `ARI_EVALUATOR=deterministic`; task via `ARI_TASK`. Owns the scoring CONTRACT only (geomean over the family set, `min(g/TARGET,1)` linear or `min(log g/log TARGET,1)` log, "invalid if any required family fails" — no zeros mixed into the geomean); TARGET and scale are DECLARED by the harness and read via `harness_registry.describe()`. Speedup-shaped harnesses report a geomean speedup; score-shaped ones store a bounded `[0,1]` score in the same field for analyzer reuse (it is NOT a speedup — the analyzer reports each on its native axis).
   - `dynamic_axes.py` — venue/run-specific evaluation-axis derivation.
-  - `handoff_stats.py` — run-level analysis statistics for the handoff study (Stage 4 core): geomean, run-cluster bootstrap CI, TOST equivalence (RQ1 parity), Holm correction, per-arm summary. Pure; consumed by `scripts/analyze_handoff_ablation.py`.
+  - `handoff_stats.py` — run-level analysis statistics for the handoff study (Stage 4 core): geomean, run-cluster bootstrap CI, TOST equivalence (RQ1 parity), Holm correction, per-arm summary. Pure; consumed by `workspace/analyze_handoff_ablation.py`.
   - `llm_evaluator.py` — `LLMEvaluator`: extraction + multi-axis composite scoring.
 - `llm/` — thin LiteLLM wrappers for the agent loop and skills.
   - `README.md` — llm index.

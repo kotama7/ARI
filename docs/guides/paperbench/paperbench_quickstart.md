@@ -184,12 +184,12 @@ to load. If you want deterministic toolchain availability, pre-load
 the modules in your sbatch wrapper BEFORE invoking ARI — this is the
 canonical HPC pattern.
 
-Example (R-CCS ai-l40s partition — **adjust the module / partition /
+Example (R-CCS <partition> partition — **adjust the module / partition /
 GPU spec for YOUR cluster**):
 
 ```bash
 #!/bin/bash
-#SBATCH --partition=ai-l40s
+#SBATCH --partition=<partition>
 #SBATCH --gres=gpu:L40S-44GB:1
 #SBATCH --cpus-per-task=8
 #SBATCH --time=08:00:00
@@ -200,7 +200,7 @@ set -eu
 # Pre-load the toolchain modules your paper needs. The names below are
 # R-CCS specific — replace with your cluster's equivalents (use
 # `module avail` on a login node to discover the catalog).
-module load system/ai-l40s        # cluster-specific entry module
+module load system/<partition>        # cluster-specific entry module
 module load nvhpc                  # if the paper needs CUDA / nvcc
 # module load openmpi              # if the paper needs MPI
 # module load fftw                 # if the paper needs FFTW

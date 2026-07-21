@@ -430,7 +430,7 @@ Highlights:
   the host-filesystem execution contract explicit.
 
 - **SLURM GPU dispatch correctness fixes** (real-cluster smoke
-  findings on r340 / qc-a100 / ai-l40s):
+  findings on r340 / <partition> / <partition>):
     - `--gpus-per-task` now auto-pairs with `--ntasks 1` when
       neither `ntasks` nor `--gpus` is supplied (SLURM 24.05
       rejects the lone `--gpus-per-task` form).
@@ -1130,7 +1130,7 @@ legacy single-CPU papers without `execution_profile` produce the same
   removed. `render_template()` accepts either a `Path` (legacy) or a
   raw string body so the rendering pipeline stays unchanged.
 - **Real PDF build verification** against a synthetic checkpoint,
-  2026-05-13 (TinyTeX + XeLaTeX, /home/t-kotama):
+  2026-05-13 (TinyTeX + XeLaTeX, /home/<user>):
   - en: 7 pages, 90 KB, all 3 figures embedded.
   - ja: 7 pages, 134 KB, pdftohtml extracted 論文メタデータ /
     ルーブリック / カテゴリ内訳 / 実行プロファイル.

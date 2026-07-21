@@ -166,12 +166,12 @@ ARI bridge はクラスタの module を自動 load しません — これは u
 クラスタカタログを agent にデータとして渡し、 agent がどれを load するか
 判断します。 確実性が欲しい場合は sbatch wrapper で **事前 load** を:
 
-例(R-CCS ai-l40s — **あなたのクラスタの module / partition / GPU 仕様
+例(R-CCS <partition> — **あなたのクラスタの module / partition / GPU 仕様
 に合わせて調整**):
 
 ```bash
 #!/bin/bash
-#SBATCH --partition=ai-l40s
+#SBATCH --partition=<partition>
 #SBATCH --gres=gpu:L40S-44GB:1
 #SBATCH --time=08:00:00
 #SBATCH --output=workspace/checkpoints/<ts>_<slug>/sbatch.log
@@ -179,7 +179,7 @@ set -eu
 
 # 必要 toolchain の module を事前 load(クラスタによって名前が異なる、
 # `module avail` で確認)
-module load system/ai-l40s   # クラスタ固有のエントリ module
+module load system/<partition>   # クラスタ固有のエントリ module
 module load nvhpc             # paper が CUDA / nvcc を必要なら
 # module load openmpi         # paper が MPI を必要なら
 

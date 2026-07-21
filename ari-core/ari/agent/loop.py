@@ -829,6 +829,19 @@ def _render_parent_execution_log(pdir, limit: int) -> str:
             _ln for _ln in body.splitlines()
             if not (len(_ln.strip()) > 25 and _ln.strip() in _ft)
         )
+    # OPTIONAL (ARI_HANDOFF_LOG_SCRUB_EMIT=1): also strip the parent's own
+    # ``emit_results(...)`` tool call from the log. Its arguments duplicate the
+    # SUMMARY channel (summary / next_steps / concerns), so with the nested ladder
+    # design (the 4th 2x2 cell dropped) removing it makes the "+full_log ON TOP of
+    # summary" contrast a PURE raw-trajectory increment (no second copy of the
+    # forward guidance). OFF by default: once code_plus_full_log is gone the
+    # duplication is redundant, not confounding, so this is a cleanliness knob.
+    import os as _os_scrub
+    if _os_scrub.environ.get("ARI_HANDOFF_LOG_SCRUB_EMIT", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    ):
+        body = "\n".join(_ln for _ln in body.splitlines()
+                         if "emit_results(" not in _ln)
     if not body.strip():
         return ""
     return ("# parent execution log (from full_log.json)\n" + body)[-limit:]

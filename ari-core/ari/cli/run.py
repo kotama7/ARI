@@ -338,6 +338,13 @@ def run(
         run_id = f"{_ts}_{_slug}"
     _setup_logging(cfg.logging, run_id)
 
+    # Emit the run dir on stdout at START (not only in the end-of-run panel) so a
+    # crash mid-BFTS is still attributable: the sweep driver parses
+    # ``checkpoints/<run_id>`` from this process's stdout to locate the run's
+    # partial tree; without an early line, an OOM/walltime kill left run_dir=None
+    # and the scored nodes on disk were unlinkable to their (arm, seed).
+    print(f"[run-dir] checkpoints/{run_id}", flush=True)
+
     console.print(Panel(
         f"[bold green]ARI Run[/bold green]  id={run_id}\nExperiment: {experiment}" + (f"\nConfig: {config}" if config else ""),
         title="ARI",

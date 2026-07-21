@@ -402,7 +402,7 @@ def test_S7b_memory_per_cpu_arg_appears_in_sbatch(tmp_path, monkeypatch):
 
 
 def test_S8_gpu_type_combined_with_per_task(tmp_path, monkeypatch):
-    """S8 (updated for SLURM 24.05 qc-a100 smoke finding): when both
+    """S8 (updated for SLURM 24.05 <partition> smoke finding): when both
     gpu_type and gpus_per_task are set, the dispatcher must emit ONLY
     ``--gres=gpu:TYPE:N`` and drop the untyped ``--gpus-per-task``
     companion. SLURM 24.05 rejects mixing typed and untyped GPU
@@ -555,7 +555,7 @@ def test_gpu_flags_dropped_when_cluster_has_no_gres_and_opted_in(
 
 
 def test_gpus_per_task_auto_pairs_with_ntasks_one(tmp_path, monkeypatch):
-    """Real-cluster smoke (ai-h100l) finding: SLURM 24.05 rejects
+    """Real-cluster smoke (<partition>) finding: SLURM 24.05 rejects
     ``--gpus-per-task`` unless paired with ``--ntasks`` or ``--gpus``
     (error: ``--gpus-per-task or --tres-per-task used without either
     --gpus or -n/--ntasks is not allowed``). When the caller passes

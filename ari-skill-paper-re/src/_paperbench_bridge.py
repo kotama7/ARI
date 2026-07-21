@@ -85,7 +85,7 @@ log.info("paperbench upstream loaded (sys.path injected by _vendor_path)")
 # unchanged).
 #
 # Reproduced twice on the SC41406 BasicAgent dogfood
-# (sandbox=local then sandbox=local-inside-ai-l40s); fixing at the
+# (sandbox=local then sandbox=local-inside-<partition>); fixing at the
 # converter layer is the minimum-blast-radius patch because every
 # downstream caller (vendor solver, future ARI orchestrators) benefits
 # without per-call defensive code.
@@ -266,7 +266,7 @@ def _detect_runtime_env() -> dict:
 
 def _parse_module_names(avail_output: str) -> list[str]:
     """Extract namespaced module names (those containing ``/``, e.g.
-    ``system/ai-l40s``, ``mpi/mpich-x86_64``) from ``module avail``
+    ``system/<partition>``, ``mpi/mpich-x86_64``) from ``module avail``
     output. Path headers (``--- /some/dir ---``) and bare builtins
     (``dot``, ``null``, ``modules``) are skipped — only namespaced
     entries are candidate MODULEPATH-switch entry modules. Order is
@@ -331,7 +331,7 @@ def _expand_modulepath_tier2(run_module, avail_output: str,
     entries = _parse_module_names(avail_output)[:max_entries]
     # Scope to the allocated partition's entry when known. The other
     # `system/<gpu>` entries (A100/H100/GH200/MI250/...) are irrelevant to a
-    # job allocated on, say, ai-l40s — expanding all of them is noise that
+    # job allocated on, say, <partition> — expanding all of them is noise that
     # dilutes the prompt. Keep entries whose name contains the partition
     # token; fall back to all entries if none match (heuristic-safe).
     if partition:
@@ -402,7 +402,7 @@ def _probe_module_avail(max_chars: int = 12000,
 
       - ``module avail`` lists modules visible at the current
         MODULEPATH. On 2-step-entry clusters (R-CCS, LUMI, TGCC, ...)
-        this only shows the entry modules (``system/ai-l40s``,
+        this only shows the entry modules (``system/<partition>``,
         ``LUMI/24.03``, etc) — the actual compilers (nvhpc, openmpi,
         cuda) are hidden behind those entries until the entry is
         loaded.
@@ -426,11 +426,11 @@ def _probe_module_avail(max_chars: int = 12000,
     data; the agent inspects the catalog and decides what to load.
 
     SC41406 v3-A2/v3-A6 surfaced this requirement: the agent ran
-    ``module avail`` correctly, saw only ``system/ai-l40s`` (the entry
+    ``module avail`` correctly, saw only ``system/<partition>`` (the entry
     module), but stopped there — it loaded the entry and expected nvcc
     on PATH, not realising the entry only switches MODULEPATH and a
     SECOND ``module load nvhpc`` is needed. Surfacing tier-2 lets the
-    agent write the correct ``module load system/ai-l40s && module
+    agent write the correct ``module load system/<partition> && module
     load nvhpc`` chain.
     """
     import subprocess

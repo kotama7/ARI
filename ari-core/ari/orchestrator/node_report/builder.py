@@ -686,14 +686,14 @@ def build_node_report(
     # inert tag only invited the confusion of "the feature is off yet the label
     # still shows up". No separate ARI_REPORT_MINIMAL is needed for this.
     from ari.agent.loop import labels_disabled as _labels_off
-    if _labels_off():
-        report["label"] = ""
-        report["raw_label"] = ""
-        report["original_direction"] = None
-    else:
+    if not _labels_off():
         report["label"] = label_value
         report["raw_label"] = getattr(node, "raw_label", "") or ""
         report["original_direction"] = getattr(node, "original_direction", None)
+    # else: ARI_BFTS_NO_LABEL — the label feature is OFF, so the keys are OMITTED
+    # ENTIRELY from the record (not merely emptied): "feature off" ⇒ "field
+    # absent". All node_report consumers read these via .get(), so their absence
+    # is safe.
     # (2) Compute-environment provenance — AGENT-AUTHORED, not auto-scraped. The
     # framework no longer reads _run_env.json and embeds machine info here (that
     # leaked the hostname/partition into the deliverable). Instead the agent,

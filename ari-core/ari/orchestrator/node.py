@@ -206,17 +206,18 @@ class Node:
             "trace_log": self.trace_log,
             "node_report_path": self.node_report_path,
         }
-        # label / raw_label / original_direction are ALWAYS emitted. There used to
-        # be an ``ARI_REPORT_MINIMAL`` switch that stripped them from the record
-        # while the label kept driving the search (the system prompt's NODE ROLE,
-        # the child's task line, and the diversity_bonus in node selection). That
-        # is a record-ONLY suppression: it does not make the variable inert, it
-        # only deletes the evidence — and it is exactly how a label confound
-        # survived a whole 4-arm study invisibly (the ABLATION share of children
-        # ran 0/1/3/4 across arms, unreadable from node_report/tree.json).
-        # To remove a variable's influence, turn the FEATURE off
-        # (``ARI_BFTS_NO_LABEL``); never hide a live one from the record.
-        d["label"] = self.label.value
-        d["raw_label"] = self.raw_label
-        d["original_direction"] = self.original_direction
+        # label / raw_label / original_direction follow ONE switch,
+        # ``ARI_BFTS_NO_LABEL``. When the label feature is ON they are emitted so a
+        # LIVE variable is never hidden from the record (a record-only suppression
+        # is how a label confound once survived a 4-arm study invisibly — the
+        # ABLATION share ran 0/1/3/4 across arms). When the feature is OFF the
+        # label drives nothing (NODE ROLE, child task line, diversity_bonus are all
+        # neutral), so it is INERT and the keys are OMITTED ENTIRELY from tree.json
+        # too — consistent with node_report.json. (Lazy import: ``ari.agent.loop``
+        # imports ``Node`` at module top, so a top-level import here would cycle.)
+        from ari.agent.loop import labels_disabled as _labels_off
+        if not _labels_off():
+            d["label"] = self.label.value
+            d["raw_label"] = self.raw_label
+            d["original_direction"] = self.original_direction
         return d

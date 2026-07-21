@@ -1,6 +1,8 @@
-"""Tests for the handoff-sweep analyzer's outcome extraction (scripts/).
+"""Tests for the handoff-sweep analyzer's outcome extraction.
 
-The analyzer lives in scripts/ (a CLI, not a package), so import it by path.
+The analyzer is a study-specific CLI (not a package). It lives under
+``workspace/`` (gitignored, self-contained with the harnesses), with a legacy
+``scripts/`` fallback; import it by path and skip if neither location exists.
 We exercise run_outcome — the per-run reduction (best valid geomean speedup over
 nodes) that maps a run dir to its analysis outcome — on synthetic node_reports.
 """
@@ -8,7 +10,13 @@ import importlib.util
 import json
 from pathlib import Path
 
-_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "analyze_handoff_ablation.py"
+import pytest
+
+_ROOT = Path(__file__).resolve().parents[2]
+_SCRIPT = next((p for p in (_ROOT / "workspace" / "analyze_handoff_ablation.py",
+                            _ROOT / "scripts" / "analyze_handoff_ablation.py") if p.is_file()), None)
+if _SCRIPT is None:
+    pytest.skip("analyze_handoff_ablation.py not found (workspace/ or scripts/)", allow_module_level=True)
 _spec = importlib.util.spec_from_file_location("analyze_handoff_ablation", _SCRIPT)
 ana = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(ana)

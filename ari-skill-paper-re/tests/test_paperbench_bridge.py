@@ -476,13 +476,13 @@ def test_env_block_for_slurm_describes_module_load_path():
     env = {
         "kind": "slurm",
         "has_apt": False, "has_sudo": False, "has_module": True,
-        "slurm_partition": "ai-l40s",
-        "module_path": "/cloud_opt/modulefiles/ai-l40s:...",
+        "slurm_partition": "<partition>",
+        "module_path": "<modulepath><partition>:...",
     }
     block = B._build_truthful_env_block(env)
     assert "NO root access" in block
     assert "SLURM" in block or "HPC" in block
-    assert "ai-l40s" in block  # partition surfaced
+    assert "<partition>" in block  # partition surfaced
     assert "module avail" in block  # the exploration instruction
     assert "module load" in block  # generic load command
     # The vendor's misleading line MUST be entirely replaced (we are
@@ -900,10 +900,10 @@ def test_parse_module_names_keeps_namespaced_skips_builtins():
         "------------------------ /usr/share/Modules/modulefiles ------------------------\n"
         "dot  module-git  module-info  modules  null  use.own\n"
         "------------------------- /cloud_opt/misc/modulefiles --------------------------\n"
-        "system/a100  system/ai-l40s <L>  system/qc-a100  mpi/mpich-x86_64\n"
+        "system/a100  system/<partition> <L>  system/<partition>  mpi/mpich-x86_64\n"
     )
     names = B._parse_module_names(avail)
-    assert "system/ai-l40s" in names  # <L> marker stripped
+    assert "system/<partition>" in names  # <L> marker stripped
     assert "system/a100" in names
     assert "mpi/mpich-x86_64" in names
     assert "dot" not in names and "null" not in names  # builtins skipped
@@ -917,15 +917,15 @@ def test_expand_modulepath_tier2_reveals_hidden_modules_read_only():
     `module load` (read-only philosophy)."""
     avail = (
         "---- /cloud_opt/misc/modulefiles ----\n"
-        "system/ai-l40s\n"
+        "system/<partition>\n"
     )
     calls: list[str] = []
 
     def fake_run(cmd: str) -> str:
         calls.append(cmd)
-        if cmd.startswith("module show system/ai-l40s"):
+        if cmd.startswith("module show system/<partition>"):
             return (
-                "/cloud_opt/misc/modulefiles/system/ai-l40s:\n"
+                "/cloud_opt/misc/modulefiles/system/<partition>:\n"
                 "conflict\tsystem\n"
                 "prepend-path\tMODULEPATH /opt/nvidia/hpc_sdk/modulefiles\n"
             )
@@ -940,7 +940,7 @@ def test_expand_modulepath_tier2_reveals_hidden_modules_read_only():
 
     out = B._expand_modulepath_tier2(fake_run, avail)
     assert "nvhpc/25.7" in out  # tier-2 module surfaced
-    assert "module load system/ai-l40s" in out  # tells agent the entry
+    assert "module load system/<partition>" in out  # tells agent the entry
     # Read-only invariant: NO `module load` was ever issued.
     assert not any("module load" in c for c in calls), \
         "tier-2 expansion must be read-only (no module load)"
@@ -952,11 +952,11 @@ def test_expand_modulepath_tier2_shared_dir_lists_all_entries_with_conflict_note
     arbitrary entry misled the agent into loading multiple conflicting
     entries (which unloaded everything). The output must list ALL entries
     that reach the shared dir AND warn they are mutually exclusive."""
-    avail = "---- /cloud_opt/misc/modulefiles ----\nsystem/a100  system/ai-l40s\n"
+    avail = "---- /cloud_opt/misc/modulefiles ----\nsystem/a100  system/<partition>\n"
 
     def fake_run(cmd: str) -> str:
         # Both entries prepend the SAME shared hpc_sdk MODULEPATH.
-        if cmd.startswith("module show system/a100") or cmd.startswith("module show system/ai-l40s"):
+        if cmd.startswith("module show system/a100") or cmd.startswith("module show system/<partition>"):
             return "x:\nprepend-path\tMODULEPATH /opt/nvidia/hpc_sdk/modulefiles\n"
         if "MODULEPATH=/opt/nvidia/hpc_sdk/modulefiles" in cmd and "module avail" in cmd:
             return "---- /opt/nvidia/hpc_sdk/modulefiles ----\nnvhpc/25.7\n"
@@ -965,7 +965,7 @@ def test_expand_modulepath_tier2_shared_dir_lists_all_entries_with_conflict_note
     out = B._expand_modulepath_tier2(fake_run, avail)
     assert "nvhpc/25.7" in out
     # Both reaching entries listed, not just the first.
-    assert "system/a100" in out and "system/ai-l40s" in out
+    assert "system/a100" in out and "system/<partition>" in out
     # Mutual-exclusion guidance present so the agent loads only ONE.
     assert "MUTUALLY EXCLUSIVE" in out or "load exactly\n  ONE" in out or "load exactly ONE" in out
     # The shared dir is enumerated only once (not duplicated per entry).
@@ -1196,7 +1196,7 @@ def test_probe_env_on_computer_sudo_password_required_is_not_available():
         ("sudo -n true", 1, "sudo: a password is required\n"),  # unusable
         ("command -v docker", 127, ""),           # no docker
         ("command -v module", 0, "HASMOD\nMP=/cloud_opt/x"),
-        ("SLURM_JOB_ID", 0, "JID=123|PART=ai-l40s"),
+        ("SLURM_JOB_ID", 0, "JID=123|PART=<partition>"),
         ("/.dockerenv", 1, ""),
         ("nvidia-smi --query-gpu=name,compute_cap", 0, "NVIDIA L40S, 8.9, 1, 46068 MiB\n"),
     ])
@@ -1226,23 +1226,23 @@ def test_expand_modulepath_tier2_scopes_to_allocated_partition():
     scope to the allocated entry (system/<partition>) instead of dumping
     every GPU's stack (A100/H100/MI250/...) — that was prompt noise."""
     avail = ("---- /cloud_opt/misc/modulefiles ----\n"
-             "system/a100  system/ai-l40s  system/qc-mi250  system/qc-gh200\n")
+             "system/a100  system/<partition>  system/qc-mi250  system/<partition>\n")
 
     def fake_run(cmd):
-        if cmd.startswith("module show system/ai-l40s"):
+        if cmd.startswith("module show system/<partition>"):
             return "x:\nprepend-path\tMODULEPATH /opt/nvidia/hpc_sdk/modulefiles\n"
         if cmd.startswith("module show "):
             # other entries also prepend a (different) dir — should be skipped
-            return "x:\nprepend-path\tMODULEPATH /cloud_opt/modulefiles/other\n"
+            return "x:\nprepend-path\tMODULEPATH <modulepath>\n"
         if "MODULEPATH=/opt/nvidia/hpc_sdk/modulefiles" in cmd and "module avail" in cmd:
             return "---- /opt/nvidia/hpc_sdk/modulefiles ----\nnvhpc/25.7\n"
-        if "MODULEPATH=/cloud_opt/modulefiles/other" in cmd and "module avail" in cmd:
+        if "MODULEPATH=<modulepath>" in cmd and "module avail" in cmd:
             return "---- other ----\nshould_not_appear/1.0\n"
         return ""
 
-    out = B._expand_modulepath_tier2(fake_run, avail, partition="ai-l40s")
+    out = B._expand_modulepath_tier2(fake_run, avail, partition="<partition>")
     assert "nvhpc/25.7" in out                     # the allocated entry's stack
-    assert "system/ai-l40s" in out
+    assert "system/<partition>" in out
     assert "should_not_appear" not in out          # other partitions skipped
     assert "system/a100" not in out and "system/qc-mi250" not in out
 

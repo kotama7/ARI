@@ -164,18 +164,18 @@ bridge 在 rollout 开始时 probe `module avail` 并把目录作为数据交给
 agent,由 agent 决定要 load 哪个。如需确定性,在 sbatch 包装中
 **事前 load**:
 
-示例(R-CCS ai-l40s — **请根据您的集群 module/partition/GPU 调整**):
+示例(R-CCS <partition> — **请根据您的集群 module/partition/GPU 调整**):
 
 ```bash
 #!/bin/bash
-#SBATCH --partition=ai-l40s
+#SBATCH --partition=<partition>
 #SBATCH --gres=gpu:L40S-44GB:1
 #SBATCH --time=08:00:00
 #SBATCH --output=workspace/checkpoints/<ts>_<slug>/sbatch.log
 set -eu
 
 # 预先加载论文所需的 module(集群命名各异,用 `module avail` 探索)
-module load system/ai-l40s   # 集群特定的入口 module
+module load system/<partition>   # 集群特定的入口 module
 module load nvhpc             # 若论文需要 CUDA / nvcc
 # module load openmpi         # 若论文需要 MPI
 

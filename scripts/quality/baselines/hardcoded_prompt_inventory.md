@@ -6,7 +6,7 @@
 > `target_subtask` below is a **recommendation** for the downstream Phase-7
 > extraction subtasks (037–044) — 036 resolves nothing.
 >
-> Repo root `/home/t-kotama/workplace/ARI`, branch `whole_refactoring`, planning
+> Repo root `/home/<user>`, branch `whole_refactoring`, planning
 > date 2026-07-01. All rows grounded in `Read`/`grep` against the working tree.
 > A machine-readable twin lives at
 > `docs/refactoring/reports/hardcoded_prompt_inventory.json` (structured input
