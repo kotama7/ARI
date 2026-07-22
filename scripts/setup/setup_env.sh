@@ -619,6 +619,35 @@ _env_append_if_absent "# ARI_CLI_SHIM_CLAUDE_BIN=claude  # path / name of the Cl
 _env_append_if_absent "# ARI_CLI_SHIM_CLAUDE_BARE=       # set to 1 to call \`claude\` without the agent harness"
 _env_append_if_absent "# ARI_CLI_SHIM_CLAUDE_AGENT_PERMISSION=  # agent-permission override forwarded to \`claude\`"
 _env_append_if_absent "# ARI_CLI_SHIM_CODEX_BIN=codex    # path / name of the Codex CLI binary"
+_env_append_if_absent "# ARI_CLI_SHIM_USE_SDK=0          # 1 to drive the shim via the Claude Agent SDK instead of the CLI binary"
+_env_append_if_absent "# ARI_CLI_SHIM_MAX_THINKING_TOKENS=  # cap on thinking tokens the shim forwards (default: model default)"
+
+# --- LLM client tuning (backend-agnostic) -----------------------------------
+_env_append_if_absent "# ARI_LLM_NUM_CTX=32768           # context window (num_ctx) requested from local backends (ollama)"
+_env_append_if_absent "# ARI_LLM_NUM_RETRIES=4           # LLM call retry budget on transient errors"
+
+# --- SLURM partition auto-probe (login-node capability discovery) -----------
+# Leave empty: the value is a comma-separated list of partitions to srun-probe.
+# Do NOT commit real partition names here — set it in your own .env at run time.
+_env_append_if_absent "# ARI_PROBE_PARTITIONS=           # comma-separated partitions to probe (empty = use the scheduler default)"
+_env_append_if_absent "# ARI_PROBE_TIMEOUT_S=120         # per-partition srun probe timeout (s)"
+
+# --- Handoff study: deterministic BFTS inheritance-channel ablation ---------
+# Controls for the 3-arm handoff study (code_only / +summary / +full_log). The
+# run driver (workspace/run_handoff_ablation.py) sets these per-arm; they are
+# documented here for reproducibility. All optional / off by default.
+_env_append_if_absent "# ARI_TASK=spmm                   # which registered harness to score (spmm|gemm|stencil|erfc|meshpart)"
+_env_append_if_absent "# ARI_SEED=                       # deterministic problem-generation seed (per-run)"
+_env_append_if_absent "# ARI_HANDOFF_MODE=               # inheritance channel: code_only | code_plus_summary | code_plus_summary_plus_full_log"
+_env_append_if_absent "# ARI_HANDOFF_SUMMARY_FIELDS=     # comma-separated node_report fields carried in the summary channel"
+_env_append_if_absent "# ARI_HANDOFF_SUMMARY_FORM=       # summary rendering form override"
+_env_append_if_absent "# ARI_HANDOFF_LOG_MODE=           # full-log channel mode (off unless the +full_log arm)"
+_env_append_if_absent "# ARI_HANDOFF_LOG_LIMIT=48000     # max chars of parent log carried in the full_log channel"
+_env_append_if_absent "# ARI_HANDOFF_MEMORY_OFF=         # 1 to disable cross-node memory so the handoff channel is the only inheritance path"
+_env_append_if_absent "# ARI_FREEZE_CONTRACT=            # 1 to freeze the metric contract for the whole sweep (no per-node re-derivation)"
+_env_append_if_absent "# ARI_BFTS_DETERMINISTIC=         # 1 to use the deterministic frontier selector (no LLM judge in the loop)"
+_env_append_if_absent "# ARI_BFTS_MAX_EXPANSIONS=        # cap on BFTS node expansions per run"
+_env_append_if_absent "# ARI_SKIP_PAPER=                 # 1 to skip the paper-writing phase (study runs need only the measured scores)"
 
 # --- HPC module-path (R-CCS / system Env Modules) ---------------------------
 _env_append_if_absent "# MODULEPATH=                     # colon-separated module-search path; auto-populated by Env Modules on HPC"
