@@ -192,8 +192,10 @@ class DeterministicEvaluator:
             compile_ok = bool(result.get("compile_ok", False))
             # Clamp the harness-reported score to the [0,1] contract at the gate
             # (the module docstring promises [0,1]); a buggy/out-of-range harness
-            # score must not enter BFTS ranking unbounded or negative.
-            s = min(max(float(result.get("score") or 0.0), 0.0), 1.0)
+            # score must not enter BFTS ranking unbounded or negative. NaN is NOT
+            # neutralized by min/max (min(nan,1)==nan), so map non-finite -> 0.
+            _s_raw = float(result.get("score") or 0.0)
+            s = min(max(_s_raw, 0.0), 1.0) if math.isfinite(_s_raw) else 0.0
             metrics: dict[str, Any] = {"_scientific_score": s, "valid_geomean_speedup": s}
             for name, frac in (result.get("regions") or {}).items():
                 metrics[f"region_{name}"] = float(frac or 0.0)

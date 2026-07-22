@@ -899,12 +899,12 @@ def test_parse_module_names_keeps_namespaced_skips_builtins():
     avail = (
         "------------------------ /usr/share/Modules/modulefiles ------------------------\n"
         "dot  module-git  module-info  modules  null  use.own\n"
-        "------------------------- /cloud_opt/misc/modulefiles --------------------------\n"
-        "system/a100  system/<partition> <L>  system/<partition>  mpi/mpich-x86_64\n"
+        "------------------------- <modulepath> --------------------------\n"
+        "system/<module>  system/<partition> <L>  system/<partition>  mpi/mpich-x86_64\n"
     )
     names = B._parse_module_names(avail)
     assert "system/<partition>" in names  # <L> marker stripped
-    assert "system/a100" in names
+    assert "system/<module>" in names
     assert "mpi/mpich-x86_64" in names
     assert "dot" not in names and "null" not in names  # builtins skipped
     assert all("/" in n for n in names)
@@ -916,7 +916,7 @@ def test_expand_modulepath_tier2_reveals_hidden_modules_read_only():
     The expansion must use ONLY `module show` / `module avail` — never
     `module load` (read-only philosophy)."""
     avail = (
-        "---- /cloud_opt/misc/modulefiles ----\n"
+        "---- <modulepath> ----\n"
         "system/<partition>\n"
     )
     calls: list[str] = []
@@ -925,7 +925,7 @@ def test_expand_modulepath_tier2_reveals_hidden_modules_read_only():
         calls.append(cmd)
         if cmd.startswith("module show system/<partition>"):
             return (
-                "/cloud_opt/misc/modulefiles/system/<partition>:\n"
+                "<modulepath><partition>:\n"
                 "conflict\tsystem\n"
                 "prepend-path\tMODULEPATH /opt/nvidia/hpc_sdk/modulefiles\n"
             )
@@ -952,11 +952,11 @@ def test_expand_modulepath_tier2_shared_dir_lists_all_entries_with_conflict_note
     arbitrary entry misled the agent into loading multiple conflicting
     entries (which unloaded everything). The output must list ALL entries
     that reach the shared dir AND warn they are mutually exclusive."""
-    avail = "---- /cloud_opt/misc/modulefiles ----\nsystem/a100  system/<partition>\n"
+    avail = "---- <modulepath> ----\nsystem/<module>  system/<partition>\n"
 
     def fake_run(cmd: str) -> str:
         # Both entries prepend the SAME shared hpc_sdk MODULEPATH.
-        if cmd.startswith("module show system/a100") or cmd.startswith("module show system/<partition>"):
+        if cmd.startswith("module show system/<module>") or cmd.startswith("module show system/<partition>"):
             return "x:\nprepend-path\tMODULEPATH /opt/nvidia/hpc_sdk/modulefiles\n"
         if "MODULEPATH=/opt/nvidia/hpc_sdk/modulefiles" in cmd and "module avail" in cmd:
             return "---- /opt/nvidia/hpc_sdk/modulefiles ----\nnvhpc/25.7\n"
@@ -965,7 +965,7 @@ def test_expand_modulepath_tier2_shared_dir_lists_all_entries_with_conflict_note
     out = B._expand_modulepath_tier2(fake_run, avail)
     assert "nvhpc/25.7" in out
     # Both reaching entries listed, not just the first.
-    assert "system/a100" in out and "system/<partition>" in out
+    assert "system/<module>" in out and "system/<partition>" in out
     # Mutual-exclusion guidance present so the agent loads only ONE.
     assert "MUTUALLY EXCLUSIVE" in out or "load exactly\n  ONE" in out or "load exactly ONE" in out
     # The shared dir is enumerated only once (not duplicated per entry).
@@ -1225,8 +1225,8 @@ def test_expand_modulepath_tier2_scopes_to_allocated_partition():
     """Now that the partition is auto-detected, the tier-2 expansion must
     scope to the allocated entry (system/<partition>) instead of dumping
     every GPU's stack (A100/H100/MI250/...) — that was prompt noise."""
-    avail = ("---- /cloud_opt/misc/modulefiles ----\n"
-             "system/a100  system/<partition>  system/qc-mi250  system/<partition>\n")
+    avail = ("---- <modulepath> ----\n"
+             "system/<module>  system/<partition>  system/<module>  system/<partition>\n")
 
     def fake_run(cmd):
         if cmd.startswith("module show system/<partition>"):
@@ -1244,16 +1244,16 @@ def test_expand_modulepath_tier2_scopes_to_allocated_partition():
     assert "nvhpc/25.7" in out                     # the allocated entry's stack
     assert "system/<partition>" in out
     assert "should_not_appear" not in out          # other partitions skipped
-    assert "system/a100" not in out and "system/qc-mi250" not in out
+    assert "system/<module>" not in out and "system/<module>" not in out
 
 
 def test_expand_modulepath_tier2_falls_back_when_partition_unmatched():
     """If no entry name matches the partition (naming mismatch), keep all
     entries rather than silently dropping everything."""
-    avail = "---- x ----\nsystem/a100\n"
+    avail = "---- x ----\nsystem/<module>\n"
 
     def fake_run(cmd):
-        if cmd.startswith("module show system/a100"):
+        if cmd.startswith("module show system/<module>"):
             return "x:\nprepend-path\tMODULEPATH /opt/nvidia/hpc_sdk/modulefiles\n"
         if "MODULEPATH=/opt/nvidia/hpc_sdk/modulefiles" in cmd and "module avail" in cmd:
             return "---- d ----\nnvhpc/25.7\n"

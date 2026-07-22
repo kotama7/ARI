@@ -430,7 +430,7 @@ Highlights:
   the host-filesystem execution contract explicit.
 
 - **SLURM GPU dispatch correctness fixes** (real-cluster smoke
-  findings on r340 / <partition> / <partition>):
+  findings on <node> / <partition> / <partition>):
     - `--gpus-per-task` now auto-pairs with `--ntasks 1` when
       neither `ntasks` nor `--gpus` is supplied (SLURM 24.05
       rejects the lone `--gpus-per-task` form).

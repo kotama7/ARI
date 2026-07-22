@@ -60,6 +60,7 @@
       },
       {
         "args": [
+          "cases",
           "file",
           "measurements",
           "params",
