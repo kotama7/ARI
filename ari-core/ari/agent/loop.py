@@ -620,6 +620,22 @@ def _load_parent_log(node, work_dir: str, *, limit: int | None = None) -> str:
     if not pid or not work_dir:
         return ""
     pdir = _Path(work_dir).parent / str(pid)
+    # PRIMARY source for BFTS / deterministic-study nodes (F1): the parent's own
+    # ``full_log.json`` (written under its node dir at completion) — the REAL
+    # per-node execution record. The old tree.json ``trace_log`` is empty whenever
+    # the model never emits STRUCTURED tool_calls (the norm here), which silently
+    # collapsed the code_plus_full_log arm to code_only.
+    #
+    # This is resolved BEFORE the stray-file glob below. The glob used to run
+    # first and return early, so whether the +full_log arm delivered the execution
+    # trace or a build log depended on whether that particular agent happened to
+    # redirect output to run.log — i.e. the TREATMENT WAS NOT A CONSTANT OBJECT
+    # across nodes in the same arm. The execution record exists for every BFTS
+    # node, so preferring it makes the arm well-defined; the glob remains for
+    # non-BFTS / SLURM runs, which have no per-node execution record.
+    _fl = _render_parent_execution_log(pdir, limit)
+    if _fl:
+        return _fl
     chunks: list[str] = []
     if pdir.is_dir():
         for pat in ("run.log", "run_*.log", "slurm-*.out", "stdout.txt", "stderr.txt"):
@@ -632,14 +648,6 @@ def _load_parent_log(node, work_dir: str, *, limit: int | None = None) -> str:
     # candidate/metrics live (F7).
     if chunks:
         return ("\n\n".join(chunks))[-limit:]
-    # PRIMARY source for BFTS / deterministic-study nodes (F1): the parent's own
-    # ``full_log.json`` (written under its node dir at completion) — the REAL
-    # per-node execution record. The old tree.json ``trace_log`` is empty whenever
-    # the model never emits STRUCTURED tool_calls (the norm here), which silently
-    # collapsed the code_plus_full_log arm to code_only.
-    _fl = _render_parent_execution_log(pdir, limit)
-    if _fl:
-        return _fl
     # Last resort: tree.json trace_log (usually empty for these models).
     _tl = _load_parent_trace_log(pid, work_dir, limit=limit)
     if not _tl:

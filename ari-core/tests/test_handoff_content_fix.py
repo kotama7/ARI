@@ -269,3 +269,27 @@ def test_view_scrubs_host_identity_from_agent_facing_text(monkeypatch):
     assert "/scratch/fs0/homedir" not in v
     assert "alice" not in v
     assert "/workspace/candidate.c" in v, v
+
+
+def test_full_log_treatment_is_the_execution_record_not_stray_stdout(tmp_path):
+    """FINDING #19: the +full_log arm must deliver the SAME KIND of object for every
+    node. The stray-file glob (run.log / slurm-*.out / stdout.txt) used to run first
+    and return early, so a child whose parent happened to `tee run.log` got a build
+    log while its cousin got the execution trace — the treatment was not a constant.
+    The per-node execution record now wins; the glob remains for non-BFTS runs."""
+    from ari.agent.loop import _load_parent_log
+    run = tmp_path / "run"
+    pdir = run / "node_parent"
+    pdir.mkdir(parents=True)
+    # a stray build log the agent produced itself
+    (pdir / "run.log").write_text("cc -O3 ...\nBUILD OK\n")
+    # and the real per-node execution record
+    (pdir / "full_log.json").write_text(json.dumps(
+        {"trace_log": ["→ write_code(candidate.c)", "← written"]}))
+
+    class _N:
+        parent_id = "node_parent"
+        id = "node_child"
+    out = _load_parent_log(_N(), str(run / "node_child"))
+    assert "write_code" in out, "the execution record did not win over stray stdout"
+    assert "BUILD OK" not in out, "a stray build log preempted the execution record"
