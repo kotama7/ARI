@@ -2414,7 +2414,21 @@ class AgentLoop:
                                      "_finish": True})
                     node.react_steps_used = step + 1
                     node.ended_by = "finish_json"
-                    node.mark_success(artifacts=artifacts, eval_summary=summary)
+                    # The evaluator's verdict was written to node.eval_summary above
+                    # (measurement reason + score) and is what the SUMMARY HANDOFF
+                    # CHANNEL carries to children (node_report.evaluator_reason via
+                    # cli/bfts_loop.py, read by orchestrator/node_summary_view.py).
+                    # mark_success() assigns eval_summary whenever it is truthy, so
+                    # passing the agent's own `summary` here silently replaced the
+                    # measured verdict with the agent's self-narrative — e.g. "passes
+                    # the self-test and achieves ~23x" for a candidate that did not
+                    # compile and scored 0. That re-introduced unverified self-report
+                    # into the deterministic loop, and only into the +summary arms,
+                    # biasing the very comparison the study measures. Prefer the
+                    # evaluator's reason and fall back to the agent summary only when
+                    # no evaluator ran — matching the force-finish paths below.
+                    node.mark_success(artifacts=artifacts,
+                                      eval_summary=(node.eval_summary or summary))
                     return node
 
                 elif isinstance(result, dict) and result.get("status") == "failed":

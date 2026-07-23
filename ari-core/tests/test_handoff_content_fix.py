@@ -159,3 +159,52 @@ def test_full_log_empty_when_no_source(tmp_path, monkeypatch):
     class N:
         parent_id = "node_missing"
     assert _load_parent_log(N(), str(run / "node_child")) == ""
+
+
+# ── The summary channel must carry the MEASURED verdict, never the agent's
+# self-narrative. Observed live in a gemm pilot: a candidate that did not compile
+# (score 0.0, has_real_data=False) shipped "The kernel passes the self-test and
+# achieves ~23.3x speedup" to its child as `evaluator_reason`, because the
+# deterministic evaluator's reason — written to node.eval_summary — was then
+# overwritten by mark_success(eval_summary=<agent finish-JSON summary>). Only the
+# +summary arms receive that field, so the misinformation biased the very arm
+# comparison the study measures.
+
+def test_evaluator_verdict_survives_mark_success():
+    """A verdict already on the node must not be replaced by the agent's summary."""
+    from ari.orchestrator.node import Node
+    n = Node(id="node_x", parent_id=None, depth=0)
+    verdict = "compile failed: candidate_gemm.c:56: error [scientific_score=0.00]"
+    n.eval_summary = verdict
+    # the expression loop.py's finish_json path now passes
+    n.mark_success(artifacts=[],
+                   eval_summary=(n.eval_summary or "agent: ~23.3x, self-test passes"))
+    assert n.eval_summary == verdict
+    assert "23.3" not in n.eval_summary, "agent self-claim replaced the measured verdict"
+
+
+def test_agent_summary_still_used_when_no_evaluator_ran():
+    """Fallback preserved: with no evaluator verdict the agent summary is kept."""
+    from ari.orchestrator.node import Node
+    n = Node(id="node_y", parent_id=None, depth=0)
+    assert not n.eval_summary
+    n.mark_success(artifacts=[], eval_summary=(n.eval_summary or "agent narrative"))
+    assert n.eval_summary == "agent narrative"
+
+
+def test_finish_json_path_does_not_pass_bare_agent_summary():
+    """Source guard on the exact regression: the finish_json mark_success call must
+    prefer the evaluator verdict. A refactor back to ``eval_summary=summary`` there
+    silently re-opens the channel to unverified self-report."""
+    import inspect
+    import re
+    from ari.agent import loop as _loop
+    src = inspect.getsource(_loop)
+    i = src.find('node.ended_by = "finish_json"')
+    assert i != -1, "finish_json path not found — update this guard"
+    window = src[i:i + 1600]
+    m = re.search(r"node\.mark_success\((.*?)\)", window, re.S)
+    assert m, "mark_success call not found after the finish_json marker"
+    args = m.group(1)
+    assert "node.eval_summary or" in args, (
+        "finish_json mark_success no longer prefers the evaluator verdict: " + args.strip())
