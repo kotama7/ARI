@@ -511,6 +511,13 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                 "stdout.txt", "stderr.txt", "out.txt", "err.txt",
                 "*.metrics.json", "metrics.json",
                 "node_report.json",
+                # Tool-generated environment probe (ari/agent/run_env.py caches it
+                # next to the run). Two reasons it must not ride the code channel:
+                # it is TOOLING output, so handing it to every child weakens the
+                # code_only arm toward the richer ones; and it records the probed
+                # SLURM partitions/nodes, i.e. machine info, which must never reach
+                # an agent-facing artifact. The child re-probes its own environment.
+                "heterogeneous_env.json",
             )
             def _is_output_artifact(rel_path: str, name: str) -> bool:
                 for pat in _OUTPUT_BLACKLIST:
