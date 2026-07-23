@@ -208,3 +208,64 @@ def test_finish_json_path_does_not_pass_bare_agent_summary():
     args = m.group(1)
     assert "node.eval_summary or" in args, (
         "finish_json mark_success no longer prefers the evaluator verdict: " + args.strip())
+
+
+# ── The summary channel's `outcome` must agree with the MEASUREMENT. Preferring
+# the agent's narrative unconditionally shipped a self-reported success next to
+# the score that refuted it (observed live: "passes the self-test and achieves
+# ~22.9x speedup" beside _scientific_score=0.0 for a candidate that did not
+# compile) — unverified self-report re-entering a deterministic loop, and only
+# through the +summary arms.
+
+def _failed_report(**kw):
+    """A node the MEASUREMENT rejected, but whose agent-loop status is 'success'
+    (the agent completed its turns) and whose narrative claims success."""
+    base = {
+        "node_id": "node_bad", "status": "success",
+        "what_was_done": "Implemented ikj + OpenMP; passes the self-test and achieves ~22.9x speedup.",
+        "self_assessment": {"succeeded": False, "headline": "~22.9x speedup, self-test passes"},
+        "evaluator_reason": "compile failed: candidate_gemm.c:27: error: 'crowd' undeclared [scientific_score=0.00]",
+        "metrics": {"_scientific_score": 0.0, "valid_geomean_speedup": 0.0},
+    }
+    base.update(kw)
+    return base
+
+
+def test_outcome_uses_the_verdict_when_the_measurement_rejected_the_node():
+    v = node_summary_view(_failed_report(), fields_enabled=None)
+    assert "compile failed" in v, "the child was not told why the parent failed"
+    assert "22.9x" not in v, "the agent's refuted success claim reached the child"
+    assert "passes the self-test" not in v
+
+
+def test_outcome_keeps_the_agent_narrative_when_the_measurement_agrees():
+    rep = _failed_report(self_assessment={"succeeded": True, "headline": "h"},
+                         metrics={"_scientific_score": 0.42, "valid_geomean_speedup": 28.4},
+                         what_was_done="Blocked ikj + OpenMP.")
+    v = node_summary_view(rep, fields_enabled=None)
+    assert "Blocked ikj + OpenMP." in v
+
+
+def test_known_failures_not_gated_on_the_agent_loop_status():
+    """status='success' is the AGENT-LOOP status; a node whose candidate did not
+    compile still reports it. Gating on it hid the failure reason exactly when it
+    mattered."""
+    from ari.orchestrator.node_summary_view import derive_known_failures
+    kf = derive_known_failures(_failed_report())
+    assert any("compile failed" in k for k in kf), kf
+
+
+def test_view_scrubs_host_identity_from_agent_facing_text(monkeypatch):
+    """node_report.json stays raw (scrubbed only at publication), but this view
+    feeds the CHILD'S PROMPT and must never carry work_dir / $HOME / username /
+    hostname — a compiler error in the verdict quotes absolute paths."""
+    monkeypatch.setenv("ARI_WORK_DIR", "/scratch/fs0/homedir/ARI/workspace/experiments/r/node_x")
+    monkeypatch.setenv("HOME", "/scratch/fs0/homedir")
+    monkeypatch.setenv("USER", "alice")
+    rep = _failed_report(evaluator_reason=(
+        "compile failed: /scratch/fs0/homedir/ARI/workspace/experiments/r/node_x/candidate.c:1: "
+        "error: boom (owner alice)"))
+    v = node_summary_view(rep, fields_enabled=None)
+    assert "/scratch/fs0/homedir" not in v
+    assert "alice" not in v
+    assert "/workspace/candidate.c" in v, v

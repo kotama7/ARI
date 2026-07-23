@@ -21,7 +21,56 @@ See ari-core/ari/orchestrator/Plan.md and ari-core/PREREG_handoff_study.md.
 
 from __future__ import annotations
 
+import os
+import re
+import socket
 from typing import Any
+
+_CONTAINER_ROOT = "/workspace"
+
+
+def scrub_host_identity(s: str) -> str:
+    """Remove host identity (work_dir, ``$HOME``, username, hostname) from
+    AGENT-FACING text.
+
+    ``node_report.json`` itself stays RAW — runtime artifacts are scrubbed only at
+    the publication boundary — but this view feeds the CHILD'S PROMPT, and the
+    module contract above is that no machine info reaches an agent.
+
+    The evaluator's verdict can carry it even though the report's own operational
+    fields do not: a compiler error quotes absolute source paths under the run's
+    work_dir, which embeds ``$HOME`` and the username. Those never pass through the
+    coding server's tool-output ``_virtualize`` because the harness compiles the
+    candidate itself, so this is the boundary that must scrub them. Same four
+    substitutions, so both agent-facing boundaries agree.
+    """
+    if not s:
+        return s
+    roots: set[str] = set()
+    for cand in (os.environ.get("ARI_WORK_DIR") or "", os.environ.get("ARI_ROOT") or ""):
+        c = cand.rstrip("/")
+        if c:
+            roots.add(c)
+            try:
+                roots.add(os.path.realpath(c).rstrip("/"))
+            except OSError:
+                pass
+    for r in sorted((x for x in roots if x), key=len, reverse=True):
+        s = s.replace(r, _CONTAINER_ROOT)
+    home = (os.environ.get("HOME") or "").rstrip("/")
+    if home and home != "/":
+        s = s.replace(home, "~")
+    user = os.environ.get("USER") or ""
+    if len(user) >= 3:
+        s = re.sub(r"\b" + re.escape(user) + r"\b", "user", s)
+    try:
+        hosts = {h for h in (socket.gethostname(), socket.gethostname().split(".")[0])
+                 if len(h) >= 3}
+    except OSError:
+        hosts = set()
+    for h in sorted(hosts, key=len, reverse=True):
+        s = re.sub(r"\b" + re.escape(h) + r"\b", "host", s)
+    return s
 
 # Ablatable operational-state fields (RQ-B). Order is the display order.
 # ``outcome`` surfaces the node's self-assessment headline — the one ACTIONABLE,
@@ -46,6 +95,31 @@ _FAILURE_KEYWORDS = (
 _SUCCESS_STATUSES = {"success", "completed", "complete", "ok", "done", "valid"}
 
 
+def measured_invalid(report: dict) -> bool:
+    """True when the MEASUREMENT says this node produced no valid result.
+
+    Deliberately NOT ``report["status"]``: that is the AGENT-LOOP status ("the
+    agent finished its turns"), which is ``success`` even when the candidate did
+    not compile. Using it gated the failure reason out of the child's summary
+    exactly when the failure mattered.
+
+    Objective signals only: ``self_assessment.succeeded`` is documented in
+    node_report.schema.json as the deterministic ``has_real_data`` ground truth,
+    and ``_scientific_score`` is what BFTS actually ranks on.
+    """
+    rep = report or {}
+    sa = rep.get("self_assessment") or {}
+    if sa.get("succeeded") is False:
+        return True
+    metrics = rep.get("metrics") or {}
+    if "_scientific_score" in metrics:
+        try:
+            return float(metrics.get("_scientific_score") or 0.0) <= 0.0
+        except (TypeError, ValueError):
+            return False
+    return False
+
+
 def _cap(s: Any, n: int) -> str:
     s = str(s).strip().replace("\n", " ")
     return s if len(s) <= n else s[:n] + " …"
@@ -62,7 +136,13 @@ def derive_known_failures(report: dict, *, max_items: int = 8) -> list[str]:
     out: list[str] = []
     status = str(rep.get("status", "")).strip().lower()
     reason = (rep.get("evaluator_reason") or "").strip()
-    if status and status not in _SUCCESS_STATUSES and reason:
+    # Surface the evaluator's reason whenever the MEASUREMENT failed, not only when
+    # the agent-loop status is non-success. A node whose candidate did not compile
+    # still reports status="success" (the agent completed its turns), so gating on
+    # status alone hid the real failure reason from the child in exactly the case
+    # that matters. Keep the status check too: a crashed//errored node is a failure
+    # even when no score was produced.
+    if reason and (measured_invalid(rep) or (status and status not in _SUCCESS_STATUSES)):
         out.append(reason)
     concerns = (rep.get("self_assessment") or {}).get("concerns") or []
     for c in concerns:
@@ -153,14 +233,28 @@ def node_summary_view(
         parts.append(f"  environment: {_cap(_env, max_chars)}")
 
     if "outcome" in enabled:
-        # Prefer the agent's own narrative self-report (what_was_done) — the summary
-        # channel is meant to carry it (F8); fall back to the self_assessment headline,
-        # then the deterministic eval_summary.
-        h = (rep.get("what_was_done") or "").strip()
-        if not h:
-            h = ((rep.get("self_assessment") or {}).get("headline") or "").strip()
-        if not h:
-            h = (rep.get("eval_summary") or "").strip()
+        # THE MEASUREMENT GOVERNS. The agent's own narrative (what_was_done /
+        # self_assessment headline) is carried only when the measurement
+        # corroborates it; on a node the evaluator judged invalid it is dropped in
+        # favour of the evaluator's verdict.
+        #
+        # Preferring the narrative unconditionally shipped the child a
+        # self-reported success next to the measurement that refuted it — observed
+        # live: "The kernel passes the self-test and achieves ~22.9x speedup"
+        # rendered as `outcome:` beside `key_metrics: {_scientific_score: 0.0}` for
+        # a candidate that did not compile. That is a direct contradiction inside
+        # one message, and it is unverified self-report re-entering a deliberately
+        # deterministic loop — through the +summary arms ONLY, so it biased the arm
+        # comparison the study exists to measure.
+        verdict = (rep.get("evaluator_reason") or rep.get("eval_summary") or "").strip()
+        if measured_invalid(rep):
+            h = verdict
+        else:
+            h = (rep.get("what_was_done") or "").strip()
+            if not h:
+                h = ((rep.get("self_assessment") or {}).get("headline") or "").strip()
+            if not h:
+                h = verdict
         if h:
             parts.append(f"  outcome: {_cap(h, max_chars)}")
     if "key_metrics" in enabled:
@@ -196,4 +290,7 @@ def node_summary_view(
 
     if len(parts) == 1:
         return ""
-    return "\n".join(parts)
+    # Scrub at the boundary, over the WHOLE rendered view rather than per field, so
+    # any field (present or future) that quotes a host path / username / hostname is
+    # covered. The source node_report.json stays raw.
+    return scrub_host_identity("\n".join(parts))
