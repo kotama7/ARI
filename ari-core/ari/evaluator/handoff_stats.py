@@ -197,10 +197,20 @@ def tost_equivalence(a: Sequence[float], b: Sequence[float], *,
     na, nb = a.size, b.size
     se = math.sqrt(va / na + vb / nb)
     diff = ma - mb
-    if se == 0.0:
-        eq = abs(diff) < margin
-        return {"equivalent": bool(eq), "mean_diff": diff, "se": 0.0,
-                "p_lower": 0.0 if eq else 1.0, "p_upper": 0.0 if eq else 1.0,
+    # DEGENERATE VARIANCE GUARD. With se at (or near) zero the t-statistics blow up
+    # and TOST returns p≈0 — an affirmative "these arms are equivalent" at maximal
+    # confidence inferred from samples that simply never varied. That is reachable
+    # here, not hypothetical: the score axis saturates (meshpart clips at 1.0) and
+    # is quantised (erfc scores a fixed-size grid), so whole arms can land on one
+    # identical value. Deleting the se==0 shortcut does NOT fix it — that branch is
+    # just the limit of the Welch test below (se=7e-10 already gives p~1e-15). The
+    # sampling uncertainty is genuinely unknown at this n, so refuse to conclude.
+    _se_floor = 1e-9
+    if se <= _se_floor:
+        return {"equivalent": False,
+                "reason": "degenerate variance (both arms constant) — "
+                          "equivalence is not estimable at this n",
+                "mean_diff": diff, "se": float(se), "p_lower": 1.0, "p_upper": 1.0,
                 "alpha": alpha, "margin": margin}
     df = (va / na + vb / nb) ** 2 / (
         (va / na) ** 2 / (na - 1) + (vb / nb) ** 2 / (nb - 1)
