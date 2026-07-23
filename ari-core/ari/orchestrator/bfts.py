@@ -609,7 +609,19 @@ class BFTS:
         # specific weaknesses or follow up on concrete next-step hints.
         # This read + the sibling-report read are the two filesystem inputs;
         # they stay in BFTS and are handed to the (pure) context builder.
-        parent_report_block = _format_parent_report_block(node)
+        # Study control (handoff ablation): HandoffConfig.inject_planner_block.
+        # Every handoff mode resolves it to False (ari/config/__init__.py) because
+        # the arm's own channel must be the ONLY inheritance path — but nothing
+        # consulted it, so this block was injected in EVERY arm. That handed even
+        # code_only children the parent's structured self-report through the
+        # planner prompt, i.e. an un-ablated summary channel shared by all arms,
+        # which pushes the between-arm difference the study measures toward zero.
+        # `ARI_HANDOFF_PLANNER_BLOCK` (default on: normal ARI behaviour is
+        # unchanged; the study's mode resolution turns it off).
+        import os as _os_pb
+        _pb = _os_pb.environ.get("ARI_HANDOFF_PLANNER_BLOCK", "").strip().lower()
+        _pb_on = _pb not in ("0", "false", "no", "off")
+        parent_report_block = _format_parent_report_block(node) if _pb_on else ""
         sibling_reports = self._load_sibling_node_reports(existing_children or [])
 
         # Subtask 011 §7-A: pure context serialization lives in the builder.
