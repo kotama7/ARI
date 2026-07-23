@@ -243,9 +243,23 @@ def holm_adjust(pvalues: Sequence[float]) -> list[float]:
 
 
 def summarize_arm(run_speedups: Sequence[float], *, seed: int = 0,
-                  n_boot: int = 2000, alpha: float = 0.05) -> dict:
-    """Per-arm summary: geomean best-valid speedup + bootstrap CI over runs."""
-    point, lo, hi = bootstrap_ci(run_speedups, statistic=geomean,
+                  n_boot: int = 2000, alpha: float = 0.05,
+                  is_score: bool = False) -> dict:
+    """Per-arm central tendency + bootstrap CI over runs.
+
+    ``is_score`` selects the estimator for the task's NATIVE axis. Speedups are
+    ratios, so the geometric mean is right. Bounded [0,1] scores are NOT ratios:
+    a geometric mean is dragged toward 0 by a single near-zero run (valid scores
+    [0.05, 0.90, 0.92] -> geomean 0.335 vs arithmetic 0.623) and, worse, it is not
+    the quantity the additive score-axis TOST margin is defined against — so the
+    table and the equivalence test were describing different centres.
+
+    ``n_runs`` counts the values PASSED IN. Callers that filter to valid runs must
+    report the arm total separately; the key is named for what it holds.
+    """
+    stat = (lambda v: float(sum(v) / len(v)) if len(v) else 0.0) if is_score else geomean
+    point, lo, hi = bootstrap_ci(run_speedups, statistic=stat,
                                  n_boot=n_boot, alpha=alpha, seed=seed)
     return {"n_runs": int(len(run_speedups)), "geomean": point,
+            "center": point, "estimator": "mean" if is_score else "geomean",
             "ci_lo": lo, "ci_hi": hi}
