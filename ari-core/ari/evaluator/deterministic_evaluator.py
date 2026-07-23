@@ -196,6 +196,16 @@ class DeterministicEvaluator:
             # neutralized by min/max (min(nan,1)==nan), so map non-finite -> 0.
             _s_raw = float(result.get("score") or 0.0)
             s = min(max(_s_raw, 0.0), 1.0) if math.isfinite(_s_raw) else 0.0
+            # Parity with the speedup path below: a node that did not compile
+            # scores 0, and the RANKING METRIC — not just the `valid` flag — must
+            # say so. BFTS reads metrics["_scientific_score"] directly and never
+            # re-checks `valid` (orchestrator/bfts.py:339 frontier score;
+            # cli/bfts_loop.py:786 _child_retires_parent), so leaving a positive
+            # score here would let a non-compiling child retire a working parent.
+            # The shipped score-axis harnesses (erfc, meshpart) already return
+            # score=0.0 on failure; this makes the contract independent of that.
+            if not compile_ok:
+                s = 0.0
             metrics: dict[str, Any] = {"_scientific_score": s, "valid_geomean_speedup": s}
             for name, frac in (result.get("regions") or {}).items():
                 metrics[f"region_{name}"] = float(frac or 0.0)
