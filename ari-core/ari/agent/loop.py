@@ -645,9 +645,13 @@ def _load_parent_log(node, work_dir: str, *, limit: int | None = None) -> str:
                 except Exception:
                     pass
     # Tail-cap (not head): keep the END of a build+benchmark log, where the final
-    # candidate/metrics live (F7).
+    # candidate/metrics live (F7). Scrub host identity: a raw run.log / slurm-*.out
+    # quotes absolute paths (=> $HOME, username) and scheduler lines can name the
+    # node/partition — this text goes into the CHILD prompt, so it must be cleaned
+    # like the structured view (the execution-record path above is already clean).
     if chunks:
-        return ("\n\n".join(chunks))[-limit:]
+        from ari.orchestrator.node_summary_view import scrub_host_identity
+        return scrub_host_identity(("\n\n".join(chunks))[-limit:])
     # Last resort: tree.json trace_log (usually empty for these models).
     _tl = _load_parent_trace_log(pid, work_dir, limit=limit)
     if not _tl:

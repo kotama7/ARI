@@ -87,3 +87,50 @@ def test_analyzer_excludes_primary_from_holm(tmp_path):
     # every Holm-adjusted pair is a secondary (code_only) contrast
     holm_keys = [k for k, v in c.items() if "holm_p" in v]
     assert holm_keys and all("code_only" in k for k in holm_keys)
+
+
+def test_lineage_stats_parent_child_improve_break(tmp_path):
+    """REGRESSION: lineage_stats reads tree.json and compares each child to its
+    parent. A refactor of the validity rule left a stale `g` reference in the
+    parent/child branch, so the whole function raised NameError on ANY run with a
+    readable tree.json — but no unit test exercised that path, so it shipped and
+    only surfaced on real smoke data. This drives the tree.json branch directly."""
+    run = tmp_path / "experiments" / "run_x"
+    ck = tmp_path / "checkpoints" / "run_x"
+    ck.mkdir(parents=True)
+    tree = {"nodes": [
+        {"id": "root", "parent_id": None,
+         "metrics": {"valid_geomean_speedup": 2.0}, "self_assessment": {"succeeded": True}},
+        {"id": "c_up", "parent_id": "root",           # child improved on parent
+         "metrics": {"valid_geomean_speedup": 3.0}, "self_assessment": {"succeeded": True}},
+        {"id": "c_break", "parent_id": "root",         # child went invalid
+         "metrics": {"valid_geomean_speedup": 0.0}, "self_assessment": {"succeeded": False}},
+    ]}
+    (ck / "tree.json").write_text(json.dumps(tree))
+    run.mkdir(parents=True)
+
+    out = ana.lineage_stats(str(run))          # must NOT raise
+    assert out["n_nodes"] == 3
+    assert out["n_valid"] == 2                  # root + c_up (c_break is invalid)
+    assert out["child_total"] == 2             # both children have a valid parent
+    assert out["child_improve"] == 1           # c_up beat the parent
+    assert out["child_break"] == 1             # c_break went invalid
+
+
+def test_lineage_stats_score_axis_zero_child_is_not_a_break(tmp_path):
+    """A score-axis child that legitimately scored 0.0 (succeeded=True) is a VALID
+    child, not a break — the validity fix must reach the parent/child comparison."""
+    run = tmp_path / "experiments" / "run_s"
+    ck = tmp_path / "checkpoints" / "run_s"
+    ck.mkdir(parents=True)
+    tree = {"nodes": [
+        {"id": "root", "parent_id": None,
+         "metrics": {"valid_geomean_speedup": 0.6}, "self_assessment": {"succeeded": True}},
+        {"id": "c0", "parent_id": "root",              # measured 0.0 but valid
+         "metrics": {"valid_geomean_speedup": 0.0}, "self_assessment": {"succeeded": True}},
+    ]}
+    (ck / "tree.json").write_text(json.dumps(tree))
+    run.mkdir(parents=True)
+    out = ana.lineage_stats(str(run))
+    assert out["n_valid"] == 2                  # the 0.0 child is valid
+    assert out["child_break"] == 0             # and is NOT counted as a break

@@ -116,13 +116,20 @@ def _measurement_env() -> dict:
     a path carries the account and site layout of the machine that ran it and is
     worthless to a reader re-checking the number elsewhere.
     """
+    import re as _re_pv
+    # Match an absolute path anywhere in the value (>=2 path segments after the
+    # leading '/'), site-agnostically — NO hard-coded mount/site names in tracked
+    # source. This catches a colon-joined or mid-string path (e.g. "x=1:/a/b/c")
+    # that a leading-'/' check alone would miss; such a path carries the account +
+    # site layout just the same and must not ship in a published artifact.
+    _ABS_PATH_IN_VALUE = _re_pv.compile(r"(?:^|[\s:;=,])/[\w.-]+(?:/[\w.-]+)+")
     out: dict[str, str] = {}
     for k, v in sorted(os.environ.items()):
         if not (k.startswith("ARI_") or k in ("OMP_NUM_THREADS", "CC", "CFLAGS")):
             continue
         if _SECRET_KEY.search(k):
             out[k] = "<redacted:secret>"
-        elif v.startswith("/"):
+        elif v.startswith("/") or _ABS_PATH_IN_VALUE.search(v):
             out[k] = "<redacted:path>"
         else:
             out[k] = v

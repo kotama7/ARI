@@ -619,8 +619,19 @@ class BFTS:
         # `ARI_HANDOFF_PLANNER_BLOCK` (default on: normal ARI behaviour is
         # unchanged; the study's mode resolution turns it off).
         import os as _os_pb
-        _pb = _os_pb.environ.get("ARI_HANDOFF_PLANNER_BLOCK", "").strip().lower()
-        _pb_on = _pb not in ("0", "false", "no", "off")
+        _pb_env = _os_pb.environ.get("ARI_HANDOFF_PLANNER_BLOCK", "").strip().lower()
+        if _pb_env:
+            _pb_on = _pb_env not in ("0", "false", "no", "off")
+        else:
+            # No env override: obey HandoffConfig.inject_planner_block, which every
+            # handoff mode resolves to False. Reading only the env left that field
+            # dead — the exact defect this gate was added to fix — so a study run
+            # that forgot the env var would silently restore the block in EVERY arm.
+            _ho_pb = getattr(getattr(self, "handoff", None), "inject_planner_block", None)
+            if _ho_pb is None:
+                _ho_pb = getattr(getattr(self.config, "handoff", None),
+                                 "inject_planner_block", True)
+            _pb_on = bool(_ho_pb)
         parent_report_block = _format_parent_report_block(node) if _pb_on else ""
         sibling_reports = self._load_sibling_node_reports(existing_children or [])
 

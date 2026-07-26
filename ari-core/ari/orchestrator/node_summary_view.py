@@ -109,8 +109,14 @@ def measured_invalid(report: dict) -> bool:
     """
     rep = report or {}
     sa = rep.get("self_assessment") or {}
-    if sa.get("succeeded") is False:
-        return True
+    succeeded = sa.get("succeeded")
+    if isinstance(succeeded, bool):
+        # The evaluator's own verdict is authoritative when present. Falling through
+        # to the score here misclassified a LEGITIMATELY MEASURED 0: on the score
+        # axis (erfc, meshpart) a candidate can compile, run, and genuinely score
+        # 0.0 — that is a real measurement, not a failed one, and reporting it as a
+        # failure would replace the child's outcome text with a failure reason.
+        return not succeeded
     metrics = rep.get("metrics") or {}
     if "_scientific_score" in metrics:
         try:

@@ -184,7 +184,8 @@ def tost_equivalence(a: Sequence[float], b: Sequence[float], *,
     """Two one-sided Welch tests (TOST) for equivalence of mean(a)-mean(b).
 
     Pass LOG-domain per-run values for ratio metrics (e.g. log speedup); ``margin``
-    is then the half-width of the equivalence band in log units (PREREG: log(1.05)).
+    is then the half-width of the equivalence band in log units (PREREG: log(1.2);
+    the earlier log(1.05) was vacuous at the study's n and was superseded).
     Equivalent iff both one-sided tests reject at ``alpha`` (i.e. the difference is
     confidently inside [-margin, +margin]). Returns a dict with the verdict + stats.
     """
@@ -205,7 +206,13 @@ def tost_equivalence(a: Sequence[float], b: Sequence[float], *,
     # identical value. Deleting the se==0 shortcut does NOT fix it — that branch is
     # just the limit of the Welch test below (se=7e-10 already gives p~1e-15). The
     # sampling uncertainty is genuinely unknown at this n, so refuse to conclude.
-    _se_floor = 1e-9
+    # Guard NEAR-degenerate variance, not only exactly-zero. An absolute 1e-9
+    # floor let se~1e-10 through and TOST then returned equivalent=True at p~1e-20
+    # — unearned certainty from essentially constant arms. Scale the floor to the
+    # data: se must be at least a tiny fraction of the pooled spread (or of |diff|
+    # / the margin) to carry any sampling information.
+    _pooled_sd = float(np.std(np.concatenate([a, b]), ddof=0))
+    _se_floor = max(1e-9, 1e-6 * max(_pooled_sd, abs(diff), margin))
     if se <= _se_floor:
         return {"equivalent": False,
                 "reason": "degenerate variance (both arms constant) — "
