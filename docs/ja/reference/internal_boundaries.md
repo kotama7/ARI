@@ -16,7 +16,13 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/state.py
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-core/ari/core.py
+    role: implementation
+  - path: ari-core/ari/rqgm/runtime.py
+    role: implementation
+  - path: ari-core/tests/test_rqgm_mode.py
+    role: test
+last_verified: 2026-07-10
 ---
 
 # 内部境界
@@ -42,7 +48,10 @@ ARI の LLM 境界は「すべてが `LLMClient` を呼ばなければならな�
 2. **`ari.llm.routing.resolve_litellm_model(model, backend)`** は唯一の
    モデル正規化ヘルパーです。プロバイダプレフィックス（CLI シムの
    `openai/claude-cli` ルールを含む）を適用し、素のモデル名が正しく
-   ルーティングされるようにします。
+   ルーティングされるようにします。そのシグネチャと戻り値は**凍結**されて
+   います: オブジェクトを構築するのではなくモデル id を*変換*するため、
+   `ari._factory.BaseRegistry` の文字列ディスパッチャ統一からは意図的に
+   外されました（`routing.py` の定義直上にある決定ノートを参照）。
 3. **`ari.cost_tracker._install_litellm_metadata_injector()`** は
    `litellm.completion`/`acompletion` を**プロセス全体**にわたって
    モンキーパッチし、(a) デフォルトのコストメタデータ（skill / phase / node）を
@@ -138,3 +147,47 @@ OS ハンドルをモジュールグローバル（`_st` としてインポー�
    `ari.checkpoint.save_tree_incremental` にあります（ロック＋mtime
    スロットル）。ノードごとの work-dir は
    `PathManager.node_work_dir(run_id, node_id)` によって分離されます。
+
+## RQGM モード境界 (`ari.rqgm`)
+
+オプトインの `ari_rqgm` モード（[実行モード](../guides/execution_modes.md)を
+参照）は、もう 1 つの内部境界を追加します: **`ari.rqgm` パッケージは
+デフォルトのランからは不可視でなければなりません**。
+
+**強制される規則。** デフォルトの `simple_bfts` パスはいかなる `ari.rqgm`
+モジュールもインポートしません。コア側のすべてのインポート箇所は遅延で
+あり、インポートが起こる前に*生の*設定フラグでゲートされます:
+
+- `ari.core.build_runtime` — `ari.mode == "ari_rqgm"` または `rqgm.enabled`
+  が設定されているときにのみ `ari.rqgm.mode` / `ari.rqgm.runtime` を
+  インポートし、`resolve_effective_mode(cfg)` が `ari_rqgm` のときにのみ
+  戦略をラップします。
+- `ari/cli/run.py` — このモードの下でのみ `ari.rqgm.state` をインポートし、
+  起動時に `rqgm_state.json` を書き `constitution.yaml` をコピーします
+  （resume 時は `reconcile_resume_mode`: 永続化されたモードが勝ち、ランが
+  途中でアップグレードされることは決してありません）。
+- `ari/cli/bfts_loop.py` — オプトインの `proposal_router.record_only: true`
+  デュアルライトが設定されたときにのみ提案ストアをインポートします
+  （デフォルトの `false` では決してインポートせず、`ari_rqgm` ではルータが
+  ネイティブに記録するためそこでもインポートはスキップされます）。
+- `ari.config._effective_mode_str` は有効化テーブルを**インポートなしで**
+  ミラーするため、設定処理自体が `ari.rqgm` をロードすることはありません。
+
+**ラップする、決して置き換えない。** `ari_rqgm` の下で `build_runtime` は
+`GovernedSearchStrategy`（`ari/rqgm/runtime.py`）を返します。これは 7 つの
+`SearchStrategy` メソッドすべてを、手を加えられていない本物の
+`ari.orchestrator.bfts.BFTS` インスタンスへ委譲します; コントローラは
+`getattr(bfts, "rqgm", None)` で発見できるため、6-tuple の戻り形は保たれ
+ます。`ari.protocols` が RQGM のクラスに言及するのは docstring の中だけ
+です — Protocol は構造的（`runtime_checkable`）なので、`ari.protocols` を
+インポートしても `ari.rqgm` からは何も引き込まれません。
+
+**強制。**
+`ari-core/tests/test_rqgm_mode.py::test_build_runtime_default_is_identity`
+はデフォルトのランタイムを構築し、(a) `sys.modules` に `ari.rqgm*`
+エントリが無いこと、(b) 戦略が `.rqgm` 属性を持たない素の
+`ari.orchestrator.bfts` オブジェクトであること、(c) チェックポイントに
+`rqgm_state.json` / `constitution.yaml` が無いことをアサートします。
+スキル側では、`ari.rqgm` は `ari.public.*` を通じて再エクスポートされず、
+`scripts/quality/check_import_boundaries.allow.yaml` は `ari.rqgm` の例外を
+一切持ちません — いかなるスキルもそれをインポートできません。

@@ -816,16 +816,35 @@ async def _tool_evidence_grounded_semantic_review(arguments: dict) -> dict:
         if suffix and prior.is_file():
             try:
                 pj = _json.loads(prior.read_text())
-                p_agg = _agg_score(pj.get("scores", {}))
-                c_agg = _agg_score(report.get("scores", {}))
-                report["score_delta"] = round(c_agg - p_agg, 4)
-                report["detected_overclaim_count_prev"] = pj.get("detected_overclaim_count", 0)
-                # RAW delta — negative means the count INCREASED after refine
-                # (a regression the old max(0, ...) clamp silently hid).
-                report["resolved_overclaim_count"] = (
-                    pj.get("detected_overclaim_count", 0)
-                    - report.get("detected_overclaim_count", 0)
-                )
+                # A no-op review (LLM unavailable / no paper text) has EMPTY
+                # scores: it measured nothing. Comparing its empty output to the
+                # prior REAL review fabricates a delta and a "resolved" count —
+                # ``_agg_score({}) - 0.72 = -0.72`` reads as a regression, and
+                # ``prev_detected(2) - 0`` reads as "resolved 2 overclaims",
+                # though this pass verified nothing. Only compute when BOTH the
+                # current and the prior review actually ran (non-empty scores).
+                this_ran = bool(report.get("scores"))
+                prior_ran = bool(pj.get("scores"))
+                if this_ran and prior_ran:
+                    p_agg = _agg_score(pj.get("scores", {}))
+                    c_agg = _agg_score(report.get("scores", {}))
+                    report["score_delta"] = round(c_agg - p_agg, 4)
+                    report["detected_overclaim_count_prev"] = pj.get("detected_overclaim_count", 0)
+                    # RAW delta — negative means the count INCREASED after refine
+                    # (a regression the old max(0, ...) clamp silently hid).
+                    report["resolved_overclaim_count"] = (
+                        pj.get("detected_overclaim_count", 0)
+                        - report.get("detected_overclaim_count", 0)
+                    )
+                else:
+                    # Not a number we can honestly report — say so instead of
+                    # emitting a fabricated one.
+                    report["score_delta"] = None
+                    report["resolved_overclaim_count"] = None
+                    report["_delta_skipped_reason"] = (
+                        "current review did not run (no-op)" if not this_ran
+                        else "prior review did not run (no-op)"
+                    )
             except Exception:
                 pass
         try:

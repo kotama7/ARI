@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/cli_ear.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-07-10
 ---
 
 # ARI CLI Reference
@@ -34,6 +34,13 @@ Complete reference for ARI command-line operations. The CLI provides the same fu
 | `ari clone <ref>` | Fetch a curated EAR bundle (file/https/ari/gh/doi); verify by digest (v0.7.0) | — |
 | `ari registry <subcmd>` | Self-hosted EAR registry: `serve` / `token issue|revoke|list` (v0.7.0) | — |
 | `ari migrate node-reports <checkpoint>` | Backfill `node_report.json` for legacy (v0.6.0) checkpoints | — |
+
+> **Execution modes.** The opt-in `ari_rqgm` mode adds **no CLI flags** in
+> v1 — it is enabled purely via config (`ari.mode: ari_rqgm` +
+> `rqgm.enabled: true` in workflow.yaml) or the `ARI_MODE` /
+> `ARI_RQGM_ENABLED` environment overrides. Every command above behaves
+> identically under the default `simple_bfts` mode. See
+> [Execution modes](../guides/execution_modes.md).
 
 ---
 
@@ -88,7 +95,7 @@ ari run experiment.md --virsci-live --virsci-k 7 --virsci-team-size 3
 **What happens:**
 
 1. ARI generates a unique project name (LLM-generated title)
-2. Creates checkpoint directory: `./checkpoints/<run_id>/`
+2. Creates checkpoint directory: `./workspace/checkpoints/<run_id>/`
 3. Searches related papers on arXiv and Semantic Scholar
 4. Generates hypotheses via VirSci multi-agent deliberation
 5. Runs Best-First Tree Search (BFTS) experiments
@@ -109,7 +116,7 @@ ari resume <checkpoint_dir> [--config <config.yaml>]
 **Example:**
 
 ```bash
-ari resume ./checkpoints/20260328_matrix_opt/
+ari resume ./workspace/checkpoints/20260328_matrix_opt/
 ```
 
 Loads the saved tree, identifies pending/failed nodes, and continues from where it stopped.
@@ -137,13 +144,13 @@ ari paper <checkpoint_dir> [--experiment <experiment.md>] [--config <config.yaml
 **Example — v2-compatible default (NeurIPS form, 1-shot, 5 reflections):**
 
 ```bash
-ari paper ./checkpoints/20260328_matrix_opt/
+ari paper ./workspace/checkpoints/20260328_matrix_opt/
 ```
 
 **Example — Supercomputing (SC) rubric with 5-reviewer ensemble + meta-review:**
 
 ```bash
-ari paper ./checkpoints/20260328_matrix_opt/ \
+ari paper ./workspace/checkpoints/20260328_matrix_opt/ \
           --rubric sc --num-reviews-ensemble 5
 ```
 
@@ -168,7 +175,7 @@ ari status <checkpoint_dir>
 **Example:**
 
 ```bash
-ari status ./checkpoints/20260328_matrix_opt/
+ari status ./workspace/checkpoints/20260328_matrix_opt/
 
 # Output:
 # ── Experiment Tree ──
@@ -200,10 +207,10 @@ ari viz <checkpoint_dir> [--port <port>]
 
 ```bash
 # Start dashboard
-ari viz ./checkpoints/ --port 8765
+ari viz ./workspace/checkpoints/ --port 8765
 
 # Monitor a specific run
-ari viz ./checkpoints/20260328_matrix_opt/ --port 9878
+ari viz ./workspace/checkpoints/20260328_matrix_opt/ --port 9878
 ```
 
 Open `http://localhost:<port>` in your browser. See the [QuickStart Guide](../getting-started/quickstart.md) for dashboard usage.
@@ -341,19 +348,19 @@ Backends: `ari-registry` (self-hosted, see `ari registry`),
 
 ```bash
 # 1. Author curates the bundle (after running the paper pipeline).
-ari ear curate ./checkpoints/run_20260504_xy/
+ari ear curate ./workspace/checkpoints/run_20260504_xy/
 
 # 2. Inspect what made it past the allow/deny rules.
-ari ear status ./checkpoints/run_20260504_xy/
+ari ear status ./workspace/checkpoints/run_20260504_xy/
 # bundle_sha256: 0ccabb16...
 # files:         42
 # visibility:    staged
 
 # 3. Ship it to a registry (still staged).
-ari ear publish ./checkpoints/run_20260504_xy/ --backend ari-registry
+ari ear publish ./workspace/checkpoints/run_20260504_xy/ --backend ari-registry
 
 # 4. After the reviewer + reproducibility check pass, promote to public.
-ari ear promote ./checkpoints/run_20260504_xy/ --target public
+ari ear promote ./workspace/checkpoints/run_20260504_xy/ --target public
 ```
 
 The `bundle_sha256` is the value baked into the paper's
@@ -426,6 +433,8 @@ ari skills-list [--config <config.yaml>]
 | `ANTHROPIC_API_KEY` | Anthropic API key | — |
 | `OLLAMA_HOST` | Ollama server URL | `http://localhost:11434` |
 | `LLM_API_BASE` | Generic API base URL (fallback) | — |
+| `ARI_MODE` | Execution-mode override: `simple_bfts` / `ari_rqgm` (see [Execution modes](../guides/execution_modes.md)) | `simple_bfts` |
+| `ARI_RQGM_ENABLED` | RQGM safety interlock override (`0`/`1`/`true`/`false`; must agree with `ARI_MODE=ari_rqgm`) | off |
 
 ### BFTS Configuration
 

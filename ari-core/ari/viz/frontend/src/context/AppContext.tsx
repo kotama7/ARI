@@ -1,5 +1,19 @@
 // ARI Dashboard – global application context
 // Provides shared state (AppState, WebSocket nodes, current page) to all components.
+//
+// LEGACY-SCOPED (gui_refresh G2 tail; plan 03 §State ownership / plan 04
+// §Caching and polling policy). This context is the remote-data store for the
+// LEGACY pages only: it polls the frozen `/state` facade every 5s, mirrors the
+// tree WebSocket, and tracks the global active checkpoint — exactly the
+// coupling the v2 surface must not inherit. v2 workspaces (Projects/Overview/
+// TreeV2/IdeasV2/ResultsV2/Governance/ConfigBrowser/ConfigStudio) source
+// remote data run-explicitly from `/api/v1` via react-query (`useV1` hooks)
+// and scope themselves with `?run=` URL state instead. Do NOT add new
+// consumers or new remote data here; the structural guard
+// `src/__tests__/appContextScope.test.ts` pins the v2 dirs AppContext-free
+// (single documented exception: IdeasV2Page's run-identity-gated research-goal
+// card). Removal of this provider is decided at the G6 legacy-removal gate
+// (plan 03 §Migration sequence step 7).
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { AppState, Checkpoint, TreeNode } from '../types';

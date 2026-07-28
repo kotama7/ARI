@@ -1,0 +1,73 @@
+% F24: the governed prompt lifecycle as a state machine, set in the ARI
+% house design language (_style.tex). Column 1 (lavender / ideation fill)
+% is the evolution side: the meta-tier clean-room generator and prompt
+% mutator emit candidates, which climb the six-stage validation ladder
+% (candidate -> validated -> shadow). Column 2 (peach / execution fill)
+% is service: probationary_active -> active with the warning/probation
+% sanction ladder below and the rehabilitation back-edge. Column 3
+% (white) is the terminal sanction chain quarantine -> retired -> banned.
+% The single accent edge (the rationed emphasis role of this figure) is
+% the T16 emergency quarantine — the only transition that may commit
+% mid-epoch. Dotted margin paths: exoneration re-entry (T18) and the
+% clean-room regeneration loop from a retirement back to a fresh
+% candidate. Rejection edges (candidate/shadow -> retired, T2/T5) are
+% omitted from the geometry and stated in the caption.
+%
+% style.tikzstyles is loaded by the preamble / the standalone wrapper;
+% the ari* house styles come from _style.tex. The build cwd differs per
+% entry point, so resolve _style.tex from each known prefix.
+\InputIfFileExists{../shared/figures/tikz/_style.tex}{}{%
+  \InputIfFileExists{shared/figures/tikz/_style.tex}{}{%
+    \InputIfFileExists{report/shared/figures/tikz/_style.tex}{}{%
+      \InputIfFileExists{_style.tex}{}{%
+        \errmessage{F24: cannot locate figures/tikz/_style.tex}}}}}
+\begin{tikzpicture}[aricanvas]
+
+  % --- column 1: evolution (meta tier emits, candidates climb) ----------
+  \node[aribox idea]                       (cleanroom) {\figlabel{F24.cleanroom}};
+  \node[aribox idea, below=of cleanroom]   (cand)      {\figlabel{F24.candidate}};
+  \node[aribox idea, below=of cand]        (valid)     {\figlabel{F24.validated}};
+  \node[aribox idea, below=of valid]       (shadow)    {\figlabel{F24.shadow}};
+  \draw[ariarrow] (cleanroom) -- node[arinote] {\figlabel{F24.note.emit}} (cand);
+  \draw[ariarrow] (cand)  -- (valid);
+  \draw[ariarrow] (valid) -- (shadow);
+
+  % --- column 2: service (adoption at the boundary; sanction ladder) ----
+  \node[aribox exp, right=of cleanroom]    (probact)   {\figlabel{F24.probact}};
+  \node[aribox exp, below=of probact]      (active)    {\figlabel{F24.active}};
+  \node[aribox exp, below=of active]       (warning)   {\figlabel{F24.warning}};
+  \node[aribox exp, below=of warning]      (probation) {\figlabel{F24.probation}};
+  \draw[ariarrow] (probact) -- (active);
+  \draw[ariarrow] (active)  -- (warning);
+  \draw[ariarrow] (warning) -- (probation);
+  \draw[ariarrow muted] (probation.west)
+    to[bend left=28] node[arinote, pos=0.3] {\figlabel{F24.note.rehab}}
+    (active.west);
+
+  % adoption handoff: shadow (col 1) -> probationary_active (col 2)
+  \draw[ariarrow, rounded corners=5pt]
+    (shadow.east) -- ([xshift=8mm]shadow.east)
+    |- node[arinote, pos=0.28] {\figlabel{F24.note.adopt}} (probact.west);
+
+  % --- column 3: terminal sanctions --------------------------------------
+  \node[aribox, right=of warning]          (quarantine) {\figlabel{F24.quarantine}};
+  \node[aribox, below=of quarantine]       (retired)    {\figlabel{F24.retired}};
+  \node[aribox, below=of retired]          (banned)     {\figlabel{F24.banned}};
+  \draw[ariarrow] (quarantine) -- (retired);
+  \draw[ariarrow] (retired)    -- (banned);
+
+  % the one accent role: the mid-epoch emergency edge (T16)
+  \draw[ariarrow accent] (warning)
+    -- node[arinote] {\figlabel{F24.note.emergency}} (quarantine);
+
+  % exoneration re-entry (T18): back under probation
+  \draw[arifeedback] (quarantine.north)
+    |- node[arinote, pos=0.75] {\figlabel{F24.note.exon}} (probact.east);
+
+  % clean-room regeneration: a retirement seeds a fresh candidate
+  \draw[arifeedback]
+    (retired.east) -- ([xshift=8mm]retired.east)
+    |- ([yshift=7mm]cleanroom.north) -- (cleanroom.north);
+  \node[arinote, above=0.25cm of probact] (reentry) {\figlabel{F24.note.reenter}};
+
+\end{tikzpicture}

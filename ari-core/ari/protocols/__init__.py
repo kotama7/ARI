@@ -23,18 +23,25 @@ Currently exposed:
   concrete :class:`ari.artifact_store.CheckpointArtifactStore`.
 - :class:`PromptLoader` (re-exported from :mod:`ari.prompts`).
 - :class:`ConfigLoader` (re-exported from :mod:`ari.configs`).
+- :class:`MCPToolCaller` — the caller-facing ``MCPClient`` duck-type (RQGM
+  Task 11 §5.7); adopted by the RQGM tool proxies, satisfied structurally
+  by :class:`ari.mcp.client.MCPClient`. Lands the ``MCPClient`` entry of
+  the deferral note below.
 
 The storage stores above (subtask 010) realise the roadmap's ``NodeStore``
-entry. More Protocols (MCPClient, MemoryClient, StageRunner) land in subsequent
-phases when their adopters are ready.
+entry. More Protocols (MemoryClient, StageRunner) land in subsequent phases
+when their adopters are ready.
 """
 
 from ari.protocols.evaluator import Evaluator  # noqa: F401
+from ari.protocols.mcp import MCPToolCaller  # noqa: F401
 from ari.protocols.model_backend import BaseModelBackend  # noqa: F401
 from ari.protocols.search import NodeExecutor, SearchStrategy  # noqa: F401
 from ari.protocols.stores import (  # noqa: F401
     ArtifactStore,
     CheckpointStore,
+    EpochStore,
+    ProposalStore,
     TraceStore,
 )
 from ari.prompts._loader import PromptLoader  # noqa: F401
@@ -47,7 +54,10 @@ __all__ = [
     "NodeExecutor",
     "CheckpointStore",
     "TraceStore",
+    "EpochStore",
+    "ProposalStore",
     "ArtifactStore",
     "PromptLoader",
     "ConfigLoader",
+    "MCPToolCaller",
 ]

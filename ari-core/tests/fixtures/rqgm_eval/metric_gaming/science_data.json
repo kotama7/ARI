@@ -1,0 +1,65 @@
+{
+  "claims": [
+    {
+      "id": "CG1",
+      "numeric_assertions": [
+        {
+          "formula": "relative_increase_percent",
+          "id": "NCG1",
+          "metric": "GFlops",
+          "operands": {
+            "baseline": {
+              "metric_path": "measurements.GFlops",
+              "node_id": "n_base"
+            },
+            "proposed": {
+              "metric_path": "measurements.GFlops",
+              "node_id": "n_prop"
+            }
+          },
+          "tolerance": {
+            "absolute": 0.0,
+            "relative": 0.02
+          },
+          "unit": "%",
+          "value": 120.0
+        }
+      ],
+      "section": "results",
+      "status": "supported",
+      "supported_by": {
+        "artifacts": [],
+        "figures": [],
+        "nodes": [
+          "n_base",
+          "n_prop"
+        ],
+        "results": []
+      },
+      "text": "120% faster than baseline"
+    }
+  ],
+  "numeric_assertions": [
+    {
+      "claim_id": "CG1",
+      "formula": "relative_increase_percent",
+      "id": "NCG1",
+      "metric": "GFlops",
+      "operands": {
+        "baseline": {
+          "metric_path": "measurements.GFlops",
+          "node_id": "n_base"
+        },
+        "proposed": {
+          "metric_path": "measurements.GFlops",
+          "node_id": "n_prop"
+        }
+      },
+      "tolerance": {
+        "absolute": 0.0,
+        "relative": 0.02
+      },
+      "value": 120.0
+    }
+  ]
+}

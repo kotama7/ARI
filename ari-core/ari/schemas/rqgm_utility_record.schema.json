@@ -1,0 +1,113 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/rqgm_utility_record.schema.json",
+  "title": "ARI-RQGM UtilityRecord",
+  "description": "One governed-utility audit record (docs/plans/ari_rqgm/06 §6, schema owned by Task 06; the §5.4 penalty channel is its sole v1 emitter). Kernel check 4 / invariant 8: a record with penalty > 0 must reference >= 1 ValidatedAttackRecord in input_refs.validated_attack_ids — raw attacks never score. input_refs and frozen_policy are stored by value so Task 10's recompute under the original epoch's weights needs no registry lookup; supersedes / recomputed_in_epoch are reserved nullable Task 10 fields. prompt_hash carries utility_policy_hash, which is REGISTRY-BACKED since Task 14 (docs/plans/ari_rqgm/14 §5.8): it is the registered prompt_hash of the active utility_policy registry entry — i.e. the EPOCH policy {composite, axis_weights, frontier_score, depth_penalty_lambda, ucb_c} frozen at the boundary — which is what makes a governed score rewrite able to invalidate the scores its retired policy produced (the retirement->repair join is prompt-keyed). VERSION BOUNDARY: records written BEFORE Task 14 carry the disjoint PENALTY policy's hash ({penalty_cap, severity_weights, verdict_factors}) in this field instead, and a frozen_policy with only the three penalty keys; they remain valid, recompute correctly (MetricRecomputer reads only those three), and simply never match a utility_policy retirement — exactly their pre-14 behavior. Task-14 records additionally carry the epoch policy BY VALUE under frozen_policy.utility_policy, so a record is self-describing without a registry lookup. created_at is wall-clock metadata, never hashed (P2). Additive-only evolution.",
+  "type": "object",
+  "required": [
+    "record_id",
+    "record_type",
+    "schema_version",
+    "epoch_id",
+    "component_id",
+    "prompt_hash",
+    "role",
+    "created_at",
+    "status",
+    "node_id",
+    "base_score",
+    "penalty",
+    "final_score",
+    "input_refs",
+    "utility_policy_hash",
+    "frozen_policy",
+    "source_refs"
+  ],
+  "properties": {
+    "record_id": {"type": "string", "pattern": "^utl_[0-9]{6,}$"},
+    "record_type": {"const": "utility_record"},
+    "schema_version": {"const": 1},
+    "epoch_id": {"type": "string"},
+    "component_id": {"type": "string"},
+    "prompt_hash": {
+      "anyOf": [
+        {"type": "string", "pattern": "^[0-9a-f]{12}$"},
+        {"type": "null"}
+      ]
+    },
+    "role": {"const": "utility_policy"},
+    "created_at": {"type": "string"},
+    "status": {"type": "string"},
+    "node_id": {"type": "string"},
+    "base_score": {"type": "number"},
+    "penalty": {"type": "number", "minimum": 0},
+    "final_score": {"type": "number", "minimum": 0},
+    "input_refs": {
+      "type": "object",
+      "required": ["validated_attack_ids"],
+      "properties": {
+        "result_ref": {
+          "type": "object",
+          "properties": {
+            "path": {"type": "string"},
+            "artifact_hash": {"type": "string"}
+          }
+        },
+        "review_ids": {"type": "array", "items": {"type": "string"}},
+        "validated_attack_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^vat_[0-9]{6,}$"}
+        }
+      }
+    },
+    "utility_policy_hash": {"type": "string", "pattern": "^[0-9a-f]{12}$"},
+    "frozen_policy": {
+      "description": "The by-value frozen weights. The three penalty keys are required and unchanged, so every record ever written still validates. `utility_policy` is the additive Task-14 sub-object (docs/plans/ari_rqgm/14 §5.8 delta 1): the EPOCH policy by value, so the record carries both policies and needs no registry lookup to be read after a rewrite. Optional: pre-14 records do not have it.",
+      "type": "object",
+      "required": ["penalty_cap", "severity_weights", "verdict_factors"],
+      "properties": {
+        "penalty_cap": {"type": "number", "minimum": 0},
+        "severity_weights": {
+          "type": "object",
+          "additionalProperties": {"type": "number", "minimum": 0}
+        },
+        "verdict_factors": {
+          "type": "object",
+          "additionalProperties": {"type": "number", "minimum": 0}
+        },
+        "utility_policy": {
+          "type": "object",
+          "properties": {
+            "composite": {"type": "string"},
+            "axis_weights": {
+              "type": "object",
+              "additionalProperties": {"type": "number"}
+            },
+            "frontier_score": {"type": "string"},
+            "depth_penalty_lambda": {"type": "number"},
+            "ucb_c": {"type": "number"},
+            "utility_policy_hash": {
+              "type": "string", "pattern": "^[0-9a-f]{12}$"
+            }
+          }
+        }
+      }
+    },
+    "supersedes": {"type": ["string", "null"]},
+    "recomputed_in_epoch": {"type": ["string", "null"]},
+    "source_refs": {"type": "array", "items": {"type": "string"}}
+  },
+  "if": {
+    "properties": {"penalty": {"exclusiveMinimum": 0}},
+    "required": ["penalty"]
+  },
+  "then": {
+    "properties": {
+      "input_refs": {
+        "properties": {
+          "validated_attack_ids": {"type": "array", "minItems": 1}
+        }
+      }
+    }
+  }
+}

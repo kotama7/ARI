@@ -6,6 +6,14 @@ ARI が実行時に使用する LLM プロンプト一覧である。各リス�
 決めるため、プロンプトは翻訳せず、本レポートの各言語版で同一の原文を
 そのまま掲載する。
 
+最後の 4 グループ(提案生成、敵対的レビュー、ガバナンス、プロンプト進化)
+は、v0.9.0 以降に導入されたオプトイン式の立憲型ガバナンス実行モード
+(\texttt{ari\_rqgm})が用いるものであり、既定のパイプラインがこれらを
+読み込むことはない。掲載形式は他と同じく逐語である。同モードにおいて、
+ここに示すテンプレートはコミット済みのシードであり、実行時に進化した
+プロンプト変種は各ランのチェックポイント内に保存され、これらのファイル
+を置き換えることはない。
+
 \subsection*{オーケストレータ}
 
 \PromptListing{orchestrator/bfts_expand.md}{BFTS 展開}{prompt:bfts_expand}
@@ -31,3 +39,32 @@ ARI が実行時に使用する LLM プロンプト一覧である。各リス�
 
 \PromptListing{viz/wizard_chat_goal.md}{ウィザード目標対話}{prompt:wizard_chat_goal}
 \PromptListing{viz/wizard_generate_config.md}{ウィザード設定生成器}{prompt:wizard_generate_config}
+
+\subsection*{提案生成器}
+
+\PromptListing{rqgm/proposal_cheap.md}{低コスト提案生成器}{prompt:proposal_cheap}
+\PromptListing{rqgm/proposal_mutation.md}{提案変異生成器}{prompt:proposal_mutation}
+\PromptListing{rqgm/proposal_prior_art.md}{先行研究差別化生成器}{prompt:proposal_prior_art}
+
+\subsection*{敵対的レビュー}
+
+\PromptListing{rqgm/adversary_overclaim.md}{過大主張敵対者}{prompt:adversary_overclaim}
+\PromptListing{rqgm/adversary_metric_gaming.md}{指標ゲーミング敵対者}{prompt:adversary_metric_gaming}
+\PromptListing{rqgm/adversary_prior_art.md}{先行研究敵対者}{prompt:adversary_prior_art}
+\PromptListing{rqgm/adversary_reproducibility.md}{再現性敵対者}{prompt:adversary_reproducibility}
+\PromptListing{rqgm/adversary_evidence_gap.md}{証拠欠落敵対者}{prompt:adversary_evidence_gap}
+\PromptListing{rqgm/adversary_cost_explosion.md}{コスト爆発敵対者}{prompt:adversary_cost_explosion}
+\PromptListing{rqgm/adversary_prompt_injection.md}{プロンプト注入敵対者}{prompt:adversary_prompt_injection}
+\PromptListing{rqgm/defender.md}{敵対ループ防御者}{prompt:rqgm_defender}
+\PromptListing{rqgm/judge_adjudication.md}{成果物裁定}{prompt:judge_adjudication}
+
+\subsection*{ガバナンス}
+
+\PromptListing{governance/auditor.md}{ガバナンス監査人}{prompt:governance_auditor}
+\PromptListing{governance/defender.md}{ガバナンス弁護人}{prompt:governance_defender}
+\PromptListing{governance/governance_judge.md}{ガバナンス裁定者}{prompt:governance_judge}
+
+\subsection*{プロンプト進化}
+
+\PromptListing{rqgm/prompt_mutator.md}{プロンプト変異メタプロンプト}{prompt:prompt_mutator}
+\PromptListing{rqgm/clean_room_generator.md}{クリーンルーム再生成メタプロンプト}{prompt:clean_room_generator}

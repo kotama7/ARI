@@ -234,10 +234,24 @@
     "ari-skill-idea": [
       {
         "args": [
-          "max_papers"
+          "experiment_context",
+          "max_discussion_rounds",
+          "max_recursion_depth",
+          "n_agents",
+          "n_ideas",
+          "papers",
+          "topic"
         ],
         "idiom": "fastmcp",
-        "name": "_load_virsci_snapshot_papers"
+        "name": "generate_ideas"
+      },
+      {
+        "args": [
+          "max_papers",
+          "topic"
+        ],
+        "idiom": "fastmcp",
+        "name": "survey"
       }
     ],
     "ari-skill-memory": [
@@ -539,11 +553,13 @@
       },
       {
         "args": [
+          "decode_seed",
           "merged_review_path",
           "semantic_review_path",
           "suggested_revisions_json",
           "tex_path",
-          "venue"
+          "venue",
+          "writer_prompt_override"
         ],
         "idiom": "fastmcp",
         "name": "paper_refine"
@@ -587,6 +603,7 @@
         "args": [
           "author_name",
           "context",
+          "decode_seed",
           "experiment_summary",
           "figures_manifest_json",
           "max_revision_rounds",
@@ -594,7 +611,8 @@
           "refs_json",
           "science_data_json",
           "venue",
-          "verified_context_json"
+          "verified_context_json",
+          "writer_prompt_override"
         ],
         "idiom": "fastmcp",
         "name": "write_paper_iterative"

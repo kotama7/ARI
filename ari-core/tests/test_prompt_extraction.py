@@ -64,6 +64,102 @@ _EXPECTED_HASHES: list[tuple[str, str]] = [
         "evaluator/peer_review",
         "05205ee7b5215dd88418539d940c9140f3a0f4e1be940a4b330daea15a72a798",
     ),
+    # RQGM Task 03 — ProposalRouter generator prompts (committed from day
+    # one; hashes captured at extraction, docs/plans/ari_rqgm/03 §7).
+    (
+        "rqgm/proposal_cheap",
+        "49e2b05bdfebc42f4c0ae3b928b97c4ec2cd0e34722824880e7df51c1cad07ab",
+    ),
+    (
+        "rqgm/proposal_mutation",
+        "b77da9cc7e1529cd4c4ede327ed6fc18d82a502991c7a109757b2df20c007107",
+    ),
+    (
+        "rqgm/proposal_prior_art",
+        "81d78be59631b33af9a1479bc4ef7fd0c9d8de6143951be7c0805eaab8b26075",
+    ),
+    # RQGM Task 06 — adversarial-loop actor prompts (committed from day one;
+    # hashes captured at extraction, docs/plans/ari_rqgm/06 §5.2/§7).
+    (
+        "rqgm/adversary_overclaim",
+        "f037e38ea9fc4364d35eef417e36ee41ba4508ed95b5527a5b8a723493c4d256",
+    ),
+    (
+        "rqgm/adversary_metric_gaming",
+        "7ec5dac24de042558a8774863eaee773948c2da5b66e690e1f21c4a7963b2f99",
+    ),
+    (
+        "rqgm/adversary_prior_art",
+        "215e2e8f2482a6b701e9d70a25e8f66f019f9fdc67fb050bbf3156795106132d",
+    ),
+    (
+        "rqgm/adversary_reproducibility",
+        "82c54c806503ce229d013ae37fe62ccd9d82266a9e90092155913c034c5d63e6",
+    ),
+    (
+        "rqgm/adversary_evidence_gap",
+        "87d938dca63c26d5fd52787813deb221b22e4fe051baec743a388d64a3d12e71",
+    ),
+    (
+        "rqgm/adversary_cost_explosion",
+        "c1d10f56b70ed478e48f5742b3337fda17e6ab26dc14e7d0b9dcee6fd0d7547f",
+    ),
+    (
+        "rqgm/adversary_prompt_injection",
+        "51897a5425e055983ee174252cd304d9b729dd17c9e7947653ba6f097faa04d7",
+    ),
+    # Paper-archive Task 05 — the eighth (paper-phase) adversary template
+    # (docs/plans/ari_rqgm_paper/05 §5.1; paper-mode-gated founding row).
+    (
+        "rqgm/adversary_paper_self_preference",
+        "9dfe9812549b7e092718065f7e946dd44471451603c0bd117a72dcf890ef0e97",
+    ),
+    (
+        "rqgm/defender",
+        "f029469f8b6c75c6e18ba74277eed76dfc7b16650505010dedc637c4c3a9304a",
+    ),
+    (
+        "rqgm/judge_adjudication",
+        "7e8dd5ed5fe5332cc2908dca6c8185676f192423b995992ca68c25a047b8329a",
+    ),
+    # RQGM Task 07 — PromptMutator meta-prompt (committed from day one;
+    # hash captured at extraction, docs/plans/ari_rqgm/07 §5.4/§7).
+    (
+        "rqgm/prompt_mutator",
+        "859a0ce514d3f4407ff0eba31a1c40ab447d591446f612bac7af7654f5efd847",
+    ),
+    # RQGM Task 08 — CleanRoomPromptGenerator meta-prompt (committed from
+    # day one; hash captured at extraction, docs/plans/ari_rqgm/08 §5.3/§7).
+    (
+        "rqgm/clean_room_generator",
+        "1def8e77f92fdd0e735708f6b2fa5fd5d878b9b297a84c68d2e266552e880550",
+    ),
+    # Paper-archive co-evolution (plan ari_rqgm_paper/03 §5.5) — the governed
+    # manuscript writer/reviewer founding templates, LIFTED byte-identical
+    # from ari-skill-paper/src/prompts/{paper_writer,academic_reviewer}.md so
+    # the governed roles start from exactly today's proven behavior.
+    (
+        "rqgm/paper_writer",
+        "f38a15f0f140912dcd7eb5df13ca4ff706f60c4731c3c9feea508c1fb21cba7c",
+    ),
+    (
+        "rqgm/paper_reviewer",
+        "04b3c49d070d729065dcd2e9806f8580fbe0362c939b6c447cc57fefd188f186",
+    ),
+    # RQGM Task 05 — governance-actor prompts (committed from day one;
+    # hashes captured at extraction, docs/plans/ari_rqgm/05 §5.3/§7).
+    (
+        "governance/auditor",
+        "9f0efc9e07746850289f3be38f821f67e35772e775814f620be1289c6d5b774c",
+    ),
+    (
+        "governance/defender",
+        "4c65730dee1a6a03289c059d62e858e9c4000e1e95d2dce86b2e4513453d89cb",
+    ),
+    (
+        "governance/governance_judge",
+        "a70a98ed166c6479c177e0630b59794f0f23933259149cd94e0d77daff54fff9",
+    ),
     # PC8 — viz wizard chat-goal prompt.
     (
         "viz/wizard_chat_goal",

@@ -478,12 +478,32 @@ def resolve_rubric(rubric_id: str | None = None) -> Rubric:
     On failure (unknown rubric id), falls back to 'neurips' — the default
     rubric that is guaranteed to ship with the repo. The legacy rubric was
     removed in v0.6.0.
+
+    ``ARI_FEWSHOT_MODE`` is applied here too, for the same reason ``ARI_RUBRIC``
+    is: this is the one place every reviewer entry point converges on. Without
+    it the mode was readable only from the rubric YAML, so ``ari paper
+    --fewshot-mode dynamic`` (and the GUI field behind it) set an environment
+    variable no one read. Note what the mode does and does not buy today:
+    dynamic OpenReview retrieval is still a placeholder that returns the static
+    examples, so the reviews are unchanged — but ``ARI_STRICT_DYNAMIC=1`` only
+    becomes reachable in dynamic mode, and that combination does change
+    behaviour (missing ``openreview-py`` raises instead of falling back).
     """
     rid = rubric_id or os.environ.get("ARI_RUBRIC") or "neurips"
     try:
-        return load_rubric(rid)
+        rubric = load_rubric(rid)
     except RubricError:
         if rid == "neurips":
             raise
         log.warning("rubric %s not found; falling back to neurips", rid)
-        return load_rubric("neurips")
+        rubric = load_rubric("neurips")
+    env_mode = os.environ.get("ARI_FEWSHOT_MODE", "").strip().lower()
+    if env_mode in ("static", "dynamic"):
+        rubric.params.fewshot_mode = env_mode
+    elif env_mode:
+        log.warning(
+            "ignoring ARI_FEWSHOT_MODE=%r (expected 'static' or 'dynamic'); "
+            "keeping rubric default %r",
+            env_mode, rubric.params.fewshot_mode,
+        )
+    return rubric

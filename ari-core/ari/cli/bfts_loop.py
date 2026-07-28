@@ -68,22 +68,79 @@ def _save_tree_incremental(
     nodes,
     *,
     force: bool = False,
-) -> None:
+) -> bool:
     """Thread-safe + throttled wrapper around ``_save_checkpoint``.
 
     Delegates locking and throttling to
     ``ari.checkpoint.save_tree_incremental``; we still own the
     "build the payload from Node objects" step here because Node is a
     BFTS concept, not a checkpoint concept.
+
+    Returns whether the write succeeded. A ``force=True`` flush that returns
+    ``False`` means the run's durable record (tree.json / results.json) was NOT
+    updated — the caller must not go on to report the run as saved.
     """
     from ari.checkpoint import save_tree_incremental as _save_inc
     nodes_snapshot = list(nodes)
-    _save_inc(
+    ok = _save_inc(
         checkpoint_dir,
         lambda: _save_checkpoint(checkpoint_dir, run_id, experiment_file, nodes_snapshot),
         force=force,
     )
+    if force and ok is False:
+        log.error(
+            "checkpoint flush FAILED for run %s (force=True): tree.json/results.json "
+            "may be stale or mutually inconsistent; progress is NOT durably saved",
+            run_id)
+    return ok is not False
 
+
+
+def _root_survey_refs(agent, goal: str, max_papers: int = 8) -> list[str]:
+    """Prior-art references for ROOT ideation, via the idea skill's ``survey``.
+
+    ``ctx["survey_refs"]`` is the only input the
+    :class:`~ari.rqgm.proposals.generators.PriorArtDifferentiationGenerator`
+    reads, and nothing in ari-core ever wrote it — the generator was reachable
+    from the router table but structurally unable to produce anything, so the
+    root idea's novelty was always the model's own opinion of itself.
+
+    Fail-open and best-effort: any failure (no MCP client, tool absent, network
+    down, malformed envelope) returns ``[]``, and the router then falls through
+    to the next generator exactly as before. Never raises — this runs on the
+    ``_run_loop`` main thread, where a hook must never kill the run.
+    """
+    mcp = getattr(agent, "mcp", None)
+    if mcp is None or not str(goal or "").strip():
+        return []
+    try:
+        raw = mcp.call_tool("survey", {"topic": goal[:400],
+                                       "max_papers": max_papers})
+        # MCPClient returns {"result": "<json string>"} or {"error": ...} and
+        # never raises on tool failure — reading straight through the envelope
+        # is how empty drafts got shipped elsewhere in this codebase.
+        if not isinstance(raw, dict) or "error" in raw:
+            log.warning("root survey unavailable: %s",
+                        str((raw or {}).get("error"))[:160])
+            return []
+        body = raw.get("result")
+        payload = json.loads(body) if isinstance(body, str) else body
+        papers = (payload or {}).get("papers") or []
+        refs = []
+        for p in papers:
+            if not isinstance(p, dict):
+                continue
+            title = str(p.get("title") or "").strip()
+            if title:
+                year = str(p.get("year") or "").strip()
+                refs.append(f"{title} ({year})" if year else title)
+        if not refs:
+            log.warning("root ideation has NO prior-art refs; the novelty claim "
+                        "will be ungrounded (prior_art degrades to cheap)")
+        return refs
+    except Exception:
+        log.warning("root survey failed (fail-open)", exc_info=True)
+        return []
 
 
 def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes,
@@ -108,6 +165,128 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
     except Exception:
         pass
     _expand_enabled = "frontier_expand" not in _bfts_disabled_stages
+
+    # RQGM detection (docs/plans/ari_rqgm Task 01): duck-typed attribute read,
+    # once at loop start like _expand_enabled. Epoch hooks below gate on
+    # `_rqgm is not None`, so under simple_bfts this is a single failed
+    # getattr and nothing else.
+    _rqgm = getattr(bfts, "rqgm", None)
+    if _rqgm is not None:
+        log.info(
+            "RQGM governance active for this run (mode=%s)",
+            getattr(_rqgm, "mode", None),
+        )
+
+    # RQGM epoch hook (docs/plans/ari_rqgm Task 02 §5.6-§5.7): one duck-typed,
+    # best-effort call — opens epoch_000 (or replay-restores on resume) now,
+    # and fires the node-count epoch-boundary transaction when called again
+    # at the outer-loop head. Lineage-hook pattern: try/except + warn; a
+    # state-layer failure degrades to "epoch continues", never crashes the run.
+    def _rqgm_epoch_tick(search_state: "dict | None" = None) -> None:
+        _ensure = getattr(_rqgm, "ensure_epoch", None)
+        if _ensure is None:
+            return
+        try:
+            if search_state is not None:
+                # RQGM Task 10 (docs/plans/ari_rqgm/10 §5.2): hand the live
+                # frontier/pending/all_nodes lists into the boundary window
+                # so FrontierRepairEngine can repair them in place (main
+                # thread, between batches — no node in flight).
+                _ensure(len(all_nodes), checkpoint_dir=checkpoint_dir,
+                        run_id=run_id, search_state=search_state)
+            else:
+                _ensure(len(all_nodes), checkpoint_dir=checkpoint_dir,
+                        run_id=run_id)
+        except Exception:
+            log.warning("RQGM epoch hook failed; epoch continues", exc_info=True)
+        # Frozen-active-set invariance over the epoch just observed
+        # (plan 04 §5.4 item 4). Nothing called `validate_epoch_invariance`,
+        # so CK-EPO-001 (a record scored under a prompt outside the frozen
+        # active set) and CK-EPO-002 (an out-of-band status change inside an
+        # epoch) were never evaluated. Warn-and-audit; never blocks.
+        try:
+            _inv = getattr(_rqgm, "check_epoch_invariance", None)
+            if callable(_inv):
+                _inv()
+        except Exception:
+            log.warning("epoch invariance check failed", exc_info=True)
+
+    if _rqgm is not None:
+        _rqgm_epoch_tick()
+        # RQGM Task 03 (plan 03 §5.2): root ideation via the ProposalRouter on
+        # the main thread (marker-guarded), replacing the agent-initiated root
+        # generate_ideas call in ari_rqgm mode. Writes proposal records + the
+        # idea.json projection, then the run proceeds exactly as today. On any
+        # failure the status-quo path (agent generate_ideas → idea.json)
+        # continues untouched — warn-and-degrade, never crash the loop.
+        try:
+            _gen_root = getattr(_rqgm, "generate_root_proposals", None)
+            if _gen_root is not None and _gen_root(
+                {
+                    "goal": experiment_data.get("goal", ""),
+                    "checkpoint_dir": str(checkpoint_dir),
+                    # Prior-art grounding for the ROOT idea. Before this,
+                    # ``survey_refs`` was read in exactly one place (the
+                    # PriorArtDifferentiationGenerator) and written in NONE, so
+                    # that generator could never produce anything: it is
+                    # reachable from the router table yet always degrades to
+                    # skipped. Registered, routable, and permanently inert — the
+                    # first idea's novelty claim was therefore always an
+                    # ungrounded LLM self-assessment.
+                    "survey_refs": _root_survey_refs(
+                        agent, experiment_data.get("goal", "")),
+                }
+            ):
+                # The router owns root ideation now: suppress the agent's own
+                # generate_ideas call (same mechanism the agent uses after its
+                # first call) so idea.json keeps its single writer.
+                agent._ideas_generated = True
+                agent._suppress_tools = {"generate_ideas"}
+                # The takeover suppresses the tool, so the tool-result handler
+                # never runs and ALL of its downstream effects were orphaned:
+                # the router wrote its idea.json projection and nothing else —
+                # no EVALUATION_CRITERIA in memory, no primary-metric extractor
+                # for this run, no Letta core-memory seed. Apply them from the
+                # projection through the SAME single definition the tool path
+                # uses.
+                try:
+                    _idea_proj = json.loads(
+                        (Path(checkpoint_dir) / "idea.json").read_text()
+                    )
+                    _apply = getattr(agent, "apply_idea_effects", None)
+                    if callable(_apply) and isinstance(_idea_proj, dict):
+                        _apply(_idea_proj, node_id="",
+                               checkpoint_dir=Path(checkpoint_dir))
+                except Exception:
+                    log.warning(
+                        "router idea-effects application failed; the run "
+                        "continues without them", exc_info=True,
+                    )
+        except Exception:
+            log.warning(
+                "RQGM root proposal generation failed; falling back to the "
+                "existing idea.json path", exc_info=True,
+            )
+
+    # Stage-1 record-only dual-write (docs/plans/ari_rqgm Task 03 §8): with
+    # proposal_router.record_only=true in simple_bfts, idea.json output is
+    # additionally imported into proposals/proposal_records.jsonl as
+    # legacy_idea_json records. Zero behavior change; default (false) never
+    # imports any ari.rqgm module. In ari_rqgm the router records natively,
+    # so the import is skipped there.
+    _record_only = bool(
+        getattr(getattr(cfg, "proposal_router", None), "record_only", False)
+    )
+
+    def _maybe_import_legacy_records() -> None:
+        if not _record_only or _rqgm is not None:
+            return
+        try:
+            from ari.rqgm.proposals.store import import_idea_json_records
+
+            import_idea_json_records(checkpoint_dir)
+        except Exception:
+            log.warning("record-only proposal import failed", exc_info=True)
 
     # Install a progress callback on the agent so the ReAct loop can flush
     # tree.json mid-run (status transitions, trace_log growth). Every worker
@@ -162,6 +341,7 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
             _idea_ctx_for_expand = _build_idea_ctx_for_expand(_idea_data)
         except Exception:
             pass
+        _maybe_import_legacy_records()
 
     # lineage decisions: lineage decision config + per-run state
     _lineage_cfg = _load_lineage_decision_config()
@@ -179,6 +359,28 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
     _lineage_run_id = run_id  # captured for child launches
 
     while pending or (_expand_enabled and frontier and len(all_nodes) < cfg.bfts.max_total_nodes):
+        # RQGM Task 02: epoch-boundary check at the outer-loop head (the only
+        # natural single-writer hook site). No-op under simple_bfts.
+        if _rqgm is not None:
+            _rqgm_epoch_tick({
+                "frontier": frontier,
+                "pending": pending,
+                "all_nodes": all_nodes,
+                "flush_tree": lambda: _flush_tree_progress(force=True),
+            })
+            # RQGM Task 10 §5.6 drain-only degradation: after a double
+            # kernel-validation failure the repair engine halts expansion;
+            # the run finishes pending work but expands no further (same
+            # internal flag as the frontier_expand-disabled path). Strict
+            # `is True` — the `_sterile` convention — so duck-typed rqgm
+            # handles without a real flag can never trip it.
+            if _expand_enabled and \
+                    getattr(_rqgm, "expansion_halted", False) is True:
+                _expand_enabled = False
+                console.print(
+                    "[red]RQGM frontier repair: kernel validation failed "
+                    "twice — expansion halted (drain-only mode)[/red]"
+                )
         # --- BFTS STEP: fill empty worker slots one at a time ---
         # Each iteration of the inner loop calls expand() ONCE and produces ONE
         # new child. Frontier nodes are NOT removed when expanded — they stay
@@ -309,6 +511,7 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
 
                         _idea_data = _json_idea.loads(_idea_json_path.read_text())
                         _idea_ctx_for_expand = _build_idea_ctx_for_expand(_idea_data)
+                        _maybe_import_legacy_records()
                     except Exception:
                         pass
                 # Build context for label-free expansion: siblings (same depth, same parent),
@@ -452,6 +655,11 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
             _provided = getattr(agent.hints, "provided_files", []) if hasattr(agent, "hints") else []
             for _n in batch:
                 for _src, _fname in _provided:
+                    # Never pre-seed META_FILES (e.g. a user input literally
+                    # named results.json): delegated completion evidence
+                    # relies on no copy path placing them in a node work_dir.
+                    if PathManager.is_meta_file(_fname):
+                        continue
                     try:
                         import shutil as _sh
                         _dst = Path(_n.work_dir) / _fname
@@ -644,7 +852,22 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                             _added = len(_fc.get("added") or [])
                             _modified = len(_fc.get("modified") or [])
                             _deleted = len(_fc.get("deleted") or [])
-                            if _added + _modified + _deleted == 0:
+                            _unhashable = len(_fc.get("unhashable") or [])
+                            if _added + _modified + _deleted == 0 and _unhashable:
+                                # NOT sterile: the node produced files whose
+                                # hashes could not be read (e.g. foreign-uid
+                                # container output). Clamping here would assert a
+                                # falsehood ("no files vs parent") and discard a
+                                # node that did real work. Leave the score alone;
+                                # the unhashable list rides the node_report for a
+                                # reader to see.
+                                logging.getLogger(__name__).warning(
+                                    "Node %s produced %d file(s) that could not be "
+                                    "hashed and 0 hashable changes; NOT flagging "
+                                    "sterile (would discard real work).",
+                                    result.id, _unhashable,
+                                )
+                            elif _added + _modified + _deleted == 0:
                                 # Sterile — clamp score and mark for BFTS to skip.
                                 if isinstance(result.metrics, dict):
                                     result.metrics["_sterile"] = True
@@ -664,6 +887,86 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                                 result.id, _ster_e,
                             )
 
+                    # RQGM adversarial round (docs/plans/ari_rqgm Task 06
+                    # §5.3): after evaluation + the sterile gate, before
+                    # write_node_report so the report carries the governed
+                    # score. Best-effort like the lineage hook; a dead
+                    # branch under simple_bfts (_rqgm is None).
+                    if _rqgm is not None:
+                        try:
+                            _adv_run = getattr(
+                                _rqgm, "run_adversarial_round", None
+                            )
+                            if callable(_adv_run):
+                                _adv_parent = next(
+                                    (n for n in all_nodes
+                                     if n.id == result.parent_id), None
+                                ) if getattr(result, "parent_id", None) else None
+                                # cost_explosion's ONLY trigger: the declared
+                                # plan step count vs how many nodes the run may
+                                # still execute. Nothing populated this, so the
+                                # bundle kept its -1 "unknown (never triggers)"
+                                # default and the adversary could never fire.
+                                _adv_budget = max(
+                                    0,
+                                    int(getattr(cfg.bfts, "max_total_nodes", 0) or 0)
+                                    - len(all_nodes),
+                                )
+                                # LIVE shadow (plan 07 §5.3 stage 6): run each
+                                # shadow-status candidate ALONGSIDE the
+                                # incumbent on this node's real context. The
+                                # candidate's output is recorded as hashes +
+                                # divergence ONLY — it never reaches node
+                                # metrics, the frontier or any BFTS score; it
+                                # informs the T6 adoption decision and nothing
+                                # else. Sampled + capped by rqgm.shadow.*.
+                                try:
+                                    _shadow = getattr(
+                                        _rqgm, "run_shadow_comparison", None
+                                    )
+                                    if callable(_shadow):
+                                        _shadow(result, input_context=str(
+                                            getattr(result, "eval_summary", "")
+                                            or ""
+                                        ))
+                                except Exception:
+                                    logging.getLogger(__name__).warning(
+                                        "live shadow comparison failed",
+                                        exc_info=True,
+                                    )
+                                _adv_run(
+                                    result,
+                                    remaining_node_budget=_adv_budget,
+                                    frontier_scores=[
+                                        float((n.metrics or {}).get(
+                                            "_scientific_score") or 0.0)
+                                        for n in frontier
+                                    ],
+                                    parent_score=(
+                                        float((_adv_parent.metrics or {}).get(
+                                            "_scientific_score") or 0.0)
+                                        if _adv_parent is not None else None
+                                    ),
+                                )
+                        except Exception as _adv_e:
+                            logging.getLogger(__name__).warning(
+                                "rqgm adversarial round failed for %s: %s",
+                                result.id, _adv_e,
+                            )
+                        # §5.6.5 per-node kernel warn hook: schema + hash
+                        # provenance over the records this node just produced.
+                        # Nothing called it, so CK-HSH-001/002/003/010 were
+                        # never evaluated where a node's records exist.
+                        try:
+                            _knc = getattr(
+                                _rqgm, "run_per_node_kernel_check", None
+                            )
+                            if callable(_knc):
+                                _knc(result)
+                        except Exception:
+                            logging.getLogger(__name__).warning(
+                                "per-node kernel check failed", exc_info=True)
+
                     write_node_report(
                         node=result,
                         work_dir=Path(getattr(result, "work_dir", "") or _pm.node_work_dir(run_id, result.id)),
@@ -671,6 +974,9 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                         eval_result={
                             "scientific_score": result.metrics.get("_scientific_score"),
                             "axis_scores": result.metrics.get("_axis_scores", {}),
+                            "axis_rationales": result.metrics.get(
+                                "_axis_rationales", {}
+                            ),
                             "reason": result.eval_summary or "",
                             "has_real_data": bool(result.has_real_data),
                         } if isinstance(result.metrics, dict) else None,
@@ -746,6 +1052,19 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                             window=_lineage_window,
                             threshold=_lineage_threshold,
                         )
+                        # RQGM re-ideation (plan 03 §5.2): `frontier_stagnation`
+                        # is one of the router's four declared trigger events and
+                        # this is the hook the plan names for it. Nothing called
+                        # `on_event`, so the row was dead and the MutationGenerator
+                        # it routes to was unreachable. Best-effort; the lineage
+                        # decision below is unaffected either way.
+                        if _stagnated and _rqgm is not None:
+                            _reideate = getattr(_rqgm, "reideate", None)
+                            if callable(_reideate):
+                                _reideate("frontier_stagnation", {
+                                    "goal": experiment_data.get("goal", ""),
+                                    "checkpoint_dir": str(checkpoint_dir),
+                                })
                         _should_call = (_lineage_mode == "every_node" or _stagnated)
                         if _should_call:
                             _idea_data_l = json.loads(_idea_json_path.read_text())
@@ -788,6 +1107,27 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                                 _lineage_mode, _decision.action,
                                 _decision.rationale[:120],
                             )
+                            # RQGM re-ideation (plan 03 §5.2): `major_pivot` is
+                            # the third declared trigger event and the plan names
+                            # the switch_to_idea/fanout lineage decision as its
+                            # hook. Fired HERE rather than inside
+                            # `_execute_lineage_decision` because the runtime is
+                            # in scope here. Its priority row is
+                            # (virsci, prior_art, cheap) — the only route to the
+                            # PriorArtDifferentiationGenerator.
+                            if (
+                                _rqgm is not None
+                                and getattr(_decision, "action", "") in (
+                                    "switch_to_idea", "fanout"
+                                )
+                            ):
+                                _reideate = getattr(_rqgm, "reideate", None)
+                                if callable(_reideate):
+                                    _reideate("major_pivot", {
+                                        "goal": experiment_data.get("goal", ""),
+                                        "checkpoint_dir": str(checkpoint_dir),
+                                        "action": _decision.action,
+                                    })
                             _stop = _execute_lineage_decision(
                                 _decision,
                                 parent_run_id=_lineage_run_id,
@@ -837,6 +1177,22 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
 
         if _lineage_stop_requested:
             break
+
+    # RQGM end-of-run boundary flush: the outer-loop head tick can never
+    # observe nodes created in the final iteration (the while guard exits
+    # on max_total_nodes / drained pending first), so run one last tick.
+    # Main thread, no node in flight — the same single-writer boundary
+    # window as the loop-head site (plan 02 §5.6 names the loop head; this
+    # end-of-run position satisfies the same constraints — deviation noted).
+    # Fires only when the node-count trigger is actually met; partial
+    # trailing epochs stay open, matching crash-recovery/resume semantics.
+    if _rqgm is not None:
+        _rqgm_epoch_tick({
+            "frontier": frontier,
+            "pending": pending,
+            "all_nodes": all_nodes,
+            "flush_tree": lambda: _flush_tree_progress(force=True),
+        })
 
     return total_processed
 

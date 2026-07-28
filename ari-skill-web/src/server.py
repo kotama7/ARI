@@ -107,10 +107,22 @@ def _parse_s2_paper(p: dict) -> dict:
     }
 
 
+#: Max S2 retry attempts on HTTP 429 and the per-retry backoff cap (seconds).
+_S2_MAX_ATTEMPTS = int(_os.environ.get("ARI_S2_MAX_ATTEMPTS", "3") or 3)
+_S2_BACKOFF_CAP_S = float(_os.environ.get("ARI_S2_BACKOFF_CAP_S", "10") or 10)
+
+
 def _search_s2_sync(query: str, limit: int = 10) -> list[dict]:
     """Search Semantic Scholar API synchronously. Returns list of paper dicts.
 
     Each paper: {title, authors, year, abstract, bibtex, cite_key}
+
+    Retries on HTTP 429: Semantic Scholar rate-limits the shared egress IP — even
+    a valid key 429s under burst (collect_references fires several queries in
+    quick succession). Without a retry a transient 429 dropped the whole
+    bibliography to the arXiv fallback. Honors ``Retry-After`` when present, else
+    exponential backoff (1s/2s/4s, capped); other errors fail fast to [] as
+    before. Attempts/cap are env-tunable (ARI_S2_MAX_ATTEMPTS / ARI_S2_BACKOFF_CAP_S).
     """
     fields = "title,authors,year,abstract,citationStyles"
     url = (
@@ -118,15 +130,32 @@ def _search_s2_sync(query: str, limit: int = 10) -> list[dict]:
         f"?query={_parse.quote(query)}&fields={fields}&limit={limit}"
     )
     s2_key = _os.environ.get("S2_API_KEY", "")
-    try:
-        req_obj = _req.Request(url, headers={"x-api-key": s2_key} if s2_key else {})
-        with _req.urlopen(req_obj, timeout=15) as resp:
-            data = _json.loads(resp.read())
-    except Exception as e:
-        log.warning("S2 search failed for %r: %s", query, e)
-        return []
-
-    return [_parse_s2_paper(p) for p in data.get("data", [])]
+    headers = {"x-api-key": s2_key} if s2_key else {}
+    attempts = max(1, _S2_MAX_ATTEMPTS)
+    for attempt in range(attempts):
+        try:
+            req_obj = _req.Request(url, headers=headers)
+            with _req.urlopen(req_obj, timeout=15) as resp:
+                data = _json.loads(resp.read())
+            return [_parse_s2_paper(p) for p in data.get("data", [])]
+        except Exception as e:
+            # HTTPError carries .code and .headers; a 429 is worth retrying.
+            if getattr(e, "code", None) == 429 and attempt < attempts - 1:
+                wait = float(2 ** attempt)
+                try:
+                    ra = e.headers.get("Retry-After")  # type: ignore[attr-defined]
+                    if ra:
+                        wait = float(ra)
+                except Exception:
+                    pass
+                wait = min(wait, _S2_BACKOFF_CAP_S)
+                log.warning("S2 429 for %r; retry %d/%d after %.1fs",
+                            query, attempt + 1, attempts - 1, wait)
+                _time.sleep(wait)
+                continue
+            log.warning("S2 search failed for %r: %s", query, e)
+            return []
+    return []
 
 
 def _arxiv_fallback(query: str, limit: int = 8) -> list[dict]:
@@ -137,8 +166,10 @@ def _arxiv_fallback(query: str, limit: int = 8) -> list[dict]:
             query=query, max_results=min(limit, 8),
             sort_by=_arxiv.SortCriterion.Relevance,
         )
+        # arxiv 4.x removed Search.results(); Client().results() exists on
+        # every version the requirements pin (>=2.0) can resolve.
         papers = []
-        for r in _search.results():
+        for r in _arxiv.Client().results(_search):
             authors = [a.name for a in r.authors[:4]]
             year = str(r.published.year) if r.published else ""
             aid = r.get_short_id().replace("/", "").replace(".", "")
@@ -154,7 +185,8 @@ def _arxiv_fallback(query: str, limit: int = 8) -> list[dict]:
                 "bibtex": bib, "cite_key": aid, "url": r.entry_id,
             })
         return papers
-    except Exception:
+    except Exception as e:
+        log.warning("arXiv fallback failed for %r: %s", query, e)
         return []
 
 
@@ -295,7 +327,15 @@ def web_search(query: str, n: int = 5) -> dict:
         results: list of {title, url, snippet}
     """
     try:
-        from ddgs import DDGS
+        # The DuckDuckGo client package was renamed ``duckduckgo-search`` -> ``ddgs``.
+        # Import whichever is installed so web_search works on both (the declared
+        # dep is ``duckduckgo-search``, which still exposes ``DDGS``); a bare
+        # ``from ddgs import DDGS`` silently disabled web_search when only the
+        # older package was present.
+        try:
+            from ddgs import DDGS
+        except ImportError:
+            from duckduckgo_search import DDGS
         with DDGS() as ddgs:
             raw = list(ddgs.text(query, max_results=min(n, 10)))
         results = [
@@ -490,6 +530,57 @@ _SELECT_SYSTEM = (
 )
 
 
+async def _llm_select_relevant(
+    candidates: list[dict], experiment_summary: str, papers_summary: str,
+    *, fail_open: bool = False,
+) -> list[dict]:
+    """Run the ``_SELECT_SYSTEM`` relevance selector over *candidates*.
+
+    Returns the relevant subset. On LLM failure returns the candidates
+    unchanged (the round≥2 conservative default). Extracted so ROUND 1 can
+    filter its results too — previously only rounds ≥2 were filtered, so when
+    S2 was dead and round 1 fell back to a bare arXiv keyword search, off-topic
+    papers ("optimization" matched polynomial-opt, topology-opt, …) entered the
+    bibliography unfiltered and were cited.
+
+    *fail_open* is for the ROUND-1 caller: ``_parse_selection_response``
+    returns ``[]`` both for "nothing is relevant" and for an unparseable reply,
+    and the two are indistinguishable. Dropping everything is safe in later
+    rounds (the bibliography is already populated) but on round 1 it would ship
+    a paper with NO references at all — strictly worse than an imprecise
+    bibliography. So round 1 keeps the candidates when the selection comes back
+    empty, and says so in the log.
+    """
+    if not candidates:
+        return []
+    if not experiment_summary or not experiment_summary.strip():
+        return candidates
+    try:
+        candidates_text = "\n".join(
+            f"[{i}] {p['title']} ({p.get('year', '?')}) - "
+            f"{p.get('abstract', '')[:150]}"
+            for i, p in enumerate(candidates)
+        )
+        select_user = (
+            f"Experiment:\n{experiment_summary[:1000]}\n\n"
+            f"Already in bibliography:\n{papers_summary}\n\n"
+            f"Candidate papers to evaluate:\n{candidates_text}"
+        )
+        select_resp = await _llm_call(_SELECT_SYSTEM, select_user,
+                                      temperature=0.0, max_tokens=200)
+        indices = _parse_selection_response(select_resp, len(candidates))
+        if not indices and fail_open:
+            log.warning(
+                "relevance selection returned nothing usable for %d candidate(s); "
+                "keeping them (an empty bibliography is worse than an imprecise one)",
+                len(candidates))
+            return candidates
+        return [candidates[i] for i in indices]
+    except Exception as e:
+        log.warning("relevance selection failed: %s (keeping all candidates)", e)
+        return candidates
+
+
 @mcp.tool()
 async def collect_references_iterative(
     experiment_summary: str,
@@ -538,24 +629,50 @@ async def collect_references_iterative(
     if len(kw_words) > 5:
         kw_parts.append(" ".join(kw_words[:5]))
 
+    s2_returned_any = False
+    _round1_s2: list[dict] = []
     for i, kw in enumerate(kw_parts[:4]):
         if i > 0:
             _time.sleep(1.0)
         results = _search_s2_sync(kw, limit=10)
-        _add_papers(results)
+        if results:
+            s2_returned_any = True
+        _round1_s2.extend(results)
         all_queries.append(kw)
+    # Round-1 S2 hits were previously trusted as "high precision" and added
+    # UNFILTERED, but an imprecise keyword query returns off-topic keyword
+    # matches (an audit of a real run found ~6/17 off-topic refs — antenna
+    # "tiling", ceramic-tile drilling — one of which was cited in the paper).
+    # Filter them through the SAME relevance selector the fallback / later rounds
+    # use, when there is an experiment to judge against. Fail-open: a selector
+    # failure keeps every ref (an empty bibliography is strictly worse than an
+    # imprecise one), so this only ever removes confirmed off-topic matches.
+    if _round1_s2 and experiment_summary and experiment_summary.strip():
+        _round1_s2 = await _llm_select_relevant(
+            _round1_s2, experiment_summary, "", fail_open=True)
+    _add_papers(_round1_s2)
 
-    # arXiv fallback if S2 returned nothing at all
+    # arXiv fallback if S2 returned nothing at all. Like the S2 round-1 hits
+    # above, a bare keyword fallback is low-precision, so filter it through the
+    # same relevance selector rather than shipping every keyword match.
+    fallback_used = False
     if not all_papers:
-        _add_papers(_arxiv_fallback(keywords, 8))
+        fallback_used = True
+        fb = _arxiv_fallback(keywords, 8)
+        fb = await _llm_select_relevant(fb, experiment_summary,
+                                        _format_papers_for_llm(all_papers),
+                                        fail_open=True)
+        _add_papers(fb)
 
     # If no experiment_summary, return round-1 results only (backward compat)
     if not experiment_summary or not experiment_summary.strip():
         return {"papers": all_papers, "query": keywords, "count": len(all_papers),
-                "rounds_used": 1}
+                "rounds_used": 1, "productive_rounds": 1 if all_papers else 0,
+                "s2_available": s2_returned_any, "fallback_used": fallback_used}
 
     # ── Rounds 2..max_rounds: LLM-guided iterative search ────────────────
     rounds_used = 1
+    productive_rounds = 1 if all_papers else 0
     for round_num in range(2, max_rounds + 1):
         rounds_used = round_num
         papers_summary = _format_papers_for_llm(all_papers)
@@ -595,38 +712,35 @@ async def collect_references_iterative(
         if not new_candidates:
             continue
 
-        # Stage 2: LLM selects relevant papers
-        try:
-            candidates_text = "\n".join(
-                f"[{i}] {p['title']} ({p.get('year', '?')}) - "
-                f"{p.get('abstract', '')[:150]}"
-                for i, p in enumerate(new_candidates)
-            )
-            select_user = (
-                f"Experiment:\n{experiment_summary[:1000]}\n\n"
-                f"Already in bibliography ({len(all_papers)} papers):\n"
-                f"{papers_summary}\n\n"
-                f"Candidate papers to evaluate:\n{candidates_text}"
-            )
-            select_resp = await _llm_call(_SELECT_SYSTEM, select_user,
-                                          temperature=0.0, max_tokens=200)
-            indices = _parse_selection_response(select_resp, len(new_candidates))
-            selected = [new_candidates[i] for i in indices]
-        except Exception as e:
-            log.warning("Round %d: LLM selection failed: %s", round_num, e)
-            # On LLM failure, add all candidates (conservative approach)
-            selected = new_candidates
+        # Stage 2: LLM selects relevant papers (same selector round 1 now uses)
+        selected = await _llm_select_relevant(
+            new_candidates, experiment_summary, papers_summary)
 
-        _add_papers(selected)
+        added = _add_papers(selected)
+        if added:
+            productive_rounds += 1
         log.info("Round %d: query=%r, candidates=%d, selected=%d, total=%d",
                  round_num, new_query, len(new_candidates), len(selected),
                  len(all_papers))
 
+    if rounds_used > productive_rounds:
+        log.warning(
+            "collect_references: %d of %d rounds added nothing (S2 available=%s, "
+            "arXiv fallback used=%s) — rounds_used counts loop iterations, not "
+            "productive retrieval",
+            rounds_used - productive_rounds, rounds_used, s2_returned_any,
+            fallback_used)
     return {
         "papers": all_papers,
         "query": keywords,
         "count": len(all_papers),
+        # ``rounds_used`` counts loop ITERATIONS. When the retrieval backend is
+        # down every round no-ops, so a bare rounds_used=13 reads as productive
+        # work that never happened; the fields below make that visible.
         "rounds_used": rounds_used,
+        "productive_rounds": productive_rounds,
+        "s2_available": s2_returned_any,
+        "fallback_used": fallback_used,
     }
 
 

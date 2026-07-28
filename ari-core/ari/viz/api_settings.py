@@ -37,21 +37,52 @@ def _extract_tools_from_server(skill_dir: Path) -> list[str]:
     return tools
 
 
-def _api_get_env_keys() -> dict:
-    """Read API keys from all .env files (project-specific first, then global)."""
+# Redaction placeholder served instead of any non-empty secret value
+# (RR-P0-2 / ADR-11 / MN-2 — GET /api/env-keys never returns plaintext).
+ENV_KEY_REDACTED = "***configured***"
+
+# POST /api/env-keys name allowlist (plan 09 §Secret policy / ADR-11):
+# UPPER_SNAKE, must start with a letter, max 64 chars total. `fullmatch` is
+# deliberate — `re.match` with `$` would accept a trailing newline.
+_ENV_KEY_NAME_RE = re.compile(r"[A-Z][A-Z0-9_]{0,63}")
+
+
+def _env_chain() -> list[tuple[Path, str]]:
+    """Ordered ``(.env path, source_class)`` candidates — project > repo > user.
+
+    Shared by the legacy ``GET /api/env-keys`` harvest and the v1 secret
+    readiness endpoint (``ari.viz.v1.secrets``) so the two can never disagree
+    about which file wins. ``source_class`` vocabulary is the ADR-11 one:
+    ``project_env`` (active checkpoint), ``repo_env`` (ARI/.env or
+    ari-core/.env), ``user_env`` (~/.env); ``process_env`` is the os.environ
+    fallback handled by the callers.
+    """
     _here = Path(__file__).parent
     _ari_root = _here.parent.parent.parent  # /ARI/
-    candidates = [
-        _ari_root / ".env",             # /ARI/.env (project root — highest priority)
-        _ari_root / "ari-core" / ".env", # /ARI/ari-core/.env
-        Path.home() / ".env",            # ~/.env (global fallback)
+    chain = [
+        (_ari_root / ".env", "repo_env"),              # /ARI/.env
+        (_ari_root / "ari-core" / ".env", "repo_env"), # /ARI/ari-core/.env
+        (Path.home() / ".env", "user_env"),            # ~/.env (global fallback)
     ]
     if _st._checkpoint_dir:
-        candidates.insert(0, _st._checkpoint_dir / ".env")
+        chain.insert(0, (_st._checkpoint_dir / ".env", "project_env"))
+    return chain
+
+
+def _api_get_env_keys() -> dict:
+    """List secret-bearing keys from the .env chain — REDACTED (RR-P0-2).
+
+    ADR-11 / MN-2: this endpoint historically returned every value whose name
+    contains ``API_KEY``/``SECRET``/``TOKEN`` in plaintext. It now serves only
+    readiness: each non-empty value is replaced by :data:`ENV_KEY_REDACTED`,
+    empty values stay ``""``, the ``source`` map is unchanged, and a top-level
+    ``"redacted": true`` marker lets clients detect the new contract. Secret
+    values can no longer be read over HTTP; the write path (POST) is separate.
+    """
     keys = {}
     source = {}  # track which file each key came from
     # Read all files; first occurrence wins (project > global)
-    for env_path in candidates:
+    for env_path, _cls in _env_chain():
         if not env_path.exists():
             continue
         for line in env_path.read_text().splitlines():
@@ -63,14 +94,14 @@ def _api_get_env_keys() -> dict:
                 k = k.strip(); v = v.strip().strip('"').strip("'")
                 if any(x in k.upper() for x in ["API_KEY", "SECRET", "TOKEN"]):
                     if k not in keys:
-                        keys[k] = v
+                        keys[k] = ENV_KEY_REDACTED if v else ""
                         source[k] = str(env_path)
     # Also check os.environ as final fallback
     for k in ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"]:
         if k not in keys and os.environ.get(k):
-            keys[k] = os.environ[k]
+            keys[k] = ENV_KEY_REDACTED
             source[k] = "os.environ"
-    return {"keys": keys, "source": source}
+    return {"keys": keys, "source": source, "redacted": True}
 
 
 
@@ -100,17 +131,59 @@ def _upsert_env_key(name: str, value: str, *, quote: bool) -> None:
             new_lines.append(line)
     if not found:
         new_lines.append(rendered)
-    env_path.write_text("\n".join(new_lines) + "\n")
+    # RR-P0-4 hardening (gui_refresh Wave 3b): atomic same-dir tmp + fsync +
+    # os.replace so a crash mid-write can never truncate the .env, and the
+    # secret-bearing file is owner-only (0o600) from the moment it exists.
+    # Content is byte-identical to the historical write_text form.
+    import tempfile
+    payload = "\n".join(new_lines) + "\n"
+    fd, tmp_path = tempfile.mkstemp(dir=str(env_path.parent), prefix=".env.tmp-")
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w") as fh:
+            fh.write(payload)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_path, env_path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+    try:
+        os.chmod(env_path, 0o600)
+    except OSError:
+        pass
     os.environ[name] = value
 
 
 def _api_save_env_key(body: bytes) -> dict:
-    """Append or update a key in project .env (ARI root)."""
+    """Append or update a key in project .env (ARI root).
+
+    Name allowlist enforcement (plan 09 §Secret policy / ADR-11): the key
+    must fullmatch ``^[A-Z][A-Z0-9_]{0,63}$`` and carry no newline/control
+    characters — anything else is rejected with HTTP 400 (the ``_status``
+    pop convention in routes.py). The happy-path write is unchanged.
+    """
     data = json.loads(body)
     key_name  = data.get("key","").strip()
     key_value = data.get("value","").strip()
     if not key_name or not key_value:
         return {"ok": False, "error": "key and value required"}
+    raw_name = data.get("key", "")
+    if (
+        any(ord(c) < 0x20 or ord(c) == 0x7F for c in raw_name)
+        or not _ENV_KEY_NAME_RE.fullmatch(key_name)
+    ):
+        return {
+            "ok": False,
+            "error": (
+                "invalid key name: must match ^[A-Z][A-Z0-9_]{0,63}$ "
+                "(UPPER_SNAKE, max 64 chars, no control characters)"
+            ),
+            "_status": 400,
+        }
     _upsert_env_key(key_name, key_value, quote=True)
     return {"ok": True}
 
@@ -244,7 +317,8 @@ def _api_get_workflow() -> dict:
     for wf in wf_candidates:
         if wf.exists():
             try:
-                data = yaml.safe_load(wf.read_text())
+                raw = wf.read_bytes()
+                data = yaml.safe_load(raw)
                 # Load MCP tool metadata from each skill directory
                 ari_root = wf.parent.parent.parent
                 skill_mcp: dict = {}
@@ -385,11 +459,16 @@ def _api_get_workflow() -> dict:
                     for s in paper_pipeline:
                         if not s.get("depends_on"):
                             s["depends_on"] = [last_bfts]
+                # Weak revision of the served bytes (gui_refresh Wave 4d,
+                # additive key): revision-aware clients echo it back as
+                # base_revision on writes; legacy consumers ignore it.
+                from .api_workflow import workflow_revision
                 return {"ok": True, "workflow": data, "path": str(wf), "skill_mcp": skill_mcp,
                         "disabled_tools": data.get("disabled_tools") or [],
                         "bfts_pipeline": bfts_pipeline,
                         "paper_pipeline": paper_pipeline,
-                        "full_pipeline": bfts_pipeline + paper_pipeline}
+                        "full_pipeline": bfts_pipeline + paper_pipeline,
+                        "revision": workflow_revision(raw)}
             except Exception as e:
                 return {"ok": False, "error": str(e)}
     return {"ok": False, "error": "workflow.yaml not found"}
@@ -399,13 +478,23 @@ def _api_get_workflow() -> dict:
 def _api_save_workflow(body: bytes) -> dict:
     """Save modified workflow.yaml into active checkpoint."""
     import yaml
-    err = _st.require_checkpoint_dir()
-    if err:
-        return {"ok": False, "error": err, "_status": 400}
+    from .api_workflow import (
+        _workflow_revision_guard,
+        _workflow_write_guard,
+        workflow_revision,
+    )
+    guard = _workflow_write_guard()
+    if guard:
+        return guard
     data = json.loads(body)
     pipeline = data.get("pipeline")
     if not pipeline:
         return {"ok": False, "error": "missing pipeline"}
+    # Optional optimistic concurrency (gui_refresh Wave 4d): a stale
+    # base_revision refuses with the frozen 409 payload before any write.
+    stale = _workflow_revision_guard(data.get("base_revision"))
+    if stale:
+        return stale
     # Always write to checkpoint dir, not arbitrary path
     wf_p = _st._checkpoint_dir / "workflow.yaml"
     try:
@@ -417,8 +506,9 @@ def _api_save_workflow(body: bytes) -> dict:
         elif wf_p.exists():
             existing = yaml.safe_load(wf_p.read_text()) or {}
         existing["pipeline"] = pipeline
-        wf_p.write_text(yaml.dump(existing, allow_unicode=True, sort_keys=False))
-        return {"ok": True}
+        text = yaml.dump(existing, allow_unicode=True, sort_keys=False)
+        wf_p.write_text(text)
+        return {"ok": True, "revision": workflow_revision(text.encode("utf-8"))}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 

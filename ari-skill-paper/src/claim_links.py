@@ -40,9 +40,20 @@ ANCHOR_RE = re.compile(r"%\s*CLAIM:(C\w+):(NC\w+)")
 # NOTE: _strip_for_scan rewrites ``\times`` to `` x `` before scanning, so the
 # multiplication sign here is x/× (plus \cdot, which survives the strip);
 # requiring the ``10^{...}`` tail keeps speedup notation (``4.18 x``) out.
+# group 3 = e-notation exponent; group 4 = mantissa ×10^exp; group 5 = a BARE
+# power ``base^{exp}`` written with no ×-multiplier (``10^{-23}``). Without
+# group 5, ``p<10^{-23}`` matched the base ``10`` as a bare mantissa and the
+# ``^{-23}`` was dropped, so a true p-value BOUND shipped as value=10.0 and the
+# gate raised a phantom ``numeric_mismatch reported:10.0 recomputed:0.0`` that
+# drove paper_refine to "correct" the (actually true) claim into a false one.
+# The caret must be DIRECTLY attached (no ``\s*`` before ``\^``) so ``4.18 x``
+# (a speedup) never enters this branch, and group 4 still wins for
+# ``4.44 \times 10^{-16}`` because its alternative is tried first.
 _NUMBER_RE = re.compile(
     r"(?<![\w.])(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?"
-    r"(?:[eE]([+-]?\d+)(?!\w|\.\d)|\s*(?:x|×|\\times|\\cdot)\s*10\^\{?([+-]?\d+)\}?)?"
+    r"(?:[eE]([+-]?\d+)(?!\w|\.\d)"
+    r"|\s*(?:x|×|\\times|\\cdot)\s*10\^\{?([+-]?\d+)\}?"
+    r"|\^\{?([+-]?\d+)\}?)?"
     r"\s*(%?)"
 )
 
@@ -242,7 +253,8 @@ def extract_numeric_mentions(tex: str, section_map: list[str]) -> list[dict]:
         for m in _NUMBER_RE.finditer(line):
             int_part, frac = m.group(1), m.group(2) or ""
             exp = m.group(3) or m.group(4) or ""
-            pct = m.group(5) or ""
+            bare_pow = m.group(5) or ""      # base^{exp} with no ×-multiplier
+            pct = m.group(6) or ""
             num_str = int_part + frac
             has_pct = pct == "%"
             before = line[max(0, m.start() - 24):m.start()]
@@ -252,6 +264,12 @@ def extract_numeric_mentions(tex: str, section_map: list[str]) -> list[dict]:
                 value = float(num_str.replace(",", ""))
                 if exp:
                     value *= 10.0 ** int(exp)
+                elif bare_pow:
+                    # ``base^{exp}`` — the matched number IS the base, so the
+                    # value is base**exp (``10^{-23}`` -> 1e-23), NOT the bare
+                    # base. ``**`` on floats yields inf on overflow, caught by
+                    # the non-finite guard below.
+                    value = value ** int(bare_pow)
             except (ValueError, OverflowError):
                 continue
             if value in (float("inf"), float("-inf")):
@@ -259,12 +277,15 @@ def extract_numeric_mentions(tex: str, section_map: list[str]) -> list[dict]:
                 # the JSON report and (pre-guard) an uncaught OverflowError made
                 # the whole gate fail OPEN via the callers' defensive catches.
                 continue
-            if m.group(4):
+            if m.group(4) or (bare_pow and num_str == "10"):
                 # \times/\cdot 10^{exp} literals classified as result_claim
                 # before this branch existed too (the stripped " x " matched the
                 # speedup unit) — keep that, or the anchor binder starts picking
-                # some other number in the sentence. e-notation keeps _classify's
-                # verdict so settings ("1e4 iterations") stay settings.
+                # some other number in the sentence. A bare power of ten
+                # (``10^{-23}``) is the same scientific-notation shape (e.g. a
+                # p-value bound) and gets the same verdict; other bases keep
+                # _classify. e-notation keeps _classify's verdict so settings
+                # ("1e4 iterations") stay settings.
                 # (Mirrors ari-core claim_gate/latex.py.)
                 mtype, requires = "result_claim", True
             mentions.append({
@@ -336,6 +357,25 @@ _FORMULA_ALIASES = {
 }
 
 
+def known_formulas() -> frozenset:
+    """The gate's CLOSED formula vocabulary, read from the registry itself.
+
+    Enumerating aliases (above) fixes the one synonym that was observed and
+    leaves the set open: a later run emitted ``percent_change`` — not in the
+    registry, not in the alias table — and all 7 of its assertions dropped out
+    of verification silently. This reads the authority instead, through the
+    public seam the skill already imports elsewhere. Returns an EMPTY set when
+    ari-core is unavailable (a skill must not hard-fail on an optional import);
+    callers treat empty as "cannot validate" and fall back to the old
+    pass-through, so this can only ADD detection, never remove a working path.
+    """
+    try:
+        from ari.public.claim_gate import FORMULAS  # type: ignore
+        return frozenset(FORMULAS)
+    except Exception:  # pragma: no cover - ari-core not importable
+        return frozenset()
+
+
 def _unescape_latex(s: str) -> str:
     """Undo LaTeX escaping the writer applies inside the comment (it is trained to
     escape these even though comment text needs no escaping): ``\\_`` -> ``_`` etc.
@@ -354,8 +394,15 @@ def _parse_writer_assertions(tex: str, config_nodes: dict) -> dict:
     metric key (the hard gate resolves it against results.json / node metrics).
     This is FORWARD (declared) — no reverse search — so the gate verifies the
     declared derivation deterministically; a wrong declaration → numeric_mismatch.
+
+    Returns ``(assertions, dropped)``: every anchor NOT turned into an assertion
+    is recorded in *dropped* with the real reason, so a silent parse loss can no
+    longer be reported downstream as a writer error.
     """
     out: dict[str, dict] = {}
+    _dropped_decls: list[dict] = []
+    _suspect_decls: list[dict] = []
+    _known_formulas = known_formulas()
     config_nodes = config_nodes or {}
     for i, line in enumerate(tex.split("\n"), start=1):
         for m in ANCHOR_RE.finditer(line):
@@ -370,7 +417,48 @@ def _parse_writer_assertions(tex: str, config_nodes: dict) -> dict:
             formula = toks.get("formula")
             formula = _FORMULA_ALIASES.get(formula, formula)
             if not formula:
-                continue  # references a pre-generated assertion; no inline declaration
+                # A forward reference to a pre-generated science_data assertion.
+                # Legitimate, but RECORD it: these anchors used to vanish here
+                # and then be reported downstream with a hardcoded reason that
+                # blamed the writer for "referencing an id not present in
+                # science_data claims" — while their values were in results.json
+                # all along. A drop with no counter is indistinguishable from a
+                # drop that never happened.
+                # Record WHAT the anchor declared even though we cannot build an
+                # assertion from it. The gate needs the declared subject to tell
+                # a forward reference apart from an ID COLLISION: the paper and
+                # the science_data generator mint C<N>/NC<N> independently, so
+                # the same id can name two assertions about DIFFERENT configs
+                # (same metric name, different node) — and comparing the paper's
+                # number against the other subject's recomputation accuses a
+                # correct paper.
+                _declared_cfgs = [
+                    (toks.get(r) or "").partition(":")[0]
+                    for r in _VALID_ROLES if toks.get(r)
+                ]
+                _dropped_decls.append({
+                    "claim_id": cid, "numeric_id": nid,
+                    "reason": "no inline formula= declaration "
+                              "(forward reference to a pre-generated assertion)",
+                    "declared_metric": metric,
+                    "declared_config_ids": [c for c in _declared_cfgs if c],
+                    "declared_node_ids": [
+                        (config_nodes.get(c) or {}).get("node_id", "")
+                        for c in _declared_cfgs if c
+                    ],
+                })
+                continue
+            if _known_formulas and formula not in _known_formulas:
+                # The token is not in the gate's closed vocabulary, so the
+                # assertion can never be recomputed. Record it — but do NOT drop
+                # it: the gate is the authority that reports findings, and it now
+                # emits a named `unknown_formula` error. Dropping here would take
+                # that away and shrink writer_assertions/resolved_anchors, hiding
+                # the problem instead of naming it.
+                _suspect_decls.append({"claim_id": cid, "numeric_id": nid,
+                                       "formula": formula,
+                                       "reason": f"unknown formula {formula!r} "
+                                                 f"(not in {sorted(_known_formulas)})"})
             operands: dict = {}
             unresolved_refs: list[str] = []
             for role in _VALID_ROLES:
@@ -402,7 +490,7 @@ def _parse_writer_assertions(tex: str, config_nodes: dict) -> dict:
             if unresolved_refs:
                 rec["unresolved_config_refs"] = unresolved_refs
             out[nid] = rec
-    return out
+    return out, _dropped_decls, _suspect_decls
 
 
 def link_paper_claims(tex: str, science_data: dict, figures_manifest: Any = None) -> dict:
@@ -412,7 +500,9 @@ def link_paper_claims(tex: str, science_data: dict, figures_manifest: Any = None
     claims_by_id, numeric_by_id = _index_claims(science_data or {})
     label_to_id = _manifest_label_to_id(figures_manifest)
     config_nodes = (science_data or {}).get("_config_nodes", {})
-    writer_assertions = _parse_writer_assertions(tex, config_nodes)
+    writer_assertions, dropped_declarations, suspect_declarations = \
+        _parse_writer_assertions(tex, config_nodes)
+    _dropped_by_nid = {d.get("numeric_id"): d for d in dropped_declarations}
 
     anchors = find_anchors(tex)
     links: list[dict] = []
@@ -448,9 +538,20 @@ def link_paper_claims(tex: str, science_data: dict, figures_manifest: Any = None
         }
         links.append(rec)
         if not resolved:
+            # The reason used to be a single hardcoded string blaming the
+            # writer for referencing a non-existent id. That was wrong whenever
+            # the anchor was dropped HERE instead: in one run, 6 anchors were
+            # reported that way while every one of their values was present in
+            # results.json verbatim — the parse had discarded them for lacking a
+            # formula= token, and the message sent the operator after the wrong
+            # component. Report the actual cause when we recorded one.
+            _drop = _dropped_by_nid.get(nid)
             unresolved.append({
                 "anchor": key, "claim_id": cid, "numeric_id": nid, "line": a["line"],
-                "reason": "anchor references an id not present in science_data claims",
+                "reason": (
+                    f"declaration dropped at parse: {_drop['reason']}" if _drop
+                    else "anchor references an id not present in science_data claims"
+                ),
             })
 
     numeric_mentions = extract_numeric_mentions(tex, section_map)
@@ -477,10 +578,19 @@ def link_paper_claims(tex: str, science_data: dict, figures_manifest: Any = None
         "figure_refs": figure_refs,
         "unresolved_anchors": unresolved,
         "uncovered_numeric_candidates": uncovered,
+        # Every anchor whose inline declaration was discarded during parsing,
+        # with the real cause. A drop with no counter is indistinguishable from
+        # a drop that never happened.
+        "dropped_declarations": dropped_declarations,
+        # Declarations kept but known-unverifiable (formula outside the closed
+        # vocabulary). The gate names each one with an `unknown_formula` finding.
+        "suspect_declarations": suspect_declarations,
         "counts": {
             "anchors": len(links),
             "resolved_anchors": sum(1 for r in links if r["resolved"]),
             "writer_assertions": len(_writer_assertions),
+            "dropped_declarations": len(dropped_declarations),
+            "suspect_declarations": len(suspect_declarations),
             "numeric_mentions": len(numeric_mentions),
             "result_claim_mentions": sum(1 for m in numeric_mentions if m["type"] == "result_claim"),
             "uncovered_numeric_candidates": len(uncovered),

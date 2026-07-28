@@ -101,7 +101,7 @@ def test_cli_env_side_effects_recorded():
     assert "ARI_FEWSHOT_MODE" in env["paper"]
 
 
-# ── MCP: 59 FastMCP + 28 low-level defs (86 unique names) + collision guard ──
+# ── MCP: 60 FastMCP + 28 low-level defs (87 unique names) + collision guard ──
 
 def test_mcp_tool_counts_and_names():
     golden = sc.load_golden("mcp")
@@ -115,10 +115,13 @@ def test_mcp_tool_counts_and_names():
     }, f"MCP skill package set drifted: {sorted(skills)}"
     fastmcp = [t for tools in skills.values() for t in tools if t["idiom"] == "fastmcp"]
     lowlevel = [t for tools in skills.values() for t in tools if t["idiom"] == "lowlevel"]
-    assert len(fastmcp) == 59, f"expected 59 FastMCP tools, got {len(fastmcp)}"
+    # RQGM Task 03 Stage 0 restored the idea skill's survey/generate_ideas
+    # registration and demoted _load_virsci_snapshot_papers to a helper
+    # (net +1 FastMCP tool vs the pre-fix census).
+    assert len(fastmcp) == 60, f"expected 60 FastMCP tools, got {len(fastmcp)}"
     assert len(lowlevel) == 28, f"expected 28 low-level tool defs, got {len(lowlevel)}"
     unique = {t["name"] for tools in skills.values() for t in tools}
-    assert len(unique) == 86, f"expected 86 unique tool names, got {len(unique)}"
+    assert len(unique) == 87, f"expected 87 unique tool names, got {len(unique)}"
     assert golden["invariants"]["return_envelope"] == ["error", "result"]
     assert golden["invariants"]["fq_name_pattern"] == "mcp__<skill>__<tool>"
 
@@ -158,7 +161,12 @@ def test_viz_endpoint_inventory_shape():
     assert endpoints, "viz endpoint inventory is empty"
     for ep in endpoints:
         assert set(ep) == {"method", "path", "owner"}
-        assert ep["method"] in ("GET", "POST")
+        # PATCH/DELETE joined the vocabulary with the /api/v1 config CRUD
+        # surface (gui_refresh task 05 Wave 3b; routes.py do_PATCH/do_DELETE
+        # delegate only /api/v1/ to ari/viz/v1/router.py); PUT joined with
+        # the ADR-05 secret assignment (task 06 Wave 4d; routes.py do_PUT
+        # delegates only /api/v1/ the same way).
+        assert ep["method"] in ("GET", "POST", "PATCH", "PUT", "DELETE")
     paths_by_method = {(e["method"], e["path"]) for e in endpoints}
     for critical in (
         ("GET", "/state"),

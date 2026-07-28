@@ -125,3 +125,32 @@ def test_store_instance_throttle_is_isolated(tmp_path):
     # A separate instance owns a separate throttle map → not throttled.
     JsonCheckpointStore().save_tree_incremental(tmp_path, lambda: calls.append(1))
     assert calls == [1, 1]
+
+
+def test_a_forced_flush_failure_is_loud_and_detectable(tmp_path, caplog):
+    """This writer owns tree.json / nodes_tree.json / results.json — the run's
+    only durable record. The failure path logged at DEBUG (invisible under the
+    default INFO) and returned None, so a force=True flush (the SIGTERM-safety
+    path) could fail while the run still printed "Run complete", and `ari
+    resume` later reconstructed a truncated run from files that stayed valid
+    JSON. The forced-flush failure must be ERROR-level and return False."""
+    import logging
+
+    from ari import checkpoint as C
+
+    def _boom():
+        raise OSError("No space left on device")
+
+    with caplog.at_level(logging.ERROR):
+        ok = C.save_tree_incremental(tmp_path, _boom, force=True)
+    assert ok is False
+    assert any(r.levelno >= logging.ERROR and "force=True" in r.getMessage()
+               for r in caplog.records), [r.getMessage() for r in caplog.records]
+
+    # A successful forced flush returns True; a non-forced failure stays a
+    # warning (best-effort throttled write), not an error.
+    assert C.save_tree_incremental(tmp_path, lambda: None, force=True) is True
+    with caplog.at_level(logging.WARNING):
+        caplog.clear()
+        C.save_tree_incremental(tmp_path, _boom, force=False, throttle_sec=0)
+    assert all(r.levelno < logging.ERROR for r in caplog.records)

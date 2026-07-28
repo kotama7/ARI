@@ -8,6 +8,14 @@
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 
 :root{
+  /* The dashboard has exactly one theme. Declaring it lets the UA render the
+   * controls CSS cannot reach — checkbox/radio glyphs, scrollbars, <select>
+   * dropdown popups — in dark instead of the light defaults, which otherwise
+   * punch white holes through the surfaces (e.g. the Settings dev-mode
+   * checkbox). `accent-color` pins the checked state to the brand blue. */
+  color-scheme:dark;
+  accent-color:var(--blue);
+
   /* ── Surfaces / brand palette ─────────────────────── */
   --bg:#0f1117;
   --sidebar:#151820;
@@ -22,6 +30,13 @@
   --yellow:#f59e0b;
   --purple:#a855f7;
   --primary:var(--blue);
+
+  /* ── Status border tints (gui_refresh 02, Wave 1) ──
+   * Companions to the semantic status layer below (--status-* / -bg);
+   * consumed by the banner components (DegradedState / StaleDataBanner).
+   */
+  --status-warning-border:color-mix(in srgb,var(--yellow) 25%,transparent);
+  --status-info-border:color-mix(in srgb,var(--blue) 25%,transparent);
 
   /* ── Spacing scale (4 / 8 / 12 / 16 / 20 / 24 / 32) ──*/
   --sp-1:4px;
@@ -55,4 +70,73 @@
   --fs-xl:1.5rem;
   --lh-tight:1.2;
   --lh-base:1.5;
+
+  /* ── Semantic layer ─────────────────────────────────
+   * gui_refresh task 02, Wave 1. Additive — components
+   * migrate gradually from raw primitives to these names.
+   * Every value references a primitive defined above;
+   * no new hues are introduced here.
+   */
+
+  /* Surfaces */
+  --surface-canvas:var(--bg);
+  --surface-raised:var(--card);
+  --surface-overlay:color-mix(in srgb,var(--card) 94%,var(--text));
+
+  /* Text */
+  --text-primary:var(--text);
+  --text-muted:var(--muted);
+  --text-inverse:var(--bg);
+
+  /* Borders / focus */
+  --border-default:var(--border);
+  --border-focus:var(--blue);
+  --focus-ring:var(--shadow-focus);
+
+  /* Links — the UA default (`-webkit-link`, #0000EE) is unreadable on
+   * --surface-canvas, so every raw <a> needs a themed colour. Paired
+   * with the base `a` rule in layout.css; underline is kept so links
+   * are never signalled by colour alone. */
+  --link:var(--blue-light);
+  --link-hover:color-mix(in srgb,var(--blue-light) 70%,var(--text));
+  --link-visited:var(--link);
+
+  /* Status (fg + -bg tint pairs; never convey status by
+   * colour alone — pair with icon/label per task 02 plan) */
+  --status-info:var(--blue);
+  --status-info-bg:color-mix(in srgb,var(--blue) 15%,transparent);
+  --status-success:var(--green);
+  --status-success-bg:color-mix(in srgb,var(--green) 15%,transparent);
+  --status-warning:var(--yellow);
+  --status-warning-bg:color-mix(in srgb,var(--yellow) 15%,transparent);
+  --status-danger:var(--red);
+  --status-danger-bg:color-mix(in srgb,var(--red) 15%,transparent);
+
+  /* Scores */
+  --score-penalty:var(--red);
+
+  /* RQGM node states — fixed semantic palette (distinct
+   * hues; accepted/rejected map to status-success/-danger) */
+  --state-stale:var(--yellow);
+  --state-invalidated:var(--purple);
+  --state-removed:var(--muted);
+  --state-computed:var(--green);
+  --state-recomputed:var(--blue-light);
+
+  /* RQGM registry lifecycle — ONE token per implementation
+   * status (the closed 10-value STATUS_VALUES vocabulary).
+   * A separate state machine from the node score states
+   * above: registry badges never consume a --state-* token
+   * (gui_refresh task 08 / plan 08 §Governance state model).
+   * Values compose existing primitives — no new hues. */
+  --reg-candidate:var(--muted);
+  --reg-validated:var(--blue);
+  --reg-shadow:color-mix(in srgb,var(--blue) 45%,var(--muted));
+  --reg-probationary-active:color-mix(in srgb,var(--green) 55%,var(--yellow));
+  --reg-active:color-mix(in srgb,var(--green) 85%,var(--blue));
+  --reg-warning:color-mix(in srgb,var(--yellow) 75%,var(--red));
+  --reg-probation:color-mix(in srgb,var(--yellow) 45%,var(--red));
+  --reg-quarantine:color-mix(in srgb,var(--red) 70%,var(--purple));
+  --reg-retired:color-mix(in srgb,var(--muted) 60%,var(--text));
+  --reg-banned:var(--red);
 }

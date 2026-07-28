@@ -286,6 +286,7 @@ _env_append_if_absent "# ARI_MODEL_RUBRIC_AUDIT="
 _env_append_if_absent "# ARI_MODEL_REPLICATE="
 _env_append_if_absent "# ARI_MODEL_REPLICATOR="
 _env_append_if_absent "# ARI_MODEL_JUDGE="
+_env_append_if_absent "# ARI_RUN_STRICT_EXIT=       # set to 1 so \`ari run\` exits non-zero when the paper pipeline raised or run_integrity has concerns (default: best-effort rc=0)"
 # VirSci-live ideation knobs (ari-skill-idea, used only when the real
 # vendor-wrap path is enabled). MAX_TEAMS caps the number of co-author
 # teams formed; SPECTER2_MODEL overrides the retrieval embedding model
@@ -423,6 +424,8 @@ _env_append_if_absent "# ARI_TIMEOUT_NODE=7200"
 _env_append_if_absent "# ARI_PARALLEL=4"
 _env_append_if_absent "# ARI_PARENT_RUN_ID="
 _env_append_if_absent "# ARI_RETRIEVAL_BACKEND=semantic_scholar"
+_env_append_if_absent "# ARI_S2_MAX_ATTEMPTS=3           # Semantic Scholar retry attempts on HTTP 429 (shared-IP rate limit)"
+_env_append_if_absent "# ARI_S2_BACKOFF_CAP_S=10         # per-retry backoff cap (s) for the S2 429 retry"
 _env_append_if_absent "# ARI_EXECUTOR="
 _env_append_if_absent "# ARI_MAX_CHILD_PROCS="
 # ARI_ENV_FILE points to the .env that ari-skill-hpc re-sources on the
@@ -514,6 +517,12 @@ _env_append_if_absent "# BIBTEX_PATH=bibtex"
 _env_section "ari-skill-paper"
 _env_append_if_absent "# ARI_RUBRIC="
 _env_append_if_absent "# ARI_RUBRIC_DIR="
+# ARI_FEWSHOT_MODE selects the reviewer's few-shot source: static (default,
+# bundled examples) or dynamic. Also set by `ari paper --fewshot-mode` and the
+# GUI. Dynamic OpenReview retrieval is still a placeholder that returns the
+# static examples, so reviews are unchanged — but it is what makes
+# ARI_STRICT_DYNAMIC below reachable.
+_env_append_if_absent "# ARI_FEWSHOT_MODE="
 _env_append_if_absent "# ARI_STRICT_DYNAMIC="
 _env_append_if_absent "# ARI_NUM_REVIEWS_ENSEMBLE="
 _env_append_if_absent "# ARI_NUM_REFLECTIONS="
@@ -535,6 +544,14 @@ _env_append_if_absent "# ARI_ALPHAXIV_ENDPOINT=https://api.alphaxiv.org/mcp/v1"
 _env_section "ari-skill-paper-re / PaperBench"
 _env_append_if_absent "# ARI_PAPER_REGISTRY_DIR=\$HOME/.ari/paper_registry  # override paper registry root (default: ~/.ari/paper_registry)"
 _env_append_if_absent "# ARI_PAPERBENCH_WORKER_DISABLED=  # set to 1 to suppress the GUI wizard's background pipeline spawn (tests / CI / dry-run debugging)"
+_env_append_if_absent "# ARI_GUI_V2=                    # dashboard v2 shell kill-switch: 0|false reverts to the legacy shell (default 1 = on; gui_refresh Wave 1, removal gate G6)"
+_env_append_if_absent "# ARI_GUI_BIND=                  # GUI bind address (MN-4/RR-P0-3): default loopback only (127.0.0.1 + ::1); set '::' for the legacy all-interfaces dual-stack bind, '0.0.0.0' for IPv4 wildcard, or a single address"
+_env_append_if_absent "# ARI_GUI_CORS_ANY=              # set 1 to restore the legacy Access-Control-Allow-Origin:* wildcard (MN-4/RR-P0-3 kill-switch; default off = same-origin echo only; not needed for the Vite dev proxy)"
+_env_append_if_absent "# ARI_GUI_CHALLENGES=            # set 0 to disable the server-issued confirmation challenges on delete-checkpoint/stop/gpu-monitor-stop (MN-6/RR-P0-6/RR-P0-9 kill-switch; default on = the endpoints require a challenge_id and answer 428 without one)"
+_env_append_if_absent "# ARI_GUI_CSP=                   # set 0 to drop the MN-7/RR-P0-10 browser security headers (Content-Security-Policy + nosniff + Referrer-Policy) from GUI index/static responses (default on; only needed if a proxy topology remaps the WebSocket port)"
+_env_append_if_absent "# ARI_GUI_TOKEN=                 # GUI remote-mode bearer token (MN-8/ADR-13/RR-P0-3): when ARI_GUI_BIND is non-loopback, every request except /health/* must send 'Authorization: Bearer <token>' (SSE/WebSocket: '?token='); unset => the server generates a 32-hex token at startup and prints it once to stderr; never required on the loopback default"
+_env_append_if_absent "# ARI_GUI_AUTH=                  # set 0 to disable the MN-8 remote token gate (kill-switch; restores the pre-MN-8 unauthenticated remote bind, e.g. behind an authenticating reverse proxy; loopback binds are always unauthenticated)"
+_env_append_if_absent "# ARI_GUI_HEALTH=                # set 0 to disable the MN-9 operational-visibility surfaces (kill-switch; GET /health/live + /health/ready fall back to the pre-MN-9 SPA response and GET /api/v1/diagnostics answers the typed 404; default on)"
 _env_append_if_absent "# SLURM_JOB_NUM_NODES=  # auto-populated by sbatch; surfaced in agent prompt CLUSTER SHAPE"
 _env_append_if_absent "# SLURM_NTASKS=         # auto-populated by sbatch; surfaced in agent prompt CLUSTER SHAPE"
 _env_append_if_absent "# SLURM_PROCID=         # auto-populated by srun; read by mpi_aggregate_skel.py fallback"
@@ -589,6 +606,15 @@ _env_append_if_absent "# ARI_AXIS_MODE=                 # evaluator axis-set sou
 _env_append_if_absent "# ARI_FRONTIER_SCORE=            # BFTS frontier_score override: scientific_plus_diversity|scientific_only|depth_penalized|ucb_like"
 _env_append_if_absent "# ARI_BFTS_ALLOW_WEB=            # opt-in web search during BFTS exploration: 1|true|yes|on (env wins over workflow.yaml; default off)"
 
+# --- RQGM execution mode (docs/plans/ari_rqgm Task 01) -----------------------
+_env_append_if_absent "# ARI_MODE=                      # execution mode override: simple_bfts|ari_rqgm (RQGM also needs ARI_RQGM_ENABLED=1; default simple_bfts)"
+_env_append_if_absent "# ARI_RQGM_ENABLED=              # RQGM master interlock override: 0|1|true|false (both must agree or ARI falls back to simple_bfts)"
+
+# --- Paper-archive execution mode (docs/plans/ari_rqgm_paper Task 01) --------
+_env_append_if_absent "# ARI_PAPER_MODE=                # paper-phase mode override: linear|rqgm_archive (archive also needs ARI_RQGM_PAPER_ENABLED=1; default linear)"
+_env_append_if_absent "# ARI_RQGM_PAPER_ENABLED=        # paper-archive interlock override: 0|1|true|false (both must agree or the paper phase falls back to linear)"
+_env_append_if_absent "# ARI_PAPER_AGENT_AS_JUDGE=      # agent-as-judge draft scoring: 0|1|true|false (default 0 = deterministic LLM-free rubric; 1 puts live LLM calls on the paper draft path)"
+
 # --- PaperBench classifier / agent toggles (v0.8.0) -------------------------
 _env_append_if_absent "# ARI_PB_DISABLE_PAPER_KIND_HINT=  # set to 1 to suppress the paper-kind / native-stack hint injected by the classifier (dogfood leak guard)"
 _env_append_if_absent "# ARI_PB_DISABLE_WEB_SEARCH=       # set to 1 to disable the rollout agent's web_search_preview tool"
@@ -604,6 +630,7 @@ _env_append_if_absent "# ARI_CLI_SHIM_CLAUDE_BIN=claude  # path / name of the Cl
 _env_append_if_absent "# ARI_CLI_SHIM_CLAUDE_BARE=       # set to 1 to call \`claude\` without the agent harness"
 _env_append_if_absent "# ARI_CLI_SHIM_CLAUDE_AGENT_PERMISSION=  # agent-permission override forwarded to \`claude\`"
 _env_append_if_absent "# ARI_CLI_SHIM_CODEX_BIN=codex    # path / name of the Codex CLI binary"
+_env_append_if_absent "# ARI_CLI_SHIM_CODEX_REASONING=   # codex reasoning effort forwarded as \`-c model_reasoning_effort=<x>\` (minimal|low|medium|high); empty = keep the codex default (ARI drives many calls per run, so 'low' is often what makes a full pipeline tractable)"
 
 # --- HPC module-path (R-CCS / system Env Modules) ---------------------------
 _env_append_if_absent "# MODULEPATH=                     # colon-separated module-search path; auto-populated by Env Modules on HPC"

@@ -2,27 +2,52 @@ import React, { useCallback, useRef, useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { useI18n } from '../../i18n';
 import { switchCheckpoint } from '../../services/api';
+import { navItems } from '../../app/routeRegistry';
 
 interface NavEntry {
   key: string;
   icon: string;
   labelKey: string;
+  /** Marks a v2-only entry: rendered only while the gui_v2 flag is on. */
+  guiV2?: true;
+  /**
+   * Nav takeover (gui_refresh Wave 4c): nav key of the entry this one hides
+   * while the gui_v2 flag is on (the registry's navReplaces target). The
+   * replacer inherits the target's slot (order/icon/label via navItems()),
+   * so only the hash a click writes changes.
+   */
+  navReplaces?: string;
 }
 
-const NAV_ITEMS: NavEntry[] = [
-  { key: 'home', icon: '🏠', labelKey: 'nav_home' },
-  { key: 'experiments', icon: '🗂️', labelKey: 'nav_experiments' },
-  { key: 'monitor', icon: '📡', labelKey: 'nav_monitor' },
-  { key: 'tree', icon: '🌳', labelKey: 'nav_tree' },
-  { key: 'results', icon: '📊', labelKey: 'nav_results' },
-  { key: 'new', icon: '✨', labelKey: 'nav_new' },
-  { key: 'paperbench', icon: '📚', labelKey: 'nav_paperbench' },
-  { key: 'idea', icon: '💡', labelKey: 'nav_idea' },
-  { key: 'workflow', icon: '⚡', labelKey: 'nav_workflow' },
-  { key: 'settings', icon: '⚙️', labelKey: 'nav_settings' },
-];
+// Derived from the single-source route registry (gui_refresh Wave 1 task 03);
+// order, icons, and labels are identical to the pre-registry literal table.
+// `key` is the hash path a click writes: `navPath` preserves the historical
+// '#/new' URL for the wizard route (hash URLs are the frozen deployment
+// contract). Exported for the route <-> nav parity test, which pins the
+// exact table. Entries carrying the registry's guiV2 marker (Wave 2b:
+// 'projects') stay in this table unconditionally — the Sidebar component
+// filters them at render time based on the gui_v2 capability prop. A
+// navReplaces entry (Wave 4c: 'tree_v2' over 'tree') additionally hides its
+// target while the flag is on, so the slot swaps between the legacy and v2
+// hash without ever showing both.
+const NAV_ROUTES = navItems();
+export const NAV_ITEMS: NavEntry[] = NAV_ROUTES.map((route) => {
+  const target =
+    route.navReplaces !== undefined
+      ? NAV_ROUTES.find((r) => r.id === route.navReplaces)
+      : undefined;
+  return {
+    key: route.navPath ?? route.path,
+    icon: route.navIcon ?? '',
+    labelKey: route.navLabelKey ?? '',
+    ...(route.guiV2 ? { guiV2: true as const } : {}),
+    ...(target !== undefined
+      ? { navReplaces: target.navPath ?? target.path }
+      : {}),
+  };
+});
 
-export function Sidebar() {
+export function Sidebar({ guiV2 = true }: { guiV2?: boolean }) {
   const { currentPage, setCurrentPage, state, checkpoints, refreshCheckpoints } = useAppContext();
   const { t } = useI18n();
 
@@ -80,6 +105,21 @@ export function Sidebar() {
 
   const isCollapsed = sidebarWidth < 100;
 
+  // Nav takeover (gui_refresh Wave 4c): while the v2 shell is on, each
+  // rendered navReplaces entry hides its target (e.g. 'tree_v2' takes the
+  // 'tree' slot and writes '#/tree2'); while it is off, the guiV2 filter
+  // hides the replacer instead and the legacy entry stays byte-identical.
+  const replacedKeys = new Set(
+    guiV2
+      ? NAV_ITEMS.filter((item) => item.navReplaces !== undefined).map(
+          (item) => item.navReplaces as string,
+        )
+      : [],
+  );
+  const visibleNavItems = NAV_ITEMS.filter(
+    (item) => (guiV2 || !item.guiV2) && !replacedKeys.has(item.key),
+  );
+
   return (
     <>
       {/* Hamburger button (visible only at <=480px via CSS) */}
@@ -133,7 +173,7 @@ export function Sidebar() {
 
         {/* Navigation */}
         <nav>
-          {NAV_ITEMS.map((item) => (
+          {visibleNavItems.map((item) => (
             <div
               key={item.key}
               className={`nav-item${currentPage === item.key || (item.key === 'new' && currentPage === 'wizard') ? ' active' : ''}`}

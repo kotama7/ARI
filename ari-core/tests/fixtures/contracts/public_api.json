@@ -9,8 +9,10 @@
   "symbols": {
     "ari.public.claim_gate": [
       "CONCEPT_INVARIANTS",
+      "FORMULAS",
       "check_emission",
       "classify_concept",
+      "required_roles",
       "run_hard_gate",
       "scan_science_data"
     ],
@@ -45,6 +47,7 @@
       "CallRecord",
       "CostTracker",
       "Optional",
+      "PRICING_TABLE_UNAVAILABLE",
       "Path",
       "annotations",
       "asdict",
@@ -54,6 +57,7 @@
       "init",
       "init_from_env",
       "json",
+      "logging",
       "os",
       "record",
       "set_default_metadata",

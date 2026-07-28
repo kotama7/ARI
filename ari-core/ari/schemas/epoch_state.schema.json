@@ -1,0 +1,145 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/epoch_state.schema.json",
+  "title": "ARI-RQGM epoch_state.json",
+  "description": "Derived rollup of the currently open (or last closed) EpochState (docs/plans/ari_rqgm/02 \u00a76). rqgm_transitions.jsonl is the source of truth; this snapshot is disposable and rebuilt from replay on mismatch. created_at is metadata, excluded from epoch_fingerprint. Local $defs are byte-equal copies of rqgm_defs.schema.json (pinned by tests).",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "record_id",
+    "epoch_id",
+    "epoch_seq",
+    "status",
+    "run_id",
+    "node_count_at_open",
+    "active_components",
+    "active_prompt_hashes",
+    "utility_policy",
+    "registry_version",
+    "epoch_fingerprint"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "record_id": {
+      "type": "string",
+      "pattern": "^epochstate_epoch_[0-9]{3,}$"
+    },
+    "epoch_id": {
+      "$ref": "#/$defs/epoch_id"
+    },
+    "epoch_seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "previous_epoch_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/epoch_id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "opened_by_transition_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/transition_id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "closed"
+      ]
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "node_count_at_open": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "active_components": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "active_prompt_hashes": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/hash12"
+      }
+    },
+    "active_prompt_hash_set": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/hash12"
+      },
+      "description": "Every active prompt hash at freeze (complete governed set for CK-EPO-001); not the role-incumbent rollup. Optional for pre-field snapshots."
+    },
+    "utility_policy": {
+      "type": "object",
+      "required": [
+        "composite",
+        "axis_weights",
+        "frontier_score",
+        "utility_policy_hash"
+      ],
+      "properties": {
+        "composite": {
+          "type": "string"
+        },
+        "axis_weights": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "frontier_score": {
+          "type": "string"
+        },
+        "depth_penalty_lambda": {
+          "type": "number"
+        },
+        "ucb_c": {
+          "type": "number"
+        },
+        "utility_policy_hash": {
+          "$ref": "#/$defs/hash12"
+        }
+      }
+    },
+    "registry_version": {
+      "$ref": "#/$defs/hash12"
+    },
+    "epoch_fingerprint": {
+      "$ref": "#/$defs/hash12"
+    },
+    "created_at": {
+      "type": "string"
+    }
+  },
+  "$defs": {
+    "hash12": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{12}$"
+    },
+    "epoch_id": {
+      "type": "string",
+      "pattern": "^epoch_[0-9]{3,}$"
+    },
+    "transition_id": {
+      "type": "string",
+      "pattern": "^transition_[0-9]{3,}_to_[0-9]{3,}$"
+    }
+  }
+}

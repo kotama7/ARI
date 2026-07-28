@@ -13,6 +13,13 @@ contract (Phase 1-4):
     coding skill's emit_results can warn the agent (with the gate's OWN presence
     semantics) the moment evidence is missing, instead of the paper silently
     blocking at finalize long after the node is gone.
+  - ``FORMULAS`` / ``required_roles`` — the CLOSED formula vocabulary the gate
+    recomputes with. Re-exported because the process that PRODUCES the token
+    (ari-skill-paper's writer prompt + claim_links) previously could not see the
+    registry at all: the list was hand-mirrored into five places, and a writer
+    that emitted an unlisted name (``percent_change``) had every one of its
+    numeric assertions silently fall out of verification. A producer that cannot
+    read the vocabulary cannot be held to it.
 """
 
 from ari.pipeline.claim_gate import run_hard_gate  # noqa: F401
@@ -22,8 +29,12 @@ from ari.pipeline.claim_gate.invariants import (  # noqa: F401
     classify_concept,
     scan_science_data,
 )
+from ari.pipeline.claim_gate.numeric import (  # noqa: F401
+    FORMULAS,
+    required_roles,
+)
 
 __all__ = [
     "run_hard_gate", "check_emission", "classify_concept", "scan_science_data",
-    "CONCEPT_INVARIANTS",
+    "CONCEPT_INVARIANTS", "FORMULAS", "required_roles",
 ]

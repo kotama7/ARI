@@ -4,9 +4,13 @@ sources:
     role: implementation
   - path: ari-core/ari/agent/metric_contract.py
     role: implementation
+  - path: ari-core/ari/rqgm/runtime.py
+    role: implementation
+  - path: ari-core/ari/cli/bfts_loop.py
+    role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-06-12
+last_verified: 2026-07-10
 ---
 
 # BFTS アルゴリズム
@@ -101,6 +105,40 @@ def bfts(experiment, config):
 
 ---
 
+## `ari_rqgm`（オプトイン）下の統治された BFTS
+
+オプトインの `ari_rqgm` 実行モードでも上記のアルゴリズムは変わりません —
+ガバナンスは 4 つの継ぎ目でそれを*包みます*（すべて fail-open; デフォルトの
+`simple_bfts` ではこのコードは一切インポートされません）:
+
+- **`GovernedSearchStrategy` の継ぎ目**（`ari/rqgm/runtime.py`）:
+  `build_runtime` が BFTS 戦略を、同じ 7 つの `SearchStrategy` メソッドを
+  実装する純粋委譲ラッパーで包みます。ランループはダックタイプの読み取り
+  1 回（`getattr(bfts, "rqgm", None)`）でそれを検出します; 選択、枝刈り、
+  多様性のロジックはそのまま転送されます。
+- **サマリのみの expand コンテキスト**: 選択された `ProposalRecord` が存在
+  する場合、`expand()` に渡される `idea_context` は生の `idea.json`
+  テキストではなく、その上限付き `ProposalSummaryView`（予算:
+  `proposal_router.summary_budget_chars`）から再レンダリングされます;
+  提案された各子方向は提案の観察として記録し戻されます。完全なレコードが
+  BFTS に到達することは決してありません。
+- **エポック境界**: ループは開始時と各外側ループの先頭で `ensure_epoch` を
+  呼びます; `rqgm.epoch.nodes_per_epoch` 個の新規ノードごとに、境界
+  トランザクション（audit → transition → repair）が実行中ノードの無い
+  メインスレッド上で走ります。評価後、完了した各ノードはノードレポートが
+  書かれる前にベストエフォートの敵対ラウンドも受けます。
+- **フロンティア修復フック**: 境界の tick はライブの
+  `frontier`/`pending`/`all_nodes` 状態を受け取るため、退役は stale な
+  レコードを論理的に消去してフロンティアを再構築できます; カーネル検証の
+  二重失敗は `expansion_halted` を設定し、ループはそれ以上展開せずに保留中
+  の作業を消化します。
+
+レイヤ、エポックアルゴリズム、不変条件は
+[Constitutional ARI-RQGM アーキテクチャ](rqgm_architecture.md)に文書化
+されています。
+
+---
+
 ## 関連
 
-[アーキテクチャ](architecture.md) · [メモリアーキテクチャ](memory.md) · [設定 → BFTS の評価層](../reference/configuration.md#bfts-evaluation-layers-configurable) · [用語集](../reference/glossary.md)
+[アーキテクチャ](architecture.md) · [Constitutional ARI-RQGM アーキテクチャ](rqgm_architecture.md) · [メモリアーキテクチャ](memory.md) · [設定 → BFTS の評価層](../reference/configuration.md#bfts-evaluation-layers-configurable) · [用語集](../reference/glossary.md)

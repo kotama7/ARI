@@ -1,0 +1,152 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/proposal_record.schema.json",
+  "title": "ARI-RQGM ProposalRecord",
+  "description": "One line of {ckpt}/proposals/proposal_records.jsonl (docs/plans/ari_rqgm/03 §6.1, owned by Task 03). Carries the mandatory rqgm_record_base fields (record_id, epoch_id, component_id, prompt_hash, role, created_at, source_refs, status — plan 02 §6) with proposal-specific nullability: epoch_id is null in simple_bfts record-only mode; prompt_hash is null for legacy imports and expansion observations. stale/valid_for_frontier are logical-only Task-10 flags, written once at their defaults and never rewritten in stored JSONL. created_at is wall-clock metadata, never hashed (P2). Local $defs mirror rqgm_defs.schema.json. Additive-only evolution.",
+  "type": "object",
+  "required": [
+    "record_id",
+    "record_type",
+    "schema_version",
+    "epoch_id",
+    "component_id",
+    "role",
+    "generator",
+    "prompt_hash",
+    "created_at",
+    "status",
+    "stale",
+    "valid_for_frontier",
+    "source_refs",
+    "summary",
+    "archive_refs"
+  ],
+  "properties": {
+    "record_id": {"type": "string", "pattern": "^prop_[0-9]{6,}$"},
+    "record_type": {"const": "proposal_record"},
+    "schema_version": {"const": 1},
+    "epoch_id": {
+      "anyOf": [{"$ref": "#/$defs/epoch_id"}, {"type": "null"}]
+    },
+    "component_id": {"type": "string"},
+    "role": {"const": "generator"},
+    "generator": {
+      "type": "string",
+      "enum": [
+        "cheap",
+        "mutation",
+        "attack_driven",
+        "prior_art",
+        "virsci",
+        "legacy_idea_json"
+      ]
+    },
+    "prompt_hash": {
+      "anyOf": [{"$ref": "#/$defs/hash12"}, {"type": "null"}]
+    },
+    "created_at": {"type": "string"},
+    "status": {
+      "type": "string",
+      "enum": ["candidate", "selected", "expanded", "superseded"]
+    },
+    "stale": {"type": "boolean"},
+    "valid_for_frontier": {"type": "boolean"},
+    "source_refs": {
+      "type": "object",
+      "properties": {
+        "node_id": {"type": ["string", "null"]},
+        "parent_node_id": {"type": ["string", "null"]},
+        "parent_proposal_id": {"type": ["string", "null"]},
+        "dispatch_head": {"type": "boolean"},
+        "attack_case_ids": {"type": "array", "items": {"type": "string"}},
+        "survey_refs": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "summary": {"$ref": "#/$defs/proposal_summary_view"},
+    "archive_refs": {
+      "type": "object",
+      "properties": {
+        "raw_output": {"type": "string"},
+        "transcript": {"type": "string"},
+        "discussion_log": {"type": "string"},
+        "retrieval_snapshot": {"type": "string"},
+        "generator_config": {"type": "string"},
+        "prompt_hashes": {
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/hash12"}
+        }
+      }
+    },
+    "idea_projection": {
+      "type": "object",
+      "properties": {
+        "projected": {"type": "boolean"},
+        "idea_index": {"type": "integer", "minimum": 0}
+      }
+    }
+  },
+  "$defs": {
+    "hash12": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{12}$"
+    },
+    "epoch_id": {
+      "type": "string",
+      "pattern": "^epoch_[0-9]{3,}$"
+    },
+    "proposal_summary_view": {
+      "type": "object",
+      "required": [
+        "proposal_record_id",
+        "title",
+        "short_description",
+        "hypothesis",
+        "experiment_plan",
+        "success_metric",
+        "novelty_risks",
+        "expected_artifacts",
+        "dissent_summary",
+        "scores"
+      ],
+      "properties": {
+        "proposal_record_id": {"type": "string"},
+        "title": {"type": "string", "maxLength": 200},
+        "short_description": {"type": "string", "maxLength": 600},
+        "hypothesis": {"type": "string", "maxLength": 400},
+        "experiment_plan": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {"type": "string", "maxLength": 400}
+        },
+        "success_metric": {
+          "type": "object",
+          "properties": {
+            "name": {"type": "string"},
+            "higher_is_better": {"type": "boolean"},
+            "rationale": {"type": "string"}
+          }
+        },
+        "novelty_risks": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {"type": "string", "maxLength": 200}
+        },
+        "expected_artifacts": {
+          "type": "array",
+          "maxItems": 5,
+          "items": {"type": "string", "maxLength": 120}
+        },
+        "dissent_summary": {"type": "string", "maxLength": 400},
+        "scores": {
+          "type": "object",
+          "properties": {
+            "novelty": {"type": "number", "minimum": 0, "maximum": 1},
+            "feasibility": {"type": "number", "minimum": 0, "maximum": 1},
+            "overall": {"type": "number", "minimum": 0, "maximum": 1}
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -16,7 +16,13 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/state.py
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-core/ari/core.py
+    role: implementation
+  - path: ari-core/ari/rqgm/runtime.py
+    role: implementation
+  - path: ari-core/tests/test_rqgm_mode.py
+    role: test
+last_verified: 2026-07-10
 ---
 
 # Internal boundaries
@@ -41,6 +47,10 @@ three-part pattern, and direct `litellm.{completion,acompletion}` calls are the
 2. **`ari.llm.routing.resolve_litellm_model(model, backend)`** is the single
    model-normalisation helper. It applies the provider prefix (including the
    CLI-shim `openai/claude-cli` rule) so a bare model name routes correctly.
+   Its signature and return values are **frozen**: it *transforms* a model id
+   rather than constructing an object, so it was deliberately kept out of the
+   `ari._factory.BaseRegistry` string-dispatcher unification (see the
+   decision note above its definition in `routing.py`).
 3. **`ari.cost_tracker._install_litellm_metadata_injector()`** monkey-patches
    `litellm.completion`/`acompletion` **process-wide** to (a) merge default cost
    metadata (skill / phase / node) and (b) apply `_apply_ari_routing`
@@ -127,3 +137,45 @@ fork that constructs its own `MCPClient` in the child.
    + throttle live in `ari.checkpoint.save_tree_incremental` (lock + mtime
    throttle). Per-node work-dirs are isolated by
    `PathManager.node_work_dir(run_id, node_id)`.
+
+## RQGM mode boundary (`ari.rqgm`)
+
+The opt-in `ari_rqgm` mode (see
+[Execution modes](../guides/execution_modes.md)) adds one more internal
+boundary: **the `ari.rqgm` package must be invisible to a default run**.
+
+**The enforced rule.** The default `simple_bfts` path never imports any
+`ari.rqgm` module. Every core import site is lazy and gated on the *raw*
+config flags before the import happens:
+
+- `ari.core.build_runtime` — imports `ari.rqgm.mode` / `ari.rqgm.runtime`
+  only when `ari.mode == "ari_rqgm"` or `rqgm.enabled` is set, and wraps the
+  strategy only when `resolve_effective_mode(cfg)` is `ari_rqgm`.
+- `ari/cli/run.py` — imports `ari.rqgm.state` only under the mode, to write
+  `rqgm_state.json` and copy `constitution.yaml` at launch (and
+  `reconcile_resume_mode` on resume: the persisted mode wins; a run can never
+  be upgraded mid-flight).
+- `ari/cli/bfts_loop.py` — imports the proposal store only when the opt-in
+  `proposal_router.record_only: true` dual-write is set (default `false`
+  never imports it; in `ari_rqgm` the router records natively so the import
+  is skipped there too).
+- `ari.config._effective_mode_str` mirrors the activation table
+  **import-free**, so config handling itself never loads `ari.rqgm`.
+
+**Wrap, never replace.** Under `ari_rqgm`, `build_runtime` returns a
+`GovernedSearchStrategy` (`ari/rqgm/runtime.py`) that delegates all seven
+`SearchStrategy` methods to the untouched real
+`ari.orchestrator.bfts.BFTS` instance; the controller is discoverable via
+`getattr(bfts, "rqgm", None)` so the 6-tuple return shape is preserved.
+`ari.protocols` names RQGM classes only in docstrings — the Protocols are
+structural (`runtime_checkable`), so importing `ari.protocols` pulls in
+nothing from `ari.rqgm`.
+
+**Enforcement.**
+`ari-core/tests/test_rqgm_mode.py::test_build_runtime_default_is_identity`
+builds a default runtime and asserts (a) no `ari.rqgm*` entry in
+`sys.modules`, (b) the strategy is the plain `ari.orchestrator.bfts` object
+with no `.rqgm` attribute, and (c) no `rqgm_state.json` / `constitution.yaml`
+in the checkpoint. On the skill side, `ari.rqgm` is not re-exported through
+`ari.public.*`, and `scripts/quality/check_import_boundaries.allow.yaml`
+carries no `ari.rqgm` exception — no skill may import it.

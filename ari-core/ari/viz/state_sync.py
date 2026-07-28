@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,6 +22,20 @@ from . import state as _st
 
 
 log = logging.getLogger(__name__)
+
+
+# MN-9 (gui_refresh task 09 Wave 5b, plan 09 §Operational visibility):
+# watcher liveness telemetry consumed by ari/viz/health.py for
+# GET /health/ready (alive) and GET /api/v1/diagnostics (last_scan_age_s).
+# The polling thread registers itself on entry — so readiness reflects the
+# real thread however it was started — and stamps the heartbeat once per
+# poll loop. Both stay None in processes that never start the watcher.
+_watcher_thread_handle: "threading.Thread | None" = None
+_watcher_heartbeat_ts: "float | None" = None
+# Direct binding: tests drive the poll loop by monkeypatching the module's
+# ``time`` name with a sleep-only stub (test_gui_v1_events), so the
+# heartbeat clock must not resolve through it.
+_now = time.time
 
 
 
@@ -64,11 +79,34 @@ async def _do_broadcast(msg: str) -> None:
 
 
 
+def _publish_tree_changed() -> None:
+    """Mirror a watcher-detected tree change onto the v1 SSE event bus.
+
+    gui_refresh Wave 2b (ADR-03 dual-running): fires exactly where the legacy
+    WebSocket ``_broadcast`` fires so both channels stay in parity. Lazily
+    imports ``ari.viz.v1.events`` and swallows every failure so simple_bfts /
+    no-GUI code paths never load (nor break on) the v1 package.
+    """
+    try:
+        ckpt = _st._checkpoint_dir
+        if ckpt is None:
+            return
+        from .v1 import events as _ev
+        _ev.publish("tree", Path(ckpt).name)
+    except Exception:
+        log.debug("v1 tree event publish failed", exc_info=True)
+
+
 def _watcher_thread() -> None:
+    global _watcher_thread_handle, _watcher_heartbeat_ts
+    # MN-9: self-register for the /health/ready liveness check.
+    _watcher_thread_handle = threading.current_thread()
     _last_mtimes: dict[str, float] = {}
     _last_ckpt: "Path | None" = None
     while True:
         time.sleep(1)
+        # MN-9: one heartbeat per scan tick (diagnostics last_scan_age_s).
+        _watcher_heartbeat_ts = _now()
         if _st._checkpoint_dir is None:
             continue
         # Reset mtime cache when checkpoint directory changes
@@ -113,4 +151,5 @@ def _watcher_thread() -> None:
         data = _as._load_nodes_tree()
         if data:
             _as._broadcast(data)
+            _publish_tree_changed()
 

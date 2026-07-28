@@ -266,6 +266,54 @@ class TestPlanB_CheckpointFilesToWorkDir:
             # provided_files copy happens first, so "fresh" should win
             assert (wd / "data.csv").read_text() == "fresh"
 
+    def test_provided_meta_named_file_not_copied_and_not_evidence(self):
+        """A provided file named like ARI metadata (results.json) is filtered.
+
+        collect_delegated_completion_evidence treats results.json as
+        always-eligible because no copy path ever places one in a node
+        work_dir — the provided_files path must uphold that invariant while
+        still copying every non-meta provided file.
+        """
+        from ari.agent.loop import collect_delegated_completion_evidence
+        from ari.cli import _run_loop
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ckpt = Path(tmpdir) / "checkpoints" / "20260414_meta_named"
+            ckpt.mkdir(parents=True)
+            (ckpt / "experiment.md").write_text("## Goal\nTest\n")
+
+            src_dir = Path(tmpdir) / "src_files"
+            src_dir.mkdir()
+            # Collides with the emit_results default name AND carries
+            # completion-shaped content (non-empty measurements).
+            (src_dir / "results.json").write_text(
+                json.dumps({"measurements": {"bw_gbps": 42.0}}))
+            (src_dir / "data.csv").write_text("a,b\n1,2\n")
+
+            cfg = _make_cfg(max_total_nodes=1)
+            bfts = _make_bfts()
+            agent = _make_agent(succeed=True)
+            agent.hints.provided_files = [
+                (str(src_dir / "results.json"), "results.json"),
+                (str(src_dir / "data.csv"), "data.csv"),
+            ]
+
+            root = Node(id="root", parent_id=None, depth=0)
+            _run_loop(
+                cfg, bfts, agent,
+                pending=[root], all_nodes=[root],
+                experiment_data={"goal": "test", "topic": "t", "file": "f.md"},
+                checkpoint_dir=ckpt, run_id="test-run-meta-named",
+            )
+
+            wd = Path(root.work_dir)
+            assert (wd / "data.csv").exists(), "non-meta provided file must copy"
+            assert not (wd / "results.json").exists(), \
+                "provided results.json must be filtered (META_FILES)"
+            # …and therefore never counts as delegated completion evidence.
+            assert collect_delegated_completion_evidence(
+                str(wd), baseline={}) is None
+
     def test_empty_checkpoint_no_error(self):
         """No crash when checkpoint dir has only meta files."""
         from ari.cli import _run_loop

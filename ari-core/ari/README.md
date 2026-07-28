@@ -43,6 +43,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `commands.py` — misc top-level commands + `_safe_backup`.
   - `lineage.py` — end-of-phase lineage-decision helpers.
   - `migrate.py` — `ari migrate` sub-app.
+  - `paper_dispatch.py` — shared paper-axis dispatch behind `ari paper`/`run`/`resume`; resolves linear vs rqgm_archive and builds the agent-as-judge score fn.
   - `projects.py` — `ari paper` / `status` / `projects` / `show` commands.
   - `run.py` — `ari run` / `ari resume` commands.
 - `clone/` — `ari clone`: fetch + verify + extract curated EAR bundles.
@@ -59,7 +60,9 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `config/` — Pydantic config models + env-var overrides.
   - `README.md` — config index.
   - `__init__.py` — Pydantic config models + env-var overrides.
+  - `field_registry.py` — canonical inventory of every declared `ARIConfig` leaf plus its metadata overlay (category / level / scope / sensitivity / mutability); pure and deterministic, backs `GET /api/v1/config/schema`.
   - `finder.py` — workflow / profile YAML discovery.
+  - `resolver.py` — resolved-config reconstruction: post-hoc for an existing checkpoint and preview for a new run, emitting values + per-leaf provenance + digest + warnings without running the imperative override chain.
 - `configs/` — external config tables (Phase PC).
   - `README.md` — configs index.
   - `__init__.py` — config-table exports + loader plumbing.
@@ -120,6 +123,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `context_builder.py` — best-nodes context + keyword extraction.
   - `driver.py` — `WorkflowDriver`: run pre-flight (cost tracker, evaluation_criteria/nodes_tree/verified-context, tpl_vars, BFTS no-real-data sanity gate) + index-based stage-cursor loop with `loop_back_to` rewind.
   - `experiment_md.py` — `experiment.md` helpers.
+  - `integrity.py` — run-integrity aggregate: reads each check's artifacts (gate findings, provenance audit, claim links, refine insertions, literature, ideation) into `run_integrity.json` + a console summary; an ABSENT producer is `null`, never zero findings.
   - `orchestrator.py` — top-level entry points (`build_scientific_data`, `run_pipeline`).
   - `stage_context.py` — `StageContext` dataclass: shared mutable run state (`tpl_vars`, `stage_outputs`) + read-only inputs (checkpoint_dir, config_path, wf_cfg, disabled_stages, best_metrics).
   - `stage_control.py` — loop_back / VLM-feedback control.
@@ -213,6 +217,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `viz/` — HTTP + WebSocket dashboard server + React frontend.
   - `README.md` — viz index.
   - `__init__.py` — package docstring + module map / public symbols.
+  - `api_capabilities.py` — `GET /api/capabilities` server feature flags (`ARI_GUI_V2` shell switch).
   - `api_experiment.py` — launch, run stages, log streaming.
   - `api_fewshot.py` — reviewer_rubrics/fewshot_examples corpus management.
   - `api_memory.py` — memory backend health + local Letta start/stop.
@@ -227,11 +232,13 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `api_tools.py` — chat, config generation, file upload, SSH test.
   - `api_wizard.py` — consolidated wizard endpoint router.
   - `api_workflow.py` — React Flow workflow-editor endpoints.
+  - `auth.py` — remote-mode bearer-token gate; loopback binds stay unauthenticated.
   - `checkpoint_api.py` — model list, checkpoint list/summary, lineage decisions.
   - `checkpoint_finder.py` — checkpoint discovery + PID liveness probe.
   - `checkpoint_lifecycle.py` — checkpoint delete + switch.
   - `ear.py` — EAR curate/publish/clone REST helpers.
   - `file_api.py` — per-checkpoint file CRUD + LaTeX compile.
+  - `health.py` — `/health/live` + `/health/ready` probes and bounded `/api/v1/diagnostics`; never 500s.
   - `internal_adapters.py` — TODO
   - `node_work_api.py` — per-node work-dir filetree/filecontent/memory listing.
   - `routes.py` — `_Handler` dispatch + access log.
@@ -247,6 +254,24 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
     - `file_service.py` — TODO
     - `launch_service.py` — TODO
     - `state_service.py` — TODO
+  - `v1/` — versioned `/api/v1` platform built on the stdlib server (ADR-02): typed errors, pydantic DTOs, declarative router, generated OpenAPI.
+    - `__init__.py` — package docstring + v1 module map (no FastAPI/uvicorn, zero new runtime deps).
+    - `catalogs.py` — model/provider catalog re-serving `GET /api/models` plus each provider's API-key env name.
+    - `challenges.py` — single-use, TTL-bounded confirmation challenges required by the destructive endpoints (428 otherwise).
+    - `config_api.py` — config-document CRUD (project config, run templates, run drafts) with `If-Match` optimistic concurrency.
+    - `dto.py` — pydantic v2 response models, each carrying `schema_version`; changes are additive by policy.
+    - `errors.py` — typed `{code, message, details, request_id, retryable}` error envelope + frozen code vocabulary.
+    - `events.py` — in-process ring-buffer event bus and the SSE framing behind `GET /api/v1/events/stream`.
+    - `launch.py` — idempotent `POST /api/v1/runs`: validate → mint `run_id` → materialize checkpoint → spawn the CLI subprocess.
+    - `logs.py` — cursor-paged, byte-bounded read model over a run's `ari.log` (committed lines only).
+    - `openapi.json` — the committed OpenAPI 3.1 document; drift-guarded against the generator.
+    - `openapi.py` — deterministic OpenAPI 3.1 generator from `router.ROUTES` + `dto` schemas (`--check` / `--update`).
+    - `queries.py` — pure filesystem read queries: no `viz.state` mutation, no env writes, no file writes.
+    - `results.py` — bounded review-score / ORS verdict / EAR lineage read models with honest-absence flags.
+    - `router.py` — declarative `(method, path_template, handler)` table + `dispatch` with per-request `request_id`.
+    - `rqgm.py` — RQGM artifact read models (offline projector; never imports `ari.rqgm`).
+    - `secrets.py` — secret readiness reads + write-only `PUT /api/v1/secrets/{secret_id}` over a fixed allowlist.
+    - `store.py` — atomic, per-document-revisioned GUI store under `{workspace_root}/gui_store/` (ADR-12).
 
 ## See also
 

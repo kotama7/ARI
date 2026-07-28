@@ -169,6 +169,107 @@ def _cap(s: str, n: int) -> str:
     return s if len(s) <= n else s[:n] + " …[truncated]"
 
 
+# ── Delegated-CLI terminal-protocol acceptance ────────────────────────────
+# With the cli-shim MCP-direct backend (ari/llm/cli_server.py) ONE `claude -p`
+# subprocess runs the whole tool loop itself: the outer ReAct loop never sees
+# tool_calls, only final text. Observed on live runs: the delegated claude did
+# the real work (skills wrote results into the node work_dir) but signed off
+# in PROSE instead of the terminal JSON — the loop then burned every remaining
+# step and marked the node failed. Recovery is two-stage: (a) a bounded
+# corrective nudge asking for the terminal JSON, then (b) acceptance from the
+# skill-side artifacts the delegated run verifiably wrote. Both stages are
+# reached ONLY when LLMClient reports the response as delegated, so every
+# other backend is byte-for-byte unaffected.
+_DELEGATED_NUDGE_CAP = 2
+_DELEGATED_RESULT_SOURCE = "delegated_cli_artifacts"
+_DELEGATED_TERMINAL_NUDGE = (
+    "Your work may already be complete — but your last reply was prose, not "
+    "the terminal protocol. If this node's work IS complete, reply with "
+    "EXACTLY the terminal JSON per the rules and NOTHING else:\n"
+    '{"status":"success","artifacts":[{"type":"result","stdout":"<key measured '
+    'outputs>"}],"summary":"<one sentence>"}\n'
+    "If it is NOT complete, continue working and reply with that terminal "
+    "JSON when done."
+)
+
+
+def snapshot_results_files(work_dir: str) -> dict:
+    """``{name: (size, mtime_ns)}`` of ``results*.json`` currently in work_dir.
+
+    Taken at node start (before the first delegated call) so measurement files
+    inherited from the parent lineage are never mistaken for THIS node's own
+    output by :func:`collect_delegated_completion_evidence`.
+    """
+    out: dict = {}
+    try:
+        wd = Path(work_dir or "")
+        if wd.is_dir():
+            for p in sorted(wd.glob("results*.json")):
+                try:
+                    st = p.stat()
+                except OSError:
+                    continue
+                out[p.name] = (st.st_size, st.st_mtime_ns)
+    except Exception:  # pragma: no cover - defensive
+        pass
+    return out
+
+
+def collect_delegated_completion_evidence(
+    work_dir: str, baseline: dict | None,
+) -> dict | None:
+    """Skill-side completion evidence left by a delegated-CLI run, or ``None``.
+
+    Uses ONLY artifacts the coding skill's ``emit_results`` already persists
+    (``results*.json`` in the node work_dir) — no new IPC. Eligibility:
+
+    - ``results.json`` (the emit_results default name) always counts: it is in
+      ``PathManager.META_FILES`` so no inheritance/checkpoint copy path ever
+      places one into a node work_dir — its presence proves THIS node wrote it.
+    - other ``results*.json`` names DO inherit from the parent work_dir
+      (lineage chaining), so they count only when new/changed vs *baseline*.
+
+    A file is evidence only if it parses to a dict with a non-empty
+    ``measurements`` dict — the same field the metric-contract coverage scan
+    trusts. Returns ``{"files", "measurement_names", "payloads"}`` or ``None``.
+    """
+    try:
+        wd = Path(work_dir or "")
+        if not wd.is_dir():
+            return None
+        files: list[str] = []
+        names: set[str] = set()
+        payloads: dict = {}
+        for p in sorted(wd.glob("results*.json")):
+            if p.name != "results.json":
+                if baseline is None:
+                    continue
+                try:
+                    st = p.stat()
+                except OSError:
+                    continue
+                if baseline.get(p.name) == (st.st_size, st.st_mtime_ns):
+                    continue  # inherited/unchanged — not this node's work
+            try:
+                d = json.loads(p.read_text())
+            except Exception:
+                continue
+            m = d.get("measurements") if isinstance(d, dict) else None
+            if isinstance(m, dict) and m:
+                files.append(p.name)
+                names.update(k for k in m.keys() if isinstance(k, str))
+                payloads[p.name] = d
+        if not files:
+            return None
+        return {
+            "files": files,
+            "measurement_names": sorted(names),
+            "payloads": payloads,
+        }
+    except Exception:  # pragma: no cover - defensive
+        return None
+
+
 def build_working_context_messages(
     call_tool,
     *,
@@ -464,6 +565,144 @@ class AgentLoop:
         except Exception:
             pass
 
+    def _accept_delegated_completion(
+        self, node: Node, experiment: dict, evidence: dict, final_text: str,
+    ) -> Node:
+        """Terminate a delegated-CLI node from its skill-side artifacts.
+
+        Reached only when the delegated backend kept replying prose past the
+        nudge budget while ``results*.json`` written by THIS node exists (see
+        :func:`collect_delegated_completion_evidence`). Synthesizes the
+        terminal result the model failed to emit; provenance is marked via
+        ``result_source`` on the artifact and in the node trace log.
+        """
+        stdout = json.dumps(evidence["payloads"], ensure_ascii=False)[:8000]
+        artifacts = [{
+            "type": "result",
+            "stdout": stdout,
+            "result_source": _DELEGATED_RESULT_SOURCE,
+        }]
+        summary = (final_text or "").strip()[:500] or (
+            "Delegated CLI completed; results accepted from artifacts: "
+            + ", ".join(evidence["files"]))
+        if self.evaluator is not None:
+            try:
+                eval_result = self.evaluator.evaluate_sync(
+                    goal=(experiment.get("goal", "")[:500]
+                          if isinstance(experiment, dict) else str(experiment)[:500]),
+                    artifacts=artifacts,
+                    summary=summary,
+                    node_id=node.id,
+                    node_label=(node.label.value if hasattr(node.label, "value") else str(node.label)),
+                )
+                node.metrics = eval_result.get("metrics", {})
+                node.has_real_data = bool(eval_result.get("has_real_data", False))
+                if eval_result.get("reason"):
+                    summary = eval_result["reason"]
+            except Exception as e:
+                logger.warning(
+                    "Node %s: evaluator failed on delegated acceptance: %s",
+                    node.id, e)
+        try:
+            _ms = ", ".join(f"{k}={v}" for k, v in node.metrics.items()) if node.metrics else "(no metrics)"
+            self.mcp.call_tool("add_memory", {
+                "node_id": node.id,
+                "text": f"RESULT SUMMARY node={node.id} label={node.label}: metrics=[{_ms}] summary={summary[:300]}",
+                "metadata": {"type": "result_summary", "metrics": node.metrics},
+            }, cow_node_id=node.id)
+        except Exception:
+            pass
+        if hasattr(node, "trace_log"):
+            node.trace_log.append(
+                f"result_source={_DELEGATED_RESULT_SOURCE} files={evidence['files']}")
+        node.mark_success(artifacts=artifacts, eval_summary=summary)
+        logger.warning(
+            "Node %s: delegated-CLI completion accepted from artifacts %s "
+            "(result_source=%s, measurements=%s)",
+            node.id, evidence["files"], _DELEGATED_RESULT_SOURCE,
+            evidence["measurement_names"][:8])
+        return node
+
+    def apply_idea_effects(self, idea_data: dict, node_id: str = "",
+                           checkpoint_dir=None) -> None:
+        """Apply the downstream effects of an idea payload (single definition).
+
+        These four effects — EVALUATION_CRITERIA in memory, the run's
+        ``metric_extractor``, and the Letta core-memory seed — used to live
+        inline in the ``generate_ideas`` tool-result handler ONLY. When the
+        RQGM ProposalRouter takes over root ideation it suppresses that tool
+        (``bfts_loop`` sets ``_ideas_generated`` + ``_suppress_tools``), so the
+        handler never ran and all of them were ORPHANED: the router wrote its
+        ``idea.json`` projection and nothing else — no evaluation criteria, no
+        primary-metric extractor, no core-memory seed. Both paths now call this.
+        """
+        node = type("_N", (), {"id": str(node_id or "")})()
+        checkpoint_dir = checkpoint_dir if checkpoint_dir is not None else getattr(self, 'checkpoint_dir', None)
+        pm = idea_data.get("primary_metric", "")
+        hib = idea_data.get("higher_is_better", True)
+        mr = idea_data.get("metric_rationale", "")
+        if pm:
+            # Persist to memory so pipeline.py can read it
+            try:
+                self.memory.add(
+                    f"EVALUATION_CRITERIA: primary_metric={pm} higher_is_better={hib} rationale={mr}",
+                    metadata={"type": "evaluation_criteria", "node_id": node.id}
+                )
+            except Exception as _me:
+                logger.warning("Failed to save evaluation criteria to memory: %s", _me)
+            # Also update metric_extractor for this run
+            import re as _re_pm
+            _pat_pm = _re_pm.compile(
+                rf"{_re_pm.escape(pm)}[\s:=]+(\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)",
+                _re_pm.IGNORECASE
+            )
+            self.hints.metric_extractor = (
+                lambda text, p=_pat_pm: [float(x) for x in p.findall(text)]
+            )
+            logger.info("generate_ideas set primary_metric=%s higher_is_better=%s", pm, hib)
+            # Seed Letta core memory with experiment-level static facts.
+            # Spec: docs/concepts/architecture.md:462-465, docs/reference/skills.md:319-323.
+            # primary_metric is only known after generate_ideas, so we seed
+            # here rather than at the literal moment of checkpoint creation.
+            try:
+                from ari.memory import get_backend as _gmb
+                from ari.env_detect import get_environment_summary as _es
+                _ckpt = getattr(self, "checkpoint_dir", None)
+                if _ckpt:
+                    _exp_md = Path(_ckpt) / "experiment.md"
+                    _goal = _exp_md.read_text(errors="ignore") if _exp_md.exists() else ""
+                    # Compact selected-idea summary (title + description +
+                    # plan §-titles) seeded into core memory so EVERY node —
+                    # including descendants that never re-run generate_ideas —
+                    # inherits the design intent (planned mechanism, target
+                    # workloads), not just the metric. Run-level invariant.
+                    _best_idea = (idea_data.get("ideas") or [{}])[0] if isinstance(idea_data, dict) else {}
+                    _idea_summary = f"{_best_idea.get('title','')}: {(_best_idea.get('description','') or '')[:400]}"
+                    try:
+                        from ari.pipeline import _extract_plan_sections as _eps_seed
+                        _secs_seed = _eps_seed(_best_idea.get("experiment_plan", "") or "")
+                        if _secs_seed:
+                            _idea_summary += " | Plan: " + "; ".join(
+                                f"{_t} {_ti}" for _t, _ti, _ in _secs_seed
+                            )
+                    except Exception:
+                        pass
+                    _gmb(checkpoint_dir=Path(_ckpt)).seed_core_memory(
+                        persona="",
+                        human="",
+                        context={
+                            "experiment_goal": _goal,
+                            "primary_metric": pm,
+                            "higher_is_better": hib,
+                            "metric_rationale": mr,
+                            "hardware_spec": _es(),
+                            "selected_idea": _idea_summary,
+                        },
+                    )
+                    logger.info("seeded core memory (pm=%s)", pm)
+            except Exception as _seed_err:
+                logger.warning("seed_core_memory failed: %s", _seed_err)
+
     def run(self, node: Node, experiment: dict) -> Node:
         node.mark_running()
         # Notify the orchestrator so tree.json picks up the RUNNING state
@@ -703,6 +942,27 @@ class AgentLoop:
         tool_outputs: list[str] = []
         contract_pending = False     # last emit_results carried contract_warnings
 
+        # Delegated-CLI (cli-shim MCP-direct) state. Strict `is True` probes
+        # keep every delegated branch inert for normal backends AND for
+        # MagicMock-based fakes, whose auto-created attributes are truthy
+        # but never the literal True.
+        delegated_nudges = 0
+        _shim_probe = getattr(self.llm, "_is_cli_shim_target", None)
+        try:
+            _delegation_possible = (
+                getattr(self.llm, "mcp_client", None) is not None
+                and callable(_shim_probe)
+                and _shim_probe() is True
+            )
+        except Exception:
+            _delegation_possible = False
+        # Baseline BEFORE the first (potentially delegated) call: inherited
+        # lineage results files must not count as this node's own evidence.
+        _delegated_baseline = (
+            snapshot_results_files(work_dir)
+            if (_delegation_possible and work_dir) else None
+        )
+
         for step in range(self.max_react_steps):
             job_ids = _extract_job_ids(messages, self.hints.job_id_key)
             job_output_read = exec_called and bool(job_ids) if self.hints.job_submitter_tool else False
@@ -854,6 +1114,9 @@ class AgentLoop:
                 llm_msgs, tools=effective_tools, require_tool=(active is not None),
                 node_id=node.id, phase="react", skill="agent_loop",
             )
+            # Set by LLMClient.complete when it attached mcp_config: the whole
+            # tool loop ran inside one `claude -p` and only final text returns.
+            _delegated = getattr(self.llm, "last_request_delegated", False) is True
 
             if response.tool_calls:
                 # Reject tool calls outside of active_tools
@@ -1033,70 +1296,11 @@ class AgentLoop:
                                     logger.info("Saved idea.json to %s", _idea_path)
                             except Exception as _se:
                                 logger.warning("Failed to save idea.json: %s", _se)
-                            pm = idea_data.get("primary_metric", "")
-                            hib = idea_data.get("higher_is_better", True)
-                            mr = idea_data.get("metric_rationale", "")
-                            if pm:
-                                # Persist to memory so pipeline.py can read it
-                                try:
-                                    self.memory.add(
-                                        f"EVALUATION_CRITERIA: primary_metric={pm} higher_is_better={hib} rationale={mr}",
-                                        metadata={"type": "evaluation_criteria", "node_id": node.id}
-                                    )
-                                except Exception as _me:
-                                    logger.warning("Failed to save evaluation criteria to memory: %s", _me)
-                                # Also update metric_extractor for this run
-                                import re as _re_pm
-                                _pat_pm = _re_pm.compile(
-                                    rf"{_re_pm.escape(pm)}[\s:=]+(\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)",
-                                    _re_pm.IGNORECASE
-                                )
-                                self.hints.metric_extractor = (
-                                    lambda text, p=_pat_pm: [float(x) for x in p.findall(text)]
-                                )
-                                logger.info("generate_ideas set primary_metric=%s higher_is_better=%s", pm, hib)
-                                # Seed Letta core memory with experiment-level static facts.
-                                # Spec: docs/concepts/architecture.md:462-465, docs/reference/skills.md:319-323.
-                                # primary_metric is only known after generate_ideas, so we seed
-                                # here rather than at the literal moment of checkpoint creation.
-                                try:
-                                    from ari.memory import get_backend as _gmb
-                                    from ari.env_detect import get_environment_summary as _es
-                                    _ckpt = getattr(self, "checkpoint_dir", None)
-                                    if _ckpt:
-                                        _exp_md = Path(_ckpt) / "experiment.md"
-                                        _goal = _exp_md.read_text(errors="ignore") if _exp_md.exists() else ""
-                                        # Compact selected-idea summary (title + description +
-                                        # plan §-titles) seeded into core memory so EVERY node —
-                                        # including descendants that never re-run generate_ideas —
-                                        # inherits the design intent (planned mechanism, target
-                                        # workloads), not just the metric. Run-level invariant.
-                                        _best_idea = (idea_data.get("ideas") or [{}])[0] if isinstance(idea_data, dict) else {}
-                                        _idea_summary = f"{_best_idea.get('title','')}: {(_best_idea.get('description','') or '')[:400]}"
-                                        try:
-                                            from ari.pipeline import _extract_plan_sections as _eps_seed
-                                            _secs_seed = _eps_seed(_best_idea.get("experiment_plan", "") or "")
-                                            if _secs_seed:
-                                                _idea_summary += " | Plan: " + "; ".join(
-                                                    f"{_t} {_ti}" for _t, _ti, _ in _secs_seed
-                                                )
-                                        except Exception:
-                                            pass
-                                        _gmb(checkpoint_dir=Path(_ckpt)).seed_core_memory(
-                                            persona="",
-                                            human="",
-                                            context={
-                                                "experiment_goal": _goal,
-                                                "primary_metric": pm,
-                                                "higher_is_better": hib,
-                                                "metric_rationale": mr,
-                                                "hardware_spec": _es(),
-                                                "selected_idea": _idea_summary,
-                                            },
-                                        )
-                                        logger.info("seeded core memory (pm=%s)", pm)
-                                except Exception as _seed_err:
-                                    logger.warning("seed_core_memory failed: %s", _seed_err)
+                            # Single definition — the router takeover calls
+                            # the SAME method (see apply_idea_effects).
+                            self.apply_idea_effects(
+                                idea_data, node_id=getattr(node, "id", ""),
+                            )
                         except Exception as _gie:
                             logger.warning("generate_ideas result parse failed: %s", _gie)
 
@@ -1214,6 +1418,17 @@ class AgentLoop:
                                 "ARI self-determined MetricSpec: keyword=%s expected=%s params=%s",
                                 kw, expected, expected_params
                             )
+                            # RQGM Task 11 §5.8: the epoch-frozen weight
+                            # regime outranks node-initiated axis weights.
+                            # The attribute is set only by
+                            # RQGMRuntime.wrap_node_executor (ari_rqgm), so
+                            # simple_bfts behavior is byte-for-byte unchanged.
+                            _weight_cap = getattr(self, "rqgm_weight_cap", None)
+                            if _weight_cap is not None and self.evaluator:
+                                try:
+                                    _weight_cap(spec_data, self.evaluator)
+                                except Exception as _wc_err:
+                                    logger.debug("rqgm metric-spec weight cap failed: %s", _wc_err)
                             # Producer obligation: when the metric is concept-classified
                             # (make_metric_spec emitted a metric_contract scaffold), tell the
                             # agent — in DOMAIN-NEUTRAL terms — to verify correctness, MEASURE
@@ -1412,11 +1627,27 @@ class AgentLoop:
 
             # ---- No tool call → parse JSON output ----
             # no tool used at step 0 → force prompt (model output a text plan without calling tools)
-            if step == 0:
+            # (a delegated CLI never returns tool_calls — its step-0 text may
+            # already be the terminal JSON, so it must reach the parser)
+            if step == 0 and not _delegated:
                 logger.warning("Node %s: step 1 no tool call, forcing: %r",
                                node.id, (response.content or "")[:80])
                 messages.append({"role": "assistant", "content": response.content or ""})
-                first_tool = (active[0]["function"]["name"] if active else "survey")
+                # Same derivation as the system prompt's "START NOW: call X()"
+                # (see `first_tool` above): the head of the configured
+                # `tool_sequence`, else `generate_ideas`. The fallback used to be
+                # a hardcoded "survey" — a leftover from when the survey was the
+                # mandatory opening move. It is not: `workflow._PREFERRED_ORDER`
+                # puts survey THIRD ("survey stays last among setup tools — it is
+                # the pivot into the implementation phase"), because
+                # `generate_ideas` sets the primary_metric that `make_metric_spec`
+                # needs. Forcing survey first contradicted the prompt the same
+                # loop had just sent and pushed the model toward an out-of-order
+                # opening call.
+                first_tool = (
+                    active[0]["function"]["name"] if active
+                    else (self.hints.tool_sequence or ["generate_ideas"])[0]
+                )
                 messages.append({"role": "user", "content": (
                     f"STOP. Do not write plans. Call {first_tool}() NOW."
                 )})
@@ -1437,8 +1668,12 @@ class AgentLoop:
                     # "failed" is NOT a valid terminal state from the LLM —
                     # the framework marks failure only when MAX_REACT_STEPS is exhausted.
 
-                    # Reject finish if exec has never been called
-                    if has_exec and not exec_called and tools:
+                    # Reject finish if exec has never been called. Delegated
+                    # responses are exempt: in MCP-direct mode execution runs
+                    # INSIDE `claude -p`, so exec_called can never become True
+                    # here — the refusal would re-reject even a compliant
+                    # terminal JSON forever.
+                    if has_exec and not exec_called and tools and not _delegated:
                         logger.warning("Node %s: refusing finish - exec not called", node.id)
                         messages.append({"role": "assistant", "content": content})
                         messages.append({"role": "user", "content": (
@@ -1519,6 +1754,26 @@ class AgentLoop:
                 pass
 
             messages.append({"role": "assistant", "content": content})
+            # Delegated CLI: no tool_calls + no terminal JSON is the shim's
+            # known protocol gap — the inner claude may have done the work but
+            # signed off in prose. Nudge (bounded), then accept from the
+            # skill-side artifacts it verifiably wrote. Never a false success:
+            # with no nudge compliance AND no artifacts, control falls through
+            # to the normal budget path below.
+            if _delegated:
+                if delegated_nudges < _DELEGATED_NUDGE_CAP:
+                    delegated_nudges += 1
+                    logger.info(
+                        "Node %s: delegated reply lacked terminal JSON — corrective nudge %d/%d",
+                        node.id, delegated_nudges, _DELEGATED_NUDGE_CAP)
+                    messages.append(
+                        {"role": "user", "content": _DELEGATED_TERMINAL_NUDGE})
+                    continue
+                _evidence = collect_delegated_completion_evidence(
+                    work_dir, _delegated_baseline)
+                if _evidence is not None:
+                    return self._accept_delegated_completion(
+                        node, experiment, _evidence, content)
             # if LLM returns a non-tool, non-JSON response, force a tool call
             if not force_finish:
                 if not content.strip():

@@ -1,0 +1,128 @@
+# RQGM ablation matrix — the nine conditions B0-B8 (docs/plans/ari_rqgm/13 §5.1/§6).
+#
+# Each preset expands (via ari.rqgm.evaluation.conditions.expand_condition) to a
+# concrete workflow.yaml overlay: `mode` maps to the `ari.mode` config path; the
+# `rqgm` / `proposal_router` / `bfts` blocks pass through under the owning
+# tasks' own config paths (Tasks 01-11 — Task 13 invents no runtime switch).
+# `inherits` is harness-side deep-merge sugar making the additive ladder
+# explicit. Expansions are pinned byte-exactly by
+# ari-core/tests/test_rqgm_eval_conditions.py.
+
+eval_defaults:
+  seeds: [11, 12, 13]                 # >= 3 paired seeds (plan 13 §5.2)
+  # Node-budget parity: run_ablation.py merges this block UNDER every
+  # condition overlay, so the budget is identical across the whole ladder.
+  bfts: {max_total_nodes: 20, max_depth: 4}
+  # Per-campaign model pinning: resolved ONCE at Tier-3 campaign start
+  # (conditions.resolve_models) into the ARI_MODEL_* phase env vars stamped
+  # on every spawned run. `${VAR}` expands from the harness environment;
+  # replace with literal model ids to hard-pin a campaign. The smoke tier
+  # never resolves them (no LLM).
+  models:
+    coding: "${ARI_MODEL_CODING}"
+    bfts: "${ARI_MODEL_BFTS}"
+    eval: "${ARI_MODEL_EVAL}"
+
+conditions:
+  # Control: current ARI behavior verbatim (the shipped default config).
+  B0: {mode: simple_bfts, rqgm: {enabled: false}}
+  # B0 + ProposalRecord archival only (Task 03 §6.5 record-only dual-write;
+  # the one proposal_router key honored in simple_bfts).
+  B1: {inherits: B0, proposal_router: {record_only: true}}
+  # ProposalRouter WITH VirSci (Task 03); no adversary, no governance.
+  #
+  # The five per-layer flags default TRUE in the typed config
+  # (ari.config.RQGM*Config, mirrored by configs/defaults.yaml) and
+  # load_config fills every absent key from those defaults — so each
+  # `ari_rqgm` rung must disable the layers above it EXPLICITLY, or its
+  # effective Tier-3 config silently equals B8 and the ladder's marginal
+  # deltas measure nothing. The effective configs are pinned by
+  # test_rqgm_eval_conditions.py::test_effective_config_realizes_the_ladder.
+  B2:
+    mode: ari_rqgm
+    rqgm:
+      enabled: true
+      adversarial: {enabled: false}
+      governance: {enabled: false}     # plan 13 §5.1 †: governance off in B2-B4
+      frontier_repair: {enabled: false}
+      prompt_evolution: {enabled: false}
+      meta_evolution: {enabled: false}
+    proposal_router:
+      generators:
+        virsci: {enabled: true, mode: event_triggered, max_calls_per_epoch: 2}
+  # ProposalRouter WITHOUT VirSci — the B2/B3 pair is the VirSci contrast
+  # (identical layer flags; only the virsci block differs).
+  B3:
+    mode: ari_rqgm
+    rqgm:
+      enabled: true
+      adversarial: {enabled: false}
+      governance: {enabled: false}
+      frontier_repair: {enabled: false}
+      prompt_evolution: {enabled: false}
+      meta_evolution: {enabled: false}
+    proposal_router:
+      generators:
+        virsci: {enabled: false}
+  # + adversary/defender/judge loop (Task 06).
+  B4: {inherits: B3, rqgm: {adversarial: {enabled: true}}}
+  # + GovernanceOrchestrator epoch audits (Task 05).
+  B5: {inherits: B4, rqgm: {governance: {enabled: true}}}
+  # + prompt retirement + selective erasure (Task 10; Task 09's
+  # rqgm.transition.* keys are thresholds only — no separate switch).
+  B6: {inherits: B5, rqgm: {frontier_repair: {enabled: true}}}
+  # + prompt evolution incl. clean-room regeneration (Task 07).
+  B7: {inherits: B6, rqgm: {prompt_evolution: {enabled: true}}}
+  # + meta-agent evolution (Task 11) == the full ari_rqgm mode.
+  B8: {inherits: B7, rqgm: {meta_evolution: {enabled: true}}}
+
+# Paper-archive B-baseline ladder (docs/plans/ari_rqgm_paper/07 §5.6).
+#
+# Three named presets that expand (via
+# ari.rqgm.evaluation.conditions.expand_paper_condition) to `paper.mode` +
+# `rqgm.paper.*` flag sets ONLY — all flags owned by paper-archive Tasks 01-06;
+# Task 07 invents no new runtime switch. Config-path native (unlike the
+# exploration presets), so the expansion IS the overlay. Marginal reads:
+# archive value = B_archive_no_coevo - B0_paper_linear; co-evolution value =
+# B_full - B_archive_no_coevo. Cost is REPORTED, not equalized. Expansions are
+# pinned by ari-core/tests/test_rqgm_paper_eval.py.
+#
+# NOTE (plan deviation, said explicitly): plan 07 §5.6 sketches the adversary
+# toggle as `rqgm.paper.adversarial.paper_self_preference.enabled`; the LANDED
+# config home (Task 05) is `rqgm.paper.self_preference.enabled` (typed
+# RQGMPaperSelfPreferenceConfig). The preset uses the real path — one schema
+# home, no alias.
+paper_conditions:
+  # The control: today's paper pipeline verbatim (the shipped default config).
+  B0_paper_linear:
+    paper: {mode: linear}
+    rqgm: {paper: {enabled: false}}
+  # Archive ON, co-evolution OFF — best-of-N reviewed drafts, single frozen
+  # writer/reviewer. The cheap on-ramp (isolates the value of search breadth).
+  B_archive_no_coevo:
+    paper: {mode: rqgm_archive}
+    rqgm:
+      paper:
+        enabled: true
+        archive: {width: 4, refine_rounds: 2, max_expansions: 12, depth: 3}
+        prompt_evolution: {enabled: false}   # cheap on-ramp: NO co-evolution
+  # Full paper-archive mode: B_archive_no_coevo + writer/reviewer co-evolution
+  # + paper_self_preference adversary + anchor utility (isolates co-evolution).
+  B_full:
+    inherits: B_archive_no_coevo
+    rqgm:
+      paper:
+        prompt_evolution: {enabled: true}
+        anchor: {enabled: true}
+        self_preference: {enabled: true}
+
+# Fixed external reviewer panel for the acceptance-rate metric (§5.5). A PINNED
+# rubric ensemble, run post-hoc on the FINAL manuscript, DISJOINT from the
+# co-evolving paper_reviewer and the anchor corpus (the disjointness assertion
+# is a hard harness check). Tier-3 only (real LLMs); never in CI.
+paper_eval_defaults:
+  panel:
+    rubrics: [neurips, iclr, icml]
+    num_reviews_ensemble: 3
+    seed: 41
+    accept_set: [accept, weak_accept, strong_accept, borderline_accept]

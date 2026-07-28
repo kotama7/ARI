@@ -125,6 +125,40 @@ def test_audit_unhashed_when_no_recorded_hash(tmp_path):
     assert res[0]["status"] == "unhashed"  # exists, but nothing to compare
 
 
+def test_inline_blob_is_not_a_phantom_missing(tmp_path):
+    """agent/loop.py substitutes captured stdout for fake artifacts as an
+    inline blob; node_report's builder marks it ``inline`` with a display-only
+    ``filename`` (the type, e.g. "result"). It has no file on disk, so the
+    audit must SKIP it — otherwise every such node reports a `missing`
+    artifact for a file that was never meant to exist, training a reader to
+    ignore `missing` entirely."""
+    _write(tmp_path / "real.csv", b"data")
+    good = sha256_of(tmp_path / "real.csv")
+    report = {
+        "node_id": "n",
+        "files_changed": {"added": [{"path": "real.csv", "sha256": good}]},
+        "artifacts": [
+            {"filename": "result", "role": "unknown", "inline": True},
+        ],
+    }
+    res = audit_node_report(report, tmp_path)
+    statuses = {r["path"]: r["status"] for r in res}
+    assert statuses == {"real.csv": "verified"}, statuses
+    assert "result" not in statuses  # the inline blob produced no ref at all
+
+
+def test_a_deleted_file_is_still_missing_without_the_inline_marker(tmp_path):
+    """The inline skip must not blind the audit to genuine deletions: an
+    artifacts entry WITHOUT ``inline`` whose file is gone is still `missing`."""
+    report = {
+        "node_id": "n",
+        "files_changed": {"added": [{"path": "gone.py", "sha256": "ab" * 32}]},
+        "artifacts": [],
+    }
+    res = audit_node_report(report, tmp_path)
+    assert [r["status"] for r in res] == ["missing"]
+
+
 # ── opt-in: real checkpoint ──────────────────────────────────────────────
 
 _REAL = Path("workspace/experiments/20260528180541_We_propose_an_implementation_of_CSR-form")

@@ -10,18 +10,46 @@ Feature-grouped React components — one subdirectory per dashboard page plus sh
   - `Badge.tsx` — colored variant label span.
   - `Button.tsx` — styled button with variant/size props.
   - `Card.tsx` — bordered content container.
+  - `DegradedState.tsx` — canonical PARTIAL-data affordance (warning tokens, `role="status"`, surrounding content stays visible); deliberately distinct from `ErrorState`, which means total failure.
   - `EmptyState.tsx` — TODO
   - `ErrorState.tsx` — TODO
   - `index.ts` — barrel re-exports.
   - `LoadingState.tsx` — TODO
+  - `NavRail.tsx` — vertical slice navigation: a real list with `aria-current` on the selected item, selected/unselected states from the `.nav-rail` tokens; navigation, so deliberately not `Button`.
+  - `StaleDataBanner.tsx` — freshness notice for live surfaces: keeps the last known snapshot visible and says how fresh it is (`aria-live="polite"`); a dropped stream is never presented as "run stopped".
   - `StatBox.tsx` — single value + label stat tile.
   - `StatusBadge.tsx` — maps run status to a colored `Badge`.
+  - `TabStrip.tsx` — the ONE v2 tablist look (`role=tablist/tab`, `aria-selected`/`aria-controls`); the owning page renders the matching `role="tabpanel"` using the `${idPrefix}-tab-<id>` / `${idPrefix}-panel-<id>` id convention.
   - `__tests__/` — TODO
+    - `asyncStates.test.tsx` — `DegradedState`/`StaleDataBanner` contract: status roles, default translated titles, and the retry/refresh callbacks.
     - `StateComponents.test.tsx` — TODO
+- `ConfigBrowser/` — read-only effective-config browser (`#/config?run=`).
+  - `README.md` — ConfigBrowser index.
+  - `ConfigBrowserPage.tsx` — schema/effective-config browser (category groups, search, provenance/mutability badges, secret-reference redaction, resolver warnings).
+  - `ConfigReadOnlyTable.tsx` — the ONE read-only config row/table renderer (value formatting, secret redaction, source/mutability badge maps), shared with the Configuration Studio's ADR-09 Execution section so the two config surfaces cannot drift.
+  - `index.ts` — barrel re-export.
+  - `__tests__/` — component tests for this directory.
+    - `ConfigBrowserPage.test.tsx` — tests for `ConfigBrowserPage.tsx` (144-field schema mode + search, run-mode provenance/warnings/secret redaction, error envelope with request_id).
+- `ConfigStudio/` — schema-driven Configuration Studio (`#/studio`): edits the project/template/draft config documents and launches drafts.
+  - `README.md` — ConfigStudio index.
+  - `ConfigStudioPage.tsx` — schema-driven form over project/template/draft scopes (`If-Match` PATCH, 409 → reload banner, per-path 400 → `ValidationSummary`); no field list is hardcoded.
+  - `ExecutionSection.tsx` — ADR-09 execution/paper mode selection: two controls, each writing BOTH leaves of its interlock pair, new-run only; the remaining `rqgm.*` tuning tree stays read-only via the shared ConfigBrowser table.
+  - `index.ts` — barrel re-exports.
+  - `LaunchPanel.tsx` — draft launch flow: resolve/validate → immutable review → ONE idempotency key per approval → `POST /api/v1/runs` → redirect to the SERVER-issued `#/overview?run=<run_id>`.
+  - `modeIntents.ts` — the two ADR-09 mode intent pairs (frontend mirror of `field_registry.MODE_INTERLOCK_PAIRS`) plus the flat/nested config-leaf reader.
+  - `SecretField.tsx` — write-only secret control: readiness only (`GET /api/v1/secrets/status`) plus `PUT /api/v1/secrets/{secret_id}`; the response DTO has no value field, so echoing a secret is structurally impossible.
+  - `StudioPickers.tsx` — template select/create + draft create (template link + optional goal) controls; navigation is delegated to the page.
+  - `ValidationSummary.tsx` — renders a 400 `invalid_request` envelope's `details.errors` verbatim (path, closed-vocabulary reason tag, message).
+  - `__tests__/` — component tests for this directory.
+    - `README.md` — __tests__ index.
+    - `ConfigStudioExecutionMode.test.tsx` — tests for `ExecutionSection.tsx` + the ADR-09 launch-review wiring (one control → both pair keys in a single PATCH, orthogonal 2×2 combinations, default path writes nothing, read-only `rqgm.*` group with no editable control, RESOLVED mode + resolver-fallback display, `mode_interlock_mismatch` blocking the launch).
+    - `ConfigStudioLaunch.test.tsx` — tests for the `LaunchPanel.tsx` launch flow (resolve→validate→review→launch, `mode_locked` blocking the POST, double-click single-POST + same-key retry, typed error envelope).
+    - `ConfigStudioPage.test.tsx` — tests for `ConfigStudioPage.tsx` (control generation from metadata, If-Match PATCH + 409 banner + per-path 400 summary, write-only secret flow, the ADR-09 Execution section refused in PROJECT scope).
 - `Experiments/` — experiments page (lists experiment/checkpoint runs).
   - `README.md` — Experiments index.
   - `ExperimentsPage.tsx` — experiments list view.
   - `index.ts` — barrel re-export.
+- `Governance/` — read-only RQGM governance workspace (`#/governance?run=`) over the plan-08 `/api/v1/runs/{run_id}/rqgm/*` read models; documented in its own README.
 - `Home/` — home/overview landing page.
   - `README.md` — Home index.
   - `HomePage.tsx` — home/overview view.
@@ -30,6 +58,12 @@ Feature-grouped React components — one subdirectory per dashboard page plus sh
   - `README.md` — Idea index.
   - `IdeaPage.tsx` — idea view.
   - `index.ts` — barrel re-export.
+- `IdeasV2/` — v2 Ideas workspace (`#/ideas2?run=`): run-explicit, read-only idea/hypothesis view that takes over the Idea nav slot while `gui_v2` is on.
+  - `README.md` — IdeasV2 index.
+  - `IdeasV2Page.tsx` — the page component plus its exported pure helpers (`toIdeaEntries`, `bestHypothesisNode`); absence (`present=false`) and corruption (`degraded_reasons`) are never conflated.
+  - `index.ts` — barrel re-export.
+  - `__tests__/` — component tests for this directory.
+    - `IdeasV2Page.test.tsx` — page contract tests (happy/absent/degraded/error/no-run states, TreeV2 deep links, sidebar nav takeover).
 - `Layout/` — app shell (page frame + nav sidebar).
   - `README.md` — Layout index.
   - `index.ts` — barrel re-export.
@@ -42,6 +76,16 @@ Feature-grouped React components — one subdirectory per dashboard page plus sh
   - `MonitorPage.tsx` — monitor page container.
   - `monitorSections.tsx` — metric helper + Experiment-Configuration card (extracted from MonitorPage in req 15).
   - `PhaseStepper.tsx` — workflow phase progress bar (idea→bfts→paper→review).
+  - `__tests__/` — component tests for this directory.
+    - `MonitorPage.test.tsx` — RR-D-1 regression: partial `/api/resource-metrics` payload renders placeholders, never a TypeError crash.
+- `Overview/` — v2 run Overview workspace (`#/overview?run=`): read-only lifecycle/phase/blocker summary plus the embedded log explorer.
+  - `README.md` — Overview index.
+  - `index.ts` — barrel re-export.
+  - `LogsPanel.tsx` — collapsible cursor log explorer (P4) over `{ckpt}/ari.log`: byte-offset [Load more] append with no gap or duplicate, grep filter, event-driven tail-follow; collapsed means zero fetches and nothing ever reads the whole file.
+  - `OverviewPage.tsx` — the P1/P2 disclosure layers (lifecycle badge, research phase, freshness, blockers; StatBoxes + workspace deep links); research phase and governance stage are always separate rows, never merged.
+  - `__tests__/` — component tests for this directory.
+    - `LogsPanel.test.tsx` — tests for `LogsPanel.tsx` (lazy collapsed no-fetch, cursor append with no duplicate, follow-on-event fetch, grep restart from cursor 0, absence note, follow-only stale banner).
+    - `OverviewPage.test.tsx` — tests for `OverviewPage.tsx` (P1/P2 render, RQGM vs simple_bfts variants, stale banner, phase/governance row separation, blocker surface).
 - `PaperBench/` — register external papers, import them, launch/inspect PaperBench runs.
   - `README.md` — PaperBench index.
   - `index.ts` — barrel re-exports.
@@ -55,6 +99,12 @@ Feature-grouped React components — one subdirectory per dashboard page plus sh
   - `results/` — rubric-scored results view.
     - `README.md` — results index.
     - `ResultsView.tsx` — leaf grades + rubric tree + negative-control display.
+- `Projects/` — v2 run portfolio (`#/projects`), the first v2 vertical slice; read-only and built only on the typed `/api/v1` hooks.
+  - `README.md` — Projects index.
+  - `index.ts` — barrel re-export.
+  - `ProjectsPage.tsx` — run-portfolio table (projects → runs of the virtual `default` project) whose first per-row action is the run-explicit `#/overview?run=<run_id>` link.
+  - `__tests__/` — component tests for this directory.
+    - `ProjectsPage.test.tsx` — tests for `ProjectsPage.tsx` (rows, empty state, error envelope, two-run isolation, results handoff).
 - `Results/` — final run results and rubric scoring.
   - `README.md` — Results index.
   - `EarSection.tsx` — Experiment Artifact Repository section (curate/publish/publish.yaml editor); extracted from ResultsPage renderEAR in req 15.
@@ -73,6 +123,10 @@ Feature-grouped React components — one subdirectory per dashboard page plus sh
     - `OrsChainSection.tsx` — TODO
     - `ReproSection.tsx` — TODO
     - `ReviewScoresSection.tsx` — TODO
+- `ResultsV2/` — v2 Results/EAR workspace (`#/results2?run=`): read-only run-explicit result summary; every EAR mutation stays on the legacy Results page.
+  - `ResultsV2Page.tsx` — review/ORS summary plus the curate→preview→publish→promote EAR lineage as a read-only badge chain, with the exported `deriveEarLineage`/`shortDigest` helpers.
+  - `__tests__/` — component tests for this directory.
+    - `ResultsV2Page.test.tsx` — tests for `ResultsV2Page.tsx` (summary + lineage rendering, honest absence, error envelope, nav takeover of the Results slot).
 - `Settings/` — dashboard/run configuration page.
   - `README.md` — Settings index.
   - `index.ts` — barrel re-export.
@@ -112,6 +166,7 @@ Feature-grouped React components — one subdirectory per dashboard page plus sh
     - `MemoryTab.tsx` — memory tab (own/inherited/global entry cards); extracted from DetailPanel in req 15.
     - `ReportTab.tsx` — node-report tab (node_report.json structured view); extracted from DetailPanel in req 15.
     - `TraceTab.tsx` — MCP-trace tab (tool pills + colored trace log); extracted from DetailPanel in req 15.
+- `TreeV2/` — v2 tree workspace (`#/tree2?run=&node=`) reusing the legacy D3 canvas: `?node=` in the URL is the single source of truth for selection, plus level-of-detail collapsing and a virtualized ARIA tree table; documented in its own README.
 - `Wizard/` — multi-step run-launch wizard.
   - `README.md` — Wizard index.
   - `index.ts` — barrel re-export.
@@ -128,3 +183,5 @@ Feature-grouped React components — one subdirectory per dashboard page plus sh
   - `workflowNodes.tsx` — React Flow custom nodes + edit/skill/condition modals (extracted from WorkflowPage in req 15).
   - `workflowNodeTypes.tsx` — TODO
   - `WorkflowPage.tsx` — workflow view.
+  - `__tests__/` — component tests for this directory.
+    - `WorkflowPage.revision.test.tsx` — revision-aware saving: every save sends the loaded `base_revision` and adopts the returned `revision`, the 2s debounce is unchanged, and a 409 pauses saving behind an explicit Reload instead of blindly overwriting.

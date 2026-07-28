@@ -38,9 +38,16 @@ authoritative legal review is out of scope for this code.
 
 PaperBench runs are launched in-process by spawning a worker thread that
 shells out to the existing CLI ``ari run``. Job state is kept in an
-in-memory dict keyed by ``job_id``; restart of the viz server forgets
-historical jobs (they remain reproducible by re-launching from the
-wizard).
+in-memory dict keyed by ``job_id`` (the hot path for live jobs), and every
+job mutation (create, stage/progress update, completion/failure) is also
+persisted atomically to ``{registry_root}/jobs/{job_id}.json`` (tmp +
+``os.replace``, mode ``0o600``). After a server restart the GET readers
+fall back to the on-disk record read-only: a persisted ``queued``/
+``running`` job whose worker died with the process is reported with the
+additive status ``"interrupted"`` — workers are never respawned. Log
+lines are an ephemeral SSE buffer and are not a persistence trigger by
+themselves; the persisted record carries the log buffer as of the last
+status/progress mutation.
 """
 
 from __future__ import annotations
@@ -493,19 +500,114 @@ def _api_paper_license(paper_id: str) -> dict:
 
 
 # In-memory job table. Each entry: ``{job_id, paper_id, status, ...}``.
+# The dict is the hot path for live jobs; every mutation is mirrored to a
+# durable per-job record under {registry_root}/jobs/ (see _persist_job_record)
+# so a viz-server restart no longer forgets historical jobs (G0 finding).
 _JOBS: dict[str, dict] = {}
 _JOBS_LOCK = threading.Lock()
+
+# job_ids we mint are uuid4 hex; the disk-fallback readers accept only this
+# filesystem-safe grammar so a caller-supplied id can never traverse paths.
+_JOB_ID_PAT = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+#: Live statuses. A persisted record still carrying one of these after a
+#: restart means its worker thread died with the process — the disk reader
+#: reports it as the additive status ``"interrupted"`` (never respawns).
+_LIVE_STATUSES = ("queued", "running")
+
+
+def _jobs_dir() -> Path:
+    """Durable job-record directory: ``{registry_root}/jobs``.
+
+    Jobs are runtime state tied to the paper registry they ran against
+    (their sandboxes live under ``papers/<paper_id>/runs/<job_id>``), so
+    they live beside it rather than in the ADR-12 ``gui_store`` (which
+    holds user-authored config documents, not run history).
+    """
+    return _registry_root() / "jobs"
+
+
+def _persist_job_record(entry: dict) -> None:
+    """Atomically write one job record to ``{registry_root}/jobs/{id}.json``.
+
+    tmp file + ``os.replace`` so a crash mid-write leaves the previous
+    record intact; mode ``0o600`` (job configs may embed cluster details).
+    Best-effort by design: a persistence failure must never take down the
+    in-memory job it mirrors, so OSErrors are logged and swallowed.
+    Callers hold ``_JOBS_LOCK`` (writes are tiny), which also serializes
+    record writes per process so an older snapshot can never clobber a
+    newer one.
+    """
+    job_id = str(entry.get("job_id") or "")
+    if not _JOB_ID_PAT.match(job_id):
+        return
+    jobs_dir = _jobs_dir()
+    path = jobs_dir / f"{job_id}.json"
+    tmp = jobs_dir / f"{job_id}.json.tmp"
+    try:
+        jobs_dir.mkdir(parents=True, exist_ok=True)
+        os.chmod(jobs_dir, 0o700)
+        tmp.write_text(
+            json.dumps(entry, ensure_ascii=False, sort_keys=True, indent=2,
+                       default=str) + "\n",
+            encoding="utf-8",
+        )
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, path)
+    except OSError as e:
+        log.warning("could not persist PaperBench job record %s: %s", job_id, e)
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+
+
+def _load_job_record(job_id: str) -> dict:
+    """Read-only disk fallback for a job_id absent from memory (restart).
+
+    Returns ``{}`` when no (readable) record exists. A record persisted in
+    a live status is reported as ``"interrupted"`` — the worker thread died
+    with the previous server process and is deliberately NOT respawned; the
+    run stays reproducible by re-launching from the wizard. Nothing is
+    written back (GETs stay side-effect-free) and the record is not
+    re-inserted into ``_JOBS`` (so log appends / field updates for dead
+    jobs remain the no-ops they already were).
+    """
+    if not _JOB_ID_PAT.match(job_id or ""):
+        return {}
+    path = _jobs_dir() / f"{job_id}.json"
+    if not path.is_file():
+        return {}
+    try:
+        rec = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        log.warning("unreadable PaperBench job record %s: %s", job_id, e)
+        return {}
+    if not isinstance(rec, dict):
+        return {}
+    if rec.get("status") in _LIVE_STATUSES:
+        rec["status"] = "interrupted"
+        if not rec.get("error"):
+            rec["error"] = (
+                "viz server restarted while the job was in flight; "
+                "the worker was not resumed"
+            )
+    return rec
 
 
 def _job_snapshot(job_id: str) -> dict:
     with _JOBS_LOCK:
-        return dict(_JOBS.get(job_id, {}))
+        snap = dict(_JOBS.get(job_id, {}))
+    if snap:
+        return snap
+    return _load_job_record(job_id)
 
 
 def _set_job_field(job_id: str, **fields: Any) -> None:
     with _JOBS_LOCK:
         if job_id in _JOBS:
             _JOBS[job_id].update(fields)
+            _persist_job_record(dict(_JOBS[job_id]))
 
 
 def _new_job(paper_id: str, configs: dict) -> dict:
@@ -524,6 +626,7 @@ def _new_job(paper_id: str, configs: dict) -> dict:
     }
     with _JOBS_LOCK:
         _JOBS[job_id] = entry
+        _persist_job_record(dict(entry))
     return entry
 
 
@@ -810,4 +913,7 @@ __all__ = [
     "_normalize_arxiv_id",
     "append_job_log",
     "_job_logs_since",
+    "_jobs_dir",
+    "_persist_job_record",
+    "_load_job_record",
 ]

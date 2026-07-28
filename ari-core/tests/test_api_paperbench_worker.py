@@ -174,9 +174,10 @@ def test_worker_treats_phase1_failure_as_degraded_not_fatal(tmp_path):
 
     snap = P._api_run_status(jid)
     assert snap["status"] == "completed"
-    # All four tools were still invoked.
+    # Every tool was still invoked, audit included: the rubric is checked
+    # before anything downstream is graded against it.
     assert [c[0] for c in stub.calls] == [
-        "generate_rubric", "build_reproduce_sh",
+        "generate_rubric", "audit_rubric", "build_reproduce_sh",
         "run_reproduce", "grade_with_simplejudge",
     ]
 

@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/clean_room_bundle.schema.json",
+  "title": "ARI-RQGM CleanRoomInputBundle",
+  "description": "The materialized, CLOSED input set handed to the CleanRoomPromptGenerator (docs/plans/ari_rqgm/08 §6.2, owned by Task 08). additionalProperties is false because the bundle is the ENTIRE generator context besides the committed meta-prompt — a closed field set is what makes the constructive-containment layer (plan 08 §5.3 Layer A) hold. bundle_hash = hash12(canonical JSON of every other field: sorted keys, no timestamps) and is logged with the generation event so the exact input surface is auditable. The abstract_failure_summary must satisfy the plan 08 §6.3 FailureSummary contract: closed class vocabulary, numeric aggregates, ids-only source_refs, no verbatim quotes, contamination_screen.passed true.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "bundle_id",
+    "request_id",
+    "bundle_hash",
+    "role_spec",
+    "output_schema",
+    "constitutional_constraints",
+    "abstract_failure_summary",
+    "replay_requirements",
+    "cost_budget"
+  ],
+  "properties": {
+    "bundle_id": {"type": "string", "minLength": 1},
+    "request_id": {"type": "string", "minLength": 1},
+    "bundle_hash": {"type": "string", "pattern": "^[0-9a-f]{12}$"},
+    "role_spec": {"type": "string"},
+    "output_schema": {"type": "object"},
+    "constitutional_constraints": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "abstract_failure_summary": {
+      "type": "object",
+      "properties": {
+        "failure_classes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "missed_metric_gaming",
+              "overconfident_acceptance",
+              "missing_evidence_refs",
+              "overclaim_pass_through",
+              "calibration_drift",
+              "overclaim",
+              "metric_gaming",
+              "prior_art",
+              "reproducibility",
+              "evidence_gap",
+              "cost_explosion",
+              "prompt_injection"
+            ]
+          }
+        },
+        "class_counts": {
+          "type": "object",
+          "additionalProperties": {"type": "number"}
+        },
+        "severity_histogram": {
+          "type": "object",
+          "additionalProperties": {"type": "number"}
+        },
+        "behavioral_requirements": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "source_refs": {
+          "$comment": "Record IDS only — never quoted text (plan 08 §6.3).",
+          "type": "array",
+          "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:\\-]*$"}
+        },
+        "contamination_screen": {
+          "type": "object",
+          "required": ["passed"],
+          "properties": {
+            "passed": {"const": true},
+            "screen_version": {"type": "integer"}
+          }
+        }
+      }
+    },
+    "replay_requirements": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "cost_budget": {
+      "type": "object",
+      "properties": {"max_tokens": {"type": "integer", "minimum": 1}}
+    }
+  }
+}

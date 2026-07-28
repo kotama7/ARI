@@ -489,6 +489,55 @@ def build_axes_for_run(
     return axes
 
 
+def resolve_live_axis_set(cfg, checkpoint_dir=None) -> "tuple[str, ...] | None":
+    """The epoch's LIVE axis set — the axes the evaluator will ACTUALLY score,
+    per ``cfg.evaluator.axis_mode`` — for the CK-UTL-006 advisory (plan 14 §5.6).
+
+    NOT the incumbent policy's static ``axis_weights`` keys, which are empty
+    under the default ``axis_mode: dynamic`` and made the advisory dead in the
+    very mode its rationale is written for. Mirrors the ``core.py`` axis_mode
+    dispatch and the ``llm_evaluator`` dynamic-axes build so both callers of
+    ``validate_utility_policy`` (the candidate-eval boundary hook and the T6
+    ``validate_transition`` apply path — §5.6 "one validator, two callers") gate
+    on the same set the evaluator uses. Pure w.r.t. its inputs (P2: no wall
+    clock; rubric + idea.json are deterministic on-disk state). Best-effort:
+    ``None`` disables the advisory rather than raising into a boundary."""
+    import json as _json
+    import logging as _logging
+    from pathlib import Path as _Path
+
+    _log = _logging.getLogger(__name__)
+    ev = getattr(cfg, "evaluator", None)
+    mode = str(getattr(ev, "axis_mode", "dynamic") or "dynamic")
+    try:
+        if mode == "legacy":
+            from ari.evaluator.llm_evaluator import AXIS_NAMES
+            return tuple(AXIS_NAMES) or None
+        if mode == "custom":
+            return tuple(
+                str(a.name) for a in (getattr(ev, "custom_axes", None) or ())
+            ) or None
+        # dynamic (default): the same rubric + idea.json basis the evaluator
+        # builds its axes from (llm_evaluator.py:334-338).
+        from ari.core import _load_rubric_dict_for_axes
+        idea_data: dict = {}
+        if checkpoint_dir is not None:
+            p = _Path(checkpoint_dir) / "idea.json"
+            if p.exists():
+                try:
+                    idea_data = _json.loads(p.read_text(encoding="utf-8"))
+                except Exception:
+                    idea_data = {}
+        axes = build_axes_for_run(
+            rubric=_load_rubric_dict_for_axes(), idea_data=idea_data,
+        )
+        return tuple(a.name for a in axes) or None
+    except Exception:
+        _log.warning("live axis set unresolvable; CK-UTL-006 advisory "
+                     "skipped this boundary", exc_info=True)
+        return None
+
+
 def axes_to_prompt_section(axes: list[AxisDef]) -> str:
     """Render an axis list as a JSON-schema-style prompt block."""
     if not axes:

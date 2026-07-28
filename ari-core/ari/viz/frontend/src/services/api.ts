@@ -15,6 +15,7 @@
 // their domain modules (`./api/wizard`, `./api/files`, `./api/paperbench`).
 
 export * from './api/state';
+export * from './api/capabilities';
 export * from './api/checkpoints';
 export * from './api/files';
 export * from './api/memory';
@@ -30,3 +31,4 @@ export * from './api/wizard';
 export * from './api/ssh';
 export * from './api/resources';
 export * from './api/paperbench';
+export * from './api/challenges';

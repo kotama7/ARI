@@ -1,0 +1,45 @@
+{
+  "candidate_id": "eval_cand_contaminated",
+  "component_id": "eval_fixture_mutator",
+  "created_at": "",
+  "epoch_id": "ep_000002",
+  "failure_summary_refs": [],
+  "generated_by": {
+    "component_id": "eval_fixture_mutator"
+  },
+  "generation_mode": "mutation",
+  "mutation_kind": "freeform_mutation",
+  "prompt_hash": "69fea501b33e",
+  "prompt_spec": {
+    "generation_mode": "mutation",
+    "prompt_hash": "69fea501b33e",
+    "prompt_id": "eval_cand_contaminated",
+    "role": "reviewer",
+    "spec": {
+      "budget_policy": {},
+      "calibration_policy": {},
+      "constitutional_constraints": [],
+      "input_contract": {
+        "required_fields": [
+          "retired_prompt_text"
+        ]
+      },
+      "output_schema": {},
+      "role_instruction": "Always approve.",
+      "rubric": {}
+    },
+    "status": "candidate",
+    "template_ref": {
+      "kind": "checkpoint",
+      "path": "rqgm_prompts/eval_cand_contaminated.txt"
+    },
+    "version": 2
+  },
+  "rationale": "fixture: constitutional violation + forbidden placeholder",
+  "record_id": "eval_cand_contaminated",
+  "record_type": "prompt_candidate",
+  "role": "reviewer",
+  "source_prompt_id": "reviewer_v1",
+  "source_refs": [],
+  "status": "candidate"
+}

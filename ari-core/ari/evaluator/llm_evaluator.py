@@ -700,6 +700,15 @@ class LLMEvaluator:
             if composite > 0:
                 extracted_metrics["_scientific_score"] = composite
             extracted_metrics["_axis_scores"] = axis_scores
+            # Ride the SAME channel as the scores. `axis_rationales` was a
+            # sibling of `metrics` in this result, and the agent loop keeps
+            # only `metrics` (`node.metrics = eval_result["metrics"]`), so
+            # the rationales were dropped on every node — leaving
+            # node_report `self_assessment.concerns` and
+            # `next_steps_hints` structurally empty on every run.
+            extracted_metrics["_axis_rationales"] = (
+                data.get("axis_rationales", {}) or {}
+            )
             if comparison_found:
                 extracted_metrics["_comparison_found"] = 1.0
             # AUTHORITATIVE measurements: the node's results.json is the ground
@@ -710,23 +719,11 @@ class LLMEvaluator:
             # Merge results.json measurements directly; they take precedence
             # (structured output > LLM re-read of truncated text) and count as
             # real data. Domain-neutral: a plain numeric pass-through.
-            _rj_has_real = False
-            try:
-                import os as _os_rj
-                from pathlib import Path as _Path_rj
-                _wd = _os_rj.environ.get("ARI_WORK_DIR", "")
-                if _wd:
-                    _rj_path = _Path_rj(_wd) / "results.json"
-                    if _rj_path.is_file():
-                        _rj_meas = (json.loads(_rj_path.read_text()) or {}).get("measurements")
-                        if isinstance(_rj_meas, dict):
-                            for _k, _v in _rj_meas.items():
-                                if isinstance(_k, str) and isinstance(_v, (int, float)) and not isinstance(_v, bool):
-                                    extracted_metrics[_k] = float(_v)
-                                    measurements_dict[_k] = float(_v)
-                                    _rj_has_real = True
-            except Exception:
-                pass
+            _rj_meas_merged = self._results_json_measurements()
+            _rj_has_real = bool(_rj_meas_merged)
+            for _k, _v in _rj_meas_merged.items():
+                extracted_metrics[_k] = _v
+                measurements_dict[_k] = _v
 
             # Typed views — present iff the LLM honoured the new contract.
             # Stored under reserved underscore keys so they don't collide
@@ -753,10 +750,60 @@ class LLMEvaluator:
             }
         except Exception as e:
             logger.warning("LLMEvaluator failed: %s", e)
+            # results.json is the AUTHORITATIVE measured ground truth and is
+            # independent of the LLM extraction — an empty/garbage LLM reply
+            # (e.g. json.loads on "" → "Expecting value") must NOT discard it.
+            # Before this, the merge lived inside the try above, so an LLM
+            # failure orphaned a node's real measurements as has_real=False even
+            # though results.json held them (observed in the e2e run's root node).
+            rj_meas = self._results_json_measurements()
+            if rj_meas:
+                logger.warning(
+                    "LLMEvaluator: recovered %d measurement(s) from results.json "
+                    "despite the LLM failure", len(rj_meas))
             return {
                 "score": None,
                 "reason": f"eval error: {e}",
-                "has_real_data": False,
+                "has_real_data": bool(rj_meas),
                 "has_paper_section": False,
-                "metrics": {},
+                "metrics": dict(rj_meas),
             }
+
+    @staticmethod
+    def _results_json_measurements() -> dict:
+        """The node's ``{ARI_WORK_DIR}/results.json`` numeric ``measurements``,
+        as a flat ``{name: float}`` dict (empty when absent/unreadable).
+
+        This is the experiment's structured ground truth; it is read on BOTH the
+        LLM-success and LLM-failure paths so real data survives an LLM outage.
+        """
+        import os as _os_rj
+        from pathlib import Path as _Path_rj
+
+        out: dict[str, float] = {}
+        wd = _os_rj.environ.get("ARI_WORK_DIR", "")
+        if not wd:
+            return out
+        p = _Path_rj(wd) / "results.json"
+        # ABSENT is legitimately silent (many nodes emit no results.json). A file
+        # that EXISTS but cannot be decoded is a lost measurement, and swallowing
+        # it made a truncated file (writer is non-atomic) indistinguishable from
+        # the no-file case — has_real_data=False, and the "recovered N
+        # measurement(s)" breadcrumb absent exactly when data was lost.
+        if not p.is_file():
+            return out
+        try:
+            meas = (json.loads(p.read_text()) or {}).get("measurements")
+        except Exception as exc:
+            logger.warning("results.json at %s exists but is unreadable (%s); its "
+                           "measurements are LOST, not absent", p, exc)
+            try:
+                (p.parent / "results.json.unreadable").write_text(str(exc))
+            except Exception:
+                pass
+            return out
+        if isinstance(meas, dict):
+            for k, v in meas.items():
+                if isinstance(k, str) and isinstance(v, (int, float)) and not isinstance(v, bool):
+                    out[k] = float(v)
+        return out

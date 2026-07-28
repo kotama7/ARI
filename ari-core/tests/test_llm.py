@@ -186,3 +186,49 @@ def test_stream(mock_litellm, llm_client):
     result = list(llm_client.stream(messages))
 
     assert result == ["Hello ", "world"]
+
+
+# ── gpt-5 / cli-shim-alias temperature guard (regression) ───────────────────
+def test_is_gpt5_family_covers_shim_aliases():
+    from ari.llm.client import _is_gpt5_family
+    assert _is_gpt5_family("gpt-5")
+    assert _is_gpt5_family("gpt-5-codex")
+    assert _is_gpt5_family("openai/gpt-5.1")
+    assert _is_gpt5_family("codex-cli:gpt-5.6-sol")   # the shim alias that failed
+    assert not _is_gpt5_family("claude-cli:sonnet")
+    assert not _is_gpt5_family("codex-cli")
+    assert not _is_gpt5_family("gpt-4o")
+    assert not _is_gpt5_family("")
+
+
+def _mock_completion(mock_litellm):
+    m = MagicMock(); m.content = "ok"; m.tool_calls = None
+    c = MagicMock(); c.message = m
+    u = MagicMock(); u.prompt_tokens = 1; u.completion_tokens = 1; u.total_tokens = 2
+    r = MagicMock(); r.choices = [c]; r.usage = u
+    mock_litellm.completion.return_value = r
+    return mock_litellm
+
+
+@patch("ari.llm.client.litellm")
+def test_gpt5_shim_alias_omits_temperature(mock_litellm):
+    """Regression: a codex-cli:gpt-5.6-sol model must NOT send temperature, or
+    litellm raises UnsupportedParamsError and every delegated node 502s
+    (observed: root node failed has_real=False)."""
+    _mock_completion(mock_litellm)
+    cli = LLMClient(LLMConfig(backend="cli-shim", model="codex-cli:gpt-5.6-sol",
+                              base_url="http://localhost:8900/v1", api_key="x"))
+    cli.complete([LLMMessage(role="user", content="hi")])
+    kw = mock_litellm.completion.call_args.kwargs
+    assert "temperature" not in kw, "temperature must be dropped for a gpt-5 shim alias"
+
+
+@patch("ari.llm.client.litellm")
+def test_non_gpt5_still_sends_temperature(mock_litellm):
+    """A non-gpt-5 model keeps sending temperature (behaviour unchanged)."""
+    _mock_completion(mock_litellm)
+    cli = LLMClient(LLMConfig(backend="cli-shim", model="claude-cli:sonnet",
+                              base_url="http://localhost:8900/v1", api_key="x"))
+    cli.complete([LLMMessage(role="user", content="hi")])
+    kw = mock_litellm.completion.call_args.kwargs
+    assert "temperature" in kw

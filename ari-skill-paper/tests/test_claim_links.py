@@ -244,7 +244,7 @@ def test_writer_formula_synonyms_normalize_to_identity():
     tex = ("% CLAIM:C7:NC7 metric=achieved\\_gflops formula=value operands:value=cfg1\n"
            "Some sentence. % CLAIM:C7:NC7\n")
     cfg = {"cfg1": {"node_id": "node_x", "environment": {}}}
-    out = _parse_writer_assertions(tex, cfg)
+    out, _dropped, _suspect = _parse_writer_assertions(tex, cfg)
     rec = out["NC7"]
     assert rec["formula"] == "identity"                      # synonym normalized
     assert rec["operands"]["value"]["node_id"] == "node_x"   # operand resolved
@@ -259,7 +259,7 @@ def test_writer_operands_label_prefix_stripped():
     tex = ("Text.\n"
            "% CLAIM:Cw1:NCw1 metric=spmm\\_max\\_abs\\_error\\_vs\\_reference\\_fp32 "
            "formula=value operands=value=cfg4\n")
-    out = _parse_writer_assertions(tex, cfg)
+    out, _dropped, _suspect = _parse_writer_assertions(tex, cfg)
     a = out["NCw1"]
     assert a["formula"] == "identity"                      # alias still applied
     assert a["operands"]["value"]["config_id"] == "cfg4"   # label stripped, role parsed
@@ -271,7 +271,7 @@ def test_writer_bare_operands_unchanged():
     cfg = {"cfg1": {"node_id": "n1", "environment": {}},
            "cfg2": {"node_id": "n2", "environment": {}}}
     tex = "% CLAIM:C2:NC2 metric=GFlops formula=relative_increase_percent baseline=cfg2 proposed=cfg1\n"
-    out = _parse_writer_assertions(tex, cfg)
+    out, _dropped, _suspect = _parse_writer_assertions(tex, cfg)
     a = out["NC2"]
     assert set(a["operands"]) == {"baseline", "proposed"}
 
@@ -305,6 +305,19 @@ def test_mentions_speedup_x_not_exponent():
     ms = extract_numeric_mentions(tex, build_section_map(tex))
     vals = sorted(m["value"] for m in ms)
     assert vals == [4.18, 10.0]      # 4.18 stays 4.18; "10" is a separate token
+
+
+def test_mentions_bare_power_of_ten_not_the_base():
+    """``p<10^{-23}`` (a bare power of ten, no ×-multiplier) must parse to
+    1e-23, not 10.0 — the misread that shipped a false p-value claim in the
+    e2e run. Mirrors the ari-core claim_gate test."""
+    from src.claim_links import extract_numeric_mentions, build_section_map
+    tex = r"each significant with $p<10^{-23}$ over $n=5$ repeats"
+    ms = extract_numeric_mentions(tex, build_section_map(tex))
+    vals = [m["value"] for m in ms]
+    assert 1e-23 in vals, vals
+    assert 10.0 not in vals, f"base 10 leaked: {vals}"
+    assert [m for m in ms if m["value"] == 1e-23][0]["type"] == "result_claim"
 
 
 def test_mentions_huge_exponent_no_crash_no_nonfinite():
@@ -363,7 +376,7 @@ def _dup_id_sd():
 
 def test_duplicate_anchor_ids_yield_independent_assertions():
     from src.claim_links import _parse_writer_assertions
-    out = _parse_writer_assertions(_dup_id_tex(), _dup_id_sd()["_config_nodes"])
+    out, _dropped, _suspect = _parse_writer_assertions(_dup_id_tex(), _dup_id_sd()["_config_nodes"])
     assert len(out) == 3                      # was 1 (last-wins collapse)
     metrics = sorted(a["metric"] for a in out.values())
     assert metrics == ["lat_c", "tput_a", "tput_b"]
@@ -392,3 +405,99 @@ def test_reference_only_repeated_anchor_still_dedups():
     sd = {"claims": [{"id": "C1", "numeric_assertions": [{"id": "NC1"}]}]}
     pcl = link_paper_claims(tex, sd, None)
     assert len(pcl["paper_claim_links"]) == 1  # legacy dedup preserved
+
+
+# --- L1: closing the formula vocabulary at the LLM ingest boundary ----------
+
+def test_unknown_formula_is_recorded_but_the_assertion_is_kept():
+    """A token outside the gate's closed vocabulary must be SURFACED, not
+    dropped: dropping it here would take away the gate's chance to emit its
+    named `unknown_formula` finding and would shrink writer_assertions,
+    hiding the problem instead of reporting it."""
+    from src.claim_links import link_paper_claims
+
+    tex = (
+        "\\section{Results}\n"
+        "% CLAIM:C1:NC1 metric=gbs formula=percent_change baseline=cfg1 proposed=cfg2\n"
+        "The kernel reaches 16.3441 GB/s.\n"
+    )
+    sd = {"_config_nodes": {"cfg1": {"node_id": "n1"}, "cfg2": {"node_id": "n2"}},
+          "claims": [], "numeric_assertions": []}
+    out = link_paper_claims(tex, sd, None)
+    assert out["counts"]["writer_assertions"] == 1, "the assertion must survive"
+    assert out["counts"]["suspect_declarations"] == 1
+    assert "percent_change" in out["suspect_declarations"][0]["reason"]
+
+
+def test_a_dropped_declaration_reports_its_real_cause_not_a_hardcoded_string():
+    """The unresolved reason was ONE hardcoded string blaming the writer for
+    referencing a non-existent id. In a real run 6 anchors were reported that
+    way while every one of their values was in results.json verbatim — the parse
+    had discarded them for lacking a formula= token."""
+    from src.claim_links import link_paper_claims
+
+    tex = (
+        "\\section{Results}\n"
+        "% CLAIM:C9:NC9 metric=gbs value=cfg1\n"
+        "The kernel reaches 16.3441 GB/s.\n"
+    )
+    sd = {"_config_nodes": {"cfg1": {"node_id": "n1"}}, "claims": [],
+          "numeric_assertions": []}
+    out = link_paper_claims(tex, sd, None)
+    assert out["counts"]["dropped_declarations"] == 1
+    assert "no inline formula=" in out["dropped_declarations"][0]["reason"]
+    unresolved = out["unresolved_anchors"]
+    assert unresolved and "declaration dropped at parse" in unresolved[0]["reason"]
+
+
+def test_known_formulas_degrades_to_empty_without_ari_core():
+    """A skill must not hard-fail on an optional ari-core import; an empty set
+    means "cannot validate" and the old pass-through applies, so this can only
+    ADD detection, never remove a working path."""
+    from src.claim_links import known_formulas
+
+    got = known_formulas()
+    assert isinstance(got, frozenset)
+
+
+# --- L4: an anchorless INSERTION must not pass unexamined ------------------
+
+def test_refine_insertions_are_detected():
+    """Every guard on paper_refine is an `issubset` PRESERVATION check on
+    anchors, so an anchorless inserted sentence passes them all by construction
+    (the empty set is a subset of anything) and nothing else reads the final
+    text. `full_paper.draft.tex` — the pre-refine copy that makes an insertion
+    trivially detectable — was written by the tool and read by nothing."""
+    from src.server import _inserted_sentences
+
+    before = ("\\section{Results}\n"
+              "The untiled baseline sustains an effective bandwidth of 11.2286 GB/s here.\n")
+    after = (before +
+             "We independently re-verified each such figure against the underlying "
+             "wall-clock measurements and confirm they agree to within rounding.\n")
+    ins = _inserted_sentences(before, after)
+    assert len(ins) == 1, ins
+    assert "re-verified" in ins[0]
+
+    # A rewording of an existing sentence is NOT an insertion.
+    reworded = ("\\section{Results}\n"
+                "The untiled baseline sustains effective bandwidth of 11.2286 GB/s here.\n")
+    assert _inserted_sentences(before, reworded) == []
+
+
+def test_an_unrequested_verification_claim_is_flagged():
+    """A refiner may reword a result; it may not invent a PROCESS. The live
+    insertion asserted a verification that never happened and was factually
+    false (8 figures deviated ~437x the stated rounding budget), and it shipped
+    in the compiled PDF."""
+    from src.server import _unrequested_process_claims
+
+    claim = ("We independently re-verified each such figure against the underlying "
+             "wall-clock measurements and confirm they agree to within rounding.")
+    plain = ("The untiled baseline sustains an effective bandwidth of 11.2286 GB/s "
+             "across the five repetitions reported here.")
+
+    assert _unrequested_process_claims([claim, plain], []) == [claim]
+    # Not flagged when a revision actually asked for that text.
+    asked = [{"replacement": claim}]
+    assert _unrequested_process_claims([claim], asked) == []

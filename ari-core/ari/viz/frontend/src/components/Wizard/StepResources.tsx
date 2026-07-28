@@ -297,9 +297,11 @@ export function StepResources({
     // Re-loading them here would clobber the user's manual model selection
     // every time StepResources remounts (e.g. when navigating Launch ↔ Resources).
 
-    // Auto-read API key — developer-only (071): never auto-pull secrets from
-    // /api/env-keys on mount unless Developer Mode is on. Manual key entry
-    // stays available to everyone.
+    // Auto-read API key readiness — developer-only (071). RR-P0-2 / ADR-11 /
+    // MN-2: this no longer pulls secret VALUES (the legacy /api/env-keys is
+    // redacted server-side); it asks /api/v1/secrets/status whether the
+    // provider's key is configured and displays readiness only. Manual key
+    // entry stays available to everyone.
     if (devMode) autoReadApiKey();
 
     // Load container info & images
@@ -334,24 +336,36 @@ export function StepResources({
     }
   }, [llm]);
 
+  // RR-P0-2 / ADR-11 / MN-2 (gui_refresh Wave 3a): readiness display only.
+  // Secret values can no longer be read over HTTP, so this never prefills the
+  // API-key field — it reports configured / not-configured for the provider's
+  // env key via GET /api/v1/secrets/status.
   const autoReadApiKey = async () => {
     const keyMap: Record<string, string> = {
       openai: 'OPENAI_API_KEY',
       anthropic: 'ANTHROPIC_API_KEY',
       google: 'GOOGLE_API_KEY',
     };
+    const envKey = keyMap[llm];
+    if (!envKey) {
+      setApiKeyStatus('');
+      setApiKeyColor('var(--muted)');
+      return;
+    }
     try {
-      const r = await api.fetchEnvKeys();
-      const envKey = keyMap[llm];
-      const val = envKey ? (r.keys[envKey] || '') : '';
-      if (val) {
-        setApiKey(val);
-        setApiKeyStatus('✓ Loaded from .env (' + (envKey || '') + ')');
+      const r = await api.fetchSecretsStatus();
+      const status = (r.secrets || []).find((s) => s.name === envKey);
+      if (status && status.configured) {
+        setApiKeyStatus(
+          '✓ ' +
+            envKey +
+            ' configured (' +
+            (status.source_class || 'unknown') +
+            ') — leave blank to use it',
+        );
         setApiKeyColor('var(--green)');
       } else {
-        setApiKeyStatus(
-          llm === 'ollama' ? '' : 'Not found in .env — enter manually',
-        );
+        setApiKeyStatus(envKey + ' not configured — enter manually');
         setApiKeyColor('var(--muted)');
       }
     } catch {
@@ -672,8 +686,10 @@ export function StepResources({
                 style={{ flex: 1 }}
                 onChange={(e) => setApiKey(e.target.value)}
               />
-              {/* Env-key secret readback — developer-only (071). Reads real
-                  secrets from /api/env-keys into the field; hidden by default. */}
+              {/* Env-key readiness check — developer-only (071). RR-P0-2 /
+                  ADR-11: asks /api/v1/secrets/status whether the provider's
+                  key is configured; values are never readable, so nothing is
+                  prefilled. Hidden by default. */}
               {devMode && (
                 <button
                   className="btn btn-outline btn-sm"

@@ -5,6 +5,11 @@
 模型的字节本身决定其行为,提示词不进行翻译,在本报告的各语言版本中均以
 原文原样呈现。
 
+最后四组(提案生成、对抗评审、治理、提示词演化)由 v0.9.0 之后引入的
+可选宪制治理执行模式(\texttt{ari\_rqgm})使用;默认流水线不会加载它们。
+这些清单同样逐字呈现。在该模式下,此处所示模板是已提交的种子:运行时
+演化出的提示词变体保存在该次运行的检查点内,不会取代这些文件。
+
 \subsection*{编排器}
 
 \PromptListing{orchestrator/bfts_expand.md}{BFTS 扩展}{prompt:bfts_expand}
@@ -30,3 +35,32 @@
 
 \PromptListing{viz/wizard_chat_goal.md}{向导目标对话}{prompt:wizard_chat_goal}
 \PromptListing{viz/wizard_generate_config.md}{向导配置生成器}{prompt:wizard_generate_config}
+
+\subsection*{提案生成器}
+
+\PromptListing{rqgm/proposal_cheap.md}{低成本提案生成器}{prompt:proposal_cheap}
+\PromptListing{rqgm/proposal_mutation.md}{提案变异生成器}{prompt:proposal_mutation}
+\PromptListing{rqgm/proposal_prior_art.md}{已有工作差异化生成器}{prompt:proposal_prior_art}
+
+\subsection*{对抗评审}
+
+\PromptListing{rqgm/adversary_overclaim.md}{夸大主张对抗者}{prompt:adversary_overclaim}
+\PromptListing{rqgm/adversary_metric_gaming.md}{指标操纵对抗者}{prompt:adversary_metric_gaming}
+\PromptListing{rqgm/adversary_prior_art.md}{已有工作对抗者}{prompt:adversary_prior_art}
+\PromptListing{rqgm/adversary_reproducibility.md}{可复现性对抗者}{prompt:adversary_reproducibility}
+\PromptListing{rqgm/adversary_evidence_gap.md}{证据缺口对抗者}{prompt:adversary_evidence_gap}
+\PromptListing{rqgm/adversary_cost_explosion.md}{成本爆炸对抗者}{prompt:adversary_cost_explosion}
+\PromptListing{rqgm/adversary_prompt_injection.md}{提示注入对抗者}{prompt:adversary_prompt_injection}
+\PromptListing{rqgm/defender.md}{对抗循环辩护者}{prompt:rqgm_defender}
+\PromptListing{rqgm/judge_adjudication.md}{产物裁决}{prompt:judge_adjudication}
+
+\subsection*{治理}
+
+\PromptListing{governance/auditor.md}{治理审计员}{prompt:governance_auditor}
+\PromptListing{governance/defender.md}{治理辩护人}{prompt:governance_defender}
+\PromptListing{governance/governance_judge.md}{治理裁决者}{prompt:governance_judge}
+
+\subsection*{提示词演化}
+
+\PromptListing{rqgm/prompt_mutator.md}{提示词变异元提示词}{prompt:prompt_mutator}
+\PromptListing{rqgm/clean_room_generator.md}{净室再生成元提示词}{prompt:clean_room_generator}

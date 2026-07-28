@@ -347,9 +347,9 @@ class TestExecutorPropagation:
             "Executor must not fall back to 'local' when config specifies 'slurm'"
 
     def test_ors_stages_present(self, workflow_yaml):
-        """The PaperBench-format reproducibility flow uses three discrete
-        stages (rubric.md §4.1 rewrite): ors_generate_rubric → ors_run_reproduce
-        → ors_grade. Verify the dependency chain and tool wiring."""
+        """The PaperBench-format reproducibility flow runs ors_generate_rubric →
+        ors_audit_rubric → ors_run_reproduce → ors_grade (rubric.md §4.1
+        rewrite, plus the audit stage). Verify the ordering and tool wiring."""
         stages = workflow_yaml.get("pipeline", [])
         by_name = {s["stage"]: s for s in stages}
 
@@ -362,9 +362,29 @@ class TestExecutorPropagation:
         assert ph1["skill"] == "paper-re-skill" and ph1["tool"] == "run_reproduce"
         assert gr["skill"]  == "paper-re-skill" and gr["tool"]  == "grade_with_simplejudge"
 
-        # Dependency chain enforces order.
-        assert "ors_generate_rubric" in (ph1.get("depends_on") or [])
-        assert "ors_run_reproduce"   in (gr.get("depends_on")  or [])
+        # Dependency chain enforces order. Asserted transitively, not as a
+        # literal edge: stages legitimately get inserted between rubric
+        # generation and Phase 1 (ors_audit_rubric is one), and what must hold
+        # is the ordering, not who names whom directly.
+        def _reaches(start: str, target: str) -> bool:
+            seen, stack = set(), [start]
+            while stack:
+                cur = stack.pop()
+                if cur == target:
+                    return True
+                if cur in seen:
+                    continue
+                seen.add(cur)
+                stack.extend((by_name.get(cur) or {}).get("depends_on") or [])
+            return False
+
+        assert _reaches("ors_run_reproduce", "ors_generate_rubric")
+        assert _reaches("ors_grade", "ors_run_reproduce")
+
+        # The generated rubric is audited before anything is graded against it.
+        audit = by_name.get("ors_audit_rubric")
+        assert audit and audit["tool"] == "audit_rubric"
+        assert _reaches("ors_grade", "ors_audit_rubric")
 
         # The legacy reproducibility_check stage must be gone.
         assert "reproducibility_check" not in by_name, \
@@ -483,9 +503,17 @@ class TestTemplateResolution:
         from ari.pipeline import _resolve_templates
         import os
 
+        # NOTE: this dict hand-duplicates ari/pipeline/driver.py's tpl_vars. It
+        # drifts whenever the driver gains a key — which is exactly how this test
+        # earns its keep, but it also means new keys must be mirrored here using
+        # the SAME derivation as the driver, never a hardcoded string.
+        from ari.paths import PathManager as _PM_t
+
         tpl_vars = {
             "ckpt": str(tmp_path),
             "checkpoint_dir": str(tmp_path),
+            "run_id": Path(str(tmp_path).rstrip("/")).name,
+            "experiments_root": str(_PM_t.from_checkpoint_dir(tmp_path).experiments_root),
             "context": "test context",
             "experiment_summary": "test context",
             "paper_context": workflow_yaml.get("paper_context", "test"),
@@ -677,6 +705,7 @@ class TestFullPaperPipeline:
         # make the final gate blocking.
         expected_tools = [
             "collect_references_iterative",      # search_related_work
+            "audit_memory",                      # audit_node_provenance (re-hash node artifacts)
             "nodes_to_science_data",             # transform_data
             "generate_ear",
             "curate_ear",                        # v0.7.0 ear_curate
@@ -696,6 +725,7 @@ class TestFullPaperPipeline:
             "publish_ear",                       # v0.7.0 reordered ahead of inject_code_availability
             "inject_code_availability",          # finalize (depends on final hard gate)
             "generate_rubric",                   # ORS Phase: auto-rubric
+            "audit_rubric",                      # ORS Phase: rubric quality audit (flags leaves in place)
             "fetch_code_bundle",                 # ORS X: seed sandbox from EAR (no-op if none)
             "build_reproduce_sh",                # ORS Phase: replicator (paper → reproduce.sh)
             "run_reproduce",                     # ORS Phase 1
@@ -1008,3 +1038,68 @@ def test_distinct_binary_output_is_copied(tmp_path):
     _copy_stage_output_if_distinct(src, dst)
 
     assert dst.exists() and dst.read_bytes() == src.read_bytes()
+
+
+class TestRunScopedTemplateVars:
+    """`{{run_id}}` / `{{experiments_root}}` feed audit_node_provenance, whose
+    tool silently returns an EMPTY result set when pointed at a directory that
+    does not exist — an empty audit reads as "clean". These pin the resolution."""
+
+    def _resolve(self, checkpoint_dir):
+        """Mirror ari/pipeline/driver.py's derivation."""
+        import json as _json
+        import os as _os
+
+        from ari.paths import PathManager
+
+        pm = PathManager.from_checkpoint_dir(checkpoint_dir)
+        rid = ""
+        tree = Path(checkpoint_dir) / "tree.json"
+        if tree.exists():
+            try:
+                rid = str(_json.loads(tree.read_text()).get("run_id") or "")
+            except Exception:
+                rid = ""
+        if not rid:
+            rid = _os.path.basename(str(checkpoint_dir).rstrip("/"))
+        return rid, str(pm.experiments_root)
+
+    def test_experiments_root_is_a_sibling_of_the_checkpoint_dir(self, tmp_path):
+        """They are separate trees. Passing checkpoint_dir where experiments_root
+        is expected audits nothing and reports success."""
+        run_id = "20260721120000_demo"
+        ckpt = tmp_path / "checkpoints" / run_id
+        ckpt.mkdir(parents=True)
+        (tmp_path / "experiments" / run_id / "n_1").mkdir(parents=True)
+
+        rid, exp_root = self._resolve(ckpt)
+        assert rid == run_id
+        assert Path(exp_root) == tmp_path / "experiments"
+        assert Path(exp_root) != ckpt
+
+    def test_run_id_survives_a_renamed_checkpoint_dir(self, tmp_path):
+        """`ari resume` reads run_id from tree.json and repoints checkpoint.dir at
+        wherever the checkpoint now lives (ari/cli/run.py:522,539). The bare
+        directory basename then names a run whose node dirs do not exist."""
+        import json as _json
+
+        run_id = "20260721120000_original_name"
+        ckpt = tmp_path / "checkpoints" / run_id
+        ckpt.mkdir(parents=True)
+        (ckpt / "tree.json").write_text(_json.dumps({"run_id": run_id, "nodes": []}))
+        (tmp_path / "experiments" / run_id / "n_1").mkdir(parents=True)
+
+        moved = ckpt.rename(tmp_path / "checkpoints" / "resumed_elsewhere")
+
+        rid, exp_root = self._resolve(moved)
+        assert rid == run_id, "tree.json must win over the directory name"
+        assert (Path(exp_root) / rid).is_dir(), "resolved run dir must actually exist"
+        # The bare basename would point at a directory that is not there.
+        assert not (Path(exp_root) / moved.name).exists()
+
+    def test_basename_is_the_fallback_when_no_tree_json(self, tmp_path):
+        run_id = "20260721120000_demo"
+        ckpt = tmp_path / "checkpoints" / run_id
+        ckpt.mkdir(parents=True)
+        rid, _ = self._resolve(ckpt)
+        assert rid == run_id

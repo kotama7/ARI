@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/selective_erasure_event.schema.json",
+  "title": "ARI-RQGM SelectiveErasureEvent (docs/plans/ari_rqgm/10 §6)",
+  "description": "One selective-erasure record appended (inside the Task 02 audit envelope) to rqgm_audit.jsonl when the FrontierRepairEngine stales the dependency closure of a retired prompt_hash. Kernel-authored: prompt_hash is null and component_id is 'frontier_repair_engine'. Erasure is logical-only (invariant 13): the listed record ids are flagged in rqgm_erasure_state.json, never rewritten or deleted.",
+  "type": "object",
+  "required": [
+    "record_id",
+    "record_type",
+    "epoch_id",
+    "component_id",
+    "prompt_hash",
+    "role",
+    "created_at",
+    "source_refs",
+    "status",
+    "retired_prompt_hashes",
+    "retired_component_ids",
+    "direct_stale_record_ids",
+    "transitive_stale_record_ids",
+    "invalidated_node_ids",
+    "recompute_node_ids",
+    "abandoned_pending_node_ids",
+    "trace_stats"
+  ],
+  "properties": {
+    "record_id": {"type": "string", "pattern": "^erase_[0-9]{5,}$"},
+    "record_type": {"const": "SelectiveErasureEvent"},
+    "epoch_id": {"type": "string"},
+    "component_id": {"const": "frontier_repair_engine"},
+    "prompt_hash": {"type": "null"},
+    "role": {"const": "kernel"},
+    "created_at": {"type": "string"},
+    "source_refs": {"type": "array", "items": {"type": "string"}},
+    "status": {"enum": ["applied", "conservative", "halted_expansion"]},
+    "retired_prompt_hashes": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^[0-9a-f]{12}$"}
+    },
+    "retired_component_ids": {"type": "array", "items": {"type": "string"}},
+    "direct_stale_record_ids": {"type": "array", "items": {"type": "string"}},
+    "transitive_stale_record_ids": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "invalidated_node_ids": {"type": "array", "items": {"type": "string"}},
+    "policy_rescored_node_ids": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "#77: nodes RE-WEIGHTED under the new epoch utility policy (from their stored per-axis raw scores) instead of invalidated at this boundary. Optional/additive: absent on pre-#77 events."
+    },
+    "recompute_node_ids": {"type": "array", "items": {"type": "string"}},
+    "abandoned_pending_node_ids": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "trace_stats": {
+      "type": "object",
+      "properties": {
+        "records_scanned": {"type": "integer", "minimum": 0},
+        "closure_size": {"type": "integer", "minimum": 0},
+        "max_ref_depth": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

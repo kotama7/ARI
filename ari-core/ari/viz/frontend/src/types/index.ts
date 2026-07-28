@@ -169,6 +169,9 @@ export interface WorkflowData {
   path: string;
   ok: boolean;
   error: string | null;
+  // Weak content revision of the served workflow.yaml (sha256[:12]) —
+  // additive, gui_refresh Wave 4d; echoed back as base_revision on saves.
+  revision?: string;
 }
 
 export interface ResourceMetrics {

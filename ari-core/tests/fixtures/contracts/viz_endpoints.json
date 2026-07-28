@@ -8,6 +8,16 @@
   "endpoints": [
     {
       "method": "GET",
+      "owner": "health",
+      "path": "/health/live"
+    },
+    {
+      "method": "GET",
+      "owner": "health",
+      "path": "/health/ready"
+    },
+    {
+      "method": "GET",
       "owner": "routes",
       "path": "/logo.png"
     },
@@ -145,6 +155,11 @@
       "method": "GET",
       "owner": "ear",
       "path": "/api/nodes/<rid>/<nid>/report"
+    },
+    {
+      "method": "GET",
+      "owner": "api_capabilities",
+      "path": "/api/capabilities"
     },
     {
       "method": "GET",
@@ -292,6 +307,216 @@
       "path": "/api/paperbench/run/<jid>"
     },
     {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/projects"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/projects/<project_id>/runs"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/runs/<run_id>"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/runs/<run_id>/summary"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/runs/<run_id>/tree"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/runs/<run_id>/idea"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/runs/<run_id>/results"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/runs/<run_id>/ear"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/runs/<run_id>/logs"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/secrets/status"
+    },
+    {
+      "method": "PUT",
+      "owner": "v1",
+      "path": "/api/v1/secrets/<secret_id>"
+    },
+    {
+      "method": "POST",
+      "owner": "v1",
+      "path": "/api/v1/challenges"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/config/catalogs/models"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/config/schema"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/runs/<run_id>/resolved-config"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/events/stream"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/projects/<project_id>/config"
+    },
+    {
+      "method": "PATCH",
+      "owner": "v1",
+      "path": "/api/v1/projects/<project_id>/config"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/run-templates"
+    },
+    {
+      "method": "POST",
+      "owner": "v1",
+      "path": "/api/v1/run-templates"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/run-templates/<template_id>"
+    },
+    {
+      "method": "PATCH",
+      "owner": "v1",
+      "path": "/api/v1/run-templates/<template_id>"
+    },
+    {
+      "method": "DELETE",
+      "owner": "v1",
+      "path": "/api/v1/run-templates/<template_id>"
+    },
+    {
+      "method": "POST",
+      "owner": "v1",
+      "path": "/api/v1/run-drafts"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/run-drafts/<draft_id>"
+    },
+    {
+      "method": "PATCH",
+      "owner": "v1",
+      "path": "/api/v1/run-drafts/<draft_id>"
+    },
+    {
+      "method": "POST",
+      "owner": "v1",
+      "path": "/api/v1/run-drafts/<draft_id>/resolve-config"
+    },
+    {
+      "method": "POST",
+      "owner": "v1",
+      "path": "/api/v1/run-drafts/<draft_id>/validate"
+    },
+    {
+      "method": "POST",
+      "owner": "v1",
+      "path": "/api/v1/runs"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/runs/<run_id>/rqgm/capabilities"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/runs/<run_id>/rqgm/overview"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/runs/<run_id>/rqgm/registry"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/runs/<run_id>/rqgm/transitions"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/runs/<run_id>/rqgm/audit"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/runs/<run_id>/rqgm/policies"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/runs/<run_id>/rqgm/score-rewrites"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/runs/<run_id>/rqgm/nodes/<node_id>/lineage"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/runs/<run_id>/rqgm/epochs"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/runs/<run_id>/rqgm/epochs/<epoch_id>"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/runs/<run_id>/rqgm/evolution"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/runs/<run_id>/rqgm/paper-archive"
+    },
+    {
+      "method": "GET",
+      "owner": "v1",
+      "path": "/api/v1/diagnostics"
+    },
+    {
       "method": "POST",
       "owner": "api_settings",
       "path": "/api/settings"
@@ -433,6 +658,11 @@
     },
     {
       "method": "POST",
+      "owner": "api_paperbench",
+      "path": "/api/paperbench/run/<jid>/report"
+    },
+    {
+      "method": "POST",
       "owner": "api_ollama",
       "path": "/api/ollama/<path>"
     },
@@ -500,6 +730,7 @@
   "resolvable_path_literals": [
     "/api/",
     "/api/active-checkpoint",
+    "/api/capabilities",
     "/api/chat-goal",
     "/api/checkpoint/",
     "/api/checkpoint/compile",
@@ -555,6 +786,8 @@
     "/api/switch-checkpoint",
     "/api/upload",
     "/api/upload/delete",
+    "/api/v1/",
+    "/api/v1/events/stream",
     "/api/workflow",
     "/api/workflow/default",
     "/api/workflow/disabled-tools",

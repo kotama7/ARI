@@ -322,3 +322,171 @@ def test_latex_mentions_e_notation_and_speedup_x():
     assert any(abs(m["value"] - 1.2e-6) < 1e-12 for m in ms)
     ms2 = extract_numeric_mentions(r"a \(4.18\times\) speedup over 10 runs")
     assert sorted(m["value"] for m in ms2) == [4.18, 10.0]
+
+
+def test_latex_mentions_bare_power_of_ten_p_value_bound():
+    """A p-value BOUND ``p<10^{-23}`` written as a bare power of ten (no
+    ×-multiplier) must parse to 1e-23, not the base 10.0. The bare-mantissa
+    misread shipped a true claim as value=10.0, which raised a phantom
+    ``numeric_mismatch reported:10.0 recomputed:0.0`` that drove paper_refine
+    to rewrite the (true) claim into the false "underflows to 0.0". This is
+    the exact input from the e2e run's abstract."""
+    from ari.pipeline.claim_gate.latex import extract_numeric_mentions
+    ms = extract_numeric_mentions(
+        r"each significant with a $p$-value $p<10^{-23}$ ($n=5$).")
+    vals = [m["value"] for m in ms]
+    assert 1e-23 in vals, vals
+    assert 10.0 not in vals, f"base 10 leaked as a bare mantissa: {vals}"
+    tenpow = [m for m in ms if m["value"] == 1e-23][0]
+    assert tenpow["type"] == "result_claim"  # scientific shape, like ×10^exp
+
+    # A bare power is base**exp, and a general base is not scientific-notation:
+    ms2 = extract_numeric_mentions(r"the state space is $2^{10}$ cells")
+    assert 1024.0 in [m["value"] for m in ms2]
+
+    # Overflow (10^{4932}) is still dropped by the non-finite guard, not shipped.
+    ms3 = extract_numeric_mentions(r"a constant near $10^{4932}$ appears")
+    assert all(m["value"] not in (float("inf"), float("-inf")) for m in ms3)
+
+
+def test_an_unknown_formula_is_named_not_disguised_as_a_missing_operand():
+    """`numeric.required_roles` returns () for any token outside the closed
+    vocabulary, and the gate used to fold that into `operand_unresolved`,
+    printing "operand 'formula' ({}) did not resolve" — where {} is just
+    operands.get(None, {}). An operator then chased missing operands while the
+    real cause was a formula name the registry never contained. Observed live:
+    the writer emitted `percent_change` for all 7 assertions and
+    numeric_reproducible fell 9/12 -> 0/9 with no error naming why."""
+    from ari.pipeline.claim_gate import numeric
+
+    assert numeric.required_roles("percent_change") == ()
+    assert "percent_change" not in numeric.FORMULAS
+
+
+def test_unknown_formula_keeps_the_severity_of_the_error_it_replaced():
+    """Splitting a finding type must not quietly downgrade what it blocks:
+    `operand_unresolved` is in block_on, so `unknown_formula` must be too."""
+    from ari.pipeline.claim_gate import policy
+
+    block_on = (policy.DEFAULT_POLICY.get("blocking", {}) or {}).get("block_on", [])
+    assert "operand_unresolved" in block_on
+    assert "unknown_formula" in block_on
+
+
+def test_the_formula_registry_is_reachable_from_the_public_seam():
+    """The process that PRODUCES the token (ari-skill-paper) previously could
+    not see the vocabulary at all — it was hand-mirrored into five places and
+    `grep -c FORMULAS ari-skill-paper/` was 0. A producer that cannot read the
+    vocabulary cannot be held to it."""
+    from ari.public.claim_gate import FORMULAS, required_roles
+
+    assert "identity" in FORMULAS and "relative_speedup" in FORMULAS
+    assert required_roles("identity")
+
+
+def test_a_colliding_claim_id_is_not_reported_as_a_wrong_paper_number(tmp_path):
+    """The paper writer and the science_data generator mint C<N>/NC<N> ids
+    INDEPENDENTLY, so one id can name two assertions about different subjects.
+    The gate used to compare the paper's number against the OTHER subject's
+    recomputation: a correct 11.2286 (cfg1, the scalar baseline) was reported as
+    "not reproducible (recomputed 16.3441)" because science_data's NC1 was about
+    a different node. That false accusation reaches the refiner as an imperative
+    to change a correct number."""
+    from ari.pipeline.claim_gate.gate import run_hard_gate
+
+    (tmp_path / "results.json").write_text(json.dumps({
+        "nodes": {"nodeB": {"metrics": {"bw": 16.3441}}}
+    }))
+    science = {
+        "claims": [{"id": "C1", "numeric_assertions": [{
+            "id": "NC1", "claim_id": "C1", "metric": "bw", "formula": "identity",
+            "operands": {"value": {"node_id": "nodeB", "metric_path": "bw"}},
+        }]}],
+        "_config_nodes": {"cfg1": {"node_id": "nodeA"}},
+    }
+    links = {
+        "paper_claim_links": [{"claim_id": "C1", "numeric_id": "NC1",
+                               "line_range": [2, 2], "resolved": True}],
+        "numeric_mentions": [{"value": 11.2286, "line": 2, "type": "result_claim"}],
+        "writer_assertions": [],
+        # the anchor declared cfg1 -> nodeA; the pre-generated NC1 is nodeB
+        "dropped_declarations": [{
+            "claim_id": "C1", "numeric_id": "NC1",
+            "reason": "no inline formula= declaration",
+            "declared_metric": "bw",
+            "declared_config_ids": ["cfg1"], "declared_node_ids": ["nodeA"],
+        }],
+    }
+    rep = run_hard_gate(checkpoint_dir=tmp_path, science_data=science,
+                        paper_claim_links=links,
+                        paper_tex="x\nThe baseline sustains 11.2286.\n", phase="final")
+    types = [e.get("type") for e in (rep.get("errors") or [])]
+    assert "claim_id_collision" in types, rep.get("errors")
+    assert "numeric_mismatch" not in types, "a correct paper must not be accused"
+
+
+def test_an_unreadable_policy_file_is_not_silently_permissive(tmp_path, caplog):
+    """An operator who writes a policy file wants THAT policy. The loader
+    swallowed a parse error and fell back to the built-in default, whose mode is
+    "warn" (non-blocking) — so a single trailing comma in `{"mode": "strict"}`
+    left the gate running permissive while looking configured, and nothing said
+    so. The fallback is still correct behaviour; being silent about it was not."""
+    from ari.pipeline.claim_gate import policy as _policy
+
+    (tmp_path / "claim_gate_policy.json").write_text('{"mode": "strict",}')
+    with caplog.at_level("WARNING"):
+        resolved = _policy.load_policy(tmp_path)
+
+    assert _policy.mode(resolved) == "warn"          # fallback unchanged
+    assert resolved.get("_policy_load_error")        # …but now recorded
+    assert any("NOT in effect" in r.message or "unreadable" in r.message
+               for r in caplog.records), [r.message for r in caplog.records]
+
+    # A VALID policy still applies, and carries no error marker.
+    (tmp_path / "claim_gate_policy.json").write_text('{"mode": "strict"}')
+    ok = _policy.load_policy(tmp_path)
+    assert _policy.mode(ok) == "strict"
+    assert "_policy_load_error" not in ok
+
+
+def test_an_unevaluable_contract_expression_is_not_silently_a_pass():
+    """`safe_eval` returns None for a syntax error AND for an unsupported
+    construct, and every caller tested only `if r is False`, so an expression
+    the evaluator could not parse read exactly like a satisfied predicate. The
+    expressions are LLM-authored with no grammar stated in the obligation, and
+    `correctness_failed` / `invariant_violation` are in the ALWAYS-blocking
+    tier — so the gate published "0 violations" for a check that never ran."""
+    from ari.pipeline.claim_gate import contract, policy
+
+    def _sd(expr):
+        return {
+            "metric_contract": {"correctness": {"requires": ["max_abs_err"],
+                                                "expr": expr}},
+            # a measurement that genuinely FAILS the 1e-4 threshold
+            "configurations": [{"config_id": "cfg1",
+                                "metrics": {"max_abs_err": 1e-3}}],
+        }
+
+    assert [f["type"] for f in contract.check_contract(_sd("max_abs_err < 1e-4"))] \
+        == ["correctness_failed"]
+    for broken in ("max_abs_err < 10**-4",      # unsupported operator
+                   "np.max(err) < 1e-4",        # unsupported call
+                   "max_abs_err < 1e-4)"):      # syntax error
+        types = [f["type"] for f in contract.check_contract(_sd(broken))]
+        assert types == ["contract_expr_unevaluable"], (broken, types)
+
+    # It blocks in the same tier as the finding it replaces.
+    assert "contract_expr_unevaluable" in policy.always_block_on(policy.DEFAULT_POLICY)
+
+
+def test_eval_declared_separates_missing_operand_from_unevaluable():
+    """A missing operand is NOT an unevaluable expression: the first is a
+    legitimate skip, the second means the check did not run."""
+    from ari.pipeline.claim_gate import formula_eval as fe
+
+    val, why = fe.eval_declared("missing_var < 1e-4", {"max_abs_err": 1e-3})
+    assert val is None and why is None            # evaluated; operand absent
+    val, why = fe.eval_declared("max_abs_err < 10**-4", {"max_abs_err": 1e-3})
+    assert val is None and "unsupported" in why   # never evaluated
+    # safe_eval keeps its old signature for existing callers.
+    assert fe.safe_eval("max_abs_err < 1e-4", {"max_abs_err": 1e-3}) is False

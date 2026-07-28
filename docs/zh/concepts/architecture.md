@@ -12,9 +12,13 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
+  - path: ari-core/ari/core.py
+    role: implementation
+  - path: ari-core/ari/rqgm
+    role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-07-10
 ---
 
 # ARI 架构
@@ -35,6 +39,16 @@ ARI 是一个端到端的自主研究系统。给定一个纯文本研究目标�
 10. **验证**可复现性：仅根据论文文本重新运行实验
 
 系统不包含硬编码的领域知识。同一流水线适用于 HPC 基准测试、ML 超参数调优、化学优化或任何可测量的现象。
+
+### 配套概念页面
+
+本页讲的是研究系统本身 —— 把一个目标变成一篇论文的那条流水线。另有两个
+姊妹页面讲述*观察*与*描述*该系统的那些层，值得对照阅读：
+
+| 页面 | 回答什么 |
+|---|---|
+| [仪表盘架构](gui_architecture.md) | Web 仪表盘是如何组织的：一个外壳同时承载 legacy 页面与 v2 工作区、路由注册表、按 run 建键的服务端状态缓存、把实时当作失效通知，以及从 HTTP 一路向下到检查点工件的那条接缝。 |
+| [研究状态与治理状态](research_and_governance_state.md) | 一次运行同时携带的那些状态词汇表 —— 运行生命周期、研究阶段、治理阶段、节点得分状态 —— 它们为什么是分开的，以及陈旧 / 已失效 / 已移除 / 物理删除为什么是四种不同的东西。 |
 
 ---
 
@@ -79,7 +93,8 @@ flowchart TB
 
     subgraph ors["ORS 可复现性 —— 兼容 PaperBench，两个阶段"]
         direction LR
-        rubric["ors_generate_rubric"] --> p1["Phase 1 run_reproduce<br/>slurm / docker / apptainer / local"]
+        rubric["ors_generate_rubric"] --> audit["ors_audit_rubric<br/>flags unsound leaves"]
+        audit --> p1["Phase 1 run_reproduce<br/>slurm / docker / apptainer / local"]
         p1 --> p2["Phase 2 grade_with_simplejudge<br/>+ 负例对照"]
     end
 
@@ -95,6 +110,20 @@ flowchart TB
 | 记忆 | 在节点间传递的祖先作用域知识 | [记忆架构](memory.md) |
 | post-BFTS 流水线 | 数据 → 作图 → 写作 → 评审 → EAR | [出版生命周期](publication-lifecycle.md) |
 | ORS 可复现性 | 从论文从零复现并打分 | [PaperBench 快速开始](../guides/paperbench/paperbench_quickstart.md) |
+
+### 执行模式：`simple_bfts`（默认）与 `ari_rqgm`（可选启用）
+
+本页描述的一切都属于默认执行模式 `simple_bfts`。可选启用的
+`ari_rqgm` 模式（Constitutional ARI-RQGM）把同一个 BFTS 循环包裹进
+基于纪元的治理与协同进化中：搜索策略被纯委托的
+`GovernedSearchStrategy`（`ari/rqgm/runtime.py`）包装，已完成的节点
+获得一轮对抗式攻击/辩护/裁决回合，并且在每个纪元边界，一个确定性的
+宪法内核会校验每一次治理状态变更（组件采纳/退役、提示词进化、前沿
+修复）。仅当 `ari.mode: ari_rqgm` 与 `rqgm.enabled: true` 一致时才会
+启用；在默认配置下不会导入任何 `ari.rqgm` 模块，检查点与 RQGM 之前
+的 ARI 保持逐字节一致。分层、纪元算法与不变量见
+[Constitutional ARI-RQGM 架构](rqgm_architecture.md)，激活方式与
+模式切换策略见[执行模式](../guides/execution_modes.md)。
 
 ---
 
@@ -345,21 +374,29 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
     backslash escape。
     输出：ors_rubric.json + ors_rubric.meta.json
 
-  阶段 12：ors_seed_sandbox  (ari-skill-paper-re: fetch_code_bundle)  [v0.7.0]
+  阶段 12：ors_audit_rubric  (ari-skill-replicate: audit_rubric)  [在阶段 11 之后]
+    审计下游一切评分所依据的 rubric 本身。为每个叶节点标记
+    vague_qualifier / no_paper_evidence / duplicate（确定性）与
+    unverifiable（每叶一次 LLM 调用），就地重写 ors_rubric.json，
+    并在超过 20% 叶节点被标记时返回 regen_recommended。它是信号而非
+    闸门，评分照常进行。可用 ARI_MODEL_RUBRIC_AUDIT 指向与生成方不同的模型。
+    输出：ors_rubric.audit.json（并把标记写入 ors_rubric.json）
+
+  阶段 13：ors_seed_sandbox  (ari-skill-paper-re: fetch_code_bundle)  [v0.7.0]
     从策展过的 EAR bundle 确定性播种到 repro_sandbox/ (无 LLM)。
     从 publish_record.json 自动加载 ref + sha256 (本字段由 ear_publish 写入)。
     EAR 关闭时 publish_record.json 不存在，本阶段 no-op，让下一阶段的
     LLM 回退接管。
     输出：ors_seed.json
 
-  阶段 13：ors_build_reproduce  (ari-skill-paper-re: build_reproduce_sh)  [v0.7.0]
+  阶段 14：ors_build_reproduce  (ari-skill-paper-re: build_reproduce_sh)  [v0.7.0]
     LLM 驱动 replicator：读取论文 + rubric 的 expected_artifacts，
     将自包含 reproduce.sh + 源文件写入沙箱。reproduce.sh 已存在则跳过
     (放在 ors_seed_sandbox 之后即可在 EAR 开启时不触发)。LiteLLM 路由，
     供应商无关 (gpt-5-mini / anthropic/claude-... / gemini/... / ollama/...)。
     输出：ors_replicator.json + repro_sandbox/{reproduce.sh, source...}
 
-  阶段 14：ors_run_reproduce  (ari-skill-paper-re: run_reproduce)  [在阶段 13 之后, v0.7.0]
+  阶段 15：ors_run_reproduce  (ari-skill-paper-re: run_reproduce)  [在阶段 14 之后, v0.7.0]
     Phase 1。在沙箱中执行 reproduce.sh：
       slurm (sbatch + ARI_SLURM_PARTITION 存在 = BFTS 同 partition)
       → docker (守护可用且非 HPC) → apptainer → singularity → local。
@@ -371,7 +408,7 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
                              artifacts, missing, sandbox_kind,
                              [partition, cpus, walltime] }
 
-  阶段 15：ors_grade  (ari-skill-paper-re: grade_with_simplejudge)  [在阶段 14 之后, v0.7.0]
+  阶段 16：ors_grade  (ari-skill-paper-re: grade_with_simplejudge)  [在阶段 15 之后, v0.7.0]
     Phase 2。主评分 completer 通过 LiteLLM 路由 (任意供应商；绕过
     PaperBench 原生 CONTEXT_WINDOW_LENGTHS 约束)，structured score-parser
     仍使用 gpt-4o-2024-08-06。N 次 (默认 3) 加权聚合 + negative control
@@ -494,7 +531,12 @@ API 密钥 **绝不** 存储在 `settings.json` 中。它们从 `.env` 文件
 |------|------|
 | `ari/orchestrator/bfts.py` | 最佳优先树搜索 — 节点扩展、选择、剪枝；回退排名策略可通过 `BFTSConfig.frontier_score` (`scientific_plus_diversity` / `scientific_only` / `depth_penalized` / `ucb_like`) **配置** — 详见 [Configuration → BFTS 评估层](../reference/configuration.md#bfts-评估层-可通过配置切换) |
 | `ari/orchestrator/node.py` | Node 数据类 — id、parent_id、depth、label、metrics、artifacts、memory |
+| `ari/orchestrator/node_report/` | 每节点自报告构建器 + 旧版重建（v0.7.1 拆分为包） |
+| `ari/orchestrator/lineage_decision.py` | Lineage-decision LLM 钩子（BFTS rewind / branch / continue） |
+| `ari/orchestrator/root_idea_selector.py` | VirSci 池 → `ideas[0]` 再选择器 |
+| `ari/rqgm/` | Constitutional ARI-RQGM 运行时（可选启用的 `ari_rqgm` 模式）：`RQGMRuntime` 门面、宪法内核、治理编排器、注册表转换引擎、前沿修复、提案/对抗/提示词进化各层。在 `simple_bfts` 下绝不被导入 — 见 [Constitutional ARI-RQGM 架构](rqgm_architecture.md) |
 | `ari/agent/loop.py` | ReAct 智能体循环 — 每个节点的 LLM + 工具调用；自动轮询 SLURM 作业；注入祖先记忆 |
+| `ari/agent/message_utils.py` / `tool_manager.py` / `guidance.py` | 从 `agent/loop.py` 提取出的辅助模块（Phase 3D, v0.7.1） |
 | `ari/agent/workflow.py` | WorkflowHints — 从实验文本自动提取（工具序列、指标关键词、分区） |
 | `ari/pipeline.py` | Post-BFTS 流水线驱动器 — 模板解析、阶段执行、输出连接 |
 | `ari/evaluator/llm_evaluator.py` | 指标提取 + 同行评审评分（`scientific_score`、`comparison_found`）。合成公式 (`harmonic_mean` / `arithmetic_mean` / `weighted_min` / `geometric_mean`) 与轴集 (`legacy` / `dynamic` / `custom`) 可通过 `EvaluatorConfig` **配置** — 详见 [Configuration → BFTS 评估层](../reference/configuration.md#bfts-评估层-可通过配置切换) |
@@ -630,7 +672,7 @@ result/log/metric 产物；不要依赖继承的文件”），因此行为良�
 
 BFTS 自带的 ReAct 循环(`ari.agent.AgentLoop`，与 `Node` 树紧耦合)之外，还有一个轻量 ReAct 驱动 `ari.agent.react_driver.run_react`，面向无需 BFTS 上下文的 ReAct 智能体。当 stage 声明 `react:` 块时，由 `ari.pipeline._run_react_stage` 调用。
 
-**v0.7.0**: `reproducibility_check` 不再使用 `react_driver`。PaperBench 形式流（`ors_generate_rubric` → `ors_run_reproduce` → `ors_grade`）以确定性 Phase 1 沙箱 runner + Phase 2 SimpleJudge 评分（`ari-skill-paper-re`）取代之。`react_driver` 仍保留在代码中以便将来通过 `react:` 块接入新的 stage，但默认 `workflow.yaml` 不再连接它。
+**v0.7.0**: `reproducibility_check` 不再使用 `react_driver`。PaperBench 形式流（`ors_generate_rubric` → `ors_audit_rubric` → `ors_run_reproduce` → `ors_grade`）以确定性 Phase 1 沙箱 runner + Phase 2 SimpleJudge 评分（`ari-skill-paper-re`）取代之。`react_driver` 仍保留在代码中以便将来通过 `react:` 块接入新的 stage，但默认 `workflow.yaml` 不再连接它。
 
 ```
 pipeline.py ──▶ pre_tool (MCP)  → 声称的配置
@@ -870,3 +912,25 @@ pipeline:
 ```
 
 无需修改 `ari-core`。
+
+## 分层架构（v0.7+ 重构）
+
+重构后的 `ari-core/ari/` 包组织为五个层以最小化耦合。保持分层完整
+的设计纪律见 `CONTRIBUTING.md`。
+
+| 层 | 子包 | 职责 |
+|---|---|---|
+| 0 — 原语 | `paths`、`checkpoint`、`_deprecation`、`cost_tracker`、`pidfile`、`lineage`、`env_detect`、`schemas`、`configs`、`prompts`、`protocols` | 路径解析、弃用警告、成本跟踪、提示词/配置加载器、结构性协议。无 ARI 内部依赖。 |
+| 1 — 领域模型 | `llm`、`mcp`、`memory`、`clone`、`publish`、`evaluator`、`orchestrator/node`、`orchestrator/scheduler`、`orchestrator/node_selection` | 数据模型 + 对上游库（litellm、MCP、Letta）的薄封装。 |
+| 2 — 编排器 | `orchestrator/{bfts, lineage_decision, node_report, root_idea_selector}` | BFTS 探索、lineage-decision LLM 钩子、每节点报告。 |
+| 3 — 智能体 | `agent/{loop, react_driver, workflow, message_utils, tool_manager, guidance, run_env}` | ReAct 执行 + 实验特定的 WorkflowHints 注入。 |
+| 4 — 流水线 | `pipeline/{__init__, experiment_md, yaml_loader, stage_control, context_builder, stage_runner, orchestrator}` | YAML 驱动的阶段运行器、论文流水线胶水。 |
+| 5 — 入口点 | `cli/{__init__, run, projects, commands, bfts_loop, lineage, migrate}`、`cli_ear`、`viz/*`、`registry/*`、`public/*` | Typer CLI、viz HTTP 服务器、registry FastAPI、面向技能的 public 再导出层。 |
+
+迁移代码（`migrations/v05_to_v07/*`）位于分层之外，将在 v1.0 中
+删除。技能只能从 `ari.public.*` 导入 ——
+`ari-core/tests/test_public_api_boundary.py` 中的边界 CI 在每个
+PR 上强制这一点。
+
+共享的跨层 Protocol 位于 `ari/protocols/`（规范实现：
+`Evaluator`、`PromptLoader`、`ConfigLoader`）。

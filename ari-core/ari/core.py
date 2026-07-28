@@ -85,6 +85,90 @@ def _make_metric_spec():
 # Runtime builder
 # ---------------------------------------------------------------------------
 
+
+def _install_capability_gate(cfg, mcp, rqgm, checkpoint_dir):
+    """Wrap *mcp* in the constitutional capability gate; identity on failure.
+
+    Unmapped tools dispatch untouched and the mappings ordinary research work
+    produces are ones the institutional ``generator`` holds, so a well-behaved
+    run is unaffected — what the gate adds is an audit record for every
+    governed call and, for the violation codes the constitution treats as
+    critical, the T16 emergency escalation that had no caller before.
+    """
+    try:
+        from ari.rqgm.kernel import CapabilityGatedMCPClient
+        from ari.rqgm.store import ImmutableAuditLog
+        from ari.rqgm.tool_policy import default_tool_policy
+
+        kernel = getattr(rqgm, "kernel", None)
+        if kernel is None:
+            return mcp
+        engine = getattr(rqgm, "transition_engine", None)
+
+        def _on_emergency(violation, tool_name, actor=None):
+            """T16: the sole mid-epoch transition, raised from the only place a
+            running agent can trip the constitution."""
+            if engine is None:
+                log.warning(
+                    "constitutional emergency %s on tool %s, but no transition "
+                    "engine is available to quarantine",
+                    getattr(violation, "code", "?"), tool_name,
+                )
+                return
+            epoch = getattr(rqgm, "current_epoch", None)
+            # Quarantine the ACTING COMPONENT, not the tool: a tool name is not
+            # a registry entry, so passing it made the engine reject every
+            # escalation as "unknown component" — T16 would have fired and then
+            # always degraded. The actor at this choke point is the epoch's
+            # active `generator` (see ari/rqgm/tool_policy.AGENT_ACTOR).
+            component_id = str(getattr(violation, "component_id", "") or "")
+            if not component_id and actor is not None:
+                role = actor[0] if isinstance(actor, tuple) else getattr(
+                    actor, "role", "")
+                active = getattr(epoch, "active_components", None) or {}
+                if isinstance(active, dict):
+                    component_id = str(active.get(str(role), "") or "")
+            if not component_id:
+                # The acting role is not a governed COMPONENT (the research
+                # agent's `generator` role has an active prompt but no registry
+                # entry). The call was still DENIED and the verdict audited —
+                # T16 exists for a REGISTERED component tripping a critical
+                # code, which is a different subject.
+                log.warning(
+                    "constitutional emergency %s on tool %s: actor is not a "
+                    "registered component; denial stands, no quarantine",
+                    getattr(violation, "code", "?"), tool_name,
+                )
+                return
+            try:
+                # The registries are REQUIRED: without them the engine cannot
+                # resolve the component and rejects every escalation as
+                # "unknown component" — T16 would fire and always degrade.
+                st = getattr(rqgm, "state", None)
+                engine.emergency_quarantine(
+                    violation=violation,
+                    component_id=component_id,
+                    epoch_state=epoch,
+                    components=getattr(st, "components", None),
+                    prompts=getattr(st, "prompts", None),
+                    checkpoint_dir=checkpoint_dir,
+                )
+            except Exception:
+                log.warning("emergency quarantine failed (fail-open)",
+                            exc_info=True)
+
+        return CapabilityGatedMCPClient(
+            mcp, kernel,
+            tool_policy=default_tool_policy,
+            enforcement=str(getattr(rqgm, "kernel_enforcement", "standard")),
+            audit_log=ImmutableAuditLog(checkpoint_dir),
+            on_emergency=_on_emergency,
+        )
+    except Exception:
+        log.warning("capability gate install failed; continuing ungated",
+                    exc_info=True)
+        return mcp
+
 def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | None" = None):
     """Build and return a generic ARI runtime. No domain-specific code.
 
@@ -151,6 +235,36 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
     llm.mcp_client = mcp
     bfts_llm.mcp_client = mcp
     bfts: SearchStrategy = BFTS(cfg.bfts, bfts_llm)
+    # RQGM execution-mode switch (docs/plans/ari_rqgm Task 01). Guarded on the
+    # raw config flags so the default simple_bfts path never imports any
+    # ari.rqgm module (identity-default guarantee); resolve_effective_mode
+    # owns the interlock table and the disagreement fallback warnings.
+    _ari_mode = getattr(getattr(cfg, "ari", None), "mode", "simple_bfts")
+    _rqgm_enabled = bool(getattr(getattr(cfg, "rqgm", None), "enabled", False))
+    if _ari_mode == "ari_rqgm" or _rqgm_enabled:
+        from ari.rqgm.mode import EffectiveMode, resolve_effective_mode
+        if resolve_effective_mode(cfg) is EffectiveMode.ARI_RQGM:
+            from ari.rqgm.runtime import RQGMRuntime  # lazy: ari_rqgm only
+            # llm/mcp feed the ProposalRouter generators (Task 03); the
+            # VirSciAdapter is constructed inside the router only when
+            # proposal_router.generators.virsci.enabled is true.
+            rqgm = RQGMRuntime(
+                cfg, checkpoint_dir=checkpoint_dir, llm=bfts_llm, mcp=mcp
+            )
+            # Wrap, never extend: the 6-tuple return shape is relied on
+            # positionally. The controller stays discoverable via
+            #   getattr(bfts, "rqgm", None) -> RQGMRuntime | None
+            bfts = rqgm.wrap_search_strategy(bfts)
+            # Install the constitutional choke point (plan 04 §5.6.4). It
+            # shipped complete but was NEVER constructed outside tests, so no
+            # tool call was ever checked against CAPABILITY_MATRIX and the codes
+            # that make the constitution enforceable at the one place a running
+            # agent touches the world (CK-ACC-001/002, CK-ROL-901) could not be
+            # raised — which in turn left `emergency_quarantine` (T16, the sole
+            # mid-epoch transition) with no production caller at all.
+            mcp = _install_capability_gate(cfg, mcp, rqgm, checkpoint_dir)
+            llm.mcp_client = mcp
+            bfts_llm.mcp_client = mcp
 
     # MetricSpec: auto-generated from experiment file by evaluator-skill
     metric_spec = _make_metric_spec()
@@ -206,6 +320,14 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
         **_eval_extra_kwargs,
     )
 
+    # ari_rqgm: bind the evaluator so the epoch's FROZEN utility_policy actually
+    # drives scoring (the objective co-evolves per-epoch — RQGM paper claim A).
+    # Without this the adopted policy was captured but inert. simple_bfts has no
+    # rqgm object, so this is a no-op there.
+    _rq = getattr(bfts, "rqgm", None)
+    if _rq is not None and hasattr(_rq, "bind_evaluator"):
+        _rq.bind_evaluator(evaluator)
+
     # WorkflowHints: auto-extracted from experiment file
     hpc_enabled = cfg.resources.get("hpc_enabled", True)
     wf_hints = from_experiment_text(experiment_text, hpc_enabled=hpc_enabled)
@@ -226,6 +348,12 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
         max_react_steps=cfg.bfts.max_react_steps,
         timeout_per_node=cfg.bfts.timeout_per_node,
     )
+    # RQGM Task 11 §5.8: under ari_rqgm the runtime attaches the
+    # metric-spec weight cap to the executor (additive attribute; identity
+    # otherwise). Duck-typed discovery — never isinstance.
+    _rqgm_runtime = getattr(bfts, "rqgm", None)
+    if _rqgm_runtime is not None:
+        agent = _rqgm_runtime.wrap_node_executor(agent)
     return llm, memory, mcp, bfts, agent, metric_spec
 
 
@@ -240,10 +368,27 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
 # ---------------------------------------------------------------------------
 
 def generate_paper_section(
-    all_nodes, experiment_data: dict, checkpoint_dir: Path, mcp, config_path: str
+    all_nodes, experiment_data: dict, checkpoint_dir: Path, mcp, config_path: str,
+    *, disable_stages=frozenset(),
 ) -> None:
-    """Run the post-BFTS pipeline according to pipeline.yaml. No hardcoding."""
+    """Run the post-BFTS pipeline according to pipeline.yaml. No hardcoding.
+
+    ``disable_stages`` lets a CALLER declare that it has already produced some
+    stages' outputs itself, so those stages must not run. It exists for the
+    ``rqgm_archive`` handoff (docs/plans/ari_rqgm_paper/07 §5.1/§5.4/R5: "the
+    archive substitutes for `write_paper` + `paper_refine`"; "`full_paper.tex` is
+    overwritten in place exactly once, by `materialize_winner`"), which owns the
+    generation stages and needs the tail to run on ITS winner rather than refine
+    over it.
+
+    Deliberately a plain, mode-agnostic parameter and NOT a config read: this
+    function never learns what `paper.mode` is, so §5.1's "no stage conditionals,
+    no dual code paths, no `paper.mode` reads in the pipeline" holds. It defaults
+    to empty, so the linear path is byte-identical by construction — the derived
+    config is not even written unless a caller asks for a disable.
+    """
     from ari.pipeline import load_pipeline, run_pipeline
+    from ari.pipeline.yaml_loader import derive_workflow_with_disabled
 
     log.info("Starting paper pipeline (config_path=%s, checkpoint=%s)", config_path, checkpoint_dir)
     print(f"\n{'='*60}")
@@ -277,6 +422,24 @@ def generate_paper_section(
     log.info("Using pipeline config: %s (%d candidates searched)", pipeline_yaml,
              len(pipeline_yaml_candidates))
 
+    # A caller-declared stage disable is applied to the RESOLVED workflow (the
+    # candidate search above owns which file is effective, and the caller cannot
+    # know it). Both the stage list AND the driver then read the SAME derived
+    # file, so `depends_on` on a disabled stage resolves via
+    # `ctx.disabled_stages` instead of cascade-skipping the tail. Fail-open: a
+    # derivation error leaves the original workflow in force.
+    _driver_cfg = config_path
+    if disable_stages:
+        _handoff = derive_workflow_with_disabled(
+            pipeline_yaml, Path(checkpoint_dir) / "workflow.rqgm_archive.yaml",
+            disable_stages,
+        )
+        if _handoff is not None:
+            log.info("Paper pipeline: %s disabled by the caller; using %s",
+                     sorted(disable_stages), _handoff)
+            pipeline_yaml = _handoff
+            _driver_cfg = str(_handoff)
+
     stages = load_pipeline(pipeline_yaml)
     if not stages:
         log.error("No enabled pipeline stages in %s", pipeline_yaml)
@@ -286,6 +449,17 @@ def generate_paper_section(
     stage_names = [s.get("stage", "?") for s in stages]
     log.info("Paper pipeline: %d stages to execute", len(stages))
     print(f"[Paper Pipeline] {len(stages)} stages: {', '.join(stage_names)}", flush=True)
-    result = run_pipeline(stages, all_nodes, experiment_data, checkpoint_dir, config_path)
+    result = run_pipeline(stages, all_nodes, experiment_data, checkpoint_dir, _driver_cfg)
     log.info("Paper pipeline completed: %s", list(result.keys()) if result else "no result")
     print(f"[Paper Pipeline] Complete: {list(result.keys()) if result else 'no result'}", flush=True)
+
+    # Every integrity check already wrote a finding somewhere; nothing read them
+    # together, so a run could ship a paper containing a fabricated verification
+    # claim and print only DONE eighteen times. Collect them into one artifact
+    # and say the concerns out loud. Fail-open: never breaks a completed run.
+    try:
+        from ari.pipeline.integrity import write_integrity_report
+
+        write_integrity_report(checkpoint_dir)
+    except Exception:  # pragma: no cover - defensive
+        log.warning("run-integrity summary failed", exc_info=True)

@@ -1,0 +1,12 @@
+{
+  "references": [
+    {
+      "id": "S2:real-0001",
+      "title": "A real SpMM paper"
+    },
+    {
+      "id": "S2:real-0002",
+      "title": "A real stencil paper"
+    }
+  ]
+}
