@@ -503,6 +503,12 @@ async def generate_figures_llm(
 
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    # out_dir IS the checkpoint dir (workflow.yaml: output_dir: {{checkpoint_dir}}),
+    # so figures from an EARLIER run or an earlier loop_back_to iteration are
+    # already sitting here. Snapshot them, or the rescue glob below adopts them
+    # as this invocation's output — including the very figures a VLM review just
+    # rejected, since generate_figures is the loop_back_to target.
+    _preexisting_figs = {p.name for p in out_dir.glob("fig_*.pdf")}
 
     try:
         nodes = _load_nodes(nodes_json_path)
@@ -680,7 +686,8 @@ async def generate_figures_llm(
             response2 = await litellm.acompletion(**kwargs2)
             raw2 = response2.choices[0].message.content or ""
             return _extract_figure_manifest(raw2)
-        except Exception:
+        except Exception as _e:
+            log.warning("figure-generation retry failed: %s", _e)
             return []
 
     if not manifest:
@@ -732,9 +739,17 @@ async def generate_figures_llm(
             f"\\end{{figure}}"
         )
 
-    # Fallback: scan dir for any figures written outside the manifest flow
+    # Fallback: scan dir for any figures written outside the manifest flow.
+    # STRICTLY files this invocation produced — a pre-existing fig_*.pdf belongs
+    # to an earlier run (or to the iteration whose figures were just rejected),
+    # and adopting it publishes a figure that was never generated from this
+    # run's data, under a caption fabricated here.
+    _adopted_stale: list[str] = []
     if not figures:
         for pdf in sorted(out_dir.glob("fig_*.pdf")):
+            if pdf.name in _preexisting_figs:
+                _adopted_stale.append(pdf.name)
+                continue
             name = pdf.stem
             figures[name] = str(pdf.resolve())
             figure_kinds[name] = "plot"
@@ -789,9 +804,21 @@ async def generate_figures_llm(
     }
     if errors:
         result["errors"] = errors[:10]
+    if _adopted_stale:
+        # Say what was declined and why. Silently skipping them would leave an
+        # empty figure set that reads as "nothing to plot" rather than
+        # "generation failed and the only candidates were stale".
+        msg = (f"declined {len(_adopted_stale)} pre-existing figure(s) "
+               f"({', '.join(_adopted_stale[:3])}): they predate this "
+               f"invocation and were not generated from this run's data")
+        log.warning("%s", msg)
+        result.setdefault("warnings", []).append(msg)
     if not figures:
         result["error"] = "No figures produced. " + ("; ".join(errors[:5]) if errors
                                                      else "Empty or unparseable LLM response.")
+        if _adopted_stale:
+            result["error"] += (f" (declined {len(_adopted_stale)} stale figure(s) "
+                                f"left over from an earlier run/iteration)")
     return result
 
 

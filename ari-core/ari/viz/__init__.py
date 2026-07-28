@@ -21,6 +21,8 @@ Module map (post-3B split):
 - ``ear`` — EAR bundle endpoints.
 - ``ui_helpers`` / ``frontend`` / ``static`` — helpers + static assets.
 - ``api_*`` — per-domain handlers (memory, settings, workflow, ollama, ...).
+- ``v1`` — versioned read-only ``/api/v1`` platform (gui_refresh Wave 2a):
+  typed errors, DTOs, pure queries, declarative router, OpenAPI.
 
 See also:
 - ``docs/reference/rest_api.md`` (full REST endpoint reference).

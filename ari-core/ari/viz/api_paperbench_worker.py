@@ -2,12 +2,13 @@
 
 v0.7.4 wiring: when the Wizard POSTs to ``/api/paperbench/run``,
 :func:`start_paperbench_job` spawns a daemon thread per (paper_id, job_id)
-that drives the four PaperBench skill tools in sequence:
+that drives the PaperBench skill tools in sequence:
 
     1. ``generate_rubric``        (ari-skill-replicate)
-    2. ``build_reproduce_sh``     (ari-skill-paper-re)
-    3. ``run_reproduce``          (ari-skill-paper-re)
-    4. ``grade_with_simplejudge`` (ari-skill-paper-re)
+    2. ``audit_rubric``           (ari-skill-replicate, non-fatal)
+    3. ``build_reproduce_sh``     (ari-skill-paper-re)
+    4. ``run_reproduce``          (ari-skill-paper-re)
+    5. ``grade_with_simplejudge`` (ari-skill-paper-re)
 
 The thread owns a process-wide :class:`MCPClient` singleton that pools
 stdio connections to the two skill servers, so the first launch pays the
@@ -159,14 +160,31 @@ def _grade_args(paper_pdf: Path, rubric_path: Path, repro_dir: Path, cfg: dict) 
 
 _STAGE_PROGRESS = {
     "rubric": 0.05,
+    "rubric_audit": 0.15,
     "reproduce_build": 0.25,
     "reproduce_run": 0.55,
     "grade": 0.85,
 }
 
 
+def _audit_rubric_args(paper_pdf: Path, rubric_path: Path, cfg: dict) -> dict:
+    """Args for the rubric quality audit.
+
+    ``auditor_model`` is deliberately NOT defaulted to the generator's model:
+    leaving it empty lets the skill resolve ``ARI_MODEL_RUBRIC_AUDIT`` first, so
+    the audit can be pointed at a different model than the one that wrote the
+    rubric. A rubric graded by its own author is the failure this stage exists
+    to make visible.
+    """
+    return {
+        "paper_path": str(paper_pdf),
+        "rubric_path": str(rubric_path),
+        "auditor_model": str(cfg.get("auditor_model") or ""),
+    }
+
+
 def _run_pipeline(job_id: str, paper_dir: Path, configs: dict, client_factory: Any) -> None:
-    """Drive the four-stage pipeline; updates _JOBS[job_id] as it goes.
+    """Drive the PaperBench pipeline; updates _JOBS[job_id] as it goes.
 
     ``client_factory`` is the callable returning the MCPClient. Tests inject a
     fake to avoid spawning real skill subprocesses.
@@ -232,6 +250,21 @@ def _run_pipeline(job_id: str, paper_dir: Path, configs: dict, client_factory: A
     if rubric_res is None or "error" in rubric_res:
         return
 
+    # Quality audit of the rubric everything downstream is graded against.
+    # Non-fatal: it flags leaves in place and reports regen_recommended, but a
+    # flawed rubric still grades — the flags are the signal, not a gate.
+    audit_res = _stage("rubric_audit", "audit_rubric",
+                       _audit_rubric_args(paper_pdf, rubric_path, rubric_cfg),
+                       fatal=False) or {}
+    if audit_res.get("regen_recommended"):
+        append_job_log(
+            job_id,
+            f"rubric audit: {audit_res.get('leaves_flagged')}/"
+            f"{audit_res.get('leaves_total')} leaves flagged "
+            f"({audit_res.get('by_flag')}) — regeneration recommended",
+            level="warning",
+        )
+
     build_res = _stage("reproduce_build", "build_reproduce_sh",
                        _build_reproduce_args(paper_pdf, rubric_path, repro_dir, reproduce_cfg))
     if build_res is None or "error" in build_res:
@@ -293,7 +326,7 @@ def start_paperbench_job(
     *,
     client_factory: Any = None,
 ) -> threading.Thread | None:
-    """Launch a daemon thread that runs the four-stage pipeline.
+    """Launch a daemon thread that runs the PaperBench pipeline.
 
     ``client_factory`` defaults to the singleton MCPClient builder; tests pass
     a fake. Returns the thread so tests can ``join()`` deterministically.

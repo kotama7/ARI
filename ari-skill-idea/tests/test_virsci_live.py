@@ -128,6 +128,9 @@ def _fake_s2_batch(path, json_body, params, **kwargs):
 
 class TestSnapshot:
     def test_build_snapshot(self, tmp_path, monkeypatch):
+        # build_snapshot -> build_faiss_index needs the optional
+        # `virsci` extra (faiss-cpu); heavy-dep tests skip without it.
+        pytest.importorskip("faiss")
         monkeypatch.setattr(snap_mod, "_s2_get", _fake_s2_get)
         snap = snap_mod.build_snapshot("molecular GNN", tmp_path, n_authors=3, n_papers=10)
 

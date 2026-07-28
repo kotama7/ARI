@@ -12,9 +12,13 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
+  - path: ari-core/ari/core.py
+    role: implementation
+  - path: ari-core/ari/rqgm
+    role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-07-10
 ---
 
 # ARI アーキテクチャ
@@ -35,6 +39,17 @@ ARI はエンドツーエンドの自律研究システムです。平文の研�
 10. **再現性検証** - 論文テキストのみから実験を再実行し再現性を検証
 
 ドメイン知識はハードコードされていません。同じパイプラインが HPC ベンチマーク、ML ハイパーパラメータチューニング、化学最適化、その他あらゆる測定可能な現象に対して動作します。
+
+### 併読すべきコンセプトページ
+
+このページが扱うのは研究システムそのもの — ゴールを論文へ変えるパイプライン — です。
+そのシステムを*観測*し*記述*する層については、次の 2 つの兄弟ページを併せて読む
+価値があります:
+
+| ページ | 答えること |
+|---|---|
+| [ダッシュボードアーキテクチャ](gui_architecture.md) | Web ダッシュボードの構造: レガシー画面と v2 ワークスペースを載せる 1 つのシェル、ルートレジストリ、ラン単位のサーバー状態キャッシュ、無効化としてのリアルタイム、そして HTTP からチェックポイント成果物までのシーム。 |
+| [研究状態とガバナンス状態](research_and_governance_state.md) | 1 つのランが同時に抱える状態語彙 — ランライフサイクル、研究フェーズ、ガバナンス段階、ノードスコア状態 — がなぜ別物であり、なぜ stale / invalidated / removed / 物理削除が 4 つの別物なのか。 |
 
 ---
 
@@ -80,7 +95,8 @@ flowchart TB
 
     subgraph ors["ORS 再現性検証 — PaperBench 互換、2 フェーズ"]
         direction LR
-        rubric["ors_generate_rubric"] --> p1["Phase 1 run_reproduce<br/>slurm / docker / apptainer / local"]
+        rubric["ors_generate_rubric"] --> audit["ors_audit_rubric<br/>flags unsound leaves"]
+        audit --> p1["Phase 1 run_reproduce<br/>slurm / docker / apptainer / local"]
         p1 --> p2["Phase 2 grade_with_simplejudge<br/>+ 負例コントロール"]
     end
 
@@ -96,6 +112,23 @@ flowchart TB
 | メモリ | ノード間で受け渡される祖先スコープの知識 | [メモリアーキテクチャ](memory.md) |
 | post-BFTS パイプライン | データ → 作図 → 執筆 → 査読 → EAR | [出版ライフサイクル](publication-lifecycle.md) |
 | ORS 再現性検証 | 論文からゼロ再現し採点する | [PaperBench クイックスタート](../guides/paperbench/paperbench_quickstart.md) |
+
+### 実行モード: `simple_bfts`（デフォルト）と `ari_rqgm`（オプトイン）
+
+このページのすべての記述は、デフォルトの実行モードである `simple_bfts` を
+説明しています。オプトインの `ari_rqgm` モード（Constitutional ARI-RQGM）は、
+同じ BFTS ループをエポックベースのガバナンスと共進化で包みます: 探索戦略は
+純粋委譲の `GovernedSearchStrategy`（`ari/rqgm/runtime.py`）でラップされ、
+完了したノードには敵対的な attack/defend/judge ラウンドが付き、各エポック
+境界では決定論的な憲法カーネルがすべてのガバナンス状態変更（コンポーネント
+の採用/退役、プロンプト進化、フロンティア修復）を検証します。有効になるのは
+`ari.mode: ari_rqgm` と `rqgm.enabled: true` が一致するときのみです;
+デフォルト設定では `ari.rqgm` モジュールは一切インポートされず、
+チェックポイントは RQGM 以前の ARI とバイト単位で同一です。レイヤ、
+エポックアルゴリズム、不変条件は
+[Constitutional ARI-RQGM アーキテクチャ](rqgm_architecture.md)を、有効化と
+モード切替ポリシーは[実行モード](../guides/execution_modes.md)を参照して
+ください。
 
 ---
 
@@ -353,27 +386,36 @@ nodes_tree.json  (全ノード: メトリクス、成果物、メモリ、親子
     LaTeX backslash escape をサニタイズ。
     出力: ors_rubric.json + ors_rubric.meta.json
 
-  ステージ 12: ear_publish  (ari-skill-transform)  [v0.7.0, デフォルト有効]
+  ステージ 12: ors_audit_rubric  (ari-skill-replicate: audit_rubric)  [ステージ 11 の後]
+    以降のすべての採点が依拠するルーブリック自体を監査する。各葉に
+    vague_qualifier / no_paper_evidence / duplicate (決定論的) と
+    unverifiable (葉ごとに LLM 1 回) のフラグを付け、ors_rubric.json を
+    その場で書き換え、20% 超にフラグが付くと regen_recommended を返す。
+    ゲートではなくシグナルで、採点はどちらでも進む。
+    ARI_MODEL_RUBRIC_AUDIT で生成側と別モデルを指定できる。
+    出力: ors_rubric.audit.json (+ ors_rubric.json 内にフラグ)
+
+  ステージ 13: ear_publish  (ari-skill-transform)  [v0.7.0, デフォルト有効]
     ear_published/ をバンドルにパッケージし publish_record.json を生成。
     既定 backend は local-tarball (依存ゼロ)。外部公開なら ari-registry /
     zenodo / gh も利用可能。
     出力: bundle.tar.gz + publish_record.json
 
-  ステージ 13: ors_seed_sandbox  (ari-skill-paper-re: fetch_code_bundle)  [v0.7.0]
+  ステージ 14: ors_seed_sandbox  (ari-skill-paper-re: fetch_code_bundle)  [v0.7.0]
     キュレート済み EAR バンドルから repro_sandbox/ への決定論的種まき。
     publish_record.json から ref + sha256 を自動読込 (LLM 不使用)。EAR が
     OFF の時は publish_record.json が無いので no-op し、次の LLM フォール
     バックに任せる。
     出力: ors_seed.json
 
-  ステージ 14: ors_build_reproduce  (ari-skill-paper-re: build_reproduce_sh)  [v0.7.0]
+  ステージ 15: ors_build_reproduce  (ari-skill-paper-re: build_reproduce_sh)  [v0.7.0]
     LLM 駆動の replicator: 論文とルーブリックの expected_artifacts を読み、
     自己完結の reproduce.sh + ソースファイルをサンドボックスに書き出す。
     reproduce.sh が既存なら skip (ors_seed_sandbox の後ろに置けば EAR ON
     では発火しない)。LiteLLM 経由で provider neutral。
     出力: ors_replicator.json + repro_sandbox/{reproduce.sh, source...}
 
-  ステージ 15: ors_run_reproduce  (ari-skill-paper-re: run_reproduce)  [v0.7.0]
+  ステージ 16: ors_run_reproduce  (ari-skill-paper-re: run_reproduce)  [v0.7.0]
     Phase 1。reproduce.sh をサンドボックスで実行:
       slurm (sbatch + ARI_SLURM_PARTITION = BFTS と同じ partition)
       → docker (デーモン利用可かつ HPC 外) → apptainer → singularity →
@@ -383,7 +425,7 @@ nodes_tree.json  (全ノード: メトリクス、成果物、メモリ、親子
                               artifacts, missing, sandbox_kind,
                               [partition, cpus, walltime] }
 
-  ステージ 16: ors_grade  (ari-skill-paper-re: grade_with_simplejudge)  [v0.7.0]
+  ステージ 17: ors_grade  (ari-skill-paper-re: grade_with_simplejudge)  [v0.7.0]
     Phase 2。メイン採点 completer を LiteLLM 経由化 (任意 provider 対応)、
     structured score-parser は gpt-4o-2024-08-06 のまま。N 回 (デフォルト 3)、
     重み付き葉スコア集約 + 負例コントロール。
@@ -508,6 +550,7 @@ API キーは **絶対に** `settings.json` には保存されない。`.env` �
 |--------|-------------|
 | `ari/orchestrator/bfts.py` | Branch-and-Frontier Tree Search — ノードの展開、選択、枝刈り; フォールバックランキング戦略は `BFTSConfig.frontier_score` (`scientific_plus_diversity` / `scientific_only` / `depth_penalized` / `ucb_like`) で**設定可能** — [Configuration → BFTS の評価層](../reference/configuration.md#bfts-の評価層-設定で切替可能) を参照 |
 | `ari/orchestrator/node.py` | Node データクラス — id, parent_id, depth, label, metrics, artifacts, memory |
+| `ari/rqgm/` | Constitutional ARI-RQGM ランタイム（オプトイン `ari_rqgm` モード）: `RQGMRuntime` ファサード、憲法カーネル、ガバナンスオーケストレータ、レジストリ遷移エンジン、フロンティア修復、提案/敵対/プロンプト進化の各レイヤ。`simple_bfts` の下では決してインポートされない — [Constitutional ARI-RQGM アーキテクチャ](rqgm_architecture.md)を参照 |
 | `ari/agent/loop.py` | ReAct エージェントループ — ノードごとの LLM + ツール呼び出し; SLURM ジョブの自動ポーリング; 祖先メモリの注入 |
 | `ari/agent/workflow.py` | WorkflowHints — 実験テキストから自動抽出（ツールシーケンス、メトリクスキーワード、パーティション） |
 | `ari/pipeline.py` | Post-BFTS パイプラインドライバー — テンプレート解決、ステージ実行、出力の接続 |
@@ -630,7 +673,7 @@ BFTS が子ノードを expand する際、子の `work_dir` は親をコピー�
 
 BFTS 自身の ReAct ループ(`ari.agent.AgentLoop`、`Node` ツリーと密結合)とは別に、BFTS コンテキストを必要としない ReAct エージェント向けの軽量ドライバ `ari.agent.react_driver.run_react` が存在します。ステージが `react:` ブロックを宣言したときに `ari.pipeline._run_react_stage` から呼び出されます。
 
-**v0.7.0**: `reproducibility_check` ステージは `react_driver` を使わなくなりました。PaperBench 形式のフロー (`ors_generate_rubric` → `ors_run_reproduce` → `ors_grade`) が決定的な Phase 1 サンドボックス runner + Phase 2 SimpleJudge 採点 (`ari-skill-paper-re`) でこれを置き換えています。`react_driver` 自体は将来の `react:` 宣言ステージ向けにコードベースに残っていますが、デフォルトの `workflow.yaml` には接続されていません。
+**v0.7.0**: `reproducibility_check` ステージは `react_driver` を使わなくなりました。PaperBench 形式のフロー (`ors_generate_rubric` → `ors_audit_rubric` → `ors_run_reproduce` → `ors_grade`) が決定的な Phase 1 サンドボックス runner + Phase 2 SimpleJudge 採点 (`ari-skill-paper-re`) でこれを置き換えています。`react_driver` 自体は将来の `react:` 宣言ステージ向けにコードベースに残っていますが、デフォルトの `workflow.yaml` には接続されていません。
 
 ```
 pipeline.py ──▶ pre_tool (MCP)  → 主張値 config
@@ -870,3 +913,25 @@ pipeline:
 ```
 
 `ari-core` の変更は不要です。
+
+## 階層アーキテクチャ（v0.7+ リファクタリング）
+
+リファクタリング後の `ari-core/ari/` パッケージは、結合を最小化するために
+5 つの層に整理されています。階層を保つための設計規律は `CONTRIBUTING.md`
+を参照してください。
+
+| 層 | サブパッケージ | 担当 |
+|---|---|---|
+| 0 — プリミティブ | `paths`、`checkpoint`、`_deprecation`、`cost_tracker`、`pidfile`、`lineage`、`env_detect`、`schemas`、`configs`、`prompts`、`protocols` | パス解決、非推奨警告、コスト追跡、プロンプト／設定ローダ、構造的プロトコル。ARI 内部への依存なし。 |
+| 1 — ドメインモデル | `llm`、`mcp`、`memory`、`clone`、`publish`、`evaluator`、`orchestrator/node`、`orchestrator/scheduler`、`orchestrator/node_selection` | データモデル + 上流ライブラリ（litellm、MCP、Letta）への薄いラッパ。 |
+| 2 — オーケストレータ | `orchestrator/{bfts, lineage_decision, node_report, root_idea_selector}` | BFTS 探索、lineage-decision の LLM フック、ノードごとのレポート。 |
+| 3 — エージェント | `agent/{loop, react_driver, workflow, message_utils, tool_manager, guidance, run_env}` | ReAct 実行 + 実験固有の WorkflowHints 注入。 |
+| 4 — パイプライン | `pipeline/{__init__, experiment_md, yaml_loader, stage_control, context_builder, stage_runner, orchestrator}` | YAML 駆動のステージランナー、論文パイプラインの接着層。 |
+| 5 — エントリポイント | `cli/{__init__, run, projects, commands, bfts_loop, lineage, migrate}`、`cli_ear`、`viz/*`、`registry/*`、`public/*` | Typer CLI、viz HTTP サーバ、registry FastAPI、skill 向けの public 再エクスポート層。 |
+
+マイグレーションコード（`migrations/v05_to_v07/*`）は層の外側にあり、v1.0 で
+削除されます。skill は `ari.public.*` からのみ import できます —
+`ari-core/tests/test_public_api_boundary.py` の境界 CI が毎 PR で強制します。
+
+層をまたぐ共有 Protocol は `ari/protocols/` にあります（正準実装:
+`Evaluator`、`PromptLoader`、`ConfigLoader`）。

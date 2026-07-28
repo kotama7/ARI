@@ -364,3 +364,150 @@ def test_reconstruct_report_from_legacy(tmp_path: Path) -> None:
 def test_meta_files_contains_node_report_json() -> None:
     assert "node_report.json" in PathManager.META_FILES
     assert PathManager.is_meta_file("node_report.json") is True
+
+
+# ── the evaluator's axis rationales must REACH the report (dead-seam sweep) ──
+#
+# `derive_self_assessment_from_evaluator` maps per-axis rationales into
+# `self_assessment.concerns` and `next_steps_hints`. The evaluator produced
+# them, but they were a SIBLING of `metrics` in its result and the agent loop
+# keeps only `metrics` (`node.metrics = eval_result["metrics"]`) — so they were
+# dropped on every node and both fields were structurally empty on every run.
+
+_RATIONALES = {
+    "measurement_validity": "no baseline was measured at all",
+    "comparative_rigor": "only one configuration was compared",
+    "clarity_of_contribution": "the claim is stated clearly",
+}
+_SCORES = {"measurement_validity": 0.2, "comparative_rigor": 0.55,
+           "clarity_of_contribution": 0.9}
+
+
+def test_rationales_populate_concerns_and_next_steps():
+    from types import SimpleNamespace as NS
+
+    from ari.orchestrator.node_report.builder import (
+        derive_self_assessment_from_evaluator,
+    )
+
+    node = NS(has_real_data=True)
+    sa, hints = derive_self_assessment_from_evaluator(
+        {"axis_scores": _SCORES, "axis_rationales": _RATIONALES}, node,
+    )
+    assert any("measurement_validity" in c for c in sa.get("concerns") or [])
+    assert any("comparative_rigor" in h for h in hints)
+    # a high-scoring axis is not an "improve me" hint
+    assert not any("clarity_of_contribution" in x
+                   for x in list(sa.get("concerns") or []) + list(hints))
+
+
+def test_the_rationales_survive_the_metrics_channel():
+    """They must ride the SAME dict as `_axis_scores`, which is the only thing
+    the agent loop copies onto the node."""
+    from pathlib import Path
+
+    import ari.evaluator.llm_evaluator as _ev
+
+    src = Path(_ev.__file__).read_text(encoding="utf-8")
+    assert 'extracted_metrics["_axis_rationales"]' in src, (
+        "the rationales are not stashed on the metrics dict, so they are "
+        "dropped when the loop does node.metrics = eval_result['metrics']"
+    )
+
+
+def test_the_loop_hands_the_rationales_to_the_report():
+    from pathlib import Path
+
+    import ari.cli.bfts_loop as _b
+
+    src = Path(_b.__file__).read_text(encoding="utf-8")
+    assert '"axis_rationales": result.metrics.get(' in src
+
+
+def test_inline_result_blob_is_marked_not_a_phantom_file(tmp_path: Path) -> None:
+    """agent/loop.py emits {"type": "result", "stdout": ...} for captured tool
+    output — an inline blob with no file. The builder keeps a display-only
+    filename (schema requires it) but MUST mark it ``inline`` so the memory
+    audit skips it instead of reporting {work_dir}/result as a missing file on
+    every run. A dict artifact with a real filename is never marked inline."""
+    inline = nr._artifact_to_record(
+        {"type": "result", "stdout": "captured output"}, tmp_path)
+    assert inline == {"filename": "result", "role": "unknown", "inline": True}
+
+    (tmp_path / "metrics.csv").write_text("a,b\n1,2\n")
+    real = nr._artifact_to_record({"filename": "metrics.csv"}, tmp_path)
+    assert "inline" not in real
+    assert real["filename"] == "metrics.csv" and "sha256" in real
+
+
+def test_an_unhashable_produced_file_is_recorded_not_dropped(tmp_path):
+    """A file the node PRODUCED whose sha256 cannot be read (foreign-uid
+    container output, an ENOENT race, an I/O error) used to be dropped from all
+    four buckets, so a node whose only output was unhashable looked like a node
+    that changed nothing — the sterile gate then logged "no files vs parent"
+    (a positive falsehood) and clamped the score to 0 with has_real_data=False,
+    while the provenance audit built no ArtifactRef and the run read as fully
+    audited."""
+    from unittest import mock
+
+    import ari.orchestrator.node_report.builder as B
+
+    parent = tmp_path / "parent"; parent.mkdir()
+    child = tmp_path / "child"; child.mkdir()
+    (child / "results.csv").write_text("tile,gbps\n32,16.3\n")
+
+    real = B._sha256_file
+
+    def _flaky(path, **kw):
+        if path.name == "results.csv":
+            raise OSError("Permission denied")
+        return real(path, **kw)
+
+    with mock.patch.object(B, "_sha256_file", _flaky):
+        fc = B.compute_files_changed(parent, child)
+
+    assert fc["added"] == [] and fc["modified"] == [] and fc["deleted"] == []
+    assert fc["unhashable"] == [
+        {"path": "results.csv", "error": "OSError: Permission denied"}]
+
+
+def test_files_changed_omits_unhashable_when_everything_hashes(tmp_path):
+    """Additive: a clean report is byte-identical to before — no empty key."""
+    from ari.orchestrator.node_report.builder import compute_files_changed
+
+    parent = tmp_path / "p"; parent.mkdir()
+    child = tmp_path / "c"; child.mkdir()
+    (child / "out.txt").write_text("x")
+    fc = compute_files_changed(parent, child)
+    assert "unhashable" not in fc
+    assert [e["path"] for e in fc["added"]] == ["out.txt"]
+
+
+def test_an_unreadable_parent_does_not_fabricate_a_modification(tmp_path):
+    """The inverse of the produced-file case: if the PARENT copy cannot be read
+    we do not know whether the file changed. Emitting `modified` with
+    sha256_before="" fabricated a diff even when child and parent were
+    byte-identical, so a reader saw "modified kernel.c from <unknown> to ..."
+    for a change that never happened."""
+    from unittest import mock
+
+    import ari.orchestrator.node_report.builder as B
+
+    parent = tmp_path / "p"; parent.mkdir()
+    child = tmp_path / "c"; child.mkdir()
+    (parent / "kernel.c").write_text("int main(){}")
+    (child / "kernel.c").write_text("int main(){}")   # IDENTICAL
+
+    real = B._sha256_file
+
+    def _flaky(path, **kw):
+        if path.parent == parent:
+            raise OSError("Input/output error")
+        return real(path, **kw)
+
+    with mock.patch.object(B, "_sha256_file", _flaky):
+        fc = B.compute_files_changed(parent, child)
+
+    assert fc["modified"] == [], "must not synthesize a diff from a failed parent read"
+    assert fc.get("unhashable") and fc["unhashable"][0]["path"] == "kernel.c"
+    assert "parent unreadable" in fc["unhashable"][0]["error"]

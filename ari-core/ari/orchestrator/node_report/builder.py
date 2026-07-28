@@ -44,6 +44,31 @@ _FILES_CHANGED_BLOCKLIST_NAMES: frozenset[str] = frozenset({
     "eval_scores.json",
     ".DS_Store",
     "Thumbs.db",
+    # RQGM epoch-governance files (docs/plans/ari_rqgm Task 02) — ARI
+    # internal state, never a node-produced source file.
+    "rqgm_transitions.jsonl",
+    "rqgm_audit.jsonl",
+    "epoch_state.json",
+    "rqgm_registry.json",
+    # RQGM proposal store files (docs/plans/ari_rqgm Task 03).
+    "proposal_records.jsonl",
+    "proposal_index.json",
+    # RQGM adversarial-loop files (docs/plans/ari_rqgm Task 06).
+    "rqgm_adversarial_cases.jsonl",
+    "adversarial_replay_pool.json",
+    # Paper-archive self-preference statistic (ari_rqgm_paper Task 05 §6).
+    "paper_self_preference_stat.json",
+    # Paper-archive P1 pinned-panel report (ari_rqgm_paper Task 07 §5.5).
+    "panel_review_report.json",
+    # RQGM prompt-evolution files (docs/plans/ari_rqgm Task 07).
+    "prompt_evolution.jsonl",
+    "prompt_specs.json",
+    # RQGM clean-room regeneration files (docs/plans/ari_rqgm Task 08).
+    "rqgm_cleanroom.jsonl",
+    # RQGM selective-erasure state (docs/plans/ari_rqgm Task 10).
+    "rqgm_erasure_state.json",
+    # RQGM governance result cache (docs/plans/ari_rqgm Task 12).
+    "rqgm_governance_cache.jsonl",
 })
 
 _FILES_CHANGED_BLOCKLIST_DIRS: frozenset[str] = frozenset({
@@ -61,6 +86,14 @@ _FILES_CHANGED_BLOCKLIST_DIRS: frozenset[str] = frozenset({
     ".tox",
     ".mypy_cache",
     ".ruff_cache",
+    # RQGM proposal archive (docs/plans/ari_rqgm Task 03): checkpoint-scoped
+    # ARI state ({ckpt}/proposals/archive/<record_id>/…), never a
+    # node-produced source tree.
+    "proposals",
+    # RQGM evolved prompt bodies (docs/plans/ari_rqgm Task 07):
+    # {ckpt}/rqgm_prompts/<prompt_id>.md — ARI prompt state, never a
+    # node-produced source tree.
+    "rqgm_prompts",
 })
 
 _BUILD_KEYWORDS = (
@@ -146,6 +179,7 @@ def compute_files_changed(
     modified: list[dict] = []
     deleted: list[str] = []
     inherited: list[dict] = []
+    unhashable: list[dict] = []
 
     child_root = Path(child_work_dir)
     parent_root = Path(parent_work_dir) if parent_work_dir else None
@@ -162,7 +196,18 @@ def compute_files_changed(
     for rel, child_path in sorted(child_files.items()):
         try:
             child_sha = _sha256_file(child_path)
-        except OSError:
+        except OSError as exc:
+            # A file the node PRODUCED whose hash cannot be read (foreign-uid
+            # container output, an ENOENT race, an I/O error). Dropping it left
+            # it absent from all four buckets, so a node whose only output was
+            # unhashable looked like a node that changed nothing: the sterile
+            # gate then logged "no files added/modified/deleted vs parent" — a
+            # positive assertion of something false — and clamped the score to
+            # 0 with has_real_data=False, while the provenance audit built no
+            # ArtifactRef for it and the run read as fully audited.
+            unhashable.append({"path": rel, "error": f"{type(exc).__name__}: {exc}"})
+            logger.warning("node_report: cannot hash produced file %s (%s); "
+                        "recorded as unhashable, NOT as unchanged", rel, exc)
             continue
         parent_path = parent_files.get(rel)
         if parent_path is None:
@@ -170,10 +215,19 @@ def compute_files_changed(
             continue
         try:
             parent_sha = _sha256_file(parent_path)
-        except OSError:
-            modified.append({"path": rel,
-                             "sha256_before": "",
-                             "sha256_after": child_sha})
+        except OSError as exc:
+            # The inverse of the produced-file case above: if the PARENT copy
+            # cannot be read we do NOT know whether the file changed. Emitting a
+            # `modified` entry with sha256_before="" fabricated a diff — even
+            # when child and parent are byte-identical — so a reader saw "this
+            # node modified kernel.c from <unknown> to 7febc7b" for a change
+            # that provably never happened, and the provenance audit minted an
+            # ArtifactRef claiming this node authored an unchanged file. Record
+            # it as unhashable (unknown), never as a change.
+            unhashable.append({"path": rel,
+                               "error": f"parent unreadable: {type(exc).__name__}: {exc}"})
+            logger.warning("node_report: cannot hash PARENT of %s (%s); recorded "
+                        "as unhashable, NOT as a modification", rel, exc)
             continue
         if parent_sha == child_sha:
             inherited.append({"path": rel, "sha256": child_sha})
@@ -186,12 +240,18 @@ def compute_files_changed(
         if rel not in child_files:
             deleted.append(rel)
 
-    return {
+    out = {
         "added": added,
         "modified": modified,
         "deleted": deleted,
         "inherited_unchanged": inherited,
     }
+    if unhashable:
+        # Additive: only present when something could not be hashed, so a clean
+        # report is byte-identical to before. Consumers that decide "this node
+        # produced nothing" MUST treat a non-empty list as UNKNOWN, not as no.
+        out["unhashable"] = unhashable
+    return out
 
 
 # ── build/run command extraction ──────────────────────────────────────────
@@ -301,6 +361,24 @@ _INTERNAL_JSON_NAMES = {
     "launch_config.json", "evaluation_criteria.json",
     # Prompt-provenance rollup (subtask 044) — ARI internal, not a data output.
     "prompt_versions.json",
+    # RQGM mode provenance (Task 01) — ARI internal, not a data output.
+    "rqgm_state.json",
+    # RQGM epoch-governance snapshots (Task 02) — ARI internal.
+    "epoch_state.json",
+    "rqgm_registry.json",
+    # RQGM proposal index (Task 03) — ARI internal.
+    "proposal_index.json",
+    # RQGM evaluation harness (Task 13) — ARI internal, not data outputs.
+    "rqgm_eval_metrics.json",
+    "rqgm_injection_provenance.json",
+    # Paper-archive mode provenance (paper-archive Task 01) — ARI internal.
+    "paper_archive_state.json",
+    # Paper-archive self-preference statistic (paper-archive Task 05 §6) —
+    # ARI internal, not a data output.
+    "paper_self_preference_stat.json",
+    # Paper-archive P1 pinned-panel report (paper-archive Task 07 §5.5) —
+    # ARI internal eval artifact, not a data output.
+    "panel_review_report.json",
 }
 
 
@@ -426,11 +504,17 @@ def _artifact_to_record(artifact: Any, work_dir: Path) -> dict | None:
             or ""
         )
         if not name:
-            # Inline result blob with no filename — represent as an unknown
-            # placeholder so downstream code sees something.
+            # Inline result blob (e.g. the captured tool stdout agent/loop.py
+            # substitutes for fake artifacts) — there is NO file on disk. The
+            # schema requires ``filename``, so we keep the type there for
+            # display, but mark the entry ``inline`` so the memory audit does
+            # not resolve ``{work_dir}/result``, find it absent, and report a
+            # phantom ``missing`` on every run. A genuinely deleted artifact
+            # carries no ``inline`` marker and is still caught.
             return {
                 "filename": str(artifact.get("type", "result")),
                 "role": "unknown",
+                "inline": True,
             }
         rec = {
             "filename": name,
@@ -478,6 +562,58 @@ class NodeReportInputs:
     artifacts: list
     eval_summary: str | None
     trace_log: list[str]
+
+
+
+def _compute_env_block(run_env: dict, parent_work_dir) -> dict:
+    """The ``compute_env`` block, with an env-signature comparison vs the parent.
+
+    The resource provenance (executor / hostname / cpu_info / mem_total_kb /
+    compilers) was already captured, but nothing ever assembled it into the
+    ``compute_env`` key the metric-gaming adversary reads
+    (``engine._pre_metric_gaming``), so that detector's second half — "this
+    node's metrics were produced in a DIFFERENT environment from its parent's,
+    so comparing them is not sound" — could never fire.
+
+    ``env_signature_mismatch`` is only set when BOTH signatures are known: an
+    absent parent signature is unknown, not a mismatch, and must never be
+    reported as one.
+    """
+    sig_src = {
+        "executor": str(run_env.get("executor", "") or ""),
+        "cpu_info": dict(run_env.get("cpu_info") or {}),
+        "mem_total_kb": int(run_env.get("mem_total_kb") or 0) or 0,
+        "compilers": dict(run_env.get("compilers") or {}),
+    }
+    known = any(bool(v) for v in sig_src.values())
+    signature = (
+        hashlib.sha256(
+            json.dumps(sig_src, sort_keys=True, ensure_ascii=False).encode()
+        ).hexdigest()[:12]
+        if known else ""
+    )
+    parent_signature = ""
+    try:
+        if parent_work_dir:
+            p = Path(parent_work_dir) / "node_report.json"
+            if p.is_file():
+                parent = json.loads(p.read_text(encoding="utf-8"))
+                parent_signature = str(
+                    ((parent or {}).get("compute_env") or {}).get(
+                        "env_signature", ""
+                    ) or ""
+                )
+    except Exception:
+        parent_signature = ""
+    return {
+        **sig_src,
+        "hostname": str(run_env.get("hostname", "") or ""),
+        "env_signature": signature,
+        "parent_env_signature": parent_signature,
+        "env_signature_mismatch": bool(
+            signature and parent_signature and signature != parent_signature
+        ),
+    }
 
 
 def build_node_report(
@@ -585,6 +721,8 @@ def build_node_report(
         "cpu_info": dict(run_env.get("cpu_info") or {}),
         "mem_total_kb": int(run_env.get("mem_total_kb") or 0) or 0,
         "compilers": dict(run_env.get("compilers") or {}),
+        # The assembled view the metric-gaming adversary reads.
+        "compute_env": _compute_env_block(run_env, parent_work_dir),
     }
     return report
 

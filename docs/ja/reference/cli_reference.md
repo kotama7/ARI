@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/cli_ear.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-07-10
 ---
 
 # ARI CLI リファレンス
@@ -34,6 +34,13 @@ ARI のコマンドライン操作の完全なリファレンスです。CLI は
 | `ari clone <ref>` | キュレート済み EAR バンドルを取得 (file/https/ari/gh/doi)、digest 検証 (v0.7.0) | — |
 | `ari registry <subcmd>` | セルフホスト EAR レジストリ: `serve` / `token issue\|revoke\|list` (v0.7.0) | — |
 | `ari migrate node-reports <checkpoint>` | 旧 (v0.6.0) checkpoint に `node_report.json` を補完 | — |
+
+> **実行モード。** オプトインの `ari_rqgm` モードは v1 で **CLI フラグを一切
+> 追加しません** — 有効化は純粋に設定（workflow.yaml の
+> `ari.mode: ari_rqgm` + `rqgm.enabled: true`）または `ARI_MODE` /
+> `ARI_RQGM_ENABLED` 環境変数オーバーライドで行います。上記のすべての
+> コマンドはデフォルトの `simple_bfts` モードで従来と同一に動作します。
+> [実行モード](../guides/execution_modes.md)を参照。
 
 ---
 
@@ -108,7 +115,7 @@ ari run experiment.md --virsci-live --virsci-k 7 --virsci-team-size 3
 **実行される処理：**
 
 1. ARI がユニークなプロジェクト名を生成（LLM が生成するタイトル）
-2. チェックポイントディレクトリを作成: `./checkpoints/<run_id>/`
+2. チェックポイントディレクトリを作成: `./workspace/checkpoints/<run_id>/`
 3. arXiv と Semantic Scholar で関連論文を検索
 4. VirSci マルチエージェント議論で仮説を生成
 5. Best-First Tree Search（BFTS）で実験を実行
@@ -129,7 +136,7 @@ ari resume <checkpoint_dir> [--config <config.yaml>]
 **使用例：**
 
 ```bash
-ari resume ./checkpoints/20260328_matrix_opt/
+ari resume ./workspace/checkpoints/20260328_matrix_opt/
 ```
 
 保存されたツリーを読み込み、保留中または失敗したノードを特定し、停止した箇所から再開します。
@@ -158,13 +165,13 @@ ari paper <checkpoint_dir> [--experiment <experiment.md>] [--config <config.yaml
 **使用例 — v2 互換の既定 (NeurIPS 形式、1-shot、5 reflection):**
 
 ```bash
-ari paper ./checkpoints/20260328_matrix_opt/
+ari paper ./workspace/checkpoints/20260328_matrix_opt/
 ```
 
 **使用例 — Supercomputing (SC) ルーブリックで 5 名アンサンブル + メタ査読:**
 
 ```bash
-ari paper ./checkpoints/20260328_matrix_opt/ \
+ari paper ./workspace/checkpoints/20260328_matrix_opt/ \
           --rubric sc --num-reviews-ensemble 5
 ```
 
@@ -189,7 +196,7 @@ ari status <checkpoint_dir>
 **使用例：**
 
 ```bash
-ari status ./checkpoints/20260328_matrix_opt/
+ari status ./workspace/checkpoints/20260328_matrix_opt/
 
 # 出力:
 # ── Experiment Tree ──
@@ -221,10 +228,10 @@ ari viz <checkpoint_dir> [--port <port>]
 
 ```bash
 # ダッシュボードの起動
-ari viz ./checkpoints/ --port 8765
+ari viz ./workspace/checkpoints/ --port 8765
 
 # 特定の実行を監視
-ari viz ./checkpoints/20260328_matrix_opt/ --port 9878
+ari viz ./workspace/checkpoints/20260328_matrix_opt/ --port 9878
 ```
 
 ブラウザで `http://localhost:<port>` を開いてください。ダッシュボードの使い方は[クイックスタートガイド](../getting-started/quickstart.md)を参照してください。
@@ -338,19 +345,19 @@ ari ear promote  <checkpoint> [--target public|unlisted]
 
 ```bash
 # 1. 著者が論文パイプライン後にバンドルをキュレート
-ari ear curate ./checkpoints/run_20260504_xy/
+ari ear curate ./workspace/checkpoints/run_20260504_xy/
 
 # 2. allow/deny ルール後の中身を確認
-ari ear status ./checkpoints/run_20260504_xy/
+ari ear status ./workspace/checkpoints/run_20260504_xy/
 # bundle_sha256: 0ccabb16...
 # files:         42
 # visibility:    staged
 
 # 3. registry に staged で publish
-ari ear publish ./checkpoints/run_20260504_xy/ --backend ari-registry
+ari ear publish ./workspace/checkpoints/run_20260504_xy/ --backend ari-registry
 
 # 4. 査読 + 再現性チェック合格後に public に昇格
-ari ear promote ./checkpoints/run_20260504_xy/ --target public
+ari ear promote ./workspace/checkpoints/run_20260504_xy/ --target public
 ```
 
 `bundle_sha256` は `finalize_paper` ステージで論文の `\codedigest{...}` マクロに焼き付けられます。論文を持っている人なら、registry が落ちていても任意のコピーを digest で検証できます。
@@ -420,6 +427,8 @@ ari skills-list [--config <config.yaml>]
 | `ANTHROPIC_API_KEY` | Anthropic API キー | -- |
 | `OLLAMA_HOST` | Ollama サーバーの URL | `http://localhost:11434` |
 | `LLM_API_BASE` | 汎用 API ベース URL（フォールバック） | -- |
+| `ARI_MODE` | 実行モードのオーバーライド: `simple_bfts` / `ari_rqgm`（[実行モード](../guides/execution_modes.md)を参照） | `simple_bfts` |
+| `ARI_RQGM_ENABLED` | RQGM 安全インターロックのオーバーライド（`0`/`1`/`true`/`false`; `ARI_MODE=ari_rqgm` と一致している必要がある） | off |
 
 ### BFTS 設定
 

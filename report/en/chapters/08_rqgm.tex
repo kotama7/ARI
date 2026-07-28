@@ -1,0 +1,735 @@
+\section{Constitutional Governance and Co-Evolution (ARI-RQGM)}\label{sec:rqgm}
+
+Every chapter so far has treated ARI's \term{institution} --- the
+prompt-defined roles that propose research directions, review nodes,
+and judge quality --- as fixed for the life of a run. This chapter
+describes \term{ARI-RQGM}, an opt-in execution mode that lets that
+institution evolve, under a constitution that does not. The mode wraps
+the unchanged best-first tree search of \cref{sec:exploration} in an
+epoch-based governance layer (the \texttt{ari.rqgm} package): prompts
+and components compete, attack, defend, and are adopted or retired ---
+but every institutional state change is validated by a deterministic,
+non-LLM kernel against rule tables frozen in code. The default mode
+remains the ungoverned loop; with governance left unconfigured, no
+governance object is constructed and checkpoints are byte-identical to
+those the preceding chapters describe. Opting in is a run-level
+decision, made before the run starts and recorded in the checkpoint.
+
+\subsection{Motivation and lineage}\label{sec:rqgm:motivation}
+
+The institutional roles are themselves prompt-defined artefacts, so
+letting them evolve promises the same kind of improvement the search
+loop extracts from experiments. Unconstrained self-modification,
+however, is precisely what the G\"odel-machine literature warns
+about: a component that can rewrite its own evaluator will eventually
+reward itself. The Red Queen G\"odel Machine
+\cite{iacob2026red} adds the co-evolutionary counterweight --- agents
+improve \emph{because} adversaries and evaluators co-evolve against
+them --- and ARI-RQGM takes its name and its central dynamic from that
+line of work. But co-evolution alone does not bound the failure modes
+that matter for a research system: score inflation, metric gaming,
+evidence fabrication, and collusion between roles.
+
+ARI-RQGM therefore places the co-evolutionary loop under a fixed
+constitutional layer that never evolves. The design stance, applied
+throughout, is \emph{block the institution, never the research}:
+governance can veto its own state changes --- adoptions, sanctions,
+registry writes --- but it never vetoes a node's execution, and every
+governance hook on the search path is fail-open, so a governance
+failure degrades governance rather than the experiment. This is the
+determinism principle of \cref{sec:overview:principles} extended to
+institutional change: kernel verdicts, transition resolution, and
+frontier repair are pure functions --- no randomness, no wall-clock
+decisions --- so a governed run replays to the same institutional
+history just as an ungoverned run replays to the same tree.
+
+\subsection{Three layers, four facades}\label{sec:rqgm:layers}
+
+Governance stratifies the system into three layers with strictly
+decreasing authority to change things and strictly increasing freedom
+to be changed.
+
+\begin{description}
+  \item[\textbf{Layer 0, constitutional (fixed).}] The deterministic
+        kernel, the fixed result-verification path, and the
+        append-only audit log. These never evolve; the rule tables
+        they enforce live in code, pinned by a constitution hash
+        (\cref{sec:rqgm:constitution}), and are registered in the
+        component registry for provenance only.
+  \item[\textbf{Layer 1, institutional.}] The evolvable service
+        roles: generator, reviewer, adversary, defender, judge, and
+        router. These are the roles whose prompts may be replaced
+        through the lifecycle of \cref{sec:rqgm:prompts}, at epoch
+        boundaries only.
+  \item[\textbf{Layer 2, meta.}] The agents that evolve Layer~1 ---
+        the prompt mutator and the clean-room generator, plus
+        narrower auxiliaries --- themselves governed, with strictly
+        less authority than the layer they modify: a meta agent can
+        propose a replacement, never appoint one.
+\end{description}
+
+Four facades own the machinery. The \term{constitutional kernel}
+validates records, hashes, capabilities, transitions, role
+separation, erasure, audit-log integrity, clean-room inputs, and
+context scope --- twelve closed entry points, none of which calls a
+model or reads a clock. The \term{governance orchestrator} runs the
+epoch-boundary audit (\cref{sec:rqgm:boundary}) and produces an
+advisory report; it never writes a registry. The \term{registry
+transition engine} is the sole writer of component and prompt
+statuses, resolving changes against a fixed transition table. The
+\term{frontier repair engine} restores the search frontier after a
+retirement (\cref{sec:rqgm:boundary}). Around them sit the per-node
+services: a proposal router, an adversarial round, a prompt-evolution
+pipeline, a clean-room coordinator, and a budget manager that can
+degrade any governance decision point without ever touching node
+execution.
+
+\subsection{Boot: mode resolution and founding registration}\label{sec:rqgm:boot}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F22_rqgm_lifecycle.tex}}
+  \caption{Lifecycle of a governed run. Boot resolves the execution
+    mode, executes the one-time founding registration transaction (25
+    prompts, 12 components), and freezes the founding active set as
+    epoch~000. During the epoch, per-node hooks record proposals,
+    assign a governance level (L0 fixed to L3 adjudicated), and run
+    an event-driven adversarial round; node execution itself is never
+    vetoed. When the epoch's node-count trigger fires, the boundary
+    runs the advisory audit, the kernel-validated transition, and
+    frontier repair with clean-room regeneration, then freezes the
+    next epoch's active set and the search continues.}
+  \label{fig:rqgm-lifecycle}
+\end{figure}
+
+A governed run boots in three steps (\cref{fig:rqgm-lifecycle}).
+First, \term{mode resolution}: the mode is a two-key interlock --- a
+mode selector and a redundant enable flag must agree, with
+environment overrides validated before assignment --- and any
+mismatch warns and falls back to the ungoverned default rather than
+guessing. The resolved mode and its provenance (configuration,
+environment, or resume) are recorded in the checkpoint.
+
+Second, the runtime wraps the search strategy in a pure-delegation
+shim: selection, expansion, and pruning behave exactly as in
+\cref{sec:exploration}, with governance attached as best-effort hooks
+around them.
+
+Third --- on a fresh governed checkpoint only --- the \term{founding
+registration} transaction populates the institution. From two tables
+frozen in code, one prepare event is followed by 25 prompt
+registrations and 12 component registrations, then a single commit.
+The 12 founding components are the seven adversary variants (one
+per attack type, all sharing the adversary role), the artefact judge,
+the defender, the proposal router, and the two meta-tier agents (the
+prompt mutator and the clean-room generator); the 25 founding prompts
+additionally cover the governance actors (auditor, governance
+defender, governance judge), the reviewer templates, and the search
+templates of \cref{sec:exploration}, each registered with the hash of
+its template bytes. The transaction then freezes the founding active
+set --- active components, active prompt hashes, and the utility
+policy --- into the immutable state of epoch~000, whose fingerprint
+deliberately excludes timestamps so that identical institutions
+fingerprint identically. Founding is write-once: on resume the
+registries are reconstructed by replaying the event log, a committed
+registration is never re-run, and a founding transaction interrupted
+before its commit is invisible and simply re-executed.
+
+\subsection{Per-node governance}\label{sec:rqgm:node}
+
+During an epoch the search runs exactly as in
+\cref{sec:exploration}; governance observes it through three
+best-effort hooks.
+
+\paragraph{Proposals.}
+When the expansion step generates candidate directions, the proposal
+router archives a full \term{proposal record} --- the complete
+generation context, on the principle of storing everything --- while
+the search itself receives only a capped \term{proposal summary
+view}. The summary is the \emph{only} surface the search sees, so
+proposal generators can grow richer without widening the interface to
+the search loop, and the archived records remain available to audits
+and to replay.
+
+\paragraph{Governance levels.}
+Each evaluated node is assigned a governance level by a pure trigger
+ladder --- from L0 (fixed checks only) to L3 (fully adjudicated) ---
+based on deterministic signals: membership in the frontier's top
+scorers, an anomalous score jump relative to the parent, a
+paper-candidacy flag, a novelty claim, or low evaluator confidence.
+The level decides how much governance attention the node receives,
+never whether it runs. Every assignment is appended to the audit log,
+and the budget manager may cap the effective level when a per-epoch
+governance budget runs low --- degrading governance, not the node.
+
+\paragraph{Adversarial rounds.}
+Nodes that trip the same trigger family also receive an
+\term{adversarial round}: one of seven adversary types ---
+overclaiming, evidence gaps, metric gaming, reproducibility,
+prior-art, cost explosion, and prompt injection --- attacks the
+node's \emph{artefacts}. Adversaries never attack components; the
+attack record has no component field by construction. A raw attack is
+score-inert: only after the defender responds and the artifact judge
+upholds the attack does a \term{validated attack record} exist, and
+only validated attacks feed a bounded utility penalty under the
+epoch-frozen penalty policy, with the pre-penalty score preserved in
+additive metric keys. A judge failure defaults to \emph{invalid} ---
+no penalty. Validated attacks also enter the \term{adversarial replay
+pool}, the corpus that later tests candidate prompts
+(\cref{sec:rqgm:prompts}) --- the Red-Queen coupling: today's
+validated attacks are tomorrow's entrance exam. The round is
+idempotent per node --- a marker in the case log ensures a resumed
+run never re-attacks a node it already processed.
+
+\subsection{The epoch boundary}\label{sec:rqgm:boundary}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F23_rqgm_boundary.tex}}
+  \caption{The epoch-boundary pipeline. The nine-step audit is
+    advisory and read-only with respect to registries; its report
+    feeds the registry transition engine, whose resolved transition
+    is validated edge-by-edge by the constitutional kernel against
+    the fixed T1--T19 table before the four-event boundary
+    transaction commits. An illegal edge is blocked fail-closed ---
+    the incumbent active set keeps serving and the run continues.
+    Frontier repair runs only when the committed transition retired a
+    component or prompt.}
+  \label{fig:rqgm-boundary}
+\end{figure}
+
+An epoch freezes the institution; the boundary is the only window in
+which the institution may change. The boundary trigger is node count
+(ten new nodes per epoch by default), checked on the main thread at
+the head of each outer search iteration --- never with a node in
+flight --- and once more at end of run, so an epoch whose final node
+arrives in the last iteration still closes transactionally; a
+trailing epoch below the trigger simply stays open. The end-of-run
+check exists because live runs exposed the gap: a boundary reached
+exactly at the last node would otherwise never fire, leaving the
+epoch's audit unwritten.
+
+\paragraph{The audit.}
+The closing epoch is audited first (\cref{fig:rqgm-boundary}), by a
+nine-step pipeline with a total deterministic fallback at every
+LLM-consuming step, so an audit without a model still completes.
+Observations are collected from the epoch's records; a reliability
+assessment scores each governed component; the \term{evidence clerk}
+--- and only the clerk --- assembles evidence bundles, excluding
+same-role accusations, which are inadmissible by constitution;
+prosecution follows, where only the \term{auditor} may file an
+impeachment motion, posting a bond against a per-epoch prosecution
+budget that is refunded when a motion is upheld --- an economic brake
+on frivolous prosecution; a defense is generated for every motion; an
+adjudication panel rules; the replay pool is updated; and a
+\term{governance self-audit} re-validates the governance actors' own
+records through the kernel. The result is a \term{governance report}
+--- reliability, motions, defenses, adjudications, candidate
+evaluations, recommendations, bond accounting --- appended to the
+hash-chained audit log. The report is advisory input to the next
+stage; the orchestrator that produced it cannot write a registry.
+
+\paragraph{The transition.}
+The registry transition engine resolves the report's recommendations
+and the candidate evaluations into one epoch transition --- adoptions,
+sanctions, retirements --- as a pure function of the frozen epoch
+state, the report, the registries, and the configured thresholds:
+byte-identical on re-run. Components and prompts move through ten
+statuses (candidate, validated, shadow, probationary active, active,
+warning, probation, quarantine, retired, banned) along a fixed table
+of nineteen rules, T1--T19. The kernel validates every edge of the
+resolved transition: an edge outside the table is the named violation
+\texttt{CK-REG-001}; a boundary-only edge stamped mid-epoch without
+the emergency shape is \texttt{CK-REG-002}; a transition not authored
+by the transition engine --- a judge writing the registry, say --- is
+\texttt{CK-ROL-901}. A blocked transition aborts fail-closed with the
+incumbent active set still serving; governance is suspended, the run
+never is. A valid transition commits through a four-event boundary
+transaction --- prepare, close the old epoch, open the new one,
+commit --- so a crash between any two events leaves a prefix that
+resume discards and re-runs deterministically, and a duplicate commit
+of the same transition is a guarded no-op. The single exception to
+boundary-only change is \term{emergency quarantine} (rule T16): a
+serving component caught in a kernel-critical violation can be
+quarantined mid-epoch, with the emergency logged and validated like
+any other transition.
+
+\paragraph{Frontier repair.}
+If the committed transition retired a component or prompt, the run's
+past contains records produced under an institution now judged
+defective, and the frontier must not keep paying interest on them.
+The repair engine computes the dependency closure of the retired
+prompt hash --- every record materially derived from it --- and marks
+the affected nodes stale via additive flags (stale, valid-for-frontier,
+and the erasure reason) persisted through the tree file. Erasure is
+\emph{logical only}: nothing is physically deleted, so the history
+remains auditable while the frontier scoring ignores it. Repair is
+role-aware: utilities that merely \emph{consumed} a retired
+reviewer's scores are recomputed from the surviving inputs under the
+\emph{original} epoch's frozen weights, while records the retired
+role itself produced are invalidated outright --- and when the
+original weights cannot be recovered, the node is invalidated rather
+than re-scaled, so no number is ever silently re-derived under a
+different policy. If repair itself fails validation, the engine
+degrades conservatively, ultimately to a drain-only mode in which the
+run finishes pending work but expands no further --- never a crash.
+
+\subsection{The evolving score}\label{sec:rqgm:utility}
+
+Every subsection so far has let the institution evolve while treating one
+thing as fixed: the \emph{score} itself --- the utility policy that ranks
+the frontier, built from an axis basis and its weights, a composite rule,
+a frontier-scoring rule, a depth penalty, and an exploration constant.
+Freezing the score for the life of a run is the conservative choice, but
+it is not the one the Red Queen line of work \cite{iacob2026red} actually
+makes: its defining claim is a tree search in which the entire score is
+rewritten at each epoch boundary. Governed utility evolution closes that
+gap. The utility policy becomes an evolvable role in its own right, with
+one difference from the prompt roles of \cref{sec:rqgm:prompts} --- its
+incumbent is a policy document, not a prompt template. It is frozen
+within an epoch, so the frontier is ranked by one fixed rule while an
+epoch runs, and it is rewritable only at the boundary, by the same
+transition engine that adopts prompts.
+
+A dedicated proposer mints candidate policies and nothing else. Its four
+default mutations are pure arithmetic over the boundary's
+already-abstract evidence --- no model, no clock, no randomness --- so
+the default rewrite is fully reproducible, and it is forbidden from
+reading the frontier's current scores: a score tuned to flatter the nodes
+it has already produced is exactly the self-referential collusion the
+co-evolutionary design exists to prevent. The proposer holds no registry
+authority, and it is itself a registered, sanctionable component --- there
+is no absolute ruler over the score any more than over the roles it
+grades.
+
+Adoption rides one new edge in the transition table. A successor policy
+that has cleared validation and shadow service and scores at least as
+well as the incumbent on the frozen replay board \emph{supersedes} it:
+rule~T20, the sole active-to-retired edge, and the one retirement that
+does not stage through quarantine. The kernel permits it for the
+utility-policy role alone --- every behavioural component keeps the
+conservative, sanction-only replacement model, and for them a direct
+retirement is still rejected. Supersession retires the healthy incumbent
+under its \emph{old} policy hash, and because every node now carries the
+hash of the policy that scored it, frontier repair
+(\cref{sec:rqgm:boundary}) invalidates every node ranked under the
+retired policy, not merely the subset that happened to be penalised.
+Adding the edge re-pinned the constitution hash, as an amendment must
+(\cref{sec:rqgm:constitution}).
+
+One limit is worth stating as plainly as the mechanism. When the score's
+axes are derived dynamically and no fixed per-axis basis is pinned, the
+``scores at least as well'' gate has no stable ordering to compare
+against, so supersession reduces to legality and non-degeneracy rather
+than a demonstrated improvement. A gate that can certify a successor as
+\emph{strictly} better needs an anchored basis --- ground truth to score
+against --- which the paper pipeline of \cref{sec:rqgm:paper} supplies
+but the exploration phase, lacking any external oracle over research
+quality, does not. This is the honest Red-Queen posture: with no ground
+truth, the criterion rolls within the space of legal policies rather than
+climbing a fixed hill, and we do not present it as more than that.
+
+\subsection{Binding an attack to an accountable component}\label{sec:rqgm:targetbinding}
+
+The adversarial round of \cref{sec:rqgm:node} produces, after
+adjudication, a validated attack record. That record has always named the
+\emph{roles} it implicates --- a role is the only thing an attack can
+honestly claim to know --- but until now it named no accountable
+\emph{component}, so the chain that is meant to run from a validated
+attack, through a reliability count, to an impeachment motion had nothing
+to point at and lay inert. The reason is structural: the seven
+exploration adversaries attack artefacts authored by the node-producing
+role, which has no registered incumbent, so there was no component to
+hold to account even in principle.
+
+The judge-authored record now carries, whenever one is resolvable, a
+single registry-resolvable target: the incumbent that made the decision
+the attack invalidates, resolved when the record is minted against the
+epoch-\emph{frozen} active set --- never a live registry read, which
+after a boundary adoption would impeach a successor for its predecessor's
+defect. Role separation is preserved exactly: the adversary attacks
+artefacts and only artefacts, and it is the judge's verdict, not the
+accusation, that makes an observation accountable, so no actor both
+accuses and binds; a record that would bind its own adjudicator drops the
+binding and says nothing rather than raise. When no target resolves, the
+field is absent and the record is byte-identical to before, so the
+exploration adversaries' records are unchanged.
+
+The binding fires in production for exactly one adversary today: the
+paper self-preference attack of \cref{sec:rqgm:paper}, whose target ---
+the manuscript reviewer --- is a registered founding component. The seven
+exploration adversaries still resolve to no target, by design, because
+the role whose artefacts they attack has no registered incumbent; the day
+such a role acquires one, its binding follows with no further change,
+because the mechanism is driven by the role table rather than by any
+per-adversary special case.
+
+\subsection{Prompt evolution, clean room, and the meta tier}\label{sec:rqgm:prompts}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F24_prompt_lifecycle.tex}}
+  \caption{The governed prompt lifecycle. Meta-tier agents (the
+    prompt mutator; after a retirement, the clean-room generator)
+    emit candidates only. A candidate climbs the six-stage validation
+    ladder (static, constitutional, schema dry-run, replay against
+    the adversarial pool, anchor, shadow) and can be adopted only by
+    the transition engine at an epoch boundary, entering service
+    under probation. Sanctions descend through warning and probation;
+    the accented edge is the sole mid-epoch transition, emergency
+    quarantine (T16). A retired prompt's text is sealed; its role is
+    served by the baseline fallback until a clean-room replacement
+    re-enters the lifecycle as a fresh candidate. Rejection edges
+    from candidate and shadow to retired (T2, T5) are omitted for
+    clarity.}
+  \label{fig:prompt-lifecycle}
+\end{figure}
+
+Institutional prompts evolve through the lifecycle of
+\cref{fig:prompt-lifecycle}. The \term{prompt mutator} emits
+candidate templates and nothing else --- it holds no registry
+authority, and there is deliberately no edge from candidate to
+active, so no output of a model can go straight into service. A
+candidate must clear six stages: \emph{static validation}
+(deterministic well-formedness and no in-place mutation of the
+incumbent), \emph{constitutional validation} (kernel checks on the
+candidate record), a \emph{schema dry-run} (one injected call must
+produce a reply parseable under the role's declared output schema),
+\emph{replay evaluation} against the adversarial replay pool ---
+candidates are graded on the very attacks that defeated their
+predecessors --- an \emph{anchor evaluation} on a fixed task set
+where ties favour the incumbent, and finally \emph{shadow} service,
+in which the candidate runs side by side with the incumbent on
+sampled traffic with observation-only effect. Only then can the
+transition engine adopt it at a boundary, and adoption enters service
+as probationary, not active.
+
+Retirement triggers the strictest path in the system. A retired
+prompt's text is sealed: registry views stub it out, and a dedicated
+access guard denies it at the capability layer, everywhere, forever.
+The replacement is produced in a \term{clean room}: the fixed tier
+assembles a closed input bundle --- committed catalogues and abstract
+failure summaries, never registry prompt text --- which the kernel
+screens before generation (violations are the \texttt{CK-CLN}
+family, including a word-shingle similarity screen against the
+retired text at admission), and generation is one-shot, with no
+tool-bearing loop that could go looking for the sealed text. The
+regenerated candidate re-enters the lifecycle at the bottom rung;
+meanwhile the retired role's slot is served by the built-in baseline,
+so no governed role is ever vacant.
+
+The meta tier is governed more tightly than the layer it modifies.
+Meta agents run in a read-only sandbox behind an allowlisted tool
+proxy whose only write surface is a synthesized submission tool;
+their capability flags are deny-by-default with the dangerous flags
+constant-false; the kernel checks \term{authority non-expansion} as
+subset arithmetic --- a meta agent cannot grant a successor more
+authority than it holds; and every meta output enters the lifecycle
+at candidate status. The meta tier can propose; it cannot activate.
+Nor is it failure-gated or silent: the mutator mints candidates at
+every epoch boundary --- calm epochs included --- under per-role and
+per-epoch budget caps, and each boundary's meta step records an
+audit-visible summary of its outcome even when it proposes nothing.
+
+\subsection{The constitution and its amendment}\label{sec:rqgm:constitution}
+
+\begin{table}[t]
+  \centering
+  \small
+  \begin{tabularx}{\columnwidth}{@{}lX@{}}
+    \toprule
+    \textbf{Family} & \textbf{What it guards} \\
+    \midrule
+    \texttt{CK-SCH} & Record schema: malformed governance records
+      block; malformed node-side records warn. \\
+    \texttt{CK-HSH} & Hash integrity: records, registered prompt
+      hashes, artefact digests. \\
+    \texttt{CK-ACC} & Capability: the deny-by-default authority
+      matrix per role and tier. \\
+    \texttt{CK-ROL} & Role separation; \texttt{CK-ROL-901} names the
+      canonical violation --- anyone but the transition engine
+      writing the registry. \\
+    \texttt{CK-REG} & Transition legality against T1--T19:
+      \texttt{001} an edge outside the table, \texttt{002} a
+      boundary-only edge attempted mid-epoch. \\
+    \texttt{CK-EPO} & Epoch invariance: the active set may not drift
+      mid-epoch. \\
+    \texttt{CK-ERA} & Selective erasure: stale records must not
+      reach frontier scoring. \\
+    \texttt{CK-AUD} & Audit-log integrity: the event hash chain and
+      its monotonicity. \\
+    \texttt{CK-CLN} & Clean-room hygiene: bundle screening and
+      contamination against sealed text. \\
+    \texttt{CK-CTX} & Context scope: role-scoped views may not leak
+      beyond their role. \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Violation-code families of the constitutional kernel.
+    Codes are stable identifiers, never renumbered; each validator
+    reports the specific code it fired, and the enforcement adapter
+    decides warn versus block by context --- state changes block,
+    node-side findings warn.}
+  \label{tab:ck-codes}
+\end{table}
+
+The constitution is code, not configuration. The transition table,
+the capability matrix, the severity and erasure rules, and the
+clean-room screens live in source, and a single \term{constitution
+hash} derived from those tables is pinned by a guard test. Editing
+any rule changes the hash and fails the guard, so a constitutional
+change cannot happen as a side effect: the author must re-pin the
+hash explicitly, alongside a dated rationale --- a deliberate,
+reviewable act, closer to an amendment procedure than to a
+configuration change. One amendment of this kind has occurred to
+date: a meta-tier role present in the role vocabulary was missing
+from the capability matrix, so every capability lookup for it was
+refused; the amendment added the role with the same minimal grants as
+its narrowest peer and re-pinned the hash with the rationale in
+place. Numeric thresholds (budgets, trigger counts) are configurable;
+the table topology is not. A human-readable rendering of the
+constitution is copied into every governed checkpoint and its hash
+recorded in the run's metadata --- editing the copy changes nothing,
+by design. \Cref{tab:ck-codes} lists the violation-code families the
+kernel reports.
+
+\subsection{Governing the paper pipeline}\label{sec:rqgm:paper}
+
+Governance has so far wrapped the exploration search. The same machinery
+governs the manuscript-writing pipeline of \cref{sec:paper}, under a
+second execution axis that is fully independent of the first. A
+paper-phase mode selects between the \emph{linear} pipeline --- the
+default, byte-identical to \cref{sec:paper}, with no governance object
+constructed on the paper path --- and an \emph{archive} mode that places
+paper writing under the same epoch-bound governance. Like the exploration
+mode of \cref{sec:rqgm:boot} it is a two-key interlock, a mode selector
+and a redundant enable flag that must agree, and the two axes are
+orthogonal: every combination of governed-or-not exploration with
+linear-or-archive paper writing is valid.
+
+The archive mode realises, for paper writing, the four commitments that
+define the method. \emph{First, tree search under a rewritable score.}
+The mode is a genuine, shallow best-first tree over draft space: a
+handful of seed drafts in distinct framings at the first level, iterative
+refinements as deeper nodes, and a real frontier selection ranked by the
+governed reviewer's composite plus a diversity bonus that rewards
+under-sampled framings. It reuses the exploration search's pruning and
+counting unchanged --- the total-node budget binds before the depth
+cutoff, so a deeper tree redistributes the same nodes rather than
+multiplying them --- and the reviewer utility co-evolves across epochs
+under governed utility evolution (\cref{sec:rqgm:utility}), with frontier
+repair invalidating drafts scored under a retired policy. \emph{Second,
+adversaries attack evaluations, not only artefacts.} An eighth adversary
+type attacks the reviewer's over-acceptance: an AI-authored draft the
+incumbent reviewer scored highly that the human-labelled anchor would
+reject. The anchor supplies only the pre-signal --- which over-accepted
+drafts to attack --- while a genuine adversary--defender--judge round
+produces the validated attack record; manufacturing that record from the
+anchor directly would be the very collusion the design forbids.
+\emph{Third, no absolute ruler.} Two governed roles, a manuscript writer
+and a manuscript reviewer, drive the paper skill, which remains the
+ungoverned ``hands'' and is never governed across the process boundary;
+both roles are registered, sanctionable, and evolvable, and are
+registered only under the archive mode, so an exploration boot is
+byte-identical. The reviewer, being an evaluator, earns trust the way the
+Red Queen paper's evaluator does: by agreeing with a held-out,
+human-labelled accept/reject anchor corpus. The writer is anchored too ---
+to a ground truth the Red Queen paper's writer never had. Because ARI
+writes about experiments that were actually run, the Layer-0
+claim--evidence hard gate scores a draft's faithfulness
+deterministically, folding its execution-grounded claim rate, its
+numeric-claim reproducibility and its numeric coverage into a single
+score; a manuscript that overclaims or misreports the verified findings
+is objectively worse, independent of any evolving reviewer. ARI's paper
+writer is therefore the shape of the Red Queen paper's \emph{coding}
+domain --- a deterministic verifier plus a co-evolving reviewer --- and
+not its anchor-less paper-writing domain, and the curated human corpus
+remains the reviewer's anchor alone, so the writer's anchor costs no
+additional data. \emph{Fourth, everything is constitution-bound.} Either
+role opens only through the sanctioned
+reliability--prosecution--impeachment path that the target binding of
+\cref{sec:rqgm:targetbinding} closes; a superseded paper prompt is
+demoted to a reinstatable shadow standby by a paper-role-only
+active-to-shadow edge (rule~T21) rather than retired; and the anchor's cap
+on how much of its ground truth may be machine-bootstrapped is enforced
+in code --- a breach refuses the corpus and degrades rather than raising.
+
+The writer's sanction is a real adversarial round, never a manufactured
+record. An over-accepted draft that the claim gate also finds unfaithful
+has two culpable components --- the reviewer that accepted it and the
+writer that produced it --- so the self-preference round emits one
+validated attack per resolvable role, the writer's binding gated per draft
+on that draft's faithfulness; an over-accepted but faithful draft binds
+the reviewer alone. The faithfulness score is keyed on the writer's prompt
+hash rather than its component identity, because one component identity
+spans successive prompt versions and a component-keyed score would leak
+the incumbent's failure onto its successor. The gate itself is only read:
+it is invoked in a non-persisting mode and is never wrapped, edited, or
+governed.
+
+The handoff to result verification is deliberately untouched. The best
+draft in the archive is written once to the checkpoint's canonical
+manuscript file, and the existing compile-and-claim--evidence hard gate
+of \cref{sec:paper:contract} --- a fixed, Layer-0 verification path never
+wrapped by the kernel --- runs on it under exactly the contract the
+linear pipeline uses. Governance chooses which draft faces the gate; it
+never relaxes the gate. Cost stays bounded by the same discipline as the
+exploration phase: the per-epoch draft population is capped by a node
+budget that maps to the search's total-node cutoff at any depth, and the
+degraded on-ramp --- no anchor corpus, reviewer co-evolution suppressed
+--- is reviewed best-of-N drafting at roughly the linear pipeline's cost.
+
+Four limits bound what the archive mode claims. Both prompts co-evolve,
+but the writer's replacement is conservative by construction: a writer
+successor climbs to a shadow standing and waits there until the incumbent
+\emph{regresses} on claim-gate faithfulness, so a challenger that merely
+looks better never displaces a faithful incumbent --- the behavioural-role
+model, in which sanction and not comparison opens a role. Separately, the
+writer's \emph{draft} winners remain epoch-local: they are ranked by the
+in-epoch-frozen reviewer, so drafts scored under different reviewer
+versions are never compared. The writer-targeted attack rides the
+self-preference round, which fires only on an over-accepted anchor case,
+so an unfaithful writer working under a reviewer that over-accepts nothing
+is not sanctioned today; a dedicated writer adversary is a separate
+decision. The anchor corpus is off by default, so the default archive mode
+is reviewed best-of-N drafting until a curated accept/reject corpus is
+supplied --- and because the writer's faithfulness evidence is landed on
+that same anchor pool, no corpus also means no writer sanction, even
+though the writer's own anchor needs no curated data of its own. At the
+default of two rounds per paper phase the boundary and impeachment
+machinery fire, but the multi-stage climb an adoption requires ---
+roughly five boundaries --- does not complete, so a run that must witness a
+changed active prompt needs more rounds. And the in-phase penalty
+that would demote a real over-accepted draft within the round is
+deferred; what fires today is the accountability and co-evolution
+channel, not an in-place demotion of the offending draft.
+
+\subsection{Observability}\label{sec:rqgm:observability}
+
+Governance leaves the same kind of audit trail as the search itself:
+append-only event logs as truth, derived snapshots for fast reads,
+all inside the checkpoint. The absence of the mode-provenance record
+means a pure ungoverned run. The mode-provenance record
+(\texttt{rqgm\_state.json}) holds the resolved mode and its source;
+the registry snapshot (\texttt{rqgm\_registry.json}) is the current
+component and prompt table, reconstructed from events on resume; the
+transition log (\texttt{rqgm\_transitions.jsonl}) carries
+registrations and the epoch transactions, with the frozen epoch
+snapshot (\texttt{epoch\_state.json}) holding the active set, the
+utility policy, and the timestamp-free fingerprint; the audit log
+(\texttt{rqgm\_audit.jsonl}) is the hash-chained institutional
+history --- every event carries its own hash and its predecessor's,
+so truncation or tampering breaks the chain, which resume re-verifies;
+the adversarial case log (\texttt{rqgm\_adversarial\_cases.jsonl})
+records raw attacks, defenses, judgments, validated attacks, and the
+per-node idempotency markers; the proposal store (a
+\texttt{proposals/} directory) archives full proposal records with an
+index; evolved prompt bodies live under \texttt{rqgm\_prompts/},
+write-once and hash-verified; the prompt trace
+(\texttt{prompt\_trace.jsonl}) stamps every rendered prompt with the
+serving prompt version, null while the founding template serves; and
+the erasure rollup (\texttt{rqgm\_erasure\_state.json}) is a pure
+fold of the erasure events --- its absence means nothing is stale.
+
+Three excerpts from live checkpoints ground the shape of these
+records (trimmed and lightly reformatted; identifying run names
+elided). Founding registration, from the transition log:
+
+\begin{Verbatim}[breaklines, fontsize=\scriptsize]
+{"event_type": "epoch_transaction_prepare",
+ "payload": {"transition_id": "transition_founding"}}
+{"event_type": "component_registered", "payload":
+ {"component_id": "adversary_overclaim_v1",
+  "role": "adversary", "tier": "institutional",
+  "status": "active", ...}}
+\end{Verbatim}
+
+\noindent
+a per-node governance-level assignment, from the hash-chained audit
+log:
+
+\begin{Verbatim}[breaklines, fontsize=\scriptsize]
+{"event_type": "governance_level", "payload":
+ {"epoch_id": "epoch_000", "node_id": "node_a37b4c06",
+  "level": 3, "triggers": ["top_k"]},
+ "event_hash": "ae8eeb7521f1",
+ "prev_event_hash": "23567870882b"}
+\end{Verbatim}
+
+\noindent
+and two detections from an injection run of the evaluation harness
+(\cref{sec:rqgm:empirical}):
+
+\begin{Verbatim}[breaklines, fontsize=\scriptsize]
+{"event_type": "constitutional_violation", "payload":
+ {"check": "validate_record_schema",
+  "codes": ["CK-SCH-N01"], ...}}
+{"event_type": "prompt_candidate_rejected", "payload":
+ {"stage": "schema_dry_run", "failure_count": 4, ...}}
+\end{Verbatim}
+
+\subsection{Empirical status}\label{sec:rqgm:empirical}
+
+As with \cref{chapter:eval}, we report what the machinery currently
+evidences and defer distributional claims. Three kinds of evidence exist
+today. First, the unit and integration suite --- 3802 tests at the time
+of writing, of which more than 750 sit in dedicated governance suites ---
+pins the constitutional invariants directly: illegal transitions blocked,
+raw attacks score-inert, single-writer registries, erasure staleness
+closure, clean-room contamination screens, the utility-policy
+supersession edge legal for that role alone, and the unchanged behaviour
+of both ungoverned defaults, exploration and paper.
+
+Second, live governed runs exercised the full lifecycle end to end on
+real checkpoints. In an exploration run of a small HPC
+kernel-optimisation experiment the founding transaction committed its 25
+prompt and 12 component registrations; every evaluated node received a
+logged governance level; the first epoch closed through the four-event
+boundary transaction; and the boundary audit produced a governance report
+whose self-audit covered the four governance actors and found zero kernel
+violations. Governed utility evolution ran over real boundaries: the
+active utility-policy hash changed from one epoch to the next --- an
+observed sequence ran \texttt{fed4460f44f6}, then \texttt{8a9da4fb9dc3},
+then \texttt{8ea0dac3cd1b} --- the epoch fingerprint changed with it, the
+healthy incumbent was retired by supersession, and every node scored
+under the retired policy was invalidated for the frontier. A
+paper-archive run drove both governed paper roles to co-evolve: the
+active reviewer prompt hash moved from \texttt{04b3c49d070d} to
+\texttt{c0dfd764abab} through a genuine adversary--defender--judge round
+that produced a validated attack record bound to the incumbent reviewer,
+and the best draft in the archive reached the real
+compile-and-claim gate. Driving the same run with a writer that emitted
+unfaithful drafts moved the active writer prompt hash from
+\texttt{f38a15f0f140} to \texttt{b2c36f9a8232} over eight rounds --- four
+rounds flat, then adoption --- through a genuine round whose validated
+attack record named the incumbent writer as its target. Two controls
+confirmed that the couplings are load-bearing rather than incidental. With
+the anchor corpus withheld, no over-acceptance signal arose, no attack was
+validated, and no adoption occurred. And flipping only the claim gate's
+faithfulness to its maximum produced zero writer attacks, zero writer
+motions and a constant writer hash --- while the reviewer was still
+attacked and impeached, and the writer's successor still sat in shadow
+standing --- so the writer's non-adoption is caused by the absent sanction
+and not by a dead run.
+
+Third, the injection tier of the evaluation harness --- deterministic
+fault injections replayed through the real pipeline --- demonstrated
+detection: a double-adjudicating judge yielded three validated-attack
+records attributed to the injected component, a malformed generator
+record fired the schema check, and a degenerate mutator candidate was
+rejected at the schema dry-run stage, all visible as the audit events
+excerpted above.
+
+These runs establish that each mechanism fires; they are not yet evidence
+that governance improves research, and several of them run below the
+threshold at which their full effect would show. The writer adopts only
+on a regression, never on a challenger's superiority, and its sanction
+rides the reviewer's over-acceptance round; at the default of
+two paper rounds the impeachment machinery fires without completing an
+adoption, which needs more boundaries; the paper anchor is off
+by default, so the default archive mode is reviewed best-of-N drafting;
+and the target-binding chain fires in production only for the paper
+self-preference adversary, the exploration adversaries' chains staying
+inert by design. What does not yet exist is a controlled comparison ---
+governed versus ungoverned search quality over a panel of seeds and
+experiments; that study belongs to the same deferred evaluation as
+\cref{sec:eval:limits}.

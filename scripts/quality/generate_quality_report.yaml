@@ -53,6 +53,12 @@ checkers:
     module_or_path: scripts/check_directory_policy.py
     weight: 1.0
     required: false
+  # gui_refresh Wave 5b: SPA bundle-weight budgets (plan 09). Reports
+  # `unavailable` when the frontend dist is not built (checker exits 2).
+  - name: check_bundle_budget
+    module_or_path: scripts/check_bundle_budget.py
+    weight: 1.0
+    required: false
 
 # Optional per-area LOC override. When omitted (the default) the aggregator
 # auto-discovers areas = each immediate subdir of ari-core/ari plus every

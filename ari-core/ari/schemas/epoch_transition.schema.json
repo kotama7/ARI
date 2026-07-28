@@ -1,0 +1,189 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/epoch_transition.schema.json",
+  "title": "ARI-RQGM EpochTransition",
+  "description": "The single output record of one RegistryTransitionEngine boundary resolution (docs/plans/ari_rqgm/09 §6.1, owned by Task 09). Every status change pins a rule_id row of the fixed T1-T21 transition table (ari/rqgm/transition_rules.py); produced_by must be the registry_transition_engine (global invariant 10, kernel CK-REG-004); emergency=true is the sole mid-epoch shape (single sanction to quarantine with an attached kernel violation). Statuses are Task 02's closed vocabulary; prompt_hash is the existing hash12=sha256(text)[:12]. created_at is wall-clock metadata stamped at apply time, never hashed and never read by decisions (P2). Additive-only evolution.",
+  "type": "object",
+  "required": [
+    "record_type",
+    "schema_version",
+    "record_id",
+    "epoch_transition_id",
+    "epoch_id",
+    "component_id",
+    "prompt_hash",
+    "role",
+    "created_at",
+    "source_refs",
+    "status",
+    "produced_by",
+    "from_epoch",
+    "to_epoch",
+    "emergency",
+    "inputs",
+    "adoptions",
+    "sanctions",
+    "retirements",
+    "clean_room_requests",
+    "bans",
+    "next_active_components",
+    "fallbacks",
+    "kernel_validation"
+  ],
+  "properties": {
+    "record_type": {"const": "epoch_transition"},
+    "schema_version": {"const": 1},
+    "record_id": {"type": "string", "minLength": 1},
+    "epoch_transition_id": {"type": "string", "minLength": 1},
+    "epoch_id": {"type": "string"},
+    "component_id": {"const": "registry_transition_engine"},
+    "prompt_hash": {"type": "null"},
+    "role": {"const": "registry_transition_engine"},
+    "created_at": {"type": "string"},
+    "source_refs": {"type": "array", "items": {"type": "string"}},
+    "status": {
+      "type": "string",
+      "enum": ["pending", "committed", "aborted", "rejected", "failed"]
+    },
+    "produced_by": {"const": "registry_transition_engine"},
+    "from_epoch": {"type": "string"},
+    "to_epoch": {"type": "string"},
+    "emergency": {"type": "boolean"},
+    "inputs": {
+      "type": "object",
+      "properties": {
+        "governance_report_ref": {"type": "string"},
+        "governance_report_sha256": {
+          "anyOf": [{"$ref": "#/$defs/sha256_hex"}, {"const": ""}]
+        },
+        "candidate_evaluation_refs": {
+          "type": "array", "items": {"type": "string"}
+        },
+        "candidate_evaluation_sha256s": {
+          "type": "array", "items": {"$ref": "#/$defs/sha256_hex"}
+        },
+        "prompt_registry_sha256": {
+          "anyOf": [{"$ref": "#/$defs/sha256_hex"}, {"const": ""}]
+        },
+        "component_registry_sha256": {
+          "anyOf": [{"$ref": "#/$defs/sha256_hex"}, {"const": ""}]
+        },
+        "inputs_sha256": {
+          "anyOf": [{"$ref": "#/$defs/sha256_hex"}, {"const": ""}]
+        }
+      }
+    },
+    "adoptions": {
+      "type": "array", "items": {"$ref": "#/$defs/status_change"}
+    },
+    "sanctions": {
+      "type": "array", "items": {"$ref": "#/$defs/status_change"}
+    },
+    "retirements": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {"$ref": "#/$defs/status_change"},
+          {
+            "required": ["retirement_event_id"],
+            "properties": {
+              "retirement_event_id": {"type": "string", "minLength": 1}
+            }
+          }
+        ]
+      }
+    },
+    "clean_room_requests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["request_id", "target_role", "retirement_event_id"],
+        "properties": {
+          "request_id": {"type": "string", "minLength": 1},
+          "target_role": {"type": "string"},
+          "retirement_event_id": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "bans": {
+      "type": "array", "items": {"$ref": "#/$defs/status_change"}
+    },
+    "next_active_components": {
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    },
+    "fallbacks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["role", "baseline"],
+        "properties": {
+          "role": {"type": "string"},
+          "from_component_id": {"type": "string"},
+          "fallback_component_id": {
+            "anyOf": [{"type": "string"}, {"type": "null"}]
+          },
+          "baseline": {"type": "boolean"}
+        }
+      }
+    },
+    "kernel_violation": {
+      "anyOf": [{"type": "object"}, {"type": "null"}]
+    },
+    "kernel_validation": {
+      "type": "object",
+      "properties": {
+        "passed": {"type": "boolean"},
+        "checks_run": {"type": "array", "items": {"type": "string"}},
+        "violations": {"type": "array", "items": {"type": "object"}}
+      }
+    },
+    "notes": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "hash12": {"type": "string", "pattern": "^[0-9a-f]{12}$"},
+    "sha256_hex": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "rqgm_status": {
+      "type": "string",
+      "enum": [
+        "candidate",
+        "validated",
+        "shadow",
+        "probationary_active",
+        "active",
+        "warning",
+        "probation",
+        "quarantine",
+        "retired",
+        "banned"
+      ]
+    },
+    "status_change": {
+      "type": "object",
+      "required": ["from_status", "to_status", "rule_id", "evidence_refs"],
+      "properties": {
+        "component_id": {
+          "anyOf": [{"type": "string"}, {"type": "null"}]
+        },
+        "prompt_id": {
+          "anyOf": [{"type": "string"}, {"type": "null"}]
+        },
+        "prompt_hash": {
+          "anyOf": [{"$ref": "#/$defs/hash12"}, {"type": "null"},
+                    {"const": ""}]
+        },
+        "role": {"type": "string"},
+        "tier": {
+          "anyOf": [{"type": "string"}, {"type": "null"}]
+        },
+        "from_status": {"$ref": "#/$defs/rqgm_status"},
+        "to_status": {"$ref": "#/$defs/rqgm_status"},
+        "rule_id": {"type": "string", "pattern": "^T([1-9]|1[0-9])$"},
+        "evidence_refs": {"type": "array", "items": {"type": "string"}},
+        "severity": {"type": "string"},
+        "reason": {"type": "string"},
+        "retirement_event_id": {"type": "string"}
+      }
+    }
+  }
+}

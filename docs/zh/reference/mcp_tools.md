@@ -12,7 +12,9 @@ sources:
     role: config
   - path: ari-skill-paper-re/src/server.py
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-skill-idea/src/server.py
+    role: implementation
+last_verified: 2026-07-10
 ---
 
 # MCP 工具参考
@@ -71,8 +73,16 @@ ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
-| `survey` | arXiv + Semantic Scholar 搜索；纯 HTTP | ✗ |
+| `survey` | 先前工作调研：存在冻结的 `virsci_snapshot` 语料库时复用之，否则实时查询 Semantic Scholar；纯 HTTP | ✗ |
 | `generate_ideas` | LLM 根据调研 + 上下文生成排序的 idea 候选 | ✓ |
+
+这两个是该技能仅有的已注册工具（由
+`ari-skill-idea/tests/test_server.py` 通过 `mcp.list_tools()` 钉住）。
+它们也是 RQGM `VirSciAdapter` 背后的 MCP 表面：在可选启用的
+`ari_rqgm` 模式下且 `proposal_router.generators.virsci.enabled: true`
+时，core 侧的 ProposalRouter 会在每纪元调用预算内把构思事件路由到
+`survey` + `generate_ideas` —— 见
+[VirSci 集成](../guides/virsci_integration.md)。
 
 `generate_ideas` 在单一稳定的输出合约背后有两个引擎。默认是轻量的重新实现的
 讨论循环；可选启用的真实 VirSci vendor-wrap 引擎（`ARI_IDEA_VIRSCI_REAL=1`）

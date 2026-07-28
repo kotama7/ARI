@@ -12,8 +12,9 @@ Covers subtask 031 §8 item 5 / §13 acceptance criteria:
     exits 1 only on net-new findings; --warning-only forces exit 0;
   * --run-checkers subprocess mode: a fixture checker -> ok, a missing script ->
     unavailable, a crashing script -> error;
-  * per-area LOC is computed live from the current tree (viz 8532 after the
-    063/064/065 viz decomposition; public 148) and findings attribute to their area.
+  * per-area LOC is computed live from the current tree (tripwire values are
+    pinned in test_compute_areas_matches_001_baseline with their update
+    history) and findings attribute to their area.
 
 Unit tests import the checker module by file path (it has no package), matching
 the sibling test_check_viz_api_schema.py convention.
@@ -305,8 +306,125 @@ def test_run_checkers_mode_ok_missing_and_crash(tmp_path):
 def test_compute_areas_matches_001_baseline():
     rows = mod.compute_areas(REPO_ROOT, None, [])
     by = {r["area"]: r for r in rows}
-    assert by["ari-core/ari/viz"]["loc"] == 8532
-    assert by["ari-core/ari/public"]["loc"] == 148
+    # 8532 -> 8565: the PaperBench worker gained the rubric_audit stage
+    # (api_paperbench_worker.py). This is a drift TRIPWIRE, not a budget — it
+    # exists so an unnoticed bulk change to viz shows up in review, so update
+    # it deliberately with the reason, never by pasting the new number.
+    # 8565 -> 14336: gui_refresh program Waves 1-4b (docs/plans/gui_refresh/,
+    # exit records in baseline/g0_review_record.md) added the /api/v1 platform
+    # under ari/viz/v1/ — router/errors/DTOs, RQGM read models (rqgm.py),
+    # config schema/CRUD/store/secrets/events, deterministic OpenAPI — plus
+    # api_capabilities.py. Each wave's growth was gate-reviewed and recorded.
+    # 14336 -> 14554: gui_refresh Wave 4c — durable PaperBench job records
+    # (api_paperbench.py: atomic {registry}/jobs/{id}.json persistence +
+    # restart disk-fallback with the additive 'interrupted' status) and the
+    # /api/v1/runs/{run_id}/idea read model (v1 dto/queries/router/openapi).
+    # 14554 -> 15080: gui_refresh task 07 Wave 4d — the results/EAR read
+    # models /api/v1/runs/{run_id}/results and /ear (new ari/viz/v1/
+    # results.py reader + dto/router/openapi additions; plan 07 §Evidence,
+    # Results, and PaperBench). Bounded-scalar read models only — the ORS
+    # verdict reuses ear.py's synthesis read-only, no legacy file changed.
+    # 15080 -> 15176: gui_refresh task 07 Wave 4d — Workflow Studio weak
+    # revision (plan 07 §Workflow Studio, MN-3): api_workflow.py gained
+    # workflow_revision/_served_workflow_path/_workflow_revision_guard
+    # (sha256[:12] optimistic concurrency, frozen 409 on stale
+    # base_revision) and api_settings.py wires the GET revision + the
+    # POST /api/workflow guard. Additive opt-in — no endpoint added.
+    # 15176 -> 15399: gui_refresh task 06 Wave 4d — Configuration Studio
+    # backend slice (ADR-05 delivery): the canonical write-only secret
+    # assignment PUT /api/v1/secrets/{secret_id} (v1/secrets.py put_secret
+    # + routes.py do_PUT + router/dto/openapi wiring) and the server-side
+    # model catalog GET /api/v1/config/catalogs/models (new v1/catalogs.py
+    # re-serving checkpoint_api._api_models single-source with per-provider
+    # env keys). No legacy endpoint changed.
+    # 15399 -> 15595: gui_refresh task 09 Wave 5a — RR-P0-3/MN-4 bind +
+    # CORS hardening: server.py gained resolve_bind_hosts/_make_http_server
+    # (loopback-default bind via _bind_http_servers, ARI_GUI_BIND override)
+    # and routes.py gained
+    # _origin_allowed/_cors_wildcard_enabled/_cors_origin/_send_cors_headers
+    # (same-origin CORS echo replacing the unconditional ACAO:*, plus the
+    # ADR-07 kill-switch docstrings). No endpoint added or removed.
+    # 15595 -> 15731: gui_refresh task 09 Wave 5a — RR-P0-5/RR-P0-7/MN-5
+    # path + proxy hardening: routes.py gained the pure _codefile_resolve
+    # (canonical /codefile boundary: active checkpoint + checkpoint search
+    # bases, replacing the loose "*/checkpoints/*" containment test) and
+    # api_ollama.py gained OLLAMA_PROXY_ALLOWED_PATHS/_explicit_ollama_host/
+    # _ollama_proxy_refusal (five-path allowlist + 403 gate, policy
+    # docstring). No endpoint added or removed.
+    # 15731 -> 16043: gui_refresh task 09 Wave 5a — RR-P0-6/RR-P0-9/MN-6
+    # server-issued confirmation challenges: new v1/challenges.py (bounded
+    # single-use store + issue/consume/require_challenge + ADR-07 kill-switch
+    # docstring), ChallengeRequestV1/ChallengeV1 DTOs + router/openapi rows,
+    # and the enforcement blocks in checkpoint_lifecycle.py / api_process.py
+    # (delete-checkpoint / stop / gpu-monitor stop now 428 without a valid
+    # challenge). One endpoint added: POST /api/v1/challenges.
+    # 16043 -> 16143: gui_refresh task 09 Wave 5a — RR-P0-10/MN-7 browser
+    # security headers: routes.py gained the pure _csp_policy (default-src
+    # 'self' CSP with explicit ws/wss connect-src on HTTP port + 1),
+    # _send_security_headers on the SPA index + /static/ responses
+    # (CSP + nosniff + Referrer-Policy: no-referrer), the ARI_GUI_CSP
+    # kill-switch, and the ADR-07 policy docstring. No endpoint added
+    # or removed; API/JSON responses untouched.
+    # 16143 -> 16520: gui_refresh task 09 Wave 5b — RR-P0-3 auth
+    # sub-scope/MN-8/ADR-13 remote token auth: new auth.py (pure
+    # is_remote_bind/resolve_token/check_authorization/redact_token_in_path
+    # + process-wide token cache + the ARI_GUI_AUTH ADR-07 register),
+    # routes.py gained the _auth_gate/_send_unauthorized single gate at
+    # the top of all five method handlers + access-log token redaction,
+    # websocket.py gained the _ws_process_request handshake gate, and
+    # server.py gained init_auth at startup + the one-time
+    # _print_generated_token_banner. No endpoint added or removed
+    # (loopback default byte-identical; gate active only on remote binds).
+    # 16544 -> 16921: gui_refresh task 09 Wave 5b — plan 09 §Operational
+    # visibility (MN-9): new health.py (GET /health/live constant probe,
+    # GET /health/ready per-subsystem checks that degrade instead of 500,
+    # the GET /api/v1/diagnostics bounded-scalar builder, and the
+    # ARI_GUI_HEALTH ADR-07 kill-switch register), the routes.py probe
+    # branch + docstring, watcher handle/heartbeat telemetry in
+    # state_sync.py, the ws-started flag (state.py/server.py), the
+    # events.py subscriber counter + bus_stats, and the DiagnosticsV1 DTO/
+    # router/openapi rows. Endpoints added: GET /health/live,
+    # GET /health/ready, GET /api/v1/diagnostics.
+    # 16921 -> 17526: gui_refresh tasks 04/06 Wave 4e — MN-10 canonical
+    # idempotent launch: new v1/launch.py (validation-first POST
+    # /api/v1/runs, server-minted <ts>_<slug>-<6hex> run identity,
+    # checkpoint materialization incl. the resolved_config.json manifest
+    # before the same `ari.cli run` spawn as the legacy path, gui_store
+    # launches/ idempotency records, launch_events.jsonl lifecycle),
+    # store.py KIND_LAUNCH, config_api.py draft `goal` +
+    # _draft_validation_errors extraction, and the RunLaunchRequestV1/
+    # RunLaunchedV1 DTO/router/openapi rows. Endpoint added:
+    # POST /api/v1/runs (legacy POST /api/launch unchanged in parallel).
+    # 17526 -> 17813: gui_refresh task 07 tail — cursor log explorer
+    # (plan 07 §Artifacts, logs, and diagnostics): new v1/logs.py (bounded
+    # byte-offset cursor pagination over the append-only {ckpt}/ari.log —
+    # raw-byte cursor stable under the grep filter, committed lines only,
+    # <= 1 MiB scanned per request, absent file => present=false), plus the
+    # LogEntryV1/RunLogsV1 DTO/router/openapi rows. Endpoint added:
+    # GET /api/v1/runs/{run_id}/logs.
+    # 17813 -> 17824: gui_refresh tasks 03/04 G2 tail — /state legacy-facade
+    # freeze (plan 04 §Caching and polling policy / RR-P0-8 disposition):
+    # FROZEN header docstring + do-not-grow marker comment on
+    # services/state_service.py build_app_state. Documentation-only lines;
+    # the frozen top-level key set itself is pinned by
+    # ari-core/tests/test_gui_state_facade_freeze.py. No endpoint added.
+    # 17824 -> 18026: ADR-09 mode selection (accepted 2026-07-27) — the GUI
+    # may select the execution mode (ari.mode + rqgm.enabled) and the paper
+    # mode (paper.mode + rqgm.paper.enabled) FOR A NEW RUN.  v1/launch.py
+    # gained the narrowed mode_locked carve-out plus the mode
+    # selection/materialization helpers (_mode_selection, _mode_env,
+    # _merge_mode_blocks writing the minimal ari:/rqgm:/paper: blocks into
+    # the per-checkpoint workflow.yaml copy), config_api.py the
+    # _validate_mode_pairs guard on merged document values + the
+    # run-scope-values plumbing, and dto.py one docstring line.  No endpoint
+    # added or removed; the default simple_bfts + linear path writes and
+    # exports NOTHING and stays byte-identical (pinned by
+    # ari-core/tests/test_gui_v1_mode_selection.py).
+    assert by["ari-core/ari/viz"]["loc"] == 18026
+    # 148 -> 159: RQGM-branch public re-exports (claim_gate FORMULAS /
+    # required_roles; cost_tracker PRICING_TABLE_UNAVAILABLE + logging) —
+    # both intentional, public_api.json snapshot regenerated accordingly.
+    assert by["ari-core/ari/public"]["loc"] == 159
     # every discovered area carries a finding_count key (0 with no results).
     assert all(r["finding_count"] == 0 for r in rows)
 

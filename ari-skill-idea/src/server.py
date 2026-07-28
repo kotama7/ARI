@@ -390,9 +390,14 @@ async def _run_real_virsci(
 
 # ── MCP Tools ─────────────────────────────────────────────────────────────────
 
-@mcp.tool()
 def _load_virsci_snapshot_papers(max_papers: int) -> list[dict]:
     """Reuse the frozen VirSci snapshot corpus from the idea stage.
+
+    Plain helper, NOT an MCP tool: it was never meant to be agent-visible
+    (``survey`` calls it directly). Stage-0 fix per docs/plans/ari_rqgm/03
+    §7/§8 — the ``@mcp.tool()`` decorator drifted here from
+    ``survey``/``generate_ideas``; ``tests/test_server.py`` now pins the
+    registered tool list via ``mcp.list_tools()``.
 
     The idea stage already surveyed this run's topic and froze the corpus under
     ``<checkpoint>/virsci_snapshot/papers/<i>.txt`` (``repr`` of
@@ -438,6 +443,7 @@ def _load_virsci_snapshot_papers(max_papers: int) -> list[dict]:
     return out
 
 
+@mcp.tool()
 def survey(topic: str, max_papers: int = 8) -> dict:
     """Survey prior work, reusing the idea-stage VirSci snapshot when available.
 
@@ -478,8 +484,31 @@ def survey(topic: str, max_papers: int = 8) -> dict:
                  "paperId": getattr(p, "paperId", None)}
                 for p in results
             ]
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[idea] survey: semanticscholar retry failed for {topic!r}: {e}",
+                  file=sys.stderr)
+
+    if not raw:
+        # arXiv fallback (mirrors web-skill): S2 is rate-limited or keyless in
+        # many deployments; prior-art grounding must not silently vanish.
+        try:
+            import arxiv as _arxiv
+            _search = _arxiv.Search(query=topic, max_results=max_papers,
+                                    sort_by=_arxiv.SortCriterion.Relevance)
+            # arxiv 4.x removed Search.results(); Client().results() exists on
+            # every version the requirements pin (>=2.0) can resolve.
+            raw = [
+                {"title": r.title, "abstract": (r.summary or "")[:1000],
+                 "year": r.published.year if r.published else None,
+                 "citationCount": 0, "paperId": ""}
+                for r in _arxiv.Client().results(_search)
+            ]
+            if raw:
+                print(f"[idea] survey: S2 unavailable; arXiv fallback returned "
+                      f"{len(raw)} papers for {topic!r}", file=sys.stderr)
+        except Exception as e:
+            print(f"[idea] survey: arXiv fallback failed for {topic!r}: {e}",
+                  file=sys.stderr)
 
     papers, seen = [], set()
     for p in raw:
@@ -515,6 +544,10 @@ def survey(topic: str, max_papers: int = 8) -> dict:
                         "url": f"https://www.semanticscholar.org/paper/{cpid}" if cpid else "",
                     })
 
+    if not papers:
+        print(f"[idea] survey: 0 papers for {topic!r} — prior-art grounding is "
+              "unavailable (S2 key missing/invalid and arXiv fallback empty)",
+              file=sys.stderr)
     return {"papers": papers[:max_papers]}
 
 
@@ -550,6 +583,7 @@ def _platform_constraint_note() -> str:
         return ""
 
 
+@mcp.tool()
 async def generate_ideas(
     topic: str,
     papers: list,

@@ -88,8 +88,12 @@ def load_node_report(checkpoint_dir: Path, node_id: str) -> dict:
             try:
                 data = json.loads(cand.read_text())
                 return data if isinstance(data, dict) else {}
-            except Exception:
-                return {}
+            except Exception as exc:
+                # EXISTS but undecodable — not the same as "no report". Carry the
+                # fact so env_signature can tell "environments match" apart from
+                # "could not read the environment" (a truncated baseline report
+                # otherwise silenced a real environment_mismatch).
+                return {"_unreadable": f"{cand.name}: {exc}"}
     return {}
 
 
@@ -153,14 +157,22 @@ def resolve_operand(
 
 
 def env_signature(checkpoint_dir: Path, node_id: str) -> dict:
-    """Coarse environment signature for same-environment comparison checks."""
+    """Coarse environment signature for same-environment comparison checks.
+
+    ``_unreadable`` is propagated so the gate can distinguish "environments
+    match" from "the environment could not be verified" — the latter must not
+    read as a pass under same_environment intent.
+    """
     rep = load_node_report(checkpoint_dir, node_id)
     cpu = rep.get("cpu_info") or {}
-    return {
+    sig = {
         "executor": rep.get("executor", ""),
         "cpu_model": cpu.get("model", ""),
         "arch": cpu.get("arch", ""),
     }
+    if rep.get("_unreadable"):
+        sig["_unreadable"] = rep["_unreadable"]
+    return sig
 
 
 def artifact_exists(checkpoint_dir: Path, rel_path: str) -> bool:

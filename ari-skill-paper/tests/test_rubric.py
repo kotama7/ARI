@@ -279,6 +279,52 @@ def test_resolve_rubric_falls_back_to_neurips_on_missing(monkeypatch):
     assert r.id == "neurips"
 
 
+def test_fewshot_mode_env_reaches_the_resolved_rubric(monkeypatch):
+    """``ari paper --fewshot-mode`` sets ARI_FEWSHOT_MODE; resolve_rubric is the
+    only choke point every reviewer entry point passes through, so the override
+    must land there. Before this was wired the env var had no reader at all and
+    the flag was silently inert."""
+    monkeypatch.delenv("ARI_RUBRIC", raising=False)
+    monkeypatch.delenv("ARI_FEWSHOT_MODE", raising=False)
+    assert resolve_rubric(None).params.fewshot_mode == "static"
+
+    monkeypatch.setenv("ARI_FEWSHOT_MODE", "dynamic")
+    assert resolve_rubric(None).params.fewshot_mode == "dynamic"
+
+    monkeypatch.setenv("ARI_FEWSHOT_MODE", "DYNAMIC")
+    assert resolve_rubric(None).params.fewshot_mode == "dynamic"
+
+
+def test_invalid_fewshot_mode_env_keeps_the_rubric_default(monkeypatch):
+    """An unparseable mode must not corrupt params.fewshot_mode — the loader
+    rejects anything outside {static, dynamic}, so writing it through would make
+    a later load_rubric of the same file raise."""
+    monkeypatch.delenv("ARI_RUBRIC", raising=False)
+    monkeypatch.setenv("ARI_FEWSHOT_MODE", "bogus")
+    assert resolve_rubric(None).params.fewshot_mode == "static"
+
+
+def test_dynamic_mode_is_what_makes_strict_dynamic_reachable(monkeypatch):
+    """Dynamic OpenReview retrieval is still a placeholder returning the static
+    examples, so the mode alone does not change reviews. What it does change is
+    that ARI_STRICT_DYNAMIC becomes live: without the env wiring above, no CLI
+    invocation could reach this branch at all."""
+    from src.review_engine import load_dynamic_fewshot  # type: ignore
+
+    monkeypatch.delenv("ARI_RUBRIC", raising=False)
+    monkeypatch.setenv("ARI_STRICT_DYNAMIC", "1")
+
+    monkeypatch.setenv("ARI_FEWSHOT_MODE", "static")
+    assert load_dynamic_fewshot(resolve_rubric(None), "T", "A") == []
+
+    monkeypatch.setenv("ARI_FEWSHOT_MODE", "dynamic")
+    try:
+        import openreview  # noqa: F401
+    except ImportError:
+        with pytest.raises(RubricError, match="openreview-py not installed"):
+            load_dynamic_fewshot(resolve_rubric(None), "T", "A")
+
+
 # ----- end-to-end mocked LLM -----
 
 class _FakeLLM:

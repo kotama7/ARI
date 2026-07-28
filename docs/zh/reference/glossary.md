@@ -20,7 +20,9 @@ sources:
     role: implementation
   - path: ari-skill-memory
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-core/ari/rqgm
+    role: implementation
+last_verified: 2026-07-10
 ---
 
 # 术语表
@@ -145,13 +147,108 @@ root→best 谱系），从而将论文主张接地到实际测量到的内容�
 将研究目标转化为假说和主要指标的多代理审议，在根节点通过 `generate_ideas` 运行一次。参见
 [架构](../concepts/architecture.md#full-data-flow)。
 
+## RQGM（可选启用的宪法治理）
+
+专属于可选启用的 `ari_rqgm` 执行模式的术语。它们对默认运行一概不
+适用。参见[执行模式](../guides/execution_modes.md)与
+[RQGM 评估](../guides/rqgm_evaluation.md)。
+
+**simple_bfts / ari_rqgm（执行模式）**
+`ari.mode` 的两个取值。`simple_bfts`（默认）就是当前的 ARI，行为
+不变 —— 它不构造任何 RQGM 对象、不导入任何 `ari.rqgm` 模块。
+`ari_rqgm` 选择启用纪元治理，且还需要 `rqgm.enabled: true` 联锁；
+任何不一致都带着警告安全回退到 `simple_bfts`
+（`ari/rqgm/mode.py`）。参见
+[执行模式](../guides/execution_modes.md)。
+
+**epoch（纪元）**
+一次 `ari_rqgm` 运行的治理时间片。每产生
+`rqgm.epoch.nodes_per_epoch` 个新 BFTS 节点（默认 10；`<= 0` 使
+运行停留在 `epoch_000`）就触发一次边界事务。治理、注册表转换和
+重放池准入只发生在这些边界上。
+
+**EpochState**
+每纪元对活跃提示词/组件集合与效用策略的不可变冻结
+（`ari/rqgm/state.py`，快照到 `epoch_state.json`）。在纪元持续期间
+被冻结，指纹不含挂钟字段，因此之后的注册表变化绝不会泄漏进一个
+已关闭的纪元。
+
+**ConstitutionalKernel（宪法内核）**
+不进化的第 0 层检查器（`ari/rqgm/kernel.py`）：一个纯粹、确定性的
+校验器，返回逐字节稳定的 `KernelReport` 裁定且不写任何东西。
+严重度冻结在代码中（`kernel_rules.py`），绝不可配置；只有姿态
+（`rqgm.kernel.enforcement`：`standard` / `audit_only`）和浮点容差
+在配置里。
+
+**GovernanceOrchestrator（治理编排器）**
+唯一的纪元边界治理入口（`ari/rqgm/governance/`）：对将关闭纪元的
+证据收集、检控、辩护和裁决，并由 ConstitutionalKernel 自我审计。
+预算与姿态位于 `rqgm.governance` / `rqgm.replay` 之下。
+
+**RegistryTransitionEngine（注册表转换引擎）**
+注册表状态的唯一写入方（`ari/rqgm/transition_engine.py`）。它把
+一个治理结果变成通过 RQGM 存储持久化的已提交 `EpochTransition`
+（激活 / 退役）；任何其他组件都不得更改提示词或组件的状态。
+
+**FrontierRepairEngine（前沿修复引擎）**
+在带退役的转换之后于纪元边界运行
+（`ari/rqgm/frontier_repair.py`）：追踪实质依赖已退役
+`prompt_hash` 的记录，把它们标记为过期（仅逻辑 —— 什么都不
+删除），重算幸存者，并确定性地重建 BFTS 前沿。
+
+**ProposalRecord / ProposalSummaryView**
+`ProposalRecord` 是一条归档提案（追加式
+`{checkpoint}/proposals/proposal_records.jsonl`）；
+`ProposalSummaryView` 是从它派生的有界摘要 —— BFTS 所见的**唯一**
+形状（`ari/rqgm/proposals/records.py`）。`ProposalRouter` 在
+`proposal_router.*` 预算下把生成分派给生成器注册表；VirSci 生成器
+为可选启用且默认关闭。
+
+**PromptSpec**
+一个带版本的提示词身份（`ari/rqgm/prompt_spec.py`）。不可变：
+任何更改都是新的 `prompt_id` + `prompt_hash`，绝不是编辑。进化后
+的模板正文以一次写入方式存放在 `{checkpoint}/rqgm_prompts/` 下。
+
+**ValidatedAttackRecord**
+一条在裁决中幸存的对抗发现 —— 只对裁定
+`valid` / `partially_valid` 存在（`ari/rqgm/adversarial/records.py`），
+且是唯一可被重放池准入的攻击形状。
+
+**AdversarialReplayPool（对抗重放池）**
+经裁决的失败案例的策展池
+（`ari/rqgm/adversarial/pool.py`），快照到
+`{checkpoint}/rqgm/adversarial_replay_pool.json`；追加式真相是
+`rqgm_adversarial_cases.jsonl`。准入只发生在纪元边界；容量配置在
+`rqgm.adversarial.pool.*` 下。
+
+**selective erasure（选择性擦除）**
+对由已退役提示词产生 —— 或实质依赖它 —— 的记录的仅逻辑失效。
+什么都不物理删除或重写：过期状态存在于 `SelectiveErasureEvent` /
+`FrontierRebuildEvent` 审计日志行和派生的
+`rqgm_erasure_state.json` 汇总中，读取方在读取时推导 `stale`。
+
+**clean-room regeneration（洁净室再生成）**
+在无法访问已退役提示词文本的情况下起草其替代提示词
+（`ari/rqgm/clean_room.py`，`CleanRoomCoordinator`）。对候选准入
+fail-closed，对运行 fail-open：任何违规时该角色回退到其已提交的
+基线模板，循环继续。
+
+**meta tier（元层）**
+三个注册表层级（`fixed` / `institutional` / `meta`）中最高的一
+个。元层治理组件可以进化，但其权限不能扩张：能力标志默认拒绝，
+并对照 `ari/rqgm/meta_rules.py` 中冻结的权限表检查。
+
 ## 状态与发表
 
 **checkpoint (检查点)**
 一次运行的自包含目录，`{workspace}/checkpoints/{run_id}/`，其中 `run_id` 为
 `YYYYMMDDHHMMSS_<slug>`。所有状态都存于此处；`PathManager`
-（`ari/paths.py`）是唯一的事实来源。API 密钥从不存储于此 —— 它们来自 `.env` 或环境变量。参见
-[架构 → 文件结构](../concepts/architecture.md#file-structure)。
+（`ari/paths.py`）是唯一的事实来源。API 密钥从不存储于此 —— 它们来自 `.env` 或环境变量。完整布局参见
+[架构 → 文件结构](../concepts/architecture.md#file-structure)，
+逐文件 schema 参见[文件格式](file_formats.md)。一次 `ari_rqgm`
+运行会额外写入 RQGM 状态文件（`rqgm_state.json`、
+`rqgm_registry.json`、`rqgm_audit.jsonl`、`proposals/`、
+`rqgm_prompts/`、…）—— 在所有默认运行上均不存在。
 
 **EAR (Experiment Artifact Repository，实验产物仓库)**
 随论文一同交付的、确定性构建的 `ear/` 包（代码、输入数据、图表、README、
@@ -190,4 +287,5 @@ v0.8.0 PaperBench bridge 的三个 vendor 协议入口点之一：
 另请参阅：[架构](../concepts/architecture.md) ·
 [BFTS 算法](../concepts/bfts.md) ·
 [内存架构](../concepts/memory.md) ·
+[执行模式](../guides/execution_modes.md) ·
 [配置](configuration.md)

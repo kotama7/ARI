@@ -7,6 +7,7 @@ Rule config and frozen allowlists for the top-level `scripts/check_*` source-qua
 - `README.md` — this file.
 - `_common.py` — shared checker infrastructure (the `Finding` record + §3 JSON schema, allowlist loader, Markdown-table writer, `--base-ref` git-diff resolver) reused by the `scripts/quality/` checkers; stdlib + PyYAML only.
 - `analyze_references.yaml` — scan-root / prompt-base / data-selector / ignore config for `scripts/analyze_references.py` (subtask 054 reference-graph analyzer).
+- `check_bundle_budget.yaml` — budget config for `check_bundle_budget.py` — dist path, route-chunk regex, and the KiB-gzip budgets (entry/route/shared/total + Settings/Wizard route overrides) so a budget change is a one-line reviewable diff.
 - `check_complexity.allow.yaml` — frozen size/complexity baseline for `check_complexity.py` (41 LOC-tier + 64 over-complexity offenders); regenerate with `--update-baseline`.
 - `check_complexity.yaml` — thresholds for `check_complexity.py` — LOC tiers (warn>500/review>800/split>1200), ruff `C901` `max-complexity`, test exclusion, and default scan scope.
 - `check_dashboard_ux.allow.yaml` — TODO

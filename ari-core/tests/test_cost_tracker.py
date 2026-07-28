@@ -800,3 +800,41 @@ class TestUpstreamCostOverride:
     def test_extract_upstream_cost_dict_input(self):
         """Plain dict usage objects are also supported."""
         assert cost_tracker_mod._extract_upstream_cost({"cost_usd": 0.01}) == 0.01
+
+
+def test_a_dropped_cost_record_is_counted_not_silent(tmp_path):
+    """This is the SINGLE recording path for every litellm call in the process.
+    A swallowed failure undercounted call_count / total_cost with nothing
+    explaining the delta (a str metadata value once masked an AttributeError and
+    unbooked the whole run). The drop is now counted and stamped in the summary."""
+    import json
+
+    import ari.cost_tracker as CT
+
+    t = CT.CostTracker(tmp_path)
+    t.record(model="gpt-4o", prompt_tokens=10, completion_tokens=5)
+    t._dropped_records += 1          # a recording that raised in the callback
+    t._write_summary()
+
+    summary = json.loads((tmp_path / "cost_summary.json").read_text())
+    assert summary["call_count"] == 1
+    assert summary["dropped_records"] == 1
+    assert "pricing_table_unavailable" in summary
+
+
+def test_a_broken_pricing_table_is_flagged_and_not_memoised(monkeypatch):
+    """One malformed row, or a missing PyYAML in a skill venv, discarded all 30
+    models and priced every call at $0.00 — reported as applicable, i.e. "the
+    run was free". The failure must be flagged and NOT frozen for the process."""
+    from unittest import mock
+
+    import ari.cost_tracker as CT
+
+    monkeypatch.setattr(CT, "_PRICING_CACHE", None, raising=False)
+    monkeypatch.setattr(CT, "PRICING_TABLE_UNAVAILABLE", False, raising=False)
+    with mock.patch("ari.configs.FilesystemConfigLoader") as FL:
+        FL.return_value.load.side_effect = RuntimeError("malformed appended row")
+        got = CT._pricing()
+    assert got == {}
+    assert CT.PRICING_TABLE_UNAVAILABLE is True
+    assert not CT._PRICING_CACHE      # empty result not memoised

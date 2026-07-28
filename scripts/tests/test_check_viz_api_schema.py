@@ -14,8 +14,9 @@ Covers (subtask 030 §8 item 8 / §13):
     server-only route -> known;
   * repo smoke (§13.4): against the real tree the checker is clean-or-warning —
     with the seeded allowlist ZERO net-new findings (exit 0 under
-    ``--fail-on-regression``); with an empty allowlist exactly one client-only
-    finding, the known F6a POST /report drift.
+    ``--fail-on-regression``); with an empty allowlist zero client-only
+    findings (the historical F6a POST /report drift was resolved in
+    gui_refresh Wave 4a by the routes.py do_POST /report branch).
 
 Unit tests import the checker module by file path (it has no package); the repo
 smoke runs it as a subprocess (matching the §12 manual acceptance runs and the
@@ -236,12 +237,13 @@ def test_repo_smoke_fail_on_regression_passes_with_seed() -> None:
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
-def test_repo_smoke_empty_allowlist_flags_only_f6a_client_only() -> None:
+def test_repo_smoke_empty_allowlist_has_no_client_only_findings() -> None:
+    """F6a (FE POST /report without a do_POST branch) was the only
+    client-only drift; gui_refresh Wave 4a added the POST branch, so even
+    an empty allowlist yields zero broken calls."""
     code, report = _run("--allow", "/dev/null")
     client_only = [f for f in report["findings"] if f["kind"] == "client-only"]
-    assert len(client_only) == 1
-    assert client_only[0]["id"] == "POST /api/paperbench/run/{id}/report"
-    assert client_only[0]["severity"] == "error"
+    assert client_only == []
     assert code == 0  # default posture is warning-mode-first
 
 

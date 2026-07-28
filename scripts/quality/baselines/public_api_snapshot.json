@@ -1,5 +1,5 @@
 {
-  "ari_core_version": "0.9.0",
+  "ari_core_version": "0.9.1",
   "generated_by": "scripts/check_public_api_contracts.py",
   "modules": {
     "ari.public": {
@@ -14,12 +14,15 @@
       "backing": [
         "ari.pipeline.claim_gate",
         "ari.pipeline.claim_gate.contract",
-        "ari.pipeline.claim_gate.invariants"
+        "ari.pipeline.claim_gate.invariants",
+        "ari.pipeline.claim_gate.numeric"
       ],
       "exports": [
         "CONCEPT_INVARIANTS",
+        "FORMULAS",
         "check_emission",
         "classify_concept",
+        "required_roles",
         "run_hard_gate",
         "scan_science_data"
       ],
@@ -78,6 +81,7 @@
         "CallRecord",
         "CostTracker",
         "Optional",
+        "PRICING_TABLE_UNAVAILABLE",
         "Path",
         "annotations",
         "asdict",
@@ -87,6 +91,7 @@
         "init",
         "init_from_env",
         "json",
+        "logging",
         "os",
         "record",
         "set_default_metadata",

@@ -1,0 +1,182 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/rqgm_prompt_spec.schema.json",
+  "title": "ARI-RQGM PromptSpec",
+  "description": "One versioned prompt identity (docs/plans/ari_rqgm/07 §5.1/§6, owned by Task 07). Immutable: any change to the template bytes mints a NEW prompt_id + prompt_hash — active prompt text is never mutated in place. prompt_hash is sha256(bytes)[:12], the EXACT FilesystemPromptLoader.load_versioned scheme (single hash scheme, plan 07 §8); full_sha256 matches the test_prompt_extraction.py convention. template_ref.kind selects the byte source: package == committed loader key (founding specs), checkpoint == write-once evolved body under {ckpt}/rqgm_prompts/, policy == write-once canonical-JSON utility-policy body under the same directory (Task 14; template_ref carries `path` instead of `key`, and the spec is never rendered — active_prompt_view filters it out). A policy spec's prompt_hash IS its utility_policy_hash by construction, which is why the governed score is registered as a prompt rather than as a parallel spec type (plan 14 §5.3). Founding specs (generation_mode founding) are the sole active-on-creation exception; everything else is born candidate and walks the nine-state lifecycle. Role vocabulary is Task 02's (rqgm_defs.schema.json). Additive-only evolution.",
+  "type": "object",
+  "required": [
+    "prompt_id",
+    "role",
+    "version",
+    "status",
+    "generation_mode",
+    "template_ref",
+    "prompt_hash",
+    "full_sha256",
+    "evolvable",
+    "spec"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "prompt_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "role": {
+      "$ref": "#/$defs/rqgm_role"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "status": {
+      "$ref": "#/$defs/rqgm_status"
+    },
+    "generation_mode": {
+      "type": "string",
+      "enum": [
+        "founding",
+        "mutation",
+        "clean_room"
+      ]
+    },
+    "parent_prompt_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "template_ref": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "package",
+            "checkpoint",
+            "policy"
+          ]
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "prompt_hash": {
+      "$ref": "#/$defs/hash12"
+    },
+    "full_sha256": {
+      "$ref": "#/$defs/sha256_hex"
+    },
+    "evolvable": {
+      "type": "boolean"
+    },
+    "epoch_introduced": {
+      "type": "string"
+    },
+    "spec": {
+      "type": "object",
+      "required": [
+        "input_contract",
+        "output_schema"
+      ],
+      "properties": {
+        "role_instruction": {
+          "type": "string"
+        },
+        "constitutional_constraints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "input_contract": {
+          "type": "object",
+          "required": [
+            "required_fields"
+          ],
+          "properties": {
+            "required_fields": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "rubric": {
+          "type": "object"
+        },
+        "calibration_policy": {
+          "type": "object"
+        },
+        "budget_policy": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "hash12": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{12}$"
+    },
+    "sha256_hex": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "rqgm_status": {
+      "type": "string",
+      "enum": [
+        "candidate",
+        "validated",
+        "shadow",
+        "probationary_active",
+        "active",
+        "warning",
+        "probation",
+        "quarantine",
+        "retired",
+        "banned"
+      ]
+    },
+    "rqgm_role": {
+      "type": "string",
+      "enum": [
+        "generator",
+        "reviewer",
+        "adversary",
+        "defender",
+        "judge",
+        "router",
+        "prompt_mutator",
+        "clean_room_generator",
+        "replay_selector",
+        "failure_summary_compressor",
+        "policy_mutator",
+        "utility_policy",
+        "paper_writer",
+        "paper_reviewer",
+        "auditor",
+        "evidence_clerk",
+        "governance_judge",
+        "constitutional_kernel",
+        "fixed_verifier",
+        "audit_log"
+      ]
+    }
+  }
+}

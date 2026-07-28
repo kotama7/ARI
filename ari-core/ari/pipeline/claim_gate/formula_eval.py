@@ -172,14 +172,66 @@ def _eval(node: ast.AST, variables: dict) -> Any:
 
 def safe_eval(expr: str, variables: dict) -> Any:
     """Evaluate a declared expression over ``variables``. Returns None on parse
-    error or any unsupported/unknown construct (never raises on a bad expr)."""
+    error or any unsupported/unknown construct (never raises on a bad expr).
+
+    ``None`` is genuinely ambiguous — it means "a missing operand" as well as
+    "this expression is not evaluable at all" — and every caller tests
+    ``if r is False``, so BOTH read as "the predicate held". Use
+    :func:`eval_declared` when the difference matters (it does for
+    ``correctness.expr`` and declared invariants, whose findings are in the
+    always-blocking tier).
+    """
+    return eval_declared(expr, variables)[0]
+
+
+def eval_declared(expr: str, variables: dict) -> "tuple[Any, str | None]":
+    """``(value, unevaluable_reason)`` for a declared expression.
+
+    The reason is ``None`` when the expression was actually evaluated (the value
+    may still be ``None`` because an operand was absent). It is a string when
+    the expression could not be evaluated AT ALL — a syntax error, or a
+    construct the safe evaluator does not implement.
+
+    This distinction is load-bearing. ``correctness.expr`` and the declared
+    invariants are LLM-authored with no grammar stated in the obligation, and
+    their findings (``correctness_failed`` / ``invariant_violation``) sit in
+    ``policy.always_block_on`` — they block regardless of warn/strict. With a
+    bare ``None``, the same failing measurement reported a violation when the
+    expression read ``max_abs_err < 1e-4`` and reported NOTHING when it read
+    ``max_abs_err < 10**-4``, ``np.max(err) < 1e-4``, or carried a stray paren.
+    The gate then published ``contract_violation_count: 0`` for a check that
+    never ran.
+    """
     if not isinstance(expr, str) or not expr.strip():
-        return None
+        return None, "empty or non-string expression"
     try:
         tree = ast.parse(expr, mode="eval")
-    except (SyntaxError, ValueError):
-        return None
+    except (SyntaxError, ValueError) as exc:
+        return None, f"parse error: {exc}"
     try:
-        return _eval(tree, variables)
-    except Exception:
-        return None
+        value = _eval(tree, variables)
+    except Exception as exc:  # pragma: no cover - _eval is total by construction
+        return None, f"evaluation error: {type(exc).__name__}: {exc}"
+    if value is None:
+        # _eval returns None for BOTH an absent operand and an unsupported node
+        # type. Re-walk to tell them apart: an expression naming only known
+        # variables but still yielding None used an unsupported construct.
+        unsupported = _unsupported_construct(tree)
+        if unsupported:
+            return None, f"unsupported construct: {unsupported}"
+    return value, None
+
+
+def _unsupported_construct(tree: ast.AST) -> "str | None":
+    """The first node type the safe evaluator does not implement, or None."""
+    supported = (
+        ast.Expression, ast.BoolOp, ast.UnaryOp, ast.BinOp, ast.Compare,
+        ast.IfExp, ast.Name, ast.Constant, ast.Tuple, ast.List, ast.Load,
+        ast.And, ast.Or, ast.Not, ast.USub, ast.UAdd,
+        ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod,
+        ast.Lt, ast.LtE, ast.Gt, ast.GtE, ast.Eq, ast.NotEq,
+    )
+    for node in ast.walk(tree):
+        if not isinstance(node, supported):
+            return type(node).__name__
+    return None

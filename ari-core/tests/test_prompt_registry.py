@@ -2,7 +2,7 @@
 
 The registry wraps (does not replace) ``FilesystemPromptLoader``: every read
 delegates to the loader, so ``get`` / ``get_versioned`` stay byte-/hash-identical
-to the loader and no rendered prompt can drift. Covers discovery (exactly the 11
+to the loader and no rendered prompt can drift. Covers discovery (exactly the 28
 core keys, READMEs excluded), delegation parity, placeholder parsing (tolerant of
 ``{{``/``}}`` JSON escapes), the config-injected-key tolerance policy, and loader
 dependency injection.
@@ -17,19 +17,56 @@ import pytest
 from ari.prompts import FilesystemPromptLoader, PromptEntry, PromptRegistry
 
 
-# The 11 externalized core templates (matches the sha256 pins in
-# ``test_prompt_extraction.py`` and the 036 inventory).
+# The 28 externalized core templates (matches the sha256 pins in
+# ``test_prompt_extraction.py``: the 036 inventory's 11, the three RQGM
+# Task 03 proposal-generator templates, the three RQGM Task 05
+# governance-actor templates, the nine RQGM Task 06 adversarial-loop
+# templates, the RQGM Task 07 prompt-mutator meta-prompt, and the RQGM
+# Task 08 clean-room-generator meta-prompt).
 _EXPECTED_KEYS = sorted(
     [
         "agent/system",
         "evaluator/extract_metrics",
         "evaluator/peer_review",
+        "governance/auditor",
+        "governance/defender",
+        "governance/governance_judge",
         "orchestrator/bfts_expand",
         "orchestrator/bfts_expand_select",
         "orchestrator/bfts_select",
         "orchestrator/lineage_decision",
         "orchestrator/root_idea_selector",
         "pipeline/keyword_librarian",
+        "rqgm/adversary_cost_explosion",
+        "rqgm/adversary_evidence_gap",
+        "rqgm/adversary_metric_gaming",
+        "rqgm/adversary_overclaim",
+        # Paper-archive Task 05: the eighth (paper-phase) adversary template.
+        "rqgm/adversary_paper_self_preference",
+        "rqgm/adversary_prior_art",
+        "rqgm/adversary_prompt_injection",
+        "rqgm/adversary_reproducibility",
+        "rqgm/clean_room_generator",
+        # Externalised from ari/llm/cli_server.py: ari-core carries no
+        # inline prompt literals.
+        "llm/mcp_name_resolution",
+        "rqgm/defender",
+        # plan 11 §5.2 items 3-4: the recommendation roles.
+        "rqgm/failure_summary_compressor",
+        "rqgm/replay_selector",
+        "rqgm/judge_adjudication",
+        # Paper-archive co-evolution (plan ari_rqgm_paper/03 §5.5): the
+        # governed manuscript reviewer/writer founding templates, lifted
+        # byte-identical from ari-skill-paper's copies.
+        "rqgm/paper_reviewer",
+        "rqgm/paper_writer",
+        # RQGM Task 14 PolicyMutator meta-prompt (the governed utility
+        # policy's freeform proposer; the four default kinds need no LLM).
+        "rqgm/policy_mutator",
+        "rqgm/prompt_mutator",
+        "rqgm/proposal_cheap",
+        "rqgm/proposal_mutation",
+        "rqgm/proposal_prior_art",
         "viz/wizard_chat_goal",
         "viz/wizard_generate_config",
     ]
@@ -39,8 +76,8 @@ _EXPECTED_KEYS = sorted(
 # ── discovery ──────────────────────────────────────────────────────────────
 
 
-def test_keys_returns_exactly_the_eleven_core_keys():
-    """`keys()` enumerates exactly the 11 core templates; READMEs excluded."""
+def test_keys_returns_exactly_the_core_keys():
+    """`keys()` enumerates exactly the 28 core templates; READMEs excluded."""
     keys = PromptRegistry().keys()
     assert keys == _EXPECTED_KEYS
     # No README.md ever leaks in as a key.

@@ -25,7 +25,14 @@ def _make_s2_response(papers):
 
 
 def _run_async(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    # A FRESH loop per call: a shared asyncio.get_event_loop() leaks state
+    # across the async tests in this file (a prior test can leave it closed),
+    # which surfaced as an order-dependent "coroutine was never awaited" failure.
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 # ---------------------------------------------------------------------------
@@ -248,7 +255,10 @@ def test_collect_references_early_termination():
             min_papers=5,
         ))
     assert result["rounds_used"] == 2  # round 1 + round 2 (terminated)
-    assert call_count == 1  # only 1 LLM call (query gen in round 2)
+    # 2 LLM calls now: round-1 relevance filter over the S2 hits (added to close
+    # the unfiltered-round-1 gap) + round-2 query gen. fail_open keeps P1 since
+    # the mock reply isn't valid selection JSON.
+    assert call_count == 2
 
 
 def test_collect_references_multi_round():
@@ -358,3 +368,140 @@ def test_collect_references_output_format():
         assert "abstract" in p
         assert "bibtex" in p
         assert "cite_key" in p
+
+
+# ── round-1 fallback relevance filtering + honest round accounting ──────────
+
+_FB_MIX = [
+    {"title": "Multicore wavefront diamond blocking for stencils", "year": "2014",
+     "abstract": "stencil cache blocking"},
+    {"title": "Polyhedral methods to optimize stencils on FPGAs", "year": "2024",
+     "abstract": "stencil"},
+    {"title": "Solution existence of polynomial optimization problems", "year": "2018",
+     "abstract": "unrelated optimization"},
+    {"title": "Optimal design of frame structures with Gumbel-Softmax", "year": "2024",
+     "abstract": "unrelated"},
+]
+
+
+def _run_collect(monkeypatch, select_reply):
+    """S2 dead -> round-1 arXiv fallback, with a scripted relevance selector."""
+    import server
+
+    monkeypatch.setattr(server, "_search_s2_sync", lambda q, limit=10: [])
+    monkeypatch.setattr(server, "_arxiv_fallback", lambda q, limit=8: list(_FB_MIX))
+
+    async def _fake_llm(sysmsg, user, **kw):
+        # the query-generation stage terminates the loop; the selector replies
+        # with the scripted value
+        if "librarian" in (sysmsg or "").lower():
+            return "No more citations needed"
+        return select_reply
+
+    monkeypatch.setattr(server, "_llm_call", _fake_llm)
+    return asyncio.run(server.collect_references_iterative(
+        experiment_summary="cache blocking for a 2D Jacobi stencil",
+        keywords="stencil cache blocking", max_rounds=2))
+
+
+def test_round1_arxiv_fallback_is_relevance_filtered(monkeypatch):
+    """A bare keyword fallback is low precision. Before this, round-1 fallback
+    papers bypassed the selector entirely (it only ran on rounds >=2), so an
+    "optimization" keyword shipped polynomial-opt / topology-opt papers into the
+    bibliography — and one was cited in the e2e run's paper."""
+    out = _run_collect(monkeypatch, "[0, 1]")
+    titles = [p["title"] for p in out["papers"]]
+    assert len(titles) == 2, titles
+    assert all("stencil" in t.lower() for t in titles), titles
+
+
+def test_round1_filter_fails_open_when_the_selector_is_unusable(monkeypatch):
+    """``_parse_selection_response`` returns [] both for "nothing relevant" and
+    for an unparseable reply. Dropping everything on round 1 would ship a paper
+    with NO references — strictly worse than an imprecise bibliography — so the
+    round-1 caller keeps the candidates."""
+    out = _run_collect(monkeypatch, "not json at all")
+    assert out["count"] == len(_FB_MIX), out["count"]
+
+
+def test_rounds_used_is_reported_alongside_productive_rounds(monkeypatch):
+    """``rounds_used`` counts loop ITERATIONS. With the retrieval backend down
+    every round no-ops, so a bare rounds_used=13 read as productive work that
+    never happened; productive_rounds / s2_available / fallback_used make the
+    outage visible."""
+    out = _run_collect(monkeypatch, "[0, 1]")
+    assert out["s2_available"] is False
+    assert out["fallback_used"] is True
+    assert out["productive_rounds"] <= out["rounds_used"]
+    assert out["productive_rounds"] == 1      # only round 1 added anything
+
+
+def test_round1_s2_hits_are_relevance_filtered():
+    """Regression: round-1 Semantic Scholar hits are now run through the
+    relevance selector (previously added UNFILTERED). An off-topic keyword
+    match is dropped when there is an experiment to judge against."""
+    from server import collect_references_iterative
+    on = _mock_paper("Cache blocking for 2D Jacobi stencils")
+    off = _mock_paper("Phased-array antenna tiling for radar")
+    with patch("server._search_s2_sync", return_value=[on, off]), \
+         patch("server._llm_call", new_callable=AsyncMock, return_value="[0]"):
+        result = _run_async(collect_references_iterative(
+            experiment_summary="2D Jacobi stencil cache blocking bandwidth",
+            keywords="tiling",
+            max_rounds=1,
+            min_papers=5,
+        ))
+    titles = [p["title"] for p in result["papers"]]
+    assert "Cache blocking for 2D Jacobi stencils" in titles
+    assert "Phased-array antenna tiling for radar" not in titles  # off-topic dropped
+
+
+def test_search_s2_sync_retries_on_429_then_succeeds(monkeypatch):
+    """A transient S2 429 is RETRIED (backoff), not dropped straight to the
+    arXiv fallback: first call 429s, second returns papers."""
+    import urllib.error as _ue, io
+    from server import _search_s2_sync
+    calls = {"n": 0}
+    def fake_urlopen(req, timeout=15):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise _ue.HTTPError(req.full_url, 429, "Too Many Requests",
+                                {"Retry-After": "0"}, io.BytesIO(b""))
+        class _R:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self):
+                return json.dumps({"data": [_make_s2_paper("Paper R", cite_key="r2023")]}).encode()
+        return _R()
+    monkeypatch.setattr("server._req.urlopen", fake_urlopen)
+    monkeypatch.setattr("server._time.sleep", lambda s: None)
+    out = _search_s2_sync("q", limit=3)
+    assert calls["n"] == 2                       # retried once, then succeeded
+    assert out and out[0]["title"] == "Paper R"
+
+
+def test_search_s2_sync_gives_up_after_persistent_429(monkeypatch):
+    """Persistent 429 -> [] (caller falls back to arXiv), never raises."""
+    import urllib.error as _ue, io
+    from server import _search_s2_sync
+    n = {"c": 0}
+    def always_429(req, timeout=15):
+        n["c"] += 1
+        raise _ue.HTTPError(req.full_url, 429, "rate", {"Retry-After": "0"}, io.BytesIO(b""))
+    monkeypatch.setattr("server._req.urlopen", always_429)
+    monkeypatch.setattr("server._time.sleep", lambda s: None)
+    assert _search_s2_sync("q") == []
+    assert n["c"] >= 2                           # attempted more than once
+
+
+def test_search_s2_sync_non_429_fails_fast(monkeypatch):
+    """A non-429 error is NOT retried (fail fast to [])."""
+    from server import _search_s2_sync
+    n = {"c": 0}
+    def boom(req, timeout=15):
+        n["c"] += 1
+        raise Exception("connection reset")
+    monkeypatch.setattr("server._req.urlopen", boom)
+    monkeypatch.setattr("server._time.sleep", lambda s: None)
+    assert _search_s2_sync("q") == []
+    assert n["c"] == 1                           # no retry on non-429

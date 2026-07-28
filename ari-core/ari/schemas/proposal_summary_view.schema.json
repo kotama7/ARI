@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/proposal_summary_view.schema.json",
+  "title": "ARI-RQGM ProposalSummaryView",
+  "description": "The bounded proposal summary — the ONLY proposal representation BFTS may consume (docs/plans/ari_rqgm/03 §6.2, owned by Task 03). Eight spec-mandated fields with hard character budgets; full VirSci transcripts are archive-only and can never fit these limits. schema_version lives on the enclosing ProposalRecord; evolution is additive-only.",
+  "type": "object",
+  "required": [
+    "proposal_record_id",
+    "title",
+    "short_description",
+    "hypothesis",
+    "experiment_plan",
+    "success_metric",
+    "novelty_risks",
+    "expected_artifacts",
+    "dissent_summary",
+    "scores"
+  ],
+  "properties": {
+    "proposal_record_id": {"type": "string"},
+    "title": {"type": "string", "maxLength": 200},
+    "short_description": {"type": "string", "maxLength": 600},
+    "hypothesis": {"type": "string", "maxLength": 400},
+    "experiment_plan": {
+      "type": "array",
+      "maxItems": 6,
+      "items": {"type": "string", "maxLength": 400}
+    },
+    "success_metric": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string"},
+        "higher_is_better": {"type": "boolean"},
+        "rationale": {"type": "string"}
+      }
+    },
+    "novelty_risks": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {"type": "string", "maxLength": 200}
+    },
+    "expected_artifacts": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {"type": "string", "maxLength": 120}
+    },
+    "dissent_summary": {"type": "string", "maxLength": 400},
+    "scores": {
+      "type": "object",
+      "properties": {
+        "novelty": {"type": "number", "minimum": 0, "maximum": 1},
+        "feasibility": {"type": "number", "minimum": 0, "maximum": 1},
+        "overall": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    }
+  },
+  "additionalProperties": false
+}

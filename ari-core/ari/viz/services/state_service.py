@@ -28,6 +28,15 @@ Behaviour preserved verbatim from the inline builder:
 - Same globs / YAML profile-merge order (reading ``ari-core/config/`` via
   ``ari.config.finder.package_config_root``) / ``cost_trace.jsonl`` tail / phase
   detection / process-liveness fields.
+
+FROZEN — legacy facade (gui_refresh G2 tail; plan 04 §Caching and polling
+policy: "`/state` は legacy facade として凍結し、新 feature を追加して肥大化
+させない"). The aggregate ``/state`` payload MUST NOT grow new top-level keys:
+new data belongs on run-explicit ``/api/v1`` endpoints (``ari/viz/v1/``), never
+here. Bug fixes that preserve the existing key set are fine. The exact
+top-level key set is pinned by ``tests/test_gui_state_facade_freeze.py``;
+removal of the whole facade is gated at G6 legacy removal (plan 04
+§Compatibility and migration step 7).
 """
 from __future__ import annotations
 
@@ -43,6 +52,8 @@ from ..ui_helpers import _extract_goal_from_md
 log = logging.getLogger(__name__)
 
 
+# FROZEN legacy facade — do NOT add top-level keys (see module docstring).
+# New GUI data goes on /api/v1 run-scoped endpoints (ari/viz/v1/).
 def build_app_state() -> dict:
     """Build the ``GET /state`` ``AppState`` payload dict (verbatim behaviour).
 

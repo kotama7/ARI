@@ -101,6 +101,96 @@ class TraceStore(Protocol):
     ) -> dict[str, dict]: ...
 
 
+@runtime_checkable
+class EpochStore(Protocol):
+    """Persist/replay the RQGM epoch-governance state (RQGM Task 02).
+
+    Structural contract for the checkpoint-scoped RQGM state layer:
+    ``rqgm_transitions.jsonl`` is the append-only source of truth and the
+    ``epoch_state.json`` / ``rqgm_registry.json`` snapshots are disposable
+    rollups. Satisfied structurally by
+    :class:`ari.rqgm.store.RqgmStateStore` — which is only ever constructed
+    when the ``ari_rqgm`` mode is active, so this Protocol is the sole
+    RQGM-related name on the default import path (typing only, no
+    ``ari.rqgm`` import).
+    """
+
+    def load_state(self, checkpoint_dir: str | Path) -> Any:
+        """Replay + snapshot-validate; ``None`` when no RQGM state exists."""
+        ...
+
+    def append_events(self, checkpoint_dir: str | Path, events: list) -> bool:
+        """Hash-chained append to the transition log; False, never raise."""
+        ...
+
+    def save_snapshots(self, checkpoint_dir: str | Path, state: Any) -> None:
+        """Best-effort rewrite of the derived rollups."""
+        ...
+
+    def replay(self, checkpoint_dir: str | Path) -> Any:
+        """Rebuild state purely from the event log (resume path)."""
+        ...
+
+
+@runtime_checkable
+class ErasureStateStore(Protocol):
+    """Persist/read the RQGM selective-erasure state (RQGM Task 10).
+
+    Structural contract for ``{ckpt}/rqgm_erasure_state.json`` — the derived
+    rollup of SelectiveErasureEvent/FrontierRebuildEvent lines in the Task 02
+    audit JSONL. Staleness is logical-only: readers derive ``stale`` as
+    ``record_id ∈ stale_record_ids``; no stored line is ever rewritten.
+    Satisfied structurally by
+    :class:`ari.rqgm.erasure_state.RqgmErasureStateStore` — only ever
+    constructed in ``ari_rqgm`` mode, so this Protocol is the sole
+    erasure-related name on the default import path (typing only, no
+    ``ari.rqgm`` import).
+    """
+
+    def load(self, checkpoint_dir: str | Path) -> Any:
+        """Absence-tolerant read; an empty view when the file is missing."""
+        ...
+
+    def save(self, checkpoint_dir: str | Path, view: Any) -> None:
+        """Best-effort rewrite of the derived snapshot (never raises)."""
+        ...
+
+    def apply_event(self, checkpoint_dir: str | Path, event: dict) -> Any:
+        """Fold one erasure/rebuild event and rewrite the snapshot."""
+        ...
+
+
+@runtime_checkable
+class ProposalStore(Protocol):
+    """Persist/read the RQGM proposal records (RQGM Task 03, plan 03 §7).
+
+    Structural contract for the checkpoint-scoped ``{ckpt}/proposals/``
+    store: ``proposal_records.jsonl`` is the append-only truth,
+    ``proposal_index.json`` a derived rollup, and ``idea.json`` the
+    maintained compatibility projection of the selected record. Satisfied
+    structurally by :class:`ari.rqgm.proposals.store.ProposalStore` — only
+    ever constructed in ``ari_rqgm`` mode (or under the explicit
+    ``proposal_router.record_only`` dual-write), so this Protocol is the
+    sole proposal-related name on the default import path.
+    """
+
+    def append(self, record: Any) -> bool:
+        """Lock-guarded, content-key-deduplicated append; never raises."""
+        ...
+
+    def load_all(self) -> list:
+        """Order-preserving read of every stored ProposalRecord."""
+        ...
+
+    def selected(self) -> Any:
+        """The current directive record (latest ``selected``) or ``None``."""
+        ...
+
+    def write_idea_projection(self, meta: "dict | None" = None) -> bool:
+        """Emit the ``idea.json`` projection (single writer in ``ari_rqgm``)."""
+        ...
+
+
 class ArtifactStore(ABC):
     """Read/write experiment artefacts by *logical name* (§3.8).
 

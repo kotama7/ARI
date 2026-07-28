@@ -7,6 +7,7 @@ Operational and utility scripts for building images, running services, and dev t
 - `README.md` — this file.
 - `analyze_references.py` — build the deterministic code/data reference graph (static imports + dynamic string-key/path/MCP/cross-language overlays) seeded from the 053 roots; emits `docs/refactoring/reports/reference_graph.{json,md}` (`--check` gates drift; no LLM/API).
 - `build_pb_images.sh` — build the vendor PaperBench Docker images (`pb-env`, `pb-reproducer`).
+- `check_bundle_budget.py` — SPA bundle-weight budget gate (gui_refresh plan 09): gzips the built `viz/static/dist/assets/*.js` chunks and enforces entry ≤ 100 / route ≤ 150 (Settings/Wizard ≤ 50) / total ≤ 600 KiB gzip with hash-independent finding ids; warning-mode-first (`--json`, `--fail-on-regression`; no LLM/API/node).
 - `check_complexity.py` — source-code size (LOC tiers) + cyclomatic-complexity (ruff `C901`) gate; warning-mode-first with a frozen allowlist (`--json`, `--fail-on-regression`, `--update-baseline`; no LLM/API).
 - `check_dashboard_ux.py` — TODO
 - `check_dead_code.py` — dead-code candidate classifier over the 053/054 `reference_graph.json`: labels each node with the 013 §7 vocabulary (`PUBLIC_CONTRACT`/`DYNAMIC_REFERENCE_RISK`/`TEST_ONLY`/`QUARANTINE_CANDIDATE`/`SAFE_DELETE_CANDIDATE`/`REVIEW_REQUIRED`) and emits a ranked `dead_code_candidates.{md,json}`; deletes nothing (056/057 act); ruff-corroborated `SAFE_DELETE`, warning-mode-first `--check`; no LLM/API.
@@ -59,6 +60,7 @@ Operational and utility scripts for building images, running services, and dev t
   - `README.md` — quality index.
   - `_common.py` — shared checker infrastructure (the `Finding` record + §3 JSON schema, allowlist loader, Markdown-table writer, `--base-ref` git-diff resolver) reused by the `scripts/quality/` checkers; stdlib + PyYAML only.
   - `analyze_references.yaml` — scan-root / prompt-base / data-selector / ignore config for `scripts/analyze_references.py` (subtask 054 reference-graph analyzer).
+  - `check_bundle_budget.yaml` — budget config for `check_bundle_budget.py` — dist path, route-chunk regex, and the KiB-gzip budgets (entry/route/shared/total + Settings/Wizard route overrides) so a budget change is a one-line reviewable diff.
   - `check_complexity.allow.yaml` — frozen size/complexity baseline for `check_complexity.py` (41 LOC-tier + 64 over-complexity offenders); regenerate with `--update-baseline`.
   - `check_complexity.yaml` — thresholds for `check_complexity.py` — LOC tiers (warn>500/review>800/split>1200), ruff `C901` `max-complexity`, test exclusion, and default scan scope.
   - `check_dashboard_ux.allow.yaml` — TODO
@@ -107,6 +109,7 @@ Operational and utility scripts for building images, running services, and dev t
 - `tests/` — Unit and smoke tests for the top-level `scripts/` quality checkers
   - `README.md` — tests index.
   - `test_analyze_references.py` — unit + smoke + determinism tests for `analyze_references.py` (string-key/MCP fixtures + publish-backend/prompt non-orphan repo smoke).
+  - `test_check_bundle_budget.py` — unit + smoke tests for `check_bundle_budget.py` (hash-stem/classification fixtures, tmp fake-dist budget cases, real-dist plan-09 smoke; skips when the frontend build is absent).
   - `test_check_dashboard_ux.py` — TODO
   - `test_check_dead_code.py` — unit + smoke + determinism tests for `check_dead_code.py` (precedence, hard-downgrade, ruff-gated `SAFE_DELETE` + `--check` ratchet, repo firewall smoke).
   - `test_check_directory_policy.py` — TODO

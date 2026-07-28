@@ -57,18 +57,29 @@ def _manifest_fig_ids(manifest: Any) -> set:
     return ids
 
 
-def _reported_mention(links: list[dict], mentions: list[dict], numeric_id: str) -> "dict | None":
-    """The paper numeric mention bound to an anchor (value + unit), or None."""
+def _span_mentions(links: list[dict], mentions: list[dict], numeric_id: str) -> list[dict]:
+    """EVERY numeric mention inside the anchor's span, best-typed first.
+
+    An anchored sentence routinely states more than one number ("the scalar
+    kernel (11.2286 GB/s) and the AVX2 kernel (16.3441 GB/s)"), so "the paper's
+    value for this assertion" is genuinely ambiguous. Callers need the whole
+    candidate set to tell "the paper states the wrong number" (no candidate
+    matches) from "the binder picked the wrong one of several correct numbers".
+    """
     for l in links:
         if l.get("numeric_id") != numeric_id:
             continue
         lo, hi = (l.get("line_range") or [0, 0])[:2]
         in_range = [m for m in mentions if lo <= m.get("line", -1) <= hi]
         rc = [m for m in in_range if m.get("type") == "result_claim"]
-        pick = rc or in_range
-        if pick:
-            return pick[0]
-    return None
+        return rc or in_range
+    return []
+
+
+def _reported_mention(links: list[dict], mentions: list[dict], numeric_id: str) -> "dict | None":
+    """The paper numeric mention bound to an anchor (value + unit), or None."""
+    pick = _span_mentions(links, mentions, numeric_id)
+    return pick[0] if pick else None
 
 
 def _reported_value(links: list[dict], mentions: list[dict], numeric_id: str) -> "float | None":
@@ -119,13 +130,72 @@ def run_hard_gate(
     # paper-reported number. This is FORWARD (declared operands/formula), never a
     # reverse search, so a wrong declaration surfaces as numeric_mismatch.
     _writer_nas = (paper_claim_links or {}).get("writer_assertions", []) or []
-    _seen_na_ids = {na.get("id") for na in flat_nas if isinstance(na, dict)}
+    _by_id = {na.get("id"): na for na in flat_nas if isinstance(na, dict)}
+    _seen_na_ids = set(_by_id)
     writer_declared = 0
+    # The paper writer and the science_data generator mint C<N>/NC<N> ids
+    # INDEPENDENTLY, so the same id can name two unrelated assertions. The
+    # writer's declaration used to be dropped on collision and the pre-generated
+    # one silently kept — then the paper's number (belonging to the writer's
+    # subject) was compared against the OTHER assertion's recomputation. Observed
+    # live: the paper's C1/NC1 described cfg1 (11.2286 GB/s, a true value) while
+    # science_data's C1/NC1 described a different node (16.3441), producing a
+    # numeric_mismatch against a correct paper. Collisions on a DIFFERENT metric
+    # are recorded here and skipped below instead of being "verified" as wrong.
+    _colliding_ids: dict[str, dict] = {}
     for _wa in _writer_nas:
-        if isinstance(_wa, dict) and _wa.get("id") not in _seen_na_ids:
+        if not isinstance(_wa, dict):
+            continue
+        _wid = _wa.get("id")
+        if _wid not in _seen_na_ids:
             flat_nas.append(_wa)
-            _seen_na_ids.add(_wa.get("id"))
+            _seen_na_ids.add(_wid)
             writer_declared += 1
+            continue
+        _existing = _by_id.get(_wid) or {}
+        _wm = str(_wa.get("metric") or "")
+        _em = str(_existing.get("metric") or "")
+        if _wm and _em and _wm != _em:
+            _colliding_ids[str(_wid)] = {
+                "paper_subject": f"metric {_wm}",
+                "pre_generated_subject": f"metric {_em}",
+            }
+
+    # An anchor whose declaration was DROPPED (no inline formula=) still names
+    # its subject. When the paper says the id is about config X and the
+    # pre-generated assertion of the same id resolves to a different node, they
+    # are two assertions sharing an id — the same-metric/different-node shape
+    # that reported a correct 11.2286 as "not reproducible (recomputed 16.3441)".
+    for _dd in (paper_claim_links or {}).get("dropped_declarations", []) or []:
+        if not isinstance(_dd, dict):
+            continue
+        _did = str(_dd.get("numeric_id") or "")
+        _pre = _by_id.get(_did)
+        if not _did or not isinstance(_pre, dict) or _did in _colliding_ids:
+            continue
+        # The subject is (metric, node). A collision on EITHER axis means the two
+        # assertions describe different quantities: same metric on a different
+        # node, or a different metric on the same node.
+        _dm = str(_dd.get("declared_metric") or "")
+        _pm = str(_pre.get("metric") or "")
+        if _dm and _pm and _dm != _pm:
+            _colliding_ids[_did] = {
+                "paper_subject": f"metric {_dm!r}",
+                "pre_generated_subject": f"metric {_pm!r}",
+            }
+            continue
+        _declared_nodes = {n for n in (_dd.get("declared_node_ids") or []) if n}
+        _pre_nodes = {
+            str((op or {}).get("node_id") or "")
+            for op in (_pre.get("operands") or {}).values()
+            if isinstance(op, dict)
+        } - {""}
+        if _declared_nodes and _pre_nodes and not (_declared_nodes & _pre_nodes):
+            _colliding_ids[_did] = {
+                "paper_subject": f"config {sorted(_dd.get('declared_config_ids') or [])} "
+                                 f"-> node {sorted(_declared_nodes)}",
+                "pre_generated_subject": f"node {sorted(_pre_nodes)}",
+            }
 
     links = (paper_claim_links or {}).get("paper_claim_links", []) or []
     mentions = (paper_claim_links or {}).get("numeric_mentions")
@@ -189,7 +259,44 @@ def run_hard_gate(
         formula = na.get("formula", "")
         operands = na.get("operands", {}) or {}
         tol = na.get("tolerance") or default_tol
+        if nid in _colliding_ids:
+            # Two independently-minted assertions share this id and describe
+            # DIFFERENT metrics, so the paper's number and the recomputation
+            # below belong to different subjects. Comparing them cannot verify
+            # anything; asserting a mismatch would accuse a correct paper.
+            _col = _colliding_ids[nid]
+            errors.append({
+                "claim_id": cid, "numeric_id": nid, "type": "claim_id_collision",
+                "message": (
+                    f"{nid} is declared twice by independent minters: the paper's "
+                    f"anchor is about {_col['paper_subject']} while the "
+                    f"pre-generated assertion is about "
+                    f"{_col['pre_generated_subject']}; NOT verified (comparing "
+                    f"them would test unrelated quantities)"
+                ),
+                "paper_subject": _col["paper_subject"],
+                "pre_generated_subject": _col["pre_generated_subject"],
+            })
+            continue
         roles = numeric.required_roles(formula)
+        if not roles:
+            # An unknown formula NAME is a vocabulary error, not a data error.
+            # It used to fall into `operand_unresolved` below and print
+            # "operand 'formula' ({}) did not resolve" — where `{}` is just
+            # `operands.get(None, {})` — so an operator chased missing operands
+            # while the real cause was a token the registry never contained.
+            # (Observed: the writer emitted `percent_change` for all 7
+            # assertions; every one silently left verification, dropping
+            # numeric_reproducible from 9/12 to 0/9 with no error naming why.)
+            errors.append({
+                "claim_id": cid, "numeric_id": nid, "type": "unknown_formula",
+                "message": (
+                    f"{nid} formula {formula!r} is not in the closed vocabulary "
+                    f"{sorted(numeric.FORMULAS)}; the assertion cannot be "
+                    f"recomputed and was NOT verified"
+                ),
+            })
+            continue
         values: dict[str, float] = {}
         unresolved_role = None
         for role in roles:
@@ -199,9 +306,9 @@ def run_hard_gate(
                 unresolved_role = role
                 break
             values[role] = v
-        if unresolved_role is not None or not roles:
+        if unresolved_role is not None:
             errors.append({"claim_id": cid, "numeric_id": nid, "type": "operand_unresolved",
-                           "message": f"{nid} operand '{unresolved_role or 'formula'}' "
+                           "message": f"{nid} operand '{unresolved_role}' "
                                       f"({operands.get(unresolved_role, {})}) did not resolve"})
             continue
         recomputed = numeric.recompute(formula, values)
@@ -221,7 +328,19 @@ def run_hard_gate(
         if "baseline" in roles and "proposed" in roles:
             b_env = resolve.env_signature(ckpt, operands.get("baseline", {}).get("node_id", ""))
             p_env = resolve.env_signature(ckpt, operands.get("proposed", {}).get("node_id", ""))
-            if b_env.get("cpu_model") and p_env.get("cpu_model") and b_env != p_env:
+            if b_env.get("_unreadable") or p_env.get("_unreadable"):
+                # A node report that EXISTS but could not be read cannot confirm
+                # the environments match. Previously it collapsed to the empty
+                # signature and the guard below short-circuited, silencing a real
+                # cross-machine comparison. Surface it — blocking under
+                # same_environment intent, a warning otherwise.
+                _envfind = {"claim_id": cid, "numeric_id": nid,
+                            "type": "environment_unverified",
+                            "message": (f"{nid} environment could not be verified "
+                                        f"(unreadable node report: "
+                                        f"{b_env.get('_unreadable') or p_env.get('_unreadable')})")}
+                (errors if cmp_scope == "same_environment" else warnings).append(_envfind)
+            elif b_env.get("cpu_model") and p_env.get("cpu_model") and b_env != p_env:
                 _envfind = {"claim_id": cid, "numeric_id": nid, "type": "environment_mismatch",
                             "message": f"{nid} baseline/proposed differ in environment "
                                        f"({b_env} vs {p_env})"}
@@ -233,12 +352,38 @@ def run_hard_gate(
                 reproducible += 1
                 verified_values.append((reported, (_rm or {}).get("unit", "")))
             else:
-                mismatch_count += 1
-                errors.append({"claim_id": cid, "numeric_id": nid, "type": "numeric_mismatch",
-                               "message": f"{nid}: paper value {reported} not reproducible from "
-                                          f"results.json (recomputed {round(recomputed, 6)})",
-                               "reported": reported, "recomputed": round(recomputed, 6),
-                               "formula": formula, "tolerance": tol})
+                # Before accusing the paper, check whether ANOTHER number in the
+                # same anchored sentence reproduces. A sentence stating two
+                # measured values ("the scalar kernel (11.2286 GB/s) and the AVX2
+                # kernel (16.3441 GB/s)") binds to whichever comes first, so a
+                # correct paper was reported as "11.2286 not reproducible
+                # (recomputed 16.3441)" — while 16.3441 sat in the same sentence.
+                # That false accusation is what reaches the refiner as an
+                # imperative to change a correct number.
+                _alts = [m for m in _span_mentions(links, mentions, nid)
+                         if m is not _rm
+                         and numeric.within_tolerance(m.get("value"), recomputed, tol)]
+                if _alts:
+                    warnings.append({
+                        "claim_id": cid, "numeric_id": nid, "type": "ambiguous_span",
+                        "message": (
+                            f"{nid}: the anchored sentence states several numbers; the "
+                            f"bound one ({reported}) does not reproduce but "
+                            f"{_alts[0].get('value')} in the SAME sentence does "
+                            f"(recomputed {round(recomputed, 6)}). Anchor the claim to "
+                            f"the intended number rather than treating this as a "
+                            f"wrong value."
+                        ),
+                        "reported": reported, "recomputed": round(recomputed, 6),
+                        "matching_alternative": _alts[0].get("value"),
+                    })
+                else:
+                    mismatch_count += 1
+                    errors.append({"claim_id": cid, "numeric_id": nid, "type": "numeric_mismatch",
+                                   "message": f"{nid}: paper value {reported} not reproducible from "
+                                              f"results.json (recomputed {round(recomputed, 6)})",
+                                   "reported": reported, "recomputed": round(recomputed, 6),
+                                   "formula": formula, "tolerance": tol})
         else:
             # no paper-linked number to compare; verify internal consistency only
             declared = na.get("value")

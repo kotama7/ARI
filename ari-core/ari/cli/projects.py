@@ -145,11 +145,45 @@ def paper(
         node_map[node.id] = node
 
     all_nodes = list(node_map.values())
-    _, _, mcp_paper, _, _, _ = build_runtime(cfg, experiment_text, checkpoint_dir=checkpoint_dir)
+    _runtime = build_runtime(cfg, experiment_text, checkpoint_dir=checkpoint_dir)
+    mcp_paper = _runtime[2]
+    _bfts_paper = _runtime[3]
     console.print(Panel(
         f"[bold green]Running paper pipeline[/bold green]\nCheckpoint: {checkpoint_dir}",
         title="ARI Paper",
     ))
+    # RQGM paper-candidate escalation (docs/plans/ari_rqgm 03 trigger table /
+    # 06 §5.5 / 12 §5.2): at paper pre-flight, escalate the best node (the
+    # verified_context ranking) through the EXISTING per-node RQGM machinery —
+    # one final paper-candidate adversarial round + L3 governance, with the
+    # validated attacks flowing to the AdversarialReplayPool. The runtime is
+    # present only under ari_rqgm (build_runtime attaches it to bfts); a
+    # non-RQGM paper run leaves this a dead branch (byte-identical). Fail-open:
+    # any failure logs and never blocks the paper pipeline.
+    _rqgm_paper = getattr(_bfts_paper, "rqgm", None)
+    if _rqgm_paper is not None:
+        try:
+            from ari.pipeline.verified_context import (
+                select_best_node as _select_best_node,
+            )
+            _best_paper_node = _select_best_node(all_nodes)
+            if _best_paper_node is not None:
+                _rqgm_paper.run_paper_candidate_escalation(
+                    _best_paper_node, all_nodes=all_nodes
+                )
+                # RQGM re-ideation (plan 03 §5.2): `paper_candidate` is the
+                # fourth declared trigger event and the plan names paper
+                # pre-flight as its hook. `on_event` had no caller, so the row —
+                # priority (prior_art, mutation, cheap) — never dispatched.
+                _reideate = getattr(_rqgm_paper, "reideate", None)
+                if callable(_reideate):
+                    _reideate("paper_candidate", {
+                        "goal": experiment_data.get("goal", ""),
+                        "checkpoint_dir": str(checkpoint_dir),
+                        "node_id": getattr(_best_paper_node, "id", ""),
+                    })
+        except Exception as _esc_e:
+            log.warning("rqgm paper-candidate escalation failed: %s", _esc_e)
     # Prefer per-checkpoint workflow.yaml (carries launch-time rewrites) over
     # the package source.
     from pathlib import Path as _PL
@@ -162,9 +196,22 @@ def paper(
         _cfg_str = str(config)
     else:
         _cfg_str = str(_pkg_wf) if _pkg_wf.exists() else ""
+    # Paper-archive execution-mode switch (docs/plans/ari_rqgm_paper Task 01).
+    # `_resolve_cfg` applies NO env overrides, so the paper entry owns the
+    # override + dispatch. Guarded so the default `linear` path never imports
+    # any ari.rqgm module on the paper path (identity-default guarantee):
+    # apply_paper_env_overrides is import-free, the resume reconcile is gated
+    # on the state file's existence (absent on every linear checkpoint), and
+    # _effective_paper_mode_str mirrors resolve_paper_mode without importing
+    # ari.rqgm. PaperArchiveRuntime is imported lazily only when both flags
+    # agree (paper.mode: rqgm_archive AND rqgm.paper.enabled: true).
+    from ari.cli.paper_dispatch import run_paper_phase
     from ari.pidfile import pid_context
     with pid_context(checkpoint_dir):
-        generate_paper_section(all_nodes, experiment_data, checkpoint_dir, mcp_paper, _cfg_str)
+        run_paper_phase(
+            cfg, all_nodes, experiment_data, checkpoint_dir, mcp_paper, _cfg_str,
+            linear_paper_fn=generate_paper_section, paper_llm=_runtime[0],
+        )
     console.print("[bold green]Paper pipeline complete.[/bold green]")
 
 

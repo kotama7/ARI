@@ -8,10 +8,11 @@ const originalFetch = globalThis.fetch;
 /**
  * Tier-2 sibling-gated invariants (subtask 073 §7.4). The two developer-mode
  * gates below were `it.todo` until subtask 071 (add_dashboard_developer_mode)
- * landed; they are now real assertions over the shipped gating. The remaining
- * three stay `it.todo` because their siblings (071 dangerous-ops backend audit /
- * 072 error-state kit / 073 ARIA) have NOT landed — enabling them would assert
- * behavior that does not exist yet.
+ * landed; they are now real assertions over the shipped gating. The 072
+ * error-state kit and the dangerous-ops audit (gui_refresh task 09 Wave 5a,
+ * MN-6) have also landed, so only the ARIA-tabs invariant stays `it.todo`
+ * (its sibling 068/069/070 has NOT landed — enabling it would assert
+ * behavior that does not exist yet).
  *
  * jest-dom matchers are intentionally avoided (they are not typed for
  * `tsc --noEmit` in this project — see SettingsContract.test.tsx); we use
@@ -34,7 +35,27 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
   let body: unknown = {};
   if (url.includes('rubric')) body = [];
   else if (url.includes('image')) body = [];
-  else if (url.includes('env-keys')) body = { keys: {} };
+  // RR-P0-2 / ADR-11 / MN-2: legacy env-keys is redacted server-side …
+  else if (url.includes('env-keys')) body = { keys: {}, source: {}, redacted: true };
+  // … and the readiness endpoint reports configured/not-configured only.
+  else if (url.includes('secrets/status'))
+    body = {
+      schema_version: 1,
+      secrets: [
+        {
+          name: 'OPENAI_API_KEY',
+          configured: true,
+          source_class: 'repo_env',
+          last_updated: '2026-07-23T00:00:00Z',
+        },
+        {
+          name: 'ANTHROPIC_API_KEY',
+          configured: false,
+          source_class: null,
+          last_updated: null,
+        },
+      ],
+    };
   else if (url.includes('scheduler') || url.includes('detect'))
     body = { scheduler: 'local', partitions: [] };
   else if (url.includes('container')) body = { runtime: 'none' };
@@ -53,6 +74,12 @@ vi.mock('../components/Wizard/stepResourcesSections', () => ({
 
 import { DetailPanel } from '../components/Tree/DetailPanel';
 import { StepResources, ORS_DEFAULTS } from '../components/Wizard/StepResources';
+import {
+  requestConfirmationChallenge,
+  deleteCheckpoint,
+  stopExperiment,
+  gpuMonitorAction,
+} from '../services/api';
 
 const NODE = { id: 'n1', label: 'draft' } as unknown as TreeNode;
 
@@ -112,26 +139,52 @@ describe('developer-mode gating of raw/debug/secret surfaces (071)', () => {
     expect(screen.queryByRole('button', { name: /Raw/ })).not.toBeNull();
   });
 
-  // Converted from it.todo: 071 gates the /api/env-keys secret readback UI.
-  it('hides the env-key Auto-read secret readback and does not auto-pull secrets on mount when developer mode is OFF', async () => {
+  // Converted from it.todo: 071 gates the env-key Auto-read UI. Since
+  // RR-P0-2 / ADR-11 / MN-2 (Wave 3a) the gated surface is a READINESS
+  // check (/api/v1/secrets/status) — secret values are not readable at all.
+  it('hides the env-key Auto-read readiness check and does not probe secrets on mount when developer mode is OFF', async () => {
     render(<StepResources {...stepResourcesProps()} />);
     // 'API Key' label renders in the non-ollama branch → mount gate.
     await waitFor(() => expect(screen.queryByText('API Key')).not.toBeNull());
     expect(screen.queryByRole('button', { name: /Auto-read/ })).toBeNull();
-    // No secret readback fired on Wizard mount (069 §6 row 6): /api/env-keys
-    // was never fetched.
-    const hitEnvKeys = fetchMock.mock.calls.some((c) =>
-      String(c[0]).includes('env-keys'),
+    // Nothing secret-related fired on Wizard mount (069 §6 row 6): neither
+    // the legacy /api/env-keys nor /api/v1/secrets/status was fetched.
+    const hitSecretSurface = fetchMock.mock.calls.some(
+      (c) =>
+        String(c[0]).includes('env-keys') ||
+        String(c[0]).includes('secrets/status'),
     );
-    expect(hitEnvKeys).toBe(false);
+    expect(hitSecretSurface).toBe(false);
   });
 
-  it('shows the env-key Auto-read button when developer mode is ON', async () => {
+  // RR-P0-2 / ADR-11 / MN-2: dev-mode Auto-read is now readiness-only — it
+  // calls /api/v1/secrets/status, never the legacy value endpoint, and never
+  // prefills the API-key field (values can no longer be read over HTTP).
+  it('shows the env-key Auto-read button when developer mode is ON and displays readiness without prefilling values', async () => {
     localStorage.setItem('ari_dev_mode', '1');
-    render(<StepResources {...stepResourcesProps()} />);
+    const setApiKey = vi.fn();
+    render(<StepResources {...stepResourcesProps()} setApiKey={setApiKey} />);
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: /Auto-read/ })).not.toBeNull(),
     );
+    // Mount auto-check (dev mode) resolves against the readiness endpoint:
+    // llm='openai' → OPENAI_API_KEY, mocked configured via repo_env.
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/OPENAI_API_KEY configured \(repo_env\)/),
+      ).not.toBeNull(),
+    );
+    expect(
+      fetchMock.mock.calls.some((c) =>
+        String(c[0]).includes('secrets/status'),
+      ),
+    ).toBe(true);
+    // The legacy value endpoint is never consulted …
+    expect(
+      fetchMock.mock.calls.some((c) => String(c[0]).includes('env-keys')),
+    ).toBe(false);
+    // … and no value is ever written into the field.
+    expect(setApiKey).not.toHaveBeenCalled();
   });
 });
 
@@ -141,10 +194,78 @@ describe('developer-mode gating of raw/debug/secret surfaces (071)', () => {
  * sibling lands.
  */
 describe('dashboard UX invariants pending sibling refactors (Tier-2)', () => {
-  // Un-skip when the dangerous-ops backend audit fixes the api.ts confirmed:true hardcode.
-  it.todo(
-    'sends confirmed:true only after an explicit user confirmation payload [enable with dangerous-ops audit]',
-  );
+  // Converted from it.todo: the dangerous-ops backend audit landed (gui_refresh
+  // task 09 Wave 5a, MN-6 / RR-P0-6 / RR-P0-9). Destructive calls are two-step:
+  // POST /api/v1/challenges issues a single-use server challenge bound to
+  // action+target (its echo is the UI impact preview), and the destructive
+  // endpoint only fires with that challenge_id. The api.ts confirmed:true
+  // hardcode is gone — 'confirmed' rides only when a caller explicitly
+  // confirmed (GpuMonitor start), and gpu-monitor stop uses a challenge.
+  it('sends destructive calls only via the server-issued challenge two-step (MN-6)', async () => {
+    const calls: Array<{ url: string; body: any }> = [];
+    const fn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      calls.push({ url, body });
+      let resBody: unknown = { ok: true };
+      if (url.includes('/api/v1/challenges')) {
+        resBody = {
+          schema_version: 1,
+          challenge_id: 'chg-abc123def456',
+          action: body.action,
+          target: body.target,
+          expires_at: '2026-01-01T00:00:00Z',
+          ttl_seconds: 60,
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => resBody,
+        text: async () => JSON.stringify(resBody),
+      } as unknown as Response;
+    });
+    globalThis.fetch = fn as unknown as typeof fetch;
+    try {
+      // delete-checkpoint: challenge echoes the exact target (impact preview) …
+      const ch = await requestConfirmationChallenge(
+        'delete-checkpoint',
+        '/ckpts/run1',
+      );
+      expect(ch.challenge_id).toBe('chg-abc123def456');
+      expect(ch.target).toBe('/ckpts/run1');
+      // … and the destructive call carries the challenge back.
+      await deleteCheckpoint('run1', '/ckpts/run1', ch.challenge_id);
+
+      // stop-all: same two-step against target '*'.
+      const st = await requestConfirmationChallenge('stop-all', '*');
+      await stopExperiment(st.challenge_id);
+
+      // gpu-monitor: no hardcoded confirmed:true; stop rides a challenge.
+      await gpuMonitorAction('start');
+      await gpuMonitorAction('start', { confirmed: true });
+      const gm = await requestConfirmationChallenge('gpu-monitor-stop', '*');
+      await gpuMonitorAction('stop', { challengeId: gm.challenge_id });
+
+      expect(calls.map((c) => c.url)).toEqual([
+        '/api/v1/challenges',
+        '/api/delete-checkpoint',
+        '/api/v1/challenges',
+        '/api/stop',
+        '/api/gpu-monitor',
+        '/api/gpu-monitor',
+        '/api/v1/challenges',
+        '/api/gpu-monitor',
+      ]);
+      expect(calls[1].body.challenge_id).toBe('chg-abc123def456');
+      expect(calls[3].body).toEqual({ challenge_id: 'chg-abc123def456' });
+      expect(calls[4].body.confirmed).toBeUndefined();
+      expect(calls[5].body.confirmed).toBe(true);
+      expect(calls[7].body.challenge_id).toBe('chg-abc123def456');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 
   // Un-skip when 068/069/070 add ARIA tab semantics to Settings/DetailPanel tabs.
   it.todo(

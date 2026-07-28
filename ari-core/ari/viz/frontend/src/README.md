@@ -9,8 +9,18 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
 - `main.tsx` — ReactDOM entry point with a top-level error boundary.
 - `vite-env.d.ts` — Vite client type declarations.
 - `__tests__/` — TODO
+  - `appContextScope.test.ts` — structural guard: v2 component dirs stay free of `context/AppContext` imports (legacy remote-data store; pinned exception: IdeasV2Page research-goal card) and `AppContext.tsx` keeps its LEGACY-SCOPED header.
   - `devModeAndDangerousOps.test.tsx` — TODO
+  - `indexHtmlNoExternalScripts.test.ts` — supply-chain guard: the SPA entry document may reference no external script/stylesheet, so every asset comes from the lockfile-pinned Vite bundle and the backend's `script-src 'self'` CSP stays honest.
   - `routeNavParity.test.tsx` — TODO
+  - `routeRenderBaseline.test.tsx` — mounts the FULL registry-driven App at each nav route hash with all network I/O mocked and asserts each page's stable marker renders (no route may silently lose its mount path).
+  - `shellA11yBaseline.test.tsx` — axe + heading baseline for the shell: positive invariants must never regress and the frozen violation ids are a ratchet — a new violation fails, and a fixed one must be removed from the literal.
+  - `v1TypesDrift.test.ts` — regenerates `services/api/v1types.gen.ts` in memory from `ari/viz/v1/openapi.json` and asserts byte equality with the committed file.
+- `app/` — application shell wiring shared by every route (no feature owns it).
+  - `queryClient.ts` — shared react-query client factory + app singleton (staleTime 5s matching the legacy `/state` cadence, retry 1, no refetch-on-window-focus); tests build an isolated client per render.
+  - `routeRegistry.ts` — single source of truth for routes: hash paths, lazy page loaders, nav label/order/icon, legacy aliases and `gui_v2` gating/takeover; `App.tsx` and `Sidebar.tsx` both derive from it, and the `#/<path>` URLs are a frozen deployment contract.
+  - `__tests__/` — app-shell unit tests.
+    - `routeRegistry.test.tsx` — freezes the registry as literals against the deployed contract (id/path set, nav order + i18n keys, `new` → `wizard` alias, query-string stripping, unknown hash → undefined).
 - `components/` — page and UI components, grouped by feature.
   - `README.md` — components index.
   - `common/` — reusable presentational UI primitives shared across pages.
@@ -18,18 +28,46 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `Badge.tsx` — colored variant label span.
     - `Button.tsx` — styled button with variant/size props.
     - `Card.tsx` — bordered content container.
+    - `DegradedState.tsx` — canonical PARTIAL-data affordance (warning tokens, `role="status"`, surrounding content stays visible); deliberately distinct from `ErrorState`, which means total failure.
     - `EmptyState.tsx` — TODO
     - `ErrorState.tsx` — TODO
     - `index.ts` — barrel re-exports.
     - `LoadingState.tsx` — TODO
+    - `NavRail.tsx` — vertical slice navigation: a real list with `aria-current` on the selected item, selected/unselected states from the `.nav-rail` tokens; navigation, so deliberately not `Button`.
+    - `StaleDataBanner.tsx` — freshness notice for live surfaces: keeps the last known snapshot visible and says how fresh it is (`aria-live="polite"`); a dropped stream is never presented as "run stopped".
     - `StatBox.tsx` — single value + label stat tile.
     - `StatusBadge.tsx` — maps run status to a colored `Badge`.
+    - `TabStrip.tsx` — the ONE v2 tablist look (`role=tablist/tab`, `aria-selected`/`aria-controls`); the owning page renders the matching `role="tabpanel"` using the `${idPrefix}-tab-<id>` / `${idPrefix}-panel-<id>` id convention.
     - `__tests__/` — TODO
+      - `asyncStates.test.tsx` — `DegradedState`/`StaleDataBanner` contract: status roles, default translated titles, and the retry/refresh callbacks.
       - `StateComponents.test.tsx` — TODO
+  - `ConfigBrowser/` — read-only effective-config browser (`#/config?run=`).
+    - `README.md` — ConfigBrowser index.
+    - `ConfigBrowserPage.tsx` — schema/effective-config browser (category groups, search, provenance/mutability badges, secret-reference redaction, resolver warnings).
+    - `ConfigReadOnlyTable.tsx` — the ONE read-only config row/table renderer (value formatting, secret redaction, source/mutability badge maps), shared with the Configuration Studio's ADR-09 Execution section so the two config surfaces cannot drift.
+    - `index.ts` — barrel re-export.
+    - `__tests__/` — component tests for this directory.
+      - `ConfigBrowserPage.test.tsx` — tests for `ConfigBrowserPage.tsx` (144-field schema mode + search, run-mode provenance/warnings/secret redaction, error envelope with request_id).
+  - `ConfigStudio/` — schema-driven Configuration Studio (`#/studio`): edits the project/template/draft config documents and launches drafts.
+    - `README.md` — ConfigStudio index.
+    - `ConfigStudioPage.tsx` — schema-driven form over project/template/draft scopes (`If-Match` PATCH, 409 → reload banner, per-path 400 → `ValidationSummary`); no field list is hardcoded.
+    - `ExecutionSection.tsx` — ADR-09 execution/paper mode selection: two controls, each writing BOTH leaves of its interlock pair, new-run only; the remaining `rqgm.*` tuning tree stays read-only via the shared ConfigBrowser table.
+    - `index.ts` — barrel re-exports.
+    - `LaunchPanel.tsx` — draft launch flow: resolve/validate → immutable review → ONE idempotency key per approval → `POST /api/v1/runs` → redirect to the SERVER-issued `#/overview?run=<run_id>`.
+    - `modeIntents.ts` — the two ADR-09 mode intent pairs (frontend mirror of `field_registry.MODE_INTERLOCK_PAIRS`) plus the flat/nested config-leaf reader.
+    - `SecretField.tsx` — write-only secret control: readiness only (`GET /api/v1/secrets/status`) plus `PUT /api/v1/secrets/{secret_id}`; the response DTO has no value field, so echoing a secret is structurally impossible.
+    - `StudioPickers.tsx` — template select/create + draft create (template link + optional goal) controls; navigation is delegated to the page.
+    - `ValidationSummary.tsx` — renders a 400 `invalid_request` envelope's `details.errors` verbatim (path, closed-vocabulary reason tag, message).
+    - `__tests__/` — component tests for this directory.
+      - `README.md` — __tests__ index.
+      - `ConfigStudioExecutionMode.test.tsx` — tests for `ExecutionSection.tsx` + the ADR-09 launch-review wiring (one control → both pair keys in a single PATCH, orthogonal 2×2 combinations, default path writes nothing, read-only `rqgm.*` group with no editable control, RESOLVED mode + resolver-fallback display, `mode_interlock_mismatch` blocking the launch).
+      - `ConfigStudioLaunch.test.tsx` — tests for the `LaunchPanel.tsx` launch flow (resolve→validate→review→launch, `mode_locked` blocking the POST, double-click single-POST + same-key retry, typed error envelope).
+      - `ConfigStudioPage.test.tsx` — tests for `ConfigStudioPage.tsx` (control generation from metadata, If-Match PATCH + 409 banner + per-path 400 summary, write-only secret flow, the ADR-09 Execution section refused in PROJECT scope).
   - `Experiments/` — experiments page (lists experiment/checkpoint runs).
     - `README.md` — Experiments index.
     - `ExperimentsPage.tsx` — experiments list view.
     - `index.ts` — barrel re-export.
+  - `Governance/` — read-only RQGM governance workspace (`#/governance?run=`) over the plan-08 `/api/v1/runs/{run_id}/rqgm/*` read models; documented in its own README.
   - `Home/` — home/overview landing page.
     - `README.md` — Home index.
     - `HomePage.tsx` — home/overview view.
@@ -38,6 +76,12 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `README.md` — Idea index.
     - `IdeaPage.tsx` — idea view.
     - `index.ts` — barrel re-export.
+  - `IdeasV2/` — v2 Ideas workspace (`#/ideas2?run=`): run-explicit, read-only idea/hypothesis view that takes over the Idea nav slot while `gui_v2` is on.
+    - `README.md` — IdeasV2 index.
+    - `IdeasV2Page.tsx` — the page component plus its exported pure helpers (`toIdeaEntries`, `bestHypothesisNode`); absence (`present=false`) and corruption (`degraded_reasons`) are never conflated.
+    - `index.ts` — barrel re-export.
+    - `__tests__/` — component tests for this directory.
+      - `IdeasV2Page.test.tsx` — page contract tests (happy/absent/degraded/error/no-run states, TreeV2 deep links, sidebar nav takeover).
   - `Layout/` — app shell (page frame + nav sidebar).
     - `README.md` — Layout index.
     - `index.ts` — barrel re-export.
@@ -50,6 +94,16 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `MonitorPage.tsx` — monitor page container.
     - `monitorSections.tsx` — metric helper + Experiment-Configuration card (extracted from MonitorPage in req 15).
     - `PhaseStepper.tsx` — workflow phase progress bar (idea→bfts→paper→review).
+    - `__tests__/` — component tests for this directory.
+      - `MonitorPage.test.tsx` — RR-D-1 regression: partial `/api/resource-metrics` payload renders placeholders, never a TypeError crash.
+  - `Overview/` — v2 run Overview workspace (`#/overview?run=`): read-only lifecycle/phase/blocker summary plus the embedded log explorer.
+    - `README.md` — Overview index.
+    - `index.ts` — barrel re-export.
+    - `LogsPanel.tsx` — collapsible cursor log explorer (P4) over `{ckpt}/ari.log`: byte-offset [Load more] append with no gap or duplicate, grep filter, event-driven tail-follow; collapsed means zero fetches and nothing ever reads the whole file.
+    - `OverviewPage.tsx` — the P1/P2 disclosure layers (lifecycle badge, research phase, freshness, blockers; StatBoxes + workspace deep links); research phase and governance stage are always separate rows, never merged.
+    - `__tests__/` — component tests for this directory.
+      - `LogsPanel.test.tsx` — tests for `LogsPanel.tsx` (lazy collapsed no-fetch, cursor append with no duplicate, follow-on-event fetch, grep restart from cursor 0, absence note, follow-only stale banner).
+      - `OverviewPage.test.tsx` — tests for `OverviewPage.tsx` (P1/P2 render, RQGM vs simple_bfts variants, stale banner, phase/governance row separation, blocker surface).
   - `PaperBench/` — register external papers, import them, launch/inspect PaperBench runs.
     - `README.md` — PaperBench index.
     - `index.ts` — barrel re-exports.
@@ -63,6 +117,12 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `results/` — rubric-scored results view.
       - `README.md` — results index.
       - `ResultsView.tsx` — leaf grades + rubric tree + negative-control display.
+  - `Projects/` — v2 run portfolio (`#/projects`), the first v2 vertical slice; read-only and built only on the typed `/api/v1` hooks.
+    - `README.md` — Projects index.
+    - `index.ts` — barrel re-export.
+    - `ProjectsPage.tsx` — run-portfolio table (projects → runs of the virtual `default` project) whose first per-row action is the run-explicit `#/overview?run=<run_id>` link.
+    - `__tests__/` — component tests for this directory.
+      - `ProjectsPage.test.tsx` — tests for `ProjectsPage.tsx` (rows, empty state, error envelope, two-run isolation, results handoff).
   - `Results/` — final run results and rubric scoring.
     - `README.md` — Results index.
     - `EarSection.tsx` — Experiment Artifact Repository section (curate/publish/publish.yaml editor); extracted from ResultsPage renderEAR in req 15.
@@ -81,6 +141,10 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
       - `OrsChainSection.tsx` — TODO
       - `ReproSection.tsx` — TODO
       - `ReviewScoresSection.tsx` — TODO
+  - `ResultsV2/` — v2 Results/EAR workspace (`#/results2?run=`): read-only run-explicit result summary; every EAR mutation stays on the legacy Results page.
+    - `ResultsV2Page.tsx` — review/ORS summary plus the curate→preview→publish→promote EAR lineage as a read-only badge chain, with the exported `deriveEarLineage`/`shortDigest` helpers.
+    - `__tests__/` — component tests for this directory.
+      - `ResultsV2Page.test.tsx` — tests for `ResultsV2Page.tsx` (summary + lineage rendering, honest absence, error envelope, nav takeover of the Results slot).
   - `Settings/` — dashboard/run configuration page.
     - `README.md` — Settings index.
     - `index.ts` — barrel re-export.
@@ -120,6 +184,7 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
       - `MemoryTab.tsx` — memory tab (own/inherited/global entry cards); extracted from DetailPanel in req 15.
       - `ReportTab.tsx` — node-report tab (node_report.json structured view); extracted from DetailPanel in req 15.
       - `TraceTab.tsx` — MCP-trace tab (tool pills + colored trace log); extracted from DetailPanel in req 15.
+  - `TreeV2/` — v2 tree workspace (`#/tree2?run=&node=`) reusing the legacy D3 canvas: `?node=` in the URL is the single source of truth for selection, plus level-of-detail collapsing and a virtualized ARIA tree table; documented in its own README.
   - `Wizard/` — multi-step run-launch wizard.
     - `README.md` — Wizard index.
     - `index.ts` — barrel re-export.
@@ -136,6 +201,8 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `workflowNodes.tsx` — React Flow custom nodes + edit/skill/condition modals (extracted from WorkflowPage in req 15).
     - `workflowNodeTypes.tsx` — TODO
     - `WorkflowPage.tsx` — workflow view.
+    - `__tests__/` — component tests for this directory.
+      - `WorkflowPage.revision.test.tsx` — revision-aware saving: every save sends the loaded `base_revision` and adopts the returned `revision`, the 2s debounce is unchanged, and a 409 pauses saving behind an explicit Reload instead of blindly overwriting.
 - `context/` — global React context (shared app state).
   - `README.md` — context index.
   - `AppContext.tsx` — `AppProvider`/`useAppContext`: shared app state, websocket tree nodes, current page, checkpoints.
@@ -143,11 +210,15 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
   - `README.md` — hooks index.
   - `useApi.ts` — generic async data-fetch hook with loading/error/refetch.
   - `useDevMode.ts` — persisted developer-mode flag (localStorage `ari_dev_mode`, default OFF) with same-tab + cross-tab sync; gates raw/debug/dangerous UI surfaces.
+  - `useRunEvents.ts` — subscribes the shared SSE client for the caller's lifetime and maps each event to a react-query invalidation keyed by the EVENT's `run_id` (events are invalidations, never data — an event for run B can never touch run A's cache); exposes `connectionState`/`lastEventAt` for the `StaleDataBanner` and a bounded poll fallback once the stream is offline.
+  - `useV1.ts` — react-query hooks over the typed `/api/v1` client; query keys are `['v1', projectId?, runId?, resource]`, so run-scoped entries stay isolated per run and one run's server state can be dropped in a single `invalidateQueries`.
   - `useWebSocket.ts` — streams real-time tree updates with auto-reconnect.
   - `__tests__/` — hook unit tests.
     - `useDevMode.test.tsx` — default-OFF, persistence, and cross-instance sync for `useDevMode`.
+    - `useRunEvents.test.tsx` — event → invalidation glue against a fake `EventSource`: per-topic keys, two-run isolation, connection state and the offline poll tick.
 - `i18n/` — localization (en/ja/zh) helpers.
   - `en.ts` — English dictionary.
+  - `I18nProvider.tsx` — startup ready-gate for the lazily loaded locale dicts: holds the first render until the active locale (`ari_lang`, default `ja`) and the `en` fallback are in memory, so `t()` stays synchronous everywhere below and no raw key ever flashes.
   - `index.ts` — i18n entry / language selection.
   - `ja.ts` — Japanese dictionary.
   - `zh.ts` — Chinese dictionary.
@@ -161,7 +232,9 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `api.test.tsx` — TODO
     - `schema.test.tsx` — TODO
   - `api/` — TODO
+    - `capabilities.ts` — `GET /api/capabilities` server feature flags (the `ARI_GUI_V2` shell kill-switch); callers must default `gui_v2` to ON when the fetch fails, so an API hiccup never bricks the dashboard into the fallback shell.
     - `catalog.ts` — TODO
+    - `challenges.ts` — requests the server-issued confirmation challenge every dangerous operation (delete-checkpoint / stop-all / gpu-monitor stop) must carry: single-use, server-TTL-bounded, and bound to one action+target.
     - `checkpoints.ts` — TODO
     - `client.ts` — TODO
     - `ear.ts` — TODO
@@ -176,13 +249,22 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `ssh.ts` — TODO
     - `state.ts` — TODO
     - `subExperiments.ts` — TODO
+    - `v1.ts` — typed read-only client for the versioned `/api/v1` API; every failure (typed `ErrorEnvelopeV1`, network error, malformed body) is normalized into a thrown `ApiErrorV1` `{code, message, details, request_id, retryable}`.
+    - `v1types.gen.ts` — DTO/path types generated from `ari/viz/v1/openapi.json` by `npm run gen:v1types`; committed to the tree and byte-compared by `__tests__/v1TypesDrift.test.ts` — never hand-edited.
     - `wizard.ts` — TODO
     - `workflow.ts` — TODO
+- `shared/` — cross-feature platform code owned by no single page.
+  - `realtime/` — shared realtime (SSE) client; feature code never touches `EventSource` directly.
+    - `README.md` — realtime index.
+    - `eventStream.ts` — `subscribe(runId, topics, callbacks)` over `GET /api/v1/events/stream`: server-side run/topic filtering, `last_event_id` cursor carried as a query param on manual reconnect, jitterless 1s→30s backoff, `live`/`reconnecting`/`offline` state and a bounded poll tick only once offline.
+    - `__tests__/` — realtime client unit tests.
+      - `eventStream.test.ts` — FakeEventSource under fake timers pins the subscription URL, event delivery + cursor tracking, the exact backoff sequence and the offline polling fallback.
 - `styles/` — global CSS.
   - `README.md` — styles index.
   - `components.css` — component styles.
   - `dashboard.css` — top-level dashboard styles.
   - `layout.css` — page/layout structure.
+  - `motion.css` — `prefers-reduced-motion: reduce` overrides: collapses the `--t-*` motion tokens to zero and disables animations/transitions globally (imported after `tokens.css` so the `:root` override wins).
   - `responsive.css` — responsive/media-query overrides.
   - `tokens.css` — design tokens (colors, spacing).
   - `widgets.css` — widget-specific styles.

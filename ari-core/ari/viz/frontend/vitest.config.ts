@@ -17,7 +17,9 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
-    include: ['src/**/__tests__/**/*.test.tsx', 'src/**/*.test.tsx'],
+    // .test.ts (in addition to .test.tsx) covers non-JSX node-environment
+    // tests such as src/__tests__/v1TypesDrift.test.ts (gui_refresh Wave 2b).
+    include: ['src/**/__tests__/**/*.test.{ts,tsx}', 'src/**/*.test.{ts,tsx}'],
     css: false,
   },
 });

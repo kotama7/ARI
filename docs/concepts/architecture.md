@@ -12,9 +12,13 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
+  - path: ari-core/ari/core.py
+    role: implementation
+  - path: ari-core/ari/rqgm
+    role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-07-10
 ---
 
 # ARI Architecture
@@ -35,6 +39,17 @@ ARI is an end-to-end autonomous research system. Given a plain-text research goa
 10. **Verifies** reproducibility: re-runs the experiment from the paper text alone
 
 No domain knowledge is hardcoded. The same pipeline works for HPC benchmarking, ML hyperparameter tuning, chemistry optimization, or any measurable phenomenon.
+
+### Companion concept pages
+
+This page covers the research system itself — the pipeline that turns a goal
+into a paper. Two sibling pages cover the layers that *observe* and *describe*
+that system, and are worth reading alongside it:
+
+| Page | Answers |
+|---|---|
+| [Dashboard Architecture](gui_architecture.md) | How the web dashboard is structured: one shell hosting legacy screens and v2 workspaces, the route registry, run-scoped server-state caching, realtime as invalidation, and the seam from HTTP down to checkpoint artifacts. |
+| [Research and Governance State](research_and_governance_state.md) | The state vocabularies a run carries at once — run lifecycle, research phase, governance stage, node score state — why they are separate, and why stale / invalidated / removed / physically deleted are four different things. |
 
 ---
 
@@ -80,7 +95,8 @@ flowchart TB
 
     subgraph ors["ORS reproducibility — PaperBench-compatible, 2 phases"]
         direction LR
-        rubric["ors_generate_rubric"] --> p1["Phase 1 run_reproduce<br/>slurm / docker / apptainer / local"]
+        rubric["ors_generate_rubric"] --> audit["ors_audit_rubric<br/>flags unsound leaves"]
+        audit --> p1["Phase 1 run_reproduce<br/>slurm / docker / apptainer / local"]
         p1 --> p2["Phase 2 grade_with_simplejudge<br/>+ negative control"]
     end
 
@@ -96,6 +112,23 @@ flowchart TB
 | Memory | Ancestor-scoped knowledge passed between nodes | [Memory architecture](memory.md) |
 | Post-BFTS pipeline | Data → figures → paper → review → EAR | [Publication lifecycle](publication-lifecycle.md) |
 | ORS reproducibility | Re-runs the paper from scratch and grades it | [PaperBench quickstart](../guides/paperbench/paperbench_quickstart.md) |
+
+### Execution modes: `simple_bfts` (default) and `ari_rqgm` (opt-in)
+
+Everything on this page describes `simple_bfts`, the default execution
+mode. The opt-in `ari_rqgm` mode (Constitutional ARI-RQGM) wraps the same
+BFTS loop in epoch-based governance and co-evolution: the search strategy is
+wrapped by a pure-delegation `GovernedSearchStrategy`
+(`ari/rqgm/runtime.py`), completed nodes get an adversarial
+attack/defend/judge round, and at each epoch boundary a deterministic
+constitutional kernel validates every governance state change (component
+adoption/retirement, prompt evolution, frontier repair). It is enabled only
+when `ari.mode: ari_rqgm` and `rqgm.enabled: true` agree; with the default
+config no `ari.rqgm` module is imported and checkpoints are byte-identical
+to pre-RQGM ARI. See [Constitutional ARI-RQGM
+Architecture](rqgm_architecture.md) for the layers, epoch algorithm, and
+invariants, and [Execution Modes](../guides/execution_modes.md) for
+activation and the mode-switch policy.
 
 ---
 
@@ -401,20 +434,30 @@ nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
     frozen with a sha256 over the canonical JSON + paper digest.
     Output: ors_rubric.json + ors_rubric.meta.json
 
-  Stage 12: ear_publish  (ari-skill-transform)  [v0.7.0, enabled by default]
+  Stage 12: ors_audit_rubric  (ari-skill-replicate: audit_rubric)  [after stage 11]
+    Audits the rubric everything downstream is graded against. Flags each
+    leaf vague_qualifier / no_paper_evidence / duplicate (deterministic)
+    and unverifiable (one LLM call per leaf), rewrites ors_rubric.json in
+    place with the flags + audit metadata, and reports regen_recommended
+    when >20% of leaves are flagged. A signal, not a gate: grading runs
+    either way. ARI_MODEL_RUBRIC_AUDIT points it at a model other than
+    the rubric's author.
+    Output: ors_rubric.audit.json (+ flags written into ors_rubric.json)
+
+  Stage 13: ear_publish  (ari-skill-transform)  [v0.7.0, enabled by default]
     Packages ear_published/ into a tarball + publish_record.json.
     Default backend is local-tarball (zero deps); ari-registry / zenodo
     / gh available for external publishing.
     Output: bundle.tar.gz + publish_record.json
 
-  Stage 13: ors_seed_sandbox  (ari-skill-paper-re: fetch_code_bundle)  [v0.7.0]
+  Stage 14: ors_seed_sandbox  (ari-skill-paper-re: fetch_code_bundle)  [v0.7.0]
     Deterministic seed from the curated EAR bundle into repro_sandbox/.
     Auto-loads ref + sha256 from publish_record.json (no LLM). When EAR
     is OFF, publish_record.json is absent and this stage no-ops, leaving
     the LLM fallback (next stage) to populate the sandbox.
     Output: ors_seed.json
 
-  Stage 14: ors_build_reproduce  (ari-skill-paper-re: build_reproduce_sh)  [v0.7.0]
+  Stage 15: ors_build_reproduce  (ari-skill-paper-re: build_reproduce_sh)  [v0.7.0]
     LLM-driven replicator: reads the paper + the rubric's expected_artifacts
     and writes a self-contained reproduce.sh + source files into the
     sandbox. Skips when reproduce.sh is already present (composes after
@@ -422,7 +465,7 @@ nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
     Routed through LiteLLM; provider-neutral.
     Output: ors_replicator.json + repro_sandbox/{reproduce.sh, source...}
 
-  Stage 15: ors_run_reproduce  (ari-skill-paper-re: run_reproduce)  [after stage 14, v0.7.0]
+  Stage 16: ors_run_reproduce  (ari-skill-paper-re: run_reproduce)  [after stage 15, v0.7.0]
     Phase 1. Executes reproduce.sh in a sandbox:
       slurm (when sbatch + ARI_SLURM_PARTITION are present — same partition
       BFTS used) → docker (when daemon usable & not on HPC) → apptainer →
@@ -434,7 +477,7 @@ nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
                               artifacts, missing, sandbox_kind,
                               [partition, cpus, walltime] }
 
-  Stage 16: ors_grade  (ari-skill-paper-re: grade_with_simplejudge)  [after stage 15, v0.7.0]
+  Stage 17: ors_grade  (ari-skill-paper-re: grade_with_simplejudge)  [after stage 16, v0.7.0]
     Phase 2. Runs PaperBench SimpleJudge over the rubric leaves
     against (repo_dir + reproduce.log + paper). The main per-leaf
     grading completer routes through LiteLLM (any provider works);
@@ -568,6 +611,7 @@ environment variables injected at launch.
 | `ari/orchestrator/node_report/` | Per-node self-report builder + legacy reconstruction (split into a package in v0.7.1) |
 | `ari/orchestrator/lineage_decision.py` | Lineage-decision LLM hook (BFTS rewind / branch / continue) |
 | `ari/orchestrator/root_idea_selector.py` | VirSci pool → `ideas[0]` re-selector |
+| `ari/rqgm/` | Constitutional ARI-RQGM runtime (opt-in `ari_rqgm` mode): `RQGMRuntime` facade, constitutional kernel, governance orchestrator, registry transition engine, frontier repair, proposal/adversarial/prompt-evolution layers. Never imported under `simple_bfts` — see [Constitutional ARI-RQGM Architecture](rqgm_architecture.md) |
 | `ari/agent/loop.py` | ReAct agent loop — LLM + tool calls per node; auto-polls SLURM jobs; injects ancestor memory |
 | `ari/agent/message_utils.py` / `tool_manager.py` / `guidance.py` | Helpers extracted from `agent/loop.py` (Phase 3D, v0.7.1) |
 | `ari/agent/workflow.py` | WorkflowHints — auto-extracted from experiment text (tool sequence, metric keyword, partition) |
@@ -733,7 +777,7 @@ block.
 
 **v0.7.0**: the `reproducibility_check` stage no longer uses
 `react_driver`. The PaperBench-format flow
-(`ors_generate_rubric` → `ors_run_reproduce` → `ors_grade`) replaces it
+(`ors_generate_rubric` → `ors_audit_rubric` → `ors_run_reproduce` → `ors_grade`) replaces it
 with a deterministic Phase 1 sandbox runner + Phase 2 SimpleJudge
 grader (`ari-skill-paper-re`). `react_driver` remains in the codebase
 for any future stage that opts in via `react:` block, but it is not

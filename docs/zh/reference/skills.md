@@ -12,7 +12,9 @@ sources:
     role: implementation
   - path: ari-skill-paper-re/mcp.json
     role: config
-last_verified: 2026-06-10
+  - path: ari-skill-idea/src/server.py
+    role: implementation
+last_verified: 2026-07-10
 ---
 
 # MCP 技能参考
@@ -104,7 +106,7 @@ result = survey("OpenMP compiler optimization HPC benchmarks")
 
 #### `generate_ideas(topic, papers, experiment_context="", n_ideas=3, n_agents=4, max_discussion_rounds=2, max_recursion_depth=0)`
 
-使用 VirSci 多智能体 LLM 讨论生成研究假设。多个 AI 角色（研究者、批评者、专家、综合者）就研究问题进行辩论。仅在 BFTS 启动前调用**一次**（仅限 pre-BFTS）。
+使用 VirSci 多智能体 LLM 讨论生成研究假设。多个 AI 角色（研究者、批评者、专家、综合者）就研究问题进行辩论。在默认的 `simple_bfts` 模式下，仅在 BFTS 启动前调用**一次**（仅限 pre-BFTS）。在可选启用的 `ari_rqgm` 模式下且 `proposal_router.generators.virsci.enabled: true` 时，core 侧的 `VirSciAdapter` 会额外通过 ProposalRouter 的事件触发、预算封顶的调度调用 `survey` + `generate_ideas` —— 见 [VirSci 集成](../guides/virsci_integration.md)。
 
 模型：`ARI_LLM_MODEL` 环境变量 > `LLM_MODEL` 环境变量 > `ollama_chat/qwen3:32b`。
 
@@ -258,6 +260,19 @@ Few-shot 示例，经 Self-reflection 循环自我批评修订后输出符合评
 解析顺序：显式 `rubric_id` 参数 → `ARI_RUBRIC` 环境变量 → `neurips` →
 内置 `legacy` 回退（v0.5 schema，当 `rubric_id` 与 YAML 都解析不到时使用）。
 
+#### 对称的作者 / 审稿人 venue 条件化（未发布）
+
+`prompt_overrides` 携带两个平行字段：
+
+- `system_hint` —— 由 `review_engine` 注入同行评审提示词（既有行为）。
+- `author_hint` —— 由 `generate_section` 作为专门的 `══ VENUE-SPECIFIC
+  AUTHOR GUIDANCE ══` 块注入论文起草提示词。告诉起草者审稿人会关注
+  什么，从而在写作阶段就让这些信号易于呈现。
+
+`author_hint` 为空时保留旧的弱追加行为（仅 `Target venue: X. Page
+limit: N pages.`）。SC 与 NeurIPS 附带经校准的 `author_hint` 块；其余
+venue 为空，可在不改代码的情况下逐步补齐。
+
 Nature Ablation 默认值：
 
 - `num_reflections: 5` — +2% 平衡精度
@@ -333,6 +348,7 @@ v0.7.0 将 v0.6.0 的 LLM 驱动判定路径替换为以 PaperBench 为评分内
 
 ```
 ors_generate_rubric  (replicate-skill)    → ors_rubric.json + ors_rubric.meta.json
+ors_audit_rubric     (replicate-skill)    → ors_rubric.audit.json (flags leaves in ors_rubric.json in place)
 ear_publish          (transform-skill)    → bundle.tar.gz + publish_record.json (默认 local-tarball)
 ors_seed_sandbox     (paper-re-skill)     → repro_sandbox/{reproduce.sh, code/...}
                                               (确定性；fetch_code_bundle ← publish_record.json)
@@ -341,6 +357,12 @@ ors_build_reproduce  (paper-re-skill)     → repro_sandbox/{reproduce.sh, sourc
 ors_run_reproduce    (paper-re-skill)     → ors_phase1.json   (Phase 1：在沙箱中执行 reproduce.sh)
 ors_grade            (paper-re-skill)     → ors_grade.json    (Phase 2：用 SimpleJudge 对 rubric 叶节点评分)
 ```
+
+`ors_audit_rubric` 检查下游一切评分所依据的 rubric 本身：为每个叶节点标记
+`vague_qualifier` / `no_paper_evidence` / `duplicate`（确定性）与
+`unverifiable`（每叶一次 LLM 调用），就地重写 `ors_rubric.json`，并在超过
+20% 叶节点被标记时返回 `regen_recommended`。它是信号而非闸门——评分照常进行，
+但标记会随 rubric 一起传递。可用 `ARI_MODEL_RUBRIC_AUDIT` 指向与生成方不同的模型。
 
 EAR 开启的运行通过 `ors_seed_sandbox`（确定性）获取 reproduce.sh；LLM `ors_build_reproduce` 在 reproduce.sh 已存在时跳过，所以仅在 EAR 关闭（论文唯一复现）时触发。
 
@@ -380,11 +402,23 @@ v0.7.0 引入的 PaperBench 形式 **自动 rubric 生成与审计**。读取论
 
 ### 工具
 
-#### `generate_rubric(paper_path, paper_text, output_path, target_leaf_count=0, model="", temperature=0.0, seed=0, two_stage=True)`
+#### `generate_rubric(paper_path, paper_text, output_path, target_leaf_count=0, model="", temperature=0.0, seed=0, two_stage=True, paperbench_rubric_id="")`
 
 生成 PaperBench 兼容的 rubric。当 `target_leaf_count=0` 时按论文长度自动估算叶节点数（约 1 叶 / 75 词，限制在 [50, 400]）。
 
 `two_stage=True`（默认）使用 **两阶段生成**: ①骨架阶段定义根 + 直接子节点（每项贡献/实验一个）并分配各子树叶数预算 → ②子树阶段对每个直接子节点并行运行，递归展开 4–6 层。合并后，违反 schema `minLength=10` 的叶（`quote` / `requirements` 过短）会被自动剪除。在 PaperBench 参考论文上的实测：相比单次调用 **叶数约 4 倍、深度增加 1–2 层**，API token 消耗约 5 倍。`two_stage=False` 可回退到单次调用（`prompts/adversarial_reviewer.md`）。
+
+`paperbench_rubric_id`（未发布）从
+`ari-core/config/paperbench_rubrics/<id>.yaml` 中选择一个 venue 条件化
+模板。空字符串 = 原样使用捆绑提示词（向后兼容）。非空值会加载该
+YAML，并通过 `{VENUE_HINT}` 占位符把 `prompt_overrides.system_hint` /
+`prompt_overrides.leaf_style` 注入骨架 + 子树提示词。这与
+`ari-skill-paper` 在同行评审中已使用的 `reviewer_rubrics/` venue 模式
+一致，因此同样的 `venue → YAML → prompt` 流程现在也适用于 rubric
+生成器。附带模板：`generic`（向后兼容）、`sc`（HPC 论文审计，6 轴）、
+`neurips`（ML 可复现性，6 轴）、`nature`（湿实验，5 轴）。`paper_audit`
+模式要求 `two_stage=True`。YAML schema 见
+[`docs/reference/rubric_schema.md`](rubric_schema.md#venue-conditioned-templates)。
 
 #### `audit_rubric(rubric_path, paper_path, paper_text, auditor_model="")`
 
@@ -393,6 +427,14 @@ v0.7.0 引入的 PaperBench 形式 **自动 rubric 生成与审计**。读取论
 #### `suggest_target_leaf_count(paper_path, paper_text)`
 
 返回根据论文长度自动估算的目标叶数与词数。供 GUI Wizard "Target leaves" 字段预填使用。
+
+### v0.7.2 — `reproduce_contract.execution_profile`
+
+当论文指明并行执行属性（MPI rank 数、GPU 型号、独占性、内存、NUMA
+绑定）时，骨架 + 子树提示词现在会指示生成器填充
+`reproduce_contract.execution_profile`。Schema：
+[`docs/reference/execution_profile.md`](execution_profile.md)。
+该字段可选且向后兼容 —— 单 CPU 论文不写该字段。
 
 ### 环境变量
 

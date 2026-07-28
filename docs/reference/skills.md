@@ -12,7 +12,9 @@ sources:
     role: implementation
   - path: ari-skill-paper-re/mcp.json
     role: config
-last_verified: 2026-06-10
+  - path: ari-skill-idea/src/server.py
+    role: implementation
+last_verified: 2026-07-10
 ---
 
 # MCP Skills Reference
@@ -104,7 +106,7 @@ Requires `S2_API_KEY` environment variable for higher Semantic Scholar rate limi
 
 #### `generate_ideas(topic, papers, experiment_context="", n_ideas=3, n_agents=4, max_discussion_rounds=2, max_recursion_depth=0)`
 
-Generate research hypotheses using VirSci multi-agent LLM deliberation. Multiple AI personas (researcher, critic, expert, synthesizer) debate the research question. Called **once** before BFTS starts (pre-BFTS only).
+Generate research hypotheses using VirSci multi-agent LLM deliberation. Multiple AI personas (researcher, critic, expert, synthesizer) debate the research question. In the default `simple_bfts` mode it is called **once** before BFTS starts (pre-BFTS only). In the opt-in `ari_rqgm` mode with `proposal_router.generators.virsci.enabled: true`, the core-side `VirSciAdapter` additionally calls `survey` + `generate_ideas` through the ProposalRouter's event-triggered, budget-capped dispatch — see [VirSci Integration](../guides/virsci_integration.md).
 
 Model: `ARI_LLM_MODEL` env > `LLM_MODEL` env > `ollama_chat/qwen3:32b`.
 
@@ -393,6 +395,7 @@ deterministic chain whose grading core is taken from PaperBench:
 
 ```
 ors_generate_rubric  (replicate-skill)    → ors_rubric.json + ors_rubric.meta.json
+ors_audit_rubric     (replicate-skill)    → ors_rubric.audit.json (flags leaves in ors_rubric.json in place)
 ear_publish          (transform-skill)    → bundle.tar.gz + publish_record.json (local-tarball default)
 ors_seed_sandbox     (paper-re-skill)     → repro_sandbox/{reproduce.sh, code/...}
                                               (deterministic; fetch_code_bundle ← publish_record.json)
@@ -401,6 +404,14 @@ ors_build_reproduce  (paper-re-skill)     → repro_sandbox/{reproduce.sh, sourc
 ors_run_reproduce    (paper-re-skill)     → ors_phase1.json   (Phase 1: sandbox-execute reproduce.sh)
 ors_grade            (paper-re-skill)     → ors_grade.json    (Phase 2: SimpleJudge over the rubric leaves)
 ```
+
+`ors_audit_rubric` checks the rubric everything downstream is graded
+against: it flags each leaf `vague_qualifier` / `no_paper_evidence` /
+`duplicate` (deterministic) and `unverifiable` (one LLM call per leaf),
+rewrites `ors_rubric.json` in place with those flags, and reports
+`regen_recommended` when >20% of leaves are flagged. It is a signal, not a
+gate — grading proceeds either way, but the flags travel with the rubric.
+Point it at a different model than the generator with `ARI_MODEL_RUBRIC_AUDIT`.
 
 EAR-on runs flow through `ors_seed_sandbox` (deterministic seed); the
 LLM `ors_build_reproduce` skips when reproduce.sh is already present,

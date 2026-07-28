@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/pipeline/claim_gate
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-07-10
 ---
 
 # File Formats Reference
@@ -322,6 +322,395 @@ line:
 
 Decisions: `continue` / `switch_to_idea` / `fanout` / `terminate`.
 Source: `ari-core/ari/orchestrator/lineage_decision.py`.
+
+## RQGM epoch-governance files (opt-in `ari_rqgm` mode)
+
+Written only when `ari.mode: ari_rqgm` **and** `rqgm.enabled: true` agree
+(docs/plans/ari_rqgm Task 02). Absent on every default `simple_bfts`
+checkpoint; every reader treats absence as "RQGM never ran". Source:
+`ari-core/ari/rqgm/store.py`; JSON Schemas:
+`ari-core/ari/schemas/{epoch_state,rqgm_registry,rqgm_transition_event,rqgm_defs}.schema.json`.
+
+### `rqgm_transitions.jsonl`
+
+**Source of truth** for epoch/registry governance state. Append-only,
+hash-chained JSONL; one self-contained event per line:
+
+```json
+{"schema_version": 1, "event_id": "evt_000042", "event_type": "prompt_status_change",
+ "payload": {"prompt_id": "reviewer_prompt_v4", "from_status": "shadow",
+             "to_status": "probationary_active", "transition_id": "transition_003_to_004"},
+ "event_hash": "112233445566", "prev_event_hash": "77aa88bb99cc",
+ "ts": 1751700000.0, "ts_iso": "2026-07-05T12:00:00Z"}
+```
+
+`event_hash = sha256(canonical_json(payload))[:12]` (the same `hash12`
+scheme as prompt provenance — no second scheme); `prev_event_hash` chains
+to the previous line (`""` for the first). Timestamps are metadata outside
+the hashed payload. Event types (closed v1 set):
+`epoch_transaction_prepare`, `component_registered`, `prompt_registered`,
+`component_status_change`, `prompt_status_change`, `epoch_close`,
+`epoch_open`, `epoch_transaction_commit`, `emergency_quarantine` (the sole
+mid-epoch mutation). Registry status changes are accepted **only** through
+the epoch-boundary prepare/commit transaction; on load, events after a
+prepare without a matching commit are ignored (crash recovery).
+
+Status-change payloads are supplied by the RegistryTransitionEngine
+(RQGM Task 09, `ari-core/ari/rqgm/transition_engine.py` — the sole registry
+status writer): each carries `transition_id`, a fixed T1-T21 `rule_id`
+(`ari/rqgm/transition_rules.py`; the topology is frozen code, only
+`rqgm.transition.*` numeric thresholds are configurable), `from_status` /
+`to_status`, `evidence_refs`, `produced_by: registry_transition_engine`
+(kernel CK-REG-004), and the `inputs_sha256` content hash of the frozen
+boundary inputs (GovernanceReport + candidate evaluations + registry
+hashes), so every committed change replays deterministically.
+
+### `rqgm_audit.jsonl`
+
+The RQGM **ImmutableAuditLog**: same append-only hash-chained line
+envelope with an independent per-file chain. The governance record
+payloads written into it are owned by the GovernanceOrchestrator (RQGM
+Task 05); chain integrity verification is the ConstitutionalKernel's
+(Task 04). Kernel verdicts are appended as `kernel_report` entries:
+`{"context": ..., "constitution_hash": ..., "blocking": ...,
+"violations": [{"code": "CK-…", "check": ..., "severity": ...,
+"subject_ref": ..., "rule_id": ..., "detail": ...}]}` — every verdict is
+replayable.
+
+At each epoch boundary the GovernanceOrchestrator's `audit_epoch` appends
+its records here (all carrying the common `rqgm_record_base` envelope):
+`evidence_bundle` (EvidenceClerk-only author), `impeachment_motion`
+(Auditor-only author; same-role accusations are refused constructively and
+rejected by the kernel), `governance_defense`, `impeachment_outcome`, and
+the final `governance_report` (schema:
+`ari-core/ari/schemas/governance_report.schema.json`;
+`recommendations[].action` is the closed set `promote_candidate | promote |
+demote | warn | quarantine | retire | no_action` consumed by Task 09). The
+latest report for an epoch is the LAST `governance_report` line with that
+`epoch_id` (a re-run after a crashed audit appends fresh record ids; prior
+partial records remain as history). No governance snapshot file exists;
+the JSONL is the truth.
+
+The RegistryTransitionEngine (RQGM Task 09) additionally audits every
+boundary resolution here as an `epoch_transition` record (schema:
+`ari-core/ari/schemas/epoch_transition.schema.json`; `status` one of
+`pending | committed | aborted | rejected | failed` — an aborted/kernel-
+blocked transition is logged but applies **no** registry change), plus a
+`retirement_event` record on each committed retirement (T17, and the
+role-scoped T20 `utility_policy` supersession) and a
+`clean_room_generation_request` on each committed T17 retirement
+(consumed by Tasks 08/10).
+
+The FrontierRepairEngine (RQGM Task 10,
+`ari-core/ari/rqgm/frontier_repair.py`) appends three further line types
+on every committed transition with retirements:
+
+- `selective_erasure` — one `SelectiveErasureEvent` (schema:
+  `ari-core/ari/schemas/selective_erasure_event.schema.json`):
+  kernel-authored (`prompt_hash` null, `component_id`
+  `frontier_repair_engine`), listing the retired hashes/components, the
+  direct + transitive stale record ids, and the
+  invalidated/recompute/abandoned node ids. Erasure is **logical-only**
+  (invariant 13): the listed records are flagged in
+  `rqgm_erasure_state.json`, never rewritten or deleted.
+- `frontier_rebuild` — one `FrontierRebuildEvent` (schema:
+  `ari-core/ari/schemas/frontier_rebuild_event.schema.json`):
+  `frontier_before/after`, removed/reinstated node ids (Rule-A
+  reinstatement of a parent whose winning child was erased), recomputed
+  node ids, and `kernel_validation`. `status` for both events is
+  `applied | conservative | halted_expansion` (the §5.6 fail-closed
+  degradation ladder).
+- `utility_record` — one **recomputed** UtilityRecord per
+  reviewer/adversary/defender/judge erasure that left surviving scored
+  evidence (schema: `ari-core/ari/schemas/rqgm_utility_record.schema.json`
+  plus `supersedes: <stale record_id>` and `recomputed_in_epoch`):
+  recomputed from surviving inputs under the ORIGINAL epoch's frozen
+  weights, never re-scaled — the superseded record stays on disk, stale.
+
+### `constitution.yaml`
+
+Human-readable statement of the constitutional layer, copied ONCE from the
+bundled `ari-core/config/constitution.yaml` at `ari run` start (never
+clobbered, `ari_rqgm` only; absent on `simple_bfts` checkpoints). The
+authoritative rules are frozen code (`ari/rqgm/kernel_rules.py` +
+`ari/rqgm/transition_rules.py`), pinned by `constitution_hash` —
+`sha256(canonical_json(<all rule tables>))[:12]` — which is also recorded
+additively as an optional `constitution_hash` key in `meta.json`.
+
+### `epoch_state.json`
+
+Derived rewrite-whole snapshot of the currently open (or last closed)
+epoch: frozen active component set, active prompt hashes, utility policy,
+`registry_version`, and the deterministic `epoch_fingerprint`
+(`created_at` is metadata, excluded from the fingerprint). Disposable —
+validated against event-log replay on load and rebuilt on mismatch.
+
+### `rqgm_registry.json`
+
+Derived rewrite-whole snapshot of ComponentRegistry + PromptRegistry in
+one file (`registry_version`, `as_of_event_hash`, `components[]`,
+`prompts[]`). Prompt entries reference their text by source
+(`committed_template` loader key; `checkpoint_file`, the write-once evolved
+body under `rqgm_prompts/`; or `policy`, a Task-14 governed utility-policy body
+referenced by `path`) and carry both `prompt_hash` (`sha256[:12]`) and the full
+`prompt_sha256`. Status lifecycle (shared by prompts and components):
+`candidate → validated → shadow → probationary_active → active`,
+`active → warning | probation | quarantine`,
+`quarantine → retired → banned` — mutation only via transition events.
+
+### `proposals/` (RQGM Task 03)
+
+Checkpoint-scoped proposal store — "store everything; hand BFTS only the
+summary". Created only by the `ari_rqgm` ProposalRouter or the explicitly
+opt-in `proposal_router.record_only` dual-write; a default `simple_bfts`
+run creates **no** `proposals/` directory. Source:
+`ari-core/ari/rqgm/proposals/store.py`; JSON Schemas:
+`ari-core/ari/schemas/{proposal_record,proposal_summary_view}.schema.json`.
+
+```
+proposals/
+  proposal_records.jsonl       # append-only truth (one ProposalRecord per line)
+  proposal_index.json          # derived rollup: record_id → status/generator/epoch
+  archive/<record_id>/…        # raw outputs, transcripts refs, generator configs
+```
+
+Each `proposal_records.jsonl` line carries the mandatory RQGM record
+fields (`record_id` `prop_%06d`, `epoch_id` — `null` in record-only mode,
+`component_id`, `role: "generator"`, `prompt_hash` — the standard
+`sha256[:12]`, `null` for legacy imports, `created_at`, `source_refs`,
+`status: candidate|selected|expanded|superseded`) plus `generator`
+(`cheap|mutation|attack_driven|prior_art|virsci|legacy_idea_json`), the
+inline bounded `summary` (ProposalSummaryView; the ONLY shape BFTS sees),
+`archive_refs` (checkpoint-relative references, never copies), and the
+logical-only `stale` / `valid_for_frontier` flags (read-time semantics
+owned by RQGM Task 10; never rewritten in stored JSONL). Records are
+deduplicated by a content key (generator + source_refs + summary), so
+retried MCP calls never duplicate lines. In `ari_rqgm`, `idea.json` is
+the store's maintained compatibility projection of these records
+(pinned ideas stay in front; `_pinned` / `_inherited_from` /
+`_root_choice` markers preserved verbatim;
+`ideas[i]._proposal_record_id` links back to the record).
+
+### `rqgm_adversarial_cases.jsonl` (RQGM Task 06)
+
+Append-only truth of the adversarial evolution loop (one JSON per line,
+lock-guarded, never raises — the `lineage_decisions.jsonl` posture).
+Created only when the `ari_rqgm` adversarial round runs; absent on every
+`simple_bfts` checkpoint. Source: `ari-core/ari/rqgm/adversarial/pool.py`;
+JSON Schemas: `ari-core/ari/schemas/{rqgm_attack_records,
+rqgm_utility_record,rqgm_replay_pool}.schema.json`. Line types, in the
+per-node §5.3 order raw → defense → judgment → validated → utility:
+
+- `rqgm_adversarial_round` — per-node idempotency marker (`node_id`,
+  `epoch_id`): the round runs at most once per node, resume-safe.
+- `raw_attack` — one adversary attack (`atk_%06d`, role `adversary`).
+  Targets a **closed artifact set** (`proposal | experiment_plan |
+  node_report | metric_result | paper_claim | novelty_claim |
+  citation_claim | reproducibility_claim`) — never a component — and
+  must cite ≥ 1 `attack_evidence_refs`. Audit material ONLY: raw attacks
+  never touch any score (invariant 8).
+- `defender_response` — `rebut | concede | propose_fix` per attack
+  (`def_%06d`, role `defender`).
+- `judgment_record` — the ArtifactJudge verdict
+  `valid | partially_valid | invalid` with judge-assigned severity
+  (`jdg_%06d`, role `judge`); always written, even for `invalid`.
+- `validated_attack` — exists ONLY for `valid | partially_valid`
+  verdicts (`vat_%06d`; adjudication required, invariant 9).
+- `utility_record` — the §5.4 penalty channel audit record (`utl_%06d`,
+  role `utility_policy`): `base_score` / `penalty` / `final_score`, the
+  epoch-frozen policy weights embedded by value, and
+  `input_refs.validated_attack_ids` (non-empty whenever `penalty > 0`).
+- `adversarial_replay_case` — one AdversarialReplayCase admitted at an
+  epoch boundary (`adv_case_%05d`): `replay_view` (full materials;
+  denied to role `clean_room_generator`) + `abstract_view`
+  (contamination-safe FailureSummary — no raw attack/defense text).
+
+Penalized nodes additionally carry the additive `Node.metrics` keys
+`_pre_penalty_score` and `_validated_attack_penalty`;
+`_scientific_score` is rewritten (sterile-gate precedent), never shadowed.
+
+### `rqgm/adversarial_replay_pool.json` (RQGM Task 06)
+
+Derived byte-fixed snapshot of the AdversarialReplayPool
+(`schema_version`, `case_seq`, `cases[]`), rewritten at epoch boundaries
+by the GovernanceOrchestrator's step 7; `rqgm_adversarial_cases.jsonl`
+stays the source of truth and fills any crash tail on load. Eviction is
+logical-only (`status: "evicted"`; nothing removed from the JSONL).
+
+### `prompt_evolution.jsonl` (RQGM Task 07)
+
+Append-only truth of prompt evolution (fail-open writer modeled on
+`prompt_trace.jsonl`). Created only when the `ari_rqgm` prompt-evolution
+pipeline runs; absent on every `simple_bfts` checkpoint. Source:
+`ari-core/ari/rqgm/prompt_evolution.py`; JSON Schema:
+`ari-core/ari/schemas/rqgm_prompt_evolution.schema.json`. Line types:
+
+- `prompt_candidate` — one PromptMutator/clean-room output (`pcand_%05d`)
+  carrying the full embedded PromptSpec
+  (`ari-core/ari/schemas/rqgm_prompt_spec.schema.json`); always born
+  `status: "candidate"` — no instant activation.
+- `prompt_candidate_validation` — one lifecycle-stage execution
+  (`pval_%05d`; stages `static_validation → constitutional_validation →
+  schema_dry_run → replay_evaluation → anchor_evaluation → shadow`,
+  monotonic — the record chain makes stage skipping detectable).
+- `comparison_observation` — one shadow side-by-side sample
+  (`cobs_%05d`): input/output **hashes** and divergence summary only —
+  shadow output text never reaches this file, node metrics, or the
+  frontier (observation-only).
+
+Adoption into `probationary_active`/`active` happens ONLY through the
+RegistryTransitionEngine's epoch-boundary transaction in
+`rqgm_transitions.jsonl` (Task 09), never through this file.
+
+### `prompt_specs.json` (RQGM Task 07)
+
+Derived rollup of the prompt-evolution registry view
+(`schema_version`, `specs{candidate_id → prompt_spec, stages_passed,
+rejected}`), rewritten best-effort at epoch boundaries and run end
+(`prompt_versions.json` pattern); `prompt_evolution.jsonl` stays the
+source of truth.
+
+### `rqgm_prompts/` (RQGM Task 07)
+
+Checkpoint-scoped evolved template bodies, one write-once
+`<prompt_id>.md` per evolved prompt (differing rewrites are refused —
+active prompt text is never mutated in place; a change mints a new
+`prompt_id`). Bytes are pinned by `prompt_hash = sha256(text)[:12]` — the
+exact `FilesystemPromptLoader.load_versioned` scheme. Gate 10 carve-out:
+the report appendix covers exactly the committed
+`ari-core/ari/prompts/**` templates; runtime-evolved prompts are covered
+by this directory plus the `prompt_trace.jsonl` provenance fields
+(`prompt_version`, `prompt_registry_version`) instead. Absence of
+`rqgm_prompts/` == fully-committed prompt trajectory (the
+`bfts_web_provenance.json` P5 pattern applied to prompts).
+
+### `rqgm_cleanroom.jsonl` (RQGM Task 08)
+
+Append-only truth of clean-room regeneration (fail-open writer modeled
+on `prompt_evolution.jsonl`). Created only when a retirement produces
+`EpochTransition.clean_room_requests`; absent on every `simple_bfts`
+checkpoint. Source: `ari-core/ari/rqgm/clean_room.py`; JSON Schemas:
+`ari-core/ari/schemas/clean_room_request.schema.json` (requests) and
+`ari-core/ari/schemas/clean_room_bundle.schema.json` (the closed input
+bundle). Event kinds (`event` field):
+
+- `request_created` — one full `CleanRoomGenerationRequest` (the five
+  forbidden input flags are const-false; requests replay from this file
+  on resume — pending ones retry at the next epoch boundary under the
+  `rqgm.prompt_evolution.max_clean_room_generations_per_epoch` budget).
+- `bundle_assembled` — `bundle_id` + `bundle_hash` (hash12 over the
+  canonical bundle payload; the bundle is the ENTIRE generator context
+  besides the committed `rqgm/clean_room_generator.md` meta-prompt).
+- `generation_attempted` — one-shot completion marker with
+  `rendered_prompt_hash` (audit: exactly meta-prompt + canonical bundle
+  JSON reached the LLM).
+- `clean_room_violation` / `candidate_rejected_contaminated` — kernel
+  CK-CLN-001/CK-CLN-002 screen findings; contaminated candidates never
+  enter the Task 07 lifecycle (blocking at admission, fail-open for the
+  run).
+- `candidate_registered` — handoff into `prompt_evolution.jsonl` at
+  `status: "candidate"` (never instantly active).
+- `request_status` — request status transitions
+  (`pending|generating|generated|rejected_contaminated|failed|superseded`).
+- `fallback_to_baseline` — the no-vacancy rule: a role with no active
+  prompt and no admissible candidate reverts to its committed baseline
+  template.
+
+### `rqgm_erasure_state.json` (RQGM Task 10)
+
+Derived rewrite-whole snapshot of selective-erasure staleness, rebuildable
+by folding every `selective_erasure` / `frontier_rebuild` event in
+`rqgm_audit.jsonl` (the `prompt_trace` → `prompt_versions` "JSONL is
+truth, snapshot is derived" precedent). Created only when a repair runs;
+absent on every `simple_bfts` checkpoint and on runs without retirements.
+Source: `ari-core/ari/rqgm/erasure_state.py` (write funneled through
+`ari.checkpoint.save_erasure_state_json`; `indent=2, ensure_ascii=False`);
+JSON Schema: `ari-core/ari/schemas/erasure_state.schema.json`. Registered
+in `PathManager.META_FILES` and the node_report `files_changed` blocklist.
+
+```json
+{
+  "schema_version": 1,
+  "retired_prompt_hashes": {"a1b2c3d4e5f6": {"retirement_event_id": "retire_00042",
+                                              "retired_in_epoch": "epoch_004"}},
+  "stale_record_ids": {"review_00311": "erase_00007"},
+  "invalid_frontier_node_ids": {"node_031": "erase_00007"},
+  "last_erasure_event_id": "erase_00007",
+  "last_rebuild_event_id": "rebuild_00007"
+}
+```
+
+Staleness is **read-time**: a record is stale iff its `record_id` is in
+`stale_record_ids` — stored JSONL lines are never rewritten (invariant
+13), and absence of this file means "nothing stale, all valid" (pre-Task-10
+checkpoints stay valid). Erased/invalidated nodes additionally carry the
+additive `Node.metrics` sentinels `_stale`, `_valid_for_frontier`,
+`_stale_reason` (`generator_retired | utility_invalidated |
+trace_depth_exceeded` — diagnostic only), and `_erasure_event_id`,
+persisted through `tree.json`; they keep an erased node excluded even
+after a mode switch back to `simple_bfts` (contamination does not become
+clean by switching modes).
+
+### `rqgm_governance_cache.jsonl` (RQGM Task 12)
+
+The governance result cache: append-only JSONL, one record per cached
+governance evaluation. Source: `ari-core/ari/rqgm/governance_cache.py`;
+JSON Schema: `ari-core/ari/schemas/rqgm_governance_cache.schema.json`.
+Registered in `PathManager.META_FILES` / `_TRACE_FILES` and the
+node_report `files_changed` blocklist. Absence == empty cache, never an
+error; absent on every `simple_bfts` checkpoint.
+
+```json
+{"schema_version": 1, "cache_key": "a3f19c02b7d4e881", "role": "judge",
+ "epoch_id": "epoch_004", "prompt_hash": "9f2c01ab34de",
+ "artifact_hash": "sha256:…", "input_context_hash": "sha256:…",
+ "output_schema_hash": "sha256:…", "result_ref": "judgment_00042",
+ "score": 0.8, "created_at": "2026-07-05T00:00:00Z"}
+```
+
+`cache_key = sha256(artifact_hash ␟ prompt_hash ␟ role ␟ epoch_id ␟
+input_context_hash ␟ output_schema_hash)[:16]` (`␟` = `\x1f`); the two
+content hashes are full sha256 over canonical JSON. `created_at` is
+provenance only — never part of the key (P2). Replay lookups
+(`rqgm.replay.use_cached_results`) compute the key with the case's
+**origin** epoch id and the candidate's own `prompt_hash` — the one
+sanctioned cross-epoch hit; the epoch-boundary candidate evaluation
+consults this cache first and writes pool-derived per-case `score`
+values back (`ari-core/ari/rqgm/governance/_adjudication.py`). Entries are never invalidated in place: a
+retired prompt's entries simply stop being addressable because its
+`prompt_hash` never recurs in a lookup (invariant 13). Budget consumption
+and governance-level assignments are NOT stored here — they ride
+`rqgm_audit.jsonl` as `budget_consumed` / `budget_degraded` /
+`governance_level` lines (source: `ari-core/ari/rqgm/budget.py`), which
+is also how per-epoch budget counters survive `ari resume`.
+
+### `rqgm_eval_metrics.json` / `rqgm_injection_provenance.json` (RQGM Task 13)
+
+Evaluation-harness artifacts, written ONLY on runs the
+`scripts/rqgm_eval/run_ablation.py` harness launches itself (absent on
+every normal checkpoint in both modes). Source:
+`ari-core/ari/rqgm/evaluation/{metrics,injection}.py`. Both registered in
+`PathManager.META_FILES` and the node_report `files_changed` blocklist.
+
+- `rqgm_eval_metrics.json` — the thirteen post-hoc metrics from
+  `compute_metric_report` (pure function over persisted artifacts; no
+  LLM, no wall clock in derived values — metric 13 is metadata only,
+  never hashed). Envelope: `schema_version`, `computed_by_version`,
+  `condition_id`, `run_id`, `seed`, `config_digest` (sha256-12 of
+  `workflow.yaml`), `injection_ids`, and `metrics{key → {value,
+  numerator, denominator, evidence_refs, applicable[, detail]}}` in the
+  fixed plan-§5.4 key order. Missing data sources yield
+  `applicable: false`, never an error.
+- `rqgm_injection_provenance.json` — the durable synthetic-trajectory
+  marker (the `bfts_web_provenance.json` precedent): `schema_version`,
+  `injection_ids` (held-out `eval_*` namespace, disjoint from `adv_*` /
+  `anchor_*` cases), `specs_digest` (hash12 over the id-sorted canonical
+  spec list), `harness_version`. Any checkpoint carrying this file is an
+  injected evaluation run and must never be mistaken for a real one.
+
+Campaign-level outputs (`ablation_report.{json,md}`, expanded condition
+configs) live outside the checkpoint under `workspace/rqgm_eval/<eval_id>/`
+— see `docs/guides/rqgm_evaluation.md`.
 
 ## `settings.json`
 

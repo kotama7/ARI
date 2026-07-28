@@ -12,7 +12,9 @@ sources:
     role: config
   - path: ari-skill-paper-re/src/server.py
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-skill-idea/src/server.py
+    role: implementation
+last_verified: 2026-07-10
 ---
 
 # MCP ツールリファレンス
@@ -79,8 +81,17 @@ ARI には 14 の MCP サーバが付属しています（`ari-skill-*` パッ�
 
 | ツール | 用途 | LLM |
 |---|---|:---:|
-| `survey` | arXiv + Semantic Scholar 検索；純粋な HTTP | ✗ |
+| `survey` | 先行研究調査: 凍結された `virsci_snapshot` コーパスが存在すればそれを再利用し、なければライブの Semantic Scholar；純粋な HTTP | ✗ |
 | `generate_ideas` | LLM が調査 + コンテキストからランク付きアイデア候補を生成 | ✓ |
+
+この 2 つがこのスキルの唯一の登録ツールです
+（`ari-skill-idea/tests/test_server.py` が `mcp.list_tools()` 経由で
+ピン留め）。両者は RQGM の `VirSciAdapter` の背後にある MCP 面でも
+あります: オプトインの `ari_rqgm` モードで
+`proposal_router.generators.virsci.enabled: true` のとき、コア側の
+ProposalRouter はアイデア生成イベントを、エポックごとの呼び出し予算の下で
+`survey` + `generate_ideas` へルーティングします —
+[VirSci 統合](../guides/virsci_integration.md)を参照。
 
 `generate_ideas` は単一の安定した出力契約の背後に 2 つのエンジンを持ちます。
 デフォルトは軽量な再実装ディスカッションループです。オプトインの実 VirSci

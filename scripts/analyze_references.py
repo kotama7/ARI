@@ -69,7 +69,12 @@ BUILTIN_CONFIG = {
         "ari-skill-paper-re/src/prompts",
         "ari-skill-replicate/src/prompts",
     ],
-    "frontend_api_client": "ari-core/ari/viz/frontend/src/services/api.ts",
+    # api.ts is a re-export barrel since the 063 split; the endpoint URL
+    # literals live in the domain modules under services/api/.
+    "frontend_api_client": [
+        "ari-core/ari/viz/frontend/src/services/api.ts",
+        "ari-core/ari/viz/frontend/src/services/api/*.ts",
+    ],
     "viz_route_dir": "ari-core/ari/viz",
     "data_selectors": [
         {
@@ -723,28 +728,51 @@ def _extract_tools(tree: ast.AST) -> list[tuple[str, int]]:
 
 
 def overlay_cross_language(graph: Graph, base: Path, cfg: dict) -> None:
-    """(§7.4-5) ``services/api.ts`` fetch/WS paths -> viz route registrations."""
-    api_rel = cfg.get("frontend_api_client")
+    """(§7.4-5) frontend API-client fetch/WS paths -> viz route registrations.
+
+    ``frontend_api_client`` accepts a repo-relative file, a glob, or a list
+    of either. The 063 split turned ``services/api.ts`` into a re-export
+    barrel over ``services/api/*.ts`` — the endpoint URL literals live in
+    the domain modules, so each matched file becomes its own ``ts.module``
+    node with its own ``cross_lang.http`` edges.
+    """
+    api_cfg = cfg.get("frontend_api_client")
     viz_dir_rel = cfg.get("viz_route_dir")
-    if not api_rel or not viz_dir_rel:
+    if not api_cfg or not viz_dir_rel:
         return
-    api_path = base / api_rel
     viz_dir = base / viz_dir_rel
-    if not api_path.exists() or not viz_dir.exists():
+    if not viz_dir.exists():
         return
-    ts_node = f"ts.module:{api_rel}"
-    graph.add_node(ts_node, "ts.module", api_rel, line_count(api_path))
-    ts_paths = _extract_ts_paths(api_path.read_text(encoding="utf-8", errors="replace"))
+    entries = [api_cfg] if isinstance(api_cfg, str) else list(api_cfg)
+    api_paths: set[Path] = set()
+    for entry in entries:
+        if any(ch in str(entry) for ch in "*?["):
+            api_paths.update(p for p in base.glob(str(entry)) if p.is_file())
+        else:
+            path = base / str(entry)
+            if path.is_file():
+                api_paths.add(path)
+    if not api_paths:
+        return
     route_paths = _extract_route_paths(viz_dir, base, cfg)
-    for tp in sorted(ts_paths):
-        for rp in route_paths:
-            if _paths_match(tp, rp):
-                rnode = f"route:{rp}"
-                graph.add_node(rnode, "route", viz_dir_rel, 0)
-                graph.add_edge(
-                    ts_node, rnode, "cross_lang.http",
-                    f"{api_rel} '{tp}' ~ {viz_dir_rel} '{rp}'",
-                )
+    for api_path in sorted(api_paths):
+        api_rel = posix_rel(api_path, base)
+        if is_ignored(api_rel, cfg["ignore_globs"]):
+            continue
+        ts_node = f"ts.module:{api_rel}"
+        graph.add_node(ts_node, "ts.module", api_rel, line_count(api_path))
+        ts_paths = _extract_ts_paths(
+            api_path.read_text(encoding="utf-8", errors="replace")
+        )
+        for tp in sorted(ts_paths):
+            for rp in route_paths:
+                if _paths_match(tp, rp):
+                    rnode = f"route:{rp}"
+                    graph.add_node(rnode, "route", viz_dir_rel, 0)
+                    graph.add_edge(
+                        ts_node, rnode, "cross_lang.http",
+                        f"{api_rel} '{tp}' ~ {viz_dir_rel} '{rp}'",
+                    )
 
 
 def _extract_ts_paths(text: str) -> set[str]:

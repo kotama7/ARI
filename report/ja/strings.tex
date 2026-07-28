@@ -319,3 +319,61 @@
 \figlabeldef{F21.head.gate}{主張--証拠ゲート}
 \figlabeldef{F21.verdict}{12/12 grounded\\0 errors}
 \figlabeldef{F21.finalize}{最終化}
+
+% F22 — governed-run lifecycle (boot / governed search / epoch boundary)
+\figlabeldef{F22.head.boot}{起動}
+\figlabeldef{F22.mode}{実行モードの解決\\(設定+環境の二鍵)}
+\figlabeldef{F22.founding}{創設登録:プロンプト 25\\コンポーネント 12}
+\figlabeldef{F22.freeze0}{エポック 000 開始\\アクティブ集合を凍結}
+\figlabeldef{F22.head.search}{ガバナンス下の探索}
+\figlabeldef{F22.proposal}{提案ラウンド\\(要約を BFTS へ)}
+\figlabeldef{F22.execute}{ノードの実行\\(拒否されない)}
+\figlabeldef{F22.level}{ガバナンスレベル\\+ 警告チェック}
+\figlabeldef{F22.adversarial}{敵対ラウンド\\(ノード成果物へ)}
+\figlabeldef{F22.loop}{ノードごと}
+\figlabeldef{F22.note.trigger}{エポックトリガ:\\$N$ ノード}
+\figlabeldef{F22.head.boundary}{エポック境界}
+\figlabeldef{F22.audit}{ガバナンス監査\\(助言的レポート)}
+\figlabeldef{F22.transition}{遷移エンジン\\+ カーネル T1--T19}
+\figlabeldef{F22.repair}{フロンティア修復\\+ クリーンルーム}
+\figlabeldef{F22.freeze1}{次エポック開始\\新集合を凍結}
+\figlabeldef{F22.note.next}{ランは継続}
+
+% F23 — epoch-boundary governance pipeline (audit / transition)
+\figlabeldef{F23.head.audit}{エポック監査}
+\figlabeldef{F23.observe}{エポックの\\観測を収集}
+\figlabeldef{F23.reliability}{信頼性評価}
+\figlabeldef{F23.evidence}{証拠の組み立て\\(証拠係のみ)}
+\figlabeldef{F23.prosecute}{訴追\\(動議 + 保証金)}
+\figlabeldef{F23.defense}{弁護の生成}
+\figlabeldef{F23.adjudicate}{裁定パネル}
+\figlabeldef{F23.replaypool}{リプレイプール\\の更新}
+\figlabeldef{F23.selfaudit}{ガバナンス\\自己監査}
+\figlabeldef{F23.note.advisory}{助言的:レジストリ書き込みなし}
+\figlabeldef{F23.head.transition}{境界遷移}
+\figlabeldef{F23.report}{ガバナンスレポート\\(ハッシュ連鎖ログ)}
+\figlabeldef{F23.resolve}{遷移エンジンが\\制裁を解決}
+\figlabeldef{F23.kernel}{カーネルが検証\\(T1--T19 エッジ)}
+\figlabeldef{F23.blocked}{不正エッジをブロック\\(fail-closed)}
+\figlabeldef{F23.txn}{トランザクション: prepare,\\close, open, commit}
+\figlabeldef{F23.repair}{フロンティア修復}
+\figlabeldef{F23.note.retire}{退役時のみ}
+
+% F24 — governed prompt lifecycle (statuses + sanction edges)
+\figlabeldef{F24.cleanroom}{メタ層が発出\\変異器・\\クリーンルーム}
+\figlabeldef{F24.candidate}{候補}
+\figlabeldef{F24.validated}{検証済み}
+\figlabeldef{F24.shadow}{シャドー}
+\figlabeldef{F24.probact}{試用アクティブ}
+\figlabeldef{F24.active}{アクティブ}
+\figlabeldef{F24.warning}{警告}
+\figlabeldef{F24.probation}{保護観察}
+\figlabeldef{F24.quarantine}{隔離}
+\figlabeldef{F24.retired}{退役\\(テキスト封印)}
+\figlabeldef{F24.banned}{追放\\(吸収状態)}
+\figlabeldef{F24.note.emit}{候補のみ}
+\figlabeldef{F24.note.adopt}{境界での採用}
+\figlabeldef{F24.note.rehab}{更生}
+\figlabeldef{F24.note.emergency}{エポック途中\\の緊急遷移}
+\figlabeldef{F24.note.exon}{無実認定}
+\figlabeldef{F24.note.reenter}{退役は候補として再参入}

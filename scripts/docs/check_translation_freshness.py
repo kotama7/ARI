@@ -42,13 +42,22 @@ DOCS = REPO_ROOT / "docs"
 LANGS = ("ja", "zh")
 
 # Docs that legitimately carry no front-matter / last_verified (kept in sync
-# with check_doc_sources.py's exemptions).
+# with check_doc_sources.py's exemptions).  "plans" exempts docs/plans/**:
+# temporary English-only working documents with no ja/zh mirrors (the
+# _archive / refactoring precedent).
 EXEMPT_FILES = {"docs/README.md"}
-EXEMPT_DIR_SEGMENTS = ("_archive",)
+EXEMPT_DIR_SEGMENTS = ("_archive", "plans")
 
 
 def is_exempt(rel: str) -> bool:
     if rel in EXEMPT_FILES:
+        return True
+    # Per-directory README.md files are English-only repo-navigation indexes
+    # managed by scripts/readme_sync.py, which deliberately never creates
+    # counterparts under docs/ja/ or docs/zh/ (SKIP_RELPATHS).  The section
+    # page that IS translated is index.md, which stays fully tracked here —
+    # so READMEs are exempt from translation-freshness tracking.
+    if rel.endswith("/README.md"):
         return True
     return any(seg in rel.split("/") for seg in EXEMPT_DIR_SEGMENTS)
 

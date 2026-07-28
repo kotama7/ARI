@@ -5,6 +5,38 @@
 body{background:var(--bg);color:var(--text);font-family:var(--font);display:flex;height:100vh;overflow:hidden}
 #root{display:flex;width:100%;height:100%}
 
+/* Base anchor defaults. Without this every raw <a> (Overview workspace
+ * links, TreeV2/ResultsV2 deep links, Projects quick actions) fell back
+ * to the UA `-webkit-link` blue, which is near-invisible on --bg.
+ * Underline is retained: colour alone must not carry the affordance.
+ * Components that render an anchor as a button/tab opt out via their
+ * own class (`.btn`, `.tab-strip-tab`, `.nav-item`, …). */
+a{color:var(--link);text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--link) 45%,transparent);text-underline-offset:2px;transition:color var(--t-fast),text-decoration-color var(--t-fast)}
+a:visited{color:var(--link-visited)}
+a:hover{color:var(--link-hover);text-decoration-color:currentColor}
+a:focus-visible{outline:2px solid var(--border-focus);outline-offset:2px;border-radius:var(--radius-sm)}
+a.btn,a.nav-item,a.tab-strip-tab{text-decoration:none}
+
+/* Base button default — the neutral secondary look, matching `.btn.btn-outline`.
+ * This is an ELEMENT selector (specificity 0,0,1) on purpose: every existing
+ * class rule (`.btn-*`, `.tab-strip-tab`, `.settings-group-header`, …) and every
+ * inline `style` prop still wins, so this only reaches the buttons nothing else
+ * styles — which the UA was drawing as white boxes on the dark canvas (the
+ * PaperBench registry toolbar being the visible case in the docs screenshots).
+ *
+ * NOTE: deliberately no `font-weight` here. `.tab-strip-tab` and
+ * `.nav-rail-item` declare font-family/-size but NOT weight, so a base weight
+ * leaks into them and erases the `aria-current`/`aria-selected` weight cue. */
+button{font-family:inherit;font-size:var(--fs-base);color:var(--text);background:transparent;border:1px solid var(--border-default);border-radius:var(--radius-md);padding:6px 12px;cursor:pointer;transition:background var(--t-fast),border-color var(--t-fast),color var(--t-fast)}
+button:hover:not(:disabled){background:rgba(255,255,255,.06)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible{outline:2px solid var(--border-focus);outline-offset:2px}
+
+/* Native file inputs: the UA "Choose File" chunk is a separate white button
+ * that no `input` rule can reach. Give it the same neutral treatment. */
+::file-selector-button{font:inherit;font-size:var(--fs-sm);font-weight:600;color:var(--text);background:transparent;border:1px solid var(--border-default);border-radius:var(--radius-sm);padding:4px 10px;margin-right:10px;cursor:pointer}
+::file-selector-button:hover{background:rgba(255,255,255,.06)}
+
 /* Sidebar */
 #sidebar{width:220px;min-width:220px;background:var(--sidebar);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:16px 0}
 .sidebar-logo{padding:12px 20px 20px;font-size:1.2rem;font-weight:800;letter-spacing:-0.5px;color:var(--blue-light)}

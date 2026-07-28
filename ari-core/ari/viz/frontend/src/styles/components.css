@@ -80,3 +80,66 @@ pre.code{background:var(--bg);border:1px solid var(--border);border-radius:6px;p
 .error-state{display:flex;align-items:center;gap:8px;padding:12px 14px;border-radius:8px;color:var(--red);background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);font-size:.85rem}
 .error-state-inline{display:inline-flex;padding:4px 0;background:transparent;border:none;border-radius:0}
 .error-state .error-state-msg{flex:1;min-width:0;word-break:break-word}
+
+/* Degraded state (shared DegradedState component, gui_refresh 02).
+ * PARTIAL data — warning semantics, deliberately distinct from .error-state. */
+.degraded-state{display:flex;align-items:flex-start;gap:8px;padding:12px 14px;border-radius:var(--radius-md);color:var(--status-warning);background:var(--status-warning-bg);border:1px solid var(--status-warning-border);font-size:.85rem}
+.degraded-state .degraded-state-body{flex:1;min-width:0}
+.degraded-state .degraded-state-title{font-weight:600}
+.degraded-state .degraded-state-detail{margin-top:2px;color:var(--text);opacity:.85;word-break:break-word}
+
+/* Stale data banner (shared StaleDataBanner component, gui_refresh 02).
+ * Last known snapshot + freshness — info semantics, not a warning/error. */
+.stale-banner{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:var(--radius-md);color:var(--status-info);background:var(--status-info-bg);border:1px solid var(--status-info-border);font-size:.8rem}
+.stale-banner .stale-banner-msg{flex:1;min-width:0;word-break:break-word}
+.stale-banner .stale-banner-time{font-family:var(--font-mono)}
+
+/* Governance workspace (gui_refresh task 08 Wave 4a — read-only RQGM).
+ * Two SEPARATE state-machine badge families (plan 08 §Governance state
+ * model): registry lifecycle (.reg-badge--*, --reg-* tokens) vs node score
+ * state (.nodestate-badge--*, --state-* tokens). Classes are disjoint on
+ * purpose so one vocabulary can never borrow the other's color. */
+.reg-badge,.nodestate-badge{display:inline-block;padding:2px 8px;border-radius:var(--radius-pill);font-size:.7rem;font-family:var(--font-mono);border:1px solid;background:color-mix(in srgb,currentColor 12%,transparent)}
+.reg-badge--candidate{color:var(--reg-candidate)}
+.reg-badge--validated{color:var(--reg-validated)}
+.reg-badge--shadow{color:var(--reg-shadow)}
+.reg-badge--probationary_active{color:var(--reg-probationary-active)}
+.reg-badge--active{color:var(--reg-active)}
+.reg-badge--warning{color:var(--reg-warning)}
+.reg-badge--probation{color:var(--reg-probation)}
+.reg-badge--quarantine{color:var(--reg-quarantine)}
+.reg-badge--retired{color:var(--reg-retired)}
+.reg-badge--banned{color:var(--reg-banned)}
+.nodestate-badge--computed{color:var(--state-computed)}
+.nodestate-badge--recomputed{color:var(--state-recomputed)}
+.nodestate-badge--stale{color:var(--state-stale)}
+.nodestate-badge--invalidated{color:var(--state-invalidated)}
+.nodestate-badge--removed{color:var(--state-removed)}
+
+/* Tab strip — the ONE v2 tablist look (shared TabStrip primitive, plan 02
+ * tablist semantics). Governance shipped it first; the Configuration Studio
+ * scope bar renders the same component, so no workspace grows a second look.
+ * Navigation, never an action: no .btn treatment here. */
+.tab-strip{display:flex;gap:4px;border-bottom:1px solid var(--border-default);margin:16px 0 12px;flex-wrap:wrap}
+.tab-strip-tab{background:none;border:none;border-bottom:2px solid transparent;color:var(--text-muted);padding:8px 14px;font-size:.85rem;font-family:inherit;cursor:pointer;transition:var(--t-fast)}
+.tab-strip-tab:hover:not(:disabled){color:var(--text-primary)}
+.tab-strip-tab[aria-selected="true"]{color:var(--text-primary);border-bottom-color:var(--primary)}
+.tab-strip-tab:disabled{opacity:.45;cursor:not-allowed}
+.tab-strip-tab:focus-visible{outline:none;box-shadow:var(--focus-ring);border-radius:var(--radius-sm)}
+
+/* Nav rail — vertical slice navigation (shared NavRail primitive, plan 02).
+ * A real list with aria-current on the selected item; selected/unselected
+ * states are semantic tokens only. Navigation, never an action. */
+.nav-rail{flex:0 0 220px;min-width:0}
+.nav-rail-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--sp-1)}
+.nav-rail-item{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);width:100%;text-align:left;background:none;border:1px solid transparent;border-radius:var(--radius-md);color:var(--text-muted);padding:var(--sp-2) var(--sp-3);font-size:var(--fs-sm);font-family:inherit;cursor:pointer;transition:var(--t-fast)}
+.nav-rail-item:hover{color:var(--text-primary);background:color-mix(in srgb,var(--text-primary) 6%,transparent)}
+.nav-rail-item[aria-current="true"]{color:var(--text-primary);background:color-mix(in srgb,var(--primary) 14%,transparent);border-color:color-mix(in srgb,var(--primary) 35%,transparent);font-weight:600}
+.nav-rail-item:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+.nav-rail-item-label{min-width:0;overflow-wrap:anywhere}
+
+/* Governance policy facets (plan 08: cross-policy scores are faceted, never
+ * one continuous series). */
+.gov-facet{border:1px solid var(--border-default);border-radius:var(--radius-md);padding:10px 12px;margin-bottom:10px}
+.gov-facet+.gov-facet{border-top-style:dashed}
+.gov-facet-title{font-family:var(--font-mono);font-size:.8rem;margin-bottom:6px;color:var(--text-primary)}

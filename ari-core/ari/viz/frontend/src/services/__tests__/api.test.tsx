@@ -25,6 +25,7 @@ import {
   fetchPaperbenchPapers,
   runPaperbench,
 } from '../api';
+import { post } from '../api/client';
 
 /** Stub global fetch with a single canned response and return the mock.
  * The parameters mirror `fetch`'s signature (unused here, hence `_`-prefixed) so
@@ -92,11 +93,23 @@ describe('api.ts – POST request-init shape', () => {
     expect(init.body).toBe(JSON.stringify({ llm_model: 'x' }));
   });
 
+  // MN-6: stopExperiment now requires a challenge_id body, so the transport
+  // primitive itself pins the `body ?? {}` default here.
   it('post() with no body defaults to JSON "{}" (body ?? {})', async () => {
     const fn = mockFetch({});
-    await stopExperiment();
+    await post('/api/example-no-body');
     const init = fn.mock.calls[0][1] as RequestInit;
     expect(init.body).toBe('{}');
+  });
+
+  // MN-6 (RR-P0-6/RR-P0-9): the destructive wrappers echo the server-issued
+  // challenge back in their POST body.
+  it('stopExperiment sends the challenge_id it was given', async () => {
+    const fn = mockFetch({ ok: true });
+    await stopExperiment('chg-abcdef123456');
+    expect(fn.mock.calls[0][0]).toBe('/api/stop');
+    const init = fn.mock.calls[0][1] as RequestInit;
+    expect(init.body).toBe(JSON.stringify({ challenge_id: 'chg-abcdef123456' }));
   });
 
   it('adds no Authorization / CSRF header (same-origin unauth contract)', async () => {

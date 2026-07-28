@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 
 def package_prompts_root() -> Path:
@@ -18,6 +18,11 @@ def package_prompts_root() -> Path:
     return Path(__file__).resolve().parent
 
 
+# ``runtime_checkable`` (additive, RQGM Task 07): lets tests assert loader
+# substitutes (e.g. ``ari.rqgm.prompt_loader.GovernedPromptLoader``) satisfy
+# the Protocol structurally via ``isinstance``. Method signatures are still
+# only checked statically — behavior pins live in the prompt test suites.
+@runtime_checkable
 class PromptLoader(Protocol):
     """Loads prompt templates from external files."""
 

@@ -21,6 +21,7 @@ PATHS=(
   "ari-core/tests"
   "ari-skill-paper/tests"
   "ari-skill-paper-re/tests"
+  "ari-skill-plot/tests"
   "ari-skill-web/tests"
   "ari-skill-hpc/tests"
   "ari-skill-idea/tests"

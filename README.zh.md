@@ -164,6 +164,8 @@ experiment.md  ──►  ARI Core  ──►  结果 + 论文 + 可复现性报
 3. **确定性工具，推理 LLM。** MCP 技能是纯函数。LLM 进行推理；技能执行操作。
 4. **从论文到证明。** ARI 撰写论文，*并且* 对自己的主张进行双重验证：一个确定性的主张-证据/指标正确性门控会从记录的结果中重新推导每一个报告的数值，并阻断客观上错误或未经验证的指标，*并且* 一个独立的可复现性检查会重新运行实验。
 
+> **执行模式。**上述一切都是默认的 `simple_bfts` 模式。可选启用的 `ari_rqgm` 模式（仅通过配置：`ari.mode: ari_rqgm` + `rqgm.enabled: true`）在同一 BFTS 引擎之上叠加宪法式纪元治理与提示词/组件协同进化；关闭时，检查点与之前的发布版本保持逐字节一致。论文阶段拥有自己正交的开关 `paper.mode: linear | rqgm_archive`（配合 `rqgm.paper.enabled` 联锁）：`rqgm_archive` 会搜索论文草稿的最佳优先树，由受治理的 `paper_reviewer` 角色评分，其过度接受可被对手弹劾；而 `linear`（默认）使当前论文流水线保持逐字节一致。参见 [docs/guides/execution_modes.md](docs/guides/execution_modes.md)。
+
 ---
 
 ## 面向扩展的设计 — 走向物理世界

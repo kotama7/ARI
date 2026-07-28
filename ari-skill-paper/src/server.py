@@ -522,8 +522,14 @@ async def check_format(venue: str, pdf_path: str) -> dict:
         issues.append("PDF file seems too small; may be corrupted")
 
     page_count = _count_pdf_pages(pdf)
-    if page_count is not None and venue_info["pages"] > 0:
-        if page_count > venue_info["pages"]:
+    if venue_info["pages"] > 0:
+        if page_count is None:
+            # Undeterminable != within limit. Skipping made a 47-page paper
+            # pass a 9-page limit with ok:true — record it so ok is False.
+            issues.append(
+                f"Page count could not be determined for {pdf.name}; the "
+                f"{venue_info['pages']}-page venue limit was NOT verified")
+        elif page_count > venue_info["pages"]:
             issues.append(
                 f"Page count ({page_count}) exceeds venue limit ({venue_info['pages']})"
             )
@@ -532,13 +538,37 @@ async def check_format(venue: str, pdf_path: str) -> dict:
 
 
 def _count_pdf_pages(pdf_path: Path) -> int | None:
-    """Count pages in a PDF by scanning for /Type /Page entries."""
+    """Count pages in a PDF. Returns None ONLY when the count is genuinely
+    undeterminable — the caller then records an explicit issue rather than
+    skipping the page-limit check.
+
+    The old byte-regex for ``/Type /Page`` missed pages stored in compressed
+    object streams (``/ObjStm``) — 59 of 79 PDFs in this repo, including ARI's
+    own compile_paper output, hit zero and silently skipped the limit check, so
+    a 47-page paper passed a 9-page venue limit. Prefer a real parser.
+    """
     try:
-        content = pdf_path.read_bytes()
-        pages = re.findall(rb"/Type\s*/Page(?!s)", content)
-        return len(pages) if pages else None
+        import pypdf
+        with open(pdf_path, "rb") as fh:
+            return len(pypdf.PdfReader(fh, strict=False).pages)
     except Exception:
-        return None
+        pass
+    try:  # poppler, if the pure-Python parser is unavailable
+        import subprocess
+        r = subprocess.run(["pdfinfo", str(pdf_path)],
+                           capture_output=True, text=True, timeout=20)
+        for line in r.stdout.splitlines():
+            if line.startswith("Pages:"):
+                return int(line.split(":", 1)[1].strip())
+    except Exception:
+        pass
+    try:  # last resort: the old regex, which only sees UNcompressed page objects
+        pages = re.findall(rb"/Type\s*/Page(?!s)", pdf_path.read_bytes())
+        if pages:
+            return len(pages)
+    except Exception:
+        pass
+    return None  # genuinely undeterminable — caller must not skip the check
 
 
 import os as _os
@@ -752,12 +782,26 @@ def _build_bib_content(refs_json: str) -> tuple:
     if not refs_json:
         return "", []
     try:
-        refs_data = _json.loads(refs_json) if isinstance(refs_json, str) else refs_json
+        if isinstance(refs_json, str):
+            _s = refs_json.strip()
+            # Pipeline stages pass a file PATH ({{checkpoint_dir}}/related_refs.json),
+            # other callers pass raw JSON — accept both.
+            if not _s.startswith(("{", "[")) and Path(_s).is_file():
+                _s = Path(_s).read_text()
+            refs_data = _json.loads(_s)
+        else:
+            refs_data = refs_json
         papers = refs_data.get("papers", [])
-    except Exception:
+    except Exception as e:
+        log.warning("bib build: could not parse refs_json (%s) — bibliography will be empty", e)
         return "", []
     entries, key_list, seen = [], [], {}
-    for p in papers[:15]:
+    # Cap generously (was 15) — collect_references already relevance-filters and
+    # bounds the set, and a hard 15-slice silently DROPPED collected refs,
+    # including (audit finding) the single most on-topic paper that happened to
+    # sort past index 15, while the reported count still said 17. Include the
+    # whole collected set; 50 is only a runaway guard.
+    for p in papers[:50]:
         real_bib = p.get("bibtex", "")
         cite_key = p.get("cite_key", "")
         title = p.get("title", "Unknown")
@@ -797,6 +841,74 @@ _MATH_ENV_NAMES = frozenset({
     'equation', 'align', 'eqnarray', 'displaymath', 'math', 'gather',
     'multline', 'alignat', 'flalign', 'split', 'aligned', 'gathered', 'cases',
 })
+
+
+#: Language asserting that a VERIFICATION/VALIDATION was performed. A refiner
+#: may legitimately reword a result; it may not invent a process. These are the
+#: shapes an inserted sentence takes when it claims work that never happened
+#: ("we independently re-verified each figure ... and confirm they agree to
+#: within rounding" — a real insertion that shipped, and was false).
+_PROCESS_CLAIM_RE = re.compile(
+    r"\b(?:we|the authors?)\b[^.]{0,120}?\b("
+    r"re-?verif\w*|verif\w*|re-?check\w*|cross-?check\w*|re-?comput\w*|"
+    r"re-?measur\w*|confirm\w*|validat\w*|audit\w*|reproduc\w*"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _sentences_of(tex: str) -> list[str]:
+    """Prose sentences of a LaTeX document, comments and commands stripped."""
+    body = re.sub(r"(?m)^\s*%.*$", " ", tex)          # whole-line comments
+    body = re.sub(r"%.*", " ", body)                  # trailing comments
+    body = re.sub(r"\\begin\{[^}]*\}|\\end\{[^}]*\}", " ", body)
+    out: list[str] = []
+    for raw in re.split(r"(?<=[.!?])\s+", body):
+        s = re.sub(r"\s+", " ", raw).strip()
+        if len(s) > 40 and re.search(r"[a-zA-Z]{4}", s):
+            out.append(s)
+    return out
+
+
+def _inserted_sentences(original: str, refined: str) -> list[str]:
+    """Sentences present in *refined* but absent from *original*.
+
+    ``full_paper.draft.tex`` (the pre-refine copy) is written by this tool and
+    was read by NOTHING, and `difflib` had zero uses anywhere in ari-core or the
+    skills — so the one artifact that makes an insertion trivially detectable
+    went unused. This is that diff.
+    """
+    import difflib
+
+    before = _sentences_of(original)
+    after = _sentences_of(refined)
+    seen = {re.sub(r"\W+", "", s).lower() for s in before}
+    out: list[str] = []
+    for s in after:
+        if re.sub(r"\W+", "", s).lower() in seen:
+            continue
+        # A close match is a rewording (allowed); only genuinely new prose counts.
+        if difflib.get_close_matches(s, before, n=1, cutoff=0.75):
+            continue
+        out.append(s)
+    return out
+
+
+def _unrequested_process_claims(inserted: list[str], revisions: list) -> list[str]:
+    """Inserted sentences claiming a verification that no revision asked for."""
+    asked = " ".join(
+        str((r or {}).get("replacement", "")) + " " + str((r or {}).get("suggestion", ""))
+        for r in (revisions or []) if isinstance(r, dict)
+    ).lower()
+    out = []
+    for s in inserted:
+        if not _PROCESS_CLAIM_RE.search(s):
+            continue
+        # If the reviewer literally asked for this wording, it is requested.
+        if asked and re.sub(r"\W+", "", s).lower()[:60] in re.sub(r"\W+", "", asked):
+            continue
+        out.append(s)
+    return out
 
 
 def _escape_text_underscores(text: str) -> str:
@@ -1091,6 +1203,19 @@ async def write_paper_iterative(
     venue: str = "arxiv",
     max_revision_rounds: int = 2,
     author_name: str = "",  # config-specified author; defaults to "Autonomous Research Infrastructure"
+    writer_prompt_override: str = "",  # "" => load paper_writer.md (linear byte-identical);
+                                       # non-empty => the governed paper_writer prompt DRIVES
+                                       # the reflection instruction (docs/plans/ari_rqgm_paper/03
+                                       # §5.8). The skill still evolves nothing and imports no
+                                       # ari.rqgm — a plain instruction string, not governance.
+    decode_seed: int = 0,  # 0 => no seed in the payload => byte-identical to today (linear);
+                           # non-zero => sampled under that seed, so callers generating a
+                           # POPULATION of drafts get distinct samples instead of K copies
+                           # (docs/plans/ari_rqgm_paper/02 §5.4 decision 5). Same additive
+                           # on-ramp shape as writer_prompt_override: a plain scalar, no
+                           # ari.rqgm import, no governance. NOTE: litellm `seed` is
+                           # best-effort and provider-dependent — it delivers diversity
+                           # (distinct seeds => distinct samples), not bit-exact replay.
 ) -> dict:
     """AI Scientist v2-style iterative paper writing agent.
 
@@ -1534,6 +1659,8 @@ async def write_paper_iterative(
             ],
             "temperature": 0.7, "max_tokens": 16384,
         }
+        if decode_seed:
+            _kw_a["seed"] = int(decode_seed)
         _apib_a = _get_api_base()
         if _apib_a:
             _kw_a["api_base"] = _apib_a
@@ -1635,6 +1762,8 @@ async def write_paper_iterative(
                         ],
                         "temperature": 0.1, "max_tokens": 16384,
                     }
+                    if decode_seed:
+                        _kw_fig["seed"] = int(decode_seed)
                     _apib_fig = _get_api_base()
                     if _apib_fig:
                         _kw_fig["api_base"] = _apib_fig
@@ -1651,8 +1780,13 @@ async def write_paper_iterative(
 
         # ─── AI Scientist v2: compile + reflection loop
         # _msg_history starts with the assembled full paper so reflection LLM has context
+        # writer_prompt_override == "" (linear default, and any non-RQGM
+        # caller) loads paper_writer.md exactly as today — byte-identical.
+        # Under rqgm_archive the draft NodeExecutor passes the epoch's ACTIVE
+        # governed paper_writer prompt text here (docs/plans/ari_rqgm_paper/03
+        # §5.8); the evolving bytes live only in ari-core.
         _system_prompt = (
-            _load_prompt("paper_writer")
+            (writer_prompt_override or _load_prompt("paper_writer"))
             + _paper_language_directive()
         )
         # msg_history starts with the assembled full paper as 'assistant' turn
@@ -1766,6 +1900,8 @@ async def write_paper_iterative(
                 ],
                 "temperature": 0.3, "max_tokens": 16384,
             }
+            if decode_seed:
+                _kw_ref["seed"] = int(decode_seed)
             _apib2 = _get_api_base()
             if _apib2:
                 _kw_ref["api_base"] = _apib2
@@ -2271,8 +2407,14 @@ async def merge_reviews(
         return None, None
 
     vlm_data, vlm_err = _load(vlm_review_path)
-    hard_gate, _ = _load(hard_gate_path)
-    semantic, _ = _load(semantic_review_path)
+    # Keep these errors. Binding them to `_` made a corrupt/truncated hard-gate
+    # or semantic-review file indistinguishable from one that was never
+    # configured: review_merge_log.json read ok:true, status:null, and the
+    # gate's suggested_revisions (e.g. "correct 42.0 -> 17.3") silently vanished
+    # from what paper_refine received. A parse failure on the file that carries
+    # the blocking findings is the last place to be silent.
+    hard_gate, hard_gate_err = _load(hard_gate_path)
+    semantic, semantic_err = _load(semantic_review_path)
 
     # ── back-compat: attach VLM to review_report.json in place ──
     report["vlm_figure_review"] = vlm_data
@@ -2327,11 +2469,20 @@ async def merge_reviews(
     if isinstance(hard_gate, dict):
         suggested_revisions.extend(_hard_gate_revisions(hard_gate))
 
+    # A configured review source that failed to LOAD is a load error, not an
+    # absent review — surface it so `ok` and the status reflect it.
+    _load_errors = {}
+    if hard_gate_path and hard_gate is None and hard_gate_err:
+        _load_errors["claim_evidence_hard_gate"] = hard_gate_err
+    if semantic_review_path and semantic is None and semantic_err:
+        _load_errors["evidence_grounded_semantic_review"] = semantic_err
+
     return {
         "stage": "merge_reviews",
-        "ok": True,
+        "ok": not _load_errors,
         "review_report_path": str(rr_path),
         "has_vlm_review": vlm_data is not None,
+        "load_errors": _load_errors or None,
         "independent_reviews": {
             "venue_review": str(rr_path),
             "vlm_figure_review": vlm_review_path or None,
@@ -2339,9 +2490,15 @@ async def merge_reviews(
         },
         "evidence_grounded_reviews": {
             "claim_evidence_hard_gate": hard_gate_path or None,
-            "claim_evidence_hard_gate_status": (hard_gate or {}).get("status"),
+            "claim_evidence_hard_gate_status": (
+                (hard_gate or {}).get("status")
+                if hard_gate is not None
+                else (f"load_error: {hard_gate_err}" if hard_gate_err else None)),
             "evidence_grounded_semantic_review": semantic_review_path or None,
-            "evidence_grounded_semantic_review_status": (semantic or {}).get("status"),
+            "evidence_grounded_semantic_review_status": (
+                (semantic or {}).get("status")
+                if semantic is not None
+                else (f"load_error: {semantic_err}" if semantic_err else None)),
         },
         "suggested_revisions": suggested_revisions,
         "merge_policy": (
@@ -2403,27 +2560,43 @@ async def link_paper_claims(
         return _empty(f"paper tex not found: {tex_path}")
 
     def _load_jsonish(val):
+        """Return ``(value, error)``. ``error`` distinguishes a genuine
+        empty/absent input from a source that EXISTS but could not be read —
+        the two were both ``{}`` before, so a missing/truncated science_data
+        (it arrives as a raw path string when absent — stages.py only reads
+        content when the file exists) produced 0 resolved anchors and the reason
+        string blamed the writer for inventing claim ids."""
         if not val:
-            return {}
+            return {}, None
         if isinstance(val, dict):
-            return val
+            return val, None
         try:
-            return _json.loads(val)
+            return _json.loads(val), None
         except Exception:
             sp = _Path(val)
             if sp.is_file():
                 try:
-                    return _json.loads(sp.read_text())
-                except Exception:
-                    return {}
-        return {}
+                    return _json.loads(sp.read_text()), None
+                except Exception as e:
+                    return {}, f"{sp.name}: {e}"
+            # a raw path string for a file that does not exist
+            return {}, f"not found: {val}"
 
-    sd = _load_jsonish(science_data_json)
-    fm = _load_jsonish(figures_manifest_json) or None
+    sd, sd_err = _load_jsonish(science_data_json)
+    fm, _fm_err = _load_jsonish(figures_manifest_json)
+    fm = fm or None
     try:
         result = _cl.link_paper_claims(tex, sd if isinstance(sd, dict) else {}, fm)
     except Exception as _e:  # pragma: no cover - defensive
         return _empty(f"link_paper_claims failed: {_e}")
+
+    if sd_err:
+        # The claim registry could not be read, so 0 resolved anchors here means
+        # "the registry is missing", NOT "the writer invented claim ids". Say so
+        # instead of letting the per-anchor reason strings misdirect the reader.
+        result["science_data_load_error"] = sd_err
+        log.warning("science_data unreadable (%s); claim anchors cannot be "
+                     "resolved against the registry", sd_err)
 
     if output_path:
         try:
@@ -2441,6 +2614,14 @@ async def paper_refine(
     merged_review_path: str = "",
     semantic_review_path: str = "",
     venue: str = "arxiv",
+    writer_prompt_override: str = "",  # "" => byte-identical to today (linear); non-empty =>
+                                       # the governed paper_writer prompt frames the refine
+                                       # (docs/plans/ari_rqgm_paper/03 §5.8). Additive, no
+                                       # ari.rqgm import — a plain instruction string.
+    decode_seed: int = 0,  # 0 => no seed in the payload => byte-identical to today (linear);
+                           # non-zero => the refine is sampled under its draft's seed, so a
+                           # refine child inherits its parent's decode identity
+                           # (docs/plans/ari_rqgm_paper/02 §5.4). Additive plain scalar.
 ) -> dict:
     """Apply suggested revisions to the paper while PRESERVING ``% CLAIM:Cx:NCx``
     anchors (Story2Proposal generate-evaluate-adapt loop).
@@ -2497,25 +2678,48 @@ async def paper_refine(
                 if isinstance(obj.get(key), list):
                     _collect(obj[key])
 
+    # A configured review source that fails to PARSE is not "no revisions": it
+    # is a review we could not read. Swallowing it let the note below assert the
+    # reviewers requested nothing, so a retracted claim shipped unchanged. Two
+    # real triggers: a truncated file, and a valid-but-non-ASCII file read
+    # without encoding= under LC_ALL=C (the tex is read encoding="utf-8" above).
+    _load_errors: list[str] = []
+    _sources_configured = 0
     if suggested_revisions_json:
+        _sources_configured += 1
         try:
             _collect(_json.loads(suggested_revisions_json) if isinstance(suggested_revisions_json, str) else suggested_revisions_json)
-        except Exception:
-            pass
+        except Exception as _e:
+            _load_errors.append(f"suggested_revisions_json: {_e}")
     for _path in (semantic_review_path, merged_review_path):
         if _path and _Path(_path).is_file():
+            _sources_configured += 1
             try:
-                _collect(_json.loads(_Path(_path).read_text()))
-            except Exception:
-                pass
+                _collect(_json.loads(_Path(_path).read_text(encoding="utf-8")))
+            except Exception as _e:
+                _load_errors.append(f"{_Path(_path).name}: {_e}")
 
     orig_anchors = {a["anchor"] for a in _find_anchors(original)}
+
+    # Every configured review source failed to load: we do NOT know the
+    # reviewers requested nothing. Return an error rather than a clean pass.
+    if _load_errors and _sources_configured and len(_load_errors) >= _sources_configured:
+        return {
+            "error": "review inputs unreadable: " + "; ".join(_load_errors),
+            "latex": original, "refined": False, "anchors_preserved": True,
+            "applied_revisions": 0, "anchor_count": len(orig_anchors),
+            "warnings": _load_errors,
+        }
 
     if not revisions:
         return {
             "latex": original, "refined": False, "anchors_preserved": True,
             "applied_revisions": 0, "anchor_count": len(orig_anchors),
-            "note": "no actionable suggested_revisions; paper returned unchanged",
+            "warnings": _load_errors or [],
+            "note": ("no actionable suggested_revisions; paper returned unchanged"
+                     if not _load_errors else
+                     "some review sources were unreadable (see warnings); "
+                     "applied only the sources that parsed"),
         }
 
     _rev_lines = []
@@ -2532,8 +2736,13 @@ async def paper_refine(
     # the model sees the whole paper (global context) yet returns only TARGETED
     # find/replace edits. This keeps generation volume ~= the changed spans instead
     # of regenerating the entire document, which (with the slow CLI shim) timed out.
+    # writer_prompt_override == "" (linear default) => byte-identical to today.
+    # Under rqgm_archive the governed paper_writer prompt is prepended so the
+    # refine is framed by the epoch's ACTIVE writer bytes (§5.8); the skill
+    # still evolves nothing.
     system_prompt = (
-        _load_prompt("global_coherence")
+        ((writer_prompt_override + "\n\n") if writer_prompt_override else "")
+        + _load_prompt("global_coherence")
         + _paper_language_directive()
     )
     _ANCHOR_RE = _re.compile(r"%\s*CLAIM:C\w+:NC\w+")
@@ -2616,6 +2825,8 @@ async def paper_refine(
             ],
             "temperature": 0.4, "max_tokens": 8192, "timeout": 1800,
         }
+        if decode_seed:
+            _kw["seed"] = int(decode_seed)
         _ab = _get_api_base()
         if _ab:
             _kw["api_base"] = _ab
@@ -2704,12 +2915,29 @@ async def paper_refine(
     except Exception as _e:
         warnings.append(f"failed to save draft copy: {_e}")
 
+    inserted = _inserted_sentences(original, refined)
+    unrequested = _unrequested_process_claims(inserted, revisions)
+    if unrequested:
+        warnings.append(
+            f"{len(unrequested)} inserted sentence(s) assert a verification/"
+            f"validation process that no revision requested: "
+            + "; ".join(s[:90] for s in unrequested[:2]))
+
     return {
         "latex": refined, "refined": True, "anchors_preserved": True,
         "applied_revisions": applied_total, "anchor_count": len(orig_anchors),
         "warnings": warnings, "refine_passes": passes,
         "deterministic_substitutions": len(applied_subs),
         "unaddressed_substitutions": unaddressed,
+        # Every guard above is an `issubset` PRESERVATION check on anchors, so
+        # an anchorless INSERTION passes all of them by construction (the empty
+        # set is a subset of anything) and nothing else reads the final text for
+        # new assertions. Observed live: refine inserted "we independently
+        # re-verified each such figure ... and confirm they agree to within
+        # rounding" — no such verification existed, no revision asked for it,
+        # and it was factually false; it shipped in the PDF unexamined.
+        "inserted_sentences": inserted,
+        "unrequested_process_claims": unrequested,
         "note": ("deterministic explicit replacements + bounded multi-pass find/replace "
                  "(S2P refiner: global role, diff output); PDF recompile is a follow-up"),
     }
@@ -2859,6 +3087,7 @@ def inject_code_availability(
     # The pipeline calls this stage with checkpoint_dir but no ref/sha,
     # because those values become known only after curate (manifest.lock)
     # and publish (publish_record.json). Look them up from disk.
+    _load_errors: list[str] = []
     if checkpoint_dir and not (ref or sha256):
         ckpt = Path(checkpoint_dir)
         manifest = ckpt / "ear_published" / "manifest.lock"
@@ -2869,8 +3098,12 @@ def inject_code_availability(
                 sha256 = sha256 or m.get("bundle_sha256", "")
                 if not license_id:
                     license_id = (m.get("publish") or {}).get("license") or ""
-            except Exception:
-                pass
+            except Exception as exc:
+                # EXISTS but unparseable — not "never published". Swallowing it
+                # shipped a Code Availability section WITHOUT its integrity
+                # digest (or dropped the section entirely), byte-identical to a
+                # legitimately-unpublished run.
+                _load_errors.append(f"manifest.lock: {exc}")
         if record.exists():
             try:
                 r = json.loads(record.read_text(encoding="utf-8"))
@@ -2878,10 +3111,20 @@ def inject_code_availability(
                 if not doi:
                     extra = r.get("extra") or {}
                     doi = extra.get("doi") or ""
-            except Exception:
-                pass
+            except Exception as exc:
+                _load_errors.append(f"publish_record.json: {exc}")
+    if _load_errors:
+        log.warning("code-availability sources exist but are unreadable (%s); "
+                    "the section may omit integrity metadata", "; ".join(_load_errors))
 
     content = p.read_text(encoding="utf-8")
+
+    def _with_errors(result: dict) -> dict:
+        # Corrupt-but-present sources are otherwise indistinguishable from a
+        # legitimately-unpublished run: surface them so callers can gate.
+        if _load_errors:
+            result["load_errors"] = list(_load_errors)
+        return result
 
     # FR-PA2: omit the section entirely when neither ref nor sha is provided.
     if not ref and not sha256:
@@ -2889,16 +3132,16 @@ def inject_code_availability(
         new_content = _strip_existing_code_avail_block(content)
         if new_content != content:
             p.write_text(new_content, encoding="utf-8")
-            return {"injected": False, "tex_path": str(p), "block": None, "stripped_prior": True}
-        return {"injected": False, "tex_path": str(p), "block": None}
+            return _with_errors({"injected": False, "tex_path": str(p), "block": None, "stripped_prior": True})
+        return _with_errors({"injected": False, "tex_path": str(p), "block": None})
 
     block = _render_code_availability_block(ref=ref, sha256=sha256, doi=doi, license_id=license_id)
     new_content, replaced = _splice_code_avail_block(content, block)
     if new_content == content:
         # No change (idempotent re-injection) — return success without writing.
-        return {"injected": True, "tex_path": str(p), "block": block, "noop": True}
+        return _with_errors({"injected": True, "tex_path": str(p), "block": block, "noop": True})
     p.write_text(new_content, encoding="utf-8")
-    return {"injected": True, "tex_path": str(p), "block": block, "replaced": replaced}
+    return _with_errors({"injected": True, "tex_path": str(p), "block": block, "replaced": replaced})
 
 
 def _strip_existing_code_avail_block(content: str) -> str:

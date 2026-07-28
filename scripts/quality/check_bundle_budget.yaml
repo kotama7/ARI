@@ -1,0 +1,34 @@
+# Config for scripts/check_bundle_budget.py — the SPA bundle-weight budget gate
+# (gui_refresh plan 09 "Performance budgets" formalization, Wave 5b; see
+# docs/plans/gui_refresh/baseline/performance_budgets.md for the enforcement
+# record and the deferred browser-metric half).
+#
+# Budgets are KiB (1024 bytes) of gzip level 6 (Vite-reporter-comparable;
+# protocol in the checker docstring). All keys optional — the checker carries
+# the same values as in-code defaults; this file exists so a budget change is
+# a reviewable one-line diff, never a code edit (P2: stdlib + PyYAML only).
+#
+#   entry_kib   — the <script type="module"> chunk index.html references
+#                 (plan 09 "Main JS chunk" <= 100 KiB gzip).
+#   route_kib   — each lazy <Name>Page-<hash>.js chunk (plan 09 "Individual
+#                 route chunk", final budget <= 150 KiB gzip).
+#   shared_kib  — every other .js chunk (vendor/locale/component splits);
+#                 plan 09 budgets only route chunks — extending the same cap
+#                 to shared chunks is a deliberate conservative superset.
+#   total_kib   — sum of all .js gzip. 600 = ~2.3x the 2026-07-26 actual
+#                 (~261 KiB / 46 chunks): headroom for G4-G6 feature growth
+#                 while catching cross-chunk dependency duplication that no
+#                 per-chunk budget can see. Ratchet ceiling — tighten at G6.
+#   route_overrides — per-route tightening keyed by hash-stripped stem
+#                 (plan 09 "Settings/Wizard route chunk" <= 50 KiB each).
+
+dist: ari-core/ari/viz/static/dist
+route_regex: "^[A-Z][A-Za-z0-9]*Page$"
+budgets:
+  entry_kib: 100
+  route_kib: 150
+  shared_kib: 150
+  total_kib: 600
+  route_overrides:
+    SettingsPage: 50
+    WizardPage: 50

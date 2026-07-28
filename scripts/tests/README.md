@@ -6,6 +6,7 @@ Unit and smoke tests for the top-level `scripts/` quality checkers.
 
 - `README.md` — this file.
 - `test_analyze_references.py` — unit + smoke + determinism tests for `analyze_references.py` (string-key/MCP fixtures + publish-backend/prompt non-orphan repo smoke).
+- `test_check_bundle_budget.py` — unit + smoke tests for `check_bundle_budget.py` (Vite hash-stem extraction, entry/route/shared classification, tmp fake-dist over/within-budget + route-override + total-aggregate cases, gzip determinism, real-dist plan-09 budget smoke — skipped with a clear message when the frontend build is absent).
 - `test_check_dashboard_ux.py` — TODO
 - `test_check_dead_code.py` — unit + smoke + determinism tests for `check_dead_code.py` (precedence, hard-downgrade, ruff-gated `SAFE_DELETE` + `--check` ratchet, repo firewall smoke).
 - `test_check_directory_policy.py` — TODO

@@ -21,9 +21,18 @@ ANCHOR_RE = re.compile(r"%\s*CLAIM:(C\w+):(NC\w+)")
 # ``\times`` to `` x `` before scanning, so the multiplication sign here is
 # x/× (plus \cdot, which survives the strip); requiring the ``10^{...}`` tail
 # keeps plain speedup notation (``4.18 x``) out of this branch.
+# group 3 = e-notation exponent; group 4 = mantissa ×10^exp; group 5 = a BARE
+# power ``base^{exp}`` written with no ×-multiplier (``10^{-23}``). Without
+# group 5 a true p-value BOUND ``p<10^{-23}`` shipped as value=10.0, raising a
+# phantom ``numeric_mismatch reported:10.0 recomputed:0.0`` that drove
+# paper_refine to "correct" a true claim into a false one. The caret is
+# directly attached so ``4.18 x`` (a speedup) never enters this branch; group 4
+# is tried first so ``4.44 \times 10^{-16}`` still matches there.
 _NUMBER_RE = re.compile(
     r"(?<![\w.])(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?"
-    r"(?:[eE]([+-]?\d+)(?!\w|\.\d)|\s*(?:x|×|\\times|\\cdot)\s*10\^\{?([+-]?\d+)\}?)?"
+    r"(?:[eE]([+-]?\d+)(?!\w|\.\d)"
+    r"|\s*(?:x|×|\\times|\\cdot)\s*10\^\{?([+-]?\d+)\}?"
+    r"|\^\{?([+-]?\d+)\}?)?"
     r"\s*(%?)"
 )
 
@@ -161,7 +170,8 @@ def extract_numeric_mentions(tex: str, section_map: "list[str] | None" = None) -
         for m in _NUMBER_RE.finditer(line):
             int_part, frac = m.group(1), m.group(2) or ""
             exp = m.group(3) or m.group(4) or ""
-            pct = m.group(5) or ""
+            bare_pow = m.group(5) or ""      # base^{exp} with no ×-multiplier
+            pct = m.group(6) or ""
             num_str = int_part + frac
             has_pct = pct == "%"
             before = line[max(0, m.start() - 24):m.start()]
@@ -171,6 +181,9 @@ def extract_numeric_mentions(tex: str, section_map: "list[str] | None" = None) -
                 value = float(num_str.replace(",", ""))
                 if exp:
                     value *= 10.0 ** int(exp)
+                elif bare_pow:
+                    # ``base^{exp}`` -> base**exp (``10^{-23}`` -> 1e-23).
+                    value = value ** int(bare_pow)
             except (ValueError, OverflowError):
                 continue
             if value in (float("inf"), float("-inf")):
@@ -178,12 +191,14 @@ def extract_numeric_mentions(tex: str, section_map: "list[str] | None" = None) -
                 # the JSON report and (pre-guard) an uncaught OverflowError made
                 # the whole gate fail OPEN via the callers' defensive catches.
                 continue
-            if m.group(4):
+            if m.group(4) or (bare_pow and num_str == "10"):
                 # \times/\cdot 10^{exp} literals classified as result_claim
                 # before this branch existed too (the stripped " x " matched the
                 # speedup unit) — keep that, or the anchor binder starts picking
-                # some other number in the sentence. e-notation keeps _classify's
-                # verdict so settings ("1e4 iterations") stay settings.
+                # some other number in the sentence. A bare power of ten
+                # (``10^{-23}``) is the same scientific shape and gets the same
+                # verdict; other bases keep _classify. e-notation keeps
+                # _classify's verdict so settings ("1e4 iterations") stay settings.
                 mtype, requires = "result_claim", True
             mentions.append({
                 "value": value, "unit": "%" if has_pct else "",

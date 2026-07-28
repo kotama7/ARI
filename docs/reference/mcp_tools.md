@@ -12,7 +12,9 @@ sources:
     role: config
   - path: ari-skill-paper-re/src/server.py
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-skill-idea/src/server.py
+    role: implementation
+last_verified: 2026-07-10
 ---
 
 # MCP Tools Reference
@@ -80,8 +82,16 @@ in `src/server.py`.
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
-| `survey` | arXiv + Semantic Scholar search; pure HTTP | ✗ |
+| `survey` | Prior-work survey: reuses the frozen `virsci_snapshot` corpus when present, else live Semantic Scholar; pure HTTP | ✗ |
 | `generate_ideas` | LLM generates ranked idea candidates from survey + context | ✓ |
+
+These two are the skill's only registered tools (pinned by
+`ari-skill-idea/tests/test_server.py` via `mcp.list_tools()`). They are also
+the MCP surface behind the RQGM `VirSciAdapter`: in the opt-in `ari_rqgm`
+mode with `proposal_router.generators.virsci.enabled: true`, the core-side
+ProposalRouter routes ideation events to `survey` + `generate_ideas` under a
+per-epoch call budget — see
+[VirSci Integration](../guides/virsci_integration.md).
 
 `generate_ideas` has two engines behind one stable output contract.
 The default is the lightweight re-implemented discussion loop; the

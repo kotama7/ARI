@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useT } from '../../../i18n';
 import { ErrorState } from '../../common';
+import { withTokenParam } from '../../../services/api/client';
 import {
   fetchPaperbenchRun,
   fetchPaperbenchRunResults,
@@ -98,7 +99,9 @@ export function ResultsView() {
     if (!jobId || !snap || snap.status === 'completed' || snap.status === 'failed') {
       return;
     }
-    const es = new EventSource(`/api/paperbench/run/${jobId}/logs`);
+    // MN-8 (ADR-13): EventSource cannot set headers — the remote-mode token
+    // rides the query string (no-op in the loopback default).
+    const es = new EventSource(withTokenParam(`/api/paperbench/run/${jobId}/logs`));
     es.addEventListener('log', (ev) => {
       try {
         const row = JSON.parse((ev as MessageEvent).data);

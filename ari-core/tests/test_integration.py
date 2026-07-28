@@ -199,9 +199,16 @@ def test_template_variables_all_resolve():
     """Every {{var}} in workflow.yaml must resolve to a non-template value."""
     wf = _load_wf()
     # Simulate tpl_vars as pipeline.py builds them
+    # Third hand-copy of driver.py's tpl_vars (the others live in
+    # test_pipeline_e2e.py). New driver keys must be mirrored here with the SAME
+    # derivation the driver uses, not a hardcoded string.
+    from ari.paths import PathManager as _PM_t
+
     tpl_vars = {
         "ckpt": "/tmp/ckpt",
         "checkpoint_dir": "/tmp/ckpt",
+        "run_id": "ckpt",  # basename of checkpoint_dir; no tree.json in this fixture
+        "experiments_root": str(_PM_t.from_checkpoint_dir("/tmp/ckpt").experiments_root),
         "context": "test context",
         "experiment_summary": "test context",
         "paper_context": wf.get("paper_context", "test"),

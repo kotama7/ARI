@@ -156,3 +156,41 @@ def test_semantic_review_post_refine_delta_unclamped(tmp_path, monkeypatch):
     assert out["detected_overclaim_count"] == 3
     assert out["detected_overclaim_count_prev"] == 2
     assert out["resolved_overclaim_count"] == -1   # regression visible, not clamped
+
+
+def test_semantic_review_noop_post_refine_does_not_fabricate_delta(tmp_path, monkeypatch):
+    """The e2e-run bug: when the post-refine review is a NO-OP (LLM unavailable),
+    its scores are empty. Comparing that empty output to the prior REAL review
+    fabricated score_delta=-0.72 (a fake regression) and resolved_overclaim=2
+    (though it verified nothing). A no-op must report None, not a manufactured
+    number, or a reader trusts a review that never ran."""
+    ckpt = tmp_path
+    (ckpt / "evaluation").mkdir()
+    (ckpt / "evaluation" / "evidence_grounded_semantic_review.json").write_text(
+        json.dumps({
+            "scores": {"reasoning": 0.72, "clarity": 0.58, "rigor": 0.87},
+            "detected_overclaim_count": 2,
+        })
+    )
+    paper = ckpt / "full_paper.tex"
+    paper.write_text("\\section{Results}\nA scoped negative result.\n")
+
+    import litellm
+
+    async def failing_acompletion(**kwargs):  # the LLM is unavailable
+        raise RuntimeError("provider down")
+
+    monkeypatch.setattr(litellm, "acompletion", failing_acompletion)
+
+    out = asyncio.run(_tool_evidence_grounded_semantic_review({
+        "checkpoint_dir": str(ckpt),
+        "paper_path": str(paper),
+        "phase": "post_refine",
+    }))
+    assert out["status"] == "ok"                    # still non-blocking
+    assert out["scores"] == {}                      # it genuinely did not run
+    assert "no-op" in out["note"]
+    # The fabricated numbers must NOT appear.
+    assert out["score_delta"] is None, out["score_delta"]
+    assert out["resolved_overclaim_count"] is None, out["resolved_overclaim_count"]
+    assert "did not run" in out["_delta_skipped_reason"]

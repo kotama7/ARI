@@ -37,12 +37,24 @@ def _load_nodes_tree(*args, **kwargs):  # noqa: D401
 
 
 def _api_delete_checkpoint(body: bytes) -> dict:
-    """Delete a checkpoint directory and associated log files."""
+    """Delete a checkpoint directory and associated log files.
+
+    MN-6 (gui_refresh task 09 Wave 5a, RR-P0-6/RR-P0-9): requires a valid
+    server-issued confirmation challenge (``challenge_id`` bound to action
+    ``delete-checkpoint`` + this exact ``path``) unless the
+    ``ARI_GUI_CHALLENGES=0`` kill-switch restores the legacy direct
+    behavior. Refusals are ``{"ok": False, "error": ...}`` with HTTP 428
+    via the ``_status`` pop convention and delete nothing.
+    """
     import shutil
     data = json.loads(body)
     path = data.get("path", "")
     if not path:
         return {"error": "path required"}
+    from .v1.challenges import require_challenge
+    refusal = require_challenge("delete-checkpoint", path, data)
+    if refusal is not None:
+        return refusal
     p = Path(path)
     # Resolve symlinks (e.g. /home/ may be a symlink on some HPC systems)
     try:
@@ -201,5 +213,13 @@ def _api_switch_checkpoint(body: bytes) -> dict:
     tree = _load_nodes_tree()
     if tree:
         _broadcast(tree)
+    # gui_refresh Wave 2b (ADR-03): notify SSE subscribers that the active
+    # run changed. Lazy import + broad except so no-GUI paths never load
+    # (nor break on) the v1 package.
+    try:
+        from .v1 import events as _ev
+        _ev.publish("run", p.name)
+    except Exception:
+        log.debug("v1 run event publish failed", exc_info=True)
     return {"ok": True, "path": str(p)}
 

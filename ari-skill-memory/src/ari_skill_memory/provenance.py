@@ -93,6 +93,11 @@ def refs_from_node_report(
     for art in (node_report.get("artifacts") or []):
         if not isinstance(art, dict):
             continue
+        if art.get("inline"):
+            # An inline blob (captured stdout, no file on disk — builder.py
+            # marks these) is not a provenance ref: there is nothing to
+            # re-hash. Skipping it is what stops the phantom ``missing``.
+            continue
         name = art.get("path") or art.get("filename")
         if not name:
             continue

@@ -37,7 +37,7 @@ SEED_IDS = {
 }
 # The 9 line-level occurrences those 7 edges expand to.
 SEED_OCCURRENCES = {
-    ("ari-skill-idea/src/server.py", 614),
+    ("ari-skill-idea/src/server.py", 648),
     ("ari-skill-paper-re/src/server.py", 146),
     ("ari-skill-transform/src/server.py", 681),
     ("ari-skill-transform/src/server.py", 2083),

@@ -50,6 +50,41 @@ runs its *own* tool loop), so they are for whole-task delegation, not ReAct.
 IMPORTANT — billing / auth (see also the project docs): the shim shells out to
 the real ``claude`` / ``codex`` binaries, so requests consume tokens against
 whatever auth those CLIs use (subscription login *or* API key).
+
+Isolation — launch recipe. Every ``claude`` subprocess is started with
+``--strict-mcp-config`` (only servers from an explicit ``--mcp-config`` are
+used; ambient project/user MCP configs are ignored — without this a nested
+claude inherited the parent session's project and booted all 15 ari-skill
+servers per call). The ``codex`` path is symmetric and its isolation is
+UNCONDITIONAL too: every ``codex`` subprocess gets ``--ignore-user-config``
+(the analogue of ``--strict-mcp-config`` — the user's ``~/.codex/config.toml``
+mcp_servers are never loaded; auth still resolves from ``CODEX_HOME``) AND
+``-c features.apps=false`` (codex bundles curated apps — GitHub / Calendar /
+Sites, ~129 tools — WITH the binary, which ``--ignore-user-config`` does NOT
+remove; leaving them on is a hermeticity + safety hole and ~5x the input
+tokens). The MCP-direct path then injects the same server set via
+``-c mcp_servers.<name>.{command,args,env}`` (BARE key) with a per-server
+``enabled_tools`` allowlist. So the caller's ``{"mcpServers": …}`` +
+``mcp__server__tool`` allowlist drives BOTH engines identically — attaching a
+server, detaching MCP (no config → plain mode), or detaching memory (server
+omitted, or its write tools filtered out of the allowlist) is honored the same
+way whichever CLI runs. When the shim itself is started from inside a Claude
+Code session, sever the parent-session linkage by launching with a sanitized
+environment::
+
+    env -i HOME="$HOME" PATH="$PATH" \
+        python -m ari.llm.cli_server --port 8900
+
+(the shim warns at startup when ``CLAUDECODE`` / ``CLAUDE_CODE_*`` are still
+present; it never auto-sanitizes because auth setups vary).
+
+Knobs: ``ARI_CLI_SHIM_CLAUDE_MAX_TURNS=<int>`` appends ``--max-turns N`` to
+cap the delegated claude's internal tool loop (unset = no flag); it depends
+on the installed ``claude`` CLI version supporting ``--max-turns``.
+``ARI_CLI_SHIM_CLAUDE_BARE=1`` adds ``--bare`` — CAVEAT: per ``claude --help``
+bare mode reads auth strictly from ``ANTHROPIC_API_KEY`` (OAuth/keychain are
+never read), so it MUST NOT be used with subscription (login) auth; keep it
+for API-key setups only.
 """
 
 import argparse
@@ -75,9 +110,32 @@ TIMEOUT = float(os.environ.get("ARI_CLI_SHIM_TIMEOUT", "1800"))
 MAX_CONCURRENCY = int(os.environ.get("ARI_CLI_SHIM_MAX_CONCURRENCY", "4"))
 CLAUDE_BIN = os.environ.get("ARI_CLI_SHIM_CLAUDE_BIN", "claude")
 CODEX_BIN = os.environ.get("ARI_CLI_SHIM_CODEX_BIN", "codex")
+# codex reasoning effort (`-c model_reasoning_effort=<x>`), e.g. minimal | low |
+# medium | high. `--ignore-user-config` drops the user's config default, so
+# without this codex uses its compiled default, which for a reasoning model is
+# slow — ARI drives MANY calls per run (a full paper pipeline hit the 90-min
+# per-stage subprocess cap on iterative citation collection alone). Empty =
+# don't override (codex default). Set e.g. ARI_CLI_SHIM_CODEX_REASONING=low to
+# make the whole pipeline tractable.
+CODEX_REASONING = os.environ.get("ARI_CLI_SHIM_CODEX_REASONING", "").strip()
 # Pass `claude --bare`: minimal mode (no CLAUDE.md/hooks/auto-memory). Strongly
-# cuts the per-call input-token overhead but forces ANTHROPIC_API_KEY auth.
+# cuts the per-call input-token overhead but forces ANTHROPIC_API_KEY auth —
+# bare mode never reads OAuth/keychain credentials (see `claude --help`), so
+# it breaks subscription-auth setups. API-key setups only.
 CLAUDE_BARE = os.environ.get("ARI_CLI_SHIM_CLAUDE_BARE", "0") == "1"
+
+
+def _env_int(name: str) -> int:
+    """Read an int env knob; unset/blank/garbage -> 0 (feature off)."""
+    try:
+        return int(os.environ.get(name, "") or 0)
+    except ValueError:
+        return 0
+
+
+# Optional cap on the delegated claude's internal tool loop (--max-turns N).
+# Upstreams the wrapper-script workaround; 0/unset = no flag.
+CLAUDE_MAX_TURNS = _env_int("ARI_CLI_SHIM_CLAUDE_MAX_TURNS")
 # Permission mode for claude-cli-agent (claude --permission-mode ...).
 CLAUDE_AGENT_PERMISSION = os.environ.get(
     "ARI_CLI_SHIM_CLAUDE_AGENT_PERMISSION", "acceptEdits"
@@ -355,6 +413,51 @@ def _run(cmd: list[str], stdin_text: str, cwd: str) -> subprocess.CompletedProce
     )
 
 
+#: Template key for the bare→qualified tool-name table appended to the
+#: delegated ``--system-prompt``. Ungoverned (not in FOUNDING_PROMPT_TABLE):
+#: it is a mechanical name-mapping notice, not an actor's instructions, so
+#: there is no role for RQGM to evolve it under.
+_NAME_RESOLUTION_PROMPT_KEY = "llm/mcp_name_resolution"
+
+
+def mcp_name_resolution_note(allowed_mcp_tools: list[str] | None) -> str:
+    """A bare-name → fully-qualified-MCP-name table for the delegated claude.
+
+    ARI's agent prompts name tools BARE (``call survey() NOW``,
+    ``WORKFLOW ORDER: (1) generate_ideas() …``) because in-process those are the
+    names ``MCPClient.call_tool`` takes. Under MCP delegation claude sees the
+    same tools under Claude-Code's namespaced form ``mcp__<server>__<tool>``,
+    and a bare name is not callable — it fails with
+    ``Error: No such tool available: survey``. Observed 2026-07-20: the
+    delegated model dutifully called ``survey()``, got that error, and spent the
+    node's whole step budget re-probing instead of doing the work, so the
+    exploration phase produced zero artifacts.
+
+    The shim is the only layer that holds BOTH vocabularies, so it publishes the
+    mapping. Returns ``""`` when there is nothing to map (no delegation), which
+    keeps the non-MCP prompt byte-identical."""
+    pairs: list[tuple[str, str]] = []
+    for full in allowed_mcp_tools or []:
+        parts = str(full).split("__")
+        if len(parts) >= 3 and parts[0] == "mcp":
+            bare = "__".join(parts[2:])          # tool names may contain "__"
+            if bare:
+                pairs.append((bare, str(full)))
+    if not pairs:
+        return ""
+    rows = "\n".join(f"  {bare}()  ->  {full}"
+                     for bare, full in sorted(set(pairs)))
+    # The note body lives in ``ari/prompts/llm/mcp_name_resolution.md`` rather
+    # than inline: ari-core carries NO inline prompt literals (the invariant
+    # scripts/tests/test_check_prompts.py enforces for this package), and an
+    # externalised template also gets a snapshot, so a wording change is
+    # reviewable as a diff instead of vanishing into a string concat.
+    from ari.prompts import FilesystemPromptLoader
+
+    template = FilesystemPromptLoader().load(_NAME_RESOLUTION_PROMPT_KEY)
+    return "\n\n" + template.format(rows=rows).rstrip("\n")
+
+
 def run_claude(
     system: str,
     prompt: str,
@@ -392,12 +495,24 @@ def run_claude(
         cmd = [CLAUDE_BIN, "-p", "--output-format", "stream-json", "--verbose"]
     else:
         cmd = [CLAUDE_BIN, "-p", "--output-format", "json"]
+    # Unconditional: without it a nested claude that inherits the parent
+    # session's project boots every ambient MCP server (observed: 15 ari-skill
+    # servers forked per plain-text judge/select call). Strict mode still
+    # honors the explicit --mcp-config passed in the use_mcp branch below.
+    cmd.append("--strict-mcp-config")
     if CLAUDE_BARE:
         cmd.append("--bare")
     if real_model:
         cmd += ["--model", real_model]
-    if system:
-        cmd += ["--system-prompt", system]
+    # Under delegation the caller's bare tool names are not callable; publish
+    # the mapping alongside the caller's own system prompt (see
+    # `mcp_name_resolution_note`). Empty string when not delegating, so the
+    # non-MCP prompt stays byte-identical.
+    _system = (system or "") + (
+        mcp_name_resolution_note(allowed_mcp_tools) if use_mcp else ""
+    )
+    if _system:
+        cmd += ["--system-prompt", _system]
     if use_mcp:
         # Materialise the MCP server config as a tmp JSON file in cwd so it
         # survives for post-mortem inspection alongside tool_calls.jsonl.
@@ -411,7 +526,6 @@ def run_claude(
         mcp_json_file = fh.name
         cmd += [
             "--mcp-config", mcp_json_file,
-            "--strict-mcp-config",
             "--allowedTools", " ".join(allowed_mcp_tools or []),
             "--permission-mode", CLAUDE_AGENT_PERMISSION,
             "--debug-file", debug_log,
@@ -423,6 +537,8 @@ def run_claude(
         cmd += ["--allowedTools", ""]
     if MAX_BUDGET_USD:
         cmd += ["--max-budget-usd", MAX_BUDGET_USD]
+    if CLAUDE_MAX_TURNS > 0:
+        cmd += ["--max-turns", str(CLAUDE_MAX_TURNS)]
     proc = _run(cmd, prompt, cwd)
     if proc.returncode != 0:
         raise RuntimeError(
@@ -523,9 +639,170 @@ def _parse_claude_stream_json(stdout: str, cwd: str) -> tuple[str, dict]:
     return text, usage
 
 
+def _codex_text_from_stdout(stdout: str) -> str:
+    """Recover the latest assistant text from codex's ``--json`` JSONL stream.
+
+    The mirror of the claude path's stdout fallback: used only when the
+    ``-o last_msg_file`` output cannot be read, so a lost file does not become
+    an indistinguishable empty reply.
+    """
+    text = ""
+    for line in (stdout or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            ev = json.loads(line)
+        except Exception:
+            continue
+        if not isinstance(ev, dict):
+            continue
+        msg = ev.get("msg") if isinstance(ev.get("msg"), dict) else ev
+        # codex emits agent_message / assistant events carrying the text.
+        for key in ("last_agent_message", "message", "text"):
+            val = msg.get(key)
+            if isinstance(val, str) and val.strip():
+                text = val.strip()
+            elif isinstance(val, dict):
+                for block in (val.get("content") or []):
+                    if isinstance(block, dict) and isinstance(block.get("text"), str):
+                        text = block["text"].strip() or text
+    return text
+
+
+#: A TOML bare key (unquoted): letters, digits, ``-``, ``_``. codex's ``-c``
+#: dotted-path parser splits the KEY on every ``.`` even inside quotes and does
+#: not register a quoted server segment as a live server, so a server name must
+#: be a bare key — anything else (a dot, a space, a quote) cannot be attached.
+_TOML_BARE_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _toml_basic_string(s) -> str:
+    """A TOML basic string for a scalar VALUE (command / arg / env / tool name).
+
+    ``ensure_ascii=False`` so the raw UTF-8 character is emitted, NOT a
+    ``\\uXXXX`` escape: json's ASCII escaping turns an astral code point (> U+FFFF
+    — CJK Ext-B like 𩸽/𠮷, mathematical alphanumerics) into a UTF-16 SURROGATE
+    PAIR (``\\ud83d\\ude00``), which TOML rejects (surrogates are not scalar
+    values) and codex then refuses the ENTIRE config. Raw UTF-8 is a valid TOML
+    basic string; json still escapes ``"``, ``\\`` and control chars exactly as
+    TOML requires."""
+    return json.dumps(str(s), ensure_ascii=False)
+
+
+def _toml_string_array(items) -> str:
+    """A TOML array of basic strings (args / enabled_tools)."""
+    return "[" + ", ".join(_toml_basic_string(x) for x in items) + "]"
+
+
+def _toml_inline_table(d: dict) -> str:
+    """A TOML inline table of string→string (an MCP server's env). Unlike JSON
+    (``{"k": "v"}``) TOML wants ``{ "k" = "v" }`` — keys are quoted basic
+    strings, so a key/value with special chars is still encoded safely."""
+    body = ", ".join(
+        f"{_toml_basic_string(k)} = {_toml_basic_string(v)}" for k, v in d.items()
+    )
+    return "{" + body + "}"
+
+
+def _codex_mcp_overrides(
+    mcp_config: dict | None, allowed_mcp_tools: list[str] | None
+) -> list[str]:
+    """Translate the shim's engine-neutral MCP payload — the SAME
+    ``{"mcpServers": {name: {command,args,env}}}`` dict + ``mcp__server__tool``
+    allowlist the claude path consumes — into codex ``-c mcp_servers.*``
+    overrides, the direct analogue of claude's ``--mcp-config`` +
+    ``--allowedTools``:
+
+      - each server → ``mcp_servers.<name>.{command,args,env}`` (BARE key)
+      - its per-server tool allowlist → ``mcp_servers.<name>.enabled_tools``,
+        so a memory server stripped of its CoW-guarded write tools (via
+        ``disabled_tools``) — or omitted from ``mcpServers`` entirely (via
+        ``phase: none``) — is honored EXACTLY as claude honors the filtered
+        ``--allowedTools`` / absent ``--mcp-config`` entry. This is how "detach
+        memory" and "detach MCP" reach codex.
+
+    A server with zero reachable tools is skipped (codex would otherwise spawn a
+    process exposing nothing). A server whose NAME is not a TOML bare key
+    (a dot/space/quote — none of ARI's skill names) is skipped with a warning
+    rather than silently corrupting the whole ``-c`` config, which would drop
+    ALL servers. Returns a flat ``["-c", "k=v", …]`` argv fragment; empty when
+    there is nothing to attach.
+    """
+    servers = (mcp_config or {}).get("mcpServers") or {}
+    out: list[str] = []
+    for name, spec in servers.items():
+        prefix = f"mcp__{name}__"
+        tools = [
+            t[len(prefix):]
+            for t in (allowed_mcp_tools or [])
+            if isinstance(t, str) and t.startswith(prefix)
+        ]
+        if not tools:
+            continue
+        if not _TOML_BARE_KEY.match(str(name)):
+            # codex splits the dotted -c key on interior '.' even inside quotes
+            # and won't register a quoted segment as a live server, so a name
+            # like "a.b" would corrupt the WHOLE config. Fail loud, skip one.
+            log.warning("codex MCP: skipping server %r — name is not a TOML bare "
+                        "key ([A-Za-z0-9_-]); its tools are unavailable", name)
+            continue
+        key = f"mcp_servers.{name}"
+        out += ["-c", f"{key}.command={_toml_basic_string(spec.get('command', ''))}"]
+        if spec.get("args"):
+            out += ["-c", f"{key}.args={_toml_string_array(spec['args'])}"]
+        if spec.get("env"):
+            out += ["-c", f"{key}.env={_toml_inline_table(spec['env'])}"]
+        out += ["-c", f"{key}.enabled_tools={_toml_string_array(tools)}"]
+    return out
+
+
+def _append_codex_audit(stdout: str, cwd: str) -> None:
+    """Persist codex's ``--json`` JSONL event stream to ``<cwd>/tool_calls.jsonl``
+    for post-hoc audit, mirroring the claude MCP path. Best-effort; each line is
+    already a JSON object, so it is passed through verbatim (append, so a resume
+    accumulates rather than truncates)."""
+    audit_path = os.path.join(cwd, "tool_calls.jsonl")
+    try:
+        with open(audit_path, "a", encoding="utf-8") as fh:
+            for line in (stdout or "").splitlines():
+                line = line.strip()
+                if line:
+                    fh.write(line + "\n")
+    except OSError:
+        log.warning("codex audit write to %s failed", audit_path, exc_info=True)
+
+
 def run_codex(
-    system: str, prompt: str, agent: bool, real_model: str | None, cwd: str
+    system: str, prompt: str, agent: bool, real_model: str | None, cwd: str,
+    *,
+    mcp_config: dict | None = None,
+    allowed_mcp_tools: list[str] | None = None,
 ) -> tuple[str, dict]:
+    """Invoke ``codex exec`` and return ``(final_text, usage)``.
+
+    Two operating modes, symmetric with :func:`run_claude`:
+
+    1) **MCP-direct** — when ``mcp_config`` + ``allowed_mcp_tools`` are supplied,
+       codex is started with ``--ignore-user-config`` (its analogue of claude's
+       ``--strict-mcp-config``: the user's ``~/.codex/config.toml`` mcp_servers
+       and curated plugins are NOT loaded, so only the servers we pass are live;
+       auth still resolves from ``CODEX_HOME``) plus ``-c mcp_servers.*``
+       overrides for each server and its ``enabled_tools`` allowlist. Codex runs
+       its own tool loop against ONLY those tools, and the ``--json`` event
+       stream is persisted to ``<cwd>/tool_calls.jsonl``. Detaching MCP (no
+       config) or memory (server/tool filtered out upstream) is honored here.
+
+    2) **Plain** — no ``mcp_config``: read-only sandbox for non-agent phases,
+       full bypass for agent delegation, and NO ``-c mcp_servers`` overrides.
+       ``--ignore-user-config`` is still passed (see below), so a plain codex
+       call also boots zero ambient MCP servers — full MCP detach, matching
+       claude's unconditional ``--strict-mcp-config``.
+
+    ``--ignore-user-config`` is UNCONDITIONAL for both modes; ARI drives the
+    model through the shim model alias, not the user's codex config default.
+    """
+    use_mcp = bool(mcp_config and allowed_mcp_tools)
     full_prompt = f"{system}\n\n{prompt}".strip() if system else prompt
     with tempfile.NamedTemporaryFile(
         "w+", suffix=".txt", dir=cwd, delete=False
@@ -537,9 +814,37 @@ def run_codex(
         "--json",
         "-o", last_msg_file,
     ]
+    # Strict isolation, UNCONDITIONAL — the codex analogue of claude's
+    # unconditional --strict-mcp-config. Never load the user's
+    # ~/.codex/config.toml, so no ambient MCP server OR curated plugin
+    # (github / calendar / …) leaks into ANY ARI call, plain or MCP-direct — the
+    # same guarantee claude gives in text mode. Detaching MCP entirely is then
+    # honored identically: no mcp_config -> no -c overrides -> codex has zero
+    # MCP servers. Auth still resolves from CODEX_HOME (per `codex exec --help`);
+    # ARI owns the model via the alias -> -m, so not inheriting the user's model
+    # default is correct, not a regression.
+    cmd.append("--ignore-user-config")
+    # Disable codex's bundled curated apps (GitHub / Google Calendar / Sites /
+    # …). They are installed WITH the codex binary — neither --ignore-user-config
+    # nor a clean CODEX_HOME removes them — so without this an ARI agent would
+    # have ~129 ambient external tools (a hermeticity AND safety hole: an
+    # autonomous run could create calendar events or push to GitHub), the exact
+    # contamination claude's mcp__* allowlist forbids. It also cuts per-call
+    # input tokens ~5x (their schemas are otherwise injected every turn).
+    cmd += ["-c", "features.apps=false"]
+    # Reasoning effort: --ignore-user-config drops the operator's default, and a
+    # reasoning model at its compiled default is slow across ARI's many calls.
+    if CODEX_REASONING:
+        cmd += ["-c", f"model_reasoning_effort={_toml_basic_string(CODEX_REASONING)}"]
+    if use_mcp:
+        cmd += _codex_mcp_overrides(mcp_config, allowed_mcp_tools)
     if real_model:
         cmd += ["-m", real_model]
-    if agent:
+    if use_mcp or agent:
+        # Tool-using delegation: let the agent's tool loop run without approval
+        # prompts (codex exec is non-interactive anyway). MCP tool subprocesses
+        # are external to codex's sandbox regardless; this also frees native
+        # workspace edits, matching claude's acceptEdits.
         cmd.append("--dangerously-bypass-approvals-and-sandbox")
     else:
         cmd += ["--sandbox", "read-only"]
@@ -555,11 +860,27 @@ def run_codex(
             raise RuntimeError(
                 f"codex exited {proc.returncode}: {(proc.stderr or proc.stdout)[:500]}"
             )
+        if use_mcp:
+            _append_codex_audit(proc.stdout, cwd)
         try:
             with open(last_msg_file, encoding="utf-8") as f:
                 text = f.read().strip()
-        except OSError:
-            text = ""
+        except OSError as exc:
+            # last_msg_file is the ONLY carrier of the turn's output, created in
+            # the agent's own work dir. `text = ""` made a lost file
+            # byte-identical to a genuinely empty reply: HTTP 200, content:null,
+            # finish_reason:stop, real usage — and agent/loop.py then told the
+            # model "Your response was empty", burning a react step. Recover from
+            # the --json stdout (the sibling claude path already does this);
+            # raise if nothing is recoverable so do_POST returns 502.
+            text = _codex_text_from_stdout(proc.stdout)
+            if not text:
+                raise RuntimeError(
+                    f"codex output unreadable ({exc}) and no assistant text in "
+                    f"the --json stream; the turn produced no recoverable reply"
+                ) from exc
+            log.warning("codex last_msg_file unreadable (%s); recovered %d chars "
+                        "from the --json stream", exc, len(text))
     finally:
         try:
             os.unlink(last_msg_file)
@@ -621,14 +942,16 @@ def complete(
     Tool plumbing has two paths:
 
     - **MCP-direct** (when ``mcp_config`` + ``allowed_mcp_tools`` are
-      supplied, claude engine only): claude spawns the supplied MCP servers
-      itself and runs its own internal tool loop. The text-catalog hack is
-      bypassed entirely; the final assistant text is returned, and any
-      ``emit_results``-style tool call the caller still wants is expected
-      to come through MCP (not parsed out of text).
+      supplied, either engine): the CLI spawns the supplied MCP servers
+      itself and runs its own internal tool loop — claude via ``--mcp-config``
+      + ``--strict-mcp-config`` + ``--allowedTools``, codex via
+      ``--ignore-user-config`` + ``-c mcp_servers.*`` + per-server
+      ``enabled_tools``. The text-catalog hack is bypassed entirely; the final
+      assistant text is returned, and any ``emit_results``-style tool call the
+      caller still wants is expected to come through MCP (not parsed from text).
 
-    - **Text-catalog** (legacy, retained for codex and for callers that
-      don't own MCP servers): tool catalog + JSON protocol are injected
+    - **Text-catalog** (legacy, for callers that don't own MCP servers, either
+      engine without ``mcp_config``): tool catalog + JSON protocol are injected
       into the system prompt and the CLI's text reply is parsed back into
       OpenAI ``tool_calls`` — making the shim drive ARI's ReAct loop
       exactly like a real OpenAI / Anthropic backend.
@@ -643,11 +966,11 @@ def complete(
     engine, agent, real_model = parse_model(model)
     system, prompt = render_prompt(messages)
 
-    use_mcp = bool(mcp_config and allowed_mcp_tools and engine == "claude")
-    # text-catalog still applies for: (a) codex engine, (b) claude without
-    # mcp_config, (c) the legacy plain claude-cli mode when caller has tools
-    # but no MCP wiring. claude-cli-agent without mcp_config keeps existing
-    # behaviour (runs its OWN bash/edit — preserved for back-compat).
+    use_mcp = bool(mcp_config and allowed_mcp_tools and engine in ("claude", "codex"))
+    # text-catalog still applies for: (a) either engine WITHOUT mcp_config,
+    # (b) the legacy plain claude-cli mode when caller has tools but no MCP
+    # wiring. An -agent model without mcp_config keeps existing behaviour (runs
+    # its OWN bash/edit — preserved for back-compat).
     use_text_catalog = (
         bool(tools) and not agent and not use_mcp and tool_choice != "none"
     )
@@ -672,8 +995,8 @@ def complete(
         os.makedirs(cwd, exist_ok=True)
         if use_mcp:
             log.info(
-                "shim MCP-direct cwd=%s tools=%d debug=%s/claude_debug.log",
-                cwd, len(allowed_mcp_tools or []), cwd,
+                "shim MCP-direct engine=%s cwd=%s tools=%d (audit=%s/tool_calls.jsonl)",
+                engine, cwd, len(allowed_mcp_tools or []), cwd,
             )
     with _slots:
         try:
@@ -684,7 +1007,11 @@ def complete(
                     allowed_mcp_tools=allowed_mcp_tools if use_mcp else None,
                 )
             else:
-                text, usage = run_codex(system, prompt, agent, real_model, cwd)
+                text, usage = run_codex(
+                    system, prompt, agent, real_model, cwd,
+                    mcp_config=mcp_config if use_mcp else None,
+                    allowed_mcp_tools=allowed_mcp_tools if use_mcp else None,
+                )
         finally:
             if tmp_cwd:
                 # Throwaway dir only — caller didn't pin work_dir.
@@ -889,11 +1216,35 @@ class _DualStackServer(ThreadingHTTPServer):
         super().server_bind()
 
 
+def _warn_claude_env_contamination(environ=None) -> None:
+    """Warn (non-fatal) when the shim inherits a Claude Code session env.
+
+    ``CLAUDECODE`` / ``CLAUDE_CODE_*`` in the environment mean the shim was
+    started from inside a claude session; the nested ``claude`` subprocesses
+    then link back to the parent session (observed: ambient project MCP
+    servers booting per call before --strict-mcp-config, session cross-talk).
+    Never auto-sanitizes — auth setups vary — only recommends the recipe.
+    """
+    env = os.environ if environ is None else environ
+    hits = sorted(
+        k for k in env if k == "CLAUDECODE" or k.startswith("CLAUDE_CODE_")
+    )
+    if hits:
+        log.warning(
+            "Claude Code session variables inherited from the parent process: "
+            "%s. The nested claude CLI may link back to that session. "
+            "Recommended: launch the shim with a sanitized environment, e.g. "
+            "`env -i HOME=\"$HOME\" PATH=\"$PATH\" python -m ari.llm.cli_server`.",
+            ", ".join(hits),
+        )
+
+
 def serve(port: int = DEFAULT_PORT) -> None:
     logging.basicConfig(
         level=os.environ.get("ARI_CLI_SHIM_LOG", "INFO"),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
+    _warn_claude_env_contamination()
     srv = _DualStackServer(("", port), _Handler)
     log.info(
         "ARI CLI shim listening on http://localhost:%d/v1  "

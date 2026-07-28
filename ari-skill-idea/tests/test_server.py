@@ -705,3 +705,31 @@ class TestNoHardcodedAssumptions:
         source = Path(server.__file__).read_text()
         # Should not contain literal API keys
         assert "sk-" not in source or "sk-" in "# sk-example"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 8. MCP tool registration (RQGM Task 03 Stage-0 regression guard)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Direct function calls (everything above) cannot catch a lost @mcp.tool()
+# decorator — that regression shipped once (commits 711dad0/0625d2d/3707fd6
+# left only _load_virsci_snapshot_papers registered). This test goes through
+# FastMCP's own registry, exactly what MCPClient.list_tools() sees.
+
+class TestMcpToolRegistration:
+    @staticmethod
+    def _registered_tool_names() -> set:
+        import asyncio
+
+        return {t.name for t in asyncio.run(server.mcp.list_tools())}
+
+    def test_survey_and_generate_ideas_are_registered(self):
+        tools = self._registered_tool_names()
+        assert "survey" in tools
+        assert "generate_ideas" in tools
+
+    def test_snapshot_helper_is_not_a_tool(self):
+        # Internal helper: survey() calls it directly; it must never be
+        # agent-visible.
+        tools = self._registered_tool_names()
+        assert "_load_virsci_snapshot_papers" not in tools

@@ -24,7 +24,9 @@ sources:
     role: implementation
   - path: ari-skill-memory
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-core/ari/rqgm
+    role: implementation
+last_verified: 2026-07-10
 ---
 
 # Glossary
@@ -197,6 +199,101 @@ The multi-agent deliberation that turns a research goal into a hypothesis and a
 primary metric, run once at the root node via `generate_ideas`. See
 [Architecture](../concepts/architecture.md#full-data-flow).
 
+## RQGM (opt-in constitutional governance)
+
+Terms specific to the opt-in `ari_rqgm` execution mode. None of them apply
+to a default run. See [Execution modes](../guides/execution_modes.md) and
+[RQGM evaluation](../guides/rqgm_evaluation.md).
+
+**simple_bfts / ari_rqgm (execution modes)**
+The two values of `ari.mode`. `simple_bfts` (default) is current ARI,
+unchanged — it constructs no RQGM object and imports no `ari.rqgm` module.
+`ari_rqgm` opts in to epoch governance and also requires the
+`rqgm.enabled: true` interlock; any disagreement fails safe to `simple_bfts`
+with a warning (`ari/rqgm/mode.py`). See
+[Execution modes](../guides/execution_modes.md).
+
+**epoch**
+The governance time-slice of an `ari_rqgm` run. A boundary transaction fires
+every `rqgm.epoch.nodes_per_epoch` new BFTS nodes (default 10; `<= 0` keeps
+the run in `epoch_000`). Governance, registry transitions, and replay-pool
+admission happen only at these boundaries.
+
+**EpochState**
+The immutable per-epoch freeze of the active prompt/component set and utility
+policy (`ari/rqgm/state.py`, snapshotted to `epoch_state.json`). Frozen for
+the epoch's duration and fingerprinted without wall-clock fields, so later
+registry changes never leak into a closed epoch.
+
+**ConstitutionalKernel**
+The non-evolving Layer-0 checker (`ari/rqgm/kernel.py`): a pure, deterministic
+validator that returns byte-stable `KernelReport` verdicts and writes nothing.
+Severities are frozen in code (`kernel_rules.py`), never configurable; only
+the posture (`rqgm.kernel.enforcement`: `standard` / `audit_only`) and float
+tolerance live in config.
+
+**GovernanceOrchestrator**
+The single epoch-boundary governance entry point (`ari/rqgm/governance/`):
+evidence gathering, prosecution, defense, and adjudication over the closing
+epoch, self-audited by the ConstitutionalKernel. Budgets and posture live
+under `rqgm.governance` / `rqgm.replay`.
+
+**RegistryTransitionEngine**
+The single writer of registry status (`ari/rqgm/transition_engine.py`). It
+turns a governance outcome into a committed `EpochTransition`
+(activations / retirements) persisted through the RQGM store; no other
+component may change a prompt's or component's status.
+
+**FrontierRepairEngine**
+Runs at the epoch boundary after a transition with retirements
+(`ari/rqgm/frontier_repair.py`): traces records materially dependent on a
+retired `prompt_hash`, marks them stale (logical-only — nothing is deleted),
+recomputes what survives, and rebuilds the BFTS frontier deterministically.
+
+**ProposalRecord / ProposalSummaryView**
+A `ProposalRecord` is one archival proposal (append-only
+`{checkpoint}/proposals/proposal_records.jsonl`); a `ProposalSummaryView` is
+the bounded summary derived from it — the **only** shape BFTS ever sees
+(`ari/rqgm/proposals/records.py`). The `ProposalRouter` dispatches generation
+across the generator registry under `proposal_router.*` budgets; the VirSci
+generator is opt-in and off by default.
+
+**PromptSpec**
+One versioned prompt identity (`ari/rqgm/prompt_spec.py`). Immutable: any
+change is a new `prompt_id` + `prompt_hash`, never an edit. Evolved template
+bodies are stored write-once under `{checkpoint}/rqgm_prompts/`.
+
+**ValidatedAttackRecord**
+An adversarial finding that survived adjudication — it exists only for
+verdicts `valid` / `partially_valid` (`ari/rqgm/adversarial/records.py`) and
+is the only attack shape admissible to the replay pool.
+
+**AdversarialReplayPool**
+The curated pool of adjudicated failure cases
+(`ari/rqgm/adversarial/pool.py`), snapshotted to
+`{checkpoint}/rqgm/adversarial_replay_pool.json`; the append-only truth is
+`rqgm_adversarial_cases.jsonl`. Admission happens only at epoch boundaries;
+sizing lives under `rqgm.adversarial.pool.*`.
+
+**selective erasure**
+Logical-only invalidation of records produced by — or materially dependent
+on — a retired prompt. Nothing is physically deleted or rewritten: staleness
+lives in `SelectiveErasureEvent` / `FrontierRebuildEvent` audit-log lines and
+the derived `rqgm_erasure_state.json` rollup, and readers derive `stale` at
+read time.
+
+**clean-room regeneration**
+Drafting a retired role's replacement prompt without access to the retired
+prompt's text (`ari/rqgm/clean_room.py`, `CleanRoomCoordinator`). Fail-closed
+for candidate admission, fail-open for the run: on any violation the role
+falls back to its committed baseline template and the loop continues.
+
+**meta tier**
+The highest of the three registry tiers (`fixed` / `institutional` / `meta`).
+Meta-tier governance components may evolve, but their authority cannot
+expand: capability flags are deny-by-default and checked against frozen
+authority tables in `ari/rqgm/meta_rules.py`.
+
 ## State & publication
 
 **workspace (root)**
@@ -222,9 +319,11 @@ they come from `.env` or the environment. Holds `experiment.md`, `meta.json`,
 `launch_config.json`, `tree.json` / `nodes_tree.json` (the serialized node
 tree), `results.json`, `idea.json`, `cost_trace.jsonl` / `cost_summary.json`,
 `settings.json`, `memory.json`, `ari.log`, `.ari_pid`, and `uploads/`. See
-[Architecture → File Structure](../concepts/architecture.md#file-structure) and
-[`refactoring/notes/07_checkpoint_model.md`](../../refactoring/notes/07_checkpoint_model.md)
-for the full layout + the read-path resolvers.
+[Architecture → File Structure](../concepts/architecture.md#file-structure)
+for the full layout, and [File formats](file_formats.md) for the per-file
+schemas. An `ari_rqgm` run additionally writes the RQGM state files
+(`rqgm_state.json`, `rqgm_registry.json`, `rqgm_audit.jsonl`, `proposals/`,
+`rqgm_prompts/`, …) — absent on every default run.
 
 **node work_dir**
 Where a node's files physically live: `{workspace}/experiments/{run_id}/{node_id}/`
@@ -286,4 +385,5 @@ template (`sc` / `neurips` / `nature`). See [Rubric schema](rubric_schema.md).
 See also: [Architecture](../concepts/architecture.md) ·
 [BFTS algorithm](../concepts/bfts.md) ·
 [Memory architecture](../concepts/memory.md) ·
+[Execution modes](../guides/execution_modes.md) ·
 [Configuration](configuration.md)

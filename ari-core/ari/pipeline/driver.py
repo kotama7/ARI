@@ -369,9 +369,46 @@ class WorkflowDriver:
         except Exception:
             pass
 
+        # ``run_id`` / ``experiments_root`` are NOT new conventions: they are the
+        # values ``ari.paths`` already owns, exposed to templates so a stage can
+        # name them. The recovery-from-checkpoint-dir idiom below is the same one
+        # ``ari/orchestrator/bfts.py:_resolve_pm_and_run_id`` and
+        # ``ari/trace_store.py:_resolve_pm_and_run_id`` already run in production
+        # (``PathManager.from_checkpoint_dir`` + basename), so the reader of
+        # ``experiments/{run_id}/{node_id}/`` and the writer of those node dirs
+        # agree by construction rather than by a duplicated path expression.
+        # run_id resolution uses the GUARDED idiom (``tree.json`` first, dir name
+        # only as fallback) that ``ari/cli/migrate.py:57`` and
+        # ``ari/viz/api_orchestrator.py:53`` already use — NOT the bare basename.
+        # The bare form is wrong exactly when it matters: ``ari resume`` reads the
+        # authoritative run_id from ``tree.json`` and then forces
+        # ``cfg.checkpoint.dir`` to wherever the checkpoint now lives
+        # (``ari/cli/run.py:522,539``), so on a renamed or moved checkpoint the
+        # basename and the run_id that the node dirs were actually written under
+        # diverge. Getting this wrong is silent: ``audit_checkpoint`` skips a
+        # missing run dir and returns an EMPTY result set, which reads as "clean".
+        try:
+            from ari.paths import PathManager as _PM_tpl
+            _pm_tpl = _PM_tpl.from_checkpoint_dir(checkpoint_dir)
+            _experiments_root_tpl = str(_pm_tpl.experiments_root)
+            _run_id_tpl = ""
+            _tree_p = Path(checkpoint_dir) / "tree.json"
+            if _tree_p.exists():
+                try:
+                    _run_id_tpl = str(json.loads(_tree_p.read_text()).get("run_id") or "")
+                except Exception:
+                    _run_id_tpl = ""
+            if not _run_id_tpl:
+                _run_id_tpl = _os.path.basename(str(checkpoint_dir).rstrip("/"))
+        except Exception as _pm_err:  # pragma: no cover - defensive
+            log.warning("pipeline: could not resolve run_id/experiments_root: %s", _pm_err)
+            _run_id_tpl, _experiments_root_tpl = "", ""
+
         tpl_vars: dict = {
             "ckpt":              str(checkpoint_dir),
             "checkpoint_dir":    str(checkpoint_dir),
+            "run_id":            _run_id_tpl,
+            "experiments_root":  _experiments_root_tpl,
             "context":           context,
             "experiment_summary": context,
             "paper_context":     _paper_ctx,
@@ -489,6 +526,21 @@ class WorkflowDriver:
 
                 # Stage completed successfully
                 print(f"[Paper Pipeline] Stage [{stage_name}]: DONE", flush=True)
+
+                # A stage that returns `warnings` was reporting them to nobody:
+                # the driver stored the result and moved on, so a tool could say
+                # "N inserted sentences assert a verification nobody requested"
+                # and the run would print only DONE. Surface them at the one
+                # place every stage passes through.
+                _warns = (result or {}).get("warnings") if isinstance(result, dict) else None
+                for _w in (_warns or [])[:5]:
+                    _msg = _w if isinstance(_w, str) else str(_w)
+                    print(f"[Paper Pipeline] Stage [{stage_name}]: WARNING {_msg[:300]}",
+                          flush=True)
+                    log.warning("pipeline stage %s: %s", stage_name, _msg[:500])
+                if _warns and len(_warns) > 5:
+                    print(f"[Paper Pipeline] Stage [{stage_name}]: "
+                          f"WARNING (+{len(_warns) - 5} more)", flush=True)
 
                 # ── loop_back_to runtime ─────────────────────────────────────
                 # If this stage declares a `loop_back_to` target and its result

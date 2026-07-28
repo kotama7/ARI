@@ -17,6 +17,8 @@ file formats, and terminology.
 - `mcp_tools.md` — MCP Tools Reference: the MCP servers ARI ships (one per skill package).
 - `public_api.md` — `ari.public`: the only stable module surface for `ari-skill-*` packages.
 - `registry.md` — ari-registry (v0.7.0+): the minimal HTTP registry for curated EAR bundles.
-- `rest_api.md` — REST API Reference: the viz dashboard server endpoints.
+- `rest_api.md` — REST API Reference: the canonical `/api/v1` surface plus the frozen legacy facade.
+- `rqgm_gui_read_models.md` — RQGM GUI read models: the `/api/v1/runs/{run_id}/rqgm/*` payloads, their source artifacts, and the truth rules they enforce.
+- `rqgm_schemas.md` — RQGM Schema Reference: the JSON Schemas for every record the `ari_rqgm` mode persists.
 - `rubric_schema.md` — Rubric schema reference: the canonical replication rubric schema.
 - `skills.md` — MCP Skills Reference: the `ari-skill-*` MCP servers and their tools.

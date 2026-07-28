@@ -11,6 +11,7 @@ re-exported from the package root.
 - `__init__.py` — sub-module map + public re-exports.
 - `context_builder.py` — best-nodes context + keyword extraction.
 - `driver.py` — `WorkflowDriver`: run pre-flight (cost tracker, evaluation_criteria/nodes_tree/verified-context, tpl_vars, BFTS no-real-data sanity gate) + index-based stage-cursor loop with `loop_back_to` rewind.
+- `integrity.py` — the run-integrity aggregate: reads the artifacts each check already wrote (gate findings, provenance audit, claim links, refine insertions, literature, ideation grounding) into `run_integrity.json` + a console summary. Recomputes nothing; an ABSENT producer is reported as `null`, never as zero findings.
 - `experiment_md.py` — `experiment.md` helpers.
 - `orchestrator.py` — top-level entry points (`build_scientific_data`, `run_pipeline`).
 - `stage_context.py` — `StageContext` dataclass: shared mutable run state (`tpl_vars`, `stage_outputs`) + read-only inputs (checkpoint_dir, config_path, wf_cfg, disabled_stages, best_metrics).

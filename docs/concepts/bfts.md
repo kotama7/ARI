@@ -4,9 +4,13 @@ sources:
     role: implementation
   - path: ari-core/ari/agent/metric_contract.py
     role: implementation
+  - path: ari-core/ari/rqgm/runtime.py
+    role: implementation
+  - path: ari-core/ari/cli/bfts_loop.py
+    role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-06-12
+last_verified: 2026-07-10
 ---
 
 # BFTS Algorithm
@@ -126,6 +130,38 @@ with the claim gate's evidence view.
 
 ---
 
+## Governed BFTS under `ari_rqgm` (opt-in)
+
+In the opt-in `ari_rqgm` execution mode the algorithm above is unchanged —
+governance *wraps* it at four seams (all fail-open; under the default
+`simple_bfts` none of this code is imported):
+
+- **`GovernedSearchStrategy` seam** (`ari/rqgm/runtime.py`): `build_runtime`
+  wraps the BFTS strategy in a pure-delegation wrapper implementing the same
+  seven `SearchStrategy` methods. The run loop detects it with one
+  duck-typed read (`getattr(bfts, "rqgm", None)`); selection, pruning, and
+  diversity logic are forwarded verbatim.
+- **Summary-only expand context**: when a selected `ProposalRecord` exists,
+  the `idea_context` passed into `expand()` is re-rendered from its capped
+  `ProposalSummaryView` (budget: `proposal_router.summary_budget_chars`)
+  instead of the raw `idea.json` text; each proposed child direction is
+  recorded back as a proposal observation. Full records never reach BFTS.
+- **Epoch boundaries**: the loop calls `ensure_epoch` at start and at each
+  outer-loop head; after every `rqgm.epoch.nodes_per_epoch` new nodes the
+  boundary transaction runs on the main thread (audit → transition →
+  repair) with no node in flight. After evaluation, each completed node also
+  gets a best-effort adversarial round before its node report is written.
+- **Frontier repair hook**: the boundary tick receives the live
+  `frontier`/`pending`/`all_nodes` state so retirements can logically erase
+  stale records and rebuild the frontier; a double kernel-validation failure
+  sets `expansion_halted` and the loop drains pending work without further
+  expansion.
+
+The layers, epoch algorithm, and invariants are documented in
+[Constitutional ARI-RQGM Architecture](rqgm_architecture.md).
+
+---
+
 ## See also
 
-[Architecture](architecture.md) · [Memory architecture](memory.md) · [Configuration → BFTS Evaluation Layers](../reference/configuration.md#bfts-evaluation-layers-configurable) · [Glossary](../reference/glossary.md)
+[Architecture](architecture.md) · [Constitutional ARI-RQGM Architecture](rqgm_architecture.md) · [Memory architecture](memory.md) · [Configuration → BFTS Evaluation Layers](../reference/configuration.md#bfts-evaluation-layers-configurable) · [Glossary](../reference/glossary.md)

@@ -1,0 +1,197 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/governance_report.schema.json",
+  "title": "ARI-RQGM GovernanceReport",
+  "description": "The single return type of GovernanceOrchestrator.audit_epoch (docs/plans/ari_rqgm/05 §6.1, owned by Task 05), appended to {ckpt}/rqgm_audit.jsonl as a governance_report record. Carries the mandatory rqgm_record_base envelope (record_id, epoch_id, component_id, prompt_hash, role, created_at, source_refs, status — plan 02 §6). recommendations[].action is a closed set reconciled with Task 09's transition table; unknown actions must be droppable by the engine. created_at is wall-clock metadata, never hashed (P2). Additive-only evolution.",
+  "type": "object",
+  "required": [
+    "record_type",
+    "schema_version",
+    "record_id",
+    "epoch_id",
+    "component_id",
+    "prompt_hash",
+    "role",
+    "created_at",
+    "status",
+    "source_refs",
+    "governance_level",
+    "degraded",
+    "degradation_reasons",
+    "reliability",
+    "observations",
+    "evidence_bundles",
+    "impeachment_motions",
+    "defenses",
+    "adjudications",
+    "candidate_evaluations",
+    "replay_pool_updates",
+    "self_audit",
+    "recommendations",
+    "bond_accounting",
+    "budget_usage"
+  ],
+  "properties": {
+    "record_type": {"const": "governance_report"},
+    "schema_version": {"const": 1},
+    "record_id": {"type": "string", "minLength": 1},
+    "epoch_id": {"type": "string"},
+    "component_id": {"const": "governance_orchestrator"},
+    "prompt_hash": {
+      "anyOf": [{"$ref": "#/$defs/hash12"}, {"type": "null"}]
+    },
+    "role": {"const": "governance"},
+    "created_at": {"type": "string"},
+    "status": {"type": "string", "enum": ["final"]},
+    "source_refs": {"type": "array", "items": {"type": "string"}},
+    "governance_level": {"type": "integer", "minimum": 0},
+    "degraded": {"type": "boolean"},
+    "degradation_reasons": {"type": "array", "items": {"type": "string"}},
+    "reliability": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "component_id",
+          "role",
+          "prompt_hash",
+          "observation_count",
+          "validated_attack_involvement",
+          "agreement_rate",
+          "calibration_error",
+          "reliability_score",
+          "insufficient_data",
+          "evidence_refs"
+        ],
+        "properties": {
+          "component_id": {"type": "string"},
+          "role": {"type": "string"},
+          "prompt_hash": {
+            "anyOf": [{"$ref": "#/$defs/hash12"}, {"type": "null"}]
+          },
+          "observation_count": {"type": "integer", "minimum": 0},
+          "validated_attack_involvement": {"type": "integer", "minimum": 0},
+          "agreement_rate": {"anyOf": [{"type": "number"}, {"type": "null"}]},
+          "calibration_error": {"anyOf": [{"type": "number"}, {"type": "null"}]},
+          "reliability_score": {"anyOf": [{"type": "number"}, {"type": "null"}]},
+          "insufficient_data": {"type": "boolean"},
+          "evidence_refs": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "observations": {"type": "array", "items": {"type": "string"}},
+    "evidence_bundles": {"type": "array", "items": {"type": "string"}},
+    "impeachment_motions": {"type": "array", "items": {"type": "string"}},
+    "defenses": {"type": "array", "items": {"type": "string"}},
+    "adjudications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["motion_id", "outcome"],
+        "properties": {
+          "motion_id": {"type": "string"},
+          "outcome": {
+            "type": "string",
+            "enum": ["upheld", "partially_upheld", "dismissed", "inconclusive"]
+          },
+          "judge_component_id": {"type": "string"},
+          "judge_prompt_hash": {
+            "anyOf": [{"$ref": "#/$defs/hash12"}, {"type": "null"}]
+          },
+          "replay_result_ref": {"type": "string"},
+          "anchor_result_ref": {"type": "string"},
+          "rationale_ref": {"type": "string"}
+        }
+      }
+    },
+    "candidate_evaluations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["prompt_id", "role", "verdict"],
+        "properties": {
+          "prompt_id": {"type": "string"},
+          "role": {"type": "string"},
+          "replay_score": {"anyOf": [{"type": "number"}, {"type": "null"}]},
+          "anchor_score": {"anyOf": [{"type": "number"}, {"type": "null"}]},
+          "verdict": {
+            "type": "string",
+            "enum": ["pass", "fail", "inconclusive"]
+          },
+          "case_refs": {"type": "array", "items": {"type": "string"}},
+          "cached": {"type": "boolean"}
+        }
+      }
+    },
+    "replay_pool_updates": {
+      "type": "object",
+      "required": ["added", "retired"],
+      "properties": {
+        "added": {"type": "array", "items": {"type": "string"}},
+        "retired": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "self_audit": {
+      "type": "object",
+      "required": [
+        "checked_components",
+        "kernel_violations_found",
+        "findings",
+        "escalations"
+      ],
+      "properties": {
+        "checked_components": {"type": "array", "items": {"type": "string"}},
+        "kernel_violations_found": {"type": "integer", "minimum": 0},
+        "findings": {"type": "array", "items": {"type": "object"}},
+        "escalations": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "recommendations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["action", "basis_refs", "confidence"],
+        "properties": {
+          "target_component_id": {"type": "string"},
+          "target_prompt_id": {"type": "string"},
+          "action": {
+            "type": "string",
+            "enum": [
+              "promote_candidate",
+              "promote",
+              "demote",
+              "warn",
+              "quarantine",
+              "retire",
+              "no_action"
+            ]
+          },
+          "basis_refs": {"type": "array", "items": {"type": "string"}},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+        }
+      }
+    },
+    "bond_accounting": {
+      "type": "object",
+      "required": ["posted", "refunded", "forfeited", "remaining_budget"],
+      "properties": {
+        "posted": {"type": "integer", "minimum": 0},
+        "refunded": {"type": "integer", "minimum": 0},
+        "forfeited": {"type": "integer", "minimum": 0},
+        "remaining_budget": {"type": "integer"}
+      }
+    },
+    "budget_usage": {
+      "type": "object",
+      "required": ["llm_calls", "replay_cases_used", "anchor_cases_used"],
+      "properties": {
+        "llm_calls": {"type": "integer", "minimum": 0},
+        "replay_cases_used": {"type": "integer", "minimum": 0},
+        "anchor_cases_used": {"type": "integer", "minimum": 0}
+      }
+    }
+  },
+  "$defs": {
+    "hash12": {"type": "string", "pattern": "^[0-9a-f]{12}$"}
+  }
+}

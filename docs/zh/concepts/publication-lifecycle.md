@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-06-12
 ---
 
 # 发布生命周期 (v0.7.0)
@@ -67,6 +67,42 @@ anchor 的同时应用建议修订（`paper_refine`），并重新编译 refine 
 发现，不会阻塞构建。设置 `claim_gate_policy.mode: strict`（或
 `ARI_CLAIM_GATE_MODE=strict`）后，**FINAL** 闸门在出现阻塞性错误（数值不匹配、
 未解析操作数、缺失证据）时会阻塞 `finalize_paper`。
+
+四个健壮性行为保证该回路端到端诚实：
+
+- **阻塞只保留给客观谬误。**闸门的必阻塞层只包含可确定性检验的发现
+  （与运行自身数据相矛盾的数值、不变量违规、在整个运行中找不到任何
+  证据的已声明 claim）。主观发现 —— LLM 语义评审的 overclaim 与
+  解释性警告 —— 依设计保持仅咨询性：LLM 判定跨运行不可复现，因此
+  绝不能拥有否决论文的权力。主观发现的补救途径是上述 review→refine
+  回路，通过 refine 后评审的原始已解决计数差值来度量（而非强制）。
+
+- **评审反馈确实落地。**`merge_reviews` 把每条语义评审警告作为咨询性
+  修订条目转发给 `paper_refine`（没有并行建议修订的警告永远到不了
+  refiner，警告计数也就永远不会下降）。报告的
+  `resolved_overclaim_count` 是原始的 previous−current 差值 ——
+  负值意味着计数在 refine 后*增长*了，会作为回归被呈现，而不是被
+  钳制为零。
+- **数值校验理解科学计数法。**数值提及扫描器（镜像存在于
+  `ari-skill-paper/src/claim_links.py` 与 ari-core 的
+  `claim_gate/latex.py`）解析尾数 × 10^exp 形式
+  （`4.44 \times 10^{-16}`，支持 `x`/`\times`/`\cdot`）与贴连的
+  e 记法（含句尾形式），保留含数字的 token，并在定位数值单位时把
+  `\( \)` 视为数学定界符 —— 消除此类数值上的伪
+  `numeric_mismatch` 发现。巨大的指数会被跳过，绝不使闸门崩溃。
+- **写手声明在解析时被归一化。**仅靠指令被证明不可靠，因此解析器
+  吸收常见的怪癖：公式同义词（`value`、`raw`、`abs`、…）归一化为
+  注册表名称；裸 `k=v` token 前多余的 `operands=` 标签前缀被剥除；
+  当所有 anchor 共享同一个 id 时（例如每行都盖 `% CLAIM:Cw:NCw`），
+  anchor 会被逐行消歧，使每条声明独立校验。
+- **指标契约只铸造一次。**第一次产生含 claim 契约的
+  `make_metric_spec` 调用会把它持久化为
+  `{checkpoint}/metric_contract.json`；之后的每次调用都原样返回该
+  文件（响应携带 `contract_frozen: true`）。LLM 命名不具备指称
+  稳定性 —— 运行中途重新生成契约会改变证据词汇表，使兄弟节点以
+  旧名称发出的证据对精确匹配闸门不可见（在真实运行中观测到）。
+  每节点的 spec 字段（评分指南等）仍按调用计算；仅脚手架的契约
+  （无 claim）永不冻结。
 
 产物：`paper_claim_links.json`（draft）/
 `paper_claim_links_final.json`，以及

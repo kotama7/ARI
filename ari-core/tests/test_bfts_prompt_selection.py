@@ -76,7 +76,35 @@ def test_select_best_to_expand_uses_configured_prompt_key():
     assert captured == ["orchestrator/bfts_expand_select_variant"]
 
 
+def test_expand_uses_configured_prompt_key():
+    # RQGM Task 07 §7: the expand template is config-swappable like the two
+    # selector prompts.
+    bfts = _bfts(expand_prompt="orchestrator/bfts_expand_variant")
+    captured: list[str] = []
+
+    class _FakeLoader:
+        def load(self, key):
+            captured.append(key)
+            # No placeholders: .format(**ctx) then leaves the text as-is.
+            return "expand prompt body"
+
+        def load_versioned(self, key, version=None):
+            return self.load(key), "0" * 12
+
+    parent = _node("p")
+    parent.depth = 0
+    with patch(
+        "ari.prompts.FilesystemPromptLoader",
+        new=_FakeLoader,
+    ):
+        bfts.expand(parent, "goal", idea_context="")
+
+    assert captured == ["orchestrator/bfts_expand_variant"]
+
+
 def test_defaults_match_legacy_prompt_keys():
     bfts = _bfts()
     assert bfts.config.select_prompt == "orchestrator/bfts_select"
     assert bfts.config.expand_select_prompt == "orchestrator/bfts_expand_select"
+    # RQGM Task 07: default preserves the previously hardcoded expand key.
+    assert bfts.config.expand_prompt == "orchestrator/bfts_expand"

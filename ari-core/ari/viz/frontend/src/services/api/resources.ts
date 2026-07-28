@@ -25,8 +25,19 @@ export async function fetchGpuMonitor(): Promise<{
   return get('/api/gpu-monitor');
 }
 
-export async function gpuMonitorAction(action: string): Promise<any> {
-  return post('/api/gpu-monitor', { action, confirmed: true });
+// MN-6 (RR-P0-6/RR-P0-9): the confirmed flag is no longer hardcoded —
+// 'start' callers forward the user's explicit confirmation result, and
+// 'stop' is two-step (a 'gpu-monitor-stop' challenge for target '*'
+// from ./challenges, echoed back as challenge_id; else the server
+// refuses with HTTP 428).
+export async function gpuMonitorAction(
+  action: string,
+  opts?: { confirmed?: boolean; challengeId?: string },
+): Promise<any> {
+  const body: Record<string, unknown> = { action };
+  if (opts?.confirmed !== undefined) body.confirmed = opts.confirmed;
+  if (opts?.challengeId !== undefined) body.challenge_id = opts.challengeId;
+  return post('/api/gpu-monitor', body);
 }
 
 // ── container ─────────────────────────────────

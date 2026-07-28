@@ -14,6 +14,7 @@ from src.server import (
     compile_paper,
     generate_section,
     get_template,
+    link_paper_claims,
     list_venues,
     merge_reviews,
     paper_refine,
@@ -610,3 +611,122 @@ def test_escape_underscores_unclosed_math_environment_falls_back():
     from src.server import _escape_text_underscores as esc
     out = esc("\\begin{equation}\nx_i never closes")
     assert "x\\_i" in out and out.startswith("\\begin{equation}")
+
+
+# --- decode_seed: additive, gated on non-zero (linear stays byte-identical) ---
+
+def _capture_payloads(tmp_path, tex="\\section{R}\n% CLAIM:C1:NC1\nThe value is X.\n"):
+    """Run paper_refine and return every litellm payload it sent."""
+    import json as _j
+
+    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    revs = _j.dumps([{"section": "results", "instruction": "tighten the claim"}])
+    sent = []
+
+    async def _spy(**kwargs):
+        sent.append(kwargs)
+        return _mock_resp('```json\n[{"find": "The value is X.", "replace": "The value is Y."}]\n```')
+
+    return p, revs, sent, _spy
+
+
+@pytest.mark.asyncio
+async def test_decode_seed_zero_leaves_the_payload_byte_identical(tmp_path):
+    """The linear on-ramp invariant: the default (0) must send NO `seed` key, so
+    linear mode's payloads are byte-identical to before the parameter existed.
+    Same shape as the writer_prompt_override="" precedent."""
+    p, revs, sent, _spy = _capture_payloads(tmp_path)
+    with patch("src.server.litellm.acompletion", new=_spy):
+        await paper_refine(tex_path=str(p), suggested_revisions_json=revs)
+    assert sent, "no LLM payload was sent"
+    assert all("seed" not in kw for kw in sent)
+
+    # And an explicit 0 is the same as omitting it entirely.
+    second = tmp_path / "explicit_zero"; second.mkdir()
+    p2, revs2, sent2, _spy2 = _capture_payloads(second)
+    with patch("src.server.litellm.acompletion", new=_spy2):
+        await paper_refine(tex_path=str(p2), suggested_revisions_json=revs2,
+                           decode_seed=0)
+    assert all("seed" not in kw for kw in sent2)
+    assert [kw["messages"] for kw in sent] == [kw["messages"] for kw in sent2]
+
+
+@pytest.mark.asyncio
+async def test_a_non_zero_decode_seed_reaches_the_payload(tmp_path):
+    """Non-zero => the sample IS seeded, so distinct seeds give distinct drafts
+    (docs/plans/ari_rqgm_paper/02 §5.4 decision 5). Recording a seed the payload
+    never carried is what made 8 seeds collapse to 1 draft."""
+    p, revs, sent, _spy = _capture_payloads(tmp_path)
+    with patch("src.server.litellm.acompletion", new=_spy):
+        await paper_refine(tex_path=str(p), suggested_revisions_json=revs,
+                           decode_seed=1234)
+    assert sent and all(kw["seed"] == 1234 for kw in sent)
+
+
+# --- H6/H7: review/gate load failures must not read as "nothing requested" ---
+
+@pytest.mark.asyncio
+async def test_merge_reviews_flags_a_corrupt_hard_gate_file(tmp_path):
+    """Binding the load error to `_` made a truncated hard-gate file (the file
+    carrying the blocking findings) indistinguishable from one never
+    configured: review_merge_log.json read ok:true, status:null, and the gate's
+    suggested_revisions vanished from what paper_refine received."""
+    import json
+
+    rr = tmp_path / "review_report.json"
+    rr.write_text(json.dumps({"overall_score": 3}))
+    hg = tmp_path / "hard_gate.json"
+    hg.write_text('{"status": "failed", "should_block": tru')   # truncated
+
+    out = await merge_reviews(review_report_path=str(rr), hard_gate_path=str(hg))
+    assert out["ok"] is False
+    assert out["load_errors"] and "claim_evidence_hard_gate" in out["load_errors"]
+    status = out["evidence_grounded_reviews"]["claim_evidence_hard_gate_status"]
+    assert status is not None and str(status).startswith("load_error:")
+
+
+@pytest.mark.asyncio
+async def test_paper_refine_errors_when_every_review_source_is_unreadable(tmp_path):
+    """`paper_refine` swallowed the review-payload parse and early-returned
+    'no actionable suggested_revisions; paper returned unchanged' — a note that
+    ASSERTS the reviewers requested nothing. A retracted claim then shipped
+    unchanged with no error key."""
+    p = tmp_path / "full_paper.tex"
+    p.write_text("\\section{Results}\n% CLAIM:C1:NC1\nWe report 3.2 GFLOP/s.\n",
+                 encoding="utf-8")
+    bad = tmp_path / "merged_review.json"
+    bad.write_text('{"suggested_revisions": [')   # truncated; the only source
+
+    out = await paper_refine(tex_path=str(p), merged_review_path=str(bad))
+    assert out.get("error") and "unreadable" in out["error"]
+    assert out["refined"] is False
+    assert "no actionable" not in str(out.get("note", ""))
+    assert out.get("warnings")
+
+
+# --- M9: a science_data source that exists but won't parse is surfaced -------
+@pytest.mark.asyncio
+async def test_link_paper_claims_surfaces_corrupt_science_data(tmp_path):
+    """M9: a science_data file that EXISTS but does not decode must set
+    `science_data_load_error`, not silently proceed with an empty registry
+    (which makes 0 resolved anchors read as 'the writer invented claim ids')."""
+    tex = tmp_path / "paper.tex"
+    tex.write_text(r"\documentclass{article}\begin{document}x\end{document}",
+                   encoding="utf-8")
+    bad = tmp_path / "science_data.json"
+    bad.write_text('{"claims": [ this is not json', encoding="utf-8")
+
+    out = await link_paper_claims(tex_path=str(tex), science_data_json=str(bad))
+    assert "science_data_load_error" in out
+    assert "science_data.json" in out["science_data_load_error"]
+
+
+@pytest.mark.asyncio
+async def test_link_paper_claims_no_science_data_has_no_load_error(tmp_path):
+    """M9 corollary: a genuinely absent science_data stays silent (no error key)
+    so absence and corruption never look alike."""
+    tex = tmp_path / "paper.tex"
+    tex.write_text(r"\documentclass{article}\begin{document}x\end{document}",
+                   encoding="utf-8")
+    out = await link_paper_claims(tex_path=str(tex), science_data_json="")
+    assert "science_data_load_error" not in out

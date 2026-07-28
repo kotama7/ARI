@@ -4,9 +4,11 @@ sources:
     role: implementation
   - path: ari-core/ari/pipeline/verified_context.py
     role: implementation
+  - path: ari-core/ari/memory
+    role: implementation
   - path: ari-core/ari/config
     role: config
-last_verified: 2026-06-04
+last_verified: 2026-07-10
 ---
 
 # ARI 可验证研究记忆
@@ -81,6 +83,9 @@ write_paper ─▶ reads the path directly, render_grounded_block → system pro
   `consolidate_node_memory`, `audit_memory`, …）暴露，全部由钩子调用。
 - `ari-core`：`pipeline/verified_context.py`（best-node lineage 作用域＋grounded-block
   渲染）、`bfts_loop` 的节点结束 consolidation 钩子，以及 write_paper 处的消费。
+  core 侧对该技能后端与 context builder 的所有访问都经过 `ari/memory/` 汇聚点
+  （`ari.memory.get_backend` / `ari.memory.build_verified_context`）——
+  这是唯一被允许导入 `ari_skill_memory` 的 ari-core 包。
 
 ## 门控与开销
 

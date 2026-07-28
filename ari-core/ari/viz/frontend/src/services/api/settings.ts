@@ -13,6 +13,26 @@ export async function saveSettings(
   return post('/api/settings', data);
 }
 
-export async function fetchEnvKeys(): Promise<{ keys: Record<string, string> }> {
-  return get('/api/env-keys');
+// Secret READINESS (gui_refresh Wave 3a, RR-P0-2 / ADR-11 / MN-2).
+// GET /api/v1/secrets/status reports WHETHER each allowlisted secret is
+// configured — never its value. The legacy GET /api/env-keys is redacted
+// server-side (values replaced by '***configured***') and no longer has a
+// frontend reader; the POST write path (saveSettings api_key) is unchanged.
+export interface SecretStatus {
+  name: string;
+  configured: boolean;
+  source_class:
+    | 'project_env'
+    | 'repo_env'
+    | 'user_env'
+    | 'process_env'
+    | null;
+  last_updated: string | null;
+}
+
+export async function fetchSecretsStatus(): Promise<{
+  schema_version: number;
+  secrets: SecretStatus[];
+}> {
+  return get('/api/v1/secrets/status');
 }

@@ -6,6 +6,8 @@ memory:
   backend: letta
   letta:
     base_url: http://localhost:8283
+    # NOT READ by any code path — Letta collections are not prefixed with
+    # this value today. Kept only as a record of the intended convention.
     collection_prefix: ari_
     embedding_config: letta-default
 resources:
@@ -62,8 +64,13 @@ bfts_pipeline:
 - stage: evaluate
   skill: evaluator-skill
   tool: evaluate_node
+  # NOTE: `evaluate_node` is NOT an MCP tool — evaluator-skill exposes
+  # claim_evidence_hard_gate / evidence_grounded_semantic_review /
+  # make_metric_spec. BFTS evaluation runs IN-PROCESS via
+  # ari.evaluator.LLMEvaluator, so this row is a GUI graph node only and its
+  # `enabled` toggle does not gate anything.
   description: LLM evaluator scores node, extracts metrics, determines scientific
-    contribution
+    contribution (in-process LLMEvaluator; this row is display-only)
   depends_on:
   - select_and_run
   enabled: true
@@ -98,15 +105,36 @@ pipeline:
     keywords: '{{keywords}}'
   outputs:
     file: '{{checkpoint_dir}}/related_refs.json'
-- stage: transform_data
-  skill: transform-skill
-  tool: nodes_to_science_data
-  description: LLM-powered experiment tree analysis -> science_data.json
+- stage: audit_node_provenance
+  skill: memory-skill
+  tool: audit_memory
+  description: Re-hash every node artifact whose sha256 the node_report recorded and
+    compare against disk, at the boundary where node outputs stop being experiment
+    results and start being paper evidence. Reports per artifact verified / mismatch
+    (rewritten after its hash was recorded) / missing (deleted) / unhashed (declared
+    with no recorded baseline). Covers the source files in `files_changed`; ARI's own
+    metadata (results.json et al., excluded by PathManager.is_meta_file) and
+    `artifacts` entries carrying no recorded hash are reported `unhashed`, not
+    verified. A signal, not a gate. Without it the recorded hashes were written and
+    never once checked.
   depends_on: []
   enabled: true
   phase: paper
   inputs:
-    nodes_json_path: '{{checkpoint_dir}}/tree.json'
+    experiments_root: '{{experiments_root}}'
+    run_id: '{{run_id}}'
+  outputs:
+    file: '{{checkpoint_dir}}/node_provenance_audit.json'
+- stage: transform_data
+  skill: transform-skill
+  tool: nodes_to_science_data
+  description: LLM-powered experiment tree analysis -> science_data.json
+  depends_on:
+  - audit_node_provenance
+  enabled: true
+  phase: paper
+  inputs:
+    nodes_json_path: '{{checkpoint_dir}}/nodes_tree.json'
     primary_metric: '{{primary_metric}}'
     higher_is_better: '{{higher_is_better}}'
   outputs:
@@ -148,7 +176,7 @@ pipeline:
   enabled: true
   phase: paper
   inputs:
-    nodes_json_path: '{{checkpoint_dir}}/tree.json'
+    nodes_json_path: '{{checkpoint_dir}}/nodes_tree.json'
     science_data_path: '{{checkpoint_dir}}/science_data.json'
     n_figures: 3
     output_dir: '{{checkpoint_dir}}'
@@ -187,7 +215,7 @@ pipeline:
   phase: paper
   inputs:
     experiment_summary: '{{experiment_summary}}'
-    nodes_json_path: '{{checkpoint_dir}}/tree.json'
+    nodes_json_path: '{{checkpoint_dir}}/nodes_tree.json'
     figures_manifest_json: '{{checkpoint_dir}}/figures_manifest.json'
     refs_json: '{{checkpoint_dir}}/related_refs.json'
     science_data_json: '{{checkpoint_dir}}/science_data.json'
@@ -462,6 +490,26 @@ pipeline:
     target_leaf_count: 0
   outputs:
     file: '{{checkpoint_dir}}/ors_rubric.meta.json'
+- stage: ors_audit_rubric
+  skill: replicate-skill
+  tool: audit_rubric
+  description: Audit the auto-generated rubric before anything is graded against
+    it. Flags each leaf `vague_qualifier` / `no_paper_evidence` / `duplicate`
+    (deterministic) and `unverifiable` (one LLM call per leaf), rewrites
+    ors_rubric.json in place with the flags plus audit metadata, and reports
+    `regen_recommended` when >20% of leaves are flagged. This is a quality
+    signal, not a gate — grading still proceeds, and the flags travel with the
+    rubric so a reader can see which criteria were unsound. Without it the
+    grader's own rubric was the one artifact in the chain nobody checked.
+  depends_on:
+  - ors_generate_rubric
+  enabled: true
+  phase: paper
+  inputs:
+    rubric_path: '{{checkpoint_dir}}/ors_rubric.json'
+    paper_path: '{{checkpoint_dir}}/full_paper.tex'
+  outputs:
+    file: '{{checkpoint_dir}}/ors_rubric.audit.json'
 - stage: ors_seed_sandbox
   skill: paper-re-skill
   tool: fetch_code_bundle
@@ -488,7 +536,7 @@ pipeline:
     submit (or time_limit_sec). v0.7+ replaced the v0.6 single-shot LLM replicator;
     see CHANGELOG. Skipped automatically when reproduce.sh is already present.
   depends_on:
-  - ors_generate_rubric
+  - ors_audit_rubric
   - ors_seed_sandbox
   - finalize_paper
   enabled: true
@@ -519,7 +567,7 @@ pipeline:
     BFTS used). partition / cpus / walltime blank → run_reproduce resolves from ARI_SLURM_*
     env then from launch_config.json. ARI_PHASE1_SANDBOX overrides everything.
   depends_on:
-  - ors_generate_rubric
+  - ors_audit_rubric
   - ors_build_reproduce
   enabled: true
   phase: paper
@@ -619,6 +667,9 @@ skills:
   - paper
   - reproduce
 version: '1'
+# NOT READ by any code path: reference collection is hard-wired to Semantic
+# Scholar (ari-skill-web). Changing `backend` or `alphaxiv_endpoint` has no
+# effect — kept as a record of the intended pluggability, not a live switch.
 retrieval:
   backend: semantic_scholar
   alphaxiv_endpoint: https://api.alphaxiv.org/mcp/v1

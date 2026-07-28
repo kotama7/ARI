@@ -8,6 +8,7 @@
  */
 
 @import './tokens.css';
+@import './motion.css';
 @import './layout.css';
 @import './components.css';
 @import './widgets.css';
