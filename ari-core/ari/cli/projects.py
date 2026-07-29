@@ -142,6 +142,7 @@ def paper(
                 pass
         node.metrics = nd.get("metrics") or {}
         node.has_real_data = nd.get("has_real_data", False)
+        node.evaluation_cases = nd.get("evaluation_cases") or {}
         node_map[node.id] = node
 
     all_nodes = list(node_map.values())
@@ -358,4 +359,3 @@ def show_project(
             console.print(f"\n[bold]Artifacts[/bold] ({len(files)} files):")
             for f in sorted(files)[:10]:
                 console.print(f"  • {f.name}")
-

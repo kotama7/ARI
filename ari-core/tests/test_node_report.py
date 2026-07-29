@@ -58,6 +58,19 @@ def _validate_minimal(report: dict) -> None:
         assert art["role"] in {"data_output", "log", "binary", "figure", "unknown"}
 
 
+def test_evaluation_case_schema_is_task_neutral() -> None:
+    schema = _load_schema()
+    case_schema = schema["properties"]["evaluation_cases"]["additionalProperties"]
+    assert set(case_schema["properties"]) == {"valid", "measurements"}
+    assert case_schema["additionalProperties"] is False
+
+    measurements = case_schema["properties"]["measurements"]
+    assert "properties" not in measurements
+    assert set(measurements["additionalProperties"]["type"]) == {
+        "number", "boolean", "string", "null",
+    }
+
+
 # ── helpers ──────────────────────────────────────────────────────────────
 
 def _write(p: Path, content: str | bytes) -> Path:
@@ -140,8 +153,9 @@ def test_file_notes_are_grafted_onto_files_changed(tmp_path: Path) -> None:
         }
 
     rep = build_node_report(node=_Node(), work_dir=child, parent_work_dir=parent,
-                            eval_result=None, delta_vs_parent="", what_was_done="")
+                            eval_result=None, what_was_done="")
     fc = rep["files_changed"]
+    assert "delta_vs_parent" not in rep
     assert {e["path"]: e.get("note") for e in fc["modified"]} == {
         "kernel.c": "blocked GEMM inner loop"}
     assert {e["path"]: e.get("note") for e in fc["deleted"]} == {
@@ -165,7 +179,7 @@ def test_files_changed_without_file_notes_has_no_note_keys(tmp_path: Path) -> No
         metrics: dict = {}; artifacts: list = []; trace_log = None
 
     rep = build_node_report(node=_Node(), work_dir=child, parent_work_dir=None,
-                            eval_result=None, delta_vs_parent="", what_was_done="")
+                            eval_result=None, what_was_done="")
     assert all("note" not in e for e in rep["files_changed"]["added"])
 
 
@@ -308,12 +322,21 @@ def test_build_and_write_node_report(tmp_path: Path) -> None:
         },
         "reason": "Reported headline metric in line with expectation.",
         "has_real_data": True,
+        "evaluation_cases": {
+            "shape_a": {
+                "valid": True,
+                "measurements": {
+                    "speedup": 1.25,
+                    "max_relative_error": 1e-12,
+                    "n_clamped": 0,
+                },
+            },
+        },
     }
 
     out = nr.write_node_report(
         node=node, work_dir=child, parent_work_dir=parent,
         eval_result=eval_result,
-        delta_vs_parent="Switched a.py to optimised loop",
         what_was_done="Optimised inner loop",
     )
 
@@ -342,6 +365,9 @@ def test_build_and_write_node_report(tmp_path: Path) -> None:
     # Metrics now include scientific_score and axis_scores after evaluator merge.
     assert report["metrics"].get("_scientific_score") == 0.71
     assert "_axis_scores" in report["metrics"]
+    assert report["measurement_valid"] is True
+    assert report["evaluation_cases"]["shape_a"]["valid"] is True
+    assert "succeeded" not in report["self_assessment"]
 
 
 # ── T-A6 ────────────────────────────────────────────────────────────────
@@ -362,7 +388,40 @@ def test_write_node_report_for_failed_node(tmp_path: Path) -> None:
     report = json.loads(out.read_text())
     _validate_minimal(report)
     assert report["status"] == "failed"
-    assert report["self_assessment"]["succeeded"] is False
+    assert report["measurement_valid"] is False
+    assert "succeeded" not in report["self_assessment"]
+
+
+def test_evaluator_reason_never_falls_back_to_llm_direction(
+    tmp_path: Path,
+) -> None:
+    work = tmp_path / "node_no_eval"
+    _write(work / "x.py", "pass\n")
+    node = _make_node(
+        id_="node_no_eval",
+        parent_id="node_root",
+        depth=1,
+        label=NodeLabel.IMPROVE,
+        status=NodeStatus.FAILED,
+        eval_summary="Try a blocked and vectorized implementation next",
+        artifacts=[],
+    )
+    report = nr.build_node_report(
+        node=node,
+        work_dir=work,
+        parent_work_dir=None,
+        eval_result=None,
+    )
+    assert report["evaluator_reason"] == ""
+
+    node.evaluator_reason = "deterministic evaluator rejected the candidate"
+    report = nr.build_node_report(
+        node=node,
+        work_dir=work,
+        parent_work_dir=None,
+        eval_result=None,
+    )
+    assert report["evaluator_reason"] == node.evaluator_reason
 
 
 # ── T-A7 ────────────────────────────────────────────────────────────────

@@ -45,7 +45,8 @@ def _clean_env(monkeypatch, tmp_path):
 
 
 def register(task="t", *, target=16.0, scale="linear", target_env=None, axis=None,
-             kwargs_toml="", body=HARNESS_PY, pin=True, nested=True):
+             kwargs_toml="", body=HARNESS_PY, pin=True, nested=True,
+             integrity=True):
     """Build a harness under the fixture workspace and return its dir."""
     d = reg.workspace_harness_root() / task
     (d / "k").mkdir(parents=True)
@@ -61,7 +62,13 @@ def register(task="t", *, target=16.0, scale="linear", target_env=None, axis=Non
         man.append("\n[measure_kwargs]\n" + kwargs_toml)
     man.append("\n[files]")
     man += [f'"{f}" = "{reg.sha256_file(d / f)}"' for f in files]
-    (d / reg.MANIFEST_NAME).write_text("\n".join(man) + "\n")
+    manifest_text = "\n".join(man) + "\n"
+    (d / reg.MANIFEST_NAME).write_text(manifest_text)
+    if integrity:
+        digest = reg.manifest_integrity_hash(reg._load_manifest(d))
+        (d / reg.MANIFEST_NAME).write_text(
+            manifest_text + f'\n[integrity]\nself_sha256 = "{digest}"\n'
+        )
     return d
 
 
@@ -258,6 +265,43 @@ def test_digests_are_recorded_and_are_a_copy():
     assert all(len(v) == 64 for v in h.digests().values())
     h.digests()["k/driver.c"] = "tampered"
     assert "tampered" not in h.digests().values()
+
+
+def test_manifest_self_hash_refuses_scoring_constant_edit_on_load():
+    d = register(target=16.0)
+    p = d / reg.MANIFEST_NAME
+    p.write_text(p.read_text().replace("target = 16.0", "target = 2.0"))
+    with pytest.raises(HarnessIntegrityError) as e:
+        reg.load("t")
+    assert "self-hash mismatch" in str(e.value)
+
+
+def test_describe_checks_manifest_self_hash_before_returning_target():
+    d = register(target=16.0)
+    p = d / reg.MANIFEST_NAME
+    p.write_text(p.read_text().replace("target = 16.0", "target = 2.0"))
+    with pytest.raises(HarnessIntegrityError) as e:
+        reg.describe("t")
+    assert "self-hash mismatch" in str(e.value)
+
+
+def test_axis_checks_manifest_self_hash_before_returning_axis():
+    d = register(kwargs_toml='n = {env = "ARI_SPMM_N", default = 20000}')
+    p = d / reg.MANIFEST_NAME
+    p.write_text(p.read_text().replace("default = 20000", "default = 512"))
+    with pytest.raises(HarnessIntegrityError) as e:
+        reg.axis("t")
+    assert "self-hash mismatch" in str(e.value)
+
+
+def test_provenance_records_measure_kwargs_and_manifest_hash():
+    d = register(kwargs_toml='n = {env = "ARI_SPMM_N", default = 20000}\n'
+                             'k = {env = "ARI_SPMM_K", default = 64}')
+    h = reg.load("t")
+    prov = h.provenance()
+    assert prov["measure_kwargs"] == {"n": 20000, "k": 64}
+    assert prov["manifest_sha256"] == reg.manifest_integrity_hash(reg._load_manifest(d))
+    assert len(prov["manifest_sha256"]) == 64
 
 
 def test_harness_missing_required_functions_is_refused():

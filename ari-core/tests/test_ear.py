@@ -140,7 +140,6 @@ def _make_chain_checkpoint(tmp_path: Path, *, with_uploads: bool = False,
                 "inherited_unchanged": [],
             },
             "what_was_done": delta,
-            "delta_vs_parent": delta,
             "metrics": metrics,
             "self_assessment": {
                 "succeeded": True,
@@ -353,7 +352,7 @@ def test_TC8_figures_at_top_level(tmp_path: Path):
     assert not (ear / "data" / "figures").exists()
 
 
-# ── T-C9: EVOLUTION.md contains delta_vs_parent and no opaque node ids ──
+# ── T-C9: EVOLUTION.md contains trajectory facts and no opaque node ids ──
 
 
 def test_TC9_evolution_md_uses_step_labels_not_node_ids(tmp_path: Path):
@@ -367,7 +366,7 @@ def test_TC9_evolution_md_uses_step_labels_not_node_ids(tmp_path: Path):
     assert "draft" in evo
     assert "improve" in evo
     assert "validation" in evo
-    # Each contributing node's delta_vs_parent appears verbatim.
+    # Each contributing node's narrative remains available alongside structured changes.
     assert "Initial naïve baseline" in evo
     assert "loop tiling" in evo
     assert "Re-ran with 5 seeds" in evo

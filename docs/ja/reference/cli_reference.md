@@ -52,7 +52,7 @@ ari migrate node-reports /path/to/checkpoint --overwrite   # 既存レポート�
 ```
 
 復元できないフィールド (`original_direction`,
-`delta_vs_parent`, `next_steps_hints`) は null になります。
+`next_steps_hints`) は null になります。
 
 ---
 

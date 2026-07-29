@@ -75,17 +75,17 @@ def _format_parent_report_block(node: Node) -> str:
     sa = rep.get("self_assessment") or {}
     concerns = sa.get("concerns") or []
     hints = rep.get("next_steps_hints") or []
-    delta = (rep.get("delta_vs_parent") or "").strip()
     fc = rep.get("files_changed") or {}
     added = [e.get("path") for e in (fc.get("added") or [])][: _BUDGET.list_top_n]
     modified = [e.get("path") for e in (fc.get("modified") or [])][: _BUDGET.list_top_n]
+    deleted = [e.get("path") for e in (fc.get("deleted") or [])][: _BUDGET.list_top_n]
     parts = ["\nParent node_report (structured self-report):"]
-    if delta:
-        parts.append(f"  delta_vs_parent: {delta[: _BUDGET.parent_delta_chars]}")
     if added:
         parts.append(f"  files added: {added}")
     if modified:
         parts.append(f"  files modified: {modified}")
+    if deleted:
+        parts.append(f"  files deleted: {deleted}")
     if concerns:
         parts.append("  concerns flagged by evaluator:")
         for c in concerns[: _BUDGET.list_top_n]:
@@ -290,7 +290,8 @@ class BFTS:
           ``my_count * 2 <= max_count``).
         - 0.0 otherwise.
 
-        This is intentionally soft: scientific_score still dominates ranking.
+        This is intentionally soft: the deterministic ranking score still
+        dominates ranking.
 
         SITE 3/3 of the label feature (see ``ari.agent.loop.labels_disabled``). This
         is the site nobody expects: the default frontier score is
@@ -326,7 +327,8 @@ class BFTS:
         """Score a candidate node for the deterministic selector fallback.
 
         Strategy is controlled by ``BFTSConfig.frontier_score``:
-          - ``scientific_only``: raw ``_scientific_score`` only.
+          - ``scientific_only``: raw ``_scientific_score`` only. For speedup
+            tasks this is the native valid geomean speedup, not a [0,1] score.
           - ``scientific_plus_diversity`` (default): adds the diversity
             bonus so chronic-label nodes lose ties.
           - ``depth_penalized``: subtracts ``depth_penalty_lambda * depth``
@@ -450,6 +452,8 @@ class BFTS:
         # stochastic LLM selector and rank by the deterministic frontier scorer
         # so the handoff arm is the only varying factor (PREREG §7.1). Requires a
         # populated metrics["_scientific_score"] (deterministic evaluator, B2).
+        # In the HPC handoff study this is the native geomean speedup so BFTS
+        # keeps ordering high-performing nodes instead of clipping at a target.
         if getattr(self.config, "deterministic_selector", False):
             return self._select_fallback(candidates)
 
@@ -603,7 +607,7 @@ class BFTS:
           - Tree diversity metrics (unique labels seen so far, depth distribution)
           - Already-spawned children of this parent (to avoid duplication)
         """
-        # ── Parent's node_report (delta_vs_parent / concerns / hints) ──
+        # ── Parent's node_report (file changes / concerns / hints) ──
         # Best-effort: when present, this enriches the prompt with the
         # parent's structured self-assessment so the planner can target
         # specific weaknesses or follow up on concrete next-step hints.

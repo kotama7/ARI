@@ -58,7 +58,7 @@ targets the like-named module under `ari/`.
 - `test_data_flow.py` — data flow.
 - `test_default_provider.py` — default LLM provider.
 - `test_delete_checkpoint_experiments.py` — checkpoint-experiment deletion.
-- `test_deterministic_evaluator.py` — deterministic-evaluator scoring-contract tests (geomean / `_scientific_score` normalization / invalid-family rule; handoff study B2).
+- `test_deterministic_evaluator.py` — deterministic-evaluator scoring-contract tests (geomean / native `_scientific_score` ranking value / invalid-family rule; handoff study B2).
 - `test_disabled_tools_flow.py` — disabled-tools flow.
 - `test_dynamic_axes.py` — dynamic evaluation axes.
 - `test_ear.py` — EAR (experiment/analysis/report).
@@ -76,7 +76,8 @@ targets the like-named module under `ari/`.
 - `test_gui_errors.py` — GUI error handling.
 - `test_handoff_agent_injection.py` — agent-face handoff injection (`build_handoff_agent_messages` + parent report/log loaders): summary / full / truncated arms, no-op arms, child→parent workdir resolution (handoff study G4).
 - `test_handoff_content_fix.py` — handoff channels carry real payload: `node_summary_view` surfaces the actionable `outcome` (self-assessment headline / eval reason, with eval_summary fallback; ablatable), and `_load_parent_log` falls back to the parent's tree.json `trace_log` when no run.log exists so code_plus_full_log is not silently empty (regression guard for the degenerate-channel finding).
-- `test_handoff_stats.py` — analysis stats core (handoff study Stage 4): geomean, bootstrap CI, TOST equivalence/non-equivalence, Holm adjustment, per-arm summary.
+- `test_handoff_driver.py` — TODO
+- `test_handoff_stats.py` — analysis statistics core for the handoff study: geomean, bootstrap confidence intervals, two-sided permutation tests, Holm adjustment, and per-arm summaries.
 - `test_harness_registry.py` — registry MECHANISM only, against synthetic harnesses built in `tmp_path` — ARI ships no task and the real ones live in an untracked workspace, so this must not load them. Pins: the per-task `[measure_kwargs]` declaration (a uniform `measure_node(work_dir, seed=seed)` type-checks against every harness and silently measures something else), sha256 tamper-refusal, unknown-task raising instead of falling through to a default benchmark, cwd-independent resolution via `RuntimePathResolver`, and that ARI core names no task.
 - `test_i18n_consistency.py` — i18n consistency.
 - `test_idea_integration.py` — idea integration.

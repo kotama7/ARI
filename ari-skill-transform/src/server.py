@@ -693,17 +693,18 @@ async def nodes_to_science_data(
                 fc = rep.get("files_changed") or {}
                 added = [e.get("path") for e in (fc.get("added") or [])][:8]
                 modified = [e.get("path") for e in (fc.get("modified") or [])][:8]
+                deleted = [e.get("path") for e in (fc.get("deleted") or [])][:8]
                 sa = rep.get("self_assessment") or {}
                 lines = [
                     f"[{label} depth={depth}]",
                     f"  metrics: {metrics}",
                 ]
-                if rep.get("delta_vs_parent"):
-                    lines.append(f"  delta_vs_parent: {rep['delta_vs_parent'][:240]}")
                 if added:
                     lines.append(f"  files_added: {added}")
                 if modified:
                     lines.append(f"  files_modified: {modified}")
+                if deleted:
+                    lines.append(f"  files_deleted: {deleted}")
                 if sa.get("headline"):
                     lines.append(f"  headline: {sa['headline'][:240]}")
                 if sa.get("concerns"):
@@ -832,8 +833,8 @@ async def nodes_to_science_data(
         report_blob = "\n\n".join(selected_node_blocks)
         analysis_prompt = (
             "You are a scientific analyst. Read the following structured node "
-            "reports (search trajectory; each node lists its delta_vs_parent, "
-            "files added/modified, headline metric, concerns flagged by the "
+            "reports (search trajectory; each node lists files "
+            "added/modified/deleted, headline metric, concerns flagged by the "
             "evaluator, and the literal build/run commands) and the verbatim "
             "source files from the contributing chain, then extract what a "
             "peer reviewer needs to evaluate this work.\n\n"
@@ -1601,6 +1602,21 @@ def _gather_top_level_figures(checkpoint_dir: Path) -> list[Path]:
     return out
 
 
+def _changed_files_summary(report: dict, *, max_paths: int = 5) -> str:
+    """Compact deterministic description derived from structured file changes."""
+    changed = report.get("files_changed") or {}
+    parts: list[str] = []
+    for bucket in ("added", "modified", "deleted"):
+        paths = [
+            str(entry.get("path") if isinstance(entry, dict) else entry)
+            for entry in (changed.get(bucket) or [])
+            if (entry.get("path") if isinstance(entry, dict) else entry)
+        ]
+        if paths:
+            parts.append(f"{bucket}: {', '.join(paths[:max_paths])}")
+    return "; ".join(parts)
+
+
 def _render_evolution_md(chain: list[dict], reports: dict[str, dict]) -> str:
     """Deterministic EVOLUTION.md from the for_narrative chain.
 
@@ -1654,23 +1670,23 @@ def _render_evolution_md(chain: list[dict], reports: dict[str, dict]) -> str:
         else:
             delta_str = "—"
         prev_metric = m_val if m_val is not None else prev_metric
-        delta_text = (
-            (report.get("delta_vs_parent") or "").replace("|", " ").splitlines()
-        )
-        delta_text_first = delta_text[0] if delta_text else ""
-        if not delta_text_first:
-            delta_text_first = (
-                (report.get("self_assessment") or {}).get("headline") or ""
-            ).replace("|", " ").splitlines()[:1]
-            delta_text_first = delta_text_first[0] if delta_text_first else ""
+        change_text_first = _changed_files_summary(report).replace("|", " ")
+        if not change_text_first:
+            change_text = (
+                report.get("what_was_done")
+                or (report.get("self_assessment") or {}).get("headline")
+                or ""
+            )
+            first_line = str(change_text).replace("|", " ").splitlines()[:1]
+            change_text_first = first_line[0] if first_line else ""
         rows.append(
             f"| {idx} | {label_disp} | {m_str} | {delta_str} | "
-            f"{delta_text_first[:90]} |"
+            f"{change_text_first[:90]} |"
         )
 
         block = [f"### Step {idx}: {label_disp}", ""]
-        if delta_text_first:
-            block.append(f"**What changed:** {delta_text_first}")
+        if change_text_first:
+            block.append(f"**What changed:** {change_text_first}")
             block.append("")
         sa = report.get("self_assessment") or {}
         if sa.get("headline"):
@@ -2346,7 +2362,7 @@ def generate_ear(
             {"dest": "ear/README.md", "method": "deterministic_render",
              "source_field": "node_reports + (optional) science_data.json::implementation_overview"},
             {"dest": "EVOLUTION.md", "method": "deterministic_render",
-             "source_field": "node_reports::delta_vs_parent + metrics"} if has_evolution else None,
+             "source_field": "node_reports::{files_changed,metrics}"} if has_evolution else None,
             {"dest": "ear/reproduce.sh", "method": "deterministic_render",
              "source_field": "node_reports::{build_command, run_command}"} if has_reproduce_sh else None,
         ],

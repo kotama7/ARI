@@ -97,6 +97,21 @@ class Node:
     # Evaluation results: raw metric values (used for LLM selection)
     metrics: dict = field(default_factory=dict)
     has_real_data: bool = False
+    # Objective per-case facts returned by the deterministic harness. Kept
+    # outside ``metrics`` because these records contain validity plus
+    # harness-defined observations, while BFTS metrics are ranking quantities.
+    evaluation_cases: dict = field(default_factory=dict)
+    # Typed evaluator outcome. ``infrastructure_error`` is never a scientific
+    # zero and causes the study driver to fail/exclude the run.
+    evaluation_status: str = ""
+    # Raw per-repetition timings and effective compile flags. Kept out of
+    # ``to_dict``/tree.json to avoid duplicating a potentially large audit record;
+    # node_report.json is its canonical storage location.
+    measurement_audit: dict = field(default_factory=dict)
+    # Reason returned by the evaluator. This is deliberately separate from
+    # ``eval_summary``, which is legacy state that may temporarily hold an
+    # LLM-generated exploration direction before evaluation.
+    evaluator_reason: str = ""
     eval_summary: str | None = None  # LLM evaluation comment
     label: NodeLabel = NodeLabel.DRAFT  # Exploration purpose label
     raw_label: str = ""  # Original LLM-proposed label (preserved when label==OTHER)
@@ -157,9 +172,19 @@ class Node:
     # use each tool, which the AVAILABLE TOOLS prompt line (names only) omits.
     # Set by AgentLoop.run for full_log.json; EXCLUDED from to_dict.
     full_tools: list = field(default_factory=list)
+    # Tool-less auxiliary LLM calls made after the main ReAct conversation, such
+    # as the forced self-review when a node exhausts its step budget. Stored only
+    # in full_log.json so every LLM-generated Reflection field has an auditable
+    # prompt and response.
+    auxiliary_llm_calls: list = field(default_factory=list)
     # Relative pointer (from checkpoint root) to the per-node report file.
     # Optional: present only after `node_report.json` has been written.
     node_report_path: str | None = None
+    # Optional per-node handoff arm. Empty means "use the run-level handoff".
+    # Paired handoff experiments stamp sibling children from the same parent with
+    # different values so the only per-child difference is the inherited text
+    # channel, not the parent workspace.
+    handoff_mode: str = ""
 
     def __post_init__(self) -> None:
         if not self.created_at:
@@ -199,6 +224,8 @@ class Node:
             "artifacts": self.artifacts,
             "metrics": self.metrics,
             "has_real_data": self.has_real_data,
+            "evaluation_cases": self.evaluation_cases,
+            "evaluation_status": self.evaluation_status,
             "eval_summary": self.eval_summary,
             "name": self.name,
             "error_log": self.error_log,
@@ -206,6 +233,8 @@ class Node:
             "trace_log": self.trace_log,
             "node_report_path": self.node_report_path,
         }
+        if self.handoff_mode:
+            d["handoff_mode"] = self.handoff_mode
         # label / raw_label / original_direction follow ONE switch,
         # ``ARI_BFTS_NO_LABEL``. When the label feature is ON they are emitted so a
         # LIVE variable is never hidden from the record (a record-only suppression

@@ -536,6 +536,7 @@ def resume(
                 pass
         node.metrics = nd.get("metrics") or {}
         node.has_real_data = nd.get("has_real_data", False)
+        node.evaluation_cases = nd.get("evaluation_cases") or {}
         node_map[node.id] = node
 
     all_nodes = list(node_map.values())
@@ -614,4 +615,3 @@ def resume(
                 console.print(f"[bold red]Paper pipeline failed:[/bold red] {_paper_err}")
                 import traceback
                 traceback.print_exc()
-

@@ -304,8 +304,7 @@ ari migrate node-reports /path/to/checkpoint
 ari migrate node-reports /path/to/checkpoint --overwrite   # also rewrite existing reports
 ```
 
-Fields that cannot
-be inferred (`original_direction`, `delta_vs_parent`, `next_steps_hints`)
+Fields that cannot be inferred (`original_direction`, `next_steps_hints`)
 are nulled.
 
 ---

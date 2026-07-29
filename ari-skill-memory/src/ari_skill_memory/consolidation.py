@@ -44,10 +44,21 @@ def _primary_metric(metrics: dict) -> dict | None:
 
 def _summary_text(node_report: dict) -> str:
     sa = node_report.get("self_assessment") or {}
+    changed = node_report.get("files_changed") or {}
+    change_parts: list[str] = []
+    for bucket in ("added", "modified", "deleted"):
+        paths = [
+            str(entry.get("path") if isinstance(entry, dict) else entry)
+            for entry in (changed.get(bucket) or [])
+            if (entry.get("path") if isinstance(entry, dict) else entry)
+        ]
+        if paths:
+            change_parts.append(f"{bucket}: {', '.join(paths[:5])}")
     return (
         (sa.get("headline") or "").strip()
         or (node_report.get("what_was_done") or "").strip()
-        or (node_report.get("delta_vs_parent") or "").strip()
+        or (node_report.get("evaluator_reason") or "").strip()
+        or "; ".join(change_parts)
         or f"node {node_report.get('node_id', '')} report"
     )
 

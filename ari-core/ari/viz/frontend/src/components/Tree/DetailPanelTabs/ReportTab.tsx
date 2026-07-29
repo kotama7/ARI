@@ -22,14 +22,6 @@ export function ReportTab({ reportLoading, reportError, reportData }: ReportTabP
       {reportError && <ErrorState message={reportError} inline />}
       {reportData && (
         <div>
-          {reportData.delta_vs_parent && (
-            <div style={{ marginBottom: 8 }}>
-              <div style={{ color: 'var(--muted)', marginBottom: 2 }}>
-                {t('report_delta_vs_parent')}
-              </div>
-              <div>{reportData.delta_vs_parent}</div>
-            </div>
-          )}
           {reportData.self_assessment?.headline && (
             <div style={{ marginBottom: 8 }}>
               <div style={{ color: 'var(--muted)', marginBottom: 2 }}>

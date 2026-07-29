@@ -286,7 +286,6 @@ const en: Record<string, string> = {
   memory_access_hits: 'hits',
   // Report tab (v0.7.0)
   report_tab: 'Report',
-  report_delta_vs_parent: 'What changed vs parent',
   report_headline: 'Headline',
   report_concerns: 'Concerns',
   report_next_steps: 'Suggested next steps',

@@ -1,0 +1,22 @@
+llm:
+  backend: openai
+  model: cerebras/gpt-oss-120b
+  base_url: ""
+memory:
+  backend: in_memory
+resources:
+  cpus: 48
+  timeout_minutes: 60
+  hpc_enabled: false
+env_probe:
+  partitions: []
+  timeout_s: 120
+skills:
+  - name: coding-skill
+    path: "{{ari_root}}/ari-skill-coding"
+    phase: all
+bfts:
+  max_total_nodes: 4
+  max_parallel_nodes: 1
+  max_expansions_per_node: 999
+  deterministic_selector: true

@@ -286,7 +286,6 @@ const zh: Record<string, string> = {
   memory_access_hits: '命中',
   // Report 标签 (v0.7.0)
   report_tab: '报告',
-  report_delta_vs_parent: '相对父节点的变化',
   report_headline: '要点',
   report_concerns: '关注点',
   report_next_steps: '建议的后续步骤',

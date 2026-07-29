@@ -4,16 +4,18 @@ A *harness* owns the task-specific half of scoring: it seeds a node's work_dir
 with the frozen scaffolding, then compiles and measures the node's candidate,
 returning ``{"compile_ok": bool, "families": {name: {"speedup": float,
 "valid": bool}}}``. The task-INDEPENDENT half (the all-or-nothing validity gate,
-the geomean, and the ``[0,1]`` normalisation) stays in
-:mod:`ari.evaluator.deterministic_evaluator` and is never delegated.
+the geomean, and the BFTS ranking value) stays in
+:mod:`ari.evaluator.deterministic_evaluator` and is never delegated. For
+speedup-shaped tasks the ranking value is the native valid geomean speedup, not
+a target-normalized score.
 
 Where harnesses live
 --------------------
 ``$ARI_WORKSPACE/harnesses/<task>/`` — the frozen scaffolding plus a
-``harness.toml`` declaring the task's TARGET, scoring scale, ``measure_node``
-kwargs, and a sha256 for every file. ARI core contains NO task: adding, changing
-or removing one never edits this repo. A benchmark is an experiment asset with
-its own lifecycle, not a framework feature.
+``harness.toml`` declaring the task's native axis, compatibility target/scale,
+``measure_node`` kwargs, and a sha256 for every file. ARI core contains NO task:
+adding, changing or removing one never edits this repo. A benchmark is an
+experiment asset with its own lifecycle, not a framework feature.
 
 The consequence is deliberate and worth stating plainly: a checkout of ARI with
 no workspace can run no task, and :func:`available_tasks` returns ``[]``. The
@@ -88,7 +90,7 @@ class Harness:
 
     task: str
     target: float
-    scale: str                      # "log" | "linear" — how a speedup is squashed to [0,1]
+    scale: str                      # compatibility metadata; speedup ranking ignores it
     axis: str                       # "speedup" | "score" — the NATIVE outcome axis
     origin: str                     # the harness dir it was loaded from
     seed_work_dir: Callable[[str], list[str]]
@@ -106,14 +108,21 @@ class Harness:
     # the manifest that scored a published number was not later edited.
     manifest_hash: str = ""
 
-    def measure(self, work_dir: str) -> dict:
+    def measure(self, work_dir: str, **overrides: Any) -> dict:
         """Measure the node's candidate. ARI calls this; the node never sees it.
 
         The node's work_dir holds only the agent's candidate (plus seeded copies
         of the scaffolding for its own self-test, which do NOT participate). The
         driver/baseline compiled here come from this harness's own directory.
         """
-        return self._measure_node(work_dir, **self._kwargs())
+        kwargs = self._kwargs()
+        unknown = set(overrides) - set(kwargs) - {"reps", "seed"}
+        if unknown:
+            raise TypeError(
+                f"harness {self.task}: unsupported measurement override(s): "
+                f"{sorted(unknown)}")
+        kwargs.update(overrides)
+        return self._measure_node(work_dir, **kwargs)
 
     def digests(self) -> dict[str, str]:
         """Digests to record alongside the score, so a reader can later confirm
@@ -241,6 +250,19 @@ def _verify_manifest_self(task: str, d: Path, man: dict[str, Any]) -> str:
     return got
 
 
+def _load_checked_manifest_metadata(task: str, d: Path) -> dict[str, Any]:
+    """Load manifest metadata and fail closed on scoring-config edits.
+
+    This intentionally does NOT import the harness or hash every pinned source
+    file; ``load()`` owns that full verification. Metadata-only consumers such as
+    ``describe()`` still read target/scale/axis, so they must at least enforce
+    the manifest self-digest when it is present.
+    """
+    man = _load_manifest(d)
+    _verify_manifest_self(task, d, man)
+    return man
+
+
 def _kwargs_from_manifest(man: dict[str, Any]) -> Callable[[], dict]:
     """Build the per-task ``measure_node`` kwargs resolver from ``[measure_kwargs]``.
 
@@ -362,7 +384,7 @@ def axis(task: str) -> str:
     d = workspace_harness_root() / task
     if not (d / MANIFEST_NAME).is_file():
         raise HarnessIntegrityError(_unknown(task))
-    return _axis_of(task, _load_manifest(d))
+    return _axis_of(task, _load_checked_manifest_metadata(task, d))
 
 
 def _import_entry(h: dict, d: Path, task: str):
@@ -385,17 +407,17 @@ def _import_entry(h: dict, d: Path, task: str):
 def describe(task: str) -> tuple[float, str]:
     """Return ``(target, scale)`` for *task* WITHOUT importing its python entry.
 
-    The evaluator's constructor needs the normalisation constants but must stay
-    cheap and dependency-free — the old hardcoded table imported nothing, and
-    importing a harness (numpy/scipy) just to read two numbers would be a
-    regression. External harnesses declare both in ``harness.toml``, so this
-    reads metadata only; digests are verified later, when a measurement is
-    actually taken.
+    Kept for compatibility with older evaluator configs and checkpoint
+    provenance. Importing a harness (numpy/scipy) just to read two metadata
+    values would be a regression, so this reads metadata only. The manifest
+    self-digest is still checked here because these declarations travel with the
+    scoring instrument; full file digests are verified later, when a measurement
+    is actually taken.
     """
     task = (task or "spmm").lower()
     d = workspace_harness_root() / task
     if (d / MANIFEST_NAME).is_file():
-        scale, target = _describe_manifest(task, _load_manifest(d))
+        scale, target = _describe_manifest(task, _load_checked_manifest_metadata(task, d))
         return target, scale
     raise HarnessIntegrityError(_unknown(task))
 

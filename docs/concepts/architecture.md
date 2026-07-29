@@ -221,8 +221,8 @@ BFTS expand() (ari/orchestrator/bfts.py)
   - LLM proposes 1 child direction per expansion call (improve / ablation / validation / draft / debug / other)
   - No domain hints — LLM decides what "improvement" means
   - v0.7.0: when the parent has a node_report.json, the prompt is enriched
-    with delta_vs_parent / self_assessment.concerns / next_steps_hints
-    plus files added/modified, and sibling dedup is filtered through
+    with structured files added/modified/deleted, self_assessment.concerns,
+    and next_steps_hints, and sibling dedup is filtered through
     filter_nodes(for_synthesis) so already-explored siblings show up with
     their files_changed.added — this lets the planner avoid proposing a
     direction that would write the same files.
@@ -235,9 +235,11 @@ Per-node self-report (v0.7.0)
       derived from a sha256 diff of parent vs child work_dir
     - original_direction (saved by bfts.expand at child creation, never
       overwritten by the evaluator)
-    - self_assessment.{succeeded, headline, concerns} derived from the
-      evaluator's per-axis rationales (axis_score < 0.4 → concerns,
-      0.4..0.7 → next_steps_hints, ≥0.7 → not surfaced)
+    - measurement_valid and evaluation_cases — objective evaluator output;
+      each evaluator-defined case contains `valid` plus a dictionary of
+      harness-defined scalar measurements
+    - self_assessment.{headline, concerns} and next_steps_hints — the
+      agent-authored LLM reflection, stored separately from objective validity
     - build_command / run_command — best-effort grep of run_job.sh /
       Makefile in the work_dir
     - artifacts[].role — deterministic role classification

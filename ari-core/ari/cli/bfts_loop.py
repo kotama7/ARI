@@ -79,6 +79,38 @@ def _child_retires_parent(
     return child_score > parent_score and not child_sterile
 
 
+def _flag_sterile_node(
+    node,
+    parent_work_dir: Path,
+    node_work_dir: Path,
+    *,
+    copy_workdir: bool,
+) -> bool:
+    """Mark a no-op child without corrupting its evaluator result.
+
+    Sterility is a search-control property: an unchanged child should neither
+    retire its parent nor be expanded again. It is not a correctness or
+    measurement failure, so the measured score, ``has_real_data``, and
+    ``evaluation_status`` remain untouched.
+    """
+    from ari.orchestrator.node_report import compute_files_changed
+
+    files_changed = compute_files_changed(parent_work_dir, node_work_dir)
+    added = len(files_changed.get("added") or [])
+    modified = len(files_changed.get("modified") or [])
+    deleted = len(files_changed.get("deleted") or [])
+    sterile = (
+        (added + modified + deleted) == 0
+        if copy_workdir
+        else (added + modified) == 0
+    )
+    if sterile:
+        if not isinstance(node.metrics, dict):
+            node.metrics = {}
+        node.metrics["_sterile"] = True
+    return sterile
+
+
 _PROVENANCE_FILENAME = "provenance.json"
 # Key names whose VALUE must never be written to an artifact that gets published.
 _SECRET_KEY = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|CRED", re.I)
@@ -96,8 +128,19 @@ def _ari_version() -> dict:
             return {}
         dirty = subprocess.run(["git", "-C", str(root), "status", "--porcelain"],
                                capture_output=True, text=True, timeout=30)
-        return {"git_sha": sha.stdout.strip(),
-                "dirty": bool((dirty.stdout or "").strip())}
+        patch = subprocess.run(
+            ["git", "-C", str(root), "diff", "--binary", "HEAD"],
+            capture_output=True, timeout=60,
+        )
+        import hashlib
+        patch_bytes = patch.stdout if patch.returncode == 0 else b""
+        return {
+            "git_sha": sha.stdout.strip(),
+            "dirty": bool((dirty.stdout or "").strip()),
+            "dirty_diff_sha256": (
+                hashlib.sha256(patch_bytes).hexdigest() if patch_bytes else None
+            ),
+        }
     except Exception:
         return {}
 
@@ -184,8 +227,19 @@ def _save_tree_incremental(
 
 def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes,
               experiment_data, checkpoint_dir, run_id, total_processed=0):
-    from ari.orchestrator.node import NodeStatus
+    from ari.orchestrator.node import Node, NodeStatus
     max_workers = max(1, min(cfg.bfts.max_parallel_nodes, 4))
+
+    def _effective_handoff_for_node(node):
+        mode = (getattr(node, "handoff_mode", "") or "").strip()
+        if mode:
+            from ari.config import HandoffConfig
+            return HandoffConfig(mode=mode)
+        return getattr(agent, "handoff", None)
+
+    def _paired_modes() -> list[str]:
+        raw = os.environ.get("ARI_HANDOFF_PAIRED_MODES", "")
+        return [m.strip() for m in raw.split(",") if m.strip()]
 
     # Read bfts_pipeline enabled flags from workflow.yaml
     _bfts_disabled_stages: set[str] = set()
@@ -438,6 +492,37 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                     existing_children=_existing_children,
                     budget_remaining=cfg.bfts.max_total_nodes - len(all_nodes),
                 )
+                _pair_modes = _paired_modes()
+                if _pair_modes and children:
+                    # One planner decision, one parent workspace, multiple
+                    # handoff treatments. The first child returned by expand()
+                    # carries the shared direction; the extra siblings clone that
+                    # direction and differ only in handoff_mode.
+                    import uuid as _uuid_pair
+                    _template = children[0]
+                    _budget_left = max(0, cfg.bfts.max_total_nodes - len(all_nodes))
+                    _pair_modes = _pair_modes[:_budget_left]
+                    _paired_children = []
+                    for _i, _mode in enumerate(_pair_modes):
+                        if _i == 0:
+                            _child = _template
+                        else:
+                            _child = Node(
+                                id=f"node_{_uuid_pair.uuid4().hex[:8]}",
+                                parent_id=_template.parent_id,
+                                depth=_template.depth,
+                                memory_snapshot=list(_template.memory_snapshot),
+                                label=_template.label,
+                                raw_label=_template.raw_label,
+                                ancestor_ids=list(_template.ancestor_ids),
+                            )
+                            _child.eval_summary = _template.eval_summary
+                            _child.original_direction = _template.original_direction
+                            _child.name = _template.name
+                            best.children.append(_child.id)
+                        _child.handoff_mode = _mode
+                        _paired_children.append(_child)
+                    children = _paired_children
                 all_nodes.extend(children)
                 pending.extend(children)
                 _budget -= len(children)
@@ -531,10 +616,10 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                     if _fnmatch.fnmatch(name, pat) or _fnmatch.fnmatch(rel_path, pat):
                         return True
                 return False
-            _ho = getattr(agent, "handoff", None)
             for _n in batch:
                 # G5: artifact channel — skip parent->child code inheritance when
                 # this handoff arm disables copy_workdir (e.g. summary_only).
+                _ho = _effective_handoff_for_node(_n)
                 if _ho is not None and not getattr(_ho, "copy_workdir", True):
                     continue
                 _pid = getattr(_n, "parent_id", None)
@@ -761,6 +846,52 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                     logging.getLogger(__name__).warning("Node %s raised exception: %s", node_ref.id, exc)
                     node_ref.mark_failed(error_log=f"exception: {exc}")
                     result = node_ref
+
+                # Detect no-op children before frontier insertion and parent
+                # retirement. Sterility controls search eligibility only; the
+                # evaluator's validity and measured score remain scientific
+                # facts in the node report.
+                _parent_wd_for_report = (
+                    _pm.node_work_dir(run_id, result.parent_id)
+                    if getattr(result, "parent_id", None) else None
+                )
+                if (
+                    _parent_wd_for_report is not None
+                    and not _parent_wd_for_report.is_dir()
+                ):
+                    _parent_wd_for_report = None
+                if _parent_wd_for_report is not None:
+                    try:
+                        _result_wd = Path(
+                            getattr(result, "work_dir", "")
+                            or _pm.node_work_dir(run_id, result.id)
+                        )
+                        _ho = _effective_handoff_for_node(result)
+                        _copy_on = (
+                            _ho is None or getattr(_ho, "copy_workdir", True)
+                        )
+                        if _flag_sterile_node(
+                            result,
+                            _parent_wd_for_report,
+                            _result_wd,
+                            copy_workdir=_copy_on,
+                        ):
+                            logging.getLogger(__name__).warning(
+                                "Node %s flagged STERILE (label=%s, parent=%s): "
+                                "no files added/modified/deleted vs parent; "
+                                "objective evaluation retained, node excluded "
+                                "from further expansion.",
+                                result.id,
+                                result.label,
+                                (result.parent_id or "")[-8:],
+                            )
+                    except Exception as _ster_e:
+                        logging.getLogger(__name__).warning(
+                            "sterile check failed for %s: %s",
+                            result.id,
+                            _ster_e,
+                        )
+
                 # I-7: record run AFTER completion so the diversity bonus
                 # reflects what actually ran (success or failure), not what we
                 # intended to run.
@@ -784,9 +915,9 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                     frontier.append(result)
                     console.print(f"    Added failed node to frontier for debug expansion")
 
-                # B-6 Rule A: when the child beat its parent's scientific
-                # score, retire the parent — there is nothing more to gain
-                # from re-expanding a node a child already surpassed.
+                # B-6 Rule A: when the child beat its parent's deterministic
+                # ranking metric, retire the parent — there is nothing more to
+                # gain from re-expanding a node a child already surpassed.
                 #
                 # EXCEPTION: a ``_sterile`` child is a verbatim copy of the
                 # parent's candidate (no file diff) — its score "win" is pure
@@ -837,109 +968,33 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                 # marked. This is best-effort: any failure is logged and
                 # ignored so the orchestration loop continues.
                 try:
-                    from ari.orchestrator.node_report import (
-                        compute_files_changed, write_node_report,
-                    )
-                    _parent_wd_for_report = (
-                        _pm.node_work_dir(run_id, result.parent_id)
-                        if getattr(result, "parent_id", None) else None
-                    )
-                    if _parent_wd_for_report is not None and not _parent_wd_for_report.is_dir():
-                        _parent_wd_for_report = None
+                    from ari.orchestrator.node_report import write_node_report
 
-                    # Phase 7-2: sterile-node detection.
-                    # When a child node finishes its ReAct loop without
-                    # writing or modifying ANY file relative to its parent,
-                    # the agent never actually ran a new experiment — it
-                    # only re-read the inherited code/configs and reported
-                    # numbers (often parent-style ones it derived from
-                    # inherited artifacts that escaped the output blacklist).
-                    # Without this gate, BFTS happily expands sterile chains
-                    # for the rest of its budget because the LLM judge gives
-                    # them small but non-zero scores.
-                    if _parent_wd_for_report is not None and getattr(result, "parent_id", None):
-                        try:
-                            _result_wd = Path(
-                                getattr(result, "work_dir", "")
-                                or _pm.node_work_dir(run_id, result.id)
-                            )
-                            _fc = compute_files_changed(
-                                _parent_wd_for_report, _result_wd,
-                            )
-                            _added = len(_fc.get("added") or [])
-                            _modified = len(_fc.get("modified") or [])
-                            _deleted = len(_fc.get("deleted") or [])
-                            # G7 (handoff study): in copy-OFF arms the child dir
-                            # starts empty vs a populated parent, so every parent
-                            # file shows as "deleted" — count only the child's own
-                            # writes (added/modified) so "no-op / sterile" means
-                            # the same thing across copy-on and copy-off arms.
-                            _ho_g7 = getattr(agent, "handoff", None)
-                            _copy_on_g7 = (_ho_g7 is None) or getattr(_ho_g7, "copy_workdir", True)
-                            _sterile_g7 = (
-                                (_added + _modified + _deleted) == 0 if _copy_on_g7
-                                else (_added + _modified) == 0
-                            )
-                            if _sterile_g7:
-                                # Sterile — clamp score and mark for BFTS to skip.
-                                if isinstance(result.metrics, dict):
-                                    result.metrics["_sterile"] = True
-                                    result.metrics["_scientific_score"] = 0.0
-                                result.has_real_data = False
-                                logging.getLogger(__name__).warning(
-                                    "Node %s flagged STERILE (label=%s, parent=%s): "
-                                    "no files added/modified/deleted vs parent. "
-                                    "Score clamped to 0.0 and has_real_data=False so "
-                                    "BFTS does not expand from this no-op chain.",
-                                    result.id, result.label,
-                                    (result.parent_id or "")[-8:],
-                                )
-                        except Exception as _ster_e:
-                            logging.getLogger(__name__).warning(
-                                "sterile check failed for %s: %s",
-                                result.id, _ster_e,
-                            )
-
-                    # Hybrid handoff summary: what_was_done = the agent's OWN
-                    # natural-language self-report (its intent/reasoning), and
-                    # delta_vs_parent = the DETERMINISTIC, verified change vs parent
-                    # (files touched + measured speedup) — so the summary carries the
-                    # agent's narrative anchored by ground truth (self-claims can be
-                    # optimistic; the metric is authoritative).
+                    # Keep the agent's narrative separate from verified facts.
+                    # ``files_changed`` and ``metrics`` are structured report
+                    # fields, so no redundant aggregate string is stored.
                     _what_was_done = (getattr(result, "agent_summary", "") or "").strip()[:1000]
-                    _delta_vs_parent = ""
-                    try:
-                        _m = result.metrics if isinstance(result.metrics, dict) else {}
-                        _sp = _m.get("valid_geomean_speedup")
-                        if _parent_wd_for_report is not None:
-                            _fc2 = compute_files_changed(
-                                _parent_wd_for_report,
-                                Path(getattr(result, "work_dir", "") or _pm.node_work_dir(run_id, result.id)),
-                            )
-                            _delta_vs_parent = "files vs parent: +{}/~{}/-{}".format(
-                                len(_fc2.get("added") or []),
-                                len(_fc2.get("modified") or []),
-                                len(_fc2.get("deleted") or []),
-                            )
-                        if isinstance(_sp, (int, float)):
-                            _delta_vs_parent = (
-                                (_delta_vs_parent + "; " if _delta_vs_parent else "")
-                                + "valid_geomean_speedup={:.3f}".format(_sp)
-                            )
-                    except Exception:
-                        pass
 
                     write_node_report(
                         node=result,
                         work_dir=Path(getattr(result, "work_dir", "") or _pm.node_work_dir(run_id, result.id)),
                         parent_work_dir=_parent_wd_for_report,
                         what_was_done=_what_was_done,
-                        delta_vs_parent=_delta_vs_parent,
                         eval_result={
                             "scientific_score": result.metrics.get("_scientific_score"),
                             "axis_scores": result.metrics.get("_axis_scores", {}),
-                            "reason": result.eval_summary or "",
+                            "reason": (
+                                getattr(result, "evaluator_reason", "") or ""),
                             "has_real_data": bool(result.has_real_data),
+                            "evaluation_status": str(
+                                getattr(result, "evaluation_status", "") or ""
+                            ),
+                            "evaluation_cases": dict(
+                                getattr(result, "evaluation_cases", {}) or {}
+                            ),
+                            "measurement_audit": dict(
+                                getattr(result, "measurement_audit", {}) or {}
+                            ),
                         } if isinstance(result.metrics, dict) else None,
                     )
                     # Per-node full ReAct execution log as an openable file
@@ -991,6 +1046,16 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                                     # parent-log renderer drops it so the handoff's
                                     # full_log arm stays orthogonal to the summary arm).
                                     "messages": _fl_msgs,
+                                    # Separate tool-less LLM calls made after the
+                                    # ReAct loop, principally the forced
+                                    # Reflection self-review at max_steps.
+                                    "auxiliary_llm_calls": list(
+                                        getattr(
+                                            result,
+                                            "auxiliary_llm_calls",
+                                            [],
+                                        ) or []
+                                    ),
                                     # Concise tool-call trace (kept for quick scanning).
                                     "trace_log": _fl_trace,
                                 },
@@ -1249,4 +1314,3 @@ def _save_checkpoint(checkpoint_dir, run_id, experiment_file, nodes):
         _save_pv(checkpoint_dir, _build_pv(checkpoint_dir))
     except Exception:
         log.debug("prompt_versions rollup write failed", exc_info=True)
-

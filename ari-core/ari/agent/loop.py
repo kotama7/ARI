@@ -156,6 +156,28 @@ def _coerce_str_list(value: Any, limit: int = 5) -> list[str]:
     return out
 
 
+def _record_evaluator_result(node: Any, result: dict) -> None:
+    """Store objective evaluator output on a node without mixing it into LLM text."""
+    node.metrics = dict(result.get("metrics") or {})
+    node.has_real_data = bool(result.get("has_real_data", False))
+    node.evaluation_cases = dict(result.get("evaluation_cases") or {})
+    node.evaluation_status = str(result.get("evaluation_status") or "")
+    node.measurement_audit = dict(result.get("measurement_audit") or {})
+    node.evaluator_reason = str(result.get("reason") or "").strip()
+
+
+def _record_evaluator_exception(node: Any, error: Exception) -> None:
+    """Classify an evaluator exception as infrastructure, never scientific zero."""
+    reason = f"evaluator infrastructure error: {type(error).__name__}: {error}"
+    node.metrics = {}
+    node.has_real_data = False
+    node.evaluation_cases = {}
+    node.evaluation_status = "infrastructure_error"
+    node.measurement_audit = {}
+    node.evaluator_reason = reason
+    node.eval_summary = reason
+
+
 def _ground_environment(env_text: Any, messages: list[dict]) -> str:
     """Keep the agent's free-form environment note only when it is GROUNDED in
     evidence this node actually received — anti-fabrication, mirroring the
@@ -916,14 +938,20 @@ def build_handoff_agent_messages(handoff, parent_report, parent_log) -> list[dic
         return out
     if getattr(handoff, "inject_agent_block", False) and parent_report:
         from ari.orchestrator.node_summary_view import node_summary_view
+        form = getattr(handoff, "summary_form", "extractive")
         view = node_summary_view(
             parent_report,
             fields_enabled=getattr(handoff, "summary_fields_enabled", None),
-            summary_form=getattr(handoff, "summary_form", "extractive"),
+            summary_form=form,
         )
         if view:
+            header = (
+                "[Parent handoff]"
+                if form in ("evidence", "evidence_reflection")
+                else "[Parent handoff — operational summary]"
+            )
             out.append({"role": "user",
-                        "content": "[Parent handoff — operational summary]\n" + view})
+                        "content": header + "\n" + view})
     lm = getattr(handoff, "log_mode", "none")
     if lm in ("full", "truncated") and parent_log:
         log = parent_log
@@ -969,6 +997,20 @@ class AgentLoop:
         self.handoff = handoff
         self._idea_injected = False
         self._idea_context = ""
+
+    def _handoff_for_node(self, node: Node):
+        """Effective handoff config for this node.
+
+        Standard sweeps set one run-level ``self.handoff``. Paired handoff runs
+        create sibling children from the same parent and stamp each child with a
+        ``handoff_mode``; those children must receive different prompt/copy
+        channels inside the same BFTS run.
+        """
+        mode = (getattr(node, "handoff_mode", "") or "").strip()
+        if mode:
+            from ari.config import HandoffConfig
+            return HandoffConfig(mode=mode)
+        return self.handoff
 
     # ------------------------------------------------------------------
     # Tool filtering (Phase 3D — bodies in ari.agent.tool_manager)
@@ -1097,11 +1139,27 @@ class AgentLoop:
                 "without producing a final summary. Write the JSON self-review now."
             )},
         ]
-        _resp = self.llm.complete(
-            _sum_msgs, tools=None, require_tool=False,
-            node_id=node.id, phase="fallback_summary", skill="agent_loop",
-        )
+        _audit_call = {
+            "phase": "fallback_summary",
+            "messages": serialize_messages(_sum_msgs),
+            "tools": [],
+        }
+        try:
+            _resp = self.llm.complete(
+                _sum_msgs, tools=None, require_tool=False,
+                node_id=node.id, phase="fallback_summary", skill="agent_loop",
+            )
+        except Exception as _error:
+            _audit_call["error"] = (
+                f"{type(_error).__name__}: {_error}")
+            node.auxiliary_llm_calls.append(_audit_call)
+            raise
         _text = (getattr(_resp, "content", "") or "").strip()
+        _audit_call["response"] = {
+            "role": "assistant",
+            "content": _text,
+        }
+        node.auxiliary_llm_calls.append(_audit_call)
         if not _text:
             return ("", [], [])
         # Prefer structured JSON; fall back to using the whole reply as the summary.
@@ -1126,6 +1184,7 @@ class AgentLoop:
 
     def run(self, node: Node, experiment: dict) -> Node:
         node.mark_running()
+        _effective_handoff = self._handoff_for_node(node)
         # Notify the orchestrator so tree.json picks up the RUNNING state
         # immediately (before the first LLM round-trip, which can take >30 s).
         self._notify_progress(force=True)
@@ -1347,7 +1406,7 @@ class AgentLoop:
             # promise of parent results" rather than "code alone". The parent's
             # CODE is still inherited (work_dir copy) in every arm; only the
             # results/summary text is arm-gated.
-            _ho_gate = getattr(self, "handoff", None)
+            _ho_gate = _effective_handoff
             _will_inject_handoff = _ho_gate is not None and (
                 bool(getattr(_ho_gate, "inject_agent_block", False))
                 or getattr(_ho_gate, "log_mode", "none") in ("full", "truncated")
@@ -1386,7 +1445,7 @@ class AgentLoop:
                 "component; `validation` must run with different conditions / inputs).\n"
                 "  • Re-build (when code changes), re-run, and write fresh result files.\n"
                 "  • A node that produces zero added/modified files relative to its "
-                "parent will be flagged STERILE by BFTS and its score clamped to 0.0 — "
+                "parent will be flagged STERILE and excluded from further expansion — "
                 "merely reading or quoting the parent's numbers does NOT count as work.\n\n"
                 "Implement and run your specific experiment, then return JSON with measurements."
                 f"{_workflow_hint}"
@@ -1414,7 +1473,8 @@ class AgentLoop:
                 "targets described in the task above (do NOT assume a target name — "
                 "different tasks use `make selftest` or `make check`).\n"
                 "  • A node that adds/modifies zero files vs its parent is flagged "
-                "STERILE and scored 0.0 — merely reading numbers does NOT count.\n\n"
+                "STERILE and excluded from further expansion — merely reading numbers "
+                "does NOT count.\n\n"
                 "Do NOT output a plan or any text first — your FIRST response MUST be a "
                 "tool call (edit the file or run a build). When done, return JSON with "
                 "measurements."
@@ -1460,7 +1520,7 @@ class AgentLoop:
         # B1 (handoff study): gate the de-facto memory channel (Tier-1a/1b/1c/2)
         # so code_only / summary_only arms receive no operational state beyond the
         # explicit handoff channels (G4). None / disabled arms inject as before.
-        _ho = getattr(self, "handoff", None)
+        _ho = _effective_handoff
         _mem_off = bool(_ho is not None and getattr(_ho, "memory_off", False))
         if not _mem_off:
             messages.extend(build_working_context_messages(
@@ -1475,7 +1535,7 @@ class AgentLoop:
         # ── G4: agent-face handoff (handoff study) ──────────────────────────
         # Inject the parent's operational summary / execution log into the CHILD
         # prompt when the handoff arm requests it. None / disabled arms add nothing.
-        _ho = getattr(self, "handoff", None)
+        _ho = _effective_handoff
         if _ho is not None:
             _want_summary = bool(getattr(_ho, "inject_agent_block", False))
             _want_log = getattr(_ho, "log_mode", "none") in ("full", "truncated")
@@ -2385,8 +2445,7 @@ class AgentLoop:
                                 node_id=node.id,
                                 node_label=(node.label.value if hasattr(node.label, "value") else str(node.label)),
                             )
-                            node.metrics = eval_result.get("metrics", {})
-                            node.has_real_data = bool(eval_result.get("has_real_data", False))
+                            _record_evaluator_result(node, eval_result)
                             # eval_summary = measurement reason + scientific score rationale
                             # Both are passed to child nodes via expand() so BFTS can improve
                             _reason = eval_result.get("reason", "")
@@ -2400,6 +2459,7 @@ class AgentLoop:
                                         {k: v for k, v in list(node.metrics.items())[:4]},
                                         node.has_real_data)
                         except Exception as e:
+                            _record_evaluator_exception(node, e)
                             logger.warning("Node %s: evaluator failed: %s", node.id, e)
                     # Save a clean result summary for child nodes to inherit
                     try:
@@ -2496,13 +2556,13 @@ class AgentLoop:
                                 node_id=node.id,
                                 node_label=(node.label.value if hasattr(node.label, "value") else str(node.label)),
                             )
-                            node.metrics = eval_result.get("metrics", {})
-                            node.has_real_data = bool(eval_result.get("has_real_data", False))
+                            _record_evaluator_result(node, eval_result)
                             _reason = eval_result.get("reason", "")
                             _sci_score = eval_result.get("scientific_score")
                             _sci_note = f" [scientific_score={_sci_score:.2f}]" if _sci_score is not None else ""
                             _eval_summary = (_reason + _sci_note).strip() or _eval_summary
                         except Exception as _e:
+                            _record_evaluator_exception(node, _e)
                             logger.warning("Node %s: evaluator failed on force-finish: %s", node.id, _e)
                     try:
                         _ms = ", ".join(f"{k}={v}" for k, v in node.metrics.items()) if node.metrics else "(no metrics)"
@@ -2573,11 +2633,11 @@ class AgentLoop:
                         node_id=node.id,
                         node_label=(node.label.value if hasattr(node.label, "value") else str(node.label)),
                     )
-                    node.metrics = eval_result.get("metrics", {})
-                    node.has_real_data = bool(eval_result.get("has_real_data", False))
+                    _record_evaluator_result(node, eval_result)
                     if eval_result.get("reason"):
                         summary = eval_result["reason"]
                 except Exception as _e:
+                    _record_evaluator_exception(node, _e)
                     logger.warning("Node %s: evaluator failed on forced path: %s", node.id, _e)
             try:
                 _ms = ", ".join(f"{k}={v}" for k, v in node.metrics.items()) if node.metrics else "(no metrics)"
@@ -2634,10 +2694,15 @@ class AgentLoop:
                     node_id=node.id,
                     node_label=(node.label.value if hasattr(node.label, "value") else str(node.label)),
                 )
-                if _ev.get("has_real_data"):
-                    node.metrics = _ev.get("metrics", {})
-                    node.has_real_data = True
-                    _r = _ev.get("reason", "") or "deterministic fallback eval"
+                _record_evaluator_result(node, _ev)
+                _r = _ev.get("reason", "") or "deterministic fallback eval"
+                # A child starts with the planner direction in eval_summary.
+                # Replace it after every deterministic measurement, including an
+                # invalid one; otherwise node_report.evaluator_reason and the
+                # Evidence handoff misclassify that LLM direction as evaluator
+                # evidence when the node reaches the ReAct limit.
+                node.eval_summary = _r
+                if node.has_real_data:
                     node.mark_success(artifacts=[{"type": "result", "stdout": _r}], eval_summary=_r)
                     logger.warning("Node %s: deterministic fallback scored the work_dir candidate (would have failed)", node.id)
                     return node
@@ -2651,10 +2716,8 @@ class AgentLoop:
                 # (No effect on any current analysis — run_outcome and lineage_stats
                 # both coalesce null and 0.0 to "not valid" — purely record
                 # faithfulness, consistent with react_steps/ended_by.)
-                _ev_metrics = _ev.get("metrics")
-                if isinstance(_ev_metrics, dict) and _ev_metrics:
-                    node.metrics = _ev_metrics
             except Exception as _e:
+                _record_evaluator_exception(node, _e)
                 logger.warning("Node %s: deterministic fallback eval failed: %s", node.id, _e)
 
         node.mark_failed(error_log="Max ReAct steps exceeded")

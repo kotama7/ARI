@@ -6,7 +6,7 @@ orchestrator consumes.
 
 Also home to the **deterministic** (non-LLM) judge used by the handoff study.
 That judge owns only the task-INDEPENDENT half of scoring — the all-or-nothing
-validity gate, the geomean, and the `[0,1]` normalisation. The task-specific half
+validity gate, the geomean, and the native ranking value. The task-specific half
 (seed the work_dir, compile, measure) belongs to a **harness**, and ARI ships
 none: harnesses are registered under `$ARI_WORKSPACE/harnesses/<task>/` and
 resolved through `ari/harness_registry.py` (top level, not here: where a harness
@@ -19,9 +19,9 @@ never edits this package.
 
 - `README.md` — this file.
 - `__init__.py` — public symbols + axis design.
-- `deterministic_evaluator.py` — `DeterministicEvaluator`: non-LLM judge; writes `metrics._scientific_score` to drive BFTS selection (handoff study). Selected via `ARI_EVALUATOR=deterministic`; task via `ARI_TASK`. Owns the scoring CONTRACT only (geomean over the family set, `min(g/TARGET,1)` linear or `min(log g/log TARGET,1)` log, "invalid if any required family fails" — no zeros mixed into the geomean); TARGET and scale are DECLARED by the harness and read via `harness_registry.describe()`. Speedup-shaped harnesses report a geomean speedup; score-shaped ones store a bounded `[0,1]` score in the same field for analyzer reuse (it is NOT a speedup — the analyzer reports each on its native axis).
+- `deterministic_evaluator.py` — `DeterministicEvaluator`: non-LLM judge; writes `metrics._scientific_score` to drive BFTS selection (handoff study). Selected via `ARI_EVALUATOR=deterministic`; task via `ARI_TASK`. Owns the scoring CONTRACT only (geomean over the family set, native geomean speedup as the BFTS ranking value, "invalid if any required family fails" — no zeros mixed into the geomean). Speedup-shaped harnesses report a geomean speedup; score-shaped ones store a bounded `[0,1]` score in the same field for analyzer reuse (it is NOT a speedup — the analyzer reports each on its native axis).
 - `dynamic_axes.py` — venue/run-specific evaluation-axis derivation.
-- `handoff_stats.py` — run-level analysis statistics for the handoff study (Stage 4 core): geomean, run-cluster bootstrap CI, TOST equivalence (RQ1 parity), Holm correction, per-arm summary. Pure; consumed by `workspace/analyze_handoff_ablation.py`.
+- `handoff_stats.py` — run-level analysis statistics for the handoff study: native-outcome permutation tests, run-level bootstrap confidence intervals, Holm correction, and per-arm summaries. Pure; consumed by `workspace/analyze_handoff_ablation.py`.
 - `llm_evaluator.py` — `LLMEvaluator`: extraction + multi-axis composite scoring.
 
 ## Where the harnesses went

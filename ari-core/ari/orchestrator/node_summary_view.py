@@ -58,8 +58,19 @@ def scrub_host_identity(s: str) -> str:
     for r in sorted((x for x in roots if x), key=len, reverse=True):
         s = s.replace(r, _CONTAINER_ROOT)
     home = (os.environ.get("HOME") or "").rstrip("/")
+    homes: set[str] = set()
     if home and home != "/":
-        s = s.replace(home, "~")
+        homes.add(home)
+        try:
+            homes.add(os.path.realpath(home).rstrip("/"))
+        except OSError:
+            pass
+    # On systems where /home is a symlink into a mounted filesystem, compiler
+    # diagnostics contain the canonical path while $HOME contains the logical
+    # path. Replace both, longest first, so "/mount/home/user" cannot become the
+    # malformed and identifying "/mount~" prefix.
+    for candidate in sorted((x for x in homes if x and x != "/"), key=len, reverse=True):
+        s = s.replace(candidate, "~")
     user = os.environ.get("USER") or ""
     if len(user) >= 3:
         s = re.sub(r"\b" + re.escape(user) + r"\b", "user", s)
@@ -80,7 +91,6 @@ def scrub_host_identity(s: str) -> str:
 # operational only (evaluator reason / eval_summary), never machine provenance.
 ALL_FIELDS: tuple[str, ...] = (
     "outcome",
-    "delta_vs_parent",
     "changed_files",
     "concerns",
     "next_steps",
@@ -88,11 +98,40 @@ ALL_FIELDS: tuple[str, ...] = (
     "key_metrics",
 )
 
+# New handoff study: separate objective evaluator/harness evidence from the
+# agent's own reflection. These names are intentionally distinct from ALL_FIELDS:
+# the legacy extractive summary kept a hybrid "outcome" field for compatibility,
+# while the new forms must keep provenance clean.
+EVIDENCE_SUMMARY_FIELDS: tuple[str, ...] = (
+    "status",
+    "measurement_valid",
+    "evaluator_reason",
+    "key_metrics",
+    "evaluation_cases",
+    "changed_files",
+    "known_failures",
+)
+REFLECTION_SUMMARY_FIELDS: tuple[str, ...] = (
+    "reflection_summary",
+    "concerns",
+    "next_steps",
+)
+
 _FAILURE_KEYWORDS = (
     "fail", "error", "regress", "degrad", "incorrect", "invalid",
     "timeout", "slower", "worse", "nan", "crash", "mismatch",
 )
 _SUCCESS_STATUSES = {"success", "completed", "complete", "ok", "done", "valid"}
+
+
+def _measurement_valid(report: dict) -> bool | None:
+    """Read current objective validity, with a legacy-report fallback."""
+    rep = report or {}
+    current = rep.get("measurement_valid")
+    if isinstance(current, bool):
+        return current
+    legacy = (rep.get("self_assessment") or {}).get("succeeded")
+    return legacy if isinstance(legacy, bool) else None
 
 
 def measured_invalid(report: dict) -> bool:
@@ -103,20 +142,19 @@ def measured_invalid(report: dict) -> bool:
     not compile. Using it gated the failure reason out of the child's summary
     exactly when the failure mattered.
 
-    Objective signals only: ``self_assessment.succeeded`` is documented in
-    node_report.schema.json as the deterministic ``has_real_data`` ground truth,
-    and ``_scientific_score`` is what BFTS actually ranks on.
+    Objective signals only: current reports store deterministic
+    ``has_real_data`` as top-level ``measurement_valid``. The legacy
+    ``self_assessment.succeeded`` location remains read-only compatibility.
     """
     rep = report or {}
-    sa = rep.get("self_assessment") or {}
-    succeeded = sa.get("succeeded")
-    if isinstance(succeeded, bool):
+    validity = _measurement_valid(rep)
+    if isinstance(validity, bool):
         # The evaluator's own verdict is authoritative when present. Falling through
         # to the score here misclassified a LEGITIMATELY MEASURED 0: on the score
         # axis (erfc, meshpart) a candidate can compile, run, and genuinely score
         # 0.0 — that is a real measurement, not a failed one, and reporting it as a
         # failure would replace the child's outcome text with a failure reason.
-        return not succeeded
+        return not validity
     metrics = rep.get("metrics") or {}
     if "_scientific_score" in metrics:
         try:
@@ -164,6 +202,30 @@ def derive_known_failures(report: dict, *, max_items: int = 8) -> list[str]:
     return deduped[:max_items]
 
 
+def derive_objective_known_failures(report: dict, *, max_items: int = 8) -> list[str]:
+    """Failure hints from objective evaluator/framework signals only.
+
+    ``derive_known_failures`` intentionally includes agent-authored concerns for
+    the legacy hybrid summary. Evidence-only handoff must not: it may carry the
+    evaluator reason for a rejected measurement, but not the LLM's diagnosis.
+    """
+    rep = report or {}
+    out: list[str] = []
+    evaluation_status = str(rep.get("evaluation_status", "")).strip().lower()
+    validity = rep.get("measurement_valid")
+    reason = (rep.get("evaluator_reason") or "").strip()
+    if reason and (
+        validity is False
+        or evaluation_status in {
+            "candidate_invalid",
+            "measurement_invalid",
+            "infrastructure_error",
+        }
+    ):
+        out.append(reason)
+    return out[:max_items]
+
+
 def _changed_files(rep: dict, max_items: int) -> list[str]:
     fc = rep.get("files_changed") or {}
     paths: list[str] = []
@@ -175,15 +237,108 @@ def _changed_files(rep: dict, max_items: int) -> list[str]:
     return paths[:max_items]
 
 
+def _objective_changed_files(rep: dict, max_items: int) -> dict[str, list[str]]:
+    """Return machine-observed changes without collapsing their categories.
+
+    The legacy summary keeps a flat added/modified path list. Evidence handoff
+    preserves added/modified/deleted directly.
+    """
+    fc = rep.get("files_changed") or {}
+    out: dict[str, list[str]] = {}
+    for bucket in ("added", "modified", "deleted"):
+        paths: list[str] = []
+        for entry in (fc.get(bucket) or []):
+            path = entry.get("path") if isinstance(entry, dict) else entry
+            if path:
+                paths.append(str(path))
+        if paths:
+            out[bucket] = paths[:max_items]
+    return out
+
+
 def _key_metrics(rep: dict) -> dict:
     """FULL metric parity with node_report.json: every metric key, verbatim.
 
-    ``node_report.json``'s ``metrics`` carries only the deterministic scoring
-    quantities (``valid_geomean_speedup`` / ``_scientific_score`` / per-family
-    ``speedup_*`` / ``max_relative_error`` …) — NEVER machine provenance — so the
+    ``node_report.json``'s ``metrics`` carries only the deterministic scalar
+    scoring quantities (``valid_geomean_speedup`` / ``_scientific_score`` /
+    per-case ``speedup_*``). Case validity and harness-defined observations live
+    in the separate ``evaluation_cases`` object. Neither contains machine provenance, so the
     whole dict is safe to surface and matching it exactly avoids silently
     dropping a per-family or auxiliary metric the parent recorded."""
     return dict(rep.get("metrics") or {})
+
+
+def _node_evidence_view(
+    report: dict,
+    *,
+    include_reflection: bool,
+    max_list: int,
+    max_chars: int,
+) -> str:
+    """Render the new evidence/reflection handoff forms.
+
+    The objective prefix is byte-for-byte generated by this one function for
+    both evidence_only and evidence_plus_reflection. The latter appends only the
+    agent-authored reflection block, so the two arms differ by exactly that
+    information component.
+    """
+    rep = report or {}
+    node_id = str(rep.get("node_id") or "")
+    _sid = node_id[5:] if node_id.startswith("node_") else node_id
+    parts: list[str] = [f"Parent handoff ({_sid or '?'}):"]
+
+    _status = str(rep.get("status") or "").strip()
+    if _status:
+        parts.append(f"  status: {_status}")
+    # Evidence is a provenance boundary: legacy self-assessment fields are not
+    # acceptable substitutes for current evaluator-owned fields.
+    validity = rep.get("measurement_valid")
+    if isinstance(validity, bool):
+        parts.append(f"  measurement_valid: {validity}")
+    verdict = (rep.get("evaluator_reason") or "").strip()
+    if verdict:
+        parts.append(f"  evaluator_reason: {_cap(verdict, max_chars)}")
+
+    km = _key_metrics(rep)
+    if km:
+        parts.append(f"  key_metrics: {km}")
+
+    evaluation_cases = rep.get("evaluation_cases") or {}
+    if evaluation_cases:
+        parts.append(f"  evaluation_cases: {evaluation_cases}")
+
+    cf = _objective_changed_files(rep, max_list)
+    if cf:
+        parts.append(f"  changed_files: {cf}")
+
+    kf = derive_objective_known_failures(rep, max_items=max_list)
+    if kf:
+        parts.append("  known_failures:")
+        for f in kf:
+            parts.append(f"    - {_cap(f, max_chars)}")
+
+    if include_reflection:
+        reflection_summary = (rep.get("what_was_done") or "").strip()
+        if not reflection_summary:
+            reflection_summary = str((rep.get("self_assessment") or {}).get("headline") or "").strip()
+        if reflection_summary:
+            parts.append(f"  reflection_summary: {_cap(reflection_summary, max_chars)}")
+
+        concerns = (rep.get("self_assessment") or {}).get("concerns") or []
+        if concerns:
+            parts.append("  concerns:")
+            for c in concerns[:max_list]:
+                parts.append(f"    - {_cap(c, max_chars)}")
+
+        hints = rep.get("next_steps_hints") or []
+        if hints:
+            parts.append("  next_steps:")
+            for h in hints[:max_list]:
+                parts.append(f"    - {_cap(h, max_chars)}")
+
+    if len(parts) == 1:
+        return ""
+    return scrub_host_identity("\n".join(parts))
 
 
 def node_summary_view(
@@ -202,6 +357,14 @@ def node_summary_view(
     caller folds ancestor views for a rolling digest).
     """
     rep = report or {}
+    if summary_form in ("evidence", "evidence_reflection"):
+        return _node_evidence_view(
+            rep,
+            include_reflection=(summary_form == "evidence_reflection"),
+            max_list=max_list,
+            max_chars=max_chars,
+        )
+
     enabled = set(ALL_FIELDS if fields_enabled is None else fields_enabled)
     if summary_form == "failure_only":
         enabled &= {"known_failures", "concerns"}
@@ -227,9 +390,9 @@ def node_summary_view(
     _status = str(rep.get("status") or "").strip()
     if _status:
         parts.append(f"  status: {_status}")
-    _sa = rep.get("self_assessment") or {}
-    if "succeeded" in _sa:
-        parts.append(f"  succeeded: {bool(_sa.get('succeeded'))}")
+    validity = _measurement_valid(rep)
+    if isinstance(validity, bool):
+        parts.append(f"  measurement_valid: {validity}")
     for cmd_key, lbl in (("build_command", "build"), ("run_command", "run")):
         v = (rep.get(cmd_key) or "").strip()
         if v:
@@ -267,10 +430,6 @@ def node_summary_view(
         km = _key_metrics(rep)
         if km:
             parts.append(f"  key_metrics: {km}")
-    if "delta_vs_parent" in enabled:
-        d = (rep.get("delta_vs_parent") or "").strip()
-        if d:
-            parts.append(f"  delta_vs_parent: {_cap(d, max_chars)}")
     if "changed_files" in enabled:
         cf = _changed_files(rep, max_list)
         if cf:

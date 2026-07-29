@@ -1,0 +1,89 @@
+# Experiment: optimize a CSR sparse-dense matrix multiply (SpMM)
+
+Goal: make `Y = A · X` as fast as possible, where `A` is a sparse matrix in CSR
+format (n×m) and `X` is a dense matrix (m×k), producing a dense `Y` (n×k,
+row-major). Correctness and speed are judged by a fixed non-LLM evaluator.
+
+## What you produce
+
+Your working directory is **already seeded** with the scaffolding — list it and
+you will find:
+
+- `candidate_spmm.c` — the file you edit (starts as a correct naive triple loop).
+- `spmm_kernel.h` — the `spmm()` contract (do not change the signature).
+- `spmm_main.c` — the FROZEN timing/I-O harness (do not edit).
+- `baseline_spmm.c` — the FROZEN naive baseline (the speedup denominator).
+- `selftest.c` — a local self-test you can run to check correctness + speedup.
+- `Makefile` — `make candidate` builds your kernel; `make selftest` builds the
+  self-test.
+
+**Edit `candidate_spmm.c`** so that it defines exactly this function (signature
+from `spmm_kernel.h`):
+
+```c
+void spmm(int n, int m, int k,
+          const int *indptr, const int *indices, const double *values,
+          const double *X, double *Y);
+```
+
+`indptr/indices/values` are the CSR arrays of `A`; `X` is row-major `m×k`; write
+the row-major `n×k` result into `Y`. Improve the seeded naive triple loop
+(OpenMP scheduling, row-length bucketing, blocking, SIMD, prefetch, locality,
+load balance, …). Do NOT change the signature.
+
+## How you are judged
+
+- The evaluator owns compilation, the matrices `A`/`X`, the timing loop, and the
+  baseline. It compiles your `candidate_spmm.c` against a FROZEN harness
+  (`spmm_main.c`) with the same compiler and default flags as a frozen naive
+  baseline. It runs both on six seeded sparse-structure families. Each repetition
+  is a matched candidate/baseline pair, and the reported family speedup is the
+  median of the accepted per-pair speedup ratios. The overall score is the
+  geometric mean over all families.
+- **You may tune the compile flags.** Put optimization flags in `candidate_flags.txt`
+  (whitespace-separated, `#` comments allowed). They are appended to the defaults for
+  YOUR kernel only — the naive baseline always keeps the defaults, since it is the
+  reference point the speedup is measured against. Both `make candidate` and the
+  scorer read this file, so what you build locally is what you are scored on.
+  Only optimization/tuning flags are accepted (`-O*`, `-f*`, `-m*`, `--param=*`);
+  anything that changes the build itself is dropped (`-I`/`-D`/`-include`, `-l`/`-L`/`-Wl`,
+  `-o`/`-c`/`-S`/`-E`, `-fplugin`/`-specs`, `-fprofile-*`). Numerics are NOT restricted:
+  `-ffast-math` is allowed, but correctness is still decided by the reference oracle's
+  error bound, so a transform that leaves the bound fails like any wrong answer.
+- The kernel is timed on a **large** matrix with a **fixed 48-thread OpenMP budget**
+  (the baseline is single-threaded). So the speedup comes from parallelising
+  across rows (and good memory locality / vectorisation) — a serial kernel scores
+  ~1x. The provided `selftest` uses the same size and thread count, so its
+  reported speedup is a good predictor of your score.
+- **Valid** requires: compiles, runs, and is correct on every required family.
+  Correctness is checked per output element against an fp64 reference with a
+  row-length-scaled tolerance (FP reduction reorderings are allowed; dropping
+  terms, precomputing the answer, or trivializing the matrix are NOT — a fresh
+  `X` is used for the correctness check). Any invalid family → the node is
+  invalid (score 0).
+- You may NOT edit the timing harness or the baseline; only `candidate_spmm.c`.
+
+## Notes
+- You do not need to write your own timing, I/O, or test data — just the
+  `spmm()` function. Everything else is provided.
+- **Check your work before finishing** with the provided self-test:
+
+  ```
+  make selftest && ./selftest
+  ```
+
+  It tests two sparsity structures (a uniform and a skewed/heavy-tailed matrix),
+  printing per-structure `correct=yes/NO` and `speedup~Nx`, then an overall
+  `SELFTEST: PASS` / `FAIL`. Iterate until it says **PASS with a speedup > 1**.
+  **Never finish while it says `SELFTEST: FAIL` — `correct=NO` means your kernel
+  is wrong (e.g. you forgot to zero `Y` before accumulating, you have a data
+  race, or you mishandle very dense rows) and the evaluator will score it 0.**
+  A correct ~1x kernel beats a fast wrong one. If you cannot fix correctness,
+  revert to the last PASS version. Do NOT write your own `main()`, your own
+  problem generator, or `#include "spmm_main.c"` — `selftest.c` already runs and
+  checks your kernel.
+- The evaluator (6 matrix families, fresh data it generates itself) is the
+  authoritative score; the self-test uses the same correctness rule but only two
+  structures, so a local PASS with speedup>1 is a strong — not complete —
+  predictor. Write a kernel that is correct for ANY CSR input, not one tuned to
+  these two cases.

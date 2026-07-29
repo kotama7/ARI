@@ -302,6 +302,26 @@ def test_bfts_env_overrides_win_over_profile(monkeypatch, tmp_path):
     assert cfg.bfts.max_parallel_nodes == 3
 
 
+def test_handoff_evidence_modes_resolve_cleanly():
+    from ari.config import HandoffConfig
+
+    ev = HandoffConfig(mode="evidence_only")
+    assert ev.copy_workdir is True
+    assert ev.inject_agent_block is True
+    assert ev.inject_planner_block is False
+    assert ev.memory_off is True
+    assert ev.log_mode == "none"
+    assert ev.summary_form == "evidence"
+
+    refl = HandoffConfig(mode="evidence_plus_reflection")
+    assert refl.copy_workdir is True
+    assert refl.inject_agent_block is True
+    assert refl.inject_planner_block is False
+    assert refl.memory_off is True
+    assert refl.log_mode == "none"
+    assert refl.summary_form == "evidence_reflection"
+
+
 def test_profile_file_is_findable():
     """The profile directory resolution must find the real YAMLs in ari-core/config/profiles/.
 

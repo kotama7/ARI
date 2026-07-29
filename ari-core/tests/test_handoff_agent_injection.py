@@ -13,7 +13,7 @@ from ari.config import HandoffConfig
 
 REP = {
     "node_id": "p123", "label": "perf", "status": "success",
-    "delta_vs_parent": "used blocking", "files_changed": {"added": [{"path": "spmm.c"}]},
+    "files_changed": {"added": [{"path": "spmm.c"}]},
     "self_assessment": {"concerns": []}, "next_steps_hints": ["try tiling"],
     "metrics": {"valid_geomean_speedup": 2.0, "_scientific_score": 0.5},
     "build_command": "make", "run_command": "./bench",
@@ -31,7 +31,61 @@ def test_summary_arm_injects_operational_summary():
     m = build_handoff_agent_messages(HandoffConfig(mode="code_plus_summary"), REP, "")
     assert len(m) == 1
     assert "operational summary" in m[0]["content"]
-    assert "delta_vs_parent" in m[0]["content"]
+    assert "changed_files" in m[0]["content"]
+
+
+def test_evidence_only_injects_objective_evidence_without_reflection():
+    rep = dict(REP)
+    rep.update({
+        "what_was_done": "LLM interpretation of the bottleneck",
+        "measurement_valid": True,
+        "evaluation_cases": {
+            "uniform": {
+                "valid": True,
+                "measurements": {
+                    "speedup": 2.0,
+                    "max_relative_error": 1e-12,
+                    "n_clamped": 0,
+                },
+            },
+        },
+        "self_assessment": {"concerns": ["LLM concern"]},
+        "next_steps_hints": ["LLM next step"],
+        "evaluator_reason": "deterministic evaluator ok",
+    })
+    m = build_handoff_agent_messages(HandoffConfig(mode="evidence_only"), rep, "")
+    assert len(m) == 1
+    text = m[0]["content"]
+    assert text.startswith("[Parent handoff]\nParent handoff")
+    assert "measurement_valid: True" in text
+    assert "succeeded:" not in text
+    assert "deterministic evaluator ok" in text
+    assert "valid_geomean_speedup" in text
+    assert "evaluation_cases:" in text
+    assert "max_relative_error" in text
+    assert "changed_files: {'added': ['spmm.c']}" in text
+    assert "LLM interpretation" not in text
+    assert "LLM concern" not in text
+    assert "LLM next step" not in text
+    assert "build_command" not in text and "run_command" not in text
+
+
+def test_evidence_plus_reflection_adds_only_reflection_fields():
+    rep = dict(REP)
+    rep.update({
+        "what_was_done": "LLM interpretation of the bottleneck",
+        "measurement_valid": True,
+        "self_assessment": {"concerns": ["LLM concern"]},
+        "next_steps_hints": ["LLM next step"],
+        "evaluator_reason": "deterministic evaluator ok",
+    })
+    ev = build_handoff_agent_messages(HandoffConfig(mode="evidence_only"), rep, "")[0]["content"]
+    refl = build_handoff_agent_messages(HandoffConfig(mode="evidence_plus_reflection"), rep, "")[0]["content"]
+    assert "deterministic evaluator ok" in ev and "deterministic evaluator ok" in refl
+    assert "LLM interpretation" not in ev and "LLM interpretation" in refl
+    assert "LLM concern" not in ev and "LLM concern" in refl
+    assert "LLM next step" not in ev and "LLM next step" in refl
+    assert refl.startswith(ev + "\n")
 
 
 def test_full_log_arm_injects_full_log():

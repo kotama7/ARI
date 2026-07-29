@@ -158,8 +158,8 @@ def test_non_path_values_survive_redaction(tmp_path, harness, monkeypatch):
 def test_provenance_is_metadata_and_never_reaches_a_node(scope):
     """``_run_loop`` copies every NON-meta file at the checkpoint root into each
     node's work_dir. When this file was first added it was not metadata, so every
-    node was handed the scoring configuration it is judged by: the TARGET it must
-    hit, the scale, the axis, and the harness's location.
+    node was handed the harness metadata it should not receive: target/scale,
+    the axis, and the harness's location.
 
     No unit test of the writer could see that — it only appeared when the real
     ``_run_loop`` ran and logged

@@ -201,8 +201,8 @@ BFTS expand() (ari/orchestrator/bfts.py)
   - スコアを子提案 LLM に渡す
   - LLM が展開呼び出しごとに 1 つの子方向を提案（改善 / アブレーション / 検証 / ドラフト / デバッグ / その他）
   - ドメインヒントなし — LLM が「改善」の意味を決定
-  - v0.7.0: 親に node_report.json があるとき、プロンプトに delta_vs_parent /
-    self_assessment.concerns / next_steps_hints と files added/modified を
+  - v0.7.0: 親に node_report.json があるとき、プロンプトに構造化された
+    files added/modified/deleted、self_assessment.concerns、next_steps_hints を
     追加。sibling dedup は filter_nodes(for_synthesis) で絞り込み、各 sibling の
     files_changed.added を併記して同じファイルを書く direction を
     物理的に避けられるようにする。
@@ -213,9 +213,10 @@ BFTS expand() (ari/orchestrator/bfts.py)
     - files_changed (added / modified / deleted / inherited_unchanged)
       — 親と子の work_dir の sha256 diff から導出
     - original_direction (bfts.expand が child 作成時に保存、evaluator は上書き不可)
-    - self_assessment.{succeeded, headline, concerns} — evaluator の axis_rationales
-      から導出 (axis_score < 0.4 → concerns、0.4..0.7 → next_steps_hints、
-      ≥0.7 → 採用しない)
+    - measurement_valid と evaluation_cases — 評価器の客観出力。各ケースは
+      `valid` とハーネス定義のスカラー測定値辞書を持つ
+    - self_assessment.{headline, concerns} と next_steps_hints —
+      エージェントが生成した LLM Reflection。客観的な有効判定とは別に保存
     - build_command / run_command — work_dir 内の run_job.sh / Makefile を grep
     - artifacts[].role — 拡張子から決定論的に分類 (data_output / log / binary /
       figure / unknown)

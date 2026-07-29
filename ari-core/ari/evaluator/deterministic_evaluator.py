@@ -1,17 +1,18 @@
-"""Deterministic, non-LLM evaluator for the handoff study (B2).
+"""Fixed, non-LLM evaluator for the handoff study (B2).
 
 Selected via ``ARI_EVALUATOR=deterministic`` (see ``ari/core.py``). Unlike
-``LLMEvaluator`` it calls no LLM judge: it owns the measurement (a fixed
-reference oracle + timing harness) so node scores are reproducible and
-un-gameable. The score it writes to ``metrics["_scientific_score"]`` (normalized
-to ``[0, 1]``) is exactly what BFTS selection / parent-retire / the sterile gate
-consume (``ari/orchestrator/bfts.py:336`` etc.), so this evaluator is what makes
-the deterministic selector (G9a) meaningful and removes the LLM judge from the
-loop (PREREG §7).
+``LLMEvaluator`` it calls no LLM judge: it owns the measurement through a fixed
+reference oracle and timing harness. Performance measurements remain noisy, so
+raw repetitions are retained for audit and the selected candidate is remeasured
+independently. The ranking value it writes to ``metrics["_scientific_score"]`` is
+exactly what BFTS selection / parent-retire / the sterile gate consume
+(``ari/orchestrator/bfts.py:336`` etc.). For speedup-shaped HPC tasks this value
+is the native valid geomean speedup, not a [0, 1] normalization, so good
+candidates above an arbitrary target do not collapse to ties.
 
 This module owns the SCORING CONTRACT (pure, unit-tested here): geomean over the
-fixed family set, the PREREG ``min(geomean / TARGET, 1.0)`` normalization, and
-the "node-invalid if any required family fails" rule (no zeros mixed into the
+fixed family set, native speedup ranking for speedup tasks, and the
+"node-invalid if any required family fails" rule (no zeros mixed into the
 geomean). The SpMM kernel compile + run + timing + reference-oracle correctness
 (per-row epsilon model) lives under ``ari-core/handoff_study/spmm/`` (added
 separately; compute-node validated) and is invoked through ``measure_fn``.
@@ -19,6 +20,7 @@ separately; compute-node validated) and is invoked through ``measure_fn``.
 Contract returned by ``evaluate_sync`` (and async ``evaluate``):
 ``{"metrics": {"_scientific_score": float, "valid_geomean_speedup": float, ...},
    "has_real_data": bool, "scientific_score": float, "valid": bool,
+   "evaluation_cases": {case: {"valid": bool, "measurements": {...}}},
    "reason": str}``. ``node.metrics`` is populated from ``["metrics"]`` at
 ``ari/agent/loop.py``, so ``_scientific_score`` MUST live inside ``metrics``.
 
@@ -40,28 +42,25 @@ def geomean(values: list[float]) -> float:
     return math.exp(sum(math.log(v) for v in vals) / len(vals))
 
 
-def scientific_score(geomean_speedup: float | None, target: float = 16.0,
-                     scale: str = "linear") -> float:
-    """Map a (>=0) geomean speedup to [0, 1] for BFTS selection.
+def scientific_score(
+    geomean_speedup: float | None,
+    target: float = 16.0,
+    scale: str = "linear",
+) -> float:
+    """Return the BFTS ranking value for speedup-shaped tasks.
 
-    ``scale="linear"`` (SpMM): ``s = min(g / TARGET, 1.0)`` — TARGET is the
-    parallel ceiling (thread budget, default 16) so the score spans the
-    achievable range instead of saturating at a low bar.
-
-    ``scale="log"`` (GEMM): ``s = min(log(g) / log(TARGET), 1.0)`` — GEMM speedups
-    are MULTIPLICATIVE rungs (naive 1x, cache-order ~tens×, +parallel ~hundreds×),
-    so log spacing keeps the rungs evenly separated; linear would crush the
-    intermediate rungs to ~0 and hide the gradient the handoff acts on. ``g<=1``
-    (no gain over the naive baseline) scores 0.
+    The historical name is kept for compatibility with checkpoints, BFTS, and
+    visualization code. For GEMM/SpMM/Stencil the ranking value is now the native
+    valid geomean speedup ``g`` itself. ``target`` and ``scale`` are accepted for
+    API compatibility with older configs but are intentionally not used: BFTS
+    compares nodes within the same task, so a [0, 1] target clamp only removes
+    ordering information among strong candidates.
     """
-    if not geomean_speedup or geomean_speedup <= 0.0 or target <= 0.0:
+    del target, scale
+    if not geomean_speedup or geomean_speedup <= 0.0:
         return 0.0
     g = float(geomean_speedup)
-    if scale == "log":
-        if g <= 1.0 or target <= 1.0:
-            return 0.0
-        return min(math.log(g) / math.log(float(target)), 1.0)
-    return min(g / float(target), 1.0)
+    return g if math.isfinite(g) else 0.0
 
 
 def gamma(k: int, u: float) -> float:
@@ -75,6 +74,106 @@ def gamma(k: int, u: float) -> float:
     return ku / (1.0 - ku) if ku < 1.0 else float("inf")
 
 
+_UNSUPPORTED = object()
+
+
+def _objective_scalar(value: Any) -> Any:
+    """Return a JSON-safe scalar without assigning task-specific meaning."""
+    if value is None or isinstance(value, (bool, str)):
+        return value
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    return _UNSUPPORTED
+
+
+def _evaluation_cases(families: dict[str, dict]) -> dict[str, dict]:
+    """Preserve each harness case generically as validity + named measurements."""
+    cases: dict[str, dict] = {}
+    for name, family in families.items():
+        measurements: dict[str, Any] = {}
+        for key, value in family.items():
+            if key == "valid":
+                continue
+            scalar = _objective_scalar(value)
+            if scalar is not _UNSUPPORTED:
+                measurements[str(key)] = scalar
+        cases[str(name)] = {
+            "valid": bool(family.get("valid")),
+            "measurements": measurements,
+        }
+    return cases
+
+
+def _measurement_audit(result: dict, families: dict[str, dict]) -> dict[str, Any]:
+    """Preserve evaluator-only raw records without injecting them into handoff.
+
+    ``evaluation_cases`` is intentionally compact because it is eligible for the
+    Evidence handoff. Raw repetition timings and effective compile flags are audit
+    material, not treatment text, so they live in this separate report field.
+    """
+    cases: dict[str, list[dict[str, Any]]] = {}
+    for name, family in families.items():
+        repetitions = family.get("repetitions")
+        if isinstance(repetitions, list):
+            cases[str(name)] = [
+                _json_audit_value(item)
+                for item in repetitions
+                if isinstance(item, dict)
+            ]
+    return {
+        "effective_candidate_compile_flags": [
+            str(v) for v in (result.get("candidate_cflags") or [])
+        ],
+        "rejected_candidate_compile_flags": [
+            str(v) for v in (result.get("rejected_cflags") or [])
+        ],
+        "cases": cases,
+    }
+
+
+def _json_audit_value(value: Any) -> Any:
+    """Recursively make raw audit observations strict-JSON serializable."""
+    if isinstance(value, dict):
+        return {str(k): _json_audit_value(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_audit_value(v) for v in value]
+    scalar = _objective_scalar(value)
+    if scalar is not _UNSUPPORTED:
+        return scalar
+    return str(value)
+
+
+def _measurement_reason(
+    result: dict,
+    *,
+    compile_ok: bool,
+    all_valid: bool,
+    evaluation_cases: dict[str, dict],
+) -> str:
+    """Return a verdict that cannot say ``ok`` for an invalid measurement."""
+    reason = str(result.get("reason") or "").strip()
+    if all_valid:
+        return reason or "ok"
+    if not compile_ok:
+        return reason if reason and reason.lower() != "ok" else "compile failed"
+    if reason and reason.lower() != "ok":
+        return reason
+
+    invalid: list[str] = []
+    for name, case in evaluation_cases.items():
+        measurements = case.get("measurements") or {}
+        speedup = measurements.get("speedup")
+        if case.get("valid") and isinstance(speedup, (int, float)) and speedup > 0:
+            continue
+        details = [f"valid={bool(case.get('valid'))}"]
+        details.extend(f"{key}={value}" for key, value in measurements.items())
+        invalid.append(f"{name} ({', '.join(details)})")
+    suffix = "; ".join(invalid) if invalid else "no valid measurable family"
+    return f"measurement invalid: {suffix}"
+
+
 def _default_measure(work_dir: str) -> dict:
     """Invoke the SpMM harness measurement (compute-node validated; added in B2b).
 
@@ -85,9 +184,9 @@ def _default_measure(work_dir: str) -> dict:
     defaults, env-overridable). They MUST sit where parallelism actually pays
     off: on a many-core node a tiny matrix makes even a perfect kernel ~1x
     (parallel overhead dominates), which would collapse the study's dynamic
-    range. Validated on a compute node — n=20000/k=64/16 threads gives a naive
-    1x baseline room to reach ~12-15x, spanning the TARGET (16x, the thread
-    budget) so the normalized score discriminates among good kernels.
+    range. Validated on a compute node — n=20000/k=64/48 threads gives a naive
+    1x baseline room to reach ~12-15x, keeping the native speedup ranking
+    informative.
     """
     return _harness().measure(work_dir)
 
@@ -130,17 +229,16 @@ class DeterministicEvaluator:
     def __init__(
         self,
         *,
+        task: str | None = None,
         target_speedup: float | None = None,
         measure_fn: Callable[[str], dict] | None = None,
         scale: str | None = None,
         **_ignored: Any,
     ) -> None:
-        self.task = _resolve_task()
-        # Explicit values win; otherwise the harness DECLARES them (a GEMM speedup
-        # is a multiplicative rung -> log with a ~256x ceiling; SpMM is linear at
-        # the thread budget). Resolved lazily: this class also owns the
-        # task-INDEPENDENT scoring contract, which callers unit-test with an
-        # injected measure_fn and no harness at all.
+        self.task = (task or _resolve_task()).strip().lower()
+        # Kept for backward-compatible construction from older configs. Speedup
+        # tasks no longer normalize by target/scale; score-shaped legacy tasks
+        # are handled separately in _score().
         self._target_override = target_speedup
         self._scale_override = scale
         self._meta: tuple[float, str] | None = None
@@ -214,6 +312,7 @@ class DeterministicEvaluator:
                 "has_real_data": compile_ok,
                 "scientific_score": s,
                 "valid": compile_ok,
+                "evaluation_status": "valid" if compile_ok else "candidate_invalid",
                 "reason": str(result.get("reason", "deterministic erfc evaluation")),
             }
 
@@ -234,19 +333,35 @@ class DeterministicEvaluator:
         )
         g = geomean([f.get("speedup", 0.0) for f in families.values()]) if all_valid else 0.0
         s = scientific_score(g, self.target, getattr(self, "scale", "linear"))
+        evaluation_cases = _evaluation_cases(families)
         metrics: dict[str, Any] = {
             "_scientific_score": s,
             "valid_geomean_speedup": g,
         }
         for name, f in families.items():
             metrics[f"speedup_{name}"] = float(f.get("speedup", 0.0) or 0.0)
+        raw_status = str(result.get("evaluation_status") or "candidate_invalid")
+        if not all_valid and raw_status == "valid":
+            raw_status = "measurement_invalid"
         return {
             "metrics": metrics,
             "has_real_data": all_valid,
             "scientific_score": s,
             "valid": all_valid,
-            "reason": str(result.get("reason", f"deterministic {getattr(self, 'task', 'spmm')} evaluation")),
+            "evaluation_status": "valid" if all_valid else raw_status,
+            "evaluation_cases": evaluation_cases,
+            "measurement_audit": _measurement_audit(result, families),
+            "reason": _measurement_reason(
+                result,
+                compile_ok=compile_ok,
+                all_valid=all_valid,
+                evaluation_cases=evaluation_cases,
+            ),
         }
+
+    def score_result(self, result: dict) -> dict:
+        """Public pure adapter for evaluator-owned remeasurement workflows."""
+        return self._score(result)
 
     def evaluate_sync(
         self,
@@ -266,7 +381,14 @@ class DeterministicEvaluator:
                 "has_real_data": False,
                 "scientific_score": 0.0,
                 "valid": False,
-                "reason": f"deterministic eval error: {e}",
+                "evaluation_status": "infrastructure_error",
+                "evaluation_cases": {},
+                "measurement_audit": {
+                    "effective_candidate_compile_flags": [],
+                    "rejected_candidate_compile_flags": [],
+                    "cases": {},
+                },
+                "reason": f"deterministic eval infrastructure error: {e}",
             }
         return self._score(result)
 

@@ -3,10 +3,14 @@ import math
 
 from ari.evaluator.handoff_stats import (
     bootstrap_ci,
+    bootstrap_difference_ci,
     geomean,
     holm_adjust,
     jonckheere_terpstra,
+    paired_bootstrap_difference_ci,
+    paired_permutation_test,
     summarize_arm,
+    two_sample_permutation_test,
     tost_equivalence,
 )
 
@@ -26,6 +30,39 @@ def test_bootstrap_ci_brackets_point():
     point, lo, hi = bootstrap_ci([1.5, 2.0, 2.5, 3.0, 2.2, 1.8], statistic=geomean, seed=1)
     assert lo <= point <= hi
     assert math.isfinite(lo) and math.isfinite(hi)
+
+
+def test_two_sided_permutation_and_difference_ci():
+    a = [5.0, 6.0, 7.0, 8.0]
+    b = [1.0, 2.0, 3.0, 4.0]
+    out = two_sample_permutation_test(a, b, n_perm=5000, seed=2)
+    assert out["alternative"] == "two-sided"
+    assert out["mean_diff"] == 4.0
+    assert out["p_value"] < 0.05
+    point, lo, hi = bootstrap_difference_ci(a, b, n_boot=1000, seed=2)
+    assert point == 4.0 and lo <= point <= hi
+
+
+def test_paired_sign_flip_and_seed_block_bootstrap():
+    control = [1.0, 4.0, 2.0, 8.0, 3.0, 7.0, 5.0, 6.0]
+    treatment = [x + 2.0 for x in control]
+    out = paired_permutation_test(
+        treatment, control, n_perm=10000, seed=2)
+    assert out["alternative"] == "two-sided"
+    assert out["method"] == "paired sign-flip permutation"
+    assert out["mean_diff"] == 2.0
+    assert out["n_pairs"] == 8
+    assert out["p_value"] < 0.02
+    point, lo, hi = paired_bootstrap_difference_ci(
+        treatment, control, n_boot=1000, seed=2)
+    assert point == 2.0 and lo == 2.0 and hi == 2.0
+
+
+def test_paired_statistics_reject_unmatched_groups():
+    out = paired_permutation_test([1.0, 2.0], [1.0], n_perm=10)
+    assert math.isnan(out["p_value"])
+    point, lo, hi = paired_bootstrap_difference_ci([1.0, 2.0], [1.0])
+    assert all(math.isnan(v) for v in (point, lo, hi))
 
 
 def test_tost_equivalent_when_close_within_margin():
@@ -62,7 +99,7 @@ def test_summarize_arm():
     assert s["ci_lo"] <= s["geomean"] <= s["ci_hi"]
 
 
-# ── Jonckheere–Terpstra ordered-alternative trend test (PRIMARY / 主検定) ──
+# Legacy exploratory Jonckheere–Terpstra helper.
 
 def test_jt_perfect_increasing_is_significant():
     r = jonckheere_terpstra([[1, 2, 3], [4, 5, 6], [7, 8, 9]], n_perm=3000, seed=1)

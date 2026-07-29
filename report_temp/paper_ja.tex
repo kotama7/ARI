@@ -1,0 +1,412 @@
+% =====================================================================
+% Agentic HPC コード最適化における親子間 handoff 情報（研究論文ドラフト）
+% コンパイル: pdflatex paper_ja.tex  (bxcjkjatype + ipaex-type1)
+% =====================================================================
+\documentclass[a4paper,11pt]{article}
+\usepackage[whole]{bxcjkjatype}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{geometry}
+\geometry{margin=23mm}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning}
+\usepackage[hidelinks]{hyperref}
+
+\renewcommand{\abstractname}{要旨}
+\renewcommand{\figurename}{図}
+\renewcommand{\tablename}{表}
+\renewcommand{\refname}{参考文献}
+
+\title{\bfseries Agentic HPC コード最適化における親子間 handoff\\[2pt]
+\large 客観的証拠と LLM 反省の分離比較}
+\author{樹神宇徳\\{\normalsize 名古屋大学大学院情報学研究科}}
+\date{2026年7月29日}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+大規模言語モデル（LLM）によるベストファースト木探索（BFTS）では、子ノードは親の実行可能コードを継承する。
+本稿は、これに加えて渡す情報を \textbf{Code only}、\textbf{Evidence only}、
+\textbf{Evidence+Reflection} の 3 条件に分ける。Code only から Evidence only へ客観的証拠を加え、
+Evidence only から Evidence+Reflection へ LLM の解釈・懸念・次手提案だけを加える。
+
+各条件を \texttt{gemm}、\texttt{spmm}、\texttt{stencil} に適用し、課題・条件ごとに 30 seed の独立 BFTS
+run を固定した参照解と非 LLM 計測ハーネスで採点する。同一 seed の run を対応ブロックとし、探索中に選ばれた
+候補を別 seed で再測定した値を主要アウトカムとする。これにより、客観的証拠の効果、LLM 反省の追加効果または害、
+および課題依存性を検証する。
+\end{abstract}
+
+\section{はじめに}
+高性能計算（High Performance Computing; HPC）に対する LLM コードエージェントは、編集・ビルド・計測を
+反復しながら候補を探索する~\cite{theaiscientist}。
+BFTS では高得点ノードを展開し、子は親のコードと workspace を引き継ぐ。しかしコードだけでは、評価ケース別の
+性能や失敗理由は明示されない。一方、親の解釈まで渡すと探索を導ける反面、誤った仮説を固定する恐れがある。
+本研究の問いは、\textbf{親コードを継承した子に、客観的証拠だけを渡すべきか、LLM の解釈・懸念・提案まで
+渡すべきか}である。
+
+本稿の貢献は次の通り。
+\begin{enumerate}[nosep,leftmargin=1.6em]
+  \item 客観的証拠と LLM 反省を分離した 3 条件を定義する。
+  \item handoff 方針を run 単位で固定し、条件間の探索木干渉を除く。
+  \item 3 種の HPC カーネルを固定した非 LLM 評価器で採点し、効果の課題依存性を測る。
+\end{enumerate}
+
+\section{関連研究}
+最も近い先行研究 AIDE~\cite{aide} は ML エンジニアリングをコード空間の木探索とし、各ノードを完全な
+スクリプトと要約 $\Sigma(T)$ を子へ渡すが、要約中の客観的証拠と LLM 解釈を分離していない。
+CodeTree~\cite{codetree}、LATS~\cite{lats}、GIF-MCTS~\cite{gifmcts}、Tree of Thoughts~\cite{tot} は
+critic、scoring、探索方策を扱うが、handoff の情報成分を比較しない。Reflexion~\cite{reflexion} は言語的反省を
+記憶するのに対し、本研究はその有効性を客観的証拠への追加効果として測る。KernelBench~\cite{kernelbench} は
+GPU カーネルの逐次改良であり、分岐木上の親子継承を対象としない。本研究は、Evidence と Reflection を分離し、
+run 単位で統制したうえで複数の HPC カーネルを同じ原則で評価する。
+
+\section{対象システム}
+\paragraph{構成}
+実験システムは、ベストファースト木探索（BFTS）、各 node 内の ReAct~\cite{react} ループ、Model Context
+Protocol（MCP）で公開するコード操作用ツール、固定した非 LLM 評価器からなる。入力は最適化課題と初期 workspace
+であり、アイデア生成、文献調査、論文生成は実行しない。
+
+\paragraph{run、node、workspace}
+1 \emph{run} は、1 課題、1 乱数 seed、1 handoff 条件で実行する独立な BFTS 木を指す。
+\emph{node} は木中の 1 回の最適化試行であり、各 node は専用の \emph{workspace} を持つ。workspace は候補
+C ソース、候補用コンパイルフラグ、Makefile、自己テスト用ファイルからなるディレクトリである。各課題の root
+workspace には、正しい naive 実装と自己テスト用足場を配置する。子 node では、親の候補ソースとビルド設定を
+複製し、親候補を初期状態として次の最適化を行う。したがって、本稿の ``Code'' は会話履歴ではなく、この
+実行可能な workspace を意味する。
+
+\paragraph{1 node の実行}
+図~\ref{fig:system} に処理順を示す。まず実験制御器は、課題記述、利用可能なツールのスキーマ、条件に応じた親 handoff
+を LLM へ与える。LLM は ReAct 形式で workspace を読み書きし、ビルドと自己テストを反復する。終了後、LLM から
+独立した非 LLM 評価器が候補だけを別途コンパイルし、正当性と性能を測る。実験制御器は評価値を node のスコアとして保存し、
+完了 node を展開候補集合（frontier）に加える。空き探索枠が生じると、BFTS は frontier 中で最高スコアの親を選び、
+その workspace と、実験条件で許された handoff から子を生成する。
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}[font=\footnotesize,
+  proc/.style={draw,rounded corners,align=center,minimum height=8mm,inner sep=3pt},
+  arr/.style={-{Stealth},semithick}]
+\node[proc,fill=blue!4,text width=2.4cm](input){課題記述\\親 workspace\\任意の handoff};
+\node[proc,fill=green!6,text width=2.2cm,right=4mm of input](agent){LLM/ReAct\\MCP ツール};
+\node[proc,fill=yellow!9,text width=2.3cm,right=4mm of agent](cand){候補コード\\自己テスト};
+\node[proc,fill=red!5,text width=2.3cm,right=4mm of cand](eval){独立評価器\\正当性・性能};
+\node[proc,fill=gray!8,text width=2.2cm,right=4mm of eval](bfts){node 記録\\BFTS 選択};
+\draw[arr] (input) -- (agent);
+\draw[arr] (agent) -- (cand);
+\draw[arr] (cand) -- (eval);
+\draw[arr] (eval) -- (bfts);
+\draw[arr] (bfts.south) -- ++(0,-5mm) -| node[below,pos=.25,font=\scriptsize]{選択した親から子を生成} (input.south);
+\end{tikzpicture}
+\caption{node 実行と BFTS ループ。評価器はエージェントの自己申告から独立している。}
+\label{fig:system}
+\end{figure}
+
+\paragraph{エージェントに公開するツール}
+ツールは MCP サーバから提供し、全課題・全条件で表~\ref{tab:tools} の 6 個に固定する。
+各呼出しは node workspace を作業ディレクトリとする。
+\begin{table}[H]\centering\footnotesize
+\caption{LLM エージェントが利用できるツール。}
+\label{tab:tools}
+\begin{tabular}{>{\ttfamily}lp{4.9cm}p{6.3cm}}
+\toprule
+\normalfont ツール & 操作 & 本実験での位置付け \\
+\midrule
+write\_code & 指定したテキストをソースファイルへ書く
+  & C ソースや候補用フラグを作成・更新する。コンパイルは行わない。\\
+read\_file & テキストファイルを範囲指定して読む
+  & 候補、Makefile、自己テスト結果を観察する。\\
+run\_code & 拡張子に対応するインタプリタでファイルを実行する
+  & Python、shell 等が対象であり、C/C++ 等のコンパイルは行わない。\\
+run\_bash & shell コマンドを実行し、標準出力、標準エラー、終了値を返す
+  & コンパイル、リンク、実行、自己テストに用いる。\\
+emit\_results & パラメータと測定値を分けた \texttt{results.json} を書く
+  & エージェントの構造化自己記録であり、独立評価器は採点に使用しない。\\
+describe\_environment & CPU、GPU、利用可能なコンパイラ、module 等を返す
+  & 最適化対象の計算環境を確認する。親の評価値や探索履歴は返さない。\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+実装ではこの許可リストを条件間で固定し、ツール名、説明、JSON 入力スキーマと提示順も変えない。メモリ検索、
+評価器呼出し、評価契約生成、ジョブ投入、論文生成の各ツールは LLM に公開しない。特に、採点用ハーネスは MCP
+ツールではなく、ReAct ループ終了後に実験制御器が呼び出す。
+
+\paragraph{記録と情報経路}
+各 node の終了時に、実験制御器は \texttt{node\_report.json} と full trace を保存する。前者は node ID、
+評価状態、ケース別結果、変更ファイル、LLM の自己記述を生成元別に保持する。さらに
+\texttt{measurement\_audit} に各反復の入力 seed、候補・baseline の内部時間と wall time、clamp、
+残差、採否、実効・拒否コンパイルフラグを保存する。full trace は ReAct の全メッセージ、ツール入出力、および
+step 上限到達後に Reflection を補完する別 LLM 呼出しの prompt と応答を保存する。これらは監査用であり、
+許可した Evidence 以外は子へ渡さない。
+
+\section{実験設計}
+\paragraph{探索と handoff 条件}
+各 node のエージェントは最大 25 ReAct step で上記ツールを用い、候補コードを作る。
+固定した非 LLM 評価器が全ノードを採点し、BFTS は最高得点のフロンティアノードを展開する（確証実験は
+$N=10$ ノード/run）。子は常に親 workspace を複製し、追加文脈だけを次の 3 条件で変える
+（図~\ref{fig:method}）。
+\begin{enumerate}[nosep,leftmargin=1.6em]
+  \item \textbf{Code only}: workspace のみ。
+  \item \textbf{Evidence only}: workspace と、評価器・ハーネスが確認した客観的証拠。
+  \item \textbf{Evidence+Reflection}: Evidence only に、LLM の解釈・懸念・次手提案を追加。
+\end{enumerate}
+1 run には 1 条件だけを適用し、探索木は共有しない。同一 seed の 3 run は共通の乱数列と評価入力を持つ
+対応ブロックである。ただし親 workspace は共有せず、推定対象は固定親からの局所差ではなく、handoff 方針を通した
+end-to-end の run 差とする。主要対比は Evidence only $-$ Code only と
+Evidence+Reflection $-$ Evidence only とする。
+
+workspace の複製では、候補ソース、ビルド設定、自己テスト足場を継承する一方、\texttt{results.json}、
+評価結果、標準出力・標準エラー、生ログ、\texttt{node\_report.json}、環境プローブ結果を除く。さらに、過去
+node の要約を検索・注入する cross-node memory と、BFTS の子生成プロンプトを作るプランナが親レポートを付与する既定経路を、
+全条件で無効化する。これにより Code only に別経路から親の測定値や説明が流入することを防ぐ。ただし、親 LLM が
+ソースコメントまたは任意の非除外ファイルへ書いた文章は、コード成果物の一部として残りうる。
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}[font=\footnotesize,
+  proc/.style={draw,rounded corners,align=center,inner sep=4pt},
+  arr/.style={-{Stealth},semithick}]
+\node[proc,fill=blue!4,text width=3.7cm](par){\textbf{親ノード}\\
+  ReAct $\to$ 候補コード\\
+  $\to$ 固定評価};
+\node[proc,fill=green!6,text width=3.3cm,right=6.3cm of par](chi){\textbf{子ノード}\\
+  継承後に同じ探索\\
+  \emph{（run 内は同一条件）}};
+\draw[arr] ([yshift=7mm]par.east) -- node[above,font=\scriptsize]{\textbf{Code}: workspace（常時）} ([yshift=7mm]chi.west);
+\draw[arr] (par.east) -- node[above,font=\scriptsize]{\textbf{＋Evidence}: 客観的証拠} (chi.west);
+\draw[arr] ([yshift=-7mm]par.east) -- node[below,font=\scriptsize]{\textbf{＋Reflection}: 解釈・懸念・提案} ([yshift=-7mm]chi.west);
+\end{tikzpicture}
+\caption{親子間 handoff。各 run は 3 条件のいずれかに固定される。}
+\label{fig:method}
+\end{figure}
+
+\paragraph{Evidence と Reflection の生成}
+表~\ref{tab:handoff-fields} に子プロンプトへ出力するフィールドを示す。Evidence は、制御器、評価器、
+ハーネス、ファイル hash 比較が機械的に確認した 7 フィールドだけから生成する。
+\texttt{evaluation\_cases} はケースごとの \texttt{valid} と \texttt{measurements} を持ち、測定名は
+各ハーネスが定義する。\texttt{known\_failures} は測定無効時の評価器理由から機械的に導出し、LLM の懸念を
+参照しない。反復ごとの生時間とコンパイルフラグを持つ \texttt{measurement\_audit} は監査専用であり、
+Evidence へ含めない。
+
+Reflection は、親 LLM が node 終了時に記録した作業解釈、残る懸念、次の最適化案から成る。両 Evidence 条件は
+同じ見出しとレンダリング関数を使う。同一 report を入力したときの客観部分は byte 単位で同一であり、
+Evidence+Reflection はその末尾へ Reflection だけを追記する。実際の条件間では探索木が独立なため値自体は異なる。
+handoff は子の最初の LLM 呼出しに独立メッセージとして注入する。Code only ではこの
+メッセージを生成せず、raw report、監査記録、full trace は全条件で注入しない。
+
+\begin{table}[H]\centering\footnotesize
+\caption{Evidence と Reflection の子向けフィールド。上段 7 フィールドは両 Evidence 条件に共通し、
+下段 3 フィールドは Evidence+Reflection だけに追加する。}
+\label{tab:handoff-fields}
+\begin{tabular}{p{3.7cm}p{10.2cm}}
+\toprule
+子向けフィールド & 内容と生成元 \\
+\midrule
+\multicolumn{2}{l}{\textbf{Evidence only / Evidence+Reflection 共通}}\\
+\texttt{status}
+  & 制御器が記録した ReAct 実行状態。候補の正当性判定とは区別する。\\
+\texttt{measurement\_valid}
+  & 評価器が保存する測定有効フラグ。ビルド・実行・全評価ケースを有効と判定したか。\\
+\texttt{evaluation\_cases}
+  & 評価ケースごとの \texttt{valid} と、ハーネス定義の客観測定値
+    \texttt{measurements}。共通スキーマは問題固有の測定名を規定しない。\\
+\texttt{evaluator\_reason}
+  & 固定評価器が返した採択・棄却理由。\\
+\texttt{key\_metrics}
+  & \texttt{metrics} から転記する評価値。幾何平均・ケース別 speedup 等を含む。\\
+\texttt{changed\_files}
+  & raw \texttt{files\_changed} から転記する、hash 比較済みの追加・変更・削除ファイル。\\
+\texttt{known\_failures}
+  & 測定無効時の \texttt{evaluator\_reason} から機械的に導出。LLM の懸念は含めない。\\
+\addlinespace
+\multicolumn{2}{l}{\textbf{Evidence+Reflection のみ}}\\
+\texttt{reflection\_summary}
+  & 親 LLM による実施内容とボトルネック解釈の要約。\\
+\texttt{concerns}
+  & 親 LLM が自己評価で挙げた未解決の懸念。\\
+\texttt{next\_steps}
+  & 親 LLM が提案した次の最適化案。\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+値が存在しないフィールドは出力しない。Code only には表~\ref{tab:handoff-fields} のフィールドを一つも渡さず、
+出力・ログ・レポートを除外した親 workspace だけを渡す。
+
+\paragraph{課題と採点}
+3 課題はいずれも、正当性を満たした候補の naive baseline 比 speedup を最大化する（表~\ref{tab:tasks}）。
+\begin{table}[H]\centering\footnotesize
+\caption{主実験の課題。}
+\label{tab:tasks}
+\begin{tabular}{l>{\raggedright\arraybackslash}p{7.2cm}>{\raggedright\arraybackslash}p{3.9cm}}
+\toprule
+課題 & 評価ケースと探索中の反復数 & 主な最適化特性 \\
+\midrule
+\texttt{gemm} & $(512,512,512)$、$(1024,256,256)$、$(256,256,1024)$；各 3 反復
+  & 規則的・計算集約的；データ再利用、SIMD、並列化 \\
+\texttt{spmm} & $n=20000,\ k=64$；一様・帯・べき則・ブロック・対角優位・偏りの 6 疎構造族；各 10 反復
+  & 不規則・メモリ依存；CSR アクセス、負荷分散 \\
+\texttt{stencil} & $(256,256,256,30)$、$(384,192,192,30)$、$(192,192,384,30)$；各 3 反復
+  & 局所性、境界処理、並列化、時間ブロッキング \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+評価器は候補と凍結 baseline を別々にコンパイルし、fp64 参照解と要素ごとに照合する。出力要素 $z$ の許容誤差は
+\begin{equation*}
+ |z_c-z_r|\le
+ \begin{cases}
+ c_\epsilon\,\gamma(p)\,(|A||B|)_{ij}, & \texttt{gemm},\\
+ c_\epsilon\,\gamma(\operatorname{nnz}_i)\,(|A||X|)_{ij}, & \texttt{spmm},\\
+ c_\epsilon\,\gamma(7)\max(n_t,1)\max|u_0|, & \texttt{stencil},
+ \end{cases}
+\end{equation*}
+とする。ここで $\gamma(k)=ku/(1-ku)$、$u$ は fp64 の unit roundoff、$c_\epsilon$ は固定安全係数、
+$p$ は縮約長、$\operatorname{nnz}_i$ は第 $i$ 行の非零数である。
+
+各反復で新しい入力を生成し、候補と baseline を交互順で対応実行する。奇数反復で一方が1回多くなるため、
+開始順を seed の奇偶で反転し、30 seed 全体では各条件の実行順を釣り合わせる。候補の内部時間は外部 wall time の下界で
+検査・clamp し、正当性と時間検査を通ったペアだけを採用する。ケース $i$ の速度比 $g_i$ は
+採用ペアの $t_{b}/t_{c}$ の中央値とし、\mbox{過半数未満なら無効}とする。
+全評価ケースが有効な場合だけ
+\begin{align*}
+ \mathrm{valid}
+   &= \mathrm{compiles}\wedge\bigwedge_i
+      \big(\mathrm{valid}_i\wedge g_i>0\wedge\mathrm{finite}(g_i)\big),\\
+ g &=
+ \begin{cases}
+ \exp\!\left(k^{-1}\sum_{i=1}^{k}\log g_i\right), & \mathrm{valid},\\
+ 0, & \mathrm{otherwise}
+ \end{cases}
+\end{align*}
+と採点する。無効ケースを部分点として幾何平均へ混ぜない。$g$ は探索中の BFTS 順位付けと候補選択に
+そのまま用いる。親との hash 差分がない no-op 子は、測定値と \texttt{valid} 判定を客観的記録として保持する一方、
+探索適格性を示す \texttt{\_sterile} を付けて再展開、親の retire、最終候補選択から除外する。
+探索深さ上限は 10 に固定し、root を含む 10 node を各 run に要求する。readable な
+\texttt{node\_report.json} が 10 件に満たない run は、条件依存の計算量差として扱わず
+\texttt{infrastructure\_error} とする。
+探索終了後、最大 $g$ の有効な非 no-op 候補を別 seed（run seed $+10^6$）、各ケース 15 反復で再測定し、
+この再測定値を run の主要アウトカムとする。再測定で無効なら $0$ とする。
+
+\paragraph{測定防御と最適化フラグ}
+採点ハーネスと baseline は node workspace 外に置き、manifest の sha256 と一致しない場合は
+\texttt{infrastructure\_error} として run を停止する。評価には workspace の候補実装だけを取り込み、
+各反復を新しい入力・プロセスで実行する。出力は NaN で初期化し、参照解との不一致、短い出力、異常終了、
+内部時間と wall time の重大な不整合を fail-closed で棄却する。1 プロセスの実行上限は 120 秒に固定し、
+候補の超過は \texttt{candidate\_invalid}、凍結 baseline の超過は \texttt{infrastructure\_error} とする。
+いずれか1ケースで候補が無効なら、全ケース必須の採点は既に無効なので残りのケースを実行しない。
+課題契約は外部の既製カーネルへの処理委譲を禁じ、
+リンク・include 用フラグも拒否する。
+
+候補はコードとコンパイル最適化フラグを探索できるが、baseline は既定フラグに固定する。allowlist は最適化・
+チューニング用フラグだけを許可し、外部リンク、include path、出力先、ツールチェーンの変更を拒否する。
+実効・拒否フラグ、評価設定、ハーネスの sha256 を記録する。ただしエージェントと評価器は同一 uid で動作し、
+OS レベルの隔離はない。この防御は改変検出と結果検証であり、悪意ある候補に対する完全な containment ではない。
+
+\paragraph{モデルと実行環境}
+モデルは \texttt{gpt-oss-120b} に固定し、OpenAI 互換 API で推論する。1 課題・1 条件・1 seed の run を
+独立した Slurm array element として \texttt{sbatch} し、各 element の探索、ビルド、計測、採点を
+\texttt{fx700} 1 ノード（\texttt{aarch64}、48 物理コア、
+\texttt{OMP\_NUM\_THREADS}$=48$）内で完結させる。計測対象の OpenMP は
+\texttt{OMP\_PROC\_BIND=spread}、\texttt{OMP\_PLACES=cores}、
+\texttt{OMP\_DYNAMIC=FALSE} に固定する。参照解を計算する制御器側の BLAS は 1 thread に制限し、
+参照計算の worker が直後の候補計測と競合することを防ぐ。各 run 内の BFTS node は直列実行し、兄弟 node の
+自己テストと評価を重ねない。array は最大 9 element を並行実行し、条件を
+特定ノードへ固定しない。低い array index が先に割り当てられる可能性に備え、3 seed ごとに各条件が各 index 位置へ
+1 回ずつ現れるよう配置を循環する。候補と baseline は同一 allocation 内で対として測る。
+job ID、array index、node 名、CPU 数を manifest に保存し、条件別 node 割当も報告する。
+handoff 関連の外部環境変数は run 起動前に消去し、解決後の設定を記録する。
+
+\paragraph{解析計画と事前登録}
+解析単位は 1 課題・1 seed・1 条件の独立 BFTS run である。各課題・各条件を 30 seed で反復し、全体で
+$3\times3\times30=270$ run とする。主要対比は Evidence only $-$ Code only と
+Evidence+Reflection $-$ Evidence only の 2 つである。各課題について、同一 seed の run を対応させ、
+無効な再測定を $0$ とした速度比の平均差を 20,000 回の両側 sign-flip permutation test と
+5,000 回の seed-pair bootstrap 95\%信頼区間で評価する。有効率は exact McNemar 検定と対応リスク差、
+両条件で有効な seed pair に限定した大きさは log-speedup 差と幾何平均比として分けて報告する。
+3 課題$\times$2 主要対比の permutation $p$ 値へ Holm 補正を適用する。探索中の親子改善率、
+親破壊率、node 有効率は副次解析とし、親子率からは no-op 子を除外する。
+
+科学的無効は \texttt{candidate\_invalid} または \texttt{measurement\_invalid} と記録し、$0$ を与える。
+
+\texttt{infrastructure\_error} は測定値ではない。非零終了と出力欠損も含めて解析から除外し、条件別件数を報告する。
+主要対比では、いずれか一方が infrastructure error の seed block を除き、除外 seed を明示する。
+
+確証実験前に、実装 commit と未コミット差分、3 条件のスキーマ、プロンプト、ツール、モデル、$N=10$、
+ReAct 上限、seed 0--29、評価器、ハーネス、解析コードを凍結する。run ごとに実験 driver、解析・batch script、
+関連する制御コード、課題ハーネス、論文ソース、設定、git status、binary diff と各 hash を bundle 化する。先行する smoke run は
+実行可能性と収集経路の確認だけに用い、効果推定にも seed 数の決定にも用いない。投入時にこれらの共通
+source fingerprint を固定し、各 worker の開始前・終了後と集計時に照合する。不一致 run は解析しない。
+
+\section{実装状態}
+実験 driver は、課題・seed・条件ごとに別の \texttt{sbatch} array element と出力ディレクトリを作り、
+1 条件だけを指定して BFTS を起動する。
+各出力には node ごとの workspace、report、trace、独立再測定、run manifest を保存する。
+Evidence/Reflection の選択、親成果物の除外、memory とプランナ経路の遮断、3 ハーネス、失敗分類、
+raw 反復記録、provenance bundle、並列投入を実装済みである。依存する集計 job は期待する
+$3\times3\times n$ shard の重複・欠損、モデル、scorer、handoff 設定、node 数、再測定回数、
+allocation ID、最終再測定、bundle hash、共通 source fingerprint を検査してから
+課題別 manifest を結合する。完全な記録を持つ \texttt{infrastructure\_error} cell は保持して条件別件数を報告し、
+対応解析から除外する。構造的欠損、hash 不一致、または解析失敗時は batch job も失敗させる。
+
+直近の $3\times3$ smoke run は $N=10$、ReAct 上限 25、seed 0 で実施し、\texttt{spmm} は
+$n=5000,\ k=32$、\texttt{stencil} は
+$(128,128,128,10)$、$(160,96,96,10)$、$(96,96,160,10)$ に縮小した。最終再測定は各ケース 5 反復である。
+9 allocation はすべて \texttt{fx700} の48 coreを確保し、Slurm accounting 上、割当時間内の同一 node に
+他ジョブはなかった。全 9 run が要求した 10 report を生成し、90 node 中83件が有効、7件はコンパイル失敗であった。
+9件の最終再測定はすべて有効で、180 matched pair を採用した。候補時間への外部 wall-time 下界は179 pairで
+作動した。全 run が seed 0 のため候補先行が1回多いが、開始順別の中央値差は最大約12\%であった。確証実験では
+前述の seed 奇偶による釣合せを用いる。
+
+81子 node の prompt を親 report から再構成して照合した結果、Code only の親情報メッセージは
+$0/27$、Evidence only と Evidence+Reflection は各 $27/27$ で期待値と一致した。Evidence only への
+Reflection、memory、プランナ親 report、full trace、ホストパスの流入はなかった。step 上限で終了した16 nodeも、
+補完 Reflection の prompt と応答をすべて full trace に保存した。集計器は共通 source fingerprint と9 shardを
+検証した。smoke の条件差は効果量として解釈せず、信頼区間と検定も出力しない。確証実験は未実施である。
+
+\section{限界}
+\begin{enumerate}[nosep,leftmargin=1.6em]
+  \item 確証結果は未確定であり、本稿から条件の優劣は結論しない。
+  \item Code only でも、親が workspace に書いたコメントやメモは継承されうる。
+  \item 同一 uid で動く候補と評価器の間に syscall・filesystem containment がなく、hash 検査だけでは悪意ある
+    改変を完全には防げない。
+  \item 性能測定には残留ノイズがあり、対応ペア化と独立再測定後にも不確実性が残る。
+  \item 結果は単一モデル、プロンプト、ReAct 上限、計算環境に依存する。
+  \item 対象は 3 性能カーネルであり、他の最適化問題への一般化には追加検証を要する。
+\end{enumerate}
+
+\section{結論}
+本稿は、親コード継承下の handoff を Code only、Evidence only、Evidence+Reflection に分解し、
+客観的証拠と LLM 反省の効果を独立 run 間で識別する設計を示した。今後、3 HPC カーネルで確証実験を行い、
+証拠の価値、Reflection の追加効果または害、その課題依存性を検定する。
+
+\begin{thebibliography}{9}
+\scriptsize
+\setlength{\itemsep}{-2.5pt}
+\bibitem{theaiscientist} C.~Lu, C.~Lu, R.~T.~Lange, J.~Foerster, J.~Clune, D.~Ha.
+  The AI Scientist: Towards Fully Automated Open-Ended Scientific Discovery.
+  \textit{arXiv:2408.06292}, 2024.
+\bibitem{aide} Z.~Jiang, D.~Schmidt, D.~Srikanth, et al. (Weco AI).
+  AIDE: AI-Driven Exploration in the Space of Code. \textit{arXiv:2502.13138}, 2025.
+\bibitem{codetree} J.~Li, G.~Li, X.~Zhang, et al.
+  CodeTree: Agent-guided tree search for code generation with large language models.
+  \textit{NAACL} (arXiv:2411.04329), 2025.
+\bibitem{gifmcts} N.~Dainese, M.~Merler, M.~Alakuijala, P.~Marttinen.
+  Generating code world models with reinforcement learning and Monte Carlo Tree Search (GIF-MCTS).
+  \textit{NeurIPS} (arXiv:2405.15383), 2024.
+\bibitem{kernelbench} A.~Ouyang, S.~Guo, S.~Arora, et al.
+  KernelBench: Can LLMs write efficient GPU kernels? \textit{arXiv:2502.10517}, 2025.
+\bibitem{react} S.~Yao, J.~Zhao, D.~Yu, et al.
+  ReAct: Synergizing reasoning and acting in language models. \textit{ICLR}, 2023.
+\bibitem{reflexion} N.~Shinn, F.~Cassano, A.~Gopinath, et al.
+  Reflexion: Language agents with verbal reinforcement learning. \textit{NeurIPS}, 2023.
+\bibitem{tot} S.~Yao, D.~Yu, J.~Zhao, et al.
+  Tree of Thoughts: Deliberate problem solving with large language models. \textit{NeurIPS}, 2023.
+\bibitem{lats} A.~Zhou, K.~Yan, M.~Shlapentokh-Rothman, et al.
+  Language Agent Tree Search unifies reasoning, acting, and planning in language models.
+  \textit{ICML} (arXiv:2310.04406), 2024.
+\end{thebibliography}
+
+\end{document}

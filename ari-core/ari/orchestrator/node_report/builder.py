@@ -398,7 +398,6 @@ def derive_self_assessment_from_evaluator(
     - 0.4 <= axis_score < 0.7 → next_steps_hints
     - axis_score >= 0.7 → not surfaced (high-rated axes aren't "improve me")
     """
-    succeeded = bool(getattr(node, "has_real_data", False))
     headline = ""
     concerns: list[str] = []
     next_steps: list[str] = []
@@ -434,7 +433,6 @@ def derive_self_assessment_from_evaluator(
 
     return (
         {
-            "succeeded": succeeded,
             "headline": headline,
             "concerns": concerns,
         },
@@ -534,7 +532,6 @@ def build_node_report(
     work_dir: Path,
     parent_work_dir: Path | None,
     eval_result: dict | None = None,
-    delta_vs_parent: str | None = None,
     what_was_done: str | None = None,
 ) -> dict:
     """Construct a node_report dict for *node* by gathering everything we know.
@@ -576,11 +573,10 @@ def build_node_report(
     _agent_next = [str(s).strip() for s in (getattr(node, "agent_next_steps", []) or []) if str(s).strip()]
     if _agent_next:
         next_steps = _agent_next
-    # self_assessment is the node's OWN assessment (LLM self-review): headline =
-    # the agent's summary; concerns = the agent's self-flagged caveats. ``succeeded``
-    # stays the deterministic has_real_data ground truth (objective, non-gameable).
-    # The evaluator's terse reason ("ok") lives in ``evaluator_reason``, so we do not
-    # duplicate it here as a misleading headline that contradicts succeeded.
+    # self_assessment is only the node's OWN assessment (LLM self-review):
+    # headline = the agent's summary; concerns = its self-flagged caveats.
+    # Objective validity is a separate top-level ``measurement_valid`` field.
+    # The evaluator's terse reason lives in ``evaluator_reason``.
     self_assessment["headline"] = (getattr(node, "agent_summary", "") or "").strip()
     _agent_concerns = [str(c).strip() for c in (getattr(node, "agent_concerns", []) or []) if str(c).strip()]
     if _agent_concerns:
@@ -643,7 +639,32 @@ def build_node_report(
     if eval_result:
         evaluator_reason = (eval_result.get("reason") or "").strip()
     if not evaluator_reason:
-        evaluator_reason = (getattr(node, "eval_summary", "") or "").strip()
+        # ``eval_summary`` is legacy dual-use state and may still contain the
+        # LLM planner's direction when no evaluator ran. Evidence must never
+        # relabel that text as an objective evaluator reason.
+        evaluator_reason = (
+            getattr(node, "evaluator_reason", "") or "").strip()
+    evaluation_cases = dict(getattr(node, "evaluation_cases", {}) or {})
+    if eval_result and isinstance(eval_result.get("evaluation_cases"), dict):
+        evaluation_cases = dict(eval_result["evaluation_cases"])
+    measurement_valid = bool(getattr(node, "has_real_data", False))
+    if eval_result and isinstance(eval_result.get("has_real_data"), bool):
+        measurement_valid = eval_result["has_real_data"]
+    evaluation_status = str(getattr(node, "evaluation_status", "") or "")
+    if eval_result and eval_result.get("evaluation_status"):
+        evaluation_status = str(eval_result["evaluation_status"])
+    if not evaluation_status:
+        evaluation_status = "valid" if measurement_valid else "candidate_invalid"
+    measurement_audit = dict(getattr(node, "measurement_audit", {}) or {})
+    if eval_result and isinstance(eval_result.get("measurement_audit"), dict):
+        measurement_audit = dict(eval_result["measurement_audit"])
+    measurement_audit = {
+        "effective_candidate_compile_flags": list(
+            measurement_audit.get("effective_candidate_compile_flags") or []),
+        "rejected_candidate_compile_flags": list(
+            measurement_audit.get("rejected_candidate_compile_flags") or []),
+        "cases": dict(measurement_audit.get("cases") or {}),
+    }
 
     started_at = getattr(node, "created_at", "") or ""
     completed_at = getattr(node, "completed_at", "") or _utc_now_iso()
@@ -659,8 +680,11 @@ def build_node_report(
         "completed_at": completed_at,
         "files_changed": files_changed,
         "what_was_done": what_was_done or "",
-        "delta_vs_parent": delta_vs_parent or "",
         "metrics": metrics,
+        "measurement_valid": measurement_valid,
+        "evaluation_status": evaluation_status,
+        "evaluation_cases": evaluation_cases,
+        "measurement_audit": measurement_audit,
         "self_assessment": self_assessment,
         "next_steps_hints": next_steps,
         "build_command": build_cmd,
@@ -669,6 +693,9 @@ def build_node_report(
         "evaluator_reason": evaluator_reason,
         "trace_log_summary": _trace_log_summary(getattr(node, "trace_log", None)),
     }
+    handoff_mode = (getattr(node, "handoff_mode", "") or "").strip()
+    if handoff_mode:
+        report["handoff_mode"] = handoff_mode
     # (1) label / raw_label / original_direction — ALWAYS emitted. An
     # ``ARI_REPORT_MINIMAL`` switch used to strip these from the report while the
     # label kept steering the search (NODE ROLE in the system prompt, the child's
@@ -713,7 +740,6 @@ def write_node_report(
     work_dir: Path,
     parent_work_dir: Path | None,
     eval_result: dict | None = None,
-    delta_vs_parent: str | None = None,
     what_was_done: str | None = None,
 ) -> Path:
     """Build and write `node_report.json` into *work_dir*.
@@ -731,7 +757,6 @@ def write_node_report(
             work_dir=work_dir,
             parent_work_dir=parent_work_dir,
             eval_result=eval_result,
-            delta_vs_parent=delta_vs_parent,
             what_was_done=what_was_done,
         )
         out_path.write_text(json.dumps(report, indent=2, ensure_ascii=False))
@@ -753,6 +778,15 @@ def write_node_report(
                 "error": str(exc),
                 "files_changed": {"added": [], "modified": [], "deleted": [], "inherited_unchanged": []},
                 "metrics": {},
+                "measurement_valid": False,
+                "evaluation_status": "infrastructure_error",
+                "evaluation_cases": {},
+                "measurement_audit": {
+                    "effective_candidate_compile_flags": [],
+                    "rejected_candidate_compile_flags": [],
+                    "cases": {},
+                },
+                "self_assessment": {"headline": "", "concerns": []},
                 "artifacts": [],
                 "depth": int(getattr(node, "depth", 0) or 0),
             }, indent=2))

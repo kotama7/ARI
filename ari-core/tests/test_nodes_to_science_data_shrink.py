@@ -92,7 +92,6 @@ def _make_checkpoint(tmp_path: Path, *, with_reports: bool = True) -> Path:
                                 if nid == "node_b" else [],
                     "deleted": [], "inherited_unchanged": [],
                 },
-                "delta_vs_parent": "made faster" if nid == "node_b" else "initial",
                 "self_assessment": {"succeeded": True, "headline": "ok",
                                     "concerns": []},
                 "metrics": {"x": 1.0 if nid == "node_a" else 2.0},
@@ -134,8 +133,8 @@ def test_TB1_prompt_size_shrinks_with_reports(tmp_path: Path):
     prompt = captured["prompt"]
     # Spec NFR-11: typical 16-24KB. We assert a generous 30KB upper bound.
     assert len(prompt) < 30_000, f"prompt too large: {len(prompt)} chars"
-    # Sanity: report-driven prompt mentions delta_vs_parent.
-    assert "delta_vs_parent" in prompt
+    # Sanity: report-driven prompt carries structured file changes.
+    assert "files_modified" in prompt
     # The compact source blob path is taken.
     assert "VERBATIM SOURCE" in prompt
 

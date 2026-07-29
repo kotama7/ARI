@@ -119,11 +119,24 @@ class TestStudyDoesNotHideLiveVariables:
         if src is None:
             pytest.skip("run_handoff_ablation.py not found (workspace/ or scripts/)")
         tree = ast.parse(src.read_text())
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Assign) and any(
-                getattr(t, "id", "") == "_FIXED" for t in node.targets
-            ):
-                return ast.literal_eval(node.value)
+        literal_assignments: dict[str, dict] = {}
+        for node in tree.body:
+            if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+                continue
+            name = getattr(node.targets[0], "id", "")
+            if name == "_MEASUREMENT_ENV":
+                literal_assignments[name] = ast.literal_eval(node.value)
+                continue
+            if name != "_FIXED" or not isinstance(node.value, ast.Dict):
+                continue
+            resolved: dict = {}
+            for key, value in zip(node.value.keys, node.value.values):
+                if key is None:
+                    spread_name = getattr(value, "id", "")
+                    resolved.update(literal_assignments[spread_name])
+                else:
+                    resolved[ast.literal_eval(key)] = ast.literal_eval(value)
+            return resolved
         raise AssertionError("_FIXED not found in run_handoff_ablation.py")
 
     def test_study_turns_the_label_feature_off(self):

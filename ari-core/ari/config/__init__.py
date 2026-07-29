@@ -429,6 +429,8 @@ class HandoffConfig(BaseModel):
     mode: Literal[
         "disabled",
         "code_only",
+        "evidence_only",
+        "evidence_plus_reflection",
         "summary_only",
         "code_plus_summary",
         "code_plus_full_log",
@@ -466,14 +468,17 @@ class HandoffConfig(BaseModel):
         4000,
         description="Tail length kept when log_mode=`truncated`.",
     )
-    summary_form: Literal["extractive", "rolling", "failure_only"] = Field(
+    summary_form: Literal[
+        "extractive", "rolling", "failure_only",
+        "evidence", "evidence_reflection",
+    ] = Field(
         "extractive",
         description="Form of the structured summary when inject_agent_block "
                     "is on. `ARI_HANDOFF_SUMMARY_FORM`.",
     )
     summary_fields_enabled: list[str] = Field(
         default_factory=lambda: [
-            "outcome", "delta_vs_parent", "changed_files", "concerns",
+            "outcome", "changed_files", "concerns",
             "next_steps", "known_failures", "key_metrics",
         ],
         description="Operational-state fields included in the summary. The "
@@ -495,6 +500,12 @@ class HandoffConfig(BaseModel):
     # the only summary surface under test.
     _MODE_SPEC = {
         "code_only":               ("copy", False, "none",      "extractive"),
+        # New evidence/reflection study arms. Both inherit the same parent code
+        # workspace; evidence_plus_reflection adds ONLY the agent's own
+        # interpretation / concerns / next-step hints on top of the identical
+        # objective evaluator+harness evidence carried by evidence_only.
+        "evidence_only":           ("copy", True,  "none",      "evidence"),
+        "evidence_plus_reflection": ("copy", True,  "none",      "evidence_reflection"),
         "summary_only":            ("nocopy", True, "none",      "extractive"),
         "code_plus_summary":       ("copy", True,  "none",      "extractive"),
         "code_plus_full_log":      ("copy", False, "full",      "extractive"),
@@ -833,7 +844,8 @@ def apply_handoff_env_overrides(cfg: "ARIConfig") -> None:
     See ari-core/PREREG_handoff_study.md.
     """
     _valid_modes = {
-        "disabled", "code_only", "summary_only", "code_plus_summary",
+        "disabled", "code_only", "evidence_only", "evidence_plus_reflection",
+        "summary_only", "code_plus_summary",
         "code_plus_full_log", "code_plus_summary_plus_full_log",
         "code_plus_truncated_log",
         "rolling_summary", "failure_only_summary",
@@ -856,7 +868,8 @@ def apply_handoff_env_overrides(cfg: "ARIConfig") -> None:
     if _lm in ("none", "full", "truncated", "masked"):
         cfg.handoff.log_mode = _lm
     _sf = os.environ.get("ARI_HANDOFF_SUMMARY_FORM")
-    if _sf in ("extractive", "rolling", "failure_only"):
+    if _sf in ("extractive", "rolling", "failure_only",
+               "evidence", "evidence_reflection"):
         cfg.handoff.summary_form = _sf
     _fields = os.environ.get("ARI_HANDOFF_SUMMARY_FIELDS")
     if _fields:

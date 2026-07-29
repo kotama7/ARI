@@ -143,9 +143,10 @@ Schema：`ari-core/ari/schemas/node_report.schema.json`。
 | `started_at` / `completed_at` | string | ISO8601 时间戳 |
 | `files_changed` | object | `{added, modified, deleted, inherited_unchanged}`，各 `{path, sha256}`。相对父的差异（`added+modified+deleted==0` 即 *sterile* / 空操作节点） |
 | `what_was_done` | string | **智能体自身的自然语言自报告**。仅在节点得出结论时填充（无法使用工具的弱模型为空） |
-| `delta_vs_parent` | string | **相对父的确定性、已验证的变化**（`files vs parent: +N/~M/-K; valid_geomean_speedup=X`）——始终为真值锚点 |
-| `metrics` | object | 评估器测量（`valid_geomean_speedup`、`_scientific_score`、`speedup_*`、空操作时 `_sterile:true` 等） |
-| `self_assessment` | object | `{succeeded, headline, concerns}`。`succeeded`=确定性 has_real_data；`headline`+`concerns`=智能体自身的 LLM 自我评审（无则为空）。 |
+| `metrics` | object | 评估器定义的标量测量。共享 schema 不规定键名或语义。 |
+| `measurement_valid` | bool | 评估器给出的客观有效性判定，与 LLM 生成的反思分离。 |
+| `evaluation_cases` | object | `{case名: {valid, measurements}}` 形式的逐案例证据。案例名和 JSON 标量测量键由 harness 定义；共享 schema 不赋予任务特定语义。 |
+| `self_assessment` | object | `{headline, concerns}`，来自智能体自身的 LLM 自我评审（无则为空）。 |
 | `next_steps_hints` | string[] | 智能体自我评审得出的下一步（LLM self-review）。确定性评分下为唯一来源（无分级维度）；使用 rubric/judge 评分时回退到评估器中段(0.4-0.7)维度理由。智能体未提供时为空。 |
 | `build_command` / `run_command` | string | 运行脚手架（构建/运行命令） |
 | `artifacts` | object[] | 产物 `[{filename, role}]` |
@@ -191,9 +192,15 @@ Schema：`ari-core/ari/schemas/node_report.schema.json`。
   "completed_at": "2026-07-10T10:35:24Z",
   "files_changed": {"added": [], "modified": [{"path": "candidate_gemm.c", "sha256": "..."}], "deleted": [], "inherited_unchanged": []},
   "what_was_done": "Parallelized the outer loop with OpenMP and reordered to ikj for cache locality.",
-  "delta_vs_parent": "files vs parent: +0/~1/-0; valid_geomean_speedup=1.340",
-  "metrics": {"valid_geomean_speedup": 1.34, "_scientific_score": 0.05, "speedup_512x512x512": 1.33},
-  "self_assessment": {"succeeded": true, "headline": "向量化内层循环，实测约1.2倍。", "concerns": ["仅测试了3种形状"]},
+  "metrics": {"_scientific_score": 1.34},
+  "measurement_valid": true,
+  "evaluation_cases": {
+    "case_a": {
+      "valid": true,
+      "measurements": {"throughput": 123.4, "error": 1e-12}
+    }
+  },
+  "self_assessment": {"headline": "向量化内层循环，实测约1.2倍。", "concerns": ["仅测试了3种形状"]},
   "next_steps_hints": [],
   "build_command": "", "run_command": "CC ?= cc",
   "artifacts": [{"filename": "result", "role": "unknown"}],

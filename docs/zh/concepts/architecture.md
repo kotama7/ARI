@@ -199,8 +199,8 @@ BFTS expand() (ari/orchestrator/bfts.py)
   - 将分数传递给子节点提议 LLM
   - LLM 每次扩展调用提议 1 个子方向（改进 / 消融 / 验证 / 草稿 / 调试 / 其他）
   - 无领域提示 — LLM 决定"改进"的含义
-  - v0.7.0：当父节点存在 node_report.json 时，提示词中加入 delta_vs_parent /
-    self_assessment.concerns / next_steps_hints 与 files added/modified；同辈
+  - v0.7.0：当父节点存在 node_report.json 时，提示词中加入结构化的
+    files added/modified/deleted、self_assessment.concerns 与 next_steps_hints；同辈
     去重通过 filter_nodes(for_synthesis) 过滤后，连带列出每个 sibling 的
     files_changed.added，避免提议会写相同文件的方向。
 
@@ -210,9 +210,10 @@ BFTS expand() (ari/orchestrator/bfts.py)
     - files_changed (added / modified / deleted / inherited_unchanged) —
       由父子 work_dir 的 sha256 diff 推导
     - original_direction (bfts.expand 在创建子节点时保存，evaluator 不会覆写)
-    - self_assessment.{succeeded, headline, concerns} — 根据 evaluator
-      的 axis_rationales 派生（axis_score < 0.4 → concerns，0.4..0.7 →
-      next_steps_hints，≥0.7 → 不暴露）
+    - measurement_valid 与 evaluation_cases — 评估器的客观输出；每个案例
+      包含 `valid` 和由 harness 定义的标量测量字典
+    - self_assessment.{headline, concerns} 与 next_steps_hints —
+      智能体生成的 LLM 反思，与客观有效性判定分开保存
     - build_command / run_command — 从 work_dir 中的 run_job.sh / Makefile grep
     - artifacts[].role — 按扩展名确定性分类
   PathManager.META_FILES 包含 node_report.json，确保父→子物理 work_dir 复制

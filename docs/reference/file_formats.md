@@ -168,9 +168,10 @@ conditions below).
 | `started_at` / `completed_at` | string | ISO8601 timestamps |
 | `files_changed` | object | `{added, modified, deleted, inherited_unchanged}`, each `{path, sha256}`. Diff vs parent (`added+modified+deleted==0` ⇒ *sterile* / no-op node) |
 | `what_was_done` | string | **The agent's own natural-language self-report**. Filled only when the node concluded (empty for weak models that cannot use tools) |
-| `delta_vs_parent` | string | **Deterministic, verified change vs parent** (`files vs parent: +N/~M/-K; valid_geomean_speedup=X`) — always a ground-truth anchor |
-| `metrics` | object | Evaluator measurements (`valid_geomean_speedup`, `_scientific_score`, `speedup_*`, `_sterile:true` for no-op nodes, …) |
-| `self_assessment` | object | `{succeeded, headline, concerns}`. `succeeded` = deterministic has_real_data; `headline` + `concerns` = the agent's own LLM self-review (empty if none). |
+| `metrics` | object | Evaluator-defined scalar measurements. The shared schema does not prescribe metric names or semantics. |
+| `measurement_valid` | bool | Objective evaluator verdict. Kept separate from the agent-authored reflection. |
+| `evaluation_cases` | object | Evaluator cases as `{case_name: {valid, measurements}}`. Case names and JSON-scalar measurement keys are harness-defined; the shared schema assigns no task-specific meaning. |
+| `self_assessment` | object | `{headline, concerns}` from the agent's own LLM self-review (empty if none). |
 | `next_steps_hints` | string[] | The agent's own self-reviewed next steps (LLM self-review). Sole source under deterministic scoring (no graded axes); falls back to the evaluator's mid-range axis rationales under a rubric/judge scorer. Empty when the agent volunteered none. |
 | `build_command` / `run_command` | string | Operational scaffold (build / run commands) |
 | `artifacts` | object[] | Produced artifacts `[{filename, role}]` |
@@ -221,9 +222,15 @@ skill is unused (never burned into the deliverable) yet present in full when it 
   "completed_at": "2026-07-10T10:35:24Z",
   "files_changed": {"added": [], "modified": [{"path": "candidate_gemm.c", "sha256": "..."}], "deleted": [], "inherited_unchanged": []},
   "what_was_done": "Parallelized the outer loop with OpenMP and reordered to ikj for cache locality.",
-  "delta_vs_parent": "files vs parent: +0/~1/-0; valid_geomean_speedup=1.340",
-  "metrics": {"valid_geomean_speedup": 1.34, "_scientific_score": 0.05, "speedup_512x512x512": 1.33},
-  "self_assessment": {"succeeded": true, "headline": "Vectorized the inner loop; measured ~1.2x.", "concerns": ["only 3 problem shapes tested"]},
+  "metrics": {"_scientific_score": 1.34},
+  "measurement_valid": true,
+  "evaluation_cases": {
+    "case_a": {
+      "valid": true,
+      "measurements": {"throughput": 123.4, "error": 1e-12}
+    }
+  },
+  "self_assessment": {"headline": "Vectorized the inner loop; measured ~1.2x.", "concerns": ["only 3 problem shapes tested"]},
   "next_steps_hints": [],
   "build_command": "", "run_command": "CC ?= cc",
   "artifacts": [{"filename": "result", "role": "unknown"}],

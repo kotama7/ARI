@@ -1,4 +1,4 @@
-// ARI Dashboard API – node report family (v0.7.0).
+// ARI Dashboard API - node report resource (v0.7.0).
 
 import { get } from './client';
 
@@ -17,9 +17,13 @@ export interface NodeReportFilesChanged {
 }
 
 export interface NodeReportSelfAssessment {
-  succeeded?: boolean;
   headline?: string;
   concerns?: string[];
+}
+
+export interface NodeReportEvaluationCase {
+  valid: boolean;
+  measurements: Record<string, number | boolean | string | null>;
 }
 
 export interface NodeReport {
@@ -36,8 +40,9 @@ export interface NodeReport {
   original_direction?: string | null;
   files_changed: NodeReportFilesChanged;
   what_was_done?: string;
-  delta_vs_parent?: string;
   metrics?: Record<string, unknown>;
+  measurement_valid?: boolean;
+  evaluation_cases?: Record<string, NodeReportEvaluationCase>;
   self_assessment?: NodeReportSelfAssessment;
   next_steps_hints?: string[];
   build_command?: string;

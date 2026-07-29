@@ -120,7 +120,7 @@ class TestNodeReportIntegration:
 
         report = build_node_report(
             node=_Node(), work_dir=tmp_path, parent_work_dir=None,
-            eval_result=None, delta_vs_parent="", what_was_done="",
+            eval_result=None, what_was_done="",
         )
         # agent-authored env note IS carried
         assert report["environment"] == "Intel Xeon 6142, gcc 11.5.0, AVX-512"
@@ -151,7 +151,7 @@ class TestNodeReportIntegration:
 
         report = build_node_report(
             node=_Node(), work_dir=tmp_path, parent_work_dir=None,
-            eval_result=None, delta_vs_parent="", what_was_done="",
+            eval_result=None, what_was_done="",
         )
         assert "executor" not in report
         assert "hostname" not in report

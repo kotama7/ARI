@@ -1,22 +1,15 @@
-"""Run-level statistics for the handoff-study analysis (Stage 4 core).
+"""Run-level statistics for the evidence/reflection handoff study.
 
 Pure, unit-tested statistics the ``workspace/analyze_handoff_ablation.py`` CLI
 composes. The unit of analysis is the RUN (one BFTS tree -> one scalar primary
 outcome); these functions therefore resample/compare whole runs and NEVER
 lineage-correlated nodes (PREREG §7).
 
-Two complementary confirmatory tests, matching the paper's design:
-  * PRIMARY (directional trend): the Jonckheere–Terpstra ordered-alternative
-    test (``jonckheere_terpstra``) — does the outcome increase monotonically
-    along a PRE-SPECIFIED handoff-richness order? It is RANK-based, hence
-    invariant to any monotone transform, so the "log domain" distinction is
-    moot for it (a speedup ratio and its log give the same JT). Every run
-    enters, including invalid runs scored 0 (validity differences are part of
-    the trend, not silently dropped).
-  * EQUIVALENCE (parity): ``tost_equivalence`` for the nested "does the full log
-    add value ON TOP of the summary?" contrast. Speedups are ratios, so the
-    caller passes LOG-domain per-run values (margin in log units, SESOI ~log(1.2) — log(1.05) was vacuous at feasible n); bounded
-    [0,1] scores are passed in the linear domain with an absolute margin.
+The current confirmatory design uses two pre-specified, two-sided pairwise
+contrasts blocked by seed. ``paired_permutation_test`` tests the all-run native
+outcome, including scientific invalids scored zero. Conditional log-speedup and
+validity contrasts are reported separately so log(0) is never hidden by
+survivor-only filtering.
 
 See ari-core/ari/evaluator/Plan.md and the pre-registration.
 """
@@ -63,6 +56,132 @@ def bootstrap_ci(
     ])
     lo, hi = np.percentile(boots, [100 * alpha / 2.0, 100 * (1.0 - alpha / 2.0)])
     return (point, float(lo), float(hi))
+
+
+def bootstrap_difference_ci(
+    a: Sequence[float],
+    b: Sequence[float],
+    *,
+    n_boot: int = 5000,
+    alpha: float = 0.05,
+    seed: int = 0,
+) -> tuple[float, float, float]:
+    """Bootstrap CI for ``mean(a) - mean(b)`` over independent whole runs."""
+    aa = np.asarray([float(x) for x in a], dtype=float)
+    bb = np.asarray([float(x) for x in b], dtype=float)
+    if aa.size == 0 or bb.size == 0:
+        return (float("nan"), float("nan"), float("nan"))
+    point = float(aa.mean() - bb.mean())
+    rng = np.random.default_rng(seed)
+    boots = np.empty(int(n_boot), dtype=float)
+    for i in range(int(n_boot)):
+        boots[i] = float(
+            rng.choice(aa, size=aa.size, replace=True).mean()
+            - rng.choice(bb, size=bb.size, replace=True).mean()
+        )
+    lo, hi = np.percentile(
+        boots, [100 * alpha / 2.0, 100 * (1.0 - alpha / 2.0)])
+    return point, float(lo), float(hi)
+
+
+def paired_bootstrap_difference_ci(
+    a: Sequence[float],
+    b: Sequence[float],
+    *,
+    n_boot: int = 5000,
+    alpha: float = 0.05,
+    seed: int = 0,
+) -> tuple[float, float, float]:
+    """Bootstrap CI for ``mean(a - b)`` over matched whole-run seed blocks."""
+    aa = np.asarray([float(x) for x in a], dtype=float)
+    bb = np.asarray([float(x) for x in b], dtype=float)
+    if aa.size == 0 or aa.size != bb.size:
+        return (float("nan"), float("nan"), float("nan"))
+    differences = aa - bb
+    point = float(differences.mean())
+    rng = np.random.default_rng(seed)
+    boots = np.empty(int(n_boot), dtype=float)
+    for i in range(int(n_boot)):
+        boots[i] = float(
+            rng.choice(differences, size=differences.size, replace=True).mean()
+        )
+    lo, hi = np.percentile(
+        boots, [100 * alpha / 2.0, 100 * (1.0 - alpha / 2.0)])
+    return point, float(lo), float(hi)
+
+
+def paired_permutation_test(
+    a: Sequence[float],
+    b: Sequence[float],
+    *,
+    n_perm: int = 20000,
+    seed: int = 0,
+) -> dict:
+    """Two-sided sign-flip test for the mean difference of seed-matched runs."""
+    aa = np.asarray([float(x) for x in a], dtype=float)
+    bb = np.asarray([float(x) for x in b], dtype=float)
+    if aa.size == 0 or aa.size != bb.size:
+        return {
+            "mean_diff": float("nan"),
+            "p_value": float("nan"),
+            "n_pairs": int(min(aa.size, bb.size)),
+            "reason": "groups must be non-empty and have equal length",
+        }
+    differences = aa - bb
+    observed = float(differences.mean())
+    rng = np.random.default_rng(seed)
+    extreme = 1
+    for _ in range(int(n_perm)):
+        signs = rng.choice((-1.0, 1.0), size=differences.size)
+        permuted = float(np.mean(differences * signs))
+        if abs(permuted) >= abs(observed) - 1e-15:
+            extreme += 1
+    return {
+        "mean_diff": observed,
+        "p_value": extreme / (int(n_perm) + 1),
+        "n_pairs": int(differences.size),
+        "n_perm": int(n_perm),
+        "alternative": "two-sided",
+        "method": "paired sign-flip permutation",
+    }
+
+
+def two_sample_permutation_test(
+    a: Sequence[float],
+    b: Sequence[float],
+    *,
+    n_perm: int = 20000,
+    seed: int = 0,
+) -> dict:
+    """Two-sided randomization test for a difference in independent-run means."""
+    aa = np.asarray([float(x) for x in a], dtype=float)
+    bb = np.asarray([float(x) for x in b], dtype=float)
+    if aa.size == 0 or bb.size == 0:
+        return {
+            "mean_diff": float("nan"),
+            "p_value": float("nan"),
+            "n_a": int(aa.size),
+            "n_b": int(bb.size),
+            "reason": "both groups must be non-empty",
+        }
+    observed = float(aa.mean() - bb.mean())
+    pooled = np.concatenate([aa, bb])
+    n_a = int(aa.size)
+    rng = np.random.default_rng(seed)
+    extreme = 1
+    for _ in range(int(n_perm)):
+        perm = rng.permutation(pooled)
+        diff = float(perm[:n_a].mean() - perm[n_a:].mean())
+        if abs(diff) >= abs(observed) - 1e-15:
+            extreme += 1
+    return {
+        "mean_diff": observed,
+        "p_value": extreme / (int(n_perm) + 1),
+        "n_a": int(aa.size),
+        "n_b": int(bb.size),
+        "n_perm": int(n_perm),
+        "alternative": "two-sided",
+    }
 
 
 def _mw_count(xi: np.ndarray, xj: np.ndarray) -> float:
@@ -234,8 +353,8 @@ def tost_equivalence(a: Sequence[float], b: Sequence[float], *,
 def holm_adjust(pvalues: Sequence[float]) -> list[float]:
     """Holm-Bonferroni step-down adjusted p-values, aligned to input order.
 
-    For the multiplicity across the mode/field/task contrasts (PREREG): only the
-    pre-registered primary contrast is confirmatory; the rest are corrected here.
+    The current protocol applies this once across the six task-by-primary-
+    contrast permutation p-values.
     """
     m = len(pvalues)
     if m == 0:
@@ -254,12 +373,11 @@ def summarize_arm(run_speedups: Sequence[float], *, seed: int = 0,
                   is_score: bool = False) -> dict:
     """Per-arm central tendency + bootstrap CI over runs.
 
-    ``is_score`` selects the estimator for the task's NATIVE axis. Speedups are
-    ratios, so the geometric mean is right. Bounded [0,1] scores are NOT ratios:
+    ``is_score`` selects the estimator for a task's native axis. Speedups are
+    ratios, so the geometric mean is right. Bounded scores are not ratios:
     a geometric mean is dragged toward 0 by a single near-zero run (valid scores
     [0.05, 0.90, 0.92] -> geomean 0.335 vs arithmetic 0.623) and, worse, it is not
-    the quantity the additive score-axis TOST margin is defined against — so the
-    table and the equivalence test were describing different centres.
+    an arithmetic mean is the corresponding descriptive center.
 
     ``n_runs`` counts the values PASSED IN. Callers that filter to valid runs must
     report the arm total separately; the key is named for what it holds.

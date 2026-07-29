@@ -160,9 +160,10 @@ BFTS 実行のプランのシードとなります。
 | `started_at` / `completed_at` | string | ISO8601 時刻 |
 | `files_changed` | object | `{added, modified, deleted, inherited_unchanged}`、各 `{path, sha256}`。親比の差分（`added+modified+deleted==0` は sterile ＝ no-op ノード） |
 | `what_was_done` | string | **エージェント自身の自然言語 自己報告**。結論できたノードのみ充填（tool を使えない弱モデルは空） |
-| `delta_vs_parent` | string | **決定論的な親比変化**（`files vs parent: +N/~M/-K; valid_geomean_speedup=X`）。常に真値の anchor |
-| `metrics` | object | 評価器の測定（`valid_geomean_speedup`, `_scientific_score`, `speedup_*`, sterile 時 `_sterile:true` 等） |
-| `self_assessment` | object | `{succeeded, headline, concerns}`。`succeeded`=決定論の has_real_data、`headline`+`concerns`=エージェントの LLM 自己レビュー（無ければ空）。 |
+| `metrics` | object | 評価器定義のスカラー測定値。共通スキーマはキー名や意味を規定しない。 |
+| `measurement_valid` | bool | 評価器による客観的な有効判定。LLM が書く Reflection とは分離する。 |
+| `evaluation_cases` | object | `{case名: {valid, measurements}}` 形式のケース別証拠。ケース名と JSON スカラーの測定名はハーネスが定義し、共通スキーマは問題固有の意味を持たない。 |
+| `self_assessment` | object | `{headline, concerns}`。エージェント自身の LLM 自己レビュー（無ければ空）。 |
 | `next_steps_hints` | string[] | エージェント自身の自己レビューによる次の一手（LLM self-review）。決定論採点では唯一の供給源（グレード軸が無いため）、rubric/judge 採点時は評価器の中域(0.4-0.7)軸根拠にフォールバック。自己申告が無ければ空。 |
 | `build_command` / `run_command` | string | 運用足場（ビルド/実行コマンド） |
 | `artifacts` | object[] | 生成物 `[{filename, role}]` |
@@ -210,9 +211,15 @@ BFTS 実行のプランのシードとなります。
   "completed_at": "2026-07-10T10:35:24Z",
   "files_changed": {"added": [], "modified": [{"path": "candidate_gemm.c", "sha256": "..."}], "deleted": [], "inherited_unchanged": []},
   "what_was_done": "Parallelized the outer loop with OpenMP and reordered to ikj for cache locality.",
-  "delta_vs_parent": "files vs parent: +0/~1/-0; valid_geomean_speedup=1.340",
-  "metrics": {"valid_geomean_speedup": 1.34, "_scientific_score": 0.05, "speedup_512x512x512": 1.33},
-  "self_assessment": {"succeeded": true, "headline": "内側ループをベクトル化、約1.2倍を計測。", "concerns": ["3形状のみ検証"]},
+  "metrics": {"_scientific_score": 1.34},
+  "measurement_valid": true,
+  "evaluation_cases": {
+    "case_a": {
+      "valid": true,
+      "measurements": {"throughput": 123.4, "error": 1e-12}
+    }
+  },
+  "self_assessment": {"headline": "内側ループをベクトル化、約1.2倍を計測。", "concerns": ["3形状のみ検証"]},
   "next_steps_hints": [],
   "build_command": "", "run_command": "CC ?= cc",
   "artifacts": [{"filename": "result", "role": "unknown"}],

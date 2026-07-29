@@ -286,7 +286,6 @@ const ja: Record<string, string> = {
   memory_access_hits: 'ヒット',
   // Report タブ (v0.7.0)
   report_tab: 'レポート',
-  report_delta_vs_parent: '親との差分',
   report_headline: 'ヘッドライン',
   report_concerns: '懸念事項',
   report_next_steps: '推奨される次のステップ',

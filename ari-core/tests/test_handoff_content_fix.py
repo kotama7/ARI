@@ -210,6 +210,72 @@ def test_finish_json_path_does_not_pass_bare_agent_summary():
         "finish_json mark_success no longer prefers the evaluator verdict: " + args.strip())
 
 
+def test_invalid_deterministic_fallback_records_evaluator_verdict():
+    """A max-step node can be measured and rejected without reaching mark_success.
+
+    Its ``eval_summary`` initially contains the planner direction. The fallback
+    must overwrite that value before ``mark_failed`` or the direction is stored
+    as ``evaluator_reason`` and enters Evidence as a false objective failure.
+    """
+    import inspect
+    from ari.agent import loop as _loop
+
+    src = inspect.getsource(_loop.AgentLoop.run)
+    start = src.find("# DETERMINISTIC FALLBACK:")
+    end = src.find('node.mark_failed(error_log="Max ReAct steps exceeded")', start)
+    assert start != -1 and end != -1
+    fallback = src[start:end]
+    verdict_write = fallback.find("node.eval_summary = _r")
+    validity_branch = fallback.find("if node.has_real_data:")
+    assert 0 <= verdict_write < validity_branch, (
+        "the evaluator verdict must be recorded for valid and invalid fallback measurements")
+
+
+def test_evaluator_exception_is_infrastructure_not_scientific_zero():
+    from ari.agent.loop import _record_evaluator_exception
+    from ari.orchestrator.node import Node
+
+    node = Node(id="node_eval_error", parent_id=None, depth=0)
+    node.metrics = {"valid_geomean_speedup": 0.0}
+    _record_evaluator_exception(node, RuntimeError("harness unavailable"))
+    assert node.evaluation_status == "infrastructure_error"
+    assert node.has_real_data is False
+    assert node.metrics == {}
+    assert "RuntimeError" in node.evaluator_reason
+    assert node.eval_summary == node.evaluator_reason
+
+
+def test_forced_reflection_llm_call_is_kept_for_full_log_audit():
+    from types import SimpleNamespace
+
+    from ari.agent.loop import AgentLoop
+    from ari.orchestrator.node import Node
+
+    class FakeLLM:
+        def complete(self, messages, **kwargs):
+            return SimpleNamespace(content=json.dumps({
+                "summary": "Attempted blocking and exhausted the step budget.",
+                "next_steps": ["Fix the final pragma."],
+                "concerns": ["The last build failed."],
+            }))
+
+    loop = AgentLoop.__new__(AgentLoop)
+    loop.llm = FakeLLM()
+    loop.max_react_steps = 25
+    node = Node(id="node_max", parent_id="node_root", depth=1)
+    result = loop._forced_max_steps_summary(
+        node,
+        [{"role": "tool", "content": "compile error"}],
+        {"goal": "optimize"},
+    )
+    assert result[0].startswith("Attempted blocking")
+    assert len(node.auxiliary_llm_calls) == 1
+    call = node.auxiliary_llm_calls[0]
+    assert call["phase"] == "fallback_summary"
+    assert call["messages"][0]["role"] == "system"
+    assert "response" in call
+
+
 # ── The summary channel's `outcome` must agree with the MEASUREMENT. Preferring
 # the agent's narrative unconditionally shipped a self-reported success next to
 # the score that refuted it (observed live: "passes the self-test and achieves
