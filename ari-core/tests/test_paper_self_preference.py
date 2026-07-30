@@ -232,10 +232,11 @@ def test_affected_roles_row_names_paper_reviewer_and_writer():
     # the draft's claim-gate faithfulness (round._roles_for_node).
     assert _AFFECTED_ROLES_BY_TYPE["paper_self_preference"] == (
         "paper_reviewer", "paper_writer")
-    # the seven exploration types name NO role (bind nothing in v1)
+    # The seven exploration types name the registered generator. The runtime
+    # still requires matching node-time producer provenance before binding it.
     for t in ADVERSARY_TYPES:
         if t != "paper_self_preference":
-            assert t not in _AFFECTED_ROLES_BY_TYPE
+            assert _AFFECTED_ROLES_BY_TYPE[t] == ("generator",)
 
 
 # ── the eighth adversary is IN the audit network (P3, §5.6/§9) ──────────────

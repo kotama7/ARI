@@ -26,6 +26,7 @@ from ari.config import ARIConfig
 from ari.rqgm.evaluation import conditions as _cond
 from ari.rqgm.evaluation import injection as _inj
 from ari.rqgm.evaluation import metrics as _m
+from ari.rqgm.evaluation import paper_ablation as _paper_ablation
 from ari.rqgm.paper_runtime import PaperArchiveRuntime
 from ari.rqgm.store import ImmutableAuditLog
 
@@ -555,6 +556,108 @@ def test_paper_overlay_keys_are_typed_config_fields():
                     obj = getattr(obj, part)
 
 
+# ── RQGM-original-paper-aligned P0-P4 comparison arms ───────────────────────
+
+def test_rqgm_paper_condition_ids_and_mechanism_table():
+    assert _cond.RQGM_PAPER_CONDITION_IDS == (
+        "P0_hgm_h_fixed_critic",
+        "P1_rqgm_replacement_only",
+        "P2_rqgm_no_erasure",
+        "P3_rqgm_full",
+        "P4_constitutional_rqgm",
+    )
+    assert (_paper_ablation.PAPER_ABLATION_CONDITION_IDS
+            == _cond.RQGM_PAPER_CONDITION_IDS)
+    expected = {
+        "P0_hgm_h_fixed_critic": (True, False, False, False, False),
+        "P1_rqgm_replacement_only": (True, True, False, True, False),
+        "P2_rqgm_no_erasure": (True, True, True, False, False),
+        "P3_rqgm_full": (True, True, True, True, False),
+        "P4_constitutional_rqgm": (True, True, True, True, True),
+    }
+    for cid, values in expected.items():
+        p = _paper_ablation.POSTURES[cid]
+        assert (
+            p.writer_evolution,
+            p.reviewer_replacement,
+            p.adversarial_pool,
+            p.selective_erasure,
+            p.constitutional_layer,
+        ) == values
+
+
+def test_rqgm_paper_presets_expand_to_consistent_typed_configs():
+    matrix = _cond.load_matrix()
+    for cid in _cond.RQGM_PAPER_CONDITION_IDS:
+        overlay = _cond.rqgm_paper_condition_overlay(matrix, cid)
+        assert overlay["paper"]["mode"] == "rqgm_archive"
+        assert overlay["rqgm"]["eval"]["enabled"] is True
+        assert (
+            overlay["rqgm"]["eval"]["paper_ablation"]["condition_id"]
+            == cid
+        )
+        cfg = ARIConfig.model_validate(overlay)
+        posture = _paper_ablation.posture_from_config(cfg)
+        assert posture is not None and posture.condition_id == cid
+        assert _paper_ablation.config_violations(cfg) == []
+        for top, block in overlay.items():
+            root = getattr(cfg, top)
+            for key in _cond.flag_paths(block):
+                obj = root
+                for part in key.split("."):
+                    assert hasattr(obj, part), f"{cid}: {top}.{key} not typed"
+                    obj = getattr(obj, part)
+
+
+def test_p0_evolves_writer_but_keeps_critic_fixed():
+    posture = _paper_ablation.POSTURES["P0_hgm_h_fixed_critic"]
+    assert posture.role_evolution_enabled("paper_writer") is True
+    assert posture.role_evolution_enabled("paper_reviewer") is False
+    # The selector is inert without the evaluation master interlock.
+    cfg = ARIConfig()
+    cfg.rqgm.eval.paper_ablation.condition_id = "P0_hgm_h_fixed_critic"
+    assert _paper_ablation.posture_from_config(cfg) is None
+
+
+def test_runtime_role_gate_realizes_p0_fixed_critic(tmp_path):
+    from ari.rqgm.runtime import RQGMRuntime
+
+    matrix = _cond.load_matrix()
+    observed = {}
+    for cid in (
+        "P0_hgm_h_fixed_critic",
+        "P1_rqgm_replacement_only",
+    ):
+        cfg = ARIConfig.model_validate(
+            _cond.rqgm_paper_condition_overlay(matrix, cid)
+        )
+        ckpt = tmp_path / cid
+        runtime = RQGMRuntime(cfg, ckpt, paper_phase=True)
+        runtime.ensure_epoch(0, checkpoint_dir=ckpt, run_id=cid)
+        observed[cid] = set(runtime._active_evolvable_incumbents(
+            runtime.state, ckpt, [],
+        ))
+    assert observed["P0_hgm_h_fixed_critic"] == {"paper_writer"}
+    assert observed["P1_rqgm_replacement_only"] == {
+        "paper_writer", "paper_reviewer",
+    }
+
+
+def test_mislabeled_rqgm_paper_preset_is_rejected_by_paper_runtime(tmp_path):
+    import pytest
+    from ari.rqgm.runtime import RQGMRuntime
+
+    cfg = ARIConfig.model_validate(
+        _cond.rqgm_paper_condition_overlay(
+            _cond.load_matrix(), "P4_constitutional_rqgm"
+        )
+    )
+    cfg.rqgm.kernel.enforcement = "audit_only"
+    assert _paper_ablation.config_violations(cfg)
+    with pytest.raises(ValueError, match="invalid RQGM paper-ablation"):
+        RQGMRuntime(cfg, tmp_path, paper_phase=True)
+
+
 # ── fixed-panel disjointness (§5.5/R1) ──────────────────────────────────────
 
 def test_panel_disjointness_rejects_reviewer_and_anchor_collisions():
@@ -572,6 +675,39 @@ def test_panel_disjointness_rejects_reviewer_and_anchor_collisions():
         {"rubrics": ["neurips", "iclr", "icml"]},
         reviewer_prompt_lineage=["paper_reviewer_v1"],
         panel_input_ids=["eval_paper_001"]) == []
+
+
+def test_fixed_panel_report_is_consumed_by_p1_metric():
+    import runpy
+
+    script = (
+        Path(__file__).resolve().parents[2]
+        / "scripts" / "rqgm_eval" / "run_paper_panel.py"
+    )
+    build = runpy.run_path(str(script))["build_panel_report"]
+    spec = {
+        "rubrics": ["neurips", "iclr"],
+        "num_reviews_ensemble": 2,
+        "seed": 41,
+    }
+    report = build(
+        spec,
+        [
+            {"decision": "accept", "rubric_id": "neurips"},
+            {"decision": "weak_reject", "rubric_id": "neurips"},
+            {"decision": "weak_accept", "rubric_id": "iclr"},
+            {"decision": "reject", "rubric_id": "iclr"},
+        ],
+        model="openai/codex-cli:gpt-5-codex",
+    )
+    metric = _m.paper_acceptance_rate(report, panel=spec)
+    assert metric["applicable"] is True
+    assert metric["value"] == 0.5
+    assert report["model"] == "openai/codex-cli:gpt-5-codex"
+    assert report["sampling"] == {
+        "requested_seed": 41,
+        "seed_semantics": "best_effort_provider_dependent",
+    }
 
 
 # ── PI1-PI3 injection specs (§5.8) ──────────────────────────────────────────

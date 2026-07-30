@@ -32,7 +32,12 @@ import yaml
 
 from ari.config import ARIConfig, RQGMKernelConfig
 from ari.rqgm import kernel_rules, transition_rules
-from ari.rqgm.events import canonical_json, payload_hash
+from ari.rqgm.events import (
+    TransitionEvent,
+    canonical_json,
+    finalize_event,
+    payload_hash,
+)
 from ari.rqgm.kernel import (
     CapabilityGatedMCPClient,
     ConstitutionalKernel,
@@ -865,6 +870,56 @@ def test_broken_prev_hash_detected():
     assert "CK-AUD-003" in [v.code for v in report.violations]
 
 
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("event_type", "epoch_close"),
+        ("event_id", "evt_000099"),
+        ("transaction_id", "transaction_other"),
+        ("payload", {"a": 99}),
+        ("prev_event_hash", "0" * 64),
+    ],
+)
+def test_schema_v2_digest_detects_every_replay_semantic_edit(
+    field, replacement,
+):
+    prev = ""
+    entries = []
+    for seq in range(3):
+        event = finalize_event(
+            TransitionEvent(
+                event_type="kernel_report",
+                transaction_id="transaction_000",
+                payload={"a": seq},
+            ),
+            event_seq=seq,
+            prev_event_hash=prev,
+        )
+        entries.append(event.to_line_dict())
+        prev = event.event_hash
+    entries[1] = dict(entries[1], **{field: replacement})
+    report = ConstitutionalKernel().validate_audit_log_integrity(entries)
+    assert "CK-AUD-003" in [v.code for v in report.violations]
+
+
+def test_schema_v2_digest_detects_event_reordering():
+    prev = ""
+    entries = []
+    for seq in range(3):
+        event = finalize_event(
+            TransitionEvent(event_type="kernel_report", payload={"a": seq}),
+            event_seq=seq,
+            prev_event_hash=prev,
+        )
+        entries.append(event.to_line_dict())
+        prev = event.event_hash
+    entries[1], entries[2] = entries[2], entries[1]
+    report = ConstitutionalKernel().validate_audit_log_integrity(entries)
+    codes = [v.code for v in report.violations]
+    assert "CK-AUD-001" in codes
+    assert "CK-AUD-003" in codes
+
+
 def test_audit_log_verifies_real_immutable_audit_log_file(tmp_path):
     from ari.rqgm.store import ImmutableAuditLog
 
@@ -1195,6 +1250,24 @@ def test_should_block_matrix():
     assert warn_only.violations  # warned, flagged, never blocking
 
 
+def test_authority_manifest_is_complete_and_matches_sparse_source():
+    from ari.rqgm.authority_manifest import authority_manifest
+
+    manifest = authority_manifest()
+    expected = (
+        len(kernel_rules.CAPABILITY_MATRIX)
+        * len(kernel_rules.ACTIONS)
+        * len(kernel_rules.RESOURCE_CLASSES)
+    )
+    assert manifest["default"] == "deny"
+    assert len(manifest["decisions"]) == expected
+    for row in manifest["decisions"]:
+        grants = kernel_rules.CAPABILITY_MATRIX[(row["role"], row["tier"])]
+        assert row["allowed"] is (
+            (row["action"], row["resource"]) in grants
+        )
+
+
 # ── §9.14-15 regression / smoke ─────────────────────────────────────────────
 
 
@@ -1440,9 +1513,9 @@ def test_gate_denies_a_registry_write_and_fires_T16(tmp_path):
     assert payload.get("to_status") == "quarantine"
 
 
-def test_gate_does_not_quarantine_a_non_component_actor(tmp_path):
-    """The research agent's `generator` role has an active prompt but NO
-    registry entry — the denial stands, but there is nothing to quarantine."""
+def test_gate_quarantines_the_registered_generator_actor(tmp_path):
+    """The research generator is a registered component, so a denied
+    registry write is attributable and triggers the T16 emergency boundary."""
     import json
 
     from ari.core import _install_capability_gate
@@ -1454,10 +1527,17 @@ def test_gate_does_not_quarantine_a_non_component_actor(tmp_path):
 
     out = gated.call_tool("register_prompt", {})   # actor = generator
 
-    assert "error" in out                                   # still DENIED
+    assert "error" in out
     events = [json.loads(l) for l in open(log_path) if l.strip()][before:]
-    assert not [e for e in events
-                if e.get("event_type") == "emergency_quarantine"]
+    emergency = [
+        e for e in events
+        if e.get("event_type") == "emergency_quarantine"
+    ]
+    assert emergency, f"T16 did not commit; new events={events}"
+    payload = emergency[0].get("payload", {})
+    assert payload.get("rule_id") == "T16"
+    assert payload.get("component_id") == "generator_v1"
+    assert payload.get("to_status") == "quarantine"
 
 
 # ── the kernel validators must actually RUN (dead-seam sweep) ────────────────
@@ -1565,11 +1645,17 @@ def test_per_node_check_reads_records_not_audit_events(tmp_path):
     from ari.rqgm.runtime import RQGMRuntime
 
     # An audit entry (the WRONG input) and a round marker: neither is a record.
-    (tmp_path / "rqgm_audit.jsonl").write_text(_json.dumps({
-        "schema_version": 1, "event_id": "evt_000001",
-        "event_type": "governance_level",
-        "payload": {"node_id": "n1", "level": 3},
-    }) + "\n")
+    audit_event = finalize_event(
+        TransitionEvent(
+            event_type="governance_level",
+            payload={"node_id": "n1", "level": 3},
+        ),
+        event_seq=0,
+        prev_event_hash="",
+    )
+    (tmp_path / "rqgm_audit.jsonl").write_text(
+        _json.dumps(audit_event.to_line_dict()) + "\n"
+    )
     (tmp_path / "rqgm_adversarial_cases.jsonl").write_text(_json.dumps({
         "record_type": ROUND_MARKER_RECORD_TYPE, "node_id": "n1",
         "epoch_id": "epoch_000", "kind": "exploration",

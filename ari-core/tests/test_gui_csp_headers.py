@@ -29,7 +29,12 @@ import io
 import pytest
 
 from ari.viz import state as _st
-from ari.viz.routes import _Handler, _csp_enabled, _csp_policy
+from ari.viz.routes import (
+    _Handler,
+    _csp_enabled,
+    _csp_policy,
+    _static_content_type,
+)
 
 
 SECURITY_HEADERS = (
@@ -160,6 +165,10 @@ def test_static_response_carries_security_headers():
     for name in SECURITY_HEADERS:
         assert name in headers, name
     assert h.wfile.getvalue()
+
+
+def test_module_worker_has_javascript_content_type():
+    assert _static_content_type("mjs") == "application/javascript"
 
 
 def test_kill_switch_restores_pre_mn7_header_set(monkeypatch):

@@ -11,8 +11,8 @@ drafts.  Documents live under ``{workspace_root}/gui_store/``, a sibling of
     ├── run_drafts/{draft_id}.json
     └── launches/{idempotency_key}.json  # idempotent-launch records (Wave 4e)
 
-Why there (ADR-12): workspace-scoped — no ``~/.ari`` global dir (v0.5.0
-principle), survives checkpoint deletion (templates outlive runs), additive,
+Why there (ADR-12): workspace-scoped — no global home-directory ARI dir
+(v0.5.0 principle), survives checkpoint deletion (templates outlive runs), additive,
 and **never read by the CLI / simple_bfts path** — launch materializes every
 effective value into the checkpoint exactly as today.  This module is a
 GUI-only convenience layer; nothing in ``ari/`` outside ``ari.viz.v1``

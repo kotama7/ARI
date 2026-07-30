@@ -250,3 +250,27 @@ def test_build_ablation_report_tolerates_missing_values():
         "best_valid_scientific_score"
     ] is None
     assert report["deltas"]["B3-B0"] == {}           # no numeric pair
+
+
+def test_build_ablation_report_includes_paper_metrics_and_rqgm_pairs():
+    reports = []
+    for cid, value in (
+        ("P0_hgm_h_fixed_critic", 0.4),
+        ("P3_rqgm_full", 0.6),
+        ("P4_constitutional_rqgm", 0.7),
+    ):
+        report = _fake_report(cid, 11, 0.5)
+        report["paper"] = {
+            "P1_paper_acceptance_rate": {"value": value},
+        }
+        reports.append(report)
+    aggregate = build_ablation_report(reports)
+    assert aggregate["conditions"]["P4_constitutional_rqgm"]["median"][
+        "P1_paper_acceptance_rate"
+    ] == 0.7
+    assert aggregate["deltas"][
+        "P3_rqgm_full-P0_hgm_h_fixed_critic"
+    ]["P1_paper_acceptance_rate"] == 0.6 - 0.4
+    assert aggregate["deltas"][
+        "P4_constitutional_rqgm-P3_rqgm_full"
+    ]["P1_paper_acceptance_rate"] == 0.7 - 0.6

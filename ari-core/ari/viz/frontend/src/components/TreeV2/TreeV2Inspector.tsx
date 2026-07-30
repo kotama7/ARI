@@ -116,6 +116,7 @@ export function Inspector({
 
   return (
     <div
+      className="tree2-inspector"
       data-testid="tree2-inspector"
       style={{
         width: 320,

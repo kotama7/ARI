@@ -79,6 +79,7 @@ function makeRun(overrides: Partial<RunSummaryV1> & { rqgm?: boolean }): RunSumm
     review_score: null,
     best_metric: null,
     mtime_utc: '2026-07-23T00:00:00+00:00',
+    has_paper: false,
     ...rest,
   };
   // RunSummaryV1 does not (yet) declare capabilities — the page reads it
@@ -155,19 +156,33 @@ describe('ProjectsPage (gui_refresh Wave 2b v2 slice)', () => {
     expect(screen.getAllByText('RQGM')).toHaveLength(1);
     // Two data rows.
     expect(container.querySelectorAll('tbody tr')).toHaveLength(2);
+    expect(container.querySelectorAll('.projects-summary-item')).toHaveLength(4);
+    expect(screen.getByText('All runs')).toBeInTheDocument();
+    expect(screen.getByText('Needs attention')).toBeInTheDocument();
+    expect(container.querySelectorAll('thead th')).toHaveLength(7);
+    // Narrow screens turn the wide run table into labelled cards.
+    const table = container.querySelector('table.projects-table');
+    expect(table).not.toBeNull();
+    expect(
+      container.querySelector('tbody td[data-label="Run"]'),
+    ).not.toBeNull();
   });
 
-  it('offers the run-explicit Overview link as the FIRST row action (Wave 4b)', async () => {
+  it('offers Overview, paper/results, and Config as explicit row actions', async () => {
     projectsMock.mockResolvedValue(makeProjects('default'));
-    runsMock.mockResolvedValue(makeRuns('default', [makeRun({ run_id: 'run-first' })]));
+    runsMock.mockResolvedValue(
+      makeRuns('default', [makeRun({ run_id: 'run-first', has_paper: true })]),
+    );
     const { container } = renderPage(makeClient());
 
     await waitFor(() => expect(screen.getByText('run-first')).toBeInTheDocument());
-    // Row action order: Overview (run-explicit v2 workspace) FIRST, then the
-    // Wave-3b Config link.
+    expect(screen.getByText('Paper')).toBeInTheDocument();
+    // Every destination is run-explicit; a generated paper gets the specific
+    // Paper & results label.
     const links = Array.from(container.querySelectorAll('tbody tr a'));
     expect(links.map((a) => a.getAttribute('href'))).toEqual([
       '#/overview?run=run-first',
+      '#/results?run=run-first',
       '#/config?run=run-first',
     ]);
     // The link swallows the click (stopPropagation) — the legacy row-click
@@ -176,7 +191,7 @@ describe('ProjectsPage (gui_refresh Wave 2b v2 slice)', () => {
     expect(sessionStorage.getItem('ari_selected_checkpoint')).toBeNull();
   });
 
-  it('row click performs the legacy results handoff (sessionStorage + #/results)', async () => {
+  it('row click opens the explicit paper/results route with a legacy fallback', async () => {
     projectsMock.mockResolvedValue(makeProjects('default'));
     runsMock.mockResolvedValue(makeRuns('default', [makeRun({ run_id: 'run-click' })]));
     renderPage(makeClient());
@@ -185,7 +200,7 @@ describe('ProjectsPage (gui_refresh Wave 2b v2 slice)', () => {
     fireEvent.click(screen.getByText('run-click'));
 
     expect(sessionStorage.getItem('ari_selected_checkpoint')).toBe('run-click');
-    expect(window.location.hash).toBe('#/results');
+    expect(window.location.hash).toBe('#/results?run=run-click');
   });
 
   it('shows the empty state with create/import/resume links to #/new', async () => {

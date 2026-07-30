@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_state_store.py
     role: test
-last_verified: 2026-07-16
+last_verified: 2026-07-28
 ---
 
 # RQGM スキーマリファレンス
@@ -48,12 +48,16 @@ JSON Schema です。すべて `ari-core/ari/schemas/` 以下に同梱され、
   箇所で使用（`prompt_sha256` / `full_sha256`、`inputs_sha256`、
   ガバナンスキャッシュのコンテンツハッシュ）。
 - **`payload_hash(payload)`** = `hash12(canonical_json(payload))` —
-  イベントハッシュとフィンガープリントの関数。
-- **`epoch_fingerprint`**（`ari/rqgm/state.py`）—
-  `hash12(canonical_json(EpochState payload))`。ただし `created_at`
-  （壁時計メタデータ）、フィンガープリントフィールド自身、`status` を
-  除外するため、open→closed で凍結済み内容が再フィンガープリントされる
-  ことはありません。
+  指示文、効用規則、台帳、および旧版の出来事で使う短い内容識別子。
+- **出来事形式 v2 のダイジェスト** — 正規化した
+  `{schema_version, event_id, event_type, transaction_id, payload,
+  prev_event_hash}` 全体の SHA-256。再生の意味を変える全項目を結び、
+  時刻だけは対象外とする。
+- **期の識別**（`ari/rqgm/state.py`）—
+  `policy_fingerprint` は稼働制度と解決済み統治設定、
+  `execution_fingerprint` は宣言済みモデル、復号、道具、環境、データ
+  標本を要約し、`epoch_fingerprint` が両者を合成します。`created_at`、
+  `status`、総合指紋自身を除くため、open→closed で凍結内容は変わりません。
 
 Id 形式（すべてゼロ埋め、チェックポイントごとのカウンタ）:
 
@@ -127,12 +131,13 @@ id / ハッシュ形式。**所有モジュール:** `ari/rqgm/events.py`（語�
 
 | フィールド | 備考 |
 |---|---|
-| `schema_version` | const `1` |
+| `schema_version` | 新規出来事は `2`。旧版 `1` も読出し可能 |
 | `event_id` | `evt_%06d`。チェックポイント単位で単調増加 |
-| `event_type` | 閉じた v1 集合: `epoch_transaction_prepare`、`component_registered`、`prompt_registered`、`component_status_change`、`prompt_status_change`、`epoch_close`、`epoch_open`、`epoch_transaction_commit`、`emergency_quarantine`（唯一のエポック途中変更） |
-| `payload` | イベント本体 — 唯一のハッシュ対象部分 |
-| `event_hash` | `hash12(canonical_json(payload))` |
-| `prev_event_hash` | 前の行へ連鎖; 最初の行では `""` |
+| `event_type` | 閉集合: `epoch_transaction_prepare`、`component_registered`、`prompt_registered`、`component_status_change`、`prompt_status_change`、`epoch_close`、`epoch_open`、`epoch_transaction_commit`、`emergency_quarantine` |
+| `transaction_id` | 境界取引への所属。独立した期開始・監査出来事だけ空 |
+| `payload` | 出来事の内容 |
+| `event_hash` | v2 は出来事全体の SHA-256。v1 は内容だけの 12 桁ハッシュ |
+| `prev_event_hash` | v2 のダイジェストに含む。最初の行では `""` |
 | `ts` / `ts_iso` | エンベロープメタデータ。ハッシュの外側 (P2) |
 
 ### `epoch_state.schema.json`
@@ -152,7 +157,9 @@ id / ハッシュ形式。**所有モジュール:** `ari/rqgm/events.py`（語�
 | `run_id` / `node_count_at_open` | ランへのリンク + 境界の帳簿 |
 | `active_components` / `active_prompt_hashes` / `utility_policy` | エポックごとの凍結集合（freeze 時にコピー; グローバル不変条件 1–3）。`utility_policy` は **governed なスコア本体** — `composite`、`axis_weights`、`frontier_score`、`depth_penalty_lambda`、`ucb_c` に封印済みの `utility_policy_hash` を加えたもの — で、`ari/rqgm/state.py:capture_utility_policy` が採用済みポリシーから取得する（エポック 0 / `simple_bfts` では cfg にフォールバック）。[governed ユーティリティ進化スキーマ](#governed-utility-evolution-schema-task-14)を参照 |
 | `registry_version` | freeze 時点のレジストリの `hash12` |
-| `epoch_fingerprint` | `created_at`、`status`、自分自身を除外した `hash12` |
+| `policy_settings` / `policy_fingerprint` | 憲法、しきい値、予算、統治設定と、その12桁要約値 |
+| `execution_identity` / `execution_fingerprint` | 宣言済みモデル・接続先・温度、探索・評価設定、技能、無効道具、モデル・道具・環境・データの固定値。不明な固定値は `unresolved`、`complete: false` |
+| `epoch_fingerprint` | 政策と実行識別を合成した12桁要約値。`created_at`、`status`、自身を除く |
 | `created_at` | メタデータ; フィンガープリントから除外 |
 
 ### `rqgm_registry.schema.json`
@@ -268,13 +275,11 @@ id / ハッシュ形式。**所有モジュール:** `ari/rqgm/events.py`（語�
 上にのみ存在する。アドバーサリは観測し、観測を説明責任あるものにするのは
 ジャッジの判定である。
 
-探索（`ari_rqgm`）側では 7 つのアドバーサリタイプは何も拘束しない: 攻撃対象の
-アーティファクトは `generator` ロールが著作するが、このロールには登録済み
-コンポーネントがない（`generator_v1` id を刻印するものが存在しない）ため、
-それらのレコードは `affected_components: []` を持ち `target_component_id` を
-持たない。機構はロール駆動である — アーティファクトを著作するロールに登録
-済みの現職ができた日に、それを名指しすれば他の変更なしにそのケースタイプが
-拘束される。
+探索（`ari_rqgm`）側では、研究 `generator` は設立時の登録コンポーネントです。
+ノードには生成コンポーネント、プロンプトハッシュ、エポックを一度だけ付与
+します。7 つのアドバーサリタイプは、その来歴がエポック凍結済み現職と一致
+する場合だけ `generator_v1` へ結びます。古い記録、欠落、不一致は対象なし
+とし、前任の成果物で後継を制裁しません。
 
 ### `rqgm_utility_record.schema.json`
 
@@ -293,6 +298,12 @@ v1 における唯一の発行者で、frontier repair（Task 10）が消去後�
 | `utility_policy_hash` / `frozen_policy` | エポック凍結されたポリシー。元の重みでの再計算を可能にするため**値で**埋め込み |
 | `supersedes` / `recomputed_in_epoch` | Task-10 の再計算レコードでのみ設定; 置き換えられたレコードはディスク上に stale なまま残る |
 
+これらのフィールドは stale な採点済み証拠を消去した後の再計算を表します。
+utility-policy 退役は別の Task-10 経路を通り、各ノードに保存された
+`_axis_scores` を新ポリシーの下で再合成し、ノードを外側の
+`SelectiveErasureEvent.policy_rescored_node_ids` に記録します。生の軸が
+欠けるノードは fail-closed で無効化されます。
+
 ### `rqgm_replay_pool.schema.json`
 
 **目的:** AdversarialReplayPool の導出されたバイト固定の
@@ -304,7 +315,7 @@ v1 における唯一の発行者で、frontier repair（Task 10）が消去後�
 | フィールド | 備考 |
 |---|---|
 | `case_seq` | 単調増加のケースカウンタ |
-| `cases[]` | AdversarialReplayCase: `case_id`（`adv_case_%05d`）、`case_type`（7 タイプ集合）、`validated_attack_id`、`severity`、`admitted_epoch` / `last_confirmed_epoch`、`status` は `active` \| `evicted`（eviction は論理のみ）、`replay_view`（完全な資料 — ロール `clean_room_generator` には拒否）と `abstract_view`（汚染安全な FailureSummary — 生の攻撃 / 防御テキストなし） |
+| `cases[]` | AdversarialReplayCase: `case_id`（`adv_case_%05d`）、`case_type`（同梱スキーマの探索用 7 タイプ。paper runtime は後述するフェーズ外 inert の 8 番目を追加）、`validated_attack_id`、`severity`、`admitted_epoch` / `last_confirmed_epoch`、`status` は `active` \| `evicted`（eviction は論理のみ）、`replay_view`（完全な資料 — ロール `clean_room_generator` には拒否）と `abstract_view`（汚染安全な FailureSummary — 生の攻撃 / 防御テキストなし） |
 
 ## プロンプト進化スキーマ (Task 07)
 
@@ -392,7 +403,7 @@ supersession 行）をピン留めします; 設定可能なのは `rqgm.transit
 |---|---|
 | `epoch_transition_id` | `transition_%03d_to_%03d` |
 | `status` | `pending` \| `committed` \| `aborted` \| `rejected` \| `failed` — 中止 / カーネルブロックされた遷移はログされるがレジストリ変更は**一切**適用されない |
-| `emergency` | `true` は唯一のエポック途中の形（quarantine への単一サンクション） |
+| `emergency` | `true` は隔離と次期開始を一つの強制緊急境界で行う T16 形 |
 | `inputs` | 凍結された境界入力（GovernanceReport + 候補評価 + レジストリハッシュ）の `inputs_sha256` コンテンツハッシュを含み、コミットされたすべての変更が決定論的にリプレイできる |
 | `adoptions` / `sanctions` / `retirements` / `bans` | ステータス変更リスト。それぞれ `rule_id` をピン留め |
 | `clean_room_requests` | Task 08 へ渡される再生成要求 |
@@ -416,7 +427,8 @@ supersession 行）をピン留めします; 設定可能なのは `rqgm.transit
 | `status` | `applied` \| `conservative` \| `halted_expansion`（fail-closed の縮退はしご） |
 | `retired_prompt_hashes` / `retired_component_ids` | 退役したもの |
 | `direct_stale_record_ids` / `transitive_stale_record_ids` | 依存閉包 |
-| `invalidated_node_ids` / `recompute_node_ids` / `abandoned_pending_node_ids` | ノードの処遇 |
+| `invalidated_node_ids` / `recompute_node_ids` / `abandoned_pending_node_ids` | stale な依存閉包に対するノードの処遇 |
+| `policy_rescored_node_ids` | 任意かつ追加的な #77 フィールド。新しい utility policy の下で保存済み `_axis_scores` から再重み付けされ、無効化を免れたノードの一覧 |
 | `trace_stats` | BFS トレーサ統計（`rqgm.frontier_repair.max_trace_depth` が探索を上限） |
 
 ### `frontier_rebuild_event.schema.json`

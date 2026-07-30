@@ -27,8 +27,6 @@ mechanism the Tree stage introduced).
 
 - `README.md` — this file.
 - `IdeasV2Page.tsx` — the page component plus exported pure helpers
-  (`toIdeaEntries`, `bestHypothesisNode`).
 - `index.ts` — barrel re-export.
 - `__tests__/` — component tests for this directory.
   - `IdeasV2Page.test.tsx` — page contract tests (happy/absent/degraded/
-    error/no-run, deep links, nav takeover).

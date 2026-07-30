@@ -278,7 +278,9 @@ _env_append_if_absent "# ARI_MODEL_IDEA="
 _env_append_if_absent "# ARI_MODEL_CODING="
 _env_append_if_absent "# ARI_MODEL_EVAL="
 _env_append_if_absent "# ARI_MODEL_PAPER="
+_env_append_if_absent "# ARI_MODEL_RUBRIC="
 _env_append_if_absent "# ARI_MODEL_BFTS="
+_env_append_if_absent "# ARI_PANEL_SEED="
 # v0.6.0 §4.1 split the legacy ARI_MODEL_PAPER into rubric / replicator / judge
 # so the reproducibility pipeline can target a different model per stage.
 _env_append_if_absent "# ARI_MODEL_RUBRIC_GEN="
@@ -609,6 +611,10 @@ _env_append_if_absent "# ARI_BFTS_ALLOW_WEB=            # opt-in web search duri
 # --- RQGM execution mode (docs/plans/ari_rqgm Task 01) -----------------------
 _env_append_if_absent "# ARI_MODE=                      # execution mode override: simple_bfts|ari_rqgm (RQGM also needs ARI_RQGM_ENABLED=1; default simple_bfts)"
 _env_append_if_absent "# ARI_RQGM_ENABLED=              # RQGM master interlock override: 0|1|true|false (both must agree or ARI falls back to simple_bfts)"
+_env_append_if_absent "# ARI_MODEL_REVISION=            # exact provider/model revision for the RQGM execution fingerprint; unset is recorded as unresolved"
+_env_append_if_absent "# ARI_TOOL_BUNDLE_REVISION=      # immutable tool-bundle revision for the RQGM execution fingerprint"
+_env_append_if_absent "# ARI_ENVIRONMENT_DIGEST=        # container or environment digest for the RQGM execution fingerprint"
+_env_append_if_absent "# ARI_DATA_SNAPSHOT_DIGEST=      # immutable external-data snapshot digest for the RQGM execution fingerprint"
 
 # --- Paper-archive execution mode (docs/plans/ari_rqgm_paper Task 01) --------
 _env_append_if_absent "# ARI_PAPER_MODE=                # paper-phase mode override: linear|rqgm_archive (archive also needs ARI_RQGM_PAPER_ENABLED=1; default linear)"

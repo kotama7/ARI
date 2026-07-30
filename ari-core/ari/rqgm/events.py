@@ -11,16 +11,22 @@ Single home (plan ``docs/plans/ari_rqgm/02`` §5.4–§5.5, §6) for:
 * :class:`TransitionEvent` — the hash-chained line envelope shared by
   ``rqgm_transitions.jsonl`` and ``rqgm_audit.jsonl``.
 
-Hash discipline (P2): ``event_hash = hash12(canonical_json(payload))`` where
-:func:`ari.prompts._provenance.hash12` is reused verbatim (no second scheme).
-Timestamps (``ts`` / ``ts_iso``) are envelope metadata OUTSIDE the hashed
-payload — no wall-clock, git SHA, host, or absolute path ever enters a hash.
+Hash discipline (P2): schema-v2 events use a full SHA-256 digest over every
+field that can change replay semantics: ``schema_version``, ``event_id``,
+``event_type``, ``transaction_id``, canonical ``payload``, and
+``prev_event_hash``.  Timestamps (``ts`` / ``ts_iso``) remain envelope
+metadata OUTSIDE the digest — no wall-clock, git SHA, host, or absolute path
+enters a decision hash.  Schema-v1 payload-only ``hash12`` events remain
+readable so existing checkpoints can be replayed and extended without
+rewriting history.
+
 Pure stdlib: no LLM calls, no network, no randomness.
 """
 
 from __future__ import annotations
 
 import json
+import hashlib
 import time
 from dataclasses import dataclass, field, replace
 
@@ -28,7 +34,8 @@ from dataclasses import dataclass, field, replace
 # .load_versioned — reused, never re-implemented (plan 02 §5.4).
 from ari.prompts._provenance import hash12  # noqa: F401  (re-exported)
 
-RQGM_EVENT_SCHEMA_VERSION = 1
+RQGM_EVENT_SCHEMA_VERSION = 2
+LEGACY_EVENT_SCHEMA_VERSION = 1
 
 # ── vocabulary (owned by Task 02; consumed by Tasks 03–13) ──────────────────
 
@@ -162,8 +169,73 @@ def canonical_json(payload: object) -> str:
 
 
 def payload_hash(payload: object) -> str:
-    """``hash12(canonical_json(payload))`` — the event/fingerprint hash."""
+    """Legacy ``hash12(canonical_json(payload))`` content identifier.
+
+    This remains the identity scheme for prompts, policies, registries, and
+    schema-v1 events.  New event-chain entries use :func:`event_digest`
+    instead; keeping the names separate prevents a security digest from being
+    confused with a short content identifier.
+    """
     return hash12(canonical_json(payload))
+
+
+def event_digest(
+    *,
+    schema_version: int,
+    event_id: str,
+    event_type: str,
+    transaction_id: str,
+    payload: object,
+    prev_event_hash: str,
+) -> str:
+    """Full SHA-256 digest of the replay-relevant schema-v2 event envelope."""
+    commitment = {
+        "schema_version": int(schema_version),
+        "event_id": str(event_id),
+        "event_type": str(event_type),
+        "transaction_id": str(transaction_id),
+        "payload": payload,
+        "prev_event_hash": str(prev_event_hash),
+    }
+    return hashlib.sha256(
+        canonical_json(commitment).encode("utf-8")
+    ).hexdigest()
+
+
+def expected_event_hash(event: "TransitionEvent | dict") -> str:
+    """Recompute an event hash under its declared schema.
+
+    Schema v1 is intentionally verification-only.  All newly finalized events
+    are v2 and bind their predecessor, semantic type, identifier, transaction
+    membership, and payload in one full-length digest.
+    """
+    if isinstance(event, TransitionEvent):
+        schema_version = int(event.schema_version)
+        event_id = event.event_id
+        event_type = event.event_type
+        transaction_id = event.transaction_id
+        payload = event.payload
+        prev_event_hash = event.prev_event_hash
+    else:
+        schema_version = int(
+            event.get("schema_version", LEGACY_EVENT_SCHEMA_VERSION)
+        )
+        event_id = str(event.get("event_id", ""))
+        event_type = str(event.get("event_type", ""))
+        transaction_id = str(event.get("transaction_id", ""))
+        payload = event.get("payload")
+        payload = payload if isinstance(payload, dict) else {}
+        prev_event_hash = str(event.get("prev_event_hash", ""))
+    if schema_version <= LEGACY_EVENT_SCHEMA_VERSION:
+        return payload_hash(payload)
+    return event_digest(
+        schema_version=schema_version,
+        event_id=event_id,
+        event_type=event_type,
+        transaction_id=transaction_id,
+        payload=payload,
+        prev_event_hash=prev_event_hash,
+    )
 
 
 # ── id formats (plan 02 §5.5) ───────────────────────────────────────────────
@@ -210,6 +282,7 @@ class TransitionEvent:
     event_type: str
     payload: dict = field(default_factory=dict)
     event_id: str = ""
+    transaction_id: str = ""
     event_hash: str = ""
     prev_event_hash: str = ""
     ts: float | None = None
@@ -222,6 +295,7 @@ class TransitionEvent:
             "schema_version": self.schema_version,
             "event_id": self.event_id,
             "event_type": self.event_type,
+            "transaction_id": self.transaction_id,
             "payload": self.payload,
             "event_hash": self.event_hash,
             "prev_event_hash": self.prev_event_hash,
@@ -238,18 +312,20 @@ def finalize_event(
 ) -> TransitionEvent:
     """Fill the envelope: id from *event_seq*, hash chain, timestamp metadata.
 
-    ``event_hash`` covers ONLY the payload (via :func:`canonical_json`);
-    the timestamps assigned here never enter any hash (P2).
+    Schema-v2 ``event_hash`` covers every replay-relevant field, including
+    the predecessor and transaction membership.  The timestamps assigned here
+    never enter the digest (P2).
     """
     now = time.time()
-    return replace(
+    event_id = format_event_id(event_seq)
+    finalized = replace(
         event,
-        event_id=format_event_id(event_seq),
-        event_hash=payload_hash(event.payload),
+        event_id=event_id,
         prev_event_hash=prev_event_hash,
         ts=now,
         ts_iso=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
     )
+    return replace(finalized, event_hash=expected_event_hash(finalized))
 
 
 def event_from_line_dict(d: dict) -> TransitionEvent:
@@ -258,9 +334,13 @@ def event_from_line_dict(d: dict) -> TransitionEvent:
         event_type=str(d.get("event_type", "")),
         payload=d.get("payload") if isinstance(d.get("payload"), dict) else {},
         event_id=str(d.get("event_id", "")),
+        transaction_id=str(d.get("transaction_id", "")),
         event_hash=str(d.get("event_hash", "")),
         prev_event_hash=str(d.get("prev_event_hash", "")),
         ts=d.get("ts") if isinstance(d.get("ts"), (int, float)) else None,
         ts_iso=str(d.get("ts_iso", "")),
-        schema_version=int(d.get("schema_version", RQGM_EVENT_SCHEMA_VERSION)),
+        # A pre-versioned line can only have the historical payload-only
+        # digest. Treat omission as v1; interpreting it as v2 would make an
+        # otherwise replayable legacy checkpoint fail integrity validation.
+        schema_version=int(d.get("schema_version", LEGACY_EVENT_SCHEMA_VERSION)),
     )

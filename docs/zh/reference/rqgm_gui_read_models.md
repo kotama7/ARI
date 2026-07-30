@@ -28,13 +28,18 @@ last_verified: 2026-07-27
 都源自它们：
 
 1. **从不导入 `ari.rqgm`。** 读模型直接解析已提交的检查点工件，不重新执行
-   任何内核或得分策略决策。唯一被复现的 RQGM 算术是冻结的哈希契约
-   `event_hash = hash12(canonical_json(payload))`，这是有意重复实现的，因为
+   任何内核或得分策略决策。唯一被复现的 RQGM 算术是带 schema 版本的事件摘要
+   契约：旧的 schema-v1 记录仍使用只覆盖载荷的短哈希
+   `hash12(canonical_json(payload))`，而 schema-v2 记录使用覆盖全部与重放相关
+   的信封字段（`schema_version`、`event_id`、`event_type`、`transaction_id`、
+   `payload`、`prev_event_hash`）的完整 SHA-256。这是有意重复实现的，因为
    viz → governance 的导入边是被禁止的；与生产辅助函数的一致性由
    `ari-core/tests/test_gui_v1_rqgm.py` 固定。
 2. **只读已提交的记录。** JSONL 末尾的不完整行（撕裂的追加）会被静默忽略，
    而位于没有对应 commit 的 `epoch_transaction_prepare` 之后的转换事件永远
    不会被采纳进当前状态 —— 这是 `ari.rqgm.store.committed_events` 的镜像。
+   「对应」以 `transaction_id` 判定：携带不同事务 id 的 commit（或中间事件）
+   既不会关闭也不会并入待定事务。
 3. **降级，而非损坏。** 断裂的哈希链或过期的 rollup 会翻转某个完整性标志并
    追加 `degraded_reasons`；损坏的工件会得到带诚实标志的 HTTP 200，而不是
    500。缺失的来源是 `None`，绝不会被展示为干净或零。
@@ -92,7 +97,7 @@ rollup / 快照文件只被读取*用于校验*它 —— 绝不会成为当前�
 
 | 标志 | `true` | `false` | `null` |
 |---|---|---|---|
-| `transitions_chain_ok` | `rqgm_transitions.jsonl` 的每一行都校验通过：`event_hash` 覆盖其载荷，且 `prev_event_hash` 成链（首行从 `""` 开始）。 | 发现了哈希不匹配或链断裂；扫描仍继续，因此数据照常提供，但被打上标志。 | 文件不存在。 |
+| `transitions_chain_ok` | `rqgm_transitions.jsonl` 的每一行都校验通过：`event_hash` 覆盖该行声明的事件信封（只有旧的 schema-v1 行才只覆盖载荷），且 `prev_event_hash` 成链（首行从 `""` 开始）。 | 发现了哈希不匹配或链断裂；扫描仍继续，因此数据照常提供，但被打上标志。 | 文件不存在。 |
 | `registry_verified` | `rqgm_registry.json` 的 `as_of_event_hash` 等于已提交转换的尾部。 | rollup 过期，或超前于日志。 | rollup 缺失/不可读，或没有可供比较的转换尾部。 |
 | `audit_chain_ok` | `rqgm_audit.jsonl` 作为一条独立的链校验通过。 | 发现断裂。 | 文件不存在。 |
 

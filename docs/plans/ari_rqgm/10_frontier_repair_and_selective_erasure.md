@@ -2,6 +2,11 @@
 
 > **Status**: planned · **Depends on**: 00, 02, 04, 09 · **This is a temporary task plan** — see [INDEX.md](INDEX.md). It will be deleted once its deletion criteria are met.
 
+> **Implemented amendment (2026-07-28):** T16 now forms a forced emergency
+> boundary with a fresh epoch fingerprint. References below to T16 as a
+> mid-epoch exception describe the earlier plan and are superseded by the
+> permanent architecture documentation.
+
 ## 1. Purpose
 
 When the RegistryTransitionEngine (Task 09) retires a prompt, every record that was produced
@@ -59,6 +64,32 @@ admissible mechanism is flagging plus read-time exclusion.
   currently recorded only **here**, as an open question of this plan, and per §12/§13 it must
   be moved into the Task 02/12 plans (or permanent docs) before this file is deleted — not
   silently dropped.
+  > **SETTLED (2026-07-30, permanent docs).** The `get_verified_context` half is decided and
+  > recorded in `docs/concepts/rqgm_architecture.md` (invariant 6): `select_best_node` — the
+  > function that picks the paper candidate, the archive seed, and the `verified_context.json`
+  > lineage — excludes `_valid_for_frontier: False` nodes unconditionally, and returns no
+  > winner when every candidate is erased (hard-exclude; the `should_prune` precedent). The
+  > `search_memory` half is settled CALLER-SIDE (same date): the paper lineage drops
+  > known-erased ancestors before `get_verified_context` (`build_verified_context` — erasure
+  > never propagates to descendants, so a valid winner can carry an erased ancestor), and the
+  > per-node working-context injection drops erased ancestor ids before `get_node_memory` /
+  > `search_memory` (via the `rqgm_erasure_state.json` rollup read through the
+  > rqgm-import-free checkpoint shim; absence == nothing stale). The skill half is settled
+  > too (same date): `ari-skill-memory` reads this rollup itself — the cross-package file
+  > contract this section published it for — and the decision between hard-exclude and
+  > annotate is **annotate for PULL, hard-exclude for PUSH**. Rationale: erasure withdraws
+  > the STANDING of a judgment (the generator that proposed the direction, or the policy that
+  > scored it, was retired), not the facts an experiment measured, so a caller that
+  > deliberately names an erased node gets its entries LABELLED (`erased` /
+  > `erasure_event_id` / `erasure_note`) rather than silently emptied — an invalidated
+  > measurement is still the honest record of what was tried, and a paper's limitations
+  > section may legitimately need it. Every path that PUSHES memory into a decision keeps
+  > hard-excluding: grounded paper claims (`get_verified_context`, filtered on both sides),
+  > the "established conclusions" working-context injection, and best-node selection.
+  > The skill imports no `ari` module and makes no LLM call; absence, malformed content, or a
+  > newer `schema_version` all degrade to "nothing is stale". A cross-package contract test
+  > pins the `invalid_frontier_node_ids` field name on both sides, so a rename cannot
+  > silently turn the skill's awareness into dead code.
 - **Epoch definition and freeze mechanics** (Task 02) and the epoch-boundary hook plumbing in
   `_run_loop` (Tasks 05/09). This task specifies only the repair step invoked from that hook.
 - **Cross-run erasure.** v1 scope is one checkpoint. Propagation to child runs spawned via

@@ -56,12 +56,12 @@ class RunSummaryV1(BaseModel):
     best_metric: float | None = None
     mtime_utc: str
     checkpoint_path: str
+    has_paper: bool = False
 
 
 class RunDetailV1(RunSummaryV1):
     """RunSummaryV1 plus detail-only fields (artifact-derived, read-only)."""
 
-    has_paper: bool = False
     phase: str | None = None
     capabilities: dict[str, bool] = Field(default_factory=dict)
 

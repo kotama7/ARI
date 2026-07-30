@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/pipeline/claim_gate
     role: implementation
-last_verified: 2026-07-10
+last_verified: 2026-07-28
 ---
 
 # File Formats Reference
@@ -245,6 +245,12 @@ written by `ari-core/ari/pipeline/verified_context.py` so the
 artifact-backed (ideally reproduced) results. Written **only** when the
 typed research-memory store has at least one grounded claim — an empty
 store leaves no file and the paper stage behaves exactly as before.
+The best node is `select_best_node`'s winner: nodes logically erased by
+RQGM selective erasure (`metrics._valid_for_frontier: false`) are
+excluded, and if every candidate is erased there is no winner and no
+file. A previously written `verified_context.json` whose `best_node_id`
+no longer matches the fresh winner is deleted rather than left to ground
+the paper on a since-erased lineage.
 
 ```json
 {
@@ -337,22 +343,23 @@ checkpoint; every reader treats absence as "RQGM never ran". Source:
 hash-chained JSONL; one self-contained event per line:
 
 ```json
-{"schema_version": 1, "event_id": "evt_000042", "event_type": "prompt_status_change",
+{"schema_version": 2, "event_id": "evt_000042", "event_type": "prompt_status_change",
+ "transaction_id": "transition_003_to_004",
  "payload": {"prompt_id": "reviewer_prompt_v4", "from_status": "shadow",
              "to_status": "probationary_active", "transition_id": "transition_003_to_004"},
- "event_hash": "112233445566", "prev_event_hash": "77aa88bb99cc",
+ "event_hash": "baf0...64-hex-sha256...", "prev_event_hash": "91ac...64-hex-sha256...",
  "ts": 1751700000.0, "ts_iso": "2026-07-05T12:00:00Z"}
 ```
 
-`event_hash = sha256(canonical_json(payload))[:12]` (the same `hash12`
-scheme as prompt provenance — no second scheme); `prev_event_hash` chains
-to the previous line (`""` for the first). Timestamps are metadata outside
-the hashed payload. Event types (closed v1 set):
+For schema v2, `event_hash` is full SHA-256 over the schema version, event
+identifier, event type, transaction identifier, canonical payload, and
+predecessor digest. Timestamps are metadata outside that commitment. Legacy
+schema-v1 payload-only 12-hex events remain readable. Event types:
 `epoch_transaction_prepare`, `component_registered`, `prompt_registered`,
 `component_status_change`, `prompt_status_change`, `epoch_close`,
-`epoch_open`, `epoch_transaction_commit`, `emergency_quarantine` (the sole
-mid-epoch mutation). Registry status changes are accepted **only** through
-the epoch-boundary prepare/commit transaction; on load, events after a
+`epoch_open`, `epoch_transaction_commit`, `emergency_quarantine`. Registry
+status changes, including T16 emergency quarantine, are accepted **only**
+through a prepare/commit boundary transaction; on load, events after a
 prepare without a matching commit are ignored (crash recovery).
 
 Status-change payloads are supplied by the RegistryTransitionEngine
@@ -410,7 +417,9 @@ on every committed transition with retirements:
   kernel-authored (`prompt_hash` null, `component_id`
   `frontier_repair_engine`), listing the retired hashes/components, the
   direct + transitive stale record ids, and the
-  invalidated/recompute/abandoned node ids. Erasure is **logical-only**
+  invalidated/recompute/abandoned node ids plus
+  `policy_rescored_node_ids` when a utility-policy retirement re-weights
+  stored raw axis scores. Erasure is **logical-only**
   (invariant 13): the listed records are flagged in
   `rqgm_erasure_state.json`, never rewritten or deleted.
 - `frontier_rebuild` — one `FrontierRebuildEvent` (schema:
@@ -426,6 +435,10 @@ on every committed transition with retirements:
   plus `supersedes: <stale record_id>` and `recomputed_in_epoch`):
   recomputed from surviving inputs under the ORIGINAL epoch's frozen
   weights, never re-scaled — the superseded record stays on disk, stale.
+  Utility-policy retirement is a separate path: the same repair event
+  re-composes each stamped node's stored `_axis_scores` under
+  `new_utility_policy` and lists it in `policy_rescored_node_ids`.
+  A node whose raw axes are unavailable is invalidated fail-closed.
 
 ### `constitution.yaml`
 
@@ -441,8 +454,11 @@ additively as an optional `constitution_hash` key in `meta.json`.
 
 Derived rewrite-whole snapshot of the currently open (or last closed)
 epoch: frozen active component set, active prompt hashes, utility policy,
-`registry_version`, and the deterministic `epoch_fingerprint`
-(`created_at` is metadata, excluded from the fingerprint). Disposable —
+`registry_version`, `policy_settings` / `policy_fingerprint`, and
+`execution_identity` / `execution_fingerprint`. The composite
+`epoch_fingerprint` binds both declared identities (`created_at` is metadata,
+excluded from all fingerprints). Missing external revision pins are stored
+as `unresolved`, never assumed stable. Disposable —
 validated against event-log replay on load and rebuilt on mismatch.
 
 ### `rqgm_registry.json`

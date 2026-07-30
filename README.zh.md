@@ -39,6 +39,34 @@ ARI 围绕一个原则设计：**用 Markdown 描述目标 — 其余的交给 A
 
 ---
 
+## 新功能 —— Constitutional ARI-RQGM（未发布）
+
+本分支在保持既有执行路径为默认值的同时，加入可选启用的治理与协同进化层。
+
+- **Constitutional `ari_rqgm` 模式** —— 纪元内冻结的提示词、组件和效用
+  策略，只能经由确定性内核与 T1–T21 注册表生命周期进化。`simple_bfts`
+  仍为默认模式，且不会构造 RQGM 状态。政策与声明执行基底使用独立指纹；
+  提供者或环境修订不可得时记录为未解析。
+- **来源绑定的问责** —— 研究生成者是已注册创始组件，节点只写一次生成
+  组件、提示词和纪元来源。旧节点或含糊节点保持无目标，不把责任转给后继。
+- **受治理的论文存档** —— 正交的 `paper.mode: rqgm_archive` 路径使用受治理
+  的 writer／reviewer 角色搜索草稿树，再把胜出稿交给既有的编译与
+  claim-evidence 门控。
+- **Dashboard v2** —— 新增运行作用域的 Overview、Projects、Ideas、Tree、
+  Results、Governance、Configuration Studio、日志、实时失效、token 认证，
+  以及规范的 `/api/v1` 读写接口。
+- **完整性与失败可见性** —— 新增 rubric 审计、节点溯源审计、汇总
+  `run_integrity.json`、基于已有工作的根创意生成，以及对原先被吞掉的
+  产物／论文阶段错误进行 fail-loud 处理。
+
+当前安全边界是可信主机上的应用级引用监控；不声称 OS 隔离、数字签名、
+外部回滚锚定或不可逆外部操作的故障关闭闸门。
+
+建议从[执行模式](docs/zh/guides/execution_modes.md)、
+[RQGM 架构](docs/zh/concepts/rqgm_architecture.md)和
+[Dashboard 指南](docs/zh/guides/dashboard.md)开始；完整分支记录见
+[CHANGELOG.md](CHANGELOG.md)。
+
 ## v0.9.0 新功能（2026-06-12）
 
 **论断的端到端验证。** 本版本主题：只有当论文的全部论断都能对照 run 自身的

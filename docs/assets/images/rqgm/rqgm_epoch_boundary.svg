@@ -50,7 +50,7 @@
 
   <rect x="34" y="260" width="260" height="40" rx="7" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.4"/>
   <text x="164" y="278" text-anchor="middle" class="b">4 prosecution decision</text>
-  <text x="164" y="293" text-anchor="middle" class="s">only the Auditor files motions (+ bond)</text>
+  <text x="164" y="293" text-anchor="middle" class="s">only the Auditor files motions (quota-limited)</text>
   <line x1="164" y1="300" x2="164" y2="314" class="edge" marker-end="url(#barr)"/>
 
   <rect x="34" y="316" width="260" height="40" rx="7" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.4"/>
@@ -147,5 +147,5 @@
   <text x="705" y="830" text-anchor="middle" class="s">judge roles can never</text>
   <text x="705" y="846" text-anchor="middle" class="s">write the registry;</text>
   <text x="705" y="862" text-anchor="middle" class="s">emergency quarantine is</text>
-  <text x="705" y="878" text-anchor="middle" class="s">the only mid-epoch edge</text>
+  <text x="705" y="878" text-anchor="middle" class="s">forced emergency boundary</text>
 </svg>

@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-06-12
+last_verified: 2026-07-30
 ---
 
 # Publication Lifecycle (v0.7.0)

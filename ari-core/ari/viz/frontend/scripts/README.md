@@ -7,9 +7,6 @@ by application code, so they live here rather than under `src/`.
 
 - `README.md` — this file.
 - `capture_screenshots.mjs` — drives a headless Chromium over a running
-  `ari.viz.server` and writes the documentation screenshots into
-  `docs/assets/images/<locale>/`, one PNG per (locale, route). Run via
-  `npm run capture:screenshots -- --base-url … --out … --run-id …`.
 
 ## Regenerating the documentation screenshots
 

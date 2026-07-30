@@ -143,6 +143,25 @@ def _root_survey_refs(agent, goal: str, max_papers: int = 8) -> list[str]:
         return []
 
 
+def _valid_composites(all_nodes) -> list[float]:
+    """Composite scores for stagnation detection, in completion order.
+
+    RQGM-erased nodes (``_valid_for_frontier is False``) are excluded: a
+    retained stale high score inside the detection window would widen the
+    range and suppress a genuine-plateau pivot exactly after an impeachment
+    (the ``_sterile`` pattern — the key is never written outside RQGM, so
+    this is inert on the default path)."""
+    out: list[float] = []
+    for n in all_nodes:
+        m = n.metrics if hasattr(n, "metrics") else {}
+        if (m or {}).get("_valid_for_frontier", True) is False:
+            continue
+        s = (m or {}).get("_scientific_score")
+        if isinstance(s, (int, float)):
+            out.append(float(s))
+    return out
+
+
 def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes,
               experiment_data, checkpoint_dir, run_id, total_processed=0):
     from ari.orchestrator.node import NodeStatus
@@ -945,7 +964,11 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                                     parent_score=(
                                         float((_adv_parent.metrics or {}).get(
                                             "_scientific_score") or 0.0)
-                                        if _adv_parent is not None else None
+                                        if _adv_parent is not None
+                                        and (_adv_parent.metrics or {}).get(
+                                            "_valid_for_frontier", True)
+                                        is not False
+                                        else None
                                     ),
                                 )
                         except Exception as _adv_e:
@@ -1040,13 +1063,7 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                             deterministic_stagnation_pivot,
                         )
                         # Pull current composite scores for stagnation check.
-                        _composites = []
-                        for _n in all_nodes:
-                            _s = (_n.metrics if hasattr(_n, "metrics") else {}).get(
-                                "_scientific_score"
-                            )
-                            if isinstance(_s, (int, float)):
-                                _composites.append(float(_s))
+                        _composites = _valid_composites(all_nodes)
                         _stagnated = detect_stagnation(
                             _composites,
                             window=_lineage_window,

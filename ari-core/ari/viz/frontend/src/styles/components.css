@@ -14,6 +14,81 @@
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
 
+/* Workspace composition: context first, title second, one primary action.
+ * Pages can reuse this without growing their own competing header controls. */
+.workspace-header{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:22px}
+.workspace-header h1{margin:2px 0 5px}
+.workspace-header .subtitle{margin:0}
+.workspace-eyebrow{color:var(--blue-light);font-size:.68rem;font-weight:750;letter-spacing:.09em;text-transform:uppercase}
+.workspace-header .workspace-primary-action{display:none;flex:0 0 auto;text-decoration:none}
+.workspace-primary-action:visited{color:#fff}
+
+/* Projects portfolio — summary, inventory, then row-level actions. */
+.projects-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.projects-summary-item{position:relative;min-width:0;padding:14px 16px;background:color-mix(in srgb,var(--card) 88%,transparent);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden}
+.projects-summary-item::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--blue)}
+.projects-summary-item.is-active::before{background:var(--yellow)}
+.projects-summary-item.is-complete::before{background:var(--green)}
+.projects-summary-item.is-attention::before{background:var(--red)}
+.projects-summary-item span{display:block;color:var(--muted);font-size:.7rem;font-weight:650}
+.projects-summary-item strong{display:block;margin-top:5px;color:var(--text);font-size:1.45rem;line-height:1}
+.projects-portfolio-card{padding:0;overflow:hidden}
+.projects-section-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
+.projects-section-header>div{display:flex;align-items:center;gap:9px}
+.projects-section-header h2{font-size:.96rem;font-weight:700}
+.projects-section-header span{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:20px;padding:0 7px;color:var(--muted);background:rgba(255,255,255,.045);border-radius:var(--radius-pill);font-size:.68rem;font-weight:700}
+.projects-portfolio-card table{table-layout:fixed}
+.projects-portfolio-card th:first-child{width:34%}
+.projects-portfolio-card th:nth-child(2){width:11%}
+.projects-portfolio-card th:nth-child(3){width:7%}
+.projects-portfolio-card th:nth-child(4){width:10%}
+.projects-portfolio-card th:nth-child(5){width:10%}
+.projects-portfolio-card th:nth-child(6){width:15%}
+.projects-portfolio-card th:last-child{width:13%}
+.projects-portfolio-card th:first-child,.projects-portfolio-card td:first-child{padding-left:20px}
+.projects-portfolio-card th:last-child,.projects-portfolio-card td:last-child{padding-right:20px}
+.projects-run-row{cursor:pointer}
+.projects-run-row:hover td{background:color-mix(in srgb,var(--blue) 4%,transparent)}
+.projects-run-identity{display:flex;min-width:0;flex-direction:column;align-items:flex-start;gap:4px}
+.projects-run-name{max-width:100%;overflow:hidden;color:var(--text);font-size:.82rem;text-overflow:ellipsis;white-space:nowrap}
+.projects-run-identity code{max-width:100%;overflow:hidden;color:var(--muted);font-size:.68rem;text-overflow:ellipsis;white-space:nowrap}
+.projects-run-identity .badge{margin-top:1px}
+.projects-actions-cell{white-space:normal}
+.projects-action-links{display:flex;align-items:center;flex-wrap:wrap;gap:4px 12px}
+.projects-actions-cell a{display:inline-block;font-size:.78rem;font-weight:600}
+
+/* Paper workspace + application-owned PDF.js preview. */
+.paper-workspace-layout{display:flex;gap:0;min-height:500px}
+.paper-viewer-panel{flex:1;min-width:0;padding-left:12px}
+.pdf-preview{min-width:0;border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden;background:color-mix(in srgb,var(--bg) 82%,#000)}
+.pdf-preview-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border);background:var(--card)}
+.pdf-preview-paging,.pdf-preview-zoom{display:flex;align-items:center;justify-content:center;gap:8px;color:var(--muted);font-size:.76rem;font-weight:600}
+.pdf-preview-zoom span{min-width:42px;text-align:center}
+.pdf-preview-state{display:flex;flex-direction:column;align-items:center;gap:8px;padding:22px;color:var(--muted);font-size:.8rem;text-align:center}
+.pdf-preview-state .loading-state{padding:0}
+.pdf-preview-scroll{display:flex;min-height:420px;max-height:76vh;padding:16px;overflow:auto;align-items:flex-start;justify-content:flex-start}
+.pdf-preview-scroll canvas{display:block;margin:0 auto;background:#fff;box-shadow:0 8px 28px rgba(0,0,0,.28)}
+
+/* Dashboard home — one current-run focal card plus quiet workspace links. */
+.home-dashboard-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(240px,.75fr);gap:16px}
+.home-dashboard-grid .card+.card{margin-top:0}
+.home-run-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.home-run-heading>div{display:flex;min-width:0;flex-direction:column;gap:4px}
+.home-run-heading strong{overflow:hidden;font-size:1.02rem;text-overflow:ellipsis;white-space:nowrap}
+.home-run-heading code{overflow:hidden;color:var(--muted);font-size:.68rem;text-overflow:ellipsis;white-space:nowrap}
+.home-run-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;margin:18px 0;background:var(--border);border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden}
+.home-run-metrics>div{padding:12px;background:var(--card)}
+.home-run-metrics span{display:block;color:var(--muted);font-size:.66rem;font-weight:650}
+.home-run-metrics strong{display:block;margin-top:4px;font-size:1rem}
+.home-run-links{display:flex;align-items:center;flex-wrap:wrap;gap:8px 18px}
+.home-run-links a{font-size:.8rem;font-weight:650}
+.home-workspace-links{display:flex;flex-direction:column;gap:4px}
+.home-workspace-links a{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:9px;align-items:center;padding:10px;color:var(--text);border-radius:var(--radius-md);text-decoration:none}
+.home-workspace-links a:visited{color:var(--text)}
+.home-workspace-links a:hover{background:rgba(255,255,255,.045)}
+.home-workspace-links a>span:last-child{color:var(--muted);font-size:1.2rem}
+.home-workspace-links strong{font-size:.8rem;font-weight:600}
+
 /* Badges */
 .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:20px;font-size:.75rem;font-weight:600}
 .badge-green{background:rgba(34,197,94,.15);color:var(--green)}

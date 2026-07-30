@@ -88,11 +88,15 @@ def test_resolve_models_pins_phase_env_vars():
         "coding": "ARI_MODEL_CODING",
         "bfts": "ARI_MODEL_BFTS",
         "eval": "ARI_MODEL_EVAL",
+        "paper": "ARI_MODEL_PAPER",
+        "rubric": "ARI_MODEL_RUBRIC",
     }
     snapshot = {
         "ARI_MODEL_CODING": "prov/code-1",
         "ARI_MODEL_BFTS": "prov/bfts-1",
         "ARI_MODEL_EVAL": "prov/eval-1",
+        "ARI_MODEL_PAPER": "openai/claude-cli:sonnet",
+        "ARI_MODEL_RUBRIC": "openai/codex-cli:gpt-5-codex",
     }
     assert resolve_models(MATRIX, snapshot) == snapshot
     assert resolve_models(MATRIX, {}) == {}
@@ -463,5 +467,8 @@ def test_rqgm_eval_block_mirrors_defaults_yaml():
     assert block["enabled"] is typed.enabled is False
     assert block["scripted_components"] == typed.scripted_components == {}
     assert block["injection_specs"] == typed.injection_specs == []
+    assert block["paper_ablation"]["condition_id"] == (
+        typed.paper_ablation.condition_id
+    ) == ""
     # Nothing on by default: an absent rqgm.eval block stays inert.
     assert ARIConfig().rqgm.eval.enabled is False

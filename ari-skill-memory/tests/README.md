@@ -15,6 +15,7 @@ copy-on-write, backup/restore, and Letta backend behaviour.
 - `test_checkpoint_isolation.py` — checkpoint isolation guarantees.
 - `test_consolidation.py` — `consolidate_from_node_report` / `write_consolidated` (node_report → typed memory specs, in-memory round-trip).
 - `test_cow.py` — copy-on-write branch-scoping guarantees.
+- `test_erasure_annotation.py` — selective-erasure awareness: the rollup reader (absence / malformed / newer schema all degrade to "nothing stale", re-read on change), annotate-on-pull for the three query tools, hard-exclude on the grounded-claims path, byte-identical payloads without a rollup, and the cross-package field-name contract with ari-core.
 - `test_global_tools_removed.py` — removed global-tools guard.
 - `test_letta_embedding_compat.py` — Letta backend embedding compatibility.
 - `test_letta_http_regression.py` — Letta backend HTTP regression coverage.

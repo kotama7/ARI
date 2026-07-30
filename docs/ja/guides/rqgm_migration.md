@@ -22,7 +22,7 @@ sources:
     role: test
   - path: ari-core/tests/test_paper_mode.py
     role: test
-last_verified: 2026-07-16
+last_verified: 2026-07-30
 ---
 
 # 既存プロジェクトでの `ari_rqgm` 採用
@@ -177,11 +177,13 @@ RQGM は `idea.json` を置き換えません; 提案レコードストア
   何も削除されません; staleness は監査ログ、`rqgm_erasure_state.json`
   ロールアップ、および `tree.json` を通じて永続化される追加的な
   `Node.metrics` センチネル（`_stale`、`_valid_for_frontier`、…）に
-  存在します。`BFTS.should_prune` は
+  存在します。`BFTS.should_prune` と `verified_context.select_best_node` は
   `metrics['_valid_for_frontier'] is False` を**無条件に**読むため、
-  `ari_rqgm` 下で消去されたノードはモードを戻した後も枝刈りされたままです —
+  `ari_rqgm` 下で消去されたノードはモードを戻した後も枝刈りされ、
+  ベストノード選択からも除外されたままです —
   汚染はモード切替によって清浄にはなりません。このセンチネルキーを書くのは
-  `ari_rqgm` の `FrontierRepairEngine` だけなので、RQGM を一度も走らせて
+  RQGM の機構（`ari_rqgm` の `FrontierRepairEngine` または `rqgm_archive`
+  の paper ランタイム）だけなので、RQGM を一度も走らせて
   いないチェックポイントではこの節は不活性なデッドコードです
   （`_sterile` パターン）。
 
@@ -258,7 +260,7 @@ rqgm:
 
 | パス | 内容 |
 |---|---|
-| `paper_archive_state.json` | 論文モード来歴: 論文モード、interlock、`mode_source`、探索モード、シードノード。不在 == linear 論文フェーズ |
+| `paper_archive_state.json` | 論文モード来歴: 論文モード、interlock、`mode_source`、探索モード、シードノード。シードは**最初の**起動時の値を記録し、後続の起動が別のシードを算出した場合は上書きせず `seed_journal` に `seed_changed` エントリを追記します（`journal_seed_change`）。不在 == linear 論文フェーズ |
 | `paper_draft_archive.jsonl` | 採点済みドラフト集団（ドラフトノードごとに 1 レコード: framing、レビュアスコア、tex ハッシュ、best-belief/compiled フラグ） |
 | `paper_anchor_corpus.jsonl` | accept/reject アンカーコーパス。供給した場合のみ（読み取り専用; ガバナンス下のロールが著すことはない） |
 | `rqgm/paper_self_preference_stat.json` | `paper_self_preference` アドバーサリが pre-signal として引用する、決定論的な AI 対 human の self-preference マージン |
@@ -295,10 +297,13 @@ rqgm:
 ## 制限事項 (v1)
 
 [実行モード → 制限事項](execution_modes.md#limitations-v1)と同じです:
-プロファイル（`--profile`）は RQGM キーをマージせず、`--mode` CLI フラグや
-GUI トグルはありません（env による有効化は構造上 GUI 互換です）。論文軸も
-これを共有します: `--paper-mode` フラグはなく（env による有効化は GUI 互換）、
-プロファイルは `rqgm.paper.*` をマージしません。
+プロファイル（`--profile`）は RQGM キーをマージせず、`--mode` CLI フラグは
+ありません。論文軸もこれを共有します: `--paper-mode` フラグはなく、
+プロファイルは `rqgm.paper.*` をマージしません。ダッシュボードは**新規**ラン
+についてのみ両方のモード組を選択できます（[実行モード → GUI からモードを
+選択する](execution_modes.md#gui-からモードを選択する)）; このページのそれ
+以外の `rqgm.*` パラメータは設定ファイル専用であり、既に開始したランの
+モードを変更できるサーフェスは存在しません。
 
 関連: [実行モード](execution_modes.md) ·
 [VirSci 統合](virsci_integration.md) ·

@@ -112,6 +112,11 @@ class Node:
     # verbatim through the lifetime of the node so downstream consumers can
     # see "what we set out to do" even after evaluator overwrites eval_summary.
     original_direction: str | None = None
+    # RQGM-only producer provenance. A governed runtime stamps these from the
+    # epoch-frozen active map; legacy/simple_bfts nodes leave them empty.
+    producer_component_id: str = ""
+    producer_prompt_hash: str = ""
+    producer_epoch_id: str = ""
     # Relative pointer (from checkpoint root) to the per-node report file.
     # Optional: present only after `node_report.json` has been written.
     node_report_path: str | None = None
@@ -162,5 +167,8 @@ class Node:
             "ancestor_ids": self.ancestor_ids,
             "trace_log": self.trace_log,
             "original_direction": self.original_direction,
+            "producer_component_id": self.producer_component_id,
+            "producer_prompt_hash": self.producer_prompt_hash,
+            "producer_epoch_id": self.producer_epoch_id,
             "node_report_path": self.node_report_path,
         }

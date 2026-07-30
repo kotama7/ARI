@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-07-30
 ---
 
 # 故障排查
@@ -145,7 +145,7 @@ apptainer run containers/letta.sif &
 **原因：** 提供商速率限制。
 
 **修复：** ARI 将每次 LLM 调用记录于
-`$ARI_CHECKPOINT_DIR/cost_log.jsonl`。检查每分钟调用频率；若超过
+`$ARI_CHECKPOINT_DIR/cost_trace.jsonl`。检查每分钟调用频率；若超过
 提供商配额，请降低 `ARI_PARALLEL` 或将 BFTS 评判器切换至更廉价/
 本地模型（`ARI_MODEL_JUDGE=ollama/qwen3:32b`）。
 
@@ -157,18 +157,45 @@ apptainer run containers/letta.sif &
 python - <<'PY'
 import json, collections
 costs = collections.Counter()
-with open(f"{__import__('os').environ['ARI_CHECKPOINT_DIR']}/cost_log.jsonl") as fh:
+with open(f"{__import__('os').environ['ARI_CHECKPOINT_DIR']}/cost_trace.jsonl") as fh:
     for line in fh:
         rec = json.loads(line)
-        costs[rec["metadata"].get("skill", "?")] += rec["cost_usd"]
+        costs[rec.get("skill") or "?"] += rec["estimated_cost_usd"]
 for skill, c in costs.most_common():
     print(f"{c:7.3f}  {skill}")
 PY
 ```
 
+每一行都是扁平的 `CallRecord`（`timestamp`、`node_id`、`phase`、
+`skill`、`model`、`*_tokens`、`estimated_cost_usd` 等），没有嵌套的
+`metadata` 对象。新增字段 `epoch` 仅由 `ari_rqgm` 运行写入，默认运行
+中不存在。
+
 最大开销通常来自 BFTS 评判器（`ari-skill-evaluator`）或
 rubric 评审（`ari-skill-paper`）。使用 `ARI_MODEL_EVAL` /
 `ARI_MODEL_JUDGE` 为其设置模型上限。
+
+### 所有调用都记为 `$0.00`
+
+**原因：** 价格表（`ari/configs/model_prices.yaml`）加载失败——通常是
+追加行格式有误，或 skill 的 venv 中缺少 PyYAML。表为空时每次调用都会
+被估算为 0。
+
+**诊断：** `cost_summary.json` 会明确标出这一点：
+
+```bash
+python - <<'PY'
+import json, os
+s = json.load(open(f"{os.environ['ARI_CHECKPOINT_DIR']}/cost_summary.json"))
+print("pricing_table_unavailable:", s["pricing_table_unavailable"])
+print("dropped_records:", s["dropped_records"], "/ call_count:", s["call_count"])
+PY
+```
+
+`pricing_table_unavailable: true` 表示价格表加载失败（加载器同时会输出
+`model_prices table unavailable` 警告）。`dropped_records` 非零表示
+`call_count` 是**少计**的——这些调用有 usage 但记录时抛了异常，每一次
+都会记录 `cost record dropped` 日志。
 
 ## VLM（图表 / 表格评审）
 
@@ -231,7 +258,8 @@ ari viz --port 8000
 ## 下一步排查方向
 
 - `$ARI_CHECKPOINT_DIR/ari.log` —— 应用日志。
-- `$ARI_CHECKPOINT_DIR/cost_log.jsonl` —— LLM 费用记录。
+- `$ARI_CHECKPOINT_DIR/cost_trace.jsonl` —— LLM 费用记录
+  （汇总见 `cost_summary.json`）。
 - `$ARI_CHECKPOINT_DIR/lineage_decisions.jsonl` —— stagnation
   决策（v0.7+）。
 - `docs/reference/file_formats.md` —— 检查点中每个文件的含义。

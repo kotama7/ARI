@@ -32,7 +32,7 @@ sources:
     role: test
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # GUI カットオーバーランブック
@@ -121,9 +121,10 @@ ss -ltnp | grep 8765                                      # bound to 127.0.0.1 /
   （`check_bundle_budget.py`）; ブラウザ側の半分は固定マシン上での手動プロファイル
   であり、リリースの証跡に記録します。
 - **クロスブラウザのクリティカルジャーニー。** スイートは vitest/jsdom であり、
-  このリポジトリにはまだ Playwright の実行がありません。クリティカルジャーニー
-  （Settings、新規ラン、起動、resume、モニタ、ツリー / 結果、ワークフロー、RQGM、
-  セキュリティ）は既定オン化の前に手で歩きます。
+  このリポジトリにある Playwright の実行はドキュメント用スクリーンショット取得
+  （`npm run capture:screenshots`、ヘッドレス Chromium のみ）だけで、何もアサート
+  しません。クリティカルジャーニー（Settings、新規ラン、起動、resume、モニタ、
+  ツリー / 結果、ワークフロー、RQGM、セキュリティ）は既定オン化の前に手で歩きます。
 
 ## 3. 段階的展開
 

@@ -39,6 +39,38 @@ ARI は一つの原則に基づいて設計されています：**ゴールを M
 
 ---
 
+## 新機能 — Constitutional ARI-RQGM（未リリース）
+
+このブランチは既存の実行経路をデフォルトのまま維持し、オプトインの
+ガバナンス／共進化レイヤを追加します。
+
+- **Constitutional `ari_rqgm` モード** — エポック内で凍結されたプロンプト、
+  コンポーネント、utility policy は、決定論的カーネルと T1–T21 の
+  レジストリライフサイクルを通じてのみ進化します。`simple_bfts` は
+  デフォルトのままで、RQGM 状態を構築しません。政策と宣言済み実行基盤
+  は別の指紋値を持ち、提供者や環境の版が不明なら未解決と記録します。
+- **来歴に結び付く説明責任** — 研究生成役を設立時の構成要素として登録し、
+  ノードへ生成構成要素、指示文、期を一度だけ付与します。古いノードや
+  曖昧なノードは対象なしとし、後継へ責任を移しません。
+- **統治された論文アーカイブ** — 直交する
+  `paper.mode: rqgm_archive` 経路が、統治された writer／reviewer ロールで
+  ドラフト木を探索し、勝者を既存のコンパイル＋claim-evidence gate へ渡します。
+- **Dashboard v2** — run スコープの Overview、Projects、Ideas、Tree、
+  Results、Governance、Configuration Studio、ログ、リアルタイム無効化、
+  token 認証、正準 `/api/v1` 読み書き面を追加しました。
+- **完全性と失敗の可視化** — rubric 監査、node provenance 監査、
+  統合 `run_integrity.json`、先行研究に接地した root ideation、従来握り
+  潰されていた成果物／論文段階エラーの fail-loud 処理を導入しました。
+
+現版のセキュリティ境界は、信頼されたホスト上の応用処理レベルの参照
+監視です。OS 隔離、電子署名、外部固定による巻戻し検出、外部への不可逆
+操作を閉じる固定門はまだ保証しません。
+
+入口は [実行モード](docs/ja/guides/execution_modes.md)、
+[RQGM アーキテクチャ](docs/ja/concepts/rqgm_architecture.md)、
+[Dashboard ガイド](docs/ja/guides/dashboard.md) です。全変更は
+[CHANGELOG.md](CHANGELOG.md) を参照してください。
+
 ## v0.9.0 の新機能（2026-06-12）
 
 **主張の end-to-end 検証。** このリリースの主題: 論文は、その全ての主張が

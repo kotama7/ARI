@@ -24,7 +24,7 @@ sources:
     role: test
   - path: ari-core/tests/test_gui_v1_mode_selection.py
     role: test
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # 执行模式：`simple_bfts` 与 `ari_rqgm`
@@ -119,11 +119,15 @@ YAML + profile + 环境变量，按标准优先级）→ 默认值。任何 RQGM
 `rqgm_archive`}）解析，只读取 `paper.mode` / `rqgm.paper.enabled`，从不
 读取 `ari.mode` / `rqgm.enabled`：
 
-- **`linear`**（默认）—— 即当前的论文流水线，逐字节一致。`ari paper`
-  入口（`ari/cli/projects.py:paper`）直接调用 `generate_paper_section`，
-  在论文路径上不导入任何 `ari.rqgm` 模块。没有
+- **`linear`**（默认）—— 即当前的论文流水线，在 `ari.mode: simple_bfts`
+  下逐字节一致。三个入口（`ari paper` / `ari run` / `ari resume`）都经由
+  共享调度（`ari/cli/paper_dispatch.py:run_paper_phase`），在该轴上调用
+  `generate_paper_section`，且不导入任何 `ari.rqgm` 模块。没有
   `{checkpoint}/paper_archive_state.json` 即意味着一次纯 `linear` 论文
-  运行。
+  运行。在 `ari.mode: ari_rqgm` 下，调度还会额外运行*探索*轴的
+  paper-candidate 预检（详见
+  [RQGM 运行时演练](../concepts/rqgm_runtime_walkthrough.md#8-run-end)），
+  因此论文阶段仅在默认探索模式下才逐字节一致。
 - **`rqgm_archive`**（可选启用）—— 宪法式论文归档：在草稿空间上的一棵
   浅层 best-first 树（`PaperArchiveStrategy`、`ari/rqgm/paper_archive.py`），
   由受治理的 `paper_writer` + `paper_reviewer` 驱动未受治理的
@@ -160,7 +164,9 @@ rqgm:
 当生效论文模式为 `rqgm_archive` 时，`ari paper` 会在归档循环运行之前
 一次性写入 `{checkpoint}/paper_archive_state.json`（论文模式、联锁、
 `mode_source` ∈ `config|env|resume`、探索模式、种子节点；
-`persist_paper_run_start`，仅写一次）。重新调用时以检查点优先对账
+`persist_paper_run_start`，仅写一次 —— 若后续调用算出的种子不同，会向文件的
+`seed_journal` 追加一条 `seed_changed` 记录，而不是改写原记录）。
+重新调用时以检查点优先对账
 （`reconcile_paper_resume_mode`）：持久化的论文模式优先于配置和环境
 变量，不一致时产生警告，而没有该状态文件的检查点在该阶段保持
 `linear` —— 因此纯 linear 的重新调用绝不会加载任何 `ari.rqgm` 模块。
@@ -270,7 +276,7 @@ GUI 开关」的表述 —— `--mode` CLI 标志依然不存在，也没有任�
 3. **project 作用域依然拒绝。** 这些模式路径是 `scope: run`，因此项目默认值
    文档会拒绝它们（`not_project_scope`）；在该作用域下这两个控件被禁用，并给出
    原因。
-4. **开放的只有这四个叶子。** `Execution mode` 分类与 `rqgm.*` 树中其余 96 条
+4. **开放的只有这四个叶子。** `Execution mode` 分类与 `rqgm.*` 树中其余 97 条
    路径（epoch、kernel、governance、adversarial、预算调优）在本次发布中**不能**
    从 GUI 编辑。它们仍以只读方式连同其生效值一起展示，携带其中任何一条的草稿
    在启动时仍会被以 `mode_locked` 拒绝 —— 要修改请编辑 `workflow.yaml`。选择
@@ -335,8 +341,9 @@ T1–T21 转换表，与 RegistryTransitionEngine 共享 —— 单一事实来�
   在结构上惰性 —— `ari.core.build_runtime` 中的惰性导入分支是唯一的
   门，而不是散落各处的按功能标志。
 - `simple_bfts` 路径上唯一被触及的代码：两个带默认值的类型化配置字段、
-  一次环境变量覆盖调用、运行循环中的一次
-  `getattr(bfts, "rqgm", None)`。
+  一次环境变量覆盖调用，以及少数几处鸭子类型的
+  `getattr(bfts, "rqgm", None)` 探测（运行循环、运行时装配、论文调度的
+  句柄传递）—— 在该路径上它们全都读到 `None`。
 - 旧检查点没有 `rqgm_state.json`；`resume` 将其缺失视为
   `simple_bfts`。部署在旧版 ari-core 上的 `rqgm:` 块会被静默忽略
   （当前行为 —— 最安全的失败方向）。

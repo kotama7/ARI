@@ -510,6 +510,7 @@ def run(
             run_paper_phase(
                 cfg, all_nodes, experiment_data, checkpoint_dir, mcp, _cfg_str,
                 linear_paper_fn=generate_paper_section, paper_llm=_paper_llm,
+                rqgm=getattr(bfts, "rqgm", None),
             )
         except Exception as _paper_err:
             _paper_raised = True
@@ -593,6 +594,9 @@ def resume(
             error_log=nd.get("error_log"), children=nd.get("children", []),
             created_at=nd.get("created_at", ""), completed_at=nd.get("completed_at", ""),
             ancestor_ids=nd.get("ancestor_ids") or [],
+            producer_component_id=nd.get("producer_component_id", ""),
+            producer_prompt_hash=nd.get("producer_prompt_hash", ""),
+            producer_epoch_id=nd.get("producer_epoch_id", ""),
         )
         node.status = NodeStatus(nd["status"])
         # Restore label (default to DRAFT if missing from old checkpoints)
@@ -678,9 +682,9 @@ def resume(
                 cfg, all_nodes, experiment_data, checkpoint_dir, mcp_resume,
                 _cfg_str_r, linear_paper_fn=generate_paper_section,
                 paper_llm=_paper_llm_r,
+                rqgm=getattr(bfts, "rqgm", None),
             )
         except Exception as _paper_err:
             console.print(f"[bold red]Paper pipeline failed:[/bold red] {_paper_err}")
             import traceback
             traceback.print_exc()
-

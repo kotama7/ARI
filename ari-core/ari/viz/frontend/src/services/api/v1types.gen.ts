@@ -3127,6 +3127,11 @@ export interface components {
             checkpoint_path: string;
             /** Display Name */
             display_name: string;
+            /**
+             * Has Paper
+             * @default false
+             */
+            has_paper: boolean;
             /** Mtime Utc */
             mtime_utc: string;
             /** Node Count */

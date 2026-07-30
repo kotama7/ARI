@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/health.py
     role: implementation
-last_verified: 2026-07-27
+last_verified: 2026-07-29
 ---
 
 # Environment Variable Reference
@@ -47,6 +47,9 @@ page is the alphabetical lookup.
 | `ARI_LLM_API_BASE` | LiteLLM API base override | LiteLLM default |
 | `ARI_MODEL` | Cross-skill fallback model id | (falls through to `ARI_LLM_MODEL`) |
 | `ARI_MODEL_EVAL` | Model for the LLM evaluator | falls through to `ARI_MODEL` |
+| `ARI_MODEL_PAPER` | Model for paper writing and refinement | falls through to `ARI_LLM_MODEL` |
+| `ARI_MODEL_RUBRIC` | Model for independent rubric review and the fixed paper panel | falls through to `ARI_LLM_MODEL` |
+| `ARI_PANEL_SEED` | Requested seed recorded for each fixed-panel rubric completion | unset; sampling control is provider/backend dependent |
 | `ARI_MODEL_JUDGE` | Model for the BFTS judge | falls through to `ARI_MODEL` |
 | `ARI_MODEL_LINEAGE` | Model for stagnation / lineage decisions (v0.7.0) | falls through to `ARI_MODEL` |
 | `ARI_MODEL_ROOT_SELECT` | Model that picks the seed idea | falls through to `ARI_MODEL` |

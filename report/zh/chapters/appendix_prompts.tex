@@ -1,40 +1,10 @@
-\section{运行时 LLM 提示词}\label{sec:prompts}
+\section{Constitutional RQGM 提示词种子}\label{sec:prompts}
 
-本附录列出 ARI 在运行时所用的 LLM 提示词,逐字摘自 v0.9.0 时刻的
-\texttt{ari-core/ari/prompts/}。每段清单与磁盘源码逐字节一致。因为输入
-模型的字节本身决定其行为,提示词不进行翻译,在本报告的各语言版本中均以
-原文原样呈现。
-
-最后四组(提案生成、对抗评审、治理、提示词演化)由 v0.9.0 之后引入的
-可选宪制治理执行模式(\texttt{ari\_rqgm})使用;默认流水线不会加载它们。
-这些清单同样逐字呈现。在该模式下,此处所示模板是已提交的种子:运行时
-演化出的提示词变体保存在该次运行的检查点内,不会取代这些文件。
-
-\subsection*{编排器}
-
-\PromptListing{orchestrator/bfts_expand.md}{BFTS 扩展}{prompt:bfts_expand}
-\PromptListing{orchestrator/bfts_expand_select.md}{BFTS 扩展期选择}{prompt:bfts_expand_select}
-\PromptListing{orchestrator/bfts_select.md}{BFTS 选择}{prompt:bfts_select}
-\PromptListing{orchestrator/lineage_decision.md}{谱系续延判断}{prompt:lineage_decision}
-\PromptListing{orchestrator/root_idea_selector.md}{根创意选择}{prompt:root_idea_selector}
-
-\subsection*{智能体循环}
-
-\PromptListing{agent/system.md}{ReAct 智能体系统提示}{prompt:agent_system}
-
-\subsection*{评估器}
-
-\PromptListing{evaluator/peer_review.md}{同行评议评估器}{prompt:peer_review}
-\PromptListing{evaluator/extract_metrics.md}{指标抽取}{prompt:extract_metrics}
-
-\subsection*{流水线}
-
-\PromptListing{pipeline/keyword_librarian.md}{关键词管理员}{prompt:keyword_librarian}
-
-\subsection*{向导(Viz)}
-
-\PromptListing{viz/wizard_chat_goal.md}{向导目标对话}{prompt:wizard_chat_goal}
-\PromptListing{viz/wizard_generate_config.md}{向导配置生成器}{prompt:wizard_generate_config}
+本附录逐字收录 Constitutional ARI-RQGM 特有的 model-facing prompt seed。
+精确字节属于可复现性 surface:governed checkpoint 注册其 hash,在每次
+rendered use 上标记 serving version,并把演化后的 variant 保存于 checkpoint。
+因此,listing 在所有语言版本中完全相同且不翻译。constitutional method
+之外的一般执行 prompt 不在本报告范围内。
 
 \subsection*{提案生成器}
 
@@ -51,6 +21,7 @@
 \PromptListing{rqgm/adversary_evidence_gap.md}{证据缺口对抗者}{prompt:adversary_evidence_gap}
 \PromptListing{rqgm/adversary_cost_explosion.md}{成本爆炸对抗者}{prompt:adversary_cost_explosion}
 \PromptListing{rqgm/adversary_prompt_injection.md}{提示注入对抗者}{prompt:adversary_prompt_injection}
+\PromptListing{rqgm/adversary_paper_self_preference.md}{论文自我偏好对抗者}{prompt:adversary_paper_self_preference}
 \PromptListing{rqgm/defender.md}{对抗循环辩护者}{prompt:rqgm_defender}
 \PromptListing{rqgm/judge_adjudication.md}{产物裁决}{prompt:judge_adjudication}
 
@@ -60,7 +31,15 @@
 \PromptListing{governance/defender.md}{治理辩护人}{prompt:governance_defender}
 \PromptListing{governance/governance_judge.md}{治理裁决者}{prompt:governance_judge}
 
-\subsection*{提示词演化}
+\subsection*{提示词与策略演化}
 
 \PromptListing{rqgm/prompt_mutator.md}{提示词变异元提示词}{prompt:prompt_mutator}
 \PromptListing{rqgm/clean_room_generator.md}{净室再生成元提示词}{prompt:clean_room_generator}
+\PromptListing{rqgm/policy_mutator.md}{效用策略变异元提示词}{prompt:policy_mutator}
+\PromptListing{rqgm/replay_selector.md}{重放选择元提示词}{prompt:replay_selector}
+\PromptListing{rqgm/failure_summary_compressor.md}{失效摘要压缩元提示词}{prompt:failure_summary_compressor}
+
+\subsection*{论文存档}
+
+\PromptListing{rqgm/paper_writer.md}{受治理论文撰写者}{prompt:paper_writer}
+\PromptListing{rqgm/paper_reviewer.md}{受治理论文评审者}{prompt:paper_reviewer}

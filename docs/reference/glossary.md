@@ -26,7 +26,7 @@ sources:
     role: implementation
   - path: ari-core/ari/rqgm
     role: implementation
-last_verified: 2026-07-10
+last_verified: 2026-07-30
 ---
 
 # Glossary
@@ -75,7 +75,8 @@ A child whose `work_dir` is byte-identical to its parent after execution
 
 **should_prune**
 The hard-cutoff predicate in BFTS: prune when `current_total ≥ max_total_nodes`,
-`depth ≥ max_depth`, or `_sterile is True`. No LLM judgement enters here. See
+`depth ≥ max_depth`, `_sterile is True`, or `_valid_for_frontier is False`
+(RQGM selective erasure). No LLM judgement enters here. See
 [BFTS algorithm](../concepts/bfts.md).
 
 **computed-evidence claim**

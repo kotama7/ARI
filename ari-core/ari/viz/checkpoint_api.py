@@ -167,10 +167,15 @@ def _api_checkpoints() -> list:
                             info["status"] = "completed"
                     # Fallback score from scientific_score if no review
                     if nodes:
+                        # Best VALID score: RQGM-erased nodes keep their
+                        # stale value for audit but must not display as the
+                        # run's best (consistent with select_best_node).
                         sci_scores = [
                             n.get("metrics", {}).get("_scientific_score")
                             for n in nodes
                             if n.get("metrics", {}).get("_scientific_score") is not None
+                            and n.get("metrics", {}).get(
+                                "_valid_for_frontier", True) is not False
                         ]
                         if sci_scores:
                             info["best_scientific_score"] = round(max(sci_scores), 2)
@@ -191,7 +196,10 @@ def _api_checkpoints() -> list:
     for _stale_key in list(_st._running_procs.keys()):
         if _stale_key not in _seen_resolved:
             _st._running_procs.pop(_stale_key, None)
-    return ckpt_dirs
+    # Search roots are an implementation detail. Present one global portfolio
+    # ordered by recency so "latest" does not depend on which root happened
+    # to be scanned first.
+    return sorted(ckpt_dirs, key=lambda item: item["mtime"], reverse=True)
 
 
 
@@ -327,4 +335,3 @@ def _api_lineage_decisions(ckpt_id: str) -> dict:
     except OSError as e:
         return {"error": str(e), "records": [], "n": 0}
     return {"records": records, "n": len(records)}
-

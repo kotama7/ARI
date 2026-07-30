@@ -24,7 +24,7 @@ sources:
     role: test
   - path: ari-core/tests/test_gui_v1_mode_selection.py
     role: test
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # Execution Modes: `simple_bfts` and `ari_rqgm`
@@ -123,10 +123,16 @@ The paper-writing phase (`ari paper`) has its OWN execution axis, fully
 `rqgm_archive`}), which reads ONLY `paper.mode` / `rqgm.paper.enabled` — never
 `ari.mode` / `rqgm.enabled`:
 
-- **`linear`** (default) — today's paper pipeline, byte-identical. The `ari
-  paper` entry (`ari/cli/projects.py:paper`) calls `generate_paper_section`
-  directly and imports no `ari.rqgm` module on the paper path. Absence of
-  `{checkpoint}/paper_archive_state.json` means a pure `linear` paper run.
+- **`linear`** (default) — today's paper pipeline, byte-identical under
+  `ari.mode: simple_bfts`. All three entries (`ari paper`, `ari run`, `ari
+  resume`) route through the shared dispatch
+  (`ari/cli/paper_dispatch.py:run_paper_phase`), which calls
+  `generate_paper_section` on this axis and imports no `ari.rqgm` module.
+  Absence of `{checkpoint}/paper_archive_state.json` means a pure `linear`
+  paper run. Under `ari.mode: ari_rqgm` the dispatch additionally runs the
+  paper-candidate pre-flight on the *exploration* axis (described in the
+  [RQGM Runtime Walkthrough](../concepts/rqgm_runtime_walkthrough.md#8-run-end)),
+  so the paper phase is byte-identical only in the default exploration mode.
 - **`rqgm_archive`** (opt-in) — the constitutional paper archive: a shallow
   best-first tree over draft space (`PaperArchiveStrategy`,
   `ari/rqgm/paper_archive.py`) with a governed `paper_writer` + `paper_reviewer`
@@ -164,7 +170,9 @@ are ignored.
 When the effective paper mode is `rqgm_archive`, `ari paper` writes
 `{checkpoint}/paper_archive_state.json` once (paper mode, interlock,
 `mode_source` ∈ `config|env|resume`, exploration mode, seed node) before the
-archive loop runs (`persist_paper_run_start`, write-once). Re-invocation
+archive loop runs (`persist_paper_run_start`, write-once — a later invocation
+that computes a different seed appends a `seed_changed` entry to the file's
+`seed_journal` instead of rewriting the record). Re-invocation
 reconciles checkpoint-first (`reconcile_paper_resume_mode`): the persisted
 paper mode wins over config and env, a disagreement warns, and a checkpoint
 without the state file stays `linear` for that phase — so no `ari.rqgm` module
@@ -283,7 +291,7 @@ Four properties are worth knowing before you use it:
 3. **Project scope still refuses.** The mode paths are `scope: run`, so the
    project-defaults document rejects them (`not_project_scope`); the controls
    are disabled there with the reason shown.
-4. **Only these four leaves.** The other 96 paths in the `Execution mode`
+4. **Only these four leaves.** The other 97 paths in the `Execution mode`
    category and the `rqgm.*` tree (epoch, kernel, governance, adversarial,
    budget tuning) are **not** editable from the GUI in this release. They stay
    visible read-only with their effective values, and a draft carrying one of
@@ -363,8 +371,9 @@ warn-and-log for staged rollout and ablations.
   `ari.core.build_runtime` is the single gate, not a scatter of per-feature
   flags.
 - The only code touched on `simple_bfts` paths: two typed config fields with
-  defaults, one env-override call, one `getattr(bfts, "rqgm", None)` in the
-  run loop.
+  defaults, one env-override call, and a handful of duck-typed
+  `getattr(bfts, "rqgm", None)` probes — the run loop, the runtime wiring, and
+  the paper-dispatch hand-off — every one of which reads `None` there.
 - Old checkpoints have no `rqgm_state.json`; `resume` treats absence as
   `simple_bfts`. An `rqgm:` block deployed on an older ari-core is silently
   ignored (current behaviour — the safest failure direction).

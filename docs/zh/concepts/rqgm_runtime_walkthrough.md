@@ -24,7 +24,7 @@ sources:
     role: config
   - path: ari-core/tests/test_rqgm_kernel.py
     role: test
-last_verified: 2026-07-16
+last_verified: 2026-07-28
 ---
 
 # RQGM 运行时演练
@@ -36,14 +36,14 @@ last_verified: 2026-07-16
 每段事件日志摘录都取自真实运行（行有截断，运行特有的值以 `…`
 略去）。
 
-![一次 ari_rqgm 运行的纵向流程：启动与模式解析、构造 RQGMRuntime、创始注册事务（29 个提示词 + 16 个组件）、以冻结的活跃集合开启 epoch_000、逐节点循环（提案路由、节点执行、治理级别、对抗回合）、纪元边界（审计、转换引擎 + 内核、边界事务、前沿修复），以及下一个纪元的开启。](../../assets/images/rqgm/rqgm_run_lifecycle.svg)
+![一次 ari_rqgm 运行的纵向流程：启动与模式解析、构造 RQGMRuntime、创始注册事务（32 个提示词或规则记录 + 20 个组件）、以冻结的活跃集合开启 epoch_000、逐节点循环（提案路由、节点执行、治理级别、对抗回合）、纪元边界（审计、转换引擎 + 内核、边界事务、前沿修复），以及下一个纪元的开启。](../../assets/images/rqgm/rqgm_run_lifecycle.svg)
 
 同一流程的压缩版：
 
 ```text
 boot ──▶ mode resolution ──▶ RQGMRuntime ──▶ founding registration ──▶ epoch_000 open
-                                              (1 txn: 29 prompts,        (active set
-                                               16 components)             frozen)
+                                              (1 txn: 32 prompts,        (active set
+                                               20 components)             frozen)
                                                                              │
         ┌────────────────────────────────────────────────────────────────────┘
         ▼
@@ -90,7 +90,7 @@ boot ──▶ mode resolution ──▶ RQGMRuntime ──▶ founding registra
 `rqgm_transitions.jsonl` 上的单笔 prepare → … → commit 事务完成
 注册 —— 在一个 `epoch_transaction_prepare` 与一个
 `epoch_transaction_commit`（`transition_id: transition_founding`）
-之间是 **27 条 `prompt_registered` + 14 条 `component_registered`
+之间是 **32 条 `prompt_registered` + 20 条 `component_registered`
 事件**：
 
 ```jsonc
@@ -100,20 +100,22 @@ boot ──▶ mode resolution ──▶ RQGMRuntime ──▶ founding registra
  "payload": {"prompt_id": "agent_system_prompt_v1", "role": "generator",
              "status": "active", "prompt_hash": "a50abe13d568",
              "source": {"kind": "committed_template", "key": "agent/system"}, …}}
-// … 28 more prompt_registered, then 16 component_registered …
-{"event_id": "evt_000042", "event_type": "epoch_transaction_commit",
+// … 31 more prompt_registered, then 20 component_registered …
+{"event_id": "evt_000053", "event_type": "epoch_transaction_commit",
  "payload": {"transition_id": "transition_founding"}}
 ```
 
-16 个创始组件是七种对抗者类型（各为 `adversary_{type}_v1`，每种
+20 个创始组件是 `generator_v1` 和七种探索对抗者类型（各为 `adversary_{type}_v1`，每种
 攻击族一个：成本爆炸、证据缺口、指标操纵、过度声称、先前工作、
 提示词注入、可复现性）、`defender_v1`、`artifact_judge_v1`、
-`proposal_router_v1`，两个元 agent `prompt_mutator_v1` 和
-`clean_room_generator_v1`，再加上 Task 14 的 `policy_mutator_v1`
-（分数的提议者）与 `utility_policy_v1`（被治理的分数本身）。
-29 个提示词覆盖这些角色，外加治理参与者
-模板（auditor、governance defender、governance judge）和 BFTS 编排
-模板。重放该日志可逐字节重建 `rqgm_registry.json`；注册是**只写
+`proposal_router_v1`、`prompt_mutator_v1`、`clean_room_generator_v1`、
+`policy_mutator_v1`、`utility_policy_v1`，实时元参与者
+`replay_selector_v1`、`failure_summary_compressor_v1`，以及可由注册表
+寻址的司法组件 `auditor_v1`、`evidence_clerk_v1`、
+`governance_judge_v1`。32 个提示词覆盖使用提示词的这些角色、提案生成器
+和 BFTS 编排；确定性的 Evidence Clerk 不使用提示词。paper archive
+再加入三组 gated 提示词／组件，总计 35／23 个。重放该日志可逐字节重建
+`rqgm_registry.json`；注册是**只写
 一次**的 —— 任何在日志中发现已有纪元或已提交注册的 resume 都不会
 重新注册，而崩溃的创始事务（有 prepare 无 commit）对重放不可见，
 可安全重跑。
@@ -123,11 +125,13 @@ boot ──▶ mode resolution ──▶ RQGMRuntime ──▶ founding registra
 创始提交后，`epoch_000` 随即开启，创始活跃集合被冻结进
 `epoch_state.json`：`active_components`（每个角色一个汇总胜者）与
 `active_prompt_hashes`（每个角色一个 12 位十六进制哈希），外加效用
-策略，全部钉在一个不含时间戳的确定性 `epoch_fingerprint` 之下。在
+策略，全部钉在政策 `policy_fingerprint`、声明执行基底
+`execution_fingerprint` 与二者合成的 `epoch_fingerprint` 之下，均不含
+时间戳。缺少提供者或环境修订时记为 `unresolved`。在
 下一个边界之前，这个集合中的任何东西都不能变。
 
 ```jsonc
-{"event_id": "evt_000043", "event_type": "epoch_open",
+{"event_id": "evt_000054", "event_type": "epoch_open",
  "payload": {"epoch_state": {"epoch_id": "epoch_000", "epoch_seq": 0,
    "node_count_at_open": 1,
    "active_components": {"adversary": "adversary_reproducibility_v1",
@@ -196,20 +200,20 @@ open）。在边界窗口内：
 1. **审计。**`GovernanceOrchestrator.audit_epoch` 执行九步流水线：
    收集观察 → 可靠性评估 → 证据汇集（**EvidenceClerk** 是唯一的
    证据汇集者；不可采纳的同角色材料在此被丢弃）→ 检控决定（只有
-   **Auditor** 可以提交 `ImpeachmentMotion`，并缴纳随结果退还或
-   没收的保证金）→ 辩护生成 → 裁决合议（动议 + 提示词候选评估）→
+   **Auditor** 可以提交 `ImpeachmentMotion`，并消耗每纪元一个动议
+   配额单位；旧会计名保留但不转移价值）→ 辩护生成 → 裁决合议
+   （动议 + 提示词候选评估）→
    重放池更新 → **治理自我审计**（流水线审计其自身的四个参与者：
    auditor、evidence clerk、defender、governance judge）→
    `GovernanceReport`。报告是咨询性的 —— 编排器从不写注册表。一份
    真实的首个边界报告：`record_id: govreport_epoch_000`、
-   `self_audit.checked_components: ["auditor_v0", "defender_v0",
-   "evidence_clerk_v0", "governance_judge_v0"]`、
-   `bond_accounting: {posted: 0, …}`。
-   （在当前构建上，创始角色以其真实注册 id 出现 —— 例如
-   `defender_v1`；auditor、evidence clerk、governance judge 依设计
-   保持 `*_v0` 回退。）
-2. **元步骤。**元层（提示词变异器、洁净室生成器）在沙箱中运行；
-   每个输出都以 `candidate` 进入生命周期，绝不作为激活。候选生成
+   `self_audit.checked_components: ["auditor_v1", "defender_v1",
+   "evidence_clerk_v1", "governance_judge_v1"]`、
+   `bond_accounting: {posted: 0, …}`。四者均可由注册表寻址并可受制裁；
+   若 Governance Judge 自身是 motion 目标，它会回避而不裁决自己的案件。
+2. **元步骤。**元层在只读沙箱中运行提示词变异器、策略变异器、重放
+   选择器、失败摘要压缩器及待处理的洁净室生成。每个输出都是
+   `candidate` 或仅审计 recommendation，绝不作为激活。候选生成
    并非仅由失败触发：在**每个**边界 —— 包括平静的纪元 ——
    `PromptMutator` 都会为每个拥有在任者的可进化角色提议一个候选，
    受 `rqgm.prompt_evolution` 上限与逐候选预算门控约束；没有可用
@@ -226,10 +230,11 @@ open）。在边界窗口内：
    行 T20/T21）。`ConstitutionalKernel` 校验解析出的转换：
    非法的边被阻断（`CK-REG-001` 违反转换表、`CK-REG-002` 仅限边界
    的边在纪元中途盖章），非引擎的注册表写入方被阻断
-   （`CK-ROL-901` —— 裁判永远不能写注册表），而
-   `emergency_quarantine`（T16）是唯一的纪元中途边。转换被阻断
-   意味着在任的活跃集合原样延续、运行继续 —— 被阻断的是制度，
-   绝不是研究。
+   （`CK-ROL-901` —— 裁判永远不能写注册表）。
+   `emergency_quarantine`（T16）会强制关闭当前纪元，并在同一边界事务中
+   提交隔离和具有新指纹的下一纪元。转换被阻断
+   意味着在任的活跃集合原样延续。只有在无外部副作用的隔离条件下继续
+   生成候选才安全；不可逆外部操作需要另一固定的失败关闭门。
 4. **提交。**边界以一笔四事件事务落在 `rqgm_transitions.jsonl` 上：
 
 ```jsonc
@@ -249,9 +254,10 @@ open）。在边界窗口内：
    `FrontierRepairEngine` 从每个已退役的 `prompt_hash` 追踪依赖
    闭包，把依赖记录标记为过期（`_stale`、`_valid_for_frontier`
    哨兵键通过 `tree.json` 持久化），并重建前沿。擦除**仅是逻辑
-   的** —— 什么都不物理删除 —— 且按角色定向：能重算时，效用在
-   原始纪元的冻结权重下由幸存输入重算，否则节点转为前沿无效
-   （擦除，不重新缩放）。
+   的** —— 什么都不物理删除 —— 且按角色定向。已评分证据过期时，
+   效用按原纪元冻结权重从幸存输入重算；效用策略本身退役时，则从已保存且
+   与策略无关的 `_axis_scores` 按新标准重评。raw axis 不可用的节点
+   fail-closed 为作废。
 6. **洁净室。**已退役角色的待处理再生请求在窗口内执行；可采纳的
    输出以候选身份进入下一周期。随后下一个纪元的活跃集合被冻结，
    搜索继续。
@@ -301,6 +307,15 @@ shingle 筛查和 `RetiredPromptAccessGuard` 强制执行）。元层可以
 一致 —— `ari resume` 重放事件日志、重新校验审计日志哈希链并继续
 （阻断级的完整性发现会降级为治理挂起式延续，绝不拒绝 resume）。
 
+随后的论文阶段会运行 **paper-candidate 预检**：把已持久化的效用惩罚
+重放到已加载的节点上，对最优节点执行一次 L3 paper-candidate 对抗回合，
+并反复重新选择直到胜者稳定 —— 因他人被降级而新晋的胜者也必定接受
+属于自己的回合。三个入口（`ari run` / `ari resume` / `ari paper`）都经由
+共享的论文调度到达这里。该回合攻击的是论文自身的产物，因此以这些产物
+存在为门槛：在尚未产出论文的检查点上，它会推迟到流水线写出这些产物之后
+再运行 —— 因为把一次性的标记花在空 bundle 上，会永久压制该节点的
+产物落地回合。
+
 ---
 
 ## 一次边界上的效用改写（Task 14）
@@ -316,15 +331,19 @@ shingle 筛查和 `RetiredPromptAccessGuard` 强制执行）。元层可以
 与 behavioral 角色不同，效用策略是一个基准，所以它通过**supersession**
 （边 T20）被采纳：后继的同一边界 T6 采纳会发出一次 `active → retired`
 状态变更，以其**旧**哈希退役*健康的*在任者。`frontier_repair` 随后把
-旧哈希当作一个已退役的依赖 —— 每个被盖上 `_utility_policy_hash: <旧>`
-的节点都被标记为 `utility_invalidated`，前沿在新策略的冻结权重下重建：
+旧哈希当作一个已退役的依赖，并把每个盖有
+`_utility_policy_hash: <旧>` 的节点从已保存 `_axis_scores` 按新冻结的
+composite／weights 重评。只有 raw axis 不可用的节点才被标为
+`utility_invalidated`；旧策略分数绝不存活。在暴露该接缝的真实边界上，
+五个节点被重评，作废数为零：
 
 ```jsonc
 {"event_type": "component_status_change", "payload": {"role": "utility_policy",
    "component_id": "utility_policy_v1", "from_status": "active",
    "to_status": "retired", "rule_id": "T20", …}}
-{"event_type": "selective_erasure", "payload": {"reason": "utility_invalidated",
-   "retired_prompt_hash": "fed4460f44f6", …}}
+{"event_type": "selective_erasure", "payload":
+   {"retired_prompt_hashes": ["fed4460f44f6"],
+    "policy_rescored_node_ids": ["node_…"], "invalidated_node_ids": [], …}}
 ```
 
 **诚实的限制。**在默认配置（`axis_mode: dynamic`、空的静态
@@ -460,7 +479,7 @@ tail -f {checkpoint}/rqgm_audit.jsonl | python3 -c \
 | transitions | `prompt_registered` / `component_registered` | 创始注册载荷 | `RQGMRuntime._register_founding` |
 | transitions | `prompt_status_change` / `component_status_change` | 一条已解析的 T1–T21 边（采纳、制裁、退役） | `RegistryTransitionEngine` |
 | transitions | `epoch_close` / `epoch_open` | 边界：旧纪元关闭，新的冻结纪元开启 | `RegistryTransitionEngine` / `RqgmStateStore` |
-| transitions | `emergency_quarantine` | 唯一的纪元中途边（T16） | `RegistryTransitionEngine` |
+| transitions | `emergency_quarantine` | 强制紧急边界内的 T16 隔离 | `RegistryTransitionEngine` |
 | audit | `governance_level` | 逐节点的阶梯级别（L0–L3）+ 触发器 | `GovernanceBudgetManager` |
 | audit | `budget_consumed` | 某个治理决策点消耗了预算 | `GovernanceBudgetManager` |
 | audit | `raw_attack` / `defender_response` / `judgment_record` / `validated_attack` / `utility_record` | 一轮对抗回合，逐条记录 | 对抗循环 |

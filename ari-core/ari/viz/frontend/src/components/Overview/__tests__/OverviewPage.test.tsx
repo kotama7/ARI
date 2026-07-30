@@ -74,6 +74,7 @@ function makeSummary(overrides: Partial<RunSummaryV1> = {}): RunSummaryV1 & Requ
     review_score: 7.5,
     best_metric: 0.91,
     mtime_utc: '2026-07-23T00:00:00+00:00',
+    has_paper: false,
     ...overrides,
   };
 }
@@ -161,9 +162,9 @@ describe('OverviewPage (gui_refresh Wave 4b v2 slice)', () => {
     expect(screen.getByText('7.5')).toBeInTheDocument();
     expect(screen.getByText('0.91')).toBeInTheDocument();
 
-    // P2: workspace links — Tree (legacy) + run-explicit Config.
-    expect(screen.getByText('Tree').getAttribute('href')).toBe('#/tree');
-    expect(screen.getByText('Config').getAttribute('href')).toBe(
+    // P2: workspace links — Research tree (legacy) + run-explicit Run config.
+    expect(screen.getByText('Research tree').getAttribute('href')).toBe('#/tree');
+    expect(screen.getByText('Run config').getAttribute('href')).toBe(
       `#/config?run=${RUN}`,
     );
 

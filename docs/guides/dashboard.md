@@ -34,7 +34,7 @@ sources:
     role: doc
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # Dashboard Guide
@@ -108,27 +108,34 @@ The frontend asks `GET /api/capabilities` once on mount:
 
 ## The workspace map
 
-The sidebar is generated from a single route registry, so nav order,
-icons, and hash URLs cannot drift apart (pinned by
-`src/__tests__/routeNavParity.test.tsx`). With `gui_v2` on it reads:
+Every nav entry — label, icon, and the hash a click writes — comes from a
+single route registry, so the sidebar cannot drift apart from the router
+(pinned by `src/__tests__/routeNavParity.test.tsx`). The sidebar itself
+then lays those entries out as one primary action followed by four fixed
+groups. With `gui_v2` on it reads:
 
-| Slot | Hash it writes | Kind |
-|---|---|---|
-| 📁 Projects | `#/projects` | v2 only |
-| 🏠 Home | `#/home` | legacy |
-| 🗂️ Experiments | `#/experiments` | legacy |
-| 🧭 Overview | `#/overview?run=` | v2 only |
-| 📡 Monitor | `#/monitor` | legacy |
-| 🌳 Tree | `#/tree2?run=` | v2 **takes over** the legacy Tree slot |
-| 🏛️ Governance | `#/governance?run=` | v2 only |
-| 📊 Results | `#/results2?run=` | v2 **takes over** the legacy Results slot |
-| ✨ New Experiment | `#/new` | legacy (alias of `#/wizard`) |
-| 📚 PaperBench | `#/paperbench` | legacy |
-| 💡 Idea | `#/ideas2?run=` | v2 **takes over** the legacy Idea slot |
-| ⚡ Workflow | `#/workflow` | legacy |
-| 🔧 Config | `#/config?run=` | v2 only |
-| 🎛️ Studio | `#/studio` | v2 only |
-| ⚙️ Settings | `#/settings` | legacy |
+| Group | Slot | Hash it writes | Kind |
+|---|---|---|---|
+| *(primary action)* | ✨ New Experiment | `#/new` | legacy (alias of `#/wizard`) |
+| Workspace | 📁 Projects | `#/projects` | v2 only |
+| Workspace | 🏠 Dashboard | `#/home` | legacy |
+| Workspace | 🗂️ Run archive | `#/experiments` | legacy |
+| Current run | 🧭 Overview | `#/overview?run=` | v2 only |
+| Current run | 💡 Idea | `#/ideas2?run=` | v2 **takes over** the legacy Idea slot |
+| Current run | 🌳 Research tree | `#/tree2?run=` | v2 **takes over** the legacy Tree slot |
+| Current run | 📡 Live monitor | `#/monitor` | legacy |
+| Current run | 📊 Paper & results | `#/results2?run=` | v2 **takes over** the legacy Results slot |
+| Review & governance | 🏛️ Governance | `#/governance?run=` | v2 only |
+| Review & governance | 📚 PaperBench | `#/paperbench` | legacy |
+| System | ⚡ Workflow | `#/workflow` | legacy |
+| System | 🔧 Run config | `#/config?run=` | v2 only |
+| System | 🎛️ Config studio | `#/studio` | v2 only |
+| System | ⚙️ Settings | `#/settings` | legacy |
+
+The group headings are labels only — they carry no state and disappear
+when the sidebar is dragged narrow enough to collapse to icons. The active
+run picker sits above the whole nav, so you confirm what you are operating
+on before you choose a workspace.
 
 "Takes over" means only the hash a click writes changes — the slot keeps
 the legacy label, icon and position, and `#/tree`, `#/results`, `#/idea`
@@ -147,9 +154,13 @@ Studio (#/studio) ──► project defaults / run template / run draft ──�
 ```
 
 **Projects** (`#/projects`) lists every run found under the checkpoint
-search roots as one virtual `default` project. Each row links to that
-run's Overview and Config; clicking the row itself still uses the legacy
-handoff into `#/results`.
+search roots as one virtual `default` project, above a four-tile counter
+strip (all / active / completed / needs attention). Each row's Open column
+links to that run's Overview, its paper/results page, and its Config;
+clicking the row itself goes to the run-explicit `#/results?run=<run_id>`
+(the old `sessionStorage` handoff is still written alongside it, as a
+compatibility fallback for older callers). RQGM and paper capabilities are
+badges next to the run id rather than their own column.
 
 ![The Projects workspace: one table row per run, carrying the run id, a status badge, node count, review score, best metric, last-updated time, a capabilities column, and per-row Overview and Config links](../assets/images/en/dashboard_projects.png)
 
@@ -166,9 +177,11 @@ the other.
 **Tree** (`#/tree2?run=&node=`) is the run-explicit node graph plus an
 inspector. **Ideas** (`#/ideas2?run=`) shows `idea.json` (gap analysis,
 primary metric, generated hypotheses) plus the BFTS hypothesis list from
-the run tree. **Results** (`#/results2?run=`) is a read-only summary:
-review scores, the ORS reproducibility chain, and the EAR publication
-lineage as a badge chain.
+the run tree. **Results** (`#/results2?run=`, titled *Paper & results*) is
+a read-only summary: review scores, the ORS reproducibility chain, and the
+EAR publication lineage as a badge chain. When the run has a paper it also
+offers two links out — *Preview / edit paper* (the legacy workspace at
+`#/results?run=`) and *Open original PDF* — but edits nothing itself.
 
 ![The Tree workspace: the D3 node graph on the left with the run id printed above it, the windowed ARIA tree table on the right, and the inspector column prompting "Select a node in the tree to inspect it"](../assets/images/en/dashboard_tree.png)
 
@@ -342,8 +355,8 @@ Reach for them when the v2 workspace is deliberately read-only:
 | `#/paperbench`, `#/paperbench/import`, `#/paperbench/run`, `#/paperbench/results` | the whole PaperBench surface (see [PaperBench GUI guide](paperbench/paperbench_gui.md)) |
 
 The v2 Results workspace links out to `#/results` for exactly this reason
-and says so on the page: *"This workspace is read-only — curate, publish,
-and promote run on the legacy page only."*
+and says so on the page: *"This workspace is read-only — curate,
+publish.yaml editing, publish, and promote run on the legacy page only."*
 
 Two legacy behaviours changed for safety and are worth knowing before you
 click:

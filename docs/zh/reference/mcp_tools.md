@@ -14,7 +14,7 @@ sources:
     role: implementation
   - path: ari-skill-idea/src/server.py
     role: implementation
-last_verified: 2026-07-10
+last_verified: 2026-07-30
 ---
 
 # MCP 工具参考
@@ -62,7 +62,7 @@ ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 | `slurm_submit` | 带有显式分区 / 时间 / CPU / 节点 / GPU 的 sbatch | ✗ |
 | `job_status` | squeue + sacct 查询 | ✗ |
 | `job_cancel` | 取消运行中的作业（scancel） | ✗ |
-| `run_bash` | 直接 bash 命令（本地或通过 SSH） | ✗ |
+| `probe_platform_capabilities` | 在**计算分区上**探测工具可用性（`command -v`）并缓存到 `{checkpoint}/platform_capabilities.json`；尽力而为（任何失败都报告为 skipped 且不写入） | ✗ |
 | `singularity_build` | 从定义文件构建 SIF | ✗ |
 | `singularity_run` | 在 SIF 内运行命令 | ✗ |
 | `singularity_pull` | 从远程 URI 拉取 SIF | ✗ |
@@ -73,11 +73,14 @@ ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
-| `survey` | 先前工作调研：存在冻结的 `virsci_snapshot` 语料库时复用之，否则实时查询 Semantic Scholar；纯 HTTP | ✗ |
+| `survey` | 先前工作调研：存在冻结的 `virsci_snapshot` 语料库时复用之，否则实时查询 Semantic Scholar，再否则回退到 arXiv；纯 HTTP | ✗ |
 | `generate_ideas` | LLM 根据调研 + 上下文生成排序的 idea 候选 | ✓ |
 
-这两个是该技能仅有的已注册工具（由
-`ari-skill-idea/tests/test_server.py` 通过 `mcp.list_tools()` 钉住）。
+这两个是该技能仅有的已注册工具——`_load_virsci_snapshot_papers` 只是
+`survey` 直接调用的普通辅助函数，绝不对 agent 可见；
+`ari-skill-idea/tests/test_server.py` 通过 `mcp.list_tools()` 同时钉住
+这两点。当快照缺失且 Semantic Scholar 不可用（无 key 或被限流）时，
+`survey` 会回退到 arXiv；即使最终 0 篇也会在 stderr 上报告，而不是悄悄放行。
 它们也是 RQGM `VirSciAdapter` 背后的 MCP 表面：在可选启用的
 `ari_rqgm` 模式下且 `proposal_router.generators.virsci.enabled: true`
 时，core 侧的 ProposalRouter 会在每纪元调用预算内把构思事件路由到

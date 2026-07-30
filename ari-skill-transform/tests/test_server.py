@@ -37,6 +37,23 @@ def test_empty_nodes_excluded():
         r = _run(nodes_to_science_data(f.name))
     assert r['summary_stats']['count'] == 2
 
+def test_resolve_best_node_excludes_erased():
+    # RQGM selective erasure: `_valid_for_frontier: false` nodes keep their
+    # stale scores but must never be picked as the science-data / EAR winner.
+    from server import _resolve_best_node, _resolve_best_node_for_synthesis
+    nodes = [
+        {'has_real_data': True, 'id': 'stale',
+         'metrics': {'_scientific_score': 0.9, '_valid_for_frontier': False}},
+        {'has_real_data': True, 'id': 'valid',
+         'metrics': {'_scientific_score': 0.2}},
+    ]
+    assert _resolve_best_node(nodes)['id'] == 'valid'
+    assert _resolve_best_node_for_synthesis(nodes) == 'valid'
+    erased_only = [nodes[0]]
+    assert _resolve_best_node(erased_only) is None
+    assert _resolve_best_node_for_synthesis(erased_only) == ''
+
+
 def test_sort_order():
     with tempfile.NamedTemporaryFile(suffix='.json', mode='w') as f:
         json.dump(SAMPLE, f); f.flush()

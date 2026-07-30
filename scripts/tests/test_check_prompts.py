@@ -42,7 +42,7 @@ CHECKER = SCRIPTS_DIR / "check_prompts.py"
 CENSUS_TARGETS = {
     ("ari-skill-plot/src/server.py", 566),        # viz_expert
     ("ari-skill-vlm/src/server.py", 97),          # figure_reviewer
-    ("ari-skill-transform/src/server.py", 834),   # node_report_analyst
+    ("ari-skill-transform/src/server.py", 843),   # node_report_analyst
     ("ari-skill-web/src/server.py", 505),         # query_librarian (_QUERY_SYSTEM)
 }
 

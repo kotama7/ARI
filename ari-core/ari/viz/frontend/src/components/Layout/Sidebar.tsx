@@ -47,13 +47,53 @@ export const NAV_ITEMS: NavEntry[] = NAV_ROUTES.map((route) => {
   };
 });
 
+const NAV_GROUPS = [
+  {
+    id: 'portfolio',
+    labelKey: 'nav_group_portfolio',
+    keys: ['projects', 'home', 'experiments'],
+  },
+  {
+    id: 'research',
+    labelKey: 'nav_group_research',
+    keys: [
+      'overview',
+      'idea',
+      'ideas2',
+      'tree',
+      'tree2',
+      'monitor',
+      'results',
+      'results2',
+    ],
+  },
+  {
+    id: 'quality',
+    labelKey: 'nav_group_quality',
+    keys: ['governance', 'paperbench'],
+  },
+  {
+    id: 'system',
+    labelKey: 'nav_group_system',
+    keys: ['workflow', 'config', 'studio', 'settings'],
+  },
+] as const;
+
+function checkpointLabel(id: string): string {
+  const match = id.match(/^(\d{8})(\d{6})_(.+)$/);
+  if (!match) return id.replace(/_/g, ' ');
+  const [, date, time, slug] = match;
+  const readable = slug.replace(/_/g, ' ');
+  return `${readable} · ${date.slice(4, 6)}/${date.slice(6, 8)} ${time.slice(0, 2)}:${time.slice(2, 4)}`;
+}
+
 export function Sidebar({ guiV2 = true }: { guiV2?: boolean }) {
   const { currentPage, setCurrentPage, state, checkpoints, refreshCheckpoints } = useAppContext();
   const { t } = useI18n();
 
   // ── Sidebar resize ──
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const [sidebarWidth, setSidebarWidth] = useState<number>(220);
+  const [sidebarWidth, setSidebarWidth] = useState<number>(260);
   const dragging = useRef(false);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
@@ -119,17 +159,50 @@ export function Sidebar({ guiV2 = true }: { guiV2?: boolean }) {
   const visibleNavItems = NAV_ITEMS.filter(
     (item) => (guiV2 || !item.guiV2) && !replacedKeys.has(item.key),
   );
+  const primaryItem = visibleNavItems.find((item) => item.key === 'new');
+  const groupedItems = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.keys.flatMap((key) => {
+      const item = visibleNavItems.find((candidate) => candidate.key === key);
+      return item ? [item] : [];
+    }),
+  })).filter((group) => group.items.length > 0);
+
+  const isActive = (key: string) =>
+    currentPage === key || (key === 'new' && currentPage === 'wizard');
+
+  const renderNavItem = (item: NavEntry) => (
+    <button
+      key={item.key}
+      type="button"
+      className={`nav-item${isActive(item.key) ? ' active' : ''}`}
+      onClick={() => handleNav(item.key)}
+      tabIndex={0}
+      aria-current={isActive(item.key) ? 'page' : undefined}
+      title={isCollapsed ? t(item.labelKey) : undefined}
+    >
+      <span className="nav-icon" aria-hidden="true">{item.icon}</span>
+      {!isCollapsed && <span className="nav-label">{t(item.labelKey)}</span>}
+    </button>
+  );
+
+  const activeCheckpoint = checkpoints.find(
+    (checkpoint) => checkpoint.path === state?.checkpoint_path,
+  );
 
   return (
     <>
-      {/* Hamburger button (visible only at <=480px via CSS) */}
+      {/* Hamburger button (visible at tablet/phone widths via CSS) */}
       <button
         id="btn-hamburger"
+        type="button"
         style={{ display: 'none' }}
         onClick={() => setMobileOpen((v) => !v)}
         aria-label="Menu"
+        aria-controls="sidebar"
+        aria-expanded={mobileOpen}
       >
-        {'☰'}
+        {mobileOpen ? '×' : '☰'}
       </button>
 
       {/* Overlay for mobile sidebar */}
@@ -147,73 +220,115 @@ export function Sidebar({ guiV2 = true }: { guiV2?: boolean }) {
         />
       )}
 
-      <div
+      <aside
         ref={sidebarRef}
         id="sidebar"
-        className={mobileOpen ? 'sidebar-open' : ''}
-        style={{ width: sidebarWidth, minWidth: sidebarWidth }}
+        className={[
+          mobileOpen ? 'sidebar-open' : '',
+          isCollapsed ? 'sidebar-collapsed' : '',
+        ].filter(Boolean).join(' ')}
+        style={
+          {
+            '--sidebar-width': `${sidebarWidth}px`,
+          } as React.CSSProperties
+        }
       >
         {/* Logo */}
         <div className="sidebar-logo">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="sidebar-brand">
             <img
               src="/logo.png"
               alt="ARI"
-              style={{ width: 40, height: 40, objectFit: 'contain', borderRadius: 8 }}
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
             {!isCollapsed && (
               <div className="sidebar-logo-text">
-                <div style={{ fontSize: '1.25rem', fontWeight: 800, letterSpacing: '-0.5px', color: 'var(--blue-light)' }}>ARI</div>
-                <div style={{ fontSize: '.7rem', color: 'var(--muted)' }}>Autonomous Research Intelligence</div>
+                <div className="sidebar-product-name">ARI</div>
+                <div className="sidebar-product-tagline">Autonomous Research Intelligence</div>
               </div>
             )}
           </div>
         </div>
 
-        {/* Navigation */}
-        <nav>
-          {visibleNavItems.map((item) => (
-            <div
-              key={item.key}
-              className={`nav-item${currentPage === item.key || (item.key === 'new' && currentPage === 'wizard') ? ' active' : ''}`}
-              onClick={() => handleNav(item.key)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleNav(item.key);
-              }}
-            >
-              <span className="nav-icon">{item.icon}</span>
-              {!isCollapsed && <span className="nav-label">{t(item.labelKey)}</span>}
-            </div>
-          ))}
-        </nav>
-
-        {/* Project switcher */}
+        {/* Active run context belongs before navigation: users first confirm
+            what they are operating on, then choose a workspace. */}
         {!isCollapsed && (
           <div id="project-switcher">
-            <label>{t('active_project')}</label>
+            <div className="project-context-heading">
+              <label htmlFor="project-select">{t('active_project')}</label>
+              <span className="project-count">{checkpoints.length}</span>
+            </div>
             <select
               id="project-select"
               value={state?.checkpoint_path ?? ''}
               onChange={handleProjectSwitch}
+              title={activeCheckpoint?.id ?? t('select_active_project')}
             >
               <option value="">{t('select_active_project')}</option>
               {checkpoints.map((cp) => (
                 <option key={cp.id} value={cp.path}>
-                  {cp.id}
+                  {checkpointLabel(cp.id)}
                 </option>
               ))}
             </select>
             {state?.status_label && (
-              <div className="project-status">{state.status_label}</div>
+              <div className="project-status">
+                <span
+                  className={`project-status-dot${state.is_running ? ' is-running' : ''}`}
+                  aria-hidden="true"
+                />
+                {state.status_label}
+              </div>
             )}
           </div>
         )}
 
+        {/* Navigation is intentionally tiered: one primary action followed by
+            four stable information-architecture groups. */}
+        <nav aria-label="ARI">
+          {primaryItem && (
+            <button
+              type="button"
+              className={`nav-primary-action${isActive(primaryItem.key) ? ' active' : ''}`}
+              onClick={() => handleNav(primaryItem.key)}
+              tabIndex={0}
+              aria-current={isActive(primaryItem.key) ? 'page' : undefined}
+              title={isCollapsed ? t(primaryItem.labelKey) : undefined}
+            >
+              <span aria-hidden="true">{primaryItem.icon}</span>
+              {!isCollapsed && <span>{t(primaryItem.labelKey)}</span>}
+            </button>
+          )}
+
+          <div className="nav-groups">
+            {groupedItems.map((group) => (
+              <div
+                key={group.id}
+                className="nav-group"
+                role="group"
+                aria-labelledby={isCollapsed ? undefined : `nav-group-${group.id}`}
+                aria-label={isCollapsed ? t(group.labelKey) : undefined}
+              >
+                {!isCollapsed && (
+                  <div
+                    id={`nav-group-${group.id}`}
+                    className="nav-group-title"
+                  >
+                    {t(group.labelKey)}
+                  </div>
+                )}
+                <div className="nav-group-items">
+                  {group.items.map(renderNavItem)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </nav>
+
         {/* Resize handle */}
         <div
+          className="sidebar-resize-handle"
+          aria-hidden="true"
           style={{
             position: 'absolute',
             right: 0,
@@ -225,7 +340,7 @@ export function Sidebar({ guiV2 = true }: { guiV2?: boolean }) {
           }}
           onMouseDown={onMouseDown}
         />
-      </div>
+      </aside>
     </>
   );
 }

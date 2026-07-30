@@ -2,6 +2,13 @@
 
 > **Status**: planned · **Depends on**: 00, 02, 04, 05, 07 · **This is a temporary task plan** — see [INDEX.md](INDEX.md). It will be deleted once its deletion criteria are met.
 
+> **Implemented amendment (2026-07-28):** T16 is no longer a mid-epoch
+> exception. It force-closes the current epoch and atomically commits the
+> quarantine plus a freshly fingerprinted epoch-open in the same boundary
+> transaction. Any older “sole mid-epoch edge” wording below is retained only
+> as planning history and is superseded by the permanent architecture and
+> schema references.
+
 ## 1. Purpose
 
 ARI-RQGM promotes, demotes, quarantines, and retires prompt-defined components

@@ -22,9 +22,13 @@ def build_best_nodes_context(all_nodes, experiment_goal: str = "") -> tuple[str,
     """
     from ari.orchestrator.node import NodeStatus
 
+    # `_valid_for_frontier is False` = RQGM selective erasure; erased nodes'
+    # retained scores must not ground the paper context (inert on the default
+    # path — the key is only written by RQGM machinery).
     results = [
         n for n in all_nodes
         if n.status == NodeStatus.SUCCESS and n.has_real_data
+        and (n.metrics or {}).get("_valid_for_frontier", True) is not False
     ]
     if not results:
         return "", {}

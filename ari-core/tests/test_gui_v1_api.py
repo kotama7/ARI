@@ -82,6 +82,33 @@ def _assert_404_envelope(r: dict, code: str = "not_found") -> None:
     assert _REQUEST_ID_RE.match(err["request_id"])
 
 
+def test_run_portfolio_is_globally_newest_first_across_roots(
+    tmp_path, monkeypatch
+):
+    """Root scan order must not decide which run the dashboard calls latest."""
+    older_root = tmp_path / "older-root"
+    newer_root = tmp_path / "newer-root"
+    older = older_root / "20260701000000_older"
+    newer = newer_root / "20260702000000_newer"
+    older.mkdir(parents=True)
+    newer.mkdir(parents=True)
+    os.utime(older, (100, 100))
+    os.utime(newer, (200, 200))
+    monkeypatch.setattr(
+        api_state,
+        "_checkpoint_search_bases",
+        lambda: [older_root, newer_root],
+    )
+
+    v1_runs = v1_queries.list_runs("default")
+    assert [run.run_id for run in v1_runs] == [newer.name, older.name]
+
+    from ari.viz.checkpoint_api import _api_checkpoints
+
+    legacy_runs = _api_checkpoints()
+    assert [run["id"] for run in legacy_runs] == [newer.name, older.name]
+
+
 # ── router table + matching ──────────────────────────────────────────────
 
 
@@ -253,6 +280,7 @@ def test_runs_happy_path(ckpt_base):
     assert run["node_count"] == 10
     assert run["review_score"] is None  # no review_report.json in fixture
     assert run["checkpoint_path"] == str(ckpt_base / RUN_ID)
+    assert run["has_paper"] is False
     assert re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", run["mtime_utc"])
     # Status must agree with the tree the canonical loader sees: an orphaned
     # "running" node (no live pid) reads as "stopped", else "completed".
@@ -290,6 +318,12 @@ def test_run_summary_matches_list_entry(ckpt_base):
     summary = dispatch("GET", f"/api/v1/runs/{RUN_ID}/summary")
     assert _REQUEST_ID_RE.match(summary.pop("request_id"))
     assert summary == listed
+
+
+def test_run_summary_reports_generated_pdf(ckpt_base):
+    (ckpt_base / RUN_ID / "full_paper.pdf").write_bytes(b"%PDF-1.4\n")
+    listed = dispatch("GET", "/api/v1/projects/default/runs")["runs"][0]
+    assert listed["has_paper"] is True
 
 
 def test_tree_byte_parity_and_revision(ckpt_base):
@@ -465,3 +499,18 @@ def test_openapi_covers_every_route_and_is_deterministic():
                 assert {"400", "409"} <= set(op["responses"].keys())
     # Deterministic (P2): two builds serialize identically, no timestamps.
     assert v1_openapi.dumps(doc) == v1_openapi.dumps(v1_openapi.build_openapi())
+
+
+def test_run_summary_best_metric_excludes_erased_nodes(tmp_path):
+    # RQGM-erased nodes keep their stale score for audit; the run card must
+    # not display it as the run's best (consistent with select_best_node).
+    import json as _json
+
+    (tmp_path / "tree.json").write_text(_json.dumps({"run_id": "r", "nodes": [
+        {"id": "a", "status": "completed",
+         "metrics": {"_scientific_score": 0.9, "_valid_for_frontier": False}},
+        {"id": "b", "status": "completed",
+         "metrics": {"_scientific_score": 0.7}},
+    ]}))
+    from ari.viz.v1.queries import _run_summary_from_dir
+    assert _run_summary_from_dir(tmp_path).best_metric == 0.7

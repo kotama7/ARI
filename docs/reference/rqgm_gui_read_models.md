@@ -8,7 +8,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_gui_v1_rqgm.py
     role: test
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # RQGM GUI Read Models
@@ -32,14 +32,21 @@ shape every payload on this page:
 
 1. **`ari.rqgm` is never imported.** The read model parses the committed
    checkpoint artifacts directly and re-executes no kernel or score-policy
-   decision. The only RQGM arithmetic reproduced is the frozen hash contract
-   `event_hash = hash12(canonical_json(payload))`, duplicated deliberately
-   because a viz → governance import edge is prohibited; parity with the
-   production helpers is pinned by `ari-core/tests/test_gui_v1_rqgm.py`.
+   decision. The only RQGM arithmetic reproduced is the event-digest
+   contract, which is schema-versioned: legacy schema-v1 records keep the
+   short payload-only hash `hash12(canonical_json(payload))`, while
+   schema-v2 records use a full SHA-256 over every replay-relevant envelope
+   field (`schema_version`, `event_id`, `event_type`, `transaction_id`,
+   `payload`, `prev_event_hash`). It is duplicated deliberately because a
+   viz → governance import edge is prohibited; parity with the production
+   helpers is pinned by `ari-core/tests/test_gui_v1_rqgm.py`.
 2. **Committed records only.** A JSONL trailing partial line (a torn append)
    is silently ignored, and transition events after an
    `epoch_transaction_prepare` with no matching commit are never adopted
    into current state — the mirror of `ari.rqgm.store.committed_events`.
+   "Matching" is by `transaction_id`: a commit (or an intervening event)
+   carrying a different transaction id does not close or join the pending
+   transaction.
 3. **Degraded, never broken.** A broken hash chain or a stale rollup flips an
    integrity flag and appends `degraded_reasons`; a corrupt artifact yields
    HTTP 200 with honest flags, not a 500. A missing source is `None`, never
@@ -101,7 +108,7 @@ Two consequences worth internalising:
 
 | Flag | `true` | `false` | `null` |
 |---|---|---|---|
-| `transitions_chain_ok` | Every line of `rqgm_transitions.jsonl` verifies: `event_hash` covers its payload and `prev_event_hash` chains (the first line from `""`). | A hash mismatch or a chain break was found; scanning continued so the data is still served, flagged. | The file is missing. |
+| `transitions_chain_ok` | Every line of `rqgm_transitions.jsonl` verifies: `event_hash` covers the line's declared event envelope (the payload alone only for legacy schema-v1 lines) and `prev_event_hash` chains (the first line from `""`). | A hash mismatch or a chain break was found; scanning continued so the data is still served, flagged. | The file is missing. |
 | `registry_verified` | `rqgm_registry.json`'s `as_of_event_hash` equals the committed transitions tail. | The rollup is stale or ahead of the log. | The rollup is missing/unreadable, or there is no transitions tail to compare with. |
 | `audit_chain_ok` | `rqgm_audit.jsonl` verifies as an independent chain. | Break found. | The file is missing. |
 

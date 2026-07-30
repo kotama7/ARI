@@ -22,6 +22,8 @@ eval_defaults:
     coding: "${ARI_MODEL_CODING}"
     bfts: "${ARI_MODEL_BFTS}"
     eval: "${ARI_MODEL_EVAL}"
+    paper: "${ARI_MODEL_PAPER}"
+    rubric: "${ARI_MODEL_RUBRIC}"
 
 conditions:
   # Control: current ARI behavior verbatim (the shipped default config).
@@ -115,6 +117,64 @@ paper_conditions:
         prompt_evolution: {enabled: true}
         anchor: {enabled: true}
         self_preference: {enabled: true}
+
+# RQGM-paper-aligned comparison arms. These are evaluation presets, NOT new
+# paper.mode values: all five run the same rqgm_archive pipeline and differ
+# only in mechanism membership. P0/P3/P4 form the headline comparison;
+# P1/P2 isolate replacement and selective-erasure effects.
+#
+# For P0-P3, the fixed ConstitutionalKernel remains installed but runs in
+# `audit_only`: it records findings without blocking or changing the original
+# RQGM transition outcome. P4 switches the same kernel to `standard`. This is
+# safer and more observable than adding a production "kernel off" mode.
+rqgm_paper_conditions:
+  # HGM-H analogue: writer evolves against a fixed critic. The evaluation-only
+  # role gate blocks paper_reviewer successor generation.
+  P0_hgm_h_fixed_critic:
+    paper: {mode: rqgm_archive}
+    rqgm:
+      kernel: {enforcement: audit_only}
+      frontier_repair: {enabled: false}
+      eval:
+        enabled: true
+        paper_ablation: {condition_id: P0_hgm_h_fixed_critic}
+      paper:
+        enabled: true
+        archive: {width: 4, refine_rounds: 2, max_expansions: 12, depth: 3}
+        epoch: {rounds: 8}
+        prompt_evolution: {enabled: true}
+        anchor: {enabled: true}
+        self_preference: {enabled: false}
+  # RQGM replacement-only: both roles may evolve, but no adversarial pool.
+  P1_rqgm_replacement_only:
+    inherits: P0_hgm_h_fixed_critic
+    rqgm:
+      frontier_repair: {enabled: true}
+      eval:
+        paper_ablation: {condition_id: P1_rqgm_replacement_only}
+  # Full RQGM co-evolution without selective erasure.
+  P2_rqgm_no_erasure:
+    inherits: P1_rqgm_replacement_only
+    rqgm:
+      frontier_repair: {enabled: false}
+      eval:
+        paper_ablation: {condition_id: P2_rqgm_no_erasure}
+      paper:
+        self_preference: {enabled: true}
+  # RQGM-paper full mechanism condition, before the Constitutional extension.
+  P3_rqgm_full:
+    inherits: P2_rqgm_no_erasure
+    rqgm:
+      frontier_repair: {enabled: true}
+      eval:
+        paper_ablation: {condition_id: P3_rqgm_full}
+  # Proposed method: P3 plus blocking Constitutional enforcement.
+  P4_constitutional_rqgm:
+    inherits: P3_rqgm_full
+    rqgm:
+      kernel: {enforcement: standard}
+      eval:
+        paper_ablation: {condition_id: P4_constitutional_rqgm}
 
 # Fixed external reviewer panel for the acceptance-rate metric (§5.5). A PINNED
 # rubric ensemble, run post-hoc on the FINAL manuscript, DISJOINT from the

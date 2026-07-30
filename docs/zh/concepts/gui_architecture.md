@@ -44,7 +44,7 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/__tests__/routeNavParity.test.tsx
     role: test
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # 仪表盘架构
@@ -146,7 +146,9 @@ ARI 仪表盘是一个由 `ari/viz/` 中的 Python HTTP 服务器提供的 React
   `#/` 前缀与任何查询串，把空 hash 当作 `home`，并应用诸如 `new` → `wizard`
   之类的 legacy 别名）。
 - `Sidebar.tsx` 从 `navItems()` 构建它的导航表，后者会把一个 `navReplaces`
-  条目物化到其目标的位置上，并按 `navOrder` 排序。
+  条目物化到其目标的位置上，并按 `navOrder` 排序；侧边栏随后把向导条目提取
+  出来作为主操作，并把其余条目排进四个固定分组（portfolio / research /
+  quality / system）。
 
 两个冻结字面量测试固定了这个结果，因此一个路由不可能漂移成「存在于导航中却
 不存在于路由器中」（或反过来）。由此推出的实用规则是：
@@ -170,11 +172,13 @@ ARI 仪表盘是一个由 `ari/viz/` 中的 Python HTTP 服务器提供的 React
 视图都可重新加载、可加书签、可分享 —— 「看运行 R1 的节点 N7」是一个链接，
 而不是一串点击操作。
 
-legacy 路径是促成这条规则的反面对照。从运行行进入 legacy Results 页面，至今
-仍要经过一次*隐式*交接（一个 `sessionStorage` 键加上一个裸的 `#/results`
-hash），而且 legacy 外壳还携带一个进程级的*活动检查点*。这两者对 v2 工作区
-都不是有效输入：v2 路由是 run 显式的，正是这一点让两个标签页中打开的两个
-运行互不干扰。
+legacy 路径是促成这条规则的反面对照。从 legacy Experiments 的行进入 legacy
+Results 页面，至今仍要经过一次*隐式*交接（一个 `sessionStorage` 键加上一个
+裸的 `#/results` hash），而且 legacy 外壳还携带一个进程级的*活动检查点*。
+这两者对 v2 工作区都不是有效输入：v2 路由是 run 显式的，正是这一点让两个
+标签页中打开的两个运行互不干扰 —— v2 的行改为链接到
+`#/results?run=<run_id>`，Results 页面把该参数视为权威，`sessionStorage`
+键只作为老调用方的回退保留。
 
 ---
 

@@ -296,6 +296,15 @@ describe('ResultsV2Page (gui_refresh Wave 4d v2 slice)', () => {
     expect(within(review).getByText('Rubric: neurips')).toBeInTheDocument();
     expect(within(review).getByText('paper .tex')).toBeInTheDocument();
     expect(within(review).getByText('paper .pdf')).toBeInTheDocument();
+    const paperActions = screen.getByTestId('results2-paper-actions');
+    expect(
+      within(paperActions).getByText('Open original PDF').getAttribute('href'),
+    ).toBe(
+      `/api/checkpoint/${RUN}/paper.pdf`,
+    );
+    expect(
+      within(paperActions).getByText('Preview / edit paper').getAttribute('href'),
+    ).toBe(`#/results?run=${RUN}`);
 
     const ors = screen.getByTestId('results2-ors');
     expect(within(ors).getByText('REPRODUCED')).toBeInTheDocument();
@@ -375,7 +384,7 @@ describe('ResultsV2Page (gui_refresh Wave 4d v2 slice)', () => {
     ).toBe(`#/governance?run=${RUN}`);
     expect(
       within(links)
-        .getByText('Legacy Results (full editor / PDF workspace)')
+        .getByText('Full paper workspace')
         .getAttribute('href'),
     ).toBe(`#/results?run=${RUN}`);
   });
@@ -518,7 +527,7 @@ describe('Sidebar nav takeover (Wave 4d: results2 replaces the results slot)', (
 
   it('gui_v2 on: exactly one Results entry and it writes #/results2', () => {
     renderSidebar(true);
-    const items = screen.getAllByText('Results');
+    const items = screen.getAllByText('Paper & results');
     expect(items.length).toBe(1);
     act(() => {
       items[0].click();
@@ -528,7 +537,7 @@ describe('Sidebar nav takeover (Wave 4d: results2 replaces the results slot)', (
 
   it('gui_v2 off: exactly one Results entry and it writes the legacy #/results', () => {
     renderSidebar(false);
-    const items = screen.getAllByText('Results');
+    const items = screen.getAllByText('Paper & results');
     expect(items.length).toBe(1);
     act(() => {
       items[0].click();

@@ -30,7 +30,7 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/components/Governance/__tests__/GovernancePage.test.tsx
     role: test
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # RQGM Governance Workspace Guide
@@ -82,7 +82,7 @@ Configuration Studio's Execution control (new runs only; see
 [Configuration Studio](configuration_studio.md)). Choosing a mode there is
 a launch decision, not a governance mutation: it registers no component,
 adopts no policy and rewrites no score, so this workspace stays read-only
-either way. The 96 `rqgm.*` governance and tuning parameters are still
+either way. The 97 `rqgm.*` governance and tuning parameters are still
 configuration-file only.
 
 The tab strip is a real `role="tablist"` composite with
@@ -333,7 +333,12 @@ tail -c +$((OFFSET + 1)) "$CKPT/rqgm_audit.jsonl" | head -1 | python -m json.too
 
 Offsets are 0-based byte positions of the line start, which is why they
 are stable for an append-only log. The event hash contract is
-`sha256(canonical_json(payload))[:12]`.
+schema-scoped: a legacy `schema_version: 1` record hashes its payload alone
+(`sha256(canonical_json(payload))[:12]`), while every newly written
+`schema_version: 2` record carries a full-length
+`sha256(canonical_json({schema_version, event_id, event_type,
+transaction_id, payload, prev_event_hash}))` — the whole replay-relevant
+envelope, not just the payload.
 
 ## Degraded and broken chains
 

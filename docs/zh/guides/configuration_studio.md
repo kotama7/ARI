@@ -54,12 +54,12 @@ last_verified: 2026-07-27
 ## 字段注册表
 
 两个页面上的一切，都由一份「已声明 `ARIConfig` 叶子的机器可读清单」与一份
-手写元数据叠加层合并生成。当前是 **144 个叶子、元数据覆盖率 100 %** ——
+手写元数据叠加层合并生成。当前是 **145 个叶子、元数据覆盖率 100 %** ——
 注册表构建过程宁可抛出异常，也不会放行一个没有元数据的字段，因此新的配置
 字段不可能在缺少 category、level、scope、sensitivity 与 mutability 的情况下
 悄悄出现。
 
-当前的分类：Governance（96）、Proposal routing（14）、Search (BFTS)（14）、
+当前的分类：Governance（97）、Proposal routing（14）、Search (BFTS)（14）、
 Infrastructure（5）、Models（5）、Evaluation（4）、Execution mode（4）、
 Skills（2）。
 
@@ -74,12 +74,12 @@ showing the configuration schema with default values」）。
 
 每一行展示点分路径、生效值、一个**溯源来源**徽章、一个**可变性**徽章、
 适用时的低置信度标记，以及任何 `applies_when` 备注。搜索框可按路径或分类
-过滤，因此 144 个字段中的每一个都保持可被发现。解析器警告会在它们自己的
+过滤，因此 145 个字段中的每一个都保持可被发现。解析器警告会在它们自己的
 面板中逐字列出 —— 什么都不会被静默丢弃。
 
 ![单个运行的 Config 浏览器：解析器警告面板、字段计数旁的过滤框，以及按类别分组的表格，逐行列出点分路径、生效值、溯源来源徽章与可变性徽章；`llm.api_key` 一行显示为「secret (reference only)」](../../assets/images/zh/dashboard_config.png)
 
-过滤框旁边的计数可能大于 144。已解析清单里那些注册表并不认识的叶子仍会被
+过滤框旁边的计数可能大于 145。已解析清单里那些注册表并不认识的叶子仍会被
 展示，归到 **Other** 分组下 —— 一条清单路径绝不会仅仅因为缺少注册表元数据
 就被丢弃。
 
@@ -385,7 +385,7 @@ legacy 的 `POST /api/launch` 未作变更，仍并行运行；legacy 向导（`
 会以 `not_project_scope` 拒绝它们；在该作用域下这两个下拉被禁用并说明原因。请在
 运行模板或运行草稿上选择模式。
 
-**其余 96 个治理叶子保持只读。** `Execution mode` 分类与 `rqgm.*` 树中的其他每
+**其余 97 个治理叶子保持只读。** `Execution mode` 分类与 `rqgm.*` 树中的其他每
 一条路径（epoch、kernel、governance、adversarial、预算、论文归档调优）都渲染在
 一个折叠的只读分组中 —— **连同其生效值** —— 这样你能准确看到将会生效的内容，
 分组下附有这条说明：
@@ -396,7 +396,7 @@ legacy 的 `POST /api/launch` 未作变更，仍并行运行；legacy 向导（`
 > change them. Selecting a mode above is not a governance mutation.
 
 这道锁是端到端的，不是装饰性的：启动端点会从注册表重新计算锁定集合
-（`Execution mode` 分类 ∪ `rqgm.*` **减去**那四个可选择的叶子 —— 今天是 96 条
+（`Execution mode` 分类 ∪ `rqgm.*` **减去**那四个可选择的叶子 —— 今天是 97 条
 路径），并以 `mode_locked` 为理由拒绝那些自身 `values` 携带其中任一条的草稿。
 启动时的 `ARI_*` 环境变量转换同样在结构上排除了每一条被锁定的路径，因此从 run
 模板继承来的值也无法抵达子进程。

@@ -10,14 +10,8 @@ gates measure against. Charter reference:
 
 - `README.md` — this file.
 - `__init__.py` — package marker.
-- `run_fixture_factory.py` — a pure-Python factory
 - `rqgm_fixture_factory.py` — Wave 4a: layers a deterministic,
-  schema-valid RQGM governance surface (`rqgm_state.json`,
-  `rqgm_transitions.jsonl`, `rqgm_audit.jsonl`, `epoch_state.json`,
-  `rqgm_registry.json`, `rqgm_adversarial_cases.jsonl`, `rqgm_prompts/`,
-  node score-lineage sentinels) on top of `make_run_checkpoint`; corrupt
-  modes `broken_chain` / `truncated_transitions` / `registry_mismatch`.
-  Consumed by `tests/test_gui_rqgm_fixtures.py`.
+- `run_fixture_factory.py` — a pure-Python factory
 
 ## Sizes
 

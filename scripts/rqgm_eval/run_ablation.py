@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """RQGM ablation-run orchestrator (docs/plans/ari_rqgm/13 §5.5/§7).
 
-Expands B0-B8 presets from ``ablation_matrix.yaml`` into per-run
+Expands B0-B8 exploration presets, the legacy B paper ladder, or the
+RQGM-paper-aligned P0-P4 presets from ``ablation_matrix.yaml`` into per-run
 ``workflow.yaml`` overlays and drives each condition × seed as a FRESH
 ``ari run`` checkpoint under ``workspace/rqgm_eval/<eval_id>/`` (no resume,
 no ``skip_if_exists`` reuse across conditions), then computes each run's
@@ -33,6 +34,9 @@ Modes
               mechanism S — nothing in a real ``ari run`` consumes
               ``rqgm.eval.scripted_components``) and are refused rather
               than recorded as active faults that were never injected.
+              For ``--rqgm-paper-conditions``, the final manuscript is then
+              evaluated by a separate fixed rubric panel and written to
+              ``panel_review_report.json`` before paper metrics are computed.
 """
 
 from __future__ import annotations
@@ -77,6 +81,13 @@ def expand_paper_condition(preset_id: str, matrix_path=None) -> dict:
     """
     matrix = _conditions.load_matrix(matrix_path)
     return _conditions.paper_condition_overlay(matrix, preset_id)
+
+
+def expand_rqgm_paper_condition(preset_id: str, matrix_path=None) -> dict:
+    """Expand an RQGM-original-paper-aligned P0-P4 evaluation arm."""
+
+    matrix = _conditions.load_matrix(matrix_path)
+    return _conditions.rqgm_paper_condition_overlay(matrix, preset_id)
 
 
 def _parse_inject(arg: str) -> tuple:
@@ -146,7 +157,8 @@ def _experiment_paths(raw) -> list:
 
 def _run_one(eval_root: Path, condition_id: str, seed: int,
              experiment: Path, overlay: dict, specs, *,
-             ari_bin: str, models_env: dict) -> dict:
+             ari_bin: str, models_env: dict, paper: bool = False,
+             panel: "dict | None" = None) -> dict:
     """One fresh Tier-3 checkpoint: write overlay, apply injections,
     spawn ``ari run``, compute the metric report."""
     ckpt = eval_root / "runs" / f"{condition_id}_s{seed}_{experiment.stem}"
@@ -170,6 +182,19 @@ def _run_one(eval_root: Path, condition_id: str, seed: int,
         [ari_bin, "run", str(experiment), "--config", str(config_path)],
         check=True, env=env, cwd=str(REPO_ROOT),
     )
+    if paper and panel:
+        subprocess.run(
+            [
+                sys.executable,
+                str(Path(__file__).with_name("run_paper_panel.py")),
+                str(ckpt),
+                "--spec-json",
+                json.dumps(panel, sort_keys=True),
+            ],
+            check=True,
+            env=env,
+            cwd=str(REPO_ROOT),
+        )
     if not _conditions.virsci_enabled(overlay):
         # Plan 13 §5.2: the VirSci-off condition must be VirSci-free
         # (no prompts in prompt_trace.jsonl, no transcript artifacts).
@@ -182,6 +207,7 @@ def _run_one(eval_root: Path, condition_id: str, seed: int,
     report = _metrics.compute_metric_report(
         ckpt, injections=specs or None,
         condition_id=condition_id, seed=seed,
+        paper=paper, panel=panel,
     )
     # Keep (seed, experiment) rows distinct in the campaign aggregation.
     report["experiment_id"] = experiment.stem
@@ -204,6 +230,13 @@ def main(argv=None) -> int:
         help="comma-separated paper-archive B-ladder ids "
              "(B0_paper_linear,B_archive_no_coevo,B_full); expanded to "
              "paper.mode + rqgm.paper.* overlays (dry-run supported)",
+    )
+    parser.add_argument(
+        "--rqgm-paper-conditions", default="",
+        help="comma-separated RQGM-paper-aligned evaluation ids "
+             "(P0_hgm_h_fixed_critic,P1_rqgm_replacement_only,"
+             "P2_rqgm_no_erasure,P3_rqgm_full,"
+             "P4_constitutional_rqgm)",
     )
     parser.add_argument("--eval-id", default="eval_local")
     parser.add_argument(
@@ -232,6 +265,14 @@ def main(argv=None) -> int:
 
     matrix = _conditions.load_matrix(args.matrix)
     paper_condition_ids = [c for c in args.paper_conditions.split(",") if c]
+    rqgm_paper_condition_ids = [
+        c for c in args.rqgm_paper_conditions.split(",") if c
+    ]
+    if paper_condition_ids and rqgm_paper_condition_ids:
+        raise SystemExit(
+            "--paper-conditions and --rqgm-paper-conditions are separate "
+            "campaigns; select one"
+        )
     if paper_condition_ids:
         # Paper-archive B-ladder (Task 07 §5.6): expand paper.mode +
         # rqgm.paper.* overlays. Dry-run prints them; a full Tier-3 paper
@@ -249,6 +290,64 @@ def main(argv=None) -> int:
             "`ari run` + `ari paper` with these overlays; use --dry-run to "
             "emit them, or the pinned presets in ablation_matrix.yaml"
         )
+    if rqgm_paper_condition_ids:
+        if args.smoke:
+            raise SystemExit(
+                "RQGM-paper P0-P4 conditions require the real paper pipeline; "
+                "--smoke is not supported"
+            )
+        if args.inject:
+            raise SystemExit(
+                "--inject currently targets the exploration failure set; "
+                "run the P0-P4 comparison without it"
+            )
+        parity = _conditions.eval_defaults_overlay(matrix)
+        overlays = {
+            cid: _conditions.deep_merge(
+                parity,
+                _conditions.rqgm_paper_condition_overlay(matrix, cid),
+            )
+            for cid in rqgm_paper_condition_ids
+        }
+        if args.dry_run:
+            print(json.dumps(overlays, indent=2, sort_keys=True))
+            return 0
+        seeds = [int(s) for s in args.seeds.split(",") if s] or [
+            int(s)
+            for s in (matrix.get("eval_defaults") or {}).get("seeds", [11])
+        ]
+        eval_root = (args.workspace / args.eval_id).resolve()
+        eval_root.mkdir(parents=True, exist_ok=True)
+        for cid, overlay in overlays.items():
+            out = eval_root / "configs" / f"{cid}.yaml"
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(
+                yaml.safe_dump(overlay, sort_keys=True), encoding="utf-8"
+            )
+        experiments = _experiment_paths(args.experiment)
+        models_env = _conditions.resolve_models(matrix, os.environ)
+        panel = dict((matrix.get("paper_eval_defaults") or {}).get("panel")
+                     or {})
+        reports = []
+        for cid in rqgm_paper_condition_ids:
+            for seed in seeds:
+                for experiment in experiments:
+                    reports.append(
+                        _run_one(
+                            eval_root, cid, seed, experiment, overlays[cid], (),
+                            ari_bin=args.ari_bin, models_env=models_env,
+                            paper=True, panel=panel,
+                        )
+                    )
+        report = _smoke.build_ablation_report(
+            reports, eval_id=args.eval_id
+        )
+        _smoke.write_ablation_report(eval_root, report)
+        print(
+            "RQGM-paper ablation report: "
+            f"{eval_root / _smoke.ABLATION_REPORT_JSON}"
+        )
+        return 0
     condition_ids = [c for c in args.conditions.split(",") if c]
     specs = _select_specs(*_parse_inject(args.inject))
     scripted_ids = _injection.smoke_only_spec_ids(specs)

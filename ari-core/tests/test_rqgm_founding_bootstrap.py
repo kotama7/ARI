@@ -113,9 +113,10 @@ def test_live_boot_registers_founding_set(tmp_path):
         "evidence_clerk": "evidence_clerk_v1",
         # plan 11 §5.2 items 3-4: the recommendation roles now have a founding
         # component each, so they appear in the boot's active set like every
-        # other governed role. Roles WITHOUT a component (generator, reviewer)
-        # still carry only a prompt hash — that asymmetry is pre-existing.
+        # other governed role. The research generator is now also a registered
+        # component, closing node-provenance accountability.
         "failure_summary_compressor": "failure_summary_compressor_v1",
+        "generator": "generator_v1",
         "governance_judge": "governance_judge_v1",
         "judge": "artifact_judge_v1",
         "policy_mutator": "policy_mutator_v1",
@@ -175,6 +176,34 @@ def test_registry_version_stable_across_two_identical_boots(tmp_path):
     doc_a = json.loads((a / RQGM_REGISTRY_FILENAME).read_text())
     doc_b = json.loads((b / RQGM_REGISTRY_FILENAME).read_text())
     assert doc_a["registry_version"] == doc_b["registry_version"]
+
+
+def test_runtime_stamps_generator_provenance_once_from_frozen_epoch(tmp_path):
+    from ari.orchestrator.node import Node
+
+    rt, epoch = _boot(tmp_path)
+    node = Node(id="node_001", parent_id=None, depth=0)
+
+    assert rt.stamp_node_producer(node)
+    assert node.producer_component_id == "generator_v1"
+    assert node.producer_prompt_hash == epoch.active_prompt_hashes["generator"]
+    assert node.producer_epoch_id == epoch.epoch_id
+
+    # The provenance is an issuance-time fact. A later call or live-registry
+    # mutation must not rewrite it and transfer old work to a successor.
+    node.producer_component_id = "generator_v1"
+    original = (
+        node.producer_component_id,
+        node.producer_prompt_hash,
+        node.producer_epoch_id,
+    )
+    epoch.active_components["generator"] = "generator_v2"
+    assert rt.stamp_node_producer(node)
+    assert (
+        node.producer_component_id,
+        node.producer_prompt_hash,
+        node.producer_epoch_id,
+    ) == original
 
 
 # ── resume discipline (write-once) ───────────────────────────────────────────

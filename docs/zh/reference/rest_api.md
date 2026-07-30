@@ -28,7 +28,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_gui_state_facade_freeze.py
     role: test
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # REST API 参考
@@ -279,9 +279,9 @@ ttl_seconds: 60}`。仅当请求体中的 `challenge_id` 未被使用、未过�
 | 方法 | 路径 | 用途 |
 |---|---|---|
 | GET | `/api/v1/projects` | 列出 project —— 一个聚合各检查点搜索基路径的虚拟 `default` project。 |
-| GET | `/api/v1/projects/{project_id}/runs` | 某个 project 中的 run（检查点），以摘要卡片形式返回。 |
+| GET | `/api/v1/projects/{project_id}/runs` | 某个 project 中的 run（检查点），以摘要卡片形式返回 —— 跨所有检查点根目录合并为一个组合，按新到旧（mtime 降序）。 |
 | GET | `/api/v1/runs/{run_id}` | Run 详情：摘要加上由工件推导出的详情字段与一份能力映射。 |
-| GET | `/api/v1/runs/{run_id}/summary` | 单个 run 的摘要卡片标量（状态、节点数、评审分数、最优指标）。 |
+| GET | `/api/v1/runs/{run_id}/summary` | 单个 run 的摘要卡片标量（状态、节点数、评审分数、最优指标、`has_paper`）。 |
 | GET | `/api/v1/runs/{run_id}/tree` | BFTS 树 —— `tree_view` 节点列表按字节原样透传。 |
 | GET | `/api/v1/runs/{run_id}/idea` | 纯读取 `{ckpt}/idea.json`（想法 / 空白分析 / 主指标）；不存在时为 `present: false`，绝不伪造空值。 |
 | GET | `/api/v1/runs/{run_id}/results` | 有界的结果读模型：论文 / 评审 / ORS / EAR 的存在标志与标量 —— 绝不返回文件内容。 |
@@ -419,12 +419,23 @@ curl http://localhost:8765/state
 
 ```json
 {
-  "phase": "bfts",
-  "nodes": { "total": 7, "completed": 5, "running": 2, "failed": 0 },
-  "model": { "provider": "ollama", "model": "qwen3:8b" },
-  "cost": { "usd": 0.0, "tokens": 0 }
+  "checkpoint_id": "20260526T101500_matmul",
+  "current_phase": "bfts",
+  "node_count": 7,
+  "nodes": [{ "id": "node-0", "status": "success", "metrics": {} }],
+  "has_paper": false,
+  "llm_model": "ollama_chat/qwen3:8b",
+  "running_pid": 48213,
+  "is_running": true,
+  "exit_code": null,
+  "status_label": "🟢 Running",
+  "cost": { "total": 0.0 }
 }
 ```
+
+这是节选：冻结门面在没有活动检查点时恰好输出 7 个顶层键，检查点完全填充时输出
+35 个。`nodes` 是树节点列表（不是计数汇总），`cost` 是解析后的
+`cost_summary.json` 对象。
 
 **启动一次运行：**
 
@@ -448,10 +459,17 @@ curl http://localhost:8765/api/checkpoints
 
 ```json
 [
-  { "id": "20260526T101500_matmul", "status": "running", "nodes": 7, "review_score": null },
-  { "id": "20260520T090000_sort",   "status": "done",    "nodes": 12, "review_score": 0.71 }
+  { "id": "20260526T101500_matmul", "path": "workspace/checkpoints/20260526T101500_matmul",
+    "status": "running", "node_count": 7, "review_score": null,
+    "best_metric": null, "mtime": 1779795300 },
+  { "id": "20260520T090000_sort", "path": "workspace/checkpoints/20260520T090000_sort",
+    "status": "completed", "node_count": 12, "review_score": 0.71,
+    "best_metric": null, "mtime": 1779267600, "best_scientific_score": 0.83 }
 ]
 ```
+
+该列表是跨所有检查点搜索基路径合并的一个组合，按 `mtime` 降序（新到旧）排列。
+`status` 取值为 `unknown` / `running` / `stopped` / `completed` 之一。
 
 **错误格式**（任意 legacy 端点，非 2xx）：
 
@@ -488,7 +506,7 @@ curl http://localhost:8765/api/checkpoints
 
 | 方法 | 路径 | 用途 |
 |---|---|---|
-| GET | `/api/checkpoints` | 列出 `ARI_CHECKPOINT_DIR` 父目录下的所有检查点 |
+| GET | `/api/checkpoints` | 列出所有检查点搜索基路径下的检查点，按新到旧（`mtime` 降序） |
 | GET | `/api/checkpoint/<id>/summary` | 运行摘要（目标、节点数、状态、最优指标） |
 | GET | `/api/checkpoint/<id>/memory` | Letta 记忆内容 |
 | GET | `/api/checkpoint/<id>/memory_access` | 记忆写入/读取遥测数据 |
@@ -574,6 +592,28 @@ curl http://localhost:8765/api/checkpoints
 | 方法 | 路径 | 用途 |
 |---|---|---|
 | GET | `/api/nodes/<...>/report` | 每节点的 `node_report.json` |
+
+### PaperBench（v0.7.2）
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| GET | `/api/paperbench/papers` | 已登记的论文（来自注册表清单的 `{"papers": [...]}`） |
+| GET | `/api/paperbench/arxiv/<arxiv_id>` | 向公开 arXiv Atom API 探测元数据 |
+| GET | `/api/paperbench/papers/<paper_id>/license` | 单篇论文已记录的许可 / 再分发策略 |
+| POST | `/api/paperbench/papers/import` | 将一篇新论文登记进注册表 |
+| POST | `/api/paperbench/papers/<paper_id>/metadata` | 将字段合并进已有清单条目 |
+| POST | `/api/paperbench/papers/<paper_id>/delete` | 删除清单条目与论文目录（幂等） |
+| POST | `/api/paperbench/cost-estimate` | 对拟议运行做 dry-run 成本估算 |
+| POST | `/api/paperbench/run` | 为给定的 `paper_ids` 排入 PaperBench 作业 |
+| GET | `/api/paperbench/run/<job_id>` | 作业状态快照 |
+| GET | `/api/paperbench/run/<job_id>/logs` | 单个作业的 SSE 日志流（`since=`、`Last-Event-ID`；300 秒窗口、`: heartbeat`、终止帧 `event: done`） |
+| GET | `/api/paperbench/run/<job_id>/results` | 单个作业的结果载荷 |
+| GET, POST | `/api/paperbench/run/<job_id>/report` | 触发 / 获取审计报告（`languages`、`formats` —— URL 查询或 POST 请求体） |
+
+作业状态保存在内存表中，同时原子镜像到 `{registry_root}/jobs/{job_id}.json`
+（临时文件 + `os.replace`，权限 `0o600`），因此 viz 服务器重启后不再遗忘历史作业。
+重启后 GET 读取方会以只读方式回落到该记录；以活动状态（`queued` / `running`）
+持久化的作业会以追加状态 `interrupted` 报告 —— 工作线程绝不会被重新拉起。
 
 ### EAR + 发布（v0.7.0）
 

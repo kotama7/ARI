@@ -27,16 +27,8 @@ tail-follow is event-driven off the page's existing stream subscription.
 
 - `README.md` — this file.
 - `index.ts` — barrel re-export.
-- `OverviewPage.tsx` — the P1/P2 Overview workspace (typed `/api/v1`
-  react-query hooks + common components only) + the embedded P4 `LogsPanel`.
 - `LogsPanel.tsx` — collapsible cursor log explorer (P4): [Load more]
-  append with offset-keyed no-duplicate merge, grep filter restart,
-  event-driven tail-follow, in-panel `StaleDataBanner` while following
-  with the stream down, honest `present=false` absence note.
+- `OverviewPage.tsx` — the P1/P2 Overview workspace (typed `/api/v1`
 - `__tests__/` — component tests for this directory.
-  - `OverviewPage.test.tsx` — tests for `OverviewPage.tsx` (P1/P2 render,
-    RQGM vs simple_bfts variants, stale banner, phase/governance row
-    separation, blocker surface).
   - `LogsPanel.test.tsx` — tests for `LogsPanel.tsx` (lazy collapsed
-    no-fetch, cursor append no-dup, follow-on-event fetch, grep restart
-    from cursor 0, absence note, follow-only stale banner).
+  - `OverviewPage.test.tsx` — tests for `OverviewPage.tsx` (P1/P2 render,

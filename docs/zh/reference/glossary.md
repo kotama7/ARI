@@ -22,7 +22,7 @@ sources:
     role: implementation
   - path: ari-core/ari/rqgm
     role: implementation
-last_verified: 2026-07-10
+last_verified: 2026-07-30
 ---
 
 # 术语表
@@ -63,7 +63,8 @@ BFTS 节点相对于其父节点所扮演的角色：`draft`、`improve`、`debu
 
 **should_prune**
 BFTS 中的硬性截断谓词：当 `current_total ≥ max_total_nodes`、
-`depth ≥ max_depth` 或 `_sterile is True` 时剪枝。此处不掺入任何 LLM 判断。参见
+`depth ≥ max_depth`、`_sterile is True` 或 `_valid_for_frontier is False`
+（RQGM 选择性擦除）时剪枝。此处不掺入任何 LLM 判断。参见
 [BFTS 算法](../concepts/bfts.md)。
 
 ## 评估

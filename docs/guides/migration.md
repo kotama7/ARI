@@ -32,7 +32,7 @@ sources:
     role: implementation
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # Migration Guide
@@ -101,7 +101,7 @@ dashboard behaviour you may depend on.  Those changes are collected in
 5. **Pick a rubric.**  Choose a YAML from
    `ari-core/config/reviewer_rubrics/` and export it:
    ```bash
-   export ARI_RUBRIC=neurips2025
+   export ARI_RUBRIC=neurips
    ```
    Subsequent paper review and BFTS scoring will use the new axes.
 
@@ -497,7 +497,7 @@ selection, which launches a byte-identical run.
   `missing_goal`, and a draft containing `ari.mode` or any `rqgm.*` field is
   400 `mode_locked` — selecting the governance/execution mode from the GUI
   was still an open decision at the time.  *(Superseded by MN-12: the four
-  mode leaves are now accepted for a new run; the other 96 `rqgm.*` paths
+  mode leaves are now accepted for a new run; the other 97 `rqgm.*` paths
   still refuse with `mode_locked`.)*
 - **Why** — a run needs an identity before anything is written, and a
   double-click must not fork an experiment.
@@ -534,7 +534,7 @@ selection, which launches a byte-identical run.
 ### Execution and paper mode are selectable for a new run (MN-12)
 
 - **Before** — every field in the `Execution mode` category and every
-  `rqgm.*` path (100 paths) was locked out of the GUI: one disabled group in
+  `rqgm.*` path (101 paths) was locked out of the GUI: one disabled group in
   the Studio, and 400 `mode_locked` from `POST /api/v1/runs`.  Choosing
   `ari_rqgm` or `rqgm_archive` meant hand-editing two interlocked keys in
   `workflow.yaml`.
@@ -550,7 +550,7 @@ selection, which launches a byte-identical run.
   `ARI_RQGM_PAPER_ENABLED` environment variables.  The launch review shows
   the **resolved** mode, and an unhonoured request is shown as
   `requested → resolved` with the resolver's warning verbatim instead of
-  silently starting the fallback run.  The remaining 96 `rqgm.*` governance
+  silently starting the fallback run.  The remaining 97 `rqgm.*` governance
   and tuning parameters stay configuration-file only — visible read-only
   with their effective values, still 400 `mode_locked` at launch — and the
   RQGM API surface is still read-only.  **Resume is unaffected**: the mode

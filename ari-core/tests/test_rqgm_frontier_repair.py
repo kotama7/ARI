@@ -913,6 +913,27 @@ def test_should_prune_additive_clause_inert_without_key():
     assert bfts.should_prune(erased, current_total=1) is True
 
 
+def test_flag_node_retains_score_and_selection_excludes_it():
+    # _flag_node's contract: erasure is logical-only, so the stale score (and
+    # has_real_data) deliberately SURVIVE on the node. The compensating
+    # invariant is that every best-node consumer reads the sentinel —
+    # BFTS.should_prune for expansion (above) and
+    # verified_context.select_best_node for the paper candidate/seed
+    # (plan 10 §1 "selected"; the §3 memory-consumer deferral, settled).
+    from ari.pipeline.verified_context import select_best_node
+
+    stale = _node("stale", score=0.9)
+    stale.has_real_data = True
+    FrontierRepairEngine._flag_node(stale, "generator_retired", "erase_000001")
+    assert stale.metrics["_valid_for_frontier"] is False
+    assert stale.metrics["_stale"] is True
+    assert stale.metrics["_scientific_score"] == 0.9   # retained, not zeroed
+    valid = _node("valid", score=0.2)
+    valid.has_real_data = True
+    assert select_best_node([stale, valid]).id == "valid"
+    assert select_best_node([stale]) is None           # all erased ⇒ no winner
+
+
 def test_meta_files_and_blocklist_registration():
     from ari.orchestrator.node_report.builder import (
         _FILES_CHANGED_BLOCKLIST_NAMES,

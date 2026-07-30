@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-07-10
+last_verified: 2026-07-30
 ---
 
 # BFTS Algorithm
@@ -32,7 +32,7 @@ stateDiagram-v2
     frontier --> frontier: persistent — stays re-expandable
     frontier --> pending: select best (score + diversity bonus) → expand one child
     frontier --> retired: Rule A (child outscores parent) OR Rule B (max_expansions_per_node reached)
-    pending --> pruned: should_prune (total ≥ max_total_nodes / depth ≥ max_depth / _sterile)
+    pending --> pruned: should_prune (total ≥ max_total_nodes / depth ≥ max_depth / _sterile / _valid_for_frontier=false)
     retired --> [*]
     pruned --> [*]
 ```
@@ -75,7 +75,7 @@ def bfts(experiment, config):
 Key properties:
 - **Single-child expansion**: `expand()` generates exactly one child per call with rich context (sibling scores, ancestor chain, tree diversity metrics, existing children) to avoid duplicates. The prompt also surfaces the current depth/`max_depth` and the remaining node budget so the planner can pace itself (v0.7.2, I-4).
 - **Persistent frontier**: completed nodes stay in frontier after expansion, available for re-expansion with `_touched_this_round` / `_failed_this_round` tracking. A frontier node is **retired** when either (Rule A) its child outscores it on `_scientific_score`, or (Rule B) it has been expanded `max_expansions_per_node` times (v0.7.2, B-6).
-- **`should_prune` predicate**: hard cutoffs only — `current_total >= max_total_nodes` (B-1), `depth >= max_depth` (B-2, previously dead config), or `metrics._sterile is True` (B-4). LLM judgement happens elsewhere.
+- **`should_prune` predicate**: hard cutoffs only — `current_total >= max_total_nodes` (B-1), `depth >= max_depth` (B-2, previously dead config), `metrics._sterile is True` (B-4), or `metrics._valid_for_frontier is False` (RQGM selective erasure; the key is written only by RQGM machinery, so the clause is inert under `simple_bfts` — but it is read unconditionally, so a node erased under `ari_rqgm` stays excluded after a switch back). LLM judgement happens elsewhere.
 - **Diversity bonus**: `+0.05` for underrepresented labels (last 20 runs tracked) when `my_count * 2 ≤ max_count` (I-2); applied in *both* selector fallbacks (I-3 / L-3) and in `select_next_node` LLM prompts.
 - **Coverage-aware expansion selection**: when the run carries a claims-bearing metric contract, the goal text passed to `select_best_to_expand` additionally carries a run-level claim-coverage block plus a **LINEAGE** hint (see *Lineage Chaining* below), so "evidences a still-uncovered claim" can inform *which* node to expand — the scheduler-only signal; node reasoning context is untouched.
 - **Score calibration**: evaluator injects recent score history into prompts to prevent score collapse (all scores clustering around the same value)

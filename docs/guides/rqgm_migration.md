@@ -22,7 +22,7 @@ sources:
     role: test
   - path: ari-core/tests/test_paper_mode.py
     role: test
-last_verified: 2026-07-16
+last_verified: 2026-07-30
 ---
 
 # Adopting `ari_rqgm` on an Existing Project
@@ -174,11 +174,14 @@ switch, downgrade-only). Two properties make rollback safe:
   `rqgm_erasure_state.json` rollup, and additive `Node.metrics` sentinels
   (`_stale`, `_valid_for_frontier`, …) persisted through `tree.json`.
   `BFTS.should_prune` reads `metrics['_valid_for_frontier'] is False`
-  **unconditionally**, so a node erased under `ari_rqgm` remains pruned
-  after a switch back — contamination does not become clean by switching
-  modes. The sentinel keys are only ever written by the `ari_rqgm`
-  `FrontierRepairEngine`, so on a checkpoint that never ran RQGM the clause
-  is inert dead code (the `_sterile` pattern).
+  **unconditionally**, and so does best-node selection
+  (`verified_context.select_best_node` — the paper/report winner), so a
+  node erased under `ari_rqgm` remains pruned and unselectable after a
+  switch back — contamination does not become clean by switching modes.
+  The sentinel keys are only ever written by RQGM machinery (the
+  `ari_rqgm` `FrontierRepairEngine`, plus the `rqgm_archive` paper runtime
+  on draft nodes), so on a checkpoint that never ran RQGM the clauses are
+  inert dead code (the `_sterile` pattern).
 
 ## Adopting `paper.mode`
 
@@ -252,7 +255,7 @@ An effective `rqgm_archive` paper run adds, under `{checkpoint}/`:
 
 | Path | What it is |
 |---|---|
-| `paper_archive_state.json` | Paper-mode provenance: paper mode, interlock, `mode_source`, exploration mode, seed node. Absence == linear paper phase. |
+| `paper_archive_state.json` | Paper-mode provenance: paper mode, interlock, `mode_source`, exploration mode, seed node. The seed records what the FIRST invocation started from; a later invocation that computes a different seed appends a `seed_changed` entry to `seed_journal` instead of rewriting it (`journal_seed_change`). Absence == linear paper phase. |
 | `paper_draft_archive.jsonl` | The scored draft population (one record per draft node: framing, reviewer score, tex hash, best-belief/compiled flags). |
 | `paper_anchor_corpus.jsonl` | The accept/reject anchor corpus, only if you supply one (read-only; never authored by a governed role). |
 | `rqgm/paper_self_preference_stat.json` | The deterministic AI-vs-human self-preference margin the `paper_self_preference` adversary cites as its pre-signal. |

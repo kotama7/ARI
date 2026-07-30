@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/app/routeRegistry.ts
     role: implementation
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # ARI QuickStart Guide
@@ -222,7 +222,7 @@ Select your LLM provider and model:
 
 **Paper Review (v0.6.0+)** — choose how the generated paper is reviewed:
 
-- **Rubric** — pick one of 16 bundled venues (`neurips` default and v2-compatible, plus `iclr`, `icml`, `cvpr`, `acl`, `sc`, `osdi`, `usenix_security`, `stoc`, `siggraph`, `chi`, `icra`, `nature`, `journal_generic`, `workshop`, `generic_conference`). Drop your own YAML into `ari-core/config/reviewer_rubrics/` to add a custom venue.
+- **Rubric** — pick one of 23 bundled venues (`neurips` default and v2-compatible, plus `iclr`, `icml`, `cvpr`, `acl`, `sc`, `chi`, `usenix_security`, `osdi`, `stoc`, `icra`, `siggraph`, `nature`, `aer`, `econometrica`, `qje`, `apsr`, `ahr`, `philreview`, `pmla`, `journal_generic`, `workshop`, `generic_conference`). Drop your own YAML into `ari-core/config/reviewer_rubrics/` to add a custom venue.
 - **Few-shot mode** — `static` (use the bundled examples) or `dynamic` (Phase 2 OpenReview retrieval; falls back to static for closed-review venues).
 - **Reviewer ensemble (N)** — number of independent reviewer agents. N>1 also runs an Area Chair meta-review.
 - **Reflection rounds** — self-reflection iterations per reviewer (Nature Ablation default: 5).

@@ -8,8 +8,8 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `README.md` — this file.
 - `__init__.py` — package marker.
 - `_deprecation.py` — `DeprecationWarning` helpers for v0.5→v1.0 legacy paths/aliases.
-- `_factory.py` — TODO
-- `artifact_store.py` — TODO
+- `_factory.py` — internal import-driven string→impl registry (`BaseRegistry`, eager + lazy entries) collapsing ARI's ad-hoc string-keyed dispatchers onto one lookup, one unknown-key error, and one `keys()` parity source; adopted by the evaluator composites and publish backends. Not the HTTP `ari.registry` server.
+- `artifact_store.py` — `CheckpointArtifactStore`: minimal `ArtifactStore` ABC impl over the flat checkpoint layout (logical name → `{checkpoint_dir}/{name}`; `put`/`get`/`exists`/`list`), deliberately not duplicating `pipeline.stages.OutputSink`'s suffix-driven writer.
 - `checkpoint.py` — checkpoint JSON I/O (`tree.json` / `nodes_tree.json` / `results.json`).
 - `cli_ear.py` — `ari ear …` curation / publish / promote / status CLI surface.
 - `container.py` — unified container runtime abstraction (Docker / Singularity / bare subprocess).
@@ -20,7 +20,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `memory_cli.py` — `ari memory` subcommand (migrate / backup / …).
 - `paths.py` — centralised `PathManager` for directory layout/resolution.
 - `pidfile.py` — `.ari_pid` write/read/cleanup for run-liveness detection.
-- `trace_store.py` — TODO
+- `trace_store.py` — `JsonlTraceStore`: the concrete `TraceStore` — per-node `node_report.json` read/write (byte-identical to `node_report`'s writer) plus the append-only `{node_work_dir}/trace.jsonl` seam, resolved through `PathManager`.
 - `agent/` — ReAct loop, environment capture, per-stage workflow guidance.
   - `README.md` — agent index.
   - `__init__.py` — package module-map docstring.
@@ -43,7 +43,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `commands.py` — misc top-level commands + `_safe_backup`.
   - `lineage.py` — end-of-phase lineage-decision helpers.
   - `migrate.py` — `ari migrate` sub-app.
-  - `paper_dispatch.py` — shared paper-axis dispatch behind `ari paper`/`run`/`resume`; resolves linear vs rqgm_archive and builds the agent-as-judge score fn.
+  - `paper_dispatch.py` — shared paper-axis dispatch behind `ari paper`/`run`/`resume`; resolves linear vs rqgm_archive, builds the agent-as-judge score fn, and runs the RQGM paper-candidate pre-flight (the exploration-axis escalation that can rewrite `_scientific_score`).
   - `projects.py` — `ari paper` / `status` / `projects` / `show` commands.
   - `run.py` — `ari run` / `ari resume` commands.
 - `clone/` — `ari clone`: fetch + verify + extract curated EAR bundles.
@@ -106,7 +106,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `README.md` — orchestrator index.
   - `__init__.py` — package exports + authoritative module-map docstring.
   - `bfts.py` — `BFTS` loop and stage hooks (expand/select, pruning, frontier retire).
-  - `bfts_prompt_builder.py` — TODO
+  - `bfts_prompt_builder.py` — pure context serialization lifted out of `BFTS` — `build_expand_context` plus the `select_next_node` / `select_best_to_expand` candidate-description builders — and the shared `_BUDGET` truncation limits; no filesystem, LLM, or `BFTS` state (P2).
   - `lineage_decision.py` — LLM lineage action + `lineage_decisions.jsonl` log.
   - `node.py` — `Node` data model + `NodeStatus` / `NodeLabel` enums.
   - `node_selection.py` — shared node-selection helpers + publication source-file selection.
@@ -123,7 +123,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `context_builder.py` — best-nodes context + keyword extraction.
   - `driver.py` — `WorkflowDriver`: run pre-flight (cost tracker, evaluation_criteria/nodes_tree/verified-context, tpl_vars, BFTS no-real-data sanity gate) + index-based stage-cursor loop with `loop_back_to` rewind.
   - `experiment_md.py` — `experiment.md` helpers.
-  - `integrity.py` — run-integrity aggregate: reads each check's artifacts (gate findings, provenance audit, claim links, refine insertions, literature, ideation) into `run_integrity.json` + a console summary; an ABSENT producer is `null`, never zero findings.
+  - `integrity.py` — the run-integrity aggregate: reads the artifacts each check already wrote (gate findings, provenance audit, claim links, refine insertions, literature, ideation grounding) into `run_integrity.json` + a console summary. Recomputes nothing; an ABSENT producer is reported as `null`, never as zero findings.
   - `orchestrator.py` — top-level entry points (`build_scientific_data`, `run_pipeline`).
   - `stage_context.py` — `StageContext` dataclass: shared mutable run state (`tpl_vars`, `stage_outputs`) + read-only inputs (checkpoint_dir, config_path, wf_cfg, disabled_stages, best_metrics).
   - `stage_control.py` — loop_back / VLM-feedback control.
@@ -146,8 +146,8 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `README.md` — prompts index.
   - `__init__.py` — exports + `PromptLoader` plumbing.
   - `_loader.py` — `PromptLoader` Protocol + `FilesystemPromptLoader`.
-  - `_provenance.py` — TODO
-  - `registry.py` — TODO
+  - `_provenance.py` — deterministic LLM-free prompt-provenance recorder: appends which template (and rendered prompt) drove each managed call to checkpoint-scoped `prompt_trace.jsonl` + the `prompt_versions.json` rollup, hashing with `load_versioned`'s `sha256(text)[:12]`; absence means "no provenance recorded", never an error.
+  - `registry.py` — `PromptRegistry`: discovery + self-validation catalogue layered over `FilesystemPromptLoader` — key enumeration (`keys`), template-derived `placeholders` introspection, and the machine-readable `PromptEntry` describe surface; every file read still delegates to the loader.
   - `agent/` — agent ReAct system prompt.
     - `README.md` — agent index.
     - `system.md` — the agent system prompt.
@@ -155,6 +155,9 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
     - `README.md` — evaluator index.
     - `extract_metrics.md` — numeric metric extraction.
     - `peer_review.md` — rubric-driven paper review.
+  - `governance/` — Committed governance-actor prompt templates for the ARI-RQGM
+  - `llm/` — prompt fragments for the `llm.cli_server` shim; holds `mcp_name_resolution.md` only (no README).
+    - `mcp_name_resolution.md` — the bare → fully-qualified `mcp__<server>__<tool>` name table (`{rows}`) appended to a delegated `--system-prompt`, so ARI's bare tool names stay callable under MCP delegation; ungoverned by RQGM (a mechanical notice, not an actor's instructions).
   - `orchestrator/` — BFTS expand/select, lineage & root-idea decisions.
     - `README.md` — orchestrator index.
     - `bfts_expand.md` — leaf-expansion prompt.
@@ -165,6 +168,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `pipeline/` — pipeline-stage prompts.
     - `README.md` — pipeline index.
     - `keyword_librarian.md` — keyword extraction for BFTS-context building.
+  - `rqgm/` — Committed prompt templates for the ARI-RQGM prompt-defined actors (Tasks 03/06/07)
   - `viz/` — wizard chat prompts.
     - `README.md` — viz index.
     - `wizard_chat_goal.md` — chat that elicits the experiment goal.
@@ -173,9 +177,10 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `README.md` — protocols index.
   - `__init__.py` — currently exposed protocols + roadmap.
   - `evaluator.py` — `Evaluator` Protocol.
-  - `model_backend.py` — TODO
-  - `search.py` — TODO
-  - `stores.py` — TODO
+  - `mcp.py` — `MCPToolCaller` Protocol — the caller-facing surface of `MCPClient` (`list_tools` / `call_tool` / `to_claude_mcp_config` / `close_all` / `_COW_TOOLS`) that the RQGM `CapabilityGatedMCPClient` and `MetaSandboxMCPProxy` duck-type.
+  - `model_backend.py` — `BaseModelBackend` Protocol — the structural LLM-backend contract (`complete` / `set_context` / `stream`) callers bind to instead of the concrete `LLMClient`, satisfied without subclassing.
+  - `search.py` — `SearchStrategy` + `NodeExecutor` Protocols: the type-level seam splitting BFTS ranking/selection from single-node ReAct execution, already satisfied structurally by `BFTS` and `AgentLoop` (no runtime change).
+  - `stores.py` — the storage seams: `CheckpointStore` / `TraceStore` / `EpochStore` / `ErasureStateStore` / `ProposalStore` Protocols + the `ArtifactStore` ABC; signatures mirror existing behaviour so the concrete classes stay pure wrappers and no on-disk contract moves.
 - `public/` — public API surface for ARI skills (import-only contract).
   - `README.md` — public index.
   - `__init__.py` — exported sub-modules + rationale.
@@ -204,16 +209,105 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `auth.py` — sqlite-backed bearer-token auth.
   - `cli.py` — `ari registry` serve / token / gc CLI.
   - `storage.py` — filesystem storage backend.
+- `rqgm/` — Constitutional ARI-RQGM runtime: the opt-in `ari_rqgm` execution mode (epoch governance and co-evolution). Internal package — never exported via `ari.public.*`, never imported on the default `simple_bfts` path (`ari.core.build_runtime` imports it lazily only when `ari.mode: ari_rqgm` and `rqgm.enabled: true` agree).
+  - `README.md` — rqgm index.
+  - `__init__.py` — package charter + import rules (kept import-free).
+  - `authority_manifest.py` — deterministic complete export of the deny-by-default role × tier × operation × resource capability table (`python -m ari.rqgm.authority_manifest`).
+  - `budget.py` — cost control (RQGM Task 12): the governance level ladder (L0 fixed … L3 adjudicated) + deterministic §5.2 escalation triggers (`assign_level`; sterile nodes never exceed L0; top-K ties broken by node id), `BudgetedAction`/`BudgetVerdict`/`GovernanceBudgetManager` (decision-point gating `allow | degrade | skip` over the per-epoch call caps — `rqgm.governance.*` defender/judge, `rqgm.adversarial.*` adversary, `rqgm.shadow.*`, `rqgm.replay.*`, `rqgm.prompt_evolution.*`, `proposal_router.generators.virsci` — plus the `rqgm.budgets` spend caps read from the passive `cost_tracker`; never raises, never blocks the loop; the L0 fixed layer is exempt), durable `budget_consumed`/`budget_degraded`/`governance_level` audit lines (counters restore from `rqgm_audit.jsonl` on resume), and the §5.6 hash-based deterministic shadow sampling.
+  - `clean_room.py` — clean-room regeneration (RQGM Task 08): `CleanRoomGenerationRequest`/`CleanRoomInputBundle` records, the deterministic fixed-tier `CleanRoomInputBundleAssembler` (the ONLY bundle writer; reads committed catalogs + abstract summaries, never registry prompt text), the one-shot meta-tier `CleanRoomPromptGenerator` (single injectable completion over `rqgm/clean_room_generator.md` + the canonical bundle JSON; candidates ONLY — no registry/activation surface, invariant 15), the Layer-B `RetiredPromptAccessGuard` (kernel `validate_capability` denial + audit-log violation; only the kernel checker and the audit CLI are exempt), the fail-open `{ckpt}/rqgm_cleanroom.jsonl` event log, and the budget-capped epoch-boundary `CleanRoomCoordinator` (pre/post kernel screens blocking at admission, fail-open for the run, §5.6 baseline fallback so no role is ever vacant).
+  - `clean_room_rules.py` — Task 08's Layer-0 policy module (shared by the kernel and `clean_room.py`; single source of truth): the closed allowed/forbidden input split, closed `BUNDLE_FIELDS`, closed `FAILURE_CLASSES` vocabulary, FailureSummary admissibility, and the pure word-shingle contamination screen (`normalize_text`/`shingles`/`contamination_hits` with allowlist subtraction).
+  - `context_views.py` — role-specific context views (RQGM Task 12 §5.7): pure, capped projections per governance role. The BFTS row is `ProposalSummaryView` only — `build_bfts_summary_context` type-rejects full records (layer 1), the kernel `validate_context_scope` shares the SAME whitelist constant (`PROPOSAL_SUMMARY_FIELDS`, aliased from the constitution-pinned `kernel_rules` table — layer 2), and the leak-regression test pins layer 3. Judge views scrub frontier/utility signals; governance views scrub retired prompt text; same-role isolation is constructive. Also the ≤1200-char epoch-charter cap constant.
+  - `erasure_state.py` — selective-erasure state layer (RQGM Task 10): `ErasureStateView` + `RqgmErasureStateStore` over the derived `{ckpt}/rqgm_erasure_state.json` rollup (pure `fold_event` over the erasure/rebuild events in `rqgm_audit.jsonl`; absence == nothing stale; logical-only, invariant 13).
+  - `events.py` — RQGM vocabulary (status/role/tier), id formats (`epoch_%03d`, `transition_%03d_to_%03d`, `evt_%06d`), canonical serialization, and the hash-chained `TransitionEvent` envelope. Schema v2 binds the schema, event id/type, transaction id, payload, and predecessor with full SHA-256; legacy schema-v1 payload-only events remain readable.
+  - `frontier_repair.py` — `FrontierRepairEngine` (RQGM Task 10): pure `trace_dependents` staleness closure (record-type-pair materiality table, cycle-tolerant) + pure `rebuild_frontier` (stale/invalid/sterile exclusion, reinstatement rules), the per-role invalidate-vs-recompute policy, and the kernel-validated epoch-boundary repair step emitting `SelectiveErasureEvent`/`FrontierRebuildEvent` (conservative → drain-only failure ladder).
+  - `governance_cache.py` — the governance result cache (RQGM Task 12 §5.5/§6.2): the spec-fixed `cache_key = sha256(artifact_hash ␟ prompt_hash ␟ role ␟ epoch_id ␟ input_context_hash ␟ output_schema_hash)[:16]`, canonical-JSON content hashing (`canonical_hash`), the §6.2 replay lookup rule (`replay_lookup_key` uses the case's ORIGIN epoch id — the one sanctioned cross-epoch hit), and the append-only `{ckpt}/rqgm_governance_cache.jsonl` store + in-memory index (`GovernanceCache`; absence == empty cache; entries are never invalidated in place — retired prompt hashes simply never recur in lookups).
+  - `kernel.py` — `ConstitutionalKernel` (RQGM Task 04): the deterministic, non-evolving Layer-0 checker — NOT an LLM judge (zero LLM/network calls, zero wall-clock decisions; P2). Twelve closed `validate_*` entry points, plus the enforcement adapters (`should_block`, fail-open `per_node_warn_check`, pre-flight `CapabilityGatedMCPClient`).
+  - `kernel_rules.py` — frozen constitutional tables: `ROLE_RULES`, `CAPABILITY_MATRIX`, `SEVERITY` (the §5.5 blocking matrix), envelope/governance vocabularies, and the `constitution_hash` pin (covers the imported `transition_rules` tables; hand-pinned in `tests/test_rqgm_kernel.py`). Rules live in code, never in config.
+  - `kernel_types.py` — `Violation` / `KernelReport` frozen verdict dataclasses, sorted-deterministic constructors, `kernel_report` audit payload.
+  - `meta_evolution.py` — meta-agent evolution (RQGM Task 11): `MetaAgentOutputRecord` + the append-only `{ckpt}/rqgm_meta_outputs.jsonl` (content-derived ids so MCP-style retries dedup at read time), frozen read-only `PromptRegistryView`/`ComponentRegistryView` (retired prompts appear as no-text/no-path/no-hash stubs — M7 defense in depth), `assemble_filtered_inputs` (committed catalogs + abstract summaries + ids only), `MetaSandboxMCPProxy` (MCPClient duck-type; read-only allowlist + synthesized `submit_meta_output` final tool; everything else gets the `{"error"}` envelope) + `run_meta_sandboxed` over `react_driver.run_react`, the `MetaEvolutionCoordinator` epoch-boundary step (after `audit_epoch`, before `resolve_transition`; kernel-gated, budget-capped, fail-open; every output enters the Task 07 lifecycle at `status: candidate` — never an activation), deterministic cached `MetaCandidateSandbox` + `downstream_fate` + `MetaCandidateEvaluation` (rides Task 09's `candidate_evaluations`), and the §5.8 `MetricSpecWeightCap` (epoch-frozen weights outrank node-initiated `make_metric_spec` axis weights under `ari_rqgm` only).
+  - `meta_rules.py` — Task 11's Layer-0 authority tables (imported by the kernel; the `clean_room_rules`/`transition_rules` precedent): the closed capability-flag vocabulary (`can_*`; deny-by-default), the closed meta-action + output-kind vocabularies, the v1 evolving (`prompt_mutator`, `clean_room_generator`, `replay_selector`, `failure_summary_compressor`) vs frozen (reserved names) meta role split, schema-level hard denials (meta hard-denied flags const-false; fixed tier all-false), the invariant-18 flag/target subset arithmetic, and the §5.6.2 cross-generation rule.
+  - `mode.py` — `EffectiveMode` enum + pure `resolve_effective_mode(cfg)` interlock table.
+  - `paper_anchor.py` — paper-archive anchor utility for BOTH governed paper roles (paper-archive Task 04). Reviewer: the accept/reject ground-truth corpus (`PaperAnchorPool`, `load_anchor_corpus` with the machine-enforced `max_bootstrap_label_fraction` self-label cap + `anchor_*`/`eval_*` namespace disjointness), `paper_reviewer_agreement` binarization, the deterministic epoch-independent held-out `assign_split`, `score_reviewer_on_anchor`. Writer: `writer_faithfulness_score` / `draft_is_unfaithful` fold the Layer-0 claim gate's three rates into the writer's deterministic anchor, `record_writer_faithfulness` lands it on the board as its own `PaperWriterFaithfulnessCase` keyed on `prompt_hash` alone (never `component_id` — that would leak the incumbent's score onto its successor), and `reviewer_anchor_cases` keeps it out of the reviewer's anchor. Plus the `capture_paper_utility_policy` freeze (rides Task 14's governed capture; `writer_anchor` = `WRITER_ANCHOR_DESCRIPTOR`). Never raises into the run.
+  - `paper_archive.py` — paper-archive draft-tree substrate (paper-archive Task 02): `PaperArchiveStrategy` (a `SearchStrategy` over draft space — best-first tree, `bfts.py` cutoff reuse with the total cap before the depth cap, one-child-per-`expand`, real deterministic frontier selection + real framing-keyed `diversity_bonus`) and the append-only `paper_draft_archive.jsonl` reader/writer/flag-marker (+ `erase_paper_reviewer_utilities`, the logical-only staleness marker for a displaced reviewer's scores).
+  - `paper_draft_executor.py` — paper-archive draft `NodeExecutor` (paper-archive Task 02): `PaperDraftExecutor` wraps `ari-skill-paper` with one generative call per node (`write_paper_iterative` seeds, one `paper_refine` per refine child), writes `node.metrics["_scientific_score"]`/`_framing_key` from the injected reviewer oracle, records each node to `paper_draft_archive.jsonl`, and never compiles.
+  - `paper_judge.py` — agent-as-judge scoring for the paper axis. `build_agent_as_judge_score_fn` renders the draft through the governed `paper_reviewer` string view (asserting `PAPER_REVIEWER_FIELDS`), resolves the run's real evidence from the checkpoint rather than a goal/topic stub, and degrades to `fallback_score_fn` when the judge returns unusable axes — counting `judged` vs `degraded` so a silently-degrading run is visible instead of looking like a scored one.
+  - `paper_mode.py` — `PaperMode` enum + pure `resolve_paper_mode(cfg)` interlock table (paper-archive Task 01); the paper-phase analog of `mode.py`, reads only `paper.mode`/`rqgm.paper.enabled` (orthogonal to `ari.mode`).
+  - `paper_runtime.py` — `PaperArchiveRuntime` facade + `paper_archive_state.json` mode provenance (paper-archive Task 01/02/06/07): the single construction funnel constructed only under the effective `rqgm_archive` paper mode; `persist_mode`/`reconcile_paper_resume_mode` provenance, the multi-round `run_archive` co-evolution loop (seed K drafts → refine child nodes → governed reviewer scoring → reviewer-replacement selective erasure (`erase_paper_reviewer_utilities` + `_valid_for_frontier: false` staling of displaced-reviewer bests, `paper_utility_erasure` audit line; stale rows are excluded from best-belief and cross-round winner selection) → best-belief select → lazy compile), the reused `GovernanceBudgetManager` (`budget_manager` property + `paper_expansion_budget` population bound + metered anchor/adversary spend → `budget_counters` mirror, Task 06), and the pure `materialize_winner` handoff to the EXISTING Layer-0 claim-gate tail (Task 07).
+  - `paper_self_preference.py` — paper-archive self-preference statistic (paper-archive Task 05): the deterministic LLM-free pre-signal for the eighth adversary — `over_accepted_cases` (reject-labelled anchor cases the frozen incumbent reviewer accepted) and `compute_self_preference_margin` (AI-vs-human mean-acceptance gap over a held-out sample) + the byte-fixed `paper_self_preference_stat.json` audit artifact the pre-signal cites.
+  - `prompt_evolution.py` — prompt evolution (RQGM Task 07): `PromptCandidate`/`PromptCandidateValidation`/`ComparisonObservation` records, the six-stage `CandidateValidationPipeline` (static + constitutional stages are pure functions; dry-run/replay/anchor take injected LLM/evaluators; shadow is the run-loop sampling hook), `PromptMutator` (meta tier; candidates ONLY — no registry-write surface), per-epoch candidate budgets, deterministic hash-based shadow sampling, the fail-open `prompt_evolution.jsonl` writer + `prompt_specs.json` rollup, and `build_adoption_request` (the Task 09 seam; adoption only via RegistryTransitionEngine at epoch boundaries).
+  - `prompt_loader.py` — `GovernedPromptLoader` (RQGM Task 07): satisfies `ari.protocols.PromptLoader`; resolves keys via the epoch-frozen PromptSpec view (`package` refs delegate byte-identically to `FilesystemPromptLoader`; `checkpoint` refs read write-once bodies under `{ckpt}/rqgm_prompts/`, hash-verified). Also the write-once evolved-body store (`PromptImmutabilityError` on differing bytes — no in-place mutation).
+  - `prompt_records.py` — prompt-evolution record layer (RQGM Task 07 §6): `PromptCandidate`/`PromptCandidateValidation`/`ComparisonObservation` dataclasses + `pcand_/pval_/cobs_%05d` id formats, the fail-open append-only `prompt_evolution.jsonl` writer/reader, and the derived `prompt_specs.json` rollup (JSONL is truth). Re-exported via `prompt_evolution.py`.
+  - `prompt_spec.py` — `PromptSpec` (RQGM Task 07): versioned prompt identity (identity/bytes/contract split; `prompt_hash` IS `load_versioned`'s `sha256[:12]` — single scheme), the founding bootstrap table mapping 31 committed templates to v1 active specs plus the cfg-derived `utility_policy_prompt_v1` row (32 prompts in the base runtime; the paper-gated table adds 3 more), the sole active-on-creation exception (raw-loaded templates get empty placeholder contracts), the Task-14 policy-backed spec builders (`utility_policy_prompt_v1` is referenced by `path` rather than `key`), `REQUIRED_CONSTRAINTS_BY_ROLE`, and registration-payload builders for the Task 02 event log.
+  - `registry.py` — `ComponentRegistry` + `GovernedPromptRegistry` (governance state; delegates template loading/hashing to `ari.prompts`; distinct from the discovery catalogue `ari.prompts.registry.PromptRegistry`); event-replay-only mutation.
+  - `runtime.py` — `RQGMRuntime` facade (+ Task 02 `ensure_epoch` epoch hook) + pure-delegation `GovernedSearchStrategy` wrapper.
+  - `state.py` — `{ckpt}/rqgm_state.json` mode provenance (Task 01) + frozen `EpochState`, `freeze_epoch`, separate deterministic policy/execution fingerprints and their composite `epoch_fingerprint` (Task 02). Missing provider/tool/environment/data revision pins are stored as `unresolved`.
+  - `store.py` — `RqgmStateStore` (implements `ari.protocols.stores.EpochStore`) over `rqgm_transitions.jsonl` (truth) + `epoch_state.json`/`rqgm_registry.json` (snapshots), `EpochTransaction` prepare/commit boundary protocol, `ImmutableAuditLog` (`rqgm_audit.jsonl`).
+  - `tool_policy.py` — the MCP tool → `(actor, action, resource)` mapping the `CapabilityGatedMCPClient` checks against `CAPABILITY_MATRIX` (plan 04 §5.6.4). `default_tool_policy` returns `None` for unrecognised tools (ungoverned, dispatched untouched), maps ordinary research work onto capabilities the institutional `generator` already holds, and resolves registry-write / retired-prompt-text reaches onto capabilities it does NOT hold — the CK-ROL-901 / CK-ACC-002 shapes the emergency path exists to catch.
+  - `transition_engine.py` — `RegistryTransitionEngine` + `EpochTransition` (RQGM Task 09): the SOLE registry status writer (global invariant 10). Pure deterministic `resolve_transition(epoch_state, governance_report, candidate_evaluations, registries, status_history, config)` against the fixed table (no LLM/I-O/clock in decisions; byte-identical re-runs — P2); `apply` commits at the epoch boundary through the five-step freeze → resolve → kernel-validate → prepare → apply/commit protocol over the Task 02 `EpochTransaction` (kernel-blocked transitions abort fail-closed with the incumbent set still serving; double-commit of a `transition_id` is a guarded no-op; interrupted transactions are discarded by Task 02 replay and re-run deterministically on resume). `emergency_quarantine` accepts only one kernel-critical T16 sanction and immediately force-closes the current epoch, commits the quarantine, and opens a freshly fingerprinted epoch in the same transaction. Only `rqgm.transition.*` numeric thresholds are configurable; consumes the Task 04 `governance_suspended` carry-over by resolving an empty transition.
+  - `transition_rules.py` — Task 09's Layer-0 pure-data module: `ComponentStatus`, the fixed T1-T21 `TRANSITION_TABLE`, and the four T16 emergency quarantine edges. Imported by BOTH the kernel and the RegistryTransitionEngine — single source of truth, no duplication drift. The table topology is a constitutional amendment surface (code + test-matrix change), never config.
+  - `utility_evolution.py` — governed utility evolution (RQGM Task 14): `PolicyMutator` (meta tier; emits `UtilityPolicyCandidate` records ONLY — no registry-write surface, and it cannot see the frontier's scores, so a policy tuned to flatter its own tree is not expressible), the four deterministic knob kinds (`propose_utility_policy`: axis_reweighting / composite_swap / frontier_score_swap / exploration_tuning — pure arithmetic over abstract evidence, no LLM/clock/randomness; `freeform_policy_proposal` is the one opt-in LLM kind), the candidate-intake registration payload, and `UtilityPolicyStamp` (the `_utility_policy_hash` node sentinel that selects every node scored by the retiring policy). Frontier repair re-composes those nodes from stored `_axis_scores` under the successor policy and invalidates only when raw axes are unavailable. Never written under simple_bfts.
+  - `adversarial/` — the adversarial evolution loop (RQGM Task 06): AdversaryEngine (dispatcher over seven exploration adversaries plus the paper-phase `paper_self_preference` adversary, deterministic pre-signals first), Defender, ArtifactJudge (total fail-open fallback: any failure → `invalid`, no penalty), the epoch-frozen UtilityPenaltyPolicy + `apply_utility_penalty` (sterile-gate precedent: `_scientific_score` rewritten, pre-penalty value preserved in additive keys), and the AdversarialReplayPool (`rqgm_adversarial_cases.jsonl` truth + `rqgm/adversarial_replay_pool.json` snapshot; replay_view/abstract_view contamination split). Two constitutional anchors: raw attacks NEVER touch the BFTS score (only Judge-validated attacks feed the bounded penalty — invariant 8), and adversaries attack artifacts, never components. The raw-attack schema has no component target; a judge-authored `ValidatedAttackRecord` may add `target_component_id` after adjudication for accountability. The seven research cases bind the registered generator only when the node's write-once producer component/epoch provenance matches the frozen incumbent; ambiguous legacy records remain targetless.
+    - `__init__.py` — package charter + facade exports.
+    - `engine.py` — the three prompted actors, per-type pre-signal filters, `should_attack` trigger predicate (P2-safe hash sampling), penalty policy/channel.
+    - `pool.py` — AdversarialCaseLog (append-only JSONL, round idempotency markers) + AdversarialReplayPool (admission/dedup/eviction/selection/views/persistence).
+    - `records.py` — RawAttackRecord / DefenderResponse / JudgmentRecord / ValidatedAttackRecord / UtilityRecord / AdversarialReplayCase + constructive-prevention builders and deterministic validators (kernel checks 1-4 surface).
+    - `round.py` — `AdversarialRound`: the per-node §5.3 attack→defense→adjudication coordinator `_run_loop` step 5 invokes (best-effort, never raises).
+  - `evaluation/` — evaluation + ablation harness internals (RQGM Task 13; NOT `ari.public.*`): B0-B8 exploration presets, the paper-archive B ladder, RQGM-paper-aligned P0-P4 presets, the thirteen-metric computer, deterministic failure injection, scripted component doubles, and the offline smoke runner behind `scripts/rqgm_eval/run_ablation.py`.
+    - `__init__.py` — package charter: deterministic/no-LLM rule (P2), side-effect-free import, module map.
+    - `conditions.py` — B0-B8 exploration, B paper-archive, and RQGM-paper P0-P4 preset expansion over `scripts/rqgm_eval/ablation_matrix.yaml`: `inherits` deep-merge sugar, workflow-overlay conversion (`mode` → `ari.mode`), flag-path flattening for the additive-ladder property, and the §5.2 VirSci-off checkpoint assertion (`virsci_absence_violations`: no VirSci prompt in `prompt_trace.jsonl`, no `virsci_logs/`/`virsci_snapshot/`, no `generator: virsci` record).
+    - `doubles.py` — scripted deterministic component doubles (`EVAL_DOUBLE_REGISTRY`: always_attack adversary, always/never_validate judges, schema-violating generator, degenerate prompt mutator). Config-only substitution via `rqgm.eval.scripted_components`, refused unless `rqgm.eval.enabled` — the eval_double tier never leaks into a production run.
+    - `injection.py` — the ten §5.3 failure injections: spec loading/validation (held-out `eval_*` namespace, disjoint from `adv_*`/`anchor_*`), deterministic idempotent fixture application, the `rqgm_injection_provenance.json` marker, and the claim-gate detection helper (`run_hard_gate(write=False)`) for injections 1/2.
+    - `metrics.py` — `compute_metric_report(checkpoint_dir, ...)`: the thirteen §5.4 metrics as pure functions over persisted checkpoint artifacts (fixed `{value, numerator, denominator, evidence_refs, applicable}` shape; absence-tolerant, byte-deterministic — P2) plus the `rqgm_eval_metrics.json` writer.
+    - `paper_ablation.py` — evaluation-only P0-P4 mechanism postures and consistency checks. P0 gates successor generation to `paper_writer` (fixed critic); P0-P3 retain the kernel in nonblocking `audit_only`, while P4 uses standard enforcement. Inert unless `rqgm.eval.enabled` is true.
+    - `smoke.py` — offline Tier-2 smoke runner: synthetic stub-component runs per condition through the REAL Task 03/06/07 record constructors and stores (seconds, no LLM) into `workspace/rqgm_eval/<eval_id>/`, plus the `ablation_report.{json,md}` aggregation (per-seed values, medians, paired ladder deltas).
+  - `governance/` — GovernanceOrchestrator facade (RQGM Task 05): the single epoch-boundary entry point `audit_epoch(...) -> GovernanceReport` (advisory input to Task 09; it never mutates registries). Nine-step pipeline (observe → assess → assemble → prosecute → defend → adjudicate → replay-pool update → self-audit → report) over the Task 02 audit log; every LLM decision (Auditor / Defender / GovernanceJudge via committed `governance/*.md` templates) has a total deterministic fallback, so `llm=None` is a fully deterministic audit. Same-role accusation prohibition: constructive refusal in `_records.py` builders + kernel `validate_role_separation` as the authority. Only the facade is exported; the submodules (`_pipeline`, `_reliability`, `_evidence`, `_prosecution`, `_defense`, `_adjudication`, `_self_audit`, `_records`) are private.
+    - `__init__.py` — facade: `GovernanceOrchestrator.audit_epoch` + record re-exports; all submodules private.
+    - `_adjudication.py` — step 6: GovernanceJudge + Replay/Anchor/Jury boards (board-bounded verdict clamp; deterministic fallback = dismissed).
+    - `_defense.py` — step 5: per-motion Defender with the total procedural-default fallback (incumbent presumption).
+    - `_evidence.py` — step 3: EvidenceClerk/SourceRefValidator/EvidenceAuditChecker — deterministic bundle assembly + admissibility (same-role / raw-attack / unresolvable-ref exclusions).
+    - `_pipeline.py` — the nine-step `audit_epoch` driver (every step fail-open; failures degrade the report via `degradation_reasons`, never abort).
+    - `_prosecution.py` — step 4: rule-first Auditor/Prosecutor thresholds + BondAccounting motion caps (LLM only on borderline; failure files no motion).
+    - `_records.py` — governance record dataclasses (rqgm_record_base envelope) + constructive same-role-accusation refusal in the builders.
+    - `_reliability.py` — step 2: deterministic per-(component, prompt_hash) reliability aggregation (insufficient-data never fabricated; P2).
+    - `_self_audit.py` — step 8: GovernanceSelfAudit — auditor precision, judge clamp count, defender participation + kernel re-validation of the pipeline's own records.
+  - `proposals/` — ProposalRecord/Router/VirSciAdapter layer (RQGM Task 03; `ari_rqgm`-only, plus the opt-in `record_only` dual-write).
+    - `__init__.py` — package charter: store-everything / summary-only rule, import discipline.
+    - `generators.py` — Generator protocol + Cheap/Mutation/AttackDriven/PriorArt generators (injectable LLM seam, committed `rqgm/*.md` templates, deterministic fallbacks).
+    - `records.py` — `ProposalRecord` + `ProposalSummaryView` dataclasses, §6.2 size budgets, pure `render_summary_ctx`, content-key dedup hash, idea.json field mapping.
+    - `router.py` — budget-aware deterministic `ProposalRouter` (pure `route()` policy, trigger events, per-epoch call budgets, root + expansion-recording surfaces).
+    - `store.py` — checkpoint-scoped `proposals/` store: append-only `proposal_records.jsonl` truth, `proposal_index.json` rollup, archive dir, single-writer `idea.json` projection, legacy import.
+    - `virsci_adapter.py` — MCP-only `VirSciAdapter`: normalizes the 9-key `generate_ideas` payload into drafts; constructed only when `proposal_router.generators.virsci.enabled`.
 - `schemas/` — JSON Schemas shipped with ari-core.
   - `README.md` — schemas index.
   - `__init__.py` — `load(name)` loader.
+  - `clean_room_bundle.schema.json` — `CleanRoomInputBundle`: the closed (`additionalProperties: false`) input set handed to the clean-room generator, auditable by `bundle_hash`.
+  - `clean_room_request.schema.json` — `CleanRoomGenerationRequest` lines of `rqgm_cleanroom.jsonl`; the five forbidden-input flags are `const: false`, so a contaminating request is schema-invalid.
+  - `epoch_state.schema.json` — `epoch_state.json` — derived rollup of the open (or last closed) `EpochState`; `rqgm_transitions.jsonl` stays the source of truth.
+  - `epoch_transition.schema.json` — `EpochTransition`: the single output of one `RegistryTransitionEngine` boundary resolution, every status change pinning a T1-T21 `rule_id`.
+  - `erasure_state.schema.json` — `rqgm_erasure_state.json` — rebuildable rollup of the erasure/rebuild events; staleness is logical-only and absence means nothing stale.
+  - `frontier_rebuild_event.schema.json` — `FrontierRebuildEvent`: frontier before/after plus removed / reinstated / recomputed node ids, with the `conservative` and `halted_expansion` degradation statuses.
+  - `governance_report.schema.json` — `GovernanceReport` — the single return type of `GovernanceOrchestrator.audit_epoch`, appended to `rqgm_audit.jsonl`.
   - `node_report.schema.json` — per-node report schema.
+  - `proposal_record.schema.json` — `ProposalRecord` lines of `proposals/proposal_records.jsonl`: the `rqgm_record_base` envelope with proposal-specific nullability plus the logical-only `stale`/`valid_for_frontier` flags.
+  - `proposal_summary_view.schema.json` — `ProposalSummaryView` — the eight character-budgeted fields that are the ONLY proposal representation BFTS may consume.
   - `publish.schema.json` — publish record / manifest schema.
-  - `viz_checkpoint.schema.json` — TODO
-  - `viz_checkpoint_summary.schema.json` — TODO
-  - `viz_settings.schema.json` — TODO
-  - `viz_state.schema.json` — TODO
-  - `viz_tree_node.schema.json` — TODO
+  - `rqgm_attack_records.schema.json` — the four `rqgm_adversarial_cases.jsonl` shapes (raw attack / defender response / judgment / validated attack); attacks target artifacts, and only the judge's validated record may name a component.
+  - `rqgm_defs.schema.json` — canonical shared `$defs` — the `rqgm_record_base` envelope, closed status/role/tier vocabularies, id/hash formats — `$ref`'d by later RQGM schemas and pinned byte-equal to the copies they embed.
+  - `rqgm_governance_cache.schema.json` — one `rqgm_governance_cache.jsonl` line; `cache_key` is the six-part `sha256[:16]` and `created_at` is provenance only, never part of the key (P2).
+  - `rqgm_meta.schema.json` — meta-agent evolution shapes: the tier + `can_*` capability-flag registry entry, the `rqgm_meta_outputs.jsonl` line, and `MetaCandidateEvaluation`; flags default false (absence is denial).
+  - `rqgm_prompt_evolution.schema.json` — the three `prompt_evolution.jsonl` shapes — `PromptCandidate`, `PromptCandidateValidation` (the chain that makes stage skipping detectable), `ComparisonObservation`.
+  - `rqgm_prompt_spec.schema.json` — `PromptSpec`: one immutable versioned prompt identity; `template_ref.kind` selects the byte source (`package` / `checkpoint` / `policy`) and any byte change mints a new `prompt_hash`.
+  - `rqgm_registry.schema.json` — `rqgm_registry.json` — the derived component + prompt registry rollup kept in one file for transactional consistency; prompt text is referenced by source, never inlined.
+  - `rqgm_replay_pool.schema.json` — the `rqgm/adversarial_replay_pool.json` snapshot; each case splits into `replay_view` (full materials) and the clean-room-safe `abstract_view`, and eviction is logical-only.
+  - `rqgm_transition_event.schema.json` — one hash-chained `rqgm_transitions.jsonl` line; schema v2 commits envelope + payload + predecessor under full SHA-256, legacy v1 the canonical payload only.
+  - `rqgm_utility_policy_candidate.schema.json` — `UtilityPolicyCandidate`: a proposed successor utility policy carried by value plus `policy_hash`, riding the same prompt-evolution log — the envelope names the proposer, not the policy.
+  - `rqgm_utility_record.schema.json` — `UtilityRecord`: per-node base / penalty / final score with the by-value `frozen_policy`; `penalty > 0` must cite at least one `ValidatedAttackRecord` (invariant 8).
+  - `selective_erasure_event.schema.json` — `SelectiveErasureEvent`: the kernel-authored dependency closure staled when a `prompt_hash` retires — flagged in `rqgm_erasure_state.json`, never rewritten or deleted.
+  - `viz_checkpoint.schema.json` — one item of the bare `GET /api/checkpoints` list, mirroring the frontend `Checkpoint` type.
+  - `viz_checkpoint_summary.schema.json` — `GET /api/checkpoint/<id>/summary` response; only `id`/`path` are guaranteed, every other key is file-existence gated.
+  - `viz_settings.schema.json` — the flat `GET`/`POST /api/settings` object (defaults ∪ saved), with saved-key passthrough via `additionalProperties`.
+  - `viz_state.schema.json` — the `GET /state` AppState response; only the unconditionally-set process/badge tail is required (additive-subset policy).
+  - `viz_tree_node.schema.json` — one BFTS/pipeline tree node as passed through verbatim in `/state` and checkpoint summaries; only `id` is guaranteed, the frontend defaults the rest.
 - `viz/` — HTTP + WebSocket dashboard server + React frontend.
   - `README.md` — viz index.
   - `__init__.py` — package docstring + module map / public symbols.
@@ -239,21 +333,21 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `ear.py` — EAR curate/publish/clone REST helpers.
   - `file_api.py` — per-checkpoint file CRUD + LaTeX compile.
   - `health.py` — `/health/live` + `/health/ready` probes and bounded `/api/v1/diagnostics`; never 500s.
-  - `internal_adapters.py` — TODO
+  - `internal_adapters.py` — lazy wrappers for the ari-core internals viz still reaches with no `ari.public.*` equivalent — `pid_status`/`read_pid` over `ari.pidfile` (REVIEW_REQUIRED promotion) plus `memory_backend`, which forwards to the sanctioned `ari.memory.get_backend` funnel.
   - `node_work_api.py` — per-node work-dir filetree/filecontent/memory listing.
   - `routes.py` — `_Handler` dispatch + access log.
   - `server.py` — HTTP/WebSocket server and `ari viz` main entry.
   - `state.py` — shared mutable server state.
   - `state_sync.py` — node-tree loading + broadcast + filesystem watcher.
-  - `tree_view.py` — TODO
+  - `tree_view.py` — `build_tree_view`: the ONE adapter turning a checkpoint's on-disk node tree into the WS `update.data` / `/state` / checkpoint-card payload — a byte-preserving wrapper over `ari.checkpoint.load_nodes_tree` and the single import boundary onto it.
   - `ui_helpers.py` — dashboard rendering helpers.
   - `websocket.py` — WebSocket handler streaming tree state.
   - `frontend/` — React + Vite + TypeScript. Served by `ari viz` / `python -m ari.viz.server`
-  - `services/` — TODO
-    - `__init__.py` — TODO
-    - `file_service.py` — TODO
-    - `launch_service.py` — TODO
-    - `state_service.py` — TODO
+  - `services/` — unit-testable service layer extracted from the `routes.py` / `api_*` handlers: `.env` launch parsing, the `GET /state` builder, and the shared filesystem primitives (no README).
+    - `__init__.py` — service-layer charter + module map, plus the DEFERRED list (route registry, full LaunchService, `routes.py` inline file serving) and why each is pinned by frozen source-inspection tests.
+    - `file_service.py` — the one traversal guard (`safe_resolve`), named byte-size limits, file-classification sets, canonical `content_type_for` table, and read/write/delete helpers that `file_api.py`/`node_work_api.py` delegate to; stdlib-only, wire behaviour unchanged.
+    - `launch_service.py` — `load_dotenv_files`: the `.env` discovery/parse shared by `_api_run_stage` / `_api_launch`, preserving both historical parse variants verbatim (the `ARI_*` mapping + `Popen` stay pinned in `api_experiment.py`).
+    - `state_service.py` — `build_app_state`: the extracted `GET /state` builder — reads `_st` globals at call time and preserves the stale-`experiment_md` clearing; a FROZEN legacy facade that must never grow new top-level keys.
   - `v1/` — versioned `/api/v1` platform built on the stdlib server (ADR-02): typed errors, pydantic DTOs, declarative router, generated OpenAPI.
     - `__init__.py` — package docstring + v1 module map (no FastAPI/uvicorn, zero new runtime deps).
     - `catalogs.py` — model/provider catalog re-serving `GET /api/models` plus each provider's API-key env name.

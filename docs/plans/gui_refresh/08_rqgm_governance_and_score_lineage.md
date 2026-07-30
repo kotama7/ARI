@@ -127,7 +127,13 @@ impeachment chain を実装の record 型で明示的に可視化する:
 - transition reason、kernel verdict、constraints、validated evidence、actor/stage。
 - proposed と committed の差分、rejection/degraded path。
 - source event と raw artifact offset へ deep-link する。
-- **構造的に inert な chain を正直に表示する**: exploration の 7 adversary は `generator` role（未登録 component）を対象とするため impeachment chain が設計上発火しない。「攻撃 0 件 = 健全」ではなく「この role では chain が inert」という capability state として表示する（production で発火するのは `paper_self_preference` → `paper_reviewer`/`paper_writer` 系のみ）。
+- **責任接続の成立条件を正直に表示する**: exploration の 7 adversary は、
+  登録済み `generator` に対し、ノードへ一度だけ付与した生成 component、
+  prompt hash、epoch が凍結中の現職と一致する場合だけ impeachment chain
+  を発火できる。旧記録、欠落、不一致は「攻撃 0 件 = 健全」とせず、
+  `targetless provenance` という capability state で表示する。
+  `paper_self_preference` は同じ原則で `paper_reviewer` /
+  `paper_writer` に接続する。
 
 ### Score Lineage
 
@@ -310,4 +316,3 @@ overview は bounded summary とし、transition/audit/affected node を埋め�
 - [ ] truth rules を automated contract test に移した。
 - [ ] main merge と CI green を確認した。
 - [ ] `INDEX.md` を更新した。
-

@@ -2,6 +2,11 @@
 
 > **Status**: planned · **Depends on**: 00, 01 · **This is a temporary task plan** — see [INDEX.md](INDEX.md). It will be deleted once its deletion criteria are met.
 
+> **Implemented amendment (2026-07-28):** new events use schema version 2
+> and a full SHA-256 over schema version, event id, event type, transaction
+> id, canonical payload, and predecessor digest. The payload-only 12-hex
+> design below is readable legacy schema v1, not the current write format.
+
 ## 1. Purpose
 
 ARI-RQGM requires that, within one epoch, the active component set, prompt hashes,

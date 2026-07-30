@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/health.py
     role: implementation
-last_verified: 2026-07-27
+last_verified: 2026-07-29
 ---
 
 # 環境変数リファレンス
@@ -47,6 +47,9 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 | `ARI_LLM_API_BASE` | LiteLLM API ベース上書き | LiteLLM デフォルト |
 | `ARI_MODEL` | スキル横断フォールバックモデル ID | (`ARI_LLM_MODEL` にフォールスルー) |
 | `ARI_MODEL_EVAL` | LLM 評価器のモデル | `ARI_MODEL` にフォールスルー |
+| `ARI_MODEL_PAPER` | 論文執筆・改稿モデル | `ARI_LLM_MODEL` にフォールスルー |
+| `ARI_MODEL_RUBRIC` | 独立rubric査読・固定論文パネルのモデル | `ARI_LLM_MODEL` にフォールスルー |
+| `ARI_PANEL_SEED` | 固定査読パネルの各評価呼出しに記録する要求シード | 未設定。標本化を制御できるかは提供元・実行基盤に依存 |
 | `ARI_MODEL_JUDGE` | BFTS ジャッジのモデル | `ARI_MODEL` にフォールスルー |
 | `ARI_MODEL_LINEAGE` | 停滞 / lineage 決定のモデル (v0.7.0) | `ARI_MODEL` にフォールスルー |
 | `ARI_MODEL_ROOT_SELECT` | シードアイデアを選ぶモデル | `ARI_MODEL` にフォールスルー |

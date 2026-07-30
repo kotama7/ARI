@@ -77,11 +77,13 @@ flowchart TB
 
     subgraph post["post-BFTS 流水线（workflow.yaml）"]
         direction TB
+        provenance["audit_node_provenance<br/>重新哈希节点产物"]
         transform["transform_data → science_data.json"]
         figures["generate_figures → VLM 评审"]
         paper["write_paper → review_paper<br/>（集成 + Area Chair 元评审）"]
         claimtail["claim-evidence 尾链（Story2Proposal）:<br/>link_paper_claims → claim_evidence_hard_gate<br/>→ evidence_grounded_semantic_review → merge_reviews<br/>→ paper_refine → render_paper → finalize_paper"]
         ear["generate_ear → curate → publish（EAR）"]
+        provenance --> transform
         transform --> figures
         transform --> ear
         figures --> paper
@@ -116,8 +118,10 @@ flowchart TB
 本页描述的一切都属于默认执行模式 `simple_bfts`。可选启用的
 `ari_rqgm` 模式（Constitutional ARI-RQGM）把同一个 BFTS 循环包裹进
 基于纪元的治理与协同进化中：搜索策略被纯委托的
-`GovernedSearchStrategy`（`ari/rqgm/runtime.py`）包装，已完成的节点
-获得一轮对抗式攻击/辩护/裁决回合，并且在每个纪元边界，一个确定性的
+`GovernedSearchStrategy`（`ari/rqgm/runtime.py`）包装，MCP 客户端被宪法
+能力闸门（`ari/core.py` 的 `_install_capability_gate` —— 每一次受治理的
+工具调用都会留下审计记录，严重违规会升级为纪元中途的紧急隔离）包装，
+已完成的节点获得一轮对抗式攻击/辩护/裁决回合，并且在每个纪元边界，一个确定性的
 宪法内核会校验每一次治理状态变更（组件采纳/退役、提示词进化、前沿
 修复）。仅当 `ari.mode: ari_rqgm` 与 `rqgm.enabled: true` 一致时才会
 启用；在默认配置下不会导入任何 `ari.rqgm` 模块，检查点与 RQGM 之前
@@ -234,8 +238,9 @@ BFTS expand() (ari/orchestrator/bfts.py)
     files_changed.added，避免提议会写相同文件的方向。
 
 每节点自报告 (v0.7.0)
-  ari-core/ari/orchestrator/node_report.py 在 mark_success / mark_failed 时
-  生成 node_report.json，记录：
+  ari-core/ari/orchestrator/node_report/ 在 mark_success / mark_failed 时
+  生成 node_report.json（ari-core/ari/cli/bfts_loop.py 的 post-future 钩子），
+  记录：
     - files_changed (added / modified / deleted / inherited_unchanged) —
       由父子 work_dir 的 sha256 diff 推导
     - original_direction (bfts.expand 在创建子节点时保存，evaluator 不会覆写)
@@ -264,7 +269,14 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
     ▼
 [workflow.yaml Post-BFTS 流水线]
 
-  阶段 1：transform_data  (ari-skill-transform)
+  阶段 0：audit_node_provenance  (ari-skill-memory: audit_memory)  [在阶段 1 之前]
+    重新哈希 node_report 记录过 sha256 的每一个节点产物并与磁盘比对 —— 这是
+    节点输出不再是实验结果、开始成为论文证据的边界。逐产物报告 verified /
+    mismatch（记录哈希之后被改写）/ missing（已删除）/ unhashed（声明了但没有
+    记录基线）。它是信号而非闸门，transform_data 依赖（depends_on）它。
+    输出：node_provenance_audit.json
+
+  阶段 1：transform_data  (ari-skill-transform)  [在阶段 0 之后]
     对完整树进行 BFS 遍历（根 → 叶）
     LLM 读取所有节点产物（stdout、日志、生成的代码）
     LLM 提取：硬件规格、方法论、关键发现、比较结果
@@ -497,8 +509,8 @@ checkpoints/{run_id}/
 
 | 文件              | 写入方                                                | 阶段             | 模式                                                  |
 |-------------------|-------------------------------------------------------|------------------|-------------------------------------------------------|
-| `tree.json`       | `cli.py` 中的 `_save_checkpoint()`                    | BFTS 阶段        | `{run_id, experiment_file, created_at, nodes}`        |
-| `nodes_tree.json` | `_save_checkpoint()` + `generate_paper_section()`     | BFTS + post-BFTS | `{experiment_goal, nodes}` (轻量)                     |
+| `tree.json`       | `cli/bfts_loop.py` 中的 `_save_checkpoint()`          | BFTS 阶段        | `{run_id, experiment_file, created_at, nodes}`        |
+| `nodes_tree.json` | `_save_checkpoint()` + `generate_paper_section()`（`core.py`） | BFTS + post-BFTS | `{experiment_goal, nodes}` (轻量)                     |
 
 **读取方约定**: 所有读取方必须优先使用 `tree.json` 并回退到 `nodes_tree.json`。
 这可确保 BFTS 期间获得最新数据，同时保持与预期 `nodes_tree.json` 的流水线阶段的兼容性。
@@ -534,7 +546,7 @@ API 密钥 **绝不** 存储在 `settings.json` 中。它们从 `.env` 文件
 | `ari/orchestrator/node_report/` | 每节点自报告构建器 + 旧版重建（v0.7.1 拆分为包） |
 | `ari/orchestrator/lineage_decision.py` | Lineage-decision LLM 钩子（BFTS rewind / branch / continue） |
 | `ari/orchestrator/root_idea_selector.py` | VirSci 池 → `ideas[0]` 再选择器 |
-| `ari/rqgm/` | Constitutional ARI-RQGM 运行时（可选启用的 `ari_rqgm` 模式）：`RQGMRuntime` 门面、宪法内核、治理编排器、注册表转换引擎、前沿修复、提案/对抗/提示词进化各层。在 `simple_bfts` 下绝不被导入 — 见 [Constitutional ARI-RQGM 架构](rqgm_architecture.md) |
+| `ari/rqgm/` | Constitutional ARI-RQGM 运行时（可选启用的 `ari_rqgm` 模式）：`RQGMRuntime` 门面、宪法内核、治理编排器（`governance/` 下的弹劾流水线）、注册表转换引擎、前沿修复、提案/对抗/提示词进化各层，以及论文归档协同进化运行时（`PaperArchiveStrategy` —— 草稿空间上的第二个最佳优先搜索）。在 `simple_bfts` 下绝不被导入 — 见 [Constitutional ARI-RQGM 架构](rqgm_architecture.md) |
 | `ari/agent/loop.py` | ReAct 智能体循环 — 每个节点的 LLM + 工具调用；自动轮询 SLURM 作业；注入祖先记忆 |
 | `ari/agent/message_utils.py` / `tool_manager.py` / `guidance.py` | 从 `agent/loop.py` 提取出的辅助模块（Phase 3D, v0.7.1） |
 | `ari/agent/workflow.py` | WorkflowHints — 从实验文本自动提取（工具序列、指标关键词、分区） |
@@ -545,7 +557,7 @@ API 密钥 **绝不** 存储在 `settings.json` 中。它们从 `.env` 文件
 | `ari/llm/client.py` | 通过 litellm 进行 LLM 路由（Ollama、OpenAI、Anthropic、任何 OpenAI 兼容接口） |
 | `ari/config.py` | 配置数据类（BFTSConfig、LLMConfig、PipelineConfig） |
 | `ari/core.py` | 顶层运行时构建器 — 连接所有组件 |
-| `ari/cli.py` | CLI：`ari run`、`ari paper`、`ari status` |
+| `ari/cli/` | Typer CLI 拆分包：`__init__`、`run`、`projects`、`commands`、`bfts_loop`、`lineage`、`migrate` + `paper_dispatch`（`ari run` / `ari resume` / `ari paper` 共享的论文阶段执行模式分派） |
 
 ### 技能（MCP 服务器）
 
@@ -554,7 +566,7 @@ API 密钥 **绝不** 存储在 `settings.json` 中。它们从 `.env` 文件
 | 技能 | 工具 | 角色 | LLM? |
 |------|------|------|------|
 | `ari-skill-hpc` | `slurm_submit`、`job_status`、`job_cancel`、`singularity_build`、`singularity_run`、`singularity_pull`、`singularity_build_fakeroot`、`singularity_run_gpu` | HPC 作业管理 + Singularity 容器 | ✗ |
-| `ari-skill-memory` | `add_memory`、`search_memory`、`get_node_memory`、`clear_node_memory`、`get_experiment_context` | 祖先作用域的节点记忆（Letta 后端） | △ |
+| `ari-skill-memory` | `add_memory`、`search_memory`、`get_node_memory`、`clear_node_memory`、`get_experiment_context`、`audit_memory` | 祖先作用域的节点记忆（Letta 后端）；`audit_memory` 驱动 `audit_node_provenance` 阶段 | △ |
 | `ari-skill-idea` | `survey`、`generate_ideas` | 文献搜索（Semantic Scholar）+ VirSci 多智能体假设生成 | ✓ |
 | `ari-skill-evaluator` | `make_metric_spec` | 从实验文件提取指标规格 | △ |
 | `ari-skill-transform` | `nodes_to_science_data`、`generate_ear`、`curate_ear`、`publish_ear` | BFTS 树 → 科学数据 + EAR + curate/publish 生命周期 (v0.7.0) | ✓ |
@@ -645,7 +657,7 @@ generate_ideas (idea-skill)
 事后复盘中，所有 9 个子节点都因结果文件已在磁盘上、代理把实验当成已完成，
 而报告了来自单个 SLURM 作业的相同数值。
 
-`ari-core/ari/cli.py` 中的 `_OUTPUT_BLACKLIST` 显式列举了在父 → 子复制
+`ari-core/ari/cli/bfts_loop.py` 中的 `_OUTPUT_BLACKLIST` 显式列举了在父 → 子复制
 期间被跳过的模式：
 
 | 继承 | 黑名单 |

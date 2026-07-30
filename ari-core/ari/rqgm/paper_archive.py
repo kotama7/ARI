@@ -291,7 +291,8 @@ def write_paper_draft_record(checkpoint_dir: str | Path, record: dict) -> None:
 
 
 def mark_paper_draft_flags(
-    checkpoint_dir: str | Path, node_id: str, **flags: bool
+    checkpoint_dir: str | Path, node_id: str, *,
+    epoch_id: str | None = None, **flags: bool,
 ) -> None:
     """Best-effort update of a draft record's boolean flags (``is_best_belief``
     / ``compiled``, §5.5). Reads the whole archive, marks the ONE record the
@@ -307,16 +308,11 @@ def mark_paper_draft_flags(
     that carries it, which is what makes "exactly one" true rather than merely
     intended.
 
-    Deliberately NOT scoped by ``epoch_id``, for two reasons. (1) ``_finalize_best``
-    runs ONCE per run with the FINAL round's winner and has no epoch handle to
-    pass; record ORDER already identifies that round's record. (2) An epoch
-    filter would not make the result unique anyway — duplicate ``node_id``s also
-    arise WITHIN one epoch (a resumed/re-recorded node), which the last-match
-    rule handles and an epoch filter does not. Epoch-scoping the draft
-    FILESYSTEM (``PaperDraftExecutor._rel_tex_path``) is a separate, complementary
-    fix: it stops the tex bytes colliding, but node ids stay re-minted by design
-    (§6.1 pins ``draft_0`` / ``draft_0.r1``), so this clear-others loop stays
-    load-bearing rather than degrading to a no-op."""
+    ``epoch_id`` is optional. Legacy/final-round callers may omit it and retain
+    the last-write-wins behavior; the P0-P4 shared-archive comparison supplies
+    it because a no-erasure winner may come from an earlier epoch. Duplicate
+    ``node_id``s can still exist within one epoch, so last-write-wins remains
+    load-bearing even with the filter."""
     path = Path(checkpoint_dir) / PAPER_DRAFT_ARCHIVE_FILENAME
     records = read_paper_draft_archive(checkpoint_dir)
     if not records:
@@ -324,6 +320,10 @@ def mark_paper_draft_flags(
     matches = [
         i for i, r in enumerate(records)
         if str(r.get("node_id")) == str(node_id)
+        and (
+            epoch_id is None
+            or str(r.get("epoch_id") or "") == str(epoch_id)
+        )
     ]
     if not matches:
         return
@@ -354,6 +354,60 @@ def mark_paper_draft_flags(
             "failed to rewrite %s under %s", PAPER_DRAFT_ARCHIVE_FILENAME,
             checkpoint_dir, exc_info=True,
         )
+
+
+def erase_paper_reviewer_utilities(
+    checkpoint_dir: str | Path,
+    reviewer_prompt_hash: str,
+    *,
+    replacement_epoch_id: str,
+    replacement_prompt_hash: str,
+) -> list[dict]:
+    """Logically erase scores produced by one displaced paper reviewer.
+
+    RQGM selective erasure removes the displaced evaluator's utility rows, not
+    the underlying artifacts.  We preserve each draft record for provenance
+    but mark its score ineligible for archive selection.  The operation is
+    deterministic and idempotent and returns the newly-staled record refs.
+    """
+
+    old_hash = str(reviewer_prompt_hash or "")
+    if not old_hash:
+        return []
+    path = Path(checkpoint_dir) / PAPER_DRAFT_ARCHIVE_FILENAME
+    records = read_paper_draft_archive(checkpoint_dir)
+    if not records:
+        return []
+    changed: list[dict] = []
+    for rec in records:
+        if str(rec.get("reviewer_prompt_hash") or "") != old_hash:
+            continue
+        if bool(rec.get("review_score_stale", False)):
+            continue
+        rec["review_score_stale"] = True
+        rec["stale_at_epoch"] = str(replacement_epoch_id or "")
+        rec["replacement_reviewer_prompt_hash"] = str(
+            replacement_prompt_hash or ""
+        )
+        rec["is_best_belief"] = False
+        changed.append({
+            "epoch_id": str(rec.get("epoch_id") or ""),
+            "node_id": str(rec.get("node_id") or ""),
+        })
+    if not changed:
+        return []
+    try:
+        lines = [
+            json.dumps(r, ensure_ascii=False, sort_keys=True) for r in records
+        ]
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    except OSError:
+        log.warning(
+            "failed to persist paper reviewer utility erasure under %s",
+            checkpoint_dir, exc_info=True,
+        )
+        return []
+    return changed
 
 
 def epoch_draft_records(
@@ -457,6 +511,13 @@ def restore_archive_round(
         n.metrics = {
             "_scientific_score": float(rec.get("review_score") or 0.0),
             "_framing_key": str(rec.get("writer_prompt_hash") or ""),
+            "_paper_epoch_id": str(rec.get("epoch_id") or ""),
+            "_reviewer_prompt_hash": str(
+                rec.get("reviewer_prompt_hash") or ""
+            ),
+            "_valid_for_frontier": not bool(
+                rec.get("review_score_stale", False)
+            ),
         }
         if parent is not None:
             parent.children.append(n.id)

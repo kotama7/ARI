@@ -191,6 +191,9 @@ def _build_nodes(n_nodes: int, seed: int, run_id: str) -> list[dict]:
                 "original_direction": (
                     None if i == 0 else f"Explore direction {i} proposed by parent."
                 ),
+                "producer_component_id": "",
+                "producer_prompt_hash": "",
+                "producer_epoch_id": "",
                 "node_report_path": None,
             }
         )

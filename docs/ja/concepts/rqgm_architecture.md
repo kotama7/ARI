@@ -34,7 +34,7 @@ sources:
     role: prompt
   - path: ari-core/ari/prompts/governance
     role: prompt
-last_verified: 2026-07-16
+last_verified: 2026-07-29
 ---
 
 # Constitutional ARI-RQGM アーキテクチャ
@@ -54,6 +54,28 @@ Constitutional ARI-RQGM は ARI のオプトイン `ari_rqgm` 実行モードで
 > 実際の `ari_rqgm` ラン 1 回をステップごとにトレースします
 > （起動 → 設立登録 → ノード単位フック → 境界 → ディスクに何が着地
 > するか）。イベントログの抜粋と観察用チートシート付きです。
+
+---
+
+## 完全な監査ネットワーク
+
+[![Constitutional ARI-RQGM の完全監査ネットワーク。通常構成20件と論文モード3件の制裁可能な登録コンポーネントを全列挙し、ノード単位の敵対検査、追記監査台帳、期境界の証拠採否・動議・弁護・裁定、固定カーネルの自己監査、制度遷移、影響修復、最終主張検証を結ぶ。](../../assets/images/rqgm/rqgm_audit_flow_ja.svg)](../../assets/images/rqgm/rqgm_audit_flow_ja.svg)
+
+左側は制裁可能な対象全体です。研究・選択・効用・任意の論文役、8件の
+敵対検査役と弁護役・成果物裁定役、3件の統治司法役、5件のメタ役を列挙
+しています。右側は、これらが孤立した六つの検査ではなく、どのように一つの
+ネットワークを作るかを示します。各役の出力は追記監査台帳へ入り、ノード
+単位の攻撃は弁護と成果物裁定を通過したものだけが証拠になります。期境界
+では、決定的な信頼度集計と証拠整理役が、監査役だけが提出できる動議、
+動議ごとの弁護、基準盤に制約された統治裁定へ証拠を渡します。この司法が
+作った記録も台帳へ戻り、固定カーネルが自己監査します。
+
+最下段では助言と執行を分けています。統治報告を唯一の台帳遷移器が解決し、
+固定カーネルが T1–T21 を検証した後だけ不可分に確定します。退役時には
+影響修復が走り、固定原稿検証器はこれと独立に確定前の原稿を検証します。
+未閉鎖経路も明示しています。唯一の監査役は同役である自分自身へ動議を
+出せず、統治裁定役が対象なら忌避しますが独立した代替裁定役がありません。
+どちらも外部裁定を要します。図を選択すると原寸で開きます。
 
 ---
 
@@ -90,9 +112,10 @@ Constitutional ARI-RQGM は 4 つの定義的なコミットメントの上に�
    ではありません — プロンプトを進化させるのと同じライフサイクルを通じて、
    エポックごとに凍結され境界で書き換えられる統治対象オブジェクトです
    （[統治された utility 進化](#統治された-utility-進化)を参照）。*帰結*の
-   半分は以前から生きていました: 書き換えは旧ポリシーを退役させ、
-   `frontier_repair` がそのポリシーでスコアされたすべてのノードを無効化
-   します。*原因*の半分 — 後継を提案する `policy_mutator` — が Task 14 です。
+   半分は実装済みです: 書き換えは旧ポリシーを退役させ、
+   `frontier_repair` が保存済み raw axis から比較可能な全ノードを新基準で
+   再スコアし、安全に再スコアできないノードだけを無効化します。*原因*側は、
+   後継を提案する統治対象の `policy_mutator` です。
 2. **敵対者は成果物*と*評価の両方を攻撃し、共謀は禁止。** 7 種の探索
    adversary はノードの*成果物*を攻撃します; 8 番目の
    `paper_self_preference` は*reviewer の判定*（reviewer が過剰に受理した
@@ -102,11 +125,12 @@ Constitutional ARI-RQGM は 4 つの定義的なコミットメントの上に�
    参照ループです（`PolicyMutator` が見るのは境界の既に抽象化された証拠
    だけ、`utility_evolution.py`）。
 3. **敵対者自身が監査ネットワークの中にいる — 絶対的な支配者は不在。**
-   攻撃するコンポーネント、スコアを提案するコンポーネント、監査する
-   コンポーネントは、いずれも登録された・制裁可能な・進化可能な行です:
-   `policy_mutator_v1` は設立メタコンポーネントであり、その自身のテンプレート
-   は他と同様に進化し、それに対するガバナンス勧告は通常の制裁に解決され
-   ます。遷移テーブルの外に居るものは何もありません。
+   攻撃する、スコアを提案する、司法を担う各コンポーネントは登録済みで
+   制裁可能です。`policy_mutator_v1` のような進化可能ロールには後継が
+   生まれます。Auditor、Evidence Clerk、Governance Judge にはプロンプト
+   変異による後継経路はありませんが、warning、retired、banned の対象です。
+   Governance Judge 自身が motion の対象なら忌避します。遷移テーブルの
+   外に居るものは何もありません。
 4. **すべては憲法に拘束され、弾劾は憲法に従う。** すべての状態変更は
    `constitution_hash` でピン留めされた凍結規則テーブルに対して非進化的な
    カーネルが検証します; 健全な behavioral コンポーネントがその席を失う
@@ -120,13 +144,15 @@ Constitutional ARI-RQGM は 4 つの定義的なコミットメントの上に�
 ## 3 つのレイヤ
 
 ロールとティアの語彙は `ari/rqgm/events.py` の閉じた集合です
-（`EVOLVABLE_ROLES`、`FIXED_ROLES`、`TIERS`）; コンポーネント id は
-`{role}_v{N}`、プロンプト id は `{role}_prompt_v{N}` です。
+（`EVOLVABLE_ROLES`、`GOVERNANCE_ACTOR_ROLES`、`FIXED_ROLES`、
+`TIERS`）; コンポーネント id は `{role}_v{N}`、プロンプト id は
+`{role}_prompt_v{N}` です。
 
 | レイヤ | ティア | ロール | 進化する? |
 |---|---|---|---|
 | **0 — 憲法（固定）** | `fixed` | `constitutional_kernel`、`fixed_verifier`（決定論的な `results.json` マージ / メトリクス再計算パス）、`audit_log` | **決してしない。** 来歴のためだけに登録される; 規則テーブルはコードに存在し（`kernel_rules.py`、`transition_rules.py`、`clean_room_rules.py`、`meta_rules.py`）、`constitution_hash` でピン留めされる。規則を編集するには `tests/test_rqgm_kernel.py` で明示的に再ピン留めが必要 |
 | **1 — 制度** | `institutional` | `generator`、`reviewer`、`adversary`、`defender`、`judge`、`router`; 統治された評価基準 `utility_policy`; そして（paper モードのみ）`paper_writer`、`paper_reviewer` | する — プロンプト進化ライフサイクルを通じて、エポック境界でのみ。`utility_policy` はプロンプト定義ではなく（現職はポリシー*文書*）が、まったく同じ意味で進化可能: 1 つの現職が、境界で遷移エンジンを通じてのみ置き換えられる |
+| **1 — ガバナンス司法** | `institutional` | `auditor`、`evidence_clerk`、`governance_judge` | 後継生成経路はないが不変ではない。3 者とも設立時に登録され、レジストリから名指しでき、制裁可能。judge 自身が motion の対象なら忌避する |
 | **2 — メタ** | `meta` | `prompt_mutator`、`clean_room_generator`、`replay_selector`、`failure_summary_compressor`、`policy_mutator` | する — Layer 1 を進化させるエージェント自身も統治され、権限は厳密に狭い（不変条件を参照）。`policy_mutator` は後継 utility policy を提案する |
 
 ロールとティアの語彙は当初から閉じた集合でした; Task 14 と paper フェーズが
@@ -156,7 +182,7 @@ BFTS 戦略を純粋委譲の `GovernedSearchStrategy` で包みます。ラン�
 |---|---|---|
 | `ConstitutionalKernel` | `ari/rqgm/kernel.py` | Layer 0。12 個の閉じた `validate_*` エントリポイント（レコードスキーマ、ハッシュ、capability、エポック不変性、遷移、ロール分離、選択的消去、監査ログ完全性、クリーンルームバンドル、汚染、権限非拡大、コンテキストスコープ）と執行アダプタ（`should_block`、fail-open な `per_node_warn_check`、事前チェックの `CapabilityGatedMCPClient`）。決定論的かつ非進化的: LLM 呼び出しゼロ、ネットワークゼロ、壁時計判定ゼロ。`rqgm.kernel.enforcement: audit_only` はすべてのコンテキストを warn-and-log へ格下げ |
 | `GovernanceOrchestrator` | `ari/rqgm/governance/` | エポック境界の監査: `audit_epoch(...) -> GovernanceReport`。9 ステップのパイプライン（observe → assess reliability → assemble evidence → prosecute → defend → adjudicate → replay-pool update → self-audit → report）。すべての LLM 判定（Auditor / Defender / GovernanceJudge、プロンプトは `ari/prompts/governance/` 以下）には完全な決定論的フォールバックがあり、`llm=None` でも完全な監査が得られる。レポートは遷移エンジンへの*助言的入力*であり、オーケストレータがレジストリを変更することは決してない |
-| `RegistryTransitionEngine` | `ari/rqgm/transition_engine.py` | レジストリステータスの**唯一の**書き込み手。固定の T1–T21 テーブルに対する純粋な `resolve_transition(...)` と、その後の 5 ステップ境界プロトコル: freeze → resolve → kernel-validate → prepare → apply/commit をエポックトランザクション上で実行。`emergency_quarantine` が唯一のエポック途中パス |
+| `RegistryTransitionEngine` | `ari/rqgm/transition_engine.py` | レジストリステータスの**唯一の**書き込み手。固定の T1–T21 テーブルに対する純粋な `resolve_transition(...)` と、その後の 5 ステップ境界プロトコル: freeze → resolve → kernel-validate → prepare → apply/commit をエポックトランザクション上で実行。T16 の `emergency_quarantine` は現期を強制終了し、同じ取引で新しい指紋値を持つ期を開始する |
 | `FrontierRepairEngine` | `ari/rqgm/frontier_repair.py` | 退役を伴う遷移のコミット後: 純粋な `trace_dependents` による staleness 閉包と `rebuild_frontier`。`SelectiveErasureEvent` / `FrontierRebuildEvent` レコードを発行。失敗のはしご: カーネル検証失敗 → 保守的再修復（フラグ付きノードを除外）→ drain-only 縮退（`expansion_halted`: ランは残作業を完了するがそれ以上展開しない）。クラッシュは決して起こさない |
 
 同じランタイムには支援コンポーネントもぶら下がります: `ProposalRouter` +
@@ -200,7 +226,10 @@ flowchart TB
 
 1. **Freeze。** `freeze_epoch`（`ari/rqgm/state.py`）がアクティブ
    コンポーネント集合、プロンプトハッシュ、utility policy を不変の
-   `EpochState` に決定論的な `epoch_fingerprint` とともにピン留めします。
+   `EpochState` に固定します。`policy_fingerprint` は稼働集合と解決済み
+   統治設定を、`execution_fingerprint` は宣言済みのモデル、復号、道具、
+   環境、データ標本を結び、外部版が不明なら `unresolved` と記録します。
+   `epoch_fingerprint` は両方を合成します。
    凍結されるポリシーは**採用済み**のものです —
    `capture_utility_policy(cfg, registries=)` がアクティブな
    `utility_policy` エントリを読み、エポック 0 またはポリシー未採用時に
@@ -209,17 +238,20 @@ flowchart TB
    新規チェックポイント
    では、`epoch_000` が開くよりも前の起動時に**設立登録**が実行されます:
    1 つのトランザクションが凍結された設立テーブル
-   （`ari/rqgm/prompt_spec.py` — 29 プロンプト、16 コンポーネント。うち
-   `utility_policy_prompt_v1` は cfg 由来で、残り 28 プロンプト行と 16 コンポーネント行は
-   凍結されたコード定数。plan 14 §5.3）を
+   （`ari/rqgm/prompt_spec.py` — 探索起動では指示文・効用規則 32 件、
+   コンポーネント 20 件。うち 31 プロンプト行と全 20 コンポーネント行は
+   凍結されたコード定数で、`utility_policy_prompt_v1` は解決済み cfg 由来）を
    `rqgm_transitions.jsonl` 上に登録するため、最初の freeze は空でない
    アクティブ集合を伴います。write-once です: resume はそれをリプレイし、
-   決して再登録しません。
+   決して再登録しません。paper archive 起動は gated な
+   `paper_writer`、`paper_reviewer`、`paper_self_preference` の
+   プロンプト／コンポーネントを 3 件ずつ加え、合計 35／23 件になります。
 2. **Search。** BFTS は `simple_bfts` とまったく同じように探索します。
    ノードごとにベストエフォートのフックが 3 つ走ります: 展開方向は
    `ProposalRecord` として記録され、評価済みノードには敵対ラウンドが付き
-   （7 種の adversary タイプのひとつがノードの*成果物*を攻撃し、defender が
-   応答し、`ArtifactJudge` が裁定し、ジャッジに検証された攻撃だけが有界の
+   （7 種の探索 adversary のひとつがノードの*成果物*を攻撃し、paper 専用の
+   8 番目は reviewer の判定を攻撃します。defender が応答し、
+   `ArtifactJudge` が裁定し、ジャッジに検証された攻撃だけが有界の
    スコアペナルティを適用します）、ノード単位のカーネルチェックが
    warn-and-flag します。
 3. **Audit。** 境界では閉じようとしているエポックが*先に*監査されるため、
@@ -398,12 +430,12 @@ Layer 0 のままです: RQGM はその所見を**読む**だけです
 （`ari/rqgm/adversarial/round.py`）。これは、すべての adversary について
 上流で死んでいた
 `validated_attack → validated_attack_involvement → classify_target →`
-弾劾チェーンを閉じます。*正直な限界:* これが本番で発火するのは
-`paper_self_preference` だけで、そのターゲットは登録された設立
-コンポーネントです。7 種の探索 adversary は `generator` ロールが著した
-成果物を攻撃しますが、`generator` には**登録されたコンポーネントが無い**
-ため、そのチェーンは**設計上**不活性のままです（generator コンポーネントの
-登録は別の判断です）。
+弾劾チェーンを閉じます。研究 `generator` は現在、設立時の登録
+コンポーネントです。統治対象ノードには、保存または攻撃より前に、生成
+コンポーネント、プロンプトハッシュ、エポックを一度だけ付与します。
+7 種の探索攻撃は、その来歴がエポック凍結済み generator と一致する場合
+だけ責任を結び、古い記録、欠落、不一致は対象なしとします。
+`paper_self_preference` も登録済み論文役へ同様に解決します。
 
 **2 つの有責コンポーネント、1 つのラウンド。** claim gate が*さらに*不忠実と
 判定した過剰受理ドラフトには、**2 つ**の有責コンポーネントがあります: それを
@@ -474,11 +506,11 @@ Layer 0 のままです: RQGM はその所見を**読む**だけです
    イベントログから再導出します。（utility policy は*境界では*変わりうる
    — かつての I-11「一定のスコア」不変条件の撤廃、[上記](#統治された-utility-進化)
    — が、エポック内では決して変わりません。）
-2. **境界限定の遷移、例外は 1 つ。** すべてのステータス変更はエポック境界
-   トランザクションの中でコミットされます。唯一のエポック途中エッジは
-   `emergency_quarantine`（規則 T16: `probationary_active` / `active` /
-   `warning` / `probation` → `quarantine`）で、カーネルクリティカルな
-   トリガコードに限定され、それでもログされカーネルで検証されます。
+2. **すべての遷移は境界で確定。** すべてのステータス変更はエポック境界
+   トランザクションの中でコミットされます。`emergency_quarantine`
+   （規則 T16: `probationary_active` / `active` / `warning` /
+   `probation` → `quarantine`）はカーネル重大違反に限られ、現期の終了、
+   隔離、新しい指紋値を持つ次期の開始を一つの緊急境界として確定します。
 3. **単一のレジストリ書き込み手。** コンポーネント/プロンプトのステータスを
    書けるのは `RegistryTransitionEngine` だけです（グローバル不変条件 10）—
    ストレージ層で構造的に強制され（`ari/rqgm/store.py`、イベント再生のみに
@@ -491,12 +523,19 @@ Layer 0 のままです: RQGM はその所見を**読む**だけです
    `rqgm.adversarial.penalty.cap`、severity 別重み）に入り、ペナルティ前
    スコアは追加的なメトリクスキーに保存されます。ジャッジの失敗は
    `invalid` にフォールバックします — ペナルティなし。adversary が攻撃する
-   のは*成果物*であり、コンポーネントでは決してありません: 攻撃スキーマに
-   コンポーネントフィールドはありません。
+   のは*成果物*であり、コンポーネントでは決してありません: raw-attack
+   スキーマに component target はありません。裁定後に judge が著す
+   `ValidatedAttackRecord` だけが任意の `target_component_id` を追加でき、
+   攻撃対象を変えずに責任主体を束縛します。
 5. **同一ロールの告発は禁止。** 同一ロールの出力は観察にとどまります。
    ガバナンスレコードビルダで構成的に強制され、カーネルの
    `validate_role_separation` が権威的に強制します; 不許容な証拠は証拠
    収集の段階で除外されます。
+   作成者識別子はモデル出力から採用せず、信頼された実行時の型付き
+   ビルダが現在の構成要素から付与します。ただしこれは同一プロセス内の
+   アプリケーション境界であり、電子署名、別 OS 利用者、独立プロセス、
+   IPC サンドボックスによる分離ではありません。実行時、保存点、道具の
+   呼出し境界は現版の信頼基盤です。
 6. **選択的消去は論理のみ。** 物理的には何も削除されません。staleness は
    監査ログイベント、導出された `rqgm_erasure_state.json` ロールアップ、
    および `tree.json` を通じて永続化される追加的な `Node.metrics`
@@ -504,9 +543,53 @@ Layer 0 のままです: RQGM はその所見を**読む**だけです
    `_erasure_event_id`）に存在します。消去はスロットスコープです
    （退役した reviewer はその reviewer のレコードとその下流の utility への
    影響だけを stale にし、無関係な仕事は決して stale にしません）。
-   utility は*元の*エポックの凍結された重みの下で生き残った入力から
-   再計算されます — それが不可能な場合、ノードは代わりに
-   frontier-invalid になります（erase, don't re-scale）。
+   スコア済み証拠が stale になった utility は、*元の*エポックの凍結重みで
+   生存入力から再計算されます。utility policy の退役だけは意図的な例外で、
+   退役ポリシーを刻印された全ノードを、保存済みの policy-independent な
+   `_axis_scores` から新たに凍結された基準で再スコアします。raw axis が
+   欠落／不正なら fail-closed で無効化され、古い composite の変換や残存は
+   許されません。
+   消去が論理的である以上、ノードを*昇格*させるすべてのコンシューマは
+   センチネル自身を読まなければなりません。展開は読みます
+   （`BFTS.should_prune`、`PaperArchiveStrategy.should_prune`）し、選択も
+   読みます: `verified_context.select_best_node` — paper プリフライトで
+   エスカレーションされる paper 候補、アーカイブのシードノード、
+   アーカイブの best-belief 勝者とクロスラウンド勝者、そして論文の
+   クレームを接地する `verified_context.json` の系譜 — に加えて、paper
+   コンテキストビルダ（`build_best_nodes_context`）とスキル側の勝者
+   リゾルバ（ari-skill-transform の science-data/EAR 選択、ari-skill-paper
+   の implementation-details ブロック）です。すべての候補が消去されている
+   場合、選択は汚染された証拠へフォールバックするのではなく勝者なしを
+   返します（消去されたレコードはもはや存在しないため選択されえない、
+   という RQGM 論文の物理削除セマンティクスに一致します）。また、以前に
+   書かれた `verified_context.json` が消去済みの勝者を名指ししている
+   場合、そのファイルは論文を接地するまま放置されず削除されます。これは
+   plan 10 §3 が先送りした問い — `get_verified_context` のコンシューマは
+   stale 集合でフィルタするのか — を決着させます: `select_best_node` で、
+   無条件にフィルタします（このキーを書くのは RQGM の機構 — `ari_rqgm`
+   の探索エンジンまたは `rqgm_archive` の paper ランタイム — だけなので、
+   この節はデフォルトパスでは不活性です）。消去は子孫へ自動伝播しない
+   ため、有効な勝者が消去済み祖先を持ち得ます: メモリ層へ渡される系譜は
+   既知の消去済み祖先を除外し、ノード単位の working-context 注入も
+   あらゆるメモリ読み出しの前に消去済み祖先 id を除外します
+   （`rqgm_erasure_state.json` ロールアップ経由）。メモリ層自身も同じ
+   ロールアップを読み、2 つの場合を分けます。消去済みノードのエントリ読み
+   出しは**ラベル付き**で返り（`erased` / `erasure_event_id` /
+   `erasure_note` を最上位と `metadata` の両方に付与し、再射影で剥がれない
+   ようにします）、空にはなりません — 消去が撤回するのは判断の資格で
+   あって、実験が記録した測定値ではないからです。一方、メモリを決定へ
+   *押し込む*経路は hard-exclude します: 論文クレームの接地
+   （`claims` / `usable_for_claims`。`build_verified_context` の内部で
+   除外するので in-process 呼び出し元も同じ扱いになります）、
+   「確立された結論」の注入、ベストノード選択。`limitations` は意図的に
+   消去済みエントリをラベル付きで残します — 後に無効化された方向の
+   正直な記録こそ limitations の役目だからです。これが plan 10 §3 の
+   先送り問題の決着形です。
+
+   この保証は*来歴*についてのものであり、書き直されたテキストには及び
+   ません: 生存ノードがラベル付きエントリを読んで自分の要約に言い換えれば、
+   清浄な系譜の上に無印のレコードが生まれます。再著述を通じてマーカーを
+   伝播させる機構は無く、消去機構もそれを主張しません。
 7. **クリーンルーム汚染規則。** 退役ロールの置換プロンプトは、固定ティアが
    組み立てる、閉じた、カーネルでスクリーニングされた入力バンドル
    （コミット済みカタログ + 抽象化された失敗サマリ）から生成されます —
@@ -520,20 +603,21 @@ Layer 0 のままです: RQGM はその所見を**読む**だけです
 8. **メタティアの権限制限。** メタエージェントは読み取り専用サンドボックス
    （`MetaSandboxMCPProxy` の allowlist + 合成された submit ツール）で走り、
    capability フラグは deny-by-default で hard-denied フラグは const-false
-   （`ari/rqgm/meta_rules.py`）、カーネルは権限非拡大を部分集合演算として
-   チェックし（不変条件 18）、すべてのメタ出力は `status: candidate` で
-   ライフサイクルに入ります — メタティアは提案できても、任命は決して
-   できません。
+   （`ari/rqgm/meta_rules.py`）、カーネルは各 adoption 候補が宣言する能力を
+   同一ロールの serving incumbent と比較して権限非拡大を検証します
+   （incumbent が無いときは固定 capability matrix が上限）。すべての
+   メタ出力は `status: candidate` でライフサイクルに入ります —
+   メタティアは提案できても、任命は決してできません。
 9. **固定層は決して進化しない。** カーネル、固定検証器、監査ログ、遷移 /
    severity / capability テーブル、選択的消去規則、claim-evidence hard
    gate は進化対象ではありません; `constitution_hash` がテーブルを
    ピン留めします。
-10. **制度をブロックし、研究は決してブロックしない。** ハードブロック
-    集合が拒否するのは RQGM の状態変更のみ（遷移コミット、レジストリ
-    書き込み、フロンティア再構築コミット、候補昇格）です; ノード実行が
-    拒否されることは決してありません。すべてのランループフックは
-    ベストエフォート / fail-open です — ガバナンスの失敗が劣化させるのは
-    ガバナンスであって、実験ではありません。
+10. **制度変更は閉じる。** ハードブロック集合が拒否するのは RQGM の
+    状態変更（遷移コミット、レジストリ書き込み、フロンティア再構築
+    コミット、候補昇格）です。研究実行の継続が安全なのは、外部副作用の
+    ない候補生成と局所計算に限る運用条件です。外部 API、装置、実データ
+    への不可逆操作には、統治故障時に閉じる別の固定ゲートが必要であり、
+    現カーネルはこの環境分離を強制しません。
 11. **決定論 (P2)。** カーネル判定、遷移解決、フロンティア修復、予算
     レベル、shadow サンプリング（ハッシュベース）、評価メトリクスは純粋
     関数です — 乱数なし、壁時計判定なし、リプレイでバイト単位に同一。

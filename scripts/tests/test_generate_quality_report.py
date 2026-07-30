@@ -420,7 +420,12 @@ def test_compute_areas_matches_001_baseline():
     # added or removed; the default simple_bfts + linear path writes and
     # exports NOTHING and stays byte-identical (pinned by
     # ari-core/tests/test_gui_v1_mode_selection.py).
-    assert by["ari-core/ari/viz"]["loc"] == 18026
+    # 18026 -> 18097: RQGM erasure-aware GUI read models (checkpoint_api /
+    # checkpoint_finder / routes / v1 dto+queries+rqgm, +94/-30) plus the
+    # best-VALID-score filters on the run cards (checkpoint_api, v1 queries
+    # — erased nodes' retained stale scores no longer display as the run's
+    # best, +7). No endpoint added or removed.
+    assert by["ari-core/ari/viz"]["loc"] == 18097
     # 148 -> 159: RQGM-branch public re-exports (claim_gate FORMULAS /
     # required_roles; cost_tracker PRICING_TABLE_UNAVAILABLE + logging) —
     # both intentional, public_api.json snapshot regenerated accordingly.

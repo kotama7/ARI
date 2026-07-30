@@ -9,6 +9,23 @@ asked for `rqgm_archive` was silently ignored there and the run produced a linea
 paper with no `paper_archive_state.json` and no provenance that the request had
 been dropped. Hoisting the dispatch here makes the three entries agree.
 
+The RQGM **paper-candidate pre-flight** (penalty replay → escalate-to-fixpoint →
+re-ideation) is hoisted here for the same reason: it, too, lived privately in
+`ari paper`, so a one-pass `ari run` never ran the paper-candidate adversarial
+round, and exploration's own per-node rounds do not cover it — the paper
+artifacts that round attacks (claim-gate findings, `verified_context.json`,
+related refs) are written by the paper stages, so before them the pre-signals are
+empty and the paper-claim adversaries sit on their no-attack floor.
+
+That same fact bounds WHEN the round is worth running, because its §5.3 marker is
+one-shot per node and epoch-agnostic: fired against an empty bundle it is spent
+forever, permanently suppressing the artifact-grounded round a later invocation
+could run. So the pre-flight is gated on the evidence existing — it runs before
+the pipeline when a previous pass produced those artifacts (where a demotion can
+still re-crown this paper's own seed), and otherwise once more after the pipeline
+has written them, where the penalty reaches selection on the next invocation
+through `replay_utility_penalties`. The three entries agree here as well.
+
 **Identity-default guarantee preserved.** The default `linear` path still imports
 no `ari.rqgm` module: :func:`ari.config.apply_paper_env_overrides` is
 import-free, the resume reconcile is gated on the state file's existence (absent
@@ -89,6 +106,136 @@ def log_agent_as_judge_provenance(score_fn) -> None:
         )
 
 
+def _escalate_paper_candidate_to_fixpoint(rqgm, all_nodes):
+    """Select → escalate → re-select until the winner is stable.
+
+    A judge-validated attack in the escalation round applies the bounded
+    utility penalty (plan 06 §5.4), rewriting the candidate's
+    ``_scientific_score`` in place — so the post-round re-selection can
+    crown a different node. Looping guarantees the node the paper is
+    actually about never escapes its L3 paper-candidate round. Terminates:
+    each node is escalated at most once per pass (local set; the §5.3
+    round marker additionally makes repeat rounds no-ops across runs).
+    Returns the final (stable) winner, or ``None`` when every candidate
+    is erased.
+    """
+    from ari.pipeline.verified_context import select_best_node
+
+    best = select_best_node(all_nodes)
+    escalated: set[str] = set()
+    while best is not None:
+        cand_id = str(getattr(best, "id", "") or "")
+        if cand_id in escalated:
+            break
+        escalated.add(cand_id)
+        rqgm.run_paper_candidate_escalation(best, all_nodes=all_nodes)
+        best = select_best_node(all_nodes)
+    return best
+
+
+#: The paper pre-signal artifacts ``build_artifact_bundle`` reads (plan 06
+#: §5.2). The §5.3 round marker is ONE-SHOT per node and epoch-agnostic, so a
+#: round fired before any of these exist spends it on an empty bundle — only
+#: the node-text `overclaim` fallback can fire — and permanently suppresses the
+#: artifact-grounded round (prior_art / evidence_gap / metric_gaming) that a
+#: later invocation could run. Hence the gate.
+_PAPER_PRESIGNAL_ARTIFACTS = (
+    "verified_context.json",
+    "related_refs.json",
+    "evaluation/claim_evidence_hard_gate_final.json",
+    "evaluation/claim_evidence_hard_gate_draft.json",
+)
+
+
+def paper_presignal_artifacts_present(checkpoint_dir) -> bool:
+    """True when at least one paper pre-signal artifact exists on disk."""
+    try:
+        ckpt = Path(checkpoint_dir)
+        return any((ckpt / rel).is_file() for rel in _PAPER_PRESIGNAL_ARTIFACTS)
+    except Exception:  # pragma: no cover - defensive
+        return False
+
+
+def run_paper_candidate_preflight(rqgm, all_nodes, experiment_data,
+                                  checkpoint_dir, *,
+                                  post_pipeline: bool = False) -> bool:
+    """RQGM paper-candidate pre-flight (plan 03 trigger table / 06 §5.5 /
+    12 §5.2), shared by every CLI entry.
+
+    Escalates the best node (the verified_context ranking) through the
+    EXISTING per-node RQGM machinery — one paper-candidate adversarial round
+    + L3 governance, with the validated attacks flowing to the
+    AdversarialReplayPool. The round is NOT merely observational: a
+    judge-validated attack applies the bounded utility penalty (plan 06
+    §5.4), rewriting ``_scientific_score`` in place, so the downstream
+    seed / verified-context re-selection can crown a DIFFERENT node. Two
+    consequences handled here:
+
+    1. persisted penalties are replayed onto the loaded nodes first
+       (``replay_utility_penalties``) — a separate ``ari paper`` process
+       never writes ``tree.json``, so without replay a re-run reverts the
+       ranking while the §5.3 round marker suppresses a second round (P2);
+    2. selection→escalation runs to a FIXPOINT, so a node crowned by a
+       demotion still gets its own L3 round.
+
+    **Gated on the paper evidence existing** (:data:`_PAPER_PRESIGNAL_ARTIFACTS`):
+    the round's whole point is to attack the paper's real artifacts, and its
+    marker is one-shot per node, so on a checkpoint that has not produced a
+    paper yet the pre-flight defers rather than spending the marker on an
+    empty bundle. ``run_paper_phase`` then re-invokes it with
+    ``post_pipeline=True`` once the pipeline HAS produced those artifacts, so
+    the round still runs — its penalty lands durably in the case log and
+    reaches selection on the next invocation through
+    ``replay_utility_penalties``. Before-the-pipeline is what lets a demotion
+    re-crown the paper's own seed; after is the best available on a first
+    pass, where no evidence existed to judge beforehand.
+
+    Duck-typed on *rqgm* (present only under ``ari_rqgm``); a non-RQGM run
+    never reaches this function. Fail-open: any failure logs and never
+    blocks the paper pipeline. Returns ``True`` when the escalation ran.
+    """
+    if rqgm is None:
+        return False
+    if not paper_presignal_artifacts_present(checkpoint_dir):
+        log.info(
+            "paper-candidate pre-flight deferred%s: none of %s exists yet, "
+            "and the round marker is one-shot per node — spending it on an "
+            "empty bundle would permanently suppress the artifact-grounded "
+            "round",
+            " again" if post_pipeline else "",
+            "/".join(_PAPER_PRESIGNAL_ARTIFACTS),
+        )
+        return False
+    if post_pipeline:
+        log.info(
+            "running the paper-candidate round AFTER the paper pipeline: the "
+            "artifacts it attacks did not exist at pre-flight time, so any "
+            "penalty reaches selection on the next invocation (replay), not "
+            "this one",
+        )
+    try:
+        replay = getattr(rqgm, "replay_utility_penalties", None)
+        if callable(replay):
+            replay(all_nodes)
+        best = _escalate_paper_candidate_to_fixpoint(rqgm, all_nodes)
+        if best is not None:
+            # RQGM re-ideation (plan 03 §5.2): `paper_candidate` is the
+            # fourth declared trigger event and the plan names paper
+            # pre-flight as its hook — keyed to the FINAL winner (the node
+            # the paper is actually about).
+            reideate = getattr(rqgm, "reideate", None)
+            if callable(reideate):
+                reideate("paper_candidate", {
+                    "goal": (experiment_data or {}).get("goal", ""),
+                    "checkpoint_dir": str(checkpoint_dir),
+                    "node_id": getattr(best, "id", ""),
+                })
+        return True
+    except Exception as exc:
+        log.warning("rqgm paper-candidate escalation failed: %s", exc)
+        return False
+
+
 def run_paper_phase(
     cfg,
     all_nodes,
@@ -99,6 +246,7 @@ def run_paper_phase(
     *,
     linear_paper_fn: Callable,
     paper_llm=None,
+    rqgm=None,
 ) -> str:
     """Resolve the paper axis and run the paper phase. Returns the effective
     mode actually run (``"linear"`` or ``"rqgm_archive"``).
@@ -106,9 +254,20 @@ def run_paper_phase(
     ``linear_paper_fn`` is ``ari.core.generate_paper_section`` — passed in
     rather than imported so the CLI modules keep their existing lazy-lookup
     indirection (tests patch ``ari.cli.generate_paper_section``).
+
+    ``rqgm`` is the exploration ``RQGMRuntime`` (``getattr(bfts, "rqgm",
+    None)``) — present only under ``ari.mode: ari_rqgm``, and passed rather
+    than discovered so this module keeps its no-``ari.rqgm``-import
+    discipline. When present, the paper-candidate pre-flight runs BEFORE the
+    mode branch, so it fires on the exploration axis independently of
+    ``paper.mode`` (the 2x2 orthogonality the paper plans pin) — and, when
+    the paper evidence does not exist yet, once more AFTER the pipeline
+    produced it (see :func:`run_paper_candidate_preflight`).
     """
     from ari.config import _effective_paper_mode_str, apply_paper_env_overrides
 
+    escalated = run_paper_candidate_preflight(
+        rqgm, all_nodes, experiment_data, checkpoint_dir)
     apply_paper_env_overrides(cfg)
     state_path = Path(checkpoint_dir) / PAPER_ARCHIVE_STATE_FILENAME
     state_existed = state_path.exists()
@@ -121,6 +280,10 @@ def run_paper_phase(
 
     if _effective_paper_mode_str(cfg) != "rqgm_archive":
         linear_paper_fn(all_nodes, experiment_data, checkpoint_dir, mcp, cfg_str)
+        if not escalated:
+            run_paper_candidate_preflight(
+                rqgm, all_nodes, experiment_data, checkpoint_dir,
+                post_pipeline=True)
         return "linear"
 
     mode_source = (
@@ -166,4 +329,8 @@ def run_paper_phase(
         linear_fallback=linear_paper_fn,
     )
     log_agent_as_judge_provenance(reviewer_score_fn)
+    if not escalated:
+        run_paper_candidate_preflight(
+            rqgm, all_nodes, experiment_data, checkpoint_dir,
+            post_pipeline=True)
     return "rqgm_archive"

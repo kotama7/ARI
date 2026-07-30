@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_state_store.py
     role: test
-last_verified: 2026-07-16
+last_verified: 2026-07-28
 ---
 
 # RQGM Schema 参考
@@ -48,11 +48,15 @@ Schema。它们全部随 `ari-core/ari/schemas/` 一起发布，并通过
   的场合（`prompt_sha256` / `full_sha256`、`inputs_sha256`、治理
   缓存中的内容哈希）。
 - **`payload_hash(payload)`** = `hash12(canonical_json(payload))`
-  —— 事件哈希与指纹函数。
-- **`epoch_fingerprint`**（`ari/rqgm/state.py`）——
-  `hash12(canonical_json(EpochState payload))`，其中排除
-  `created_at`（挂钟元数据）、指纹字段本身和 `status`，因此
-  open→closed 不会对冻结内容重新指纹。
+  —— 提示词、策略、注册表和旧版 v1 事件使用的短内容标识。
+- **v2 事件摘要** —— 对规范化的
+  `{schema_version, event_id, event_type, transaction_id, payload,
+  prev_event_hash}` 计算完整 SHA-256，绑定所有会改变重放语义的字段；
+  时间戳仍在摘要之外。
+- **纪元身份**（`ari/rqgm/state.py`）—— `policy_fingerprint` 摘要服务制度
+  与已解析治理设置，`execution_fingerprint` 摘要声明的模型、解码、工具、
+  环境与数据快照，`epoch_fingerprint` 合成两者。排除 `created_at`、
+  `status` 和复合字段自身，因此 open→closed 不会改变冻结内容。
 
 Id 格式（全部零填充、按检查点计数）：
 
@@ -124,12 +128,13 @@ id/哈希格式。**所属模块：**`ari/rqgm/events.py`（词汇表的 Python
 
 | 字段 | 说明 |
 |---|---|
-| `schema_version` | const `1` |
+| `schema_version` | 新事件为 `2`；旧版 `1` 仍可读取 |
 | `event_id` | `evt_%06d`，按检查点单调 |
-| `event_type` | 封闭 v1 集合：`epoch_transaction_prepare`、`component_registered`、`prompt_registered`、`component_status_change`、`prompt_status_change`、`epoch_close`、`epoch_open`、`epoch_transaction_commit`、`emergency_quarantine`（唯一的纪元中途变更） |
-| `payload` | 事件正文 —— 唯一被哈希的部分 |
-| `event_hash` | `hash12(canonical_json(payload))` |
-| `prev_event_hash` | 链到上一行；首行为 `""` |
+| `event_type` | 封闭集合：`epoch_transaction_prepare`、`component_registered`、`prompt_registered`、`component_status_change`、`prompt_status_change`、`epoch_close`、`epoch_open`、`epoch_transaction_commit`、`emergency_quarantine` |
+| `transaction_id` | 边界事务成员标识；独立纪元开启/审计事件才为空 |
+| `payload` | 事件正文 |
+| `event_hash` | v2 为完整事件摘要；v1 使用 12 位载荷哈希 |
+| `prev_event_hash` | 包含在 v2 摘要中；首行为 `""` |
 | `ts` / `ts_iso` | 信封元数据，在哈希之外（P2） |
 
 ### `epoch_state.schema.json`
@@ -148,7 +153,9 @@ id/哈希格式。**所属模块：**`ari/rqgm/events.py`（词汇表的 Python
 | `run_id` / `node_count_at_open` | 运行关联 + 边界簿记 |
 | `active_components` / `active_prompt_hashes` / `utility_policy` | 每纪元冻结的集合（冻结时复制；全局不变量 1–3）。`utility_policy` 是**受治的分数正文** —— `composite`、`axis_weights`、`frontier_score`、`depth_penalty_lambda`、`ucb_c` 加上封印的 `utility_policy_hash` —— 由 `ari/rqgm/state.py:capture_utility_policy` 从已采纳策略中捕获（纪元 0 / `simple_bfts` 回退到 cfg）；见[受治效用进化 schema](#governed-utility-evolution-schema-task-14) |
 | `registry_version` | 冻结时点注册表的 `hash12` |
-| `epoch_fingerprint` | 排除 `created_at`、`status` 和其自身的 `hash12` |
+| `policy_settings` / `policy_fingerprint` | 宪制、阈值、预算、治理设置及其12位摘要 |
+| `execution_identity` / `execution_fingerprint` | 声明的模型/后端/温度、搜索与评估设置、技能、禁用工具，以及模型/工具/环境/数据修订固定值。缺失固定值存为 `unresolved`，并设置 `complete: false` |
+| `epoch_fingerprint` | 合成政策与执行身份的12位摘要，排除 `created_at`、`status` 和自身 |
 | `created_at` | 元数据；被指纹排除 |
 
 ### `rqgm_registry.schema.json`
@@ -258,11 +265,10 @@ id/哈希格式。**所属模块：**`ari/rqgm/events.py`（词汇表的 Python
 这并不削弱"仅以工件为目标"的规则。对抗者仍然只攻击工件；绑定仅存在于裁决之后
 由裁判撰写的记录上。对抗者负责观测，而使观测具备问责效力的是裁判的判定。
 
-在探索（`ari_rqgm`）侧，七种对抗者类型不绑定任何对象：它们攻击的工件由
-`generator` 角色撰写，而该角色没有已注册的组件（没有任何东西会刻印
-`generator_v1` id），因此其记录带有 `affected_components: []` 且没有
-`target_component_id`。该机制是角色驱动的 —— 一旦某个撰写工件的角色拥有已注册
-的在任者，指名它即可绑定这些案例类型，无需其他改动。
+在探索（`ari_rqgm`）侧，研究 `generator` 是已注册创始组件。节点只写一次
+生成组件、提示词摘要和纪元。七种对抗者类型只有在该来源与纪元冻结现任一致时
+才绑定 `generator_v1`；旧记录、缺失或不匹配来源保持无目标，不会让后继为前任
+成果受罚。
 
 ### `rqgm_utility_record.schema.json`
 
@@ -280,6 +286,11 @@ id/哈希格式。**所属模块：**`ari/rqgm/events.py`（词汇表的 Python
 | `utility_policy_hash` / `frozen_policy` | 纪元冻结策略，**按值**内嵌，使得可以在原始权重下重算 |
 | `supersedes` / `recomputed_in_epoch` | 仅在 Task-10 重算记录上设置；被取代的记录留在磁盘上，标记为过期 |
 
+这些字段描述的是过期已评分证据擦除后的重算。效用策略退役走另一条
+Task-10 路径：在新策略下重新组合每个节点保存的 `_axis_scores`，并把节点
+记入外层 `SelectiveErasureEvent.policy_rescored_node_ids`；缺少原始轴的
+节点以 fail-closed 方式无效化。
+
 ### `rqgm_replay_pool.schema.json`
 
 **用途：**AdversarialReplayPool 的派生字节固定快照
@@ -291,7 +302,7 @@ id/哈希格式。**所属模块：**`ari/rqgm/events.py`（词汇表的 Python
 | 字段 | 说明 |
 |---|---|
 | `case_seq` | 单调案例计数器 |
-| `cases[]` | AdversarialReplayCase：`case_id`（`adv_case_%05d`）、`case_type`（七类集合）、`validated_attack_id`、`severity`、`admitted_epoch` / `last_confirmed_epoch`、`status` `active` \| `evicted`（逐出为仅逻辑）、`replay_view`（完整材料 —— 对角色 `clean_room_generator` 拒绝）与 `abstract_view`（污染安全的 FailureSummary —— 不含原始攻防文本） |
+| `cases[]` | AdversarialReplayCase：`case_id`（`adv_case_%05d`）、`case_type`（随发布 schema 的七种探索类型；paper runtime 增加下文所述、阶段外 inert 的第八种）、`validated_attack_id`、`severity`、`admitted_epoch` / `last_confirmed_epoch`、`status` `active` \| `evicted`（逐出为仅逻辑）、`replay_view`（完整材料 —— 对角色 `clean_room_generator` 拒绝）与 `abstract_view`（污染安全的 FailureSummary —— 不含原始攻防文本） |
 
 ## 提示词进化 schema（Task 07）
 
@@ -378,7 +389,7 @@ CK-REG-004）。
 |---|---|
 | `epoch_transition_id` | `transition_%03d_to_%03d` |
 | `status` | `pending` \| `committed` \| `aborted` \| `rejected` \| `failed` —— 被中止/被内核阻断的转换会被记录但**不**施加任何注册表变更 |
-| `emergency` | `true` 是唯一的纪元中途形状（单一制裁进入 quarantine） |
+| `emergency` | `true` 表示在一个强制紧急边界中隔离并开启下一纪元的 T16 形状 |
 | `inputs` | 含冻结边界输入（GovernanceReport + 候选评估 + 注册表哈希）的 `inputs_sha256` 内容哈希，使每次已提交变更都可确定性重放 |
 | `adoptions` / `sanctions` / `retirements` / `bans` | 状态变更列表，每项钉住一个 `rule_id` |
 | `clean_room_requests` | 交给 Task 08 的再生成请求 |
@@ -402,7 +413,8 @@ CK-REG-004）。
 | `status` | `applied` \| `conservative` \| `halted_expansion`（fail-closed 降级阶梯） |
 | `retired_prompt_hashes` / `retired_component_ids` | 退役了什么 |
 | `direct_stale_record_ids` / `transitive_stale_record_ids` | 依赖闭包 |
-| `invalidated_node_ids` / `recompute_node_ids` / `abandoned_pending_node_ids` | 节点处置 |
+| `invalidated_node_ids` / `recompute_node_ids` / `abandoned_pending_node_ids` | 对过期依赖闭包的节点处置 |
+| `policy_rescored_node_ids` | 可选且增量式的 #77 字段：列出在新效用策略下由已存 `_axis_scores` 重新加权、因而未被无效化的节点 |
 | `trace_stats` | BFS 追踪器统计（`rqgm.frontier_repair.max_trace_depth` 限制遍历） |
 
 ### `frontier_rebuild_event.schema.json`

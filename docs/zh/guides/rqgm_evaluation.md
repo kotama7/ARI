@@ -8,7 +8,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_paper_eval.py
     role: test
-last_verified: 2026-07-16
+last_verified: 2026-07-29
 ---
 
 # RQGM 评估与消融
@@ -56,7 +56,8 @@ B0 与 B8（以及每一档），固定模型、相同节点预算、≥ 3 个�
 （`eval_defaults.seeds`）。工具链在机制上强制这一点：
 `eval_defaults.bfts`（`max_total_nodes` / `max_depth`）被合并到每个
 条件覆盖层之下，`eval_defaults.models` 在活动开始时解析一次，写入
-`ARI_MODEL_CODING` / `ARI_MODEL_BFTS` / `ARI_MODEL_EVAL` 环境变量并
+`ARI_MODEL_CODING` / `ARI_MODEL_BFTS` / `ARI_MODEL_EVAL` /
+`ARI_MODEL_PAPER` / `ARI_MODEL_RUBRIC` 环境变量并
 盖印到每次派生的运行上。公平性以**节点预算**为准；token/美元/
 挂钟时间只*报告*、从不拉平，因此 RQGM 的开销保持可见。每次运行都
 使用全新检查点 —— 不 resume、不跨条件复用 `skip_if_exists`。
@@ -141,6 +142,39 @@ evidence_refs, applicable}`；数据源缺失时产出
 **协同进化价值** = B_full − B_archive_no_coevo。与此处各处一样，成本
 只*报告*、从不拉平。
 
+### 与 RQGM 原论文对齐的条件（P0–P4）
+
+论文主比较使用 `rqgm_paper_conditions` 中的评估预设，而不是把
+`paper.mode` 扩展成五个产品模式。所有条件均运行相同的 `rqgm_archive`、
+相同归档预算和八个论文纪元。只有在 `rqgm.eval.enabled: true` 时，
+`rqgm.eval.paper_ablation.condition_id` 才生效。
+
+| 条件 | writer 进化 | reviewer 替换 | 对抗样例池 | 选择性擦除 | Constitutional 强制 |
+|---|---:|---:|---:|---:|---:|
+| P0_hgm_h_fixed_critic | 开 | 关 | 关 | 关 | 关 |
+| P1_rqgm_replacement_only | 开 | 开 | 关 | 开 | 关 |
+| P2_rqgm_no_erasure | 开 | 开 | 开 | 关 | 关 |
+| P3_rqgm_full | 开 | 开 | 开 | 开 | 关 |
+| P4_constitutional_rqgm | 开 | 开 | 开 | 开 | 开 |
+
+P0/P3/P4 是主比较，P1/P2 用于隔离具体机制。P0–P3 中“关闭
+Constitutional 强制”并不会移除固定内核，而是令其以 `audit_only`
+方式仅记录、不阻断转换；P4 使用 `standard` 强制。这样无需引入危险的生产
+内核关闭路径即可保持可观测性。若普通机制开关与条件表不一致，论文运行时会
+拒绝这个标签错误的实验条件。P0 还会把 `paper_reviewer` 从后继生成中排除，
+因此在 `paper_writer` 继续进化的同时，critic 确实保持固定。
+
+这里对齐的是机制，而不是原论文 12,288 次评估的计算规模。为使
+Claude Code/Codex 活动的成本可承受，随附矩阵使用八个论文纪元，并将每个
+纪元的归档扩展限制为最多 12 次。用于投稿的运行必须预注册这一共同预算，
+或更大的共同评估调用预算，并报告每个条件实际产生的调用次数。
+
+这里的“选择性擦除”遵循 RQGM 原论文的机制：活动 reviewer 被替换时，
+只让旧 reviewer 产生的效用行失去选择资格，草稿正文和溯源记录仍被保留。
+P1/P3/P4 仅从跨纪元归档中仍有效的效用行选择全局获胜者。P2 则有意保留
+旧分数的资格，使旧标准能继续影响选择。每次逻辑擦除都会以
+`paper_utility_erasure` 记录在 `rqgm_audit.jsonl` 中。
+
 ### 论文指标 P1–P5
 
 由 `compute_metric_report(..., paper=True)`（`ari.rqgm.evaluation.metrics`、
@@ -154,17 +188,14 @@ evidence_refs, applicable}`；数据源缺失时产出
   `paper_reviewer` 及锚点语料库**不相交**的钉定 rubric 集成，
   因此协同进化后的审稿人无法给自己的稿件抬分。对应 RQGM
   论文的接受率表。仅 Tier-3（真实 LLM）；绝不在 CI 中运行。
-  > **尚未接线（截至 2026-07-17）。** 面板的**运行器尚未落地**：没有任何
-  > 代码读取 `paper_eval_defaults.panel`，不相交性检查
-  > （`conditions.panel_disjointness_violations`）也**没有生产调用方**，
-  > 因此它目前**不是**"工具链的硬检查"。P1 只读取真实钉定面板运行所写的
-  > 产物 `{ckpt}/panel_review_report.json`，缺失时返回 `applicable: false`
-  > （今天的每一次运行都是如此）。此前它读取的是**循环内** `review_paper`
-  > 的输出 `review_report.json`（对 *refine 前*草稿的评审，会被回送给
-  > `paper_refine`），并把声明的面板规格盖在其上：这是把自我一致报告成
-  > 不相交面板，正是 R1 指出的失效。该标记现在改为从面板文件自身记录的
-  > provenance 推导，不一致则返回 `applicable: false`。
-  > **在运行器落地前请勿报告 P1。**
+  `run_paper_panel.py` 在最终稿确定后运行每个 rubric×集成成员，从固定基础
+  seed 分配可复现的请求 seed，在花费前强制检查不相交性，并写入
+  `{ckpt}/panel_review_report.json`。P1只读取此产物，绝不读取会回送给
+  `paper_refine` 的**循环内** `review_report.json`。报告记录 rubric 模型、
+  请求 seed 和面板溯源。由于部分模型提供方或 CLI 后端可能忽略 seed，
+  seed 控制仅为尽力而为。声明与溯源不一致时，P1返回
+  `applicable: false`，不会给其他
+  运行重新贴标签。
 - **P2 审稿人↔锚点一致度**（`reviewer_anchor_agreement`）—— 受治理审稿
   人与锚点真值在保留集上的一致度。**仅可观测**：事后计算，不读取任何
   运行状态，也永远不能提交任何东西（§5.8）。
@@ -208,11 +239,11 @@ evidence_refs, applicable}`；数据源缺失时产出
 
 **诚实的限制 —— 请像读功能一样平实地读它们：**
 
-- PI3 的目标绑定链之所以能触发，是因为真实的 `ValidatedAttackRecord`
-  现在携带 `target_component_id`，而它在生产中**仅**为
-  `paper_self_preference`（其目标 `paper_reviewer_v1` 是一个已注册的创始
-  组件）解析。七个探索对抗者攻击的是 `generator` 撰写的工件，它们没有
-  已注册组件，因此其弹劾链按设计保持惰性。
+- 真实的 `ValidatedAttackRecord` 携带 `target_component_id`。论文自偏好会
+  绑定到已注册的论文角色。七个探索对抗者现在也能绑定到已注册的创始
+  `generator`，但仅当节点中只写一次的生产组件、提示词哈希与时期都和该时期
+  冻结的现任生成者一致时才绑定。旧记录、缺失、歧义或不匹配的来源一律不猜测，
+  仍保持无责任目标。
 - 在默认 `rqgm.paper.epoch.rounds: 2` 下，边界**和**弹劾动议都会触发，但
   通往活跃审稿人哈希改变的 T1→T6 攀升**不会完成**（一次完整采用需要一个
   角色空位加约 5 个边界；协同进化 PROOF 测试把 `rounds` 提到 8）。默认的
@@ -235,6 +266,26 @@ python scripts/rqgm_eval/run_ablation.py --dry-run --conditions B0,B3,B8
 # scripted_component and only loads under --smoke:
 python scripts/rqgm_eval/run_ablation.py --dry-run \
     --paper-conditions B0_paper_linear,B_archive_no_coevo,B_full
+
+# 展开与 RQGM 原论文对齐的 P0–P4
+# （建议先运行 P0/P3/P4 主比较）：
+python scripts/rqgm_eval/run_ablation.py --dry-run \
+    --rqgm-paper-conditions \
+P0_hgm_h_fixed_critic,P3_rqgm_full,P4_constitutional_rqgm
+
+# Claude Code负责写作，Codex负责独立的AI Scientist v2风格rubric评审。
+# 请先启动 `python -m ari.llm.cli_server --port 8900`：
+export ARI_LLM_API_BASE=http://localhost:8900/v1
+export OPENAI_API_KEY=dummy
+export ARI_MODEL_PAPER=openai/claude-cli:sonnet
+export ARI_MODEL_RUBRIC=openai/codex-cli:gpt-5-codex
+
+# 真实论文活动：为每个 条件×种子×实验 运行包含 paper phase 的
+# `ari run`（会产生真实 LLM 成本，绝不在 CI 中运行）：
+python scripts/rqgm_eval/run_ablation.py \
+    --rqgm-paper-conditions \
+P0_hgm_h_fixed_critic,P3_rqgm_full,P4_constitutional_rqgm \
+    --eval-id rqgm_paper_main
 
 # Offline smoke (stub components, seconds, no LLM) — the deletion-criteria
 # smoke campaign:

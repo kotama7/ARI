@@ -259,7 +259,10 @@ export function PaperBenchWizard() {
 
           <fieldset style={{ marginTop: 14, padding: 12, border: '1px solid #ccc' }}>
             <legend>{t('pb_execution_profile_override')}</legend>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+            <div
+              className="paperbench-model-grid"
+              style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}
+            >
               {[
                 ['nodes', 'nodes'],
                 ['ntasks', 'ntasks'],

@@ -20,6 +20,7 @@ from ari_skill_memory.access_log import (
     build_write_event,
     current_node_id,
 )
+from ari_skill_memory import erasure
 from ari_skill_memory.backends.base import MemoryBackend
 from ari_skill_memory.config import MemoryConfig
 
@@ -133,7 +134,7 @@ class InMemoryBackend(MemoryBackend):
                 ],
             )
         )
-        return {"results": results}
+        return erasure.annotate_payload({"results": results}, "results")
 
     def get_node_memory(self, node_id: str) -> dict:
         with self._lock:
@@ -163,10 +164,13 @@ class InMemoryBackend(MemoryBackend):
             )
         except Exception:
             pass
-        return {"entries": [
-            {"text": e["text"], "metadata": e["metadata"], "ts": e["ts"]}
-            for e in entries
-        ]}
+        return erasure.annotate_payload(
+            {"entries": [
+                {"text": e["text"], "metadata": e["metadata"], "ts": e["ts"]}
+                for e in entries
+            ]},
+            "entries", node_id=node_id,
+        )
 
     def clear_node_memory(self, node_id: str) -> dict:
         cow = self._check_cow(node_id)

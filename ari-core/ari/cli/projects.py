@@ -131,6 +131,9 @@ def paper(
             error_log=nd.get("error_log"), children=nd.get("children", []),
             created_at=nd.get("created_at", ""), completed_at=nd.get("completed_at", ""),
             ancestor_ids=nd.get("ancestor_ids") or [],
+            producer_component_id=nd.get("producer_component_id", ""),
+            producer_prompt_hash=nd.get("producer_prompt_hash", ""),
+            producer_epoch_id=nd.get("producer_epoch_id", ""),
         )
         node.status = NodeStatus(nd["status"])
         _lbl = nd.get("label", "draft")
@@ -152,38 +155,13 @@ def paper(
         f"[bold green]Running paper pipeline[/bold green]\nCheckpoint: {checkpoint_dir}",
         title="ARI Paper",
     ))
-    # RQGM paper-candidate escalation (docs/plans/ari_rqgm 03 trigger table /
-    # 06 §5.5 / 12 §5.2): at paper pre-flight, escalate the best node (the
-    # verified_context ranking) through the EXISTING per-node RQGM machinery —
-    # one final paper-candidate adversarial round + L3 governance, with the
-    # validated attacks flowing to the AdversarialReplayPool. The runtime is
+    # The RQGM paper-candidate pre-flight (penalty replay → escalate-to-
+    # fixpoint → re-ideation) now lives in `run_paper_phase`, shared by all
+    # three entries — `ari paper` used to own it privately, so a one-pass
+    # `ari run` never ran the paper-candidate round at all. The runtime is
     # present only under ari_rqgm (build_runtime attaches it to bfts); a
-    # non-RQGM paper run leaves this a dead branch (byte-identical). Fail-open:
-    # any failure logs and never blocks the paper pipeline.
+    # non-RQGM paper run passes None and the pre-flight is a dead branch.
     _rqgm_paper = getattr(_bfts_paper, "rqgm", None)
-    if _rqgm_paper is not None:
-        try:
-            from ari.pipeline.verified_context import (
-                select_best_node as _select_best_node,
-            )
-            _best_paper_node = _select_best_node(all_nodes)
-            if _best_paper_node is not None:
-                _rqgm_paper.run_paper_candidate_escalation(
-                    _best_paper_node, all_nodes=all_nodes
-                )
-                # RQGM re-ideation (plan 03 §5.2): `paper_candidate` is the
-                # fourth declared trigger event and the plan names paper
-                # pre-flight as its hook. `on_event` had no caller, so the row —
-                # priority (prior_art, mutation, cheap) — never dispatched.
-                _reideate = getattr(_rqgm_paper, "reideate", None)
-                if callable(_reideate):
-                    _reideate("paper_candidate", {
-                        "goal": experiment_data.get("goal", ""),
-                        "checkpoint_dir": str(checkpoint_dir),
-                        "node_id": getattr(_best_paper_node, "id", ""),
-                    })
-        except Exception as _esc_e:
-            log.warning("rqgm paper-candidate escalation failed: %s", _esc_e)
     # Prefer per-checkpoint workflow.yaml (carries launch-time rewrites) over
     # the package source.
     from pathlib import Path as _PL
@@ -211,6 +189,7 @@ def paper(
         run_paper_phase(
             cfg, all_nodes, experiment_data, checkpoint_dir, mcp_paper, _cfg_str,
             linear_paper_fn=generate_paper_section, paper_llm=_runtime[0],
+            rqgm=_rqgm_paper,
         )
     console.print("[bold green]Paper pipeline complete.[/bold green]")
 
@@ -405,4 +384,3 @@ def show_project(
             console.print(f"\n[bold]Artifacts[/bold] ({len(files)} files):")
             for f in sorted(files)[:10]:
                 console.print(f"  • {f.name}")
-

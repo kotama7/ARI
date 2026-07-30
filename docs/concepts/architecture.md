@@ -18,7 +18,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-07-10
+last_verified: 2026-07-30
 ---
 
 # ARI Architecture
@@ -79,11 +79,13 @@ flowchart TB
 
     subgraph post["Post-BFTS pipeline (workflow.yaml)"]
         direction TB
+        provenance["audit_node_provenance<br/>re-hash node artifacts"]
         transform["transform_data → science_data.json"]
         figures["generate_figures → VLM review"]
         paper["write_paper → review_paper<br/>(ensemble + Area Chair meta)"]
         claimtail["claim-evidence tail (Story2Proposal):<br/>link_paper_claims → claim_evidence_hard_gate<br/>→ evidence_grounded_semantic_review → merge_reviews<br/>→ paper_refine → render_paper → finalize_paper"]
         ear["generate_ear → curate → publish (EAR)"]
+        provenance --> transform
         transform --> figures
         transform --> ear
         figures --> paper
@@ -119,7 +121,10 @@ Everything on this page describes `simple_bfts`, the default execution
 mode. The opt-in `ari_rqgm` mode (Constitutional ARI-RQGM) wraps the same
 BFTS loop in epoch-based governance and co-evolution: the search strategy is
 wrapped by a pure-delegation `GovernedSearchStrategy`
-(`ari/rqgm/runtime.py`), completed nodes get an adversarial
+(`ari/rqgm/runtime.py`), the MCP client is wrapped in the constitutional
+capability gate (`_install_capability_gate` in `ari/core.py` — every governed
+tool call is audited, and critical violations escalate to a mid-epoch
+emergency quarantine), completed nodes get an adversarial
 attack/defend/judge round, and at each epoch boundary a deterministic
 constitutional kernel validates every governance state change (component
 adoption/retirement, prompt evolution, frontier repair). It is enabled only
@@ -261,9 +266,9 @@ BFTS expand() (ari/orchestrator/bfts.py)
     direction that would write the same files.
 
 Per-node self-report (v0.7.0)
-  ari-core/ari/orchestrator/node_report.py builds node_report.json at
-  mark_success / mark_failed (ari-core/ari/cli.py post-future hook). The
-  report records:
+  ari-core/ari/orchestrator/node_report/ builds node_report.json at
+  mark_success / mark_failed (ari-core/ari/cli/bfts_loop.py post-future
+  hook). The report records:
     - files_changed (added / modified / deleted / inherited_unchanged)
       derived from a sha256 diff of parent vs child work_dir
     - original_direction (saved by bfts.expand at child creation, never
@@ -301,7 +306,18 @@ nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
     ▼
 [workflow.yaml Post-BFTS Pipeline]
 
-  Stage 1: transform_data  (ari-skill-transform)
+  Stage 0: audit_node_provenance  (ari-skill-memory: audit_memory)  [before stage 1]
+    Re-hashes every node artifact whose sha256 the node_report recorded and
+    compares it against disk — the boundary where node outputs stop being
+    experiment results and start being paper evidence. Reports each artifact
+    verified / mismatch (rewritten after its hash was recorded) / missing
+    (deleted) / unhashed (declared with no recorded baseline). ARI's own
+    metadata (results.json et al., excluded by PathManager.is_meta_file) and
+    artifacts entries with no recorded hash are reported unhashed, not
+    verified. A signal, not a gate — transform_data depends_on it.
+    Output: node_provenance_audit.json
+
+  Stage 1: transform_data  (ari-skill-transform)  [after stage 0]
     BFS traversal of full tree (root → leaves)
     LLM reads all node artifacts (stdout, logs, generated code)
     LLM extracts: hardware specs, methodology, key findings, comparisons
@@ -570,8 +586,8 @@ Both files contain the BFTS node tree, but are written at different lifecycle st
 
 | File              | Writer                                                | Phase            | Schema                                                |
 |-------------------|-------------------------------------------------------|------------------|-------------------------------------------------------|
-| `tree.json`       | `_save_checkpoint()` in cli.py                        | During BFTS      | `{run_id, experiment_file, created_at, nodes}`        |
-| `nodes_tree.json` | `_save_checkpoint()` + `generate_paper_section()`     | BFTS + post-BFTS | `{experiment_goal, nodes}` (lightweight)              |
+| `tree.json`       | `_save_checkpoint()` in `cli/bfts_loop.py`            | During BFTS      | `{run_id, experiment_file, created_at, nodes}`        |
+| `nodes_tree.json` | `_save_checkpoint()` + `generate_paper_section()` (`core.py`) | BFTS + post-BFTS | `{experiment_goal, nodes}` (lightweight)              |
 
 **Reader convention**: All readers MUST prefer `tree.json` and fall back to
 `nodes_tree.json`. This ensures up-to-date data during BFTS while remaining
@@ -611,7 +627,7 @@ environment variables injected at launch.
 | `ari/orchestrator/node_report/` | Per-node self-report builder + legacy reconstruction (split into a package in v0.7.1) |
 | `ari/orchestrator/lineage_decision.py` | Lineage-decision LLM hook (BFTS rewind / branch / continue) |
 | `ari/orchestrator/root_idea_selector.py` | VirSci pool → `ideas[0]` re-selector |
-| `ari/rqgm/` | Constitutional ARI-RQGM runtime (opt-in `ari_rqgm` mode): `RQGMRuntime` facade, constitutional kernel, governance orchestrator, registry transition engine, frontier repair, proposal/adversarial/prompt-evolution layers. Never imported under `simple_bfts` — see [Constitutional ARI-RQGM Architecture](rqgm_architecture.md) |
+| `ari/rqgm/` | Constitutional ARI-RQGM runtime (opt-in `ari_rqgm` mode): `RQGMRuntime` facade, constitutional kernel, governance orchestrator (the impeachment pipeline under `governance/`), registry transition engine, frontier repair, proposal/adversarial/prompt-evolution layers, and the paper-archive co-evolution runtime (`PaperArchiveStrategy` — a second best-first search over draft space). Never imported under `simple_bfts` — see [Constitutional ARI-RQGM Architecture](rqgm_architecture.md) |
 | `ari/agent/loop.py` | ReAct agent loop — LLM + tool calls per node; auto-polls SLURM jobs; injects ancestor memory |
 | `ari/agent/message_utils.py` / `tool_manager.py` / `guidance.py` | Helpers extracted from `agent/loop.py` (Phase 3D, v0.7.1) |
 | `ari/agent/workflow.py` | WorkflowHints — auto-extracted from experiment text (tool sequence, metric keyword, partition) |
@@ -634,7 +650,7 @@ environment variables injected at launch.
 | `ari/migrations/v05_to_v07/` | Isolated v0.5 → v0.7 migration shims (scheduled for removal in v1.0) |
 | `ari/public/` | Stable re-export layer skills are allowed to import (`container`, `cost_tracker`, `paths`, `llm`, `config_schema`); CI-enforced by `tests/test_public_api_boundary.py` |
 | `ari/core.py` | Top-level runtime builder — composition root for Protocol-injected dependencies |
-| `ari/cli/` | Typer CLI split package: `__init__`, `run`, `projects`, `commands`, `bfts_loop`, `lineage`, `migrate` (Phase 3A, v0.7.1) |
+| `ari/cli/` | Typer CLI split package: `__init__`, `run`, `projects`, `commands`, `bfts_loop`, `lineage`, `migrate` (Phase 3A, v0.7.1) + `paper_dispatch` (the paper-phase execution-mode dispatch shared by `ari run` / `ari resume` / `ari paper`) |
 | `ari/viz/routes.py` / `websocket.py` / `ui_helpers.py` / `checkpoint_*` / `state_sync.py` | HTTP + SSE GUI backend, split out of the legacy `viz/server.py` and `viz/api_state.py` (Phase 3B, v0.7.1) |
 
 ### Skills (MCP servers)
@@ -644,7 +660,7 @@ environment variables injected at launch.
 | Skill | Tools | Role | LLM? |
 |-------|-------|------|------|
 | `ari-skill-hpc` | `slurm_submit`, `job_status`, `job_cancel`, `singularity_build`, `singularity_run`, `singularity_pull`, `singularity_build_fakeroot`, `singularity_run_gpu` | HPC job management + Singularity containers | ✗ |
-| `ari-skill-memory` | `add_memory`, `search_memory`, `get_node_memory`, `clear_node_memory`, `get_experiment_context` | Ancestor-scoped node memory backed by Letta (Postgres / SQLite / Cloud) | △ |
+| `ari-skill-memory` | `add_memory`, `search_memory`, `get_node_memory`, `clear_node_memory`, `get_experiment_context`, `audit_memory` | Ancestor-scoped node memory backed by Letta (Postgres / SQLite / Cloud); `audit_memory` drives the `audit_node_provenance` stage | △ |
 | `ari-skill-idea` | `survey`, `generate_ideas` | Literature search (Semantic Scholar) + VirSci multi-agent hypothesis generation | ✓ |
 | `ari-skill-evaluator` | `make_metric_spec` | Metric spec extraction from experiment file | △ |
 | `ari-skill-transform` | `nodes_to_science_data`, `generate_ear`, `curate_ear`, `publish_ear` | BFTS tree → science-facing data + EAR + curate/publish lifecycle (v0.7.0) | ✓ |
@@ -741,7 +757,7 @@ reported the same numbers from a single SLURM job because the result
 files were already on disk and the agent treated the experiment as
 done.
 
-The `_OUTPUT_BLACKLIST` in `ari-core/ari/cli.py` enumerates the
+The `_OUTPUT_BLACKLIST` in `ari-core/ari/cli/bfts_loop.py` enumerates the
 patterns explicitly skipped during the parent → child copy:
 
 | Inherited | Blacklisted |
@@ -1122,7 +1138,7 @@ that keeps the layering intact.
 | 2 — orchestrator | `orchestrator/{bfts, lineage_decision, node_report, root_idea_selector}` | BFTS exploration, lineage-decision LLM hook, per-node reports. |
 | 3 — agent | `agent/{loop, react_driver, workflow, message_utils, tool_manager, guidance, run_env}` | ReAct execution + experiment-specific WorkflowHints injection. |
 | 4 — pipeline | `pipeline/{__init__, experiment_md, yaml_loader, stage_control, context_builder, stage_runner, orchestrator}` | YAML-driven stage runner, paper-pipeline glue. |
-| 5 — entry points | `cli/{__init__, run, projects, commands, bfts_loop, lineage, migrate}`, `cli_ear`, `viz/*`, `registry/*`, `public/*` | Typer CLI, viz HTTP server, registry FastAPI, public re-export layer for skills. |
+| 5 — entry points | `cli/{__init__, run, projects, commands, bfts_loop, lineage, migrate, paper_dispatch}`, `cli_ear`, `viz/*`, `registry/*`, `public/*` | Typer CLI, viz HTTP server, registry FastAPI, public re-export layer for skills. |
 
 Migration code (`migrations/v05_to_v07/*`) lives outside the layers
 and will be deleted in v1.0.  Skills must only import from `ari.public.*`

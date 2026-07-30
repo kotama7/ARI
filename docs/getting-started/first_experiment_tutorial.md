@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-07-30
 ---
 
 # Your First Experiment, End to End
@@ -101,15 +101,20 @@ The search stops at your node/depth budget. The full tree is saved as
 When the search ends, a `workflow.yaml`-driven pipeline turns the tree into a
 paper (see [Publication lifecycle](../concepts/publication-lifecycle.md)):
 
-1. **transform_data** reads the whole tree and extracts hardware, methodology,
+1. **audit_node_provenance** re-hashes every node artifact whose sha256 the
+   node reports recorded and compares it against disk — right at the boundary
+   where node outputs stop being experiment results and start being paper
+   evidence. Per artifact it reports verified / mismatch / missing / unhashed
+   into `node_provenance_audit.json`. It is a signal, not a gate.
+2. **transform_data** reads the whole tree and extracts hardware, methodology,
    and findings into `science_data.json`.
-2. **generate_figures** writes the plotting code; a **VLM** then reviews the
+3. **generate_figures** writes the plotting code; a **VLM** then reviews the
    main figure and loops back if it scores low.
-3. **write_paper** drafts the LaTeX, revises it, and pulls BibTeX from the
+4. **write_paper** drafts the LaTeX, revises it, and pulls BibTeX from the
    survey results → `full_paper.tex` / `.pdf`.
-4. **review_paper** runs one or more reviewer agents against the chosen venue
+5. **review_paper** runs one or more reviewer agents against the chosen venue
    rubric (an Area Chair meta-review aggregates when there is more than one).
-5. **generate_ear** assembles the reproducibility bundle `ear/` (code, input
+6. **generate_ear** assembles the reproducibility bundle `ear/` (code, input
    data, figures, `reproduce.sh`, LICENSE — but not experiment outputs).
 
 By default the pipeline now also runs a **claim-evidence verification loop**: a
@@ -128,11 +133,17 @@ and the EAR browser.
 Finally ARI checks its own work the way an independent referee would
 ([ORS](../guides/paperbench/paperbench_quickstart.md)):
 
+- **Phase 0** generates a PaperBench rubric from the final paper, then
+  **audits that rubric** before anything is graded against it: each leaf is
+  flagged `vague_qualifier` / `no_paper_evidence` / `duplicate` / `unverifiable`
+  and the flags are written back into `ors_rubric.json` (summary in
+  `ors_rubric.audit.json`). Grading still proceeds — it is a quality signal, so
+  a reader can see which criteria were unsound.
 - **Phase 1** runs `reproduce.sh` in a sandbox (SLURM if available, else
   docker / apptainer / local) and checks the expected artifacts appear.
-- **Phase 2** grades the result against an auto-generated PaperBench rubric,
-  including a **negative control** (an empty repo must score near zero) so the
-  grade can't be earned by doing nothing.
+- **Phase 2** grades the result against that rubric, including a **negative
+  control** (an empty repo must score near zero) so the grade can't be earned
+  by doing nothing.
 
 The verdict is in `reproducibility_report.json`.
 

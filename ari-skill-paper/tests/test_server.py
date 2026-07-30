@@ -28,6 +28,36 @@ def _mock_resp(content: str):
     return r
 
 
+def test_paper_and_rubric_models_have_independent_phase_overrides(monkeypatch):
+    from src import server as _srv
+
+    monkeypatch.setenv("ARI_LLM_MODEL", "shared")
+    monkeypatch.setenv("ARI_MODEL_PAPER", "openai/claude-cli:sonnet")
+    monkeypatch.setenv("ARI_MODEL_RUBRIC", "openai/codex-cli:gpt-5-codex")
+    assert _srv._get_model() == "openai/claude-cli:sonnet"
+    assert _srv._get_model("rubric") == "openai/codex-cli:gpt-5-codex"
+
+
+@pytest.mark.asyncio
+async def test_panel_seed_reaches_rubric_completion(monkeypatch):
+    from src import server as _srv
+
+    captured = {}
+
+    async def fake_completion(**kwargs):
+        captured.update(kwargs)
+        return _mock_resp("{}")
+
+    monkeypatch.setenv("ARI_MODEL_RUBRIC", "openai/codex-cli")
+    monkeypatch.setenv("ARI_PANEL_SEED", "43")
+    monkeypatch.setattr(_srv.litellm, "acompletion", fake_completion)
+    await _srv._litellm_caller(
+        [{"role": "user", "content": "review"}], 0.2
+    )
+    assert captured["model"] == "openai/codex-cli"
+    assert captured["seed"] == 43
+
+
 # --- paper_refine: S2P refiner = global role, DIFF (find/replace) output ---
 
 @pytest.mark.asyncio

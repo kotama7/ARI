@@ -32,7 +32,7 @@ sources:
     role: test
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # GUI Cutover Runbook
@@ -122,10 +122,12 @@ off by hand:
   shared CI runner is too noisy for a pass/fail budget.  Bundle weight *is*
   enforced (`check_bundle_budget.py`); the browser half is a manual profile
   on a fixed machine, recorded in the release evidence.
-- **Cross-browser critical journeys.**  The suites are vitest/jsdom; there is
-  no Playwright run in this repo yet.  The critical journeys (Settings, new
-  run, launch, resume, monitor, tree/results, workflow, RQGM, security) are
-  walked by hand before a default-on change.
+- **Cross-browser critical journeys.**  The suites are vitest/jsdom; the only
+  Playwright run in this repo is the documentation screenshot capture
+  (`npm run capture:screenshots`, headless Chromium only), which asserts
+  nothing.  The critical journeys (Settings, new run, launch, resume, monitor,
+  tree/results, workflow, RQGM, security) are walked by hand before a
+  default-on change.
 
 ## 3. Staged rollout
 

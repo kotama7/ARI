@@ -423,8 +423,17 @@ def _load_node_reports_for_tree(nodes_json_path: str, nodes: list[dict]) -> dict
 
 
 def _resolve_best_node_for_synthesis(nodes: list[dict]) -> str:
-    """Same best-node rule as generate_ear (argmax score, validation tie-break)."""
-    real = [n for n in nodes if n.get("has_real_data") and n.get("metrics")]
+    """Same best-node rule as generate_ear (argmax score, validation tie-break).
+
+    Nodes erased by RQGM selective erasure (``_valid_for_frontier: false`` in
+    metrics) are excluded — their retained scores must not pick the node whose
+    data becomes science_data.json. Inert on non-RQGM trees (key never written).
+    """
+    real = [
+        n for n in nodes
+        if n.get("has_real_data") and n.get("metrics")
+        and (n.get("metrics") or {}).get("_valid_for_frontier", True) is not False
+    ]
     if not real:
         return ""
     real.sort(
@@ -1564,8 +1573,17 @@ def _load_node_reports(workspace: Path, run_id: str, nodes: list[dict]) -> dict[
 
 
 def _resolve_best_node(nodes: list[dict]) -> dict | None:
-    """argmax(_scientific_score), with `validation`-label tie-break and depth secondary."""
-    real = [n for n in nodes if n.get("has_real_data") and n.get("metrics")]
+    """argmax(_scientific_score), with `validation`-label tie-break and depth secondary.
+
+    Excludes RQGM-erased nodes (``_valid_for_frontier: false``) — an erased
+    lineage must not become the published code / EAR winner. Inert on
+    non-RQGM trees (key never written).
+    """
+    real = [
+        n for n in nodes
+        if n.get("has_real_data") and n.get("metrics")
+        and (n.get("metrics") or {}).get("_valid_for_frontier", True) is not False
+    ]
     if not real:
         return None
     def _score(n: dict) -> float:

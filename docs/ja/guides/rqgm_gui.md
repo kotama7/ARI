@@ -30,7 +30,7 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/components/Governance/__tests__/GovernancePage.test.tsx
     role: test
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # RQGM ガバナンスワークスペースガイド
@@ -78,7 +78,7 @@ GET です。このワークスペースでクリックできるものが、構�
 [Configuration Studio](configuration_studio.md)を参照）。そこでモードを選ぶことは
 起動時の決定であってガバナンスの変更ではありません: 構成要素を登録せず、ポリシーを
 採用せず、スコアも書き換えないため、このワークスペースはどちらにせよ読み取り専用の
-ままです。96 個の `rqgm.*` ガバナンス / チューニングパラメータは今も設定ファイル
+ままです。97 個の `rqgm.*` ガバナンス / チューニングパラメータは今も設定ファイル
 専用です。
 
 タブストリップは `aria-selected` / `aria-controls` を配線した本物の
@@ -314,7 +314,12 @@ tail -c +$((OFFSET + 1)) "$CKPT/rqgm_audit.jsonl" | head -1 | python -m json.too
 ```
 
 オフセットは行頭の 0 始まりバイト位置であり、だからこそ追記専用ログに対して安定です。
-イベントハッシュの契約は `sha256(canonical_json(payload))[:12]` です。
+イベントハッシュの契約はスキーマごとに異なります: レガシーな `schema_version: 1` の
+レコードはペイロードのみをハッシュします（`sha256(canonical_json(payload))[:12]`）。
+一方、新規に書かれる `schema_version: 2` のレコードはフルレングスの
+`sha256(canonical_json({schema_version, event_id, event_type, transaction_id,
+payload, prev_event_hash}))` を持ちます — ペイロードだけでなく、リプレイに関わる
+エンベロープ全体です。
 
 ## 縮退したチェーン、壊れたチェーン
 

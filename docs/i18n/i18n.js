@@ -71,6 +71,16 @@
     var docHref = docsBase + (l === 'ja' ? 'docs/ja/' : l === 'zh' ? 'docs/zh/' : 'docs/');
     var dls = document.querySelectorAll('.js-docs-link');
     for (var di = 0; di < dls.length; di++) { dls[di].setAttribute('href', docHref); }
+    // Keep the diagram's visible labels, accessible text, and full-size target
+    // in the same language as the surrounding landing page.
+    var flowPath = 'assets/images/rqgm/rqgm_audit_flow_' + l + '.svg';
+    var flowImage = document.getElementById('rqgm-audit-flow');
+    if (flowImage) {
+      flowImage.setAttribute('src', flowPath);
+      flowImage.setAttribute('alt', d['rqgm-flow-alt'] || '');
+    }
+    var flowLink = document.getElementById('rqgm-audit-flow-link');
+    if (flowLink) flowLink.setAttribute('href', flowPath);
     try { localStorage.setItem('ari-lang', l); } catch(e) {}
   };
 

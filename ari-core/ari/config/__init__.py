@@ -1093,6 +1093,31 @@ class ProposalRouterConfig(BaseModel):
     )
 
 
+class RQGMPaperAblationConfig(BaseModel):
+    """``rqgm.eval.paper_ablation:`` RQGM-paper comparison posture.
+
+    This is an evaluation-only selector, not a fifth product/runtime mode.
+    The concrete mechanisms continue to use their existing typed switches;
+    ``condition_id`` adds the one distinction those switches cannot express:
+    whether ``paper_writer`` and/or ``paper_reviewer`` may produce successor
+    prompt candidates.  It is ignored unless ``rqgm.eval.enabled`` is true.
+    """
+
+    condition_id: Literal[
+        "",
+        "P0_hgm_h_fixed_critic",
+        "P1_rqgm_replacement_only",
+        "P2_rqgm_no_erasure",
+        "P3_rqgm_full",
+        "P4_constitutional_rqgm",
+    ] = Field(
+        "",
+        description="RQGM-paper-aligned comparison preset. Empty preserves "
+                    "normal production behavior; P0-P4 are accepted only "
+                    "behind `rqgm.eval.enabled`.",
+    )
+
+
 class RQGMEvalConfig(BaseModel):
     """``rqgm.eval:`` block (RQGM Task 13 §7, docs/plans/ari_rqgm/13).
 
@@ -1124,6 +1149,11 @@ class RQGMEvalConfig(BaseModel):
         description="Injection spec ids (eval_* namespace) active for this "
                     "run; recorded into rqgm_injection_provenance.json so "
                     "an injected run can never be mistaken for a real one.",
+    )
+    paper_ablation: RQGMPaperAblationConfig = Field(
+        default_factory=RQGMPaperAblationConfig,
+        description="Evaluation-only RQGM-paper comparison selector. It "
+                    "does not add a production paper.mode.",
     )
 
 

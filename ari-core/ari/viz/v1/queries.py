@@ -86,7 +86,14 @@ def _iter_run_dirs() -> list[Path]:
                 continue
             seen.add(d)
             out.append(d)
-    return out
+    # A project is one portfolio across every checkpoint root. Sorting within
+    # each root leaves an older run above a newer run from a later root, so
+    # order only after the roots have been merged.
+    return sorted(
+        out,
+        key=lambda path: path.stat().st_mtime if path.exists() else 0,
+        reverse=True,
+    )
 
 
 def _display_name(run_id: str) -> str:
@@ -101,6 +108,19 @@ def _mtime_utc(d: Path) -> str:
     return datetime.fromtimestamp(
         int(d.stat().st_mtime), tz=timezone.utc
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _has_paper(d: Path) -> bool:
+    """Whether a generated TeX source or PDF exists in a supported location."""
+    return any(
+        path.exists()
+        for path in (
+            d / "full_paper.tex",
+            d / "full_paper.pdf",
+            d / "paper" / "full_paper.tex",
+            d / "paper" / "full_paper.pdf",
+        )
+    )
 
 
 def _run_summary_from_dir(d: Path) -> RunSummaryV1:
@@ -129,11 +149,13 @@ def _run_summary_from_dir(d: Path) -> RunSummaryV1:
             statuses = {n.get("status") for n in nodes}
             # Tree says running but no live process → orphaned ("stopped").
             status = "stopped" if "running" in statuses else "completed"
+        # Best VALID score (RQGM-erased nodes excluded; key absent ⇒ valid).
         sci_scores = [
             n.get("metrics", {}).get("_scientific_score")
             for n in nodes
             if isinstance(n.get("metrics"), dict)
             and n.get("metrics", {}).get("_scientific_score") is not None
+            and n.get("metrics", {}).get("_valid_for_frontier", True) is not False
         ]
         if sci_scores:
             best_metric = round(max(sci_scores), 4)
@@ -157,6 +179,7 @@ def _run_summary_from_dir(d: Path) -> RunSummaryV1:
         best_metric=best_metric,
         mtime_utc=_mtime_utc(d),
         checkpoint_path=str(d),
+        has_paper=_has_paper(d),
     )
 
 
@@ -231,9 +254,7 @@ def get_run(run_id: str) -> RunDetailV1 | dict:
             "not_found", f"unknown run: {run_id}", request_id="", status=404
         )
     summary = _run_summary_from_dir(d)
-    has_paper = (d / "full_paper.tex").exists() or (
-        d / "paper" / "full_paper.tex"
-    ).exists()
+    has_paper = summary.has_paper
     has_review = (d / "review_report.json").exists()
     has_idea = (d / "idea.json").exists() or (d / "science_data.json").exists()
     if has_review:
@@ -246,7 +267,6 @@ def get_run(run_id: str) -> RunDetailV1 | dict:
         phase = None
     return RunDetailV1(
         **summary.model_dump(),
-        has_paper=has_paper,
         phase=phase,
         # rqgm capability from artifact existence only — ari.rqgm is NOT
         # imported (task 08 owns the RQGM domain DTOs).

@@ -19,6 +19,7 @@ from __future__ import annotations
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -209,6 +210,82 @@ def test_state_roundtrip_and_absence_tolerant(tmp_path):
     body = build_paper_run_start_state(
         paper_mode="rqgm_archive", rqgm_paper_enabled=True, mode_source="bogus")
     assert body["mode_source"] == "config"
+
+
+def test_seed_change_is_journaled_not_rewritten(tmp_path):
+    """`seed_node_id` records what the FIRST paper invocation started from,
+    but the live seed is recomputed every round under three mechanisms that
+    exist to change it (erasure excluding it, an escalation penalty demoting
+    it, the replay re-applying both). A later invocation therefore APPENDS
+    rather than rewriting — the record stays true and the file tells the
+    whole story instead of a silently stale first line."""
+    from ari.rqgm.paper_runtime import (
+        SEED_JOURNAL_FIELD,
+        persist_paper_run_start,
+        read_paper_archive_state,
+    )
+
+    persist_paper_run_start(
+        tmp_path, paper_mode="rqgm_archive", rqgm_paper_enabled=True,
+        seed_node_id="node_a",
+    )
+    assert SEED_JOURNAL_FIELD not in read_paper_archive_state(tmp_path)
+
+    # Same seed on re-invocation: nothing to say.
+    persist_paper_run_start(
+        tmp_path, paper_mode="rqgm_archive", rqgm_paper_enabled=True,
+        seed_node_id="node_a",
+    )
+    assert SEED_JOURNAL_FIELD not in read_paper_archive_state(tmp_path)
+
+    # node_a erased / demoted → the next invocation seeds from node_b.
+    persist_paper_run_start(
+        tmp_path, paper_mode="rqgm_archive", rqgm_paper_enabled=True,
+        seed_node_id="node_b",
+    )
+    state = read_paper_archive_state(tmp_path)
+    assert state["seed_node_id"] == "node_a"          # the record is intact
+    assert state[SEED_JOURNAL_FIELD] == [
+        {"event": "seed_changed", "prior_seed_node_id": "node_a",
+         "seed_node_id": "node_b"},
+    ]
+
+    # A second move chains off the LATEST seed, not the original record.
+    persist_paper_run_start(
+        tmp_path, paper_mode="rqgm_archive", rqgm_paper_enabled=True,
+        seed_node_id="node_c",
+    )
+    journal = read_paper_archive_state(tmp_path)[SEED_JOURNAL_FIELD]
+    assert [e["prior_seed_node_id"] for e in journal] == ["node_a", "node_b"]
+    assert [e["seed_node_id"] for e in journal] == ["node_b", "node_c"]
+
+    # …and re-invoking with the latest seed stays quiet.
+    persist_paper_run_start(
+        tmp_path, paper_mode="rqgm_archive", rqgm_paper_enabled=True,
+        seed_node_id="node_c",
+    )
+    assert len(read_paper_archive_state(tmp_path)[SEED_JOURNAL_FIELD]) == 2
+
+
+def test_seed_journaling_never_breaks_the_paper_phase(tmp_path):
+    from ari.rqgm.paper_runtime import (
+        journal_seed_change,
+        persist_paper_run_start,
+        read_paper_archive_state,
+    )
+
+    # No state file yet, or no seed to compare: silent no-ops.
+    assert journal_seed_change(tmp_path, "node_a") is False
+    persist_paper_run_start(
+        tmp_path, paper_mode="rqgm_archive", rqgm_paper_enabled=True,
+        seed_node_id="node_a",
+    )
+    assert journal_seed_change(tmp_path, None) is False
+    assert journal_seed_change(tmp_path, "") is False
+    # An unreadable state file degrades instead of raising.
+    (tmp_path / "paper_archive_state.json").write_text("{not json")
+    assert journal_seed_change(tmp_path, "node_b") is False
+    assert read_paper_archive_state(tmp_path) is None
 
 
 def test_defaults_yaml_matches_pydantic():
@@ -519,3 +596,141 @@ def test_the_driver_still_writes_the_enriched_file():
 
     src = Path(_d.__file__).read_text(encoding="utf-8")
     assert 'checkpoint_dir / "nodes_tree.json"' in src
+
+
+# ── the paper-candidate pre-flight is shared by every entry (option E) ──────
+
+class _PreflightSpy:
+    """Duck-typed RQGMRuntime stand-in recording the pre-flight calls."""
+
+    def __init__(self):
+        self.escalated: list = []
+        self.replayed: list = []
+        self.reideated: list = []
+
+    def replay_utility_penalties(self, all_nodes):
+        self.replayed.append(len(all_nodes or []))
+        return 0
+
+    def run_paper_candidate_escalation(self, node, all_nodes=None):
+        self.escalated.append(getattr(node, "id", ""))
+
+    def reideate(self, event, ctx):
+        self.reideated.append((event, ctx.get("node_id")))
+
+
+def _pf_node(nid="n1", score=0.8):
+    return SimpleNamespace(id=nid, metrics={"_scientific_score": score},
+                           has_real_data=True, ancestor_ids=[])
+
+
+def _seed_presignal(ckpt):
+    """One paper pre-signal artifact — enough to arm the pre-flight gate."""
+    (ckpt / "related_refs.json").write_text('{"refs": []}')
+
+
+def test_preflight_runs_before_the_mode_branch(tmp_path):
+    """`ari run`/`ari resume` used to skip the paper-candidate round entirely
+    (it lived privately in `ari paper`). It now rides the shared dispatch, and
+    fires on the EXPLORATION axis — i.e. even when the paper axis is linear,
+    preserving the documented 2x2 orthogonality."""
+    from ari.cli.paper_dispatch import run_paper_phase
+
+    _seed_presignal(tmp_path)
+    spy = _PreflightSpy()
+    node = _pf_node()
+    ran = []
+    mode = run_paper_phase(
+        _dispatch_cfg("linear", False), [node], {"goal": "g"}, tmp_path,
+        object(), "",
+        linear_paper_fn=lambda *a, **k: ran.append(len(spy.escalated)),
+        rqgm=spy,
+    )
+    assert mode == "linear"
+    assert spy.escalated == ["n1"]          # the round ran on the linear axis
+    assert spy.replayed == [1]              # penalties replayed first
+    assert spy.reideated == [("paper_candidate", "n1")]
+    assert ran == [1]                       # …and BEFORE the paper pipeline
+
+
+def test_preflight_defers_until_the_paper_evidence_exists(tmp_path):
+    """The round's marker is one-shot per node and its whole point is to
+    attack the paper's real artifacts. On a checkpoint that has not produced
+    a paper yet (every fresh `ari run`), firing it early would spend the
+    marker on an empty bundle and permanently suppress the artifact-grounded
+    round. It defers, then runs once the pipeline HAS written the evidence."""
+    from ari.cli.paper_dispatch import run_paper_phase
+
+    spy = _PreflightSpy()
+    order = []
+
+    def _linear(all_nodes, experiment_data, ckpt, mcp, cfg_str):
+        order.append(("pipeline", list(spy.escalated)))
+        _seed_presignal(Path(ckpt))          # the paper stages write these
+
+    mode = run_paper_phase(
+        _dispatch_cfg("linear", False), [_pf_node()], {"goal": "g"}, tmp_path,
+        object(), "", linear_paper_fn=_linear, rqgm=spy,
+    )
+    assert mode == "linear"
+    assert order == [("pipeline", [])]       # nothing escalated pre-flight
+    assert spy.escalated == ["n1"]           # …but the round DID run, after
+
+
+def test_preflight_stays_deferred_when_no_paper_was_produced(tmp_path):
+    """A pipeline that writes no evidence leaves the marker unspent, so a
+    later invocation can still run the real, artifact-grounded round."""
+    from ari.cli.paper_dispatch import run_paper_phase
+
+    spy = _PreflightSpy()
+    run_paper_phase(
+        _dispatch_cfg("linear", False), [_pf_node()], {"goal": "g"}, tmp_path,
+        object(), "", linear_paper_fn=lambda *a, **k: None, rqgm=spy,
+    )
+    assert spy.escalated == [] and spy.replayed == []
+
+
+def test_preflight_is_inert_without_an_rqgm_runtime(tmp_path):
+    """simple_bfts passes rqgm=None: dead branch, linear pipeline unchanged."""
+    from ari.cli.paper_dispatch import run_paper_phase
+
+    calls = []
+    mode = run_paper_phase(
+        _dispatch_cfg("linear", False), [_pf_node()], {"goal": "g"}, tmp_path,
+        object(), "", linear_paper_fn=lambda *a, **k: calls.append(a),
+    )
+    assert mode == "linear" and len(calls) == 1
+
+
+def test_preflight_fails_open_and_never_blocks_the_paper_phase(tmp_path):
+    from ari.cli.paper_dispatch import run_paper_phase
+
+    class _Boom:
+        def run_paper_candidate_escalation(self, node, all_nodes=None):
+            raise RuntimeError("adversary exploded")
+
+    _seed_presignal(tmp_path)
+    calls = []
+    mode = run_paper_phase(
+        _dispatch_cfg("linear", False), [_pf_node()], {"goal": "g"}, tmp_path,
+        object(), "", linear_paper_fn=lambda *a, **k: calls.append(a),
+        rqgm=_Boom(),
+    )
+    assert mode == "linear" and len(calls) == 1   # paper still ran
+
+
+def test_every_entry_point_passes_the_rqgm_handle_to_the_dispatch():
+    """The pre-flight only fires when the entry hands over the runtime, so the
+    three call sites must all pass it — a missing `rqgm=` silently restores the
+    `ari paper`-only asymmetry this hoist removed."""
+    from ari.cli import paper_dispatch
+
+    cli_dir = Path(paper_dispatch.__file__).parent
+    run_src = (cli_dir / "run.py").read_text(encoding="utf-8")
+    projects_src = (cli_dir / "projects.py").read_text(encoding="utf-8")
+
+    assert "rqgm=_rqgm_paper" in projects_src, "`ari paper` lost the handle"
+    assert run_src.count('rqgm=getattr(bfts, "rqgm", None)') >= 2, (
+        "both `ari run` and `ari resume` must pass the exploration runtime to "
+        "run_paper_phase, or the paper-candidate round never runs there"
+    )

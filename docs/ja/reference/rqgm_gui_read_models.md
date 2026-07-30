@@ -31,14 +31,20 @@ last_verified: 2026-07-27
 
 1. **`ari.rqgm` を決してインポートしない。** 読み取りモデルはコミット済みの
    チェックポイント成果物を直接パースし、カーネルやスコアポリシーの判断を
-   一切再実行しません。再現される唯一の RQGM 演算は凍結されたハッシュ契約
-   `event_hash = hash12(canonical_json(payload))` であり、viz → governance の
-   インポート辺が禁止されているため意図的に二重実装されています。本番ヘルパ
-   とのパリティは `ari-core/tests/test_gui_v1_rqgm.py` でピン留めされています。
+   一切再実行しません。再現される唯一の RQGM 演算はスキーマ版付きのイベント
+   ダイジェスト契約です: 旧 schema-v1 レコードはペイロードのみの短縮ハッシュ
+   `hash12(canonical_json(payload))` を、schema-v2 レコードはリプレイに影響
+   する封筒フィールド全体（`schema_version` / `event_id` / `event_type` /
+   `transaction_id` / `payload` / `prev_event_hash`）に対する完全な SHA-256 を
+   使います。viz → governance のインポート辺が禁止されているため意図的に
+   二重実装されています。本番ヘルパとのパリティは
+   `ari-core/tests/test_gui_v1_rqgm.py` でピン留めされています。
 2. **コミット済みレコードのみ。** JSONL 末尾の部分行（追記の途切れ）は黙って
    無視され、対応する commit を持たない `epoch_transaction_prepare` 以降の
    遷移イベントは現在状態へ決して取り込まれません — `ari.rqgm.store.committed_events`
-   の鏡像です。
+   の鏡像です。「対応する」の判定は `transaction_id` によります: 異なる
+   トランザクション id を持つ commit（や途中のイベント）は、保留中の
+   トランザクションを閉じることも、それに合流することもありません。
 3. **壊れるのではなく縮退する。** ハッシュチェーンの破損や陳腐化した rollup は
    整合性フラグを反転させ `degraded_reasons` を追加します; 成果物が壊れていても
    500 ではなく HTTP 200 と正直なフラグを返します。存在しないソースは `None`
@@ -101,7 +107,7 @@ last_verified: 2026-07-27
 
 | フラグ | `true` | `false` | `null` |
 |---|---|---|---|
-| `transitions_chain_ok` | `rqgm_transitions.jsonl` の全行が検証を通る: `event_hash` がそのペイロードを覆い、`prev_event_hash` が連鎖する（先頭行は `""` から）。 | ハッシュ不一致またはチェーン断絶を検出。走査は継続するのでデータは提供されるが、フラグが立つ。 | ファイルが存在しない。 |
+| `transitions_chain_ok` | `rqgm_transitions.jsonl` の全行が検証を通る: `event_hash` がその行の宣言したイベント封筒を覆い（ペイロードのみを覆うのは旧 schema-v1 行だけ）、`prev_event_hash` が連鎖する（先頭行は `""` から）。 | ハッシュ不一致またはチェーン断絶を検出。走査は継続するのでデータは提供されるが、フラグが立つ。 | ファイルが存在しない。 |
 | `registry_verified` | `rqgm_registry.json` の `as_of_event_hash` がコミット済み遷移の末尾と一致する。 | rollup が陳腐化している、またはログより先行している。 | rollup が存在しない / 読めない、または比較対象の遷移末尾が無い。 |
 | `audit_chain_ok` | `rqgm_audit.jsonl` が独立したチェーンとして検証を通る。 | 断絶を検出。 | ファイルが存在しない。 |
 

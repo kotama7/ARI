@@ -70,8 +70,9 @@ plans.
   observations only.
 - Raw adversary attacks never touch the BFTS score; only adjudicated ValidatedAttackRecords have
   scoring effect.
-- Selective erasure is logical-only: nothing is physically deleted; stale records are merely
-  excluded from frontier scoring.
+- Selective erasure is logical-only: nothing is physically deleted; stale records are excluded
+  from frontier scoring AND from best-node selection (`verified_context.select_best_node`:
+  paper candidate / archive seed / verified-context lineage; all-erased ⇒ no winner).
 - The ConstitutionalKernel, fixed verifier, and audit log never evolve.
 - VirSci is optional and must never be a hard dependency.
 - `simple_bfts` mode preserves existing ARI behavior unchanged.

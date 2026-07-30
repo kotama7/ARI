@@ -413,6 +413,12 @@ FOUNDING_COMPONENT_TABLE: tuple[tuple[str, str, str, str, dict], ...] = (
     # prompt role; the pipeline loads it by key).
     ("governance_judge_v1", "governance_judge", "institutional",
      "governance_judge_prompt_v1", {}),
+    # The exploration artifact producer is a first-class governed subject.
+    # Its prompt was already registered and epoch-frozen; registering the
+    # matching component closes the provenance → validated attack →
+    # reliability/impeachment path for the seven research adversaries.
+    ("generator_v1", "generator", "institutional",
+     "generator_prompt_v1", {}),
     # Task 14 (plan 14 §5.3): the score's proposer. Same minimal meta grants
     # as prompt_mutator_v1 — no authority the other meta agents lack, no
     # immunity they lack (P3: the thing that proposes the score is itself
