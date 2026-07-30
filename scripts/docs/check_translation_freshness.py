@@ -46,7 +46,12 @@ LANGS = ("ja", "zh")
 # temporary English-only working documents with no ja/zh mirrors (the
 # _archive / refactoring precedent).
 EXEMPT_FILES = {"docs/README.md"}
-EXEMPT_DIR_SEGMENTS = ("_archive", "plans")
+EXEMPT_DIR_SEGMENTS = (
+    "_archive",
+    "plans",
+    "node_modules",
+    ".vitepress",
+)
 
 
 def is_exempt(rel: str) -> bool:

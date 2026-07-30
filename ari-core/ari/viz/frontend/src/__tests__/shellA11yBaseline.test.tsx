@@ -164,12 +164,9 @@ const H1_BASELINE: Record<string, number> = {
 
 // axe-core violation ids on the shell at #/home. color-contrast is disabled
 // (jsdom has no canvas/paint, so the rule cannot compute results there).
-// KNOWN Wave-1 violations frozen for task 02's remediation:
-//   - 'region':      page content (#main, sidebar logo/switcher) is not
-//                    contained in landmarks (no <main>, <header>, etc.).
-//   - 'select-name': the sidebar #project-select has a visual <label> that is
-//                    not programmatically associated (no htmlFor/aria-label).
-const AXE_VIOLATION_BASELINE: string[] = ['region', 'select-name'];
+// The redesigned shell uses <main>/<aside> landmarks and explicitly associates
+// the project selector with its label, so there are no known shell violations.
+const AXE_VIOLATION_BASELINE: string[] = [];
 
 async function renderRoute(key: string): Promise<void> {
   window.location.hash = `#/${key}`;
@@ -196,8 +193,8 @@ describe('shell a11y baseline (Wave 1 — positive invariants + violation ratche
     const navs = screen.getAllByRole('navigation');
     expect(navs.length).toBe(1);
 
-    // Sidebar nav items are div[role=button][tabIndex=0] with Enter handling —
-    // every one of the 15 visible entries (10 legacy + the gui_v2-gated
+    // Sidebar entries are native buttons with an explicit tabIndex — every
+    // one of the 15 visible entries (10 legacy + the gui_v2-gated
     // 'projects' (Wave 2b), 'overview' (Wave 4b), 'governance' (Wave 4a),
     // 'config' (Wave 3b), and 'studio' (task 06 Wave 4d — its OWN slot, the
     // legacy settings entry stays) entries, which the mock's gui_v2:true
@@ -213,11 +210,31 @@ describe('shell a11y baseline (Wave 1 — positive invariants + violation ratche
     }
   });
 
+  it('groups navigation by task and names the active-project selector', async () => {
+    await renderRoute('home');
+    const nav = screen.getByRole('navigation', { name: 'ARI' });
+    const groups = within(nav).getAllByRole('group');
+    expect(groups.map((group) => group.getAttribute('aria-labelledby'))).toEqual([
+      'nav-group-portfolio',
+      'nav-group-research',
+      'nav-group-quality',
+      'nav-group-system',
+    ]);
+    expect(within(nav).getAllByRole('button')[0]).toHaveTextContent(
+      'New Experiment',
+    );
+    expect(
+      screen.getByRole('combobox', { name: 'ACTIVE PROJECT (RUN)' }),
+    ).toBeInTheDocument();
+  });
+
   it('labels the mobile hamburger button for screen readers', async () => {
     await renderRoute('home');
     const hamburger = document.getElementById('btn-hamburger');
     expect(hamburger).not.toBeNull();
     expect(hamburger!.getAttribute('aria-label')).toBe('Menu');
+    expect(hamburger!.getAttribute('aria-controls')).toBe('sidebar');
+    expect(hamburger!.getAttribute('aria-expanded')).toBe('false');
   });
 
   it(

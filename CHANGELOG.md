@@ -67,8 +67,15 @@ All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PAT
   `docs/guides/execution_modes.md` (mode switch + timing policy) and
   `docs/guides/rqgm_evaluation.md` (harness + metrics), plus
   `docs/guides/virsci_integration.md`, `docs/guides/rqgm_migration.md`,
-  `docs/concepts/rqgm_architecture.md`, and
-  `docs/reference/rqgm_schemas.md`.
+  `docs/guides/dashboard.md`, `docs/guides/configuration_studio.md`,
+  `docs/guides/rqgm_gui.md`, `docs/concepts/rqgm_architecture.md`,
+  `docs/concepts/rqgm_runtime_walkthrough.md`,
+  `docs/reference/rqgm_gui_read_models.md`, and
+  `docs/reference/rqgm_schemas.md`. The trilingual technical report is now a
+  dedicated Constitutional ARI-RQGM account covering the runtime,
+  constitutional transitions, adversarial accountability, utility and prompt
+  co-evolution, and the governed paper archive; execution strategies remain
+  product features but are outside the report's scope.
 - **Governed utility evolution (Task 14) — the score itself is now
   boundary-rewritable.** `utility_policy` and `policy_mutator` join the
   `EVOLVABLE_ROLES` set (`ari/rqgm/events.py`); the utility policy
@@ -100,11 +107,11 @@ All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PAT
   non-empty, so every pre-existing targetless record stays byte-identical.
   This closes the validated-attack → `validated_attack_involvement` →
   `classify_target` → impeachment chain that was dead upstream for all
-  adversaries. **Honest limit:** in production this only fires for the
-  `paper_self_preference` adversary (whose target is the registered
-  `paper_reviewer_v1` component); the seven exploration adversaries attack
-  artifacts authored by the `generator` role, which has no registered
-  component, so their chain stays inert by design.
+  adversaries. The research `generator` is now a registered founding component,
+  and the runtime stamps each node with its producer component, prompt hash,
+  and epoch. The seven exploration adversaries bind only when that immutable
+  provenance matches the epoch-frozen generator; legacy, missing, or mismatched
+  provenance remains targetless rather than being guessed.
 - **Paper-archive mode (`paper.mode`) — governed, co-evolving paper writing.**
   A new execution axis `paper.mode ∈ {linear (default), rqgm_archive}` plus
   the `rqgm.paper.enabled` interlock (`ari/rqgm/paper_mode.py`,
@@ -228,7 +235,10 @@ All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PAT
   though the action vocabulary, the output kinds and `_route_output`'s routing
   for both were already complete. Each now has a founding prompt + template, a
   founding component declaring ONLY its own emit flag, and a live invoker.
-  Founding registration goes 27 prompts / 14 components → **29 / 16**;
+  The current founding registration totals **32 prompt-or-policy records /
+  20 components** (including the registered research generator)
+  in the base RQGM runtime; paper-archive mode adds 3 prompts and 3 components
+  for **35 / 23**.
   `CONSTITUTION_HASH` is unchanged (it covers the kernel rule tables, not the
   founding tables). The two roles' prompts also become PromptMutator targets,
   which is what displaced `generator_prompt_v2` out of the calm boundary's
@@ -669,6 +679,226 @@ All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PAT
   map (the compose fns fall back to equal per-axis weights, exactly as the live
   evaluator does when cfg weights are unset), requiring only a registered
   `composite` + the node's stored `_axis_scores`.
+- **Selective erasure now reaches best-node SELECTION, not just expansion (the
+  plan-10 §3 consumer-filter deferral, settled).** Erasure is logical-only:
+  `FrontierRepairEngine._flag_node` sets `_valid_for_frontier: False` but
+  deliberately retains the node's stale `_scientific_score` (and
+  `has_real_data`), and both persist verbatim through `tree.json`. The only
+  consumer-side readers of the sentinel were the two expansion prune clauses
+  (`BFTS.should_prune`, `PaperArchiveStrategy.should_prune`), so an erased
+  node — its score produced under a retired policy or
+  prompt — could still WIN `verified_context.select_best_node` and become the
+  paper candidate escalated at paper pre-flight (`projects.py`), the persisted
+  archive `seed_node_id` (`paper_dispatch.py`), the paper-archive root
+  (`_run_one_round`), and the `verified_context.json` lineage grounding the
+  paper's claims — including on the default `paper.mode: linear` path of an
+  `ari_rqgm` checkpoint. In the original RQGM paper this cannot happen because
+  erasure is physical deletion ("selection operates only on valid,
+  epoch-current evidence"); switching to logical erasure silently converted
+  that by-construction guarantee into a per-consumer filtering obligation that
+  plan 10 §3 deferred ("not silently dropped") and was then dropped.
+  `select_best_node` now excludes `_valid_for_frontier: False` nodes outright
+  (the `should_prune`/`_sterile` precedent: the key is only ever written by
+  RQGM machinery — `ari_rqgm` exploration or the `rqgm_archive` paper axis —
+  so the clause is inert dead code on the default paths), and
+  returns NO winner when every candidate is erased — contaminated evidence
+  does not become clean by being the only evidence left. All consumers were
+  already `None`-tolerant (escalation skips, `seed_node_id` persists as null,
+  `_make_paper_root` seeds lineage-free, `build_verified_context` returns the
+  empty shape). The two archive-side inline eligibility filters
+  (`paper_runtime.py` cross-round + best-belief) collapse into the shared
+  clause. An adversarial review of the fix closed the same defect class at
+  every other winner-promoting consumer: `write_verified_context` now REMOVES
+  a previously written `verified_context.json` whose `best_node_id` no longer
+  matches the fresh (post-erasure) winner instead of early-returning past it
+  (a stale artifact would otherwise keep grounding the paper on the erased
+  lineage across re-invocations — kept when the winner is unchanged, so a
+  transient memory-backend failure never discards a valid artifact);
+  `build_best_nodes_context` (the linear paper's "Best results" block +
+  `best_metrics`), ari-skill-transform's `_resolve_best_node[_for_synthesis]`
+  (science_data.json guard, EAR/published-code winner), and ari-skill-paper's
+  implementation-details top-5 all filter the sentinel now. Settled in
+  permanent docs (`rqgm_architecture.md` invariant 6;
+  plan-10 §3 annotated; INDEX invariant extended); the `search_memory` half of
+  the deferral remains open.
+- **Paper-candidate escalation is no longer silently non-deterministic, and
+  the node the paper is about can no longer escape its L3 round.** The
+  pre-flight escalation round was believed "observational", but a
+  judge-validated attack applies the bounded utility penalty (plan 06 §5.4 —
+  `_scientific_score` rewritten in place), and `ari paper` re-selects the
+  best node downstream (archive seed, paper root, verified context) over the
+  SAME live node list — so a penalized candidate could be silently replaced
+  by a node that never received its own paper-candidate round, and because
+  the paper process never writes `tree.json` while the §5.3 round marker
+  suppresses re-rounds, a re-invocation reverted the ranking and could crown
+  a DIFFERENT winner (a P2 determinism violation). Three-part fix: (a) the
+  escalation docstrings/comments now state the demotion semantics; (b)
+  selection→escalation runs to a FIXPOINT (`ari.cli.paper_dispatch`
+  `_escalate_paper_candidate_to_fixpoint`: select → escalate → re-select
+  until stable; terminates — each node is escalated at most once, and the
+  round marker makes repeats no-ops), so a demotion-crowned winner gets its
+  own L3 round; (c) `RQGMRuntime.replay_utility_penalties` deterministically
+  re-applies persisted `UtilityRecord` penalties (base/penalty/final stored
+  by value in `rqgm_adversarial_cases.jsonl`) onto freshly loaded nodes at
+  the paper phase's start — idempotent and conservative (applies only when the
+  current score equals the record's base, so recomputed/re-scored values are
+  never clobbered; records chain naturally in log order; records superseded
+  by a frontier-repair recompute are skipped outright, so a penalty the
+  impeachment/repair chain formally REVERSED — a superseding record with
+  penalty 0.0 — is never re-applied to the exonerated node). Re-runs now
+  reproduce the first run's ranking.
+- **`ari run` and `ari resume` finally run the paper-candidate round too —
+  and it is no longer fired before the evidence it attacks exists.** The
+  pre-flight escalation lived privately in `ari paper`, so a one-pass run
+  never ran it, and exploration's own per-node rounds do not cover the gap:
+  the artifacts that round attacks (claim-gate findings,
+  `verified_context.json`, related refs) are written by the paper stages, so
+  before them the pre-signals are empty and the paper-claim adversaries sit
+  on their no-attack floor. That same fact bounds when the round is worth
+  running: its §5.3 marker is one-shot per node and epoch-agnostic, so a
+  round fired against an empty bundle is spent forever and permanently
+  suppresses the artifact-grounded round (`prior_art` / `evidence_gap` /
+  `metric_gaming`) a later invocation could run — which is exactly what a
+  naive hoist would have caused on every fresh `ari run`, and what the
+  adversarial review of the first cut demonstrated (pass 1: 1 attack,
+  penalty 0.3, `overclaim` only; pass 2 with the artifacts present:
+  suppressed). The pre-flight is therefore **gated on the evidence
+  existing**: it runs before the mode branch when a previous pass produced
+  the artifacts (where a demotion can still re-crown this paper's own seed),
+  and otherwise once more AFTER the pipeline has written them, where the
+  penalty reaches selection on the next invocation through the replay above.
+  A pipeline that produced no evidence leaves the marker unspent. The whole
+  pre-flight (penalty replay → escalate-to-fixpoint → re-ideation) is now
+  `run_paper_candidate_preflight`
+  in `ari.cli.paper_dispatch` — the
+  dispatch all three entries already share — so the three agree here as they
+  already do on the paper axis. The pre-pipeline call runs BEFORE the mode
+  branch, keeping the
+  documented 2x2 orthogonality (the round fires on the *exploration* axis,
+  independently of `paper.mode`). Each entry passes its exploration runtime
+  (`rqgm=getattr(bfts, "rqgm", None)`); `simple_bfts` passes `None` and the
+  pre-flight is a dead branch, so `paper_dispatch` keeps its
+  no-`ari.rqgm`-import discipline (the handle is duck-typed, never
+  imported). Fail-open as before: an exploding adversary logs and the paper
+  still runs. A source-level test pins all three call sites passing the
+  handle, mirroring the existing one that pins all three routing through the
+  dispatch, and behavioural tests pin the gate in both directions (defers
+  without evidence, then runs post-pipeline once the pipeline wrote it;
+  stays deferred when nothing was produced). Relatedly,
+  `run_paper_candidate_escalation` no longer calls `ensure_epoch` when an
+  epoch is already open: on the live one-pass runtime that restore was a
+  no-op except for resetting `_last_node_count` to 0 — the value an
+  emergency quarantine stamps as the next epoch's `node_count_at_open`,
+  which would have poisoned the boundary arithmetic on the following resume.
+- **`paper_archive_state.json` no longer records a silently stale seed.**
+  `seed_node_id` is written once at paper-phase start (the file is write-once
+  so a resume can never flip the persisted paper mode), but the live seed is
+  recomputed every round — and three mechanisms landed above exist precisely
+  to move it: selective erasure excluding the recorded seed, an escalation
+  penalty demoting it, and the penalty replay re-applying both before
+  selection. The record was therefore increasingly likely to name a node the
+  run had stopped using, with no trace of the change. A later invocation
+  whose seed differs now APPENDS `seed_journal[]`
+  (`{event: "seed_changed", prior_seed_node_id, seed_node_id}`, chained off
+  the latest entry so repeated invocations stay quiet and two moves record
+  both) instead of rewriting — the `paper_utility_policy_journal` pattern, so
+  the file tells the whole story rather than a stale first line. Ids only:
+  *why* the seed moved is already durable next door in `rqgm_audit.jsonl`
+  (erasure events) and `rqgm_adversarial_cases.jsonl` (validated-attack
+  penalties), and inferring a reason here could only guess. Best-effort —
+  a provenance note never breaks the paper phase.
+- **Selective erasure now covers memory-mediated grounding and steering.**
+  Erasure never propagates to descendants, so a VALID winner can carry an
+  ERASED ancestor — and that ancestor's conclusions still reached the paper
+  and the search: (a) `build_verified_context` now drops known-erased
+  ancestor ids from the winner's lineage before `get_verified_context`
+  (unknown ids are kept — absence of the node is not evidence of
+  contamination); (b) the per-node working-context injection
+  (`agent/loop.py`) drops erased ancestor ids before `get_node_memory` /
+  `search_memory`, via the `rqgm_erasure_state.json` rollup read through the
+  rqgm-import-free checkpoint shim (absence == nothing stale — inert on
+  default paths). This settles the `search_memory` half of the plan-10 §3
+  deferral CALLER-SIDE; the memory skill itself deliberately stays
+  erasure-unaware. **That skill half is now settled too, as annotate-for-pull
+  / hard-exclude-for-push.** `ari-skill-memory` reads the same published
+  rollup (a new `ari_skill_memory.erasure` — no `ari` import, no LLM call,
+  mtime-cached, and absence / malformed content / a newer `schema_version`
+  all degrade to "nothing is stale", so it is inert on every non-RQGM
+  checkpoint). A caller that *deliberately names* an erased node —
+  `get_node_memory`, `search_memory`, `search_research_memory` — receives its
+  entries LABELLED (`erased` / `erasure_event_id` / `erasure_note`) instead
+  of silently emptied: erasure withdraws the STANDING of a judgment (the
+  generator that proposed the direction, or the policy that scored it, was
+  retired), not the measurements an experiment recorded, and an invalidated
+  measurement is still the honest record of what was tried. The marker is
+  written at the top level AND inside `metadata`, because consumers
+  re-project entries to a fixed key set (the pipeline's `nodes_tree.json`
+  enrichment and the viz memory endpoint keep only `{text, metadata, ts}`),
+  and it is applied in the BACKENDS rather than the MCP dispatcher, so the
+  in-process funnel callers see it too. The paths that PUSH memory into a
+  decision keep hard-excluding: `build_verified_context` now filters the
+  erased ancestors out of `claims` / `usable_for_claims` itself — inside the
+  builder, so the tool and the in-process caller filter the same call —
+  while `limitations` deliberately keeps them labelled, since the honest
+  record of a later-invalidated direction is what that section is for. A
+  cross-package contract test pins the `invalid_frontier_node_ids` field
+  name, the rollup's schema version, and the writer's path on both sides, so
+  a rename, a schema bump, or a relocation cannot silently turn the skill's
+  awareness into dead code (the failure shape #79 had). Honest scope: the
+  guarantee is about provenance, not re-authored text — a surviving node
+  that restates a labelled entry in its own summary produces an unmarked
+  record on a clean lineage, and nothing propagates the marker through
+  re-authorship. A
+  previously written `verified_context.json` is also removed when the
+  (erasure-filtered) LINEAGE changed with the winner unchanged — a
+  mid-lineage ancestor erasure would otherwise leave the old artifact, and
+  the paper reads the FILE, not the fresh build.
+- **Erased scores no longer contaminate stagnation detection, lineage
+  decisions, run-best displays, or the escalation's audit record.** The
+  retained stale score of an erased node (a) sat inside the stagnation
+  window and could only WIDEN the range — suppressing a genuine-plateau
+  pivot/re-ideation exactly after an impeachment, when the retired
+  component's nodes are the most recent (`bfts_loop._valid_composites`,
+  `build_lineage_state` recent scores + best-axis table now filter the
+  sentinel); (b) displayed as the run's best score in the GUI cards
+  (`checkpoint_api`, v1 `best_metric` — now "best valid", consistent with
+  `select_best_node`; key-absent trees are untouched, so historical runs
+  render identically); (c) fed `_paper_frontier_scores`, which could only
+  mis-state the recorded `triggers` list (level is forced L3 regardless) —
+  filtered for audit hygiene; and (d) served as the PARENT score in the
+  score-jump trigger (exploration round dispatch and `_paper_parent_score`)
+  — an erased parent's inflated stale score suppressed the jump clause, an
+  audit escape exactly post-impeachment; an erased parent is now treated as
+  no-parent (`parent_score=None`).
+- **CK-REG-101's incumbent comparison is now reachable from the live
+  adoption path (#79 producer half), and the governance judge's
+  self-adjudication recusal is test-pinned (#78a).** The kernel gate and the
+  RTE incumbent-attach existed but no live producer ever emitted capability
+  fields on an adoption entry (`_change` emits a fixed key set), so the
+  authority-non-expansion comparison was structurally unreachable — its
+  tests hand-built the entries and proved the consumer only (the same trap
+  as the #77 empty-weights bug). `_change` now copies the component's
+  declared §6.1 `capabilities` onto SUCCESSION entries — T6 adoption and the
+  T20/T21 supersession edges, the rules that displace a DISTINCT incumbent —
+  when non-empty. Deliberately NOT on the self-shaped activation edges
+  (T7/T8/T12/T14/T18 promotion/re-activation/exoneration): no distinct
+  incumbent exists there, so a capability-carrying entry would hit the
+  gate's conservative deny-all `None` baseline and abort the whole
+  transition — permanently wedging governance for the five founding
+  capability-declaring components (caught by the adversarial review of the
+  first cut, which scoped the copy to all activation shapes). Byte-identical
+  for every current live entry (no non-founding registry entry declares
+  capabilities); `epoch_transition.schema.json` tolerates the additive key.
+  The transient apply-side attachments (`_incumbent_entry`, utility-policy
+  bodies) are now STRIPPED from the `epoch_transition` audit payload — they
+  exist only for the stateless kernel's validation and must not be frozen
+  into the hash-chained audit log. A producer-to-gate test drives
+  `_change` → incumbent attach → kernel and asserts a widening successor is
+  blocked while a narrowing one passes. The #78a recusal branch — the judge
+  never ruling on its own impeachment — previously had ZERO test coverage;
+  a real-producer integration test (two `make_validated_attack_record`
+  attacks targeting `governance_judge_v1` → clear-file motion → recusal
+  degradation, no adjudication outcome) now pins it.
 - **Governance judge recuses on self-adjudication (adjudicator ≠ target).** A
   motion whose target IS the governance judge was adjudicated by that same
   judge, letting it dismiss its own impeachment. `governance/_pipeline.py` now

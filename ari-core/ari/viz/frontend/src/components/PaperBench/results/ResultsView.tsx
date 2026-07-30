@@ -285,7 +285,10 @@ export function ResultsView() {
   };
 
   return (
-    <div style={{ padding: 28, display: 'flex', gap: 24, maxWidth: 1400 }}>
+    <div
+      className="paperbench-results-layout"
+      style={{ padding: 28, display: 'flex', gap: 24, maxWidth: 1400 }}
+    >
       <div style={{ flex: 1 }}>
         <h2>{t('pb_results_title')}</h2>
         <div style={{ color: '#666', marginBottom: 14, fontSize: 13 }}>
@@ -300,7 +303,10 @@ export function ResultsView() {
         )}
       </div>
 
-      <aside style={{ width: 320, padding: 16, background: '#f9fafb', borderRadius: 8 }}>
+      <aside
+        className="paperbench-results-summary"
+        style={{ width: 320, padding: 16, background: '#f9fafb', borderRadius: 8 }}
+      >
         <h3 style={{ marginBottom: 8 }}>{t('pb_results_summary')}</h3>
         <div
           style={{

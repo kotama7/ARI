@@ -573,13 +573,23 @@ def _count_pdf_pages(pdf_path: Path) -> int | None:
 
 import os as _os
 
-def _get_model() -> str:
-    # Check ARI_LLM_MODEL first, then LLM_MODEL, then default to qwen3:32b
-    return (_os.environ.get("ARI_LLM_MODEL")
+def _get_model(purpose: str = "paper") -> str:
+    """Resolve the paper writer or independent rubric-review model.
+
+    Phase-specific values precede the shared skill fallback so evaluation can
+    assign Claude Code and Codex to different roles without starting two paper
+    skill servers. Unknown purposes use the writer posture.
+    """
+    phase_var = (
+        "ARI_MODEL_RUBRIC" if str(purpose) == "rubric"
+        else "ARI_MODEL_PAPER"
+    )
+    return (_os.environ.get(phase_var)
+            or _os.environ.get("ARI_LLM_MODEL")
             or _os.environ.get("LLM_MODEL")
             or "ollama_chat/qwen3:32b")
 
-def _get_api_base() -> str | None:
+def _get_api_base(purpose: str = "paper") -> str | None:
     """Return LLM API base URL, or None to use provider default (e.g. OpenAI).
 
     Priority:
@@ -591,7 +601,10 @@ def _get_api_base() -> str | None:
     ari_base = _os.environ.get("ARI_LLM_API_BASE")
     if ari_base is not None:          # explicitly set (even to "")
         return ari_base or None       # "" → None = use OpenAI
-    if (_os.environ.get("OPENAI_API_KEY") and "ollama" not in _get_model()):
+    if (
+        _os.environ.get("OPENAI_API_KEY")
+        and "ollama" not in _get_model(purpose)
+    ):
         return None
     return _os.environ.get("LLM_API_BASE") or None
 
@@ -611,7 +624,7 @@ async def review_section(latex: str, context: str, venue: str = "arxiv") -> dict
     """
     import json, re
 
-    model_name = _get_model()
+    model_name = _get_model("rubric")
     system_prompt = _load_prompt("academic_reviewer").format(venue_upper=venue.upper())
     user_prompt = (
         f"Venue: {venue}\nContext: {context[:500]}\n\nLaTeX to review:\n{latex[:3000]}"
@@ -624,7 +637,7 @@ async def review_section(latex: str, context: str, venue: str = "arxiv") -> dict
             {"role": "user", "content": user_prompt},
         ],
     }
-    api_base = _get_api_base()
+    api_base = _get_api_base("rubric")
     if api_base:
         kwargs["api_base"] = api_base
 
@@ -1253,7 +1266,12 @@ async def write_paper_iterative(
             try:
                 _nodes_data = json.loads(Path(nodes_json_path).read_text())
                 _nodes_list = _nodes_data.get("nodes", []) if isinstance(_nodes_data, dict) else _nodes_data
-                _success_nodes = [n for n in _nodes_list if n.get("has_real_data") and n.get("metrics")]
+                _success_nodes = [
+                    n for n in _nodes_list
+                    if n.get("has_real_data") and n.get("metrics")
+                    # RQGM-erased nodes must not ground methodology text.
+                    and (n.get("metrics") or {}).get("_valid_for_frontier", True) is not False
+                ]
                 # Sort by scientific score
                 _success_nodes.sort(
                     key=lambda n: float((n.get("metrics") or {}).get("_scientific_score", 0)),
@@ -2073,12 +2091,15 @@ async def _litellm_caller(
     """LLM adapter used by review_engine to call the project's default backend."""
     import json as _json2  # noqa: F401
     _kw = {
-        "model": model or _get_model(),
+        "model": model or _get_model("rubric"),
         "messages": messages,
         "temperature": float(temperature),
         "max_tokens": 8192,
     }
-    _apib = _get_api_base()
+    panel_seed = _os.environ.get("ARI_PANEL_SEED", "").strip()
+    if panel_seed and panel_seed.lstrip("+").isdigit():
+        _kw["seed"] = int(panel_seed)
+    _apib = _get_api_base("rubric")
     if _apib:
         _kw["api_base"] = _apib
     _resp = await litellm.acompletion(**_kw)

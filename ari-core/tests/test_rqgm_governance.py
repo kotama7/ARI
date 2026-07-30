@@ -1125,3 +1125,46 @@ def test_ban_recommendations_discriminate_by_code():
         ["adversary_x_v1"]
     assert _ban_recommendations(["CK-SCH-001:harmless_v1"], []) == []
     assert _ban_recommendations([], [{"kind": "noise"}]) == []
+
+
+# ── #78a: judge self-adjudication recusal (real producer records) ───────────
+
+
+class _JudgeOnlyRegistry:
+    """Minimal active-set view naming the founding governance judge."""
+
+    def active_set(self):
+        return {"governance_judge": "governance_judge_v1"}
+
+    def get(self, cid):
+        return None
+
+
+def test_judge_self_adjudication_is_recused_not_self_dismissed():
+    # Two REAL validated attacks (the actual producer, Task 15 §9 discipline)
+    # target the governance judge itself → a clear-file motion is filed
+    # against it; the judge must RECUSE (motion left unresolved, loudly
+    # flagged) instead of ruling on its own impeachment. This is the first
+    # test of the recusal branch — a regression here would let the judge
+    # acquit itself silently.
+    log_records = _reviewer_records() + [
+        _real_validated(1, target="governance_judge_v1"),
+        _real_validated(2, target="governance_judge_v1"),
+    ]
+    report = _audit(_orchestrator(), log_records,
+                    component_registry=_JudgeOnlyRegistry())
+
+    rel = {e["component_id"]: e for e in report.reliability}
+    assert rel["governance_judge_v1"]["validated_attack_involvement"] == 2
+
+    # The judge is the ONLY clear-file target in this log (reviewer_v3 has
+    # zero attacks), so the filed motion is the judge's impeachment.
+    assert report.impeachment_motions, "no motion was filed against the judge"
+    assert any(
+        str(d).startswith("self_adjudication_recused:governance_judge_v1")
+        for d in report.degradation_reasons
+    ), report.degradation_reasons
+
+    # Left unresolved: the recused motion received NO adjudication outcome —
+    # the judge never ruled on its own impeachment.
+    assert report.adjudications == []

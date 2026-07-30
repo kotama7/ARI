@@ -31,7 +31,7 @@ stateDiagram-v2
     frontier --> frontier: 持久 —— 保持可再次扩展
     frontier --> pending: 选择最佳节点（分数 + 多样性奖励）→ 扩展一个子节点
     frontier --> retired: 规则 A（子节点分数超过父节点）或 规则 B（达到 max_expansions_per_node）
-    pending --> pruned: should_prune（total ≥ max_total_nodes / depth ≥ max_depth / _sterile）
+    pending --> pruned: should_prune（total ≥ max_total_nodes / depth ≥ max_depth / _sterile / _valid_for_frontier=false）
     retired --> [*]
     pruned --> [*]
 ```
@@ -73,7 +73,7 @@ def bfts(experiment, config):
 关键特性：
 - **单子节点扩展**：`expand()` 每次调用只生成恰好一个子节点。它会提供丰富的上下文（兄弟节点分数、祖先链、树多样性指标、已有子节点）以避免重复。提示中还会呈现当前 depth/`max_depth` 与剩余节点预算，使规划器能够自行把握节奏（v0.7.2, I-4）。
 - **持久前沿**：已完成的节点在扩展后仍留在前沿，并通过 `_touched_this_round` / `_failed_this_round` 跟踪以供再次扩展。当满足 (规则 A) 子节点在 `_scientific_score` 上超过父节点，或 (规则 B) 已被扩展 `max_expansions_per_node` 次时，前沿节点会被**退役 (retire)**（v0.7.2, B-6）。
-- **`should_prune` 谓词**：仅硬性截断 —— `current_total >= max_total_nodes`（B-1）、`depth >= max_depth`（B-2，此前为失效配置）、`metrics._sterile is True`（B-4）。LLM 判断不掺入此处。
+- **`should_prune` 谓词**：仅硬性截断 —— `current_total >= max_total_nodes`（B-1）、`depth >= max_depth`（B-2，此前为失效配置）、`metrics._sterile is True`（B-4）、`metrics._valid_for_frontier is False`（RQGM 选择性擦除；该键只由 RQGM 机构写入，故在 `simple_bfts` 下是死分支，但它被无条件读取，因此在 `ari_rqgm` 下被擦除的节点即使切回模式也仍被排除）。LLM 判断不掺入此处。
 - **多样性奖励**：对代表性不足的标签给予 `+0.05`（跟踪最近 20 次运行），条件是 `my_count * 2 ≤ max_count`（I-2）；在两个选择器回退路径（I-3 / L-3）以及 `select_next_node` 的 LLM 提示中均会应用。
 - **覆盖感知的扩展选择**：当运行携带含 claim 的指标契约时，传给 `select_best_to_expand` 的目标文本会额外携带一个运行级 claim 覆盖块加上 **LINEAGE** 提示（见下文*世系链接*），使「能为尚未覆盖的 claim 提供证据」可以影响*扩展哪个*节点 —— 这是仅调度器可见的信号；节点的推理上下文不受影响。
 - **分数校准**：评估器将最近的分数历史注入提示，以防止分数坍塌（所有分数聚集在同一数值附近）。

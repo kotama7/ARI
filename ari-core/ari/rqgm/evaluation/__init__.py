@@ -12,10 +12,13 @@ imports so merely importing ``ari.rqgm.evaluation`` stays side-effect-free.
 
 Modules
 -------
-- ``conditions`` — B0-B8 ablation-preset expansion over
+- ``conditions`` — B0-B8 exploration, B paper-archive, and RQGM-paper-aligned
+  P0-P4 ablation-preset expansion over
   ``scripts/rqgm_eval/ablation_matrix.yaml`` (``inherits`` deep-merge sugar,
   workflow-overlay conversion, feature-flag flattening) plus the §5.2
   VirSci-off checkpoint assertion (``virsci_absence_violations``).
+- ``paper_ablation`` — evaluation-only P0-P4 posture definitions, role-level
+  paper evolution gating, and ordinary-switch consistency validation.
 - ``metrics`` — ``compute_metric_report(checkpoint_dir, ...)``: the thirteen
   §5.4 metrics as pure functions over persisted checkpoint artifacts, plus
   the ``rqgm_eval_metrics.json`` writer.

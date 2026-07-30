@@ -22,7 +22,7 @@ sources:
     role: test
   - path: ari-core/tests/test_paper_mode.py
     role: test
-last_verified: 2026-07-16
+last_verified: 2026-07-30
 ---
 
 # 在现有项目上采用 `ari_rqgm`
@@ -162,10 +162,13 @@ RQGM 不替换 `idea.json`；它把它降级为提案记录存储的一个**投�
 - **先前被擦除的节点保持被排除。**选择性擦除是仅逻辑的 —— 什么都不
   删除；过期状态存在于审计日志、`rqgm_erasure_state.json` 汇总，以及
   通过 `tree.json` 持久化的增量 `Node.metrics` 哨兵键（`_stale`、
-  `_valid_for_frontier`、…）中。`BFTS.should_prune` **无条件**读取
+  `_valid_for_frontier`、…）中。`BFTS.should_prune` 与
+  `verified_context.select_best_node` **无条件**读取
   `metrics['_valid_for_frontier'] is False`，因此在 `ari_rqgm` 下被
-  擦除的节点在切回后依旧被剪枝 —— 污染不会因为切换模式而变干净。
-  这些哨兵键只会由 `ari_rqgm` 的 `FrontierRepairEngine` 写入，因此在
+  擦除的节点在切回后依旧被剪枝、也依旧被排除在最佳节点选择之外 ——
+  污染不会因为切换模式而变干净。
+  这些哨兵键只会由 RQGM 机制（`ari_rqgm` 的 `FrontierRepairEngine` 或
+  `rqgm_archive` 的 paper 运行时）写入，因此在
   从未运行过 RQGM 的检查点上，该子句是惰性死代码（`_sterile`
   模式）。
 
@@ -237,7 +240,7 @@ best-of-N。
 
 | 路径 | 是什么 |
 |---|---|
-| `paper_archive_state.json` | 论文模式溯源：论文模式、联锁、`mode_source`、探索模式、种子节点。缺失 == linear 论文阶段。 |
+| `paper_archive_state.json` | 论文模式溯源：论文模式、联锁、`mode_source`、探索模式、种子节点。种子记录的是**首次**调用的起点；后续调用若算出不同的种子，会向 `seed_journal` 追加一条 `seed_changed` 记录而非改写它（`journal_seed_change`）。缺失 == linear 论文阶段。 |
 | `paper_draft_archive.jsonl` | 打分后的草稿群体（每个草稿节点一条记录：framing、审稿分数、tex 哈希、best-belief/compiled 标志）。 |
 | `paper_anchor_corpus.jsonl` | accept/reject 锚点语料库，仅当你提供时（只读；绝不由受治理角色撰写）。 |
 | `rqgm/paper_self_preference_stat.json` | `paper_self_preference` 对抗者作为其预信号引用的确定性 AI-对-human 自偏好边际。 |
@@ -269,10 +272,11 @@ best-of-N。
 ## 限制（v1）
 
 与[执行模式 → 限制](execution_modes.md#limitations-v1)相同：Profile
-（`--profile`）不合并 RQGM 键，且没有 `--mode` CLI 标志或 GUI 开关
-（环境变量激活在构造上即与 GUI 兼容）。论文轴也共享这些：没有
-`--paper-mode` 标志（环境变量激活即与 GUI 兼容），且 profile 不合并
-`rqgm.paper.*`。
+（`--profile`）不合并 RQGM 键，且没有 `--mode` CLI 标志。论文轴也共享这些：
+没有 `--paper-mode` 标志，且 profile 不合并 `rqgm.paper.*`。仪表板可以为一次
+**新建**运行选择这两组模式（[执行模式 → 从 GUI 选择模式](execution_modes.md#从-gui-选择模式)）；
+本页其余的 `rqgm.*` 参数仅限配置文件，且没有任何界面能改变一次已经开始的
+运行的模式。
 
 另请参阅：[执行模式](execution_modes.md) ·
 [VirSci 集成](virsci_integration.md) ·

@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-07-30
 ---
 
 # トラブルシューティング
@@ -150,7 +150,7 @@ UI が "Letta unhealthy" と表示している場合はクラスタで Letta サ
 **原因:** プロバイダーのレート制限。
 
 **修正:** ARI はすべての LLM 呼び出しを
-`$ARI_CHECKPOINT_DIR/cost_log.jsonl` に記録します。1 分あたりの呼び出し率を
+`$ARI_CHECKPOINT_DIR/cost_trace.jsonl` に記録します。1 分あたりの呼び出し率を
 確認し、プロバイダーのクォータを超えている場合は `ARI_PARALLEL` を下げるか、
 BFTS ジャッジをより安価な / ローカルモデルに移行してください
 (`ARI_MODEL_JUDGE=ollama/qwen3:32b`)。
@@ -163,18 +163,46 @@ BFTS ジャッジをより安価な / ローカルモデルに移行してくだ
 python - <<'PY'
 import json, collections
 costs = collections.Counter()
-with open(f"{__import__('os').environ['ARI_CHECKPOINT_DIR']}/cost_log.jsonl") as fh:
+with open(f"{__import__('os').environ['ARI_CHECKPOINT_DIR']}/cost_trace.jsonl") as fh:
     for line in fh:
         rec = json.loads(line)
-        costs[rec["metadata"].get("skill", "?")] += rec["cost_usd"]
+        costs[rec.get("skill") or "?"] += rec["estimated_cost_usd"]
 for skill, c in costs.most_common():
     print(f"{c:7.3f}  {skill}")
 PY
 ```
 
+各行はフラットな `CallRecord` (`timestamp`, `node_id`, `phase`, `skill`,
+`model`, `*_tokens`, `estimated_cost_usd`, …) で、ネストした `metadata`
+オブジェクトはありません。追加フィールド `epoch` は `ari_rqgm` 実行時のみ
+書き込まれるため、デフォルト実行では存在しません。
+
 最も費用がかかるのは通常 BFTS ジャッジ (`ari-skill-evaluator`) または
 ルーブリックレビュー (`ari-skill-paper`) です。`ARI_MODEL_EVAL` /
 `ARI_MODEL_JUDGE` でモデルを制限してください。
+
+### すべての呼び出しが `$0.00` で記録される
+
+**原因:** 価格表 (`ari/configs/model_prices.yaml`) を読み込めていません。
+追記行の書式崩れか、スキル venv に PyYAML が無いのが典型です。表が空だと
+すべての呼び出しが 0 と見積もられます。
+
+**診断:** `cost_summary.json` がこれを明示します。
+
+```bash
+python - <<'PY'
+import json, os
+s = json.load(open(f"{os.environ['ARI_CHECKPOINT_DIR']}/cost_summary.json"))
+print("pricing_table_unavailable:", s["pricing_table_unavailable"])
+print("dropped_records:", s["dropped_records"], "/ call_count:", s["call_count"])
+PY
+```
+
+`pricing_table_unavailable: true` は表の読み込み失敗を意味します
+(ローダーも `model_prices table unavailable` を警告出力します)。
+`dropped_records` が 0 でない場合、`call_count` は**過小カウント**です
+— その件数だけ使用量はあったのに記録が例外で失敗しており、各件は
+`cost record dropped` としてログに残ります。
 
 ## VLM (図 / テーブルレビュー)
 
@@ -239,7 +267,8 @@ ari viz --port 8000
 ## 次に確認する場所
 
 - `$ARI_CHECKPOINT_DIR/ari.log` — アプリケーションログ。
-- `$ARI_CHECKPOINT_DIR/cost_log.jsonl` — LLM コストの履歴。
+- `$ARI_CHECKPOINT_DIR/cost_trace.jsonl` — LLM コストの履歴
+  (集計は `cost_summary.json`)。
 - `$ARI_CHECKPOINT_DIR/lineage_decisions.jsonl` — 停滞判断の記録 (v0.7+)。
 - `docs/reference/file_formats.md` — チェックポイント内の各ファイルの意味。
 - `docs/_archive/refactor_audit.md` — 既知のマイグレーション負債。

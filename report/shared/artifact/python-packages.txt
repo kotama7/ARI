@@ -1,0 +1,408 @@
+absl-py @ file:///home/conda/feedstock_root/build_artifacts/absl-py_1751547525079/work
+accelerate==1.12.0
+aioconsole==0.8.2
+aiodebug==2.3.0
+aiofile==3.9.0
+aiohappyeyeballs==2.6.1
+aiohttp==3.13.3
+aiomonitor==0.7.1
+aiosignal==1.4.0
+-e git+https://github.com/openai/preparedness.git@51052cede8cc608f95bb00346635e03759013e5a#egg=alcatraz&subdirectory=../../../../ari-skill-paper-re/vendor/paperbench/project/common/alcatraz
+altair==6.1.0
+anaconda-anon-usage @ file:///croot/anaconda-anon-usage_1753980460404/work
+anaconda-auth @ file:///croot/anaconda-cloud-auth-split_1747863777058/work
+anaconda-cli-base @ file:///croot/anaconda-cli-base_1741369443553/work
+annotated-doc==0.0.4
+annotated-types @ file:///work/perseverance-python-buildout/croot/annotated-types_1728386958747/work
+anyio==4.12.1
+appdirs==1.4.4
+archspec @ file:///croot/archspec_1709217642129/work
+-e git+https://github.com/kotama7/ARI.git@c050ebf505aff7f26fb2ec2757e7b101d455c83f#egg=ari_core&subdirectory=ari-core
+-e git+https://github.com/kotama7/ARI.git@c050ebf505aff7f26fb2ec2757e7b101d455c83f#egg=ari_skill_benchmark&subdirectory=ari-skill-benchmark
+-e git+https://github.com/kotama7/ARI.git@c050ebf505aff7f26fb2ec2757e7b101d455c83f#egg=ari_skill_coding&subdirectory=ari-skill-coding
+-e git+https://github.com/kotama7/ARI.git@c050ebf505aff7f26fb2ec2757e7b101d455c83f#egg=ari_skill_evaluator&subdirectory=ari-skill-evaluator
+# Editable install with no version control (ari-skill-figure-router==0.1.0)
+-e /home/t-kotama/workplace/ARI/ari-skill-figure-router
+-e git+https://github.com/kotama7/ARI.git@c050ebf505aff7f26fb2ec2757e7b101d455c83f#egg=ari_skill_hpc&subdirectory=ari-skill-hpc
+-e git+https://github.com/kotama7/ARI.git@c050ebf505aff7f26fb2ec2757e7b101d455c83f#egg=ari_skill_idea&subdirectory=ari-skill-idea
+-e git+https://github.com/kotama7/ARI.git@c050ebf505aff7f26fb2ec2757e7b101d455c83f#egg=ari_skill_memory&subdirectory=ari-skill-memory
+-e git+https://github.com/kotama7/ARI.git@c050ebf505aff7f26fb2ec2757e7b101d455c83f#egg=ari_skill_paper&subdirectory=ari-skill-paper
+-e git+https://github.com/kotama7/ARI.git@c050ebf505aff7f26fb2ec2757e7b101d455c83f#egg=ari_skill_paper_re&subdirectory=ari-skill-paper-re
+-e git+https://github.com/kotama7/ARI.git@c050ebf505aff7f26fb2ec2757e7b101d455c83f#egg=ari_skill_plot&subdirectory=ari-skill-plot
+-e git+https://github.com/kotama7/ARI.git@c050ebf505aff7f26fb2ec2757e7b101d455c83f#egg=ari_skill_replicate&subdirectory=ari-skill-replicate
+# Editable install with no version control (ari-skill-review==0.1.0)
+-e /home/t-kotama/workplace/ARI/ari-skill-review
+-e git+https://github.com/kotama7/ARI.git@c050ebf505aff7f26fb2ec2757e7b101d455c83f#egg=ari_skill_transform&subdirectory=ari-skill-transform
+-e git+https://github.com/kotama7/ARI.git@c050ebf505aff7f26fb2ec2757e7b101d455c83f#egg=ari_skill_vlm&subdirectory=ari-skill-vlm
+-e git+https://github.com/kotama7/ARI.git@c050ebf505aff7f26fb2ec2757e7b101d455c83f#egg=ari_skill_web&subdirectory=ari-skill-web
+arxiv==3.0.0
+asttokens==3.0.1
+async-lru==2.3.0
+asyncvnc==1.3.0
+attrs==25.4.0
+Authlib==1.6.11
+Automat==25.4.16
+azure-core==1.39.0
+azure-identity==1.25.3
+azure-mgmt-compute==38.0.0
+azure-mgmt-core==1.6.0
+azure-mgmt-network==30.2.0
+backoff==2.2.1
+bcrypt==5.0.0
+beartype==0.22.9
+beautifulsoup4==4.14.3
+bleach==6.4.0
+blinker==1.9.0
+blobfile==3.2.0
+boltons @ file:///croot/boltons_1751383775419/work
+boostedblob==1.0.0
+brotlicffi @ file:///croot/brotlicffi_1736182461069/work
+cachetools==4.2.1
+caio==0.9.25
+cairocffi==1.7.1
+CairoSVG==2.9.0
+certifi @ file:///home/conda/feedstock_root/build_artifacts/certifi_1776866578774/work/certifi
+cffi==2.0.0
+charset-normalizer @ file:///croot/charset-normalizer_1721748349566/work
+chex @ file:///home/conda/feedstock_root/build_artifacts/chex_1753385711681/work
+chz==0.4.0
+cli_helpers==2.14.0
+click==8.4.0
+cloudpickle==3.1.2
+cma @ file:///home/conda/feedstock_root/build_artifacts/cma_1725398670586/work
+colorama @ file:///work/perseverance-python-buildout/croot/colorama_1728388434940/work
+comm==0.2.3
+conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1772191251778/work/conda-src
+conda-anaconda-telemetry @ file:///croot/conda-anaconda-telemetry_1755883788794/work
+conda-anaconda-tos @ file:///croot/conda-anaconda-tos_1755123313635/work
+conda-content-trust @ file:///work/perseverance-python-buildout/croot/conda-content-trust_1728487058234/work
+conda-libmamba-solver @ file:///croot/conda-libmamba-solver_1745607008911/work/src
+conda-package-handling @ file:///croot/conda-package-handling_1731369017509/work
+conda_package_streaming @ file:///croot/conda-package-streaming_1751307506088/work
+configobj==5.0.9
+constantly==23.10.4
+contourpy @ file:///home/conda/feedstock_root/build_artifacts/contourpy_1762525274641/work
+cryptography @ file:///croot/cryptography_1753084572505/work
+cssselect2==0.9.0
+cuda-bindings==12.9.4
+cuda-pathfinder==1.3.4
+cycler @ file:///home/conda/feedstock_root/build_artifacts/cycler_1733332471406/work
+cyclopts==4.10.2
+datasets==4.5.0
+debugpy==1.8.20
+decorator==5.2.1
+defusedxml==0.7.1
+dill==0.4.0
+distro @ file:///work/perseverance-python-buildout/croot/distro_1728396110052/work
+dnspython==2.8.0
+docker==7.1.0
+docstring_parser==0.18.0
+docutils==0.22.4
+dot2tex==2.11.3
+dotenv==0.9.9
+drain3==0.9.11
+duckduckgo_search==8.1.1
+einops==0.8.2
+email-validator==2.3.0
+etils @ file:///home/conda/feedstock_root/build_artifacts/etils_1741837923525/work
+evojax @ file:///home/conda/feedstock_root/build_artifacts/evojax_1718708684070/work
+exceptiongroup==1.3.1
+executing==2.2.1
+Farama-Notifications==0.0.6
+fastapi==0.136.1
+fastjsonschema==2.21.2
+fastmcp==2.2.0
+fastuuid==0.14.0
+feedparser==6.0.12
+filelock==3.24.3
+fla-core==0.5.0
+flash-linear-attention==0.5.0
+Flask==3.1.3
+flatbuffers==25.12.19
+flax @ file:///home/conda/feedstock_root/build_artifacts/flax_1761578519957/work
+fonttools @ file:///home/conda/feedstock_root/build_artifacts/fonttools_1759187078489/work
+frozendict @ file:///work/perseverance-python-buildout/croot/frozendict_1728497542215/work
+frozenlist==1.8.0
+fsspec==2025.10.0
+gitdb==4.0.12
+GitPython==3.1.49
+google-auth==2.55.0
+graphviz==0.21
+greenlet==3.4.0
+griffelib==2.0.2
+grpcio==1.80.0
+gym==0.26.2
+gym-notices==0.1.0
+gymnasium==1.2.0
+gymnax==0.0.8
+h11==0.16.0
+h2==4.3.0
+hf-xet==1.2.0
+hpack==4.1.0
+httpcore==1.0.9
+httptools==0.7.1
+httpx==0.28.1
+httpx-sse==0.4.3
+huggingface_hub==1.4.1
+humanize @ file:///home/conda/feedstock_root/build_artifacts/humanize_1760536245742/work
+hyperframe==6.1.0
+hyperlink==21.0.0
+idna @ file:///work/perseverance-python-buildout/croot/idna_1728385935861/work
+importlib_metadata==8.5.0
+importlib_resources @ file:///home/conda/feedstock_root/build_artifacts/importlib_resources_1736252299705/work
+Incremental==24.11.0
+iniconfig==2.3.0
+invoke==3.0.3
+ipykernel==7.2.0
+ipython==9.13.0
+ipython_pygments_lexers==1.1.1
+ipywidgets==8.1.8
+isodate==0.7.2
+itsdangerous==2.2.0
+janus==2.0.0
+jaraco.classes @ file:///croot/jaraco.classes_1755516327832/work
+jaraco.context @ file:///io/perseverance-python-buildout/croot/jaraco.context_1731706750665/work
+jaraco.functools @ file:///croot/jaraco.functools_1740408111753/work
+jax==0.8.0
+jax-cuda12-pjrt==0.8.0
+jax-cuda12-plugin==0.8.0
+jaxlib==0.8.0
+jedi==0.19.2
+jeepney @ file:///tmp/build/80754af9/jeepney_1627537048313/work
+Jinja2==3.1.6
+jiter==0.13.0
+joblib==1.5.3
+jsonpatch @ file:///work/perseverance-python-buildout/croot/jsonpatch_1728399595941/work
+jsonpickle==1.5.1
+jsonpointer @ file:///croot/jsonpointer_1753788433671/work
+jsonref==1.1.0
+jsonschema==4.23.0
+jsonschema-path==0.4.5
+jsonschema-specifications==2025.9.1
+jupyter_client==8.8.0
+jupyter_core==5.9.1
+jupyterlab_widgets==3.0.16
+jupytext==1.19.4
+kaggle==2.2.2
+kaggle-environments==1.30.1
+kagglesdk==0.1.30
+keyring @ file:///croot/keyring_1745484691218/work
+keysymdef==1.2.0
+kiwisolver @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_kiwisolver_1762488778/work
+letta-client==1.10.3
+libmambapy @ file:///home/conda/feedstock_root/build_artifacts/mamba-split_1730842684690/work/libmambapy
+litecli==1.17.1
+litellm==1.89.3
+llvmlite==0.46.0
+loky==3.5.6
+lxml==6.1.0
+markdown-it-py @ file:///work/perseverance-python-buildout/croot/markdown-it-py_1728387994477/work
+MarkupSafe==3.0.3
+matplotlib==3.10.7
+matplotlib-inline==0.2.1
+mcp==1.27.0
+mdit-py-plugins==0.6.1
+mdurl @ file:///work/perseverance-python-buildout/croot/mdurl_1728387286143/work
+mem0ai==2.0.0
+menuinst @ file:///croot/menuinst_1753464582829/work
+mkl-service==2.5.2
+mkl_fft==2.0.0
+ml_collections==1.1.0
+ml_dtypes @ file:///croot/ml_dtypes_1745327848793/work
+more-itertools @ file:///work/perseverance-python-buildout/croot/more-itertools_1728388668839/work
+mpmath==1.3.0
+msal==1.36.0
+msal-extensions==1.3.1
+msgpack @ file:///home/conda/feedstock_root/build_artifacts/msgpack-python_1762504002517/work
+multidict==6.7.1
+multiprocess==0.70.18
+munkres==1.1.4
+-e git+https://github.com/openai/preparedness.git@51052cede8cc608f95bb00346635e03759013e5a#egg=nanoeval&subdirectory=../../../../ari-skill-paper-re/vendor/paperbench/project/common/nanoeval
+-e git+https://github.com/openai/preparedness.git@51052cede8cc608f95bb00346635e03759013e5a#egg=nanoeval_alcatraz&subdirectory=../../../../ari-skill-paper-re/vendor/paperbench/project/common/nanoeval_alcatraz
+narwhals==2.20.0
+nbformat==5.10.4
+nest_asyncio @ file:///home/conda/feedstock_root/build_artifacts/nest-asyncio_1733325553580/work
+networkx==3.6.1
+numba==0.64.0
+numpy @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_numpy_1761162144/work/dist/numpy-2.3.4-cp313-cp313-linux_x86_64.whl#sha256=dfcdfa1f925fd0e49eb2190260d1a0ac23d19e33902f428adf62fb3e57d5f143
+nvidia-cublas-cu12==12.8.4.1
+nvidia-cuda-cupti-cu12==12.8.90
+nvidia-cuda-nvcc-cu12==12.9.86
+nvidia-cuda-nvrtc-cu12==12.8.93
+nvidia-cuda-runtime-cu12==12.8.90
+nvidia-cudnn-cu12==9.10.2.21
+nvidia-cufft-cu12==11.3.3.83
+nvidia-cufile-cu12==1.13.1.3
+nvidia-curand-cu12==10.3.9.90
+nvidia-cusolver-cu12==11.7.3.90
+nvidia-cusparse-cu12==12.5.8.93
+nvidia-cusparselt-cu12==0.7.1
+nvidia-nccl-cu12==2.27.5
+nvidia-nvjitlink-cu12==12.8.93
+nvidia-nvshmem-cu12==3.4.5
+nvidia-nvtx-cu12==12.8.90
+onnxruntime==1.26.0
+open-spiel==1.6.15
+openai==2.43.0
+openapi-pydantic==0.5.1
+opencv-python==4.12.0
+opencv-python-headless==4.12.0
+opentelemetry-api==1.41.0
+opt-einsum @ file:///tmp/build/80754af9/opt_einsum_1621500238896/work
+optax @ file:///home/conda/feedstock_root/build_artifacts/optax_1758003905234/work
+orbax-checkpoint @ file:///home/conda/feedstock_root/build_artifacts/orbax-checkpoint_1753310950845/work
+packaging @ file:///croot/packaging_1753775359799/work
+pandas==2.3.3
+pandas-stubs==3.0.0.260204
+-e git+https://github.com/openai/preparedness.git@51052cede8cc608f95bb00346635e03759013e5a#egg=paperbench&subdirectory=../../../../ari-skill-paper-re/vendor/paperbench/project/paperbench
+paramiko==4.0.0
+parso==0.8.6
+pathable==0.5.0
+pdfminer.six==20260107
+peft==0.18.1
+pettingzoo==1.24.0
+pexpect==4.9.0
+pillow @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_pillow_1758208668/work
+pkce @ file:///work/perseverance-python-buildout/croot/pkce_1728388093137/work
+platformdirs @ file:///croot/platformdirs_1744273042065/work
+pluggy @ file:///croot/pluggy_1733169602837/work
+pokerkit==0.6.3
+portalocker==3.2.0
+posthog==7.12.0
+-e git+https://github.com/openai/preparedness.git@51052cede8cc608f95bb00346635e03759013e5a#egg=preparedness_turn_completer&subdirectory=../../../../ari-skill-paper-re/vendor/paperbench/project/common/preparedness_turn_completer
+primp==1.2.2
+prompt_toolkit==3.0.52
+propcache==0.4.1
+protobuf==6.33.6
+psutil==7.2.2
+ptpython==3.0.32
+ptyprocess==0.7.0
+PuLP==3.3.1
+pure_eval==0.2.3
+py-key-value-aio==0.4.4
+py-spy==0.4.2
+pyarrow==23.0.1
+pyasn1==0.6.3
+pyasn1_modules==0.4.2
+pycosat @ file:///croot/pycosat_1736868416091/work
+pycparser @ file:///tmp/build/80754af9/pycparser_1636541352034/work
+pycryptodomex==3.23.0
+pydantic==2.12.5
+pydantic-settings @ file:///io/buildout/croot/pydantic-settings_1735843225507/work
+pydantic_core==2.41.5
+pydeck==0.9.2
+pygame==2.6.1
+Pygments @ file:///croot/pygments_1744664109463/work
+pygraphviz==1.14
+pyjson5==2.0.1
+PyJWT @ file:///io/buildout/croot/pyjwt_1739558969999/work
+PyMuPDF==1.27.2.3
+pymupdf-layout==1.27.2.3
+pymupdf4llm==1.27.2.3
+PyNaCl==1.6.2
+pyparsing @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_pyparsing_1758436411/work
+pypdf==6.14.2
+pyperclip==1.11.0
+PySocks @ file:///work/perseverance-python-buildout/croot/pysocks_1728386193338/work
+pytest==9.0.2
+pytest-asyncio==1.3.0
+pytest-mock==3.15.1
+python-dateutil @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_python-dateutil_1751104122/work
+python-dotenv==1.0.1
+python-multipart==0.0.26
+python-pptx==1.0.2
+python-slugify==8.0.4
+pytz==2026.1.post1
+PyYAML @ file:///home/conda/feedstock_root/build_artifacts/pyyaml_1758891829620/work
+pyzmq==27.1.0
+qdrant-client==1.17.1
+RapidFuzz==3.14.5
+# Editable install with no version control (rdlm==0.1.0)
+-e /home/t-kotama/workplace/new_llm
+readchar @ file:///work/perseverance-python-buildout/croot/readchar_1728397613245/work
+referencing==0.37.0
+regex==2026.2.19
+requests @ file:///croot/requests_1750426329888/work
+respx==0.22.0
+rich @ file:///croot/rich_1732638981168/work
+rich-rst==1.3.2
+rpds-py==0.30.0
+ruamel.yaml @ file:///croot/ruamel.yaml_1745960305322/work
+ruamel.yaml.clib @ file:///croot/ruamel.yaml.clib_1745937152469/work
+ruff==0.15.2
+safetensors==0.7.0
+scikit-learn==1.8.0
+scipy @ file:///home/conda/feedstock_root/build_artifacts/scipy-split_1761689772658/work/dist/scipy-1.16.3-cp313-cp313-linux_x86_64.whl#sha256=d8a5043b720f08238f8dde07ccf1b57da1e650ee81b238b3657a20040dc66fc3
+seaborn==0.13.2
+SecretStorage @ file:///work/perseverance-python-buildout/croot/secretstorage_1728387678881/work
+semanticscholar==0.12.0
+semver @ file:///croot/semver_1736540782504/work
+# Editable install with no version control (sera==0.1.0)
+-e /home/t-kotama/workplace/SERA
+setuptools==78.1.1
+sgmllib3k==1.0.0
+shellingham @ file:///work/perseverance-python-buildout/croot/shellingham_1728395303315/work
+Shimmy==2.0.1
+six @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_six_1753199211/work
+smmap==5.0.3
+sniffio==1.3.1
+soupsieve==2.8.3
+SQLAlchemy==2.0.49
+sqlparse==0.5.5
+sse-starlette==3.3.4
+stack-data==0.6.3
+starlette==1.0.0
+streamlit==1.52.2
+structlog==25.5.0
+submitit==1.5.4
+sympy==1.14.0
+tabulate==0.10.0
+telnetlib3==4.0.2
+tenacity==9.1.4
+tensorstore @ file:///home/conda/feedstock_root/build_artifacts/tensorstore_1742024853083/work
+termcolor==3.3.0
+terminaltables==3.1.10
+text-unidecode==1.3
+threadpoolctl==3.6.0
+tiktoken==0.12.0
+tinycss2==1.5.1
+tokenizers==0.22.2
+toml==0.10.2
+tomli @ file:///croot/tomli_1753774587605/work
+toolz @ file:///home/conda/feedstock_root/build_artifacts/toolz_1760707739667/work
+torch==2.10.0
+tornado==6.5.5
+tqdm @ file:///croot/tqdm_1738943501192/work
+trafaret==2.1.1
+traitlets==5.14.3
+transformers==5.2.0
+treescope @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_treescope_1755968402/work
+triton==3.6.0
+trl==0.28.0
+truststore @ file:///croot/truststore_1753907171582/work
+Twisted==25.5.0
+typer==0.23.1
+typer-slim==0.23.1
+typing-inspection==0.4.2
+typing_extensions==4.15.0
+tzdata==2026.2
+uncalled-for==0.3.1
+Unidecode==1.4.0
+urllib3 @ file:///croot/urllib3_1750775463400/work
+uvicorn==0.44.0
+uvloop==0.22.1
+vncdotool==1.3.0
+watchdog==6.0.0
+watchfiles==1.1.1
+wcwidth==0.6.0
+webencodings==0.5.1
+websockets==16.0
+Werkzeug==3.1.8
+wheel==0.45.1
+widgetsnbextension==4.0.15
+xlsxwriter==3.2.9
+xxhash==3.6.0
+yarl==1.22.0
+zipp @ file:///home/conda/feedstock_root/build_artifacts/zipp_1749421620841/work
+zope.interface==8.4
+zstandard==0.25.0

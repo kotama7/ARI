@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/pipeline/claim_gate
     role: implementation
-last_verified: 2026-07-10
+last_verified: 2026-07-28
 ---
 
 # 文件格式参考
@@ -190,7 +190,7 @@ last_verified: 2026-07-10
 
 ## `verified_context.json`
 
-限定到最佳节点 root→best 谱系的、由产物支撑的声明，由 `ari-core/ari/pipeline/verified_context.py` 写入，使 `write_paper` 阶段能够将其定量声明落地于经验证、由产物支撑（理想情况下已复现）的结果。**仅**当类型化 research-memory 存储中至少有一条有支撑的声明时才写入——存储为空时不留下文件，论文阶段的行为与之前完全一致。
+限定到最佳节点 root→best 谱系的、由产物支撑的声明，由 `ari-core/ari/pipeline/verified_context.py` 写入，使 `write_paper` 阶段能够将其定量声明落地于经验证、由产物支撑（理想情况下已复现）的结果。**仅**当类型化 research-memory 存储中至少有一条有支撑的声明时才写入——存储为空时不留下文件，论文阶段的行为与之前完全一致。最佳节点选择（`select_best_node`）会排除被擦除的节点（`metrics._valid_for_frontier=False`）——若所有候选都已被擦除则无获胜者、不写文件；此前写下的 `verified_context.json` 若其 `best_node_id` 不再与新的获胜者一致，该文件会被删除（一致则保留）。
 
 ```json
 {
@@ -264,21 +264,22 @@ MCP 包装器将 `should_block`（仅在 strict 策略下的 `phase: final`，�
 一个自包含事件：
 
 ```json
-{"schema_version": 1, "event_id": "evt_000042", "event_type": "prompt_status_change",
+{"schema_version": 2, "event_id": "evt_000042", "event_type": "prompt_status_change",
+ "transaction_id": "transition_003_to_004",
  "payload": {"prompt_id": "reviewer_prompt_v4", "from_status": "shadow",
              "to_status": "probationary_active", "transition_id": "transition_003_to_004"},
- "event_hash": "112233445566", "prev_event_hash": "77aa88bb99cc",
+ "event_hash": "baf0...64-hex-sha256...", "prev_event_hash": "91ac...64-hex-sha256...",
  "ts": 1751700000.0, "ts_iso": "2026-07-05T12:00:00Z"}
 ```
 
-`event_hash = sha256(canonical_json(payload))[:12]`（与提示词溯源
-相同的 `hash12` 方案 —— 不存在第二套方案）；`prev_event_hash` 链到
-上一行（首行为 `""`）。时间戳是被哈希载荷之外的元数据。事件类型
-（封闭 v1 集合）：`epoch_transaction_prepare`、
+v2 的 `event_hash` 是对模式版本、事件标识、事件类型、事务标识、
+规范载荷和前驱摘要计算的完整 SHA-256。时间戳是摘要外的元数据。
+旧版 v1 仅载荷的 12 位事件仍可读取。事件类型：
+`epoch_transaction_prepare`、
 `component_registered`、`prompt_registered`、
 `component_status_change`、`prompt_status_change`、`epoch_close`、
-`epoch_open`、`epoch_transaction_commit`、`emergency_quarantine`
-（唯一的纪元中途变更）。注册表状态变更**只**通过纪元边界的
+`epoch_open`、`epoch_transaction_commit`、`emergency_quarantine`。
+包括 T16 紧急隔离在内的注册表状态变更**只**通过纪元边界的
 prepare/commit 事务被接受；加载时，位于一个没有匹配 commit 的
 prepare 之后的事件被忽略（崩溃恢复）。
 
@@ -333,7 +334,9 @@ FrontierRepairEngine（RQGM Task 10，
   `ari-core/ari/schemas/selective_erasure_event.schema.json`）：
   内核所写（`prompt_hash` 为 null，`component_id` 为
   `frontier_repair_engine`），列出已退役的哈希/组件、直接 + 传递
-  的过期记录 id，以及被无效化/重算/放弃的节点 id。擦除是**仅
+  的过期记录 id，以及被无效化/重算/放弃的节点 id；效用策略退役时，
+  还会在 `policy_rescored_node_ids` 中列出由已存原始轴分数重新加权的
+  节点。擦除是**仅
   逻辑的**（不变量 13）：所列记录在 `rqgm_erasure_state.json` 中
   被打标，绝不重写或删除。
 - `frontier_rebuild` —— 一条 `FrontierRebuildEvent`（schema：
@@ -349,6 +352,10 @@ FrontierRepairEngine（RQGM Task 10，
   外加 `supersedes: <stale record_id>` 和
   `recomputed_in_epoch`）：在「原始」纪元的冻结权重下由幸存输入
   重算，绝不重新缩放 —— 被取代的记录留在磁盘上，标记为过期。
+  效用策略退役走另一条路径：同一修复事件在 `new_utility_policy`
+  下重新组合每个节点保存的 `_axis_scores`，并把节点列进
+  `policy_rescored_node_ids`。缺少原始轴的节点以 fail-closed 方式
+  被无效化。
 
 ### `constitution.yaml`
 
@@ -364,7 +371,9 @@ FrontierRepairEngine（RQGM Task 10，
 
 当前打开（或最近关闭）纪元的派生整写快照：冻结的活跃组件集合、
 活跃提示词哈希、效用策略、`registry_version`，以及确定性的
-`epoch_fingerprint`（`created_at` 是元数据，被指纹排除）。可
+`policy_settings` / `policy_fingerprint` 与 `execution_identity` /
+`execution_fingerprint`；复合 `epoch_fingerprint` 绑定两类声明身份。
+`created_at` 被排除，外部修订缺失时存为 `unresolved`。可
 丢弃 —— 加载时对照事件日志重放校验，不匹配则重建。
 
 ### `rqgm_registry.json`

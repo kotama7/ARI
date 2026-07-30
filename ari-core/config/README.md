@@ -5,6 +5,7 @@ Shipped default config files (YAML) loaded by ari-core.
 ## Contents
 
 - `README.md` — this file.
+- `constitution.yaml` — bundled ARI-RQGM constitution copied into the checkpoint once at run start under `ari_rqgm` mode — a human-readable statement + provenance marker; the authoritative rule tables live in `ari/rqgm/kernel_rules.py` / `transition_rules.py`.
 - `default.yaml` — default settings (e.g. BFTS search parameters).
 - `workflow.yaml` — workflow defaults (LLM backend/model, memory backend, etc.).
 - `paperbench_rubrics/` — Venue-conditioned PaperBench-format rubric templates. Mirrors

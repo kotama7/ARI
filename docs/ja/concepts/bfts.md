@@ -32,7 +32,7 @@ stateDiagram-v2
     frontier --> frontier: 永続 — 再展開可能なまま残る
     frontier --> pending: 最良ノードを選択（スコア + 多様性ボーナス）→ 子を 1 つ展開
     frontier --> retired: ルール A（子が親を上回る）または ルール B（max_expansions_per_node 到達）
-    pending --> pruned: should_prune（total ≥ max_total_nodes / depth ≥ max_depth / _sterile）
+    pending --> pruned: should_prune（total ≥ max_total_nodes / depth ≥ max_depth / _sterile / _valid_for_frontier=false）
     retired --> [*]
     pruned --> [*]
 ```
@@ -74,7 +74,7 @@ def bfts(experiment, config):
 主要な特性:
 - **単一子展開**: `expand()` は 1 回の呼び出しで子をちょうど 1 つ生成する。重複を避けるため豊富な文脈（兄弟スコア、祖先チェーン、木の多様性指標、既存の子）を与える。プロンプトには現在の depth/`max_depth` と残りノード予算も提示され、プランナが自らペース配分できる（v0.7.2, I-4）。
 - **永続フロンティア**: 完了ノードは展開後もフロンティアに残り、`_touched_this_round` / `_failed_this_round` を追跡しつつ再展開可能。フロンティアノードは、(ルール A) 子が `_scientific_score` で親を上回るか、(ルール B) `max_expansions_per_node` 回展開済みになると **退役 (retire)** する（v0.7.2, B-6）。
-- **`should_prune` 述語**: 硬い打ち切りのみ — `current_total >= max_total_nodes`（B-1）、`depth >= max_depth`（B-2、以前は死んでいた設定）、`metrics._sterile is True`（B-4）。LLM 判断はここには混ぜない。
+- **`should_prune` 述語**: 硬い打ち切りのみ — `current_total >= max_total_nodes`（B-1）、`depth >= max_depth`（B-2、以前は死んでいた設定）、`metrics._sterile is True`（B-4）、`metrics._valid_for_frontier is False`（RQGM の選択的消去。このキーを書くのは RQGM 側の機構だけなので `simple_bfts` では死に節だが、無条件に読むため `ari_rqgm` で消去されたノードはモードを戻しても除外され続ける）。LLM 判断はここには混ぜない。
 - **多様性ボーナス**: 過少表現のラベルに `+0.05`（直近 20 実行を追跡）— `my_count * 2 ≤ max_count` のとき（I-2）。両方のセレクタフォールバック（I-3 / L-3）と `select_next_node` の LLM プロンプトの双方で適用。
 - **カバレッジを考慮した展開選択**: ランが claims 付き metric contract を持つ場合、`select_best_to_expand` に渡されるゴールテキストにラン全体のクレームカバレッジブロックと **LINEAGE** ヒントが付加され（下記「リネージ連鎖」参照）、「まだ証拠のないクレームを立証できるか」が*どの*ノードを展開するかの判断に反映される — スケジューラ限定のシグナルであり、ノードの推論コンテキストには触れない。
 - **スコア較正**: 評価器はスコア崩壊（全スコアが同一値付近に集まる）を防ぐため、直近のスコア履歴をプロンプトに注入する。

@@ -14,7 +14,7 @@ sources:
     role: config
   - path: ari-skill-idea/src/server.py
     role: implementation
-last_verified: 2026-07-10
+last_verified: 2026-07-30
 ---
 
 # MCP Skills リファレンス
@@ -65,6 +65,16 @@ result = job_status("12345")
 
 実行中または待機中の SLURM ジョブをキャンセルします。
 
+#### `probe_platform_capabilities(checkpoint_dir, partition="", tools="")`
+
+**計算パーティション上**でツールの有無（`command -v`）を調べ、結果を
+`{checkpoint_dir}/platform_capabilities.json` にキャッシュします。設計上
+ベストエフォート: 失敗（パーティション未指定、`srun` 不在、キュー待ちの
+タイムアウト）時は `{"status": "skipped", ...}` を返して何も書きません。
+既存キャッシュがあれば再プローブせず `{"status": "cached", ...}` を返します。
+claims 抽出器はこのキャッシュを読み、プラットフォームに実在しないツールに
+依存する証拠を宣言しないようにします。
+
 #### `singularity_build(definition_file, output_path, partition)`
 
 定義ファイルから Singularity コンテナをビルドします。
@@ -95,14 +105,27 @@ GPU アクセス付き（`--nv` フラグ）で Singularity コンテナを実�
 
 #### `survey(topic, max_papers=8)`
 
-Semantic Scholar で関連論文を検索します。決定論的（LLM なし）。
+先行研究調査。決定論的（LLM なし）。参照元は順に試されます: この run の
+トピックについてアイデア段階が既に構築した凍結 `virsci_snapshot` コーパス、
+次にライブの Semantic Scholar クエリ（HTTP、続けて `semanticscholar`
+クライアントによるリトライ）、最後に **arXiv フォールバック** — キー無しや
+レート制限の S2 が先行研究の裏付けを黙って消してしまわないようにするため
+です。得られた上位結果はその被引用論文で 2 ホップ分エンリッチされます。
+劣化はすべて（最終的に 0 件だった場合も含め）stderr に報告されます。
 
 ```python
 result = survey("OpenMP compiler optimization HPC benchmarks")
 # 戻り値: {"papers": [{"title": "...", "abstract": "...", "url": "..."}]}
 ```
 
-高レートリミットには `S2_API_KEY` 環境変数が必要です。
+高レートリミットには `S2_API_KEY` 環境変数を設定します。`max_papers` は
+15 が上限です。
+
+このスキルの登録済み MCP ツールは `survey` と `generate_ideas` の **2 つだけ**
+です。`_load_virsci_snapshot_papers` は `survey` が直接呼ぶただのヘルパーで、
+エージェントから見えてはなりません。`tests/test_server.py` が
+`mcp.list_tools()` 経由でこの両方をピン留めしています（`@mcp.tool()`
+デコレータの欠落・付け間違いが過去に出荷されたためです）。
 
 #### `generate_ideas(topic, papers, experiment_context="", n_ideas=3, n_agents=4, max_discussion_rounds=2, max_recursion_depth=0)`
 

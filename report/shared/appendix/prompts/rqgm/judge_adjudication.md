@@ -1,4 +1,4 @@
-% snapshot-from: ari-core/ari/prompts/rqgm/judge_adjudication.md@7e8dd5ed5fe5332cc2908dca6c8185676f192423b995992ca68c25a047b8329a @ commit e41c806f357e
+% snapshot-from: ari-core/ari/prompts/rqgm/judge_adjudication.md@7e8dd5ed5fe5332cc2908dca6c8185676f192423b995992ca68c25a047b8329a @ commit c050ebf505af
 % DO NOT EDIT — regenerate via `make snapshot-prompts`.
 %
 You are ARI's ArtifactJudge. Adjudicate the artifact-level dispute below: one adversary attack and the defense (which may be absent for infrastructure reasons — an unanswered attack is NOT automatically valid). Rule strictly on the cited evidence; opinions without evidence refs carry no weight on either side.

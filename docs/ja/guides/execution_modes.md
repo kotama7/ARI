@@ -24,7 +24,7 @@ sources:
     role: test
   - path: ari-core/tests/test_gui_v1_mode_selection.py
     role: test
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # 実行モード: `simple_bfts` と `ari_rqgm`
@@ -122,11 +122,17 @@ vendored パス、プロンプト、スナップショットコーパスには�
 （`PaperMode` ∈ {`linear`, `rqgm_archive`}）で解決され、`paper.mode` /
 `rqgm.paper.enabled` のみを読み、`ari.mode` / `rqgm.enabled` は決して読みません:
 
-- **`linear`**（デフォルト）— 現行の論文パイプラインそのままで、バイト単位で
-  同一です。`ari paper` の入口（`ari/cli/projects.py:paper`）は
-  `generate_paper_section` を直接呼び、論文パスで `ari.rqgm` モジュールを一切
+- **`linear`**（デフォルト）— 現行の論文パイプラインそのままで、
+  `ari.mode: simple_bfts` の下ではバイト単位で同一です。3 つの入口
+  （`ari paper` / `ari run` / `ari resume`）はいずれも共有ディスパッチ
+  （`ari/cli/paper_dispatch.py:run_paper_phase`）を経由し、この軸では
+  `generate_paper_section` を呼び、`ari.rqgm` モジュールを一切
   インポートしません。`{checkpoint}/paper_archive_state.json` が存在しないことは、
-  純粋な `linear` 論文ランであることを意味します。
+  純粋な `linear` 論文ランであることを意味します。`ari.mode: ari_rqgm` の下では
+  ディスパッチが追加で*探索*軸の paper-candidate プリフライト
+  （[RQGM ランタイムウォークスルー](../concepts/rqgm_runtime_walkthrough.md#8-run-end)
+  に記載）を走らせるため、論文フェーズがバイト同一なのはデフォルトの探索モードに
+  限られます。
 - **`rqgm_archive`**（オプトイン）— 憲法的な論文アーカイブ: ドラフト空間上の
   浅い best-first ツリー（`PaperArchiveStrategy`、`ari/rqgm/paper_archive.py`）で、
   ガバナンス下の `paper_writer` + `paper_reviewer` が非ガバナンスの
@@ -164,7 +170,9 @@ paper` コマンドが明示的に呼び出します — 素の `load_config` �
 実効論文モードが `rqgm_archive` のとき、`ari paper` はアーカイブループが走る
 前に `{checkpoint}/paper_archive_state.json` を一度だけ書き込みます（論文
 モード、interlock、`mode_source` ∈ `config|env|resume`、探索モード、シード
-ノード。`persist_paper_run_start`、write-once）。再起動時はチェックポイント
+ノード。`persist_paper_run_start`、write-once — 後の呼び出しが別のシードを
+算出した場合は、レコードを書き換えるのではなくファイルの `seed_journal` に
+`seed_changed` エントリを追記します）。再起動時はチェックポイント
 優先で突き合わせます（`reconcile_paper_resume_mode`）: 永続化された論文モードが
 設定と env に優先し、不一致は警告を生み、状態ファイルの無いチェックポイントは
 そのフェーズで `linear` のままです — つまり純粋な linear 再起動では `ari.rqgm`
@@ -285,7 +293,7 @@ GUI パスもありません。
    プロジェクト既定値の文書はそれらを拒否します（`not_project_scope`）; そのスコープ
    ではコントロールが無効化され、理由が表示されます。
 4. **開かれているのはこの 4 葉だけ。** `Execution mode` カテゴリと `rqgm.*` ツリー
-   の残り 96 パス（epoch、kernel、governance、adversarial、予算のチューニング）は、
+   の残り 97 パス（epoch、kernel、governance、adversarial、予算のチューニング）は、
    本リリースでは GUI から編集**できません**。それらは実効値付きの読み取り専用
    として表示され続け、それらを持つドラフトは起動時に `mode_locked` で拒否され
    ます — 変更するには `workflow.yaml` を編集してください。モードを選ぶことは
@@ -360,8 +368,9 @@ capability matrix、severity map）と `ari/rqgm/transition_rules.py`
   全体を構造的に不活性にします — `ari.core.build_runtime` 内の遅延インポート
   分岐が唯一のゲートであり、機能ごとのフラグの散在ではありません。
 - `simple_bfts` パスで触れられる唯一のコード: デフォルト付きの型付き設定
-  フィールド 2 つ、env オーバーライド呼び出し 1 つ、ランループ内の
-  `getattr(bfts, "rqgm", None)` 1 つ。
+  フィールド 2 つ、env オーバーライド呼び出し 1 つ、そしてダックタイピングの
+  `getattr(bfts, "rqgm", None)` プローブが数箇所（ランループ、ランタイム配線、
+  論文ディスパッチへの受け渡し）— いずれもそこでは `None` を読みます。
 - 古いチェックポイントには `rqgm_state.json` がありません; `resume` は不在を
   `simple_bfts` として扱います。古い ari-core 上にデプロイされた `rqgm:`
   ブロックは黙って無視されます（現行の挙動 — 最も安全な失敗方向）。

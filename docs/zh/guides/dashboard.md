@@ -34,7 +34,7 @@ sources:
     role: doc
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # 仪表盘指南
@@ -101,27 +101,31 @@ React 打包产物从 `ari-core/ari/viz/static/dist/` 提供。如果该目录�
 
 ## 工作区地图
 
-侧边栏由单一路由注册表生成，因此导航顺序、图标与 hash URL 不可能彼此漂移
-（由 `src/__tests__/routeNavParity.test.tsx` 固定）。在 `gui_v2` 开启时，它
-呈现为：
+每一个导航条目（标签、图标以及点击写入的 hash）都来自单一路由注册表，因此
+侧边栏不可能与路由器彼此漂移（由 `src/__tests__/routeNavParity.test.tsx`
+固定）。侧边栏再把这些条目排成一个主操作加四个固定分组。在 `gui_v2` 开启时，
+它呈现为：
 
-| 位置 | 写入的 hash | 类别 |
-|---|---|---|
-| 📁 Projects | `#/projects` | 仅 v2 |
-| 🏠 Home | `#/home` | legacy |
-| 🗂️ Experiments | `#/experiments` | legacy |
-| 🧭 Overview | `#/overview?run=` | 仅 v2 |
-| 📡 Monitor | `#/monitor` | legacy |
-| 🌳 Tree | `#/tree2?run=` | v2 **接管**了 legacy Tree 位置 |
-| 🏛️ Governance | `#/governance?run=` | 仅 v2 |
-| 📊 Results | `#/results2?run=` | v2 **接管**了 legacy Results 位置 |
-| ✨ New Experiment | `#/new` | legacy（`#/wizard` 的别名） |
-| 📚 PaperBench | `#/paperbench` | legacy |
-| 💡 Idea | `#/ideas2?run=` | v2 **接管**了 legacy Idea 位置 |
-| ⚡ Workflow | `#/workflow` | legacy |
-| 🔧 Config | `#/config?run=` | 仅 v2 |
-| 🎛️ Studio | `#/studio` | 仅 v2 |
-| ⚙️ Settings | `#/settings` | legacy |
+| 分组 | 位置 | 写入的 hash | 类别 |
+|---|---|---|---|
+| *（主操作）* | ✨ 新建实验 | `#/new` | legacy（`#/wizard` 的别名） |
+| 工作区 | 📁 项目 | `#/projects` | 仅 v2 |
+| 工作区 | 🏠 仪表盘 | `#/home` | legacy |
+| 工作区 | 🗂️ 实验归档 | `#/experiments` | legacy |
+| 当前实验 | 🧭 概览 | `#/overview?run=` | 仅 v2 |
+| 当前实验 | 💡 想法 | `#/ideas2?run=` | v2 **接管**了 legacy Idea 位置 |
+| 当前实验 | 🌳 研究树 | `#/tree2?run=` | v2 **接管**了 legacy Tree 位置 |
+| 当前实验 | 📡 运行监控 | `#/monitor` | legacy |
+| 当前实验 | 📊 论文与结果 | `#/results2?run=` | v2 **接管**了 legacy Results 位置 |
+| 评估与治理 | 🏛️ 治理 | `#/governance?run=` | 仅 v2 |
+| 评估与治理 | 📚 PaperBench | `#/paperbench` | legacy |
+| 系统 | ⚡ 工作流 | `#/workflow` | legacy |
+| 系统 | 🔧 运行配置 | `#/config?run=` | 仅 v2 |
+| 系统 | 🎛️ 配置工作室 | `#/studio` | 仅 v2 |
+| 系统 | ⚙️ 设置 | `#/settings` | legacy |
+
+分组标题只是标签，不携带任何状态；把侧边栏拖窄到只剩图标时它们会消失。
+当前运行的选择器位于整个导航之上，因此你先确认在操作什么，再选择工作区。
 
 「接管」仅意味着点击所写入的 hash 发生了变化 —— 该位置保留 legacy 的标签、
 图标与排位，而 `#/tree`、`#/results`、`#/idea` 在你手动输入或使用书签时
@@ -140,8 +144,11 @@ Studio (#/studio) ──► project defaults / run template / run draft ──�
 ```
 
 **Projects**（`#/projects`）把检查点搜索根目录下找到的每一个运行，作为一个
-虚拟的 `default` project 列出。每一行都链接到该运行的 Overview 与 Config；
-点击行本身仍然沿用交接到 `#/results` 的 legacy 行为。
+虚拟的 `default` project 列出，上方还有四个计数磁贴（全部实验 / 运行中 /
+已完成 / 需要关注）。每一行的「打开」列链接到该运行的 Overview、论文与结果
+页面以及运行配置；点击行本身会进入 run 显式的 `#/results?run=<run_id>`
+（旧的 `sessionStorage` 交接仍会一并写入，仅作为老调用方的兼容回退）。
+RQGM 与论文能力现在是 run id 旁边的徽章，而不再是独立的一列。
 
 ![Projects 工作区：每个运行占一行的表格，列出 run id、状态徽章、节点数、评审分数、最优指标、最后更新时间、capabilities 列，以及每行的 Overview 与 Config 链接](../../assets/images/zh/dashboard_projects.png)
 
@@ -155,8 +162,11 @@ Studio (#/studio) ──► project defaults / run template / run draft ──�
 
 **Tree**（`#/tree2?run=&node=`）是 run 显式的节点图加一个检查器。
 **Ideas**（`#/ideas2?run=`）展示 `idea.json`（空白分析、主指标、生成的假设）
-以及来自运行树的 BFTS 假设列表。**Results**（`#/results2?run=`）是一个只读
-摘要：评审分数、ORS 可重现性链条，以及以徽章链形式呈现的 EAR 发表谱系。
+以及来自运行树的 BFTS 假设列表。**Results**（`#/results2?run=`，页面标题为
+*论文与结果*）是一个只读摘要：评审分数、ORS 可重现性链条，以及以徽章链形式
+呈现的 EAR 发表谱系。当运行已有论文时，它还会给出两个外链 ——「预览 / 编辑
+论文」（legacy 工作区 `#/results?run=`）与「打开原始 PDF」—— 但它自身不做
+任何修改。
 
 ![Tree 工作区：左侧是 D3 节点图，其上方印有 run id；右侧是窗口化的 ARIA 树表格；再右侧的检查器列提示「Select a node in the tree to inspect it」](../../assets/images/zh/dashboard_tree.png)
 
@@ -309,8 +319,7 @@ legacy 页面。
 | `#/paperbench`、`#/paperbench/import`、`#/paperbench/run`、`#/paperbench/results` | 整个 PaperBench 接口面（见 [PaperBench GUI 指南](paperbench/paperbench_gui.md)） |
 
 v2 的 Results 工作区正是出于这个原因链接到 `#/results`，并在页面上如实说明：
-*「This workspace is read-only —— curate, publish, and promote run on the
-legacy page only.」*
+*「本工作区为只读 —— 整理、publish.yaml 编辑、发布与提升仅在旧版页面执行。」*
 
 有两个 legacy 行为为安全起见发生了变更，在你点击之前值得知道：
 

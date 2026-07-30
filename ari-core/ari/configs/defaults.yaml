@@ -203,6 +203,9 @@ rqgm:
     enabled: false
     scripted_components: {}       # role -> eval-double name (harness-only)
     injection_specs: []           # active eval_* injection ids (harness-only)
+    # RQGM-paper-aligned P0-P4 selector. Empty is the production default;
+    # the selector is ignored unless eval.enabled is true.
+    paper_ablation: {condition_id: ""}
   # Paper-archive co-evolution (docs/plans/ari_rqgm_paper Tasks 01/02).
   # Mirrors the typed ``ari.config.RQGMPaperConfig`` pydantic defaults —
   # parity is pinned by ``ari-core/tests/test_paper_mode.py``.  Inert unless

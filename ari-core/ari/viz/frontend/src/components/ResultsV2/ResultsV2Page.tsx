@@ -466,7 +466,7 @@ export function ResultsV2Page() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))',
             gap: 16,
             alignItems: 'start',
           }}
@@ -493,6 +493,34 @@ export function ResultsV2Page() {
                     </Badge>
                   )}
                 </div>
+                {(paper.pdf_present || paper.tex_present) && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: 8,
+                      flexWrap: 'wrap',
+                      margin: '4px 0 14px',
+                    }}
+                    data-testid="results2-paper-actions"
+                  >
+                    <a
+                      className="btn btn-primary"
+                      href={`#/results?run=${encodeURIComponent(runId)}`}
+                    >
+                      {t('results2_open_workspace')}
+                    </a>
+                    {paper.pdf_present && (
+                      <a
+                        className="btn btn-outline"
+                        href={`/api/checkpoint/${encodeURIComponent(runId)}/paper.pdf`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {t('results2_view_pdf')}
+                      </a>
+                    )}
+                  </div>
+                )}
                 {!review.report_present ? (
                   <MutedLine>{t('results2_review_absent')}</MutedLine>
                 ) : (
@@ -554,8 +582,6 @@ export function ResultsV2Page() {
                     {t('results2_link_governance')}
                   </a>
                 )}
-                {/* TODO(gui_refresh Wave 5): embed the paper editor/PDF
-                    workspace; until then the legacy page carries it. */}
                 <a href={`#/results?run=${encodeURIComponent(runId)}`}>
                   {t('results2_link_legacy')}
                 </a>

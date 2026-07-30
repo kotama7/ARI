@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_state_store.py
     role: test
-last_verified: 2026-07-16
+last_verified: 2026-07-28
 ---
 
 # RQGM Schema Reference
@@ -50,10 +50,17 @@ path ever enters a hash.
   matters (`prompt_sha256` / `full_sha256`, `inputs_sha256`, content
   hashes in the governance cache).
 - **`payload_hash(payload)`** = `hash12(canonical_json(payload))` — the
-  event-hash and fingerprint function.
-- **`epoch_fingerprint`** (`ari/rqgm/state.py`) —
-  `hash12(canonical_json(EpochState payload))` with `created_at`
-  (wall-clock metadata), the fingerprint field itself, and `status`
+  short content-identity function used by prompts, policies, registries, and
+  legacy schema-v1 events.
+- **Schema-v2 event digest** — full SHA-256 over canonical
+  `{schema_version, event_id, event_type, transaction_id, payload,
+  prev_event_hash}`. This binds every field that can change replay semantics;
+  timestamps remain outside the digest.
+- **Epoch identity** (`ari/rqgm/state.py`) —
+  `policy_fingerprint` hashes the serving institution plus resolved
+  governance settings; `execution_fingerprint` hashes the declared model,
+  decoding, tools, environment, and data snapshot; `epoch_fingerprint`
+  composes both. `created_at`, `status`, and the composite field itself are
   excluded, so open→closed does not re-fingerprint frozen content.
 
 Id formats (all zero-padded, per-checkpoint counters):
@@ -129,13 +136,14 @@ Closed vocabularies:
 
 | Field | Notes |
 |---|---|
-| `schema_version` | const `1` |
+| `schema_version` | `2` for new events; legacy `1` remains readable |
 | `event_id` | `evt_%06d`, per-checkpoint monotonic |
-| `event_type` | Closed v1 set: `epoch_transaction_prepare`, `component_registered`, `prompt_registered`, `component_status_change`, `prompt_status_change`, `epoch_close`, `epoch_open`, `epoch_transaction_commit`, `emergency_quarantine` (the sole mid-epoch mutation) |
-| `payload` | The event body — the only hashed part |
-| `event_hash` | `hash12(canonical_json(payload))` |
-| `prev_event_hash` | Chains to the previous line; `""` on the first |
-| `ts` / `ts_iso` | Envelope metadata, outside the hash (P2) |
+| `event_type` | Closed set: `epoch_transaction_prepare`, `component_registered`, `prompt_registered`, `component_status_change`, `prompt_status_change`, `epoch_close`, `epoch_open`, `epoch_transaction_commit`, `emergency_quarantine` |
+| `transaction_id` | Boundary membership; empty only for standalone epoch-open/audit events |
+| `payload` | The event body |
+| `event_hash` | Full schema-v2 event digest; schema v1 used a 12-hex payload hash |
+| `prev_event_hash` | Included in the v2 digest; `""` on the first line |
+| `ts` / `ts_iso` | Envelope metadata, outside the digest (P2) |
 
 ### `epoch_state.schema.json`
 
@@ -154,7 +162,9 @@ the snapshot is disposable and rebuilt from replay on mismatch.
 | `run_id` / `node_count_at_open` | Run linkage + boundary bookkeeping |
 | `active_components` / `active_prompt_hashes` / `utility_policy` | The per-epoch frozen sets (copied at freeze; global invariants 1–3).  `utility_policy` is the **governed score body** — `composite`, `axis_weights`, `frontier_score`, `depth_penalty_lambda`, `ucb_c` plus the sealed `utility_policy_hash` — captured from the ADOPTED policy by `ari/rqgm/state.py:capture_utility_policy` (the cfg fallback at epoch 0 / `simple_bfts`); see [Governed utility-evolution schema](#governed-utility-evolution-schema-task-14) |
 | `registry_version` | `hash12` of the registry as of the freeze |
-| `epoch_fingerprint` | `hash12` excluding `created_at`, `status`, and itself |
+| `policy_settings` / `policy_fingerprint` | Resolved constitution, thresholds, budgets, and governance settings, plus their 12-hex digest |
+| `execution_identity` / `execution_fingerprint` | Declared model/backend/temperature, search and evaluation settings, skills, disabled tools, and explicit model/tool/environment/data revision pins. Missing pins are stored as `unresolved` and set `complete: false` |
+| `epoch_fingerprint` | Composite 12-hex identity over policy and execution identity, excluding `created_at`, `status`, and itself |
 | `created_at` | Metadata; excluded from the fingerprint |
 
 ### `rqgm_registry.schema.json`
@@ -272,12 +282,12 @@ artifacts and only artifacts; the binding exists solely on the
 post-adjudication, judge-authored record.  The adversary observes, and the
 judge's verdict is what makes an observation accountable.
 
-In the exploration (`ari_rqgm`) set the seven adversary types bind nothing:
-the artifacts they attack are authored by the `generator` role, which has no
-registered component (nothing stamps a `generator_v1` id), so their records
-carry `affected_components: []` and no `target_component_id`.  The mechanism
-is role-driven — the day an artifact-authoring role has a registered
-incumbent, naming it binds those case types with no other change.
+In the exploration (`ari_rqgm`) set, the research `generator` is a registered
+founding component. Nodes are stamped once with producer component, prompt
+hash, and epoch. The seven adversary types bind `generator_v1` only when that
+provenance matches the epoch-frozen incumbent. Legacy, missing, or mismatched
+provenance remains targetless, so a successor is never blamed for a
+predecessor's artifact.
 
 ### `rqgm_utility_record.schema.json`
 
@@ -296,6 +306,12 @@ records after erasure.  **Owning module:**
 | `utility_policy_hash` / `frozen_policy` | The epoch-frozen policy, embedded **by value** so recompute under the original weights is possible |
 | `supersedes` / `recomputed_in_epoch` | Set only on Task-10 recomputed records; the superseded record stays on disk, stale |
 
+Those fields describe recomputation after stale scored-evidence erasure.
+Utility-policy retirement takes a different Task-10 path: it re-composes
+each node's stored `_axis_scores` under the new policy and records the node
+in the enclosing `SelectiveErasureEvent.policy_rescored_node_ids`; missing
+raw axes invalidate the node fail-closed.
+
 ### `rqgm_replay_pool.schema.json`
 
 **Purpose:** the derived byte-fixed `rqgm/adversarial_replay_pool.json`
@@ -307,7 +323,7 @@ module:** `ari/rqgm/adversarial/pool.py`; persisted via
 | Field | Notes |
 |---|---|
 | `case_seq` | Monotonic case counter |
-| `cases[]` | AdversarialReplayCase: `case_id` (`adv_case_%05d`), `case_type` (the seven-type set), `validated_attack_id`, `severity`, `admitted_epoch` / `last_confirmed_epoch`, `status` `active` \| `evicted` (eviction is logical-only), `replay_view` (full materials — denied to role `clean_room_generator`) and `abstract_view` (contamination-safe FailureSummary — no raw attack/defense text) |
+| `cases[]` | AdversarialReplayCase: `case_id` (`adv_case_%05d`), `case_type` (the shipped schema's seven exploration types; paper runtime adds the inert-off-phase eighth type described below), `validated_attack_id`, `severity`, `admitted_epoch` / `last_confirmed_epoch`, `status` `active` \| `evicted` (eviction is logical-only), `replay_view` (full materials — denied to role `clean_room_generator`) and `abstract_view` (contamination-safe FailureSummary — no raw attack/defense text) |
 
 ## Prompt-evolution schemas (Task 07)
 
@@ -397,7 +413,7 @@ CK-REG-004).
 |---|---|
 | `epoch_transition_id` | `transition_%03d_to_%03d` |
 | `status` | `pending` \| `committed` \| `aborted` \| `rejected` \| `failed` — an aborted/kernel-blocked transition is logged but applies **no** registry change |
-| `emergency` | `true` is the sole mid-epoch shape (single sanction to quarantine) |
+| `emergency` | `true` is the T16 shape that quarantines and opens the next epoch in one forced emergency boundary |
 | `inputs` | Includes the `inputs_sha256` content hash of the frozen boundary inputs (GovernanceReport + candidate evaluations + registry hashes) so every committed change replays deterministically |
 | `adoptions` / `sanctions` / `retirements` / `bans` | Status-change lists, each pinning a `rule_id` |
 | `clean_room_requests` | Regeneration requests handed to Task 08 |
@@ -421,7 +437,8 @@ rewritten or deleted.  **Owning module:** `ari/rqgm/frontier_repair.py`.
 | `status` | `applied` \| `conservative` \| `halted_expansion` (the fail-closed degradation ladder) |
 | `retired_prompt_hashes` / `retired_component_ids` | What was retired |
 | `direct_stale_record_ids` / `transitive_stale_record_ids` | The dependency closure |
-| `invalidated_node_ids` / `recompute_node_ids` / `abandoned_pending_node_ids` | Node dispositions |
+| `invalidated_node_ids` / `recompute_node_ids` / `abandoned_pending_node_ids` | Node dispositions for stale dependency closure |
+| `policy_rescored_node_ids` | Optional/additive #77 list of nodes re-weighted from stored `_axis_scores` under the new utility policy rather than invalidated |
 | `trace_stats` | BFS tracer statistics (`rqgm.frontier_repair.max_trace_depth` caps the walk) |
 
 ### `frontier_rebuild_event.schema.json`
@@ -554,6 +571,19 @@ Write-once at paper-phase start.  Shape owned by `ari/rqgm/paper_runtime.py`
 wins on re-invocation — resume never silently flips the paper mode.  Writer:
 `ari.checkpoint.save_paper_archive_state_json`.
 
+`seed_node_id` is the one field write-once cannot keep current: it records
+what the FIRST paper invocation started from, while the live seed is
+recomputed every round under mechanisms that exist to change it (selective
+erasure excluding the recorded seed, an escalation penalty demoting it, and
+the penalty replay that re-applies both before selection).  A later
+invocation computing a different seed therefore APPENDS
+`seed_journal[]` — `{event: "seed_changed", prior_seed_node_id,
+seed_node_id}`, chained off the latest entry — instead of rewriting the
+record, so the file tells the whole story rather than a silently stale first
+line.  Only the ids are journaled: *why* the seed moved is already durable in
+`rqgm_audit.jsonl` (erasure events) and `rqgm_adversarial_cases.jsonl`
+(validated-attack penalties).
+
 ### `paper_draft_archive.jsonl` — the scored draft population
 
 Append-only, byte-fixed, best-effort (a record-write failure never breaks the
@@ -564,8 +594,13 @@ one draft node per line — `schema_version`, `draft_id` / `node_id`, `kind`
 `tex_sha256`, `writer_prompt_hash` (the framing / `diversity_bonus` key),
 `reviewer_prompt_hash`, `review_score` (the governed `paper_reviewer` composite
 — the frontier + best-belief ranking key), `suggested_revisions_ref`,
-`anchors_preserved`, `decode_seed`, `epoch_id`, and the read-time flags
-`is_best_belief` / `compiled` (updated in place by `mark_paper_draft_flags`).
+`anchors_preserved`, `decode_seed`, `epoch_id`, the read-time flags
+`is_best_belief` / `compiled` (updated in place by `mark_paper_draft_flags`),
+and the selective-erasure staleness fields `review_score_stale` /
+`stale_at_epoch` / `replacement_reviewer_prompt_hash` (stamped in place by
+`erase_paper_reviewer_utilities` when a displaced reviewer's scores are
+logically erased — stale rows are ineligible for best-belief and
+cross-round winner selection).
 
 ### `paper_anchor_corpus.jsonl` — the read-only accept/reject anchor
 
@@ -622,7 +657,7 @@ in a node's `files_changed`.
 | `rqgm_state.json` | Mode-provenance snapshot (write-once) | none — shape owned by `ari/rqgm/state.py` (`schema_version`, `mode`, `rqgm_enabled`, `mode_source` ∈ `config\|env\|resume`, `created_at`, `switch_journal[]`) | `ari.checkpoint.save_rqgm_state_json` |
 | `constitution.yaml` | Human-readable statement, copy-once from `ari-core/config/constitution.yaml` | none — authoritative rules are frozen code pinned by `constitution_hash` | `ari/rqgm/state.py` (`copy_constitution_if_missing`) |
 | `rqgm_transitions.jsonl` | Append-only truth (hash-chained) | `rqgm_transition_event` | `ari/rqgm/store.py` |
-| `rqgm_audit.jsonl` | Append-only audit log (independent chain) | envelope `rqgm_transition_event`; record payloads: `governance_report` (+ the motion-pipeline records), kernel reports, `epoch_transition` (+ retirement / clean-room-request records), `selective_erasure_event`, `frontier_rebuild_event`, recomputed `rqgm_utility_record`, budget lines | governance / transition / repair engines via the store |
+| `rqgm_audit.jsonl` | Append-only audit log (independent chain) | envelope `rqgm_transition_event`; record payloads: `governance_report` (+ the motion-pipeline records), kernel reports, `epoch_transition` (+ retirement / clean-room-request records), `selective_erasure_event`, `frontier_rebuild_event`, `paper_utility_erasure` (paper-axis reviewer-replacement erasure), recomputed `rqgm_utility_record`, budget lines | governance / transition / repair engines (+ the paper-archive runtime) via the store |
 | `epoch_state.json` | Derived snapshot | `epoch_state` | `ari.checkpoint.save_epoch_state_json` |
 | `rqgm_registry.json` | Derived snapshot | `rqgm_registry` | `ari.checkpoint.save_rqgm_registry_json` |
 | `proposals/proposal_records.jsonl` | Append-only truth | `proposal_record` (embeds `proposal_summary_view`) | `ari/rqgm/proposals/store.py` |
@@ -637,7 +672,7 @@ in a node's `files_changed`.
 | `rqgm_meta_outputs.jsonl` | Append-only truth | `rqgm_meta` (`meta_agent_output_record`) | `ari/rqgm/meta_evolution.py` |
 | `rqgm_governance_cache.jsonl` | Append-only cache | `rqgm_governance_cache` | `ari/rqgm/governance_cache.py` |
 | `rqgm_eval_metrics.json` / `rqgm_injection_provenance.json` | Evaluation-harness artifacts (harness-launched runs only) | none — shapes owned by `ari/rqgm/evaluation/{metrics,injection}.py` | evaluation harness |
-| `paper_archive_state.json` | Paper-phase mode-provenance snapshot (write-once) | none — shape owned by `ari/rqgm/paper_runtime.py` | `ari.checkpoint.save_paper_archive_state_json` |
+| `paper_archive_state.json` | Paper-phase mode-provenance snapshot (write-once, except the append-only `seed_journal[]`) | none — shape owned by `ari/rqgm/paper_runtime.py` | `ari.checkpoint.save_paper_archive_state_json` |
 | `paper_draft_archive.jsonl` | Append-only draft population (best-effort) | none — shape owned by `ari/rqgm/paper_archive.py` | `ari/rqgm/paper_draft_executor.py` |
 | `paper_anchor_corpus.jsonl` | Read-only anchor corpus (write-once) | none — shape owned by `ari/rqgm/paper_anchor.py` | curation / bootstrap tooling |
 | `rqgm/paper_self_preference_stat.json` | Derived per-epoch statistic (best-effort) | none — shape owned by `ari/rqgm/paper_self_preference.py` | `ari/rqgm/paper_self_preference.py` |

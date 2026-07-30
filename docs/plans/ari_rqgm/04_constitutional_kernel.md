@@ -2,6 +2,12 @@
 
 > **Status**: planned · **Depends on**: 00, 02 · **This is a temporary task plan** — see [INDEX.md](INDEX.md). It will be deleted once its deletion criteria are met.
 
+> **Implemented amendment (2026-07-28):** T16 no longer leaves a changed
+> serving set inside the same epoch. It forms a forced
+> close/quarantine/open boundary with a fresh fingerprint. Earlier
+> “mid-epoch emergency” wording below is superseded by the permanent
+> architecture and schema references.
+
 ## 1. Purpose
 
 ARI-RQGM lets prompt-defined components (generator / reviewer / adversary / defender /
@@ -519,7 +525,8 @@ for the readme-sync gate):
    and one that passes (golden `KernelReport` comparison).
 2. Transition table (imported from `ari/rqgm/transition_rules.py`, Task 09): every
    legal `(from, to)` pair passes; every illegal pair blocks; `boundary_only`
-   transitions block when stamped mid-epoch; emergency quarantine passes mid-epoch;
+   transitions block when stamped mid-epoch; emergency quarantine passes only as a
+   forced close/quarantine/open boundary and a standalone mid-epoch append is refused;
    an import-identity test asserts the kernel and the engine consume the same table
    object (no duplicated table in `kernel_rules.py`).
 3. Role separation: same-role impeachment blocked-as-inadmissible; wrong-author

@@ -82,14 +82,14 @@ Invariants this surface must keep:
 - `README.md` — this file.
 - `ConfigStudioPage.tsx` — schema-driven form over project/template/draft scopes.
 - `ExecutionSection.tsx` — ADR-09 execution/paper mode selection + the read-only `rqgm.*` tree.
-- `LaunchPanel.tsx` — draft launch flow (resolve/validate → immutable review → idempotent launch).
-- `StudioPickers.tsx` — template select/create + draft create (incl. goal) controls.
-- `SecretField.tsx` — write-only secret assignment + readiness display.
-- `ValidationSummary.tsx` — per-path `details.errors` renderer.
-- `modeIntents.ts` — the two ADR-09 mode intent pairs (frontend mirror of `field_registry.MODE_INTERLOCK_PAIRS`) + leaf readers.
 - `index.ts` — barrel re-exports.
+- `LaunchPanel.tsx` — draft launch flow (resolve/validate → immutable review → idempotent launch).
+- `modeIntents.ts` — the two ADR-09 mode intent pairs (frontend mirror of `field_registry.MODE_INTERLOCK_PAIRS`) + leaf readers.
+- `SecretField.tsx` — write-only secret assignment + readiness display.
+- `StudioPickers.tsx` — template select/create + draft create (incl. goal) controls.
+- `ValidationSummary.tsx` — per-path `details.errors` renderer.
 - `__tests__/` — component tests for this directory.
   - `README.md` — __tests__ index.
-  - `ConfigStudioPage.test.tsx` — tests for `ConfigStudioPage.tsx`.
-  - `ConfigStudioExecutionMode.test.tsx` — tests for `ExecutionSection.tsx` + the ADR-09 launch-review wiring.
-  - `ConfigStudioLaunch.test.tsx` — tests for the `LaunchPanel.tsx` launch flow.
+  - `ConfigStudioExecutionMode.test.tsx` — tests for `ExecutionSection.tsx` + the ADR-09 launch-review wiring (mode selection accepted 2026-07-27): one control writes BOTH pair keys in a single PATCH, the two intents are orthogonal, all four combinations render and round-trip, re-selecting the stored value writes nothing (default path byte-identical), an inconsistent stored pair is flagged, the `rqgm.*` tree renders values with no editable control, the launch review shows the RESOLVED mode (requested→resolved + resolver warning on a fallback), and `mode_interlock_mismatch` blocks the launch with its typed message.
+  - `ConfigStudioLaunch.test.tsx` — tests for the `LaunchPanel.tsx` launch flow (gui_refresh task 06 Wave 4e, plan 06 §Launch protocol / backend MN-10): resolve→validate→review→launch happy path with the canonical `#/overview?run=<run_id>` redirect from the server-issued run_id, validation failure (`mode_locked`) blocking the POST, double-click single-POST + same-idempotency-key retry, typed error envelope rendering (request_id + per-path `details.errors`).
+  - `ConfigStudioPage.test.tsx` — tests for `ConfigStudioPage.tsx` (gui_refresh task 06 Wave 4d): schema-driven control generation, If-Match PATCH + 409 reload banner + per-path 400 ValidationSummary, write-only secret flow, the ADR-09 Execution section refused in PROJECT scope.

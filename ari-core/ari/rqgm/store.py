@@ -19,8 +19,9 @@ Transaction discipline (§5.6): status changes happen ONLY inside an
 epoch-boundary :class:`EpochTransaction` (prepare … commit), single-writer
 (the ``_run_loop`` main thread). Crash recovery: on replay, events after the
 last ``epoch_transaction_prepare`` without a matching commit are ignored.
-The sole mid-epoch exception is ``emergency_quarantine``
-(:meth:`RqgmStateStore.append_mid_epoch_event`).
+An ``emergency_quarantine`` forces an immediate boundary; legacy schema-v1
+checkpoints may still contain a standalone mid-epoch event and remain
+replayable.
 
 Writer posture (shared with every ARI provenance writer): lock-guarded,
 no-op without a resolvable checkpoint dir (run pin), never raises into the
@@ -36,7 +37,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from ari.rqgm.events import (
@@ -44,6 +45,7 @@ from ari.rqgm.events import (
     EVENT_TYPES,
     TransitionEvent,
     event_from_line_dict,
+    expected_event_hash,
     finalize_event,
     format_transition_id,
 )
@@ -82,6 +84,10 @@ _TX_ADDABLE: frozenset[str] = frozenset(EVENT_TYPES) - {
 _LOCK = threading.Lock()
 
 
+class EventLogIntegrityError(RuntimeError):
+    """The physical event sequence cannot be safely replayed or extended."""
+
+
 def _resolve_checkpoint_dir(checkpoint_dir: str | Path | None) -> Path | None:
     """Explicit arg first, then the ``ARI_CHECKPOINT_DIR`` run pin (like
     ``ari.prompts._provenance``); ``None`` == no-op writer."""
@@ -103,45 +109,73 @@ def _read_chain_tail(path: Path) -> tuple[int, str]:
     """
     if not path.exists():
         return 0, ""
-    count = 0
-    last_hash = ""
-    try:
-        with open(path, "r", encoding="utf-8", errors="replace") as fh:
-            for line in fh:
-                if not line.strip():
-                    continue
-                count += 1
-                try:
-                    d = json.loads(line)
-                    if isinstance(d, dict):
-                        last_hash = str(d.get("event_hash", last_hash))
-                except json.JSONDecodeError:
-                    continue
-    except OSError:
-        return 0, ""
-    return count, last_hash
+    events = _read_events(path)
+    _require_valid_chain(events, path)
+    return len(events), events[-1].event_hash if events else ""
 
 
-def _read_events(path: Path) -> list[TransitionEvent]:
-    """Order-preserving, absence-tolerant reader (corrupt lines skipped)."""
+def _read_events(
+    path: Path, *, allow_torn_tail: bool = False
+) -> list[TransitionEvent]:
+    """Order-preserving reader.
+
+    Replay may ignore one unterminated, malformed final segment as a crashed
+    append.  Writers never do: they refuse to extend a physically torn log.
+    """
     out: list[TransitionEvent] = []
     if not path.exists():
         return out
     try:
-        with open(path, "r", encoding="utf-8", errors="replace") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    d = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(d, dict):
-                    out.append(event_from_line_dict(d))
-    except OSError:
-        pass
+        raw_lines = path.read_bytes().splitlines(keepends=True)
+        for index, raw_line in enumerate(raw_lines):
+            terminated = raw_line.endswith((b"\n", b"\r"))
+            line = raw_line.decode("utf-8", errors="replace").strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+            except json.JSONDecodeError as exc:
+                if (
+                    allow_torn_tail
+                    and index == len(raw_lines) - 1
+                    and not terminated
+                ):
+                    break
+                raise EventLogIntegrityError(
+                    f"{path.name}: malformed JSON event line"
+                ) from exc
+            if not isinstance(d, dict):
+                raise EventLogIntegrityError(
+                    f"{path.name}: event line is not an object"
+                )
+            out.append(event_from_line_dict(d))
+    except OSError as exc:
+        raise EventLogIntegrityError(f"{path.name}: unreadable event log") from exc
     return out
+
+
+def _require_valid_chain(events: list[TransitionEvent], path: Path) -> None:
+    """Fail closed on identifier, digest, predecessor, or schema changes."""
+    previous = ""
+    for seq, event in enumerate(events):
+        expected_id = f"evt_{seq:06d}"
+        if event.event_id != expected_id:
+            raise EventLogIntegrityError(
+                f"{path.name}: expected {expected_id}, got {event.event_id!r}"
+            )
+        if event.schema_version not in (1, 2):
+            raise EventLogIntegrityError(
+                f"{path.name}: unsupported event schema {event.schema_version}"
+            )
+        if event.prev_event_hash != previous:
+            raise EventLogIntegrityError(
+                f"{path.name}: predecessor mismatch at {event.event_id}"
+            )
+        if event.event_hash != expected_event_hash(event):
+            raise EventLogIntegrityError(
+                f"{path.name}: digest mismatch at {event.event_id}"
+            )
+        previous = event.event_hash
 
 
 def _append_chained(path: Path, events: list[TransitionEvent]) -> bool:
@@ -173,21 +207,32 @@ def _append_chained(path: Path, events: list[TransitionEvent]) -> bool:
 def committed_events(events: list[TransitionEvent]) -> list[TransitionEvent]:
     """Crash-recovery filter (plan 02 §5.6): drop every event that belongs to
     a prepare without a matching commit. Events outside any transaction
-    (initial ``epoch_open``, ``emergency_quarantine``) are committed as-is."""
+    (initial ``epoch_open`` and legacy ``emergency_quarantine``) are committed
+    as-is."""
     out: list[TransitionEvent] = []
     pending: list[TransitionEvent] | None = None
+    pending_id = ""
     for ev in events:
         if ev.event_type == "epoch_transaction_prepare":
             # A new prepare abandons any unterminated predecessor.
             pending = [ev]
+            pending_id = ev.transaction_id or str(
+                ev.payload.get("transition_id", "")
+            )
         elif ev.event_type == "epoch_transaction_commit":
-            if pending is not None:
+            commit_id = ev.transaction_id or str(
+                ev.payload.get("transition_id", "")
+            )
+            if pending is not None and commit_id == pending_id:
                 pending.append(ev)
                 out.extend(pending)
                 pending = None
+                pending_id = ""
             # commit without prepare: ignore (malformed tail)
         elif pending is not None:
-            pending.append(ev)
+            event_id = ev.transaction_id or pending_id
+            if event_id == pending_id:
+                pending.append(ev)
         else:
             out.append(ev)
     return out
@@ -244,6 +289,7 @@ class EpochTransaction:
             [
                 TransitionEvent(
                     event_type="epoch_transaction_prepare",
+                    transaction_id=self.transition_id,
                     payload={"transition_id": self.transition_id},
                 )
             ],
@@ -269,6 +315,7 @@ class EpochTransaction:
                 f"event type {event.event_type!r} cannot be added to an "
                 f"epoch-boundary transaction"
             )
+        event = replace(event, transaction_id=self.transition_id)
         if not self._store.append_events(self._ckpt, [event]):
             raise RuntimeError(
                 f"epoch transaction {self.transition_id}: could not persist "
@@ -284,6 +331,7 @@ class EpochTransaction:
             [
                 TransitionEvent(
                     event_type="epoch_transaction_commit",
+                    transaction_id=self.transition_id,
                     payload={"transition_id": self.transition_id},
                 )
             ],
@@ -415,7 +463,8 @@ class RqgmStateStore:
         path = ckpt / RQGM_TRANSITIONS_FILENAME
         if not path.exists():
             return None
-        events = _read_events(path)
+        events = _read_events(path, allow_torn_tail=True)
+        _require_valid_chain(events, path)
         components: dict = {}
         prompts: dict = {}
         epoch: EpochState | None = None
@@ -436,7 +485,8 @@ class RqgmStateStore:
                     components, prompts, ev.event_type, ev.payload,
                     created_at=ev.ts_iso,
                 )
-        next_seq, last_hash = _read_chain_tail(path)
+        next_seq = len(events)
+        last_hash = events[-1].event_hash if events else ""
         return RqgmRuntimeState(
             epoch=epoch,
             components=ComponentRegistry(components),
@@ -471,15 +521,16 @@ class RqgmStateStore:
     def append_mid_epoch_event(
         self, checkpoint_dir: str | Path, event: TransitionEvent
     ) -> bool:
-        """Mid-epoch write path: ``emergency_quarantine`` ONLY (the spec's
-        emergency exception). Any other type is a hard API error."""
-        if event.event_type != EMERGENCY_EVENT_TYPE:
-            raise ValueError(
-                f"only {EMERGENCY_EVENT_TYPE!r} may be appended mid-epoch "
-                f"(got {event.event_type!r}); all other status changes go "
-                f"through the epoch-boundary transaction"
-            )
-        return self.append_events(checkpoint_dir, [event])
+        """Refuse all new mid-epoch writes.
+
+        Kept as a compatibility surface for callers that should now migrate
+        to :meth:`run_boundary`; T16 is transactionally committed at an
+        emergency boundary.
+        """
+        raise ValueError(
+            f"mid-epoch event {event.event_type!r} refused; "
+            f"{EMERGENCY_EVENT_TYPE!r} must force an epoch boundary"
+        )
 
     def open_epoch(
         self,
@@ -534,6 +585,7 @@ class RqgmStateStore:
         node_count: int,
         run_id: str = "",
         registry_events: list[TransitionEvent] | tuple = (),
+        utility_policy_override: dict | None = None,
     ) -> RqgmRuntimeState | None:
         """Execute the §5.6 epoch-boundary transaction.
 
@@ -568,6 +620,7 @@ class RqgmStateStore:
             previous_epoch_id=ep.epoch_id,
             opened_by_transition_id=tid,
             checkpoint_dir=checkpoint_dir,
+            utility_policy_override=utility_policy_override,
         )
         with self.begin_transaction(checkpoint_dir, tid) as tx:
             for ev in registry_events:

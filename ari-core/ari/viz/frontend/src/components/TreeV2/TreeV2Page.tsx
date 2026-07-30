@@ -277,7 +277,10 @@ export function TreeV2Page() {
             </Button>
           </div>
         )}
-        <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+        <div
+          className="tree2-workspace"
+          style={{ flex: 1, display: 'flex', minHeight: 0 }}
+        >
           <TreeVisualization
             nodes={visibleNodes}
             selectedNodeId={nodeId === '' ? null : nodeId}

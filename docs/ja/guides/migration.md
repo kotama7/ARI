@@ -28,7 +28,7 @@ sources:
     role: implementation
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # マイグレーションガイド
@@ -94,7 +94,7 @@ ARI のチェックポイントフォーマットは 3 回のリリースを経�
 5. **ルーブリックを選択する。** `ari-core/config/reviewer_rubrics/` から
    YAML を選択してエクスポートします:
    ```bash
-   export ARI_RUBRIC=neurips2025
+   export ARI_RUBRIC=neurips
    ```
    以降の論文レビューと BFTS スコアリングが新しい軸を使用します。
 
@@ -461,7 +461,7 @@ URL、レガシーの `/api/*` エンドポイントは並行して動作し続�
   `ari.mode` または任意の `rqgm.*` フィールドを含むドラフトは 400 `mode_locked` です
   — GUI からのガバナンス / 実行モードの選択は当時まだ未決の判断でした。
   *（MN-12 により置き換え: 4 つのモード葉は新規ランに対して受理されるように
-  なりました; 残る 96 の `rqgm.*` パスは今も `mode_locked` で拒否します。）*
+  なりました; 残る 97 の `rqgm.*` パスは今も `mode_locked` で拒否します。）*
 - **理由** — 何かが書かれる前にランは同一性を必要とし、ダブルクリックが実験を
   分岐させてはなりません。
 - **ロールバック** — 不要です。`POST /api/launch` は変更されず並行して動作し、新しい
@@ -493,7 +493,7 @@ URL、レガシーの `/api/*` エンドポイントは並行して動作し続�
 ### 実行モードとペーパーモードは新規ランで選択可能（MN-12）
 
 - **以前** — `Execution mode` カテゴリのすべてのフィールドとすべての `rqgm.*`
-  パス（100 パス）が GUI から締め出されていました: Studio では 1 つの無効化された
+  パス（101 パス）が GUI から締め出されていました: Studio では 1 つの無効化された
   グループ、`POST /api/v1/runs` からは 400 `mode_locked`。`ari_rqgm` や
   `rqgm_archive` を選ぶには `workflow.yaml` の連動する 2 つのキーを手で編集する
   必要がありました。
@@ -508,7 +508,7 @@ URL、レガシーの `/api/*` エンドポイントは並行して動作し続�
   `ARI_RQGM_ENABLED` / `ARI_PAPER_MODE` / `ARI_RQGM_PAPER_ENABLED` 環境変数が
   設定されます。起動レビューは**解決済み**のモードを表示し、尊重されなかった要求は
   フォールバックのランを黙って開始するのではなく `requested → resolved` として
-  リゾルバの警告をそのまま添えて示されます。残る 96 の `rqgm.*` ガバナンス /
+  リゾルバの警告をそのまま添えて示されます。残る 97 の `rqgm.*` ガバナンス /
   チューニングパラメータは設定ファイル専用のままで — 実効値とともに読み取り専用で
   可視、起動時は依然 400 `mode_locked` — RQGM API 面も読み取り専用のままです。
   **レジュームは影響を受けません**: `{checkpoint}/rqgm_state.json` に永続化された

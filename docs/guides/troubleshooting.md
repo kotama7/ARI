@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-07-30
 ---
 
 # Troubleshooting
@@ -155,7 +155,7 @@ on the `passages.search` route (see
 **Cause:** Provider rate limit.
 
 **Fix:** ARI records every LLM call in
-`$ARI_CHECKPOINT_DIR/cost_log.jsonl`.  Check the per-minute call
+`$ARI_CHECKPOINT_DIR/cost_trace.jsonl`.  Check the per-minute call
 rate; if it exceeds the provider quota, lower `ARI_PARALLEL` or
 move the BFTS judge to a cheaper / local model
 (`ARI_MODEL_JUDGE=ollama/qwen3:32b`).
@@ -168,18 +168,46 @@ move the BFTS judge to a cheaper / local model
 python - <<'PY'
 import json, collections
 costs = collections.Counter()
-with open(f"{__import__('os').environ['ARI_CHECKPOINT_DIR']}/cost_log.jsonl") as fh:
+with open(f"{__import__('os').environ['ARI_CHECKPOINT_DIR']}/cost_trace.jsonl") as fh:
     for line in fh:
         rec = json.loads(line)
-        costs[rec["metadata"].get("skill", "?")] += rec["cost_usd"]
+        costs[rec.get("skill") or "?"] += rec["estimated_cost_usd"]
 for skill, c in costs.most_common():
     print(f"{c:7.3f}  {skill}")
 PY
 ```
 
+Each line is a flat `CallRecord` (`timestamp`, `node_id`, `phase`,
+`skill`, `model`, `*_tokens`, `estimated_cost_usd`, …); there is no
+nested `metadata` object.  The additive `epoch` field is written only
+by `ari_rqgm` runs, so it is absent on a default run.
+
 The biggest spend is usually the BFTS judge (`ari-skill-evaluator`)
 or the rubric review (`ari-skill-paper`).  Cap their models with
 `ARI_MODEL_EVAL` / `ARI_MODEL_JUDGE`.
+
+### Every call is booked at `$0.00`
+
+**Cause:** The price table (`ari/configs/model_prices.yaml`) could not
+be loaded — usually a malformed appended row, or PyYAML missing in a
+skill venv.  With an empty table every call is estimated at 0.
+
+**Diagnosis:** `cost_summary.json` states this explicitly:
+
+```bash
+python - <<'PY'
+import json, os
+s = json.load(open(f"{os.environ['ARI_CHECKPOINT_DIR']}/cost_summary.json"))
+print("pricing_table_unavailable:", s["pricing_table_unavailable"])
+print("dropped_records:", s["dropped_records"], "/ call_count:", s["call_count"])
+PY
+```
+
+`pricing_table_unavailable: true` means the table failed to load (the
+loader also logs `model_prices table unavailable`).  A non-zero
+`dropped_records` means `call_count` is an **undercount** — that many
+calls had usage but their recording raised; each one logs
+`cost record dropped`.
 
 ## VLM (figure / table review)
 
@@ -246,7 +274,8 @@ connect.
 ## Where to look next
 
 - `$ARI_CHECKPOINT_DIR/ari.log` — application log.
-- `$ARI_CHECKPOINT_DIR/cost_log.jsonl` — LLM cost trail.
+- `$ARI_CHECKPOINT_DIR/cost_trace.jsonl` — LLM cost trail
+  (rollup: `cost_summary.json`).
 - `$ARI_CHECKPOINT_DIR/lineage_decisions.jsonl` — stagnation
   decisions (v0.7+).
 - `docs/reference/file_formats.md` — what every file in a

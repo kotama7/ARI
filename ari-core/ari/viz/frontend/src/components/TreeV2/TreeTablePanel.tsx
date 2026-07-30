@@ -146,6 +146,7 @@ export function TreeTablePanel({
   return (
     <div
       ref={containerRef}
+      className="tree2-table-panel"
       data-testid="tree2-tree-table"
       role="tree"
       aria-label={t('tree2_table_label')}

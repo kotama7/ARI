@@ -141,6 +141,25 @@ REACT_DIST_DIR = Path(__file__).parent / "static" / "dist"
 REACT_INDEX = REACT_DIST_DIR / "index.html"
 
 
+def _static_content_type(extension: str) -> str:
+    """Content type for bundled dashboard assets.
+
+    Vite emits module workers with ``.mjs``. Serving them as the fallback
+    octet-stream makes browsers reject the module under ``nosniff``.
+    """
+    return {
+        "css": "text/css",
+        "js": "application/javascript",
+        "mjs": "application/javascript",
+        "html": "text/html",
+        "svg": "image/svg+xml",
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "woff": "font/woff",
+        "woff2": "font/woff2",
+    }.get(extension.lower(), "application/octet-stream")
+
+
 # Phase 3B PR-3B-1: shared access-log lock so concurrent requests don't
 # interleave their viz_access.jsonl lines.
 _access_log_lock = threading.Lock()
@@ -468,12 +487,7 @@ class _Handler(BaseHTTPRequestHandler):
             fpath = static_dir / fname
             if fpath.exists() and fpath.is_file():
                 ext = fpath.suffix.lower().lstrip('.')
-                ct = {
-                    'css': 'text/css', 'js': 'application/javascript',
-                    'html': 'text/html', 'svg': 'image/svg+xml',
-                    'png': 'image/png', 'jpg': 'image/jpeg',
-                    'woff': 'font/woff', 'woff2': 'font/woff2',
-                }.get(ext, 'application/octet-stream')
+                ct = _static_content_type(ext)
                 data = fpath.read_bytes()
                 self.send_response(200)
                 self.send_header("Content-Type", ct)

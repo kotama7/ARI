@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
@@ -220,7 +221,7 @@ def reconcile_resume_mode(cfg: "ARIConfig", checkpoint_dir: str | Path) -> None:
 # EpochState (RQGM Task 02, plan 02 §5.6 / §6)
 # ─────────────────────────────────────────────────────────────────────────────
 
-EPOCH_STATE_SCHEMA_VERSION = 1
+EPOCH_STATE_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -252,6 +253,10 @@ class EpochState:
     active_prompt_hash_set: list = field(default_factory=list)
     utility_policy: dict = field(default_factory=dict)
     registry_version: str = ""
+    policy_settings: dict = field(default_factory=dict)
+    policy_fingerprint: str = ""
+    execution_identity: dict = field(default_factory=dict)
+    execution_fingerprint: str = ""
     epoch_fingerprint: str = ""
     created_at: str = ""  # metadata; never hashed
     schema_version: int = EPOCH_STATE_SCHEMA_VERSION
@@ -282,8 +287,42 @@ def epoch_state_payload(state: EpochState) -> dict:
         "active_prompt_hash_set": sorted(state.active_prompt_hash_set),
         "utility_policy": dict(state.utility_policy),
         "registry_version": state.registry_version,
+        "policy_settings": dict(state.policy_settings),
+        "policy_fingerprint": state.policy_fingerprint,
+        "execution_identity": dict(state.execution_identity),
+        "execution_fingerprint": state.execution_fingerprint,
         "epoch_fingerprint": state.epoch_fingerprint,
     }
+
+
+def policy_fingerprint(state: EpochState) -> str:
+    """Digest the frozen institution independently of its execution runtime.
+
+    This commits the active component/prompt population, utility policy,
+    constitution and every resolved RQGM policy knob captured in
+    ``policy_settings``.  Keeping it separate from
+    :func:`execution_fingerprint` prevents a model-provider revision from
+    being mistaken for a policy amendment, while the composite
+    :func:`epoch_fingerprint` still distinguishes either change.
+    """
+    return hash12(canonical_json({
+        "active_components": dict(state.active_components),
+        "active_prompt_hashes": dict(state.active_prompt_hashes),
+        "active_prompt_hash_set": sorted(state.active_prompt_hash_set),
+        "utility_policy": dict(state.utility_policy),
+        "registry_version": state.registry_version,
+        "policy_settings": dict(state.policy_settings),
+    }))
+
+
+def execution_fingerprint(state: EpochState) -> str:
+    """Digest the declared model/tool/environment identity for an epoch.
+
+    The identity records unresolved provider-side revisions explicitly.
+    Consequently this hash proves equality of the *recorded declaration*,
+    not equality of opaque provider weights when ``complete`` is false.
+    """
+    return hash12(canonical_json(dict(state.execution_identity)))
 
 
 def epoch_fingerprint(state: EpochState) -> str:
@@ -303,6 +342,16 @@ def epoch_fingerprint(state: EpochState) -> str:
     # already carry, and excluding it keeps the fingerprint stable across the
     # field's introduction.
     payload.pop("active_prompt_hash_set", None)
+    if int(state.schema_version) < 2:
+        # Schema-v1 replay compatibility: additive v2 fields must not change
+        # the digest of an already committed epoch_open event.
+        for key in (
+            "policy_settings",
+            "policy_fingerprint",
+            "execution_identity",
+            "execution_fingerprint",
+        ):
+            payload.pop(key, None)
     return hash12(canonical_json(payload))
 
 
@@ -323,11 +372,117 @@ def epoch_state_from_payload(payload: dict, *, created_at: str = "") -> EpochSta
         active_prompt_hash_set=list(payload.get("active_prompt_hash_set") or []),
         utility_policy=dict(payload.get("utility_policy") or {}),
         registry_version=str(payload.get("registry_version", "")),
+        policy_settings=dict(payload.get("policy_settings") or {}),
+        policy_fingerprint=str(payload.get("policy_fingerprint", "")),
+        execution_identity=dict(payload.get("execution_identity") or {}),
+        execution_fingerprint=str(payload.get("execution_fingerprint", "")),
         epoch_fingerprint=str(payload.get("epoch_fingerprint", "")),
         created_at=created_at,
         schema_version=int(payload.get("schema_version",
                                        EPOCH_STATE_SCHEMA_VERSION)),
     )
+
+
+def _plain_config(value):
+    """Recursively convert typed config objects to canonical-JSON values."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, dict):
+        return {
+            str(k): _plain_config(v)
+            for k, v in sorted(value.items(), key=lambda item: str(item[0]))
+        }
+    if isinstance(value, (set, frozenset)):
+        plain = [_plain_config(v) for v in value]
+        return sorted(plain, key=lambda item: canonical_json(item))
+    if isinstance(value, (list, tuple)):
+        return [_plain_config(v) for v in value]
+    dump = getattr(value, "model_dump", None)
+    if callable(dump):
+        try:
+            return _plain_config(dump(mode="json"))
+        except TypeError:  # Pydantic v1-compatible fallback
+            return _plain_config(dump())
+    as_dict = getattr(value, "dict", None)
+    if callable(as_dict):
+        return _plain_config(as_dict())
+    if hasattr(value, "__dict__"):
+        return _plain_config({
+            k: v for k, v in vars(value).items() if not str(k).startswith("_")
+        })
+    return str(value)
+
+
+def capture_policy_settings(cfg) -> dict:
+    """Capture all resolved policy knobs that can alter governed behaviour."""
+    from ari.rqgm.kernel_rules import CONSTITUTION_HASH
+
+    ari_cfg = getattr(cfg, "ari", None)
+    return {
+        "constitution_hash": CONSTITUTION_HASH,
+        "ari_mode": str(getattr(ari_cfg, "mode", "simple_bfts")),
+        "rqgm": _plain_config(getattr(cfg, "rqgm", None)) or {},
+        "proposal_router": (
+            _plain_config(getattr(cfg, "proposal_router", None)) or {}
+        ),
+        "paper": _plain_config(getattr(cfg, "paper", None)) or {},
+    }
+
+
+def capture_execution_identity(cfg) -> dict:
+    """Capture the observable execution identity at epoch open.
+
+    Provider weights, tool bundles, environments and data snapshots are not
+    universally introspectable.  Deployments may pin their immutable
+    identifiers through the four ``ARI_*_REVISION``/``*_DIGEST`` variables
+    below.  Absence is represented by ``"unresolved"`` and makes
+    ``complete`` false instead of silently treating a mutable model alias as
+    a fixed implementation.
+    """
+    llm = getattr(cfg, "llm", None)
+    skills = []
+    for skill in getattr(cfg, "skills", None) or ():
+        skills.append({
+            "name": str(getattr(skill, "name", "") or ""),
+            "phase": _plain_config(getattr(skill, "phase", "all")),
+        })
+    pins = {
+        "provider_model_revision": (
+            os.environ.get("ARI_MODEL_REVISION", "").strip() or "unresolved"
+        ),
+        "tool_bundle_revision": (
+            os.environ.get("ARI_TOOL_BUNDLE_REVISION", "").strip()
+            or "unresolved"
+        ),
+        "environment_digest": (
+            os.environ.get("ARI_ENVIRONMENT_DIGEST", "").strip()
+            or "unresolved"
+        ),
+        "data_snapshot_digest": (
+            os.environ.get("ARI_DATA_SNAPSHOT_DIGEST", "").strip()
+            or "unresolved"
+        ),
+    }
+    return {
+        "model_backend": str(getattr(llm, "backend", "") or ""),
+        "model_id": str(getattr(llm, "model", "") or ""),
+        "decoding": {
+            "temperature": float(getattr(llm, "temperature", 0.7)),
+        },
+        "research_execution": {
+            "search": _plain_config(getattr(cfg, "bfts", None)) or {},
+            "evaluation": (
+                _plain_config(getattr(cfg, "evaluator", None)) or {}
+            ),
+        },
+        "skills": sorted(skills, key=lambda item: (item["name"],
+                                                   str(item["phase"]))),
+        "disabled_tools": sorted(
+            str(name) for name in (getattr(cfg, "disabled_tools", None) or ())
+        ),
+        **pins,
+        "complete": all(value != "unresolved" for value in pins.values()),
+    }
 
 
 def utility_policy_body(cfg) -> dict:
@@ -476,6 +631,7 @@ def freeze_epoch(
     previous_epoch_id: str | None = None,
     opened_by_transition_id: str | None = None,
     checkpoint_dir=None,
+    utility_policy_override: dict | None = None,
 ) -> EpochState:
     """Construct the frozen :class:`EpochState` at epoch open (plan 02 §5.6).
 
@@ -508,11 +664,22 @@ def freeze_epoch(
         # built from registry copies AFTER the transaction's events are
         # applied — so a policy adopted in this transaction is the policy
         # the next epoch freezes, with no ordering work and no second pass.
-        utility_policy=capture_utility_policy(
-            cfg, registries=registries, checkpoint_dir=checkpoint_dir
+        utility_policy=(
+            dict(utility_policy_override)
+            if utility_policy_override is not None
+            else capture_utility_policy(
+                cfg, registries=registries, checkpoint_dir=checkpoint_dir
+            )
         ),
         registry_version=registries.prompts.registry_version(),
+        policy_settings=capture_policy_settings(cfg),
+        execution_identity=capture_execution_identity(cfg),
         epoch_fingerprint="",
         created_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    )
+    state = replace(
+        state,
+        policy_fingerprint=policy_fingerprint(state),
+        execution_fingerprint=execution_fingerprint(state),
     )
     return replace(state, epoch_fingerprint=epoch_fingerprint(state))

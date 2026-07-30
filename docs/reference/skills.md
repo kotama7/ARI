@@ -14,7 +14,7 @@ sources:
     role: config
   - path: ari-skill-idea/src/server.py
     role: implementation
-last_verified: 2026-07-10
+last_verified: 2026-07-30
 ---
 
 # MCP Skills Reference
@@ -65,6 +65,16 @@ result = job_status("12345")
 
 Cancel a running or pending SLURM job.
 
+#### `probe_platform_capabilities(checkpoint_dir, partition="", tools="")`
+
+Probe tool availability (`command -v`) **on the compute partition** and cache
+the result to `{checkpoint_dir}/platform_capabilities.json`. Best-effort by
+design: any failure (no partition, `srun` missing, queue wait beyond the
+timeout) returns `{"status": "skipped", ...}` and writes nothing; an existing
+cache is returned as `{"status": "cached", ...}` without re-probing. The claims
+extractor reads the cached note so it never declares evidence that depends on
+tools the platform verifiably lacks.
+
 #### `singularity_build(definition_file, output_path, partition)`
 
 Build a Singularity container from a definition file.
@@ -95,14 +105,27 @@ Literature survey and idea generation. **LLM: Yes** (generate_ideas uses VirSci 
 
 #### `survey(topic, max_papers=8)`
 
-Search Semantic Scholar for related papers. Deterministic (no LLM).
+Prior-work survey. Deterministic (no LLM). Sources are tried in order:
+the frozen `virsci_snapshot` corpus the idea stage already built for this
+run's topic, then a live Semantic Scholar query (HTTP, then the
+`semanticscholar` client as a retry), then an **arXiv fallback** — so a
+keyless or rate-limited S2 does not silently erase prior-art grounding.
+The top results are then enriched with their citing papers (2-hop). Every
+degradation, including a final 0-paper result, is reported on stderr.
 
 ```python
 result = survey("OpenMP compiler optimization HPC benchmarks")
 # Returns: {"papers": [{"title": "...", "abstract": "...", "url": "..."}]}
 ```
 
-Requires `S2_API_KEY` environment variable for higher Semantic Scholar rate limits.
+Set `S2_API_KEY` for higher Semantic Scholar rate limits. `max_papers` is
+capped at 15.
+
+`survey` and `generate_ideas` are the skill's **only** registered MCP tools;
+`_load_virsci_snapshot_papers` is a plain helper `survey` calls directly and
+must never be agent-visible. `tests/test_server.py` pins both facts through
+`mcp.list_tools()` (a lost/misplaced `@mcp.tool()` decorator has shipped
+before).
 
 #### `generate_ideas(topic, papers, experiment_context="", n_ideas=3, n_agents=4, max_discussion_rounds=2, max_recursion_depth=0)`
 

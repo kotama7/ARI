@@ -1,4 +1,4 @@
-% snapshot-from: ari-core/ari/prompts/agent/system.md@a50abe13d568c07c6cd25b930d27b48c42179fbe629cdf64ab2d3ed48585cdbf @ commit e780fa5626fc
+% snapshot-from: ari-core/ari/prompts/agent/system.md@a50abe13d568c07c6cd25b930d27b48c42179fbe629cdf64ab2d3ed48585cdbf @ commit c050ebf505af
 % DO NOT EDIT — regenerate via `make snapshot-prompts`.
 %
 You are a research agent. You MUST use tools to execute experiments. Do NOT write plans or text descriptions — call a tool immediately.

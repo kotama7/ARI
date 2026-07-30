@@ -20,7 +20,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": 1
+      "enum": [1, 2]
     },
     "record_id": {
       "type": "string",
@@ -121,6 +121,31 @@
     "registry_version": {
       "$ref": "#/$defs/hash12"
     },
+    "policy_settings": {
+      "type": "object",
+      "description": "Resolved constitutional and RQGM policy knobs frozen for this epoch."
+    },
+    "policy_fingerprint": {
+      "$ref": "#/$defs/hash12"
+    },
+    "execution_identity": {
+      "type": "object",
+      "required": [
+        "model_backend",
+        "model_id",
+        "decoding",
+        "skills",
+        "disabled_tools",
+        "provider_model_revision",
+        "tool_bundle_revision",
+        "environment_digest",
+        "data_snapshot_digest",
+        "complete"
+      ]
+    },
+    "execution_fingerprint": {
+      "$ref": "#/$defs/hash12"
+    },
     "epoch_fingerprint": {
       "$ref": "#/$defs/hash12"
     },
@@ -128,6 +153,21 @@
       "type": "string"
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"schema_version": {"const": 2}}
+      },
+      "then": {
+        "required": [
+          "policy_settings",
+          "policy_fingerprint",
+          "execution_identity",
+          "execution_fingerprint"
+        ]
+      }
+    }
+  ],
   "$defs": {
     "hash12": {
       "type": "string",

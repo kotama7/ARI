@@ -39,6 +39,41 @@ The system scales across five axes:
 
 ---
 
+## What's new — Constitutional ARI-RQGM (unreleased)
+
+This branch adds an opt-in governance and co-evolution layer while preserving
+the existing execution path as the default.
+
+- **Constitutional `ari_rqgm` mode** — epoch-frozen prompts, components, and
+  utility policy evolve only through a deterministic kernel and the
+  T1–T21 registry lifecycle. `simple_bfts` remains the default and does not
+  construct RQGM state. Policy and declared execution identities have separate
+  fingerprints; unavailable provider/environment revisions are recorded as
+  unresolved.
+- **Provenance-bound accountability** — the research generator is a registered
+  founding component, and nodes carry write-once producer component, prompt,
+  and epoch provenance. Ambiguous legacy nodes remain targetless rather than
+  transferring blame to a successor.
+- **Governed paper archive** — the orthogonal
+  `paper.mode: rqgm_archive` path searches a draft tree with governed writer
+  and reviewer roles, then hands the winner to the existing compile and
+  claim-evidence gate.
+- **Dashboard v2** — run-scoped Overview, Projects, Ideas, Tree, Results,
+  Governance, Configuration Studio, logs, realtime invalidation, token auth,
+  and the canonical `/api/v1` read/write surface.
+- **Integrity and failure visibility** — rubric audit, node-provenance audit,
+  consolidated `run_integrity.json`, prior-art-grounded root ideation, and
+  fail-loud handling for previously swallowed artifact and paper-stage errors.
+
+The present security boundary is an application-level reference monitor on a
+trusted host. It does not claim OS isolation, digital signatures, external
+rollback anchoring, or a fail-closed gate for irreversible external actions.
+
+Start with [Execution Modes](docs/guides/execution_modes.md), the
+[RQGM Architecture](docs/concepts/rqgm_architecture.md), and the
+[Dashboard Guide](docs/guides/dashboard.md). See
+[CHANGELOG.md](CHANGELOG.md) for the full branch record.
+
 ## What's new in v0.9.0 (2026-06-12)
 
 **Verified claims, end to end.** The release theme: a paper ships only when
@@ -166,6 +201,15 @@ experiment.md  ──►  ARI Core  ──►  results + paper + reproducibility
 2. **BFTS over hypothesis space.** Best-First Tree Search guides exploration — evidence-driven, not exhaustive.
 3. **Deterministic tools, reasoning LLM.** MCP skills are pure functions. The LLM reasons; skills act.
 4. **From paper to proof.** ARI writes the paper *and* verifies its own claims twice over: a deterministic claim-evidence / metric-correctness gate re-derives every reported number from the recorded results and blocks objectively-false or unverified metrics, *and* an independent reproducibility check re-runs the experiment.
+
+> **Execution modes.** Everything above is the default `simple_bfts` mode.
+> The opt-in `ari_rqgm` mode (configuration only:
+> `ari.mode: ari_rqgm` + `rqgm.enabled: true`) layers constitutional epoch
+> governance and prompt/component co-evolution over the same BFTS engine.
+> The paper phase has an orthogonal switch,
+> `paper.mode: linear | rqgm_archive`, with the
+> `rqgm.paper.enabled` interlock. See
+> [Execution Modes](docs/guides/execution_modes.md).
 
 ---
 
@@ -425,4 +469,3 @@ What makes this paper different is not a headline number but a property: **every
 ## License
 
 MIT. See [LICENSE](LICENSE).
-

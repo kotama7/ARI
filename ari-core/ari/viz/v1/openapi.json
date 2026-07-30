@@ -4350,6 +4350,11 @@
             "title": "Display Name",
             "type": "string"
           },
+          "has_paper": {
+            "default": false,
+            "title": "Has Paper",
+            "type": "boolean"
+          },
           "mtime_utc": {
             "title": "Mtime Utc",
             "type": "string"

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://ari/schemas/rqgm_transition_event.schema.json",
   "title": "ARI-RQGM transition event (one line of rqgm_transitions.jsonl)",
-  "description": "The hash-chained, append-only line envelope (docs/plans/ari_rqgm/02 §5.6/§6). event_hash = hash12(canonical_json(payload)); prev_event_hash chains to the previous line ('' for the first). ts/ts_iso are metadata OUTSIDE the hashed payload (P2). rqgm_audit.jsonl reuses this exact envelope with an independent per-file chain; its governance payload schemas are owned by Tasks 05/06. Local $defs are byte-equal copies of rqgm_defs.schema.json (pinned by tests).",
+  "description": "The hash-chained, append-only line envelope. Schema v2 uses full SHA-256 over schema_version, event_id, event_type, transaction_id, canonical payload, and prev_event_hash. Schema v1 is retained for legacy checkpoint reads and hashes only the canonical payload. ts/ts_iso are metadata outside both commitments.",
   "type": "object",
   "required": [
     "schema_version",
@@ -13,7 +13,7 @@
     "prev_event_hash"
   ],
   "properties": {
-    "schema_version": {"const": 1},
+    "schema_version": {"enum": [1, 2]},
     "event_id": {"$ref": "#/$defs/event_id"},
     "event_type": {
       "type": "string",
@@ -29,15 +29,29 @@
         "emergency_quarantine"
       ]
     },
+    "transaction_id": {"type": "string"},
     "payload": {"type": "object"},
-    "event_hash": {"$ref": "#/$defs/hash12"},
+    "event_hash": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{12}|[0-9a-f]{64})$"
+    },
     "prev_event_hash": {
       "type": "string",
-      "pattern": "^([0-9a-f]{12})?$"
+      "pattern": "^([0-9a-f]{12}|[0-9a-f]{64})?$"
     },
     "ts": {"type": ["number", "null"]},
     "ts_iso": {"type": "string"}
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"schema_version": {"const": 2}}
+      },
+      "then": {
+        "required": ["transaction_id"]
+      }
+    }
+  ],
   "$defs": {
     "hash12": {
       "type": "string",

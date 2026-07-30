@@ -22,7 +22,7 @@ sources:
     role: implementation
   - path: ari-core/ari/rqgm
     role: implementation
-last_verified: 2026-07-10
+last_verified: 2026-07-30
 ---
 
 # 用語集
@@ -69,7 +69,8 @@ BFTS ノードが親に対して果たす役割: `draft`、`improve`、`debug`�
 
 **should_prune**
 BFTS の硬い打ち切り述語: `current_total ≥ max_total_nodes`、
-`depth ≥ max_depth`、または `_sterile is True` のときに剪定します。
+`depth ≥ max_depth`、`_sterile is True`、または `_valid_for_frontier is False`
+（RQGM 選択的消去）のときに剪定します。
 ここに LLM の判断は入りません。[BFTS アルゴリズム](../concepts/bfts.md)を参照。
 
 **computed-evidence claim（計算由来エビデンスのクレーム）**

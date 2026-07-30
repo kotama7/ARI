@@ -24,7 +24,7 @@ sources:
     role: config
   - path: ari-core/tests/test_rqgm_kernel.py
     role: test
-last_verified: 2026-07-16
+last_verified: 2026-07-28
 ---
 
 # RQGM Runtime Walkthrough
@@ -36,14 +36,14 @@ per node, at every epoch boundary, and which bytes land in which checkpoint
 file. Every event-log excerpt below is taken from real runs (lines
 truncated, run-specific values elided with `…`).
 
-![Vertical flow of one ari_rqgm run: boot and mode resolution, RQGMRuntime construction, the founding-registration transaction (29 prompts + 16 components), epoch_000 opening with the frozen active set, the per-node loop (proposal routing, node execution, governance level, adversarial round), the epoch boundary (audit, transition engine + kernel, boundary transaction, frontier repair), and the next epoch opening.](../assets/images/rqgm/rqgm_run_lifecycle.svg)
+![Vertical flow of one ari_rqgm run: boot and mode resolution, RQGMRuntime construction, the founding-registration transaction (32 prompt-or-policy records + 20 components), epoch_000 opening with the frozen active set, the per-node loop (proposal routing, node execution, governance level, adversarial round), the epoch boundary (audit, transition engine + kernel, boundary transaction, frontier repair), and the next epoch opening.](../assets/images/rqgm/rqgm_run_lifecycle.svg)
 
 The same flow, compressed:
 
 ```text
 boot ──▶ mode resolution ──▶ RQGMRuntime ──▶ founding registration ──▶ epoch_000 open
-                                              (1 txn: 29 prompts,        (active set
-                                               16 components)             frozen)
+                                              (1 txn: 32 prompts,        (active set
+                                               20 components)             frozen)
                                                                              │
         ┌────────────────────────────────────────────────────────────────────┘
         ▼
@@ -91,7 +91,7 @@ checkpoint runs the **founding registration**
 (`RQGMRuntime._register_founding`): every prompt and component from the
 frozen founding tables in `ari/rqgm/prompt_spec.py` is registered through a
 single prepare → … → commit transaction on `rqgm_transitions.jsonl` —
-**29 `prompt_registered` + 16 `component_registered` events** between one
+**32 `prompt_registered` + 20 `component_registered` events** between one
 `epoch_transaction_prepare` and one `epoch_transaction_commit`
 (`transition_id: transition_founding`):
 
@@ -102,21 +102,23 @@ single prepare → … → commit transaction on `rqgm_transitions.jsonl` —
  "payload": {"prompt_id": "agent_system_prompt_v1", "role": "generator",
              "status": "active", "prompt_hash": "a50abe13d568",
              "source": {"kind": "committed_template", "key": "agent/system"}, …}}
-// … 28 more prompt_registered, then 16 component_registered …
-{"event_id": "evt_000042", "event_type": "epoch_transaction_commit",
+// … 31 more prompt_registered, then 20 component_registered …
+{"event_id": "evt_000053", "event_type": "epoch_transaction_commit",
  "payload": {"transition_id": "transition_founding"}}
 ```
 
-The 14 founding components are the seven adversary types (each
+The 20 founding components are `generator_v1`, the seven exploration adversary types (each
 `adversary_{type}_v1`, one per attack family: cost explosion, evidence gap,
 metric gaming, overclaim, prior art, prompt injection, reproducibility),
-`defender_v1`, `artifact_judge_v1`, `proposal_router_v1`, and the two meta
-agents `prompt_mutator_v1` and `clean_room_generator_v1`, plus Task 14's
-`policy_mutator_v1` (the proposer of the score) and `utility_policy_v1` (the
-governed score itself). The 29 prompts
-cover those roles plus the governance actor templates (auditor, governance
-defender, governance judge) and the BFTS orchestration templates. Replaying
-the log reconstructs `rqgm_registry.json` byte-identically; the
+`defender_v1`, `artifact_judge_v1`, `proposal_router_v1`,
+`prompt_mutator_v1`, `clean_room_generator_v1`, `policy_mutator_v1`,
+`utility_policy_v1`, the live meta actors `replay_selector_v1` and
+`failure_summary_compressor_v1`, and the registry-addressable judiciary
+`auditor_v1`, `evidence_clerk_v1`, `governance_judge_v1`. The 32 prompts
+cover those prompted roles, proposal generators, and BFTS orchestration;
+the deterministic Evidence Clerk has no prompt. Paper archive adds three
+gated prompts/components (35/23 total). Replaying the log reconstructs
+`rqgm_registry.json` byte-identically; the
 registration is **write-once** — any resume that finds an epoch or
 committed registrations in the log never re-registers, and a crashed
 founding transaction (prepare without commit) is invisible to replay and
@@ -128,11 +130,13 @@ Immediately after the founding commit, `epoch_000` opens and the founding
 active set is frozen into `epoch_state.json`: `active_components` (one
 rollup winner per role) and `active_prompt_hashes` (one 12-hex hash per
 role), plus the utility policy, all pinned under a deterministic
-`epoch_fingerprint` that excludes timestamps. Nothing in this set can
+`policy_fingerprint`, a separately declared `execution_fingerprint`, and
+their composite `epoch_fingerprint`, all excluding timestamps. Missing
+provider/environment revision pins are recorded as `unresolved`. Nothing in this set can
 change until the next boundary.
 
 ```jsonc
-{"event_id": "evt_000043", "event_type": "epoch_open",
+{"event_id": "evt_000054", "event_type": "epoch_open",
  "payload": {"epoch_state": {"epoch_id": "epoch_000", "epoch_seq": 0,
    "node_count_at_open": 1,
    "active_components": {"adversary": "adversary_reproducibility_v1",
@@ -206,22 +210,23 @@ that has not met the trigger stays open). Inside the boundary window:
    pipeline: collect observations → reliability assessment → evidence
    assembly (the **EvidenceClerk** is the only evidence assembler;
    inadmissible same-role material is dropped here) → prosecution decision
-   (only the **Auditor** may file an `ImpeachmentMotion`, posting a bond
-   that is refunded or forfeited with the outcome) → defense generation →
+   (only the **Auditor** may file an `ImpeachmentMotion`, consuming a
+   per-epoch quota unit; the legacy counters transfer no value) → defense generation →
    adjudication panel (motions + prompt-candidate evaluations) →
    replay-pool update → **governance self-audit** (the pipeline audits its
    own four actors: auditor, evidence clerk, defender, governance judge) →
    `GovernanceReport`. The report is advisory — the orchestrator never
    writes a registry. A real first-boundary report:
    `record_id: govreport_epoch_000`, `self_audit.checked_components:
-   ["auditor_v0", "defender_v0", "evidence_clerk_v0",
-   "governance_judge_v0"]`, `bond_accounting: {posted: 0, …}`.
-   (On current builds, founded roles appear under their real registered
-   ids — e.g. `defender_v1`; auditor, evidence clerk, and governance
-   judge stay `*_v0` fallbacks by design.)
-2. **Meta step.** The meta tier (prompt mutator, clean-room generator)
-   runs sandboxed; every output enters the lifecycle as a `candidate`,
-   never as an activation. Candidate minting is not failure-gated: at
+   ["auditor_v1", "defender_v1", "evidence_clerk_v1",
+   "governance_judge_v1"]`, `bond_accounting: {posted: 0, …}`. All four are
+   registry-addressable and sanctionable; if the Governance Judge itself is
+   the motion target, it recuses rather than adjudicating its own case.
+2. **Meta step.** The meta tier runs the prompt mutator, policy mutator,
+   replay selector, failure-summary compressor, and any pending clean-room
+   generation in a read-only sandbox; every output enters the lifecycle as a
+   `candidate` or an audit-only recommendation, never as an activation.
+   Candidate minting is not failure-gated: at
    **every** boundary — calm epochs included — the `PromptMutator`
    proposes one candidate per evolvable role with an active incumbent,
    within the `rqgm.prompt_evolution` caps and the per-candidate budget
@@ -242,9 +247,12 @@ that has not met the trigger stays open). Inside the boundary window:
    resolved transition: illegal edges block (`CK-REG-001` table violation,
    `CK-REG-002` boundary-only edge stamped mid-epoch), non-engine registry
    writers block (`CK-ROL-901` — a judge can never write the registry),
-   and `emergency_quarantine` (T16) is the only mid-epoch edge. A blocked
-   transition means the incumbent active set carries over and the run
-   continues — the institution is blocked, never the research.
+   while T16 `emergency_quarantine` force-closes the current epoch and opens
+   a newly fingerprinted epoch atomically. A blocked
+   transition means the incumbent active set carries over. Continuing
+   candidate generation is safe only under the documented side-effect-free
+   sandbox assumption; external irreversible operations require a separate
+   fixed fail-closed gate.
 4. **Commit.** The boundary lands as a four-event transaction on
    `rqgm_transitions.jsonl`:
 
@@ -267,10 +275,11 @@ that has not met the trigger stays open). Inside the boundary window:
    from each retired `prompt_hash`, marks dependent records stale
    (`_stale`, `_valid_for_frontier` sentinels persisted through
    `tree.json`), and rebuilds the frontier. Erasure is **logical only** —
-   nothing is physically deleted — and role-specific: utilities are
-   recomputed from surviving inputs under the original epoch's frozen
-   weights where possible, otherwise the node becomes frontier-invalid
-   (erase, don't re-scale).
+   nothing is physically deleted — and role-specific. If scored evidence
+   goes stale, its utility is recomputed from surviving inputs under the
+   original epoch's frozen weights. If the utility policy itself retires,
+   nodes are instead re-scored from stored policy-independent `_axis_scores`
+   under the new criterion; unusable raw axes fail closed to invalidation.
 6. **Clean room.** Pending regeneration requests for retired roles execute
    inside the window; admissible outputs enter the next cycle as
    candidates. Then the next epoch's active set is frozen and search
@@ -327,6 +336,17 @@ logs, re-verifies the audit-log hash chain, and continues (a blocking
 integrity finding degrades to governance-suspended carry-over, never a
 refusal to resume).
 
+The paper phase that follows then runs the **paper-candidate pre-flight**:
+persisted utility penalties are replayed onto the loaded nodes, the best
+node is escalated through one L3 paper-candidate adversarial round, and the
+selection is repeated until the winner is stable — so a node crowned by
+another node's demotion still gets its own round. Every entry (`ari run`,
+`ari resume`, `ari paper`) reaches it through the shared paper dispatch. The
+round attacks the paper's own artifacts, so it is gated on those existing:
+on a checkpoint that has not produced a paper yet it defers until after the
+pipeline wrote them, because its one-shot marker spent on an empty bundle
+would suppress the artifact-grounded round for that node permanently.
+
 ---
 
 ## A utility rewrite at a boundary (Task 14)
@@ -344,16 +364,19 @@ Unlike a behavioral role, the utility policy is a criterion, so it is
 adopted by **supersession** (edge T20): the same-boundary T6 adoption of the
 successor emits an `active → retired` status change that retires the
 *healthy* incumbent with its **old** hash. `frontier_repair` then treats the
-old hash as a retired dependency — every node stamped `_utility_policy_hash:
-<old>` is marked `utility_invalidated` and the frontier is rebuilt under the
-new policy's frozen weights:
+old hash as a retired dependency and re-scores every node stamped
+`_utility_policy_hash: <old>` from its stored `_axis_scores` under the newly
+frozen composite and weights. A node without usable raw axes is marked
+`utility_invalidated`; no stale-policy score survives. In the live boundary
+that exposed this seam, five nodes were re-scored and none invalidated:
 
 ```jsonc
 {"event_type": "component_status_change", "payload": {"role": "utility_policy",
    "component_id": "utility_policy_v1", "from_status": "active",
    "to_status": "retired", "rule_id": "T20", …}}
-{"event_type": "selective_erasure", "payload": {"reason": "utility_invalidated",
-   "retired_prompt_hash": "fed4460f44f6", …}}
+{"event_type": "selective_erasure", "payload":
+   {"retired_prompt_hashes": ["fed4460f44f6"],
+    "policy_rescored_node_ids": ["node_…"], "invalidated_node_ids": [], …}}
 ```
 
 **Honest limit.** At the default config (`axis_mode: dynamic`, empty static
@@ -503,7 +526,7 @@ you will actually see:
 | transitions | `prompt_registered` / `component_registered` | founding registration payloads | `RQGMRuntime._register_founding` |
 | transitions | `prompt_status_change` / `component_status_change` | a resolved T1–T21 edge (adoption, sanction, retirement) | `RegistryTransitionEngine` |
 | transitions | `epoch_close` / `epoch_open` | boundary: old epoch closes, new frozen epoch opens | `RegistryTransitionEngine` / `RqgmStateStore` |
-| transitions | `emergency_quarantine` | the only mid-epoch edge (T16) | `RegistryTransitionEngine` |
+| transitions | `emergency_quarantine` | T16 quarantine inside a forced emergency boundary | `RegistryTransitionEngine` |
 | audit | `governance_level` | per-node ladder level (L0–L3) + triggers | `GovernanceBudgetManager` |
 | audit | `budget_consumed` | a governance decision point spent budget | `GovernanceBudgetManager` |
 | audit | `raw_attack` / `defender_response` / `judgment_record` / `validated_attack` / `utility_record` | one adversarial round, record by record | adversarial loop |

@@ -24,7 +24,7 @@ sources:
     role: test
   - path: ari-core/tests/test_gui_v1_mode_selection.py
     role: test
-last_verified: 2026-07-27
+last_verified: 2026-07-29
 ---
 
 # 設定リファレンス
@@ -1068,6 +1068,17 @@ RQGM キーをマージしません。ダッシュボードの Configuration Stu
 できる面は存在せず、残りの `rqgm.*` パラメータは設定ファイル専用のままです
 （ADR-09。[実行モード](../guides/execution_modes.md)を参照）。
 
+実行指紋を厳密にするため、四つの任意の環境固定値を使える。どれかが
+未設定なら期には `unresolved` と記録し、`execution_identity.complete`
+は `false` になる。変化しうる提供者側の別名を再現可能とは扱わない。
+
+| 環境変数 | 固定する識別 |
+|---|---|
+| `ARI_MODEL_REVISION` | 提供者・モデル重み・配備の厳密な版 |
+| `ARI_TOOL_BUNDLE_REVISION` | 変更不能な道具一式の版 |
+| `ARI_ENVIRONMENT_DIGEST` | コンテナまたは解決済み環境の要約値 |
+| `ARI_DATA_SNAPSHOT_DIGEST` | 変更不能な外部データ標本 |
+
 ### `rqgm.epoch` — エポック境界のサイズ
 
 | キー | デフォルト | 意味 |
@@ -1102,7 +1113,7 @@ RQGM キーをマージしません。ダッシュボードの Configuration Stu
 | `low_confidence_threshold` | `0.4` | reviewer の確信度がこれ未満のノードは disputed とマークされる |
 | `novelty_claim_threshold` | `0.8` | novelty 軸がこれ以上（または novelty リスクが非空）なら contested ティアをトリガ |
 | `max_motions_per_epoch` | `2` | エポックごとの弾劾動議のハードキャップ |
-| `bond_units_per_motion` | `1` | 動議ごとに供託されるボンド（認容で返還、棄却で没収） |
+| `bond_units_per_motion` | `1` | 動議枠単位を表す旧フィールド名。認容時は枠へ戻し、棄却時は消費する。価値の移転はない |
 | `jury_panel_enabled` | `false` | JuryPanel（マルチサンプルのジャッジ集約）; v1 では off |
 | `fail_mode` | `open` | v1: `open` のみ — no-action レポートへ縮退し、ランループを決してブロックしない |
 
@@ -1139,7 +1150,7 @@ RQGM キーをマージしません。ダッシュボードの Configuration Stu
 | キー | デフォルト | 意味 |
 |---|---|---|
 | `enabled` | `true` | 敵対ラウンドを完了ノードごとに走らせるかどうか |
-| `types` | 全 7 種 | 有効な adversary タイプ（閉じた集合）: `overclaim`、`metric_gaming`、`prior_art`、`reproducibility`、`evidence_gap`、`cost_explosion`、`prompt_injection` |
+| `types` | 全 8 種 | 有効な adversary タイプ（閉じた集合）: 探索用 7 種 `overclaim`、`metric_gaming`、`prior_art`、`reproducibility`、`evidence_gap`、`cost_explosion`、`prompt_injection` に `paper_self_preference` を加えたもの。8 番目は paper-archive フェーズ以外では動作しない |
 | `max_attacks_per_node` | `3` | ラウンドごとの生攻撃のハードキャップ |
 | `max_adversary_calls_per_epoch` | `24` | adversary LLM 呼び出しのエポックごとのハードキャップ（このキャップの唯一のスキーマ上の置き場所） |
 | `sample_mod` | `5` | 決定論的な 1-in-N ノードサンプリング（`hash(node_id+epoch_id) mod N == 0`; P2-safe）。`<= 0` はサンプリング無効 |
@@ -1193,7 +1204,7 @@ shadow の出力は観察のみです: BFTS のスコア、フロンティア、
 |---|---|---|
 | `enabled` | `true` | 退役のある境界で修復を走らせるかどうか |
 | `max_trace_depth` | `8` | 依存閉包トレーサの BFS 上限; 超えたコンシューマは保守的に一括処理（invalidate）される |
-| `recompute_utilities` | `true` | 元のエポックの凍結重みの下で、生き残った入力から utility を再計算する; `false` は代わりにノードを無効化する |
+| `recompute_utilities` | `true` | stale な採点済み証拠について、元のエポックの凍結重みの下で生き残った入力から utility を再計算する; `false` は代わりにノードを無効化する。utility-policy 退役では別途、保存済み `_axis_scores` を新しいポリシーで再採点するため、このスイッチで policy rewrite は無効にならない |
 | `abandon_stale_pending` | `true` | 提案レコードが実行前に stale になった保留中の子を放棄する |
 
 ### `rqgm.meta_evolution` — メタティアの予算とスイッチ
@@ -1235,6 +1246,7 @@ shadow の出力は観察のみです: BFTS のスコア、フロンティア、
 | `enabled` | `false` | 評価ハーネスのマスターインターロック。デフォルトで有効化されることは決してない |
 | `scripted_components` | `{}` | `role -> double_name` の差し替え（ハーネス専用） |
 | `injection_specs` | `[]` | アクティブな `eval_*` 注入 id; `rqgm_injection_provenance.json` に記録される |
+| `paper_ablation.condition_id` | `""` | RQGM元論文に合わせた評価専用条件（`P0_hgm_h_fixed_critic`～`P4_constitutional_rqgm`）。空、または `eval.enabled: false` なら通常挙動を保つ。`paper.mode` ではない |
 
 ### `rqgm.paper.reviewer.agent_as_judge` — agent-as-judge によるドラフト採点
 

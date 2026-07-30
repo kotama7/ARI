@@ -425,6 +425,21 @@ class TestBuildBestNodesContext:
         assert "71 GFLOP/s" in context
         assert "summary:" in context.lower() or "specialized" in context
 
+    def test_context_excludes_erased_nodes(self):
+        """RQGM-erased nodes (retained stale scores) must not ground the paper
+        context or its headline best_metrics."""
+        from ari.pipeline import build_best_nodes_context
+
+        erased = MagicMock()
+        erased.status = NodeStatus.SUCCESS
+        erased.has_real_data = True
+        erased.metrics = {"_scientific_score": 0.9, "_valid_for_frontier": False}
+        erased.eval_summary = "stale result"
+        erased.label = "improve"
+
+        context, best_metrics = build_best_nodes_context([erased], "test goal")
+        assert context == "" and best_metrics == {}
+
 
 # ── Repro best_val fallback test ─────────────────────────────────────────
 

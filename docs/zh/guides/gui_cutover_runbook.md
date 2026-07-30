@@ -32,7 +32,7 @@ sources:
     role: test
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # GUI 切换运行手册
@@ -115,9 +115,10 @@ ss -ltnp | grep 8765                                      # bound to 127.0.0.1 /
   布局、绘制或输入时序，而共享 CI runner 的噪声太大，撑不起一个通过/失败
   预算。打包体积*确实*被强制（`check_bundle_budget.py`）；浏览器那一半是在
   一台固定机器上的人工 profile，并记录进发布证据。
-- **跨浏览器关键路径。** 这些套件是 vitest/jsdom；本仓库尚无 Playwright
-  运行。关键路径（Settings、新建运行、启动、恢复、监控、树/结果、workflow、
-  RQGM、安全）在把某项改为默认开启之前需人工走一遍。
+- **跨浏览器关键路径。** 这些套件是 vitest/jsdom；本仓库中唯一的 Playwright
+  运行是文档截图采集（`npm run capture:screenshots`，仅 headless Chromium），
+  它不做任何断言。关键路径（Settings、新建运行、启动、恢复、监控、树/结果、
+  workflow、RQGM、安全）在把某项改为默认开启之前需人工走一遍。
 
 ## 3. 分阶段推出
 

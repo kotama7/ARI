@@ -30,7 +30,7 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/components/Governance/__tests__/GovernancePage.test.tsx
     role: test
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # RQGM 治理工作区指南
@@ -73,7 +73,7 @@ last_verified: 2026-07-27
 工作室的 Execution 控件中（仅限新建运行；见[执行模式](execution_modes.md)与
 [配置工作室](configuration_studio.md)）。在那里选择模式是一次启动决策，而不是
 治理变更：它不注册组件、不采纳策略、也不改写得分，因此无论怎样这个工作区都保持
-只读。96 个 `rqgm.*` 治理与调优参数仍然仅限配置文件。
+只读。97 个 `rqgm.*` 治理与调优参数仍然仅限配置文件。
 
 标签条是一个真正的 `role="tablist"` 复合控件，带 `aria-selected` /
 `aria-controls` 接线，因此完全可用键盘导航。
@@ -292,7 +292,11 @@ tail -c +$((OFFSET + 1)) "$CKPT/rqgm_audit.jsonl" | head -1 | python -m json.too
 ```
 
 偏移量是行首的 0 起始字节位置，这也正是它们对追加写入日志保持稳定的原因。
-事件哈希契约是 `sha256(canonical_json(payload))[:12]`。
+事件哈希契约按 schema 区分：旧的 `schema_version: 1` 记录只哈希 payload
+（`sha256(canonical_json(payload))[:12]`）；而新写入的 `schema_version: 2`
+记录携带全长的 `sha256(canonical_json({schema_version, event_id, event_type,
+transaction_id, payload, prev_event_hash}))` —— 覆盖与重放相关的整个信封，
+而不只是 payload。
 
 ## 降级与断裂的链
 

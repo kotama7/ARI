@@ -170,7 +170,8 @@ def _validated(adversary_type="metric_gaming", severity="high",
 
 
 def _node(score=0.71, sterile=False, node_id="node_017",
-          plan="### 1) run the baseline"):
+          plan="### 1) run the baseline", producer_component_id="",
+          producer_prompt_hash="", producer_epoch_id=""):
     metrics = {}
     if score is not None:
         metrics["_scientific_score"] = score
@@ -179,6 +180,9 @@ def _node(score=0.71, sterile=False, node_id="node_017",
     return SimpleNamespace(
         id=node_id, metrics=metrics, plan=plan, eval_summary="",
         work_dir="", parent_id=None,
+        producer_component_id=producer_component_id,
+        producer_prompt_hash=producer_prompt_hash,
+        producer_epoch_id=producer_epoch_id,
     )
 
 
@@ -888,8 +892,17 @@ def test_round_logs_records_in_order_and_applies_exact_penalty(tmp_path):
 # ── Task 15 §9 producer: role → epoch-frozen component_id resolution ────────
 
 
-def _epoch(active=None):
-    return SimpleNamespace(epoch_id=E, active_components=dict(active or {}))
+def _epoch(active=None, prompt_hashes=None):
+    active = dict(active or {})
+    return SimpleNamespace(
+        epoch_id=E,
+        active_components=active,
+        active_prompt_hashes=(
+            dict(prompt_hashes)
+            if prompt_hashes is not None
+            else {role: f"{role}_prompt_hash" for role in active}
+        ),
+    )
 
 
 def _round_with_epoch(tmp_path, llm, epoch_state, **cfg_over):
@@ -1022,16 +1035,10 @@ def test_target_binding_fails_open_and_never_raises_into_the_run(
     "adversary_type",
     [t for t in ADVERSARY_TYPES if t != "paper_self_preference"],
 )
-def test_the_seven_exploration_types_bind_nothing_and_stay_byte_identical(
+def test_the_seven_exploration_types_observe_role_but_do_not_blame_unstamped_node(
     tmp_path, monkeypatch, adversary_type
 ):
-    """Regression: v1 names no role for the seven, so their record JSON is
-    byte-for-byte what it was before the binding existed — through the real
-    engine → defender → judge → validated path, one type at a time.
-
-    ``paper_self_preference`` is excluded: it is the ONE type that names a
-    role (paper_reviewer) and binds a target — that behaviour is asserted in
-    test_paper_self_preference.py, not here."""
+    """A legacy/ambiguous node records the implicated role but no sanction."""
     from ari.rqgm.adversarial import round as round_mod
 
     bundle = _rigged_bundle(adversary_type)  # fires this type's pre-signal
@@ -1042,8 +1049,7 @@ def test_the_seven_exploration_types_bind_nothing_and_stay_byte_identical(
     )
     summary = _round_with_epoch(
         tmp_path, _valid_llm(),
-        # A fully populated frozen map: even so, nothing binds — the seven
-        # name no role in v1, so there is nothing to resolve.
+        # A populated map is insufficient without node-time provenance.
         _epoch({"reviewer": "reviewer_v3", "generator": "generator_v1",
                 "judge": "artifact_judge_v1"}),
         types=[adversary_type],
@@ -1051,9 +1057,54 @@ def test_the_seven_exploration_types_bind_nothing_and_stay_byte_identical(
     assert summary["validated"] == 1, adversary_type
     record = _validated_lines(tmp_path)[0]
     assert record["case_type"] == adversary_type
-    assert record["affected_components"] == []
+    assert record["affected_components"] == ["generator"]
     assert "target_component_id" not in record
     assert list(record) == _VALIDATED_KEYS_TARGETLESS
+
+
+def test_exploration_attack_binds_epoch_stamped_generator(tmp_path, monkeypatch):
+    from ari.rqgm.adversarial import round as round_mod
+
+    monkeypatch.setattr(
+        round_mod, "build_artifact_bundle",
+        lambda node, ckpt, **kw: _rigged_bundle("overclaim"),
+    )
+    summary = _round_with_epoch(
+        tmp_path, _valid_llm(),
+        _epoch({"generator": "generator_v1", "judge": "artifact_judge_v1"}),
+        types=["overclaim"],
+    ).run(_node(
+        producer_component_id="generator_v1",
+        producer_prompt_hash="generator_prompt_hash",
+        producer_epoch_id=E,
+    ))
+    assert summary["validated"] == 1
+    record = _validated_lines(tmp_path)[0]
+    assert record["affected_components"] == ["generator"]
+    assert record["target_component_id"] == "generator_v1"
+
+    # Component identity alone is insufficient. Every frozen provenance field
+    # must be present and match before a defect is assigned to the generator.
+    for index, producer_overrides in enumerate([
+        {"producer_epoch_id": ""},
+        {"producer_epoch_id": "epoch_999999"},
+        {"producer_prompt_hash": ""},
+        {"producer_prompt_hash": "successor_prompt_hash"},
+    ]):
+        case_dir = tmp_path / f"mismatch_{index}"
+        producer = {
+            "producer_component_id": "generator_v1",
+            "producer_prompt_hash": "generator_prompt_hash",
+            "producer_epoch_id": E,
+        }
+        producer.update(producer_overrides)
+        _round_with_epoch(
+            case_dir, _valid_llm(),
+            _epoch({"generator": "generator_v1",
+                    "judge": "artifact_judge_v1"}),
+            types=["overclaim"],
+        ).run(_node(**producer))
+        assert "target_component_id" not in _validated_lines(case_dir)[0]
 
 
 def test_round_drops_a_self_bound_binding_instead_of_killing_the_round(
@@ -1070,12 +1121,17 @@ def test_round_drops_a_self_bound_binding_instead_of_killing_the_round(
     judgments`` loop, ``run``'s blanket handler swallows it, and the node
     silently loses EVERY validated record and its utility penalty. The attack
     was still adjudicated valid, so the record survives; it simply names no
-    accountable component — exactly the state of all seven today.
+    accountable component.
     """
     _bind_row(monkeypatch, roles=("judge",))
     summary = _round_with_epoch(
         tmp_path, _valid_llm(), _epoch({"judge": "artifact_judge_v1"})
-    ).run(_novel_node())
+    ).run(_node(
+        plan="We present the first ever kernel.",
+        producer_component_id="generator_v1",
+        producer_prompt_hash="generator_prompt_hash",
+        producer_epoch_id=E,
+    ))
     assert summary is not None                          # round not killed
     assert summary["validated"] == 1                    # finding survives
     record = _validated_lines(tmp_path)[0]
@@ -1340,7 +1396,12 @@ def test_round_emits_one_record_per_resolvable_role(tmp_path, monkeypatch):
     summary = _round_with_epoch(
         tmp_path, _valid_llm(),
         _epoch({"reviewer": "reviewer_v3", "generator": "generator_v1"}),
-    ).run(_novel_node())
+    ).run(_node(
+        plan="We present the first ever kernel.",
+        producer_component_id="generator_v1",
+        producer_prompt_hash="generator_prompt_hash",
+        producer_epoch_id=E,
+    ))
     assert summary["validated"] == 2                    # ONE PER ROLE
     records = _validated_lines(tmp_path)
     assert [r["target_component_id"] for r in records] == [

@@ -29,11 +29,17 @@ def _checkpoint_search_bases() -> list[Path]:
     _ari_root = Path(__file__).parent.parent.parent.parent  # ARI/
     return [
         _ari_root / "workspace" / "checkpoints",
+        # Runs launched from inside ari-core use its workspace directory.
+        # Keep this alongside the repository-level workspace so the Projects
+        # page presents one portfolio instead of silently hiding those runs.
+        _ari_root / "ari-core" / "workspace" / "checkpoints",
         _ari_root / "checkpoints",
         Path(__file__).parent.parent.parent / "checkpoints",   # ari-core/checkpoints
         _ari_root / "ari-core" / "checkpoints",
         Path.cwd() / "checkpoints",
+        Path.cwd() / "workspace" / "checkpoints",
         Path.cwd() / "ari-core" / "checkpoints",
+        Path.cwd() / "ari-core" / "workspace" / "checkpoints",
         Path(__file__).resolve().parents[2] / "checkpoints",
     ]
 
@@ -62,4 +68,3 @@ def _resolve_checkpoint_dir(ckpt_id: str) -> Path | None:
         if p.exists():
             return p
     return None
-

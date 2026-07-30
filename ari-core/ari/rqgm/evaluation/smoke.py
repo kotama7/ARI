@@ -66,6 +66,12 @@ _DELTA_PAIRS: tuple[tuple[str, str], ...] = (
     ("B6", "B5"),
     ("B7", "B6"),
     ("B8", "B7"),
+    # RQGM-paper-aligned headline and mechanism-isolation contrasts.
+    ("P1_rqgm_replacement_only", "P0_hgm_h_fixed_critic"),
+    ("P2_rqgm_no_erasure", "P1_rqgm_replacement_only"),
+    ("P3_rqgm_full", "P2_rqgm_no_erasure"),
+    ("P3_rqgm_full", "P0_hgm_h_fixed_critic"),
+    ("P4_constitutional_rqgm", "P3_rqgm_full"),
 )
 
 
@@ -353,10 +359,15 @@ def run_condition_smoke(
 
 
 def _metric_values(report: dict) -> dict:
-    return {
+    values = {
         key: (entry or {}).get("value")
         for key, entry in (report.get("metrics") or {}).items()
     }
+    values.update({
+        key: (entry or {}).get("value")
+        for key, entry in (report.get("paper") or {}).items()
+    })
+    return values
 
 
 def _median(values: list) -> "float | None":

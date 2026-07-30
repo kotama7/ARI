@@ -50,14 +50,24 @@ def search_memory(
     """Search ancestor-scoped memory.
 
     Returns entries whose ``node_id`` is in ``ancestor_ids``, ranked by
-    relevance. Siblings and children are never returned.
+    relevance. Siblings and children are never returned. Entries belonging to
+    a node ARI governance logically erased come back LABELLED
+    (``erased`` / ``erasure_event_id`` / ``erasure_note``, at the top level
+    and inside ``metadata``), never silently dropped — the backend applies
+    that marker, so every consumer sees it, not only this MCP surface. See
+    :mod:`ari_skill_memory.erasure`.
     """
     return _backend().search_memory(query, ancestor_ids, limit)
 
 
 @mcp.tool()
 def get_node_memory(node_id: str) -> dict:
-    """Return all entries for a single node."""
+    """Return all entries for a single node.
+
+    Labelled with the erasure marker when that node was logically erased
+    (the entries are still returned — erasure withdraws the standing of a
+    judgment, not the measurements).
+    """
     return _backend().get_node_memory(node_id)
 
 
@@ -159,7 +169,9 @@ def search_research_memory(
     require_artifacts: bool = False,
     limit: int = 5,
 ) -> dict:
-    """Ancestor-scoped typed search, filtered by kind / artifact presence."""
+    """Ancestor-scoped typed search, filtered by kind / artifact presence.
+
+    Erased nodes' entries are labelled, not hidden (see ``search_memory``)."""
     return retriever.search_research_memory(
         _backend(), query, ancestor_ids, kinds=kinds,
         require_artifacts=require_artifacts, limit=limit,
@@ -170,7 +182,14 @@ def search_research_memory(
 def get_verified_context(
     ancestor_ids: list[str], purpose: str = "paper", limit: int | None = None
 ) -> dict:
-    """Artifact-grounded, reproducibility-aware context for paper/figure use."""
+    """Artifact-grounded, reproducibility-aware context for paper/figure use.
+
+    The PUSH path: its claim lists ground paper assertions, so erased
+    ancestors are hard-excluded from them (inside ``build_verified_context``,
+    which every caller — this tool and the in-process funnel alike — goes
+    through). ``limitations`` deliberately keeps them, labelled: the honest
+    record of a direction that was later invalidated is exactly what a
+    limitations section is for."""
     return context_builder.build_verified_context(
         _backend(), ancestor_ids, purpose=purpose, limit=limit,
     )

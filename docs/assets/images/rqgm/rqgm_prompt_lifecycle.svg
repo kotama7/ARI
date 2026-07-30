@@ -119,7 +119,7 @@
   <!-- emergency edge -->
   <path d="M 580 268 C 548 272 548 408 578 412" class="edgeR" stroke-dasharray="6 4" marker-end="url(#parrR)"/>
   <text x="548" y="376" text-anchor="end" class="t" fill="#be123c">T16 emergency —</text>
-  <text x="548" y="391" text-anchor="end" class="t" fill="#be123c">only mid-epoch edge</text>
+  <text x="548" y="391" text-anchor="end" class="t" fill="#be123c">forced close/open boundary</text>
 
   <!-- recovery edges (right arcs, dashed green) -->
   <path d="M 820 264 C 866 260 866 186 822 182" class="edgeG" stroke-dasharray="5 4" marker-end="url(#parrG)"/>

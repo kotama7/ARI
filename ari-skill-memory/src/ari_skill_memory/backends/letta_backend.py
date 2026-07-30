@@ -21,6 +21,7 @@ from ari_skill_memory.access_log import (
     build_write_event,
     current_node_id,
 )
+from ari_skill_memory import erasure
 from ari_skill_memory.backends.base import MemoryBackend
 from ari_skill_memory.config import MemoryConfig
 
@@ -316,7 +317,7 @@ class LettaBackend(MemoryBackend):
                 ],
             )
         )
-        return {"results": results}
+        return erasure.annotate_payload({"results": results}, "results")
 
     def get_node_memory(self, node_id: str) -> dict:
         client = self._ensure_client()
@@ -353,13 +354,16 @@ class LettaBackend(MemoryBackend):
             )
         except Exception:
             pass
-        return {"entries": [
-            {
-                "text": e.get("text", ""),
-                "metadata": (e.get("metadata", {}) or {}).get("ari_metadata", {}),
-                "ts": (e.get("metadata", {}) or {}).get("ts", 0),
-            } for e in entries
-        ]}
+        return erasure.annotate_payload(
+            {"entries": [
+                {
+                    "text": e.get("text", ""),
+                    "metadata": (e.get("metadata", {}) or {}).get("ari_metadata", {}),
+                    "ts": (e.get("metadata", {}) or {}).get("ts", 0),
+                } for e in entries
+            ]},
+            "entries", node_id=node_id,
+        )
 
     def clear_node_memory(self, node_id: str) -> dict:
         cow = self._check_cow(node_id)

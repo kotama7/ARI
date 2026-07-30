@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import retriever
+from . import erasure, retriever
 
 # Strongest first. paper_claim / experiment_result carry claims; failure_case
 # is a limitation, not a claim; reflection is supplementary only.
@@ -50,9 +50,18 @@ def build_verified_context(
       - ``usable_for_claims`` : the subset safe to assert in paper body
                           (grounded and not rerun_failed).
     """
-    repro = retriever.fold_reproducibility(backend, ancestor_ids)
+    # Selective erasure (plan 10 §3, settled): a node whose generator or
+    # scoring policy was retired must not GROUND a paper assertion, so the
+    # claim lists are built from the surviving ancestors only. Limitations are
+    # built from the full set — the honest record of a direction that was
+    # later invalidated is exactly what a limitations section is for, and its
+    # entries carry the backend's erasure marker. Filtering here rather than
+    # at the MCP tool covers the in-process funnel callers too. Inert without
+    # the rollup (non-RQGM checkpoints).
+    grounding_ids = erasure.drop_erased(ancestor_ids)
+    repro = retriever.fold_reproducibility(backend, grounding_ids)
     claim_entries = retriever.ancestor_typed_memory(
-        backend, ancestor_ids, kinds=list(_CLAIM_KINDS)
+        backend, grounding_ids, kinds=list(_CLAIM_KINDS)
     )
     failures = retriever.ancestor_typed_memory(
         backend, ancestor_ids, kinds=["failure_case"]

@@ -876,6 +876,18 @@ class TestCheckpointSummaryPaths:
         assert "ari-core" in source or "parents[2]" in source, \
             "Checkpoint search must include ari-core/checkpoints path"
 
+    def test_ari_core_workspace_subdir_searched(self):
+        """Runs launched within ari-core/workspace must remain discoverable."""
+        from ari.viz.api_state import _checkpoint_search_bases
+
+        normalized = {
+            path.as_posix().rstrip("/") for path in _checkpoint_search_bases()
+        }
+        assert any(
+            path.endswith("/ari-core/workspace/checkpoints")
+            for path in normalized
+        ), "Checkpoint search must include ari-core/workspace/checkpoints"
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # BFTS → Paper transition: error handling (no silent death)

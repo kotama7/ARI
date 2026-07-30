@@ -652,7 +652,10 @@ export function ConfigStudioPage() {
               </Card>
             )}
 
-            <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+            <div
+              className="studio-workspace"
+              style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}
+            >
               {/* Left rail: categories with per-category edit counts. Slice
                   navigation, not actions — the shared NavRail primitive. */}
               <NavRail

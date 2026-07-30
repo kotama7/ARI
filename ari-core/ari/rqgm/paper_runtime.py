@@ -39,6 +39,7 @@ from ari.rqgm.paper_archive import (
     PAPER_DRAFT_ARCHIVE_FILENAME,
     PaperArchiveStrategy,
     archive_node_budget,
+    erase_paper_reviewer_utilities,
     mark_paper_draft_flags,
     read_paper_draft_archive,
     restore_archive_round,
@@ -152,6 +153,7 @@ def build_paper_run_start_state(
     mode_source: str = "config",
     exploration_mode: str = "",
     seed_node_id: str | None = None,
+    evaluation_condition_id: str = "",
 ) -> dict:
     """Schema-v1 paper-phase-start payload (Task 01 §6.2).
 
@@ -160,7 +162,7 @@ def build_paper_run_start_state(
     if mode_source not in PAPER_MODE_SOURCES:
         log.warning("unknown mode_source %r; recording 'config'", mode_source)
         mode_source = "config"
-    return {
+    state = {
         "schema_version": PAPER_ARCHIVE_STATE_SCHEMA_VERSION,
         "paper_mode": paper_mode,
         "rqgm_paper_enabled": bool(rqgm_paper_enabled),
@@ -173,6 +175,67 @@ def build_paper_run_start_state(
              "epoch_id": None},
         ],
     }
+    if evaluation_condition_id:
+        state["evaluation_condition_id"] = str(evaluation_condition_id)
+    return state
+
+
+#: Append-only trail of the seeds later paper invocations actually used.
+SEED_JOURNAL_FIELD = "seed_journal"
+
+
+def latest_recorded_seed(state: dict) -> "str | None":
+    """The most recent seed this state file knows about — the last journal
+    entry if the seed ever changed, else the paper-phase-start record."""
+    journal = state.get(SEED_JOURNAL_FIELD)
+    if isinstance(journal, list):
+        for entry in reversed(journal):
+            if isinstance(entry, dict) and entry.get("seed_node_id"):
+                return str(entry["seed_node_id"])
+    seed = state.get("seed_node_id")
+    return str(seed) if seed else None
+
+
+def journal_seed_change(
+    checkpoint_dir: str | Path, seed_node_id: "str | None",
+) -> bool:
+    """Append a ``seed_changed`` entry when this invocation's seed differs
+    from the latest one the file records. Returns whether it appended.
+
+    Deliberately records only the ids: WHY the seed moved is already in the
+    durable logs this file sits next to — ``rqgm_audit.jsonl`` for the
+    erasure events, ``rqgm_adversarial_cases.jsonl`` for the validated-attack
+    penalties — and inferring a reason here could only guess. Best-effort:
+    a provenance note must never break the paper phase."""
+    if not seed_node_id:
+        return False
+    try:
+        state = read_paper_archive_state(checkpoint_dir)
+        if not isinstance(state, dict) or not state:
+            return False
+        prior = latest_recorded_seed(state)
+        if str(prior or "") == str(seed_node_id):
+            return False
+        journal = state.get(SEED_JOURNAL_FIELD)
+        if not isinstance(journal, list):
+            journal = []
+        journal.append({
+            "event": "seed_changed",
+            "prior_seed_node_id": prior,
+            "seed_node_id": str(seed_node_id),
+        })
+        state[SEED_JOURNAL_FIELD] = journal
+        write_paper_archive_state(checkpoint_dir, state)
+        log.info(
+            "paper seed changed since the recorded start (%s -> %s); "
+            "journaled in %s",
+            prior, seed_node_id, PAPER_ARCHIVE_STATE_FILENAME,
+        )
+        return True
+    except Exception:
+        log.warning("seed-change journaling failed (best-effort)",
+                    exc_info=True)
+        return False
 
 
 def persist_paper_run_start(
@@ -183,13 +246,26 @@ def persist_paper_run_start(
     mode_source: str = "config",
     exploration_mode: str = "",
     seed_node_id: str | None = None,
+    evaluation_condition_id: str = "",
 ) -> None:
     """Write ``paper_archive_state.json`` once at paper-phase start.
 
     Write-once: an existing file (re-invocation) is never clobbered — the
     persisted mode wins on re-invocation (§5.5), and the epoch-boundary journal
-    entries Task 03 appends go through their own transaction."""
+    entries Task 03 appends go through their own transaction.
+
+    ``seed_node_id`` is the one field write-once cannot keep true: it records
+    what the FIRST paper invocation started from, while the live seed is
+    recomputed every round (``_run_one_round`` → ``select_best_node`` →
+    ``_make_paper_root``) under three mechanisms that exist precisely to change
+    it — selective erasure excluding the recorded seed, an escalation penalty
+    demoting it, and the penalty replay that re-applies both before selection.
+    So a later invocation computing a different seed APPENDS to the seed
+    journal instead of rewriting the record (the
+    ``paper_utility_policy_journal`` pattern), leaving the file able to tell
+    the whole story rather than a silently stale first line."""
     if (Path(checkpoint_dir) / PAPER_ARCHIVE_STATE_FILENAME).exists():
+        journal_seed_change(checkpoint_dir, seed_node_id)
         return
     write_paper_archive_state(
         checkpoint_dir,
@@ -199,6 +275,7 @@ def persist_paper_run_start(
             mode_source=mode_source,
             exploration_mode=exploration_mode,
             seed_node_id=seed_node_id,
+            evaluation_condition_id=evaluation_condition_id,
         ),
     )
 
@@ -920,6 +997,15 @@ class PaperArchiveRuntime:
         exploration_mode = exploration_mode or getattr(
             getattr(self.cfg, "ari", None), "mode", ""
         )
+        try:
+            from ari.rqgm.evaluation.paper_ablation import posture_from_config
+
+            posture = posture_from_config(self.cfg)
+            evaluation_condition_id = (
+                posture.condition_id if posture is not None else ""
+            )
+        except Exception:
+            evaluation_condition_id = ""
         persist_paper_run_start(
             ckpt,
             paper_mode=self.paper_mode.value,
@@ -927,6 +1013,7 @@ class PaperArchiveRuntime:
             mode_source=mode_source,
             exploration_mode=exploration_mode,
             seed_node_id=seed_node_id,
+            evaluation_condition_id=evaluation_condition_id,
         )
 
     # ── the runnable archive (Task 02 §5.3) ─────────────────────────────
@@ -1049,6 +1136,14 @@ class PaperArchiveRuntime:
         self._freeze_paper_utility_policy(ckpt)
         rounds = self._epoch_rounds()
         best = None
+        round_bests: list = []
+        prior_reviewer_hash = ""
+        try:
+            from ari.rqgm.evaluation.paper_ablation import posture_from_config
+
+            comparison_posture = posture_from_config(self.cfg)
+        except Exception:
+            comparison_posture = None
         for round_idx in range(max(1, rounds)):
             rqgm.ensure_epoch(round_idx, checkpoint_dir=ckpt, run_id="paper")
             # Task 06 §5.1: adopt the inner runtime's frozen open epoch as the
@@ -1063,6 +1158,40 @@ class PaperArchiveRuntime:
             epoch_id, reviewer_hash, reviewer_text, writer_hash, writer_text = (
                 self._resolve_active(st, ckpt, round_idx)
             )
+            if (
+                comparison_posture is not None
+                and comparison_posture.selective_erasure
+                and prior_reviewer_hash
+                and reviewer_hash != prior_reviewer_hash
+            ):
+                stale_refs = erase_paper_reviewer_utilities(
+                    ckpt,
+                    prior_reviewer_hash,
+                    replacement_epoch_id=epoch_id,
+                    replacement_prompt_hash=reviewer_hash,
+                )
+                for prior in round_bests:
+                    metrics = getattr(prior, "metrics", None)
+                    if (
+                        isinstance(metrics, dict)
+                        and str(metrics.get("_reviewer_prompt_hash") or "")
+                        == prior_reviewer_hash
+                    ):
+                        metrics["_valid_for_frontier"] = False
+                        metrics["_stale_reason"] = "reviewer_replaced"
+                rqgm._append_audit_event(
+                    "paper_utility_erasure",
+                    {
+                        "epoch_id": epoch_id,
+                        "displaced_reviewer_prompt_hash": prior_reviewer_hash,
+                        "replacement_reviewer_prompt_hash": reviewer_hash,
+                        "erased_utility_count": len(stale_refs),
+                        "affected_drafts": stale_refs,
+                        "logical_only": True,
+                    },
+                    checkpoint_dir=ckpt,
+                )
+            prior_reviewer_hash = reviewer_hash
             self.reviewer_prompt_hash_sequence.append(reviewer_hash)
             self.writer_prompt_hash_sequence.append(writer_hash)
             self.reviewer = self._build_reviewer(
@@ -1086,6 +1215,8 @@ class PaperArchiveRuntime:
                 epoch_id=epoch_id, writer_hash=writer_hash,
                 writer_text=writer_text,
             )
+            if best is not None:
+                round_bests.append(best)
             # Writer anchor (§5.1, revised 2026-07-16): score the ACTIVE
             # writer's draft against the Layer-0 claim-evidence gate
             # (read-only). An UNFAITHFUL draft makes the writer a culpable
@@ -1102,6 +1233,13 @@ class PaperArchiveRuntime:
                 epoch_id=epoch_id, checkpoint_dir=ckpt,
                 writer_unfaithful=writer_unfaithful,
             )
+        # RQGM-paper P0-P4 compare one shared archive across epochs. In the
+        # no-erasure arm, old reviewer scores remain eligible; with erasure,
+        # displaced-reviewer rows are retained for provenance but ineligible
+        # (select_best_node itself excludes `_valid_for_frontier: False`).
+        # Legacy B-paper presets preserve their prior final-round selection.
+        if comparison_posture is not None:
+            best = select_best_node(round_bests)
         if best is not None:
             self._finalize_best(best, ckpt, mcp)
             # Re-mirror so the final epoch reflects the winner's lazy compile.
@@ -1155,6 +1293,9 @@ class PaperArchiveRuntime:
             strat.record_run(cand)
             archive.append(cand)
             frontier.append(cand)                           # a refined draft is expandable
+        # Erased drafts (`_valid_for_frontier: False`, paper reviewer erasure)
+        # are excluded by select_best_node itself — same clause that guards the
+        # exploration seed above.
         best = select_best_node(archive)
         self._last_expansions = len(archive)
         if best is not None and not self._coevolution_enabled():
@@ -1532,6 +1673,14 @@ class PaperArchiveRuntime:
         claim gate, §5.1), ALSO to ``paper_writer_v1`` (the over-accepted-AND-
         unfaithful draft has two culpable components). Best-effort: never raises
         into the paper phase."""
+        try:
+            from ari.rqgm.evaluation.paper_ablation import posture_from_config
+
+            posture = posture_from_config(self.cfg)
+        except Exception:
+            posture = None
+        if posture is not None and not posture.adversarial_pool:
+            return
         sp = self._self_preference_cfg()
         if sp is not None and not bool(getattr(sp, "enabled", True)):
             return
@@ -2136,7 +2285,12 @@ class PaperArchiveRuntime:
         threshold = float(
             getattr(self.cfg.rqgm.paper.archive, "compile_threshold", 0.0)
         )
-        mark_paper_draft_flags(ckpt, best.id, is_best_belief=True)
+        epoch_id = str(
+            (getattr(best, "metrics", None) or {}).get("_paper_epoch_id") or ""
+        )
+        mark_paper_draft_flags(
+            ckpt, best.id, epoch_id=epoch_id or None, is_best_belief=True
+        )
         if score >= threshold:
             try:
                 fn = getattr(mcp, "call_tool", None) or getattr(mcp, "call", None)
@@ -2144,7 +2298,9 @@ class PaperArchiveRuntime:
                     fn("compile_paper",
                        {"tex_dir": str(tex.parent), "main_file": tex.name})
                 self._compiles += 1
-                mark_paper_draft_flags(ckpt, best.id, compiled=True)
+                mark_paper_draft_flags(
+                    ckpt, best.id, epoch_id=epoch_id or None, compiled=True
+                )
             except Exception:
                 log.warning("lazy compile of the best-belief draft failed",
                             exc_info=True)

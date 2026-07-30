@@ -1,4 +1,4 @@
-% snapshot-from: ari-core/ari/prompts/orchestrator/bfts_select.md@38b1ea409ff58bc0b5342b7fc677b3c64c5374bf35b0d5c9b0594a401fd4b71b @ commit e780fa5626fc
+% snapshot-from: ari-core/ari/prompts/orchestrator/bfts_select.md@38b1ea409ff58bc0b5342b7fc677b3c64c5374bf35b0d5c9b0594a401fd4b71b @ commit c050ebf505af
 % DO NOT EDIT — regenerate via `make snapshot-prompts`.
 %
 You are selecting the most promising node to explore next in a research tree.

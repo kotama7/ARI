@@ -30,6 +30,8 @@ from ari.pipeline.verified_context import select_best_node
 from ari.protocols.search import NodeExecutor, SearchStrategy
 from ari.rqgm.paper_archive import (
     PaperArchiveStrategy,
+    erase_paper_reviewer_utilities,
+    mark_paper_draft_flags,
     read_paper_draft_archive,
     write_paper_draft_record,
 )
@@ -514,6 +516,22 @@ def test_best_belief_reuses_select_best_node():
     assert select_best_node(archive).id == "b"
 
 
+def test_best_belief_excludes_erased_drafts():
+    # Displaced-reviewer erasure flags drafts (in-memory and in the archive
+    # records); best-belief must not resurrect their stale scores. The clause
+    # lives in select_best_node itself, so the same guard covers the
+    # exploration seed (`_run_one_round`) and cross-round re-selection.
+    archive = [
+        Node(id="a", parent_id=None, depth=1, has_real_data=True,
+             metrics={"_scientific_score": 0.9, "_valid_for_frontier": False}),
+        Node(id="b", parent_id=None, depth=1, has_real_data=True,
+             metrics={"_scientific_score": 0.4}),
+    ]
+    assert select_best_node(archive).id == "b"
+    archive[1].metrics["_valid_for_frontier"] = False
+    assert select_best_node(archive) is None   # all erased ⇒ no winner
+
+
 # ── lazy compile ────────────────────────────────────────────────────────────
 
 def test_lazy_compile_fires_once_for_winner(tmp_path):
@@ -546,8 +564,6 @@ def test_exactly_one_record_carries_a_flag_across_duplicate_node_ids(tmp_path):
     match and cleared nothing, so ONE compile stamped `compiled: true` on two
     records. The LAST match wins (append-only => the last write is that node's
     current state) and the flag is CLEARED elsewhere."""
-    from ari.rqgm.paper_archive import mark_paper_draft_flags
-
     # two rounds mint `draft_0` twice, both epoch_000 (so an epoch filter is a
     # no-op here — the reason #12 must NOT be fixed by epoch-scoping)
     for i, sha in enumerate(("aaa", "bbb")):
@@ -573,6 +589,66 @@ def test_exactly_one_record_carries_a_flag_across_duplicate_node_ids(tmp_path):
     assert len(best2) == 1 and best2[0]["node_id"] == "draft_1"
     # ...and a flag this call does not own is untouched
     assert sum(1 for r in recs2 if r.get("compiled")) == 1
+
+
+def test_selective_erasure_stales_displaced_reviewer_scores_only(tmp_path):
+    for epoch, node, reviewer, score in (
+        ("epoch_000", "draft_0", "critic_a", 0.9),
+        ("epoch_000", "draft_1", "critic_a", 0.8),
+        ("epoch_001", "draft_0", "critic_b", 0.6),
+    ):
+        write_paper_draft_record(tmp_path, {
+            "node_id": node,
+            "kind": "seed",
+            "epoch_id": epoch,
+            "tex_sha256": f"{epoch}-{node}",
+            "reviewer_prompt_hash": reviewer,
+            "review_score": score,
+            "is_best_belief": score == 0.9,
+        })
+
+    refs = erase_paper_reviewer_utilities(
+        tmp_path,
+        "critic_a",
+        replacement_epoch_id="epoch_001",
+        replacement_prompt_hash="critic_b",
+    )
+    assert refs == [
+        {"epoch_id": "epoch_000", "node_id": "draft_0"},
+        {"epoch_id": "epoch_000", "node_id": "draft_1"},
+    ]
+    records = read_paper_draft_archive(tmp_path)
+    old = [r for r in records if r["reviewer_prompt_hash"] == "critic_a"]
+    new = [r for r in records if r["reviewer_prompt_hash"] == "critic_b"]
+    assert all(r["review_score_stale"] is True for r in old)
+    assert all(r["is_best_belief"] is False for r in old)
+    assert [r["review_score"] for r in old] == [0.9, 0.8]  # provenance kept
+    assert all(not r.get("review_score_stale", False) for r in new)
+    # Deterministic/idempotent: already-erased rows are not counted again.
+    assert erase_paper_reviewer_utilities(
+        tmp_path,
+        "critic_a",
+        replacement_epoch_id="epoch_001",
+        replacement_prompt_hash="critic_b",
+    ) == []
+
+
+def test_best_belief_flag_can_target_an_earlier_epoch(tmp_path):
+    for epoch in ("epoch_000", "epoch_001"):
+        write_paper_draft_record(tmp_path, {
+            "node_id": "draft_0",
+            "kind": "seed",
+            "epoch_id": epoch,
+            "tex_sha256": epoch,
+        })
+    mark_paper_draft_flags(
+        tmp_path, "draft_0", epoch_id="epoch_000", is_best_belief=True
+    )
+    best = [
+        r for r in read_paper_draft_archive(tmp_path)
+        if r.get("is_best_belief")
+    ]
+    assert len(best) == 1 and best[0]["epoch_id"] == "epoch_000"
 
 
 def test_seed_collapse_is_warned_not_silent(tmp_path, caplog):
@@ -788,6 +864,10 @@ def test_cli_2x2_matrix_no_cross_leak(tmp_path, monkeypatch, ari_mode, rqgm_en,
                    "has_real_data": True, "metrics": {"_scientific_score": 0.9},
                    "children": [], "ancestor_ids": []}],
     }))
+    # A prior paper pass's pre-signal artifact: the paper-candidate round is
+    # gated on the evidence it attacks existing (its marker is one-shot per
+    # node), so this is what a re-invoked `ari paper` sees.
+    (tmp_path / "related_refs.json").write_text('{"refs": []}')
     cfg = ARIConfig()
     cfg.ari.mode, cfg.rqgm.enabled = ari_mode, rqgm_en
     cfg.paper.mode, cfg.rqgm.paper.enabled = paper_mode, paper_en

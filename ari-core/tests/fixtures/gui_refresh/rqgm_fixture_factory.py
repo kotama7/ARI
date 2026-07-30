@@ -142,6 +142,8 @@ from ari.rqgm.state import (
     EpochState,
     epoch_fingerprint,
     epoch_state_payload,
+    execution_fingerprint,
+    policy_fingerprint,
     record_constitution_hash,
     seal_utility_policy,
 )
@@ -522,8 +524,29 @@ def make_rqgm_checkpoint(
             registry_version=GovernedPromptRegistry(
                 prompt_map
             ).registry_version(),
+            policy_settings={
+                "fixture": "gui_refresh_v2",
+                "governance_thresholds": "fixture-defaults",
+            },
+            execution_identity={
+                "model_backend": "fixture",
+                "model_id": "fixture-model",
+                "decoding": {"temperature": 0.0},
+                "skills": [],
+                "disabled_tools": [],
+                "provider_model_revision": "fixture-model-revision",
+                "tool_bundle_revision": "fixture-tool-revision",
+                "environment_digest": "fixture-environment",
+                "data_snapshot_digest": "fixture-data",
+                "complete": True,
+            },
             epoch_fingerprint="",
             created_at=FIXED_CREATED_AT,
+        )
+        state = replace(
+            state,
+            policy_fingerprint=policy_fingerprint(state),
+            execution_fingerprint=execution_fingerprint(state),
         )
         return replace(state, epoch_fingerprint=epoch_fingerprint(state))
 

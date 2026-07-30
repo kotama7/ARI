@@ -28,7 +28,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_gui_state_facade_freeze.py
     role: test
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # REST API リファレンス
@@ -293,9 +293,9 @@ ttl_seconds: 60}` です。破壊的エンドポイントは、ボディの `cha
 | メソッド | パス | 用途 |
 |---|---|---|
 | GET | `/api/v1/projects` | プロジェクト一覧 — チェックポイント探索ベースを集約した 1 つの仮想 `default` プロジェクト。 |
-| GET | `/api/v1/projects/{project_id}/runs` | 1 プロジェクト内のラン（チェックポイント）をサマリカードとして。 |
+| GET | `/api/v1/projects/{project_id}/runs` | 1 プロジェクト内のラン（チェックポイント）をサマリカードとして — 全チェックポイントルートを統合した 1 つのポートフォリオで、新しい順（mtime 降順）。 |
 | GET | `/api/v1/runs/{run_id}` | ランの詳細: サマリに加えて成果物由来の詳細フィールドと capability マップ。 |
-| GET | `/api/v1/runs/{run_id}/summary` | 1 ランのサマリカード用スカラ（status、ノード数、レビュースコア、ベストメトリクス）。 |
+| GET | `/api/v1/runs/{run_id}/summary` | 1 ランのサマリカード用スカラ（status、ノード数、レビュースコア、ベストメトリクス、`has_paper`）。 |
 | GET | `/api/v1/runs/{run_id}/tree` | BFTS ツリー — `tree_view` のノード一覧をバイト保存のまま透過。 |
 | GET | `/api/v1/runs/{run_id}/idea` | `{ckpt}/idea.json`（アイデア / ギャップ分析 / 主要メトリクス）の純粋な読み取り; 不在は `present: false` であり、空データを捏造しません。 |
 | GET | `/api/v1/runs/{run_id}/results` | 有界な結果読み取りモデル: 論文 / レビュー / ORS / EAR の存在フラグとスカラ — ファイルの中身は決して返しません。 |
@@ -440,12 +440,24 @@ curl http://localhost:8765/state
 
 ```json
 {
-  "phase": "bfts",
-  "nodes": { "total": 7, "completed": 5, "running": 2, "failed": 0 },
-  "model": { "provider": "ollama", "model": "qwen3:8b" },
-  "cost": { "usd": 0.0, "tokens": 0 }
+  "checkpoint_id": "20260526T101500_matmul",
+  "current_phase": "bfts",
+  "node_count": 7,
+  "nodes": [{ "id": "node-0", "status": "success", "metrics": {} }],
+  "has_paper": false,
+  "llm_model": "ollama_chat/qwen3:8b",
+  "running_pid": 48213,
+  "is_running": true,
+  "exit_code": null,
+  "status_label": "🟢 Running",
+  "cost": { "total": 0.0 }
 }
 ```
+
+抜粋です。凍結ファサードはアクティブなチェックポイントが無い場合はちょうど 7 個、
+完全に埋まったチェックポイントでは 35 個のトップレベルキーを出力します。`nodes` は
+ツリーのノード一覧（件数サマリではありません）、`cost` はパース済みの
+`cost_summary.json` オブジェクトです。
 
 **実行を起動する:**
 
@@ -469,10 +481,18 @@ curl http://localhost:8765/api/checkpoints
 
 ```json
 [
-  { "id": "20260526T101500_matmul", "status": "running", "nodes": 7, "review_score": null },
-  { "id": "20260520T090000_sort",   "status": "done",    "nodes": 12, "review_score": 0.71 }
+  { "id": "20260526T101500_matmul", "path": "workspace/checkpoints/20260526T101500_matmul",
+    "status": "running", "node_count": 7, "review_score": null,
+    "best_metric": null, "mtime": 1779795300 },
+  { "id": "20260520T090000_sort", "path": "workspace/checkpoints/20260520T090000_sort",
+    "status": "completed", "node_count": 12, "review_score": 0.71,
+    "best_metric": null, "mtime": 1779267600, "best_scientific_score": 0.83 }
 ]
 ```
+
+一覧は全チェックポイント探索ベースを統合した 1 つのポートフォリオで、`mtime` 降順
+（新しい順）です。`status` は `unknown` / `running` / `stopped` / `completed` の
+いずれかです。
 
 **エラー形式**（任意のレガシーエンドポイント、非 2xx）:
 
@@ -509,7 +529,7 @@ curl http://localhost:8765/api/checkpoints
 
 | メソッド | パス | 用途 |
 |---|---|---|
-| GET | `/api/checkpoints` | `ARI_CHECKPOINT_DIR` 親配下のすべてのチェックポイントを一覧 |
+| GET | `/api/checkpoints` | チェックポイント探索ベース全体のチェックポイントを新しい順（`mtime` 降順）で一覧 |
 | GET | `/api/checkpoint/<id>/summary` | 実行サマリ（目標、ノード数、ステータス、上位メトリクス） |
 | GET | `/api/checkpoint/<id>/memory` | Letta メモリの内容 |
 | GET | `/api/checkpoint/<id>/memory_access` | メモリ書き込み / 読み取りのテレメトリ |
@@ -595,6 +615,30 @@ curl http://localhost:8765/api/checkpoints
 | メソッド | パス | 用途 |
 |---|---|---|
 | GET | `/api/nodes/<...>/report` | ノードごとの `node_report.json` |
+
+### PaperBench (v0.7.2)
+
+| メソッド | パス | 用途 |
+|---|---|---|
+| GET | `/api/paperbench/papers` | 登録済み論文一覧（レジストリマニフェストからの `{"papers": [...]}`） |
+| GET | `/api/paperbench/arxiv/<arxiv_id>` | 公開 arXiv Atom API へのメタデータ問い合わせ |
+| GET | `/api/paperbench/papers/<paper_id>/license` | 1 論文の記録済みライセンス / 再配布方針 |
+| POST | `/api/paperbench/papers/import` | 新しい論文をレジストリに登録 |
+| POST | `/api/paperbench/papers/<paper_id>/metadata` | 既存マニフェストエントリにフィールドをマージ |
+| POST | `/api/paperbench/papers/<paper_id>/delete` | マニフェストエントリと論文ディレクトリを削除（冪等） |
+| POST | `/api/paperbench/cost-estimate` | 起動前のドライランコスト見積もり |
+| POST | `/api/paperbench/run` | 指定した `paper_ids` の PaperBench ジョブを投入 |
+| GET | `/api/paperbench/run/<job_id>` | ジョブ状態のスナップショット |
+| GET | `/api/paperbench/run/<job_id>/logs` | 1 ジョブの SSE ログストリーム（`since=`、`Last-Event-ID`; 300 秒ウィンドウ、`: heartbeat`、終端は `event: done`） |
+| GET | `/api/paperbench/run/<job_id>/results` | ジョブごとの結果ペイロード |
+| GET, POST | `/api/paperbench/run/<job_id>/report` | 監査レポートの生成 / 取得（`languages`、`formats` — URL クエリまたは POST ボディ） |
+
+ジョブ状態はインメモリテーブルですが、`{registry_root}/jobs/{job_id}.json` へ
+アトミックにミラーされます（一時ファイル + `os.replace`、モード `0o600`）。
+そのため viz サーバーを再起動しても過去のジョブを忘れなくなりました。再起動後、
+GET 側のリーダーはそのレコードへ読み取り専用でフォールバックし、稼働中ステータス
+（`queued` / `running`）のまま永続化されていたジョブは追加ステータス
+`interrupted` として報告されます — ワーカーが再起動されることはありません。
 
 ### EAR + 公開 (v0.7.0)
 

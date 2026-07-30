@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/pipeline/claim_gate
     role: implementation
-last_verified: 2026-07-10
+last_verified: 2026-07-28
 ---
 
 # ファイルフォーマットリファレンス
@@ -239,7 +239,12 @@ BFTS 実行のプランのシードとなります。
 裏付けられた（理想的には再現された）結果に基づいて生成できるようにします。
 型付き research-memory ストアに少なくとも 1 つの裏付けクレームがある場合に
 **のみ**書き込まれます。ストアが空の場合はファイルが生成されず、論文ステージ
-は以前とまったく同じ挙動になります。
+は以前とまったく同じ挙動になります。ベストノードの選択
+（`select_best_node`）は消去済みノード
+（`metrics._valid_for_frontier=False`）を除外します — すべての候補が消去
+されていれば勝者なしとなりファイルは書かれず、以前に書かれた
+`verified_context.json` の `best_node_id` が新しい勝者と一致しなくなった
+場合、そのファイルは削除されます（一致すれば保持）。
 
 ```json
 {
@@ -332,21 +337,21 @@ finalize がスキップされます。ソース:
 JSONL で、1 行に自己完結したイベント 1 つ:
 
 ```json
-{"schema_version": 1, "event_id": "evt_000042", "event_type": "prompt_status_change",
+{"schema_version": 2, "event_id": "evt_000042", "event_type": "prompt_status_change",
+ "transaction_id": "transition_003_to_004",
  "payload": {"prompt_id": "reviewer_prompt_v4", "from_status": "shadow",
              "to_status": "probationary_active", "transition_id": "transition_003_to_004"},
- "event_hash": "112233445566", "prev_event_hash": "77aa88bb99cc",
+ "event_hash": "baf0...64-hex-sha256...", "prev_event_hash": "91ac...64-hex-sha256...",
  "ts": 1751700000.0, "ts_iso": "2026-07-05T12:00:00Z"}
 ```
 
-`event_hash = sha256(canonical_json(payload))[:12]`（プロンプト来歴と同一の
-`hash12` スキーム — 第二のスキームはありません）; `prev_event_hash` は
-前の行へ連鎖します（最初の行では `""`）。タイムスタンプはハッシュ対象
-ペイロードの外のメタデータです。イベントタイプ（閉じた v1 集合）:
+v2 の `event_hash` は、版、識別子、種類、取引識別子、正規化した内容、
+直前ダイジェストを結合した完全 SHA-256 です。時刻は対象外のメタデータ
+です。内容だけを 12 桁で結んだ旧版 v1 も読出せます。イベントタイプ:
 `epoch_transaction_prepare`、`component_registered`、`prompt_registered`、
 `component_status_change`、`prompt_status_change`、`epoch_close`、
-`epoch_open`、`epoch_transaction_commit`、`emergency_quarantine`（唯一の
-エポック途中変更）。レジストリのステータス変更はエポック境界の
+`epoch_open`、`epoch_transaction_commit`、`emergency_quarantine`。
+T16 の緊急隔離を含むレジストリのステータス変更は境界の
 prepare/commit トランザクションを通じて**のみ**受け入れられます; ロード時、
 対応する commit の無い prepare 以降のイベントは無視されます
 （クラッシュリカバリ）。
@@ -407,7 +412,9 @@ FrontierRepairEngine（RQGM Task 10、
   カーネル作（`prompt_hash` は null、`component_id` は
   `frontier_repair_engine`）で、退役したハッシュ / コンポーネント、
   直接 + 推移的な stale レコード id、そして
-  invalidated/recompute/abandoned のノード id を列挙します。消去は
+  invalidated/recompute/abandoned のノード id に加え、utility-policy
+  退役時に保存済みの生の軸スコアを再重み付けした
+  `policy_rescored_node_ids` を列挙します。消去は
   **論理のみ**です（不変条件 13）: 列挙されたレコードは
   `rqgm_erasure_state.json` でフラグされ、決して書き換え・削除され
   ません。
@@ -426,6 +433,10 @@ FrontierRepairEngine（RQGM Task 10、
   元のエポックの凍結された重みの下で生き残った入力から再計算され、
   決して再スケールされません — 置き換えられたレコードはディスク上に
   stale なまま残ります。
+  utility-policy 退役は別の経路です。同じ修復イベントが各ノードに保存
+  された `_axis_scores` を `new_utility_policy` の下で再合成し、その
+  ノードを `policy_rescored_node_ids` に列挙します。生の軸が利用できない
+  ノードは fail-closed で無効化されます。
 
 ### `constitution.yaml`
 
@@ -443,8 +454,10 @@ FrontierRepairEngine（RQGM Task 10、
 現在開いている（または最後に閉じた）エポックの、導出された全体書き換え
 スナップショット: 凍結されたアクティブコンポーネント集合、アクティブ
 プロンプトハッシュ、utility policy、`registry_version`、決定論的な
-`epoch_fingerprint`（`created_at` はメタデータで、フィンガープリントから
-除外）。使い捨てです — ロード時にイベントログのリプレイと突き合わせて
+`policy_settings` / `policy_fingerprint`、`execution_identity` /
+`execution_fingerprint` を持ち、`epoch_fingerprint` が両方を合成する。
+`created_at` は対象外で、外部版が不明なら `unresolved` と記録する。
+使い捨てです — ロード時にイベントログのリプレイと突き合わせて
 検証され、不一致なら再構築されます。
 
 ### `rqgm_registry.json`

@@ -1,5 +1,5 @@
 % shared/preamble.tex — common preamble for en/ja/zh main.tex
-% Engine-aware (lualatex for en/ja, xelatex for zh).
+% Engine-aware (LuaLaTeX is the canonical PDF engine for all languages).
 
 % Load silence first so warning filters set later in this preamble
 % apply to packages that print warnings during their own loading
@@ -42,8 +42,7 @@
 % causes a luatexja-microtype patch warning we don't need.
 % Engine + language-aware CJK setup. Set \AriCJK in the doc's main.tex
 % to opt in; \AriLangJa / \AriLangZh select which lang's fonts to load.
-% This lets `make4ht -ul` drive lualatex even for zh (HTML build),
-% while keeping the canonical zh PDF on xelatex+ctex.
+% This also lets `make4ht -ul` use the same CJK setup for the HTML build.
 \ifdefined\luatexversion
   \ifdefined\AriCJK
     \ifdefined\AriLangJa
@@ -57,9 +56,18 @@
       }{}%
     \fi
     \ifdefined\AriLangZh
-      \usepackage{fontspec}%
-      \IfFontExistsTF{FandolSong-Regular}{%
-        \setmainfont{FandolSong-Regular}[BoldFont=FandolSong-Bold]%
+      \IfFileExists{luatexja-fontspec.sty}{%
+        \PassOptionsToPackage{nopatch=microtype}{luatexja}%
+        \usepackage{luatexja-fontspec}%
+        % These OpenType files are supplied by the TeX Live Fandol package.
+        % Select them unconditionally: \IfFileExists does not search the
+        % OpenType font tree consistently under every kpathsea setup.
+        \setmainjfont{FandolSong-Regular.otf}[%
+          BoldFont=FandolSong-Bold.otf,%
+          ItalicFont=FandolKai-Regular.otf]%
+        \setsansjfont{FandolHei-Regular.otf}[%
+          BoldFont=FandolHei-Bold.otf]%
+        \setmonojfont{FandolFang-Regular.otf}%
       }{}%
     \fi
   \fi
@@ -83,8 +91,20 @@
       }{}%
     \fi
     \ifdefined\AriLangZh
-      \IfFileExists{ctex.sty}{%
-        \usepackage[fontset=fandol]{ctex}%
+      % Use explicit OpenType fonts instead of ctex's dvipdfmx-oriented
+      % Adobe-GB1 mappings. The latter can produce a PDF whose Chinese glyphs
+      % disappear in viewers without the optional Adobe CMap language pack.
+      % xeCJK + embedded Fandol fonts keeps the PDF self-contained.
+      \IfFileExists{xeCJK.sty}{%
+        \usepackage{xeCJK}%
+        \IfFileExists{FandolSong-Regular.otf}{%
+          \setCJKmainfont{FandolSong-Regular.otf}[%
+            BoldFont=FandolSong-Bold.otf,%
+            ItalicFont=FandolKai-Regular.otf]%
+          \setCJKsansfont{FandolHei-Regular.otf}[%
+            BoldFont=FandolHei-Bold.otf]%
+          \setCJKmonofont{FandolFang-Regular.otf}%
+        }{}%
       }{}%
     \fi
   \fi

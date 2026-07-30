@@ -1207,7 +1207,9 @@ class ConstitutionalKernel:
         increase (CK-AUD-001); *checkpointed* — an optional
         ``(length, last_event_hash)`` pair recorded at the last boundary —
         pins the prefix (CK-AUD-002); the per-line hash chain is recomputed
-        over the canonical payload serialization (CK-AUD-003).
+        under the event's declared schema (CK-AUD-003).  Schema-v2 binds the
+        identifier, type, transaction id, payload, and predecessor; schema-v1
+        payload-only hashes are accepted only for checkpoint compatibility.
         ``verify_chain=None`` is the ``audit_chain: auto`` posture: verify
         iff chain fields are present. No check-time wall clock ever enters a
         verdict (P2) — timestamps in entries are data.
@@ -1239,15 +1241,15 @@ class ConstitutionalKernel:
             prev_hash = ""
             for i, entry in enumerate(entries):
                 recorded = str(entry.get("event_hash", ""))
-                payload = entry.get("payload")
-                payload = payload if isinstance(payload, dict) else {}
-                if recorded and recorded != payload_hash(payload):
+                from ari.rqgm.events import expected_event_hash
+
+                if recorded and recorded != expected_event_hash(entry):
                     violations.append(
                         self._v(
                             "CK-AUD-003", "validate_audit_log_integrity",
                             f"line {i}", "hash_chain",
-                            "event_hash does not match the canonical "
-                            "payload hash",
+                            "event_hash does not match the declared event "
+                            "schema commitment",
                         )
                     )
                 if str(entry.get("prev_event_hash", "")) != prev_hash:

@@ -84,6 +84,8 @@ class GovernedSearchStrategy:
                         "caller's idea.json context", exc_info=True)
         children = self.inner.expand(node, *args, **kwargs)
         try:
+            for child in list(children or []):
+                self.rqgm.stamp_node_producer(child)
             if self.rqgm.router is not None:
                 for child in list(children or []):
                     self.rqgm.record_expansion_proposal(node, child)
@@ -144,6 +146,18 @@ class RQGMRuntime:
         self._paper_phase = bool(paper_phase)
         self._anchor_pool = anchor_pool
         self._paper_candidate_evaluator = paper_candidate_evaluator
+        if self._paper_phase:
+            # P0-P4 are evaluation presets over ordinary runtime switches.
+            # Fail fast on a mislabeled experimental arm: silently running a
+            # different mechanism set would invalidate the comparison.
+            from ari.rqgm.evaluation.paper_ablation import config_violations
+
+            violations = config_violations(cfg)
+            if violations:
+                raise ValueError(
+                    "invalid RQGM paper-ablation posture: "
+                    + "; ".join(violations)
+                )
         self.checkpoint_dir: Path | None = (
             Path(checkpoint_dir) if checkpoint_dir is not None else None
         )
@@ -156,6 +170,7 @@ class RQGMRuntime:
         # ensure_epoch() call so build_runtime stays write-free.
         self._store = None
         self._epoch_state = None
+        self._last_node_count = 0
         # The live LLMEvaluator, bound by build_runtime AFTER construction (the
         # evaluator does not exist yet when the runtime is built). Used to make
         # the epoch's FROZEN utility_policy actually drive scoring — otherwise
@@ -213,6 +228,49 @@ class RQGMRuntime:
     def mode(self) -> EffectiveMode:
         """The effective mode this runtime was constructed for (fixed)."""
         return EffectiveMode.ARI_RQGM
+
+    def _paper_ablation_posture(self):
+        """Active P0-P4 posture, only inside an evaluation paper phase."""
+
+        if not self._paper_phase:
+            return None
+        from ari.rqgm.evaluation.paper_ablation import posture_from_config
+
+        return posture_from_config(getattr(self, "cfg", None))
+
+    def stamp_node_producer(self, node, role: str = "generator") -> bool:
+        """Stamp epoch-frozen producer provenance on one research node.
+
+        The fields are write-once. Missing epoch/component provenance leaves
+        the node unbound rather than consulting a later live registry. This
+        is an application-level identity boundary, not an OS or
+        cryptographic identity claim.
+        """
+        if str(getattr(node, "producer_component_id", "") or ""):
+            return True
+        st = self._epoch_state
+        epoch = getattr(st, "epoch", None) if st is not None else None
+        if epoch is None:
+            return False
+        active_components = dict(
+            getattr(epoch, "active_components", None) or {}
+        )
+        component_id = str(active_components.get(str(role), "") or "")
+        if not component_id:
+            return False
+        active_prompts = dict(
+            getattr(epoch, "active_prompt_hashes", None) or {}
+        )
+        setattr(node, "producer_component_id", component_id)
+        setattr(
+            node, "producer_prompt_hash",
+            str(active_prompts.get(str(role), "") or ""),
+        )
+        setattr(
+            node, "producer_epoch_id",
+            str(getattr(epoch, "epoch_id", "") or ""),
+        )
+        return True
 
     # ── Task 04: ConstitutionalKernel posture ─────────────────────────
 
@@ -387,6 +445,7 @@ class RQGMRuntime:
         )
         if ckpt is None:
             return None
+        self._last_node_count = int(node_count)
         try:
             from ari.rqgm.store import RqgmStateStore
 
@@ -873,6 +932,13 @@ class RQGMRuntime:
                 for role, entry in latest.items()
                 if str(role).startswith("paper_")
             }
+            posture = self._paper_ablation_posture()
+            if posture is not None:
+                latest = {
+                    role: entry
+                    for role, entry in latest.items()
+                    if posture.role_evolution_enabled(role)
+                }
         # Task 14 (plan 14 §5.3): the utility policy is a policy DOCUMENT,
         # evolved by PolicyMutator — asking a template-rewriting LLM to
         # mutate canonical JSON as prose is exactly the confusion the
@@ -1749,6 +1815,9 @@ class RQGMRuntime:
         search state. A ``halted_expansion`` outcome raises the
         ``expansion_halted`` flag the loop reads (drain-only degradation) —
         the run itself never crashes."""
+        posture = self._paper_ablation_posture()
+        if posture is not None and not posture.selective_erasure:
+            return
         if search_state is None:
             return
         if not (getattr(transition, "retirements", None) or ()):
@@ -2750,6 +2819,7 @@ class RQGMRuntime:
         observational in v1; gating stays with the Task 06 trigger
         disjunction plus the per-role budget gates inside the round.
         """
+        self.stamp_node_producer(node)
         try:
             manager = self.budget_manager
             if manager is not None:
@@ -2779,6 +2849,92 @@ class RQGMRuntime:
         except Exception:
             log.warning("adversarial round failed (fail-open)", exc_info=True)
             return None
+
+    def replay_utility_penalties(self, all_nodes) -> int:
+        """Deterministically re-apply persisted utility penalties to freshly
+        loaded nodes. Returns the number of nodes updated.
+
+        Exploration-round penalties reach ``tree.json`` through the run
+        loop's flush, but the paper pre-flight escalation round mutates only
+        in-memory nodes and no entry writes ``tree.json`` after the paper
+        phase (the loop's last flush precedes it). The durable truth is the ``UtilityRecord`` line
+        in ``rqgm_adversarial_cases.jsonl`` (base/penalty/final stored by
+        value — pure arithmetic, P2-safe). Replaying it on load makes the
+        ranking reproducible across re-invocations, which the §5.3 one-round
+        marker alone cannot (it suppresses the round but not the score
+        reversion).
+
+        Idempotent and conservative: a record applies only when the node's
+        CURRENT score equals the record's ``base_score`` (records chain
+        naturally in log order — a paper-time penalty's base is the
+        exploration-penalized value); a score already at ``final_score`` or
+        since rewritten by recompute/re-score is left alone. Sterile nodes
+        are skipped (the ``apply_utility_penalty`` guard). Fail-open.
+        """
+        try:
+            from ari.rqgm.adversarial.pool import AdversarialCaseLog
+            from ari.rqgm.adversarial.records import UTILITY_RECORD_TYPE
+
+            if not self.checkpoint_dir:
+                return 0
+            by_id = {
+                str(getattr(n, "id", "") or ""): n for n in (all_nodes or [])
+            }
+            records = [
+                rec for rec in AdversarialCaseLog.read(self.checkpoint_dir)
+                if rec.get("record_type") == UTILITY_RECORD_TYPE
+            ]
+            # Frontier repair reverses a penalty by RECOMPUTATION: a
+            # superseding record (``supersedes: <record_id>``) with the
+            # surviving penalty — 0.0 when every validated attack behind the
+            # original was retired. A superseded record must never be
+            # re-applied (the reversal restored the base score in tree.json,
+            # so the stale original would otherwise base-match and re-demote
+            # a formally exonerated node).
+            superseded = {
+                str(r.get("supersedes"))
+                for r in records if r.get("supersedes")
+            }
+            applied = 0
+            for rec in records:
+                if str(rec.get("record_id", "") or "") in superseded:
+                    continue  # reversed/recomputed by frontier repair
+                node = by_id.get(str(rec.get("node_id", "") or ""))
+                if node is None:
+                    continue
+                metrics = getattr(node, "metrics", None)
+                if not isinstance(metrics, dict):
+                    continue
+                if metrics.get("_sterile") is True:
+                    continue
+                cur = metrics.get("_scientific_score")
+                if not isinstance(cur, (int, float)) or isinstance(cur, bool):
+                    continue
+                try:
+                    base = float(rec.get("base_score", 0.0) or 0.0)
+                    penalty = float(rec.get("penalty", 0.0) or 0.0)
+                    final = float(rec.get("final_score", 0.0) or 0.0)
+                except (TypeError, ValueError):
+                    continue
+                if penalty <= 0.0 or abs(float(cur) - final) < 1e-9:
+                    continue  # no-op record, or already reflected
+                if abs(float(cur) - base) >= 1e-9:
+                    continue  # score since recomputed/re-scored — keep it
+                metrics["_pre_penalty_score"] = base
+                metrics["_validated_attack_penalty"] = penalty
+                metrics["_scientific_score"] = final
+                applied += 1
+            if applied:
+                log.info(
+                    "replayed %d persisted utility penalt%s onto loaded "
+                    "nodes (paper-time penalties are not in tree.json)",
+                    applied, "y" if applied == 1 else "ies",
+                )
+            return applied
+        except Exception:
+            log.warning("utility-penalty replay failed (fail-open)",
+                        exc_info=True)
+            return 0
 
     def run_paper_candidate_escalation(
         self,
@@ -2810,10 +2966,23 @@ class RQGMRuntime:
            epoch-boundary step 7 uses (:meth:`AdversarialReplayPool.admit`
            → evict → snapshot), delivering paper → RQGM feedback.
 
+        NOT merely observational: judge-validated attacks apply the bounded
+        utility penalty (plan 06 §5.4 — ``_scientific_score`` is rewritten in
+        place, and every downstream consumer incl. best-node selection sees
+        the governed value). A penalized candidate can therefore lose the
+        subsequent seed/verified-context re-selection. Callers must
+        (a) re-select after escalating and escalate any NEW winner too (the
+        fixpoint loop in ``ari.cli.paper_dispatch``, shared by all three CLI
+        entries), and (b) replay persisted penalties when reloading nodes
+        (:meth:`replay_utility_penalties`) — no entry writes ``tree.json``
+        after the paper phase, so without replay a re-run would revert the
+        ranking while the §5.3 round marker suppresses a second round (a P2
+        determinism violation).
+
         Gated on ``ari_rqgm`` (this runtime exists only then). Fail-open:
         every step is best-effort and the whole method never raises, so a
         failure logs and never blocks the paper pipeline. Returns the round
-        summary dict (observability) or ``None``.
+        summary dict or ``None``.
         """
         try:
             if best_node is None:
@@ -2821,8 +2990,14 @@ class RQGMRuntime:
             # Reconstruct minimal RQGM context from the checkpoint (a fresh
             # ``ari paper`` process has no open epoch): best-effort — the
             # round still runs with an empty epoch_id if this degrades.
+            # Skipped when an epoch is ALREADY open (the one-pass entries call
+            # this on the LIVE exploration runtime): the restore would be a
+            # no-op except for resetting `_last_node_count` to 0, which is
+            # what an emergency quarantine stamps as the next epoch's
+            # `node_count_at_open` — poisoning the boundary arithmetic.
             try:
-                self.ensure_epoch(0, run_id="paper")
+                if self.current_epoch is None:
+                    self.ensure_epoch(0, run_id="paper")
             except Exception:
                 log.warning("paper-candidate epoch restore failed "
                             "(fail-open)", exc_info=True)
@@ -2853,16 +3028,31 @@ class RQGMRuntime:
             return 0.0
 
     def _paper_frontier_scores(self, all_nodes) -> list:
-        """Frontier scores for the L3 top-K / trigger inputs (best-effort)."""
-        return [self._node_score(n) for n in (all_nodes or ())]
+        """Frontier scores for the L3 top-K / trigger inputs (best-effort).
+
+        Erased nodes are excluded for audit-record hygiene: the paper
+        candidate's level is forced to L3 regardless, so an erased score
+        here could only mis-state the recorded ``triggers`` list."""
+        return [
+            self._node_score(n) for n in (all_nodes or ())
+            if not isinstance(getattr(n, "metrics", None), dict)
+            or n.metrics.get("_valid_for_frontier", True) is not False
+        ]
 
     def _paper_parent_score(self, node, all_nodes):
-        """The best node's parent ``_scientific_score`` (score-jump trigger)."""
+        """The best node's parent ``_scientific_score`` (score-jump trigger).
+
+        An erased parent's retained stale score would suppress the
+        score-jump clause — treated as no-parent instead."""
         parent_id = getattr(node, "parent_id", None)
         if not parent_id or not all_nodes:
             return None
         for n in all_nodes:
             if getattr(n, "id", None) == parent_id:
+                metrics = getattr(n, "metrics", None)
+                if (isinstance(metrics, dict)
+                        and metrics.get("_valid_for_frontier", True) is False):
+                    return None
                 return self._node_score(n)
         return None
 

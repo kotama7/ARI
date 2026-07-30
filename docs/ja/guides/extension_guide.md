@@ -8,7 +8,7 @@ sources:
     role: config
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-07-30
 ---
 
 # 拡張ガイド
@@ -45,10 +45,12 @@ Minimize energy score of protein folding simulation using different force field 
 2. 実行:
 
 ```bash
-ari run your_experiment.md --config config/bfts.yaml
+ari run your_experiment.md
 ```
 
 以上です。ARI が目標を読み取り、仮説を提案し、自律的に探索します。
+`--config` は任意です — 省略すると `ari run` が同梱の
+`ari-core/config/workflow.yaml` を自動解決します。
 
 ### experiment.md によるドメインカスタマイズ
 
@@ -110,12 +112,17 @@ if __name__ == "__main__":
 
 ### 登録
 
-BFTS 設定 YAML に記述します:
+`ari-core/config/workflow.yaml` の `skills:` ブロックに記述します。`name` は
+パイプラインステージが参照する登録スキル名（同梱エントリは `paper-skill` の
+ように `<領域>-skill` 規約）で、完全一致が必要です — ステージのディスパッチは
+`s.name == stage.skill` で `cfg.skills` を絞り込みます:
 
 ```yaml
 skills:
   - name: your-skill
     path: /abs/path/to/ari-skill-yourskill
+    description: このスキルの説明
+    phase: bfts          # bfts | paper | reproduce、またはそのリスト
 ```
 
 `experiment.md` に記述します:
@@ -139,40 +146,53 @@ skills:
 ## 3. Post-BFTS パイプラインステージの追加
 
 BFTS 探索完了後の自動後処理を追加します。
-`config/pipeline.yaml` のみを編集します。コアコードの変更は不要です。
+`ari-core/config/workflow.yaml` の `pipeline:` ブロックのみを編集します
+（レガシーな `pipeline.yaml` というファイル名もフォールバックとして受理されます）。
+コアコードの変更は不要です。
 
 ```yaml
 pipeline:
-  - stage: generate_paper
-    skill: ari-skill-paper
-    tool: generate_section
+  - stage: write_paper
+    skill: paper-skill
+    tool: write_paper_iterative
+    depends_on: [transform_data]
     enabled: true
-    args:
+    phase: paper
+    inputs:
       venue: arxiv
 
-  - stage: review
-    skill: ari-skill-paper
-    tool: review_section
-    enabled: true
-
   - stage: my_new_stage            # ← ここに追加
-    skill: ari-skill-yourskill
+    skill: your-skill              # `skills:` の name と一致させる
     tool: your_analysis_tool
+    depends_on: [write_paper]
     enabled: true
-    args:
+    phase: paper
+    inputs:
       custom_param: value
+      nodes_json_path: '{{checkpoint_dir}}/nodes_tree.json'
+    outputs:
+      file: '{{checkpoint_dir}}/my_new_stage.json'
 
-  - stage: reproducibility_check
-    skill: ari-skill-paper-re
-    tool: reproducibility_report
+  - stage: ors_grade
+    skill: paper-re-skill
+    tool: grade_with_simplejudge
+    depends_on: [ors_run_reproduce]
     enabled: true
+    phase: paper
 ```
 
-各ステージは以下を受け取ります:
-- `best_node`: BFTS で最高スコアを獲得したノード
-- `all_nodes`: 探索された全ノード
-- `nodes_json_path`: `nodes_tree.json` へのパス
-- YAML で指定された `args`
+ステージのキー:
+- `skill` / `tool` — 登録スキル名と呼び出す MCP ツール。
+- `inputs:`（別名 `input:`）— ツールのキーワード引数。`{{var}}` テンプレート
+  置換が効きます（`{{checkpoint_dir}}`、`{{run_id}}`、`{{ari_root}}` など）。
+  `params:` はそのまま渡され、`<key>_from:` ショートハンドはチェックポイント
+  相対のファイル名を解決した**うえで**その内容を読み込みます（`load_inputs:`
+  も参照）。`args:` というキーはありません。
+- `depends_on:` — オーケストレータはトポロジカルソートを行わずファイル順に
+  ステージを実行するため、宣言順を依存順に保ってください。依存がスキップ
+  されたステージもスキップされます（依存が明示的に `enabled: false` の場合を除く）。
+- `phase:` — `bfts` / `paper` / `reproduce`。GUI グラフのグルーピングに使われます。
+- `outputs.file` — ドライバがツールの戻り値を書き出す先。
 
 ---
 
@@ -198,7 +218,12 @@ llm:
   base_url: http://your-server:8000/v1
 ```
 
-LLM がファンクション/ツール呼び出しをサポートしていない場合は、`config/bfts.yaml` で `tool_choice="none"` を設定し、実験ワークフローで `## Required Workflow` を使用してステップバイステップの実行をガイドしてください。
+`tool_choice` という設定ノブはありません — `ari/llm/client.py` が自分で
+（`required` / `auto` を）設定します。LLM がファンクション/ツール呼び出しを
+サポートしていない場合は CLI シムバックエンド（`ARI_BACKEND=cli-shim`）を
+経由してください。その OpenAI 互換サーバはテキストのツールプロトコルに
+フォールバックします。加えて実験ワークフローで `## Required Workflow` を
+使用してステップバイステップの実行をガイドしてください。
 
 ---
 
@@ -237,10 +262,10 @@ VENUES = [
 ### パイプラインでの使用
 
 ```yaml
-- stage: generate_paper
-  skill: ari-skill-paper
-  tool: generate_section
-  args:
+- stage: write_paper
+  skill: paper-skill
+  tool: write_paper_iterative
+  inputs:
     venue: your_venue   # ← ここで指定
 ```
 
@@ -264,7 +289,8 @@ mpirun -np 128 ./my_parallel_program
 ```
 ```
 
-`config/bfts.yaml` でタイムアウトを増加:
+`ari-core/config/default.yaml`（同梱の BFTS デフォルト）でタイムアウトを増加
+— または実行ごとに `ARI_TIMEOUT_NODE` で上書き:
 
 ```yaml
 bfts:

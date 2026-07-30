@@ -257,6 +257,128 @@ def test_escalation_none_best_node_is_a_noop(tmp_path):
     assert runtime.run_paper_candidate_escalation(None) is None
 
 
+# ── demotion + fixpoint + penalty replay (P2 across re-runs) ────────────────
+
+
+def test_escalation_penalty_demotes_and_fixpoint_escalates_new_winner(tmp_path):
+    # The round is NOT observational: the validated 'high' attack costs 0.3
+    # (plan 06 §5.4). c: 0.8→0.5 flips the ranking to d (0.6) mid-loop, so
+    # the fixpoint must escalate d too (d: 0.6→0.3), and the final winner
+    # (c at 0.5) has been through its own L3 round. Without the loop, d
+    # would have become the seed while escaping escalation entirely.
+    from ari.cli.paper_dispatch import _escalate_paper_candidate_to_fixpoint
+
+    _seed_paper_artifacts(tmp_path)
+    llm = _ScriptedLLM(_ADV, _DEF, _JUDGE_VALID)
+    runtime = _rqgm_runtime(tmp_path, llm=llm)
+    c = _node("node_c", score=0.8)
+    d = _node("node_d", score=0.6)
+
+    final = _escalate_paper_candidate_to_fixpoint(runtime, [c, d])
+
+    assert c.metrics["_scientific_score"] == pytest.approx(0.5)
+    assert d.metrics["_scientific_score"] == pytest.approx(0.3)
+    assert final is c
+    case_log = AdversarialCaseLog(tmp_path)
+    assert case_log.has_round_marker("node_c", kind="paper_candidate")
+    assert case_log.has_round_marker("node_d", kind="paper_candidate")
+
+
+def test_replay_utility_penalties_restores_ranking_on_reload(tmp_path):
+    _seed_paper_artifacts(tmp_path)
+    llm = _ScriptedLLM(_ADV, _DEF, _JUDGE_VALID)
+    runtime = _rqgm_runtime(tmp_path, llm=llm)
+    c = _node("node_c", score=0.8)
+    runtime.run_paper_candidate_escalation(c, all_nodes=[c])
+    assert c.metrics["_scientific_score"] == pytest.approx(0.5)
+
+    # Simulated ``ari paper`` re-run: fresh node objects reload the
+    # UN-penalized score from tree.json (the paper process never writes it
+    # back) and the §5.3 round marker suppresses a second round — only the
+    # replay restores the penalized ranking (P2: same checkpoint, same
+    # winner).
+    c2 = _node("node_c", score=0.8)
+    d2 = _node("node_d", score=0.6)
+    runtime2 = _rqgm_runtime(tmp_path, llm=llm)
+    assert runtime2.replay_utility_penalties([c2, d2]) == 1
+    assert c2.metrics["_scientific_score"] == pytest.approx(0.5)
+    assert c2.metrics["_validated_attack_penalty"] == pytest.approx(0.3)
+    assert c2.metrics["_pre_penalty_score"] == pytest.approx(0.8)
+    # Idempotent: already reflected → nothing re-applied.
+    assert runtime2.replay_utility_penalties([c2, d2]) == 0
+    # A score since rewritten (boundary recompute / #77 re-score) no longer
+    # matches the record's base — conservatively left alone.
+    c3 = _node("node_c", score=0.9)
+    assert runtime2.replay_utility_penalties([c3]) == 0
+    assert c3.metrics["_scientific_score"] == pytest.approx(0.9)
+
+
+def test_replay_skips_superseded_records_after_repair_reversal(tmp_path):
+    # Frontier repair REVERSES a penalty by recomputation: a superseding
+    # record with penalty 0.0 (every validated attack behind the original was
+    # retired) and the base score restored to tree.json. The replay must not
+    # base-match the stale original and re-demote the exonerated node.
+    case_log = AdversarialCaseLog(tmp_path)
+    case_log.append({
+        "record_type": "utility_record", "record_id": "utl_000",
+        "node_id": "node_x", "base_score": 0.8, "penalty": 0.3,
+        "final_score": 0.5, "supersedes": None,
+    })
+    case_log.append({
+        "record_type": "utility_record", "record_id": "utl_000_r000",
+        "node_id": "node_x", "base_score": 0.8, "penalty": 0.0,
+        "final_score": 0.8, "supersedes": "utl_000",
+    })
+    runtime = _rqgm_runtime(tmp_path, llm=None)
+    x = _node("node_x", score=0.8)   # tree.json holds the RESTORED score
+    assert runtime.replay_utility_penalties([x]) == 0
+    assert x.metrics["_scientific_score"] == pytest.approx(0.8)
+    # Partial reversal (surviving penalty > 0) still applies the survivor.
+    case_log.append({
+        "record_type": "utility_record", "record_id": "utl_001",
+        "node_id": "node_y", "base_score": 0.9, "penalty": 0.3,
+        "final_score": 0.6, "supersedes": None,
+    })
+    case_log.append({
+        "record_type": "utility_record", "record_id": "utl_001_r000",
+        "node_id": "node_y", "base_score": 0.9, "penalty": 0.1,
+        "final_score": 0.8, "supersedes": "utl_001",
+    })
+    y = _node("node_y", score=0.9)
+    assert runtime.replay_utility_penalties([y]) == 1
+    assert y.metrics["_scientific_score"] == pytest.approx(0.8)
+
+
+def test_escalation_preserves_a_live_runtimes_node_count(tmp_path):
+    # The one-pass entries escalate on the LIVE exploration runtime, whose
+    # epoch is already open. The restore call exists for a FRESH `ari paper`
+    # process; on a live runtime it would only reset `_last_node_count` to 0
+    # — the value an emergency quarantine stamps as the next epoch's
+    # `node_count_at_open`, poisoning the boundary arithmetic on resume.
+    _seed_paper_artifacts(tmp_path)
+    runtime = _rqgm_runtime(tmp_path, llm=None)
+    runtime.ensure_epoch(25)
+    assert runtime.current_epoch is not None
+    assert runtime._last_node_count == 25
+    opened = runtime.current_epoch.epoch_id
+
+    runtime.run_paper_candidate_escalation(_node(), all_nodes=[_node()])
+
+    assert runtime._last_node_count == 25          # not clobbered
+    assert runtime.current_epoch.epoch_id == opened  # epoch untouched
+
+
+def test_paper_parent_score_ignores_erased_parent(tmp_path):
+    runtime = _rqgm_runtime(tmp_path, llm=None)
+    parent = _node("node_p", score=0.95)
+    parent.metrics["_valid_for_frontier"] = False
+    child = _node("node_c", score=0.7, parent_id="node_p")
+    assert runtime._paper_parent_score(child, [parent, child]) is None
+    parent.metrics.pop("_valid_for_frontier")
+    assert runtime._paper_parent_score(
+        child, [parent, child]) == pytest.approx(0.95)
+
+
 # ── (b) non-RQGM paper run: no adversarial round, no RQGM files ─────────────
 
 

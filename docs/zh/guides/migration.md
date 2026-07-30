@@ -28,7 +28,7 @@ sources:
     role: implementation
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # 迁移指南
@@ -89,7 +89,7 @@ ARI 的检查点格式经历了三个版本的演进。本指南介绍各升级�
 5. **选择 rubric。** 从
    `ari-core/config/reviewer_rubrics/` 中选择一个 YAML 并导出：
    ```bash
-   export ARI_RUBRIC=neurips2025
+   export ARI_RUBRIC=neurips
    ```
    后续的论文评审和 BFTS 评分将使用新的评审维度。
 
@@ -427,7 +427,7 @@ revert 该提交是唯一选项。MN-12（GUI 模式选择）同样没有手段�
   另有两条仅启动时的拒绝规则：没有 goal 的草稿返回 400 `missing_goal`，
   而含有 `ari.mode` 或任何 `rqgm.*` 字段的草稿返回 400 `mode_locked` ——
   在当时，从 GUI 选择治理/执行模式仍是一个悬而未决的决策。
-  *（已被 MN-12 取代：四个模式叶子现在对新运行是被接受的；其余 96 条
+  *（已被 MN-12 取代：四个模式叶子现在对新运行是被接受的；其余 97 条
   `rqgm.*` 路径仍然以 `mode_locked` 拒绝。）*
 - **原因** —— 一次运行在任何东西被写下之前就需要一个身份，而一次双击不应
   分叉出一个实验。
@@ -458,7 +458,7 @@ revert 该提交是唯一选项。MN-12（GUI 模式选择）同样没有手段�
 ### 执行模式与论文模式对新运行可选（MN-12）
 
 - **之前** —— `Execution mode` 类别中的每一个字段以及每一条 `rqgm.*` 路径
-  （共 100 条）都被挡在 GUI 之外：在 Studio 中是一个被禁用的分组，从
+  （共 101 条）都被挡在 GUI 之外：在 Studio 中是一个被禁用的分组，从
   `POST /api/v1/runs` 则返回 400 `mode_locked`。要选择 `ari_rqgm` 或
   `rqgm_archive`，就得手工编辑 `workflow.yaml` 中两个相互联锁的键。
 - **之后** —— 恰好四个叶子开放，构成两组正交的成对意图：
@@ -471,7 +471,7 @@ revert 该提交是唯一选项。MN-12（GUI 模式选择）同样没有手段�
   文档化的 `ARI_MODE` / `ARI_RQGM_ENABLED` / `ARI_PAPER_MODE` /
   `ARI_RQGM_PAPER_ENABLED` 环境变量。启动复核展示的是**已解析**的模式；
   未被采纳的请求会以 `requested → resolved` 的形式、连同解析器的原文警告
-  一起呈现，而不是悄悄地启动回退运行。其余 96 条 `rqgm.*` 治理与调参参数
+  一起呈现，而不是悄悄地启动回退运行。其余 97 条 `rqgm.*` 治理与调参参数
   仍然只能通过配置文件设置 —— 以只读方式连同其生效值可见，启动时依旧返回
   400 `mode_locked` —— RQGM 的 API 面也仍然是只读的。**恢复运行不受影响**：
   持久化在 `{checkpoint}/rqgm_state.json` 中的模式依然胜出（仅允许降级），

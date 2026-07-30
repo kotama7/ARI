@@ -74,6 +74,11 @@ def _exists_cleanurl(p: Path) -> bool:
 
 def check_markdown(findings: list) -> None:
     for md in sorted(DOCS.rglob("*.md")):
+        if any(
+            segment in {"node_modules", ".vitepress"}
+            for segment in md.relative_to(DOCS).parts[:-1]
+        ):
+            continue
         text = md.read_text(encoding="utf-8")
         for m in MD_LINK.finditer(text):
             target = _clean_target(m.group(1))

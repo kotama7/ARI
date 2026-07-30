@@ -31,6 +31,7 @@ from ari.rqgm.events import (
     TIERS,
     TransitionEvent,
     canonical_json,
+    expected_event_hash,
     finalize_event,
     format_component_id,
     format_epoch_id,
@@ -49,12 +50,13 @@ from ari.rqgm.registry import (
     build_prompt_registration_payload,
 )
 from ari.rqgm.state import (
-    EpochState,
     capture_utility_policy,
+    execution_fingerprint,
     epoch_fingerprint,
     epoch_state_from_payload,
     epoch_state_payload,
     freeze_epoch,
+    policy_fingerprint,
 )
 
 
@@ -170,21 +172,29 @@ def test_event_types_closed_set():
 # ── event envelope: timestamps outside the hash ──────────────────────────────
 
 
-def test_finalize_event_hashes_payload_only():
+def test_finalize_event_binds_replay_semantics_but_not_timestamps():
     ev = finalize_event(
         TransitionEvent(event_type="epoch_open", payload={"k": "v"}),
         event_seq=7, prev_event_hash="ab" * 6,
     )
     assert ev.event_id == "evt_000007"
-    assert ev.event_hash == payload_hash({"k": "v"})
+    assert len(ev.event_hash) == 64
+    assert ev.event_hash == expected_event_hash(ev)
     assert ev.prev_event_hash == "ab" * 6
     assert ev.ts is not None and ev.ts_iso  # metadata present ...
-    # ... but not part of the hashed payload:
+    # ... but not part of the hashed commitment:
     assert "ts" not in ev.payload and "ts_iso" not in ev.payload
     line = ev.to_line_dict()
     assert list(line) == ["schema_version", "event_id", "event_type",
-                          "payload", "event_hash", "prev_event_hash",
+                          "transaction_id", "payload", "event_hash",
+                          "prev_event_hash",
                           "ts", "ts_iso"]
+    assert expected_event_hash(dict(line, event_type="epoch_close")) != \
+        ev.event_hash
+    assert expected_event_hash(dict(line, event_id="evt_000008")) != \
+        ev.event_hash
+    assert expected_event_hash(dict(line, prev_event_hash="cd" * 6)) != \
+        ev.event_hash
     # A frozen envelope cannot be edited after finalization.
     with pytest.raises(dataclasses.FrozenInstanceError):
         ev.event_hash = "0" * 12  # type: ignore[misc]
@@ -364,7 +374,11 @@ def test_epoch_fingerprint_deterministic_and_wall_clock_free():
     assert epoch_fingerprint(closed) == a.epoch_fingerprint
     # Golden pins (P2: machine-stable; recomputed from canonical content).
     assert regs.prompts.registry_version() == "852526c4b2fa"
-    assert a.epoch_fingerprint == "2d44a1ab6dd5"
+    assert a.epoch_fingerprint == "746c074fd2fc"
+    assert a.policy_fingerprint == policy_fingerprint(a)
+    assert a.execution_fingerprint == execution_fingerprint(a)
+    assert a.execution_identity["complete"] is False
+    assert a.execution_identity["provider_model_revision"] == "unresolved"
     assert a.utility_policy["utility_policy_hash"] == "b192196ced57"
     # Content changes DO change the fingerprint.
     c = dataclasses.replace(a, active_components={"reviewer": "reviewer_v9"})
@@ -381,6 +395,39 @@ def test_epoch_state_payload_roundtrip_excludes_created_at():
     assert epoch_fingerprint(rebuilt) == st.epoch_fingerprint
     assert rebuilt.created_at == "later"
     assert rebuilt.active_prompt_hashes == st.active_prompt_hashes
+    assert rebuilt.policy_fingerprint == st.policy_fingerprint
+    assert rebuilt.execution_fingerprint == st.execution_fingerprint
+
+
+def test_policy_and_execution_fingerprints_separate_change_classes():
+    from ari.config import ARIConfig
+
+    regs = _fixed_registries()
+    base = ARIConfig(ari={"mode": "ari_rqgm"}, rqgm={"enabled": True})
+    model_changed = ARIConfig(
+        ari={"mode": "ari_rqgm"}, rqgm={"enabled": True},
+        llm={"model": "different-model"},
+    )
+    policy_changed = ARIConfig(
+        ari={"mode": "ari_rqgm"},
+        rqgm={"enabled": True, "transition": {"shadow_min_samples": 9}},
+    )
+    search_changed = ARIConfig(
+        ari={"mode": "ari_rqgm"}, rqgm={"enabled": True},
+        bfts={"max_depth": 9},
+    )
+    a = freeze_epoch(regs, base, epoch_seq=0, node_count=0)
+    b = freeze_epoch(regs, model_changed, epoch_seq=0, node_count=0)
+    c = freeze_epoch(regs, policy_changed, epoch_seq=0, node_count=0)
+    d = freeze_epoch(regs, search_changed, epoch_seq=0, node_count=0)
+    assert a.policy_fingerprint == b.policy_fingerprint
+    assert a.execution_fingerprint != b.execution_fingerprint
+    assert a.policy_fingerprint != c.policy_fingerprint
+    assert a.execution_fingerprint == c.execution_fingerprint
+    assert a.policy_fingerprint == d.policy_fingerprint
+    assert a.execution_fingerprint != d.execution_fingerprint
+    assert len({a.epoch_fingerprint, b.epoch_fingerprint,
+                c.epoch_fingerprint, d.epoch_fingerprint}) == 4
 
 
 def test_capture_utility_policy_reads_typed_config():

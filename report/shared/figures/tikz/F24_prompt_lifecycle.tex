@@ -7,8 +7,8 @@
 % sanction ladder below and the rehabilitation back-edge. Column 3
 % (white) is the terminal sanction chain quarantine -> retired -> banned.
 % The single accent edge (the rationed emphasis role of this figure) is
-% the T16 emergency quarantine — the only transition that may commit
-% mid-epoch. Dotted margin paths: exoneration re-entry (T18) and the
+% T16 emergency quarantine, which forces an immediate close/open boundary.
+% Dotted margin paths: exoneration re-entry (T18) and the
 % clean-room regeneration loop from a retirement back to a fresh
 % candidate. Rejection edges (candidate/shadow -> retired, T2/T5) are
 % omitted from the geometry and stated in the caption.
@@ -56,7 +56,7 @@
   \draw[ariarrow] (quarantine) -- (retired);
   \draw[ariarrow] (retired)    -- (banned);
 
-  % the one accent role: the mid-epoch emergency edge (T16)
+  % the one accent role: the forced emergency boundary edge (T16)
   \draw[ariarrow accent] (warning)
     -- node[arinote] {\figlabel{F24.note.emergency}} (quarantine);
 

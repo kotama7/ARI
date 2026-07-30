@@ -28,7 +28,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_gui_state_facade_freeze.py
     role: test
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # REST API Reference
@@ -302,9 +302,9 @@ operations), grouped for reading; the JSON document remains authoritative.
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/v1/projects` | List projects — one virtual `default` project aggregating the checkpoint search bases. |
-| GET | `/api/v1/projects/{project_id}/runs` | Runs (checkpoints) in one project, as summary cards. |
+| GET | `/api/v1/projects/{project_id}/runs` | Runs (checkpoints) in one project, as summary cards — one portfolio merged across every checkpoint root, newest first (mtime descending). |
 | GET | `/api/v1/runs/{run_id}` | Run detail: summary plus artifact-derived detail fields and a capability map. |
-| GET | `/api/v1/runs/{run_id}/summary` | Summary-card scalars for one run (status, node count, review score, best metric). |
+| GET | `/api/v1/runs/{run_id}/summary` | Summary-card scalars for one run (status, node count, review score, best metric, `has_paper`). |
 | GET | `/api/v1/runs/{run_id}/tree` | BFTS tree — the `tree_view` node list passed through byte-preserving. |
 | GET | `/api/v1/runs/{run_id}/idea` | Pure read of `{ckpt}/idea.json` (ideas / gap analysis / primary metric); absence is `present: false`, never fabricated empties. |
 | GET | `/api/v1/runs/{run_id}/results` | Bounded result read model: paper / review / ORS / EAR presence flags and scalars — never file contents. |
@@ -449,12 +449,23 @@ curl http://localhost:8765/state
 
 ```json
 {
-  "phase": "bfts",
-  "nodes": { "total": 7, "completed": 5, "running": 2, "failed": 0 },
-  "model": { "provider": "ollama", "model": "qwen3:8b" },
-  "cost": { "usd": 0.0, "tokens": 0 }
+  "checkpoint_id": "20260526T101500_matmul",
+  "current_phase": "bfts",
+  "node_count": 7,
+  "nodes": [{ "id": "node-0", "status": "success", "metrics": {} }],
+  "has_paper": false,
+  "llm_model": "ollama_chat/qwen3:8b",
+  "running_pid": 48213,
+  "is_running": true,
+  "exit_code": null,
+  "status_label": "🟢 Running",
+  "cost": { "total": 0.0 }
 }
 ```
+
+Abridged: the frozen facade emits exactly 7 top-level keys with no active
+checkpoint and 35 with a fully-populated one. `nodes` is the tree node list
+(not a count summary) and `cost` is the parsed `cost_summary.json` object.
 
 **Launch a run:**
 
@@ -478,10 +489,18 @@ curl http://localhost:8765/api/checkpoints
 
 ```json
 [
-  { "id": "20260526T101500_matmul", "status": "running", "nodes": 7, "review_score": null },
-  { "id": "20260520T090000_sort",   "status": "done",    "nodes": 12, "review_score": 0.71 }
+  { "id": "20260526T101500_matmul", "path": "workspace/checkpoints/20260526T101500_matmul",
+    "status": "running", "node_count": 7, "review_score": null,
+    "best_metric": null, "mtime": 1779795300 },
+  { "id": "20260520T090000_sort", "path": "workspace/checkpoints/20260520T090000_sort",
+    "status": "completed", "node_count": 12, "review_score": 0.71,
+    "best_metric": null, "mtime": 1779267600, "best_scientific_score": 0.83 }
 ]
 ```
+
+The list is one portfolio across every checkpoint search base, ordered by
+`mtime` descending (newest first). `status` is one of `unknown` / `running` /
+`stopped` / `completed`.
 
 **Error shape** (any legacy endpoint, non-2xx):
 
@@ -518,7 +537,7 @@ curl http://localhost:8765/api/checkpoints
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/checkpoints` | List all checkpoints under `ARI_CHECKPOINT_DIR` parent |
+| GET | `/api/checkpoints` | List all checkpoints across the checkpoint search bases, newest first (`mtime` descending) |
 | GET | `/api/checkpoint/<id>/summary` | Run summary (goal, node count, status, top metric) |
 | GET | `/api/checkpoint/<id>/memory` | Letta memory contents |
 | GET | `/api/checkpoint/<id>/memory_access` | Memory write/read telemetry |
@@ -604,6 +623,30 @@ curl http://localhost:8765/api/checkpoints
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/nodes/<...>/report` | Per-node `node_report.json` |
+
+### PaperBench (v0.7.2)
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/paperbench/papers` | Registered papers (`{"papers": [...]}` from the registry manifest) |
+| GET | `/api/paperbench/arxiv/<arxiv_id>` | Metadata probe against the public arXiv Atom API |
+| GET | `/api/paperbench/papers/<paper_id>/license` | Recorded license / redistribution posture for one paper |
+| POST | `/api/paperbench/papers/import` | Register a new paper in the registry |
+| POST | `/api/paperbench/papers/<paper_id>/metadata` | Merge fields into an existing manifest entry |
+| POST | `/api/paperbench/papers/<paper_id>/delete` | Drop the manifest entry + paper directory (idempotent) |
+| POST | `/api/paperbench/cost-estimate` | Dry-run cost estimate for a prospective run |
+| POST | `/api/paperbench/run` | Enqueue PaperBench jobs for the supplied `paper_ids` |
+| GET | `/api/paperbench/run/<job_id>` | Job status snapshot |
+| GET | `/api/paperbench/run/<job_id>/logs` | SSE log stream for one job (`since=`, `Last-Event-ID`; 300 s window, `: heartbeat`, terminal `event: done`) |
+| GET | `/api/paperbench/run/<job_id>/results` | Per-job result payload |
+| GET, POST | `/api/paperbench/run/<job_id>/report` | Trigger / fetch the audit report (`languages`, `formats` — URL query or POST body) |
+
+Job state is an in-memory table mirrored atomically to
+`{registry_root}/jobs/{job_id}.json` (temp file + `os.replace`, mode `0o600`),
+so a viz-server restart no longer forgets historical jobs. After a restart the
+GET readers fall back to that record read-only; a job persisted in a live
+status (`queued` / `running`) is reported with the additive status
+`interrupted` — workers are never respawned.
 
 ### EAR + publish (v0.7.0)
 

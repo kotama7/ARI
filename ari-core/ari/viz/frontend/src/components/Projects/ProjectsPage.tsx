@@ -7,18 +7,12 @@
 // NO governance data and NO run mutation live here (task 08 owns RQGM; launch
 // stays in the wizard).
 //
-// Navigation handoff: the FIRST action per run row is the run-explicit
-// Overview link ('#/overview?run=<run_id>' — gui_refresh Wave 4b; the URL
-// shape that replaces implicit handoffs, plan 07 §Cross-workspace
-// coordination). Row click still follows the existing legacy handoff used by
-// ExperimentsPage.viewResults (sessionStorage 'ari_selected_checkpoint' + the
-// '#/results' hash) so the legacy Results page picks the run up unchanged.
-// TODO(gui_refresh Wave 4: run-explicit URL): replace the remaining
-// sessionStorage Results handoff with the run-scoped route
-// '#/runs/:runId/results' (plan 01 §Route model; plan 07 §Cross-workspace
-// coordination bans implicit session-storage handoffs in the target state).
+// Navigation handoff: every workspace link carries an explicit run query.
+// The paper/results action opens the complete PDF/editor workspace at
+// '#/results?run=<run_id>'; the legacy sessionStorage handoff remains only as
+// a compatibility fallback for older callers.
 
-import { useT } from '../../i18n';
+import { useI18n } from '../../i18n';
 import { useProjectsV1, useRunsV1 } from '../../hooks/useV1';
 import { useRunEvents } from '../../hooks/useRunEvents';
 import type { EventTopic } from '../../shared/realtime/eventStream';
@@ -41,10 +35,24 @@ function errorText(err: ApiErrorV1, requestIdLabel: string): string {
   return `${err.message}${rid}`;
 }
 
-/** mtime_utc (ISO 8601) -> locale string; raw value when unparseable. */
-function formatFreshness(iso: string): string {
+/** mtime_utc (ISO 8601) -> compact locale string; raw value when unparseable. */
+function formatFreshness(iso: string, language: string): string {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
+  if (Number.isNaN(d.getTime())) return iso;
+  const locale =
+    language === 'ja' ? 'ja-JP' : language === 'zh' ? 'zh-CN' : 'en-US';
+  return new Intl.DateTimeFormat(locale, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(d);
+}
+
+function readableRunName(run: RunSummaryV1): string {
+  return (run.display_name || run.run_id).replace(/_/g, ' ');
 }
 
 /**
@@ -66,7 +74,7 @@ function hasRqgm(run: RunSummaryV1): boolean {
 const LIST_TOPICS: readonly EventTopic[] = ['run'];
 
 export function ProjectsPage() {
-  const t = useT();
+  const { t, currentLang } = useI18n();
   const projectsQ = useProjectsV1();
   // Wave 2a serves exactly one project: the virtual 'default' one (ADR-08).
   const projectId = projectsQ.data?.projects[0]?.project_id ?? '';
@@ -75,9 +83,10 @@ export function ProjectsPage() {
   const { connectionState, lastEventAt } = useRunEvents(null, LIST_TOPICS);
 
   const openRun = (runId: string) => {
-    // Legacy handoff (see header TODO for the Wave-4 replacement).
+    // Keep the old handoff for compatibility while using the explicit,
+    // bookmarkable run URL as the primary contract.
     sessionStorage.setItem('ari_selected_checkpoint', runId);
-    window.location.hash = '#/results';
+    window.location.hash = `#/results?run=${encodeURIComponent(runId)}`;
   };
 
   // Hard error only when there is no snapshot to show; with cached data we
@@ -102,11 +111,27 @@ export function ProjectsPage() {
   const lastUpdatedMs = Math.max(runsQ.dataUpdatedAt || 0, lastEventAt ?? 0);
 
   const runs = runsQ.data?.runs ?? [];
+  const activeCount = runs.filter((run) => run.status === 'running').length;
+  const completeCount = runs.filter((run) =>
+    ['completed', 'success'].includes(run.status),
+  ).length;
+  const attentionCount = runs.filter((run) =>
+    ['failed', 'stopped', 'unknown'].includes(run.status),
+  ).length;
 
   return (
-    <div className="page active" style={{ display: 'block' }}>
-      <h1>{t('projects_title')}</h1>
-      <p className="subtitle">{t('projects_subtitle')}</p>
+    <div className="page active projects-page" style={{ display: 'block' }}>
+      <header className="workspace-header">
+        <div>
+          <div className="workspace-eyebrow">{t('nav_group_portfolio')}</div>
+          <h1>{t('projects_title')}</h1>
+          <p className="subtitle">{t('projects_subtitle')}</p>
+        </div>
+        <a className="btn btn-primary workspace-primary-action" href="#/new">
+          <span aria-hidden="true">{'＋'}</span>
+          {t('nav_new')}
+        </a>
+      </header>
 
       {stale && (
         <div style={{ marginBottom: 16 }}>
@@ -133,13 +158,43 @@ export function ProjectsPage() {
       ) : loading ? (
         <LoadingState />
       ) : (
-        <Card>
+        <>
+          <section
+            className="projects-summary-grid"
+            aria-label={t('projects_title')}
+          >
+            <div className="projects-summary-item">
+              <span>{t('projects_summary_all')}</span>
+              <strong>{runs.length}</strong>
+            </div>
+            <div className="projects-summary-item is-active">
+              <span>{t('projects_summary_active')}</span>
+              <strong>{activeCount}</strong>
+            </div>
+            <div className="projects-summary-item is-complete">
+              <span>{t('projects_summary_complete')}</span>
+              <strong>{completeCount}</strong>
+            </div>
+            <div className="projects-summary-item is-attention">
+              <span>{t('projects_summary_attention')}</span>
+              <strong>{attentionCount}</strong>
+            </div>
+          </section>
+
+          <Card className="projects-portfolio-card">
+            <div className="projects-section-header">
+              <div>
+                <h2>{t('projects_runs_heading')}</h2>
+                <span>{runs.length}</span>
+              </div>
+            </div>
           {runs.length === 0 ? (
             <div>
               <EmptyState icon={'📁'} message={t('projects_empty')} />
               {/* Next actions (plan 07 §Projects: create/import/resume).
                   Plain links; all three land on the launch surface for now. */}
               <div
+                className="projects-empty-actions"
                 style={{
                   display: 'flex',
                   gap: 16,
@@ -153,7 +208,7 @@ export function ProjectsPage() {
               </div>
             </div>
           ) : (
-            <table>
+            <table className="projects-table">
               <thead>
                 <tr>
                   <th>{t('projects_run_id')}</th>
@@ -162,50 +217,63 @@ export function ProjectsPage() {
                   <th>{t('review_score')}</th>
                   <th>{t('projects_best_metric')}</th>
                   <th>{t('projects_freshness')}</th>
-                  <th>{t('projects_capabilities')}</th>
-                  <th>{t('projects_overview_link')}</th>
-                  <th>{t('projects_config_link')}</th>
+                  <th>{t('projects_actions')}</th>
                 </tr>
               </thead>
               <tbody>
-                {runs.map((run) => (
-                  <tr
-                    key={run.run_id}
-                    onClick={() => openRun(run.run_id)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <td>
-                      <code style={{ fontSize: '.8rem' }}>{run.run_id}</code>
+                {runs.map((run) => {
+                  const readableName = readableRunName(run);
+                  return (
+                    <tr
+                      key={run.run_id}
+                      onClick={() => openRun(run.run_id)}
+                      className="projects-run-row"
+                    >
+                    <td data-label={t('projects_run_id')}>
+                      <div className="projects-run-identity">
+                        {readableName !== run.run_id && (
+                          <strong className="projects-run-name">
+                            {readableName}
+                          </strong>
+                        )}
+                        <code>{run.run_id}</code>
+                        {hasRqgm(run) && (
+                          <Badge variant="blue">RQGM</Badge>
+                        )}
+                        {run.has_paper && (
+                          <Badge variant="green">{t('projects_paper_badge')}</Badge>
+                        )}
+                      </div>
                     </td>
-                    <td>
+                    <td data-label={t('status')}>
                       <StatusBadge status={run.status} />
                     </td>
-                    <td>{run.node_count}</td>
-                    <td>
+                    <td data-label={t('projects_nodes')}>{run.node_count}</td>
+                    <td data-label={t('review_score')}>
                       {run.review_score != null ? (
                         <strong>{run.review_score}</strong>
                       ) : (
                         <span style={{ opacity: 0.4 }}>—</span>
                       )}
                     </td>
-                    <td>
+                    <td data-label={t('projects_best_metric')}>
                       {run.best_metric != null ? (
                         run.best_metric
                       ) : (
                         <span style={{ opacity: 0.4 }}>—</span>
                       )}
                     </td>
-                    <td style={{ color: 'var(--muted)', fontSize: '.8rem' }}>
-                      {formatFreshness(run.mtime_utc)}
+                    <td
+                      data-label={t('projects_freshness')}
+                      style={{ color: 'var(--muted)', fontSize: '.8rem' }}
+                    >
+                      {formatFreshness(run.mtime_utc, currentLang)}
                     </td>
-                    <td>
-                      {hasRqgm(run) ? (
-                        <Badge variant="blue">RQGM</Badge>
-                      ) : (
-                        <span style={{ opacity: 0.4 }}>—</span>
-                      )}
-                    </td>
-                    <td>
+                    <td
+                      className="projects-actions-cell"
+                      data-label={t('projects_actions')}
+                    >
+                      <div className="projects-action-links">
                       {/* FIRST action (Wave 4b): the run-explicit v2 Overview
                           workspace — the URL shape replacing the sessionStorage
                           handoff direction (plan 07 §Cross-workspace
@@ -216,8 +284,17 @@ export function ProjectsPage() {
                       >
                         {t('projects_overview_link')}
                       </a>
-                    </td>
-                    <td>
+                      {/* Complete generated-paper and result workspace. This
+                          stays visible for every run; the label makes an
+                          existing paper explicit when the API reports one. */}
+                      <a
+                        href={`#/results?run=${encodeURIComponent(run.run_id)}`}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {run.has_paper
+                          ? t('projects_paper_link')
+                          : t('projects_results_link')}
+                      </a>
                       {/* Read-only effective-config browser (Wave 3b). The
                           run-explicit ?run= query IS the target-state URL
                           shape — no sessionStorage handoff here. */}
@@ -227,13 +304,16 @@ export function ProjectsPage() {
                       >
                         {t('projects_config_link')}
                       </a>
+                      </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           )}
-        </Card>
+          </Card>
+        </>
       )}
     </div>
   );

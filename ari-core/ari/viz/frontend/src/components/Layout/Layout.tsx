@@ -12,7 +12,7 @@ export function Layout({
   return (
     <>
       <Sidebar guiV2={guiV2} />
-      <div id="main">{children}</div>
+      <main id="main">{children}</main>
     </>
   );
 }

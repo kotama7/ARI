@@ -34,7 +34,7 @@ sources:
     role: prompt
   - path: ari-core/ari/prompts/governance
     role: prompt
-last_verified: 2026-07-16
+last_verified: 2026-07-29
 ---
 
 # Constitutional ARI-RQGM 架构
@@ -51,6 +51,26 @@ Constitutional ARI-RQGM 是 ARI 可选启用的 `ari_rqgm` 执行模式：包裹
 > [RQGM 运行时演练](rqgm_runtime_walkthrough.md)** —— 逐步追踪一次
 > 真实的 `ari_rqgm` 运行（启动 → 创始注册 → 逐节点钩子 → 边界 →
 > 什么落在磁盘上），附事件日志摘录和一份可观测性速查表。
+
+---
+
+## 完整审计网络
+
+[![Constitutional ARI-RQGM 完整审计网络。列出标准模式二十个及论文模式新增三个可问责的登记组件，并把逐节点对抗审查、追加式审计账本、纪元边界的证据采纳、动议、辩护、裁决、内核自审计、登记转换、影响修复和最终主张验证连接起来。](../../assets/images/rqgm/rqgm_audit_flow_zh.svg)](../../assets/images/rqgm/rqgm_audit_flow_zh.svg)
+
+左侧列出全部可问责对象：研究、选择、效用和可选论文角色；八个对抗审查
+角色、辩护角色与制品裁决角色；三个治理司法角色；以及五个元角色。右侧
+展示这些组件如何形成一个网络，而不是六项孤立检查。每个治理角色的输出
+都进入追加式审计账本。逐节点攻击只有经过辩护和制品裁决后才能成为证据。
+在纪元边界，确定性可靠性汇总和证据管理员把证据交给只能由审计员提交的
+动议、每项动议的一次辩护，以及受基准盘约束的治理裁决。司法程序产生的
+记录也回到账本，并由固定内核重新自审计。
+
+最下方把建议与执行分开。治理报告交给唯一的登记转换器解析；固定内核验证
+T1–T21 后，转换才会原子提交，退役则触发影响修复。固定主张验证器独立地在
+定稿前检查论文。未闭合路径也明确标出：唯一审计员不能针对同角色的自己
+提交动议；治理裁决者成为对象时必须回避，却没有独立替代者。两者都需要
+外部裁决。选择图像可按原始尺寸打开。
 
 ---
 
@@ -83,19 +103,20 @@ Constitutional ARI-RQGM 建立在四项定义性承诺之上。本页的每个�
    *树*，而对其前沿排名的效用策略并非运行常量 —— 它是一个被治理的对象，
    逐纪元冻结、在边界通过与进化提示词相同的生命周期被改写
    （见[被治理的效用进化](#被治理的效用进化)）。*后果*那一半一直是活的：
-   一次改写会退役旧策略，`frontier_repair` 会使在该策略下评分的每个节点
-   失效。*原因*那一半 —— 一个提议后继的 `policy_mutator` —— 是 Task 14。
+   一次改写会退役旧策略，`frontier_repair` 会从已保存的 raw axis 按新标准
+   重评所有可比较节点，只作废无法安全重评的节点。*原因*侧是提出后继策略的
+   受治理 `policy_mutator`。
 2. **对抗者攻击工件*和*评估；禁止合谋。**七种探索对抗者攻击节点的
    *工件*；第八种 `paper_self_preference` 攻击*评审者的判定*（评审者过度
    接受的一份 AI 草稿）。分数策略绝不从前沿自身的分数中提出 —— 一个被
    调校成讨好它已经生成的节点的策略，正是确定性 / 无合谋原则所禁止的
    自我指涉循环（`PolicyMutator` 只看得到边界已抽象化的证据，
    `utility_evolution.py`）。
-3. **对抗者自身就在审计网络之中 —— 没有绝对统治者。**攻击的组件、提议
-   分数的组件、审计的组件，本身都是被注册的、可制裁的、可进化的行：
-   `policy_mutator_v1` 是一个创始元组件，其自身模板像其他任何组件一样
-   进化，针对它的治理建议会解析为一次普通制裁。没有任何东西置身于转换表
-   之外。
+3. **对抗者自身就在审计网络之中 —— 没有绝对统治者。**负责攻击、提议
+   分数或运行司法机构的组件都已注册且可受制裁。`policy_mutator_v1` 等
+   可进化角色可以产生后继者；Auditor、Evidence Clerk 与 Governance Judge
+   没有提示词变异的后继路径，但仍可被警告、退役或封禁。若 Governance
+   Judge 自身是 motion 的目标，它必须回避。没有任何东西置身于转换表之外。
 4. **一切受宪法约束；弹劾遵循宪法。**每一次状态变更都由永不进化的内核
    依据由 `constitution_hash` 钉住的冻结规则表校验；一个健康的 behavioral
    组件失去其席位的唯一途径，是 Auditor 提交、在边界裁决的
@@ -107,13 +128,15 @@ Constitutional ARI-RQGM 建立在四项定义性承诺之上。本页的每个�
 ## 三个层
 
 角色与层级词汇表是 `ari/rqgm/events.py` 中的封闭集合
-（`EVOLVABLE_ROLES`、`FIXED_ROLES`、`TIERS`）；组件 id 形如
-`{role}_v{N}`，提示词 id 形如 `{role}_prompt_v{N}`。
+（`EVOLVABLE_ROLES`、`GOVERNANCE_ACTOR_ROLES`、`FIXED_ROLES`、
+`TIERS`）；组件 id 形如 `{role}_v{N}`，提示词 id 形如
+`{role}_prompt_v{N}`。
 
 | 层 | 层级 | 角色 | 是否进化？ |
 |---|---|---|---|
 | **0 —— 宪法层（固定）** | `fixed` | `constitutional_kernel`、`fixed_verifier`（确定性的 `results.json` 合并 / 指标重算路径）、`audit_log` | **永不。**仅为溯源而注册；规则表存在于代码中（`kernel_rules.py`、`transition_rules.py`、`clean_room_rules.py`、`meta_rules.py`），由 `constitution_hash` 钉住 —— 任何规则修改都必须在 `tests/test_rqgm_kernel.py` 中显式重钉。 |
 | **1 —— 制度层** | `institutional` | `generator`、`reviewer`、`adversary`、`defender`、`judge`、`router`；被治理的评估基准 `utility_policy`；以及（仅 paper 模式）`paper_writer`、`paper_reviewer` | 是 —— 通过提示词进化生命周期，且仅在纪元边界。`utility_policy` 不是提示词定义的（其在任者是一份策略*文档*），但在完全相同的意义上可进化：一个在任者，仅通过边界处的转换引擎被置换。 |
+| **1 —— 治理司法** | `institutional` | `auditor`、`evidence_clerk`、`governance_judge` | 没有后继生成路径，但并非不可变：三者均为创始、可由注册表寻址、可受制裁的行动者。judge 自身为 motion 目标时必须回避。 |
 | **2 —— 元层** | `meta` | `prompt_mutator`、`clean_room_generator`、`replay_selector`、`failure_summary_compressor`、`policy_mutator` | 是 —— 进化第 1 层的 agent 本身也被治理，且权限严格更窄（见不变量）。`policy_mutator` 提议后继效用策略。 |
 
 角色与层级词汇表从第一天起就是封闭集合；Task 14 与 paper 阶段解冻了
@@ -141,7 +164,7 @@ Constitutional ARI-RQGM 建立在四项定义性承诺之上。本页的每个�
 |---|---|---|
 | `ConstitutionalKernel` | `ari/rqgm/kernel.py` | 第 0 层。十二个封闭的 `validate_*` 入口（记录 schema、哈希、能力、纪元不变性、转换、角色分离、选择性擦除、审计日志完整性、洁净室 bundle、污染、权限不扩张、上下文范围），加上执法适配器（`should_block`、fail-open 的 `per_node_warn_check`、预检的 `CapabilityGatedMCPClient`）。确定性且不可进化：零 LLM 调用、零网络、零挂钟决策。`rqgm.kernel.enforcement: audit_only` 将所有上下文降级为仅警告并记录。 |
 | `GovernanceOrchestrator` | `ari/rqgm/governance/` | 纪元边界审计：`audit_epoch(...) -> GovernanceReport`，一条九步流水线（观察 → 评估可靠性 → 汇集证据 → 检控 → 辩护 → 裁决 → 重放池更新 → 自我审计 → 报告）。每个 LLM 决策（Auditor / Defender / GovernanceJudge，提示词位于 `ari/prompts/governance/`）都有完整的确定性回退，因此 `llm=None` 仍能产出完整的审计。报告只是转换引擎的*咨询性输入* —— 编排器从不改动注册表。 |
-| `RegistryTransitionEngine` | `ari/rqgm/transition_engine.py` | **唯一**的注册表状态写入方。先对固定 T1–T21 表做纯 `resolve_transition(...)`，再执行五步边界协议：冻结 → 解析 → 内核校验 → prepare → 在纪元事务上 apply/commit。`emergency_quarantine` 是唯一的纪元中途路径。 |
+| `RegistryTransitionEngine` | `ari/rqgm/transition_engine.py` | **唯一**的注册表状态写入方。先对固定 T1–T21 表做纯 `resolve_transition(...)`，再执行五步边界协议：冻结 → 解析 → 内核校验 → prepare → 在纪元事务上 apply/commit。T16 `emergency_quarantine` 强制关闭当前纪元，并在同一事务中开启具有新指纹的纪元。 |
 | `FrontierRepairEngine` | `ari/rqgm/frontier_repair.py` | 在一次带退役的已提交转换之后：纯函数 `trace_dependents` 的过期闭包与 `rebuild_frontier`，发出 `SelectiveErasureEvent` / `FrontierRebuildEvent` 记录。失败阶梯：内核校验失败 → 保守式再修复（被标记的节点被丢弃）→ 仅排空式降级（`expansion_halted`：运行完成挂起的工作但不再扩展）。绝不崩溃。 |
 
 支撑组件挂在同一运行时上：`ProposalRouter` + 各生成器
@@ -183,22 +206,28 @@ flowchart TB
 ```
 
 1. **冻结。**`freeze_epoch`（`ari/rqgm/state.py`）把活跃组件集合、
-   提示词哈希和效用策略钉入一个不可变的 `EpochState`，带确定性的
-   `epoch_fingerprint`。被冻结的策略是**已采纳**的那一份 ——
+   提示词哈希和效用策略钉入一个不可变的 `EpochState`。`policy_fingerprint`
+   绑定服务集合和已解析治理设置；`execution_fingerprint` 绑定声明的模型、
+   解码、工具、环境与数据快照，缺失外部修订时记为 `unresolved`。
+   `epoch_fingerprint` 合成两者。被冻结的策略是**已采纳**的那一份 ——
    `capture_utility_policy(cfg, registries=)` 读取活跃的 `utility_policy`
    条目，仅在纪元 0 或尚未采纳任何策略时回退到解析后的 `cfg`（与
    Task 14 之前的函数逐字节一致）。纪元 id 为 `epoch_000`、`epoch_001`、…
    在全新的检查点上，**创始注册**会在启动时、`epoch_000` 开启之前
    运行：一笔事务把冻结的创始表（`ari/rqgm/prompt_spec.py` ——
-   29 个提示词、16 个组件；其中 `utility_policy_prompt_v1` 源自解析后的配置，
-   其余 28 个提示词行与全部 16 个组件行是冻结的代码常量，plan 14 §5.3）注册到 `rqgm_transitions.jsonl` 上，
+   探索启动为 32 个提示词或规则记录、20 个组件；其中 31 个提示词行与全部
+   20 个组件行是冻结的代码常量，`utility_policy_prompt_v1` 源自解析后的
+   配置）注册到 `rqgm_transitions.jsonl` 上，
    因此第一次冻结携带的是非空的活跃集合。只写一次：resume 只重放
-   它，绝不重新注册。
+   它，绝不重新注册。paper archive 启动再加入
+   `paper_writer`、`paper_reviewer`、`paper_self_preference` 三组 gated
+   提示词与组件，总计 35／23 个。
 2. **搜索。**BFTS 与 `simple_bfts` 中完全一致地探索。每个节点上有
    三个尽力而为的钩子：扩展方向被捕获为 `ProposalRecord`，被评估的
-   节点获得一轮对抗回合（七种对抗者类型之一攻击该节点的*工件*；
-   辩护者回应；`ArtifactJudge` 裁决；只有经裁判验证的攻击才施加
-   有界的分数惩罚），以及逐节点的内核警告检查。
+   节点获得一轮对抗回合（七种探索对抗者之一攻击该节点的*工件*；
+   paper 专用的第八种攻击评审者判定；辩护者回应；`ArtifactJudge`
+   裁决；只有经裁判验证的攻击才施加有界的分数惩罚），以及逐节点的
+   内核警告检查。
 3. **审计。**在边界处*先*审计将要关闭的纪元，因此
    `GovernanceReport` 对转换引擎可用。
 4. **元步骤。**元层（提示词变异器、洁净室生成器、…）在沙箱中运行，
@@ -345,11 +374,10 @@ RQGM 只**读取**其发现（`run_hard_gate(write=False)`，不持久化、不�
 构造时从被牵连的角色解析到纪元冻结的 `paper_reviewer_v1` /
 `paper_writer_v1`（`ari/rqgm/adversarial/round.py`）。这闭合了对所有对抗者
 而言在上游一直死掉的 `validated_attack → validated_attack_involvement →
-classify_target →` 弹劾链。*诚实的限制：*它在生产中只对
-`paper_self_preference` 触发，其目标是已注册的创始组件。七种探索
-对抗者攻击由 `generator` 角色所著的工件，而 `generator` **没有已注册的
-组件**，因此它们的链**按设计**保持惰性（注册一个 generator 组件是另一
-项决定）。
+classify_target →` 弹劾链。研究 `generator` 现在是已注册的创始组件。
+每个受治理节点在持久化或受攻击前，只写一次生产组件、提示词摘要和纪元。
+七类探索攻击仅在该来源与纪元冻结 generator 一致时绑定；旧记录、缺失或
+不匹配来源保持无目标。`paper_self_preference` 同样解析到已注册论文角色。
 
 **两个有责组件，一个回合。**一份被过度接受、且 claim gate *同时*判定为
 不忠实的草稿有**两个**有责组件：接受它的评审者，与产出它的写作器。因此
@@ -407,10 +435,10 @@ max_expansions)` 在**任意**深度都成为 BFTS 的 `max_total_nodes`（更�
    变更。`validate_epoch_invariance` 从事件日志重新推导这一点。
    （效用策略可以在*边界*变更 —— 即对旧 I-11「恒定分数」不变量的废除，
    [见上](#被治理的效用进化) —— 但在纪元内绝不变更。）
-2. **仅边界转换，一个例外。**每次状态变更都在纪元边界事务内提交。
-   唯一的纪元中途边是 `emergency_quarantine`（规则 T16：
-   `probationary_active` / `active` / `warning` / `probation` →
-   `quarantine`），仅限内核级关键触发码，同样被记录并经内核校验。
+2. **所有转换都在边界提交。**每次状态变更都在纪元边界事务内提交。
+   `emergency_quarantine`（规则 T16：`probationary_active` / `active` /
+   `warning` / `probation` → `quarantine`）仅限内核严重违规；它把关闭
+   当前纪元、隔离与开启具有新指纹的下一纪元作为一个紧急边界提交。
 3. **单一注册表写入方。**只有 `RegistryTransitionEngine` 写组件/
    提示词状态（全局不变量 10）—— 在存储层结构性强制
    （`ari/rqgm/store.py`，仅事件重放式注册表变更）并由内核校验。
@@ -420,18 +448,58 @@ max_expansions)` 在**任意**深度都成为 BFTS 的 `max_total_nodes`（更�
    评分效果；只有经裁判验证的攻击才进入有界的效用惩罚（纪元冻结
    策略：`rqgm.adversarial.penalty.cap`、按严重度加权），且惩罚前
    分数保存在增量指标键中。裁判失败回退为 `invalid` —— 无惩罚。
-   对抗者攻击的是*工件*，从不攻击组件：攻击 schema 没有组件字段。
+   对抗者攻击的是*工件*，从不攻击组件：raw-attack schema 没有 component
+   target。只有裁决后由 judge 写成的 `ValidatedAttackRecord` 才可添加可选
+   `target_component_id`，在不改变攻击对象的前提下绑定责任主体。
 5. **禁止同角色指控。**同角色的输出只能作为观察。在治理记录构建器
    中构造性强制，并由内核的 `validate_role_separation` 权威校验；
    不可采纳的证据在证据汇集阶段被排除。
+   作者标识不取自模型输出，而由可信运行时的类型化构造器根据当前组件
+   加盖。但这只是同一进程内的应用边界，并非数字签名、独立 OS 用户、
+   独立进程或 IPC 沙箱隔离。运行时、检查点和工具调用边界属于当前可信
+   计算基。
 6. **选择性擦除是仅逻辑的。**什么都不物理删除。过期状态存在于审计
    日志事件、派生的 `rqgm_erasure_state.json` 汇总，以及通过
    `tree.json` 持久化的增量 `Node.metrics` 哨兵键（`_stale`、
    `_valid_for_frontier`、`_stale_reason`、`_erasure_event_id`）
    中。擦除是槽位范围的（退役一个 reviewer 只使该 reviewer 的记录
-   及其下游效用后果过期，绝不波及无关工作），效用在*原始*纪元的
-   冻结权重下由幸存输入重算 —— 无法重算时，节点转为前沿无效
-   （擦除，不重新缩放）。
+   及其下游效用后果过期，绝不波及无关工作）。已评分证据变为 stale 时，
+   效用以*原*纪元冻结权重从幸存输入重算。效用策略退役是刻意的例外：
+   所有盖有退役策略印记的节点，都从已保存且与策略无关的 `_axis_scores`
+   按新冻结标准重新评分。缺失或不可用的 raw axis 会 fail-closed 为作废；
+   旧 composite 不会被换算或继续存活。
+   由于擦除是仅逻辑的，每个*晋升*节点的消费者都必须亲自读取哨兵键。
+   扩展会读取（`BFTS.should_prune`、`PaperArchiveStrategy.should_prune`），
+   选择也会读取：`verified_context.select_best_node` —— paper 预检时被
+   升级的 paper 候选、归档种子节点、归档的 best-belief 与跨回合获胜者，
+   以及为论文声明提供依据的 `verified_context.json` 谱系 —— 加上 paper
+   上下文构建器（`build_best_nodes_context`）和技能侧的获胜者解析器
+   （ari-skill-transform 的 science-data/EAR 选择、ari-skill-paper 的
+   implementation-details 块）。若所有候选都已被擦除，选择返回无获胜者，
+   而不是回退到被污染的证据（与 RQGM 论文的物理删除语义一致：被擦除的
+   记录因不复存在而不可能被选中）；此前写下的、点名一个此后被擦除的
+   获胜者的 `verified_context.json` 会被删除，而不是留下来为论文提供
+   依据。这解决了 plan 10 §3 悬置的问题 —— `get_verified_context` 的
+   消费者是否按过期集合过滤：它们过滤，在 `select_best_node` 处，
+   无条件地（该键只由 RQGM 机制写入 —— `ari_rqgm` 探索引擎或
+   `rqgm_archive` 的 paper 运行时 —— 因此该子句在默认路径上是惰性的）。
+   由于擦除不会自动传播到后代，有效的获胜者可能带有已擦除的祖先：
+   交给记忆层的谱系会剔除已知被擦除的祖先，节点级 working-context
+   注入也会在任何记忆读取之前剔除被擦除的祖先 id（经由
+   `rqgm_erasure_state.json` 汇总）。记忆层自身也读取同一份汇总，并区分
+   两种情形。读取被擦除节点的条目会拿到**带标签**的结果
+   （`erased` / `erasure_event_id` / `erasure_note`，同时写在顶层与
+   `metadata` 中，使其不会被重新投影剥掉），而不是被清空 —— 擦除撤回的是
+   判断的资格，而非实验记录下来的测量值。把记忆*推入*决策的路径则一律
+   hard-exclude：论文声明落地（`claims` / `usable_for_claims`，在
+   `build_verified_context` 内部过滤，因此进程内调用方同样受覆盖）、
+   "既定结论"注入、最佳节点选择。`limitations` 则有意保留被擦除的条目
+   （带标签）—— 对一个后来被判无效的方向作出诚实记录，正是该小节的职责。
+   这就是 plan 10 §3 悬置问题的最终形态。
+
+   该保证针对的是*溯源*，而非被改写过的文本：存活节点读到带标签的条目后
+   用自己的话复述，就会在干净的谱系上产生一条无标记的记录。没有任何机制
+   让标记穿过再创作传播，擦除机制也不作此主张。
 7. **洁净室污染规则。**为已退役角色生成替代提示词时，只能使用由
    固定层组装的、封闭且经内核筛查的输入 bundle（已提交的目录 +
    抽象故障摘要）—— 绝不使用注册表中的提示词文本。已退役提示词
@@ -443,16 +511,18 @@ max_expansions)` 在**任意**深度都成为 BFTS 的 `max_total_nodes`（更�
 8. **元层权限限制。**元 agent 在只读沙箱中运行
    （`MetaSandboxMCPProxy` 白名单 + 一个合成的提交工具），其能力
    标志默认拒绝、硬性拒绝的标志为 const-false
-   （`ari/rqgm/meta_rules.py`），内核以子集运算检查权限不扩张
-   （不变量 18），且每个元输出都以 `status: candidate` 进入生命
-   周期 —— 元层可以提议，绝不能任命。
+   （`ari/rqgm/meta_rules.py`），内核把每个采纳候选声明的能力与同角色的
+   serving incumbent 比较，执行权限不扩张校验（若无 incumbent，则以固定
+   capability matrix 为上限）。每个元输出都以 `status: candidate`
+   进入生命周期 —— 元层可以提议，绝不能任命。
 9. **固定层永不进化。**内核、固定校验器、审计日志、转换/严重度/
    能力表、选择性擦除规则和 claim-evidence 硬门都不是进化目标；
    `constitution_hash` 钉住这些表。
-10. **阻断制度，绝不阻断研究。**硬阻断集合只否决 RQGM 状态变更
-    （转换提交、注册表写入、前沿重建提交、候选晋升）；节点执行
-    永不被否决。所有运行循环钩子都是尽力而为/fail-open 的 ——
-    治理失败降级的是治理，不是实验。
+10. **状态变更失败时关闭。**硬阻断集合否决 RQGM 状态变更（转换提交、
+    注册表写入、前沿重建提交、候选晋升）。继续研究仅在无外部副作用的
+    候选生成和本地计算中是安全的运维条件。外部 API、设备或生产数据的
+    不可逆操作需要在治理失败时关闭的另一固定门；当前内核并不强制这种
+    环境隔离。
 11. **确定性（P2）。**内核裁定、转换解析、前沿修复、预算级别、
     影子采样（基于哈希）和评估指标都是纯函数 —— 无随机性、无挂钟
     决策、重放时逐字节一致。

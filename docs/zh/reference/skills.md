@@ -14,7 +14,7 @@ sources:
     role: config
   - path: ari-skill-idea/src/server.py
     role: implementation
-last_verified: 2026-07-10
+last_verified: 2026-07-30
 ---
 
 # MCP 技能参考
@@ -65,6 +65,14 @@ result = job_status("12345")
 
 取消正在运行或等待的 SLURM 作业。
 
+#### `probe_platform_capabilities(checkpoint_dir, partition="", tools="")`
+
+在**计算分区上**探测工具可用性（`command -v`），并将结果缓存到
+`{checkpoint_dir}/platform_capabilities.json`。设计上尽力而为：任何失败
+（无分区、缺少 `srun`、排队超时）都返回 `{"status": "skipped", ...}` 且不写
+任何文件；已有缓存则直接返回 `{"status": "cached", ...}`，不再重新探测。
+claims 抽取器会读取该缓存，从而不会声明依赖平台上确实缺失的工具的证据。
+
 #### `singularity_build(definition_file, output_path, partition)`
 
 从定义文件构建 Singularity 容器。
@@ -95,14 +103,25 @@ result = job_status("12345")
 
 #### `survey(topic, max_papers=8)`
 
-搜索 Semantic Scholar 获取相关论文。确定性（无 LLM）。
+先前工作调研。确定性（无 LLM）。按顺序尝试以下来源：idea 阶段已为本次
+run 的主题构建好的冻结 `virsci_snapshot` 语料库；然后是实时 Semantic
+Scholar 查询（先 HTTP，再用 `semanticscholar` 客户端重试）；最后是
+**arXiv 回退**——这样无 key 或被限流的 S2 就不会悄悄抹掉先前工作的支撑。
+随后会用被引论文对靠前的结果做 2 跳扩充。任何降级（包括最终 0 篇）都会
+在 stderr 上报告。
 
 ```python
 result = survey("OpenMP compiler optimization HPC benchmarks")
 # Returns: {"papers": [{"title": "...", "abstract": "...", "url": "..."}]}
 ```
 
-需要 `S2_API_KEY` 环境变量以获得更高的 Semantic Scholar 速率限制。
+设置 `S2_API_KEY` 可获得更高的 Semantic Scholar 速率限制。`max_papers`
+上限为 15。
+
+`survey` 和 `generate_ideas` 是该技能**仅有的**已注册 MCP 工具；
+`_load_virsci_snapshot_papers` 只是 `survey` 直接调用的普通辅助函数，绝不
+能对 agent 可见。`tests/test_server.py` 通过 `mcp.list_tools()` 同时钉住
+这两点（`@mcp.tool()` 装饰器丢失/错位的问题曾经上线过）。
 
 #### `generate_ideas(topic, papers, experiment_context="", n_ideas=3, n_agents=4, max_discussion_rounds=2, max_recursion_depth=0)`
 

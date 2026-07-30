@@ -8,7 +8,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_paper_eval.py
     role: test
-last_verified: 2026-07-16
+last_verified: 2026-07-29
 ---
 
 # RQGM Evaluation and Ablation
@@ -57,8 +57,9 @@ pinned models, identical node budget, ≥ 3 paired seeds
 (`eval_defaults.seeds`). The harness enforces this mechanically:
 `eval_defaults.bfts` (`max_total_nodes` / `max_depth`) is merged under every
 condition overlay, and `eval_defaults.models` is resolved once at campaign
-start into the `ARI_MODEL_CODING` / `ARI_MODEL_BFTS` / `ARI_MODEL_EVAL` env
-vars stamped on every spawned run. Fairness is by **node budget**;
+start into the `ARI_MODEL_CODING` / `ARI_MODEL_BFTS` / `ARI_MODEL_EVAL` /
+`ARI_MODEL_PAPER` / `ARI_MODEL_RUBRIC` env vars stamped on every spawned run.
+Fairness is by **node budget**;
 token/dollar/wall-clock are *reported*, never equalized, so RQGM overhead
 stays visible. Every run gets a fresh checkpoint — no resume, no
 `skip_if_exists` reuse across conditions.
@@ -145,6 +146,46 @@ The marginal reads are: **search value** = B_archive_no_coevo − B0_paper_linea
 **co-evolution value** = B_full − B_archive_no_coevo. As everywhere here, cost
 is *reported*, never equalized.
 
+### RQGM-paper-aligned conditions (P0–P4)
+
+For the paper's main comparison, use the five presets in
+`rqgm_paper_conditions` rather than replacing `paper.mode` with five product
+modes. All arms run `rqgm_archive` with the same archive and eight paper
+epochs. `rqgm.eval.paper_ablation.condition_id` is inert unless
+`rqgm.eval.enabled: true`.
+
+| Condition | Writer evolution | Reviewer replacement | Adversarial pool | Selective erasure | Constitutional enforcement |
+|---|---:|---:|---:|---:|---:|
+| P0_hgm_h_fixed_critic | yes | no | no | no | no |
+| P1_rqgm_replacement_only | yes | yes | no | yes | no |
+| P2_rqgm_no_erasure | yes | yes | yes | no | no |
+| P3_rqgm_full | yes | yes | yes | yes | no |
+| P4_constitutional_rqgm | yes | yes | yes | yes | yes |
+
+P0/P3/P4 are the headline comparison; P1/P2 are mechanism-isolation
+ablations. “Constitutional enforcement off” means that the fixed kernel stays
+installed in `audit_only` mode and cannot block a transition. P4 uses
+`standard` enforcement. This preserves observability without introducing an
+unsafe production kernel-off path. The runtime rejects a mislabeled P arm when
+its ordinary switches do not match this table. P0 additionally filters
+`paper_reviewer` from successor generation, so the critic is actually fixed
+while `paper_writer` can still evolve.
+
+This is a mechanism-aligned comparison, not an exact reproduction of the
+original paper's 12,288-evaluation compute scale. The shipped matrix uses
+eight paper epochs and at most 12 archive expansions per epoch so a
+Claude Code/Codex campaign remains tractable. A publication run must
+preregister either this common budget or a larger common evaluator-call
+budget and report the calls actually realized in every arm.
+
+Here “selective erasure” follows the RQGM paper's mechanism: when the active
+reviewer is replaced, utility rows scored by the displaced reviewer become
+ineligible, while the draft text and provenance remain stored. P1/P3/P4 select
+the global archive winner only from still-valid rows. P2 deliberately keeps
+the stale scores eligible, allowing the old criterion to continue influencing
+selection. Each logical erasure is recorded as `paper_utility_erasure` in
+`rqgm_audit.jsonl`.
+
 ### Paper metrics P1–P5
 
 Five metrics computed post-hoc by `compute_metric_report(..., paper=True)`
@@ -160,18 +201,15 @@ exploration metrics:
   `paper_reviewer` and the anchor corpus, so a co-evolved reviewer cannot grade
   its own manuscript up. Mirrors the RQGM paper's acceptance table. Tier-3 only
   (real LLMs); never in CI.
-  > **Not yet wired (as of 2026-07-17).** The panel **runner is unlanded**:
-  > nothing reads `paper_eval_defaults.panel`, and the disjointness check
-  > (`conditions.panel_disjointness_violations`) has **no production caller**,
-  > so it is *not* a hard harness check today. P1 reads only
-  > `{ckpt}/panel_review_report.json` — the artifact a real pinned-panel run
-  > writes — and reports `applicable: false` when it is absent, which is every
-  > run today. It previously read `review_report.json`, the **in-loop**
-  > `review_paper` output (a review of the *pre-refine* draft, fed back into
-  > `paper_refine`), and stamped the declared panel spec onto it: that reported
-  > self-agreement as a disjoint panel, the exact failure R1 names. The stamp is
-  > now derived from the panel file's own recorded provenance and mismatches
-  > report `applicable: false`. **Do not report P1 until the runner lands.**
+  `run_paper_panel.py` executes every rubric × ensemble member after the final
+  manuscript is materialized, assigns reproducible requested member seeds from
+  the pinned base seed, enforces disjointness before spending, and writes
+  `{ckpt}/panel_review_report.json`. P1 reads only that artifact, never the
+  **in-loop** `review_report.json` fed back to `paper_refine`. The report
+  records the rubric model, requested seeds, and panel provenance. Seed control
+  is best-effort because some model providers or CLI backends may ignore it. A
+  declaration/provenance
+  mismatch makes P1 non-applicable rather than relabeling a different run.
 - **P2 reviewer↔anchor agreement** (`reviewer_anchor_agreement`) — held-out
   agreement of the governed reviewer with the anchor ground truth.
   **Observability only**: computed post-hoc, reads no run state, and can never
@@ -218,12 +256,12 @@ plus an additive `authorship` field:
 
 **Honest limits — read these as plainly as the features:**
 
-- The PI3 target-binding chain only fires because a real
-  `ValidatedAttackRecord` now carries `target_component_id`, and it resolves in
-  production ONLY for `paper_self_preference` (whose target `paper_reviewer_v1`
-  is a registered founding component). The seven exploration adversaries attack
-  `generator`-authored artifacts, which have no registered component, so their
-  impeachment chain stays inert by design.
+- A real `ValidatedAttackRecord` carries `target_component_id`. Paper
+  self-preference binds to the registered paper roles. The seven exploration
+  adversaries can now bind to the registered founding `generator`, but only
+  when the node's write-once producer component, prompt hash, and epoch match
+  the epoch-frozen incumbent. Legacy, missing, ambiguous, or mismatched
+  provenance remains targetless rather than being guessed.
 - At the default `rqgm.paper.epoch.rounds: 2` the boundary AND the impeachment
   motion FIRE, but the T1→T6 climb to a changed active reviewer hash does not
   COMPLETE (a full adoption needs a role opening plus ~5 boundaries; the
@@ -249,6 +287,25 @@ python scripts/rqgm_eval/run_ablation.py --dry-run --conditions B0,B3,B8
 # scripted_component and only loads under --smoke:
 python scripts/rqgm_eval/run_ablation.py --dry-run \
     --paper-conditions B0_paper_linear,B_archive_no_coevo,B_full
+
+# RQGM-paper-aligned P0-P4 overlays (P0/P3/P4 is the recommended first run):
+python scripts/rqgm_eval/run_ablation.py --dry-run \
+    --rqgm-paper-conditions \
+P0_hgm_h_fixed_critic,P3_rqgm_full,P4_constitutional_rqgm
+
+# Claude Code writes; Codex performs the independent AI-Scientist-v2-style
+# rubric panel. Start `python -m ari.llm.cli_server --port 8900` first.
+export ARI_LLM_API_BASE=http://localhost:8900/v1
+export OPENAI_API_KEY=dummy
+export ARI_MODEL_PAPER=openai/claude-cli:sonnet
+export ARI_MODEL_RUBRIC=openai/codex-cli:gpt-5-codex
+
+# Real paper campaign (runs `ari run`, including its paper phase, for every
+# condition × seed × experiment; real LLM cost, never in CI):
+python scripts/rqgm_eval/run_ablation.py \
+    --rqgm-paper-conditions \
+P0_hgm_h_fixed_critic,P3_rqgm_full,P4_constitutional_rqgm \
+    --eval-id rqgm_paper_main
 
 # Offline smoke (stub components, seconds, no LLM) — the deletion-criteria
 # smoke campaign:

@@ -24,7 +24,7 @@ sources:
     role: test
   - path: ari-core/tests/test_gui_v1_mode_selection.py
     role: test
-last_verified: 2026-07-27
+last_verified: 2026-07-29
 ---
 
 # Configuration Reference
@@ -1106,6 +1106,18 @@ no surface can change the mode of a run that already exists, and the
 remaining `rqgm.*` parameters stay configuration-file only (ADR-09; see
 [Execution modes](../guides/execution_modes.md)).
 
+Four optional environment pins make the execution fingerprint more
+specific. When any is absent the epoch records it as `unresolved` and
+`execution_identity.complete` is `false`; ARI does not claim that a mutable
+provider alias is reproducible.
+
+| Variable | Identity it pins |
+|---|---|
+| `ARI_MODEL_REVISION` | Exact provider/model weight or deployment revision |
+| `ARI_TOOL_BUNDLE_REVISION` | Immutable tool bundle revision |
+| `ARI_ENVIRONMENT_DIGEST` | Container or resolved environment digest |
+| `ARI_DATA_SNAPSHOT_DIGEST` | Immutable external-data snapshot |
+
 ### `rqgm.epoch` — epoch-boundary sizing
 
 | Key | Default | Meaning |
@@ -1140,7 +1152,7 @@ config.
 | `low_confidence_threshold` | `0.4` | Reviewer confidence below this marks the node disputed. |
 | `novelty_claim_threshold` | `0.8` | Novelty axis at/above this (or non-empty novelty risks) triggers the contested tier. |
 | `max_motions_per_epoch` | `2` | Hard cap on impeachment motions per epoch. |
-| `bond_units_per_motion` | `1` | Bond debited per motion (refunded on upheld, forfeited on dismissed). |
+| `bond_units_per_motion` | `1` | Legacy field name for motion-quota units. Counters are returned on upheld and consumed on dismissed; no value is transferred. |
 | `jury_panel_enabled` | `false` | JuryPanel (multi-sample judge aggregation); off in v1. |
 | `fail_mode` | `open` | v1: only `open` — degrade to a no-action report, never block the run loop. |
 
@@ -1177,7 +1189,7 @@ the T1–T21 table topology is fixed code (`ari/rqgm/transition_rules.py`).
 | Key | Default | Meaning |
 |---|---|---|
 | `enabled` | `true` | Whether the adversarial round runs per completed node. |
-| `types` | all seven | Enabled adversary types (closed set): `overclaim`, `metric_gaming`, `prior_art`, `reproducibility`, `evidence_gap`, `cost_explosion`, `prompt_injection`. |
+| `types` | all eight | Enabled adversary types (closed set): the seven exploration types `overclaim`, `metric_gaming`, `prior_art`, `reproducibility`, `evidence_gap`, `cost_explosion`, `prompt_injection`, plus `paper_self_preference`. The eighth is inert unless the paper-archive phase is active. |
 | `max_attacks_per_node` | `3` | Hard cap on raw attacks per round. |
 | `max_adversary_calls_per_epoch` | `24` | Hard per-epoch cap on adversary LLM calls (the one schema home for this cap). |
 | `sample_mod` | `5` | Deterministic 1-in-N node sampling (`hash(node_id+epoch_id) mod N == 0`; P2-safe). `<= 0` disables sampling. |
@@ -1231,7 +1243,7 @@ Runs only when a committed EpochTransition carries retirements.
 |---|---|---|
 | `enabled` | `true` | Whether repair runs at boundaries with retirements. |
 | `max_trace_depth` | `8` | BFS cap of the dependency-closure tracer; past it consumers are swept in conservatively (invalidate). |
-| `recompute_utilities` | `true` | Recompute utilities from surviving inputs under the original epoch's frozen weights; `false` invalidates the node instead. |
+| `recompute_utilities` | `true` | For stale scored evidence, recompute utilities from surviving inputs under the original epoch's frozen weights; `false` invalidates the node instead. Utility-policy retirement independently re-scores stored `_axis_scores` under the new policy, so this switch does not disable the policy rewrite. |
 | `abandon_stale_pending` | `true` | Abandon pending children whose proposal record went stale before they ever run. |
 
 ### `rqgm.meta_evolution` — meta-tier budgets and switches
@@ -1272,6 +1284,7 @@ launches itself.  See [RQGM Evaluation](../guides/rqgm_evaluation.md).
 | `enabled` | `false` | Master interlock for the evaluation harness. Never enabled by default. |
 | `scripted_components` | `{}` | `role -> double_name` substitutions (harness-only). |
 | `injection_specs` | `[]` | Active `eval_*` injection ids; recorded into `rqgm_injection_provenance.json`. |
+| `paper_ablation.condition_id` | `""` | Evaluation-only RQGM-paper arm (`P0_hgm_h_fixed_critic` through `P4_constitutional_rqgm`). Empty, or `eval.enabled: false`, preserves normal behavior; this is not a `paper.mode`. |
 
 ### `rqgm.paper.reviewer.agent_as_judge` — agent-as-judge draft scoring
 

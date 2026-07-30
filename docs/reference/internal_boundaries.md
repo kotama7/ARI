@@ -22,7 +22,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_mode.py
     role: test
-last_verified: 2026-07-10
+last_verified: 2026-07-30
 ---
 
 # Internal boundaries
@@ -53,7 +53,8 @@ three-part pattern, and direct `litellm.{completion,acompletion}` calls are the
    decision note above its definition in `routing.py`).
 3. **`ari.cost_tracker._install_litellm_metadata_injector()`** monkey-patches
    `litellm.completion`/`acompletion` **process-wide** to (a) merge default cost
-   metadata (skill / phase / node) and (b) apply `_apply_ari_routing`
+   metadata (skill / phase / node, plus `epoch` once `ari_rqgm` opens one) and
+   (b) apply `_apply_ari_routing`
    (`resolve_litellm_model` + CLI-shim `api_base` fill-in) on every call. Once
    installed, *every* direct litellm call — from any module or skill — gets ARI
    routing + cost capture transparently, at one point.
@@ -82,7 +83,7 @@ Sanctioned exec modules — changes to execution behaviour belong here:
 
 | Module | Owns |
 |--------|------|
-| `ari/container.py` | container exec: `detect_runtime`, `build_run_cmd`, `run_in_container` (Popen + `_sandbox_preexec` = `os.setsid` new process group + optional `RLIMIT_NPROC` via `ARI_MAX_CHILD_PROCS`), `_run_with_timeout` (group SIGTERM→SIGKILL), `pull_image`, `exec_in_container`. Re-exported by `ari.public.container`. |
+| `ari/container.py` | container exec: `detect_runtime`, `run_in_container` (Popen + `_sandbox_preexec` = `os.setsid` new process group + optional `RLIMIT_NPROC` via `ARI_MAX_CHILD_PROCS`), `_run_shell_sandboxed` (group SIGTERM→SIGKILL on timeout), `run_shell_in_container`, `pull_image`. Re-exported by `ari.public.container`. |
 | `ari/env_detect.py` | scheduler/runtime probes (`sinfo`, `qstat`, `docker info`, `lscpu`) — read-only, best-effort, no hardcoded cluster knowledge. |
 | `ari/mcp/client.py` | spawns skill stdio servers via the MCP SDK `stdio_client` (a wrapper, not a raw spawn). |
 | `ari-skill-hpc/src/slurm.py` | the canonical SLURM submit/status/cancel (`SlurmClient`: `_run_local` asyncio subprocess, `_run_remote` paramiko), incl. `ARI_SBATCH_EXPORT_MODE` clean-env logic. |
@@ -110,10 +111,10 @@ declares phase tags (`bfts`, `paper`) but the split is across:
 | Phase | Driver |
 |-------|--------|
 | **BFTS** | `cli/bfts_loop.py:_run_loop` — a hardcoded `while pending or frontier` loop (generate_idea → select_and_run → evaluate → frontier_expand). `bfts_pipeline[]` is read only for enabled/disabled flags. |
-| **post-BFTS pipeline** (transform / figures / paper / review / ORS reproduction / publish) | `core.generate_paper_section` → `pipeline.orchestrator.run_pipeline` — a single linear cursor loop over `pipeline[]`; all sub-phases are consecutive stages. |
+| **post-BFTS pipeline** (transform / figures / paper / review / ORS reproduction / publish) | `core.generate_paper_section` → `pipeline.orchestrator.run_pipeline`, a thin wrapper over `pipeline/driver.py:WorkflowDriver.run` — a single linear cursor loop over `pipeline[]`; all sub-phases are consecutive stages. |
 
-`run.py` clears `.pipeline_started`; `orchestrator` touches it at pipeline start
-(GUI phase detection). A BFTS-sanity gate can abort the post-BFTS pipeline early
+`run.py` clears `.pipeline_started`; `WorkflowDriver.run` touches it at pipeline
+start (GUI phase detection). A BFTS-sanity gate can abort the post-BFTS pipeline early
 (`ARI_FORCE_PAPER` overrides). Non-`react:` stages run via
 `stage_runner._run_stage_subprocess`, which builds a Python script string and
 `subprocess.run([sys.executable, "-c", ...])` — each non-react stage is a direct
@@ -150,7 +151,11 @@ config flags before the import happens:
 
 - `ari.core.build_runtime` — imports `ari.rqgm.mode` / `ari.rqgm.runtime`
   only when `ari.mode == "ari_rqgm"` or `rqgm.enabled` is set, and wraps the
-  strategy only when `resolve_effective_mode(cfg)` is `ari_rqgm`.
+  strategy only when `resolve_effective_mode(cfg)` is `ari_rqgm`. Inside that
+  same branch `_install_capability_gate` imports `ari.rqgm.kernel` /
+  `ari.rqgm.store` / `ari.rqgm.tool_policy` and returns the `MCPClient`
+  wrapped in a `CapabilityGatedMCPClient` (fail-open: an install failure logs
+  and hands back the ungated client).
 - `ari/cli/run.py` — imports `ari.rqgm.state` only under the mode, to write
   `rqgm_state.json` and copy `constitution.yaml` at launch (and
   `reconcile_resume_mode` on resume: the persisted mode wins; a run can never
@@ -159,6 +164,11 @@ config flags before the import happens:
   `proposal_router.record_only: true` dual-write is set (default `false`
   never imports it; in `ari_rqgm` the router records natively so the import
   is skipped there too).
+- `ari/cli/paper_dispatch.py` — imports `ari.rqgm.paper_runtime` /
+  `ari.rqgm.paper_judge` only for the `rqgm_archive` paper mode; the resume
+  import is additionally gated on `paper_archive_state.json` existing, so a
+  linear checkpoint imports nothing. The mode string itself comes from the
+  import-free `ari.config._effective_paper_mode_str`.
 - `ari.config._effective_mode_str` mirrors the activation table
   **import-free**, so config handling itself never loads `ari.rqgm`.
 

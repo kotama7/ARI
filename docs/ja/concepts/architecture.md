@@ -79,11 +79,13 @@ flowchart TB
 
     subgraph post["post-BFTS パイプライン（workflow.yaml）"]
         direction TB
+        provenance["audit_node_provenance<br/>ノード成果物を再ハッシュ"]
         transform["transform_data → science_data.json"]
         figures["generate_figures → VLM レビュー"]
         paper["write_paper → review_paper<br/>（アンサンブル + Area Chair メタ査読）"]
         claimtail["claim-evidence テール（Story2Proposal）:<br/>link_paper_claims → claim_evidence_hard_gate<br/>→ evidence_grounded_semantic_review → merge_reviews<br/>→ paper_refine → render_paper → finalize_paper"]
         ear["generate_ear → curate → publish（EAR）"]
+        provenance --> transform
         transform --> figures
         transform --> ear
         figures --> paper
@@ -119,6 +121,9 @@ flowchart TB
 説明しています。オプトインの `ari_rqgm` モード（Constitutional ARI-RQGM）は、
 同じ BFTS ループをエポックベースのガバナンスと共進化で包みます: 探索戦略は
 純粋委譲の `GovernedSearchStrategy`（`ari/rqgm/runtime.py`）でラップされ、
+MCP クライアントは憲法的ケイパビリティゲート（`ari/core.py` の
+`_install_capability_gate` — 統治対象ツール呼び出しはすべて監査され、重大
+違反はエポック途中の緊急隔離へエスカレートします）でラップされ、
 完了したノードには敵対的な attack/defend/judge ラウンドが付き、各エポック
 境界では決定論的な憲法カーネルがすべてのガバナンス状態変更（コンポーネント
 の採用/退役、プロンプト進化、フロンティア修復）を検証します。有効になるのは
@@ -241,8 +246,9 @@ BFTS expand() (ari/orchestrator/bfts.py)
     物理的に避けられるようにする。
 
 ノード自己レポート (v0.7.0)
-  ari-core/ari/orchestrator/node_report.py が mark_success / mark_failed 時に
-  node_report.json を生成。記録内容:
+  ari-core/ari/orchestrator/node_report/ が mark_success / mark_failed 時に
+  node_report.json を生成（ari-core/ari/cli/bfts_loop.py の post-future フック）。
+  記録内容:
     - files_changed (added / modified / deleted / inherited_unchanged)
       — 親と子の work_dir の sha256 diff から導出
     - original_direction (bfts.expand が child 作成時に保存、evaluator は上書き不可)
@@ -273,7 +279,15 @@ nodes_tree.json  (全ノード: メトリクス、成果物、メモリ、親子
     ▼
 [workflow.yaml Post-BFTS パイプライン]
 
-  ステージ 1: transform_data  (ari-skill-transform)
+  ステージ 0: audit_node_provenance  (ari-skill-memory: audit_memory)  [ステージ 1 の前]
+    node_report が sha256 を記録した全ノード成果物を再ハッシュしてディスクと
+    照合する — ノード出力が「実験結果」であることをやめて「論文の証拠」に
+    なる境界。成果物ごとに verified / mismatch（ハッシュ記録後に書き換え）/
+    missing（削除）/ unhashed（記録されたベースラインなし）を報告。ゲートでは
+    なくシグナルであり、transform_data がこれに depends_on します。
+    出力: node_provenance_audit.json
+
+  ステージ 1: transform_data  (ari-skill-transform)  [ステージ 0 の後]
     全ツリーの BFS 走査（ルート → リーフ）
     LLM が全ノードの成果物を読み取り（stdout、ログ、生成コード）
     LLM が抽出: ハードウェアスペック、手法、主要な知見、比較
@@ -514,8 +528,8 @@ checkpoints/{run_id}/
 
 | ファイル          | 書き込み元                                            | フェーズ          | スキーマ                                              |
 |-------------------|-------------------------------------------------------|-------------------|-------------------------------------------------------|
-| `tree.json`       | `cli.py` の `_save_checkpoint()`                      | BFTS 中          | `{run_id, experiment_file, created_at, nodes}`        |
-| `nodes_tree.json` | `_save_checkpoint()` + `generate_paper_section()`     | BFTS + post-BFTS | `{experiment_goal, nodes}` (軽量)                    |
+| `tree.json`       | `cli/bfts_loop.py` の `_save_checkpoint()`            | BFTS 中          | `{run_id, experiment_file, created_at, nodes}`        |
+| `nodes_tree.json` | `_save_checkpoint()` + `generate_paper_section()`（`core.py`） | BFTS + post-BFTS | `{experiment_goal, nodes}` (軽量)                    |
 
 **読み取り側の規約**: 全ての読み取りは `tree.json` を優先し、`nodes_tree.json` にフォールバック
 しなければならない。これにより BFTS 中の最新データを保ちつつ、`nodes_tree.json` を前提とする
@@ -550,7 +564,7 @@ API キーは **絶対に** `settings.json` には保存されない。`.env` �
 |--------|-------------|
 | `ari/orchestrator/bfts.py` | Branch-and-Frontier Tree Search — ノードの展開、選択、枝刈り; フォールバックランキング戦略は `BFTSConfig.frontier_score` (`scientific_plus_diversity` / `scientific_only` / `depth_penalized` / `ucb_like`) で**設定可能** — [Configuration → BFTS の評価層](../reference/configuration.md#bfts-の評価層-設定で切替可能) を参照 |
 | `ari/orchestrator/node.py` | Node データクラス — id, parent_id, depth, label, metrics, artifacts, memory |
-| `ari/rqgm/` | Constitutional ARI-RQGM ランタイム（オプトイン `ari_rqgm` モード）: `RQGMRuntime` ファサード、憲法カーネル、ガバナンスオーケストレータ、レジストリ遷移エンジン、フロンティア修復、提案/敵対/プロンプト進化の各レイヤ。`simple_bfts` の下では決してインポートされない — [Constitutional ARI-RQGM アーキテクチャ](rqgm_architecture.md)を参照 |
+| `ari/rqgm/` | Constitutional ARI-RQGM ランタイム（オプトイン `ari_rqgm` モード）: `RQGMRuntime` ファサード、憲法カーネル、ガバナンスオーケストレータ（`governance/` の弾劾パイプライン）、レジストリ遷移エンジン、フロンティア修復、提案/敵対/プロンプト進化の各レイヤ、および論文アーカイブ共進化ランタイム（`PaperArchiveStrategy` — ドラフト空間上の第二の最良優先探索）。`simple_bfts` の下では決してインポートされない — [Constitutional ARI-RQGM アーキテクチャ](rqgm_architecture.md)を参照 |
 | `ari/agent/loop.py` | ReAct エージェントループ — ノードごとの LLM + ツール呼び出し; SLURM ジョブの自動ポーリング; 祖先メモリの注入 |
 | `ari/agent/workflow.py` | WorkflowHints — 実験テキストから自動抽出（ツールシーケンス、メトリクスキーワード、パーティション） |
 | `ari/pipeline.py` | Post-BFTS パイプラインドライバー — テンプレート解決、ステージ実行、出力の接続 |
@@ -560,7 +574,7 @@ API キーは **絶対に** `settings.json` には保存されない。`.env` �
 | `ari/llm/client.py` | litellm 経由の LLM ルーティング（Ollama、OpenAI、Anthropic、任意の OpenAI 互換） |
 | `ari/config.py` | 設定データクラス（BFTSConfig、LLMConfig、PipelineConfig） |
 | `ari/core.py` | トップレベルのランタイムビルダー — 全コンポーネントの接続 |
-| `ari/cli.py` | CLI: `ari run`, `ari paper`, `ari status` |
+| `ari/cli/` | Typer CLI 分割パッケージ: `__init__`, `run`, `projects`, `commands`, `bfts_loop`, `lineage`, `migrate` + `paper_dispatch`（`ari run` / `ari resume` / `ari paper` が共有する論文フェーズ実行モードディスパッチ） |
 
 ### Skills (MCP サーバー)
 
@@ -569,7 +583,7 @@ API キーは **絶対に** `settings.json` には保存されない。`.env` �
 | Skill | ツール | 役割 | LLM? |
 |-------|-------|------|------|
 | `ari-skill-hpc` | `slurm_submit`, `job_status`, `job_cancel`, `singularity_build`, `singularity_run`, `singularity_pull`, `singularity_build_fakeroot`, `singularity_run_gpu` | HPC ジョブ管理 + Singularity コンテナ | ✗ |
-| `ari-skill-memory` | `add_memory`, `search_memory`, `get_node_memory`, `clear_node_memory`, `get_experiment_context` | 祖先スコープのノードメモリ（Letta バックエンド） | △ |
+| `ari-skill-memory` | `add_memory`, `search_memory`, `get_node_memory`, `clear_node_memory`, `get_experiment_context`, `audit_memory` | 祖先スコープのノードメモリ（Letta バックエンド）。`audit_memory` は `audit_node_provenance` ステージを駆動 | △ |
 | `ari-skill-idea` | `survey`, `generate_ideas` | 文献検索（Semantic Scholar）+ VirSci マルチエージェント仮説生成 | ✓ |
 | `ari-skill-evaluator` | `make_metric_spec` | 実験ファイルからのメトリクス仕様抽出 | △ |
 | `ari-skill-transform` | `nodes_to_science_data`, `generate_ear`, `curate_ear`, `publish_ear` | BFTS ツリー → 科学データ + EAR + curate/publish ライフサイクル (v0.7.0) | ✓ |
@@ -656,7 +670,7 @@ BFTS のスコアリング軸 (Phase 3) と論文 review の評価基準が同�
 
 BFTS が子ノードを expand する際、子の `work_dir` は親をコピーして seed されます。フィルタなしだと子は親の `results.csv` / `slurm-*.out` / `run.log` をバイト単位で再利用できてしまい、run-`20260504120448` の post-mortem では 9 子全員が単一の SLURM job 結果を再報告していました — 結果ファイルが既に存在するため ReAct agent が「実験は完了済み」と判定したためです。
 
-`ari-core/ari/cli.py` の `_OUTPUT_BLACKLIST` は親 → 子コピー時に **明示的に skip** するパターンを列挙しています:
+`ari-core/ari/cli/bfts_loop.py` の `_OUTPUT_BLACKLIST` は親 → 子コピー時に **明示的に skip** するパターンを列挙しています:
 
 | 継承する | ブラックリスト |
 |---|---|

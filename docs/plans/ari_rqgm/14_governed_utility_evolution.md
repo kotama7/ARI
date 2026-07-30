@@ -2,6 +2,10 @@
 
 > **Status**: planned · **Depends on**: 00, 02, 04, 07, 09, 10 · **This is a temporary task plan** — see [INDEX.md](INDEX.md). It will be deleted once its deletion criteria are met.
 
+> **Implemented amendment (2026-07-28):** T16 now force-closes the current
+> epoch and opens a freshly fingerprinted epoch in one emergency boundary
+> transaction. The earlier mid-epoch wording below is planning history.
+
 ## 1. Purpose
 
 The defining claim of Constitutional ARI-RQGM is that the search is tree-structured **and that at

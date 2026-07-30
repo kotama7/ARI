@@ -86,14 +86,14 @@ _GRANDFATHERED: dict[str, set[int]] = {
     "ari-skill-evaluator/src/server.py": {18},  # cost_tracker fallback (shifted by the logging import + module logger)
     "ari-skill-hpc/src/slurm.py": {211},  # run_env fallback
     "ari-skill-idea/src/server.py": {65, 648},  # cost_tracker fallback + ari.lineage (deferred; line shifted by the RQGM Task 03 Stage-0 tool re-registration + the platform-constraint fold into generate_ideas)
-    "ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py": {159},  # cost_tracker fallback
+    "ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py": {160},  # cost_tracker fallback (shifted by the erasure-reader import)
     "ari-skill-memory/tests/test_backup_restore.py": {14},  # ari.memory_cli (deferred, test-only)
     "ari-skill-paper-re/src/server.py": {42, 146},  # cost_tracker fallback + ari.clone (deferred)
     "ari-skill-paper-re/tests/test_fetch_code_bundle.py": {52},  # ari.publish (deferred, test-only)
     "ari-skill-paper/src/server.py": {21},  # cost_tracker fallback
     "ari-skill-plot/src/server.py": {34},  # try-block legacy fallback
     "ari-skill-replicate/src/server.py": {28},  # cost_tracker fallback
-    "ari-skill-transform/src/server.py": {55, 681, 2083, 2433, 2451},  # cost_tracker fallback + ari.orchestrator/ari.publish (deferred; lines shifted by the Story2Proposal claims + forward-declaration config_nodes + metric-correctness anomaly-annotation + provenance-propagation + metric_contract-propagation + provenance-union blocks)
+    "ari-skill-transform/src/server.py": {55, 690, 2101, 2451, 2469},  # cost_tracker fallback + ari.orchestrator/ari.publish (deferred; lines shifted by the Story2Proposal claims + forward-declaration config_nodes + metric-correctness anomaly-annotation + provenance-propagation + metric_contract-propagation + provenance-union blocks + the RQGM erasure-filter clauses in the best-node resolvers)
     "ari-skill-vlm/src/server.py": {18},  # cost_tracker fallback
     "ari-skill-web/src/server.py": {24},  # cost_tracker fallback
 }

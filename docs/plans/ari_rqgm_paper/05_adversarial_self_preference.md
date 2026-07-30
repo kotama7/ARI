@@ -504,12 +504,11 @@ Three decisions pin the shape:
 
 1. **It belongs in ari-core, not in paper-local code** — which is why the mechanism is
    parent-15's and only the role row is this doc's. The seven exploration adversaries get the
-   bridge for free, but they bind **no target in v1**: their artifacts' authoring role is
-   `generator`, which has no registered component
-   (`FOUNDING_COMPONENT_TABLE`, prompt_spec.py:232–259, admits only ids the runtime stamps), so
-   naming it would resolve to `""`. They bind a target the day an artifact-authoring role has a
-   registered incumbent ([../ari_rqgm/15](../ari_rqgm/15_validated_attack_target_binding.md)
-   §5.4, R2). Nothing here is paper-shaped except *which* role is named.
+   bridge for free. As amended on 2026-07-28, the artifact-authoring
+   `generator` is registered and nodes carry write-once producer provenance,
+   so the seven exploration types bind only when that provenance matches the
+   epoch-frozen incumbent. Legacy or ambiguous nodes still resolve to `""`.
+   Nothing here is paper-shaped except *which* role is named.
 2. **It is sequenced behind parent-15 and is a safe no-op until then.** With no
    `target_component_id` field on the record, the resolution writes nowhere; doc 05's loop
    (§5.2/§5.5) does not depend on it. This doc adds no dependency edge to its header for

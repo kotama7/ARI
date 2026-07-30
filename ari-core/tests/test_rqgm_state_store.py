@@ -26,7 +26,7 @@ import pytest
 from ari.config import ARIConfig
 from ari.rqgm.events import (
     TransitionEvent,
-    payload_hash,
+    expected_event_hash,
 )
 from ari.rqgm.registry import build_prompt_registration_payload
 from ari.rqgm.store import (
@@ -36,6 +36,7 @@ from ari.rqgm.store import (
     RQGM_TRANSITIONS_FILENAME,
     ImmutableAuditLog,
     RqgmStateStore,
+    committed_events,
 )
 
 RQGM_FILES = (
@@ -185,10 +186,10 @@ def test_event_chain_hashes_and_ids(tmp_path):
     ]
     prev = ""
     for i, d in enumerate(lines):
-        assert d["schema_version"] == 1
+        assert d["schema_version"] == 2
         assert d["event_id"] == "evt_%06d" % i
-        # event_hash covers ONLY the canonical payload (timestamps outside).
-        assert d["event_hash"] == payload_hash(d["payload"])
+        assert d["event_hash"] == expected_event_hash(d)
+        assert len(d["event_hash"]) == 64
         assert d["prev_event_hash"] == prev
         assert "ts" not in d["payload"] and "ts_iso" not in d["payload"]
         assert isinstance(d["ts"], float) and d["ts_iso"]
@@ -231,7 +232,7 @@ def test_hashes_deterministic_across_two_processes(tmp_path):
         capture_output=True, text=True, check=True,
         cwd=str(Path(ari.__file__).resolve().parents[1]),
     ).stdout.split()
-    assert out == ["852526c4b2fa", "2d44a1ab6dd5"]
+    assert out == ["852526c4b2fa", "746c074fd2fc"]
 
 
 # ── write-path policy (§9 test 5) ────────────────────────────────────────────
@@ -257,7 +258,7 @@ def test_transaction_rejects_managed_and_unknown_event_types(tmp_path):
         tx.commit()
 
 
-def test_emergency_quarantine_is_sole_mid_epoch_event(tmp_path):
+def test_all_mid_epoch_events_are_refused(tmp_path):
     store = RqgmStateStore()
     st = store.open_epoch(tmp_path, ARIConfig(), node_count=1)
     st = store.run_boundary(tmp_path, st, ARIConfig(), node_count=11,
@@ -269,21 +270,37 @@ def test_emergency_quarantine_is_sole_mid_epoch_event(tmp_path):
                             payload={"prompt_id": "reviewer_prompt_v1",
                                      "to_status": "banned"}),
         )
-    ok = store.append_mid_epoch_event(
-        tmp_path,
+    with pytest.raises(ValueError):
+        store.append_mid_epoch_event(
+            tmp_path,
+            TransitionEvent(
+                event_type="emergency_quarantine",
+                payload={"component_id": "reviewer_v1",
+                         "to_status": "quarantine",
+                         "epoch_id": "epoch_001"},
+            ),
+        )
+
+
+def test_transaction_commit_id_must_match_prepare():
+    events = [
         TransitionEvent(
-            event_type="emergency_quarantine",
-            payload={"component_id": "reviewer_v1",
-                     "to_status": "quarantine",
-                     "epoch_id": "epoch_001",
-                     "source_refs": ["governance_report_epoch_001"]},
+            event_type="epoch_transaction_prepare",
+            transaction_id="transition_a",
+            payload={"transition_id": "transition_a"},
         ),
-    )
-    assert ok is True
-    st2 = store.load_state(tmp_path)
-    assert st2.components.get("reviewer_v1").status == "quarantine"
-    # The quarantined component left the active set on rebuild.
-    assert st2.components.active_set() == {}
+        TransitionEvent(
+            event_type="epoch_close",
+            transaction_id="transition_a",
+            payload={"epoch_id": "epoch_000"},
+        ),
+        TransitionEvent(
+            event_type="epoch_transaction_commit",
+            transaction_id="transition_b",
+            payload={"transition_id": "transition_b"},
+        ),
+    ]
+    assert committed_events(events) == []
 
 
 def test_audit_log_envelope_and_run_pin_noop(tmp_path):
@@ -297,7 +314,7 @@ def test_audit_log_envelope_and_run_pin_noop(tmp_path):
     assert lines[1]["prev_event_hash"] == lines[0]["event_hash"]
     for i, d in enumerate(lines):
         assert d["event_id"] == "evt_%06d" % i
-        assert d["event_hash"] == payload_hash(d["payload"])
+        assert d["event_hash"] == expected_event_hash(d)
     # The transitions log is untouched by audit appends.
     assert not (tmp_path / RQGM_TRANSITIONS_FILENAME).exists()
     # No run pin resolvable → silent no-op, False.
@@ -708,7 +725,7 @@ def test_mini_run_crosses_epoch_boundary_transactionally(monkeypatch, tmp_path):
     # Verifiable chain end to end.
     prev = ""
     for d in lines:
-        assert d["event_hash"] == payload_hash(d["payload"])
+        assert d["event_hash"] == expected_event_hash(d)
         assert d["prev_event_hash"] == prev
         prev = d["event_hash"]
     # Snapshot fast-path agrees with the log.
@@ -807,7 +824,7 @@ def test_final_iteration_epoch_boundary_flushed_at_end_of_run(
     # Hash chain stays verifiable across the flush-written events.
     prev = ""
     for d in lines:
-        assert d["event_hash"] == payload_hash(d["payload"])
+        assert d["event_hash"] == expected_event_hash(d)
         assert d["prev_event_hash"] == prev
         prev = d["event_hash"]
     # The boundary opened a fresh (empty) successor epoch — matching

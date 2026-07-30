@@ -8,7 +8,7 @@ sources:
     role: config
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-07-30
 ---
 
 # Extension Guide
@@ -45,10 +45,12 @@ Minimize energy score of protein folding simulation using different force field 
 2. Run:
 
 ```bash
-ari run your_experiment.md --config config/bfts.yaml
+ari run your_experiment.md
 ```
 
 That's it. ARI reads the goal, proposes hypotheses, and searches autonomously.
+`--config` is optional — omitted, `ari run` auto-resolves the packaged
+`ari-core/config/workflow.yaml`.
 
 ### Domain Customization via experiment.md
 
@@ -110,12 +112,17 @@ if __name__ == "__main__":
 
 ### Registration
 
-In your BFTS config YAML:
+In the `skills:` block of `ari-core/config/workflow.yaml`. `name` is the
+registered skill name that pipeline stages reference (the shipped entries use
+the `<area>-skill` convention, e.g. `paper-skill`), and it must match exactly —
+stage dispatch filters `cfg.skills` by `s.name == stage.skill`:
 
 ```yaml
 skills:
   - name: your-skill
     path: /abs/path/to/ari-skill-yourskill
+    description: What this skill does
+    phase: bfts          # bfts | paper | reproduce, or a list of them
 ```
 
 In your `experiment.md`:
@@ -139,40 +146,53 @@ In your `experiment.md`:
 ## 3. Adding a Post-BFTS Pipeline Stage
 
 Add automated post-processing after the BFTS search completes.
-Only edit `config/pipeline.yaml`. No core code changes needed.
+Only edit the `pipeline:` block of `ari-core/config/workflow.yaml` (the legacy
+`pipeline.yaml` filename is still accepted as a fallback). No core code changes
+needed.
 
 ```yaml
 pipeline:
-  - stage: generate_paper
-    skill: ari-skill-paper
-    tool: generate_section
+  - stage: write_paper
+    skill: paper-skill
+    tool: write_paper_iterative
+    depends_on: [transform_data]
     enabled: true
-    args:
+    phase: paper
+    inputs:
       venue: arxiv
 
-  - stage: review
-    skill: ari-skill-paper
-    tool: review_section
-    enabled: true
-
   - stage: my_new_stage            # ← Add here
-    skill: ari-skill-yourskill
+    skill: your-skill              # must match a `skills:` entry name
     tool: your_analysis_tool
+    depends_on: [write_paper]
     enabled: true
-    args:
+    phase: paper
+    inputs:
       custom_param: value
+      nodes_json_path: '{{checkpoint_dir}}/nodes_tree.json'
+    outputs:
+      file: '{{checkpoint_dir}}/my_new_stage.json'
 
-  - stage: reproducibility_check
-    skill: ari-skill-paper-re
-    tool: reproducibility_report
+  - stage: ors_grade
+    skill: paper-re-skill
+    tool: grade_with_simplejudge
+    depends_on: [ors_run_reproduce]
     enabled: true
+    phase: paper
 ```
 
-Each stage receives:
-- `best_node`: The highest-scoring node from BFTS
-- `all_nodes`: All explored nodes
-- `nodes_json_path`: Path to `nodes_tree.json`
-- Any `args` specified in the YAML
+Stage keys:
+- `skill` / `tool` — the registered skill name and the MCP tool it calls.
+- `inputs:` (alias `input:`) — the tool's keyword arguments, with `{{var}}`
+  template substitution (`{{checkpoint_dir}}`, `{{run_id}}`, `{{ari_root}}`, …).
+  `params:` is passed through verbatim; a `<key>_from:` shorthand resolves a
+  checkpoint-relative filename **and** loads its content (see also
+  `load_inputs:`). There is no `args:` key.
+- `depends_on:` — stages run in file order with no topological sort, so keep
+  declarations in dependency order; a stage whose dependency was skipped is
+  skipped too (unless the dependency is explicitly `enabled: false`).
+- `phase:` — `bfts` / `paper` / `reproduce`; drives the GUI graph grouping.
+- `outputs.file` — where the driver persists the tool's return value.
 
 ---
 
@@ -198,8 +218,11 @@ llm:
   base_url: http://your-server:8000/v1
 ```
 
-If the LLM does not support function/tool calling, set `tool_choice="none"` in `config/bfts.yaml`
-and ensure the experiment workflow uses `## Required Workflow` to guide step-by-step execution.
+There is no `tool_choice` config knob — `ari/llm/client.py` sets it itself
+(`required` / `auto`). If the LLM does not support function/tool calling, route
+it through the CLI-shim backend (`ARI_BACKEND=cli-shim`), whose OpenAI-compatible
+server falls back to a text tool protocol, and make the experiment workflow use
+`## Required Workflow` to guide step-by-step execution.
 
 ---
 
@@ -238,10 +261,10 @@ VENUES = [
 ### Use in pipeline
 
 ```yaml
-- stage: generate_paper
-  skill: ari-skill-paper
-  tool: generate_section
-  args:
+- stage: write_paper
+  skill: paper-skill
+  tool: write_paper_iterative
+  inputs:
     venue: your_venue   # ← Specify here
 ```
 
@@ -265,7 +288,8 @@ mpirun -np 128 ./my_parallel_program
 ```
 ```
 
-In `config/bfts.yaml`, increase timeout:
+In `ari-core/config/default.yaml` (the shipped BFTS defaults), increase the
+timeout — or override it per run with `ARI_TIMEOUT_NODE`:
 
 ```yaml
 bfts:
@@ -381,6 +405,9 @@ import via the re-export layer:
 | Path / checkpoint resolution   | `from ari.public.paths import PathManager` |
 | LLM client                     | `from ari.public.llm import LLMClient` |
 | Pydantic config models         | `from ari.public.config_schema import ARIConfig, LLMConfig, ...` |
+| Claim-evidence gate helpers    | `from ari.public import claim_gate`    |
+| Per-`work_dir` run environment | `from ari.public import run_env`       |
+| Verified research context      | `from ari.public import verified_context` |
 
 `ari-core/tests/test_public_api_boundary.py` walks every
 `ari-skill-*/{src,tests}/` Python file with AST and fails on imports
@@ -416,13 +443,13 @@ Conventions:
 
 ### `ari/configs/` — non-Pydantic lookup tables
 
-Tables that change without code changes (model prices, default model
-names) live as YAML under `ari-core/ari/configs/`:
+Out-of-band tables that change without code changes live as YAML under
+`ari-core/ari/configs/`:
 
 | File                | Owner                                        |
 |---------------------|----------------------------------------------|
-| `model_prices.yaml` | LLM cost estimation (`ari/cost_tracker.py`)  |
-| `defaults.yaml`     | Default model fall-backs (e.g. lineage_decision_default) |
+| `model_prices.yaml` | LLM cost estimation (`ari/cost_tracker.py`). An unreadable/empty table sets `PRICING_TABLE_UNAVAILABLE`, which `cost_summary.json` reports — it is not silently a free run |
+| `defaults.yaml`     | Model fall-backs (`models.lineage_decision_default`) **plus** the out-of-band RQGM defaults (`rqgm.epoch` / `kernel` / `governance` / `transition` / …), which mirror the typed `ari.config` pydantic defaults; the mirror is pinned by the `test_rqgm_*` tests |
 
 Read via `from ari.configs import FilesystemConfigLoader; loader.load("model_prices")`.
 

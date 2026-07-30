@@ -3,50 +3,55 @@
 \input{../shared/preamble.tex}
 \input{strings.tex}
 
-\title{ARI: An Autonomous Research Infrastructure}
+\title{Constitutional ARI-RQGM:\\Governed Co-Evolution for Autonomous Research}
 \author{Takanori Kotama}
-\date{v0.9.0, 2026-06-12}
+\date{v0.9.0, Constitutional RQGM edition, 2026-07-28}
 
 \begin{document}
 \twocolumn[
 \maketitle
 \begin{abstract}
-We describe \textbf{ARI}, an autonomous research infrastructure that
-couples a tree-search-based exploration loop with a paper-generation
-pipeline. The exploration loop is a best-first tree search (BFTS) over
-research-step nodes; expansion uses a Reason-and-Act
-(ReAct~\cite{yao2023react})-style agent that issues tool calls into
-a registry of fourteen domain skills. The paper pipeline
-turns the surviving lineage into a draft, then iteratively refines it
-under a hierarchical rubric. Every artefact lives inside a single
-checkpoint directory, which is the unit of reproducibility, lineage, and
-cost accounting. This report formalises the algorithms and the design
-rationale, reports preliminary observations, and discusses the
-determinism / novelty trade-off that constrains the design.
+Autonomous research systems increasingly delegate proposal, evaluation,
+and writing decisions to model-defined roles. If those roles and their
+scoring policy can evolve, the system may improve its institution as well
+as its artefacts; it may also learn to reward itself, conceal failures, or
+expand its own authority. We present \textbf{Constitutional ARI-RQGM}, a
+governed co-evolution architecture that separates an immutable
+deterministic kernel from evolvable prompts, components, and utility
+policies. Institutional changes commit only at epoch boundaries; T16
+emergency quarantine forces an immediate boundary with a new fingerprint. At a boundary,
+adversarial evidence, role-separated prosecution and defence, replay and
+anchor evaluation, and a fixed T1--T21 transition table determine which
+candidates may enter service. Registry writes are single-authority,
+transactions are replayable, and retirement triggers provenance-aware
+frontier repair without deleting history. The same constitution governs a
+paper archive in which writer and reviewer roles co-evolve while a fixed,
+structured numeric claim--evidence gate remains outside their authority.
+The complete transition table, capability matrix, event contract, recovery
+procedure, and determinism boundary are specified. All 1,124 directly
+relevant tests pass, and five fixed fault fixtures are rejected while one
+clean fixture passes. These results do not establish improved research
+quality, general detection rates, attribution accuracy, or cost benefit.
 \end{abstract}
 \vspace{2ex}
 ]
 
 \input{chapters/01_introduction.tex}
 \input{chapters/02_system_overview.tex}
-\input{chapters/03_exploration.tex}
-\input{chapters/04_paper_pipeline.tex}
-\input{chapters/05_evaluation.tex}
 \input{chapters/08_rqgm.tex}
+\input{chapters/05_evaluation.tex}
 \input{chapters/06_related.tex}
 \input{chapters/07_discussion.tex}
 
 % Single column for the appendix so the verbatim prompt listings wrap
 % inside the full page width (lines are often > 500 chars). \onecolumn is
-% wrapped in \clearpage to make the switch robust across engines — a bare
-% \onecolumn after \appendix is silently ignored under xelatex/ctex and
-% leaves the appendix in two columns.
+% wrapped in \clearpage to make the switch robust across engines and keep
+% the appendix from remaining in two columns.
 \clearpage
 \onecolumn
 \appendix
-\input{chapters/appendix_notation.tex}
+\input{chapters/appendix_specification.tex}
 \input{chapters/appendix_prompts.tex}
-\input{chapters/appendix_samplepaper.tex}
 
 \clearpage
 \twocolumn

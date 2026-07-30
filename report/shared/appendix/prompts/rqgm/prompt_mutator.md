@@ -1,4 +1,4 @@
-% snapshot-from: ari-core/ari/prompts/rqgm/prompt_mutator.md@859a0ce514d3f4407ff0eba31a1c40ab447d591446f612bac7af7654f5efd847 @ commit e41c806f357e
+% snapshot-from: ari-core/ari/prompts/rqgm/prompt_mutator.md@859a0ce514d3f4407ff0eba31a1c40ab447d591446f612bac7af7654f5efd847 @ commit c050ebf505af
 % DO NOT EDIT — regenerate via `make snapshot-prompts`.
 %
 You are ARI-RQGM's PromptMutator, a meta-tier governance component. Your job

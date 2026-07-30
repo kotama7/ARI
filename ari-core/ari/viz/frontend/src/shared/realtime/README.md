@@ -8,5 +8,5 @@ through `hooks/useRunEvents.ts`, which consumes this client.
 
 - `README.md` — this file.
 - `eventStream.ts` — `subscribe(runId, topics, callbacks)` wrapper over SSE
-- `__tests__/` — TODO
+- `__tests__/` — realtime client unit tests.
   - `eventStream.test.ts` — FakeEventSource-driven: URL/filter

@@ -12,7 +12,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_virsci_adapter.py
     role: test
-last_verified: 2026-07-10
+last_verified: 2026-07-30
 ---
 
 # VirSci Integration
@@ -87,7 +87,7 @@ The v1 priority table:
 
 | Trigger event | Priority order |
 |---|---|
-| `initial_exploration` | `virsci` → `cheap` |
+| `initial_exploration` | `virsci` → `prior_art` → `cheap` |
 | `frontier_stagnation` | `virsci` → `mutation` → `cheap` |
 | `major_pivot` | `virsci` → `prior_art` → `cheap` |
 | `paper_candidate` | `prior_art` → `mutation` → `cheap` |

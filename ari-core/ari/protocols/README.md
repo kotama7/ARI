@@ -9,9 +9,10 @@ accept these so test stubs and alternatives plug in without subclassing.
 - `README.md` — this file.
 - `__init__.py` — currently exposed protocols + roadmap.
 - `evaluator.py` — `Evaluator` Protocol.
-- `model_backend.py` — TODO
-- `search.py` — TODO
-- `stores.py` — TODO
+- `mcp.py` — `MCPToolCaller` Protocol — the caller-facing `MCPClient` surface the RQGM tool-surface proxies duck-type.
+- `model_backend.py` — `BaseModelBackend` Protocol — the `complete` / `set_context` / `stream` surface `LLMClient` satisfies structurally.
+- `search.py` — `SearchStrategy` + `NodeExecutor` Protocols — BFTS ranking/selection split from single-node ReAct execution.
+- `stores.py` — `CheckpointStore` / `TraceStore` Protocols + the `ArtifactStore` ABC — the runtime storage I/O seams.
 
 ## See also
 

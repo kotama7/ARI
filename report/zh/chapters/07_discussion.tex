@@ -1,59 +1,83 @@
 \section{讨论与局限}\label{sec:discussion}
 
-\subsection{确定性 vs 新颖性}\label{sec:discussion:p2}
+\subsection{固定宪制与适应性制度}\label{sec:discussion:p2}
 
-P2,即确定性原则,是系统最具约束力的约束。它约束的并不是研究记忆
-(\cref{sec:exploration:memory})是否\emph{可以}使用嵌入模型,而是
-由此产生的非确定性\emph{可以在哪里}起作用:记忆子系统不做任何生成式
-语言模型调用,而其按嵌入相似度排序的归档检索 —— 因依赖远端服务,故
-并非按字节可复现 —— 被排除在可复现路径之外,仅作为一项可选的回忆辅助,
-循环从不取用它,其本身也无法为论文主张提供依据。循环真正依赖的那些
-记忆读取 —— 在每个节点注入的工作上下文,以及为论文提供依据的已验证
-上下文 —— 是节点级报告的确定性、祖先作用域折叠。每一项可复现性的胜利
-都关闭了这样一道通往非确定性的门;我们接受这一代价,因为契约对象是
-检查点,而非运行。
+本架构刻意不采用无限制自我修改。constitution、transition topology、
+capability matrix 与 fixed verifier 不在 runtime 演化。这限制了系统:
+真正的新 role 或 transition 需要人类修正。但同一限制也使每项制度变更
+可以解释。candidate 能在已知 authority envelope 内改进,却不能重定义
+评判自己的 envelope。
 
-\subsection{结构接缝处的指令遵循}\label{sec:discussion:seams}
+宪制本身仍可能错误。hash pinning 使修正显式,却不能保证 pinned rule
+明智。因此,人类 review、rationale 与 regression evidence 仍属于 trusted
+process。Constitutional ARI-RQGM 减少授予 model output 的权限,但不会
+消除定义法律者的责任。
 
-v0.9.0 反复印证的教训是:指令遵循在结构接缝处会退化 —— 需要解析的
-一个索引、需要复用的一个名称、需要声明的一个数字 —— 而持久的补救之道
-是在解析端吸收,而非依靠提示词。一个无法解析的选择索引会回退到一个
-确定性排序(\cref{sec:exploration:fallback});一个模型被问两次会以
-不同方式命名同一个量,因此指标契约只铸造一次,而后逐字重放;写作器
-在数值声明上反复出现的怪癖会在解析时被规整
-(\cref{sec:paper:contract})。所吸收怪癖的目录是被动的,从真实运行中
-逐步积累,因此一个未曾预料的变体首先会显现为一处关卡不匹配 —— 这是
-保守的做法:它会被标记,一处未解决的不匹配会阻断最终检查,任何东西都
-不会被悄无声息地接受。
+紧急隔离现已保持纪元不变量。T16 强制关闭当前纪元，在隔离违规组件的
+同时原子地开启新指纹。这使重放中的遏制点明确，并防止一个指纹代表两个
+服务集合。它仍未解决裁决拒绝服务，也不在紧急事务中提供替代角色。
 
-同一套纪律也固定了什么可以构成阻断。关卡证明每一项定量主张都与一份
-记录在案的产物相符,而语义评审的主观发现引导精炼器
-(\cref{sec:paper:loop})但从不对发表构成关卡 —— 这一点不同于
-\cite{lu2024ai} 那种完全事后的评审 —— 因为在阻断路径上的主观裁决会是
-一道无法审计的否决权。因此,一篇经过验证的论文仍然可能是一篇乏味的
-论文。
+\subsection{权限接缝处的指令遵循}\label{sec:discussion:seams}
+
+最危险的故障多发生在 model-generated record 跨入 deterministic state
+之处。schema validation 本身不够:格式完美的记录也可能由错误 role 撰写、
+请求 illegal edge、扩张 capability、引用 sealed text,或缺少 repair 所需的
+provenance。因此 kernel 分别检查 structure、author、timing、authority、
+hash 与 context。
+
+另有一种 semantic limitation:valid attack 或 judgment 仍可能错误。role
+separation 与 replay 使错误可观察、可争议,却不会把 model judgment 变成
+ground truth。有 execution evidence 或 curated label 时使用 fixed anchor;
+其他结论仍是概率性的,不应升级为宪制事实。
+
+同样,“治理失败时研究继续”是有条件的可用性策略,不是一般安全原则。
+继续运行应限于沙箱内的候选生成和本地计算。写入外部服务、操作物理设备
+或修改生产数据需要独立的固定许可闸门,并在治理故障时关闭。当前内核不
+强制这一环境条件。
 
 \subsection{扩展极限}\label{sec:discussion:scaling}
 
-支撑 BFTS 运行循环的单机假设是最大的扩展约束:单个
-\texttt{ThreadPoolExecutor}(\cref{sec:exploration:run-loop})是唯一的
-工作池,上限为四个工作线程。多机扩展需要将显式谱系纪律
-(P4;\cref{sec:overview:principles})推广到合并,而不仅是祖先遍历 ——
-这同一道缺口也限制了计算得出的证据,其证据链
-(\cref{sec:exploration:lineage-chaining})如今是沿单一谱系按名称提示
-调度的,而非由一个在证据依赖图之上的显式调度器来调度。另一项约束是
-LLM 评分器,经验上它与探索器并列为占主导的开销项之一;按
-(论文哈希,细则哈希)缓存其输出会有所帮助,但此特性尚未发布。
+治理增加 model call、replay work、storage 与 boundary latency。budget
+可以降低 governance level 或抑制 optional co-evolution,但严重降级的运行
+收集到的制度证据也更少。大型 registry 还会增加 candidate、role
+interaction 与 repair 必须检查的 dependency edge 数量。
+
+第二版审计摘要绑定类型、标识、事务、载荷和前驱，能揭示改变重放语义的
+中间修改，却不能检测历史和本地固定值同时回退到相同旧
+前缀。更强的回退抵抗需要外部保存的签名日志头、定期提交给独立见证者,
+或单调计数器。永久只追加保存也与机密信息、个人数据和删除要求冲突。
+若无销毁密钥式删除或可审计的遮盖记录,不应把敏感明文写入台账。
+
+当前实现假定每个 checkpoint 有一个 authoritative event order。distributed
+executor 需要 replicated log、deterministic conflict resolution,以及并发
+artifact 产生时究竟哪个 epoch 正在 serving 的明确定义。现有
+single-writer discipline 是稳健的 local boundary,还不是 distributed
+consensus protocol。
+
+数据同样构成限制。reviewer improvement 需要 held-out anchor;
+clean-room regeneration 需要足够抽象的 failure summary;utility-policy
+比较需要 stable axis basis。缺少这些输入时,系统保守降级而不虚构优越性
+主张。保守降级维护 integrity,却减少适应机会。
+
+反复用同一验证攻击池选择候选和效用策略，可能对已知样例过拟合。可信研究
+必须分离开发、选择与秘密最终样例，处理适应性重复选择，并比较同模型、
+异模型和异提供者的角色分配。记录级角色分离并不使共享模型系列的错误相互
+独立；串谋、裁决拒绝服务和偏置锚点仍是待实证的威胁。
 
 \subsection{展望}\label{sec:discussion:outlook}
 
-最大的缺口是评估广度:\cref{chapter:eval} 建立在一次复现实验
-(在彼时最新的 v0.8.0 流水线上运行)和一篇经过验证的生成论文之上 ——
-这是机制能够组合起来的证据,而非一个分布。未来工作有三方面:一项在
-冻结检查点之上、以一组相互对照的目标论文为面板的受控研究,其协议精神
-与 \cite{chan2024mle,starace2025paperbench} 一脉相承;以对重复 rollout
-与评分器轮次的、具方差意识的聚合,取代单一标量的汇总,因为评判者本身
-就带有噪声;以及更广的领域 —— 把契约可命名的证据种类从标量测量进一步
-拓宽,正如执行画像契约(\cref{sec:paper:paperbench:v072})拓宽了 ARI
-所能承载的计算那样,迈向那些主要证据并非单一指标的领域。
+下一项实证工作是跨 governance configuration、task family、model 与 seed
+的预注册比较。下一项系统工作是显式报告 evidence coverage:对每个 role,
+列出实际演练过的 sanction、replay case、anchor 与 successor stage。
+重复 policy rewrite 与制度 cycling 需要更长运行才能研究。
 
+优先事项是:外部固定审计日志头，并在进程或操作系统边界隔离角色与检查点
+权限；比较固定制度、原
+RQGM 和完整系统并做主要组件消融;在带标签的因果图上测量归因与修复精度;
+以及量化稿件闸门覆盖率和治理所需时间、token 与费用。
+
+更广的问题是,固定宪制能否支持 open-ended 制度改进,同时避免弱到无法
+约束或僵硬到不许改进。Constitutional ARI-RQGM 提供一个具体、可重放的
+平台来测量该问题。当前主张刻意更窄:model-defined research role 可以
+协同演化,而 registry authority、amendment、provenance 与 final evidence
+verification 仍处于其控制之外。

@@ -24,7 +24,7 @@ sources:
     role: config
   - path: ari-core/tests/test_rqgm_kernel.py
     role: test
-last_verified: 2026-07-16
+last_verified: 2026-07-28
 ---
 
 # RQGM ランタイムウォークスルー
@@ -37,14 +37,14 @@ last_verified: 2026-07-16
 ファイルに着地するのか。以下のイベントログ抜粋はすべて実際のランから
 取られています（行は切り詰め、ラン固有の値は `…` で省略しています）。
 
-![1 回の ari_rqgm ランの縦方向フロー: 起動とモード解決、RQGMRuntime の構築、設立登録トランザクション（29 プロンプト + 16 コンポーネント）、凍結されたアクティブ集合での epoch_000 のオープン、ノード単位ループ（提案ルーティング、ノード実行、ガバナンスレベル、敵対ラウンド）、エポック境界（監査、遷移エンジン + カーネル、境界トランザクション、フロンティア修復）、そして次のエポックのオープン。](../../assets/images/rqgm/rqgm_run_lifecycle.svg)
+![1 回の ari_rqgm ランの縦方向フロー: 起動とモード解決、RQGMRuntime の構築、設立登録トランザクション（指示文・効用規則 32 件 + コンポーネント 20 件）、凍結されたアクティブ集合での epoch_000 のオープン、ノード単位ループ（提案ルーティング、ノード実行、ガバナンスレベル、敵対ラウンド）、エポック境界（監査、遷移エンジン + カーネル、境界トランザクション、フロンティア修復）、そして次のエポックのオープン。](../../assets/images/rqgm/rqgm_run_lifecycle.svg)
 
 同じフローを圧縮すると:
 
 ```text
 boot ──▶ mode resolution ──▶ RQGMRuntime ──▶ founding registration ──▶ epoch_000 open
-                                              (1 txn: 29 prompts,        (active set
-                                               16 components)             frozen)
+                                              (1 txn: 32 prompts,        (active set
+                                               20 components)             frozen)
                                                                              │
         ┌────────────────────────────────────────────────────────────────────┘
         ▼
@@ -94,7 +94,7 @@ boot ──▶ mode resolution ──▶ RQGMRuntime ──▶ founding registra
 prepare → … → commit トランザクションを通じて登録されます — 1 つの
 `epoch_transaction_prepare` と 1 つの `epoch_transaction_commit`
 （`transition_id: transition_founding`）の間に
-**29 個の `prompt_registered` + 16 個の `component_registered` イベント**
+**32 個の `prompt_registered` + 20 個の `component_registered` イベント**
 です:
 
 ```jsonc
@@ -104,21 +104,23 @@ prepare → … → commit トランザクションを通じて登録されま�
  "payload": {"prompt_id": "agent_system_prompt_v1", "role": "generator",
              "status": "active", "prompt_hash": "a50abe13d568",
              "source": {"kind": "committed_template", "key": "agent/system"}, …}}
-// … 28 more prompt_registered, then 16 component_registered …
-{"event_id": "evt_000042", "event_type": "epoch_transaction_commit",
+// … 31 more prompt_registered, then 20 component_registered …
+{"event_id": "evt_000053", "event_type": "epoch_transaction_commit",
  "payload": {"transition_id": "transition_founding"}}
 ```
 
-設立コンポーネント 16 個の内訳は、7 種の adversary タイプ（それぞれ
+設立コンポーネント 20 個の内訳は、`generator_v1` と、7 種の探索 adversary タイプ（それぞれ
 `adversary_{type}_v1`、攻撃ファミリごとに 1 つ: コスト爆発、証拠ギャップ、
 メトリクスゲーミング、過大主張、先行研究、プロンプトインジェクション、
 再現性）、`defender_v1`、`artifact_judge_v1`、`proposal_router_v1`、
-2 つのメタエージェント `prompt_mutator_v1` と
-`clean_room_generator_v1`、加えて Task 14 の `policy_mutator_v1`
-（スコアの提案者）と `utility_policy_v1`（統治されるスコアそのもの）
-です。29 個のプロンプトはこれらのロールに加えて、
-ガバナンスアクターのテンプレート（auditor、governance defender、
-governance judge）と BFTS オーケストレーションテンプレートをカバーします。
+`prompt_mutator_v1`、`clean_room_generator_v1`、`policy_mutator_v1`、
+`utility_policy_v1`、ライブなメタアクター `replay_selector_v1` と
+`failure_summary_compressor_v1`、レジストリから名指し可能な司法
+`auditor_v1`、`evidence_clerk_v1`、`governance_judge_v1` です。
+32 個のプロンプトはプロンプトを使うこれらのロール、提案生成器、BFTS
+オーケストレーションをカバーします。決定論的な Evidence Clerk は
+プロンプトを持ちません。paper archive は gated な 3 組を加え、
+合計 35／23 件になります。
 ログをリプレイすると `rqgm_registry.json` がバイト単位で同一に再構築され
 ます; 登録は **write-once** です — ログにエポックまたはコミット済み登録を
 見つけた resume は決して再登録せず、クラッシュした設立トランザクション
@@ -130,11 +132,13 @@ governance judge）と BFTS オーケストレーションテンプレートを�
 `epoch_state.json` に凍結されます: `active_components`（ロールごとに
 1 つのロールアップ勝者）と `active_prompt_hashes`（ロールごとに 1 つの
 12 桁 hex ハッシュ）、加えて utility policy が、タイムスタンプを除外した
-決定論的な `epoch_fingerprint` の下にすべてピン留めされます。この集合の
+政策を表す `policy_fingerprint`、宣言済み実行基盤を表す
+`execution_fingerprint`、両者を合成した `epoch_fingerprint` の下に
+固定します。提供者や環境の版が不明なら `unresolved` と記録します。この集合の
 中身は次の境界まで一切変更できません。
 
 ```jsonc
-{"event_id": "evt_000043", "event_type": "epoch_open",
+{"event_id": "evt_000054", "event_type": "epoch_open",
  "payload": {"epoch_state": {"epoch_id": "epoch_000", "epoch_seq": 0,
    "node_count_at_open": 1,
    "active_components": {"adversary": "adversary_reproducibility_v1",
@@ -211,22 +215,24 @@ v1 の境界トリガはノード数（`rqgm.epoch.nodes_per_epoch`、デフォ�
    パイプラインを実行します: 観察の収集 → 信頼性評価 → 証拠収集
    （**EvidenceClerk** が唯一の証拠収集者です; 不許容な同一ロール素材は
    ここで落とされます）→ 訴追判断（`ImpeachmentMotion` を提出できるのは
-   **Auditor** だけで、結果に応じて返還または没収される保証金を供託
-   します）→ 弁護の生成 → 裁定パネル（動議 + プロンプト候補評価）→
+   **Auditor** だけで、一期ごとの動議枠を一単位使います。旧会計名は
+   残りますが価値は移転しません）→ 弁護の生成 → 裁定パネル
+   （動議 + プロンプト候補評価）→
    リプレイプール更新 → **ガバナンス自己監査**（パイプラインが自身の
    4 アクター: auditor、evidence clerk、defender、governance judge を
    監査します）→ `GovernanceReport`。レポートは助言的です —
    オーケストレータがレジストリを書くことは決してありません。実際の
    最初の境界のレポート: `record_id: govreport_epoch_000`、
-   `self_audit.checked_components: ["auditor_v0", "defender_v0",
-   "evidence_clerk_v0", "governance_judge_v0"]`、
-   `bond_accounting: {posted: 0, …}`。
-   （現行ビルドでは、設立ロールは実際に登録された id — 例:
-   `defender_v1` — で現れます; auditor、evidence clerk、governance
-   judge は設計上 `*_v0` フォールバックのままです。）
-2. **メタステップ。** メタティア（prompt mutator、clean-room generator）
-   はサンドボックスで走ります; すべての出力は `candidate` として
-   ライフサイクルに入り、決して即時有効化されません。候補生成は
+   `self_audit.checked_components: ["auditor_v1", "defender_v1",
+   "evidence_clerk_v1", "governance_judge_v1"]`、
+   `bond_accounting: {posted: 0, …}`。4 者ともレジストリから名指しでき、
+   制裁可能です。Governance Judge 自身が motion の対象なら、自分の事件を
+   裁定せず忌避します。
+2. **メタステップ。** メタティアは読み取り専用サンドボックスで prompt
+   mutator、policy mutator、replay selector、failure-summary compressor、
+   および pending clean-room generation を実行します。すべての出力は
+   `candidate` または監査専用 recommendation であり、即時有効化では
+   ありません。候補生成は
    失敗を契機とするものではありません: **すべての**境界で — 平穏な
    エポックも含めて — `PromptMutator` がアクティブな現職を持つ
    進化可能なロールごとに 1 候補を提案します。これは
@@ -246,11 +252,12 @@ v1 の境界トリガはノード数（`rqgm.epoch.nodes_per_epoch`、デフォ�
    `ConstitutionalKernel` が解決済み遷移を検証します: 不正なエッジは
    ブロックされ（`CK-REG-001` テーブル違反、`CK-REG-002` 境界限定
    エッジのエポック途中でのスタンプ）、エンジン以外のレジストリ書き込み
-   手はブロックされ（`CK-ROL-901` — ジャッジは決してレジストリを書け
-   ません）、`emergency_quarantine`（T16）が唯一のエポック途中エッジです。
-   ブロックされた遷移は、現職のアクティブ集合が引き継がれてランが継続
-   することを意味します — ブロックされるのは制度であって、研究では
-   決してありません。
+   手はブロックされます（`CK-ROL-901` — ジャッジは決してレジストリを書け
+   ません）。`emergency_quarantine`（T16）は現期を強制終了し、隔離と
+   新しい指紋値を持つ次期の開始を同じ境界取引で確定します。
+   ブロックされた遷移では、現職の稼働集合を引き継ぎます。候補生成を
+   続けて安全なのは外部副作用のない隔離環境に限り、不可逆な外部操作には
+   別の固定された閉鎖側ゲートが必要です。
 4. **コミット。** 境界は `rqgm_transitions.jsonl` 上の 4 イベント
    トランザクションとして着地します:
 
@@ -273,9 +280,11 @@ v1 の境界トリガはノード数（`rqgm.epoch.nodes_per_epoch`、デフォ�
    トレースし、依存レコードを stale にマークし（`_stale`、
    `_valid_for_frontier` センチネルが `tree.json` を通じて永続化され
    ます）、フロンティアを再構築します。消去は**論理のみ** — 物理的には
-   何も削除されません — かつロール固有です: 可能な場合、utility は元の
-   エポックの凍結された重みの下で生き残った入力から再計算され、不可能な
-   場合はノードが frontier-invalid になります（erase, don't re-scale）。
+   何も削除されません — かつロール固有です。スコア済み証拠が stale に
+   なった utility は元のエポックの凍結重みで生存入力から再計算します。
+   utility policy 自体が退役した場合は、保存済みで policy-independent な
+   `_axis_scores` から新基準で再スコアし、raw axis が使えないノードは
+   fail-closed で無効化します。
 6. **クリーンルーム。** 退役ロールに対する保留中の再生成要求が窓の中で
    実行されます; 許容可能な出力は候補として次のサイクルに入ります。
    その後、次のエポックのアクティブ集合が凍結され、探索が再開します。
@@ -332,6 +341,17 @@ attack を生み、不正な generator の替え玉はスキーマチェック�
 して継続します（ブロッキングな完全性検出は governance-suspended
 carry-over へ縮退し、resume の拒否には決してなりません）。
 
+続く論文フェーズは **paper-candidate プリフライト**を走らせます: 永続化された
+utility ペナルティをロード済みノードへリプレイし、ベストノードを 1 回の L3
+paper-candidate 敵対ラウンドでエスカレーションし、勝者が安定するまで選択を
+繰り返します — 他ノードの降格によって新たに勝者となったノードも、自分の
+ラウンドを必ず受けます。3 つの入口（`ari run` / `ari resume` / `ari paper`）は
+いずれも共有の論文ディスパッチ経由でここに到達します。このラウンドは論文自身の
+アーティファクトを攻撃するため、その存在を条件にゲートされます: まだ論文を
+生成していないチェックポイントでは、パイプラインがそれらを書き出すまで実行を
+延期します。一度きりのマーカーを空のバンドルに費やすと、そのノードの
+アーティファクト接地ラウンドが恒久的に抑止されてしまうからです。
+
 ---
 
 ## 境界での utility 書き換え（Task 14）
@@ -348,17 +368,20 @@ carry-over へ縮退し、resume の拒否には決してなりません）。
 behavioral ロールと異なり、utility policy は基準なので、**supersession**
 （エッジ T20）で採用されます: 後継の同一境界 T6 採用が `active → retired`
 ステータス変更を発行し、*健全な*現職を**旧**ハッシュとともに退役させます。
-`frontier_repair` はその後、旧ハッシュを退役した依存として扱います —
-`_utility_policy_hash: <旧>` とスタンプされたすべてのノードが
-`utility_invalidated` としてマークされ、新ポリシーの凍結された重みの下で
-フロンティアが再構築されます:
+`frontier_repair` はその後、旧ハッシュを退役した依存として扱い、
+`_utility_policy_hash: <旧>` とスタンプされたすべてのノードを、保存済み
+`_axis_scores` から新しく凍結された composite／weights で再スコアします。
+raw axis が使えないノードだけを `utility_invalidated` にし、古い基準の
+スコアを残しません。この継ぎ目を明らかにした実ランの境界では、5 ノードを
+再スコアし、無効化は 0 件でした:
 
 ```jsonc
 {"event_type": "component_status_change", "payload": {"role": "utility_policy",
    "component_id": "utility_policy_v1", "from_status": "active",
    "to_status": "retired", "rule_id": "T20", …}}
-{"event_type": "selective_erasure", "payload": {"reason": "utility_invalidated",
-   "retired_prompt_hash": "fed4460f44f6", …}}
+{"event_type": "selective_erasure", "payload":
+   {"retired_prompt_hashes": ["fed4460f44f6"],
+    "policy_rescored_node_ids": ["node_…"], "invalidated_node_ids": [], …}}
 ```
 
 **正直な限界。** デフォルト設定（`axis_mode: dynamic`、空の静的
@@ -511,7 +534,7 @@ tail -f {checkpoint}/rqgm_audit.jsonl | python3 -c \
 | transitions | `prompt_registered` / `component_registered` | 設立登録のペイロード | `RQGMRuntime._register_founding` |
 | transitions | `prompt_status_change` / `component_status_change` | 解決された T1–T21 エッジ（採用、制裁、退役） | `RegistryTransitionEngine` |
 | transitions | `epoch_close` / `epoch_open` | 境界: 旧エポックが閉じ、新しい凍結エポックが開く | `RegistryTransitionEngine` / `RqgmStateStore` |
-| transitions | `emergency_quarantine` | 唯一のエポック途中エッジ（T16） | `RegistryTransitionEngine` |
+| transitions | `emergency_quarantine` | 強制された緊急境界内の T16 隔離 | `RegistryTransitionEngine` |
 | audit | `governance_level` | ノードごとのはしごレベル（L0–L3）+ トリガ | `GovernanceBudgetManager` |
 | audit | `budget_consumed` | あるガバナンス決定ポイントが予算を消費した | `GovernanceBudgetManager` |
 | audit | `raw_attack` / `defender_response` / `judgment_record` / `validated_attack` / `utility_record` | 1 回の敵対ラウンド、レコードごと | 敵対ループ |

@@ -34,7 +34,7 @@ sources:
     role: prompt
   - path: ari-core/ari/prompts/governance
     role: prompt
-last_verified: 2026-07-16
+last_verified: 2026-07-29
 ---
 
 # Constitutional ARI-RQGM Architecture
@@ -53,6 +53,32 @@ an epoch runs, and which invariants hold.
 > `ari_rqgm` run traced step by step (boot → founding registration →
 > per-node hooks → boundary → what lands on disk), with event-log excerpts
 > and an observability cheat-sheet.
+
+---
+
+## Complete audit network
+
+[![Complete Constitutional ARI-RQGM audit network. It enumerates all twenty standard sanctionable registered components and the three paper-mode additions, then links them to per-node adversarial review, the append-only evidence ledger, epoch-boundary evidence admission, motions, defense, adjudication, kernel self-audit, registry transition, impact repair, and final claim verification.](../assets/images/rqgm/rqgm_audit_flow_en.svg)](../assets/images/rqgm/rqgm_audit_flow_en.svg)
+
+The left side enumerates the whole sanctionable set: research, selection,
+utility and optional paper roles; the eight adversaries, Defender, and Artifact
+Judge; the three governance-judiciary roles; and the five meta roles. The
+right side shows how those components form a network rather than six isolated
+checks. Each governed output enters the append-only audit ledger. Per-node
+attacks must pass defense and artifact adjudication before becoming evidence.
+At the epoch boundary, deterministic reliability aggregation and the Evidence
+Clerk feed Auditor-only motions, one defense per motion, and a board-bounded
+Governance Judge. Every record produced by that judiciary returns to the
+ledger and is re-checked by the fixed kernel.
+
+The bottom band separates advice from enforcement. The Governance Report goes
+to the sole Registry Transition Engine; the fixed kernel validates the
+resolved T1–T21 transition before an atomic commit, and retirement triggers
+impact repair. The fixed claim verifier independently checks the paper before
+finalization. The open paths remain explicit: the sole Auditor cannot file a
+same-role motion against itself, and a targeted Governance Judge recuses
+without an independent substitute. Both require external adjudication. Select
+the figure to open it at full size.
 
 ---
 
@@ -90,9 +116,11 @@ the current implementation carries it:
    frontier is not a run-constant — it is a governed object frozen per epoch
    and rewritten at boundaries through the same lifecycle that evolves
    prompts (see [Governed utility evolution](#governed-utility-evolution)).
-   The *consequence* half has always been live: a rewrite retires the old
-   policy and `frontier_repair` invalidates every node scored under it. The
-   *cause* half — a `policy_mutator` that proposes the successor — is Task 14.
+   The *consequence* half is live: a rewrite retires the old policy and
+   `frontier_repair` re-scores every comparable node from its stored raw axes
+   under the new criterion, invalidating only nodes that cannot be safely
+   re-scored. The *cause* half is a governed `policy_mutator` that proposes
+   the successor.
 2. **Adversaries attack artifacts *and* evaluations; collusion is
    forbidden.** The seven exploration adversaries attack a node's
    *artifacts*; the eighth, `paper_self_preference`, attacks a *reviewer's
@@ -102,11 +130,12 @@ the current implementation carries it:
    determinism/no-collusion principle forbids (`PolicyMutator` sees only the
    boundary's already-abstract evidence, `utility_evolution.py`).
 3. **The adversary is itself in the audit network — no absolute ruler.**
-   The components that attack, that propose the score, and that audit are all
-   themselves registered, sanctionable, evolvable rows: `policy_mutator_v1`
-   is a founding meta component whose own template evolves like any other,
-   and a governance recommendation against it resolves into an ordinary
-   sanction. Nothing sits outside the transition table.
+   The components that attack, propose the score, or operate the judiciary
+   are registered and sanctionable. Evolvable roles such as
+   `policy_mutator_v1` can gain successors; the Auditor, Evidence Clerk, and
+   Governance Judge have no prompt-mutation successor path, but they can
+   still be warned, retired, or banned. A Governance Judge targeted by its
+   own motion is recused. Nothing sits outside the transition table.
 4. **Everything is constitution-bound; impeachment follows the
    constitution.** Every state change is validated by the non-evolving
    kernel against frozen rule tables pinned by `constitution_hash`; the only
@@ -121,13 +150,14 @@ the current implementation carries it:
 ## The three layers
 
 The role and tier vocabularies are closed sets in `ari/rqgm/events.py`
-(`EVOLVABLE_ROLES`, `FIXED_ROLES`, `TIERS`); component ids are
-`{role}_v{N}`, prompt ids `{role}_prompt_v{N}`.
+(`EVOLVABLE_ROLES`, `GOVERNANCE_ACTOR_ROLES`, `FIXED_ROLES`, `TIERS`);
+component ids are `{role}_v{N}`, prompt ids `{role}_prompt_v{N}`.
 
 | Layer | Tier | Roles | Evolves? |
 |---|---|---|---|
 | **0 — constitutional (fixed)** | `fixed` | `constitutional_kernel`, `fixed_verifier` (the deterministic `results.json` merge / metric recompute path), `audit_log` | **Never.** Registered for provenance only; rule tables live in code (`kernel_rules.py`, `transition_rules.py`, `clean_room_rules.py`, `meta_rules.py`), pinned by a `constitution_hash` that any rule edit must explicitly re-pin in `tests/test_rqgm_kernel.py`. |
 | **1 — institutional** | `institutional` | `generator`, `reviewer`, `adversary`, `defender`, `judge`, `router`; the governed evaluation criterion `utility_policy`; and (paper-mode only) `paper_writer`, `paper_reviewer` | Yes — through the prompt-evolution lifecycle, at epoch boundaries only. `utility_policy` is not prompt-defined — its incumbent is a policy *document* — but it is evolvable in exactly the same sense: one incumbent, replaced only through the transition engine at a boundary. |
+| **1 — governance judiciary** | `institutional` | `auditor`, `evidence_clerk`, `governance_judge` | No successor-generation path, but not immutable: all three are founding, registry-addressable, sanctionable actors. The judge recuses when it is the motion target. |
 | **2 — meta** | `meta` | `prompt_mutator`, `clean_room_generator`, `replay_selector`, `failure_summary_compressor`, `policy_mutator` | Yes — the agents that evolve Layer 1 are themselves governed, with strictly narrower authority (see invariants). `policy_mutator` proposes successor utility policies. |
 
 The role and tier vocabularies were closed sets from day one; Task 14 and the
@@ -157,7 +187,7 @@ governance machinery (all constructed lazily, all fail-open):
 |---|---|---|
 | `ConstitutionalKernel` | `ari/rqgm/kernel.py` | Layer 0. Twelve closed `validate_*` entry points (record schema, hashes, capability, epoch invariance, transitions, role separation, selective erasure, audit-log integrity, clean-room bundle, contamination, authority non-expansion, context scope) plus the enforcement adapters (`should_block`, fail-open `per_node_warn_check`, pre-flight `CapabilityGatedMCPClient`). Deterministic and non-evolving: zero LLM calls, zero network, zero wall-clock decisions. `rqgm.kernel.enforcement: audit_only` downgrades every context to warn-and-log. |
 | `GovernanceOrchestrator` | `ari/rqgm/governance/` | The epoch-boundary audit: `audit_epoch(...) -> GovernanceReport`, a nine-step pipeline (observe → assess reliability → assemble evidence → prosecute → defend → adjudicate → replay-pool update → self-audit → report). Every LLM decision (Auditor / Defender / GovernanceJudge, prompts under `ari/prompts/governance/`) has a total deterministic fallback, so `llm=None` still produces a complete audit. The report is *advisory input* to the transition engine — the orchestrator never mutates registries. |
-| `RegistryTransitionEngine` | `ari/rqgm/transition_engine.py` | The **sole** registry status writer. Pure `resolve_transition(...)` against the fixed T1–T21 table, then a five-step boundary protocol: freeze → resolve → kernel-validate → prepare → apply/commit over the epoch transaction. `emergency_quarantine` is the only mid-epoch path. |
+| `RegistryTransitionEngine` | `ari/rqgm/transition_engine.py` | The **sole** registry status writer. Pure `resolve_transition(...)` against the fixed T1–T21 table, then a five-step boundary protocol: freeze → resolve → kernel-validate → prepare → apply/commit over the epoch transaction. A T16 `emergency_quarantine` force-closes the current epoch and opens a newly fingerprinted epoch in that same transaction. |
 | `FrontierRepairEngine` | `ari/rqgm/frontier_repair.py` | After a committed transition with retirements: the pure `trace_dependents` staleness closure and `rebuild_frontier`, emitting `SelectiveErasureEvent` / `FrontierRebuildEvent` records. Failure ladder: kernel-validation failure → conservative re-repair (flagged nodes dropped) → drain-only degradation (`expansion_halted`: the run finishes pending work but expands no further). Never a crash. |
 
 Supporting components hang off the same runtime: the `ProposalRouter` +
@@ -202,7 +232,10 @@ flowchart TB
 
 1. **Freeze.** `freeze_epoch` (`ari/rqgm/state.py`) pins the active
    component set, prompt hashes, and utility policy into an immutable
-   `EpochState` with a deterministic `epoch_fingerprint`. The frozen policy
+   `EpochState`. Its `policy_fingerprint` binds the serving set and resolved
+   governance settings; its `execution_fingerprint` binds the declared model,
+   decoding, tools, environment, and data snapshot. Missing external revision
+   pins are recorded as `unresolved`. `epoch_fingerprint` composes both. The frozen policy
    is the **adopted** one — `capture_utility_policy(cfg, registries=)` reads
    the active `utility_policy` entry, falling back to the resolved `cfg`
    only at epoch 0 or when no policy has been adopted (byte-identical to the
@@ -210,17 +243,21 @@ flowchart TB
    `epoch_000`, `epoch_001`, … On a fresh checkpoint, the **founding
    registration** runs at boot, before `epoch_000` ever opens: one
    transaction registers the frozen founding tables
-   (`ari/rqgm/prompt_spec.py` — 29 prompts, 16 components; 28 prompt rows and all
-   16 component rows are frozen code constants, and `utility_policy_prompt_v1` is
-   derived from the resolved config, plan 14 §5.3) on
+   (`ari/rqgm/prompt_spec.py` — 32 prompt-or-policy records and 20 components for an
+   exploration boot; 31 prompt rows and all 20 component rows are frozen
+   code constants, and `utility_policy_prompt_v1` is derived from the
+   resolved config) on
    `rqgm_transitions.jsonl`, so the first freeze carries a non-empty
-   active set. Write-once: resume replays it, never re-registers.
+   active set. Paper-archive boot adds three gated prompts and components
+   (`paper_writer`, `paper_reviewer`, `paper_self_preference`) for totals of
+   35 and 23. Write-once: resume replays the transaction, never re-registers.
 2. **Search.** BFTS explores exactly as in `simple_bfts`. Per node, three
    best-effort hooks run: expansion directions are captured as
    `ProposalRecord`s, evaluated nodes get an adversarial round (one of the
-   seven adversary types attacks the node's *artifacts*; the defender
-   responds; the `ArtifactJudge` adjudicates; only judge-validated attacks
-   apply a bounded score penalty), and per-node kernel checks warn-and-flag.
+   seven exploration adversaries attacks the node's *artifacts*; the
+   paper-only eighth type attacks reviewer decisions; the defender responds;
+   the `ArtifactJudge` adjudicates; only judge-validated attacks apply a
+   bounded score penalty), and per-node kernel checks warn-and-flag.
 3. **Audit.** At the boundary the closing epoch is audited *first*, so the
    `GovernanceReport` is available to the transition engine.
 4. **Meta step.** The meta tier (prompt mutator, clean-room generator, …)
@@ -236,8 +273,8 @@ flowchart TB
    discarded on resume and re-run deterministically.
 6. **Frontier repair.** If the committed transition retired components or
    prompts, every record materially dependent on a retired `prompt_hash`
-   is logically erased from frontier scoring and the frontier is rebuilt
-   (see invariant 7).
+   is logically erased — excluded from frontier scoring, expansion, and
+   best-node selection — and the frontier is rebuilt (see invariant 6).
 7. **Clean room.** Pending clean-room requests execute inside the boundary
    window; admissible outputs enter the lifecycle as candidates for the
    *next* cycle. A retired role's slot is meanwhile served by the baseline
@@ -394,12 +431,12 @@ resolved at construction from the implicated role to the epoch-frozen
 `paper_reviewer_v1` / `paper_writer_v1` (`ari/rqgm/adversarial/round.py`).
 This closes the
 `validated_attack → validated_attack_involvement → classify_target →`
-impeachment chain that was dead upstream for every adversary. *Honest limit:*
-this only fires in production for `paper_self_preference`, whose targets are
-registered founding components. The seven exploration adversaries attack
-artifacts authored by the `generator` role, which has **no** registered
-component, so their chain stays inert **by design** (registering a generator
-component is a separate decision).
+impeachment chain. The research `generator` is now a registered founding
+component. Every governed node is stamped once with its producer component,
+prompt hash, and epoch before persistence or attack; the seven exploration
+attack types bind only when that provenance matches the epoch-frozen
+generator. Legacy, missing, or mismatched provenance remains targetless.
+`paper_self_preference` similarly resolves to its registered paper roles.
 
 **Two culpable components, one round.** An over-accepted draft that the claim
 gate *also* finds unfaithful has **two** culpable components: the reviewer
@@ -471,11 +508,11 @@ Task-12 governance budget verbatim.
    log. (The utility policy may change *at boundaries* — the repeal of the
    former I-11 "constant score" invariant, [above](#governed-utility-evolution)
    — but never within an epoch.)
-2. **Boundary-only transitions, one exception.** Every status change
-   commits inside the epoch-boundary transaction. The sole mid-epoch edge
-   is `emergency_quarantine` (rule T16: `probationary_active` / `active` /
-   `warning` / `probation` → `quarantine`), restricted to kernel-critical
-   trigger codes, still logged and kernel-validated.
+2. **Every transition forms a boundary.** Every status change commits inside
+   an epoch transaction. T16 (`probationary_active` / `active` / `warning` /
+   `probation` → `quarantine`) is the emergency trigger: it terminates the
+   current epoch immediately, commits the single quarantine, and freezes a
+   fresh active set and fingerprint before execution continues.
 3. **Single registry writer.** Only the `RegistryTransitionEngine` writes
    component/prompt statuses (global invariant 10) — enforced structurally
    at the storage layer (`ari/rqgm/store.py`, event-replay-only registry
@@ -487,13 +524,22 @@ Task-12 governance budget verbatim.
    utility penalty (epoch-frozen policy: `rqgm.adversarial.penalty.cap`,
    per-severity weights), and the pre-penalty score is preserved in
    additive metric keys. Judge failure falls back to `invalid` — no
-   penalty. Adversaries attack *artifacts*, never components: the attack
-   schema has no component field.
+   penalty. Adversaries attack *artifacts*, never components: the raw-attack
+   schema has no component target. Only the judge-authored
+   `ValidatedAttackRecord` may add an optional `target_component_id` after
+   adjudication, binding accountability without changing what was attacked.
 5. **Same-role accusations are forbidden.** Same-role outputs are
    observations only. Enforced constructively in the governance record
    builders and authoritatively by the kernel's
    `validate_role_separation`; inadmissible evidence is excluded during
    evidence assembly.
+   Governance author fields are not accepted from model output: the trusted
+   in-process orchestrator constructs typed records and stamps the fixed role
+   and active component id after parsing only the decision content. This is
+   application-level separation, not cryptographic identity. The current
+   implementation does not isolate roles with separate OS users, processes,
+   keys, or file permissions; the Python process, checkpoint directory, and
+   tool gateway are therefore part of the trusted computing base.
 6. **Selective erasure is logical-only.** Nothing is physically deleted.
    Staleness lives in audit-log events, the derived
    `rqgm_erasure_state.json` rollup, and additive `Node.metrics` sentinels
@@ -501,9 +547,55 @@ Task-12 governance budget verbatim.
    `_erasure_event_id`) persisted through `tree.json`. Erasure is
    slot-scoped (a retired reviewer stales that reviewer's records and
    their downstream utility consequences, never unrelated work), and
-   utilities are recomputed from surviving inputs under the *original*
-   epoch's frozen weights — when impossible, the node becomes
-   frontier-invalid instead (erase, don't re-scale).
+   utilities whose scored evidence went stale are recomputed from surviving
+   inputs under the *original* epoch's frozen weights. The policy-retirement
+   case is deliberately different: every node stamped with the retired
+   policy is re-scored from stored policy-independent `_axis_scores` under
+   the newly frozen criterion; missing or unusable raw axes fail closed to
+   invalidation. No stale composite is converted or allowed to survive.
+   Because erasure is logical, every consumer that *promotes* a node must
+   read the sentinel itself. Expansion does (`BFTS.should_prune`,
+   `PaperArchiveStrategy.should_prune`), and selection does:
+   `verified_context.select_best_node` — the paper candidate escalated at
+   paper pre-flight, the archive seed node, the archive best-belief and
+   cross-round winners, and the `verified_context.json` lineage that
+   grounds the paper's claims — plus the paper-context builder
+   (`build_best_nodes_context`) and the skill-side winner resolvers
+   (ari-skill-transform's science-data/EAR selection, ari-skill-paper's
+   implementation-details block). If every candidate is erased, selection
+   returns no winner rather than falling back to contaminated evidence
+   (matching the RQGM paper's physical-deletion semantics, where erased
+   records cannot be selected because they no longer exist), and a
+   previously written `verified_context.json` naming a since-erased
+   winner is removed rather than left to ground the paper. This settles
+   the question plan 10 §3 deferred — whether `get_verified_context`
+   consumers filter on the stale set: they do, at `select_best_node`,
+   unconditionally (the key is only ever written by RQGM machinery — the
+   `ari_rqgm` exploration engine or the `rqgm_archive` paper runtime — so
+   the clause is inert on the default paths). Because erasure never
+   propagates to descendants, a valid winner can carry an erased ancestor:
+   the lineage handed to the memory layer drops known-erased ancestors,
+   and the per-node working-context injection drops erased ancestor ids
+   before any memory read (via the `rqgm_erasure_state.json` rollup). The
+   memory layer itself reads that same rollup and splits the two cases.
+   A read of an erased node's entries returns them **labelled** (`erased` /
+   `erasure_event_id` / `erasure_note`, at the top level and inside
+   `metadata` so a re-projection cannot strip it) rather than emptied —
+   erasure withdraws the standing of a judgment, not the measurements an
+   experiment recorded. The paths that *push* memory into a decision
+   hard-exclude instead: grounded paper claims (`claims` /
+   `usable_for_claims`, filtered inside `build_verified_context` so the
+   in-process callers are covered too), the "established conclusions"
+   injection, and best-node selection. `limitations` deliberately keeps
+   erased entries, labelled — the honest record of a direction that was
+   later invalidated is what a limitations section is for. This is the
+   settled form of plan 10 §3's deferred question.
+
+   The guarantee is about *provenance*, not about text that has been
+   re-authored: a surviving node that reads a labelled entry and restates
+   its content in its own summary produces an unmarked record on a clean
+   lineage. Nothing propagates the marker through re-authorship, and the
+   erasure machinery does not claim to.
 7. **Clean-room contamination rules.** A replacement prompt for a retired
    role is generated from a closed, kernel-screened input bundle
    (committed catalogs + abstract failure summaries) assembled by the
@@ -517,19 +609,21 @@ Task-12 governance budget verbatim.
 8. **Meta-tier authority limits.** Meta agents run in a read-only sandbox
    (`MetaSandboxMCPProxy` allowlist + a synthesized submit tool), their
    capability flags are deny-by-default with hard-denied flags const-false
-   (`ari/rqgm/meta_rules.py`), the kernel checks authority non-expansion
-   as subset arithmetic (invariant 18), and every meta output enters the
+   (`ari/rqgm/meta_rules.py`), the kernel checks authority non-expansion by
+   comparing each adoption candidate's declared capabilities with the
+   serving incumbent for the same role (falling back to the fixed capability
+   matrix when no incumbent exists), and every meta output enters the
    lifecycle at `status: candidate` — the meta tier can propose, never
    appoint.
 9. **The fixed layer never evolves.** Kernel, fixed verifier, audit log,
    transition/severity/capability tables, the selective-erasure rule, and
    the claim-evidence hard gate are not evolution targets;
    `constitution_hash` pins the tables.
-10. **Block the institution, never the research.** The hard-block set
-    vetoes RQGM state changes only (transition commits, registry writes,
-    frontier-rebuild commits, candidate promotion); node execution is
-    never vetoed. Every run-loop hook is best-effort/fail-open — a
-    governance failure degrades governance, not the experiment.
+10. **Conditional availability policy.** The hard-block set vetoes RQGM state
+    changes. Continuing research is safe only for side-effect-free sandboxed
+    work. The current kernel does not enforce an independent fail-closed gate
+    for external APIs, instruments, or production data, so deployments with
+    irreversible effects must add that boundary outside this runtime.
 11. **Determinism (P2).** Kernel verdicts, transition resolution, frontier
     repair, budget levels, shadow sampling (hash-based), and the
     evaluation metrics are pure functions — no randomness, no wall-clock

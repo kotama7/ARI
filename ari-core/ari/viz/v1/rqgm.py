@@ -9,12 +9,12 @@ rules, program invariants):
   ``rqgm_audit.jsonl``, ``rqgm_adversarial_cases.jsonl``,
   ``rqgm_registry.json``, ``rqgm_prompts/*.json``, ``meta.json``, the node
   ``metrics`` sentinels) directly and re-executes no kernel/score-policy
-  decision.  The only RQGM arithmetic reproduced here is the frozen hash
-  contract ``event_hash = sha256(canonical_json(payload))[:12]`` — a
-  byte-golden-pinned contract (``ari/rqgm/events.py`` docstring, plan 02
-  §5.4), duplicated deliberately because importing the governance package
-  from viz is prohibited; parity is pinned by ``tests/test_gui_v1_rqgm.py``
-  against the fixture factory (which uses the production helpers).
+  decision.  The only RQGM arithmetic reproduced here is the event-digest
+  contract: legacy schema-v1 records use the short canonical-payload hash;
+  schema-v2 records use full SHA-256 over every replay-relevant envelope
+  field.  It is duplicated deliberately because importing the governance
+  package from viz is prohibited; parity is pinned by
+  ``tests/test_gui_v1_rqgm.py`` against the production helpers.
 - Committed records only: a JSONL trailing partial line (torn append) is
   silently ignored, and transition events after an
   ``epoch_transaction_prepare`` with no matching commit are never adopted
@@ -132,6 +132,25 @@ def _hash12(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
 
 
+def _expected_event_hash(rec: dict) -> str:
+    """Viz-local mirror of ``ari.rqgm.events.expected_event_hash``."""
+    payload = rec.get("payload")
+    payload = payload if isinstance(payload, dict) else {}
+    if int(rec.get("schema_version", 1) or 1) <= 1:
+        return _hash12(_canonical_json(payload))
+    commitment = {
+        "schema_version": int(rec.get("schema_version", 2) or 2),
+        "event_id": str(rec.get("event_id", "")),
+        "event_type": str(rec.get("event_type", "")),
+        "transaction_id": str(rec.get("transaction_id", "")),
+        "payload": payload,
+        "prev_event_hash": str(rec.get("prev_event_hash", "")),
+    }
+    return hashlib.sha256(
+        _canonical_json(commitment).encode("utf-8")
+    ).hexdigest()
+
+
 # ── low-level artifact readers ─────────────────────────────────────────────
 
 
@@ -198,8 +217,8 @@ def _scan_jsonl(path: Path) -> tuple[list[dict], int, list[str]]:
 def _verify_chain(name: str, lines: list[dict]) -> tuple[bool, list[str]]:
     """Incremental hash-chain verification over parsed lines.
 
-    Checks ``event_hash == hash12(canonical_json(payload))`` per line and
-    ``prev_event_hash`` continuity (first line must chain from ``""``).
+    Checks each schema's complete event commitment and predecessor continuity
+    (the first line must chain from ``""``).
     Returns ``(chain_ok, reasons)``; scanning continues past a break so the
     data can still be served, flagged.
     """
@@ -208,15 +227,14 @@ def _verify_chain(name: str, lines: list[dict]) -> tuple[bool, list[str]]:
     prev = ""
     for entry in lines:
         rec = entry["record"]
-        payload = rec.get("payload")
-        payload = payload if isinstance(payload, dict) else {}
         eh = str(rec.get("event_hash", ""))
         eid = str(rec.get("event_id", "?"))
-        if eh != _hash12(_canonical_json(payload)):
+        if eh != _expected_event_hash(rec):
             ok = False
             if len(reasons) < _MAX_REASONS_PER_SOURCE:
                 reasons.append(
-                    f"{name}: event_hash of {eid} does not cover its payload"
+                    f"{name}: event_hash of {eid} does not cover its "
+                    "declared event envelope"
                 )
         if str(rec.get("prev_event_hash", "")) != prev:
             ok = False
@@ -288,16 +306,23 @@ def _group_committed(lines: list[dict]) -> list[dict]:
         payload = payload if isinstance(payload, dict) else {}
         if et == "epoch_transaction_prepare":
             pending = [ln]
-            pending_tid = payload.get("transition_id")
+            pending_tid = (
+                rec.get("transaction_id") or payload.get("transition_id")
+            )
         elif et == "epoch_transaction_commit":
-            if pending is not None:
+            commit_tid = (
+                rec.get("transaction_id") or payload.get("transition_id")
+            )
+            if pending is not None and commit_tid == pending_tid:
                 pending.append(ln)
                 entries.append(_entry("transaction", pending_tid, pending))
                 pending = None
                 pending_tid = None
             # commit without prepare: malformed tail — ignored
         elif pending is not None:
-            pending.append(ln)
+            event_tid = rec.get("transaction_id") or pending_tid
+            if event_tid == pending_tid:
+                pending.append(ln)
         else:
             tid = payload.get("transition_id")
             entries.append(

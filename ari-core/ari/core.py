@@ -145,14 +145,22 @@ def _install_capability_gate(cfg, mcp, rqgm, checkpoint_dir):
                 # resolve the component and rejects every escalation as
                 # "unknown component" — T16 would fire and always degrade.
                 st = getattr(rqgm, "state", None)
-                engine.emergency_quarantine(
+                transition = engine.emergency_quarantine(
                     violation=violation,
                     component_id=component_id,
                     epoch_state=epoch,
                     components=getattr(st, "components", None),
                     prompts=getattr(st, "prompts", None),
                     checkpoint_dir=checkpoint_dir,
+                    node_count=getattr(rqgm, "_last_node_count", None),
+                    run_id=str(getattr(epoch, "run_id", "") or ""),
                 )
+                if getattr(transition, "status", "") == "committed":
+                    refreshed = getattr(rqgm, "_store", None).load_state(
+                        checkpoint_dir
+                    )
+                    if refreshed is not None:
+                        rqgm._epoch_state = refreshed
             except Exception:
                 log.warning("emergency quarantine failed (fail-open)",
                             exc_info=True)

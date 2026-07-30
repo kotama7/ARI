@@ -1,162 +1,163 @@
 \section{Related Work}\label{sec:related}
 
-We position ARI against four threads of prior art.
+\subsection{Self-improvement and co-evolution}\label{sec:related:treesearch}
 
-\subsection{Tree search for code}\label{sec:related:treesearch}
+Reflection and self-refinement methods feed model-generated critiques back
+into a later attempt \cite{madaan2023self,shinn2023reflexion}. They improve
+an artefact or trajectory while leaving the evaluator and authority
+structure largely fixed. Constitutional ARI-RQGM instead treats prompt
+roles and utility policy as versioned institutional artefacts whose
+replacement requires evidence, role separation, and a legal transition.
 
-AIDE \cite{jiang2025aide} frames machine-learning engineering as code
-optimisation
---- a solution is a script scored by a stateless objective --- and
-casts trial-and-error as search over a tree of scripts joined by
-draft, debug, and improve edges. On MLE-bench \cite{chan2024mle},
-75 offline Kaggle competitions graded against real medal thresholds,
-this scaffold dominates: the same model earns medals in 8.7\% of
-competitions under AIDE against 0.8\% and 4.4\% under two
-general-purpose scaffolds, so scaffold design outweighs raw model
-capability. ARI inherits the solution-tree skeleton but replaces
-AIDE's hard-coded greedy policy --- flagged by its own authors as a
-local-optima risk --- with an LLM-driven selector
-(\cref{sec:exploration:node-selection}) that weighs
-\texttt{has\_real\_data}, full \texttt{metrics}, depth, and a soft
-\texttt{diversity\_bonus} jointly, and adds the cross-run lineage of
-\cref{sec:exploration:lineage}. And where both works receive their
-objective with the task --- real research, MLE-bench's authors
-concede, ``may not even have a clear problem statement'' --- ARI
-mints its own: the metric contract (\cref{sec:paper:contract})
-declares before search what counts as evidence.
+The closest conceptual ancestor is the Red Queen G\"odel Machine
+\cite{iacob2026red}, where agents and evaluators co-evolve and the scoring
+function can change. ARI-RQGM adopts co-evolution and adversarial replay,
+but adds a fixed constitution, epoch transactions, single-writer
+registries, target-bound sanctions, clean-room replacement, and explicit
+separation between mutable policy and immutable verification. We do not
+claim the co-evolution or boundary updates already present in RQGM as new.
+The conceptual delta is to enclose the mutable institution in a capability
+matrix and complete component-lifecycle table, then connect retirement repair and
+fixed evidence checking on the same provenance graph. The systems
+contribution is this composition and its inspectable boundary rather than
+the individual mechanisms.
 
-AlphaCode \cite{li2022competition} is the canonical
-generate-and-filter result: up to millions of sampled programs per
-problem, filtered on the task's example tests and clustered to at
-most ten submissions, reaching an average ranking in the top 54.3\%
-of participants over ten simulated Codeforces contests. The recipe presupposes a cheap,
-task-supplied verifier; an ARI candidate is an executed experiment on
-cluster resources with no given verifier, so breadth gives way to
-best-first steering of a small frontier, and the cheap filter to
-deterministic checks on the run's own evidence.
+Constitutional AI uses written principles for self-critique and AI
+feedback \cite{bai2022constitutional}. Our constitution is different in
+kind: it fixes a capability matrix, state transitions, and evidence
+formats that model outputs cannot waive. AI Control evaluates protocols
+that separate trusted and untrusted models under attempted subversion
+\cite{greenblatt2023ai}. Our scope is narrower, and we have not yet
+performed a quantitative collusion-control evaluation; we nevertheless
+avoid placing writing, review, adjudication, and registry mutation under
+one authority.
 
-\subsection{Autonomous research agents}\label{sec:related:autonomous}
+\subsection{Autonomous research systems}\label{sec:related:autonomous}
 
-The AI~Scientist family \cite{lu2024ai,lu2026towards} closes a
-similar loop end-to-end (idea $\to$ experiment $\to$ paper) at a
-reported cost below \$15 per paper, with an automated reviewer of
-near-human balanced accuracy on real conference submissions. But the
-reviewer is \emph{advisory} --- it ranks finished PDFs, and
-hallucination control is prompt-level --- and the authors, cataloguing
-hallucinated hardware, fabricated ablation tables, and a negative
-result narrated as an improvement, name automatic verification of
-results as future work. ARI is the contrapositive: experiments branch
-under BFTS instead of one linear trajectory per idea, the metric is a
-run-level artefact frozen at first mint (\cref{sec:paper:contract}),
-and verification blocks --- a deterministic claim--evidence gate, not
-a reviewer score, decides what may be published
-(\cref{sec:paper:failures}).
+The AI Scientist demonstrated an end-to-end loop from ideation through
+experimentation and manuscript preparation \cite{lu2024ai}; later work
+analysed the broader trajectory toward automated scientific discovery
+\cite{lu2026towards}. AIDE treats experimental code improvement as an
+iterative agent problem \cite{jiang2025aide}. These systems establish the
+value of persistent artefacts, executable evaluation, and automated
+writing. Their primary object of optimisation is the research artefact.
+The object of Constitutional ARI-RQGM is the institution that proposes,
+evaluates, and writes those artefacts.
 
-Agent~Laboratory \cite{schmidgall2025agent} treats the agent as a
-collaborator rather than a driver: it requires a human-provided
-research idea, mutates a flat two-program pool under an LLM reward
-model scoring plan adherence, and gates papers on simulated
-reviewers. Its most instructive result is negative: those reviewers
-overestimate human reviewers by 2.3 points on a ten-point scale ---
-the clearest quantification of why holistic LLM-judge gating is
-insufficient. ARI's semantic review therefore steers but never
-blocks, blocking is reserved for the deterministic gate, and every
-node persists in a checkpoint-scoped tree rather than a transient
-pool.
+Agent Laboratory explores coordinated model roles as research assistants
+\cite{schmidgall2025agent}, while MLE-bench provides executable tasks for
+machine-learning engineering agents \cite{chan2024mle}. The constitutional
+boundary is agnostic to whether an underlying actor uses prompted
+reasoning \cite{wei2022chain} or large-scale candidate generation
+\cite{li2022competition}; it governs the actor's version, authority, and
+evidence rather than its internal generation procedure.
 
-VirSci \cite{su2024many} covers the stage these systems treat most
-thinly: a scientist team grounded in a digital twin of a research
-community, whose multi-agent deliberation improves on a single-agent
-baseline by 13.8\% and 44.1\% in alignment with and potential impact
-on contemporary research. It stops at an abstract scored by
-embedding-proximity novelty proxies, and its authors call for
-stricter downstream validation. ARI takes both halves of that
-division of labour: it drives VirSci's original deliberation engine
-directly and unmodified (\cref{fig:virsci}) --- freshness-based
-\texttt{select\_coauthors} team formation and the multi-agent
-\texttt{generate\_idea} loop --- over a live Semantic~Scholar
-snapshot, so the mechanism it builds on is the published one executed
-against current literature; and it supplies the deferred validation
-downstream, where executed evidence under the claim--evidence gate
-replaces proxy novelty scores.
+Story2Proposal argues for contracts that connect narrative scientific
+claims to executable proposals and evidence \cite{qian2026story2proposal}.
+The governed paper archive uses the same general insight as an immutable
+writer anchor: an evolving reviewer cannot make an execution-grounded
+falsehood true.
 
-\begin{figure}[t]
+\subsection{Evaluation and evidence}\label{sec:related:eval}
+
+PaperBench evaluates whether agents can reproduce research papers through
+a structured rubric \cite{starace2025paperbench}. Its central lesson for
+governance is that an evaluation claim needs an explicit task structure,
+observable artefacts, and a grading boundary. Constitutional ARI-RQGM
+extends that lesson from final outcomes to institutional history: attacks,
+defences, judgments, transitions, and repairs are typed records whose
+provenance is retained.
+
+Adversarial evaluation is often used to harden a fixed model or policy.
+Here validated attacks have two additional functions. They may support
+accountability for a serving component, and they become replay cases for
+candidate successors. The same failure is therefore both evidence about
+the incumbent and an entrance test for its replacement.
+
+\subsection{Position of this work}\label{sec:related:foundations}
+
+Least privilege, complete mediation, and separation of privilege are
+classical protection-design principles \cite{saltzer1975protection}.
+Deterministic state-machine replication grounds recovery of the same
+state from the same committed input sequence
+\cite{schneider1990implementing}. Recent event-sourced agent designs
+similarly use append-only events and deterministic projections
+\cite{nakajima2026the}. We therefore do not claim single-writer state,
+replay, or append-only history as inventions. The technical task is to
+connect them consistently to RQGM epochs, attribution, retirement repair,
+and manuscript evidence checking.
+
+The \href{https://www.w3.org/TR/prov-o/}{W3C PROV-O Recommendation}
+standardises interoperable entity--activity--agent provenance.
+\href{https://www.usenix.org/conference/usenixsecurity19/presentation/torres-arias}{in-toto}
+uses signed supply-chain step evidence, and
+\href{https://docs.sigstore.dev/logging/overview/}{Sigstore Rekor}
+provides a publicly auditable append-only transparency log. Those systems
+offer provenance interoperability or cryptographic/witnessed integrity that
+our local unsigned checkpoint does not. Conversely, they do not define the
+RQGM-specific retirement closure or utility re-scoring used here.
+
+\begin{table*}[t]
   \centering
-  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F19_virsci.tex}}
-  \caption{VirSci-style idea generation as ARI drives it.
-           \texttt{select\_coauthors} forms a heterogeneous scientist
-           team from a frozen Semantic~Scholar snapshot (corpus with
-           SPECTER2 retrieval index, freshness-ranked co-author
-           graph); the team runs a $K$-round deliberation grounded by
-           retrieval against the snapshot, and a run-start capability
-           probe folds the platform's measured constraints into the
-           deliberation topic, so the converged \texttt{idea.json}
-           promises only measurements the platform can take.}
-  \label{fig:virsci}
-\end{figure}
+  \scriptsize
+  \begin{tabularx}{\textwidth}{@{}p{0.12\textwidth}*{7}{X}@{}}
+    \toprule
+    \textbf{System line} & \textbf{Mutable object} & \textbf{Fixed basis} &
+    \textbf{Role authority} & \textbf{Atomic state} &
+    \textbf{History integrity} & \textbf{Repair} & \textbf{Threat/evidence} \\
+    \midrule
+    RQGM \cite{iacob2026red} & agents, evaluators, utility &
+      within-epoch evaluation & not its focus & epoch updates &
+      not its focus & co-evolutionary selection &
+      conceptual/experimental co-evolution \\
+    Event-sourced agents \cite{nakajima2026the} & graph behaviour and state &
+      event contract & intent/state separation & deterministic projection &
+      append-only provenance & fork/replay &
+      auditability architecture \\
+    Story2Proposal \cite{qian2026story2proposal} & scientific narrative and proposal &
+      structured contracts & not its focus & contract stages &
+      evidence linkage & revision through contract &
+      writing-scaffold evaluation \\
+    AI Control \cite{greenblatt2023ai} & control protocol &
+      trusted monitor/protocol & trusted/untrusted separation &
+      protocol-specific & monitored transcripts & protocol response &
+      intentional subversion and empirical control \\
+    Provenance/transparency systems & entities, activities, signed statements &
+      provenance schema, keys, log protocol & authenticated producers/verifiers &
+      signed steps or append operation & interoperable or witnessed history &
+      verification, not semantic retirement repair & cryptographic integrity \\
+    This work & prompts, components, utility policy &
+      fixed kernel and verifier & in-process capability matrix &
+      boundary transaction & semantic event digest; no external anchor &
+      retirement closure and re-scoring &
+      five fixtures plus regression tests; no collusion study \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Component-level positioning. A filled cell denotes a design
+    emphasis, not proof that systems with different goals are directly
+    comparable. This work's novelty claim concerns integration, not the
+    invention of the individual mechanisms.}
+  \label{tab:related-comparison}
+\end{table*}
 
-\subsection{Paper evaluation}\label{sec:related:eval}
+Transparent logs and software-supply-chain provenance ask which bytes and
+identity were committed; reference monitors and capability systems ask
+which subject may perform which operation on which object; security
+automata and state-machine methods ask whether every execution trace obeys
+a safety language \cite{schneider2000enforceable}. These are relevant lineages rather than new claims of
+this paper. The present implementation borrows least privilege and complete
+mediation \cite{saltzer1975protection} and deterministic state projection
+\cite{schneider1990implementing}, but it has neither independently witnessed
+log heads nor OS-enforced role capabilities, and its composed epoch,
+transaction, quota, and repair state has not been model checked.
 
-PaperBench \cite{starace2025paperbench} pioneered the rubric-as-tree
-formalism: each of its 20 target papers carries an author-co-developed
-rubric --- 8,316 gradable leaves in total --- whose leaf grades are
-pass/fail and aggregate by weighted average, with a clean-start
-reproduction phase so hard-coded results cannot masquerade as
-replication. ARI vendors the benchmark
-unchanged (\cref{sec:paper:paperbench}), adopts the same per-leaf
-grade and aggregate weight (\cref{eq:paperscore}), and adds a
-per-axis floor used as a refine guard (\cref{sec:paper:failures}).
-Its execution gap --- the strongest agent scores 43.3\% on code
-development but 4.5\% on execution and zero on matching results ---
-motivates moving verification inside generation rather than grading
-after the fact; and its hand-built rubrics (weeks per paper, with the
-original authors) leave automated rubric construction as future work,
-the branch ARI takes: rubrics are generated per paper
-(\cref{sec:paper:rubric}), so handcrafted-rubric reproduction and
-leaderboard-comparable scores are out of scope by design.
-
-Story2Proposal \cite{qian2026story2proposal} governs structured
-manuscript generation through a persistent shared contract ---
-section structure, a registry of visual artifacts, document-wide
-validation rules --- with writer, refiner, and renderer agents under
-a generate--evaluate--adapt loop scored on reasoning verification,
-data fidelity, and visual coherence. The gain holds across four LLM
-backbones, but the evidence is taken as given, and its failure-mode
-analysis concedes a manuscript can remain ``structurally valid while
-containing less rigorous reasoning'': the contract binds structure,
-not evidentiary validity. ARI carries the principle and its axes into
-an execution-grounded pipeline (\cref{sec:paper:evidence}): the
-contract extends the experiment record with claims and numeric
-assertions referencing stable node, result, and figure identifiers;
-data fidelity becomes the deterministic gate that re-derives each
-reported number from recorded results; reasoning and visual coherence
-become a non-blocking evidence-grounded review beside the independent
-manuscript review. Executing the experiments itself, ARI extends the
-manuscript-level contract to execution-grounded provenance.
-
-\subsection{Foundations}\label{sec:related:foundations}
-
-The per-node agent loop (\cref{sec:exploration:react}) follows the
-Reason-and-Act (ReAct) pattern \cite{yao2023react}, whose precise
-finding is a trade: interleaving thoughts with grounded actions cuts
-hallucination sharply while raising the reasoning-error rate. The
-refine cycle descends from Self-Refine \cite{madaan2023self} and
-Reflexion \cite{shinn2023reflexion}, each with a caveat ARI takes
-seriously: Self-Refine's gains vanish where the model cannot detect
-its own errors, and Reflexion's ablations show grounded evaluation
---- not memory alone --- drives its improvement. ARI therefore never
-lets a model grade itself on matters of fact: refinement is steered
-by rubric scores and gate verdicts computed outside the writer, and a
-result becomes a quantitative claim only when artefact-grounded
-(\cref{sec:exploration:memory}). The scratchpad in \emph{Think}
-descends from chain-of-thought prompting \cite{wei2022chain}, whose
-gains are reported as emergent with model scale --- its authors never
-claim the model reasons. None of these proposes state beyond a single
-trajectory; the checkpoint-scoped state that makes a run reproducible
-is ARI's contribution.
-
-An earlier draft cited a further research-agent benchmark; the
-reference was removed when no candidate source passed the
-bibliography verification rule of \cref{sec:paper:failures}, so
-coverage here is restricted to entries verified against the
-Semantic~Scholar index.
+Constitutional ARI-RQGM is neither a claim of autonomous scientific
+superiority nor a general solution to self-modifying agents. It is a
+systems architecture for a narrower question: how can model-defined
+research roles and their utility policy change during a run without
+letting those roles acquire the authority to ratify their own changes?
+Its answer combines co-evolution with deterministic constitutional
+enforcement, transactional state, provenance-aware repair, and a fixed
+evidence gate. The contribution is the composition of these mechanisms
+and the explicit boundary between what they guarantee and what still
+requires empirical study.

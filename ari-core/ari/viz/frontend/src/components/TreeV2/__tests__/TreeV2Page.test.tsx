@@ -412,7 +412,7 @@ describe('Sidebar nav takeover (Wave 4c: tree2 replaces the tree slot)', () => {
 
   it('gui_v2 on: exactly one Tree entry and it writes #/tree2', () => {
     renderSidebar(true);
-    const items = screen.getAllByText('Tree');
+    const items = screen.getAllByText('Research tree');
     expect(items.length).toBe(1);
     act(() => {
       items[0].click();
@@ -422,7 +422,7 @@ describe('Sidebar nav takeover (Wave 4c: tree2 replaces the tree slot)', () => {
 
   it('gui_v2 off: exactly one Tree entry and it writes the legacy #/tree', () => {
     renderSidebar(false);
-    const items = screen.getAllByText('Tree');
+    const items = screen.getAllByText('Research tree');
     expect(items.length).toBe(1);
     act(() => {
       items[0].click();

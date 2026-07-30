@@ -12,7 +12,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_virsci_adapter.py
     role: test
-last_verified: 2026-07-10
+last_verified: 2026-07-30
 ---
 
 # VirSci 集成
@@ -81,7 +81,7 @@ I/O、无随机性 —— P2）：对一个触发事件，按固定优先级顺�
 
 | 触发事件 | 优先级顺序 |
 |---|---|
-| `initial_exploration` | `virsci` → `cheap` |
+| `initial_exploration` | `virsci` → `prior_art` → `cheap` |
 | `frontier_stagnation` | `virsci` → `mutation` → `cheap` |
 | `major_pivot` | `virsci` → `prior_art` → `cheap` |
 | `paper_candidate` | `prior_art` → `mutation` → `cheap` |

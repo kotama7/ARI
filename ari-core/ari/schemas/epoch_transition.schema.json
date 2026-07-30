@@ -178,7 +178,7 @@
         },
         "from_status": {"$ref": "#/$defs/rqgm_status"},
         "to_status": {"$ref": "#/$defs/rqgm_status"},
-        "rule_id": {"type": "string", "pattern": "^T([1-9]|1[0-9])$"},
+        "rule_id": {"type": "string", "pattern": "^T([1-9]|1[0-9]|2[01])$"},
         "evidence_refs": {"type": "array", "items": {"type": "string"}},
         "severity": {"type": "string"},
         "reason": {"type": "string"},

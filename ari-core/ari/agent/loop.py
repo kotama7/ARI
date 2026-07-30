@@ -401,6 +401,34 @@ def build_working_context_messages(
     if not (depth > 0 and ancestor_ids):
         return out
 
+    # RQGM selective erasure: an erased ancestor's conclusions (stale-policy
+    # scores, retired-prompt reasoning) must not steer this node as
+    # "established" fact. Read the derived rollup through the rqgm-import-free
+    # checkpoint shim; absence == nothing stale (identity-default: the file
+    # never exists under simple_bfts, so this is a no-op there). Erasure never
+    # propagates to descendants automatically, so a valid node CAN have an
+    # erased ancestor — this is where that seam is enforced for memory reads.
+    try:
+        import os as _os_er
+        _ck_er = _os_er.environ.get("ARI_CHECKPOINT_DIR", "")
+        if _ck_er:
+            from ari.checkpoint import load_erasure_state_json
+            _es = load_erasure_state_json(_ck_er) or {}
+            _invalid = set(_es.get("invalid_frontier_node_ids") or {})
+            if _invalid:
+                _kept = [a for a in ancestor_ids if a not in _invalid]
+                if len(_kept) != len(ancestor_ids):
+                    logger.info(
+                        "working context: dropped %d erased ancestor id(s) "
+                        "from memory injection (selective erasure)",
+                        len(ancestor_ids) - len(_kept),
+                    )
+                ancestor_ids = _kept
+                if not ancestor_ids:
+                    return out
+    except Exception as e:  # pragma: no cover - defensive
+        logger.debug("erasure-state ancestor filter failed: %s", e)
+
     # (1b) Ancestor core — deterministic, full handoff of each ancestor's
     # conclusions. Fetched per-ancestor via get_node_memory (read-only, scoped)
     # and filtered to result_summary entries; bounded by tree depth so injected

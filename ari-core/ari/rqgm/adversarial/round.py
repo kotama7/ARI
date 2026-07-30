@@ -45,13 +45,10 @@ _EXPECTED_BEHAVIOR = {
     "judge": "mark recurrences of this attack as valid or partially valid",
 }
 
-#: ``case_type -> expected-behavior map`` for the case types that name
-#: paper-phase roles (docs/plans/ari_rqgm_paper/05 §5.2). The keys become the
-#: record's ``affected_roles`` via ``build_failure_summary`` (records.py:825),
-#: so a paper_self_preference case resolves to ``[paper_reviewer,
-#: paper_writer]``. The seven exploration types have NO row and keep the
-#: module-level generic :data:`_EXPECTED_BEHAVIOR`, so their
-#: ValidatedAttackRecords stay byte-identical.
+#: ``case_type -> expected-behavior map`` for case types that need
+#: role-specific replay expectations (docs/plans/ari_rqgm_paper/05 §5.2).
+#: The seven exploration types use the module-level generic generator
+#: expectation; the paper case supplies separate reviewer/writer behavior.
 _EXPECTED_BEHAVIOR_BY_TYPE: dict[str, dict[str, str]] = {
     "paper_self_preference": {
         "paper_reviewer": "reject AI-authored drafts whose accepted quality "
@@ -67,17 +64,11 @@ _EXPECTED_BEHAVIOR_BY_TYPE: dict[str, dict[str, str]] = {
 #: design-time table: the ordering is a constant, so the binding needs no
 #: sort, no wall clock, no registry iteration order and no LLM (P2).
 #:
-#: EMPTY for the seven exploration types, and deliberately so. The artifacts
-#: they attack are authored by the node-producing path, whose closed-vocabulary
-#: role is ``generator`` (``events.py`` EVOLVABLE_ROLES) — and ``generator``
-#: has NO registered component: ``prompt_spec.FOUNDING_COMPONENT_TABLE``'s
-#: contract is "one entry per component id the RUNTIME actually stamps today"
-#: and nothing stamps a generator id. Naming ``"generator"`` here would
-#: resolve to ``""`` anyway and change only the bytes of every exploration
-#: record (``affected_components: [] -> ["generator"]``) — a regression for
-#: zero governance effect. The mechanism is role-driven, so the day an
-#: artifact-authoring role has a registered incumbent, adding its row here
-#: binds those case types with no other code change.
+#: The seven exploration types implicate the registered ``generator`` only
+#: when the attacked node carries a matching epoch-frozen
+#: ``producer_component_id``. The runtime stamps that provenance before the
+#: adversarial round. A legacy, ambiguous, or mismatched node remains
+#: targetless: no semantic guess is converted into a sanction.
 #:
 #: The paper set adds its one row (docs/plans/ari_rqgm_paper/05 §5.4): a
 #: ``paper_self_preference`` case implicates BOTH the ``paper_reviewer`` role
@@ -92,10 +83,16 @@ _EXPECTED_BEHAVIOR_BY_TYPE: dict[str, dict[str, str]] = {
 #: gated per-node on the draft's Layer-0 claim-gate faithfulness
 #: (``_paper_writer_unfaithful``), so a FAITHFUL over-accepted draft binds the
 #: reviewer ONLY (the writer's sanction is causal in the writer's own drafts,
-#: never the reviewer's leniency). Both roles resolve to ``""`` off the paper
-#: phase (no paper_* in the frozen active map), so exploration stays
-#: byte-identical — the seven exploration types have NO row at all.
+#: never the reviewer's leniency). Both paper roles resolve to ``""`` off the
+#: paper phase (no paper_* in the frozen active map).
 _AFFECTED_ROLES_BY_TYPE: dict[str, tuple[str, ...]] = {
+    "overclaim": ("generator",),
+    "metric_gaming": ("generator",),
+    "prior_art": ("generator",),
+    "reproducibility": ("generator",),
+    "evidence_gap": ("generator",),
+    "cost_explosion": ("generator",),
+    "prompt_injection": ("generator",),
     "paper_self_preference": ("paper_reviewer", "paper_writer"),
 }
 
@@ -211,6 +208,16 @@ class AdversarialRound:
             return dict(state.get("active_components") or {})
         return dict(getattr(state, "active_components", None) or {})
 
+    def _active_prompt_hashes(self) -> dict:
+        """The epoch-frozen ``role -> prompt hash`` map."""
+        state = self._epoch_state
+        state = state() if callable(state) else state
+        if state is None:
+            return {}
+        if isinstance(state, dict):
+            return dict(state.get("active_prompt_hashes") or {})
+        return dict(getattr(state, "active_prompt_hashes", None) or {})
+
     def _expected_behavior(self, case_type: str) -> dict:
         """Case-typed expected-behavior map (docs/plans/ari_rqgm_paper/05
         §5.2), falling back to the module-level generic
@@ -238,7 +245,7 @@ class AdversarialRound:
             return tuple(roles)
         return tuple(r for r in roles if r != "paper_writer")
 
-    def _resolve_bindings(self, roles, judgment) -> list[tuple[str, str]]:
+    def _resolve_bindings(self, roles, judgment, node=None) -> list[tuple[str, str]]:
         """``[(role, component_id)]`` for every implicated role that resolves to
         a frozen-active incumbent OTHER than the judgment's own author.
 
@@ -246,15 +253,16 @@ class AdversarialRound:
         entry (the over-accepted-AND-unfaithful draft implicates BOTH the
         reviewer and the writer, §5.1). A role that resolves to ``""`` (off the
         paper phase, or an unfiltered writer with no incumbent) contributes no
-        entry, so exploration — whose roles tuple is empty — yields ``[]`` and
-        the caller emits exactly ONE targetless record, byte-identical to a
-        pre-binding one. Role separation (a record may not bind its own
+        entry, so ambiguous or legacy exploration yields ``[]`` and the caller
+        emits exactly one targetless record. Role separation (a record may not
+        bind its own
         adjudicator, kernel check 3) is pre-filtered here, mirroring the
         single-target path: the binding is DROPPED (the finding survives with no
         accountable component), never raised."""
         out: list[tuple[str, str]] = []
         try:
             active = self._active_components() or {}
+            active_prompts = self._active_prompt_hashes() or {}
         except Exception:
             log.warning("active-component target lookup failed (fail-open)",
                         exc_info=True)
@@ -263,6 +271,28 @@ class AdversarialRound:
             cid = str(active.get(str(role), "") or "")
             if not cid:
                 continue
+            if str(role) == "generator":
+                producer = str(
+                    getattr(node, "producer_component_id", "") or ""
+                )
+                producer_epoch = str(
+                    getattr(node, "producer_epoch_id", "") or ""
+                )
+                producer_prompt = str(
+                    getattr(node, "producer_prompt_hash", "") or ""
+                )
+                frozen_prompt = str(active_prompts.get(str(role), "") or "")
+                if (
+                    producer != cid
+                    or not producer_epoch
+                    or producer_epoch != self.epoch_id
+                    or not producer_prompt
+                    or producer_prompt != frozen_prompt
+                ):
+                    # No explicit same-epoch provenance means no blame. This
+                    # prevents a successor from inheriting an old artifact's
+                    # defect and keeps legacy checkpoints targetless.
+                    continue
             if cid == judgment.component_id:
                 log.warning(
                     "validated attack would bind its own adjudicator %r for "
@@ -385,7 +415,7 @@ class AdversarialRound:
                 _AFFECTED_ROLES_BY_TYPE.get(attack.adversary_type, ()), node
             )
             expected = self._expected_behavior(attack.adversary_type)
-            bindings = self._resolve_bindings(roles, judgment)
+            bindings = self._resolve_bindings(roles, judgment, node=node)
             if bindings:
                 # One accountable record per resolvable role; each names the
                 # single role it targets in ``affected_components`` (the reviewer

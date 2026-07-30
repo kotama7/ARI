@@ -8,7 +8,7 @@ sources:
     role: implementation
   - path: ari-core/ari/orchestrator/bfts.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-07-30
 ---
 
 # Cookbook
@@ -121,13 +121,24 @@ bfts:
   depth_penalty_lambda: 0.1
 ```
 
-**Measure a custom axis (e.g. speedup) instead of the generic five:**
+**Measure a custom axis (e.g. speedup) instead of the rubric-derived ones**
+(`axis_mode` defaults to `dynamic`, which builds the axes from the active
+rubric). `custom_axes` is a list of `{name, description, weight}` records — a
+bare list of strings is rejected at config load:
 
 ```yaml
 evaluator:
   axis_mode: custom
-  custom_axes: [correctness, speedup, reproducibility]
-  # axis_weights below set the relative weight of each named axis
+  custom_axes:
+    - name: correctness
+      description: "Does the result match the reference within tolerance?"
+      weight: 0.4
+    - name: speedup
+      description: "Wall-clock speedup vs. baseline (1.0 = no change)."
+      weight: 0.4
+    - name: reproducibility
+      description: "Can the run be repeated from the recorded artifacts?"
+      weight: 0.2
 ```
 
 **Reproduce pre-audit behaviour exactly** (pin the canonical five axes and the

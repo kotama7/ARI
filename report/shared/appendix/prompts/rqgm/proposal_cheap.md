@@ -1,4 +1,4 @@
-% snapshot-from: ari-core/ari/prompts/rqgm/proposal_cheap.md@49e2b05bdfebc42f4c0ae3b928b97c4ec2cd0e34722824880e7df51c1cad07ab @ commit e41c806f357e
+% snapshot-from: ari-core/ari/prompts/rqgm/proposal_cheap.md@49e2b05bdfebc42f4c0ae3b928b97c4ec2cd0e34722824880e7df51c1cad07ab @ commit c050ebf505af
 % DO NOT EDIT — regenerate via `make snapshot-prompts`.
 %
 You are ARI's proposal generator (cheap tier). Produce exactly ONE research proposal for the experiment goal below.

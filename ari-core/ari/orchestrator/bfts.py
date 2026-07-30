@@ -491,11 +491,12 @@ class BFTS:
           the file-diff gate in the run loop (B-4).
         - ``metrics['_valid_for_frontier'] is False`` retires nodes excluded
           by RQGM selective erasure (docs/plans/ari_rqgm Task 10). The key is
-          only ever written by the ``ari_rqgm`` FrontierRepairEngine, so this
-          clause is inert dead code under ``simple_bfts`` (the ``_sterile``
-          pattern) — and deliberately read unconditionally, so a node erased
-          under ``ari_rqgm`` stays excluded after a mode switch back
-          (contamination does not become clean by switching modes).
+          only ever written by RQGM machinery (the FrontierRepairEngine on
+          the exploration tree; the paper-archive runtime on draft nodes), so
+          this clause is inert dead code under ``simple_bfts`` (the
+          ``_sterile`` pattern) — and deliberately read unconditionally, so a
+          node erased under ``ari_rqgm`` stays excluded after a mode switch
+          back (contamination does not become clean by switching modes).
         """
         cfg = self.config
         if current_total >= cfg.max_total_nodes:

@@ -1,70 +1,53 @@
-\section{ランタイムLLMプロンプト}\label{sec:prompts}
+\section{RQGM の役割別指示}\label{sec:prompts}
 
-本付録は、v0.9.0 時点の \texttt{ari-core/ari/prompts/} から逐語複製した、
-ARI が実行時に使用する LLM プロンプト一覧である。各リストはディスク上の
-ソースとバイト単位で一致している。モデルに渡るバイト列そのものが挙動を
-決めるため、プロンプトは翻訳せず、本レポートの各言語版で同一の原文を
-そのまま掲載する。
+実行時に使う指示文の原文は英語であり、正確な再現のためソースコード保管庫に
+保存されている。しかし、原文をそのまま日本語版へ転載すると本文の
+流れを損なうため、本付録では各指示文の目的、入力、出力上の制約を
+日本語で要約する。保存された原文のハッシュ値と、実際に使用した版は
+各保存点に記録される。
 
-最後の 4 グループ(提案生成、敵対的レビュー、ガバナンス、プロンプト進化)
-は、v0.9.0 以降に導入されたオプトイン式の立憲型ガバナンス実行モード
-(\texttt{ari\_rqgm})が用いるものであり、既定のパイプラインがこれらを
-読み込むことはない。掲載形式は他と同じく逐語である。同モードにおいて、
-ここに示すテンプレートはコミット済みのシードであり、実行時に進化した
-プロンプト変種は各ランのチェックポイント内に保存され、これらのファイル
-を置き換えることはない。
+% 日本語版では、第一引数を原文ファイル名ではなく読者向けの要約として
+% 用いる。再現用の逐語スナップショットは shared/appendix/prompts/ と
+% 英語版付録に残す。
+\renewcommand{\PromptListing}[3]{%
+  \csname subsection\endcsname{#2}\csname label\endcsname{#3}%
+  \noindent #1\par
+}
 
-\subsection*{オーケストレータ}
+\subsection*{研究案の生成}
 
-\PromptListing{orchestrator/bfts_expand.md}{BFTS 展開}{prompt:bfts_expand}
-\PromptListing{orchestrator/bfts_expand_select.md}{BFTS 展開時選択}{prompt:bfts_expand_select}
-\PromptListing{orchestrator/bfts_select.md}{BFTS 選択}{prompt:bfts_select}
-\PromptListing{orchestrator/lineage_decision.md}{系譜継続判定}{prompt:lineage_decision}
-\PromptListing{orchestrator/root_idea_selector.md}{ルートアイデア選択}{prompt:root_idea_selector}
+\PromptListing{実験目標と現在の着想から、検証可能な仮説、手順、成功指標、想定成果物を一件だけ作る。出力形式と文字数を固定し、実行環境で測定できない計画を避ける。}{低負荷の研究案生成}{prompt:proposal_cheap}
+\PromptListing{親となる研究案の一側面だけを変更し、それ以外を保持した完全な案を返す。変更点を明確にし、比較可能性を保つ。}{研究案の変異生成}{prompt:proposal_mutation}
+\PromptListing{与えられた先行研究との差分を明記した研究案を一件作る。最も近い研究と、新規性が失われる危険も併記する。}{先行研究との差別化}{prompt:proposal_prior_art}
 
-\subsection*{エージェントループ}
+\subsection*{敵対的な検査}
 
-\PromptListing{agent/system.md}{ReAct エージェントシステムプロンプト}{prompt:agent_system}
+\PromptListing{成果物の主張が証拠の範囲を超えていないかを調べ、問題がある場合だけ、該当箇所と根拠を示す。}{過大主張の検査}{prompt:adversary_overclaim}
+\PromptListing{評価値の水増し、都合のよい集計、環境差の隠蔽など、指標を攻略した形跡を調べる。}{指標操作の検査}{prompt:adversary_metric_gaming}
+\PromptListing{新規性の主張を先行研究と照合し、既知の方法との差が不十分な箇所を指摘する。}{先行研究との重複検査}{prompt:adversary_prior_art}
+\PromptListing{再実行に必要な設定、乱数種、環境、手順、成果物が揃っているかを調べる。}{再現可能性の検査}{prompt:adversary_reproducibility}
+\PromptListing{論文中の主張と保存点内の証拠を照合し、根拠が欠けている主張を特定する。}{証拠欠落の検査}{prompt:adversary_evidence_gap}
+\PromptListing{計画または実行が予算を超えていないかを、呼び出し回数や計算量の記録から算術的に確かめる。}{費用超過の検査}{prompt:adversary_cost_explosion}
+\PromptListing{提案や成果物に、評価役の指示を書き換えようとする命令が埋め込まれていないかを調べる。}{指示注入の検査}{prompt:adversary_prompt_injection}
+\PromptListing{査読役が高く評価した原稿を人間評価の基準資料と照合し、過剰に受理した事例を検出する。}{論文の自己選好検査}{prompt:adversary_paper_self_preference}
+\PromptListing{攻撃内容と証拠を読み、反証、緩和要因、追加確認事項を整理する。攻撃を無条件に否定してはならない。}{敵対検査への弁護}{prompt:rqgm_defender}
+\PromptListing{攻撃と弁護を独立に比較し、証拠で支持できる場合だけ攻撃を認容する。}{成果物に関する裁定}{prompt:judge_adjudication}
 
-\subsection*{評価器}
+\subsection*{制度の監査}
 
-\PromptListing{evaluator/peer_review.md}{ピアレビュー評価器}{prompt:peer_review}
-\PromptListing{evaluator/extract_metrics.md}{メトリクス抽出}{prompt:extract_metrics}
+\PromptListing{期内の記録を調べ、信頼性が基準を下回る役割について、証拠付きの弾劾動議を作る。}{制度監査役}{prompt:governance_auditor}
+\PromptListing{制度監査役の動議に対し、対象役割の立場から証拠に基づく弁護を作る。}{制度弁護役}{prompt:governance_defender}
+\PromptListing{動議、弁護、証拠を比較して制度上の裁定を行う。自分が対象の場合は判断から外れる。}{制度裁定役}{prompt:governance_judge}
 
-\subsection*{パイプライン}
+\subsection*{指示文と効用規則の進化}
 
-\PromptListing{pipeline/keyword_librarian.md}{キーワードライブラリアン}{prompt:keyword_librarian}
+\PromptListing{現職の指示文と失敗要約から、権限を広げずに一つの改善候補を作る。現職を直接書き換えない。}{指示文の変異}{prompt:prompt_mutator}
+\PromptListing{退役した文章を見ず、抽象化された失敗要約だけから置換候補を再生成する。語句の流用を避ける。}{隔離された再生成}{prompt:clean_room_generator}
+\PromptListing{保存済みの評価軸と制約から、非負で正規化可能な効用規則の候補を作る。将来の点数は参照しない。}{効用規則の変異}{prompt:policy_mutator}
+\PromptListing{検証済みの過去事例から、候補の弱点を最もよく測る再試験集合を選ぶ。}{再試験事例の選択}{prompt:replay_selector}
+\PromptListing{失敗記録から個体名や封印対象の文章を除き、原因と必要な能力だけを残した要約を作る。}{失敗要約の圧縮}{prompt:failure_summary_compressor}
 
-\subsection*{ウィザード(Viz)}
+\subsection*{論文保管庫}
 
-\PromptListing{viz/wizard_chat_goal.md}{ウィザード目標対話}{prompt:wizard_chat_goal}
-\PromptListing{viz/wizard_generate_config.md}{ウィザード設定生成器}{prompt:wizard_generate_config}
-
-\subsection*{提案生成器}
-
-\PromptListing{rqgm/proposal_cheap.md}{低コスト提案生成器}{prompt:proposal_cheap}
-\PromptListing{rqgm/proposal_mutation.md}{提案変異生成器}{prompt:proposal_mutation}
-\PromptListing{rqgm/proposal_prior_art.md}{先行研究差別化生成器}{prompt:proposal_prior_art}
-
-\subsection*{敵対的レビュー}
-
-\PromptListing{rqgm/adversary_overclaim.md}{過大主張敵対者}{prompt:adversary_overclaim}
-\PromptListing{rqgm/adversary_metric_gaming.md}{指標ゲーミング敵対者}{prompt:adversary_metric_gaming}
-\PromptListing{rqgm/adversary_prior_art.md}{先行研究敵対者}{prompt:adversary_prior_art}
-\PromptListing{rqgm/adversary_reproducibility.md}{再現性敵対者}{prompt:adversary_reproducibility}
-\PromptListing{rqgm/adversary_evidence_gap.md}{証拠欠落敵対者}{prompt:adversary_evidence_gap}
-\PromptListing{rqgm/adversary_cost_explosion.md}{コスト爆発敵対者}{prompt:adversary_cost_explosion}
-\PromptListing{rqgm/adversary_prompt_injection.md}{プロンプト注入敵対者}{prompt:adversary_prompt_injection}
-\PromptListing{rqgm/defender.md}{敵対ループ防御者}{prompt:rqgm_defender}
-\PromptListing{rqgm/judge_adjudication.md}{成果物裁定}{prompt:judge_adjudication}
-
-\subsection*{ガバナンス}
-
-\PromptListing{governance/auditor.md}{ガバナンス監査人}{prompt:governance_auditor}
-\PromptListing{governance/defender.md}{ガバナンス弁護人}{prompt:governance_defender}
-\PromptListing{governance/governance_judge.md}{ガバナンス裁定者}{prompt:governance_judge}
-
-\subsection*{プロンプト進化}
-
-\PromptListing{rqgm/prompt_mutator.md}{プロンプト変異メタプロンプト}{prompt:prompt_mutator}
-\PromptListing{rqgm/clean_room_generator.md}{クリーンルーム再生成メタプロンプト}{prompt:clean_room_generator}
+\PromptListing{実行証拠に忠実な原稿候補を作る。数値主張には根拠を結び付け、不明な点を推測で埋めない。}{統治された執筆役}{prompt:paper_writer}
+\PromptListing{原稿の新規性、証拠への忠実性、明瞭さを評価する。自分の過去判断より基準資料と実行証拠を優先する。}{統治された査読役}{prompt:paper_reviewer}

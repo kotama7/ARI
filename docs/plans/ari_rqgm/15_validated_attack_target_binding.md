@@ -2,6 +2,16 @@
 
 > **Status**: planned · **Depends on**: 05, 06 · **This is a temporary task plan** — see [INDEX.md](INDEX.md). It will be deleted once its deletion criteria are met.
 
+> **2026-07-28 implementation amendment.** The historical plan below records
+> the original paper-role-only landing and is retained for audit history.
+> The research `generator` is now a founding registered component.
+> `RQGMRuntime` stamps each node once with producer component, prompt hash,
+> and epoch before persistence/adversarial review. The seven exploration case
+> types resolve to that generator only when the stamp matches the epoch-frozen
+> incumbent; legacy, missing, or mismatched provenance remains targetless.
+> Therefore statements below that the generator is unregistered or the seven
+> types are necessarily unbound are superseded by this amendment.
+
 ## 1. Purpose
 
 A validated attack proves — after a Defender response and an ArtifactJudge verdict — that a
@@ -315,31 +325,21 @@ unfaithful), each record's `affected_components` carrying its own single bound r
 
 | `case_type` | Attacked artifact class | Implicated role | Registered incumbent today | `target_component_id` |
 |---|---|---|---|---|
-| `overclaim`, `evidence_gap` | `paper_claim` | *(none in v1)* | — | absent |
-| `metric_gaming` | `metric_result` | *(none in v1)* | — | absent |
-| `prior_art` | `novelty_claim` | *(none in v1)* | — | absent |
-| `reproducibility` | `reproducibility_claim` | *(none in v1)* | — | absent |
-| `cost_explosion` | `experiment_plan` | *(none in v1)* | — | absent |
-| `prompt_injection` | `proposal` | *(none in v1)* | — | absent |
+| `overclaim`, `evidence_gap` | `paper_claim` | `generator` when producer provenance matches | `generator_v1` | `generator_v1` |
+| `metric_gaming` | `metric_result` | `generator` when producer provenance matches | `generator_v1` | `generator_v1` |
+| `prior_art` | `novelty_claim` | `generator` when producer provenance matches | `generator_v1` | `generator_v1` |
+| `reproducibility` | `reproducibility_claim` | `generator` when producer provenance matches | `generator_v1` | `generator_v1` |
+| `cost_explosion` | `experiment_plan` | `generator` when producer provenance matches | `generator_v1` | `generator_v1` |
+| `prompt_injection` | `proposal` | `generator` when producer provenance matches | `generator_v1` | `generator_v1` |
 | `paper_self_preference` (paper set) | `paper_claim` | `paper_reviewer`, `paper_writer` | `paper_reviewer_v1` (always) + `paper_writer_v1` (nodes the claim gate flags `_paper_writer_unfaithful`) under `PaperMode.RQGM_ARCHIVE` ([../ari_rqgm_paper/03](../ari_rqgm_paper/03_writer_reviewer_governed_roles.md) §5.5) | `paper_reviewer_v1` and, per-node, `paper_writer_v1` (one record each — §5.3) |
 
-**Decision: the seven exploration types name no role in v1, and this is not a hedge — it is what
-the registry permits.** The artifacts the seven attack are authored by the node-producing path,
-whose closed-vocabulary role is `generator` (`events.py:57-69`). `generator` has **no registered
-component**: `FOUNDING_COMPONENT_TABLE` (`prompt_spec.py:232-259`) contains no `generator_v1` row,
-because its contract is "one entry per component id the RUNTIME actually stamps today"
-(`prompt_spec.py:219-231`) and nothing stamps one. So naming `"generator"` would resolve to no
-binding via `_resolve_bindings` (the role contributes no `(role, component_id)` entry) and change
-**nothing** except the bytes of every exploration record (a targetless record → one bound to
-`generator`) — a regression for zero governance effect. The seven therefore keep an empty roles
-tuple, and their record JSON is untouched (§8.1).
-
-What the seven *do* get is the mechanism: **the binding is role-driven, so the day a `generator`
-(or `reviewer`) component is registered and its row is added to `_AFFECTED_ROLES_BY_TYPE`, all
-seven bind with no further code change.** Registering one is a Task 05/07 decision with its own
-runtime-stamping precondition (R2) — this plan states the precondition rather than smuggling the
-decision. The eighth type is not privileged here: it binds only because the paper set registers a
-real `paper_reviewer_v1` and names it.
+**Implemented amendment:** the seven exploration types name `generator`, now a registered
+founding component. The runtime stamps every research node exactly once with the producing
+component identifier, prompt hash, and epoch before persistence and adversarial review.
+`_resolve_bindings` accepts `generator_v1` only when those values match the epoch-frozen
+incumbent. Legacy records and records with missing, ambiguous, or mismatched provenance remain
+targetless; the resolver does not infer responsibility from the attack type alone. The paper
+self-preference type follows the same principle for its registered paper roles.
 
 This qualifies — precisely —
 [../ari_rqgm_paper/05](../ari_rqgm_paper/05_adversarial_self_preference.md) §5.4 decision 1's

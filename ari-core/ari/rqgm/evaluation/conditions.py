@@ -33,12 +33,24 @@ PAPER_CONDITION_IDS: tuple[str, ...] = (
     "B0_paper_linear", "B_archive_no_coevo", "B_full",
 )
 
+#: RQGM-original-paper-aligned comparison arms. These are evaluation presets
+#: over the existing ``rqgm_archive`` runtime, not additional paper modes.
+RQGM_PAPER_CONDITION_IDS: tuple[str, ...] = (
+    "P0_hgm_h_fixed_critic",
+    "P1_rqgm_replacement_only",
+    "P2_rqgm_no_erasure",
+    "P3_rqgm_full",
+    "P4_constitutional_rqgm",
+)
+
 #: ``eval_defaults.models`` role → the phase env var ``build_runtime`` /
 #: the evaluator actually read (per-campaign model pinning, plan 13 §5.2).
 MODEL_ENV_VARS: dict = {
     "coding": "ARI_MODEL_CODING",
     "bfts": "ARI_MODEL_BFTS",
     "eval": "ARI_MODEL_EVAL",
+    "paper": "ARI_MODEL_PAPER",
+    "rubric": "ARI_MODEL_RUBRIC",
 }
 
 #: ``${VAR}``-style placeholder accepted in ``eval_defaults.models`` values.
@@ -182,6 +194,35 @@ def paper_condition_overlay(matrix: dict, condition_id: str) -> dict:
     return overlay
 
 
+def expand_rqgm_paper_condition(matrix: dict, condition_id: str) -> dict:
+    """Resolve one RQGM-paper-aligned P0-P4 evaluation preset.
+
+    The presets live in ``rqgm_paper_conditions:`` and expand to ordinary
+    workflow paths. Every condition uses ``paper.mode: rqgm_archive``; the
+    P identifier is carried only under the evaluation interlock.
+    """
+
+    conditions = matrix.get("rqgm_paper_conditions") or {}
+    if not conditions:
+        raise ValueError(
+            "ablation matrix has no `rqgm_paper_conditions:` mapping"
+        )
+    return _expand_chain(
+        conditions, condition_id, block="RQGM-paper",
+    )
+
+
+def rqgm_paper_condition_overlay(matrix: dict, condition_id: str) -> dict:
+    """Workflow overlay for an RQGM-paper-aligned P0-P4 condition."""
+
+    preset = expand_rqgm_paper_condition(matrix, condition_id)
+    overlay: dict = {}
+    for block in ("paper", "rqgm", "bfts"):
+        if isinstance(preset.get(block), dict):
+            overlay[block] = copy.deepcopy(preset[block])
+    return overlay
+
+
 #: The anchor-corpus case namespace the fixed external panel must never touch
 #: (paper-archive Task 07 §5.5 disjointness).
 _ANCHOR_ID_PREFIX = "anchor_"
@@ -252,8 +293,9 @@ def eval_defaults_overlay(matrix: dict) -> dict:
 def resolve_models(matrix: dict, env) -> dict:
     """Resolve ``eval_defaults.models`` to pinned phase env vars (§5.2).
 
-    Returns ``{"ARI_MODEL_CODING": ..., "ARI_MODEL_BFTS": ...,
-    "ARI_MODEL_EVAL": ...}`` for the harness to stamp on every spawned run,
+    Returns the declared ``ARI_MODEL_*`` phase variables for the harness to
+    stamp on every spawned run (coding, BFTS, evaluation, paper writing, and
+    fixed rubric review),
     so one campaign-start snapshot pins the models for all conditions.
     ``${VAR}`` values are expanded against *env* (a mapping — the caller
     passes its ``os.environ`` snapshot; nothing is read here, P2); entries

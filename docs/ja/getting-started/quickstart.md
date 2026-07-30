@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/app/routeRegistry.ts
     role: implementation
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # ARI クイックスタートガイド
@@ -222,7 +222,7 @@ LLM プロバイダーとモデルを選択します：
 
 **Paper Review (v0.6.0+)** — 生成された論文の査読方法を選択します:
 
-- **Rubric** — 同梱の 16 種類から選択 (`neurips` 既定 / v2 互換、`iclr`、`icml`、`cvpr`、`acl`、`sc`、`osdi`、`usenix_security`、`stoc`、`siggraph`、`chi`、`icra`、`nature`、`journal_generic`、`workshop`、`generic_conference`)。`ari-core/config/reviewer_rubrics/` に独自 YAML を追加すれば任意の venue に対応できます。
+- **Rubric** — 同梱の 23 種類から選択 (`neurips` 既定 / v2 互換、`iclr`、`icml`、`cvpr`、`acl`、`sc`、`chi`、`usenix_security`、`osdi`、`stoc`、`icra`、`siggraph`、`nature`、`aer`、`econometrica`、`qje`、`apsr`、`ahr`、`philreview`、`pmla`、`journal_generic`、`workshop`、`generic_conference`)。`ari-core/config/reviewer_rubrics/` に独自 YAML を追加すれば任意の venue に対応できます。
 - **Few-shot mode** — `static` (同梱例使用) / `dynamic` (Phase 2 OpenReview 取得; 査読クローズドの venue では static にフォールバック)。
 - **Reviewer ensemble (N)** — 独立査読者数。N>1 の場合は Area Chair メタ査読も自動で走ります。
 - **Reflection rounds** — 査読者ごとの self-reflection 回数 (Nature Ablation 既定 5)。

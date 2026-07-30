@@ -22,7 +22,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_mode.py
     role: test
-last_verified: 2026-07-10
+last_verified: 2026-07-30
 ---
 
 # 内部边界
@@ -35,7 +35,7 @@ ARI 的 LLM 边界**并非**"一切都必须调用 `LLMClient`"。它是一个�
 
 1. **`litellm`** 是提供方抽象层 —— 模块直接以模型 id 调用 `litellm.completion` / `acompletion`。
 2. **`ari.llm.routing.resolve_litellm_model(model, backend)`** 是唯一的模型规范化辅助函数。它应用提供方前缀（包括 CLI 垫片的 `openai/claude-cli` 规则），使一个裸模型名能正确路由。它的签名与返回值是**冻结的**：它*变换*一个模型 id 而不是构造对象，因此被有意保留在 `ari._factory.BaseRegistry` 字符串分发器统一化之外（见 `routing.py` 中其定义上方的决策注记）。
-3. **`ari.cost_tracker._install_litellm_metadata_injector()`** 在**整个进程范围**对 `litellm.completion`/`acompletion` 进行猴子补丁，以 (a) 合并默认成本元数据（skill / phase / node），并 (b) 在每次调用上应用 `_apply_ari_routing`（`resolve_litellm_model` ＋ CLI 垫片的 `api_base` 补全）。一旦安装完成，*每一次* litellm 直接调用 —— 无论来自哪个模块或技能 —— 都会在同一个点上透明地获得 ARI 路由 ＋ 成本捕获。
+3. **`ari.cost_tracker._install_litellm_metadata_injector()`** 在**整个进程范围**对 `litellm.completion`/`acompletion` 进行猴子补丁，以 (a) 合并默认成本元数据（skill / phase / node，以及 `ari_rqgm` 打开纪元后的 `epoch`），并 (b) 在每次调用上应用 `_apply_ari_routing`（`resolve_litellm_model` ＋ CLI 垫片的 `api_base` 补全）。一旦安装完成，*每一次* litellm 直接调用 —— 无论来自哪个模块或技能 —— 都会在同一个点上透明地获得 ARI 路由 ＋ 成本捕获。
 
 `ari.llm.client.LLMClient` 是 ReAct 智能体循环所用的、对 `litellm.completion` 的**便捷封装**；它**不是**强制性的瓶颈点，代码库刻意没有将一切都汇集到它这里。
 
@@ -49,7 +49,7 @@ ARI 的 LLM 边界**并非**"一切都必须调用 `LLMClient`"。它是一个�
 
 | 模块 | 负责 |
 |--------|------|
-| `ari/container.py` | 容器执行：`detect_runtime`、`build_run_cmd`、`run_in_container`（Popen ＋ `_sandbox_preexec` ＝ `os.setsid` 新建进程组 ＋ 经由 `ARI_MAX_CHILD_PROCS` 的可选 `RLIMIT_NPROC`）、`_run_with_timeout`（对进程组 SIGTERM→SIGKILL）、`pull_image`、`exec_in_container`。由 `ari.public.container` 重导出。 |
+| `ari/container.py` | 容器执行：`detect_runtime`、`run_in_container`（Popen ＋ `_sandbox_preexec` ＝ `os.setsid` 新建进程组 ＋ 经由 `ARI_MAX_CHILD_PROCS` 的可选 `RLIMIT_NPROC`）、`_run_shell_sandboxed`（超时时对进程组 SIGTERM→SIGKILL）、`run_shell_in_container`、`pull_image`。由 `ari.public.container` 重导出。 |
 | `ari/env_detect.py` | 调度器 / 运行时探测（`sinfo`、`qstat`、`docker info`、`lscpu`）—— 只读、尽力而为、不含硬编码的集群知识。 |
 | `ari/mcp/client.py` | 经由 MCP SDK 的 `stdio_client`（一个封装，而非裸 spawn）派生技能的 stdio 服务器。 |
 | `ari-skill-hpc/src/slurm.py` | 规范的 SLURM submit/status/cancel（`SlurmClient`：`_run_local` 为 asyncio 子进程，`_run_remote` 为 paramiko），含 `ARI_SBATCH_EXPORT_MODE` 的净环境逻辑。 |
@@ -65,9 +65,9 @@ ARI 的 LLM 边界**并非**"一切都必须调用 `LLMClient`"。它是一个�
 | 阶段 | 驱动 |
 |-------|--------|
 | **BFTS** | `cli/bfts_loop.py:_run_loop` —— 一个硬编码的 `while pending or frontier` 循环（generate_idea → select_and_run → evaluate → frontier_expand）。`bfts_pipeline[]` 仅为启用/禁用标志而被读取。 |
-| **post-BFTS 流水线**（transform / figures / paper / review / ORS 复现 / publish） | `core.generate_paper_section` → `pipeline.orchestrator.run_pipeline` —— 一个在 `pipeline[]` 上运行的单一线性游标循环；所有子阶段都是连续的阶段。 |
+| **post-BFTS 流水线**（transform / figures / paper / review / ORS 复现 / publish） | `core.generate_paper_section` → `pipeline.orchestrator.run_pipeline`（对 `pipeline/driver.py:WorkflowDriver.run` 的薄封装）—— 一个在 `pipeline[]` 上运行的单一线性游标循环；所有子阶段都是连续的阶段。 |
 
-`run.py` 清除 `.pipeline_started`；`orchestrator` 在流水线启动时触碰它（GUI 阶段检测）。一个 BFTS 健全性门控可以提前中止 post-BFTS 流水线（`ARI_FORCE_PAPER` 会覆盖之）。非 `react:` 阶段经由 `stage_runner._run_stage_subprocess` 运行，它构建一个 Python 脚本字符串并执行 `subprocess.run([sys.executable, "-c", ...])` —— 每个非 react 阶段都是一次直接 fork，在子进程中构建它自己的 `MCPClient`。
+`run.py` 清除 `.pipeline_started`；`WorkflowDriver.run` 在流水线启动时触碰它（GUI 阶段检测）。一个 BFTS 健全性门控可以提前中止 post-BFTS 流水线（`ARI_FORCE_PAPER` 会覆盖之）。非 `react:` 阶段经由 `stage_runner._run_stage_subprocess` 运行，它构建一个 Python 脚本字符串并执行 `subprocess.run([sys.executable, "-c", ...])` —— 每个非 react 阶段都是一次直接 fork，在子进程中构建它自己的 `MCPClient`。
 
 ### 并发隐患（此处的任何改动都需保持）
 
@@ -88,7 +88,11 @@ ARI 的 LLM 边界**并非**"一切都必须调用 `LLMClient`"。它是一个�
 - `ari.core.build_runtime` —— 仅当 `ari.mode == "ari_rqgm"` 或
   `rqgm.enabled` 被设置时才导入 `ari.rqgm.mode` /
   `ari.rqgm.runtime`，且仅当 `resolve_effective_mode(cfg)` 为
-  `ari_rqgm` 时才包装策略。
+  `ari_rqgm` 时才包装策略。在同一分支内部，
+  `_install_capability_gate` 导入 `ari.rqgm.kernel` /
+  `ari.rqgm.store` / `ari.rqgm.tool_policy`，并返回被
+  `CapabilityGatedMCPClient` 包装的 `MCPClient`（fail-open：安装
+  失败会记录警告并交回未被门控的客户端）。
 - `ari/cli/run.py` —— 仅在该模式下导入 `ari.rqgm.state`，用于在
   启动时写入 `rqgm_state.json` 并复制 `constitution.yaml`（以及
   resume 时的 `reconcile_resume_mode`：持久化的模式优先；运行
@@ -97,6 +101,11 @@ ARI 的 LLM 边界**并非**"一切都必须调用 `LLMClient`"。它是一个�
   `proposal_router.record_only: true` 双写时才导入提案存储
   （默认 `false` 从不导入；在 `ari_rqgm` 中路由器原生记录，因此
   该导入在那里同样被跳过）。
+- `ari/cli/paper_dispatch.py` —— 仅为 `rqgm_archive` 这一 paper
+  模式导入 `ari.rqgm.paper_runtime` / `ari.rqgm.paper_judge`；
+  resume 一侧的导入还额外以 `paper_archive_state.json` 是否存在
+  做门控，因此线性检查点不会导入任何东西。模式字符串本身来自
+  免导入的 `ari.config._effective_paper_mode_str`。
 - `ari.config._effective_mode_str` 以**免导入**方式镜像激活表，
   因此配置处理本身永远不会加载 `ari.rqgm`。
 

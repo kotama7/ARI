@@ -232,11 +232,11 @@ describe('route render baseline (Wave 1: every nav route mounts under the regist
       expect(within(nav).queryByText('Governance')).toBeNull();
       // Wave 4b: the v2-only 'overview' entry is hidden the same way.
       expect(within(nav).queryByText('Overview')).toBeNull();
-      // The 10 legacy entries stay (e.g. Home is still offered), and the
+      // The 10 legacy entries stay (e.g. Dashboard is still offered), and the
       // Wave-4c takeovers are inert: exactly ONE Tree entry and ONE Idea
       // entry (the legacy ones).
-      expect(within(nav).queryByText('Home')).not.toBeNull();
-      expect(within(nav).getAllByText('Tree').length).toBe(1);
+      expect(within(nav).queryByText('Dashboard')).not.toBeNull();
+      expect(within(nav).getAllByText('Research tree').length).toBe(1);
       expect(within(nav).getAllByText('Idea').length).toBe(1);
     },
     15000,

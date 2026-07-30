@@ -14,7 +14,7 @@ sources:
     role: implementation
   - path: ari-skill-idea/src/server.py
     role: implementation
-last_verified: 2026-07-10
+last_verified: 2026-07-30
 ---
 
 # MCP ツールリファレンス
@@ -70,7 +70,7 @@ ARI には 14 の MCP サーバが付属しています（`ari-skill-*` パッ�
 | `slurm_submit` | パーティション / 時間 / CPU 数 / ノード数 / GPU 数を明示して sbatch | ✗ |
 | `job_status` | squeue + sacct 検索 | ✗ |
 | `job_cancel` | 実行中のジョブを scancel | ✗ |
-| `run_bash` | ダイレクトな bash コマンド（ローカルまたは SSH 経由） | ✗ |
+| `probe_platform_capabilities` | **計算パーティション上**でツールの有無（`command -v`）を調べ、`{checkpoint}/platform_capabilities.json` にキャッシュ；ベストエフォート（失敗時は skipped を返し何も書かない） | ✗ |
 | `singularity_build` | 定義ファイルから SIF をビルド | ✗ |
 | `singularity_run` | SIF 内でコマンドを実行 | ✗ |
 | `singularity_pull` | リモート URI から SIF を取得 | ✗ |
@@ -81,12 +81,16 @@ ARI には 14 の MCP サーバが付属しています（`ari-skill-*` パッ�
 
 | ツール | 用途 | LLM |
 |---|---|:---:|
-| `survey` | 先行研究調査: 凍結された `virsci_snapshot` コーパスが存在すればそれを再利用し、なければライブの Semantic Scholar；純粋な HTTP | ✗ |
+| `survey` | 先行研究調査: 凍結された `virsci_snapshot` コーパスが存在すればそれを再利用し、なければライブの Semantic Scholar、それも駄目なら arXiv フォールバック；純粋な HTTP | ✗ |
 | `generate_ideas` | LLM が調査 + コンテキストからランク付きアイデア候補を生成 | ✓ |
 
-この 2 つがこのスキルの唯一の登録ツールです
-（`ari-skill-idea/tests/test_server.py` が `mcp.list_tools()` 経由で
-ピン留め）。両者は RQGM の `VirSciAdapter` の背後にある MCP 面でも
+この 2 つがこのスキルの唯一の登録ツールです —
+`_load_virsci_snapshot_papers` は `survey` が直接呼ぶただのヘルパーであり
+エージェントからは決して見えません。`ari-skill-idea/tests/test_server.py` が
+`mcp.list_tools()` 経由でこの両方をピン留めしています。スナップショットが
+無く Semantic Scholar も使えない（キー無し / レート制限）場合、`survey` は
+arXiv にフォールバックし、0 件になった場合も黙って通さず stderr に報告します。
+両者は RQGM の `VirSciAdapter` の背後にある MCP 面でも
 あります: オプトインの `ari_rqgm` モードで
 `proposal_router.generators.virsci.enabled: true` のとき、コア側の
 ProposalRouter はアイデア生成イベントを、エポックごとの呼び出し予算の下で

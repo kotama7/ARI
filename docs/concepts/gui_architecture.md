@@ -44,7 +44,7 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/__tests__/routeNavParity.test.tsx
     role: test
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # Dashboard Architecture
@@ -152,7 +152,9 @@ Both consumers are *derived*, not hand-maintained:
   (`resolveRoute` strips the `#/` prefix and any query string, treats an empty
   hash as `home`, and applies legacy aliases such as `new` → `wizard`).
 - `Sidebar.tsx` builds its nav table from `navItems()`, which materializes a
-  `navReplaces` entry onto its target's slot and sorts by `navOrder`.
+  `navReplaces` entry onto its target's slot and sorts by `navOrder`; the
+  sidebar then hoists the wizard entry out as a primary action and lays the
+  rest out in four fixed groups (portfolio / research / quality / system).
 
 Two frozen-literal tests pin the result, so a route cannot drift into existing
 in the nav but not the router (or vice versa). The practical rules that fall
@@ -180,11 +182,14 @@ its URL alone. That makes every view reloadable, bookmarkable and shareable —
 "look at node N7 of run R1" is a link, not a sequence of clicks.
 
 The legacy path is the contrast that motivates the rule. Reaching the legacy
-Results page from a run row still goes through an *implicit* handoff (a
-`sessionStorage` key plus a bare `#/results` hash), and the legacy shell also
-carries a process-wide *active checkpoint*. Neither is a valid input for a v2
-workspace: v2 routes are run-explicit, which is what keeps two runs open in
-two tabs from stepping on each other.
+Results page from a legacy Experiments row still goes through an *implicit*
+handoff (a `sessionStorage` key plus a bare `#/results` hash), and the legacy
+shell also carries a process-wide *active checkpoint*. Neither is a valid
+input for a v2 workspace: v2 routes are run-explicit, which is what keeps two
+runs open in two tabs from stepping on each other — a v2 row links
+`#/results?run=<run_id>` instead, and the Results page treats that param as
+authoritative, keeping the `sessionStorage` key only as a fallback for older
+callers.
 
 ---
 

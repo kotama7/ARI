@@ -12,6 +12,7 @@ both the FastMCP server (`src/server.py`) and ari-core's viz layer.
 - `config.py` — config loading shared across backends.
 - `consolidation.py` — pure `consolidate_from_node_report` deriving typed-memory specs (experiment_result/failure_case/reflection) from a node_report; `write_consolidated` persists them via the typed writer.
 - `context_builder.py` — `build_verified_context` ranks ancestor claim memory by evidence strength (rerun_passed > grounded > ungrounded), folding in reproducibility status, and emits `usable_for_claims` for paper/figure pipeline hooks.
+- `erasure.py` — reader for ARI's published `rqgm_erasure_state.json` rollup: labels entries from logically erased nodes on deliberate queries (annotate, never hide) and hard-excludes them from the grounded-claims path. No `ari` import, no LLM call, absence == nothing stale.
 - `provenance.py` — derives `ArtifactRef`s + sha256 from node_report (`refs_from_node_report`, `sha256_of`, `node_work_dir`, `load_node_report`); points at on-disk evidence without re-storing node_report fields.
 - `retriever.py` — typed reads over the backend: `search_research_memory` (kind/artifact-filtered semantic search), `ancestor_typed_memory` (deterministic ancestor handoff), `fold_reproducibility` (latest repro status per target).
 - `schemas.py` — thin typed-index dataclasses `ResearchMemory` / `ArtifactRef` with `MemoryKind`/`ReproStatus` vocab, validation, and `to_metadata()` (promotes `mem_kind`); points at node_report rather than copying it.

@@ -851,7 +851,7 @@ def test_kernel_blocked_transition_aborts_without_registry_change(tmp_path):
 # ── §9.6 emergency quarantine + fallback policy ─────────────────────────────
 
 
-def test_emergency_quarantine_commits_mid_epoch_with_baseline_fallback(
+def test_emergency_quarantine_forces_boundary_with_baseline_fallback(
         tmp_path):
     store, state = _bootstrap(tmp_path)
     engine = _engine(store=store, audit_log=ImmutableAuditLog(tmp_path))
@@ -868,16 +868,24 @@ def test_emergency_quarantine_commits_mid_epoch_with_baseline_fallback(
     assert t.fallbacks == [{
         "role": "reviewer", "from_component_id": "reviewer_v1",
         "fallback_component_id": None, "baseline": True}]
-    # Mid-epoch: the SAME epoch is still open; only the registry moved.
+    # T16 closes the old epoch and opens a new, truthful fingerprint.
     after = store.load_state(tmp_path)
-    assert after.epoch.epoch_id == "epoch_000"
+    assert after.epoch.epoch_id == "epoch_001"
+    assert after.epoch.previous_epoch_id == "epoch_000"
+    assert after.epoch.epoch_fingerprint != state.epoch.epoch_fingerprint
     assert after.components.get("reviewer_v1").status == "quarantine"
     assert after.prompts.get("reviewer_prompt_v1").status == "quarantine"
     lines = [json.loads(ln) for ln in
              (tmp_path / RQGM_TRANSITIONS_FILENAME).read_text().splitlines()]
-    assert lines[-1]["event_type"] == "emergency_quarantine"
-    assert lines[-1]["payload"]["suspect_scope"] == {
-        "epoch_id": "epoch_000", "component_id": "reviewer_v1"}
+    assert [line["event_type"] for line in lines[-5:]] == [
+        "epoch_transaction_prepare",
+        "emergency_quarantine",
+        "epoch_close",
+        "epoch_open",
+        "epoch_transaction_commit",
+    ]
+    assert lines[-4]["payload"]["emergency_boundary"] is True
+    assert lines[-4]["transaction_id"] == "transition_000_to_001"
 
 
 def test_emergency_fallback_prefers_the_prior_eligible_version(tmp_path):
@@ -1587,3 +1595,87 @@ def test_ck_reg_101_gate_uses_attached_incumbent():
         v.code == "CK-REG-101"
         for v in kernel.validate_transition(no_inc, None, None).violations
     )
+
+
+def test_change_carries_declared_capabilities_to_activation_entries():
+    # #79 producer half: without this, no live adoption ever carried
+    # capability fields, so the CK-REG-101 incumbent comparison was
+    # structurally unreachable (its tests proved the consumer only).
+    eng = _engine()
+    successor = _cap_comp("reviewer_v2", "reviewer", "shadow",
+                          {"allowed_targets": ["a", "b"]})
+    d = eng._change("reviewer_v2", successor, "T6", "probationary_active", [])
+    assert d["capabilities"] == {"allowed_targets": ["a", "b"]}
+    # Retirement/quarantine entries stay byte-identical (no capabilities key).
+    d2 = eng._change("reviewer_v2", successor, "T17", "retired", [])
+    assert "capabilities" not in d2
+    # Empty declaration → no key (byte-identical for every current live role).
+    plain = _cap_comp("generator_v2", "generator", "shadow", {})
+    d3 = eng._change("generator_v2", plain, "T6", "probationary_active", [])
+    assert "capabilities" not in d3
+    # Self-shaped activation edges (T7/T8/T12/T14/T18) NEVER copy: no
+    # distinct incumbent exists there, so a capability-carrying entry would
+    # deny-all-block the whole transition and wedge governance for the
+    # founding capability-declaring components.
+    founding = _cap_comp("replay_selector_v1", "replay_selector", "probation",
+                         {"can_select_replay_cases": True})
+    for rule, to in (("T12", "active"), ("T7", "active"),
+                     ("T18", "active"), ("T8", "active")):
+        assert "capabilities" not in eng._change(
+            "replay_selector_v1", founding, rule, to, []), rule
+
+
+def test_audit_payload_strips_transient_attachments():
+    # `_incumbent_entry` (and any `_`-prefixed apply-side attachment) exists
+    # only for the stateless kernel's validation — it must never be frozen
+    # into the hash-chained audit event.
+    t = EpochTransition(
+        epoch_transition_id="t", from_epoch="epoch_001", to_epoch="epoch_002",
+        adoptions=[{
+            "component_id": "reviewer_v2", "role": "reviewer",
+            "from_status": "shadow", "to_status": "probationary_active",
+            "rule_id": "T6", "capabilities": {"allowed_targets": ["a"]},
+            "_incumbent_entry": {"component_id": "reviewer_v1"},
+        }],
+    )
+    payload = RegistryTransitionEngine._audit_payload(t)
+    assert "_incumbent_entry" not in payload["adoptions"][0]
+    assert payload["adoptions"][0]["capabilities"] == {"allowed_targets": ["a"]}
+    # The live transition object is untouched (the kernel already consumed it).
+    assert "_incumbent_entry" in t.adoptions[0]
+
+
+def test_producer_to_gate_end_to_end_blocks_widening_successor():
+    # The full #79 chain with the entry built by the LIVE producer (_change):
+    # produce → attach incumbent → kernel gate. Widening blocked, narrowing
+    # passes.
+    incumbent = _cap_comp(
+        "reviewer_v1", "reviewer", "active",
+        {"allowed_targets": ["a"], "forbidden_targets": ["x"]},
+    )
+    state = _cap_state(incumbent)
+    kernel = ConstitutionalKernel()
+    eng = _engine()
+
+    widened = _cap_comp(
+        "reviewer_v2", "reviewer", "shadow",
+        {"allowed_targets": ["a", "b"], "forbidden_targets": ["x"]},
+    )
+    entry = eng._change("reviewer_v2", widened, "T6", "probationary_active", [])
+    t = EpochTransition(epoch_transition_id="t", from_epoch="epoch_001",
+                        to_epoch="epoch_002", adoptions=[entry])
+    eng._attach_incumbent_capabilities(t, state)
+    assert isinstance(t.adoptions[0].get("_incumbent_entry"), dict)
+    rep = kernel.validate_transition(t.to_dict(), None, None)
+    assert any(v.code == "CK-REG-101" for v in rep.violations)
+
+    narrowing = _cap_comp(
+        "reviewer_v3", "reviewer", "shadow",
+        {"allowed_targets": ["a"], "forbidden_targets": ["x"]},
+    )
+    e2 = eng._change("reviewer_v3", narrowing, "T6", "probationary_active", [])
+    t2 = EpochTransition(epoch_transition_id="t2", from_epoch="epoch_001",
+                         to_epoch="epoch_002", adoptions=[e2])
+    eng._attach_incumbent_capabilities(t2, state)
+    rep2 = kernel.validate_transition(t2.to_dict(), None, None)
+    assert not any(v.code == "CK-REG-101" for v in rep2.violations)

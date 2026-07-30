@@ -8,8 +8,8 @@ deterministically against the fixed Layer-0 table in
 record, has it validated by the Task 04 ConstitutionalKernel, and commits it
 atomically through the Task 02 boundary transaction
 (:meth:`ari.rqgm.store.RqgmStateStore.run_boundary`). Emergency quarantine
-(:meth:`RegistryTransitionEngine.emergency_quarantine`) is the ONLY mid-epoch
-path (§5.4) and rides the store's reserved ``emergency_quarantine`` event.
+(:meth:`RegistryTransitionEngine.emergency_quarantine`) ends the current epoch
+immediately and rides the same atomic close/change/open transaction.
 
 Determinism stance (§5.1, P2): :meth:`resolve_transition` is a pure function
 of ``(epoch_state, governance_report, candidate_evaluations, registries,
@@ -627,7 +627,7 @@ class RegistryTransitionEngine:
         report = self._validate(transition, state, at_boundary=True)
         if report is not None and self._blocks(report):
             transition.status = "aborted"
-            self._audit("epoch_transition", transition.to_dict())
+            self._audit("epoch_transition", self._audit_payload(transition))
             # Intake registrations still commit: they are independent of the
             # aborted status decisions and must reach the next boundary.
             new_state = self.store.run_boundary(
@@ -651,7 +651,7 @@ class RegistryTransitionEngine:
             and new_state.epoch.epoch_id == transition.to_epoch
         )
         transition.status = "committed" if committed else "failed"
-        self._audit("epoch_transition", transition.to_dict())
+        self._audit("epoch_transition", self._audit_payload(transition))
         if committed:
             for entry in transition.retirements:
                 self._audit("retirement_event", {
@@ -713,7 +713,7 @@ class RegistryTransitionEngine:
                 ))
         return events
 
-    # ── §5.4: the only mid-epoch path ─────────────────────────────────
+    # ── §5.4: emergency boundary ───────────────────────────────────────
 
     def emergency_quarantine(
         self,
@@ -724,15 +724,17 @@ class RegistryTransitionEngine:
         components=None,
         prompts=None,
         checkpoint_dir=None,
+        node_count: int | None = None,
+        run_id: str = "",
     ) -> EpochTransition:
-        """Single-sanction emergency transition (plan 09 §5.4).
+        """Single-sanction emergency boundary transition (plan 09 §5.4).
 
         Only a deterministic kernel critical violation
         (:data:`EMERGENCY_TRIGGER_CODES`, block severity) qualifies —
         performance signals never do. The transition is kernel-validated
         under the emergency shape and, when a store/checkpoint is available,
-        committed immediately as the reserved mid-epoch
-        ``emergency_quarantine`` event. Returned ``status``:
+        committed immediately inside an atomic boundary transaction carrying
+        the reserved ``emergency_quarantine`` event. Returned ``status``:
         ``committed`` | ``rejected`` | ``pending`` (validated, no store).
         """
         comps = _entries(components if components is not None
@@ -742,6 +744,8 @@ class RegistryTransitionEngine:
         v = _as_dict(violation)
         code = str(v.get("code", ""))
         epoch_id = str(getattr(epoch_state, "epoch_id", "") or "")
+        epoch_seq = int(getattr(epoch_state, "epoch_seq", 0) or 0)
+        transition_id = format_transition_id(epoch_seq, epoch_seq + 1)
         entry = comps.get(component_id)
         from_status = str(getattr(entry, "status", "") or "")
         prompt_id = str(getattr(entry, "prompt_id", "") or "")
@@ -751,9 +755,9 @@ class RegistryTransitionEngine:
         prompt_entry = proms.get(prompt_id) if prompt_id else None
         prompt_from_status = str(getattr(prompt_entry, "status", "") or "")
         t = EpochTransition(
-            epoch_transition_id=f"emergency_{epoch_id}_{component_id}",
+            epoch_transition_id=transition_id,
             from_epoch=epoch_id,
-            to_epoch=epoch_id,   # same epoch continues (mid-epoch action)
+            to_epoch=format_epoch_id(epoch_seq + 1),
             emergency=True,
             kernel_violation=v,
             inputs={"kernel_violation_code": code,
@@ -807,7 +811,7 @@ class RegistryTransitionEngine:
         t.created_at = self._now_iso()
         if self.store is not None and checkpoint_dir is not None:
             payload = {
-                "transition_id": t.epoch_transition_id,
+                "transition_id": transition_id,
                 "epoch_id": epoch_id,
                 "component_id": component_id,
                 "prompt_id": prompt_id or None,
@@ -818,25 +822,44 @@ class RegistryTransitionEngine:
                 "produced_by": t.produced_by,
                 "kernel_violation": v,
                 "fallbacks": [dict(f) for f in t.fallbacks],
-                # Task 05/10 consume: epoch records by this component after
-                # the violation are suspect until the next boundary (§5.4).
-                "suspect_scope": {"epoch_id": epoch_id,
-                                  "component_id": component_id},
+                "emergency_boundary": True,
             }
-            ok = self.store.append_mid_epoch_event(
-                checkpoint_dir, TransitionEvent(
-                    event_type="emergency_quarantine", payload=payload,
-                )
+            from ari.rqgm.store import RqgmRuntimeState
+            from ari.rqgm.registry import (
+                ComponentRegistry,
+                GovernedPromptRegistry,
+            )
+            current_state = RqgmRuntimeState(
+                epoch=epoch_state,
+                components=ComponentRegistry(comps),
+                prompts=GovernedPromptRegistry(proms),
+            )
+            boundary_state = self.store.run_boundary(
+                checkpoint_dir,
+                current_state,
+                None,
+                node_count=(
+                    int(node_count)
+                    if node_count is not None
+                    else int(getattr(epoch_state, "node_count_at_open", 0) or 0)
+                ),
+                run_id=run_id or str(getattr(epoch_state, "run_id", "") or ""),
+                registry_events=[
+                    TransitionEvent(
+                        event_type="emergency_quarantine",
+                        payload=payload,
+                    )
+                ],
+                utility_policy_override=dict(
+                    getattr(epoch_state, "utility_policy", None) or {}
+                ),
+            )
+            ok = (
+                boundary_state is not None
+                and getattr(boundary_state, "epoch", None) is not None
+                and boundary_state.epoch.epoch_id == t.to_epoch
             )
             t.status = "committed" if ok else "failed"
-            if ok:
-                try:
-                    state = self.store.replay(checkpoint_dir)
-                    if state is not None:
-                        self.store.save_snapshots(checkpoint_dir, state)
-                except Exception:
-                    log.warning("emergency snapshot refresh failed",
-                                exc_info=True)
             self._audit("epoch_transition", t.to_dict())
         return t
 
@@ -1187,6 +1210,21 @@ class RegistryTransitionEngine:
     def _add_change(self, t: EpochTransition, group: str, entry_dict: dict):
         getattr(t, group).append(entry_dict)
 
+    @staticmethod
+    def _audit_payload(transition: EpochTransition) -> dict:
+        """``to_dict`` minus the transient apply-side attachments —
+        ``_``-prefixed keys on adoption entries (``_incumbent_entry`` from
+        the #79 attach, utility-policy body attachments). They exist only so
+        the stateless kernel can validate; the hash-chained audit event must
+        carry durable fields only (the kernel already ran by audit time)."""
+        payload = transition.to_dict()
+        payload["adoptions"] = [
+            {k: v for k, v in e.items() if not str(k).startswith("_")}
+            if isinstance(e, dict) else e
+            for e in payload.get("adoptions", [])
+        ]
+        return payload
+
     def _change(self, cid: str, entry, rule_id: str, to_status: str,
                 refs: list, **extra) -> dict:
         out = {
@@ -1200,6 +1238,25 @@ class RegistryTransitionEngine:
             "rule_id": rule_id,
             "evidence_refs": list(refs),
         }
+        # #79 producer half: a SUCCESSION entry (T6 adoption; T20/T21
+        # supersession — the edges that displace a DISTINCT incumbent)
+        # carries the component's declared §6.1 capabilities, so a
+        # capability-declaring successor actually reaches the kernel's
+        # CK-REG-101 incumbent comparison — without this, no live adoption
+        # ever had capability fields and the gate was structurally
+        # unreachable (its tests proved the consumer only). Deliberately NOT
+        # on the self-shaped activation edges (T7/T8/T12/T14/T18
+        # promotion / re-activation / exoneration): there is no distinct
+        # incumbent there, so a capability-carrying entry would hit the
+        # conservative deny-all None baseline and abort the whole transition
+        # — permanently wedging governance for the five founding
+        # capability-declaring components. Conditional on non-empty, so
+        # every current live entry (no registry entry outside the founding
+        # tables declares capabilities) stays byte-identical.
+        if rule_id in ("T6", "T20", "T21"):
+            caps = getattr(entry, "capabilities", None)
+            if isinstance(caps, dict) and caps:
+                out["capabilities"] = dict(caps)
         out.update(extra)
         return out
 

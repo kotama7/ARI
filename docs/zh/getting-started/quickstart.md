@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/app/routeRegistry.ts
     role: implementation
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # ARI 快速入门指南
@@ -230,7 +230,7 @@ AI 会提出澄清性问题，并自动生成实验文件。
 
 **Paper Review（v0.6.0+）** — 选择论文的审阅方式：
 
-- **Rubric** — 从内置 16 种中选择（`neurips` 默认且 v2 兼容，加上 `iclr`、`icml`、`cvpr`、`acl`、`sc`、`osdi`、`usenix_security`、`stoc`、`siggraph`、`chi`、`icra`、`nature`、`journal_generic`、`workshop`、`generic_conference`）。在 `ari-core/config/reviewer_rubrics/` 放入你自己的 YAML 即可扩展任何会议。
+- **Rubric** — 从内置 23 种中选择（`neurips` 默认且 v2 兼容，加上 `iclr`、`icml`、`cvpr`、`acl`、`sc`、`chi`、`usenix_security`、`osdi`、`stoc`、`icra`、`siggraph`、`nature`、`aer`、`econometrica`、`qje`、`apsr`、`ahr`、`philreview`、`pmla`、`journal_generic`、`workshop`、`generic_conference`）。在 `ari-core/config/reviewer_rubrics/` 放入你自己的 YAML 即可扩展任何会议。
 - **Few-shot mode** — `static`（使用内置示例）或 `dynamic`（Phase 2 OpenReview 检索；评审封闭的会议会回退到 static）。
 - **Reviewer ensemble (N)** — 独立审稿人数。N>1 时还会运行 Area Chair 元审稿。
 - **Reflection rounds** — 每个审稿人 self-reflection 迭代次数（Nature Ablation 默认 5）。

@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/health.py
     role: implementation
-last_verified: 2026-07-27
+last_verified: 2026-07-29
 ---
 
 # 环境变量参考
@@ -42,6 +42,9 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 | `ARI_LLM_API_BASE` | LiteLLM API base 覆盖 | LiteLLM 默认值 |
 | `ARI_MODEL` | 跨技能回退模型 id | （回退至 `ARI_LLM_MODEL`） |
 | `ARI_MODEL_EVAL` | LLM 评估器使用的模型 | 回退至 `ARI_MODEL` |
+| `ARI_MODEL_PAPER` | 论文写作与修订模型 | 回退至 `ARI_LLM_MODEL` |
+| `ARI_MODEL_RUBRIC` | 独立rubric评审与固定论文面板模型 | 回退至 `ARI_LLM_MODEL` |
+| `ARI_PANEL_SEED` | 为固定评审面板的每次 rubric 调用记录的请求 seed | 未设置；能否控制采样取决于提供方和后端 |
 | `ARI_MODEL_JUDGE` | BFTS judge 使用的模型 | 回退至 `ARI_MODEL` |
 | `ARI_MODEL_LINEAGE` | 停滞/沿袭决策使用的模型（v0.7.0） | 回退至 `ARI_MODEL` |
 | `ARI_MODEL_ROOT_SELECT` | 选取种子 idea 使用的模型 | 回退至 `ARI_MODEL` |

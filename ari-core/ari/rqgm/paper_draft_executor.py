@@ -334,6 +334,10 @@ class PaperDraftExecutor:
             **(node.metrics or {}),
             "_scientific_score": score,                        # frontier + best-belief key
             "_framing_key": framing,                           # diversity_bonus key (§5.2)
+            "_paper_epoch_id": self.epoch_id,
+            "_reviewer_prompt_hash": getattr(
+                self.reviewer, "prompt_hash", ""
+            ),
         }
         record = {
             "schema_version": PAPER_DRAFT_ARCHIVE_SCHEMA_VERSION,

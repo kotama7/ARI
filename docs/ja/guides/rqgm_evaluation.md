@@ -8,7 +8,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_paper_eval.py
     role: test
-last_verified: 2026-07-16
+last_verified: 2026-07-29
 ---
 
 # RQGM 評価とアブレーション
@@ -61,7 +61,8 @@ prompt_evolution,meta_evolution}.enabled`）は型付き設定でデフォルト
 `eval_defaults.bfts`（`max_total_nodes` / `max_depth`）はすべての条件
 オーバーレイの下にマージされ、`eval_defaults.models` はキャンペーン開始時に
 一度だけ解決されて、生成される各ランに刻印される `ARI_MODEL_CODING` /
-`ARI_MODEL_BFTS` / `ARI_MODEL_EVAL` 環境変数になります。公平性は
+`ARI_MODEL_BFTS` / `ARI_MODEL_EVAL` / `ARI_MODEL_PAPER` /
+`ARI_MODEL_RUBRIC` 環境変数になります。公平性は
 **ノード予算**で担保します; トークン / ドル / 壁時計は*報告*されるだけで、
 決して均等化されません — RQGM のオーバーヘッドが見えるようにするためです。
 すべてのランは新しいチェックポイントを取得します — resume なし、条件間の
@@ -150,6 +151,44 @@ P1–P5 メトリクス、独自の PI1–PI3 注入 — これは `paper.mode: 
 **共進化価値** = B_full − B_archive_no_coevo。ここでも常にコストは*報告*され、
 決して均等化されません。
 
+### RQGM 元論文に合わせた条件（P0–P4）
+
+論文の主比較では、`paper.mode` を5種類の製品モードへ増やすのではなく、
+`rqgm_paper_conditions` の評価プリセットを使います。全条件は同じ
+`rqgm_archive`、同じアーカイブ予算、8論文期で実行されます。
+`rqgm.eval.paper_ablation.condition_id` は `rqgm.eval.enabled: true` のとき
+だけ有効です。
+
+| 条件 | 執筆役の進化 | 査読役の交代 | 敵対事例プール | 選択的消去 | Constitutional強制 |
+|---|---:|---:|---:|---:|---:|
+| P0_hgm_h_fixed_critic | 有効 | 無効 | 無効 | 無効 | 無効 |
+| P1_rqgm_replacement_only | 有効 | 有効 | 無効 | 有効 | 無効 |
+| P2_rqgm_no_erasure | 有効 | 有効 | 有効 | 無効 | 無効 |
+| P3_rqgm_full | 有効 | 有効 | 有効 | 有効 | 無効 |
+| P4_constitutional_rqgm | 有効 | 有効 | 有効 | 有効 | 有効 |
+
+主比較はP0/P3/P4、P1/P2は機構を切り分けるアブレーションです。
+「Constitutional強制なし」のP0–P3でも固定カーネル自体は残し、
+`audit_only` として記録だけを行い、遷移を遮断しません。P4だけが
+`standard` 強制を使います。これにより、本番用の危険なカーネル無効モードを
+追加せず観測可能性を保ちます。通常の機構スイッチと条件表が一致しない場合、
+論文ランタイムはその誤表示された条件を拒否します。P0ではさらに
+`paper_reviewer` を後継生成対象から除外するため、執筆役を進化させながら
+査読役を実際に固定します。
+
+この比較が合わせるのは機構であり、元論文の12,288回評価という計算規模を
+そのまま再現するものではありません。出荷時の行列は、Claude CodeとCodexで
+実行可能な費用に収めるため、8論文期、各期の展開上限12件としています。
+投稿用の実験では、この共通予算またはより大きい共通の評価呼出し予算を
+事前登録し、各条件で実際に生じた呼出し数を報告する必要があります。
+
+ここでいう「選択的消去」はRQGM元論文の機構に合わせています。稼働中の
+査読役が交代したとき、旧査読役が付けた効用行だけを選択対象外にし、
+ドラフト本文と来歴は保存します。P1/P3/P4は、全期をまたぐアーカイブのうち
+有効な効用行だけから勝者を選びます。P2では意図的に古い得点を選択可能な
+まま残すため、旧基準が選択へ影響し続けます。論理的消去は
+`rqgm_audit.jsonl` の `paper_utility_erasure` として記録されます。
+
 ### 論文メトリクス P1–P5
 
 `compute_metric_report(..., paper=True)`（`ari.rqgm.evaluation.metrics`、
@@ -160,23 +199,18 @@ P1–P5 メトリクス、独自の PI1–PI3 注入 — これは `paper.mode: 
   パネル**の判定のうち accept 集合に入る割合を、最終原稿に対して事後計算
   します。パネル（`paper_eval_defaults.panel`: rubric `neurips/iclr/icml`、
   `num_reviews_ensemble: 3`、`seed: 41`）は、共進化する `paper_reviewer` と
-  アンカーコーパスから**素であるべき**ピン留めルーブリックアンサンブルです。
+  アンカーコーパスから**素性を分離した**固定評価基準アンサンブルです。
   したがって共進化したレビュアが自分の原稿を格上げすることはできません。
   RQGM 論文の受理表に対応します。Tier-3 限定（実 LLM）; CI では決して
   走りません。
-  > **未配線（2026-07-17 時点）。** パネルの**ランナーは未着地**です:
-  > `paper_eval_defaults.panel` を読むコードは存在せず、素性チェック
-  > （`conditions.panel_disjointness_violations`）にも**本番の呼び出し元が
-  > ありません**。したがって現時点では「ハーネスのハードチェック」では
-  > **ありません**。P1 は実際のピン留めパネル実行が書く成果物
-  > `{ckpt}/panel_review_report.json` のみを読み、それが無ければ
-  > `applicable: false` を返します（今日のすべての実行が該当）。以前は
-  > **ループ内**の `review_paper` 出力 `review_report.json`（`paper_refine`
-  > へ戻される *refine 前*ドラフトのレビュー）を読み、そこに宣言された
-  > パネル仕様を刻印していました。これは自己一致を素なパネルとして報告する
-  > もので、R1 が名指しする失敗そのものです。刻印は現在パネルファイル自身が
-  > 記録した provenance から導出し、不一致は `applicable: false` を返します。
-  > **ランナーが着地するまで P1 を報告しないでください。**
+  `run_paper_panel.py` は最終稿の確定後に評価基準×アンサンブル要員を実行し、
+  固定した基準シードから再現可能な要求シードを割り当て、支出前に素性分離を検査して
+  `{ckpt}/panel_review_report.json` を書きます。P1が読むのはこの成果物だけ
+  であり、`paper_refine` へ戻される**ループ内**の `review_report.json` は
+  読みません。成果物は評価モデル、要求シード、パネル来歴を記録します。
+  シードが実際の標本化を制御するかは提供元やコマンド実行基盤に依存するため、
+  最善努力の扱いです。宣言と来歴が
+  一致しなければ別の実行へラベルを付け替えず `applicable: false` にします。
 - **P2 reviewer↔anchor agreement**（`reviewer_anchor_agreement`）— 保留した
   アンカーのグラウンドトゥルースとガバナンス下レビュアの一致度。
   **可観測性のみ**: 事後計算で、ラン状態を読まず、何も提出できません
@@ -222,12 +256,12 @@ P1–P5 メトリクス、独自の PI1–PI3 注入 — これは `paper.mode: 
 
 **正直な限界 — 機能と同じくらい率直に読んでください:**
 
-- PI3 のターゲット束縛チェーンが発火するのは、実の `ValidatedAttackRecord`
-  が `target_component_id` を持つようになったからで、本番で解決するのは
-  `paper_self_preference`（ターゲット `paper_reviewer_v1` が登録済みの設立
-  コンポーネント）**のみ**です。7 種の探索アドバーサリは `generator` 著の
-  成果物を攻撃し、それらには登録コンポーネントが無いため、彼らの弾劾チェーン
-  は設計上不活性のままです。
+- 実際の `ValidatedAttackRecord` は `target_component_id` を保持します。
+  論文自己選好は登録済みの論文役へ結び付きます。7 種の探索アドバーサリも
+  登録済みの設立 `generator` へ結び付けられますが、ノードへ一度だけ記録した
+  生成コンポーネント、指示文ハッシュ、期が、その期で固定した現職と一致する
+  場合に限ります。旧記録、欠落、曖昧さ、不一致がある場合は推測せず、
+  責任対象なしのままにします。
 - デフォルトの `rqgm.paper.epoch.rounds: 2` では境界**と**弾劾動議は発火
   しますが、アクティブレビュアハッシュの変化に至る T1→T6 の登攀は**完了
   しません**（完全な採用にはロールの空きと約 5 境界が必要; 共進化 PROOF
@@ -252,6 +286,26 @@ python scripts/rqgm_eval/run_ablation.py --dry-run --conditions B0,B3,B8
 # scripted_component and only loads under --smoke:
 python scripts/rqgm_eval/run_ablation.py --dry-run \
     --paper-conditions B0_paper_linear,B_archive_no_coevo,B_full
+
+# RQGM元論文に合わせたP0–P4の展開
+# （最初の主比較にはP0/P3/P4を推奨）:
+python scripts/rqgm_eval/run_ablation.py --dry-run \
+    --rqgm-paper-conditions \
+P0_hgm_h_fixed_critic,P3_rqgm_full,P4_constitutional_rqgm
+
+# Claude Codeを執筆、Codexを独立したAI Scientist v2形式のrubric査読へ
+# 割り当てる。先に `python -m ari.llm.cli_server --port 8900` を起動する:
+export ARI_LLM_API_BASE=http://localhost:8900/v1
+export OPENAI_API_KEY=dummy
+export ARI_MODEL_PAPER=openai/claude-cli:sonnet
+export ARI_MODEL_RUBRIC=openai/codex-cli:gpt-5-codex
+
+# 実LLMを使う論文キャンペーン。各 条件×シード×実験 について
+# paper phaseを含む `ari run` を実行する（CIでは実行しない）:
+python scripts/rqgm_eval/run_ablation.py \
+    --rqgm-paper-conditions \
+P0_hgm_h_fixed_critic,P3_rqgm_full,P4_constitutional_rqgm \
+    --eval-id rqgm_paper_main
 
 # Offline smoke (stub components, seconds, no LLM) — the deletion-criteria
 # smoke campaign:

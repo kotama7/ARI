@@ -24,7 +24,7 @@ sources:
     role: test
   - path: ari-core/tests/test_gui_v1_mode_selection.py
     role: test
-last_verified: 2026-07-27
+last_verified: 2026-07-29
 ---
 
 # 配置参考
@@ -1034,6 +1034,17 @@ profile 之后应用，因此显式的环境变量选择优先于 YAML）：
 任何界面能更改一个已经存在的运行的模式，其余 `rqgm.*` 参数也仍然仅限配置
 文件（ADR-09；见[执行模式](../guides/execution_modes.md)）。
 
+四个可选环境固定值可使执行指纹更具体。任一缺失时，纪元记录
+`unresolved` 且 `execution_identity.complete` 为 `false`；ARI 不把会变化的
+提供者别名宣称为可复现。
+
+| 环境变量 | 固定的身份 |
+|---|---|
+| `ARI_MODEL_REVISION` | 提供者/模型权重/部署的精确修订 |
+| `ARI_TOOL_BUNDLE_REVISION` | 不可变工具包修订 |
+| `ARI_ENVIRONMENT_DIGEST` | 容器或解析环境摘要 |
+| `ARI_DATA_SNAPSHOT_DIGEST` | 不可变外部数据快照 |
+
 ### `rqgm.epoch` —— 纪元边界尺寸
 
 | 键 | 默认值 | 含义 |
@@ -1068,7 +1079,7 @@ profile 之后应用，因此显式的环境变量选择优先于 YAML）：
 | `low_confidence_threshold` | `0.4` | 评审置信度低于此值时把该节点标记为有争议。 |
 | `novelty_claim_threshold` | `0.8` | 新颖性轴达到/超过此值（或存在非空的 novelty risks）时触发争议层。 |
 | `max_motions_per_epoch` | `2` | 每纪元弹劾动议的硬上限。 |
-| `bond_units_per_motion` | `1` | 每个动议扣押的保证金（维持时退回，驳回时没收）。 |
+| `bond_units_per_motion` | `1` | 动议配额单位的旧字段名。成立时返还配额、驳回时消耗；不转移价值。 |
 | `jury_panel_enabled` | `false` | JuryPanel（多次采样的裁判聚合）；v1 中关闭。 |
 | `fail_mode` | `open` | v1：仅 `open` —— 降级为无操作报告，绝不阻塞运行循环。 |
 
@@ -1105,7 +1116,7 @@ profile 之后应用，因此显式的环境变量选择优先于 YAML）：
 | 键 | 默认值 | 含义 |
 |---|---|---|
 | `enabled` | `true` | 是否对每个已完成节点运行对抗回合。 |
-| `types` | 全部七种 | 启用的对抗者类型（封闭集合）：`overclaim`、`metric_gaming`、`prior_art`、`reproducibility`、`evidence_gap`、`cost_explosion`、`prompt_injection`。 |
+| `types` | 全部八种 | 启用的对抗者类型（封闭集合）：七种探索类型 `overclaim`、`metric_gaming`、`prior_art`、`reproducibility`、`evidence_gap`、`cost_explosion`、`prompt_injection`，再加 `paper_self_preference`。第八种仅在 paper-archive 阶段激活。 |
 | `max_attacks_per_node` | `3` | 每回合原始攻击的硬上限。 |
 | `max_adversary_calls_per_epoch` | `24` | 对抗者 LLM 调用的每纪元硬上限（该上限的唯一 schema 归属）。 |
 | `sample_mod` | `5` | 确定性的 1/N 节点采样（`hash(node_id+epoch_id) mod N == 0`；P2 安全）。`<= 0` 禁用采样。 |
@@ -1158,7 +1169,7 @@ Shadow 输出是仅观察的：它绝不触达 BFTS 分数、前沿或记忆。
 |---|---|---|
 | `enabled` | `true` | 带退役的边界是否运行修复。 |
 | `max_trace_depth` | `8` | 依赖闭包追踪器的 BFS 上限；超过后消费者被保守地一并纳入（invalidate）。 |
-| `recompute_utilities` | `true` | 在原始纪元的冻结权重下由幸存输入重算效用；`false` 则改为使该节点无效。 |
+| `recompute_utilities` | `true` | 对过期的已评分证据，在原始纪元冻结权重下由幸存输入重算效用；`false` 则改为使该节点无效。效用策略退役会另行在新策略下重评分已存 `_axis_scores`，因此此开关不会禁用策略重写。 |
 | `abandon_stale_pending` | `true` | 放弃提案记录在其运行之前就已过期的 pending 子节点。 |
 
 ### `rqgm.meta_evolution` —— 元层预算与开关
@@ -1198,6 +1209,7 @@ Shadow 输出是仅观察的：它绝不触达 BFTS 分数、前沿或记忆。
 | `enabled` | `false` | 评估工具链的主联锁。默认永不启用。 |
 | `scripted_components` | `{}` | `role -> double_name` 替换（仅限工具链）。 |
 | `injection_specs` | `[]` | 激活的 `eval_*` 注入 id；被记录进 `rqgm_injection_provenance.json`。 |
+| `paper_ablation.condition_id` | `""` | 与 RQGM 原论文对齐的评估专用条件（`P0_hgm_h_fixed_critic` 至 `P4_constitutional_rqgm`）。空值或 `eval.enabled: false` 保持正常行为；它不是 `paper.mode`。 |
 
 ### `rqgm.paper.reviewer.agent_as_judge` —— agent-as-judge 草稿评分
 

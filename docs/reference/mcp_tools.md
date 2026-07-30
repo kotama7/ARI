@@ -14,7 +14,7 @@ sources:
     role: implementation
   - path: ari-skill-idea/src/server.py
     role: implementation
-last_verified: 2026-07-10
+last_verified: 2026-07-30
 ---
 
 # MCP Tools Reference
@@ -71,7 +71,7 @@ in `src/server.py`.
 | `slurm_submit` | sbatch with explicit partition / time / cpus / nodes / GPUs | ✗ |
 | `job_status` | squeue + sacct lookup | ✗ |
 | `job_cancel` | scancel a running job | ✗ |
-| `run_bash` | Direct bash command (local or via SSH) | ✗ |
+| `probe_platform_capabilities` | Probe tool availability (`command -v`) **on the compute partition** and cache it to `{checkpoint}/platform_capabilities.json`; best-effort (any failure is reported as skipped and writes nothing) | ✗ |
 | `singularity_build` | Build a SIF from a definition file | ✗ |
 | `singularity_run` | Run a command inside a SIF | ✗ |
 | `singularity_pull` | Pull a SIF from a remote URI | ✗ |
@@ -82,11 +82,15 @@ in `src/server.py`.
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
-| `survey` | Prior-work survey: reuses the frozen `virsci_snapshot` corpus when present, else live Semantic Scholar; pure HTTP | ✗ |
+| `survey` | Prior-work survey: reuses the frozen `virsci_snapshot` corpus when present, else live Semantic Scholar, else an arXiv fallback; pure HTTP | ✗ |
 | `generate_ideas` | LLM generates ranked idea candidates from survey + context | ✓ |
 
-These two are the skill's only registered tools (pinned by
-`ari-skill-idea/tests/test_server.py` via `mcp.list_tools()`). They are also
+These two are the skill's only registered tools — `_load_virsci_snapshot_papers`
+is a plain helper `survey` calls directly, never agent-visible, and
+`ari-skill-idea/tests/test_server.py` pins both facts via `mcp.list_tools()`.
+When the snapshot is absent and Semantic Scholar is unavailable (keyless or
+rate-limited), `survey` falls back to arXiv; a 0-paper result is reported on
+stderr rather than passing silently. They are also
 the MCP surface behind the RQGM `VirSciAdapter`: in the opt-in `ari_rqgm`
 mode with `proposal_router.generators.virsci.enabled: true`, the core-side
 ProposalRouter routes ideation events to `survey` + `generate_ideas` under a

@@ -28,7 +28,7 @@ sources:
     role: test
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # Remote Access and Operations Guide

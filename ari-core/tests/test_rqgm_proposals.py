@@ -795,9 +795,12 @@ def test_every_declared_trigger_event_is_wired_at_a_production_hook():
     from ari.rqgm.proposals.router import _EVENT_PRIORITY
 
     cli = Path(_rt.__file__).parents[1] / "cli"
+    # `paper_dispatch.py` carries the `paper_candidate` hook: the paper
+    # pre-flight moved out of `projects.py` into the dispatch all three CLI
+    # entries share, so `ari run` / `ari resume` reach it too.
     sources = "\n".join(
         (cli / f).read_text(encoding="utf-8")
-        for f in ("bfts_loop.py", "projects.py")
+        for f in ("bfts_loop.py", "projects.py", "paper_dispatch.py")
     )
     for event in _EVENT_PRIORITY:
         if event == "initial_exploration":

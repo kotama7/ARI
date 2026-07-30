@@ -30,7 +30,7 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/components/Overview/__tests__/OverviewPage.test.tsx
     role: test
-last_verified: 2026-07-27
+last_verified: 2026-07-28
 ---
 
 # Research and Governance State
@@ -140,10 +140,11 @@ It does **not** mean:
 - the results shown elsewhere on the page are wrong.
 
 The inverse misreading is equally wrong: **zero recorded attacks is a data
-point, not evidence of health.** A run whose registered adversaries can only
-target an ungoverned role has a structurally inert impeachment chain — the
-chain *cannot* fire by design, so its silence proves nothing. That, too, is a
-capability state and is labelled as one.
+point, not evidence of health.** The registered generator can now be bound
+through a node's write-once producer provenance, but an attack still requires
+triggering, adjudication, and matching epoch provenance. Legacy or ambiguous
+nodes remain targetless. Silence therefore says nothing without coverage and
+provenance data.
 
 ---
 
@@ -170,7 +171,7 @@ vocabulary:
 |---|---|
 | `computed` | Scored normally under the epoch's policy |
 | `recomputed` | Re-scored from surviving inputs (the record names the epoch) |
-| `stale` | Contaminated by a retired component — no longer feeds frontier scoring |
+| `stale` | Contaminated by a retired component — no longer feeds frontier scoring or best-node selection |
 | `invalidated` | The policy the score was formed under was superseded |
 | `removed` | Withdrawn from the frontier |
 
@@ -212,9 +213,12 @@ The rules that follow:
   with the adjudicated record ids as evidence). Channel 2 is the
   epoch-boundary policy rewrite. They are separate lists precisely so no
   consumer can accidentally merge them into one history.
-- **Recompute happens under the original epoch's frozen weights**, or not at
-  all. Re-scaling an old score into a new policy would fabricate a comparison
-  that never happened; the alternative is to mark the node invalid instead.
+- **Two recompute paths are explicit.** When scored evidence goes stale,
+  penalty utility is recomputed from surviving inputs under the original
+  epoch's frozen weights. When the policy itself is superseded, the boundary
+  re-scores the node's stored policy-independent raw axes under the new
+  criterion and stamps the new policy hash. It never converts an old
+  composite; missing raw axes invalidate the node.
 
 ---
 
@@ -227,7 +231,7 @@ changes is whether it is allowed to influence anything.
 
 | # | State | What actually happened | Where it lives | Reversible? |
 |---|---|---|---|---|
-| 1 | **Stale** | A record was produced by, or materially depends on, a retired component. It stops feeding frontier scoring. | Additive node sentinels (`_stale`, `_valid_for_frontier`, `_stale_reason`, `_erasure_event_id`) persisted through the tree, plus a selective-erasure event in the audit log | Yes — the record and its provenance are intact |
+| 1 | **Stale** | A record was produced by, or materially depends on, a retired component. It stops feeding frontier scoring and best-node selection. | Additive node sentinels (`_stale`, `_valid_for_frontier`, `_stale_reason`, `_erasure_event_id`) persisted through the tree, plus a selective-erasure event in the audit log | Yes — the record and its provenance are intact |
 | 2 | **Invalidated** | The utility policy the score was formed under was superseded, so the score itself no longer holds. | Same sentinel channel, with a distinct stale reason, plus the erasure event's invalidated-node list | Yes — recompute under surviving inputs is a normal outcome |
 | 3 | **Removed** | The node was withdrawn from the search frontier (it stops being expanded). | Frontier-rebuild events list removed and reinstated nodes | Yes — reinstatement is an ordinary event |
 | 4 | **Physically deleted** | The checkpoint directory and its logs are gone from disk. | Nothing — this is the absence of everything above | **No** |
@@ -246,9 +250,12 @@ The practical consequences of the logical/physical split:
 - A stale reason is **diagnostic provenance**. It exists so a human — or a
   read model rendering a label — can say *why* a node was staled; the kernel
   makes no control decision from it.
-- **Nothing is retroactively rewritten.** Existing runs are never modified to
-  gain governance, an existing score is never re-scaled into a new policy, and
-  a superseded record is superseded, not overwritten.
+- **Evidence is never retroactively rewritten.** Existing runs are never
+  modified to gain governance, and superseded records remain on disk rather
+  than being overwritten. A live boundary may deliberately replace the
+  in-memory frontier score by re-composing stored raw axes under the newly
+  adopted policy; the erasure event records that re-score and both policy
+  identities.
 
 ---
 

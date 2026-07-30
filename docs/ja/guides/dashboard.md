@@ -34,7 +34,7 @@ sources:
     role: doc
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # ダッシュボードガイド
@@ -106,27 +106,33 @@ React バンドルは `ari-core/ari/viz/static/dist/` から配信されます�
 
 ## ワークスペースの地図
 
-サイドバーは単一のルートレジストリから生成されるため、ナビの順序・アイコン・
-ハッシュ URL が乖離することはありません（`src/__tests__/routeNavParity.test.tsx`
-がピン留め）。`gui_v2` がオンのとき、内容は次のとおりです:
+ナビの各エントリ（ラベル・アイコン・クリックで書き込まれるハッシュ）はすべて
+単一のルートレジストリ由来なので、サイドバーがルータから乖離することはありません
+（`src/__tests__/routeNavParity.test.tsx` がピン留め）。サイドバーはそれらを
+1 つの主アクションと 4 つの固定グループとして配置します。`gui_v2` がオンのとき、
+内容は次のとおりです:
 
-| スロット | 書き込まれるハッシュ | 種別 |
-|---|---|---|
-| 📁 Projects | `#/projects` | v2 のみ |
-| 🏠 Home | `#/home` | レガシー |
-| 🗂️ Experiments | `#/experiments` | レガシー |
-| 🧭 Overview | `#/overview?run=` | v2 のみ |
-| 📡 Monitor | `#/monitor` | レガシー |
-| 🌳 Tree | `#/tree2?run=` | v2 がレガシー Tree スロットを**引き継ぐ** |
-| 🏛️ Governance | `#/governance?run=` | v2 のみ |
-| 📊 Results | `#/results2?run=` | v2 がレガシー Results スロットを**引き継ぐ** |
-| ✨ New Experiment | `#/new` | レガシー（`#/wizard` のエイリアス） |
-| 📚 PaperBench | `#/paperbench` | レガシー |
-| 💡 Idea | `#/ideas2?run=` | v2 がレガシー Idea スロットを**引き継ぐ** |
-| ⚡ Workflow | `#/workflow` | レガシー |
-| 🔧 Config | `#/config?run=` | v2 のみ |
-| 🎛️ Studio | `#/studio` | v2 のみ |
-| ⚙️ Settings | `#/settings` | レガシー |
+| グループ | スロット | 書き込まれるハッシュ | 種別 |
+|---|---|---|---|
+| *(主アクション)* | ✨ 新規実験 | `#/new` | レガシー（`#/wizard` のエイリアス） |
+| ワークスペース | 📁 プロジェクト | `#/projects` | v2 のみ |
+| ワークスペース | 🏠 ダッシュボード | `#/home` | レガシー |
+| ワークスペース | 🗂️ 実験アーカイブ | `#/experiments` | レガシー |
+| 現在の実験 | 🧭 概要 | `#/overview?run=` | v2 のみ |
+| 現在の実験 | 💡 アイデア | `#/ideas2?run=` | v2 がレガシー Idea スロットを**引き継ぐ** |
+| 現在の実験 | 🌳 探索ツリー | `#/tree2?run=` | v2 がレガシー Tree スロットを**引き継ぐ** |
+| 現在の実験 | 📡 実行モニター | `#/monitor` | レガシー |
+| 現在の実験 | 📊 論文・成果 | `#/results2?run=` | v2 がレガシー Results スロットを**引き継ぐ** |
+| 評価・統治 | 🏛️ ガバナンス | `#/governance?run=` | v2 のみ |
+| 評価・統治 | 📚 PaperBench | `#/paperbench` | レガシー |
+| システム | ⚡ ワークフロー | `#/workflow` | レガシー |
+| システム | 🔧 実行設定 | `#/config?run=` | v2 のみ |
+| システム | 🎛️ 設定スタジオ | `#/studio` | v2 のみ |
+| システム | ⚙️ 設定 | `#/settings` | レガシー |
+
+グループ見出しはラベルにすぎず状態を持ちません。サイドバーをアイコン表示まで
+狭めると見出しは消えます。アクティブなランの選択欄はナビ全体の上にあるので、
+ワークスペースを選ぶ前に「何を操作しているか」を確認できます。
 
 「引き継ぐ」とは、クリックが書き込むハッシュだけが変わるという意味です — スロット
 はレガシーのラベル・アイコン・位置を保ち、`#/tree`、`#/results`、`#/idea` を直接
@@ -145,9 +151,12 @@ Studio (#/studio) ──► project defaults / run template / run draft ──�
 ```
 
 **Projects**（`#/projects`）は、チェックポイント探索ルート配下で見つかったすべての
-ランを 1 つの仮想 `default` プロジェクトとして列挙します。各行はそのランの
-Overview と Config へリンクします; 行そのもののクリックは今もレガシーの受け渡しで
-`#/results` へ入ります。
+ランを 1 つの仮想 `default` プロジェクトとして列挙し、その上に 4 つの集計タイル
+（すべての実験 / 実行中 / 完了 / 要確認）を置きます。各行の「開く」列はそのランの
+Overview、論文・成果ページ、実行設定へリンクします; 行そのもののクリックは run を
+明示した `#/results?run=<run_id>` へ入ります（旧来の `sessionStorage` 受け渡しは
+古い呼び出し元のための互換フォールバックとして併記されるだけです）。RQGM と論文の
+capability は専用の列ではなく run id の隣のバッジになりました。
 
 ![Projects ワークスペース: ラン 1 件が 1 行のテーブル。run id、status バッジ、ノード数、レビュースコア、ベストメトリクス、最終更新時刻、capabilities 列、行ごとの Overview / Config リンクが並ぶ](../../assets/images/ja/dashboard_projects.png)
 
@@ -162,9 +171,11 @@ Overview と Config へリンクします; 行そのもののクリックは今�
 
 **Tree**（`#/tree2?run=&node=`）は run を明示するノードグラフとインスペクタです。
 **Ideas**（`#/ideas2?run=`）は `idea.json`（ギャップ分析、主要メトリクス、生成された
-仮説）とランツリー由来の BFTS 仮説一覧を表示します。**Results**（`#/results2?run=`）
-は読み取り専用の要約です: レビュースコア、ORS 再現性チェーン、バッジ連鎖としての
-EAR 公開系譜。
+仮説）とランツリー由来の BFTS 仮説一覧を表示します。**Results**（`#/results2?run=`、
+画面名は*論文・成果*）は読み取り専用の要約です: レビュースコア、ORS 再現性チェーン、
+バッジ連鎖としての EAR 公開系譜。論文があるランでは「論文を表示・編集」（レガシー
+ワークスペース `#/results?run=`）と「元のPDFを開く」の 2 つのリンクも出ますが、
+この画面自体は何も編集しません。
 
 ![Tree ワークスペース: 左に run id が上部に印字された D3 ノードグラフ、右にウィンドウ化された ARIA ツリーテーブル、さらに右のインスペクタ列に「Select a node in the tree to inspect it」の案内](../../assets/images/ja/dashboard_tree.png)
 
@@ -330,8 +341,8 @@ PaperBench のジョブログと、レガシーのファイル全体を流す `/
 | `#/paperbench`、`#/paperbench/import`、`#/paperbench/run`、`#/paperbench/results` | PaperBench の全面（[PaperBench GUI ガイド](paperbench/paperbench_gui.md)を参照） |
 
 v2 の Results ワークスペースがまさにこの理由で `#/results` へリンクし、ページ上でも
-そう述べています: *「このワークスペースは読み取り専用です — curate、publish、
-promote はレガシーページでのみ実行されます」*。
+そう述べています: *「この概要画面は読み取り専用です。成果物の整理、publish.yaml の
+編集、公開、公開範囲の変更は論文画面で行えます。」*
 
 安全性のために変更されたレガシー挙動が 2 つあり、クリック前に知っておく価値が
 あります:

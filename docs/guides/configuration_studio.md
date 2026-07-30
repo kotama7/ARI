@@ -36,7 +36,7 @@ sources:
     role: test
   - path: ari-core/tests/test_gui_secret_readiness.py
     role: test
-last_verified: 2026-07-27
+last_verified: 2026-07-30
 ---
 
 # Configuration Studio Guide
@@ -58,12 +58,12 @@ rewritten.
 
 Everything on both screens is generated from one machine-readable
 inventory of the declared `ARIConfig` leaves merged with a hand-authored
-metadata overlay. Today that is **144 leaves with 100 % metadata
+metadata overlay. Today that is **145 leaves with 100 % metadata
 coverage** — the registry build raises rather than shipping a field with
 no metadata, so a new config field cannot silently appear without a
 category, level, scope, sensitivity and mutability.
 
-Current categories: Governance (96), Proposal routing (14), Search (BFTS)
+Current categories: Governance (97), Proposal routing (14), Search (BFTS)
 (14), Infrastructure (5), Models (5), Evaluation (4), Execution mode (4),
 Skills (2).
 
@@ -81,13 +81,13 @@ configuration schema with default values").
 Each row shows the dotted path, the effective value, a **provenance
 source** badge, a **mutability** badge, the low-confidence marker when
 applicable, and any `applies_when` note. A search box filters by path or
-category, so every one of the 144 fields stays discoverable. Resolver
+category, so every one of the 145 fields stays discoverable. Resolver
 warnings are listed verbatim in their own panel — nothing is silently
 dropped.
 
 ![The Config browser for one run: a resolver-warnings panel, a filter box next to the field counter, and the per-category tables listing each dotted path with its effective value, a provenance source badge and a mutability badge; the llm.api_key row reads "secret (reference only)"](../assets/images/en/dashboard_config.png)
 
-The counter next to the filter box can read higher than 144. Any leaf the
+The counter next to the filter box can read higher than 145. Any leaf the
 resolved manifest carries that the registry does not know is still shown,
 grouped under **Other** — a manifest path is never dropped just because it
 has no registry metadata.
@@ -437,7 +437,7 @@ the project-defaults document rejects them with `not_project_scope`; in that
 scope the two selects are disabled and say why. Pick a mode on a run
 template or a run draft.
 
-**The remaining 96 governance leaves stay read-only.** Every other path in
+**The remaining 97 governance leaves stay read-only.** Every other path in
 the `Execution mode` category and the `rqgm.*` tree (epoch, kernel,
 governance, adversarial, budgets, paper-archive tuning) is rendered in a
 collapsed, read-only group — **with its effective value**, so you can see
@@ -450,7 +450,7 @@ exactly what will apply — under this note:
 
 That lock is end-to-end, not cosmetic: the launch endpoint recomputes the
 locked set from the registry (the `Execution mode` category ∪ `rqgm.*`
-**minus** the four selectable leaves — 96 paths today) and rejects a draft
+**minus** the four selectable leaves — 97 paths today) and rejects a draft
 whose own `values` carry one of them with reason `mode_locked`. The
 launch's `ARI_*` environment translation structurally excludes every locked
 path too, so a value inherited from a run template cannot reach the

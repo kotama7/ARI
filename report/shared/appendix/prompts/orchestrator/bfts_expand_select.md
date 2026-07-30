@@ -1,4 +1,4 @@
-% snapshot-from: ari-core/ari/prompts/orchestrator/bfts_expand_select.md@cff71dfe47770d9fdc23c704ca01717030f73b7ecb36f95cb9f1a49624709465 @ commit e780fa5626fc
+% snapshot-from: ari-core/ari/prompts/orchestrator/bfts_expand_select.md@cff71dfe47770d9fdc23c704ca01717030f73b7ecb36f95cb9f1a49624709465 @ commit c050ebf505af
 % DO NOT EDIT — regenerate via `make snapshot-prompts`.
 %
 You are selecting which completed research node to expand next in a BFTS tree.
