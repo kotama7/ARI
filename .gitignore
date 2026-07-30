@@ -83,6 +83,7 @@ Thumbs.db
 /ari-core/containers/*
 !/ari-core/containers/README.md
 workspace/
+/workspace.zip
 *.sif
 
 # Temporary work files

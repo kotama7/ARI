@@ -20,39 +20,48 @@
 \renewcommand{\tablename}{表}
 \renewcommand{\refname}{参考文献}
 
-\title{\bfseries Agentic HPC コード最適化における親子間 handoff\\[2pt]
-\large 客観的証拠と LLM 反省の分離比較}
+\title{\bfseries Agentic HPC コード最適化において\\
+LLM Reflection は既定の handoff 情報となるべきか\\[2pt]
+\large 客観的証拠との分離比較}
 \author{樹神宇徳\\{\normalsize 名古屋大学大学院情報学研究科}}
-\date{2026年7月29日}
+\date{2026年7月31日}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-大規模言語モデル（LLM）によるベストファースト木探索（BFTS）では、子ノードは親の実行可能コードを継承する。
-本稿は、これに加えて渡す情報を \textbf{Code only}、\textbf{Evidence only}、
-\textbf{Evidence+Reflection} の 3 条件に分ける。Code only から Evidence only へ客観的証拠を加え、
-Evidence only から Evidence+Reflection へ LLM の解釈・懸念・次手提案だけを加える。
+大規模言語モデル（LLM）によるベストファースト木探索（BFTS）では、子ノードが親のコードに加えて、親 LLM の
+解釈や次手提案を Reflection として継承する設計が考えられる。しかし、親コードと客観的な評価証拠を既に継承する
+場合にも、Reflection を常時追加する方針が探索を改善するかは明らかでない。本稿は、この既定方針の妥当性を検証する。
 
-各条件を \texttt{gemm}、\texttt{spmm}、\texttt{stencil} に適用し、課題・条件ごとに 30 seed の独立 BFTS
-run を固定した参照解と非 LLM 計測ハーネスで採点する。同一 seed の run を対応ブロックとし、探索中に選ばれた
-候補を別 seed で再測定した値を主要アウトカムとする。これにより、客観的証拠の効果、LLM 反省の追加効果または害、
-および課題依存性を検証する。
+親子間 handoff を \textbf{Code only}、\textbf{Evidence only}、\textbf{Evidence+Reflection} に分け、
+\texttt{gemm}、\texttt{spmm}、\texttt{stencil} で各条件 30 seed、計 270 の独立 BFTS run を実施した。
+全 run の独立最終再測定が有効であった。Evidence only $-$ Code only は \texttt{stencil} で平均差
+$+2.90$（95\%信頼区間 $[1.44,4.43]$、Holm 補正 $p=.00450$）となったが、他の課題では有意でなかった。
+Evidence+Reflection $-$ Evidence only は 3 課題すべてで有意でなく、効果の符号も揃わなかった。
+これは Reflection の一般的な無効性や有害性を証明する結果ではないが、客観的証拠へ Reflection を常時追加すれば
+性能が改善するという仮定を支持しない。Reflection は既定の継承情報ではなく、課題別の検証を要する選択的介入として
+扱うべきである。
 \end{abstract}
 
 \section{はじめに}
 高性能計算（High Performance Computing; HPC）に対する LLM コードエージェントは、編集・ビルド・計測を
 反復しながら候補を探索する~\cite{theaiscientist}。
-BFTS では高得点ノードを展開し、子は親のコードと workspace を引き継ぐ。しかしコードだけでは、評価ケース別の
-性能や失敗理由は明示されない。一方、親の解釈まで渡すと探索を導ける反面、誤った仮説を固定する恐れがある。
-本研究の問いは、\textbf{親コードを継承した子に、客観的証拠だけを渡すべきか、LLM の解釈・懸念・提案まで
-渡すべきか}である。
+BFTS では高得点ノードを展開し、子は親のコードと workspace を引き継ぐ。ここへ評価結果を追加すれば、親コードの
+正当性、ケース別性能、失敗理由を明示できる。さらに親 LLM の解釈、懸念、次手提案を Reflection として渡せば、
+探索を方向付けられる可能性がある。一方、誤った解釈の継承は探索を固定しうる。したがって、言語的指針を増やすことと
+最適化性能が単調に対応するとは限らない。
+
+特に未検証なのは、客観的証拠が既に与えられた後の Reflection の\emph{増分効果}である。本研究では、
+\textbf{Reflection をすべての親子間 handoff に追加する方針は、Evidence only より優れた既定値となるか}
+を中心課題とする。併せて、客観的証拠自体の効果と、両者の課題依存性を調べる。比較対象は情報量ではなく、
+機械的に確認された Evidence と LLM が生成した Reflection という情報の性質である。
 
 本稿の貢献は次の通り。
 \begin{enumerate}[nosep,leftmargin=1.6em]
-  \item 客観的証拠と LLM 反省を分離した 3 条件を定義する。
-  \item handoff 方針を run 単位で固定し、条件間の探索木干渉を除く。
-  \item 3 種の HPC カーネルを固定した非 LLM 評価器で採点し、効果の課題依存性を測る。
+  \item Evidence と Reflection を分離し、Reflection の常時追加だけを変える主要対比を定義する。
+  \item handoff 方針を run 単位で固定した 270 run の対応実験により、end-to-end の探索性能を評価する。
+  \item Evidence の効果が課題依存であり、Reflection の常時追加が一貫した利益を示さないことを明らかにする。
 \end{enumerate}
 
 \section{関連研究}
@@ -60,7 +69,8 @@ BFTS では高得点ノードを展開し、子は親のコードと workspace �
 スクリプトと要約 $\Sigma(T)$ を子へ渡すが、要約中の客観的証拠と LLM 解釈を分離していない。
 CodeTree~\cite{codetree}、LATS~\cite{lats}、GIF-MCTS~\cite{gifmcts}、Tree of Thoughts~\cite{tot} は
 critic、scoring、探索方策を扱うが、handoff の情報成分を比較しない。Reflexion~\cite{reflexion} は言語的反省を
-記憶するのに対し、本研究はその有効性を客観的証拠への追加効果として測る。KernelBench~\cite{kernelbench} は
+記憶するのに対し、本研究は客観的証拠が存在する場合の増分効果を測る。すなわち Reflection の有用性全般ではなく、
+それをすべての handoff に追加する方針が Evidence only を上回るかを問う。KernelBench~\cite{kernelbench} は
 GPU カーネルの逐次改良であり、分岐木上の親子継承を対象としない。本研究は、Evidence と Reflection を分離し、
 run 単位で統制したうえで複数の HPC カーネルを同じ原則で評価する。
 
@@ -145,7 +155,7 @@ step 上限到達後に Reflection を補完する別 LLM 呼出しの prompt �
 \section{実験設計}
 \paragraph{探索と handoff 条件}
 各 node のエージェントは最大 25 ReAct step で上記ツールを用い、候補コードを作る。
-固定した非 LLM 評価器が全ノードを採点し、BFTS は最高得点のフロンティアノードを展開する（確証実験は
+固定した非 LLM 評価器が全ノードを採点し、BFTS は最高得点のフロンティアノードを展開する（本実験では
 $N=10$ ノード/run）。子は常に親 workspace を複製し、追加文脈だけを次の 3 条件で変える
 （図~\ref{fig:method}）。
 \begin{enumerate}[nosep,leftmargin=1.6em]
@@ -153,6 +163,8 @@ $N=10$ ノード/run）。子は常に親 workspace を複製し、追加文脈�
   \item \textbf{Evidence only}: workspace と、評価器・ハーネスが確認した客観的証拠。
   \item \textbf{Evidence+Reflection}: Evidence only に、LLM の解釈・懸念・次手提案を追加。
 \end{enumerate}
+Evidence+Reflection では、利用可能なすべての親子間 handoff に Reflection を注入する。したがって評価するのは、
+失敗時だけ用いる選択的 Reflection ではなく、Reflection を既定値とする \emph{always-on} 方針である。
 1 run には 1 条件だけを適用し、探索木は共有しない。同一 seed の 3 run は共通の乱数列と評価入力を持つ
 対応ブロックである。ただし親 workspace は共有せず、推定対象は固定親からの局所差ではなく、handoff 方針を通した
 end-to-end の run 差とする。主要対比は Evidence only $-$ Code only と
@@ -319,7 +331,7 @@ OS レベルの隔離はない。この防御は改変検出と結果検証で�
 job ID、array index、node 名、CPU 数を manifest に保存し、条件別 node 割当も報告する。
 handoff 関連の外部環境変数は run 起動前に消去し、解決後の設定を記録する。
 
-\paragraph{解析計画と事前登録}
+\paragraph{解析方法と実験凍結}
 解析単位は 1 課題・1 seed・1 条件の独立 BFTS run である。各課題・各条件を 30 seed で反復し、全体で
 $3\times3\times30=270$ run とする。主要対比は Evidence only $-$ Code only と
 Evidence+Reflection $-$ Evidence only の 2 つである。各課題について、同一 seed の run を対応させ、
@@ -334,57 +346,141 @@ Evidence+Reflection $-$ Evidence only の 2 つである。各課題について
 \texttt{infrastructure\_error} は測定値ではない。非零終了と出力欠損も含めて解析から除外し、条件別件数を報告する。
 主要対比では、いずれか一方が infrastructure error の seed block を除き、除外 seed を明示する。
 
-確証実験前に、実装 commit と未コミット差分、3 条件のスキーマ、プロンプト、ツール、モデル、$N=10$、
-ReAct 上限、seed 0--29、評価器、ハーネス、解析コードを凍結する。run ごとに実験 driver、解析・batch script、
-関連する制御コード、課題ハーネス、論文ソース、設定、git status、binary diff と各 hash を bundle 化する。先行する smoke run は
-実行可能性と収集経路の確認だけに用い、効果推定にも seed 数の決定にも用いない。投入時にこれらの共通
-source fingerprint を固定し、各 worker の開始前・終了後と集計時に照合する。不一致 run は解析しない。
+実験投入前に、実装 commit、3 条件のスキーマ、プロンプト、ツール、モデル、$N=10$、ReAct 上限、
+seed 0--29、評価器、ハーネス、解析コードを凍結した。run ごとに実験 driver、解析・batch script、制御コード、
+課題ハーネス、設定、git status、binary diff と各 hash を bundle 化した。先行 smoke run は実行可能性と
+収集経路の確認だけに用い、効果推定にも seed 数の決定にも用いていない。投入時に共通 source fingerprint を固定し、
+各 worker の開始前・終了後と集計時に照合した。不一致 run は解析対象外とした。
 
-\section{実装状態}
-実験 driver は、課題・seed・条件ごとに別の \texttt{sbatch} array element と出力ディレクトリを作り、
-1 条件だけを指定して BFTS を起動する。
-各出力には node ごとの workspace、report、trace、独立再測定、run manifest を保存する。
-Evidence/Reflection の選択、親成果物の除外、memory とプランナ経路の遮断、3 ハーネス、失敗分類、
-raw 反復記録、provenance bundle、並列投入を実装済みである。依存する集計 job は期待する
-$3\times3\times n$ shard の重複・欠損、モデル、scorer、handoff 設定、node 数、再測定回数、
-allocation ID、最終再測定、bundle hash、共通 source fingerprint を検査してから
-課題別 manifest を結合する。完全な記録を持つ \texttt{infrastructure\_error} cell は保持して条件別件数を報告し、
-対応解析から除外する。構造的欠損、hash 不一致、または解析失敗時は batch job も失敗させる。
+\section{結果}
+\paragraph{完了状況と監査}
+270 run は課題・条件・seed ごとに独立した \texttt{fx700} allocation で完了し、各 run は要求した 10 node report と
+15 反復の独立最終再測定を生成した。全 worker で凍結した source fingerprint が一致し、最終再測定は
+$270/270$ run で有効であった。したがって、科学的無効への $0$ 代入と infrastructure error による対応 block の
+除外は、最終解析では発生しなかった。
 
-直近の $3\times3$ smoke run は $N=10$、ReAct 上限 25、seed 0 で実施し、\texttt{spmm} は
-$n=5000,\ k=32$、\texttt{stencil} は
-$(128,128,128,10)$、$(160,96,96,10)$、$(96,96,160,10)$ に縮小した。最終再測定は各ケース 5 反復である。
-9 allocation はすべて \texttt{fx700} の48 coreを確保し、Slurm accounting 上、割当時間内の同一 node に
-他ジョブはなかった。全 9 run が要求した 10 report を生成し、90 node 中83件が有効、7件はコンパイル失敗であった。
-9件の最終再測定はすべて有効で、180 matched pair を採用した。候補時間への外部 wall-time 下界は179 pairで
-作動した。全 run が seed 0 のため候補先行が1回多いが、開始順別の中央値差は最大約12\%であった。確証実験では
-前述の seed 奇偶による釣合せを用いる。
+完了後の API trace 監査で、terminal \texttt{RateLimitError} が BFTS の 1 node 試行を消費した cell を 2 件
+（\texttt{stencil}/Code only/seed 7 と \texttt{spmm}/Evidence+Reflection/seed 10）検出した。
+観測スコアによらず該当する課題・条件・seed の cell 全体を同じ設定で再実行し、元の 270 cell を変更せず、
+268 cell と 2 件の再実行を結合した派生データを解析した。再実行には失敗 LLM 呼出しがなく、source fingerprint も
+一致した。誤った fingerprint で投入された別の事前検査 job は API 呼出し前に停止し、データへ含めていない。
 
-81子 node の prompt を親 report から再構成して照合した結果、Code only の親情報メッセージは
-$0/27$、Evidence only と Evidence+Reflection は各 $27/27$ で期待値と一致した。Evidence only への
-Reflection、memory、プランナ親 report、full trace、ホストパスの流入はなかった。step 上限で終了した16 nodeも、
-補完 Reflection の prompt と応答をすべて full trace に保存した。集計器は共通 source fingerprint と9 shardを
-検証した。smoke の条件差は効果量として解釈せず、信頼区間と検定も出力しない。確証実験は未実施である。
+\paragraph{主要アウトカム}
+表~\ref{tab:final-outcome} に naive baseline 比 speedup の run 平均を示す。全条件で最終再測定の有効率は
+$30/30$ であり、主要対比の対応リスク差はすべて 0、exact McNemar $p=1$ であった。
+
+\begin{table}[H]\centering\footnotesize
+\caption{独立最終再測定 speedup の算術平均 [bootstrap 95\%信頼区間]。各セル $n=30$、全 run 有効。}
+\label{tab:final-outcome}
+\begin{tabular}{lccc}
+\toprule
+課題 & Code only & Evidence only & Evidence+Reflection \\
+\midrule
+\texttt{gemm}    & 76.99 [73.38, 80.23] & 78.67 [75.77, 81.28] & 81.21 [79.56, 82.43] \\
+\texttt{spmm}    & 57.05 [54.23, 60.41] & 54.32 [53.68, 55.06] & 56.30 [53.97, 59.31] \\
+\texttt{stencil} & 14.29 [12.93, 15.68] & 17.18 [16.00, 18.28] & 16.11 [14.85, 17.24] \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+同一 seed を対応させた主要対比を表~\ref{tab:primary-results} に示す。Evidence only $-$ Code only は
+\texttt{stencil} で平均差 $+2.90$、Holm 補正 $p=.00450$ となり、両条件で有効な run における幾何平均比も
+$1.220$ であった。他の 5 対比は Holm 補正後に有意でない。特に Reflection の追加は、点推定が
+\texttt{gemm} で $+2.54$、\texttt{spmm} で $+1.98$、\texttt{stencil} で $-1.07$ と課題間で符号が揃わず、
+always-on 方針の一貫した優位性を支持しなかった。両条件で有効な run の幾何平均比
+[95\% bootstrap 信頼区間] は順に $1.036\ [0.999,1.080]$、$1.030\ [0.989,1.079]$、
+$0.934\ [0.826,1.062]$ であり、いずれも 1 を含んだ。
+
+\begin{table}[H]\centering\scriptsize
+\caption{主要対比。$\Delta$ は対応 seed 内の speedup 平均差、信頼区間は 5,000 回の対応 bootstrap、
+$p$ は 20,000 回の両側 sign-flip 検定、Holm $p$ は全 6 検定で補正した値。E--C は
+Evidence only $-$ Code only、R--E は Evidence+Reflection $-$ Evidence only。}
+\label{tab:primary-results}
+\begin{tabular}{llrrrr}
+\toprule
+課題 & 対比 & $\Delta$ & 95\%信頼区間 & raw $p$ & Holm $p$ \\
+\midrule
+\texttt{gemm}    & E--C & $+1.68$ & $[-2.68,\ 6.23]$   & .482   & .642 \\
+\texttt{gemm}    & R--E & $+2.54$ & $[-0.17,\ 5.51]$   & .0966  & .483 \\
+\texttt{spmm}    & E--C & $-2.72$ & $[-5.90,\ -0.003]$ & .115   & .483 \\
+\texttt{spmm}    & R--E & $+1.98$ & $[-0.56,\ 5.06]$   & .214   & .642 \\
+\texttt{stencil} & E--C & $\mathbf{+2.90}$ & $\mathbf{[1.44,\ 4.43]}$ & \textbf{.00075} & \textbf{.00450} \\
+\texttt{stencil} & R--E & $-1.07$ & $[-2.85,\ 0.80]$   & .265   & .642 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\texttt{spmm} の E--C では percentile bootstrap 区間の上端がわずかに 0 を下回る一方、sign-flip
+$p=.115$ であった。両者は異なる再標本化分布を用いるため、事前に定めた sign-flip 検定と Holm 補正に基づき
+有意差なしと判断する。RateLimit のあった元 cell を置換せず保持する感度解析でも、Holm 補正後に有意なのは
+\texttt{stencil} の E--C だけであり（Holm $p=.00750$）、結論は変わらなかった。
+
+\paragraph{探索中の親子遷移}
+表~\ref{tab:lineage-results} は node 単位の副次解析である。\texttt{stencil} では Evidence only が
+子改善率を 18.9\% から 29.7\% へ高めた一方、親破壊率も 7.0\% から 15.2\% へ上昇した。
+\texttt{spmm} でも Evidence 条件の子改善率は Code only より高かったが、最終アウトカムの改善には結び付かなかった。
+Reflection 追加時の親破壊率は Evidence only より 3 課題すべてで低く、Reflection が親コード破壊を増やすという
+方向の証拠は得られなかった。ただし node は同一探索木内で依存するため、これらは記述統計である。
+
+\begin{table}[H]\centering\footnotesize
+\caption{探索中の node 有効率／子改善率／親破壊率（\%）。有効率の分母は各条件 300 node。
+子率は、有効親から生じた非 no-op 子 269--270 件を分母とし、改善は親比 $>1.01$、破壊は子の無効化を表す。}
+\label{tab:lineage-results}
+\begin{tabular}{lccc}
+\toprule
+課題 & Code only & Evidence only & Evidence+Reflection \\
+\midrule
+\texttt{gemm}    & 98.3／19.6／1.9 & 96.3／19.6／4.1 & 97.3／18.5／3.0 \\
+\texttt{spmm}    & 93.3／24.8／7.4 & 94.3／31.9／6.3 & 96.3／30.9／3.7 \\
+\texttt{stencil} & 93.7／18.9／7.0 & 86.0／29.7／15.2 & 88.7／26.4／12.3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{考察}
+\paragraph{Reflection は既定値となるか}
+Reflection を既定値とするには、同一の客観的証拠を持つ Evidence only に対して、課題を越えて再現する増分効果が
+必要である。本実験では 3 課題すべてで有意な優位性がなく、点推定も正負に分かれた。したがって、
+「解釈や次手提案を追加すれば、より豊富な handoff によって探索性能も改善する」という単調な設計仮定は
+支持されない。これは Reflection 全般の無効性や有害性を意味しない。本実験の対象は、単一モデルが生成した
+3 フィールドを毎回追加する方針であり、失敗や探索停滞を契機とする選択的 Reflection と外部検証付き Reflection は
+別の介入である。Evidence と Reflection は別経路に保ち、後者を無条件に注入せず課題別に検証すべきである。
+
+\paragraph{Evidence の課題依存性}
+Evidence only は \texttt{stencil} で Code only を上回ったが、\texttt{gemm} と \texttt{spmm} では
+有意な利益を示さなかった。客観的証拠であっても常に有効とは限らず、子がその情報から有効な次手を導けるかは
+課題構造に依存する。\texttt{spmm} では Evidence 条件で子改善率が高い一方、最終アウトカムは改善しなかった。
+局所的な親子改善は、固定 node 予算における最良候補の改善を保証しない。
+
+\paragraph{想定した害の検討}
+Reflection が親コードを破壊するという説明は、本結果に支持されない。Evidence+Reflection の親破壊率は
+Evidence only より 3 課題すべてで低かった。一方、探索方向の固定化は現在の指標では直接測定していない。
+本研究が示すのは害の機序ではなく、Reflection の常時追加を支持する最終性能上の根拠が得られなかったという
+方針レベルの結果である。
 
 \section{限界}
 \begin{enumerate}[nosep,leftmargin=1.6em]
-  \item 確証結果は未確定であり、本稿から条件の優劣は結論しない。
   \item Code only でも、親が workspace に書いたコメントやメモは継承されうる。
   \item 同一 uid で動く候補と評価器の間に syscall・filesystem containment がなく、hash 検査だけでは悪意ある
     改変を完全には防げない。
-  \item 性能測定には残留ノイズがあり、対応ペア化と独立再測定後にも不確実性が残る。
-  \item 結果は単一モデル、プロンプト、ReAct 上限、計算環境に依存する。
-  \item 対象は 3 性能カーネルであり、他の最適化問題への一般化には追加検証を要する。
+  \item RateLimit cell の全体置換規則は完了後監査で明文化した。スコア非依存の一貫した規則を適用し、
+    元 cell を保持した感度解析も併記したが、事前指定ではない。
+  \item 非有意差は効果ゼロの証明ではない。同等性幅を事前指定しておらず、結果も単一モデル、Reflection 形式、
+    3 カーネル、計算環境に依存するため、Reflection の一般的な無効性は主張しない。
+  \item 親子改善・破壊率は探索木内で依存し、探索方向の固定化を直接測る指標ではない。
+  \item 性能測定には残留ノイズがあり、選択的または外部検証付き Reflection も評価していない。
 \end{enumerate}
 
 \section{結論}
-本稿は、親コード継承下の handoff を Code only、Evidence only、Evidence+Reflection に分解し、
-客観的証拠と LLM 反省の効果を独立 run 間で識別する設計を示した。今後、3 HPC カーネルで確証実験を行い、
-証拠の価値、Reflection の追加効果または害、その課題依存性を検定する。
+親コード継承下の handoff を Code only、Evidence only、Evidence+Reflection に分解し、3 HPC カーネル、
+270 run で比較した。Evidence の効果は \texttt{stencil} に限って確認され、客観的情報の価値も課題依存であった。
+さらに Reflection を常時追加する方針は Evidence only を 3 課題で一貫して上回らなかった。これは Reflection
+全般の否定ではなく、本設定ではそれを既定の継承情報とする根拠が得られなかったことを示す。Evidence と
+Reflection を分離し、後者を課題別に検証する介入として扱うことが、親子間 handoff の妥当な設計原則である。
 
 \begin{thebibliography}{9}
-\scriptsize
-\setlength{\itemsep}{-2.5pt}
+\fontsize{8}{8.2}\selectfont
+\setlength{\itemsep}{-3.5pt}
 \bibitem{theaiscientist} C.~Lu, C.~Lu, R.~T.~Lange, J.~Foerster, J.~Clune, D.~Ha.
   The AI Scientist: Towards Fully Automated Open-Ended Scientific Discovery.
   \textit{arXiv:2408.06292}, 2024.
