@@ -1,11 +1,14 @@
 {
+  "description": "Deterministic and LLM-assisted scientific figure generation.",
+  "entrypoint": "src/server.py",
+  "generated_from": "skill.yaml",
   "name": "plot-skill",
-  "version": "0.1.0",
-  "description": "Scientific figure generation: deterministic matplotlib and LLM-written code",
+  "package": "ari-skill-plot",
+  "runtime": "python",
+  "schema_version": 1,
   "tools": [
     "generate_figures",
     "generate_figures_llm"
   ],
-  "runtime": "python",
-  "entrypoint": "src/server.py"
+  "version": "0.1.0"
 }

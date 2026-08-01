@@ -1,5 +1,11 @@
 ---
 sources:
+  - path: ari-core/ari/skill_manifest.py
+    role: implementation
+  - path: scripts/check_skill_manifests.py
+    role: test
+  - path: ari-core/config/workflow.yaml
+    role: config
   - path: ari-skill-hpc/src/server.py
     role: implementation
   - path: ari-skill-hpc/mcp.json
@@ -12,12 +18,75 @@ sources:
     role: implementation
   - path: ari-skill-paper-re/mcp.json
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-08-01
 ---
 
 # MCP Skills Reference
 
-Skills are MCP servers that provide tools to the ARI agent. Tools are deterministic where possible; LLM-using tools are explicitly annotated. **14 skills total** (13 default, 1 additional) — `ari-skill-replicate` was added in v0.7.0 for the PaperBench-format reproducibility flow.
+Skills are MCP servers that provide tools to the ARI agent. Tools are deterministic where possible; LLM-using and live-data tools are explicitly annotated. **14 skills total** (13 default, 1 default-off external orchestrator).
+
+## Canonical `skill.yaml` contract
+
+Every built-in Skill package has exactly one versioned `skill.yaml`. It is the
+source of truth for package identity, safe entrypoint, environment declarations,
+tool capability, phases, side effects, determinism, timeout class, permissions,
+and result schema. The normative JSON Schema is
+`ari-core/ari/schemas/skill_manifest_v1.schema.json`.
+
+```yaml
+schema_version: 1
+name: coding-skill
+package: ari-skill-coding
+version: 0.1.0
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+tool_defaults:
+  phases: [bfts, reproduce]
+  side_effects: stateful
+  determinism: conditional
+  timeout_class: bounded
+  permissions: [workspace-read, workspace-write, process]
+  result_schema: ari.legacy-mcp-result/v1
+tools:
+  - name: run_code
+    capability_ref: ari.execution.code
+```
+
+Package defaults avoid duplicating identical policy for every tool; a tool may
+override any policy field. `mcp.json` is no longer hand-maintained source. It is
+a generated compatibility view for existing dashboard and external consumers:
+
+```bash
+python scripts/sync_skill_metadata.py --write
+python scripts/check_skill_manifests.py
+```
+
+The conformance gate rejects an unversioned/invalid manifest, package-version
+drift, statically declared runtime tool-name drift, workflow reference or phase
+drift, stale `mcp.json`, and name collisions among default-enabled Skills. A live
+`tools/list` input-schema comparison remains a P1 follow-up. Runtime loading
+accepts an unversioned legacy manifest only through the explicit transition flag
+`allow_legacy=True`; CI and admission do not use it.
+
+All current manifests default `environment_policy: audit-pending`: the listed
+environment names are inventory, not yet an exhaustive child-process allowlist.
+P2 changes this to `complete` package by package after secret/non-propagation
+tests. Likewise, current tools truthfully declare
+`ari.legacy-mcp-result/v1`; they move to `ari.result-envelope/v1` only when the
+normalizing adapter and artifact tests land.
+
+`capability_ref` expresses semantic capability and may be shared by alternative
+implementations. Runtime name is not evidence that two tools are equivalent.
+Until immutable federation `tool_ref` dispatch lands, a duplicate bare tool name
+is an admission error rather than last-writer-wins. The external orchestrator is
+therefore default-off and is not injected into the experiment agent's tool set.
+
+To add a built-in Skill, add one package-level manifest and server, then regenerate
+compatibility metadata. To add a large external collection, implement one
+`CatalogSource`/provider adapter as described by the platform plan; do not add a
+core registration record per leaf tool.
 
 ## ari-skill-hpc
 
@@ -93,7 +162,8 @@ Literature survey and idea generation. **LLM: Yes** (generate_ideas uses VirSci 
 
 #### `survey(topic, max_papers=8)`
 
-Search Semantic Scholar for related papers. Deterministic (no LLM).
+Search Semantic Scholar for related papers. No LLM, but classified as
+`live-data` because upstream results can change over time.
 
 ```python
 result = survey("OpenMP compiler optimization HPC benchmarks")

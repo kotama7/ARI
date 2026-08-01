@@ -1,8 +1,30 @@
+schema_version: 1
 name: paper-re-skill
-display_name: "Revise the paper"
-description: "Reproducibility verification: claims/metric extraction, Phase 1 (run_reproduce.sh), Phase 2 (PaperBench SimpleJudge)."
-requires_env:
-  - ARI_MODEL_JUDGE
-  - ARI_MODEL_REPLICATE
-  - ARI_PHASE1_SANDBOX
-version: "0.5.0"
+package: ari-skill-paper-re
+version: 0.8.0
+display_name: Reproduce and grade a paper
+description: PaperBench-compatible isolated reproduction and SimpleJudge grading.
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+required_env: []
+optional_env: [ARI_MODEL_JUDGE, ARI_MODEL_REPLICATE, ARI_PHASE1_SANDBOX, ARI_SLURM_PARTITION]
+tool_defaults:
+  phases: [paper, reproduce]
+  side_effects: stateful
+  determinism: conditional
+  timeout_class: very-slow
+  permissions: [workspace-read, workspace-write, process, model]
+  result_schema: ari.legacy-mcp-result/v1
+tools:
+  - name: build_reproduce_sh
+    capability_ref: ari.reproduction.script.build
+  - name: fetch_code_bundle
+    capability_ref: ari.reproduction.code.fetch
+    timeout_class: slow
+    permissions: [workspace-read, workspace-write, network]
+  - name: grade_with_simplejudge
+    capability_ref: ari.reproduction.grade
+  - name: run_reproduce
+    capability_ref: ari.reproduction.run

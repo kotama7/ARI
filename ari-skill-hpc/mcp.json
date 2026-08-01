@@ -1,8 +1,21 @@
 {
+  "description": "SLURM lifecycle, platform probes, and Singularity execution for research workloads.",
+  "entrypoint": "src/server.py",
+  "generated_from": "skill.yaml",
   "name": "hpc-skill",
-  "version": "0.1.0",
-  "description": "HPC environment tools for SLURM/Singularity",
-  "tools": [],
+  "package": "ari-skill-hpc",
   "runtime": "python",
-  "entrypoint": "src/server.py"
+  "schema_version": 1,
+  "tools": [
+    "job_cancel",
+    "job_status",
+    "probe_platform_capabilities",
+    "singularity_build",
+    "singularity_build_fakeroot",
+    "singularity_pull",
+    "singularity_run",
+    "singularity_run_gpu",
+    "slurm_submit"
+  ],
+  "version": "0.1.0"
 }

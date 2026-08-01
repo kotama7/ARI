@@ -106,6 +106,13 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.13"
+      - name: Install manifest validation dependencies
+        run: python -m pip install pydantic pyyaml
+      - name: Canonical Skill manifest conformance
+        # Hard gate: an invalid/unversioned manifest, runtime tool drift,
+        # workflow drift, version drift, generated mcp.json drift, or a
+        # default-enabled collision is an admission failure.
+        run: python scripts/check_skill_manifests.py
       - name: MCP tool-schema snapshot verify (advisory at Stage 1)
         continue-on-error: true
         run: python scripts/snapshot_contracts.py --surface mcp --check

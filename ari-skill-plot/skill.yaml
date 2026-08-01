@@ -1,5 +1,27 @@
+schema_version: 1
 name: plot-skill
-display_name: "Visualize results"
-description: "Generates charts and figures from experiment data with AI-chosen visualization types"
-requires_env: []
-version: "0.4.1"
+package: ari-skill-plot
+version: 0.1.0
+display_name: Visualize scientific results
+description: Deterministic and LLM-assisted scientific figure generation.
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+required_env: []
+optional_env: [ARI_CHECKPOINT_DIR, ARI_LLM_MODEL]
+tool_defaults:
+  phases: [paper]
+  side_effects: workspace-write
+  determinism: conditional
+  timeout_class: slow
+  permissions: [workspace-read, workspace-write, process]
+  result_schema: ari.legacy-mcp-result/v1
+tools:
+  - name: generate_figures
+    capability_ref: ari.visualization.figures.generate
+    determinism: deterministic
+    timeout_class: bounded
+  - name: generate_figures_llm
+    capability_ref: ari.visualization.figures.generate
+    permissions: [workspace-read, workspace-write, process, model]

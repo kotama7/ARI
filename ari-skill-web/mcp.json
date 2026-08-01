@@ -1,9 +1,21 @@
 {
+  "description": "Web, arXiv, Semantic Scholar, and uploaded-file retrieval with source provenance.",
+  "entrypoint": "src/server.py",
+  "generated_from": "skill.yaml",
+  "name": "web-skill",
+  "package": "ari-skill-web",
+  "runtime": "python",
+  "schema_version": 1,
   "tools": [
-    "web_search",
+    "collect_references_iterative",
     "fetch_url",
+    "list_uploaded_files",
+    "read_uploaded_file",
     "search_arxiv",
+    "search_papers",
     "search_semantic_scholar",
-    "collect_references_iterative"
-  ]
+    "set_retrieval_backend",
+    "web_search"
+  ],
+  "version": "0.1.0"
 }

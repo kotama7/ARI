@@ -15,7 +15,7 @@ last_verified: 2026-08-01
 
 | 項目 | 値 |
 |---|---|
-| 状態 | Proposed |
+| 状態 | In progress — P0/P1 foundation |
 | 基準ブランチ | `skills` |
 | 基準コミット | `4cd56f9` |
 | 作成日 | 2026-08-01 |
@@ -23,6 +23,14 @@ last_verified: 2026-08-01
 
 > **この文書と配下のサブ計画書は一時的な実装管理資料である。**
 > 実装成果、移行記録、恒久仕様へ知識を移した後は、[削除要件](#11-削除要件)に従って計画書群そのものを削除する。
+
+### 実装進捗（2026-08-01）
+
+- 全14既存Skillを `SkillManifestV1` へ移行し、旧 `mcp.json` を生成物へ変更。
+- package/runtime AST/workflow/version/compatibility metadata/collision のconformance gateを追加。
+- `ari-core` のdiscovery、entrypoint、timeout classをmanifestへ接続し、bare-name後勝ちをregistration errorへ変更。
+- P2のimmutable `tool_ref`、最小child environment、run lock、ResultEnvelope/artifactは未着手。
+- 削除ledgerはC01-D1/D3/D6/D7が移行中で、削除gate未達のcompatibility pathは保持。
 
 ## 1. 決定
 

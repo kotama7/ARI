@@ -114,6 +114,7 @@ _PUBLIC_SUBMODULES = (
     "llm",
     "paths",
     "run_env",
+    "skill_manifest",
     "verified_context",
 )
 
@@ -329,8 +330,8 @@ def build_mcp_static() -> dict:
     for skill_name, server in _skill_server_files():
         skills[skill_name] = _scan_skill_tools(server)
 
-    # Cross-skill duplicate tool names (the flat-namespace clobber: the
-    # MCPClient._tool_registry resolves last-skill-wins). Recorded, NOT fixed.
+    # Cross-skill duplicate tool names. MCPClient rejects these when the owners
+    # are admitted together; the catalog keeps them visible for policy review.
     seen: dict[str, list[str]] = {}
     for skill_name, tools in skills.items():
         for tool in tools:

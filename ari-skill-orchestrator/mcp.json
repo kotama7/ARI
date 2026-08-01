@@ -1,3 +1,23 @@
 {
-  "tools": []
+  "description": "External asynchronous control and inspection of ARI experiment runs.",
+  "entrypoint": "src/server.py",
+  "generated_from": "skill.yaml",
+  "name": "ari-orchestrator",
+  "package": "ari-skill-orchestrator",
+  "runtime": "python",
+  "schema_version": 1,
+  "tools": [
+    "get_ear",
+    "get_paper",
+    "get_status",
+    "get_workflow",
+    "list_children",
+    "list_files",
+    "list_runs",
+    "list_skills",
+    "read_file",
+    "run_experiment",
+    "stop_experiment"
+  ],
+  "version": "1.0.0"
 }

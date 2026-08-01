@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from pathlib import Path
@@ -9,6 +10,16 @@ from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field
+
+from ari.skill_manifest import (
+    MANIFEST_FILENAME,
+    SkillManifestV1,
+    load_skill_manifest,
+    resolve_skill_entrypoint,
+)
+
+
+logger = logging.getLogger(__name__)
 
 
 class LLMConfig(BaseModel):
@@ -43,7 +54,7 @@ class LLMConfig(BaseModel):
 class SkillConfig(BaseModel):
     name: str = Field(
         ...,
-        description="Skill package directory name (e.g. `ari-skill-coding`).",
+        description="Runtime Skill alias (e.g. `coding-skill`).",
     )
     path: str = Field(
         ...,
@@ -60,6 +71,42 @@ class SkillConfig(BaseModel):
                     "the AgentLoop ReAct. Single string (`bfts` / `paper` "
                     "/ `reproduce` / `all` / `none`) or a list. `all` "
                     "matches any phase; `none` disables the skill.",
+    )
+    package: str = Field(
+        "",
+        description="Canonical package identity from skill.yaml.",
+    )
+    version: str = Field(
+        "",
+        description="Canonical package version from skill.yaml.",
+    )
+    manifest_path: str | None = Field(
+        None,
+        description="Resolved path to the canonical skill.yaml, when present.",
+    )
+    entrypoint: str = Field(
+        "src/server.py",
+        description="Package-relative Python MCP server entrypoint.",
+    )
+    enabled_by_default: bool = Field(
+        True,
+        description="Whether auto-discovery admits this Skill by default.",
+    )
+    environment_policy: Literal["audit-pending", "complete"] = Field(
+        "audit-pending",
+        description="Whether manifest environment declarations are exhaustive.",
+    )
+    required_env: list[str] = Field(
+        default_factory=list,
+        description="Environment names required by the Skill contract.",
+    )
+    optional_env: list[str] = Field(
+        default_factory=list,
+        description="Optional environment names declared by the Skill contract.",
+    )
+    tool_timeout_classes: dict[str, str] = Field(
+        default_factory=dict,
+        description="Resolved manifest timeout class keyed by runtime tool name.",
     )
 
 
@@ -359,6 +406,7 @@ def load_config(path: str) -> ARIConfig:
         _apply_web_phase_for_bfts(cfg)
         return cfg
     cfg = ARIConfig(**{k: v for k, v in raw.items() if k in ARIConfig.model_fields})
+    _hydrate_skill_manifests(cfg.skills)
     _merge_bfts_disabled_tools(cfg, raw)
     _apply_llm_env_overrides(cfg)
     _apply_checkpoint_env_overrides(cfg)
@@ -562,17 +610,102 @@ def _merge_bfts_disabled_tools(cfg: "ARIConfig", raw: dict) -> None:
 
 
 def _discover_skills(base_dir: Path | None = None) -> list[SkillConfig]:
-    """Auto-detect ari-skill-* directories and return a list of SkillConfig."""
+    """Auto-detect canonical, default-enabled ``ari-skill-*`` packages.
+
+    A package with ``skill.yaml`` is admitted from the validated manifest.  The
+    directory-only path remains as a transition adapter for third-party and old
+    local Skills that have not migrated yet; it is intentionally noisy so it can
+    be removed after the P1 compatibility window.
+    """
     if base_dir is None:
         # Phase 2 — file moved into a package; ``parents[3]`` reaches
         # the repo root (alongside the ``ari-skill-*`` directories).
         base_dir = Path(__file__).resolve().parents[3]
     skills = []
     for skill_dir in sorted(base_dir.glob("ari-skill-*")):
+        manifest_path = skill_dir / MANIFEST_FILENAME
+        if manifest_path.is_file():
+            manifest = load_skill_manifest(manifest_path, allow_legacy=True)
+            resolve_skill_entrypoint(skill_dir, manifest)
+            if not manifest.enabled_by_default:
+                logger.info(
+                    "Skipping default-off Skill '%s' during auto-discovery",
+                    manifest.name,
+                )
+                continue
+            skills.append(_skill_config_from_manifest(skill_dir, manifest_path, manifest))
+            continue
+
         server = skill_dir / "src" / "server.py"
-        if server.exists():
+        if server.is_file():
+            logger.warning(
+                "Auto-discovered legacy Skill '%s' without %s; this fallback is deprecated",
+                skill_dir.name,
+                MANIFEST_FILENAME,
+            )
             skills.append(SkillConfig(name=skill_dir.name, path=str(skill_dir)))
     return skills
+
+
+def _skill_config_from_manifest(
+    skill_dir: Path,
+    manifest_path: Path,
+    manifest: SkillManifestV1,
+    *,
+    phase: str | list[str] = "all",
+) -> SkillConfig:
+    resolved_tools = manifest.resolved_tools()
+    return SkillConfig(
+        name=manifest.name,
+        path=str(skill_dir),
+        description=manifest.description,
+        phase=phase,
+        package=manifest.package,
+        version=manifest.version,
+        manifest_path=str(manifest_path),
+        entrypoint=manifest.entrypoint.module,
+        enabled_by_default=manifest.enabled_by_default,
+        environment_policy=manifest.environment_policy,
+        required_env=list(manifest.required_env),
+        optional_env=list(manifest.optional_env),
+        tool_timeout_classes={tool.name: tool.timeout_class for tool in resolved_tools},
+    )
+
+
+def _hydrate_skill_manifests(skills: list[SkillConfig]) -> None:
+    """Attach canonical metadata to explicitly configured Skills in place.
+
+    ``workflow.yaml`` remains the authority for aliases and phase exposure during
+    the compatibility window.  Package identity, entrypoint, version, environment
+    declarations, and execution class come from the manifest.
+    """
+
+    for skill in skills:
+        skill_dir = Path(skill.path)
+        manifest_path = skill_dir / MANIFEST_FILENAME
+        if not manifest_path.is_file():
+            continue
+        manifest = load_skill_manifest(manifest_path, allow_legacy=True)
+        resolve_skill_entrypoint(skill_dir, manifest)
+        if skill.name != manifest.name:
+            logger.warning(
+                "Configured Skill alias '%s' differs from canonical name '%s'",
+                skill.name,
+                manifest.name,
+            )
+        skill.package = manifest.package
+        skill.version = manifest.version
+        skill.manifest_path = str(manifest_path)
+        skill.entrypoint = manifest.entrypoint.module
+        skill.enabled_by_default = manifest.enabled_by_default
+        skill.environment_policy = manifest.environment_policy
+        skill.required_env = list(manifest.required_env)
+        skill.optional_env = list(manifest.optional_env)
+        skill.tool_timeout_classes = {
+            tool.name: tool.timeout_class for tool in manifest.resolved_tools()
+        }
+        if not skill.description:
+            skill.description = manifest.description
 
 
 def auto_config() -> ARIConfig:

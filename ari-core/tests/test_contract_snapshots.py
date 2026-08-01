@@ -101,7 +101,7 @@ def test_cli_env_side_effects_recorded():
     assert "ARI_FEWSHOT_MODE" in env["paper"]
 
 
-# ── MCP: 59 FastMCP + 28 low-level defs (86 unique names) + collision guard ──
+# ── MCP: 60 FastMCP + 28 low-level defs (87 unique names) + collision guard ──
 
 def test_mcp_tool_counts_and_names():
     golden = sc.load_golden("mcp")
@@ -115,16 +115,16 @@ def test_mcp_tool_counts_and_names():
     }, f"MCP skill package set drifted: {sorted(skills)}"
     fastmcp = [t for tools in skills.values() for t in tools if t["idiom"] == "fastmcp"]
     lowlevel = [t for tools in skills.values() for t in tools if t["idiom"] == "lowlevel"]
-    assert len(fastmcp) == 59, f"expected 59 FastMCP tools, got {len(fastmcp)}"
+    assert len(fastmcp) == 60, f"expected 60 FastMCP tools, got {len(fastmcp)}"
     assert len(lowlevel) == 28, f"expected 28 low-level tool defs, got {len(lowlevel)}"
     unique = {t["name"] for tools in skills.values() for t in tools}
-    assert len(unique) == 86, f"expected 86 unique tool names, got {len(unique)}"
+    assert len(unique) == 87, f"expected 87 unique tool names, got {len(unique)}"
     assert golden["invariants"]["return_envelope"] == ["error", "result"]
     assert golden["invariants"]["fq_name_pattern"] == "mcp__<skill>__<tool>"
 
 
 def test_mcp_no_unrecorded_cross_skill_collision():
-    """The flat-namespace clobber: only recorded collisions are allowed."""
+    """Inventory cross-package names so admission policy sees every collision."""
     fresh = sc.build_mcp_static()
     seen: dict[str, set[str]] = {}
     for skill, tools in fresh["skills"].items():
@@ -137,7 +137,8 @@ def test_mcp_no_unrecorded_cross_skill_collision():
         f"(fresh={sorted(duplicates)} recorded={sorted(recorded)}); "
         "run `python scripts/snapshot_contracts.py --surface mcp --update`"
     )
-    # The one known collision is read_file (coding + orchestrator, both low-level).
+    # read_file is shared by coding and the default-off external orchestrator.
+    # MCPClient now rejects it if both are explicitly admitted together.
     assert recorded == {"read_file"}
 
 

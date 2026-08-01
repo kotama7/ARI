@@ -19,4 +19,4 @@ file formats, and terminology.
 - `registry.md` — ari-registry (v0.7.0+): the minimal HTTP registry for curated EAR bundles.
 - `rest_api.md` — REST API Reference: the viz dashboard server endpoints.
 - `rubric_schema.md` — Rubric schema reference: the canonical replication rubric schema.
-- `skills.md` — MCP Skills Reference: the `ari-skill-*` MCP servers and their tools.
+- `skills.md` — MCP Skills Reference: canonical manifest contract plus the `ari-skill-*` servers and tools.

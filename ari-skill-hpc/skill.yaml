@@ -1,0 +1,44 @@
+schema_version: 1
+name: hpc-skill
+package: ari-skill-hpc
+version: 0.1.0
+display_name: Run HPC workloads
+description: SLURM lifecycle, platform probes, and Singularity execution for research workloads.
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+required_env: []
+optional_env: [ARI_CHECKPOINT_DIR, ARI_ROOT, ARI_SLURM_PARTITION]
+tool_defaults:
+  phases: [bfts, reproduce]
+  side_effects: stateful
+  determinism: live-data
+  timeout_class: slow
+  permissions: [workspace-read, workspace-write, process, scheduler]
+  result_schema: ari.legacy-mcp-result/v1
+tools:
+  - name: job_cancel
+    capability_ref: ari.hpc.job.cancel
+    side_effects: destructive
+  - name: job_status
+    capability_ref: ari.hpc.job.status
+    side_effects: read-only
+    timeout_class: bounded
+    permissions: [scheduler]
+  - name: probe_platform_capabilities
+    capability_ref: ari.hpc.platform.probe
+    side_effects: read-only
+    timeout_class: bounded
+  - name: singularity_build
+    capability_ref: ari.container.singularity.build
+  - name: singularity_build_fakeroot
+    capability_ref: ari.container.singularity.build
+  - name: singularity_pull
+    capability_ref: ari.container.singularity.pull
+  - name: singularity_run
+    capability_ref: ari.container.singularity.run
+  - name: singularity_run_gpu
+    capability_ref: ari.container.singularity.run-gpu
+  - name: slurm_submit
+    capability_ref: ari.hpc.job.submit

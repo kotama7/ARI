@@ -1,0 +1,17 @@
+{
+  "description": "Convert experiment trees into science data and curated Experiment Analysis Reports.",
+  "entrypoint": "src/server.py",
+  "generated_from": "skill.yaml",
+  "name": "transform-skill",
+  "package": "ari-skill-transform",
+  "runtime": "python",
+  "schema_version": 1,
+  "tools": [
+    "curate_ear",
+    "generate_ear",
+    "nodes_to_science_data",
+    "promote_ear",
+    "publish_ear"
+  ],
+  "version": "0.1.0"
+}

@@ -1,5 +1,39 @@
+schema_version: 1
 name: transform-skill
-display_name: "Extract scientific context"
-description: "Traverses the full experiment tree and uses LLM to extract methodology setup and key findings"
-requires_env: []
-version: "0.4.1"
+package: ari-skill-transform
+version: 0.1.0
+display_name: Materialize scientific evidence
+description: Convert experiment trees into science data and curated Experiment Analysis Reports.
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+required_env: []
+optional_env: [ARI_CHECKPOINT_DIR, ARI_LLM_MODEL]
+tool_defaults:
+  phases: [paper]
+  side_effects: workspace-write
+  determinism: conditional
+  timeout_class: slow
+  permissions: [workspace-read, workspace-write, model]
+  result_schema: ari.legacy-mcp-result/v1
+tools:
+  - name: curate_ear
+    capability_ref: ari.ear.curate
+    determinism: deterministic
+    timeout_class: bounded
+    permissions: [workspace-read, workspace-write]
+  - name: generate_ear
+    capability_ref: ari.ear.generate
+  - name: nodes_to_science_data
+    capability_ref: ari.science-data.materialize
+  - name: promote_ear
+    capability_ref: ari.ear.promote
+    determinism: deterministic
+    timeout_class: bounded
+    permissions: [workspace-read, workspace-write]
+  - name: publish_ear
+    capability_ref: ari.ear.publish
+    determinism: deterministic
+    timeout_class: bounded
+    permissions: [workspace-read, workspace-write]

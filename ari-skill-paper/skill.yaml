@@ -1,5 +1,75 @@
+schema_version: 1
 name: paper-skill
-display_name: "Write the paper"
-description: "Auto-generates a complete LaTeX academic paper from experiment results and scientific data"
-requires_env: []
-version: "0.4.1"
+package: ari-skill-paper
+version: 0.1.1
+display_name: Write an evidence-grounded paper
+description: LaTeX paper generation, review, claim linking, revision, and compilation.
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+required_env: []
+optional_env: [ARI_CHECKPOINT_DIR, ARI_LLM_MODEL, ARI_MODEL_REVIEWER, ARI_RUBRIC]
+tool_defaults:
+  phases: [paper]
+  side_effects: workspace-write
+  determinism: stochastic
+  timeout_class: slow
+  permissions: [workspace-read, workspace-write, model]
+  result_schema: ari.legacy-mcp-result/v1
+tools:
+  - name: check_format
+    capability_ref: ari.paper.format.check
+    side_effects: read-only
+    determinism: deterministic
+    timeout_class: bounded
+    permissions: [workspace-read]
+  - name: compile_paper
+    capability_ref: ari.paper.compile
+    determinism: conditional
+    permissions: [workspace-read, workspace-write, process]
+  - name: generate_section
+    capability_ref: ari.paper.section.generate
+  - name: get_template
+    capability_ref: ari.paper.template.read
+    side_effects: read-only
+    determinism: deterministic
+    timeout_class: bounded
+    permissions: [workspace-read]
+  - name: inject_code_availability
+    capability_ref: ari.paper.code-availability.inject
+    determinism: deterministic
+    timeout_class: bounded
+    permissions: [workspace-read, workspace-write]
+  - name: link_paper_claims
+    capability_ref: ari.paper.claims.link
+    determinism: deterministic
+    timeout_class: bounded
+    permissions: [workspace-read, workspace-write]
+  - name: list_rubrics
+    capability_ref: ari.paper.rubrics.list
+    side_effects: read-only
+    determinism: deterministic
+    timeout_class: bounded
+    permissions: [workspace-read]
+  - name: list_venues
+    capability_ref: ari.paper.venues.list
+    side_effects: read-only
+    determinism: deterministic
+    timeout_class: bounded
+    permissions: [workspace-read]
+  - name: merge_reviews
+    capability_ref: ari.paper.reviews.merge
+    determinism: deterministic
+    timeout_class: bounded
+    permissions: [workspace-read, workspace-write]
+  - name: paper_refine
+    capability_ref: ari.paper.refine
+  - name: review_compiled_paper
+    capability_ref: ari.paper.review
+  - name: review_section
+    capability_ref: ari.paper.section.review
+  - name: revise_section
+    capability_ref: ari.paper.section.revise
+  - name: write_paper_iterative
+    capability_ref: ari.paper.write-iterative

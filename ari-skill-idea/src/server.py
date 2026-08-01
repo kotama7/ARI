@@ -390,7 +390,6 @@ async def _run_real_virsci(
 
 # ── MCP Tools ─────────────────────────────────────────────────────────────────
 
-@mcp.tool()
 def _load_virsci_snapshot_papers(max_papers: int) -> list[dict]:
     """Reuse the frozen VirSci snapshot corpus from the idea stage.
 
@@ -438,6 +437,7 @@ def _load_virsci_snapshot_papers(max_papers: int) -> list[dict]:
     return out
 
 
+@mcp.tool()
 def survey(topic: str, max_papers: int = 8) -> dict:
     """Survey prior work, reusing the idea-stage VirSci snapshot when available.
 
@@ -550,6 +550,7 @@ def _platform_constraint_note() -> str:
         return ""
 
 
+@mcp.tool()
 async def generate_ideas(
     topic: str,
     papers: list,
