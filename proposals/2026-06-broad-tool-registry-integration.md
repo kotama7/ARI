@@ -1,139 +1,455 @@
-# RFC: Broad external tool/skill-registry integration for ARI
+# RFC: Federated MCP control plane and scientific tool admission for ARI
 
 | | |
 |---|---|
-| **Status** | **Proposed — both build blockers resolved in design (§4a); real-env spike CLEARED on R-CCS fx700/A64FX (§7.2). Ready for a Stage A.0 PR carrying 3 spike-found provisions (arch-correct uv, managed aarch64 python, stdout sanitizer).** |
-| **Date** | 2026-06-08 (rev. 2026-06-09 — §4a blocker resolutions + §7.2 spike result) |
-| **Scope** | Design only. No runtime/code change. The §7.1 launch spike has been run on real hardware (§7.2); implementation follows in a separate Stage A.0 PR. |
-| **Supersedes / relates to** | `docs/concepts/PHILOSOPHY.md` (P1–P5), the VirSci-live vendor-wrap precedent (`ARI_IDEA_VIRSCI_REAL`), `ari-skill-web` (live-API wrapping), `ari-skill-orchestrator` (ARI-as-MCP-server) |
+| **Status** | **Proposed — architecture consolidated; the existing R-CCS fx700/A64FX launch spike is cleared. Ready for a small Stage A.0 implementation PR.** |
+| **Date** | 2026-06-08; substantially revised 2026-08-01 |
+| **Scope** | Design only. No runtime, API, or skill implementation is included in this PR. |
+| **Relates to** | `docs/concepts/PHILOSOPHY.md` (P1–P5), `ari-skill-web`, `ari-skill-orchestrator`, `ari-skill-hpc`, `ari-skill-paper-re`, and the VirSci-live vendor-wrap precedent |
 
-> **概要 (Japanese TL;DR)** — ARI を生命科学特化の ToolUniverse 一本より広く、かつ再現性ファーストのまま拡張するための統合設計。適合形は **単一の in-tree stdio ブローカースキル `ari-skill-tool-registry`**（Compact 5 ツール・digest 固定・人手キュレーション catalog・カセット再現層を EAR へ・段階導入 A→B→C・transport は stdio 一本）。当初の敵対的レビューが見つけた 2 つの BLOCKER（実在しない `ARI_PHASE` 依存／reproduce サンドボックスがカセットを見られない）は、**結合した単一の受け渡しミス**であり、**両方とも ari-core 変更ゼロで解決済み**（§4a）— reproduce はスキルを経由せず、vendor 済みカセットを `reproduce.sh` が読む形にすれば phase 信号は不要になる。**実機 spike も実施済み**（§7.2、R-CCS fx700/A64FX）— 起動/stdio/オフライン経路は**オンライン・オフライン両方で成功**したが、3つの実機固有の前提（arch 正しい uv／管理 aarch64 python／stdout サニタイザ）が必要と判明し Stage A.0 の要件に追加。本 RFC は設計・根拠・解決・spike 結果を記録するもの。
+> **概要 (Japanese TL;DR)** — ARI に個別の MCP やツールを一件ずつ追加するのではなく、ToolUniverse、公式 MCP Registry、OpenROAD、Qiskit、将来の MCP 集合を **CatalogSource 単位で連合する MCP federation control plane** を導入する。LLM に見せる表面は `discover` / `describe` / `invoke` / `get_status` / `get_result` の 5 ツールに固定する。大量の候補は自動同期するが、実行できるのは ARI の Admission を通過して `CATALOG.lock` に固定されたものだけとする。ToolUniverse は生命科学を中心とする有力な provider だが、ARI の基盤形式にも科学的権威にもせず、交換可能な一 provider として統合する。一般的な MCP 接続・検索・実行は汎用層、出典・単位・独立性・再現性・EAR は ARI 科学層が担う。
 
 ---
 
-## 1. Motivation
+## 1. Decision
 
-ARI's core is domain-agnostic by design (P1) and its vision is "universal research automation … Computation to physical world," yet its *only* demonstrated domain is HPC/computational benchmarking (CSR-SpMM on A64FX). To make the domain-agnostic claim operational rather than aspirational, ARI needs access to a broad cross-domain tool surface — without surrendering the reproducibility-first invariant (P5: "the checkpoint, not the run, is the contract").
+ARI will implement a **provider-neutral, federated MCP control plane** packaged initially as one in-tree stdio skill, `ari-skill-tool-registry`.
 
-This RFC evaluates external tool/skill repositories and proposes a concrete, ARI-shaped way to consume them.
+The design has two deliberately separate layers:
 
-## 2. Landscape (what was surveyed)
+1. **Generic MCP federation core** — catalog-source synchronization, normalized descriptors, namespacing, search, provider dispatch, capability negotiation, result normalization, and immutable snapshots.
+2. **ARI scientific policy layer** — scientific admission, source and data provenance, units and ontologies, method independence, reproducibility evidence, domain validators, and EAR/cassette integration.
 
-`https://aiscientist.tools/` is **ToolUniverse** (Harvard / Zitnik Lab; arXiv:2509.23426; Apache-2.0): a **biomedical/life-science-only** registry (~595 confirmed tools — 281 API, 164 packages, 84 DB, 17 ML, 38 agents; **zero** HPC/materials/physics), MCP-native (SMCP server), self-extending (Tool Finder / Tool Discover / Composer / Optimizer / MCP Auto Loader), with per-tool caching. It is a strong *biomedical* pillar but does not broaden ARI beyond biomedicine.
+The manual extension unit is a **catalog source or provider adapter**, never an individual tool. A standards-conforming MCP collection should require configuration only; a compact or proprietary collection should require one collection-level adapter.
 
-Broader candidates, mapped on **breadth vs. curation/reproducibility** (the central trade-off — the broadest sources are the least curated, least reproducible, most side-effecting, and most likely to ship a competing orchestrator):
+The design explicitly rejects these alternatives:
 
-| Source | Breadth vs ToolUniverse | MCP | Reproducibility | Competes w/ ARI harness | Verdict |
-|---|---|---|---|---|---|
-| **Official MCP Registry** (`registry.modelcontextprotocol.io`, ~9.6k servers) | much broader | native | mixed (pins **code**, not **data**) | no — pure tool layer | **breadth source** |
-| Glama / mcp.so / PulseMCP (17k–32k) | much broader | native | poor | partial (gateways) | discovery mirrors only |
-| Docker MCP Catalog (~200–300) | broader | native | **good** (signed/SBOM/digest) | partial (Gateway) | pull signed images, skip gateway |
-| Smithery / Composio / Zapier MCP | much broader | native | poor | **yes — harness** | discovery feed only, don't route |
-| APIs.guru (CC0 OpenAPI, ~2.5k APIs) | much broader | needs wrapper | mixed | no | auto-wrap substrate |
-| HuggingFace (pinned-revision models) | much broader | available | **good** (`revision=<sha>`+`HF_HUB_OFFLINE`) | partial | the one byte-reproducible slice |
-| **mcp.science** (13 servers) | broader (materials/DFT/physics/math) | native | mixed | no | **domain-fit source** |
-| **Globus/Argonne MCP-for-Science** (arXiv:2508.18489) | broader (HPC/materials/quantum-chem) | native | good (but they report run-to-run inconsistency **unsolved**) | no | **design blueprint** |
-| SciToolAgent / ChemCrow / LangChain / CrewAI | varies | mostly not | poor | **yes — harness** | harvest tool sets, never adopt the loop |
+- making ToolUniverse's internal model ARI's canonical model;
+- copying every tool into a hand-maintained `catalog.json`;
+- discovering and executing arbitrary registry entries during an experiment;
+- treating registry publication, package ownership, or aggregator approval as scientific validation;
+- silently replacing one tool with a superficially similar tool during replay.
 
-**Conclusion:** No single 2026 repository is simultaneously *broad-cross-domain-incl-HPC* **and** *~1000-scale* **and** *native-MCP-passive-with-caching*. The decision is to **compose**: breadth from the official MCP registry, cross-science domain-fit from mcp.science + the Argonne pattern, reproducibility supplied by ARI itself (ToolUniverse-style snapshot/cache/pin), and ToolUniverse kept as the biomedical pillar.
+## 2. Goals and non-goals
 
-## 3. Precise findings that constrain the design
+### Goals
 
-- **Official MCP Registry**: `GET /v0.1/servers` (cursor pagination, `updated_since`, `version`); each entry's `packages[]` carries `{registryType: npm|pypi|oci|nuget|mcpb|cargo, identifier, exact version, runtimeHint: npx|uvx|dnx, transport: stdio|streamable-http|sse}`. **OCI `@sha256` and `mcpb` `fileSha256` are immutable; bare tags/versions are mutable.** Read = no auth; whitelist = a `_meta`-tagged subregistry.
-- **ARI launch path is hardcoded to Python.** `ari-core/ari/mcp/client.py` `_server_params()` returns `StdioServerParameters(command=python, args=[skill/src/server.py], env={**os.environ, "PYTHONPATH": pythonpath})`. **Only stdio; only Python; the child inherits the full `os.environ`.** Registry stdio servers (`uvx`/`npx`/`docker`) therefore need a *second* launch path — which, in Stages A/B of this design, lives **inside the wrapper skill**, below the skill boundary, so ari-core stays unchanged.
-- **mcp.science** (`pathintegral-institute/mcp.science`, MIT): **13** server dirs (the README lists 12 and omits `netket`; the README's NEMAD blurb is also wrong — NEMAD = *North East Materials Database*, not "neuroscience"). All `uvx mcp-science <name>` stdio. Split: deterministic-local (`python-code-execution`, `netket`, `mathematica-check`, `tinydb`, `timer`, `gpaw-computation` [DFT, remote-compute via SSH submit/poll]) vs. keyed-live (`materials-project` [MP_API_KEY], `nemad` [NEMAD_API_KEY], `txyz-search`, `web-fetch`, `jupyter-act`).
-- **Argonne / Globus "MCP for Science & HPC"** (arXiv:2508.18489): thesis = *thin adapters over mature services* (Globus Compute/Transfer), **run the MCP server locally with a local auth handler** (do not chain tokens across hosts), **submit/poll** for long jobs, discovery via RAG (`find_tools`). They explicitly report agents "produce inconsistent outputs" and propose **no** provenance/repro mechanism — confirming reproducibility is ARI's responsibility.
-- **Reproducibility primitives to replicate**: ToolUniverse's two-part per-tool fingerprint cache; HF `from_pretrained(revision=<commit-sha>)` + `HF_HUB_OFFLINE` (byte-reproducible); the VCR/cassette record-replay pattern.
+- Add or update thousands of upstream tools without per-tool ARI code or YAML edits.
+- Keep the LLM-facing surface bounded and stable as the upstream catalog grows.
+- Compose ToolUniverse and future MCP collections without nested-broker lock-in.
+- Prevent technical name collisions and resolve semantic capability overlap explicitly.
+- Preserve the origin chain down to the leaf code, data source, and method.
+- Separate broad discovery from permission to execute.
+- Pin every executed tool, adapter, schema, data dependency, and result artifact needed for replay.
+- Support local synchronous tools and long-running submit/poll tools through one result contract.
+- Remain compatible with ARI's current Python/stdio skill launch path through Stages A and B.
 
-## 4. Proposed fitting form — `ari-skill-tool-registry` (staged-hybrid broker)
+### Non-goals
 
-**One in-tree stdio broker skill** that proxies pinned external MCP servers as child stdio sessions *below the skill boundary*, exposing a **bounded Compact surface of exactly 5 tools** regardless of how many upstream tools exist:
+- ARI will not become a public global MCP marketplace in the first implementation.
+- ARI will not claim that MCP conformance implies scientific correctness.
+- ARI will not replace domain engines such as ToolUniverse, OpenROAD, Qiskit, or Globus.
+- ARI will not adopt an upstream agent loop or workflow harness; only passive tool capabilities are federated.
+- Streamable HTTP, OAuth delegation, and the experimental MCP Tasks capability are deferred until the stdio contract is proven.
 
-| Tool | Role |
-|---|---|
-| `discover(query, top_k)` | keyword/embedding-rank the vendored `catalog.json`; return tool descriptions **as data** (Rhea `find_tools` analogue) |
-| `describe(server, tool)` | lazily fetch + cache the upstream JSON-Schema so the LLM sees exact arg shapes without registering N tools |
-| `invoke(server, tool, args, mode)` | the **single static dispatch**; `mode=replay` ↔ cassette-only, else live (gated) |
-| `get_status(handle)` / `get_result(handle)` | poll long-running jobs by the handle `invoke` returned (gpaw / Globus submit/poll) |
+## 3. Evidence and ecosystem roles
 
-Why 5-and-data, not N registered tools: ARI snapshots the tool list **per phase at connect time** (`react_driver.py:252 mcp.list_tools(phase=agent_phase)`, `_phase_matches` at `client.py`) and has **no mid-session tool-refresh channel**, so Rhea-style dynamic tool registration cannot work — descriptions-as-data + one static `invoke` is the only shape that fits.
+No single upstream project satisfies ARI's complete breadth, reproducibility, security, and scientific-validity requirements.
 
-**Catalog**: `catalog.json` is a small, **git-committed, human-PR-reviewed whitelist (~8–15 servers)** with **digest-pinned** rows; the live ~9.6k registry is *not* ingested at runtime (that would violate offline-BFTS and the supply-chain gate). Only `stdio` + launchable `registryType` rows are admitted; `streamable-http`/`sse` are rejected.
-
-**Reproducibility layer (`cassette.py`)**: forked from the verified `ari-skill-idea/src/snapshot.py` fail-loud pattern. Two-part key `VERSION:CALL` where `VERSION = sha256(server_id + identifier@version + immutable_digest + upstream_schema)` and `CALL = sha256(canonical_json({tool,args}))`. Secrets (`*_API_KEY`/`SSH_*`/`isSecret`) are scrubbed **before** hashing and freezing. Artifacts land under `<checkpoint>/ear/tool_registry_cassettes/…` as JSON (git-diffable). Live fetch that returns empty/auth-failed **raises** rather than caching a 0-item "success" (the `42bcef5` fail-loud lesson).
-
-**Security**: digest-pin-only (OCI `@sha256`/`mcpb fileSha256`; for `uvx`/`npx` an extra wheel/tarball sha256 — see §6 caveat on transitive deps); runtime allowlist (`ARI_TOOL_REGISTRY_ALLOW`, default `uvx`); curation is the human supply-chain gate; **default-OFF** master flag `ARI_TOOL_REGISTRY_LIVE` so a mis-gate degrades to a pure catalog+replay reader that can never execute third-party code.
-
-**Launch robustness (spike-validated, §7.2)**: when spawning a child server the broker must (a) select a `uv`/runtime binary matching the **node architecture** (a shared x86 `uv` `Exec format error`s on the A64FX/aarch64 fx700 nodes), (b) launch in a **clean interpreter context** — clear `VIRTUAL_ENV`/`CONDA_PREFIX` and set `UV_PYTHON_PREFERENCE=only-managed` so an arch-correct CPython is used, never an inherited x86 venv, and (c) **sanitize the child's stdout** to forward only JSON-RPC lines (some launchers, e.g. `mcp-science`, print a non-JSON preamble that corrupts the MCP stdio stream).
-
-**Staging** (the key design move — strengths sequenced, ari-core kept clean as long as possible):
-
-| Stage | Deliverable | ari-core change |
+| Source | Useful role in ARI | Why it is not the sole authority |
 |---|---|---|
-| **A** | broker skill + 5 tools + one pinned `uvx` server; proves the launch pattern | **zero** (rides existing glob discovery + python-stdio launch + phase gate + cost_tracker) |
-| **B** | cassette repro layer into EAR + curated breadth/domain-fit + keys + long-job submit/poll | **zero** |
-| **C** *(deferred, demand-gated)* | command-agnostic `SkillConfig` + `_server_params` branch + command whitelist guard; optional registry ETL + in-process Globus adapter | ~6-line `SkillConfig`/`client.py` diff **plus a command whitelist guard that must land in the same commit** |
+| **ToolUniverse** | Large scientific provider; native MCP stdio/HTTP; Compact Mode already exposes discovery/info/execute meta-tools | Coverage and quality vary by tool; its internal cache and review process do not pin every external dataset or validate an ARI experiment's conclusion |
+| **Official MCP Registry** | Discovery of server metadata and installation descriptions | Namespace ownership is identity, not code safety or scientific validity; execution admission remains downstream responsibility |
+| **mcp.science / Globus science MCPs** | Materials, physics, computation, and submit/poll design patterns | Reproducibility and provenance still need an ARI-owned contract |
+| **OpenROAD MCP** | Maintainer-owned EDA provider and a stateful-session test case | Stateful command execution, PDKs, design files, and artifacts require a domain sandbox and domain manifest |
+| **Qiskit MCP Servers** | IBM-maintained quantum tools, simulators, runtime jobs, and documentation | Backend, circuit, transpiler, noise-model, credential, and job provenance must be recorded separately |
+| **Future MCP collections** | New domains and alternative implementations | Trust and semantics cannot be inherited transitively from the collection |
 
-The 5-tool surface and cassette format are **stable across the skill→core migration**, so Stage-A and Stage-C checkpoints are byte-identical — the upgrade is non-breaking by construction. **Transport stays stdio-only**; the Argonne HPC axis is reached via a thin in-process Globus-SDK stdio adapter row, never by adding `streamable-http` to ari-core.
+ToolUniverse is therefore a strong initial provider, especially for life-science workflows, but it is neither the federation substrate nor the scientific trust boundary.
 
-## 4a. Blocker resolutions (both resolved in design — zero ari-core change)
+## 4. Architecture
 
-Adversarial review (verified against code) confirmed the two §6 blockers are a **single coupled hand-off mismatch**, and both are resolved at the orchestrator/skill level with **no ari-core change**.
+```text
+ ToolUniverse      Official MCP Registry      Future collections
+ OpenROAD MCP      Qiskit MCP Servers         Local/organization catalogs
+       \                    |                         /
+        +------------ CatalogSource adapters -------+
+                              |
+                       Candidate catalog
+                     (large, not executable)
+                              |
+                normalization + policy + tests
+                              |
+                    Scientific Admission
+                              |
+                 content-addressed CATALOG.lock
+                              |
+             discover / describe / invoke / poll
+                              |
+                    ProviderAdapter dispatch
+                              |
+                ResultEnvelope + EAR/cassettes
+```
 
-**Resolution 1 — drop the phase signal entirely (no `ARI_PHASE`).** The "auto-switch to replay on reproduce" premise was false: a skill subprocess cannot learn the current phase — the driver passes only LLM-chosen args (`react_driver.py:375 mcp.call_tool(tool_name, args)`), the child env is a fork-time `{**os.environ, "PYTHONPATH": …}` snapshot (`client.py:150`), and phase is consumed only at the driver (`react_driver.py:252 mcp.list_tools(phase=agent_phase)`; `_phase_matches` applied in `list_tools` at `client.py:310`, def at `client.py:38`). It is also **not needed**: all four reproduce stages (`ors_seed_sandbox` / `ors_build_reproduce` / `ors_run_reproduce` / `ors_grade`) are `phase: paper` **direct** tool calls with **no `react:` block** (`workflow.yaml`), so the broker never runs during reproduce. Live-vs-replay will instead be governed by three driver/skill-level controls, none touching ari-core: (1) `workflow.yaml` phase scoping — the broker declares `phase: [bfts, paper]` (never `reproduce`); (2) the default-OFF `ARI_TOOL_REGISTRY_LIVE` master flag the broker reads from its inherited `os.environ` at startup; (3) the explicit `invoke(…, mode='replay'|'live')` arg already in the §4 surface (verified additive — no existing skill defines `invoke`). *(The only way to change a running skill's env is a tool the subprocess runs itself — e.g. `_set_current_node` mutating its own `os.environ` via `cow_node_id`, `ari-skill-memory` / `client.py:354`; there is no driver-side phase-injection path, so the conclusion stands.)* **blocker-1 ari-core change: none.**
+### 4.1 Generic core versus ARI science extension
 
-**Resolution 2 — vendor frozen cassettes into the sandbox via the existing curate→publish→clone chain.** During paper/bfts phase the broker **will** write secret-scrubbed cassettes to `<checkpoint>/ear/tool_registry_cassettes/<VERSION>/<CALL>.json`. An **explicit `ear/publish.yaml` include rule is required** — `tool_registry_cassettes/**`, `CATALOG.lock`, `.ari_lib/replay.sh`: `curate()` reads `publish.yaml`, applies the include then `BUILTIN_DENY` (which already blocks `.env*` / `secrets/**` / `*.key` — a free leak guard), and copies survivors into `ear_published/` (`ari-skill-transform/src/curate.py`). Then `ors_seed_sandbox` → `fetch_code_bundle` auto-loads the ref + `bundle_sha256` from `publish_record.json` and `ari.clone` extracts the **whole** tree into `<checkpoint>/repro_sandbox/`, byte-verified (`clone/__init__.py`). The generated `reproduce.sh` sources a vendored **dependency-free `.ari_lib/replay.sh`** (pure bash + `sha256sum` — **no `jq`**, since the default apptainer image `docker://ubuntu:24.04` ships coreutils but not jq) whose `get_tool_result <server> <tool> <args.json>` recomputes the `CALL` hash, resolves `VERSION` from `CATALOG.lock`, `cat`s the cassette, and **exits non-zero on a miss** (fail-loud, the `42bcef5` lesson). The sandbox binds only `repo_dir` and is network-free (`ari-skill-paper-re/src/server.py`), so reading the fixture off the sandbox FS needs no ari-core, no broker, no MCP. This mirrors the existing `apply_patch` shim vendoring precedent. **blocker-2 ari-core change: none.**
+| Generic federation core | ARI scientific extension |
+|---|---|
+| `CatalogSource` and incremental sync | scientific source and citation evidence |
+| canonical `tool_ref` and namespaces | dataset/version/acquisition provenance |
+| MCP schema normalization | units, dimensions, identifiers, and ontology |
+| semantic discovery and hard filtering | validation profile and known limitations |
+| stdio provider execution | method/backend independence graph |
+| async handles and artifact references | experiment-specific admissibility |
+| package/schema snapshots | EAR, cassette, and replay rules |
+| generic security/risk annotations | domain validators and comparison policy |
 
-> **Hard precondition:** when `ear/publish.yaml` is **absent**, `curate()` does **not** skip — it falls back to `_DEFAULT_PUBLISH_YAML` (which lists only `reproduce.sh`, `code/**`, `data/**`, `scripts/**`, `configs/**`), so the cassette tree is **silently omitted** and the published bundle ships **without cassettes**; `reproduce.sh` then fails loud at runtime. A curate-time guard (warn/error if `ear/tool_registry_cassettes/` exists but no include rule covers it) is part of Stage-B.
+This boundary makes the federation core reusable outside science without weakening ARI's stronger scientific contract.
 
-**Net effect:** both blockers are **zero-ari-core-change** at Stage A/B; the deferred Stage-C `SkillConfig` diff (§4) is unrelated to them (it only retires the double-subprocess). The broker, `cassette.py`, `invoke(mode=)`, `ARI_TOOL_REGISTRY_LIVE`, `CATALOG.lock`, and `.ari_lib/replay.sh` are **net-new Stage-A/B work** (the skill does not exist yet); only the cited `ari-core` / `curate` / `clone` / `paper-re` mechanisms are verified-present.
+### 4.2 Extension contracts
 
-## 5. Honest delivered scope
+The implementation defines four small interfaces. Their concrete Python API may evolve, but the responsibilities must not merge.
 
-Stage A/B delivers **materials/physics** breadth (`materials-project`, `nemad`, a few official-registry stdio servers) + the reproducibility layer — genuinely *broader than ToolUniverse's biomedical-only scope*. It does **not** deliver new HPC: ARI already ships `ari-skill-hpc` (sbatch/squeue/singularity). HPC breadth via Globus is **deferred to Stage C and must compose with the existing `ari-skill-hpc`, not duplicate it.** The "broader incl HPC" framing is therefore explicitly **out of launch scope**.
+```text
+CatalogSource.sync(previous_cursor) -> CandidateBatch
+ProviderAdapter.describe(upstream_ref) -> UpstreamDescriptor
+ProviderAdapter.invoke(upstream_ref, args, context) -> ResultEnvelope | Handle
+ProviderAdapter.poll(handle) / result(handle) / cancel(handle)
+AdmissionPolicy.evaluate(candidate, evidence) -> AdmissionDecision
+ResultNormalizer.normalize(upstream_result) -> ResultEnvelope
+```
 
-## 6. Build-readiness: blockers **resolved in design** (§4a) — one real-env gate remains
+Required initial adapters:
 
-A skeptical review against ARI's actual implementation originally returned **flawed**. The two blockers below were re-confirmed against the code **and then resolved in the design** — both with **zero ari-core change** (see §4a). They are retained here for the record:
+- `StaticCatalogSource` — deterministic fixture used by Stage A.0;
+- `GenericStdioMcpProvider` — `initialize`, paginated `tools/list`, and `tools/call`;
+- `CompactCollectionProvider` — collection-level discovery/info/execute mapping, first exercised by ToolUniverse;
+- `RegistryCatalogSource` — metadata discovery only, deferred until Stage C.
 
-- **BLOCKER 1 (resolved) — the design had relied on `ARI_PHASE`, which does not exist.** Phase is consumed **only** by the driver to filter the tool list (`react_driver.py:252 mcp.list_tools(phase=agent_phase)`; `_phase_matches` applied in `list_tools` at `client.py:310`, def at `client.py:38`); it is **never propagated into a skill subprocess** (the child env is a fork-time `{**os.environ, "PYTHONPATH": …}` snapshot — `client.py:150`). A skill's `server.py` therefore cannot know the current phase.
-  - **Resolution (§4a)**: drop the phase signal entirely — verified that all four reproduce stages are `phase: paper` direct tool calls with no `react:` block, so the broker never runs during reproduce and needs no phase awareness; live-vs-replay is governed by phase-scoping + the `ARI_TOOL_REGISTRY_LIVE` flag + the explicit `invoke(…, mode=)` arg. **Zero ari-core change.**
+A normal MCP server or collection uses the generic adapter. A ToolUniverse-like compact collection needs one adapter for the whole collection. No adapter is written per leaf tool.
 
-- **BLOCKER 2 (resolved) — the reproduce sandbox cannot see the skill or the cassettes.** ARI's reproduce phase runs a self-contained `reproduce.sh` inside an **isolated** sandbox that binds only `repo_dir` (`ari-skill-paper-re/src/server.py`); it has no ari-core, no MCP skill graph, no broker, and no cassettes unless explicitly vendored in.
-  - **Resolution (§4a)**: vendor frozen cassettes through the existing curate→publish→clone chain — an explicit `ear/publish.yaml` include rule lands `tool_registry_cassettes/**` + `CATALOG.lock` + a dependency-free `.ari_lib/replay.sh` in `repro_sandbox/`, and the generated `reproduce.sh` reads them as on-disk fixtures (fail-loud on miss), no skill/MCP/network. **Zero ari-core change.** Hard precondition: an explicit `publish.yaml` is required — the default omits the cassette tree and would ship a bundle **silently without cassettes**.
+### 4.3 Federation graph and cycle safety
 
-Remaining **must-fix** items before the Stage A.0 PR (the real-env spike is now cleared — §7.2; the rest are Stage-A/B build items):
-- **Real-env launch** *(spike-cleared, §7.2)*: launch/stdio/offline **works on fx700/A64FX online and offline**, but only with three provisions Stage A.0 must carry — (1) an **arch-correct `uv`** (the shared `~/.local/bin/uv` is x86-only and `Exec format error`s on aarch64), (2) a **uv-managed aarch64 CPython** (`UV_PYTHON_PREFERENCE=only-managed` + cleared `VIRTUAL_ENV`), and (3) a **stdout sanitizer** in the broker (the `mcp-science` launcher prints a non-JSON preamble to stdout). `docker` is indeed absent (use `singularity`); fx700 has PyPI network but the offline-cache path is validated.
-- **Long-job timeout**: `invoke()` of a submit-style upstream must return the handle in **well under `DEFAULT_TOOL_TIMEOUT` (300s)** or ari-core's outer timeout kills the child.
-- **Dependency closure**: a top-level wheel sha256 does **not** pin `uvx`/`npx` transitive deps — ship a `uv.lock`/vendored wheels or replay is not byte-stable.
-- **Credential surface**: the child inherits the full `os.environ` (every key), not just its declared `key_env` — minimise the child env.
-- **Tool-output cap**: `describe()`/`discover()` blobs must fit `react_driver._MAX_TOOL_OUTPUT = 4000` or schemas are silently truncated, breaking `invoke`-arg construction.
-- **EAR bundling** *(resolved, §4a)*: `curate()` is rule-driven via `publish.yaml`; the default `_DEFAULT_PUBLISH_YAML` omits the cassette tree, so an explicit include rule for `tool_registry_cassettes/**` + `CATALOG.lock` + `.ari_lib/replay.sh` is required, plus a curate-time guard that warns if cassettes exist with no covering rule.
+Collections may themselves import other collections. Every discovered descriptor therefore carries an `origin_chain` and leaf provenance. Synchronization must:
 
-> Both blockers were "hand-off contract" mismatches (a phase signal that never reaches the skill; artifacts that never reach the sandbox) rather than logic errors — the same class as the failure modes tracked elsewhere in ARI. Catching **and resolving** them in review *before* writing code is the point of this RFC.
+- maintain a visited set of canonical provider identities;
+- reject cycles such as `ARI -> collection A -> collection B -> ARI`;
+- impose a configurable maximum federation depth;
+- deduplicate identical descriptor and package digests;
+- preserve the full route used for indirect execution;
+- quarantine a tool when the collection cannot identify its leaf implementation or data source.
 
-## 7. Decision & next steps (ordered)
+Trust is explicitly **non-transitive**: trusting collection A proves nothing automatically about a tool that A loaded from collection B.
 
-1. ~~Real-env spike first (実機検証必須)~~ — **done (§7.2):** ran on a real `fx700`/A64FX node; the launch/stdio/offline pattern passed online **and** offline for both a light and a heavy server. Surfaced 3 provisions now folded into Stage A.0 (arch-correct uv, managed aarch64 python, stdout sanitizer).
-2. ~~Resolve the two blockers in the design~~ — **done (§4a):** both resolved with **zero ari-core change** (drop the phase signal; vendor cassettes via the existing curate→clone chain into the sandbox). The staging table's "ari-core change: zero" for Stage A/B is confirmed, not changed.
-3. **Stage A.0 implementation PR** (separate, next): one pinned `uvx` server + 5 tool stubs + the verified `cost_tracker` bootstrap, modelled on `ari-skill-web` + the VirSci-live precedent, default-OFF, **carrying the 3 spike provisions** (per-arch uv selection, `only-managed` aarch64 python with cleared `VIRTUAL_ENV`, broker stdout sanitizer), reviewable as one small PR.
-4. Restate scope honestly in all user-facing text: "broader than ToolUniverse (materials/physics + registry breadth)"; **HPC via the existing `ari-skill-hpc`**, Globus deferred and demand-gated.
+## 5. Catalog lifecycle: broad discovery, narrow execution
 
-## 7.2 Spike result (2026-06-09, R-CCS `fx700` / A64FX, aarch64) — GATE CLEARED
+The old idea of a hand-written whitelist containing every active server does not scale. It is replaced by a generated lifecycle:
 
-The §7.1 spike ran on a real `fx700` compute node via `srun`, launching a pinned `uvx mcp-science <server>` over stdio **exactly as ari-core's `MCPClient` launches skills** (`mcp.client.stdio.stdio_client` + `StdioServerParameters`), then completing `initialize` + `list_tools`. **All four cases passed — online *and* offline (cache-only), for both the light `timer` and the heavy `python-code-execution` (numpy/scipy/matplotlib/plotly/kaleido) server** (warm/offline handshake ≈3–6 s). The pattern is viable on ARI's demonstrated platform — **but only after three arch/robustness provisions, each of which was a real failure first** (a worked example of "path resolves ≠ binary runs"):
+```text
+sources.yaml
+    -> source sync
+candidate descriptors / source diffs
+    -> schema, supply-chain, policy, and conformance checks
+admission decisions
+    -> generated content-addressed snapshot
+CATALOG.lock + catalog.index
+```
 
-1. **Arch-correct `uv`.** The user's shared `~/.local/bin/uv` is an **x86_64** binary → `cannot execute binary file: Exec format error` on aarch64, even though `command -v uvx` *resolves* (shared `/home`). Stage A.0 must select/provision a `uv` matching each node's arch.
-2. **uv-managed aarch64 CPython.** An active x86 `VIRTUAL_ENV` (the session's `ari-skill-vlm/.venv`) made `uv` try that interpreter → `Exec format error (os error 8)`. The broker must launch children with `VIRTUAL_ENV`/`CONDA_PREFIX` cleared and `UV_PYTHON_PREFERENCE=only-managed` so uv uses a downloaded aarch64 CPython.
-3. **stdout sanitizer (new broker responsibility).** The `mcp-science` launcher prints a non-JSON `Running command: […]` line to **stdout**, corrupting the MCP JSON-RPC stream (the server itself processed `ListTools`/`CallTool` fine). The broker must forward **only JSON-RPC lines** from a child's stdout — a general robustness requirement for heterogeneous third-party stdio servers, now added to §4.
+### 5.1 Files and ownership
 
-Secondary, design-relevant findings: **fx700 nodes have PyPI network** (not air-gapped), yet the **offline-from-prewarmed-cache path is independently validated**, so the reproducibility posture (no network at spawn) holds; **no `docker`, `singularity` present** (confirms the no-docker assumption); a `uv` cache pre-warmed on the **x86 login node does not transfer to aarch64** (pre-warm must be arch-matched, or done inside the SLURM job); a heavy first cold-spawn (≈190 MiB of wheels) stays within `DEFAULT_TOOL_TIMEOUT = 300 s` but **pre-warm is recommended**. Full logs + harness: `workspace/checkpoints/20260609_*_toolregistry_spike/` (gitignored).
+- `sources.yaml` is human-maintained and small. It names catalog sources, source pins, sync policy, transport allowance, and admission profile.
+- Candidate records are generated. They may be large and are not executable merely because they were discovered.
+- `CATALOG.lock` is generated and committed. It records each admitted logical tool, descriptor digest, provider/adapter digest, schema digest, origin chain, admission policy version, and leaf dependency identifiers.
+- `catalog.index` is derived from the lock and descriptor objects. It is replaceable search data, not authority.
+- Runtime reads only the locked active snapshot. It performs no registry refresh and admits no `listChanged` update during an experiment.
 
-## 8. Sources
+An upstream change creates a candidate diff. Unchanged low-risk tools may be re-admitted automatically by policy and conformance tests; high-risk, semantically changed, or provenance-incomplete tools remain quarantined for review. This preserves scalable ingestion without live-registry nondeterminism.
 
-- ToolUniverse — <https://aiscientist.tools/>, arXiv:2509.23426, <https://github.com/mims-harvard/ToolUniverse>
-- Official MCP Registry — <https://registry.modelcontextprotocol.io/>, <https://github.com/modelcontextprotocol/registry>, <https://modelcontextprotocol.io/registry/registry-aggregators>
-- mcp.science — <https://github.com/pathintegral-institute/mcp.science>
-- MCP servers for Science & HPC — arXiv:2508.18489, <https://github.com/globus-labs/science-mcps>
-- APIs.guru — <https://apis.guru/>; HuggingFace Hub revision pinning — `from_pretrained(revision=…)`, `HF_HUB_OFFLINE`
-- ARI internals referenced: `ari-core/ari/mcp/client.py` (`_server_params`:150, `_phase_matches`:38 applied in `list_tools`:310, `call_tool`:354), `ari-core/ari/agent/react_driver.py:31,252,375`, `ari-core/ari/config/workflow.yaml` (reproduce stages `phase: paper`), `ari-skill-paper-re/src/server.py` (`run_reproduce`/`build_reproduce_sh`/`fetch_code_bundle`; sandbox binds only `repo_dir`), `ari-skill-transform/src/curate.py` (`_DEFAULT_PUBLISH_YAML`, `BUILTIN_DENY`), the `ari.clone` bundle extractor, `ari-skill-idea/src/snapshot.py`, `ari-skill-web/src/server.py`
+### 5.2 Canonical descriptor
+
+Every candidate is normalized into a provider-neutral descriptor containing at least:
+
+```yaml
+tool_ref: source/provider/tool@sha256:<execution-contract-digest>  # opaque to clients
+provider_ref: source/provider@sha256:<provider-digest>
+upstream_ref: <provider-native tool identifier>
+capability_ref: <normalized scientific or operational capability>
+input_schema: <canonical JSON Schema>
+output_schema: <canonical schema when supplied>
+origin_chain: [<catalog>, <collection>, <leaf provider>]
+execution:
+  transport: stdio
+  async: false
+  side_effects: read-only | stateful | destructive
+  permissions: [filesystem, network, credential-scope]
+  deterministic: true | false | conditional | unknown
+science:
+  citations: []
+  data_dependencies: []
+  units: []
+  limitations: []
+  independence_group: <leaf method/data lineage>
+admission:
+  level: discovered | callable | reproducible | scientifically_admitted
+  policy_version: <digest>
+  evidence_digest: <digest>
+```
+
+`tool_ref` is an opaque execution identity. Its digest covers the executable leaf, provider/adapter, upstream identifier, schemas, defaults, and other execution semantics; admission scores and ranking metadata have separate digests. Clients must not reconstruct or parse it. A changed execution contract, provider, adapter, or schema produces a new reference, while a policy-only re-evaluation can retain the same execution identity. Old references remain resolvable from archived locks for replay.
+
+## 6. Stable five-tool surface
+
+ARI exposes exactly five MCP tools regardless of catalog size.
+
+| Tool | Contract |
+|---|---|
+| `discover(query, constraints, strategy, top_k)` | Search the locked index, apply hard constraints, return bounded candidates, admission/independence metadata, and an explainable recommendation |
+| `describe(tool_ref, section, cursor)` | Return exact schema, provenance, risks, and limitations by section with pagination; never exceed ARI's tool-output cap |
+| `invoke(tool_ref, args, mode)` | Execute one explicit immutable reference in `live`, `record`, or `replay` mode; never resolve an unqualified name at invocation time |
+| `get_status(handle)` | Normalize upstream jobs or MCP task state into one bounded status envelope |
+| `get_result(handle)` | Return the normalized result and content-addressed artifact references when complete |
+
+`discover` returns tool descriptions as data because ARI snapshots registered MCP tools when the phase starts and currently has no mid-session tool-registration channel. The five tool names remain stable even if the broker later moves into `ari-core`.
+
+Large schemas and results must be paginated or stored as artifacts. The current `react_driver._MAX_TOOL_OUTPUT = 4000` limit means an implementation that returns an unbounded schema inline is incorrect.
+
+## 7. Overlap and conflict resolution
+
+Multiple providers will expose similar names and functions. That plurality is useful for scientific comparison, but it must be modeled rather than hidden.
+
+| Overlap class | Example | Resolution |
+|---|---|---|
+| Exact duplicate | Same leaf package and digest through two catalogs | Collapse to aliases of one descriptor |
+| Different wrapper, same leaf source | Two MCP wrappers over the same database/API | Select the better wrapper; do not count agreement as independent evidence |
+| Same capability, independent method/source | Two simulators or analysis methods | Preserve both; allow explicit comparison |
+| Superficially similar, different semantics | Ideal versus noisy quantum simulation | Assign different capability contracts unless an explicit semantic adapter is validated |
+
+Names are isolated by `tool_ref`. Semantic overlap is represented separately by `capability_ref`, equivalence evidence, and `independence_group`.
+
+The resolver applies hard filters before ranking:
+
+1. exact input/output semantics, units, and experiment constraints;
+2. required admission level and permission ceiling;
+3. package, data, and environment availability;
+4. reproducibility and validation evidence;
+5. source authority and method suitability;
+6. operational cost, latency, and observed health.
+
+Selection is explainable and policy-versioned; it is not one opaque popularity score and is not based solely on an upstream description. `discover` may recommend a candidate, but `invoke` receives the selected immutable `tool_ref`. Replay never reranks.
+
+When results disagree, ARI records the disagreement, provenance, methods, units, and uncertainty. It does not silently average or majority-vote incompatible results.
+
+## 8. Scientific Admission
+
+MCP validates communication shape, not scientific truth. ARI therefore assigns one of four explicit levels:
+
+| Level | Meaning |
+|---|---|
+| `discovered` | Metadata was imported; execution is forbidden |
+| `callable` | The provider passed protocol, dependency, sandbox, and smoke tests |
+| `reproducible` | Code/environment/schema/data dependencies and replay artifacts satisfy the reproducibility contract |
+| `scientifically_admitted` | A domain validation profile, limitations, and evidence requirements have passed for the declared capability and scope |
+
+Admission is automated by tool class where possible, not reviewed one leaf tool at a time. Example profiles include read-only official data retrieval, deterministic local computation, predictive ML, remote simulation, stateful EDA, and destructive/action tools. Each profile supplies required tests and evidence.
+
+Scientific admission records:
+
+- authoritative publisher and source repository;
+- package, image, adapter, and schema digests;
+- dataset release, query timestamp, ETag or snapshot identity where available;
+- algorithm/model citation and version;
+- units, coordinate system, ontology, identifier namespace, and accepted conversions;
+- determinism conditions, random seeds, numerical tolerances, and hardware sensitivity;
+- benchmark/golden tests and known limitations;
+- leaf dependency lineage used to determine independent evidence;
+- license and use restrictions.
+
+An admitted tool can still produce a wrong result outside its declared scope. Admission states evidence and applicability; it is not a blanket truth certificate.
+
+## 9. ToolUniverse integration
+
+ToolUniverse is integrated as one `CompactCollectionProvider`, not as ARI's registry or trust engine.
+
+| ARI operation | ToolUniverse Compact Mode |
+|---|---|
+| catalog sync / `discover` | `list_tools`, `grep_tools`, or `find_tools` |
+| `describe` | `get_tool_info` |
+| `invoke` | `execute_tool` |
+| job handling | adapter-normalized async operation or ARI-owned handle |
+
+At sync time the adapter expands approved ToolUniverse metadata into ARI's normalized candidate catalog. At runtime ARI dispatches the locked leaf reference through `execute_tool`. This avoids both bad extremes: exposing thousands of schemas directly to the LLM, or exposing only ToolUniverse's four meta-tools without unified cross-provider discovery.
+
+ARI's ToolUniverse profile must:
+
+- pin the package/repository and dependency closure; never use refresh-on-launch;
+- use Compact Mode and an explicit approved tool/category profile;
+- disable runtime auto-loading of remote MCP collections;
+- enable strict input validation and disable implicit type coercion for scientific record mode;
+- treat ToolUniverse's internal cache only as an optimization, recording cache metadata or disabling it during ARI record mode;
+- retain ARI's result envelope, EAR, and admission decision as the authoritative provenance.
+
+The same compact-collection pattern applies to future aggregators without making ToolUniverse-specific concepts part of the public five-tool API.
+
+## 10. Domain-provider profiles
+
+The federation contract is generic; scientific evidence remains domain-specific.
+
+### OpenROAD
+
+The profile records the OpenROAD/ORFS commit or image digest, PDK and standard-cell versions, RTL/LEF/DEF/SDC inputs, initialization policy, seeds, commands, reports, and artifact hashes. Stateful command execution runs in a restricted working directory with an allowlisted command surface. Session state is part of the handle and provenance, never implicit global state.
+
+### Qiskit and IBM Quantum
+
+The profile records Qiskit/provider/backend versions, circuit hash and serialization, transpiler configuration and seed, basis gates/coupling map, shots, simulator/noise model, mitigation options, job identifier, and result metadata. Credentials are scoped to the provider process and never written to the EAR. Local simulator results and remote hardware results are different capability contracts.
+
+These providers should be added as Stage-B pilots because they exercise state, artifacts, async jobs, and domain-specific reproducibility without changing the generic core.
+
+## 11. Execution, results, and reproducibility
+
+### 11.1 Result envelope
+
+Every adapter returns a normalized envelope while preserving the raw upstream response as a content-addressed artifact:
+
+```yaml
+status: ok | error | submitted | running | cancelled
+structured_content: <bounded JSON or null>
+artifacts: [{digest, media_type, size, logical_role}]
+error: {kind, message, retryable} | null
+provenance:
+  tool_ref: <immutable ref>
+  origin_chain: []
+  adapter_digest: <digest>
+  started_at: <timestamp>
+  completed_at: <timestamp or null>
+  upstream_job_ref: <redacted/non-secret ref or null>
+```
+
+Submit-style calls must return a handle well under ARI's outer 300-second tool timeout. Polling and internal cancellation during timeout or shutdown are capability-negotiated; explicit user cancellation is outside the initial five-tool surface. An adapter must not claim a capability it cannot preserve.
+
+### 11.2 Cassette and EAR contract
+
+ARI, not an upstream collection, owns record/replay. A cassette key includes:
+
+- immutable `tool_ref`, provider and adapter digests;
+- canonical arguments after explicit default resolution;
+- relevant non-secret execution context and declared credential scope identity;
+- data/backend version or acquisition identity;
+- output schema and normalization version.
+
+Secrets are never stored or hashed directly. A non-secret credential-scope identifier prevents collisions between tenants or access tiers. Results, logs, artifacts, admission evidence, selection reasons, candidate set, and policy version are written to the EAR. Empty/auth-failed responses fail loudly rather than becoming valid cached results.
+
+Frozen cassettes, `CATALOG.lock`, and a dependency-free replay shim are included through the existing `ear/publish.yaml` -> curate -> publish -> clone chain. Reproduction runs from those on-disk fixtures with no broker, MCP server, credentials, or network and fails on any missing digest.
+
+### 11.3 Existing ARI blocker resolution
+
+The earlier RFC identified two real hand-off mismatches; their zero-core-change resolution remains valid:
+
+- There is no `ARI_PHASE` propagated to skill subprocesses. The broker does not infer phase; live/record/replay is controlled by workflow scoping, a default-off live flag, and explicit `invoke(mode=...)`.
+- The reproduction sandbox cannot see runtime skill state. Cassettes and the lock are explicitly published into the reproducibility bundle and read as fixtures.
+
+## 12. Security and supply chain
+
+- Candidate discovery never grants execution.
+- Registry namespace verification and aggregator signatures establish identity only; downstream code and scientific checks remain mandatory.
+- Provider launch descriptors use validated launcher kinds and argument schemas, never arbitrary shell strings.
+- Packages and dependency closures are pinned by immutable digest; bare tags and refresh-on-launch are rejected.
+- Each child receives a minimal environment and declared credential scopes, not the parent's full `os.environ`.
+- Filesystem, network, process, and resource permissions are profile-controlled and recorded.
+- Upstream names, descriptions, schemas, annotations, and search scores are untrusted input and are sanitized before indexing or prompting.
+- Unexpected stdout is recorded and rejected or redirected without corrupting MCP JSON-RPC. A sanitizer must not silently discard evidence of a malformed server.
+- Stateful/destructive tools require stronger policy and, where appropriate, explicit human approval.
+- A provider cannot modify the active catalog during an experiment.
+
+Initial transport remains stdio. Streamable HTTP and remote OAuth add materially different trust, session, and credential boundaries and are a later adapter, not an expansion of the five-tool surface.
+
+## 13. Verified launch constraint: R-CCS fx700/A64FX
+
+The existing real-hardware spike launched pinned `uvx mcp-science <server>` children over stdio through the same MCP client pattern used by ARI, then completed initialization and tool listing. Light and heavy servers passed online and from a pre-warmed offline cache.
+
+Stage A.0 must preserve the three provisions discovered by real failures:
+
+1. select or provision a `uv` binary matching the compute-node architecture;
+2. clear inherited `VIRTUAL_ENV`/`CONDA_PREFIX` and use an architecture-correct managed interpreter;
+3. isolate malformed launcher stdout from the JSON-RPC channel while retaining it as diagnostic evidence.
+
+The cache must be pre-warmed per architecture. Docker is not assumed on compute nodes. A heavy cold spawn may fit the current timeout but is not an acceptable reproducibility path.
+
+## 14. Staged implementation plan
+
+Each stage lands as a separate, reviewable PR. Interfaces are introduced before broad behavior; unused future machinery is not implemented early.
+
+| Stage | Deliverable | `ari-core` change |
+|---|---|---|
+| **A.0 — broker kernel** | New default-off skill; fixed five tools; opaque `tool_ref`; `StaticCatalogSource`; `GenericStdioMcpProvider`; one pinned mcp.science fixture; bounded outputs; fx700 launch provisions | **zero** |
+| **A.1 — generated federation catalog** | `sources.yaml`; descriptor normalization; generated `CATALOG.lock`/index; bulk MCP `tools/list` import; namespace/digest/cycle handling; conformance tests | **zero** |
+| **A.2 — first collection provider** | ToolUniverse Compact adapter; approved profile; strict validation; demonstrate bulk import and cross-provider discovery without per-tool edits | **zero** |
+| **B.0 — reproducibility and admission** | cassette/EAR publishing; four admission levels; policy-versioned manifests; child env isolation; result/artifact envelope | **zero** |
+| **B.1 — conflict and domain pilots** | capability/equivalence/independence model; explainable resolver; OpenROAD and Qiskit local/sandboxed pilots; comparison records | **zero unless a proven launch limitation requires otherwise** |
+| **C — federated sources and transports** | official Registry source, additional MCP collections, Streamable HTTP/OAuth, MCP Tasks mapping, domain packs; optional command-agnostic core launch path | **demand-gated and reviewed separately** |
+
+Stage C may add a command-agnostic `SkillConfig` path to `ari-core`, but only together with a strict command/transport allowlist. The public five-tool contract and archived `tool_ref`/cassette formats remain stable.
+
+## 15. Validation plan and acceptance criteria
+
+### Unit and property tests
+
+- canonical schema and argument hashing are order-independent;
+- a changed schema/provider/adapter produces a new `tool_ref`;
+- source cycles and excessive depth are rejected;
+- exact duplicates collapse while independent implementations remain distinct;
+- the same leaf database through two wrappers receives one independence group;
+- unadmitted candidates cannot be invoked;
+- no secret value appears in logs, locks, cassettes, errors, or artifacts;
+- discover/describe/status/result always respect output bounds.
+
+### MCP conformance fixtures
+
+- normal stdio server with pagination;
+- malformed-stdout server;
+- compact meta-collection;
+- synchronous error and structured-content results;
+- submit/poll/cancel server;
+- large artifact and resource-link result;
+- schema-change and `listChanged` event, which must create a pending diff rather than live activation.
+
+### Scientific-policy fixtures
+
+- incompatible units or simulator semantics are not clustered as equivalent;
+- same-backend wrappers are not treated as independent confirmation;
+- a deterministic seeded result replays byte-for-byte;
+- a live mutable database result records acquisition identity and cannot claim byte reproducibility without a frozen payload;
+- disagreement between independent tools is preserved, not silently combined.
+
+### Stage exit criteria
+
+1. A mock collection with at least 1,000 generated tools is imported through one source declaration and no per-tool file edits.
+2. Adding a second collection requires at most one source manifest or one collection-level adapter.
+3. An upstream update yields a reviewable lock/admission diff and cannot change a running experiment.
+4. Record/replay succeeds in the isolated reproduction sandbox with network and credentials absent.
+5. The fx700/A64FX online and pre-warmed-offline launch tests remain green.
+6. ToolUniverse, a direct MCP server, and a compact test collection appear in one unified `discover` result with collision-free references.
+7. Selection reasons, rejected candidates, policy version, execution path, and leaf provenance are present in the EAR.
+
+## 16. Risks and mitigations
+
+| Risk | Mitigation |
+|---|---|
+| Scope grows into a marketplace or workflow engine | Keep Stage A to four small interfaces and five public tools; defer remote registry and orchestration features |
+| Semantic clustering incorrectly merges tools | Default to distinct capabilities; require evidence for equivalence; retain raw descriptors |
+| Aggregator hides leaf provenance | Quarantine rather than infer trust or independence |
+| Large catalogs increase index/context cost | Derived local index, progressive disclosure, bounded top-k, paginated describe |
+| Adapter-specific behavior leaks into public API | Normalize behind `tool_ref`, `ResultEnvelope`, and capability metadata |
+| Reproducibility conflicts with live APIs/hardware | Record immutable payloads and acquisition identity; label the achievable reproducibility level honestly |
+| Automatic admission becomes a supply-chain bypass | Candidate/active separation, immutable locks, policy-versioned CI, default-off live execution |
+| One provider becomes a de facto lock-in | Conformance fixtures include direct, compact, and future-collection shapes from Stage A/A.2 |
+
+## 17. Sources
+
+- ToolUniverse: <https://github.com/mims-harvard/ToolUniverse>, <https://arxiv.org/abs/2509.23426>, MCP support <https://zitniklab.hms.harvard.edu/ToolUniverse/guide/building_ai_scientists/mcp_support.html>, Compact Mode <https://zitniklab.hms.harvard.edu/ToolUniverse/guide/building_ai_scientists/compact_mode.html>, architecture <https://zitniklab.hms.harvard.edu/ToolUniverse/expand_tooluniverse/architecture.html>, and validation defaults <https://zitniklab.hms.harvard.edu/ToolUniverse/en/reference/environment_variables.html>
+- Model Context Protocol: tools <https://modelcontextprotocol.io/specification/2025-11-25/server/tools>, transports <https://modelcontextprotocol.io/specification/2025-11-25/basic/transports>, tasks <https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks>, and Registry trust boundary <https://modelcontextprotocol.io/registry/about>
+- Official MCP Registry implementation: <https://github.com/modelcontextprotocol/registry>
+- OpenROAD MCP: <https://github.com/The-OpenROAD-Project/openroad-mcp>
+- IBM Quantum Qiskit MCP Servers: <https://quantum.cloud.ibm.com/docs/en/guides/qiskit-mcp-servers>
+- mcp.science: <https://github.com/pathintegral-institute/mcp.science>
+- MCP servers for Science & HPC: arXiv:2508.18489, <https://github.com/globus-labs/science-mcps>
+- ARI internals referenced: `ari-core/ari/mcp/client.py`, `ari-core/ari/agent/react_driver.py`, `ari-core/config/workflow.yaml`, `ari-core/ari/clone/__init__.py`, `ari-skill-paper-re/src/server.py`, `ari-skill-transform/src/curate.py`, and `ari-skill-web/src/server.py`
