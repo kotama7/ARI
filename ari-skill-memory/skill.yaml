@@ -1,0 +1,59 @@
+schema_version: 1
+name: memory-skill
+package: ari-skill-memory
+version: 0.6.0
+display_name: Manage research memory
+description: Lineage-scoped experiment memory, typed observations, audit, and consolidation.
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+required_env: []
+optional_env: [ARI_CHECKPOINT_DIR, ARI_CURRENT_NODE_ID, LETTA_BASE_URL, LETTA_EMBEDDING_CONFIG]
+tool_defaults:
+  phases: [bfts, paper, reproduce]
+  side_effects: stateful
+  determinism: conditional
+  timeout_class: bounded
+  permissions: [workspace-read, workspace-write, memory-store]
+  result_schema: ari.legacy-mcp-result/v1
+tools:
+  - name: _set_current_node
+    capability_ref: ari.internal.node-context.set
+  - name: add_experiment_result
+    capability_ref: ari.memory.experiment-result.add
+  - name: add_failure_case
+    capability_ref: ari.memory.failure.add
+  - name: add_memory
+    capability_ref: ari.memory.entry.add
+  - name: add_procedure_memory
+    capability_ref: ari.memory.procedure.add
+  - name: add_reflection
+    capability_ref: ari.memory.reflection.add
+  - name: add_reproducibility_event
+    capability_ref: ari.memory.reproducibility.add
+  - name: audit_memory
+    capability_ref: ari.memory.audit
+    side_effects: read-only
+  - name: clear_node_memory
+    capability_ref: ari.memory.node.clear
+    side_effects: destructive
+  - name: consolidate_node_memory
+    capability_ref: ari.memory.node.consolidate
+    timeout_class: slow
+    permissions: [workspace-read, workspace-write, memory-store, model]
+  - name: get_experiment_context
+    capability_ref: ari.memory.experiment-context.read
+    side_effects: read-only
+  - name: get_node_memory
+    capability_ref: ari.memory.node.read
+    side_effects: read-only
+  - name: get_verified_context
+    capability_ref: ari.memory.verified-context.read
+    side_effects: read-only
+  - name: search_memory
+    capability_ref: ari.memory.search
+    side_effects: read-only
+  - name: search_research_memory
+    capability_ref: ari.memory.research.search
+    side_effects: read-only

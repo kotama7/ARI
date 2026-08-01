@@ -1,5 +1,5 @@
 {
-  "ari_core_version": "0.9.0",
+  "ari_core_version": "0.9.1",
   "generated_by": "scripts/check_public_api_contracts.py",
   "modules": {
     "ari.public": {
@@ -136,6 +136,29 @@
         "shell_capture_snippet",
         "subprocess",
         "timezone"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.skill_manifest": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.skill_manifest"
+      ],
+      "exports": [
+        "LEGACY_MCP_RESULT_V1",
+        "MANIFEST_FILENAME",
+        "RESULT_ENVELOPE_V1",
+        "ResolvedToolManifestV1",
+        "SkillEntrypointV1",
+        "SkillManifestError",
+        "SkillManifestV1",
+        "ToolManifestV1",
+        "ToolPolicyV1",
+        "legacy_mcp_document",
+        "load_skill_manifest",
+        "manifest_digest",
+        "resolve_skill_entrypoint"
       ],
       "has_all": true,
       "thin": true

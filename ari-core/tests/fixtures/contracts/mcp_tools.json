@@ -234,10 +234,24 @@
     "ari-skill-idea": [
       {
         "args": [
-          "max_papers"
+          "experiment_context",
+          "max_discussion_rounds",
+          "max_recursion_depth",
+          "n_agents",
+          "n_ideas",
+          "papers",
+          "topic"
         ],
         "idiom": "fastmcp",
-        "name": "_load_virsci_snapshot_papers"
+        "name": "generate_ideas"
+      },
+      {
+        "args": [
+          "max_papers",
+          "topic"
+        ],
+        "idiom": "fastmcp",
+        "name": "survey"
       }
     ],
     "ari-skill-memory": [

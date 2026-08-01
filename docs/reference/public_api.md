@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_public_api_boundary.py
     role: test
-last_verified: 2026-06-10
+last_verified: 2026-08-01
 ---
 
 # `ari.public` — Stable API for skills
@@ -26,6 +26,7 @@ by `ari-core/tests/test_public_api_boundary.py`.
 | `ari.public.cost_tracker` | LLM cost recording (`bootstrap_skill`, `record`, ...) | `ari-skill-plot` (LLM call cost) |
 | `ari.public.llm` | `LLMClient` (LiteLLM wrapper with cost integration) | callers that prefer ARI's wrapper |
 | `ari.public.paths` | `PathManager` (checkpoint path resolver) | callers that need scoped paths |
+| `ari.public.skill_manifest` | Versioned Skill manifest models, loader, digest, and safe entrypoint resolver | built-in and federated MCP Skill packages |
 | `ari.public.claim_gate` | Deterministic claim-evidence hard gate (`run_hard_gate`) + concept→invariant registry (`classify_concept`, `scan_science_data`, `CONCEPT_INVARIANTS`) | `ari-skill-evaluator`, `ari-skill-transform` |
 | `ari.public.verified_context` | Verified-context helpers (`render_grounded_block`, `write_verified_context`, `build_verified_context`) | `ari-skill-paper` |
 
@@ -67,6 +68,27 @@ Re-exports the container runtime from `ari.container`:
 | `get_container_info()` | Diagnostic dict with runtime + image health |
 
 Source: `ari-core/ari/container.py` → `ari-core/ari/public/container.py`.
+
+## `ari.public.skill_manifest`
+
+`skill.yaml` is the canonical package contract. Consumers load it through the
+public API instead of parsing YAML or scraping `server.py` directly:
+
+```python
+from ari.public.skill_manifest import load_skill_manifest, manifest_digest
+
+manifest = load_skill_manifest("ari-skill-coding/skill.yaml")
+tool = manifest.tool("run_code")  # package defaults already resolved
+identity = manifest_digest(manifest)
+```
+
+`SkillManifestV1` validates package identity, a package-relative Python stdio
+entrypoint, environment declarations, unique tool names, capability references,
+phases, side effects, determinism, timeout class, permissions, and result schema.
+`environment_policy` distinguishes an audit-pending inventory from an exhaustive
+child-process allowlist.
+Legacy unversioned manifests are rejected unless a migration caller explicitly
+passes `allow_legacy=True`; admission and CI never enable that option.
 
 ## `ari.public.cost_tracker`
 

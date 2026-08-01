@@ -26,6 +26,10 @@ from ari.config import SkillConfig
 logger = logging.getLogger(__name__)
 
 
+class ToolNameCollisionError(RuntimeError):
+    """Raised when more than one admitted Skill owns the same bare tool name."""
+
+
 def _normalize_phases(phase: str | list[str] | None) -> list[str]:
     """Coerce SkillConfig.phase into a flat list of phase strings."""
     if phase is None:
@@ -72,8 +76,22 @@ _SLOW_TOOLS = frozenset({"generate_ideas", "write_paper_iterative", "review_comp
                           # (each up to 120s) — the 4-pass sequence can exceed 300s.
                           "compile_paper"})
 
+_TIMEOUT_CLASS_SECONDS = {
+    "default": DEFAULT_TOOL_TIMEOUT,
+    "bounded": DEFAULT_TOOL_TIMEOUT,
+    "slow": SLOW_TOOL_TIMEOUT,
+    "very-slow": VERY_SLOW_TOOL_TIMEOUT,
+    # Async tools should return a handle within the normal request budget. Their
+    # long-running work is polled separately.
+    "async": DEFAULT_TOOL_TIMEOUT,
+}
 
-def _resolve_tool_timeout(tool_name: str, args: dict) -> int:
+
+def _resolve_tool_timeout(
+    tool_name: str,
+    args: dict,
+    timeout_class: str | None = None,
+) -> int:
     """Resolve MCP-level timeout for a tool call.
 
     Priority: explicit per-call budget in args > _VERY_SLOW_TOOLS tier >
@@ -83,6 +101,10 @@ def _resolve_tool_timeout(tool_name: str, args: dict) -> int:
         v = args.get(k)
         if isinstance(v, (int, float)) and v > 0:
             return int(v) + 600  # +10 min buffer for setup / teardown
+    if timeout_class in _TIMEOUT_CLASS_SECONDS:
+        return _TIMEOUT_CLASS_SECONDS[timeout_class]
+    # Transition fallback for a legacy Skill without canonical metadata. Remove
+    # after manifest timeout coverage reaches 100% (C01-D3).
     if tool_name in _VERY_SLOW_TOOLS:
         return VERY_SLOW_TOOL_TIMEOUT
     if tool_name in _SLOW_TOOLS:
@@ -146,7 +168,7 @@ class _SkillConnection:
         pythonpath = os.pathsep.join([str(skill_path), ari_core_root])
         return StdioServerParameters(
             command=python,
-            args=[str(skill_path / "src" / "server.py")],
+            args=[str(skill_path / self.skill.entrypoint)],
             env={**os.environ, "PYTHONPATH": pythonpath},
         )
 
@@ -311,8 +333,15 @@ class MCPClient:
         return tools
 
     def _build_tools_cache(self) -> None:
-        """Discover tools from all enabled skills (called once, lazily)."""
+        """Discover tools from all enabled skills (called once, lazily).
+
+        Bare names are retained as a compatibility alias only while they are
+        unique.  A collision is an admission error; silently selecting the last
+        registered Skill would make tool choice order-dependent.
+        """
         tools: list[dict] = []
+        registry: dict[str, str] = {}
+        collisions: dict[str, set[str]] = {}
         for skill in self.skills:
             # Skip disabled skills (phase: none / [none]) — don't start MCP server
             if _phase_is_disabled(getattr(skill, "phase", "all")):
@@ -322,12 +351,28 @@ class MCPClient:
                 conn = self._init_connection(skill)
                 skill_tools = conn.list_tools()
                 for t in skill_tools:
-                    self._tool_registry[t["name"]] = skill.name
+                    previous = registry.get(t["name"])
+                    if previous is not None and previous != skill.name:
+                        collisions.setdefault(t["name"], {previous}).add(skill.name)
+                    else:
+                        registry[t["name"]] = skill.name
                 tools.extend(skill_tools)
                 logger.info("Loaded %d tools from skill '%s'", len(skill_tools), skill.name)
             except Exception as e:
                 logger.warning("Failed to load skill '%s': %s", skill.name, e)
 
+        if collisions:
+            rendered = "; ".join(
+                f"{name}: {', '.join(sorted(owners))}"
+                for name, owners in sorted(collisions.items())
+            )
+            self.close_all()
+            raise ToolNameCollisionError(
+                "Ambiguous MCP tool names are not admitted; configure one owner "
+                f"or use a namespaced registry: {rendered}"
+            )
+
+        self._tool_registry = registry
         self._tools_cache = tools
         self._phase_map = {t["name"]: getattr(
             next((s for s in self.skills if s.name == self._tool_registry.get(t["name"],"")), None),
@@ -393,7 +438,11 @@ class MCPClient:
                 return {"error": f"Skill '{skill_name}' not found"}
             conn = self._init_connection(skill)
 
-        timeout = _resolve_tool_timeout(tool_name, args)
+        skill = next((s for s in self.skills if s.name == skill_name), None)
+        timeout_class = None
+        if skill is not None:
+            timeout_class = skill.tool_timeout_classes.get(tool_name)
+        timeout = _resolve_tool_timeout(tool_name, args, timeout_class)
 
         last_error = ""
         for attempt in range(1, MAX_RETRIES + 1):

@@ -1,0 +1,26 @@
+schema_version: 1
+name: vlm-skill
+package: ari-skill-vlm
+version: 0.1.0
+display_name: Review figures and tables
+description: Vision-language-model review of scientific figures and tables.
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+required_env: []
+optional_env: [ARI_LLM_MODEL, ARI_VLM_MODEL]
+tool_defaults:
+  phases: [paper, reproduce]
+  side_effects: read-only
+  determinism: stochastic
+  timeout_class: slow
+  permissions: [workspace-read, model]
+  result_schema: ari.legacy-mcp-result/v1
+tools:
+  - name: review_figure
+    capability_ref: ari.multimodal.figure.review
+  - name: review_figures_all
+    capability_ref: ari.multimodal.figures.review
+  - name: review_table
+    capability_ref: ari.multimodal.table.review

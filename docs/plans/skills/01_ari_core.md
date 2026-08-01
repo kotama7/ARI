@@ -13,7 +13,7 @@ last_verified: 2026-08-01
 
 # C01: `ari-core` Skill control plane 実装計画
 
-> 状態: Proposed。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
+> 状態: In progress（C01-01/02完了、C01-03/04/09/10は互換移行中）。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
 
 ## 1. 責務と範囲
 
@@ -73,9 +73,9 @@ last_verified: 2026-08-01
 
 ## 6. 検証と受け入れ基準
 
-- [ ] 全既存 Skill の manifest がschema validationを通る。
+- [x] 全既存 Skill の manifest がschema validationを通る。
 - [ ] manifest tools と live `tools/list` の追加・欠落・schema drift がCIでfailする。
-- [ ] 同名の異なる2 toolを登録すると起動時にcollision errorになり、黙って上書きされない。
+- [x] 同名の異なる2 toolを登録すると起動時にcollision errorになり、黙って上書きされない。
 - [ ] run開始後にmanifest fileを変更してもactive snapshotは変わらない。
 - [ ] secret markerを親envへ置いたtestで、未許可Skillから参照できない。
 - [ ] 4 parallel nodeのmemory writeでnode contextが交差しない。

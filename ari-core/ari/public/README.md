@@ -15,6 +15,8 @@ core can refactor freely while the contract stays put.
 - `llm.py` — re-export of `ari.llm.client.LLMClient`.
 - `paths.py` — re-export of `ari.paths.PathManager`.
 - `run_env.py` — re-export of `ari.agent.run_env` capture helpers.
+- `skill_manifest.py` — canonical Skill package, entrypoint, and tool-policy
+  contract plus validation helpers.
 - `verified_context.py` — re-export of `ari.pipeline.verified_context` (`render_grounded_block` / `write_verified_context`; used by ari-skill-paper).
 
 ## See also

@@ -61,7 +61,9 @@ bfts_pipeline:
   phase: bfts
 - stage: evaluate
   skill: evaluator-skill
-  tool: evaluate_node
+  # Evaluation is owned by ari-core's BFTS evaluator path. It is not an MCP
+  # tool; keeping a fabricated tool name here made workflow/manifest checks lie.
+  tool: ''
   description: LLM evaluator scores node, extracts metrics, determines scientific
     contribution
   depends_on:

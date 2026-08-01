@@ -1,5 +1,30 @@
+schema_version: 1
 name: evaluator-skill
-display_name: "Evaluate results"
-description: "LLM peer-review agent scores nodes to guide BFTS search direction"
-requires_env: []
-version: "0.4.1"
+package: ari-skill-evaluator
+version: 1.0.0
+display_name: Evaluate scientific evidence
+description: Metric contracts, deterministic claim gates, and evidence-grounded semantic review.
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+required_env: []
+optional_env: [ARI_CHECKPOINT_DIR, ARI_CLAIM_GATE_MODE, ARI_LLM_MODEL]
+tool_defaults:
+  phases: [bfts, paper]
+  side_effects: read-only
+  determinism: conditional
+  timeout_class: slow
+  permissions: [workspace-read, model]
+  result_schema: ari.legacy-mcp-result/v1
+tools:
+  - name: claim_evidence_hard_gate
+    capability_ref: ari.evaluation.claim-gate
+    determinism: deterministic
+    timeout_class: bounded
+    permissions: [workspace-read]
+  - name: evidence_grounded_semantic_review
+    capability_ref: ari.evaluation.semantic-review
+  - name: make_metric_spec
+    capability_ref: ari.evaluation.metric-spec
+    phases: [bfts]

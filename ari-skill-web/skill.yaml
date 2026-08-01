@@ -1,5 +1,46 @@
+schema_version: 1
 name: web-skill
-display_name: "Search literature"
-description: "Retrieves related papers from arXiv and Semantic Scholar for hypothesis grounding"
-requires_env: []
-version: "0.4.1"
+package: ari-skill-web
+version: 0.1.0
+display_name: Retrieve scientific sources
+description: Web, arXiv, Semantic Scholar, and uploaded-file retrieval with source provenance.
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+required_env: []
+optional_env: [ARI_CHECKPOINT_DIR, ARI_RETRIEVAL_BACKEND, SEMANTIC_SCHOLAR_API_KEY]
+tool_defaults:
+  phases: [paper, reproduce]
+  side_effects: read-only
+  determinism: live-data
+  timeout_class: bounded
+  permissions: [network]
+  result_schema: ari.legacy-mcp-result/v1
+tools:
+  - name: collect_references_iterative
+    capability_ref: ari.literature.references.collect
+    determinism: stochastic
+    timeout_class: slow
+    permissions: [workspace-read, workspace-write, network, model]
+  - name: fetch_url
+    capability_ref: ari.web.url.fetch
+  - name: list_uploaded_files
+    capability_ref: ari.workspace.uploads.list
+    determinism: deterministic
+    permissions: [workspace-read]
+  - name: read_uploaded_file
+    capability_ref: ari.workspace.uploads.read
+    determinism: deterministic
+    permissions: [workspace-read]
+  - name: search_arxiv
+    capability_ref: ari.literature.arxiv.search
+  - name: search_papers
+    capability_ref: ari.literature.search
+  - name: search_semantic_scholar
+    capability_ref: ari.literature.semantic-scholar.search
+  - name: set_retrieval_backend
+    capability_ref: ari.literature.backend.select
+    side_effects: stateful
+  - name: web_search
+    capability_ref: ari.web.search

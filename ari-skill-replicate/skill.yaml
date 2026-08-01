@@ -1,7 +1,27 @@
+schema_version: 1
 name: replicate-skill
-display_name: "ORS Auto-Rubric (PaperBench-format)"
-description: "Generates and audits PaperBench-compatible auto rubrics from papers."
-requires_env:
-  - ARI_MODEL_RUBRIC_GEN
-  - ARI_MODEL_RUBRIC_AUDIT
-version: "0.1.0"
+package: ari-skill-replicate
+version: 0.2.0
+display_name: Build reproducibility rubrics
+description: Generate and audit PaperBench-compatible reproducibility rubrics.
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+required_env: []
+optional_env: [ARI_MODEL_RUBRIC_AUDIT, ARI_MODEL_RUBRIC_GEN]
+tool_defaults:
+  phases: [paper]
+  side_effects: workspace-write
+  determinism: stochastic
+  timeout_class: slow
+  permissions: [workspace-read, workspace-write, model]
+  result_schema: ari.legacy-mcp-result/v1
+tools:
+  - name: audit_rubric
+    capability_ref: ari.reproducibility.rubric.audit
+  - name: generate_rubric
+    capability_ref: ari.reproducibility.rubric.generate
+  - name: suggest_target_leaf_count
+    capability_ref: ari.reproducibility.rubric.leaf-count
+    side_effects: read-only

@@ -16,6 +16,8 @@ Currently exported sub-modules:
   proxy through the ARI-side LLM client.
 - :mod:`ari.public.config_schema` — Pydantic config models for
   callers that need typed settings access.
+- :mod:`ari.public.skill_manifest` — canonical Skill package and tool-policy
+  contract used by built-in and federated MCP providers.
 - :mod:`ari.public.run_env`       — run-environment capture helpers
   (``capture_env`` / ``shell_capture_snippet``) used by
   ari-skill-coding and ari-skill-hpc.

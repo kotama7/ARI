@@ -1,0 +1,294 @@
+{
+  "$defs": {
+    "SkillEntrypointV1": {
+      "additionalProperties": false,
+      "description": "How ari-core launches one Skill server.",
+      "properties": {
+        "command_kind": {
+          "const": "python",
+          "default": "python",
+          "title": "Command Kind",
+          "type": "string"
+        },
+        "module": {
+          "default": "src/server.py",
+          "title": "Module",
+          "type": "string"
+        },
+        "transport": {
+          "const": "stdio",
+          "default": "stdio",
+          "title": "Transport",
+          "type": "string"
+        }
+      },
+      "title": "SkillEntrypointV1",
+      "type": "object"
+    },
+    "ToolManifestV1": {
+      "additionalProperties": false,
+      "description": "One tool declaration; omitted policy fields inherit ``tool_defaults``.",
+      "properties": {
+        "capability_ref": {
+          "title": "Capability Ref",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "determinism": {
+          "anyOf": [
+            {
+              "enum": [
+                "deterministic",
+                "conditional",
+                "stochastic",
+                "live-data"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Determinism"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "permissions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Permissions"
+        },
+        "phases": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Phases"
+        },
+        "result_schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result Schema"
+        },
+        "side_effects": {
+          "anyOf": [
+            {
+              "enum": [
+                "read-only",
+                "workspace-write",
+                "stateful",
+                "destructive"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Side Effects"
+        },
+        "timeout_class": {
+          "anyOf": [
+            {
+              "enum": [
+                "default",
+                "bounded",
+                "slow",
+                "very-slow",
+                "async"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeout Class"
+        }
+      },
+      "required": [
+        "name",
+        "capability_ref"
+      ],
+      "title": "ToolManifestV1",
+      "type": "object"
+    },
+    "ToolPolicyV1": {
+      "additionalProperties": false,
+      "description": "Policy inherited by tools that do not declare an override.",
+      "properties": {
+        "determinism": {
+          "default": "conditional",
+          "enum": [
+            "deterministic",
+            "conditional",
+            "stochastic",
+            "live-data"
+          ],
+          "title": "Determinism",
+          "type": "string"
+        },
+        "permissions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Permissions",
+          "type": "array"
+        },
+        "phases": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Phases",
+          "type": "array"
+        },
+        "result_schema": {
+          "default": "ari.legacy-mcp-result/v1",
+          "title": "Result Schema",
+          "type": "string"
+        },
+        "side_effects": {
+          "default": "read-only",
+          "enum": [
+            "read-only",
+            "workspace-write",
+            "stateful",
+            "destructive"
+          ],
+          "title": "Side Effects",
+          "type": "string"
+        },
+        "timeout_class": {
+          "default": "default",
+          "enum": [
+            "default",
+            "bounded",
+            "slow",
+            "very-slow",
+            "async"
+          ],
+          "title": "Timeout Class",
+          "type": "string"
+        }
+      },
+      "title": "ToolPolicyV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/skill-manifest-v1.schema.json",
+  "additionalProperties": false,
+  "description": "Canonical ARI Skill package manifest, schema version 1.",
+  "properties": {
+    "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+    },
+    "display_name": {
+      "default": "",
+      "title": "Display Name",
+      "type": "string"
+    },
+    "enabled_by_default": {
+      "default": true,
+      "title": "Enabled By Default",
+      "type": "boolean"
+    },
+    "entrypoint": {
+      "$ref": "#/$defs/SkillEntrypointV1"
+    },
+    "environment_policy": {
+      "default": "audit-pending",
+      "enum": [
+        "audit-pending",
+        "complete"
+      ],
+      "title": "Environment Policy",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "optional_env": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Optional Env",
+      "type": "array"
+    },
+    "package": {
+      "title": "Package",
+      "type": "string"
+    },
+    "required_env": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Required Env",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "tool_defaults": {
+      "$ref": "#/$defs/ToolPolicyV1"
+    },
+    "tools": {
+      "items": {
+        "$ref": "#/$defs/ToolManifestV1"
+      },
+      "title": "Tools",
+      "type": "array"
+    },
+    "version": {
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "name",
+    "package",
+    "version",
+    "tools"
+  ],
+  "title": "ARI Skill Manifest v1",
+  "type": "object"
+}

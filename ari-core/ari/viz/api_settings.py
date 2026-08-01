@@ -489,7 +489,9 @@ def _api_skills() -> list:
                     data.setdefault("name", d.name)
                     data.setdefault("display_name", d.name)
                     data.setdefault("description", "")
-                    data.setdefault("requires_env", [])
+                    # Frontend compatibility while canonical manifests use the
+                    # grammatically explicit required_env field.
+                    data.setdefault("requires_env", data.get("required_env", []))
                     skills.append(data)
                 except Exception:
                     skills.append({"name": d.name, "display_name": d.name, "description": "", "requires_env": []})
@@ -549,5 +551,4 @@ def _api_rubrics() -> list:
         except Exception:
             continue
     return out
-
 

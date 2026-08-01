@@ -1,0 +1,32 @@
+schema_version: 1
+name: coding-skill
+package: ari-skill-coding
+version: 0.1.0
+display_name: Execute research code
+description: Workspace-scoped code authoring, process execution, and result emission.
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+required_env: []
+optional_env: [ARI_CHECKPOINT_DIR, ARI_CURRENT_NODE_ID, ARI_ROOT]
+tool_defaults:
+  phases: [bfts, reproduce]
+  side_effects: stateful
+  determinism: conditional
+  timeout_class: bounded
+  permissions: [workspace-read, workspace-write, process]
+  result_schema: ari.legacy-mcp-result/v1
+tools:
+  - name: emit_results
+    capability_ref: ari.execution.results.emit
+  - name: read_file
+    capability_ref: ari.workspace.file.read
+    side_effects: read-only
+    permissions: [workspace-read]
+  - name: run_bash
+    capability_ref: ari.execution.shell
+  - name: run_code
+    capability_ref: ari.execution.code
+  - name: write_code
+    capability_ref: ari.workspace.code.write

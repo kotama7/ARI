@@ -1,8 +1,27 @@
 {
+  "description": "Lineage-scoped experiment memory, typed observations, audit, and consolidation.",
+  "entrypoint": "src/server.py",
+  "generated_from": "skill.yaml",
+  "name": "memory-skill",
+  "package": "ari-skill-memory",
+  "runtime": "python",
+  "schema_version": 1,
   "tools": [
+    "_set_current_node",
+    "add_experiment_result",
+    "add_failure_case",
     "add_memory",
-    "search_memory",
+    "add_procedure_memory",
+    "add_reflection",
+    "add_reproducibility_event",
+    "audit_memory",
+    "clear_node_memory",
+    "consolidate_node_memory",
+    "get_experiment_context",
     "get_node_memory",
-    "clear_node_memory"
-  ]
+    "get_verified_context",
+    "search_memory",
+    "search_research_memory"
+  ],
+  "version": "0.6.0"
 }

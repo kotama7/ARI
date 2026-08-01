@@ -1,8 +1,48 @@
+schema_version: 1
 name: ari-orchestrator
+package: ari-skill-orchestrator
 version: 1.0.0
-description: ARI orchestrator MCP server
+display_name: Control ARI runs
+description: External asynchronous control and inspection of ARI experiment runs.
+enabled_by_default: false
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+required_env: []
+optional_env: [ARI_ORCHESTRATOR_LOGS, ARI_ORCHESTRATOR_PORT, ARI_WORKSPACE]
+tool_defaults:
+  phases: [control]
+  side_effects: read-only
+  determinism: live-data
+  timeout_class: bounded
+  permissions: [workspace-read]
+  result_schema: ari.legacy-mcp-result/v1
 tools:
-  - run_experiment
-  - get_status
-  - list_runs
-  - get_paper
+  - name: get_ear
+    capability_ref: ari.control.ear.read
+  - name: get_paper
+    capability_ref: ari.control.paper.read
+  - name: get_status
+    capability_ref: ari.control.run.status
+  - name: get_workflow
+    capability_ref: ari.control.workflow.read
+  - name: list_children
+    capability_ref: ari.control.run.children
+  - name: list_files
+    capability_ref: ari.control.files.list
+  - name: list_runs
+    capability_ref: ari.control.runs.list
+  - name: list_skills
+    capability_ref: ari.control.skills.list
+  - name: read_file
+    capability_ref: ari.control.file.read
+  - name: run_experiment
+    capability_ref: ari.control.run.start
+    side_effects: stateful
+    timeout_class: async
+    permissions: [workspace-read, workspace-write, process]
+  - name: stop_experiment
+    capability_ref: ari.control.run.stop
+    side_effects: destructive
+    permissions: [workspace-read, process]

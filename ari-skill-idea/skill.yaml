@@ -1,5 +1,27 @@
+schema_version: 1
 name: idea-skill
-display_name: "Generate research ideas"
-description: "Multi-agent system using VirSci to generate and evaluate diverse research hypotheses via scientific deliberation"
-requires_env: []
-version: "0.4.1"
+package: ari-skill-idea
+version: 0.1.0
+display_name: Generate research ideas
+description: Literature-grounded survey and multi-agent hypothesis generation using VirSci workflows.
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+required_env: []
+optional_env: [ARI_CHECKPOINT_DIR, ARI_LLM_API_BASE, ARI_LLM_MODEL, SEMANTIC_SCHOLAR_API_KEY]
+tool_defaults:
+  phases: [bfts]
+  side_effects: read-only
+  determinism: stochastic
+  timeout_class: slow
+  permissions: [workspace-read, network, model]
+  result_schema: ari.legacy-mcp-result/v1
+tools:
+  - name: survey
+    capability_ref: ari.literature.survey
+    determinism: live-data
+    timeout_class: bounded
+    permissions: [workspace-read, network]
+  - name: generate_ideas
+    capability_ref: ari.ideation.generate
