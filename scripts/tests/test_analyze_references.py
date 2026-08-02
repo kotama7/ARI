@@ -110,6 +110,40 @@ def test_low_level_tool_declaration_detected(tmp_path: Path) -> None:
     assert "mcp.tool:z:run_bash" in tool_ids
 
 
+def test_cross_language_overlay_follows_split_api_barrel(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "frontend/services/api.ts",
+        "export * from './api/widgets';\n",
+    )
+    _write(
+        tmp_path,
+        "frontend/services/api/widgets.ts",
+        "export const widgets = () => get('/api/widgets');\n",
+    )
+    _write(
+        tmp_path,
+        "viz/routes.py",
+        "def route(path):\n    return path == '/api/widgets'\n",
+    )
+    graph = ar.build_graph(
+        tmp_path,
+        _fixture_config(
+            scan_roots=["viz"],
+            frontend_api_client="frontend/services/api.ts",
+            viz_route_dir="viz",
+        ),
+        manifest=None,
+    )
+    edge = next(
+        item
+        for item in graph["edges"]
+        if item["kind"] == "cross_lang.http"
+        and item["to"] == "route:/api/widgets"
+    )
+    assert edge["from"] == "ts.module:frontend/services/api/widgets.ts"
+
+
 # ── (c) repo smoke ──────────────────────────────────────────────────────────
 
 def _repo_graph() -> dict:
@@ -144,7 +178,9 @@ def test_repo_dynamic_overlay_no_orphans() -> None:
 def test_repo_mcp_tools_and_collision() -> None:
     graph = _repo_graph()
     tools = [n for n in graph["nodes"] if n["kind"] == "mcp.tool"]
-    assert len(tools) == 88
+    # 87 provider-qualified nodes, representing 86 unique bare names because
+    # ``read_file`` is intentionally supplied by two providers.
+    assert len(tools) == 87
     collisions = {c["tool_name"]: set(c["skills"]) for c in graph["collisions"]}
     assert collisions.get("read_file") == {"coding", "orchestrator"}
 

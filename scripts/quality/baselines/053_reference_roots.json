@@ -15,7 +15,7 @@
     {"id": "R4", "class": "mcp_servers", "anchor": "ari-skill-*/src/server.py", "verified": true, "count": 14, "fastmcp": ["benchmark", "idea", "memory", "paper", "paper-re", "plot", "replicate", "transform", "vlm", "web"], "lowlevel_server": ["coding", "evaluator", "hpc", "orchestrator"]},
     {"id": "R5", "class": "mcp_client_bridge", "anchor": "ari-core/ari/mcp/client.py", "verified": true, "loc": 483, "call_tool": [227, 336], "tool_registry": 283, "to_claude_mcp_config": 437, "qualified_naming": "mcp__<skill>__<tool>"},
     {"id": "R6", "class": "dashboard_http_ws", "anchor": "ari-core/ari/viz/routes.py", "verified": true, "routes_loc": 1197, "api_modules": ["api_experiment", "api_fewshot", "api_memory", "api_ollama", "api_orchestrator", "api_paperbench", "api_paperbench_worker", "api_process", "api_publish", "api_settings", "api_state", "api_tools", "api_wizard", "api_workflow"], "other": ["websocket.py", "server.py", "state.py", "state_sync.py"]},
-    {"id": "R7", "class": "public_python_api", "anchor": "ari-core/ari/public/", "verified": true, "loc_total": 148, "submodules": ["claim_gate", "config_schema", "container", "cost_tracker", "llm", "paths", "run_env", "verified_context"], "init_docstring_only": true},
+    {"id": "R7", "class": "public_python_api", "anchor": "ari-core/ari/public/", "verified": true, "loc_total": 312, "submodules": ["call_context", "claim_gate", "config_schema", "container", "cost_tracker", "llm", "paths", "result", "run_env", "skill_lock", "skill_manifest", "verified_context"], "init_docstring_only": true},
     {"id": "R8", "class": "frontend_entry", "anchor": "ari-core/ari/viz/frontend/src/App.tsx", "verified": true, "api_client": "services/api.ts", "api_client_loc": 863},
     {"id": "R9", "class": "test_suites", "anchor": "ari-core/tests/", "verified": true, "liveness": "TEST_ONLY", "heaviest": {"test_server.py": 1844, "test_gui_errors.py": 1650, "test_workflow_contract.py": 1606}},
     {"id": "R10", "class": "documented_commands", "anchor": "README*.md, docs/", "verified": true, "liveness": "DOCS_ONLY", "validator": "scripts/docs/check_doc_sources.py"},
@@ -54,7 +54,7 @@
     "DOCS_ONLY": {"documented_ari_commands": "validated by scripts/docs/check_doc_sources.py"}
   },
   "mcp_tools": {
-    "total": 87,
+    "total": 86,
     "fastmcp": 59,
     "lowlevel": 28,
     "by_skill": {
@@ -63,7 +63,7 @@
       "evaluator": ["claim_evidence_hard_gate", "evidence_grounded_semantic_review", "make_metric_spec"],
       "hpc": ["job_cancel", "job_status", "probe_platform_capabilities", "singularity_build", "singularity_build_fakeroot", "singularity_pull", "singularity_run", "singularity_run_gpu", "slurm_submit"],
       "idea": ["_load_virsci_snapshot_papers"],
-      "memory": ["_set_current_node", "add_experiment_result", "add_failure_case", "add_memory", "add_procedure_memory", "add_reflection", "add_reproducibility_event", "audit_memory", "clear_node_memory", "consolidate_node_memory", "get_experiment_context", "get_node_memory", "get_verified_context", "search_memory", "search_research_memory"],
+      "memory": ["add_experiment_result", "add_failure_case", "add_memory", "add_procedure_memory", "add_reflection", "add_reproducibility_event", "audit_memory", "clear_node_memory", "consolidate_node_memory", "get_experiment_context", "get_node_memory", "get_verified_context", "search_memory", "search_research_memory"],
       "orchestrator": ["get_ear", "get_paper", "get_status", "get_workflow", "list_children", "list_files", "list_runs", "list_skills", "read_file", "run_experiment", "stop_experiment"],
       "paper": ["check_format", "compile_paper", "generate_section", "get_template", "inject_code_availability", "link_paper_claims", "list_rubrics", "list_venues", "merge_reviews", "paper_refine", "review_compiled_paper", "review_section", "revise_section", "write_paper_iterative"],
       "paper-re": ["build_reproduce_sh", "fetch_code_bundle", "grade_with_simplejudge", "run_reproduce"],

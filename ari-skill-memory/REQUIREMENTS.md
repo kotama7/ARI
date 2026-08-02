@@ -20,9 +20,11 @@ memory" is no longer a feature.
   seeded core-memory block (`persona`, `human`, `ari_context`).
 - Scope: `search_memory` strictly filters by `ancestor_ids` (pre-filter
   on Postgres/Cloud, over-fetch + post-filter on SQLite).
-- Copy-on-Write: write-side MCP tools reject `node_id` ≠
-  `$ARI_CURRENT_NODE_ID`; Letta self-edit disabled by default so an
-  ancestor's entries are byte-stable.
+- Copy-on-Write: every node-scoped MCP call verifies a tool-bound, signed
+  `NodeContextV1`; write-side tools accept only its self node and read-side
+  tools accept only its ordered ancestor lineage (plus self where applicable).
+  Letta self-edit is disabled by default so an ancestor's entries are
+  byte-stable.
 - Observability: every tool call emits a record to `memory_access.jsonl`
   (writes + reads, `src_node_id` provenance) with cost-tracker
   instrumentation.
@@ -40,8 +42,13 @@ memory" is no longer a feature.
 
 Required:
 - `ARI_CHECKPOINT_DIR` — per-experiment isolation root.
-- `ARI_CURRENT_NODE_ID` — set by ari-core on every skill subprocess
-  spawn; validates writes against the active BFTS node.
+
+ari-core also installs a per-connection `ARI_CONTEXT_AUTHORITY_KEY` secret in
+the provider process. It is system-managed, cannot be supplied through a Skill
+manifest or inherited parent environment, and must never be put in user config,
+logs, lockfiles, or model-visible tool arguments. Direct MCP clients are placed
+behind `secure_stdio_proxy`, which creates its own authority and injects the
+same signed capability contract.
 
 Connection (defaults suitable for local Docker Compose / Singularity):
 - `LETTA_BASE_URL` (default `http://localhost:8283`)
@@ -72,7 +79,13 @@ Developer escape hatch (tests only):
 | `get_node_memory(node_id)` | `{"entries": [{text, metadata, ts}]}` |
 | `clear_node_memory(node_id)` | `{"removed": int, "error"?: str}` |
 | `get_experiment_context()` | stable experiment facts dict |
-| `_set_current_node(node_id)` | ari-core ↔ skill CoW bridge (internal) |
+
+The transport-only `ari_context` argument is intentionally omitted from this
+table and from model-facing `tools/list` responses. The manifest declares
+`context_requirement: node` for node-scoped tools and
+`context_requirement: run` for `audit_memory` and
+`get_experiment_context`. Missing, forged, expired-by-connection, tool-mismatched,
+or lineage-inconsistent capabilities fail closed before backend access.
 
 Global-memory tools (`add_global_memory`, `search_global_memory`,
 `list_global_memory`) were removed in v0.6.0. Callers receive the
@@ -111,7 +124,7 @@ searchable `text`, never copies of node_report fields.
   `python -m ari_skill_memory.audit <experiments_root> [run_id]`.
 - `writer.py` — typed writes (`add_experiment_result` / `add_failure_case` /
   `add_procedure_memory` / `add_reflection` / `add_reproducibility_event`),
-  CoW-guarded; stamp `type` + `mem_kind`.
+  authorized at the MCP boundary; stamp `type` + `mem_kind`.
 - `retriever.py` — `search_research_memory(kinds, require_artifacts)`,
   `ancestor_typed_memory` (deterministic, ancestor-scoped, full),
   `fold_reproducibility` (append-only events → latest status per target).
@@ -124,7 +137,8 @@ MCP tools (called by ari-core loop/pipeline hooks, never an LLM pull):
 `add_experiment_result`, `add_failure_case`, `add_procedure_memory`,
 `add_reflection`, `add_reproducibility_event`, `search_research_memory`,
 `get_verified_context`, `audit_memory`, `consolidate_node_memory` — the five
-write tools are CoW-routed (in `MCPClient._COW_TOOLS`).
+write tools require a signed self-node context. Read requests are checked
+against the same signed lineage before the backend's ancestor filter runs.
 
 Invariants: same ancestor-scope predicate as `search_memory`; append-only
 state; `archival_list` pages via cursor (the >200-passage ceiling no longer

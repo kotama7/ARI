@@ -13,7 +13,6 @@ from ari_skill_memory.schemas import ArtifactRef
 
 
 def _w(backend, monkeypatch, node_id, fn, *a, **k):
-    monkeypatch.setenv("ARI_CURRENT_NODE_ID", node_id)
     return fn(backend, node_id, *a, **k)
 
 

@@ -6,6 +6,7 @@ JSON Schemas shipped with ari-core, loaded by basename via
 ## Contents
 
 - `README.md` — this file.
+- `call_context_v1.schema.json` — explicit run, node, ordered-lineage, and call provenance context.
 - `__init__.py` — `load(name)` loader.
 - `node_report.schema.json` — per-node report schema.
 - `publish.schema.json` — publish record / manifest schema.

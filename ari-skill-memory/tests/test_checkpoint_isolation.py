@@ -15,7 +15,6 @@ def test_two_checkpoints_do_not_leak(tmp_path, monkeypatch):
     clear_backend_cache()
     monkeypatch.setenv("ARI_MEMORY_BACKEND", "in_memory")
 
-    monkeypatch.setenv("ARI_CURRENT_NODE_ID", "root")
     monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(a))
     ba = get_backend(checkpoint_dir=a)
     ba.add_memory("root", "A-only", {})

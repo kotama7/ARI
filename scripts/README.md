@@ -5,7 +5,7 @@ Operational and utility scripts for building images, running services, and dev t
 ## Contents
 
 - `README.md` — this file.
-- `analyze_references.py` — build the deterministic code/data reference graph (static imports + dynamic string-key/path/MCP/cross-language overlays) seeded from the 053 roots; emits `docs/refactoring/reports/reference_graph.{json,md}` (`--check` gates drift; no LLM/API).
+- `analyze_references.py` — build the deterministic code/data reference graph (static imports + dynamic string-key/path/MCP/cross-language overlays, including split frontend API barrels) seeded from the 053 roots; emits `scripts/quality/baselines/reference_graph.{json,md}` (`--check` gates drift; no LLM/API).
 - `build_pb_images.sh` — build the vendor PaperBench Docker images (`pb-env`, `pb-reproducer`).
 - `check_complexity.py` — source-code size (LOC tiers) + cyclomatic-complexity (ruff `C901`) gate; warning-mode-first with a frozen allowlist (`--json`, `--fail-on-regression`, `--update-baseline`; no LLM/API).
 - `check_dashboard_ux.py` — TODO
@@ -15,7 +15,7 @@ Operational and utility scripts for building images, running services, and dev t
 - `check_docs_source_sync.py` — TODO
 - `check_import_boundaries.py` — AST import-boundary gate: skills may import core only via `ari.public.*`/`ari.protocols.*` (B1) and core may not import skills except `ari_skill_memory` (B2); warning-mode-first with a frozen allowlist (`--json`, `--fail-on-regression`; no LLM/API).
 - `check_prompts.py` — inline-prompt externalization inventory: AST-scans the runtime tree for role-marked multi-line LLM prompts still hardcoded in `ari-skill-*/src` (against a frozen allowlist seeded from the Subtask 036 census); defers snapshot byte-verification to Gate 10 via `--with-snapshots` (never re-implemented); warning-mode-first (`--json`, `--fail-on-regression`, `--update-baseline`; no LLM/API). `ari-core/ari/agent/loop.py` is the clean negative control.
-- `check_public_api_contracts.py` — snapshot & diff gate for the `ari.public.*` API surface (freezes all 11 re-export submodules; `--update` re-baselines, `--strict` fails on removed symbols; stdlib-only, no LLM/API).
+- `check_public_api_contracts.py` — snapshot & diff gate for the `ari.public.*` API surface (freezes all 13 re-export submodules; `--update` re-baselines, `--strict` fails on removed symbols; stdlib-only, no LLM/API).
 - `check_skill_manifests.py` — canonical manifest/package/runtime/workflow/schema conformance gate.
 - `check_viz_api_schema.py` — reconcile the dashboard routes (`viz/routes.py`) with their sole consumer `frontend/src/services/api.ts`; reports client-only (broken calls) + server-only (candidate unused) endpoints via static dispatch simulation; warning-mode-first with a frozen allowlist (`--json`, `--fail-on-regression`; no LLM/API/node).
 - `generate_quality_report.py` — TODO
@@ -26,7 +26,7 @@ Operational and utility scripts for building images, running services, and dev t
 - `sc_paper_dogfood.py` — end-to-end dogfood driver: external paper PDF → PaperBench-format rubric generation (+ optional judge dry-run).
 - `sc_paper_stage23_chain.py` — run Stage 2 (reproduce) + Stage 3 (judge) against a completed Stage 1 rollout workspace.
 - `snapshot_contracts.py` — deterministic generator/verifier for the four contract-snapshot goldens under `ari-core/tests/fixtures/contracts/` (public API / CLI tree / MCP catalog / viz REST); `--surface <x> --check` gates drift, `--update` re-baselines; stdlib-only (AST/importlib), no LLM/API. Shares its `build_*`/`compare` helpers with `ari-core/tests/test_contract_snapshots.py`.
-- `sync_skill_metadata.py` — deterministically regenerate compatibility `mcp.json` files and Skill/result/lock JSON Schemas.
+- `sync_skill_metadata.py` — deterministically regenerate compatibility `mcp.json` files and Skill/result/context/lock JSON Schemas.
 - `docs/` — documentation lint/gate scripts.
   - `README.md` — docs index.
   - `assemble_site.sh` — assemble the single Pages artifact `_site/` (L3): bespoke landing at the root, VitePress dist at `/docs/`, a noindex `docs.html` redirect stub, and `.nojekyll`. Run after `vitepress build`.

@@ -18,6 +18,7 @@ from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from ari.call_context import NodeContextV1, RunContextV1, ToolCallContextV1
 from ari.protocols.stores import ArtifactStore
 
 
@@ -88,18 +89,6 @@ class ResultErrorV1(BaseModel):
     message: str
     retryable: bool = False
     details: dict[str, Any] = Field(default_factory=dict)
-
-
-class ToolCallContextV1(BaseModel):
-    """Explicit run/node context supplied at a tool-call boundary."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    run_id: str = ""
-    node_id: str | None = None
-    phase: str | None = None
-    selection_reason: str = ""
-    credential_scope_ids: list[str] = Field(default_factory=list)
 
 
 class ResultProvenanceV1(BaseModel):

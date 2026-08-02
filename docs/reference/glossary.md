@@ -162,8 +162,9 @@ never from siblings. Enforced by a metadata filter on `search_memory`. See
 
 **CoW (Copy-on-Write)**
 The write guard that keeps ancestor memory byte-stable across siblings:
-write-side tools reject any `node_id` that is not the active
-`$ARI_CURRENT_NODE_ID`. See [Memory architecture](../concepts/memory.md).
+write-side tools require a signed `NodeContextV1` whose self node equals the
+target. The same context binds the ordered ancestor list to a lineage digest.
+See [Memory architecture](../concepts/memory.md).
 
 **Letta**
 The memory backend (formerly MemGPT) used since v0.6.0. Each checkpoint gets a
@@ -222,9 +223,8 @@ they come from `.env` or the environment. Holds `experiment.md`, `meta.json`,
 `launch_config.json`, `tree.json` / `nodes_tree.json` (the serialized node
 tree), `results.json`, `idea.json`, `cost_trace.jsonl` / `cost_summary.json`,
 `settings.json`, `memory.json`, `ari.log`, `.ari_pid`, and `uploads/`. See
-[Architecture → File Structure](../concepts/architecture.md#file-structure) and
-[`refactoring/notes/07_checkpoint_model.md`](../../refactoring/notes/07_checkpoint_model.md)
-for the full layout + the read-path resolvers.
+[Architecture → File Structure](../concepts/architecture.md#file-structure)
+for the full layout and read-path resolvers.
 
 **node work_dir**
 Where a node's files physically live: `{workspace}/experiments/{run_id}/{node_id}/`

@@ -158,12 +158,14 @@ fork that constructs its own `MCPClient` in the child.
    `ARI_WORK_DIR` and the sandbox vars (`ARI_REAL_GIT`, `ARI_REPRO_*`, `PATH`)
    must be set **before** `MCPClient` spawns; deferring MCP construction or
    reordering env setup silently breaks sandboxing / work-dir pinning.
-2. **Shared-process global-env race under parallel workers.** Up to 4
-   `AgentLoop` threads share one process and one `MCPClient`. Memory
-   copy-on-write keys off the process-global `ARI_CURRENT_NODE_ID`; the only safe
-   write path is `mcp.call_tool(name, args, cow_node_id=node_id)` (it serializes
-   the set-node+write pair under `MCPClient._cow_lock`). A per-run single
-   `_set_current_node` is unsafe at `max_parallel_nodes > 1`.
+2. **Context isolation under parallel workers.** Up to 4 `AgentLoop` threads
+   share one process and one `MCPClient`. Each call must carry the immutable
+   `ToolCallContextV1.for_node(...)` created for that worker; never cache a
+   mutable "current node" on the client or provider. `MCPClient` and the direct
+   MCP proxy overwrite the transport-only `ari_context` argument with a
+   tool-bound signed capability. The memory provider verifies the ordered
+   lineage digest, self-write rule, and ancestor-read set independently for
+   every call, so no cross-thread lock or global node environment is required.
 3. **Shared checkpoint-tree writes.** There is **no git worktree**: concurrent
    committers all write the same `tree.json` / `nodes_tree.json` / `results.json`
    via one shared `agent._progress_cb` → `_save_tree_incremental`; thread-safety

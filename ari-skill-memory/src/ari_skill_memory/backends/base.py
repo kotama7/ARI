@@ -26,11 +26,16 @@ class MemoryBackend(ABC):
 
     @abstractmethod
     def search_memory(
-        self, query: str, ancestor_ids: list[str], limit: int = 5
+        self,
+        query: str,
+        ancestor_ids: list[str],
+        limit: int = 5,
+        *,
+        reader_node_id: str = "",
     ) -> dict: ...
 
     @abstractmethod
-    def get_node_memory(self, node_id: str) -> dict: ...
+    def get_node_memory(self, node_id: str, *, reader_node_id: str = "") -> dict: ...
 
     @abstractmethod
     def clear_node_memory(self, node_id: str) -> dict: ...
@@ -43,7 +48,9 @@ class MemoryBackend(ABC):
     def list_all_nodes(self) -> dict: ...
 
     @abstractmethod
-    def bulk_get_node_memory(self, node_ids: list[str]) -> dict: ...
+    def bulk_get_node_memory(
+        self, node_ids: list[str], *, reader_node_id: str = ""
+    ) -> dict: ...
 
     @abstractmethod
     def purge_checkpoint(self) -> dict: ...

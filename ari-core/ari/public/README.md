@@ -7,6 +7,7 @@ core can refactor freely while the contract stays put.
 ## Contents
 
 - `README.md` — this file.
+- `call_context.py` — explicit run/node/lineage models plus signed transport capability helpers.
 - `__init__.py` — exported sub-modules + rationale.
 - `claim_gate.py` — re-exports five symbols from `ari.pipeline.claim_gate`: `run_hard_gate` (→ ari-skill-evaluator), `check_emission` (→ ari-skill-coding), `scan_science_data` (→ ari-skill-transform), plus `classify_concept` / `CONCEPT_INVARIANTS` (shared concept→invariant registry).
 - `config_schema.py` — re-export of `ari.config` models.
@@ -16,7 +17,7 @@ core can refactor freely while the contract stays put.
 - `paths.py` — re-export of `ari.paths.PathManager`.
 - `run_env.py` — re-export of `ari.agent.run_env` capture helpers.
 - `result.py` — versioned `ResultEnvelopeV1`, artifact references, typed errors,
-  call context, provenance, and the legacy response normalizer.
+  call provenance, and the legacy response normalizer.
 - `skill_lock.py` — immutable run-level provider/schema/phase snapshot contract
   and atomic exact/subset verification helpers.
 - `skill_manifest.py` — canonical Skill package, entrypoint, and tool-policy

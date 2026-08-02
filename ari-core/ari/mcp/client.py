@@ -7,10 +7,10 @@ import logging
 import os
 from pathlib import Path
 
+from ari.call_context import ToolCallContextV1, new_context_authority_key
 from ari.config import SkillConfig
 from ari.mcp.connection import SkillConnection
 from ari.mcp.dispatch_support import (
-    COW_TOOLS,
     DEFAULT_TOOL_TIMEOUT as DEFAULT_TOOL_TIMEOUT,
     SLOW_TOOL_TIMEOUT as SLOW_TOOL_TIMEOUT,
     VERY_SLOW_TOOL_TIMEOUT as VERY_SLOW_TOOL_TIMEOUT,
@@ -32,7 +32,6 @@ from ari.result import (
     DEFAULT_INLINE_RESULT_LIMIT,
     ResultEnvelopeNormalizer,
     ResultEnvelopeV1,
-    ToolCallContextV1,
     utc_now_iso,
 )
 from ari.skill_lock import SkillLockError, SkillsLockV1
@@ -47,12 +46,6 @@ _runtime_tool_ref = runtime_tool_ref
 
 class MCPClient:
     """MCP client with connection pooling and retry logic."""
-
-    # Tools whose CoW guard reads ARI_CURRENT_NODE_ID inside the
-    # pooled memory-skill MCP server. The (set_current_node, write)
-    # pair must be atomic across all parallel nodes that share this
-    # MCPClient — see ``call_tool(cow_node_id=...)`` below.
-    _COW_TOOLS: frozenset = COW_TOOLS
 
     def __init__(
         self,
@@ -71,10 +64,9 @@ class MCPClient:
         self.disabled_tools: set[str] = set(disabled_tools or [])
         self._connections: dict[str, _SkillConnection] = {}
         self._conn_lock = _t.Lock()
-        # Serialises (_set_current_node, memory write) pairs across
-        # parallel BFTS nodes. RLock so the same thread can re-enter
-        # if a future caller wraps higher-level helpers.
-        self._cow_lock = _t.RLock()
+        self._context_authority_keys: dict[str, str] = {
+            skill.name: new_context_authority_key() for skill in skills
+        }
         self._tool_registry: dict[str, str] = {}  # tool_name -> skill.name
         self._tool_ref_registry: dict[str, str] = {}  # tool_ref -> skill.name
         self._tool_name_by_ref: dict[str, str] = {}
@@ -97,12 +89,22 @@ class MCPClient:
     def _init_connection(self, skill: SkillConfig) -> _SkillConnection:
         with self._conn_lock:
             if skill.name not in self._connections:
-                conn = _SkillConnection(skill)
+                conn = _SkillConnection(
+                    skill,
+                    context_authority_key=self._context_authority_keys.setdefault(
+                        skill.name, new_context_authority_key()
+                    ),
+                )
                 self._connections[skill.name] = conn
             return self._connections[skill.name]
 
-    def list_tools(self, phase: str | None = None) -> list[dict]:
-        """Return skill tools, optionally filtered by phase and disabled_tools."""
+    def list_tools(
+        self,
+        phase: str | None = None,
+        *,
+        context: ToolCallContextV1 | None = None,
+    ) -> list[dict]:
+        """Return tools admitted by phase and, when supplied, call context."""
         if self._tools_cache is None:
             self._build_tools_cache()
 
@@ -115,6 +117,12 @@ class MCPClient:
         # additional constraint rather than a replacement for Skill exposure.
         if phase is not None:
             tools = [t for t in tools if self._tool_admits_phase(t["tool_ref"], phase)]
+        if context is not None:
+            tools = [
+                tool
+                for tool in tools
+                if context.satisfies(self._tool_context_requirement(tool["tool_ref"]))
+            ]
         return tools
 
     def _build_tools_cache(self) -> None:
@@ -165,27 +173,12 @@ class MCPClient:
         tool_name: str,
         args: dict,
         *,
-        cow_node_id: str | None = None,
+        context: ToolCallContextV1 | None = None,
     ) -> dict:
-        """Call a tool. Reuses connection pool and retries on failure.
+        """Call a tool with explicit run/node context when policy requires it."""
 
-        ``cow_node_id`` (optional): when set and ``tool_name`` is a
-        CoW-guarded memory tool (``add_memory`` / ``clear_node_memory``),
-        ``_set_current_node({node_id: cow_node_id})`` is invoked under a
-        process-wide lock immediately before the actual call so the two
-        operations are atomic across parallel BFTS nodes that share this
-        MCPClient. Without this, the memory skill's ``ARI_CURRENT_NODE_ID``
-        env var (set by ``_set_current_node``) is racy and one node's
-        write can be rejected by another node's set.
-        """
-        if cow_node_id and tool_name in self._COW_TOOLS:
-            with self._cow_lock:
-                self._call_tool_unlocked(
-                    "_set_current_node",
-                    {"node_id": cow_node_id},
-                )
-                return self._call_tool_unlocked(tool_name, args)
-        return self._call_tool_unlocked(tool_name, args)
+        envelope = self.call_tool_envelope(tool_name, args, context=context)
+        return envelope.to_legacy(self._artifact_store_for_call())
 
     def call_tool_envelope(
         self,
@@ -193,7 +186,6 @@ class MCPClient:
         args: dict,
         *,
         context: ToolCallContextV1 | None = None,
-        cow_node_id: str | None = None,
     ) -> ResultEnvelopeV1:
         """Call a tool and return the canonical typed result envelope.
 
@@ -217,36 +209,11 @@ class MCPClient:
                     completed_at=utc_now_iso(),
                 )
 
-        registered_name = self._tool_name_by_ref.get(tool_name_or_ref, tool_name_or_ref)
-        if cow_node_id and registered_name in self._COW_TOOLS:
-            with self._cow_lock:
-                cow_context = context or self._default_call_context(node_id=cow_node_id)
-                context_result = self._call_tool_envelope_unlocked(
-                    "_set_current_node",
-                    {"node_id": cow_node_id},
-                    context=cow_context,
-                )
-                if context_result.status == "error":
-                    return context_result
-                return self._call_tool_envelope_unlocked(
-                    tool_name_or_ref,
-                    args,
-                    context=cow_context,
-                )
         return self._call_tool_envelope_unlocked(
             tool_name_or_ref,
             args,
             context=context,
         )
-
-    def _call_tool_unlocked(self, tool_name: str, args: dict) -> dict:
-        """Internal: same as call_tool but without the CoW gate.
-
-        Holds no locks; safe to call from inside ``_cow_lock`` for the
-        atomic (set + write) sequence.
-        """
-        envelope = self._call_tool_envelope_unlocked(tool_name, args)
-        return envelope.to_legacy(self._artifact_store_for_call())
 
     def _call_tool_envelope_unlocked(
         self,
@@ -255,7 +222,7 @@ class MCPClient:
         *,
         context: ToolCallContextV1 | None = None,
     ) -> ResultEnvelopeV1:
-        """Typed dispatch implementation; caller owns any required CoW lock."""
+        """Typed dispatch implementation."""
 
         started_at = utc_now_iso()
         normalizer = self._result_normalizer()
@@ -333,6 +300,12 @@ class MCPClient:
             message = f"Tool '{tool_name}' is disabled by run configuration"
         elif context.phase and not self._tool_admits_phase(tool_ref, context.phase):
             message = f"Tool '{tool_name}' is not admitted in phase '{context.phase}'"
+        else:
+            requirement = self._tool_context_requirement(tool_ref)
+            if not context.satisfies(requirement):
+                message = (
+                    f"Tool '{tool_name}' requires explicit {requirement} context"
+                )
         if not message:
             return None
         return normalizer.error(
@@ -379,6 +352,12 @@ class MCPClient:
         if skill is not None:
             timeout_class = skill.tool_timeout_classes.get(tool_name)
         timeout = _resolve_tool_timeout(tool_name, args, timeout_class)
+        requirement = self._tool_context_requirement(tool_ref)
+        call_args = (
+            conn.authorize_args(tool_name, args, context)
+            if requirement != "none"
+            else dict(args)
+        )
 
         def _reconnect(failed_connection):
             failed_connection.close()
@@ -392,7 +371,7 @@ class MCPClient:
             reconnect=_reconnect,
             tool_name=tool_name,
             tool_ref=tool_ref,
-            args=args,
+            args=call_args,
             timeout=timeout,
             context=context,
             normalizer=normalizer,
@@ -411,6 +390,14 @@ class MCPClient:
             policy.get("phases", ["all"]) if isinstance(policy, dict) else ["all"]
         )
         return _phase_matches(tool_phases, phase)
+
+    def _tool_context_requirement(self, tool_ref: str) -> str:
+        metadata = self._tool_metadata_by_ref.get(tool_ref, {})
+        policy = metadata.get("policy")
+        if not isinstance(policy, dict):
+            return "none"
+        requirement = str(policy.get("context_requirement") or "none")
+        return requirement if requirement in {"none", "run", "node"} else "none"
 
     def _artifact_store_for_call(self) -> ArtifactStore | None:
         if self._artifact_store is not None:
@@ -452,6 +439,8 @@ class MCPClient:
     def to_claude_mcp_config(
         self,
         phase: str | None = None,
+        *,
+        context: ToolCallContextV1 | None = None,
     ) -> tuple[dict, list[str]]:
         """Render this registry for Claude CLI's native MCP interface."""
 
@@ -462,6 +451,7 @@ class MCPClient:
         return build_claude_mcp_config(
             skills=self.skills,
             connections=self._connections,
-            visible_tools=self.list_tools(phase=phase),
+            visible_tools=self.list_tools(phase=phase, context=context),
             phase=phase,
+            context=context,
         )

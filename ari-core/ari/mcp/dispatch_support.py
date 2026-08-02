@@ -154,20 +154,6 @@ def resolve_tool_timeout(
     return DEFAULT_TOOL_TIMEOUT
 
 
-COW_TOOLS = frozenset(
-    {
-        "add_memory",
-        "clear_node_memory",
-        "add_experiment_result",
-        "add_failure_case",
-        "add_procedure_memory",
-        "add_reflection",
-        "add_reproducibility_event",
-        "consolidate_node_memory",
-    }
-)
-
-
 def log_tool_call(log: logging.Logger, tool_name: str, args: dict) -> None:
     """Emit bounded argument diagnostics for selected propagation-sensitive tools."""
 
@@ -190,7 +176,7 @@ def default_call_context(node_id: str | None = None) -> ToolCallContextV1:
     run_id = Path(checkpoint_dir.rstrip(os.sep)).name if checkpoint_dir else ""
     return ToolCallContextV1(
         run_id=run_id,
-        node_id=node_id or os.environ.get("ARI_CURRENT_NODE_ID") or None,
+        node_id=node_id,
     )
 
 
@@ -215,7 +201,6 @@ def enrich_call_context(
 
 
 __all__ = [
-    "COW_TOOLS",
     "DEFAULT_TOOL_TIMEOUT",
     "MAX_RETRIES",
     "RETRY_DELAY",

@@ -330,36 +330,59 @@ def test_mcp_client_types_timeout_and_cancellation(
     assert len(connection.calls) == expected_calls
 
 
-class _CowConnection(_FakeConnection):
+class _ContextConnection(_FakeConnection):
+    def __init__(self, skill: SkillConfig, response: dict):
+        super().__init__(skill, response)
+        self.contexts = []
+
     def list_tools(self) -> list[dict]:
         return [
             {
-                "name": name,
+                "name": "add_memory",
                 "description": "fixture",
                 "inputSchema": {"type": "object"},
                 "skill_name": self.skill.name,
             }
-            for name in ("_set_current_node", "add_memory")
         ]
 
+    def authorize_args(self, tool_name, args, context):
+        self.contexts.append(context)
+        return {**args, "ari_context": {"transport_injected": True}}
 
-def test_immutable_tool_ref_preserves_cow_set_and_write_pair(monkeypatch):
-    skill = SkillConfig(name="memory", package="ari-skill-memory", path="/tmp/memory")
-    connection = _CowConnection(skill, {"result": "ok"})
+
+def test_immutable_tool_ref_preserves_explicit_node_context(monkeypatch):
+    from ari.call_context import ToolCallContextV1
+
+    skill = SkillConfig(
+        name="memory",
+        package="ari-skill-memory",
+        path="/tmp/memory",
+        tool_policies={
+            "add_memory": {
+                "phases": ["bfts"],
+                "context_requirement": "node",
+            }
+        },
+    )
+    connection = _ContextConnection(skill, {"result": "ok"})
     client = MCPClient([skill])
     monkeypatch.setattr(client, "_init_connection", lambda _skill: connection)
     add_memory_ref = next(
         tool["tool_ref"] for tool in client.list_tools() if tool["name"] == "add_memory"
     )
 
+    context = ToolCallContextV1.for_node(
+        run_id="run-1",
+        node_id="node-1",
+        phase="bfts",
+    )
     envelope = client.call_tool_envelope(
         add_memory_ref,
         {"node_id": "node-1", "text": "fact"},
-        cow_node_id="node-1",
+        context=context,
     )
 
     assert envelope.status == "ok"
-    assert [call[0] for call in connection.calls] == [
-        "_set_current_node",
-        "add_memory",
-    ]
+    assert [call[0] for call in connection.calls] == ["add_memory"]
+    assert connection.calls[0][1]["ari_context"] == {"transport_injected": True}
+    assert connection.contexts == [context.model_copy(update={"selection_reason": "immutable-tool-ref"})]

@@ -15,9 +15,7 @@ def test_backup_restore_roundtrip(ckpt_env, monkeypatch):
     from ari_skill_memory.backends import get_backend
 
     b = get_backend(checkpoint_dir=ckpt_env)
-    monkeypatch.setenv("ARI_CURRENT_NODE_ID", "root")
     b.add_memory("root", "alpha", {"k": "v"})
-    monkeypatch.setenv("ARI_CURRENT_NODE_ID", "child")
     b.add_memory("child", "beta", {"q": 1})
     b.react_add("ran kernel", {"node_id": "root"})
 

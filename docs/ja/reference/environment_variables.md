@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
-last_verified: 2026-07-03
+last_verified: 2026-08-02
 ---
 
 # 環境変数リファレンス
@@ -106,7 +106,6 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 | `ARI_MEMORY_AUTO_RESTORE` | resume 時に `memory_backup.jsonl.gz` から自動復元 |
 | `ARI_MEMORY_ACCESS_LOG` | `memory_access.jsonl` へのパス |
 | `ARI_MEMORY_CONSOLIDATE` | 型付きメモリの統合 + 論文クレーム向けのアーティファクト裏付け済み `verified_context.json`。**デフォルト有効**；`0`/`false`/`no`/`off` で無効化 |
-| `ARI_CURRENT_NODE_ID` | エージェントループが設定；スキルは読み取るのみで設定しない |
 | `ARI_LETTA_VENV` | バンドル済み Letta サーバの仮想環境パス |
 
 ### 査読ルーブリック + 論文査読

@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-skill-memory
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # メモリアーキテクチャ
@@ -29,16 +29,16 @@ root ──▶ memory["root"]
 - `ari_react_<ckpt_hash>` — チェックポイント単位のフラットな ReAct トレース（`LettaMemoryClient`、祖先フィルタなし）。
 
 これら 2 つのコレクションを通る読み書き経路（`HASH` = チェックポイントハッシュ。
-祖先スコープを担保するのは書き込みガードと post-filter です）:
+署名付きコンテキスト検証と post-filter がスコープを担保します）:
 
 ```mermaid
 flowchart LR
-    node["実行中ノード<br/>(= ARI_CURRENT_NODE_ID)"]
+    node["実行中ノード<br/>(署名付き NodeContext)"]
     subgraph letta["チェックポイント単位の Letta エージェント"]
         nodecol["ari_node_HASH<br/>祖先スコープ archival"]
         reactcol["ari_react_HASH<br/>フラットな ReAct トレース"]
     end
-    node -->|"add_memory (CoW: node_id は current と一致必須)"| nodecol
+    node -->|"add_memory (署名付き self node のみ)"| nodecol
     node -->|"ReAct ステップ"| reactcol
     node -->|"search_memory(query, ancestor_ids)"| search["passages.search<br/>embed_query, top_k = max(overfetch, limit*40)"]
     search --> nodecol
@@ -47,7 +47,15 @@ flowchart LR
 
 エージェントはコアメモリブロック（`persona` + `human` + `ari_context`）に、最初のノードの `generate_ideas` が完了したタイミング（`primary_metric` が確定する時点）で実験目的・主要メトリック・ハードウェア仕様を seed します。スキルは `get_experiment_context()` で検索コストを払わずに読めますが、seed が走るまでは `{}` を返します。
 
-**Copy-on-Write**: 書き込み側ツールは `node_id` ≠ `$ARI_CURRENT_NODE_ID` を reject するので、祖先エントリは兄弟ノード間でバイト安定です。同じ理由で Letta の self-edit パスはデフォルト無効化されています。
+**Copy-on-Write**: すべてのメモリ呼び出しは、明示的な
+`RunContextV1` と `NodeContextV1` を持ちます。ノードコンテキストは
+`run_id`、self node、親、root から親まで順序付けられた祖先リストを
+`lineage_digest` に束縛します。ari-core はモデルがツール引数を生成した後、
+接続ごとの署名付き capability を注入し、メモリ Skill は I/O の前に検証します。
+書き込み先は self のみ、読み取り対象は署名済み lineage（ツールによっては self
+も含む）のみに制限されます。可変なプロセスグローバルのノード変数がないため、
+並行する兄弟同士が競合したり互いを認可したりすることはありません。受理済み
+エントリをバイト安定に保つため、Letta の self-edit は引き続き無効です。
 
 **ポータビリティ**: 各チェックポイントは `memory_backup.jsonl.gz` スナップショットを携行し、`ari resume` 時に対象 Letta が空であれば自動 restore されます。これにより `cp -r checkpoints/foo /elsewhere/` + `ari resume` が動き続けます。
 

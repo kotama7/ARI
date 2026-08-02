@@ -14,7 +14,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # ARI 架构
@@ -802,15 +802,27 @@ Workflow:
 
 注意 `get_experiment_context()` 载荷（`primary_metric`、`higher_is_better`、`metric_rationale`、`hardware_spec`）**已不再** 在此列表中 —— 它现在作为上述工作上下文注入的 Tier 1a 对每个节点自动注入。
 
-### CoW 桥接 — 与记忆技能保持同步
+### 显式调用上下文 — 安全授权记忆
 
-在 LLM 往返开始之前，`loop.py:378-381` 发出：
+节点开始时，loop 构造一个不可变上下文：
 
 ```python
-self.mcp.call_tool("_set_current_node", {"node_id": node.id})
+context = ToolCallContextV1.for_node(
+    run_id=run_id,
+    node_id=node.id,
+    parent_node_id=node.parent_id,
+    ancestor_node_ids=node.ancestor_ids,
+    phase="bfts",
+)
+self.mcp.call_tool("add_memory", args, context=context)
 ```
 
-这是 `ari-skill-memory` 暴露的内部工具；它更新池化技能子进程内的 `$ARI_CURRENT_NODE_ID`，使任何后续 `add_memory(node_id=...)` 调用可以针对活跃节点进行 CoW 验证。代理永远看不到此工具 ── 它被 `_INTERNAL_MCP_TOOLS` 从 `tool_desc` 中过滤。
+`MCPClient` 检查清单的 `context_requirement`，使用按连接的 authority
+对上下文签名，并注入仅供传输的 `ari_context` 参数。该参数会从
+模型可见的工具 schema 中删除。对于 Claude 的 direct MCP 路径，
+`secure_stdio_proxy` 会生成自己的 authority 并完成相同注入，因此密钥不会
+进入 shim 配置。记忆技能在 I/O 前验证签名、工具绑定、run identity 与
+lineage digest，再强制 self-write 和 ancestor-read 规则。
 
 ### Soft 强制 vs Hard 强制
 
@@ -818,8 +830,8 @@ self.mcp.call_tool("_set_current_node", {"node_id": node.id})
 
 | 规则 | 强制方式 |
 |-----|---------|
-| 不能为其他节点写记忆 | **Hard** — 后端拒绝 `node_id` ≠ `$ARI_CURRENT_NODE_ID` |
-| 不能读取兄弟记忆 | **Hard** — `search_memory` 按 `ancestor_ids` 过滤 |
+| 不能为其他节点写记忆 | **Hard** — 签名的 `NodeContext` 必须将写入目标标识为 self |
+| 不能读取兄弟记忆 | **Hard** — 请求 ID 必须位于签名 lineage 内，然后 storage 按这些 ID 过滤 |
 | `generate_ideas` 最多调用一次 | **Hard** — 首次后 `_suppress_tools` 排除 |
 | 子节点不应调用 `survey` | **Soft** — 仅文字（"parent already completed the survey"）；工具仍在 `tool_desc` 中 |
 | 子节点应实现而非计划 | **Soft** — 仅文字；依赖系统提示的 `RULES` 块 |

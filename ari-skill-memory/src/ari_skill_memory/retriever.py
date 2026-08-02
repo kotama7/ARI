@@ -25,6 +25,7 @@ def search_research_memory(
     kinds: list[str] | None = None,
     require_artifacts: bool = False,
     limit: int = 5,
+    reader_node_id: str = "",
 ) -> dict:
     """Ancestor-scoped semantic search, post-filtered by kind / artifacts.
 
@@ -32,7 +33,12 @@ def search_research_memory(
     post-filter still returns up to ``limit`` matches.
     """
     overfetch = max(limit * 8, 40)
-    raw = backend.search_memory(query, ancestor_ids, limit=overfetch)
+    raw = backend.search_memory(
+        query,
+        ancestor_ids,
+        limit=overfetch,
+        reader_node_id=reader_node_id,
+    )
     kinds_set = set(kinds) if kinds else None
     out: list[dict] = []
     for r in raw.get("results", []) or []:
@@ -52,6 +58,7 @@ def ancestor_typed_memory(
     ancestor_ids: list[str],
     *,
     kinds: list[str] | None = None,
+    reader_node_id: str = "",
 ) -> list[dict]:
     """Deterministic, full handoff of ancestor entries of the given kinds.
 
@@ -59,7 +66,10 @@ def ancestor_typed_memory(
     ``ancestor_ids`` (root → parent). This is the typed form of the loop's
     Tier-1(b) ancestor-core path.
     """
-    by_node = backend.bulk_get_node_memory(list(ancestor_ids)).get("by_node", {})
+    by_node = backend.bulk_get_node_memory(
+        list(ancestor_ids),
+        reader_node_id=reader_node_id,
+    ).get("by_node", {})
     kinds_set = set(kinds) if kinds else None
     out: list[dict] = []
     for aid in ancestor_ids:
@@ -77,7 +87,7 @@ def ancestor_typed_memory(
 
 
 def fold_reproducibility(
-    backend: Any, ancestor_ids: list[str]
+    backend: Any, ancestor_ids: list[str], *, reader_node_id: str = ""
 ) -> dict[str, dict]:
     """Resolve the latest reproducibility status per target memory id.
 
@@ -85,7 +95,12 @@ def fold_reproducibility(
     keeps the most recent (by ``ts`` if present, else insertion order) per
     ``repro_target_id``.
     """
-    events = ancestor_typed_memory(backend, ancestor_ids, kinds=["reproducibility_event"])
+    events = ancestor_typed_memory(
+        backend,
+        ancestor_ids,
+        kinds=["reproducibility_event"],
+        reader_node_id=reader_node_id,
+    )
     latest: dict[str, dict] = {}
     for i, e in enumerate(events):
         md = e["metadata"]

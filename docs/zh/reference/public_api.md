@@ -4,7 +4,15 @@ sources:
     role: implementation
   - path: ari-core/tests/test_public_api_boundary.py
     role: test
-last_verified: 2026-06-10
+  - path: ari-core/ari/result.py
+    role: implementation
+  - path: ari-core/ari/call_context.py
+    role: implementation
+  - path: ari-core/ari/skill_lock.py
+    role: implementation
+  - path: ari-core/ari/skill_manifest.py
+    role: implementation
+last_verified: 2026-08-02
 ---
 
 # `ari.public` — 面向技能的稳定 API
@@ -20,6 +28,11 @@ last_verified: 2026-06-10
 | `ari.public.cost_tracker` | LLM 成本记录（`bootstrap_skill`、`record` 等） | `ari-skill-plot`（LLM 调用成本） |
 | `ari.public.llm` | `LLMClient`（带成本集成的 LiteLLM 封装） | 偏好使用 ARI 封装的调用方 |
 | `ari.public.paths` | `PathManager`（检查点路径解析器） | 需要作用域路径的调用方 |
+| `ari.public.run_env` | run 环境捕获与 shell export 辅助函数 | sandbox / executor 技能 |
+| `ari.public.call_context` | `RunContextV1`、`NodeContextV1`、签名 tool-context 验证辅助函数 | 控制平面与 context-aware 技能 |
+| `ari.public.result` | `ResultEnvelopeV1`、内容寻址工件引用、类型化错误、调用来源 | 技能适配器与联邦 dispatch 调用方 |
+| `ari.public.skill_lock` | `SkillsLockV1`、锁定 provider/tool 记录、原子 create-or-verify | run launcher、federation adapter、replay 工具 |
+| `ari.public.skill_manifest` | 版本化技能清单模型、loader、digest 与安全 entrypoint resolver | 内置 / 联邦 MCP 技能 |
 | `ari.public.claim_gate` | 确定性主张-证据硬门控（`run_hard_gate`）＋ 概念→不变量注册表（`classify_concept`、`scan_science_data`、`CONCEPT_INVARIANTS`） | `ari-skill-evaluator`、`ari-skill-transform` |
 | `ari.public.verified_context` | 已验证上下文辅助函数（`render_grounded_block`、`write_verified_context`、`build_verified_context`） | `ari-skill-paper` |
 
@@ -102,6 +115,68 @@ nodes_json = paths.checkpoint / "nodes_tree.json"
 ```
 
 `PathManager` 是核心解析器 — 技能中绝不要直接读取 `ARI_CHECKPOINT_DIR`。来源：`ari-core/ari/paths.py` → `ari-core/ari/public/paths.py`。
+
+## `ari.public.skill_manifest`
+
+`skill.yaml` 是规范 package contract。consumer 通过公共 API 读取它，而不是直接
+解析 YAML 或扫描 `server.py`：
+
+```python
+from ari.public.skill_manifest import load_skill_manifest, manifest_digest
+
+manifest = load_skill_manifest("ari-skill-coding/skill.yaml")
+tool = manifest.tool("run_code")
+identity = manifest_digest(manifest)
+```
+
+`SkillManifestV1` 验证 package identity、package-relative Python stdio entrypoint、
+完整的普通环境声明、互不重叠的 credential scope、唯一 tool 名、
+capability reference、phase、side effect、determinism、timeout class、permission 与
+result schema。内置 production 技能必须使用 `environment_policy=complete`。
+每个已解析 tool 还以 `none` / `run` / `node` 声明 `context_requirement`；
+调用方未提供对应结构化上下文时，dispatch 会 fail closed。legacy manifest
+只能由显式传入 `allow_legacy=True` 的 migration 调用方读取；admission / CI 不允许。
+
+## `ari.public.call_context` 与 `ari.public.result`
+
+新 dispatch 代码使用类型化 result contract；历史字典 API 作为无损兼容投影保留：
+
+```python
+from ari.public.call_context import ToolCallContextV1
+
+tool = client.list_tools()[0]
+envelope = client.call_tool_envelope(
+    tool["tool_ref"],
+    {"query": "example"},
+    context=ToolCallContextV1.for_node(
+        run_id="run-1",
+        node_id="node-1",
+        parent_node_id="root",
+        ancestor_node_ids=["root"],
+        phase="bfts",
+    ),
+)
+```
+
+`RunContextV1` 将 logical run 绑定到 `run_scope_digest`；`NodeContextV1` 将 self、
+parent 以及 root 到 parent 的有序 chain 绑定到 `lineage_digest`。
+`MCPClient` 将它转换为 tool-bound、per-connection HMAC capability，技能通过
+`verify_tool_context` 验证。签名密钥由 transport 拥有，不属于公共数据 contract。
+规范 schema 为 `ari-core/ari/schemas/call_context_v1.schema.json`。
+
+`ResultEnvelopeV1` 记录 status、structured content、类型化 error、不可变
+`tool_ref`、run/node/phase context、selection reason、timing 与 SHA-256 response digest。
+credential 只记录 scope ID，不记录值。超过 4,000 字符的 raw content 会被
+外置到内容寻址工件，`materialize_content(store)` 验证 digest 与 byte size 后恢复。
+
+## `ari.public.skill_lock`
+
+`SKILLS.lock` 是 live MCP handshake 后创建的确定性 checkpoint-level snapshot。
+`SkillsLockV1` 将 canonical manifest 与精确的 live input/output schema 及逐 phase
+admitted `tool_ref` 集合绑定。`write_or_verify_skills_lock()` 原子创建首个 snapshot，
+此后要求 byte-equivalent semantics。drift 和 corruption 分别以
+`SkillLockMismatchError` / `SkillLockCorruptError` 报告。`LockedCredentialScopeV1`
+只记录 scope identity 与已声明/存在的环境名，不包含 credential 值。
 
 ## `ari.public.claim_gate`
 

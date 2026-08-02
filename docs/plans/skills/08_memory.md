@@ -8,12 +8,14 @@ sources:
     role: doc
   - path: ari-core/ari/mcp/client.py
     role: implementation
+  - path: ari-core/ari/call_context.py
+    role: implementation
 last_verified: 2026-08-02
 ---
 
 # C08: `ari-skill-memory` 実装計画
 
-> 状態: Proposed。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
+> 状態: In progress（C08-01/02/03完了、C08-07のparallel isolation完了）。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
 
 ## 1. 責務
 
@@ -22,9 +24,12 @@ BFTS lineageに沿ったancestor-scoped memory、typed research memory、artifac
 ## 2. 現状と課題
 
 - Letta production backendとtest-only in-memory backendを持つ。
-- write CoWはprocess-global `ARI_CURRENT_NODE_ID` とprivate `_set_current_node` toolに依存し、core側がlockで直列化する。
+- node-scoped MCP tool は tool-bound 署名付き `NodeContextV1` を I/O 前に検証し、
+  writeはself、readは署名済みlineageのみを許可する。可変なprocess-global
+  node stateとset-node toolは存在しない。
 - typed memoryはprovenanceを持つが、embedding/retrieval versionによりrankingはbit reproducibleでない。
-- MCP tool listがmanifestの4 toolを大幅に上回り、driftがある。
+- canonical manifest は14 tool全てとrun/node context requirementを列挙し、
+  generated `mcp.json` と live list のdriftはconformance gateで検出する。
 - Letta local deployment modeとcompat/migration surfaceが広く、support期限を明確にする必要がある。
 
 ## 3. 目標契約
@@ -35,9 +40,9 @@ BFTS lineageに沿ったancestor-scoped memory、typed research memory、artifac
 
 | ID | 作業 | 成果物 |
 |---|---|---|
-| C08-01 | runtime tool / manifest inventory |全typed toolを含むcanonical manifest |
-| C08-02 | explicit context API | env globalに依存しないCoW validation |
-| C08-03 | lineage proof | ancestor digest、sibling isolation、run boundary |
+| C08-01 | **完了**: runtime tool / manifest inventory |全typed toolを含むcanonical manifest |
+| C08-02 | **完了**: explicit context API | env globalに依存しないCoW validation |
+| C08-03 | **完了**: lineage proof | ancestor digest、sibling isolation、run boundary |
 | C08-04 | record schema versioning | typed memory migration、artifact integrity |
 | C08-05 | retrieval provenance | embedding/backend/version、filter trace、bounded result |
 | C08-06 | backup/restore portability | content digest、conflict policy、offline restore |
@@ -46,14 +51,14 @@ BFTS lineageに沿ったancestor-scoped memory、typed research memory、artifac
 
 ## 5. 受け入れ基準
 
-- [ ] 4 parallel nodesが共有processでwriteしてもsibling contaminationがない。
-- [ ] callerが偽node IDを渡したwriteをlineage/context checkで拒否する。
-- [ ] claim用contextはartifact-backedかつrerun-failedでないrecordだけを区別する。
+- [x] 4 parallel nodesが共有processでwriteしてもsibling contaminationがない。
+- [x] callerが偽node IDを渡したwriteをlineage/context checkで拒否する。
+- [x] claim用contextはartifact-backedかつrerun-failedでないrecordだけを区別する。
 - [ ] retrievalの非決定性を隠さずbackend/model/versionを記録する。
 - [ ] backupを新しいclean environmentへrestoreし、record digestが一致する。
-- [ ] deleted/missing artifactをauditが検出し、memory textだけを証拠扱いしない。
-- [ ] manifestとlive tool listが完全一致する。
-- [ ] `PYTHONPATH=ari-skill-memory/src pytest ari-skill-memory/tests -q` がgreenである。
+- [x] deleted/missing artifactをauditが検出し、memory textだけを証拠扱いしない。
+- [x] manifestとlive tool listが完全一致する。
+- [x] `PYTHONPATH=ari-skill-memory/src pytest ari-skill-memory/tests -q` がgreenである。
 
 ## 6. 削除要件
 
@@ -61,9 +66,9 @@ BFTS lineageに沿ったancestor-scoped memory、typed research memory、artifac
 
 | ID | 削除対象 | 置換先 | 最早phase | 削除gate |
 |---|---|---|---|---|
-| C08-D1 | private MCP tool `_set_current_node` | explicit `NodeContext` | P3 |parallel CoW suite、core caller 0 |
-| C08-D2 | `ARI_CURRENT_NODE_ID` をauthorization sourceにするpath | signed/validated call context | P3 |env spoof negative test、全write migration |
-| C08-D3 | manifestの4-tool限定stale declaration | canonical full manifest | P1 |live list完全一致 |
+| C08-D1 | **完了**: private MCP tool `_set_current_node` | explicit `NodeContext` | P3 |parallel CoW suite、core caller 0 |
+| C08-D2 | **完了**: `ARI_CURRENT_NODE_ID` をauthorization sourceにするpath | signed/validated call context | P3 |env spoof negative test、全write migration |
+| C08-D3 | **完了**: manifestの4-tool限定stale declaration | canonical full manifest | P1 |live list完全一致 |
 | C08-D4 | support済みcheckpointで不要になったlegacy memory migration runtime hook | offline migration command | P6 |support window、migration fixture、runtime caller 0 |
 | C08-D5 | productionで選択可能なtest-only in-memory backend | test namespace only | P3 |production config rejection、unit testsは保持 |
 | C08-D6 |期限切れlocal deployment fallback | supported deployment path | P6 |usage/issue確認、migration guide、clean deploy test |

@@ -257,13 +257,7 @@
     "ari-skill-memory": [
       {
         "args": [
-          "node_id"
-        ],
-        "idiom": "fastmcp",
-        "name": "_set_current_node"
-      },
-      {
-        "args": [
+          "ari_context",
           "artifact_refs",
           "metric_ptr",
           "node_id",
@@ -275,6 +269,7 @@
       },
       {
         "args": [
+          "ari_context",
           "artifact_refs",
           "node_id",
           "node_report_ref",
@@ -285,6 +280,7 @@
       },
       {
         "args": [
+          "ari_context",
           "metadata",
           "node_id",
           "text"
@@ -294,6 +290,7 @@
       },
       {
         "args": [
+          "ari_context",
           "node_id",
           "node_report_ref",
           "text"
@@ -303,6 +300,7 @@
       },
       {
         "args": [
+          "ari_context",
           "confidence",
           "node_id",
           "node_report_ref",
@@ -313,6 +311,7 @@
       },
       {
         "args": [
+          "ari_context",
           "artifact_refs",
           "node_id",
           "status",
@@ -324,6 +323,7 @@
       },
       {
         "args": [
+          "ari_context",
           "experiments_root",
           "run_id"
         ],
@@ -332,6 +332,7 @@
       },
       {
         "args": [
+          "ari_context",
           "node_id"
         ],
         "idiom": "fastmcp",
@@ -339,6 +340,7 @@
       },
       {
         "args": [
+          "ari_context",
           "node_id",
           "node_report",
           "run_id",
@@ -348,12 +350,15 @@
         "name": "consolidate_node_memory"
       },
       {
-        "args": [],
+        "args": [
+          "ari_context"
+        ],
         "idiom": "fastmcp",
         "name": "get_experiment_context"
       },
       {
         "args": [
+          "ari_context",
           "node_id"
         ],
         "idiom": "fastmcp",
@@ -362,6 +367,7 @@
       {
         "args": [
           "ancestor_ids",
+          "ari_context",
           "limit",
           "purpose"
         ],
@@ -371,6 +377,7 @@
       {
         "args": [
           "ancestor_ids",
+          "ari_context",
           "limit",
           "query"
         ],
@@ -380,6 +387,7 @@
       {
         "args": [
           "ancestor_ids",
+          "ari_context",
           "kinds",
           "limit",
           "query",

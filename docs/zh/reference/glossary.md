@@ -20,7 +20,7 @@ sources:
     role: implementation
   - path: ari-skill-memory
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # 术语表
@@ -118,8 +118,9 @@ LLM 评判器（它从 `continue` / `switch_to_idea` / `fanout` / `terminate` �
 [内存架构](../concepts/memory.md)。
 
 **CoW (Copy-on-Write，写时复制)**
-使祖先内存在各兄弟节点间保持字节稳定的写入保护：写入侧工具会拒绝任何不等于当前活跃
-`$ARI_CURRENT_NODE_ID` 的 `node_id`。参见 [内存架构](../concepts/memory.md)。
+使祖先内存在各兄弟节点间保持字节稳定的写入保护：写入侧工具要求一个签名的
+`NodeContextV1`，其 self node 必须与写入目标一致。同一上下文还会将有序
+祖先列表绑定到 lineage digest。参见 [内存架构](../concepts/memory.md)。
 
 **Letta**
 自 v0.6.0 起使用的内存后端（前身为 MemGPT）。每个检查点都获得一个专属的代理，持有两个集合：`ari_node_<hash>`（祖先范围的归档）和 `ari_react_<hash>`（扁平 ReAct 轨迹）。参见

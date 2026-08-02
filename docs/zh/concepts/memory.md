@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-skill-memory
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # 记忆架构
@@ -28,16 +28,16 @@ root ──▶ memory["root"]
 - `ari_node_<ckpt_hash>` — 节点作用域的 archival 集合，使用上述祖先作用域元数据过滤器。
 - `ari_react_<ckpt_hash>` — 每个检查点的扁平 ReAct 轨迹（`LettaMemoryClient`，不做祖先过滤）。
 
-经由这两个集合的读写路径（`HASH` = 检查点哈希；保证祖先作用域的是写入守卫与 post-filter）：
+经由这两个集合的读写路径（`HASH` = 检查点哈希；签名上下文验证与 post-filter 共同保证作用域）：
 
 ```mermaid
 flowchart LR
-    node["执行中的节点<br/>(= ARI_CURRENT_NODE_ID)"]
+    node["执行中的节点<br/>(签名 NodeContext)"]
     subgraph letta["每个检查点的 Letta 代理"]
         nodecol["ari_node_HASH<br/>祖先作用域 archival"]
         reactcol["ari_react_HASH<br/>扁平 ReAct 轨迹"]
     end
-    node -->|"add_memory (CoW: node_id 必须 == current)"| nodecol
+    node -->|"add_memory (仅签名的 self node)"| nodecol
     node -->|"ReAct 步骤"| reactcol
     node -->|"search_memory(query, ancestor_ids)"| search["passages.search<br/>embed_query, top_k = max(overfetch, limit*40)"]
     search --> nodecol
@@ -46,7 +46,13 @@ flowchart LR
 
 代理还会向核心记忆块（`persona` + `human` + `ari_context`）种入实验目标、主要指标和硬件规格 ── 时机为首个节点的 `generate_ideas` 完成时（即 `primary_metric` 被确定的时刻）。技能可通过 `get_experiment_context()` 读取，无需付出搜索成本；在 seed 执行之前调用会返回 `{}`。
 
-**Copy-on-Write**：写端工具拒绝 `node_id` ≠ `$ARI_CURRENT_NODE_ID` 的写入，因此祖先条目在兄弟节点之间保持字节稳定；出于同样的原因，Letta 自编辑默认禁用。
+**Copy-on-Write**：每次记忆调用都携带显式的 `RunContextV1` 和
+`NodeContextV1`。节点上下文将 `run_id`、self node、父节点以及从 root
+到父节点的有序祖先列表绑定到 `lineage_digest`。模型生成工具参数后，
+ari-core 注入按连接签名的 capability，记忆技能在任何 I/O 之前验证它。
+写入仅能以 self 为目标，读取仅能指定签名 lineage（工具允许时加上 self）。
+不存在可变的进程级全局节点变量，因此并行兄弟不会竞争，也无法相互授权。
+Letta 自编辑仍被禁用，以保持已接受条目的字节稳定性。
 
 **可移植性**：每个检查点都携带 `memory_backup.jsonl.gz` 快照，在 `ari resume` 时若目标 Letta 为空将自动恢复 ── 让 `cp -r checkpoints/foo /elsewhere/` + `ari resume` 持续可用。
 

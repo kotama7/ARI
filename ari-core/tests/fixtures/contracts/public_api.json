@@ -69,6 +69,7 @@
     "ari.public.result": [
       "ARTIFACT_REF_V1",
       "DEFAULT_INLINE_RESULT_LIMIT",
+      "NodeContextV1",
       "RAW_RESULT_ROLE",
       "RESULT_ENVELOPE_V1",
       "ResultArtifactIntegrityError",
@@ -78,6 +79,7 @@
       "ResultErrorKind",
       "ResultErrorV1",
       "ResultProvenanceV1",
+      "RunContextV1",
       "SHA256_DIGEST_PATTERN",
       "ToolCallContextV1",
       "utc_now_iso"

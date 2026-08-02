@@ -6,8 +6,8 @@ modify the backend or re-store node_report fields — heavy provenance stays
 in node_report (pointed at by ``node_report_ref``).
 
 Caller is a loop/pipeline hook (PLAN §2 principle 8/9), never relied upon to
-be an LLM action. CoW still applies: ``node_id`` must equal
-``$ARI_CURRENT_NODE_ID`` at write time.
+be an LLM action. The MCP boundary validates a signed NodeContext before these
+trusted backend helpers are reached.
 """
 from __future__ import annotations
 

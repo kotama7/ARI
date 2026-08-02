@@ -989,19 +989,28 @@ Note that the `get_experiment_context()` payload (`primary_metric`,
 this list — it is now auto-injected for every node as Tier 1a of the
 working-context injection above.
 
-### CoW bridge — keeping the memory skill in sync
+### Explicit call context — authorizing memory safely
 
-Right before the LLM round-trip starts, `loop.py:378-381` issues:
+At the start of a node, the loop constructs one immutable context:
 
 ```python
-self.mcp.call_tool("_set_current_node", {"node_id": node.id})
+context = ToolCallContextV1.for_node(
+    run_id=run_id,
+    node_id=node.id,
+    parent_node_id=node.parent_id,
+    ancestor_node_ids=node.ancestor_ids,
+    phase="bfts",
+)
+self.mcp.call_tool("add_memory", args, context=context)
 ```
 
-This is an internal tool exposed by `ari-skill-memory`; it updates
-`$ARI_CURRENT_NODE_ID` inside the pooled skill subprocess so any
-subsequent `add_memory(node_id=...)` call can be CoW-validated against
-the active node. The agent never sees this tool; it is filtered out of
-`tool_desc` by `_INTERNAL_MCP_TOOLS`.
+`MCPClient` checks the manifest's `context_requirement`, signs this context
+with a per-connection authority, and injects the transport-only `ari_context`
+argument. It is removed from model-facing tool schemas. For Claude's direct MCP
+path, `secure_stdio_proxy` generates its own authority and performs the same
+injection, so the key never enters the shim configuration. The memory skill
+verifies the signature, tool binding, run identity, and lineage digest before
+enforcing self-write and ancestor-read rules.
 
 ### Soft vs hard enforcement
 
@@ -1011,8 +1020,8 @@ debugging unexpected agent behaviour:
 
 | Rule | Enforcement |
 |------|-------------|
-| Cannot write memory for another node | **Hard** — backend rejects on `node_id` ≠ `$ARI_CURRENT_NODE_ID` |
-| Cannot read sibling memories | **Hard** — `search_memory` filters by `ancestor_ids` |
+| Cannot write memory for another node | **Hard** — signed `NodeContext` must identify the write target as self |
+| Cannot read sibling memories | **Hard** — requested IDs must be within the signed lineage, then storage filters by those IDs |
 | `generate_ideas` runs at most once | **Hard** — `_suppress_tools` after first call |
 | Children should not call `survey` | **Soft** — prose only ("parent already completed the survey"); the tool stays in `tool_desc` |
 | Children must implement, not plan | **Soft** — prose; relies on system-prompt `RULES` block |

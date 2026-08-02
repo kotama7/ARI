@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ari.agent.workflow import WorkflowHints
+from ari.call_context import ToolCallContextV1
 from ari.llm.client import LLMClient, LLMMessage
 from ari.mcp.client import MCPClient
 from ari.memory.client import MemoryClient
@@ -27,11 +28,6 @@ logger = logging.getLogger(__name__)
 
 MAX_REACT_STEPS = 80  # default; overridden per-instance via AgentLoop(max_react_steps=...)
 MIN_TOOL_CALLS = 2
-
-# MCP tools that the parent (ari-core) drives itself and must never be
-# exposed to the LLM — otherwise the model could set an arbitrary node
-# id and bypass the memory skill's CoW check.
-_INTERNAL_MCP_TOOLS = frozenset({"_set_current_node"})
 
 # Clearly placeholder strings (used to detect LLM-fabricated values)
 _FAKE_PATTERNS = [
@@ -397,15 +393,54 @@ class AgentLoop:
     # Tool filtering (Phase 3D — bodies in ari.agent.tool_manager)
     # ------------------------------------------------------------------
 
-    def _available_tools_openai(self, suppress: set | None = None, phase: str | None = None) -> list[dict]:
+    def _available_tools_openai(
+        self,
+        suppress: set | None = None,
+        phase: str | None = None,
+        context: ToolCallContextV1 | None = None,
+    ) -> list[dict]:
         from ari.agent.tool_manager import available_tools_openai as _at
-        return _at(self.mcp, suppress=suppress, phase=phase)
+        return _at(self.mcp, suppress=suppress, phase=phase, context=context)
 
     def _execute_tool_calls(
-        self, tool_calls: list[dict], node_id: str | None = None,
+        self,
+        tool_calls: list[dict],
+        context: ToolCallContextV1 | None = None,
     ) -> list[dict]:
         from ari.agent.tool_manager import execute_tool_calls as _et
-        return _et(self.mcp, tool_calls, node_id=node_id)
+        return _et(self.mcp, tool_calls, context=context)
+
+    def _node_tool_context(
+        self,
+        node: Node,
+        *,
+        phase: str,
+        run_id: str | None = None,
+    ) -> ToolCallContextV1:
+        """Build one immutable context shared by this node's tool calls."""
+
+        import os
+
+        explicit_run_id = str(
+            run_id or getattr(self, "run_id", "") or ""
+        ).strip()
+        checkpoint = str(
+            getattr(self, "checkpoint_dir", "")
+            or os.environ.get("ARI_CHECKPOINT_DIR", "")
+        ).strip()
+        run_id = explicit_run_id or (
+            Path(checkpoint.rstrip(os.sep)).name if checkpoint else ""
+        )
+        if not run_id:
+            root_id = (node.ancestor_ids or [node.id])[0]
+            run_id = f"node-lineage:{root_id}"
+        return ToolCallContextV1.for_node(
+            run_id=run_id,
+            node_id=node.id,
+            parent_node_id=node.parent_id,
+            ancestor_node_ids=node.ancestor_ids or [],
+            phase=phase,
+        )
 
     def _active_tools(
         self,
@@ -469,11 +504,6 @@ class AgentLoop:
         # Notify the orchestrator so tree.json picks up the RUNNING state
         # immediately (before the first LLM round-trip, which can take >30 s).
         self._notify_progress(force=True)
-        # NB: ARI_CURRENT_NODE_ID synchronization is now done per-call via
-        # MCPClient.call_tool(..., cow_node_id=node.id), which locks the
-        # (_set_current_node, write) pair so concurrent BFTS nodes don't
-        # race on the shared memory-skill env var. The previous once-per-
-        # run _set_current_node was unsafe at max_parallel_nodes > 1.
         # Inject work_dir BEFORE forking MCP servers (env snapshot taken at fork time).
         # Directory creation is handled by PathManager in cli.py; this only sets the env var.
         _work_dir_early = experiment.get("work_dir", "") if isinstance(experiment, dict) else ""
@@ -489,7 +519,16 @@ class AgentLoop:
         if _ckpt_early:
             import os as _os_ckpt
             _os_ckpt.environ["ARI_CHECKPOINT_DIR"] = str(_ckpt_early)
-        tools = self._available_tools_openai(suppress=getattr(self, "_suppress_tools", set()), phase="bfts")
+        tool_context = self._node_tool_context(
+            node,
+            phase="bfts",
+            run_id=str(experiment.get("run_id") or ""),
+        )
+        tools = self._available_tools_openai(
+            suppress=getattr(self, "_suppress_tools", set()),
+            phase="bfts",
+            context=tool_context,
+        )
         tool_names = [t["function"]["name"] for t in tools] if tools else []
         tool_desc = ", ".join(tool_names) if tool_names else "none"
         has_exec = any(n in ("run_bash", "run_code") for n in tool_names)
@@ -654,7 +693,11 @@ class AgentLoop:
         # the legacy `self.experiment_goal` attribute is never assigned in this class
         # (the old call sites only survived via short-circuit eval + try/except).
         messages.extend(build_working_context_messages(
-            self.mcp.call_tool,
+            lambda name, args: self.mcp.call_tool(
+                name,
+                args,
+                context=tool_context,
+            ),
             depth=node.depth,
             ancestor_ids=node.ancestor_ids or [],
             eval_summary=node.eval_summary,
@@ -853,6 +896,7 @@ class AgentLoop:
             response = self.llm.complete(
                 llm_msgs, tools=effective_tools, require_tool=(active is not None),
                 node_id=node.id, phase="react", skill="agent_loop",
+                call_context=tool_context,
             )
 
             if response.tool_calls:
@@ -884,7 +928,10 @@ class AgentLoop:
                     ],
                 })
 
-                results = self._execute_tool_calls(response.tool_calls, node_id=node.id)
+                results = self._execute_tool_calls(
+                    response.tool_calls,
+                    context=tool_context,
+                )
                 # Build args lookup by tool name for trace logging
                 _tc_args_by_name = {
                     tc.get("function", {}).get("name", ""): tc.get("function", {}).get("arguments", "")
@@ -938,7 +985,7 @@ class AgentLoop:
                             "node_id": node.id,
                             "text": f"Tool {r['name']}: {rc[:1000]}",
                             "metadata": {"step": step, "tool": r["name"]},
-                        }, cow_node_id=node.id)
+                        }, context=tool_context)
                     except Exception:
                         self.memory.add(
                             f"Tool {r['name']}: {rc[:1000]}",
@@ -977,7 +1024,7 @@ class AgentLoop:
                                         "node_id": node.id,
                                         "text": summary,
                                         "metadata": {"type": "survey_papers"},
-                                    }, cow_node_id=node.id)
+                                    }, context=tool_context)
                                 except Exception:
                                     self.memory.add(
                                         summary,
@@ -1371,7 +1418,10 @@ class AgentLoop:
                                     "arguments": json.dumps({"job_id": job_ids[-1]}),
                                 },
                             }]
-                            poll_results = self._execute_tool_calls(poll_tc, node_id=node.id)
+                            poll_results = self._execute_tool_calls(
+                                poll_tc,
+                                context=tool_context,
+                            )
                             rc2 = json.dumps(poll_results[0]["result"], ensure_ascii=False)
                             logger.info("Auto-poll job %s: %s", job_ids[-1], rc2[:100])
                             # OpenAI requires tool message to follow assistant message with tool_calls
@@ -1497,7 +1547,7 @@ class AgentLoop:
                             "node_id": node.id,
                             "text": f"RESULT SUMMARY node={node.id} label={node.label}: metrics=[{metrics_str}] summary={summary[:300]}",
                             "metadata": {"type": "result_summary", "metrics": node.metrics},
-                        }, cow_node_id=node.id)
+                        }, context=tool_context)
                     except Exception:
                         pass
                     node.mark_success(artifacts=artifacts, eval_summary=summary)
@@ -1566,7 +1616,7 @@ class AgentLoop:
                             "node_id": node.id,
                             "text": f"RESULT SUMMARY node={node.id} label={node.label}: metrics=[{_ms}] stdout={self._slurm_real_stdout[:300]}",
                             "metadata": {"type": "result_summary", "metrics": node.metrics},
-                        }, cow_node_id=node.id)
+                        }, context=tool_context)
                     except Exception:
                         pass
                     node.mark_success(
@@ -1584,7 +1634,7 @@ class AgentLoop:
                             "node_id": node.id,
                             "text": f"RESULT SUMMARY node={node.id} label={node.label}: metrics=[{_ms}] summary={summary[:300]}",
                             "metadata": {"type": "result_summary", "metrics": node.metrics},
-                        }, cow_node_id=node.id)
+                        }, context=tool_context)
                     except Exception:
                         pass
                     node.mark_success(
@@ -1632,7 +1682,7 @@ class AgentLoop:
                     "node_id": node.id,
                     "text": f"RESULT SUMMARY node={node.id} label={node.label}: metrics=[{_ms}] summary={summary[:300]}",
                     "metadata": {"type": "result_summary", "metrics": node.metrics},
-                }, cow_node_id=node.id)
+                }, context=tool_context)
             except Exception:
                 pass
             node.mark_success(

@@ -7,7 +7,6 @@
   "runtime": "python",
   "schema_version": 1,
   "tools": [
-    "_set_current_node",
     "add_experiment_result",
     "add_failure_case",
     "add_memory",

@@ -6,6 +6,8 @@ sources:
     role: test
   - path: ari-core/ari/result.py
     role: implementation
+  - path: ari-core/ari/call_context.py
+    role: implementation
   - path: ari-core/ari/skill_lock.py
     role: implementation
   - path: ari-core/ari/skill_manifest.py
@@ -32,6 +34,8 @@ by `ari-core/tests/test_public_api_boundary.py`.
 | `ari.public.cost_tracker` | LLM cost recording (`bootstrap_skill`, `record`, ...) | `ari-skill-plot` (LLM call cost) |
 | `ari.public.llm` | `LLMClient` (LiteLLM wrapper with cost integration) | callers that prefer ARI's wrapper |
 | `ari.public.paths` | `PathManager` (checkpoint path resolver) | callers that need scoped paths |
+| `ari.public.run_env` | run-environment capture and shell-export helpers | sandbox and executor Skills |
+| `ari.public.call_context` | `RunContextV1`, `NodeContextV1`, signed tool-context verification helpers | control plane and context-aware Skills |
 | `ari.public.result` | `ResultEnvelopeV1`, content-addressed artifact references, typed errors, call context, provenance | Skill adapters and federated dispatch callers |
 | `ari.public.skill_lock` | `SkillsLockV1`, locked provider/tool records, atomic create-or-verify helpers, typed lock failures | run launchers, federation adapters, replay tooling |
 | `ari.public.skill_manifest` | Versioned Skill manifest models, loader, digest, and safe entrypoint resolver | built-in and federated MCP Skill packages |
@@ -95,26 +99,43 @@ entrypoint, exhaustive ordinary environment declarations, disjoint named
 `CredentialScopeV1` declarations, unique tool names, capability references,
 phases, side effects, determinism, timeout class, permissions, and result schema.
 `environment_policy=complete` is required for built-in production Skills.
+Each resolved tool also declares `context_requirement` as `none`, `run`, or
+`node`; dispatch fails closed when the caller does not supply that structured
+context.
 `looks_like_credential_environment_name()` is the shared fail-closed classifier
 used by manifest admission and runtime environment construction.
 Legacy unversioned manifests are rejected unless a migration caller explicitly
 passes `allow_legacy=True`; admission and CI never enable that option.
 
-## `ari.public.result`
+## `ari.public.call_context` and `ari.public.result`
 
 New dispatch code uses the typed result contract; the historical dictionary API
 remains a lossless compatibility projection:
 
 ```python
-from ari.public.result import ToolCallContextV1
+from ari.public.call_context import ToolCallContextV1
 
 tool = client.list_tools()[0]
 envelope = client.call_tool_envelope(
     tool["tool_ref"],
     {"query": "example"},
-    context=ToolCallContextV1(run_id="run-1", node_id="node-1"),
+    context=ToolCallContextV1.for_node(
+        run_id="run-1",
+        node_id="node-1",
+        parent_node_id="root",
+        ancestor_node_ids=["root"],
+        phase="bfts",
+    ),
 )
 ```
+
+`RunContextV1` binds a logical run to `run_scope_digest`. `NodeContextV1`
+binds self, parent, and the ordered root-to-parent chain to
+`lineage_digest`. `MCPClient` turns the public context into a tool-bound,
+per-connection HMAC capability; Skills verify it through
+`verify_tool_context`. Signing keys are transport-owned and are never part of
+this public data contract. The normative context schema is
+`ari-core/ari/schemas/call_context_v1.schema.json`.
 
 `ResultEnvelopeV1` records status, structured content, typed error information,
 immutable `tool_ref`, run/node/phase context, selection reason, timing, and a
@@ -126,7 +147,7 @@ both digest and byte size before returning the full response. `MCPClient.call_to
 passes through the same normalization path and then returns the former
 `{"result": text}` / `{"error": message}` shape for existing callers.
 
-The normative machine-readable contract is
+The normative result contract is
 `ari-core/ari/schemas/result_envelope_v1.schema.json`.
 
 ## `ari.public.skill_lock`

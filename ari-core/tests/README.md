@@ -26,6 +26,7 @@ targets the like-named module under `ari/`.
 - `test_bfts_frontier_score.py` — BFTS frontier scoring.
 - `test_bfts_prompt_builder.py` — TODO
 - `test_bfts_prompt_selection.py` — BFTS prompt selection.
+- `test_call_context.py` — explicit run/node lineage and signed MCP capability contract.
 - `test_checkpoint_legacy_tree.py` — legacy node_*/tree.json resolution in list/summary.
 - `test_checkpoint_store.py` — TODO
 - `test_child_environment.py` — minimal Skill child environments, credential isolation, redaction, and reconnect drift.

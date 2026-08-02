@@ -9,6 +9,31 @@
       "has_all": false,
       "thin": true
     },
+    "ari.public.call_context": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.call_context"
+      ],
+      "exports": [
+        "AUTHORIZED_TOOL_CONTEXT_V1",
+        "AuthorizedToolContextV1",
+        "CALL_CONTEXT_ARGUMENT",
+        "CONTEXT_AUTHORITY_ENV",
+        "CallContextAuthorizationError",
+        "NODE_CONTEXT_V1",
+        "NodeContextV1",
+        "RUN_CONTEXT_V1",
+        "RunContextV1",
+        "ToolCallContextV1",
+        "authorize_tool_context",
+        "lineage_digest",
+        "new_context_authority_key",
+        "run_scope_digest",
+        "verify_tool_context"
+      ],
+      "has_all": true,
+      "thin": true
+    },
     "ari.public.claim_gate": {
       "all_is_dynamic": false,
       "backing": [
@@ -126,6 +151,7 @@
       "exports": [
         "ARTIFACT_REF_V1",
         "DEFAULT_INLINE_RESULT_LIMIT",
+        "NodeContextV1",
         "RAW_RESULT_ROLE",
         "RESULT_ENVELOPE_V1",
         "ResultArtifactIntegrityError",
@@ -135,6 +161,7 @@
         "ResultErrorKind",
         "ResultErrorV1",
         "ResultProvenanceV1",
+        "RunContextV1",
         "SHA256_DIGEST_PATTERN",
         "ToolCallContextV1",
         "utc_now_iso"

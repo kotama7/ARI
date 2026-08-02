@@ -12,7 +12,7 @@ sources:
     role: implementation
   - path: ari-skill-paper-re/mcp.json
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # MCP 技能参考
@@ -416,7 +416,9 @@ v0.7.0 引入的 PaperBench 形式 **自动 rubric 生成与审计**。读取论
 
 #### `add_memory(node_id, text, metadata=None)`
 
-存储标记了 `node_id` 的条目。**Copy-on-Write**：若 `node_id` 与 `$ARI_CURRENT_NODE_ID` 不一致，则拒绝写入。
+存储标记了 `node_id` 的条目。**Copy-on-Write**：清单要求显式节点上下文；
+除非签名的 `NodeContextV1.node_id` 与目标相同，技能会拒绝写入。
+子节点无法修改祖先。
 
 #### `search_memory(query, ancestor_ids, limit=5)`
 
@@ -439,9 +441,10 @@ v0.7.0 引入的 PaperBench 形式 **自动 rubric 生成与审计**。读取论
 #### 类型化的可验证研究记忆工具
 
 类型化条目（Phase 1）携带结构化来源信息，使论文 / 图表阶段能够将声明接地到可复现的产物上。
-调用方是 loop/pipeline 钩子，而非 LLM 拉取。每个写入工具都受 **Copy-on-Write 保护**：`node_id`
-必须等于 `$ARI_CURRENT_NODE_ID`（ari-core MCPClient 通过 `_set_current_node` 桥接路由写入），
-因此子节点无法改动祖先的条目。
+调用方是 loop/pipeline 钩子，而非 LLM 拉取。每个写入工具都由绑定工具名的
+签名 `NodeContextV1` 执行 **Copy-on-Write 保护**；读取还会将请求的节点集合
+与其有序 lineage digest 校验。ari-core 在模型生成参数后注入该传输上下文，
+因此调用方无法将自己的权限提升到兄弟或祖先。
 
 #### `add_experiment_result(node_id, text, metric_ptr=None, artifact_refs=None, node_report_ref=None)`
 

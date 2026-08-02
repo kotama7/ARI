@@ -4,7 +4,15 @@ sources:
     role: implementation
   - path: ari-core/tests/test_public_api_boundary.py
     role: test
-last_verified: 2026-06-10
+  - path: ari-core/ari/result.py
+    role: implementation
+  - path: ari-core/ari/call_context.py
+    role: implementation
+  - path: ari-core/ari/skill_lock.py
+    role: implementation
+  - path: ari-core/ari/skill_manifest.py
+    role: implementation
+last_verified: 2026-08-02
 ---
 
 # `ari.public` — スキル向け安定 API
@@ -25,6 +33,11 @@ last_verified: 2026-06-10
 | `ari.public.cost_tracker` | LLM コスト記録（`bootstrap_skill`、`record` など） | `ari-skill-plot`（LLM 呼び出しコスト） |
 | `ari.public.llm` | `LLMClient`（コスト統合付き LiteLLM ラッパー） | ARI のラッパーを使いたい呼び出し元 |
 | `ari.public.paths` | `PathManager`（チェックポイントパスリゾルバ） | スコープ付きパスが必要な呼び出し元 |
+| `ari.public.run_env` | run 環境の capture と shell export ヘルパー | sandbox / executor Skill |
+| `ari.public.call_context` | `RunContextV1`、`NodeContextV1`、署名付き tool-context 検証ヘルパー | control plane と context-aware Skill |
+| `ari.public.result` | `ResultEnvelopeV1`、content-addressed artifact reference、型付き error、呼び出し provenance | Skill adapter と federated dispatch 呼び出し元 |
+| `ari.public.skill_lock` | `SkillsLockV1`、ロック済み provider/tool record、atomic create-or-verify | run launcher、federation adapter、replay tool |
+| `ari.public.skill_manifest` | versioned Skill manifest model、loader、digest、safe entrypoint resolver | 組み込み / federated MCP Skill |
 | `ari.public.claim_gate` | 決定論的な主張-証拠ハードゲート（`run_hard_gate`）＋ 概念→不変条件レジストリ（`classify_concept`、`scan_science_data`、`CONCEPT_INVARIANTS`） | `ari-skill-evaluator`、`ari-skill-transform` |
 | `ari.public.verified_context` | 検証済みコンテキストヘルパー（`render_grounded_block`、`write_verified_context`、`build_verified_context`） | `ari-skill-paper` |
 
@@ -115,6 +128,74 @@ nodes_json = paths.checkpoint / "nodes_tree.json"
 `PathManager` は中央リゾルバです — スキルから `ARI_CHECKPOINT_DIR` を
 直接読み取らないでください。ソース: `ari-core/ari/paths.py` →
 `ari-core/ari/public/paths.py`。
+
+## `ari.public.skill_manifest`
+
+`skill.yaml` は canonical package contract です。consumer は YAML を直接 parse
+したり `server.py` を scrape したりせず、public API から読み込みます:
+
+```python
+from ari.public.skill_manifest import load_skill_manifest, manifest_digest
+
+manifest = load_skill_manifest("ari-skill-coding/skill.yaml")
+tool = manifest.tool("run_code")
+identity = manifest_digest(manifest)
+```
+
+`SkillManifestV1` は package identity、package-relative Python stdio entrypoint、
+網羅的な通常環境宣言、重複しない credential scope、一意な tool 名、
+capability reference、phase、side effect、determinism、timeout class、permission、
+result schema を検証します。組み込み production Skill では
+`environment_policy=complete` が必須です。解決済みの各 tool は
+`context_requirement` を `none` / `run` / `node` で宣言し、構造化コンテキストが
+なければ dispatch は fail closed します。legacy manifest は migration 呼び出しが
+`allow_legacy=True` を明示した場合だけ読み取れ、admission / CI では許可されません。
+
+## `ari.public.call_context` と `ari.public.result`
+
+新しい dispatch コードは型付き result contract を使います。従来の辞書 API は
+情報を失わない compatibility projection として残ります:
+
+```python
+from ari.public.call_context import ToolCallContextV1
+
+tool = client.list_tools()[0]
+envelope = client.call_tool_envelope(
+    tool["tool_ref"],
+    {"query": "example"},
+    context=ToolCallContextV1.for_node(
+        run_id="run-1",
+        node_id="node-1",
+        parent_node_id="root",
+        ancestor_node_ids=["root"],
+        phase="bfts",
+    ),
+)
+```
+
+`RunContextV1` は logical run を `run_scope_digest` に、`NodeContextV1` は
+self、parent、root から parent までの順序付き chain を `lineage_digest` に
+束縛します。`MCPClient` はこれを tool-bound、per-connection HMAC capability に
+変換し、Skill は `verify_tool_context` で検証します。署名鍵は transport が
+所有し、public data contract には入りません。規範 schema は
+`ari-core/ari/schemas/call_context_v1.schema.json` です。
+
+`ResultEnvelopeV1` は status、structured content、型付き error、不変の
+`tool_ref`、run/node/phase context、selection reason、timing、SHA-256 response digest を
+記録します。credential は値ではなく scope ID だけを記録します。
+4,000 文字を超える raw content は content address の artifact に退避され、
+`materialize_content(store)` が digest と byte size を検証して復元します。
+
+## `ari.public.skill_lock`
+
+`SKILLS.lock` は live MCP handshake 後に作成される決定論的な checkpoint-level
+snapshot です。`SkillsLockV1` は canonical manifest を正確な live input/output
+schema と phase ごとの admitted `tool_ref` 集合に束縛します。
+`write_or_verify_skills_lock()` は最初の snapshot を atomic に作成し、以後は
+byte-equivalent な semantics を要求します。drift と corruption は
+`SkillLockMismatchError` / `SkillLockCorruptError` として区別されます。
+`LockedCredentialScopeV1` には scope identity と宣言/存在する環境名だけが
+記録され、credential 値は含まれません。
 
 ## `ari.public.claim_gate`
 

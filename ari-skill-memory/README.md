@@ -33,19 +33,27 @@ fallback (SQLite pip path).
 
 | Tool | Description |
 |------|-------------|
-| `add_memory(node_id, text, metadata)` | Store an entry scoped to a node. Rejects writes whose `node_id` ≠ `$ARI_CURRENT_NODE_ID` (Copy-on-Write). |
-| `search_memory(query, ancestor_ids, limit)` | Retrieve ancestor-scoped entries ranked by Letta relevance score ∈ [0, 1]. |
-| `get_node_memory(node_id)` | All entries for a specific node, chronological. |
-| `clear_node_memory(node_id)` | Debug-only per-node clear (same CoW rule as write). |
+| `add_memory(node_id, text, metadata)` | Store an entry scoped to the signed context's self node; any other target is rejected. |
+| `search_memory(query, ancestor_ids, limit)` | Retrieve entries from the signed ancestor lineage, ranked by Letta relevance score ∈ [0, 1]. |
+| `get_node_memory(node_id)` | Chronological entries for self or a signed ancestor. |
+| `clear_node_memory(node_id)` | Debug-only per-node clear (signed self node only). |
 | `get_experiment_context()` | Stable facts from Letta core memory — goal, primary metric, hardware, etc. |
+
+Every node-scoped call carries an immutable `RunContextV1` +
+`NodeContextV1`. ari-core signs a transport-only `ari_context` capability for
+the selected tool after arguments leave the model; the tool schema shown to
+the model does not contain it. The server verifies the signature, tool name,
+run id, and lineage digest before performing any I/O. Run-scoped tools
+(`audit_memory` and `get_experiment_context`) require the signed run context
+but no node lineage.
 
 ### Typed verifiable-research-memory tools
 
 The artifact-grounded / reproducibility-aware layer (`writer.py`,
 `retriever.py`, `context_builder.py`, `consolidation.py`, `audit.py`,
 `provenance.py`, `schemas.py`) feeding v0.9.0's verified-claims gate. Write
-tools are CoW-guarded (`node_id` must equal `$ARI_CURRENT_NODE_ID`); callers
-are loop/pipeline hooks, not LLM pulls.
+tools are CoW-guarded (the target must be the signed context's self node);
+callers are loop/pipeline hooks, not LLM pulls.
 
 | Tool | Description |
 |------|-------------|
