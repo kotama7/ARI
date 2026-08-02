@@ -1,6 +1,6 @@
 [project]
 name = "ari-skill-tool-registry"
-version = "0.2.0"
+version = "0.3.0"
 description = "Provider-neutral scientific MCP catalog federation for ARI"
 requires-python = ">=3.13"
 dependencies = [
@@ -14,6 +14,17 @@ dependencies = [
 [project.optional-dependencies]
 tooluniverse = [
     "tooluniverse==1.3.1",
+]
+qiskit-local = [
+    "qiskit==2.5.1",
+    "qiskit-aer==0.17.2",
+    "qiskit-mcp-server==0.3.1",
+]
+qiskit-runtime = [
+    "qiskit==2.5.1",
+    "qiskit-ibm-runtime==0.48.0",
+    "qiskit-mcp-server==0.3.1",
+    "qiskit-ibm-runtime-mcp-server==0.6.1",
 ]
 dev = [
     "pytest>=8.0",

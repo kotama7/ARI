@@ -38,6 +38,14 @@ sources:
     role: implementation
   - path: ari-skill-tool-registry/providers/openroad-support-v1.json
     role: config
+  - path: ari-skill-tool-registry/src/qiskit_adapter.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/qiskit_contracts.py
+    role: schema
+  - path: ari-skill-tool-registry/src/qiskit_remote.py
+    role: implementation
+  - path: ari-skill-tool-registry/providers/qiskit-support-v1.json
+    role: config
 last_verified: 2026-08-02
 ---
 
@@ -191,6 +199,29 @@ the provider. Profiles sharing the same design inputs and PDK/library use one
 independence group, so version disagreement is not counted as independent
 scientific evidence.
 
+## Qiskit profile adapter
+
+The official Qiskit core and IBM Runtime MCP providers are supply-chain inputs,
+not public catalog leaves. One reviewed `QiskitExperimentV1` becomes one virtual
+async leaf. Its QPY circuit/version, parameter units, transpilation target and
+seed, shots, simulator/noise/Runtime backend, mitigation, evidence, and
+limitations are immutable; the caller supplies only `request_id`.
+
+Local ideal, local noisy, remote simulator, and IBM hardware sampling use four
+different capability references. ARI uses the official core MCP for transpiling
+and an exact distribution-checked worker for Aer execution. Remote profiles use
+only the reviewed Runtime setup, backend snapshot, sampler, status, result, and
+cancel leaves; account-management leaves are never published. Backend/target
+mismatch fails before submission, and every live snapshot and job/result record
+is retained as a verified artifact.
+
+`QISKIT_IBM_TOKEN` reaches only the isolated Runtime process through the named
+credential scope and is exact-value redacted at the provider boundary. Locks,
+cassettes, artifacts, and identities contain neither the token nor a raw
+instance CRN. See [Qiskit and IBM Quantum experiment profiles](qiskit_profiles.md)
+for the scientific contract, operator procedure, update/rollback, and deletion
+gates.
+
 ## Record, replay, and EAR
 
 Record mode stores exact normalized arguments, catalog and policy digests,
@@ -209,6 +240,7 @@ python src/sync_catalog.py --approve       # only after reviewing the diff
 python src/sync_catalog.py --approve --approve-schema-changes  # schema review
 python scripts/verify_tooluniverse.py --help
 python scripts/verify_openroad.py --help
+python scripts/verify_qiskit.py --help
 python scripts/sync_contracts.py           # CI drift check
 pytest -q
 ```

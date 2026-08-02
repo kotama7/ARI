@@ -6,6 +6,11 @@
 - `mcp`, `pydantic`, `jsonschema`, `pyyaml`, and `ari-skill-hpc>=0.3.0`
 - optional `tooluniverse==1.3.1` only in a separate provider environment; it is
   not imported by the registry process
+- optional local Qiskit environment containing exactly Qiskit `2.5.1`, Aer
+  `0.17.2`, and Qiskit MCP server `0.3.1`
+- optional IBM Runtime environment containing exactly Qiskit `2.5.1`, Qiskit
+  IBM Runtime `0.48.0`, Qiskit MCP server `0.3.1`, and IBM Runtime MCP server
+  `0.6.1`
 - an immutable reviewed `CATALOG.lock`; the committed default is empty
 - an optional ARI checkpoint for artifacts and record/replay evidence
 
@@ -43,6 +48,16 @@ only sources present in the reviewed lock can execute.
   snapshots, and container identity use the C06 contracts. A workspace is removed
   only after terminal scheduler state; ambiguous delivery fails closed and keeps
   reconciliation evidence.
+- Qiskit local ideal, local noisy, remote simulator, and IBM hardware profiles
+  use separate capability references. Every profile fixes QPY bytes/version,
+  parameter units, target, transpilation, shots, backend method, and all
+  applicable seeds/noise/mitigation fields.
+- Qiskit remote execution must snapshot and verify backend identity before
+  submission, publish the common asynchronous lifecycle, preserve raw provider
+  evidence, and cancel on timeout. A backend/target mismatch fails closed.
+- `QISKIT_IBM_TOKEN` is admitted only through `quantum.ibm-runtime`, forwarded
+  only to the isolated Runtime provider, and value-redacted from every result,
+  exception, diagnostic, lock, cassette, and artifact boundary.
 
 ## Source admission
 
@@ -78,6 +93,29 @@ run.
 - Changed leaf input/output/default schemas require the separate
   `--approve-schema-changes` operator flag.
 
+## Qiskit source admission
+
+- Both provider releases and the Qiskit/Aer/Runtime scientific distributions
+  must exactly match `providers/qiskit-support-v1.json`; ranges, runtime install,
+  modified package trees, alternate entry points, and added provider arguments
+  or environment fail closed.
+- The source contains profiles, not wrappers around all upstream tools. Only the
+  reviewed transpile and sampling lifecycle is reachable internally; account
+  listing/deletion and arbitrary provider operations are not catalog leaves.
+- Circuit input is absolute, digest-pinned QPY. Its header format and producing
+  Qiskit major/minor/patch must match the profile. Every binding has an explicit
+  `rad` or dimensionless unit; the reviewed Runtime MCP does not accept remote
+  bindings.
+- Local profiles require Aer, a simulator seed, fixed CPU parallelism, and an
+  explicit ideal/noise boundary. Remote profiles require value-free instance
+  and access-tier identities, backend snapshot verification, and no claimed
+  simulator seed.
+- Reproducible/scientific admission requires exact replay/golden files whose
+  bytes, profile/experiment/method identity, shots, counts, and declared
+  statistical bounds all validate. A digest string without the file is rejected.
+- Same backend, target, and software-stack profiles share an independence group.
+  Multiple wrappers or runs on that lineage are not independent-method evidence.
+
 ## Environment
 
 | Variable | Purpose |
@@ -88,7 +126,8 @@ run.
 | `ARI_TOOL_REGISTRY_LOCK` | Selects a reviewed lock at process startup |
 | `ARI_TOOL_REGISTRY_INDEX` | Selects the derived index matching that lock |
 | `ARI_TOOL_REGISTRY_CASSETTES` | Selects a credential-free replay store |
+| `QISKIT_IBM_TOKEN` | Optional IBM Quantum Runtime credential, available only through the named credential scope |
 
 The manifest also permits only the fixed platform/TLS variables needed by the
-isolated stdio process. Provider credentials are not supported by the generic
-adapter until a value-free credential-scope bridge is admitted and tested.
+isolated stdio process. The generic direct-MCP adapter remains credential-free;
+only the reviewed Qiskit Runtime adapter requests the scoped credential bridge.

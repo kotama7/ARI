@@ -83,12 +83,52 @@ async def test_stdio_adapter_initializes_paginates_and_calls_normal_error_large(
     environment = await adapter.invoke("env_probe", {})
     assert environment.structured is not None
     assert environment.structured["secret_marker"] is None
+    assert environment.structured["scoped_credential_present"] is False
     assert environment.structured["user"] == "ari-provider"
     assert "ari-provider-home-" in environment.structured["home"]
     assert (
         Path(environment.structured["executable"]).resolve()
         == Path(sys.executable).resolve()
     )
+
+
+@pytest.mark.asyncio
+async def test_stdio_adapter_passes_only_named_credentials_and_redacts_response(
+    monkeypatch,
+):
+    secret = "ari-test-secret-value-that-must-not-escape"
+    monkeypatch.setenv("ARI_TEST_TOKEN", secret)
+    launcher = _launcher()
+    adapter = StdioMCPAdapter(
+        launcher,
+        expected_provider_digest=provider_digest(launcher),
+        credential_env_values={"ARI_TEST_TOKEN": secret},
+        timeout_seconds=10,
+    )
+
+    response = await adapter.invoke("env_probe", {})
+
+    assert response.structured is not None
+    assert response.structured["scoped_credential_present"] is True
+    assert response.structured["scoped_credential_echo"] == "[REDACTED]"
+    assert secret not in response.text
+    assert secret not in repr(response.structured)
+
+
+def test_stdio_adapter_rejects_noncredential_passthrough_names():
+    launcher = _launcher()
+    with pytest.raises(ValueError, match="credential-shaped"):
+        StdioMCPAdapter(
+            launcher,
+            expected_provider_digest=provider_digest(launcher),
+            credential_env_values={"UNRELATED_SETTING": "not-secret"},
+        )
+    with pytest.raises(ValueError, match="at least eight"):
+        StdioMCPAdapter(
+            launcher,
+            expected_provider_digest=provider_digest(launcher),
+            credential_env_values={"ARI_TEST_TOKEN": "short"},
+        )
 
 
 @pytest.mark.asyncio

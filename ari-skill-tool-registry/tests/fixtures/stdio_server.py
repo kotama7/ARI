@@ -89,6 +89,8 @@ async def call_tool(name: str, arguments: dict[str, Any]):
             "home": os.environ.get("HOME"),
             "user": os.environ.get("USER"),
             "secret_marker": os.environ.get("ARI_SECRET_MARKER"),
+            "scoped_credential_present": bool(os.environ.get("ARI_TEST_TOKEN")),
+            "scoped_credential_echo": os.environ.get("ARI_TEST_TOKEN"),
             "executable": sys.executable,
         }
     if name == "submit":

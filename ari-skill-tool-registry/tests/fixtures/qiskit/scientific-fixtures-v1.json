@@ -1,0 +1,91 @@
+{
+  "architecture": "x86_64",
+  "provider": {
+    "distribution": "qiskit-mcp-server",
+    "repository_commit": "8c1abcec04ea5d504cc178c42441c8363c6935b5",
+    "version": "0.3.1"
+  },
+  "schema_version": "ari.qiskit-scientific-fixtures/v1",
+  "software": {
+    "qiskit": "2.5.1",
+    "qiskit-aer": "0.17.2"
+  },
+  "target": {
+    "basis_gates": [
+      "cx",
+      "id",
+      "rz",
+      "sx",
+      "x"
+    ],
+    "seed_transpiler": 731
+  },
+  "vectors": [
+    {
+      "circuit": "bell-phi-plus.qpy",
+      "circuit_digest": "sha256:761cf1eb8e386cf53900cd96a4bfac6e2d713a307f42b00ecbf5f05251c9699f",
+      "counts": {
+        "00": 2046,
+        "11": 2050
+      },
+      "name": "bell-ideal-statevector",
+      "noise_model": null,
+      "num_clbits": 2,
+      "num_qubits": 2,
+      "seed_simulator": 20260802,
+      "shots": 4096,
+      "simulator_method": "statevector",
+      "transpiled_qpy": "bell-phi-plus.transpiled.qpy",
+      "transpiled_qpy_digest": "sha256:1812aae609f1c304c8ecf0822aaae5473e10201e2a371237d803206beb021bdd"
+    },
+    {
+      "circuit": "bell-phi-plus.qpy",
+      "circuit_digest": "sha256:761cf1eb8e386cf53900cd96a4bfac6e2d713a307f42b00ecbf5f05251c9699f",
+      "counts": {
+        "00": 1859,
+        "01": 162,
+        "10": 158,
+        "11": 1917
+      },
+      "name": "bell-noisy-density-matrix",
+      "noise_model": {
+        "kind": "depolarizing-readout",
+        "one_qubit_error": 0.01,
+        "one_qubit_gates": [
+          "sx",
+          "x"
+        ],
+        "readout_p0_given_1": 0.03,
+        "readout_p1_given_0": 0.04,
+        "two_qubit_error": 0.02,
+        "two_qubit_gates": [
+          "cx"
+        ]
+      },
+      "num_clbits": 2,
+      "num_qubits": 2,
+      "seed_simulator": 20260802,
+      "shots": 4096,
+      "simulator_method": "density_matrix",
+      "transpiled_qpy": "bell-phi-plus.transpiled.qpy",
+      "transpiled_qpy_digest": "sha256:1812aae609f1c304c8ecf0822aaae5473e10201e2a371237d803206beb021bdd"
+    },
+    {
+      "circuit": "ghz3.qpy",
+      "circuit_digest": "sha256:084c03735b04008475fb499f6de36cceedf2e72258321f82c8498bdbc9d20b03",
+      "counts": {
+        "000": 2046,
+        "111": 2050
+      },
+      "name": "ghz3-ideal-statevector",
+      "noise_model": null,
+      "num_clbits": 3,
+      "num_qubits": 3,
+      "seed_simulator": 20260802,
+      "shots": 4096,
+      "simulator_method": "statevector",
+      "transpiled_qpy": "ghz3.transpiled.qpy",
+      "transpiled_qpy_digest": "sha256:5971955a1c425f947d8909477cb93ad0d89131e45c67dd01862ddfbf2a6a5a9f"
+    }
+  ]
+}
