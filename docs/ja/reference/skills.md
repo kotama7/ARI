@@ -705,38 +705,40 @@ AI Scientist v2 スタイルの反復的引用収集。LLM が検索クエリを
 
 ## ari-skill-coding
 
-コード生成、実行、ファイル読込。**LLM: No**（決定論的）。
+閉じた workspace での code 作成、bounded execution、完全 log 証跡、型付き測定出力。**LLM: No**（user code の決定性は conditional）。
 
 ### ツール
 
 #### `write_code(filename, code, work_dir="/tmp/ari_work")`
 
-作業ディレクトリにソースファイルを書き込みます。
+core-owned workspace 内へ atomic write します。traversal、absolute escape、symlink を拒否します。
 
 #### `run_code(filename, work_dir="/tmp/ari_work", timeout=60)`
 
-ソースファイルを実行します（拡張子から言語を自動検出）。出力は省略文字数とファイル出力推奨ヒント付きのマーカー付きで切り詰められます。
+structured argv で source を実行します。source SHA-256 を検証して immutable snapshot に拘束し、完全 stdout/stderr を content-addressed artifact として残します。
 
 #### `run_bash(command, work_dir="/tmp/ari_work", timeout=60)`
 
-作業ディレクトリで bash コマンドを実行します。結果に `truncated` ブールフラグ付きで出力切り詰めを行います。
+明示的 shell command を local または clean container adapter で実行します。stable execution identity、attempt ID、limit enforcement、container/network identity を返します。
 
 #### `read_file(path, offset=0, limit=8000, work_dir="/tmp/ari_work")`
 
-大きなファイル向けにページング対応でテキストファイルを読み込みます。コンテンツ、継続用 `next_offset`、総行数を返します。
+symlink-safe な bounded pagination で読み、`next_offset` と総文字数を返します。
 
 ```python
 result = read_file("results.csv", offset=0, limit=100)
-# 戻り値: {"content": "...", "next_offset": 100, "total_lines": 5000}
+# 戻り値: {"content": "...", "next_offset": 100, "total_chars": 5000}
 ```
 
-作業ディレクトリ: `work_dir` 引数 > `ARI_WORK_DIR` env > `/tmp/ari_work`。
+`ARI_WORK_DIR` が root を所有し、`work_dir` はその配下だけを選べます。
 
-#### `emit_results(params, measurements, predictions={}, scores={}, provenance={}, file="results.json", work_dir="/tmp/ari_work")`
+#### `emit_results(params, measurements, predictions={}, scores={}, provenance={}, units={}, execution=null, file="results.json", work_dir="/tmp/ari_work")`
 
-入力パラメタと測定された出力を分離した型付き `results.json` を書き出します。下流（`transform → science_data`、論文執筆、summary stats）が「測定したもの」と「実行した条件」を取り違えないようにするためのツールで、best-of 集約で入力サイズ（`nnz`、`M`、`K`、`threads`）を実メトリクス（`GFlops_per_s` 等）より優先してしまう事故を防ぎます。`params` と `measurements` は disjoint でなければなりません。
+canonical `ari.measurement-set/v1` と P6 互換 projection を書きます。有限数値、unit または明示的 missing、parameter、provenance、execution attempt/exit status、artifact digest を記録し、各 group の名前重複を拒否します。`execution` には直前の run response の `measurement_execution` を渡し、server-issued receipt と全log digestをwrite前に検証します。
 
 オプションの `provenance` 引数は `{operand: source}` マップで、`results.json` に `_provenance` キーとしてそのまま書き出され、claim/メトリクス正当性ゲートが消費します。値が経験的に **測定された** 上限/ピークであるオペランドには `"microbench"` または `"benchmark"` を（正規化メトリクスが placeholder に依拠していると誤検出されないように）、**独立した** リファレンスに対して計算した残差には `"correctness"` または `"reference"` を（出力が未検証と誤検出されないように）タグ付けします。ベストエフォートで、空のときは完全に省略されます。
+
+詳細は [実行・測定契約](execution_contract.md) を参照してください。
 
 ---
 

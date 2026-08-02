@@ -41,16 +41,15 @@ ARI には 15 の MCP サーバが付属しています（`ari-skill-*` パッ�
 
 ## ari-skill-coding — コードの作成 + 実行
 
-`mcp.json` にはツールが記載されていません。実際のツール一覧は
-`src/server.py` の `@server.list_tools()` から提供されます。
+`skill.yaml` が canonical tool contract で、`mcp.json` はそこから生成されます。
 
 | ツール | 用途 | LLM |
 |---|---|:---:|
-| `write_code` | ノードの work_dir にファイルを書き込む | ✗ |
-| `run_code` | タイムアウト + キャプチャ付きでスクリプトを実行 | ✗ |
-| `run_bash` | アドホックな bash コマンド | ✗ |
-| `emit_results` | 評価器向けに `metrics` + `has_real_data` を出力（オプションの `provenance` 引数 → `_provenance` キーとしてそのまま書き込まれ、各値がどのように測定されたかをタグ付けし、claim-evidence ゲートで使用）。レスポンスの `contract_warnings` には、出力したキーが要求エビデンス名と字句的に類似する場合、提案のみの「POSSIBLE name matches」ヒントが含まれることがあります — あくまで助言であり、自動バインドは行われず、ゲートがこれを参照することもありません | ✗ |
-| `read_file` | エージェントが以前に書いたファイルを読み込む | ✗ |
+| `write_code` | atomic かつ traversal/symlink-safe な workspace write と source digest | ✗ |
+| `run_code` | digest-bound immutable script snapshot、bounded execution、完全 log artifact | ✗ |
+| `run_bash` | local/container identity 付きの明示 shell execution と完全 log artifact | ✗ |
+| `emit_results` | 有限値、unit、provenance、検証済みexecution attempt/receipt、再hash済みartifact digest を持つ canonical `ari.measurement-set/v1` を出力 | ✗ |
+| `read_file` | symlink-safe な bounded/paginated workspace read | ✗ |
 
 ## ari-skill-evaluator — LLM メトリクス抽出
 

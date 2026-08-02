@@ -82,7 +82,7 @@ Sanctioned exec modules — changes to execution behaviour belong here:
 
 | Module | Owns |
 |--------|------|
-| `ari/container.py` | container exec: `detect_runtime`, `build_run_cmd`, `run_in_container` (Popen + `_sandbox_preexec` = `os.setsid` new process group + optional `RLIMIT_NPROC` via `ARI_MAX_CHILD_PROCS`), `_run_with_timeout` (group SIGTERM→SIGKILL), `pull_image`, `exec_in_container`. Re-exported by `ari.public.container`. |
+| `ari/execution.py` + `ari/container.py` | `ari.execution` owns closed workspaces, minimal environments, POSIX limits, process-group timeout/cancellation, and complete log artifacts. `ari.container` builds clean, fail-closed runtime argv and its blocking compatibility path delegates to that executor. Re-exported by `ari.public.execution` / `ari.public.container`. |
 | `ari/env_detect.py` | scheduler/runtime probes (`sinfo`, `qstat`, `docker info`, `lscpu`) — read-only, best-effort, no hardcoded cluster knowledge. |
 | `ari/mcp/connection.py` | owns one Skill's MCP SDK `stdio_client` lifecycle and immutable child-environment snapshot. |
 | `ari/mcp/child_environment.py` | constructs the manifest allowlist, isolated runtime directories, credential authority identities, and redacted stderr pipe. |

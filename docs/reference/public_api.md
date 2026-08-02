@@ -31,9 +31,12 @@ by `ari-core/tests/test_public_api_boundary.py`.
 |---|---|---|
 | `ari.public.config_schema` | Pydantic config models (`ARIConfig`, `LLMConfig`, ...) | callers needing typed settings |
 | `ari.public.container` | Container runtime helpers (`ContainerConfig`, `run_in_container`, ...) | `ari-skill-coding` (tests) |
+| `ari.public.execution` | `WorkspaceRefV1`, bounded execution/result records, complete-log artifacts, and `MeasurementSetV1` | execution-producing and measurement-consuming Skills |
 | `ari.public.cost_tracker` | LLM cost recording (`bootstrap_skill`, `record`, ...) | `ari-skill-plot` (LLM call cost) |
 | `ari.public.llm` | `LLMClient` (LiteLLM wrapper with cost integration) | callers that prefer ARI's wrapper |
 | `ari.public.paths` | `PathManager` (checkpoint path resolver) | callers that need scoped paths |
+| `ari.public.node_selection` | deterministic downstream node and source selection | `ari-skill-transform` |
+| `ari.public.publish` | staged EAR publish/promote contract | `ari-skill-transform` |
 | `ari.public.run_env` | run-environment capture and shell-export helpers | sandbox and executor Skills |
 | `ari.public.call_context` | `RunContextV1`, `NodeContextV1`, signed tool-context verification helpers | control plane and context-aware Skills |
 | `ari.public.result` | `ResultEnvelopeV1`, content-addressed artifact references, typed errors, call context, provenance | Skill adapters and federated dispatch callers |
@@ -80,6 +83,15 @@ Re-exports the container runtime from `ari.container`:
 | `get_container_info()` | Diagnostic dict with runtime + image health |
 
 Source: `ari-core/ari/container.py` → `ari-core/ari/public/container.py`.
+
+## `ari.public.execution`
+
+This module owns closed-workspace path handling, exact execution identity,
+process-group timeout/cancellation, minimal environments, kernel-limit reports,
+complete content-addressed logs, and typed measurement records. Its migration
+parser validates the canonical object against retained legacy projections.
+See [Execution and measurement contracts](execution_contract.md) for the
+normative behavior and schema list.
 
 ## `ari.public.skill_manifest`
 

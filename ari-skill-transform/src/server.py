@@ -10,6 +10,7 @@ Reads nodes_tree.json (BFTS output) and uses an LLM to deeply understand:
 
 Replaces the former regex-only transform with full LLM comprehension.
 """
+
 from __future__ import annotations
 
 import json
@@ -23,6 +24,12 @@ from pathlib import Path
 
 import litellm
 from mcp.server.fastmcp import FastMCP
+
+from ari.public.execution import (
+    MeasurementDocumentError,
+    measurement_document_format,
+    parse_measurement_document,
+)
 
 mcp = FastMCP("transform-skill")
 
@@ -49,10 +56,8 @@ def _default_llm_model() -> str:
 
 
 try:
-    try:
-        from ari.public import cost_tracker as _ari_cost_tracker  # type: ignore
-    except ImportError:
-        from ari import cost_tracker as _ari_cost_tracker  # type: ignore
+    from ari.public import cost_tracker as _ari_cost_tracker  # type: ignore
+
     _ari_cost_tracker.bootstrap_skill("transform")
 except Exception:
     pass
@@ -112,7 +117,7 @@ def _robust_extract_json(raw: str) -> dict:
                 elif c == "}":
                     depth -= 1
                     if depth == 0:
-                        candidates.append(text[start:i + 1])
+                        candidates.append(text[start : i + 1])
                         break
     # Prefer the longest candidate (typically the outermost / most complete).
     candidates.sort(key=len, reverse=True)
@@ -139,7 +144,7 @@ def _robust_extract_json(raw: str) -> dict:
 def _node_artifacts_text(node: dict, max_chars: int = 3000) -> str:
     """Extract text from node artifacts and memory for LLM analysis."""
     parts = []
-    for art in (node.get("artifacts") or []):
+    for art in node.get("artifacts") or []:
         if isinstance(art, dict):
             for key in ("stdout", "content", "output", "text"):
                 val = art.get(key, "")
@@ -148,12 +153,14 @@ def _node_artifacts_text(node: dict, max_chars: int = 3000) -> str:
                     break
         elif isinstance(art, str):
             parts.append(art)
-    for mem in (node.get("memory") or []):
+    for mem in node.get("memory") or []:
         # pipeline.py now enriches each
         # node with Letta-backed memory entries that carry `text`; the
         # legacy `content` key is kept for pre-v0.6.0 fixtures.
-        text = mem if isinstance(mem, str) else (
-            mem.get("text") or mem.get("content") or ""
+        text = (
+            mem
+            if isinstance(mem, str)
+            else (mem.get("text") or mem.get("content") or "")
         )
         if text:
             parts.append(str(text))
@@ -173,9 +180,10 @@ def _node_tool_outputs(node: dict, max_chars: int = 2000) -> str:
       - strings like "  ← {'result': '...'}" (arrow format)
     """
     import ast
+
     parts = []
     total = 0
-    for entry in (node.get("trace_log") or []):
+    for entry in node.get("trace_log") or []:
         content = ""
         if isinstance(entry, dict):
             if entry.get("role") != "tool":
@@ -191,7 +199,7 @@ def _node_tool_outputs(node: dict, max_chars: int = 2000) -> str:
             if arrow_idx < 0:
                 arrow_idx = stripped.find("\u2190")
             if arrow_idx >= 0:
-                payload = stripped[arrow_idx + 1:].strip()
+                payload = stripped[arrow_idx + 1 :].strip()
                 # Try to parse as Python dict literal
                 try:
                     parsed = ast.literal_eval(payload)
@@ -225,38 +233,73 @@ def _node_tool_outputs(node: dict, max_chars: int = 2000) -> str:
 
 
 _SOURCE_EXTS = {
-    ".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx",
-    ".py", ".pyx", ".pyi",
-    ".cu", ".cuh", ".cl",
-    ".rs", ".go", ".java", ".kt", ".scala",
-    ".js", ".jsx", ".ts", ".tsx", ".mjs",
-    ".f", ".f90", ".f95", ".f03", ".for",
-    ".jl", ".m", ".r", ".sh", ".bash", ".zsh",
-    ".tex", ".bib",
-    ".yaml", ".yml", ".toml", ".json",
-    ".md", ".rst", ".txt",
-    ".cmake", ".mk",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".cxx",
+    ".h",
+    ".hh",
+    ".hpp",
+    ".hxx",
+    ".py",
+    ".pyx",
+    ".pyi",
+    ".cu",
+    ".cuh",
+    ".cl",
+    ".rs",
+    ".go",
+    ".java",
+    ".kt",
+    ".scala",
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".mjs",
+    ".f",
+    ".f90",
+    ".f95",
+    ".f03",
+    ".for",
+    ".jl",
+    ".m",
+    ".r",
+    ".sh",
+    ".bash",
+    ".zsh",
+    ".tex",
+    ".bib",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".json",
+    ".md",
+    ".rst",
+    ".txt",
+    ".cmake",
+    ".mk",
 }
 
 _BINARY_MAGIC_PREFIXES = (
-    b"\x7fELF",          # ELF executable / shared object
-    b"MZ",               # PE/COFF (Windows .exe / .dll)
-    b"\xCF\xFA\xED\xFE", # Mach-O 64-bit LE
-    b"\xCE\xFA\xED\xFE", # Mach-O 32-bit LE
-    b"\xFE\xED\xFA\xCE", # Mach-O 32-bit BE
-    b"\xFE\xED\xFA\xCF", # Mach-O 64-bit BE
-    b"\xCA\xFE\xBA\xBE", # Java class / Mach-O fat
-    b"PK\x03\x04",       # ZIP / JAR / docx
-    b"\x1f\x8b",         # gzip
-    b"BZh",              # bzip2
-    b"\xFD7zXZ\x00",     # xz
-    b"7z\xBC\xAF\x27\x1C", # 7-zip
-    b"\x89PNG\r\n\x1a\n", # PNG
-    b"\xFF\xD8\xFF",     # JPEG
-    b"%PDF",             # PDF
-    b"\x93NUMPY",        # numpy .npy
-    b"\x80\x04",         # python pickle protocol 4
-    b"\x80\x05",         # python pickle protocol 5
+    b"\x7fELF",  # ELF executable / shared object
+    b"MZ",  # PE/COFF (Windows .exe / .dll)
+    b"\xcf\xfa\xed\xfe",  # Mach-O 64-bit LE
+    b"\xce\xfa\xed\xfe",  # Mach-O 32-bit LE
+    b"\xfe\xed\xfa\xce",  # Mach-O 32-bit BE
+    b"\xfe\xed\xfa\xcf",  # Mach-O 64-bit BE
+    b"\xca\xfe\xba\xbe",  # Java class / Mach-O fat
+    b"PK\x03\x04",  # ZIP / JAR / docx
+    b"\x1f\x8b",  # gzip
+    b"BZh",  # bzip2
+    b"\xfd7zXZ\x00",  # xz
+    b"7z\xbc\xaf\x27\x1c",  # 7-zip
+    b"\x89PNG\r\n\x1a\n",  # PNG
+    b"\xff\xd8\xff",  # JPEG
+    b"%PDF",  # PDF
+    b"\x93NUMPY",  # numpy .npy
+    b"\x80\x04",  # python pickle protocol 4
+    b"\x80\x05",  # python pickle protocol 5
 )
 
 
@@ -281,8 +324,7 @@ def _looks_like_binary(path: Path) -> bool:
     # Printable-ASCII ratio over the sniff window. Tabs/newlines/CR count
     # as printable; anything below 85% printable is treated as binary.
     printable = sum(
-        1 for b in head
-        if 0x20 <= b < 0x7F or b in (0x09, 0x0A, 0x0D, 0x0C)
+        1 for b in head if 0x20 <= b < 0x7F or b in (0x09, 0x0A, 0x0D, 0x0C)
     )
     return (printable / len(head)) < 0.85
 
@@ -306,12 +348,13 @@ def _collect_source_files(node: dict, max_total: int = 65536) -> str:
     Returns formatted source code snippets with filenames.
     """
     import re as _re_sf
+
     dirs_seen: set[str] = set()
-    for art in (node.get("artifacts") or []):
+    for art in node.get("artifacts") or []:
         content = art.get("content", "") if isinstance(art, dict) else str(art)
         if not content:
             continue
-        for m in _re_sf.finditer(r'cd\s+(/\S+)', content):
+        for m in _re_sf.finditer(r"cd\s+(/\S+)", content):
             d = m.group(1).rstrip("&;|")
             if Path(d).is_dir():
                 dirs_seen.add(d)
@@ -330,14 +373,44 @@ def _collect_source_files(node: dict, max_total: int = 65536) -> str:
     # _looks_like_binary content sniff covers the rest, including
     # extensionless compiled executables).
     _binary_exts = {
-        ".o", ".a", ".so", ".dylib", ".dll", ".exe", ".bin",
-        ".pyc", ".pyo", ".class", ".jar",
-        ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".ico",
-        ".pdf", ".ps", ".eps",
-        ".zip", ".gz", ".bz2", ".xz", ".tar", ".7z",
-        ".pkl", ".npy", ".npz", ".h5", ".hdf5",
-        ".csv", ".tsv", ".parquet",
-        ".log", ".out", ".err",
+        ".o",
+        ".a",
+        ".so",
+        ".dylib",
+        ".dll",
+        ".exe",
+        ".bin",
+        ".pyc",
+        ".pyo",
+        ".class",
+        ".jar",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".bmp",
+        ".svg",
+        ".ico",
+        ".pdf",
+        ".ps",
+        ".eps",
+        ".zip",
+        ".gz",
+        ".bz2",
+        ".xz",
+        ".tar",
+        ".7z",
+        ".pkl",
+        ".npy",
+        ".npz",
+        ".h5",
+        ".hdf5",
+        ".csv",
+        ".tsv",
+        ".parquet",
+        ".log",
+        ".out",
+        ".err",
     }
     candidates: list[Path] = []
     for d in sorted(dirs_seen):
@@ -386,7 +459,9 @@ def _collect_source_files(node: dict, max_total: int = 65536) -> str:
     return "\n".join(parts)
 
 
-def _load_node_reports_for_tree(nodes_json_path: str, nodes: list[dict]) -> dict[str, dict]:
+def _load_node_reports_for_tree(
+    nodes_json_path: str, nodes: list[dict]
+) -> dict[str, dict]:
     """Best-effort discovery of `node_report.json` files for *nodes*.
 
     Walks two candidate work_dir layouts so both PathManager-shaped
@@ -394,6 +469,7 @@ def _load_node_reports_for_tree(nodes_json_path: str, nodes: list[dict]) -> dict
     `{ws}/experiments/{run_id}/{node_id}/`) and flatter test fixtures work.
     """
     from pathlib import Path as _P
+
     p = _P(nodes_json_path).expanduser().resolve()
     if p.is_file():
         ckpt = p.parent
@@ -446,7 +522,11 @@ def _load_run_metric_contract(nodes_json_path: str) -> "dict | None":
     """
     try:
         from pathlib import Path as _P_mc
-        _mc_path = _P_mc(nodes_json_path).expanduser().resolve().parent / "metric_contract.json"
+
+        _mc_path = (
+            _P_mc(nodes_json_path).expanduser().resolve().parent
+            / "metric_contract.json"
+        )
         if _mc_path.is_file():
             _mc_obj = json.loads(_mc_path.read_text())
             if isinstance(_mc_obj, dict) and _mc_obj:
@@ -508,7 +588,10 @@ async def nodes_to_science_data(
     # Filter to successful nodes with real measurements
     good_nodes = [n for n in nodes if n.get("has_real_data") and n.get("metrics")]
     if not good_nodes:
-        return {"error": "No successful nodes with real data found", "configurations": []}
+        return {
+            "error": "No successful nodes with real data found",
+            "configurations": [],
+        }
 
     # ── results.json (typed coding-skill emit_results contract) ──
     # Each node's work_dir may contain a typed payload that splits inputs
@@ -519,13 +602,14 @@ async def nodes_to_science_data(
     # treats input sizes (nnz, M, K) as candidate maxima.
     _ckpt_dir = Path(nodes_json_path).expanduser().resolve().parent
     _workspace = (
-        _ckpt_dir.parent.parent if _ckpt_dir.parent.name == "checkpoints"
+        _ckpt_dir.parent.parent
+        if _ckpt_dir.parent.name == "checkpoints"
         else _ckpt_dir.parent
     )
     _run_id = _ckpt_dir.name
 
     def _node_results_json(nid: str) -> dict:
-        """Return parsed results.json for a node, or {} when absent / malformed."""
+        """Return one validated canonical measurement projection."""
         if not nid:
             return {}
         cand = _workspace / "experiments" / _run_id / nid / "results.json"
@@ -535,9 +619,30 @@ async def nodes_to_science_data(
                 return {}
         try:
             data = json.loads(cand.read_text())
-        except Exception:
+            measurement_set = parse_measurement_document(data)
+        except (MeasurementDocumentError, OSError, ValueError):
             return {}
-        return data if isinstance(data, dict) else {}
+        return {
+            "params": measurement_set.parameters,
+            "measurements": {
+                record.metric_id: record.value
+                for record in measurement_set.measurements
+            },
+            "measurement_records": [
+                record.model_dump(mode="json")
+                for record in measurement_set.measurements
+            ],
+            "predictions": measurement_set.predictions,
+            "scores": measurement_set.scores,
+            "artifact_digests": measurement_set.artifact_digests,
+            "_provenance": {
+                record.metric_id: record.provenance
+                for record in measurement_set.measurements
+                if record.provenance is not None
+            },
+            "typed_schema_version": measurement_set.schema_version,
+            "source_schema": measurement_document_format(data),
+        }
 
     def _node_provenance_union(nid: str) -> dict:
         """Union the _provenance maps across EVERY results*.json variant in the node
@@ -548,18 +653,21 @@ async def nodes_to_science_data(
         out: dict = {}
         if not nid:
             return out
-        for base in (_workspace / "experiments" / _run_id / nid,
-                     _workspace / "experiments" / nid):
+        for base in (
+            _workspace / "experiments" / _run_id / nid,
+            _workspace / "experiments" / nid,
+        ):
             if not base.is_dir():
                 continue
             for p in sorted(base.glob("results*.json")):
                 try:
                     d = json.loads(p.read_text())
-                except Exception:
+                    measurement_set = parse_measurement_document(d)
+                except (MeasurementDocumentError, OSError, ValueError):
                     continue
-                if isinstance(d, dict) and isinstance(d.get("_provenance"), dict):
-                    for k, v in d["_provenance"].items():
-                        out.setdefault(str(k), v)
+                for record in measurement_set.measurements:
+                    if record.provenance is not None:
+                        out.setdefault(record.metric_id, record.provenance)
         return out
 
     # Map node_id → typed payload (only stores entries that exist on disk).
@@ -602,6 +710,8 @@ async def nodes_to_science_data(
                 cfg["predictions"] = dict(rj["predictions"])
             if isinstance(rj.get("scores"), dict):
                 cfg["scores"] = dict(rj["scores"])
+            cfg["measurement_records"] = list(rj["measurement_records"])
+            cfg["measurement_artifact_digests"] = list(rj["artifact_digests"])
             # Metric-correctness contract: carry the agent-emitted measurement
             # provenance ({metric_name: "microbench"|"benchmark"|"correctness"|...}) so
             # the hard gate can confirm a contract's required ceilings were MEASURED and
@@ -611,7 +721,8 @@ async def nodes_to_science_data(
             _prov_union = _node_provenance_union(nid)
             if _prov_union:
                 cfg["_provenance"] = _prov_union
-            cfg["_typed_schema_version"] = rj.get("schema_version", "")
+            cfg["_typed_schema_version"] = rj["typed_schema_version"]
+            cfg["_typed_compatibility"] = rj["source_schema"]
             cfg["_typed_source"] = "results.json"
         else:
             # Fallback to the LLM evaluator's typed split if it was emitted.
@@ -658,12 +769,17 @@ async def nodes_to_science_data(
             all_keys.append(k)
     per_key_summary: dict = {}
     for k in all_keys:
-        vals = [n["metrics"][k] for n in good_nodes
-                if k in n.get("metrics", {}) and isinstance(n["metrics"][k], (int, float))]
+        vals = [
+            n["metrics"][k]
+            for n in good_nodes
+            if k in n.get("metrics", {}) and isinstance(n["metrics"][k], (int, float))
+        ]
         if vals:
             per_key_summary[k] = {
-                "best_value": max(vals), "min": min(vals),
-                "max": max(vals), "n": len(vals)
+                "best_value": max(vals),
+                "min": min(vals),
+                "max": max(vals),
+                "n": len(vals),
             }
 
     # ── LLM analysis: read top nodes' artifacts and extract scientific context ──
@@ -678,10 +794,12 @@ async def nodes_to_science_data(
     best_id_for_synth = _resolve_best_node_for_synthesis(nodes)
     if reports and best_id_for_synth:
         try:
-            from ari.orchestrator import node_selection as _ns
+            from ari.public import node_selection as _ns
 
             kept = _ns.filter_nodes(
-                nodes, reports, "for_synthesis",
+                nodes,
+                reports,
+                "for_synthesis",
                 always_include_node_ids={best_id_for_synth},
             )
             # Build compact per-report blocks.
@@ -721,9 +839,14 @@ async def nodes_to_science_data(
                 _part = rep.get("slurm_partition", "")
                 _cpu = rep.get("cpu_info") or {}
                 if _exec or _host:
-                    parts = [f"executor={_exec or 'unknown'}", f"host={_host or 'unknown'}"]
-                    if _part: parts.append(f"partition={_part}")
-                    if _jid: parts.append(f"slurm_job={_jid}")
+                    parts = [
+                        f"executor={_exec or 'unknown'}",
+                        f"host={_host or 'unknown'}",
+                    ]
+                    if _part:
+                        parts.append(f"partition={_part}")
+                    if _jid:
+                        parts.append(f"slurm_job={_jid}")
                     if _cpu.get("model"):
                         parts.append(
                             f"cpu={_cpu.get('model')[:60]} ({_cpu.get('threads', '?')}t)"
@@ -733,13 +856,18 @@ async def nodes_to_science_data(
 
             # Pull verbatim source bytes — same selection used by generate_ear.
             from pathlib import Path as _P
+
             sel = _ns.select_source_files_for_publication(
-                nodes, reports, best_id_for_synth,
+                nodes,
+                reports,
+                best_id_for_synth,
             )
             ckpt_dir = _P(nodes_json_path).expanduser().resolve().parent
-            workspace = (ckpt_dir.parent.parent
-                         if ckpt_dir.parent.name == "checkpoints"
-                         else ckpt_dir.parent)
+            workspace = (
+                ckpt_dir.parent.parent
+                if ckpt_dir.parent.name == "checkpoints"
+                else ckpt_dir.parent
+            )
             run_id_for_src = ckpt_dir.name
 
             def _wd(nid: str):
@@ -749,7 +877,9 @@ async def nodes_to_science_data(
                 return workspace / "experiments" / nid
 
             loaded = _ns.load_selected_sources(
-                sel, work_dir_for=_wd, size_budget=16384,
+                sel,
+                work_dir_for=_wd,
+                size_budget=16384,
             )
             for rel_path, payload in sorted(loaded.items()):
                 try:
@@ -758,7 +888,8 @@ async def nodes_to_science_data(
                     continue
                 selected_source_blob += (
                     f"\n# === {rel_path} (from {payload['from_node_id']}) ===\n"
-                    + text + "\n"
+                    + text
+                    + "\n"
                 )
 
             if selected_node_blocks:
@@ -819,7 +950,7 @@ async def nodes_to_science_data(
                     f"{indent}  execution_outputs:\n{tool_out}"
                 )
         # enqueue children
-        for child_id in (n.get("children") or []):
+        for child_id in n.get("children") or []:
             if child_id in node_index and child_id not in visited:
                 queue.append(node_index[child_id])
 
@@ -929,7 +1060,10 @@ async def nodes_to_science_data(
             # this, the previous error message ("Expecting ':' delimiter")
             # was unactionable because the original response was discarded.
             try:
-                _dbg = Path(nodes_json_path).expanduser().resolve().parent / "science_data.debug.txt"
+                _dbg = (
+                    Path(nodes_json_path).expanduser().resolve().parent
+                    / "science_data.debug.txt"
+                )
                 _dbg.write_text(
                     f"# nodes_to_science_data: JSON parse failed\n"
                     f"# error: {parse_err}\n"
@@ -943,7 +1077,9 @@ async def nodes_to_science_data(
         # and legacy flat format
         if "experiment_context" in parsed:
             experiment_context = parsed["experiment_context"]
-            experiment_context["_evaluation_protocol"] = parsed.get("evaluation_protocol", {})
+            experiment_context["_evaluation_protocol"] = parsed.get(
+                "evaluation_protocol", {}
+            )
         else:
             experiment_context = parsed
         # Optional new-schema field. Surfaced into generate_ear's
@@ -987,9 +1123,9 @@ async def nodes_to_science_data(
         summary_stats["primary_metric"] = pm
         summary_stats["direction"] = "higher_is_better" if _hib else "lower_is_better"
         pm_vals = [
-            n["metrics"][pm] for n in good_nodes
-            if pm in n.get("metrics", {})
-            and isinstance(n["metrics"][pm], (int, float))
+            n["metrics"][pm]
+            for n in good_nodes
+            if pm in n.get("metrics", {}) and isinstance(n["metrics"][pm], (int, float))
         ]
         if pm_vals:
             summary_stats["primary_metric_best"] = (
@@ -1026,15 +1162,23 @@ async def nodes_to_science_data(
     # additive; never breaks science_data generation.
     try:
         from ari.public.claim_gate import scan_science_data as _scan_invariants  # type: ignore
+
         _anoms = _scan_invariants(out)
         if _anoms:
             out["_anomalies"] = _anoms
             _by_cfg: dict = {}
             for _a in _anoms:
-                _by_cfg.setdefault(str(_a.get("config_id")), []).append(_a.get("metric"))
+                _by_cfg.setdefault(str(_a.get("config_id")), []).append(
+                    _a.get("metric")
+                )
             for _c in ranked:
-                _cid = str(_c.get("config_id") or _c.get("label") or _c.get("node_id")
-                           or _c.get("rank") or "?")
+                _cid = str(
+                    _c.get("config_id")
+                    or _c.get("label")
+                    or _c.get("node_id")
+                    or _c.get("rank")
+                    or "?"
+                )
                 if _cid in _by_cfg:
                     _c["_anomalous_metrics"] = sorted(set(_by_cfg[_cid]))
     except Exception:
@@ -1071,8 +1215,12 @@ async def nodes_to_science_data(
             # Injected research intent (P4): "any" (default) | "same_environment".
             _cmp_scope = os.environ.get("ARI_COMPARISON_SCOPE", "").strip() or "any"
             _contract = _build_claims(
-                good_nodes, typed_results, primary_metric, _hib,
-                node_env=_node_env, comparison_scope=_cmp_scope,
+                good_nodes,
+                typed_results,
+                primary_metric,
+                _hib,
+                node_env=_node_env,
+                comparison_scope=_cmp_scope,
             )
             out["claims"] = _contract.get("claims", [])
             out["numeric_assertions"] = _contract.get("numeric_assertions", [])
@@ -1095,8 +1243,10 @@ async def nodes_to_science_data(
                 # metric_key whose recorded value equals the number it states, so
                 # it has to SEE the values to declare operands correctly.
                 _metric_vals = {
-                    k: v for k, v in (_n.get("metrics") or {}).items()
-                    if isinstance(v, (int, float)) and not isinstance(v, bool)
+                    k: v
+                    for k, v in (_n.get("metrics") or {}).items()
+                    if isinstance(v, (int, float))
+                    and not isinstance(v, bool)
                     and not str(k).startswith("_")
                 }
                 _config_nodes[_cid] = {
@@ -1122,9 +1272,7 @@ async def nodes_to_science_data(
 def _safe_run(cmd: list[str], timeout: int = 10) -> str:
     """Run a shell command and return its trimmed stdout, or '' on failure."""
     try:
-        out = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout
-        )
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         return (out.stdout or "").strip()
     except Exception:
         return ""
@@ -1141,7 +1289,9 @@ def _capture_environment() -> dict:
         "hostname": platform.node(),
     }
     # Best-effort: pip list (may take a few seconds; cap timeout)
-    pip_out = _safe_run([sys.executable, "-m", "pip", "list", "--format=json"], timeout=15)
+    pip_out = _safe_run(
+        [sys.executable, "-m", "pip", "list", "--format=json"], timeout=15
+    )
     if pip_out:
         try:
             env["installed_packages"] = json.loads(pip_out)
@@ -1178,6 +1328,7 @@ def _collect_node_source_dirs(node: dict) -> list[Path]:
        such a file is treated as the node's working directory.
     """
     import re as _re
+
     dirs: list[Path] = []
     seen: set[str] = set()
 
@@ -1191,7 +1342,7 @@ def _collect_node_source_dirs(node: dict) -> list[Path]:
         except OSError:
             return
 
-    for art in (node.get("artifacts") or []):
+    for art in node.get("artifacts") or []:
         content = art.get("content", "") if isinstance(art, dict) else str(art)
         if not content:
             continue
@@ -1219,12 +1370,38 @@ def _copy_node_sources(node: dict, dest_dir: Path) -> int:
         return 0
     # Skip binary / heavy file extensions
     binary_exts = {
-        ".o", ".a", ".so", ".dylib", ".dll", ".exe", ".bin",
-        ".pyc", ".pyo", ".class", ".jar",
-        ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".ico",
-        ".pdf", ".ps", ".eps",
-        ".zip", ".gz", ".bz2", ".xz", ".tar", ".7z",
-        ".pkl", ".npy", ".npz", ".h5", ".hdf5",
+        ".o",
+        ".a",
+        ".so",
+        ".dylib",
+        ".dll",
+        ".exe",
+        ".bin",
+        ".pyc",
+        ".pyo",
+        ".class",
+        ".jar",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".bmp",
+        ".svg",
+        ".ico",
+        ".pdf",
+        ".ps",
+        ".eps",
+        ".zip",
+        ".gz",
+        ".bz2",
+        ".xz",
+        ".tar",
+        ".7z",
+        ".pkl",
+        ".npy",
+        ".npz",
+        ".h5",
+        ".hdf5",
         ".parquet",
     }
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -1294,7 +1471,12 @@ def _build_results_md_fallback(nodes: list[dict]) -> str:
         key=lambda n: float((n.get("metrics") or {}).get("_scientific_score") or 0.0),
         reverse=True,
     )
-    lines = ["# Results", "", "| node_id | label | scientific_score | metrics |", "| --- | --- | --- | --- |"]
+    lines = [
+        "# Results",
+        "",
+        "| node_id | label | scientific_score | metrics |",
+        "| --- | --- | --- | --- |",
+    ]
     for n in real[:25]:
         m = n.get("metrics") or {}
         sci = m.get("_scientific_score")
@@ -1324,16 +1506,12 @@ def _build_commands_md(top_node: dict | None) -> str:
 
     artifact_paths: list[str] = []
     inline_cmds: list[str] = []
-    for art in (top_node.get("artifacts") or []):
+    for art in top_node.get("artifacts") or []:
         content = art.get("content", "") if isinstance(art, dict) else str(art)
         if not content:
             continue
         stripped = content.strip()
-        if (
-            stripped.startswith("/")
-            and "\n" not in stripped
-            and " " not in stripped
-        ):
+        if stripped.startswith("/") and "\n" not in stripped and " " not in stripped:
             artifact_paths.append(stripped)
             continue
         for line in content.splitlines():
@@ -1410,14 +1588,16 @@ def _consolidate_metrics(nodes: list[dict]) -> dict:
         m = n.get("metrics") or {}
         if not m:
             continue
-        out["nodes"].append({
-            "id": n.get("id", ""),
-            "label": n.get("label", ""),
-            "raw_label": n.get("raw_label", ""),
-            "depth": n.get("depth", 0),
-            "has_real_data": bool(n.get("has_real_data", False)),
-            "metrics": m,
-        })
+        out["nodes"].append(
+            {
+                "id": n.get("id", ""),
+                "label": n.get("label", ""),
+                "raw_label": n.get("raw_label", ""),
+                "depth": n.get("depth", 0),
+                "has_real_data": bool(n.get("has_real_data", False)),
+                "metrics": m,
+            }
+        )
         for k, v in m.items():
             if isinstance(v, (int, float)):
                 all_keys.setdefault(k, []).append(v)
@@ -1453,50 +1633,116 @@ def _copy_figures(checkpoint_dir: Path, figures_dir: Path) -> int:
 # ear/code/. These are the "publishable code surfaces"; everything else is
 # either an experiment output (not published; reproduce.sh regenerates) or
 # an internal artefact (logs, build caches).
-_EAR_CODE_EXTS: frozenset[str] = frozenset({
-    ".c", ".cc", ".cpp", ".cxx", ".h", ".hpp", ".hh",
-    ".f", ".f90", ".for",
-    ".py", ".ipynb",
-    ".sh", ".bash", ".zsh",
-    ".rs", ".go", ".java", ".scala", ".kt",
-    ".cu", ".cuda", ".cl",
-    ".ts", ".tsx", ".js", ".jsx", ".mjs",
-    ".mk", ".cmake",
-    ".toml", ".yaml", ".yml", ".cfg", ".ini",
-    ".r", ".jl", ".lua", ".swift",
-    ".proto", ".thrift", ".sql",
-})
+_EAR_CODE_EXTS: frozenset[str] = frozenset(
+    {
+        ".c",
+        ".cc",
+        ".cpp",
+        ".cxx",
+        ".h",
+        ".hpp",
+        ".hh",
+        ".f",
+        ".f90",
+        ".for",
+        ".py",
+        ".ipynb",
+        ".sh",
+        ".bash",
+        ".zsh",
+        ".rs",
+        ".go",
+        ".java",
+        ".scala",
+        ".kt",
+        ".cu",
+        ".cuda",
+        ".cl",
+        ".ts",
+        ".tsx",
+        ".js",
+        ".jsx",
+        ".mjs",
+        ".mk",
+        ".cmake",
+        ".toml",
+        ".yaml",
+        ".yml",
+        ".cfg",
+        ".ini",
+        ".r",
+        ".jl",
+        ".lua",
+        ".swift",
+        ".proto",
+        ".thrift",
+        ".sql",
+    }
+)
 
-_EAR_CODE_BASENAMES: frozenset[str] = frozenset({
-    "Makefile", "makefile", "GNUmakefile",
-    "CMakeLists.txt",
-    "Dockerfile",
-    ".dockerignore",
-    "requirements.txt",
-    "environment.yml", "environment.yaml",
-    "pyproject.toml", "setup.py", "setup.cfg", "MANIFEST.in",
-    "Cargo.toml", "go.mod", "package.json", "tsconfig.json",
-    "build.gradle", "pom.xml",
-    ".gitignore",
-})
+_EAR_CODE_BASENAMES: frozenset[str] = frozenset(
+    {
+        "Makefile",
+        "makefile",
+        "GNUmakefile",
+        "CMakeLists.txt",
+        "Dockerfile",
+        ".dockerignore",
+        "requirements.txt",
+        "environment.yml",
+        "environment.yaml",
+        "pyproject.toml",
+        "setup.py",
+        "setup.cfg",
+        "MANIFEST.in",
+        "Cargo.toml",
+        "go.mod",
+        "package.json",
+        "tsconfig.json",
+        "build.gradle",
+        "pom.xml",
+        ".gitignore",
+    }
+)
 
 # Hard blocklist (filename or filename pattern). These are never copied into
 # ear/code/ even if their extension matches the whitelist.
-_EAR_CODE_BLOCKLIST_NAMES: frozenset[str] = frozenset({
-    "memory_access.jsonl", "viz_access.jsonl", "cost_trace.jsonl",
-    "nodes_tree.json", "tree.json", "bfts_tree.json",
-    "science_data.json", "raw_metrics.json", "eval_scores.json",
-    "node_report.json",
-    ".DS_Store", "Thumbs.db",
-})
+_EAR_CODE_BLOCKLIST_NAMES: frozenset[str] = frozenset(
+    {
+        "memory_access.jsonl",
+        "viz_access.jsonl",
+        "cost_trace.jsonl",
+        "nodes_tree.json",
+        "tree.json",
+        "bfts_tree.json",
+        "science_data.json",
+        "raw_metrics.json",
+        "eval_scores.json",
+        "node_report.json",
+        ".DS_Store",
+        "Thumbs.db",
+    }
+)
 
 # Subdirectories never recursed into.
-_EAR_CODE_BLOCKLIST_DIRS: frozenset[str] = frozenset({
-    ".git", ".cache", ".pytest_cache", "__pycache__",
-    "node_modules", ".ipynb_checkpoints",
-    ".venv", "venv", "build", "dist", "target",
-    ".tox", ".mypy_cache", ".ruff_cache",
-})
+_EAR_CODE_BLOCKLIST_DIRS: frozenset[str] = frozenset(
+    {
+        ".git",
+        ".cache",
+        ".pytest_cache",
+        "__pycache__",
+        "node_modules",
+        ".ipynb_checkpoints",
+        ".venv",
+        "venv",
+        "build",
+        "dist",
+        "target",
+        ".tox",
+        ".mypy_cache",
+        ".ruff_cache",
+    }
+)
 
 _EAR_CODE_FILE_SIZE_CAP = 256 * 1024  # 256KB / file
 
@@ -1530,8 +1776,10 @@ def _resolve_pm_run_id(ckpt: Path) -> tuple[Path, str]:
     `checkpoints/{run_id}/`. Some test fixtures place experiments alongside
     the checkpoint instead, so we accept that fallback as well.
     """
-    return (ckpt.parent.parent if ckpt.parent.name == "checkpoints" else ckpt.parent,
-            ckpt.name)
+    return (
+        ckpt.parent.parent if ckpt.parent.name == "checkpoints" else ckpt.parent,
+        ckpt.name,
+    )
 
 
 def _node_work_dir(workspace: Path, run_id: str, node_id: str) -> Path:
@@ -1546,7 +1794,9 @@ def _node_work_dir(workspace: Path, run_id: str, node_id: str) -> Path:
     return candidates[0]
 
 
-def _load_node_reports(workspace: Path, run_id: str, nodes: list[dict]) -> dict[str, dict]:
+def _load_node_reports(
+    workspace: Path, run_id: str, nodes: list[dict]
+) -> dict[str, dict]:
     """Load every available `node_report.json` keyed by node id."""
     reports: dict[str, dict] = {}
     for n in nodes:
@@ -1568,8 +1818,10 @@ def _resolve_best_node(nodes: list[dict]) -> dict | None:
     real = [n for n in nodes if n.get("has_real_data") and n.get("metrics")]
     if not real:
         return None
+
     def _score(n: dict) -> float:
         return float((n.get("metrics") or {}).get("_scientific_score") or 0.0)
+
     real.sort(
         key=lambda n: (
             _score(n),
@@ -1614,7 +1866,7 @@ def _render_evolution_md(chain: list[dict], reports: dict[str, dict]) -> str:
     # successful step appearances.
     metric_counter: dict[str, int] = {}
     for n in chain:
-        for k in (n.get("metrics") or {}):
+        for k in n.get("metrics") or {}:
             if k.startswith("_"):
                 continue
             metric_counter[k] = metric_counter.get(k, 0) + 1
@@ -1660,8 +1912,10 @@ def _render_evolution_md(chain: list[dict], reports: dict[str, dict]) -> str:
         delta_text_first = delta_text[0] if delta_text else ""
         if not delta_text_first:
             delta_text_first = (
-                (report.get("self_assessment") or {}).get("headline") or ""
-            ).replace("|", " ").splitlines()[:1]
+                ((report.get("self_assessment") or {}).get("headline") or "")
+                .replace("|", " ")
+                .splitlines()[:1]
+            )
             delta_text_first = delta_text_first[0] if delta_text_first else ""
         rows.append(
             f"| {idx} | {label_disp} | {m_str} | {delta_str} | "
@@ -1703,7 +1957,9 @@ def _is_substantive_command(line: str) -> bool:
     s = line.strip()
     if not s or s.startswith("#"):
         return False
-    if s.startswith(("set ", "export ", "source ", "cd ", "module ", "ulimit ", "shopt ")):
+    if s.startswith(
+        ("set ", "export ", "source ", "cd ", "module ", "ulimit ", "shopt ")
+    ):
         return False
     if _BARE_VAR_ASSIGN_RE.match(s):
         return False
@@ -1727,7 +1983,9 @@ def _find_runnable_script_in_code(code_dir: Path) -> str | None:
     return None
 
 
-def _render_reproduce_sh(best_report: dict | None, code_dir: Path | None = None) -> str | None:
+def _render_reproduce_sh(
+    best_report: dict | None, code_dir: Path | None = None
+) -> str | None:
     """Deterministic reproduce.sh body, or None if no usable input.
 
     Strategy:
@@ -1771,34 +2029,34 @@ def _render_reproduce_sh(best_report: dict | None, code_dir: Path | None = None)
         f"# run script ({wrapped}) verbatim.\n"
         "set -euo pipefail\n"
         'cd "$(dirname "$0")/code"\n'
-        '\n'
-        '# Provide common build env vars in case the inner script omits them.\n'
+        "\n"
+        "# Provide common build env vars in case the inner script omits them.\n"
         'export CXX="${CXX:-g++}"\n'
         'export CXXFLAGS="${CXXFLAGS:--O3 -march=native -fopenmp -std=c++17}"\n'
-        '\n'
-        f'bash {wrapped}\n'
-        'rc=$?\n'
-        '\n'
-        '# Promote per-run output artifacts from code/ up to the repo root so\n'
-        '# the rubric\'s expected_artifacts (repo-relative paths like\n'
+        "\n"
+        f"bash {wrapped}\n"
+        "rc=$?\n"
+        "\n"
+        "# Promote per-run output artifacts from code/ up to the repo root so\n"
+        "# the rubric's expected_artifacts (repo-relative paths like\n"
         '# "results.csv") can match them. The inner script writes outputs in\n'
-        '# its CWD (= code/), but the PaperBench grader looks for them at\n'
-        '# repo root. Idempotent — re-runs overwrite stale copies.\n'
-        'shopt -s nullglob\n'
-        'for _f in *.csv *.tsv *.pdf *.png *.svg *.jpg *.jpeg *.json *.log *.txt; do\n'
+        "# its CWD (= code/), but the PaperBench grader looks for them at\n"
+        "# repo root. Idempotent — re-runs overwrite stale copies.\n"
+        "shopt -s nullglob\n"
+        "for _f in *.csv *.tsv *.pdf *.png *.svg *.jpg *.jpeg *.json *.log *.txt; do\n"
         '    [ "$_f" = "run.log" ] && continue   # surfaced via stdout below instead\n'
         '    cp -f "$_f" "../$_f"\n'
-        'done\n'
-        'shopt -u nullglob\n'
-        '\n'
-        '# Surface stderr that the inner script may have redirected to a\n'
-        '# local log so the Phase 2 grader (which only sees the runner-\n'
-        '# captured stdout) can inspect it too.\n'
-        'if [ -f run.log ]; then\n'
+        "done\n"
+        "shopt -u nullglob\n"
+        "\n"
+        "# Surface stderr that the inner script may have redirected to a\n"
+        "# local log so the Phase 2 grader (which only sees the runner-\n"
+        "# captured stdout) can inspect it too.\n"
+        "if [ -f run.log ]; then\n"
         '    echo "--- code/run.log (stderr from inner script) ---"\n'
-        '    cat run.log\n'
-        'fi\n'
-        '\n'
+        "    cat run.log\n"
+        "fi\n"
+        "\n"
         'exit "$rc"\n'
     )
 
@@ -1830,8 +2088,9 @@ def _render_readme(
         if headline:
             lines.append(headline)
             lines.append("")
-        metrics = ((best_report or {}).get("metrics")
-                   or (best_node or {}).get("metrics") or {})
+        metrics = (
+            (best_report or {}).get("metrics") or (best_node or {}).get("metrics") or {}
+        )
         if metrics:
             lines.append("| Metric | Value |")
             lines.append("|---|---|")
@@ -1848,17 +2107,22 @@ def _render_readme(
         lines.append("bash reproduce.sh")
         lines.append("```")
     else:
-        lines.append("_No reproduce.sh was generated; see code/ for build instructions._")
+        lines.append(
+            "_No reproduce.sh was generated; see code/ for build instructions._"
+        )
     lines.append("")
 
     lines.append("## Layout")
     lines.append("")
-    lines.append("- `code/` — verbatim source files from contributing nodes "
-                 "in the best chain")
+    lines.append(
+        "- `code/` — verbatim source files from contributing nodes in the best chain"
+    )
     if has_data_dir:
-        lines.append("- `data/` — input data files mirrored from the uploaded "
-                     "dataset. Experiment outputs (CSV etc.) are NOT included; "
-                     "they are regenerated by `reproduce.sh`.")
+        lines.append(
+            "- `data/` — input data files mirrored from the uploaded "
+            "dataset. Experiment outputs (CSV etc.) are NOT included; "
+            "they are regenerated by `reproduce.sh`."
+        )
     if has_figures_dir:
         lines.append("- `figures/` — figures referenced by the paper")
     if has_environment:
@@ -1889,14 +2153,16 @@ def _render_readme(
 
     lines.append("## Provenance")
     lines.append("")
-    lines.append("Source and data files are verbatim copies from the *contributing* "
-                 "nodes in the best chain (determined deterministically via "
-                 "`node_report::files_changed`). README and reproduce.sh "
-                 "are rendered deterministically from each node's `node_report.json`. "
-                 "LLM does not modify code or data files. The full search "
-                 "trajectory and per-file origin audit are kept alongside the "
-                 "checkpoint as `EVOLUTION.md` and `_provenance.json` (outside "
-                 "this artifact).")
+    lines.append(
+        "Source and data files are verbatim copies from the *contributing* "
+        "nodes in the best chain (determined deterministically via "
+        "`node_report::files_changed`). README and reproduce.sh "
+        "are rendered deterministically from each node's `node_report.json`. "
+        "LLM does not modify code or data files. The full search "
+        "trajectory and per-file origin audit are kept alongside the "
+        "checkpoint as `EVOLUTION.md` and `_provenance.json` (outside "
+        "this artifact)."
+    )
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -1906,6 +2172,7 @@ def _read_publish_yaml(checkpoint_dir: Path) -> dict:
         return {}
     try:
         import yaml as _yaml
+
         return _yaml.safe_load(py_path.read_text()) or {}
     except Exception:
         return {}
@@ -1951,6 +2218,7 @@ def _write_license_if_needed(
 
 def _read_meta_author(ckpt: Path) -> tuple[str, int]:
     from datetime import datetime as _dt, timezone as _tz
+
     year = _dt.now(_tz.utc).year
     author = ""
     meta_path = ckpt / "meta.json"
@@ -1980,8 +2248,13 @@ def _resolve_goal(ckpt: Path, tree_data: object) -> str:
         try:
             meta = json.loads(meta_path.read_text())
             if isinstance(meta, dict):
-                return (meta.get("experiment_goal") or meta.get("goal")
-                        or meta.get("research_goal") or meta.get("idea") or "")
+                return (
+                    meta.get("experiment_goal")
+                    or meta.get("goal")
+                    or meta.get("research_goal")
+                    or meta.get("idea")
+                    or ""
+                )
         except Exception:
             pass
     return ""
@@ -2080,7 +2353,7 @@ def generate_ear(
     - If reports are missing for every node, the tool falls back to a
       whitelist scan of the best node's work_dir.
     """
-    from ari.orchestrator import node_selection as _ns
+    from ari.public import node_selection as _ns
 
     ckpt = Path(checkpoint_dir).expanduser().resolve()
     if not ckpt.exists() or not ckpt.is_dir():
@@ -2139,15 +2412,21 @@ def generate_ear(
     code_layout = "fallback_workdir_scan"
 
     # ── code/ collection ──
-    written_files: list[tuple[str, str | None, str]] = []  # (dest_rel, from_node_id, introduced_by)
+    written_files: list[
+        tuple[str, str | None, str]
+    ] = []  # (dest_rel, from_node_id, introduced_by)
 
     if best_id and reports:
         selection = _ns.select_source_files_for_publication(nodes, reports, best_id)
+
         # Map node_id -> work_dir.
         def _wd(nid: str) -> Path:
             return _node_work_dir(workspace, run_id, nid)
+
         loaded = _ns.load_selected_sources(
-            selection, work_dir_for=_wd, size_budget=None,
+            selection,
+            work_dir_for=_wd,
+            size_budget=None,
         )
         for rel_path, payload in loaded.items():
             full = code_dir / rel_path
@@ -2201,11 +2480,13 @@ def generate_ear(
             dst.parent.mkdir(parents=True, exist_ok=True)
             try:
                 shutil.copy2(src, dst)
-                data_records.append({
-                    "dest": f"data/{rel.as_posix()}",
-                    "from_path": f"uploads/{rel.as_posix()}",
-                    "size": dst.stat().st_size,
-                })
+                data_records.append(
+                    {
+                        "dest": f"data/{rel.as_posix()}",
+                        "from_path": f"uploads/{rel.as_posix()}",
+                        "size": dst.stat().st_size,
+                    }
+                )
                 file_count += 1
             except Exception:
                 continue
@@ -2233,11 +2514,13 @@ def generate_ear(
             dst = figures_dir / src.name
             try:
                 shutil.copy2(src, dst)
-                fig_records.append({
-                    "dest": f"figures/{src.name}",
-                    "from_path": src.name,
-                    "size": dst.stat().st_size,
-                })
+                fig_records.append(
+                    {
+                        "dest": f"figures/{src.name}",
+                        "from_path": src.name,
+                        "size": dst.stat().st_size,
+                    }
+                )
                 file_count += 1
             except Exception:
                 continue
@@ -2253,7 +2536,9 @@ def generate_ear(
     # ── EVOLUTION.md ──
     chain = _ns.build_parent_chain(best_id, nodes) if best_id else []
     narrative_chain = _ns.filter_nodes(
-        chain, reports, "for_narrative",
+        chain,
+        reports,
+        "for_narrative",
         always_include_node_ids={best_id} if best_id else (),
     )
     has_evolution = False
@@ -2289,7 +2574,10 @@ def generate_ear(
     publish_yaml = _read_publish_yaml(ckpt)
     author, year = _read_meta_author(ckpt)
     has_license = _write_license_if_needed(
-        ear, publish_yaml, author=author, year=year,
+        ear,
+        publish_yaml,
+        author=author,
+        year=year,
     )
     if has_license and (ear / "LICENSE").is_file():
         file_count += 1
@@ -2319,22 +2607,24 @@ def generate_ear(
     for rel_path, from_nid, introduced_by in written_files:
         node = next((n for n in nodes if n.get("id") == from_nid), None)
         depth = int((node or {}).get("depth") or 0)
-        size = (code_dir / rel_path).stat().st_size if (code_dir / rel_path).is_file() else 0
-        file_records.append({
-            "dest": f"ear/code/{rel_path}",
-            "from_node_id": from_nid,
-            "from_filename": Path(rel_path).name,
-            "verbatim": True,
-            "introduced_by": introduced_by,
-            "depth_in_chain": depth,
-            "size": size,
-        })
-    data_records_prov = [
-        {**rec, "dest": f"ear/{rec['dest']}"} for rec in data_records
-    ]
-    fig_records_prov = [
-        {**rec, "dest": f"ear/{rec['dest']}"} for rec in fig_records
-    ]
+        size = (
+            (code_dir / rel_path).stat().st_size
+            if (code_dir / rel_path).is_file()
+            else 0
+        )
+        file_records.append(
+            {
+                "dest": f"ear/code/{rel_path}",
+                "from_node_id": from_nid,
+                "from_filename": Path(rel_path).name,
+                "verbatim": True,
+                "introduced_by": introduced_by,
+                "depth_in_chain": depth,
+                "size": size,
+            }
+        )
+    data_records_prov = [{**rec, "dest": f"ear/{rec['dest']}"} for rec in data_records]
+    fig_records_prov = [{**rec, "dest": f"ear/{rec['dest']}"} for rec in fig_records]
     provenance = {
         "schema_version": 1,
         "best_node_id": best_id,
@@ -2343,12 +2633,25 @@ def generate_ear(
         "data": data_records_prov,
         "figures": fig_records_prov,
         "rendered": [
-            {"dest": "ear/README.md", "method": "deterministic_render",
-             "source_field": "node_reports + (optional) science_data.json::implementation_overview"},
-            {"dest": "EVOLUTION.md", "method": "deterministic_render",
-             "source_field": "node_reports::delta_vs_parent + metrics"} if has_evolution else None,
-            {"dest": "ear/reproduce.sh", "method": "deterministic_render",
-             "source_field": "node_reports::{build_command, run_command}"} if has_reproduce_sh else None,
+            {
+                "dest": "ear/README.md",
+                "method": "deterministic_render",
+                "source_field": "node_reports + (optional) science_data.json::implementation_overview",
+            },
+            {
+                "dest": "EVOLUTION.md",
+                "method": "deterministic_render",
+                "source_field": "node_reports::delta_vs_parent + metrics",
+            }
+            if has_evolution
+            else None,
+            {
+                "dest": "ear/reproduce.sh",
+                "method": "deterministic_render",
+                "source_field": "node_reports::{build_command, run_command}",
+            }
+            if has_reproduce_sh
+            else None,
         ],
         "excluded_nodes": list(excluded_nodes),
         "warnings": [],
@@ -2384,8 +2687,8 @@ def generate_ear(
         # Back-compat alias.
         "source_files": verbatim_files,
         "rendered_files": (1 if has_evolution else 0)
-                          + (1 if has_reproduce_sh else 0)
-                          + 1,  # README.md is always rendered
+        + (1 if has_reproduce_sh else 0)
+        + 1,  # README.md is always rendered
         "data_count": len(data_records),
         "figure_count": len(fig_records),
         "top_node_id": best_id,
@@ -2414,6 +2717,7 @@ def curate_ear(checkpoint_dir: str) -> dict:
     the paper's Code Availability section.
     """
     from curate import curate_to_dict  # type: ignore  # local module
+
     return curate_to_dict(checkpoint_dir)
 
 
@@ -2430,17 +2734,23 @@ def publish_ear(
     be a workflow stage. Always starts at visibility=staged (FR-P5).
     """
     try:
-        from ari.publish import publish, PublishError  # type: ignore
+        from ari.public.publish import PublishError, publish  # type: ignore
     except Exception as e:
         return {"error": f"ari.publish not importable: {e}"}
     try:
-        rec = publish(checkpoint_dir, backend=backend, visibility=visibility, dry_run=dry_run)
+        rec = publish(
+            checkpoint_dir, backend=backend, visibility=visibility, dry_run=dry_run
+        )
     except PublishError as e:
         return {"error": str(e), "kind": "PublishError"}
     return {
-        "backend": rec.backend, "ref": rec.ref, "bundle_sha256": rec.bundle_sha256,
-        "visibility": rec.visibility, "timestamp": rec.timestamp,
-        "dry_run": rec.dry_run, "extra": rec.extra,
+        "backend": rec.backend,
+        "ref": rec.ref,
+        "bundle_sha256": rec.bundle_sha256,
+        "visibility": rec.visibility,
+        "timestamp": rec.timestamp,
+        "dry_run": rec.dry_run,
+        "extra": rec.extra,
     }
 
 
@@ -2448,7 +2758,7 @@ def publish_ear(
 def promote_ear(checkpoint_dir: str, target: str = "public") -> dict:
     """Promote a previously-published artefact to a wider visibility."""
     try:
-        from ari.publish import promote, PublishError  # type: ignore
+        from ari.public.publish import PublishError, promote  # type: ignore
     except Exception as e:
         return {"error": f"ari.publish not importable: {e}"}
     try:
@@ -2456,8 +2766,10 @@ def promote_ear(checkpoint_dir: str, target: str = "public") -> dict:
     except PublishError as e:
         return {"error": str(e), "kind": "PublishError"}
     return {
-        "ref": rec.ref, "visibility": rec.visibility,
-        "promoted_at": rec.promoted_at, "promote_failed_at": rec.promote_failed_at,
+        "ref": rec.ref,
+        "visibility": rec.visibility,
+        "promoted_at": rec.promoted_at,
+        "promote_failed_at": rec.promote_failed_at,
     }
 
 

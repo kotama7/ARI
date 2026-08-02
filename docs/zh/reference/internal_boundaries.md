@@ -43,7 +43,7 @@ ARI 的 LLM 边界**并非**"一切都必须调用 `LLMClient`"。它是一个�
 
 | 模块 | 负责 |
 |--------|------|
-| `ari/container.py` | 容器执行：`detect_runtime`、`build_run_cmd`、`run_in_container`（Popen ＋ `_sandbox_preexec` ＝ `os.setsid` 新建进程组 ＋ 经由 `ARI_MAX_CHILD_PROCS` 的可选 `RLIMIT_NPROC`）、`_run_with_timeout`（对进程组 SIGTERM→SIGKILL）、`pull_image`、`exec_in_container`。由 `ari.public.container` 重导出。 |
+| `ari/execution.py` ＋ `ari/container.py` | `ari.execution` 负责封闭 workspace、最小环境、POSIX 限制、进程组 timeout/cancel 与完整日志 artifact。`ari.container` 构建 clean、fail-closed 的 runtime argv，其 blocking 兼容路径委托给公共 executor。由 `ari.public.execution` / `ari.public.container` 重导出。 |
 | `ari/env_detect.py` | 调度器 / 运行时探测（`sinfo`、`qstat`、`docker info`、`lscpu`）—— 只读、尽力而为、不含硬编码的集群知识。 |
 | `ari/mcp/client.py` | 经由 MCP SDK 的 `stdio_client`（一个封装，而非裸 spawn）派生技能的 stdio 服务器。 |
 | `ari-skill-hpc/ari_skill_hpc/{contracts,scheduler}.py` | 带版本的 HPC job 契约、无 shell 的本地 SLURM、严格 known-host SSH、持久幂等、`--export=NIL` 干净环境及 digest 绑定的结果收集。 |

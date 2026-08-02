@@ -30,9 +30,12 @@ last_verified: 2026-08-02
 |---|---|---|
 | `ari.public.config_schema` | Pydantic 設定モデル（`ARIConfig`、`LLMConfig` など） | 型付き設定が必要な呼び出し元 |
 | `ari.public.container` | コンテナランタイムヘルパー（`ContainerConfig`、`run_in_container` など） | `ari-skill-coding`（テスト） |
+| `ari.public.execution` | 閉じた workspace、bounded execution/result、完全 log artifact、`MeasurementSetV1` | 実行 producer と測定 consumer Skill |
 | `ari.public.cost_tracker` | LLM コスト記録（`bootstrap_skill`、`record` など） | `ari-skill-plot`（LLM 呼び出しコスト） |
 | `ari.public.llm` | `LLMClient`（コスト統合付き LiteLLM ラッパー） | ARI のラッパーを使いたい呼び出し元 |
 | `ari.public.paths` | `PathManager`（チェックポイントパスリゾルバ） | スコープ付きパスが必要な呼び出し元 |
+| `ari.public.node_selection` | 決定論的な downstream node/source 選択 | `ari-skill-transform` |
+| `ari.public.publish` | staged EAR publish/promote 契約 | `ari-skill-transform` |
 | `ari.public.run_env` | run 環境の capture と shell export ヘルパー | sandbox / executor Skill |
 | `ari.public.call_context` | `RunContextV1`、`NodeContextV1`、署名付き tool-context 検証ヘルパー | control plane と context-aware Skill |
 | `ari.public.result` | `ResultEnvelopeV1`、content-addressed artifact reference、型付き error、呼び出し provenance | Skill adapter と federated dispatch 呼び出し元 |

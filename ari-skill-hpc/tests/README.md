@@ -4,6 +4,10 @@ Pytest suite for the HPC skill (SLURM + Singularity).
 
 ## Contents
 
+- `test_execution_adapter.py` — common execution identity/input/environment
+  handoff to SLURM, explicit unmapped-policy provenance, and pinned container
+  parity.
+
 - `README.md` — this file.
 - `conftest.py` — shared fixtures.
 - `test_contracts.py` — strict validation, stable digests, and public JSON Schema.

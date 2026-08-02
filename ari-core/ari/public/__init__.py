@@ -8,12 +8,17 @@ Currently exported sub-modules:
 
 - :mod:`ari.public.container`    — container runtime helpers used by
   ari-skill-coding's regression tests.
+- :mod:`ari.public.execution`    — closed-workspace, bounded-process,
+  artifact-log, and typed measurement contracts.
 - :mod:`ari.public.cost_tracker` — LLM cost reporting used by
   ari-skill-plot to log VLM/LLM call costs.
 - :mod:`ari.public.paths`        — :class:`PathManager` for callers
   that need to resolve checkpoint paths without hard-coding env vars.
 - :mod:`ari.public.llm`          — :class:`LLMClient` for callers that
   proxy through the ARI-side LLM client.
+- :mod:`ari.public.node_selection` — deterministic downstream node/source
+  selection for transform and publication Skills.
+- :mod:`ari.public.publish`      — staged EAR publication and promotion.
 - :mod:`ari.public.config_schema` — Pydantic config models for
   callers that need typed settings access.
 - :mod:`ari.public.call_context` — explicit run/node/lineage context and

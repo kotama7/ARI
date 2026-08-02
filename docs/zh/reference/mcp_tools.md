@@ -35,15 +35,15 @@ ARI 附带 15 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 
 ## ari-skill-coding — 编写 + 运行代码
 
-`mcp.json` 未列出工具；实际工具列表来自 `src/server.py` 中的 `@server.list_tools()`。
+`skill.yaml` 是 canonical tool contract，`mcp.json` 由其生成。
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
-| `write_code` | 向节点 work_dir 写入文件 | ✗ |
-| `run_code` | 执行脚本（含超时 + 捕获） | ✗ |
-| `run_bash` | 临时 bash 命令 | ✗ |
-| `emit_results` | 向评估器提交 `metrics` + `has_real_data`（可选 `provenance` 参数 → 原样写入 `_provenance` 键，标记每个值是如何测量的，供 claim-evidence 门使用） | ✗ |
-| `read_file` | 读取智能体之前写入的文件 | ✗ |
+| `write_code` | 原子、traversal/symlink-safe 的 workspace 写入与 source digest | ✗ |
+| `run_code` | digest-bound 不可变脚本快照、有界执行与完整日志 artifact | ✗ |
+| `run_bash` | 带 local/container identity 的显式 shell 执行与完整日志 artifact | ✗ |
+| `emit_results` | 输出含有限数值、unit、provenance、已验证execution attempt/receipt及重新hash的artifact digest之canonical `ari.measurement-set/v1` | ✗ |
+| `read_file` | symlink-safe 的有界/分页 workspace 读取 | ✗ |
 
 ## ari-skill-evaluator — LLM 指标提取
 

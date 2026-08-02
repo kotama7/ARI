@@ -62,11 +62,11 @@ an LLM and therefore are not byte-deterministic.
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
-| `write_code` | Write a file into the node work_dir | ✗ |
-| `run_code` | Execute a script with timeout + capture | ✗ |
-| `run_bash` | Ad-hoc bash command | ✗ |
-| `emit_results` | Emit `metrics` + `has_real_data` for the evaluator (optional `provenance` arg → written verbatim as the `_provenance` key tagging how each value was measured, for the claim-evidence gate). The response's `contract_warnings` may include suggestion-only "POSSIBLE name matches" hints when an emitted key lexically resembles a required evidence name — advisory only: nothing is auto-bound and the gate never consumes them | ✗ |
-| `read_file` | Read a file the agent wrote earlier | ✗ |
+| `write_code` | Atomic, traversal/symlink-safe workspace write with source digest | ✗ |
+| `run_code` | Digest-bound immutable script snapshot, bounded execution, complete log artifacts | ✗ |
+| `run_bash` | Explicit shell execution with local/container identity and complete log artifacts | ✗ |
+| `emit_results` | Emit canonical `ari.measurement-set/v1`: finite values, units, provenance, verified execution attempt/receipt, and re-hashed artifact digests; returns advisory claim-contract warnings | ✗ |
+| `read_file` | Symlink-safe bounded/paginated workspace read | ✗ |
 
 ## ari-skill-evaluator — LLM metric extraction
 

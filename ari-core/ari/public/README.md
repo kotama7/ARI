@@ -12,9 +12,13 @@ core can refactor freely while the contract stays put.
 - `claim_gate.py` — re-exports five symbols from `ari.pipeline.claim_gate`: `run_hard_gate` (→ ari-skill-evaluator), `check_emission` (→ ari-skill-coding), `scan_science_data` (→ ari-skill-transform), plus `classify_concept` / `CONCEPT_INVARIANTS` (shared concept→invariant registry).
 - `config_schema.py` — re-export of `ari.config` models.
 - `container.py` — re-export of `ari.container`.
+- `execution.py` — versioned workspace, bounded execution, complete-log
+  artifact, and measurement contracts plus the read-only legacy parser.
 - `cost_tracker.py` — re-export of `ari.cost_tracker`.
 - `llm.py` — re-export of `ari.llm.client.LLMClient`.
 - `paths.py` — re-export of `ari.paths.PathManager`.
+- `node_selection.py` — deterministic downstream node/source selection.
+- `publish.py` — staged EAR publication and promotion.
 - `run_env.py` — re-export of `ari.agent.run_env` capture helpers.
 - `result.py` — versioned `ResultEnvelopeV1`, artifact references, typed errors,
   call provenance, immutable async handles, and the legacy response normalizer.

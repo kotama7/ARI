@@ -1,7 +1,7 @@
 schema_version: 1
 name: hpc-skill
 package: ari-skill-hpc
-version: 0.3.0
+version: 0.3.1
 display_name: Run reproducible HPC workloads
 description: Typed SLURM lifecycle, strict SSH transport, capability probes, and digest-pinned containers.
 environment_policy: complete

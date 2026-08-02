@@ -11,6 +11,7 @@ file formats, and terminology.
 - `configuration.md` — Configuration Reference: `workflow.yaml`, the single source of truth for the pipeline.
 - `environment_variables.md` — Environment Variable Reference: the ~90 environment variables ARI honours.
 - `execution_profile.md` — `execution_profile` reference: the object under `reproduce_contract`.
+- `execution_contract.md` — closed workspace, bounded execution, complete-log artifact, and typed measurement contracts.
 - `file_formats.md` — File Formats Reference: the self-describing ARI checkpoint directory.
 - `glossary.md` — Glossary: short definitions of terms recurring across the docs.
 - `internal_boundaries.md` — Internal boundaries: the LLM, OS/scheduler/container, and two-engine orchestration boundaries + their concurrency hazards.
