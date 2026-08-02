@@ -14,6 +14,10 @@ sources:
     role: implementation
   - path: ari-skill-tool-registry/src/storage.py
     role: implementation
+  - path: ari-skill-tool-registry/src/tooluniverse_adapter.py
+    role: implementation
+  - path: ari-skill-tool-registry/providers/tooluniverse-support-v1.json
+    role: config
 last_verified: 2026-08-02
 ---
 
@@ -68,6 +72,37 @@ MCP bundleをpackage固有routingなしで共存させられます。direct stdi
 custom leaf code不要です。異なるtransportはcollection全体につき1個の
 `CatalogSource` と `ProviderAdapter`、およびconformance fixtureを追加します。
 
+## ToolUniverse v1.3.1 adapter
+
+ToolUniverseは数千個のpublic MCP toolではなく、一つのcompact collectionとして
+統合します。registry processはToolUniverseをimportしません。operator syncだけが
+compactなlist/info/execute surfaceをcanonical leaf descriptorへ展開し、runtimeは
+active lockに含まれるexact leaf名だけを `execute_tool` へ渡します。
+
+support matrixはrepository commit/tag、PyPI wheel/sdist、Apache-2.0 license、
+upstream dependency lock、compact contract、installed package全3,542ファイルの
+canonical tree digestを固定します。sync/runtimeの双方が完全treeとshell-freeな
+`tooluniverse.smcp_server:run_stdio_server` callableを検証します。version range、
+起動時install、変更済みpackage、別entry pointはfail closedです。
+
+leafごとのwrapperではなくcategory/type profileでeffect、determinism、permission、
+limitation、lineageを割り当てます。upstream CLIが背景でより広い集合をloadしても
+ARI側category filterを再適用し、runtimeではlock済みleaf名でも再制限します。
+dynamic MCP loader、agentic/compose/code execution、credential必須、未reviewまたは
+曖昧なprofile、不正schemaはquarantineします。v1.3.1固有のproperty-level
+`required: true` だけは標準の親 `required` 配列へ決定的に正規化して履歴を残し、
+その他のschemaを推測で修復しません。
+
+argumentはlocked schemaでstrictに検証し、型coercionは無効です。明示 `null` は
+upstreamが黙って削除するため拒否します。ToolUniverse cache/persistence、update
+check、hook、searchを無効化し、resultへcollection/wheel/provider/leaf-spec identityと
+`upstream_cache: disabled`を記録します。replay authorityはARI cassette/EARだけです。
+collection-level trustをleafのreplay/scientific validationへ推移させません。
+
+bulk updateはpending diffとなり、input/output/default schema変更は通常の
+`--approve`だけでは承認できません。review後に
+`--approve-schema-changes`も明示する必要があります。
+
 ## record/replayとEAR
 
 recordはexact arguments、catalog/policy digest、選択理由、却下候補、raw応答
@@ -79,6 +114,8 @@ providerを起動せず再生します。証跡は `{checkpoint}/ear/catalog/` �
 cd ari-skill-tool-registry
 python src/sync_catalog.py
 python src/sync_catalog.py --approve   # diffをreviewした後だけ
+python src/sync_catalog.py --approve --approve-schema-changes
+python scripts/verify_tooluniverse.py --help
 python scripts/sync_contracts.py
 pytest -q
 ```

@@ -11,7 +11,7 @@ last_verified: 2026-08-02
 
 # C17: ToolUniverse collection adapter 実装計画
 
-> 状態: Proposed / new integration component。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
+> 状態: Completed (2026-08-02) / P6で計画書削除待ち。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
 
 ## 1. 責務
 
@@ -39,16 +39,32 @@ ToolUniverseを`ari-skill-tool-registry`の一つの`CompactCollectionProvider`�
 | C17-07 | bulk update workflow | candidate diff、changed schema quarantine、lock regeneration |
 | C17-08 | scale/conformance | large approved subset、rate limit、pagination、replay |
 
+### 実装記録（2026-08-02）
+
+- upstream ToolUniverse `v1.3.1` / commit
+  `9b7ff91ddb45b567cac2fa8ea31b82851e877617` をsupport matrixへ固定し、
+  wheel/sdist/license/`uv.lock`/compact contractとinstalled package 3,542 filesの
+  tree digestをsync/runtime双方で検証する。
+- `ToolUniverseCompactAdapter`を一つ追加し、compact list/info/executeをbounded
+  pagination/batchでleaf descriptorへ展開する。1,000 leaf fixtureと公式PyPI packageの
+  UniProt 17 leafで適合を確認した。
+- category/type profile、ARI-side二重filter、active-lock leaf allow set、dynamic/
+  agentic/compose/code-execution/credential/schema quarantineを実装した。
+- v1.3.1のproperty-level required dialectだけを標準JSON Schemaへ履歴付きで正規化し、
+  strict argument validation、coercion/null拒否、cache/update-check無効化を固定した。
+- stable leaf identity単位のbulk diffとschema変更の別承認gate、direct MCP混在、
+  raw provenance、credential-free record/offline replayを実装した。
+
 ## 4. 受け入れ基準
 
-- [ ] collection-level adapter一つでapproved tool群をimportし、leafごとのARI codeを追加しない。
-- [ ] ToolUniverse updateがreviewable candidate/lock diffになり、running experimentを変えない。
-- [ ] leaf implementation/data source不明のtoolをscientifically admittedにしない。
-- [ ] implicit type coercion、unknown field、missing required fieldをrecord modeで拒否する。
-- [ ] internal cache hitでもsource/version/acquisition identityを記録する。
-- [ ] auth failure/empty resultをvalid cassetteとして保存しない。
-- [ ] direct MCP providerと同じdiscover/result contractで混在できる。
-- [ ] offline replayがToolUniverse package/serverなしで成功する。
+- [x] collection-level adapter一つでapproved tool群をimportし、leafごとのARI codeを追加しない。
+- [x] ToolUniverse updateがreviewable candidate/lock diffになり、running experimentを変えない。
+- [x] leaf implementation/data source不明のtoolをscientifically admittedにしない。
+- [x] implicit type coercion、unknown field、missing required fieldをrecord modeで拒否する。
+- [x] internal cache hitでもsource/version/acquisition identityを記録する（hit path自体を無効化し、disabled状態を記録）。
+- [x] auth failure/empty resultをvalid cassetteとして保存しない。
+- [x] direct MCP providerと同じdiscover/result contractで混在できる。
+- [x] offline replayがToolUniverse package/serverなしで成功する。
 
 ## 5. 削除要件
 
@@ -62,6 +78,12 @@ ToolUniverseを`ari-skill-tool-registry`の一つの`CompactCollectionProvider`�
 | C17-D4 | refresh-on-launch / unpinned install path | pinned environment | P5 |clean/offline install、digest verification |
 | C17-D5 | ToolUniverse cacheだけをreplay authorityにするpath | ARI cassette/EAR | P5 |cache-disabled record/replay fixture |
 | C17-D6 | permissive coercionをrecord modeで許すcompat path | strict validator | P5 |type confusion corpus、live-only例外もpolicy化 |
+
+C17-D1〜D6は実装・test上すべて完了した。per-leaf production wrapper 0、public
+surfaceは5操作のまま、dynamic autoload経路はARI dispatchから不可視、install/treeは
+digest検証、replay authorityはcassette、coercion pathは無効である。恒久仕様は
+`docs/reference/tool_registry.md`、support/update手順はcomponent README/REQUIREMENTSへ
+移した。計画書自体の削除は全体P6の一括plan cleanupで行う。
 
 ### 5.2 削除の検証と復旧
 

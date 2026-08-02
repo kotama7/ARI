@@ -539,7 +539,10 @@
             "hidden-leaf",
             "descriptor-invalid",
             "provider-drift",
-            "source-failure"
+            "source-failure",
+            "policy-excluded",
+            "unsupported-profile",
+            "schema-drift"
           ],
           "title": "Reason Code",
           "type": "string"

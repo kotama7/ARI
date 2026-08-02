@@ -454,6 +454,9 @@ class QuarantinedCandidateV1(BaseModel):
         "descriptor-invalid",
         "provider-drift",
         "source-failure",
+        "policy-excluded",
+        "unsupported-profile",
+        "schema-drift",
     ]
     detail: str
     candidate_digest: str = Field(pattern=SHA256_PATTERN)

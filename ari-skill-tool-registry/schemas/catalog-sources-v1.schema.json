@@ -145,8 +145,16 @@
           "type": "string"
         },
         "entrypoint": {
-          "title": "Entrypoint",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entrypoint"
         },
         "expected_architecture": {
           "default": "",
@@ -172,15 +180,38 @@
           "title": "Package Root",
           "type": "string"
         },
+        "python_callable": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Python Callable"
+        },
         "python_executable": {
           "title": "Python Executable",
           "type": "string"
+        },
+        "python_module": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Python Module"
         }
       },
       "required": [
         "python_executable",
-        "package_root",
-        "entrypoint"
+        "package_root"
       ],
       "title": "PythonStdioLauncherV1",
       "type": "object"
@@ -205,6 +236,7 @@
           "$ref": "#/$defs/AdmissionEvidenceV1"
         },
         "kind": {
+          "const": "stdio-mcp",
           "default": "stdio-mcp",
           "title": "Kind",
           "type": "string"
@@ -266,6 +298,209 @@
       ],
       "title": "StdioSourceSpecV1",
       "type": "object"
+    },
+    "ToolUniverseCategoryProfileV1": {
+      "additionalProperties": false,
+      "description": "Reviewed category/type policy shared by many collection leaves.",
+      "properties": {
+        "backend_lineage": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Backend Lineage",
+          "type": "array"
+        },
+        "categories": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Categories",
+          "type": "array"
+        },
+        "data_lineage": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Data Lineage",
+          "type": "array"
+        },
+        "determinism": {
+          "default": "conditional",
+          "enum": [
+            "deterministic",
+            "seeded",
+            "conditional",
+            "stochastic",
+            "live-data"
+          ],
+          "title": "Determinism",
+          "type": "string"
+        },
+        "independence_group": {
+          "default": "",
+          "title": "Independence Group",
+          "type": "string"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        },
+        "permissions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Permissions",
+          "type": "array"
+        },
+        "profile_id": {
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "semantics": {
+          "additionalProperties": true,
+          "title": "Semantics",
+          "type": "object"
+        },
+        "side_effects": {
+          "default": "stateful",
+          "enum": [
+            "read-only",
+            "workspace-write",
+            "stateful",
+            "destructive"
+          ],
+          "title": "Side Effects",
+          "type": "string"
+        },
+        "tool_types": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tool Types",
+          "type": "array"
+        },
+        "units": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Units",
+          "type": "object"
+        }
+      },
+      "required": [
+        "profile_id"
+      ],
+      "title": "ToolUniverseCategoryProfileV1",
+      "type": "object"
+    },
+    "ToolUniverseSourceSpecV1": {
+      "additionalProperties": false,
+      "description": "One pinned ToolUniverse collection imported through compact MCP.",
+      "properties": {
+        "capability_prefix": {
+          "default": "ari.tooluniverse",
+          "title": "Capability Prefix",
+          "type": "string"
+        },
+        "evidence": {
+          "$ref": "#/$defs/AdmissionEvidenceV1"
+        },
+        "exclude_categories": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Exclude Categories",
+          "type": "array"
+        },
+        "include_categories": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Include Categories",
+          "type": "array"
+        },
+        "info_batch_size": {
+          "default": 20,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Info Batch Size",
+          "type": "integer"
+        },
+        "kind": {
+          "const": "tooluniverse",
+          "default": "tooluniverse",
+          "title": "Kind",
+          "type": "string"
+        },
+        "launcher": {
+          "$ref": "#/$defs/PythonStdioLauncherV1"
+        },
+        "max_pages": {
+          "default": 1000,
+          "maximum": 10000,
+          "minimum": 1,
+          "title": "Max Pages",
+          "type": "integer"
+        },
+        "max_tools": {
+          "default": 100000,
+          "maximum": 1000000,
+          "minimum": 1,
+          "title": "Max Tools",
+          "type": "integer"
+        },
+        "page_size": {
+          "default": 250,
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Page Size",
+          "type": "integer"
+        },
+        "profiles": {
+          "items": {
+            "$ref": "#/$defs/ToolUniverseCategoryProfileV1"
+          },
+          "minItems": 1,
+          "title": "Profiles",
+          "type": "array"
+        },
+        "provider_digest": {
+          "title": "Provider Digest",
+          "type": "string"
+        },
+        "provider_id": {
+          "default": "tooluniverse",
+          "title": "Provider Id",
+          "type": "string"
+        },
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "support_release": {
+          "default": "1.3.1",
+          "title": "Support Release",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "default": 60.0,
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Timeout Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "source_id",
+        "provider_digest",
+        "launcher",
+        "profiles"
+      ],
+      "title": "ToolUniverseSourceSpecV1",
+      "type": "object"
     }
   },
   "$id": "https://ari.dev/schemas/tool-registry/catalog-sources-v1.schema.json",
@@ -279,7 +514,21 @@
     },
     "sources": {
       "items": {
-        "$ref": "#/$defs/StdioSourceSpecV1"
+        "discriminator": {
+          "mapping": {
+            "stdio-mcp": "#/$defs/StdioSourceSpecV1",
+            "tooluniverse": "#/$defs/ToolUniverseSourceSpecV1"
+          },
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/StdioSourceSpecV1"
+          },
+          {
+            "$ref": "#/$defs/ToolUniverseSourceSpecV1"
+          }
+        ]
       },
       "title": "Sources",
       "type": "array"

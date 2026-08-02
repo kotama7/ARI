@@ -14,12 +14,12 @@ from catalog import (
     build_catalog,
     write_reviewable_catalog,
 )
-from sources import StdioCatalogSource, load_source_specs
+from sources import catalog_source_from_spec, load_source_specs
 
 
 async def _sync(args: argparse.Namespace) -> dict:
     specs = load_source_specs(args.sources)
-    sources = [StdioCatalogSource(spec) for spec in specs]
+    sources = [catalog_source_from_spec(spec) for spec in specs]
     policy = (
         AdmissionPolicyV1.model_validate_json(
             Path(args.policy).read_text(encoding="utf-8")
@@ -37,6 +37,7 @@ async def _sync(args: argparse.Namespace) -> dict:
         index_path=args.index,
         result=result,
         approve=args.approve,
+        approve_schema_changes=args.approve_schema_changes,
     )
 
 
@@ -53,7 +54,14 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="replace the reviewed active lock; otherwise write *.pending + diff",
     )
+    parser.add_argument(
+        "--approve-schema-changes",
+        action="store_true",
+        help="explicitly approve reviewed leaf input/output/default schema changes",
+    )
     args = parser.parse_args(argv)
+    if args.approve_schema_changes and not args.approve:
+        parser.error("--approve-schema-changes requires --approve")
     try:
         report = asyncio.run(_sync(args))
     except Exception as exc:

@@ -4,6 +4,8 @@
 
 - Python 3.13 or newer
 - `mcp`, `pydantic`, `jsonschema`, and `pyyaml`
+- optional `tooluniverse==1.3.1` only in a separate provider environment; it is
+  not imported by the registry process
 - an immutable reviewed `CATALOG.lock`; the committed default is empty
 - an optional ARI checkpoint for artifacts and record/replay evidence
 
@@ -17,9 +19,10 @@ only sources present in the reviewed lock can execute.
 - Runtime accepts only an exact opaque `tool_ref`; bare names never dispatch.
 - Runtime does not import `sources.yaml`, sync providers, alter admission, or
   replace its active snapshot.
-- Production configuration accepts generic direct `stdio-mcp` sources only.
-  `StaticCatalogSource` and `StaticProviderAdapter` are injection seams for
-  conformance tests, not selectable production kinds.
+- Production configuration accepts generic direct `stdio-mcp` and the reviewed
+  `tooluniverse` collection source. `StaticCatalogSource`,
+  `StaticProviderAdapter`, and package-verification bypasses are injection seams
+  for conformance tests, not selectable production kinds.
 - Launchers execute no shell string and forward no undeclared parent
   environment or embedded credentials.
 - Every leaf has a visible source-to-provider-to-tool origin chain. Cycles,
@@ -44,6 +47,28 @@ requires validation evidence, limitations, semantics, units, and method identity
 Source updates are operator-only. Unapproved changes produce pending lock/index
 files and a review diff. Approval must be explicit and occurs outside an active
 run.
+
+## ToolUniverse source admission
+
+- The release record must exactly match
+  `providers/tooluniverse-support-v1.json`; version ranges and refresh-on-start
+  installs are rejected.
+- `package_root` must be the installed `tooluniverse` directory whose complete
+  non-cache file tree matches the reviewed wheel. The launcher must use the
+  fixed stdio callable and include `**/*` in its identity closure.
+- The source declares category profiles rather than leaf wrappers. The adapter
+  independently enforces include/exclude categories and active-lock leaf names,
+  even when upstream loading is broader.
+- Dynamic MCP loaders, agentic/composition/code-execution types, direct
+  credential requirements, ambiguous/unreviewed profiles, and unrecognized
+  schema dialects remain quarantined.
+- ToolUniverse type coercion, result cache, FastMCP update checks, hooks, and
+  search are disabled. Explicit `null` is rejected because upstream removes it
+  before execution.
+- Collection-level evidence cannot promote every leaf to `reproducible` or
+  `scientifically_admitted`; those levels require leaf evidence.
+- Changed leaf input/output/default schemas require the separate
+  `--approve-schema-changes` operator flag.
 
 ## Environment
 
