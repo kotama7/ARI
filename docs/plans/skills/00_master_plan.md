@@ -71,6 +71,12 @@ last_verified: 2026-08-02
   非実装`run_bash`宣言、親env/`.env`再注入、AutoAddPolicy、Singularity内部重複を削除し、
   no-SLURM/A64FX/GPU/remote/shared-FS/timeout fixturesを通過。公開Python packageへ
   移し、manifest entrypointから品質gateが追跡するようにした。
+- C05を`WorkspaceRefV1`、`ExecutionRequestV1/ResultV1`、`MeasurementSetV1`へ移行した。
+  dirfd/O_NOFOLLOW/atomic write、minimal non-secret env、POSIX resource/process-group
+  cleanup、要求と実施を分離したnetwork provenance、完全log artifact、stable retry
+  identity、strict measurement parserを実装した。coding/transform/evaluatorを共通契約へ
+  移し、同一requestのlocal/container/SLURM handoffをdigest付きで固定した。
+  C05-01〜08とD1/D2/D3/D5を完了し、D4 flat compatibility removalだけをP6へ残した。
 - paper-reの直接`sbatch --wait`、`--export ALL`、GRES silent drop、任意flag連結、
   spool wrapperを削除し、digest付きrequest→handle→status/log/cancelへ移行した。
   rubric schemaもtyped account/QoS/reservationと矛盾resource拒否へ更新し、157件の
@@ -169,7 +175,7 @@ experiment.md / workflow.yaml
 schema_version: 1
 name: coding-skill
 package: ari-skill-coding
-version: 0.1.0
+version: 0.2.0
 entrypoint: {transport: stdio, command_kind: python, module: src/server.py}
 tools:
   - name: run_code

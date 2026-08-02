@@ -113,6 +113,10 @@ jobs:
         # workflow drift, version drift, generated mcp.json drift, or a
         # default-enabled collision is an admission failure.
         run: python scripts/check_skill_manifests.py
+      - name: Generated Skill and execution schema drift
+        run: python scripts/sync_skill_metadata.py
+      - name: Generated HPC contract schema drift
+        run: python ari-skill-hpc/scripts/sync_contracts.py
       - name: MCP tool-schema snapshot verify (advisory at Stage 1)
         continue-on-error: true
         run: python scripts/snapshot_contracts.py --surface mcp --check

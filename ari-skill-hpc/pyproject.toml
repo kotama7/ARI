@@ -1,6 +1,6 @@
 [project]
 name = "ari-skill-hpc"
-version = "0.3.0"
+version = "0.3.1"
 description = "Typed reproducible HPC jobs with SLURM and digest-pinned containers"
 requires-python = ">=3.13"
 dependencies = [

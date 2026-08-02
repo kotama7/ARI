@@ -69,6 +69,9 @@ def test_public_api_submodules_present():
     assert "CONCEPT_INVARIANTS" in golden["ari.public.claim_gate"]
     assert "PathManager" in golden["ari.public.paths"]
     assert "LLMClient" in golden["ari.public.llm"]
+    assert "ExecutionRequestV1" in golden["ari.public.execution"]
+    assert "filter_nodes" in golden["ari.public.node_selection"]
+    assert "publish" in golden["ari.public.publish"]
     for sym in ("ARIConfig", "LLMConfig", "EvaluatorConfig"):
         assert sym in golden["ari.public.config_schema"]
     for sym in ("build_verified_context", "render_grounded_block",

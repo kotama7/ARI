@@ -11,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT.parent / "ari-core"))
 
 from ari_skill_hpc.contracts import (  # noqa: E402
     JobHandleV1,
@@ -19,9 +20,11 @@ from ari_skill_hpc.contracts import (  # noqa: E402
     JobStatusV1,
     JobSubmitArgumentsV1,
 )
+from ari_skill_hpc.execution_adapter import ExecutionHandoffV1  # noqa: E402
 
 
 CONTRACTS = {
+    "execution-handoff-v1.schema.json": ExecutionHandoffV1,
     "job-handle-v1.schema.json": JobHandleV1,
     "job-request-v1.schema.json": JobRequestV1,
     "job-result-v1.schema.json": JobResultV1,

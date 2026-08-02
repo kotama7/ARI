@@ -25,9 +25,12 @@ last_verified: 2026-08-02
 |---|---|---|
 | `ari.public.config_schema` | Pydantic 配置模型（`ARIConfig`、`LLMConfig` 等） | 需要类型化设置的调用方 |
 | `ari.public.container` | 容器运行时辅助函数（`ContainerConfig`、`run_in_container` 等） | `ari-skill-coding`（测试） |
+| `ari.public.execution` | 封闭 workspace、有界 execution/result、完整日志 artifact、`MeasurementSetV1` | 执行 producer 与测量 consumer 技能 |
 | `ari.public.cost_tracker` | LLM 成本记录（`bootstrap_skill`、`record` 等） | `ari-skill-plot`（LLM 调用成本） |
 | `ari.public.llm` | `LLMClient`（带成本集成的 LiteLLM 封装） | 偏好使用 ARI 封装的调用方 |
 | `ari.public.paths` | `PathManager`（检查点路径解析器） | 需要作用域路径的调用方 |
+| `ari.public.node_selection` | 确定性的 downstream node/source 选择 | `ari-skill-transform` |
+| `ari.public.publish` | staged EAR publish/promote 契约 | `ari-skill-transform` |
 | `ari.public.run_env` | run 环境捕获与 shell export 辅助函数 | sandbox / executor 技能 |
 | `ari.public.call_context` | `RunContextV1`、`NodeContextV1`、签名 tool-context 验证辅助函数 | 控制平面与 context-aware 技能 |
 | `ari.public.result` | `ResultEnvelopeV1`、内容寻址工件引用、类型化错误、调用来源 | 技能适配器与联邦 dispatch 调用方 |

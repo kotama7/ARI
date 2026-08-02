@@ -26,7 +26,7 @@ Operational and utility scripts for building images, running services, and dev t
 - `sc_paper_dogfood.py` — end-to-end dogfood driver: external paper PDF → PaperBench-format rubric generation (+ optional judge dry-run).
 - `sc_paper_stage23_chain.py` — run Stage 2 (reproduce) + Stage 3 (judge) against a completed Stage 1 rollout workspace.
 - `snapshot_contracts.py` — deterministic generator/verifier for the four contract-snapshot goldens under `ari-core/tests/fixtures/contracts/` (public API / CLI tree / MCP catalog / viz REST); `--surface <x> --check` gates drift, `--update` re-baselines; stdlib-only (AST/importlib), no LLM/API. Shares its `build_*`/`compare` helpers with `ari-core/tests/test_contract_snapshots.py`.
-- `sync_skill_metadata.py` — deterministically regenerate compatibility `mcp.json` files and Skill/result/context/lock JSON Schemas.
+- `sync_skill_metadata.py` — deterministically regenerate compatibility `mcp.json` files and Skill/result/context/lock/workspace/execution/measurement JSON Schemas.
 - `docs/` — documentation lint/gate scripts.
   - `README.md` — docs index.
   - `assemble_site.sh` — assemble the single Pages artifact `_site/` (L3): bespoke landing at the root, VitePress dist at `/docs/`, a noindex `docs.html` redirect stub, and `.nojekyll`. Run after `vitepress build`.

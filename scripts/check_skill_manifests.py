@@ -29,6 +29,12 @@ from ari.skill_manifest import (  # noqa: E402
 )
 from ari.result import ResultEnvelopeV1  # noqa: E402
 from ari.call_context import ToolCallContextV1  # noqa: E402
+from ari.execution import (  # noqa: E402
+    ExecutionRequestV1,
+    ExecutionResultV1,
+    MeasurementSetV1,
+    WorkspaceRefV1,
+)
 from ari.mcp.child_environment import (  # noqa: E402
     MANAGED_CHILD_ENV_NAMES,
     SAFE_INHERITED_ENV_NAMES,
@@ -640,6 +646,63 @@ def check_repo(repo_root: Path = REPO_ROOT) -> list[Finding]:
                 str(exc),
             )
         )
+
+    execution_schemas = (
+        (
+            "workspace_ref_v1.schema.json",
+            WorkspaceRefV1,
+            "ari.workspace-ref/v1",
+        ),
+        (
+            "execution_request_v1.schema.json",
+            ExecutionRequestV1,
+            "ari.execution-request/v1",
+        ),
+        (
+            "execution_result_v1.schema.json",
+            ExecutionResultV1,
+            "ari.execution-result/v1",
+        ),
+        (
+            "measurement_set_v1.schema.json",
+            MeasurementSetV1,
+            "ari.measurement-set/v1",
+        ),
+    )
+    for filename, model, expected_version in execution_schemas:
+        execution_schema_path = (
+            repo_root / "ari-core" / "ari" / "schemas" / filename
+        )
+        try:
+            execution_schema = json.loads(
+                execution_schema_path.read_text(encoding="utf-8")
+            )
+            actual_version = (
+                execution_schema.get("properties", {})
+                .get("schema_version", {})
+                .get("const")
+            )
+            if actual_version != expected_version:
+                raise ValueError(
+                    f"schema_version const is {actual_version!r}, expected "
+                    f"{expected_version!r}"
+                )
+            schema_fields = set(execution_schema.get("properties", {}))
+            model_fields = set(model.model_fields)
+            if schema_fields != model_fields:
+                raise ValueError(
+                    "execution schema top-level drift: "
+                    f"missing={sorted(model_fields - schema_fields)}, "
+                    f"extra={sorted(schema_fields - model_fields)}"
+                )
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            findings.append(
+                Finding(
+                    "execution-json-schema-invalid",
+                    _relative(execution_schema_path, repo_root),
+                    str(exc),
+                )
+            )
 
     return findings
 

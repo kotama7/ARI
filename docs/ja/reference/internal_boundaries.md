@@ -76,7 +76,7 @@ ARI の LLM 境界は「すべてが `LLMClient` を呼ばなければならな�
 
 | モジュール | 担当 |
 |--------|------|
-| `ari/container.py` | コンテナ実行: `detect_runtime`、`build_run_cmd`、`run_in_container`（Popen ＋ `_sandbox_preexec` ＝ `os.setsid` による新しいプロセスグループ ＋ `ARI_MAX_CHILD_PROCS` 経由の任意の `RLIMIT_NPROC`）、`_run_with_timeout`（グループ SIGTERM→SIGKILL）、`pull_image`、`exec_in_container`。`ari.public.container` で再エクスポートされます。 |
+| `ari/execution.py` ＋ `ari/container.py` | `ari.execution` が閉じた workspace、最小 environment、POSIX limit、process-group timeout/cancel、完全 log artifact を所有します。`ari.container` は clean かつ fail-closed な runtime argv を構築し、blocking compatibility path は共通 executor へ委譲します。`ari.public.execution` / `ari.public.container` で再エクスポートされます。 |
 | `ari/env_detect.py` | スケジューラ / ランタイムのプローブ（`sinfo`、`qstat`、`docker info`、`lscpu`）—— 読み取り専用、ベストエフォート、ハードコードされたクラスタ知識を持ちません。 |
 | `ari/mcp/client.py` | MCP SDK の `stdio_client`（生のスポーンではなくラッパー）経由でスキルの stdio サーバをスポーンします。 |
 | `ari-skill-hpc/ari_skill_hpc/{contracts,scheduler}.py` | version付きHPC job契約、shellを介さないlocal SLURM、known-hostを厳格検証するSSH、永続idempotency、`--export=NIL` clean environment、digest付きresult収集を所有します。 |

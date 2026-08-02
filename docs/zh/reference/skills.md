@@ -705,38 +705,40 @@ AI Scientist v2 风格的迭代式引用收集。LLM 生成搜索查询并在多
 
 ## ari-skill-coding
 
-代码生成、执行和文件读取。**LLM：否**（确定性）。
+封闭 workspace 中的代码写入、有界执行、完整日志证据与类型化测量输出。**LLM：否**（用户代码的确定性为 conditional）。
 
 ### 工具
 
 #### `write_code(filename, code, work_dir="/tmp/ari_work")`
 
-将源文件写入工作目录。
+在 core-owned workspace 内原子写入，拒绝 traversal、绝对路径逃逸和符号链接。
 
 #### `run_code(filename, work_dir="/tmp/ari_work", timeout=60)`
 
-执行源文件（根据扩展名自动检测语言）。输出会被截断，并附带显示省略字符数和重定向至文件的提示标记。
+以 structured argv 执行源文件，验证 source SHA-256 并绑定不可变快照；完整 stdout/stderr 保存为 content-addressed artifact。
 
 #### `run_bash(command, work_dir="/tmp/ari_work", timeout=60)`
 
-在工作目录中运行 bash 命令。结果中带有 `truncated` 布尔标志的输出截断。
+在本地或 clean container adapter 中执行显式 shell command，返回稳定 execution identity、attempt ID、实际 limit enforcement 与 container/network identity。
 
 #### `read_file(path, offset=0, limit=8000, work_dir="/tmp/ari_work")`
 
-针对大文件支持分页读取文本。返回内容、用于继续的 `next_offset` 与总行数。
+通过 symlink-safe 的有界分页读取，返回 `next_offset` 与总字符数。
 
 ```python
 result = read_file("results.csv", offset=0, limit=100)
-# 返回值: {"content": "...", "next_offset": 100, "total_lines": 5000}
+# 返回值: {"content": "...", "next_offset": 100, "total_chars": 5000}
 ```
 
-工作目录：`work_dir` 参数 > `ARI_WORK_DIR` 环境变量 > `/tmp/ari_work`。
+`ARI_WORK_DIR` 拥有根目录，`work_dir` 只能选择其内部子目录。
 
-#### `emit_results(params, measurements, predictions={}, scores={}, provenance={}, file="results.json", work_dir="/tmp/ari_work")`
+#### `emit_results(params, measurements, predictions={}, scores={}, provenance={}, units={}, execution=null, file="results.json", work_dir="/tmp/ari_work")`
 
-写出一份将输入参数与测量输出分离的类型化 `results.json`，使下游（`transform → science_data`、论文撰写、summary stats）不会把「测量到的量」与「运行所用的条件」混淆，避免 best-of 归约把输入尺寸（`nnz`、`M`、`K`、`threads`）误选为真实指标（如 `GFlops_per_s`）。`params` 与 `measurements` 必须 disjoint。
+写出 canonical `ari.measurement-set/v1` 与 P6 兼容 projection，记录有限数值、显式单位或 missing、parameters、provenance、execution attempt/exit status 和 artifact digest，并拒绝各组名称重叠。`execution` 应传入前一次 run response 的 `measurement_execution`；写入前会验证 server-issued receipt 和全部日志 digest。
 
 可选的 `provenance` 参数是一个 `{operand: source}` 映射，会被原样写入 `results.json` 的 `_provenance` 键，由 claim/指标正确性门消费。当某个操作数的值是经验**测量**得到的上限/峰值时，标注 `"microbench"` 或 `"benchmark"`（以免归一化指标被判定为依赖占位值）；当它是相对于**独立**参考计算出的残差时，标注 `"correctness"` 或 `"reference"`（以免输出被判定为未经验证）。尽力而为，为空时完全省略。
+
+详见[执行与测量契约](execution_contract.md)。
 
 ---
 

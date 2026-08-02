@@ -28,6 +28,7 @@
       "Optional",
       "annotations",
       "config_from_env",
+      "container_shell_argv",
       "dataclass",
       "detect_runtime",
       "field",
@@ -38,7 +39,6 @@
       "run_in_container",
       "run_shell_in_container",
       "shutil",
-      "signal",
       "subprocess"
     ],
     "ari.public.cost_tracker": [
@@ -60,11 +60,50 @@
       "threading",
       "time"
     ],
+    "ari.public.execution": [
+      "ContainerIdentityV1",
+      "EXECUTION_REQUEST_V1",
+      "EXECUTION_RESULT_V1",
+      "ExecutionArtifactV1",
+      "ExecutionLimitsV1",
+      "ExecutionPolicyError",
+      "ExecutionRequestV1",
+      "ExecutionResultV1",
+      "MEASUREMENT_SET_V1",
+      "MeasurementDocumentError",
+      "MeasurementDocumentFormat",
+      "MeasurementRecordV1",
+      "MeasurementSetV1",
+      "ResourceLimitReportV1",
+      "WORKSPACE_REF_V1",
+      "WorkspaceRefV1",
+      "build_minimal_environment",
+      "execute_local",
+      "measurement_document_format",
+      "parse_measurement_document",
+      "record_completed_execution"
+    ],
     "ari.public.llm": [
       "LLMClient"
     ],
+    "ari.public.node_selection": [
+      "build_parent_chain",
+      "collect_excluded",
+      "contributes_code",
+      "filter_nodes",
+      "is_narrative_step",
+      "is_relevant_for_synthesis",
+      "load_selected_sources",
+      "select_source_files_for_publication"
+    ],
     "ari.public.paths": [
       "PathManager"
+    ],
+    "ari.public.publish": [
+      "PublishError",
+      "PublishRecord",
+      "promote",
+      "publish"
     ],
     "ari.public.result": [
       "ARTIFACT_REF_V1",

@@ -51,7 +51,7 @@ and result schema. The normative JSON Schema is
 schema_version: 1
 name: coding-skill
 package: ari-skill-coding
-version: 0.1.0
+version: 0.2.0
 environment_policy: complete
 entrypoint:
   transport: stdio
@@ -1125,34 +1125,42 @@ Reads text file content from uploaded files with binary detection. Deterministic
 
 ## ari-skill-coding
 
-Code generation, execution, and file reading. **LLM: No** (deterministic).
+Closed-workspace authoring, bounded execution, complete log evidence, and typed
+measurement emission. **LLM: No** (user-code determinism is conditional).
 
 ### Tools
 
 #### `write_code(filename, code, work_dir="/tmp/ari_work")`
 
-Write a source file to the work directory.
+Atomically write below the core-owned workspace. Traversal, absolute escape,
+and symlink components are rejected.
 
 #### `run_code(filename, work_dir="/tmp/ari_work", timeout=60)`
 
-Execute a source file (auto-detects language from extension). Output is truncated with an informative marker showing omitted character count and a hint to redirect to a file.
+Execute an interpreted source file using structured argv. The source SHA-256 is
+verified and bound to an immutable launch snapshot. Inline logs are bounded;
+complete stdout/stderr are content-addressed artifacts.
 
 #### `run_bash(command, work_dir="/tmp/ari_work", timeout=60)`
 
-Run a bash command in the work directory. Output truncation with `truncated` boolean flag in result.
+Run an explicitly shell-enabled command locally or through the configured clean
+container adapter. Results include stable execution identity, unique attempt ID,
+actual limit enforcement, network/container identity, and complete logs.
 
 #### `read_file(path, offset=0, limit=8000, work_dir="/tmp/ari_work")`
 
-Read a text file with paginated access for large files. Returns content, `next_offset` for continuation, and total line count.
+Read a symlink-safe text file with bounded pagination. Returns content,
+`next_offset`, and total character count.
 
 ```python
 result = read_file("results.csv", offset=0, limit=100)
-# Returns: {"content": "...", "next_offset": 100, "total_lines": 5000}
+# Returns: {"content": "...", "next_offset": 100, "total_chars": 5000}
 ```
 
-Work directory: `work_dir` arg > `ARI_WORK_DIR` env > `/tmp/ari_work`.
+`ARI_WORK_DIR` owns the root; `work_dir` may only select a contained
+subdirectory.
 
-#### `emit_results(params, measurements, predictions={}, scores={}, provenance={}, file="results.json", work_dir="/tmp/ari_work")`
+#### `emit_results(params, measurements, predictions={}, scores={}, provenance={}, units={}, execution=null, file="results.json", work_dir="/tmp/ari_work")`
 
 Write a typed `results.json` separating input parameters from measured outputs. Call this once at the **end** of an experiment run so downstream stages (`transform → science_data`, paper writing, summary stats) can tell apart "what we measured" from "what we ran on" — a best-of reduction never accidentally picks an input size (e.g. `nnz`, `M`, `K`, `threads`) over a real metric (e.g. `GFlops_per_s`).
 
@@ -1162,14 +1170,23 @@ emit_results(
     measurements={"GFlops_per_s": 26.864, "GB_per_s": 63.802},
     predictions={"peak_gflops_model": 686.45},
     scores={"parallel_efficiency": 0.81},
+    units={"GFlops_per_s": "GFLOP/s", "GB_per_s": "GB/s"},
+    execution=run_result["measurement_execution"],
 )
 ```
 
-The file uses schema `1.0` and is overwritten on repeat calls; pass a different `file` name to keep multiple result variants. `params` and `measurements` must be disjoint — do NOT include input parameters in `measurements` and do NOT include measured outputs in `params`. Non-JSON-serializable values (e.g. `pathlib.Path`) are str-coerced rather than raising. `file` is normalised to `Path(file).name` so a malicious agent cannot escape `work_dir` via `../../...`.
+The canonical `ari.measurement-set/v1` object records finite numeric values,
+explicit unit state, parameters, provenance, execution attempt/exit status, and
+evidence artifact digests. The server-issued execution receipt and every log
+digest are verified before writing. Parameter, measurement, prediction, and
+score names must be disjoint. Path traversal is rejected. The flat `1.0` view
+remains only as a P6 compatibility projection and is cross-checked by consumers.
 
 The optional `provenance` arg is an `{operand: source}` map written verbatim into `results.json` as the `_provenance` key and consumed by the claim/metric-correctness gate. Tag an operand `"microbench"` or `"benchmark"` when its value is an empirically **MEASURED** ceiling/peak (so a normalized metric is not flagged as resting on a placeholder), and `"correctness"` or `"reference"` when it is a residual computed against an **independent** reference (so the output is not flagged as unverified). Best-effort; omitted entirely when empty.
 
-The downstream `transform-skill::nodes_to_science_data` populates `configurations[*].parameters` from this file when present (D contract). When `emit_results` is not called, the LLM evaluator's typed split (C contract — see `ari-skill-evaluator::make_metric_spec` below) supplies the same information from artifact analysis.
+`transform-skill` and the evaluator validate the common schema before use and
+reject disagreement between canonical and compatibility views. See
+[Execution and measurement contracts](execution_contract.md).
 
 ---
 

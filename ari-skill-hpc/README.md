@@ -6,6 +6,13 @@ SLURM as the first backend and Apptainer/Singularity as digest-pinned execution
 profiles. The outer MCP call returns immediately after scheduler submission;
 long-running work is polled or cancelled through its handle.
 
+`ari_skill_hpc.execution_adapter.handoff_execution_to_slurm` maps the common
+`ExecutionRequestV1` identity, structured argv, clean environment, and immutable
+input snapshots into a `JobRequestV1`. Its signed `ExecutionHandoffV1` record
+lists every mapped field and every POSIX policy SLURM does not preserve; it
+deliberately reports `policy_equivalent: false` instead of claiming substrate
+parity.
+
 ## Canonical tools
 
 | Tool | Contract |

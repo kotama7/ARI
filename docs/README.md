@@ -72,6 +72,7 @@ and **Reference**. Plus `about/` for project meta.
 - [Internal boundaries](reference/internal_boundaries.md)
 - [REST API](reference/rest_api.md)
 - [Execution profile](reference/execution_profile.md)
+- [Execution and measurement contracts](reference/execution_contract.md)
 - [Rubric schema](reference/rubric_schema.md)
 - [PaperBench API](reference/api_paperbench.md)
 - [Glossary](reference/glossary.md)
@@ -125,6 +126,7 @@ release gate checks it against the tree (`docs/about/release_policy.md` §4).
 | reference/internal_boundaries | [✓](reference/internal_boundaries.md) | — | — |
 | reference/rest_api | [✓](reference/rest_api.md) | [✓](ja/reference/rest_api.md) | [✓](zh/reference/rest_api.md) |
 | reference/execution_profile | [✓](reference/execution_profile.md) | [✓](ja/reference/execution_profile.md) | [✓](zh/reference/execution_profile.md) |
+| reference/execution_contract | [✓](reference/execution_contract.md) | [✓](ja/reference/execution_contract.md) | [✓](zh/reference/execution_contract.md) |
 | reference/rubric_schema | [✓](reference/rubric_schema.md) | [✓](ja/reference/rubric_schema.md) | [✓](zh/reference/rubric_schema.md) |
 | reference/api_paperbench | [✓](reference/api_paperbench.md) | [✓](ja/reference/api_paperbench.md) | [✓](zh/reference/api_paperbench.md) |
 | reference/glossary | [✓](reference/glossary.md) | [✓](ja/reference/glossary.md) | [✓](zh/reference/glossary.md) |

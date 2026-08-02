@@ -26,6 +26,12 @@ from ari.skill_manifest import (  # noqa: E402
 from ari.result import ResultEnvelopeV1  # noqa: E402
 from ari.async_tools import AsyncToolHandleV1  # noqa: E402
 from ari.call_context import ToolCallContextV1  # noqa: E402
+from ari.execution import (  # noqa: E402
+    ExecutionRequestV1,
+    ExecutionResultV1,
+    MeasurementSetV1,
+    WorkspaceRefV1,
+)
 from ari.skill_lock import SkillsLockV1  # noqa: E402
 
 
@@ -36,6 +42,16 @@ ASYNC_HANDLE_SCHEMA_PATH = (
 )
 CONTEXT_SCHEMA_PATH = ARI_CORE / "ari" / "schemas" / "call_context_v1.schema.json"
 LOCK_SCHEMA_PATH = ARI_CORE / "ari" / "schemas" / "skills_lock_v1.schema.json"
+WORKSPACE_SCHEMA_PATH = ARI_CORE / "ari" / "schemas" / "workspace_ref_v1.schema.json"
+EXECUTION_REQUEST_SCHEMA_PATH = (
+    ARI_CORE / "ari" / "schemas" / "execution_request_v1.schema.json"
+)
+EXECUTION_RESULT_SCHEMA_PATH = (
+    ARI_CORE / "ari" / "schemas" / "execution_result_v1.schema.json"
+)
+MEASUREMENT_SET_SCHEMA_PATH = (
+    ARI_CORE / "ari" / "schemas" / "measurement_set_v1.schema.json"
+)
 # Compatibility alias for scripts that imported the original constant.
 SCHEMA_PATH = SKILL_SCHEMA_PATH
 
@@ -79,6 +95,34 @@ def lock_schema_document() -> dict:
     return schema
 
 
+def workspace_schema_document() -> dict:
+    schema = WorkspaceRefV1.model_json_schema()
+    schema["$id"] = "https://ari.dev/schemas/workspace-ref-v1.schema.json"
+    schema["title"] = "ARI Workspace Reference v1"
+    return schema
+
+
+def execution_request_schema_document() -> dict:
+    schema = ExecutionRequestV1.model_json_schema()
+    schema["$id"] = "https://ari.dev/schemas/execution-request-v1.schema.json"
+    schema["title"] = "ARI Execution Request v1"
+    return schema
+
+
+def execution_result_schema_document() -> dict:
+    schema = ExecutionResultV1.model_json_schema()
+    schema["$id"] = "https://ari.dev/schemas/execution-result-v1.schema.json"
+    schema["title"] = "ARI Execution Result v1"
+    return schema
+
+
+def measurement_set_schema_document() -> dict:
+    schema = MeasurementSetV1.model_json_schema()
+    schema["$id"] = "https://ari.dev/schemas/measurement-set-v1.schema.json"
+    schema["title"] = "ARI Measurement Set v1"
+    return schema
+
+
 # Compatibility alias for callers that generated only the original schema.
 schema_document = skill_schema_document
 
@@ -98,6 +142,18 @@ def expected_outputs(repo_root: Path = REPO_ROOT) -> dict[Path, str]:
     )
     outputs[schema_dir / CONTEXT_SCHEMA_PATH.name] = _json_text(context_schema_document())
     outputs[schema_dir / LOCK_SCHEMA_PATH.name] = _json_text(lock_schema_document())
+    outputs[schema_dir / WORKSPACE_SCHEMA_PATH.name] = _json_text(
+        workspace_schema_document()
+    )
+    outputs[schema_dir / EXECUTION_REQUEST_SCHEMA_PATH.name] = _json_text(
+        execution_request_schema_document()
+    )
+    outputs[schema_dir / EXECUTION_RESULT_SCHEMA_PATH.name] = _json_text(
+        execution_result_schema_document()
+    )
+    outputs[schema_dir / MEASUREMENT_SET_SCHEMA_PATH.name] = _json_text(
+        measurement_set_schema_document()
+    )
     return outputs
 
 

@@ -229,6 +229,9 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `node_report.schema.json` — per-node report schema.
   - `publish.schema.json` — publish record / manifest schema.
   - `result_envelope_v1.schema.json` — typed MCP dispatch result contract.
+  - `execution_request_v1.schema.json` / `execution_result_v1.schema.json` — bounded local/container execution request and evidence.
+  - `measurement_set_v1.schema.json` — unit- and execution-bound scientific measurement records.
+  - `workspace_ref_v1.schema.json` — closed workspace reference.
   - `skill_manifest_v1.schema.json` — canonical Skill package manifest contract.
   - `skills_lock_v1.schema.json` — immutable run provider/schema/phase snapshot contract.
   - `viz_checkpoint.schema.json` — TODO

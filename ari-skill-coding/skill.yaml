@@ -1,7 +1,7 @@
 schema_version: 1
 name: coding-skill
 package: ari-skill-coding
-version: 0.1.0
+version: 0.2.0
 display_name: Execute research code
 description: Workspace-scoped code authoring, process execution, and result emission.
 environment_policy: complete
@@ -28,18 +28,34 @@ tool_defaults:
   side_effects: stateful
   determinism: conditional
   timeout_class: bounded
-  permissions: [workspace-read, workspace-write, process]
+  permissions: []
   result_schema: ari.result-envelope/v1
 tools:
   - name: emit_results
     capability_ref: ari.execution.results.emit
+    side_effects: workspace-write
+    permissions: [workspace-read, workspace-write]
   - name: read_file
     capability_ref: ari.workspace.file.read
     side_effects: read-only
     permissions: [workspace-read]
   - name: run_bash
     capability_ref: ari.execution.shell
+    permissions: [workspace-read, workspace-write, process, network]
+    timeout_budget:
+      argument: timeout
+      unit: seconds
+      overhead_seconds: 5
+      maximum_seconds: 86405
   - name: run_code
     capability_ref: ari.execution.code
+    permissions: [workspace-read, workspace-write, process, network]
+    timeout_budget:
+      argument: timeout
+      unit: seconds
+      overhead_seconds: 5
+      maximum_seconds: 86405
   - name: write_code
     capability_ref: ari.workspace.code.write
+    side_effects: workspace-write
+    permissions: [workspace-write]

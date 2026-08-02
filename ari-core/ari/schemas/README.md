@@ -8,12 +8,16 @@ JSON Schemas shipped with ari-core, loaded by basename via
 - `README.md` — this file.
 - `async_tool_handle_v1.schema.json` — immutable submit/status/result/cancel handle contract.
 - `call_context_v1.schema.json` — explicit run, node, ordered-lineage, and call provenance context.
+- `execution_request_v1.schema.json` — exact command, workspace, input digest, environment, resource, network, and container request.
+- `execution_result_v1.schema.json` — attempt identity, enforcement report, bounded previews, and complete-log artifacts.
 - `__init__.py` — `load(name)` loader.
 - `node_report.schema.json` — per-node report schema.
 - `publish.schema.json` — publish record / manifest schema.
 - `result_envelope_v1.schema.json` — typed MCP result plus value-free credential-scope provenance.
+- `measurement_set_v1.schema.json` — typed parameter/measurement/unit/execution/artifact separation.
 - `skill_manifest_v1.schema.json` — canonical Skill package, environment, and credential-scope contract.
 - `skills_lock_v1.schema.json` — immutable provider/schema/phase/credential-authority snapshot.
+- `workspace_ref_v1.schema.json` — canonical closed workspace root.
 - `viz_checkpoint.schema.json` — TODO
 - `viz_checkpoint_summary.schema.json` — TODO
 - `viz_settings.schema.json` — TODO
