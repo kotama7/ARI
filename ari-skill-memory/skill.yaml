@@ -16,7 +16,7 @@ tool_defaults:
   determinism: conditional
   timeout_class: bounded
   permissions: [workspace-read, workspace-write, memory-store]
-  result_schema: ari.legacy-mcp-result/v1
+  result_schema: ari.result-envelope/v1
 tools:
   - name: _set_current_node
     capability_ref: ari.internal.node-context.set

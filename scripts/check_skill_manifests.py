@@ -19,12 +19,14 @@ sys.path.insert(0, str(REPO_ROOT / "ari-core"))
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 from ari.skill_manifest import (  # noqa: E402
+    RESULT_ENVELOPE_V1,
     SkillManifestError,
     SkillManifestV1,
     legacy_mcp_document,
     load_skill_manifest,
     resolve_skill_entrypoint,
 )
+from ari.result import ResultEnvelopeV1  # noqa: E402
 from snapshot_contracts import _scan_skill_tools  # noqa: E402
 
 
@@ -101,6 +103,20 @@ def check_repo(repo_root: Path = REPO_ROOT) -> list[Finding]:
                     rel,
                     f"runtime_only={sorted(runtime_names - declared_names)}, "
                     f"manifest_only={sorted(declared_names - runtime_names)}",
+                )
+            )
+
+        legacy_result_tools = [
+            tool.name
+            for tool in manifest.resolved_tools()
+            if tool.result_schema != RESULT_ENVELOPE_V1
+        ]
+        if legacy_result_tools:
+            findings.append(
+                Finding(
+                    "result-schema-drift",
+                    rel,
+                    f"tools must use {RESULT_ENVELOPE_V1}: {legacy_result_tools}",
                 )
             )
 
@@ -259,6 +275,35 @@ def check_repo(repo_root: Path = REPO_ROOT) -> list[Finding]:
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         findings.append(
             Finding("json-schema-invalid", _relative(schema_path, repo_root), str(exc))
+        )
+
+    result_schema_path = (
+        repo_root / "ari-core" / "ari" / "schemas" / "result_envelope_v1.schema.json"
+    )
+    try:
+        result_schema = json.loads(result_schema_path.read_text(encoding="utf-8"))
+        schema_version = (
+            result_schema.get("properties", {}).get("schema_version", {}).get("const")
+        )
+        if schema_version != "ari.result-envelope/v1":
+            raise ValueError(
+                "result schema_version const is not ari.result-envelope/v1"
+            )
+        schema_fields = set(result_schema.get("properties", {}))
+        model_fields = set(ResultEnvelopeV1.model_fields)
+        if schema_fields != model_fields:
+            raise ValueError(
+                "result top-level schema drift: "
+                f"missing={sorted(model_fields - schema_fields)}, "
+                f"extra={sorted(schema_fields - model_fields)}"
+            )
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        findings.append(
+            Finding(
+                "result-json-schema-invalid",
+                _relative(result_schema_path, repo_root),
+                str(exc),
+            )
         )
 
     return findings

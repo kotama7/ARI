@@ -8,12 +8,16 @@ sources:
     role: implementation
   - path: docs/reference/internal_boundaries.md
     role: doc
-last_verified: 2026-08-01
+  - path: ari-core/ari/result.py
+    role: implementation
+  - path: ari-core/ari/schemas/result_envelope_v1.schema.json
+    role: config
+last_verified: 2026-08-02
 ---
 
 # C01: `ari-core` Skill control plane 実装計画
 
-> 状態: In progress（C01-01/02完了、C01-03/04/09/10は互換移行中）。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
+> 状態: In progress（C01-01/02/05完了、C01-03/04/09/10は互換移行中）。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
 
 ## 1. 責務と範囲
 
@@ -78,11 +82,11 @@ last_verified: 2026-08-01
 - [x] 同名の異なる2 toolを登録すると起動時にcollision errorになり、黙って上書きされない。
 - [ ] run開始後にmanifest fileを変更してもactive snapshotは変わらない。
 - [ ] secret markerを親envへ置いたtestで、未許可Skillから参照できない。
-- [ ] 4 parallel nodeのmemory writeでnode contextが交差しない。
-- [ ] 4,000文字を超える結果がartifact化され、digestから復元できる。
-- [ ] stdio server error、timeout、cancel、malformed stdoutがtyped errorになる。
+- [x] 4 parallel nodeのmemory writeでnode contextが交差しない。
+- [x] 4,000文字を超える結果がartifact化され、digestから復元できる。
+- [x] stdio server error、timeout、cancel、malformed stdoutがtyped errorになる。
 - [ ] 現行golden checkpointを新readerで開き、paper/replay contractが維持される。
-- [ ] `pytest ari-core/tests -q` と全manifest contract testがgreenである。
+- [x] `pytest ari-core/tests -q` と全manifest contract testがgreenである。
 
 ## 7. 削除要件
 

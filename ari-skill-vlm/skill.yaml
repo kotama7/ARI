@@ -16,7 +16,7 @@ tool_defaults:
   determinism: stochastic
   timeout_class: slow
   permissions: [workspace-read, model]
-  result_schema: ari.legacy-mcp-result/v1
+  result_schema: ari.result-envelope/v1
 tools:
   - name: review_figure
     capability_ref: ari.multimodal.figure.review

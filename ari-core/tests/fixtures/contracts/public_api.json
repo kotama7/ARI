@@ -66,6 +66,22 @@
     "ari.public.paths": [
       "PathManager"
     ],
+    "ari.public.result": [
+      "ARTIFACT_REF_V1",
+      "DEFAULT_INLINE_RESULT_LIMIT",
+      "RAW_RESULT_ROLE",
+      "RESULT_ENVELOPE_V1",
+      "ResultArtifactIntegrityError",
+      "ResultArtifactV1",
+      "ResultEnvelopeNormalizer",
+      "ResultEnvelopeV1",
+      "ResultErrorKind",
+      "ResultErrorV1",
+      "ResultProvenanceV1",
+      "SHA256_DIGEST_PATTERN",
+      "ToolCallContextV1",
+      "utc_now_iso"
+    ],
     "ari.public.run_env": [
       "Any",
       "Path",
@@ -93,6 +109,7 @@
       "legacy_mcp_document",
       "load_skill_manifest",
       "manifest_digest",
+      "manifest_tool_ref",
       "resolve_skill_entrypoint"
     ],
     "ari.public.verified_context": [

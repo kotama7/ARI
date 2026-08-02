@@ -16,7 +16,7 @@ tool_defaults:
   determinism: conditional
   timeout_class: very-slow
   permissions: [workspace-read, workspace-write, process, model]
-  result_schema: ari.legacy-mcp-result/v1
+  result_schema: ari.result-envelope/v1
 tools:
   - name: build_reproduce_sh
     capability_ref: ari.reproduction.script.build

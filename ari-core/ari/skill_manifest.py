@@ -77,7 +77,7 @@ class ToolPolicyV1(BaseModel):
         "default"
     )
     permissions: list[str] = Field(default_factory=list)
-    result_schema: str = LEGACY_MCP_RESULT_V1
+    result_schema: str = RESULT_ENVELOPE_V1
 
     @field_validator("phases")
     @classmethod
@@ -374,6 +374,22 @@ def manifest_digest(manifest: SkillManifestV1) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def manifest_tool_ref(manifest: SkillManifestV1, tool_name: str) -> str:
+    """Return the declared opaque identity for one manifest tool.
+
+    The whole normalized manifest participates in the digest so package version,
+    launcher, environment policy, and tool policy changes invalidate the
+    identity. Runtime input/output-schema identity is layered on by the run
+    registry after ``tools/list``.
+    """
+
+    if manifest.tool(tool_name) is None:
+        raise SkillManifestError(
+            f"tool {tool_name!r} is not declared by {manifest.package}"
+        )
+    return f"{manifest.package}/{tool_name}@sha256:{manifest_digest(manifest)}"
+
+
 def legacy_mcp_document(manifest: SkillManifestV1) -> dict:
     """Render the read-only ``mcp.json`` compatibility view."""
 
@@ -403,5 +419,6 @@ __all__ = [
     "legacy_mcp_document",
     "load_skill_manifest",
     "manifest_digest",
+    "manifest_tool_ref",
     "resolve_skill_entrypoint",
 ]

@@ -1,0 +1,241 @@
+{
+  "$defs": {
+    "ResultArtifactV1": {
+      "additionalProperties": false,
+      "description": "Content-addressed artifact descriptor stored relative to a run store.",
+      "properties": {
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "logical_name": {
+          "minLength": 1,
+          "title": "Logical Name",
+          "type": "string"
+        },
+        "logical_role": {
+          "minLength": 1,
+          "title": "Logical Role",
+          "type": "string"
+        },
+        "media_type": {
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.artifact-ref/v1",
+          "default": "ari.artifact-ref/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "size": {
+          "minimum": 0,
+          "title": "Size",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "digest",
+        "media_type",
+        "size",
+        "logical_role",
+        "logical_name"
+      ],
+      "title": "ResultArtifactV1",
+      "type": "object"
+    },
+    "ResultErrorV1": {
+      "additionalProperties": false,
+      "description": "Typed failure information independent of provider-specific wording.",
+      "properties": {
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        },
+        "kind": {
+          "enum": [
+            "tool",
+            "transport",
+            "protocol",
+            "timeout",
+            "cancelled",
+            "admission",
+            "artifact-integrity",
+            "unknown"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "retryable": {
+          "default": false,
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "message"
+      ],
+      "title": "ResultErrorV1",
+      "type": "object"
+    },
+    "ResultProvenanceV1": {
+      "additionalProperties": false,
+      "description": "Identity and timing recorded for one normalized tool result.",
+      "properties": {
+        "completed_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Completed At"
+        },
+        "duration_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Ms"
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Id"
+        },
+        "phase": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Phase"
+        },
+        "response_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Response Digest",
+          "type": "string"
+        },
+        "run_id": {
+          "default": "",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "selection_reason": {
+          "default": "",
+          "title": "Selection Reason",
+          "type": "string"
+        },
+        "started_at": {
+          "minLength": 1,
+          "title": "Started At",
+          "type": "string"
+        },
+        "tool_ref": {
+          "minLength": 1,
+          "title": "Tool Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool_ref",
+        "started_at",
+        "response_digest"
+      ],
+      "title": "ResultProvenanceV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/result-envelope-v1.schema.json",
+  "additionalProperties": false,
+  "description": "Bounded, provider-neutral result returned by ARI's typed dispatch API.",
+  "properties": {
+    "artifacts": {
+      "items": {
+        "$ref": "#/$defs/ResultArtifactV1"
+      },
+      "title": "Artifacts",
+      "type": "array"
+    },
+    "content": {
+      "default": "",
+      "title": "Content",
+      "type": "string"
+    },
+    "content_truncated": {
+      "default": false,
+      "title": "Content Truncated",
+      "type": "boolean"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ResultErrorV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "provenance": {
+      "$ref": "#/$defs/ResultProvenanceV1"
+    },
+    "schema_version": {
+      "const": "ari.result-envelope/v1",
+      "default": "ari.result-envelope/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "ok",
+        "error",
+        "submitted",
+        "running",
+        "cancelled"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "structured_content": {
+      "additionalProperties": true,
+      "title": "Structured Content",
+      "type": "object"
+    }
+  },
+  "required": [
+    "status",
+    "provenance"
+  ],
+  "title": "ARI Result Envelope v1",
+  "type": "object"
+}

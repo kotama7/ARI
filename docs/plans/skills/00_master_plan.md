@@ -8,7 +8,7 @@ sources:
     role: doc
   - path: docs/reference/internal_boundaries.md
     role: doc
-last_verified: 2026-08-01
+last_verified: 2026-08-02
 ---
 
 # ARI Skill Platform マスター実装計画
@@ -24,12 +24,14 @@ last_verified: 2026-08-01
 > **この文書と配下のサブ計画書は一時的な実装管理資料である。**
 > 実装成果、移行記録、恒久仕様へ知識を移した後は、[削除要件](#11-削除要件)に従って計画書群そのものを削除する。
 
-### 実装進捗（2026-08-01）
+### 実装進捗（2026-08-02）
 
 - 全14既存Skillを `SkillManifestV1` へ移行し、旧 `mcp.json` を生成物へ変更。
 - package/runtime AST/workflow/version/compatibility metadata/collision のconformance gateを追加。
 - `ari-core` のdiscovery、entrypoint、timeout classをmanifestへ接続し、bare-name後勝ちをregistration errorへ変更。
-- P2のimmutable `tool_ref`、最小child environment、run lock、ResultEnvelope/artifactは未着手。
+- runtime input/output schemaまで束縛したimmutable `tool_ref` dispatchと、一意bare aliasの互換経路を追加。
+- `ResultEnvelopeV1`、typed error/provenance、4,000文字超raw responseのcontent-addressed artifact化を追加。
+- P2の最小child environmentとrun-level `SKILLS.lock`は未着手。
 - 削除ledgerはC01-D1/D3/D6/D7が移行中で、削除gate未達のcompatibility pathは保持。
 
 ## 1. 決定
