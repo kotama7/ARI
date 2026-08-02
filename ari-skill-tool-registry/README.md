@@ -75,6 +75,42 @@ authority. The optional dependency is installed only with
 from the reviewed upstream lock rather than resolving current transitive
 versions.
 
+## OpenROAD experiment profiles
+
+The official OpenROAD-MCP integration is a domain adapter, not another exposed
+interactive shell. One immutable `OpenRoadExperimentV1` becomes one virtual
+asynchronous leaf. The only invocation argument is a bounded `request_id`; Tcl,
+cwd, environment, executable, input/output paths, seed, threads, PDK, libraries,
+toolchain commits, and image digest all come from the reviewed catalog profile.
+
+Runtime copies a closed digest-verified input workspace to a new private
+directory per run, starts `openroad -no_init -metrics <declared-json>` through a
+single stateful MCP connection, and accepts only the adapter's closed verb and
+inert argument grammar. It captures only declared regular outputs, rejects
+missing, unexpected, oversized, symlinked, or digest-mismatched files, and
+normalizes each metric with unit, corner, mode, stage, report digest, and JSON
+pointer. Golden and replay evidence are regular files whose bytes and contents
+are checked; metadata assertions alone cannot raise admission.
+
+Submission, status, result, and cancellation use the registry's generic async
+handle. Termination runs in cleanup, local process/session recovery fails closed,
+and output plus the sanitized command transcript are content-addressed artifacts.
+The broker independently verifies every adapter artifact's logical path, size,
+and SHA-256 before publishing it. Record mode includes these references in the
+cassette, so replay and inspection do not start OpenROAD or require the PDK.
+
+The reviewed support line is OpenROAD-MCP Python 0.6.1 with ORFS 26Q3. The
+upstream Python release is deprecated/final and its npm distribution is active;
+an npm launcher will require a separate reviewed adapter. Start from
+`providers/openroad-source.example.yaml` and verify exact installations with:
+
+```bash
+python scripts/verify_openroad.py \
+  --python /absolute/openroad-mcp-env/bin/python \
+  --package-root /absolute/openroad-mcp-env/lib/python3.13/site-packages/openroad_mcp \
+  --experiment /absolute/profile.yaml --smoke
+```
+
 ## Admission and scientific meaning
 
 Admission is explicit and monotonic:

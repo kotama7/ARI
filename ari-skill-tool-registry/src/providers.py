@@ -430,11 +430,17 @@ class StdioMCPAdapter:
                     cwd=self.launcher.working_directory(root),
                 )
                 try:
-                    async with asyncio.timeout(self.timeout_seconds):
-                        async with stdio_client(parameters, errlog=errlog) as streams:
-                            async with ClientSession(*streams) as session:
+                    async with stdio_client(parameters, errlog=errlog) as streams:
+                        async with ClientSession(*streams) as session:
+                            async with asyncio.timeout(self.timeout_seconds):
                                 await session.initialize()
-                                yield session
+                            # The session itself may intentionally outlive one
+                            # provider call (for example, a stateful EDA run).
+                            # Individual calls remain bounded in
+                            # ``_call_in_session``; this timeout covers startup
+                            # only instead of silently killing a healthy
+                            # long-running connection.
+                            yield session
                 except ProviderAdapterError:
                     raise
                 except Exception as exc:
