@@ -777,15 +777,15 @@ class CatalogBroker:
         reserved = "_ari_result_artifacts"
         provider_structured = response.structured or _json_object(response.text)
         structured = dict(envelope.structured_content)
-        present = reserved in provider_structured or reserved in structured
-        if not present:
-            return envelope
         declared_result_digest = provider_structured.get("result_digest")
         if declared_result_digest is not None:
             digest_payload = dict(provider_structured)
             digest_payload.pop("result_digest", None)
             if declared_result_digest != sha256_digest(digest_payload):
                 raise BrokerProtocolError("provider structured result digest mismatch")
+        present = reserved in provider_structured or reserved in structured
+        if not present:
+            return envelope
         raw = provider_structured.get(reserved, structured.get(reserved))
         structured.pop(reserved, None)
         if not isinstance(raw, list) or len(raw) > 2_000:
