@@ -9,7 +9,7 @@
   "tools": [
     "check_format",
     "compile_paper",
-    "generate_section",
+    "finalize_paper_build",
     "get_template",
     "inject_code_availability",
     "link_paper_claims",
@@ -18,9 +18,7 @@
     "merge_reviews",
     "paper_refine",
     "review_compiled_paper",
-    "review_section",
-    "revise_section",
     "write_paper_iterative"
   ],
-  "version": "0.2.0"
+  "version": "0.3.0"
 }

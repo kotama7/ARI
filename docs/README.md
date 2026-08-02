@@ -73,6 +73,8 @@ and **Reference**. Plus `about/` for project meta.
 - [REST API](reference/rest_api.md)
 - [Execution profile](reference/execution_profile.md)
 - [Execution and measurement contracts](reference/execution_contract.md)
+- [Paper build contract](reference/paper_build_contract.md)
+- [Scientific figure and visual-review contract](reference/figure_visual_contract.md)
 - [Rubric schema](reference/rubric_schema.md)
 - [PaperBench API](reference/api_paperbench.md)
 - [Glossary](reference/glossary.md)

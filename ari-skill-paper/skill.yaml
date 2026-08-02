@@ -1,7 +1,7 @@
 schema_version: 1
 name: paper-skill
 package: ari-skill-paper
-version: 0.2.0
+version: 0.3.0
 display_name: Write an evidence-grounded paper
 description: LaTeX paper generation, review, claim linking, revision, and compilation.
 environment_policy: complete
@@ -15,21 +15,20 @@ optional_env:
   - ARI_CHECKPOINT_DIR
   - ARI_LLM_API_BASE
   - ARI_LLM_MODEL
+  - ARI_MODEL_PAPER_PROVIDER
+  - ARI_MODEL_PAPER_REVISION
   - ARI_NUM_REFLECTIONS
   - ARI_NUM_REVIEWS_ENSEMBLE
   - ARI_PAPER_LANGUAGE
-  - ARI_RUBRIC
   - ARI_RUBRIC_DIR
   - ARI_STRICT_DYNAMIC
   - AWS_DEFAULT_REGION
   - AWS_REGION
   - AZURE_API_BASE
   - AZURE_API_VERSION
-  - BIBTEX_PATH
   - LLM_API_BASE
   - LLM_MODEL
   - OLLAMA_HOST
-  - PDFLATEX_PATH
   - VERTEXAI_LOCATION
   - VERTEXAI_PROJECT
 credential_scopes:
@@ -75,8 +74,11 @@ tools:
     capability_ref: ari.paper.compile
     determinism: conditional
     permissions: [workspace-read, workspace-write, process]
-  - name: generate_section
-    capability_ref: ari.paper.section.generate
+  - name: finalize_paper_build
+    capability_ref: ari.paper.build.finalize
+    determinism: deterministic
+    timeout_class: bounded
+    permissions: [workspace-read, workspace-write]
   - name: get_template
     capability_ref: ari.paper.template.read
     side_effects: read-only
@@ -114,9 +116,5 @@ tools:
     capability_ref: ari.paper.refine
   - name: review_compiled_paper
     capability_ref: ari.paper.review
-  - name: review_section
-    capability_ref: ari.paper.section.review
-  - name: revise_section
-    capability_ref: ari.paper.section.revise
   - name: write_paper_iterative
     capability_ref: ari.paper.write-iterative

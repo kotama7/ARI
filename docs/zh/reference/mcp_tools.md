@@ -122,18 +122,19 @@ ARI 附带 15 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 |---|---|:---:|
 | `list_venues` | 可用 LaTeX 模板（ACM / NeurIPS / SC / ICPP / arXiv） | ✗ |
 | `get_template` | 获取某 venue 的模板 | ✗ |
-| `generate_section` | LLM 撰写一个章节（引言、方法等） | ✓ |
-| `compile_paper` | pdflatex 编译 | ✗ |
+| `compile_paper` | 固定命令、资源受限且保留完整日志的 LaTeX 编译 | ✗ |
 | `check_format` | LaTeX 格式验证 | ✗ |
-| `review_section` | LLM 对某章节进行规范评审 | ✓ |
-| `revise_section` | LLM 根据评审反馈重写 | ✓ |
-| `write_paper_iterative` | 端到端驱动生成 / 评审 / 修改循环 | ✓ |
-| `review_compiled_paper` | 对已编译 PDF 进行最终评审（图表委托 VLM） | ✓ |
+| `write_paper_iterative` | 从原生证据生成全文并记录 `PaperBuildV1` 溯源 | ✓ |
+| `review_compiled_paper` | 使用显式 rubric 独立文本评审并保存原始响应 | ✓ |
 | `link_paper_claims` | 将 `% CLAIM:Cx:NCx` 锚点与 science_data 声明核对，构建 `paper_claim_links`（确定性） | ✗ |
 | `paper_refine` | 在保留 `% CLAIM:Cx:NCx` 锚点的前提下应用建议的修订（确定性替换 + 有界 LLM 查找/替换） | ✓ |
 | `list_rubrics` | 可用的评审规范 | ✗ |
 | `inject_code_availability` | v0.7.0 — 向论文追加 `\codedigest{...}` 块 | ✗ |
-| `merge_reviews` | v0.7.0 — 合并规范评审 + VLM 评审 JSON | ✗ |
+| `merge_reviews` | 不修改来源，结构化组合独立与证据评审 | ✗ |
+| `finalize_paper_build` | 重算证据绑定并以 fail-closed 方式锁定 TeX/BibTeX/PDF | ✗ |
+
+旧的逐章节工具已删除；迁移规则见英文
+[Paper build contract](../../reference/paper_build_contract.md)。
 
 ## ari-skill-paper-re — PaperBench 可重现性（v0.7.0）
 

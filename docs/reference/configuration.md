@@ -228,21 +228,18 @@ retrieval:
   alphaxiv_endpoint: https://api.alphaxiv.org/mcp/v1
 
 # ── Paper review (rubric-driven, AI Scientist v1/v2-compatible) ────────
-# Override via CLI (--rubric, --fewshot-mode, --num-reviews-ensemble,
-# --num-reflections) or environment variables (ARI_RUBRIC,
-# ARI_FEWSHOT_MODE, ARI_NUM_REVIEWS_ENSEMBLE, ARI_NUM_REFLECTIONS).
+# Override non-selection review parameters via CLI or environment variables
+# (ARI_FEWSHOT_MODE, ARI_NUM_REVIEWS_ENSEMBLE, ARI_NUM_REFLECTIONS).
 # Bundled rubrics (16 YAMLs in ari-core/config/reviewer_rubrics/):
 #   neurips (default, v2-compatible) | iclr | icml | cvpr | acl | sc | osdi
 #   | usenix_security | stoc | siggraph | chi | icra | nature
 #   | journal_generic | workshop | generic_conference
-# Plus the built-in `legacy` fallback (v0.5 schema). Add new venues by
-# dropping <id>.yaml into reviewer_rubrics/ — no code changes required.
+# Paper authoring/review requires an explicit `paper_rubric`/`rubric_id`.
+# Add new venues by dropping <id>.yaml into reviewer_rubrics/.
 #
-# `prompt_overrides.author_hint` (unreleased) is the inverse of
-# system_hint: it's injected into paper-drafting prompts by
-# `generate_section` so writing is venue-conditioned at the same
-# strength as peer review. SC and NeurIPS ship calibrated hints;
-# other venues default to empty (legacy weak append).
+# `prompt_overrides.author_hint` is injected into the whole-document
+# authoring prompt so writing is venue-conditioned at the same strength as
+# peer review. SC and NeurIPS ship calibrated hints; other venues are empty.
 #
 # PaperBench rubric templates (separate venue YAMLs for the rubric
 # generator) live under ari-core/config/paperbench_rubrics/. See
@@ -364,7 +361,7 @@ skills:
 | `ARI_MODEL_JUDGE` | Judge LLM for `grade_with_simplejudge` (PaperBench Phase 2, v0.7.0; routed via LiteLLM, any provider OK) | `gpt-5-mini` |
 | `ARI_MODEL_LINEAGE` | LLM judge for `decide_lineage_action` (lineage decision, v0.7.0). Falls through `ARI_MODEL_EVAL` → `ARI_MODEL` → `ARI_LLM_MODEL` → `gpt-4o-mini` | (auto) |
 | `ARI_MODEL_ROOT_SELECT` | LLM that picks `ideas[0]` from the VirSci pool (lineage decision, v0.7.0). Same fallback chain as `ARI_MODEL_LINEAGE` | (auto) |
-| `ARI_RUBRIC` | Rubric id used by both review and the BFTS dynamic axis evaluator (Phase 3, v0.7.0). Reads `ari-core/config/reviewer_rubrics/<id>.yaml` | `neurips` |
+| `ARI_RUBRIC` | Rubric id for the BFTS dynamic axis evaluator and offline legacy migration. Paper authoring/review requires the explicit workflow `paper_rubric`/tool `rubric_id`. | `neurips` |
 | `ARI_PHASE1_SANDBOX` | Phase 1 sandbox: `auto` / `slurm` / `docker` / `apptainer` / `singularity` / `local` | `auto` |
 | `ARI_PHASE1_DOCKER_IMAGE` | Container image for the docker sandbox runner | `ubuntu:24.04` |
 | `ARI_PHASE1_APPTAINER_IMAGE` / `ARI_PHASE1_SINGULARITY_IMAGE` | Image for the Apptainer/Singularity sandbox runner | `docker://ubuntu:24.04` |

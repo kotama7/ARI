@@ -1,0 +1,773 @@
+{
+  "$defs": {
+    "PaperArtifactV1": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "media_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "relative_path": {
+          "title": "Relative Path",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "science-data",
+            "figure-batch",
+            "retrieval-records",
+            "ear-manifest",
+            "template",
+            "rubric",
+            "prompt",
+            "raw-model-response",
+            "draft-tex",
+            "final-tex",
+            "bibtex",
+            "pdf",
+            "compile-stdout",
+            "compile-stderr",
+            "claim-links",
+            "hard-gate",
+            "semantic-review",
+            "text-review",
+            "visual-review",
+            "code-bundle-lock",
+            "authoring-record"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.paper-artifact/v1",
+          "default": "ari.paper-artifact/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "role",
+        "relative_path",
+        "digest",
+        "media_type",
+        "size_bytes"
+      ],
+      "title": "PaperArtifactV1",
+      "type": "object"
+    },
+    "PaperCompileV1": {
+      "additionalProperties": false,
+      "properties": {
+        "commands": {
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Commands",
+          "type": "array"
+        },
+        "compile_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Compile Digest",
+          "type": "string"
+        },
+        "environment_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Environment Digest",
+          "type": "string"
+        },
+        "execution_identities": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Execution Identities",
+          "type": "array"
+        },
+        "log_artifacts": {
+          "items": {
+            "$ref": "#/$defs/PaperArtifactV1"
+          },
+          "maxItems": 32,
+          "minItems": 2,
+          "title": "Log Artifacts",
+          "type": "array"
+        },
+        "pdf_artifact": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PaperArtifactV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "schema_version": {
+          "const": "ari.paper-compile/v1",
+          "default": "ari.paper-compile/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "failed",
+            "timed-out",
+            "tool-unavailable"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "commands",
+        "log_artifacts",
+        "environment_digest",
+        "compile_digest"
+      ],
+      "title": "PaperCompileV1",
+      "type": "object"
+    },
+    "PaperGateSummaryV1": {
+      "additionalProperties": false,
+      "properties": {
+        "blocking_error_count": {
+          "minimum": 0,
+          "title": "Blocking Error Count",
+          "type": "integer"
+        },
+        "mode": {
+          "enum": [
+            "off",
+            "warn",
+            "strict"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "report_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Report Digest",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "pass",
+            "blocked",
+            "error"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode",
+        "status",
+        "blocking_error_count",
+        "report_digest"
+      ],
+      "title": "PaperGateSummaryV1",
+      "type": "object"
+    },
+    "PaperModelCallV1": {
+      "additionalProperties": false,
+      "properties": {
+        "call_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Call Digest",
+          "type": "string"
+        },
+        "call_id": {
+          "title": "Call Id",
+          "type": "string"
+        },
+        "model": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "model_revision": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Revision"
+        },
+        "prompt_artifact": {
+          "$ref": "#/$defs/PaperArtifactV1"
+        },
+        "prompt_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Prompt Digest",
+          "type": "string"
+        },
+        "provider": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        },
+        "purpose": {
+          "enum": [
+            "initial-authoring",
+            "figure-insertion",
+            "reflection",
+            "refinement",
+            "text-review"
+          ],
+          "title": "Purpose",
+          "type": "string"
+        },
+        "raw_response_artifact": {
+          "$ref": "#/$defs/PaperArtifactV1"
+        },
+        "sampling": {
+          "additionalProperties": true,
+          "maxProperties": 64,
+          "title": "Sampling",
+          "type": "object"
+        },
+        "schema_version": {
+          "const": "ari.paper-model-call/v1",
+          "default": "ari.paper-model-call/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "usage": {
+          "$ref": "#/$defs/PaperModelUsageV1"
+        }
+      },
+      "required": [
+        "call_id",
+        "purpose",
+        "model",
+        "provider",
+        "prompt_digest",
+        "prompt_artifact",
+        "raw_response_artifact",
+        "call_digest"
+      ],
+      "title": "PaperModelCallV1",
+      "type": "object"
+    },
+    "PaperModelUsageV1": {
+      "additionalProperties": false,
+      "properties": {
+        "cost_status": {
+          "default": "unavailable",
+          "enum": [
+            "reported",
+            "unavailable"
+          ],
+          "title": "Cost Status",
+          "type": "string"
+        },
+        "cost_usd": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cost Usd"
+        },
+        "input_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Tokens"
+        },
+        "output_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Tokens"
+        }
+      },
+      "title": "PaperModelUsageV1",
+      "type": "object"
+    },
+    "PaperNumericCoverageV1": {
+      "additionalProperties": false,
+      "properties": {
+        "excluded_mentions": {
+          "minimum": 0,
+          "title": "Excluded Mentions",
+          "type": "integer"
+        },
+        "exclusion_policy_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exclusion Policy Digest"
+        },
+        "linked_mentions": {
+          "minimum": 0,
+          "title": "Linked Mentions",
+          "type": "integer"
+        },
+        "result_mentions": {
+          "minimum": 0,
+          "title": "Result Mentions",
+          "type": "integer"
+        },
+        "uncovered_mentions": {
+          "minimum": 0,
+          "title": "Uncovered Mentions",
+          "type": "integer"
+        },
+        "unresolved_anchors": {
+          "minimum": 0,
+          "title": "Unresolved Anchors",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "result_mentions",
+        "linked_mentions",
+        "excluded_mentions",
+        "unresolved_anchors",
+        "uncovered_mentions"
+      ],
+      "title": "PaperNumericCoverageV1",
+      "type": "object"
+    },
+    "PaperReviewSetV1": {
+      "additionalProperties": false,
+      "properties": {
+        "hard_gate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PaperArtifactV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "schema_version": {
+          "const": "ari.paper-review-set/v1",
+          "default": "ari.paper-review-set/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "semantic_review": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PaperArtifactV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "text_review": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PaperArtifactV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "visual_passing_score": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Visual Passing Score"
+        },
+        "visual_review": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PaperArtifactV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "visual_score": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Visual Score"
+        }
+      },
+      "title": "PaperReviewSetV1",
+      "type": "object"
+    },
+    "PaperRevisionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "bib_artifact": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PaperArtifactV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "citation_keys": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100000,
+          "title": "Citation Keys",
+          "type": "array"
+        },
+        "claim_anchors": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100000,
+          "title": "Claim Anchors",
+          "type": "array"
+        },
+        "figure_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10000,
+          "title": "Figure Ids",
+          "type": "array"
+        },
+        "math_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Math Digest",
+          "type": "string"
+        },
+        "model_call_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Call Id"
+        },
+        "parent_revision_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Revision Digest"
+        },
+        "reason": {
+          "enum": [
+            "initial",
+            "figure-insertion",
+            "reflection",
+            "refinement",
+            "finalize"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "revision": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "revision_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Revision Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.paper-revision/v1",
+          "default": "ari.paper-revision/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "tex_artifact": {
+          "$ref": "#/$defs/PaperArtifactV1"
+        }
+      },
+      "required": [
+        "revision",
+        "reason",
+        "tex_artifact",
+        "math_digest",
+        "revision_digest"
+      ],
+      "title": "PaperRevisionV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/paper-build-v1.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "blocking_reasons": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 1000,
+      "title": "Blocking Reasons",
+      "type": "array"
+    },
+    "build_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Build Digest",
+      "type": "string"
+    },
+    "build_id": {
+      "title": "Build Id",
+      "type": "string"
+    },
+    "build_revision": {
+      "maximum": 100,
+      "minimum": 0,
+      "title": "Build Revision",
+      "type": "integer"
+    },
+    "compile": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PaperCompileV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "ear_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Ear Digest",
+      "type": "string"
+    },
+    "final_artifacts": {
+      "items": {
+        "$ref": "#/$defs/PaperArtifactV1"
+      },
+      "maxItems": 16,
+      "title": "Final Artifacts",
+      "type": "array"
+    },
+    "gate": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PaperGateSummaryV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "input_artifacts": {
+      "items": {
+        "$ref": "#/$defs/PaperArtifactV1"
+      },
+      "maxItems": 32,
+      "minItems": 4,
+      "title": "Input Artifacts",
+      "type": "array"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 1000,
+      "title": "Limitations",
+      "type": "array"
+    },
+    "model_calls": {
+      "items": {
+        "$ref": "#/$defs/PaperModelCallV1"
+      },
+      "maxItems": 101,
+      "title": "Model Calls",
+      "type": "array"
+    },
+    "numeric_coverage": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PaperNumericCoverageV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "parent_build_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent Build Digest"
+    },
+    "reviews": {
+      "$ref": "#/$defs/PaperReviewSetV1"
+    },
+    "revisions": {
+      "items": {
+        "$ref": "#/$defs/PaperRevisionV1"
+      },
+      "maxItems": 101,
+      "minItems": 1,
+      "title": "Revisions",
+      "type": "array"
+    },
+    "rubric_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Rubric Digest",
+      "type": "string"
+    },
+    "rubric_id": {
+      "title": "Rubric Id",
+      "type": "string"
+    },
+    "rubric_version": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Rubric Version",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.paper-build/v1",
+      "default": "ari.paper-build/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "blocked",
+        "compile-error",
+        "finalized"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "template_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Template Digest",
+      "type": "string"
+    },
+    "venue_id": {
+      "title": "Venue Id",
+      "type": "string"
+    },
+    "venue_version": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Venue Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "build_id",
+    "run_id",
+    "build_revision",
+    "status",
+    "input_artifacts",
+    "venue_id",
+    "venue_version",
+    "template_digest",
+    "rubric_id",
+    "rubric_version",
+    "rubric_digest",
+    "ear_digest",
+    "revisions",
+    "build_digest"
+  ],
+  "title": "ARI Paper Build v1",
+  "type": "object"
+}

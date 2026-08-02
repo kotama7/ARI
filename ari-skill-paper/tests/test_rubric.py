@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 import pytest
 
 from src.rubric import (  # type: ignore
     DEFAULT_RUBRIC_DIRS,
-    Rubric,
     RubricError,
     list_available_rubrics,
     load_rubric,
@@ -30,6 +28,7 @@ from src.review_engine import (  # type: ignore
 
 
 # ----- rubric loader -----
+
 
 def test_neurips_rubric_loads():
     r = load_rubric("neurips")
@@ -58,9 +57,8 @@ def test_sc_rubric_has_reproducibility_dimension():
 
 def test_sc_rubric_carries_author_hint():
     """sc.yaml's prompt_overrides.author_hint must parse into
-    Rubric.author_hint so ari-skill-paper's generate_section can inject
-    it during paper drafting (symmetric with system_hint for
-    review_engine).
+    Rubric.author_hint so the whole-document writer can inject it during
+    paper drafting (symmetric with system_hint for review_engine).
     """
     r = load_rubric("sc")
     assert r.author_hint
@@ -84,12 +82,30 @@ def test_workshop_rubric_has_no_author_hint():
 
 def test_all_venues_load():
     ids = [
-        "neurips", "iclr", "icml", "cvpr", "acl", "sc", "chi",
-        "usenix_security", "osdi", "stoc", "icra", "siggraph",
+        "neurips",
+        "iclr",
+        "icml",
+        "cvpr",
+        "acl",
+        "sc",
+        "chi",
+        "usenix_security",
+        "osdi",
+        "stoc",
+        "icra",
+        "siggraph",
         "nature",
         # Social sciences & humanities
-        "aer", "econometrica", "qje", "apsr", "ahr", "philreview", "pmla",
-        "journal_generic", "workshop", "generic_conference",
+        "aer",
+        "econometrica",
+        "qje",
+        "apsr",
+        "ahr",
+        "philreview",
+        "pmla",
+        "journal_generic",
+        "workshop",
+        "generic_conference",
     ]
     for rid in ids:
         r = load_rubric(rid)
@@ -107,11 +123,29 @@ def test_list_available_rubrics_returns_all():
     rubrics = list_available_rubrics()
     ids = {r["id"] for r in rubrics}
     expected = {
-        "neurips", "iclr", "icml", "cvpr", "acl", "sc", "chi",
-        "usenix_security", "osdi", "stoc", "icra", "siggraph",
+        "neurips",
+        "iclr",
+        "icml",
+        "cvpr",
+        "acl",
+        "sc",
+        "chi",
+        "usenix_security",
+        "osdi",
+        "stoc",
+        "icra",
+        "siggraph",
         "nature",
-        "aer", "econometrica", "qje", "apsr", "ahr", "philreview", "pmla",
-        "journal_generic", "workshop", "generic_conference",
+        "aer",
+        "econometrica",
+        "qje",
+        "apsr",
+        "ahr",
+        "philreview",
+        "pmla",
+        "journal_generic",
+        "workshop",
+        "generic_conference",
     }
     assert expected.issubset(ids), f"missing: {expected - ids}"
 
@@ -125,6 +159,7 @@ def test_rubric_hash_is_deterministic():
 
 
 # ----- review engine: prompt builders -----
+
 
 def test_system_prompt_contains_dimensions():
     r = load_rubric("neurips")
@@ -173,10 +208,11 @@ def test_user_prompt_handles_empty_captions():
     r = load_rubric("neurips")
     prompt = build_user_prompt(r, "body", [], "cite")
     assert "body" in prompt
-    assert "(none)" in prompt   # captions placeholder when empty
+    assert "(none)" in prompt  # captions placeholder when empty
 
 
 # ----- decision logic -----
+
 
 def test_binary_decision_accepts_on_threshold():
     r = load_rubric("neurips")
@@ -193,6 +229,7 @@ def test_categorical_decision_maps_to_options():
 
 
 # ----- normalize -----
+
 
 def test_normalize_review_clamps_out_of_range():
     r = load_rubric("neurips")
@@ -218,13 +255,20 @@ def test_normalize_review_clamps_out_of_range():
 
 def test_normalize_review_autofills_decision_when_missing():
     r = load_rubric("neurips")
-    raw = {"soundness": 3, "presentation": 3, "contribution": 2, "overall": 3, "confidence": 3}
+    raw = {
+        "soundness": 3,
+        "presentation": 3,
+        "contribution": 2,
+        "overall": 3,
+        "confidence": 3,
+    }
     out = normalize_review(r, raw)
     # overall=3 < 6 → reject
     assert out["decision"] == "reject"
 
 
 # ----- fewshot -----
+
 
 def test_static_fewshot_loads_from_neurips_dir():
     r = load_rubric("neurips")
@@ -250,7 +294,8 @@ def test_fewshot_block_empty_returns_empty_string():
     assert fewshot_block([]) == ""
 
 
-# ----- resolve_rubric / env fallback -----
+# ----- explicit rubric resolution -----
+
 
 def test_resolve_rubric_arg_wins(monkeypatch):
     monkeypatch.setenv("ARI_RUBRIC", "sc")
@@ -258,28 +303,19 @@ def test_resolve_rubric_arg_wins(monkeypatch):
     assert r.id == "iclr"
 
 
-def test_resolve_rubric_env_fallback(monkeypatch):
+def test_resolve_rubric_rejects_environment_fallback(monkeypatch):
     monkeypatch.setenv("ARI_RUBRIC", "sc")
-    r = resolve_rubric(None)
-    assert r.id == "sc"
+    with pytest.raises(RubricError, match="rubric_id is required"):
+        resolve_rubric(None)
 
 
-def test_resolve_rubric_default_neurips(monkeypatch):
-    monkeypatch.delenv("ARI_RUBRIC", raising=False)
-    r = resolve_rubric(None)
-    assert r.id == "neurips"
-
-
-def test_resolve_rubric_falls_back_to_neurips_on_missing(monkeypatch):
-    """Legacy rubric was removed in v0.6.0; unknown rubric_id now falls
-    back to neurips (the guaranteed-present default rubric).
-    """
-    monkeypatch.setenv("ARI_RUBRIC", "completely_made_up_venue_zzz")
-    r = resolve_rubric(None)
-    assert r.id == "neurips"
+def test_resolve_rubric_rejects_unknown_selection():
+    with pytest.raises(RubricError):
+        resolve_rubric("completely_made_up_venue_zzz")
 
 
 # ----- end-to-end mocked LLM -----
+
 
 class _FakeLLM:
     def __init__(self, responses: list[str]):
@@ -299,12 +335,19 @@ class _FakeLLM:
 async def test_run_single_review_invokes_reflection_loop():
     r = load_rubric("neurips")
     r.params.num_reflections = 2
-    good_json = json.dumps({
-        "soundness": 3, "presentation": 3, "contribution": 3,
-        "overall": 7, "confidence": 4,
-        "strengths": "S", "weaknesses": "W", "questions": "Q",
-        "decision": "accept",
-    })
+    good_json = json.dumps(
+        {
+            "soundness": 3,
+            "presentation": 3,
+            "contribution": 3,
+            "overall": 7,
+            "confidence": 4,
+            "strengths": "S",
+            "weaknesses": "W",
+            "questions": "Q",
+            "decision": "accept",
+        }
+    )
     llm = _FakeLLM([good_json] * 5)
     out = await run_single_review(r, "user prompt", llm, num_reflections=2)
     # initial + 2 reflections = 3 calls
@@ -318,12 +361,19 @@ async def test_run_ensemble_runs_n_reviews():
     r = load_rubric("neurips")
     r.params.num_reviews_ensemble = 3
     r.params.num_reflections = 0  # keep test fast
-    good_json = json.dumps({
-        "soundness": 3, "presentation": 3, "contribution": 3,
-        "overall": 6, "confidence": 3,
-        "strengths": "S", "weaknesses": "W", "questions": "Q",
-        "decision": "accept",
-    })
+    good_json = json.dumps(
+        {
+            "soundness": 3,
+            "presentation": 3,
+            "contribution": 3,
+            "overall": 6,
+            "confidence": 3,
+            "strengths": "S",
+            "weaknesses": "W",
+            "questions": "Q",
+            "decision": "accept",
+        }
+    )
     llm = _FakeLLM([good_json] * 10)
     reviews = await run_ensemble(r, "user", llm)
     assert len(reviews) == 3
@@ -336,19 +386,48 @@ async def test_run_ensemble_runs_n_reviews():
 async def test_meta_review_aggregates_ensemble():
     r = load_rubric("neurips")
     reviews = [
-        {"scores": {"overall": 7, "soundness": 3, "presentation": 3, "contribution": 3, "confidence": 4},
-         "overall_score": 7, "decision": "accept",
-         "strengths": "a", "weaknesses": "b", "questions": "c"},
-        {"scores": {"overall": 5, "soundness": 2, "presentation": 3, "contribution": 2, "confidence": 3},
-         "overall_score": 5, "decision": "reject",
-         "strengths": "a2", "weaknesses": "b2", "questions": "c2"},
+        {
+            "scores": {
+                "overall": 7,
+                "soundness": 3,
+                "presentation": 3,
+                "contribution": 3,
+                "confidence": 4,
+            },
+            "overall_score": 7,
+            "decision": "accept",
+            "strengths": "a",
+            "weaknesses": "b",
+            "questions": "c",
+        },
+        {
+            "scores": {
+                "overall": 5,
+                "soundness": 2,
+                "presentation": 3,
+                "contribution": 2,
+                "confidence": 3,
+            },
+            "overall_score": 5,
+            "decision": "reject",
+            "strengths": "a2",
+            "weaknesses": "b2",
+            "questions": "c2",
+        },
     ]
-    meta_raw = json.dumps({
-        "soundness": 3, "presentation": 3, "contribution": 3,
-        "overall": 6, "confidence": 4,
-        "strengths": "aggregate s", "weaknesses": "aggregate w", "questions": "aggregate q",
-        "decision": "accept",
-    })
+    meta_raw = json.dumps(
+        {
+            "soundness": 3,
+            "presentation": 3,
+            "contribution": 3,
+            "overall": 6,
+            "confidence": 4,
+            "strengths": "aggregate s",
+            "weaknesses": "aggregate w",
+            "questions": "aggregate q",
+            "decision": "accept",
+        }
+    )
     llm = _FakeLLM([meta_raw])
     meta = await run_meta_review(r, reviews, llm)
     assert meta["decision"] == "accept"

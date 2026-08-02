@@ -152,18 +152,19 @@ has no per-record or per-node delete operation. See the
 |---|---|:---:|
 | `list_venues` | Available LaTeX templates (ACM / NeurIPS / SC / ICPP / arXiv) | ✗ |
 | `get_template` | Fetch a venue's template | ✗ |
-| `generate_section` | LLM writes a section (intro, methods, ...) | ✓ |
-| `compile_paper` | pdflatex compile | ✗ |
+| `compile_paper` | Fixed-command, resource-bounded LaTeX compile with complete logs | ✗ |
 | `check_format` | LaTeX format validation | ✗ |
-| `review_section` | LLM rubric review of one section | ✓ |
-| `revise_section` | LLM rewrite using review feedback | ✓ |
-| `write_paper_iterative` | Drive the generate / review / revise loop end-to-end | ✓ |
-| `review_compiled_paper` | Final-pass review on compiled PDF (delegates to VLM for figures) | ✓ |
+| `write_paper_iterative` | Native-evidence whole-document authoring with `PaperBuildV1` draft provenance | ✓ |
+| `review_compiled_paper` | Explicit-rubric independent text review with raw-response artifact | ✓ |
 | `link_paper_claims` | Reconcile `% CLAIM:Cx:NCx` anchors against science_data claims, build `paper_claim_links` (deterministic) | ✗ |
 | `paper_refine` | Apply suggested revisions while preserving `% CLAIM:Cx:NCx` anchors (deterministic subs + bounded LLM find/replace) | ✓ |
 | `list_rubrics` | Available reviewer rubrics |  ✗ |
 | `inject_code_availability` | v0.7.0 — append a `\codedigest{...}` block to the paper | ✗ |
-| `merge_reviews` | v0.7.0 — combine rubric review + VLM review JSON | ✗ |
+| `merge_reviews` | Structurally route immutable independent/evidence-grounded reviews | ✗ |
+| `finalize_paper_build` | Recompute evidence bindings and fail-closed lock exact TeX/BibTeX/PDF | ✗ |
+
+The v0.2 per-section tools were removed. See the
+[Paper build contract](paper_build_contract.md) for migration and provenance.
 
 ## ari-skill-paper-re — PaperBench reproducibility (v0.7.0)
 

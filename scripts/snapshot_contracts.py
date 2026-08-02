@@ -112,6 +112,8 @@ def _fixture_path(surface: str) -> Path:
 # ---------------------------------------------------------------------------
 
 _PUBLIC_SUBMODULES = (
+    "analysis",
+    "call_context",
     "claim_gate",
     "clone",
     "config_schema",
@@ -119,17 +121,23 @@ _PUBLIC_SUBMODULES = (
     "cost_tracker",
     "evaluation",
     "execution",
+    "figures",
+    "latex_claims",
     "llm",
+    "memory",
     "lineage",
     "node_selection",
     "paths",
+    "paper",
     "publish",
     "research_contract",
     "result",
     "run_env",
+    "science_data",
     "skill_lock",
     "skill_manifest",
     "verified_context",
+    "visual_review",
 )
 
 

@@ -237,31 +237,21 @@ LaTeX 论文生成、编译和审阅（仅限 Post-BFTS）。**LLM：是**。
 
 返回指定场所的 LaTeX 模板。
 
-#### `generate_section(section, context, venue="arxiv", nodes_json_path="", refs_json="")`
+#### `compile_paper(tex_dir, main_file="main.tex", figures_manifest_path="")`
 
-使用 LLM 生成 LaTeX 章节。章节类型：`introduction`、`related_work`、`method`、`experiment`、`conclusion`。
-
-#### `compile_paper(tex_dir, main_file="main.tex")`
-
-运行 pdflatex 编译。返回成功状态和错误信息。
+通过公共的有界执行契约编译，并在 `PaperCompileV1` 中记录完整日志、环境和
+PDF digest；拒绝 shell escape 和未声明的文件/进程访问。
 
 #### `check_format(venue, pdf_path)`
 
 根据场所要求验证论文格式（页数等）。
 
-#### `review_section(latex, context, venue="arxiv")`
+#### `write_paper_iterative(workspace_root, science_data_path, figures_manifest_path, references_path, ear_manifest_path, rubric_id, experiment_summary="", context="", verified_context_path="", venue="arxiv", max_revision_rounds=2, author_name="")`
 
-审阅 LaTeX 章节。返回优点、缺点和建议。
+从封闭 workspace 的原生契约生成全文，并在 draft `PaperBuildV1` 中锁定输入、
+rubric/template、prompt/raw response 和 revision lineage。
 
-#### `revise_section(section, latex, feedback, context, venue="arxiv")`
-
-根据审阅反馈修改 LaTeX 章节。
-
-#### `write_paper_iterative(experiment_summary="", context="", nodes_json_path="", refs_json="", figures_manifest_json="", science_data_json="", venue="arxiv", max_revision_rounds=2, author_name="")`
-
-完整论文生成，包含迭代式草稿 -> 审阅 -> 修改循环。主要流水线工具。
-
-#### `review_compiled_paper(tex_path, pdf_path, figures_manifest_json, experiment_summary, rubric_id="", vlm_findings_json="", num_reflections=None, num_fs_examples=None, num_reviews_ensemble=None)`
+#### `review_compiled_paper(rubric_id, tex_path="", pdf_path="", figures_manifest_json="", experiment_summary="", vlm_findings_json="", num_reflections=None, num_fs_examples=None, num_reviews_ensemble=None)`
 
 **AI Scientist v1/v2 兼容** 的基于评审规范的论文审阅（遵循 Nature /
 arXiv:2408.06292 附录 A.4）。从 `ari-core/config/reviewer_rubrics/<rubric_id>.yaml`
@@ -283,8 +273,8 @@ Few-shot 示例，经 Self-reflection 循环自我批评修订后输出符合评
 每个评审规范声明 `score_dimensions` / `text_sections` / `decision` 规则、
 执行参数及用于 P2 确定性的 SHA256 哈希。
 
-解析顺序：显式 `rubric_id` 参数 → `ARI_RUBRIC` 环境变量 → `neurips` →
-内置 `legacy` 回退（v0.5 schema，当 `rubric_id` 与 YAML 都解析不到时使用）。
+`rubric_id` 为必填项。runtime 环境/default/legacy fallback 已删除；旧配置通过
+`src.rubric_migration.migrate_legacy_rubric_selection` 离线迁移。
 
 Nature Ablation 默认值：
 
@@ -331,6 +321,11 @@ transform 阶段的 `science_data.json` 从不被改动；图表绑定记录在�
 随后由有界的多趟 LLM 查找/替换处理其余部分；草稿中存在的每一个 `% CLAIM` 锚点都必须存活
 （丢弃锚点的编辑会被拒绝，且当锚点净损失时保留原始论文）。数学安全的下划线转义会跳过
 `\( … \)` / `\[ … \]` 与数学环境。精修后的 LaTeX 在 `latex` 下返回（草稿保留为 `full_paper.draft.tex`）。
+
+#### `finalize_paper_build(...)` — v0.3.0
+
+重新验证所有输入、model call、compile log、claim/gate、独立评审及最终
+TeX/Bib/PDF，以 fail-closed 方式锁定 `PaperBuildV1`；blocked record 仍会留存审计。
 
 ##### Few-shot 语料库管理
 

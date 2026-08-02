@@ -607,7 +607,7 @@ environment variables injected at launch.
 | `ari-skill-transform` | `nodes_to_science_data`, `generate_ear`, `curate_ear`, `publish_ear` | BFTS tree → science-facing data + EAR + curate/publish lifecycle (v0.7.0) | ✓ |
 | `ari-skill-web` | `search_papers`, `web_search`, `fetch_url`, `walk_citations`, `rerank_retrieval_records`, compatibility aliases, upload readers | Typed record/replay retrieval, URL safety, source provenance, bounded citation graph | △ |
 | `ari-skill-plot` | `generate_figures`, `generate_figures_llm` | Deterministic + LLM figure generation (matplotlib plots or SVG diagrams per-figure via `kind` field) | ✓ |
-| `ari-skill-paper` | `list_venues`, `get_template`, `generate_section`, `compile_paper`, `check_format`, `review_section`, `revise_section`, `write_paper_iterative`, `review_compiled_paper`, `list_rubrics`, `inject_code_availability`, `merge_reviews` | LaTeX paper writing, compilation, rubric-driven peer review (AI Scientist v1/v2-compatible). v0.7.0: `inject_code_availability` injects `\codeavailability{}`/`\codedigest{}`/`\coderef{}` macros after `ear_curate`; `merge_reviews` post-hoc merges text-review + VLM-review JSON. | ✓ |
+| `ari-skill-paper` | `list_venues`, `get_template`, `compile_paper`, `check_format`, `write_paper_iterative`, `review_compiled_paper`, `list_rubrics`, `inject_code_availability`, `merge_reviews`, `link_paper_claims`, `paper_refine`, `finalize_paper_build` | Native-evidence whole-document authoring and fail-closed `PaperBuildV1` publication. Rubric selection is explicit; compile, claims, independent reviews, model calls, and final artifacts are digest-bound. | ✓ |
 | `ari-skill-paper-re` | `fetch_code_bundle`, `run_reproduce`, `grade_with_simplejudge` | PaperBench-format reproducibility (v0.7.0): pre-populate sandbox via `ari.clone`, Phase 1 sandbox runner (`reproduce.sh`), Phase 2 PaperBench SimpleJudge grader. PaperBench is vendored under `vendor/paperbench`. | ✓ |
 | `ari-skill-replicate` | `generate_rubric`, `audit_rubric` | PaperBench-format auto-rubric generator + auditor (v0.7.0). Drives the ORS reproducibility flow. | ✓ |
 | `ari-skill-benchmark` | `analyze_results`, `plot`, `statistical_test` | CSV/JSON/NPY analysis, plotting, scipy stats (used in BFTS analyze stage) | ✗ |
@@ -668,9 +668,10 @@ generate_ideas (idea-skill)
             after the pinned one without overwriting.
 ```
 
-`ARI_RUBRIC` selects which venue file is read. Switching it changes the
-BFTS scoring axes (Phase 3) and the published review's criteria
-together — the same rubric drives both.
+The BFTS evaluator may still select dynamic axes through `ARI_RUBRIC`.
+Paper authoring and review instead receive the explicit, checkpointed
+`paper_rubric`/`rubric_id`; environment fallback is not part of the paper
+runtime contract.
 
 ### Inheritance for sub-experiments
 
@@ -678,7 +679,7 @@ Each child run inherits from its parent along these channels:
 
 | Channel | Direction | Mechanism |
 |---|---|---|
-| `venue.md` (rubric) | inherit | `ARI_RUBRIC` env propagates |
+| paper rubric | inherit explicitly | parent `paper_rubric` is copied into the child run request |
 | `memory` | inherit | ancestor-scoped read (existing `ari-skill-memory`) |
 | `idea.json` (catalog) | inherit (read-only) | `ari/lineage.py` walks `meta.json:parent_run_id`; VirSci injects ancestor titles into agent prompts |
 | `plan.md` (directive) | NOT inherited by default | child writes its own |

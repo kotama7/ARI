@@ -496,6 +496,7 @@
       },
       {
         "args": [
+          "figures_manifest_path",
           "main_file",
           "tex_dir"
         ],
@@ -504,14 +505,24 @@
       },
       {
         "args": [
-          "context",
-          "nodes_json_path",
-          "refs_json",
-          "section",
-          "venue"
+          "bib_path",
+          "claim_links_path",
+          "compile_record_path",
+          "draft_build_path",
+          "figures_manifest_path",
+          "hard_gate_path",
+          "output_path",
+          "pdf_path",
+          "refinement_call_path",
+          "semantic_review_path",
+          "tex_path",
+          "text_review_path",
+          "visual_passing_score",
+          "visual_review_path",
+          "workspace_root"
         ],
         "idiom": "fastmcp",
-        "name": "generate_section"
+        "name": "finalize_paper_build"
       },
       {
         "args": [
@@ -590,36 +601,18 @@
       },
       {
         "args": [
-          "context",
-          "latex",
-          "venue"
-        ],
-        "idiom": "fastmcp",
-        "name": "review_section"
-      },
-      {
-        "args": [
-          "context",
-          "feedback",
-          "latex",
-          "section",
-          "venue"
-        ],
-        "idiom": "fastmcp",
-        "name": "revise_section"
-      },
-      {
-        "args": [
           "author_name",
           "context",
+          "ear_manifest_path",
           "experiment_summary",
-          "figures_manifest_json",
+          "figures_manifest_path",
           "max_revision_rounds",
-          "nodes_json_path",
-          "refs_json",
-          "science_data_json",
+          "references_path",
+          "rubric_id",
+          "science_data_path",
           "venue",
-          "verified_context_json"
+          "verified_context_path",
+          "workspace_root"
         ],
         "idiom": "fastmcp",
         "name": "write_paper_iterative"

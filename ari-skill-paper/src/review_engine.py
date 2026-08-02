@@ -59,9 +59,7 @@ def build_system_prompt(rubric: Rubric) -> str:
     """Build the reviewer system prompt from the rubric schema."""
     dim_lines = []
     for d in rubric.score_dimensions:
-        dim_lines.append(
-            f"  {d.name}: int {d.scale[0]}-{d.scale[1]} — {d.description}"
-        )
+        dim_lines.append(f"  {d.name}: int {d.scale[0]}-{d.scale[1]} — {d.description}")
     text_lines = []
     for s in rubric.text_sections:
         req = " (required)" if s.required else " (optional)"
@@ -95,11 +93,7 @@ def _truncate_paper(text: str, max_chars: int = 50000) -> str:
         return text
     keep_head = int(max_chars * 0.8)
     keep_tail = max_chars - keep_head
-    return (
-        text[:keep_head]
-        + "\n\n[... middle truncated ...]\n\n"
-        + text[-keep_tail:]
-    )
+    return text[:keep_head] + "\n\n[... middle truncated ...]\n\n" + text[-keep_tail:]
 
 
 def build_user_prompt(
@@ -256,9 +250,7 @@ def fewshot_block(examples: list[FewshotExample], rubric: Rubric | None = None) 
     for i, ex in enumerate(examples, start=1):
         parts.append(f"=== EXAMPLE REVIEW #{i} (paper: {ex.paper_id}) ===")
         if ex.paper_text:
-            parts.append(
-                "Paper excerpt:\n" + ex.paper_text[:4000]
-            )
+            parts.append("Paper excerpt:\n" + ex.paper_text[:4000])
         parts.append(
             "Completed review JSON:\n"
             + json.dumps(ex.review_json, ensure_ascii=False, indent=2)
@@ -279,9 +271,7 @@ def decide(rubric: Rubric, scores: dict) -> str:
     # categorical: map by quantile into options
     opts = rubric.decision.options
     # Scale value into [0, 1] relative to threshold_dimension scale
-    dim_obj = next(
-        (d for d in rubric.score_dimensions if d.name == dim), None
-    )
+    dim_obj = next((d for d in rubric.score_dimensions if d.name == dim), None)
     if not dim_obj:
         return opts[len(opts) // 2]
     lo, hi = dim_obj.scale
@@ -370,6 +360,7 @@ async def run_single_review(
     raw = await llm(messages, temp, model)
     draft = _extract_json(raw)
     reflection_trace = [draft]
+    raw_responses = [raw]
 
     for i in range(max(0, reflections)):
         critique = (
@@ -383,6 +374,7 @@ async def run_single_review(
         ]
         try:
             raw2 = await llm(messages2, temp, model)
+            raw_responses.append(raw2)
             improved = _extract_json(raw2)
             if improved:
                 draft = improved
@@ -393,6 +385,7 @@ async def run_single_review(
 
     norm = normalize_review(rubric, draft)
     norm["reflection_trace"] = reflection_trace
+    norm["_raw_responses"] = raw_responses
     return norm
 
 
@@ -447,10 +440,7 @@ async def run_meta_review(
         f"(same score dimensions, decision field, strengths/weaknesses summary)."
     )
     reviews_blob = json.dumps(
-        [
-            {k: v for k, v in r.items() if k != "reflection_trace"}
-            for r in reviews
-        ],
+        [{k: v for k, v in r.items() if k != "reflection_trace"} for r in reviews],
         ensure_ascii=False,
         indent=2,
     )
@@ -466,24 +456,18 @@ async def run_meta_review(
         return {"error": f"meta_review failed: {e}", "reviews": reviews}
     raw_json = _extract_json(raw)
     meta = normalize_review(rubric, raw_json) if raw_json else {}
-    meta["meta_review_note"] = (
-        f"aggregated from {len(reviews)} reviews by Area Chair"
-    )
+    meta["meta_review_note"] = f"aggregated from {len(reviews)} reviews by Area Chair"
+    meta["_raw_response"] = raw
     return meta
 
 
 def resolve_rubric(rubric_id: str | None = None) -> Rubric:
-    """Resolve the rubric to use: explicit arg > ARI_RUBRIC env > 'neurips'.
+    """Load an explicitly versioned rubric without environment fallback."""
 
-    On failure (unknown rubric id), falls back to 'neurips' — the default
-    rubric that is guaranteed to ship with the repo. The legacy rubric was
-    removed in v0.6.0.
-    """
-    rid = rubric_id or os.environ.get("ARI_RUBRIC") or "neurips"
-    try:
-        return load_rubric(rid)
-    except RubricError:
-        if rid == "neurips":
-            raise
-        log.warning("rubric %s not found; falling back to neurips", rid)
-        return load_rubric("neurips")
+    rid = str(rubric_id or "").strip()
+    if not rid:
+        raise RubricError(
+            "rubric_id is required; migrate legacy ARI_RUBRIC/default config "
+            "to an explicit workflow input"
+        )
+    return load_rubric(rid)

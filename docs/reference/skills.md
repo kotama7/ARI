@@ -382,31 +382,29 @@ Supported venues: `neurips` (9 pages), `icpp` (10 pages), `sc` (12 pages), `isc`
 
 Returns the LaTeX template for a venue.
 
-#### `generate_section(section, context, venue="arxiv", nodes_json_path="", refs_json="")`
+#### `compile_paper(tex_dir, main_file="main.tex", figures_manifest_path="")`
 
-Generate a LaTeX section using LLM. Section types: `introduction`, `related_work`, `method`, `experiment`, `conclusion`.
-
-#### `compile_paper(tex_dir, main_file="main.tex")`
-
-Run pdflatex compilation. Returns success status and error messages.
+Compile through the common bounded execution contract. The compiler uses fixed
+`pdflatex` / `bibtex` command profiles, disables shell escape, rejects undeclared
+file/process access, imports only artifacts admitted by `FigureBatchV1`, kills the
+whole process group on timeout, and records complete stdout/stderr plus environment
+and PDF digests in `PaperCompileV1`.
 
 #### `check_format(venue, pdf_path)`
 
 Validate paper format against venue requirements (page count, etc.).
 
-#### `review_section(latex, context, venue="arxiv")`
+#### `write_paper_iterative(workspace_root, science_data_path, figures_manifest_path, references_path, ear_manifest_path, rubric_id, experiment_summary="", context="", verified_context_path="", venue="arxiv", max_revision_rounds=2, author_name="")`
 
-Review a LaTeX section. Returns strengths, weaknesses, and suggestions.
+Whole-document authoring from a closed workspace and native contracts only:
+`ScienceDataV1`, `FigureBatchV1`, recorded retrieval result plus
+`SurveySnapshotV1`, and the EAR evidence index. The explicit rubric and venue
+template are hashed inputs. Every prompt, raw model response, model/revision,
+sampling/usage record, immutable TeX/Bib revision, claim anchor, citation key,
+figure ID, and math digest is retained in a draft `PaperBuildV1`. Generic node
+JSON, inline references, and schema-less numeric fallbacks are not runtime inputs.
 
-#### `revise_section(section, latex, feedback, context, venue="arxiv")`
-
-Revise a LaTeX section based on review feedback.
-
-#### `write_paper_iterative(experiment_summary="", context="", nodes_json_path="", refs_json="", figures_manifest_json="", science_data_json="", venue="arxiv", max_revision_rounds=2, author_name="")`
-
-Full paper generation with iterative draft → review → revise loop. Primary pipeline tool.
-
-#### `review_compiled_paper(tex_path, pdf_path, figures_manifest_json, experiment_summary, rubric_id="", vlm_findings_json="", num_reflections=None, num_fs_examples=None, num_reviews_ensemble=None)`
+#### `review_compiled_paper(rubric_id, tex_path="", pdf_path="", figures_manifest_json="", experiment_summary="", vlm_findings_json="", num_reflections=None, num_fs_examples=None, num_reviews_ensemble=None)`
 
 Rubric-driven paper review compatible with the **AI Scientist v1/v2** pipeline
 (Nature / arXiv:2408.06292 Appendix A.4). Loads a YAML rubric from
@@ -430,23 +428,23 @@ Add a new venue by dropping `<id>.yaml` into `reviewer_rubrics/` — no code
 changes required. Each rubric declares `score_dimensions`, `text_sections`,
 `decision` rules, execution parameters, and a SHA256 hash for P2 determinism.
 
-Rubric resolution order: explicit `rubric_id` arg → `ARI_RUBRIC` env →
-`neurips` → built-in `legacy` fallback (v0.5 schema, used when neither
-`rubric_id` nor any matching YAML resolves).
+`rubric_id` is required. Runtime environment/default/legacy fallback resolution
+was removed; old config can be converted offline with
+`src.rubric_migration.migrate_legacy_rubric_selection` and then committed as an
+explicit workflow field.
 
-#### Symmetric author / reviewer venue conditioning (unreleased)
+#### Symmetric author / reviewer venue conditioning
 
 `prompt_overrides` carries two parallel fields:
 
 - `system_hint` — injected into peer-review prompts by `review_engine`
   (existing behaviour).
-- `author_hint` — injected into paper-drafting prompts by
-  `generate_section` as a dedicated `══ VENUE-SPECIFIC AUTHOR
+- `author_hint` — injected into the whole-document authoring prompt as a
+  dedicated `══ VENUE-SPECIFIC AUTHOR
   GUIDANCE ══` block. Tells the drafter what reviewers will look for,
   so the paper is written to make those signals easy to surface.
 
-Empty `author_hint` preserves the legacy weak append (just `Target
-venue: X. Page limit: N pages.`). SC and NeurIPS ship calibrated
+Empty `author_hint` contributes no venue-specific block. SC and NeurIPS ship calibrated
 `author_hint` blocks; remaining venues are empty and can be filled in
 incrementally without touching code.
 
@@ -493,6 +491,11 @@ GUI / CLI can show both outputs with clear source attribution. The
 upstream stages stay independent (matching AI Scientist v2's
 `perform_review` contract) and are reconciled here.
 
+The current signature also accepts `hard_gate_path` and
+`semantic_review_path`. The merge output preserves text, visual, semantic, and
+hard-gate inputs as independent records and emits a separate deterministic list
+of proposed refinements; no source review file is mutated.
+
 #### `link_paper_claims(tex_path="", science_data_json="", figures_manifest_json="", output_path="")` — v0.9.0
 
 Reconciles `% CLAIM:Cx:NCx` anchors against science_data claims and builds
@@ -514,6 +517,17 @@ anchor present in the draft must survive (anchor-dropping edits are rejected and
 on net anchor loss the original paper is kept). Math-safe underscore escaping
 skips `\( … \)` / `\[ … \]` and math environments. The refined LaTeX is returned
 under `latex` (the draft is preserved as `full_paper.draft.tex`).
+
+#### `finalize_paper_build(...)` — v0.3.0
+
+Fail-closed final lock over the exact draft build, final TeX/Bib/PDF, compile
+record and logs, figure batch, claim links, hard gate, independent text/VLM/
+semantic reviews, and refinement model-call batch. It rereads every declared
+artifact and rejects digest/size drift, cross-run evidence, dropped claim/
+citation/figure identities, changed math, incomplete numeric coverage, disabled
+or blocking hard gates, failed or below-threshold visual review, and mismatched
+PDF output. A blocked record is still persisted for audit but the MCP call does
+not claim success. See [PaperBuildV1](paper_build_contract.md).
 
 ##### Few-shot corpus management
 

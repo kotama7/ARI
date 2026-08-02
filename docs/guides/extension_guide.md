@@ -144,16 +144,25 @@ Only edit `config/pipeline.yaml`. No core code changes needed.
 ```yaml
 pipeline:
   - stage: generate_paper
-    skill: ari-skill-paper
-    tool: generate_section
+    skill: paper-skill
+    tool: write_paper_iterative
     enabled: true
-    args:
+    inputs:
+      workspace_root: '{{checkpoint_dir}}'
+      science_data_path: '{{checkpoint_dir}}/science_data.json'
+      figures_manifest_path: '{{checkpoint_dir}}/figures_manifest.json'
+      references_path: '{{checkpoint_dir}}/related_refs.json'
+      ear_manifest_path: '{{checkpoint_dir}}/ear_manifest.json'
+      rubric_id: generic_conference
       venue: arxiv
 
   - stage: review
-    skill: ari-skill-paper
-    tool: review_section
+    skill: paper-skill
+    tool: review_compiled_paper
     enabled: true
+    inputs:
+      rubric_id: generic_conference
+      tex_path: '{{checkpoint_dir}}/full_paper.tex'
 
   - stage: my_new_stage            # ← Add here
     skill: ari-skill-yourskill
@@ -168,11 +177,9 @@ pipeline:
     enabled: true
 ```
 
-Each stage receives:
-- `best_node`: The highest-scoring node from BFTS
-- `all_nodes`: All explored nodes
-- `nodes_json_path`: Path to `nodes_tree.json`
-- Any `args` specified in the YAML
+Each stage receives only the explicit `inputs` declared in the workflow. Paper
+stages consume native, digest-bound artifacts rather than an implicit node-tree
+dictionary.
 
 ---
 
@@ -239,9 +246,15 @@ VENUES = [
 
 ```yaml
 - stage: generate_paper
-  skill: ari-skill-paper
-  tool: generate_section
-  args:
+  skill: paper-skill
+  tool: write_paper_iterative
+  inputs:
+    workspace_root: '{{checkpoint_dir}}'
+    science_data_path: '{{checkpoint_dir}}/science_data.json'
+    figures_manifest_path: '{{checkpoint_dir}}/figures_manifest.json'
+    references_path: '{{checkpoint_dir}}/related_refs.json'
+    ear_manifest_path: '{{checkpoint_dir}}/ear_manifest.json'
+    rubric_id: your_venue
     venue: your_venue   # ← Specify here
 ```
 

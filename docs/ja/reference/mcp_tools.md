@@ -133,18 +133,19 @@ surface に node/record 単位の削除操作はありません。詳細は
 |---|---|:---:|
 | `list_venues` | 利用可能な LaTeX テンプレート（ACM / NeurIPS / SC / ICPP / arXiv） | ✗ |
 | `get_template` | venue のテンプレートを取得 | ✗ |
-| `generate_section` | LLM がセクション（序論、手法など）を執筆 | ✓ |
-| `compile_paper` | pdflatex コンパイル | ✗ |
+| `compile_paper` | 固定コマンド・資源制限・完全ログ付き LaTeX コンパイル | ✗ |
 | `check_format` | LaTeX フォーマット検証 | ✗ |
-| `review_section` | LLM がルーブリックで 1 セクションを査読 | ✓ |
-| `revise_section` | LLM が査読フィードバックを使って書き直し | ✓ |
-| `write_paper_iterative` | 生成 / 査読 / 修正ループをエンドツーエンドで駆動 | ✓ |
-| `review_compiled_paper` | コンパイル済み PDF に対する最終パス査読（図は VLM に委譲） | ✓ |
+| `write_paper_iterative` | native evidence から `PaperBuildV1` 証跡付きで全文を執筆 | ✓ |
+| `review_compiled_paper` | 明示 rubric による独立テキスト査読と raw response 保存 | ✓ |
 | `link_paper_claims` | `% CLAIM:Cx:NCx` アンカーを science_data の主張と照合し、`paper_claim_links` を構築（決定論的） | ✗ |
 | `paper_refine` | `% CLAIM:Cx:NCx` アンカーを保持しつつ提案された修正を適用（決定論的置換 + 境界付き LLM の検索/置換） | ✓ |
 | `list_rubrics` | 利用可能な査読ルーブリック | ✗ |
 | `inject_code_availability` | v0.7.0 — 論文に `\codedigest{...}` ブロックを追記 | ✗ |
-| `merge_reviews` | v0.7.0 — ルーブリック査読 + VLM 査読の JSON を統合 | ✗ |
+| `merge_reviews` | 独立／evidence-grounded 査読を変更せず構造的に合成 | ✗ |
+| `finalize_paper_build` | evidence binding を再計算し TeX/BibTeX/PDF を fail-closed で固定 | ✗ |
+
+旧 per-section tool は削除済みです。移行仕様は英語版の
+[Paper build contract](../../reference/paper_build_contract.md) を参照してください。
 
 ## ari-skill-paper-re — PaperBench 再現性 (v0.7.0)
 
