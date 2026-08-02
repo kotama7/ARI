@@ -21,9 +21,7 @@ _REPO = Path(__file__).resolve().parents[2]
 
 # Private-core imports that are KNOWN and deferred (file-relative-to-repo : symbol).
 # Shrinking this set is the req-09 §12 follow-up.
-_ALLOWLIST = {
-    ("ari-skill-idea/src/server.py", "ari.lineage"),
-}
+_ALLOWLIST = set()
 
 # ari.* paths considered part of the stable public contract.
 _PUBLIC_PREFIXES = ("ari.public", "ari.protocols", "ari.mcp")

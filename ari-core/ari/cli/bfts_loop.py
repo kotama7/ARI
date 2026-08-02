@@ -267,8 +267,14 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                                     isinstance(_idea_data_pre, dict)
                                     and "_root_choice" in _idea_data_pre
                                 )
+                                _contract_already_minted = (
+                                    isinstance(_idea_data_pre, dict)
+                                    and _idea_data_pre.get("research_contract")
+                                    is not None
+                                )
                                 if (not _already_inherited
                                     and not _already_chosen
+                                    and not _contract_already_minted
                                     and len(_idea_data_pre.get("ideas") or []) > 1):
                                     import asyncio as _asyncio_root
                                     from ari.orchestrator.root_idea_selector import (

@@ -278,6 +278,7 @@ _env_append_if_absent "# OLLAMA_BASE_URL=http://localhost:11434"
 # These win over ARI_MODEL/ARI_LLM_MODEL within their phase. Leave blank to
 # use the global model. The GUI Settings page writes these automatically.
 _env_append_if_absent "# ARI_MODEL_IDEA="
+_env_append_if_absent "# ARI_MODEL_IDEA_REVISION="
 _env_append_if_absent "# ARI_MODEL_CODING="
 _env_append_if_absent "# ARI_MODEL_EVAL="
 _env_append_if_absent "# ARI_MODEL_PAPER="
@@ -295,6 +296,7 @@ _env_append_if_absent "# ARI_MODEL_JUDGE="
 # (default allenai/specter2_base).
 _env_append_if_absent "# ARI_IDEA_VIRSCI_MAX_TEAMS="
 _env_append_if_absent "# ARI_IDEA_VIRSCI_SPECTER2_MODEL="
+_env_append_if_absent "# ARI_IDEA_VIRSCI_SPECTER2_REVISION=3447645e1def9117997203454fa4495937bfbd83"
 # Rubric generator knobs (consumed by ari-skill-replicate). All three fall
 # back to defaults baked into the generator when unset; the GUI wizard can
 # write these per-run.

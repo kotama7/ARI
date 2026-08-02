@@ -234,11 +234,14 @@
       {
         "args": [
           "experiment_context",
+          "generation_mode",
           "max_discussion_rounds",
           "max_recursion_depth",
           "n_agents",
           "n_ideas",
           "papers",
+          "seed",
+          "survey_snapshot",
           "topic"
         ],
         "idiom": "fastmcp",
@@ -247,6 +250,9 @@
       {
         "args": [
           "max_papers",
+          "mode",
+          "provider",
+          "snapshot_path",
           "topic"
         ],
         "idiom": "fastmcp",

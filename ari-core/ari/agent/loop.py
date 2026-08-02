@@ -1058,8 +1058,6 @@ class AgentLoop:
                     # generate_ideas call: capture primary_metric and higher_is_better
                     # Track that generate_ideas was called to prevent repeated calls
                     if r["name"] == "generate_ideas":
-                        self._ideas_generated = True
-                        self._suppress_tools = {"generate_ideas"}
                         try:
                             idea_raw = r["result"]
                             if isinstance(idea_raw, str):
@@ -1071,18 +1069,61 @@ class AgentLoop:
                             if isinstance(idea_data, dict) and "result" in idea_data:
                                 _inner = idea_data["result"]
                                 idea_data = json.loads(_inner) if isinstance(_inner, str) else _inner
+                            _typed_idea = (
+                                idea_data.get("typed_schema_version")
+                                == "ari.research-contract/v1"
+                            )
+                            _idea_admitted = (
+                                not _typed_idea
+                                or idea_data.get("contract_status") == "admitted"
+                            )
+                            self._ideas_generated = _idea_admitted
+                            self._suppress_tools = (
+                                {"generate_ideas"} if _idea_admitted else set()
+                            )
                             # Persist full idea data to checkpoint for Idea tab
                             try:
                                 _ckpt = getattr(self, "checkpoint_dir", None)
                                 if _ckpt:
+                                    from ari.public.execution import WorkspaceRefV1
+
+                                    _idea_workspace = WorkspaceRefV1(
+                                        root=str(Path(_ckpt).expanduser().resolve())
+                                    )
+                                    _idea_workspace.atomic_write_bytes(
+                                        "idea.json",
+                                        (
+                                            json.dumps(
+                                                idea_data,
+                                                ensure_ascii=False,
+                                                sort_keys=True,
+                                                indent=2,
+                                            )
+                                            + "\n"
+                                        ).encode("utf-8"),
+                                    )
                                     _idea_path = Path(_ckpt) / "idea.json"
-                                    _idea_path.write_text(json.dumps(idea_data, ensure_ascii=False, indent=2))
                                     logger.info("Saved idea.json to %s", _idea_path)
                             except Exception as _se:
                                 logger.warning("Failed to save idea.json: %s", _se)
-                            pm = idea_data.get("primary_metric", "")
-                            hib = idea_data.get("higher_is_better", True)
-                            mr = idea_data.get("metric_rationale", "")
+                            _research_contract = None
+                            if _typed_idea:
+                                from ari.public.research_contract import (
+                                    parse_research_contract_document,
+                                )
+
+                                _research_contract = parse_research_contract_document(
+                                    idea_data
+                                )
+                            if _research_contract is not None:
+                                _metric = _research_contract.metric_contract
+                                pm = _metric.name
+                                hib = _metric.direction != "lower"
+                                mr = _metric.rationale
+                            else:
+                                pm = idea_data.get("primary_metric", "")
+                                hib = idea_data.get("higher_is_better", True)
+                                mr = idea_data.get("metric_rationale", "")
                             if pm:
                                 # Persist to memory so pipeline.py can read it
                                 try:
@@ -1118,7 +1159,14 @@ class AgentLoop:
                                         # including descendants that never re-run generate_ideas —
                                         # inherits the design intent (planned mechanism, target
                                         # workloads), not just the metric. Run-level invariant.
-                                        _best_idea = (idea_data.get("ideas") or [{}])[0] if isinstance(idea_data, dict) else {}
+                                        if _research_contract is not None:
+                                            _best_idea = {
+                                                "title": _research_contract.title,
+                                                "description": _research_contract.hypothesis,
+                                                "experiment_plan": _research_contract.experiment_plan,
+                                            }
+                                        else:
+                                            _best_idea = (idea_data.get("ideas") or [{}])[0] if isinstance(idea_data, dict) else {}
                                         _idea_summary = f"{_best_idea.get('title','')}: {(_best_idea.get('description','') or '')[:400]}"
                                         try:
                                             from ari.pipeline import _extract_plan_sections as _eps_seed

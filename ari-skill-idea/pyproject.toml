@@ -1,16 +1,18 @@
 [project]
 name = "ari-skill-idea"
-version = "0.1.0"
+version = "0.2.0"
 description = "Research idea generation, literature survey and gap analysis MCP Server"
 requires-python = ">=3.10"
-dependencies = ["mcp>=1.0", "litellm>=1.0", "arxiv>=2.0", "semanticscholar>=0.8", "requests>=2.28"]
+dependencies = ["ari-core>=0.9.1", "mcp>=1.0", "litellm>=1.0", "requests>=2.28"]
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "pytest-asyncio>=0.21"]
 # VirSci-live (vendor-wrap) extra — enables the ARI_IDEA_VIRSCI_REAL path
 # (PLAN_virsci_live_wrap / REQUIREMENTS.md §VirSci-live). When absent, the
-# skill silently degrades to the re-implemented discussion loop. SPECTER2
-# weights (allenai/specter2_base) are fetched at runtime, not pinned here.
+# ``generation_mode=auto`` records any fallback to the default adapter;
+# ``generation_mode=virsci`` fails closed. SPECTER2 weights are fetched at the
+# immutable revision declared in ``src/contracts.py`` (overridable only through
+# the separately recorded ARI_IDEA_VIRSCI_SPECTER2_REVISION contract field).
 # loguru + sqlalchemy are transitive needs of the vendored agentscope import
 # chain (the auto-stubber only covers the unused optional backends).
 virsci = [

@@ -47,24 +47,25 @@ JSON Schema として正式に仕様が定められているスキーマにつ�
 `ari-skill-idea.generate_ideas` の出力。`{checkpoint}/idea.json` に配置され、
 BFTS 実行のプランのシードとなります。
 
-トップレベルの形式:
+新規runはdigest拘束された形式を使います（旧scalar fieldはcheckpoint
+support window中のみread-only projectionとして残ります）。
 
 ```json
 {
-  "ideas": [
-    {
-      "title": "...",
-      "experiment_plan": "Markdown-formatted plan with §-tags",
-      "primary_metric": "GFlops/s",
-      "alternatives_considered": ["..."],
-      "_pinned": false
-    }
-  ]
+  "typed_schema_version": "ari.research-contract/v1",
+  "survey_snapshot_digest": "sha256:...",
+  "idea_set_digest": "sha256:...",
+  "research_contract_digest": "sha256:...",
+  "contract_status": "admitted",
+  "survey_snapshot": {"schema_version": "ari.survey-snapshot/v1"},
+  "idea_set": {"schema_version": "ari.idea-set/v1"},
+  "research_contract": {"schema_version": "ari.research-contract/v1"}
 }
 ```
 
-子は継承したエントリの `"_pinned": true` を設定して親の選択アイデアを固定します。
-後続の `generate_ideas` 実行は上書きせずに新しいアイデアをその後に追加します。
+3つのrecordはcanonical SHA-256 digestを自己検証します。不正、重複、引用なし、
+反証不能、unit不明、存在しないartifact参照のcandidateは`idea_set.rejections`に入り、
+research contractをmintできません。詳細は[研究契約](research_contracts.md)を参照してください。
 
 ## `evaluation_criteria.json`
 

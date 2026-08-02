@@ -83,7 +83,7 @@ _ALLOWED_EXACT = {"ari.public"}
 _GRANDFATHERED: dict[str, set[int]] = {
     "ari-skill-evaluator/src/server.py": {18},  # cost_tracker fallback (shifted by the logging import + module logger)
     "ari-skill-hpc/src/slurm.py": {211},  # run_env fallback
-    "ari-skill-idea/src/server.py": {65, 615},  # cost_tracker fallback + ari.lineage (deferred; line shifted by canonical MCP decorators)
+    "ari-skill-idea/src/server.py": {85},  # cost_tracker compatibility fallback
     "ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py": {159},  # cost_tracker fallback
     "ari-skill-memory/tests/test_backup_restore.py": {14},  # ari.memory_cli (deferred, test-only)
     "ari-skill-paper/src/server.py": {21},  # cost_tracker fallback

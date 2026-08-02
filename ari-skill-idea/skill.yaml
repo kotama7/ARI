@@ -1,7 +1,7 @@
 schema_version: 1
 name: idea-skill
 package: ari-skill-idea
-version: 0.1.0
+version: 0.2.0
 display_name: Generate research ideas
 description: Literature-grounded survey and multi-agent hypothesis generation using VirSci workflows.
 environment_policy: complete
@@ -19,10 +19,12 @@ optional_env:
   - ARI_IDEA_VIRSCI_N_PAPERS
   - ARI_IDEA_VIRSCI_REAL
   - ARI_IDEA_VIRSCI_SPECTER2_MODEL
+  - ARI_IDEA_VIRSCI_SPECTER2_REVISION
   - ARI_IDEA_VIRSCI_TEAM_SIZE
   - ARI_LLM_API_BASE
   - ARI_LLM_MODEL
   - ARI_MODEL_IDEA
+  - ARI_MODEL_IDEA_REVISION
   - ARI_WORKSPACE
   - AWS_DEFAULT_REGION
   - AWS_REGION
@@ -64,7 +66,7 @@ credential_scopes:
       - XAI_API_KEY
 tool_defaults:
   phases: [bfts]
-  side_effects: read-only
+  side_effects: workspace-write
   determinism: stochastic
   timeout_class: slow
   permissions: [workspace-read, network, model]
@@ -74,6 +76,7 @@ tools:
     capability_ref: ari.literature.survey
     determinism: live-data
     timeout_class: bounded
-    permissions: [workspace-read, network]
+    permissions: [workspace-read, workspace-write, network]
   - name: generate_ideas
     capability_ref: ari.ideation.generate
+    permissions: [workspace-read, workspace-write, network, model]

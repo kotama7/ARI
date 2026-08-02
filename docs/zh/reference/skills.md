@@ -121,18 +121,18 @@ result = job_status("12345")
 
 ### 工具
 
-#### `survey(topic, max_papers=8)`
+#### `survey(topic, max_papers=8, mode="record", snapshot_path="survey_snapshot_v1.json", provider="semantic-scholar")`
 
 搜索 Semantic Scholar 获取相关论文。确定性（无 LLM）。
 
 ```python
 result = survey("OpenMP compiler optimization HPC benchmarks")
-# Returns: {"papers": [{"title": "...", "abstract": "...", "url": "..."}]}
+# 返回papers以及经过digest验证的SurveySnapshotV1。
 ```
 
 需要 `S2_API_KEY` 环境变量以获得更高的 Semantic Scholar 速率限制。
 
-#### `generate_ideas(topic, papers, experiment_context="", n_ideas=3, n_agents=4, max_discussion_rounds=2, max_recursion_depth=0)`
+#### `generate_ideas(topic, papers, experiment_context="", n_ideas=3, n_agents=4, max_discussion_rounds=2, max_recursion_depth=0, survey_snapshot=null, seed=null, generation_mode="auto")`
 
 使用 VirSci 多智能体 LLM 讨论生成研究假设。多个 AI 角色（研究者、批评者、专家、综合者）就研究问题进行辩论。仅在 BFTS 启动前调用**一次**（仅限 pre-BFTS）。
 
@@ -140,17 +140,18 @@ result = survey("OpenMP compiler optimization HPC benchmarks")
 
 #### VirSci-live (vendor-wrap) — 可选的真实引擎
 
-`generate_ideas` 在同一份想法契约背后有两个可互换的引擎。默认（**reimpl**，行为不变）
+`generate_ideas` 在同一份想法契约背后有两个可互换的引擎。默认（**reimpl**）
 运行轻量级的再实现讨论循环。可选（**real_wrap**）则改为运行 VirSci 的*真实*机制 ——
 来自同捆且**未改动**的 `vendor/virsci` 的 `Platform.select_coauthors`（freshness 团队组建）
 + `Team.generate_idea`（多智能体讨论）—— 并以一份**实时**的 Semantic Scholar 快照
 （语料 + SPECTER2 余弦检索索引 + 作者画像 + 合著者图）为基底。
 
-- **默认关闭** = 行为与之前逐字节一致。启用方式：环境变量 `ARI_IDEA_VIRSCI_REAL=1`、
+- **默认关闭。** 启用方式：环境变量 `ARI_IDEA_VIRSCI_REAL=1`、
   CLI 标志 `--virsci-live`，或 GUI 实验向导的 "VirSci live" 开关（Scope/Resources 步骤；
   持久化到 `launch_config.json`）。
-- **安全降级。** 当依赖缺失（`virsci` pip extra 不存在）或发生任何运行时错误时，
-  技能回退到 reimpl 循环。两条路径的 `idea.json` 契约完全一致。此外，实时快照构建现在会
+- **显式fallback。** `generation_mode="auto"`可以回退到default adapter，但会在
+  provenance中记录requested/actual adapter及error。`generation_mode="virsci"`会
+  fail-closed。两条路径都经过同一个`IdeaSetV1` preflight。此外，实时快照构建现在会
   **在空的 / 0 篇论文的 S2 拉取时显式失败**（429 限流、网络故障或无搜索命中）：与其静默写入一份
   带占位作者的「成功」0 篇清单——那会让 VirSci 在完全无接地的情况下运行却被记为 `real_wrap` 成功
   ——它会抛出异常，使 `generate_ideas` **可见地** 降级到 reimpl 循环。`n_papers == 0` 的已缓存清单

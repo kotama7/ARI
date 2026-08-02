@@ -135,10 +135,9 @@ async def list_tools() -> list[Tool]:
             name="make_metric_spec",
             description=(
                 "Generates a MetricSpec (expected_metrics, metric_keyword, scoring_guide, "
-                "min_expected_metric). Prefers the idea-stage canonical primary_metric "
-                "(from primary_metric arg, or evaluation_criteria.json/idea.json via "
-                "ARI_CHECKPOINT_DIR) and structures it via LLM; falls back to deterministic "
-                "parsing of the experiment.md seed metrics line when no primary_metric exists."
+                "min_expected_metric). Uses an immutable ResearchContractV1 verbatim "
+                "when present, without LLM re-extraction. Legacy checkpoints fall back "
+                "to primary_metric or deterministic experiment.md parsing."
             ),
             inputSchema={
                 "type": "object",
@@ -252,6 +251,33 @@ async def _llm_extract_metric_spec(description: str) -> dict:
     except Exception:
         pass  # Fall through; caller keeps its existing values.
     return {}
+
+
+def _load_typed_research_contract(checkpoint_dir: str | None = None):
+    """Load and verify the exact idea-owned contract, or return None for legacy.
+
+    A new-format idea document that declares the typed schema but has no admitted
+    contract raises. This is intentional: it must not fall through to a newly
+    invented evaluator vocabulary after idea preflight rejected the candidates.
+    """
+    import os as _os
+    from pathlib import Path as _Path
+
+    ckpt = checkpoint_dir or _os.environ.get("ARI_CHECKPOINT_DIR", "")
+    if not ckpt:
+        return None
+    path = _Path(ckpt) / "idea.json"
+    if not path.is_file():
+        return None
+    try:
+        document = json.loads(path.read_text())
+    except Exception:
+        return None
+    if not isinstance(document, dict):
+        return None
+    from ari.public.research_contract import parse_research_contract_document
+
+    return parse_research_contract_document(document)
 
 
 def _load_primary_metric_from_checkpoint(checkpoint_dir: str | None = None) -> str:
@@ -544,6 +570,68 @@ async def _tool_make_metric_spec(arguments: dict) -> dict:
     # via the LLM fallback below — the regex-based path doesn't extract
     # them because experiment.md has no consistent "## Parameters" header.
     expected_params: list[str] = []
+
+    typed_contract = _load_typed_research_contract(arguments.get("checkpoint_dir"))
+    if typed_contract is not None:
+        from ari.public.execution import WorkspaceRefV1
+        from ari.public.research_contract import metric_gate_projection
+
+        metric = typed_contract.metric_contract
+        metric_keyword = metric.name
+        expected_metrics = list(
+            dict.fromkeys((metric.name, *metric.required_evidence))
+        )
+        scoring_guide = _build_scoring_guide(
+            expected_metrics, metric_keyword, min_expected
+        )
+        metric_contract = metric_gate_projection(typed_contract)
+
+        import os as _os_typed
+        from pathlib import Path as _Path_typed
+
+        checkpoint = (
+            arguments.get("checkpoint_dir")
+            or _os_typed.environ.get("ARI_CHECKPOINT_DIR", "")
+            or ""
+        ).strip()
+        if checkpoint:
+            root = _Path_typed(checkpoint).expanduser().resolve()
+            root.mkdir(parents=True, exist_ok=True)
+            persisted_path = root / "metric_contract.json"
+            if persisted_path.is_file():
+                persisted = json.loads(persisted_path.read_text())
+                old_digest = persisted.get("research_contract_digest")
+                if old_digest and old_digest != typed_contract.contract_digest:
+                    raise ValueError(
+                        "persisted metric contract references a different "
+                        "ResearchContractV1 digest"
+                    )
+            workspace = WorkspaceRefV1(root=str(root))
+            workspace.atomic_write_bytes(
+                "metric_contract.json",
+                (
+                    json.dumps(
+                        metric_contract,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        indent=2,
+                    )
+                    + "\n"
+                ).encode("utf-8"),
+            )
+        return {
+            "expected_metrics": expected_metrics,
+            "expected_params": expected_params,
+            "metric_keyword": metric_keyword,
+            "metric_unit": metric.unit,
+            "metric_direction": metric.direction,
+            "min_expected_metric": min_expected,
+            "scoring_guide": scoring_guide,
+            "metric_contract": metric_contract,
+            "research_contract_digest": typed_contract.contract_digest,
+            "contract_frozen": True,
+            "contract_source": "idea.research-contract/v1",
+        }
 
     # The experiment.md ``Metrics:`` line is a HUMAN SEED placeholder written
     # before idea generation (often throughput-only, e.g. "GB/s, GFlops/s").

@@ -1,0 +1,96 @@
+{
+  "$id": "https://ari.dev/schemas/metric-contract-v1.schema.json",
+  "additionalProperties": false,
+  "description": "Idea-owned metric vocabulary; evaluator enforcement is read-only.",
+  "properties": {
+    "comparison_scope": {
+      "enum": [
+        "same-environment",
+        "cross-environment",
+        "within-subject",
+        "not-applicable"
+      ],
+      "title": "Comparison Scope",
+      "type": "string"
+    },
+    "correctness_required": {
+      "title": "Correctness Required",
+      "type": "boolean"
+    },
+    "direction": {
+      "enum": [
+        "higher",
+        "lower",
+        "target",
+        "none"
+      ],
+      "title": "Direction",
+      "type": "string"
+    },
+    "name": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "normalization_ceiling": {
+      "enum": [
+        "measured",
+        "not-applicable"
+      ],
+      "title": "Normalization Ceiling",
+      "type": "string"
+    },
+    "rationale": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Rationale",
+      "type": "string"
+    },
+    "required_evidence": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 128,
+      "minItems": 1,
+      "title": "Required Evidence",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "ari.metric-contract/v1",
+      "default": "ari.metric-contract/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "target_value": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Target Value"
+    },
+    "unit": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Unit",
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "unit",
+    "direction",
+    "comparison_scope",
+    "rationale",
+    "required_evidence",
+    "correctness_required",
+    "normalization_ceiling"
+  ],
+  "title": "ARI Metric Contract v1",
+  "type": "object"
+}
