@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-skill-replicate/src/rubric_template.py
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-08-02
 ---
 
 # 评分单 Schema 参考

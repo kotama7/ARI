@@ -978,11 +978,16 @@ def _openroad_candidate(
     semantics = {
         "experiment_digest": profile.experiment_digest,
         "method_digest": profile.method_digest,
-        "execution_model": "immutable-profile",
+        "execution_model": (
+            "typed-slurm-container"
+            if profile.execution.backend == "slurm"
+            else "immutable-profile"
+        ),
         "idempotency_key": "request_id",
         "session_recovery": "fail-closed",
         "toolchain": profile.toolchain.model_dump(mode="json"),
         "technology": profile.technology.model_dump(mode="json"),
+        "execution": profile.execution.model_dump(mode="json"),
         "workspace_input_digest": profile.workspace.input_digest,
         "metrics": [metric.model_dump(mode="json") for metric in profile.metrics],
     }
@@ -994,7 +999,11 @@ def _openroad_candidate(
             "Python release; npm migration requires a separately reviewed launcher."
         ),
         "ARI exposes no arbitrary Tcl, command, environment, cwd, or path argument.",
-        "An interrupted local MCP session cannot be resumed and fails closed.",
+        (
+            "An interrupted local MCP session cannot be resumed and fails closed."
+            if profile.execution.backend == "local-mcp"
+            else "Scheduler recovery requires the locked catalog and durable C06 ledger."
+        ),
     ]
     backend_lineage = [
         collection_id,
@@ -1002,6 +1011,7 @@ def _openroad_candidate(
         f"orfs:{profile.toolchain.orfs_commit}",
         f"execution-image:{profile.toolchain.execution_image_digest}",
         f"architecture:{profile.toolchain.architecture}",
+        f"execution-backend:{profile.execution.backend}",
     ]
     data_lineage = [
         f"workspace:{profile.workspace.input_digest}",

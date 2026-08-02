@@ -21,7 +21,7 @@ last_verified: 2026-08-02
 
 | 項目 | 値 |
 |---|---|
-| 状態 | In progress — C01/C02/C17 complete; C06 paper-re consumer complete; C18 HPC and C19 pilots next |
+| 状態 | In progress — C01/C02/C17/C18 complete; C06 consumers complete; C19 pilot next |
 | 基準ブランチ | `skills` |
 | 基準コミット | `4cd56f9` |
 | 作成日 | 2026-08-01 |
@@ -63,7 +63,8 @@ last_verified: 2026-08-02
   immutable experiment leaf、closed Tcl profile、private workspace、QoR context、
   exact golden/replay evidence、async session cleanup、artifact再検証、offline replayを
   実装。公式provider contract smokeとparallel/cancel/negative fixtureを通過した。
-  C18-07のscheduler/container実行はC06 consumer migrationとして継続中。
+  固定Tcl/worker/inputをC06 typed jobへpinするSLURM + clean SIF経路、handle/
+  cancel/log/provenance/EAR統合、terminal-only cleanupを追加しC18-01〜08/D1〜D6を完了。
 - C06 scheduler coreを`JobRequestV1/JobHandleV1/JobStatusV1/JobResultV1`へ移行し、
   durable idempotency claim、shell-free local argv+stdin、strict known-host SSH、
   `--export=NIL` clean environment、module/container/input/output/log provenanceを実装。
@@ -73,7 +74,7 @@ last_verified: 2026-08-02
 - paper-reの直接`sbatch --wait`、`--export ALL`、GRES silent drop、任意flag連結、
   spool wrapperを削除し、digest付きrequest→handle→status/log/cancelへ移行した。
   rubric schemaもtyped account/QoS/reservationと矛盾resource拒否へ更新し、157件の
-  paper-re suiteと54件のHPC suiteを通過。C06-07はOpenROAD consumerのみ継続中。
+  paper-re suiteと54件のHPC suiteを通過。C06-07はOpenROAD consumerを含め完了。
 
 ## 1. 決定
 

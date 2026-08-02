@@ -18,6 +18,26 @@ sources:
     role: implementation
   - path: ari-skill-tool-registry/providers/tooluniverse-support-v1.json
     role: config
+  - path: ari-skill-tool-registry/src/openroad_adapter.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_contracts.py
+    role: schema
+  - path: ari-skill-tool-registry/src/openroad_identity.py
+    role: schema
+  - path: ari-skill-tool-registry/src/openroad_verification.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_local.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_results.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_hpc.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_hpc_workspace.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_worker.py
+    role: implementation
+  - path: ari-skill-tool-registry/providers/openroad-support-v1.json
+    role: config
 last_verified: 2026-08-02
 ---
 
@@ -94,6 +114,21 @@ search 均被关闭；结果记录 collection/wheel/provider/leaf-spec identity 
 
 批量更新只生成 pending diff。input/output/default schema 变化不能仅凭普通
 `--approve` 通过，还必须在审查后显式使用 `--approve-schema-changes`。
+
+## OpenROAD profile adapter
+
+OpenROAD-MCP 的交互工具不会暴露为叶子；一个已审查
+`OpenRoadExperimentV1` 对应一个虚拟异步叶子。调用者只提供 `request_id`，
+Tcl、路径、PDK/library、OpenROAD/ORFS commit、seed、threads、资源和容器都固定在
+experiment/method identity 中。
+
+`local-mcp` 使用有作用域的 stateful session，并在所有终态路径中 terminate。
+`slurm` 将封闭命令编译为 digest-pinned Tcl，并把固定 worker/input 通过
+C06 `JobRequestV1` 提交。必须使用单 node/task、与 threads 一致的 CPU、共享
+work root、digest 与 toolchain 一致的 clean/contained SIF，以及 `network: none`。
+scheduler handle/status/cancel、environment/module/container digest、日志与 provenance 会进入
+result/EAR。只有确认 scheduler 终态后才删除 workspace；transport 结果不明时
+fail closed 并保留现场以供 ledger 对账。
 
 ## record/replay 与 EAR
 

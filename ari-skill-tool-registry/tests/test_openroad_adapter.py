@@ -16,10 +16,22 @@ from pydantic import ValidationError
 
 from broker import CatalogBroker
 from catalog import build_catalog
+from ari_skill_hpc import (
+    ArtifactPinV1 as HpcArtifactPinV1,
+    ContainerRequestV1,
+    JobHandleV1,
+    JobLogV1,
+    JobRequestV1,
+    JobResultV1,
+    JobStatusV1,
+    ResourceRequestV1,
+    sha256_digest as hpc_sha256_digest,
+)
 from models import AdmissionEvidenceV1
 from openroad_adapter import (
     OpenRoadArtifactPinV1,
     OpenRoadCommandV1,
+    OpenRoadExecutionV1,
     OpenRoadExperimentAdapter,
     OpenRoadExperimentV1,
     OpenRoadMetricV1,
@@ -33,6 +45,7 @@ from openroad_adapter import (
     verify_openroad_experiment_files,
     verify_openroad_provider_package,
 )
+from openroad_worker import run as run_openroad_worker
 from providers import (
     ProviderProtocolError,
     ProviderResponseV1,
@@ -88,6 +101,7 @@ def _profile(
     profile_id: str = "gcd-nangate45",
     seed: int = 17,
     scientific: bool = False,
+    execution: OpenRoadExecutionV1 | None = None,
 ) -> OpenRoadExperimentV1:
     source = root / f"inputs-{profile_id}"
     inputs = {
@@ -147,7 +161,11 @@ def _profile(
             openroad_version="26Q3",
             executable_path=str(executable.resolve()),
             executable_digest=_digest_file(executable),
-            execution_image_digest="sha256:" + "1" * 64,
+            execution_image_digest=(
+                execution.container.image.digest
+                if execution is not None and execution.container is not None
+                else "sha256:" + "1" * 64
+            ),
             architecture=platform.machine(),
             threads=1,
             seed=seed,
@@ -168,6 +186,7 @@ def _profile(
             input_artifacts=artifacts,
             input_digest=openroad_workspace_digest(artifacts),
         ),
+        "execution": execution or OpenRoadExecutionV1(),
         "commands": [
             OpenRoadCommandV1(stage="setup", verb="set_thread_count", arguments=["1"]),
             OpenRoadCommandV1(
@@ -318,6 +337,184 @@ def _source_spec(
     )
 
 
+def _slurm_execution(root: Path) -> OpenRoadExecutionV1:
+    work_root = root / "shared-work"
+    work_root.mkdir(parents=True, exist_ok=True)
+    image = root / "openroad.sif"
+    image.write_bytes(b"pinned OpenROAD container fixture\n")
+    return OpenRoadExecutionV1(
+        backend="slurm",
+        work_root=str(work_root.resolve()),
+        resources=ResourceRequestV1(
+            partition="eda",
+            nodes=1,
+            tasks=1,
+            cpus_per_task=1,
+            memory_mb_per_node=2048,
+            walltime="00:01:00",
+            account="research",
+        ),
+        container=ContainerRequestV1(
+            image=HpcArtifactPinV1(
+                logical_name="openroad-image",
+                path=str(image.resolve()),
+                digest=_digest_file(image),
+                size_bytes=image.stat().st_size,
+                media_type="application/vnd.sylabs.sif",
+            ),
+            network="none",
+        ),
+    )
+
+
+class FakeOpenRoadScheduler:
+    def __init__(self, *, block: bool = False) -> None:
+        self.block = block
+        self.cancelled = False
+        self.requests: list[JobRequestV1] = []
+        self.handle: JobHandleV1 | None = None
+        self._log_path: Path | None = None
+        self._provenance_path: Path | None = None
+
+    async def submit(self, request: JobRequestV1) -> JobHandleV1:
+        self.requests.append(request)
+        scope = Path(request.work_dir) / ".ari-hpc" / "fake"
+        scope.mkdir(parents=True, exist_ok=True)
+        self._log_path = scope / "slurm-42.out"
+        self._log_path.write_text("OpenROAD scheduler fixture log\n", encoding="utf-8")
+        self._provenance_path = scope / "execution-environment.txt"
+        self._provenance_path.write_text(
+            "hostname=fixture\narchitecture=" + platform.machine() + "\n",
+            encoding="utf-8",
+        )
+        if not self.block:
+            for output in request.outputs:
+                path = Path(output.path)
+                if output.logical_name == "openroad-batch-result":
+                    spec_path = next(
+                        Path(item.path)
+                        for item in request.inputs
+                        if item.logical_name == "openroad-batch-spec"
+                    )
+                    spec = json.loads(spec_path.read_text(encoding="utf-8"))
+                    _write_json(
+                        path,
+                        {
+                            "schema_version": "ari.openroad-batch-result/v1",
+                            "experiment_digest": spec["experiment_digest"],
+                            "started_at": "2026-08-02T00:00:00Z",
+                            "completed_at": "2026-08-02T00:00:01Z",
+                            "architecture": platform.machine(),
+                            "executable_digest": spec["executable_digest"],
+                            "tcl_digest": spec["tcl_digest"],
+                            "return_code": 0,
+                            "error": None,
+                        },
+                    )
+                elif path.suffix == ".json":
+                    _write_json(
+                        path,
+                        {
+                            "timing": {"wns": -0.25},
+                            "physical": {"area": 150.0},
+                        },
+                    )
+                elif path.suffix == ".def":
+                    path.write_text(
+                        "VERSION 5.8 ;\nDESIGN top ;\nEND DESIGN\n",
+                        encoding="utf-8",
+                    )
+        digest = request.request_digest
+        self.handle = JobHandleV1(
+            handle_id="hpc-openroad-fixture",
+            request_id=request.request_id,
+            request_digest=digest,
+            cluster_identity="sha256:" + "a" * 64,
+            job_id="42",
+            submission_digest="sha256:" + "b" * 64,
+            workspace_scope=request.work_dir,
+            artifact_scope=str(scope),
+            submitted_at="2026-08-02T00:00:00Z",
+        )
+        return self.handle
+
+    async def status(self, handle_or_job_id: str) -> JobStatusV1:
+        assert self.handle is not None
+        if self.cancelled:
+            state = "cancelled"
+            scheduler_state = "CANCELLED"
+            exit_code = None
+        elif self.block:
+            state = "running"
+            scheduler_state = "RUNNING"
+            exit_code = None
+        else:
+            state = "succeeded"
+            scheduler_state = "COMPLETED"
+            exit_code = 0
+        return JobStatusV1(
+            handle_id=self.handle.handle_id,
+            job_id=self.handle.job_id,
+            state=state,
+            scheduler_state=scheduler_state,
+            exit_code=exit_code,
+        )
+
+    async def result(self, handle_or_job_id: str) -> JobResultV1:
+        assert self.handle is not None
+        request = self.requests[0]
+        status = await self.status(handle_or_job_id)
+        outputs = tuple(
+            HpcArtifactPinV1(
+                logical_name=output.logical_name,
+                path=output.path,
+                digest=_digest_file(Path(output.path)),
+                size_bytes=Path(output.path).stat().st_size,
+                media_type=output.media_type,
+            )
+            for output in request.outputs
+            if Path(output.path).is_file()
+        )
+        assert self._log_path is not None
+        assert self._provenance_path is not None
+        return JobResultV1(
+            handle=self.handle,
+            status=status,
+            request_digest=request.request_digest,
+            environment_digest=hpc_sha256_digest(
+                request.environment.model_dump(mode="json")
+            ),
+            module_digest=hpc_sha256_digest(list(request.environment.modules)),
+            container_digest=request.container.image.digest
+            if request.container is not None
+            else None,
+            inputs=request.inputs,
+            outputs=outputs,
+            provenance=(
+                HpcArtifactPinV1(
+                    logical_name="execution-environment",
+                    path=str(self._provenance_path),
+                    digest=_digest_file(self._provenance_path),
+                    size_bytes=self._provenance_path.stat().st_size,
+                    media_type="text/plain",
+                ),
+            ),
+            logs=(
+                JobLogV1(
+                    stream="stdout",
+                    path=str(self._log_path),
+                    digest=_digest_file(self._log_path),
+                    size_bytes=self._log_path.stat().st_size,
+                    text=self._log_path.read_text(encoding="utf-8"),
+                ),
+            ),
+        ).with_digest()
+
+    async def cancel(self, handle_or_job_id: str) -> dict[str, Any]:
+        self.cancelled = True
+        return {"status": "cancel_requested"}
+
+
 class OpenRoadTransportFixture:
     def __init__(
         self,
@@ -414,6 +611,7 @@ def _adapter(
     transport: OpenRoadTransportFixture,
     *,
     artifact_store: RegistryArtifactStore | None = None,
+    scheduler: FakeOpenRoadScheduler | None = None,
 ) -> OpenRoadExperimentAdapter:
     return OpenRoadExperimentAdapter(
         spec.effective_launcher,
@@ -427,6 +625,7 @@ def _adapter(
         },
         timeout_seconds=spec.timeout_seconds,
         transport=transport,
+        scheduler=scheduler,
         verify_package=False,
         verify_contract=False,
     )
@@ -733,3 +932,181 @@ async def test_cancel_terminates_session_and_parallel_runs_use_distinct_workspac
     assert len({str(path) for path in parallel_transport.workspaces}) == 2
     assert parallel_transport.max_active_connections == 2
     assert all(not path.exists() for path in parallel_transport.workspaces)
+
+
+@pytest.mark.asyncio
+async def test_slurm_profile_uses_typed_container_job_and_captures_provenance(
+    tmp_path: Path,
+):
+    execution = _slurm_execution(tmp_path / "execution")
+    profile = _profile(tmp_path / "profile", execution=execution)
+    spec = _source_spec(tmp_path / "provider", [profile])
+    artifacts = RegistryArtifactStore(tmp_path / "artifacts")
+    scheduler = FakeOpenRoadScheduler()
+    adapter = _adapter(
+        spec,
+        OpenRoadTransportFixture(),
+        artifact_store=artifacts,
+        scheduler=scheduler,
+    )
+    leaf = OpenRoadExperimentAdapter.leaf_name(profile.profile_id)
+    submitted = await adapter.invoke(leaf, {"request_id": "scheduler-run"})
+    handle_id = str((submitted.structured or {})["handle_id"])
+    for _ in range(200):
+        response = await adapter.get_result(None, handle_id)
+        if (response.structured or {}).get("status") == "completed":
+            break
+        await asyncio.sleep(0.01)
+    else:
+        raise AssertionError("scheduler-backed OpenROAD run did not complete")
+
+    completed = response.structured or {}
+    assert completed["hpc_job"]["handle"]["handle_id"] == "hpc-openroad-fixture"
+    assert completed["hpc_job"]["container_digest"] == (
+        execution.container.image.digest if execution.container is not None else None
+    )
+    assert completed["execution"]["backend"] == "slurm"
+    assert {item["metric_id"] for item in completed["metrics"]} == {
+        "worst-slack",
+        "design-area",
+    }
+    roles = {
+        item["logical_role"] for item in completed["_ari_result_artifacts"]
+    }
+    assert {
+        "openroad-def",
+        "openroad-metrics",
+        "openroad-session-transcript",
+        "openroad-hpc-execution-environment",
+        "openroad-scheduler-stdout",
+    } <= roles
+    request = scheduler.requests[0]
+    assert request.resources.partition == "eda"
+    assert request.resources.cpus_per_task == profile.toolchain.threads
+    assert request.container is not None
+    assert request.container.clean_environment is True
+    assert request.container.network == "none"
+    assert {item.logical_name for item in request.inputs} >= {
+        "openroad-batch-worker",
+        "openroad-batch-tcl",
+        "openroad-batch-spec",
+    }
+    assert not list(Path(execution.work_root or "").glob("ari-openroad-*"))
+
+
+@pytest.mark.asyncio
+async def test_slurm_cancel_reaps_scheduler_and_workspace(tmp_path: Path):
+    execution = _slurm_execution(tmp_path / "execution")
+    profile = _profile(tmp_path / "profile", execution=execution)
+    spec = _source_spec(tmp_path / "provider", [profile])
+    artifacts = RegistryArtifactStore(tmp_path / "artifacts")
+    scheduler = FakeOpenRoadScheduler(block=True)
+    adapter = _adapter(
+        spec,
+        OpenRoadTransportFixture(),
+        artifact_store=artifacts,
+        scheduler=scheduler,
+    )
+    leaf = OpenRoadExperimentAdapter.leaf_name(profile.profile_id)
+    submitted = await adapter.invoke(leaf, {"request_id": "cancel-scheduler-run"})
+    handle_id = str((submitted.structured or {})["handle_id"])
+    for _ in range(200):
+        status = await adapter.get_status(None, handle_id)
+        if (status.structured or {}).get("hpc_handle"):
+            break
+        await asyncio.sleep(0.01)
+    else:
+        raise AssertionError("OpenROAD scheduler handle was not published")
+
+    cancelled = await adapter.cancel(None, handle_id)
+    structured = cancelled.structured or {}
+    assert structured["status"] == "cancelled"
+    assert structured["cleanup_deferred"] is False
+    assert scheduler.cancelled is True
+    assert not list(Path(execution.work_root or "").glob("ari-openroad-*"))
+    roles = {
+        item["logical_role"] for item in structured["_ari_result_artifacts"]
+    }
+    assert "openroad-scheduler-stdout" in roles
+    assert "openroad-session-transcript" in roles
+
+
+def test_batch_worker_verifies_runtime_identity_and_writes_closed_result(
+    tmp_path: Path,
+):
+    work = (tmp_path / "work").resolve()
+    work.mkdir()
+    executable = work / "openroad"
+    executable.write_text(
+        f"#!{sys.executable}\n"
+        "import json, sys\n"
+        "from pathlib import Path\n"
+        "metrics = Path(sys.argv[sys.argv.index('-metrics') + 1])\n"
+        "metrics.parent.mkdir(parents=True, exist_ok=True)\n"
+        "metrics.write_text(json.dumps({'timing': {'wns': -0.25}}))\n"
+        "out = Path('results/design.def')\n"
+        "out.parent.mkdir(parents=True, exist_ok=True)\n"
+        "out.write_text('VERSION 5.8 ;\\nEND DESIGN\\n')\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o700)
+    tcl_path = work / "flow.tcl"
+    tcl_path.write_text("report_worst_slack\n", encoding="utf-8")
+    result_path = work / "result.json"
+    spec_path = work / "spec.json"
+    spec = {
+        "schema_version": "ari.openroad-batch-spec/v1",
+        "experiment_digest": "sha256:" + "c" * 64,
+        "work_dir": str(work),
+        "executable_path": str(executable),
+        "executable_digest": _digest_file(executable),
+        "architecture": platform.machine(),
+        "tcl_path": str(tcl_path),
+        "tcl_digest": _digest_file(tcl_path),
+        "metrics_path": str(work / "reports/metrics.json"),
+        "result_path": str(result_path),
+    }
+    _write_json(spec_path, spec)
+
+    assert run_openroad_worker(spec_path) == 0
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    assert result["return_code"] == 0
+    assert result["error"] is None
+    assert result["executable_digest"] == spec["executable_digest"]
+
+    executable.write_text("drifted\n", encoding="utf-8")
+    executable.chmod(0o700)
+    assert run_openroad_worker(spec_path) == 70
+    failed = json.loads(result_path.read_text(encoding="utf-8"))
+    assert "executable digest drifted" in failed["error"]
+
+
+def test_slurm_profile_rejects_unpinned_or_inconsistent_resources(tmp_path: Path):
+    execution = _slurm_execution(tmp_path / "execution")
+    profile = _profile(tmp_path / "profile", execution=execution)
+    assert profile.execution.backend == "slurm"
+
+    with pytest.raises(ValidationError, match="CPUs per task"):
+        OpenRoadExperimentV1.model_validate(
+            profile.model_copy(
+                update={
+                    "execution": execution.model_copy(
+                        update={
+                            "resources": execution.resources.model_copy(
+                                update={"cpus_per_task": 2}
+                            )
+                        }
+                    )
+                }
+            ).model_dump(mode="json")
+        )
+    with pytest.raises(ValidationError, match="container digest"):
+        OpenRoadExperimentV1.model_validate(
+            profile.model_copy(
+                update={
+                    "toolchain": profile.toolchain.model_copy(
+                        update={"execution_image_digest": "sha256:" + "f" * 64}
+                    )
+                }
+            ).model_dump(mode="json")
+        )

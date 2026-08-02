@@ -3,7 +3,7 @@
 ## Runtime
 
 - Python 3.13 or newer
-- `mcp`, `pydantic`, `jsonschema`, and `pyyaml`
+- `mcp`, `pydantic`, `jsonschema`, `pyyaml`, and `ari-skill-hpc>=0.3.0`
 - optional `tooluniverse==1.3.1` only in a separate provider environment; it is
   not imported by the registry process
 - an immutable reviewed `CATALOG.lock`; the committed default is empty
@@ -35,6 +35,14 @@ only sources present in the reviewed lock can execute.
 - Exact duplicate identities may collapse. Semantic near-matches remain
   distinct; scientific equivalence requires reviewed units, semantics, backend
   and data lineage, and method identity evidence.
+- An OpenROAD `slurm` profile requires a canonical shared `work_root`, one-node
+  typed resource request, exact thread/CPU agreement, a digest-pinned clean
+  container matching the toolchain image digest, and a worker Python path inside
+  that image. Caller arguments cannot override any of these fields.
+- Scheduler submission, status, cancellation, result, logs, module/environment
+  snapshots, and container identity use the C06 contracts. A workspace is removed
+  only after terminal scheduler state; ambiguous delivery fails closed and keeps
+  reconciliation evidence.
 
 ## Source admission
 
@@ -75,6 +83,8 @@ run.
 | Variable | Purpose |
 |---|---|
 | `ARI_CHECKPOINT_DIR` | Writes lock, provenance, cassettes, and raw artifacts under `ear/catalog` |
+| `ARI_HPC_LEDGER_PATH` | Optional absolute durable C06 idempotency ledger used by OpenROAD SLURM profiles |
+| `ARI_SCHEDULER_PATH` | Fixed search path for shell-free scheduler control commands |
 | `ARI_TOOL_REGISTRY_LOCK` | Selects a reviewed lock at process startup |
 | `ARI_TOOL_REGISTRY_INDEX` | Selects the derived index matching that lock |
 | `ARI_TOOL_REGISTRY_CASSETTES` | Selects a credential-free replay store |

@@ -126,6 +126,7 @@ class ContainerRequestV1(ContractModel):
     image: ArtifactPinV1
     binds: tuple[BindMountV1, ...] = ()
     gpu: bool = False
+    network: Literal["host", "none"] = "host"
     contain_all: bool = True
     clean_environment: bool = True
 

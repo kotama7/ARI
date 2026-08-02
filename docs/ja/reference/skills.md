@@ -555,6 +555,10 @@ ARI 実験を非同期で起動します。`run_id` を返します。`parent_ru
 leafはreview済みimmutable catalogへ生成されます。実行にはexactなopaque
 `tool_ref` とadmissionが必要です。詳細は [tool_registry.md](tool_registry.md)。
 
+OpenROAD profileはscoped local MCP sessionまたはdigest-pinned clean container内の
+typed C06 SLURM jobで実行できます。どちらも1つのvirtual catalog leafのままで、
+scheduler resource/handle/log/provenanceはprofileに固定されcaller任意flagにはなりません。
+
 ## ari-skill-transform
 
 BFTS の内部表現を出版可能な科学データ形式に変換します。すべての内部フィールド（`node_id`、`label`、`depth`、`parent_id`）を除去し、科学的コンテンツ（`configurations`、`experiment_context`）のみを公開します。**LLM: Yes**。

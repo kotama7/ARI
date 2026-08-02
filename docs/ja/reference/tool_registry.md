@@ -18,6 +18,26 @@ sources:
     role: implementation
   - path: ari-skill-tool-registry/providers/tooluniverse-support-v1.json
     role: config
+  - path: ari-skill-tool-registry/src/openroad_adapter.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_contracts.py
+    role: schema
+  - path: ari-skill-tool-registry/src/openroad_identity.py
+    role: schema
+  - path: ari-skill-tool-registry/src/openroad_verification.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_local.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_results.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_hpc.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_hpc_workspace.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_worker.py
+    role: implementation
+  - path: ari-skill-tool-registry/providers/openroad-support-v1.json
+    role: config
 last_verified: 2026-08-02
 ---
 
@@ -102,6 +122,21 @@ collection-level trustをleafのreplay/scientific validationへ推移させま�
 bulk updateはpending diffとなり、input/output/default schema変更は通常の
 `--approve`だけでは承認できません。review後に
 `--approve-schema-changes`も明示する必要があります。
+
+## OpenROAD profile adapter
+
+OpenROAD-MCPのinteractive toolはleafに公開せず、review済み
+`OpenRoadExperimentV1` を1つのvirtual async leafにします。callerが渡すのは
+`request_id`だけで、Tcl、path、PDK/library、OpenROAD/ORFS commit、seed、
+threads、resource、containerはexperiment/method identityに固定されます。
+
+`local-mcp` はscoped stateful sessionを使い、全terminal pathでterminateします。
+`slurm` はclosed commandをdigest-pinned Tclにcompileし、固定worker/inputとともに
+C06 `JobRequestV1` へsubmitします。1 node/task、threads/CPU一致、shared
+work root、toolchainと同じdigestのclean/contained SIF、`network: none` が必須です。
+scheduler handle/status/cancel、environment/module/container digest、logとprovenanceを
+result/EARに保存し、terminal状態を確認した場合だけworkspaceを削除します。
+transport結果が不明な場合はledger照合のためfail closedで保持します。
 
 ## record/replayとEAR
 

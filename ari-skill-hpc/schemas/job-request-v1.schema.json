@@ -98,6 +98,15 @@
         "image": {
           "$ref": "#/$defs/ArtifactPinV1"
         },
+        "network": {
+          "default": "host",
+          "enum": [
+            "host",
+            "none"
+          ],
+          "title": "Network",
+          "type": "string"
+        },
         "runtime": {
           "default": "apptainer",
           "enum": [

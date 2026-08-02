@@ -83,18 +83,25 @@ asynchronous leaf. The only invocation argument is a bounded `request_id`; Tcl,
 cwd, environment, executable, input/output paths, seed, threads, PDK, libraries,
 toolchain commits, and image digest all come from the reviewed catalog profile.
 
-Runtime copies a closed digest-verified input workspace to a new private
-directory per run, starts `openroad -no_init -metrics <declared-json>` through a
-single stateful MCP connection, and accepts only the adapter's closed verb and
-inert argument grammar. It captures only declared regular outputs, rejects
+Each profile selects one closed execution backend. `local-mcp` copies a closed
+digest-verified input workspace to a new private directory and starts
+`openroad -no_init -metrics <declared-json>` through one stateful MCP connection.
+`slurm` compiles the same closed commands into a digest-pinned Tcl program,
+copies a standard-library-only reviewed worker, and submits both through C06's
+typed `JobRequestV1` in a digest-pinned clean Apptainer/Singularity container.
+No caller-supplied command, scheduler flag, module, path, or environment crosses
+the virtual leaf boundary. Both backends capture only declared regular outputs, reject
 missing, unexpected, oversized, symlinked, or digest-mismatched files, and
-normalizes each metric with unit, corner, mode, stage, report digest, and JSON
+normalize each metric with unit, corner, mode, stage, report digest, and JSON
 pointer. Golden and replay evidence are regular files whose bytes and contents
 are checked; metadata assertions alone cannot raise admission.
 
 Submission, status, result, and cancellation use the registry's generic async
-handle. Termination runs in cleanup, local process/session recovery fails closed,
-and output plus the sanitized command transcript are content-addressed artifacts.
+handle. Local termination closes the MCP session. SLURM cancellation is confirmed
+before its private shared-filesystem workspace is removed; an ambiguous scheduler
+transport leaves that workspace intact for reconciliation. C06 handle, resources,
+environment/module/container digests, logs, and runtime provenance join the output
+and sanitized transcript as content-addressed artifacts.
 The broker independently verifies every adapter artifact's logical path, size,
 and SHA-256 before publishing it. Record mode includes these references in the
 cassette, so replay and inspection do not start OpenROAD or require the PDK.
