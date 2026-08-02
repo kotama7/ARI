@@ -239,19 +239,19 @@ Literature survey and idea generation. **LLM: Yes** (generate_ideas uses VirSci 
 
 ### Tools
 
-#### `survey(topic, max_papers=8)`
+#### `survey(topic, max_papers=8, mode="record", snapshot_path="survey_snapshot_v1.json", provider="semantic-scholar")`
 
 Search Semantic Scholar for related papers. No LLM, but classified as
 `live-data` because upstream results can change over time.
 
 ```python
 result = survey("OpenMP compiler optimization HPC benchmarks")
-# Returns: {"papers": [{"title": "...", "abstract": "...", "url": "..."}]}
+# Returns papers plus a digest-verified SurveySnapshotV1.
 ```
 
 Requires `S2_API_KEY` environment variable for higher Semantic Scholar rate limits.
 
-#### `generate_ideas(topic, papers, experiment_context="", n_ideas=3, n_agents=4, max_discussion_rounds=2, max_recursion_depth=0)`
+#### `generate_ideas(topic, papers, experiment_context="", n_ideas=3, n_agents=4, max_discussion_rounds=2, max_recursion_depth=0, survey_snapshot=null, seed=null, generation_mode="auto")`
 
 Generate research hypotheses using VirSci multi-agent LLM deliberation. Multiple AI personas (researcher, critic, expert, synthesizer) debate the research question. Called **once** before BFTS starts (pre-BFTS only).
 
@@ -260,20 +260,21 @@ Model: `ARI_LLM_MODEL` env > `LLM_MODEL` env > `ollama_chat/qwen3:32b`.
 #### VirSci-live (vendor-wrap) — opt-in real engine
 
 `generate_ideas` has two interchangeable engines behind the same idea contract.
-The default (**reimpl**, behaviour unchanged) runs the lightweight re-implemented
+The default (**reimpl**) runs the lightweight re-implemented
 discussion loop. The opt-in (**real_wrap**) instead runs VirSci's *actual*
 mechanism — `Platform.select_coauthors` (freshness team formation) +
 `Team.generate_idea` (multi-agent deliberation) from the vendored, **unedited**
 `vendor/virsci` — grounded on a **live** Semantic Scholar snapshot (corpus +
 SPECTER2 cosine retrieval index + author profiles + co-author graph).
 
-- **Default OFF** = behaviour byte-identical to before. Enable with env
+- **Default OFF.** Enable with env
   `ARI_IDEA_VIRSCI_REAL=1`, the CLI flag `--virsci-live`, or the GUI experiment
   wizard "VirSci live" toggle (Scope/Resources step; persisted to
   `launch_config.json`).
-- **Degrades safely.** On missing deps (`virsci` pip extra absent) or any runtime
-  error, the skill falls back to the reimpl loop. The `idea.json` contract is
-  identical either way. Beyond that, the live-snapshot build now **fails loud on an
+- **Explicit fallback.** `generation_mode="auto"` may fall back to the default
+  adapter, but records requested/actual adapters and the error in provenance.
+  `generation_mode="virsci"` fails closed. Both engines pass through the same
+  `IdeaSetV1` preflight. Beyond that, the live-snapshot build now **fails loud on an
   empty / 0-paper S2 fetch** (a 429 rate-limit, network failure, or no search hits):
   rather than silently writing a "successful" 0-paper manifest with placeholder
   authors — which would run VirSci fully ungrounded yet record it as a `real_wrap`

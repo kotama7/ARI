@@ -1,0 +1,566 @@
+{
+  "$defs": {
+    "IdeaCandidateV1": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_references": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Artifact References",
+          "type": "array"
+        },
+        "candidate_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "citations": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "title": "Citations",
+          "type": "array"
+        },
+        "description": {
+          "maxLength": 20000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "experiment_plan": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Experiment Plan",
+          "type": "string"
+        },
+        "falsification_conditions": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Falsification Conditions",
+          "type": "array"
+        },
+        "feasibility_score": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Feasibility Score"
+        },
+        "generation_lock_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Generation Lock Digest",
+          "type": "string"
+        },
+        "generator_adapter": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Generator Adapter",
+          "type": "string"
+        },
+        "hypothesis": {
+          "maxLength": 10000,
+          "minLength": 1,
+          "title": "Hypothesis",
+          "type": "string"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Limitations",
+          "type": "array"
+        },
+        "metric_contract": {
+          "$ref": "#/$defs/MetricContractV1"
+        },
+        "novelty_score": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Novelty Score"
+        },
+        "overall_score": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Overall Score"
+        },
+        "schema_version": {
+          "const": "ari.idea-candidate/v1",
+          "default": "ari.idea-candidate/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_snapshot_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Source Snapshot Digest",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "title",
+        "hypothesis",
+        "description",
+        "experiment_plan",
+        "falsification_conditions",
+        "metric_contract",
+        "citations",
+        "limitations",
+        "source_snapshot_digest",
+        "generation_lock_digest",
+        "generator_adapter"
+      ],
+      "title": "IdeaCandidateV1",
+      "type": "object"
+    },
+    "IdeaGenerationLockV1": {
+      "additionalProperties": false,
+      "description": "Deterministic generation inputs, excluding timestamps and model output.",
+      "properties": {
+        "adapter": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Adapter",
+          "type": "string"
+        },
+        "adapter_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Adapter Version",
+          "type": "string"
+        },
+        "api_base_identity": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Api Base Identity"
+        },
+        "experiment_context_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Experiment Context Digest",
+          "type": "string"
+        },
+        "generation_lock_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Generation Lock Digest",
+          "type": "string"
+        },
+        "generation_parameters": {
+          "additionalProperties": true,
+          "title": "Generation Parameters",
+          "type": "object"
+        },
+        "model": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "model_revision": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Revision"
+        },
+        "prompt_digests": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "minItems": 1,
+          "title": "Prompt Digests",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "ari.idea-generation-lock/v1",
+          "default": "ari.idea-generation-lock/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Seed"
+        },
+        "source_snapshot_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Source Snapshot Digest",
+          "type": "string"
+        },
+        "temperatures": {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 128,
+          "minItems": 1,
+          "title": "Temperatures",
+          "type": "array"
+        },
+        "topic_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Topic Digest",
+          "type": "string"
+        },
+        "vendor_commit": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vendor Commit"
+        },
+        "vendor_license": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vendor License"
+        }
+      },
+      "required": [
+        "generation_lock_digest",
+        "adapter",
+        "adapter_version",
+        "model",
+        "prompt_digests",
+        "temperatures",
+        "source_snapshot_digest",
+        "topic_digest",
+        "experiment_context_digest"
+      ],
+      "title": "IdeaGenerationLockV1",
+      "type": "object"
+    },
+    "IdeaGenerationProvenanceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "actual_adapter": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Actual Adapter",
+          "type": "string"
+        },
+        "fallback_reason": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fallback Reason"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "title": "Generated At",
+          "type": "string"
+        },
+        "lock": {
+          "$ref": "#/$defs/IdeaGenerationLockV1"
+        },
+        "output_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Output Digest",
+          "type": "string"
+        },
+        "requested_adapter": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Requested Adapter",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.idea-generation-provenance/v1",
+          "default": "ari.idea-generation-provenance/v1",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "lock",
+        "generated_at",
+        "output_digest",
+        "requested_adapter",
+        "actual_adapter"
+      ],
+      "title": "IdeaGenerationProvenanceV1",
+      "type": "object"
+    },
+    "IdeaRejectionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "generator_adapter": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Generator Adapter",
+          "type": "string"
+        },
+        "raw_candidate_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Raw Candidate Digest",
+          "type": "string"
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Reasons",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "ari.idea-rejection/v1",
+          "default": "ari.idea-rejection/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "title": {
+          "default": "",
+          "maxLength": 512,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "raw_candidate_digest",
+        "reasons",
+        "generator_adapter"
+      ],
+      "title": "IdeaRejectionV1",
+      "type": "object"
+    },
+    "MetricContractV1": {
+      "additionalProperties": false,
+      "description": "Idea-owned metric vocabulary; evaluator enforcement is read-only.",
+      "properties": {
+        "comparison_scope": {
+          "enum": [
+            "same-environment",
+            "cross-environment",
+            "within-subject",
+            "not-applicable"
+          ],
+          "title": "Comparison Scope",
+          "type": "string"
+        },
+        "correctness_required": {
+          "title": "Correctness Required",
+          "type": "boolean"
+        },
+        "direction": {
+          "enum": [
+            "higher",
+            "lower",
+            "target",
+            "none"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "normalization_ceiling": {
+          "enum": [
+            "measured",
+            "not-applicable"
+          ],
+          "title": "Normalization Ceiling",
+          "type": "string"
+        },
+        "rationale": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "required_evidence": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "minItems": 1,
+          "title": "Required Evidence",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "ari.metric-contract/v1",
+          "default": "ari.metric-contract/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "target_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Value"
+        },
+        "unit": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "unit",
+        "direction",
+        "comparison_scope",
+        "rationale",
+        "required_evidence",
+        "correctness_required",
+        "normalization_ceiling"
+      ],
+      "title": "MetricContractV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/idea-set-v1.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "candidates": {
+      "items": {
+        "$ref": "#/$defs/IdeaCandidateV1"
+      },
+      "title": "Candidates",
+      "type": "array"
+    },
+    "generation": {
+      "$ref": "#/$defs/IdeaGenerationProvenanceV1"
+    },
+    "idea_set_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Idea Set Digest",
+      "type": "string"
+    },
+    "rejections": {
+      "items": {
+        "$ref": "#/$defs/IdeaRejectionV1"
+      },
+      "title": "Rejections",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "ari.idea-set/v1",
+      "default": "ari.idea-set/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "selected_candidate_id": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Selected Candidate Id"
+    },
+    "source_snapshot_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Snapshot Digest",
+      "type": "string"
+    },
+    "topic": {
+      "maxLength": 20000,
+      "minLength": 1,
+      "title": "Topic",
+      "type": "string"
+    }
+  },
+  "required": [
+    "idea_set_digest",
+    "topic",
+    "source_snapshot_digest",
+    "generation"
+  ],
+  "title": "ARI Idea Set v1",
+  "type": "object"
+}

@@ -13,7 +13,7 @@ last_verified: 2026-08-01
 
 # C03: `ari-skill-idea` 実装計画
 
-> 状態: Proposed。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
+> 状態: Implemented（2026-08-02）。マスター計画は [00_master_plan.md](00_master_plan.md)。本書はP6削除監査までの一時計画である。
 
 ## 1. 責務
 
@@ -46,13 +46,18 @@ last_verified: 2026-08-01
 
 ## 5. 受け入れ基準
 
-- [ ] 同じfrozen survey、prompt、seed/model条件でinput digestとcandidate provenanceが一致する。
-- [ ] live retrievalを使ったrunはbyte reproducibleと表示されず、snapshot artifactを持つ。
-- [ ] 全ideaに少なくとも一つの反証条件、metric contract、required evidenceがある。
-- [ ] evaluatorがidea contractを再生成せず、同じcontract digestを使用する。
-- [ ] default loopとVirSci pathが同じschemaを満たし、consumer側分岐がない。
-- [ ] citationのない主張、存在しないartifact reference、不明unitがpreflightで明示される。
-- [ ] `pytest ari-skill-idea/tests -q` とmanifest contract testがgreenである。
+- [x] 同じfrozen survey、prompt、seed/model条件でinput digestとcandidate provenanceが一致する。
+- [x] live retrievalを使ったrunはbyte reproducibleと表示されず、snapshot artifactを持つ。
+- [x] 採用ideaは少なくとも一つの反証条件、metric contract、required evidenceを持つ。不完全候補は理由付きでrejectする。
+- [x] evaluatorがidea contractを再生成せず、同じcontract digestを使用する。
+- [x] default loopとVirSci pathが同じschemaを満たし、consumer側分岐がない。
+- [x] citationのない主張、存在しないartifact reference、不明unitがpreflightで明示される。
+- [x] `pytest ari-skill-idea/tests -q` とmanifest contract testがgreenである。
+
+実装証跡: `ari.public.research_contract`、生成JSON Schema、
+`ari-skill-idea/src/contracts.py`、offline replay/tamper/parity tests、
+`ari-skill-evaluator`のtyped-contract優先経路。C03-02の共通schema公開は完了し、
+`ari-skill-web` producer側の採用はC04で行う。
 
 ## 6. 削除要件
 
@@ -60,11 +65,11 @@ last_verified: 2026-08-01
 
 | ID | 削除対象 | 置換先 | 最早phase | 削除gate |
 |---|---|---|---|---|
-| C03-D1 | record/replay中の暗黙live retrieval fallback | `SurveySnapshotV1` | P3 | offline replay、snapshot欠落時fail-closed |
-| C03-D2 | evaluator側でidea語彙を再抽出する互換path | immutable `ResearchContractV1` | P3 |旧checkpoint migration fixture、new run caller 0 |
-| C03-D3 | default loopとVirSci pathに重複するoutput normalization |共通adapter | P3 |両path contract test parity |
-| C03-D4 | manifestに残る未実装・旧tool declaration | canonical runtime-derived manifest update | P1 | `tools/list` conformance、workflow reference 0 |
-| C03-D5 | unversioned vendor/snapshot path selection | pinned adapter / snapshot ref | P5 | vendor commitとlicense lock、clean install fixture |
+| C03-D1 | **削除済み**: record/replay中の暗黙live retrieval fallback | `SurveySnapshotV1` | P3 | offline replay、snapshot欠落時fail-closed |
+| C03-D2 | **新runから削除済み**: evaluator側でidea語彙を再抽出するpath（旧checkpoint readerのみsupport windowまで保持） | immutable `ResearchContractV1` | P3 |旧checkpoint migration fixture、new run caller 0 |
+| C03-D3 | **削除済み**: default loopとVirSci pathに重複するoutput normalization |共通adapter | P3 |両path contract test parity |
+| C03-D4 | **削除済み**: manifestに残る未実装・旧tool declaration | canonical runtime-derived manifest update | P1 | `tools/list` conformance、workflow reference 0 |
+| C03-D5 | **削除済み**: unversioned vendor/snapshot path selection | pinned adapter / snapshot ref | P5 | vendor commitとlicense lock、clean install fixture |
 
 ### 6.2 削除の検証と復旧
 

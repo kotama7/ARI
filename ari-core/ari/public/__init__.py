@@ -20,6 +20,9 @@ Currently exported sub-modules:
   proxy through the ARI-side LLM client.
 - :mod:`ari.public.node_selection` — deterministic downstream node/source
   selection for transform and publication Skills.
+- :mod:`ari.public.research_contract` — immutable survey, idea, metric, and
+  selected research hand-off contracts.
+- :mod:`ari.public.lineage` — read-only ancestor idea/artifact catalog helpers.
 - :mod:`ari.public.publish`      — staged EAR publication and promotion.
 - :mod:`ari.public.config_schema` — Pydantic config models for
   callers that need typed settings access.

@@ -33,6 +33,14 @@ from ari.execution import (  # noqa: E402
     WorkspaceRefV1,
 )
 from ari.skill_lock import SkillsLockV1  # noqa: E402
+from ari.research_contract import (  # noqa: E402
+    IdeaCandidateV1,
+    IdeaSetV1,
+    MetricContractV1,
+    ResearchContractV1,
+    RetrievalRecordV1,
+    SurveySnapshotV1,
+)
 
 
 SKILL_SCHEMA_PATH = ARI_CORE / "ari" / "schemas" / "skill_manifest_v1.schema.json"
@@ -51,6 +59,22 @@ EXECUTION_RESULT_SCHEMA_PATH = (
 )
 MEASUREMENT_SET_SCHEMA_PATH = (
     ARI_CORE / "ari" / "schemas" / "measurement_set_v1.schema.json"
+)
+RETRIEVAL_RECORD_SCHEMA_PATH = (
+    ARI_CORE / "ari" / "schemas" / "retrieval_record_v1.schema.json"
+)
+SURVEY_SNAPSHOT_SCHEMA_PATH = (
+    ARI_CORE / "ari" / "schemas" / "survey_snapshot_v1.schema.json"
+)
+METRIC_CONTRACT_SCHEMA_PATH = (
+    ARI_CORE / "ari" / "schemas" / "metric_contract_v1.schema.json"
+)
+IDEA_CANDIDATE_SCHEMA_PATH = (
+    ARI_CORE / "ari" / "schemas" / "idea_candidate_v1.schema.json"
+)
+IDEA_SET_SCHEMA_PATH = ARI_CORE / "ari" / "schemas" / "idea_set_v1.schema.json"
+RESEARCH_CONTRACT_SCHEMA_PATH = (
+    ARI_CORE / "ari" / "schemas" / "research_contract_v1.schema.json"
 )
 # Compatibility alias for scripts that imported the original constant.
 SCHEMA_PATH = SKILL_SCHEMA_PATH
@@ -123,6 +147,13 @@ def measurement_set_schema_document() -> dict:
     return schema
 
 
+def _research_schema_document(model, slug: str, title: str) -> dict:
+    schema = model.model_json_schema()
+    schema["$id"] = f"https://ari.dev/schemas/{slug}.schema.json"
+    schema["title"] = title
+    return schema
+
+
 # Compatibility alias for callers that generated only the original schema.
 schema_document = skill_schema_document
 
@@ -154,6 +185,42 @@ def expected_outputs(repo_root: Path = REPO_ROOT) -> dict[Path, str]:
     outputs[schema_dir / MEASUREMENT_SET_SCHEMA_PATH.name] = _json_text(
         measurement_set_schema_document()
     )
+    for path, model, slug, title in (
+        (
+            RETRIEVAL_RECORD_SCHEMA_PATH,
+            RetrievalRecordV1,
+            "retrieval-record-v1",
+            "ARI Retrieval Record v1",
+        ),
+        (
+            SURVEY_SNAPSHOT_SCHEMA_PATH,
+            SurveySnapshotV1,
+            "survey-snapshot-v1",
+            "ARI Survey Snapshot v1",
+        ),
+        (
+            METRIC_CONTRACT_SCHEMA_PATH,
+            MetricContractV1,
+            "metric-contract-v1",
+            "ARI Metric Contract v1",
+        ),
+        (
+            IDEA_CANDIDATE_SCHEMA_PATH,
+            IdeaCandidateV1,
+            "idea-candidate-v1",
+            "ARI Idea Candidate v1",
+        ),
+        (IDEA_SET_SCHEMA_PATH, IdeaSetV1, "idea-set-v1", "ARI Idea Set v1"),
+        (
+            RESEARCH_CONTRACT_SCHEMA_PATH,
+            ResearchContractV1,
+            "research-contract-v1",
+            "ARI Research Contract v1",
+        ),
+    ):
+        outputs[schema_dir / path.name] = _json_text(
+            _research_schema_document(model, slug, title)
+        )
     return outputs
 
 

@@ -88,6 +88,11 @@
       "parse_measurement_document",
       "record_completed_execution"
     ],
+    "ari.public.lineage": [
+      "format_ancestor_pool_for_virsci",
+      "get_idea_pool_for_ckpt",
+      "walk_ancestor_ckpts"
+    ],
     "ari.public.llm": [
       "LLMClient"
     ],
@@ -109,6 +114,39 @@
       "PublishRecord",
       "promote",
       "publish"
+    ],
+    "ari.public.research_contract": [
+      "CITATION_EDGE_V1",
+      "CitationEdgeV1",
+      "IDEA_CANDIDATE_V1",
+      "IDEA_GENERATION_LOCK_V1",
+      "IDEA_GENERATION_PROVENANCE_V1",
+      "IDEA_REJECTION_V1",
+      "IDEA_SET_V1",
+      "IdeaCandidateV1",
+      "IdeaGenerationLockV1",
+      "IdeaGenerationProvenanceV1",
+      "IdeaRejectionV1",
+      "IdeaSetV1",
+      "METRIC_CONTRACT_V1",
+      "MetricContractV1",
+      "RESEARCH_ARTIFACT_REF_V1",
+      "RESEARCH_CONTRACT_V1",
+      "RETRIEVAL_RECORD_V1",
+      "ResearchArtifactRefV1",
+      "ResearchContractError",
+      "ResearchContractV1",
+      "RetrievalRecordV1",
+      "SURVEY_SNAPSHOT_V1",
+      "SurveySnapshotV1",
+      "canonical_digest",
+      "metric_gate_projection",
+      "mint_research_contract",
+      "parse_idea_set",
+      "parse_research_contract",
+      "parse_research_contract_document",
+      "parse_survey_snapshot",
+      "validate_research_handoff"
     ],
     "ari.public.result": [
       "ARTIFACT_REF_V1",

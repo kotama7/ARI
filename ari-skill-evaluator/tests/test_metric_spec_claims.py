@@ -154,6 +154,80 @@ def test_make_metric_spec_persists_contract_file(tmp_path, monkeypatch):
     assert obj["claims"] == [{"claim": "X helps", "required_evidence": ["x_on", "x_off"]}]
 
 
+def test_typed_research_contract_is_consumed_without_llm(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from ari.public.research_contract import (
+        IdeaCandidateV1,
+        IdeaGenerationLockV1,
+        IdeaGenerationProvenanceV1,
+        IdeaSetV1,
+        MetricContractV1,
+        RetrievalRecordV1,
+        SurveySnapshotV1,
+        canonical_digest,
+        mint_research_contract,
+    )
+
+    now = datetime(2026, 8, 2, tzinfo=timezone.utc)
+    record = RetrievalRecordV1(
+        canonical_id="s2:p1", provider="semantic-scholar", query="q",
+        retrieved_at=now, title="P", payload_digest=canonical_digest({"p": 1}),
+    )
+    snapshot = SurveySnapshotV1.create(
+        mode="record", provider="semantic-scholar", query="q", retrieved_at=now,
+        byte_reproducible=False, records=(record,),
+    )
+    lock = IdeaGenerationLockV1.create(
+        adapter="test", adapter_version="1", model="fixed-model",
+        prompt_digests=(canonical_digest("p"),), temperatures=(0.0,), seed=1,
+        source_snapshot_digest=snapshot.snapshot_digest,
+        topic_digest=canonical_digest("q"),
+        experiment_context_digest=canonical_digest(""), model_revision="fixed-model",
+    )
+    metric = MetricContractV1(
+        name="accuracy", unit="fraction", direction="higher",
+        comparison_scope="same-environment", rationale="tests the claim",
+        required_evidence=("accuracy", "baseline_accuracy"),
+        correctness_required=True, normalization_ceiling="not-applicable",
+    )
+    candidate = IdeaCandidateV1.create(
+        title="T", hypothesis="H is better", description="D", experiment_plan="P",
+        falsification_conditions=("Reject when accuracy does not improve.",),
+        metric_contract=metric, citations=("s2:p1",), limitations=("One dataset.",),
+        source_snapshot_digest=snapshot.snapshot_digest,
+        generation_lock_digest=lock.generation_lock_digest, generator_adapter="test",
+    )
+    provenance = IdeaGenerationProvenanceV1(
+        lock=lock, generated_at=now, output_digest=canonical_digest({"o": 1}),
+        requested_adapter="test", actual_adapter="test",
+    )
+    idea_set = IdeaSetV1.create(
+        topic="q", source_snapshot_digest=snapshot.snapshot_digest,
+        generation=provenance, candidates=(candidate,),
+        selected_candidate_id=candidate.candidate_id,
+    )
+    contract = mint_research_contract(idea_set)
+    (tmp_path / "idea.json").write_text(json.dumps({
+        "typed_schema_version": "ari.research-contract/v1",
+        "research_contract": contract.model_dump(mode="json"),
+        "research_contract_digest": contract.contract_digest,
+    }))
+
+    async def _must_not_run(_description):
+        raise AssertionError("typed contracts must not call metric extraction LLM")
+
+    monkeypatch.setattr("src.server._llm_extract_metric_spec", _must_not_run)
+    spec = asyncio.run(_tool_make_metric_spec({
+        "experiment_text": "Metrics: wrong_seed_metric\n",
+        "checkpoint_dir": str(tmp_path),
+    }))
+    assert spec["metric_keyword"] == "accuracy"
+    assert spec["metric_unit"] == "fraction"
+    assert spec["research_contract_digest"] == contract.contract_digest
+    persisted = json.loads((tmp_path / "metric_contract.json").read_text())
+    assert persisted["research_contract_digest"] == contract.contract_digest
+
+
 # ── LLM-extraction path (deterministic via monkeypatch — no network) ──────────
 
 def test_claims_extract_prompt_is_domain_neutral():

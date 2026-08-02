@@ -24,6 +24,7 @@ silently locked into a parent's research direction.
 from __future__ import annotations
 
 import json
+import hashlib
 import logging
 import os
 from pathlib import Path
@@ -204,12 +205,31 @@ def get_idea_pool_for_ckpt(
                 pass
         else:
             run_id = d.name
+        payload_digest = "sha256:" + hashlib.sha256(ip.read_bytes()).hexdigest()
+        contract_digest = None
+        contract_verified = False
+        if isinstance(data, dict) and data.get("research_contract") is not None:
+            try:
+                from ari.research_contract import parse_research_contract_document
+
+                contract = parse_research_contract_document(data)
+                if contract is not None:
+                    contract_digest = contract.contract_digest
+                    contract_verified = True
+            except Exception as exc:
+                log.warning("lineage: invalid research contract at %s: %s", ip, exc)
         pool.append(
             {
                 "run_id": run_id,
                 "depth": depth,
                 "ckpt_dir": str(d),
                 "ideas": ideas,
+                "artifact_ref": {
+                    "logical_name": "idea.json",
+                    "digest": payload_digest,
+                    "research_contract_digest": contract_digest,
+                    "contract_verified": contract_verified,
+                },
             }
         )
 
@@ -237,11 +257,22 @@ def format_ancestor_pool_for_virsci(pool: list[dict], *, max_per_run: int = 3) -
     for entry in ancestors:
         rid = str(entry.get("run_id", ""))[-12:]
         depth = entry.get("depth", "?")
+        artifact = entry.get("artifact_ref") or {}
+        if artifact.get("contract_verified"):
+            evidence_label = (
+                "verified artifact "
+                + str(artifact.get("research_contract_digest") or "")[:20]
+            )
+        else:
+            evidence_label = (
+                "legacy artifact (contract unverified) "
+                + str(artifact.get("digest") or "")[:20]
+            )
         for idea in (entry.get("ideas") or [])[:max_per_run]:
             title = (idea.get("title") or "").strip().replace("\n", " ")[:140]
             score = idea.get("overall_score", "")
             lines.append(
-                f"- run {rid} (depth {depth}, score {score}): {title}"
+                f"- run {rid} (depth {depth}, {evidence_label}, score {score}): {title}"
             )
     lines.append(
         "Treat these as context — refine, extend, or explicitly pivot from "

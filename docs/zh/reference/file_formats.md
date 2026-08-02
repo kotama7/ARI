@@ -37,23 +37,24 @@ last_verified: 2026-06-10
 
 `ari-skill-idea.generate_ideas` 的输出。位于 `{checkpoint}/idea.json`，为 BFTS 运行的计划提供种子。
 
-顶层结构：
+新run使用digest绑定结构（旧scalar字段只在checkpoint支持窗口内作为只读投影保留）：
 
 ```json
 {
-  "ideas": [
-    {
-      "title": "...",
-      "experiment_plan": "Markdown-formatted plan with §-tags",
-      "primary_metric": "GFlops/s",
-      "alternatives_considered": ["..."],
-      "_pinned": false
-    }
-  ]
+  "typed_schema_version": "ari.research-contract/v1",
+  "survey_snapshot_digest": "sha256:...",
+  "idea_set_digest": "sha256:...",
+  "research_contract_digest": "sha256:...",
+  "contract_status": "admitted",
+  "survey_snapshot": {"schema_version": "ari.survey-snapshot/v1"},
+  "idea_set": {"schema_version": "ari.idea-set/v1"},
+  "research_contract": {"schema_version": "ari.research-contract/v1"}
 }
 ```
 
-子节点通过将继承条目中的 `"_pinned"` 设置为 `true` 来锁定父节点的选定 idea；后续 `generate_ideas` 运行会在其后追加新 idea 而不覆盖原有内容。
+三个record都会验证自己的canonical SHA-256 digest。无效、重复、无引用、不可证伪、
+unit未知或引用不存在artifact的candidate会进入`idea_set.rejections`，不能生成research
+contract。详见[研究契约](research_contracts.md)。
 
 ## `evaluation_criteria.json`
 

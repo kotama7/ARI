@@ -40,6 +40,14 @@ from ari.mcp.child_environment import (  # noqa: E402
     SAFE_INHERITED_ENV_NAMES,
 )
 from ari.skill_lock import SkillsLockV1  # noqa: E402
+from ari.research_contract import (  # noqa: E402
+    IdeaCandidateV1,
+    IdeaSetV1,
+    MetricContractV1,
+    ResearchContractV1,
+    RetrievalRecordV1,
+    SurveySnapshotV1,
+)
 from snapshot_contracts import _scan_skill_tools  # noqa: E402
 
 
@@ -667,6 +675,32 @@ def check_repo(repo_root: Path = REPO_ROOT) -> list[Finding]:
             "measurement_set_v1.schema.json",
             MeasurementSetV1,
             "ari.measurement-set/v1",
+        ),
+        (
+            "retrieval_record_v1.schema.json",
+            RetrievalRecordV1,
+            "ari.retrieval-record/v1",
+        ),
+        (
+            "survey_snapshot_v1.schema.json",
+            SurveySnapshotV1,
+            "ari.survey-snapshot/v1",
+        ),
+        (
+            "metric_contract_v1.schema.json",
+            MetricContractV1,
+            "ari.metric-contract/v1",
+        ),
+        (
+            "idea_candidate_v1.schema.json",
+            IdeaCandidateV1,
+            "ari.idea-candidate/v1",
+        ),
+        ("idea_set_v1.schema.json", IdeaSetV1, "ari.idea-set/v1"),
+        (
+            "research_contract_v1.schema.json",
+            ResearchContractV1,
+            "ari.research-contract/v1",
         ),
     )
     for filename, model, expected_version in execution_schemas:

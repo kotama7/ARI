@@ -49,25 +49,27 @@ Edit only the prose **above** the marker.
 Output of `ari-skill-idea.generate_ideas`.  Lives at
 `{checkpoint}/idea.json` and seeds the BFTS run's plan.
 
-Top-level shape:
+New runs use the digest-bound contract shape (legacy scalar fields remain a
+read-only projection during the checkpoint support window):
 
 ```json
 {
-  "ideas": [
-    {
-      "title": "...",
-      "experiment_plan": "Markdown-formatted plan with §-tags",
-      "primary_metric": "GFlops/s",
-      "alternatives_considered": ["..."],
-      "_pinned": false
-    }
-  ]
+  "typed_schema_version": "ari.research-contract/v1",
+  "survey_snapshot_digest": "sha256:...",
+  "idea_set_digest": "sha256:...",
+  "research_contract_digest": "sha256:...",
+  "contract_status": "admitted",
+  "survey_snapshot": {"schema_version": "ari.survey-snapshot/v1"},
+  "idea_set": {"schema_version": "ari.idea-set/v1"},
+  "research_contract": {"schema_version": "ari.research-contract/v1"},
+  "ideas": [{"title": "...", "contract_status": "admitted"}]
 }
 ```
 
-Children pin a parent's chosen idea by setting `"_pinned": true` on
-the inherited entry; subsequent `generate_ideas` runs append new
-ideas after it without overwriting.
+The three embedded records verify their own canonical SHA-256 digest. Invalid,
+duplicate, uncited, non-falsifiable, unknown-unit, or unknown-artifact candidates
+appear in `idea_set.rejections`; they cannot mint a research contract. See
+[Research contracts](research_contracts.md).
 
 ## `evaluation_criteria.json`
 

@@ -124,18 +124,18 @@ GPU アクセス付き（`--nv` フラグ）で Singularity コンテナを実�
 
 ### ツール
 
-#### `survey(topic, max_papers=8)`
+#### `survey(topic, max_papers=8, mode="record", snapshot_path="survey_snapshot_v1.json", provider="semantic-scholar")`
 
 Semantic Scholar で関連論文を検索します。決定論的（LLM なし）。
 
 ```python
 result = survey("OpenMP compiler optimization HPC benchmarks")
-# 戻り値: {"papers": [{"title": "...", "abstract": "...", "url": "..."}]}
+# papersとdigest検証済みSurveySnapshotV1を返します。
 ```
 
 高レートリミットには `S2_API_KEY` 環境変数が必要です。
 
-#### `generate_ideas(topic, papers, experiment_context="", n_ideas=3, n_agents=4, max_discussion_rounds=2, max_recursion_depth=0)`
+#### `generate_ideas(topic, papers, experiment_context="", n_ideas=3, n_agents=4, max_discussion_rounds=2, max_recursion_depth=0, survey_snapshot=null, seed=null, generation_mode="auto")`
 
 VirSci マルチエージェント LLM 討論を使用して研究仮説を生成します。複数の AI ペルソナ（researcher、critic、expert、synthesizer）が研究課題について議論します。BFTS 開始前に**一度だけ**呼び出されます（pre-BFTS のみ）。
 
@@ -144,18 +144,19 @@ VirSci マルチエージェント LLM 討論を使用して研究仮説を生�
 #### VirSci-live (vendor-wrap) — opt-in の実エンジン
 
 `generate_ideas` には同一のアイデア契約の背後に切替可能な 2 つのエンジンがあります。
-デフォルト（**reimpl**、挙動は従来どおり）は軽量に再実装した討論ループを走らせます。
+デフォルト（**reimpl**）は軽量に再実装した討論ループを走らせます。
 opt-in（**real_wrap**）は代わりに VirSci の *実際の* 機構 —
 同梱（**無改変**）の `vendor/virsci` の `Platform.select_coauthors`（freshness な
 チーム編成）+ `Team.generate_idea`（マルチエージェント討論）— を、**ライブ**の
 Semantic Scholar スナップショット（コーパス + SPECTER2 コサイン検索インデックス
 + 著者プロファイル + 共著グラフ）の上で実行します。
 
-- **デフォルト OFF** = 挙動はバイト単位で従来と同一。有効化は env
+- **デフォルト OFF。** 有効化は env
   `ARI_IDEA_VIRSCI_REAL=1`、CLI フラグ `--virsci-live`、または GUI 実験ウィザードの
   「VirSci live」トグル（Scope/Resources ステップ。`launch_config.json` に永続化）。
-- **安全にデグレード。** 依存が無い場合（`virsci` pip extra 不在）や任意の実行時
-  エラー時は reimpl ループにフォールバックします。`idea.json` 契約はどちらの経路でも同一です。
+- **明示的fallback。** `generation_mode="auto"`ではdefault adapterへfallbackできますが、
+  requested/actual adapterとerrorをprovenanceへ記録します。`generation_mode="virsci"`は
+  fail-closedです。両engineは同じ`IdeaSetV1` preflightを通ります。
   さらに、ライブスナップショットの構築は **空の / 0 件の S2 取得で明示的に失敗** します
   （429 レート制限・ネットワーク障害・検索ヒット無し）。プレースホルダ著者付きの「成功した」
   0 件マニフェストを黙って書き出すと、VirSci がまったく接地されないまま走り `real_wrap` 成功として

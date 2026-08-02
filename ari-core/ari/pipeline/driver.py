@@ -98,9 +98,41 @@ class WorkflowDriver:
         # Written to checkpoint as evaluation_criteria.json for downstream use
         _eval_criteria_path = checkpoint_dir / "evaluation_criteria.json"
         if not _eval_criteria_path.exists():
-            _ec = {"primary_metric": "", "higher_is_better": True, "metric_rationale": ""}
+            _ec = {
+                "primary_metric": "",
+                "higher_is_better": True,
+                "metric_rationale": "",
+                "metric_unit": "",
+                "research_contract_digest": "",
+            }
+            # Typed idea contracts are authoritative and already contain the
+            # frozen metric vocabulary. Verify the self-digest before consulting
+            # legacy memory/prose projections.
+            try:
+                from ari.public.research_contract import (
+                    ResearchContractError,
+                    parse_research_contract_document,
+                )
+
+                _typed_idea_path = Path(checkpoint_dir) / "idea.json"
+                if _typed_idea_path.is_file():
+                    _typed_idea = json.loads(_typed_idea_path.read_text())
+                    _typed_contract = parse_research_contract_document(_typed_idea)
+                    if _typed_contract is not None:
+                        _typed_metric = _typed_contract.metric_contract
+                        _ec["primary_metric"] = _typed_metric.name
+                        _ec["higher_is_better"] = _typed_metric.direction != "lower"
+                        _ec["metric_rationale"] = _typed_metric.rationale
+                        _ec["metric_unit"] = _typed_metric.unit
+                        _ec["research_contract_digest"] = (
+                            _typed_contract.contract_digest
+                        )
+            except ResearchContractError:
+                raise
+            except Exception as _typed_exc:
+                log.warning("Typed research contract rejected: %s", _typed_exc)
             # Strategy 1: check node memory_snapshot (populated if memory.add() succeeded)
-            for _n in all_nodes:
+            for _n in (all_nodes if not _ec["primary_metric"] else []):
                 for _snap in (_n.memory_snapshot if hasattr(_n, "memory_snapshot") else []):
                     if isinstance(_snap, str) and "EVALUATION_CRITERIA:" in _snap:
                         import re as _re_ec
@@ -291,6 +323,38 @@ class WorkflowDriver:
                 _idea_data = json.loads(_idea_path.read_text())
                 _gap = _idea_data.get("gap_analysis", "")
                 _ideas = _idea_data.get("ideas", [])
+                _directive_idea_data = _idea_data
+                if _idea_data.get("research_contract") is not None:
+                    from ari.public.research_contract import (
+                        parse_research_contract_document,
+                    )
+
+                    _selected_contract = parse_research_contract_document(
+                        _idea_data
+                    )
+                    if _selected_contract is not None:
+                        _selected_idea = {
+                            "title": _selected_contract.title,
+                            "description": _selected_contract.hypothesis,
+                            "hypothesis": _selected_contract.hypothesis,
+                            "experiment_plan": _selected_contract.experiment_plan,
+                            "candidate_id": _selected_contract.selected_candidate_id,
+                            "falsification_conditions": list(
+                                _selected_contract.falsification_conditions
+                            ),
+                            "citations": list(_selected_contract.citations),
+                            "limitations": list(_selected_contract.limitations),
+                            "contract_status": "admitted",
+                        }
+                        _alternatives = [
+                            item
+                            for item in _ideas
+                            if not isinstance(item, dict)
+                            or item.get("candidate_id")
+                            != _selected_contract.selected_candidate_id
+                        ]
+                        _ideas = [_selected_idea, *_alternatives]
+                        _directive_idea_data = {**_idea_data, "ideas": _ideas}
                 if _ideas:
                     # Phase 1: auto-append plan/alternatives to checkpoint experiment.md.
                     # Mode is read from workflow.yaml (default index_only). Idempotent —
@@ -299,7 +363,9 @@ class WorkflowDriver:
                         _plan_promote_mode = str(_wf_cfg.get("plan_promote", "index_only")).lower()
                         if _plan_promote_mode in ("full", "index_only"):
                             _did_promote = _promote_plan_to_experiment_md(
-                                checkpoint_dir, _idea_data, mode=_plan_promote_mode
+                                checkpoint_dir,
+                                _directive_idea_data,
+                                mode=_plan_promote_mode,
                             )
                             if _did_promote:
                                 log.info(
