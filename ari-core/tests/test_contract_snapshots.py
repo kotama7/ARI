@@ -67,6 +67,7 @@ def test_public_api_submodules_present():
     assert set(golden) == expected, "public_api.json submodule set drifted"
     # Spot-check load-bearing exports from 010 §2 are recorded.
     assert "CONCEPT_INVARIANTS" in golden["ari.public.claim_gate"]
+    assert "clone" in golden["ari.public.clone"]
     assert "PathManager" in golden["ari.public.paths"]
     assert "LLMClient" in golden["ari.public.llm"]
     assert "ExecutionRequestV1" in golden["ari.public.execution"]

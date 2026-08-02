@@ -113,6 +113,7 @@ def _fixture_path(surface: str) -> Path:
 
 _PUBLIC_SUBMODULES = (
     "claim_gate",
+    "clone",
     "config_schema",
     "container",
     "cost_tracker",

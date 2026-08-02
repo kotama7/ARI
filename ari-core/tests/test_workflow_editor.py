@@ -503,12 +503,17 @@ def test_skill_mcp_tools_resolved_from_canonical_manifest():
         tools = mcp["hpc-skill"].get("tools", [])
         assert len(tools) > 0, "hpc-skill should have manifest-declared tools"
         tool_names = [t if isinstance(t, str) else t.get("name") for t in tools]
-        assert "slurm_submit" in tool_names
+        assert "job_submit" in tool_names
         assert len(mcp["hpc-skill"].get("manifest_digest", "")) == 64
         assert (
-            mcp["hpc-skill"]["capabilities"]["slurm_submit"]
+            mcp["hpc-skill"]["capabilities"]["job_submit"]
             == "ari.hpc.job.submit"
         )
+        if "slurm_submit" in tool_names:
+            assert (
+                mcp["hpc-skill"]["capabilities"]["slurm_submit"]
+                == "ari.hpc.legacy.slurm-submit"
+            )
 
 
 # ── Agent runtime tools visibility tests ──────────────

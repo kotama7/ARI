@@ -13,7 +13,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
-import tarfile
 from pathlib import Path
 
 import pytest
@@ -49,7 +48,7 @@ def _build_local_bundle(tmp_path: Path) -> tuple[Path, str]:
         if str(p) not in sys.path:
             sys.path.insert(0, str(p))
     import curate  # noqa: E402
-    from ari.publish import publish as _publish  # noqa: E402
+    from ari.public.publish import publish as _publish  # noqa: E402
 
     ckpt = tmp_path / "_ckpt_for_bundle"
     ear = ckpt / "ear"

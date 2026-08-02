@@ -81,19 +81,14 @@ _ALLOWED_EXACT = {"ari.public"}
 # richer test_skill_public_contract.py enforces the same contract but understands
 # the ``except ImportError`` fallback directly.
 _GRANDFATHERED: dict[str, set[int]] = {
-    "ari-skill-coding/src/server.py": {569, 583},  # container + run_env fallbacks (deferred; lines shifted by the emit_results provenance field + point-of-emission contract feedback)
-    "ari-skill-coding/tests/test_server.py": {107},
     "ari-skill-evaluator/src/server.py": {18},  # cost_tracker fallback (shifted by the logging import + module logger)
     "ari-skill-hpc/src/slurm.py": {211},  # run_env fallback
     "ari-skill-idea/src/server.py": {65, 615},  # cost_tracker fallback + ari.lineage (deferred; line shifted by canonical MCP decorators)
     "ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py": {159},  # cost_tracker fallback
     "ari-skill-memory/tests/test_backup_restore.py": {14},  # ari.memory_cli (deferred, test-only)
-    "ari-skill-paper-re/src/server.py": {42, 146},  # cost_tracker fallback + ari.clone (deferred)
-    "ari-skill-paper-re/tests/test_fetch_code_bundle.py": {52},  # ari.publish (deferred, test-only)
     "ari-skill-paper/src/server.py": {21},  # cost_tracker fallback
     "ari-skill-plot/src/server.py": {34},  # try-block legacy fallback
     "ari-skill-replicate/src/server.py": {28},  # cost_tracker fallback
-    "ari-skill-transform/src/server.py": {55, 681, 2083, 2433, 2451},  # cost_tracker fallback + ari.orchestrator/ari.publish (deferred; lines shifted by the Story2Proposal claims + forward-declaration config_nodes + metric-correctness anomaly-annotation + provenance-propagation + metric_contract-propagation + provenance-union blocks)
     "ari-skill-vlm/src/server.py": {18},  # cost_tracker fallback
     "ari-skill-web/src/server.py": {24},  # cost_tracker fallback
 }

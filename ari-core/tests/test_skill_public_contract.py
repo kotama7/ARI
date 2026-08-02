@@ -17,17 +17,12 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
-
 _REPO = Path(__file__).resolve().parents[2]
 
 # Private-core imports that are KNOWN and deferred (file-relative-to-repo : symbol).
 # Shrinking this set is the req-09 §12 follow-up.
 _ALLOWLIST = {
     ("ari-skill-idea/src/server.py", "ari.lineage"),
-    ("ari-skill-paper-re/src/server.py", "ari.clone"),
-    ("ari-skill-transform/src/server.py", "ari.orchestrator"),
-    ("ari-skill-transform/src/server.py", "ari.publish"),
 }
 
 # ari.* paths considered part of the stable public contract.
