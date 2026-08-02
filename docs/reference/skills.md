@@ -28,12 +28,16 @@ sources:
     role: implementation
   - path: ari-skill-paper-re/mcp.json
     role: config
+  - path: ari-skill-tool-registry/src/server.py
+    role: implementation
+  - path: ari-skill-tool-registry/skill.yaml
+    role: config
 last_verified: 2026-08-02
 ---
 
 # MCP Skills Reference
 
-Skills are MCP servers that provide tools to the ARI agent. Tools are deterministic where possible; LLM-using and live-data tools are explicitly annotated. **14 skills total** (13 default, 1 default-off external orchestrator).
+Skills are MCP servers that provide tools to the ARI agent. Tools are deterministic where possible; LLM-using and live-data tools are explicitly annotated. **15 skills total** (13 default, 2 default-off: the external orchestrator and federated tool registry).
 
 ## Canonical `skill.yaml` contract
 
@@ -159,8 +163,9 @@ and is not injected into the experiment agent's tool set.
 
 To add a built-in Skill, add one package-level manifest and server, then regenerate
 compatibility metadata. To add a large external collection, implement one
-`CatalogSource`/provider adapter as described by the platform plan; do not add a
-core registration record per leaf tool.
+`CatalogSource`/provider adapter through the default-off federated tool registry;
+do not add a core registration record per leaf tool. See
+[Federated Scientific Tool Registry](tool_registry.md).
 
 ## ari-skill-hpc
 
@@ -942,6 +947,15 @@ Return the generated paper (LaTeX).
 Workspace: `ARI_WORKSPACE` env (default: `~/ARI`). Parent-child relationships persisted in `meta.json` per checkpoint.
 
 ---
+
+## ari-skill-tool-registry
+
+Default-off federation for large scientific MCP collections. It exposes only
+`discover`, `describe`, `invoke`, `get_status`, and `get_result`; leaf tools are
+generated into a reviewed immutable catalog. Execution requires an exact opaque
+`tool_ref` and an admission decision. Provider output is normalized, and
+record/replay evidence is retained in the EAR. See
+[the dedicated registry reference](tool_registry.md).
 
 ## ari-skill-transform
 

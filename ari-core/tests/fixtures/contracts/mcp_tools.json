@@ -14,6 +14,10 @@
     ]
   },
   "known_collisions": {
+    "get_status": [
+      "ari-skill-orchestrator",
+      "ari-skill-tool-registry"
+    ],
     "read_file": [
       "ari-skill-coding",
       "ari-skill-orchestrator"
@@ -757,6 +761,50 @@
         ],
         "idiom": "fastmcp",
         "name": "suggest_target_leaf_count"
+      }
+    ],
+    "ari-skill-tool-registry": [
+      {
+        "args": [
+          "cursor",
+          "section",
+          "tool_ref"
+        ],
+        "idiom": "lowlevel",
+        "name": "describe"
+      },
+      {
+        "args": [
+          "constraints",
+          "query",
+          "strategy",
+          "top_k"
+        ],
+        "idiom": "lowlevel",
+        "name": "discover"
+      },
+      {
+        "args": [
+          "handle"
+        ],
+        "idiom": "lowlevel",
+        "name": "get_result"
+      },
+      {
+        "args": [
+          "handle"
+        ],
+        "idiom": "lowlevel",
+        "name": "get_status"
+      },
+      {
+        "args": [
+          "args",
+          "mode",
+          "tool_ref"
+        ],
+        "idiom": "lowlevel",
+        "name": "invoke"
       }
     ],
     "ari-skill-transform": [

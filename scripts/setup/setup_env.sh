@@ -360,6 +360,11 @@ _env_append_if_absent "# ARI_ROOT=${ARI_ROOT}"
 _env_append_if_absent "# ARI_WORK_DIR=/tmp/ari_work"
 _env_append_if_absent "# ARI_WORKSPACE="
 _env_append_if_absent "# ARI_CHECKPOINT_DIR="
+# Default-off federated MCP registry. These paths are read once at registry
+# startup; source synchronization remains an explicit operator command.
+_env_append_if_absent "# ARI_TOOL_REGISTRY_LOCK="
+_env_append_if_absent "# ARI_TOOL_REGISTRY_INDEX="
+_env_append_if_absent "# ARI_TOOL_REGISTRY_CASSETTES="
 _env_append_if_absent "# ARI_LOG_DIR="
 _env_append_if_absent "# ARI_LOG_LEVEL=INFO"
 _env_append_if_absent "# ARI_SOURCE_FILE="

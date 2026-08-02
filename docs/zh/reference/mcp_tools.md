@@ -12,12 +12,14 @@ sources:
     role: config
   - path: ari-skill-paper-re/src/server.py
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-skill-tool-registry/src/server.py
+    role: implementation
+last_verified: 2026-08-02
 ---
 
 # MCP 工具参考
 
-ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页是智能体可调用的所有工具的平铺目录。每个技能的深入介绍位于其各自的 `README.md`；[skills.md](skills.md) 按职责对它们进行分组。
+ARI 附带 15 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页是智能体可调用的所有工具的平铺目录。每个技能的深入介绍位于其各自的 `README.md`；[skills.md](skills.md) 按职责对它们进行分组。
 
 `mcp.json`（位于各技能的 `pyproject.toml` 旁边）是工具*名称*的权威来源；被 `@mcp.tool()` 装饰的函数（或旧版技能的 `@server.list_tools()` 中的条目）定义了参数和返回结构。
 
@@ -207,6 +209,18 @@ ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 | `curate_ear` | 将 `ear/` 提升为 `ear_published/` + manifest.lock | ✗ |
 | `publish_ear` | 推送到 `local-tarball` / `ari-registry` / `zenodo` / `gh` | ✗ |
 | `promote_ear` | `staged` → `unlisted` / `public` | ✗ |
+
+## ari-skill-tool-registry — 联邦科学工具（默认关闭）
+
+| 工具 | 用途 | LLM |
+|---|---|:---:|
+| `discover` | 对不可变 catalog 进行有界分页搜索 | ✗ |
+| `describe` | 分页读取 schema、provenance、admission 与限制 | ✗ |
+| `invoke` | 用精确 admitted `tool_ref` 进行 live/record/replay | ✗ |
+| `get_status` | 轮询与 descriptor 绑定的异步 handle | ✗ |
+| `get_result` | 获取并规范化最终异步结果 | ✗ |
+
+来源同步与科学约束见 [tool_registry.md](tool_registry.md)。
 
 ## ari-skill-vlm — 图表 / 表格评审（VLM）
 

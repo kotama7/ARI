@@ -101,7 +101,7 @@ def test_cli_env_side_effects_recorded():
     assert "ARI_FEWSHOT_MODE" in env["paper"]
 
 
-# ── MCP: 60 FastMCP + 28 low-level defs (87 unique names) + collision guard ──
+# ── MCP: 59 FastMCP + 33 low-level defs (90 unique names) + collision guard ──
 
 def test_mcp_tool_counts_and_names():
     golden = sc.load_golden("mcp")
@@ -110,15 +110,16 @@ def test_mcp_tool_counts_and_names():
         "ari-skill-benchmark", "ari-skill-coding", "ari-skill-evaluator",
         "ari-skill-hpc", "ari-skill-idea", "ari-skill-memory",
         "ari-skill-orchestrator", "ari-skill-paper", "ari-skill-paper-re",
-        "ari-skill-plot", "ari-skill-replicate", "ari-skill-transform",
+        "ari-skill-plot", "ari-skill-replicate", "ari-skill-tool-registry",
+        "ari-skill-transform",
         "ari-skill-vlm", "ari-skill-web",
     }, f"MCP skill package set drifted: {sorted(skills)}"
     fastmcp = [t for tools in skills.values() for t in tools if t["idiom"] == "fastmcp"]
     lowlevel = [t for tools in skills.values() for t in tools if t["idiom"] == "lowlevel"]
     assert len(fastmcp) == 59, f"expected 59 FastMCP tools, got {len(fastmcp)}"
-    assert len(lowlevel) == 28, f"expected 28 low-level tool defs, got {len(lowlevel)}"
+    assert len(lowlevel) == 33, f"expected 33 low-level tool defs, got {len(lowlevel)}"
     unique = {t["name"] for tools in skills.values() for t in tools}
-    assert len(unique) == 86, f"expected 86 unique tool names, got {len(unique)}"
+    assert len(unique) == 90, f"expected 90 unique tool names, got {len(unique)}"
     assert golden["invariants"]["return_envelope"] == ["error", "result"]
     assert golden["invariants"]["fq_name_pattern"] == "mcp__<skill>__<tool>"
 
@@ -137,9 +138,9 @@ def test_mcp_no_unrecorded_cross_skill_collision():
         f"(fresh={sorted(duplicates)} recorded={sorted(recorded)}); "
         "run `python scripts/snapshot_contracts.py --surface mcp --update`"
     )
-    # read_file is shared by coding and the default-off external orchestrator.
-    # MCPClient now rejects it if both are explicitly admitted together.
-    assert recorded == {"read_file"}
+    # These names are shared only with default-off components. MCPClient rejects
+    # either collision if both providers are explicitly admitted together.
+    assert recorded == {"get_status", "read_file"}
 
 
 # ── viz: route-literal drift (exact) + additive/subset response keys ─────────

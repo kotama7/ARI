@@ -10,6 +10,7 @@ Design constraints (P1/P2):
   user `include`. They prevent accidental publication of `.env*`,
   secrets, private keys, etc.
 """
+
 from __future__ import annotations
 
 import fnmatch
@@ -65,7 +66,8 @@ class CurateResult:
         excluded_count: number of files that matched include but were
             removed by built-in deny or user exclude. Paths are NOT
             recorded — only the count, by design (FR-C6).
-        skipped: True iff publish.yaml is absent and curation was skipped.
+        skipped: Compatibility field; always False because an absent
+            publish.yaml uses the built-in reproducibility allowlist.
     """
 
     ear_published_dir: Path
@@ -79,6 +81,7 @@ class CurateResult:
 # ---------------------------------------------------------------------------
 # Glob matching
 # ---------------------------------------------------------------------------
+
 
 def _normalize_rel(path: Path) -> str:
     """POSIX-style relative path string for matching."""
@@ -128,6 +131,7 @@ def _sha256_file(p: Path) -> str:
 # publish.yaml loading
 # ---------------------------------------------------------------------------
 
+
 def _load_publish_yaml(path: Path) -> dict:
     if yaml is None:  # pragma: no cover - import guard
         raise CurateError("pyyaml is required for curate but not installed")
@@ -149,7 +153,8 @@ def _load_publish_yaml(path: Path) -> dict:
 # Default publish.yaml content used when the author hasn't supplied one.
 # Tuned for the ORS reproducibility flow: include everything a re-runner
 # needs to rebuild + execute (reproduce.sh + code/ + data/ + environment),
-# exclude human-only docs and the figures/ directory (figures are outputs).
+# include immutable federated-tool provenance under catalog/, and exclude
+# human-only docs and the figures/ directory (figures are outputs).
 _DEFAULT_PUBLISH_YAML: dict = {
     "include": [
         "reproduce.sh",
@@ -158,6 +163,7 @@ _DEFAULT_PUBLISH_YAML: dict = {
         "data/**",
         "scripts/**",
         "configs/**",
+        "catalog/**",
     ],
     "exclude": [],
     "max_file_mb": 100,
@@ -172,6 +178,7 @@ _DEFAULT_PUBLISH_YAML: dict = {
 # Public entrypoints
 # ---------------------------------------------------------------------------
 
+
 def curate(checkpoint_dir: str | Path) -> CurateResult:
     """Curate an EAR according to its publish.yaml.
 
@@ -182,7 +189,7 @@ def curate(checkpoint_dir: str | Path) -> CurateResult:
         <checkpoint>/ear_published/manifest.lock — written by this function
 
     Returns:
-        CurateResult. ``skipped=True`` iff publish.yaml is absent.
+        CurateResult. ``skipped`` is False for both authored and default policy.
 
     Raises:
         CurateError: on any hard failure (size cap, schema, missing ear/).
@@ -200,7 +207,8 @@ def curate(checkpoint_dir: str | Path) -> CurateResult:
     else:
         # No author-supplied publish.yaml — fall back to a built-in default
         # tuned for ORS reproducibility (include reproduce.sh + code/ + data/
-        # + environment.json). Without this fallback, ear_curate skips and
+        # + environment.json + federated catalog evidence). Without this fallback,
+        # ear_curate skips and
         # the downstream ear_publish / ors_seed_sandbox chain has nothing
         # to ship to the sandbox.
         cfg = dict(_DEFAULT_PUBLISH_YAML)
@@ -253,11 +261,13 @@ def curate(checkpoint_dir: str | Path) -> CurateResult:
         dest = tmp_dir / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(p, dest)
-        file_records.append({
-            "path": rel.as_posix(),
-            "size": p.stat().st_size,
-            "sha256": _sha256_file(p),
-        })
+        file_records.append(
+            {
+                "path": rel.as_posix(),
+                "size": p.stat().st_size,
+                "sha256": _sha256_file(p),
+            }
+        )
 
     # Canonical bundle digest depends ONLY on file content + relative paths.
     # We deliberately exclude created_at, visibility and other metadata so
@@ -267,11 +277,16 @@ def curate(checkpoint_dir: str | Path) -> CurateResult:
     # source of truth.
     canonical_payload = {
         "version": 1,
-        "files": [{"path": r["path"], "sha256": r["sha256"], "size": r["size"]} for r in file_records],
+        "files": [
+            {"path": r["path"], "sha256": r["sha256"], "size": r["size"]}
+            for r in file_records
+        ],
     }
     canonical = json.dumps(
         canonical_payload,
-        sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
     )
     bundle_digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 

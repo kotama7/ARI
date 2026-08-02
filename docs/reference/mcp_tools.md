@@ -24,6 +24,8 @@ sources:
     role: implementation
   - path: ari-skill-transform
     role: implementation
+  - path: ari-skill-tool-registry
+    role: implementation
   - path: ari-skill-vlm
     role: implementation
   - path: ari-skill-web
@@ -33,7 +35,7 @@ last_verified: 2026-08-02
 
 # MCP Tools Reference
 
-ARI ships 14 MCP servers (one per `ari-skill-*` package).  This page
+ARI ships 15 MCP servers (one per `ari-skill-*` package).  This page
 is a flat catalogue of every tool the agent can call.  The deep dive
 for each skill lives in its own `README.md`; the section
 [skills.md](skills.md) groups them by responsibility.
@@ -254,6 +256,22 @@ for the YAML schema and authoring guide.
 | `curate_ear` | Promote `ear/` → `ear_published/` + manifest.lock | ✗ |
 | `publish_ear` | Push to `local-tarball` / `ari-registry` / `zenodo` / `gh` | ✗ |
 | `promote_ear` | `staged` → `unlisted` / `public` | ✗ |
+
+## ari-skill-tool-registry — federated scientific tools (default-off)
+
+The server exposes only broker operations; imported leaf schemas remain in the
+reviewed catalog and are disclosed progressively.
+
+| Tool | Purpose | LLM |
+|---|---|:---:|
+| `discover` | Search the immutable catalog with bounded pagination | ✗ |
+| `describe` | Read paginated schema, provenance, admission, and limitations | ✗ |
+| `invoke` | Invoke one exact admitted `tool_ref` in live/record/replay mode | ✗ |
+| `get_status` | Poll a descriptor-bound asynchronous provider handle | ✗ |
+| `get_result` | Fetch and normalize the final asynchronous result | ✗ |
+
+See [tool_registry.md](tool_registry.md) for source sync, admission, overlap,
+record/replay, and adapter requirements.
 
 ## ari-skill-vlm — figure / table review (VLM)
 

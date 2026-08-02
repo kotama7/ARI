@@ -6,7 +6,7 @@ Golden JSON snapshots of ARI's four stable contract surfaces — the single, mac
 
 - `README.md` — this file.
 - `cli_tree.json` — golden of the `ari = ari.cli:app` Typer/Click command tree (11 commands + `memory`/`ear`/`registry`/`migrate` sub-typers, per-node arguments/options) plus curated flag→env-var side effects; built in-process by `build_cli()`.
-- `mcp_tools.json` — golden catalog of the 14 `ari-skill-*/src/server.py` MCP tool surfaces (87 unique names from 60 FastMCP + 28 low-level `Tool` defs, with arg names), the return-envelope/naming invariants, and recorded cross-skill collisions; built by static AST in `build_mcp_static()`.
+- `mcp_tools.json` — golden catalog of the 15 `ari-skill-*/src/server.py` MCP tool surfaces (90 unique names from 59 FastMCP + 33 low-level `Tool` defs, with arg names), the return-envelope/naming invariants, and recorded cross-skill collisions; built by static AST in `build_mcp_static()`.
 - `public_api.json` — golden per-submodule exported-symbol tables for the 11 `ari.public.*` re-export modules (the stable core→skill API surface); built in-process by `build_public()`.
 - `viz_endpoints.json` — golden dashboard REST contract: curated method+path+owner endpoint inventory, mirrored `/api/*` response-key sets, and the AST-resolved `self.path` route literals from `viz/routes.py`; built by `build_viz()`.
 
@@ -16,7 +16,7 @@ Golden JSON snapshots of ARI's four stable contract surfaces — the single, mac
 | --- | --- | --- | --- |
 | `public_api.json` | public API | Exact exported-symbol set for every module listed by `scripts/snapshot_contracts.py::_PUBLIC_SUBMODULES`. | In-process `importlib` of each submodule, capturing its resolved `__all__`. |
 | `cli_tree.json` | CLI | Structural command/option tree of `ari` (commands, sub-typers, positional-argument order, options), plus the curated flag→env-var side effects (`ARI_IDEA_VIRSCI_*`, `ARI_RUBRIC`, …) Typer cannot expose. | In-process Typer→Click introspection. |
-| `mcp_tools.json` | MCP catalog | Per-skill tool names + arg lists across all 14 `ari-skill-*` servers, the FastMCP/low-level counts, the `mcp__<skill>__<tool>` / `["error","result"]` invariants, and the recorded flat-namespace collisions (last-skill-wins clobber guard). | Static AST scan of each `src/server.py` (never launches a skill server). |
+| `mcp_tools.json` | MCP catalog | Per-skill tool names + arg lists across all 15 `ari-skill-*` servers, the FastMCP/low-level counts, the `mcp__<skill>__<tool>` / `["error","result"]` invariants, and the recorded flat-namespace collisions (last-skill-wins clobber guard). | Static AST scan of each `src/server.py` (never launches a skill server). |
 | `viz_endpoints.json` | viz REST | Curated method+path+owner endpoint inventory, `self.path` route literals (drift-exact), and response-key sets mirrored (not forked) from `test_api_schema_contract.py` (additive/subset semantics). | Curated inventory + AST scan of `viz/routes.py`. |
 
 Each golden is consumed by `ari-core/tests/test_contract_snapshots.py`, which imports the same `build_*` / `compare` helpers so `pytest` and `--check` can never disagree.

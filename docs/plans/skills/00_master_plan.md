@@ -21,7 +21,7 @@ last_verified: 2026-08-02
 
 | 項目 | 値 |
 |---|---|
-| 状態 | In progress — C01 control plane complete; C02 federation next |
+| 状態 | In progress — C01 control plane / C02 federation complete; C17 next |
 | 基準ブランチ | `skills` |
 | 基準コミット | `4cd56f9` |
 | 作成日 | 2026-08-01 |
@@ -49,6 +49,10 @@ last_verified: 2026-08-02
 - viz source scraping、暗黙directory discovery、legacy runtime admissionを削除し、
   read-only migration readerとgolden checkpoint contractへ置換。C01-01〜10と
   C01-D1〜D7を完了。C08-D1/D2/D3も完了済み。
+- 15番目のdefault-off `ari-skill-tool-registry` を追加し、LLM surfaceを5操作へ固定。
+  generic stdio MCP、canonical `tool_ref`、4段階admission、reviewed `CATALOG.lock`、
+  graph quarantine、overlap説明、async、artifact、credential-free record/replay、
+  1 source/1,000-tool importを実装。C02-01〜10とC02-D1〜D6を完了。
 
 ## 1. 決定
 
@@ -261,17 +265,17 @@ P0 と P1 は全 component に横断する。P2 以降は dependency を満た�
 
 ## 10. 全体受け入れ基準
 
-- [ ] 全 component に canonical manifest と owner が一つだけある。
-- [ ] manifest、runtime `tools/list`、workflow、docs、package version の conformance CI が通る。
-- [ ] 同名 tool は黙って上書きされず、完全重複以外は別 identity として保持される。
+- [x] 全 component に canonical manifest と owner が一つだけある。
+- [x] manifest、runtime `tools/list`、workflow、docs、package version の conformance CI が通る。
+- [x] 同名 tool は黙って上書きされず、完全重複以外は別 identity として保持される。
 - [x] run 開始後に active tool set、schema、provider digest が変わらない。
-- [ ] ResultEnvelope、artifact digest、tool selection reason、admission evidence が EAR に残る。
-- [ ] record した fixture が network、credential、MCP server なしの replay で成功する。
+- [x] ResultEnvelope、artifact digest、tool selection reason、admission evidence が EAR に残る。
+- [x] record した fixture が network、credential、MCP server なしの replay で成功する。
 - [x] parallel BFTS で node context と memory write が交差しない。
 - [x] 最小 child environment に含めない secret が Skill processへ渡らない。
-- [ ] 1,000 tool mock collection を一つの source 定義で追加できる。
+- [x] 1,000 tool mock collection を一つの source 定義で追加できる。
 - [ ] ToolUniverse、direct MCP、OpenROAD、Qiskit の能力が同じ discovery contract から選択できる。
-- [ ] deterministic / stochastic / live-data の再現性主張が区別される。
+- [x] deterministic / stochastic / live-data の再現性主張が区別される。
 - [ ] 各サブ計画の component-specific test と deletion gate が通る。
 - [ ] `pytest`、docs link、manifest/schema、security、replay の全CIが green である。
 
