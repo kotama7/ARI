@@ -8,7 +8,7 @@ sources:
     role: config
   - path: ari-core/ari/viz/api_orchestrator.py
     role: implementation
-last_verified: 2026-08-01
+last_verified: 2026-08-02
 ---
 
 # C16: `ari-skill-orchestrator` 実装計画

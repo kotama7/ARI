@@ -320,7 +320,7 @@ def test_mcp_client_types_timeout_and_cancellation(
     connection = _RaisingConnection(skill, exception)
     client = MCPClient([skill])
     monkeypatch.setattr(client, "_init_connection", lambda _skill: connection)
-    monkeypatch.setattr("ari.mcp.client.RETRY_DELAY", 0)
+    monkeypatch.setattr("ari.mcp.invoke_runtime.RETRY_DELAY", 0)
 
     envelope = client.call_tool_envelope("inspect", {})
 

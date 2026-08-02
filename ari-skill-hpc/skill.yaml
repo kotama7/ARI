@@ -4,12 +4,34 @@ package: ari-skill-hpc
 version: 0.1.0
 display_name: Run HPC workloads
 description: SLURM lifecycle, platform probes, and Singularity execution for research workloads.
+environment_policy: complete
 entrypoint:
   transport: stdio
   command_kind: python
   module: src/server.py
 required_env: []
-optional_env: [ARI_CHECKPOINT_DIR, ARI_ROOT, ARI_SLURM_PARTITION]
+optional_env:
+  - ARI_CHECKPOINT_DIR
+  - ARI_PROBE_TOOLS
+  - ARI_SBATCH_EXPORT_MODE
+  - ARI_SLURM_CPUS
+  - ARI_SLURM_GPUS
+  - ARI_SLURM_MEM_GB
+  - ARI_SLURM_PARTITION
+  - ARI_WORK_DIR
+  - SLURM_DEFAULT_PARTITION
+  - SLURM_DEFAULT_WORK_DIR
+  - SLURM_LOG_DIR
+  - SLURM_MODE
+  - SLURM_SSH_HOST
+  - SLURM_SSH_PORT
+  - SLURM_SSH_USER
+  - SLURM_VALID_PARTITIONS
+credential_scopes:
+  - id: scheduler.ssh
+    optional_env: [SLURM_SSH_KEY, SLURM_SSH_PASSWORD]
+  - id: scheduler.exported-environment
+    optional_env: [ARI_ENV_FILE, ARI_ROOT]
 tool_defaults:
   phases: [bfts, reproduce]
   side_effects: stateful

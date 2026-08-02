@@ -115,5 +115,6 @@ Operational and utility scripts for building images, running services, and dev t
   - `test_check_docs_source_sync.py` — TODO
   - `test_check_import_boundaries.py` — unit + smoke tests for `check_import_boundaries.py` (B1/B2 fixtures + repo-level seed-edge smoke).
   - `test_check_prompts.py` — unit + smoke tests for `check_prompts.py` (synthetic new/allowlisted, user-message negative filter, `agent/loop.py` negative control, census-reproduction + unique-id repo smoke, Gate 10 delegation).
+  - `test_check_skill_manifests.py` — fail-closed environment-read analysis across aliases, loops, helper calls, membership, writes, and parse errors.
   - `test_check_viz_api_schema.py` — unit + smoke tests for `check_viz_api_schema.py` (normalization + all-four-regime client extraction + server if/elif extraction fixtures + repo reconciliation smoke).
   - `test_generate_quality_report.py` — TODO

@@ -10,7 +10,9 @@ sources:
     role: implementation
   - path: ari-core/ari/pipeline/claim_gate
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-core/ari/skill_lock.py
+    role: implementation
+last_verified: 2026-08-02
 ---
 
 # File Formats Reference
@@ -371,12 +373,15 @@ handshake. It records:
 - canonical manifest and provider digests for each configured Skill;
 - exact live input/output JSON Schemas and schema digests for every tool;
 - immutable `tool_ref`, capability, policy, and disabled-tool configuration;
+- declared ordinary environment names and value-free credential scope identity
+  (`scope_id`, declared/present variable names, identity digest) per provider;
 - the admitted `tool_ref` set for every runtime phase;
 - one registry digest covering the complete document.
 
 Subsequent processes and resumed runs create their live candidate registry and
 must match the existing lock exactly before dispatch. The file stores declared
-environment variable names, never secret values. Schema:
+environment variable names and scope presence, never secret values. Secret
+rotation does not enter the digest; gaining or losing a scope/name does. Schema:
 `ari-core/ari/schemas/skills_lock_v1.schema.json`.
 
 ## `memory_store.jsonl` / `memory_backup.jsonl.gz`

@@ -8,7 +8,7 @@ sources:
     role: config
   - path: docs/reference/mcp_tools.md
     role: doc
-last_verified: 2026-08-01
+last_verified: 2026-08-02
 ---
 
 # C02: `ari-skill-tool-registry` federation 実装計画

@@ -2,6 +2,8 @@
 sources:
   - path: ari-core/ari/mcp/client.py
     role: implementation
+  - path: ari-core/ari/mcp/child_environment.py
+    role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
   - path: docs/concepts/architecture.md
@@ -32,8 +34,8 @@ last_verified: 2026-08-02
 - runtime input/output schemaまで束縛したimmutable `tool_ref` dispatchと、一意bare aliasの互換経路を追加。
 - `ResultEnvelopeV1`、typed error/provenance、4,000文字超raw responseのcontent-addressed artifact化を追加。
 - run-level `SKILLS.lock`、provider/schema digest、phase別active set、atomic create/verify、provider fail-closedを追加。
-- P2の最小child environmentは未着手。
-- 削除ledgerはC01-D1/D3/D6/D7が移行中で、削除gate未達のcompatibility pathは保持。
+- 全14 Skillをcomplete環境allowlistとnamed credential scopeへ移行し、実MCP process/Claude direct-MCP proxyでsecret non-propagationとredactionを固定。
+- C01-D2の親環境全コピーを削除。削除ledgerはC01-D1/D3/D6/D7が移行中で、削除gate未達のcompatibility pathは保持。
 
 ## 1. 決定
 
@@ -253,7 +255,7 @@ P0 と P1 は全 component に横断する。P2 以降は dependency を満た�
 - [ ] ResultEnvelope、artifact digest、tool selection reason、admission evidence が EAR に残る。
 - [ ] record した fixture が network、credential、MCP server なしの replay で成功する。
 - [ ] parallel BFTS で node context と memory write が交差しない。
-- [ ] 最小 child environment に含めない secret が Skill processへ渡らない。
+- [x] 最小 child environment に含めない secret が Skill processへ渡らない。
 - [ ] 1,000 tool mock collection を一つの source 定義で追加できる。
 - [ ] ToolUniverse、direct MCP、OpenROAD、Qiskit の能力が同じ discovery contract から選択できる。
 - [ ] deterministic / stochastic / live-data の再現性主張が区別される。

@@ -194,6 +194,26 @@ def default_call_context(node_id: str | None = None) -> ToolCallContextV1:
     )
 
 
+def enrich_call_context(
+    context: ToolCallContextV1,
+    *,
+    selection_reason: str,
+    skill: SkillConfig | None,
+) -> ToolCallContextV1:
+    """Attach core-owned selection and value-free credential authority metadata."""
+
+    updates: dict[str, object] = {}
+    if not context.selection_reason:
+        updates["selection_reason"] = selection_reason
+    if not context.credential_scope_ids and skill is not None:
+        updates["credential_scope_ids"] = sorted(
+            str(identity.get("scope_id"))
+            for identity in skill.credential_scope_identities
+            if identity.get("scope_id") and identity.get("present_env")
+        )
+    return context.model_copy(update=updates) if updates else context
+
+
 __all__ = [
     "COW_TOOLS",
     "DEFAULT_TOOL_TIMEOUT",
@@ -203,6 +223,7 @@ __all__ = [
     "ToolNameCollisionError",
     "VERY_SLOW_TOOL_TIMEOUT",
     "default_call_context",
+    "enrich_call_context",
     "log_tool_call",
     "normalize_phases",
     "phase_is_disabled",

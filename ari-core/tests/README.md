@@ -28,6 +28,7 @@ targets the like-named module under `ari/`.
 - `test_bfts_prompt_selection.py` — BFTS prompt selection.
 - `test_checkpoint_legacy_tree.py` — legacy node_*/tree.json resolution in list/summary.
 - `test_checkpoint_store.py` — TODO
+- `test_child_environment.py` — minimal Skill child environments, credential isolation, redaction, and reconnect drift.
 - `test_child_node_workflow.py` — child-node workflow.
 - `test_child_workdir_inherit.py` — child workdir inheritance.
 - `test_claim_evidence_hard_gate.py` — Story2Proposal Phase B deterministic gate: recompute, mismatch, operand resolution, coverage, blocking semantics.

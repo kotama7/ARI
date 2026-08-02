@@ -20,7 +20,11 @@ try:
 except Exception:
     pass
 
-DEFAULT_MODEL = os.environ.get("VLM_MODEL", "openai/gpt-4o")
+DEFAULT_MODEL = (
+    os.environ.get("ARI_VLM_MODEL")
+    or os.environ.get("VLM_MODEL")
+    or "openai/gpt-4o"
+)
 
 
 def _encode_image(image_path: str) -> str:

@@ -1,5 +1,34 @@
 {
   "$defs": {
+    "CredentialScopeV1": {
+      "additionalProperties": false,
+      "description": "Named credential authority whose values are never serialized to locks.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "optional_env": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Optional Env",
+          "type": "array"
+        },
+        "required_env": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Env",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "CredentialScopeV1",
+      "type": "object"
+    },
     "SkillEntrypointV1": {
       "additionalProperties": false,
       "description": "How ari-core launches one Skill server.",
@@ -213,6 +242,13 @@
   "additionalProperties": false,
   "description": "Canonical ARI Skill package manifest, schema version 1.",
   "properties": {
+    "credential_scopes": {
+      "items": {
+        "$ref": "#/$defs/CredentialScopeV1"
+      },
+      "title": "Credential Scopes",
+      "type": "array"
+    },
     "description": {
       "default": "",
       "title": "Description",

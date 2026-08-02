@@ -2,6 +2,12 @@
 sources:
   - path: ari-core/ari/mcp/client.py
     role: implementation
+  - path: ari-core/ari/mcp/connection.py
+    role: implementation
+  - path: ari-core/ari/mcp/child_environment.py
+    role: implementation
+  - path: ari-core/ari/mcp/secure_stdio_proxy.py
+    role: implementation
   - path: ari-core/ari/config/__init__.py
     role: implementation
   - path: ari-core/ari/viz/api_settings.py
@@ -19,7 +25,7 @@ last_verified: 2026-08-02
 
 # C01: `ari-core` Skill control plane 実装計画
 
-> 状態: In progress（C01-01/02/05/07完了、C01-03/04/09/10は互換移行中）。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
+> 状態: In progress（C01-01/02/03/05/06/07完了、C01-04/09/10は互換移行中）。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
 
 ## 1. 責務と範囲
 
@@ -29,7 +35,7 @@ last_verified: 2026-08-02
 - Skill process lifecycle、transport、timeout、cancellation
 - phase policy、tool identity、collision detection、dispatch
 - run-level immutable Skill snapshot
--最小環境とcredential scopeの構築
+- 最小環境とcredential scopeの構築
 - ResultEnvelope、artifact store、trace / EAR handoff
 - `ari.public.*` による stable cross-package contract
 
@@ -63,7 +69,7 @@ last_verified: 2026-08-02
 | C01-03 | manifestからconnection specを構築 | stdio Python互換adapter、launcher allowlist | C01-02 |
 | C01-04 | namespaced registryとcollision policyを追加 | immutable `tool_ref`、duplicate/equivalence判定hook | C01-02 |
 | C01-05 | `ResultEnvelopeV1` とartifact externalization | public model、bounded rendering、raw response保存 | C01-02 |
-| C01-06 | child environment policyを実装 | allowlist、secret redaction、credential scope identity | C01-03 |
+| C01-06 | **完了**: child environment policyを実装 | allowlist、secret redaction、credential scope identity、direct-MCP secure proxy | C01-03 |
 | C01-07 | **完了**: run snapshotを固定 | `SKILLS.lock`、schema/provider digest、phase別active set、atomic create/verify、provider fail-closed | C01-04 |
 | C01-08 | explicit `RunContext` / `NodeContext` をcallへ渡す | parallel-safe context、memory連携 | C01-05 |
 | C01-09 | capability-based timeout / async handle | hard-coded tool名に依存しないbudgetとpolling | C01-05 |
@@ -83,7 +89,7 @@ last_verified: 2026-08-02
 - [ ] manifest tools と live `tools/list` の追加・欠落・schema drift がCIでfailする。
 - [x] 同名の異なる2 toolを登録すると起動時にcollision errorになり、黙って上書きされない。
 - [x] run開始後にmanifest fileを変更してもactive snapshotは変わらず、新process/resumeはdriftを拒否する。
-- [ ] secret markerを親envへ置いたtestで、未許可Skillから参照できない。
+- [x] secret markerを親envへ置いた実MCP process testで、未許可Skillから参照できず、stdout/stderr/lock/provenanceへ値が残らない。
 - [x] 4 parallel nodeのmemory writeでnode contextが交差しない。
 - [x] 4,000文字を超える結果がartifact化され、digestから復元できる。
 - [x] stdio server error、timeout、cancel、malformed stdoutがtyped errorになる。
@@ -97,7 +103,7 @@ last_verified: 2026-08-02
 | ID | 削除対象 | 置換先 | 最早phase | 削除gate |
 |---|---|---|---|---|
 | C01-D1 | bare-nameのlast-writer-wins `_tool_registry` | namespaced immutable registry | P2 | collision test、全call siteが`tool_ref`または一意aliasを使用 |
-| C01-D2 | `_server_params()` の `{**os.environ, ...}` | child environment policy | P2 | secret non-propagation test、全Skillのrequired env宣言 |
+| C01-D2 | **完了**: `_server_params()` の `{**os.environ, ...}` を削除 | child environment policy | P2 | secret non-propagation実process test、全Skillのcomplete env宣言、Claude parent-env merge proxy test |
 | C01-D3 | `_SLOW_TOOLS` / `_VERY_SLOW_TOOLS` のtool名list | manifest timeout class / per-call budget | P2 | timeout fixture parity、manifest coverage 100% |
 | C01-D4 | `_COW_TOOLS` と `_set_current_node` 依存 | explicit `NodeContext` | P3 | parallel memory conformance test、旧call site 0 |
 | C01-D5 | vizによる`server.py` source scraping | canonical manifest index | P3 | dashboard contract test、全package manifest移行 |

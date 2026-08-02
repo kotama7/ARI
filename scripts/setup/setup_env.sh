@@ -348,6 +348,7 @@ _env_append_if_absent "# ARI_COMPARISON_SCOPE=any"
 
 # --- 3) VLM review ----------------------------------------------------------
 _env_section "VLM review"
+_env_append_if_absent "# ARI_VLM_MODEL="
 _env_append_if_absent "# VLM_MODEL=openai/gpt-4o"
 _env_append_if_absent "# VLM_REVIEW_ENABLED=true"
 _env_append_if_absent "# VLM_REVIEW_THRESHOLD=0.7"

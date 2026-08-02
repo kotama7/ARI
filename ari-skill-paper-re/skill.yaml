@@ -4,12 +4,90 @@ package: ari-skill-paper-re
 version: 0.8.0
 display_name: Reproduce and grade a paper
 description: PaperBench-compatible isolated reproduction and SimpleJudge grading.
+environment_policy: complete
 entrypoint:
   transport: stdio
   command_kind: python
   module: src/server.py
 required_env: []
-optional_env: [ARI_MODEL_JUDGE, ARI_MODEL_REPLICATE, ARI_PHASE1_SANDBOX, ARI_SLURM_PARTITION]
+optional_env:
+  - ARI_BACKEND
+  - ARI_CHECKPOINT_DIR
+  - ARI_JUDGE_N_RUNS
+  - ARI_LLM_API_BASE
+  - ARI_LLM_MODEL
+  - ARI_MODEL_JUDGE
+  - ARI_MODEL_REPLICATOR
+  - ARI_MULTIMODAL_MAX_IMAGES
+  - ARI_MULTIMODAL_PAPER
+  - ARI_PAPERBENCH_PATH
+  - ARI_PB_DISABLE_ENV_PATCH
+  - ARI_PB_DISABLE_ORPHAN_FILTER
+  - ARI_PB_DISABLE_PAPER_KIND_HINT
+  - ARI_PB_DISABLE_WEB_SEARCH
+  - ARI_PB_KEEP_BLACKLIST
+  - ARI_PHASE1_ALLOW_FALLBACK
+  - ARI_PHASE1_APPTAINER_IMAGE
+  - ARI_PHASE1_DOCKER_IMAGE
+  - ARI_PHASE1_SANDBOX
+  - ARI_PHASE1_SINGULARITY_IMAGE
+  - ARI_REPLICATOR_ITERATIVE
+  - ARI_REPLICATOR_MAX_STEPS
+  - ARI_REPLICATOR_TIME_LIMIT_SEC
+  - ARI_SLURM_ALLOW_NO_GRES
+  - ARI_SLURM_CPUS
+  - ARI_SLURM_PARTITION
+  - ARI_SLURM_WALLTIME
+  - AWS_DEFAULT_REGION
+  - AWS_REGION
+  - AZURE_API_BASE
+  - AZURE_API_VERSION
+  - CUDA_VISIBLE_DEVICES
+  - LLM_API_BASE
+  - LLM_MODEL
+  - LMOD_CMD
+  - MODULEPATH
+  - MODULESHOME
+  - OLLAMA_HOST
+  - SLURM_CLUSTER_NAME
+  - SLURM_JOB_GRES
+  - SLURM_JOB_ID
+  - SLURM_JOB_NUM_NODES
+  - SLURM_JOB_PARTITION
+  - SLURM_NTASKS
+  - SLURM_PARTITION
+  - SLURM_PROCID
+  - VERTEXAI_LOCATION
+  - VERTEXAI_PROJECT
+credential_scopes:
+  - id: model.huggingface
+    optional_env: [HF_TOKEN, HUGGINGFACE_API_KEY]
+  - id: model.provider
+    optional_env:
+      - ANTHROPIC_API_KEY
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+      - AZURE_API_KEY
+      - AZURE_OPENAI_API_KEY
+      - COHERE_API_KEY
+      - DATABRICKS_API_TOKEN
+      - DEEPINFRA_API_KEY
+      - DEEPSEEK_API_KEY
+      - GEMINI_API_KEY
+      - GOOGLE_API_KEY
+      - GOOGLE_APPLICATION_CREDENTIALS
+      - GROQ_API_KEY
+      - MISTRAL_API_KEY
+      - OPENAI_API_KEY
+      - OPENROUTER_API_KEY
+      - REPLICATE_API_TOKEN
+      - TOGETHERAI_API_KEY
+      - VERTEXAI_CREDENTIALS
+      - WATSONX_APIKEY
+      - XAI_API_KEY
+  - id: reproduction.agent-environment
+    optional_env: [ARI_AGENT_ENV_PATH]
 tool_defaults:
   phases: [paper, reproduce]
   side_effects: stateful

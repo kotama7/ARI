@@ -144,7 +144,7 @@ def test_repo_dynamic_overlay_no_orphans() -> None:
 def test_repo_mcp_tools_and_collision() -> None:
     graph = _repo_graph()
     tools = [n for n in graph["nodes"] if n["kind"] == "mcp.tool"]
-    assert len(tools) == 87
+    assert len(tools) == 88
     collisions = {c["tool_name"]: set(c["skills"]) for c in graph["collisions"]}
     assert collisions.get("read_file") == {"coding", "orchestrator"}
 

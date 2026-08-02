@@ -8,7 +8,7 @@ sources:
     role: implementation
   - path: ari-core/ari/orchestrator/bfts.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # Cookbook

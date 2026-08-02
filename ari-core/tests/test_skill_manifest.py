@@ -88,6 +88,25 @@ def test_manifest_rejects_duplicate_tools(tmp_path: Path):
         load_skill_manifest(path)
 
 
+def test_manifest_validates_disjoint_credential_scopes(tmp_path: Path):
+    document = _manifest()
+    document["environment_policy"] = "complete"
+    document["optional_env"] = ["FIXTURE_MODE"]
+    document["credential_scopes"] = [
+        {"id": "fixture.provider", "optional_env": ["FIXTURE_API_KEY"]}
+    ]
+    manifest = load_skill_manifest(_write_package(tmp_path, document))
+    assert manifest.environment_names() == ("FIXTURE_MODE", "FIXTURE_API_KEY")
+
+    document["optional_env"] = ["FIXTURE_API_KEY"]
+    with pytest.raises(SkillManifestError, match="cannot also be ordinary"):
+        load_skill_manifest(_write_package(tmp_path / "overlap", document))
+
+    document["credential_scopes"] = []
+    with pytest.raises(SkillManifestError, match="require a credential scope"):
+        load_skill_manifest(_write_package(tmp_path / "unclassified", document))
+
+
 def test_manifest_rejects_entrypoint_traversal(tmp_path: Path):
     document = _manifest()
     document["entrypoint"]["module"] = "../server.py"

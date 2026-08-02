@@ -24,7 +24,7 @@ sources:
     role: implementation
   - path: ari-skill-memory
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # Glossary

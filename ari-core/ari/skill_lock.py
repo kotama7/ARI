@@ -69,6 +69,17 @@ class LockedToolV1(BaseModel):
     policy: dict[str, Any] = Field(default_factory=dict)
 
 
+class LockedCredentialScopeV1(BaseModel):
+    """Value-free identity of credential authority available to one provider."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    scope_id: str
+    declared_env: list[str] = Field(default_factory=list)
+    present_env: list[str] = Field(default_factory=list)
+    identity_digest: str
+
+
 class LockedSkillV1(BaseModel):
     """One configured provider and the digest of its admitted live surface."""
 
@@ -84,6 +95,7 @@ class LockedSkillV1(BaseModel):
     environment_policy: Literal["audit-pending", "complete"]
     required_env: list[str] = Field(default_factory=list)
     optional_env: list[str] = Field(default_factory=list)
+    credential_scopes: list[LockedCredentialScopeV1] = Field(default_factory=list)
     tool_refs: list[str] = Field(default_factory=list)
 
 
@@ -189,6 +201,11 @@ def build_skills_lock(
     locked_skills: list[LockedSkillV1] = []
     for skill in enabled_skills:
         owned = tools_by_skill.get(skill.name, [])
+        credential_scopes = [
+            LockedCredentialScopeV1.model_validate(identity)
+            for identity in skill.credential_scope_identities
+        ]
+        credential_scopes.sort(key=lambda item: item.scope_id)
         provider_payload = {
             "name": skill.name,
             "package": skill.package or skill.name,
@@ -196,6 +213,9 @@ def build_skills_lock(
             "entrypoint": skill.entrypoint,
             "manifest_digest": skill.manifest_digest,
             "configured_phases": sorted(normalize_phases(skill.phase)),
+            "credential_scopes": [
+                scope.model_dump(mode="json") for scope in credential_scopes
+            ],
             "tools": [
                 {
                     "tool_ref": tool.tool_ref,
@@ -218,6 +238,7 @@ def build_skills_lock(
                 environment_policy=skill.environment_policy,
                 required_env=sorted(skill.required_env),
                 optional_env=sorted(skill.optional_env),
+                credential_scopes=credential_scopes,
                 tool_refs=sorted(tool.tool_ref for tool in owned),
             )
         )
@@ -417,6 +438,7 @@ __all__ = [
     "SKILLS_LOCK_FILENAME",
     "SKILLS_LOCK_SCHEMA_VERSION",
     "LockedSkillV1",
+    "LockedCredentialScopeV1",
     "LockedToolV1",
     "SkillLockCorruptError",
     "SkillLockError",

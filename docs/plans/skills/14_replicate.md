@@ -8,7 +8,7 @@ sources:
     role: schema
   - path: ari-skill-replicate/skill.yaml
     role: config
-last_verified: 2026-08-01
+last_verified: 2026-08-02
 ---
 
 # C14: `ari-skill-replicate` 実装計画

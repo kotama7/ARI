@@ -8,7 +8,7 @@ sources:
     role: doc
   - path: ari-core/ari/mcp/client.py
     role: implementation
-last_verified: 2026-08-01
+last_verified: 2026-08-02
 ---
 
 # C08: `ari-skill-memory` 実装計画

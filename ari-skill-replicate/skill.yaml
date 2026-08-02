@@ -4,12 +4,57 @@ package: ari-skill-replicate
 version: 0.2.0
 display_name: Build reproducibility rubrics
 description: Generate and audit PaperBench-compatible reproducibility rubrics.
+environment_policy: complete
 entrypoint:
   transport: stdio
   command_kind: python
   module: src/server.py
 required_env: []
-optional_env: [ARI_MODEL_RUBRIC_AUDIT, ARI_MODEL_RUBRIC_GEN]
+optional_env:
+  - ARI_BACKEND
+  - ARI_CHECKPOINT_DIR
+  - ARI_LLM_API_BASE
+  - ARI_LLM_MODEL
+  - ARI_MODEL_RUBRIC_AUDIT
+  - ARI_MODEL_RUBRIC_GEN
+  - ARI_PAPERBENCH_RUBRIC_DIR
+  - ARI_RUBRIC_GEN_TARGET_LEAVES
+  - ARI_RUBRIC_GEN_TEMPERATURE
+  - ARI_RUBRIC_GEN_TWO_STAGE
+  - AWS_DEFAULT_REGION
+  - AWS_REGION
+  - AZURE_API_BASE
+  - AZURE_API_VERSION
+  - LLM_API_BASE
+  - LLM_MODEL
+  - OLLAMA_HOST
+  - VERTEXAI_LOCATION
+  - VERTEXAI_PROJECT
+credential_scopes:
+  - id: model.provider
+    optional_env:
+      - ANTHROPIC_API_KEY
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+      - AZURE_API_KEY
+      - AZURE_OPENAI_API_KEY
+      - COHERE_API_KEY
+      - DATABRICKS_API_TOKEN
+      - DEEPINFRA_API_KEY
+      - DEEPSEEK_API_KEY
+      - GEMINI_API_KEY
+      - GOOGLE_API_KEY
+      - GOOGLE_APPLICATION_CREDENTIALS
+      - GROQ_API_KEY
+      - MISTRAL_API_KEY
+      - OPENAI_API_KEY
+      - OPENROUTER_API_KEY
+      - REPLICATE_API_TOKEN
+      - TOGETHERAI_API_KEY
+      - VERTEXAI_CREDENTIALS
+      - WATSONX_APIKEY
+      - XAI_API_KEY
 tool_defaults:
   phases: [paper]
   side_effects: workspace-write

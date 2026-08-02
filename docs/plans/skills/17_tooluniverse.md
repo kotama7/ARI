@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: docs/reference/skills.md
     role: doc
-last_verified: 2026-08-01
+last_verified: 2026-08-02
 ---
 
 # C17: ToolUniverse collection adapter 実装計画

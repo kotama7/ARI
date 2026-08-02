@@ -20,6 +20,13 @@ def manifest_runtime_metadata(manifest: SkillManifestV1) -> dict[str, object]:
             )
             for tool in tools
         },
+        "credential_scopes": {
+            scope.id: {
+                "required_env": list(scope.required_env),
+                "optional_env": list(scope.optional_env),
+            }
+            for scope in manifest.credential_scopes
+        },
     }
 
 

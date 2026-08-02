@@ -46,7 +46,8 @@ should be updated together.
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `VLM_MODEL` | Vision LLM identifier (LiteLLM format) | `openai/gpt-4o` |
+| `ARI_VLM_MODEL` | Preferred ARI vision-model override (LiteLLM format) | falls through to `VLM_MODEL` |
+| `VLM_MODEL` | Compatibility fallback for the vision model | `openai/gpt-4o` |
 | `OPENAI_API_KEY` | Required when the VLM is OpenAI-hosted | (none) |
 
 ## Dependencies
