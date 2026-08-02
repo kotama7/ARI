@@ -793,10 +793,9 @@ class TestPaperPipelineFileContract:
     def test_generate_figures_uses_batch_tool(self):
         """generate_figures must use plot-skill:generate_figures_llm.
 
-        plot-skill's batch API returns {figures, latex_snippets, figure_kinds}
-        in one call. pipeline.py's special case at stage_name == "generate_figures"
-        expects this shape and writes figures_manifest.json from it; if the
-        stage pointed elsewhere, write_paper would receive an empty manifest.
+        plot-skill's batch API returns a digest-bound FigureBatchV1 in one call.
+        The pipeline persists it unchanged so VLM and paper consumers see the
+        exact per-figure manifests and revision lineage.
         """
         stage = self._get_stage("generate_figures")
         if not stage.get("enabled", True):
@@ -806,8 +805,8 @@ class TestPaperPipelineFileContract:
             f"{stage.get('skill')!r}."
         )
         assert stage.get("tool") == "generate_figures_llm", (
-            f"generate_figures must call generate_figures_llm (returns "
-            f"{{figures, latex_snippets}}), not {stage.get('tool')!r}."
+            f"generate_figures must call the declarative spec planner, not "
+            f"{stage.get('tool')!r}."
         )
 
     def test_generate_figures_batch_inputs(self):
@@ -815,13 +814,20 @@ class TestPaperPipelineFileContract:
         if not stage.get("enabled", True):
             pytest.skip("generate_figures disabled")
         inputs = stage.get("inputs") or {}
-        required = {"nodes_json_path", "science_data_path", "n_figures",
-                    "output_dir", "experiment_summary"}
+        required = {
+            "science_data_path",
+            "n_figures",
+            "output_dir",
+            "experiment_summary",
+            "vlm_feedback",
+            "revision",
+            "previous_batch_path",
+        }
         missing = required - set(inputs.keys())
         assert not missing, (
             f"generate_figures.inputs missing batch-mode keys: {missing}. "
-            f"plot-skill:generate_figures_llm needs all of these to write "
-            f"fig_1.pdf..fig_N.pdf with captions."
+            f"plot-skill:generate_figures_llm needs these to bind ScienceData, "
+            f"review lineage, and fixed-renderer artifacts."
         )
         assert isinstance(inputs.get("n_figures"), int) and inputs["n_figures"] >= 1, (
             f"generate_figures.inputs.n_figures must be a positive int"
@@ -841,15 +847,14 @@ class TestPaperPipelineFileContract:
     def test_figure_router_fully_removed(self):
         """figure-router-skill was consolidated into plot-skill.
 
-        plot-skill/generate_figures_llm now emits both matplotlib plots and
-        SVG diagrams per-figure via a `kind` field. figure-router-skill must
-        not reappear in the skills registry or any pipeline stage.
+        plot-skill/generate_figures_llm emits only declarative fixed-renderer
+        specifications. figure-router-skill must not reappear in the skills
+        registry or any pipeline stage.
         """
         skill_names = {s["name"] for s in self.data.get("skills", [])}
         assert "figure-router-skill" not in skill_names, (
-            "figure-router-skill was consolidated into plot-skill; do not "
-            "re-register it — SVG generation is now a `kind:\"svg\"` item "
-            "in plot-skill:generate_figures_llm output."
+            "figure-router-skill was removed; do not re-register its "
+            "model-generated SVG/code execution surface."
         )
         for stage in self.paper.values():
             assert stage.get("skill") != "figure-router-skill"
@@ -1394,6 +1399,12 @@ class TestWritePaperExecutionContract:
         assert "enlarge fonts" in second_fb, (
             f"Second-pass vlm_feedback must include the review suggestions, "
             f"got: {second_fb!r}"
+        )
+        assert generate_figures_calls[0].get("revision") == "0"
+        assert generate_figures_calls[0].get("previous_batch_path") == ""
+        assert generate_figures_calls[1].get("revision") == "1"
+        assert generate_figures_calls[1].get("previous_batch_path") == str(
+            ckpt / "figures_manifest.json"
         )
 
         # 4. After the loop finishes, write_paper ran and produced the tex

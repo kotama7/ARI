@@ -535,6 +535,8 @@ class WorkflowDriver:
         # Initialise the feedback slot so {{vlm_feedback}} resolves to "" on
         # the first pass (before any loop has injected real feedback).
         ctx.tpl_vars.setdefault("vlm_feedback", "")
+        ctx.tpl_vars.setdefault("plot_revision", 0)
+        ctx.tpl_vars.setdefault("previous_figure_batch", "")
 
         _stage_idx = 0
         while _stage_idx < len(stages):
@@ -601,8 +603,30 @@ class WorkflowDriver:
                             )
                         else:
                             _loop_iterations[stage_name] = _count + 1
-                            # Surface review feedback to downstream template vars
-                            ctx.tpl_vars["vlm_feedback"] = _format_vlm_feedback(result)
+                            # Preserve the exact reviewed batch and revision. Native
+                            # visual reviews stay structured so plot feedback binds
+                            # manifest/review digests instead of an ad-hoc prose fold.
+                            _target_state = ctx.tpl_vars["stages"].get(
+                                _loop_target, {}
+                            )
+                            ctx.tpl_vars["previous_figure_batch"] = str(
+                                _target_state.get("output") or ""
+                            )
+                            ctx.tpl_vars["plot_revision"] = _count + 1
+                            if (
+                                isinstance(result, dict)
+                                and result.get("schema_version")
+                                == "ari.visual-review-batch/v1"
+                            ):
+                                ctx.tpl_vars["vlm_feedback"] = json.dumps(
+                                    result,
+                                    ensure_ascii=False,
+                                    sort_keys=True,
+                                )
+                            else:
+                                ctx.tpl_vars["vlm_feedback"] = _format_vlm_feedback(
+                                    result
+                                )
                             # Reset state for stages [target_idx .. _stage_idx]
                             # so they actually re-run (don't hit skip_if_exists
                             # on their own outputs).

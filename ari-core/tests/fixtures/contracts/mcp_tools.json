@@ -707,23 +707,21 @@
     "ari-skill-plot": [
       {
         "args": [
-          "experiment_context",
-          "figures",
-          "nodes_json_path",
+          "n_figures",
           "output_dir",
-          "science_data_path",
-          "vlm_captions"
+          "revision",
+          "science_data_path"
         ],
         "idiom": "fastmcp",
         "name": "generate_figures"
       },
       {
         "args": [
-          "context",
           "experiment_summary",
           "n_figures",
-          "nodes_json_path",
           "output_dir",
+          "previous_batch_path",
+          "revision",
           "science_data_path",
           "vlm_feedback"
         ],
@@ -868,16 +866,19 @@
       {
         "args": [
           "context",
-          "criteria",
-          "image_path"
+          "criteria_profile_id",
+          "figure_id",
+          "figures_manifest_path",
+          "max_output_tokens"
         ],
         "idiom": "fastmcp",
         "name": "review_figure"
       },
       {
         "args": [
+          "budget",
           "context",
-          "criteria",
+          "criteria_profile_id",
           "figures_manifest_path"
         ],
         "idiom": "fastmcp",
@@ -885,8 +886,7 @@
       },
       {
         "args": [
-          "context",
-          "latex_or_path"
+          "request"
         ],
         "idiom": "fastmcp",
         "name": "review_table"

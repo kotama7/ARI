@@ -139,6 +139,17 @@ class OutputSink:
 
         # Handle figures_manifest specially
         if stage_name == "generate_figures" or "figures" in stage_name:
+            if (
+                isinstance(result, dict)
+                and result.get("schema_version") == "ari.figure-batch/v1"
+            ):
+                log.info(
+                    "Stage [%s]: preserved canonical figure batch %s (%d manifests)",
+                    stage_name,
+                    primary_file,
+                    len(result.get("manifests") or []),
+                )
+                return
             figs = result.get("figures", {}) if isinstance(result, dict) else {}
             latex_snips = result.get("latex_snippets", {}) if isinstance(result, dict) else {}
             fig_kinds = result.get("figure_kinds", {}) if isinstance(result, dict) else {}

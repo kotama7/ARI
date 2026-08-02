@@ -1,5 +1,5 @@
 {
-  "description": "Vision-language-model review of scientific figures and tables.",
+  "description": "Artifact-bound criteria-versioned visual review of scientific figures and tables.",
   "entrypoint": "src/server.py",
   "generated_from": "skill.yaml",
   "name": "vlm-skill",
@@ -11,5 +11,5 @@
     "review_figures_all",
     "review_table"
   ],
-  "version": "0.1.0"
+  "version": "0.2.0"
 }

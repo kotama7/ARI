@@ -50,6 +50,7 @@ from ari.execution import (  # noqa: E402
     MeasurementSetV1,
     WorkspaceRefV1,
 )
+from ari.figure_contract import FigureBatchV1  # noqa: E402
 from ari.skill_lock import SkillsLockV1  # noqa: E402
 from ari.research_contract import (  # noqa: E402
     IdeaCandidateV1,
@@ -60,6 +61,7 @@ from ari.research_contract import (  # noqa: E402
     SurveySnapshotV1,
 )
 from ari.science_data_contract import ScienceDataV1  # noqa: E402
+from ari.visual_review_contract import VisualReviewBatchV1  # noqa: E402
 
 
 SKILL_SCHEMA_PATH = ARI_CORE / "ari" / "schemas" / "skill_manifest_v1.schema.json"
@@ -130,6 +132,10 @@ SEMANTIC_REVIEW_SCHEMA_PATH = (
     ARI_CORE / "ari" / "schemas" / "semantic_review_v1.schema.json"
 )
 SCIENCE_DATA_SCHEMA_PATH = ARI_CORE / "ari" / "schemas" / "science_data_v1.schema.json"
+FIGURE_BATCH_SCHEMA_PATH = ARI_CORE / "ari" / "schemas" / "figure_batch_v1.schema.json"
+VISUAL_REVIEW_BATCH_SCHEMA_PATH = (
+    ARI_CORE / "ari" / "schemas" / "visual_review_batch_v1.schema.json"
+)
 # Compatibility alias for scripts that imported the original constant.
 SCHEMA_PATH = SKILL_SCHEMA_PATH
 
@@ -277,6 +283,18 @@ def expected_outputs(repo_root: Path = REPO_ROOT) -> dict[Path, str]:
             ScienceDataV1,
             "science-data-v1",
             "ARI Science Data v1",
+        ),
+        (
+            FIGURE_BATCH_SCHEMA_PATH,
+            FigureBatchV1,
+            "figure-batch-v1",
+            "ARI Figure Batch v1",
+        ),
+        (
+            VISUAL_REVIEW_BATCH_SCHEMA_PATH,
+            VisualReviewBatchV1,
+            "visual-review-batch-v1",
+            "ARI Visual Review Batch v1",
         ),
         (
             MEMORY_BACKUP_SCHEMA_PATH,

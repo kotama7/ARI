@@ -1,5 +1,5 @@
 {
-  "description": "Deterministic and LLM-assisted scientific figure generation.",
+  "description": "Source-bound declarative scientific figure planning and fixed rendering.",
   "entrypoint": "src/server.py",
   "generated_from": "skill.yaml",
   "name": "plot-skill",
@@ -11,5 +11,5 @@
     "generate_figures",
     "generate_figures_llm"
   ],
-  "version": "0.1.1"
+  "version": "0.2.0"
 }
