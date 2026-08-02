@@ -12,6 +12,12 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/api_settings.py
     role: implementation
+  - path: ari-core/ari/migrations/checkpoint.py
+    role: implementation
+  - path: ari-core/ari/migrations/skill_manifest.py
+    role: implementation
+  - path: ari-core/tests/test_checkpoint_migration_reader.py
+    role: test
   - path: docs/reference/internal_boundaries.md
     role: doc
   - path: ari-core/ari/result.py
@@ -29,7 +35,7 @@ last_verified: 2026-08-02
 
 # C01: `ari-core` Skill control plane 実装計画
 
-> 状態: In progress（C01-01〜09完了、C01-10未完了）。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
+> 状態: Implementation complete（C01-01〜10、C01-D1〜D7完了）。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、全体cleanup時に末尾の削除要件へ従って削除する。
 
 ## 1. 責務と範囲
 
@@ -55,8 +61,9 @@ last_verified: 2026-08-02
   digest に束縛し、接続ごとの tool-bound HMAC capability で provider へ渡す。
 - memory の可変な current-node 環境変数と private set-node tool は削除済みで、
   4 parallel node の実 MCP process test が sibling isolation を固定する。
-- 未移行なのは viz source scraping、directory 暗黙登録、runtime の legacy config
-  reader である。
+- viz はcanonical manifestだけをmetadata authorityとし、production discoveryは
+  manifestのないdirectoryを登録しない。unversioned Skill metadataと旧checkpointは
+  runtimeから隔離したread-only migration readerだけが扱う。
 
 ## 3. 目標契約
 
@@ -81,13 +88,16 @@ last_verified: 2026-08-02
 | C01-07 | **完了**: run snapshotを固定 | `SKILLS.lock`、schema/provider digest、phase別active set、atomic create/verify、provider fail-closed | C01-04 |
 | C01-08 | **完了**: explicit `RunContext` / `NodeContext` をcallへ渡す | parallel-safe context、memory連携、direct-MCP proxy署名 | C01-05 |
 | C01-09 | **完了**: capability-based timeout / async handle | manifest timeout budget、immutable lifecycle refs、typed poll/result/cancel/wait | C01-05 |
-| C01-10 | conformance CIとmigration reader | manifest/tools/workflow/version check、旧config fixture | C01-02〜09 |
+| C01-10 | **完了**: conformance CIとmigration reader | manifest/tools/workflow/version check、旧config fixture | C01-02〜09 |
 
 ## 5. Compatibility と rollout
 
-- 最初は現行 `SkillConfig` から `SkillManifestV1` へ変換する compatibility adapter を置く。
-- P1では旧 `mcp.json` / `skill.yaml` を読み取り専用入力として許すが、生成した manifest diff をCIで表示する。
-- P2で canonical manifest を既定にし、旧config readerはmigration専用に隔離する。
+- 明示的なlocal development `SkillConfig` は残すが、production auto-discoveryは
+  canonical `SkillManifestV1`だけをauthorityとする。
+- 旧 `mcp.json` はcanonical manifestから生成するcompatibility出力であり、runtime
+  registration入力として読まない。
+- unversioned manifestと旧checkpoint readerは`ari.migrations`へ隔離し、read-only、
+  default-off、digest-boundで扱う。
 - `call_tool(name, args)` は内部で一意に解決できる期間だけ維持し、collision 時は明示 error と候補を返す。
 - old checkpoint readerはruntime registrationに使用せず、replay/migration pathだけに残す。
 
@@ -102,7 +112,7 @@ last_verified: 2026-08-02
 - [x] 4,000文字を超える結果がartifact化され、digestから復元できる。
 - [x] stdio server error、timeout、cancel、malformed stdoutがtyped errorになる。
 - [x] async submitがportable handleを返し、manifest capabilityだけからstatus/result/cancelを解決し、未知stateをfail closedする。
-- [ ] 現行golden checkpointを新readerで開き、paper/replay contractが維持される。
+- [x] 現行golden checkpointを新readerで開き、paper/replay contractが維持される。
 - [x] `pytest ari-core/tests -q` と全manifest contract testがgreenである。
 
 ## 7. 削除要件
@@ -115,9 +125,9 @@ last_verified: 2026-08-02
 | C01-D2 | **完了**: `_server_params()` の `{**os.environ, ...}` を削除 | child environment policy | P2 | secret non-propagation実process test、全Skillのcomplete env宣言、Claude parent-env merge proxy test |
 | C01-D3 | **完了**: `_SLOW_TOOLS` / `_VERY_SLOW_TOOLS` のtool名list | manifest timeout class / declared bounded per-call budget | P2 | timeout fixture parity、manifest coverage 100%、旧symbol reference 0 |
 | C01-D4 | **完了**: `_COW_TOOLS` と `_set_current_node` 依存 | explicit `NodeContext` | P3 | parallel memory conformance test、旧call site 0 |
-| C01-D5 | vizによる`server.py` source scraping | canonical manifest index | P3 | dashboard contract test、全package manifest移行 |
-| C01-D6 | directory存在だけでproduction Skillを暗黙登録する経路 | approved manifest / lock | P4 | clean install、explicit local-dev opt-in、run lock test |
-| C01-D7 | runtime registrationに使う旧`mcp.json`/`skill.yaml` reader | migration-only reader | P6 | deprecation期間、repo caller 0、旧checkpoint fixtureは別readerでgreen |
+| C01-D5 | **完了**: vizによる`server.py` source scraping | canonical manifest index | P3 | dashboard contract test、全package manifest移行 |
+| C01-D6 | **完了**: directory存在だけでproduction Skillを暗黙登録する経路 | approved manifest / lock | P4 | clean install、explicit local-dev opt-in、run lock test |
+| C01-D7 | **完了**: runtime registrationに使う旧`mcp.json`/`skill.yaml` reader | migration-only reader | P6 | repo caller 0、旧checkpoint fixtureは別readerでgreen、移行手順を恒久docへ記録 |
 
 削除は各行の replacement と test を同じ変更系列に含める。旧 reader は support window 中、runtime import path から隔離した migration module として保持してよい。
 

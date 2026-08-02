@@ -30,6 +30,9 @@ slurm-*.out
 # Checkpoint directories (generated at runtime)
 *_ckpt_*/
 checkpoints/
+# Versioned migration fixtures exercise legacy checkpoint readers in CI.
+!/ari-core/tests/fixtures/checkpoints/
+!/ari-core/tests/fixtures/checkpoints/**
 output*/
 results*/
 
@@ -92,6 +95,8 @@ ari-core/checkpoints/
 # ── Runtime / temp files (generated at runtime, never track) ────
 experiment.md
 ari-core/experiment.md
+# The migration contract intentionally contains historical experiment.md.
+!/ari-core/tests/fixtures/checkpoints/v0_7_golden/experiment.md
 tmp*.md
 GUI_TASK.md
 *_TASK.md

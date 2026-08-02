@@ -14,6 +14,7 @@ from ari.mcp.client import (
     ToolNameCollisionError,
     _resolve_tool_timeout,
 )
+from ari.migrations.skill_manifest import load_legacy_skill_manifest
 from ari.skill_manifest import (
     SkillManifestError,
     legacy_mcp_document,
@@ -157,9 +158,11 @@ def test_legacy_manifest_requires_explicit_opt_in(tmp_path: Path):
     )
     with pytest.raises(SkillManifestError, match="schema_version"):
         load_skill_manifest(path)
-    migrated = load_skill_manifest(path, allow_legacy=True)
+    migrated = load_legacy_skill_manifest(path)
     assert migrated.package == "ari-skill-legacy"
     assert [tool.name for tool in migrated.tools] == ["old_tool"]
+    assert migrated.enabled_by_default is False
+    assert migrated.environment_policy == "audit-pending"
 
 
 def test_discovery_uses_manifest_identity_and_skips_default_off(tmp_path: Path):
@@ -174,6 +177,14 @@ def test_discovery_uses_manifest_identity_and_skips_default_off(tmp_path: Path):
     assert skills[0].package == "ari-skill-enabled"
     assert skills[0].entrypoint == "src/server.py"
     assert skills[0].tool_timeout_classes == {"inspect": "bounded", "mutate": "slow"}
+
+
+def test_directory_without_manifest_is_not_auto_registered(tmp_path: Path):
+    package = tmp_path / "ari-skill-directory-only"
+    (package / "src").mkdir(parents=True)
+    (package / "src" / "server.py").write_text("# not registered\n", encoding="utf-8")
+
+    assert _discover_skills(tmp_path) == []
 
 
 def test_explicit_config_is_hydrated_from_manifest(tmp_path: Path):

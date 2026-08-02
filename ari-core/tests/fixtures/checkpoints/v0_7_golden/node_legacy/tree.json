@@ -1,0 +1,15 @@
+{
+  "run_id": "legacy-run-001",
+  "nodes": [
+    {
+      "id": "root",
+      "status": "success",
+      "summary": "Measured a 1.25x throughput improvement.",
+      "metrics": {
+        "throughput_gflops": 125.0,
+        "baseline_gflops": 100.0,
+        "_scientific_score": 0.88
+      }
+    }
+  ]
+}

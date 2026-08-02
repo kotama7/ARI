@@ -108,8 +108,10 @@ Each resolved tool also declares `context_requirement` as `none`, `run`, or
 context.
 `looks_like_credential_environment_name()` is the shared fail-closed classifier
 used by manifest admission and runtime environment construction.
-Legacy unversioned manifests are rejected unless a migration caller explicitly
-passes `allow_legacy=True`; admission and CI never enable that option.
+Legacy unversioned manifests are always rejected by this public runtime loader.
+Offline migration code may use the internal, read-only
+`ari.migrations.skill_manifest.load_legacy_skill_manifest()` converter; its
+output is default-off and is never admitted implicitly.
 
 ## `ari.public.call_context` and `ari.public.result`
 

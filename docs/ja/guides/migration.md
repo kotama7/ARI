@@ -2,9 +2,13 @@
 sources:
   - path: ari-core/ari/migrations/v05_to_v07
     role: implementation
+  - path: ari-core/ari/migrations/checkpoint.py
+    role: implementation
+  - path: ari-core/ari/migrations/skill_manifest.py
+    role: implementation
   - path: ari-core/ari/memory_cli.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # マイグレーションガイド
@@ -112,6 +116,23 @@ ARI のチェックポイントフォーマットは 3 回のリリースを経�
 
 - stagnation rule が初めて発火したときに `lineage_decisions.jsonl` が作成される。
 - `ari ear publish` 後に `manifest.lock` と `publish_record.json` が現れる。
+
+## Canonical Skill admission とレガシー読取
+
+production discovery が登録するのは、`SkillManifestV1` として検証できる
+`ari-skill-*/skill.yaml` だけです。directory、`server.py`、`mcp.json`、
+未versioned manifestは登録根拠になりません。custom packageは有効化前に
+canonical schemaへ変換してください。
+
+`ari.migrations`には意図的にread-onlyな互換readerを2つ残します。
+
+- `load_legacy_skill_manifest(path)` は未versioned manifestをメモリ内で変換し、
+  default-offかつenvironment audit-pendingにします。runへはadmissionしません。
+- `load_legacy_checkpoint(path)` は旧tree、paper、replay inputを正規化し、読み取った
+  全fileのSHA-256 digestを返します。checkpointへ書き込みません。
+
+変換後は `python scripts/check_skill_manifests.py` でSkill packageを検証し、paperと
+replay inputがmigration viewと一致するまで元checkpointを保存してください。
 
 ## v0.7 → v0.8 (予定)
 

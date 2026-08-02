@@ -358,61 +358,12 @@ def _validated_tokens(values: list[str], label: str) -> list[str]:
     return values
 
 
-def _legacy_to_v1(raw: dict, path: Path) -> dict:
-    """Conservatively adapt a pre-v1 ``skill.yaml`` for transition-only use."""
-
-    package = path.parent.name
-    entrypoint = raw.get("entrypoint", "src/server.py")
-    if isinstance(entrypoint, str):
-        entrypoint = {
-            "transport": "stdio",
-            "command_kind": raw.get("runtime", "python"),
-            "module": entrypoint,
-        }
-    tools = []
-    capability_prefix = package.removeprefix("ari-skill-").replace("-", ".")
-    for tool in raw.get("tools") or []:
-        if isinstance(tool, str):
-            tools.append(
-                {
-                    "name": tool,
-                    "capability_ref": f"ari.legacy.{capability_prefix}.{tool}",
-                }
-            )
-        elif isinstance(tool, dict):
-            tools.append(tool)
-    return {
-        "schema_version": 1,
-        "name": raw.get("name") or package,
-        "package": package,
-        "version": str(raw.get("version") or "0.0.0"),
-        "display_name": raw.get("display_name", ""),
-        "description": raw.get("description", ""),
-        "entrypoint": entrypoint,
-        "required_env": raw.get("required_env", raw.get("requires_env", [])) or [],
-        "optional_env": raw.get("optional_env", []) or [],
-        "tool_defaults": {
-            "phases": ["all"],
-            "side_effects": "stateful",
-            "determinism": "conditional",
-            "timeout_class": "default",
-            "timeout_budget": None,
-            "async_lifecycle": None,
-            "permissions": [],
-            "result_schema": LEGACY_MCP_RESULT_V1,
-        },
-        "tools": tools,
-    }
-
-
-def load_skill_manifest(
-    path: str | Path, *, allow_legacy: bool = False
-) -> SkillManifestV1:
+def load_skill_manifest(path: str | Path) -> SkillManifestV1:
     """Load and validate one manifest.
 
-    Legacy manifests are accepted only when a caller explicitly opts in.  CI and
-    admission paths should leave ``allow_legacy`` false so an unversioned file
-    cannot silently become a production contract.
+    This production loader accepts canonical v1 documents only. Unversioned
+    conversion is isolated under :mod:`ari.migrations.skill_manifest` and is
+    never used by discovery or runtime admission.
     """
 
     manifest_path = Path(path)
@@ -423,11 +374,9 @@ def load_skill_manifest(
     if not isinstance(raw, dict):
         raise SkillManifestError(f"{manifest_path}: manifest root must be a mapping")
     if "schema_version" not in raw:
-        if not allow_legacy:
-            raise SkillManifestError(
-                f"{manifest_path}: schema_version is required for a canonical manifest"
-            )
-        raw = _legacy_to_v1(raw, manifest_path)
+        raise SkillManifestError(
+            f"{manifest_path}: schema_version is required for a canonical manifest"
+        )
     try:
         return SkillManifestV1.model_validate(raw)
     except ValidationError as exc:

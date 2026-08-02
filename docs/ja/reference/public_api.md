@@ -154,8 +154,10 @@ validation で拒否されます。
 組み込み production Skill では
 `environment_policy=complete` が必須です。解決済みの各 tool は
 `context_requirement` を `none` / `run` / `node` で宣言し、構造化コンテキストが
-なければ dispatch は fail closed します。legacy manifest は migration 呼び出しが
-`allow_legacy=True` を明示した場合だけ読み取れ、admission / CI では許可されません。
+なければ dispatch は fail closed します。公開 runtime loader は未versionedの
+legacy manifestを常に拒否します。オフライン移行では内部のread-only
+`ari.migrations.skill_manifest.load_legacy_skill_manifest()`を利用できますが、
+変換結果はdefault-offであり、暗黙にadmissionされません。
 
 ## `ari.public.call_context` と `ari.public.result`
 

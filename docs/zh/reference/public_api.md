@@ -137,8 +137,10 @@ result schema。`TimeoutBudgetV1` 显式声明并限制调用方控制的 timeou
 semantic capability，未解析或有歧义的引用会使 manifest validation 失败。
 内置 production 技能必须使用 `environment_policy=complete`。
 每个已解析 tool 还以 `none` / `run` / `node` 声明 `context_requirement`；
-调用方未提供对应结构化上下文时，dispatch 会 fail closed。legacy manifest
-只能由显式传入 `allow_legacy=True` 的 migration 调用方读取；admission / CI 不允许。
+调用方未提供对应结构化上下文时，dispatch 会 fail closed。公开 runtime loader
+始终拒绝未版本化的 legacy manifest。离线迁移可使用内部只读转换器
+`ari.migrations.skill_manifest.load_legacy_skill_manifest()`；转换结果默认禁用，
+不会被隐式 admission。
 
 ## `ari.public.call_context` 与 `ari.public.result`
 

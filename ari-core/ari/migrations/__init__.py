@@ -1,8 +1,10 @@
-"""Migration shims for older ARI checkpoint formats (Phase 5).
+"""Read-only migration shims for older ARI formats.
 
-Sub-packages here host code that ARI keeps around purely so existing
-checkpoints created on older releases stay readable.  The plan
-(REFACTORING.md §8) is to keep new feature code free of v0.5 / v0.6
-branching by funnelling that branching through this package and
-shipping thin re-exports at the historical import paths.
+``checkpoint`` normalizes historical checkpoint paper and replay inputs while
+digesting every consumed file. ``skill_manifest`` converts unversioned package
+metadata in memory. Neither module is a runtime registration path; production
+discovery accepts canonical manifests only.
+
+The ``v05_to_v07`` package contains the older memory and node-report migration
+helpers retained for supported checkpoints.
 """
