@@ -320,9 +320,14 @@ def check_repo(repo_root: Path = REPO_ROOT) -> list[Finding]:
     findings: list[Finding] = []
     manifests = {}
     runtime_dirs = {
-        path.parent.parent
-        for path in repo_root.glob("ari-skill-*/src/server.py")
-        if path.is_file()
+        path
+        for path in repo_root.glob("ari-skill-*")
+        if path.is_dir()
+        and (
+            (path / "skill.yaml").is_file()
+            or (path / "pyproject.toml").is_file()
+            or (path / "src" / "server.py").is_file()
+        )
     }
 
     for skill_dir in sorted(runtime_dirs):
@@ -350,7 +355,7 @@ def check_repo(repo_root: Path = REPO_ROOT) -> list[Finding]:
                 )
             )
         environment_reads, dynamic_environment_reads = _scan_environment_reads(
-            skill_dir / "src"
+            entrypoint.parent
         )
         declared_environment = set(manifest.environment_names())
         implicit_environment = set(SAFE_INHERITED_ENV_NAMES) | set(
@@ -443,17 +448,6 @@ def check_repo(repo_root: Path = REPO_ROOT) -> list[Finding]:
                         "mcp.json must be regenerated from skill.yaml",
                     )
                 )
-
-    manifest_paths = set(repo_root.glob("ari-skill-*/skill.yaml"))
-    orphan_paths = manifest_paths - {path / "skill.yaml" for path in runtime_dirs}
-    for path in sorted(orphan_paths):
-        findings.append(
-            Finding(
-                "entrypoint-package-missing",
-                _relative(path, repo_root),
-                "no src/server.py package inventory entry",
-            )
-        )
 
     by_name: dict[str, list[str]] = defaultdict(list)
     default_tool_owners: dict[str, list[str]] = defaultdict(list)

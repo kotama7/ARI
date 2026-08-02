@@ -8,7 +8,7 @@ environment_policy: complete
 entrypoint:
   transport: stdio
   command_kind: python
-  module: src/server.py
+  module: ari_skill_hpc/server.py
 required_env: []
 optional_env:
   - ARI_CHECKPOINT_DIR

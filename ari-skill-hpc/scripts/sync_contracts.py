@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.contracts import (  # noqa: E402
+from ari_skill_hpc.contracts import (  # noqa: E402
     JobHandleV1,
     JobRequestV1,
     JobResultV1,

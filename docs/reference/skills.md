@@ -16,7 +16,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-  - path: ari-skill-hpc/src/server.py
+  - path: ari-skill-hpc/ari_skill_hpc/server.py
     role: implementation
   - path: ari-skill-hpc/mcp.json
     role: config

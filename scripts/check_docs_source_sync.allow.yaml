@@ -217,7 +217,7 @@ known-offenders:
     source: ari-core/ari/pipeline/orchestrator.py
     note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
   - doc: docs/reference/mcp_tools.md
-    source: ari-skill-hpc/src/server.py
+    source: ari-skill-hpc/ari_skill_hpc/server.py
     note: "baseline 2026-07-02: source 2026-06-11 > last_verified 2026-06-10"
   - doc: docs/reference/public_api.md
     source: ari-core/ari/public
@@ -244,7 +244,7 @@ known-offenders:
     source: ari-core/ari/viz/routes.py
     note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
   - doc: docs/reference/skills.md
-    source: ari-skill-hpc/src/server.py
+    source: ari-skill-hpc/ari_skill_hpc/server.py
     note: "baseline 2026-07-02: source 2026-06-11 > last_verified 2026-06-10"
   - doc: docs/getting-started/faq.md
     source: ari-core/config/default.yaml

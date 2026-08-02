@@ -1,4 +1,4 @@
-"""MCP server for typed scheduler and container job lifecycles."""
+"""MCP server for public typed scheduler and container job lifecycles."""
 
 from __future__ import annotations
 
@@ -10,9 +10,9 @@ from typing import Any
 from mcp.server import Server
 from mcp.types import TextContent, Tool
 
-from src import singularity, slurm
-from src.contracts import JobSubmitArgumentsV1
-from src.scheduler import (
+from ari_skill_hpc import singularity, slurm
+from ari_skill_hpc.contracts import JobSubmitArgumentsV1
+from ari_skill_hpc.scheduler import (
     RemoteConfig,
     SchedulerError,
     SchedulerProtocolError,
@@ -20,7 +20,7 @@ from src.scheduler import (
     SchedulerValidationError,
     SubmissionUncertainError,
 )
-from src.slurm import SlurmClient
+from ari_skill_hpc.slurm import SlurmClient
 
 
 server = Server("hpc-skill")
@@ -379,7 +379,13 @@ async def main() -> None:
         )
 
 
-if __name__ == "__main__":
+def cli() -> None:
+    """Installed console entry point."""
+
     import asyncio
 
     asyncio.run(main())
+
+
+if __name__ == "__main__":
+    cli()

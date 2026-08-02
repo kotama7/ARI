@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from src import singularity
-from src.scheduler import CommandResult, SlurmScheduler, SubmissionLedger
-from src.slurm import SlurmClient
+from ari_skill_hpc import singularity
+from ari_skill_hpc.scheduler import CommandResult, SlurmScheduler, SubmissionLedger
+from ari_skill_hpc.slurm import SlurmClient
 
 
 class FakeRunner:

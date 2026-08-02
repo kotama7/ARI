@@ -146,18 +146,34 @@
     ],
     "ari-skill-hpc": [
       {
-        "args": [
-          "job_id"
-        ],
+        "args": [],
+        "idiom": "lowlevel",
+        "name": "container_submit"
+      },
+      {
+        "args": [],
         "idiom": "lowlevel",
         "name": "job_cancel"
       },
       {
-        "args": [
-          "job_id"
-        ],
+        "args": [],
+        "idiom": "lowlevel",
+        "name": "job_logs"
+      },
+      {
+        "args": [],
+        "idiom": "lowlevel",
+        "name": "job_result"
+      },
+      {
+        "args": [],
         "idiom": "lowlevel",
         "name": "job_status"
+      },
+      {
+        "args": [],
+        "idiom": "lowlevel",
+        "name": "job_submit"
       },
       {
         "args": [
@@ -197,40 +213,17 @@
         "name": "singularity_pull"
       },
       {
-        "args": [
-          "command",
-          "image_path",
-          "nodes",
-          "partition",
-          "walltime",
-          "work_dir"
-        ],
+        "args": [],
         "idiom": "lowlevel",
         "name": "singularity_run"
       },
       {
-        "args": [
-          "bind_paths",
-          "command",
-          "cpus_per_task",
-          "gres",
-          "image_path",
-          "partition",
-          "walltime",
-          "work_dir"
-        ],
+        "args": [],
         "idiom": "lowlevel",
         "name": "singularity_run_gpu"
       },
       {
-        "args": [
-          "job_name",
-          "nodes",
-          "partition",
-          "script",
-          "walltime",
-          "work_dir"
-        ],
+        "args": [],
         "idiom": "lowlevel",
         "name": "slurm_submit"
       }

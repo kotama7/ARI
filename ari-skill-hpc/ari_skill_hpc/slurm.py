@@ -1,6 +1,7 @@
 """SLURM compatibility facade and compute-platform capability probe.
 
-New consumers should use :mod:`src.contracts` and :class:`src.scheduler.SlurmScheduler`.
+New consumers should use :mod:`ari_skill_hpc.contracts` and
+:class:`ari_skill_hpc.scheduler.SlurmScheduler`.
 The ``SlurmClient`` facade preserves the existing MCP aliases while routing every
 scheduler operation through the same shell-free backend.
 """
@@ -17,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from src.scheduler import (
+from ari_skill_hpc.scheduler import (
     LocalCommandRunner,
     RemoteCommandRunner,
     RemoteConfig,
@@ -64,7 +65,7 @@ class SlurmClient:
                 runner=runner, shared_filesystem=shared_filesystem
             )
         else:
-            from src.scheduler import SubmissionLedger
+            from ari_skill_hpc.scheduler import SubmissionLedger
 
             self._scheduler = SlurmScheduler(
                 runner=runner,

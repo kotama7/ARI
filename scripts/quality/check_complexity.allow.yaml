@@ -116,9 +116,6 @@ loc:
 - path: ari-skill-coding/src/server.py
   loc: 644
   tier: warn
-- path: ari-skill-hpc/src/slurm.py
-  loc: 527
-  tier: warn
 - path: ari-skill-idea/src/server.py
   loc: 775
   tier: warn
@@ -309,10 +306,6 @@ complexity:
   function: _tool_make_metric_spec
   line: 546
   complexity: 27
-- path: ari-skill-hpc/src/slurm.py
-  function: submit
-  line: 91
-  complexity: 24
 - path: ari-skill-idea/src/server.py
   function: generate_ideas
   line: 553

@@ -1,12 +1,8 @@
 """Per-skill test bootstrap: pin this skill's root to ``sys.path[0]`` so
-tests under this directory can ``from src.X import …`` (or ``from server
-import …``) without picking up a sibling skill's ``src``.
+tests import the installed-shape ``ari_skill_hpc`` package from this checkout.
 
 The ``remove + insert(0)`` pattern matters when running paths sequentially
-in a single ``pytest`` process (e.g. via ``scripts/run_all_tests.sh`` or
-ad-hoc multi-path invocations): a previous skill's conftest may have
-already pinned its own root, and a plain ``if not in: insert`` would
-leave that earlier path ahead of ours.
+in a single ``pytest`` process (e.g. via ``scripts/run_all_tests.sh``).
 """
 
 from __future__ import annotations
