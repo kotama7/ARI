@@ -242,6 +242,7 @@
           "papers",
           "seed",
           "survey_snapshot",
+          "survey_snapshot_ref",
           "topic"
         ],
         "idiom": "fastmcp",
@@ -900,7 +901,10 @@
       },
       {
         "args": [
+          "max_bytes",
           "max_chars",
+          "mode",
+          "snapshot_ref",
           "url"
         ],
         "idiom": "fastmcp",
@@ -922,7 +926,18 @@
       {
         "args": [
           "max_results",
-          "query"
+          "records",
+          "research_question"
+        ],
+        "idiom": "fastmcp",
+        "name": "rerank_retrieval_records"
+      },
+      {
+        "args": [
+          "max_results",
+          "mode",
+          "query",
+          "snapshot_ref"
         ],
         "idiom": "fastmcp",
         "name": "search_arxiv"
@@ -930,7 +945,10 @@
       {
         "args": [
           "max_results",
-          "query"
+          "mode",
+          "provider",
+          "query",
+          "snapshot_ref"
         ],
         "idiom": "fastmcp",
         "name": "search_papers"
@@ -939,7 +957,9 @@
         "args": [
           "extra_queries",
           "limit",
-          "query"
+          "mode",
+          "query",
+          "snapshot_ref"
         ],
         "idiom": "fastmcp",
         "name": "search_semantic_scholar"
@@ -953,8 +973,23 @@
       },
       {
         "args": [
+          "direction",
+          "max_depth",
+          "max_nodes",
+          "mode",
+          "request_budget",
+          "seed_ids",
+          "snapshot_ref"
+        ],
+        "idiom": "fastmcp",
+        "name": "walk_citations"
+      },
+      {
+        "args": [
+          "mode",
           "n",
-          "query"
+          "query",
+          "snapshot_ref"
         ],
         "idiom": "fastmcp",
         "name": "web_search"

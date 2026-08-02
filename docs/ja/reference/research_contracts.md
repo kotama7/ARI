@@ -1,3 +1,14 @@
+---
+sources:
+  - path: ari-core/ari/research_contract.py
+    role: implementation
+  - path: ari-skill-idea/src/contracts.py
+    role: implementation
+  - path: ari-skill-evaluator/src/server.py
+    role: implementation
+last_verified: 2026-08-02
+---
+
 # 研究契約
 
 ARIは文献取得から実験実行までの科学的判断を3つのimmutable recordとして固定します。
@@ -20,3 +31,6 @@ top-levelのflatな`ideas`や`primary_metric`は旧checkpoint用projectionです
 recordを使います。新形式を宣言しながら採用contractがないdocumentはfail-closedとなり、旧prose
 推論へdowngradeできません。schemaは`ari-core/ari/schemas/`、公開APIは
 `ari.public.research_contract`です。
+
+provider cassette、検証済みsnapshot ref、URL policy、alias合成は
+[検索契約](retrieval_contract.md)で定義します。

@@ -1,7 +1,7 @@
 schema_version: 1
 name: paper-skill
 package: ari-skill-paper
-version: 0.1.1
+version: 0.2.0
 display_name: Write an evidence-grounded paper
 description: LaTeX paper generation, review, claim linking, revision, and compilation.
 environment_policy: complete

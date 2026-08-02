@@ -1,3 +1,14 @@
+---
+sources:
+  - path: ari-core/ari/research_contract.py
+    role: implementation
+  - path: ari-skill-idea/src/contracts.py
+    role: implementation
+  - path: ari-skill-evaluator/src/server.py
+    role: implementation
+last_verified: 2026-08-02
+---
+
 # 研究契约
 
 ARI把从文献检索到实验执行的科学决策冻结为三个immutable record：
@@ -19,3 +30,6 @@ evaluator逐字使用`ResearchContractV1`，并把同一个`research_contract_di
 顶层flat `ideas`、`primary_metric`等字段只是旧checkpoint投影。新consumer必须使用typed
 record。声明新格式却没有被接纳contract的document会fail-closed，不能降级到旧prose推断。
 schema位于`ari-core/ari/schemas/`，稳定公开API是`ari.public.research_contract`。
+
+provider cassette、已验证snapshot ref、URL policy与alias合成规则见
+[检索契约](retrieval_contract.md)。

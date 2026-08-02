@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime, timezone
 
 import pytest
@@ -12,10 +14,12 @@ from ari.public.research_contract import (
     IdeaGenerationProvenanceV1,
     IdeaSetV1,
     MetricContractV1,
+    ResearchArtifactRefV1,
     ResearchContractError,
     RetrievalRecordV1,
     SurveySnapshotV1,
     canonical_digest,
+    load_survey_snapshot_ref,
     metric_gate_projection,
     mint_research_contract,
     parse_research_contract,
@@ -168,3 +172,33 @@ def test_unknown_citation_is_rejected_at_handoff():
             idea_set=bad_set,
             contract=mint_research_contract(bad_set),
         )
+
+
+def test_snapshot_reference_verifies_all_artifacts(tmp_path):
+    snapshot, *_ = _handoff()
+    cassette = b'{"provider":"semantic-scholar"}\n'
+    cassette_path = tmp_path / "retrieval_cassettes" / "fixture.json"
+    cassette_path.parent.mkdir()
+    cassette_path.write_bytes(cassette)
+    artifact = ResearchArtifactRefV1(
+        logical_name="retrieval_cassettes/fixture.json",
+        digest="sha256:" + hashlib.sha256(cassette).hexdigest(),
+        media_type="application/json",
+        role="raw-provider-cassette",
+    )
+    recorded = SurveySnapshotV1.create(
+        **{
+            **snapshot.model_dump(mode="python", exclude={"snapshot_digest", "artifacts"}),
+            "artifacts": (artifact,),
+        }
+    )
+    snapshot_path = tmp_path / "retrieval_snapshots" / "fixture.json"
+    snapshot_path.parent.mkdir()
+    snapshot_path.write_text(json.dumps(recorded.model_dump(mode="json")))
+
+    assert load_survey_snapshot_ref(
+        str(tmp_path), "retrieval_snapshots/fixture.json"
+    ) == recorded
+    cassette_path.write_bytes(cassette + b" ")
+    with pytest.raises(ResearchContractError, match="artifact digest mismatch"):
+        load_survey_snapshot_ref(str(tmp_path), "retrieval_snapshots/fixture.json")

@@ -236,11 +236,19 @@ ARI 附带 15 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
-| `web_search` | DuckDuckGo（无需 API 密钥） | ✗ |
-| `fetch_url` | URL → 可读文本 | ✗ |
-| `search_arxiv` | arXiv API | ✗ |
-| `search_semantic_scholar` | Semantic Scholar API | ✗ |
-| `collect_references_iterative` | 从种子论文遍历引用图 | ✗ |
+| `search_papers` | 单一固定provider，类型化record/live/replay结果 | ✗ |
+| `web_search` | snapshot契约下的DuckDuckGo检索 | ✗ |
+| `fetch_url` | 受SSRF控制的URL → 不可信文本 | ✗ |
+| `walk_citations` | 带partial provenance的有界引用图 | ✗ |
+| `rerank_retrieval_records` | 显式typed-record reranker | ✓ |
+| `search_arxiv` | 已弃用arXiv别名 | ✗ |
+| `search_semantic_scholar` | 已弃用Semantic Scholar别名 | ✗ |
+| `collect_references_iterative` | 已弃用随机检索/选择循环 | ✓ |
+| `set_retrieval_backend` | 已弃用固定provider选择器 | ✗ |
+| `list_uploaded_files` | 列出checkpoint upload | ✗ |
+| `read_uploaded_file` | 带traversal/output限制的upload读取 | ✗ |
+
+参见[检索契约与network policy](retrieval_contract.md)。
 
 ## 另请参阅
 

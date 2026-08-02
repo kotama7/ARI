@@ -639,6 +639,7 @@ async def generate_ideas(
     max_discussion_rounds: int = 2,
     max_recursion_depth: int = 0,
     survey_snapshot: dict | None = None,
+    survey_snapshot_ref: str = "",
     seed: int | None = None,
     generation_mode: str = "auto",
 ) -> dict:
@@ -659,6 +660,7 @@ async def generate_ideas(
         max_discussion_rounds: Discussion iterations (0 = single-pass)
         max_recursion_depth:  Reserved for recursive orchestration (unused)
         survey_snapshot:      Exact SurveySnapshotV1 returned by survey()
+        survey_snapshot_ref:  Checkpoint-relative verified snapshot reference
         seed:                 Optional provider seed recorded in the generation lock
         generation_mode:      auto, default, or virsci (explicit virsci fails closed)
 
@@ -693,7 +695,18 @@ async def generate_ideas(
     # can provide the typed survey object directly; legacy inline lists remain
     # supported but are labelled as such. Empty input triggers one pinned S2
     # record operation, never a provider fallback.
-    if survey_snapshot is not None:
+    resolved_snapshot_ref: str | None = None
+    if survey_snapshot_ref:
+        if survey_snapshot is not None or papers:
+            raise ValueError(
+                "survey_snapshot_ref cannot be combined with inline literature"
+            )
+        if not checkpoint:
+            raise ValueError("survey_snapshot_ref requires ARI_CHECKPOINT_DIR")
+        snapshot = load_survey_snapshot(checkpoint, survey_snapshot_ref)
+        resolved_snapshot_ref = survey_snapshot_ref
+        all_papers = paper_projection(snapshot)
+    elif survey_snapshot is not None:
         snapshot = parse_survey_snapshot(survey_snapshot)
         all_papers = paper_projection(snapshot)
     elif papers:
@@ -970,6 +983,7 @@ async def generate_ideas(
         "contract_status": "admitted" if research_contract else "rejected",
         "survey_snapshot": snapshot.model_dump(mode="json"),
         "survey_snapshot_digest": snapshot.snapshot_digest,
+        "survey_snapshot_ref": resolved_snapshot_ref,
         "idea_set": idea_set.model_dump(mode="json"),
         "idea_set_digest": idea_set.idea_set_digest,
         "research_contract": (

@@ -242,7 +242,7 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
     输出：science_data.json  { configurations, experiment_context, per_key_summary }
 
   阶段 2：search_related_work  (ari-skill-web)  [与阶段 1 并行]
-    LLM 生成的关键词 → 可插拔检索后端 (Semantic Scholar / AlphaXiv / both)
+    关键词 → 一个固定provider (Semantic Scholar / arXiv / AlphaXiv)
     输出：related_refs.json
 
   阶段 3：generate_figures  (ari-skill-plot)  [在阶段 1 之后]
@@ -516,7 +516,7 @@ API 密钥 **绝不** 存储在 `settings.json` 中。它们从 `.env` 文件
 | `ari-skill-idea` | `survey`、`generate_ideas` | 文献搜索（Semantic Scholar）+ VirSci 多智能体假设生成 | ✓ |
 | `ari-skill-evaluator` | `make_metric_spec` | 从实验文件提取指标规格 | △ |
 | `ari-skill-transform` | `nodes_to_science_data`、`generate_ear`、`curate_ear`、`publish_ear` | BFTS 树 → 科学数据 + EAR + curate/publish 生命周期 (v0.7.0) | ✓ |
-| `ari-skill-web` | `web_search`、`fetch_url`、`search_arxiv`、`search_semantic_scholar`、`collect_references_iterative` | 网络搜索、arXiv、Semantic Scholar、迭代式引用收集 | △ |
+| `ari-skill-web` | `search_papers`、`web_search`、`fetch_url`、`walk_citations`、`rerank_retrieval_records`及兼容alias | 类型化record/replay、URL安全、source provenance、有界引用图 | △ |
 | `ari-skill-plot` | `generate_figures`、`generate_figures_llm` | 确定性 + LLM 图表生成（按图通过 `kind` 字段选择 matplotlib 绘图或 SVG 图） | ✓ |
 | `ari-skill-paper` | `list_venues`、`get_template`、`generate_section`、`compile_paper`、`check_format`、`review_section`、`revise_section`、`write_paper_iterative`、`review_compiled_paper`、`list_rubrics`、`inject_code_availability`、`merge_reviews` | LaTeX 论文撰写、编译、基于评审规范的同行评审 (兼容 AI Scientist v1/v2)。v0.7.0：`inject_code_availability` 注入 `\codeavailability{}` / `\codedigest{}` / `\coderef{}` 宏；`merge_reviews` 事后合并文本评审与 VLM 评审 JSON。 | ✓ |
 | `ari-skill-paper-re` | `fetch_code_bundle`、`run_reproduce`、`grade_with_simplejudge` | PaperBench 形式可复现性 (v0.7.0)：通过 `ari.clone` 预填沙箱、Phase 1 沙箱 runner、Phase 2 PaperBench SimpleJudge 评分。PaperBench 同捆于 `vendor/paperbench`。 | ✓ |

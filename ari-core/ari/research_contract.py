@@ -473,6 +473,46 @@ def parse_survey_snapshot(document: dict[str, Any]) -> SurveySnapshotV1:
         raise ResearchContractError(f"invalid survey snapshot: {exc}") from exc
 
 
+def load_survey_snapshot_ref(
+    checkpoint_dir: str,
+    logical_name: str,
+    *,
+    max_bytes: int = 128 * 1024 * 1024,
+) -> SurveySnapshotV1:
+    """Load a snapshot through a closed workspace and verify every artifact.
+
+    This is the common hand-off used by retrieval, idea, and paper Skills.  A
+    digest-valid snapshot whose referenced cassette or raw payload was changed
+    is still rejected before scientific consumption.
+    """
+
+    from pathlib import Path
+
+    from ari.execution import WorkspaceRefV1
+
+    if not checkpoint_dir:
+        raise ResearchContractError("snapshot loading requires a checkpoint root")
+    if not logical_name:
+        raise ResearchContractError("snapshot loading requires a logical name")
+    workspace = WorkspaceRefV1(root=str(Path(checkpoint_dir).expanduser().resolve()))
+    payload = workspace.read_bytes(logical_name, max_bytes=max_bytes)
+    try:
+        document = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise ResearchContractError("survey snapshot is not valid JSON") from exc
+    snapshot = parse_survey_snapshot(document)
+    for artifact in snapshot.artifacts:
+        artifact_payload = workspace.read_bytes(
+            artifact.logical_name, max_bytes=max_bytes
+        )
+        digest = "sha256:" + hashlib.sha256(artifact_payload).hexdigest()
+        if digest != artifact.digest:
+            raise ResearchContractError(
+                f"survey artifact digest mismatch: {artifact.logical_name}"
+            )
+    return snapshot
+
+
 def parse_idea_set(document: dict[str, Any]) -> IdeaSetV1:
     try:
         return IdeaSetV1.model_validate(document)
@@ -562,6 +602,7 @@ __all__ = [
     "RetrievalRecordV1",
     "SurveySnapshotV1",
     "canonical_digest",
+    "load_survey_snapshot_ref",
     "metric_gate_projection",
     "mint_research_contract",
     "parse_idea_set",

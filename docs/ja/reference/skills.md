@@ -657,42 +657,33 @@ ARI の監査ログ 2 つは `<checkpoint>/` 直下（`ear/` の外）に置か�
 
 ## ari-skill-web
 
-検索バックエンドが切替可能な Web 検索と学術文献の取得。**LLM: Partial**（`collect_references_iterative` のみ LLM を使用）。
+provenanceを保持するWeb・学術文献取得。標準取得pathは **LLM: No**。独立rerankerとlegacy iterative collectorのみstochasticです。
 
 ### ツール
 
-#### `web_search(query, n=5)`
+#### `search_papers(query, max_results=10, provider=null, mode="record", snapshot_ref="")`
 
-DuckDuckGo Web 検索。API キー不要。決定論的。
+`semantic-scholar`、`arxiv`、`alphaxiv` のうち一つを固定して検索し、`RetrievalRecordV1`、digest-bound snapshot、record時のcontent-addressed `snapshot_ref`を返します。outage時のfallbackと部分成功する`both` modeはありません。
 
-#### `fetch_url(url, max_chars=8000)`
+#### `web_search(query, n=5, mode="record", snapshot_ref="")`
 
-BeautifulSoup 経由で URL からテキストを取得・抽出します。決定論的。
+同じlive/record/replay契約によるDuckDuckGo検索です。
 
-#### `search_arxiv(query, max_results=5)`
+#### `fetch_url(url, max_chars=8000, mode="record", snapshot_ref="", max_bytes=2097152)`
 
-arXiv 論文検索。決定論的。
+pinned-IP SSRF防御、redirect再検証、HTTPS downgrade拒否、size/type上限を通してuntrusted textを取得します。
 
-#### `search_semantic_scholar(query, limit=8, extra_queries=None)`
+#### `walk_citations(seed_ids, direction="references", max_depth=2, max_nodes=50, request_budget=20, mode="record", snapshot_ref="")`
 
-Semantic Scholar API（arXiv へのフォールバック付き）。決定論的。
+cycle detectionとdepth/node/request budgetを持つbounded citation traversalです。
 
-#### `search_papers(query, max_results=10)`
+#### `rerank_retrieval_records(research_question, records, max_results=10)`
 
-設定された検索バックエンド（`ARI_RETRIEVAL_BACKEND`）にディスパッチします:
-- `"semantic_scholar"`（デフォルト）— Semantic Scholar API
-- `"alphaxiv"` — HTTP 経由の MCP JSON-RPC で AlphaXiv
-- `"both"` — 並列実行＋重複排除
+明示的なoptional LLM rerankerです。model/API identity/temperatureとprompt/input/output digestを返します。
 
-#### `set_retrieval_backend(backend)`
+#### 互換tool
 
-実行時に検索バックエンドを動的に切り替えます。有効値: `"semantic_scholar"`、`"alphaxiv"`、`"both"`。
-
-#### `collect_references_iterative(experiment_summary, keywords, max_rounds=20, min_papers=10)`
-
-AI Scientist v2 スタイルの反復的引用収集。LLM が検索クエリを生成し、複数ラウンドにわたって関連論文を選択します。
-
-モデル: `ARI_LLM_MODEL` env > `LLM_MODEL` env > `ollama_chat/qwen3:32b`。
+`search_arxiv`、`search_semantic_scholar`、`set_retrieval_backend`、`collect_references_iterative`はP6のdeprecation window中のみ保持します。標準paper pipelineは`search_papers`を使用します。
 
 #### `list_uploaded_files()`
 
@@ -701,6 +692,8 @@ AI Scientist v2 スタイルの反復的引用収集。LLM が検索クエリを
 #### `read_uploaded_file(filename, max_chars=50000)`
 
 アップロードファイルからテキストを読み取ります（バイナリ検出付き）。決定論的。
+
+wire/security仕様は[検索契約](retrieval_contract.md)を参照してください。
 
 ---
 

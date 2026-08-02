@@ -10,6 +10,9 @@ from pathlib import Path
 from . import state as _st
 
 log = logging.getLogger(__name__)
+_PINNED_RETRIEVAL_BACKENDS = frozenset(
+    {"semantic_scholar", "arxiv", "alphaxiv"}
+)
 
 
 def _api_get_env_keys() -> dict:
@@ -177,6 +180,16 @@ def _api_get_settings() -> dict:
 
 def _api_save_settings(body: bytes) -> dict:
     data = json.loads(body)
+    retrieval_backend = data.get("retrieval_backend")
+    if (
+        retrieval_backend is not None
+        and retrieval_backend not in _PINNED_RETRIEVAL_BACKENDS
+    ):
+        return {
+            "ok": False,
+            "error": "retrieval_backend must select one pinned provider",
+            "_status": 400,
+        }
     # Extract API key — write to .env instead of settings.json
     _raw_key = data.pop("api_key", "") or data.pop("llm_api_key", "") or ""
     # Also remove from the dict so it's never persisted in settings.json

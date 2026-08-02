@@ -11,14 +11,14 @@ import logging
 import litellm
 from mcp.server.fastmcp import FastMCP
 
+from ari.public.research_contract import load_survey_snapshot_ref
+
 # Wire cost tracking for LLM calls made inside this skill subprocess.
 # ari-core is injected onto PYTHONPATH by ari.mcp.client, so this import
 # succeeds under ARI; optional for standalone skill testing.
 try:
-    try:
-        from ari.public import cost_tracker as _ari_cost_tracker  # type: ignore
-    except ImportError:
-        from ari import cost_tracker as _ari_cost_tracker  # type: ignore
+    from ari.public import cost_tracker as _ari_cost_tracker  # type: ignore
+
     _ari_cost_tracker.bootstrap_skill("paper")
 except Exception:
     pass
@@ -51,6 +51,61 @@ except ImportError:  # running from within src/
     from rubric import RubricError, list_available_rubrics, load_rubric  # type: ignore
 
 log = logging.getLogger(__name__)
+
+
+def _resolve_retrieval_refs(refs_json):
+    """Resolve a recorded retrieval result to its verified compact snapshot."""
+
+    if not refs_json:
+        return {}
+    data = json.loads(refs_json) if isinstance(refs_json, str) else refs_json
+    if not isinstance(data, dict):
+        raise ValueError("reference input must be a JSON object")
+    snapshot_ref = str(data.get("snapshot_ref") or "").strip()
+    if not snapshot_ref:
+        if data.get("schema_version") == "ari.retrieval-result/v1":
+            raise ValueError(
+                "paper generation requires a recorded retrieval snapshot_ref"
+            )
+        return data
+    checkpoint = os.environ.get("ARI_CHECKPOINT_DIR", "").strip()
+    if not checkpoint:
+        raise ValueError("snapshot_ref requires ARI_CHECKPOINT_DIR")
+    snapshot = load_survey_snapshot_ref(checkpoint, snapshot_ref)
+    advertised = data.get("survey_snapshot_digest")
+    if advertised is not None and advertised != snapshot.snapshot_digest:
+        raise ValueError("advertised survey snapshot digest does not match reference")
+    papers = []
+    for record in snapshot.records:
+        arxiv_id = next(
+            (
+                alias.removeprefix("arxiv:")
+                for alias in (record.canonical_id, *record.aliases)
+                if alias.startswith("arxiv:")
+            ),
+            "",
+        )
+        papers.append(
+            {
+                "title": record.title,
+                "authors": list(record.authors),
+                "year": str(record.year or ""),
+                "published": str(record.year or ""),
+                "abstract": record.abstract,
+                "url": record.source_url or "",
+                "arxivId": arxiv_id,
+                "canonical_id": record.canonical_id,
+                "payload_digest": record.payload_digest,
+            }
+        )
+    return {
+        "schema_version": "ari.paper-references/v1",
+        "snapshot_ref": snapshot_ref,
+        "survey_snapshot_digest": snapshot.snapshot_digest,
+        "provider": snapshot.provider,
+        "query": snapshot.query,
+        "papers": papers,
+    }
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 
@@ -316,6 +371,7 @@ async def generate_section(
         raise ValueError(
             f"Unknown section '{section}'. Valid: {list(SECTION_PROMPTS.keys())}"
         )
+    refs_json = _resolve_retrieval_refs(refs_json)
 
     venue_info = next((v for v in VENUES if v["id"] == venue), None)
     if venue_info is None:
@@ -355,32 +411,24 @@ async def generate_section(
         # Build cite key list hint for the LLM
         _cite_hint = ""
         if refs_json:
-            try:
-                import json as _jref
-                _rdata = _jref.loads(refs_json) if isinstance(refs_json, str) else refs_json
-                _papers = _rdata.get("papers", []) if isinstance(_rdata, dict) else []
-                if _papers:
-                    _keys = []
-                    for _p in _papers[:15]:
-                        _k = _p.get("cite_key") or _p.get("arxivId","").replace("/","").replace(".","")
-                        _t = _p.get("title","")[:60]
-                        if _k:
-                            _keys.append("  " + r"\cite{" + _k + "}  % " + _t)
-                    if _keys:
-                        _cite_hint = (
-                            "\n\n══ CITATION RULES (STRICT) ══\n"
-                            "The following is the COMPLETE list of available cite keys.\n"
-                            "RULES:\n"
-                            "1. Use ONLY these exact keys in \\cite{{}} commands.\n"
-                            "2. NEVER invent, guess, or modify a cite key.\n"
-                            "3. NEVER write \\cite{{key}}, \\cite{{author2024}}, or any key not in this list.\n"
-                            "4. If you cannot find a matching key for a claim, omit the citation entirely.\n"
-                            "AVAILABLE KEYS:\n"
-                            + "\n".join(_keys)
-                            + "\n══ END CITATION RULES ══"
-                        )
-            except Exception:
-                pass
+            _, _bib_keys = _build_bib_content(refs_json)
+            _keys = [
+                "  " + r"\cite{" + key + "}  % " + title[:60]
+                for key, title in _bib_keys
+            ]
+            if _keys:
+                _cite_hint = (
+                    "\n\n══ CITATION RULES (STRICT) ══\n"
+                    "The following is the COMPLETE list of available cite keys.\n"
+                    "RULES:\n"
+                    "1. Use ONLY these exact keys in \\cite{{}} commands.\n"
+                    "2. NEVER invent, guess, or modify a cite key.\n"
+                    "3. NEVER write \\cite{{key}}, \\cite{{author2024}}, or any key not in this list.\n"
+                    "4. If you cannot find a matching key for a claim, omit the citation entirely.\n"
+                    "AVAILABLE KEYS:\n"
+                    + "\n".join(_keys)
+                    + "\n══ END CITATION RULES ══"
+                )
         # Venue-conditioned author guidance — mirrors the peer-review
         # system_hint injection in review_engine.py:80 but for the author
         # side. Loads the venue's reviewer_rubrics YAML and injects
@@ -704,7 +752,7 @@ def _make_cite_key(paper: dict, seen: dict) -> str:
     import re as _re
     authors = paper.get("authors", [])
     lastname = _re.sub(r"[^a-z]", "", authors[0].split()[-1].lower()) if authors else "anon"
-    year = (paper.get("published", "2024") or "2024")[:4]
+    year = str(paper.get("year") or paper.get("published") or "2024")[:4]
     words = paper.get("title", "").split()
     kw = _re.sub(r"[^a-z]", "", words[0].lower()) if words else "paper"
     base = f"{lastname}{year}{kw}"[:18]
@@ -748,14 +796,11 @@ def _build_bib_content(refs_json: str) -> tuple:
     Falls back to synthesized BibTeX from arXiv metadata.
     Returns (bib_content: str, key_list: list of (key, title) tuples).
     """
-    import re as _re_bib, json as _json
+    import re as _re_bib
     if not refs_json:
         return "", []
-    try:
-        refs_data = _json.loads(refs_json) if isinstance(refs_json, str) else refs_json
-        papers = refs_data.get("papers", [])
-    except Exception:
-        return "", []
+    refs_data = _resolve_retrieval_refs(refs_json)
+    papers = refs_data.get("papers", [])
     entries, key_list, seen = [], [], {}
     for p in papers[:15]:
         real_bib = p.get("bibtex", "")
@@ -779,7 +824,7 @@ def _build_bib_content(refs_json: str) -> tuple:
             key = _make_cite_key(p, seen)
             seen[key] = True
             authors = " and ".join(p.get("authors", [])[:4]) or "Unknown"
-            year = (p.get("published", "2024") or "2024")[:4]
+            year = str(p.get("year") or p.get("published") or "2024")[:4]
             note = (p.get("abstract", "")[:120]
                     .replace("{", "").replace("}", "").replace("\n", " "))
             entries.append(_escape_bibtex_field_values(
@@ -1118,6 +1163,7 @@ async def write_paper_iterative(
     _tmpdir = ""
     try:
         import json
+        refs_json = _resolve_retrieval_refs(refs_json)
         # Accept context as alias for experiment_summary (pipeline.py compat)
         if not experiment_summary and context:
             experiment_summary = context

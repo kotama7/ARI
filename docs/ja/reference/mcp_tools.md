@@ -266,11 +266,19 @@ source syncと科学的制約は [tool_registry.md](tool_registry.md) を参照�
 
 | ツール | 用途 | LLM |
 |---|---|:---:|
-| `web_search` | DuckDuckGo（API キー不要） | ✗ |
-| `fetch_url` | URL → 読み取り可能なテキスト | ✗ |
-| `search_arxiv` | arXiv API | ✗ |
-| `search_semantic_scholar` | Semantic Scholar API | ✗ |
-| `collect_references_iterative` | シード論文から引用グラフを辿る | ✗ |
+| `search_papers` | 一つの固定provider、型付きrecord/live/replay結果 | ✗ |
+| `web_search` | snapshot契約下のDuckDuckGo検索 | ✗ |
+| `fetch_url` | SSRF制御URL → untrusted text | ✗ |
+| `walk_citations` | partial provenance付きbounded citation graph | ✗ |
+| `rerank_retrieval_records` | 明示的typed-record reranker | ✓ |
+| `search_arxiv` | deprecated arXiv alias | ✗ |
+| `search_semantic_scholar` | deprecated Semantic Scholar alias | ✗ |
+| `collect_references_iterative` | deprecated stochastic検索・選択loop | ✓ |
+| `set_retrieval_backend` | deprecated pinned-provider selector | ✗ |
+| `list_uploaded_files` | checkpoint upload一覧 | ✗ |
+| `read_uploaded_file` | traversal/output制限付きupload読込 | ✗ |
+
+[検索契約とnetwork policy](retrieval_contract.md)を参照してください。
 
 ## 関連ドキュメント
 

@@ -88,6 +88,12 @@ last_verified: 2026-08-02
   IBM hardwareを別capabilityにした。typed async、token scope/redaction、raw artifact、
   Bell/GHZ scientific fixture、official transpile/Aer run、offline replayを実装し、
   C19-01〜08/D1〜D6を完了。P5 provider gateを閉じた。
+- C04 Webをprovider-neutral `RetrievalRecordV1`へ移行し、固定provider、
+  content-addressed cassette/snapshot、artifact-verified offline replay、DOI/arXiv/S2
+  alias lineageを実装した。pinned-IP SSRF/redirect/size/type policy、bounded citation
+  graph、明示LLM rerankerを追加し、implicit fallback/composite partial successを削除。
+  default paper workflowとIdea/Paper consumerをverified snapshot refへ移行し、
+  C04-01〜08/D1/D2/D3/D5/D6を完了した（D4 alias removalはP6）。
 
 ## 1. 決定
 

@@ -449,7 +449,7 @@ ari skills-list [--config <config.yaml>]
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `ARI_RETRIEVAL_BACKEND` | Paper search: `semantic_scholar` / `alphaxiv` / `both` | `semantic_scholar` |
+| `ARI_RETRIEVAL_BACKEND` | Default pinned provider: `semantic_scholar` / `arxiv` / `alphaxiv` | `semantic_scholar` |
 | `VLM_MODEL` | VLM model for figure review | `openai/gpt-4o` |
 | `ARI_ORCHESTRATOR_PORT` | HTTP port for orchestrator skill | `9890` |
 

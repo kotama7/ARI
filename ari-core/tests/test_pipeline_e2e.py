@@ -562,7 +562,11 @@ class TestFullPaperPipeline:
         def fake_subprocess(tool, args, config_path, skill_name=""):
             tool_calls.append(tool)
             # Return valid mock results for each stage
-            if tool in ("search_semantic_scholar", "collect_references_iterative"):
+            if tool in (
+                "search_semantic_scholar",
+                "collect_references_iterative",
+                "search_papers",
+            ):
                 return {"papers": [{"title": "Test Paper", "id": "123"}]}
             elif tool == "nodes_to_science_data":
                 return {"configurations": [], "metric_name": "score"}
@@ -676,7 +680,7 @@ class TestFullPaperPipeline:
         # gate is warn (never blocks finalize); set ARI_CLAIM_GATE_MODE=strict to
         # make the final gate blocking.
         expected_tools = [
-            "collect_references_iterative",      # search_related_work
+            "search_papers",                     # recorded related work
             "nodes_to_science_data",             # transform_data
             "generate_ear",
             "curate_ear",                        # v0.7.0 ear_curate

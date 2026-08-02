@@ -4,10 +4,11 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ari-skill-paper"
-version = "0.1.1"
+version = "0.2.0"
 description = "LaTeX paper writing support MCP server for academic venues"
 requires-python = ">=3.13"
 dependencies = [
+    "ari-core>=0.9.1",
     "mcp>=1.0",
     "litellm>=1.0",
     "pydantic>=2.0",

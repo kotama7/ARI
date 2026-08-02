@@ -416,7 +416,7 @@ ari skills-list [--config <config.yaml>]
 
 | 变量 | 描述 | 默认值 |
 |------|------|--------|
-| `ARI_RETRIEVAL_BACKEND` | 论文搜索: `semantic_scholar` / `alphaxiv` / `both` | `semantic_scholar` |
+| `ARI_RETRIEVAL_BACKEND` | 固定provider: `semantic_scholar` / `arxiv` / `alphaxiv` | `semantic_scholar` |
 | `VLM_MODEL` | 图表审阅 VLM 模型 | `openai/gpt-4o` |
 | `ARI_ORCHESTRATOR_PORT` | orchestrator 技能的 HTTP 端口 | `9890` |
 

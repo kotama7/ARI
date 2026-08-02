@@ -28,8 +28,8 @@ from ari.public.research_contract import (
     RetrievalRecordV1,
     SurveySnapshotV1,
     canonical_digest,
+    load_survey_snapshot_ref,
     mint_research_contract,
-    parse_survey_snapshot,
     validate_research_handoff,
 )
 
@@ -277,16 +277,10 @@ def load_survey_snapshot(
 ) -> SurveySnapshotV1:
     """Load replay input through a closed workspace boundary; no network fallback."""
 
-    workspace = WorkspaceRefV1(root=str(Path(checkpoint_dir).expanduser().resolve()))
-    payload = workspace.read_bytes(logical_name, max_bytes=128 * 1024 * 1024)
-    try:
-        raw = json.loads(payload)
-    except json.JSONDecodeError as exc:
-        raise ValueError("survey replay snapshot is not valid JSON") from exc
-    snapshot = parse_survey_snapshot(raw)
     # Replay is an execution mode, not a mutation of the recorded scientific
-    # object: return the exact object and digest from record time.
-    return snapshot
+    # object: return the exact object and digest from record time after checking
+    # every referenced cassette/raw artifact.
+    return load_survey_snapshot_ref(str(checkpoint_dir), logical_name)
 
 
 def inline_snapshot(
