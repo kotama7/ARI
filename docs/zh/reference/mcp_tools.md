@@ -25,13 +25,13 @@ ARI 附带 15 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 
 "LLM" 列标记了**P2 例外**工具 — 它们会调用 LLM，因此不是字节确定性的。
 
-## ari-skill-benchmark — 统计 + 绘图（确定性）
+## ari-skill-benchmark — 类型化统计（确定性）
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
-| `analyze_results` | 从 CSV / JSON / npy 计算摘要统计 | ✗ |
-| `plot` | 从固定 schema 生成确定性 matplotlib 图表 | ✗ |
-| `statistical_test` | 假设检验（t 检验、Mann-Whitney 等） | ✗ |
+| `analyze_results` | 对 inline 或摘要绑定 CSV / JSON / npy 样本进行带单位汇总 | ✗ |
+| `statistical_test` | 返回效应量、CI、假设诊断和多重比较校正 | ✗ |
+| `compare_runs` | 保留环境和 provenance 的标量 run 排名 | ✗ |
 
 ## ari-skill-coding — 编写 + 运行代码
 
@@ -169,6 +169,7 @@ ARI 附带 15 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
+| `render_figure` | 带来源/spec/环境/artifact 摘要的闭合确定性渲染 | ✗ |
 | `generate_figures` | 从 `nodes_tree.json` 生成确定性 matplotlib 图表 | ✗ |
 | `generate_figures_llm` | LLM 编写 matplotlib 代码后运行 | ✓ |
 

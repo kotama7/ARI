@@ -1,7 +1,7 @@
 schema_version: 1
 name: plot-skill
 package: ari-skill-plot
-version: 0.1.0
+version: 0.1.1
 display_name: Visualize scientific results
 description: Deterministic and LLM-assisted scientific figure generation.
 environment_policy: complete
@@ -59,6 +59,11 @@ tool_defaults:
   permissions: [workspace-read, workspace-write, process]
   result_schema: ari.result-envelope/v1
 tools:
+  - name: render_figure
+    capability_ref: ari.visualization.figures.render
+    determinism: deterministic
+    timeout_class: bounded
+    permissions: [workspace-write]
   - name: generate_figures
     capability_ref: ari.visualization.figures.generate
     determinism: deterministic

@@ -50,13 +50,13 @@ match.
 The "LLM" column marks tools that are **P2 exceptions** — they call
 an LLM and therefore are not byte-deterministic.
 
-## ari-skill-benchmark — statistics + plots (deterministic)
+## ari-skill-benchmark — typed statistics (deterministic)
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
-| `analyze_results` | Summary stats from CSV / JSON / npy | ✗ |
-| `plot` | Deterministic matplotlib figure from a fixed schema | ✗ |
-| `statistical_test` | Hypothesis tests (t-test, Mann-Whitney, ...) | ✗ |
+| `analyze_results` | Unit-bearing summaries from inline or digest-bound CSV / JSON / npy samples | ✗ |
+| `statistical_test` | Effect size, CI, assumptions, and multiplicity-corrected inference | ✗ |
+| `compare_runs` | Environment- and provenance-aware scalar run ranking | ✗ |
 
 ## ari-skill-coding — write + run code
 
@@ -208,6 +208,7 @@ single calling vocabulary, see
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
+| `render_figure` | Closed-workspace deterministic rendering with source/spec/environment/artifact digests | ✗ |
 | `generate_figures` | Deterministic matplotlib figures from `nodes_tree.json` | ✗ |
 | `generate_figures_llm` | LLM writes matplotlib code, then runs it | ✓ |
 

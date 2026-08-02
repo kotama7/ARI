@@ -9,6 +9,35 @@
       "has_all": false,
       "thin": true
     },
+    "ari.public.analysis": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.analysis"
+      ],
+      "exports": [
+        "ANALYSIS_REQUEST_V1",
+        "ANALYSIS_RESULT_V1",
+        "AnalysisArtifactTargetV1",
+        "AnalysisArtifactV1",
+        "AnalysisDataSourceV1",
+        "AnalysisObservationV1",
+        "AnalysisRequestV1",
+        "AnalysisResultV1",
+        "AnalysisSummaryV1",
+        "MetricSampleSetV1",
+        "RUN_COMPARISON_REQUEST_V1",
+        "RunComparisonRequestV1",
+        "RunComparisonResultV1",
+        "RunRecordV1",
+        "STATISTICAL_TEST_REQUEST_V1",
+        "StatisticalComparisonResultV1",
+        "StatisticalComparisonV1",
+        "StatisticalTestRequestV1",
+        "canonical_analysis_digest"
+      ],
+      "has_all": true,
+      "thin": true
+    },
     "ari.public.call_context": {
       "all_is_dynamic": false,
       "backing": [
@@ -51,6 +80,19 @@
       "has_all": true,
       "thin": true
     },
+    "ari.public.clone": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.clone"
+      ],
+      "exports": [
+        "CloneError",
+        "CloneResult",
+        "clone"
+      ],
+      "has_all": true,
+      "thin": true
+    },
     "ari.public.config_schema": {
       "all_is_dynamic": false,
       "backing": [
@@ -78,6 +120,7 @@
         "Optional",
         "annotations",
         "config_from_env",
+        "container_shell_argv",
         "dataclass",
         "detect_runtime",
         "field",
@@ -88,7 +131,6 @@
         "run_in_container",
         "run_shell_in_container",
         "shutil",
-        "signal",
         "subprocess"
       ],
       "has_all": true,
@@ -121,6 +163,50 @@
       "has_all": true,
       "thin": true
     },
+    "ari.public.execution": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.execution"
+      ],
+      "exports": [
+        "ContainerIdentityV1",
+        "EXECUTION_REQUEST_V1",
+        "EXECUTION_RESULT_V1",
+        "ExecutionArtifactV1",
+        "ExecutionLimitsV1",
+        "ExecutionPolicyError",
+        "ExecutionRequestV1",
+        "ExecutionResultV1",
+        "MEASUREMENT_SET_V1",
+        "MeasurementDocumentError",
+        "MeasurementDocumentFormat",
+        "MeasurementRecordV1",
+        "MeasurementSetV1",
+        "ResourceLimitReportV1",
+        "WORKSPACE_REF_V1",
+        "WorkspaceRefV1",
+        "build_minimal_environment",
+        "execute_local",
+        "measurement_document_format",
+        "parse_measurement_document",
+        "record_completed_execution"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.lineage": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.lineage"
+      ],
+      "exports": [
+        "format_ancestor_pool_for_virsci",
+        "get_idea_pool_for_ckpt",
+        "walk_ancestor_ckpts"
+      ],
+      "has_all": true,
+      "thin": true
+    },
     "ari.public.llm": {
       "all_is_dynamic": false,
       "backing": [
@@ -128,6 +214,24 @@
       ],
       "exports": [
         "LLMClient"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.node_selection": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.orchestrator.node_selection"
+      ],
+      "exports": [
+        "build_parent_chain",
+        "collect_excluded",
+        "contributes_code",
+        "filter_nodes",
+        "is_narrative_step",
+        "is_relevant_for_synthesis",
+        "load_selected_sources",
+        "select_source_files_for_publication"
       ],
       "has_all": true,
       "thin": true
@@ -141,6 +245,29 @@
         "PathManager"
       ],
       "has_all": true,
+      "thin": true
+    },
+    "ari.public.publish": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.publish"
+      ],
+      "exports": [
+        "PublishError",
+        "PublishRecord",
+        "promote",
+        "publish"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.research_contract": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.research_contract"
+      ],
+      "exports": [],
+      "has_all": false,
       "thin": true
     },
     "ari.public.result": {

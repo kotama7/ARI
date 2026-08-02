@@ -1196,21 +1196,26 @@ reject disagreement between canonical and compatibility views. See
 
 ## ari-skill-benchmark
 
-Performance analysis, plotting, and statistical testing. **LLM: No** (deterministic).
+Typed summaries, statistical inference, and provenance-aware run comparison.
+**LLM: No** (deterministic). Figure rendering is owned by `ari-skill-plot`.
 
 ### Tools
 
-#### `analyze_results(result_path, metrics)`
+#### `analyze_results(request)`
 
-Load and analyze CSV, JSON, or NPY result files. Returns summary statistics.
+Validate `AnalysisRequestV1` and return unit-bearing summaries, mean confidence
+intervals, missing counts, source/input digests, and library versions.
 
-#### `plot(data, plot_type, output_path, title="", xlabel="", ylabel="")`
+#### `statistical_test(request)`
 
-Generate matplotlib figures. Plot types: `bar`, `line`, `scatter`, `heatmap`.
+Validate `StatisticalTestRequestV1`; run paired/unpaired t or rank tests and
+return effect size, confidence interval, assumptions, and corrected p-values.
 
-#### `statistical_test(data_a, data_b, test)`
+#### `compare_runs(request)`
 
-Run scipy statistical tests: `ttest`, `mannwhitney`, `wilcoxon`.
+Rank compatible runs while retaining backend/environment groups, replicate
+identity caveats, and provenance differences. See the
+[deterministic analysis contract](analysis_contract.md).
 
 ---
 

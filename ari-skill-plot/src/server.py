@@ -11,10 +11,15 @@ from __future__ import annotations
 import os
 import json
 import re
+import base64
+import hashlib
+import io
+import logging
+import math
 import subprocess
 import sys
 import tempfile
-import traceback
+from datetime import datetime, timezone
 from pathlib import Path
 from collections import defaultdict
 
@@ -22,6 +27,253 @@ import litellm
 from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("plot-skill")
+
+
+def _figure_digest(value: object) -> str:
+    payload = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+def _bytes_digest(payload: bytes) -> str:
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+def _finite_vector(value: object, field: str) -> list[float]:
+    if not isinstance(value, list) or not value:
+        raise ValueError(f"figure {field} must be a non-empty array")
+    result: list[float] = []
+    for item in value:
+        if isinstance(item, bool):
+            raise ValueError(f"figure {field} values must be numeric")
+        try:
+            number = float(item)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"figure {field} values must be numeric") from exc
+        if not math.isfinite(number):
+            raise ValueError(f"figure {field} values must be finite")
+        result.append(number)
+    return result
+
+
+def _axis_label(label: str, unit: str) -> str:
+    label = label.strip()
+    unit = unit.strip()
+    if not label:
+        raise ValueError("figure axis label must be explicit")
+    if not unit:
+        raise ValueError("figure metric unit must be explicit")
+    return label if unit == "1" else f"{label} [{unit}]"
+
+
+@mcp.tool()
+def render_figure(request: dict) -> dict:
+    """Render one deterministic figure from an immutable numeric specification.
+
+    ``request`` uses ``ari.figure-request/v1``.  The renderer never executes
+    caller code: values flow directly into a fixed matplotlib implementation,
+    outputs are written atomically inside a closed workspace, and the returned
+    manifest binds source data, specification, environment, and artifact bytes.
+    """
+
+    from ari.public.execution import WorkspaceRefV1
+
+    if not isinstance(request, dict):
+        raise ValueError("figure request must be an object")
+    allowed = {
+        "schema_version", "figure_id", "chart_type", "data", "source_digest",
+        "source_record_ids", "title", "x_label", "x_unit", "y_label", "y_unit",
+        "value_unit", "caption", "workspace", "relative_directory",
+    }
+    unknown = sorted(set(request) - allowed)
+    if unknown:
+        raise ValueError(f"figure request has unknown fields: {unknown}")
+    if request.get("schema_version", "ari.figure-request/v1") != "ari.figure-request/v1":
+        raise ValueError("unsupported figure request schema_version")
+    figure_id = str(request.get("figure_id") or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", figure_id):
+        raise ValueError("figure_id is invalid")
+    chart_type = str(request.get("chart_type") or "").strip()
+    if chart_type not in {"bar", "line", "scatter", "heatmap", "hist", "errorbar"}:
+        raise ValueError(f"unsupported chart_type: {chart_type}")
+    source_digest = str(request.get("source_digest") or "")
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", source_digest):
+        raise ValueError("source_digest must use sha256:<64 lowercase hex>")
+    source_record_ids = request.get("source_record_ids", [])
+    if not isinstance(source_record_ids, list) or any(
+        not isinstance(item, str) or not item for item in source_record_ids
+    ):
+        raise ValueError("source_record_ids must be an array of non-empty strings")
+    data = request.get("data")
+    if not isinstance(data, dict):
+        raise ValueError("figure data must be an object")
+    workspace = WorkspaceRefV1.model_validate(request.get("workspace"))
+    relative_directory = str(request.get("relative_directory") or "figures")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,255}", relative_directory) or any(
+        part in {"", ".", ".."} for part in Path(relative_directory).parts
+    ):
+        raise ValueError("figure relative_directory is invalid")
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    with plt.rc_context(
+        {
+            "font.family": "DejaVu Sans",
+            "font.size": 10,
+            "axes.grid": chart_type not in {"heatmap"},
+            "axes.axisbelow": True,
+            "figure.dpi": 100,
+            "savefig.dpi": 150,
+            "svg.hashsalt": "ari.figure-request/v1",
+        }
+    ):
+        fig, ax = plt.subplots(figsize=(6.4, 4.0), constrained_layout=True)
+        if chart_type == "heatmap":
+            values_raw = data.get("values")
+            if not isinstance(values_raw, list) or not values_raw or not all(
+                isinstance(row, list) and row for row in values_raw
+            ):
+                raise ValueError("figure heatmap values must be a non-empty matrix")
+            width = len(values_raw[0])
+            if any(len(row) != width for row in values_raw):
+                raise ValueError("figure heatmap rows must have equal lengths")
+            values = [_finite_vector(row, "values") for row in values_raw]
+            image = ax.imshow(values, aspect="auto", interpolation="nearest")
+            colorbar = fig.colorbar(image, ax=ax)
+            colorbar.set_label(_axis_label("Value", str(request.get("value_unit") or "")))
+        elif chart_type == "hist":
+            y = _finite_vector(data.get("y"), "y")
+            bins = data.get("bins", min(20, max(1, int(math.sqrt(len(y))))))
+            if isinstance(bins, bool) or not isinstance(bins, int) or not 1 <= bins <= 1_000:
+                raise ValueError("figure histogram bins must be an integer in [1, 1000]")
+            ax.hist(y, bins=bins)
+        else:
+            y = _finite_vector(data.get("y"), "y")
+            x_raw = data.get("x")
+            if x_raw is None:
+                x: list[object] = list(range(len(y)))
+            elif isinstance(x_raw, list) and len(x_raw) == len(y) and all(
+                isinstance(item, (str, int, float)) and not isinstance(item, bool)
+                for item in x_raw
+            ):
+                if any(isinstance(item, float) and not math.isfinite(item) for item in x_raw):
+                    raise ValueError("figure x values must be finite")
+                x = list(x_raw)
+            else:
+                raise ValueError("figure x must match the y array length")
+            if chart_type == "bar":
+                ax.bar(x, y)
+            elif chart_type == "line":
+                ax.plot(x, y, marker="o")
+            elif chart_type == "scatter":
+                ax.scatter(x, y)
+            elif chart_type == "errorbar":
+                yerr = _finite_vector(data.get("yerr"), "yerr")
+                if len(yerr) != len(y):
+                    raise ValueError("figure yerr must match the y array length")
+                ax.errorbar(x, y, yerr=yerr, marker="o", capsize=3)
+
+        if request.get("title"):
+            ax.set_title(str(request["title"]))
+        if chart_type != "heatmap":
+            ax.set_ylabel(
+                _axis_label(str(request.get("y_label") or ""), str(request.get("y_unit") or ""))
+            )
+        if chart_type != "hist":
+            ax.set_xlabel(
+                _axis_label(str(request.get("x_label") or ""), str(request.get("x_unit") or ""))
+            )
+
+        png_buffer = io.BytesIO()
+        pdf_buffer = io.BytesIO()
+        fig.savefig(
+            png_buffer,
+            format="png",
+            dpi=150,
+            metadata={"Software": f"ARI matplotlib {matplotlib.__version__}"},
+        )
+        fixed_time = datetime(1970, 1, 1, tzinfo=timezone.utc)
+        fig.savefig(
+            pdf_buffer,
+            format="pdf",
+            metadata={
+                "Creator": "ARI deterministic figure renderer",
+                "Producer": f"matplotlib {matplotlib.__version__}",
+                "CreationDate": fixed_time,
+                "ModDate": fixed_time,
+            },
+        )
+        plt.close(fig)
+
+    png_payload = png_buffer.getvalue()
+    pdf_payload = pdf_buffer.getvalue()
+    workspace.ensure_directory(relative_directory)
+    png_path = f"{relative_directory}/{figure_id}.png"
+    pdf_path = f"{relative_directory}/{figure_id}.pdf"
+    workspace.atomic_write_bytes(png_path, png_payload)
+    workspace.atomic_write_bytes(pdf_path, pdf_payload)
+    normalized_spec = {
+        key: value
+        for key, value in request.items()
+        if key not in {"workspace", "relative_directory"}
+    }
+    normalized_spec.setdefault("schema_version", "ari.figure-request/v1")
+    data_digest = _figure_digest(data)
+    spec_digest = _figure_digest(normalized_spec)
+    manifest = {
+        "schema_version": "ari.figure-manifest/v1",
+        "figure_id": figure_id,
+        "chart_type": chart_type,
+        "spec_digest": spec_digest,
+        "source": {
+            "digest": source_digest,
+            "data_digest": data_digest,
+            "record_ids": source_record_ids,
+        },
+        "caption": str(request.get("caption") or ""),
+        "render_environment": {
+            "backend": str(matplotlib.get_backend()).lower(),
+            "matplotlib": matplotlib.__version__,
+            "python": sys.version.split()[0],
+            "font_family": "DejaVu Sans",
+            "renderer_version": "ari.figure-renderer/v1",
+        },
+        "artifacts": [
+            {
+                "relative_path": png_path,
+                "media_type": "image/png",
+                "digest": _bytes_digest(png_payload),
+                "size_bytes": len(png_payload),
+            },
+            {
+                "relative_path": pdf_path,
+                "media_type": "application/pdf",
+                "digest": _bytes_digest(pdf_payload),
+                "size_bytes": len(pdf_payload),
+            },
+        ],
+    }
+    manifest_payload = (
+        json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False)
+        + "\n"
+    ).encode("utf-8")
+    manifest_path = f"{relative_directory}/{figure_id}.manifest.json"
+    workspace.atomic_write_bytes(manifest_path, manifest_payload)
+    manifest["manifest_artifact"] = {
+        "relative_path": manifest_path,
+        "media_type": "application/json",
+        "digest": _bytes_digest(manifest_payload),
+        "size_bytes": len(manifest_payload),
+    }
+    return manifest
 
 # Wire skill-scoped cost tracking via the public re-export module
 # (Phase 4 — REFACTORING.md §7).  Falls back to the legacy
@@ -63,9 +315,6 @@ LABEL_COLOR = {
 # ---------------------------------------------------------------------------
 # VLM caption helper
 # ---------------------------------------------------------------------------
-
-import base64
-import logging
 
 log = logging.getLogger(__name__)
 
@@ -429,7 +678,10 @@ async def generate_figures(
             ax.set_title("Experiment Exploration Tree (node size proportional to primary metric)",
                          fontsize=13, fontweight="bold")
             ax.axis("off")
-            patches = [mpatches.Patch(color=c, label=l) for l, c in LABEL_COLOR.items()]
+            patches = [
+                mpatches.Patch(color=color, label=label)
+                for label, color in LABEL_COLOR.items()
+            ]
             ax.legend(handles=patches, loc="upper right", fontsize=9)
             fig.tight_layout()
             path = _save(fig, "bfts_tree")

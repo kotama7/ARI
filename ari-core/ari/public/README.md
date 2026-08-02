@@ -7,6 +7,7 @@ core can refactor freely while the contract stays put.
 ## Contents
 
 - `README.md` — this file.
+- `analysis.py` — versioned deterministic analysis requests and result contracts.
 - `call_context.py` — explicit run/node/lineage models plus signed transport capability helpers.
 - `__init__.py` — exported sub-modules + rationale.
 - `claim_gate.py` — re-exports five symbols from `ari.pipeline.claim_gate`: `run_hard_gate` (→ ari-skill-evaluator), `check_emission` (→ ari-skill-coding), `scan_science_data` (→ ari-skill-transform), plus `classify_concept` / `CONCEPT_INVARIANTS` (shared concept→invariant registry).

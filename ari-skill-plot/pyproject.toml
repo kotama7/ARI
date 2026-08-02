@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ari-skill-plot"
-version = "0.1.0"
+version = "0.1.1"
 description = "Scientific figure generation MCP server for ARI"
 requires-python = ">=3.13"
 dependencies = [

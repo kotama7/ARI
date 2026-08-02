@@ -7,8 +7,9 @@
   "runtime": "python",
   "schema_version": 1,
   "tools": [
+    "render_figure",
     "generate_figures",
     "generate_figures_llm"
   ],
-  "version": "0.1.0"
+  "version": "0.1.1"
 }

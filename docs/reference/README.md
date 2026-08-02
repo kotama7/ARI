@@ -7,6 +7,7 @@ file formats, and terminology.
 
 - `README.md` — this file.
 - `api_paperbench.md` — PaperBench API reference: the PaperBench endpoints on the viz server.
+- `analysis_contract.md` — typed deterministic summary, inference, run-comparison, and plot hand-off contracts.
 - `cli_reference.md` — ARI CLI Reference: complete reference for command-line operations.
 - `configuration.md` — Configuration Reference: `workflow.yaml`, the single source of truth for the pipeline.
 - `environment_variables.md` — Environment Variable Reference: the ~90 environment variables ARI honours.

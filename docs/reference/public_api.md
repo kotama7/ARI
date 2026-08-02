@@ -29,6 +29,7 @@ by `ari-core/tests/test_public_api_boundary.py`.
 
 | Sub-module | What it re-exports | Skills that use it |
 |---|---|---|
+| `ari.public.analysis` | Versioned summary, statistical-test, run-comparison, and analysis-result contracts | analysis providers and scientific consumers |
 | `ari.public.clone` | Digest-verified EAR bundle retrieval and safe extraction (`clone`, `CloneResult`, `CloneError`) | reproduction and bundle-consuming Skills |
 | `ari.public.config_schema` | Pydantic config models (`ARIConfig`, `LLMConfig`, ...) | callers needing typed settings |
 | `ari.public.container` | Container runtime helpers (`ContainerConfig`, `run_in_container`, ...) | `ari-skill-coding` (tests) |
@@ -93,6 +94,16 @@ complete content-addressed logs, and typed measurement records. Its migration
 parser validates the canonical object against retained legacy projections.
 See [Execution and measurement contracts](execution_contract.md) for the
 normative behavior and schema list.
+
+## `ari.public.analysis`
+
+This module fixes provider-neutral `AnalysisRequestV1`,
+`StatisticalTestRequestV1`, `RunComparisonRequestV1`, and `AnalysisResultV1`
+boundaries. The contracts require explicit units, pairing/missing/multiplicity
+policies, immutable source and environment digests, effect sizes, confidence
+intervals, assumption diagnostics, and library versions. See the
+[deterministic analysis contract](analysis_contract.md) for the normative
+behavior and schema list.
 
 ## `ari.public.skill_manifest`
 

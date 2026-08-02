@@ -25,6 +25,12 @@ from ari.skill_manifest import (  # noqa: E402
 )
 from ari.result import ResultEnvelopeV1  # noqa: E402
 from ari.async_tools import AsyncToolHandleV1  # noqa: E402
+from ari.analysis import (  # noqa: E402
+    AnalysisRequestV1,
+    AnalysisResultV1,
+    RunComparisonRequestV1,
+    StatisticalTestRequestV1,
+)
 from ari.call_context import ToolCallContextV1  # noqa: E402
 from ari.execution import (  # noqa: E402
     ExecutionRequestV1,
@@ -75,6 +81,18 @@ IDEA_CANDIDATE_SCHEMA_PATH = (
 IDEA_SET_SCHEMA_PATH = ARI_CORE / "ari" / "schemas" / "idea_set_v1.schema.json"
 RESEARCH_CONTRACT_SCHEMA_PATH = (
     ARI_CORE / "ari" / "schemas" / "research_contract_v1.schema.json"
+)
+ANALYSIS_REQUEST_SCHEMA_PATH = (
+    ARI_CORE / "ari" / "schemas" / "analysis_request_v1.schema.json"
+)
+STATISTICAL_TEST_REQUEST_SCHEMA_PATH = (
+    ARI_CORE / "ari" / "schemas" / "statistical_test_request_v1.schema.json"
+)
+RUN_COMPARISON_REQUEST_SCHEMA_PATH = (
+    ARI_CORE / "ari" / "schemas" / "run_comparison_request_v1.schema.json"
+)
+ANALYSIS_RESULT_SCHEMA_PATH = (
+    ARI_CORE / "ari" / "schemas" / "analysis_result_v1.schema.json"
 )
 # Compatibility alias for scripts that imported the original constant.
 SCHEMA_PATH = SKILL_SCHEMA_PATH
@@ -186,6 +204,30 @@ def expected_outputs(repo_root: Path = REPO_ROOT) -> dict[Path, str]:
         measurement_set_schema_document()
     )
     for path, model, slug, title in (
+        (
+            ANALYSIS_REQUEST_SCHEMA_PATH,
+            AnalysisRequestV1,
+            "analysis-request-v1",
+            "ARI Analysis Request v1",
+        ),
+        (
+            STATISTICAL_TEST_REQUEST_SCHEMA_PATH,
+            StatisticalTestRequestV1,
+            "statistical-test-request-v1",
+            "ARI Statistical Test Request v1",
+        ),
+        (
+            RUN_COMPARISON_REQUEST_SCHEMA_PATH,
+            RunComparisonRequestV1,
+            "run-comparison-request-v1",
+            "ARI Run Comparison Request v1",
+        ),
+        (
+            ANALYSIS_RESULT_SCHEMA_PATH,
+            AnalysisResultV1,
+            "analysis-result-v1",
+            "ARI Analysis Result v1",
+        ),
         (
             RETRIEVAL_RECORD_SCHEMA_PATH,
             RetrievalRecordV1,

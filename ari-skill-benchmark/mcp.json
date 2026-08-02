@@ -1,5 +1,5 @@
 {
-  "description": "Deterministic experiment analysis, visualization, and statistical testing.",
+  "description": "Typed deterministic summaries, statistical tests, and provenance-aware run comparison.",
   "entrypoint": "src/server.py",
   "generated_from": "skill.yaml",
   "name": "benchmark-skill",
@@ -8,8 +8,8 @@
   "schema_version": 1,
   "tools": [
     "analyze_results",
-    "plot",
-    "statistical_test"
+    "statistical_test",
+    "compare_runs"
   ],
-  "version": "0.1.0"
+  "version": "0.2.0"
 }

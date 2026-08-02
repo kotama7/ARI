@@ -28,6 +28,12 @@ from ari.skill_manifest import (  # noqa: E402
     resolve_skill_entrypoint,
 )
 from ari.result import ResultEnvelopeV1  # noqa: E402
+from ari.analysis import (  # noqa: E402
+    AnalysisRequestV1,
+    AnalysisResultV1,
+    RunComparisonRequestV1,
+    StatisticalTestRequestV1,
+)
 from ari.call_context import ToolCallContextV1  # noqa: E402
 from ari.execution import (  # noqa: E402
     ExecutionRequestV1,
@@ -656,6 +662,26 @@ def check_repo(repo_root: Path = REPO_ROOT) -> list[Finding]:
         )
 
     execution_schemas = (
+        (
+            "analysis_request_v1.schema.json",
+            AnalysisRequestV1,
+            "ari.analysis-request/v1",
+        ),
+        (
+            "statistical_test_request_v1.schema.json",
+            StatisticalTestRequestV1,
+            "ari.statistical-test-request/v1",
+        ),
+        (
+            "run_comparison_request_v1.schema.json",
+            RunComparisonRequestV1,
+            "ari.run-comparison-request/v1",
+        ),
+        (
+            "analysis_result_v1.schema.json",
+            AnalysisResultV1,
+            "ari.analysis-result/v1",
+        ),
         (
             "workspace_ref_v1.schema.json",
             WorkspaceRefV1,
