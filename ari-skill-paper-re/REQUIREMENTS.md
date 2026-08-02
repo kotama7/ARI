@@ -5,6 +5,12 @@
 MCP server that runs **PaperBench-style reproducibility evaluation** against
 ari-generated papers. Composed of two stages:
 
+Every non-empty rubric input is version-negotiated and digest-verified before
+use. `ari.replication-rubric/v2` is canonical. The unversioned version-`3`
+reader is a temporary, explicitly reported legacy path; callers receive
+`rubric_migration_required=true`. Unknown versions, changed envelope bytes,
+and a supplied paper whose SHA-256 differs from the rubric fail closed.
+
 1. **Replicator (`build_reproduce_sh`)** — drives PaperBench's
    `BasicAgent` / `IterativeAgent` solver (vendored, unmodified) against
    ari's HPC sandbox via `_compute.LocalComputer` /

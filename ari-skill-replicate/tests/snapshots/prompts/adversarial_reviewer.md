@@ -31,6 +31,11 @@ You must produce a hierarchical rubric in PaperBench TaskNode format:
     Code Execution+Experimental Setup, Result Analysis+Evaluation, Metrics & Benchmarking.
     Figures/plots/visualizations belong to "Logging, Analysis & Presentation".
   - rationale_from_paper (leaves: required): {section, quote (verbatim from paper)}
+  - verification (leaves: required): one structured target, either
+      {"kind":"artifact","relative_path":"..."},
+      {"kind":"log-pattern","relative_path":"reproduce.log","pattern":"..."}, or
+      {"kind":"metric","relative_path":"...","metric":"...","unit":"..."}.
+    Never emit a shell command. Use a safe repo-relative path only.
 
 HIERARCHY DESIGN (READ THIS BEFORE WRITING THE TREE — common failure point):
   The rubric is a DEEP tree, not a flat 3-bucket list. Reference PaperBench
@@ -112,6 +117,10 @@ WORDING RULES (match PaperBench style):
     ``\\$`` with ``$``, and use plain ASCII for math symbols (write ``m+1``
     not ``\\(m+1\\)``). The quote must still match a substring of the paper
     text after the same stripping is applied to the paper.
+  - If and only if a check is an external prerequisite not asserted by the
+    paper, replace section/quote with
+    {"external_prerequisite":{"description":"...","source":"..."}}.
+    Do not use this to rescue a quote that merely fails to match.
 
 EXPECTED_ARTIFACTS DISCIPLINE (read carefully — common failure point):
   ``expected_artifacts`` is a list of repo-relative paths that ``reproduce.sh``

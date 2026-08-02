@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 import os
-import subprocess
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
@@ -41,12 +40,10 @@ def _load_paper_text(paper_path: str, paper_text: str) -> str:
     p = Path(paper_path)
     if p.suffix == ".pdf":
         try:
-            r = subprocess.run(
-                ["pdftotext", str(p), "-"],
-                capture_output=True, text=True, timeout=30,
-            )
-            if r.stdout:
-                return r.stdout
+            import fitz
+
+            with fitz.open(p) as document:
+                return "\n".join(page.get_text() for page in document)
         except Exception:
             pass
     try:
@@ -102,6 +99,11 @@ async def generate_rubric(
     seed: int = 0,
     two_stage: bool = True,
     paperbench_rubric_id: str = "",
+    quality_profile: str = "",
+    max_model_calls: int = 64,
+    subtree_concurrency: int = 4,
+    provider: str = "",
+    model_revision: str = "",
 ) -> dict:
     """Generate a PaperBench-compatible auto rubric from paper text.
 
@@ -139,6 +141,10 @@ async def generate_rubric(
         int(target_leaf_count), float(temperature), bool(two_stage)
     )
     rubric_id_arg = paperbench_rubric_id.strip() or None
+    quality_arg = (
+        quality_profile.strip()
+        or os.environ.get("ARI_RUBRIC_GEN_QUALITY_PROFILE", "").strip()
+    )
     return await generate_rubric_async(
         paper_text=text,
         output_path=output_path,
@@ -148,6 +154,11 @@ async def generate_rubric(
         seed=seed_arg,
         two_stage=two_stage,
         paperbench_rubric_id=rubric_id_arg,
+        quality_profile=quality_arg,
+        max_model_calls=int(max_model_calls),
+        subtree_concurrency=int(subtree_concurrency),
+        provider=provider,
+        model_revision=model_revision or None,
     )
 
 
@@ -157,8 +168,10 @@ async def audit_rubric(
     paper_path: str = "",
     paper_text: str = "",
     auditor_model: str = "",
+    output_path: str = "",
+    max_model_calls: int = 400,
 ) -> dict:
-    """Audit a generated rubric for quality issues (mutates the rubric file).
+    """Write an independent audit without mutating the frozen rubric.
 
     Flags applied per leaf:
         - vague_qualifier   : non-operational language ("appropriate", "good", ...)
@@ -174,6 +187,8 @@ async def audit_rubric(
         rubric_path=rubric_path,
         paper_text=text,
         auditor_model=auditor_model,
+        output_path=output_path,
+        max_model_calls=max_model_calls,
     )
 
 

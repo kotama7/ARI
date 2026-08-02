@@ -18,6 +18,8 @@ for path in (str(ROOT), str(SRC)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
+from rubric_contract import bind_rubric_digest  # noqa: E402
+
 _spec = importlib.util.spec_from_file_location("paper_re_server_slurm", SRC / "server.py")
 S = importlib.util.module_from_spec(_spec)
 sys.modules["paper_re_server_slurm"] = S
@@ -169,24 +171,41 @@ async def test_run_reproduce_resolves_execution_profile_into_typed_request(
     scheduler = FakeScheduler()
     monkeypatch.setattr(S, "_paper_re_scheduler", lambda _repo: scheduler)
     rubric = tmp_path / "rubric.json"
-    rubric.write_text(
-        json.dumps(
-            {
-                "reproduce_contract": {
-                    "max_runtime_sec": 600,
-                    "execution_profile": {
-                        "requested_nodes": 2,
-                        "min_ranks": 8,
-                        "ntasks_per_node": 4,
-                        "requested_gpus_per_node": 2,
-                        "gpu_type": "a100",
-                        "memory_gb_per_node": 128,
-                        "module_loads": ["cuda/12.4"],
-                        "account": "science",
-                    },
+    document = {
+        "version": "3",
+        "paper_sha256": "a" * 64,
+        "generator": {"model": "legacy/fixture"},
+        "reproduce_contract": {
+            "script_path": "reproduce.sh",
+            "max_runtime_sec": 600,
+            "execution_profile": {
+                "requested_nodes": 2,
+                "min_ranks": 8,
+                "ntasks_per_node": 4,
+                "requested_gpus_per_node": 2,
+                "gpu_type": "a100",
+                "memory_gb_per_node": 128,
+                "module_loads": ["cuda/12.4"],
+                "account": "science",
+            },
+        },
+        "rubric": {
+            "id": "fixture-root",
+            "requirements": "Replicate the fixture benchmark results.",
+            "weight": 1,
+            "sub_tasks": [
+                {
+                    "id": "fixture-leaf",
+                    "requirements": "Produce the fixture benchmark output.",
+                    "weight": 1,
+                    "sub_tasks": [],
+                    "task_category": "Code Execution",
                 }
-            }
-        ),
+            ],
+        },
+    }
+    rubric.write_text(
+        json.dumps(bind_rubric_digest(document, legacy=True)),
         encoding="utf-8",
     )
 

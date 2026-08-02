@@ -1,7 +1,7 @@
 schema_version: 1
 name: replicate-skill
 package: ari-skill-replicate
-version: 0.3.0
+version: 0.4.0
 display_name: Build reproducibility rubrics
 description: Generate and audit PaperBench-compatible reproducibility rubrics.
 environment_policy: complete
@@ -16,11 +16,16 @@ optional_env:
   - ARI_LLM_API_BASE
   - ARI_LLM_MODEL
   - ARI_MODEL_RUBRIC_AUDIT
+  - ARI_MODEL_RUBRIC_AUDIT_PROVIDER
+  - ARI_MODEL_RUBRIC_AUDIT_REVISION
   - ARI_MODEL_RUBRIC_GEN
+  - ARI_MODEL_RUBRIC_GEN_PROVIDER
+  - ARI_MODEL_RUBRIC_GEN_REVISION
   - ARI_PAPERBENCH_RUBRIC_DIR
   - ARI_RUBRIC_GEN_TARGET_LEAVES
   - ARI_RUBRIC_GEN_TEMPERATURE
   - ARI_RUBRIC_GEN_TWO_STAGE
+  - ARI_RUBRIC_GEN_QUALITY_PROFILE
   - AWS_DEFAULT_REGION
   - AWS_REGION
   - AZURE_API_BASE

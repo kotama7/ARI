@@ -26,8 +26,11 @@ def test_load_neurips_template():
     t = RT.load_paperbench_rubric("neurips")
     assert t.mode == "paper_audit"
     assert {a.id for a in t.top_level_axes} >= {
-        "claims_supported", "experimental_setup", "code_data_available",
-        "statistical_rigor", "ethics_limitations",
+        "claims_supported",
+        "experimental_setup",
+        "code_data_available",
+        "statistical_rigor",
+        "ethics_limitations",
     }
     # NeurIPS Reproducibility Checklist mandates ethics/limitations.
     assert any("ethics" in a.id or "limitation" in a.id for a in t.top_level_axes)

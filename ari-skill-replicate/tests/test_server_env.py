@@ -4,9 +4,9 @@ The GUI/wizard persists rubric_gen_target_leaves / rubric_gen_temperature /
 rubric_gen_two_stage as ARI_RUBRIC_GEN_* env vars. These must be honored
 when the workflow stage doesn't pass the corresponding kwarg.
 """
+
 from __future__ import annotations
 
-import os
 
 import pytest
 
@@ -15,7 +15,11 @@ from server import _resolve_env_overrides
 
 @pytest.fixture(autouse=True)
 def _clear_env(monkeypatch):
-    for k in ("ARI_RUBRIC_GEN_TARGET_LEAVES", "ARI_RUBRIC_GEN_TEMPERATURE", "ARI_RUBRIC_GEN_TWO_STAGE"):
+    for k in (
+        "ARI_RUBRIC_GEN_TARGET_LEAVES",
+        "ARI_RUBRIC_GEN_TEMPERATURE",
+        "ARI_RUBRIC_GEN_TWO_STAGE",
+    ):
         monkeypatch.delenv(k, raising=False)
 
 

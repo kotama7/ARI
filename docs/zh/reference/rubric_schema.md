@@ -4,6 +4,10 @@ sources:
     role: schema
   - path: ari-skill-replicate/src/generator.py
     role: implementation
+  - path: ari-skill-replicate/src/auditor.py
+    role: implementation
+  - path: ari-skill-replicate/src/migration.py
+    role: migration
   - path: ari-skill-replicate/src/rubric_template.py
     role: implementation
 last_verified: 2026-08-02
@@ -12,32 +16,37 @@ last_verified: 2026-08-02
 # 评分单 Schema 参考
 
 正本: `ari-skill-replicate/schemas/replication_rubric.schema.json`
-(JSON Schema Draft 2020-12, version `3`)。
+(JSON Schema Draft 2020-12, `ari.replication-rubric/v2`; PaperBench bridge
+version 仍为 `3`)。
 
-评分单 envelope 用 provenance 元数据 (paper sha256, generator model,
-optional audit signature) 与 `reproduce_contract` (同时驱动复现代理
-prompt 和 typed HPC job compiler) 包装 PaperBench `TaskNode` 树。
+评分单 envelope 用 provenance、artifact-backed model call、repair ledger
+与 `reproduce_contract` 包装 PaperBench `TaskNode` 树。审计不会修改 frozen
+rubric，而是写入独立的 `ari.replication-rubric-audit/v2` artifact。
 
 ## Envelope
 
 ```jsonc
 {
+  "schema_version": "ari.replication-rubric/v2",
   "version":       "3",
   "paper_sha256":  "<64 hex>",                     // sha256(paper text utf-8)
   "rubric_sha256": "<64 hex>",                     // 排除自身,canonical-JSON 的 sha256
   "generator": {
     "model":         "gemini/gemini-2.5-pro",
+    "provider":      "gemini",
+    "model_revision": "<immutable revision>",
     "prompt_sha256": "<64 hex>",
     "generated_at":  "2026-05-13T...",
     "temperature":   0.0,
     "seed":          0,
-    "snapshot":      { ... }                       // 可选
+    "strategy":      "hierarchical-v2",
+    "quality_profile": "calibrated",
+    "max_model_calls": 64,
+    "subtree_concurrency": 4,
+    "calls": [ ... ],
+    "partial_failures": []
   },
-  "audit": {                                       // 可选; ari-skill-replicate.audit_rubric 写入
-    "auditor_model": "anthropic/claude-opus-4-7",
-    "audited_at":    "2026-05-13T...",
-    "flags_count":   3
-  },
+  "repair_ledger": {"actions": [], "dropped_artifacts": []},
   "reproduce_contract": { ... },                   // 见下
   "rubric": { ... }                                // 根 TaskNode
 }
@@ -71,7 +80,8 @@ prompt 和 typed HPC job compiler) 包装 PaperBench `TaskNode` 树。
     "section": "§3.1",
     "quote":   "<论文逐字引用,最少 10 字符>"
   },
-  "flags": ["unverifiable"]                        // 可选
+  "evidence_span": {"kind": "paper-span", "start_char": 10, "end_char": 40, ...},
+  "verification": {"kind": "artifact", "relative_path": "results.json"}
 }
 ```
 
@@ -106,9 +116,9 @@ score(node) = sum_over_children(w_i * score(child_i)) / sum_over_children(w_i)
 `_collapse_single_child_chains` 把单子非叶节点折叠到子节点以避免简
 权重 wrapper 节点的退化情况。
 
-### Flags
+### 审计 findings
 
-来自 `ari-skill-replicate.audit_rubric` 的审计注释:
+独立 audit artifact 中的 findings:
 
 - `vague_qualifier` — "appropriate", "well-organized" 等
 - `no_paper_evidence` — 引用在论文中不存在
@@ -138,8 +148,9 @@ from ari_skill_replicate.manifest import verify
 verify(rubric)   # rubric_sha256 与重计算匹配返回 True
 ```
 
-`rubric_sha256` 排除自身和 post-freeze 的 `audit` 字段,因此审计注释
-不会使 provenance 失效。
+`rubric_sha256` 仅排除自身；任何 post-freeze 修改都会导致 digest 不匹配。
+V1 只能通过 lossless offline migration 转为 V2；`paper-re` 对未知版本、
+篡改以及 paper digest 不匹配均 fail closed。
 
 ## venue 条件化模板 (Venue-conditioned templates)
 

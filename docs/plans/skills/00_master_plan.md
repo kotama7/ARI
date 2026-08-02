@@ -128,6 +128,11 @@ last_verified: 2026-08-02
   semantic/hard-gate review、fail-closed `PaperBuildV1`最終ロックへ移行した。旧section API、
   generic metric fallback、raw subprocess、legacy rubric runtime fallback、inline-only responseを
   削除し、C13-01〜09/D1〜D6を完了した。
+- C14 Replicateをstrict `ReplicationRubricV2`、exact paper span、structured verification、
+  artifact-backed model-call/repair ledgerへ移行し、auditを別のdigest-bound reportに分離した。
+  call budget、parallel partial failure、same-model非独立性、校正corpus、lossless V1 migration、
+  paper-reのV1/V2 negotiationを実装し、未知version/改ざん/paper mismatchをfail closedにした。
+  C14-01〜08を完了し、低coverage/V1 support windowのP6削除gateだけを保持する。
 
 ## 1. 決定
 
