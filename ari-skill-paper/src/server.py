@@ -1200,8 +1200,20 @@ async def write_paper_iterative(
         # from science_data.json (produced by transform-skill).
         if science_data_json:
             try:
-                _sd = json.loads(science_data_json) if isinstance(science_data_json, str) else science_data_json
-                _sd_ctx = _sd.get("experiment_context", {})
+                _sd_native = json.loads(science_data_json) if isinstance(science_data_json, str) else science_data_json
+                if _sd_native.get("schema_version") == "ari.science-data/v1":
+                    from ari.public.science_data import science_data_projection
+
+                    _sd = science_data_projection(_sd_native)
+                    _interpretation = _sd_native.get("interpretation") or {}
+                    _sd_ctx = (
+                        _interpretation.get("experiment_context", {})
+                        if _interpretation.get("status") == "ok"
+                        else {}
+                    )
+                else:
+                    _sd = _sd_native
+                    _sd_ctx = _sd.get("experiment_context", {})
 
                 # 1. Per-configuration results (FIRST — highest priority).
                 # Each configuration has different parameters; the LLM must
@@ -2476,6 +2488,10 @@ async def link_paper_claims(
         return {}
 
     sd = _load_jsonish(science_data_json)
+    if isinstance(sd, dict) and sd.get("schema_version") == "ari.science-data/v1":
+        from ari.public.science_data import science_data_projection as _science_projection
+
+        sd = _science_projection(sd)
     fm = _load_jsonish(figures_manifest_json) or None
     try:
         result = _cl.link_paper_claims(tex, sd if isinstance(sd, dict) else {}, fm)

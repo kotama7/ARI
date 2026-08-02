@@ -61,9 +61,9 @@ known:
   - role
   - rubric
   verdict: REVIEW_REQUIRED
-- id: ari-skill-paper/src/server.py#L1341
+- id: ari-skill-paper/src/server.py#L1353
   file: ari-skill-paper/src/server.py
-  line: 1341
+  line: 1353
   name: null
   lines: 32
   chars: 2086
@@ -82,7 +82,7 @@ known:
   prompt_id: skill.plot.caption_writer
 - id: ari-skill-plot/src/server.py::system_prompt
   file: ari-skill-plot/src/server.py
-  line: 813
+  line: 827
   name: system_prompt
   lines: 32
   chars: 2171
@@ -93,7 +93,7 @@ known:
   prompt_id: skill.plot.viz_expert
 - id: ari-skill-plot/src/server.py::simple_system
   file: ari-skill-plot/src/server.py
-  line: 916
+  line: 930
   name: simple_system
   lines: 4
   chars: 330
@@ -102,30 +102,6 @@ known:
   - json
   verdict: EXTRACT_TEMPLATE
   prompt_id: skill.plot.matplotlib_emitter
-- id: ari-skill-transform/src/server.py#L977
-  file: ari-skill-transform/src/server.py
-  line: 977
-  name: analysis_prompt
-  lines: 30
-  chars: 1597
-  markers:
-  - role
-  - json
-  - rubric
-  verdict: EXTRACT_TEMPLATE
-  prompt_id: skill.transform.node_report_analyst
-- id: ari-skill-transform/src/server.py#L1010
-  file: ari-skill-transform/src/server.py
-  line: 1010
-  name: analysis_prompt
-  lines: 34
-  chars: 2183
-  markers:
-  - role
-  - json
-  - rubric
-  verdict: EXTRACT_TEMPLATE
-  prompt_id: skill.transform.tree_analyst
 - id: ari-skill-vlm/src/server.py#L101
   file: ari-skill-vlm/src/server.py
   line: 101

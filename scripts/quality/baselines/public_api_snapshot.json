@@ -66,14 +66,32 @@
     "ari.public.claim_gate": {
       "all_is_dynamic": false,
       "backing": [
+        "ari.claim_gate_contract",
         "ari.pipeline.claim_gate",
         "ari.pipeline.claim_gate.contract",
         "ari.pipeline.claim_gate.invariants"
       ],
       "exports": [
         "CONCEPT_INVARIANTS",
+        "ClaimGateContractError",
+        "GateFindingV1",
+        "GateFormulaProvenanceV1",
+        "GateReportV1",
+        "MetricAdmissionDecisionV1",
+        "MetricClaimV1",
+        "MetricContractProposalV1",
+        "MetricGateContractV1",
+        "SemanticFindingV1",
+        "SemanticReviewV1",
+        "SemanticRevisionV1",
+        "admit_metric_contract_proposal",
         "check_emission",
         "classify_concept",
+        "migrate_legacy_gate_report",
+        "migrate_legacy_metric_gate_contract",
+        "parse_gate_report",
+        "parse_metric_gate_contract",
+        "parse_semantic_review",
         "run_hard_gate",
         "scan_science_data"
       ],
@@ -163,6 +181,39 @@
       "has_all": true,
       "thin": true
     },
+    "ari.public.evaluation": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.claim_gate_contract"
+      ],
+      "exports": [
+        "ClaimGateContractError",
+        "GATE_FINDING_V1",
+        "GATE_REPORT_V1",
+        "GateFindingV1",
+        "GateFormulaProvenanceV1",
+        "GateReportV1",
+        "METRIC_ADMISSION_DECISION_V1",
+        "METRIC_CONTRACT_PROPOSAL_V1",
+        "METRIC_GATE_CONTRACT_V1",
+        "MetricAdmissionDecisionV1",
+        "MetricClaimV1",
+        "MetricContractProposalV1",
+        "MetricGateContractV1",
+        "SEMANTIC_REVIEW_V1",
+        "SemanticFindingV1",
+        "SemanticReviewV1",
+        "SemanticRevisionV1",
+        "admit_metric_contract_proposal",
+        "migrate_legacy_gate_report",
+        "migrate_legacy_metric_gate_contract",
+        "parse_gate_report",
+        "parse_metric_gate_contract",
+        "parse_semantic_review"
+      ],
+      "has_all": true,
+      "thin": true
+    },
     "ari.public.execution": {
       "all_is_dynamic": false,
       "backing": [
@@ -214,6 +265,31 @@
       ],
       "exports": [
         "LLMClient"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.memory": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.memory_contract"
+      ],
+      "exports": [
+        "MEMORY_BACKUP_V1",
+        "MEMORY_RECORD_V1",
+        "MEMORY_RETRIEVAL_V1",
+        "MemoryArtifactRefV1",
+        "MemoryBackupV1",
+        "MemoryMetricPointerV1",
+        "MemoryNodeReportRefV1",
+        "MemoryReactEntryV1",
+        "MemoryRecordV1",
+        "MemoryRetrievalProvenanceV1",
+        "MemoryRetrievalV1",
+        "build_memory_backup",
+        "build_memory_react_entry",
+        "build_memory_record",
+        "canonical_memory_digest"
       ],
       "has_all": true,
       "thin": true
@@ -318,6 +394,45 @@
         "shell_capture_snippet",
         "subprocess",
         "timezone"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.science_data": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.science_data_contract"
+      ],
+      "exports": [
+        "FORMULAS",
+        "SCIENCE_ARTIFACT_REF_V1",
+        "SCIENCE_DATA_V1",
+        "SCIENCE_DERIVED_V1",
+        "SCIENCE_INTERPRETATION_V1",
+        "SCIENCE_PROVENANCE_V1",
+        "SCIENCE_RAW_V1",
+        "ScienceArtifactRefV1",
+        "ScienceClaimEvidenceV1",
+        "ScienceClaimV1",
+        "ScienceConfigurationV1",
+        "ScienceDataError",
+        "ScienceDataV1",
+        "ScienceDerivedV1",
+        "ScienceEnvironmentV1",
+        "ScienceEvidenceResultV1",
+        "ScienceInterpretationV1",
+        "ScienceMetricSummaryV1",
+        "ScienceNumericAssertionV1",
+        "ScienceOperandV1",
+        "ScienceProvenanceV1",
+        "ScienceRawV1",
+        "canonical_science_digest",
+        "formula_registry_digest",
+        "migrate_legacy_science_data",
+        "parse_science_data",
+        "recompute",
+        "required_roles",
+        "science_data_projection"
       ],
       "has_all": true,
       "thin": true

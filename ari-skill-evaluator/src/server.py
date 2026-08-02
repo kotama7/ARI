@@ -133,6 +133,17 @@ def _load_jsonish(value: Any) -> dict:
         return loaded if isinstance(loaded, dict) else {}
 
 
+def _science_projection(value: Any) -> dict:
+    """Normalize native v1; pre-v1 callers remain visibly legacy."""
+
+    loaded = _load_jsonish(value)
+    if loaded.get("schema_version") != "ari.science-data/v1":
+        return loaded
+    from ari.public.science_data import science_data_projection
+
+    return science_data_projection(loaded)
+
+
 def _atomic_json(root: Path, logical_name: str, document: dict) -> None:
     from ari.public.execution import WorkspaceRefV1
 
@@ -433,7 +444,7 @@ async def _tool_claim_evidence_hard_gate(arguments: dict) -> dict:
         path = Path(paper_path)
         if path.is_file():
             paper_tex = path.read_text(encoding="utf-8")
-    science_data = _load_jsonish(arguments.get("science_data_json"))
+    science_data = _science_projection(arguments.get("science_data_json"))
     claim_links = _load_jsonish(
         arguments.get("paper_claim_links_path")
         or arguments.get("paper_claim_links_json")
@@ -559,7 +570,7 @@ async def _tool_evidence_grounded_semantic_review(arguments: dict) -> dict:
     paper_tex = ""
     if paper_path and Path(paper_path).is_file():
         paper_tex = Path(paper_path).read_text(encoding="utf-8")
-    science_data = _load_jsonish(arguments.get("science_data_json"))
+    science_data = _science_projection(arguments.get("science_data_json"))
     claim_links = _load_jsonish(arguments.get("paper_claim_links_path"))
     hard_gate_path = Path(str(arguments.get("hard_gate_path") or ""))
     hard_gate = {}

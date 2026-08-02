@@ -407,6 +407,10 @@ def _parse_writer_assertions(tex: str, config_nodes: dict) -> dict:
 
 def link_paper_claims(tex: str, science_data: dict, figures_manifest: Any = None) -> dict:
     """Build paper_claim_links.json content from a LaTeX paper + science_data."""
+    if science_data.get("schema_version") == "ari.science-data/v1":
+        from ari.public.science_data import science_data_projection
+
+        science_data = science_data_projection(science_data)
     lines = tex.split("\n")
     section_map = build_section_map(tex)
     claims_by_id, numeric_by_id = _index_claims(science_data or {})

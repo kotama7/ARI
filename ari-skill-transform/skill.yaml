@@ -1,7 +1,7 @@
 schema_version: 1
 name: transform-skill
 package: ari-skill-transform
-version: 0.1.0
+version: 0.2.0
 display_name: Materialize scientific evidence
 description: Convert experiment trees into science data and curated Experiment Analysis Reports.
 environment_policy: complete
@@ -16,6 +16,8 @@ optional_env:
   - ARI_COMPARISON_SCOPE
   - ARI_LLM_API_BASE
   - ARI_LLM_MODEL
+  - ARI_MODEL_TRANSFORM
+  - ARI_MODEL_TRANSFORM_REVISION
   - AWS_DEFAULT_REGION
   - AWS_REGION
   - AZURE_API_BASE
@@ -67,13 +69,16 @@ tools:
     capability_ref: ari.ear.generate
   - name: nodes_to_science_data
     capability_ref: ari.science-data.materialize
+    permissions: [workspace-read, workspace-write, network, model]
   - name: promote_ear
     capability_ref: ari.ear.promote
+    side_effects: stateful
     determinism: deterministic
     timeout_class: bounded
-    permissions: [workspace-read, workspace-write]
+    permissions: [workspace-read, workspace-write, network]
   - name: publish_ear
     capability_ref: ari.ear.publish
+    side_effects: stateful
     determinism: deterministic
     timeout_class: bounded
-    permissions: [workspace-read, workspace-write]
+    permissions: [workspace-read, workspace-write, network]

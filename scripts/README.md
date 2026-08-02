@@ -16,6 +16,9 @@ Operational and utility scripts for building images, running services, and dev t
 - `check_import_boundaries.py` — AST import-boundary gate: skills may import core only via `ari.public.*`/`ari.protocols.*` (B1) and core may not import skills except `ari_skill_memory` (B2); warning-mode-first with a frozen allowlist (`--json`, `--fail-on-regression`; no LLM/API).
 - `check_prompts.py` — inline-prompt externalization inventory: AST-scans the runtime tree for role-marked multi-line LLM prompts still hardcoded in `ari-skill-*/src` (against a frozen allowlist seeded from the Subtask 036 census); defers snapshot byte-verification to Gate 10 via `--with-snapshots` (never re-implemented); warning-mode-first (`--json`, `--fail-on-regression`, `--update-baseline`; no LLM/API). `ari-core/ari/agent/loop.py` is the clean negative control.
 - `check_public_api_contracts.py` — snapshot & diff gate for the `ari.public.*` API surface (freezes all 13 re-export submodules; `--update` re-baselines, `--strict` fails on removed symbols; stdlib-only, no LLM/API).
+- `migrate_science_data.py` — explicit offline conversion of pre-v1 flat
+  `science_data.json`; legacy metrics remain non-claimable and old claims are
+  not silently admitted.
 - `check_skill_manifests.py` — canonical manifest/package/runtime/workflow/schema conformance gate.
 - `check_viz_api_schema.py` — reconcile the dashboard routes (`viz/routes.py`) with their sole consumer `frontend/src/services/api.ts`; reports client-only (broken calls) + server-only (candidate unused) endpoints via static dispatch simulation; warning-mode-first with a frozen allowlist (`--json`, `--fail-on-regression`; no LLM/API/node).
 - `generate_quality_report.py` — TODO

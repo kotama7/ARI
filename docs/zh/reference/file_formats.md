@@ -321,18 +321,24 @@ stages:
 
 恢复会在写入前验证完整文档。详见[研究记忆契约](memory_contract.md)。
 
-## EAR bundle（v0.7.0）
+## ScienceDataV1 与 EAR manifest v2
+
+新的run在`ari.science-data/v1`中分离raw measurement、deterministic derivation和
+model interpretation。详见[Science data 与 EAR 完整性](science_data_contract.md)。
 
 `{checkpoint}/ear/` 是候选集；`{checkpoint}/ear_published/` 是已策展并发布到后端的子集。信任锚点为：
 
 ```
 ear_published/
-├── manifest.lock         # canonical JSON, files-only sha256 + bundle_sha256
+├── manifest.lock         # v2：content、role、policy、lock与evidence digest
 ├── publish_record.json   # backend, ref, sha256, visibility
 └── ...                   # curated artefacts
 ```
 
-`manifest.lock` schema：`ari-core/ari/schemas/publish.schema.json`。`bundle_sha256` 必须等于烧入已发布论文的 `\codedigest{...}` 宏。
+manifest v2还绑定Skill/catalog lock、cassette、ResultEnvelope artifact和admission
+record；v1仅作只读兼容。publication policy schema仍为
+`ari-core/ari/schemas/publish.schema.json`。`bundle_sha256`必须等于烧入已发布论文的
+`\codedigest{...}`宏。
 
 ## 另请参阅
 

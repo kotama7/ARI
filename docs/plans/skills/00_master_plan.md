@@ -113,6 +113,11 @@ last_verified: 2026-08-02
   fail-closed検証し、旧claim再抽出/implicit LLM/private extractor/schema duplicate/
   stale workflow toolを削除した。pre-v1 readerとnumeric/unit/formula/evidence/policy/
   overclaim校正corpusを恒久化し、C09-01〜08/D1〜D6を完了した。
+- C10 Transformをdigest-bound `ScienceDataV1`へ移行し、raw measurement、canonical
+  formula-derived claim、LLM interpretationを分離した。node report/typed measurement
+  だけをnative入力とし、旧trace/source scanをoffline migrationへ隔離した。EAR v2へ
+  run/tool/catalog/result/cassette/admission lockを収録し、atomic curate/publish、共有formula
+  registry、deterministic bundle、minimal dependencyを固定してC10-01〜08/D1〜D6を完了した。
 
 ## 1. 決定
 
