@@ -13,7 +13,7 @@ last_verified: 2026-08-02
 
 # C07: `ari-skill-benchmark` 実装計画
 
-> 状態: Proposed。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
+> 状態: Completed (2026-08-02) — C07-01〜07とC07-D1〜D5を完了。恒久仕様は [analysis_contract.md](../../reference/analysis_contract.md) へ移行済み。本書はP6の計画書一括cleanupで削除する。
 
 ## 1. 責務
 
@@ -44,13 +44,13 @@ last_verified: 2026-08-02
 
 ## 5. 受け入れ基準
 
-- [ ] unit不一致、paired length不一致、空sample、全NaNを明示errorにする。
-- [ ] p-valueだけでなくeffect size、CI、sample count、assumptionを返す。
-- [ ] random手法を追加する場合seedとlibrary versionを記録する。
-- [ ] 同一backend/環境由来のrunを独立replicateと誤表示しない。
-- [ ] benchmarkからfigure renderingを除いてもplot pipelineが同等artifactを生成する。
-- [ ] scipy/numpy reference fixtureとproperty testがgreenである。
-- [ ] `pytest ari-skill-benchmark/tests -q` とmanifest contract testがgreenである。
+- [x] unit不一致、paired length不一致、空sample、全NaNを明示errorにする。
+- [x] p-valueだけでなくeffect size、CI、sample count、assumptionを返す。
+- [x] random手法を追加する場合seedとlibrary versionを記録する。
+- [x] 同一backend/環境由来のrunを独立replicateと誤表示しない。
+- [x] benchmarkからfigure renderingを除いてもplot pipelineが同等artifactを生成する。
+- [x] scipy/numpy reference fixtureとproperty testがgreenである。
+- [x] `pytest ari-skill-benchmark/tests -q` とmanifest contract testがgreenである。
 
 ## 6. 削除要件
 
@@ -71,3 +71,16 @@ last_verified: 2026-08-02
 ### 6.3 計画書自身の削除
 
 C07-01〜07、受け入れ基準、C07-D1〜D5を完了し、統計契約とmigrationを恒久referenceへ移した後に削除する。
+
+### 6.4 完了記録 (2026-08-02)
+
+- C07-01〜06: manifest/runtime/requirementsをv0.2へ同期し、`ari.public.analysis`
+  の4契約、digest-bound CSV/JSON/npy loader、paired/unpaired test、effect size/CI、
+  Bonferroni/Holm/BH、pre-registration digest、environment/provenance比較、JSON/CSV
+  artifactを実装した。
+- C07-07: SciPy reference、大小sample property、NaN/全欠損/constant、paired、unit、
+  correction、artifact replay、shared substrate fixtureを追加した。
+- C07-D1/D5: benchmarkの公開`plot`とmatplotlib/pandas依存を削除し、同等以上の
+  chart corpusを`plot-skill:render_figure`へ移した。
+- C07-D2/D3/D4: `compare_runs`をtyped実装し、schema無しparserとp-value-only公開
+  resultを削除した。恒久仕様とrollback境界はanalysis contractへ移した。

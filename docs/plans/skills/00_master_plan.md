@@ -94,6 +94,12 @@ last_verified: 2026-08-02
   graph、明示LLM rerankerを追加し、implicit fallback/composite partial successを削除。
   default paper workflowとIdea/Paper consumerをverified snapshot refへ移行し、
   C04-01〜08/D1/D2/D3/D5/D6を完了した（D4 alias removalはP6）。
+- C07 Benchmarkを`ari.public.analysis`のunit-bearing summary/statistical/run
+  comparison契約へ移行した。digest-bound CSV/JSON/npy、effect size/CI、assumption、
+  paired identity、Bonferroni/Holm/BH、analysis-plan digest、environment/provenance差分、
+  content-addressed JSON/CSV artifactを実装し、旧plot/p-value-only/schema-less parserと
+  matplotlib/pandas依存を削除した。描画parityは`plot-skill:render_figure`の
+  source/spec/environment/artifact digest付きcorpusで固定しC07-01〜07/D1〜D5を完了。
 
 ## 1. 決定
 

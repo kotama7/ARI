@@ -738,21 +738,25 @@ canonical `ari.measurement-set/v1` と P6 互換 projection を書きます。�
 
 ## ari-skill-benchmark
 
-パフォーマンス分析、プロット、統計検定。**LLM: No**（決定論的）。
+型付き要約、統計推論、provenance-aware な run 比較。**LLM: No**（決定論的）。
+作図は `ari-skill-plot` が所有する。
 
 ### ツール
 
-#### `analyze_results(result_path, metrics)`
+#### `analyze_results(request)`
 
-CSV、JSON、NPY 結果ファイルを読み込み分析します。要約統計量を返します。
+`AnalysisRequestV1` を検証し、unit 付き要約、平均の信頼区間、欠損数、
+source/input digest、library version を返します。
 
-#### `plot(data, plot_type, output_path, title="", xlabel="", ylabel="")`
+#### `statistical_test(request)`
 
-matplotlib 図表を生成します。プロットタイプ: `bar`, `line`, `scatter`, `heatmap`。
+paired/unpaired の t/rank test を実行し、effect size、confidence interval、
+assumption、補正済み p-value を返します。
 
-#### `statistical_test(data_a, data_b, test)`
+#### `compare_runs(request)`
 
-scipy 統計検定を実行します: `ttest`, `mannwhitney`, `wilcoxon`。
+互換な run を ranking し、backend/environment group、replicate の caveat、
+provenance 差分を保持します。詳細は[決定論的解析契約](analysis_contract.md)。
 
 ---
 

@@ -31,13 +31,13 @@ ARI には 15 の MCP サーバが付属しています（`ari-skill-*` パッ�
 "LLM" 列は **P2 例外** のツールを示します — LLM を呼び出すため
 バイト単位での決定論性がありません。
 
-## ari-skill-benchmark — 統計 + プロット（決定論的）
+## ari-skill-benchmark — 型付き統計（決定論的）
 
 | ツール | 用途 | LLM |
 |---|---|:---:|
-| `analyze_results` | CSV / JSON / npy からのサマリ統計 | ✗ |
-| `plot` | 固定スキーマからの決定論的 matplotlib 図 | ✗ |
-| `statistical_test` | 仮説検定（t 検定、Mann-Whitney など） | ✗ |
+| `analyze_results` | inline または digest-bound CSV / JSON / npy の unit 付き要約 | ✗ |
+| `statistical_test` | effect size、CI、assumption、多重比較補正付き推論 | ✗ |
+| `compare_runs` | environment/provenance-aware な scalar run ranking | ✗ |
 
 ## ari-skill-coding — コードの作成 + 実行
 
@@ -190,6 +190,7 @@ SLURM経路は共通`JobRequestV1` submit/status/log/cancel lifecycleと
 
 | ツール | 用途 | LLM |
 |---|---|:---:|
+| `render_figure` | source/spec/environment/artifact digest を持つ閉じた決定論的 renderer | ✗ |
 | `generate_figures` | `nodes_tree.json` から決定論的 matplotlib 図を生成 | ✗ |
 | `generate_figures_llm` | LLM が matplotlib コードを書いて実行 | ✓ |
 

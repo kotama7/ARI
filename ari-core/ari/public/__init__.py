@@ -12,6 +12,8 @@ Currently exported sub-modules:
   extraction.
 - :mod:`ari.public.execution`    — closed-workspace, bounded-process,
   artifact-log, and typed measurement contracts.
+- :mod:`ari.public.analysis`     — deterministic statistical request, run
+  comparison, and result contracts.
 - :mod:`ari.public.cost_tracker` — LLM cost reporting used by
   ari-skill-plot to log VLM/LLM call costs.
 - :mod:`ari.public.paths`        — :class:`PathManager` for callers

@@ -738,21 +738,24 @@ result = read_file("results.csv", offset=0, limit=100)
 
 ## ari-skill-benchmark
 
-性能分析、绘图和统计检验。**LLM：否**（确定性）。
+类型化汇总、统计推断和保留 provenance 的 run 比较。**LLM：否**（确定性）。
+绘图由 `ari-skill-plot` 负责。
 
 ### 工具
 
-#### `analyze_results(result_path, metrics)`
+#### `analyze_results(request)`
 
-加载并分析 CSV、JSON 或 NPY 结果文件。返回汇总统计信息。
+校验 `AnalysisRequestV1`，返回带单位的汇总、均值置信区间、缺失数、
+来源/输入摘要和库版本。
 
-#### `plot(data, plot_type, output_path, title="", xlabel="", ylabel="")`
+#### `statistical_test(request)`
 
-生成 matplotlib 图表。图表类型：`bar`、`line`、`scatter`、`heatmap`。
+执行配对/非配对 t 或秩检验，并返回效应量、置信区间、假设诊断和校正 p 值。
 
-#### `statistical_test(data_a, data_b, test)`
+#### `compare_runs(request)`
 
-运行 scipy 统计检验：`ttest`、`mannwhitney`、`wilcoxon`。
+对兼容 run 排名，同时保留 backend/environment 分组、重复身份警告和
+provenance 差异。详见[确定性分析契约](analysis_contract.md)。
 
 ---
 
