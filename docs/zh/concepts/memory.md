@@ -54,7 +54,15 @@ ari-core 注入按连接签名的 capability，记忆技能在任何 I/O 之前�
 不存在可变的进程级全局节点变量，因此并行兄弟不会竞争，也无法相互授权。
 Letta 自编辑仍被禁用，以保持已接受条目的字节稳定性。
 
-**可移植性**：每个检查点都携带 `memory_backup.jsonl.gz` 快照，在 `ari resume` 时若目标 Letta 为空将自动恢复 ── 让 `cp -r checkpoints/foo /elsewhere/` + `ari resume` 持续可用。
+**可移植性**：每个检查点携带经 digest 验证的
+`memory_backup.v1.json.gz`。`ari resume` 在写入前完成验证，再恢复到空 Letta，
+因此可安全执行 `cp -r checkpoints/foo /elsewhere/`。记录按内容寻址，不依赖 Letta
+checkpoint namespace。
+
+类型化条目采用公共 `MemoryRecordV1` 契约；语义搜索返回带 backend/server/model
+版本、排序确定性、query digest、边界和 filter evidence 的 `MemoryRetrievalV1`。
+记忆文本只是索引，只有已验证 artifact 才能支撑论文或图表声明。详见
+[研究记忆契约](../reference/memory_contract.md)。
 
 ---
 

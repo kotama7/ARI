@@ -40,16 +40,9 @@ def test_signed_child_cannot_write_ancestor(
     assert [entry["text"] for entry in entries] == ["original"]
 
 
-def test_signed_child_cannot_clear_ancestor(backend, authorized_context):
+def test_destructive_clear_is_not_publicly_exposed(backend):
     backend.add_memory("ancestor", "A", {})
-    with pytest.raises(PermissionError, match="authorized self node"):
-        server.clear_node_memory(
-            "ancestor",
-            ari_context=_child_capability(
-                authorized_context,
-                "clear_node_memory",
-            ),
-        )
+    assert not hasattr(server, "clear_node_memory")
     assert backend.get_node_memory("ancestor")["entries"]
 
 

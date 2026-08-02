@@ -103,7 +103,7 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 | 変数 | 用途 |
 |---|---|
 | `ARI_MEMORY_BACKEND` | `letta`（デフォルト）または `in_memory`（Letta 不要；ローカルスモークテスト用の一時 RAM バックエンド） |
-| `ARI_MEMORY_AUTO_RESTORE` | resume 時に `memory_backup.jsonl.gz` から自動復元 |
+| `ARI_MEMORY_AUTO_RESTORE` | resume 時に `memory_backup.v1.json.gz` を検証して復元 |
 | `ARI_MEMORY_ACCESS_LOG` | `memory_access.jsonl` へのパス |
 | `ARI_MEMORY_CONSOLIDATE` | 型付きメモリの統合 + 論文クレーム向けのアーティファクト裏付け済み `verified_context.json`。**デフォルト有効**；`0`/`false`/`no`/`off` で無効化 |
 | `ARI_LETTA_VENV` | バンドル済み Letta サーバの仮想環境パス |

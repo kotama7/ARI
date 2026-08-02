@@ -57,7 +57,16 @@ flowchart LR
 並行する兄弟同士が競合したり互いを認可したりすることはありません。受理済み
 エントリをバイト安定に保つため、Letta の self-edit は引き続き無効です。
 
-**ポータビリティ**: 各チェックポイントは `memory_backup.jsonl.gz` スナップショットを携行し、`ari resume` 時に対象 Letta が空であれば自動 restore されます。これにより `cp -r checkpoints/foo /elsewhere/` + `ari resume` が動き続けます。
+**ポータビリティ**: 各チェックポイントは digest 検証付き
+`memory_backup.v1.json.gz` を携行します。`ari resume` は書込み前に検証してから
+空の Letta へ restore するため、`cp -r checkpoints/foo /elsewhere/` を安全に行えます。
+record は content-addressed で Letta の checkpoint namespace に依存しません。
+
+型付き entry は公開 `MemoryRecordV1` 契約を使い、semantic search は
+backend/server/model version、ranking の決定性、query digest、上限、filter evidence
+を含む `MemoryRetrievalV1` を返します。memory text は索引であり、検証済み artifact
+だけが論文・図の主張を根拠付けます。詳細は
+[研究メモリ契約](../reference/memory_contract.md) を参照してください。
 
 ---
 

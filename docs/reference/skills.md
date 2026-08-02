@@ -838,10 +838,6 @@ rank order itself — children see entries most relevant to their
 
 All entries for a specific node (chronological, no scoring).
 
-#### `clear_node_memory(node_id)`
-
-Debug-only per-node clear. Same CoW rule as `add_memory`.
-
 #### `get_experiment_context()`
 
 Stable experiment facts read from Letta core memory — `experiment_goal`,
@@ -903,12 +899,16 @@ node only). Caller is the ari-core node-end hook.
 
 Storage: per-checkpoint Letta agent with two archival collections
 (`ari_node_*`, `ari_react_*`). A snapshot at
-`{ARI_CHECKPOINT_DIR}/memory_backup.jsonl.gz` keeps checkpoints
+`{ARI_CHECKPOINT_DIR}/memory_backup.v1.json.gz` keeps checkpoints
 portable. The v0.5.x JSONL stores were removed in v0.5.0
 (checkpoint-scoped `memory_store.jsonl` and the legacy global JSONL that
 once lived under `$HOME/.ari/`); use `ari memory migrate` to import
 legacy data. Cross-experiment "global memory" is no longer a feature —
 stable lessons belong in `experiment.md`, code, or prior papers.
+
+Research records are content-addressed and append-only; no public or backend
+per-node clear operation exists. Search includes explicit model/ranking/filter
+provenance. See [Research memory contract](memory_contract.md).
 
 ---
 

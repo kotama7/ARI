@@ -13,6 +13,9 @@ from ari_skill_memory.schemas import ArtifactRef
 
 
 def _write_as(backend, monkeypatch, node_id, fn, *args, **kw):
+    kw.setdefault("run_id", "run-test")
+    kw.setdefault("ancestor_ids", [])
+    kw.setdefault("created_by_tool_ref", "memory-test:typed")
     return fn(backend, node_id, *args, **kw)
 
 
@@ -22,20 +25,27 @@ def test_add_experiment_result_stamps_kind_and_refs(backend, monkeypatch):
     res = _write_as(
         backend, monkeypatch, "nX", writer.add_experiment_result,
         "tile=32 -> 842 GB/s",
-        metric_ptr={"name": "GB/s", "value": 842.1},
-        artifact_refs=[ArtifactRef(path="out/bench.csv", sha256="ab", role="data_output")],
+        metric_ptr={"name": "throughput", "value": 842.1, "unit": "GB/s"},
+        artifact_refs=[
+            ArtifactRef(
+                path="out/bench.csv",
+                sha256="ab" * 32,
+                role="data_output",
+            )
+        ],
     )
     assert res["ok"]
     entry = backend.get_node_memory("nX")["entries"][0]
     md = entry["metadata"]
     assert md["type"] == "experiment_result" and md["mem_kind"] == "experiment_result"
-    assert md["artifact_refs"][0]["path"] == "out/bench.csv"
+    assert md["artifact_refs"][0]["relative_path"] == "out/bench.csv"
+    assert md["artifact_refs"][0]["integrity_status"] == "unverified"
     assert md["metric_ptr"]["value"] == 842.1
 
 
 def test_writer_rejects_unknown_kind(backend, monkeypatch):
     with pytest.raises(ValueError):
-        writer.add_typed_memory(backend, "nX", "bogus", "x")
+        _write_as(backend, monkeypatch, "nX", writer.add_typed_memory, "bogus", "x")
 
 
 # ── retriever: kind filter + ancestor scope + require_artifacts ──────────
@@ -44,7 +54,9 @@ def _seed_tree(backend, monkeypatch):
     # root: experiment_result (with artifact) ; p1: failure_case ; sibling sX: experiment_result
     _write_as(backend, monkeypatch, "root", writer.add_experiment_result,
               "root baseline 100 GB/s on partA",
-              artifact_refs=[ArtifactRef(path="root/results.csv", sha256="r1", role="data_output")])
+              artifact_refs=[ArtifactRef(
+                  path="root/results.csv", sha256="01" * 32, role="data_output"
+              )])
     _write_as(backend, monkeypatch, "p1", writer.add_failure_case,
               "link failed on partA cublasLt missing")
     _write_as(backend, monkeypatch, "p1", writer.add_experiment_result,
@@ -93,7 +105,7 @@ def test_ancestor_typed_memory_deterministic_full_in_order(backend, monkeypatch)
 
 def test_reproducibility_events_fold_latest(backend, monkeypatch):
     r = _write_as(backend, monkeypatch, "n1", writer.add_experiment_result, "result A")
-    target = r["id"]
+    target = r["record_id"]
     # two append-only events for the same target; latest wins
     _write_as(backend, monkeypatch, "n1", writer.add_reproducibility_event,
               target, "rerun_failed")
@@ -107,4 +119,11 @@ def test_reproducibility_events_fold_latest(backend, monkeypatch):
 
 def test_reproducibility_event_rejects_bad_status(backend, monkeypatch):
     with pytest.raises(ValueError):
-        writer.add_reproducibility_event(backend, "n1", "mem0", "totally_passed")
+        _write_as(
+            backend,
+            monkeypatch,
+            "n1",
+            writer.add_reproducibility_event,
+            "sha256:" + "0" * 64,
+            "totally_passed",
+        )

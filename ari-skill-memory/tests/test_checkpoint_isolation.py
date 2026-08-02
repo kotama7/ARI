@@ -1,16 +1,18 @@
 """Per-checkpoint isolation — two checkpoints must not see each other."""
 from __future__ import annotations
 
-import os
-
 import pytest
 
 
 def test_two_checkpoints_do_not_leak(tmp_path, monkeypatch):
     from ari_skill_memory.backends import get_backend, clear_backend_cache
 
-    a = tmp_path / "a"; a.mkdir()
-    b = tmp_path / "b"; b.mkdir()
+    a = tmp_path / "a"
+    a.mkdir()
+    b = tmp_path / "b"
+    b.mkdir()
+    (a / ".ari-test-memory-backend").write_text("test-only\n")
+    (b / ".ari-test-memory-backend").write_text("test-only\n")
 
     clear_backend_cache()
     monkeypatch.setenv("ARI_MEMORY_BACKEND", "in_memory")

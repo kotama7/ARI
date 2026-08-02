@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/config/default.yaml
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # FAQ
@@ -85,7 +85,7 @@ checkpoint → ARI 根目录 → `ari-core` → 主目录，或在启动时注�
 安装 LaTeX（`conda install -c conda-forge texlive-core`）和 PDF 文本工具（`pip install pymupdf pdfminer.six`）。
 
 **我能把一个已完成的运行迁移到另一台机器吗？**
-可以。每个检查点都携带一个 `memory_backup.jsonl.gz`，因此
+可以。每个检查点都携带经 digest 验证的 `memory_backup.v1.json.gz`，因此
 `cp -r workspace/checkpoints/<run> /elsewhere/` 后跟 `ari resume`
 会自动将内存恢复到一个空的 Letta 中。
 

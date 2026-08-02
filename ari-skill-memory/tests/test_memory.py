@@ -1,11 +1,6 @@
 """Tests for the node-scope MCP tool surface."""
 from __future__ import annotations
 
-import os
-
-import pytest
-
-
 def test_add_memory_returns_ok(backend):
     r = backend.add_memory("nX", "tool slurm_submit result=ok", {})
     assert r["ok"] is True
@@ -39,13 +34,6 @@ def test_get_node_memory(backend, monkeypatch):
     r = backend.get_node_memory("n1")
     assert len(r["entries"]) == 1
     assert r["entries"][0]["text"] == "entry A"
-
-
-def test_clear_node_memory(backend, monkeypatch):
-    backend.add_memory("n1", "to delete", {})
-    r = backend.clear_node_memory("n1")
-    assert r["removed"] == 1
-    assert backend.get_node_memory("n1")["entries"] == []
 
 
 def test_search_score_ordering(backend, monkeypatch):

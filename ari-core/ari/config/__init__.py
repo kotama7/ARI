@@ -388,7 +388,14 @@ def _apply_memory_section(raw: dict) -> None:
         )
         return
     backend = (mem.get("backend") or "letta").strip().lower()
-    os.environ.setdefault("ARI_MEMORY_BACKEND", backend)
+    # ``local`` and ``cloud`` select a Letta deployment topology; neither is
+    # an alternate storage implementation. Only the test-only in-memory
+    # implementation is forbidden in workflow configuration.
+    if backend not in {"letta", "local", "cloud"}:
+        raise ValueError(
+            "workflow memory.backend must select Letta (letta/local/cloud); "
+            "the in-memory backend is available only inside the test namespace"
+        )
     letta = mem.get("letta") or {}
     if letta.get("base_url"):
         os.environ.setdefault("LETTA_BASE_URL", str(letta["base_url"]))

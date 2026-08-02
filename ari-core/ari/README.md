@@ -99,7 +99,8 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `memory/` — backend abstraction for ancestor-scoped node memory.
   - `README.md` — memory index.
   - `__init__.py` — `MemoryClient` protocol, backends, migration map.
-  - `auto_migrate.py` — v0.5.x → v0.6.0 auto-migration on first launch.
+  - Legacy memory conversion is exposed only through the offline
+    `ari memory migrate` command.
   - `backend.py` — sanctioned core→skill funnel: lazy forwards (`get_backend` / `clear_backend_cache` / `build_verified_context`) to the rich `MemoryBackend`.
   - `client.py` — abstract `MemoryClient` ABC.
   - `file_client.py` — `FileMemoryClient` (legacy JSONL).

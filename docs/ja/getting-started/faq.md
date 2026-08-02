@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/config/default.yaml
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # FAQ
@@ -94,7 +94,7 @@ LaTeX（`conda install -c conda-forge texlive-core`）と PDF テキストツー
 （`pip install pymupdf pdfminer.six`）をインストールしてください。
 
 **完了した実行を別のマシンに移せる?**
-はい。各チェックポイントは `memory_backup.jsonl.gz` を持っているので、
+はい。各チェックポイントは digest 検証付き `memory_backup.v1.json.gz` を持っているので、
 `cp -r workspace/checkpoints/<run> /elsewhere/` の後に `ari resume` を実行すれば、
 メモリが空の Letta に自動的に復元されます。
 

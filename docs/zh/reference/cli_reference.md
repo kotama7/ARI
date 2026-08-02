@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/cli_ear.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # ARI CLI 参考
@@ -344,7 +344,7 @@ ari memory <subcommand> [options]
 |--------|------|
 | `health` | ping 后端，显示延迟、命名空间哈希、服务器版本 |
 | `migrate` | 一次性把 v0.5.x 的 `memory_store.jsonl`（带 `--react` 时还包括 `memory.json`）导入到该检查点的 Letta 集合。原文件被重命名为 `*.migrated-<ts>` |
-| `backup` | 把 Letta 中的记忆快照到 `{ckpt}/memory_backup.jsonl.gz`（gzip 压缩 JSONL）。在管线阶段边界与关闭时自动写入 |
+| `backup` | 写出经 digest 验证的 `{ckpt}/memory_backup.v1.json.gz`（规范 gzip JSON）。在管线阶段边界与关闭时自动写入 |
 | `restore` | `backup` 的逆操作。`--on-conflict=skip\|overwrite\|merge`（默认 `skip`）。`ari resume` 时若 Letta 为空则自动调用 |
 | `start-local` | 启动本地 Letta 服务器：`--path=auto\|docker\|singularity\|pip` |
 | `stop-local` | 停止 docker/singularity/pip Letta（best-effort） |

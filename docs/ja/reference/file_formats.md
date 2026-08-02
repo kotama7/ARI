@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/pipeline/claim_gate
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # ファイルフォーマットリファレンス
@@ -358,28 +358,33 @@ stages:
 バンドル済みデフォルトは `ari-core/ari/configs/workflow.default.yaml` に
 あります。
 
-## `memory_store.jsonl` / `memory_backup.jsonl.gz`
+## メモリ record と portable backup
 
 `ARI_CHECKPOINT_DIR` 配下に書き込まれるメモリバックエンドの成果物:
 
 | ファイル | バックエンド | 備考 |
 |---|---|---|
-| `memory_store.jsonl` | `file` | レガシー v0.5 形式、行区切り JSON エントリ |
-| `memory_backup.jsonl.gz` | `letta` | ポータブルなスナップショット（ステージ境界 + 終了時に自動生成） |
+| `memory_store.jsonl` | `file` | 明示的 offline migration だけが読む legacy v0.5 input |
+| `memory_events.jsonl` | any | content-addressed record の append-only event ledger |
+| `memory_backup.v1.json.gz` | `letta` | root/entry digest 付き canonical gzip JSON |
 | `memory_access.jsonl` | any | 書き込み / 読み込みの追記専用テレメトリ |
 
-スナップショットレコードの形式:
+backup 文書の形式（record は `MemoryRecordV1`）:
 
 ```json
 {
-  "node_id": "...",
-  "ancestor_ids": ["..."],
-  "kind": "node_scope" | "react_trace",
-  "text": "...",
-  "metadata": {...},
-  "ts": "..."
+  "schema_version": "ari.memory-backup/v1",
+  "records": [{"schema_version": "ari.memory-record/v1", "record_digest": "sha256:..."}],
+  "react_entries": [{"content": "...", "entry_digest": "sha256:..."}],
+  "core_context": {},
+  "record_digests": ["sha256:..."],
+  "record_order": ["sha256:..."],
+  "backup_digest": "sha256:..."
 }
 ```
+
+restore は書込み前に文書全体を検証します。詳細は
+[研究メモリ契約](memory_contract.md) を参照してください。
 
 ## EAR バンドル (v0.7.0)
 

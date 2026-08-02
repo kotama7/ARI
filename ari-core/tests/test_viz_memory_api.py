@@ -4,7 +4,6 @@ new response schema (entries[], global==[], error field).
 """
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -24,6 +23,7 @@ def test_memory_api_reads_backend(tmp_path, monkeypatch):
     monkeypatch.setenv("ARI_MEMORY_BACKEND", "in_memory")
     ckpt = tmp_path / "ckpt_X"
     ckpt.mkdir()
+    (ckpt / ".ari-test-memory-backend").write_text("test-only\n")
     monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(ckpt))
 
     clear_backend_cache()

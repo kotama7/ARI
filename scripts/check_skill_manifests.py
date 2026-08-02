@@ -34,6 +34,11 @@ from ari.analysis import (  # noqa: E402
     RunComparisonRequestV1,
     StatisticalTestRequestV1,
 )
+from ari.memory_contract import (  # noqa: E402
+    MemoryBackupV1,
+    MemoryRecordV1,
+    MemoryRetrievalV1,
+)
 from ari.call_context import ToolCallContextV1  # noqa: E402
 from ari.execution import (  # noqa: E402
     ExecutionRequestV1,
@@ -662,6 +667,21 @@ def check_repo(repo_root: Path = REPO_ROOT) -> list[Finding]:
         )
 
     execution_schemas = (
+        (
+            "memory_backup_v1.schema.json",
+            MemoryBackupV1,
+            "ari.memory-backup/v1",
+        ),
+        (
+            "memory_record_v1.schema.json",
+            MemoryRecordV1,
+            "ari.memory-record/v1",
+        ),
+        (
+            "memory_retrieval_v1.schema.json",
+            MemoryRetrievalV1,
+            "ari.memory-retrieval/v1",
+        ),
         (
             "analysis_request_v1.schema.json",
             AnalysisRequestV1,

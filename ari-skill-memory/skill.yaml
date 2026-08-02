@@ -1,7 +1,7 @@
 schema_version: 1
 name: memory-skill
 package: ari-skill-memory
-version: 0.6.0
+version: 0.7.0
 display_name: Manage research memory
 description: Lineage-scoped experiment memory, typed observations, audit, and consolidation.
 environment_policy: complete
@@ -50,13 +50,10 @@ tools:
     capability_ref: ari.memory.audit
     side_effects: read-only
     context_requirement: run
-  - name: clear_node_memory
-    capability_ref: ari.memory.node.clear
-    side_effects: destructive
   - name: consolidate_node_memory
     capability_ref: ari.memory.node.consolidate
     timeout_class: slow
-    permissions: [workspace-read, workspace-write, memory-store, model]
+    permissions: [workspace-read, workspace-write, memory-store]
   - name: get_experiment_context
     capability_ref: ari.memory.experiment-context.read
     side_effects: read-only

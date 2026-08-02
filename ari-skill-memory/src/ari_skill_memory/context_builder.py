@@ -22,9 +22,12 @@ _CLAIM_KINDS = ("paper_claim", "experiment_result")
 
 def _evidence_rank(entry: dict, repro: dict[str, dict]) -> int:
     """0 = strongest. Lower sorts first."""
-    md = entry.get("metadata", {}) or {}
-    status = (repro.get(entry.get("entry_id") or "", {}) or {}).get("status")
-    grounded = bool(md.get("artifact_refs"))
+    status = (repro.get(entry.get("record_id") or "", {}) or {}).get("status")
+    record = entry.get("record") or {}
+    refs = record.get("artifact_refs") or []
+    grounded = bool(refs) and all(
+        ref.get("integrity_status") == "verified" for ref in refs
+    )
     if status == "rerun_passed":
         return 0
     if grounded:
@@ -72,18 +75,30 @@ def build_verified_context(
     annotated: list[dict] = []
     for e in claim_entries:
         md = e.get("metadata", {}) or {}
-        status = (repro.get(e.get("entry_id") or "", {}) or {}).get("status")
+        status = (repro.get(e.get("record_id") or "", {}) or {}).get("status")
+        record = e.get("record") or {}
+        refs = record.get("artifact_refs") or []
+        grounded = bool(refs) and all(
+            ref.get("integrity_status") == "verified" for ref in refs
+        )
         annotated.append({
             "entry_id": e.get("entry_id"),
+            "record_id": e.get("record_id"),
             "node_id": e.get("node_id"),
             "text": e.get("text", ""),
-            "kind": md.get("mem_kind") or md.get("type"),
-            "grounded": bool(md.get("artifact_refs")),
-            "artifact_refs": md.get("artifact_refs") or [],
+            "kind": record.get("kind") or md.get("mem_kind") or md.get("type"),
+            "grounded": grounded,
+            "artifact_refs": refs,
             "repro_status": status,
+            "record_digest": record.get("record_digest"),
         })
     annotated.sort(key=lambda e: _evidence_rank(
-        {"metadata": {"artifact_refs": e["artifact_refs"]}, "entry_id": e["entry_id"]}, repro
+        {
+            "metadata": {"artifact_refs": e["artifact_refs"]},
+            "record_id": e["record_id"],
+            "record": {"artifact_refs": e["artifact_refs"]},
+        },
+        repro,
     ))
     if limit is not None:
         annotated = annotated[:limit]

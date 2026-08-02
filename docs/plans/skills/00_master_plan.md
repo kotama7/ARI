@@ -100,6 +100,13 @@ last_verified: 2026-08-02
   content-addressed JSON/CSV artifactを実装し、旧plot/p-value-only/schema-less parserと
   matplotlib/pandas依存を削除した。描画parityは`plot-skill:render_figure`の
   source/spec/environment/artifact digest付きcorpusで固定しC07-01〜07/D1〜D5を完了。
+- C08 Memoryをnormalized content-addressed `MemoryRecordV1`とprovenance付き
+  `MemoryRetrievalV1`へ移行した。artifact/report digest、explicit metric unit、
+  append-only idempotent event、parallel writer、logical event orderを保持する
+  deterministic v1 backup/clean restoreを実装した。public/backend clear、runtime
+  auto-migration、production in-memory selectionを削除し、offline migrationと
+  Cloud/Docker/Apptainer/pip support matrixへ置換してC08-01〜08/D1〜D5を完了、
+  D6 pip fallbackをowner付きv1.1再評価として閉じた。
 
 ## 1. 決定
 

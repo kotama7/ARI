@@ -465,10 +465,6 @@ manifest は明示的なノードコンテキストを要求し、Skill は署�
 
 特定ノードの全エントリを時系列で取得（スコアなし）。
 
-#### `clear_node_memory(node_id)`
-
-デバッグ用の単一ノード削除。`add_memory` と同じ CoW ルールを適用。
-
 #### `get_experiment_context()`
 
 Letta のコアメモリからシードされた実験ファクト（`experiment_goal`、`primary_metric`、`hardware_spec` など）を返します。シードは最初のノードで `generate_ideas` が完了したタイミング（`primary_metric` が確定する時点）で 1 回だけ実行されるため、それ以前は `{}` を返します。以降は何度呼び出しても安全（60 秒のインプロセスキャッシュ付き）。
@@ -513,7 +509,11 @@ Letta のコアメモリからシードされた実験ファクト（`experiment
 
 ノード終了時に `node_report` から型付きメモリ（`experiment_result` / `failure_case` / `reflection`）を導出して、型付きライタ経由で書き込みます（CoW: 自ノードのみ）。呼び出し元は ari-core のノード終了フックです。
 
-ストレージ: チェックポイントごとに Letta エージェント（`ari_node_*` と `ari_react_*` の 2 コレクション）。`{ARI_CHECKPOINT_DIR}/memory_backup.jsonl.gz` にポータブルスナップショット、`{ARI_CHECKPOINT_DIR}/memory_access.jsonl` に write/read テレメトリ。v0.5.x の JSONL ストア（チェックポイントスコープの `memory_store.jsonl` と、かつて `$HOME/.ari/` 配下にあったレガシーグローバル JSONL）は v0.5.0 で削除。移行は `ari memory migrate --react`。クロス実験の「グローバルメモリ」は廃止。
+ストレージ: チェックポイントごとに Letta エージェント（`ari_node_*` と `ari_react_*` の 2 コレクション）。`{ARI_CHECKPOINT_DIR}/memory_backup.v1.json.gz` に digest 検証付きポータブルスナップショット、`{ARI_CHECKPOINT_DIR}/memory_access.jsonl` に write/read テレメトリ。v0.5.x の JSONL ストアは明示的な offline `ari memory migrate --react` だけが変換します。クロス実験の「グローバルメモリ」は廃止。
+
+research record は content-addressed / append-only で、公開および backend に
+node 単位 clear はありません。検索は model/ranking/filter provenance を明示します。
+詳細は [研究メモリ契約](memory_contract.md) を参照してください。
 
 ---
 

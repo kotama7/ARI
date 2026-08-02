@@ -28,7 +28,7 @@ memory" is no longer a feature.
 - Observability: every tool call emits a record to `memory_access.jsonl`
   (writes + reads, `src_node_id` provenance) with cost-tracker
   instrumentation.
-- Portability: `memory_backup.jsonl.gz` snapshot written at pipeline
+- Portability: digest-verified `memory_backup.v1.json.gz` snapshot written at pipeline
   boundaries and on exit so a checkpoint remains `cp -r`-movable.
 
 ## Tech stack
@@ -75,9 +75,8 @@ Developer escape hatch (tests only):
 | Tool | Return |
 |------|--------|
 | `add_memory(node_id, text, metadata=None)` | `{"ok": bool, "id": str, "error"?: str}` |
-| `search_memory(query, ancestor_ids, limit=5)` | `{"results": [{entry_id, node_id, text, metadata, score}]}` |
+| `search_memory(query, ancestor_ids, limit=5)` | versioned results plus backend/model/ranking/filter provenance |
 | `get_node_memory(node_id)` | `{"entries": [{text, metadata, ts}]}` |
-| `clear_node_memory(node_id)` | `{"removed": int, "error"?: str}` |
 | `get_experiment_context()` | stable experiment facts dict |
 
 The transport-only `ari_context` argument is intentionally omitted from this
@@ -90,6 +89,10 @@ or lineage-inconsistent capabilities fail closed before backend access.
 Global-memory tools (`add_global_memory`, `search_global_memory`,
 `list_global_memory`) were removed in v0.6.0. Callers receive the
 standard MCP `tool not found` error.
+
+Per-node clear/delete is also absent from the public and backend surfaces;
+research records are append-only. Explicit whole-checkpoint purge remains an
+administrative restore/deployment operation.
 
 ## Library-only helpers
 
@@ -112,10 +115,8 @@ A typed, artifact-grounded index built **on top of** the node-scope store
 is the source of truth; these records carry a `node_report_ref` pointer + a
 searchable `text`, never copies of node_report fields.
 
-- `schemas.py` — `ResearchMemory` / `ArtifactRef`; `MemoryKind`
-  (observation, experiment_result, failure_case, procedure, reflection,
-  artifact_summary, paper_claim, reproducibility_event); `ReproStatus`.
-  `to_metadata()` promotes `mem_kind` to a top-level facet for filtering.
+- `ari.public.memory` — canonical `MemoryRecordV1` / `MemoryRetrievalV1`;
+  `schemas.py` retains only the unverified `ArtifactRef` input helper.
 - `provenance.py` — `sha256_of`, `normalize_artifact_path`,
   `refs_from_node_report` (reuses `files_changed` sha256; `compute_missing`
   hashes artifacts for an index baseline), `load_node_report`.

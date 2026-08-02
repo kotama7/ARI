@@ -491,7 +491,7 @@ v0.5.0 でグローバルな `$HOME/.ari/` ディレクトリは廃止された�
 ```
 checkpoints/{run_id}/
 ├── settings.json        # GUI 設定 (LLM モデル、プロバイダ、HPC デフォルト)
-├── memory_backup.jsonl.gz   # Letta スナップショット (ステージ境界＋終了時に自動)
+├── memory_backup.v1.json.gz # digest 検証付き portable Letta スナップショット
 ├── memory_access.jsonl       # write/read テレメトリ
 └── ...                  # tree.json / launch_config.json / uploads / ari.log
 ```
@@ -527,7 +527,7 @@ API キーは **絶対に** `settings.json` には保存されない。`.env` �
 | Skill | ツール | 役割 | LLM? |
 |-------|-------|------|------|
 | `ari-skill-hpc` | `slurm_submit`, `job_status`, `job_cancel`, `singularity_build`, `singularity_run`, `singularity_pull`, `singularity_build_fakeroot`, `singularity_run_gpu` | HPC ジョブ管理 + Singularity コンテナ | ✗ |
-| `ari-skill-memory` | `add_memory`, `search_memory`, `get_node_memory`, `clear_node_memory`, `get_experiment_context` | 祖先スコープのノードメモリ（Letta バックエンド） | △ |
+| `ari-skill-memory` | append-only 型付き write、lineage read、audit、consolidation | versioned 祖先スコープメモリ（Letta バックエンド） | △ |
 | `ari-skill-idea` | `survey`, `generate_ideas` | 文献検索（Semantic Scholar）+ VirSci マルチエージェント仮説生成 | ✓ |
 | `ari-skill-evaluator` | `make_metric_spec` | 実験ファイルからのメトリクス仕様抽出 | △ |
 | `ari-skill-transform` | `nodes_to_science_data`, `generate_ear`, `curate_ear`, `publish_ear` | BFTS ツリー → 科学データ + EAR + curate/publish ライフサイクル (v0.7.0) | ✓ |

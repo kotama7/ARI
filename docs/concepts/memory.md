@@ -77,10 +77,17 @@ process-global node variable is involved, so parallel siblings cannot race or
 authorize one another. Letta self-edit remains disabled so accepted entries are
 byte-stable.
 
-**Portability**: each checkpoint carries a
-`memory_backup.jsonl.gz` snapshot that is restored automatically on
-`ari resume` when the target Letta is empty — keeping
-`cp -r checkpoints/foo /elsewhere/` + `ari resume` working.
+**Portability**: each checkpoint carries a digest-verified
+`memory_backup.v1.json.gz` snapshot. `ari resume` validates it before restoring
+an empty target Letta, so `cp -r checkpoints/foo /elsewhere/` remains safe.
+Records are content-addressed and the backup is independent of the Letta
+checkpoint namespace.
+
+Typed research entries use the public `MemoryRecordV1` contract and every
+semantic search returns `MemoryRetrievalV1` provenance (backend/server/model
+versions, ranking determinism, query digest, bounds, and filter evidence).
+Memory text is an index; only verified artifact references may ground paper or
+figure claims. See [Research memory contract](../reference/memory_contract.md).
 
 ---
 

@@ -6,6 +6,7 @@ backend (in-memory via the ``ckpt_env`` fixture, CoW node = ``nX``).
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 from pathlib import Path
 
@@ -40,15 +41,22 @@ def test_all_typed_tools_registered():
 def test_experiment_result_and_verified_context_roundtrip(
     ckpt_env, authorized_context
 ):
+    artifact = ckpt_env / "out" / "bench.csv"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("842\n")
     r = server.add_experiment_result(
         "nX", "grounded 842 GB/s",
-        artifact_refs=[{"path": "out/bench.csv", "sha256": "a", "role": "data_output"}],
+        artifact_refs=[{
+            "path": "out/bench.csv",
+            "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
+            "role": "data_output",
+        }],
         ari_context=authorized_context("add_experiment_result"),
     )
     assert r["ok"]
     server.add_reproducibility_event(
         "nX",
-        r["id"],
+        r["record_id"],
         "rerun_passed",
         ari_context=authorized_context("add_reproducibility_event"),
     )
@@ -99,6 +107,7 @@ def test_consolidate_node_memory_writes_typed(ckpt_env, authorized_context):
     kinds = {w["kind"] for w in out["written"]}
     assert "experiment_result" in kinds and "reflection" in kinds
     assert all(w["ok"] for w in out["written"])
+    assert all(w["record_id"] == w["record_digest"] for w in out["written"])
     got = server.get_verified_context(
         ["nX"],
         ari_context=authorized_context("get_verified_context"),
@@ -148,7 +157,7 @@ def test_consolidation_defaults_to_authorized_run(
     monkeypatch.setattr(
         server.consolidation,
         "write_consolidated",
-        lambda backend, node_id, specs: [],
+        lambda backend, node_id, specs, **kwargs: [],
     )
     out = server.consolidate_node_memory(
         "nX",

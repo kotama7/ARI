@@ -461,10 +461,6 @@ v0.7.0 引入的 PaperBench 形式 **自动 rubric 生成与审计**。读取论
 
 按时间顺序返回特定节点的所有条目（无评分）。
 
-#### `clear_node_memory(node_id)`
-
-仅用于调试的单节点清除。与 `add_memory` 使用相同的 CoW 规则。
-
 #### `get_experiment_context()`
 
 返回 Letta 核心记忆中种入的稳定事实（`experiment_goal`、`primary_metric`、`hardware_spec` 等）。种入仅在首个节点的 `generate_ideas` 完成时（即 `primary_metric` 被确定的时刻）执行一次，在此之前调用会返回 `{}`。之后可安全反复调用（带 60 秒进程内缓存）。
@@ -514,7 +510,11 @@ v0.7.0 引入的 PaperBench 形式 **自动 rubric 生成与审计**。读取论
 在节点结束时通过类型化写入器从 `node_report` 导出并写入类型化记忆（`experiment_result` /
 `failure_case` / `reflection`）（CoW：仅自身节点）。调用方是 ari-core 的节点结束钩子。
 
-存储：每个检查点拥有一个 Letta 代理（两个集合 `ari_node_*` 与 `ari_react_*`）。可移植快照位于 `{ARI_CHECKPOINT_DIR}/memory_backup.jsonl.gz`，写/读遥测位于 `{ARI_CHECKPOINT_DIR}/memory_access.jsonl`。v0.5.x 的 JSONL 存储（检查点级 `memory_store.jsonl` 以及曾经位于 `$HOME/.ari/` 下的遗留全局 JSONL）已在 v0.5.0 移除；使用 `ari memory migrate --react` 迁移。跨实验“全局记忆”已弃用。
+存储：每个检查点拥有一个 Letta 代理（两个集合 `ari_node_*` 与 `ari_react_*`）。经 digest 验证的可移植快照位于 `{ARI_CHECKPOINT_DIR}/memory_backup.v1.json.gz`，写/读遥测位于 `{ARI_CHECKPOINT_DIR}/memory_access.jsonl`。旧版 JSONL 只由显式 offline `ari memory migrate --react` 转换；跨实验“全局记忆”已弃用。
+
+research record 按内容寻址且仅追加，公共与 backend surface 均无 node 级 clear。
+搜索明确返回 model/ranking/filter provenance。详见
+[研究记忆契约](memory_contract.md)。
 
 ---
 

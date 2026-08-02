@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/cli_ear.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # ARI CLI Reference
@@ -377,7 +377,7 @@ ari memory <subcommand> [options]
 |------------|-------------|
 | `health` | Ping the backend; show latency, namespace hash, server version. |
 | `migrate` | One-shot import of v0.5.x `memory_store.jsonl` (+ `memory.json` with `--react`) into the checkpoint's Letta collections. Source files are renamed to `*.migrated-<ts>`. |
-| `backup` | Snapshot Letta-stored memory to `{ckpt}/memory_backup.jsonl.gz` (gzipped JSONL). Written automatically at pipeline-stage boundaries and on shutdown. |
+| `backup` | Write digest-verified `{ckpt}/memory_backup.v1.json.gz` (canonical gzip JSON). Written automatically at pipeline-stage boundaries and on shutdown. |
 | `restore` | Inverse of `backup`. `--on-conflict=skip\|overwrite\|merge` (default `skip`). Auto-invoked on `ari resume` when Letta is empty. |
 | `start-local` | Bring up a local Letta server: `--path=auto\|docker\|singularity\|pip`. |
 | `stop-local` | Stop docker/singularity/pip Letta (best-effort). |
