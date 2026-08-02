@@ -281,6 +281,9 @@ _env_append_if_absent "# ARI_MODEL_IDEA="
 _env_append_if_absent "# ARI_MODEL_IDEA_REVISION="
 _env_append_if_absent "# ARI_MODEL_CODING="
 _env_append_if_absent "# ARI_MODEL_EVAL="
+_env_append_if_absent "# ARI_MODEL_METRIC_PROPOSAL="
+_env_append_if_absent "# ARI_MODEL_SEMANTIC_REVIEW="
+_env_append_if_absent "# ARI_SEMANTIC_REVIEW_MODEL_REVISION="
 _env_append_if_absent "# ARI_MODEL_PAPER="
 _env_append_if_absent "# ARI_MODEL_BFTS="
 # v0.6.0 §4.1 split the legacy ARI_MODEL_PAPER into rubric / replicator / judge
@@ -336,8 +339,8 @@ _env_append_if_absent "# ARI_RECURSION_DEPTH="
 
 # --- 2c) Story2Proposal contract gate / verified context --------------------
 # ARI_CLAIM_GATE_MODE overrides claim_gate_policy.mode for the deterministic
-# claim_evidence_hard_gate: off (never block) | warn (MVP, report-only) |
-# strict (evaluation; blocks the final gate on blocking errors).
+# claim_evidence_hard_gate: off (never block) | warn (final objective-integrity
+# findings only) | strict (all configured final blocking findings).
 _env_append_if_absent "# ARI_CLAIM_GATE_MODE=warn"
 # Typed-memory consolidation + the artifact-grounded verified_context.json build
 # that write_paper consumes are ON BY DEFAULT (v0.8.x). Set

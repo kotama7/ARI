@@ -21,6 +21,8 @@ name, or undefined op — callers treat None as "could not evaluate").
 from __future__ import annotations
 
 import ast
+import hashlib
+import inspect
 import math
 from typing import Any
 
@@ -183,3 +185,16 @@ def safe_eval(expr: str, variables: dict) -> Any:
         return _eval(tree, variables)
     except Exception:
         return None
+
+
+def evaluator_digest() -> str:
+    """Fingerprint the complete restricted evaluator implementation.
+
+    Metric-contract expressions can influence a blocking decision just as the
+    named numeric formulas can.  Hashing only the public grammar would let a
+    code change silently alter the meaning of an old gate report, so the
+    provenance binds the implementation source as well.
+    """
+
+    source = inspect.getsource(inspect.getmodule(safe_eval)).encode("utf-8")
+    return "sha256:" + hashlib.sha256(source).hexdigest()

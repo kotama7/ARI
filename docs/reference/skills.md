@@ -317,38 +317,52 @@ CLI flags on `ari run`: `--virsci-live` / `--no-virsci-live`, `--virsci-k`,
 
 ## ari-skill-evaluator
 
-Metric spec extraction from experiment files. **LLM: Conditional** (fallback only when metric_keyword not found in text).
+Immutable metric admission and evidence-grounded evaluation. Deterministic
+parsing never invokes an LLM or silently becomes a scientific contract.
 
 ### Tools
 
 #### `make_metric_spec(experiment_text)`
 
-Parse experiment Markdown to extract evaluation criteria. Deterministic when `metric_keyword` and `min_expected_metric` are present in the text; falls back to LLM if not found.
+Parse experiment Markdown and consume an admitted `ResearchContractV1` or an
+explicitly human-admitted proposal. The persisted `MetricGateContractV1` is
+digest-bound and mint-once.
 
 ```python
 result = make_metric_spec(open("experiment.md").read())
 # Returns: {
 #   "metric_keyword": "GFLOP_per_s",
 #   "expected_metrics": ["GFLOP_per_s", "GB_per_s"],   # MEASURED outputs
-#   "expected_params":  ["M", "K", "nnz", "threads"],  # INPUT knobs
+#   "metric_unit": "GFLOP/s",
+#   "metric_direction": "higher",
 #   "min_expected_metric": 50000.0,
 #   "scoring_guide": "..."
 # }
 ```
 
-`expected_metrics` and `expected_params` are strictly disjoint by contract — a name appears in one or the other, never both. The LLM-fallback path is the only one that fills `expected_params` (the regex path covers the experiment.md-format quick path, which has no consistent "## Parameters" header to mine). `loop.py` threads `expected_params` into `MetricSpec` so the LLM evaluator emits a typed `params` / `measurements` split on each node, which `transform-skill::nodes_to_science_data` then propagates to `configurations[*].parameters` (C contract — see also the D contract via `coding-skill::emit_results`).
+If no admitted contract exists, parser fields remain evidence only and the
+result says `human-review-required`.
 
-`make_metric_spec` also builds an **idea-owned run-level `metric_contract`** from the idea's `primary_metric`, its structured `falsifiable_claims`, and the `correctness_required` / `ceiling_must_be_measured` requirement flags. It persists this to `{checkpoint}/metric_contract.json` (next to `idea.json` / `tree.json`). The contract is idea-owned so an agent cannot drop a claim or requirement to dodge the check; it is read back by `transform-skill::nodes_to_science_data` (grafted onto `science_data.metric_contract`) and enforced by the deterministic hard gate.
+#### `propose_metric_contract(idea_json, checkpoint_dir="", model="", model_revision="")`
 
-Model (fallback): `ARI_MODEL` env > `gpt-4o-mini`.
+Explicit LLM proposal for legacy ideas. It records complete provenance and
+always returns `MetricContractProposalV1`; it never admits its own output. Pass
+that proposal plus a named `reviewer` to `make_metric_spec` for explicit human
+admission.
 
 #### `claim_evidence_hard_gate(checkpoint_dir, paper_path, science_data_json="", paper_claim_links_path="", figures_manifest_json="", policy=None, phase="draft")`
 
-Deterministic claim/evidence hard gate (execution data fidelity). **No LLM**. Verifies that science_data claims reference executed nodes, re-computes `numeric_assertions` from `results.json` and checks the paper-reported numbers within tolerance, detects uncovered result numbers per section policy, and checks figure existence. Thin MCP wrapper over ari-core's `run_hard_gate` (`ari.public.claim_gate`). In strict mode the `final` phase returns `{"error": ...}` when blocking errors exist so the stage runner raises and `finalize_paper` is skipped; the `draft` phase and warn/off mode never block. Writes `evaluation/claim_evidence_hard_gate_{phase}.json`.
+Deterministic `GateReportV1` claim/evidence gate. **No LLM**. It recomputes
+numbers from typed exact-run measurements, verifies artifact digests, applies a
+closed unit registry, and rejects missing, changed, cross-run, or untyped
+evidence. A blocking final result returns `{"error": ...}` so finalization is
+skipped; `off` never blocks.
 
 #### `evidence_grounded_semantic_review(checkpoint_dir, paper_path, science_data_json="", hard_gate_path="", paper_claim_links_path="", phase="initial")`
 
-Non-blocking, evidence-grounded semantic review. **LLM: Yes**. The LLM detects over-claiming / interpretation issues / unregistered strong claims grounded in the hard-gate evidence, WITHOUT touching the independent text reviewer; it does not re-check numbers. Emits `suggested_revisions` consumed by `paper_refine` plus scores. Writes `evaluation/evidence_grounded_semantic_review.json`. Never blocks.
+Non-blocking `SemanticReviewV1`. **LLM: Yes**. It records a dedicated model,
+revision, prompt digest, evidence digest, and hard-gate digest. It cannot modify
+the hard gate; failures are `status: unavailable` and never fabricate success.
 
 ---
 

@@ -70,12 +70,12 @@ refined paper), threads both the hard gate and the semantic review into
 the merged review, applies suggested revisions while preserving the
 claim anchors (`paper_refine`), and recompiles the refined `.tex`
 (`render_paper`). It is governed by the `claim_gate_policy` block in
-`ari-core/config/workflow.yaml` and is **default-on in `warn`
-(report-only) mode** — the gate records findings but never blocks the
-build. Setting `claim_gate_policy.mode: strict` (or
-`ARI_CLAIM_GATE_MODE=strict`) makes the **FINAL** gate block
-`finalize_paper` on blocking errors (numeric mismatch, unresolved
-operands, missing evidence).
+`ari-core/config/workflow.yaml` and is default-on in `warn` mode. The
+**FINAL** warn gate blocks only objective-integrity findings; other findings
+remain report-only. Setting `claim_gate_policy.mode: strict` (or
+`ARI_CLAIM_GATE_MODE=strict`) also blocks configured findings such as numeric
+mismatch, unresolved operands, and missing evidence. Draft gates never block,
+and `off` never blocks.
 
 Four robustness behaviours keep the loop honest end-to-end:
 

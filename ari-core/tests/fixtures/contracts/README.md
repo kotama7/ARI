@@ -6,8 +6,8 @@ Golden JSON snapshots of ARI's four stable contract surfaces — the single, mac
 
 - `README.md` — this file.
 - `cli_tree.json` — golden of the `ari = ari.cli:app` Typer/Click command tree (11 commands + `memory`/`ear`/`registry`/`migrate` sub-typers, per-node arguments/options) plus curated flag→env-var side effects; built in-process by `build_cli()`.
-- `mcp_tools.json` — golden catalog of the 15 `ari-skill-*/src/server.py` MCP tool surfaces (90 unique names from 59 FastMCP + 33 low-level `Tool` defs, with arg names), the return-envelope/naming invariants, and recorded cross-skill collisions; built by static AST in `build_mcp_static()`.
-- `public_api.json` — golden per-submodule exported-symbol tables for the 11 `ari.public.*` re-export modules (the stable core→skill API surface); built in-process by `build_public()`.
+- `mcp_tools.json` — golden catalog of the 15 `ari-skill-*/src/server.py` MCP tool surfaces (97 unique names from 61 FastMCP + 38 low-level `Tool` defs, with arg names), the return-envelope/naming invariants, and recorded cross-skill collisions; built by static AST in `build_mcp_static()`.
+- `public_api.json` — golden per-submodule exported-symbol tables for the 18 `ari.public.*` re-export modules (the stable core→skill API surface); built in-process by `build_public()`.
 - `viz_endpoints.json` — golden dashboard REST contract: curated method+path+owner endpoint inventory, mirrored `/api/*` response-key sets, and the AST-resolved `self.path` route literals from `viz/routes.py`; built by `build_viz()`.
 
 ## What each golden pins

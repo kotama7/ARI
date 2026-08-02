@@ -197,13 +197,13 @@ Semantic Scholar スナップショット（コーパス + SPECTER2 コサイン
 
 ## ari-skill-evaluator
 
-実験ファイルからのメトリクス仕様抽出。**LLM: Conditional**（テキスト内に metric_keyword が見つからない場合のみフォールバック）。
+immutable metric admissionと証拠に基づく評価。決定論的parseはLLMを呼ばず、暗黙に科学契約へ昇格しません。
 
 ### ツール
 
 #### `make_metric_spec(experiment_text)`
 
-実験 Markdown をパースして評価基準を抽出します。テキスト内に `metric_keyword` と `min_expected_metric` がある場合は決定論的、見つからない場合は LLM にフォールバックします。
+実験Markdownをparseし、採用済み`ResearchContractV1`または明示的に人手採用されたproposalを消費します。永続化する`MetricGateContractV1`はdigest付きmint-onceです。
 
 ```python
 result = make_metric_spec(open("experiment.md").read())
@@ -214,22 +214,19 @@ result = make_metric_spec(open("experiment.md").read())
 # }
 ```
 
-`make_metric_spec` はさらに、アイデアの `primary_metric`・構造化された `falsifiable_claims`・
-`correctness_required` / `ceiling_must_be_measured` 要件フラグから、**アイデア所有の run レベル
-`metric_contract`** を構築し、`{checkpoint}/metric_contract.json`（`idea.json` / `tree.json` の隣）に
-永続化します。契約はアイデア所有なので、エージェントが claim や要件を削ってチェックを回避することは
-できません。これは `transform-skill::nodes_to_science_data` が読み戻して `science_data.metric_contract`
-に graft し、決定論的なハードゲートが強制します。
+採用契約がない場合、parser出力はevidenceのままで`human-review-required`となります。
 
-モデル（フォールバック）: `ARI_MODEL` env > `gpt-4o-mini`。
+#### `propose_metric_contract(idea_json, checkpoint_dir="", model="", model_revision="")`
+
+旧idea向けの明示LLM proposalです。完全なprovenanceを記録した`MetricContractProposalV1`を返すだけで自己採用しません。名前付き`reviewer`と共に`make_metric_spec`へ渡した場合だけ人手採用されます。
 
 #### `claim_evidence_hard_gate(checkpoint_dir, paper_path, science_data_json="", paper_claim_links_path="", figures_manifest_json="", policy=None, phase="draft")`
 
-決定論的な claim/evidence ハードゲート（実行データの忠実性）。**LLM なし**。science_data の claim が実行済みノードを参照していることを検証し、`results.json` から `numeric_assertions` を再計算して論文に記載された数値が許容誤差内かをチェックし、セクションポリシーに従って未カバーの結果数値を検出し、図の存在を確認します。ari-core の `run_hard_gate`（`ari.public.claim_gate`）の薄い MCP ラッパです。strict モードでは、ブロッキングエラーが存在するとき `final` フェーズは `{"error": ...}` を返すため、ステージランナーが例外を送出し `finalize_paper` がスキップされます。`draft` フェーズおよび warn/off モードでは決してブロックしません。`evaluation/claim_evidence_hard_gate_{phase}.json` に書き出します。
+決定論的`GateReportV1` hard gate（**LLMなし**）。同一runのtyped measurementから再計算し、artifact digestとclosed unit registryを検証し、欠落・改変・cross-run・untyped evidenceを拒否します。blocking final結果は`{"error": ...}`となり、`off`はblockしません。
 
 #### `evidence_grounded_semantic_review(checkpoint_dir, paper_path, science_data_json="", hard_gate_path="", paper_claim_links_path="", phase="initial")`
 
-非ブロッキングの、証拠に基づくセマンティック査読。**LLM: Yes**。LLM がハードゲートの証拠に接地して over-claiming / 解釈の問題 / 未登録の強い主張を検出します。独立したテキスト査読器には一切触れず、数値の再チェックも行いません。`paper_refine` が消費する `suggested_revisions` とスコアを出力します。`evaluation/evidence_grounded_semantic_review.json` に書き出します。決してブロックしません。
+非ブロッキング`SemanticReviewV1`（**LLMあり**）。専用model/revision、prompt/evidence/hard-gate digestを記録し、hard gateを変更できません。失敗は`status: unavailable`であり成功を偽装しません。
 
 ---
 

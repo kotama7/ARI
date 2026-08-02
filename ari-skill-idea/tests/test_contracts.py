@@ -44,9 +44,16 @@ def _metric_data(unit: str = "fraction", citation: str = "s2:p1") -> dict:
             "comparison_scope": "same-environment",
             "rationale": "Tests the claimed reduction directly.",
             "required_evidence": ["error_rate", "baseline_error_rate"],
-            "correctness_required": True,
+            "correctness_required": False,
             "normalization_ceiling": "not-applicable",
             "target_value": None,
+            "formula": "value",
+            "operands": {"value": "error_rate"},
+            "tolerance": {"absolute": 0.0, "relative": 0.01},
+            "required_measured": [],
+            "invariants": ["value >= 0"],
+            "correctness": None,
+            "confidence": 0.95,
         },
         "idea_contracts": [
             {

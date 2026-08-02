@@ -10,26 +10,6 @@
 # Do NOT hand-edit findings away -- tune scripts/quality/check_prompts.yaml.
 version: 1
 known:
-- id: ari-skill-evaluator/src/server.py::_CLAIMS_EXTRACT_SYS
-  file: ari-skill-evaluator/src/server.py
-  line: 292
-  name: _CLAIMS_EXTRACT_SYS
-  lines: 18
-  chars: 1428
-  markers:
-  - role
-  - json
-  verdict: REVIEW_REQUIRED
-- id: ari-skill-evaluator/src/server.py::_CONTRACT_FLAGS_SYS
-  file: ari-skill-evaluator/src/server.py
-  line: 490
-  name: _CONTRACT_FLAGS_SYS
-  lines: 14
-  chars: 1061
-  markers:
-  - role
-  - json
-  verdict: REVIEW_REQUIRED
 - id: ari-skill-paper/src/review_engine.py::system
   file: ari-skill-paper/src/review_engine.py
   line: 443
@@ -44,16 +24,16 @@ known:
   prompt_id: skill.paper.area_chair
 - id: ari-skill-paper/src/server.py::SECTION_PROMPTS
   file: ari-skill-paper/src/server.py
-  line: 117
+  line: 172
   name: SECTION_PROMPTS
   lines: 6
   chars: 434
   markers:
   - role
   verdict: REVIEW_REQUIRED
-- id: ari-skill-paper/src/server.py#L652
+- id: ari-skill-paper/src/server.py#L700
   file: ari-skill-paper/src/server.py
-  line: 652
+  line: 700
   name: system_prompt
   lines: 6
   chars: 326
@@ -61,9 +41,9 @@ known:
   - role
   - rubric
   verdict: REVIEW_REQUIRED
-- id: ari-skill-paper/src/server.py#L661
+- id: ari-skill-paper/src/server.py#L709
   file: ari-skill-paper/src/server.py
-  line: 661
+  line: 709
   name: system_prompt
   lines: 5
   chars: 280
@@ -71,9 +51,9 @@ known:
   - role
   - rubric
   verdict: REVIEW_REQUIRED
-- id: ari-skill-paper/src/server.py#L669
+- id: ari-skill-paper/src/server.py#L717
   file: ari-skill-paper/src/server.py
-  line: 669
+  line: 717
   name: system_prompt
   lines: 5
   chars: 240
@@ -81,9 +61,9 @@ known:
   - role
   - rubric
   verdict: REVIEW_REQUIRED
-- id: ari-skill-paper/src/server.py#L1295
+- id: ari-skill-paper/src/server.py#L1341
   file: ari-skill-paper/src/server.py
-  line: 1295
+  line: 1341
   name: null
   lines: 32
   chars: 2086
@@ -92,7 +72,7 @@ known:
   verdict: REVIEW_REQUIRED
 - id: ari-skill-plot/src/server.py::resp
   file: ari-skill-plot/src/server.py
-  line: 94
+  line: 340
   name: resp
   lines: 7
   chars: 329
@@ -102,7 +82,7 @@ known:
   prompt_id: skill.plot.caption_writer
 - id: ari-skill-plot/src/server.py::system_prompt
   file: ari-skill-plot/src/server.py
-  line: 564
+  line: 813
   name: system_prompt
   lines: 32
   chars: 2171
@@ -113,7 +93,7 @@ known:
   prompt_id: skill.plot.viz_expert
 - id: ari-skill-plot/src/server.py::simple_system
   file: ari-skill-plot/src/server.py
-  line: 667
+  line: 916
   name: simple_system
   lines: 4
   chars: 330
@@ -122,9 +102,9 @@ known:
   - json
   verdict: EXTRACT_TEMPLATE
   prompt_id: skill.plot.matplotlib_emitter
-- id: ari-skill-transform/src/server.py#L834
+- id: ari-skill-transform/src/server.py#L977
   file: ari-skill-transform/src/server.py
-  line: 834
+  line: 977
   name: analysis_prompt
   lines: 30
   chars: 1597
@@ -134,9 +114,9 @@ known:
   - rubric
   verdict: EXTRACT_TEMPLATE
   prompt_id: skill.transform.node_report_analyst
-- id: ari-skill-transform/src/server.py#L867
+- id: ari-skill-transform/src/server.py#L1010
   file: ari-skill-transform/src/server.py
-  line: 867
+  line: 1010
   name: analysis_prompt
   lines: 34
   chars: 2183
@@ -172,7 +152,7 @@ known:
   prompt_id: skill.vlm.table_reviewer
 - id: ari-skill-web/src/server.py::_QUERY_SYSTEM
   file: ari-skill-web/src/server.py
-  line: 468
+  line: 939
   name: _QUERY_SYSTEM
   lines: 15
   chars: 759
@@ -183,7 +163,7 @@ known:
   prompt_id: skill.web.query_librarian
 - id: ari-skill-web/src/server.py::_SELECT_SYSTEM
   file: ari-skill-web/src/server.py
-  line: 486
+  line: 957
   name: _SELECT_SYSTEM
   lines: 7
   chars: 309

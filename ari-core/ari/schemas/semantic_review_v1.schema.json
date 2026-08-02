@@ -1,0 +1,235 @@
+{
+  "$defs": {
+    "SemanticFindingV1": {
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "maxLength": 20000,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "section": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Section",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "overclaim",
+            "overgeneralization",
+            "unsupported_claim",
+            "interpretation",
+            "visual_semantics"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "section",
+        "message"
+      ],
+      "title": "SemanticFindingV1",
+      "type": "object"
+    },
+    "SemanticRevisionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "instruction": {
+          "maxLength": 20000,
+          "minLength": 1,
+          "title": "Instruction",
+          "type": "string"
+        },
+        "section": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Section",
+          "type": "string"
+        }
+      },
+      "required": [
+        "section",
+        "instruction"
+      ],
+      "title": "SemanticRevisionV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/semantic-review-v1.schema.json",
+  "additionalProperties": false,
+  "description": "Advisory review whose provenance cannot mutate the hard-gate result.",
+  "properties": {
+    "detected_overclaim_count": {
+      "minimum": 0,
+      "title": "Detected Overclaim Count",
+      "type": "integer"
+    },
+    "evidence_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Evidence Digest",
+      "type": "string"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/SemanticFindingV1"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "hard_gate_report_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Hard Gate Report Digest"
+    },
+    "human_verified_overclaim_precision": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Human Verified Overclaim Precision"
+    },
+    "model": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Model",
+      "type": "string"
+    },
+    "model_revision": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model Revision"
+    },
+    "note": {
+      "anyOf": [
+        {
+          "maxLength": 20000,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Note"
+    },
+    "phase": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Phase",
+      "type": "string"
+    },
+    "previous_review_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Previous Review Digest"
+    },
+    "prompt_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Prompt Digest",
+      "type": "string"
+    },
+    "resolved_overclaim_count": {
+      "default": 0,
+      "title": "Resolved Overclaim Count",
+      "type": "integer"
+    },
+    "review_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Review Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.semantic-review/v1",
+      "default": "ari.semantic-review/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "score_delta": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Score Delta"
+    },
+    "scores": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "title": "Scores",
+      "type": "object"
+    },
+    "stage": {
+      "const": "evidence_grounded_semantic_review",
+      "default": "evidence_grounded_semantic_review",
+      "title": "Stage",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "ok",
+        "revise",
+        "unavailable"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "suggested_revisions": {
+      "items": {
+        "$ref": "#/$defs/SemanticRevisionV1"
+      },
+      "title": "Suggested Revisions",
+      "type": "array"
+    }
+  },
+  "required": [
+    "review_digest",
+    "phase",
+    "status",
+    "model",
+    "prompt_digest",
+    "evidence_digest",
+    "detected_overclaim_count"
+  ],
+  "title": "ARI Semantic Review v1",
+  "type": "object"
+}

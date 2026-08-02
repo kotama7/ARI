@@ -107,6 +107,12 @@ last_verified: 2026-08-02
   auto-migration、production in-memory selectionを削除し、offline migrationと
   Cloud/Docker/Apptainer/pip support matrixへ置換してC08-01〜08/D1〜D5を完了、
   D6 pip fallbackをowner付きv1.1再評価として閉じた。
+- C09 Evaluatorをimmutable `MetricContractV1`、明示LLM proposal、人手admission、
+  digest-bound `GateReportV1`、独立`SemanticReviewV1`へ移行した。exact-run typed
+  measurement、artifact SHA-256、closed unit conversion、formula implementationを
+  fail-closed検証し、旧claim再抽出/implicit LLM/private extractor/schema duplicate/
+  stale workflow toolを削除した。pre-v1 readerとnumeric/unit/formula/evidence/policy/
+  overclaim校正corpusを恒久化し、C09-01〜08/D1〜D6を完了した。
 
 ## 1. 決定
 

@@ -18,6 +18,11 @@ JSON Schemas shipped with ari-core, loaded by basename via
 - `retrieval_record_v1.schema.json` — provider-neutral literature/web record identity and payload digest.
 - `survey_snapshot_v1.schema.json` — digest-bound record/replay retrieval input and citation graph.
 - `metric_contract_v1.schema.json` — immutable metric, unit, direction, comparison, and evidence vocabulary.
+- `metric_gate_contract_v1.schema.json` — evaluator projection of one admitted metric contract.
+- `metric_contract_proposal_v1.schema.json` — provenance-bound, untrusted LLM metric proposal.
+- `metric_admission_decision_v1.schema.json` — explicit human admission/rejection record.
+- `gate_report_v1.schema.json` — deterministic policy/evidence/formula-bound hard-gate report.
+- `semantic_review_v1.schema.json` — independent provenance-bound semantic advisory.
 - `idea_candidate_v1.schema.json` — admitted falsifiable hypothesis candidate.
 - `idea_set_v1.schema.json` — generation lock, admitted candidates, and explicit rejections.
 - `research_contract_v1.schema.json` — selected mint-once scientific hand-off consumed by evaluators.

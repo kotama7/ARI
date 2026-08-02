@@ -301,8 +301,8 @@ nodes_tree.json  (全ノード: メトリクス、成果物、メモリ、親子
         → claim_evidence_hard_gate_final   (FINAL gate; strict モードで finalize をブロック)
         → finalize_paper            (下記ステージ 8)
     workflow.yaml のトップレベル claim_gate_policy ブロックで制御される
-      (デフォルト mode: warn — FINAL gate は非ブロッキング; mode: strict は
-      FINAL gate で finalize_paper をブロック)。解決の優先順位は最終的に
+      (既定warnはFINALの客観的integrity findingのみ、strictは設定済みfindingもblock、
+      offは非ブロッキング)。解決の優先順位は最終的に
       env ARI_CLAIM_GATE_MODE (off | warn | strict) と ARI_COMPARISON_SCOPE。
     重い gate ロジックは新しい ari/pipeline/claim_gate/ パッケージ
       (contract / gate / policy / numeric / latex / invariants / resolve) に

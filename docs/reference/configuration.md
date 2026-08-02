@@ -564,8 +564,8 @@ claim_gate_policy:
 | Mode | Behaviour |
 |---|---|
 | `off` | Never blocks. |
-| `warn` (default) | Reports errors/warnings but never blocks `finalize_paper`. |
-| `strict` | The **final** gate blocks (`finalize_paper` is skipped) when a `block_on` error exists, and uncovered result numbers in the strict sections become blocking. The draft gate never blocks. |
+| `warn` (default) | The **final** gate blocks only objective-integrity findings from `always_block_on`; other findings remain report-only. |
+| `strict` | The **final** gate also blocks configured `block_on` findings, and uncovered result numbers in strict sections become blocking. The draft gate never blocks. |
 
 `comparison_scope` is the injected research intent (env
 `ARI_COMPARISON_SCOPE` overrides it):

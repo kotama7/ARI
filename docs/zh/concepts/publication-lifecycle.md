@@ -63,10 +63,9 @@ full_paper.tex 注入 \codeavailability{} \codedigest{} \coderef{}
 一次），把 hard gate 与 semantic review 一并织入合并后的评审，在保留 claim
 anchor 的同时应用建议修订（`paper_refine`），并重新编译 refine 后的 `.tex`
 （`render_paper`）。其行为由 `ari-core/config/workflow.yaml` 中的
-`claim_gate_policy` 块控制，**默认以 `warn`（仅报告）模式开启** —— 闸门只记录
-发现，不会阻塞构建。设置 `claim_gate_policy.mode: strict`（或
-`ARI_CLAIM_GATE_MODE=strict`）后，**FINAL** 闸门在出现阻塞性错误（数值不匹配、
-未解析操作数、缺失证据）时会阻塞 `finalize_paper`。
+`claim_gate_policy`块控制，默认使用`warn`。**FINAL** warn gate只阻断客观
+integrity finding，其余仅报告；`strict`还会阻断数值不匹配、未解析操作数、缺失证据等
+配置项。draft与`off`均不阻断。
 
 产物：`paper_claim_links.json`（draft）/
 `paper_claim_links_final.json`，以及

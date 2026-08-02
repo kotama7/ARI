@@ -40,7 +40,10 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 | `ARI_LLM_MODEL` | デフォルト LiteLLM モデル ID | (なし) |
 | `ARI_LLM_API_BASE` | LiteLLM API ベース上書き | LiteLLM デフォルト |
 | `ARI_MODEL` | スキル横断フォールバックモデル ID | (`ARI_LLM_MODEL` にフォールスルー) |
-| `ARI_MODEL_EVAL` | LLM 評価器のモデル | `ARI_MODEL` にフォールスルー |
+| `ARI_MODEL_EVAL` | core BFTS評価器のモデル（旧共有alias。`ari-skill-evaluator`は不使用） | `ARI_MODEL` にフォールスルー |
+| `ARI_MODEL_METRIC_PROPOSAL` | 明示的metric proposalのモデル | `ARI_LLM_MODEL`にフォールスルー |
+| `ARI_MODEL_SEMANTIC_REVIEW` | semantic advisoryのモデル | `ARI_LLM_MODEL`にフォールスルー |
+| `ARI_SEMANTIC_REVIEW_MODEL_REVISION` | 記録するsemantic model revision | (なし) |
 | `ARI_MODEL_JUDGE` | BFTS ジャッジのモデル | `ARI_MODEL` にフォールスルー |
 | `ARI_MODEL_LINEAGE` | 停滞 / lineage 決定のモデル (v0.7.0) | `ARI_MODEL` にフォールスルー |
 | `ARI_MODEL_ROOT_SELECT` | シードアイデアを選ぶモデル | `ARI_MODEL` にフォールスルー |
@@ -123,7 +126,7 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 
 | 変数 | 用途 | デフォルト |
 |---|---|---|
-| `ARI_CLAIM_GATE_MODE` | クレーム–エビデンス / 指標正当性ゲートの評価スイッチ。`off` は決してブロックしない；`warn` はエラー / 警告を報告するが finalize をブロックしない；`strict` はブロッキングエラーがある場合に最終ゲートをブロック | `warn`（`off` / `warn` / `strict`） |
+| `ARI_CLAIM_GATE_MODE` | claim/evidence gate。`off`は非ブロッキング、`warn`はfinalの客観的integrity findingのみ、`strict`は設定済みfinal findingもブロック | `warn`（`off` / `warn` / `strict`） |
 | `ARI_COMPARISON_SCOPE` | クロス環境比較を透明性警告として扱うか（`any`）、ブロッキングエラーとして扱うか（`same_environment`、単一アーキテクチャ最適化研究向け）を制御 | `any`（`any` / `same_environment`） |
 
 ### ルーブリック自動生成 (v0.7.0)

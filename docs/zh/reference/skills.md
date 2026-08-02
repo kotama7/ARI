@@ -188,13 +188,13 @@ result = survey("OpenMP compiler optimization HPC benchmarks")
 
 ## ari-skill-evaluator
 
-从实验文件中提取指标规格。**LLM：条件性**（仅在文本中未找到 metric_keyword 时回退使用 LLM）。
+不可变指标准入与证据评估。确定性解析不调用LLM，也不会隐式升级为科学契约。
 
 ### 工具
 
 #### `make_metric_spec(experiment_text)`
 
-解析实验 Markdown 以提取评估标准。当文本中包含 `metric_keyword` 和 `min_expected_metric` 时为确定性操作；未找到时回退使用 LLM。
+解析实验Markdown并读取已准入的`ResearchContractV1`或显式人工准入的proposal。持久化的`MetricGateContractV1`带摘要且只能mint一次。
 
 ```python
 result = make_metric_spec(open("experiment.md").read())
@@ -205,22 +205,19 @@ result = make_metric_spec(open("experiment.md").read())
 # }
 ```
 
-`make_metric_spec` 还会从想法的 `primary_metric`、其结构化的 `falsifiable_claims`，以及
-`correctness_required` / `ceiling_must_be_measured` 要求标志，构建一份 **想法所有的 run 级
-`metric_contract`**，并持久化到 `{checkpoint}/metric_contract.json`（位于 `idea.json` / `tree.json`
-旁边）。该契约由想法所有，因此智能体无法删除某个 claim 或要求来规避检查；它由
-`transform-skill::nodes_to_science_data` 读回并 graft 到 `science_data.metric_contract`，再由确定性的
-硬门强制执行。
+没有已准入契约时，parser输出仅作为evidence，并返回`human-review-required`。
 
-模型（回退）：`ARI_MODEL` 环境变量 > `gpt-4o-mini`。
+#### `propose_metric_contract(idea_json, checkpoint_dir="", model="", model_revision="")`
+
+面向旧idea的显式LLM proposal。它只返回记录完整来源的`MetricContractProposalV1`，不会自行准入。只有连同具名`reviewer`传给`make_metric_spec`时才可人工准入。
 
 #### `claim_evidence_hard_gate(checkpoint_dir, paper_path, science_data_json="", paper_claim_links_path="", figures_manifest_json="", policy=None, phase="draft")`
 
-确定性的声明/证据硬门（执行数据保真度）。**无 LLM**。验证 science_data 声明所引用的节点确已执行，从 `results.json` 重新计算 `numeric_assertions` 并在容差内核对论文报告的数值，按章节策略检测未覆盖的结果数值，并检查图表是否存在。它是 ari-core `run_hard_gate`（`ari.public.claim_gate`）之上的 MCP 薄包装。在 strict 模式下，当存在阻塞性错误时 `final` 阶段返回 `{"error": ...}`，使阶段运行器抛出异常并跳过 `finalize_paper`；`draft` 阶段以及 warn/off 模式从不阻塞。写出 `evaluation/claim_evidence_hard_gate_{phase}.json`。
+确定性`GateReportV1`硬门（**无LLM**）。从同一run的typed measurement重算，验证artifact摘要和封闭单位注册表，并拒绝缺失、篡改、跨run或无类型证据。阻塞性final结果返回`{"error": ...}`；`off`从不阻塞。
 
 #### `evidence_grounded_semantic_review(checkpoint_dir, paper_path, science_data_json="", hard_gate_path="", paper_claim_links_path="", phase="initial")`
 
-非阻塞的、以证据为基础的语义评审。**LLM：是**。LLM 基于硬门证据检测过度声明 / 解释性问题 / 未注册的强声明，而**不**触碰独立的文本审稿人；它不重新核对数值。输出供 `paper_refine` 消费的 `suggested_revisions` 以及评分。写出 `evaluation/evidence_grounded_semantic_review.json`。从不阻塞。
+非阻塞`SemanticReviewV1`（**LLM：是**）。记录专用模型/修订、提示词、证据和硬门摘要，且不能修改硬门。失败表示为`status: unavailable`，不会伪造成功。
 
 ---
 

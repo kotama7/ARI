@@ -30,7 +30,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = SCRIPTS_DIR.parent
 CHECKER = SCRIPTS_DIR / "check_prompts.py"
 
-# High-value 036 targets the inventory slice must reproduce (file, line).
+# High-value 036 targets the inventory slice must reproduce (file, AST name).
 # NOTE: the evaluator ``_METRIC_EXTRACT_SYS`` / ``_SEMANTIC_SYSTEM_PROMPT`` rows
 # were EXTRACTED to ``ari-skill-evaluator/src/prompts/*.md`` by subtask 040, and
 # the three paper rows (``academic_reviewer`` :542, ``fill_in_writer`` :1487,
@@ -40,10 +40,10 @@ CHECKER = SCRIPTS_DIR / "check_prompts.py"
 # externalize prompts). The remaining rows are inline prompts owned by sibling
 # subtasks (plot/vlm/transform/web).
 CENSUS_TARGETS = {
-    ("ari-skill-plot/src/server.py", 564),        # viz_expert
-    ("ari-skill-vlm/src/server.py", 101),         # figure_reviewer
-    ("ari-skill-transform/src/server.py", 834),   # node_report_analyst
-    ("ari-skill-web/src/server.py", 468),         # query_librarian
+    ("ari-skill-plot/src/server.py", "system_prompt"),
+    ("ari-skill-vlm/src/server.py", None),
+    ("ari-skill-transform/src/server.py", "analysis_prompt"),
+    ("ari-skill-web/src/server.py", "_QUERY_SYSTEM"),
 }
 
 _SYNTH_PROMPT = (
@@ -137,7 +137,7 @@ def test_agent_loop_yields_no_candidate() -> None:
 
 def test_repo_smoke_reproduces_census_and_unique_ids() -> None:
     code, report = run_checker()  # default allowlist, default scope
-    found = {(f["file"], f["line"]) for f in report["findings"]}
+    found = {(f["file"], f["name"]) for f in report["findings"]}
     missing = CENSUS_TARGETS - found
     assert not missing, f"census targets not detected: {sorted(missing)}"
     ids = [f["id"] for f in report["findings"]]
@@ -146,6 +146,41 @@ def test_repo_smoke_reproduces_census_and_unique_ids() -> None:
     assert not any(f["file"].startswith("ari-core/ari/") for f in report["findings"])
     assert report["summary"]["new"] == 0  # seeded allowlist covers the tree
     assert code == 0
+
+
+def test_baseline_update_preserves_review_when_anonymous_prompt_line_moves():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("cp_line_drift", CHECKER)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    candidate = mod.Candidate(
+        file="ari-skill-fixture/src/server.py",
+        line=90,
+        name="system_prompt",
+        lines=8,
+        chars=400,
+        markers=["role", "json"],
+        key="ari-skill-fixture/src/server.py#L90",
+    )
+    previous = {
+        "ari-skill-fixture/src/server.py#L20": {
+            "file": candidate.file,
+            "line": 20,
+            "name": candidate.name,
+            "lines": candidate.lines,
+            "chars": candidate.chars,
+            "markers": candidate.markers,
+            "verdict": "EXTRACT_TEMPLATE",
+            "prompt_id": "skill.fixture.reviewer",
+        }
+    }
+
+    assert mod._prior_verdict_for(candidate, previous) == (
+        "EXTRACT_TEMPLATE",
+        "skill.fixture.reviewer",
+    )
 
 
 def test_repo_smoke_seeded_allowlist_has_zero_new() -> None:

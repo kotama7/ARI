@@ -1,7 +1,7 @@
 schema_version: 1
 name: evaluator-skill
 package: ari-skill-evaluator
-version: 1.0.0
+version: 1.1.0
 display_name: Evaluate scientific evidence
 description: Metric contracts, deterministic claim gates, and evidence-grounded semantic review.
 environment_policy: complete
@@ -16,8 +16,9 @@ optional_env:
   - ARI_CLAIM_GATE_MODE
   - ARI_LLM_API_BASE
   - ARI_LLM_MODEL
-  - ARI_MODEL
-  - ARI_MODEL_EVAL
+  - ARI_MODEL_METRIC_PROPOSAL
+  - ARI_MODEL_SEMANTIC_REVIEW
+  - ARI_SEMANTIC_REVIEW_MODEL_REVISION
   - AWS_DEFAULT_REGION
   - AWS_REGION
   - AZURE_API_BASE
@@ -62,9 +63,21 @@ tools:
     capability_ref: ari.evaluation.claim-gate
     determinism: deterministic
     timeout_class: bounded
-    permissions: [workspace-read]
+    side_effects: stateful
+    permissions: [workspace-read, workspace-write]
   - name: evidence_grounded_semantic_review
     capability_ref: ari.evaluation.semantic-review
+    side_effects: stateful
+    permissions: [workspace-read, workspace-write, model]
   - name: make_metric_spec
     capability_ref: ari.evaluation.metric-spec
     phases: [bfts]
+    determinism: deterministic
+    side_effects: stateful
+    permissions: [workspace-read, workspace-write]
+  - name: propose_metric_contract
+    capability_ref: ari.evaluation.metric-proposal
+    phases: [bfts]
+    side_effects: stateful
+    determinism: stochastic
+    permissions: [workspace-read, workspace-write, model]

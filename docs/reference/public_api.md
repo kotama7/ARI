@@ -34,6 +34,7 @@ by `ari-core/tests/test_public_api_boundary.py`.
 | `ari.public.config_schema` | Pydantic config models (`ARIConfig`, `LLMConfig`, ...) | callers needing typed settings |
 | `ari.public.container` | Container runtime helpers (`ContainerConfig`, `run_in_container`, ...) | `ari-skill-coding` (tests) |
 | `ari.public.execution` | `WorkspaceRefV1`, bounded execution/result records, complete-log artifacts, and `MeasurementSetV1` | execution-producing and measurement-consuming Skills |
+| `ari.public.evaluation` | Immutable metric admission, `GateReportV1`, semantic review, and conservative migration readers | idea, transform, evaluator, paper, offline readers |
 | `ari.public.cost_tracker` | LLM cost recording (`bootstrap_skill`, `record`, ...) | `ari-skill-plot` (LLM call cost) |
 | `ari.public.llm` | `LLMClient` (LiteLLM wrapper with cost integration) | callers that prefer ARI's wrapper |
 | `ari.public.paths` | `PathManager` (checkpoint path resolver) | callers that need scoped paths |
@@ -44,7 +45,7 @@ by `ari-core/tests/test_public_api_boundary.py`.
 | `ari.public.result` | `ResultEnvelopeV1`, content-addressed artifact references, typed errors, call context, provenance | Skill adapters and federated dispatch callers |
 | `ari.public.skill_lock` | `SkillsLockV1`, locked provider/tool records, atomic create-or-verify helpers, typed lock failures | run launchers, federation adapters, replay tooling |
 | `ari.public.skill_manifest` | Versioned Skill manifest models, loader, digest, and safe entrypoint resolver | built-in and federated MCP Skill packages |
-| `ari.public.claim_gate` | Deterministic claim-evidence hard gate (`run_hard_gate`) + concept→invariant registry (`classify_concept`, `scan_science_data`, `CONCEPT_INVARIANTS`) | `ari-skill-evaluator`, `ari-skill-transform` |
+| `ari.public.claim_gate` | Deterministic gate entry point plus evaluation contracts and the concept→invariant registry | `ari-skill-evaluator`, `ari-skill-transform` |
 | `ari.public.verified_context` | Verified-context helpers (`render_grounded_block`, `write_verified_context`, `build_verified_context`) | `ari-skill-paper` |
 
 ## `ari.public.config_schema`
@@ -254,14 +255,19 @@ nodes_json = paths.checkpoint / "nodes_tree.json"
 directly from a skill.  Source: `ari-core/ari/paths.py` →
 `ari-core/ari/public/paths.py`.
 
-## `ari.public.claim_gate`
+## `ari.public.evaluation` and `ari.public.claim_gate`
 
-Re-exports the deterministic claim-evidence hard gate and its
-concept→invariant registry from `ari.pipeline.claim_gate`:
+`ari.public.evaluation` exports the canonical `MetricGateContractV1`,
+`MetricContractProposalV1`, `MetricAdmissionDecisionV1`, `GateReportV1`, and
+`SemanticReviewV1` models, their digest-verifying parsers, and conservative
+pre-v1 readers. `ari.public.claim_gate` additionally exports the deterministic
+gate and concept→invariant registry:
 
 | Symbol | Purpose |
 |---|---|
 | `run_hard_gate` | The gate entry point — blocks claims whose evidence fails the deterministic checks |
+| `parse_gate_report` | Verifies a canonical gate report and its payload digest |
+| `migrate_legacy_gate_report` | Reads a pre-v1 report without inventing missing provenance |
 | `classify_concept` | Maps a concept to its universal-invariant family |
 | `scan_science_data` | Scans science data against the registered invariants |
 | `CONCEPT_INVARIANTS` | The domain-general concept→invariant registry (single source of truth) |

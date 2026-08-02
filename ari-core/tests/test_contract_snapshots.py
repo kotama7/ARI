@@ -105,7 +105,7 @@ def test_cli_env_side_effects_recorded():
     assert "ARI_FEWSHOT_MODE" in env["paper"]
 
 
-# ── MCP: 61 FastMCP + 37 low-level defs (96 unique names) + collision guard ──
+# ── MCP: 61 FastMCP + 38 low-level defs (97 unique names) + collision guard ──
 
 def test_mcp_tool_counts_and_names():
     golden = sc.load_golden("mcp")
@@ -121,9 +121,9 @@ def test_mcp_tool_counts_and_names():
     fastmcp = [t for tools in skills.values() for t in tools if t["idiom"] == "fastmcp"]
     lowlevel = [t for tools in skills.values() for t in tools if t["idiom"] == "lowlevel"]
     assert len(fastmcp) == 61, f"expected 61 FastMCP tools, got {len(fastmcp)}"
-    assert len(lowlevel) == 37, f"expected 37 low-level tool defs, got {len(lowlevel)}"
+    assert len(lowlevel) == 38, f"expected 38 low-level tool defs, got {len(lowlevel)}"
     unique = {t["name"] for tools in skills.values() for t in tools}
-    assert len(unique) == 96, f"expected 96 unique tool names, got {len(unique)}"
+    assert len(unique) == 97, f"expected 97 unique tool names, got {len(unique)}"
     assert golden["invariants"]["return_envelope"] == ["error", "result"]
     assert golden["invariants"]["fq_name_pattern"] == "mcp__<skill>__<tool>"
 

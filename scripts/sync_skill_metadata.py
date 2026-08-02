@@ -37,6 +37,13 @@ from ari.memory_contract import (  # noqa: E402
     MemoryRetrievalV1,
 )
 from ari.call_context import ToolCallContextV1  # noqa: E402
+from ari.claim_gate_contract import (  # noqa: E402
+    GateReportV1,
+    MetricAdmissionDecisionV1,
+    MetricContractProposalV1,
+    MetricGateContractV1,
+    SemanticReviewV1,
+)
 from ari.execution import (  # noqa: E402
     ExecutionRequestV1,
     ExecutionResultV1,
@@ -107,6 +114,19 @@ MEMORY_RETRIEVAL_SCHEMA_PATH = (
 )
 MEMORY_BACKUP_SCHEMA_PATH = (
     ARI_CORE / "ari" / "schemas" / "memory_backup_v1.schema.json"
+)
+GATE_REPORT_SCHEMA_PATH = ARI_CORE / "ari" / "schemas" / "gate_report_v1.schema.json"
+METRIC_GATE_CONTRACT_SCHEMA_PATH = (
+    ARI_CORE / "ari" / "schemas" / "metric_gate_contract_v1.schema.json"
+)
+METRIC_CONTRACT_PROPOSAL_SCHEMA_PATH = (
+    ARI_CORE / "ari" / "schemas" / "metric_contract_proposal_v1.schema.json"
+)
+METRIC_ADMISSION_DECISION_SCHEMA_PATH = (
+    ARI_CORE / "ari" / "schemas" / "metric_admission_decision_v1.schema.json"
+)
+SEMANTIC_REVIEW_SCHEMA_PATH = (
+    ARI_CORE / "ari" / "schemas" / "semantic_review_v1.schema.json"
 )
 # Compatibility alias for scripts that imported the original constant.
 SCHEMA_PATH = SKILL_SCHEMA_PATH
@@ -218,6 +238,36 @@ def expected_outputs(repo_root: Path = REPO_ROOT) -> dict[Path, str]:
         measurement_set_schema_document()
     )
     for path, model, slug, title in (
+        (
+            GATE_REPORT_SCHEMA_PATH,
+            GateReportV1,
+            "gate-report-v1",
+            "ARI Gate Report v1",
+        ),
+        (
+            METRIC_GATE_CONTRACT_SCHEMA_PATH,
+            MetricGateContractV1,
+            "metric-gate-contract-v1",
+            "ARI Metric Gate Contract v1",
+        ),
+        (
+            METRIC_CONTRACT_PROPOSAL_SCHEMA_PATH,
+            MetricContractProposalV1,
+            "metric-contract-proposal-v1",
+            "ARI Metric Contract Proposal v1",
+        ),
+        (
+            METRIC_ADMISSION_DECISION_SCHEMA_PATH,
+            MetricAdmissionDecisionV1,
+            "metric-admission-decision-v1",
+            "ARI Metric Admission Decision v1",
+        ),
+        (
+            SEMANTIC_REVIEW_SCHEMA_PATH,
+            SemanticReviewV1,
+            "semantic-review-v1",
+            "ARI Semantic Review v1",
+        ),
         (
             MEMORY_BACKUP_SCHEMA_PATH,
             MemoryBackupV1,

@@ -325,6 +325,12 @@ def _api_launch(body: bytes) -> dict:
                     val = saved.get(f"model_{skill}", "")
                     if val:
                         proc_env[f"ARI_MODEL_{skill.upper()}"] = val
+                        if skill == "eval":
+                            # The GUI keeps one evaluator-model field for
+                            # compatibility, but the evaluator Skill has two
+                            # independently addressable LLM operations.
+                            proc_env["ARI_MODEL_METRIC_PROPOSAL"] = val
+                            proc_env["ARI_MODEL_SEMANTIC_REVIEW"] = val
                 # VLM review model from settings
                 _vlm_model = saved.get("vlm_review_model", "")
                 if _vlm_model:
