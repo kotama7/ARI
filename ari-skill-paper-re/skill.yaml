@@ -98,6 +98,11 @@ tool_defaults:
 tools:
   - name: build_reproduce_sh
     capability_ref: ari.reproduction.script.build
+    timeout_budget:
+      argument: time_limit_sec
+      unit: seconds
+      overhead_seconds: 600
+      maximum_seconds: 46800
   - name: fetch_code_bundle
     capability_ref: ari.reproduction.code.fetch
     timeout_class: slow
@@ -106,3 +111,8 @@ tools:
     capability_ref: ari.reproduction.grade
   - name: run_reproduce
     capability_ref: ari.reproduction.run
+    timeout_budget:
+      argument: timeout_global_sec
+      unit: seconds
+      overhead_seconds: 600
+      maximum_seconds: 46800

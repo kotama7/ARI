@@ -24,6 +24,7 @@ from pydantic import (
     model_validator,
 )
 
+from ari.async_tools import AsyncLifecycleV1, TimeoutBudgetV1
 from ari.credential_scope import (
     ENVIRONMENT_NAME_RE,
     CredentialScopeV1,
@@ -81,6 +82,8 @@ class ToolPolicyV1(BaseModel):
     timeout_class: Literal["default", "bounded", "slow", "very-slow", "async"] = (
         "default"
     )
+    timeout_budget: TimeoutBudgetV1 | None = None
+    async_lifecycle: AsyncLifecycleV1 | None = None
     permissions: list[str] = Field(default_factory=list)
     context_requirement: Literal["none", "run", "node"] = "none"
     result_schema: str = RESULT_ENVELOPE_V1
@@ -124,6 +127,8 @@ class ToolManifestV1(BaseModel):
     timeout_class: (
         Literal["default", "bounded", "slow", "very-slow", "async"] | None
     ) = None
+    timeout_budget: TimeoutBudgetV1 | None = None
+    async_lifecycle: AsyncLifecycleV1 | None = None
     permissions: list[str] | None = None
     context_requirement: Literal["none", "run", "node"] | None = None
     result_schema: str | None = None
@@ -175,6 +180,8 @@ class ToolManifestV1(BaseModel):
             "side_effects",
             "determinism",
             "timeout_class",
+            "timeout_budget",
+            "async_lifecycle",
             "permissions",
             "context_requirement",
             "result_schema",
@@ -196,6 +203,14 @@ class ResolvedToolManifestV1(ToolPolicyV1):
     name: str
     capability_ref: str
     description: str = ""
+
+    @model_validator(mode="after")
+    def _valid_execution_mode(self) -> "ResolvedToolManifestV1":
+        if self.timeout_class == "async" and self.async_lifecycle is None:
+            raise ValueError("timeout_class=async requires async_lifecycle")
+        if self.timeout_class != "async" and self.async_lifecycle is not None:
+            raise ValueError("async_lifecycle requires timeout_class=async")
+        return self
 
 
 class SkillManifestV1(BaseModel):
@@ -293,6 +308,24 @@ class SkillManifestV1(BaseModel):
                     "credential-like environment variables require a credential "
                     f"scope: {unclassified}"
                 )
+        capabilities: dict[str, list[str]] = {}
+        for tool in self.tools:
+            capabilities.setdefault(tool.capability_ref, []).append(tool.name)
+        for tool in self.resolved_tools():
+            lifecycle = tool.async_lifecycle
+            if lifecycle is None:
+                continue
+            for operation_name in ("status", "result", "cancel"):
+                operation = getattr(lifecycle, operation_name)
+                if operation is None:
+                    continue
+                targets = capabilities.get(operation.capability_ref, [])
+                if len(targets) != 1:
+                    raise ValueError(
+                        f"tool {tool.name!r} async {operation_name} capability "
+                        f"{operation.capability_ref!r} must resolve to exactly one "
+                        f"tool in the package; found {targets}"
+                    )
         return self
 
     def environment_names(self) -> tuple[str, ...]:
@@ -363,6 +396,8 @@ def _legacy_to_v1(raw: dict, path: Path) -> dict:
             "side_effects": "stateful",
             "determinism": "conditional",
             "timeout_class": "default",
+            "timeout_budget": None,
+            "async_lifecycle": None,
             "permissions": [],
             "result_schema": LEGACY_MCP_RESULT_V1,
         },
@@ -468,6 +503,8 @@ __all__ = [
     "MANIFEST_FILENAME",
     "LEGACY_MCP_RESULT_V1",
     "RESULT_ENVELOPE_V1",
+    "AsyncLifecycleV1",
+    "TimeoutBudgetV1",
     "CredentialScopeV1",
     "ResolvedToolManifestV1",
     "SkillEntrypointV1",

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-02T06:38:04.122564+00:00",
-  "commit": "1dc9fb98eac2982a3acb45c7e1fc0bd96e74f715",
+  "generated_at": "2026-08-02T07:05:42.409752+00:00",
+  "commit": "fd9d4df97bd16919d71ee220d60995fdaa6066ea",
   "roots": [
     {
       "id": "R1",
@@ -300,6 +300,16 @@
       ]
     },
     {
+      "id": "data.file:ari-core/ari/schemas/async_tool_handle_v1.schema.json",
+      "kind": "data.file",
+      "file": "ari-core/ari/schemas/async_tool_handle_v1.schema.json",
+      "loc": 152,
+      "reachable_from": [],
+      "edges_in": [
+        "dynamic.path"
+      ]
+    },
+    {
       "id": "data.file:ari-core/ari/schemas/call_context_v1.schema.json",
       "kind": "data.file",
       "file": "ari-core/ari/schemas/call_context_v1.schema.json",
@@ -333,7 +343,7 @@
       "id": "data.file:ari-core/ari/schemas/result_envelope_v1.schema.json",
       "kind": "data.file",
       "file": "ari-core/ari/schemas/result_envelope_v1.schema.json",
-      "loc": 249,
+      "loc": 408,
       "reachable_from": [],
       "edges_in": [
         "dynamic.path"
@@ -343,7 +353,7 @@
       "id": "data.file:ari-core/ari/schemas/skill_manifest_v1.schema.json",
       "kind": "data.file",
       "file": "ari-core/ari/schemas/skill_manifest_v1.schema.json",
-      "loc": 358,
+      "loc": 567,
       "reachable_from": [],
       "edges_in": [
         "dynamic.path"
@@ -2846,6 +2856,24 @@
       ]
     },
     {
+      "id": "py.module:ari-core/ari/async_tools.py",
+      "kind": "py.module",
+      "file": "ari-core/ari/async_tools.py",
+      "loc": 234,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.import"
+      ]
+    },
+    {
       "id": "py.module:ari-core/ari/call_context.py",
       "kind": "py.module",
       "file": "ari-core/ari/call_context.py",
@@ -3519,7 +3547,7 @@
       "id": "py.module:ari-core/ari/mcp/client.py",
       "kind": "py.module",
       "file": "ari-core/ari/mcp/client.py",
-      "loc": 458,
+      "loc": 750,
       "reachable_from": [
         "R1",
         "R2",
@@ -3556,7 +3584,7 @@
       "id": "py.module:ari-core/ari/mcp/dispatch_support.py",
       "kind": "py.module",
       "file": "ari-core/ari/mcp/dispatch_support.py",
-      "loc": 221,
+      "loc": 203,
       "reachable_from": [
         "R1",
         "R2",
@@ -4715,7 +4743,7 @@
       "id": "py.module:ari-core/ari/public/result.py",
       "kind": "py.module",
       "file": "ari-core/ari/public/result.py",
-      "loc": 40,
+      "loc": 48,
       "reachable_from": [
         "R7"
       ],
@@ -4753,7 +4781,7 @@
       "id": "py.module:ari-core/ari/public/skill_manifest.py",
       "kind": "py.module",
       "file": "ari-core/ari/public/skill_manifest.py",
-      "loc": 40,
+      "loc": 44,
       "reachable_from": [
         "R7"
       ],
@@ -4978,7 +5006,7 @@
       "id": "py.module:ari-core/ari/result.py",
       "kind": "py.module",
       "file": "ari-core/ari/result.py",
-      "loc": 481,
+      "loc": 502,
       "reachable_from": [
         "R1",
         "R2",
@@ -5022,7 +5050,7 @@
       "id": "py.module:ari-core/ari/skill_manifest.py",
       "kind": "py.module",
       "file": "ari-core/ari/skill_manifest.py",
-      "loc": 485,
+      "loc": 522,
       "reachable_from": [
         "R1",
         "R2",
@@ -5920,7 +5948,7 @@
       "id": "py.module:ari-skill-orchestrator/src/server.py",
       "kind": "py.module",
       "file": "ari-skill-orchestrator/src/server.py",
-      "loc": 1044,
+      "loc": 1119,
       "reachable_from": [
         "R1",
         "R2",
@@ -6954,6 +6982,134 @@
       "kind": "py.symbol",
       "file": "ari-core/ari/artifact_store.py",
       "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/async_tools.py:ASYNC_TOOL_HANDLE_V1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/async_tools.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/async_tools.py:AsyncLifecycleV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/async_tools.py",
+      "loc": 20,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/async_tools.py:AsyncOperationV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/async_tools.py",
+      "loc": 22,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/async_tools.py:AsyncStateMapV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/async_tools.py",
+      "loc": 69,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/async_tools.py:AsyncStateV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/async_tools.py",
+      "loc": 8,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/async_tools.py:AsyncToolEndpointV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/async_tools.py",
+      "loc": 14,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/async_tools.py:AsyncToolHandleV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/async_tools.py",
+      "loc": 23,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/async_tools.py:TimeoutBudgetV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/async_tools.py",
+      "loc": 32,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/async_tools.py:_CAPABILITY_RE",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/async_tools.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/async_tools.py:_FIELD_RE",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/async_tools.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/async_tools.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/async_tools.py",
+      "loc": 10,
       "reachable_from": [],
       "edges_in": []
     },
@@ -10011,7 +10167,7 @@
       "id": "py.symbol:ari-core/ari/mcp/client.py:MCPClient",
       "kind": "py.symbol",
       "file": "ari-core/ari/mcp/client.py",
-      "loc": 411,
+      "loc": 696,
       "reachable_from": [
         "R1",
         "R2",
@@ -10177,23 +10333,7 @@
       ]
     },
     {
-      "id": "py.symbol:ari-core/ari/mcp/dispatch_support.py:_SLOW_TOOLS",
-      "kind": "py.symbol",
-      "file": "ari-core/ari/mcp/dispatch_support.py",
-      "loc": 11,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
       "id": "py.symbol:ari-core/ari/mcp/dispatch_support.py:_TIMEOUT_CLASS_SECONDS",
-      "kind": "py.symbol",
-      "file": "ari-core/ari/mcp/dispatch_support.py",
-      "loc": 7,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-core/ari/mcp/dispatch_support.py:_VERY_SLOW_TOOLS",
       "kind": "py.symbol",
       "file": "ari-core/ari/mcp/dispatch_support.py",
       "loc": 7,
@@ -10328,7 +10468,7 @@
       "id": "py.symbol:ari-core/ari/mcp/dispatch_support.py:resolve_tool_timeout",
       "kind": "py.symbol",
       "file": "ari-core/ari/mcp/dispatch_support.py",
-      "loc": 19,
+      "loc": 18,
       "reachable_from": [],
       "edges_in": []
     },
@@ -13442,7 +13582,7 @@
       "id": "py.symbol:ari-core/ari/public/result.py:__all__",
       "kind": "py.symbol",
       "file": "ari-core/ari/public/result.py",
-      "loc": 18,
+      "loc": 22,
       "reachable_from": [],
       "edges_in": []
     },
@@ -13466,7 +13606,7 @@
       "id": "py.symbol:ari-core/ari/public/skill_manifest.py:__all__",
       "kind": "py.symbol",
       "file": "ari-core/ari/public/skill_manifest.py",
-      "loc": 18,
+      "loc": 20,
       "reachable_from": [],
       "edges_in": []
     },
@@ -14026,7 +14166,7 @@
       "id": "py.symbol:ari-core/ari/result.py:ResultEnvelopeNormalizer",
       "kind": "py.symbol",
       "file": "ari-core/ari/result.py",
-      "loc": 176,
+      "loc": 180,
       "reachable_from": [
         "R1",
         "R2",
@@ -14044,7 +14184,7 @@
       "id": "py.symbol:ari-core/ari/result.py:ResultEnvelopeV1",
       "kind": "py.symbol",
       "file": "ari-core/ari/result.py",
-      "loc": 83,
+      "loc": 84,
       "reachable_from": [
         "R1",
         "R2",
@@ -14081,8 +14221,18 @@
       "kind": "py.symbol",
       "file": "ari-core/ari/result.py",
       "loc": 9,
-      "reachable_from": [],
-      "edges_in": []
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
     },
     {
       "id": "py.symbol:ari-core/ari/result.py:ResultProvenanceV1",
@@ -14104,7 +14254,7 @@
       "id": "py.symbol:ari-core/ari/result.py:__all__",
       "kind": "py.symbol",
       "file": "ari-core/ari/result.py",
-      "loc": 16,
+      "loc": 20,
       "reachable_from": [],
       "edges_in": []
     },
@@ -14160,7 +14310,7 @@
       "id": "py.symbol:ari-core/ari/result.py:_tool_error_message",
       "kind": "py.symbol",
       "file": "ari-core/ari/result.py",
-      "loc": 7,
+      "loc": 9,
       "reachable_from": [],
       "edges_in": []
     },
@@ -14490,7 +14640,7 @@
       "id": "py.symbol:ari-core/ari/skill_manifest.py:ResolvedToolManifestV1",
       "kind": "py.symbol",
       "file": "ari-core/ari/skill_manifest.py",
-      "loc": 6,
+      "loc": 14,
       "reachable_from": [],
       "edges_in": []
     },
@@ -14514,7 +14664,7 @@
       "id": "py.symbol:ari-core/ari/skill_manifest.py:SkillManifestV1",
       "kind": "py.symbol",
       "file": "ari-core/ari/skill_manifest.py",
-      "loc": 116,
+      "loc": 134,
       "reachable_from": [
         "R1",
         "R2",
@@ -14532,7 +14682,7 @@
       "id": "py.symbol:ari-core/ari/skill_manifest.py:ToolManifestV1",
       "kind": "py.symbol",
       "file": "ari-core/ari/skill_manifest.py",
-      "loc": 82,
+      "loc": 86,
       "reachable_from": [],
       "edges_in": []
     },
@@ -14540,7 +14690,7 @@
       "id": "py.symbol:ari-core/ari/skill_manifest.py:ToolPolicyV1",
       "kind": "py.symbol",
       "file": "ari-core/ari/skill_manifest.py",
-      "loc": 38,
+      "loc": 40,
       "reachable_from": [],
       "edges_in": []
     },
@@ -14580,7 +14730,7 @@
       "id": "py.symbol:ari-core/ari/skill_manifest.py:__all__",
       "kind": "py.symbol",
       "file": "ari-core/ari/skill_manifest.py",
-      "loc": 18,
+      "loc": 20,
       "reachable_from": [],
       "edges_in": []
     },
@@ -14588,7 +14738,7 @@
       "id": "py.symbol:ari-core/ari/skill_manifest.py:_legacy_to_v1",
       "kind": "py.symbol",
       "file": "ari-core/ari/skill_manifest.py",
-      "loc": 43,
+      "loc": 45,
       "reachable_from": [],
       "edges_in": []
     },
@@ -19446,7 +19596,7 @@
       "id": "py.symbol:ari-skill-orchestrator/src/server.py:_runs",
       "kind": "py.symbol",
       "file": "ari-skill-orchestrator/src/server.py",
-      "loc": 30,
+      "loc": 41,
       "reachable_from": [],
       "edges_in": []
     },
@@ -19467,10 +19617,18 @@
       "edges_in": []
     },
     {
+      "id": "py.symbol:ari-skill-orchestrator/src/server.py:_update_meta",
+      "kind": "py.symbol",
+      "file": "ari-skill-orchestrator/src/server.py",
+      "loc": 10,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.symbol:ari-skill-orchestrator/src/server.py:_write_meta",
       "kind": "py.symbol",
       "file": "ari-skill-orchestrator/src/server.py",
-      "loc": 19,
+      "loc": 20,
       "reachable_from": [],
       "edges_in": []
     },
@@ -19510,7 +19668,7 @@
       "id": "py.symbol:ari-skill-orchestrator/src/server.py:tool_get_status",
       "kind": "py.symbol",
       "file": "ari-skill-orchestrator/src/server.py",
-      "loc": 75,
+      "loc": 76,
       "reachable_from": [],
       "edges_in": []
     },
@@ -19566,7 +19724,7 @@
       "id": "py.symbol:ari-skill-orchestrator/src/server.py:tool_run_experiment",
       "kind": "py.symbol",
       "file": "ari-skill-orchestrator/src/server.py",
-      "loc": 169,
+      "loc": 196,
       "reachable_from": [],
       "edges_in": []
     },
@@ -19574,7 +19732,7 @@
       "id": "py.symbol:ari-skill-orchestrator/src/server.py:tool_stop_experiment",
       "kind": "py.symbol",
       "file": "ari-skill-orchestrator/src/server.py",
-      "loc": 18,
+      "loc": 41,
       "reachable_from": [],
       "edges_in": []
     },
@@ -26686,67 +26844,67 @@
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:orchestrator:get_ear",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('get_ear') <- ari-skill-orchestrator/src/server.py:811"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('get_ear') <- ari-skill-orchestrator/src/server.py:886"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:orchestrator:get_paper",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('get_paper') <- ari-skill-orchestrator/src/server.py:775"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('get_paper') <- ari-skill-orchestrator/src/server.py:850"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:orchestrator:get_status",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('get_status') <- ari-skill-orchestrator/src/server.py:745"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('get_status') <- ari-skill-orchestrator/src/server.py:820"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:orchestrator:get_workflow",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('get_workflow') <- ari-skill-orchestrator/src/server.py:837"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('get_workflow') <- ari-skill-orchestrator/src/server.py:912"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:orchestrator:list_children",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('list_children') <- ari-skill-orchestrator/src/server.py:764"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('list_children') <- ari-skill-orchestrator/src/server.py:839"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:orchestrator:list_files",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('list_files') <- ari-skill-orchestrator/src/server.py:784"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('list_files') <- ari-skill-orchestrator/src/server.py:859"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:orchestrator:list_runs",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('list_runs') <- ari-skill-orchestrator/src/server.py:759"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('list_runs') <- ari-skill-orchestrator/src/server.py:834"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:orchestrator:list_skills",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('list_skills') <- ari-skill-orchestrator/src/server.py:832"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('list_skills') <- ari-skill-orchestrator/src/server.py:907"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:orchestrator:read_file",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('read_file') <- ari-skill-orchestrator/src/server.py:793"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('read_file') <- ari-skill-orchestrator/src/server.py:868"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:orchestrator:run_experiment",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('run_experiment') <- ari-skill-orchestrator/src/server.py:676"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('run_experiment') <- ari-skill-orchestrator/src/server.py:751"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:orchestrator:stop_experiment",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('stop_experiment') <- ari-skill-orchestrator/src/server.py:823"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('stop_experiment') <- ari-skill-orchestrator/src/server.py:898"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
@@ -26992,199 +27150,229 @@
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.module:ari-core/ari/artifact_store.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/mcp/client.py:412 import ari.artifact_store"
+      "evidence": "ari-core/ari/mcp/client.py:704 import ari.artifact_store"
+    },
+    {
+      "from": "py.module:ari-core/ari/mcp/client.py",
+      "to": "py.module:ari-core/ari/async_tools.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/mcp/client.py:11 import ari.async_tools"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.module:ari-core/ari/call_context.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/mcp/client.py:10 import ari.call_context"
+      "evidence": "ari-core/ari/mcp/client.py:16 import ari.call_context"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.module:ari-core/ari/config/__init__.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/mcp/client.py:11 import ari.config"
+      "evidence": "ari-core/ari/mcp/client.py:17 import ari.config"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.module:ari-core/ari/mcp/claude_bridge.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/mcp/client.py:449 import ari.mcp.claude_bridge"
+      "evidence": "ari-core/ari/mcp/client.py:741 import ari.mcp.claude_bridge"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.module:ari-core/ari/mcp/connection.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/mcp/client.py:12 import ari.mcp.connection"
+      "evidence": "ari-core/ari/mcp/client.py:18 import ari.mcp.connection"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.module:ari-core/ari/mcp/dispatch_support.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/mcp/client.py:13 import ari.mcp.dispatch_support"
+      "evidence": "ari-core/ari/mcp/client.py:19 import ari.mcp.dispatch_support"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.module:ari-core/ari/mcp/invoke_runtime.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/mcp/client.py:28 import ari.mcp.invoke_runtime"
+      "evidence": "ari-core/ari/mcp/client.py:34 import ari.mcp.invoke_runtime"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.module:ari-core/ari/mcp/lock_runtime.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/mcp/client.py:27 import ari.mcp.lock_runtime"
+      "evidence": "ari-core/ari/mcp/client.py:33 import ari.mcp.lock_runtime"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.module:ari-core/ari/mcp/registry_runtime.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/mcp/client.py:29 import ari.mcp.registry_runtime"
+      "evidence": "ari-core/ari/mcp/client.py:35 import ari.mcp.registry_runtime"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.module:ari-core/ari/protocols/stores.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/mcp/client.py:30 import ari.protocols.stores"
+      "evidence": "ari-core/ari/mcp/client.py:36 import ari.protocols.stores"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.module:ari-core/ari/result.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/mcp/client.py:31 import ari.result"
+      "evidence": "ari-core/ari/mcp/client.py:37 import ari.result"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.module:ari-core/ari/skill_lock.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/mcp/client.py:37 import ari.skill_lock"
+      "evidence": "ari-core/ari/mcp/client.py:44 import ari.skill_lock"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.symbol:ari-core/ari/artifact_store.py:CheckpointArtifactStore",
       "kind": "static.call",
-      "evidence": "ari-core/ari/mcp/client.py:412 use CheckpointArtifactStore"
+      "evidence": "ari-core/ari/mcp/client.py:704 use CheckpointArtifactStore"
+    },
+    {
+      "from": "py.module:ari-core/ari/mcp/client.py",
+      "to": "py.symbol:ari-core/ari/async_tools.py:AsyncLifecycleV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/mcp/client.py:11 use AsyncLifecycleV1"
+    },
+    {
+      "from": "py.module:ari-core/ari/mcp/client.py",
+      "to": "py.symbol:ari-core/ari/async_tools.py:AsyncToolEndpointV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/mcp/client.py:11 use AsyncToolEndpointV1"
+    },
+    {
+      "from": "py.module:ari-core/ari/mcp/client.py",
+      "to": "py.symbol:ari-core/ari/async_tools.py:AsyncToolHandleV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/mcp/client.py:11 use AsyncToolHandleV1"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.symbol:ari-core/ari/call_context.py:ToolCallContextV1",
       "kind": "static.call",
-      "evidence": "ari-core/ari/mcp/client.py:10 use ToolCallContextV1"
+      "evidence": "ari-core/ari/mcp/client.py:16 use ToolCallContextV1"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.symbol:ari-core/ari/call_context.py:new_context_authority_key",
       "kind": "static.call",
-      "evidence": "ari-core/ari/mcp/client.py:10 use new_context_authority_key"
+      "evidence": "ari-core/ari/mcp/client.py:16 use new_context_authority_key"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.symbol:ari-core/ari/config/__init__.py:SkillConfig",
       "kind": "static.call",
-      "evidence": "ari-core/ari/mcp/client.py:11 use SkillConfig"
+      "evidence": "ari-core/ari/mcp/client.py:17 use SkillConfig"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.symbol:ari-core/ari/mcp/claude_bridge.py:build_claude_mcp_config",
       "kind": "static.call",
-      "evidence": "ari-core/ari/mcp/client.py:449 use build_claude_mcp_config"
+      "evidence": "ari-core/ari/mcp/client.py:741 use build_claude_mcp_config"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.symbol:ari-core/ari/mcp/connection.py:SkillConnection",
       "kind": "static.call",
-      "evidence": "ari-core/ari/mcp/client.py:12 use SkillConnection"
+      "evidence": "ari-core/ari/mcp/client.py:18 use SkillConnection"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.symbol:ari-core/ari/mcp/dispatch_support.py:ToolNameCollisionError",
       "kind": "static.call",
-      "evidence": "ari-core/ari/mcp/client.py:13 use ToolNameCollisionError"
+      "evidence": "ari-core/ari/mcp/client.py:19 use ToolNameCollisionError"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.symbol:ari-core/ari/mcp/dispatch_support.py:default_call_context",
       "kind": "static.call",
-      "evidence": "ari-core/ari/mcp/client.py:13 use default_call_context"
+      "evidence": "ari-core/ari/mcp/client.py:19 use default_call_context"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.symbol:ari-core/ari/mcp/dispatch_support.py:enrich_call_context",
       "kind": "static.call",
-      "evidence": "ari-core/ari/mcp/client.py:13 use enrich_call_context"
+      "evidence": "ari-core/ari/mcp/client.py:19 use enrich_call_context"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.symbol:ari-core/ari/mcp/dispatch_support.py:log_tool_call",
       "kind": "static.call",
-      "evidence": "ari-core/ari/mcp/client.py:13 use log_tool_call"
+      "evidence": "ari-core/ari/mcp/client.py:19 use log_tool_call"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.symbol:ari-core/ari/mcp/dispatch_support.py:runtime_tool_ref",
       "kind": "static.call",
-      "evidence": "ari-core/ari/mcp/client.py:13 use runtime_tool_ref"
+      "evidence": "ari-core/ari/mcp/client.py:19 use runtime_tool_ref"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.symbol:ari-core/ari/mcp/invoke_runtime.py:invoke_with_retries",
       "kind": "static.call",
-      "evidence": "ari-core/ari/mcp/client.py:28 use invoke_with_retries"
+      "evidence": "ari-core/ari/mcp/client.py:34 use invoke_with_retries"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.symbol:ari-core/ari/mcp/lock_runtime.py:SkillLockController",
       "kind": "static.call",
-      "evidence": "ari-core/ari/mcp/client.py:27 use SkillLockController"
+      "evidence": "ari-core/ari/mcp/client.py:33 use SkillLockController"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.symbol:ari-core/ari/mcp/registry_runtime.py:discover_registry",
       "kind": "static.call",
-      "evidence": "ari-core/ari/mcp/client.py:29 use discover_registry"
+      "evidence": "ari-core/ari/mcp/client.py:35 use discover_registry"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.symbol:ari-core/ari/protocols/stores.py:ArtifactStore",
       "kind": "static.call",
-      "evidence": "ari-core/ari/mcp/client.py:30 use ArtifactStore"
+      "evidence": "ari-core/ari/mcp/client.py:36 use ArtifactStore"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.symbol:ari-core/ari/result.py:DEFAULT_INLINE_RESULT_LIMIT",
       "kind": "static.call",
-      "evidence": "ari-core/ari/mcp/client.py:31 use DEFAULT_INLINE_RESULT_LIMIT"
+      "evidence": "ari-core/ari/mcp/client.py:37 use DEFAULT_INLINE_RESULT_LIMIT"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.symbol:ari-core/ari/result.py:ResultEnvelopeNormalizer",
       "kind": "static.call",
-      "evidence": "ari-core/ari/mcp/client.py:31 use ResultEnvelopeNormalizer"
+      "evidence": "ari-core/ari/mcp/client.py:37 use ResultEnvelopeNormalizer"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.symbol:ari-core/ari/result.py:ResultEnvelopeV1",
       "kind": "static.call",
-      "evidence": "ari-core/ari/mcp/client.py:31 use ResultEnvelopeV1"
+      "evidence": "ari-core/ari/mcp/client.py:37 use ResultEnvelopeV1"
+    },
+    {
+      "from": "py.module:ari-core/ari/mcp/client.py",
+      "to": "py.symbol:ari-core/ari/result.py:ResultErrorV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/mcp/client.py:37 use ResultErrorV1"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.symbol:ari-core/ari/result.py:utc_now_iso",
       "kind": "static.call",
-      "evidence": "ari-core/ari/mcp/client.py:31 use utc_now_iso"
+      "evidence": "ari-core/ari/mcp/client.py:37 use utc_now_iso"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.symbol:ari-core/ari/skill_lock.py:SkillLockError",
       "kind": "static.call",
-      "evidence": "ari-core/ari/mcp/client.py:37 use SkillLockError"
+      "evidence": "ari-core/ari/mcp/client.py:44 use SkillLockError"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "py.symbol:ari-core/ari/skill_lock.py:SkillsLockV1",
       "kind": "static.call",
-      "evidence": "ari-core/ari/mcp/client.py:37 use SkillsLockV1"
+      "evidence": "ari-core/ari/mcp/client.py:44 use SkillsLockV1"
     },
     {
       "from": "py.module:ari-core/ari/mcp/connection.py",
@@ -27278,21 +27466,33 @@
     },
     {
       "from": "py.module:ari-core/ari/mcp/dispatch_support.py",
+      "to": "py.module:ari-core/ari/async_tools.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/mcp/dispatch_support.py:11 import ari.async_tools"
+    },
+    {
+      "from": "py.module:ari-core/ari/mcp/dispatch_support.py",
       "to": "py.module:ari-core/ari/config/__init__.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/mcp/dispatch_support.py:11 import ari.config"
+      "evidence": "ari-core/ari/mcp/dispatch_support.py:12 import ari.config"
     },
     {
       "from": "py.module:ari-core/ari/mcp/dispatch_support.py",
       "to": "py.module:ari-core/ari/result.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/mcp/dispatch_support.py:12 import ari.result"
+      "evidence": "ari-core/ari/mcp/dispatch_support.py:13 import ari.result"
+    },
+    {
+      "from": "py.module:ari-core/ari/mcp/dispatch_support.py",
+      "to": "py.symbol:ari-core/ari/async_tools.py:TimeoutBudgetV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/mcp/dispatch_support.py:11 use TimeoutBudgetV1"
     },
     {
       "from": "py.module:ari-core/ari/mcp/dispatch_support.py",
       "to": "py.symbol:ari-core/ari/config/__init__.py:SkillConfig",
       "kind": "static.call",
-      "evidence": "ari-core/ari/mcp/dispatch_support.py:11 use SkillConfig"
+      "evidence": "ari-core/ari/mcp/dispatch_support.py:12 use SkillConfig"
     },
     {
       "from": "py.module:ari-core/ari/mcp/invoke_runtime.py",
@@ -28856,27 +29056,45 @@
     },
     {
       "from": "py.module:ari-core/ari/result.py",
+      "to": "py.module:ari-core/ari/async_tools.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/result.py:21 import ari.async_tools"
+    },
+    {
+      "from": "py.module:ari-core/ari/result.py",
       "to": "py.module:ari-core/ari/call_context.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/result.py:21 import ari.call_context"
+      "evidence": "ari-core/ari/result.py:27 import ari.call_context"
     },
     {
       "from": "py.module:ari-core/ari/result.py",
       "to": "py.module:ari-core/ari/protocols/stores.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/result.py:22 import ari.protocols.stores"
+      "evidence": "ari-core/ari/result.py:32 import ari.protocols.stores"
+    },
+    {
+      "from": "py.module:ari-core/ari/result.py",
+      "to": "py.symbol:ari-core/ari/async_tools.py:AsyncToolHandleV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/result.py:21 use AsyncToolHandleV1"
     },
     {
       "from": "py.module:ari-core/ari/result.py",
       "to": "py.symbol:ari-core/ari/call_context.py:ToolCallContextV1",
       "kind": "static.call",
-      "evidence": "ari-core/ari/result.py:21 use ToolCallContextV1"
+      "evidence": "ari-core/ari/result.py:27 use ToolCallContextV1"
     },
     {
       "from": "py.module:ari-core/ari/result.py",
       "to": "py.symbol:ari-core/ari/protocols/stores.py:ArtifactStore",
       "kind": "static.call",
-      "evidence": "ari-core/ari/result.py:22 use ArtifactStore"
+      "evidence": "ari-core/ari/result.py:32 use ArtifactStore"
+    },
+    {
+      "from": "py.module:ari-core/ari/schemas/__init__.py",
+      "to": "data.file:ari-core/ari/schemas/async_tool_handle_v1.schema.json",
+      "kind": "dynamic.path",
+      "evidence": "ari-core/ari/schemas/__init__.py:11 load(name) -> async_tool_handle_v1.schema.json"
     },
     {
       "from": "py.module:ari-core/ari/schemas/__init__.py",
@@ -28982,27 +29200,45 @@
     },
     {
       "from": "py.module:ari-core/ari/skill_manifest.py",
+      "to": "py.module:ari-core/ari/async_tools.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/skill_manifest.py:27 import ari.async_tools"
+    },
+    {
+      "from": "py.module:ari-core/ari/skill_manifest.py",
       "to": "py.module:ari-core/ari/credential_scope.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/skill_manifest.py:27 import ari.credential_scope"
+      "evidence": "ari-core/ari/skill_manifest.py:28 import ari.credential_scope"
+    },
+    {
+      "from": "py.module:ari-core/ari/skill_manifest.py",
+      "to": "py.symbol:ari-core/ari/async_tools.py:AsyncLifecycleV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/skill_manifest.py:27 use AsyncLifecycleV1"
+    },
+    {
+      "from": "py.module:ari-core/ari/skill_manifest.py",
+      "to": "py.symbol:ari-core/ari/async_tools.py:TimeoutBudgetV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/skill_manifest.py:27 use TimeoutBudgetV1"
     },
     {
       "from": "py.module:ari-core/ari/skill_manifest.py",
       "to": "py.symbol:ari-core/ari/credential_scope.py:CredentialScopeV1",
       "kind": "static.call",
-      "evidence": "ari-core/ari/skill_manifest.py:27 use CredentialScopeV1"
+      "evidence": "ari-core/ari/skill_manifest.py:28 use CredentialScopeV1"
     },
     {
       "from": "py.module:ari-core/ari/skill_manifest.py",
       "to": "py.symbol:ari-core/ari/credential_scope.py:ENVIRONMENT_NAME_RE",
       "kind": "static.call",
-      "evidence": "ari-core/ari/skill_manifest.py:27 use ENVIRONMENT_NAME_RE"
+      "evidence": "ari-core/ari/skill_manifest.py:28 use ENVIRONMENT_NAME_RE"
     },
     {
       "from": "py.module:ari-core/ari/skill_manifest.py",
       "to": "py.symbol:ari-core/ari/credential_scope.py:looks_like_credential_environment_name",
       "kind": "static.call",
-      "evidence": "ari-core/ari/skill_manifest.py:27 use looks_like_credential_environment_name"
+      "evidence": "ari-core/ari/skill_manifest.py:28 use looks_like_credential_environment_name"
     },
     {
       "from": "py.module:ari-core/ari/trace_store.py",
@@ -31096,31 +31332,31 @@
       "from": "py.symbol:ari-core/ari/mcp/dispatch_support.py:_TIMEOUT_CLASS_SECONDS",
       "to": "py.symbol:ari-core/ari/mcp/dispatch_support.py:DEFAULT_TOOL_TIMEOUT",
       "kind": "dynamic.string_key",
-      "evidence": "ari-core/ari/mcp/dispatch_support.py:127 _TIMEOUT_CLASS_SECONDS['async']"
+      "evidence": "ari-core/ari/mcp/dispatch_support.py:110 _TIMEOUT_CLASS_SECONDS['async']"
     },
     {
       "from": "py.symbol:ari-core/ari/mcp/dispatch_support.py:_TIMEOUT_CLASS_SECONDS",
       "to": "py.symbol:ari-core/ari/mcp/dispatch_support.py:DEFAULT_TOOL_TIMEOUT",
       "kind": "dynamic.string_key",
-      "evidence": "ari-core/ari/mcp/dispatch_support.py:127 _TIMEOUT_CLASS_SECONDS['bounded']"
+      "evidence": "ari-core/ari/mcp/dispatch_support.py:110 _TIMEOUT_CLASS_SECONDS['bounded']"
     },
     {
       "from": "py.symbol:ari-core/ari/mcp/dispatch_support.py:_TIMEOUT_CLASS_SECONDS",
       "to": "py.symbol:ari-core/ari/mcp/dispatch_support.py:DEFAULT_TOOL_TIMEOUT",
       "kind": "dynamic.string_key",
-      "evidence": "ari-core/ari/mcp/dispatch_support.py:127 _TIMEOUT_CLASS_SECONDS['default']"
+      "evidence": "ari-core/ari/mcp/dispatch_support.py:110 _TIMEOUT_CLASS_SECONDS['default']"
     },
     {
       "from": "py.symbol:ari-core/ari/mcp/dispatch_support.py:_TIMEOUT_CLASS_SECONDS",
       "to": "py.symbol:ari-core/ari/mcp/dispatch_support.py:SLOW_TOOL_TIMEOUT",
       "kind": "dynamic.string_key",
-      "evidence": "ari-core/ari/mcp/dispatch_support.py:127 _TIMEOUT_CLASS_SECONDS['slow']"
+      "evidence": "ari-core/ari/mcp/dispatch_support.py:110 _TIMEOUT_CLASS_SECONDS['slow']"
     },
     {
       "from": "py.symbol:ari-core/ari/mcp/dispatch_support.py:_TIMEOUT_CLASS_SECONDS",
       "to": "py.symbol:ari-core/ari/mcp/dispatch_support.py:VERY_SLOW_TOOL_TIMEOUT",
       "kind": "dynamic.string_key",
-      "evidence": "ari-core/ari/mcp/dispatch_support.py:127 _TIMEOUT_CLASS_SECONDS['very-slow']"
+      "evidence": "ari-core/ari/mcp/dispatch_support.py:110 _TIMEOUT_CLASS_SECONDS['very-slow']"
     },
     {
       "from": "py.symbol:ari-core/ari/publish/__init__.py:_load_ari_registry_backend",

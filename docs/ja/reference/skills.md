@@ -1,5 +1,11 @@
 ---
 sources:
+  - path: ari-core/ari/skill_manifest.py
+    role: implementation
+  - path: ari-core/ari/result.py
+    role: implementation
+  - path: ari-core/ari/async_tools.py
+    role: implementation
   - path: ari-skill-hpc/src/server.py
     role: implementation
   - path: ari-skill-hpc/mcp.json
@@ -18,6 +24,29 @@ last_verified: 2026-08-02
 # MCP Skills リファレンス
 
 Skills は ARI エージェントにツールを提供する MCP サーバーです。ツールは可能な限り決定論的であり、LLM を使用するツールは明示的に注記されています。**全 14 skill**（デフォルト 13、追加 1）。v0.7.0 で PaperBench 形式の再現性フロー用に `ari-skill-replicate` が追加されました。
+
+## canonical `skill.yaml` 契約
+
+全ての組み込み Skill は、package identity、entrypoint、環境変数と credential
+scope、capability、phase、side effect、determinism、timeout、permission、result
+schema の唯一の情報源として versioned `skill.yaml` を持ちます。規範 schema は
+`ari-core/ari/schemas/skill_manifest_v1.schema.json` です。`mcp.json` は
+compatibility 用の生成物であり、手編集しません。
+
+timeout は tool 名のリストでは決まりません。各 tool の `timeout_class` を使い、
+caller が渡す wall-time 引数を外側 timeout に反映できるのは、manifest の
+`timeout_budget` が引数名、単位、buffer、上限を明示した場合だけです。未宣言の
+引数で実行予算を拡大することはできません。
+
+非同期 submitter は `async_lifecycle` に handle field と status/result/cancel の
+semantic capability を宣言します。admission 時にそれらを immutable な runtime
+`tool_ref` へ解決し、`ResultEnvelopeV1.async_handle` に portable な
+`AsyncToolHandleV1` を返します。`MCPClient.get_async_status()`、
+`get_async_result()`、`cancel_async()`、`wait_for_async()` は handle に束縛された
+参照だけを使います。handle 欠落や manifest 未宣言の provider state は typed
+protocol error として fail closed します。規範 schema は
+`ari-core/ari/schemas/async_tool_handle_v1.schema.json` です。SLURM submit と外部
+ARI orchestrator は既に同じ lifecycle 契約を使用します。
 
 ## ari-skill-hpc
 

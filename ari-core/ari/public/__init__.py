@@ -23,7 +23,7 @@ Currently exported sub-modules:
 - :mod:`ari.public.skill_lock` — immutable run snapshot binding manifests to
   live MCP schemas and phase-specific admission.
 - :mod:`ari.public.result`        — versioned result, artifact, error, context,
-  and provenance contracts for typed Skill dispatch.
+  provenance, and immutable async-handle contracts for typed Skill dispatch.
 - :mod:`ari.public.run_env`       — run-environment capture helpers
   (``capture_env`` / ``shell_capture_snippet``) used by
   ari-skill-coding and ari-skill-hpc.

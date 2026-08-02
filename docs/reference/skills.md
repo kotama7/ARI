@@ -6,6 +6,8 @@ sources:
     role: test
   - path: ari-core/ari/result.py
     role: implementation
+  - path: ari-core/ari/async_tools.py
+    role: implementation
   - path: ari-core/ari/skill_lock.py
     role: implementation
   - path: ari-core/ari/mcp/child_environment.py
@@ -111,6 +113,21 @@ classifies tool/transport/protocol/timeout/cancellation errors, and stores raw
 responses over 4,000 characters content-addressably when a run artifact store is
 available. `MCPClient.call_tool()` remains a lossless compatibility projection to
 the historical `{"result": text}` / `{"error": message}` dictionary.
+
+Timeout selection has no tool-name table. Each resolved tool receives a
+manifest `timeout_class`; a caller-controlled wall-time field affects the outer
+transport timeout only when `timeout_budget` explicitly names that argument,
+buffer, unit, and maximum. Undeclared arguments cannot enlarge the budget.
+
+An async submitter declares `async_lifecycle` with its handle field and semantic
+status/result/cancel capabilities. Admission resolves those capabilities to
+immutable runtime `tool_ref` values and returns an `AsyncToolHandleV1` in the
+result envelope. `MCPClient.get_async_status()`, `get_async_result()`,
+`cancel_async()`, and `wait_for_async()` use only those bound references. Provider
+states are mapped by the reviewed manifest; missing handles and unknown states
+fail as typed protocol errors. The normative portable-handle schema is
+`ari-core/ari/schemas/async_tool_handle_v1.schema.json`. SLURM submit and the
+external ARI orchestrator already use this same lifecycle contract.
 
 `capability_ref` expresses semantic capability and may be shared by alternative
 implementations. Runtime name is not evidence that two tools are equivalent.

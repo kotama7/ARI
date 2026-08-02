@@ -18,7 +18,17 @@ from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from ari.call_context import NodeContextV1, RunContextV1, ToolCallContextV1
+from ari.async_tools import (
+    ASYNC_TOOL_HANDLE_V1,
+    AsyncStateMapV1,
+    AsyncToolEndpointV1,
+    AsyncToolHandleV1,
+)
+from ari.call_context import (  # noqa: F401
+    NodeContextV1,
+    RunContextV1,
+    ToolCallContextV1,
+)
 from ari.protocols.stores import ArtifactStore
 
 
@@ -124,6 +134,7 @@ class ResultEnvelopeV1(BaseModel):
     content: str = ""
     content_truncated: bool = False
     structured_content: dict[str, Any] = Field(default_factory=dict)
+    async_handle: AsyncToolHandleV1 | None = None
     artifacts: list[ResultArtifactV1] = Field(default_factory=list)
     error: ResultErrorV1 | None = None
     provenance: ResultProvenanceV1
@@ -274,7 +285,11 @@ class ResultEnvelopeNormalizer:
         structured_dict = _structured_dict(structured)
 
         is_tool_error = bool(response.get("_mcp_is_error", False)) or (
-            isinstance(parsed, dict) and "error" in parsed
+            isinstance(parsed, dict)
+            and (
+                "error" in parsed
+                or str(parsed.get("status", "")).strip().casefold() == "error"
+            )
         )
         status = _result_status(structured_dict, is_tool_error)
         error = None
@@ -417,6 +432,8 @@ def _tool_error_message(parsed: Any, raw: str) -> str:
         return (
             error if isinstance(error, str) else json.dumps(error, ensure_ascii=False)
         )
+    if isinstance(parsed, dict) and parsed.get("message"):
+        return str(parsed["message"])
     return raw or "MCP tool reported an error"
 
 
@@ -463,6 +480,7 @@ def _provenance(
 
 
 __all__ = [
+    "ASYNC_TOOL_HANDLE_V1",
     "ARTIFACT_REF_V1",
     "DEFAULT_INLINE_RESULT_LIMIT",
     "RAW_RESULT_ROLE",
@@ -475,6 +493,9 @@ __all__ = [
     "ResultErrorKind",
     "ResultErrorV1",
     "ResultProvenanceV1",
+    "AsyncStateMapV1",
+    "AsyncToolEndpointV1",
+    "AsyncToolHandleV1",
     "ToolCallContextV1",
     "utc_now_iso",
 ]

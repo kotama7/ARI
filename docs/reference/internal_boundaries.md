@@ -111,8 +111,8 @@ reconciliation. `ari.mcp.connection.SkillConnection` owns process/connection
 lifecycle. Pure dispatch
 policy lives in `ari.mcp.dispatch_support`: runtime `tool_ref` hashing binds the
 canonical manifest identity plus live input/output schemas; phase matching,
-timeout classes, CoW-tool classification, and bounded trace rendering are kept
-separate from transport state.
+manifest timeout/budget resolution, and bounded trace rendering are kept
+separate from transport state. There is no tool-name timeout table.
 
 `MCPClient.list_tools()` publishes `tool_ref`, `capability_ref`, and resolved
 policy. `call_tool_envelope(tool_ref, args, context=...)` is the canonical call
@@ -125,6 +125,12 @@ through the same normalization and then materializes the historical
 `{"result": text}` / `{"error": message}` shape. Bare names remain only as
 unique migration aliases; federation and future run locks must dispatch by
 `tool_ref`.
+
+Async submitters are also name-independent. `ari.async_tools` defines the
+manifest lifecycle and portable handle models. `MCPClient` resolves lifecycle
+capabilities within the admitted provider to immutable status/result/cancel
+refs, validates provider states against the manifest map, and owns bounded
+polling/cancellation.
 
 The environment boundary is deny-by-default. A complete manifest separately
 declares ordinary names and credential scopes; the child receives neither

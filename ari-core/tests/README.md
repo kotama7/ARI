@@ -127,7 +127,7 @@ targets the like-named module under `ari/`.
 - `test_skill_manifest.py` — canonical Skill manifest validation and runtime admission metadata.
 - `test_status_fallback.py` — status fallback.
 - `test_system_prompt_memory.py` — system-prompt memory.
-- `test_tool_timeout_tier.py` — MCP `_resolve_tool_timeout` tiering: LLM/compile paper stages (incl. `paper_refine`, `compile_paper`) get the slow timeout, plain tools the 300s default (regression guard for the paper_refine shim-congestion timeout).
+- `test_tool_timeout_tier.py` — manifest timeout classes, explicitly declared bounded caller budgets, and 100% canonical tool-policy coverage.
 - `test_trace_log_truncation.py` — trace-log truncation.
 - `test_trace_store.py` — TODO
 - `test_tree_view_adapter.py` — TODO

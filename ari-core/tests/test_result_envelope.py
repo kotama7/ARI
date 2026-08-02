@@ -113,6 +113,17 @@ def test_tool_error_is_typed_but_preserves_legacy_result_shape():
     assert envelope.to_legacy() == {"result": raw}
 
 
+def test_status_error_is_typed_from_provider_message():
+    raw = json.dumps({"status": "error", "message": "scheduler refused job"})
+    envelope = _normalize(ResultEnvelopeNormalizer(), {"result": raw})
+
+    assert envelope.status == "error"
+    assert envelope.error is not None
+    assert envelope.error.kind == "tool"
+    assert envelope.error.message == "scheduler refused job"
+    assert envelope.to_legacy() == {"result": raw}
+
+
 def test_transport_error_is_typed_and_preserves_outer_error_shape():
     envelope = _normalize(
         ResultEnvelopeNormalizer(),

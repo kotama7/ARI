@@ -24,12 +24,16 @@ from ari.skill_manifest import (  # noqa: E402
     load_skill_manifest,
 )
 from ari.result import ResultEnvelopeV1  # noqa: E402
+from ari.async_tools import AsyncToolHandleV1  # noqa: E402
 from ari.call_context import ToolCallContextV1  # noqa: E402
 from ari.skill_lock import SkillsLockV1  # noqa: E402
 
 
 SKILL_SCHEMA_PATH = ARI_CORE / "ari" / "schemas" / "skill_manifest_v1.schema.json"
 RESULT_SCHEMA_PATH = ARI_CORE / "ari" / "schemas" / "result_envelope_v1.schema.json"
+ASYNC_HANDLE_SCHEMA_PATH = (
+    ARI_CORE / "ari" / "schemas" / "async_tool_handle_v1.schema.json"
+)
 CONTEXT_SCHEMA_PATH = ARI_CORE / "ari" / "schemas" / "call_context_v1.schema.json"
 LOCK_SCHEMA_PATH = ARI_CORE / "ari" / "schemas" / "skills_lock_v1.schema.json"
 # Compatibility alias for scripts that imported the original constant.
@@ -51,6 +55,13 @@ def result_schema_document() -> dict:
     schema = ResultEnvelopeV1.model_json_schema()
     schema["$id"] = "https://ari.dev/schemas/result-envelope-v1.schema.json"
     schema["title"] = "ARI Result Envelope v1"
+    return schema
+
+
+def async_handle_schema_document() -> dict:
+    schema = AsyncToolHandleV1.model_json_schema()
+    schema["$id"] = "https://ari.dev/schemas/async-tool-handle-v1.schema.json"
+    schema["title"] = "ARI Async Tool Handle v1"
     return schema
 
 
@@ -82,6 +93,9 @@ def expected_outputs(repo_root: Path = REPO_ROOT) -> dict[Path, str]:
     schema_dir = repo_root / "ari-core" / "ari" / "schemas"
     outputs[schema_dir / SKILL_SCHEMA_PATH.name] = _json_text(skill_schema_document())
     outputs[schema_dir / RESULT_SCHEMA_PATH.name] = _json_text(result_schema_document())
+    outputs[schema_dir / ASYNC_HANDLE_SCHEMA_PATH.name] = _json_text(
+        async_handle_schema_document()
+    )
     outputs[schema_dir / CONTEXT_SCHEMA_PATH.name] = _json_text(context_schema_document())
     outputs[schema_dir / LOCK_SCHEMA_PATH.name] = _json_text(lock_schema_document())
     return outputs

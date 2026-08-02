@@ -132,7 +132,10 @@ identity = manifest_digest(manifest)
 `SkillManifestV1` 验证 package identity、package-relative Python stdio entrypoint、
 完整的普通环境声明、互不重叠的 credential scope、唯一 tool 名、
 capability reference、phase、side effect、determinism、timeout class、permission 与
-result schema。内置 production 技能必须使用 `environment_policy=complete`。
+result schema。`TimeoutBudgetV1` 显式声明并限制调用方控制的 timeout 参数；
+`timeout_class=async` 的 tool 必须通过 `AsyncLifecycleV1` 声明 status/result/cancel
+semantic capability，未解析或有歧义的引用会使 manifest validation 失败。
+内置 production 技能必须使用 `environment_policy=complete`。
 每个已解析 tool 还以 `none` / `run` / `node` 声明 `context_requirement`；
 调用方未提供对应结构化上下文时，dispatch 会 fail closed。legacy manifest
 只能由显式传入 `allow_legacy=True` 的 migration 调用方读取；admission / CI 不允许。
@@ -168,6 +171,12 @@ parent 以及 root 到 parent 的有序 chain 绑定到 `lineage_digest`。
 `tool_ref`、run/node/phase context、selection reason、timing 与 SHA-256 response digest。
 credential 只记录 scope ID，不记录值。超过 4,000 字符的 raw content 会被
 外置到内容寻址工件，`materialize_content(store)` 验证 digest 与 byte size 后恢复。
+
+异步 submit 会附加 `AsyncToolHandleV1`，其中 lifecycle endpoint 是从已审查 manifest
+capability 解析出的不可变 `tool_ref`。序列化后的 handle 可直接传给
+`MCPClient.get_async_status()`、`get_async_result()`、`cancel_async()` 或
+`wait_for_async()`，无需 bare-name lookup。规范 schema 为
+`ari-core/ari/schemas/async_tool_handle_v1.schema.json`。
 
 ## `ari.public.skill_lock`
 

@@ -64,3 +64,24 @@ tools:
     capability_ref: ari.container.singularity.run-gpu
   - name: slurm_submit
     capability_ref: ari.hpc.job.submit
+    timeout_class: async
+    async_lifecycle:
+      handle_field: job_id
+      state_field: status
+      status:
+        capability_ref: ari.hpc.job.status
+        handle_argument: job_id
+      result:
+        capability_ref: ari.hpc.job.status
+        handle_argument: job_id
+      cancel:
+        capability_ref: ari.hpc.job.cancel
+        handle_argument: job_id
+      states:
+        submitted_states: [submitted, PENDING, CONFIGURING, UNKNOWN]
+        running_states: [RUNNING, COMPLETING]
+        succeeded_states: [COMPLETED]
+        failed_states: [FAILED, TIMEOUT, NODE_FAIL, OUT_OF_MEMORY, PREEMPTED, BOOT_FAIL]
+        cancelled_states: [CANCELLED, CANCELED]
+      poll_interval_seconds: 30
+      max_wait_seconds: 172800
