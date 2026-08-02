@@ -24,6 +24,12 @@ from pydantic import (
     model_validator,
 )
 
+from ari.credential_scope import (
+    ENVIRONMENT_NAME_RE,
+    CredentialScopeV1,
+    looks_like_credential_environment_name,
+)
+
 
 MANIFEST_FILENAME = "skill.yaml"
 LEGACY_MCP_RESULT_V1 = "ari.legacy-mcp-result/v1"
@@ -32,7 +38,6 @@ RESULT_ENVELOPE_V1 = "ari.result-envelope/v1"
 _KEBAB_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _TOOL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _REF_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
-_ENV_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 _VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$")
 
 
@@ -206,6 +211,7 @@ class SkillManifestV1(BaseModel):
     entrypoint: SkillEntrypointV1 = Field(default_factory=SkillEntrypointV1)
     required_env: list[str] = Field(default_factory=list)
     optional_env: list[str] = Field(default_factory=list)
+    credential_scopes: list[CredentialScopeV1] = Field(default_factory=list)
     tool_defaults: ToolPolicyV1 = Field(default_factory=ToolPolicyV1)
     tools: list[ToolManifestV1]
 
@@ -229,7 +235,9 @@ class SkillManifestV1(BaseModel):
     def _valid_env_names(cls, values: list[str]) -> list[str]:
         if len(values) != len(set(values)):
             raise ValueError("environment variable names must be unique")
-        invalid = [value for value in values if not _ENV_RE.fullmatch(value)]
+        invalid = [
+            value for value in values if not ENVIRONMENT_NAME_RE.fullmatch(value)
+        ]
         if invalid:
             raise ValueError(f"invalid environment variable names: {invalid}")
         return values
@@ -245,7 +253,54 @@ class SkillManifestV1(BaseModel):
             raise ValueError(
                 f"environment variables cannot be required and optional: {overlap}"
             )
+        scope_ids = [scope.id for scope in self.credential_scopes]
+        duplicate_scopes = sorted(
+            {scope_id for scope_id in scope_ids if scope_ids.count(scope_id) > 1}
+        )
+        if duplicate_scopes:
+            raise ValueError(f"duplicate credential scopes: {duplicate_scopes}")
+        ordinary = set(self.required_env) | set(self.optional_env)
+        credential_names = [
+            name
+            for scope in self.credential_scopes
+            for name in scope.environment_names()
+        ]
+        duplicate_credentials = sorted(
+            {name for name in credential_names if credential_names.count(name) > 1}
+        )
+        if duplicate_credentials:
+            raise ValueError(
+                "credential environment variables must belong to one scope: "
+                f"{duplicate_credentials}"
+            )
+        classified_overlap = sorted(ordinary & set(credential_names))
+        if classified_overlap:
+            raise ValueError(
+                "credential environment variables cannot also be ordinary env: "
+                f"{classified_overlap}"
+            )
+        if self.environment_policy == "complete":
+            unclassified = sorted(
+                name
+                for name in ordinary
+                if looks_like_credential_environment_name(name)
+            )
+            if unclassified:
+                raise ValueError(
+                    "credential-like environment variables require a credential "
+                    f"scope: {unclassified}"
+                )
         return self
+
+    def environment_names(self) -> tuple[str, ...]:
+        """Return every ordinary and credential environment name declared."""
+
+        credential_names = [
+            name
+            for scope in self.credential_scopes
+            for name in scope.environment_names()
+        ]
+        return tuple(self.required_env + self.optional_env + credential_names)
 
     def resolved_tools(self) -> tuple[ResolvedToolManifestV1, ...]:
         """Return tools with package defaults applied, preserving manifest order."""
@@ -410,6 +465,7 @@ __all__ = [
     "MANIFEST_FILENAME",
     "LEGACY_MCP_RESULT_V1",
     "RESULT_ENVELOPE_V1",
+    "CredentialScopeV1",
     "ResolvedToolManifestV1",
     "SkillEntrypointV1",
     "SkillManifestError",
@@ -418,6 +474,7 @@ __all__ = [
     "ToolPolicyV1",
     "legacy_mcp_document",
     "load_skill_manifest",
+    "looks_like_credential_environment_name",
     "manifest_digest",
     "manifest_tool_ref",
     "resolve_skill_entrypoint",

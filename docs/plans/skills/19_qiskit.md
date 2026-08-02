@@ -8,7 +8,7 @@ sources:
     role: implementation
   - path: docs/reference/execution_profile.md
     role: doc
-last_verified: 2026-08-01
+last_verified: 2026-08-02
 ---
 
 # C19: Qiskit / IBM Quantum domain profile 実装計画

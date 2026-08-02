@@ -105,6 +105,15 @@ class SkillConfig(BaseModel):
         default_factory=list,
         description="Optional environment names declared by the Skill contract.",
     )
+    credential_scopes: dict[str, dict[str, list[str]]] = Field(
+        default_factory=dict,
+        description="Named credential scopes and their required/optional env names.",
+    )
+    credential_scope_identities: list[dict] = Field(
+        default_factory=list,
+        description="Runtime-only value-free credential authority identities.",
+        exclude=True,
+    )
     tool_timeout_classes: dict[str, str] = Field(
         default_factory=dict,
         description="Resolved manifest timeout class keyed by runtime tool name.",

@@ -10,6 +10,12 @@ sources:
     role: implementation
   - path: ari-core/ari/mcp/client.py
     role: implementation
+  - path: ari-core/ari/mcp/connection.py
+    role: implementation
+  - path: ari-core/ari/mcp/child_environment.py
+    role: implementation
+  - path: ari-core/ari/mcp/secure_stdio_proxy.py
+    role: implementation
   - path: ari-core/ari/mcp/dispatch_support.py
     role: implementation
   - path: ari-core/ari/result.py
@@ -78,7 +84,9 @@ Sanctioned exec modules — changes to execution behaviour belong here:
 |--------|------|
 | `ari/container.py` | container exec: `detect_runtime`, `build_run_cmd`, `run_in_container` (Popen + `_sandbox_preexec` = `os.setsid` new process group + optional `RLIMIT_NPROC` via `ARI_MAX_CHILD_PROCS`), `_run_with_timeout` (group SIGTERM→SIGKILL), `pull_image`, `exec_in_container`. Re-exported by `ari.public.container`. |
 | `ari/env_detect.py` | scheduler/runtime probes (`sinfo`, `qstat`, `docker info`, `lscpu`) — read-only, best-effort, no hardcoded cluster knowledge. |
-| `ari/mcp/client.py` | spawns skill stdio servers via the MCP SDK `stdio_client` (a wrapper, not a raw spawn). |
+| `ari/mcp/connection.py` | owns one Skill's MCP SDK `stdio_client` lifecycle and immutable child-environment snapshot. |
+| `ari/mcp/child_environment.py` | constructs the manifest allowlist, isolated runtime directories, credential authority identities, and redacted stderr pipe. |
+| `ari/mcp/secure_stdio_proxy.py` | restores exact-env/redaction guarantees when a direct MCP client merges its own parent environment. |
 | `ari-skill-hpc/src/slurm.py` | the canonical SLURM submit/status/cancel (`SlurmClient`: `_run_local` asyncio subprocess, `_run_remote` paramiko), incl. `ARI_SBATCH_EXPORT_MODE` clean-env logic. |
 
 Known duplication to consolidate toward these owners (not incorrect behaviour,
@@ -98,7 +106,9 @@ caution — touch its lifecycle only deliberately.
 
 ## MCP admission and result boundary
 
-`ari.mcp.client.MCPClient` owns process/connection lifecycle. Pure dispatch
+`ari.mcp.client.MCPClient` owns registry, dispatch, retry, and lock
+reconciliation. `ari.mcp.connection.SkillConnection` owns process/connection
+lifecycle. Pure dispatch
 policy lives in `ari.mcp.dispatch_support`: runtime `tool_ref` hashing binds the
 canonical manifest identity plus live input/output schemas; phase matching,
 timeout classes, CoW-tool classification, and bounded trace rendering are kept
@@ -115,6 +125,15 @@ through the same normalization and then materializes the historical
 `{"result": text}` / `{"error": message}` shape. Bare names remain only as
 unique migration aliases; federation and future run locks must dispatch by
 `tool_ref`.
+
+The environment boundary is deny-by-default. A complete manifest separately
+declares ordinary names and credential scopes; the child receives neither
+undeclared parent variables nor the parent's home/config directories. Credential
+values may exist only in the connection/proxy environment and its in-memory
+redactor. Locks and result provenance record value-free scope identities. The
+Claude bridge sends only credential variable references to the local shim and
+launches providers behind `secure_stdio_proxy`, because a direct MCP client may
+otherwise merge its full parent environment and bypass core admission.
 
 ## The two orchestration engines
 

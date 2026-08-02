@@ -15,6 +15,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `container.py` — unified container runtime abstraction (Docker / Singularity / bare subprocess).
 - `core.py` — generic ARI runtime builder (zero domain-specific code; `cli` calls into it).
 - `cost_tracker.py` — per-call logs + per-experiment cost summaries.
+- `credential_scope.py` — value-free credential-scope contract and environment-name classification.
 - `env_detect.py` — detect schedulers, container runtimes, and HPC resources.
 - `lineage.py` — recursion lineage helpers; walk `parent_run_id` chains for ancestor artifacts.
 - `memory_cli.py` — `ari memory` subcommand (migrate / backup / …).
@@ -84,8 +85,13 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `mcp/` — MCP client talking to `ari-skill-*` subprocesses.
   - `README.md` — mcp index.
   - `__init__.py` — public `MCPClient` + contract.
-  - `claude_bridge.py` — Claude CLI MCP server config and allowed-tool rendering.
-  - `client.py` — stdio connection pooling, retry, per-thread asyncio loop.
+  - `client.py` — public MCP client facade, typed dispatch, and run-lock coordination.
+  - `connection.py` — isolated provider lifecycle and event-loop thread.
+  - `child_environment.py` — environment allowlist, credential scopes, redaction.
+  - `claude_bridge.py` — value-free Claude CLI config and allowed-tool rendering.
+  - `registry_runtime.py` — live discovery, enrichment, and collision admission.
+  - `invoke_runtime.py` — retries, cancellation, and typed transport normalization.
+  - `secure_stdio_proxy.py` — exact-env/redacting direct-MCP proxy.
   - `dispatch_support.py` — pure identity, phase, timeout, and tracing policy.
   - `lock_runtime.py` — per-client exact/subset run-lock reconciliation state.
 - `memory/` — backend abstraction for ancestor-scoped node memory.

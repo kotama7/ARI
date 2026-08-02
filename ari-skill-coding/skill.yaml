@@ -4,12 +4,25 @@ package: ari-skill-coding
 version: 0.1.0
 display_name: Execute research code
 description: Workspace-scoped code authoring, process execution, and result emission.
+environment_policy: complete
 entrypoint:
   transport: stdio
   command_kind: python
   module: src/server.py
 required_env: []
-optional_env: [ARI_CHECKPOINT_DIR, ARI_CURRENT_NODE_ID, ARI_ROOT]
+optional_env:
+  - APPTAINER_CACHEDIR
+  - ARI_CHECKPOINT_DIR
+  - ARI_CONTAINERS_DIR
+  - ARI_CONTAINER_IMAGE
+  - ARI_CONTAINER_MODE
+  - ARI_MAX_CHILD_PROCS
+  - ARI_WORK_DIR
+  - SINGULARITY_CACHEDIR
+  - SLURM_JOB_ID
+  - SLURM_JOB_NODELIST
+  - SLURM_JOB_PARTITION
+credential_scopes: []
 tool_defaults:
   phases: [bfts, reproduce]
   side_effects: stateful

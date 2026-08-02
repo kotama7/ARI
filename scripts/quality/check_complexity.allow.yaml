@@ -7,6 +7,19 @@
 # Findings on these identities are reported 'known' and never fail --fail-on-regression.
 version: 1
 loc:
+# Post-freeze findings already present on origin/main at the skills-branch base.
+- path: ari-core/ari/viz/frontend/src/components/Results/sections/OrsChainSection.tsx
+  loc: 925
+  tier: review
+- path: ari-core/ari/paths.py
+  loc: 663
+  tier: warn
+- path: ari-core/ari/pipeline/driver.py
+  loc: 575
+  tier: warn
+- path: ari-core/ari/viz/frontend/src/components/Workflow/workflowModals.tsx
+  loc: 573
+  tier: warn
 - path: ari-core/ari/agent/loop.py
   loc: 1630
   tier: split-required
@@ -131,6 +144,19 @@ loc:
   loc: 712
   tier: warn
 complexity:
+# Post-freeze findings already present on origin/main at the skills-branch base.
+- path: ari-core/ari/pipeline/driver.py
+  function: run
+  line: 68
+  complexity: 62
+- path: ari-core/ari/pipeline/stages.py
+  function: persist
+  line: 52
+  complexity: 17
+- path: ari-core/ari/viz/services/state_service.py
+  function: build_app_state
+  line: 46
+  complexity: 96
 - path: ari-core/ari/agent/loop.py
   function: _build_safe_window
   line: 725

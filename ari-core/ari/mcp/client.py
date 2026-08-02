@@ -2,246 +2,47 @@
 
 from __future__ import annotations
 
-import asyncio
 import atexit
-import concurrent.futures
-import json
 import logging
 import os
-import sys
-import threading
-import time
 from pathlib import Path
-from typing import Any
-
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
 
 from ari.config import SkillConfig
+from ari.mcp.connection import SkillConnection
 from ari.mcp.dispatch_support import (
     COW_TOOLS,
-    DEFAULT_TOOL_TIMEOUT,
-    MAX_RETRIES,
-    RETRY_DELAY,
+    DEFAULT_TOOL_TIMEOUT as DEFAULT_TOOL_TIMEOUT,
     SLOW_TOOL_TIMEOUT as SLOW_TOOL_TIMEOUT,
     VERY_SLOW_TOOL_TIMEOUT as VERY_SLOW_TOOL_TIMEOUT,
     ToolNameCollisionError,
     default_call_context,
+    enrich_call_context,
     log_tool_call,
-    phase_is_disabled as _phase_is_disabled,
     phase_matches as _phase_matches,
     resolve_registration as _resolve_registration,
     resolve_tool_timeout as _resolve_tool_timeout,
-    runtime_tool_ref as _runtime_tool_ref,
+    runtime_tool_ref,
     unresolved_tool_ref as _unresolved_tool_ref,
 )
 from ari.mcp.lock_runtime import SkillLockController
+from ari.mcp.invoke_runtime import invoke_with_retries
+from ari.mcp.registry_runtime import discover_registry
 from ari.protocols.stores import ArtifactStore
 from ari.result import (
     DEFAULT_INLINE_RESULT_LIMIT,
-    ResultArtifactIntegrityError,
     ResultEnvelopeNormalizer,
     ResultEnvelopeV1,
-    ResultErrorKind,
     ToolCallContextV1,
     utc_now_iso,
 )
-from ari.skill_lock import (
-    SkillLockError,
-    SkillProviderAdmissionError,
-    SkillsLockV1,
-)
+from ari.skill_lock import SkillLockError, SkillsLockV1
 
 logger = logging.getLogger(__name__)
 
-
-class _SkillConnection:
-    """Persistent connection to a single MCP Skill server."""
-
-    def __init__(self, skill: SkillConfig) -> None:
-        self.skill = skill
-        self._session: ClientSession | None = None
-        self._loop: asyncio.AbstractEventLoop | None = None
-        self._loop_thread: threading.Thread | None = None
-        self._context_stack: Any = None
-
-    def _skill_path(self) -> Path:
-        import os as _os
-
-        path = self.skill.path
-        # Resolve {{ari_root}} template in skill path
-        ari_root = _os.environ.get("ARI_ROOT", str(Path(__file__).parents[3]))
-        path = path.replace("{{ari_root}}", ari_root)
-        return Path(path)
-
-    @staticmethod
-    def _resolve_python(skill_path: Path) -> str:
-        """Return the best Python interpreter for a skill.
-
-        Priority:
-        1. Skill-local venv  (<skill>/.venv/bin/python)
-        2. Python recorded by setup.sh  ($ARI_ROOT/.ari_python)
-        3. sys.executable (fallback)
-        """
-        # 1. Skill-local venv
-        skill_python = skill_path / ".venv" / "bin" / "python"
-        if skill_python.is_file():
-            return str(skill_python)
-
-        # 2. Recorded by setup.sh
-        import os as _os
-
-        ari_root = _os.environ.get("ARI_ROOT", str(Path(__file__).parents[3]))
-        marker = Path(ari_root) / ".ari_python"
-        if marker.is_file():
-            recorded = marker.read_text().strip()
-            if recorded and Path(recorded).is_file():
-                return recorded
-
-        # 3. Fallback
-        return sys.executable
-
-    def _server_params(self) -> StdioServerParameters:
-        import os
-
-        skill_path = self._skill_path()
-        python = self._resolve_python(skill_path)
-        # Expose ari-core on the skill subprocess's PYTHONPATH so the skill
-        # can `from ari import cost_tracker` and wire itself into the shared
-        # cost_trace.jsonl. ari-core is kept last so the skill's own src/
-        # layout wins on name collisions.
-        ari_core_root = str(Path(__file__).parents[2])
-        pythonpath = os.pathsep.join([str(skill_path), ari_core_root])
-        return StdioServerParameters(
-            command=python,
-            args=[str(skill_path / self.skill.entrypoint)],
-            env={**os.environ, "PYTHONPATH": pythonpath},
-        )
-
-    async def _start(self) -> None:
-        """Start the MCP server process and establish session."""
-        import contextlib
-
-        stack = contextlib.AsyncExitStack()
-        read, write = await stack.enter_async_context(
-            stdio_client(self._server_params())
-        )
-        session = await stack.enter_async_context(ClientSession(read, write))
-        await session.initialize()
-        self._session = session
-        self._context_stack = stack
-
-    async def _stop(self) -> None:
-        if self._context_stack is not None:
-            try:
-                await self._context_stack.aclose()
-            except Exception:
-                pass
-            self._context_stack = None
-            self._session = None
-
-    def _ensure_loop(self) -> None:
-        """Ensure the dedicated event loop thread is running.
-
-        A single daemon thread runs ``loop.run_forever()`` for the
-        lifetime of this connection.  All coroutines are submitted via
-        ``asyncio.run_coroutine_threadsafe`` and therefore serialised on
-        the loop — no concurrent ``run_until_complete`` conflicts.
-        """
-        if (
-            self._loop is not None
-            and not self._loop.is_closed()
-            and self._loop_thread is not None
-            and self._loop_thread.is_alive()
-        ):
-            return
-        self._loop = asyncio.new_event_loop()
-        self._loop_thread = threading.Thread(
-            target=self._loop.run_forever,
-            daemon=True,
-        )
-        self._loop_thread.start()
-
-    def _run(self, coro: Any, timeout: int = DEFAULT_TOOL_TIMEOUT) -> Any:
-        """Run a coroutine on the connection's dedicated event loop thread.
-
-        Thread-safe: concurrent callers are queued on the single loop via
-        ``asyncio.run_coroutine_threadsafe``, so there is no risk of
-        "This event loop is already running".
-        """
-        self._ensure_loop()
-        assert self._loop is not None
-        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
-        return future.result(timeout=timeout)
-
-    def ensure_connected(self) -> None:
-        if self._session is None:
-            self._run(self._start())
-
-    def list_tools(self) -> list[dict]:
-        self.ensure_connected()
-
-        async def _list() -> list[dict]:
-            assert self._session is not None
-            result = await self._session.list_tools()
-            return [
-                {
-                    "name": t.name,
-                    "description": t.description or "",
-                    "inputSchema": t.inputSchema if t.inputSchema else {},
-                    "outputSchema": t.outputSchema if t.outputSchema else {},
-                    "skill_name": self.skill.name,
-                }
-                for t in result.tools
-            ]
-
-        return self._run(_list())
-
-    def call_tool(
-        self, tool_name: str, args: dict, timeout: int = DEFAULT_TOOL_TIMEOUT
-    ) -> dict:
-        self.ensure_connected()
-
-        async def _call() -> dict:
-            assert self._session is not None
-            result = await self._session.call_tool(tool_name, args)
-            parts = [p.text for p in result.content if hasattr(p, "text")]
-            text = "\n".join(parts) if parts else ""
-            structured = getattr(result, "structuredContent", None)
-            if not isinstance(structured, dict):
-                structured = None
-            if not text and structured:
-                text = json.dumps(structured, ensure_ascii=False)
-            if not text:
-                return {
-                    "error": (
-                        f"Tool '{tool_name}' returned empty response — the tool "
-                        "may have crashed or timed out."
-                    ),
-                    "_error_kind": "protocol",
-                    "_retryable": True,
-                }
-            return {
-                "result": text,
-                "_structured_content": structured,
-                "_mcp_is_error": bool(getattr(result, "isError", False)),
-            }
-
-        return self._run(_call(), timeout=timeout)
-
-    def close(self) -> None:
-        if self._loop and not self._loop.is_closed():
-            # Submit _stop() to the loop thread (same path as _run)
-            future = asyncio.run_coroutine_threadsafe(self._stop(), self._loop)
-            try:
-                future.result(timeout=30)
-            except Exception:
-                pass
-            self._loop.call_soon_threadsafe(self._loop.stop)
-            if self._loop_thread is not None:
-                self._loop_thread.join(timeout=5)
-            self._loop.close()
-        self._loop_thread = None
+# Private compatibility alias.  Connection ownership moved to connection.py;
+# callers outside ari.mcp should use MCPClient rather than this implementation.
+_SkillConnection = SkillConnection
+_runtime_tool_ref = runtime_tool_ref
 
 
 class MCPClient:
@@ -317,98 +118,20 @@ class MCPClient:
         return tools
 
     def _build_tools_cache(self) -> None:
-        """Discover tools from all enabled skills (called once, lazily).
+        """Discover tools from all enabled skills exactly once."""
 
-        Bare names are retained as a compatibility alias only while they are
-        unique.  A collision is an admission error; silently selecting the last
-        registered Skill would make tool choice order-dependent.
-        """
-        tools: list[dict] = []
-        registry: dict[str, str] = {}
-        ref_registry: dict[str, str] = {}
-        name_by_ref: dict[str, str] = {}
-        ref_by_name: dict[str, str] = {}
-        collisions: dict[str, set[str]] = {}
-        for skill in self.skills:
-            # Skip disabled skills (phase: none / [none]) — don't start MCP server
-            if _phase_is_disabled(getattr(skill, "phase", "all")):
-                logger.info("Skipping disabled skill '%s' (phase=none)", skill.name)
-                continue
-            try:
-                conn = self._init_connection(skill)
-                skill_tools = conn.list_tools()
-                enriched_tools = []
-                for raw_tool in skill_tools:
-                    t = dict(raw_tool)
-                    tool_ref = _runtime_tool_ref(skill, t)
-                    t["tool_ref"] = tool_ref
-                    capability_ref = skill.tool_capabilities.get(t["name"])
-                    if capability_ref:
-                        t["capability_ref"] = capability_ref
-                    policy = skill.tool_policies.get(t["name"])
-                    if policy:
-                        t["policy"] = policy
-                    previous = registry.get(t["name"])
-                    if previous is not None and previous != skill.name:
-                        collisions.setdefault(t["name"], {previous}).add(skill.name)
-                    else:
-                        registry[t["name"]] = skill.name
-                        ref_by_name[t["name"]] = tool_ref
-                    previous_ref = ref_registry.get(tool_ref)
-                    if previous_ref is not None and previous_ref != skill.name:
-                        raise ToolNameCollisionError(
-                            f"immutable tool_ref collision: {tool_ref}"
-                        )
-                    ref_registry[tool_ref] = skill.name
-                    name_by_ref[tool_ref] = t["name"]
-                    enriched_tools.append(t)
-                tools.extend(enriched_tools)
-                logger.info(
-                    "Loaded %d tools from skill '%s'", len(skill_tools), skill.name
-                )
-            except ToolNameCollisionError:
-                raise
-            except Exception as e:
-                if self._skill_lock.strict_provider_loading:
-                    self.close_all()
-                    raise SkillProviderAdmissionError(
-                        f"required MCP Skill '{skill.name}' failed live discovery: "
-                        f"{type(e).__name__}: {e}"
-                    ) from e
-                logger.warning("Failed to load skill '%s': %s", skill.name, e)
-
-        if collisions:
-            rendered = "; ".join(
-                f"{name}: {', '.join(sorted(owners))}"
-                for name, owners in sorted(collisions.items())
-            )
-            self.close_all()
-            raise ToolNameCollisionError(
-                "Ambiguous MCP tool names are not admitted; configure one owner "
-                f"or use a namespaced registry: {rendered}"
-            )
-
-        self._tool_registry = registry
-        self._tool_ref_registry = ref_registry
-        self._tool_name_by_ref = name_by_ref
-        self._tool_ref_by_name = ref_by_name
-        self._tool_metadata_by_ref = {tool["tool_ref"]: tool for tool in tools}
-        self._tools_cache = tools
-        self._phase_map = {
-            t["name"]: getattr(
-                next(
-                    (
-                        s
-                        for s in self.skills
-                        if s.name == self._tool_registry.get(t["name"], "")
-                    ),
-                    None,
-                ),
-                "phase",
-                "all",
-            )
-            for t in tools
-        }
+        discovered = discover_registry(
+            self.skills,
+            init_connection=self._init_connection,
+            close_all=self.close_all,
+            strict_provider_loading=self._skill_lock.strict_provider_loading,
+        )
+        self._tool_registry = discovered.owner_by_name
+        self._tool_ref_registry = discovered.owner_by_ref
+        self._tool_name_by_ref = discovered.name_by_ref
+        self._tool_ref_by_name = discovered.ref_by_name
+        self._tool_metadata_by_ref = discovered.metadata_by_ref
+        self._tools_cache = discovered.tools
         self._reconcile_skills_lock()
 
     def _reconcile_skills_lock(self) -> None:
@@ -558,10 +281,14 @@ class MCPClient:
             tool_ref_by_name=self._tool_ref_by_name,
         )
         effective_context = context or self._default_call_context()
-        if not effective_context.selection_reason:
-            effective_context = effective_context.model_copy(
-                update={"selection_reason": selection_reason}
-            )
+        effective_context = enrich_call_context(
+            effective_context,
+            selection_reason=selection_reason,
+            skill=next(
+                (skill for skill in self.skills if skill.name == skill_name),
+                None,
+            ),
+        )
 
         admission_error = self._registration_admission_error(
             requested=tool_name_or_ref,
@@ -653,79 +380,24 @@ class MCPClient:
             timeout_class = skill.tool_timeout_classes.get(tool_name)
         timeout = _resolve_tool_timeout(tool_name, args, timeout_class)
 
-        last_error = ""
-        last_kind: ResultErrorKind = "transport"
-        for attempt in range(1, MAX_RETRIES + 1):
-            try:
-                response = conn.call_tool(tool_name, args, timeout=timeout)
-            except (asyncio.CancelledError, concurrent.futures.CancelledError) as e:
-                detail = f"{type(e).__name__}: {e}".rstrip()
-                return normalizer.error(
-                    tool_ref=tool_ref,
-                    kind="cancelled",
-                    message=f"Tool '{tool_name}' was cancelled. {detail}",
-                    retryable=False,
-                    context=context,
-                    started_at=started_at,
-                    completed_at=utc_now_iso(),
-                )
-            except TimeoutError as e:
-                last_error = f"{type(e).__name__}: {e}".rstrip()
-                last_kind = "timeout"
-            except Exception as e:
-                last_error = f"{type(e).__name__}: {e}".rstrip()
-                last_kind = "transport"
-            else:
-                try:
-                    return normalizer.normalize_legacy(
-                        response,
-                        tool_ref=tool_ref,
-                        context=context,
-                        started_at=started_at,
-                        completed_at=utc_now_iso(),
-                    )
-                except (ResultArtifactIntegrityError, OSError) as exc:
-                    return normalizer.error(
-                        tool_ref=tool_ref,
-                        kind="artifact-integrity",
-                        message=str(exc),
-                        retryable=False,
-                        context=context,
-                        started_at=started_at,
-                        completed_at=utc_now_iso(),
-                    )
-
-            logger.warning(
-                "Tool '%s' attempt %d/%d failed: %s",
-                tool_name,
-                attempt,
-                MAX_RETRIES,
-                last_error,
+        def _reconnect(failed_connection):
+            failed_connection.close()
+            self._connections.pop(skill_name, None)
+            return self._init_connection(
+                next(item for item in self.skills if item.name == skill_name)
             )
-            # Reconnect in case the connection was dropped.
-            try:
-                conn.close()
-                self._connections.pop(skill_name, None)  # invalidate before re-init
-                conn = self._init_connection(
-                    next(s for s in self.skills if s.name == skill_name)
-                )
-                self._connections[skill_name] = conn
-            except Exception:
-                pass
-            if attempt < MAX_RETRIES:
-                time.sleep(RETRY_DELAY * attempt)
 
-        return normalizer.error(
+        return invoke_with_retries(
+            connection=conn,
+            reconnect=_reconnect,
+            tool_name=tool_name,
             tool_ref=tool_ref,
-            kind=last_kind,
-            message=(
-                f"Tool '{tool_name}' failed after {MAX_RETRIES} attempts. "
-                f"Last: {last_error}"
-            ),
-            retryable=True,
+            args=args,
+            timeout=timeout,
             context=context,
+            normalizer=normalizer,
             started_at=started_at,
-            completed_at=utc_now_iso(),
+            logger=logger,
         )
 
     def _tool_admits_phase(self, tool_ref: str, phase: str) -> bool:

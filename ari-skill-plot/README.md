@@ -52,7 +52,8 @@ figure shape is known up front.
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `VLM_MODEL` | Vision LLM for caption generation (optional pass after rendering) | `openai/gpt-4o` |
+| `ARI_VLM_MODEL` | Preferred vision LLM for the optional caption pass | falls through to `VLM_MODEL` |
+| `VLM_MODEL` | Compatibility fallback for caption generation | `openai/gpt-4o` |
 | `ARI_LLM_MODEL` | LLM that writes the matplotlib code in `_llm` mode | (none — required for `_llm`) |
 | `LLM_MODEL` | Cross-skill fallback when `ARI_LLM_MODEL` is unset | (none) |
 | `ARI_LLM_API_BASE` | LiteLLM API base override | LiteLLM default |

@@ -117,7 +117,10 @@ def _search_s2_sync(query: str, limit: int = 10) -> list[dict]:
         "https://api.semanticscholar.org/graph/v1/paper/search"
         f"?query={_parse.quote(query)}&fields={fields}&limit={limit}"
     )
-    s2_key = _os.environ.get("S2_API_KEY", "")
+    s2_key = (
+        _os.environ.get("SEMANTIC_SCHOLAR_API_KEY")
+        or _os.environ.get("S2_API_KEY", "")
+    )
     try:
         req_obj = _req.Request(url, headers={"x-api-key": s2_key} if s2_key else {})
         with _req.urlopen(req_obj, timeout=15) as resp:

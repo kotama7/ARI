@@ -98,6 +98,7 @@
     ],
     "ari.public.skill_lock": [
       "DEFAULT_RUNTIME_PHASES",
+      "LockedCredentialScopeV1",
       "LockedSkillV1",
       "LockedToolV1",
       "SKILLS_LOCK_FILENAME",
@@ -115,6 +116,7 @@
       "write_or_verify_skills_lock"
     ],
     "ari.public.skill_manifest": [
+      "CredentialScopeV1",
       "LEGACY_MCP_RESULT_V1",
       "MANIFEST_FILENAME",
       "RESULT_ENVELOPE_V1",
@@ -126,6 +128,7 @@
       "ToolPolicyV1",
       "legacy_mcp_document",
       "load_skill_manifest",
+      "looks_like_credential_environment_name",
       "manifest_digest",
       "manifest_tool_ref",
       "resolve_skill_entrypoint"

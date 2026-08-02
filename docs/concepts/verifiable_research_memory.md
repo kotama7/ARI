@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/config
     role: config
-last_verified: 2026-06-04
+last_verified: 2026-08-02
 ---
 
 # ARI Verifiable Research Memory

@@ -9,9 +9,9 @@ JSON Schemas shipped with ari-core, loaded by basename via
 - `__init__.py` — `load(name)` loader.
 - `node_report.schema.json` — per-node report schema.
 - `publish.schema.json` — publish record / manifest schema.
-- `result_envelope_v1.schema.json` — typed MCP dispatch result contract.
-- `skill_manifest_v1.schema.json` — canonical Skill package manifest contract.
-- `skills_lock_v1.schema.json` — immutable run provider/schema/phase snapshot contract.
+- `result_envelope_v1.schema.json` — typed MCP result plus value-free credential-scope provenance.
+- `skill_manifest_v1.schema.json` — canonical Skill package, environment, and credential-scope contract.
+- `skills_lock_v1.schema.json` — immutable provider/schema/phase/credential-authority snapshot.
 - `viz_checkpoint.schema.json` — TODO
 - `viz_checkpoint_summary.schema.json` — TODO
 - `viz_settings.schema.json` — TODO

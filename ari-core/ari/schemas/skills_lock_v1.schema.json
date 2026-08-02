@@ -1,5 +1,39 @@
 {
   "$defs": {
+    "LockedCredentialScopeV1": {
+      "additionalProperties": false,
+      "description": "Value-free identity of credential authority available to one provider.",
+      "properties": {
+        "declared_env": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Declared Env",
+          "type": "array"
+        },
+        "identity_digest": {
+          "title": "Identity Digest",
+          "type": "string"
+        },
+        "present_env": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Present Env",
+          "type": "array"
+        },
+        "scope_id": {
+          "title": "Scope Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scope_id",
+        "identity_digest"
+      ],
+      "title": "LockedCredentialScopeV1",
+      "type": "object"
+    },
     "LockedSkillV1": {
       "additionalProperties": false,
       "description": "One configured provider and the digest of its admitted live surface.",
@@ -9,6 +43,13 @@
             "type": "string"
           },
           "title": "Configured Phases",
+          "type": "array"
+        },
+        "credential_scopes": {
+          "items": {
+            "$ref": "#/$defs/LockedCredentialScopeV1"
+          },
+          "title": "Credential Scopes",
           "type": "array"
         },
         "entrypoint": {

@@ -4,12 +4,28 @@ package: ari-skill-memory
 version: 0.6.0
 display_name: Manage research memory
 description: Lineage-scoped experiment memory, typed observations, audit, and consolidation.
+environment_policy: complete
 entrypoint:
   transport: stdio
   command_kind: python
   module: src/server.py
-required_env: []
-optional_env: [ARI_CHECKPOINT_DIR, ARI_CURRENT_NODE_ID, LETTA_BASE_URL, LETTA_EMBEDDING_CONFIG]
+required_env: [ARI_CHECKPOINT_DIR]
+optional_env:
+  - ARI_CURRENT_NODE_ID
+  - ARI_MEMORY_ACCESS_LOG
+  - ARI_MEMORY_ACCESS_LOG_MAX_MB
+  - ARI_MEMORY_ACCESS_PREVIEW_CHARS
+  - ARI_MEMORY_BACKEND
+  - ARI_MEMORY_LETTA_DISABLE_SELF_EDIT
+  - ARI_MEMORY_LETTA_OVERFETCH
+  - ARI_MEMORY_LETTA_TIMEOUT_S
+  - ARI_REACT_MEMORY_MAX_ENTRY_CHARS
+  - ARI_REACT_MEMORY_SEARCH_LIMIT
+  - LETTA_BASE_URL
+  - LETTA_EMBEDDING_CONFIG
+credential_scopes:
+  - id: memory.letta
+    optional_env: [LETTA_API_KEY]
 tool_defaults:
   phases: [bfts, paper, reproduce]
   side_effects: stateful

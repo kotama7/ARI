@@ -4,12 +4,14 @@ package: ari-skill-benchmark
 version: 0.1.0
 display_name: Analyze experiment results
 description: Deterministic experiment analysis, visualization, and statistical testing.
+environment_policy: complete
 entrypoint:
   transport: stdio
   command_kind: python
   module: src/server.py
 required_env: []
 optional_env: []
+credential_scopes: []
 tool_defaults:
   phases: [bfts]
   side_effects: read-only

@@ -8,7 +8,7 @@ sources:
     role: config
   - path: ari-core/ari/viz/api_settings.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # Configuration Reference
@@ -91,7 +91,8 @@ bfts_pipeline:
     phase: bfts
   - stage: evaluate
     skill: evaluator-skill
-    tool: evaluate_node
+    # Evaluation is an ari-core BFTS path, not an MCP tool.
+    tool: ''
     phase: bfts
   - stage: frontier_expand
     skill: idea-skill

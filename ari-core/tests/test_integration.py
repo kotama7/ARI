@@ -273,8 +273,10 @@ def test_pipeline_has_paper_context_tpl_var():
 
 
 def test_mcp_client_resolves_ari_root():
-    src = (ARI_ROOT / "ari-core/ari/mcp/client.py").read_text()
-    assert "ARI_ROOT" in src, "mcp/client.py must resolve {{ari_root}} in skill paths"
+    src = (ARI_ROOT / "ari-core/ari/mcp/connection.py").read_text()
+    assert "ARI_ROOT" in src, (
+        "mcp/connection.py must resolve {{ari_root}} in skill paths"
+    )
     assert "ari_root" in src.lower() or "ARI_ROOT" in src, \
         "mcp/client.py must handle {{ari_root}} template in skill path"
 
@@ -340,6 +342,5 @@ def test_plot_strips_output_dir_override():
     assert "startswith(\"output_dir\")" in src or "removed by preamble" in src or \
            "_SAFE_OUTPUT_DIR" in src or "output_dir" in src and "removed" in src, \
         "plot-skill must strip output_dir reassignment from LLM code"
-
 
 

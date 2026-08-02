@@ -69,7 +69,11 @@ import logging
 
 log = logging.getLogger(__name__)
 
-_VLM_MODEL = os.environ.get("VLM_MODEL", "openai/gpt-4o")
+_VLM_MODEL = (
+    os.environ.get("ARI_VLM_MODEL")
+    or os.environ.get("VLM_MODEL")
+    or "openai/gpt-4o"
+)
 
 
 async def _vlm_caption(png_path: str, fallback: str, context: str = "") -> str:

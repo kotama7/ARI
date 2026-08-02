@@ -99,6 +99,7 @@ class ToolCallContextV1(BaseModel):
     node_id: str | None = None
     phase: str | None = None
     selection_reason: str = ""
+    credential_scope_ids: list[str] = Field(default_factory=list)
 
 
 class ResultProvenanceV1(BaseModel):
@@ -111,6 +112,7 @@ class ResultProvenanceV1(BaseModel):
     node_id: str | None = None
     phase: str | None = None
     selection_reason: str = ""
+    credential_scope_ids: list[str] = Field(default_factory=list)
     started_at: str = Field(min_length=1)
     completed_at: str | None = None
     duration_ms: int | None = Field(default=None, ge=0)
@@ -463,6 +465,7 @@ def _provenance(
         node_id=context.node_id,
         phase=context.phase,
         selection_reason=context.selection_reason,
+        credential_scope_ids=context.credential_scope_ids,
         started_at=started_at,
         completed_at=completed_at,
         duration_ms=duration_ms,

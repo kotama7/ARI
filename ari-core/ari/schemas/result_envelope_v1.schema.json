@@ -102,6 +102,13 @@
           "default": null,
           "title": "Completed At"
         },
+        "credential_scope_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Credential Scope Ids",
+          "type": "array"
+        },
         "duration_ms": {
           "anyOf": [
             {

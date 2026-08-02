@@ -4,12 +4,59 @@ package: ari-skill-paper
 version: 0.1.1
 display_name: Write an evidence-grounded paper
 description: LaTeX paper generation, review, claim linking, revision, and compilation.
+environment_policy: complete
 entrypoint:
   transport: stdio
   command_kind: python
   module: src/server.py
 required_env: []
-optional_env: [ARI_CHECKPOINT_DIR, ARI_LLM_MODEL, ARI_MODEL_REVIEWER, ARI_RUBRIC]
+optional_env:
+  - ARI_BACKEND
+  - ARI_CHECKPOINT_DIR
+  - ARI_LLM_API_BASE
+  - ARI_LLM_MODEL
+  - ARI_NUM_REFLECTIONS
+  - ARI_NUM_REVIEWS_ENSEMBLE
+  - ARI_PAPER_LANGUAGE
+  - ARI_RUBRIC
+  - ARI_RUBRIC_DIR
+  - ARI_STRICT_DYNAMIC
+  - AWS_DEFAULT_REGION
+  - AWS_REGION
+  - AZURE_API_BASE
+  - AZURE_API_VERSION
+  - BIBTEX_PATH
+  - LLM_API_BASE
+  - LLM_MODEL
+  - OLLAMA_HOST
+  - PDFLATEX_PATH
+  - VERTEXAI_LOCATION
+  - VERTEXAI_PROJECT
+credential_scopes:
+  - id: model.provider
+    optional_env:
+      - ANTHROPIC_API_KEY
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+      - AZURE_API_KEY
+      - AZURE_OPENAI_API_KEY
+      - COHERE_API_KEY
+      - DATABRICKS_API_TOKEN
+      - DEEPINFRA_API_KEY
+      - DEEPSEEK_API_KEY
+      - GEMINI_API_KEY
+      - GOOGLE_API_KEY
+      - GOOGLE_APPLICATION_CREDENTIALS
+      - GROQ_API_KEY
+      - MISTRAL_API_KEY
+      - OPENAI_API_KEY
+      - OPENROUTER_API_KEY
+      - REPLICATE_API_TOKEN
+      - TOGETHERAI_API_KEY
+      - VERTEXAI_CREDENTIALS
+      - WATSONX_APIKEY
+      - XAI_API_KEY
 tool_defaults:
   phases: [paper]
   side_effects: workspace-write

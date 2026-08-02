@@ -92,7 +92,7 @@ known:
   verdict: REVIEW_REQUIRED
 - id: ari-skill-plot/src/server.py::resp
   file: ari-skill-plot/src/server.py
-  line: 90
+  line: 94
   name: resp
   lines: 7
   chars: 329
@@ -102,7 +102,7 @@ known:
   prompt_id: skill.plot.caption_writer
 - id: ari-skill-plot/src/server.py::system_prompt
   file: ari-skill-plot/src/server.py
-  line: 560
+  line: 564
   name: system_prompt
   lines: 32
   chars: 2171
@@ -113,7 +113,7 @@ known:
   prompt_id: skill.plot.viz_expert
 - id: ari-skill-plot/src/server.py::simple_system
   file: ari-skill-plot/src/server.py
-  line: 663
+  line: 667
   name: simple_system
   lines: 4
   chars: 330
@@ -146,9 +146,9 @@ known:
   - rubric
   verdict: EXTRACT_TEMPLATE
   prompt_id: skill.transform.tree_analyst
-- id: ari-skill-vlm/src/server.py#L97
+- id: ari-skill-vlm/src/server.py#L101
   file: ari-skill-vlm/src/server.py
-  line: 97
+  line: 101
   name: null
   lines: 9
   chars: 408
@@ -158,9 +158,9 @@ known:
   - rubric
   verdict: EXTRACT_TEMPLATE
   prompt_id: skill.vlm.figure_reviewer
-- id: ari-skill-vlm/src/server.py#L112
+- id: ari-skill-vlm/src/server.py#L116
   file: ari-skill-vlm/src/server.py
-  line: 112
+  line: 116
   name: null
   lines: 8
   chars: 411
@@ -172,7 +172,7 @@ known:
   prompt_id: skill.vlm.table_reviewer
 - id: ari-skill-web/src/server.py::_QUERY_SYSTEM
   file: ari-skill-web/src/server.py
-  line: 465
+  line: 468
   name: _QUERY_SYSTEM
   lines: 15
   chars: 759
@@ -183,7 +183,7 @@ known:
   prompt_id: skill.web.query_librarian
 - id: ari-skill-web/src/server.py::_SELECT_SYSTEM
   file: ari-skill-web/src/server.py
-  line: 483
+  line: 486
   name: _SELECT_SYSTEM
   lines: 7
   chars: 309

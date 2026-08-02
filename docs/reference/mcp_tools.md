@@ -1,18 +1,34 @@
 ---
 sources:
-  - path: ari-skill-hpc/mcp.json
-    role: config
-  - path: ari-skill-hpc/src/server.py
+  - path: ari-skill-benchmark
     role: implementation
-  - path: ari-skill-coding/mcp.json
-    role: config
-  - path: ari-skill-coding/src/server.py
+  - path: ari-skill-coding
     role: implementation
-  - path: ari-skill-paper-re/mcp.json
-    role: config
-  - path: ari-skill-paper-re/src/server.py
+  - path: ari-skill-evaluator
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-skill-hpc
+    role: implementation
+  - path: ari-skill-idea
+    role: implementation
+  - path: ari-skill-memory
+    role: implementation
+  - path: ari-skill-orchestrator
+    role: implementation
+  - path: ari-skill-paper
+    role: implementation
+  - path: ari-skill-paper-re
+    role: implementation
+  - path: ari-skill-plot
+    role: implementation
+  - path: ari-skill-replicate
+    role: implementation
+  - path: ari-skill-transform
+    role: implementation
+  - path: ari-skill-vlm
+    role: implementation
+  - path: ari-skill-web
+    role: implementation
+last_verified: 2026-08-02
 ---
 
 # MCP Tools Reference
@@ -22,10 +38,12 @@ is a flat catalogue of every tool the agent can call.  The deep dive
 for each skill lives in its own `README.md`; the section
 [skills.md](skills.md) groups them by responsibility.
 
-`mcp.json` (next to each skill's `pyproject.toml`) is the source of
-truth for tool *names*; the function decorated with `@mcp.tool()` (or
-the entry in `@server.list_tools()` for the older skills) defines the
-arguments and return shape.
+`skill.yaml` is the canonical source of truth for admitted tool names and
+runtime policy. `mcp.json` is a generated compatibility projection. The
+function decorated with `@mcp.tool()` (or the entry in
+`@server.list_tools()` for older skills) defines the arguments and return
+shape; repository conformance checks require that live and manifest names
+match.
 
 The "LLM" column marks tools that are **P2 exceptions** — they call
 an LLM and therefore are not byte-deterministic.
@@ -39,9 +57,6 @@ an LLM and therefore are not byte-deterministic.
 | `statistical_test` | Hypothesis tests (t-test, Mann-Whitney, ...) | ✗ |
 
 ## ari-skill-coding — write + run code
-
-`mcp.json` lists no tools; the actual tool list comes from
-`@server.list_tools()` in `src/server.py`.
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
@@ -61,15 +76,12 @@ an LLM and therefore are not byte-deterministic.
 
 ## ari-skill-hpc — SLURM + Singularity
 
-`mcp.json` has an empty list; tools come from `@server.list_tools()`
-in `src/server.py`.
-
 | Tool | Purpose | LLM |
 |---|---|:---:|
 | `slurm_submit` | sbatch with explicit partition / time / cpus / nodes / GPUs | ✗ |
 | `job_status` | squeue + sacct lookup | ✗ |
 | `job_cancel` | scancel a running job | ✗ |
-| `run_bash` | Direct bash command (local or via SSH) | ✗ |
+| `probe_platform_capabilities` | Probe compute-partition architecture and command availability, with checkpoint caching | ✗ |
 | `singularity_build` | Build a SIF from a definition file | ✗ |
 | `singularity_run` | Run a command inside a SIF | ✗ |
 | `singularity_pull` | Pull a SIF from a remote URI | ✗ |
@@ -93,12 +105,11 @@ is reported in `virsci_integration_status` (`real_wrap` vs `reimpl: ...`).
 
 ## ari-skill-memory — ancestor-scoped node memory
 
-This skill uses FastMCP `@mcp.tool()` decorators in `src/server.py`; its
-static `mcp.json` is stale (it lists only the four node-scope tools) but
-every decorated function below **is** exposed at runtime.
+This skill uses FastMCP `@mcp.tool()` decorators in `src/server.py`.
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
+| `_set_current_node` | Transitional internal CoW context setter; scheduled for removal in favor of explicit `NodeContext` | ✗ |
 | `add_memory` | Append an entry to the current node's memory | ✗ |
 | `search_memory` | Embedding-ranked search across the current node + ancestors | ✗ (server-side embedding) |
 | `get_node_memory` | All entries for the current node | ✗ |
@@ -125,6 +136,13 @@ The skill explicitly declares "no LLM calls" in its design doc — see
 | `get_status` | Status of a child run | ✗ |
 | `list_runs` | All known runs | ✗ |
 | `get_paper` | Generated LaTeX / PDF for a run | ✗ |
+| `list_children` | Child runs for a parent run | ✗ |
+| `list_files` | Files available in a run checkpoint | ✗ |
+| `read_file` | Read a text file in a run checkpoint | ✗ |
+| `get_ear` | Retrieve the run's Experiment Analysis Report | ✗ |
+| `stop_experiment` | Stop a running experiment | ✗ |
+| `list_skills` | Sanitized view of available skills and tools | ✗ |
+| `get_workflow` | Current workflow configuration | ✗ |
 
 ## ari-skill-paper — LaTeX paper writing
 
@@ -199,6 +217,7 @@ single calling vocabulary, see
 |---|---|:---:|
 | `generate_rubric` | Two-stage (skeleton + subtree) PaperBench rubric synthesis | ✓ |
 | `audit_rubric` | LLM audits leaves for vague / unverifiable / duplicate criteria | ✓ |
+| `suggest_target_leaf_count` | Compute a target rubric leaf count from paper length | ✗ |
 
 ### `generate_rubric` — venue-conditioned templates (unreleased)
 
@@ -229,9 +248,6 @@ for the YAML schema and authoring guide.
 
 ## ari-skill-transform — tree walk + EAR pipeline
 
-`mcp.json` has no tools listed (the file is internal-only); the
-`@mcp.tool()` decorators in `src/server.py` are authoritative.
-
 | Tool | Purpose | LLM |
 |---|---|:---:|
 | `nodes_to_science_data` | Walk the BFTS tree, extract methodology + findings | ✓ |
@@ -242,14 +258,11 @@ for the YAML schema and authoring guide.
 
 ## ari-skill-vlm — figure / table review (VLM)
 
-`mcp.json` has no tools listed; the skill exposes internal review
-helpers only.
-
 | Tool | Purpose | LLM |
 |---|---|:---:|
 | `review_figure` | VLM reads an image + caption, returns critique | ✓ (vision) |
 | `review_table` | VLM reviews a table | ✓ (vision) |
-| `review_paper_figures` | Batch review of every figure in a paper dir | ✓ (vision) |
+| `review_figures_all` | Batch review of every figure in a figure manifest | ✓ (vision) |
 
 ## ari-skill-web — search + fetch
 
@@ -260,11 +273,16 @@ helpers only.
 | `search_arxiv` | arXiv API | ✗ |
 | `search_semantic_scholar` | Semantic Scholar API | ✗ |
 | `collect_references_iterative` | Walk the citation graph from a seed paper | ✗ |
+| `search_papers` | Search the configured AlphaXiv / Semantic Scholar backend | ✗ |
+| `set_retrieval_backend` | Select the paper retrieval backend | ✗ |
+| `list_uploaded_files` | List files in the checkpoint upload area | ✗ |
+| `read_uploaded_file` | Read one upload with traversal protection and output bounds | ✗ |
 
 ## See also
 
 - `docs/reference/skills.md` — narrative description of each skill (responsibility, env vars, examples).
 - `docs/reference/environment_variables.md` — env-var-by-env-var reference.
-- The `mcp.json` in each skill for the canonical tool name list.
+- The `skill.yaml` in each skill for the canonical admitted tool name list and policy.
+- The generated `mcp.json` in each skill for legacy discovery compatibility.
 - `@mcp.tool()` / `@server.list_tools()` in each skill's `src/server.py`
   for the canonical argument signatures.

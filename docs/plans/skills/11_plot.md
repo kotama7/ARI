@@ -8,7 +8,7 @@ sources:
     role: config
   - path: ari-skill-vlm/src/server.py
     role: implementation
-last_verified: 2026-08-01
+last_verified: 2026-08-02
 ---
 
 # C11: `ari-skill-plot` 実装計画

@@ -4,12 +4,55 @@ package: ari-skill-web
 version: 0.1.0
 display_name: Retrieve scientific sources
 description: Web, arXiv, Semantic Scholar, and uploaded-file retrieval with source provenance.
+environment_policy: complete
 entrypoint:
   transport: stdio
   command_kind: python
   module: src/server.py
 required_env: []
-optional_env: [ARI_CHECKPOINT_DIR, ARI_RETRIEVAL_BACKEND, SEMANTIC_SCHOLAR_API_KEY]
+optional_env:
+  - ARI_ALPHAXIV_ENDPOINT
+  - ARI_BACKEND
+  - ARI_CHECKPOINT_DIR
+  - ARI_LLM_API_BASE
+  - ARI_LLM_MODEL
+  - ARI_RETRIEVAL_BACKEND
+  - AWS_DEFAULT_REGION
+  - AWS_REGION
+  - AZURE_API_BASE
+  - AZURE_API_VERSION
+  - LLM_API_BASE
+  - LLM_MODEL
+  - OLLAMA_HOST
+  - VERTEXAI_LOCATION
+  - VERTEXAI_PROJECT
+credential_scopes:
+  - id: literature.semantic-scholar
+    optional_env: [S2_API_KEY, SEMANTIC_SCHOLAR_API_KEY]
+  - id: model.provider
+    optional_env:
+      - ANTHROPIC_API_KEY
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+      - AZURE_API_KEY
+      - AZURE_OPENAI_API_KEY
+      - COHERE_API_KEY
+      - DATABRICKS_API_TOKEN
+      - DEEPINFRA_API_KEY
+      - DEEPSEEK_API_KEY
+      - GEMINI_API_KEY
+      - GOOGLE_API_KEY
+      - GOOGLE_APPLICATION_CREDENTIALS
+      - GROQ_API_KEY
+      - MISTRAL_API_KEY
+      - OPENAI_API_KEY
+      - OPENROUTER_API_KEY
+      - REPLICATE_API_TOKEN
+      - TOGETHERAI_API_KEY
+      - VERTEXAI_CREDENTIALS
+      - WATSONX_APIKEY
+      - XAI_API_KEY
 tool_defaults:
   phases: [paper, reproduce]
   side_effects: read-only

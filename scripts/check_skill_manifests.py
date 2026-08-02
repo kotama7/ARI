@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import sys
@@ -27,6 +28,10 @@ from ari.skill_manifest import (  # noqa: E402
     resolve_skill_entrypoint,
 )
 from ari.result import ResultEnvelopeV1  # noqa: E402
+from ari.mcp.child_environment import (  # noqa: E402
+    MANAGED_CHILD_ENV_NAMES,
+    SAFE_INHERITED_ENV_NAMES,
+)
 from ari.skill_lock import SkillsLockV1  # noqa: E402
 from snapshot_contracts import _scan_skill_tools  # noqa: E402
 
@@ -36,6 +41,255 @@ class Finding:
     code: str
     path: str
     message: str
+
+
+def _constant_strings(node: ast.AST, constants: dict[str, set[str]]) -> set[str]:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return {node.value}
+    if isinstance(node, ast.Name):
+        return set(constants.get(node.id, set()))
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        values: set[str] = set()
+        for item in node.elts:
+            values.update(_constant_strings(item, constants))
+        return values
+    return set()
+
+
+def _is_os_expression(node: ast.AST, aliases: set[str]) -> bool:
+    if isinstance(node, ast.Name):
+        return node.id in aliases
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "__import__"
+        and bool(node.args)
+        and _constant_strings(node.args[0], {}) == {"os"}
+    )
+
+
+def _is_environ_expression(
+    node: ast.AST,
+    os_aliases: set[str],
+    environ_aliases: set[str],
+) -> bool:
+    if isinstance(node, ast.Name):
+        return node.id in environ_aliases
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr == "environ"
+        and _is_os_expression(node.value, os_aliases)
+    )
+
+
+def _environment_access_argument(
+    node: ast.AST,
+    os_aliases: set[str],
+    environ_aliases: set[str],
+    getenv_aliases: set[str],
+) -> ast.AST | None:
+    if (
+        isinstance(node, ast.Call)
+        and node.args
+        and isinstance(node.func, ast.Name)
+        and node.func.id in getenv_aliases
+    ):
+        return node.args[0]
+    if isinstance(node, ast.Call) and node.args and isinstance(node.func, ast.Attribute):
+        if node.func.attr == "getenv" and _is_os_expression(
+            node.func.value, os_aliases
+        ):
+            return node.args[0]
+        if node.func.attr in {"putenv", "unsetenv"} and _is_os_expression(
+            node.func.value, os_aliases
+        ):
+            return node.args[0]
+        if node.func.attr in {"get", "pop", "setdefault"} and _is_environ_expression(
+            node.func.value, os_aliases, environ_aliases
+        ):
+            return node.args[0]
+    if (
+        isinstance(node, ast.Subscript)
+        and _is_environ_expression(node.value, os_aliases, environ_aliases)
+    ):
+        return node.slice
+    return None
+
+
+def _environment_membership_argument(
+    node: ast.AST,
+    os_aliases: set[str],
+    environ_aliases: set[str],
+) -> ast.AST | None:
+    if not isinstance(node, ast.Compare):
+        return None
+    left = node.left
+    for operator, comparator in zip(node.ops, node.comparators, strict=True):
+        if isinstance(operator, (ast.In, ast.NotIn)) and _is_environ_expression(
+            comparator, os_aliases, environ_aliases
+        ):
+            return left
+        left = comparator
+    return None
+
+
+def _bound_constant_strings(
+    name: str,
+    node: ast.AST,
+    *,
+    parents: dict[ast.AST, ast.AST],
+    constants: dict[str, set[str]],
+) -> set[str]:
+    current = node
+    while current in parents:
+        current = parents[current]
+        generators = (
+            current.generators
+            if isinstance(
+                current,
+                (ast.GeneratorExp, ast.ListComp, ast.SetComp, ast.DictComp),
+            )
+            else []
+        )
+        for generator in generators:
+            if isinstance(generator.target, ast.Name) and generator.target.id == name:
+                return _constant_strings(generator.iter, constants)
+        if (
+            isinstance(current, ast.For)
+            and isinstance(current.target, ast.Name)
+            and current.target.id == name
+        ):
+            return _constant_strings(current.iter, constants)
+    return set()
+
+
+def _scan_environment_reads(source_root: Path) -> tuple[set[str], list[str]]:
+    """Return statically resolved environment reads and unresolved locations."""
+
+    reads: set[str] = set()
+    unresolved: list[str] = []
+    for path in sorted(source_root.rglob("*.py")):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except OSError as exc:
+            unresolved.append(f"{path}:unreadable:{exc}")
+            continue
+        except SyntaxError as exc:
+            unresolved.append(f"{path}:{exc.lineno or '?'}:syntax-error")
+            continue
+        nodes = list(ast.walk(tree))
+        parents = {
+            child: parent
+            for parent in nodes
+            for child in ast.iter_child_nodes(parent)
+        }
+        os_aliases = {"os"}
+        environ_aliases: set[str] = set()
+        getenv_aliases: set[str] = set()
+        for node in nodes:
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == "os":
+                        os_aliases.add(alias.asname or "os")
+            elif isinstance(node, ast.ImportFrom) and node.module == "os":
+                for alias in node.names:
+                    if alias.name == "environ":
+                        environ_aliases.add(alias.asname or alias.name)
+                    elif alias.name == "getenv":
+                        getenv_aliases.add(alias.asname or alias.name)
+        constants: dict[str, set[str]] = {}
+        for node in nodes:
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                continue
+            value = node.value
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                if not isinstance(target, ast.Name):
+                    continue
+                if _is_environ_expression(value, os_aliases, environ_aliases):
+                    environ_aliases.add(target.id)
+                values = _constant_strings(value, constants)
+                if values:
+                    constants[target.id] = values
+
+        helper_parameters: dict[str, tuple[int, str]] = {}
+        helper_access_nodes: set[ast.AST] = set()
+        for function in (
+            node
+            for node in nodes
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ):
+            parameters = [argument.arg for argument in function.args.args]
+            for child in ast.walk(function):
+                argument = _environment_access_argument(
+                    child, os_aliases, environ_aliases, getenv_aliases
+                )
+                if argument is None:
+                    argument = _environment_membership_argument(
+                        child, os_aliases, environ_aliases
+                    )
+                if isinstance(argument, ast.Name) and argument.id in parameters:
+                    helper_parameters[function.name] = (
+                        parameters.index(argument.id),
+                        argument.id,
+                    )
+                    helper_access_nodes.add(child)
+
+        for node in nodes:
+            argument = _environment_access_argument(
+                node, os_aliases, environ_aliases, getenv_aliases
+            )
+            if argument is None:
+                argument = _environment_membership_argument(
+                    node, os_aliases, environ_aliases
+                )
+            if argument is None or node in helper_access_nodes:
+                continue
+            resolved = _constant_strings(argument, constants)
+            if not resolved and isinstance(argument, ast.Name):
+                resolved = _bound_constant_strings(
+                    argument.id,
+                    node,
+                    parents=parents,
+                    constants=constants,
+                )
+            if resolved:
+                reads.update(resolved)
+            else:
+                unresolved.append(
+                    f"{path}:{getattr(node, 'lineno', '?')}:{ast.unparse(argument)}"
+                )
+
+        for node in nodes:
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+                continue
+            parameter = helper_parameters.get(node.func.id)
+            if parameter is None:
+                continue
+            parameter_index, parameter_name = parameter
+            call_argument = (
+                node.args[parameter_index]
+                if parameter_index < len(node.args)
+                else next(
+                    (
+                        keyword.value
+                        for keyword in node.keywords
+                        if keyword.arg == parameter_name
+                    ),
+                    None,
+                )
+            )
+            if call_argument is None:
+                unresolved.append(f"{path}:{node.lineno}:{node.func.id}(missing-name)")
+                continue
+            resolved = _constant_strings(call_argument, constants)
+            if resolved:
+                reads.update(resolved)
+            else:
+                unresolved.append(
+                    f"{path}:{node.lineno}:{node.func.id}({ast.unparse(call_argument)})"
+                )
+    return reads, sorted(set(unresolved))
 
 
 def _project_version(pyproject: Path) -> str | None:
@@ -85,6 +339,42 @@ def check_repo(repo_root: Path = REPO_ROOT) -> list[Finding]:
             findings.append(Finding("manifest-invalid", rel, str(exc)))
             continue
         manifests[manifest.package] = (manifest_path, manifest)
+
+        if manifest.environment_policy != "complete":
+            findings.append(
+                Finding(
+                    "environment-policy-incomplete",
+                    rel,
+                    "production Skill manifests require an exhaustive complete policy",
+                )
+            )
+        environment_reads, dynamic_environment_reads = _scan_environment_reads(
+            skill_dir / "src"
+        )
+        declared_environment = set(manifest.environment_names())
+        implicit_environment = set(SAFE_INHERITED_ENV_NAMES) | set(
+            MANAGED_CHILD_ENV_NAMES
+        )
+        undeclared_environment = sorted(
+            environment_reads - declared_environment - implicit_environment
+        )
+        if undeclared_environment:
+            findings.append(
+                Finding(
+                    "environment-read-undeclared",
+                    rel,
+                    f"source reads undeclared names: {undeclared_environment}",
+                )
+            )
+        if dynamic_environment_reads:
+            findings.append(
+                Finding(
+                    "environment-read-dynamic",
+                    rel,
+                    "environment names cannot be proven exhaustive: "
+                    f"{dynamic_environment_reads}",
+                )
+            )
 
         if manifest.package != skill_dir.name:
             findings.append(

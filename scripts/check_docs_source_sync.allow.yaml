@@ -246,3 +246,12 @@ known-offenders:
   - doc: docs/reference/skills.md
     source: ari-skill-hpc/src/server.py
     note: "baseline 2026-07-02: source 2026-06-11 > last_verified 2026-06-10"
+  - doc: docs/getting-started/faq.md
+    source: ari-core/config/default.yaml
+    note: "post-freeze trunk baseline: source 2026-07-02 > last_verified 2026-06-10; predates skills branch"
+  - doc: docs/guides/migration.md
+    source: ari-core/ari/memory_cli.py
+    note: "post-freeze trunk baseline: source 2026-07-02 > last_verified 2026-06-10; predates skills branch"
+  - doc: docs/reference/cli_reference.md
+    source: ari-core/ari/memory_cli.py
+    note: "post-freeze trunk baseline: source 2026-07-02 > last_verified 2026-06-10; predates skills branch"

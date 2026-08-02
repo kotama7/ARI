@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/api_settings.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # REST API Reference

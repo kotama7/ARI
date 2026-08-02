@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: containers
     role: config
-last_verified: 2026-05-25
+last_verified: 2026-08-02
 ---
 
 # HPC Setup Guide
@@ -129,10 +129,11 @@ apptainer exec --bind /scratch:/scratch ari.sif \
     ari run /abs/path/to/experiment.md
 ```
 
-`ari-skill-coding` and `ari-skill-hpc` honour
-`ARI_CONTAINER_IMAGE=/path/to/ari.sif` and
-`ARI_CONTAINER_MODE=singularity` to wrap the user code itself in the
-SIF — useful for reproducible benchmarks.
+`ari-skill-coding` honours `ARI_CONTAINER_IMAGE=/path/to/ari.sif` and
+`ARI_CONTAINER_MODE=singularity` to wrap generated commands in the SIF.
+`ari-skill-hpc` instead exposes explicit `singularity_build`,
+`singularity_run`, and `singularity_run_gpu` tools whose calls carry the
+image and resource request.
 
 ### docker-compose (single host)
 
@@ -152,9 +153,9 @@ ari run experiment.md     # uses the host python directly
 
 ## 6. Letta memory backend deployment
 
-`ari-skill-memory` defaults to a Letta backend (v0.6+).  The skill
-talks to a Letta service via `LETTA_HOST` / `LETTA_PORT` (default
-`127.0.0.1:8283`).  Three deployment paths:
+`ari-skill-memory` defaults to a Letta backend (v0.6+). The skill talks
+to a Letta service via `LETTA_BASE_URL` (default
+`http://localhost:8283`). Three deployment paths:
 
 | Path | When to pick it |
 |---|---|
@@ -166,9 +167,9 @@ Required env vars regardless of deployment:
 
 | Variable | Purpose |
 |---|---|
-| `LETTA_HOST` / `LETTA_PORT` | Where the Letta API is listening |
-| `LETTA_EMBEDDING_CONFIG` | Path to the embedding configuration JSON (required) |
-| `OPENAI_API_KEY` etc. | Whatever the embedding model needs |
+| `LETTA_BASE_URL` | Letta API base URL |
+| `LETTA_API_KEY` | Credential for Letta Cloud; omit for an unauthenticated local service |
+| `LETTA_EMBEDDING_CONFIG` | Embedding configuration selector; defaults to `letta-default` |
 
 Each ARI checkpoint owns its own Letta agent (collections
 `ari_node_<ckpt_hash>` + `ari_react_<ckpt_hash>`).  Deleting the

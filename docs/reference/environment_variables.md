@@ -4,7 +4,11 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
-last_verified: 2026-07-03
+  - path: ari-core/ari/mcp/child_environment.py
+    role: implementation
+  - path: ari-core/ari/skill_manifest.py
+    role: implementation
+last_verified: 2026-08-02
 ---
 
 # Environment Variable Reference
@@ -15,6 +19,21 @@ flags the ones a fresh checkout cannot operate without.
 
 `docs/reference/configuration.md` walks the same surface as a tutorial; this
 page is the alphabetical lookup.
+
+## Skill subprocess isolation
+
+Built-in Skill subprocesses do not inherit the full parent environment. Each
+`skill.yaml` has `environment_policy: complete`; only the small platform/TLS
+baseline, core-owned isolated runtime variables, declared ordinary variables,
+and present variables in a named credential scope cross the process boundary.
+Static undeclared or unresolvable dynamic environment reads fail manifest CI.
+
+Credential values are never written to manifests, `SKILLS.lock`, result
+provenance, HTTP MCP config payloads, or traces. Those surfaces carry only scope
+IDs and environment variable names/presence. Provider responses and stderr are
+redacted, and reconnect is refused if scope presence changes. The manifest is
+the normative per-Skill allowlist; this page documents the union of supported
+operator settings.
 
 > v0.5.0 removed the global `$HOME/.ari/` directory.  Where this
 > reference says "must be set", the legacy fallback emits a
@@ -208,7 +227,7 @@ LLM follows `ARI_MODEL_IDEA`.
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | Default Stage 1 agent rollout time budget when the caller passes `0`. |
 | `ARI_REPLICATOR_ITERATIVE` | `1` ⇒ default to IterativeAgent variant for Stage 1 rollouts. |
 | `ARI_REPLICATOR_MAX_STEPS` | Default Stage 1 step cap. |
-| `ARI_AGENT_ENV_PATH` | Default path to the vendor-style `agent.env` file (one `KEY=VALUE` per line) that `bridge.rollout_submission` auto-loads when its `agent_env_path` argument is unset. Falls back to `~/.ari/agent.env` when this is also empty. This vendored PaperBench-replicate credentials lookup (`ari-skill-paper-re/src/_paperbench_bridge.py`) is distinct from ARI's own `$HOME/.ari/` run storage removed in v0.5.0, so the fallback remains live. Used to surface per-paper credentials (e.g. `HF_TOKEN`) to the Stage 1 agent. |
+| `ARI_AGENT_ENV_PATH` | Credential-scoped default path to the vendor-style `agent.env` file (one `KEY=VALUE` per line) that `bridge.rollout_submission` loads when its `agent_env_path` argument is unset. The Skill receives an isolated `HOME`, so an operator home-directory fallback is not available through the normal ARI launch path. Used to surface explicitly approved per-paper credentials to the Stage 1 agent. |
 | `HF_TOKEN` | Hugging Face Hub token. When set on the calling process, `bridge.rollout_submission` automatically forwards it into the agent's env (vendor `nano/eval.py:172-179` well-known-credential pattern). Required for any PaperBench paper whose Stage 1 rollout invokes `huggingface-cli login`. |
 | `ARI_JUDGE_N_RUNS` | Default `n_runs` for the SimpleJudge call when the wizard / caller passes `0`. PaperBench paper §4.1 single-pass default is 1. |
 | `ARI_MODEL_JUDGE` | Default judge model id (LiteLLM-routed). |
@@ -247,11 +266,26 @@ LLM follows `ARI_MODEL_IDEA`.
 | `OLLAMA_BASE_URL` | LiteLLM-side base URL |
 | `OPENAI_API_KEY` | OpenAI / OpenAI-compatible API key |
 
+### Credential scopes
+
+The `model.provider` scope recognizes provider credentials including
+`ANTHROPIC_API_KEY`, AWS access/secret/session credentials,
+`AZURE_API_KEY`, `AZURE_OPENAI_API_KEY`, `COHERE_API_KEY`,
+`DATABRICKS_API_TOKEN`, `DEEPINFRA_API_KEY`, `DEEPSEEK_API_KEY`,
+`GEMINI_API_KEY`, `GOOGLE_API_KEY`, `GOOGLE_APPLICATION_CREDENTIALS`,
+`GROQ_API_KEY`, `MISTRAL_API_KEY`, `OPENAI_API_KEY`,
+`OPENROUTER_API_KEY`, `REPLICATE_API_TOKEN`, `TOGETHERAI_API_KEY`,
+`VERTEXAI_CREDENTIALS`, `WATSONX_APIKEY`, and `XAI_API_KEY`. A Skill receives
+only the scopes declared in its own manifest. Hugging Face, Semantic Scholar,
+Letta, scheduler SSH, scheduler exported-environment, and PaperBench agent-env
+authority use separate scopes so they need not be granted with model access.
+
 ## VLM
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `VLM_MODEL` | Vision LLM for figure / table review | `openai/gpt-4o` |
+| `ARI_VLM_MODEL` | Preferred ARI override for figure / table review | falls through to `VLM_MODEL` |
+| `VLM_MODEL` | Vision LLM fallback for figure / table review | `openai/gpt-4o` |
 
 ## See also
 

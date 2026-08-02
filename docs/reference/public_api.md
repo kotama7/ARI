@@ -8,6 +8,8 @@ sources:
     role: implementation
   - path: ari-core/ari/skill_lock.py
     role: implementation
+  - path: ari-core/ari/skill_manifest.py
+    role: implementation
 last_verified: 2026-08-02
 ---
 
@@ -89,10 +91,12 @@ identity = manifest_digest(manifest)
 ```
 
 `SkillManifestV1` validates package identity, a package-relative Python stdio
-entrypoint, environment declarations, unique tool names, capability references,
+entrypoint, exhaustive ordinary environment declarations, disjoint named
+`CredentialScopeV1` declarations, unique tool names, capability references,
 phases, side effects, determinism, timeout class, permissions, and result schema.
-`environment_policy` distinguishes an audit-pending inventory from an exhaustive
-child-process allowlist.
+`environment_policy=complete` is required for built-in production Skills.
+`looks_like_credential_environment_name()` is the shared fail-closed classifier
+used by manifest admission and runtime environment construction.
 Legacy unversioned manifests are rejected unless a migration caller explicitly
 passes `allow_legacy=True`; admission and CI never enable that option.
 
@@ -114,7 +118,8 @@ envelope = client.call_tool_envelope(
 
 `ResultEnvelopeV1` records status, structured content, typed error information,
 immutable `tool_ref`, run/node/phase context, selection reason, timing, and a
-SHA-256 response digest. With a checkpoint-backed `ArtifactStore`, raw content
+SHA-256 response digest. Provenance also records the IDs of active credential
+scopes, never their values. With a checkpoint-backed `ArtifactStore`, raw content
 over 4,000 characters is stored under a deterministic content address and the
 inline field becomes a bounded preview. `materialize_content(store)` verifies
 both digest and byte size before returning the full response. `MCPClient.call_tool`
@@ -133,6 +138,10 @@ input/output schemas and phase-specific admitted `tool_ref` sets. Callers may us
 digest; `write_or_verify_skills_lock()` atomically creates the first snapshot and
 requires byte-equivalent semantics thereafter. Drift and corruption are distinct
 typed failures (`SkillLockMismatchError` and `SkillLockCorruptError`).
+
+`LockedCredentialScopeV1` records only scope identity and declared/present
+environment names; a reconnect that changes that authority is rejected before
+provider I/O.
 
 The normative machine-readable contract is
 `ari-core/ari/schemas/skills_lock_v1.schema.json`. Credential values are never

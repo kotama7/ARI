@@ -8,6 +8,10 @@ sources:
     role: implementation
   - path: ari-core/ari/skill_lock.py
     role: implementation
+  - path: ari-core/ari/mcp/child_environment.py
+    role: implementation
+  - path: ari-core/ari/mcp/secure_stdio_proxy.py
+    role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
   - path: ari-skill-hpc/src/server.py
@@ -42,10 +46,14 @@ schema_version: 1
 name: coding-skill
 package: ari-skill-coding
 version: 0.1.0
+environment_policy: complete
 entrypoint:
   transport: stdio
   command_kind: python
   module: src/server.py
+required_env: []
+optional_env: [ARI_CHECKPOINT_DIR, ARI_WORK_DIR]
+credential_scopes: []
 tool_defaults:
   phases: [bfts, reproduce]
   side_effects: stateful
@@ -69,16 +77,35 @@ python scripts/check_skill_manifests.py
 
 The conformance gate rejects an unversioned/invalid manifest, package-version
 drift, statically declared runtime tool-name drift, workflow reference or phase
-drift, stale `mcp.json`, and name collisions among default-enabled Skills. A live
+drift, stale `mcp.json`, undeclared static environment reads, a dynamic
+environment read whose names cannot be proven, an incomplete environment
+policy, and name collisions among default-enabled Skills. A live
 `tools/list` comparison is enforced for every locked run; moving the same check
 into package-only CI remains a P1 follow-up. Runtime loading
 accepts an unversioned legacy manifest only through the explicit transition flag
 `allow_legacy=True`; CI and admission do not use it.
 
-All current manifests default `environment_policy: audit-pending`: the listed
-environment names are inventory, not yet an exhaustive child-process allowlist.
-P2 changes this to `complete` package by package after secret/non-propagation
-tests. All built-in tools now declare `ari.result-envelope/v1`. The typed
+All built-in manifests use `environment_policy: complete`. `required_env` and
+`optional_env` are the exhaustive ordinary-variable allowlist. Secret-like names
+are rejected there and must instead belong to exactly one named
+`credential_scopes` entry. Scope values are supplied only to the admitted Skill;
+the manifest, HTTP bridge request, `SKILLS.lock`, result provenance, and traces
+contain scope IDs and variable-name presence, never credential values.
+
+At spawn, ari-core constructs a new environment rather than copying
+`os.environ`: only a small platform/TLS baseline, manifest-declared names, and
+core-owned isolated `HOME`/XDG/Python settings are present. The MCP SDK's
+implicit `HOME`/`USER` baseline is explicitly overridden. Missing required
+variables, credential classification errors, and credential-scope changes on
+reconnect fail closed. Provider stdout, structured MCP results, exceptions, and
+stderr are value-redacted. For Claude CLI direct MCP, a secure stdio proxy
+applies the same exact environment and redaction after the CLI's own parent-env
+merge; credential references are materialized only inside the local shim, in a
+mode-0600 temporary config that is removed immediately. Claude debug logging is
+disabled when credentials are active, while redacted stream events remain in
+`tool_calls.jsonl`.
+
+All built-in tools now declare `ari.result-envelope/v1`. The typed
 `MCPClient.call_tool_envelope()` path normalizes MCP text/structured results,
 classifies tool/transport/protocol/timeout/cancellation errors, and stores raw
 responses over 4,000 characters content-addressably when a run artifact store is
@@ -102,8 +129,10 @@ schema, provider, phase, or disabled-tool drift fails closed; an enabled provide
 that cannot start is also an admission error rather than a silently smaller
 catalog. A stage subprocess may start only its owning provider, but must verify
 that exact provider/tool subset against the already-created full lock and cannot
-create or replace the authoritative snapshot. The lock contains environment variable names but never credential
-values. Its normative schema is
+create or replace the authoritative snapshot. The lock contains ordinary
+environment names plus value-free credential scope records (`scope_id`,
+declared/present names, identity digest), but never credential values. The same
+active scope IDs are copied into result provenance. Its normative schema is
 `ari-core/ari/schemas/skills_lock_v1.schema.json`.
 
 The external orchestrator is therefore default-off
