@@ -657,42 +657,33 @@ correctness / `required_measured` / 声明的 invariant）——若没有此 gra
 
 ## ari-skill-web
 
-可插拔检索后端的网络搜索和学术文献检索。**LLM：部分**（仅 `collect_references_iterative` 使用 LLM）。
+保留provenance的网络与学术检索。标准检索路径 **不使用LLM**；独立reranker与legacy iterative collector为随机路径。
 
 ### 工具
 
-#### `web_search(query, n=5)`
+#### `search_papers(query, max_results=10, provider=null, mode="record", snapshot_ref="")`
 
-DuckDuckGo 网络搜索。无需 API 密钥。确定性。
+固定使用 `semantic-scholar`、`arxiv` 或 `alphaxiv` 中的一个，返回`RetrievalRecordV1`、digest-bound snapshot及record模式的content-addressed `snapshot_ref`。故障显式返回，不回退，也没有部分成功的`both`模式。
 
-#### `fetch_url(url, max_chars=8000)`
+#### `web_search(query, n=5, mode="record", snapshot_ref="")`
 
-通过 BeautifulSoup 获取并提取 URL 中的文本。确定性。
+使用相同live/record/replay契约的DuckDuckGo检索。
 
-#### `search_arxiv(query, max_results=5)`
+#### `fetch_url(url, max_chars=8000, mode="record", snapshot_ref="", max_bytes=2097152)`
 
-arXiv 论文搜索。确定性。
+通过pinned-IP SSRF防护、重定向复检、HTTPS降级拒绝及size/type限制获取不可信文本。
 
-#### `search_semantic_scholar(query, limit=8, extra_queries=None)`
+#### `walk_citations(seed_ids, direction="references", max_depth=2, max_nodes=50, request_budget=20, mode="record", snapshot_ref="")`
 
-Semantic Scholar API，回退到 arXiv。确定性。
+具备cycle detection与depth/node/request budget的有界引用图遍历。
 
-#### `search_papers(query, max_results=10)`
+#### `rerank_retrieval_records(research_question, records, max_results=10)`
 
-调度到所配置的检索后端（`ARI_RETRIEVAL_BACKEND`）：
-- `"semantic_scholar"`（默认）— Semantic Scholar API
-- `"alphaxiv"` — 通过 HTTP 上的 MCP JSON-RPC 调用 AlphaXiv
-- `"both"` — 并行执行并去重
+显式optional LLM reranker，返回model/API identity/temperature及prompt/input/output digest。
 
-#### `set_retrieval_backend(backend)`
+#### 兼容工具
 
-在运行时动态切换检索后端。有效值：`"semantic_scholar"`、`"alphaxiv"`、`"both"`。
-
-#### `collect_references_iterative(experiment_summary, keywords, max_rounds=20, min_papers=10)`
-
-AI Scientist v2 风格的迭代式引用收集。LLM 生成搜索查询并在多轮中选择相关论文。
-
-模型：`ARI_LLM_MODEL` 环境变量 > `LLM_MODEL` 环境变量 > `ollama_chat/qwen3:32b`。
+`search_arxiv`、`search_semantic_scholar`、`set_retrieval_backend`及`collect_references_iterative`仅在P6弃用窗口内保留。默认paper pipeline已改用`search_papers`。
 
 #### `list_uploaded_files()`
 
@@ -701,6 +692,8 @@ AI Scientist v2 风格的迭代式引用收集。LLM 生成搜索查询并在多
 #### `read_uploaded_file(filename, max_chars=50000)`
 
 从上传文件读取文本内容（带二进制检测）。确定性。
+
+wire/security语义见[检索契约](retrieval_contract.md)。
 
 ---
 

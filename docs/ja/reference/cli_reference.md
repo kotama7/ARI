@@ -443,7 +443,7 @@ ari skills-list [--config <config.yaml>]
 
 | 変数 | 説明 | デフォルト |
 |------|------|-----------|
-| `ARI_RETRIEVAL_BACKEND` | 論文検索: `semantic_scholar` / `alphaxiv` / `both` | `semantic_scholar` |
+| `ARI_RETRIEVAL_BACKEND` | 固定provider: `semantic_scholar` / `arxiv` / `alphaxiv` | `semantic_scholar` |
 | `VLM_MODEL` | 図レビュー用 VLM モデル | `openai/gpt-4o` |
 | `ARI_ORCHESTRATOR_PORT` | orchestrator スキルの HTTP ポート | `9890` |
 

@@ -247,7 +247,7 @@ nodes_tree.json  (全ノード: メトリクス、成果物、メモリ、親子
     出力: science_data.json  { configurations, experiment_context, per_key_summary }
 
   ステージ 2: search_related_work  (ari-skill-web)  [ステージ 1 と並列]
-    LLM 生成キーワード → 切替可能な検索バックエンド (Semantic Scholar / AlphaXiv / both)
+    キーワード → 一つの固定provider (Semantic Scholar / arXiv / AlphaXiv)
     出力: related_refs.json
 
   ステージ 3: generate_figures  (ari-skill-plot)  [ステージ 1 の後]
@@ -531,7 +531,7 @@ API キーは **絶対に** `settings.json` には保存されない。`.env` �
 | `ari-skill-idea` | `survey`, `generate_ideas` | 文献検索（Semantic Scholar）+ VirSci マルチエージェント仮説生成 | ✓ |
 | `ari-skill-evaluator` | `make_metric_spec` | 実験ファイルからのメトリクス仕様抽出 | △ |
 | `ari-skill-transform` | `nodes_to_science_data`, `generate_ear`, `curate_ear`, `publish_ear` | BFTS ツリー → 科学データ + EAR + curate/publish ライフサイクル (v0.7.0) | ✓ |
-| `ari-skill-web` | `web_search`, `fetch_url`, `search_arxiv`, `search_semantic_scholar`, `collect_references_iterative` | Web 検索、arXiv、Semantic Scholar、反復的引用収集 | △ |
+| `ari-skill-web` | `search_papers`, `web_search`, `fetch_url`, `walk_citations`, `rerank_retrieval_records`、互換alias | 型付きrecord/replay、URL安全性、source provenance、bounded citation graph | △ |
 | `ari-skill-plot` | `generate_figures`, `generate_figures_llm` | 決定論的 + LLM 図表生成（図ごとに matplotlib プロットまたは SVG 図を `kind` フィールドで選択） | ✓ |
 | `ari-skill-paper` | `list_venues`, `get_template`, `generate_section`, `compile_paper`, `check_format`, `review_section`, `revise_section`, `write_paper_iterative`, `review_compiled_paper`, `list_rubrics`, `inject_code_availability`, `merge_reviews` | LaTeX 論文執筆、コンパイル、ルーブリック駆動査読 (AI Scientist v1/v2 互換)。v0.7.0: `inject_code_availability` で `\codeavailability{}` / `\codedigest{}` / `\coderef{}` マクロ注入、`merge_reviews` で text-review + VLM-review JSON を後付け合成。 | ✓ |
 | `ari-skill-paper-re` | `fetch_code_bundle`, `run_reproduce`, `grade_with_simplejudge` | PaperBench 形式の再現性 (v0.7.0)。`ari.clone` でサンドボックス事前展開、Phase 1 サンドボックス runner、Phase 2 PaperBench SimpleJudge 採点。PaperBench は `vendor/paperbench` に同梱。 | ✓ |

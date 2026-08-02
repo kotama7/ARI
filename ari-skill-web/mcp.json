@@ -15,7 +15,9 @@
     "search_papers",
     "search_semantic_scholar",
     "set_retrieval_backend",
+    "rerank_retrieval_records",
+    "walk_citations",
     "web_search"
   ],
-  "version": "0.1.0"
+  "version": "0.2.0"
 }

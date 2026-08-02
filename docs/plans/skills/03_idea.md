@@ -56,8 +56,8 @@ last_verified: 2026-08-01
 
 実装証跡: `ari.public.research_contract`、生成JSON Schema、
 `ari-skill-idea/src/contracts.py`、offline replay/tamper/parity tests、
-`ari-skill-evaluator`のtyped-contract優先経路。C03-02の共通schema公開は完了し、
-`ari-skill-web` producer側の採用はC04で行う。
+`ari-skill-evaluator`のtyped-contract優先経路。C03-02の共通schema公開と
+`ari-skill-web` producer、verified snapshot-ref consumerへの採用はC04で完了した。
 
 ## 6. 削除要件
 

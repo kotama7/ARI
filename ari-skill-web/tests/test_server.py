@@ -1,42 +1,103 @@
-import sys, os
+import os
+import shutil
+import sys
+import tempfile
+from unittest.mock import patch
+
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+
 
 def test_web_search_returns_dict():
     from server import web_search
-    result = web_search("OpenMP HPC benchmark", n=2)
+
+    rows = [{"title": "OpenMP", "url": "https://example.org/a", "snippet": "HPC"}]
+    with patch("server._search_duckduckgo_rows", return_value=rows):
+        result = web_search("OpenMP HPC benchmark", n=2, mode="live")
     assert isinstance(result, dict)
-    assert "results" in result or "error" in result
+    assert "results" in result
+
 
 def test_fetch_url_returns_dict():
     from server import fetch_url
-    result = fetch_url("https://example.com", max_chars=500)
+    from network_policy import FetchedResponse
+
+    response = FetchedResponse(
+        url="https://example.com/",
+        status=200,
+        headers={"content-type": "text/html; charset=utf-8"},
+        body=b"<html><title>Example</title><body>safe text</body></html>",
+        redirect_chain=(),
+        pinned_ip="93.184.216.34",
+    )
+    with patch("server.fetch_pinned", return_value=response):
+        result = fetch_url("https://example.com", max_chars=500, mode="live")
     assert isinstance(result, dict)
-    assert "text" in result or "error" in result
+    assert "safe text" in result["text"]
+
 
 def test_search_arxiv_returns_dict():
     from server import search_arxiv
-    result = search_arxiv("OpenMP performance optimization", max_results=2)
+
+    rows = [
+        {
+            "title": "OpenMP performance",
+            "arxiv_id": "2401.00001",
+            "authors": ["A"],
+            "year": 2024,
+            "abstract": "Study",
+            "url": "https://arxiv.org/abs/2401.00001",
+        }
+    ]
+    with patch("server._search_arxiv_rows", return_value=rows):
+        result = search_arxiv(
+            "OpenMP performance optimization", max_results=2, mode="live"
+        )
     assert isinstance(result, dict)
-    assert "papers" in result or "error" in result
+    assert "papers" in result
+
 
 def test_web_search_structure():
     from server import web_search
-    result = web_search("python performance", n=3)
+
+    rows = [
+        {"title": "Python", "url": "https://example.org/p", "snippet": "Performance"}
+    ]
+    with patch("server._search_duckduckgo_rows", return_value=rows):
+        result = web_search("python performance", n=3, mode="live")
     if "results" in result and result["results"]:
         for r in result["results"]:
             assert "title" in r
             assert "url" in r
             assert "snippet" in r
 
+
 def test_fetch_url_error_handling():
     from server import fetch_url
-    result = fetch_url("https://this-url-does-not-exist-12345.invalid")
-    assert isinstance(result, dict)
-    assert "error" in result or "text" in result
+    from network_policy import NetworkPolicyError
+
+    with pytest.raises(NetworkPolicyError, match="non-public"):
+        fetch_url("http://127.0.0.1", mode="live")
+
 
 def test_search_arxiv_structure():
     from server import search_arxiv
-    result = search_arxiv("compiler optimization benchmark", max_results=2)
+
+    rows = [
+        {
+            "title": "Compiler optimization",
+            "arxiv_id": "2402.00002v3",
+            "authors": ["A"],
+            "year": 2024,
+            "abstract": "Study",
+            "url": "https://arxiv.org/abs/2402.00002v3",
+        }
+    ]
+    with patch("server._search_arxiv_rows", return_value=rows):
+        result = search_arxiv(
+            "compiler optimization benchmark", max_results=2, mode="live"
+        )
     if "papers" in result and result["papers"]:
         for p in result["papers"]:
             assert "title" in p
@@ -47,7 +108,6 @@ def test_search_arxiv_structure():
 # list_uploaded_files / read_uploaded_file
 # ══════════════════════════════════════════════════════════════════════════════
 
-import tempfile, shutil
 
 class TestUploadedFileTools:
     """Tests for the checkpoint file-access MCP tools."""
@@ -58,6 +118,7 @@ class TestUploadedFileTools:
 
     def test_list_uploaded_files_empty_env(self, monkeypatch):
         import server
+
         monkeypatch.setattr(server, "_CHECKPOINT_DIR", "")
         result = server.list_uploaded_files()
         assert result["files"] == []
@@ -65,6 +126,7 @@ class TestUploadedFileTools:
 
     def test_list_uploaded_files_with_files(self, monkeypatch):
         import server
+
         d = self._make_ckpt()
         try:
             # Create user files inside uploads/ subdirectory
@@ -88,12 +150,14 @@ class TestUploadedFileTools:
 
     def test_list_uploaded_files_nonexistent_dir(self, monkeypatch):
         import server
+
         monkeypatch.setattr(server, "_CHECKPOINT_DIR", "/tmp/ari_nonexistent_dir_xyz")
         result = server.list_uploaded_files()
         assert result["files"] == []
 
     def test_read_uploaded_file_success(self, monkeypatch):
         import server
+
         d = self._make_ckpt()
         try:
             uploads = os.path.join(d, "uploads")
@@ -109,6 +173,7 @@ class TestUploadedFileTools:
 
     def test_read_uploaded_file_not_found(self, monkeypatch):
         import server
+
         d = self._make_ckpt()
         try:
             monkeypatch.setattr(server, "_CHECKPOINT_DIR", d)
@@ -119,6 +184,7 @@ class TestUploadedFileTools:
 
     def test_read_uploaded_file_path_traversal(self, monkeypatch):
         import server
+
         d = self._make_ckpt()
         try:
             monkeypatch.setattr(server, "_CHECKPOINT_DIR", d)
@@ -130,6 +196,7 @@ class TestUploadedFileTools:
 
     def test_read_uploaded_file_truncation(self, monkeypatch):
         import server
+
         d = self._make_ckpt()
         try:
             uploads = os.path.join(d, "uploads")
@@ -145,6 +212,7 @@ class TestUploadedFileTools:
 
     def test_read_uploaded_file_no_env(self, monkeypatch):
         import server
+
         monkeypatch.setattr(server, "_CHECKPOINT_DIR", "")
         result = server.read_uploaded_file("test.txt")
         assert "error" in result

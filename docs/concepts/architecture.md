@@ -292,7 +292,7 @@ nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
       report_driven    (true when node_report.json drove LLM input)
 
   Stage 2: search_related_work  (ari-skill-web)  [parallel with stage 1]
-    LLM-generated keywords → pluggable retrieval (Semantic Scholar / AlphaXiv / both)
+    keywords → one pinned retrieval provider (Semantic Scholar / arXiv / AlphaXiv)
     Output: related_refs.json
 
   Stage 3: generate_figures  (ari-skill-plot)  [after stage 1]
@@ -605,7 +605,7 @@ environment variables injected at launch.
 | `ari-skill-idea` | `survey`, `generate_ideas` | Literature search (Semantic Scholar) + VirSci multi-agent hypothesis generation | ✓ |
 | `ari-skill-evaluator` | `make_metric_spec` | Metric spec extraction from experiment file | △ |
 | `ari-skill-transform` | `nodes_to_science_data`, `generate_ear`, `curate_ear`, `publish_ear` | BFTS tree → science-facing data + EAR + curate/publish lifecycle (v0.7.0) | ✓ |
-| `ari-skill-web` | `web_search`, `fetch_url`, `search_arxiv`, `search_semantic_scholar`, `search_papers`, `set_retrieval_backend`, `collect_references_iterative`, `list_uploaded_files`, `read_uploaded_file` | Web search, arXiv, pluggable retrieval (Semantic Scholar / AlphaXiv), uploaded file access | △ |
+| `ari-skill-web` | `search_papers`, `web_search`, `fetch_url`, `walk_citations`, `rerank_retrieval_records`, compatibility aliases, upload readers | Typed record/replay retrieval, URL safety, source provenance, bounded citation graph | △ |
 | `ari-skill-plot` | `generate_figures`, `generate_figures_llm` | Deterministic + LLM figure generation (matplotlib plots or SVG diagrams per-figure via `kind` field) | ✓ |
 | `ari-skill-paper` | `list_venues`, `get_template`, `generate_section`, `compile_paper`, `check_format`, `review_section`, `revise_section`, `write_paper_iterative`, `review_compiled_paper`, `list_rubrics`, `inject_code_availability`, `merge_reviews` | LaTeX paper writing, compilation, rubric-driven peer review (AI Scientist v1/v2-compatible). v0.7.0: `inject_code_availability` injects `\codeavailability{}`/`\codedigest{}`/`\coderef{}` macros after `ear_curate`; `merge_reviews` post-hoc merges text-review + VLM-review JSON. | ✓ |
 | `ari-skill-paper-re` | `fetch_code_bundle`, `run_reproduce`, `grade_with_simplejudge` | PaperBench-format reproducibility (v0.7.0): pre-populate sandbox via `ari.clone`, Phase 1 sandbox runner (`reproduce.sh`), Phase 2 PaperBench SimpleJudge grader. PaperBench is vendored under `vendor/paperbench`. | ✓ |

@@ -313,7 +313,7 @@ Change the dashboard language (English, Japanese, Chinese) from the language dro
 
 ### Retrieval Backend
 
-- Choose paper search backend: Semantic Scholar (default), AlphaXiv, or both (parallel)
+- Choose one pinned paper provider: Semantic Scholar (default), arXiv, or AlphaXiv
 
 ### Per-Phase Model Overrides
 

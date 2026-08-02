@@ -90,14 +90,17 @@ bfts_pipeline:
 pipeline:
 - stage: search_related_work
   skill: web-skill
-  tool: collect_references_iterative
-  description: AI Scientist v2-style iterative citation collection -> related_refs.json
+  tool: search_papers
+  description: Recorded deterministic literature retrieval -> related_refs.json
   depends_on: []
   enabled: true
   phase: paper
   inputs:
-    experiment_summary: '{{experiment_summary}}'
-    keywords: '{{keywords}}'
+    query: '{{keywords}}'
+  params:
+    provider: semantic-scholar
+    max_results: 15
+    mode: record
   outputs:
     file: '{{checkpoint_dir}}/related_refs.json'
 - stage: transform_data

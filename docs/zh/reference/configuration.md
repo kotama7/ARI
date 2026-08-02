@@ -174,7 +174,7 @@ pipeline:
       judge_model: gpt-5-mini  # 任意 LiteLLM 可识别的模型 ID
 
 retrieval:
-  backend: semantic_scholar    # semantic_scholar | alphaxiv | both
+  backend: semantic_scholar    # semantic_scholar | arxiv | alphaxiv
   alphaxiv_endpoint: https://api.alphaxiv.org/mcp/v1
 
 # ── 论文审阅 (基于评审规范，AI Scientist v1/v2 兼容) ─────────────────
@@ -277,7 +277,7 @@ skills:
 | `OLLAMA_HOST` | Ollama 服务器地址 | `127.0.0.1:11434` |
 | `OPENAI_API_KEY` | OpenAI API 密钥 | （无） |
 | `ANTHROPIC_API_KEY` | Anthropic API 密钥 | （无） |
-| `ARI_RETRIEVAL_BACKEND` | 论文搜索后端: `semantic_scholar` / `alphaxiv` / `both` | `semantic_scholar` |
+| `ARI_RETRIEVAL_BACKEND` | 固定论文provider: `semantic_scholar` / `arxiv` / `alphaxiv` | `semantic_scholar` |
 | `VLM_MODEL` | 图表审阅 VLM 模型 | `openai/gpt-4o` |
 | `ARI_ORCHESTRATOR_PORT` | orchestrator 技能的 HTTP 端口 | `9890` |
 | `LETTA_BASE_URL` | Letta 服务器端点 | `http://localhost:8283` |

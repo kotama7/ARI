@@ -284,15 +284,19 @@ record/replay, and adapter requirements.
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
-| `web_search` | DuckDuckGo (no API key) | ✗ |
-| `fetch_url` | URL → readable text | ✗ |
-| `search_arxiv` | arXiv API | ✗ |
-| `search_semantic_scholar` | Semantic Scholar API | ✗ |
-| `collect_references_iterative` | Walk the citation graph from a seed paper | ✗ |
-| `search_papers` | Search the configured AlphaXiv / Semantic Scholar backend | ✗ |
-| `set_retrieval_backend` | Select the paper retrieval backend | ✗ |
+| `search_papers` | One pinned provider; typed record/live/replay result | ✗ |
+| `web_search` | DuckDuckGo under the retrieval snapshot contract | ✗ |
+| `fetch_url` | SSRF-controlled URL → untrusted readable text | ✗ |
+| `walk_citations` | Bounded citation graph with partial-result provenance | ✗ |
+| `rerank_retrieval_records` | Explicit typed-record reranker | ✓ |
+| `search_arxiv` | Deprecated narrow arXiv alias | ✗ |
+| `search_semantic_scholar` | Deprecated narrow Semantic Scholar alias | ✗ |
+| `collect_references_iterative` | Deprecated stochastic query/selection loop | ✓ |
+| `set_retrieval_backend` | Deprecated pinned-provider default selector | ✗ |
 | `list_uploaded_files` | List files in the checkpoint upload area | ✗ |
 | `read_uploaded_file` | Read one upload with traversal protection and output bounds | ✗ |
+
+See [Retrieval contract and network policy](retrieval_contract.md).
 
 ## See also
 

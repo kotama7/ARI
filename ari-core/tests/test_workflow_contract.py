@@ -858,7 +858,7 @@ class TestPaperPipelineFileContract:
 
     @pytest.mark.parametrize("stage_name,required_input_keys,expected_output_suffix", [
         ("search_related_work",
-         {"experiment_summary", "keywords"},
+         {"query"},
          "related_refs.json"),
         ("transform_data",
          {"nodes_json_path"},

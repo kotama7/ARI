@@ -1,8 +1,8 @@
 """Tests for pluggable paper retrieval backend (Issue #11).
 
 Validates:
-- Backend selection dispatches correctly (mock HTTP calls)
-- "both" mode deduplicates by arxiv_id
+- Provider adapters are explicit and pinned
+- Composite "both" mode is rejected rather than partially succeeding
 - ARI_RETRIEVAL_BACKEND env var is respected
 - GUI settings endpoint reads/writes retrieval_backend
 - /api/launch passes ARI_RETRIEVAL_BACKEND to subprocess
@@ -11,7 +11,6 @@ from __future__ import annotations
 import ast
 import json
 import os
-import sys
 from pathlib import Path
 from unittest import mock
 
@@ -66,15 +65,15 @@ def _func_args(src: str, name: str) -> list[str]:
 # ── Tests: web skill backend abstraction ──────────────
 
 def test_search_alphaxiv_function_exists(web_skill_src):
-    assert _has_function(web_skill_src, "_search_alphaxiv")
+    assert _has_function(web_skill_src, "_search_alphaxiv_strict")
 
 
-def test_search_semantic_scholar_async_exists(web_skill_src):
-    assert _has_function(web_skill_src, "_search_semantic_scholar_async")
+def test_semantic_scholar_strict_adapter_exists(web_skill_src):
+    assert _has_function(web_skill_src, "_search_s2_raw_sync")
 
 
-def test_dispatch_search_function_exists(web_skill_src):
-    assert _has_function(web_skill_src, "_dispatch_search")
+def test_provider_dispatch_is_strict(web_skill_src):
+    assert _has_function(web_skill_src, "_provider_search")
 
 
 def test_set_retrieval_backend_tool_exists(web_skill_src):
@@ -90,21 +89,20 @@ def test_set_retrieval_backend_accepts_backend_arg(web_skill_src):
     assert "backend" in args
 
 
-def test_dispatch_search_handles_all_backends(web_skill_src):
-    """Verify _dispatch_search references all three backend modes."""
+def test_provider_dispatch_handles_each_pinned_backend(web_skill_src):
     assert '"alphaxiv"' in web_skill_src
     assert '"semantic_scholar"' in web_skill_src
-    assert '"both"' in web_skill_src
+    assert '"arxiv"' in web_skill_src
 
 
 def test_alphaxiv_endpoint_configured(web_skill_src):
     assert "api.alphaxiv.org/mcp/v1" in web_skill_src
 
 
-def test_both_mode_deduplicates_by_arxiv_id(web_skill_src):
-    """Verify 'both' mode uses arxiv_id for deduplication."""
-    assert "arxiv_id" in web_skill_src
-    assert "seen_ids" in web_skill_src
+def test_implicit_composite_paths_are_deleted(web_skill_src):
+    assert not _has_function(web_skill_src, "_dispatch_search")
+    assert not _has_function(web_skill_src, "_arxiv_fallback")
+    assert "composite provider selection is not canonical" in web_skill_src
 
 
 # ── Tests: workflow.yaml retrieval config ─────────────
@@ -152,11 +150,24 @@ def test_settings_save_preserves_retrieval_backend(tmp_path):
     with mock.patch("ari.viz.state._settings_path", settings_file), \
          mock.patch("ari.viz.state._env_write_path", tmp_path / ".env"):
         from ari.viz.api_settings import _api_save_settings
-        body = json.dumps({"retrieval_backend": "both"}).encode()
+        body = json.dumps({"retrieval_backend": "alphaxiv"}).encode()
         result = _api_save_settings(body)
         assert result["ok"]
         saved = json.loads(settings_file.read_text())
-        assert saved["retrieval_backend"] == "both"
+        assert saved["retrieval_backend"] == "alphaxiv"
+
+
+def test_settings_rejects_composite_retrieval_backend(tmp_path):
+    settings_file = tmp_path / "settings.json"
+    with mock.patch("ari.viz.state._settings_path", settings_file):
+        from ari.viz.api_settings import _api_save_settings
+
+        result = _api_save_settings(
+            json.dumps({"retrieval_backend": "both"}).encode()
+        )
+    assert result["ok"] is False
+    assert result["_status"] == 400
+    assert not settings_file.exists()
 
 
 # ── Tests: /api/launch passes env var ─────────────────

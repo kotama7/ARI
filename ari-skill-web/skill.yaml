@@ -1,7 +1,7 @@
 schema_version: 1
 name: web-skill
 package: ari-skill-web
-version: 0.1.0
+version: 0.2.0
 display_name: Retrieve scientific sources
 description: Web, arXiv, Semantic Scholar, and uploaded-file retrieval with source provenance.
 environment_policy: complete
@@ -55,10 +55,10 @@ credential_scopes:
       - XAI_API_KEY
 tool_defaults:
   phases: [paper, reproduce]
-  side_effects: read-only
+  side_effects: workspace-write
   determinism: live-data
   timeout_class: bounded
-  permissions: [network]
+  permissions: [workspace-write, network]
   result_schema: ari.result-envelope/v1
 tools:
   - name: collect_references_iterative
@@ -71,10 +71,12 @@ tools:
   - name: list_uploaded_files
     capability_ref: ari.workspace.uploads.list
     determinism: deterministic
+    side_effects: read-only
     permissions: [workspace-read]
   - name: read_uploaded_file
     capability_ref: ari.workspace.uploads.read
     determinism: deterministic
+    side_effects: read-only
     permissions: [workspace-read]
   - name: search_arxiv
     capability_ref: ari.literature.arxiv.search
@@ -85,5 +87,12 @@ tools:
   - name: set_retrieval_backend
     capability_ref: ari.literature.backend.select
     side_effects: stateful
+  - name: rerank_retrieval_records
+    capability_ref: ari.literature.rerank
+    determinism: stochastic
+    side_effects: read-only
+    permissions: [model]
+  - name: walk_citations
+    capability_ref: ari.literature.citations.walk
   - name: web_search
     capability_ref: ari.web.search

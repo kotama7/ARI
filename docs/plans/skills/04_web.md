@@ -13,7 +13,7 @@ last_verified: 2026-08-02
 
 # C04: `ari-skill-web` 実装計画
 
-> 状態: Proposed。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
+> 状態: Implemented（2026-08-02、P6 alias removalのみ残存）。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
 
 ## 1. 責務
 
@@ -35,25 +35,29 @@ Web、論文index、citation graphから取得した情報を、source provenanc
 
 | ID | 作業 | 成果物 |
 |---|---|---|
-| C04-01 | tool / manifest / docsの事実監査 | canonical tool inventory |
-| C04-02 | provider adapter境界 | DuckDuckGo / arXiv / S2 / AlphaXiv adapter |
-| C04-03 | `RetrievalRecordV1` とdedup | DOI/arXiv/S2 ID、origin、raw digest |
-| C04-04 | live / record / replay | cassette、ETag/Last-Modified、offline fixture |
-| C04-05 | URL fetch security | scheme/host/IP policy、redirect再検証、size/type limit |
-| C04-06 | citation walkのbounded execution | depth/node/budget、cycle detection、partial result |
-| C04-07 | ranking/LLM使用の明示分離 | deterministic retrievalとoptional rerankerの別tool_ref |
-| C04-08 | idea / paper consumer migration | snapshot refで受け渡し、inline巨大payload廃止 |
+| C04-01 | **完了**: tool / manifest / docsの事実監査 | canonical tool inventory |
+| C04-02 | **完了**: provider adapter境界 | DuckDuckGo / arXiv / S2 / AlphaXiv adapter |
+| C04-03 | **完了**: `RetrievalRecordV1` とdedup | DOI/arXiv/S2 ID、origin、raw digest |
+| C04-04 | **完了**: live / record / replay | content-addressed cassette、HTTP metadata、offline fixture |
+| C04-05 | **完了**: URL fetch security | scheme/host/IP policy、redirect再検証、size/type limit |
+| C04-06 | **完了**: citation walkのbounded execution | depth/node/budget、cycle detection、partial result |
+| C04-07 | **完了**: ranking/LLM使用の明示分離 | deterministic retrievalとoptional rerankerの別tool_ref |
+| C04-08 | **完了**: idea / paper consumer migration | verified snapshot ref、typed inline downgrade拒否 |
 
 ## 5. 受け入れ基準
 
-- [ ] private/loopback/link-local destination、DNS rebinding、oversize responseを拒否する。
-- [ ] redirect先にも同じnetwork policyを適用する。
-- [ ] record modeでprovider outage時に別providerへ黙って切り替わらない。
-- [ ] 同じpaperの複数provider recordをaliasとして保持し、source lineageを失わない。
-- [ ] citation graphのcycleとbudget超過がbounded partial resultになる。
-- [ ] replayはnetworkなしで同じnormalized recordsを返す。
-- [ ] LLMを使うpathはmanifestで`determinism: stochastic`とmodel provenanceを持つ。
-- [ ] `pytest ari-skill-web/tests -q` とSSRF/cassette contract testがgreenである。
+- [x] private/loopback/link-local destination、DNS rebinding、oversize responseを拒否する。
+- [x] redirect先にも同じnetwork policyを適用する。
+- [x] record modeでprovider outage時に別providerへ黙って切り替わらない。
+- [x] 同じpaperの複数provider recordをaliasとして保持し、source lineageを失わない。
+- [x] citation graphのcycleとbudget超過がbounded partial resultになる。
+- [x] replayはnetworkなしで同じnormalized recordsを返す。
+- [x] LLMを使うpathはmanifestで`determinism: stochastic`とmodel provenanceを持つ。
+- [x] `pytest ari-skill-web/tests -q` とSSRF/cassette contract testがgreenである。
+
+実装証跡: `src/retrieval.py`、`src/network_policy.py`、共通
+`load_survey_snapshot_ref`、70件のWeb test、Idea/Paper consumer tamper test、
+`docs/{,ja/,zh/}reference/retrieval_contract.md`。
 
 ## 6. 削除要件
 
@@ -61,12 +65,12 @@ Web、論文index、citation graphから取得した情報を、source provenanc
 
 | ID | 削除対象 | 置換先 | 最早phase | 削除gate |
 |---|---|---|---|---|
-| C04-D1 | record modeのimplicit backend fallback | pinned provider adapter | P3 | outage testがexplicit error、cassette keyにprovider含有 |
-| C04-D2 | providerごとに異なるad-hoc result dict | `RetrievalRecordV1` | P3 |全provider golden fixture parity |
-| C04-D3 | unrestricted `fetch_url` network path | URL fetch security policy | P2 |SSRF suite green、旧caller migration |
-| C04-D4 | `search_arxiv`等のdeprecated narrow alias | `search_papers(provider=...)`またはbroker discovery | P6 | deprecation release、workflow/docs caller 0 |
-| C04-D5 | manifestにないhidden public tools / stale declaration | canonical manifest | P1 | runtime `tools/list`完全一致 |
-| C04-D6 | LLM helperをdeterministic retrieval内で暗黙使用するpath |明示reranker component | P3 |traceでLLM call 0、reranker contract test |
+| C04-D1 | **削除済み**: record modeのimplicit backend fallback / composite partial success | pinned provider adapter | P3 | outage testがexplicit error、cassetteにprovider含有 |
+| C04-D2 | **canonical pathから削除済み**: providerごとに異なるad-hoc result dict | `RetrievalRecordV1` | P3 |全provider golden fixture parity |
+| C04-D3 | **削除済み**: unrestricted `fetch_url` network path | URL fetch security policy | P2 |SSRF suite green、旧caller migration |
+| C04-D4 | **P6残存**: `search_arxiv`等のdeprecated narrow aliasとlegacy collector | `search_papers(provider=...)`またはbroker discovery | P6 | deprecation release、workflow/docs caller 0 |
+| C04-D5 | **削除済み**: manifestにないhidden public tools / stale declaration | canonical manifest | P1 | runtime `tools/list`完全一致 |
+| C04-D6 | **削除済み**: LLM helperをdeterministic retrieval内で暗黙使用するpath |明示reranker component | P3 |traceでLLM call 0、reranker contract test |
 
 ### 6.2 削除の検証と復旧
 

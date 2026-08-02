@@ -1077,42 +1077,43 @@ exist, `generate_ear` emits one of: **MIT**, **Apache-2.0**,
 
 ## ari-skill-web
 
-Web search and academic literature retrieval with pluggable backends. **LLM: Partial** (only `collect_references_iterative` uses LLM).
+Provenance-preserving web and academic retrieval. **LLM: No** for canonical
+retrieval; the separate reranker and legacy iterative collector are stochastic.
 
 ### Tools
 
-#### `web_search(query, n=5)`
+#### `search_papers(query, max_results=10, provider=null, mode="record", snapshot_ref="")`
 
-DuckDuckGo web search. No API key required. Deterministic.
+Searches exactly one pinned `semantic-scholar`, `arxiv`, or `alphaxiv`
+provider. It returns `RetrievalRecordV1`, a digest-bound survey snapshot, and a
+content-addressed `snapshot_ref` in record mode. Provider failure is explicit;
+there is no fallback or partially successful `both` mode.
 
-#### `fetch_url(url, max_chars=8000)`
+#### `web_search(query, n=5, mode="record", snapshot_ref="")`
 
-Fetch and extract text from a URL via BeautifulSoup. Deterministic.
+DuckDuckGo retrieval under the same live/record/replay contract.
 
-#### `search_arxiv(query, max_results=5)`
+#### `fetch_url(url, max_chars=8000, mode="record", snapshot_ref="", max_bytes=2097152)`
 
-arXiv paper search. Deterministic.
+Fetches untrusted text through pinned-IP SSRF protection, redirect
+revalidation, HTTPS-downgrade rejection, and byte/content-type limits.
 
-#### `search_semantic_scholar(query, limit=8, extra_queries=None)`
+#### `walk_citations(seed_ids, direction="references", max_depth=2, max_nodes=50, request_budget=20, mode="record", snapshot_ref="")`
 
-Semantic Scholar API with fallback to arXiv. Deterministic.
+Bounded Semantic Scholar graph traversal with cycle detection and explicit
+partial results.
 
-#### `search_papers(query, max_results=10)`
+#### `rerank_retrieval_records(research_question, records, max_results=10)`
 
-Dispatches to the configured retrieval backend (`ARI_RETRIEVAL_BACKEND`):
-- `"semantic_scholar"` (default) — Semantic Scholar API
-- `"alphaxiv"` — AlphaXiv via MCP JSON-RPC over HTTP
-- `"both"` — parallel execution with deduplication
+Explicit optional LLM reranking. Returns the selected typed records plus model,
+API identity, temperature, and prompt/input/output digests.
 
-#### `set_retrieval_backend(backend)`
+#### Compatibility tools
 
-Dynamically switch the retrieval backend at runtime. Valid values: `"semantic_scholar"`, `"alphaxiv"`, `"both"`.
-
-#### `collect_references_iterative(experiment_summary, keywords, max_rounds=20, min_papers=10)`
-
-AI Scientist v2-style iterative citation collection. LLM generates search queries and selects relevant papers across multiple rounds.
-
-Model: `ARI_LLM_MODEL` env > `LLM_MODEL` env > `ollama_chat/qwen3:32b`.
+`search_arxiv`, `search_semantic_scholar`, `set_retrieval_backend`, and
+`collect_references_iterative` remain during the P6 deprecation window. New
+workflows use `search_papers`; the default paper pipeline no longer calls the
+combined LLM collector.
 
 #### `list_uploaded_files()`
 
@@ -1121,6 +1122,8 @@ Lists user-uploaded files in the checkpoint directory. Deterministic.
 #### `read_uploaded_file(filename, max_chars=50000)`
 
 Reads text file content from uploaded files with binary detection. Deterministic.
+
+Full wire and security semantics: [Retrieval contract](retrieval_contract.md).
 
 ---
 

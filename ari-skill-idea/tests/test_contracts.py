@@ -134,6 +134,15 @@ def test_replay_rejects_snapshot_tampering(tmp_path, monkeypatch):
     )
 
 
+def test_snapshot_ref_loader_rejects_tampered_source_artifact(tmp_path):
+    _snapshot(tmp_path)
+    records_path = tmp_path / "survey_records_v1.json"
+    records_path.write_bytes(records_path.read_bytes() + b" ")
+
+    with pytest.raises(ResearchContractError, match="artifact digest mismatch"):
+        contracts.load_survey_snapshot(tmp_path)
+
+
 def test_complete_candidate_mints_one_contract_for_both_adapters(tmp_path):
     snapshot = _snapshot(tmp_path)
     results = []

@@ -1,3 +1,14 @@
+---
+sources:
+  - path: ari-core/ari/research_contract.py
+    role: implementation
+  - path: ari-skill-idea/src/contracts.py
+    role: implementation
+  - path: ari-skill-evaluator/src/server.py
+    role: implementation
+last_verified: 2026-08-02
+---
+
 # Research contracts
 
 ARI freezes the scientific decision between literature retrieval and experiment
@@ -32,3 +43,7 @@ contract fails closed and cannot downgrade to legacy prose inference.
 
 JSON Schemas are shipped under `ari-core/ari/schemas/`. The stable Skill API is
 `ari.public.research_contract`.
+
+Provider cassette layout, verified snapshot references, URL policy, and
+multi-provider alias semantics are specified in the
+[retrieval contract](retrieval_contract.md).

@@ -140,6 +140,7 @@
       "SURVEY_SNAPSHOT_V1",
       "SurveySnapshotV1",
       "canonical_digest",
+      "load_survey_snapshot_ref",
       "metric_gate_projection",
       "mint_research_contract",
       "parse_idea_set",

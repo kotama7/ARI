@@ -224,7 +224,7 @@ pipeline:
       judge_model: gpt-5-mini  # any LiteLLM-recognised model id
 
 retrieval:
-  backend: semantic_scholar    # semantic_scholar | alphaxiv | both
+  backend: semantic_scholar    # semantic_scholar | arxiv | alphaxiv
   alphaxiv_endpoint: https://api.alphaxiv.org/mcp/v1
 
 # ── Paper review (rubric-driven, AI Scientist v1/v2-compatible) ────────
@@ -342,7 +342,7 @@ skills:
 | `OLLAMA_HOST` | Ollama server address | `127.0.0.1:11434` |
 | `OPENAI_API_KEY` | OpenAI API key | (none) |
 | `ANTHROPIC_API_KEY` | Anthropic API key | (none) |
-| `ARI_RETRIEVAL_BACKEND` | Paper search backend: `semantic_scholar`, `alphaxiv`, `both` | `semantic_scholar` |
+| `ARI_RETRIEVAL_BACKEND` | Default pinned paper provider: `semantic_scholar`, `arxiv`, `alphaxiv` | `semantic_scholar` |
 | `VLM_MODEL` | VLM model for figure review | `openai/gpt-4o` |
 | `ARI_ORCHESTRATOR_PORT` | HTTP port for orchestrator skill | `9890` |
 | `LETTA_BASE_URL` | Letta server endpoint | `http://localhost:8283` |
