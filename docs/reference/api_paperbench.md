@@ -115,7 +115,7 @@ Enqueue PaperBench runs.
     "memory_gb_per_node": 256,
     "constraint": "skylake",
     "cpu_bind": "cores",
-    "extra_sbatch_args": ["--account=projX"]
+    "account": "projX"
   },
   "judge_config":     {"model": "gpt-5-mini", "n_runs": 1, "code_only": false},
   "dry_run": false
@@ -188,7 +188,7 @@ can be chained:
 | Stage | Function | Wraps |
 |---|---|---|
 | 1 — Agent rollout | `rollout_submission(paper_md, work_dir, agent_model, sandbox_kind, container_image, iterative_agent, env, agent_env_path, forbid_host_filesystem, blacklist_urls, time_limit_sec, …)` | `_replicator_agent.run_replicator_agent` (vendor BasicAgent / IterativeAgent) |
-| 2 — Reproduction | `reproduce_submission(submission_dir, sandbox_kind, container_image, partition, gpus_per_task, gpu_type, memory_gb_per_node, exclusive, extra_sbatch_args, capture_tarball, tarball_dir, salvage_retries, retry_threshold_sec, time_limit_sec)` | `server.run_reproduce` (host docker / apptainer / slurm / local dispatch) |
+| 2 — Reproduction | `reproduce_submission(submission_dir, sandbox_kind, container_image, partition, gpus_per_task, gpu_type, memory_gb_per_node, exclusive, capture_tarball, tarball_dir, salvage_retries, retry_threshold_sec, time_limit_sec)` | `server.run_reproduce` (typed HPC handle or host sandbox dispatch; deprecated `extra_sbatch_args` reader retained temporarily) |
 | 3 — Grading | `judge_submission(paper_md, rubric, submission_dir, reproduce_log, judge_model, paper_audit_mode, code_only, …)` | vendor `SimpleJudge` direct |
 
 Vendor-fidelity behaviour built into the bridge:
@@ -245,7 +245,7 @@ is set):
 | `sandbox_kind=docker` but daemon unreachable | `ARI_PHASE1_ALLOW_FALLBACK=1` |
 | `sandbox_kind=apptainer/singularity` but binary missing | `ARI_PHASE1_ALLOW_FALLBACK=1` |
 | `sandbox_kind=slurm` but `sbatch` missing or no partition | `ARI_PHASE1_ALLOW_FALLBACK=1` |
-| GPU requested on GRES-less cluster | `ARI_SLURM_ALLOW_NO_GRES=1` |
+| GPU request unsupported by the selected partition | fix GRES/select a compatible partition; no silent downgrade |
 
 ## See also
 

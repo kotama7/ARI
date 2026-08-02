@@ -89,11 +89,11 @@ Sanctioned exec modules — changes to execution behaviour belong here:
 | `ari/mcp/secure_stdio_proxy.py` | restores exact-env/redaction guarantees when a direct MCP client merges its own parent environment. |
 | `ari-skill-hpc/ari_skill_hpc/{contracts,scheduler}.py` | versioned HPC job contracts plus shell-free local SLURM, strict known-host SSH, durable idempotency, `--export=NIL` clean environments, and digest-bound result collection. |
 
-Known duplication to consolidate toward these owners (not incorrect behaviour,
-but drift risk): `viz/api_memory.py` re-derives container-runtime dispatch;
-`ari-skill-paper-re/src/server.py` re-implements `sbatch`/`apptainer exec` and
-already diverges from `slurm.py` (it hardcodes `--export ALL`); its local
-fallback lacks `setsid`/`killpg`, so a hung reproduce can orphan.
+Known duplication still to consolidate toward these owners: `viz/api_memory.py`
+re-derives container-runtime dispatch, and paper-re still owns local/Docker/
+Apptainer fallbacks. Its SLURM path now compiles `JobRequestV1` and uses the
+canonical submit/status/log/cancel lifecycle; no direct `sbatch` or exported
+parent environment remains.
 
 **`ari.viz.state` process-handle coupling.** `ari/viz/state.py` holds live OS
 handles as module globals (imported as `_st`): `_last_proc` (most-recent

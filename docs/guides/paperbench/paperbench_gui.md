@@ -101,13 +101,13 @@ at 0/"".
 | gpus_per_task | int | `--gpus-per-task` (auto-pairs with `--ntasks 1` when caller didn't set `ntasks`/`--gpus`; required by SLURM 24.05) |
 | memory_gb_per_node | int | `--mem` |
 | exclusive | bool | `--exclusive` |
-| gpu_type | str | `--gres=gpu:<type>:N` (canonical when set; the untyped `--gpus-per-task` is dropped to avoid SLURM "Invalid GRES specification" on the typed/untyped mix) |
+| gpu_type | str | typed GPU selector combined with exactly one count field |
 | constraint | str | `--constraint` |
-| cpu_bind | str | `--cpu-bind` |
-| mem_bind | str | `--mem-bind` |
+| cpu_bind | str | `srun --cpu-bind` inside `reproduce.sh` |
+| mem_bind | str | `srun --mem-bind` inside `reproduce.sh` |
 | hint | str | `--hint` |
 | nodelist | str | `--nodelist` |
-| extra_sbatch_args | str (space-sep) | pass-through |
+| account / qos / reservation | str | typed selectors; no arbitrary pass-through |
 
 See [Execution profile reference](../../reference/execution_profile.md)
 for full semantics.
@@ -119,11 +119,10 @@ rather than silently downgrading to local CPU:
 - `sandbox=docker` but daemon unreachable → `RuntimeError`
 - `sandbox=apptainer`/`singularity` but binary missing → `RuntimeError`
 - `sandbox=slurm` but `sbatch` missing or no partition resolved → `RuntimeError`
-- `gpus_per_task > 0` but the cluster has no GRES configured → `RuntimeError`
+- contradictory or unsupported typed GPU shape → validation/scheduler error
 
-Set `ARI_PHASE1_ALLOW_FALLBACK=1` (sandbox missing) or
-`ARI_SLURM_ALLOW_NO_GRES=1` (GPU GRES) in `.env` to opt back into
-legacy silent-fallback behaviour. See
+Set `ARI_PHASE1_ALLOW_FALLBACK=1` only for a missing sandbox. GPU requests have
+no silent-drop override. See
 [environment variables](../../reference/environment_variables.md#paperbench-reproduction-phase-stage-2).
 
 ### Step 4 — Judge config

@@ -186,7 +186,7 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 | `ARI_SLURM_GPUS` | 默认 `--gres=gpu:N` |
 | `ARI_SLURM_MEM_GB` | 默认内存请求 |
 | `ARI_SLURM_WALLTIME` | 默认 `--time` |
-| `ARI_SLURM_ALLOW_NO_GRES` | `1` ⇒ 当集群未为 GPU 配置 GRES 时，静默丢弃 `--gres` / `--gpus-*` 标志（旧版 v0.7.2 行为）。默认（未设置）⇒ 抛出带有可操作信息的 `RuntimeError`，防止 GPU 请求悄无声息地在 CPU 上运行。 |
+| `ARI_SCHEDULER_PATH` | 无 shell 的scheduler control command固定搜索路径；不继承父`PATH`。 |
 
 ### PaperBench 复现阶段（Stage 2）
 

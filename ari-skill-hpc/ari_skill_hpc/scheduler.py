@@ -1043,7 +1043,21 @@ class SlurmScheduler:
         ]
         if resources.memory_mb_per_node:
             lines.append(f"#SBATCH --mem={resources.memory_mb_per_node}M")
-        if resources.gpus_per_node:
+        if resources.memory_mb_per_cpu:
+            lines.append(f"#SBATCH --mem-per-cpu={resources.memory_mb_per_cpu}M")
+        if resources.tasks_per_node:
+            lines.append(f"#SBATCH --ntasks-per-node={resources.tasks_per_node}")
+        if resources.nodelist:
+            lines.append(f"#SBATCH --nodelist={resources.nodelist}")
+        if resources.exclude_nodes:
+            lines.append(f"#SBATCH --exclude={resources.exclude_nodes}")
+        if resources.gpus_per_task:
+            value = ""
+            if resources.gpu_type:
+                value = f"{resources.gpu_type}:"
+            value += str(resources.gpus_per_task)
+            lines.append(f"#SBATCH --gpus-per-task={value}")
+        elif resources.gpus_per_node:
             value = "gpu:"
             if resources.gpu_type:
                 value += f"{resources.gpu_type}:"
@@ -1053,10 +1067,14 @@ class SlurmScheduler:
             lines.append("#SBATCH --exclusive")
         if resources.constraint:
             lines.append(f"#SBATCH --constraint={resources.constraint}")
+        if resources.hint:
+            lines.append(f"#SBATCH --hint={resources.hint}")
         if resources.account:
             lines.append(f"#SBATCH --account={resources.account}")
         if resources.qos:
             lines.append(f"#SBATCH --qos={resources.qos}")
+        if resources.reservation:
+            lines.append(f"#SBATCH --reservation={resources.reservation}")
         return lines
 
     @staticmethod

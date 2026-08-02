@@ -81,12 +81,10 @@ ARI の LLM 境界は「すべてが `LLMClient` を呼ばなければならな�
 | `ari/mcp/client.py` | MCP SDK の `stdio_client`（生のスポーンではなくラッパー）経由でスキルの stdio サーバをスポーンします。 |
 | `ari-skill-hpc/ari_skill_hpc/{contracts,scheduler}.py` | version付きHPC job契約、shellを介さないlocal SLURM、known-hostを厳格検証するSSH、永続idempotency、`--export=NIL` clean environment、digest付きresult収集を所有します。 |
 
-これらのオーナーへ統合していくべき既知の重複（誤った挙動ではないが、ドリフトの
-リスク）: `viz/api_memory.py` はコンテナランタイムのディスパッチを再導出して
-います。`ari-skill-paper-re/src/server.py` は `sbatch`/`apptainer exec` を
-再実装しており、すでに `slurm.py` から乖離しています（`--export ALL` を
-ハードコードしている）。そのローカルフォールバックには `setsid`/`killpg` が
-ないため、ハングした再現実験が孤児プロセスを生む可能性があります。
+残る統合対象として、`viz/api_memory.py` はコンテナruntime dispatchを再導出し、
+paper-reはlocal/Docker/Apptainer fallbackを所有しています。paper-reのSLURM経路は
+現在 `JobRequestV1` と共通submit/status/log/cancel lifecycleを使い、直接`sbatch`
+も親environment exportも行いません。
 
 **`ari.viz.state` のプロセスハンドル結合。** `ari/viz/state.py` は、ライブの
 OS ハンドルをモジュールグローバル（`_st` としてインポートされる）として

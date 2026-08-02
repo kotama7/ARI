@@ -130,7 +130,7 @@ body 含 `license` 时重新分类。
     "memory_gb_per_node": 256,
     "constraint": "skylake",
     "cpu_bind": "cores",
-    "extra_sbatch_args": ["--account=projX"]
+    "account": "projX"
   },
   "judge_config":     {"model": "gpt-5-mini", "n_runs": 1},
   "dry_run": false

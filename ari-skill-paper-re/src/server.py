@@ -20,6 +20,7 @@ The legacy LLM-driven metric-verdict tools (``extract_repro_config``,
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -30,6 +31,19 @@ import time
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
+
+from ari_skill_hpc import (
+    ArtifactPinV1,
+    EnvironmentPolicyV1,
+    JobRequestV1,
+    LocalCommandRunner,
+    ResourceRequestV1,
+    SchedulerError,
+    SlurmScheduler,
+    SubmissionLedger,
+    file_digest,
+    sha256_digest,
+)
 
 log = logging.getLogger(__name__)
 
@@ -334,7 +348,7 @@ async def build_reproduce_sh(
 
 
 def _has_bin(name: str) -> bool:
-    return subprocess.run(["which", name], capture_output=True).returncode == 0
+    return shutil.which(name) is not None
 
 
 def _docker_works() -> bool:
@@ -550,96 +564,64 @@ def _walltime_str(timeout_sec: int) -> str:
     return f"{h:02d}:{m:02d}:{s:02d}"
 
 
-_SHARED_FS_PREFIXES = ("/work", "/scratch", "/lustre", "/home", "/nfs", "/data")
+_TERMINAL_JOB_STATES = {"succeeded", "failed", "cancelled"}
+_DEPRECATED_SBATCH_FIELDS = {
+    "--account=": "account",
+    "--qos=": "qos",
+    "--reservation=": "reservation",
+    "--hint=": "hint",
+}
 
 
-def _is_shared_fs(path: Path) -> bool:
-    """Heuristic: True iff ``path`` looks like it lives on a shared FS.
-
-    Compute nodes mount different node-local roots than the submit node, so
-    paths under ``/tmp``, ``/var/tmp``, or a per-node ``/local`` will be
-    invisible to the job. This is a best-effort check (no NFS probe) —
-    callers should only treat False as a warning, not a hard error.
-    """
-    try:
-        resolved = path.resolve()
-    except OSError:
-        return False
-    home = Path.home().resolve()
-    try:
-        if resolved.is_relative_to(home):
-            return True
-    except (AttributeError, ValueError):
-        # is_relative_to is 3.9+; fall through to the prefix scan
-        pass
-    s = str(resolved)
-    return any(s == p or s.startswith(p + "/") for p in _SHARED_FS_PREFIXES)
-
-
-def _slurm_has_gres() -> bool:
-    """True iff ``sinfo`` reports at least one configured GRES.
-
-    Clusters without GRES configured will REJECT every GPU-related sbatch
-    flag (``--gres=...``, ``--gpus-per-task``, ``--gpus-per-node``) with
-    ``Invalid generic resource (gres) specification``. We gate ALL of
-    them on this probe so a rubric that requests GPU resources can still
-    launch (the agent prompt's CLUSTER SHAPE still tells the agent which
-    physical GPUs are visible via nvidia-smi).
-    """
-    if not _has_bin("sinfo"):
-        return False
-    try:
-        r = subprocess.run(
-            ["sinfo", "-h", "-o", "%G"],
-            capture_output=True, text=True, timeout=5,
-        )
-    except subprocess.SubprocessError:
-        return False
-    out = (r.stdout or "").strip()
-    if not out:
-        return False
-    # "(null)" is sinfo's marker for "no GRES" on a partition.
-    for line in out.splitlines():
-        v = line.strip()
-        if v and v != "(null)":
-            return True
-    return False
-
-
-# Cache the help-probe result — sbatch's flag set doesn't change across a
-# server lifetime.
-_SBATCH_HELP_CACHE: str | None = None
-
-
-def _sbatch_supports(flag: str) -> bool:
-    """True iff the local ``sbatch`` accepts the given long flag.
-
-    ``--cpu-bind`` / ``--mem-bind`` are documented as ``srun``-only on
-    many SLURM versions; passing them to ``sbatch`` produces
-    ``unrecognized option '--cpu-bind=cores'``. We probe ``sbatch --help``
-    once per process and silently drop unsupported flags (a warning is
-    logged so operators can route them via ``extra_sbatch_args`` or
-    bake them into ``reproduce.sh`` as ``srun --cpu-bind=...`` calls
-    instead).
-    """
-    global _SBATCH_HELP_CACHE
-    if _SBATCH_HELP_CACHE is None:
-        if not _has_bin("sbatch"):
-            _SBATCH_HELP_CACHE = ""
-            return False
-        try:
-            r = subprocess.run(
-                ["sbatch", "--help"],
-                capture_output=True, text=True, timeout=5,
+def _parse_deprecated_sbatch_args(arguments: list[str] | None) -> dict[str, str]:
+    """Translate the former arbitrary flag escape hatch into typed fields."""
+    translated: dict[str, str] = {}
+    for argument in arguments or ():
+        if not isinstance(argument, str):
+            raise ValueError("extra_sbatch_args entries must be strings")
+        for prefix, field in _DEPRECATED_SBATCH_FIELDS.items():
+            if argument.startswith(prefix):
+                value = argument.removeprefix(prefix)
+                if not value or field in translated:
+                    raise ValueError(f"invalid or duplicate deprecated {prefix} value")
+                translated[field] = value
+                break
+        else:
+            raise ValueError(
+                f"unsupported extra_sbatch_args entry {argument!r}; use a typed "
+                "scheduler resource field"
             )
-            _SBATCH_HELP_CACHE = (r.stdout or "") + (r.stderr or "")
-        except (subprocess.SubprocessError, OSError):
-            _SBATCH_HELP_CACHE = ""
-            return False
-    return flag in _SBATCH_HELP_CACHE
+    return translated
 
 
-def _run_reproduce_slurm(
+def _paper_re_scheduler(repo_dir: Path) -> SlurmScheduler:
+    """Construct the local canonical scheduler used by paper reproduction."""
+    scheduler_path = os.environ.get(
+        "ARI_SCHEDULER_PATH", "/usr/local/bin:/usr/bin:/bin"
+    )
+    EnvironmentPolicyV1(path=scheduler_path)
+    return SlurmScheduler(
+        runner=LocalCommandRunner(scheduler_path=scheduler_path),
+        ledger=SubmissionLedger(
+            repo_dir.parent / ".ari-hpc" / "paper-re-jobs-v1.json"
+        ),
+    )
+
+
+def _materialize_scheduler_log(log_path: Path, job_logs: tuple) -> None:
+    """Atomically publish verified scheduler stdout/stderr for judging."""
+    text = "".join(
+        item.text or ""
+        for item in job_logs
+        if item.stream in {"stdout", "stderr"}
+    )
+    temporary = log_path.parent / f".{log_path.name}.tmp"
+    temporary.write_text(text, encoding="utf-8")
+    temporary.chmod(0o600)
+    os.replace(temporary, log_path)
+
+
+async def _run_reproduce_slurm(
     repo_dir: Path,
     log_path: Path,
     timeout: int,
@@ -662,260 +644,170 @@ def _run_reproduce_slurm(
     cpu_bind: str = "",
     mem_bind: str = "",
     hint: str = "",
+    account: str = "",
+    qos: str = "",
+    reservation: str = "",
+    module_loads: tuple[str, ...] = (),
     extra_sbatch_args: list[str] | None = None,
 ) -> dict:
-    """Submit reproduce.sh to SLURM with ``sbatch --wait`` and capture output.
-
-    Restored from the v0.5.0 ``Executor`` abstraction that the §4.1 rewrite
-    accidentally dropped. Same place the BFTS executor sends jobs to —
-    closes the loop "BFTS ran on sx40 → reproduction also runs on sx40 →
-    AVX-512 etc. work because the build is on the same hardware".
-
-    v0.7.2 extends the previous 4-flag ``sbatch`` invocation to 15 + escape
-    hatch flags covering multi-node placement, exclusivity, GPU type, memory,
-    HW constraints, and NUMA bindings. All new args default to ``0 / "" /
-    False / None`` so legacy single-node call sites are byte-identical.
-
-    Runtime checks:
-      * ``_is_shared_fs(repo_dir)`` — warns when ``repo_dir`` looks node-
-        local (sbatch will fail under multi-node otherwise).
-      * ``_slurm_has_gres()`` — when ``gpu_type`` is requested but the
-        cluster has no GRES configured, ``--gres=gpu:...`` is dropped (but
-        ``--gpus-per-task`` is retained) so the submission is not rejected.
-
-    Falls back to ``_run_reproduce_local`` when sbatch is missing or no
-    partition can be resolved.
-    """
+    """Run reproduce.sh through the canonical typed SLURM lifecycle."""
     if not _has_bin("sbatch"):
         if os.environ.get("ARI_PHASE1_ALLOW_FALLBACK", "") == "1":
             log.warning(
-                "sbatch not on PATH; ARI_PHASE1_ALLOW_FALLBACK=1 → falling "
-                "back to local reproduce"
+                "sbatch not on PATH; ARI_PHASE1_ALLOW_FALLBACK=1 -> local fallback"
             )
             return _run_reproduce_local(repo_dir, log_path, timeout)
         raise RuntimeError(
-            "sandbox_kind=slurm requested but `sbatch` is not on PATH. "
-            "Refusing to silently fall back to local host execution. "
-            "Either install SLURM tooling, pick a different sandbox_kind, "
-            "or set ARI_PHASE1_ALLOW_FALLBACK=1 to opt in to the legacy "
-            "silent-fallback behaviour."
+            "sandbox_kind=slurm requested but sbatch is not on PATH. "
+            "Refusing to silently fall back to local execution."
         )
+
     resolved_partition = _resolve_partition_for_repo(repo_dir, partition)
     if not resolved_partition:
         if os.environ.get("ARI_PHASE1_ALLOW_FALLBACK", "") == "1":
             log.warning(
-                "SLURM dispatch requested but no partition resolved "
-                "(arg/env/launch_config.json all empty); "
-                "ARI_PHASE1_ALLOW_FALLBACK=1 → falling back to local"
+                "no SLURM partition resolved; ARI_PHASE1_ALLOW_FALLBACK=1 "
+                "-> local fallback"
             )
             return _run_reproduce_local(repo_dir, log_path, timeout)
         raise RuntimeError(
-            "sandbox_kind=slurm requested but no partition could be "
-            "resolved (caller arg, ARI_SLURM_PARTITION env, and "
-            "launch_config.json all empty). Refusing to silently fall back "
-            "to local host execution. Provide a partition via the wizard / "
-            "ARI_SLURM_PARTITION / launch_config.json, or set "
-            "ARI_PHASE1_ALLOW_FALLBACK=1 to opt in to the legacy "
-            "silent-fallback behaviour."
+            "sandbox_kind=slurm requested but no partition could be resolved"
         )
 
     script = repo_dir / "reproduce.sh"
     if not script.is_file():
         return {"executed": False, "exit_code": None, "error": "reproduce.sh missing"}
-    try:
-        script.chmod(script.stat().st_mode | 0o111)
-    except Exception:
-        pass
-
-    if not _is_shared_fs(repo_dir):
-        log.warning(
-            "repo_dir=%s appears node-local; sbatch will fail on multi-node "
-            "or when submit and compute nodes differ. Move to $HOME or a "
-            "shared mount (/work, /scratch, /lustre, /nfs).",
-            repo_dir,
+    if cpu_bind or mem_bind:
+        raise ValueError(
+            "cpu_bind and mem_bind are srun job-step settings; place them "
+            "explicitly in reproduce.sh"
         )
 
-    # Gate every GPU-related flag on cluster GRES configuration. Some sites
-    # (e.g. the sx40 sandbox partition) expose GPUs without configuring
-    # GRES; in that case sbatch rejects ANY ``--gres`` / ``--gpus-*`` flag
-    # with ``Invalid generic resource (gres) specification``.
-    #
-    # Default: fail loud. The user asked for GPUs; silently downgrading to
-    # CPU after a 36 h queue wait is far worse than failing fast at submit.
-    # The legacy silent-drop behaviour is opt-in via
-    # ``ARI_SLURM_ALLOW_NO_GRES=1`` for sites where the operator knows the
-    # partition has physical GPUs visible at runtime without GRES.
-    effective_gpu_type = gpu_type
-    effective_gpus_per_task = int(gpus_per_task or 0)
-    effective_gpus_per_node = int(gpus_per_node or 0)
-    if (gpu_type or effective_gpus_per_task or effective_gpus_per_node) and not _slurm_has_gres():
-        if os.environ.get("ARI_SLURM_ALLOW_NO_GRES", "") == "1":
-            log.warning(
-                "GPU resources requested (gpu_type=%r, gpus_per_task=%d, "
-                "gpus_per_node=%d) but cluster has no GRES configured; "
-                "ARI_SLURM_ALLOW_NO_GRES=1 → dropping --gres / --gpus-* flags "
-                "(physical GPU may still be visible via nvidia-smi at runtime).",
-                gpu_type, effective_gpus_per_task, effective_gpus_per_node,
-            )
-            effective_gpu_type = ""
-            effective_gpus_per_task = 0
-            effective_gpus_per_node = 0
-        else:
-            raise RuntimeError(
-                f"GPU resources requested "
-                f"(gpu_type={gpu_type!r}, gpus_per_task={effective_gpus_per_task}, "
-                f"gpus_per_node={effective_gpus_per_node}) but this cluster has "
-                f"no GRES configured — sbatch would reject any --gres / --gpus-* "
-                f"flag. Refusing to silently drop GPU flags and run on CPU. "
-                f"Set ARI_SLURM_ALLOW_NO_GRES=1 to opt in to the legacy "
-                f"silent-drop behaviour (only when you know the partition "
-                f"exposes physical GPUs without GRES)."
-            )
-
-    n_cpus = int(cpus) if cpus and int(cpus) > 0 else int(os.environ.get("ARI_SLURM_CPUS", "8"))
-    wt = walltime or os.environ.get("ARI_SLURM_WALLTIME", "") or _walltime_str(timeout)
-
-    # sbatch copies the submitted script to its spool dir and runs it from
-    # there, so ``$0`` inside the script resolves to the spool copy path.
-    # ``reproduce.sh`` typically uses ``cd "$(dirname "$0")/code"`` which
-    # would break under spool-relocation. Submit a tiny wrapper next to
-    # reproduce.sh that invokes it by ABSOLUTE path; ``$0`` inside
-    # reproduce.sh then resolves correctly to ``{repo_dir}/reproduce.sh``.
-    import shlex
-    wrapper = repo_dir / ".slurm_wrap.sh"
-    wrapper.write_text(
-        "#!/usr/bin/env bash\n"
-        f"exec bash {shlex.quote(str(script))}\n"
-    )
-    wrapper.chmod(0o755)
-
-    # ``sbatch --wait`` blocks until the job terminates, then exits with the
-    # job's exit code. ``--output`` writes both stdout AND stderr to the same
-    # file the local runner uses (job-internal).
-    cmd = [
-        "sbatch", "--wait",
-        "--partition", resolved_partition,
-        "--cpus-per-task", str(n_cpus),
-        "--time", wt,
-        "--job-name", "ari-ors",
-        "--chdir", str(repo_dir),
-        "--output", str(log_path),
-        "--export", "ALL",
-    ]
-    # ── 配置・並列度 ──
-    if nodes and int(nodes) > 0:
-        cmd += ["--nodes", str(int(nodes))]
-    if ntasks and int(ntasks) > 0:
-        cmd += ["--ntasks", str(int(ntasks))]
-    if ntasks_per_node and int(ntasks_per_node) > 0:
-        cmd += ["--ntasks-per-node", str(int(ntasks_per_node))]
-    if nodelist:
-        cmd += ["--nodelist", nodelist]
-    if exclude_nodes:
-        cmd += ["--exclude", exclude_nodes]
-    # ── 排他性 ──
-    if exclusive:
-        cmd.append("--exclusive")
-    # ── GPU ── (post-GRES-gating)
-    # SLURM requires --gpus-per-task be paired with --ntasks or --gpus
-    # (per `sbatch: error: --gpus-per-task or --tres-per-task used without
-    # either --gpus or -n/--ntasks is not allowed`). When the caller
-    # supplied only --gpus-per-task with no --ntasks, default ntasks to 1
-    # so the simple "I want one GPU" case works without forcing the
-    # operator to know SLURM's pairing rule.
-    if effective_gpus_per_task > 0 and not (
-        any(c == "--ntasks" for c in cmd)
-        or any(c == "--gpus" for c in cmd)
-    ):
-        cmd += ["--ntasks", "1"]
-    # SLURM rejects combining typed and untyped GPU requests with
-    # `Invalid GRES specification (with and without type identification)`
-    # when both ``--gpus-per-task=N`` and ``--gres=gpu:TYPE:N`` are
-    # present (verified on SLURM 24.05/qc-a100). When the caller
-    # specified a gpu_type, that is the more specific request → emit
-    # only ``--gres=gpu:TYPE:N`` and drop the untyped --gpus-per-task /
-    # --gpus-per-node companions. When no gpu_type is given, keep the
-    # untyped flags as-is for sites that don't care about GPU model.
-    if effective_gpu_type:
-        gres_count = effective_gpus_per_task or effective_gpus_per_node or 1
-        cmd += [f"--gres=gpu:{effective_gpu_type}:{gres_count}"]
-    else:
-        if effective_gpus_per_task > 0:
-            cmd += ["--gpus-per-task", str(effective_gpus_per_task)]
-        if effective_gpus_per_node > 0:
-            cmd += ["--gpus-per-node", str(effective_gpus_per_node)]
-    # ── メモリ ──
-    if memory_gb_per_node and int(memory_gb_per_node) > 0:
-        cmd += [f"--mem={int(memory_gb_per_node)}G"]
-    if memory_gb_per_cpu and int(memory_gb_per_cpu) > 0:
-        cmd += [f"--mem-per-cpu={int(memory_gb_per_cpu)}G"]
-    # ── HW 制約 / NUMA ──
-    if constraint:
-        cmd += [f"--constraint={constraint}"]
-    # ``--cpu-bind`` / ``--mem-bind`` are documented srun-only on many
-    # SLURM versions (incl. the local sx40 cluster). Probe sbatch --help
-    # at process start and silently drop unsupported flags so a rubric
-    # carrying them does not fail sbatch outright; the operator can route
-    # them via ``extra_sbatch_args`` when they have a local sbatch that
-    # accepts them, or bake them into reproduce.sh as ``srun --cpu-bind``
-    # calls inside the script.
-    if cpu_bind:
-        if _sbatch_supports("--cpu-bind"):
-            cmd += [f"--cpu-bind={cpu_bind}"]
-        else:
-            log.warning(
-                "cpu_bind=%r requested but local sbatch does not advertise "
-                "--cpu-bind; flag dropped. Use ``srun --cpu-bind=%s`` inside "
-                "reproduce.sh instead, or pass via extra_sbatch_args.",
-                cpu_bind, cpu_bind,
-            )
-    if mem_bind:
-        if _sbatch_supports("--mem-bind"):
-            cmd += [f"--mem-bind={mem_bind}"]
-        else:
-            log.warning(
-                "mem_bind=%r requested but local sbatch does not advertise "
-                "--mem-bind; flag dropped. Use ``srun --mem-bind=%s`` inside "
-                "reproduce.sh instead, or pass via extra_sbatch_args.",
-                mem_bind, mem_bind,
-            )
-    if hint:
-        cmd += [f"--hint={hint}"]
-    # ── escape hatch ──
-    if extra_sbatch_args:
-        cmd += [str(a) for a in extra_sbatch_args]
-    cmd.append(str(wrapper))
-    log.info("[ors] sbatch %s", " ".join(cmd[1:]))
-    start = time.time()
+    started = time.monotonic()
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 60)
-    except subprocess.TimeoutExpired:
-        return {
-            "executed": True,
-            "exit_code": None,
-            "timed_out": True,
-            "elapsed_sec": round(time.time() - start, 2),
-            "partition": resolved_partition,
-        }
-    # sbatch --wait returns the job's exit code. Anything sbatch itself
-    # printed lands in proc.stdout/stderr (e.g. "Submitted batch job ...").
-    if proc.returncode != 0 and not log_path.is_file():
-        # sbatch itself failed (queue rejection, bad partition, etc.) —
-        # surface stderr so the caller can debug.
+        deprecated = _parse_deprecated_sbatch_args(extra_sbatch_args)
+        account = account or deprecated.get("account", "")
+        qos = qos or deprecated.get("qos", "")
+        reservation = reservation or deprecated.get("reservation", "")
+        hint = hint or deprecated.get("hint", "")
+        n_cpus = (
+            int(cpus)
+            if cpus and int(cpus) > 0
+            else int(os.environ.get("ARI_SLURM_CPUS", "8"))
+        )
+        resolved_walltime = (
+            walltime
+            or os.environ.get("ARI_SLURM_WALLTIME", "")
+            or _walltime_str(timeout)
+        )
+        effective_gpus_per_task = int(gpus_per_task or 0)
+        effective_gpus_per_node = int(gpus_per_node or 0)
+        if gpu_type and not (effective_gpus_per_task or effective_gpus_per_node):
+            effective_gpus_per_node = 1
+
+        resolved_tasks = int(
+            ntasks
+            or (int(ntasks_per_node) * int(nodes or 1) if ntasks_per_node else 1)
+        )
+        resources = ResourceRequestV1(
+            partition=resolved_partition,
+            nodes=int(nodes or 1),
+            tasks=resolved_tasks,
+            tasks_per_node=int(ntasks_per_node) if ntasks_per_node else None,
+            cpus_per_task=n_cpus,
+            memory_mb_per_node=(
+                int(memory_gb_per_node) * 1024 if memory_gb_per_node else None
+            ),
+            memory_mb_per_cpu=(
+                int(memory_gb_per_cpu) * 1024 if memory_gb_per_cpu else None
+            ),
+            gpus_per_task=effective_gpus_per_task,
+            gpus_per_node=effective_gpus_per_node,
+            gpu_type=gpu_type or None,
+            walltime=resolved_walltime,
+            nodelist=nodelist or None,
+            exclude_nodes=exclude_nodes or None,
+            exclusive=exclusive,
+            constraint=constraint or None,
+            hint=hint or None,
+            account=account or None,
+            qos=qos or None,
+            reservation=reservation or None,
+        )
+        resolved_script = script.resolve(strict=True)
+        input_pin = ArtifactPinV1(
+            logical_name="reproduce-script",
+            path=str(resolved_script),
+            digest=file_digest(resolved_script),
+            size_bytes=resolved_script.stat().st_size,
+            media_type="text/x-shellscript",
+        )
+        identity = sha256_digest(
+            {
+                "script": input_pin.digest,
+                "resources": resources.model_dump(mode="json"),
+                "modules": list(module_loads),
+            }
+        )
+        request = JobRequestV1(
+            request_id="paper-re-" + identity.removeprefix("sha256:")[:24],
+            job_name="ari-ors",
+            work_dir=str(repo_dir.resolve(strict=True)),
+            argv=("/bin/bash", str(resolved_script)),
+            resources=resources,
+            environment=EnvironmentPolicyV1(modules=module_loads),
+            inputs=(input_pin,),
+            metadata={"domain": "paper-re", "timeout_sec": timeout},
+        )
+        scheduler = _paper_re_scheduler(repo_dir)
+        handle = await scheduler.submit(request)
+        deadline = time.monotonic() + timeout + 60
+        while True:
+            status = await scheduler.status(handle.handle_id)
+            if status.state in _TERMINAL_JOB_STATES:
+                break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                try:
+                    await scheduler.cancel(handle.handle_id)
+                except SchedulerError as exc:
+                    log.warning("failed to cancel timed-out job %s: %s", handle.job_id, exc)
+                job_logs = await scheduler.logs(handle.handle_id)
+                _materialize_scheduler_log(log_path, job_logs)
+                return {
+                    "executed": True,
+                    "exit_code": None,
+                    "timed_out": True,
+                    "elapsed_sec": round(time.monotonic() - started, 2),
+                    "partition": resolved_partition,
+                    "handle_id": handle.handle_id,
+                    "job_id": handle.job_id,
+                    "request_digest": handle.request_digest,
+                }
+            await asyncio.sleep(min(5.0, remaining))
+        job_logs = await scheduler.logs(handle.handle_id)
+        _materialize_scheduler_log(log_path, job_logs)
+    except (SchedulerError, ValueError, OSError) as exc:
         return {
             "executed": False,
-            "exit_code": int(proc.returncode),
-            "error": (proc.stderr or proc.stdout or "sbatch failed").strip()[:1000],
-            "elapsed_sec": round(time.time() - start, 2),
+            "exit_code": None,
+            "error": str(exc)[:1000],
+            "elapsed_sec": round(time.monotonic() - started, 2),
             "partition": resolved_partition,
         }
+
     out: dict = {
         "executed": True,
-        "exit_code": int(proc.returncode),
-        "elapsed_sec": round(time.time() - start, 2),
+        "exit_code": status.exit_code if status.exit_code is not None else (
+            0 if status.state == "succeeded" else None
+        ),
+        "elapsed_sec": round(time.monotonic() - started, 2),
         "partition": resolved_partition,
         "cpus": n_cpus,
-        "walltime": wt,
+        "walltime": resolved_walltime,
+        "handle_id": handle.handle_id,
+        "job_id": handle.job_id,
+        "request_digest": handle.request_digest,
     }
     if nodes:
         out["nodes"] = int(nodes)
@@ -923,12 +815,14 @@ def _run_reproduce_slurm(
         out["ntasks"] = int(ntasks)
     if exclusive:
         out["exclusive"] = True
-    if effective_gpus_per_task or effective_gpus_per_node or effective_gpu_type:
+    if effective_gpus_per_task or effective_gpus_per_node or gpu_type:
         out["gpu"] = {
             "per_task": effective_gpus_per_task,
             "per_node": effective_gpus_per_node,
-            "type": effective_gpu_type,
+            "type": gpu_type,
         }
+    if status.state != "succeeded":
+        out["error"] = f"scheduler job ended in {status.scheduler_state}"
     return out
 
 
@@ -1019,19 +913,18 @@ async def run_reproduce(
     cpu_bind: str = "",
     mem_bind: str = "",
     hint: str = "",
-    # ── escape hatch ──
+    account: str = "",
+    qos: str = "",
+    reservation: str = "",
+    module_loads: list[str] | None = None,
+    # Deprecated typed-translation shim; arbitrary flags are rejected.
     extra_sbatch_args: list[str] | None = None,
 ) -> dict:
     """Phase 1: execute reproduce.sh in a sandbox; capture log + artifact list.
 
-    v0.7.2 extends the SLURM dispatch path with 15 + escape-hatch flags
-    covering multi-node placement, exclusivity, GPU type, memory, HW
-    constraint, and NUMA bindings. All new args default to ``0 / "" / False
-    / None`` so legacy single-node call sites continue to emit the original
-    4-flag sbatch invocation. When the rubric carries
-    ``reproduce_contract.execution_profile``, that hint dict auto-resolves
-    into any caller arg left at its default — explicit caller args always
-    win over rubric hints.
+    SLURM execution is submitted as a versioned JobRequestV1 and observed via
+    submit/status/logs/cancel handles. The rubric's execution_profile fills
+    caller fields left at their defaults; explicit caller values win.
 
     Args:
         rubric_path: path to the frozen rubric JSON envelope (provides
@@ -1058,17 +951,18 @@ async def run_reproduce(
             nodes — essential for faithful performance reproduction).
         gpus_per_task / gpus_per_node: ``--gpus-per-task=N`` /
             ``--gpus-per-node=N``.
-        gpu_type: combined with ``gpus_per_task`` (or ``_per_node``) → emits
-            ``--gres=gpu:<type>:N``. Auto-downgraded to no-gres when the
-            cluster reports no GRES via ``sinfo``.
+        gpu_type: typed GPU request. The requested count and type are never
+            silently dropped or downgraded.
         memory_gb_per_node / memory_gb_per_cpu: ``--mem=NG`` /
             ``--mem-per-cpu=NG``.
         constraint: ``--constraint=...`` (e.g. ``"skylake"``,
             ``"haswell|broadwell"``).
-        cpu_bind / mem_bind / hint: ``--cpu-bind=...`` / ``--mem-bind=...``
-            / ``--hint=...`` for NUMA & CPU affinity control.
-        extra_sbatch_args: list of pass-through flags for anything not above
-            (e.g. ``["--account=projX"]``).
+        cpu_bind / mem_bind: rejected at this boundary because they are srun
+            job-step settings; put them explicitly in reproduce.sh.
+        hint / account / qos / reservation: typed SLURM resource selectors.
+        module_loads: reviewed module names loaded by the generated job script.
+        extra_sbatch_args: deprecated compatibility input. Only account, qos,
+            reservation, and hint assignments are translated; all others fail.
 
     Returns the executed flag, exit code, log path, produced artifact list,
     missing expected artifacts, elapsed time, and (when SLURM-dispatched)
@@ -1122,9 +1016,15 @@ async def run_reproduce(
     resolved_mem_gb_node        = int(memory_gb_per_node) or int(exec_profile.get("memory_gb_per_node", 0) or 0)
     resolved_mem_gb_cpu         = int(memory_gb_per_cpu)  or int(exec_profile.get("memory_gb_per_cpu", 0) or 0)
     resolved_constraint         = constraint            or (exec_profile.get("constraint") or "")
-    resolved_cpu_bind           = cpu_bind              or (exec_profile.get("cpu_bind") or "")
-    resolved_mem_bind           = mem_bind              or (exec_profile.get("mem_bind") or "")
+    # Profile bindings are consumed by the replicator when it writes srun
+    # steps inside reproduce.sh; they are not portable sbatch directives.
+    resolved_cpu_bind           = cpu_bind
+    resolved_mem_bind           = mem_bind
     resolved_hint               = hint                  or (exec_profile.get("hint") or "")
+    resolved_account            = account               or (exec_profile.get("account") or "")
+    resolved_qos                = qos                   or (exec_profile.get("qos") or "")
+    resolved_reservation        = reservation           or (exec_profile.get("reservation") or "")
+    resolved_modules            = tuple(module_loads or exec_profile.get("module_loads") or ())
     resolved_extra              = list(extra_sbatch_args or exec_profile.get("extra_sbatch_args") or [])
 
     log_path = repo / "reproduce.log"
@@ -1143,7 +1043,7 @@ async def run_reproduce(
             repo, log_path, max_runtime, runner="singularity", image=container_image,
         )
     elif kind == "slurm":
-        exec_res = _run_reproduce_slurm(
+        exec_res = await _run_reproduce_slurm(
             repo, log_path, max_runtime,
             partition=partition, cpus=int(cpus or 0), walltime=walltime,
             nodes=resolved_nodes,
@@ -1161,6 +1061,10 @@ async def run_reproduce(
             cpu_bind=resolved_cpu_bind,
             mem_bind=resolved_mem_bind,
             hint=resolved_hint,
+            account=resolved_account,
+            qos=resolved_qos,
+            reservation=resolved_reservation,
+            module_loads=resolved_modules,
             extra_sbatch_args=resolved_extra,
         )
     else:
@@ -1169,7 +1073,10 @@ async def run_reproduce(
     artifacts = []
     for f in repo.rglob("*"):
         if f.is_file():
-            artifacts.append(str(f.relative_to(repo)))
+            relative = f.relative_to(repo)
+            if relative.parts and relative.parts[0] == ".ari-hpc":
+                continue
+            artifacts.append(str(relative))
     missing = [e for e in expected if e not in artifacts]
 
     out = {
@@ -1187,14 +1094,11 @@ async def run_reproduce(
     # legacy single-node response shape unchanged.
     for k in (
         "partition", "cpus", "walltime",
-        "nodes", "ntasks", "exclusive", "gpu",
+        "nodes", "ntasks", "exclusive", "gpu", "handle_id", "job_id",
+        "request_digest", "timed_out",
     ):
         if k in exec_res:
             out[k] = exec_res[k]
-    if "error" in exec_res:
-        out["error"] = exec_res["error"]
-    if "timed_out" in exec_res:
-        out["timed_out"] = True
     if "error" in exec_res:
         out["error"] = exec_res["error"]
     return out

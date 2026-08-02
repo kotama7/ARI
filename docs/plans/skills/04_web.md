@@ -8,7 +8,7 @@ sources:
     role: config
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-08-01
+last_verified: 2026-08-02
 ---
 
 # C04: `ari-skill-web` 実装計画

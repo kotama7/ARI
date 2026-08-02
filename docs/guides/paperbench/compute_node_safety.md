@@ -47,19 +47,12 @@ python -c "from mpi4py import MPI; ..."
 Test with `which srun mpirun` first. The agent prompt instructs the
 replicator to emit this check.
 
-## L3 — GRES probe
+## L3 — GPU resource validation
 
-When the rubric's `execution_profile.gpu_type` is set, ARI checks
-`sinfo -o '%G'` before adding `--gres=gpu:<type>:N` to `sbatch`. If
-GRES is unconfigured ("(null)"), the flag is dropped and a warning is
-logged — `--gpus-per-task` survives.
-
-You can verify the probe interactively:
-
-```python
-from ari_skill_paper_re.server import _slurm_has_gres
-_slurm_has_gres()    # True / False
-```
+ARI compiles GPU count/type into one typed scheduler request and never removes
+it. Check `sinfo -o '%P %G'` before launch. If the selected partition cannot
+satisfy the request, submission fails; fix the scheduler configuration or pick
+a compatible partition rather than changing the experiment to CPU.
 
 ## L4 — Conda / virtualenv activation
 

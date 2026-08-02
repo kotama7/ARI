@@ -76,10 +76,9 @@ The output must contain `srun -n $SLURM_NTASKS`.
 
 ### Q. `sbatch: error: Invalid GRES gpu:v100:1`.
 
-The cluster has no GRES configured. v0.7.2 auto-drops the flag via
-`_slurm_has_gres()` — if you still see the error you are on an older
-build, or `sinfo` is not on PATH. Workaround: leave `gpu_type` empty
-in the wizard's *Execution profile override*.
+The selected partition cannot satisfy the typed GPU request. Check
+`sinfo -o '%P %G'`, select a compatible partition, or correct the site's GRES
+configuration. ARI intentionally does not drop the request or run on CPU.
 
 ### Q. sbatch went through but `reproduce.sh` ran on a single node.
 
@@ -196,32 +195,25 @@ Same fix applies to `sandbox_kind=apptainer` (binary missing) and
 
 The cluster's SLURM doesn't have GRES configured for GPUs, but the
 caller passed `gpus_per_task` / `gpu_type`. The bridge refuses
-because a 36 h queue wait followed by all-CPU execution is the worst
-possible failure mode for a GPU-tagged run. Either:
+because a queued GPU experiment must never silently become a CPU experiment.
+Either:
 
 1. Fix the SLURM GRES configuration on the cluster, or
-2. Pick a partition where GRES is configured (`sinfo -o '%P %G'` to
-   see which partitions advertise gpu GRES), or
-3. Opt back into silent drop:
-
-```bash
-export ARI_SLURM_ALLOW_NO_GRES=1
-```
+2. Pick a partition where GRES is configured (`sinfo -o '%P %G'` shows
+   advertised GPU resources). There is intentionally no silent-drop override.
 
 ### Q. `sbatch: error: --gpus-per-task ... used without either --gpus or -n/--ntasks is not allowed`
 
-This message shouldn't surface in v0.8.0 — the bridge auto-pairs
+This message should not surface through the typed scheduler — it always pairs
 `--gpus-per-task` with `--ntasks 1` when the caller didn't supply
 `ntasks` or `--gpus`. If you see it, the request is being routed
 through a non-bridge path or an older `server.py`.
 
 ### Q. `sbatch: error: Invalid GRES specification (with and without type identification)`
 
-Same era as above — caused by emitting both `--gres=gpu:TYPE:N` AND
-`--gpus-per-task N`. Modern SLURM rejects the mixed form. v0.8.0
-canonicalises to typed-only when `gpu_type` is set (untyped
-`--gpus-per-task` / `--gpus-per-node` are dropped). If you still see
-it on a fresh checkout, re-run the affected paper-re tests:
+This is caused by mixing typed and untyped GPU requests. The common scheduler
+emits one typed directive and rejects simultaneous per-task/per-node shapes.
+If you see it on a fresh checkout, re-run the affected tests:
 
 ```bash
 pytest ari-skill-paper-re/tests/test_run_reproduce_slurm.py -k gpu_type

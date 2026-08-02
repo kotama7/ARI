@@ -36,7 +36,7 @@ See `schemas/replication_rubric.schema.json`. The root rubric is a PaperBench `T
 
 ## `execution_profile` (HPC / parallel-execution hints)
 
-Optional sibling of `expected_artifacts` under `reproduce_contract`. Populated by the generator when the paper specifies parallel execution properties (MPI rank counts, GPU types, node exclusivity, etc.); consumed by `ari-skill-paper-re` Phase 2 sbatch and the BasicAgent prompt. Omit entirely for legacy single-CPU papers — backward compatible.
+Optional sibling of `expected_artifacts` under `reproduce_contract`. Populated by the generator when the paper specifies parallel execution properties (MPI rank counts, GPU types, node exclusivity, etc.); compiled by `ari-skill-paper-re` into the common typed HPC job contract and consumed by the BasicAgent prompt. Omit entirely for legacy single-CPU papers — backward compatible.
 
 ```jsonc
 "reproduce_contract": {
@@ -54,18 +54,18 @@ Optional sibling of `expected_artifacts` under `reproduce_contract`. Populated b
     "requested_nodes": 4,
     "ntasks_per_node": 8,
     "exclusive": true,                                  // → --exclusive
-    "requested_gpus_per_task": 1,                       // → --gpus-per-task=1
-    "gpu_type": "v100",                                 // combined → --gres=gpu:v100:1
+    "requested_gpus_per_task": 1,                       // typed per-task GPU request
+    "gpu_type": "v100",                                 // typed GPU selector
     "memory_gb_per_node": 256,                          // → --mem=256G
     "constraint": "skylake",                            // → --constraint=skylake
-    "cpu_bind": "cores",                                // → --cpu-bind=cores
-    "module_loads": ["cuda/12.4", "openmpi/4.1"],       // injected into reproduce.sh prelude
-    "extra_sbatch_args": ["--account=projX"]            // escape hatch (pass-through)
+    "cpu_bind": "cores",                                // emitted inside the srun job step
+    "module_loads": ["cuda/12.4", "openmpi/4.1"],       // clean, recorded module environment
+    "account": "projX"                                  // typed scheduler policy field
   }
 }
 ```
 
-The full set of fields (each consumed as a SLURM flag in Phase 2):
+The full set of fields (allocation fields compile to `ResourceRequestV1`; job-step fields remain in the generated reproduction script):
 
 | Field | Consumed as | Notes |
 |---|---|---|
@@ -76,12 +76,14 @@ The full set of fields (each consumed as a SLURM flag in Phase 2):
 | `ntasks_per_node` | `--ntasks-per-node=N` | 0 = leave to SLURM |
 | `requested_nodelist` / `exclude_nodes` | `--nodelist=...` / `--exclude=...` | |
 | `exclusive` | `--exclusive` | important for performance reproduction |
-| `requested_gpus_per_task` / `requested_gpus_per_node` | `--gpus-per-task=N` / `--gpus-per-node=N` | |
-| `gpu_type` | `--gres=gpu:<type>:N` | combined with gpus-per-task |
+| `requested_gpus_per_task` / `requested_gpus_per_node` | typed per-task / per-node GPU request | mutually exclusive |
+| `gpu_type` | typed GPU selector | requires an explicit GPU count |
 | `memory_gb_per_node` / `memory_gb_per_cpu` | `--mem=NG` / `--mem-per-cpu=NG` | |
 | `constraint` | `--constraint=...` | e.g. `skylake`, `haswell\|broadwell` |
-| `cpu_bind`, `mem_bind`, `hint` | `--cpu-bind=...`, `--mem-bind=...`, `--hint=...` | NUMA / CPU affinity |
-| `module_loads` | reproduce.sh prelude | `module load <names>` |
-| `extra_sbatch_args` | concatenated to sbatch | escape hatch for any flag not above |
+| `cpu_bind`, `mem_bind` | generated `srun` job step | NUMA / CPU affinity is not an allocation option |
+| `hint` | typed scheduler hint | bounded enum |
+| `module_loads` | clean module environment | recorded in job provenance |
+| `account`, `qos`, `reservation` | typed scheduler policy fields | inert identifiers only |
+| `extra_sbatch_args` | deprecated compatibility reader | accepts only account/QoS/reservation/hint; new producers never emit it |
 
-For the consumer side (sbatch flag mapping, GRES runtime check, shared-FS check), see `ari-skill-paper-re/REQUIREMENTS.md`.
+For the typed consumer, lifecycle, environment, and shared-filesystem operator contract, see `ari-skill-paper-re/REQUIREMENTS.md` and `ari-skill-hpc/README.md`.

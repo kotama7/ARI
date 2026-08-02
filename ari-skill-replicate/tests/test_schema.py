@@ -199,16 +199,16 @@ def test_execution_profile_full(validator):
         "exclude_nodes": "badnode01",
         "exclusive": True,
         "requested_gpus_per_task": 1,
-        "requested_gpus_per_node": 4,
         "gpu_type": "v100",
         "memory_gb_per_node": 256,
-        "memory_gb_per_cpu": 8,
         "constraint": "skylake",
         "cpu_bind": "cores",
         "mem_bind": "local",
         "hint": "nomultithread",
+        "account": "projX",
+        "qos": "normal",
+        "reservation": "paperbench",
         "module_loads": ["cuda/12.4", "openmpi/4.1"],
-        "extra_sbatch_args": ["--account=projX"],
     }
     validator.validate(env)
 
@@ -242,6 +242,33 @@ def test_execution_profile_module_loads_array_of_strings(validator):
     env["reproduce_contract"]["execution_profile"] = {
         "kind": "mpi",
         "module_loads": [123],  # not a string
+    }
+    with pytest.raises(jsonschema.ValidationError):
+        validator.validate(env)
+
+
+def test_execution_profile_rejects_arbitrary_scheduler_escape(validator):
+    env = _envelope(_root([_leaf()]))
+    env["reproduce_contract"]["execution_profile"] = {
+        "kind": "mpi",
+        "extra_sbatch_args": ["--dependency=afterok:123"],
+    }
+    with pytest.raises(jsonschema.ValidationError):
+        validator.validate(env)
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"memory_gb_per_node": 8, "memory_gb_per_cpu": 2},
+        {"requested_gpus_per_node": 1, "requested_gpus_per_task": 1},
+    ],
+)
+def test_execution_profile_rejects_contradictory_resources(validator, fields):
+    env = _envelope(_root([_leaf()]))
+    env["reproduce_contract"]["execution_profile"] = {
+        "kind": "mpi_gpu",
+        **fields,
     }
     with pytest.raises(jsonschema.ValidationError):
         validator.validate(env)

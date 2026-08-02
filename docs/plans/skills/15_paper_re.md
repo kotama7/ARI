@@ -8,12 +8,12 @@ sources:
     role: doc
   - path: ari-skill-hpc/ari_skill_hpc/scheduler.py
     role: implementation
-last_verified: 2026-08-01
+last_verified: 2026-08-02
 ---
 
 # C15: `ari-skill-paper-re` 実装計画
 
-> 状態: Proposed。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
+> 状態: Active — SLURM consumerを共通HPC lifecycleへ移行済み。残るsandbox/grade契約を継続。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
 
 ## 1. 責務
 
@@ -22,7 +22,7 @@ paper/code bundle/rubricから、隔離された再現環境を構築し、Phase
 ## 2. 現状と課題
 
 - `fetch_code_bundle`、`build_reproduce_sh`、`run_reproduce`、`grade_with_simplejudge`を提供する。
-- local、Docker、Apptainer、SLURM runnerを独自に実装し、core/coding/HPCのexecution boundaryと重複する。
+- local、Docker、Apptainer runnerは独自実装が残る。SLURMは`JobRequestV1`とsubmit/status/log/cancelへ移行済み。
 - vendored PaperBenchへのpath injection、runtime monkey patch、instruction rewrite、salvage wrapperが多く、upstream versionとの対応表が必要である。
 -長時間tool timeout、partial output、retry/idempotent skipが複雑である。
 - generated `reproduce.sh`、network、credential、host path、resource requestをより強くpolicy制御する必要がある。
@@ -36,7 +36,7 @@ paper/code bundle/rubricから、隔離された再現環境を構築し、Phase
 | ID | 作業 | 成果物 |
 |---|---|---|
 | C15-01 | manifest/schema/version同期 | 4 tool、async、permission、timeout metadata |
-| C15-02 | clone/execution/HPC adapterへ分離 | fetch、sandbox、schedulerの共通interface |
+| C15-02 | 一部完了: SLURMをHPC adapterへ分離、他sandbox継続 | fetch、sandbox、schedulerの共通interface |
 | C15-03 | reproduction plan schema | commands、dependencies、network、resources、expected artifacts |
 | C15-04 | sandbox policy | read-only input、bounded writable output、secret-free env、network default deny |
 | C15-05 | async state/idempotency | submit/poll/cancel、attempt ID、partial artifact |
@@ -48,13 +48,13 @@ paper/code bundle/rubricから、隔離された再現環境を構築し、Phase
 ## 5. 受け入れ基準
 
 - [ ] network/credentialなしを既定とし、必要能力はrubric/policyで明示する。
-- [ ] timeout/cancel後にlocal process、container、scheduler jobを残さない。
+- [ ] timeout/cancel後にlocal process、container、scheduler jobを残さない（scheduler cancelは実装済み）。
 - [ ] retryでpartial attemptを成功として誤認せず、attempt lineageを保持する。
 - [ ] input bundleをread-onlyにし、出力差分を別artifactとして保存する。
-- [ ] host/container/module/compiler/hardware/resource identityがrun recordに残る。
+- [ ] host/container/module/compiler/hardware/resource identityがrun recordに残る（SLURM module/resource/log digestは実装済み）。
 - [ ] PaperBench patchごとにupstream symbol/versionとconformance testがある。
 - [ ] judge failure、negative control failure、schema mismatchをscoreから欠落させない。
-- [ ] `pytest ari-skill-paper-re/tests -q` とsandbox/HPC integration fixtureがgreenである。
+- [x] `pytest ari-skill-paper-re/tests -q` とtyped HPC consumer fixtureがgreenである（157 passed, 3 skipped）。
 
 ## 6. 削除要件
 
@@ -62,7 +62,7 @@ paper/code bundle/rubricから、隔離された再現環境を構築し、Phase
 
 | ID | 削除対象 | 置換先 | 最早phase | 削除gate |
 |---|---|---|---|---|
-| C15-D1 | `_run_reproduce_local/_docker/_apptainer/_slurm`の重複runner | common execution + C06 scheduler adapter | P3 |全substrate golden parity、direct process/sbatch caller 0 |
+| C15-D1 (SLURM deleted) | `_run_reproduce_local/_docker/_apptainer/_slurm`の重複runner | common execution + C06 scheduler adapter | P3 |SLURM direct sbatch caller 0達成、他substrate parity継続 |
 | C15-D2 |独自code bundle fetch/resolution | `ari.clone` resolver contract | P3 |GitHub/file/https fixture parity、digest一致 |
 | C15-D3 | global `sys.path` vendor injection | isolated package/adapter loader | P3 |clean interpreter test、upstream import conformance |
 | C15-D4 | upstream対応済みmonkey patch / instruction rewrite | pinned upstream APIまたはnarrow adapter | P6 |patch inventoryでobsolete、target version suite green |

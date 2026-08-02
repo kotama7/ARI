@@ -8,7 +8,7 @@ sources:
     role: config
   - path: ari-skill-plot/src/server.py
     role: implementation
-last_verified: 2026-08-01
+last_verified: 2026-08-02
 ---
 
 # C07: `ari-skill-benchmark` 実装計画

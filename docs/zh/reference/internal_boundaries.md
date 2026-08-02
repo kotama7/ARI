@@ -48,7 +48,7 @@ ARI 的 LLM 边界**并非**"一切都必须调用 `LLMClient`"。它是一个�
 | `ari/mcp/client.py` | 经由 MCP SDK 的 `stdio_client`（一个封装，而非裸 spawn）派生技能的 stdio 服务器。 |
 | `ari-skill-hpc/ari_skill_hpc/{contracts,scheduler}.py` | 带版本的 HPC job 契约、无 shell 的本地 SLURM、严格 known-host SSH、持久幂等、`--export=NIL` 干净环境及 digest 绑定的结果收集。 |
 
-应向这些归属者整合的已知重复（并非错误行为，但有漂移风险）：`viz/api_memory.py` 重新推导了容器运行时分派；`ari-skill-paper-re/src/server.py` 重新实现了 `sbatch`/`apptainer exec`，且已经偏离了 `slurm.py`（它硬编码了 `--export ALL`）；其本地回退缺少 `setsid`/`killpg`，因此一次挂起的复现可能产生孤儿进程。
+仍需整合的重复包括 `viz/api_memory.py` 的容器runtime dispatch，以及 paper-re 的 local/Docker/Apptainer fallback。paper-re 的 SLURM 路径现已使用 `JobRequestV1` 与共享 submit/status/log/cancel 生命周期，不再直接调用 `sbatch`，也不导出父环境。
 
 **`ari.viz.state` 的进程句柄耦合。** `ari/viz/state.py` 将活动的操作系统句柄作为模块全局变量（以 `_st` 导入）持有：`_last_proc`（最近一次实验的 Popen；由 `api_process._api_stop` 通过 `os.killpg(os.getpgid(pid))` 拆除）、`_running_procs`（checkpoint-path→Popen 映射，由两条启动路径写入），以及 `_gpu_monitor_proc`（其逻辑位于 `api_process.py`；服务器会跨重启回收一个陈旧的监视器）。这是"避免通过全局可变状态产生隐藏耦合"这一告诫的典范例子 —— 只在有意为之时才触碰它的生命周期。
 

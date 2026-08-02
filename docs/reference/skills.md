@@ -555,7 +555,7 @@ EAR-on runs flow through `ors_seed_sandbox` (deterministic seed); the
 LLM `ors_build_reproduce` skips when reproduce.sh is already present,
 so it only fires on EAR-off runs (paper-only reproduction).
 
-**v0.7.2 HPC additions.** Both `build_reproduce_sh` and `run_reproduce`
+**Typed HPC execution.** Both `build_reproduce_sh` and `run_reproduce`
 consume the optional `reproduce_contract.execution_profile` block
 ([reference](execution_profile.md)):
 
@@ -568,16 +568,11 @@ consume the optional `reproduce_contract.execution_profile` block
 - For `kind ∈ {mpi, mpi_gpu}` an MPI aggregation skeleton
   (`prompts/mpi_aggregate_skel.py`) is auto-copied into
   `submission/mpi_aggregate.py`.
-- `run_reproduce` exposes 15 new SLURM flags (`--nodes`, `--ntasks`,
-  `--ntasks-per-node`, `--nodelist`, `--exclude`, `--exclusive`,
-  `--gpus-per-task`, `--gpus-per-node`, `--gres=gpu:<type>:N`, `--mem`,
-  `--mem-per-cpu`, `--constraint`, `--cpu-bind`, `--mem-bind`,
-  `--hint`) plus an `extra_sbatch_args` escape hatch. Each caller arg
-  auto-resolves from `execution_profile` when left at its default.
-- Runtime probes: `_is_shared_fs(repo_dir)` warns on node-local paths,
-  `_slurm_has_gres()` silently drops `--gres` when the cluster has no
-  GRES configured (keeping `--gpus-per-task`) so the submission is not
-  rejected.
+- `run_reproduce` compiles typed placement, GPU, memory, constraint, hint,
+  account, QoS, reservation, and module fields into `JobRequestV1`. Arbitrary
+  scheduler flags and contradictory resource shapes fail closed.
+- CPU/memory binding remains an explicit `srun` job-step responsibility in
+  `reproduce.sh`; requested GPU resources are never silently removed.
 
 PaperBench is vendored as a git submodule under
 `ari-skill-paper-re/vendor/paperbench`; the bridge module
@@ -660,15 +655,15 @@ or `ARI_PHASE1_SANDBOX`. The container image is `docker://ubuntu:24.04`
 by default (`ARI_PHASE1_DOCKER_IMAGE` / `ARI_PHASE1_APPTAINER_IMAGE` /
 `ARI_PHASE1_SINGULARITY_IMAGE` to customise).
 
-**SLURM dispatch** (v0.7.0, restored from v0.5.0): submits via
-`sbatch --wait` so the call blocks until the job finishes and
-inherits the job's exit code. partition / cpus / walltime resolve
+**SLURM dispatch**: constructs a digest-bound `JobRequestV1`, receives an
+idempotent handle, then observes status/logs and cancels on timeout. The shared
+HPC adapter alone invokes `sbatch --parsable --export=NIL`; paper-re does not
+construct scheduler argv or inherit the parent environment. Partition / CPU /
+walltime resolve
 arg > env (`ARI_SLURM_PARTITION` / `ARI_SLURM_CPUS` /
-`ARI_SLURM_WALLTIME`) > `{checkpoint_dir}/launch_config.json`. A tiny
-wrapper script (`{repo_dir}/.slurm_wrap.sh`) is generated to bypass
-sbatch's spool-relocation: it `exec bash`'s the user reproduce.sh by
-absolute path so `$0`-relative `cd "$(dirname "$0")/code"` still works
-inside the spooled job.
+`ARI_SLURM_WALLTIME`) > `{checkpoint_dir}/launch_config.json`. The absolute
+`reproduce.sh` path is a pinned input; scheduler logs are digest-checked before
+being materialized as `reproduce.log`.
 
 ```python
 result = run_reproduce(

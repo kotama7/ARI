@@ -13,7 +13,7 @@ last_verified: 2026-08-02
 
 # C14: `ari-skill-replicate` 実装計画
 
-> 状態: Proposed。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
+> 状態: Active — typed execution resource schemaとarbitrary scheduler flag拒否を実装。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
 
 ## 1. 責務
 
@@ -23,7 +23,7 @@ paperからPaperBench-compatible reproducibility rubricを生成し、rubricの�
 
 - two-stage生成と低cost single-call互換pathがある。
 - generatorとauditorを別modelにできるが、独立性とmodel fallbackをmachine-readableに保証していない。
-- `execution_profile.extra_sbatch_args`は任意flag pass-throughであり、execution policyを迂回し得る。
+- 新規producerはtyped `account/qos/reservation`を使う。旧`extra_sbatch_args` readerは限定4形式だけ一期間受理する。
 - schema repair、LaTeX-in-JSON sanitize、invalid leaf pruneがあり、修復で意味が変わった範囲を明示する必要がある。
 - manifest versionとpackage/runtime tool surfaceにdriftがある。
 
@@ -40,7 +40,7 @@ paperからPaperBench-compatible reproducibility rubricを生成し、rubricの�
 | C14-03 | generation provenance | prompt/model/seed/strategy/parallel subtree digests |
 | C14-04 | independent audit contract | deterministic checks + separate LLM reviewer identity |
 | C14-05 | repair transparency | original/raw、repair actions、dropped leaves artifact |
-| C14-06 | resource request validation | scheduler policyに対応するtyped bounds |
+| C14-06 | 完了: resource request validation | typed bounds、矛盾resource/任意flag negative tests |
 | C14-07 | quality calibration | known papers、negative rubrics、coverage/precision metrics |
 | C14-08 | paper-re handoff/version negotiation | supported rubric versions、migration fixture |
 
@@ -50,7 +50,7 @@ paperからPaperBench-compatible reproducibility rubricを生成し、rubricの�
 - [ ] unverifiable、duplicate、vague leafをdeterministic auditが検出する。
 - [ ] generator/auditorが同一backend/modelの場合、independent evidenceと表示しない。
 - [ ] schema repair前後とdrop理由をartifactから監査できる。
-- [ ] arbitrary scheduler flag、path、shell fragmentをrubricから注入できない。
+- [x] arbitrary scheduler flag、path、shell fragmentをrubricから注入できない。
 - [ ] two-stage concurrencyがbudgetを守り、partial failureを欠落として記録する。
 - [ ] paper-reがV1/V2 negotiationに失敗した場合fail closedする。
 - [ ] `pytest ari-skill-replicate/tests -q` とcalibration corpusがgreenである。
@@ -61,7 +61,7 @@ paperからPaperBench-compatible reproducibility rubricを生成し、rubricの�
 
 | ID | 削除対象 | 置換先 | 最早phase | 削除gate |
 |---|---|---|---|---|
-| C14-D1 | `execution_profile.extra_sbatch_args`の任意pass-through | typed scheduler fields / reviewed extension | P3 |allfixtures migrated、injection negative tests |
+| C14-D1 (arbitrary deleted) | `execution_profile.extra_sbatch_args`の任意pass-through | typed scheduler fields /限定deprecated reader | P3 |producer fixture移行、injection negative tests達成 |
 | C14-D2 |意味変更を記録しないsilent schema repair/prune | repair ledger + strict schema | P3 |raw/repaired/dropped artifact tests |
 | C14-D3 |品質基準を満たさない`two_stage=False` public path | calibrated strategyまたは明示low-coverage profile | P6 |cost/quality gate、deprecation、consumer 0 |
 | C14-D4 |V2移行後のV1 runtime generator | V2 generator + V1 reader | P6 |paper-re compatibility、support window |

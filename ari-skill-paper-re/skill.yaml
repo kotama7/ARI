@@ -1,7 +1,7 @@
 schema_version: 1
 name: paper-re-skill
 package: ari-skill-paper-re
-version: 0.8.0
+version: 0.9.0
 display_name: Reproduce and grade a paper
 description: PaperBench-compatible isolated reproduction and SimpleJudge grading.
 environment_policy: complete
@@ -34,10 +34,10 @@ optional_env:
   - ARI_REPLICATOR_ITERATIVE
   - ARI_REPLICATOR_MAX_STEPS
   - ARI_REPLICATOR_TIME_LIMIT_SEC
-  - ARI_SLURM_ALLOW_NO_GRES
   - ARI_SLURM_CPUS
   - ARI_SLURM_PARTITION
   - ARI_SLURM_WALLTIME
+  - ARI_SCHEDULER_PATH
   - AWS_DEFAULT_REGION
   - AWS_REGION
   - AZURE_API_BASE

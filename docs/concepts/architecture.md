@@ -427,8 +427,8 @@ nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
       slurm (when sbatch + ARI_SLURM_PARTITION are present — same partition
       BFTS used) → docker (when daemon usable & not on HPC) → apptainer →
       singularity → local. Override via ARI_PHASE1_SANDBOX.
-    SLURM dispatch uses sbatch --wait + a wrapper that exec's reproduce.sh
-    by absolute path so $(dirname "$0") survives spool relocation.
+    SLURM dispatch compiles a digest-bound JobRequestV1 and uses the shared
+    submit/status/log/cancel handle lifecycle with a clean environment.
     Captures reproduce.log; checks expected_artifacts from the rubric.
     Output: ors_phase1.json { executed, exit_code, log_path,
                               artifacts, missing, sandbox_kind,

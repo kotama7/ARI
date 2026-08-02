@@ -192,7 +192,7 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 | `ARI_SLURM_GPUS` | デフォルト `--gres=gpu:N` |
 | `ARI_SLURM_MEM_GB` | デフォルトメモリリクエスト |
 | `ARI_SLURM_WALLTIME` | デフォルト `--time` |
-| `ARI_SLURM_ALLOW_NO_GRES` | `1` ⇒ クラスタに GPU 用 GRES が設定されていない場合、`--gres` / `--gpus-*` フラグを黙って削除（レガシー v0.7.2 の動作）。デフォルト（未設定）⇒ GPU リクエストが黙って CPU で実行されないよう、対処可能なメッセージ付きで `RuntimeError` を発生。 |
+| `ARI_SCHEDULER_PATH` | shellを介さないscheduler control command用の固定検索path。親`PATH`は継承しない。 |
 
 ### PaperBench 再現フェーズ（Stage 2）
 

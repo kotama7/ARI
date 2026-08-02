@@ -583,7 +583,7 @@ async def test_generate_rubric_preserves_execution_profile(tmp_path):
         "memory_gb_per_node": 256,
         "constraint": "skylake",
         "module_loads": ["cuda/12.4", "openmpi/4.1"],
-        "extra_sbatch_args": ["--account=projX"],
+        "account": "projX",
     }
     out_path = tmp_path / "rubric.json"
 
@@ -606,7 +606,7 @@ async def test_generate_rubric_preserves_execution_profile(tmp_path):
     assert prof["exclusive"] is True
     assert prof["gpu_type"] == "v100"
     assert prof["module_loads"] == ["cuda/12.4", "openmpi/4.1"]
-    assert prof["extra_sbatch_args"] == ["--account=projX"]
+    assert prof["account"] == "projX"
     # sha256 covers the full envelope including execution_profile.
     assert M.verify(written) is True
 

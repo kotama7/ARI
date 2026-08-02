@@ -378,7 +378,8 @@ nodes_tree.json  (全ノード: メトリクス、成果物、メモリ、親子
       slurm (sbatch + ARI_SLURM_PARTITION = BFTS と同じ partition)
       → docker (デーモン利用可かつ HPC 外) → apptainer → singularity →
       local。ARI_PHASE1_SANDBOX で上書き可。
-    SLURM 経路は sbatch --wait + spool relocation 対策 wrapper。
+    SLURM経路はdigest付きJobRequestV1と共通submit/status/log/cancel handle、
+    clean environmentを使用。
     出力: ors_phase1.json { executed, exit_code, log_path,
                               artifacts, missing, sandbox_kind,
                               [partition, cpus, walltime] }

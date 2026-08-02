@@ -314,7 +314,7 @@
         "constraint": {
           "anyOf": [
             {
-              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.@+&|*?\\[\\]-]{0,1023}$",
               "type": "string"
             },
             {
@@ -330,6 +330,19 @@
           "minimum": 1,
           "title": "Cpus Per Task",
           "type": "integer"
+        },
+        "exclude_nodes": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9,._+\\[\\]-]{0,1023}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exclude Nodes"
         },
         "exclusive": {
           "default": false,
@@ -356,6 +369,45 @@
           "title": "Gpus Per Node",
           "type": "integer"
         },
+        "gpus_per_task": {
+          "default": 0,
+          "maximum": 1024,
+          "minimum": 0,
+          "title": "Gpus Per Task",
+          "type": "integer"
+        },
+        "hint": {
+          "anyOf": [
+            {
+              "enum": [
+                "compute_bound",
+                "memory_bound",
+                "multithread",
+                "nomultithread"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hint"
+        },
+        "memory_mb_per_cpu": {
+          "anyOf": [
+            {
+              "maximum": 16777216,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Memory Mb Per Cpu"
+        },
         "memory_mb_per_node": {
           "anyOf": [
             {
@@ -369,6 +421,19 @@
           ],
           "default": null,
           "title": "Memory Mb Per Node"
+        },
+        "nodelist": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9,._+\\[\\]-]{0,1023}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Nodelist"
         },
         "nodes": {
           "default": 1,
@@ -395,12 +460,39 @@
           "default": null,
           "title": "Qos"
         },
+        "reservation": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reservation"
+        },
         "tasks": {
           "default": 1,
           "maximum": 1048576,
           "minimum": 1,
           "title": "Tasks",
           "type": "integer"
+        },
+        "tasks_per_node": {
+          "anyOf": [
+            {
+              "maximum": 1048576,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tasks Per Node"
         },
         "walltime": {
           "default": "01:00:00",
