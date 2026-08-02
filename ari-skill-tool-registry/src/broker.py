@@ -48,6 +48,12 @@ from storage import (
     RegistryStorageError,
     persist_catalog_for_ear,
 )
+from tooluniverse_adapter import (
+    TOOLUNIVERSE_ADAPTER_ID,
+    TOOLUNIVERSE_ADAPTER_VERSION,
+    ToolUniverseCompactAdapter,
+    tooluniverse_adapter_digest,
+)
 
 
 MAX_DISCOVER_RESULTS = 25
@@ -238,6 +244,56 @@ class CatalogBroker:
                 "fixture sources require explicit adapter injection and are not "
                 "production-registered"
             )
+        if source.kind == "tooluniverse":
+            if (
+                source.adapter_id != TOOLUNIVERSE_ADAPTER_ID
+                or source.adapter_version != TOOLUNIVERSE_ADAPTER_VERSION
+                or source.adapter_digest != tooluniverse_adapter_digest()
+            ):
+                raise BrokerProtocolError(
+                    "ToolUniverse adapter identity drifted from CATALOG.lock"
+                )
+            leaf_names: set[str] = set()
+            leaf_spec_digests: dict[str, str] = {}
+            for descriptor in self.lock.tools:
+                if source_id not in descriptor.source_ids:
+                    continue
+                metadata = descriptor.annotations.get("ari_tooluniverse")
+                if not isinstance(metadata, dict) or not isinstance(
+                    metadata.get("tool_spec_digest"), str
+                ):
+                    raise BrokerProtocolError(
+                        "locked ToolUniverse leaf omitted its specification digest"
+                    )
+                leaf_names.add(descriptor.provider_tool_name)
+                leaf_spec_digests[descriptor.provider_tool_name] = metadata[
+                    "tool_spec_digest"
+                ]
+            try:
+                launcher = PythonStdioLauncherV1.model_validate(
+                    source.runtime["launcher"]
+                )
+                pin = source.runtime["pin"]
+                if not isinstance(pin, dict):
+                    raise TypeError("pin must be an object")
+                adapter = ToolUniverseCompactAdapter(
+                    launcher,
+                    expected_provider_digest=source.provider_digest,
+                    pin=pin,
+                    allowed_leaf_names=leaf_names,
+                    leaf_spec_digests=leaf_spec_digests,
+                    timeout_seconds=float(source.runtime.get("timeout_seconds", 60.0)),
+                    page_size=int(source.runtime.get("page_size", 250)),
+                    info_batch_size=int(source.runtime.get("info_batch_size", 20)),
+                    max_pages=int(source.runtime.get("max_pages", 1_000)),
+                    max_tools=int(source.runtime.get("max_tools", 100_000)),
+                )
+            except (KeyError, TypeError, ValueError, ProviderAdapterError) as exc:
+                raise BrokerProtocolError(
+                    f"invalid locked ToolUniverse runtime for {source_id}: {exc}"
+                ) from exc
+            self._adapters[source_id] = adapter
+            return adapter
         if source.kind != "stdio-mcp":
             raise BrokerProtocolError(
                 f"no production adapter is installed for source kind {source.kind}"

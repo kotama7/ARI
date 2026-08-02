@@ -198,6 +198,13 @@ def test_launcher_rejects_shell_and_embedded_credentials():
             entrypoint="stdio_server.py",
             literal_env={"PROVIDER_API_KEY": "not-allowed"},
         )
+    with pytest.raises(ValidationError, match="safe function name"):
+        PythonStdioLauncherV1(
+            python_executable=str(Path(sys.executable).resolve()),
+            package_root=str(FIXTURES.resolve()),
+            python_module="tooluniverse.smcp_server",
+            python_callable="run_stdio_server(); unsafe",
+        )
 
 
 def test_sources_yaml_cannot_select_static_fixture_source(tmp_path: Path):

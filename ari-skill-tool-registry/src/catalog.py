@@ -139,6 +139,17 @@ async def build_catalog(
             continue
         for candidate in candidates:
             descriptor = candidate.descriptor
+            if candidate.quarantine_reason_code is not None:
+                quarantined.append(
+                    QuarantinedCandidateV1(
+                        source_id=source_id,
+                        candidate_name=descriptor.name,
+                        reason_code=candidate.quarantine_reason_code,
+                        detail=sanitize_text(candidate.quarantine_detail, limit=1_000),
+                        candidate_digest=_candidate_digest(candidate),
+                    )
+                )
+                continue
             if source_id not in descriptor.source_ids:
                 quarantined.append(
                     QuarantinedCandidateV1(
@@ -343,12 +354,55 @@ def catalog_diff(old: CatalogLockV1, new: CatalogLockV1) -> dict[str, Any]:
     new_refs = {tool.tool_ref for tool in new.tools}
     old_sources = {source.source_id: source.source_digest for source in old.sources}
     new_sources = {source.source_id: source.source_digest for source in new.sources}
+    old_by_leaf = {(tool.provider_id, tool.leaf_identity): tool for tool in old.tools}
+    new_by_leaf = {(tool.provider_id, tool.leaf_identity): tool for tool in new.tools}
+    changed: list[dict[str, Any]] = []
+    schema_changes: list[dict[str, Any]] = []
+    compared_fields = (
+        "provider_version",
+        "provider_digest",
+        "adapter_version",
+        "adapter_digest",
+        "input_schema",
+        "output_schema",
+        "defaults",
+        "side_effects",
+        "determinism",
+        "permissions",
+        "semantics",
+        "units",
+        "async_lifecycle",
+    )
+    for leaf_key in sorted(set(old_by_leaf) & set(new_by_leaf)):
+        old_tool = old_by_leaf[leaf_key]
+        new_tool = new_by_leaf[leaf_key]
+        if old_tool.tool_ref == new_tool.tool_ref:
+            continue
+        fields = [
+            field
+            for field in compared_fields
+            if getattr(old_tool, field) != getattr(new_tool, field)
+        ]
+        item = {
+            "provider_id": leaf_key[0],
+            "leaf_identity": leaf_key[1],
+            "old_tool_ref": old_tool.tool_ref,
+            "new_tool_ref": new_tool.tool_ref,
+            "changed_fields": fields,
+        }
+        changed.append(item)
+        if any(
+            field in {"input_schema", "output_schema", "defaults"} for field in fields
+        ):
+            schema_changes.append(item)
     return {
         "schema_version": "ari.catalog-diff/v1",
         "base_catalog_digest": old.catalog_digest,
         "candidate_catalog_digest": new.catalog_digest,
         "tools_added": sorted(new_refs - old_refs),
         "tools_removed": sorted(old_refs - new_refs),
+        "tools_changed": changed,
+        "schema_changes": schema_changes,
         "sources_added": sorted(set(new_sources) - set(old_sources)),
         "sources_removed": sorted(set(old_sources) - set(new_sources)),
         "sources_changed": sorted(
@@ -367,6 +421,7 @@ def write_reviewable_catalog(
     index_path: str | Path,
     result: CatalogBuildResult,
     approve: bool = False,
+    approve_schema_changes: bool = False,
 ) -> dict[str, Any]:
     """Write initial/approved output, otherwise a pending lock and diff."""
 
@@ -380,7 +435,7 @@ def write_reviewable_catalog(
     if current.catalog_digest == result.lock.catalog_digest:
         return {"status": "unchanged", "catalog_digest": current.catalog_digest}
     difference = catalog_diff(current, result.lock)
-    if approve:
+    if approve and (approve_schema_changes or not difference["schema_changes"]):
         write_catalog_lock(lock_target, result.lock, replace=True)
         write_catalog_index(index_target, result.index)
         return {"status": "approved", **difference}
@@ -399,6 +454,7 @@ def write_reviewable_catalog(
         "pending_lock": str(pending_lock),
         "pending_index": str(pending_index),
         "diff": str(diff_path),
+        "schema_approval_required": bool(difference["schema_changes"]),
         **difference,
     }
 

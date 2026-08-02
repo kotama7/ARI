@@ -29,6 +29,7 @@ from models import (
 STDIO_ADAPTER_ID = "ari.stdio-mcp"
 STDIO_ADAPTER_VERSION = "1.0.0"
 _ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+_PYTHON_MODULE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
 _CREDENTIAL_RE = re.compile(
     r"(?:SECRET|TOKEN|PASSWORD|PASSWD|API_?KEY|PRIVATE_?KEY|CREDENTIAL)",
     re.IGNORECASE,
@@ -66,7 +67,9 @@ class PythonStdioLauncherV1(BaseModel):
     command_kind: str = "python"
     python_executable: str
     package_root: str
-    entrypoint: str
+    entrypoint: str | None = None
+    python_module: str | None = None
+    python_callable: str | None = None
     arguments: list[str] = Field(default_factory=list, max_length=64)
     literal_env: dict[str, str] = Field(default_factory=dict)
     expected_architecture: str = ""
@@ -132,17 +135,53 @@ class PythonStdioLauncherV1(BaseModel):
     def _safe_paths(self) -> "PythonStdioLauncherV1":
         root = Path(self.package_root)
         executable = Path(self.python_executable)
-        relative = Path(self.entrypoint)
         if not root.is_absolute() or not executable.is_absolute():
             raise ValueError("python_executable and package_root must be absolute")
-        if relative.is_absolute() or ".." in relative.parts:
-            raise ValueError("entrypoint must be safe and package-relative")
+        if (self.entrypoint is None) == (self.python_module is None):
+            raise ValueError("exactly one of entrypoint or python_module is required")
+        if self.entrypoint is not None:
+            relative = Path(self.entrypoint)
+            if relative.is_absolute() or ".." in relative.parts:
+                raise ValueError("entrypoint must be safe and package-relative")
+        if self.python_module is not None and not _PYTHON_MODULE_RE.fullmatch(
+            self.python_module
+        ):
+            raise ValueError("python_module must be a safe dotted Python module")
+        if self.python_callable is not None:
+            if self.python_module is None or not re.fullmatch(
+                r"[A-Za-z_][A-Za-z0-9_]*", self.python_callable
+            ):
+                raise ValueError(
+                    "python_callable requires a module and a safe function name"
+                )
         return self
 
     def resolve(self, *, require_exists: bool = True) -> tuple[Path, Path, Path]:
         root = Path(self.package_root).resolve()
-        executable = Path(self.python_executable).resolve()
-        entrypoint = (root / self.entrypoint).resolve()
+        # Preserve a virtual-environment launcher path.  Resolving its symlink to
+        # the base interpreter would bypass ``pyvenv.cfg`` and silently execute
+        # outside the pinned provider environment.
+        executable = Path(os.path.abspath(self.python_executable))
+        if self.entrypoint is not None:
+            entrypoint = (root / self.entrypoint).resolve()
+        else:
+            assert self.python_module is not None
+            parts = self.python_module.split(".")
+            if parts[0] == root.name:
+                parts = parts[1:]
+            module_path = root.joinpath(*parts)
+            file_candidate = module_path.with_suffix(".py")
+            package_candidate = module_path / "__main__.py"
+            matches = [
+                candidate
+                for candidate in (file_candidate, package_candidate)
+                if candidate.is_file()
+            ]
+            if len(matches) > 1:
+                raise ProviderLaunchError(
+                    "python_module resolves to both a module and a package"
+                )
+            entrypoint = (matches[0] if matches else file_candidate).resolve()
         try:
             entrypoint.relative_to(root)
         except ValueError as exc:
@@ -160,6 +199,26 @@ class PythonStdioLauncherV1(BaseModel):
                 )
         return root, executable, entrypoint
 
+    def command_arguments(self, resolved_entrypoint: Path) -> list[str]:
+        if self.python_callable is not None:
+            assert self.python_module is not None
+            code = (
+                f"from {self.python_module} import {self.python_callable} as "
+                "_ari_entry; _ari_entry()"
+            )
+            return ["-c", code, *self.arguments]
+        if self.python_module is not None:
+            return ["-m", self.python_module, *self.arguments]
+        return [str(resolved_entrypoint), *self.arguments]
+
+    def working_directory(self, root: Path) -> Path:
+        if (
+            self.python_module is not None
+            and self.python_module.split(".")[0] == root.name
+        ):
+            return root.parent
+        return root
+
 
 def _file_digest(path: Path) -> str:
     hasher = hashlib.sha256()
@@ -176,7 +235,13 @@ def launcher_identity(launcher: PythonStdioLauncherV1) -> dict[str, Any]:
     root, executable, entrypoint = launcher.resolve()
     closure_paths: set[Path] = {entrypoint}
     for pattern in launcher.identity_globs:
-        closure_paths.update(path for path in root.glob(pattern) if path.is_file())
+        closure_paths.update(
+            path
+            for path in root.glob(pattern)
+            if path.is_file()
+            and "__pycache__" not in path.parts
+            and path.suffix not in {".pyc", ".pyo"}
+        )
     if len(closure_paths) > 50_000:
         raise ProviderLaunchError("provider identity closure exceeds 50,000 files")
     package_files: list[dict[str, Any]] = []
@@ -204,18 +269,25 @@ def launcher_identity(launcher: PythonStdioLauncherV1) -> dict[str, Any]:
                 "digest": _file_digest(resolved),
             }
         )
-    return {
+    identity = {
         "command_kind": launcher.command_kind,
         "python_executable": str(executable),
+        "python_resolved_executable": str(executable.resolve()),
         "python_digest": _file_digest(executable),
         "package_root": str(root),
-        "entrypoint": entrypoint.relative_to(root).as_posix(),
         "package_files": package_files,
         "arguments": launcher.arguments,
         "literal_env": launcher.literal_env,
         "expected_architecture": launcher.expected_architecture,
         "identity_globs": launcher.identity_globs,
     }
+    if launcher.python_module is not None:
+        identity["python_module"] = launcher.python_module
+        identity["module_entrypoint"] = entrypoint.relative_to(root).as_posix()
+        identity["python_callable"] = launcher.python_callable
+    else:
+        identity["entrypoint"] = entrypoint.relative_to(root).as_posix()
+    return identity
 
 
 def provider_digest(launcher: PythonStdioLauncherV1) -> str:
@@ -353,9 +425,9 @@ class StdioMCPAdapter:
             with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as errlog:
                 parameters = StdioServerParameters(
                     command=str(executable),
-                    args=[str(entrypoint), *self.launcher.arguments],
+                    args=self.launcher.command_arguments(entrypoint),
                     env=self._environment(home),
-                    cwd=root,
+                    cwd=self.launcher.working_directory(root),
                 )
                 try:
                     async with asyncio.timeout(self.timeout_seconds):
@@ -435,13 +507,17 @@ class StdioMCPAdapter:
                 cursor = next_cursor
         raise ProviderProtocolError(f"provider exceeds max_pages={self.max_pages}")
 
-    async def _call(self, name: str, arguments: dict[str, Any]) -> ProviderResponseV1:
-        async with self._session() as session:
-            try:
-                async with asyncio.timeout(self.timeout_seconds):
-                    result = await session.call_tool(name, arguments)
-            except TimeoutError as exc:
-                raise ProviderProtocolError(f"provider call timed out: {name}") from exc
+    async def _call_in_session(
+        self,
+        session: ClientSession,
+        name: str,
+        arguments: dict[str, Any],
+    ) -> ProviderResponseV1:
+        try:
+            async with asyncio.timeout(self.timeout_seconds):
+                result = await session.call_tool(name, arguments)
+        except TimeoutError as exc:
+            raise ProviderProtocolError(f"provider call timed out: {name}") from exc
         text_parts = [part.text for part in result.content if hasattr(part, "text")]
         text = "\n".join(text_parts)
         structured = getattr(result, "structuredContent", None)
@@ -456,6 +532,17 @@ class StdioMCPAdapter:
             structured=structured,
             is_error=bool(getattr(result, "isError", False)),
         )
+
+    async def _call(self, name: str, arguments: dict[str, Any]) -> ProviderResponseV1:
+        async with self._session() as session:
+            return await self._call_in_session(session, name, arguments)
+
+    @asynccontextmanager
+    async def connection(self) -> AsyncIterator[ProviderAdapter]:
+        """Keep one verified provider process for a bounded call sequence."""
+
+        async with self._session() as session:
+            yield _ConnectedStdioMCPAdapter(self, session)
 
     async def invoke(self, name: str, arguments: dict[str, Any]) -> ProviderResponseV1:
         return await self._call(name, arguments)
@@ -500,6 +587,52 @@ class StdioMCPAdapter:
     ) -> ProviderResponseV1:
         return await self._lifecycle_call(
             lifecycle.cancel_tool, lifecycle, provider_handle
+        )
+
+
+class _ConnectedStdioMCPAdapter:
+    """One already-initialized session; created only by ``connection``."""
+
+    def __init__(self, owner: StdioMCPAdapter, session: ClientSession) -> None:
+        self.owner = owner
+        self.session = session
+
+    async def list_tools(self) -> list[ProviderToolV1]:
+        raise ProviderProtocolError("connected collection sessions use compact calls")
+
+    async def invoke(self, name: str, arguments: dict[str, Any]) -> ProviderResponseV1:
+        return await self.owner._call_in_session(self.session, name, arguments)
+
+    async def get_status(
+        self,
+        lifecycle: ProviderAsyncLifecycleV1,
+        provider_handle: str,
+    ) -> ProviderResponseV1:
+        return await self.invoke(
+            lifecycle.status_tool,
+            {lifecycle.handle_argument: provider_handle},
+        )
+
+    async def get_result(
+        self,
+        lifecycle: ProviderAsyncLifecycleV1,
+        provider_handle: str,
+    ) -> ProviderResponseV1:
+        return await self.invoke(
+            lifecycle.result_tool or lifecycle.status_tool,
+            {lifecycle.handle_argument: provider_handle},
+        )
+
+    async def cancel(
+        self,
+        lifecycle: ProviderAsyncLifecycleV1,
+        provider_handle: str,
+    ) -> ProviderResponseV1:
+        if lifecycle.cancel_tool is None:
+            raise ProviderProtocolError("provider lifecycle has no cancel tool")
+        return await self.invoke(
+            lifecycle.cancel_tool,
+            {lifecycle.handle_argument: provider_handle},
         )
 
 

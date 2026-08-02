@@ -14,6 +14,10 @@ sources:
     role: implementation
   - path: ari-skill-tool-registry/src/storage.py
     role: implementation
+  - path: ari-skill-tool-registry/src/tooluniverse_adapter.py
+    role: implementation
+  - path: ari-skill-tool-registry/providers/tooluniverse-support-v1.json
+    role: config
 last_verified: 2026-08-02
 ---
 
@@ -62,6 +66,35 @@ last_verified: 2026-08-02
 同一边界共存。直接 stdio MCP 无需自定义叶代码；其他 transport 每个集合只需
 一个 `CatalogSource`、一个 `ProviderAdapter` 及其 conformance fixture。
 
+## ToolUniverse v1.3.1 adapter
+
+ToolUniverse 作为一个 compact collection 接入，而不是暴露数千个公共 MCP 工具。
+注册表进程不导入 ToolUniverse；operator sync 通过 compact list/info/execute surface
+生成 canonical 叶 descriptor，运行时只把活动 lock 中的精确叶名称传给
+`execute_tool`。
+
+支持矩阵固定上游 repository commit/tag、PyPI wheel/sdist、Apache-2.0 license、
+上游依赖 lock、compact contract，以及已安装包全部 3,542 个文件的 canonical tree
+digest。同步和运行时都会验证完整文件树和 shell-free 的
+`tooluniverse.smcp_server:run_stdio_server` callable。版本范围、启动时安装、修改过的
+包和其他入口都会 fail closed。
+
+category/type profile 为一组叶工具声明副作用、确定性、权限、局限和 lineage，
+无需逐叶 wrapper。即使上游 CLI 在后台加载更大的集合，ARI 仍会独立执行 category
+过滤，并在运行时再次限制为 lock 中的叶名称。dynamic MCP loader、agentic/compose/
+code execution、需要 credential、未审查或匹配不唯一的 profile，以及无效 schema
+都会被 quarantine。仅对 v1.3.1 已知的 property-level `required: true` 方言做确定性
+转换，将其移入标准父级 `required` 数组并记录 provenance；不会猜测修复其他 schema。
+
+参数始终按 locked schema 严格验证，不允许类型 coercion。由于上游会静默删除显式
+`null`，adapter 会拒绝它。ToolUniverse cache/persistence、update check、hook 和
+search 均被关闭；结果记录 collection/wheel/provider/leaf-spec identity 和
+`upstream_cache: disabled`。只有 ARI cassette/EAR 是 replay authority，集合级信任
+不会传递成叶工具的 replay 或科学验证。
+
+批量更新只生成 pending diff。input/output/default schema 变化不能仅凭普通
+`--approve` 通过，还必须在审查后显式使用 `--approve-schema-changes`。
+
 ## record/replay 与 EAR
 
 record 保存精确参数、catalog/policy digest、选择原因、被拒候选、原始响应
@@ -72,6 +105,8 @@ digest/artifact 和规范化 ResultEnvelope。replay 在相同不可变 catalog 
 cd ari-skill-tool-registry
 python src/sync_catalog.py
 python src/sync_catalog.py --approve   # 仅在审查 diff 后
+python src/sync_catalog.py --approve --approve-schema-changes
+python scripts/verify_tooluniverse.py --help
 python scripts/sync_contracts.py
 pytest -q
 ```

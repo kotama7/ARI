@@ -4,10 +4,17 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Annotated, Any, Literal, Protocol, TypeAlias
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from models import (
     AdmissionEvidenceV1,
@@ -28,6 +35,16 @@ from providers import (
     provider_digest,
     stdio_adapter_digest,
 )
+from tooluniverse_adapter import (
+    TOOLUNIVERSE_ADAPTER_ID,
+    TOOLUNIVERSE_ADAPTER_VERSION,
+    ToolUniverseCompactAdapter,
+    dangerous_leaf,
+    tooluniverse_adapter_digest,
+    tooluniverse_release_pin,
+    verify_tooluniverse_package,
+    verify_tooluniverse_pin,
+)
 
 
 SOURCES_V1 = "ari.catalog-sources/v1"
@@ -43,6 +60,18 @@ class CatalogCandidateV1(BaseModel):
 
     descriptor: CanonicalToolDescriptorV1
     evidence: AdmissionEvidenceV1 = Field(default_factory=AdmissionEvidenceV1)
+    quarantine_reason_code: (
+        Literal["policy-excluded", "unsupported-profile", "schema-drift"] | None
+    ) = None
+    quarantine_detail: str = ""
+
+    @model_validator(mode="after")
+    def _complete_quarantine(self) -> "CatalogCandidateV1":
+        if bool(self.quarantine_reason_code) != bool(self.quarantine_detail):
+            raise ValueError(
+                "quarantine_reason_code and quarantine_detail must be set together"
+            )
+        return self
 
 
 class CatalogSource(Protocol):
@@ -58,7 +87,7 @@ class StdioSourceSpecV1(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     source_id: str
-    kind: str = "stdio-mcp"
+    kind: Literal["stdio-mcp"] = "stdio-mcp"
     provider_id: str
     provider_version: str
     provider_digest: str
@@ -70,13 +99,6 @@ class StdioSourceSpecV1(BaseModel):
     timeout_seconds: float = Field(default=30.0, gt=0, le=3_600)
     max_pages: int = Field(default=1_000, ge=1, le=10_000)
     max_tools: int = Field(default=100_000, ge=1, le=1_000_000)
-
-    @field_validator("kind")
-    @classmethod
-    def _stdio_only(cls, value: str) -> str:
-        if value != "stdio-mcp":
-            raise ValueError("only stdio-mcp is a production generic source kind")
-        return value
 
     @field_validator("source_id", "provider_id", "capability_prefix")
     @classmethod
@@ -129,11 +151,296 @@ class StdioSourceSpecV1(BaseModel):
         )
 
 
+class ToolUniversePinV1(BaseModel):
+    """One exact upstream release reviewed in the support matrix."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    distribution_name: Literal["tooluniverse"] = "tooluniverse"
+    version: str
+    wheel_digest: str
+    sdist_digest: str
+    repository_url: Literal["https://github.com/mims-harvard/ToolUniverse"]
+    repository_commit: str
+    repository_tag: str
+    license_id: Literal["Apache-2.0"]
+    license_digest: str
+    package_tree_digest: str
+    dependency_lock_digest: str
+    direct_dependencies: list[str] = Field(min_length=1)
+    compact_contract_digest: str
+    python_requires: str
+
+    @field_validator(
+        "wheel_digest",
+        "sdist_digest",
+        "license_digest",
+        "package_tree_digest",
+        "dependency_lock_digest",
+        "compact_contract_digest",
+    )
+    @classmethod
+    def _digest(cls, value: str) -> str:
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", value):
+            raise ValueError("ToolUniverse pin digests must be SHA-256 values")
+        return value
+
+    @field_validator("repository_commit")
+    @classmethod
+    def _commit(cls, value: str) -> str:
+        if not re.fullmatch(r"[0-9a-f]{40}", value):
+            raise ValueError("ToolUniverse repository_commit must be a full SHA-1")
+        return value
+
+    @field_validator("direct_dependencies")
+    @classmethod
+    def _dependencies(cls, values: list[str]) -> list[str]:
+        normalized = sorted({str(value).strip() for value in values})
+        if len(normalized) != len(values) or any(not value for value in normalized):
+            raise ValueError("ToolUniverse direct dependency inventory is invalid")
+        return normalized
+
+    def verify(self) -> None:
+        verify_tooluniverse_pin(self.model_dump(mode="json"))
+
+
+class ToolUniverseCategoryProfileV1(BaseModel):
+    """Reviewed category/type policy shared by many collection leaves."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    profile_id: str
+    categories: list[str] = Field(default_factory=list)
+    tool_types: list[str] = Field(default_factory=list)
+    side_effects: Literal["read-only", "workspace-write", "stateful", "destructive"] = (
+        "stateful"
+    )
+    determinism: Literal[
+        "deterministic", "seeded", "conditional", "stochastic", "live-data"
+    ] = "conditional"
+    permissions: list[str] = Field(default_factory=list)
+    semantics: dict[str, Any] = Field(default_factory=dict)
+    units: dict[str, str] = Field(default_factory=dict)
+    limitations: list[str] = Field(default_factory=list)
+    backend_lineage: list[str] = Field(default_factory=list)
+    data_lineage: list[str] = Field(default_factory=list)
+    independence_group: str = ""
+
+    @field_validator("profile_id")
+    @classmethod
+    def _profile_id(cls, value: str) -> str:
+        if not value or _REF_SAFE_RE.search(value):
+            raise ValueError("profile_id must be lowercase dotted/kebab text")
+        return value
+
+    @field_validator(
+        "categories",
+        "tool_types",
+        "permissions",
+        "limitations",
+        "backend_lineage",
+        "data_lineage",
+    )
+    @classmethod
+    def _unique_values(cls, values: list[str]) -> list[str]:
+        normalized = sorted({str(value).strip() for value in values})
+        if any(not value for value in normalized):
+            raise ValueError("profile list values cannot be empty")
+        return normalized
+
+    @model_validator(mode="after")
+    def _selector(self) -> "ToolUniverseCategoryProfileV1":
+        if not self.categories and not self.tool_types:
+            raise ValueError("ToolUniverse profiles require a category or tool type")
+        if self.profile_id == "discovered-only" and (
+            self.permissions
+            or self.semantics
+            or self.units
+            or self.backend_lineage
+            or self.data_lineage
+        ):
+            raise ValueError(
+                "discovered-only profiles cannot assert scientific metadata"
+            )
+        return self
+
+    def matches(self, *, category: str, tool_type: str) -> bool:
+        return (
+            "*" in self.categories
+            or category in self.categories
+            or "*" in self.tool_types
+            or tool_type in self.tool_types
+        )
+
+
+class ToolUniverseSourceSpecV1(BaseModel):
+    """One pinned ToolUniverse collection imported through compact MCP."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    source_id: str
+    kind: Literal["tooluniverse"] = "tooluniverse"
+    provider_id: str = "tooluniverse"
+    provider_digest: str
+    launcher: PythonStdioLauncherV1
+    support_release: str = "1.3.1"
+    profiles: list[ToolUniverseCategoryProfileV1] = Field(min_length=1)
+    include_categories: list[str] = Field(default_factory=list)
+    exclude_categories: list[str] = Field(default_factory=list)
+    capability_prefix: str = "ari.tooluniverse"
+    evidence: AdmissionEvidenceV1 = Field(default_factory=AdmissionEvidenceV1)
+    timeout_seconds: float = Field(default=60.0, gt=0, le=3_600)
+    page_size: int = Field(default=250, ge=1, le=1_000)
+    info_batch_size: int = Field(default=20, ge=1, le=100)
+    max_pages: int = Field(default=1_000, ge=1, le=10_000)
+    max_tools: int = Field(default=100_000, ge=1, le=1_000_000)
+
+    @field_validator("source_id", "provider_id", "capability_prefix")
+    @classmethod
+    def _valid_ref(cls, value: str) -> str:
+        if not value or _REF_SAFE_RE.search(value):
+            raise ValueError("source identifiers must be lowercase dotted/kebab text")
+        return value
+
+    @field_validator("provider_digest")
+    @classmethod
+    def _valid_digest(cls, value: str) -> str:
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", value):
+            raise ValueError("provider_digest must be a SHA-256 digest")
+        return value
+
+    @field_validator("include_categories", "exclude_categories")
+    @classmethod
+    def _categories(cls, values: list[str]) -> list[str]:
+        normalized = sorted({str(value).strip() for value in values})
+        if any(not value or value.startswith("-") for value in normalized):
+            raise ValueError("ToolUniverse category names are invalid")
+        return normalized
+
+    @model_validator(mode="after")
+    def _safe_collection_boundary(self) -> "ToolUniverseSourceSpecV1":
+        self.pin.verify()
+        profile_ids = [profile.profile_id for profile in self.profiles]
+        if len(profile_ids) != len(set(profile_ids)):
+            raise ValueError("ToolUniverse profile_id values must be unique")
+        overlap = sorted(set(self.include_categories) & set(self.exclude_categories))
+        if overlap:
+            raise ValueError(
+                f"ToolUniverse categories both included and excluded: {overlap}"
+            )
+        if (
+            self.launcher.entrypoint is not None
+            or (self.launcher.python_module != "tooluniverse.smcp_server")
+            or self.launcher.python_callable != "run_stdio_server"
+        ):
+            raise ValueError(
+                "ToolUniverse must launch the reviewed "
+                "tooluniverse.smcp_server:run_stdio_server entry point"
+            )
+        if self.launcher.arguments:
+            raise ValueError(
+                "ToolUniverse base launcher arguments must be empty; the adapter "
+                "constructs the bounded compact arguments"
+            )
+        if self.launcher.literal_env:
+            raise ValueError(
+                "ToolUniverse literal environment is fixed by the isolated adapter"
+            )
+        if "**/*" not in self.launcher.identity_globs:
+            raise ValueError(
+                "ToolUniverse identity_globs must include **/* to cover data/spec files"
+            )
+        if self.evidence.replay_fixture_digest is not None or (
+            self.evidence.scientific_validation_digest is not None
+        ):
+            raise ValueError(
+                "collection-level evidence cannot be promoted to leaf replay or "
+                "scientific validation evidence"
+            )
+        return self
+
+    @property
+    def pin(self) -> ToolUniversePinV1:
+        return ToolUniversePinV1.model_validate(
+            tooluniverse_release_pin(self.support_release)
+        )
+
+    @property
+    def provider_version(self) -> str:
+        return self.pin.version
+
+    @property
+    def effective_launcher(self) -> PythonStdioLauncherV1:
+        arguments = ["--compact-mode", "--no-search", "--max-workers", "1"]
+        if self.include_categories:
+            arguments.extend(["--categories", *self.include_categories])
+        if self.exclude_categories:
+            arguments.extend(["--exclude-categories", *self.exclude_categories])
+        return self.launcher.model_copy(update={"arguments": arguments})
+
+    def verify(self) -> None:
+        self.pin.verify()
+        verify_tooluniverse_package(self.launcher, self.pin.model_dump(mode="json"))
+        actual = provider_digest(self.effective_launcher)
+        if actual != self.provider_digest:
+            raise CatalogSourceError(
+                f"source {self.source_id} provider digest drift: "
+                f"expected {self.provider_digest}, got {actual}"
+            )
+
+    @property
+    def adapter_digest(self) -> str:
+        return tooluniverse_adapter_digest()
+
+    @property
+    def source_digest(self) -> str:
+        return sha256_digest(self.model_dump(mode="json"))
+
+    def matching_profiles(
+        self, *, category: str, tool_type: str
+    ) -> list[ToolUniverseCategoryProfileV1]:
+        return [
+            profile
+            for profile in self.profiles
+            if profile.matches(category=category, tool_type=tool_type)
+        ]
+
+    def to_locked_source(self, *, verify: bool = True) -> LockedSourceV1:
+        if verify:
+            self.verify()
+        return LockedSourceV1(
+            source_id=self.source_id,
+            kind="tooluniverse",
+            source_digest=self.source_digest,
+            provider_id=self.provider_id,
+            provider_version=self.provider_version,
+            provider_digest=self.provider_digest,
+            adapter_id=TOOLUNIVERSE_ADAPTER_ID,
+            adapter_version=TOOLUNIVERSE_ADAPTER_VERSION,
+            adapter_digest=self.adapter_digest,
+            runtime={
+                "launcher": self.effective_launcher.model_dump(mode="json"),
+                "pin": self.pin.model_dump(mode="json"),
+                "timeout_seconds": self.timeout_seconds,
+                "page_size": self.page_size,
+                "info_batch_size": self.info_batch_size,
+                "max_pages": self.max_pages,
+                "max_tools": self.max_tools,
+            },
+        )
+
+
+SourceSpecV1: TypeAlias = Annotated[
+    StdioSourceSpecV1 | ToolUniverseSourceSpecV1,
+    Field(discriminator="kind"),
+]
+
+
 class SourcesDocumentV1(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     schema_version: str = SOURCES_V1
-    sources: list[StdioSourceSpecV1] = Field(default_factory=list)
+    sources: list[SourceSpecV1] = Field(default_factory=list)
 
     @field_validator("schema_version")
     @classmethod
@@ -289,6 +596,192 @@ class StdioCatalogSource:
         ]
 
 
+def _tooluniverse_candidate(
+    spec: ToolUniverseSourceSpecV1,
+    tool: ProviderToolV1,
+) -> CatalogCandidateV1:
+    metadata = tool.annotations.get("ari_tooluniverse")
+    if not isinstance(metadata, dict):
+        raise CatalogSourceError(
+            f"ToolUniverse leaf {tool.name!r} omitted collection metadata"
+        )
+    category = str(metadata.get("category") or "unknown")
+    tool_type = str(metadata.get("type") or "Unknown")
+    spec_digest = str(metadata.get("tool_spec_digest") or "")
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", spec_digest):
+        raise CatalogSourceError(
+            f"ToolUniverse leaf {tool.name!r} omitted its specification digest"
+        )
+
+    quarantine_reason: (
+        Literal["policy-excluded", "unsupported-profile", "schema-drift"] | None
+    ) = None
+    quarantine_detail = ""
+    danger = dangerous_leaf(category, tool_type)
+    matching = spec.matching_profiles(category=category, tool_type=tool_type)
+    profile = matching[0] if len(matching) == 1 else None
+    required_api_keys = metadata.get("required_api_keys")
+    schema_errors = metadata.get("schema_errors")
+    if isinstance(schema_errors, list) and schema_errors:
+        quarantine_reason = "schema-drift"
+        quarantine_detail = (
+            "upstream leaf schema is not valid JSON Schema Draft 2020-12: "
+            + "; ".join(sanitize_text(item, limit=500) for item in schema_errors)
+        )
+    elif danger:
+        quarantine_reason = "policy-excluded"
+        quarantine_detail = danger
+    elif len(matching) != 1:
+        quarantine_reason = "unsupported-profile"
+        quarantine_detail = (
+            f"leaf must match exactly one reviewed category profile; matched "
+            f"{[item.profile_id for item in matching]}"
+        )
+    elif isinstance(required_api_keys, list) and required_api_keys:
+        quarantine_reason = "policy-excluded"
+        quarantine_detail = (
+            "leaf requires provider credentials, but no value-free credential "
+            "scope bridge is admitted"
+        )
+
+    profile_id = profile.profile_id if profile is not None else "unclassified"
+    side_effects = profile.side_effects if profile is not None else "stateful"
+    determinism = profile.determinism if profile is not None else "conditional"
+    permissions = profile.permissions if profile is not None else []
+    semantics = dict(profile.semantics) if profile is not None else {}
+    semantics.update(
+        {
+            "collection_profile": profile_id,
+            "tooluniverse_category": category,
+            "tooluniverse_type": tool_type,
+        }
+    )
+    units = dict(profile.units) if profile is not None else {}
+    limitations = list(profile.limitations) if profile is not None else []
+    limitations.extend(
+        [
+            "ToolUniverse collection review is not leaf scientific validation.",
+            "ToolUniverse result caching is disabled; ARI cassette/EAR is the replay authority.",
+        ]
+    )
+    source_file = metadata.get("source_file")
+    if not source_file:
+        limitations.append(
+            "Upstream compact metadata does not identify a leaf implementation source file."
+        )
+    if quarantine_detail:
+        limitations.append(quarantine_detail)
+
+    leaf_identity = f"tooluniverse:{tool.name}"
+    collection_id = f"tooluniverse@{spec.pin.version}"
+    origin_chain = [
+        OriginHopV1(kind="source", id=spec.source_id, digest=spec.source_digest),
+        OriginHopV1(kind="collection", id=collection_id, digest=spec.pin.wheel_digest),
+        OriginHopV1(
+            kind="provider",
+            id=f"tooluniverse-type:{tool_type}",
+            digest=spec.provider_digest,
+        ),
+        OriginHopV1(kind="tool", id=leaf_identity, digest=spec_digest),
+    ]
+    capability = ".".join(
+        (
+            spec.capability_prefix,
+            _safe_capability_segment(category),
+            _safe_capability_segment(tool.name),
+        )
+    )
+    backend_lineage = list(profile.backend_lineage) if profile is not None else []
+    backend_lineage.extend([collection_id, f"tooluniverse-type:{tool_type}"])
+    data_lineage = list(profile.data_lineage) if profile is not None else []
+    data_lineage.append(f"tooluniverse-category:{category}")
+    for key in ("endpoint", "tool_url", "package_name", "source_file"):
+        value = metadata.get(key)
+        if isinstance(value, (str, int, float, bool)) and str(value):
+            data_lineage.append(f"{key}:{sanitize_text(value, limit=500)}")
+    annotations = dict(tool.annotations)
+    annotations["ari_tooluniverse_profile"] = profile_id
+
+    descriptor = CanonicalToolDescriptorV1.create(
+        source_ids=[spec.source_id],
+        provider_id=spec.provider_id,
+        provider_version=spec.provider_version,
+        provider_digest=spec.provider_digest,
+        adapter_id=TOOLUNIVERSE_ADAPTER_ID,
+        adapter_version=TOOLUNIVERSE_ADAPTER_VERSION,
+        adapter_digest=spec.adapter_digest,
+        name=tool.name,
+        provider_tool_name=tool.name,
+        capability_ref=capability,
+        description=tool.description,
+        input_schema=tool.input_schema,
+        output_schema=tool.output_schema,
+        defaults=_schema_defaults(tool.input_schema),
+        annotations=annotations,
+        side_effects=side_effects,
+        determinism=determinism,
+        permissions=permissions,
+        semantics=semantics,
+        units=units,
+        limitations=sorted(set(limitations)),
+        backend_lineage=sorted(set(backend_lineage)),
+        data_lineage=sorted(set(data_lineage)),
+        leaf_identity=leaf_identity,
+        origin_chains=[origin_chain],
+        equivalence_key=None,
+        independence_group=(
+            profile.independence_group
+            if profile is not None and profile.independence_group
+            else f"tooluniverse:{category}"
+        ),
+        async_lifecycle=None,
+    )
+    evidence = (
+        AdmissionEvidenceV1()
+        if quarantine_reason is not None or profile_id == "discovered-only"
+        else spec.evidence
+    )
+    return CatalogCandidateV1(
+        descriptor=descriptor,
+        evidence=evidence,
+        quarantine_reason_code=quarantine_reason,
+        quarantine_detail=quarantine_detail,
+    )
+
+
+class ToolUniverseCatalogSource:
+    def __init__(
+        self,
+        spec: ToolUniverseSourceSpecV1,
+        adapter: ProviderAdapter | None = None,
+        *,
+        verify_source: bool = True,
+    ) -> None:
+        self.spec = spec
+        self._locked_source = spec.to_locked_source(verify=verify_source)
+        self.adapter = adapter or ToolUniverseCompactAdapter(
+            spec.effective_launcher,
+            expected_provider_digest=spec.provider_digest,
+            pin=spec.pin.model_dump(mode="json"),
+            include_categories=spec.include_categories,
+            exclude_categories=spec.exclude_categories,
+            timeout_seconds=spec.timeout_seconds,
+            page_size=spec.page_size,
+            info_batch_size=spec.info_batch_size,
+            max_pages=spec.max_pages,
+            max_tools=spec.max_tools,
+            verify_package=verify_source,
+        )
+
+    @property
+    def locked_source(self) -> LockedSourceV1:
+        return self._locked_source
+
+    async def sync(self) -> list[CatalogCandidateV1]:
+        tools = await self.adapter.list_tools()
+        return [_tooluniverse_candidate(self.spec, tool) for tool in tools]
+
+
 class StaticCatalogSource:
     """Directly injected fixture source; absent from config deserialization."""
 
@@ -310,7 +803,7 @@ class StaticCatalogSource:
         return list(self._candidates)
 
 
-def load_source_specs(path: str | Path) -> list[StdioSourceSpecV1]:
+def load_source_specs(path: str | Path) -> list[SourceSpecV1]:
     """Load production source declarations; fixture/static kinds are rejected."""
 
     source_path = Path(path)
@@ -327,6 +820,16 @@ def load_source_specs(path: str | Path) -> list[StdioSourceSpecV1]:
     return sorted(document.sources, key=lambda source: source.source_id)
 
 
+def catalog_source_from_spec(spec: SourceSpecV1) -> CatalogSource:
+    if isinstance(spec, StdioSourceSpecV1):
+        return StdioCatalogSource(spec)
+    if isinstance(spec, ToolUniverseSourceSpecV1):
+        return ToolUniverseCatalogSource(spec)
+    raise CatalogSourceError(
+        f"unsupported production source spec: {type(spec).__name__}"
+    )
+
+
 def source_document_digest(path: str | Path) -> str:
     specs = load_source_specs(path)
     return sha256_digest([spec.model_dump(mode="json") for spec in specs])
@@ -338,9 +841,15 @@ __all__ = [
     "CatalogSourceError",
     "SOURCES_V1",
     "SourcesDocumentV1",
+    "SourceSpecV1",
     "StaticCatalogSource",
     "StdioCatalogSource",
     "StdioSourceSpecV1",
+    "ToolUniverseCatalogSource",
+    "ToolUniverseCategoryProfileV1",
+    "ToolUniversePinV1",
+    "ToolUniverseSourceSpecV1",
+    "catalog_source_from_spec",
     "load_source_specs",
     "source_document_digest",
 ]

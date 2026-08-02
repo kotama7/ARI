@@ -21,7 +21,7 @@ last_verified: 2026-08-02
 
 | 項目 | 値 |
 |---|---|
-| 状態 | In progress — C01 control plane / C02 federation complete; C17 next |
+| 状態 | In progress — C01/C02/C17 complete; C18 OpenROAD next |
 | 基準ブランチ | `skills` |
 | 基準コミット | `4cd56f9` |
 | 作成日 | 2026-08-01 |
@@ -53,6 +53,12 @@ last_verified: 2026-08-02
   generic stdio MCP、canonical `tool_ref`、4段階admission、reviewed `CATALOG.lock`、
   graph quarantine、overlap説明、async、artifact、credential-free record/replay、
   1 source/1,000-tool importを実装。C02-01〜10とC02-D1〜D6を完了。
+- ToolUniverse v1.3.1を一つのcompact collection adapterとして統合し、公式
+  wheel/source/license/dependency/3,542-file treeをpinした。category profile、
+  active-lock leaf制限、schema dialect正規化/quarantine、cache/coercion無効化、
+  schema-change別承認、direct MCP混在、record/offline replayを実装。
+  1,000-leaf fixture、公式UniProt 17 leaf、実live responseでC17-01〜08と
+  C17-D1〜D6を完了。
 
 ## 1. 決定
 

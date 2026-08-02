@@ -14,6 +14,10 @@ sources:
     role: implementation
   - path: ari-skill-tool-registry/src/storage.py
     role: implementation
+  - path: ari-skill-tool-registry/src/tooluniverse_adapter.py
+    role: implementation
+  - path: ari-skill-tool-registry/providers/tooluniverse-support-v1.json
+    role: config
 last_verified: 2026-08-02
 ---
 
@@ -75,11 +79,52 @@ whether overlap is an exact duplicate, the same backend, a semantic near-match,
 or an independent method. Diverse discovery can prefer different independence
 groups, but results are not averaged automatically and disagreement is preserved.
 
-This allows future ToolUniverse-like collections, OpenROAD flows, quantum
+This allows ToolUniverse, future collection packages, OpenROAD flows, quantum
 simulators, or other MCP bundles to coexist without embedding package-specific
 routing logic in the agent. A direct stdio MCP source needs no custom leaf code.
 A non-stdio collection needs one `CatalogSource` plus one `ProviderAdapter`, with
 contract, supply-chain, record/replay, and scientific conformance fixtures.
+
+## ToolUniverse v1.3.1 adapter
+
+ToolUniverse is integrated as one compact collection, not thousands of public
+MCP tools. The registry itself does not import ToolUniverse. The isolated
+provider process exposes ToolUniverse's compact discovery/info/execute surface;
+operator sync expands selected leaves into canonical descriptors, and runtime
+dispatch maps an exact locked leaf back through `execute_tool`.
+
+The reviewed support record binds the upstream repository commit/tag, PyPI
+wheel and sdist, Apache-2.0 license file, upstream dependency lock, compact tool
+contract, and a canonical digest of all 3,542 non-cache files in the installed
+package. Both sync and runtime verify that complete tree and the exact
+shell-free `tooluniverse.smcp_server:run_stdio_server` callable. Version ranges,
+dynamic installation, an altered package tree, and a different entry point fail
+closed.
+
+Tool selection uses declarative category/type profiles rather than per-leaf
+wrappers. An ARI-side category filter is applied even when ToolUniverse's CLI
+loads a broader background set, and runtime additionally permits only leaf names
+in the active `CATALOG.lock`. Dynamic MCP loaders, agentic/composition/code
+execution, credential-requiring leaves, ambiguous/unreviewed profiles, and
+invalid schemas are quarantined. ToolUniverse v1.3.1's known property-level
+`required: true` dialect is deterministically converted to the standard parent
+`required` array and recorded in provenance; other invalid schema forms are not
+repaired.
+
+Argument validation always uses the locked canonical schema. Unknown fields,
+wrong JSON types, and missing required fields fail in record mode; upstream
+coercion is disabled, and explicit `null` is rejected because v1.3.1 silently
+removes it. ToolUniverse result caching, persistence, update checks, hooks, and
+search are disabled. Every result records collection/wheel/provider/leaf-spec
+identity and `upstream_cache: disabled`; ARI cassette/EAR is the only replay
+authority. Collection trust is capped below leaf replay or scientific
+validation, so importing ToolUniverse never scientifically admits its leaves.
+
+Bulk updates always produce a pending catalog diff. Changes to input schema,
+output schema, or defaults are grouped by stable provider/leaf identity and
+cannot be approved with ordinary `--approve`; they also require the explicit
+`--approve-schema-changes` flag. This keeps running experiments on their old
+lock and makes large collection upgrades reviewable.
 
 ## Record, replay, and EAR
 
@@ -96,6 +141,8 @@ default EAR curator includes this directory.
 cd ari-skill-tool-registry
 python src/sync_catalog.py                 # create or write pending review
 python src/sync_catalog.py --approve       # only after reviewing the diff
+python src/sync_catalog.py --approve --approve-schema-changes  # schema review
+python scripts/verify_tooluniverse.py --help
 python scripts/sync_contracts.py           # CI drift check
 pytest -q
 ```
