@@ -18,12 +18,16 @@ sources:
     role: implementation
   - path: ari-skill-paper-re/mcp.json
     role: config
+  - path: ari-skill-tool-registry/src/server.py
+    role: implementation
+  - path: ari-skill-tool-registry/skill.yaml
+    role: config
 last_verified: 2026-08-02
 ---
 
 # MCP 技能参考
 
-技能是为 ARI 智能体提供工具的 MCP 服务器。工具尽可能保持确定性；使用 LLM 的工具会明确标注。**共 14 个技能**（13 个默认，1 个附加）。v0.7.0 新增 `ari-skill-replicate`，用于 PaperBench 形式的可复现性流程。
+技能是为 ARI 智能体提供工具的 MCP 服务器。工具尽可能保持确定性；使用 LLM 的工具会明确标注。**共 15 个技能**（13 个默认，2 个默认关闭：orchestrator 与 tool registry）。v0.7.0 新增 `ari-skill-replicate`，用于 PaperBench 形式的可复现性流程。
 
 ## canonical `skill.yaml` contract
 
@@ -544,6 +548,13 @@ v0.7.0 引入的 PaperBench 形式 **自动 rubric 生成与审计**。读取论
 工作空间：`ARI_WORKSPACE` 环境变量（默认：`~/ARI`）。父子关系保存在每个检查点的 `meta.json` 中。
 
 ---
+
+## ari-skill-tool-registry
+
+默认关闭的大型科学 MCP 集合联邦层。它只公开 `discover`、`describe`、
+`invoke`、`get_status` 和 `get_result`；叶工具生成到已审查的不可变 catalog。
+执行需要精确不透明 `tool_ref` 与 admission。详见
+[tool_registry.md](tool_registry.md)。
 
 ## ari-skill-transform
 

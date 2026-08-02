@@ -1,0 +1,290 @@
+{
+  "$defs": {
+    "AdmissionEvidenceV1": {
+      "additionalProperties": false,
+      "description": "Value-free evidence used to compute an admission level.",
+      "properties": {
+        "architecture": {
+          "default": "",
+          "title": "Architecture",
+          "type": "string"
+        },
+        "dependencies_pinned": {
+          "default": false,
+          "title": "Dependencies Pinned",
+          "type": "boolean"
+        },
+        "launcher_verified": {
+          "default": false,
+          "title": "Launcher Verified",
+          "type": "boolean"
+        },
+        "limitations_documented": {
+          "default": false,
+          "title": "Limitations Documented",
+          "type": "boolean"
+        },
+        "method_identity_documented": {
+          "default": false,
+          "title": "Method Identity Documented",
+          "type": "boolean"
+        },
+        "notes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Notes",
+          "type": "array"
+        },
+        "protocol_conformance": {
+          "default": false,
+          "title": "Protocol Conformance",
+          "type": "boolean"
+        },
+        "provider_pinned": {
+          "default": false,
+          "title": "Provider Pinned",
+          "type": "boolean"
+        },
+        "replay_fixture_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replay Fixture Digest"
+        },
+        "scientific_validation_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scientific Validation Digest"
+        },
+        "semantics_documented": {
+          "default": false,
+          "title": "Semantics Documented",
+          "type": "boolean"
+        },
+        "units_documented": {
+          "default": false,
+          "title": "Units Documented",
+          "type": "boolean"
+        }
+      },
+      "title": "AdmissionEvidenceV1",
+      "type": "object"
+    },
+    "OriginHopV1": {
+      "additionalProperties": false,
+      "description": "One visible step in the collection-to-leaf supply chain.",
+      "properties": {
+        "digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Digest"
+        },
+        "id": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "source",
+            "collection",
+            "provider",
+            "tool"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id"
+      ],
+      "title": "OriginHopV1",
+      "type": "object"
+    },
+    "PythonStdioLauncherV1": {
+      "additionalProperties": false,
+      "description": "Shell-free, digest-bound Python MCP launcher.",
+      "properties": {
+        "arguments": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Arguments",
+          "type": "array"
+        },
+        "command_kind": {
+          "default": "python",
+          "title": "Command Kind",
+          "type": "string"
+        },
+        "entrypoint": {
+          "title": "Entrypoint",
+          "type": "string"
+        },
+        "expected_architecture": {
+          "default": "",
+          "title": "Expected Architecture",
+          "type": "string"
+        },
+        "identity_globs": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Identity Globs",
+          "type": "array"
+        },
+        "literal_env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Literal Env",
+          "type": "object"
+        },
+        "package_root": {
+          "title": "Package Root",
+          "type": "string"
+        },
+        "python_executable": {
+          "title": "Python Executable",
+          "type": "string"
+        }
+      },
+      "required": [
+        "python_executable",
+        "package_root",
+        "entrypoint"
+      ],
+      "title": "PythonStdioLauncherV1",
+      "type": "object"
+    },
+    "StdioSourceSpecV1": {
+      "additionalProperties": false,
+      "description": "Reviewed declaration for one direct stdio MCP provider.",
+      "properties": {
+        "capability_prefix": {
+          "default": "ari.federated",
+          "title": "Capability Prefix",
+          "type": "string"
+        },
+        "default_permissions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Default Permissions",
+          "type": "array"
+        },
+        "evidence": {
+          "$ref": "#/$defs/AdmissionEvidenceV1"
+        },
+        "kind": {
+          "default": "stdio-mcp",
+          "title": "Kind",
+          "type": "string"
+        },
+        "launcher": {
+          "$ref": "#/$defs/PythonStdioLauncherV1"
+        },
+        "max_pages": {
+          "default": 1000,
+          "maximum": 10000,
+          "minimum": 1,
+          "title": "Max Pages",
+          "type": "integer"
+        },
+        "max_tools": {
+          "default": 100000,
+          "maximum": 1000000,
+          "minimum": 1,
+          "title": "Max Tools",
+          "type": "integer"
+        },
+        "origin_prefix": {
+          "items": {
+            "$ref": "#/$defs/OriginHopV1"
+          },
+          "title": "Origin Prefix",
+          "type": "array"
+        },
+        "provider_digest": {
+          "title": "Provider Digest",
+          "type": "string"
+        },
+        "provider_id": {
+          "title": "Provider Id",
+          "type": "string"
+        },
+        "provider_version": {
+          "title": "Provider Version",
+          "type": "string"
+        },
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "default": 30.0,
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Timeout Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "source_id",
+        "provider_id",
+        "provider_version",
+        "provider_digest",
+        "launcher"
+      ],
+      "title": "StdioSourceSpecV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/tool-registry/catalog-sources-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "default": "ari.catalog-sources/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/StdioSourceSpecV1"
+      },
+      "title": "Sources",
+      "type": "array"
+    }
+  },
+  "title": "ARI Catalog Sources v1",
+  "type": "object"
+}

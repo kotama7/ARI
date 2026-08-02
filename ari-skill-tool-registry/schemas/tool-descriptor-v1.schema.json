@@ -1,0 +1,350 @@
+{
+  "$defs": {
+    "OriginHopV1": {
+      "additionalProperties": false,
+      "description": "One visible step in the collection-to-leaf supply chain.",
+      "properties": {
+        "digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Digest"
+        },
+        "id": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "source",
+            "collection",
+            "provider",
+            "tool"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id"
+      ],
+      "title": "OriginHopV1",
+      "type": "object"
+    },
+    "ProviderAsyncLifecycleV1": {
+      "additionalProperties": false,
+      "description": "Provider-native asynchronous operations bound into a descriptor.",
+      "properties": {
+        "cancel_tool": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cancel Tool"
+        },
+        "cancelled_states": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Cancelled States",
+          "type": "array"
+        },
+        "failed_states": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Failed States",
+          "type": "array"
+        },
+        "handle_argument": {
+          "default": "handle_id",
+          "title": "Handle Argument",
+          "type": "string"
+        },
+        "handle_field": {
+          "default": "handle_id",
+          "title": "Handle Field",
+          "type": "string"
+        },
+        "result_tool": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result Tool"
+        },
+        "running_states": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Running States",
+          "type": "array"
+        },
+        "state_field": {
+          "default": "status",
+          "title": "State Field",
+          "type": "string"
+        },
+        "status_tool": {
+          "title": "Status Tool",
+          "type": "string"
+        },
+        "submitted_states": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Submitted States",
+          "type": "array"
+        },
+        "succeeded_states": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Succeeded States",
+          "type": "array"
+        }
+      },
+      "required": [
+        "status_tool"
+      ],
+      "title": "ProviderAsyncLifecycleV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/tool-registry/tool-descriptor-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One leaf tool with immutable execution identity.",
+  "properties": {
+    "adapter_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Adapter Digest",
+      "type": "string"
+    },
+    "adapter_id": {
+      "title": "Adapter Id",
+      "type": "string"
+    },
+    "adapter_version": {
+      "minLength": 1,
+      "title": "Adapter Version",
+      "type": "string"
+    },
+    "annotations": {
+      "additionalProperties": true,
+      "title": "Annotations",
+      "type": "object"
+    },
+    "async_lifecycle": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ProviderAsyncLifecycleV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "backend_lineage": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Backend Lineage",
+      "type": "array"
+    },
+    "capability_ref": {
+      "title": "Capability Ref",
+      "type": "string"
+    },
+    "data_lineage": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Data Lineage",
+      "type": "array"
+    },
+    "defaults": {
+      "additionalProperties": true,
+      "title": "Defaults",
+      "type": "object"
+    },
+    "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+    },
+    "determinism": {
+      "default": "conditional",
+      "enum": [
+        "deterministic",
+        "seeded",
+        "conditional",
+        "stochastic",
+        "live-data"
+      ],
+      "title": "Determinism",
+      "type": "string"
+    },
+    "equivalence_key": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Equivalence Key"
+    },
+    "independence_group": {
+      "minLength": 1,
+      "title": "Independence Group",
+      "type": "string"
+    },
+    "input_schema": {
+      "additionalProperties": true,
+      "title": "Input Schema",
+      "type": "object"
+    },
+    "leaf_identity": {
+      "maxLength": 1024,
+      "minLength": 1,
+      "title": "Leaf Identity",
+      "type": "string"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Limitations",
+      "type": "array"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "origin_chains": {
+      "items": {
+        "items": {
+          "$ref": "#/$defs/OriginHopV1"
+        },
+        "type": "array"
+      },
+      "minItems": 1,
+      "title": "Origin Chains",
+      "type": "array"
+    },
+    "output_schema": {
+      "additionalProperties": true,
+      "title": "Output Schema",
+      "type": "object"
+    },
+    "permissions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Permissions",
+      "type": "array"
+    },
+    "provider_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Provider Digest",
+      "type": "string"
+    },
+    "provider_id": {
+      "title": "Provider Id",
+      "type": "string"
+    },
+    "provider_tool_name": {
+      "title": "Provider Tool Name",
+      "type": "string"
+    },
+    "provider_version": {
+      "minLength": 1,
+      "title": "Provider Version",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.tool-descriptor/v1",
+      "default": "ari.tool-descriptor/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "semantics": {
+      "additionalProperties": true,
+      "title": "Semantics",
+      "type": "object"
+    },
+    "side_effects": {
+      "default": "stateful",
+      "enum": [
+        "read-only",
+        "workspace-write",
+        "stateful",
+        "destructive"
+      ],
+      "title": "Side Effects",
+      "type": "string"
+    },
+    "source_ids": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Source Ids",
+      "type": "array"
+    },
+    "tool_ref": {
+      "minLength": 1,
+      "title": "Tool Ref",
+      "type": "string"
+    },
+    "units": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Units",
+      "type": "object"
+    }
+  },
+  "required": [
+    "tool_ref",
+    "source_ids",
+    "provider_id",
+    "provider_version",
+    "provider_digest",
+    "adapter_id",
+    "adapter_version",
+    "adapter_digest",
+    "name",
+    "provider_tool_name",
+    "capability_ref",
+    "leaf_identity",
+    "origin_chains",
+    "independence_group"
+  ],
+  "title": "ARI Canonical Tool Descriptor v1",
+  "type": "object"
+}

@@ -1,0 +1,88 @@
+{
+  "$id": "https://ari.dev/schemas/tool-registry/admission-policy-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Versioned, deterministic requirements for runtime admission.",
+  "properties": {
+    "allowed_permissions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Allowed Permissions",
+      "type": "array"
+    },
+    "policy_id": {
+      "default": "ari.default-federation-admission",
+      "title": "Policy Id",
+      "type": "string"
+    },
+    "require_dependency_pin_for_replay": {
+      "default": true,
+      "title": "Require Dependency Pin For Replay",
+      "type": "boolean"
+    },
+    "require_limitations": {
+      "default": true,
+      "title": "Require Limitations",
+      "type": "boolean"
+    },
+    "require_method_identity": {
+      "default": true,
+      "title": "Require Method Identity",
+      "type": "boolean"
+    },
+    "require_protocol_conformance": {
+      "default": true,
+      "title": "Require Protocol Conformance",
+      "type": "boolean"
+    },
+    "require_provider_pin": {
+      "default": true,
+      "title": "Require Provider Pin",
+      "type": "boolean"
+    },
+    "require_replay_fixture": {
+      "default": true,
+      "title": "Require Replay Fixture",
+      "type": "boolean"
+    },
+    "require_scientific_validation": {
+      "default": true,
+      "title": "Require Scientific Validation",
+      "type": "boolean"
+    },
+    "require_semantics": {
+      "default": true,
+      "title": "Require Semantics",
+      "type": "boolean"
+    },
+    "require_units": {
+      "default": true,
+      "title": "Require Units",
+      "type": "boolean"
+    },
+    "require_verified_launcher": {
+      "default": true,
+      "title": "Require Verified Launcher",
+      "type": "boolean"
+    },
+    "required_level": {
+      "default": "callable",
+      "enum": [
+        "discovered",
+        "callable",
+        "reproducible",
+        "scientifically_admitted"
+      ],
+      "title": "Required Level",
+      "type": "string"
+    },
+    "version": {
+      "default": "1.0.0",
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "title": "ARI Admission Policy v1",
+  "type": "object"
+}

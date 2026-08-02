@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-02T07:22:36.979904+00:00",
-  "commit": "b2510de2a6dbc66a760c7896a3b35ba9d42b84aa",
+  "generated_at": "2026-08-02T08:15:42.725433+00:00",
+  "commit": "4be54dd090213d13d3a80f73e04112e33a4d3726",
   "roots": [
     {
       "id": "R1",
@@ -2317,6 +2317,96 @@
       "id": "mcp.tool:replicate:suggest_target_leaf_count",
       "kind": "mcp.tool",
       "file": "ari-skill-replicate/src/server.py",
+      "loc": 1,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "dynamic.mcp"
+      ]
+    },
+    {
+      "id": "mcp.tool:tool-registry:describe",
+      "kind": "mcp.tool",
+      "file": "ari-skill-tool-registry/src/server.py",
+      "loc": 1,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "dynamic.mcp"
+      ]
+    },
+    {
+      "id": "mcp.tool:tool-registry:discover",
+      "kind": "mcp.tool",
+      "file": "ari-skill-tool-registry/src/server.py",
+      "loc": 1,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "dynamic.mcp"
+      ]
+    },
+    {
+      "id": "mcp.tool:tool-registry:get_result",
+      "kind": "mcp.tool",
+      "file": "ari-skill-tool-registry/src/server.py",
+      "loc": 1,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "dynamic.mcp"
+      ]
+    },
+    {
+      "id": "mcp.tool:tool-registry:get_status",
+      "kind": "mcp.tool",
+      "file": "ari-skill-tool-registry/src/server.py",
+      "loc": 1,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "dynamic.mcp"
+      ]
+    },
+    {
+      "id": "mcp.tool:tool-registry:invoke",
+      "kind": "mcp.tool",
+      "file": "ari-skill-tool-registry/src/server.py",
       "loc": 1,
       "reachable_from": [
         "R1",
@@ -4763,7 +4853,9 @@
       "reachable_from": [
         "R7"
       ],
-      "edges_in": []
+      "edges_in": [
+        "static.import"
+      ]
     },
     {
       "id": "py.module:ari-core/ari/public/run_env.py",
@@ -6217,6 +6309,96 @@
       "edges_in": []
     },
     {
+      "id": "py.module:ari-skill-tool-registry/src/__init__.py",
+      "kind": "py.module",
+      "file": "ari-skill-tool-registry/src/__init__.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.module:ari-skill-tool-registry/src/admission.py",
+      "kind": "py.module",
+      "file": "ari-skill-tool-registry/src/admission.py",
+      "loc": 267,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.module:ari-skill-tool-registry/src/broker.py",
+      "kind": "py.module",
+      "file": "ari-skill-tool-registry/src/broker.py",
+      "loc": 1005,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.module:ari-skill-tool-registry/src/catalog.py",
+      "kind": "py.module",
+      "file": "ari-skill-tool-registry/src/catalog.py",
+      "loc": 422,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.module:ari-skill-tool-registry/src/models.py",
+      "kind": "py.module",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 688,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.module:ari-skill-tool-registry/src/providers.py",
+      "kind": "py.module",
+      "file": "ari-skill-tool-registry/src/providers.py",
+      "loc": 580,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.module:ari-skill-tool-registry/src/server.py",
+      "kind": "py.module",
+      "file": "ari-skill-tool-registry/src/server.py",
+      "loc": 249,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "dynamic.string_key"
+      ]
+    },
+    {
+      "id": "py.module:ari-skill-tool-registry/src/sources.py",
+      "kind": "py.module",
+      "file": "ari-skill-tool-registry/src/sources.py",
+      "loc": 347,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.module:ari-skill-tool-registry/src/storage.py",
+      "kind": "py.module",
+      "file": "ari-skill-tool-registry/src/storage.py",
+      "loc": 320,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.module:ari-skill-tool-registry/src/sync_catalog.py",
+      "kind": "py.module",
+      "file": "ari-skill-tool-registry/src/sync_catalog.py",
+      "loc": 68,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.module:ari-skill-transform/src/__init__.py",
       "kind": "py.module",
       "file": "ari-skill-transform/src/__init__.py",
@@ -6236,7 +6418,7 @@
       "id": "py.module:ari-skill-transform/src/curate.py",
       "kind": "py.module",
       "file": "ari-skill-transform/src/curate.py",
-      "loc": 333,
+      "loc": 347,
       "reachable_from": [],
       "edges_in": []
     },
@@ -22525,6 +22707,1086 @@
       "edges_in": []
     },
     {
+      "id": "py.symbol:ari-skill-tool-registry/src/admission.py:AdmissionEngine",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/admission.py",
+      "loc": 115,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/admission.py:AdmissionPolicyV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/admission.py",
+      "loc": 31,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/admission.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/admission.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/admission.py:resolve_overlaps",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/admission.py",
+      "loc": 93,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/broker.py:BrokerAdmissionError",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/broker.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/broker.py:BrokerError",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/broker.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/broker.py:BrokerProtocolError",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/broker.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/broker.py:CatalogBroker",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/broker.py",
+      "loc": 898,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/broker.py:MAX_DESCRIBE_CHARS",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/broker.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/broker.py:MAX_DISCOVER_RESULTS",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/broker.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/broker.py:_ALLOWED_CONSTRAINTS",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/broker.py",
+      "loc": 12,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/broker.py:_PendingOperation",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/broker.py",
+      "loc": 4,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/broker.py:_QUERY_TOKEN_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/broker.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/broker.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/broker.py",
+      "loc": 8,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/broker.py:_json_object",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/broker.py",
+      "loc": 6,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/catalog.py:CATALOG_INDEX_FILENAME",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/catalog.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/catalog.py:CATALOG_LOCK_FILENAME",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/catalog.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/catalog.py:CatalogBuildResult",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/catalog.py",
+      "loc": 3,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/catalog.py:CatalogCorruptError",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/catalog.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/catalog.py:CatalogError",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/catalog.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/catalog.py:CatalogImmutableError",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/catalog.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/catalog.py:_MAX_LOCK_BYTES",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/catalog.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/catalog.py:_TOKEN_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/catalog.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/catalog.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/catalog.py",
+      "loc": 16,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/catalog.py:_atomic_write",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/catalog.py",
+      "loc": 15,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/catalog.py:_candidate_digest",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/catalog.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/catalog.py:_origin_problem",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/catalog.py",
+      "loc": 25,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/catalog.py:_strongest_decision",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/catalog.py",
+      "loc": 15,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/catalog.py:_terms",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/catalog.py",
+      "loc": 13,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/catalog.py:build_catalog",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/catalog.py",
+      "loc": 108,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/catalog.py:build_catalog_index",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/catalog.py",
+      "loc": 18,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/catalog.py:catalog_diff",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/catalog.py",
+      "loc": 21,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/catalog.py:load_catalog_index",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/catalog.py",
+      "loc": 17,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/catalog.py:load_catalog_lock",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/catalog.py",
+      "loc": 15,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/catalog.py:write_catalog_index",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/catalog.py",
+      "loc": 11,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/catalog.py:write_catalog_lock",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/catalog.py",
+      "loc": 24,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/catalog.py:write_reviewable_catalog",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/catalog.py",
+      "loc": 40,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:ADMISSION_DECISION_V1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:ADMISSION_LEVELS",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 6,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:AdmissionDecisionV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 16,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:AdmissionEvidenceV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 19,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:AdmissionLevel",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 3,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:CASSETTE_V1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:CATALOG_INDEX_V1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:CATALOG_LOCK_V1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:CanonicalToolDescriptorV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 163,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:CatalogIndexEntryV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 10,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:CatalogIndexV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 6,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:CatalogLockV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 44,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:InvocationCassetteV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 25,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:InvocationMode",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:LockedSourceV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 30,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:OriginHopV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 8,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:OverlapDecisionV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 9,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:ProviderAsyncLifecycleV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 73,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:QuarantinedCandidateV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 15,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:REGISTRY_HANDLE_V1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:RegistryHandleV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 27,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:SHA256_PATTERN",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:TOOL_DESCRIPTOR_V1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:_CONTROL_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:_CREDENTIAL_FIELD_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 6,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:_REF_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:_SENSITIVE_KEY_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 4,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:_SET_LIKE_SCHEMA_KEYS",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:_TOOL_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 35,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:_lock_payload",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 6,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:_reject_sensitive_mapping",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 10,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:_valid_digest",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 4,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:admission_rank",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:canonical_json",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 8,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:canonical_value",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 22,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:cassette_key",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:catalog_lock_digest",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:credential_field_paths",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 19,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:meets_admission",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:registry_handle_digest",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 8,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:sanitize_text",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 5,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:sha256_digest",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/models.py:tool_ref_for",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/models.py",
+      "loc": 5,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/providers.py:ProviderAdapter",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/providers.py",
+      "loc": 24,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/providers.py:ProviderAdapterError",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/providers.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/providers.py:ProviderDriftError",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/providers.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/providers.py:ProviderLaunchError",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/providers.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/providers.py:ProviderProtocolError",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/providers.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/providers.py:ProviderResponseV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/providers.py",
+      "loc": 6,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/providers.py:ProviderToolV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/providers.py",
+      "loc": 26,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/providers.py:PythonStdioLauncherV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/providers.py",
+      "loc": 101,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/providers.py:STDIO_ADAPTER_ID",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/providers.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/providers.py:STDIO_ADAPTER_VERSION",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/providers.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/providers.py:StaticProviderAdapter",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/providers.py",
+      "loc": 55,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/providers.py:StdioMCPAdapter",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/providers.py",
+      "loc": 213,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/providers.py:_CREDENTIAL_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/providers.py",
+      "loc": 4,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/providers.py:_ENV_NAME_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/providers.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/providers.py:_SAFE_PARENT_ENV",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/providers.py",
+      "loc": 7,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/providers.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/providers.py",
+      "loc": 17,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/providers.py:_file_digest",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/providers.py",
+      "loc": 9,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/providers.py:launcher_identity",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/providers.py",
+      "loc": 44,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/providers.py:provider_digest",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/providers.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/providers.py:stdio_adapter_digest",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/providers.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/server.py:_BROKER",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/server.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/server.py:_configured_broker",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/server.py",
+      "loc": 45,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/server.py:_package_root",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/server.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/server.py:_render",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/server.py",
+      "loc": 7,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/server.py:call_tool",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/server.py",
+      "loc": 34,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/server.py:list_tools",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/server.py",
+      "loc": 112,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/server.py:main",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/server.py",
+      "loc": 9,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/server.py:server",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/server.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/sources.py:CatalogCandidateV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/sources.py",
+      "loc": 5,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/sources.py:CatalogSource",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/sources.py",
+      "loc": 5,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/sources.py:CatalogSourceError",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/sources.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/sources.py:SOURCES_V1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/sources.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/sources.py:SourcesDocumentV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/sources.py",
+      "loc": 12,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/sources.py:StaticCatalogSource",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/sources.py",
+      "loc": 19,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/sources.py:StdioCatalogSource",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/sources.py",
+      "loc": 29,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/sources.py:StdioSourceSpecV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/sources.py",
+      "loc": 75,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/sources.py:_REF_SAFE_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/sources.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/sources.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/sources.py",
+      "loc": 12,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/sources.py:_annotation_dict",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/sources.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/sources.py:_descriptor_from_tool",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/sources.py",
+      "loc": 93,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/sources.py:_safe_capability_segment",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/sources.py",
+      "loc": 3,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/sources.py:_schema_defaults",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/sources.py",
+      "loc": 9,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/sources.py:load_source_specs",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/sources.py",
+      "loc": 15,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/sources.py:source_document_digest",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/sources.py",
+      "loc": 3,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/storage.py:CassetteStore",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/storage.py",
+      "loc": 165,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/storage.py:RegistryArtifactStore",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/storage.py",
+      "loc": 44,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/storage.py:RegistryStorageError",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/storage.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/storage.py:_CREDENTIAL_TEXT_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/storage.py",
+      "loc": 7,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/storage.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/storage.py",
+      "loc": 6,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/storage.py:_atomic_write",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/storage.py",
+      "loc": 16,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/storage.py:_safe_relative",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/storage.py",
+      "loc": 5,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/storage.py:persist_catalog_for_ear",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/storage.py",
+      "loc": 35,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/sync_catalog.py:_sync",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/sync_catalog.py",
+      "loc": 21,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/sync_catalog.py:main",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/sync_catalog.py",
+      "loc": 21,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.symbol:ari-skill-transform/src/claims.py:Claim",
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/claims.py",
@@ -22688,7 +23950,7 @@
       "id": "py.symbol:ari-skill-transform/src/curate.py:_DEFAULT_PUBLISH_YAML",
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/curate.py",
-      "loc": 16,
+      "loc": 17,
       "reachable_from": [],
       "edges_in": []
     },
@@ -22744,7 +24006,7 @@
       "id": "py.symbol:ari-skill-transform/src/curate.py:curate",
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/curate.py",
-      "loc": 140,
+      "loc": 148,
       "reachable_from": [],
       "edges_in": []
     },
@@ -24499,6 +25761,12 @@
       "to": "py.module:ari-skill-paper/src/review_engine.py",
       "kind": "dynamic.string_key",
       "evidence": "env:ARI_CHECKPOINT_DIR writer=ari-core/ari/agent/loop.py:521 -> reader=ari-skill-paper/src/review_engine.py"
+    },
+    {
+      "from": "py.module:ari-core/ari/agent/loop.py",
+      "to": "py.module:ari-skill-tool-registry/src/server.py",
+      "kind": "dynamic.string_key",
+      "evidence": "env:ARI_CHECKPOINT_DIR writer=ari-core/ari/agent/loop.py:521 -> reader=ari-skill-tool-registry/src/server.py"
     },
     {
       "from": "py.module:ari-core/ari/agent/loop.py",
@@ -27154,6 +28422,36 @@
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
+      "to": "mcp.tool:tool-registry:describe",
+      "kind": "dynamic.mcp",
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('describe') <- ari-skill-tool-registry/src/server.py:111"
+    },
+    {
+      "from": "py.module:ari-core/ari/mcp/client.py",
+      "to": "mcp.tool:tool-registry:discover",
+      "kind": "dynamic.mcp",
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('discover') <- ari-skill-tool-registry/src/server.py:78"
+    },
+    {
+      "from": "py.module:ari-core/ari/mcp/client.py",
+      "to": "mcp.tool:tool-registry:get_result",
+      "kind": "dynamic.mcp",
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('get_result') <- ari-skill-tool-registry/src/server.py:173"
+    },
+    {
+      "from": "py.module:ari-core/ari/mcp/client.py",
+      "to": "mcp.tool:tool-registry:get_status",
+      "kind": "dynamic.mcp",
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('get_status') <- ari-skill-tool-registry/src/server.py:160"
+    },
+    {
+      "from": "py.module:ari-core/ari/mcp/client.py",
+      "to": "mcp.tool:tool-registry:invoke",
+      "kind": "dynamic.mcp",
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('invoke') <- ari-skill-tool-registry/src/server.py:139"
+    },
+    {
+      "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:transform:curate_ear",
       "kind": "dynamic.mcp",
       "evidence": "ari-core/ari/mcp/client.py:336 call_tool('curate_ear') <- ari-skill-transform/src/server.py:2408"
@@ -28315,6 +29613,12 @@
       "to": "py.module:ari-skill-paper/src/review_engine.py",
       "kind": "dynamic.string_key",
       "evidence": "env:ARI_CHECKPOINT_DIR writer=ari-core/ari/paths.py:292 -> reader=ari-skill-paper/src/review_engine.py"
+    },
+    {
+      "from": "py.module:ari-core/ari/paths.py",
+      "to": "py.module:ari-skill-tool-registry/src/server.py",
+      "kind": "dynamic.string_key",
+      "evidence": "env:ARI_CHECKPOINT_DIR writer=ari-core/ari/paths.py:292 -> reader=ari-skill-tool-registry/src/server.py"
     },
     {
       "from": "py.module:ari-core/ari/paths.py",
@@ -31395,6 +32699,12 @@
       "evidence": "ari-skill-replicate/src/server.py:26 import ari.public.cost_tracker"
     },
     {
+      "from": "py.module:ari-skill-tool-registry/src/broker.py",
+      "to": "py.module:ari-core/ari/public/result.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-tool-registry/src/broker.py:14 import ari.public.result"
+    },
+    {
       "from": "py.module:ari-skill-transform/src/server.py",
       "to": "py.module:ari-core/ari/cost_tracker.py",
       "kind": "static.import",
@@ -32038,6 +33348,14 @@
     }
   ],
   "collisions": [
+    {
+      "tool_name": "get_status",
+      "skills": [
+        "orchestrator",
+        "tool-registry"
+      ],
+      "note": "flat MCP namespace clobber (client.py:283 last-skill-wins)"
+    },
     {
       "tool_name": "read_file",
       "skills": [

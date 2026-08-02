@@ -20,3 +20,4 @@ file formats, and terminology.
 - `rest_api.md` — REST API Reference: the viz dashboard server endpoints.
 - `rubric_schema.md` — Rubric schema reference: the canonical replication rubric schema.
 - `skills.md` — MCP Skills Reference: canonical manifest contract plus the `ari-skill-*` servers and tools.
+- `tool_registry.md` — Federated Scientific Tool Registry: immutable catalog, admission, overlap, and replay contracts.

@@ -1,0 +1,17 @@
+{
+  "description": "Provider-neutral discovery, admission, immutable invocation, and replay for large MCP collections.",
+  "entrypoint": "src/server.py",
+  "generated_from": "skill.yaml",
+  "name": "tool-registry-skill",
+  "package": "ari-skill-tool-registry",
+  "runtime": "python",
+  "schema_version": 1,
+  "tools": [
+    "discover",
+    "describe",
+    "invoke",
+    "get_status",
+    "get_result"
+  ],
+  "version": "0.1.0"
+}

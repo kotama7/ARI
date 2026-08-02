@@ -352,7 +352,9 @@ After a run completes, outputs are saved in `./checkpoints/<run_id>/`:
 
 ### Skills (MCP plugin servers)
 
-13 skills total. 12 are registered by default in `workflow.yaml`; 1 additional skill (orchestrator) can be enabled by adding it to the config.
+15 skills total. 13 are registered by default in `workflow.yaml`; 2 additional
+skills (orchestrator and the federated tool registry) are default-off and can be
+enabled explicitly.
 
 In v0.6.0 two skills were retired: `ari-skill-figure-router` was folded into `ari-skill-plot` (a single skill now owns both matplotlib plots and SVG architecture diagrams, both feeding the same VLM review loop), and `ari-skill-review` (rebuttal generation) was deleted — the rubric-driven review score is the final quality signal.
 
@@ -370,7 +372,9 @@ In v0.6.0 two skills were retired: `ari-skill-figure-router` was folded into `ar
 | `ari-skill-benchmark` | CSV/JSON analysis, plotting, statistical tests | ✗ | ✓ |
 | `ari-skill-vlm` | Vision-Language model figure/table review | ✓ | ✓ |
 | `ari-skill-coding` | Code generation + execution + file read + bash | ✗ | ✓ |
+| `ari-skill-replicate` | PaperBench-compatible rubric generation and audit | ✓ | ✓ |
 | `ari-skill-orchestrator` | Expose ARI as MCP server, recursive sub-experiments, dual stdio+HTTP transport | ✗ | — |
+| `ari-skill-tool-registry` | Immutable federation, scientific admission, and replay for large MCP collections | ✗ | — |
 
 ✗ = no LLM, △ = LLM used in some tools only, ✓ = primary tools use LLM.
 
@@ -425,4 +429,3 @@ What makes this paper different is not a headline number but a property: **every
 ## License
 
 MIT. See [LICENSE](LICENSE).
-

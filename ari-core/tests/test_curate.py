@@ -4,8 +4,9 @@ Coverage:
 - T-1: include / exclude / max_file_mb behaviour
 - T-built-in-deny: .env*, secrets/**, **/*.pem, **/*.key are filtered even
   when allowlisted
-- T-8: publish.yaml absent → curation is skipped, no ear_published/ left
+- T-8: publish.yaml absent → reproducibility-tuned default allowlist is used
 """
+
 from __future__ import annotations
 
 import json
@@ -28,6 +29,7 @@ import curate as curate_mod  # type: ignore  # noqa: E402
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
+
 
 def _write(p: Path, content: bytes | str = b"") -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -58,6 +60,7 @@ def _make_ear(tmp_path: Path) -> Path:
 # ---------------------------------------------------------------------------
 # T-1: allowlist / exclude / max_file_mb
 # ---------------------------------------------------------------------------
+
 
 def test_curate_allowlist_and_exclude(tmp_path: Path):
     ckpt = _make_ear(tmp_path)
@@ -135,6 +138,7 @@ max_file_mb: 100
 # T-built-in-deny: built-in deny outranks include
 # ---------------------------------------------------------------------------
 
+
 def test_builtin_deny_outranks_include(tmp_path: Path):
     ckpt = _make_ear(tmp_path)
     (ckpt / "ear" / "publish.yaml").write_text(
@@ -165,12 +169,14 @@ include:
 # back to LLM-only (paper → reproduce.sh) instead of using ARI's own code.
 # ---------------------------------------------------------------------------
 
+
 def test_missing_publish_yaml_uses_default(tmp_path: Path):
     ckpt = _make_ear(tmp_path)
     # No publish.yaml written
     res = curate_mod.curate(ckpt)
     assert res.skipped is False
-    # Default include = reproduce.sh + environment.json + code/** + data/** + ...
+    # Default include = reproduce.sh + environment.json + code/** + data/** +
+    # catalog/** + ...
     # _make_ear writes code/node_a/{train.py,utils.py} → both included.
     paths = set(res.included_files)
     assert "code/node_a/train.py" in paths
@@ -186,6 +192,31 @@ def test_missing_publish_yaml_uses_default(tmp_path: Path):
     # ear_published/ created with manifest.lock.
     assert (ckpt / "ear_published" / "manifest.lock").is_file()
     assert res.bundle_sha256
+
+
+def test_missing_publish_yaml_includes_registry_replay_evidence(tmp_path: Path):
+    ckpt = _make_ear(tmp_path)
+    catalog = ckpt / "ear" / "catalog"
+    _write(catalog / "CATALOG.lock", '{"catalog_digest":"sha256:catalog"}\n')
+    _write(
+        catalog / "catalog-provenance.json",
+        '{"schema_version":"ari.catalog-provenance/v1"}\n',
+    )
+    _write(catalog / "cassettes" / "ab" / "abcdef.json", '{"result":1}\n')
+    _write(
+        catalog / "raw-cassettes" / "sha256" / "cd" / "cdef.txt",
+        "provider result\n",
+    )
+
+    result = curate_mod.curate(ckpt)
+
+    published = set(result.included_files)
+    assert {
+        "catalog/CATALOG.lock",
+        "catalog/catalog-provenance.json",
+        "catalog/cassettes/ab/abcdef.json",
+        "catalog/raw-cassettes/sha256/cd/cdef.txt",
+    } <= published
 
 
 def test_missing_publish_yaml_overwrites_stale_dir(tmp_path: Path):
@@ -207,6 +238,7 @@ def test_missing_publish_yaml_overwrites_stale_dir(tmp_path: Path):
 # ---------------------------------------------------------------------------
 # Atomicity: a failing curate must not corrupt a previously good ear_published/
 # ---------------------------------------------------------------------------
+
 
 def test_curate_atomic_on_size_failure(tmp_path: Path):
     ckpt = _make_ear(tmp_path)
@@ -247,6 +279,7 @@ max_file_mb: 1
 # ---------------------------------------------------------------------------
 # bundle_sha256 stability: same inputs → same digest
 # ---------------------------------------------------------------------------
+
 
 def test_bundle_sha256_is_stable(tmp_path: Path):
     """Re-curating an unchanged ear/ with the same publish.yaml must produce

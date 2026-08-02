@@ -18,12 +18,16 @@ sources:
     role: implementation
   - path: ari-skill-paper-re/mcp.json
     role: config
+  - path: ari-skill-tool-registry/src/server.py
+    role: implementation
+  - path: ari-skill-tool-registry/skill.yaml
+    role: config
 last_verified: 2026-08-02
 ---
 
 # MCP Skills リファレンス
 
-Skills は ARI エージェントにツールを提供する MCP サーバーです。ツールは可能な限り決定論的であり、LLM を使用するツールは明示的に注記されています。**全 14 skill**（デフォルト 13、追加 1）。v0.7.0 で PaperBench 形式の再現性フロー用に `ari-skill-replicate` が追加されました。
+Skills は ARI エージェントにツールを提供する MCP サーバーです。ツールは可能な限り決定論的であり、LLM を使用するツールは明示的に注記されています。**全 15 skill**（デフォルト13、デフォルトOFF 2: orchestratorとtool registry）。v0.7.0 で PaperBench 形式の再現性フロー用に `ari-skill-replicate` が追加されました。
 
 ## canonical `skill.yaml` 契約
 
@@ -543,6 +547,13 @@ ARI 実験を非同期で起動します。`run_id` を返します。`parent_ru
 ワークスペース: `ARI_WORKSPACE` env（デフォルト: `~/ARI`）。親子関係は各チェックポイントの `meta.json` に保存されます。
 
 ---
+
+## ari-skill-tool-registry
+
+大規模な科学MCP collectionを連合するデフォルトOFF Skillです。公開操作は
+`discover`、`describe`、`invoke`、`get_status`、`get_result` の5個だけで、
+leafはreview済みimmutable catalogへ生成されます。実行にはexactなopaque
+`tool_ref` とadmissionが必要です。詳細は [tool_registry.md](tool_registry.md)。
 
 ## ari-skill-transform
 

@@ -12,12 +12,14 @@ sources:
     role: config
   - path: ari-skill-paper-re/src/server.py
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-skill-tool-registry/src/server.py
+    role: implementation
+last_verified: 2026-08-02
 ---
 
 # MCP ツールリファレンス
 
-ARI には 14 の MCP サーバが付属しています（`ari-skill-*` パッケージごとに 1 つ）。
+ARI には 15 の MCP サーバが付属しています（`ari-skill-*` パッケージごとに 1 つ）。
 このページはエージェントが呼び出せるすべてのツールのフラットなカタログです。
 各スキルの詳細は個別の `README.md` を参照してください。セクション
 [skills.md](skills.md) では責務ごとにグループ分けされています。
@@ -238,6 +240,18 @@ sbatch / パーティションが欠落している場合、ローカル CPU へ
 | `curate_ear` | `ear/` → `ear_published/` + manifest.lock に昇格 | ✗ |
 | `publish_ear` | `local-tarball` / `ari-registry` / `zenodo` / `gh` にプッシュ | ✗ |
 | `promote_ear` | `staged` → `unlisted` / `public` に昇格 | ✗ |
+
+## ari-skill-tool-registry — 科学ツール連合（デフォルトOFF）
+
+| ツール | 用途 | LLM |
+|---|---|:---:|
+| `discover` | immutable catalogをbounded paginationで検索 | ✗ |
+| `describe` | schema、provenance、admission、limitationをpage取得 | ✗ |
+| `invoke` | exactなadmitted `tool_ref`をlive/record/replayで実行 | ✗ |
+| `get_status` | descriptorに束縛されたasync handleをpoll | ✗ |
+| `get_result` | async最終結果を取得・正規化 | ✗ |
+
+source syncと科学的制約は [tool_registry.md](tool_registry.md) を参照してください。
 
 ## ari-skill-vlm — 図 / 表の査読（VLM）
 

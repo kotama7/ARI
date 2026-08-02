@@ -178,11 +178,12 @@ def test_repo_dynamic_overlay_no_orphans() -> None:
 def test_repo_mcp_tools_and_collision() -> None:
     graph = _repo_graph()
     tools = [n for n in graph["nodes"] if n["kind"] == "mcp.tool"]
-    # 87 provider-qualified nodes, representing 86 unique bare names because
-    # ``read_file`` is intentionally supplied by two providers.
-    assert len(tools) == 87
+    # 92 provider-qualified nodes, representing 90 unique bare names because
+    # ``read_file`` and ``get_status`` each have two explicit providers.
+    assert len(tools) == 92
     collisions = {c["tool_name"]: set(c["skills"]) for c in graph["collisions"]}
     assert collisions.get("read_file") == {"coding", "orchestrator"}
+    assert collisions.get("get_status") == {"orchestrator", "tool-registry"}
 
 
 def test_repo_evidence_and_no_sonfigs() -> None:
