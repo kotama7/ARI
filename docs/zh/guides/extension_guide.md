@@ -313,14 +313,15 @@ from mcp import ClientSession
 async with ClientSession(...) as session:
     result = await session.call_tool("run_experiment", {
         "experiment_md": open("experiment.md").read(),
+        "idempotency_key": "benchmark-request-001",
         "max_nodes": 10
     })
     run_id = result["run_id"]
 ```
 
-### 作为 REST API（通过 orchestrator）
+### 作为 MCP Streamable HTTP
 
-orchestrator MCP 服务器可以通过 HTTP 网关代理，用于 CI/CD 集成。
+网络 transport 使用 `/mcp` 的标准 MCP Streamable HTTP，而非独立 REST API。若没有 mode-0600 的 `ARI_ORCHESTRATOR_HTTP_TOKENS_FILE` 与 Bearer 认证，服务器拒绝启动。
 
 ---
 

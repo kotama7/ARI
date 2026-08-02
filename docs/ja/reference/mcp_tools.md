@@ -118,14 +118,22 @@ vendor-wrap エンジン（`ARI_IDEA_VIRSCI_REAL=1`）は、ライブ Semantic S
 surface に node/record 単位の削除操作はありません。詳細は
 [研究メモリ契約](memory_contract.md) を参照してください。
 
-## ari-skill-orchestrator — 再帰的 ARI ランナー
+## ari-skill-orchestrator — durable ARI control plane
 
 | ツール | 用途 | LLM |
 |---|---|:---:|
-| `run_experiment` | 子 ARI 実行を起動 | ✗ |
-| `get_status` | 子実行のステータス | ✗ |
-| `list_runs` | 既知のすべての実行 | ✗ |
-| `get_paper` | 実行の生成 LaTeX / PDF | ✗ |
+| `run_experiment` | quota付きARI runを冪等にsubmit | ✗ |
+| `get_status` | 認可済みdurable statusと進捗 | ✗ |
+| `get_result` | stateとcontent-addressed result refs | ✗ |
+| `stop_experiment` | cancellationを伝播しterminal stateを確定 | ✗ |
+| `list_runs` | principal-scoped run handle | ✗ |
+| `list_children` | 認可済みdirect child handle | ✗ |
+| `list_artifacts` | allowlist・digest検証済みartifact refs | ✗ |
+| `read_artifact` | exact SHA-256によるbounded read | ✗ |
+| `get_paper` | paper artifact refs | ✗ |
+| `get_ear` | 検証済みEAR/evidence refs | ✗ |
+| `list_skills` | run-bound `SKILLS.lock`のsanitized view | ✗ |
+| `get_workflow` | lock済みphase/tool membership | ✗ |
 
 ## ari-skill-paper — LaTeX 論文執筆
 

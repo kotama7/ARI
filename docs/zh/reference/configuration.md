@@ -280,7 +280,7 @@ skills:
 | `ANTHROPIC_API_KEY` | Anthropic API 密钥 | （无） |
 | `ARI_RETRIEVAL_BACKEND` | 固定论文provider: `semantic_scholar` / `arxiv` / `alphaxiv` | `semantic_scholar` |
 | `VLM_MODEL` | 图表审阅 VLM 模型 | `openai/gpt-4o` |
-| `ARI_ORCHESTRATOR_PORT` | orchestrator 技能的 HTTP 端口 | `9890` |
+| `ARI_ORCHESTRATOR_HTTP_PORT` | 认证 MCP Streamable HTTP 端口 | `9890` |
 | `LETTA_BASE_URL` | Letta 服务器端点 | `http://localhost:8283` |
 | `LETTA_API_KEY` | Letta Cloud 必需 | （无） |
 | `LETTA_EMBEDDING_CONFIG` | 归档内存使用的嵌入句柄（智能体的聊天 LLM 不被 ARI 调用，已固定为 `letta/letta-free`） | `letta-default` |

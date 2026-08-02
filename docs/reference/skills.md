@@ -944,23 +944,30 @@ provenance. See [Research memory contract](memory_contract.md).
 
 ## ari-skill-orchestrator
 
-Expose ARI as an MCP server for external agents and IDEs. Supports recursive sub-experiments. **LLM: No** (delegates to ARI CLI).
-
-Dual transport: **stdio** (MCP for Claude Desktop / other MCP clients) + **HTTP** (REST + SSE on `ARI_ORCHESTRATOR_PORT`, default 9890).
+Expose ARI as an authenticated, durable MCP control plane for external agents and
+IDEs. **LLM: No** (delegates to ARI CLI). Stdio is canonical; the optional network
+transport is bearer-authenticated MCP Streamable HTTP. Both use one service and state
+machine; there is no parallel REST/SSE API.
 
 ### Tools
 
-#### `run_experiment(experiment_md, max_nodes=10, model="", max_recursion_depth=3, parent_run_id="", llm_backend="", llm_api_key="", llm_base_url="", executor="", cpus=0, timeout_minutes=0, retrieval_backend="")`
+#### `run_experiment(experiment_md, idempotency_key, ...)`
 
-Launch an ARI experiment asynchronously. Returns `run_id`. When `parent_run_id` is set, the experiment is tracked as a child of the parent (for recursive sub-experiment workflows).
+Idempotently launch a digest-bound experiment under declared depth, run, node, cost,
+CPU, and timeout budgets. Returns `RunHandleV1`; no credential argument exists.
 
 #### `get_status(run_id)`
 
-Return progress, current best metrics, and recursion metadata for a run.
+Return authorized durable state and bounded scientific progress for an exact run ID.
+
+#### `get_result(run_id)` / `stop_experiment(run_id)`
+
+Return `RunResultV1` artifact references or propagate cancellation to the run's process
+group.
 
 #### `list_runs()`
 
-List all past experiment runs.
+List only runs visible to the authenticated principal.
 
 #### `list_children(run_id)`
 
@@ -968,9 +975,11 @@ Return child runs of a parent experiment (for recursive sub-experiment tracking)
 
 #### `get_paper(run_id)`
 
-Return the generated paper (LaTeX).
+Return generated paper artifact references. `get_ear`, `list_artifacts`, and
+`read_artifact` expose only verified SHA-256 identities, never checkpoint paths.
 
-Workspace: `ARI_WORKSPACE` env (default: `~/ARI`). Parent-child relationships persisted in `meta.json` per checkpoint.
+`list_skills(run_id)` and `get_workflow(run_id)` return only sanitized data from the
+verified run-level `SKILLS.lock`. See [Orchestrator control plane](orchestrator.md).
 
 ---
 

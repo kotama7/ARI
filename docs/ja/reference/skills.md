@@ -512,13 +512,13 @@ node 単位 clear はありません。検索は model/ranking/filter provenance
 
 ARI を外部エージェントや IDE 向けの MCP サーバーとして公開します。再帰的なサブ実験をサポート。**LLM: No**（ARI CLI に委譲）。
 
-デュアルトランスポート: **stdio**（Claude Desktop / 他 MCP クライアント向け）+ **HTTP**（REST + SSE、`ARI_ORCHESTRATOR_PORT`、デフォルト 9890）。
+stdioをcanonical transportとし、networkではBearer認証必須の標準MCP Streamable HTTPを使います。両者は同じdurable service/state machineを呼び、独自REST/SSE APIはありません。詳細は[Orchestrator control plane](../../reference/orchestrator.md)を参照してください。
 
 ### ツール
 
-#### `run_experiment(experiment_md, max_nodes=10, model="", max_recursion_depth=3, parent_run_id="", llm_backend="", llm_api_key="", llm_base_url="", executor="", cpus=0, timeout_minutes=0, retrieval_backend="")`
+#### `run_experiment(experiment_md, idempotency_key, ...)`
 
-ARI 実験を非同期で起動します。`run_id` を返します。`parent_run_id` を指定すると、その実験は親の子として追跡されます（再帰的サブ実験ワークフロー用）。
+実験本文と全budgetをdigestで固定し、冪等に非同期起動します。credential引数はなく、`RunHandleV1`を返します。
 
 #### `get_status(run_id)`
 
@@ -526,7 +526,7 @@ ARI 実験を非同期で起動します。`run_id` を返します。`parent_ru
 
 #### `list_runs()`
 
-過去の全実験実行を一覧表示します。
+認証principalから見えるdurable runだけを一覧表示します。
 
 #### `list_children(run_id)`
 
@@ -534,9 +534,9 @@ ARI 実験を非同期で起動します。`run_id` を返します。`parent_ru
 
 #### `get_paper(run_id)`
 
-生成された論文（LaTeX）を返します。
+生成物のSHA-256 artifact参照を返します。`get_result`、`stop_experiment`、`list_artifacts`、`read_artifact`、`get_ear`、`list_skills`、`get_workflow`も同じowner scopeを適用します。
 
-ワークスペース: `ARI_WORKSPACE` env（デフォルト: `~/ARI`）。親子関係は各チェックポイントの `meta.json` に保存されます。
+run stateと親子関係の正本はSQLite registryであり、`meta.json`は互換indexに限ります。
 
 ---
 

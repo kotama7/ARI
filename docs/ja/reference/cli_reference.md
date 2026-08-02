@@ -445,7 +445,7 @@ ari skills-list [--config <config.yaml>]
 |------|------|-----------|
 | `ARI_RETRIEVAL_BACKEND` | 固定provider: `semantic_scholar` / `arxiv` / `alphaxiv` | `semantic_scholar` |
 | `VLM_MODEL` | 図レビュー用 VLM モデル | `openai/gpt-4o` |
-| `ARI_ORCHESTRATOR_PORT` | orchestrator スキルの HTTP ポート | `9890` |
+| `ARI_ORCHESTRATOR_HTTP_PORT` | orchestrator の MCP Streamable HTTP ポート | `9890` |
 
 ### メモリ (Letta)
 

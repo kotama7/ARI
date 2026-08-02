@@ -14,13 +14,13 @@
     ]
   },
   "known_collisions": {
-    "get_status": [
+    "get_result": [
       "ari-skill-orchestrator",
       "ari-skill-tool-registry"
     ],
-    "read_file": [
-      "ari-skill-coding",
-      "ari-skill-orchestrator"
+    "get_status": [
+      "ari-skill-orchestrator",
+      "ari-skill-tool-registry"
     ]
   },
   "schema_version": 1,
@@ -405,83 +405,97 @@
         "args": [
           "run_id"
         ],
-        "idiom": "lowlevel",
+        "idiom": "fastmcp",
         "name": "get_ear"
       },
       {
         "args": [
           "run_id"
         ],
-        "idiom": "lowlevel",
+        "idiom": "fastmcp",
         "name": "get_paper"
       },
       {
         "args": [
           "run_id"
         ],
-        "idiom": "lowlevel",
+        "idiom": "fastmcp",
+        "name": "get_result"
+      },
+      {
+        "args": [
+          "run_id"
+        ],
+        "idiom": "fastmcp",
         "name": "get_status"
       },
       {
-        "args": [],
-        "idiom": "lowlevel",
+        "args": [
+          "run_id"
+        ],
+        "idiom": "fastmcp",
         "name": "get_workflow"
+      },
+      {
+        "args": [
+          "run_id"
+        ],
+        "idiom": "fastmcp",
+        "name": "list_artifacts"
       },
       {
         "args": [
           "parent_run_id"
         ],
-        "idiom": "lowlevel",
+        "idiom": "fastmcp",
         "name": "list_children"
+      },
+      {
+        "args": [],
+        "idiom": "fastmcp",
+        "name": "list_runs"
       },
       {
         "args": [
           "run_id"
         ],
-        "idiom": "lowlevel",
-        "name": "list_files"
-      },
-      {
-        "args": [],
-        "idiom": "lowlevel",
-        "name": "list_runs"
-      },
-      {
-        "args": [],
-        "idiom": "lowlevel",
+        "idiom": "fastmcp",
         "name": "list_skills"
       },
       {
         "args": [
-          "filename",
+          "artifact_id",
           "run_id"
         ],
-        "idiom": "lowlevel",
-        "name": "read_file"
+        "idiom": "fastmcp",
+        "name": "read_artifact"
       },
       {
         "args": [
           "cpus",
+          "estimated_cost_usd",
           "executor",
           "experiment_md",
-          "llm_api_key",
+          "idempotency_key",
           "llm_backend",
-          "llm_base_url",
+          "max_cost_usd",
+          "max_descendant_runs",
           "max_nodes",
           "max_recursion_depth",
+          "max_total_nodes",
           "model",
           "parent_run_id",
           "retrieval_backend",
           "timeout_minutes"
         ],
-        "idiom": "lowlevel",
+        "idiom": "fastmcp",
         "name": "run_experiment"
       },
       {
         "args": [
           "run_id"
         ],
-        "idiom": "lowlevel",
+        "idiom": "fastmcp",
         "name": "stop_experiment"
       }
     ],

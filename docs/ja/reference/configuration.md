@@ -282,7 +282,7 @@ skills:
 | `ANTHROPIC_API_KEY` | Anthropic API キー | (なし) |
 | `ARI_RETRIEVAL_BACKEND` | 固定論文provider: `semantic_scholar` / `arxiv` / `alphaxiv` | `semantic_scholar` |
 | `VLM_MODEL` | 図レビュー用 VLM モデル | `openai/gpt-4o` |
-| `ARI_ORCHESTRATOR_PORT` | orchestrator スキルの HTTP ポート | `9890` |
+| `ARI_ORCHESTRATOR_HTTP_PORT` | 認証付き MCP Streamable HTTP ポート | `9890` |
 | `LETTA_BASE_URL` | Letta サーバエンドポイント | `http://localhost:8283` |
 | `LETTA_API_KEY` | Letta Cloud で必須 | (なし) |
 | `LETTA_EMBEDDING_CONFIG` | アーカイバルメモリ用の埋め込みハンドル（エージェントのチャット LLM は ARI から呼び出さないため `letta/letta-free` に固定） | `letta-default` |

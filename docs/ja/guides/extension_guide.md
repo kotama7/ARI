@@ -313,14 +313,15 @@ from mcp import ClientSession
 async with ClientSession(...) as session:
     result = await session.call_tool("run_experiment", {
         "experiment_md": open("experiment.md").read(),
+        "idempotency_key": "benchmark-request-001",
         "max_nodes": 10
     })
     run_id = result["run_id"]
 ```
 
-### REST API として（オーケストレーター経由）
+### MCP Streamable HTTP として
 
-オーケストレーター MCP サーバーは、CI/CD 統合のために HTTP ゲートウェイ経由でプロキシできます。
+network transportは独自REST APIではなく、`/mcp`の標準MCP Streamable HTTPです。mode-0600の`ARI_ORCHESTRATOR_HTTP_TOKENS_FILE`とBearer認証なしには起動しません。
 
 ---
 

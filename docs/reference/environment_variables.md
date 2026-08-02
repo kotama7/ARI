@@ -172,11 +172,13 @@ LLM follows `ARI_MODEL_IDEA`.
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `ARI_ORCHESTRATOR_PORT` | MCP server port | `9890` |
-| `ARI_ORCHESTRATOR_LOGS` | Log directory | `$ARI_WORKSPACE/orchestrator_logs` |
+| `ARI_ORCHESTRATOR_HTTP_HOST` / `ARI_ORCHESTRATOR_HTTP_PORT` | MCP Streamable HTTP bind address | `127.0.0.1` / `9890` |
+| `ARI_ORCHESTRATOR_HTTP_TOKENS_FILE` | Required mode-0600 bearer-token digest file for network transport | – |
+| `ARI_ORCHESTRATOR_LOGS` | Checkpoint and durable registry root | `$ARI_WORKSPACE/logs` |
 | `ARI_ORCHESTRATOR_DRY_RUN` | Skip real `ari run` (smoke testing) | – |
-| `ARI_ORCHESTRATOR_SSE_ONESHOT` | One-shot SSE response mode | – |
-| `ARI_ORCHESTRATOR_SSE_TIMEOUT` | SSE timeout (seconds) | – |
+| `ARI_ORCHESTRATOR_MAX_ACTIVE_RUNS` | Deployment-wide active-run ceiling | `16` |
+| `ARI_ORCHESTRATOR_MAX_TOTAL_NODES` | Per-lineage deployment node ceiling | `10000` |
+| `ARI_ORCHESTRATOR_MAX_COST_USD` | Per-lineage deployment cost ceiling | `10000` |
 
 ### Transform skill
 

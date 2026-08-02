@@ -107,14 +107,22 @@ ARI 附带 15 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 记录仅追加，公共 surface 不提供按 node/record 删除。详见
 [研究记忆契约](memory_contract.md)。
 
-## ari-skill-orchestrator — 递归 ARI 运行器
+## ari-skill-orchestrator — durable ARI control plane
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
-| `run_experiment` | 启动子 ARI 运行 | ✗ |
-| `get_status` | 子运行状态 | ✗ |
-| `list_runs` | 所有已知运行 | ✗ |
-| `get_paper` | 某次运行生成的 LaTeX / PDF | ✗ |
+| `run_experiment` | 幂等提交受 quota 限制的 ARI run | ✗ |
+| `get_status` | 经授权的 durable status 与进度 | ✗ |
+| `get_result` | state 与 content-addressed result refs | ✗ |
+| `stop_experiment` | 传播 cancellation 并确定 terminal state | ✗ |
+| `list_runs` | principal-scoped run handle | ✗ |
+| `list_children` | 经授权的 direct child handle | ✗ |
+| `list_artifacts` | allowlist 且 digest 验证的 artifact refs | ✗ |
+| `read_artifact` | 按 exact SHA-256 有界读取 | ✗ |
+| `get_paper` | paper artifact refs | ✗ |
+| `get_ear` | 已验证 EAR/evidence refs | ✗ |
+| `list_skills` | run-bound `SKILLS.lock` sanitized view | ✗ |
+| `get_workflow` | 已锁定 phase/tool membership | ✗ |
 
 ## ari-skill-paper — LaTeX 论文撰写
 

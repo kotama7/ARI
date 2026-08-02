@@ -341,7 +341,7 @@ skills:
 | `ANTHROPIC_API_KEY` | Anthropic API key | (none) |
 | `ARI_RETRIEVAL_BACKEND` | Default pinned paper provider: `semantic_scholar`, `arxiv`, `alphaxiv` | `semantic_scholar` |
 | `VLM_MODEL` | VLM model for figure review | `openai/gpt-4o` |
-| `ARI_ORCHESTRATOR_PORT` | HTTP port for orchestrator skill | `9890` |
+| `ARI_ORCHESTRATOR_HTTP_PORT` | Authenticated MCP Streamable HTTP port | `9890` |
 | `LETTA_BASE_URL` | Letta server endpoint | `http://localhost:8283` |
 | `LETTA_API_KEY` | Required for Letta Cloud; optional for self-hosted | (none) |
 | `LETTA_EMBEDDING_CONFIG` | Embedding handle Letta uses for archival memory (the agent's chat LLM is hardcoded to `letta/letta-free` since ARI never invokes it) | `letta-default` |

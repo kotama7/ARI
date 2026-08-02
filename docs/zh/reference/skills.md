@@ -514,13 +514,13 @@ research record 按内容寻址且仅追加，公共与 backend surface 均无 n
 
 将 ARI 作为 MCP 服务器暴露给外部智能体和 IDE，支持递归子实验。**LLM：否**（委托给 ARI CLI）。
 
-双传输：**stdio**（用于 Claude Desktop / 其他 MCP 客户端）+ **HTTP**（REST + SSE，`ARI_ORCHESTRATOR_PORT`，默认 9890）。
+stdio 是 canonical transport；网络访问使用强制 Bearer 认证的标准 MCP Streamable HTTP。二者调用同一个 durable service/state machine，不再提供独立 REST/SSE API。详见 [Orchestrator control plane](../../reference/orchestrator.md)。
 
 ### 工具
 
-#### `run_experiment(experiment_md, max_nodes=10, model="", max_recursion_depth=3, parent_run_id="", llm_backend="", llm_api_key="", llm_base_url="", executor="", cpus=0, timeout_minutes=0, retrieval_backend="")`
+#### `run_experiment(experiment_md, idempotency_key, ...)`
 
-异步启动 ARI 实验。返回 `run_id`。当设置 `parent_run_id` 时，该实验将作为父实验的子项被追踪（用于递归子实验工作流）。
+以 digest 固定实验正文与全部 budget，并幂等异步启动。无 credential 参数，返回 `RunHandleV1`。
 
 #### `get_status(run_id)`
 
@@ -528,7 +528,7 @@ research record 按内容寻址且仅追加，公共与 backend surface 均无 n
 
 #### `list_runs()`
 
-列出所有过去的实验运行。
+仅列出认证 principal 可见的 durable run。
 
 #### `list_children(run_id)`
 
@@ -536,9 +536,9 @@ research record 按内容寻址且仅追加，公共与 backend surface 均无 n
 
 #### `get_paper(run_id)`
 
-返回生成的论文（LaTeX）。
+返回生成物的 SHA-256 artifact 引用。`get_result`、`stop_experiment`、`list_artifacts`、`read_artifact`、`get_ear`、`list_skills` 与 `get_workflow` 使用相同 owner scope。
 
-工作空间：`ARI_WORKSPACE` 环境变量（默认：`~/ARI`）。父子关系保存在每个检查点的 `meta.json` 中。
+run state 与父子关系的权威来源是 SQLite registry；`meta.json` 仅为兼容索引。
 
 ---
 

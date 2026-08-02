@@ -62,6 +62,7 @@ and **Reference**. Plus `about/` for project meta.
 - [CLI reference](reference/cli_reference.md)
 - [Configuration](reference/configuration.md)
 - [MCP skills](reference/skills.md)
+- [Orchestrator control plane](reference/orchestrator.md)
 - [Federated tool registry](reference/tool_registry.md)
 - [Qiskit and IBM Quantum profiles](reference/qiskit_profiles.md)
 - [Registry](reference/registry.md)
@@ -118,6 +119,7 @@ release gate checks it against the tree (`docs/about/release_policy.md` §4).
 | reference/cli_reference | [✓](reference/cli_reference.md) | [✓](ja/reference/cli_reference.md) | [✓](zh/reference/cli_reference.md) |
 | reference/configuration | [✓](reference/configuration.md) | [✓](ja/reference/configuration.md) | [✓](zh/reference/configuration.md) |
 | reference/skills | [✓](reference/skills.md) | [✓](ja/reference/skills.md) | [✓](zh/reference/skills.md) |
+| reference/orchestrator | [✓](reference/orchestrator.md) | — | — |
 | reference/tool_registry | [✓](reference/tool_registry.md) | [✓](ja/reference/tool_registry.md) | [✓](zh/reference/tool_registry.md) |
 | reference/qiskit_profiles | [✓](reference/qiskit_profiles.md) | [✓](ja/reference/qiskit_profiles.md) | [✓](zh/reference/qiskit_profiles.md) |
 | reference/registry | [✓](reference/registry.md) | [✓](ja/reference/registry.md) | [✓](zh/reference/registry.md) |

@@ -9,15 +9,16 @@
   "tools": [
     "get_ear",
     "get_paper",
+    "get_result",
     "get_status",
     "get_workflow",
     "list_children",
-    "list_files",
+    "list_artifacts",
     "list_runs",
     "list_skills",
-    "read_file",
+    "read_artifact",
     "run_experiment",
     "stop_experiment"
   ],
-  "version": "1.0.0"
+  "version": "2.0.0"
 }
