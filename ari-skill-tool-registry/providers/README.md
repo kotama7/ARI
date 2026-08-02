@@ -42,3 +42,52 @@ Those identities and limitations remain leaf provenance and admission concerns.
 Rollback uses the previous support record, provider environment, active
 `CATALOG.lock`, and cassettes. Runtime never changes a release or catalog on
 startup.
+
+## OpenROAD
+
+`openroad-support-v1.json` admits the official
+[OpenROAD-MCP v0.6.1](https://github.com/The-OpenROAD-Project/OpenROAD-MCP/releases/tag/v0.6.1)
+Python release at one full commit and the official
+[ORFS 26Q3](https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts/releases/tag/26Q3)
+support line with its exact OpenROAD submodule commit. The record binds the
+source archive, BSD-3-Clause license, Python dependency lock, direct
+dependencies, installed package tree, and ten-tool MCP schema contract.
+
+The official project now recommends its maintained npm distribution and labels
+the Python distribution deprecated/final. ARI pins Python 0.6.1 only because the
+current reviewed generic process launcher is Python-only. Moving to npm is a new
+supply-chain and launcher admission, not an in-place edit of this record.
+
+ARI does not publish the upstream interactive session tools. Their generic exec
+surface accepts commands broader than a scientific flow profile should. Each
+catalog leaf is instead one immutable `OpenRoadExperimentV1`: inputs, executable,
+image, ORFS/OpenROAD commits, PDK/library, seed, thread count, closed Tcl verbs,
+declared outputs, metric pointers/units/context, and evidence fixtures are fixed
+before sync. Runtime passes `-no_init`, as recommended by the official
+[OpenROAD test guidance](https://openroad.readthedocs.io/en/latest/contrib/DeveloperGuide.html),
+and writes JSON design metrics through the documented
+[`-metrics` interface](https://openroad.readthedocs.io/en/latest/contrib/Logger.html).
+
+### Adding a provider release or toolchain line
+
+1. Resolve the official tag to a full commit and record immutable archive,
+   license, lock, direct-dependency, package-tree, and MCP-contract digests.
+2. Resolve the ORFS tag and its OpenROAD submodule to full commits. Keep each
+   historical support record immutable.
+3. Build the provider and OpenROAD/ORFS toolchain in isolated environments;
+   never use a mutable image tag or an implicit host `openroad`.
+4. Start from `openroad-source.example.yaml`. Close the source workspace so it
+   contains exactly its declared regular files, and calculate every digest.
+5. Produce exact `ari.openroad-golden/v1` and
+   `ari.openroad-replay-fixture/v1` files. The verifier checks their bytes and
+   metric identity/ranges; a digest string without the file is rejected.
+6. Run `scripts/verify_openroad.py --smoke` and, for a validation run,
+   `--run-profile ... --artifact-root ...`. Review the result metrics,
+   transcript, output manifest, and cleanup.
+7. Sync the catalog and separately approve schema changes. Same-design,
+   same-PDK/library profiles remain in one independence group even when their
+   version or flow results disagree.
+
+Rollback selects the prior provider/toolchain record, experiment profile,
+catalog lock, and cassette. PDK and library license terms are profile-specific;
+the OpenROAD/ORFS license does not grant rights to third-party technology data.

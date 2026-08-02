@@ -13,7 +13,7 @@ last_verified: 2026-08-01
 
 # C18: OpenROAD domain profile 実装計画
 
-> 状態: Proposed / pilot integration component。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
+> 状態: In progress — C18-01〜06/08とlocal cleanupを実装済み、C18-07 scheduler/container統合は未完。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
 
 ## 1. 責務
 
@@ -46,16 +46,35 @@ stateは暗黙global processに置かず、`SessionHandle`とworkspace digestに
 | C18-07 | HPC/container execution | C06 handle、resource/cancel/log integration |
 | C18-08 | record/replay | reports/artifacts/session transcript、tool無しoffline inspection |
 
+### 実装進捗（2026-08-02）
+
+- 公式 `The-OpenROAD-Project/OpenROAD-MCP` v0.6.1とORFS 26Q3/OpenROAD
+  submodule commitをsupport matrixへ固定し、source/license/lock/package tree/
+  十ツールMCP contractを実provider processで照合した。
+- upstream interactive toolをleafとして公開せず、一つの
+  `OpenRoadExperimentV1`を一つのvirtual async leafへ変換した。caller入力は
+  idempotent `request_id`だけで、任意Tcl/shell/env/cwd/pathは受け付けない。
+- closed verb/flat inert list、`-no_init`、private workspace、copy後digest検証、
+  declared outputだけのcapture、missing/unexpected/symlink/size/digest failureを実装した。
+- metricをvalue/unit/corner/mode/stage/report digest/JSON pointerへ正規化し、exact
+  golden/replay fixtureファイルとrangeを検証する。digest文字列だけのevidenceは拒否する。
+- provider sessionを一接続で保持し、sentinel completion、bounded concurrency/
+  retained handles、success/failure/cancel transcript、全terminal pathのterminate、
+  restart時fail-closedを実装した。
+- brokerがadapter artifact参照のpath/size/SHA-256/result digestを再検証し、record
+  cassetteからOpenROAD/PDK無しでoffline replayする。parallel workspace、cancel、
+  same-backend overlap、negative artifact/rangeを46件のregistry suiteで検証した。
+
 ## 4. 受け入れ基準
 
-- [ ] PDK/tool/design/configがunpinnedならreproducible以上にadmitしない。
-- [ ] session handleなしにstateful commandを実行できない。
-- [ ] workspace外path、arbitrary Tcl/shell escape、undeclared networkを拒否する。
-- [ ] QoR metricにunit、corner、mode、stage、source report pointerがある。
+- [x] PDK/tool/design/configがunpinnedならreproducible以上にadmitしない。
+- [x] session handleなしにstateful commandを実行できない。
+- [x] workspace外path、arbitrary Tcl/shell escape、undeclared networkを拒否する。
+- [x] QoR metricにunit、corner、mode、stage、source report pointerがある。
 - [ ] timeout/cancelでscheduler/container/sessionをcleanupする。
-- [ ] golden designのexpected report rangeとartifact digest policyを検証する。
-- [ ] disagreementするflow/version結果を同一methodの独立証拠として数えない。
-- [ ] record bundleをOpenROAD/PDKなしでinspection/replayできる。
+- [x] golden designのexpected report rangeとartifact digest policyを検証する。
+- [x] disagreementするflow/version結果を同一methodの独立証拠として数えない。
+- [x] record bundleをOpenROAD/PDKなしでinspection/replayできる。
 
 ## 5. 削除要件
 

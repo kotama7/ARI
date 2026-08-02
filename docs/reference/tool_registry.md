@@ -18,6 +18,10 @@ sources:
     role: implementation
   - path: ari-skill-tool-registry/providers/tooluniverse-support-v1.json
     role: config
+  - path: ari-skill-tool-registry/src/openroad_adapter.py
+    role: implementation
+  - path: ari-skill-tool-registry/providers/openroad-support-v1.json
+    role: config
 last_verified: 2026-08-02
 ---
 
@@ -126,6 +130,39 @@ cannot be approved with ordinary `--approve`; they also require the explicit
 `--approve-schema-changes` flag. This keeps running experiments on their old
 lock and makes large collection upgrades reviewable.
 
+## OpenROAD profile adapter
+
+OpenROAD-MCP is integrated through the same source/descriptor/broker contracts,
+but its upstream interactive tools are never canonical leaves. A reviewed
+experiment profile is the leaf. Its execution identity includes a fixed command
+sequence, exact input workspace, OpenROAD/ORFS commits and executable/image
+digests, PDK and standard-cell library identity/license scope, architecture,
+threads, seed, declared outputs, and metric contracts.
+
+Only `request_id` crosses the invocation boundary. The adapter rejects arbitrary
+Tcl/shell, caller paths, cwd and environment; its flat brace-list grammar cannot
+perform Tcl substitution. Inputs are re-digested after copying to an isolated
+run workspace. Output discovery is declaration-based: filesystem scanning is
+used only to reject undeclared or symlinked files. Metrics carry a numeric value,
+unit, corner, mode, stage, source-report digest, and JSON pointer. Exact golden
+and replay fixture files are validated before a source is admitted.
+
+The upstream process remains connected for the whole interactive session. A
+sentinel command queued after each fixed flow command prevents the upstream
+short output-lull heuristic from being treated as completion. All terminal paths
+terminate the session; interruption cannot resume an ephemeral local MCP session
+and therefore fails closed. Each run has a deterministic idempotent handle and a
+fresh workspace, while parallel profiles may use independent sessions.
+
+Completed outputs and success/failure/cancel transcripts are stored
+content-addressably. Provider-returned artifact references are an internal
+adapter protocol: the broker removes the reserved field and independently checks
+safe digest-prefixed names, symlink absence, size, and SHA-256 before adding them
+to `ResultEnvelopeV1`. Record/replay keeps those references without contacting
+the provider. Profiles sharing the same design inputs and PDK/library use one
+independence group, so version disagreement is not counted as independent
+scientific evidence.
+
 ## Record, replay, and EAR
 
 Record mode stores exact normalized arguments, catalog and policy digests,
@@ -143,6 +180,7 @@ python src/sync_catalog.py                 # create or write pending review
 python src/sync_catalog.py --approve       # only after reviewing the diff
 python src/sync_catalog.py --approve --approve-schema-changes  # schema review
 python scripts/verify_tooluniverse.py --help
+python scripts/verify_openroad.py --help
 python scripts/sync_contracts.py           # CI drift check
 pytest -q
 ```

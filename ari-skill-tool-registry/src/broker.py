@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError, ValidationError as JSONSchemaError
 
 from ari.public.result import (
+    ResultArtifactV1,
+    ResultEnvelopeV1,
     ResultEnvelopeNormalizer,
     ToolCallContextV1,
 )
@@ -31,6 +35,14 @@ from models import (
     meets_admission,
     sanitize_text,
     sha256_digest,
+)
+from openroad_adapter import (
+    OPENROAD_ADAPTER_ID,
+    OPENROAD_ADAPTER_VERSION,
+    OpenRoadExperimentAdapter,
+    OpenRoadExperimentV1,
+    OpenRoadProviderPinV1,
+    openroad_adapter_digest,
 )
 from providers import (
     ProviderAdapter,
@@ -244,6 +256,63 @@ class CatalogBroker:
                 "fixture sources require explicit adapter injection and are not "
                 "production-registered"
             )
+        if source.kind == "openroad":
+            if (
+                source.adapter_id != OPENROAD_ADAPTER_ID
+                or source.adapter_version != OPENROAD_ADAPTER_VERSION
+                or source.adapter_digest != openroad_adapter_digest()
+            ):
+                raise BrokerProtocolError(
+                    "OpenROAD adapter identity drifted from CATALOG.lock"
+                )
+            leaf_names = {
+                descriptor.provider_tool_name
+                for descriptor in self.lock.tools
+                if source_id in descriptor.source_ids
+            }
+            try:
+                launcher = PythonStdioLauncherV1.model_validate(
+                    source.runtime["launcher"]
+                )
+                pin = OpenRoadProviderPinV1.model_validate(
+                    source.runtime["pin"]
+                ).model_dump(mode="json")
+                raw_experiments = source.runtime["experiments"]
+                if not isinstance(raw_experiments, list):
+                    raise TypeError("experiments must be an array")
+                experiments = [
+                    OpenRoadExperimentV1.model_validate(item)
+                    for item in raw_experiments
+                ]
+                expected_names = {
+                    OpenRoadExperimentAdapter.leaf_name(profile.profile_id)
+                    for profile in experiments
+                }
+                if leaf_names != expected_names:
+                    raise ValueError(
+                        "locked OpenROAD leaves do not exactly match runtime profiles"
+                    )
+                adapter = OpenRoadExperimentAdapter(
+                    launcher,
+                    expected_provider_digest=source.provider_digest,
+                    pin=pin,
+                    experiments=experiments,
+                    artifact_store=self.artifact_store,
+                    allowed_leaf_names=leaf_names,
+                    timeout_seconds=float(source.runtime.get("timeout_seconds", 60.0)),
+                    max_concurrent_jobs=int(
+                        source.runtime.get("max_concurrent_jobs", 4)
+                    ),
+                    max_retained_jobs=int(
+                        source.runtime.get("max_retained_jobs", 1_024)
+                    ),
+                )
+            except (KeyError, TypeError, ValueError, ProviderAdapterError) as exc:
+                raise BrokerProtocolError(
+                    f"invalid locked OpenROAD runtime for {source_id}: {exc}"
+                ) from exc
+            self._adapters[source_id] = adapter
+            return adapter
         if source.kind == "tooluniverse":
             if (
                 source.adapter_id != TOOLUNIVERSE_ADAPTER_ID
@@ -698,6 +767,99 @@ class CatalogBroker:
             retryable=retryable,
         ).model_dump(mode="json")
 
+    def _merge_provider_artifacts(
+        self,
+        response: ProviderResponseV1,
+        envelope: ResultEnvelopeV1,
+    ) -> ResultEnvelopeV1:
+        """Validate adapter-owned artifact references before publishing them."""
+
+        reserved = "_ari_result_artifacts"
+        provider_structured = response.structured or _json_object(response.text)
+        structured = dict(envelope.structured_content)
+        present = reserved in provider_structured or reserved in structured
+        if not present:
+            return envelope
+        declared_result_digest = provider_structured.get("result_digest")
+        if declared_result_digest is not None:
+            digest_payload = dict(provider_structured)
+            digest_payload.pop("result_digest", None)
+            if declared_result_digest != sha256_digest(digest_payload):
+                raise BrokerProtocolError("provider structured result digest mismatch")
+        raw = provider_structured.get(reserved, structured.get(reserved))
+        structured.pop(reserved, None)
+        if not isinstance(raw, list) or len(raw) > 2_000:
+            raise BrokerProtocolError(
+                "provider artifact references must be a bounded array"
+            )
+        if raw and self.artifact_store is None:
+            raise BrokerProtocolError(
+                "provider returned artifact references without an artifact store"
+            )
+
+        refs: list[ResultArtifactV1] = []
+        seen_names: dict[str, ResultArtifactV1] = {
+            item.logical_name: item for item in envelope.artifacts
+        }
+        for index, value in enumerate(raw):
+            try:
+                reference = ResultArtifactV1.model_validate(value)
+            except ValueError as exc:
+                raise BrokerProtocolError(
+                    f"provider artifact reference {index} is invalid: {exc}"
+                ) from exc
+            hexadecimal = reference.digest.removeprefix("sha256:")
+            if not Path(reference.logical_name).name.startswith(hexadecimal):
+                raise BrokerProtocolError(
+                    "provider artifacts must use a digest-prefixed logical filename"
+                )
+            assert self.artifact_store is not None
+            candidate = self.artifact_store.root
+            for part in Path(reference.logical_name).parts:
+                candidate = candidate / part
+                if candidate.is_symlink():
+                    raise BrokerProtocolError(
+                        f"provider artifact path contains a symlink: "
+                        f"{reference.logical_name}"
+                    )
+            try:
+                path = self.artifact_store.get(reference.logical_name)
+                if not path.is_file() or path.is_symlink():
+                    raise BrokerProtocolError(
+                        f"provider artifact is absent: {reference.logical_name}"
+                    )
+                if path.stat().st_size != reference.size:
+                    raise BrokerProtocolError(
+                        f"provider artifact size mismatch: {reference.logical_name}"
+                    )
+                hasher = hashlib.sha256()
+                with path.open("rb") as stream:
+                    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                        hasher.update(chunk)
+            except (OSError, RegistryStorageError) as exc:
+                raise BrokerProtocolError(
+                    f"cannot verify provider artifact {reference.logical_name}: {exc}"
+                ) from exc
+            if f"sha256:{hasher.hexdigest()}" != reference.digest:
+                raise BrokerProtocolError(
+                    f"provider artifact digest mismatch: {reference.logical_name}"
+                )
+            previous = seen_names.get(reference.logical_name)
+            if previous is not None and previous != reference:
+                raise BrokerProtocolError(
+                    f"provider artifact logical name conflicts: "
+                    f"{reference.logical_name}"
+                )
+            if previous is None:
+                seen_names[reference.logical_name] = reference
+                refs.append(reference)
+        return envelope.model_copy(
+            update={
+                "structured_content": structured,
+                "artifacts": [*envelope.artifacts, *refs],
+            }
+        )
+
     async def invoke(
         self,
         tool_ref: str,
@@ -769,15 +931,19 @@ class CatalogBroker:
                 retryable=True,
             )
         context = ToolCallContextV1(selection_reason=selection_reason)
-        envelope = self.normalizer.normalize_legacy(
-            {
-                "result": response.text,
-                "_structured_content": response.structured,
-                "_mcp_is_error": response.is_error,
-            },
-            tool_ref=tool_ref,
-            context=context,
-        )
+        try:
+            envelope = self.normalizer.normalize_legacy(
+                {
+                    "result": response.text,
+                    "_structured_content": response.structured,
+                    "_mcp_is_error": response.is_error,
+                },
+                tool_ref=tool_ref,
+                context=context,
+            )
+            envelope = self._merge_provider_artifacts(response, envelope)
+        except BrokerProtocolError as exc:
+            return self._error(tool_ref=tool_ref, kind="protocol", message=str(exc))
 
         if descriptor.async_lifecycle is not None and envelope.status != "error":
             structured = response.structured or _json_object(response.text)
@@ -892,14 +1058,20 @@ class CatalogBroker:
         structured = dict(structured)
         structured["state"] = state
         structured["registry_handle"] = handle.model_dump(mode="json")
-        envelope = self.normalizer.normalize_legacy(
-            {
-                "result": response.text,
-                "_structured_content": structured,
-                "_mcp_is_error": response.is_error,
-            },
-            tool_ref=handle.tool_ref,
-        )
+        try:
+            envelope = self.normalizer.normalize_legacy(
+                {
+                    "result": response.text,
+                    "_structured_content": structured,
+                    "_mcp_is_error": response.is_error,
+                },
+                tool_ref=handle.tool_ref,
+            )
+            envelope = self._merge_provider_artifacts(response, envelope)
+        except BrokerProtocolError as exc:
+            return self._error(
+                tool_ref=handle.tool_ref, kind="protocol", message=str(exc)
+            )
         status = {
             "submitted": "submitted",
             "running": "running",
@@ -950,27 +1122,58 @@ class CatalogBroker:
             if state in {"submitted", "running"}:
                 return await self.get_status(raw_handle)
             if state == "cancelled":
-                envelope = self.normalizer.normalize_legacy(
-                    {"result": response.text, "_structured_content": structured},
-                    tool_ref=handle.tool_ref,
-                )
+                try:
+                    envelope = self.normalizer.normalize_legacy(
+                        {"result": response.text, "_structured_content": structured},
+                        tool_ref=handle.tool_ref,
+                    )
+                    envelope = self._merge_provider_artifacts(response, envelope)
+                except BrokerProtocolError as exc:
+                    return self._error(
+                        tool_ref=handle.tool_ref,
+                        kind="protocol",
+                        message=str(exc),
+                    )
                 return envelope.model_copy(update={"status": "cancelled"}).model_dump(
                     mode="json"
                 )
             if state == "failed":
-                return self._error(
+                failure = self.normalizer.error(
                     tool_ref=handle.tool_ref,
                     kind="protocol",
-                    message="provider asynchronous operation failed",
+                    message=sanitize_text(
+                        str(
+                            structured.get("error")
+                            or "provider asynchronous operation failed"
+                        ),
+                        limit=2_000,
+                    ),
+                    retryable=False,
                 )
-        envelope = self.normalizer.normalize_legacy(
-            {
-                "result": response.text,
-                "_structured_content": response.structured,
-                "_mcp_is_error": response.is_error,
-            },
-            tool_ref=handle.tool_ref,
-        )
+                try:
+                    return self._merge_provider_artifacts(response, failure).model_dump(
+                        mode="json"
+                    )
+                except BrokerProtocolError as exc:
+                    return self._error(
+                        tool_ref=handle.tool_ref,
+                        kind="protocol",
+                        message=str(exc),
+                    )
+        try:
+            envelope = self.normalizer.normalize_legacy(
+                {
+                    "result": response.text,
+                    "_structured_content": response.structured,
+                    "_mcp_is_error": response.is_error,
+                },
+                tool_ref=handle.tool_ref,
+            )
+            envelope = self._merge_provider_artifacts(response, envelope)
+        except BrokerProtocolError as exc:
+            return self._error(
+                tool_ref=handle.tool_ref, kind="protocol", message=str(exc)
+            )
         result = envelope.model_dump(mode="json")
         if handle.mode == "record" and envelope.status != "error":
             try:
@@ -1036,14 +1239,20 @@ class CatalogBroker:
                     f"{sanitize_text(response.text, limit=500)}"
                 ),
             )
-        envelope = self.normalizer.normalize_legacy(
-            {
-                "result": response.text,
-                "_structured_content": response.structured,
-                "_mcp_is_error": response.is_error,
-            },
-            tool_ref=handle.tool_ref,
-        )
+        try:
+            envelope = self.normalizer.normalize_legacy(
+                {
+                    "result": response.text,
+                    "_structured_content": response.structured,
+                    "_mcp_is_error": response.is_error,
+                },
+                tool_ref=handle.tool_ref,
+            )
+            envelope = self._merge_provider_artifacts(response, envelope)
+        except BrokerProtocolError as exc:
+            return self._error(
+                tool_ref=handle.tool_ref, kind="protocol", message=str(exc)
+            )
         self._pending.pop(handle.handle_ref, None)
         return envelope.model_copy(update={"status": "cancelled"}).model_dump(
             mode="json"

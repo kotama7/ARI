@@ -25,6 +25,18 @@ from models import (
     sanitize_text,
     sha256_digest,
 )
+from openroad_adapter import (
+    OPENROAD_ADAPTER_ID,
+    OPENROAD_ADAPTER_VERSION,
+    OpenRoadExperimentAdapter,
+    OpenRoadExperimentV1,
+    OpenRoadProviderPinV1,
+    openroad_adapter_digest,
+    openroad_effective_launcher,
+    openroad_provider_release_pin,
+    verify_openroad_experiment_files,
+    verify_openroad_provider_package,
+)
 from providers import (
     STDIO_ADAPTER_ID,
     STDIO_ADAPTER_VERSION,
@@ -430,8 +442,135 @@ class ToolUniverseSourceSpecV1(BaseModel):
         )
 
 
+class OpenRoadSourceSpecV1(BaseModel):
+    """Pinned OpenROAD MCP exposed only as immutable experiment leaves."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    source_id: str
+    kind: Literal["openroad"] = "openroad"
+    provider_id: Literal["openroad-mcp"] = "openroad-mcp"
+    provider_digest: str
+    launcher: PythonStdioLauncherV1
+    support_release: Literal["0.6.1"] = "0.6.1"
+    experiments: list[OpenRoadExperimentV1] = Field(min_length=1, max_length=100)
+    capability_ref: str = "ari.eda.openroad.place-route"
+    timeout_seconds: float = Field(default=60.0, gt=0, le=3_600)
+    max_concurrent_jobs: int = Field(default=4, ge=1, le=32)
+    max_retained_jobs: int = Field(default=1_024, ge=32, le=100_000)
+
+    @field_validator("source_id", "capability_ref")
+    @classmethod
+    def _valid_ref(cls, value: str) -> str:
+        if not value or _REF_SAFE_RE.search(value):
+            raise ValueError("OpenROAD source identifiers are invalid")
+        return value
+
+    @field_validator("provider_digest")
+    @classmethod
+    def _valid_digest(cls, value: str) -> str:
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", value):
+            raise ValueError("OpenROAD provider_digest must be a SHA-256 digest")
+        return value
+
+    @model_validator(mode="after")
+    def _closed_provider_boundary(self) -> "OpenRoadSourceSpecV1":
+        self.pin.verify()
+        profile_ids = [profile.profile_id for profile in self.experiments]
+        if len(profile_ids) != len(set(profile_ids)):
+            raise ValueError("OpenROAD experiment profile_id values must be unique")
+        if (
+            self.launcher.entrypoint is not None
+            or self.launcher.python_module != "openroad_mcp.main"
+            or self.launcher.python_callable != "main"
+        ):
+            raise ValueError(
+                "OpenROAD must launch the reviewed openroad_mcp.main:main entry point"
+            )
+        if self.launcher.arguments:
+            raise ValueError(
+                "OpenROAD base launcher arguments must be empty; ARI fixes stdio mode"
+            )
+        if self.launcher.literal_env:
+            raise ValueError(
+                "OpenROAD base launcher environment must be empty; ARI fixes its policy"
+            )
+        if "**/*" not in self.launcher.identity_globs:
+            raise ValueError(
+                "OpenROAD identity_globs must include **/* to cover the package tree"
+            )
+        for experiment in self.experiments:
+            if Path(experiment.toolchain.executable_path).name != "openroad":
+                raise ValueError(
+                    "OpenROAD experiments require an executable named exactly openroad"
+                )
+        return self
+
+    @property
+    def pin(self) -> OpenRoadProviderPinV1:
+        return OpenRoadProviderPinV1.model_validate(
+            openroad_provider_release_pin(self.support_release)
+        )
+
+    @property
+    def provider_version(self) -> str:
+        return self.pin.version
+
+    @property
+    def effective_launcher(self) -> PythonStdioLauncherV1:
+        return openroad_effective_launcher(self.launcher)
+
+    def verify(self) -> None:
+        self.pin.verify()
+        verify_openroad_provider_package(
+            self.launcher, self.pin.model_dump(mode="json")
+        )
+        actual = provider_digest(self.effective_launcher)
+        if actual != self.provider_digest:
+            raise CatalogSourceError(
+                f"source {self.source_id} provider digest drift: "
+                f"expected {self.provider_digest}, got {actual}"
+            )
+        for experiment in self.experiments:
+            verify_openroad_experiment_files(experiment)
+
+    @property
+    def adapter_digest(self) -> str:
+        return openroad_adapter_digest()
+
+    @property
+    def source_digest(self) -> str:
+        return sha256_digest(self.model_dump(mode="json"))
+
+    def to_locked_source(self, *, verify: bool = True) -> LockedSourceV1:
+        if verify:
+            self.verify()
+        return LockedSourceV1(
+            source_id=self.source_id,
+            kind="openroad",
+            source_digest=self.source_digest,
+            provider_id=self.provider_id,
+            provider_version=self.provider_version,
+            provider_digest=self.provider_digest,
+            adapter_id=OPENROAD_ADAPTER_ID,
+            adapter_version=OPENROAD_ADAPTER_VERSION,
+            adapter_digest=self.adapter_digest,
+            runtime={
+                "launcher": self.effective_launcher.model_dump(mode="json"),
+                "pin": self.pin.model_dump(mode="json"),
+                "experiments": [
+                    experiment.model_dump(mode="json")
+                    for experiment in self.experiments
+                ],
+                "timeout_seconds": self.timeout_seconds,
+                "max_concurrent_jobs": self.max_concurrent_jobs,
+                "max_retained_jobs": self.max_retained_jobs,
+            },
+        )
+
+
 SourceSpecV1: TypeAlias = Annotated[
-    StdioSourceSpecV1 | ToolUniverseSourceSpecV1,
+    StdioSourceSpecV1 | ToolUniverseSourceSpecV1 | OpenRoadSourceSpecV1,
     Field(discriminator="kind"),
 ]
 
@@ -782,6 +921,175 @@ class ToolUniverseCatalogSource:
         return [_tooluniverse_candidate(self.spec, tool) for tool in tools]
 
 
+def _openroad_candidate(
+    spec: OpenRoadSourceSpecV1,
+    tool: ProviderToolV1,
+) -> CatalogCandidateV1:
+    metadata = tool.annotations.get("ari_openroad")
+    if not isinstance(metadata, dict):
+        raise CatalogSourceError(
+            f"OpenROAD leaf {tool.name!r} omitted immutable experiment metadata"
+        )
+    profile_id = metadata.get("profile_id")
+    matches = [
+        profile for profile in spec.experiments if profile.profile_id == profile_id
+    ]
+    if len(matches) != 1:
+        raise CatalogSourceError(
+            f"OpenROAD leaf {tool.name!r} does not map to one reviewed profile"
+        )
+    profile = matches[0]
+    if (
+        tool.name != OpenRoadExperimentAdapter.leaf_name(profile.profile_id)
+        or metadata.get("experiment_digest") != profile.experiment_digest
+        or metadata.get("method_digest") != profile.method_digest
+    ):
+        raise CatalogSourceError(
+            f"OpenROAD leaf {tool.name!r} drifted from its experiment profile"
+        )
+
+    lifecycle = ProviderAsyncLifecycleV1(
+        handle_field="handle_id",
+        state_field="status",
+        status_tool="ari_openroad_status",
+        result_tool="ari_openroad_result",
+        cancel_tool="ari_openroad_cancel",
+        handle_argument="handle_id",
+        submitted_states=["submitted"],
+        running_states=["running"],
+        succeeded_states=["completed"],
+        failed_states=["failed"],
+        cancelled_states=["cancelled"],
+    )
+    collection_id = f"openroad-mcp@{spec.pin.version}"
+    leaf_identity = f"openroad-profile:{profile.profile_id}:{profile.experiment_digest}"
+    origin_chain = [
+        OriginHopV1(kind="source", id=spec.source_id, digest=spec.source_digest),
+        OriginHopV1(
+            kind="collection", id=collection_id, digest=spec.pin.source_archive_digest
+        ),
+        OriginHopV1(
+            kind="provider",
+            id=f"openroad@{profile.toolchain.openroad_commit}",
+            digest=profile.toolchain.executable_digest,
+        ),
+        OriginHopV1(kind="tool", id=leaf_identity, digest=profile.experiment_digest),
+    ]
+    semantics = {
+        "experiment_digest": profile.experiment_digest,
+        "method_digest": profile.method_digest,
+        "execution_model": "immutable-profile",
+        "idempotency_key": "request_id",
+        "session_recovery": "fail-closed",
+        "toolchain": profile.toolchain.model_dump(mode="json"),
+        "technology": profile.technology.model_dump(mode="json"),
+        "workspace_input_digest": profile.workspace.input_digest,
+        "metrics": [metric.model_dump(mode="json") for metric in profile.metrics],
+    }
+    units = {metric.metric_id: metric.unit for metric in profile.metrics}
+    limitations = [
+        *profile.limitations,
+        (
+            "The pinned Python OpenROAD-MCP 0.6.1 release is its deprecated final "
+            "Python release; npm migration requires a separately reviewed launcher."
+        ),
+        "ARI exposes no arbitrary Tcl, command, environment, cwd, or path argument.",
+        "An interrupted local MCP session cannot be resumed and fails closed.",
+    ]
+    backend_lineage = [
+        collection_id,
+        f"openroad:{profile.toolchain.openroad_commit}",
+        f"orfs:{profile.toolchain.orfs_commit}",
+        f"execution-image:{profile.toolchain.execution_image_digest}",
+        f"architecture:{profile.toolchain.architecture}",
+    ]
+    data_lineage = [
+        f"workspace:{profile.workspace.input_digest}",
+        f"pdk:{profile.technology.pdk_id}@{profile.technology.pdk_version}:{profile.technology.pdk_digest}",
+        (
+            "library:"
+            f"{profile.technology.standard_cell_library_id}@"
+            f"{profile.technology.standard_cell_library_version}:"
+            f"{profile.technology.standard_cell_library_digest}"
+        ),
+        *[
+            f"input:{artifact.role}:{artifact.digest}"
+            for artifact in profile.workspace.input_artifacts
+        ],
+    ]
+    descriptor = CanonicalToolDescriptorV1.create(
+        source_ids=[spec.source_id],
+        provider_id=spec.provider_id,
+        provider_version=spec.provider_version,
+        provider_digest=spec.provider_digest,
+        adapter_id=OPENROAD_ADAPTER_ID,
+        adapter_version=OPENROAD_ADAPTER_VERSION,
+        adapter_digest=spec.adapter_digest,
+        name=tool.name,
+        provider_tool_name=tool.name,
+        capability_ref=spec.capability_ref,
+        description=tool.description,
+        input_schema=tool.input_schema,
+        output_schema=tool.output_schema,
+        defaults=_schema_defaults(tool.input_schema),
+        annotations=tool.annotations,
+        side_effects="workspace-write",
+        determinism="seeded",
+        permissions=["process", "workspace-read", "workspace-write"],
+        semantics=semantics,
+        units=units,
+        limitations=sorted(set(limitations)),
+        backend_lineage=sorted(set(backend_lineage)),
+        data_lineage=sorted(set(data_lineage)),
+        leaf_identity=leaf_identity,
+        origin_chains=[origin_chain],
+        equivalence_key=None,
+        independence_group=(
+            "openroad:"
+            f"{profile.technology.pdk_id}:"
+            f"{profile.technology.standard_cell_library_id}:"
+            f"{profile.workspace.input_digest}"
+        ),
+        async_lifecycle=lifecycle,
+    )
+    return CatalogCandidateV1(descriptor=descriptor, evidence=profile.evidence)
+
+
+class OpenRoadCatalogSource:
+    def __init__(
+        self,
+        spec: OpenRoadSourceSpecV1,
+        adapter: ProviderAdapter | None = None,
+        *,
+        verify_source: bool = True,
+    ) -> None:
+        self.spec = spec
+        self._locked_source = spec.to_locked_source(verify=verify_source)
+        locked_names = {
+            OpenRoadExperimentAdapter.leaf_name(profile.profile_id)
+            for profile in spec.experiments
+        }
+        self.adapter = adapter or OpenRoadExperimentAdapter(
+            spec.effective_launcher,
+            expected_provider_digest=spec.provider_digest,
+            pin=spec.pin.model_dump(mode="json"),
+            experiments=spec.experiments,
+            allowed_leaf_names=locked_names,
+            timeout_seconds=spec.timeout_seconds,
+            max_concurrent_jobs=spec.max_concurrent_jobs,
+            max_retained_jobs=spec.max_retained_jobs,
+            verify_package=verify_source,
+        )
+
+    @property
+    def locked_source(self) -> LockedSourceV1:
+        return self._locked_source
+
+    async def sync(self) -> list[CatalogCandidateV1]:
+        tools = await self.adapter.list_tools()
+        return [_openroad_candidate(self.spec, tool) for tool in tools]
+
+
 class StaticCatalogSource:
     """Directly injected fixture source; absent from config deserialization."""
 
@@ -825,6 +1133,8 @@ def catalog_source_from_spec(spec: SourceSpecV1) -> CatalogSource:
         return StdioCatalogSource(spec)
     if isinstance(spec, ToolUniverseSourceSpecV1):
         return ToolUniverseCatalogSource(spec)
+    if isinstance(spec, OpenRoadSourceSpecV1):
+        return OpenRoadCatalogSource(spec)
     raise CatalogSourceError(
         f"unsupported production source spec: {type(spec).__name__}"
     )
@@ -840,6 +1150,8 @@ __all__ = [
     "CatalogSource",
     "CatalogSourceError",
     "SOURCES_V1",
+    "OpenRoadCatalogSource",
+    "OpenRoadSourceSpecV1",
     "SourcesDocumentV1",
     "SourceSpecV1",
     "StaticCatalogSource",

@@ -18,7 +18,9 @@ from pydantic import BaseModel
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 SRC = PACKAGE_ROOT / "src"
-sys.path.insert(0, str(SRC))
+for dependency in (PACKAGE_ROOT.parent / "ari-core", SRC):
+    if str(dependency) not in sys.path:
+        sys.path.insert(0, str(dependency))
 
 from admission import AdmissionPolicyV1  # noqa: E402
 from models import (  # noqa: E402

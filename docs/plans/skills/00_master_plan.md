@@ -21,7 +21,7 @@ last_verified: 2026-08-02
 
 | 項目 | 値 |
 |---|---|
-| 状態 | In progress — C01/C02/C17 complete; C18 OpenROAD next |
+| 状態 | In progress — C01/C02/C17 complete; C18 local profile complete, C06/C18 scheduler integration next |
 | 基準ブランチ | `skills` |
 | 基準コミット | `4cd56f9` |
 | 作成日 | 2026-08-01 |
@@ -59,6 +59,11 @@ last_verified: 2026-08-02
   schema-change別承認、direct MCP混在、record/offline replayを実装。
   1,000-leaf fixture、公式UniProt 17 leaf、実live responseでC17-01〜08と
   C17-D1〜D6を完了。
+- 公式OpenROAD-MCP v0.6.1とORFS 26Q3をpinし、任意interactive shellを公開しない
+  immutable experiment leaf、closed Tcl profile、private workspace、QoR context、
+  exact golden/replay evidence、async session cleanup、artifact再検証、offline replayを
+  実装。公式provider contract smokeとparallel/cancel/negative fixtureを通過した。
+  C18-07のscheduler/container実行はC06 consumer migrationとして継続中。
 
 ## 1. 決定
 
