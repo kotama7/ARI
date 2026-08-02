@@ -411,7 +411,6 @@ _env_append_if_absent "# ARI_MEMORY_BACKEND=letta  # letta | in_memory — use i
 _env_append_if_absent "# ARI_MEMORY_LETTA_DISABLE_SELF_EDIT=true"
 _env_append_if_absent "# ARI_MEMORY_ACCESS_LOG=on"
 _env_append_if_absent "# ARI_MEMORY_AUTO_RESTORE=true"
-_env_append_if_absent "# ARI_CURRENT_NODE_ID=  # runtime-only; set per-node by ari-core"
 _env_append_if_absent "# ARI_LETTA_VENV=  # override pip-mode venv path"
 
 # --- 5) ARI limits / scheduling --------------------------------------------

@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
-last_verified: 2026-07-03
+last_verified: 2026-08-02
 ---
 
 # 环境变量参考
@@ -100,7 +100,6 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 | `ARI_MEMORY_AUTO_RESTORE` | 恢复时自动从 `memory_backup.jsonl.gz` 还原 |
 | `ARI_MEMORY_ACCESS_LOG` | `memory_access.jsonl` 路径 |
 | `ARI_MEMORY_CONSOLIDATE` | 类型化记忆整合 + 为论文论断提供基于工件支撑的 `verified_context.json`。**默认开启**；设为 `0`/`false`/`no`/`off` 以禁用 |
-| `ARI_CURRENT_NODE_ID` | 由智能体循环设置；技能读取但不设置 |
 | `ARI_LETTA_VENV` | 捆绑 Letta 服务器的虚拟环境路径 |
 
 ### 评审规范 + 论文评审

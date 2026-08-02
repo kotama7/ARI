@@ -62,6 +62,23 @@
           "title": "Capability Ref",
           "type": "string"
         },
+        "context_requirement": {
+          "anyOf": [
+            {
+              "enum": [
+                "none",
+                "run",
+                "node"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Context Requirement"
+        },
         "description": {
           "default": "",
           "title": "Description",
@@ -180,6 +197,16 @@
       "additionalProperties": false,
       "description": "Policy inherited by tools that do not declare an override.",
       "properties": {
+        "context_requirement": {
+          "default": "none",
+          "enum": [
+            "none",
+            "run",
+            "node"
+          ],
+          "title": "Context Requirement",
+          "type": "string"
+        },
         "determinism": {
           "default": "conditional",
           "enum": [

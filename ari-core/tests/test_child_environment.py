@@ -12,6 +12,7 @@ import sys
 import pytest
 
 from ari.config import SkillConfig
+from ari.call_context import CONTEXT_AUTHORITY_ENV
 from ari.mcp.child_environment import (
     CredentialScopeDriftError,
     ManagedEnvironmentOverrideError,
@@ -257,6 +258,25 @@ def test_reconnect_refuses_credential_authority_drift(monkeypatch, tmp_path: Pat
     monkeypatch.delenv("FIXTURE_SECRET")
     with pytest.raises(CredentialScopeDriftError, match="authority changed"):
         SkillConnection(skill)._server_params()
+
+
+def test_connection_overrides_parent_context_authority_and_never_transports_it(
+    monkeypatch, tmp_path: Path
+):
+    spoofed = "f" * 64
+    monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+    monkeypatch.setenv(CONTEXT_AUTHORITY_ENV, spoofed)
+    connection = SkillConnection(_skill())
+    params = connection._server_params()
+
+    assert params.env is not None
+    assert params.env[CONTEXT_AUTHORITY_ENV] != spoofed
+    assert params.env[CONTEXT_AUTHORITY_ENV] == connection._context_authority_key
+    assert CONTEXT_AUTHORITY_ENV in connection.child_environment.core_secret_env_names
+    assert CONTEXT_AUTHORITY_ENV not in connection.child_environment.transport_values()
+    assert connection._context_authority_key not in json.dumps(
+        connection.child_environment.transport_values()
+    )
 
 
 def test_invoke_reports_reconnect_environment_drift_as_nonretryable_admission():

@@ -54,8 +54,6 @@ class _FakeLLM:
 class _FakeMCP:
     """Fake MCP client recording tool dispatch and returning canned results."""
 
-    _COW_TOOLS: frozenset = frozenset({"add_memory", "clear_node_memory"})
-
     def __init__(self, tools: list[dict], results: dict[str, Any] | None = None):
         self._tools = list(tools)
         self._results = dict(results or {})
@@ -129,6 +127,26 @@ class TestAgentLoopSingleNodeRoundtrip:
             last_tool="survey", job_ids=[], tool_outputs=[], messages=[],
         )
         assert out is not None and "step 1" in out
+
+    def test_node_tool_context_prefers_logical_run_over_checkpoint_basename(
+        self, tmp_path
+    ):
+        loop = AgentLoop.__new__(AgentLoop)
+        loop.checkpoint_dir = str(tmp_path / "custom-checkpoint-location")
+        node = Node(
+            id="child",
+            parent_id="root",
+            depth=1,
+            ancestor_ids=["root"],
+        )
+        context = loop._node_tool_context(
+            node,
+            phase="bfts",
+            run_id="logical-run-id",
+        )
+        assert context.run_id == "logical-run-id"
+        assert context.node_context is not None
+        assert context.node_context.parent_node_id == "root"
 
 
 # ─── Test 2: react_driver tool dispatch ─────────────────────────────────

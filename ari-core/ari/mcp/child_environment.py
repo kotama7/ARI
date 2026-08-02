@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Mapping, TextIO
 
 from ari.config import SkillConfig
+from ari.call_context import CONTEXT_AUTHORITY_ENV
 from ari.skill_manifest import looks_like_credential_environment_name
 
 
@@ -59,6 +60,7 @@ MANAGED_CHILD_ENV_NAMES = frozenset(
         "XDG_CONFIG_HOME",
         "XDG_DATA_HOME",
         "XDG_STATE_HOME",
+        CONTEXT_AUTHORITY_ENV,
     }
 )
 
@@ -87,15 +89,23 @@ class SecretRedactor:
     """Redact known credential values from text and structured MCP responses."""
 
     def __init__(self, replacements: Mapping[str, str] | None = None) -> None:
+        self._replacements = {
+            str(value): str(marker)
+            for value, marker in (replacements or {}).items()
+            if value
+        }
         pairs: list[tuple[str, str]] = []
-        for value, marker in (replacements or {}).items():
-            if not value:
-                continue
+        for value, marker in self._replacements.items():
             pairs.append((value, marker))
             escaped = json.dumps(value, ensure_ascii=False)[1:-1]
             if escaped != value:
                 pairs.append((escaped, marker))
         self._pairs = tuple(sorted(pairs, key=lambda item: len(item[0]), reverse=True))
+
+    def merged(self, replacements: Mapping[str, str]) -> "SecretRedactor":
+        """Return a redactor extended with core-owned ephemeral secrets."""
+
+        return SecretRedactor({**self._replacements, **dict(replacements)})
 
     def text(self, value: str) -> str:
         rendered = value
@@ -179,6 +189,7 @@ class ChildEnvironment:
     credential_env_names: tuple[str, ...]
     credential_scope_identities: tuple[dict[str, Any], ...]
     redactor: SecretRedactor
+    core_secret_env_names: tuple[str, ...] = ()
 
     @property
     def active_credential_scope_ids(self) -> tuple[str, ...]:
@@ -192,11 +203,37 @@ class ChildEnvironment:
         """Return non-credential values safe to serialize to a local shim."""
 
         credential_names = set(self.credential_env_names)
+        credential_names.update(self.core_secret_env_names)
         return {
             name: value
             for name, value in self.values.items()
             if name not in credential_names
         }
+
+    def with_core_secret(
+        self,
+        name: str,
+        value: str,
+        *,
+        marker: str,
+    ) -> "ChildEnvironment":
+        """Add a core-owned ephemeral secret without changing manifest scopes."""
+
+        if name not in MANAGED_CHILD_ENV_NAMES:
+            raise ManagedEnvironmentOverrideError(
+                f"core secret name is not managed by ARI: {name}"
+            )
+        values = dict(self.values)
+        values[name] = value
+        names = tuple(sorted({*self.core_secret_env_names, name}))
+        return ChildEnvironment(
+            values=values,
+            inherited_names=self.inherited_names,
+            credential_env_names=self.credential_env_names,
+            credential_scope_identities=self.credential_scope_identities,
+            redactor=self.redactor.merged({value: marker}),
+            core_secret_env_names=names,
+        )
 
 
 def _identity_digest(scope_id: str, present_env: list[str]) -> str:

@@ -109,7 +109,6 @@ This skill uses FastMCP `@mcp.tool()` decorators in `src/server.py`.
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
-| `_set_current_node` | Transitional internal CoW context setter; scheduled for removal in favor of explicit `NodeContext` | ✗ |
 | `add_memory` | Append an entry to the current node's memory | ✗ |
 | `search_memory` | Embedding-ranked search across the current node + ancestors | ✗ (server-side embedding) |
 | `get_node_memory` | All entries for the current node | ✗ |

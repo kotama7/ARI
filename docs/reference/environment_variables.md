@@ -125,7 +125,6 @@ LLM follows `ARI_MODEL_IDEA`.
 | `ARI_MEMORY_AUTO_RESTORE` | Auto-restore from `memory_backup.jsonl.gz` on resume |
 | `ARI_MEMORY_ACCESS_LOG` | Path to `memory_access.jsonl` |
 | `ARI_MEMORY_CONSOLIDATE` | Typed-memory consolidation + artifact-grounded `verified_context.json` for paper claims. **Default ON**; set `0`/`false`/`no`/`off` to disable |
-| `ARI_CURRENT_NODE_ID` | Set by the agent loop; skills read it but never set it |
 | `ARI_LETTA_VENV` | Virtualenv path for the bundled Letta server |
 
 ### Reviewer rubrics + paper review

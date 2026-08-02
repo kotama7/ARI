@@ -12,7 +12,7 @@ sources:
     role: implementation
   - path: ari-skill-paper-re/mcp.json
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # MCP Skills リファレンス
@@ -416,7 +416,10 @@ PaperBench 互換のルーブリックを生成。`target_leaf_count=0` の場�
 
 #### `add_memory(node_id, text, metadata=None)`
 
-`node_id` でタグ付けされたエントリを保存します。**Copy-on-Write**: `node_id` が `$ARI_CURRENT_NODE_ID` と一致しない書き込みは拒否されます。
+`node_id` でタグ付けされたエントリを保存します。**Copy-on-Write**:
+manifest は明示的なノードコンテキストを要求し、Skill は署名付き
+`NodeContextV1.node_id` が書き込み先と一致しなければ拒否します。
+子は祖先を変更できません。
 
 #### `search_memory(query, ancestor_ids, limit=5)`
 
@@ -438,7 +441,7 @@ Letta のコアメモリからシードされた実験ファクト（`experiment
 
 #### 型付き検証可能リサーチメモリのツール
 
-型付きエントリ（Phase 1）は構造化された来歴を持ち、論文 / 図ステージが再現可能なアーティファクトに claim を接地できるようにします。呼び出し元は loop / pipeline フックであり、LLM のプルではありません。すべての書き込みツールは **Copy-on-Write ガード** 付きです: `node_id` は `$ARI_CURRENT_NODE_ID` と一致しなければならず（ari-core の MCPClient が書き込みを `_set_current_node` ブリッジ経由でルーティングします）、子は祖先のエントリを変更できません。
+型付きエントリ（Phase 1）は構造化された来歴を持ち、論文 / 図ステージが再現可能なアーティファクトに claim を接地できるようにします。呼び出し元は loop / pipeline フックであり、LLM のプルではありません。すべての書き込みツールは、ツール名に束縛された署名付き `NodeContextV1` による **Copy-on-Write ガード** 付きです。読み取りではさらに、要求されたノード集合が順序付き lineage digest に対して検証されます。ari-core はモデルによる引数生成後にこの転送コンテキストを注入するため、呼び出し側が兄弟や祖先に権限昇格することはできません。
 
 #### `add_experiment_result(node_id, text, metric_ptr=None, artifact_refs=None, node_report_ref=None)`
 

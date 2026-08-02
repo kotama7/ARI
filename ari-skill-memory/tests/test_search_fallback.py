@@ -25,8 +25,7 @@ import pytest
 
 
 def _add_as(b, monkeypatch, node_id, text, metadata=None):
-    """Helper: write to the given node_id, satisfying the CoW check."""
-    monkeypatch.setenv("ARI_CURRENT_NODE_ID", node_id)
+    """Helper: seed the trusted backend directly for retrieval tests."""
     return b.add_memory(node_id=node_id, text=text, metadata=metadata or {})
 
 

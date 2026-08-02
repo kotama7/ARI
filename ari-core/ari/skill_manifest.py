@@ -82,6 +82,7 @@ class ToolPolicyV1(BaseModel):
         "default"
     )
     permissions: list[str] = Field(default_factory=list)
+    context_requirement: Literal["none", "run", "node"] = "none"
     result_schema: str = RESULT_ENVELOPE_V1
 
     @field_validator("phases")
@@ -124,6 +125,7 @@ class ToolManifestV1(BaseModel):
         Literal["default", "bounded", "slow", "very-slow", "async"] | None
     ) = None
     permissions: list[str] | None = None
+    context_requirement: Literal["none", "run", "node"] | None = None
     result_schema: str | None = None
 
     @field_validator("name")
@@ -174,6 +176,7 @@ class ToolManifestV1(BaseModel):
             "determinism",
             "timeout_class",
             "permissions",
+            "context_requirement",
             "result_schema",
         ):
             value = getattr(self, field_name)

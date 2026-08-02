@@ -44,16 +44,16 @@ Both layers live in the same per-checkpoint Letta agent:
   (`LettaMemoryClient`, not ancestor-filtered).
 
 The read and write paths through these two collections (`HASH` = checkpoint
-hash; the write guard and the post-filter are what enforce ancestor scope):
+hash; signed context validation and the post-filter enforce scope):
 
 ```mermaid
 flowchart LR
-    node["Executing node<br/>(= ARI_CURRENT_NODE_ID)"]
+    node["Executing node<br/>(signed NodeContext)"]
     subgraph letta["Per-checkpoint Letta agent"]
         nodecol["ari_node_HASH<br/>ancestor-scoped archival"]
         reactcol["ari_react_HASH<br/>flat ReAct trace"]
     end
-    node -->|"add_memory (CoW: node_id must == current)"| nodecol
+    node -->|"add_memory (signed self-node only)"| nodecol
     node -->|"ReAct steps"| reactcol
     node -->|"search_memory(query, ancestor_ids)"| search["passages.search<br/>embed_query, top_k = max(overfetch, limit*40)"]
     search --> nodecol
@@ -67,9 +67,15 @@ once the first node's `generate_ideas` completes (the point at which
 `get_experiment_context()` without paying for a search; the call
 returns `{}` until that seed runs.
 
-**Copy-on-Write**: write-side tools reject `node_id` ≠
-`$ARI_CURRENT_NODE_ID` so ancestor entries are byte-stable across
-siblings; Letta self-edit is disabled by default for the same reason.
+**Copy-on-Write**: every memory call carries an explicit `RunContextV1` and
+`NodeContextV1`. The node context binds `run_id`, self node, parent, and the
+ordered root-to-parent ancestor list to a `lineage_digest`. ari-core injects a
+per-connection signed capability after tool arguments leave the model; the
+memory skill verifies it before I/O. Writes may target only self, and reads may
+name only the signed lineage (plus self where the tool permits it). No mutable
+process-global node variable is involved, so parallel siblings cannot race or
+authorize one another. Letta self-edit remains disabled so accepted entries are
+byte-stable.
 
 **Portability**: each checkpoint carries a
 `memory_backup.jsonl.gz` snapshot that is restored automatically on

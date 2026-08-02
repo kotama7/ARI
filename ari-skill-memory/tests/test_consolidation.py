@@ -52,7 +52,6 @@ def test_success_without_metrics_emits_nothing_substantive(tmp_path):
 
 
 def test_write_consolidated_roundtrips(backend, monkeypatch, tmp_path):
-    monkeypatch.setenv("ARI_CURRENT_NODE_ID", "nX")
     report = {
         "node_id": "nX", "status": "success",
         "metrics": {"GB_per_s": 842.1},

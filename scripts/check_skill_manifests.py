@@ -28,6 +28,7 @@ from ari.skill_manifest import (  # noqa: E402
     resolve_skill_entrypoint,
 )
 from ari.result import ResultEnvelopeV1  # noqa: E402
+from ari.call_context import ToolCallContextV1  # noqa: E402
 from ari.mcp.child_environment import (  # noqa: E402
     MANAGED_CHILD_ENV_NAMES,
     SAFE_INHERITED_ENV_NAMES,
@@ -566,6 +567,28 @@ def check_repo(repo_root: Path = REPO_ROOT) -> list[Finding]:
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         findings.append(
             Finding("json-schema-invalid", _relative(schema_path, repo_root), str(exc))
+        )
+
+    context_schema_path = (
+        repo_root / "ari-core" / "ari" / "schemas" / "call_context_v1.schema.json"
+    )
+    try:
+        context_schema = json.loads(context_schema_path.read_text(encoding="utf-8"))
+        schema_fields = set(context_schema.get("properties", {}))
+        model_fields = set(ToolCallContextV1.model_fields)
+        if schema_fields != model_fields:
+            raise ValueError(
+                "call-context top-level schema drift: "
+                f"missing={sorted(model_fields - schema_fields)}, "
+                f"extra={sorted(schema_fields - model_fields)}"
+            )
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        findings.append(
+            Finding(
+                "call-context-json-schema-invalid",
+                _relative(context_schema_path, repo_root),
+                str(exc),
+            )
         )
 
     result_schema_path = (

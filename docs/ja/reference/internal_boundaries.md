@@ -16,7 +16,7 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/state.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # 内部境界
@@ -124,13 +124,15 @@ OS ハンドルをモジュールグローバル（`_st` としてインポー�
    `ARI_REPRO_*`、`PATH`）は `MCPClient` のスポーン**より前に**設定されている
    必要があります。MCP 構築を遅延させたり環境セットアップの順序を入れ替えたり
    すると、サンドボックス化 / work-dir のピン留めが静かに壊れます。
-2. **並列ワーカー下での共有プロセスのグローバル環境レース。** 最大 4 つの
+2. **並列ワーカー下のコンテキスト分離。** 最大 4 つの
    `AgentLoop` スレッドが 1 つのプロセスと 1 つの `MCPClient` を共有します。
-   メモリの copy-on-write はプロセスグローバルな `ARI_CURRENT_NODE_ID` をキーに
-   します。唯一安全な書き込みパスは
-   `mcp.call_tool(name, args, cow_node_id=node_id)` です（set-node＋write の対を
-   `MCPClient._cow_lock` 下で直列化します）。実行ごとの単一の
-   `_set_current_node` は `max_parallel_nodes > 1` では安全ではありません。
+   各呼び出しは、その worker 用に作成された不変の
+   `ToolCallContextV1.for_node(...)` を必ず携行します。client や provider に
+   可変の「現在ノード」を cache してはいけません。`MCPClient` と direct MCP
+   proxy は、転送専用の `ari_context` 引数をツール束縛された署名付き
+   capability で上書きします。memory provider は、順序付き lineage digest、
+   self-write ルール、ancestor-read 集合を呼び出しごとに独立検証します。
+   そのため、スレッド間 lock やグローバルなノード環境変数は不要です。
 3. **共有チェックポイントツリーへの書き込み。** **git worktree は存在しません**:
    並行するコミッタはすべて、1 つの共有された `agent._progress_cb` →
    `_save_tree_incremental` を介して同一の `tree.json` / `nodes_tree.json` /

@@ -13,6 +13,8 @@ from ari.result import (  # noqa: F401
     ResultErrorKind,
     ResultErrorV1,
     ResultProvenanceV1,
+    NodeContextV1,
+    RunContextV1,
     ToolCallContextV1,
     utc_now_iso,
 )
@@ -30,6 +32,8 @@ __all__ = [
     "ResultErrorKind",
     "ResultErrorV1",
     "ResultProvenanceV1",
+    "NodeContextV1",
+    "RunContextV1",
     "ToolCallContextV1",
     "utc_now_iso",
 ]

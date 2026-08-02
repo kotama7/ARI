@@ -10,7 +10,6 @@ client against ``LETTA_BASE_URL`` at first use; failures raise
 from __future__ import annotations
 
 import logging
-import os
 import threading
 import time
 from typing import Any
@@ -19,7 +18,6 @@ from ari_skill_memory.access_log import (
     AccessLog,
     build_read_event,
     build_write_event,
-    current_node_id,
 )
 from ari_skill_memory.backends.base import MemoryBackend
 from ari_skill_memory.config import MemoryConfig
@@ -136,30 +134,20 @@ class LettaBackend(MemoryBackend):
                 self.agent_name,
             )
 
-    # ─ CoW helper ──────────────────────────────────────────────────────
-    def _check_cow(self, node_id: str) -> dict | None:
-        env_node = os.environ.get("ARI_CURRENT_NODE_ID")
-        if env_node is None or env_node == "":
-            return {"ok": False, "error": "ARI_CURRENT_NODE_ID not set"}
-        if node_id != env_node:
-            return {
-                "ok": False,
-                "error": "node_id does not match current node (CoW violation)",
-            }
-        return None
-
     # ─ cost tracker helper ─────────────────────────────────────────────
     def _record_cost(
-        self, *, op: str, latency_ms: float, embedding_tokens: int = 0
+        self,
+        *,
+        op: str,
+        latency_ms: float,
+        node_id: str = "",
+        embedding_tokens: int = 0,
     ) -> None:
         try:
-            try:
-                from ari.public import cost_tracker  # type: ignore[import]
-            except ImportError:
-                from ari import cost_tracker  # type: ignore[import]
+            from ari.public import cost_tracker  # type: ignore[import]
             cost_tracker.record(
                 model="", prompt_tokens=0, completion_tokens=0,
-                node_id=current_node_id(),
+                node_id=node_id,
                 phase="memory", skill="ari-skill-memory",
                 component="memory", op=op, backend="letta",
                 embedding_tokens=embedding_tokens, latency_ms=latency_ms,
@@ -174,9 +162,6 @@ class LettaBackend(MemoryBackend):
     def add_memory(
         self, node_id: str, text: str, metadata: dict | None = None
     ) -> dict:
-        cow = self._check_cow(node_id)
-        if cow is not None:
-            return cow
         client = self._ensure_client()
         agent_id = self._ensure_agent()
         t0 = time.time()
@@ -193,10 +178,10 @@ class LettaBackend(MemoryBackend):
             },
         )
         latency_ms = (time.time() - t0) * 1000.0
-        self._record_cost(op="add", latency_ms=latency_ms)
+        self._record_cost(op="add", latency_ms=latency_ms, node_id=node_id)
         self._access.write(
             build_write_event(
-                node_id=current_node_id(),
+                node_id=node_id,
                 collection="node_scope",
                 entry_id=entry_id,
                 text=text,
@@ -207,7 +192,12 @@ class LettaBackend(MemoryBackend):
         return {"ok": True, "id": entry_id}
 
     def search_memory(
-        self, query: str, ancestor_ids: list[str], limit: int = 5
+        self,
+        query: str,
+        ancestor_ids: list[str],
+        limit: int = 5,
+        *,
+        reader_node_id: str = "",
     ) -> dict:
         """Ancestor-scoped retrieval.
 
@@ -299,10 +289,14 @@ class LettaBackend(MemoryBackend):
                 "score": float(r.get("score", 0.0)),
             })
         latency_ms = (time.time() - t0) * 1000.0
-        self._record_cost(op="search", latency_ms=latency_ms)
+        self._record_cost(
+            op="search",
+            latency_ms=latency_ms,
+            node_id=reader_node_id,
+        )
         self._access.write(
             build_read_event(
-                node_id=current_node_id(),
+                node_id=reader_node_id,
                 collection="node_scope",
                 query=query,
                 ancestor_ids=list(ancestor_ids),
@@ -318,7 +312,7 @@ class LettaBackend(MemoryBackend):
         )
         return {"results": results}
 
-    def get_node_memory(self, node_id: str) -> dict:
+    def get_node_memory(self, node_id: str, *, reader_node_id: str = "") -> dict:
         client = self._ensure_client()
         agent_id = self._ensure_agent()
         entries = client.archival_list(
@@ -339,7 +333,7 @@ class LettaBackend(MemoryBackend):
         try:
             self._access.write(
                 build_read_event(
-                    node_id=current_node_id(),
+                    node_id=reader_node_id,
                     collection="node_scope",
                     query="inherit:get_node_memory",
                     ancestor_ids=[node_id],
@@ -362,9 +356,6 @@ class LettaBackend(MemoryBackend):
         ]}
 
     def clear_node_memory(self, node_id: str) -> dict:
-        cow = self._check_cow(node_id)
-        if cow is not None:
-            return {"removed": 0, "error": cow["error"]}
         client = self._ensure_client()
         agent_id = self._ensure_agent()
         entries = client.archival_list(
@@ -418,7 +409,9 @@ class LettaBackend(MemoryBackend):
             })
         return {"by_node": by_node}
 
-    def bulk_get_node_memory(self, node_ids: list[str]) -> dict:
+    def bulk_get_node_memory(
+        self, node_ids: list[str], *, reader_node_id: str = ""
+    ) -> dict:
         client = self._ensure_client()
         agent_id = self._ensure_agent()
         entries = client.archival_list(
@@ -447,7 +440,7 @@ class LettaBackend(MemoryBackend):
         try:
             self._access.write(
                 build_read_event(
-                    node_id=current_node_id(),
+                    node_id=reader_node_id,
                     collection="node_scope",
                     query="inherit:bulk_get_node_memory",
                     ancestor_ids=list(node_ids),
@@ -586,7 +579,7 @@ class LettaBackend(MemoryBackend):
         )
         self._access.write(
             build_write_event(
-                node_id=current_node_id(),
+                node_id=str((metadata or {}).get("node_id") or ""),
                 collection="react_step",
                 entry_id=entry_id,
                 text=content,
@@ -617,7 +610,7 @@ class LettaBackend(MemoryBackend):
             })
         self._access.write(
             build_read_event(
-                node_id=current_node_id(),
+                node_id="",
                 collection="react_step",
                 query=query,
                 ancestor_ids=None,

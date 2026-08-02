@@ -16,16 +16,20 @@ sources:
     role: doc
   - path: ari-core/ari/result.py
     role: implementation
+  - path: ari-core/ari/call_context.py
+    role: implementation
   - path: ari-core/ari/skill_lock.py
     role: implementation
   - path: ari-core/ari/schemas/result_envelope_v1.schema.json
+    role: config
+  - path: ari-core/ari/schemas/call_context_v1.schema.json
     role: config
 last_verified: 2026-08-02
 ---
 
 # C01: `ari-core` Skill control plane 実装計画
 
-> 状態: In progress（C01-01/02/03/05/06/07完了、C01-04/09/10は互換移行中）。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
+> 状態: In progress（C01-01〜08完了、C01-09/10未完了）。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
 
 ## 1. 責務と範囲
 
@@ -43,12 +47,16 @@ last_verified: 2026-08-02
 
 ## 2. 現状根拠
 
-- `ari/mcp/client.py` は Python stdio server を固定形式で起動し、親の環境をほぼ全て渡す。
-- tool registry は `tool_name -> skill.name` であり、同名 tool の後勝ちを検出しない。
-- slow tool timeout と memory CoW tool は tool 名の hard-coded set である。
-- `ari/config/__init__.py` は `ari-skill-*` directory を走査し、`src/server.py` の存在で自動登録する。
-- viz settings は manifest に不足がある場合 `server.py` から tool 名を抽出する fallback を持つ。
-- `ari.public.*` は既に一部 cross-package API を提供しており、移行の足場として使える。
+- canonical `skill.yaml` から namespaced registry、live schema を含む
+  `SKILLS.lock`、typed `ResultEnvelopeV1` を構築する経路は実装済みである。
+- child process は complete allowlist 環境で起動し、credential 値と
+  core-owned context authority は config / lock / provenance / model-visible schema に出ない。
+- `RunContextV1` / `NodeContextV1` は run、self、parent、順序付き lineage を
+  digest に束縛し、接続ごとの tool-bound HMAC capability で provider へ渡す。
+- memory の可変な current-node 環境変数と private set-node tool は削除済みで、
+  4 parallel node の実 MCP process test が sibling isolation を固定する。
+- 未移行なのは tool 名別 timeout fallback、async handle、viz source scraping、
+  directory 暗黙登録、runtime の legacy config reader である。
 
 ## 3. 目標契約
 
@@ -64,14 +72,14 @@ last_verified: 2026-08-02
 
 | ID | 作業 | 成果物 | 依存 |
 |---|---|---|---|
-| C01-01 | 現行 package / tool / workflow inventoryをgolden fixture化 | `SkillInventoryV1` fixture、drift report | P0 |
-| C01-02 | `SkillManifestV1` とschema loaderを追加 | `ari.public.skill_manifest`、schema、validation error | C01-01 |
-| C01-03 | manifestからconnection specを構築 | stdio Python互換adapter、launcher allowlist | C01-02 |
-| C01-04 | namespaced registryとcollision policyを追加 | immutable `tool_ref`、duplicate/equivalence判定hook | C01-02 |
-| C01-05 | `ResultEnvelopeV1` とartifact externalization | public model、bounded rendering、raw response保存 | C01-02 |
+| C01-01 | **完了**: 現行 package / tool / workflow inventoryをgolden fixture化 | `SkillInventoryV1` fixture、drift report | P0 |
+| C01-02 | **完了**: `SkillManifestV1` とschema loaderを追加 | `ari.public.skill_manifest`、schema、validation error | C01-01 |
+| C01-03 | **完了**: manifestからconnection specを構築 | stdio Python互換adapter、launcher allowlist | C01-02 |
+| C01-04 | **完了**: namespaced registryとcollision policyを追加 | immutable `tool_ref`、duplicate/equivalence判定hook | C01-02 |
+| C01-05 | **完了**: `ResultEnvelopeV1` とartifact externalization | public model、bounded rendering、raw response保存 | C01-02 |
 | C01-06 | **完了**: child environment policyを実装 | allowlist、secret redaction、credential scope identity、direct-MCP secure proxy | C01-03 |
 | C01-07 | **完了**: run snapshotを固定 | `SKILLS.lock`、schema/provider digest、phase別active set、atomic create/verify、provider fail-closed | C01-04 |
-| C01-08 | explicit `RunContext` / `NodeContext` をcallへ渡す | parallel-safe context、memory連携 | C01-05 |
+| C01-08 | **完了**: explicit `RunContext` / `NodeContext` をcallへ渡す | parallel-safe context、memory連携、direct-MCP proxy署名 | C01-05 |
 | C01-09 | capability-based timeout / async handle | hard-coded tool名に依存しないbudgetとpolling | C01-05 |
 | C01-10 | conformance CIとmigration reader | manifest/tools/workflow/version check、旧config fixture | C01-02〜09 |
 
@@ -86,7 +94,7 @@ last_verified: 2026-08-02
 ## 6. 検証と受け入れ基準
 
 - [x] 全既存 Skill の manifest がschema validationを通る。
-- [ ] manifest tools と live `tools/list` の追加・欠落・schema drift がCIでfailする。
+- [x] manifest tools と live `tools/list` の追加・欠落・schema drift がCIでfailする。
 - [x] 同名の異なる2 toolを登録すると起動時にcollision errorになり、黙って上書きされない。
 - [x] run開始後にmanifest fileを変更してもactive snapshotは変わらず、新process/resumeはdriftを拒否する。
 - [x] secret markerを親envへ置いた実MCP process testで、未許可Skillから参照できず、stdout/stderr/lock/provenanceへ値が残らない。
@@ -102,10 +110,10 @@ last_verified: 2026-08-02
 
 | ID | 削除対象 | 置換先 | 最早phase | 削除gate |
 |---|---|---|---|---|
-| C01-D1 | bare-nameのlast-writer-wins `_tool_registry` | namespaced immutable registry | P2 | collision test、全call siteが`tool_ref`または一意aliasを使用 |
+| C01-D1 | **完了**: bare-nameのlast-writer-wins `_tool_registry` | namespaced immutable registry | P2 | collision test、全call siteが`tool_ref`または一意aliasを使用 |
 | C01-D2 | **完了**: `_server_params()` の `{**os.environ, ...}` を削除 | child environment policy | P2 | secret non-propagation実process test、全Skillのcomplete env宣言、Claude parent-env merge proxy test |
 | C01-D3 | `_SLOW_TOOLS` / `_VERY_SLOW_TOOLS` のtool名list | manifest timeout class / per-call budget | P2 | timeout fixture parity、manifest coverage 100% |
-| C01-D4 | `_COW_TOOLS` と `_set_current_node` 依存 | explicit `NodeContext` | P3 | parallel memory conformance test、旧call site 0 |
+| C01-D4 | **完了**: `_COW_TOOLS` と `_set_current_node` 依存 | explicit `NodeContext` | P3 | parallel memory conformance test、旧call site 0 |
 | C01-D5 | vizによる`server.py` source scraping | canonical manifest index | P3 | dashboard contract test、全package manifest移行 |
 | C01-D6 | directory存在だけでproduction Skillを暗黙登録する経路 | approved manifest / lock | P4 | clean install、explicit local-dev opt-in、run lock test |
 | C01-D7 | runtime registrationに使う旧`mcp.json`/`skill.yaml` reader | migration-only reader | P6 | deprecation期間、repo caller 0、旧checkpoint fixtureは別readerでgreen |

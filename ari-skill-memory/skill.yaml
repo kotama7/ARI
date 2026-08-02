@@ -11,7 +11,6 @@ entrypoint:
   module: src/server.py
 required_env: [ARI_CHECKPOINT_DIR]
 optional_env:
-  - ARI_CURRENT_NODE_ID
   - ARI_MEMORY_ACCESS_LOG
   - ARI_MEMORY_ACCESS_LOG_MAX_MB
   - ARI_MEMORY_ACCESS_PREVIEW_CHARS
@@ -32,10 +31,9 @@ tool_defaults:
   determinism: conditional
   timeout_class: bounded
   permissions: [workspace-read, workspace-write, memory-store]
+  context_requirement: node
   result_schema: ari.result-envelope/v1
 tools:
-  - name: _set_current_node
-    capability_ref: ari.internal.node-context.set
   - name: add_experiment_result
     capability_ref: ari.memory.experiment-result.add
   - name: add_failure_case
@@ -51,6 +49,7 @@ tools:
   - name: audit_memory
     capability_ref: ari.memory.audit
     side_effects: read-only
+    context_requirement: run
   - name: clear_node_memory
     capability_ref: ari.memory.node.clear
     side_effects: destructive
@@ -61,6 +60,7 @@ tools:
   - name: get_experiment_context
     capability_ref: ari.memory.experiment-context.read
     side_effects: read-only
+    context_requirement: run
   - name: get_node_memory
     capability_ref: ari.memory.node.read
     side_effects: read-only

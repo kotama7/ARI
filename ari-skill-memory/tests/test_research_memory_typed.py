@@ -1,7 +1,8 @@
 """Phase 1 — typed writer/retriever over the existing backend (no backend mod).
 
 Uses the in-memory ``backend`` fixture (conftest). CoW requires writes to use
-the current node id, so we monkeypatch ARI_CURRENT_NODE_ID per write.
+the trusted backend helper directly; signed node authorization is tested at the
+MCP server boundary.
 """
 from __future__ import annotations
 
@@ -12,7 +13,6 @@ from ari_skill_memory.schemas import ArtifactRef
 
 
 def _write_as(backend, monkeypatch, node_id, fn, *args, **kw):
-    monkeypatch.setenv("ARI_CURRENT_NODE_ID", node_id)
     return fn(backend, node_id, *args, **kw)
 
 
@@ -34,7 +34,6 @@ def test_add_experiment_result_stamps_kind_and_refs(backend, monkeypatch):
 
 
 def test_writer_rejects_unknown_kind(backend, monkeypatch):
-    monkeypatch.setenv("ARI_CURRENT_NODE_ID", "nX")
     with pytest.raises(ValueError):
         writer.add_typed_memory(backend, "nX", "bogus", "x")
 
@@ -107,6 +106,5 @@ def test_reproducibility_events_fold_latest(backend, monkeypatch):
 
 
 def test_reproducibility_event_rejects_bad_status(backend, monkeypatch):
-    monkeypatch.setenv("ARI_CURRENT_NODE_ID", "n1")
     with pytest.raises(ValueError):
         writer.add_reproducibility_event(backend, "n1", "mem0", "totally_passed")

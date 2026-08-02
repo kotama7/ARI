@@ -40,6 +40,7 @@ def build_verified_context(
     *,
     purpose: str = "paper",
     limit: int | None = None,
+    reader_node_id: str = "",
 ) -> dict:
     """Build artifact-grounded, reproducibility-aware context for ``ancestor_ids``.
 
@@ -50,12 +51,22 @@ def build_verified_context(
       - ``usable_for_claims`` : the subset safe to assert in paper body
                           (grounded and not rerun_failed).
     """
-    repro = retriever.fold_reproducibility(backend, ancestor_ids)
+    repro = retriever.fold_reproducibility(
+        backend,
+        ancestor_ids,
+        reader_node_id=reader_node_id,
+    )
     claim_entries = retriever.ancestor_typed_memory(
-        backend, ancestor_ids, kinds=list(_CLAIM_KINDS)
+        backend,
+        ancestor_ids,
+        kinds=list(_CLAIM_KINDS),
+        reader_node_id=reader_node_id,
     )
     failures = retriever.ancestor_typed_memory(
-        backend, ancestor_ids, kinds=["failure_case"]
+        backend,
+        ancestor_ids,
+        kinds=["failure_case"],
+        reader_node_id=reader_node_id,
     )
 
     annotated: list[dict] = []

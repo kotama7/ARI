@@ -732,19 +732,32 @@ def overlay_cross_language(graph: Graph, base: Path, cfg: dict) -> None:
     viz_dir = base / viz_dir_rel
     if not api_path.exists() or not viz_dir.exists():
         return
-    ts_node = f"ts.module:{api_rel}"
-    graph.add_node(ts_node, "ts.module", api_rel, line_count(api_path))
-    ts_paths = _extract_ts_paths(api_path.read_text(encoding="utf-8", errors="replace"))
     route_paths = _extract_route_paths(viz_dir, base, cfg)
-    for tp in sorted(ts_paths):
-        for rp in route_paths:
-            if _paths_match(tp, rp):
-                rnode = f"route:{rp}"
-                graph.add_node(rnode, "route", viz_dir_rel, 0)
-                graph.add_edge(
-                    ts_node, rnode, "cross_lang.http",
-                    f"{api_rel} '{tp}' ~ {viz_dir_rel} '{rp}'",
-                )
+    # ``api.ts`` may be a compatibility barrel whose endpoint wrappers live
+    # in the adjacent ``api/*.ts`` directory. Scan both forms so splitting a
+    # frontend god-module cannot silently erase the cross-language firewall.
+    api_paths = [api_path]
+    split_dir = api_path.with_suffix("") if api_path.is_file() else api_path
+    if split_dir.is_dir():
+        api_paths.extend(sorted(split_dir.rglob("*.ts")))
+    for source_path in dict.fromkeys(api_paths):
+        source_rel = posix_rel(source_path, base)
+        ts_node = f"ts.module:{source_rel}"
+        graph.add_node(ts_node, "ts.module", source_rel, line_count(source_path))
+        ts_paths = _extract_ts_paths(
+            source_path.read_text(encoding="utf-8", errors="replace")
+        )
+        for tp in sorted(ts_paths):
+            for rp in route_paths:
+                if _paths_match(tp, rp):
+                    rnode = f"route:{rp}"
+                    graph.add_node(rnode, "route", viz_dir_rel, 0)
+                    graph.add_edge(
+                        ts_node,
+                        rnode,
+                        "cross_lang.http",
+                        f"{source_rel} '{tp}' ~ {viz_dir_rel} '{rp}'",
+                    )
 
 
 def _extract_ts_paths(text: str) -> set[str]:

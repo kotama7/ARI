@@ -108,7 +108,7 @@ def write_consolidated(backend: Any, node_id: str, specs: list[dict]) -> list[di
     """Write consolidation specs via the typed writer (CoW: node_id is current).
 
     Returns the per-spec write results. Caller (ari-core hook) must have set
-    ``$ARI_CURRENT_NODE_ID == node_id``.
+    The MCP boundary has already verified a signed self-node context.
     """
     out: list[dict] = []
     for spec in specs:

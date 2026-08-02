@@ -10,6 +10,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `_deprecation.py` — `DeprecationWarning` helpers for v0.5→v1.0 legacy paths/aliases.
 - `_factory.py` — TODO
 - `artifact_store.py` — TODO
+- `call_context.py` — explicit run/node lineage models and tool-bound signed MCP capabilities.
 - `checkpoint.py` — checkpoint JSON I/O (`tree.json` / `nodes_tree.json` / `results.json`).
 - `cli_ear.py` — `ari ear …` curation / publish / promote / status CLI surface.
 - `container.py` — unified container runtime abstraction (Docker / Singularity / bare subprocess).
@@ -188,6 +189,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `public/` — public API surface for ARI skills (import-only contract).
   - `README.md` — public index.
   - `__init__.py` — exported sub-modules + rationale.
+  - `call_context.py` — stable explicit run/node context and signed-capability verification contract.
   - `claim_gate.py` — re-exports five symbols from `ari.pipeline.claim_gate`: `run_hard_gate` (→ ari-skill-evaluator), `check_emission` (→ ari-skill-coding), `scan_science_data` (→ ari-skill-transform), plus `classify_concept` / `CONCEPT_INVARIANTS` (shared concept→invariant registry).
   - `config_schema.py` — re-export of `ari.config` models.
   - `container.py` — re-export of `ari.container`.
@@ -219,6 +221,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `schemas/` — JSON Schemas shipped with ari-core.
   - `README.md` — schemas index.
   - `__init__.py` — `load(name)` loader.
+  - `call_context_v1.schema.json` — explicit run/node tool-call context contract.
   - `node_report.schema.json` — per-node report schema.
   - `publish.schema.json` — publish record / manifest schema.
   - `result_envelope_v1.schema.json` — typed MCP dispatch result contract.

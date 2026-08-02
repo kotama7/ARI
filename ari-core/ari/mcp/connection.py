@@ -12,6 +12,13 @@ from typing import Any
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from ari.call_context import (
+    CALL_CONTEXT_ARGUMENT,
+    CONTEXT_AUTHORITY_ENV,
+    ToolCallContextV1,
+    authorize_tool_context,
+    new_context_authority_key,
+)
 from ari.config import SkillConfig
 from ari.mcp.child_environment import (
     ChildEnvironment,
@@ -25,8 +32,16 @@ from ari.mcp.dispatch_support import DEFAULT_TOOL_TIMEOUT
 class SkillConnection:
     """Persistent, thread-safe connection to one MCP Skill server."""
 
-    def __init__(self, skill: SkillConfig) -> None:
+    def __init__(
+        self,
+        skill: SkillConfig,
+        *,
+        context_authority_key: str | None = None,
+    ) -> None:
         self.skill = skill
+        self._context_authority_key = (
+            context_authority_key or new_context_authority_key()
+        )
         self._session: ClientSession | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._loop_thread: threading.Thread | None = None
@@ -72,6 +87,11 @@ class SkillConnection:
             self.skill,
             skill_path=skill_path,
             ari_core_root=Path(__file__).parents[2],
+        )
+        child_environment = child_environment.with_core_secret(
+            CONTEXT_AUTHORITY_ENV,
+            self._context_authority_key,
+            marker="<redacted:core.call-context-authority>",
         )
         resolved_scopes = tuple(
             dict(identity)
@@ -190,8 +210,10 @@ class SkillConnection:
                     "description": self._child_environment.redactor.text(
                         tool.description or ""
                     ),
-                    "inputSchema": self._child_environment.redactor.value(
-                        tool.inputSchema if tool.inputSchema else {}
+                    "inputSchema": _public_input_schema(
+                        self._child_environment.redactor.value(
+                            tool.inputSchema if tool.inputSchema else {}
+                        )
                     ),
                     "outputSchema": self._child_environment.redactor.value(
                         tool.outputSchema if tool.outputSchema else {}
@@ -202,6 +224,22 @@ class SkillConnection:
             ]
 
         return self._run(_list())
+
+    def authorize_args(
+        self,
+        tool_name: str,
+        args: dict,
+        context: ToolCallContextV1,
+    ) -> dict:
+        """Inject a signed, connection-scoped context capability."""
+
+        authorized = dict(args)
+        authorized[CALL_CONTEXT_ARGUMENT] = authorize_tool_context(
+            context,
+            tool_name=tool_name,
+            authority_key=self._context_authority_key,
+        )
+        return authorized
 
     def call_tool(
         self, tool_name: str, args: dict, timeout: int = DEFAULT_TOOL_TIMEOUT
@@ -253,3 +291,26 @@ class SkillConnection:
 
 
 __all__ = ["SkillConnection"]
+
+
+def _public_input_schema(schema: Any) -> Any:
+    """Hide the transport-managed context argument from model-facing schemas."""
+
+    if not isinstance(schema, dict):
+        return schema
+    rendered = dict(schema)
+    properties = rendered.get("properties")
+    if isinstance(properties, dict) and CALL_CONTEXT_ARGUMENT in properties:
+        rendered["properties"] = {
+            name: value
+            for name, value in properties.items()
+            if name != CALL_CONTEXT_ARGUMENT
+        }
+    required = rendered.get("required")
+    if isinstance(required, list):
+        kept = [name for name in required if name != CALL_CONTEXT_ARGUMENT]
+        if kept:
+            rendered["required"] = kept
+        else:
+            rendered.pop("required", None)
+    return rendered

@@ -16,7 +16,7 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/state.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # 内部边界
@@ -66,5 +66,5 @@ ARI 的 LLM 边界**并非**"一切都必须调用 `LLMClient`"。它是一个�
 ### 并发隐患（此处的任何改动都需保持）
 
 1. **fork 时刻的环境变量时序。** MCP 服务器在 spawn 时对 `os.environ` 拍快照。`ARI_WORK_DIR` 和沙箱变量（`ARI_REAL_GIT`、`ARI_REPRO_*`、`PATH`）必须在 `MCPClient` spawn **之前**设置；推迟 MCP 构建或重排环境设置顺序会悄无声息地破坏沙箱化 / work-dir 钉定。
-2. **并行工作者下共享进程的全局环境竞态。** 至多 4 个 `AgentLoop` 线程共享同一个进程和同一个 `MCPClient`。内存的写时复制以进程全局的 `ARI_CURRENT_NODE_ID` 为键；唯一安全的写入路径是 `mcp.call_tool(name, args, cow_node_id=node_id)`（它在 `MCPClient._cow_lock` 下将 set-node＋write 这对操作串行化）。每次运行单一的 `_set_current_node` 在 `max_parallel_nodes > 1` 时是不安全的。
+2. **并行工作者下的上下文隔离。** 至多 4 个 `AgentLoop` 线程共享同一个进程和同一个 `MCPClient`。每次调用都必须携带为该 worker 构建的不可变 `ToolCallContextV1.for_node(...)`；不得在 client 或 provider 中缓存可变的“当前节点”。`MCPClient` 与 direct MCP proxy 会用绑定工具的签名 capability 覆盖仅供传输的 `ari_context` 参数。记忆 provider 会针对每次调用独立验证有序 lineage digest、self-write 规则与 ancestor-read 集合，因此不需要跨线程锁或全局节点环境变量。
 3. **对共享检查点树的写入。** **不存在 git worktree**：并发的提交者都经由同一个共享的 `agent._progress_cb` → `_save_tree_incremental` 写入同一份 `tree.json` / `nodes_tree.json` / `results.json`；线程安全 ＋ 限流位于 `ari.checkpoint.save_tree_incremental`（锁 ＋ mtime 限流）。每个节点的 work-dir 由 `PathManager.node_work_dir(run_id, node_id)` 隔离。

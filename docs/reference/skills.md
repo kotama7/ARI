@@ -787,9 +787,9 @@ retrieval; see PHILOSOPHY.md for the P2/P5 relaxation note).
 
 #### `add_memory(node_id, text, metadata=None)`
 
-Store an entry tagged with `node_id`. **Copy-on-Write**: rejects writes
-whose `node_id` ≠ `$ARI_CURRENT_NODE_ID` so a child cannot mutate an
-ancestor's entries.
+Store an entry tagged with `node_id`. **Copy-on-Write**: the manifest requires
+an explicit node context, and the skill rejects a write unless the signed
+`NodeContextV1.node_id` equals the target. A child cannot mutate an ancestor.
 
 #### `search_memory(query, ancestor_ids, limit=5)`
 
@@ -834,10 +834,11 @@ determined); safe to call repeatedly (60 s in-process cache). Returns
 
 Typed entries (Phase 1) carry structured provenance so the paper / figure
 stages can ground claims on reproducible artifacts. Callers are loop/pipeline
-hooks, not LLM pulls. Every write tool is **Copy-on-Write guarded**: `node_id`
-must equal `$ARI_CURRENT_NODE_ID` (the ari-core MCPClient routes the write
-through the `_set_current_node` bridge), so a child cannot mutate an ancestor's
-entries.
+hooks, not LLM pulls. Every write tool is **Copy-on-Write guarded** by a
+tool-bound, signed `NodeContextV1`; reads additionally validate their requested
+node set against its ordered lineage digest. ari-core injects this transport
+context after model argument generation, so callers cannot promote themselves
+to a sibling or ancestor.
 
 #### `add_experiment_result(node_id, text, metric_ptr=None, artifact_refs=None, node_report_ref=None)`
 
