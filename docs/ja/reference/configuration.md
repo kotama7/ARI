@@ -307,8 +307,8 @@ skills:
 | `ARI_MODEL_ROOT_SELECT` | VirSci プールから `ideas[0]` を選び直す LLM (lineage decision, v0.7.0)。フォールバック順は `ARI_MODEL_LINEAGE` と同じ | (auto) |
 | `ARI_PHASE1_SANDBOX` | Phase 1 サンドボックス: `auto` / `slurm` / `docker` / `apptainer` / `singularity` / `local` | `auto` |
 | `ARI_SLURM_WALLTIME` | SLURM Phase 1 の `--time` HH:MM:SS (v0.7.0, 復元)。空ならルーブリックの `max_runtime_sec` から算出。 | (auto) |
-| `ARI_PHASE1_DOCKER_IMAGE` | docker サンドボックスのコンテナイメージ | `ubuntu:24.04` |
-| `ARI_PHASE1_APPTAINER_IMAGE` / `ARI_PHASE1_SINGULARITY_IMAGE` | Apptainer/Singularity サンドボックスのイメージ | `docker://ubuntu:24.04` |
+| `ARI_PHASE1_DOCKER_IMAGE` | Docker再現用のimmutable digest-pinned image | defaultなし |
+| `ARI_PHASE1_APPTAINER_IMAGE` | Apptainer/Singularity 用の review 済み local SIF または digest-pinned image | defaultなし |
 | `ARI_PUBLISH_DRYRUN` | `ari ear publish --dry-run` を強制 (CI 安全, v0.7.0) | (off) |
 | `ARI_REGISTRY_DATA` | `ari registry serve` の sqlite + artifact 保管 root | (なし — 明示設定が必須。v0.5.0 以前の `$HOME/.ari/registry-data` フォールバックは DeprecationWarning を出し、v1.0 で削除) |
 | `ARI_REGISTRY_TOKEN` | `ari clone ari://...` / `ari ear publish --backend ari-registry` 用 bearer token | (なし) |

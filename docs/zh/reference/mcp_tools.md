@@ -136,7 +136,7 @@ ARI 附带 15 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 旧的逐章节工具已删除；迁移规则见英文
 [Paper build contract](../../reference/paper_build_contract.md)。
 
-## ari-skill-paper-re — PaperBench 可重现性（v0.7.0）
+## ari-skill-paper-re — PaperBench 可重现性（v1.0.0）
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
@@ -149,21 +149,21 @@ ARI 附带 15 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 
 | 工具 | 新增参数 |
 |---|---|
-| `build_reproduce_sh` | `container_image`（替代/取代旧版 `apptainer_image`；两者均向后兼容） |
+| `build_reproduce_sh` | `container_image`（唯一的不可变镜像字段；deprecated `apptainer_image` 别名已于 v1.0 删除） |
 
 ### v0.8.0 新增字段（Stage 2）
 
 | 工具 | 新增参数 |
 |---|---|
-| `run_reproduce` | `container_image`（被 docker / apptainer / singularity 沙箱使用；别名 `pb-env` / `pb-reproducer` 解析为 `scripts/build_pb_images.sh` 构建的 vendor `image:latest` 标签） |
+| `run_reproduce` | `container_image`（不可变本地 SIF、完整 Docker `sha256:<image-id>` 或按摘要固定的远程引用；拒绝可变标签和别名） |
 
-高声失败的前置条件：缺失 docker daemon / apptainer 二进制文件 / sbatch / 分区时抛出 `RuntimeError`，而不是静默回退到本地 CPU。仅可通过 `ARI_PHASE1_ALLOW_FALLBACK=1` 恢复旧版回退。带类型 GPU 请求绝不静默删除，矛盾或不支持的资源会在执行前失败。SLURM 路径使用共享 `JobRequestV1` submit/status/log/cancel 生命周期与 `--export=NIL` 干净环境。详见 [environment_variables.md](environment_variables.md#paperbench-reproduction-phase-stage-2)。
+高声失败的前置条件：缺失 docker daemon / apptainer 二进制文件 / sbatch / 分区时直接失败，不会回退到本地 CPU。带类型 GPU 请求绝不静默删除，矛盾或不支持的资源会在执行前失败。SLURM 路径使用共享执行 handoff 与 submit/status/log/cancel 生命周期及 `--export=NIL` 干净环境。详见 [environment_variables.md](environment_variables.md#paperbench-reproduction-phase-stage-2)。
 
 ### v0.8.0 新增字段（Stage 3）
 
 | 工具 | 新增参数 |
 |---|---|
-| `grade_with_simplejudge` | `code_only`（将 rubric 裁剪为仅 Code Development 叶节点，镜像 vendor `paperbench/grade.py:109-112`；当不存在 `reproduce.log` 时自动启用，防止仅 Stage 1 运行被系统性评零） |
+| `grade_with_simplejudge` | `code_only`（显式将已验证 reproduction 的 rubric 限定为 Code Development 叶节点；缺少 reproduction record 时不产生分数并失败） |
 
 关于以单一调用词汇将全部三个阶段串联起来的进程内 Python 接口，请参阅 [`api_paperbench.md` § Bridge 合约](api_paperbench.md#bridge-contract-in-process-python-surface)。
 

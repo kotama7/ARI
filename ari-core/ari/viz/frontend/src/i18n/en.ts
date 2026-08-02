@@ -424,7 +424,7 @@ const en: Record<string, string> = {
   pb_target_leaves: 'Target leaf count (0 = auto)',
   pb_time_limit: 'Time limit (sec)',
   pb_sandbox: 'Sandbox',
-  pb_container_image: 'Container image (docker://… | path.sif | image:tag — required for sandbox=docker/apptainer)',
+  pb_container_image: 'Immutable image (sha256:image-id | name@sha256:digest | local path.sif)',
   pb_partition: 'SLURM partition',
   pb_execution_profile_override: 'Execution profile override (SLURM allocation)',
   pb_space_sep: 'space-separated',

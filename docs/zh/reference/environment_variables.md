@@ -136,7 +136,7 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 
 | 变量 | 用途 | 默认值 |
 |---|---|---|
-| `ARI_PAPERBENCH_PATH` | 覆盖捆绑的 `vendor/paperbench/` 路径 | `vendor/paperbench/` |
+| `ARI_PAPERBENCH_PATH` + `ARI_PAPERBENCH_COMMIT` | 经审查 PaperBench source 的 exact-commit-only 覆盖 | vendored commit |
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | `run_reproduce` 的挂墙时间上限 | `43200`（12 小时） |
 | `ARI_REPLICATOR_ITERATIVE` | 使用迭代式复现器智能体 | – |
 | `ARI_REPLICATOR_MAX_STEPS` | 迭代开启时的迭代上限 | – |
@@ -196,11 +196,10 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 | 变量 | 用途 |
 |---|---|
 | `ARI_PHASE1_SANDBOX` | `auto` / `local` / `docker` / `apptainer` / `singularity` / `slurm`。强制指定 `server.run_reproduce` 和 `bridge.reproduce_submission` 使用的沙箱运行器。 |
-| `ARI_PHASE1_DOCKER_IMAGE` | `sandbox_kind=docker` 且未显式提供 `container_image` 时的默认 docker 镜像。默认为 `ubuntu:24.04`。 |
-| `ARI_PHASE1_APPTAINER_IMAGE` | `sandbox_kind=apptainer`/`singularity` 且未显式提供 `container_image` 时的默认 SIF / docker URI。 |
-| `ARI_PHASE1_SINGULARITY_IMAGE` | `ARI_PHASE1_APPTAINER_IMAGE` 的旧版别名。 |
-| `ARI_PHASE1_ALLOW_FALLBACK` | `1` ⇒ 当请求的沙箱工具缺失（docker daemon / apptainer / sbatch / partition）时，仅发出警告并回退到本地执行（旧版 v0.7.2 行为）。默认（未设置）⇒ 抛出 `RuntimeError`，防止用户的隔离意图被悄无声息地绕过。 |
-| `ARI_PAPERBENCH_PATH` | 覆盖 vendored PaperBench 源代码树路径（默认：`ari-skill-paper-re/vendor/paperbench/project/paperbench`）。 |
+| `ARI_PHASE1_DOCKER_IMAGE` | 未显式提供 `container_image` 时使用的 Docker 镜像；必须为完整 `sha256:<image-id>` 或 `name@sha256:<digest>`，不设可变默认值。 |
+| `ARI_PHASE1_APPTAINER_IMAGE` | Apptainer/Singularity 使用的非 symlink 本地 SIF 或按摘要固定的远程 URI。 |
+| `ARI_PAPERBENCH_PATH` | 可选 PaperBench project 覆盖；Git identity 与 `ARI_PAPERBENCH_COMMIT` 不完全匹配时拒绝。 |
+| `ARI_PAPERBENCH_COMMIT` | 使用覆盖时必填的 commit 声明；当前为 `51052cede8cc608f95bb00346635e03759013e5a`。 |
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | 调用者传入 `0` 时默认的 Stage 1 智能体展开时间预算。 |
 | `ARI_REPLICATOR_ITERATIVE` | `1` ⇒ Stage 1 展开默认使用 IterativeAgent 变体。 |
 | `ARI_REPLICATOR_MAX_STEPS` | 默认 Stage 1 步数上限。 |

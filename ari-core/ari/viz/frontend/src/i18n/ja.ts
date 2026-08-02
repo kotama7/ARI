@@ -421,7 +421,7 @@ const ja: Record<string, string> = {
   pb_target_leaves: '目標リーフ数 (0 = 自動)',
   pb_time_limit: '時間上限 (秒)',
   pb_sandbox: 'サンドボックス',
-  pb_container_image: 'コンテナイメージ (docker://… | path.sif | image:tag — sandbox=docker/apptainer 時は必須)',
+  pb_container_image: 'Immutable イメージ (sha256:image-id | name@sha256:digest | ローカル path.sif)',
   pb_partition: 'SLURM パーティション',
   pb_execution_profile_override: '実行プロファイルの上書き (SLURM 配置)',
   pb_space_sep: 'スペース区切り',

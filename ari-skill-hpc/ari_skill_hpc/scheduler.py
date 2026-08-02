@@ -981,6 +981,16 @@ class SlurmScheduler:
             "  printf 'hostname=%s\\n' \"$(hostname)\"",
             "  printf 'architecture=%s\\n' \"$(uname -m)\"",
             "  printf 'kernel=%s\\n' \"$(uname -sr)\"",
+            "  printf 'cpu_model=%s\\n' \"$(lscpu 2>/dev/null | "
+            "awk -F: '/Model name/{sub(/^[ \\t]+/, \"\", $2); print $2; exit}' || true)\"",
+            "  printf 'cpu_logical_count=%s\\n' \"$(getconf _NPROCESSORS_ONLN "
+            "2>/dev/null || true)\"",
+            "  printf 'gcc=%s\\n' \"$(gcc --version 2>/dev/null | head -n 1 || true)\"",
+            "  printf 'clang=%s\\n' \"$(clang --version 2>/dev/null | head -n 1 || true)\"",
+            "  printf 'mpicc=%s\\n' \"$(mpicc --version 2>/dev/null | head -n 1 || true)\"",
+            "  printf 'nvcc=%s\\n' \"$(nvcc --version 2>/dev/null | tail -n 1 || true)\"",
+            "  printf 'gpu=%s\\n' \"$(nvidia-smi --query-gpu=name,uuid,driver_version "
+            "--format=csv,noheader 2>/dev/null | paste -sd ';' - || true)\"",
             "  printf 'slurm_job_id=%s\\n' \"${SLURM_JOB_ID:-}\"",
             f"  printf 'command_path=%s\\n' \"$(command -v -- {command} 2>/dev/null || true)\"",
             f"}} > {shlex.quote(str(snapshot))}",

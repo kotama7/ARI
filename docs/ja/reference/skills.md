@@ -377,7 +377,7 @@ PaperBench は `ari-skill-paper-re/vendor/paperbench` に同梱。メイン採�
 
 決定論的にサンドボックスを populate（LLM なし）。**v0.7.0+**: `checkpoint_dir` を渡すと `{checkpoint_dir}/publish_record.json` から ref + sha256 を自動読込（`ari ear publish` が書き出すファイル）。`dest/reproduce.sh` 既存時は `populated=False, skipped_reason=...` を返してスキップ。
 
-#### `build_reproduce_sh(paper_path="", paper_text="", rubric_path="", output_dir="", model="", time_limit_sec=43200, iterative_agent=False, max_steps=0, sandbox_kind="auto", container_image="", apptainer_image="", overwrite=False)`
+#### `build_reproduce_sh(paper_path="", paper_text="", rubric_path="", output_dir="", model="", time_limit_sec=43200, iterative_agent=False, max_steps=0, sandbox_kind="auto", container_image="", overwrite=False)`
 
 **v0.7.0+ で追加された LLM 駆動の replicator**。`fetch_code_bundle` の兄弟ツール。論文（とルーブリックの `expected_artifacts`）を読み、自己完結の `reproduce.sh` + ソースファイル一式を `output_dir` に書き出します。LiteLLM 経由で任意プロバイダ対応。`output_dir/reproduce.sh` 既存時はスキップ。モデル: `model` 引数 > `ARI_MODEL_REPLICATE` > `ARI_LLM_MODEL` > `claude-opus-4-7`。
 

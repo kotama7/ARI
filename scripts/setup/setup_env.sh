@@ -453,21 +453,14 @@ _env_append_if_absent "# SINGULARITY_CACHEDIR="
 
 # --- 6b) ari-skill-paper-re sandbox / PaperBench ---------------------------
 # ARI_PHASE1_SANDBOX selects the sandbox runtime for run_reproduce
-# (apptainer | docker | local). The image vars override the default
-# ubuntu:24.04 / .sif used by run_reproduce.
+# (apptainer | docker | local). Container images must be immutable digest
+# references (Docker) or reviewed SIF files (Apptainer/Singularity).
 _env_append_if_absent "# ARI_PHASE1_SANDBOX=local"
 _env_append_if_absent "# ARI_PHASE1_APPTAINER_IMAGE="
-_env_append_if_absent "# ARI_PHASE1_SINGULARITY_IMAGE="
-_env_append_if_absent "# ARI_PHASE1_DOCKER_IMAGE=ubuntu:24.04"
-# ARI_PHASE1_ALLOW_FALLBACK=1 opts into the legacy silent-fallback-to-
-# local-host behaviour when sandbox_kind=docker/apptainer/slurm is
-# requested but the corresponding tool (docker daemon / apptainer / sbatch)
-# is missing. Default: fail loud (the user explicitly picked a sandbox;
-# silently running on the host defeats the isolation intent).
-_env_append_if_absent "# ARI_PHASE1_ALLOW_FALLBACK="
-# Override path to the vendored PaperBench source tree if the default
-# (ari-skill-paper-re/vendor/paperbench) is unavailable.
+_env_append_if_absent "# ARI_PHASE1_DOCKER_IMAGE="
+# Overrides are admitted only at the exact reviewed PaperBench commit.
 _env_append_if_absent "# ARI_PAPERBENCH_PATH="
+_env_append_if_absent "# ARI_PAPERBENCH_COMMIT=51052cede8cc608f95bb00346635e03759013e5a"
 
 # --- 7) SLURM ---------------------------------------------------------------
 _env_section "SLURM"

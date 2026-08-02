@@ -21,12 +21,17 @@ from ari_skill_hpc.scheduler import (
     SlurmScheduler,
     SubmissionLedger,
 )
+from ari_skill_hpc.execution_adapter import (
+    ExecutionHandoffV1,
+    handoff_execution_to_slurm,
+)
 
 __all__ = [
     "ArtifactPinV1",
     "BindMountV1",
     "ContainerRequestV1",
     "EnvironmentPolicyV1",
+    "ExecutionHandoffV1",
     "JobHandleV1",
     "JobLogV1",
     "JobRequestV1",
@@ -39,5 +44,6 @@ __all__ = [
     "SlurmScheduler",
     "SubmissionLedger",
     "file_digest",
+    "handoff_execution_to_slurm",
     "sha256_digest",
 ]

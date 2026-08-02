@@ -132,18 +132,16 @@ curl http://localhost:8765/api/paperbench/run/<job_id>
 
 ## v0.8.0 更新
 
-- **Step 3 Reproduce: 新增 `container_image` 字段** — 接受 SIF 路径 /
-  `docker://` URI / `image:tag` / 短别名 `pb-env` / `pb-reproducer`
-  (由 `scripts/build_pb_images.sh` 构建)。仅在
+- **Step 3 Reproduce: 新增 `container_image` 字段** — 接受非 symlink 的
+  本地 SIF、完整 Docker `sha256:<image-id>` 或以
+  `@sha256:<digest>` 固定的 URI；拒绝可变标签和短别名。仅在
   `sandbox=docker`/`apptainer`/`singularity` 时生效。
 - **GPU resource 一致性**: 共享typed scheduler把count/type编译为单一directive，
   拒绝per-task/per-node矛盾，并且不会静默drop资源。
 - **fail-loud 前置条件**: docker daemon / apptainer / sbatch / partition
-  / GRES 缺失时报错停止。只有sandbox缺失可设置
-  `ARI_PHASE1_ALLOW_FALLBACK=1` opt-in legacy fallback。
-- **Step 4 Judge: `code_only` 自动启用** — 当 Stage 2 被跳过
-  (无 reproduce.log) 时, rubric 被裁剪为仅 Code Development 叶,
-  避免 Code Execution / Result Analysis 叶被 structural 0 化。
+  / GRES 缺失时报错停止，不存在 host-local 回退。
+- **Step 4 Judge: `code_only`** — 仅作为 verified Stage 2 record 的显式
+  scope；没有 reproduction record 时失败且不发布分数。
 
 ## 相关
 

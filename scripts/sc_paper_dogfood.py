@@ -356,10 +356,11 @@ def main() -> int:
                          "singularity | slurm. Default 'local'.")
     ap.add_argument("--reproduce-container-image", default="",
                     help="Stage 2 container image. For sandbox=docker an "
-                         "image:tag; for apptainer/singularity an .sif path "
-                         "or docker://... URI. When empty, falls back to "
-                         "ARI_PHASE1_DOCKER_IMAGE / "
-                         "ARI_PHASE1_APPTAINER_IMAGE env or ubuntu:24.04.")
+                         "exact sha256:<image-id> or name@sha256:<digest>; "
+                         "for apptainer/singularity a local non-symlink SIF "
+                         "or digest-pinned URI. When empty, the matching "
+                         "ARI_PHASE1_*_IMAGE variable is used; there is no "
+                         "mutable default.")
     ap.add_argument("--reproduce-time-limit-sec", type=int, default=1800,
                     help="Wall-clock budget for Stage 2 reproduce.sh "
                          "(default 30 min for dogfood).")

@@ -101,9 +101,7 @@ def _generate_rubric_args(paper_pdf: Path, rubric_path: Path, cfg: dict) -> dict
 
 
 def _build_reproduce_args(paper_pdf: Path, rubric_path: Path, repro_dir: Path, cfg: dict) -> dict:
-    # ``container_image`` is the wizard's unified field; ``apptainer_image`` is
-    # the legacy Stage 1-only alias still accepted for back-compat.
-    img = str(cfg.get("container_image") or cfg.get("apptainer_image") or "")
+    img = str(cfg.get("container_image") or "")
     return {
         "paper_path": str(paper_pdf),
         "rubric_path": str(rubric_path),
@@ -113,7 +111,6 @@ def _build_reproduce_args(paper_pdf: Path, rubric_path: Path, repro_dir: Path, c
         "iterative_agent": bool(cfg.get("iterative_agent", False)),
         "sandbox_kind": str(cfg.get("sandbox_kind") or "auto"),
         "container_image": img,
-        "apptainer_image": img,  # back-compat for callers still reading this key
         "max_steps": int(cfg.get("max_steps") or 0),
     }
 

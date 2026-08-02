@@ -163,7 +163,7 @@ LLM follows `ARI_MODEL_IDEA`.
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `ARI_PAPERBENCH_PATH` | Override the bundled `vendor/paperbench/` path | `vendor/paperbench/` |
+| `ARI_PAPERBENCH_PATH` + `ARI_PAPERBENCH_COMMIT` | Exact-commit-only override of the reviewed PaperBench source | vendored commit |
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | Wall-time cap for `run_reproduce` | `43200` (12 h) |
 | `ARI_REPLICATOR_ITERATIVE` | Use the iterative replicator agent | – |
 | `ARI_REPLICATOR_MAX_STEPS` | Iteration cap when iterative is on | – |
@@ -223,11 +223,10 @@ LLM follows `ARI_MODEL_IDEA`.
 | Variable | Purpose |
 |---|---|
 | `ARI_PHASE1_SANDBOX` | `auto` / `local` / `docker` / `apptainer` / `singularity` / `slurm`. Forces the sandbox runner used by `server.run_reproduce` and `bridge.reproduce_submission`. |
-| `ARI_PHASE1_DOCKER_IMAGE` | Default docker image when `sandbox_kind=docker` and no explicit `container_image` is supplied. Defaults to `ubuntu:24.04`. |
-| `ARI_PHASE1_APPTAINER_IMAGE` | Default SIF / docker URI when `sandbox_kind=apptainer`/`singularity` and no explicit `container_image` is supplied. |
-| `ARI_PHASE1_SINGULARITY_IMAGE` | Legacy alias for `ARI_PHASE1_APPTAINER_IMAGE`. |
-| `ARI_PHASE1_ALLOW_FALLBACK` | `1` ⇒ when a requested sandbox tool is missing (docker daemon / apptainer / sbatch / partition), fall back to host-local execution with only a warning (legacy v0.7.2 behaviour). Default (unset) ⇒ raise `RuntimeError` so the user's isolation intent isn't silently bypassed. |
-| `ARI_PAPERBENCH_PATH` | Override the vendored PaperBench source tree path (default: `ari-skill-paper-re/vendor/paperbench/project/paperbench`). |
+| `ARI_PHASE1_DOCKER_IMAGE` | Docker image when no explicit `container_image` is supplied. Use a full `sha256:<image-id>` or `name@sha256:<digest>`; no mutable default exists. |
+| `ARI_PHASE1_APPTAINER_IMAGE` | Local non-symlink SIF or digest-pinned remote URI for Apptainer/Singularity when no explicit `container_image` is supplied. |
+| `ARI_PAPERBENCH_PATH` | Optional PaperBench project override. Requires an exact reviewed Git identity and `ARI_PAPERBENCH_COMMIT`; arbitrary source trees are rejected. |
+| `ARI_PAPERBENCH_COMMIT` | Commit claim required with `ARI_PAPERBENCH_PATH`; currently `51052cede8cc608f95bb00346635e03759013e5a`. |
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | Default Stage 1 agent rollout time budget when the caller passes `0`. |
 | `ARI_REPLICATOR_ITERATIVE` | `1` ⇒ default to IterativeAgent variant for Stage 1 rollouts. |
 | `ARI_REPLICATOR_MAX_STEPS` | Default Stage 1 step cap. |

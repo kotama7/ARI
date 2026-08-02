@@ -133,18 +133,16 @@ curl http://localhost:8765/api/paperbench/run/<job_id>
 
 ## v0.8.0 アップデート
 
-- **Step 3 Reproduce: `container_image` フィールド追加** — SIF パス /
-  `docker://` URI / `image:tag` / 短縮エイリアス `pb-env` /
-  `pb-reproducer` (`scripts/build_pb_images.sh` で構築) を受領。
+- **Step 3 Reproduce: `container_image` フィールド追加** — 非 symlink の
+  ローカル SIF、完全な Docker `sha256:<image-id>`、または
+  `@sha256:<digest>` 固定 URI を受領。mutable tag と短縮 alias は拒否する。
   `sandbox=docker`/`apptainer`/`singularity` 時のみ有効。
 - **GPU resource整合**: 型付き共通schedulerがcount/typeを一つのdirectiveへ
   compileし、per-task/per-nodeの矛盾は拒否する。resourceを黙ってdropしない。
 - **fail-loud 前提条件**: docker daemon / apptainer / sbatch / partition
-  / GRES が不足する場合エラーで停止。sandbox欠落だけ
-  `ARI_PHASE1_ALLOW_FALLBACK=1` でlegacy fallbackをopt-inできる。
-- **Step 4 Judge: `code_only` 自動有効化** — Stage 2 がスキップされた
-  時 (reproduce.log 不在), rubric が Code Development 葉のみに pruning
-  され、Code Execution / Result Analysis 葉の structural 0 を回避。
+  / GRES が不足する場合エラーで停止し、host-local fallback はない。
+- **Step 4 Judge: `code_only`** — verified Stage 2 recordに対する明示的な
+  scope指定。reproduce record不在時はscoreを発行せず失敗する。
 
 ## 関連
 

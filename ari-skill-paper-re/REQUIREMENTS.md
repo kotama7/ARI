@@ -81,7 +81,7 @@ unmodified.
 Drive a PaperBench-style ReAct agent against the workspace.
 * **Inputs**: `paper_path` / `paper_text`, `rubric_path`, `output_dir`,
   `model`, `time_limit_sec`, `iterative_agent`, `max_steps`,
-  `sandbox_kind`, `apptainer_image`, `overwrite`.
+  `sandbox_kind`, `container_image`, `overwrite`.
 * **Output dict**: `populated`, `output_dir`, `files`, `expected_artifacts`,
   `max_runtime_sec`, `model`, `iterative_agent`, `agent_runtime_sec`,
   `notes`, `warnings`, or `skipped_reason` / `error` on the non-success

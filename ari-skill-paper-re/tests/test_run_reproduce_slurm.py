@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import inspect
 import json
 import sys
@@ -19,6 +20,7 @@ for path in (str(ROOT), str(SRC)):
         sys.path.insert(0, path)
 
 from rubric_contract import bind_rubric_digest  # noqa: E402
+from ari.public.execution import ExecutionRequestV1, WorkspaceRefV1  # noqa: E402
 
 _spec = importlib.util.spec_from_file_location("paper_re_server_slurm", SRC / "server.py")
 S = importlib.util.module_from_spec(_spec)
@@ -65,6 +67,15 @@ class FakeScheduler:
         assert handle_id == "slurm-test-handle"
         self.cancelled = True
 
+    async def result(self, handle_id):
+        assert handle_id == "slurm-test-handle"
+        return SimpleNamespace(
+            result_digest="sha256:" + "d" * 64,
+            environment_digest="sha256:" + "e" * 64,
+            module_snapshot_digest="sha256:" + "f" * 64,
+            provenance=(),
+        )
+
 
 def _setup_slurm(tmp_path: Path, *, with_partition: bool = True) -> Path:
     repo = tmp_path / "repro_sandbox"
@@ -78,6 +89,19 @@ def _setup_slurm(tmp_path: Path, *, with_partition: bool = True) -> Path:
             json.dumps({"partition": "sx40"}), encoding="utf-8"
         )
     return repo
+
+
+def _execution(repo: Path, timeout: int = 60) -> ExecutionRequestV1:
+    script = (repo / "reproduce.sh").read_bytes()
+    return ExecutionRequestV1(
+        workspace=WorkspaceRefV1(root=str(repo)),
+        argv=["/bin/bash", "reproduce.sh"],
+        timeout_seconds=timeout,
+        network="inherit",
+        input_digests={
+            "reproduce.sh": "sha256:" + hashlib.sha256(script).hexdigest()
+        },
+    )
 
 
 def test_auto_picks_slurm_only_with_binary_and_partition(monkeypatch):
@@ -118,10 +142,9 @@ async def test_slurm_consumer_builds_typed_request_and_materializes_log(
     monkeypatch.setattr(S, "_paper_re_scheduler", lambda _repo: scheduler)
 
     with patch.object(S, "_has_bin", lambda name: name == "sbatch"):
-        result = await S._run_reproduce_slurm(
-            repo,
+        result = await S._execute_reproduction_slurm(
+            _execution(repo, 600),
             repo / "reproduce.log",
-            timeout=600,
             nodes=4,
             ntasks=32,
             ntasks_per_node=8,
@@ -147,10 +170,14 @@ async def test_slurm_consumer_builds_typed_request_and_materializes_log(
 
     request = scheduler.request
     assert request.schema_version == "ari.hpc.job-request/v1"
-    assert request.argv == ("/bin/bash", str((repo / "reproduce.sh").resolve()))
+    assert request.argv[0] == "/bin/bash"
+    assert request.argv[1] != str((repo / "reproduce.sh").resolve())
+    assert Path(request.argv[1]).is_file()
     assert request.environment.export_mode == "NIL"
     assert request.environment.modules == ("cuda/12.4", "openmpi/4.1")
     assert request.inputs[0].digest.startswith("sha256:")
+    assert result["execution_identity"] == _execution(repo, 600).execution_identity
+    assert result["handoff_digest"].startswith("sha256:")
     resources = request.resources
     assert resources.nodes == 4
     assert resources.tasks == 32
@@ -212,10 +239,11 @@ async def test_run_reproduce_resolves_execution_profile_into_typed_request(
     with patch.object(S, "_has_bin", lambda name: name == "sbatch"):
         result = await S.run_reproduce(
             rubric_path=str(rubric),
-            repo_dir=str(repo),
-            sandbox_kind="slurm",
-            partition="sx40",
-        )
+                repo_dir=str(repo),
+                sandbox_kind="slurm",
+                partition="sx40",
+                network_policy="inherit",
+            )
 
     assert result["executed"] is True
     assert result["sandbox_kind"] == "slurm"
@@ -234,8 +262,8 @@ async def test_failed_scheduler_state_is_not_reported_as_success(tmp_path, monke
     monkeypatch.setattr(S, "_paper_re_scheduler", lambda _repo: scheduler)
 
     with patch.object(S, "_has_bin", lambda name: name == "sbatch"):
-        result = await S._run_reproduce_slurm(
-            repo, repo / "reproduce.log", timeout=60, partition="sx40"
+        result = await S._execute_reproduction_slurm(
+            _execution(repo), repo / "reproduce.log", partition="sx40"
         )
 
     assert result["executed"] is True
@@ -244,24 +272,15 @@ async def test_failed_scheduler_state_is_not_reported_as_success(tmp_path, monke
 
 
 @pytest.mark.asyncio
-async def test_missing_sbatch_fails_loudly_or_uses_explicit_fallback(
+async def test_missing_sbatch_cannot_be_downgraded_to_local(
     tmp_path, monkeypatch
 ):
     repo = _setup_slurm(tmp_path)
-    monkeypatch.delenv("ARI_PHASE1_ALLOW_FALLBACK", raising=False)
     with patch.object(S, "_has_bin", lambda _name: False):
         with pytest.raises(RuntimeError, match="sbatch is not on PATH"):
-            await S._run_reproduce_slurm(
-                repo, repo / "reproduce.log", timeout=10, partition="sx40"
+            await S._execute_reproduction_slurm(
+                _execution(repo, 10), repo / "reproduce.log", partition="sx40"
             )
-
-    monkeypatch.setenv("ARI_PHASE1_ALLOW_FALLBACK", "1")
-    with patch.object(S, "_has_bin", lambda _name: False):
-        result = await S._run_reproduce_slurm(
-            repo, repo / "reproduce.log", timeout=10, partition="sx40"
-        )
-    assert result["executed"] is True
-    assert "partition" not in result
 
 
 @pytest.mark.asyncio
@@ -269,11 +288,10 @@ async def test_unresolved_partition_fails_loudly(tmp_path, monkeypatch):
     repo = _setup_slurm(tmp_path, with_partition=False)
     monkeypatch.delenv("ARI_SLURM_PARTITION", raising=False)
     monkeypatch.delenv("SLURM_PARTITION", raising=False)
-    monkeypatch.delenv("ARI_PHASE1_ALLOW_FALLBACK", raising=False)
     with patch.object(S, "_has_bin", lambda name: name == "sbatch"):
         with pytest.raises(RuntimeError, match="no partition"):
-            await S._run_reproduce_slurm(
-                repo, repo / "reproduce.log", timeout=10
+            await S._execute_reproduction_slurm(
+                _execution(repo, 10), repo / "reproduce.log"
             )
 
 
@@ -298,18 +316,16 @@ async def test_contradictory_or_nonportable_resources_fail_closed(
     with patch.object(S, "_has_bin", lambda name: name == "sbatch"):
         if "cpu_bind" in kwargs:
             with pytest.raises(ValueError, match=message):
-                await S._run_reproduce_slurm(
-                    repo,
+                await S._execute_reproduction_slurm(
+                    _execution(repo),
                     repo / "reproduce.log",
-                    timeout=60,
                     partition="sx40",
                     **kwargs,
                 )
         else:
-            result = await S._run_reproduce_slurm(
-                repo,
+            result = await S._execute_reproduction_slurm(
+                _execution(repo),
                 repo / "reproduce.log",
-                timeout=60,
                 partition="sx40",
                 **kwargs,
             )
@@ -333,8 +349,8 @@ def test_deprecated_escape_hatch_is_typed_and_fail_closed():
 
 
 def test_paper_re_contains_no_direct_sbatch_submission():
-    source = inspect.getsource(S._run_reproduce_slurm)
+    source = inspect.getsource(S._execute_reproduction_slurm)
     assert "subprocess.run" not in source
     assert "--export" not in source
-    assert "JobRequestV1" in source
+    assert "handoff_execution_to_slurm" in source
     assert "scheduler.submit" in source

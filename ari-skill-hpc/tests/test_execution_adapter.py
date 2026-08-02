@@ -143,6 +143,18 @@ def test_handoff_rejects_shell_and_unenforced_network_deny(tmp_path: Path) -> No
             resources=resources,
         )
 
+    attested = handoff_execution_to_slurm(
+        denied,
+        request_id="network-attested",
+        job_name="network",
+        resources=resources,
+        modules=("cuda/12.4",),
+        network_isolation_attested=True,
+    )
+    assert attested.job_request.environment.modules == ("cuda/12.4",)
+    assert attested.job_request.metadata["network_isolation_attested"] is True
+    assert attested.policy_equivalent is False
+
 
 def test_handoff_marks_inputs_not_bound_to_argv_as_unmapped(tmp_path: Path) -> None:
     workspace = WorkspaceRefV1(root=str(tmp_path / "workspace"))

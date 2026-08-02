@@ -133,6 +133,13 @@ last_verified: 2026-08-02
   call budget、parallel partial failure、same-model非独立性、校正corpus、lossless V1 migration、
   paper-reのV1/V2 negotiationを実装し、未知version/改ざん/paper mismatchをfail closedにした。
   C14-01〜08を完了し、低coverage/V1 support windowのP6削除gateだけを保持する。
+- C15 Paper-reをdigest-bound plan/attempt/run/grade契約へ移行し、read-only inputとprivate
+  output diff、network default deny、secret-free environment、immutable container identity、
+  timeout/cancel reap、retry lineageを実装した。SLURMはC06 handoff、bundle取得は`ari.clone`へ
+  集約した。verified successful runなしのscore、mutable image/alias、source-mutating salvage、
+  persistent vendor path injectionを削除し、exact PaperBench pin/patch inventory、raw judge evidence、
+  negative control/independenceを固定した。C15-01〜09/D1/D2/D3/D5/D6を完了し、upstream patchと
+  V1 readerのP6 gateだけを保持する（paper-re + HPC 259 passed, 3 skipped）。
 
 ## 1. 決定
 

@@ -26,12 +26,12 @@ submission_dir, model, ...)`` calling style so a caller (e.g.
 sequence ``rollout_submission → reproduce_submission → judge_submission``
 without translating between independent argument vocabularies.
 
-Resolution of the upstream package follows:
-  1. ``ARI_PAPERBENCH_PATH`` (explicit override).
-  2. The vendored git submodule at vendor/paperbench/project/paperbench.
-     The submodule URL is github.com/openai/preparedness (a monorepo) but
-     it is mounted at vendor/paperbench so the layout matches rubric.md §8.
-  3. A pip-installed ``paperbench`` package on the standard sys.path.
+Resolution admits only the commit recorded in ``paperbench_patches.json``:
+  1. ``ARI_PAPERBENCH_PATH`` plus a matching ``ARI_PAPERBENCH_COMMIT`` claim.
+  2. The vendored git submodule at ``vendor/paperbench/project``.
+
+The reviewed package roots are visible only during an isolated bootstrap;
+there is no pip-package fallback and no persistent ``sys.path`` injection.
 
 The upstream depends on ``openai``, ``preparedness_turn_completer``,
 ``nanoeval``, ``alcatraz``, ``structlog``, ``tiktoken``, ``drain3``,
@@ -42,10 +42,10 @@ this module fails to import — there is **no local fallback**.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import re
-import sys
 import tempfile
 import uuid
 from pathlib import Path
@@ -55,19 +55,23 @@ log = logging.getLogger(__name__)
 
 
 # ─── locate upstream PaperBench ───────────────────────────────────────────
-# Path injection happens in :mod:`_vendor_path` so that the agent-mode
-# Replicator and the SimpleJudge bridge load from the same vendor tree.
+# Isolated package bootstrap happens in :mod:`_vendor_path` so that the
+# agent-mode Replicator and SimpleJudge load the same reviewed vendor tree.
 
-import _vendor_path  # noqa: F401  (side-effect: sys.path injection)
+import _vendor_path  # noqa: E402,F401  (side-effect: reviewed bootstrap)
 
 
 # ─── re-export upstream symbols (no fallback) ────────────────────────────
 
 from paperbench.rubric.tasks import TaskNode  # noqa: E402  type: ignore
 from paperbench.judge.graded_task_node import GradedTaskNode  # noqa: E402  type: ignore
-from paperbench.judge.simple import SimpleJudge  # noqa: E402  type: ignore
+from paperbench.judge.simple import (  # noqa: E402  type: ignore
+    ParsedJudgeResponseFloat,
+    ParsedJudgeResponseInt,
+    SimpleJudge,
+)
 
-log.info("paperbench upstream loaded (sys.path injected by _vendor_path)")
+log.info("reviewed PaperBench upstream loaded by _vendor_path")
 
 
 # ─── vendor patch: orphan tool_call filter (Responses API) ────────────────
@@ -1373,12 +1377,13 @@ def _format_paper_kind_addendum(
     # (theoretical / pure-synthetic papers). These are HINTS — the agent
     # confirms/augments them; install ALL of them inside reproduce.sh so
     # the grader's fresh shell can build from scratch.
-    lib_list = [l for l in (libraries or []) if l.get("name")]
+    lib_list = [library for library in (libraries or []) if library.get("name")]
     lib_block = ""
     if lib_list:
         rows = "\n".join(
-            f"  - **{l['name']}**" + (f" — via {l['how']}" if l.get("how") else "")
-            for l in lib_list
+            f"  - **{library['name']}**"
+            + (f" — via {library['how']}" if library.get("how") else "")
+            for library in lib_list
         )
         lib_block = (
             "STEP 1.4 — Required libraries (paper-cited; confirm + augment):\n"
@@ -1671,6 +1676,7 @@ async def judge_submission(
     judge_addendum: str | None = None,
     paper_audit_mode: bool = False,
     code_only: bool = False,
+    trace_dir: Path | None = None,
 ) -> GradedTaskNode:
     """Run upstream SimpleJudge against the given submission.
 
@@ -1765,7 +1771,27 @@ async def judge_submission(
     with tempfile.TemporaryDirectory() as tmp:
         paper_md_path = Path(tmp) / "paper.md"
         paper_md_path.write_text(paper_md or "")
-        cfg = LiteLLMTurnCompleter.Config(model=judge_model)
+        trace_value = str(trace_dir.resolve()) if trace_dir is not None else None
+        if trace_dir is not None:
+            trace_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            paperbench_logs = trace_dir / "paperbench-logs"
+            paperbench_logs.mkdir(parents=True, exist_ok=True, mode=0o700)
+        else:
+            paperbench_logs = None
+        cfg = LiteLLMTurnCompleter.Config(
+            model=judge_model,
+            trace_dir=trace_value,
+        )
+        int_cfg = LiteLLMTurnCompleter.Config(
+            model=judge_model,
+            response_format=ParsedJudgeResponseInt,
+            trace_dir=trace_value,
+        )
+        float_cfg = LiteLLMTurnCompleter.Config(
+            model=judge_model,
+            response_format=ParsedJudgeResponseFloat,
+            trace_dir=trace_value,
+        )
         judge = SimpleJudge(
             paper_path=paper_md_path,
             rubric=rubric,
@@ -1774,6 +1800,9 @@ async def judge_submission(
             submission_dir=submission_dir,
             paper_md=paper_md_path,
             completer_config=cfg,
+            int_completer_config=int_cfg,
+            float_completer_config=float_cfg,
+            log_path=paperbench_logs,
         )
         if paper_audit_mode:
             with _patch_task_category_questions():
@@ -1817,8 +1846,8 @@ async def rollout_submission(
     otherwise (Anthropic / Gemini / Ollama / ...).
 
     ``container_image`` honours the same priority chain as
-    :func:`server.build_reproduce_sh`: explicit value wins, else legacy
-    ``ARI_PHASE1_APPTAINER_IMAGE`` / ``ARI_PHASE1_SINGULARITY_IMAGE`` env.
+    :func:`server.build_reproduce_sh`: explicit value wins, otherwise
+    ``ARI_PHASE1_APPTAINER_IMAGE`` is used.
     Only the Apptainer / Singularity sandbox kinds consume the image at
     Stage 1; ``sandbox_kind=slurm`` / ``local`` runs the agent on the
     host filesystem (see :func:`_compute.make_computer`).
@@ -1940,7 +1969,9 @@ async def rollout_submission(
         prelude += "\n".join(f"  - {u}" for u in bl_entries) + "\n\n---\n\n"
         paper_md = prelude + (paper_md or "")
 
-    container_image = _resolve_container_image_alias(container_image)
+    container_image = (
+        container_image or os.environ.get("ARI_PHASE1_APPTAINER_IMAGE", "")
+    ).strip()
 
     work = Path(work_dir).resolve()
     work.mkdir(parents=True, exist_ok=True)
@@ -2045,7 +2076,7 @@ async def rollout_submission(
         max_steps=max_steps,
         completer_config=completer_config,
         sandbox_kind=sandbox_kind,
-        apptainer_image=container_image or None,
+        container_image=container_image or None,
         env=merged_env if merged_env is not None else env,
         paper_id=paper_id,
         run_id=run_id,
@@ -2070,35 +2101,6 @@ def _load_dotenv_file(path: Path) -> dict[str, str]:
         k, _, v = line.partition("=")
         out[k.strip()] = v.strip().strip("\"").strip("'")
     return out
-
-
-# Short aliases for the vendor PaperBench Docker images that
-# ``scripts/build_pb_images.sh`` produces. Operators can pass
-# ``container_image="pb-env"`` / ``"pb-reproducer"`` to the bridge and
-# the call resolves to the canonical ``image:latest`` tag at runtime,
-# making wizard / CLI presets short and human-friendly without
-# hardcoding the tag string at every call site.
-_PB_IMAGE_ALIASES: dict[str, str] = {
-    "pb-env": "pb-env:latest",
-    "pb-reproducer": "pb-reproducer:latest",
-}
-
-
-def _resolve_container_image_alias(value: str) -> str:
-    """Resolve short PaperBench image aliases to their canonical tag.
-
-    Accepts the bare alias (``pb-env``) or any string that already
-    contains a tag separator (``:``), an absolute path (``/``), or a
-    URI scheme (``docker://``, ``library://``, ``shub://``). Anything
-    not matching an alias is returned verbatim so user-supplied SIF
-    paths and arbitrary image tags continue to work.
-    """
-    v = (value or "").strip()
-    if not v:
-        return v
-    if v in _PB_IMAGE_ALIASES:
-        return _PB_IMAGE_ALIASES[v]
-    return v
 
 
 # ─── Stage 2: reproduce.sh execution ────────────────────────────────────
@@ -2150,6 +2152,8 @@ async def reproduce_submission(
     sandbox_kind: str = "auto",
     container_image: str = "",
     time_limit_sec: int = 6 * 3600,
+    network_policy: str = "deny",
+    network_isolation_attested: bool = False,
     partition: str = "",
     gpus_per_task: int = 0,
     gpu_type: str = "",
@@ -2158,8 +2162,6 @@ async def reproduce_submission(
     extra_sbatch_args: list[str] | None = None,
     capture_tarball: bool = True,
     tarball_dir: Path | str | None = None,
-    salvage_retries: int = 0,
-    retry_threshold_sec: int = 60,
 ) -> dict:
     """PaperBench Stage 2 — execute ``submission_dir/reproduce.sh`` in the
     chosen sandbox, capture stdout/stderr into ``reproduce.log``.
@@ -2167,130 +2169,73 @@ async def reproduce_submission(
     Public companion to :func:`rollout_submission` and
     :func:`judge_submission`. Wraps :func:`server.run_reproduce` so callers
     using the bridge can drive Stage 2 without speaking the MCP tool's
-    full 23-arg signature. The submission directory is reused in-place as
-    the executed-submission output (matching the vendor reproducer
-    container behaviour where reproduce.log is written back to the
-    bind-mounted submission dir).
+    full signature. The source submission is snapshotted read-only; execution
+    and ``reproduce.log`` are retained in a private, digest-bound attempt
+    workspace under ``.ari-reproduction``.
 
-    Infrastructure preconditions are enforced loudly: a missing docker
-    daemon / apptainer binary / sbatch / partition raises
-    ``RuntimeError`` unless ``ARI_PHASE1_ALLOW_FALLBACK=1`` is set. Typed GPU
-    requests are submitted exactly and never silently downgraded. The returned dict adds
+    Infrastructure preconditions are enforced without a host-local fallback.
+    Network access is denied by default and unisolated local/SLURM execution
+    requires either an administrator attestation or explicit
+    ``network_policy="inherit"``. Typed GPU requests are submitted exactly
+    and never silently downgraded. The returned dict adds
     ``executed_submission_dir`` and ``reproduce_log_path`` keys so
     downstream :func:`judge_submission` can wire its ``submission_dir`` /
     ``reproduce_log`` arguments directly.
 
     ``capture_tarball`` (default True) packages the executed submission
-    dir into ``submission_executed.tar.gz`` alongside the submission
-    (timestamped to avoid clobbering prior runs). Mirrors vendor
+    dir into a timestamped ``submission_executed_*.tar.gz`` in the private
+    attempt directory unless ``tarball_dir`` is explicit. Mirrors vendor
     ``reproduce.py:230-244`` which writes per-attempt tarballs for
     re-grading and provenance. ``tarball_dir`` overrides the destination
-    directory (default: ``submission_dir.parent``). The path is returned
+    directory. The path is returned
     as ``executed_tarball``.
 
-    ``salvage_retries`` (default 0 = no retry) controls vendor-style
-    salvage retries: if the first attempt exits non-zero AND finishes
-    under ``retry_threshold_sec``, retry up to N more times with a
-    Python 3.11 + fresh venv wrapper around reproduce.sh. Mirrors
-    vendor ``reproduce.py:252 reproduce_on_computer_with_salvaging``
-    (which uses a Cartesian ``{use_py3_11, make_venv}`` retry matrix).
-    The attempts log lives in the returned ``salvage_attempts`` list.
+    A failed invocation is retried by calling this function again with the
+    same plan. ``run_reproduce`` then appends an immutable linked attempt;
+    no compatibility wrapper mutates the caller's ``reproduce.sh``.
     """
     from server import run_reproduce  # lazy: server imports this module
 
-    container_image = _resolve_container_image_alias(container_image)
+    container_image = (container_image or "").strip()
     sub = _resolve_submission_repo_root(submission_dir)
 
-    # Wall-clock budget shared by ALL attempts (initial + salvage
-    # retries). Vendor's reproduce.py:timeout is per-attempt, but
-    # ARI's contract is "time_limit_sec is the user's total budget" —
-    # retry-time exclusion (a la BasicAgent's use_real_time_limit at
-    # Stage 1) lets us spend that budget across multiple attempts
-    # without overshooting. Each attempt's per-call timeout is the
-    # REMAINING budget capped to the original time_limit_sec.
-    import time as _time
-    overall_start = _time.time()
-    overall_budget_sec = int(time_limit_sec)
-
-    def _remaining_budget() -> int:
-        spent = int(_time.time() - overall_start)
-        return max(0, overall_budget_sec - spent)
-
-    async def _attempt(use_salvage_wrapper: bool) -> dict:
-        if use_salvage_wrapper:
-            _install_salvage_wrapper(sub)
-        try:
-            return await run_reproduce(
-                rubric_path="",
-                repo_dir=str(sub),
-                sandbox_kind=sandbox_kind,
-                container_image=container_image,
-                timeout_global_sec=_remaining_budget(),
-                partition=partition,
-                gpus_per_task=int(gpus_per_task),
-                gpu_type=gpu_type,
-                memory_gb_per_node=int(memory_gb_per_node),
-                exclusive=bool(exclusive),
-                extra_sbatch_args=list(extra_sbatch_args or []),
-            )
-        finally:
-            if use_salvage_wrapper:
-                _restore_salvage_wrapper(sub)
-
-    attempts: list[dict] = []
-    res = await _attempt(use_salvage_wrapper=False)
-    attempts.append({"attempt": 1, "salvage": False, **_attempt_summary(res)})
-
-    # Salvage retry condition: caller opted in AND first attempt failed
-    # AND finished fast (likely an environment issue, not a slow run)
-    # AND there is still budget remaining for another attempt.
-    n = 0
-    while (
-        salvage_retries > 0
-        and n < int(salvage_retries)
-        and isinstance(res, dict)
-        and res.get("exit_code") not in (0, None)
-        and float(res.get("elapsed_sec") or 0) < float(retry_threshold_sec)
-        and _remaining_budget() > 0
-    ):
-        n += 1
-        log.info(
-            "[salvage] attempt %d/%d (exit=%s elapsed=%.1fs<threshold=%ds remaining=%ds)",
-            n, salvage_retries,
-            res.get("exit_code"), res.get("elapsed_sec") or 0.0,
-            retry_threshold_sec, _remaining_budget(),
-        )
-        res = await _attempt(use_salvage_wrapper=True)
-        attempts.append({"attempt": n + 1, "salvage": True, **_attempt_summary(res)})
+    res = await run_reproduce(
+        rubric_path="",
+        repo_dir=str(sub),
+        sandbox_kind=sandbox_kind,
+        container_image=container_image,
+        timeout_global_sec=int(time_limit_sec),
+        network_policy=network_policy,
+        network_isolation_attested=network_isolation_attested,
+        partition=partition,
+        gpus_per_task=int(gpus_per_task),
+        gpu_type=gpu_type,
+        memory_gb_per_node=int(memory_gb_per_node),
+        exclusive=bool(exclusive),
+        extra_sbatch_args=list(extra_sbatch_args or []),
+    )
 
     if isinstance(res, dict):
-        res.setdefault("executed_submission_dir", str(sub))
-        res.setdefault("reproduce_log_path", str(sub / "reproduce.log"))
-        if len(attempts) > 1:
-            res["salvage_attempts"] = attempts
+        executed_dir = Path(res.get("executed_repo_dir") or sub)
+        res["executed_submission_dir"] = str(executed_dir)
+        res["reproduce_log_path"] = str(
+            res.get("log_path") or executed_dir / "reproduce.log"
+        )
         if capture_tarball:
             try:
-                tar_path = _write_executed_tarball(sub, tarball_dir)
+                tar_path = _write_executed_tarball(executed_dir, tarball_dir)
                 res["executed_tarball"] = str(tar_path)
+                tar_payload = tar_path.read_bytes()
+                res["executed_tarball_digest"] = (
+                    "sha256:" + hashlib.sha256(tar_payload).hexdigest()
+                )
+                res["executed_tarball_size_bytes"] = len(tar_payload)
             except Exception as e:
                 log.warning("submission_executed.tar.gz capture failed: %s", e)
                 res.setdefault("warnings", []).append(
                     f"submission_executed.tar.gz capture failed: {e}"
                 )
     return res
-
-
-def _attempt_summary(res: dict) -> dict:
-    """Extract the fields the caller cares about from a single
-    run_reproduce return — used to populate salvage_attempts list."""
-    if not isinstance(res, dict):
-        return {"executed": False, "error": "non-dict run_reproduce return"}
-    return {
-        "executed": res.get("executed"),
-        "exit_code": res.get("exit_code"),
-        "elapsed_sec": res.get("elapsed_sec"),
-        "error": res.get("error"),
-    }
 
 
 def _write_executed_tarball(
@@ -2300,9 +2245,8 @@ def _write_executed_tarball(
     """Write a timestamped ``submission_executed.tar.gz`` next to the
     submission (or into ``tarball_dir`` when supplied). Returns the
     path of the written tarball. Mirrors vendor
-    ``reproduce.py:tar_and_extract_from_computer`` semantics —
-    timestamp distinguishes per-attempt artefacts so a salvage retry
-    doesn't clobber the previous attempt's record.
+    ``reproduce.py:tar_and_extract_from_computer`` semantics. The timestamp
+    distinguishes explicit retry artifacts.
     """
     import tarfile
     import time as _time
@@ -2314,62 +2258,3 @@ def _write_executed_tarball(
     with tarfile.open(tar_path, "w:gz") as tf:
         tf.add(submission_dir, arcname=submission_dir.name)
     return tar_path
-
-
-_SALVAGE_WRAPPER_SUFFIX = ".pre_salvage"
-
-
-def _install_salvage_wrapper(submission_dir: Path) -> None:
-    """Wrap submission_dir/reproduce.sh with a vendor-style salvage
-    prelude that creates a fresh Python 3.11 venv and uses it for the
-    duration of the rerun. Mirrors the rationale of
-    ``vendor/.../reproduce.py:252 reproduce_on_computer_with_salvaging``
-    (use_py3_11=True, make_venv=True). The original script is moved to
-    ``reproduce.sh.pre_salvage`` so :func:`_restore_salvage_wrapper`
-    can put it back regardless of outcome.
-    """
-    orig = submission_dir / "reproduce.sh"
-    if not orig.is_file():
-        return
-    backup = orig.with_suffix(orig.suffix + _SALVAGE_WRAPPER_SUFFIX)
-    if not backup.is_file():
-        backup.write_bytes(orig.read_bytes())
-    body = orig.read_text()
-    wrapped = (
-        "#!/usr/bin/env bash\n"
-        "# AUTO-INSERTED BY ari-skill-paper-re salvage retry. The original\n"
-        "# reproduce.sh body follows the venv prelude. Original is\n"
-        "# preserved as reproduce.sh.pre_salvage.\n"
-        "set -e\n"
-        "PY311=$(command -v python3.11 || true)\n"
-        "if [ -n \"${PY311}\" ]; then\n"
-        "  if [ ! -d .salvage_venv ]; then\n"
-        "    \"${PY311}\" -m venv .salvage_venv\n"
-        "  fi\n"
-        "  # shellcheck disable=SC1091\n"
-        "  . .salvage_venv/bin/activate\n"
-        "fi\n"
-        "set +e\n"
-        "# ─── original reproduce.sh body ───────────────────────────\n"
-    ) + body
-    orig.write_text(wrapped)
-    try:
-        orig.chmod(0o755)
-    except OSError:
-        pass
-
-
-def _restore_salvage_wrapper(submission_dir: Path) -> None:
-    """Reverse :func:`_install_salvage_wrapper`."""
-    orig = submission_dir / "reproduce.sh"
-    backup = orig.with_suffix(orig.suffix + _SALVAGE_WRAPPER_SUFFIX)
-    if backup.is_file():
-        orig.write_bytes(backup.read_bytes())
-        try:
-            orig.chmod(0o755)
-        except OSError:
-            pass
-        try:
-            backup.unlink()
-        except OSError:
-            pass

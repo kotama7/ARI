@@ -363,8 +363,8 @@ skills:
 | `ARI_MODEL_ROOT_SELECT` | LLM that picks `ideas[0]` from the VirSci pool (lineage decision, v0.7.0). Same fallback chain as `ARI_MODEL_LINEAGE` | (auto) |
 | `ARI_RUBRIC` | Rubric id for the BFTS dynamic axis evaluator and offline legacy migration. Paper authoring/review requires the explicit workflow `paper_rubric`/tool `rubric_id`. | `neurips` |
 | `ARI_PHASE1_SANDBOX` | Phase 1 sandbox: `auto` / `slurm` / `docker` / `apptainer` / `singularity` / `local` | `auto` |
-| `ARI_PHASE1_DOCKER_IMAGE` | Container image for the docker sandbox runner | `ubuntu:24.04` |
-| `ARI_PHASE1_APPTAINER_IMAGE` / `ARI_PHASE1_SINGULARITY_IMAGE` | Image for the Apptainer/Singularity sandbox runner | `docker://ubuntu:24.04` |
+| `ARI_PHASE1_DOCKER_IMAGE` | Immutable digest-pinned image for Docker reproduction | no default |
+| `ARI_PHASE1_APPTAINER_IMAGE` | Reviewed local SIF or digest-pinned image for Apptainer/Singularity | no default |
 | `ARI_SLURM_WALLTIME` | `--time` HH:MM:SS for the SLURM Phase 1 sandbox (v0.7.0, restored). Falls back to a value derived from the rubric's `max_runtime_sec`. | (auto) |
 | `ARI_PUBLISH_DRYRUN` | Force `ari ear publish --dry-run` (CI safety, v0.7.0) | (off) |
 | `ARI_REGISTRY_DATA` | sqlite + artifact storage root for `ari registry serve` | (none — must be set explicitly; the pre-v0.5 `$HOME/.ari/registry-data` fallback emits a `DeprecationWarning` and is removed in v1.0) |
