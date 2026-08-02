@@ -236,17 +236,23 @@ LLM follows `ARI_MODEL_IDEA`.
 
 | Variable | Purpose |
 |---|---|
-| `SLURM_MODE` | `local` (default) / `ssh` |
-| `SLURM_SSH_HOST` | SSH host for remote SLURM mode |
-| `SLURM_SSH_USER` | SSH user (defaults to current user) |
+| `SLURM_MODE` | `local` (default) / `remote` (`ssh` remains accepted as an alias) |
+| `SLURM_SSH_HOST` | SSH host for remote SLURM mode (required) |
+| `SLURM_SSH_USER` | Explicit SSH user (required in remote mode) |
 | `SLURM_SSH_PORT` | SSH port (default `22`) |
-| `SLURM_SSH_KEY` | Private key path |
-| `SLURM_SSH_PASSWORD` | Optional password (prefer key) |
+| `SLURM_SSH_KNOWN_HOSTS` | Absolute reviewed known-hosts file; unknown or mismatched keys fail closed |
+| `SLURM_SSH_KEY` | Credential-scoped absolute private-key path; implicit user keys and agents are disabled |
+| `SLURM_SSH_PASSWORD` | Credential-scoped explicit password alternative |
+| `SLURM_SSH_CONNECT_TIMEOUT` | SSH connect/banner/auth timeout in seconds (default `15`) |
+| `SLURM_COMMAND_TIMEOUT` | Scheduler control-command timeout in seconds (default `30`) |
+| `SLURM_SHARED_FILESYSTEM` | Whether MCP and compute nodes share exact absolute artifact paths (default `true`) |
 | `SLURM_DEFAULT_PARTITION` | Default partition for sub-jobs ARI launches |
 | `SLURM_PARTITION` | Per-job partition override |
-| `SLURM_VALID_PARTITIONS` | Comma-separated allow-list |
+| `SLURM_VALID_PARTITIONS` | Legacy PaperBench allow-list; canonical `JobRequestV1` validates its explicit partition atom |
 | `SLURM_LOG_DIR` | Where to write `*.out` / `*.err` |
 | `SLURM_CLUSTER_NAME` | Display name shown in the dashboard |
+| `ARI_HPC_LEDGER_PATH` | Absolute durable idempotency ledger path for scheduler submissions |
+| `ARI_SCHEDULER_PATH` | Minimal PATH used only to resolve scheduler control binaries |
 | `SLURM_JOB_ID` / `SLURM_JOB_NODELIST` / `SLURM_JOB_PARTITION` | Set by SLURM itself when ARI runs inside a job |
 
 ## Letta (`LETTA_*`)
@@ -276,7 +282,7 @@ The `model.provider` scope recognizes provider credentials including
 `OPENROUTER_API_KEY`, `REPLICATE_API_TOKEN`, `TOGETHERAI_API_KEY`,
 `VERTEXAI_CREDENTIALS`, `WATSONX_APIKEY`, and `XAI_API_KEY`. A Skill receives
 only the scopes declared in its own manifest. Hugging Face, Semantic Scholar,
-Letta, scheduler SSH, scheduler exported-environment, and PaperBench agent-env
+Letta, scheduler SSH, and PaperBench agent-env
 authority use separate scopes so they need not be granted with model access.
 
 ## VLM

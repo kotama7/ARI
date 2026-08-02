@@ -1,467 +1,273 @@
-"""SLURM operations: submit, status, cancel jobs via local subprocess or remote SSH."""
+"""SLURM compatibility facade and compute-platform capability probe.
+
+New consumers should use :mod:`src.contracts` and :class:`src.scheduler.SlurmScheduler`.
+The ``SlurmClient`` facade preserves the existing MCP aliases while routing every
+scheduler operation through the same shell-free backend.
+"""
 
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
+import stat
 import tempfile
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
 
+from src.scheduler import (
+    LocalCommandRunner,
+    RemoteCommandRunner,
+    RemoteConfig,
+    SchedulerError,
+    SchedulerValidationError,
+    SlurmScheduler,
+)
 
-@dataclass
-class RemoteConfig:
-    """SSH connection configuration for remote mode."""
+__all__ = [
+    "RemoteConfig",
+    "SlurmClient",
+    "probe_platform_capabilities",
+]
 
-    hostname: str
-    username: str
-    port: int = 22
-    key_filename: str | None = None
-    password: str | None = None
+_JOB_ID_RE = re.compile(r"^[0-9]+(?:_[0-9]+)?$")
 
 
 @dataclass
 class SlurmClient:
-    """
-    SLURM client supporting both local (subprocess) and remote (SSH/paramiko) execution.
-
-    mode="local" -> runs sbatch/squeue/scancel directly via subprocess
-    mode="remote" -> runs via paramiko SSH
-    """
+    """Backward-compatible adapter around the canonical SLURM scheduler."""
 
     mode: str = "local"
     remote_config: RemoteConfig | None = None
-    _ssh_client: object = field(default=None, repr=False)
+    ledger_path: Path | None = None
+    _scheduler: SlurmScheduler = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        if self.mode == "remote" and self.remote_config is None:
-            raise ValueError("remote_config is required for remote mode")
-
-    # ── command execution ──────────────────────────────────────────
-
-    async def _run(self, cmd: str) -> tuple[str, str, int]:
-        """Run a shell command and return (stdout, stderr, returncode)."""
         if self.mode == "local":
-            return await self._run_local(cmd)
-        return await self._run_remote(cmd)
+            runner = LocalCommandRunner(
+                scheduler_path=os.environ.get(
+                    "ARI_SCHEDULER_PATH", "/usr/local/bin:/usr/bin:/bin"
+                )
+            )
+            shared_filesystem = True
+        elif self.mode in {"remote", "ssh"}:
+            if self.remote_config is None:
+                raise ValueError("remote_config is required for remote mode")
+            runner = RemoteCommandRunner(self.remote_config)
+            shared_filesystem = self.remote_config.shared_filesystem
+        else:
+            raise ValueError("SLURM mode must be local or remote")
+        if self.ledger_path is None:
+            self._scheduler = SlurmScheduler(
+                runner=runner, shared_filesystem=shared_filesystem
+            )
+        else:
+            from src.scheduler import SubmissionLedger
 
-    async def _run_local(self, cmd: str) -> tuple[str, str, int]:
-        proc = await asyncio.create_subprocess_shell(
-            cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await proc.communicate()
-        return stdout.decode().strip(), stderr.decode().strip(), proc.returncode or 0
-
-    async def _run_remote(self, cmd: str) -> tuple[str, str, int]:
-        import paramiko  # lazy import
-
-        loop = asyncio.get_running_loop()
-
-        def _exec() -> tuple[str, str, int]:
-            if self._ssh_client is None:
-                client = paramiko.SSHClient()
-                client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                cfg = self.remote_config
-                connect_kwargs: dict = {
-                    "hostname": cfg.hostname,
-                    "port": cfg.port,
-                    "username": cfg.username,
-                }
-                if cfg.key_filename:
-                    connect_kwargs["key_filename"] = cfg.key_filename
-                if cfg.password:
-                    connect_kwargs["password"] = cfg.password
-                client.connect(**connect_kwargs)
-                self._ssh_client = client
-
-            _, o_stdout, o_stderr = self._ssh_client.exec_command(cmd)
-            exit_status = o_stdout.channel.recv_exit_status()
-            return (
-                o_stdout.read().decode().strip(),
-                o_stderr.read().decode().strip(),
-                exit_status,
+            self._scheduler = SlurmScheduler(
+                runner=runner,
+                ledger=SubmissionLedger(self.ledger_path),
+                shared_filesystem=shared_filesystem,
             )
 
-        return await loop.run_in_executor(None, _exec)
+    @property
+    def scheduler(self) -> SlurmScheduler:
+        return self._scheduler
 
-    # ── public API ─────────────────────────────────────────────────
-
-    async def submit(self, script: str, **kwargs: object) -> dict:
-        """Submit a SLURM batch job.
-
-        Returns dict with job_id, status, message.
-        """
-        # LLM may pass \n as a literal string → convert to actual newlines
-        script = script.replace("\\n", "\n").replace("\\t", "\t")
-
-        # Remove #SBATCH --account / -A if not applicable to this cluster
-        import re as _re_acc
-        script = _re_acc.sub(r"#SBATCH\s+(?:--account[=\s]|-A\s*)\S+[^\n]*\n?", "", script)
-
-        # Strip LLM-generated #SBATCH --partition= lines from the script body.
-        # The correct partition is always set via header_lines (from kwargs or auto-detect).
-        # This avoids the bug where _fix_partition could write an empty partition
-        # when SLURM_VALID_PARTITIONS / SLURM_DEFAULT_PARTITION are unset.
-        import re as _re_part
-        script = _re_part.sub(r"#SBATCH\s+--partition=\S*\n?", "", script)
-
-        # Strip LLM-generated #SBATCH --cpus-per-task / -c lines from the
-        # script body. The authoritative value comes from kwargs or
-        # ARI_SLURM_CPUS (auto-detected from sinfo when the wizard left it
-        # blank). Without this, a stale LLM-written value placed AFTER the
-        # header would override the partition-aware value because later
-        # #SBATCH directives win.
-        import re as _re_cpu
-        script = _re_cpu.sub(
-            r"#SBATCH\s+(?:--cpus-per-task[=\s]|-c\s+)\S+[^\n]*\n?", "", script
+    async def submit(self, script: str, **kwargs: object) -> dict[str, Any]:
+        work_dir = str(
+            kwargs.get("work_dir")
+            or os.environ.get("SLURM_DEFAULT_WORK_DIR")
+            or os.environ.get("ARI_WORK_DIR")
+            or os.getcwd()
         )
-
-        job_name = kwargs.get("job_name", "mcp_job")
-        # Auto-determine partition
-        import os as _os, subprocess as _sp
-        env_default = _os.environ.get("SLURM_DEFAULT_PARTITION", "")
-        _env_valid2 = _os.environ.get("SLURM_VALID_PARTITIONS", "")
-        valid_partitions = set(_env_valid2.split(",")) if _env_valid2 else set()
-
-        def _auto_partition() -> str:
-            """Retrieve available partitions via sinfo and return the first one."""
-            try:
-                result = _sp.run(
-                    ["sinfo", "--noheader", "--format=%P"],
-                    capture_output=True, text=True, timeout=5
-                )
-                parts = [p.rstrip("*") for p in result.stdout.split() if p.strip()]
-                if valid_partitions:
-                    parts = [p for p in parts if p in valid_partitions]
-                return parts[0] if parts else ""
-            except Exception:
-                return ""
-
-        _sinfo_available = []
-        try:
-            import subprocess as _sp2
-            _r = _sp2.run(["sinfo","--noheader","--format=%P"], capture_output=True, text=True, timeout=5)
-            _sinfo_available = [p.rstrip("*") for p in _r.stdout.split() if p.strip()]
-        except Exception:
-            pass
-        default_partition = env_default or (_sinfo_available[0] if _sinfo_available else "")
-        partition = kwargs.get("partition", default_partition) or default_partition
-        # Fallback to auto-detected value if LLM specified an invalid partition
-        if _sinfo_available and partition not in _sinfo_available:
-            partition = default_partition
-        elif valid_partitions and partition not in valid_partitions:
-            partition = default_partition
-        nodes = kwargs.get("nodes", 1)
-        walltime = kwargs.get("walltime", "01:00:00")
-        account = kwargs.get("account")
-        cpus_per_task = kwargs.get("cpus_per_task") or os.environ.get("ARI_SLURM_CPUS")
-        memory_gb = kwargs.get("memory_gb") or os.environ.get("ARI_SLURM_MEM_GB")
-        gres = kwargs.get("gres")  # e.g. "gpu:1"
-        # Fallback: construct gres from ARI_SLURM_GPUS env var if not explicitly provided
-        if not gres:
-            _env_gpus = os.environ.get("ARI_SLURM_GPUS")
-            if _env_gpus and int(_env_gpus) > 0:
-                gres = f"gpu:{_env_gpus}"
-
-        import os as _os
-        log_dir = _os.environ.get("SLURM_LOG_DIR", "")
-        header_lines = [
-            "#!/bin/bash",
-            f"#SBATCH --job-name={job_name}",
-            f"#SBATCH --partition={partition}",
-            f"#SBATCH --nodes={nodes}",
-            f"#SBATCH --time={walltime}",
-        ]
-        if cpus_per_task:
-            header_lines.append(f"#SBATCH --cpus-per-task={cpus_per_task}")
-        if memory_gb:
-            header_lines.append(f"#SBATCH --mem={memory_gb}G")
-        if gres:
-            header_lines.append(f"#SBATCH --gres={gres}")
-        if log_dir:
-            header_lines.append(f"#SBATCH --output={log_dir}/slurm_job_%j.out")
-            header_lines.append(f"#SBATCH --error={log_dir}/slurm_job_%j.out")
-        # account flag may not be valid on all clusters; silently ignore if passed
-        # if account: header_lines.append(f"#SBATCH --account={account}")
-        work_dir = kwargs.get("work_dir")
-        if work_dir:
-            header_lines.append(f"#SBATCH -D {work_dir}")
-
-        # Normalize all LLM-generated chdir variants to #SBATCH -D
-        # LLM writes: --work-dir=, --workdir=, --chdir=, -D
-        chdir_match = re.search(r"#SBATCH\s+(?:--work-dir=|--workdir=|--work_dir=|--chdir=|-D\s+)(\S+)", script)
-        if chdir_match and not work_dir:
-            work_dir = chdir_match.group(1)
-        # Strip all LLM-generated dir directives (we add -D via header)
-        script = re.sub(r"#SBATCH\s+(?:--work-dir|--workdir|--chdir)=\S+\n?", "", script)
-        script = re.sub(r"#SBATCH\s+-D\s+\S+\n?", "", script)
-        if work_dir and f"#SBATCH -D {work_dir}" not in "\n".join(header_lines):
-            header_lines.append(f"#SBATCH -D {work_dir}")
-
-        # Inject run-env capture: writes <work_dir>/_run_env.json with
-        # hostname / SLURM job_id / partition / cpu_info, executed on the
-        # compute node so it reflects WHERE the job ran (not where ari runs).
-        # node_report.py later picks this up and exposes it on node_report.json.
-        try:
-            try:
-                from ari.public.run_env import shell_capture_snippet
-            except ImportError:
-                from ari.agent.run_env import shell_capture_snippet
-            _capture = shell_capture_snippet(executor="slurm")
-        except Exception:
-            _capture = ""
-
-        # ── env isolation preamble ────────────────────────────────────
-        # sbatch's default --export=ALL propagates the submitter's PATH to
-        # the compute node. When the submitter shell has a venv activated
-        # (e.g. ari-skill-vlm/.venv/bin first in PATH) the same x86_64
-        # interpreter gets used on aarch64 compute nodes and the job dies
-        # with `Exec format error`. We force --export to NONE (override via
-        # ARI_SBATCH_EXPORT_MODE) and re-seed the environment inside the
-        # job script from $ARI_ENV_FILE / $ARI_ROOT/.env so API keys and
-        # ARI configuration still reach the job — but the submitter's PATH
-        # never does.
-        export_mode = (_os.environ.get("ARI_SBATCH_EXPORT_MODE", "").strip() or "NONE")
-        env_file = _os.environ.get("ARI_ENV_FILE", "").strip()
-        if not env_file:
-            _ari_root_env = _os.environ.get("ARI_ROOT", "").strip()
-            if _ari_root_env:
-                env_file = f"{_ari_root_env}/.env"
-        def _shq(s: str) -> str:
-            return "'" + s.replace("'", "'\\''") + "'"
-        _preamble = [
-            f"# ARI: restore a clean env (sbatch --export={export_mode})",
-            "export PATH=/usr/bin:/bin:/usr/local/bin",
-            "unset VIRTUAL_ENV PYTHONHOME PYTHONPATH",
-        ]
-        if env_file:
-            _preamble += [
-                f"ARI_ENV_FILE={_shq(env_file)}",
-                'if [ -f "$ARI_ENV_FILE" ]; then',
-                "    set -a",
-                '    . "$ARI_ENV_FILE"',
-                "    set +a",
-                "fi",
-            ]
-        env_preamble = "\n".join(_preamble)
-
-        full_script = (
-            "\n".join(header_lines) + "\n"
-            + env_preamble + "\n"
-            + _capture + "\n"
-            + script + "\n"
+        partition = str(
+            kwargs.get("partition")
+            or os.environ.get("SLURM_DEFAULT_PARTITION")
+            or os.environ.get("ARI_SLURM_PARTITION")
+            or ""
         )
-
-        sbatch_cmd = f"sbatch --export={export_mode}"
-
-        if self.mode == "local":
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".sh", delete=False
-            ) as f:
-                f.write(full_script)
-                tmp_path = f.name
-            try:
-                stdout, stderr, rc = await self._run(f"{sbatch_cmd} {tmp_path}")
-            finally:
-                os.unlink(tmp_path)
-        else:
-            # For remote: write script to a temp path on the remote host
-            remote_tmp = f"/tmp/mcp_sbatch_{os.getpid()}.sh"
-            escaped = full_script.replace("'", "'\\''")
-            await self._run(f"printf '%s' '{escaped}' > {remote_tmp}")
-            stdout, stderr, rc = await self._run(f"{sbatch_cmd} {remote_tmp}")
-            await self._run(f"rm -f {remote_tmp}")
-
-        if rc != 0:
+        try:
+            handle = await self._scheduler.submit_legacy_script(
+                script=script,
+                job_name=str(kwargs.get("job_name") or "mcp_job"),
+                partition=partition,
+                nodes=int(kwargs.get("nodes") or 1),
+                walltime=str(kwargs.get("walltime") or "01:00:00"),
+                work_dir=work_dir,
+                cpus_per_task=int(
+                    kwargs.get("cpus_per_task") or os.environ.get("ARI_SLURM_CPUS") or 1
+                ),
+                memory_gb=_optional_int(
+                    kwargs.get("memory_gb") or os.environ.get("ARI_SLURM_MEM_GB")
+                ),
+                gres=str(kwargs.get("gres") or _gres_from_environment() or "") or None,
+                account=str(kwargs.get("account") or "") or None,
+            )
+        except SchedulerError as exc:
             return {
                 "job_id": "",
                 "status": "error",
-                "message": f"sbatch failed (exit={rc}): {stderr or stdout}",
+                "message": str(exc),
                 "partition": partition,
             }
-
-        # Parse job ID from "Submitted batch job 12345"
-        match = re.search(r"(\d+)", stdout)
-        job_id = match.group(1) if match else ""
-
         return {
-            "job_id": job_id,
-            "status": "submitted",
-            "message": f"Job {job_id} submitted successfully",
+            "schema_version": handle.schema_version,
+            "handle_id": handle.handle_id,
+            "job_id": handle.job_id,
+            "state": handle.state,
+            "status": handle.status,
+            "message": f"Job {handle.job_id} submitted successfully",
+            "request_digest": handle.request_digest,
+            "submission_digest": handle.submission_digest,
         }
 
-    async def status(self, job_id: str) -> dict:
-        """Get job status via sacct.
-
-        Returns dict with job_id, status, exit_code, start_time, end_time,
-        stdout, stderr.
-        """
-        # Empty job_id returns immediate error (prevents LLM from polling indefinitely)
-        if not job_id or not str(job_id).strip():
+    async def status(self, job_id: str) -> dict[str, Any]:
+        if not job_id:
             return {
                 "job_id": "",
                 "status": "ERROR",
+                "normalized_state": "unknown",
                 "exit_code": None,
                 "start_time": None,
                 "end_time": None,
                 "stdout": None,
                 "stderr": None,
-                "message": "job_id is empty — slurm_submit likely failed. Submit a corrected script.",
+                "message": "job_id is empty; submission did not return a handle",
             }
-        stdout, stderr, rc = await self._run(
-            f"sacct -j {job_id} --noheader --parsable2 "
-            f"--format=JobID,State,ExitCode,Start,End"
-        )
-
-        result: dict = {
-            "job_id": job_id,
-            "status": "UNKNOWN",
-            "exit_code": None,
-            "start_time": None,
-            "end_time": None,
-            "stdout": None,
-            "stderr": None,
+        try:
+            status = await self._scheduler.status(job_id)
+            logs = ()
+            if status.state in {"succeeded", "failed", "cancelled"}:
+                try:
+                    logs = await self._scheduler.logs(job_id)
+                except SchedulerError:
+                    logs = ()
+        except SchedulerError as exc:
+            return {
+                "job_id": job_id,
+                "status": "ERROR",
+                "normalized_state": "unknown",
+                "exit_code": None,
+                "start_time": None,
+                "end_time": None,
+                "stdout": None,
+                "stderr": None,
+                "message": str(exc),
+            }
+        by_stream = {item.stream: item.text for item in logs}
+        return {
+            "schema_version": status.schema_version,
+            "handle_id": status.handle_id,
+            "job_id": status.job_id,
+            "status": status.scheduler_state,
+            "normalized_state": status.state,
+            "exit_code": status.exit_code,
+            "start_time": status.start_time,
+            "end_time": status.end_time,
+            "reason": status.reason,
+            "stdout": by_stream.get("stdout"),
+            "stderr": by_stream.get("stderr"),
         }
 
-        if rc != 0 or not stdout:
-            # Fallback to squeue
-            sq_out, _, sq_rc = await self._run(
-                f"squeue -j {job_id} --noheader --format=%T"
-            )
-            if sq_rc == 0 and sq_out:
-                result["status"] = sq_out.split("\n")[0].strip()
-            return result
-
-        # Parse first line from sacct
-        lines = [l for l in stdout.split("\n") if l and not l.endswith(".batch") and not l.endswith(".extern")]
-        if lines:
-            parts = lines[0].split("|")
-            if len(parts) >= 5:
-                result["status"] = parts[1]
-                # Exit code format: "0:0"
-                exit_parts = parts[2].split(":")
-                result["exit_code"] = int(exit_parts[0]) if exit_parts[0].isdigit() else None
-                result["start_time"] = parts[3] if parts[3] != "Unknown" else None
-                result["end_time"] = parts[4] if parts[4] != "Unknown" else None
-
-        # Try to read stdout/stderr files
-        if result["status"] in ("COMPLETED", "FAILED"):
-            result["stdout"] = await self.get_stdout(job_id)
-            result["stderr"] = await self.get_stderr(job_id)
-
-        return result
-
-    async def cancel(self, job_id: str) -> dict:
-        """Cancel a SLURM job.
-
-        Returns dict with success and message.
-        """
-        stdout, stderr, rc = await self._run(f"scancel {job_id}")
-        if rc != 0:
-            return {"success": False, "message": f"scancel failed: {stderr}"}
-        return {"success": True, "message": f"Job {job_id} cancelled"}
+    async def cancel(self, job_id: str) -> dict[str, Any]:
+        try:
+            result = await self._scheduler.cancel(job_id)
+        except SchedulerError as exc:
+            return {"success": False, "message": str(exc), "job_id": job_id}
+        return {
+            **result,
+            "success": True,
+            "message": f"Job {result['job_id']} cancellation requested",
+        }
 
     async def get_stdout(self, job_id: str) -> str | None:
-        """Read stdout from the SLURM output file.
-        
-        Checks SLURM_LOG_DIR first (slurm_job_{job_id}.out or any *{job_id}*.out),
-        then falls back to standard slurm-{job_id}.out.
-        """
-        import os as _os
-        log_dir = _os.environ.get("SLURM_LOG_DIR", "")
-        # Try all known output file patterns (generic + legacy)
-        import os as _os2
-        work_dir = _os2.environ.get("ARI_WORK_DIR", "")
-        candidates = []
-        if log_dir:
-            candidates += [
-                f"{log_dir}/slurm_job_{job_id}.out",
-                f"{log_dir}/slurm-{job_id}.out",
-            ]
-        if work_dir:
-            candidates += [
-                f"{work_dir}/slurm-{job_id}.out",
-                f"{work_dir}/slurm_job_{job_id}.out",
-            ]
-        candidates += [
-            f"slurm_job_{job_id}.out",
-            f"slurm-{job_id}.out",
-        ]
-        for pattern in candidates:
-            stdout, _, rc = await self._run(f"cat {pattern} 2>/dev/null")
-            if rc == 0 and stdout:
-                return stdout
-        # Generic fallback: find any file with job_id in name
-        if log_dir:
-            stdout, _, rc = await self._run(
-                f"find {log_dir} -name '*{job_id}*.out' 2>/dev/null | head -1 | xargs cat 2>/dev/null"
-            )
-            if rc == 0 and stdout:
-                return stdout
-        return None
+        return await self._get_log(job_id, "stdout")
 
     async def get_stderr(self, job_id: str) -> str | None:
-        """Read stderr from SLURM error file (searches same locations as get_stdout)."""
-        import os as _os
-        log_dir = _os.environ.get("SLURM_LOG_DIR", "")
-        candidates = []
-        if log_dir:
-            candidates += [
-                f"{log_dir}/slurm_job_{job_id}.err",
-                f"{log_dir}/slurm-{job_id}.err",
-            ]
-        candidates += [
-            f"slurm_job_{job_id}.err",
-            f"slurm-{job_id}.err",
-        ]
-        for pattern in candidates:
-            stdout, _, rc = await self._run(f"cat {pattern} 2>/dev/null")
-            if rc == 0 and stdout:
-                return stdout
-        # Generic fallback: find any .err file with job_id
-        if log_dir:
-            stdout, _, rc = await self._run(
-                f"find {log_dir} -name '*{job_id}*.err' 2>/dev/null | head -1 | xargs cat 2>/dev/null"
-            )
-            if rc == 0 and stdout:
-                return stdout
+        return await self._get_log(job_id, "stderr")
+
+    async def _get_log(self, job_id: str, stream: str) -> str | None:
+        if not _JOB_ID_RE.fullmatch(job_id):
+            raise SchedulerValidationError("invalid SLURM job id")
+        try:
+            logs = await self._scheduler.logs(job_id)
+            for item in logs:
+                if item.stream == stream:
+                    return item.text
+        except SchedulerError:
+            pass
+        suffix = "out" if stream == "stdout" else "err"
+        candidates: list[Path] = []
+        for root in (
+            os.environ.get("SLURM_LOG_DIR", ""),
+            os.environ.get("ARI_WORK_DIR", ""),
+            os.getcwd(),
+        ):
+            if root:
+                candidates.extend(
+                    [
+                        Path(root) / f"slurm_job_{job_id}.{suffix}",
+                        Path(root) / f"slurm-{job_id}.{suffix}",
+                    ]
+                )
+        for path in candidates:
+            if self.mode == "local":
+                if path.exists():
+                    info = path.lstat()
+                    if stat.S_ISREG(info.st_mode) and not path.is_symlink():
+                        return (
+                            path.read_bytes()[:1_048_576]
+                            .decode("utf-8", errors="replace")
+                            .strip()
+                        )
+            else:
+                response = await self._scheduler.runner.run(["cat", "--", str(path)])
+                if response.returncode == 0 and response.stdout:
+                    return response.stdout
         return None
 
     def close(self) -> None:
-        """Close SSH connection if open."""
-        if self._ssh_client is not None:
-            self._ssh_client.close()
-            self._ssh_client = None
+        self._scheduler.close()
 
 
-# ── platform capability probe (probe -> contract -> idea chain; see ──────────
-# docs/concepts/bfts.md and docs/reference/mcp_tools.md)
-#
-# The claims extractor declared evidence requiring tools the compute platform
-# does not have (verified on a real cluster: the assumed profiler was absent on the compute partition), so
-# those claims were permanently unsatisfiable and blocked finalize forever.
-# This probe runs `command -v` for a small tool list ON the compute partition,
-# caches the result next to the checkpoint, and the evaluator passes it to the
-# claims extraction as a verified capability note. Platform tooling knowledge
-# lives HERE (the HPC skill) — the harness/gate stay science-domain-free.
+def _optional_int(value: object) -> int | None:
+    if value in {None, ""}:
+        return None
+    return int(value)
 
+
+def _gres_from_environment() -> str | None:
+    value = os.environ.get("ARI_SLURM_GPUS", "").strip()
+    if not value:
+        return None
+    count = int(value)
+    return f"gpu:{count}" if count else None
+
+
+# Platform capability probing remains best-effort, but validates every atom and
+# writes the cache atomically without following a symlink.
 _DEFAULT_PROBE_TOOLS = "perf,numactl,papi_avail,likwid-perfctr,valgrind"
+_TOOL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,127}$")
+_PARTITION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$")
+_ARCH_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,127}$")
 
 
-def _parse_capability_output(text: str) -> dict:
-    """Parse ``tool=yes|no`` lines (+ optional ``arch=...``) from the probe job."""
-    out: dict = {"available": {}}
+def _parse_capability_output(text: str) -> dict[str, Any]:
+    output: dict[str, Any] = {"available": {}}
     for line in (text or "").splitlines():
         line = line.strip()
         if line.startswith("arch="):
-            out["arch"] = line.split("=", 1)[1]
+            architecture = line.split("=", 1)[1]
+            if _ARCH_RE.fullmatch(architecture):
+                output["arch"] = architecture
         elif "=" in line:
-            k, v = line.split("=", 1)
-            if v in ("yes", "no"):
-                out["available"][k] = (v == "yes")
-    return out
+            name, value = line.split("=", 1)
+            if value in {"yes", "no"} and _TOOL_RE.fullmatch(name):
+                output["available"][name] = value == "yes"
+    return output
 
 
 async def probe_platform_capabilities(
@@ -469,59 +275,126 @@ async def probe_platform_capabilities(
     partition: str = "",
     tools: str = "",
     timeout_s: int = 120,
-) -> dict:
-    """Probe tool availability on the compute partition; cache to the checkpoint.
-
-    Best-effort by design: any failure (no partition, srun missing, queue wait
-    beyond ``timeout_s``) returns ``{"status": "skipped", ...}`` and writes
-    nothing, leaving claims extraction unconstrained (current behaviour). A
-    cached ``platform_capabilities.json`` is returned without re-probing.
-    """
-    import json as _json
-    from pathlib import Path as _Path
-
-    ckpt = _Path(checkpoint_dir).expanduser()
-    out_path = ckpt / "platform_capabilities.json"
-    if out_path.is_file():
+) -> dict[str, Any]:
+    checkpoint = Path(checkpoint_dir)
+    if (
+        not checkpoint.is_absolute()
+        or ".." in checkpoint.parts
+        or any(character.isspace() for character in checkpoint_dir)
+        or checkpoint.is_symlink()
+    ):
+        return {
+            "status": "skipped",
+            "reason": "checkpoint_dir must be a safe absolute path",
+        }
+    output_path = checkpoint / "platform_capabilities.json"
+    if output_path.is_file() and not output_path.is_symlink():
         try:
-            return {"status": "cached", **_json.loads(out_path.read_text())}
-        except Exception:
-            pass  # corrupt cache -> re-probe
+            cached = json.loads(output_path.read_text(encoding="utf-8"))
+            if _valid_capability_record(cached):
+                return {**cached, "status": "cached"}
+        except (OSError, json.JSONDecodeError):
+            pass
 
-    part = (partition or os.environ.get("ARI_SLURM_PARTITION", "")).strip()
-    if not part:
+    selected_partition = (
+        partition or os.environ.get("ARI_SLURM_PARTITION", "")
+    ).strip()
+    if not selected_partition:
         return {"status": "skipped", "reason": "no partition configured"}
-    tool_list = [t.strip() for t in (tools or os.environ.get(
-        "ARI_PROBE_TOOLS", _DEFAULT_PROBE_TOOLS)).split(",") if t.strip()]
+    if not _PARTITION_RE.fullmatch(selected_partition):
+        return {"status": "skipped", "reason": "partition is invalid"}
+    tool_list = [
+        item.strip()
+        for item in (
+            tools or os.environ.get("ARI_PROBE_TOOLS", _DEFAULT_PROBE_TOOLS)
+        ).split(",")
+        if item.strip()
+    ]
     if not tool_list:
         return {"status": "skipped", "reason": "no tools to probe"}
+    if len(tool_list) > 128 or any(not _TOOL_RE.fullmatch(item) for item in tool_list):
+        return {"status": "skipped", "reason": "probe tool list is invalid"}
+    if len(tool_list) != len(set(tool_list)):
+        return {"status": "skipped", "reason": "probe tool list contains duplicates"}
+    if not 1 <= timeout_s <= 3_600:
+        return {"status": "skipped", "reason": "probe timeout is out of bounds"}
 
     checks = "; ".join(
-        f'(command -v {t} >/dev/null 2>&1 && echo "{t}=yes" || echo "{t}=no")'
-        for t in tool_list
+        f"(command -v {item} >/dev/null 2>&1 && echo {item}=yes || echo {item}=no)"
+        for item in tool_list
     )
     script = f'echo "arch=$(uname -m)"; {checks}'
+    process = None
     try:
-        proc = await asyncio.create_subprocess_exec(
-            "srun", "-p", part, "-N", "1", "-n", "1", "-t", "00:01:30",
-            "bash", "-c", script,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        process = await asyncio.create_subprocess_exec(
+            "srun",
+            "-p",
+            selected_partition,
+            "-N",
+            "1",
+            "-n",
+            "1",
+            "-t",
+            "00:01:30",
+            "bash",
+            "-c",
+            script,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env={
+                "PATH": os.environ.get(
+                    "ARI_SCHEDULER_PATH", "/usr/local/bin:/usr/bin:/bin"
+                ),
+                "LANG": "C.UTF-8",
+            },
         )
-        stdout, _stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
-    except (asyncio.TimeoutError, FileNotFoundError, OSError) as e:
-        try:
-            proc.kill()  # type: ignore[possibly-undefined]
-        except Exception:
-            pass
-        return {"status": "skipped", "reason": f"probe failed: {e!r}"}
-
-    parsed = _parse_capability_output(stdout.decode(errors="replace"))
+        stdout, _stderr = await asyncio.wait_for(
+            process.communicate(), timeout=timeout_s
+        )
+    except (TimeoutError, FileNotFoundError, OSError) as exc:
+        if process is not None and process.returncode is None:
+            process.kill()
+            await process.wait()
+        return {"status": "skipped", "reason": f"probe failed: {exc!r}"}
+    if process.returncode != 0:
+        return {"status": "skipped", "reason": "probe scheduler command failed"}
+    parsed = _parse_capability_output(stdout.decode("utf-8", errors="replace"))
     if not parsed.get("available"):
         return {"status": "skipped", "reason": "probe produced no capability lines"}
-    record = {"partition": part, **parsed}
+    record = {"partition": selected_partition, **parsed}
     try:
-        ckpt.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(_json.dumps(record, ensure_ascii=False, indent=2))
-    except Exception as e:
-        return {"status": "unsaved", "reason": str(e), **record}
+        checkpoint.mkdir(parents=True, exist_ok=True)
+        if checkpoint.is_symlink() or output_path.is_symlink():
+            raise OSError("unsafe capability cache path")
+        descriptor, temporary = tempfile.mkstemp(
+            prefix=".platform-capabilities.", dir=checkpoint
+        )
+        try:
+            os.fchmod(descriptor, 0o600)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                json.dump(record, stream, ensure_ascii=False, sort_keys=True, indent=2)
+                stream.write("\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, output_path)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+    except OSError as exc:
+        return {"status": "unsaved", "reason": str(exc), **record}
     return {"status": "probed", **record}
+
+
+def _valid_capability_record(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    if not _PARTITION_RE.fullmatch(str(value.get("partition", ""))):
+        return False
+    architecture = value.get("arch")
+    if architecture is not None and not _ARCH_RE.fullmatch(str(architecture)):
+        return False
+    available = value.get("available")
+    return isinstance(available, dict) and all(
+        _TOOL_RE.fullmatch(str(name)) and isinstance(present, bool)
+        for name, present in available.items()
+    )

@@ -1,7 +1,7 @@
 [project]
 name = "ari-skill-hpc"
-version = "0.1.0"
-description = "HPC environment tools for SLURM/Singularity - MCP Server"
+version = "0.2.0"
+description = "Typed reproducible HPC jobs with SLURM and digest-pinned containers"
 requires-python = ">=3.13"
 dependencies = [
     "mcp>=1.0",

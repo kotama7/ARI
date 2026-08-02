@@ -430,10 +430,6 @@ _env_append_if_absent "# ARI_PARENT_RUN_ID="
 _env_append_if_absent "# ARI_RETRIEVAL_BACKEND=semantic_scholar"
 _env_append_if_absent "# ARI_EXECUTOR="
 _env_append_if_absent "# ARI_MAX_CHILD_PROCS="
-# ARI_ENV_FILE points to the .env that ari-skill-hpc re-sources on the
-# compute node after sbatch --export=NONE strips the submitter env.
-# Defaults to $ARI_ROOT/.env when unset.
-_env_append_if_absent "# ARI_ENV_FILE="
 
 # --- 6) Container -----------------------------------------------------------
 _env_section "Container"
@@ -469,6 +465,10 @@ _env_append_if_absent "# SLURM_SSH_USER="
 _env_append_if_absent "# SLURM_SSH_PORT=22"
 _env_append_if_absent "# SLURM_SSH_KEY="
 _env_append_if_absent "# SLURM_SSH_PASSWORD="
+_env_append_if_absent "# SLURM_SSH_KNOWN_HOSTS=  # required absolute path in remote mode"
+_env_append_if_absent "# SLURM_SSH_CONNECT_TIMEOUT=15"
+_env_append_if_absent "# SLURM_COMMAND_TIMEOUT=30"
+_env_append_if_absent "# SLURM_SHARED_FILESYSTEM=true"
 _env_append_if_absent "# SLURM_LOG_DIR="
 _env_append_if_absent "# SLURM_DEFAULT_PARTITION="
 _env_append_if_absent "# SLURM_VALID_PARTITIONS="
@@ -482,6 +482,8 @@ _env_append_if_absent "# ARI_SLURM_MEM_GB="
 _env_append_if_absent "# ARI_SLURM_GPUS="
 _env_append_if_absent "# ARI_SLURM_WALLTIME=04:00:00"
 _env_append_if_absent "# ARI_SLURM_PARTITION="
+_env_append_if_absent "# ARI_HPC_LEDGER_PATH=  # durable idempotency ledger"
+_env_append_if_absent "# ARI_SCHEDULER_PATH=/usr/local/bin:/usr/bin:/bin"
 # Comma-separated tool names the compute-node capability probe checks for
 # (default: perf,numactl,papi_avail,likwid-perfctr,valgrind). Lets claims
 # avoid evidence that depends on tooling the target partition lacks.
@@ -491,13 +493,6 @@ _env_append_if_absent "# ARI_PROBE_TOOLS="
 # (silently downgrading a GPU request to CPU after a long queue wait is
 # the worst possible failure mode; surface the contradiction at submit).
 _env_append_if_absent "# ARI_SLURM_ALLOW_NO_GRES="
-# ARI_SBATCH_EXPORT_MODE overrides the sbatch --export argument used by
-# ari-skill-hpc when submitting jobs. Default NONE keeps the submitter's
-# (possibly venv-poisoned) PATH from leaking onto compute nodes; the job
-# script re-sources $ARI_ENV_FILE for API keys. Set to ALL only when you
-# explicitly want the legacy "inherit submitter env" behaviour.
-_env_append_if_absent "# ARI_SBATCH_EXPORT_MODE="
-
 # --- 8) Orchestrator / viz --------------------------------------------------
 _env_section "Orchestrator"
 _env_append_if_absent "# ARI_ORCHESTRATOR_PORT="

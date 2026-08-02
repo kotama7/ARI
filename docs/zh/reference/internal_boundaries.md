@@ -46,7 +46,7 @@ ARI 的 LLM 边界**并非**"一切都必须调用 `LLMClient`"。它是一个�
 | `ari/container.py` | 容器执行：`detect_runtime`、`build_run_cmd`、`run_in_container`（Popen ＋ `_sandbox_preexec` ＝ `os.setsid` 新建进程组 ＋ 经由 `ARI_MAX_CHILD_PROCS` 的可选 `RLIMIT_NPROC`）、`_run_with_timeout`（对进程组 SIGTERM→SIGKILL）、`pull_image`、`exec_in_container`。由 `ari.public.container` 重导出。 |
 | `ari/env_detect.py` | 调度器 / 运行时探测（`sinfo`、`qstat`、`docker info`、`lscpu`）—— 只读、尽力而为、不含硬编码的集群知识。 |
 | `ari/mcp/client.py` | 经由 MCP SDK 的 `stdio_client`（一个封装，而非裸 spawn）派生技能的 stdio 服务器。 |
-| `ari-skill-hpc/src/slurm.py` | 规范的 SLURM submit/status/cancel（`SlurmClient`：`_run_local` 为 asyncio 子进程，`_run_remote` 为 paramiko），含 `ARI_SBATCH_EXPORT_MODE` 的净环境逻辑。 |
+| `ari-skill-hpc/src/{contracts,scheduler}.py` | 带版本的 HPC job 契约、无 shell 的本地 SLURM、严格 known-host SSH、持久幂等、`--export=NIL` 干净环境及 digest 绑定的结果收集。 |
 
 应向这些归属者整合的已知重复（并非错误行为，但有漂移风险）：`viz/api_memory.py` 重新推导了容器运行时分派；`ari-skill-paper-re/src/server.py` 重新实现了 `sbatch`/`apptainer exec`，且已经偏离了 `slurm.py`（它硬编码了 `--export ALL`）；其本地回退缺少 `setsid`/`killpg`，因此一次挂起的复现可能产生孤儿进程。
 
