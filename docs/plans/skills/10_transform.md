@@ -13,7 +13,7 @@ last_verified: 2026-08-01
 
 # C10: `ari-skill-transform` 実装計画
 
-> 状態: Proposed。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
+> 状態: Completed (2026-08-02) — C10-01〜08とC10-D1〜D6を完了。恒久仕様は [science_data_contract.md](../../reference/science_data_contract.md) へ移行済み。本書はP6の計画書一括cleanupで削除する。
 
 ## 1. 責務
 
@@ -46,14 +46,14 @@ BFTS tree、node report、measurement、metric contractをcanonical `ScienceData
 
 ## 5. 受け入れ基準
 
-- [ ] raw measurementとLLM interpretationをschemaで区別し、paper claimはraw/derived sourceへ辿れる。
-- [ ]同じcheckpointから同じ`ScienceDataV1` deterministic sectionとEAR digestを得る。
-- [ ] formula test vectorをtransformとhard gateが同じ結果で評価する。
-- [ ] missing/tampered node reportをsilent source scanで正当化せず、migration statusを付ける。
-- [ ] EARに実行tool lock、input/output artifact digest、selection/admission evidenceが入る。
-- [ ] publish backend failureがcurated local bundleを破壊しない。
-- [ ] currentとlegacy checkpoint fixturesを明示的readerで処理する。
-- [ ] `pytest ari-skill-transform/tests -q` とEAR round-trip testsがgreenである。
+- [x] raw measurementとLLM interpretationをschemaで区別し、paper claimはraw/derived sourceへ辿れる。
+- [x]同じcheckpointから同じ`ScienceDataV1` deterministic sectionとEAR digestを得る。
+- [x] formula test vectorをtransformとhard gateが同じ結果で評価する。
+- [x] missing/tampered node reportをsilent source scanで正当化せず、migration statusを付ける。
+- [x] EARに実行tool lock、input/output artifact digest、selection/admission/cassette evidenceが入る。
+- [x] publish backend failureがcurated local bundleを破壊しない。
+- [x] currentとlegacy checkpoint fixturesを明示的readerで処理する。
+- [x] `pytest ari-skill-transform/tests -q` とEAR round-trip testsがgreenである。
 
 ## 6. 削除要件
 
@@ -61,12 +61,12 @@ BFTS tree、node report、measurement、metric contractをcanonical `ScienceData
 
 | ID | 削除対象 | 置換先 | 最早phase | 削除gate |
 |---|---|---|---|---|
-| C10-D1 | new runの`trace_log` extraction fallback | canonical `node_report` / measurement records | P3 |new golden run coverage 100%、legacy converter fixture |
-| C10-D2 | transform側のmirrored formula implementation | canonical public formula registry | P3 |shared test vector parity、duplicate symbol 0 |
-| C10-D3 | LLM outputからnumeric factを採用するpath | deterministic raw/derived layer | P3 |mutation/overclaim negative tests |
-| C10-D4 | server.py内のpublish backend直結分岐 | `ari-core` publish interface | P3 |all backend contract tests |
-| C10-D5 | legacy checkpoint fallbackのruntime常時分岐 | versioned offline migration reader | P6 |support window、runtime new-path caller 0 |
-| C10-D6 | replacement後のunused LLM/parsing dependency | component-specific minimal deps | P6 |clean install、dependency audit |
+| C10-D1 (deleted) | new runの`trace_log` extraction fallback | canonical `node_report` / measurement records | P3 |new golden run coverage 100%、legacy converter fixture達成 |
+| C10-D2 (deleted) | transform側のmirrored formula implementation | canonical public formula registry | P3 |shared test vector parity、duplicate symbol 0達成 |
+| C10-D3 (deleted) | LLM outputからnumeric factを採用するpath | deterministic raw/derived layer | P3 |mutation/overclaim negative tests達成 |
+| C10-D4 (deleted) | server.py内のpublish backend直結分岐 | `ari-core` publish interface | P3 |all backend contract tests達成 |
+| C10-D5 (deleted) | legacy checkpoint fallbackのruntime常時分岐 | versioned offline migration reader | P6 |runtime new-path caller 0、offline converter fixture達成 |
+| C10-D6 (deleted) | replacement後のunused LLM/parsing dependency | component-specific minimal deps | P6 |minimal dependency declarationとclean suite達成 |
 
 ### 6.2 削除の検証と復旧
 
@@ -74,4 +74,4 @@ BFTS tree、node report、measurement、metric contractをcanonical `ScienceData
 
 ### 6.3 計画書自身の削除
 
-C10-01〜08、全受け入れ基準、C10-D1〜D6を閉じ、ScienceData/EAR/migration仕様を恒久referenceへ移した後に削除する。
+C10-01〜08、全受け入れ基準、C10-D1〜D6を閉じ、ScienceData/EAR/migration仕様を恒久referenceへ移した。計画書自体はmasterの追跡linkを保つためP6の一括cleanupで削除する。

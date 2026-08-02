@@ -392,19 +392,25 @@ backup 文書の形式（record は `MemoryRecordV1`）:
 restore は書込み前に文書全体を検証します。詳細は
 [研究メモリ契約](memory_contract.md) を参照してください。
 
-## EAR バンドル (v0.7.0)
+## ScienceDataV1 と EAR manifest v2
+
+新しいrunはraw measurement、deterministic derivation、model interpretationを
+`ari.science-data/v1`で分離します。詳細は
+[Science data と EAR の完全性](science_data_contract.md) を参照してください。
 
 `{checkpoint}/ear/` が候補セット、`{checkpoint}/ear_published/` がバックエンドに
 公開するキュレート済みサブセットです。信頼のアンカーは以下の構造です:
 
 ```
 ear_published/
-├── manifest.lock         # canonical JSON, files-only sha256 + bundle_sha256
+├── manifest.lock         # v2: content、role、policy、lock、evidence digest
 ├── publish_record.json   # backend, ref, sha256, visibility
 └── ...                   # curated artefacts
 ```
 
-`manifest.lock` スキーマ: `ari-core/ari/schemas/publish.schema.json`。
+manifest v2はSkill/catalog lock、cassette、ResultEnvelope artifact、admission
+recordも束縛します。v1はread-only互換です。publication policy schemaは
+`ari-core/ari/schemas/publish.schema.json`です。
 `bundle_sha256` は公開された論文に焼き込まれた `\codedigest{...}` マクロと
 一致しなければなりません。
 

@@ -59,6 +59,7 @@ from ari.research_contract import (  # noqa: E402
     RetrievalRecordV1,
     SurveySnapshotV1,
 )
+from ari.science_data_contract import ScienceDataV1  # noqa: E402
 
 
 SKILL_SCHEMA_PATH = ARI_CORE / "ari" / "schemas" / "skill_manifest_v1.schema.json"
@@ -128,6 +129,7 @@ METRIC_ADMISSION_DECISION_SCHEMA_PATH = (
 SEMANTIC_REVIEW_SCHEMA_PATH = (
     ARI_CORE / "ari" / "schemas" / "semantic_review_v1.schema.json"
 )
+SCIENCE_DATA_SCHEMA_PATH = ARI_CORE / "ari" / "schemas" / "science_data_v1.schema.json"
 # Compatibility alias for scripts that imported the original constant.
 SCHEMA_PATH = SKILL_SCHEMA_PATH
 
@@ -223,7 +225,9 @@ def expected_outputs(repo_root: Path = REPO_ROOT) -> dict[Path, str]:
     outputs[schema_dir / ASYNC_HANDLE_SCHEMA_PATH.name] = _json_text(
         async_handle_schema_document()
     )
-    outputs[schema_dir / CONTEXT_SCHEMA_PATH.name] = _json_text(context_schema_document())
+    outputs[schema_dir / CONTEXT_SCHEMA_PATH.name] = _json_text(
+        context_schema_document()
+    )
     outputs[schema_dir / LOCK_SCHEMA_PATH.name] = _json_text(lock_schema_document())
     outputs[schema_dir / WORKSPACE_SCHEMA_PATH.name] = _json_text(
         workspace_schema_document()
@@ -267,6 +271,12 @@ def expected_outputs(repo_root: Path = REPO_ROOT) -> dict[Path, str]:
             SemanticReviewV1,
             "semantic-review-v1",
             "ARI Semantic Review v1",
+        ),
+        (
+            SCIENCE_DATA_SCHEMA_PATH,
+            ScienceDataV1,
+            "science-data-v1",
+            "ARI Science Data v1",
         ),
         (
             MEMORY_BACKUP_SCHEMA_PATH,

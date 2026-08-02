@@ -1,11 +1,8 @@
 """Formula-level numeric re-computation utility (Story2Proposal Phase B2).
 
-Canonical home of the numeric-assertion formula registry used by the
-``claim_evidence_hard_gate``. The same registry is mirrored in
-``ari-skill-transform/src/claims.py`` (which *declares* the assertions). Keep
-the two in sync — divergence only affects the transform-declared ``value``
-(seed), because the gate verifies the **paper-reported** number against this
-recomputation, not against the seed.
+Canonical home of the numeric-assertion formula registry used by both the
+``claim_evidence_hard_gate`` and transform producer. Skills access it through
+``ari.public.science_data``; no second implementation is maintained.
 
 The documented master-plan formulas are the lower-is-better family
 (speedup / improvement / reduction). ``relative_gain`` / ``relative_increase_percent``

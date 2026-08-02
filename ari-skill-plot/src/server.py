@@ -521,6 +521,10 @@ async def generate_figures(
             import json as _jsd
             try:
                 _sd = _jsd.loads(Path(science_data_path).read_text())
+                if _sd.get("schema_version") == "ari.science-data/v1":
+                    from ari.public.science_data import science_data_projection
+
+                    _sd = science_data_projection(_sd)
                 nodes_raw = [
                     {"has_real_data": True, "metrics": cfg.get("metrics", {}),
                      "memory": [str(cfg.get("parameters", {}))]}
@@ -768,6 +772,12 @@ async def generate_figures_llm(
     if science_data_path:
         try:
             sd = json.loads(Path(science_data_path).read_text())
+            interpretation = {}
+            if sd.get("schema_version") == "ari.science-data/v1":
+                from ari.public.science_data import science_data_projection
+
+                interpretation = sd.get("interpretation") or {}
+                sd = science_data_projection(sd)
             # Pass the full science_data including experiment_context (LLM-extracted
             # hardware, methodology, ablation findings, validated results).
             # The figure-generation LLM decides what to plot based on this rich context.
@@ -775,7 +785,11 @@ async def generate_figures_llm(
                 "experiment": experiment_summary[:300],
                 "configurations": sd.get("configurations", [])[:20],
                 "per_key_summary": sd.get("per_key_summary", {}),
-                "experiment_context": sd.get("experiment_context", {}),
+                "experiment_context": (
+                    interpretation.get("experiment_context", {})
+                    if interpretation.get("status") == "ok"
+                    else sd.get("experiment_context", {})
+                ),
                 "summary_stats": sd.get("summary_stats", {}),
             }, indent=2)
             metric_name = ""

@@ -9,9 +9,14 @@ and owns the EAR publication lifecycle (curate / publish / promote).
 
 - `README.md` — this file.
 - `__init__.py` — empty package marker.
-- `claims.py` — deterministic Research Contract claim generator (Story2Proposal Phase A): builds `claims[]` / `numeric_assertions[]` with real node_id + metric_path operands; formula registry mirrored in ari-core's claim_gate.
-- `curate.py` — deterministic (P1/P2) EAR curator producing `ear_published/` + `manifest.lock`.
-- `server.py` — MCP entry point (`nodes_to_science_data` — also emits `claims[]`/`numeric_assertions[]` — `generate_ear`, `curate_ear`, `publish_ear`, `promote_ear`).
+- `annotations.py` — report-only, content-addressed, non-authoritative model interpretation.
+- `science_data.py` — deterministic raw/derived/provenance materializer for canonical `ScienceDataV1`.
+- `claims.py` — deterministic Research Contract claim generator using the core-owned formula registry through `ari.public.science_data`.
+- `ear.py` — closed-path Skill/CATALOG lock, cassette, admission, contract, and ResultEnvelope evidence hand-off.
+- `curate.py` — deterministic EAR curator producing recoverably-swapped `ear_published/` + manifest v2.
+- `publish_adapter.py` — thin adapter to the core-owned publication backend interface.
+- `server.py` — MCP declaration and orchestration entry point for the five public tools.
+- `prompts/` — version-controlled static transform interpretation prompt.
 - `licenses/` — bundled license texts used when curating EAR bundles.
   - `README.md` — licenses index.
   - `apache-2.0.txt` — Apache-2.0 license body.
@@ -20,7 +25,7 @@ and owns the EAR publication lifecycle (curate / publish / promote).
   - `gpl-3.0.txt` — GPL-3.0 license body.
   - `mit.txt` — MIT license body.
 - `schemas/` — JSON Schemas for transform outputs.
-  - `science_data_claims.schema.json` — JSON Schema (draft-07) for the `claims[]` / `numeric_assertions[]` Research Contract layer added to science_data.json.
+  - `science_data_claims.schema.json` — retained pre-v1 schema for the offline migration support window; native schema is generated at `ari-core/ari/schemas/science_data_v1.schema.json`.
 
 ## See also
 

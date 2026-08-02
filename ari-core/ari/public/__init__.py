@@ -16,6 +16,8 @@ Currently exported sub-modules:
   comparison, and result contracts.
 - :mod:`ari.public.memory`       — immutable research-memory records and
   retrieval provenance.
+- :mod:`ari.public.science_data` — digest-bound raw, derived, and model
+  interpretation sections plus the canonical numeric formula registry.
 - :mod:`ari.public.cost_tracker` — LLM cost reporting used by
   ari-skill-plot to log VLM/LLM call costs.
 - :mod:`ari.public.paths`        — :class:`PathManager` for callers

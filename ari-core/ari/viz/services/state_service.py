@@ -307,7 +307,18 @@ def build_app_state() -> dict:
         if sci_f.exists():
             try:
                 sci = json.loads(sci_f.read_text())
-                data["experiment_context"] = sci.get("experiment_context", {})
+                if sci.get("schema_version") == "ari.science-data/v1":
+                    from ari.science_data_contract import science_data_projection
+
+                    sci = science_data_projection(sci)
+                    annotation = sci.get("interpretation") or {}
+                    data["experiment_context"] = (
+                        annotation.get("experiment_context", {})
+                        if annotation.get("status") == "ok"
+                        else {}
+                    )
+                else:
+                    data["experiment_context"] = sci.get("experiment_context", {})
                 confs = sci.get("configurations", [])
                 if confs:
                     # best_nodes mirrors configurations[:3] verbatim —

@@ -27,7 +27,7 @@ re-exported from the package root.
   - `gate.py` — `run_hard_gate` orchestration (all checks → report + `should_block`).
   - `invariants.py` — universal-math invariant registry + `classify_concept` (name→concept) and `scan_science_data` emitting `invariant_violation` findings (declared bounds + name-inferred normalized<=1 / probability[0,1]; no domain knowledge).
   - `latex.py` — deterministic LaTeX section + numeric-token parsing (coverage fallback; mirrors ari-skill-paper/src/claim_links.py).
-  - `numeric.py` — formula registry + `recompute` + `within_tolerance` (Phase B2; mirrored in ari-skill-transform/src/claims.py).
+  - `numeric.py` — canonical formula registry + `recompute` + `within_tolerance` (Phase B2; exported to producers through `ari.public.science_data`).
   - `policy.py` — `claim_gate_policy` loader (defaults → arg → `claim_gate_policy.json` → env `ARI_CLAIM_GATE_MODE`).
   - `resolve.py` — operand/evidence resolution against `tree.json` / `results.json` / `node_report.json`.
 

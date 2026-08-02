@@ -28,6 +28,9 @@ core can refactor freely while the contract stays put.
 - `run_env.py` — re-export of `ari.agent.run_env` capture helpers.
 - `result.py` — versioned `ResultEnvelopeV1`, artifact references, typed errors,
   call provenance, immutable async handles, and the legacy response normalizer.
+- `science_data.py` — canonical `ScienceDataV1` raw/derived/interpretation
+  sections, explicit pre-v1 migration reader, flat gate projection, and shared
+  numeric-formula registry.
 - `skill_lock.py` — immutable run-level provider/schema/phase snapshot contract
   and atomic exact/subset verification helpers.
 - `skill_manifest.py` — canonical Skill package, entrypoint, and tool-policy

@@ -24,6 +24,7 @@ if str(_TRANSFORM_SRC) not in sys.path:
     sys.path.insert(0, str(_TRANSFORM_SRC))
 
 import curate as curate_mod  # type: ignore  # noqa: E402
+import ear as ear_mod  # type: ignore  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -314,3 +315,58 @@ include:
     (ckpt / "ear" / "README.md").write_text("# README v2\n")
     b = curate_mod.curate(ckpt)
     assert a.bundle_sha256 != b.bundle_sha256
+
+
+def test_v2_manifest_binds_locks_cassettes_admission_and_results(tmp_path: Path):
+    ckpt = _make_ear(tmp_path)
+    _write(ckpt / "SKILLS.lock", '{"schema_version":"ari.skills-lock/v1"}\n')
+    _write(
+        ckpt / "catalog" / "CATALOG.lock", '{"schema_version":"ari.catalog-lock/v1"}\n'
+    )
+    _write(ckpt / "catalog" / "cassettes" / "aa" / "call.json", '{"status":"ok"}\n')
+    _write(
+        ckpt / "evaluation" / "claim_evidence_hard_gate_final.json",
+        '{"schema_version":"ari.gate-report/v1"}\n',
+    )
+    _write(ckpt / "artifacts" / "mcp-results" / "sha256" / "aa" / "result.json", "{}\n")
+    ear_mod.materialize_ear_evidence(ckpt, ckpt / "ear")
+
+    result = curate_mod.curate(ckpt)
+    manifest = json.loads(result.manifest_path.read_text())
+    assert manifest["schema_version"] == "ari.ear-manifest/v2"
+    assert manifest["admission_status"] == "complete"
+    assert manifest["evidence_index_digest"].startswith("sha256:")
+    assert manifest["lock_digest"].startswith("sha256:")
+    assert manifest["evidence"]["skills-lock"]
+    assert manifest["evidence"]["catalog-lock"]
+    assert manifest["evidence"]["cassette"]
+    assert manifest["evidence"]["admission"]
+    assert manifest["evidence"]["result-envelope-artifact"]
+
+
+def test_evidence_materialization_drops_removed_owned_sources(tmp_path: Path):
+    ckpt = _make_ear(tmp_path)
+    source = ckpt / "SKILLS.lock"
+    _write(source, '{"schema_version":"ari.skills-lock/v1"}\n')
+    ear_mod.materialize_ear_evidence(ckpt, ckpt / "ear")
+    assert (ckpt / "ear" / "locks" / "SKILLS.lock").is_file()
+
+    source.unlink()
+    result = ear_mod.materialize_ear_evidence(ckpt, ckpt / "ear")
+
+    assert not (ckpt / "ear" / "locks" / "SKILLS.lock").exists()
+    assert all(
+        record["path"] != "locks/SKILLS.lock" for record in result["index"]["records"]
+    )
+
+
+def test_tampered_evidence_index_fails_before_curated_bundle_swap(tmp_path: Path):
+    ckpt = _make_ear(tmp_path)
+    ear_mod.materialize_ear_evidence(ckpt, ckpt / "ear")
+    first = curate_mod.curate(ckpt)
+    previous = first.bundle_sha256
+    (ckpt / "ear" / "README.md").write_text("tampered\n")
+    with pytest.raises(curate_mod.CurateError, match="evidence digest mismatch"):
+        curate_mod.curate(ckpt)
+    manifest = json.loads((ckpt / "ear_published" / "manifest.lock").read_text())
+    assert manifest["bundle_sha256"] == previous

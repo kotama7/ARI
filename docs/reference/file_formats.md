@@ -426,19 +426,25 @@ Backup document shape (records conform to `MemoryRecordV1`):
 Restore validates the complete document before writes. See
 [Research memory contract](memory_contract.md).
 
-## EAR bundle (v0.7.0)
+## ScienceDataV1 and EAR manifest v2
+
+New runs separate raw measurements, deterministic derivations, and model
+interpretation in `ari.science-data/v1`. See
+[Science data and EAR integrity](science_data_contract.md).
 
 `{checkpoint}/ear/` is the candidate set; `{checkpoint}/ear_published/`
 is the curated subset published to a backend.  The trust anchor is:
 
 ```
 ear_published/
-├── manifest.lock         # canonical JSON, files-only sha256 + bundle_sha256
+├── manifest.lock         # v2: content, role, policy, locks, evidence digests
 ├── publish_record.json   # backend, ref, sha256, visibility
 └── ...                   # curated artefacts
 ```
 
-`manifest.lock` schema: `ari-core/ari/schemas/publish.schema.json`.
+Manifest v2 also binds Skill/catalog locks, cassettes, ResultEnvelope artifacts,
+and admission records; v1 is read-only compatibility. The publication policy
+schema remains `ari-core/ari/schemas/publish.schema.json`.
 The `bundle_sha256` must equal the `\codedigest{...}` macro baked
 into the published paper.
 

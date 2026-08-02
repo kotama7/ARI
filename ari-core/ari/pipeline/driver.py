@@ -294,7 +294,15 @@ class WorkflowDriver:
             _sd_path = Path(checkpoint_dir) / "science_data.json"
             if _sd_path.exists():
                 _sd = _json.loads(_sd_path.read_text())
-                _exp_ctx = _sd.get("experiment_context", {})
+                if _sd.get("schema_version") == "ari.science-data/v1":
+                    _annotation = _sd.get("interpretation") or {}
+                    _exp_ctx = (
+                        _annotation.get("experiment_context", {})
+                        if _annotation.get("status") == "ok"
+                        else {}
+                    )
+                else:
+                    _exp_ctx = _sd.get("experiment_context", {})
                 if _exp_ctx and not _exp_ctx.get("error"):
                     # Prioritize key_results and implementation_details at the front
                     # so they survive truncation in downstream prompts.

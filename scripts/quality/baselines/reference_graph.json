@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-02T17:44:31.420881+00:00",
-  "commit": "c22d65990bed176912ef50e44bcca5aa9f7a5366",
+  "generated_at": "2026-08-02T18:47:26.116593+00:00",
+  "commit": "b263a1513d22d7b59228534ff6597c19766f2735",
   "roots": [
     {
       "id": "R1",
@@ -524,6 +524,16 @@
       "kind": "data.file",
       "file": "ari-core/ari/schemas/run_comparison_request_v1.schema.json",
       "loc": 215,
+      "reachable_from": [],
+      "edges_in": [
+        "dynamic.path"
+      ]
+    },
+    {
+      "id": "data.file:ari-core/ari/schemas/science_data_v1.schema.json",
+      "kind": "data.file",
+      "file": "ari-core/ari/schemas/science_data_v1.schema.json",
+      "loc": 1091,
       "reachable_from": [],
       "edges_in": [
         "dynamic.path"
@@ -3542,7 +3552,7 @@
       "id": "py.module:ari-core/ari/clone/__init__.py",
       "kind": "py.module",
       "file": "ari-core/ari/clone/__init__.py",
-      "loc": 261,
+      "loc": 271,
       "reachable_from": [
         "R1",
         "R2",
@@ -4740,7 +4750,7 @@
       "id": "py.module:ari-core/ari/pipeline/claim_gate/numeric.py",
       "kind": "py.module",
       "file": "ari-core/ari/pipeline/claim_gate/numeric.py",
-      "loc": 176,
+      "loc": 173,
       "reachable_from": [
         "R1",
         "R2",
@@ -4813,7 +4823,7 @@
       "id": "py.module:ari-core/ari/pipeline/driver.py",
       "kind": "py.module",
       "file": "ari-core/ari/pipeline/driver.py",
-      "loc": 642,
+      "loc": 650,
       "reachable_from": [
         "R1",
         "R2",
@@ -5138,7 +5148,7 @@
       "id": "py.module:ari-core/ari/public/__init__.py",
       "kind": "py.module",
       "file": "ari-core/ari/public/__init__.py",
-      "loc": 52,
+      "loc": 54,
       "reachable_from": [],
       "edges_in": []
     },
@@ -5258,7 +5268,7 @@
       "id": "py.module:ari-core/ari/public/evaluation.py",
       "kind": "py.module",
       "file": "ari-core/ari/public/evaluation.py",
-      "loc": 5,
+      "loc": 54,
       "reachable_from": [],
       "edges_in": []
     },
@@ -5367,15 +5377,7 @@
       "kind": "py.module",
       "file": "ari-core/ari/public/publish.py",
       "loc": 6,
-      "reachable_from": [
-        "R1",
-        "R2",
-        "R3",
-        "R4",
-        "R5",
-        "R6",
-        "R7"
-      ],
+      "reachable_from": [],
       "edges_in": [
         "static.import"
       ]
@@ -5415,6 +5417,24 @@
       "kind": "py.module",
       "file": "ari-core/ari/public/run_env.py",
       "loc": 15,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.import"
+      ]
+    },
+    {
+      "id": "py.module:ari-core/ari/public/science_data.py",
+      "kind": "py.module",
+      "file": "ari-core/ari/public/science_data.py",
+      "loc": 66,
       "reachable_from": [
         "R1",
         "R2",
@@ -5470,7 +5490,7 @@
       "id": "py.module:ari-core/ari/publish/__init__.py",
       "kind": "py.module",
       "file": "ari-core/ari/publish/__init__.py",
-      "loc": 257,
+      "loc": 362,
       "reachable_from": [
         "R1",
         "R2",
@@ -5706,6 +5726,96 @@
       "loc": 21,
       "reachable_from": [],
       "edges_in": []
+    },
+    {
+      "id": "py.module:ari-core/ari/science_data_base.py",
+      "kind": "py.module",
+      "file": "ari-core/ari/science_data_base.py",
+      "loc": 145,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.import"
+      ]
+    },
+    {
+      "id": "py.module:ari-core/ari/science_data_contract.py",
+      "kind": "py.module",
+      "file": "ari-core/ari/science_data_contract.py",
+      "loc": 420,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.import"
+      ]
+    },
+    {
+      "id": "py.module:ari-core/ari/science_data_derived.py",
+      "kind": "py.module",
+      "file": "ari-core/ari/science_data_derived.py",
+      "loc": 323,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.import"
+      ]
+    },
+    {
+      "id": "py.module:ari-core/ari/science_data_migration.py",
+      "kind": "py.module",
+      "file": "ari-core/ari/science_data_migration.py",
+      "loc": 209,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.import"
+      ]
+    },
+    {
+      "id": "py.module:ari-core/ari/science_data_validation.py",
+      "kind": "py.module",
+      "file": "ari-core/ari/science_data_validation.py",
+      "loc": 171,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.import"
+      ]
     },
     {
       "id": "py.module:ari-core/ari/skill_lock.py",
@@ -6215,7 +6325,7 @@
       "id": "py.module:ari-core/ari/viz/services/state_service.py",
       "kind": "py.module",
       "file": "ari-core/ari/viz/services/state_service.py",
-      "loc": 490,
+      "loc": 501,
       "reachable_from": [
         "R1",
         "R2",
@@ -6375,7 +6485,7 @@
       "id": "py.module:ari-skill-evaluator/src/server.py",
       "kind": "py.module",
       "file": "ari-skill-evaluator/src/server.py",
-      "loc": 815,
+      "loc": 826,
       "reachable_from": [
         "R1",
         "R2",
@@ -6811,7 +6921,7 @@
       "id": "py.module:ari-skill-paper/src/claim_links.py",
       "kind": "py.module",
       "file": "ari-skill-paper/src/claim_links.py",
-      "loc": 490,
+      "loc": 494,
       "reachable_from": [],
       "edges_in": []
     },
@@ -6845,7 +6955,7 @@
       "id": "py.module:ari-skill-paper/src/server.py",
       "kind": "py.module",
       "file": "ari-skill-paper/src/server.py",
-      "loc": 2992,
+      "loc": 3008,
       "reachable_from": [
         "R1",
         "R2",
@@ -6863,7 +6973,7 @@
       "id": "py.module:ari-skill-plot/src/server.py",
       "kind": "py.module",
       "file": "ari-skill-plot/src/server.py",
-      "loc": 1057,
+      "loc": 1071,
       "reachable_from": [
         "R1",
         "R2",
@@ -7206,10 +7316,28 @@
       "edges_in": []
     },
     {
+      "id": "py.module:ari-skill-transform/src/annotations.py",
+      "kind": "py.module",
+      "file": "ari-skill-transform/src/annotations.py",
+      "loc": 262,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "dynamic.string_key"
+      ]
+    },
+    {
       "id": "py.module:ari-skill-transform/src/claims.py",
       "kind": "py.module",
       "file": "ari-skill-transform/src/claims.py",
-      "loc": 408,
+      "loc": 348,
       "reachable_from": [],
       "edges_in": []
     },
@@ -7217,7 +7345,31 @@
       "id": "py.module:ari-skill-transform/src/curate.py",
       "kind": "py.module",
       "file": "ari-skill-transform/src/curate.py",
-      "loc": 348,
+      "loc": 501,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.module:ari-skill-transform/src/ear.py",
+      "kind": "py.module",
+      "file": "ari-skill-transform/src/ear.py",
+      "loc": 204,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.module:ari-skill-transform/src/publish_adapter.py",
+      "kind": "py.module",
+      "file": "ari-skill-transform/src/publish_adapter.py",
+      "loc": 49,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.module:ari-skill-transform/src/science_data.py",
+      "kind": "py.module",
+      "file": "ari-skill-transform/src/science_data.py",
+      "loc": 538,
       "reachable_from": [],
       "edges_in": []
     },
@@ -7225,7 +7377,7 @@
       "id": "py.module:ari-skill-transform/src/server.py",
       "kind": "py.module",
       "file": "ari-skill-transform/src/server.py",
-      "loc": 2807,
+      "loc": 1946,
       "reachable_from": [
         "R1",
         "R2",
@@ -8933,8 +9085,18 @@
       "kind": "py.symbol",
       "file": "ari-core/ari/claim_gate_contract.py",
       "loc": 88,
-      "reachable_from": [],
-      "edges_in": []
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
     },
     {
       "id": "py.symbol:ari-core/ari/claim_gate_contract.py:parse_gate_report",
@@ -9544,7 +9706,7 @@
       "id": "py.symbol:ari-core/ari/clone/__init__.py:_recompute_manifest_digest",
       "kind": "py.symbol",
       "file": "ari-core/ari/clone/__init__.py",
-      "loc": 25,
+      "loc": 35,
       "reachable_from": [],
       "edges_in": []
     },
@@ -11049,8 +11211,18 @@
       "kind": "py.symbol",
       "file": "ari-core/ari/execution.py",
       "loc": 104,
-      "reachable_from": [],
-      "edges_in": []
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
     },
     {
       "id": "py.symbol:ari-core/ari/execution.py:MeasurementSetV1",
@@ -14790,8 +14962,18 @@
       "kind": "py.symbol",
       "file": "ari-core/ari/pipeline/claim_gate/numeric.py",
       "loc": 10,
-      "reachable_from": [],
-      "edges_in": []
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
     },
     {
       "id": "py.symbol:ari-core/ari/pipeline/claim_gate/numeric.py:_UNIT_SCALE",
@@ -14878,24 +15060,54 @@
       "kind": "py.symbol",
       "file": "ari-core/ari/pipeline/claim_gate/numeric.py",
       "loc": 14,
-      "reachable_from": [],
-      "edges_in": []
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
     },
     {
       "id": "py.symbol:ari-core/ari/pipeline/claim_gate/numeric.py:recompute",
       "kind": "py.symbol",
       "file": "ari-core/ari/pipeline/claim_gate/numeric.py",
       "loc": 16,
-      "reachable_from": [],
-      "edges_in": []
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
     },
     {
       "id": "py.symbol:ari-core/ari/pipeline/claim_gate/numeric.py:required_roles",
       "kind": "py.symbol",
       "file": "ari-core/ari/pipeline/claim_gate/numeric.py",
       "loc": 3,
-      "reachable_from": [],
-      "edges_in": []
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
     },
     {
       "id": "py.symbol:ari-core/ari/pipeline/claim_gate/numeric.py:unit_registry_digest",
@@ -15201,7 +15413,7 @@
       "id": "py.symbol:ari-core/ari/pipeline/driver.py:WorkflowDriver",
       "kind": "py.symbol",
       "file": "ari-core/ari/pipeline/driver.py",
-      "loc": 596,
+      "loc": 604,
       "reachable_from": [
         "R1",
         "R2",
@@ -15874,6 +16086,14 @@
       "edges_in": []
     },
     {
+      "id": "py.symbol:ari-core/ari/public/evaluation.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/public/evaluation.py",
+      "loc": 25,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.symbol:ari-core/ari/public/execution.py:__all__",
       "kind": "py.symbol",
       "file": "ari-core/ari/public/execution.py",
@@ -15946,6 +16166,14 @@
       "edges_in": []
     },
     {
+      "id": "py.symbol:ari-core/ari/public/science_data.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/public/science_data.py",
+      "loc": 31,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.symbol:ari-core/ari/public/skill_lock.py:__all__",
       "kind": "py.symbol",
       "file": "ari-core/ari/public/skill_lock.py",
@@ -15999,7 +16227,7 @@
       "id": "py.symbol:ari-core/ari/publish/__init__.py:_BACKEND_REGISTRY",
       "kind": "py.symbol",
       "file": "ari-core/ari/publish/__init__.py",
-      "loc": 1,
+      "loc": 3,
       "reachable_from": [],
       "edges_in": []
     },
@@ -16020,10 +16248,18 @@
       "edges_in": []
     },
     {
+      "id": "py.symbol:ari-core/ari/publish/__init__.py:_canonical_digest",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/publish/__init__.py",
+      "loc": 10,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.symbol:ari-core/ari/publish/__init__.py:_load_ari_registry_backend",
       "kind": "py.symbol",
       "file": "ari-core/ari/publish/__init__.py",
-      "loc": 3,
+      "loc": 4,
       "reachable_from": [],
       "edges_in": []
     },
@@ -16047,7 +16283,7 @@
       "id": "py.symbol:ari-core/ari/publish/__init__.py:_load_local_tarball_backend",
       "kind": "py.symbol",
       "file": "ari-core/ari/publish/__init__.py",
-      "loc": 3,
+      "loc": 4,
       "reachable_from": [],
       "edges_in": []
     },
@@ -16063,7 +16299,15 @@
       "id": "py.symbol:ari-core/ari/publish/__init__.py:_read_manifest",
       "kind": "py.symbol",
       "file": "ari-core/ari/publish/__init__.py",
-      "loc": 5,
+      "loc": 12,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/publish/__init__.py:_verify_manifest",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/publish/__init__.py",
+      "loc": 71,
       "reachable_from": [],
       "edges_in": []
     },
@@ -16071,7 +16315,7 @@
       "id": "py.symbol:ari-core/ari/publish/__init__.py:promote",
       "kind": "py.symbol",
       "file": "ari-core/ari/publish/__init__.py",
-      "loc": 49,
+      "loc": 57,
       "reachable_from": [
         "R1",
         "R2",
@@ -17136,6 +17380,630 @@
       "loc": 3,
       "reachable_from": [],
       "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_base.py:DigestBoundScienceModel",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_base.py",
+      "loc": 22,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_base.py:SCIENCE_ARTIFACT_REF_V1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_base.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_base.py:SCIENCE_DATA_V1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_base.py",
+      "loc": 1,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_base.py:SCIENCE_DERIVED_V1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_base.py",
+      "loc": 1,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_base.py:SCIENCE_INTERPRETATION_V1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_base.py",
+      "loc": 1,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_base.py:SCIENCE_PROVENANCE_V1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_base.py",
+      "loc": 1,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_base.py:SCIENCE_RAW_V1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_base.py",
+      "loc": 1,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_base.py:SHA256_DIGEST_PATTERN",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_base.py",
+      "loc": 1,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_base.py:ScienceArtifactRefV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_base.py",
+      "loc": 21,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_base.py:ScienceDataError",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_base.py",
+      "loc": 2,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_base.py:ScienceEnvironmentV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_base.py",
+      "loc": 8,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_base.py:StrictScienceModel",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_base.py",
+      "loc": 2,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_base.py:ZERO_DIGEST",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_base.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_base.py:_SAFE_ID_RE",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_base.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_base.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_base.py",
+      "loc": 18,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_base.py:canonical_science_digest",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_base.py",
+      "loc": 13,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_base.py:finite_json",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_base.py",
+      "loc": 6,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_base.py:safe_id",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_base.py",
+      "loc": 4,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_contract.py:ScienceConfigurationV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_contract.py",
+      "loc": 104,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_contract.py:ScienceDataV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_contract.py",
+      "loc": 73,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_contract.py:ScienceRawV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_contract.py",
+      "loc": 21,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_contract.py:ScienceSourceKind",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_contract.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_contract.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_contract.py",
+      "loc": 31,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_contract.py:migrate_legacy_science_data",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_contract.py",
+      "loc": 15,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_contract.py:parse_science_data",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_contract.py",
+      "loc": 18,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_contract.py:science_data_projection",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_contract.py",
+      "loc": 79,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_derived.py:ScienceClaimEvidenceV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_derived.py",
+      "loc": 18,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_derived.py:ScienceClaimV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_derived.py",
+      "loc": 15,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_derived.py:ScienceDerivedV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_derived.py",
+      "loc": 57,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_derived.py:ScienceEvidenceResultV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_derived.py",
+      "loc": 9,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_derived.py:ScienceInterpretationV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_derived.py",
+      "loc": 43,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_derived.py:ScienceMetricSummaryV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_derived.py",
+      "loc": 28,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_derived.py:ScienceNumericAssertionV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_derived.py",
+      "loc": 55,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_derived.py:ScienceOperandV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_derived.py",
+      "loc": 10,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_derived.py:ScienceProvenanceV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_derived.py",
+      "loc": 30,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_derived.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_derived.py",
+      "loc": 11,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_migration.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_migration.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_migration.py:_finite_metrics",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_migration.py",
+      "loc": 11,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_migration.py:_migrate_metric_contract",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_migration.py",
+      "loc": 11,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_migration.py:migrate_legacy_document",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_migration.py",
+      "loc": 145,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_validation.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_validation.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_validation.py:_environment_key",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_validation.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_validation.py:_measurement_value",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_validation.py",
+      "loc": 11,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_validation.py:_validate_assertion",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_validation.py",
+      "loc": 33,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_validation.py:_validate_derived_links",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_validation.py",
+      "loc": 25,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_validation.py:_validate_migration_status",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_validation.py",
+      "loc": 22,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_validation.py:_validate_native_raw_status",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_validation.py",
+      "loc": 21,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/science_data_validation.py:validate_science_data_links",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/science_data_validation.py",
+      "loc": 24,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
     },
     {
       "id": "py.symbol:ari-core/ari/skill_lock.py:DEFAULT_RUNTIME_PHASES",
@@ -20017,7 +20885,7 @@
       "id": "py.symbol:ari-core/ari/viz/services/state_service.py:build_app_state",
       "kind": "py.symbol",
       "file": "ari-core/ari/viz/services/state_service.py",
-      "loc": 444,
+      "loc": 455,
       "reachable_from": [
         "R1",
         "R2",
@@ -20958,6 +21826,14 @@
       "kind": "py.symbol",
       "file": "ari-skill-evaluator/src/server.py",
       "loc": 24,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-evaluator/src/server.py:_science_projection",
+      "kind": "py.symbol",
+      "file": "ari-skill-evaluator/src/server.py",
+      "loc": 9,
       "reachable_from": [],
       "edges_in": []
     },
@@ -25157,7 +26033,7 @@
       "id": "py.symbol:ari-skill-paper/src/claim_links.py:link_paper_claims",
       "kind": "py.symbol",
       "file": "ari-skill-paper/src/claim_links.py",
-      "loc": 82,
+      "loc": 86,
       "reachable_from": [],
       "edges_in": []
     },
@@ -25757,7 +26633,7 @@
       "id": "py.symbol:ari-skill-paper/src/server.py:link_paper_claims",
       "kind": "py.symbol",
       "file": "ari-skill-paper/src/server.py",
-      "loc": 71,
+      "loc": 75,
       "reachable_from": [],
       "edges_in": []
     },
@@ -25845,7 +26721,7 @@
       "id": "py.symbol:ari-skill-paper/src/server.py:write_paper_iterative",
       "kind": "py.symbol",
       "file": "ari-skill-paper/src/server.py",
-      "loc": 849,
+      "loc": 861,
       "reachable_from": [],
       "edges_in": []
     },
@@ -25949,7 +26825,7 @@
       "id": "py.symbol:ari-skill-plot/src/server.py:generate_figures",
       "kind": "py.symbol",
       "file": "ari-skill-plot/src/server.py",
-      "loc": 229,
+      "loc": 233,
       "reachable_from": [],
       "edges_in": []
     },
@@ -25957,7 +26833,7 @@
       "id": "py.symbol:ari-skill-plot/src/server.py:generate_figures_llm",
       "kind": "py.symbol",
       "file": "ari-skill-plot/src/server.py",
-      "loc": 328,
+      "loc": 338,
       "reachable_from": [],
       "edges_in": []
     },
@@ -29418,6 +30294,86 @@
       "edges_in": []
     },
     {
+      "id": "py.symbol:ari-skill-transform/src/annotations.py:INTERPRETATION_PROMPT_PATH",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/annotations.py",
+      "loc": 3,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/annotations.py:MAX_RAW_RESPONSE_BYTES",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/annotations.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/annotations.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/annotations.py",
+      "loc": 8,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/annotations.py:_checkpoint_and_workspace",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/annotations.py",
+      "loc": 8,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/annotations.py:_provider",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/annotations.py",
+      "loc": 4,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/annotations.py:_store_raw_response",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/annotations.py",
+      "loc": 37,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/annotations.py:annotate_science_data",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/annotations.py",
+      "loc": 100,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/annotations.py:build_interpretation_prompt",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/annotations.py",
+      "loc": 7,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/annotations.py:robust_extract_json",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/annotations.py",
+      "loc": 43,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/annotations.py:unavailable_interpretation",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/annotations.py",
+      "loc": 9,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.symbol:ari-skill-transform/src/claims.py:Claim",
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/claims.py",
@@ -29426,18 +30382,10 @@
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-transform/src/claims.py:FORMULAS",
-      "kind": "py.symbol",
-      "file": "ari-skill-transform/src/claims.py",
-      "loc": 10,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
       "id": "py.symbol:ari-skill-transform/src/claims.py:NumericAssertion",
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/claims.py",
-      "loc": 11,
+      "loc": 15,
       "reachable_from": [],
       "edges_in": []
     },
@@ -29445,71 +30393,7 @@
       "id": "py.symbol:ari-skill-transform/src/claims.py:_autodetect_primary_metric",
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/claims.py",
-      "loc": 32,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-transform/src/claims.py:_f_absolute_difference",
-      "kind": "py.symbol",
-      "file": "ari-skill-transform/src/claims.py",
-      "loc": 2,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-transform/src/claims.py:_f_identity",
-      "kind": "py.symbol",
-      "file": "ari-skill-transform/src/claims.py",
-      "loc": 2,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-transform/src/claims.py:_f_ratio_percent",
-      "kind": "py.symbol",
-      "file": "ari-skill-transform/src/claims.py",
-      "loc": 3,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-transform/src/claims.py:_f_relative_gain",
-      "kind": "py.symbol",
-      "file": "ari-skill-transform/src/claims.py",
-      "loc": 2,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-transform/src/claims.py:_f_relative_improvement_percent",
-      "kind": "py.symbol",
-      "file": "ari-skill-transform/src/claims.py",
-      "loc": 2,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-transform/src/claims.py:_f_relative_increase_percent",
-      "kind": "py.symbol",
-      "file": "ari-skill-transform/src/claims.py",
-      "loc": 2,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-transform/src/claims.py:_f_relative_reduction_percent",
-      "kind": "py.symbol",
-      "file": "ari-skill-transform/src/claims.py",
-      "loc": 2,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-transform/src/claims.py:_f_relative_speedup",
-      "kind": "py.symbol",
-      "file": "ari-skill-transform/src/claims.py",
-      "loc": 2,
+      "loc": 28,
       "reachable_from": [],
       "edges_in": []
     },
@@ -29533,7 +30417,7 @@
       "id": "py.symbol:ari-skill-transform/src/claims.py:_resolve_metric",
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/claims.py",
-      "loc": 19,
+      "loc": 11,
       "reachable_from": [],
       "edges_in": []
     },
@@ -29541,15 +30425,7 @@
       "id": "py.symbol:ari-skill-transform/src/claims.py:build_science_claims",
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/claims.py",
-      "loc": 197,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-transform/src/claims.py:recompute",
-      "kind": "py.symbol",
-      "file": "ari-skill-transform/src/claims.py",
-      "loc": 16,
+      "loc": 215,
       "reachable_from": [],
       "edges_in": []
     },
@@ -29581,7 +30457,7 @@
       "id": "py.symbol:ari-skill-transform/src/curate.py:_DEFAULT_PUBLISH_YAML",
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/curate.py",
-      "loc": 17,
+      "loc": 22,
       "reachable_from": [],
       "edges_in": []
     },
@@ -29590,6 +30466,22 @@
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/curate.py",
       "loc": 7,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/curate.py:_canonical_digest",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/curate.py",
+      "loc": 9,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/curate.py:_file_role",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/curate.py",
+      "loc": 18,
       "reachable_from": [],
       "edges_in": []
     },
@@ -29626,10 +30518,18 @@
       "edges_in": []
     },
     {
+      "id": "py.symbol:ari-skill-transform/src/curate.py:_verify_evidence_index",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/curate.py",
+      "loc": 41,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.symbol:ari-skill-transform/src/curate.py:_walk_files",
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/curate.py",
-      "loc": 2,
+      "loc": 8,
       "reachable_from": [],
       "edges_in": []
     },
@@ -29637,7 +30537,7 @@
       "id": "py.symbol:ari-skill-transform/src/curate.py:curate",
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/curate.py",
-      "loc": 148,
+      "loc": 215,
       "reachable_from": [],
       "edges_in": []
     },
@@ -29650,18 +30550,290 @@
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-transform/src/server.py:_BARE_VAR_ASSIGN_RE",
+      "id": "py.symbol:ari-skill-transform/src/ear.py:EarEvidenceError",
       "kind": "py.symbol",
-      "file": "ari-skill-transform/src/server.py",
+      "file": "ari-skill-transform/src/ear.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/ear.py:_KNOWN_FILES",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/ear.py",
+      "loc": 22,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/ear.py:_TRANSFORM_GENERATED_SURFACES",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/ear.py",
+      "loc": 10,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/ear.py:_TRANSFORM_OWNED_DIRS",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/ear.py",
+      "loc": 6,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/ear.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/ear.py",
+      "loc": 5,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/ear.py:_copy_closed_tree",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/ear.py",
+      "loc": 14,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/ear.py:_copy_verified_file",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/ear.py",
+      "loc": 16,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/ear.py:_remove_owned_path",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/ear.py",
+      "loc": 5,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/ear.py:materialize_ear_evidence",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/ear.py",
+      "loc": 78,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/ear.py:reset_transform_outputs",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/ear.py",
+      "loc": 13,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/publish_adapter.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/publish_adapter.py",
       "loc": 1,
       "reachable_from": [],
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-transform/src/server.py:_BINARY_MAGIC_PREFIXES",
+      "id": "py.symbol:ari-skill-transform/src/publish_adapter.py:promote_ear_record",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/publish_adapter.py",
+      "loc": 11,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/publish_adapter.py:publish_ear_record",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/publish_adapter.py",
+      "loc": 25,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/science_data.py:DeterministicScienceSections",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/science_data.py",
+      "loc": 7,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/science_data.py:PRODUCER_TOOL_REF",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/science_data.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/science_data.py:PRODUCER_VERSION",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/science_data.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/science_data.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/science_data.py",
+      "loc": 6,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/science_data.py:_assertion",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/science_data.py",
+      "loc": 28,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/science_data.py:_build_configurations",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/science_data.py",
+      "loc": 75,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/science_data.py:_claims",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/science_data.py",
+      "loc": 50,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/science_data.py:_environment",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/science_data.py",
+      "loc": 17,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/science_data.py:_finite_metrics",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/science_data.py",
+      "loc": 13,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/science_data.py:_metric_summaries",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/science_data.py",
+      "loc": 39,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/science_data.py:_metric_unit",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/science_data.py",
+      "loc": 10,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/science_data.py:_operand",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/science_data.py",
+      "loc": 14,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/science_data.py:_optional_known_artifact",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/science_data.py",
+      "loc": 6,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/science_data.py:_relative_to_workspace",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/science_data.py",
+      "loc": 8,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/science_data.py:_report_path",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/science_data.py",
+      "loc": 11,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/science_data.py:_result_path",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/science_data.py",
+      "loc": 8,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/science_data.py:_sha256_file",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/science_data.py",
+      "loc": 6,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/science_data.py:_summary_direction",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/science_data.py",
+      "loc": 4,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/science_data.py:_workspace_layout",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/science_data.py",
+      "loc": 9,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/science_data.py:artifact_ref",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/science_data.py",
+      "loc": 11,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/science_data.py:assemble_science_data",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/science_data.py",
+      "loc": 14,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/science_data.py:build_deterministic_sections",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/science_data.py",
+      "loc": 121,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/server.py:_BARE_VAR_ASSIGN_RE",
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/server.py",
-      "loc": 20,
+      "loc": 1,
       "reachable_from": [],
       "edges_in": []
     },
@@ -29714,42 +30886,10 @@
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-transform/src/server.py:_SOURCE_EXTS",
-      "kind": "py.symbol",
-      "file": "ari-skill-transform/src/server.py",
-      "loc": 48,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
       "id": "py.symbol:ari-skill-transform/src/server.py:_SPDX_TO_TEMPLATE",
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/server.py",
       "loc": 9,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-transform/src/server.py:_build_commands_md",
-      "kind": "py.symbol",
-      "file": "ari-skill-transform/src/server.py",
-      "loc": 86,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-transform/src/server.py:_build_readme_fallback",
-      "kind": "py.symbol",
-      "file": "ari-skill-transform/src/server.py",
-      "loc": 22,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-transform/src/server.py:_build_results_md_fallback",
-      "kind": "py.symbol",
-      "file": "ari-skill-transform/src/server.py",
-      "loc": 26,
       "reachable_from": [],
       "edges_in": []
     },
@@ -29762,58 +30902,10 @@
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-transform/src/server.py:_collect_node_source_dirs",
-      "kind": "py.symbol",
-      "file": "ari-skill-transform/src/server.py",
-      "loc": 41,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-transform/src/server.py:_collect_source_files",
-      "kind": "py.symbol",
-      "file": "ari-skill-transform/src/server.py",
-      "loc": 128,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-transform/src/server.py:_consolidate_metrics",
-      "kind": "py.symbol",
-      "file": "ari-skill-transform/src/server.py",
-      "loc": 31,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-transform/src/server.py:_copy_figures",
-      "kind": "py.symbol",
-      "file": "ari-skill-transform/src/server.py",
-      "loc": 12,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-transform/src/server.py:_copy_node_sources",
-      "kind": "py.symbol",
-      "file": "ari-skill-transform/src/server.py",
-      "loc": 63,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
       "id": "py.symbol:ari-skill-transform/src/server.py:_default_llm_model",
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/server.py",
       "loc": 19,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-transform/src/server.py:_fallback_collect_code_workdir_scan",
-      "kind": "py.symbol",
-      "file": "ari-skill-transform/src/server.py",
-      "loc": 18,
       "reachable_from": [],
       "edges_in": []
     },
@@ -29858,14 +30950,6 @@
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-transform/src/server.py:_llm_generate_doc",
-      "kind": "py.symbol",
-      "file": "ari-skill-transform/src/server.py",
-      "loc": 13,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
       "id": "py.symbol:ari-skill-transform/src/server.py:_load_node_reports",
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/server.py",
@@ -29877,7 +30961,7 @@
       "id": "py.symbol:ari-skill-transform/src/server.py:_load_node_reports_for_tree",
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/server.py",
-      "loc": 37,
+      "loc": 45,
       "reachable_from": [],
       "edges_in": []
     },
@@ -29893,31 +30977,7 @@
       "id": "py.symbol:ari-skill-transform/src/server.py:_load_run_metric_contract",
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/server.py",
-      "loc": 32,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-transform/src/server.py:_looks_like_binary",
-      "kind": "py.symbol",
-      "file": "ari-skill-transform/src/server.py",
-      "loc": 24,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-transform/src/server.py:_node_artifacts_text",
-      "kind": "py.symbol",
-      "file": "ari-skill-transform/src/server.py",
-      "loc": 25,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-transform/src/server.py:_node_tool_outputs",
-      "kind": "py.symbol",
-      "file": "ari-skill-transform/src/server.py",
-      "loc": 62,
+      "loc": 31,
       "reachable_from": [],
       "edges_in": []
     },
@@ -29933,7 +30993,7 @@
       "id": "py.symbol:ari-skill-transform/src/server.py:_read_implementation_overview",
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/server.py",
-      "loc": 12,
+      "loc": 18,
       "reachable_from": [],
       "edges_in": []
     },
@@ -30002,6 +31062,22 @@
       "edges_in": []
     },
     {
+      "id": "py.symbol:ari-skill-transform/src/server.py:_resolve_llm_base_url",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/server.py",
+      "loc": 9,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-transform/src/server.py:_resolve_llm_model",
+      "kind": "py.symbol",
+      "file": "ari-skill-transform/src/server.py",
+      "loc": 10,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.symbol:ari-skill-transform/src/server.py:_resolve_pm_run_id",
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/server.py",
@@ -30013,7 +31089,7 @@
       "id": "py.symbol:ari-skill-transform/src/server.py:_robust_extract_json",
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/server.py",
-      "loc": 71,
+      "loc": 1,
       "reachable_from": [],
       "edges_in": []
     },
@@ -30053,7 +31129,7 @@
       "id": "py.symbol:ari-skill-transform/src/server.py:generate_ear",
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/server.py",
-      "loc": 390,
+      "loc": 402,
       "reachable_from": [],
       "edges_in": []
     },
@@ -30069,7 +31145,7 @@
       "id": "py.symbol:ari-skill-transform/src/server.py:nodes_to_science_data",
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/server.py",
-      "loc": 742,
+      "loc": 567,
       "reachable_from": [],
       "edges_in": []
     },
@@ -30077,7 +31153,7 @@
       "id": "py.symbol:ari-skill-transform/src/server.py:promote_ear",
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/server.py",
-      "loc": 16,
+      "loc": 5,
       "reachable_from": [],
       "edges_in": []
     },
@@ -30085,7 +31161,7 @@
       "id": "py.symbol:ari-skill-transform/src/server.py:publish_ear",
       "kind": "py.symbol",
       "file": "ari-skill-transform/src/server.py",
-      "loc": 30,
+      "loc": 19,
       "reachable_from": [],
       "edges_in": []
     },
@@ -33467,9 +34543,27 @@
     },
     {
       "from": "py.module:ari-core/ari/config/__init__.py",
+      "to": "py.module:ari-skill-transform/src/annotations.py",
+      "kind": "dynamic.string_key",
+      "evidence": "env:ARI_BACKEND writer=ari-core/ari/config/__init__.py:623 -> reader=ari-skill-transform/src/annotations.py"
+    },
+    {
+      "from": "py.module:ari-core/ari/config/__init__.py",
       "to": "py.module:ari-skill-transform/src/server.py",
       "kind": "dynamic.string_key",
       "evidence": "env:ARI_BACKEND writer=ari-core/ari/config/__init__.py:623 -> reader=ari-skill-transform/src/server.py"
+    },
+    {
+      "from": "py.module:ari-core/ari/config/__init__.py",
+      "to": "py.module:ari-skill-transform/src/server.py",
+      "kind": "dynamic.string_key",
+      "evidence": "env:ARI_LLM_API_BASE writer=ari-core/ari/config/__init__.py:625 -> reader=ari-skill-transform/src/server.py"
+    },
+    {
+      "from": "py.module:ari-core/ari/config/__init__.py",
+      "to": "py.module:ari-skill-transform/src/server.py",
+      "kind": "dynamic.string_key",
+      "evidence": "env:ARI_LLM_MODEL writer=ari-core/ari/config/__init__.py:621 -> reader=ari-skill-transform/src/server.py"
     },
     {
       "from": "py.module:ari-core/ari/config/__init__.py",
@@ -34117,25 +35211,25 @@
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:evaluator:claim_evidence_hard_gate",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('claim_evidence_hard_gate') <- ari-skill-evaluator/src/server.py:735"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('claim_evidence_hard_gate') <- ari-skill-evaluator/src/server.py:746"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:evaluator:evidence_grounded_semantic_review",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('evidence_grounded_semantic_review') <- ari-skill-evaluator/src/server.py:759"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('evidence_grounded_semantic_review') <- ari-skill-evaluator/src/server.py:770"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:evaluator:make_metric_spec",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('make_metric_spec') <- ari-skill-evaluator/src/server.py:702"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('make_metric_spec') <- ari-skill-evaluator/src/server.py:713"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:evaluator:propose_metric_contract",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('propose_metric_contract') <- ari-skill-evaluator/src/server.py:719"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('propose_metric_contract') <- ari-skill-evaluator/src/server.py:730"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
@@ -34423,19 +35517,19 @@
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:paper:inject_code_availability",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('inject_code_availability') <- ari-skill-paper/src/server.py:2885"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('inject_code_availability') <- ari-skill-paper/src/server.py:2901"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:paper:link_paper_claims",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('link_paper_claims') <- ari-skill-paper/src/server.py:2421"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('link_paper_claims') <- ari-skill-paper/src/server.py:2433"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:paper:list_rubrics",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('list_rubrics') <- ari-skill-paper/src/server.py:2776"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('list_rubrics') <- ari-skill-paper/src/server.py:2792"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
@@ -34447,19 +35541,19 @@
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:paper:merge_reviews",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('merge_reviews') <- ari-skill-paper/src/server.py:2281"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('merge_reviews') <- ari-skill-paper/src/server.py:2293"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:paper:paper_refine",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('paper_refine') <- ari-skill-paper/src/server.py:2495"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('paper_refine') <- ari-skill-paper/src/server.py:2511"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:paper:review_compiled_paper",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('review_compiled_paper') <- ari-skill-paper/src/server.py:2122"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('review_compiled_paper') <- ari-skill-paper/src/server.py:2134"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
@@ -34489,7 +35583,7 @@
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:plot:generate_figures_llm",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('generate_figures_llm') <- ari-skill-plot/src/server.py:721"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('generate_figures_llm') <- ari-skill-plot/src/server.py:725"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
@@ -34549,31 +35643,31 @@
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:transform:curate_ear",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('curate_ear') <- ari-skill-transform/src/server.py:2740"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('curate_ear') <- ari-skill-transform/src/server.py:1901"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:transform:generate_ear",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('generate_ear') <- ari-skill-transform/src/server.py:2347"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('generate_ear') <- ari-skill-transform/src/server.py:1496"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:transform:nodes_to_science_data",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('nodes_to_science_data') <- ari-skill-transform/src/server.py:552"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('nodes_to_science_data') <- ari-skill-transform/src/server.py:200"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:transform:promote_ear",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('promote_ear') <- ari-skill-transform/src/server.py:2787"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('promote_ear') <- ari-skill-transform/src/server.py:1937"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:transform:publish_ear",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('publish_ear') <- ari-skill-transform/src/server.py:2754"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('publish_ear') <- ari-skill-transform/src/server.py:1915"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
@@ -35917,13 +37011,13 @@
       "from": "py.module:ari-core/ari/pipeline/claim_gate/numeric.py",
       "to": "py.module:ari-core/ari/pipeline/claim_gate/formula_eval.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/pipeline/claim_gate/numeric.py:23 import ari.pipeline.claim_gate.formula_eval"
+      "evidence": "ari-core/ari/pipeline/claim_gate/numeric.py:20 import ari.pipeline.claim_gate.formula_eval"
     },
     {
       "from": "py.module:ari-core/ari/pipeline/claim_gate/numeric.py",
       "to": "py.symbol:ari-core/ari/pipeline/claim_gate/formula_eval.py:evaluator_digest",
       "kind": "static.call",
-      "evidence": "ari-core/ari/pipeline/claim_gate/numeric.py:23 use evaluator_digest"
+      "evidence": "ari-core/ari/pipeline/claim_gate/numeric.py:20 use evaluator_digest"
     },
     {
       "from": "py.module:ari-core/ari/pipeline/claim_gate/resolve.py",
@@ -36055,7 +37149,7 @@
       "from": "py.module:ari-core/ari/pipeline/driver.py",
       "to": "py.module:ari-core/ari/public/research_contract.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/pipeline/driver.py:328 import ari.public.research_contract"
+      "evidence": "ari-core/ari/pipeline/driver.py:336 import ari.public.research_contract"
     },
     {
       "from": "py.module:ari-core/ari/pipeline/driver.py",
@@ -36550,12 +37644,6 @@
       "evidence": "ari-core/ari/public/evaluation.py:3 import ari.claim_gate_contract"
     },
     {
-      "from": "py.module:ari-core/ari/public/evaluation.py",
-      "to": "py.module:ari-core/ari/claim_gate_contract.py",
-      "kind": "static.import",
-      "evidence": "ari-core/ari/public/evaluation.py:4 import ari.claim_gate_contract"
-    },
-    {
       "from": "py.module:ari-core/ari/public/execution.py",
       "to": "py.module:ari-core/ari/execution.py",
       "kind": "static.import",
@@ -36628,6 +37716,12 @@
       "evidence": "ari-core/ari/public/run_env.py:12 import ari.agent.run_env"
     },
     {
+      "from": "py.module:ari-core/ari/public/science_data.py",
+      "to": "py.module:ari-core/ari/science_data_contract.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/public/science_data.py:3 import ari.science_data_contract"
+    },
+    {
       "from": "py.module:ari-core/ari/public/skill_lock.py",
       "to": "py.module:ari-core/ari/skill_lock.py",
       "kind": "static.import",
@@ -36649,37 +37743,37 @@
       "from": "py.module:ari-core/ari/publish/__init__.py",
       "to": "py.module:ari-core/ari/_factory.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/publish/__init__.py:32 import ari._factory"
+      "evidence": "ari-core/ari/publish/__init__.py:33 import ari._factory"
     },
     {
       "from": "py.module:ari-core/ari/publish/__init__.py",
       "to": "py.module:ari-core/ari/publish/backends/ari_registry.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/publish/__init__.py:215 import ari.publish.backends.ari_registry"
+      "evidence": "ari-core/ari/publish/__init__.py:316 import ari.publish.backends.ari_registry"
     },
     {
       "from": "py.module:ari-core/ari/publish/__init__.py",
       "to": "py.module:ari-core/ari/publish/backends/gh.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/publish/__init__.py:234 import ari.publish.backends.gh"
+      "evidence": "ari-core/ari/publish/__init__.py:337 import ari.publish.backends.gh"
     },
     {
       "from": "py.module:ari-core/ari/publish/__init__.py",
       "to": "py.module:ari-core/ari/publish/backends/local_tarball.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/publish/__init__.py:220 import ari.publish.backends.local_tarball"
+      "evidence": "ari-core/ari/publish/__init__.py:322 import ari.publish.backends.local_tarball"
     },
     {
       "from": "py.module:ari-core/ari/publish/__init__.py",
       "to": "py.module:ari-core/ari/publish/backends/zenodo.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/publish/__init__.py:226 import ari.publish.backends.zenodo"
+      "evidence": "ari-core/ari/publish/__init__.py:329 import ari.publish.backends.zenodo"
     },
     {
       "from": "py.module:ari-core/ari/publish/__init__.py",
       "to": "py.symbol:ari-core/ari/_factory.py:BaseRegistry",
       "kind": "static.call",
-      "evidence": "ari-core/ari/publish/__init__.py:32 use BaseRegistry"
+      "evidence": "ari-core/ari/publish/__init__.py:33 use BaseRegistry"
     },
     {
       "from": "py.module:ari-core/ari/publish/backends/ari_registry.py",
@@ -37013,6 +38107,12 @@
     },
     {
       "from": "py.module:ari-core/ari/schemas/__init__.py",
+      "to": "data.file:ari-core/ari/schemas/science_data_v1.schema.json",
+      "kind": "dynamic.path",
+      "evidence": "ari-core/ari/schemas/__init__.py:11 load(name) -> science_data_v1.schema.json"
+    },
+    {
+      "from": "py.module:ari-core/ari/schemas/__init__.py",
       "to": "data.file:ari-core/ari/schemas/semantic_review_v1.schema.json",
       "kind": "dynamic.path",
       "evidence": "ari-core/ari/schemas/__init__.py:11 load(name) -> semantic_review_v1.schema.json"
@@ -37076,6 +38176,288 @@
       "to": "data.file:ari-core/ari/schemas/workspace_ref_v1.schema.json",
       "kind": "dynamic.path",
       "evidence": "ari-core/ari/schemas/__init__.py:11 load(name) -> workspace_ref_v1.schema.json"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_contract.py",
+      "to": "py.module:ari-core/ari/claim_gate_contract.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/science_data_contract.py:25 import ari.claim_gate_contract"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_contract.py",
+      "to": "py.module:ari-core/ari/execution.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/science_data_contract.py:26 import ari.execution"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_contract.py",
+      "to": "py.module:ari-core/ari/pipeline/claim_gate/numeric.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/science_data_contract.py:27 import ari.pipeline.claim_gate.numeric"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_contract.py",
+      "to": "py.module:ari-core/ari/science_data_base.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/science_data_contract.py:33 import ari.science_data_base"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_contract.py",
+      "to": "py.module:ari-core/ari/science_data_derived.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/science_data_contract.py:51 import ari.science_data_derived"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_contract.py",
+      "to": "py.module:ari-core/ari/science_data_migration.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/science_data_contract.py:380 import ari.science_data_migration"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_contract.py",
+      "to": "py.module:ari-core/ari/science_data_validation.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/science_data_contract.py:265 import ari.science_data_validation"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_contract.py",
+      "to": "py.symbol:ari-core/ari/claim_gate_contract.py:parse_metric_gate_contract",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_contract.py:25 use parse_metric_gate_contract"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_contract.py",
+      "to": "py.symbol:ari-core/ari/execution.py:MeasurementRecordV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_contract.py:26 use MeasurementRecordV1"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_contract.py",
+      "to": "py.symbol:ari-core/ari/science_data_base.py:SCIENCE_DATA_V1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_contract.py:33 use SCIENCE_DATA_V1"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_contract.py",
+      "to": "py.symbol:ari-core/ari/science_data_base.py:SCIENCE_RAW_V1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_contract.py:33 use SCIENCE_RAW_V1"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_contract.py",
+      "to": "py.symbol:ari-core/ari/science_data_base.py:SHA256_DIGEST_PATTERN",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_contract.py:33 use SHA256_DIGEST_PATTERN"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_contract.py",
+      "to": "py.symbol:ari-core/ari/science_data_base.py:ScienceArtifactRefV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_contract.py:33 use ScienceArtifactRefV1"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_contract.py",
+      "to": "py.symbol:ari-core/ari/science_data_base.py:ScienceDataError",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_contract.py:33 use ScienceDataError"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_contract.py",
+      "to": "py.symbol:ari-core/ari/science_data_base.py:ScienceEnvironmentV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_contract.py:33 use ScienceEnvironmentV1"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_contract.py",
+      "to": "py.symbol:ari-core/ari/science_data_base.py:canonical_science_digest",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_contract.py:33 use canonical_science_digest"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_contract.py",
+      "to": "py.symbol:ari-core/ari/science_data_derived.py:ScienceDerivedV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_contract.py:51 use ScienceDerivedV1"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_contract.py",
+      "to": "py.symbol:ari-core/ari/science_data_derived.py:ScienceInterpretationV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_contract.py:51 use ScienceInterpretationV1"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_contract.py",
+      "to": "py.symbol:ari-core/ari/science_data_derived.py:ScienceProvenanceV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_contract.py:51 use ScienceProvenanceV1"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_contract.py",
+      "to": "py.symbol:ari-core/ari/science_data_migration.py:migrate_legacy_document",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_contract.py:380 use migrate_legacy_document"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_contract.py",
+      "to": "py.symbol:ari-core/ari/science_data_validation.py:validate_science_data_links",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_contract.py:265 use validate_science_data_links"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_derived.py",
+      "to": "py.module:ari-core/ari/pipeline/claim_gate/numeric.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/science_data_derived.py:10 import ari.pipeline.claim_gate.numeric"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_derived.py",
+      "to": "py.module:ari-core/ari/science_data_base.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/science_data_derived.py:15 import ari.science_data_base"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_derived.py",
+      "to": "py.symbol:ari-core/ari/pipeline/claim_gate/numeric.py:FORMULAS",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_derived.py:10 use FORMULAS"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_derived.py",
+      "to": "py.symbol:ari-core/ari/pipeline/claim_gate/numeric.py:formula_registry_digest",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_derived.py:10 use formula_registry_digest"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_derived.py",
+      "to": "py.symbol:ari-core/ari/pipeline/claim_gate/numeric.py:required_roles",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_derived.py:10 use required_roles"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_derived.py",
+      "to": "py.symbol:ari-core/ari/science_data_base.py:DigestBoundScienceModel",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_derived.py:15 use DigestBoundScienceModel"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_derived.py",
+      "to": "py.symbol:ari-core/ari/science_data_base.py:SCIENCE_DERIVED_V1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_derived.py:15 use SCIENCE_DERIVED_V1"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_derived.py",
+      "to": "py.symbol:ari-core/ari/science_data_base.py:SCIENCE_INTERPRETATION_V1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_derived.py:15 use SCIENCE_INTERPRETATION_V1"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_derived.py",
+      "to": "py.symbol:ari-core/ari/science_data_base.py:SCIENCE_PROVENANCE_V1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_derived.py:15 use SCIENCE_PROVENANCE_V1"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_derived.py",
+      "to": "py.symbol:ari-core/ari/science_data_base.py:SHA256_DIGEST_PATTERN",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_derived.py:15 use SHA256_DIGEST_PATTERN"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_derived.py",
+      "to": "py.symbol:ari-core/ari/science_data_base.py:ScienceArtifactRefV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_derived.py:15 use ScienceArtifactRefV1"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_derived.py",
+      "to": "py.symbol:ari-core/ari/science_data_base.py:ScienceEnvironmentV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_derived.py:15 use ScienceEnvironmentV1"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_derived.py",
+      "to": "py.symbol:ari-core/ari/science_data_base.py:StrictScienceModel",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_derived.py:15 use StrictScienceModel"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_derived.py",
+      "to": "py.symbol:ari-core/ari/science_data_base.py:finite_json",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_derived.py:15 use finite_json"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_derived.py",
+      "to": "py.symbol:ari-core/ari/science_data_base.py:safe_id",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_derived.py:15 use safe_id"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_migration.py",
+      "to": "py.module:ari-core/ari/claim_gate_contract.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/science_data_migration.py:15 import ari.claim_gate_contract"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_migration.py",
+      "to": "py.module:ari-core/ari/science_data_contract.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/science_data_migration.py:19 import ari.science_data_contract"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_migration.py",
+      "to": "py.symbol:ari-core/ari/claim_gate_contract.py:migrate_legacy_metric_gate_contract",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_migration.py:15 use migrate_legacy_metric_gate_contract"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_migration.py",
+      "to": "py.symbol:ari-core/ari/claim_gate_contract.py:parse_metric_gate_contract",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_migration.py:15 use parse_metric_gate_contract"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_migration.py",
+      "to": "py.symbol:ari-core/ari/science_data_contract.py:ScienceConfigurationV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_migration.py:19 use ScienceConfigurationV1"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_migration.py",
+      "to": "py.symbol:ari-core/ari/science_data_contract.py:ScienceDataV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_migration.py:19 use ScienceDataV1"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_migration.py",
+      "to": "py.symbol:ari-core/ari/science_data_contract.py:ScienceRawV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_migration.py:19 use ScienceRawV1"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_migration.py",
+      "to": "py.symbol:ari-core/ari/science_data_contract.py:parse_science_data",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_migration.py:19 use parse_science_data"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_validation.py",
+      "to": "py.module:ari-core/ari/pipeline/claim_gate/numeric.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/science_data_validation.py:8 import ari.pipeline.claim_gate.numeric"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_validation.py",
+      "to": "py.module:ari-core/ari/science_data_contract.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/science_data_validation.py:11 import ari.science_data_contract"
+    },
+    {
+      "from": "py.module:ari-core/ari/science_data_validation.py",
+      "to": "py.symbol:ari-core/ari/pipeline/claim_gate/numeric.py:recompute",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/science_data_validation.py:8 use recompute"
     },
     {
       "from": "py.module:ari-core/ari/skill_lock.py",
@@ -38779,7 +40161,13 @@
       "from": "py.module:ari-core/ari/viz/services/state_service.py",
       "to": "py.module:ari-core/ari/config/finder.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/viz/services/state_service.py:439 import ari.config.finder"
+      "evidence": "ari-core/ari/viz/services/state_service.py:450 import ari.config.finder"
+    },
+    {
+      "from": "py.module:ari-core/ari/viz/services/state_service.py",
+      "to": "py.module:ari-core/ari/science_data_contract.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/viz/services/state_service.py:311 import ari.science_data_contract"
     },
     {
       "from": "py.module:ari-core/ari/viz/services/state_service.py",
@@ -38791,13 +40179,13 @@
       "from": "py.module:ari-core/ari/viz/services/state_service.py",
       "to": "py.module:ari-core/ari/viz/api_settings.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/viz/services/state_service.py:406 import ari.viz.api_settings"
+      "evidence": "ari-core/ari/viz/services/state_service.py:417 import ari.viz.api_settings"
     },
     {
       "from": "py.module:ari-core/ari/viz/services/state_service.py",
       "to": "py.module:ari-core/ari/viz/api_settings.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/viz/services/state_service.py:422 import ari.viz.api_settings"
+      "evidence": "ari-core/ari/viz/services/state_service.py:433 import ari.viz.api_settings"
     },
     {
       "from": "py.module:ari-core/ari/viz/services/state_service.py",
@@ -38809,13 +40197,13 @@
       "from": "py.module:ari-core/ari/viz/services/state_service.py",
       "to": "py.module:ari-core/ari/viz/internal_adapters.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/viz/services/state_service.py:388 import ari.viz.internal_adapters"
+      "evidence": "ari-core/ari/viz/services/state_service.py:399 import ari.viz.internal_adapters"
     },
     {
       "from": "py.module:ari-core/ari/viz/services/state_service.py",
       "to": "py.module:ari-core/ari/viz/internal_adapters.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/viz/services/state_service.py:483 import ari.viz.internal_adapters"
+      "evidence": "ari-core/ari/viz/services/state_service.py:494 import ari.viz.internal_adapters"
     },
     {
       "from": "py.module:ari-core/ari/viz/services/state_service.py",
@@ -38839,7 +40227,13 @@
       "from": "py.module:ari-core/ari/viz/services/state_service.py",
       "to": "py.symbol:ari-core/ari/config/finder.py:package_config_root",
       "kind": "static.call",
-      "evidence": "ari-core/ari/viz/services/state_service.py:439 use package_config_root"
+      "evidence": "ari-core/ari/viz/services/state_service.py:450 use package_config_root"
+    },
+    {
+      "from": "py.module:ari-core/ari/viz/services/state_service.py",
+      "to": "py.symbol:ari-core/ari/science_data_contract.py:science_data_projection",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/viz/services/state_service.py:311 use science_data_projection"
     },
     {
       "from": "py.module:ari-core/ari/viz/services/state_service.py",
@@ -38851,13 +40245,13 @@
       "from": "py.module:ari-core/ari/viz/services/state_service.py",
       "to": "py.symbol:ari-core/ari/viz/api_settings.py:_api_get_settings",
       "kind": "static.call",
-      "evidence": "ari-core/ari/viz/services/state_service.py:406 use _api_get_settings"
+      "evidence": "ari-core/ari/viz/services/state_service.py:417 use _api_get_settings"
     },
     {
       "from": "py.module:ari-core/ari/viz/services/state_service.py",
       "to": "py.symbol:ari-core/ari/viz/api_settings.py:_api_get_settings",
       "kind": "static.call",
-      "evidence": "ari-core/ari/viz/services/state_service.py:422 use _api_get_settings"
+      "evidence": "ari-core/ari/viz/services/state_service.py:433 use _api_get_settings"
     },
     {
       "from": "py.module:ari-core/ari/viz/services/state_service.py",
@@ -39007,49 +40401,49 @@
       "from": "py.module:ari-skill-evaluator/src/server.py",
       "to": "py.module:ari-core/ari/public/claim_gate.py",
       "kind": "static.import",
-      "evidence": "ari-skill-evaluator/src/server.py:170 import ari.public.claim_gate"
+      "evidence": "ari-skill-evaluator/src/server.py:181 import ari.public.claim_gate"
     },
     {
       "from": "py.module:ari-skill-evaluator/src/server.py",
       "to": "py.module:ari-core/ari/public/claim_gate.py",
       "kind": "static.import",
-      "evidence": "ari-skill-evaluator/src/server.py:211 import ari.public.claim_gate"
+      "evidence": "ari-skill-evaluator/src/server.py:222 import ari.public.claim_gate"
     },
     {
       "from": "py.module:ari-skill-evaluator/src/server.py",
       "to": "py.module:ari-core/ari/public/claim_gate.py",
       "kind": "static.import",
-      "evidence": "ari-skill-evaluator/src/server.py:272 import ari.public.claim_gate"
+      "evidence": "ari-skill-evaluator/src/server.py:283 import ari.public.claim_gate"
     },
     {
       "from": "py.module:ari-skill-evaluator/src/server.py",
       "to": "py.module:ari-core/ari/public/claim_gate.py",
       "kind": "static.import",
-      "evidence": "ari-skill-evaluator/src/server.py:351 import ari.public.claim_gate"
+      "evidence": "ari-skill-evaluator/src/server.py:362 import ari.public.claim_gate"
     },
     {
       "from": "py.module:ari-skill-evaluator/src/server.py",
       "to": "py.module:ari-core/ari/public/claim_gate.py",
       "kind": "static.import",
-      "evidence": "ari-skill-evaluator/src/server.py:384 import ari.public.claim_gate"
+      "evidence": "ari-skill-evaluator/src/server.py:395 import ari.public.claim_gate"
     },
     {
       "from": "py.module:ari-skill-evaluator/src/server.py",
       "to": "py.module:ari-core/ari/public/claim_gate.py",
       "kind": "static.import",
-      "evidence": "ari-skill-evaluator/src/server.py:420 import ari.public.claim_gate"
+      "evidence": "ari-skill-evaluator/src/server.py:431 import ari.public.claim_gate"
     },
     {
       "from": "py.module:ari-skill-evaluator/src/server.py",
       "to": "py.module:ari-core/ari/public/claim_gate.py",
       "kind": "static.import",
-      "evidence": "ari-skill-evaluator/src/server.py:495 import ari.public.claim_gate"
+      "evidence": "ari-skill-evaluator/src/server.py:506 import ari.public.claim_gate"
     },
     {
       "from": "py.module:ari-skill-evaluator/src/server.py",
       "to": "py.module:ari-core/ari/public/claim_gate.py",
       "kind": "static.import",
-      "evidence": "ari-skill-evaluator/src/server.py:534 import ari.public.claim_gate"
+      "evidence": "ari-skill-evaluator/src/server.py:545 import ari.public.claim_gate"
     },
     {
       "from": "py.module:ari-skill-evaluator/src/server.py",
@@ -39061,31 +40455,37 @@
       "from": "py.module:ari-skill-evaluator/src/server.py",
       "to": "py.module:ari-core/ari/public/execution.py",
       "kind": "static.import",
-      "evidence": "ari-skill-evaluator/src/server.py:137 import ari.public.execution"
+      "evidence": "ari-skill-evaluator/src/server.py:148 import ari.public.execution"
     },
     {
       "from": "py.module:ari-skill-evaluator/src/server.py",
       "to": "py.module:ari-core/ari/public/research_contract.py",
       "kind": "static.import",
-      "evidence": "ari-skill-evaluator/src/server.py:162 import ari.public.research_contract"
+      "evidence": "ari-skill-evaluator/src/server.py:173 import ari.public.research_contract"
     },
     {
       "from": "py.module:ari-skill-evaluator/src/server.py",
       "to": "py.module:ari-core/ari/public/research_contract.py",
       "kind": "static.import",
-      "evidence": "ari-skill-evaluator/src/server.py:273 import ari.public.research_contract"
+      "evidence": "ari-skill-evaluator/src/server.py:284 import ari.public.research_contract"
     },
     {
       "from": "py.module:ari-skill-evaluator/src/server.py",
       "to": "py.module:ari-core/ari/public/research_contract.py",
       "kind": "static.import",
-      "evidence": "ari-skill-evaluator/src/server.py:336 import ari.public.research_contract"
+      "evidence": "ari-skill-evaluator/src/server.py:347 import ari.public.research_contract"
     },
     {
       "from": "py.module:ari-skill-evaluator/src/server.py",
       "to": "py.module:ari-core/ari/public/research_contract.py",
       "kind": "static.import",
-      "evidence": "ari-skill-evaluator/src/server.py:540 import ari.public.research_contract"
+      "evidence": "ari-skill-evaluator/src/server.py:551 import ari.public.research_contract"
+    },
+    {
+      "from": "py.module:ari-skill-evaluator/src/server.py",
+      "to": "py.module:ari-core/ari/public/science_data.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-evaluator/src/server.py:142 import ari.public.science_data"
     },
     {
       "from": "py.module:ari-skill-hpc/ari_skill_hpc/__init__.py",
@@ -39556,6 +40956,12 @@
       "evidence": "ari-skill-paper-re/src/server.py:37 import ari_skill_hpc"
     },
     {
+      "from": "py.module:ari-skill-paper/src/claim_links.py",
+      "to": "py.module:ari-core/ari/public/science_data.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-paper/src/claim_links.py:411 import ari.public.science_data"
+    },
+    {
       "from": "py.module:ari-skill-paper/src/server.py",
       "to": "py.module:ari-core/ari/public/cost_tracker.py",
       "kind": "static.import",
@@ -39569,9 +40975,21 @@
     },
     {
       "from": "py.module:ari-skill-paper/src/server.py",
+      "to": "py.module:ari-core/ari/public/science_data.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-paper/src/server.py:1205 import ari.public.science_data"
+    },
+    {
+      "from": "py.module:ari-skill-paper/src/server.py",
+      "to": "py.module:ari-core/ari/public/science_data.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-paper/src/server.py:2492 import ari.public.science_data"
+    },
+    {
+      "from": "py.module:ari-skill-paper/src/server.py",
       "to": "py.module:ari-core/ari/public/verified_context.py",
       "kind": "static.import",
-      "evidence": "ari-skill-paper/src/server.py:1554 import ari.public.verified_context"
+      "evidence": "ari-skill-paper/src/server.py:1566 import ari.public.verified_context"
     },
     {
       "from": "py.module:ari-skill-plot/src/server.py",
@@ -39584,6 +41002,18 @@
       "to": "py.module:ari-core/ari/public/execution.py",
       "kind": "static.import",
       "evidence": "ari-skill-plot/src/server.py:84 import ari.public.execution"
+    },
+    {
+      "from": "py.module:ari-skill-plot/src/server.py",
+      "to": "py.module:ari-core/ari/public/science_data.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-plot/src/server.py:525 import ari.public.science_data"
+    },
+    {
+      "from": "py.module:ari-skill-plot/src/server.py",
+      "to": "py.module:ari-core/ari/public/science_data.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-plot/src/server.py:777 import ari.public.science_data"
     },
     {
       "from": "py.module:ari-skill-replicate/src/server.py",
@@ -39658,52 +41088,70 @@
       "evidence": "ari-skill-tool-registry/src/qiskit_results.py:12 import ari.public.result"
     },
     {
-      "from": "py.module:ari-skill-transform/src/server.py",
-      "to": "py.module:ari-core/ari/public/claim_gate.py",
+      "from": "py.module:ari-skill-transform/src/annotations.py",
+      "to": "py.module:ari-core/ari/public/science_data.py",
       "kind": "static.import",
-      "evidence": "ari-skill-transform/src/server.py:1176 import ari.public.claim_gate"
+      "evidence": "ari-skill-transform/src/annotations.py:19 import ari.public.science_data"
+    },
+    {
+      "from": "py.module:ari-skill-transform/src/claims.py",
+      "to": "py.module:ari-core/ari/public/science_data.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-transform/src/claims.py:38 import ari.public.science_data"
+    },
+    {
+      "from": "py.module:ari-skill-transform/src/publish_adapter.py",
+      "to": "py.module:ari-core/ari/public/publish.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-transform/src/publish_adapter.py:5 import ari.public.publish"
+    },
+    {
+      "from": "py.module:ari-skill-transform/src/science_data.py",
+      "to": "py.module:ari-core/ari/public/execution.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-transform/src/science_data.py:18 import ari.public.execution"
+    },
+    {
+      "from": "py.module:ari-skill-transform/src/science_data.py",
+      "to": "py.module:ari-core/ari/public/science_data.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-transform/src/science_data.py:19 import ari.public.science_data"
     },
     {
       "from": "py.module:ari-skill-transform/src/server.py",
       "to": "py.module:ari-core/ari/public/claim_gate.py",
       "kind": "static.import",
-      "evidence": "ari-skill-transform/src/server.py:525 import ari.public.claim_gate"
+      "evidence": "ari-skill-transform/src/server.py:174 import ari.public.claim_gate"
+    },
+    {
+      "from": "py.module:ari-skill-transform/src/server.py",
+      "to": "py.module:ari-core/ari/public/claim_gate.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-transform/src/server.py:601 import ari.public.claim_gate"
     },
     {
       "from": "py.module:ari-skill-transform/src/server.py",
       "to": "py.module:ari-core/ari/public/cost_tracker.py",
       "kind": "static.import",
-      "evidence": "ari-skill-transform/src/server.py:59 import ari.public.cost_tracker"
+      "evidence": "ari-skill-transform/src/server.py:88 import ari.public.cost_tracker"
     },
     {
       "from": "py.module:ari-skill-transform/src/server.py",
       "to": "py.module:ari-core/ari/public/execution.py",
       "kind": "static.import",
-      "evidence": "ari-skill-transform/src/server.py:28 import ari.public.execution"
+      "evidence": "ari-skill-transform/src/server.py:33 import ari.public.execution"
     },
     {
       "from": "py.module:ari-skill-transform/src/server.py",
       "to": "py.module:ari-core/ari/public/node_selection.py",
       "kind": "static.import",
-      "evidence": "ari-skill-transform/src/server.py:2385 import ari.public.node_selection"
+      "evidence": "ari-skill-transform/src/server.py:1535 import ari.public.node_selection"
     },
     {
       "from": "py.module:ari-skill-transform/src/server.py",
       "to": "py.module:ari-core/ari/public/node_selection.py",
       "kind": "static.import",
-      "evidence": "ari-skill-transform/src/server.py:809 import ari.public.node_selection"
-    },
-    {
-      "from": "py.module:ari-skill-transform/src/server.py",
-      "to": "py.module:ari-core/ari/public/publish.py",
-      "kind": "static.import",
-      "evidence": "ari-skill-transform/src/server.py:2766 import ari.public.publish"
-    },
-    {
-      "from": "py.module:ari-skill-transform/src/server.py",
-      "to": "py.module:ari-core/ari/public/publish.py",
-      "kind": "static.import",
-      "evidence": "ari-skill-transform/src/server.py:2790 import ari.public.publish"
+      "evidence": "ari-skill-transform/src/server.py:431 import ari.public.node_selection"
     },
     {
       "from": "py.module:ari-skill-vlm/src/server.py",
@@ -39775,25 +41223,25 @@
       "from": "py.symbol:ari-core/ari/publish/__init__.py:_load_ari_registry_backend",
       "to": "py.module:ari-core/ari/publish/backends/ari_registry.py",
       "kind": "dynamic.string_key",
-      "evidence": "ari-core/ari/publish/__init__.py:215 register_lazy('ari-registry')"
+      "evidence": "ari-core/ari/publish/__init__.py:316 register_lazy('ari-registry')"
     },
     {
       "from": "py.symbol:ari-core/ari/publish/__init__.py:_load_gh_backend",
       "to": "py.module:ari-core/ari/publish/backends/gh.py",
       "kind": "dynamic.string_key",
-      "evidence": "ari-core/ari/publish/__init__.py:234 register_lazy('gh')"
+      "evidence": "ari-core/ari/publish/__init__.py:337 register_lazy('gh')"
     },
     {
       "from": "py.symbol:ari-core/ari/publish/__init__.py:_load_local_tarball_backend",
       "to": "py.module:ari-core/ari/publish/backends/local_tarball.py",
       "kind": "dynamic.string_key",
-      "evidence": "ari-core/ari/publish/__init__.py:220 register_lazy('local-tarball')"
+      "evidence": "ari-core/ari/publish/__init__.py:322 register_lazy('local-tarball')"
     },
     {
       "from": "py.symbol:ari-core/ari/publish/__init__.py:_load_zenodo_backend",
       "to": "py.module:ari-core/ari/publish/backends/zenodo.py",
       "kind": "dynamic.string_key",
-      "evidence": "ari-core/ari/publish/__init__.py:226 register_lazy('zenodo')"
+      "evidence": "ari-core/ari/publish/__init__.py:329 register_lazy('zenodo')"
     },
     {
       "from": "ts.module:ari-core/ari/viz/frontend/src/services/api/catalog.ts",

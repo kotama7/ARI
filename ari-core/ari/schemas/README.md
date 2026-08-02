@@ -23,6 +23,8 @@ JSON Schemas shipped with ari-core, loaded by basename via
 - `metric_admission_decision_v1.schema.json` — explicit human admission/rejection record.
 - `gate_report_v1.schema.json` — deterministic policy/evidence/formula-bound hard-gate report.
 - `semantic_review_v1.schema.json` — independent provenance-bound semantic advisory.
+- `science_data_v1.schema.json` — separately digest-bound raw measurement,
+  deterministic derivation, non-authoritative interpretation, and provenance hand-off.
 - `idea_candidate_v1.schema.json` — admitted falsifiable hypothesis candidate.
 - `idea_set_v1.schema.json` — generation lock, admitted candidates, and explicit rejections.
 - `research_contract_v1.schema.json` — selected mint-once scientific hand-off consumed by evaluators.

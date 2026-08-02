@@ -5,7 +5,13 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
-from server import nodes_to_science_data, _robust_extract_json, _default_llm_model
+from server import (
+    _default_llm_model,
+    _resolve_llm_base_url,
+    _resolve_llm_model,
+    _robust_extract_json,
+    nodes_to_science_data,
+)
 
 SAMPLE = [
     {
@@ -39,7 +45,47 @@ SAMPLE = [
 
 
 def _run(coro):
-    return asyncio.run(coro)
+    value = asyncio.run(coro)
+    if isinstance(value, dict) and value.get("schema_version") == "ari.science-data/v1":
+        from ari.public.science_data import science_data_projection
+
+        return science_data_projection(value)
+    return value
+
+
+def _report_tree(root: Path, sample: list[dict]) -> Path:
+    run_id = "model_route"
+    checkpoint = root / "checkpoints" / run_id
+    checkpoint.mkdir(parents=True)
+    tree = checkpoint / "tree.json"
+    tree.write_text(json.dumps(sample))
+    for node in sample:
+        node_id = node["id"]
+        work = root / "experiments" / run_id / node_id
+        work.mkdir(parents=True)
+        (work / "node_report.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "node_id": node_id,
+                    "status": "success",
+                    "files_changed": {
+                        "added": [],
+                        "modified": [],
+                        "deleted": [],
+                        "inherited_unchanged": [],
+                    },
+                    "metrics": node.get("metrics") or {},
+                    "self_assessment": {
+                        "succeeded": True,
+                        "headline": "ok",
+                        "concerns": [],
+                    },
+                    "artifacts": [],
+                }
+            )
+        )
+    return tree
 
 
 def test_basic():
@@ -106,7 +152,7 @@ def test_summary_stats_omits_naive_best_when_primary_metric_absent():
     assert "primary_metric_best" not in r["summary_stats"], r["summary_stats"]
 
 
-def test_summary_stats_uses_primary_metric_with_direction():
+def test_untyped_primary_metric_is_not_promoted_to_claimable_summary():
     # higher_is_better=True picks max over the primary metric, ignoring
     # other keys (notably nnz=3.84M which used to dominate the old max()).
     sample = [
@@ -136,8 +182,8 @@ def test_summary_stats_uses_primary_metric_with_direction():
     ss = r["summary_stats"]
     assert ss["primary_metric"] == "GFlops_per_s"
     assert ss["direction"] == "higher_is_better"
-    assert ss["primary_metric_best"] == 26.8
-    assert ss["primary_metric_n"] == 2
+    assert "primary_metric_best" not in ss
+    assert "primary_metric_n" not in ss
 
     # lower_is_better picks min — important for time_s style metrics.
     with tempfile.NamedTemporaryFile(suffix=".json", mode="w") as f:
@@ -149,7 +195,7 @@ def test_summary_stats_uses_primary_metric_with_direction():
             )
         )
     assert r["summary_stats"]["direction"] == "lower_is_better"
-    assert r["summary_stats"]["primary_metric_best"] == 0.0046
+    assert "primary_metric_best" not in r["summary_stats"]
 
 
 # ── _robust_extract_json: malformed-output tolerance ──────────────────
@@ -242,20 +288,21 @@ def test_results_json_populates_parameters_and_filters_per_key_summary():
         # node_a: parameters populated from results.params
         cfg_a = next(c for c in r["configurations"] if c["label"] == "draft")
         assert cfg_a["parameters"] == {"M": 120000, "nnz": 3840000}
-        assert cfg_a["measurements"] == {"GFlops_per_s": 26.8}
+        assert "measurements" not in cfg_a
+        assert cfg_a["_source_kind"] == "legacy-untyped"
         # node_b: no results.json → parameters stays empty (legacy path)
         cfg_b = next(c for c in r["configurations"] if c["label"] == "improve")
         assert cfg_b["parameters"] == {}
 
         # per_key_summary must exclude the declared input params (nnz, M).
         # GFlops_per_s remains because it is not in any node's params set.
-        assert "GFlops_per_s" in r["per_key_summary"]
+        assert "GFlops_per_s" not in r["per_key_summary"]
         assert "nnz" not in r["per_key_summary"]
         assert "M" not in r["per_key_summary"]
 
-        # summary_stats.primary_metric_best is computed only over GFlops_per_s
-        # → 26.8 (max of 26.8, 22.3), never the 3,840,000 input size.
-        assert r["summary_stats"]["primary_metric_best"] == 26.8
+        # Compatibility results.json lacks exact execution/artifact binding and
+        # therefore cannot create a claimable best value.
+        assert "primary_metric_best" not in r["summary_stats"]
 
 
 def test_results_json_validates_canonical_measurements_and_rejects_split_brain():
@@ -316,8 +363,8 @@ def test_results_json_validates_canonical_measurements_and_rejects_split_brain()
         value = _run(nodes_to_science_data(str(tree), primary_metric="latency"))
         config = value["configurations"][0]
         assert config["measurement_records"][0]["unit"] == "ms"
-        assert config["_typed_schema_version"] == "ari.measurement-set/v1"
-        assert config["_typed_compatibility"] == "canonical"
+        assert config["_source_kind"] == "typed-measurement"
+        assert config["_claim_eligible"] is True
 
         document["measurements"] = {"latency": 999.0}
         results_path.write_text(json.dumps(document))
@@ -325,11 +372,7 @@ def test_results_json_validates_canonical_measurements_and_rejects_split_brain()
         assert "_typed_source" not in rejected["configurations"][0]
 
 
-def test_llm_evaluator_typed_split_populates_parameters_when_no_results_json():
-    # When results.json (D path) is absent but the LLM evaluator emitted
-    # the typed _params_dict / _measurements_dict (C path), nodes_to_
-    # science_data must still populate configurations[*].parameters and
-    # exclude the param keys from per_key_summary.
+def test_llm_evaluator_typed_split_is_not_adopted_as_numeric_fact():
     sample = [
         {
             "has_real_data": True,
@@ -357,20 +400,15 @@ def test_llm_evaluator_typed_split_populates_parameters_when_no_results_json():
             )
         )
     cfg = r["configurations"][0]
-    assert cfg["parameters"] == {"M": 120000, "nnz": 3840000}
-    assert cfg["measurements"] == {"GFlops_per_s": 26.8}
-    assert cfg.get("_typed_source") == "llm_evaluator"
-    # Reserved underscore keys + declared params must be excluded from
-    # per_key_summary so primary_metric_best can never pick them up.
-    assert "nnz" not in r["per_key_summary"]
-    assert "M" not in r["per_key_summary"]
+    assert cfg["parameters"] == {}
+    assert "measurements" not in cfg
+    assert cfg["_source_kind"] == "legacy-untyped"
+    assert cfg["_claim_eligible"] is False
     assert "_params_dict" not in r["per_key_summary"]
     assert "_scientific_score" not in r["per_key_summary"]
-    assert "GFlops_per_s" in r["per_key_summary"]
-    # typed_split_coverage tracks adoption of the emit_results contract.
-    assert r["summary_stats"]["typed_split_coverage"]["llm_evaluator"] == 1
+    assert "GFlops_per_s" not in r["per_key_summary"]
     assert r["summary_stats"]["typed_split_coverage"]["results.json"] == 0
-    assert r["summary_stats"]["typed_split_coverage"]["none"] == 0
+    assert r["summary_stats"]["typed_split_coverage"]["none"] == 1
 
 
 def test_typed_split_coverage_legacy_run_reports_none():
@@ -393,7 +431,6 @@ def test_typed_split_coverage_legacy_run_reports_none():
     cov = r["summary_stats"]["typed_split_coverage"]
     assert cov["none"] == 1
     assert cov["results.json"] == 0
-    assert cov["llm_evaluator"] == 0
 
 
 # ── _default_llm_model: backend-aware fallback ──────────────────────────────
@@ -434,6 +471,25 @@ def test_default_llm_model_other_backends_untouched(monkeypatch):
         assert _default_llm_model() == "gpt-4o-mini"
 
 
+def test_transform_model_and_endpoint_precedence(monkeypatch):
+    monkeypatch.setenv("ARI_MODEL_TRANSFORM", "phase-model")
+    monkeypatch.setenv("ARI_LLM_MODEL", "global-model")
+    monkeypatch.setenv("LLM_MODEL", "legacy-model")
+    monkeypatch.setenv("ARI_LLM_API_BASE", "https://ari.example/v1")
+    monkeypatch.setenv("LLM_API_BASE", "https://legacy.example/v1")
+    assert _resolve_llm_model("explicit-model") == "explicit-model"
+    assert _resolve_llm_model() == "phase-model"
+    assert _resolve_llm_base_url("https://explicit.example/v1") == (
+        "https://explicit.example/v1"
+    )
+    assert _resolve_llm_base_url() == "https://ari.example/v1"
+
+    monkeypatch.delenv("ARI_MODEL_TRANSFORM")
+    monkeypatch.delenv("ARI_LLM_API_BASE")
+    assert _resolve_llm_model() == "global-model"
+    assert _resolve_llm_base_url() == "https://legacy.example/v1"
+
+
 def test_explicit_llm_model_overrides_default(monkeypatch):
     # nodes_to_science_data(llm_model="...") must win over the backend-aware
     # fallback so workflow.yaml / callers can still pin a specific model.
@@ -467,10 +523,9 @@ def test_explicit_llm_model_overrides_default(monkeypatch):
             "id": "n1",
         }
     ]
-    with tempfile.NamedTemporaryFile(suffix=".json", mode="w") as f:
-        json.dump(sample, f)
-        f.flush()
-        _run(nodes_to_science_data(f.name, llm_model="gpt-4o"))
+    with tempfile.TemporaryDirectory() as tmp:
+        tree = _report_tree(Path(tmp), sample)
+        _run(nodes_to_science_data(str(tree), llm_model="gpt-4o"))
     assert captured.get("model") == "gpt-4o"
 
 
@@ -505,10 +560,9 @@ def test_env_llm_model_overrides_default(monkeypatch):
             "id": "n1",
         }
     ]
-    with tempfile.NamedTemporaryFile(suffix=".json", mode="w") as f:
-        json.dump(sample, f)
-        f.flush()
-        _run(nodes_to_science_data(f.name))
+    with tempfile.TemporaryDirectory() as tmp:
+        tree = _report_tree(Path(tmp), sample)
+        _run(nodes_to_science_data(str(tree)))
     assert captured.get("model") == "custom-name"
 
 
@@ -547,8 +601,7 @@ def test_shim_backend_actually_routes_to_claude_cli(monkeypatch):
             "id": "n1",
         }
     ]
-    with tempfile.NamedTemporaryFile(suffix=".json", mode="w") as f:
-        json.dump(sample, f)
-        f.flush()
-        _run(nodes_to_science_data(f.name))
+    with tempfile.TemporaryDirectory() as tmp:
+        tree = _report_tree(Path(tmp), sample)
+        _run(nodes_to_science_data(str(tree)))
     assert captured.get("model") == "claude-cli"
